@@ -2,6 +2,40 @@
 
 Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 工具的源码反编译/逆向还原项目。目标是将 Claude Code 核心功能跑通，必要时删减次级能力。
 
+## 快速开始
+
+### 环境要求
+
+一定要最新版本的 bun 啊, 不然一堆奇奇怪怪的, bun update
+
+- [Bun](https://bun.sh/) >= 1.3.11
+- Node.js >= 18（部分依赖需要）
+- 有效的 Anthropic API Key（或 Bedrock / Vertex 凭据）
+
+### 安装
+
+```bash
+bun install
+```
+
+### 运行
+
+```bash
+# 开发模式（watch）
+bun run dev
+
+# 直接运行
+bun run src/entrypoints/cli.tsx
+
+# 管道模式（-p）
+echo "say hello" | bun run src/entrypoints/cli.tsx -p
+
+# 构建
+bun run build
+```
+
+构建产物输出到 `dist/cli.js`（~25.75 MB，5326 模块）。
+
 ## 能力清单
 
 > ✅ = 已实现  ⚠️ = 部分实现 / 条件启用  ❌ = stub / 移除 / feature flag 关闭
@@ -251,37 +285,6 @@ Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) C
 
 `ABLATION_BASELINE` `AGENT_MEMORY_SNAPSHOT` `BG_SESSIONS` `BRIDGE_MODE` `BUDDY` `CCR_MIRROR` `CCR_REMOTE_SETUP` `CHICAGO_MCP` `COORDINATOR_MODE` `DAEMON` `DIRECT_CONNECT` `EXPERIMENTAL_SKILL_SEARCH` `FORK_SUBAGENT` `HARD_FAIL` `HISTORY_SNIP` `KAIROS` `KAIROS_BRIEF` `KAIROS_CHANNELS` `KAIROS_GITHUB_WEBHOOKS` `LODESTONE` `MCP_SKILLS` `PROACTIVE` `SSH_REMOTE` `TORCH` `TRANSCRIPT_CLASSIFIER` `UDS_INBOX` `ULTRAPLAN` `UPLOAD_USER_SETTINGS` `VOICE_MODE` `WEB_BROWSER_TOOL` `WORKFLOW_SCRIPTS`
 
-## 快速开始
-
-### 环境要求
-
-- [Bun](https://bun.sh/) >= 1.0
-- Node.js >= 18（部分依赖需要）
-- 有效的 Anthropic API Key（或 Bedrock / Vertex 凭据）
-
-### 安装
-
-```bash
-bun install
-```
-
-### 运行
-
-```bash
-# 开发模式（watch）
-bun run dev
-
-# 直接运行
-bun run src/entrypoints/cli.tsx
-
-# 管道模式（-p）
-echo "say hello" | bun run src/entrypoints/cli.tsx -p
-
-# 构建
-bun run build
-```
-
-构建产物输出到 `dist/cli.js`（~25.75 MB，5326 模块）。
 
 ## 项目结构
 
