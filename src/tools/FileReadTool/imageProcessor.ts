@@ -44,9 +44,9 @@ export async function getImageProcessor(): Promise<SharpFunction> {
     try {
       // Use the native image processor module
       const imageProcessor = await import('image-processor-napi')
-      const sharp = (imageProcessor as Record<string, SharpFunction>).sharp || imageProcessor.default
-      imageProcessorModule = { default: sharp }
-      return sharp
+      const sharpFn = (imageProcessor.sharp ?? imageProcessor.default) as SharpFunction
+      imageProcessorModule = { default: sharpFn }
+      return sharpFn
     } catch {
       // Fall back to sharp if native module is not available
       // biome-ignore lint/suspicious/noConsole: intentional warning
