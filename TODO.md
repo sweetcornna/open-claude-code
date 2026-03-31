@@ -22,4 +22,4 @@
 - [x] git hook 的配置
 - [ ] 代码健康度检查
 - [x] 单元测试基础设施搭建 (test runner 配置)
-- [ ] CI/CD 流水线 (GitHub Actions)
+- [x] CI/CD 流水线 (GitHub Actions)
