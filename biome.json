@@ -9,7 +9,7 @@
 		"includes": ["**", "!!**/dist", "!!**/packages/@ant"]
 	},
 	"formatter": {
-		"enabled": true,
+		"enabled": false,
 		"indentStyle": "tab",
 		"lineWidth": 120
 	},
@@ -25,7 +25,11 @@
 				"noImplicitAnyLet": "off",
 				"noGlobalIsNan": "off",
 				"noFallthroughSwitchClause": "off",
-				"noShadowRestrictedNames": "off"
+				"noShadowRestrictedNames": "off",
+				"noArrayIndexKey": "off",
+				"noConsole": "off",
+				"noConfusingLabels": "off",
+				"useIterableCallbackReturn": "off"
 			},
 			"style": {
 				"useConst": "off",
@@ -34,7 +38,9 @@
 				"useDefaultParameterLast": "off",
 				"noUnusedTemplateLiteral": "off",
 				"useTemplate": "off",
-				"useNumberNamespace": "off"
+				"useNumberNamespace": "off",
+				"useNodejsImportProtocol": "off",
+				"useImportType": "off"
 			},
 			"complexity": {
 				"noForEach": "off",
@@ -45,7 +51,10 @@
 				"noUselessSwitchCase": "off",
 				"noUselessFragments": "off",
 				"noUselessTernary": "off",
-				"noUselessLoneBlockStatements": "off"
+				"noUselessLoneBlockStatements": "off",
+				"noUselessEmptyExport": "off",
+				"useArrowFunction": "off",
+				"useLiteralKeys": "off"
 			},
 			"correctness": {
 				"noUnusedVariables": "off",
@@ -53,7 +62,10 @@
 				"useExhaustiveDependencies": "off",
 				"noSwitchDeclarations": "off",
 				"noUnreachable": "off",
-				"useHookAtTopLevel": "off"
+				"useHookAtTopLevel": "off",
+				"noVoidTypeReturn": "off",
+				"noConstantCondition": "off",
+				"noUnusedFunctionParameters": "off"
 			},
 			"a11y": {
 				"recommended": false
@@ -69,11 +81,6 @@
 		}
 	},
 	"assist": {
-		"enabled": true,
-		"actions": {
-			"source": {
-				"organizeImports": "on"
-			}
-		}
+		"enabled": false
 	}
 }

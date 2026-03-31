@@ -21,5 +21,6 @@
 - [x] 冗余代码检查
 - [x] git hook 的配置
 - [x] 代码健康度检查
+- [x] Biome lint 规则调优（适配反编译代码，关闭格式化避免大规模 diff）
 - [x] 单元测试基础设施搭建 (test runner 配置)
 - [x] CI/CD 流水线 (GitHub Actions)
