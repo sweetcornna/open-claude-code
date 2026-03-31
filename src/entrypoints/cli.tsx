@@ -11,6 +11,10 @@ if (typeof globalThis.MACRO === "undefined") {
         VERSION_CHANGELOG: "",
     };
 }
+// Build-time constants — normally replaced by Bun bundler at compile time
+(globalThis as any).BUILD_TARGET = "external";
+(globalThis as any).BUILD_ENV = "production";
+(globalThis as any).INTERFACE_TYPE = "stdio";
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects

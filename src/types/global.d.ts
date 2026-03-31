@@ -58,4 +58,30 @@ declare function launchUltraplan(...args: unknown[]): void
 declare type T = any
 
 // Tungsten (internal)
-declare function TungstenPill(): JSX.Element | null
+declare function TungstenPill(props?: { key?: string; selected?: boolean }): JSX.Element | null
+
+// ============================================================================
+// Build-time constants — replaced by Bun bundler, polyfilled at runtime
+// Using `string` (not literal types) so comparisons don't produce TS2367
+declare const BUILD_TARGET: string
+declare const BUILD_ENV: string
+declare const INTERFACE_TYPE: string
+
+// ============================================================================
+// Bun text/file loaders — allow importing non-TS assets as strings
+declare module '*.md' {
+  const content: string
+  export default content
+}
+declare module '*.txt' {
+  const content: string
+  export default content
+}
+declare module '*.html' {
+  const content: string
+  export default content
+}
+declare module '*.css' {
+  const content: string
+  export default content
+}

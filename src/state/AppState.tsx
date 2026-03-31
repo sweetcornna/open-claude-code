@@ -139,7 +139,7 @@ function useAppStore(): AppStateStore {
  * const { text, promptId } = useAppState(s => s.promptSuggestion) // good
  * ```
  */
-export function useAppState(selector) {
+export function useAppState<R>(selector: (state: AppState) => R): R {
   const $ = _c(3);
   const store = useAppStore();
   let t0;
@@ -183,7 +183,7 @@ const NOOP_SUBSCRIBE = () => () => {};
  * Safe version of useAppState that returns undefined if called outside of AppStateProvider.
  * Useful for components that may be rendered in contexts where AppStateProvider isn't available.
  */
-export function useAppStateMaybeOutsideOfProvider(selector) {
+export function useAppStateMaybeOutsideOfProvider<R>(selector: (state: AppState) => R): R | undefined {
   const $ = _c(3);
   const store = useContext(AppStoreContext);
   let t0;

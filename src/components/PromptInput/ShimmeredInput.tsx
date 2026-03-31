@@ -74,8 +74,8 @@ export function HighlightedInput(t0) {
       $[8] = lo;
       $[9] = hi;
     } else {
-      lo = $[8];
-      hi = $[9];
+      lo = $[8] as number;
+      hi = $[9] as number;
     }
     sweepStart = lo - 10;
     cycleLength = hi - lo + 20;

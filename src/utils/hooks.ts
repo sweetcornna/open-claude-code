@@ -486,8 +486,87 @@ function parseHttpHookOutput(body: string): {
   }
 }
 
+/** Typed representation of sync hook JSON output, matching the syncHookResponseSchema Zod schema. */
+interface TypedSyncHookOutput {
+  continue?: boolean
+  suppressOutput?: boolean
+  stopReason?: string
+  decision?: 'approve' | 'block'
+  reason?: string
+  systemMessage?: string
+  hookSpecificOutput?:
+    | {
+        hookEventName: 'PreToolUse'
+        permissionDecision?: 'ask' | 'deny' | 'allow' | 'passthrough'
+        permissionDecisionReason?: string
+        updatedInput?: Record<string, unknown>
+        additionalContext?: string
+      }
+    | {
+        hookEventName: 'UserPromptSubmit'
+        additionalContext?: string
+      }
+    | {
+        hookEventName: 'SessionStart'
+        additionalContext?: string
+        initialUserMessage?: string
+        watchPaths?: string[]
+      }
+    | {
+        hookEventName: 'Setup'
+        additionalContext?: string
+      }
+    | {
+        hookEventName: 'SubagentStart'
+        additionalContext?: string
+      }
+    | {
+        hookEventName: 'PostToolUse'
+        additionalContext?: string
+        updatedMCPToolOutput?: unknown
+      }
+    | {
+        hookEventName: 'PostToolUseFailure'
+        additionalContext?: string
+      }
+    | {
+        hookEventName: 'PermissionDenied'
+        retry?: boolean
+      }
+    | {
+        hookEventName: 'Notification'
+        additionalContext?: string
+      }
+    | {
+        hookEventName: 'PermissionRequest'
+        decision?: PermissionRequestResult
+      }
+    | {
+        hookEventName: 'Elicitation'
+        action?: 'accept' | 'decline' | 'cancel'
+        content?: Record<string, unknown>
+      }
+    | {
+        hookEventName: 'ElicitationResult'
+        action?: 'accept' | 'decline' | 'cancel'
+        content?: Record<string, unknown>
+      }
+    | {
+        hookEventName: 'CwdChanged'
+        watchPaths?: string[]
+      }
+    | {
+        hookEventName: 'FileChanged'
+        watchPaths?: string[]
+      }
+    | {
+        hookEventName: 'WorktreeCreate'
+        worktreePath: string
+      }
+}
+
 function processHookJSONOutput({
-  json,
+  json: rawJson,
   command,
   hookName,
   toolUseID,
@@ -510,6 +589,9 @@ function processHookJSONOutput({
   durationMs?: number
 }): Partial<HookResult> {
   const result: Partial<HookResult> = {}
+
+  // Cast to typed interface for type-safe property access
+  const json = rawJson as TypedSyncHookOutput
 
   // At this point we know it's a sync response
   const syncJson = json

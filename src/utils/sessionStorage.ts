@@ -1033,7 +1033,7 @@ class Project {
           'sourceToolAssistantUUID' in message &&
           message.sourceToolAssistantUUID
         ) {
-          effectiveParentUuid = message.sourceToolAssistantUUID
+          effectiveParentUuid = message.sourceToolAssistantUUID as UUID
         }
 
         const transcriptMessage: TranscriptMessage = {
@@ -2120,7 +2120,7 @@ function recoverOrphanedParallelToolResults(
   chain: TranscriptMessage[],
   seen: Set<UUID>,
 ): TranscriptMessage[] {
-  type ChainAssistant = Extract<TranscriptMessage, { type: 'assistant' }>
+  type ChainAssistant = TranscriptMessage & { type: 'assistant' }
   const chainAssistants = chain.filter(
     (m): m is ChainAssistant => m.type === 'assistant',
   )
