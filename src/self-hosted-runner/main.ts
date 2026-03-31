@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const selfHostedRunnerMain: any = (() => {}) as any;
+export const selfHostedRunnerMain: (args: string[]) => Promise<void> = () => Promise.resolve();

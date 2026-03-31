@@ -220,7 +220,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
       // Non-blocking: return current state
       if (task.status !== 'running' && task.status !== 'pending') {
         // Mark as notified
-        updateTaskState(task_id, toolUseContext.setAppState, t => ({
+        updateTaskState(task_id, toolUseContext.setAppState, (t: TaskState) => ({
           ...t,
           notified: true
         }));
@@ -269,7 +269,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     }
 
     // Mark as notified
-    updateTaskState(task_id, toolUseContext.setAppState, t => ({
+    updateTaskState(task_id, toolUseContext.setAppState, (t: TaskState) => ({
       ...t,
       notified: true
     }));

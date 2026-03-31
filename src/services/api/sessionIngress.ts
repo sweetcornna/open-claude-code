@@ -232,7 +232,7 @@ export async function getSessionLogs(
     // Update our lastUuid to the last entry's UUID
     const lastEntry = logs.at(-1)
     if (lastEntry && 'uuid' in lastEntry && lastEntry.uuid) {
-      lastUuidMap.set(sessionId, lastEntry.uuid as string)
+      lastUuidMap.set(sessionId, lastEntry.uuid as UUID)
     }
   }
 

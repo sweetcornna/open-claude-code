@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const restoreFromEntries: any = (() => {}) as any;
+export const restoreFromEntries: (...args: unknown[]) => void = () => {};

@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const WebBrowserPanel: any = (() => {}) as any;
+export const WebBrowserPanel: (props: Record<string, unknown>) => null = () => null;

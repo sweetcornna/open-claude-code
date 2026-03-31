@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const MonitorPermissionRequest: any = (() => {}) as any;
+export const MonitorPermissionRequest: (props: Record<string, unknown>) => null = () => null;

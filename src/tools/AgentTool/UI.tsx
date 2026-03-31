@@ -382,7 +382,7 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
       inference_geo: null,
       iterations: null,
       speed: null
-    }
+    } as import('@anthropic-ai/sdk/resources/beta/messages/messages.mjs').BetaUsage
   });
   return <Box flexDirection="column">
       {("external" as string) === 'ant' && <MessageResponse>

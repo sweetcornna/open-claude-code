@@ -285,7 +285,7 @@ export function getDefaultEffortForModel(
       config?.defaultModel !== undefined &&
       model.toLowerCase() === (config.defaultModel as string).toLowerCase()
     if (isDefaultModel && config?.defaultModelEffortLevel) {
-      return config.defaultModelEffortLevel
+      return config.defaultModelEffortLevel as EffortValue
     }
     const antModel = resolveAntModel(model)
     if (antModel) {

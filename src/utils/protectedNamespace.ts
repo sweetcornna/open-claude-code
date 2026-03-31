@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const checkProtectedNamespace: any = (() => {}) as any;
+export const checkProtectedNamespace: () => boolean = () => false;

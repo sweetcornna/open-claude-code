@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const daemonMain: any = (() => {}) as any;
+export const daemonMain: (args: string[]) => Promise<void> = () => Promise.resolve();

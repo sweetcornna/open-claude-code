@@ -802,13 +802,14 @@ export async function getAttachments(
         skillSearchModules &&
         !options?.skipSkillDiscovery
           ? [
-              maybe('skill_discovery', () =>
-                skillSearchModules.prefetch.getTurnZeroSkillDiscovery(
+              maybe('skill_discovery', async () => {
+                const result = await skillSearchModules.prefetch.getTurnZeroSkillDiscovery(
                   input,
                   messages ?? [],
                   context,
-                ),
-              ),
+                )
+                return result ? [result] : []
+              }),
             ]
           : []),
       ]

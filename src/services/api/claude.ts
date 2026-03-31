@@ -2079,7 +2079,7 @@ async function* queryModel(
                 })
                 throw new Error('Content block is not a connector_text block')
               }
-              contentBlock.connector_text += delta.connector_text
+              ;(contentBlock as { connector_text: string }).connector_text += delta.connector_text
             } else {
               switch (delta.type) {
                 case 'citations_delta':
@@ -2123,7 +2123,7 @@ async function* queryModel(
                     })
                     throw new Error('Content block is not a text block')
                   }
-                  contentBlock.text += delta.text
+                  ;(contentBlock as { text: string }).text += delta.text
                   break
                 case 'signature_delta':
                   if (
@@ -2158,7 +2158,7 @@ async function* queryModel(
                     })
                     throw new Error('Content block is not a thinking block')
                   }
-                  contentBlock.thinking += delta.thinking
+                  ;(contentBlock as { thinking: string }).thinking += delta.thinking
                   break
               }
             }

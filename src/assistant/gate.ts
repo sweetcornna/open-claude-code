@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const isKairosEnabled: any = (() => {}) as any;
+export const isKairosEnabled: () => Promise<boolean> = () => Promise.resolve(false);

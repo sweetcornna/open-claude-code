@@ -3,8 +3,8 @@
  * Non-serializable types: callbacks, interfaces with methods.
  */
 
-export type AnyZodRawShape = Record<string, any>
-export type InferShape<T extends AnyZodRawShape> = { [K in keyof T]: any }
+export type AnyZodRawShape = Record<string, unknown>
+export type InferShape<T extends AnyZodRawShape> = { [K in keyof T]: unknown }
 
 export type ForkSessionOptions = { dir?: string; upToMessageId?: string; title?: string }
 export type ForkSessionResult = { sessionId: string }
@@ -60,4 +60,4 @@ export interface Query {
 export interface InternalQuery extends Query {
   [key: string]: unknown
 }
-export type EffortLevel = any;
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max';

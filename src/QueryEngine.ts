@@ -1276,7 +1276,7 @@ export async function* ask({
     tools,
     commands,
     mcpClients,
-    agents,
+    agents: agents ?? [],
     canUseTool,
     getAppState,
     setAppState,

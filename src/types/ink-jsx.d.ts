@@ -1,6 +1,13 @@
-// Type declarations for custom Ink JSX elements
-// Note: The detailed prop types are defined in ink-jsx.d.ts via React module augmentation.
-// This file provides the global JSX namespace fallback declarations.
+/**
+ * Ink custom JSX intrinsic elements.
+ *
+ * With "jsx": "react-jsx", TypeScript resolves JSX types from react/jsx-runtime
+ * whose IntrinsicElements extends React.JSX.IntrinsicElements. We augment the
+ * 'react' module to inject our custom elements into React.JSX.IntrinsicElements.
+ *
+ * This file must be a module (have an import/export) for `declare module`
+ * augmentation to work correctly.
+ */
 import type { ReactNode, Ref } from 'react';
 import type { ClickEvent } from '../ink/events/click-event.js';
 import type { FocusEvent } from '../ink/events/focus-event.js';
@@ -8,7 +15,7 @@ import type { KeyboardEvent } from '../ink/events/keyboard-event.js';
 import type { Styles, TextStyles } from '../ink/styles.js';
 import type { DOMElement } from '../ink/dom.js';
 
-declare global {
+declare module 'react' {
   namespace JSX {
     interface IntrinsicElements {
       'ink-box': {
@@ -45,5 +52,3 @@ declare global {
     }
   }
 }
-
-export {};

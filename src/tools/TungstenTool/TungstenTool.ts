@@ -1,4 +1,6 @@
 // Auto-generated stub — replace with real implementation
-export const TungstenTool: any = (() => {}) as any;
-export const clearSessionsWithTungstenUsage: any = (() => {}) as any;
-export const resetInitializationState: any = (() => {}) as any;
+import type { Tool } from '../../Tool.js'
+
+export const TungstenTool: Tool = (() => {}) as unknown as Tool;
+export const clearSessionsWithTungstenUsage: () => void = (() => {});
+export const resetInitializationState: () => void = (() => {});

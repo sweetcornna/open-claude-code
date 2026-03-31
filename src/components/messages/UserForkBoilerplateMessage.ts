@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const UserForkBoilerplateMessage: any = (() => {}) as any;
+export const UserForkBoilerplateMessage: (props: Record<string, unknown>) => null = () => null;
