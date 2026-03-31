@@ -1,2 +1,2 @@
 // Auto-generated stub
-export {};
+export async function up(): Promise<void> {}

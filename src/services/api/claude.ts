@@ -45,6 +45,7 @@ import {
 import type {
   AssistantMessage,
   Message,
+  MessageContent,
   StreamEvent,
   SystemAPIErrorMessage,
   UserMessage,
@@ -452,7 +453,7 @@ function configureEffortParams(
     betas.push(EFFORT_BETA_HEADER)
   } else if (typeof effortValue === 'string') {
     // Send string effort level as is
-    outputConfig.effort = effortValue
+    outputConfig.effort = effortValue as "high" | "medium" | "low" | "max"
     betas.push(EFFORT_BETA_HEADER)
   } else if (process.env.USER_TYPE === 'ant') {
     // Numeric effort override - ant-only (uses anthropic_internal)
@@ -735,7 +736,7 @@ export async function queryModelWithoutStreaming({
     )
   })) {
     if (message.type === 'assistant') {
-      assistantMessage = message
+      assistantMessage = message as AssistantMessage
     }
   }
   if (!assistantMessage) {
@@ -931,7 +932,7 @@ function getPreviousRequestIdFromMessages(
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]!
     if (msg.type === 'assistant' && msg.requestId) {
-      return msg.requestId
+      return msg.requestId as string
     }
   }
   return undefined
@@ -964,7 +965,7 @@ export function stripExcessMediaItems(
       if (isMedia(block)) toRemove++
       if (isToolResult(block) && Array.isArray(block.content)) {
         for (const nested of block.content) {
-          if (isMedia(nested)) toRemove++
+          if (isMedia(nested as BetaContentBlockParam)) toRemove++
         }
       }
     }
@@ -987,7 +988,7 @@ export function stripExcessMediaItems(
         )
           return block
         const filtered = block.content.filter(n => {
-          if (toRemove > 0 && isMedia(n)) {
+          if (toRemove > 0 && isMedia(n as BetaContentBlockParam)) {
             toRemove--
             return false
           }
@@ -2196,7 +2197,7 @@ async function* queryModel(
                   [contentBlock] as BetaContentBlock[],
                   tools,
                   options.agentId,
-                ),
+                ) as MessageContent,
               },
               requestId: streamRequestId ?? undefined,
               type: 'assistant',
@@ -2248,10 +2249,10 @@ async function* queryModel(
             }
 
             // Update cost
-            const costUSDForPart = calculateUSDCost(resolvedModel, usage)
+            const costUSDForPart = calculateUSDCost(resolvedModel, usage as unknown as BetaUsage)
             costUSD += addToTotalSessionCost(
               costUSDForPart,
-              usage,
+              usage as unknown as BetaUsage,
               options.model,
             )
 
@@ -2575,7 +2576,7 @@ async function* queryModel(
             result.content,
             tools,
             options.agentId,
-          ),
+          ) as MessageContent,
         },
         requestId: streamRequestId ?? undefined,
         type: 'assistant',
@@ -2672,7 +2673,7 @@ async function* queryModel(
               result.content,
               tools,
               options.agentId,
-            ),
+            ) as MessageContent,
           },
           requestId: streamRequestId ?? undefined,
           type: 'assistant',
@@ -2818,13 +2819,13 @@ async function* queryModel(
     // message_delta handler before any yield. Fallback pushes to newMessages
     // then yields, so tracking must be here to survive .return() at the yield.
     if (fallbackMessage) {
-      const fallbackUsage = fallbackMessage.message.usage
+      const fallbackUsage = fallbackMessage.message.usage as BetaMessageDeltaUsage
       usage = updateUsage(EMPTY_USAGE, fallbackUsage)
-      stopReason = fallbackMessage.message.stop_reason
-      const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage)
+      stopReason = fallbackMessage.message.stop_reason as BetaStopReason
+      const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage as unknown as BetaUsage)
       costUSD += addToTotalSessionCost(
         fallbackCost,
-        fallbackUsage,
+        fallbackUsage as unknown as BetaUsage,
         options.model,
       )
     }
@@ -2857,7 +2858,7 @@ async function* queryModel(
   void options.getToolPermissionContext().then(permissionContext => {
     logAPISuccessAndDuration({
       model:
-        newMessages[0]?.message.model ?? partialMessage?.model ?? options.model,
+        (newMessages[0]?.message.model as string | undefined) ?? partialMessage?.model ?? options.model,
       preNormalizedModel: options.model,
       usage,
       start,

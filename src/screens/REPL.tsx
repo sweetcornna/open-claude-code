@@ -3723,7 +3723,7 @@ export function REPL({
 
     // Restore pasted images
     if (Array.isArray(message.message.content) && message.message.content.some(block => block.type === 'image')) {
-      const imageBlocks = message.message.content.filter(block => block.type === 'image') as Array<ImageBlockParam>;
+      const imageBlocks = message.message.content.filter(block => block.type === 'image') as unknown as Array<ImageBlockParam>;
       if (imageBlocks.length > 0) {
         const newPastedContents: Record<number, PastedContent> = {};
         imageBlocks.forEach((block, index) => {
@@ -4147,7 +4147,7 @@ export function REPL({
     if (!isLoading) return null;
 
     // Find stop hook progress messages
-    const progressMsgs = messages.filter((m): m is ProgressMessage<HookProgress> => m.type === 'progress' && m.data.type === 'hook_progress' && (m.data.hookEvent === 'Stop' || m.data.hookEvent === 'SubagentStop'));
+    const progressMsgs = messages.filter((m): m is ProgressMessage<HookProgress> => m.type === 'progress' && (m.data as HookProgress).type === 'hook_progress' && ((m.data as HookProgress).hookEvent === 'Stop' || (m.data as HookProgress).hookEvent === 'SubagentStop'));
     if (progressMsgs.length === 0) return null;
 
     // Get the most recent stop hook execution

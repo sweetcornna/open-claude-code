@@ -204,7 +204,7 @@ export function CollapsedReadSearchContent({
   if (isActiveGroup) {
     for (const id_0 of toolUseIds) {
       if (!inProgressToolUseIDs.has(id_0)) continue;
-      const latest = lookups.progressMessagesByToolUseID.get(id_0)?.at(-1)?.data;
+      const latest = lookups.progressMessagesByToolUseID.get(id_0)?.at(-1)?.data as { type?: string; phase?: string; toolInput?: unknown; toolName?: string } | undefined;
       if (latest?.type === 'repl_tool_call' && latest.phase === 'start') {
         const input = latest.toolInput as {
           command?: string;
@@ -276,13 +276,13 @@ export function CollapsedReadSearchContent({
     let lines = 0;
     for (const id_1 of toolUseIds) {
       if (!inProgressToolUseIDs.has(id_1)) continue;
-      const data = lookups.progressMessagesByToolUseID.get(id_1)?.at(-1)?.data;
+      const data = lookups.progressMessagesByToolUseID.get(id_1)?.at(-1)?.data as { type?: string; elapsedTimeSeconds?: number; totalLines?: number } | undefined;
       if (data?.type !== 'bash_progress' && data?.type !== 'powershell_progress') {
         continue;
       }
-      if (elapsed === undefined || data.elapsedTimeSeconds > elapsed) {
-        elapsed = data.elapsedTimeSeconds;
-        lines = data.totalLines;
+      if (elapsed === undefined || (data.elapsedTimeSeconds ?? 0) > elapsed) {
+        elapsed = data.elapsedTimeSeconds ?? 0;
+        lines = data.totalLines ?? 0;
       }
     }
     if (elapsed !== undefined && elapsed >= 2) {

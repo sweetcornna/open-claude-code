@@ -124,18 +124,18 @@ function StatsContent(t0) {
     allTimePromise,
     onClose
   } = t0;
-  const allTimeResult = use(allTimePromise);
-  const [dateRange, setDateRange] = useState("all");
+  const allTimeResult = use(allTimePromise) as StatsResult;
+  const [dateRange, setDateRange] = useState<StatsDateRange>("all");
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = {};
+    t1 = {} as Record<string, ClaudeCodeStats>;
     $[0] = t1;
   } else {
-    t1 = $[0];
+    t1 = $[0] as Record<string, ClaudeCodeStats>;
   }
-  const [statsCache, setStatsCache] = useState(t1);
+  const [statsCache, setStatsCache] = useState<Record<string, ClaudeCodeStats>>(t1);
   const [isLoadingFiltered, setIsLoadingFiltered] = useState(false);
-  const [activeTab, setActiveTab] = useState("Overview");
+  const [activeTab, setActiveTab] = useState<"Overview" | "Models">("Overview");
   const [copyStatus, setCopyStatus] = useState(null);
   let t2;
   let t3;
@@ -512,7 +512,7 @@ function OverviewTab({
       </Box>
 
       {/* Speculation time saved (ant-only) */}
-      {"external" === 'ant' && stats.totalSpeculationTimeSavedMs > 0 && <Box flexDirection="row" gap={4}>
+      {("external" as string) === 'ant' && stats.totalSpeculationTimeSavedMs > 0 && <Box flexDirection="row" gap={4}>
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 Speculation saved:{' '}
@@ -1151,7 +1151,7 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   lines.push(row('Active days', activeDaysVal, 'Peak hour', peakHourVal));
 
   // Speculation time saved (ant-only)
-  if ("external" === 'ant' && stats.totalSpeculationTimeSavedMs > 0) {
+  if (("external" as string) === 'ant' && stats.totalSpeculationTimeSavedMs > 0) {
     const label = 'Speculation saved:'.padEnd(COL1_LABEL_WIDTH);
     lines.push(label + h(formatDuration(stats.totalSpeculationTimeSavedMs)));
   }

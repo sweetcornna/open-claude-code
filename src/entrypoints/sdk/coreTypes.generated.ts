@@ -5,6 +5,10 @@
  * Here we provide typed stubs for all the types referenced throughout the codebase.
  */
 
+import type { UUID } from 'crypto'
+import type { MessageContent } from '../../types/message.js'
+import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+
 // Usage & Model
 export type ModelUsage = {
   inputTokens: number
@@ -95,18 +99,48 @@ export type FileChangedHookInput = HookInput & { path: string }
 
 // SDK Message types
 export type SDKMessage = { type: string; [key: string]: unknown }
-export type SDKUserMessage = { type: "user"; content: unknown; uuid: string; [key: string]: unknown }
+export type SDKUserMessage = {
+  type: "user"
+  content: string | Array<{ type: string; [key: string]: unknown }>
+  uuid: string
+  message?: { role?: string; id?: string; content?: MessageContent; usage?: BetaUsage | Record<string, unknown>; [key: string]: unknown }
+  tool_use_result?: unknown
+  timestamp?: string
+  [key: string]: unknown
+}
 export type SDKUserMessageReplay = SDKUserMessage
-export type SDKAssistantMessage = { type: "assistant"; content: unknown; [key: string]: unknown }
+export type SDKAssistantMessage = {
+  type: "assistant"
+  content: unknown
+  message?: { role?: string; id?: string; content?: MessageContent; usage?: BetaUsage | Record<string, unknown>; [key: string]: unknown }
+  uuid?: UUID
+  error?: unknown
+  [key: string]: unknown
+}
 export type SDKAssistantErrorMessage = { type: "assistant_error"; error: unknown; [key: string]: unknown }
 export type SDKAssistantMessageError = 'authentication_failed' | 'billing_error' | 'rate_limit' | 'invalid_request' | 'server_error' | 'unknown' | 'max_output_tokens'
-export type SDKPartialAssistantMessage = { type: "partial_assistant"; [key: string]: unknown }
-export type SDKResultMessage = { type: "result"; [key: string]: unknown }
+export type SDKPartialAssistantMessage = { type: "partial_assistant"; event: { type: string; [key: string]: unknown }; [key: string]: unknown }
+export type SDKResultMessage = { type: "result"; subtype?: string; errors?: string[]; result?: string; uuid?: UUID; [key: string]: unknown }
 export type SDKResultSuccess = { type: "result_success"; [key: string]: unknown }
-export type SDKSystemMessage = { type: "system"; [key: string]: unknown }
-export type SDKStatusMessage = { type: "status"; [key: string]: unknown }
-export type SDKToolProgressMessage = { type: "tool_progress"; [key: string]: unknown }
-export type SDKCompactBoundaryMessage = { type: "compact_boundary"; [key: string]: unknown }
+export type SDKSystemMessage = { type: "system"; subtype?: string; model?: string; uuid?: UUID; [key: string]: unknown }
+export type SDKStatusMessage = { type: "status"; subtype?: string; status?: string; uuid?: UUID; [key: string]: unknown }
+export type SDKToolProgressMessage = { type: "tool_progress"; tool_name?: string; elapsed_time_seconds?: number; uuid?: UUID; tool_use_id?: string; [key: string]: unknown }
+export type SDKCompactBoundaryMessage = {
+  type: "compact_boundary"
+  uuid?: UUID
+  compact_metadata: {
+    trigger?: unknown
+    pre_tokens?: unknown
+    preserved_segment?: {
+      head_uuid: UUID
+      anchor_uuid: UUID
+      tail_uuid: UUID
+      [key: string]: unknown
+    }
+    [key: string]: unknown
+  }
+  [key: string]: unknown
+}
 export type SDKPermissionDenial = { type: "permission_denial"; [key: string]: unknown }
 export type SDKRateLimitInfo = { type: "rate_limit"; [key: string]: unknown }
 export type SDKStatus = "active" | "idle" | "error" | string

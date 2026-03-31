@@ -52,7 +52,7 @@ import type { JumpHandle } from './VirtualMessageList.js';
 // and pegs CPU at 100%. Memo on agentDefinitions so a new messages array
 // doesn't invalidate the logo subtree. LogoV2/StatusNotices internally
 // subscribe to useAppState/useSettings for their own updates.
-const LogoHeader = React.memo(function LogoHeader(t0) {
+const LogoHeader = React.memo(function LogoHeader(t0: { agentDefinitions: AgentDefinitionsResult }) {
   const $ = _c(3);
   const {
     agentDefinitions
@@ -400,7 +400,7 @@ const MessagesImpl = ({
     for (let i = normalizedMessages.length - 1; i >= 0; i--) {
       const msg = normalizedMessages[i];
       if (msg?.type === 'assistant') {
-        const content = msg.message.content;
+        const content = msg.message.content as Array<{ type: string }>;
         // Find the last thinking block in this message
         for (let j = content.length - 1; j >= 0; j--) {
           if (content[j]?.type === 'thinking') {
@@ -408,7 +408,7 @@ const MessagesImpl = ({
           }
         }
       } else if (msg?.type === 'user') {
-        const hasToolResult = msg.message.content.some(block => block.type === 'tool_result');
+        const hasToolResult = (msg.message.content as Array<{ type: string }>).some(block => block.type === 'tool_result');
         if (!hasToolResult) {
           // Reached a previous user turn so don't show stale thinking from before
           return 'no-thinking';
@@ -425,11 +425,11 @@ const MessagesImpl = ({
     for (let i_0 = normalizedMessages.length - 1; i_0 >= 0; i_0--) {
       const msg_0 = normalizedMessages[i_0];
       if (msg_0?.type === 'user') {
-        const content_0 = msg_0.message.content;
+        const content_0 = msg_0.message.content as Array<{ type: string; text?: string }>;
         // Check if any text content is bash output
         for (const block_0 of content_0) {
           if (block_0.type === 'text') {
-            const text = block_0.text;
+            const text = block_0.text!;
             if (text.startsWith('<bash-stdout') || text.startsWith('<bash-stderr')) {
               return msg_0.uuid;
             }
