@@ -3,8 +3,11 @@
 Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 工具的源码反编译/逆向还原项目。目标是将 Claude Code 大部分功能及工程化能力复现。虽然很难绷, 但是它叫做 CCB(踩踩背)...
 
 > V1 会完成跑通及基本的类型检查通过; 
+>
 > V2 会完整实现工程化配套设施; 
+>
 > V3 会实现多层级解耦, 很多比如 UI 包, Agent 包都可以独立优化; 
+>
 > V4 会完成大量的测试文件, 以提高稳定性
 >
 > 我不知道这个项目还会存在多久, fork 不好使, git clone 或者下载 .zip 包才稳健;
