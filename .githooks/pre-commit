@@ -8,14 +8,14 @@ if [ -z "$STAGED_FILES" ]; then
   exit 0
 fi
 
-echo "Running Biome check on staged files..."
+echo "Running Biome lint on staged files..."
 
-# 使用 biome check 对暂存文件进行检查（仅 lint，不自动修复）
-echo "$STAGED_FILES" | xargs bunx biome check --no-errors-on-unmatched
+# 使用 biome lint 对暂存文件进行检查（仅 lint，不格式化，不自动修复）
+echo "$STAGED_FILES" | xargs bunx biome lint --no-errors-on-unmatched
 
 if [ $? -ne 0 ]; then
   echo ""
-  echo "Biome check failed. Fix errors or use --no-verify to bypass."
+  echo "Biome lint failed. Fix errors or use --no-verify to bypass."
   exit 1
 fi
 
