@@ -18,7 +18,8 @@
         "format": "biome format --write src/",
         "prepare": "git config core.hooksPath .githooks",
         "test": "bun test",
-        "check:unused": "knip-bun"
+        "check:unused": "knip-bun",
+        "health": "bun run scripts/health-check.ts"
     },
     "dependencies": {
         "@alcalzone/ansi-tokenize": "^0.3.0",
