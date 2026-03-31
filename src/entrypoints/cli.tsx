@@ -1,4 +1,16 @@
-import { feature } from "bun:bundle";
+// Runtime polyfill for bun:bundle (build-time macros)
+const feature = (_name: string) => false;
+if (typeof globalThis.MACRO === "undefined") {
+    (globalThis as any).MACRO = {
+        VERSION: "2.1.87",
+        BUILD_TIME: new Date().toISOString(),
+        FEEDBACK_CHANNEL: "",
+        ISSUES_EXPLAINER: "",
+        NATIVE_PACKAGE_URL: "",
+        PACKAGE_URL: "",
+        VERSION_CHANGELOG: "",
+    };
+}
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
