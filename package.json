@@ -16,7 +16,8 @@
         "lint": "biome check src/",
         "lint:fix": "biome check --fix src/",
         "format": "biome format --write src/",
-        "prepare": "git config core.hooksPath .githooks"
+        "prepare": "git config core.hooksPath .githooks",
+        "test": "bun test"
     },
     "dependencies": {
         "@alcalzone/ansi-tokenize": "^0.3.0",
