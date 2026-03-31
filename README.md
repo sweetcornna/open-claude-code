@@ -1,12 +1,23 @@
-# Claude Code (Reverse-Engineered)
+# Claude Code V1
 
-Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 工具的源码反编译/逆向还原项目。目标是将 Claude Code 核心功能跑通，必要时删减次级能力。
+Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 工具的源码反编译/逆向还原项目。目标是将 Claude Code 大部分功能及工程化能力复现。
+
+> V1 会完成跑通及基本的类型检查通过; 
+> V2 会完整实现工程化配套设施; 
+> V3 会实现多层级解耦, 很多比如 UI 包, Agent 包都可以独立优化; 
+> V4 会完成大量的测试文件, 以提高稳定性
+>
+> 我不知道这个项目还会存在多久, fork 不好使, git clone 或者下载 .zip 包才稳健;
+> 
+> 这个项目更新很快, 后台有 Opus 持续优化, 所以你可以提 issues, 但是 PR 暂时不会接受;
+>
+> 如果你想要私人咨询服务, 那么可以发送邮件到 claude-code-best@proton.me, 备注咨询与联系方式即可; 由于后续工作非常多, 可能会忽略邮件, 半天没回复, 可以多发;
 
 ## 快速开始
 
 ### 环境要求
 
-一定要最新版本的 bun 啊, 不然一堆奇奇怪怪的, bun update
+一定要最新版本的 bun 啊, 不然一堆奇奇怪怪的 BUG!!! bun upgrade!!!
 
 - [Bun](https://bun.sh/) >= 1.3.11
 - Node.js >= 18（部分依赖需要）
@@ -21,7 +32,7 @@ bun install
 ### 运行
 
 ```bash
-# 开发模式（watch）
+# 开发模式, 看到版本号 888 说明就是对了
 bun run dev
 
 # 直接运行
@@ -322,10 +333,6 @@ claude-code/
 
 - `feature()` — 所有 feature flag 返回 `false`，跳过未实现分支
 - `globalThis.MACRO` — 模拟构建时宏注入（VERSION 等）
-
-### 类型状态
-
-经过系统性修复，tsc 错误从 ~1341 降至 **~289**（减少 78%）。剩余错误分散在小文件中，均为反编译产生的源码级类型问题，**不影响 Bun 运行时**。详见 [RECORD.md](./RECORD.md) 第六节。
 
 ### Monorepo
 
