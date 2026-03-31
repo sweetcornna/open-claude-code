@@ -14,24 +14,37 @@ export type Message = {
   isCompactSummary?: boolean
   toolUseResult?: unknown
   isVisibleInTranscriptOnly?: boolean
+  attachment?: { type: string; toolUseID?: string; [key: string]: unknown }
   message?: {
     role?: string
-    content?: string | Array<{ type: string; text?: string; [key: string]: unknown }>
+    id?: string
+    content?: string | Array<{ type: string; text?: string; id?: string; name?: string; tool_use_id?: string; [key: string]: unknown }>
     usage?: Record<string, unknown>
     [key: string]: unknown
   }
   [key: string]: unknown
 }
 export type AssistantMessage = Message & { type: 'assistant' };
-export type AttachmentMessage<T = unknown> = Message & { type: 'attachment' };
-export type ProgressMessage<T = unknown> = Message & { type: 'progress' };
+export type AttachmentMessage<T = unknown> = Message & { type: 'attachment'; attachment: { type: string; [key: string]: unknown } };
+export type ProgressMessage<T = unknown> = Message & { type: 'progress'; data: T };
 export type SystemLocalCommandMessage = Message & { type: 'system' };
 export type SystemMessage = Message & { type: 'system' };
 export type UserMessage = Message & { type: 'user' };
 export type NormalizedUserMessage = UserMessage;
 export type RequestStartEvent = { type: string; [key: string]: unknown };
 export type StreamEvent = { type: string; [key: string]: unknown };
-export type SystemCompactBoundaryMessage = Message & { type: 'system' };
+export type SystemCompactBoundaryMessage = Message & {
+  type: 'system'
+  compactMetadata: {
+    preservedSegment?: {
+      headUuid: UUID
+      tailUuid: UUID
+      anchorUuid: UUID
+      [key: string]: unknown
+    }
+    [key: string]: unknown
+  }
+};
 export type TombstoneMessage = Message;
 export type ToolUseSummaryMessage = Message;
 export type MessageOrigin = string;

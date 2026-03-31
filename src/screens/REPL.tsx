@@ -123,6 +123,7 @@ import type { ToolPermissionContext, Tool } from '../Tool.js';
 import { applyPermissionUpdate, applyPermissionUpdates, persistPermissionUpdate } from '../utils/permissions/PermissionUpdate.js';
 import { buildPermissionUpdates } from '../components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.js';
 import { stripDangerousPermissionsForAutoMode } from '../utils/permissions/permissionSetup.js';
+import type { PermissionMode } from '../types/permissions.js';
 import { getScratchpadDir, isScratchpadEnabled } from '../utils/permissions/filesystem.js';
 import { WEB_FETCH_TOOL_NAME } from '../tools/WebFetchTool/prompt.js';
 import { SLEEP_TOOL_NAME } from '../tools/SleepTool/prompt.js';
@@ -1655,7 +1656,10 @@ export function REPL({
   const onlySleepToolActive = useMemo(() => {
     const lastAssistant = messages.findLast(m => m.type === 'assistant');
     if (lastAssistant?.type !== 'assistant') return false;
-    const inProgressToolUses = lastAssistant.message.content.filter(b => b.type === 'tool_use' && inProgressToolUseIDs.has(b.id));
+    const content = lastAssistant.message.content;
+    if (typeof content === 'string') return false;
+    const contentArr = content as Array<{ type: string; id?: string; name?: string; [key: string]: unknown }>;
+    const inProgressToolUses = contentArr.filter(b => b.type === 'tool_use' && b.id && inProgressToolUseIDs.has(b.id));
     return inProgressToolUses.length > 0 && inProgressToolUses.every(b => b.type === 'tool_use' && b.name === SLEEP_TOOL_NAME);
   }, [messages, inProgressToolUseIDs]);
   const {
@@ -2605,7 +2609,7 @@ export function REPL({
         if (feature('PROACTIVE') || feature('KAIROS')) {
           proactiveModule?.setContextBlocked(false);
         }
-      } else if ((newMessage as MessageType).type === 'progress' && isEphemeralToolProgress((newMessage as ProgressMessage<unknown>).data.type)) {
+      } else if ((newMessage as MessageType).type === 'progress' && isEphemeralToolProgress(((newMessage as MessageType).data as { type: string }).type)) {
         // Replace the previous ephemeral progress tick for the same tool
         // call instead of appending. Sleep/Bash emit a tick per second and
         // only the last one is rendered; appending blows up the messages
@@ -2618,7 +2622,7 @@ export function REPL({
         // "Initializing…" because it renders the full progress trail.
         setMessages(oldMessages => {
           const last = oldMessages.at(-1);
-          if (last?.type === 'progress' && last.parentToolUseID === (newMessage as MessageType).parentToolUseID && last.data.type === (newMessage as ProgressMessage<unknown>).data.type) {
+          if (last?.type === 'progress' && (last as MessageType).parentToolUseID === (newMessage as MessageType).parentToolUseID && ((last as MessageType).data as { type: string }).type === ((newMessage as MessageType).data as { type: string }).type) {
             const copy = oldMessages.slice();
             copy[copy.length - 1] = newMessage;
             return copy;
@@ -2683,7 +2687,7 @@ export function REPL({
     // title silently fell through to the "Claude Code" default.
     if (!titleDisabled && !sessionTitle && !agentTitle && !haikuTitleAttemptedRef.current) {
       const firstUserMessage = newMessages.find(m => m.type === 'user' && !m.isMeta);
-      const text = firstUserMessage?.type === 'user' ? getContentText(firstUserMessage.message.content) : null;
+      const text = firstUserMessage?.type === 'user' ? getContentText(firstUserMessage.message.content as string | ContentBlockParam[]) : null;
       // Skip synthetic breadcrumbs — slash-command output, prompt-skill
       // expansions (/commit → <command-message>), local-command headers
       // (/help → <command-name>), and bash-mode (!cmd → <bash-input>).
@@ -2873,7 +2877,7 @@ export function REPL({
       // Extract and enqueue user message text, skipping meta messages
       // (e.g. expanded skill content, tick prompts) that should not be
       // replayed as user-visible text.
-      newMessages.filter((m): m is UserMessage => m.type === 'user' && !m.isMeta).map(_ => getContentText(_.message.content)).filter(_ => _ !== null).forEach((msg, i) => {
+      newMessages.filter((m): m is UserMessage => m.type === 'user' && !m.isMeta).map(_ => getContentText(_.message.content as string | ContentBlockParam[])).filter(_ => _ !== null).forEach((msg, i) => {
         enqueue({
           value: msg,
           mode: 'prompt'
@@ -3081,7 +3085,7 @@ export function REPL({
           toolPermissionContext: updatedToolPermissionContext,
           ...(shouldStorePlanForVerification && {
             pendingPlanVerification: {
-              plan: initialMsg.message.planContent!,
+              plan: initialMsg.message.planContent as string,
               verificationStarted: false,
               verificationCompleted: false
             }
@@ -3693,7 +3697,7 @@ export function REPL({
       // Restore permission mode from the message
       toolPermissionContext: message.permissionMode && prev.toolPermissionContext.mode !== message.permissionMode ? {
         ...prev.toolPermissionContext,
-        mode: message.permissionMode
+        mode: message.permissionMode as PermissionMode
       } : prev.toolPermissionContext,
       // Clear stale prompt suggestion from previous conversation state
       promptSuggestion: {
@@ -3719,7 +3723,7 @@ export function REPL({
 
     // Restore pasted images
     if (Array.isArray(message.message.content) && message.message.content.some(block => block.type === 'image')) {
-      const imageBlocks: Array<ImageBlockParam> = message.message.content.filter(block => block.type === 'image');
+      const imageBlocks = message.message.content.filter(block => block.type === 'image') as Array<ImageBlockParam>;
       if (imageBlocks.length > 0) {
         const newPastedContents: Record<number, PastedContent> = {};
         imageBlocks.forEach((block, index) => {
