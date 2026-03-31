@@ -159,7 +159,7 @@ export async function getAnthropicClient({
         ? process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
         : getAWSRegion()
 
-    const bedrockArgs: any = {
+    const bedrockArgs: Record<string, unknown> = {
       ...ARGS,
       awsRegion,
       ...(isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH) && {
@@ -173,7 +173,7 @@ export async function getAnthropicClient({
       bedrockArgs.skipAuth = true
       // Add the Bearer token for Bedrock API key authentication
       bedrockArgs.defaultHeaders = {
-        ...bedrockArgs.defaultHeaders,
+        ...(bedrockArgs.defaultHeaders as Record<string, string> | undefined),
         Authorization: `Bearer ${process.env.AWS_BEARER_TOKEN_BEDROCK}`,
       }
     } else if (!isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH)) {

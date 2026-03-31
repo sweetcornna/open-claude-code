@@ -207,14 +207,14 @@ async function compactViaReactive(
     // they can merge its userDisplayMessage with PostCompact's here. This
     // caller additionally runs it concurrently with getCacheSharingParams.
     const combinedMessage =
-      [hookResult.userDisplayMessage, outcome.result.userDisplayMessage]
+      [hookResult.userDisplayMessage, outcome.result!.userDisplayMessage]
         .filter(Boolean)
         .join('\n') || undefined
 
     return {
       type: 'compact',
       compactionResult: {
-        ...outcome.result,
+        ...outcome.result!,
         userDisplayMessage: combinedMessage,
       },
       displayText: buildDisplayText(context, combinedMessage),

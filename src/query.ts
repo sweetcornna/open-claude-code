@@ -802,7 +802,7 @@ async function* queryLoop(
             if (feature('CONTEXT_COLLAPSE')) {
               if (
                 contextCollapse?.isWithheldPromptTooLong(
-                  message,
+                  message as Message,
                   isPromptTooLongMessage,
                   querySource,
                 )
@@ -810,12 +810,12 @@ async function* queryLoop(
                 withheld = true
               }
             }
-            if (reactiveCompact?.isWithheldPromptTooLong(message)) {
+            if (reactiveCompact?.isWithheldPromptTooLong(message as Message)) {
               withheld = true
             }
             if (
               mediaRecoveryEnabled &&
-              reactiveCompact?.isWithheldMediaSizeError(message)
+              reactiveCompact?.isWithheldMediaSizeError(message as Message)
             ) {
               withheld = true
             }

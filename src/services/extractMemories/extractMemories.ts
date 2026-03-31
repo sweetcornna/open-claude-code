@@ -273,7 +273,7 @@ function extractWrittenPaths(agentMessages: Message[]): string[] {
 // ============================================================================
 
 type AppendSystemMessageFn = (
-  msg: Exclude<SystemMessage, SystemLocalCommandMessage>,
+  msg: SystemMessage,
 ) => void
 
 /** The active extractor function, set by initExtractMemories(). */

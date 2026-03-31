@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const SNIP_TOOL_NAME: any = (() => {}) as any;
+export const SNIP_TOOL_NAME: string = '';

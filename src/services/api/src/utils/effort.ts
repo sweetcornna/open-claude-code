@@ -1,4 +1,4 @@
 // Auto-generated type stub — replace with real implementation
-export type EffortValue = any;
-export type modelSupportsEffort = any;
-export type EffortLevel = any;
+export type EffortValue = 'low' | 'medium' | 'high' | 'max' | number;
+export type modelSupportsEffort = (model: string) => boolean;
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max';

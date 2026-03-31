@@ -334,22 +334,22 @@ export async function generateSuggestion(
   const firstAssistantMsg = result.messages.find(m => m.type === 'assistant')
   const generationRequestId =
     firstAssistantMsg?.type === 'assistant'
-      ? (firstAssistantMsg.requestId ?? null)
+      ? ((firstAssistantMsg.requestId as string) ?? null)
       : null
 
   for (const msg of result.messages) {
     if (msg.type !== 'assistant') continue
-    const contentArr = Array.isArray(msg.message.content) ? msg.message.content : []
+    const contentArr = Array.isArray(msg.message.content) ? msg.message.content as Array<{ type: string; text?: string }> : []
     const textBlock = contentArr.find(b => b.type === 'text')
-    if (textBlock?.type === 'text') {
+    if (textBlock?.type === 'text' && typeof textBlock.text === 'string') {
       const suggestion = textBlock.text.trim()
       if (suggestion) {
-        return { suggestion: textBlock.text.trim() as string, generationRequestId }
+        return { suggestion, generationRequestId }
       }
     }
   }
 
-  return { suggestion: null as string | null, generationRequestId }
+  return { suggestion: null as (string | null), generationRequestId }
 }
 
 export function shouldFilterSuggestion(

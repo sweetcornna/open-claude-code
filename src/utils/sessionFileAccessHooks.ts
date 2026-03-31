@@ -215,8 +215,8 @@ async function handleSessionFileAccess(
         input.tool_name === FILE_WRITE_TOOL_NAME)
     ) {
       memoryShapeTelemetry!.logMemoryWriteShape(
-        input.tool_name,
-        input.tool_input,
+        input.tool_name as string,
+        input.tool_input as Record<string, unknown>,
         filePath,
         scope,
       )

@@ -1,3 +1,3 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const UserCrossSessionMessage: any = (() => {}) as any;
+export const UserCrossSessionMessage: (props: Record<string, unknown>) => null = () => null;

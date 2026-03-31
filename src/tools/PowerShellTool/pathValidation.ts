@@ -907,8 +907,8 @@ function isPathAllowed(
         allowed: false,
         decisionReason: {
           type: 'safetyCheck',
-          reason: safetyCheck.message,
-          classifierApprovable: safetyCheck.classifierApprovable,
+          reason: (safetyCheck as { safe: false; message: string; classifierApprovable: boolean }).message,
+          classifierApprovable: (safetyCheck as { safe: false; message: string; classifierApprovable: boolean }).classifierApprovable,
         },
       }
     }

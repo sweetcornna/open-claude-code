@@ -1,4 +1,3 @@
 // Auto-generated stub — replace with real implementation
-export {};
-export const startUdsMessaging: any = (() => {}) as any;
-export const getDefaultUdsSocketPath: any = (() => {}) as any;
+export const startUdsMessaging: (socketPath: string, options: { isExplicit: boolean }) => Promise<void> = async () => {};
+export const getDefaultUdsSocketPath: () => string = () => '';

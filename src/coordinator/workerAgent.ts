@@ -1,3 +1,4 @@
 // Auto-generated stub — replace with real implementation
 export {};
-export const getCoordinatorAgents: any = (() => {}) as any;
+import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js';
+export const getCoordinatorAgents: () => AgentDefinition[] = () => [];

@@ -140,7 +140,7 @@ export function BrowseMarketplace({
         } of marketplaces_0) {
           if (marketplace) {
             // Count how many plugins from this marketplace are installed
-            const installedFromThisMarketplace = count(marketplace.plugins, (plugin: any) => isPluginInstalled(createPluginId(plugin.name, name)));
+            const installedFromThisMarketplace = count(marketplace.plugins, (plugin: { name: string }) => isPluginInstalled(createPluginId(plugin.name, name)));
             marketplaceInfos.push({
               name,
               totalPlugins: marketplace.plugins.length,

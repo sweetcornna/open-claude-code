@@ -13,7 +13,7 @@ declare module "bun:bundle" {
 }
 
 declare module "bun:ffi" {
-    export function dlopen(path: string, symbols: Record<string, any>): any;
+    export function dlopen<T extends Record<string, { args: readonly string[]; returns: string }>>(path: string, symbols: T): { symbols: { [K in keyof T]: (...args: unknown[]) => unknown }; close(): void };
 }
 
 //

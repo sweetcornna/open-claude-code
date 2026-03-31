@@ -35,8 +35,8 @@ if (process.env.NODE_ENV === 'development') {
     // eslint-disable-next-line custom-rules/no-top-level-dynamic-import -- dev-only; NODE_ENV check is DCE'd in production
     void import('./devtools.js')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    if (error.code === 'ERR_MODULE_NOT_FOUND') {
+  } catch (error: unknown) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ERR_MODULE_NOT_FOUND') {
       // biome-ignore lint/suspicious/noConsole: intentional warning
       console.warn(
         `

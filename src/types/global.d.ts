@@ -23,8 +23,8 @@ declare function MACRO<T>(fn: () => T): T
 // These are referenced inside `MACRO(() => ...)` or `false && ...` blocks.
 
 // Model resolution (internal)
-declare function resolveAntModel(model: string): any
-declare function getAntModels(): any[]
+declare function resolveAntModel(model: string): import('../utils/model/antModels.js').AntModel | undefined
+declare function getAntModels(): import('../utils/model/antModels.js').AntModel[]
 declare function getAntModelOverrideConfig(): {
   defaultSystemPromptSuffix?: string
   [key: string]: unknown
@@ -37,11 +37,12 @@ declare function fireCompanionObserver(
 ): void
 
 // Metrics (internal)
-declare const apiMetricsRef: React.RefObject<any[]> | null
-declare function computeTtftText(metrics: any[]): string
+type ApiMetricEntry = { ttftMs: number; firstTokenTime: number; lastTokenTime: number; responseLengthBaseline: number; endResponseLength: number }
+declare const apiMetricsRef: React.RefObject<ApiMetricEntry[]> | null
+declare function computeTtftText(metrics: ApiMetricEntry[]): string
 
 // Gate/feature system (internal)
-declare const Gates: Record<string, any>
+declare const Gates: Record<string, boolean>
 declare function GateOverridesWarning(): JSX.Element | null
 declare function ExperimentEnrollmentNotice(): JSX.Element | null
 
@@ -55,7 +56,7 @@ declare function launchUltraplan(...args: unknown[]): Promise<string>
 
 // T — Generic type parameter leaked from React compiler output
 // (react/compiler-runtime emits compiled JSX that loses generic type params)
-declare type T = any
+declare type T = unknown
 
 // Tungsten (internal)
 declare function TungstenPill(props?: { key?: string; selected?: boolean }): JSX.Element | null
@@ -68,15 +69,7 @@ declare const BUILD_ENV: string
 declare const INTERFACE_TYPE: string
 
 // ============================================================================
-// Ink custom JSX intrinsic elements — used by the internal Ink framework
-declare namespace JSX {
-  interface IntrinsicElements {
-    'ink-box': any;
-    'ink-text': any;
-    'ink-link': any;
-    'ink-raw-ansi': any;
-  }
-}
+// Ink custom JSX intrinsic elements — see src/types/ink-jsx.d.ts
 
 // ============================================================================
 // Bun text/file loaders — allow importing non-TS assets as strings
