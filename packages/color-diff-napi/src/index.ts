@@ -42,8 +42,15 @@ function hljs(): HLJSApi {
   return cachedHljs!
 }
 
-import { stringWidth } from '../../ink/stringWidth.js'
-import { logError } from '../../utils/log.js'
+// Use Bun.stringWidth when available, otherwise fall back to simple .length
+const stringWidth: (str: string) => number =
+  typeof Bun !== 'undefined' && typeof Bun.stringWidth === 'function'
+    ? Bun.stringWidth
+    : (str: string) => str.length
+
+function logError(error: unknown): void {
+  console.error(error instanceof Error ? error.message : String(error))
+}
 
 // ---------------------------------------------------------------------------
 // Public API types (match vendor/color-diff-src/index.d.ts)

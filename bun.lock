@@ -6,6 +6,10 @@
       "name": "claude-code",
       "dependencies": {
         "@alcalzone/ansi-tokenize": "^0.3.0",
+        "@ant/claude-for-chrome-mcp": "workspace:*",
+        "@ant/computer-use-input": "workspace:*",
+        "@ant/computer-use-mcp": "workspace:*",
+        "@ant/computer-use-swift": "workspace:*",
         "@anthropic-ai/bedrock-sdk": "^0.26.4",
         "@anthropic-ai/claude-agent-sdk": "latest",
         "@anthropic-ai/foundry-sdk": "^0.2.3",
@@ -16,6 +20,7 @@
         "@aws-sdk/client-bedrock": "latest",
         "@aws-sdk/client-bedrock-runtime": "latest",
         "@aws-sdk/client-sts": "^3.1020.0",
+        "@aws-sdk/credential-provider-node": "^3.972.28",
         "@aws-sdk/credential-providers": "latest",
         "@azure/identity": "^4.13.1",
         "@commander-js/extra-typings": "latest",
@@ -38,10 +43,12 @@
         "@opentelemetry/sdk-logs": "latest",
         "@opentelemetry/sdk-metrics": "latest",
         "@opentelemetry/sdk-trace-base": "latest",
+        "@opentelemetry/semantic-conventions": "latest",
         "@smithy/core": "latest",
         "@smithy/node-http-handler": "latest",
         "ajv": "latest",
         "asciichart": "latest",
+        "audio-capture-napi": "workspace:*",
         "auto-bind": "latest",
         "axios": "latest",
         "bidi-js": "latest",
@@ -51,10 +58,12 @@
         "cli-boxes": "latest",
         "cli-highlight": "^2.1.11",
         "code-excerpt": "latest",
+        "color-diff-napi": "workspace:*",
         "diff": "latest",
         "emoji-regex": "latest",
         "env-paths": "latest",
         "execa": "latest",
+        "fflate": "latest",
         "figures": "latest",
         "fuse.js": "latest",
         "get-east-asian-width": "latest",
@@ -62,11 +71,13 @@
         "highlight.js": "latest",
         "https-proxy-agent": "latest",
         "ignore": "latest",
+        "image-processor-napi": "workspace:*",
         "indent-string": "latest",
         "jsonc-parser": "^3.3.1",
         "lodash-es": "latest",
         "lru-cache": "latest",
         "marked": "latest",
+        "modifiers-napi": "workspace:*",
         "p-map": "latest",
         "picomatch": "latest",
         "plist": "^3.1.0",
@@ -86,7 +97,9 @@
         "turndown": "^7.2.2",
         "type-fest": "latest",
         "undici": "latest",
+        "url-handler-napi": "workspace:*",
         "usehooks-ts": "latest",
+        "vscode-jsonrpc": "latest",
         "vscode-languageserver-protocol": "latest",
         "vscode-languageserver-types": "latest",
         "wrap-ansi": "latest",
@@ -106,9 +119,56 @@
         "typescript": "latest",
       },
     },
+    "packages/@ant/claude-for-chrome-mcp": {
+      "name": "@ant/claude-for-chrome-mcp",
+      "version": "1.0.0",
+    },
+    "packages/@ant/computer-use-input": {
+      "name": "@ant/computer-use-input",
+      "version": "1.0.0",
+    },
+    "packages/@ant/computer-use-mcp": {
+      "name": "@ant/computer-use-mcp",
+      "version": "1.0.0",
+    },
+    "packages/@ant/computer-use-swift": {
+      "name": "@ant/computer-use-swift",
+      "version": "1.0.0",
+    },
+    "packages/audio-capture-napi": {
+      "name": "audio-capture-napi",
+      "version": "1.0.0",
+    },
+    "packages/color-diff-napi": {
+      "name": "color-diff-napi",
+      "version": "1.0.0",
+      "dependencies": {
+        "highlight.js": "latest",
+      },
+    },
+    "packages/image-processor-napi": {
+      "name": "image-processor-napi",
+      "version": "1.0.0",
+    },
+    "packages/modifiers-napi": {
+      "name": "modifiers-napi",
+      "version": "1.0.0",
+    },
+    "packages/url-handler-napi": {
+      "name": "url-handler-napi",
+      "version": "1.0.0",
+    },
   },
   "packages": {
     "@alcalzone/ansi-tokenize": ["@alcalzone/ansi-tokenize@0.3.0", "https://registry.npmmirror.com/@alcalzone/ansi-tokenize/-/ansi-tokenize-0.3.0.tgz", { "dependencies": { "ansi-styles": "^6.2.1", "is-fullwidth-code-point": "^5.0.0" } }, "sha512-p+CMKJ93HFmLkjXKlXiVGlMQEuRb6H0MokBSwUsX+S6BRX8eV5naFZpQJFfJHjRZY0Hmnqy1/r6UWl3x+19zYA=="],
+
+    "@ant/claude-for-chrome-mcp": ["@ant/claude-for-chrome-mcp@workspace:packages/@ant/claude-for-chrome-mcp"],
+
+    "@ant/computer-use-input": ["@ant/computer-use-input@workspace:packages/@ant/computer-use-input"],
+
+    "@ant/computer-use-mcp": ["@ant/computer-use-mcp@workspace:packages/@ant/computer-use-mcp"],
+
+    "@ant/computer-use-swift": ["@ant/computer-use-swift@workspace:packages/@ant/computer-use-swift"],
 
     "@anthropic-ai/bedrock-sdk": ["@anthropic-ai/bedrock-sdk@0.26.4", "https://registry.npmmirror.com/@anthropic-ai/bedrock-sdk/-/bedrock-sdk-0.26.4.tgz", { "dependencies": { "@anthropic-ai/sdk": ">=0.50.3 <1", "@aws-crypto/sha256-js": "^4.0.0", "@aws-sdk/client-bedrock-runtime": "^3.797.0", "@aws-sdk/credential-providers": "^3.796.0", "@smithy/eventstream-serde-node": "^2.0.10", "@smithy/fetch-http-handler": "^5.0.4", "@smithy/protocol-http": "^3.0.6", "@smithy/signature-v4": "^3.1.1", "@smithy/smithy-client": "^2.1.9", "@smithy/types": "^2.3.4", "@smithy/util-base64": "^2.0.0" } }, "sha512-0Z2NY3T2wnzT9esRit6BiWpQXvL+F2b3z3Z9in3mXh7MDf122rVi2bcPowQHmo9ITXAPJmv/3H3t0V1z3Fugfw=="],
 
@@ -530,6 +590,8 @@
 
     "asynckit": ["asynckit@0.4.0", "https://registry.npmmirror.com/asynckit/-/asynckit-0.4.0.tgz", {}, "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q=="],
 
+    "audio-capture-napi": ["audio-capture-napi@workspace:packages/audio-capture-napi"],
+
     "auto-bind": ["auto-bind@5.0.1", "https://registry.npmmirror.com/auto-bind/-/auto-bind-5.0.1.tgz", {}, "sha512-ooviqdwwgfIfNmDwo94wlshcdzfO64XV0Cg6oDsDYBJfITDz1EngD2z7DkbvCWn+XIMsIqW27sEVF6qcpJrRcg=="],
 
     "axios": ["axios@1.14.0", "https://registry.npmmirror.com/axios/-/axios-1.14.0.tgz", { "dependencies": { "follow-redirects": "^1.15.11", "form-data": "^4.0.5", "proxy-from-env": "^2.1.0" } }, "sha512-3Y8yrqLSwjuzpXuZ0oIYZ/XGgLwUIBU3uLvbcpb0pidD9ctpShJd43KSlEEkVQg6DS0G9NKyzOvBfUtDKEyHvQ=="],
@@ -581,6 +643,8 @@
     "code-excerpt": ["code-excerpt@4.0.0", "https://registry.npmmirror.com/code-excerpt/-/code-excerpt-4.0.0.tgz", { "dependencies": { "convert-to-spaces": "^2.0.1" } }, "sha512-xxodCmBen3iy2i0WtAK8FlFNrRzjUqjRsMfho58xT/wvZU1YTM3fCnRjcy1gJPMepaRlgm/0e6w8SpWHpn3/cA=="],
 
     "color-convert": ["color-convert@2.0.1", "https://registry.npmmirror.com/color-convert/-/color-convert-2.0.1.tgz", { "dependencies": { "color-name": "~1.1.4" } }, "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ=="],
+
+    "color-diff-napi": ["color-diff-napi@workspace:packages/color-diff-napi"],
 
     "color-name": ["color-name@1.1.4", "https://registry.npmmirror.com/color-name/-/color-name-1.1.4.tgz", {}, "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="],
 
@@ -762,6 +826,8 @@
 
     "ignore": ["ignore@7.0.5", "https://registry.npmmirror.com/ignore/-/ignore-7.0.5.tgz", {}, "sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg=="],
 
+    "image-processor-napi": ["image-processor-napi@workspace:packages/image-processor-napi"],
+
     "indent-string": ["indent-string@5.0.0", "https://registry.npmmirror.com/indent-string/-/indent-string-5.0.0.tgz", {}, "sha512-m6FAo/spmsW2Ab2fU35JTYwtOKa2yAwXSwgjSv1TJzh4Mh7mC3lzAOVLBprb72XsTrgkEIsl7YrFNAiDiRhIGg=="],
 
     "inherits": ["inherits@2.0.4", "https://registry.npmmirror.com/inherits/-/inherits-2.0.4.tgz", {}, "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ=="],
@@ -857,6 +923,8 @@
     "minipass-flush": ["minipass-flush@1.0.7", "https://registry.npmmirror.com/minipass-flush/-/minipass-flush-1.0.7.tgz", { "dependencies": { "minipass": "^3.0.0" } }, "sha512-TbqTz9cUwWyHS2Dy89P3ocAGUGxKjjLuR9z8w4WUTGAVgEj17/4nhgo2Du56i0Fm3Pm30g4iA8Lcqctc76jCzA=="],
 
     "minipass-pipeline": ["minipass-pipeline@1.2.4", "https://registry.npmmirror.com/minipass-pipeline/-/minipass-pipeline-1.2.4.tgz", { "dependencies": { "minipass": "^3.0.0" } }, "sha512-xuIq7cIOt09RPRJ19gdi4b+RiNvDFYe5JH+ggNvBqGqpQXcru3PcRmOZuHBKWK1Txf9+cQ+HMVN4d6z46LZP7A=="],
+
+    "modifiers-napi": ["modifiers-napi@workspace:packages/modifiers-napi"],
 
     "ms": ["ms@2.1.3", "https://registry.npmmirror.com/ms/-/ms-2.1.3.tgz", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
 
@@ -1048,13 +1116,15 @@
 
     "unpipe": ["unpipe@1.0.0", "https://registry.npmmirror.com/unpipe/-/unpipe-1.0.0.tgz", {}, "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ=="],
 
+    "url-handler-napi": ["url-handler-napi@workspace:packages/url-handler-napi"],
+
     "usehooks-ts": ["usehooks-ts@3.1.1", "https://registry.npmmirror.com/usehooks-ts/-/usehooks-ts-3.1.1.tgz", { "dependencies": { "lodash.debounce": "^4.0.8" }, "peerDependencies": { "react": "^16.8.0  || ^17 || ^18 || ^19 || ^19.0.0-rc" } }, "sha512-I4diPp9Cq6ieSUH2wu+fDAVQO43xwtulo+fKEidHUwZPnYImbtkTjzIJYcDcJqxgmX31GVqNFURodvcgHcW0pA=="],
 
     "uuid": ["uuid@8.3.2", "https://registry.npmmirror.com/uuid/-/uuid-8.3.2.tgz", { "bin": { "uuid": "dist/bin/uuid" } }, "sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg=="],
 
     "vary": ["vary@1.1.2", "https://registry.npmmirror.com/vary/-/vary-1.1.2.tgz", {}, "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg=="],
 
-    "vscode-jsonrpc": ["vscode-jsonrpc@8.2.0", "https://registry.npmmirror.com/vscode-jsonrpc/-/vscode-jsonrpc-8.2.0.tgz", {}, "sha512-C+r0eKJUIfiDIfwJhria30+TYWPtuHJXHtI7J0YlOmKAo7ogxP20T0zxB7HZQIFhIyvoBPwWskjxrvAtfjyZfA=="],
+    "vscode-jsonrpc": ["vscode-jsonrpc@8.2.1", "https://registry.npmmirror.com/vscode-jsonrpc/-/vscode-jsonrpc-8.2.1.tgz", {}, "sha512-kdjOSJ2lLIn7r1rtrMbbNCHjyMPfRnowdKjBQ+mGq6NAW5QY2bEZC/khaC5OR8svbbjvLEaIXkOq45e2X9BIbQ=="],
 
     "vscode-languageserver-protocol": ["vscode-languageserver-protocol@3.17.5", "https://registry.npmmirror.com/vscode-languageserver-protocol/-/vscode-languageserver-protocol-3.17.5.tgz", { "dependencies": { "vscode-jsonrpc": "8.2.0", "vscode-languageserver-types": "3.17.5" } }, "sha512-mb1bvRJN8SVznADSGWM9u/b07H7Ecg0I3OgXDuLdn307rl/J3A9YD6/eYOssqhecL27hK1IPZAsaqh00i/Jljg=="],
 
@@ -1411,6 +1481,8 @@
     "proper-lockfile/signal-exit": ["signal-exit@3.0.7", "https://registry.npmmirror.com/signal-exit/-/signal-exit-3.0.7.tgz", {}, "sha512-wnD2ZE+l+SPC/uoS0vXeE9L1+0wuaMqKlfz9AMUo38JsyLSBWSFcHR1Rri62LZc12vLr1gb3jl7iwQhgwpAbGQ=="],
 
     "qrcode/yargs": ["yargs@15.4.1", "https://registry.npmmirror.com/yargs/-/yargs-15.4.1.tgz", { "dependencies": { "cliui": "^6.0.0", "decamelize": "^1.2.0", "find-up": "^4.1.0", "get-caller-file": "^2.0.1", "require-directory": "^2.1.1", "require-main-filename": "^2.0.0", "set-blocking": "^2.0.0", "string-width": "^4.2.0", "which-module": "^2.0.0", "y18n": "^4.0.0", "yargs-parser": "^18.1.2" } }, "sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A=="],
+
+    "vscode-languageserver-protocol/vscode-jsonrpc": ["vscode-jsonrpc@8.2.0", "https://registry.npmmirror.com/vscode-jsonrpc/-/vscode-jsonrpc-8.2.0.tgz", {}, "sha512-C+r0eKJUIfiDIfwJhria30+TYWPtuHJXHtI7J0YlOmKAo7ogxP20T0zxB7HZQIFhIyvoBPwWskjxrvAtfjyZfA=="],
 
     "xss/commander": ["commander@2.20.3", "https://registry.npmmirror.com/commander/-/commander-2.20.3.tgz", {}, "sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ=="],
 
