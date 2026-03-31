@@ -36,10 +36,10 @@ function generateActionsTable(): string {
   for (const block of DEFAULT_BINDINGS) {
     for (const [key, action] of Object.entries(block.bindings)) {
       if (action) {
-        if (!actionInfo[action]) {
-          actionInfo[action] = { keys: [], context: block.context }
+        if (!actionInfo[action as string]) {
+          actionInfo[action as string] = { keys: [], context: block.context }
         }
-        actionInfo[action].keys.push(key)
+        actionInfo[action as string].keys.push(key)
       }
     }
   }

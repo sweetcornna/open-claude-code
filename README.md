@@ -328,6 +328,71 @@ claude-code/
 
 项目采用 Bun workspaces 管理内部包。原先手工放在 `node_modules/` 下的 stub 已统一迁入 `packages/`，通过 `workspace:*` 解析。
 
+## Feature Flags 详解
+
+原版 Claude Code 通过 `bun:bundle` 的 `feature()` 在构建时注入 feature flag，由 GrowthBook 等 A/B 实验平台控制灰度发布。本项目中 `feature()` 被 polyfill 为始终返回 `false`，因此以下 30 个 flag 全部关闭。
+
+### 自主 Agent
+
+| Flag | 用途 |
+|------|------|
+| `KAIROS` | Assistant 模式 — 长期运行的自主 Agent（含 brief、push 通知、文件发送） |
+| `KAIROS_BRIEF` | Kairos Brief — 向用户发送简报摘要 |
+| `KAIROS_CHANNELS` | Kairos 频道 — 多频道通信 |
+| `KAIROS_GITHUB_WEBHOOKS` | GitHub Webhook 订阅 — PR 事件实时推送给 Agent |
+| `PROACTIVE` | 主动模式 — Agent 主动执行任务，含 SleepTool 定时唤醒 |
+| `COORDINATOR_MODE` | 协调器模式 — 多 Agent 编排调度 |
+| `BUDDY` | Buddy 配对编程功能 |
+| `FORK_SUBAGENT` | Fork 子代理 — 从当前会话分叉出独立子代理 |
+
+### 远程 / 分布式
+
+| Flag | 用途 |
+|------|------|
+| `BRIDGE_MODE` | 远程控制桥接 — 允许外部客户端远程操控 Claude Code |
+| `DAEMON` | 守护进程 — 后台常驻服务，支持 worker 和 supervisor |
+| `BG_SESSIONS` | 后台会话 — `ps`/`logs`/`attach`/`kill`/`--bg` 等后台进程管理 |
+| `SSH_REMOTE` | SSH 远程 — `claude ssh <host>` 连接远程主机 |
+| `DIRECT_CONNECT` | 直连模式 — `cc://` URL 协议、server 命令、`open` 命令 |
+| `CCR_REMOTE_SETUP` | 网页端远程配置 — 通过浏览器配置 Claude Code |
+| `CCR_MIRROR` | Claude Code Runtime 镜像 — 会话状态同步/复制 |
+
+### 通信
+
+| Flag | 用途 |
+|------|------|
+| `UDS_INBOX` | Unix Domain Socket 收件箱 — Agent 间本地通信（`/peers`） |
+
+### 增强工具
+
+| Flag | 用途 |
+|------|------|
+| `CHICAGO_MCP` | Computer Use MCP — 计算机操作（屏幕截图、鼠标键盘控制） |
+| `WEB_BROWSER_TOOL` | 网页浏览器工具 — 在终端内嵌浏览器交互 |
+| `VOICE_MODE` | 语音模式 — 语音输入输出，麦克风 push-to-talk |
+| `WORKFLOW_SCRIPTS` | 工作流脚本 — 用户自定义自动化工作流 |
+| `MCP_SKILLS` | 基于 MCP 的 Skill 加载机制 |
+
+### 对话管理
+
+| Flag | 用途 |
+|------|------|
+| `HISTORY_SNIP` | 历史裁剪 — 手动裁剪对话历史中的片段（`/force-snip`） |
+| `ULTRAPLAN` | 超级计划 — 远程 Agent 协作的大规模规划功能 |
+| `AGENT_MEMORY_SNAPSHOT` | Agent 运行时的记忆快照功能 |
+
+### 基础设施 / 实验
+
+| Flag | 用途 |
+|------|------|
+| `ABLATION_BASELINE` | 科学实验 — 基线消融测试，用于 A/B 实验对照组 |
+| `HARD_FAIL` | 硬失败模式 — 遇错直接中断而非降级 |
+| `TRANSCRIPT_CLASSIFIER` | 对话分类器 — `auto-mode` 命令，自动分析和分类对话记录 |
+| `UPLOAD_USER_SETTINGS` | 设置同步上传 — 将本地配置同步到云端 |
+| `LODESTONE` | 深度链接协议处理器 — 从外部应用跳转到 Claude Code 指定位置 |
+| `EXPERIMENTAL_SKILL_SEARCH` | 实验性 Skill 搜索索引 |
+| `TORCH` | Torch 功能（具体用途未知，可能是某种高亮/追踪机制） |
+
 ## 许可证
 
 本项目仅供学习研究用途。Claude Code 的所有权利归 [Anthropic](https://www.anthropic.com/) 所有。

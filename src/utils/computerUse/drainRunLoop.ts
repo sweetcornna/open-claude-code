@@ -18,7 +18,7 @@ let pump: ReturnType<typeof setInterval> | undefined
 let pending = 0
 
 function drainTick(cu: ReturnType<typeof requireComputerUseSwift>): void {
-  cu._drainMainRunLoop()
+  ;(cu as any)._drainMainRunLoop()
 }
 
 function retain(): void {

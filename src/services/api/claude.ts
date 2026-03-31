@@ -1201,7 +1201,7 @@ async function* queryModel(
     cachedMCEnabled = featureEnabled && modelSupported
     const config = getCachedMCConfig()
     logForDebugging(
-      `Cached MC gate: enabled=${featureEnabled} modelSupported=${modelSupported} model=${options.model} supportedModels=${jsonStringify(config.supportedModels)}`,
+      `Cached MC gate: enabled=${featureEnabled} modelSupported=${modelSupported} model=${options.model} supportedModels=${jsonStringify((config as any).supportedModels)}`,
     )
   }
 
@@ -1704,8 +1704,8 @@ async function* queryModel(
         enablePromptCaching,
         options.querySource,
         useCachedMC,
-        consumedCacheEdits,
-        consumedPinnedEdits,
+        consumedCacheEdits as any,
+        consumedPinnedEdits as any,
         options.skipCacheWrite,
       ),
       system,
@@ -3151,7 +3151,7 @@ export function addCacheBreakpoints(
           }
           insertBlockAfterToolResults(msg.content, dedupedNewEdits)
           // Pin so this block is re-sent at the same position in future calls
-          pinCacheEdits(i, newCacheEdits)
+          pinCacheEdits(i, newCacheEdits as any)
 
           logForDebugging(
             `Added cache_edits block with ${dedupedNewEdits.edits.length} deletion(s) to message[${i}]: ${dedupedNewEdits.edits.map(e => e.cache_reference).join(', ')}`,

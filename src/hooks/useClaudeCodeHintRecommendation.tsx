@@ -90,7 +90,7 @@ export function useClaudeCodeHintRecommendation() {
                 trigger: "hint"
               });
               if (!result.success) {
-                throw new Error(result.error);
+                throw new Error((result as any).error);
               }
             });
             break bb15;

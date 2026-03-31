@@ -46,8 +46,8 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
     }),
     ensureOsPermissions: async () => {
       const cu = requireComputerUseSwift()
-      const accessibility = cu.tcc.checkAccessibility()
-      const screenRecording = cu.tcc.checkScreenRecording()
+      const accessibility = (cu as any).tcc.checkAccessibility()
+      const screenRecording = (cu as any).tcc.checkScreenRecording()
       return accessibility && screenRecording
         ? { granted: true }
         : { granted: false, accessibility, screenRecording }

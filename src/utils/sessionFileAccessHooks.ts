@@ -151,8 +151,8 @@ async function handleSessionFileAccess(
   if (input.hook_event_name !== 'PostToolUse') return {}
 
   const fileType = getSessionFileTypeFromInput(
-    input.tool_name,
-    input.tool_input,
+    input.tool_name as string,
+    input.tool_input as string,
   )
 
   const subagentName = getSubagentLogName()
@@ -165,7 +165,7 @@ async function handleSessionFileAccess(
   }
 
   // Memdir access tracking
-  const filePath = getFilePathFromInput(input.tool_name, input.tool_input)
+  const filePath = getFilePathFromInput(input.tool_name as string, input.tool_input as string)
   if (filePath && isAutoMemFile(filePath)) {
     logEvent('tengu_memdir_accessed', {
       tool: input.tool_name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

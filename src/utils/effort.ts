@@ -283,7 +283,7 @@ export function getDefaultEffortForModel(
     const config = getAntModelOverrideConfig()
     const isDefaultModel =
       config?.defaultModel !== undefined &&
-      model.toLowerCase() === config.defaultModel.toLowerCase()
+      model.toLowerCase() === (config.defaultModel as string).toLowerCase()
     if (isDefaultModel && config?.defaultModelEffortLevel) {
       return config.defaultModelEffortLevel
     }

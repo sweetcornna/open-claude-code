@@ -225,7 +225,7 @@ function createPermissionContext(
         input,
         toolUseContext,
         permissionMode,
-        suggestions,
+        suggestions as any,
         toolUseContext.abortController.signal,
       )) {
         if (hookResult.permissionRequestResult) {

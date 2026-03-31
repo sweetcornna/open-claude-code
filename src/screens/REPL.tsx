@@ -1658,7 +1658,7 @@ export function REPL({
     if (lastAssistant?.type !== 'assistant') return false;
     const content = lastAssistant.message.content;
     if (typeof content === 'string') return false;
-    const contentArr = content as Array<{ type: string; id?: string; name?: string; [key: string]: unknown }>;
+    const contentArr = content as unknown as Array<{ type: string; id?: string; name?: string; [key: string]: unknown }>;
     const inProgressToolUses = contentArr.filter(b => b.type === 'tool_use' && b.id && inProgressToolUseIDs.has(b.id));
     return inProgressToolUses.length > 0 && inProgressToolUses.every(b => b.type === 'tool_use' && b.name === SLEEP_TOOL_NAME);
   }, [messages, inProgressToolUseIDs]);

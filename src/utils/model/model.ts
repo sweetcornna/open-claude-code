@@ -179,7 +179,7 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (
-      getAntModelOverrideConfig()?.defaultModel ??
+      (getAntModelOverrideConfig()?.defaultModel as string) ??
       getDefaultOpusModel() + '[1m]'
     )
   }

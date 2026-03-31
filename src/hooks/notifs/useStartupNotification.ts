@@ -6,7 +6,7 @@ import {
 } from '../../context/notifications.js'
 import { logError } from '../../utils/log.js'
 
-type Result = Notification | Notification[] | null
+type Result = Notification | Notification[] | null | any
 
 /**
  * Fires notification(s) once on mount. Encapsulates the remote-mode gate and

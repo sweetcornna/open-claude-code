@@ -75,7 +75,7 @@ export function registerPendingAsyncHook({
     pluginId,
     command,
     startTime: Date.now(),
-    timeout,
+    timeout: timeout as number,
     responseAttachmentSent: false,
     shellCommand,
     stopProgressInterval,

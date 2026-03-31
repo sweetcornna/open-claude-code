@@ -367,14 +367,14 @@ export async function persistFileSnapshotIfRemote(): Promise<void> {
     // Snapshot plan file
     const plan = getPlan()
     if (plan) {
-      snapshotFiles.push({
+      (snapshotFiles as any[]).push({
         key: 'plan',
         path: getPlanFilePath(),
         content: plan,
       })
     }
 
-    if (snapshotFiles.length === 0) {
+    if ((snapshotFiles as any[]).length === 0) {
       return
     }
 

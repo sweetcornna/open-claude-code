@@ -355,12 +355,12 @@ export function checkDuplicates(
           message: `Duplicate binding "${key}" in ${block.context} context`,
           key,
           context: block.context,
-          action: action ?? 'null (unbind)',
+          action: (action as string) ?? 'null (unbind)',
           suggestion: `Previously bound to "${existingAction}". Only the last binding will be used.`,
         })
       }
 
-      contextMap.set(normalizedKey, action ?? 'null')
+      contextMap.set(normalizedKey, (action as string) ?? 'null')
     }
   }
 

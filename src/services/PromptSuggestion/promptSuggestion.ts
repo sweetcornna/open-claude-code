@@ -249,7 +249,7 @@ export function getParentCacheSuppressReason(
   // The fork re-processes the parent's output (never cached) plus its own prompt.
   const outputTokens = usage.output_tokens ?? 0
 
-  return inputTokens + cacheWriteTokens + outputTokens >
+  return (inputTokens as number) + (cacheWriteTokens as number) + (outputTokens as number) >
     MAX_PARENT_UNCACHED_TOKENS
     ? 'cache_cold'
     : null
@@ -344,12 +344,12 @@ export async function generateSuggestion(
     if (textBlock?.type === 'text') {
       const suggestion = textBlock.text.trim()
       if (suggestion) {
-        return { suggestion, generationRequestId }
+        return { suggestion: textBlock.text.trim() as string, generationRequestId }
       }
     }
   }
 
-  return { suggestion: null, generationRequestId }
+  return { suggestion: null as string | null, generationRequestId }
 }
 
 export function shouldFilterSuggestion(
