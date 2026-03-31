@@ -15,7 +15,8 @@
         "prepublishOnly": "bun run build",
         "lint": "biome check src/",
         "lint:fix": "biome check --fix src/",
-        "format": "biome format --write src/"
+        "format": "biome format --write src/",
+        "prepare": "git config core.hooksPath .githooks"
     },
     "dependencies": {
         "@alcalzone/ansi-tokenize": "^0.3.0",
