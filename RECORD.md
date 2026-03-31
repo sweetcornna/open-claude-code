@@ -52,23 +52,32 @@
 |------|--------|------|
 | 初始状态 | ~1800 | 仅缺少 npm 依赖的 TS2307 错误 |
 | 补全依赖后 | ~1800 | npm 包已安装，开始处理类型 |
-| 当前状态 | **2123** | 类型 stub 已创建，但存在质量待修问题 |
+| 第一轮 stub 生成 | ~2163 | 自动 stub 生成但质量问题多（全用 `export type`） |
+| **第二轮修复后** | **~1341** | 修复了默认导出、补充命名导出、泛型类型 |
 
-### 当前错误分布
+### 当前错误分布（第二轮修复后）
 
-| 错误码 | 数量 | 含义 |
-|--------|------|------|
-| TS2693 | 727 | `export type X` 被当作值使用（应为 `export const/function`） |
-| TS2339 | 537 | 属性不存在（类型收窄、unknown 类型） |
-| TS2614 | 468 | 模块只有默认导出，但代码用命名导入 |
-| TS2322 | 128 | 类型不匹配 |
-| TS2345 | 57 | 参数类型不匹配 |
-| TS2300 | 34 | 重复标识符（stub 文件中 export 重复） |
-| TS2307 | 29 | 仍有缺失模块 |
-| TS2305 | 28 | 缺失导出成员 |
-| TS2724 | 21 | 导出名称不匹配（如 HookEvent vs HOOK_EVENTS） |
-| TS2367 | 17 | 比较类型无交集（`"external" === "ant"` 等） |
-| 其他 | ~100 | TS2578/TS2315/TS2365/TS2741 等 |
+| 错误码 | 数量 | 含义 | 性质 |
+|--------|------|------|------|
+| TS2339 | 701 | 属性不存在 | **主要是源码级问题**（unknown 344, never 121, {} 52） |
+| TS2322 | 210 | 类型不匹配 | 源码级 |
+| TS2345 | 134 | 参数类型不匹配 | 源码级 |
+| TS2367 | 106 | 比较类型无交集 | 源码级（编译时死代码） |
+| TS2307 | 29 | 缺失模块 | 可修但收益小 |
+| TS2693 | 13 | type 当值用 | 少量残留 |
+| TS2300 | 10 | 重复标识符 | 小问题 |
+| 其他 | ~138 | TS2365/TS2554/TS2578/TS2538/TS2698 等 | 混合 |
+
+### 关键发现
+
+剩余 1341 个错误中，**绝大多数（~1200+）是源码级别的类型问题**，不是 stub 缺失导致的：
+
+- `unknown` 类型访问属性 (344) — 反编译产生的 `unknown` 需要断言
+- `never` 类型 (121) — 联合类型穷尽后的死路径
+- `{}` 空对象 (52) — 空 stub 模块的残留影响
+- ComputerUseAPI/ComputerUseInputAPI (42) — 私有包声明不够详细
+
+**继续逐个修复类型错误的投入产出比很低。应该改变方向，尝试直接构建运行。**
 
 ---
 
@@ -126,111 +135,84 @@
 - 自动创建 `export type X = any` stub
 - 已生成 **1206 个 stub 文件，覆盖 2067 个命名导出**
 
+### 2.5 第二轮修复 — 默认导出 & 缺失导出 (本次会话)
+
+#### `scripts/fix-default-stubs.mjs` — 修复 120 个 `export default {} as any` 的 stub 文件
+
+- 扫描源码中所有 import 语句，区分 `import type {}` vs `import {}`
+- 将纯类型导出为 `export type X = any`，值导出为 `export const X: any = (() => {}) as any`
+- **效果**: TS2614 从 632 → 0 (完全消除)
+
+#### `scripts/fix-missing-exports.mjs` — 补全空模块的导出成员
+
+- 解析 TS2339 中 `typeof import("...")` 的错误，给 81 个模块添加了 147 个缺失导出
+- 解析 TS2305 添加了 10 个缺失导出
+- 解析 TS2724 添加了 4 个命名不匹配的导出
+- 创建了 2 个新 stub 文件修复 TS2307
+
+#### 泛型类型修复
+
+将以下类型从非泛型改为泛型（修复 86 个 TS2315）：
+
+- `DeepImmutable<T>`, `Permutations<T>` (`src/types/utils.ts`)
+- `AttachmentMessage<T>`, `ProgressMessage<T>`, `NormalizedAssistantMessage<T>` (`src/types/message.ts` 及其多个副本)
+- `WizardContextValue<T>` (`src/components/wizard/types.ts`)
+
+#### 语法修复
+
+修复 4 个 `export const default` 非法语法（buddy/fork/peers/workflows 的 index.ts）
+
 ---
 
 ## 三、当前问题分析
 
-### 3.1 TS2693 (727 个) — `export type` 被当作值使用 ⚠️ 关键
+### 3.1 剩余错误已触达 "源码级" 地板
 
-**原因**: `scripts/create-type-stubs.mjs` 统一使用 `export type X = any` 生成 stub，但代码中很多地方将导入的名称作为**值**使用（如调用函数、渲染 JSX 组件等）。
+剩余 ~1341 个错误绝大多数不是 stub 缺失问题，而是源码本身的类型问题：
 
-**示例**:
+- **unknown (344)**: 反编译代码中大量 `unknown` 类型变量直接访问属性
+- **never (121)**: 联合类型穷尽后的 never 路径（通常是 switch/if-else 的 exhaustive check）
+- **{} (52)**: 空对象类型
+- **类型比较 (106 TS2367)**: 编译时死代码如 `"external" === "ant"`
+- **类型不匹配 (210 TS2322 + 134 TS2345)**: stub 类型不够精确
 
-```typescript
-// stub 中: export type performLogout = any
-// 实际使用: performLogout()  // TS2693: only refers to a type, but is being used as a value
-```
+### 3.2 继续修类型错误的问题
 
-**修复方案**: 将 `export type X = any` 改为 `declare const X: any` 或 `export const X: any`。需要区分哪些是纯类型、哪些是值/函数/组件。
-
-### 3.2 TS2614 (468 个) — 模块只有默认导出
-
-**原因**: 部分 stub 文件使用 `export default {} as any`（早期手动创建），但代码用命名导入 `import { Message } from ...`。
-
-**示例**: `src/types/message.ts` 当前内容为 `export default {} as any`，但代码 `import type { Message } from '../types/message.js'`
-
-**修复方案**: 将默认导出改为命名导出。
-
-### 3.3 TS2300 (34 个) — 重复标识符
-
-**原因**: stub 文件中有 `export type X = any` 行，同时源文件中也存在同名定义，造成冲突。部分 stub 文件路径不正确（如 `src/components/CustomSelect/select.ts` 既有真实代码又有 stub 导出）。
-
-**修复方案**: 检查这些文件，如果真实文件存在则删除 stub 中的重复导出。
-
-### 3.4 TS2339 (537 个) — 属性不存在
-
-**原因**: `any` 类型的 stub 过于宽松时可以正常工作，但部分地方类型收窄后（如联合类型判别、`unknown` 类型）无法访问属性。
-
-**分类**:
-
-- 内部代码中 `unknown` 类型需要类型断言（源码问题）
-- `McpServerConfigForProcessTransport` 等类型定义过窄（stub 精度问题）
-- `{ ok: true } | { ok: false; error: string }` 联合类型访问 `.error`（源码惯用模式）
-
-**修复方案**: 调整相关 stub 类型定义使其更精确。
-
-### 3.5 TS2307 (29 个) — 仍有缺失模块
-
-主要是路径解析问题产生的重复 stub（如 `src/cli/src/` 下的文件已被删除）以及一些深度嵌套的相对路径。
-
-### 3.6 路径问题
-
-部分 stub 文件被错误创建在 `src/cli/src/` 等嵌套路径下（因为 `import { X } from 'src/something'` 从 `src/cli/handlers/auth.ts` 解析时路径计算错误）。已手动删除部分重复文件，但可能仍有残留。
+1. **投入产出比极低** — 每个 TS2339/TS2322 都需要理解具体上下文
+2. **Bun bundler 不强制要求零 TS 错误** — Bun 可以在有类型错误的情况下成功构建
+3. **大部分是运行时无影响的类型问题** — `unknown as any` 等模式不影响实际执行
 
 ---
 
-## 四、后续处理方案
+## 四、后续方向建议
 
-### Phase 1: 修复脚本 — 区分类型导出 vs 值导出 (预计解决 ~1200 个错误)
+### 方向 A: 直接尝试 `bun build` 构建 ⭐ 推荐
 
-改进 `scripts/create-type-stubs.mjs`：
+Bun bundler 对类型错误比 tsc 宽容得多。应该直接尝试构建：
 
-1. **分析 import 语句上下文**：
-   - `import type { X }` → 纯类型，用 `export type X = any`
-   - `import { X }` (无 type) → 可能是值，用 `export const X: any = (() => {}) as any`
-   - JSX 组件（大写开头 + 在 JSX 中使用）→ `export const X: React.FC<any> = () => null`
-
-2. **分析使用上下文**：
-   - `X()` 调用 → 函数/值导出
-   - `<X />` → React 组件
-   - `X.property` → 对象/命名空间
-
-### Phase 2: 修复默认导出问题 (预计解决 ~468 个 TS2614)
-
-将所有 `export default {} as any` 的 stub 文件替换为带命名导出的版本：
-
-```typescript
-// 之前
-export default {} as any
-
-// 之后 — 根据导入需求
-export type Message = any
-export type NormalizedUserMessage = any
-// ... 等
+```bash
+bun build src/entrypoints/cli.tsx --target=node --outdir=dist
 ```
 
-### Phase 3: 清理冲突和路径问题 (预计解决 ~34 个 TS2300 + 29 个 TS2307)
+遇到的构建错误才是真正需要修的问题（缺失模块、语法错误等），而非类型错误。
 
-1. 检查所有带 `TS2300` 错误的文件，删除与真实代码冲突的 stub
-2. 清理 `src/cli/src/`、`src/components/*/src/` 等错误路径下的 stub 残留
-3. 修复 `tsconfig.json` 的 `paths` 配置，确保 `src/*` 映射正确
+### 方向 B: 在 tsconfig 中进一步放宽
 
-### Phase 4: 精化关键类型定义 (预计解决 ~100+ 个 TS2322/TS2345)
+```json
+{
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false
+  }
+}
+```
 
-对高频使用的类型提供更精确的定义：
+已经是 `strict: false`，但可以进一步添加 `"skipLibCheck": true`（已有）。
 
-1. **SDK 消息类型** — 使 `type` 字段为字面量联合类型，而非 `string`
-2. **McpServerConfig** — 改为联合类型（stdio | sse | http | sse-ide）
-3. **HookInput** 系列 — 添加 `hook_event_name` 字面量类型
-4. **PermissionResult** — 改为判别联合 `allow | deny`
+### 方向 C: 批量 `// @ts-nocheck`
 
-### Phase 5: 处理源码级别的类型问题 (需评估)
-
-这些是源码本身的问题，不属于 stub 范畴：
-
-- `TS2367`: `"external" === "ant"` — 构建时消除的死代码
-- `TS2339`: 联合类型属性访问 — 需要类型收窄或断言
-- `TS2322`: 类型字面量不匹配（如 `"result"` vs `"result_success"`）
+对有大量源码级类型错误的文件加 `// @ts-nocheck`，快速消除错误。
 
 ---
 
@@ -242,6 +224,9 @@ export type NormalizedUserMessage = any
 | `src/types/internal-modules.d.ts` | 内部 npm 包类型声明 |
 | `src/types/react-compiler-runtime.d.ts` | React compiler runtime |
 | `src/types/sdk-stubs.d.ts` | SDK 通配符类型（备用） |
+| `src/types/message.ts` | Message 系列类型 stub (39 types) |
+| `src/types/tools.ts` | 工具进度类型 stub |
+| `src/types/utils.ts` | DeepImmutable / Permutations 泛型 |
 | `src/entrypoints/sdk/controlTypes.ts` | SDK 控制类型 stub |
 | `src/entrypoints/sdk/runtimeTypes.ts` | SDK 运行时类型 stub |
 | `src/entrypoints/sdk/coreTypes.generated.ts` | SDK 核心类型 stub |
@@ -249,6 +234,8 @@ export type NormalizedUserMessage = any
 | `src/entrypoints/sdk/toolTypes.ts` | SDK 工具类型 stub |
 | `src/entrypoints/sdk/sdkUtilityTypes.ts` | SDK 工具类型 |
 | `scripts/create-type-stubs.mjs` | 自动 stub 生成脚本 |
+| `scripts/fix-default-stubs.mjs` | 修复 `export default` stub 为命名导出 |
+| `scripts/fix-missing-exports.mjs` | 补全空模块缺失的导出成员 |
 | `tsconfig.json` | TypeScript 配置 |
 | `package.json` | 依赖配置 |
 
@@ -265,4 +252,13 @@ npx tsc --noEmit 2>&1 | grep "error TS" | sed 's/.*error //' | sed 's/:.*//' | s
 
 # 重新生成 stub（修复脚本后）
 node scripts/create-type-stubs.mjs
+
+# 修复默认导出 stub
+node scripts/fix-default-stubs.mjs
+
+# 补全缺失导出
+node scripts/fix-missing-exports.mjs
+
+# 尝试构建（下一步）
+bun build src/entrypoints/cli.tsx --target=node --outdir=dist
 ```
