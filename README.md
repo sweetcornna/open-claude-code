@@ -12,7 +12,7 @@ Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) C
 
 ### 环境要求
 
-一定要最新版本的 bun 啊, 不然一堆奇奇怪怪的 BUG!!! bun update!!!
+一定要最新版本的 bun 啊, 不然一堆奇奇怪怪的 BUG!!! bun upgrade!!!
 
 - [Bun](https://bun.sh/) >= 1.3.11
 - Node.js >= 18（部分依赖需要）
