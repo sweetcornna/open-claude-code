@@ -1,3 +1,3 @@
-export async function waitForUrlEvent(): Promise<string | null> {
+export async function waitForUrlEvent(timeoutMs?: number): Promise<string | null> {
   return null
 }
