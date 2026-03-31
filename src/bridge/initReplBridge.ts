@@ -284,7 +284,7 @@ export async function initReplBridge(
           msg.isMeta ||
           msg.toolUseResult ||
           msg.isCompactSummary ||
-          (msg.origin && msg.origin.kind !== 'human') ||
+          (msg.origin && (msg.origin as { kind?: string }).kind !== 'human') ||
           isSyntheticMessage(msg)
         )
           continue

@@ -57,7 +57,7 @@ bun run build
 
 ### TS 类型错误说明
 
-仍有 ~1341 个 tsc 错误，绝大多数是反编译产生的源码级类型问题（unknown/never/{}），**不影响 Bun 运行时**。不再逐个修复。
+~~仍有 ~1341 个 tsc 错误~~ → 经过系统性类型修复，已降至 **~294 个**（减少 78%）。剩余错误分散在小文件中，均为反编译产生的源码级类型问题（`unknown`/`never`/`{}`），**不影响 Bun 运行时**。
 
 ---
 
@@ -157,3 +157,62 @@ $ bun run build
 Bundled 5326 modules in 491ms
   cli.js  25.74 MB  (entry point)
 ```
+
+---
+
+## 六、系统性类型修复（2026-03-31）
+
+### 6.1 背景
+
+反编译产生的源码存在 ~1341 个 tsc 类型错误，主要成因：
+- `unknown` 类型上的属性访问（714 个，占 54%）
+- 类型赋值不兼容（212 个）
+- 参数类型不匹配（140 个）
+- 不可能的字面量比较（106 个，如 `"external" === 'ant'`）
+
+### 6.2 修复策略
+
+通过 4 轮并行 agent（每轮 7 个）系统性修复，**从 1341 降至 ~294**（减少 78%）。
+
+#### 根因修复（影响面最大）
+
+| 修复 | 影响 |
+|------|------|
+| `useAppState<R>` 添加泛型签名 (`AppState.tsx`) | 消除全局大量 `unknown` 返回值 |
+| `Message` 类型重构 (`message.ts`) | content 改为 `string \| ContentBlockParam[] \| ContentBlock[]`；添加 `MessageType` 扩展联合；`GroupedToolUseMessage`/`CollapsedReadSearchGroup` 结构化 |
+| `SDKAssistantMessageError` 命名冲突修复 (`coreTypes.generated.ts`) | 解决 37 个 errors.ts 类型错误 |
+| SDK 消息类型增强 (`coreTypes.generated.ts`) | `SDKAssistantMessage`/`SDKUserMessage` 等添加具体字段声明 |
+| `NonNullableUsage` 扩展 (`sdkUtilityTypes.ts`) | 添加 snake_case 属性声明 |
+
+#### 批量模式修复
+
+| 模式 | 修复方式 | 数量 |
+|------|----------|------|
+| `"external" === 'ant'` 编译常量比较 | `("external" as string) === 'ant'` | ~60 处 |
+| `unknown` 属性访问 | 精确类型断言（`as SomeType`） | ~400 处 |
+| `message.content` union 无法调用数组方法 | `Array.isArray()` 守卫 | ~80 处 |
+| stub 包缺失方法/类型 | 补全 stub 类型声明 | ~15 个包 |
+
+#### Stub 包类型补全
+
+| 包 | 补全内容 |
+|----|----------|
+| `@ant/computer-use-swift` | `ComputerUseAPI` 完整接口（apps/display/screenshot） |
+| `@ant/computer-use-input` | `ComputerUseInputAPI` 完整接口 |
+| `audio-capture-napi` | 4 个函数签名 |
+
+### 6.3 修复的关键文件
+
+| 文件 | 修复错误数 |
+|------|-----------|
+| `src/screens/REPL.tsx` | ~100 |
+| `src/utils/hooks.ts` | ~81 |
+| `src/utils/sessionStorage.ts` | ~58 |
+| `src/components/PromptInput/` | ~45 |
+| `src/services/api/errors.ts` | ~37 |
+| `src/utils/computerUse/executor.ts` | ~36 |
+| `src/utils/messages.ts` | ~83 |
+| `src/QueryEngine.ts` | ~39 |
+| `src/services/api/claude.ts` | ~35 |
+| `src/cli/print.ts` + `structuredIO.ts` | ~46 |
+| 其他 ~50 个文件 | ~487 |

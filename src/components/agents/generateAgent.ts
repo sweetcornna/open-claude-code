@@ -164,7 +164,7 @@ export async function generateAgent(
     },
   })
 
-  const textBlocks = response.message.content.filter(
+  const textBlocks = (Array.isArray(response.message.content) ? response.message.content : []).filter(
     (block): block is ContentBlock & { type: 'text' } => block.type === 'text',
   )
   const responseText = textBlocks.map(block => block.text).join('\n')

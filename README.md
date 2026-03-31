@@ -54,7 +54,7 @@ echo "say hello" | bun run src/entrypoints/cli.tsx -p
 bun run build
 ```
 
-构建产物输出到 `dist/cli.js`（~25 MB，5300+ 模块）。
+构建产物输出到 `dist/cli.js`（~25.75 MB，5326 模块）。
 
 ## 项目结构
 
@@ -95,7 +95,7 @@ claude-code/
 
 ### 类型状态
 
-仍有 ~1341 个 tsc 错误，均为反编译产生的源码级类型问题（`unknown` / `never` / `{}`），**不影响 Bun 运行时**。
+经过系统性修复，tsc 错误从 ~1341 降至 **~289**（减少 78%）。剩余错误分散在小文件中，均为反编译产生的源码级类型问题，**不影响 Bun 运行时**。详见 [RECORD.md](./RECORD.md) 第六节。
 
 ### Monorepo
 

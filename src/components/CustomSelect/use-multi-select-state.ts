@@ -212,7 +212,7 @@ export function useMultiSelectState<T>({
 
   // Automatically register as an overlay.
   // This ensures CancelRequestHandler won't intercept Escape when the multi-select is active.
-  useRegisterOverlay('multi-select')
+  useRegisterOverlay('multi-select', undefined)
 
   const updateInputValue = useCallback(
     (value: T, inputValue: string) => {

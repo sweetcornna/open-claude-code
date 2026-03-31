@@ -242,7 +242,7 @@ export function extractResultText(
   if (!lastAssistantMessage) return defaultText
 
   const textContent = extractTextContent(
-    lastAssistantMessage.message.content,
+    Array.isArray(lastAssistantMessage.message.content) ? lastAssistantMessage.message.content : [],
     '\n',
   )
 

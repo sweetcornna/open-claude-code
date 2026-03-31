@@ -1295,7 +1295,7 @@ export async function initBridgeCore(
                   if (previouslyFlushedUUIDs) {
                     for (const sdkMsg of sdkMessages) {
                       if (sdkMsg.uuid) {
-                        previouslyFlushedUUIDs.add(sdkMsg.uuid)
+                        previouslyFlushedUUIDs.add(sdkMsg.uuid as string)
                       }
                     }
                   }
@@ -1760,7 +1760,7 @@ export async function initBridgeCore(
       // No initialMessageUUIDs filter — daemon has no initial messages.
       // No flushGate — daemon never starts it (no initial flush).
       const filtered = messages.filter(
-        m => !m.uuid || !recentPostedUUIDs.has(m.uuid),
+        m => !m.uuid || !recentPostedUUIDs.has(m.uuid as string),
       )
       if (filtered.length === 0) return
       if (!transport) {
@@ -1771,7 +1771,7 @@ export async function initBridgeCore(
         return
       }
       for (const msg of filtered) {
-        if (msg.uuid) recentPostedUUIDs.add(msg.uuid)
+        if (msg.uuid) recentPostedUUIDs.add(msg.uuid as string)
       }
       const events = filtered.map(m => ({ ...m, session_id: currentSessionId }))
       void transport.writeBatch(events)

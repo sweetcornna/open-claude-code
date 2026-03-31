@@ -339,7 +339,8 @@ export async function generateSuggestion(
 
   for (const msg of result.messages) {
     if (msg.type !== 'assistant') continue
-    const textBlock = msg.message.content.find(b => b.type === 'text')
+    const contentArr = Array.isArray(msg.message.content) ? msg.message.content : []
+    const textBlock = contentArr.find(b => b.type === 'text')
     if (textBlock?.type === 'text') {
       const suggestion = textBlock.text.trim()
       if (suggestion) {

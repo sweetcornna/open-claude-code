@@ -812,11 +812,11 @@ export async function initEnvLessBridgeCore(
     },
     writeSdkMessages(messages: SDKMessage[]) {
       const filtered = messages.filter(
-        m => !m.uuid || !recentPostedUUIDs.has(m.uuid),
+        m => !m.uuid || !recentPostedUUIDs.has(m.uuid as string),
       )
       if (filtered.length === 0) return
       for (const msg of filtered) {
-        if (msg.uuid) recentPostedUUIDs.add(msg.uuid)
+        if (msg.uuid) recentPostedUUIDs.add(msg.uuid as string)
       }
       const events = filtered.map(m => ({ ...m, session_id: sessionId }))
       void transport.writeBatch(events)
@@ -829,7 +829,7 @@ export async function initEnvLessBridgeCore(
         return
       }
       const event = { ...request, session_id: sessionId }
-      if (request.request.subtype === 'can_use_tool') {
+      if ((request as { request?: { subtype?: string } }).request?.subtype === 'can_use_tool') {
         transport.reportState('requires_action')
       }
       void transport.write(event)
