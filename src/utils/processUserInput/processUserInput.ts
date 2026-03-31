@@ -251,12 +251,12 @@ export async function processUserInput({
             ...hookResult.message,
             attachment: {
               ...hookResult.message.attachment,
-              content: applyTruncation(hookResult.message.attachment.content),
+              content: applyTruncation(hookResult.message.attachment.content as string),
             },
-          })
+          } as AttachmentMessage)
           break
         default:
-          result.messages.push(hookResult.message)
+          result.messages.push(hookResult.message as AttachmentMessage)
           break
       }
     }

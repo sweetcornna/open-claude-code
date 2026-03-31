@@ -272,10 +272,10 @@ export function GlimmerMessage(t0) {
     $[57] = shim;
     $[58] = colPos;
   } else {
-    before = $[55];
-    after = $[56];
-    shim = $[57];
-    colPos = $[58];
+    before = $[55] as string;
+    after = $[56] as string;
+    shim = $[57] as string;
+    colPos = $[58] as number;
   }
   let t3;
   if ($[59] !== before || $[60] !== messageColor) {

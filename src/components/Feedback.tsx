@@ -59,8 +59,11 @@ type FeedbackData = {
   description: string;
   platform: string;
   gitRepo: boolean;
+  terminal: string;
   version: string | null;
   transcript: Message[];
+  errors: unknown;
+  lastApiRequest: unknown;
   subagentTranscripts?: {
     [agentId: string]: Message[];
   };
@@ -203,8 +206,8 @@ export function Feedback({
       ...diskTranscripts,
       ...teammateTranscripts
     };
-    const reportData = {
-      latestAssistantMessageId: lastAssistantMessageId,
+    const reportData: FeedbackData = {
+      latestAssistantMessageId: lastAssistantMessageId as string | null,
       message_count: messages.length,
       datetime: new Date().toISOString(),
       description,

@@ -412,7 +412,7 @@ async function runPermissionRequestHooksForHeadlessAgent(
       input,
       context,
       permissionMode,
-      suggestions,
+      suggestions as any,
       context.abortController.signal,
     )) {
       if (!hookResult.permissionRequestResult) {
@@ -423,12 +423,12 @@ async function runPermissionRequestHooksForHeadlessAgent(
         const finalInput = decision.updatedInput ?? input
         // Persist permission updates if provided
         if (decision.updatedPermissions?.length) {
-          persistPermissionUpdates(decision.updatedPermissions)
+          persistPermissionUpdates(decision.updatedPermissions as any)
           context.setAppState(prev => ({
             ...prev,
             toolPermissionContext: applyPermissionUpdates(
               prev.toolPermissionContext,
-              decision.updatedPermissions!,
+              decision.updatedPermissions as any,
             ),
           }))
         }

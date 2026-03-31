@@ -1,15 +1,18 @@
 {
-    "name": "claude-code",
+    "name": "claude-js",
     "version": "1.0.0",
-    "private": true,
     "type": "module",
     "workspaces": [
         "packages/*",
         "packages/@ant/*"
     ],
+    "files": [
+        "dist"
+    ],
     "scripts": {
         "build": "bun build src/entrypoints/cli.tsx --outdir dist --target bun",
-        "dev": "bun run src/entrypoints/cli.tsx"
+        "dev": "bun run src/entrypoints/cli.tsx",
+        "prepublishOnly": "bun run build"
     },
     "dependencies": {
         "@alcalzone/ansi-tokenize": "^0.3.0",

@@ -108,7 +108,7 @@ export function getPromptTooLongTokenGap(
     return undefined
   }
   const { actualTokens, limitTokens } = parsePromptTooLongTokenCounts(
-    msg.errorDetails,
+    msg.errorDetails as string,
   )
   if (actualTokens === undefined || limitTokens === undefined) {
     return undefined
@@ -148,7 +148,7 @@ export function isMediaSizeErrorMessage(msg: AssistantMessage): boolean {
   return (
     msg.isApiErrorMessage === true &&
     msg.errorDetails !== undefined &&
-    isMediaSizeError(msg.errorDetails)
+    isMediaSizeError(msg.errorDetails as string)
   )
 }
 export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'

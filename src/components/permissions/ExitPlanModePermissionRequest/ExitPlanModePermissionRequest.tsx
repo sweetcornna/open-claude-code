@@ -151,7 +151,7 @@ export function ExitPlanModePermissionRequest({
   const options = useMemo(() => buildPlanApprovalOptions({
     showClearContext,
     showUltraplan,
-    usedPercent: showClearContext ? getContextUsedPercent(usage, mode) : null,
+    usedPercent: showClearContext ? getContextUsedPercent(usage as any, mode) : null,
     isAutoModeAvailable,
     isBypassPermissionsModeAvailable,
     onFeedbackChange: setPlanFeedback

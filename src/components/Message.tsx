@@ -606,7 +606,7 @@ export function areMessagePropsEqual(prev: Props, next: Props): boolean {
   // Only re-render on lastThinkingBlockId change if this message actually
   // has thinking content — otherwise every message in scrollback re-renders
   // whenever streaming thinking starts/stops (CC-941).
-  if (prev.lastThinkingBlockId !== next.lastThinkingBlockId && hasThinkingContent(next.message)) {
+  if (prev.lastThinkingBlockId !== next.lastThinkingBlockId && hasThinkingContent(next.message as any)) {
     return false;
   }
   // Verbose toggle changes thinking block visibility/expansion

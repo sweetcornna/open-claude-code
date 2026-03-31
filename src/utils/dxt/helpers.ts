@@ -1,4 +1,4 @@
-import type { McpbManifest } from '@anthropic-ai/mcpb'
+import type { McpbManifestAny } from '@anthropic-ai/mcpb'
 import { errorMessage } from '../errors.js'
 import { jsonParse } from '../slowOperations.js'
 
@@ -12,15 +12,15 @@ import { jsonParse } from '../slowOperations.js'
  */
 export async function validateManifest(
   manifestJson: unknown,
-): Promise<McpbManifest> {
-  const { McpbManifestSchema } = await import('@anthropic-ai/mcpb')
-  const parseResult = McpbManifestSchema.safeParse(manifestJson)
+): Promise<McpbManifestAny> {
+  const { vAny } = await import('@anthropic-ai/mcpb')
+  const parseResult = vAny.McpbManifestSchema.safeParse(manifestJson)
 
   if (!parseResult.success) {
     const errors = parseResult.error.flatten()
     const errorMessages = [
       ...Object.entries(errors.fieldErrors).map(
-        ([field, errs]) => `${field}: ${errs?.join(', ')}`,
+        ([field, errs]) => `${field}: ${(errs as any)?.join(', ')}`,
       ),
       ...(errors.formErrors || []),
     ]
@@ -38,7 +38,7 @@ export async function validateManifest(
  */
 export async function parseAndValidateManifestFromText(
   manifestText: string,
-): Promise<McpbManifest> {
+): Promise<McpbManifestAny> {
   let manifestJson: unknown
 
   try {
@@ -55,7 +55,7 @@ export async function parseAndValidateManifestFromText(
  */
 export async function parseAndValidateManifestFromBytes(
   manifestData: Uint8Array,
-): Promise<McpbManifest> {
+): Promise<McpbManifestAny> {
   const manifestText = new TextDecoder().decode(manifestData)
   return parseAndValidateManifestFromText(manifestText)
 }
@@ -65,7 +65,7 @@ export async function parseAndValidateManifestFromBytes(
  * Uses the same algorithm as the directory backend for consistency.
  */
 export function generateExtensionId(
-  manifest: McpbManifest,
+  manifest: McpbManifestAny,
   prefix?: 'local.unpacked' | 'local.dxt',
 ): string {
   const sanitize = (str: string) =>

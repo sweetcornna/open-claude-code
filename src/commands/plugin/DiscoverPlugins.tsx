@@ -248,7 +248,7 @@ export function DiscoverPlugins({
         failureCount++;
         newFailedPlugins.push({
           name: plugin_0.entry.name,
-          reason: result.error
+          reason: (result as { success: false; error: string }).error
         });
       }
     }
@@ -306,7 +306,7 @@ export function DiscoverPlugins({
       });
     } else {
       setIsInstalling(false);
-      setInstallError(result_0.error);
+      setInstallError((result_0 as { success: false; error: string }).error);
     }
   };
 

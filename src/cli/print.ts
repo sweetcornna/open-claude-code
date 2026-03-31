@@ -1243,7 +1243,7 @@ function runHeadlessStreaming(
           uuid: crumb.uuid,
           timestamp: crumb.timestamp,
           isReplay: true,
-        } satisfies SDKUserMessageReplay)
+        } as SDKUserMessageReplay)
       }
     }
   }
@@ -1980,7 +1980,7 @@ function runHeadlessStreaming(
                   parent_tool_use_id: null,
                   uuid: c.uuid as string,
                   isReplay: true,
-                } satisfies SDKUserMessageReplay)
+                } as SDKUserMessageReplay)
               }
             }
           }
@@ -2265,8 +2265,8 @@ function runHeadlessStreaming(
                 output.enqueue({
                   type: 'system' as const,
                   subtype: 'files_persisted' as const,
-                  files: result.persistedFiles,
-                  failed: result.failedFiles,
+                  files: (result as any).persistedFiles,
+                  failed: (result as any).failedFiles,
                   processed_at: new Date().toISOString(),
                   uuid: randomUUID(),
                   session_id: getSessionId(),

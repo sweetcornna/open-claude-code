@@ -140,7 +140,7 @@ function AskUserQuestionPermissionRequestBody(t0) {
     $[10] = theme;
     $[11] = maxHeight;
   } else {
-    maxHeight = $[11];
+    maxHeight = $[11] as number;
   }
   const t3 = Math.min(Math.max(maxHeight, MIN_CONTENT_HEIGHT), maxAllowedHeight);
   const t4 = Math.max(maxWidth, MIN_CONTENT_WIDTH);
@@ -177,7 +177,7 @@ function AskUserQuestionPermissionRequestBody(t0) {
       const pasteId = nextPasteIdRef.current;
       const newContent = {
         id: pasteId,
-        type: "image",
+        type: "image" as const,
         content: base64Image,
         mediaType: mediaType || "image/png",
         filename: filename || "Pasted image",

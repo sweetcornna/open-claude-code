@@ -1279,7 +1279,7 @@ export async function getAllMcpConfigs(): Promise<{
   // Keys never collide (`slack` vs `claude.ai Slack`) so the merge below
   // won't catch this — need content-based dedup by URL signature.
   const { servers: dedupedClaudeAi } = dedupClaudeAiMcpServers(
-    claudeaiMcpServers,
+    claudeaiMcpServers as Record<string, ScopedMcpServerConfig>,
     claudeCodeServers,
   )
 
@@ -1351,6 +1351,7 @@ export function parseMcpConfig(params: {
     if (
       getPlatform() === 'windows' &&
       (!configToCheck.type || configToCheck.type === 'stdio') &&
+      ('command' in configToCheck) &&
       (configToCheck.command === 'npx' ||
         configToCheck.command.endsWith('\\npx') ||
         configToCheck.command.endsWith('/npx'))

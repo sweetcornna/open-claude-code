@@ -68,6 +68,17 @@ declare const BUILD_ENV: string
 declare const INTERFACE_TYPE: string
 
 // ============================================================================
+// Ink custom JSX intrinsic elements — used by the internal Ink framework
+declare namespace JSX {
+  interface IntrinsicElements {
+    'ink-box': any;
+    'ink-text': any;
+    'ink-link': any;
+    'ink-raw-ansi': any;
+  }
+}
+
+// ============================================================================
 // Bun text/file loaders — allow importing non-TS assets as strings
 declare module '*.md' {
   const content: string

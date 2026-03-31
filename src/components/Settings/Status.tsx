@@ -206,7 +206,7 @@ function Diagnostics(t0) {
   const {
     promise
   } = t0;
-  const diagnostics = use(promise);
+  const diagnostics = use(promise) as any[];
   if (diagnostics.length === 0) {
     return null;
   }

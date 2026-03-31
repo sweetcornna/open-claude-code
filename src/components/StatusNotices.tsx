@@ -31,7 +31,7 @@ export function StatusNotices(t0) {
   const context = {
     config: t1,
     agentDefinitions,
-    memoryFiles: use(t2)
+    memoryFiles: use(t2) as any
   };
   const activeNotices = getActiveNotices(context);
   if (activeNotices.length === 0) {

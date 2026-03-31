@@ -130,11 +130,12 @@ function Web({
     });
     const result = await importGithubToken(token);
     if (!result.ok) {
+      const importErr = (result as { ok: false; error: ImportTokenError }).error;
       logEvent('tengu_remote_setup_result', {
         result: 'import_failed' as SafeString,
-        error_kind: result.error.kind as SafeString
+        error_kind: importErr.kind as SafeString
       });
-      onDone(errorMessage(result.error, getCodeWebUrl()));
+      onDone(errorMessage(importErr, getCodeWebUrl()));
       return;
     }
 

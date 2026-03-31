@@ -129,7 +129,7 @@ function MarkdownBody(t0) {
   } = t0;
   const [theme] = useTheme();
   configureMarked();
-  let elements;
+  let elements: React.ReactNode[];
   if ($[0] !== children || $[1] !== dimColor || $[2] !== highlight || $[3] !== theme) {
     const tokens = cachedLexer(stripPromptXMLTags(children));
     elements = [];
@@ -156,7 +156,7 @@ function MarkdownBody(t0) {
     $[3] = theme;
     $[4] = elements;
   } else {
-    elements = $[4];
+    elements = $[4] as React.ReactNode[];
   }
   const elements_0 = elements;
   let t1;

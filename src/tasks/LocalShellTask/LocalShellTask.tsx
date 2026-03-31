@@ -107,7 +107,7 @@ function enqueueShellNotification(taskId: string, description: string, status: '
   // If the task was already marked as notified (e.g., by TaskStopTool), skip
   // enqueueing to avoid sending redundant messages to the model.
   let shouldEnqueue = false;
-  updateTaskState(taskId, setAppState, task => {
+  updateTaskState<LocalShellTaskState>(taskId, setAppState, task => {
     if (task.notified) {
       return task;
     }
@@ -479,7 +479,7 @@ export function backgroundExistingForegroundTask(taskId: string, shellCommand: S
  * carries the full output, so the <task_notification> would be redundant.
  */
 export function markTaskNotified(taskId: string, setAppState: SetAppState): void {
-  updateTaskState(taskId, setAppState, t => t.notified ? t : {
+  updateTaskState<LocalShellTaskState>(taskId, setAppState, t => t.notified ? t : {
     ...t,
     notified: true
   });

@@ -314,11 +314,12 @@ async function launchDetached(opts: {
     const model = getUltraplanModel();
     const eligibility = await checkRemoteAgentEligibility();
     if (!eligibility.eligible) {
+      const eligErrors = (eligibility as { eligible: false; errors: Array<{ type: string }> }).errors;
       logEvent('tengu_ultraplan_create_failed', {
         reason: 'precondition' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        precondition_errors: eligibility.errors.map(e => e.type).join(',') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+        precondition_errors: eligErrors.map(e => e.type).join(',') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
-      const reasons = eligibility.errors.map(formatPreconditionError).join('\n');
+      const reasons = eligErrors.map(formatPreconditionError).join('\n');
       enqueuePendingNotification({
         value: `ultraplan: cannot launch remote session —\n${reasons}`,
         mode: 'task-notification'

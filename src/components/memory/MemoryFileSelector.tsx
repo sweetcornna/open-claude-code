@@ -47,7 +47,7 @@ export function MemoryFileSelector(t0) {
     onSelect,
     onCancel
   } = t0;
-  const existingMemoryFiles = use(getMemoryFiles());
+  const existingMemoryFiles = use(getMemoryFiles()) as MemoryFileInfo[];
   const userMemoryPath = join(getClaudeConfigHomeDir(), "CLAUDE.md");
   const projectMemoryPath = join(getOriginalCwd(), "CLAUDE.md");
   const hasUserMemory = existingMemoryFiles.some(f => f.path === userMemoryPath);

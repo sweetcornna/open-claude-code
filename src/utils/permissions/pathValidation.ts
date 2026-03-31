@@ -112,8 +112,8 @@ export function isPathInSandboxWriteAllowlist(resolvedPath: string): boolean {
   // their resolution to avoid N × config.length redundant syscalls per
   // command with N write targets (matching getResolvedWorkingDirPaths).
   const pathsToCheck = getPathsForPermissionCheck(resolvedPath)
-  const resolvedAllow = allowOnly.flatMap(getResolvedSandboxConfigPath)
-  const resolvedDeny = denyWithinAllow.flatMap(getResolvedSandboxConfigPath)
+  const resolvedAllow = allowOnly.flatMap(getResolvedSandboxConfigPath) as string[]
+  const resolvedDeny = denyWithinAllow.flatMap(getResolvedSandboxConfigPath) as string[]
   return pathsToCheck.every(p => {
     for (const denyPath of resolvedDeny) {
       if (pathInWorkingPath(p, denyPath)) return false
@@ -184,12 +184,13 @@ export function isPathAllowed(
       precomputedPathsToCheck,
     )
     if (!safetyCheck.safe) {
+      const failedCheck = safetyCheck as { safe: false; message: string; classifierApprovable: boolean }
       return {
         allowed: false,
         decisionReason: {
           type: 'safetyCheck',
-          reason: safetyCheck.message,
-          classifierApprovable: safetyCheck.classifierApprovable,
+          reason: failedCheck.message,
+          classifierApprovable: failedCheck.classifierApprovable,
         },
       }
     }

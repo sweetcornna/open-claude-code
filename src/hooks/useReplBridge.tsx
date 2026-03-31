@@ -370,7 +370,7 @@ export function useReplBridge(messages: Message[], setMessages: (action: React.S
 
           // Dispatch incoming control_response messages to registered handlers
           function handlePermissionResponse(msg_0: SDKControlResponse): void {
-            const requestId = msg_0.response?.request_id;
+            const requestId = (msg_0 as any).response?.request_id;
             if (!requestId) return;
             const handler = pendingPermissionHandlers.get(requestId);
             if (!handler) {
@@ -379,7 +379,7 @@ export function useReplBridge(messages: Message[], setMessages: (action: React.S
             }
             pendingPermissionHandlers.delete(requestId);
             // Extract the permission decision from the control_response payload
-            const inner = msg_0.response;
+            const inner = (msg_0 as any).response;
             if (inner.subtype === 'success' && inner.response && isBridgePermissionResponse(inner.response)) {
               handler(inner.response);
             }
