@@ -10,8 +10,8 @@
 - [x] `color-diff-napi` — 颜色差异计算 NAPI 模块 (纯 TS 实现)
 - [x] `image-processor-napi` — 图像处理 NAPI 模块 (sharp + osascript 剪贴板)
 
-<!-- - [ ] `@ant/computer-use-swift` — Computer Use Swift 原生模块
-- [ ] `@ant/computer-use-mcp` — Computer Use MCP 服务 -->
+<!-- - [ ] `@ant/computer-use-swift` — Computer Use Swift 原生模块 -->
+- [x] `@ant/computer-use-mcp` — Computer Use MCP 服务 (类型安全 stub + sentinel apps + targetImageSize)
 - [x] `@ant/computer-use-input` — Computer Use 输入模块 (macOS AppleScript/JXA 实现)
 <!-- - [ ] `@ant/claude-for-chrome-mcp` — Chrome MCP 扩展 -->
 
