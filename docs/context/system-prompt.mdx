@@ -88,6 +88,36 @@ DANGEROUS_uncachedSystemPromptSection(
 
 `appendSystemPrompt` 始终追加到末尾（Override 除外）。
 
+## Provider 系统概述
+
+Claude Code 支持多种 API 提供商，分为两大类：
+
+| 类别 | Provider | 环境变量 | 说明 |
+|------|----------|---------|------|
+| **1P (First Party)** | `firstParty` | 默认 | Anthropic 官方 API 直连 |
+| **3P (Third Party)** | `bedrock` | `CLAUDE_CODE_USE_BEDROCK=1` | AWS Bedrock 托管服务 |
+| **3P** | `vertex` | `CLAUDE_CODE_USE_VERTEX=1` | Google Vertex AI |
+| **3P** | `openai` | `CLAUDE_CODE_USE_OPENAI=1` | OpenAI 兼容层（Ollama/DeepSeek/vLLM） |
+| **3P** | `gemini` | `CLAUDE_CODE_USE_GEMINI=1` | Google Gemini API |
+| **3P** | `grok` | `CLAUDE_CODE_USE_GROK=1` | xAI Grok |
+
+Provider 决定了：
+- **可用的 beta headers**：部分 beta 功能仅限 1P 用户
+- **缓存策略**：全局缓存 `scope: 'global'` 仅 1P 可用
+- **Token 计数方式**：Bedrock 有独立的 countTokens 端点，OpenAI/Gemini 依赖估算
+
+```typescript
+// src/utils/model/providers.ts:5-13
+export type APIProvider =
+  | 'firstParty'    // 1P - Anthropic 直连
+  | 'bedrock'       // 3P - AWS Bedrock
+  | 'vertex'        // 3P - Google Vertex
+  | 'foundry'       // 3P - Anthropic Foundry
+  | 'openai'        // 3P - OpenAI 兼容层
+  | 'gemini'        // 3P - Google Gemini
+  | 'grok'          // 3P - xAI Grok
+```
+
 ## 缓存策略：分块、标记、命中
 
 这是 System Prompt 设计中最精密的部分。
@@ -120,6 +150,30 @@ MCP 工具列表在会话中可能变化（连接/断开），破坏了跨组织
 ```
 
 这是缓存效率最高的模式。`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 之前的静态内容（Intro、Rules、Tone & Style 等）对所有用户相同，可跨组织缓存。
+
+### Boundary 插入条件
+
+`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 标记**仅在特定条件**下插入：
+
+```typescript
+// src/utils/betas.ts:226-229
+export function shouldUseGlobalCacheScope(): boolean {
+  return (
+    getAPIProvider() === 'firstParty' &&
+    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
+  )
+}
+```
+
+```typescript
+// src/constants/prompts.ts:574
+...(shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []),
+```
+
+这意味着：
+- **3P 用户（Bedrock/Vertex/OpenAI/Gemini）**：Boundary 永远不存在，始终使用模式 3
+- **1P 用户禁用实验性功能**：设置 `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`，Boundary 不插入
+- **1P 用户默认**：Boundary 存在，使用模式 2（最高缓存效率）
 
 #### 模式 3：默认（3P 提供商 或 Boundary 缺失）
 
@@ -250,3 +304,65 @@ Header 始终 `cacheScope: null`——它因版本和指纹不同而变化，不
 4. `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 标记允许 `splitSysPromptPrefix()` 精确地将静态区标记为 `scope: 'global'`，动态区不标记或标记为 `scope: 'org'`
 
 这是 Claude Code 在 token 成本优化上的核心设计——一次典型的 System Prompt 约 20K+ tokens，通过缓存分块可以节省 30-50% 的输入 token 费用。
+
+## 兼容层：OpenAI 与 Gemini
+
+Claude Code 提供了 OpenAI 和 Gemini 协议的兼容层，允许使用非 Anthropic 端点。
+
+### OpenAI 兼容层
+
+通过 `CLAUDE_CODE_USE_OPENAI=1` 启用，支持任意 OpenAI Chat Completions 协议端点（Ollama、DeepSeek、vLLM 等）。
+
+实现采用**流适配器模式**：
+1. 将 Anthropic 格式请求转换为 OpenAI 格式
+2. 调用 OpenAI 兼容端点
+3. 将 SSE 流转换回 `BetaRawMessageStreamEvent`
+4. 下游代码完全无感知
+
+```
+src/services/api/openai/
+├── client.ts           # OpenAI 客户端配置
+├── convertMessages.ts  # 消息格式转换（Anthropic → OpenAI）
+├── convertTools.ts     # 工具定义转换
+├── streamAdapter.ts    # SSE 流适配（OpenAI → Anthropic）
+├── modelMapping.ts     # 模型名称映射
+└── index.ts            # 入口函数 queryModelOpenAI()
+```
+
+关键环境变量：
+- `CLAUDE_CODE_USE_OPENAI=1` — 启用 OpenAI provider
+- `OPENAI_API_KEY` — API 密钥
+- `OPENAI_BASE_URL` — API 端点（默认 `https://api.openai.com/v1`）
+- `OPENAI_MODEL` — 直接指定模型名
+
+### Gemini 兼容层
+
+通过 `CLAUDE_CODE_USE_GEMINI=1` 启用，支持 Google Gemini API。
+
+```
+src/services/api/gemini/
+├── client.ts           # Gemini 客户端配置
+├── convertMessages.ts  # 消息格式转换
+├── convertTools.ts     # 工具定义转换
+├── streamAdapter.ts    # 流适配
+├── modelMapping.ts     # 模型名称映射
+├── types.ts            # 类型定义
+└── index.ts            # 入口函数
+```
+
+关键环境变量：
+- `CLAUDE_CODE_USE_GEMINI=1` — 启用 Gemini provider
+- `GEMINI_API_KEY` — API 密钥
+- `GEMINI_BASE_URL` — API 端点（默认 `https://generativelanguage.googleapis.com/v1beta`）
+- `GEMINI_MODEL` — 直接指定模型名
+- `GEMINI_DEFAULT_SONNET_MODEL` / `GEMINI_DEFAULT_OPUS_MODEL` — 按能力级别映射
+
+### 兼容层的限制
+
+使用 3P 兼容层时，部分功能受限：
+- **无精确 token 计数**：系统退回到近似估算，影响自动压缩触发时机
+- **无全局缓存**：只能使用组织级缓存 `scope: 'org'`
+- **部分 beta 功能不可用**：依赖 Anthropic 特有 beta headers 的功能受限
+
+详见 `docs/plans/openai-compatibility.md` 和 `CLAUDE.md` 中的相关章节。
+
