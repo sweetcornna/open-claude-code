@@ -13,6 +13,12 @@ import type {
 import type { AssistantMessage, UserMessage } from '../../../types/message.js'
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
 
+export interface ConvertMessagesOptions {
+  /** When true, preserve thinking blocks as reasoning_content on assistant messages
+   *  (required for DeepSeek thinking mode with tool calls). */
+  enableThinking?: boolean
+}
+
 /**
  * Convert internal (UserMessage | AssistantMessage)[] to OpenAI-format messages.
  *
@@ -20,14 +26,16 @@ import type { SystemPrompt } from '../../../utils/systemPromptType.js'
  * - system prompt → role: "system" message prepended
  * - tool_use blocks → tool_calls[] on assistant message
  * - tool_result blocks → role: "tool" messages
- * - thinking blocks → silently dropped
+ * - thinking blocks → silently dropped (or preserved as reasoning_content when enableThinking=true)
  * - cache_control → stripped
  */
 export function anthropicMessagesToOpenAI(
   messages: (UserMessage | AssistantMessage)[],
   systemPrompt: SystemPrompt,
+  options?: ConvertMessagesOptions,
 ): ChatCompletionMessageParam[] {
   const result: ChatCompletionMessageParam[] = []
+  const enableThinking = options?.enableThinking ?? false
 
   // Prepend system prompt as system message
   const systemText = systemPromptToText(systemPrompt)
@@ -38,13 +46,50 @@ export function anthropicMessagesToOpenAI(
     } satisfies ChatCompletionSystemMessageParam)
   }
 
-  for (const msg of messages) {
+  // When thinking mode is on, detect turn boundaries so that reasoning_content
+  // from *previous* user turns is stripped (saves bandwidth; DeepSeek ignores it).
+  // A "new turn" starts when a user text message appears after at least one assistant response.
+  const turnBoundaries = new Set<number>()
+  if (enableThinking) {
+    let hasSeenAssistant = false
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+      if (msg.type === 'assistant') {
+        hasSeenAssistant = true
+      }
+      if (msg.type === 'user' && hasSeenAssistant) {
+        const content = msg.message.content
+        // A user message starts a new turn if it contains any non-tool_result content
+        // (text, image, or other media). Tool results alone do NOT start a new turn
+        // because they are continuations of the previous assistant tool call.
+        const startsNewUserTurn = typeof content === 'string'
+          ? content.length > 0
+          : Array.isArray(content) && content.some(
+              (b: any) =>
+                typeof b === 'string' ||
+                (b &&
+                  typeof b === 'object' &&
+                  'type' in b &&
+                  b.type !== 'tool_result'),
+            )
+        if (startsNewUserTurn) {
+          turnBoundaries.add(i)
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
     switch (msg.type) {
       case 'user':
         result.push(...convertInternalUserMessage(msg))
         break
       case 'assistant':
-        result.push(...convertInternalAssistantMessage(msg))
+        // Preserve reasoning_content unless we're before a turn boundary
+        // (i.e., from a previous user Q&A round)
+        const preserveReasoning = enableThinking && !isBeforeAnyTurnBoundary(i, turnBoundaries)
+        result.push(...convertInternalAssistantMessage(msg, preserveReasoning))
         break
       default:
         break
@@ -59,6 +104,17 @@ function systemPromptToText(systemPrompt: SystemPrompt): string {
   return systemPrompt
     .filter(Boolean)
     .join('\n\n')
+}
+
+/**
+ * Check if index `i` falls before any turn boundary (i.e. it belongs to a previous turn).
+ * A message at index i is "before" a boundary if there exists a boundary j where i < j.
+ */
+function isBeforeAnyTurnBoundary(i: number, boundaries: Set<number>): boolean {
+  for (const b of boundaries) {
+    if (i < b) return true
+  }
+  return false
 }
 
 function convertInternalUserMessage(
@@ -151,6 +207,7 @@ function convertToolResult(
 
 function convertInternalAssistantMessage(
   msg: AssistantMessage,
+  preserveReasoning = false,
 ): ChatCompletionMessageParam[] {
   const content = msg.message.content
 
@@ -174,6 +231,7 @@ function convertInternalAssistantMessage(
 
   const textParts: string[] = []
   const toolCalls: NonNullable<ChatCompletionAssistantMessageParam['tool_calls']> = []
+  const reasoningParts: string[] = []
 
   for (const block of content) {
     if (typeof block === 'string') {
@@ -191,14 +249,21 @@ function convertInternalAssistantMessage(
             typeof tu.input === 'string' ? tu.input : JSON.stringify(tu.input),
         },
       })
+    } else if (block.type === 'thinking' && preserveReasoning) {
+      // DeepSeek thinking mode: preserve reasoning_content for tool call iterations
+      const thinkingText = (block as Record<string, unknown>).thinking
+      if (typeof thinkingText === 'string' && thinkingText) {
+        reasoningParts.push(thinkingText)
+      }
     }
-    // Skip thinking, redacted_thinking, server_tool_use, etc.
+    // Skip redacted_thinking, server_tool_use, etc.
   }
 
   const result: ChatCompletionAssistantMessageParam = {
     role: 'assistant',
     content: textParts.length > 0 ? textParts.join('\n') : null,
     ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+    ...(reasoningParts.length > 0 && { reasoning_content: reasoningParts.join('\n') }),
   }
 
   return [result]
