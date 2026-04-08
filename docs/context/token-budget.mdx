@@ -64,6 +64,33 @@ function roughTokenCountEstimation(content: string, bytesPerToken = 4): number {
 
 精确计数在关键决策点使用（压缩前后对比、warning 判断），近似估算在热路径使用（每轮循环的 shouldAutoCompact 检查）。
 
+### 3P Provider 的 Token 计数差异
+
+不同 Provider 的精确 token 计数实现方式不同，部分 provider 甚至不支持精确计数：
+
+| Provider | 计数方式 | 注意事项 |
+|----------|---------|---------|
+| **Anthropic 直连** | `anthropic.beta.messages.countTokens()` | 标准 API，最准确 |
+| **AWS Bedrock** | `CountTokensCommand` | 需要动态加载 279KB AWS SDK |
+| **Google Vertex** | Anthropic SDK + beta 过滤 | 需要特定 beta headers |
+| **OpenAI 兼容层** | 无精确计数 | **退回到近似估算** |
+| **Gemini 兼容层** | 无精确计数 | **退回到近似估算** |
+| **Bedrock 不支持时** | 用 Haiku 发送 `max_tokens=1` 请求 | 读取 `usage.input_tokens` |
+
+OpenAI 和 Gemini 兼容层**不支持精确 token 计数**，系统会退回到近似估算。这会影响：
+- **自动压缩触发时机**：可能略有偏差
+- **压缩前后 token 对比**：仅为估算值，非精确
+- **Warning/Error 阈值判断**：基于估算而非精确计数
+
+```typescript
+// src/services/tokenEstimation.ts - 近似估算函数
+function roughTokenCountEstimation(content: string, bytesPerToken = 4): number {
+  return Math.round(content.length / bytesPerToken)
+}
+```
+
+源码路径：`src/services/tokenEstimation.ts`
+
 ## 自动压缩的触发阈值
 
 ```

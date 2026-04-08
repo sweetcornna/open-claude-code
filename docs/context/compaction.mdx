@@ -48,15 +48,16 @@ const messagesForCompact = microcompactResult.messages
 MicroCompact 不压缩整个对话，而是**清除旧工具输出的内容**。它维护一个白名单：
 
 ```typescript
+// src/services/compact/microCompact.ts:41-48
 const COMPACTABLE_TOOLS = new Set([
-  'Read',      // 文件读取
-  'Bash',      // 命令输出
-  'Grep',      // 搜索结果
-  'Glob',      // 文件列表
-  'WebSearch', // 搜索结果
-  'WebFetch',  // 网页内容
-  'Edit',      // 编辑输出
-  'Write',     // 写入输出
+  FILE_READ_TOOL_NAME,    // 'Read' - 文件读取
+  ...SHELL_TOOL_NAMES,    // 'Bash' - 命令输出
+  GREP_TOOL_NAME,         // 'Grep' - 搜索结果
+  GLOB_TOOL_NAME,         // 'Glob' - 文件列表
+  WEB_SEARCH_TOOL_NAME,   // 'WebSearch' - 搜索结果
+  WEB_FETCH_TOOL_NAME,    // 'WebFetch' - 网页内容
+  FILE_EDIT_TOOL_NAME,    // 'Edit' - 编辑输出
+  FILE_WRITE_TOOL_NAME,   // 'Write' - 写入输出
 ])
 ```
 
@@ -200,6 +201,31 @@ boundaryMarker.compactMetadata.preservedSegment = {
 ```
 
 这在会话恢复时帮助加载器正确重建消息链，避免重复压缩已保留的消息。
+
+### Microcompact Boundary
+
+Microcompact 操作使用单独的 boundary 类型，与全量压缩的 `compact_boundary` 不同：
+
+```typescript
+// src/utils/messages.ts:4599-4614
+type SystemMicrocompactBoundaryMessage = {
+  type: 'system'
+  subtype: 'microcompact_boundary'
+  content: 'Context microcompacted'
+  compactMetadata: {
+    trigger: 'auto'              // Microcompact 只有自动触发
+    preTokens: number            // 压缩前 token 数
+    tokensSaved: number          // 节省的 token 数
+    compactedToolIds: string[]   // 被压缩的工具 ID 列表
+    clearedAttachmentUUIDs: string[] // 被清除的附件 UUID
+  }
+}
+```
+
+与 `compact_boundary` 的区别：
+- **保留原始消息**：Microcompact 仅清除工具输出内容，不删除消息本身
+- **可追溯性**：`compactedToolIds` 记录了哪些工具结果被清除
+- **轻量级**：不生成摘要，不调用 API
 
 ## PTL 紧急降级：Prompt Too Long
 
