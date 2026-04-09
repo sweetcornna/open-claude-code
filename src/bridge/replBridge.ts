@@ -53,6 +53,17 @@ import type {
   SDKControlRequest,
   SDKControlResponse,
 } from '../entrypoints/sdk/controlTypes.js'
+import type { StdoutMessage } from '../entrypoints/sdk/controlTypes.js'
+import type { SDKResultSuccess } from '../entrypoints/sdk/coreTypes.js'
+
+/**
+ * StdoutMessage with session_id added. The transport layer adds session_id
+ * to messages at runtime, but the Zod schemas don't include it. This type
+ * makes it explicit that we're adding session_id to each message variant.
+ */
+type StdoutMessageWithSession = StdoutMessage extends infer T
+  ? T & { session_id: string }
+  : never
 import { createCapacityWake, type CapacitySignal } from './capacityWake.js'
 import { FlushGate } from './flushGate.js'
 import {
@@ -865,7 +876,7 @@ export async function initBridgeCore(
       recentPostedUUIDs.add(msg.uuid)
     }
     const sdkMessages = toSDKMessages(msgs)
-    const events = sdkMessages.map(sdkMsg => ({
+    const events: StdoutMessageWithSession[] = sdkMessages.map(sdkMsg => ({
       ...sdkMsg,
       session_id: currentSessionId,
     }))
@@ -1285,7 +1296,7 @@ export async function initBridgeCore(
               logForDebugging(
                 `[bridge:repl] Flushing ${sdkMessages.length} initial message(s) via transport`,
               )
-              const events = sdkMessages.map(sdkMsg => ({
+              const events: StdoutMessageWithSession[] = sdkMessages.map(sdkMsg => ({
                 ...sdkMsg,
                 session_id: currentSessionId,
               }))
@@ -1655,7 +1666,11 @@ export async function initBridgeCore(
     transport = null
     flushGate.drop()
     if (teardownTransport) {
-      void teardownTransport.write(makeResultMessage(currentSessionId))
+      const resultMsg: StdoutMessageWithSession = {
+        ...makeResultMessage(currentSessionId),
+        session_id: currentSessionId,
+      }
+      void teardownTransport.write(resultMsg)
     }
 
     const stopWorkP = currentWorkId
@@ -1778,7 +1793,7 @@ export async function initBridgeCore(
       // Convert to SDK format and send via HTTP POST (HybridTransport).
       // The web UI receives them via the subscribe WebSocket.
       const sdkMessages = toSDKMessages(filtered)
-      const events = sdkMessages.map(sdkMsg => ({
+      const events: StdoutMessageWithSession[] = sdkMessages.map(sdkMsg => ({
         ...sdkMsg,
         session_id: currentSessionId,
       }))
@@ -1803,7 +1818,7 @@ export async function initBridgeCore(
       for (const msg of filtered) {
         if (msg.uuid) recentPostedUUIDs.add(msg.uuid as string)
       }
-      const events = filtered.map(m => ({ ...m, session_id: currentSessionId }))
+      const events: StdoutMessageWithSession[] = filtered.map(m => ({ ...m, session_id: currentSessionId }))
       void transport.writeBatch(events)
     },
     sendControlRequest(request: SDKControlRequest) {
@@ -1813,7 +1828,7 @@ export async function initBridgeCore(
         )
         return
       }
-      const event = { ...request, session_id: currentSessionId }
+      const event: StdoutMessageWithSession = { ...request, session_id: currentSessionId }
       void transport.write(event)
       logForDebugging(
         `[bridge:repl] Sent control_request request_id=${request.request_id}`,
@@ -1826,7 +1841,7 @@ export async function initBridgeCore(
         )
         return
       }
-      const event = { ...response, session_id: currentSessionId }
+      const event: StdoutMessageWithSession = { ...response, session_id: currentSessionId }
       void transport.write(event)
       logForDebugging('[bridge:repl] Sent control_response')
     },
@@ -1837,7 +1852,7 @@ export async function initBridgeCore(
         )
         return
       }
-      const event = {
+      const event: StdoutMessageWithSession = {
         type: 'control_cancel_request' as const,
         request_id: requestId,
         session_id: currentSessionId,
@@ -1854,7 +1869,11 @@ export async function initBridgeCore(
         )
         return
       }
-      void transport.write(makeResultMessage(currentSessionId))
+      const resultMsg: StdoutMessageWithSession = {
+        ...makeResultMessage(currentSessionId),
+        session_id: currentSessionId,
+      }
+      void transport.write(resultMsg)
       logForDebugging(
         `[bridge:repl] Sent result for session=${currentSessionId}`,
       )
