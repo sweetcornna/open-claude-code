@@ -57,13 +57,15 @@ import type { StdoutMessage } from '../entrypoints/sdk/controlTypes.js'
 import type { SDKResultSuccess } from '../entrypoints/sdk/coreTypes.js'
 
 /**
- * StdoutMessage with session_id added. The transport layer adds session_id
- * to messages at runtime, but the Zod schemas don't include it. This type
- * makes it explicit that we're adding session_id to each message variant.
+ * StdoutMessage with optional session_id. The transport layer accepts
+ * StdoutMessage but we add session_id at runtime. Using optional because
+ * the type system can't verify that adding session_id to a union type
+ * is always valid, even though it is at runtime.
+ *
+ * We need to use 'as StdoutMessage' when passing to transport because
+ * TypeScript can't verify that objects with session_id are valid StdoutMessage.
  */
-type StdoutMessageWithSession = StdoutMessage extends infer T
-  ? T & { session_id: string }
-  : never
+type TransportMessage = StdoutMessage & { session_id?: string }
 import { createCapacityWake, type CapacitySignal } from './capacityWake.js'
 import { FlushGate } from './flushGate.js'
 import {
@@ -876,14 +878,14 @@ export async function initBridgeCore(
       recentPostedUUIDs.add(msg.uuid)
     }
     const sdkMessages = toSDKMessages(msgs)
-    const events: StdoutMessageWithSession[] = sdkMessages.map(sdkMsg => ({
+    const events: TransportMessage[] = sdkMessages.map(sdkMsg => ({
       ...sdkMsg,
       session_id: currentSessionId,
-    }))
+    })) as TransportMessage[]
     logForDebugging(
       `[bridge:repl] Drained ${msgs.length} pending message(s) after flush`,
     )
-    void transport.writeBatch(events)
+    void transport.writeBatch(events as StdoutMessage[])
   }
 
   // Teardown reference — set after definition below. All callers are async
@@ -1296,14 +1298,12 @@ export async function initBridgeCore(
               logForDebugging(
                 `[bridge:repl] Flushing ${sdkMessages.length} initial message(s) via transport`,
               )
-              const events: StdoutMessageWithSession[] = sdkMessages.map(sdkMsg => ({
+              const events: TransportMessage[] = sdkMessages.map(sdkMsg => ({
                 ...sdkMsg,
                 session_id: currentSessionId,
-              }))
+              })) as TransportMessage[]
               const dropsBefore = newTransport.droppedBatchCount
-              void newTransport
-                .writeBatch(events)
-                .then(() => {
+              void newTransport.writeBatch(events as StdoutMessage[]).then(() => {
                   // If any batch was dropped during this flush (SI down for
                   // maxConsecutiveFailures attempts), flush() still resolved
                   // normally but the events were NOT delivered. Don't mark
@@ -1666,11 +1666,11 @@ export async function initBridgeCore(
     transport = null
     flushGate.drop()
     if (teardownTransport) {
-      const resultMsg: StdoutMessageWithSession = {
+      const resultMsg = {
         ...makeResultMessage(currentSessionId),
         session_id: currentSessionId,
-      }
-      void teardownTransport.write(resultMsg)
+      } as unknown as TransportMessage
+      void teardownTransport.write(resultMsg as StdoutMessage)
     }
 
     const stopWorkP = currentWorkId
@@ -1793,11 +1793,11 @@ export async function initBridgeCore(
       // Convert to SDK format and send via HTTP POST (HybridTransport).
       // The web UI receives them via the subscribe WebSocket.
       const sdkMessages = toSDKMessages(filtered)
-      const events: StdoutMessageWithSession[] = sdkMessages.map(sdkMsg => ({
+      const events: TransportMessage[] = sdkMessages.map(sdkMsg => ({
         ...sdkMsg,
         session_id: currentSessionId,
-      }))
-      void transport.writeBatch(events)
+      })) as TransportMessage[]
+      void transport.writeBatch(events as StdoutMessage[])
     },
     writeSdkMessages(messages) {
       // Daemon path: query() already yields SDKMessage, skip conversion.
@@ -1818,8 +1818,8 @@ export async function initBridgeCore(
       for (const msg of filtered) {
         if (msg.uuid) recentPostedUUIDs.add(msg.uuid as string)
       }
-      const events: StdoutMessageWithSession[] = filtered.map(m => ({ ...m, session_id: currentSessionId }))
-      void transport.writeBatch(events)
+      const events: TransportMessage[] = filtered.map(m => ({ ...m, session_id: currentSessionId })) as TransportMessage[]
+      void transport.writeBatch(events as StdoutMessage[])
     },
     sendControlRequest(request: SDKControlRequest) {
       if (!transport) {
@@ -1828,8 +1828,8 @@ export async function initBridgeCore(
         )
         return
       }
-      const event: StdoutMessageWithSession = { ...request, session_id: currentSessionId }
-      void transport.write(event)
+      const event: TransportMessage = { ...request, session_id: currentSessionId } as TransportMessage
+      void transport.write(event as StdoutMessage)
       logForDebugging(
         `[bridge:repl] Sent control_request request_id=${request.request_id}`,
       )
@@ -1841,8 +1841,8 @@ export async function initBridgeCore(
         )
         return
       }
-      const event: StdoutMessageWithSession = { ...response, session_id: currentSessionId }
-      void transport.write(event)
+      const event: TransportMessage = { ...response, session_id: currentSessionId } as TransportMessage
+      void transport.write(event as StdoutMessage)
       logForDebugging('[bridge:repl] Sent control_response')
     },
     sendControlCancelRequest(requestId: string) {
@@ -1852,12 +1852,12 @@ export async function initBridgeCore(
         )
         return
       }
-      const event: StdoutMessageWithSession = {
+      const event: TransportMessage = {
         type: 'control_cancel_request' as const,
         request_id: requestId,
         session_id: currentSessionId,
-      }
-      void transport.write(event)
+      } as TransportMessage
+      void transport.write(event as StdoutMessage)
       logForDebugging(
         `[bridge:repl] Sent control_cancel_request request_id=${requestId}`,
       )
@@ -1869,11 +1869,11 @@ export async function initBridgeCore(
         )
         return
       }
-      const resultMsg: StdoutMessageWithSession = {
+      const resultMsg = {
         ...makeResultMessage(currentSessionId),
         session_id: currentSessionId,
-      }
-      void transport.write(resultMsg)
+      } as unknown as TransportMessage
+      void transport.write(resultMsg as StdoutMessage)
       logForDebugging(
         `[bridge:repl] Sent result for session=${currentSessionId}`,
       )
