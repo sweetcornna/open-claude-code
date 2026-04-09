@@ -69,7 +69,18 @@ import type {
   SDKControlRequest,
   SDKControlResponse,
 } from '../entrypoints/sdk/controlTypes.js'
+import type { StdoutMessage } from '../entrypoints/sdk/controlTypes.js'
+import type { SDKResultSuccess } from '../entrypoints/sdk/coreTypes.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
+
+/**
+ * StdoutMessage with session_id added. The transport layer adds session_id
+ * to messages at runtime, but the Zod schemas don't include it. This type
+ * makes it explicit that we're adding session_id to each message variant.
+ */
+type StdoutMessageWithSession = StdoutMessage extends infer T
+  ? T & { session_id: string }
+  : never
 
 const ANTHROPIC_VERSION = '2023-06-01'
 
@@ -608,7 +619,7 @@ export async function initEnvLessBridgeCore(
     const msgs = flushGate.end()
     if (msgs.length === 0) return
     for (const msg of msgs) recentPostedUUIDs.add(msg.uuid)
-    const events = toSDKMessages(msgs).map(m => ({
+    const events: StdoutMessageWithSession[] = toSDKMessages(msgs).map(m => ({
       ...m,
       session_id: sessionId,
     }))
@@ -636,7 +647,7 @@ export async function initEnvLessBridgeCore(
         `[remote-bridge] Capped initial flush: ${eligible.length} -> ${capped.length} (cap=${initialHistoryCap})`,
       )
     }
-    const events = toSDKMessages(capped).map(m => ({
+    const events: StdoutMessageWithSession[] = toSDKMessages(capped).map(m => ({
       ...m,
       session_id: sessionId,
     }))
@@ -675,8 +686,11 @@ export async function initEnvLessBridgeCore(
     // explicit sleep. close() sets closed=true which interrupts drain at the
     // next while-check, so close-before-archive drops the result.
     transport.reportState('idle')
-    void transport.write(makeResultMessage(sessionId))
-
+    const resultMsg: StdoutMessageWithSession = {
+      ...makeResultMessage(sessionId),
+      session_id: sessionId,
+    }
+    void transport.write(resultMsg)
     let token = getAccessToken()
     let status = await archiveSession(
       sessionId,
@@ -795,7 +809,7 @@ export async function initEnvLessBridgeCore(
       }
 
       for (const msg of filtered) recentPostedUUIDs.add(msg.uuid)
-      const events = toSDKMessages(filtered).map(m => ({
+      const events: StdoutMessageWithSession[] = toSDKMessages(filtered).map(m => ({
         ...m,
         session_id: sessionId,
       }))
@@ -818,7 +832,7 @@ export async function initEnvLessBridgeCore(
       for (const msg of filtered) {
         if (msg.uuid) recentPostedUUIDs.add(msg.uuid as string)
       }
-      const events = filtered.map(m => ({ ...m, session_id: sessionId }))
+      const events = filtered.map(m => ({ ...m, session_id: sessionId })) as StdoutMessage[]
       void transport.writeBatch(events)
     },
     sendControlRequest(request: SDKControlRequest) {
@@ -828,7 +842,7 @@ export async function initEnvLessBridgeCore(
         )
         return
       }
-      const event = { ...request, session_id: sessionId }
+      const event: StdoutMessageWithSession = { ...request, session_id: sessionId }
       if ((request as { request?: { subtype?: string } }).request?.subtype === 'can_use_tool') {
         transport.reportState('requires_action')
       }
@@ -844,7 +858,7 @@ export async function initEnvLessBridgeCore(
         )
         return
       }
-      const event = { ...response, session_id: sessionId }
+      const event: StdoutMessageWithSession = { ...response, session_id: sessionId }
       transport.reportState('running')
       void transport.write(event)
       logForDebugging('[remote-bridge] Sent control_response')
@@ -856,7 +870,7 @@ export async function initEnvLessBridgeCore(
         )
         return
       }
-      const event = {
+      const event: StdoutMessageWithSession = {
         type: 'control_cancel_request' as const,
         request_id: requestId,
         session_id: sessionId,
@@ -876,7 +890,11 @@ export async function initEnvLessBridgeCore(
         return
       }
       transport.reportState('idle')
-      void transport.write(makeResultMessage(sessionId))
+      const resultMsg: StdoutMessageWithSession = {
+        ...makeResultMessage(sessionId),
+        session_id: sessionId,
+      }
+      void transport.write(resultMsg)
       logForDebugging(`[remote-bridge] Sent result`)
     },
     async teardown() {
