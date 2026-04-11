@@ -6,6 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **reverse-engineered / decompiled** version of Anthropic's official Claude Code CLI tool. The goal is to restore core functionality while trimming secondary capabilities. Many modules are stubbed or feature-flagged off. TypeScript strict mode is enforced — **`bunx tsc --noEmit` must pass with zero errors**.
 
+## Git Commit Message Convention
+
+使用 **Conventional Commits** 规范：
+
+```
+<type>: <描述>
+```
+
+常见 type：`feat`、`fix`、`docs`、`chore`、`refactor`
+
+示例：
+- `feat: 添加模型 1M 上下文切换`
+- `fix: 修复初次登陆的校验问题`
+- `chore: remove prefetchOfficialMcpUrls call on startup`
+
 ## Commands
 
 ```bash
