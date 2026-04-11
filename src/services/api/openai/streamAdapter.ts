@@ -111,9 +111,10 @@ export async function* adaptOpenAIStreamToAnthropic(
             cache_read_input_tokens: cachedReadTokens,
           },
         },
-      } as BetaRawMessageStreamEvent
+      } as unknown as BetaRawMessageStreamEvent
     }
 
+    // Skip chunks that carry only usage data (no delta content)
     if (!delta) continue
 
     // Handle reasoning_content → Anthropic thinking block

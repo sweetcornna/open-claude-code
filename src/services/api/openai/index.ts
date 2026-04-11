@@ -6,6 +6,7 @@ import type {
   SystemAPIErrorMessage,
   AssistantMessage,
 } from '../../../types/message.js'
+import type { AgentId } from '../../../types/ids.js'
 import type { Tools } from '../../../Tool.js'
 import type { Stream } from 'openai/streaming.mjs'
 import type {
@@ -149,7 +150,7 @@ function assembleFinalAssistantOutputs(params: {
     outputs.push({
       message: {
         ...partialMessage,
-        content: normalizeContentFromAPI(allBlocks, tools, agentId),
+        content: normalizeContentFromAPI(allBlocks, tools, agentId as AgentId | undefined),
         usage,
         stop_reason: stopReason,
         stop_sequence: null,
