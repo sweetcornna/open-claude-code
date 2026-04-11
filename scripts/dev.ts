@@ -48,17 +48,6 @@ const DEFAULT_FEATURES = [
   "COORDINATOR_MODE",
   "LAN_PIPES",
   // "REVIEW_ARTIFACT", // API 请求无响应，需进一步排查 schema 兼容性
-  // PR-package restored features
-  "WORKFLOW_SCRIPTS",
-  "HISTORY_SNIP",
-  "CONTEXT_COLLAPSE",
-  "MONITOR_TOOL",
-  "FORK_SUBAGENT",
-  "UDS_INBOX",
-  "KAIROS",
-  "COORDINATOR_MODE",
-  "LAN_PIPES",
-  // "REVIEW_ARTIFACT", // API 请求无响应，需进一步排查 schema 兼容性
   // P3: poor mode (disable extract_memories + prompt_suggestion)
   "POOR",
 ];
