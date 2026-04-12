@@ -2276,6 +2276,9 @@ async function run(): Promise<CommanderCommand> {
 					type: "http",
 					url: "http://127.0.0.1:12306/mcp",
 					scope: "dynamic",
+					"headers": {
+						"Authorization": "Bearer my-static-token",
+					}
 				},
 			};
 
