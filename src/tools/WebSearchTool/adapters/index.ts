@@ -35,13 +35,13 @@ export function createAdapter(): WebSearchAdapter {
     cachedAdapterKey = 'api'
     return cachedAdapter
   }
-  if (adapterKey === 'bing') {
-    cachedAdapter = new BingSearchAdapter()
-    cachedAdapterKey = 'bing'
-    return cachedAdapter
+  if (adapterKey === 'brave') {
+	  cachedAdapter = new BraveSearchAdapter()
+	  cachedAdapterKey = 'brave'
+	  return cachedAdapter
   }
 
-  cachedAdapter = new BraveSearchAdapter()
-  cachedAdapterKey = 'brave'
+  cachedAdapter = new BingSearchAdapter()
+  cachedAdapterKey = 'bing'
   return cachedAdapter
 }
