@@ -11,8 +11,9 @@
  */
 
 import type { TaskContext } from '../../Task.js'
+import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { updateAgentSummary } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
-import { filterIncompleteToolCalls } from '../../tools/AgentTool/runAgent.js'
+import { filterIncompleteToolCalls } from '@claude-code-best/builtin-tools/tools/AgentTool/runAgent.js'
 import type { AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
@@ -60,6 +61,11 @@ export function startAgentSummarization(
 
   async function runSummary(): Promise<void> {
     if (stopped) return
+    if (isPoorModeActive()) {
+      logForDebugging('[AgentSummary] Skipping summary — poor mode active')
+      scheduleNext()
+      return
+    }
 
     logForDebugging(`[AgentSummary] Timer fired for agent ${agentId}`)
 

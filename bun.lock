@@ -28,6 +28,9 @@
         "@aws-sdk/credential-providers": "^3.1020.0",
         "@azure/identity": "^4.13.1",
         "@biomejs/biome": "^2.4.10",
+        "@claude-code-best/agent-tools": "workspace:*",
+        "@claude-code-best/builtin-tools": "workspace:*",
+        "@claude-code-best/mcp-client": "workspace:*",
         "@commander-js/extra-typings": "^14.0.0",
         "@growthbook/growthbook": "^1.6.5",
         "@langfuse/otel": "^5.1.0",
@@ -176,9 +179,23 @@
         "wrap-ansi": "^10.0.0",
       },
     },
+    "packages/agent-tools": {
+      "name": "@claude-code-best/agent-tools",
+      "version": "1.0.0",
+      "dependencies": {
+        "zod": "^3.25.0",
+      },
+    },
     "packages/audio-capture-napi": {
       "name": "audio-capture-napi",
       "version": "1.0.0",
+    },
+    "packages/builtin-tools": {
+      "name": "@claude-code-best/builtin-tools",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-code-best/agent-tools": "workspace:*",
+      },
     },
     "packages/color-diff-napi": {
       "name": "color-diff-napi",
@@ -192,6 +209,18 @@
       "version": "1.0.0",
       "dependencies": {
         "sharp": "^0.33.5",
+      },
+    },
+    "packages/mcp-client": {
+      "name": "@claude-code-best/mcp-client",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-code-best/agent-tools": "workspace:*",
+        "@modelcontextprotocol/sdk": "^1.29.0",
+        "lodash-es": "^4.17.21",
+        "lru-cache": "^10.0.0",
+        "p-map": "^4.0.0",
+        "zod": "^3.25.0",
       },
     },
     "packages/modifiers-napi": {
@@ -409,6 +438,12 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.4.11", "https://registry.npmmirror.com/@biomejs/cli-win32-arm64/-/cli-win32-arm64-2.4.11.tgz", { "os": "win32", "cpu": "arm64" }, "sha512-RJhaTnY8byzxDt4bDVb7AFPHkPcjOPK3xBip4ZRTrN3TEfyhjLRm3r3mqknqydgVTB74XG8l4jMLwEACEeihVg=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.11", "https://registry.npmmirror.com/@biomejs/cli-win32-x64/-/cli-win32-x64-2.4.11.tgz", { "os": "win32", "cpu": "x64" }, "sha512-A8D3JM/00C2KQgUV3oj8Ba15EHEYwebAGCy5Sf9GAjr5Y3+kJIYOiESoqRDeuRZueuMdCsbLZIUqmPhpYXJE9A=="],
+
+    "@claude-code-best/agent-tools": ["@claude-code-best/agent-tools@workspace:packages/agent-tools"],
+
+    "@claude-code-best/builtin-tools": ["@claude-code-best/builtin-tools@workspace:packages/builtin-tools"],
+
+    "@claude-code-best/mcp-client": ["@claude-code-best/mcp-client@workspace:packages/mcp-client"],
 
     "@commander-js/extra-typings": ["@commander-js/extra-typings@14.0.0", "https://registry.npmmirror.com/@commander-js/extra-typings/-/extra-typings-14.0.0.tgz", { "peerDependencies": { "commander": "~14.0.0" } }, "sha512-hIn0ncNaJRLkZrxBIp5AsW/eXEHNKYQBh0aPdoUqNgD+Io3NIykQqpKFyKcuasZhicGaEZJX/JBSIkZ4e5x8Dg=="],
 
@@ -1074,6 +1109,8 @@
 
     "agent-base": ["agent-base@8.0.0", "https://registry.npmmirror.com/agent-base/-/agent-base-8.0.0.tgz", {}, "sha512-QT8i0hCz6C/KQ+KTAbSNwCHDGdmUJl2tp2ZpNlGSWCfhUNVbYG2WLE3MdZGBAgXPV4GAvjGMxo+C1hroyxmZEg=="],
 
+    "aggregate-error": ["aggregate-error@3.1.0", "https://registry.npmmirror.com/aggregate-error/-/aggregate-error-3.1.0.tgz", { "dependencies": { "clean-stack": "^2.0.0", "indent-string": "^4.0.0" } }, "sha512-4I7Td01quW/RpocfNayFdFVk1qSuoh0E7JrbRJ16nH01HhKFQ88INq9Sd+nd72zqRySlr9BmDA8xlEJ6vJMrYA=="],
+
     "ajv": ["ajv@8.18.0", "https://registry.npmmirror.com/ajv/-/ajv-8.18.0.tgz", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-PlXPeEWMXMZ7sPYOHqmDyCJzcfNrUr3fGNKtezX14ykXOEIvyK81d+qydx89KY5O71FKMPaQ2vBfBFI5NHR63A=="],
 
     "ajv-formats": ["ajv-formats@3.0.1", "https://registry.npmmirror.com/ajv-formats/-/ajv-formats-3.0.1.tgz", { "dependencies": { "ajv": "^8.0.0" } }, "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ=="],
@@ -1159,6 +1196,8 @@
     "chrome-mcp-shared": ["chrome-mcp-shared@1.0.2", "https://registry.npmmirror.com/chrome-mcp-shared/-/chrome-mcp-shared-1.0.2.tgz", { "dependencies": { "@modelcontextprotocol/sdk": "^1.11.0", "zod": "^3.24.4" } }, "sha512-v+6HBmcgXrIfyVbkkrVgfFDzqOfDutI8yZM0yA8k7SiicqL1MfBoqnsOy5idYNvxyQymxCxXNuTmajn8xaGsgQ=="],
 
     "cjs-module-lexer": ["cjs-module-lexer@2.2.0", "https://registry.npmmirror.com/cjs-module-lexer/-/cjs-module-lexer-2.2.0.tgz", {}, "sha512-4bHTS2YuzUvtoLjdy+98ykbNB5jS0+07EvFNXerqZQJ89F7DI6ET7OQo/HJuW6K0aVsKA9hj9/RVb2kQVOrPDQ=="],
+
+    "clean-stack": ["clean-stack@2.2.0", "https://registry.npmmirror.com/clean-stack/-/clean-stack-2.2.0.tgz", {}, "sha512-4diC9HaTE+KRAMWhDhrGOECgWZxoevMc5TlkObMqNSsVU62PYzXZ/SMTjzyGAFF1YusgxGcSWTEXBhp0CPwQ1A=="],
 
     "cli-boxes": ["cli-boxes@4.0.1", "https://registry.npmmirror.com/cli-boxes/-/cli-boxes-4.0.1.tgz", {}, "sha512-5IOn+jcCEHEraYolBPs/sT4BxYCe2nHg374OPiItB1O96KZFseS2gthU4twyYzeDcFew4DaUM/xwc5BQf08JJw=="],
 
@@ -2142,6 +2181,14 @@
 
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "https://registry.npmmirror.com/semver/-/semver-6.3.1.tgz", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
+    "@claude-code-best/agent-tools/zod": ["zod@3.25.76", "https://registry.npmmirror.com/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+
+    "@claude-code-best/mcp-client/lru-cache": ["lru-cache@10.4.3", "https://registry.npmmirror.com/lru-cache/-/lru-cache-10.4.3.tgz", {}, "sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ=="],
+
+    "@claude-code-best/mcp-client/p-map": ["p-map@4.0.0", "https://registry.npmmirror.com/p-map/-/p-map-4.0.0.tgz", { "dependencies": { "aggregate-error": "^3.0.0" } }, "sha512-/bjOqmgETBYB5BoEeGVea8dmvHb2m9GLy1E9W43yeyfP6QQCZGFNa+XRceJEuDB6zqr+gKpIAmlLebMpykw/MQ=="],
+
+    "@claude-code-best/mcp-client/zod": ["zod@3.25.76", "https://registry.npmmirror.com/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+
     "@fastify/otel/@opentelemetry/instrumentation": ["@opentelemetry/instrumentation@0.212.0", "https://registry.npmmirror.com/@opentelemetry/instrumentation/-/instrumentation-0.212.0.tgz", { "dependencies": { "@opentelemetry/api-logs": "0.212.0", "import-in-the-middle": "^2.0.6", "require-in-the-middle": "^8.0.0" }, "peerDependencies": { "@opentelemetry/api": "^1.3.0" } }, "sha512-IyXmpNnifNouMOe0I/gX7ENfv2ZCNdYTF0FpCsoBcpbIHzk81Ww9rQTYTnvghszCg7qGrIhNvWC8dhEifgX9Jg=="],
 
     "@fastify/proxy-addr/ipaddr.js": ["ipaddr.js@2.3.0", "https://registry.npmmirror.com/ipaddr.js/-/ipaddr.js-2.3.0.tgz", {}, "sha512-Zv/pA+ciVFbCSBBjGfaKUya/CcGmUHzTydLMaTwrUUEM2DIEO3iZvueGxmacvmN50fGpGVKeTXpb2LcYQxeVdg=="],
@@ -2281,6 +2328,8 @@
     "@tailwindcss/oxide-wasm32-wasi/tslib": ["tslib@2.8.1", "https://registry.npmmirror.com/tslib/-/tslib-2.8.1.tgz", { "bundled": true }, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
     "@typespec/ts-http-runtime/https-proxy-agent": ["https-proxy-agent@7.0.6", "https://registry.npmmirror.com/https-proxy-agent/-/https-proxy-agent-7.0.6.tgz", { "dependencies": { "agent-base": "^7.1.2", "debug": "4" } }, "sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw=="],
+
+    "aggregate-error/indent-string": ["indent-string@4.0.0", "https://registry.npmmirror.com/indent-string/-/indent-string-4.0.0.tgz", {}, "sha512-EdDDZu4A2OyIK7Lr/2zG+w5jmbuk1DVBnEwREQvBzspBJkCEbRa8GxU1lghYcaGJCnRWibjDXlq779X1/y5xwg=="],
 
     "ansi-escapes/type-fest": ["type-fest@0.21.3", "https://registry.npmmirror.com/type-fest/-/type-fest-0.21.3.tgz", {}, "sha512-t0rzBq87m3fVcduHDUFhKmyyX+9eo6WQjZvf51Ea/M0Q7+T374Jp1aUiyUl0GKxp8M/OETVHSDvmkyPgvX+X2w=="],
 
