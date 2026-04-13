@@ -254,12 +254,17 @@ export async function* query(
       }
     : params
 
-  let terminal: Terminal
+  let terminal: Terminal | undefined
   try {
     terminal = yield* queryLoop(paramsWithTrace, consumedCommandUuids)
   } finally {
     // Only end the trace if we created it — sub-agents own their traces
-    if (ownsTrace) endTrace(langfuseTrace)
+    if (ownsTrace) {
+      const isAborted =
+        terminal?.reason === 'aborted_streaming' ||
+        terminal?.reason === 'aborted_tools'
+      endTrace(langfuseTrace, undefined, isAborted ? 'interrupted' : undefined)
+    }
   }
 
   // Only reached if queryLoop returned normally. Skipped on throw (error
@@ -269,7 +274,8 @@ export async function* query(
   for (const uuid of consumedCommandUuids) {
     notifyCommandLifecycle(uuid, 'completed')
   }
-  return terminal
+  // biome-ignore lint/style/noNonNullAssertion: terminal is always assigned when queryLoop returns normally
+  return terminal!
 }
 
 async function* queryLoop(
