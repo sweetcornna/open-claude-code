@@ -1309,6 +1309,7 @@ async function checkPermissionsAndCallTool(
       output: toolResultStr,
       startTime: new Date(startTime),
       isError: false,
+      parentBatchSpan: toolUseContext.langfuseBatchSpan,
     })
 
     // Map the tool result to API format once and cache it. This block is reused
@@ -1628,6 +1629,7 @@ async function checkPermissionsAndCallTool(
       output: errorMessage(error),
       startTime: new Date(startTime),
       isError: true,
+      parentBatchSpan: toolUseContext.langfuseBatchSpan,
     })
 
     // Handle MCP auth errors by updating the client status to 'needs-auth'
