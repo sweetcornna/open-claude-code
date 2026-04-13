@@ -145,7 +145,15 @@ if (typeof globalThis.Bun === "undefined") {
   function $(parts, ...args) {
     throw new Error("Bun.$ shell API is not available in Node.js. Use Bun runtime for this feature.");
   }
-  globalThis.Bun = { which, $ };
+  function hash(data, seed) {
+    let h = ((seed || 0) ^ 0x811c9dc5) >>> 0;
+    for (let i = 0; i < data.length; i++) {
+      h ^= data.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h;
+  }
+  globalThis.Bun = { which, $, hash };
 }
 import "./cli.js"
 `
