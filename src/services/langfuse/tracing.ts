@@ -117,6 +117,7 @@ export function recordToolObservation(
     output: string
     startTime?: Date
     isError?: boolean
+    parentBatchSpan?: LangfuseSpan | null
   },
 ): void {
   if (!rootSpan || !isLangfuseEnabled()) return
@@ -124,6 +125,7 @@ export function recordToolObservation(
     // Use the global startObservation directly instead of rootSpan.startObservation().
     // The instance method only forwards asType and drops startTime,
     // causing tool execution duration to be 0.
+    const parentSpan = params.parentBatchSpan ?? rootSpan
     const toolObs = startObservation(
       params.toolName,
       {
@@ -136,7 +138,7 @@ export function recordToolObservation(
       {
         asType: 'tool',
         ...(params.startTime && { startTime: params.startTime }),
-        parentSpanContext: rootSpan.otelSpan.spanContext(),
+        parentSpanContext: parentSpan.otelSpan.spanContext(),
       },
     )
 
@@ -155,6 +157,55 @@ export function recordToolObservation(
     logForDebugging(`[langfuse] Tool observation recorded: ${params.toolName} (${toolObs.id})`)
   } catch (e) {
     logForDebugging(`[langfuse] recordToolObservation failed: ${e}`, { level: 'error' })
+  }
+}
+
+/**
+ * Create a span that wraps a batch of concurrent tool calls.
+ * Returns the batch span (to be passed as parentBatchSpan to recordToolObservation)
+ * and must be ended with endToolBatchSpan() after all tools complete.
+ */
+export function createToolBatchSpan(
+  rootSpan: LangfuseSpan | null,
+  params: { toolNames: string[]; batchIndex: number },
+): LangfuseSpan | null {
+  if (!rootSpan || !isLangfuseEnabled()) return null
+  try {
+    const batchSpan = startObservation(
+      `tools`,
+      {
+        metadata: {
+          toolNames: params.toolNames.join(', '),
+          toolCount: String(params.toolNames.length),
+          batchIndex: String(params.batchIndex),
+        },
+      },
+      {
+        asType: 'span',
+        parentSpanContext: rootSpan.otelSpan.spanContext(),
+      },
+    ) as LangfuseSpan
+
+    const sessionId = (rootSpan as unknown as RootTrace)._sessionId
+    if (sessionId) {
+      batchSpan.otelSpan.setAttribute(LangfuseOtelSpanAttributes.TRACE_SESSION_ID, sessionId)
+    }
+
+    logForDebugging(`[langfuse] Tool batch span created: ${batchSpan.id} (tools=${params.toolNames.join(',')})`)
+    return batchSpan
+  } catch (e) {
+    logForDebugging(`[langfuse] createToolBatchSpan failed: ${e}`, { level: 'error' })
+    return null
+  }
+}
+
+export function endToolBatchSpan(batchSpan: LangfuseSpan | null): void {
+  if (!batchSpan) return
+  try {
+    batchSpan.end()
+    logForDebugging(`[langfuse] Tool batch span ended: ${batchSpan.id}`)
+  } catch (e) {
+    logForDebugging(`[langfuse] endToolBatchSpan failed: ${e}`, { level: 'error' })
   }
 }
 
@@ -187,14 +238,20 @@ export function createSubagentTrace(params: {
   }
 }
 
-export function endTrace(rootSpan: LangfuseSpan | null, output?: unknown): void {
+export function endTrace(
+  rootSpan: LangfuseSpan | null,
+  output?: unknown,
+  status?: 'interrupted' | 'error',
+): void {
   if (!rootSpan) return
   try {
-    if (output !== undefined) {
-      rootSpan.update({ output })
-    }
+    const updatePayload: Record<string, unknown> = {}
+    if (output !== undefined) updatePayload.output = output
+    if (status === 'interrupted') updatePayload.level = 'WARNING'
+    else if (status === 'error') updatePayload.level = 'ERROR'
+    if (Object.keys(updatePayload).length > 0) rootSpan.update(updatePayload)
     rootSpan.end()
-    logForDebugging(`[langfuse] Trace ended: ${rootSpan.id}`)
+    logForDebugging(`[langfuse] Trace ended: ${rootSpan.id}${status ? ` (${status})` : ''}`)
   } catch (e) {
     logForDebugging(`[langfuse] endTrace failed: ${e}`, { level: 'error' })
   }

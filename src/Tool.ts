@@ -277,6 +277,8 @@ export type ToolUseContext = {
   criticalSystemReminder_EXPERIMENTAL?: string
   /** Langfuse root trace span for this query turn. Passed down to tool execution for observability. */
   langfuseTrace?: LangfuseSpan | null
+  /** Langfuse batch span wrapping a concurrent tool group. When set, tool observations are nested under it. */
+  langfuseBatchSpan?: LangfuseSpan | null
   /** When true, preserve toolUseResult on messages even for subagents.
    * Used by in-process teammates whose transcripts are viewable by the user. */
   preserveToolUseResults?: boolean
