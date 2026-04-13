@@ -2907,7 +2907,12 @@ async function* queryModel(
     provider: getAPIProvider(),
     input: convertMessagesToLangfuse(messagesForAPI, systemPrompt),
     output: convertOutputToLangfuse(newMessages),
-    usage: { input_tokens: usage.input_tokens, output_tokens: usage.output_tokens },
+    usage: {
+      input_tokens: usage.input_tokens,
+      output_tokens: usage.output_tokens,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens,
+      cache_read_input_tokens: usage.cache_read_input_tokens,
+    },
     startTime: new Date(startIncludingRetries),
     endTime: new Date(),
     completionStartTime: ttftMs > 0 ? new Date(start + ttftMs) : undefined,

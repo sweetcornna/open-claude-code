@@ -68,7 +68,12 @@ export function recordLLMObservation(
     provider: string
     input: unknown
     output: unknown
-    usage: { input_tokens: number; output_tokens: number }
+    usage: {
+      input_tokens: number
+      output_tokens: number
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+    }
     startTime?: Date
     endTime?: Date
     completionStartTime?: Date
@@ -109,11 +114,17 @@ export function recordLLMObservation(
       gen.otelSpan.setAttribute(LangfuseOtelSpanAttributes.TRACE_USER_ID, userId)
     }
 
+    // Anthropic splits input into uncached + cache_read + cache_creation.
+    // Langfuse's "input" should be the total prompt tokens so cost calc is correct.
+    const cacheRead = params.usage.cache_read_input_tokens ?? 0
+    const cacheCreation = params.usage.cache_creation_input_tokens ?? 0
     gen.update({
       output: params.output,
       usageDetails: {
-        input: params.usage.input_tokens,
+        input: params.usage.input_tokens + cacheCreation + cacheRead,
         output: params.usage.output_tokens,
+        ...(cacheRead > 0 && { cache_read: cacheRead }),
+        ...(cacheCreation > 0 && { cache_creation: cacheCreation }),
       },
     })
 

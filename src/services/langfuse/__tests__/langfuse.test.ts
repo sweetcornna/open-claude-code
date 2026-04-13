@@ -284,6 +284,48 @@ describe('Langfuse integration', () => {
       }))
       expect(mockRootEnd).toHaveBeenCalled()
     })
+
+    test('includes cache tokens in usageDetails when provided', async () => {
+      process.env.LANGFUSE_PUBLIC_KEY = 'pk-test'
+      process.env.LANGFUSE_SECRET_KEY = 'sk-test'
+      const { createTrace, recordLLMObservation } = await import('../tracing.js')
+      const span = createTrace({ sessionId: 's1', model: 'claude-3', provider: 'firstParty' })
+      mockStartObservation.mockClear()
+      mockRootUpdate.mockClear()
+      recordLLMObservation(span, {
+        model: 'claude-3',
+        provider: 'firstParty',
+        input: [],
+        output: [],
+        usage: { input_tokens: 10000, output_tokens: 50, cache_creation_input_tokens: 2000, cache_read_input_tokens: 7000 },
+      })
+      expect(mockRootUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        usageDetails: {
+          input: 19000, // 10000 + 2000 + 7000
+          output: 50,
+          cache_read: 7000,
+          cache_creation: 2000,
+        },
+      }))
+    })
+
+    test('omits cache fields when not provided', async () => {
+      process.env.LANGFUSE_PUBLIC_KEY = 'pk-test'
+      process.env.LANGFUSE_SECRET_KEY = 'sk-test'
+      const { createTrace, recordLLMObservation } = await import('../tracing.js')
+      const span = createTrace({ sessionId: 's1', model: 'claude-3', provider: 'firstParty' })
+      mockRootUpdate.mockClear()
+      recordLLMObservation(span, {
+        model: 'claude-3',
+        provider: 'firstParty',
+        input: [],
+        output: [],
+        usage: { input_tokens: 100, output_tokens: 20 },
+      })
+      expect(mockRootUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        usageDetails: { input: 100, output: 20 },
+      }))
+    })
   })
 
   describe('recordToolObservation', () => {
