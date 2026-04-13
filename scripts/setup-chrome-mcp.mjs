@@ -13,7 +13,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 const require = createRequire(import.meta.url);
-const cliPath = require.resolve("mcp-chrome-bridge/dist/cli.js");
+const cliPath = require.resolve("@claude-code-best/mcp-chrome-bridge/dist/cli.js");
 
 const userArgs = process.argv.slice(2);
 
