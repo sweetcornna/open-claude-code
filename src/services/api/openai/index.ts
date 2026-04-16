@@ -72,6 +72,28 @@ export function isOpenAIThinkingEnabled(model: string): boolean {
 }
 
 /**
+ * Resolve max output tokens for the OpenAI-compatible path.
+ *
+ * Override priority:
+ * 1. maxOutputTokensOverride (programmatic, from query pipeline)
+ * 2. OPENAI_MAX_TOKENS env var (OpenAI-specific, useful for local models
+ *    with small context windows, e.g. RTX 3060 12GB running 65536-token models)
+ * 3. CLAUDE_CODE_MAX_OUTPUT_TOKENS env var (generic override)
+ * 4. upperLimit default (64000)
+ *
+ * @internal Exported for testing purposes only
+ */
+export function resolveOpenAIMaxTokens(
+  upperLimit: number,
+  maxOutputTokensOverride?: number,
+): number {
+  return maxOutputTokensOverride
+    ?? (process.env.OPENAI_MAX_TOKENS ? parseInt(process.env.OPENAI_MAX_TOKENS, 10) || undefined : undefined)
+    ?? (process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ? parseInt(process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, 10) || undefined : undefined)
+    ?? upperLimit
+}
+
+/**
  * Build the request body for OpenAI chat.completions.create().
  * Extracted for testability — the thinking mode params are injected here.
  *
@@ -165,7 +187,7 @@ function assembleFinalAssistantOutputs(params: {
   if (stopReason === 'max_tokens') {
     outputs.push(createAssistantAPIErrorMessage({
       content: `Output truncated: response exceeded the ${maxTokens} token limit. ` +
-        `Set CLAUDE_CODE_MAX_OUTPUT_TOKENS to override.`,
+        `Set OPENAI_MAX_TOKENS or CLAUDE_CODE_MAX_OUTPUT_TOKENS to override.`,
       apiError: 'max_output_tokens',
       error: 'max_output_tokens',
     }))
@@ -286,8 +308,15 @@ export async function* queryModelOpenAI(
     //     auto-retry at 64k in query.ts. The OpenAI path has no such retry, so
     //     using the capped 8k default would silently truncate responses in
     //     multi-turn conversations where thinking consumes most of the budget.
+    //
+    //     Override priority:
+    //     1. options.maxOutputTokensOverride (programmatic)
+    //     2. OPENAI_MAX_TOKENS env var (OpenAI-specific, useful for local models
+    //        with small context windows, e.g. RTX 3060 12GB running 65536-token models)
+    //     3. CLAUDE_CODE_MAX_OUTPUT_TOKENS env var (generic override)
+    //     4. upperLimit default (64000)
     const { upperLimit } = getModelMaxOutputTokens(openaiModel)
-    const maxTokens = options.maxOutputTokensOverride ?? upperLimit
+    const maxTokens = resolveOpenAIMaxTokens(upperLimit, options.maxOutputTokensOverride)
 
     // 11. Get client
     const client = getOpenAIClient({
