@@ -194,6 +194,16 @@ mock.module('../convertTools.js', () => ({
 mock.module('../../../../utils/context.js', () => ({
   getModelMaxOutputTokens: () => ({ upperLimit: 8192, default: 8192 }),
   getContextWindowForModel: () => 200_000,
+  modelSupports1M: () => false,
+  has1mContext: () => false,
+  is1mContextDisabled: () => false,
+  getSonnet1mExpTreatmentEnabled: () => false,
+  MODEL_CONTEXT_WINDOW_DEFAULT: 200_000,
+  COMPACT_MAX_OUTPUT_TOKENS: 20_000,
+  CAPPED_DEFAULT_MAX_TOKENS: 8_000,
+  ESCALATED_MAX_TOKENS: 64_000,
+  calculateContextPercentages: () => ({ used: null, remaining: null }),
+  getMaxThinkingTokensForModel: () => 8191,
 }))
 
 mock.module('../../../../utils/messages.js', () => ({
@@ -209,6 +219,22 @@ mock.module('../../../../utils/messages.js', () => ({
 
 mock.module('../../../../utils/api.js', () => ({
   toolToAPISchema: async (t: any) => t,
+}))
+
+mock.module('../../../../Tool.js', () => ({
+  getEmptyToolPermissionContext: () => ({
+    alwaysAllow: [],
+    alwaysDeny: [],
+    needsPermission: [],
+    mode: 'default',
+    isBypassingPermissions: false,
+  }),
+  toolMatchesName: () => false,
+}))
+
+mock.module('../../../../utils/envUtils.js', () => ({
+  isEnvTruthy: (v: string | undefined) => v === '1' || v === 'true',
+  isEnvDefinedFalsy: (v: string | undefined) => v === '0' || v === 'false' || v === 'no' || v === 'off',
 }))
 
 mock.module('../../../../utils/toolSearch.js', () => ({
@@ -450,5 +476,84 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(8192)
+  })
+
+  test('OPENAI_MAX_TOKENS env var overrides max_tokens', async () => {
+    const original = process.env.OPENAI_MAX_TOKENS
+    process.env.OPENAI_MAX_TOKENS = '4096'
+    try {
+      _nextEvents = [
+        makeMessageStart(),
+        makeContentBlockStart(0, 'text'),
+        makeTextDelta(0, 'hi'),
+        makeContentBlockStop(0),
+        makeMessageDelta('end_turn', 5),
+        makeMessageStop(),
+      ]
+
+      await runQueryModel(_nextEvents)
+
+      expect(_lastCreateArgs).not.toBeNull()
+      expect(_lastCreateArgs!.max_tokens).toBe(4096)
+    } finally {
+      if (original === undefined) {
+        delete process.env.OPENAI_MAX_TOKENS
+      } else {
+        process.env.OPENAI_MAX_TOKENS = original
+      }
+    }
+  })
+
+  test('CLAUDE_CODE_MAX_OUTPUT_TOKENS env var overrides max_tokens', async () => {
+    const original = process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+    process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '2048'
+    try {
+      _nextEvents = [
+        makeMessageStart(),
+        makeContentBlockStart(0, 'text'),
+        makeTextDelta(0, 'hi'),
+        makeContentBlockStop(0),
+        makeMessageDelta('end_turn', 5),
+        makeMessageStop(),
+      ]
+
+      await runQueryModel(_nextEvents)
+
+      expect(_lastCreateArgs).not.toBeNull()
+      expect(_lastCreateArgs!.max_tokens).toBe(2048)
+    } finally {
+      if (original === undefined) {
+        delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+      } else {
+        process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = original
+      }
+    }
+  })
+
+  test('OPENAI_MAX_TOKENS takes priority over CLAUDE_CODE_MAX_OUTPUT_TOKENS', async () => {
+    const origOpenai = process.env.OPENAI_MAX_TOKENS
+    const origClaude = process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+    process.env.OPENAI_MAX_TOKENS = '4096'
+    process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '2048'
+    try {
+      _nextEvents = [
+        makeMessageStart(),
+        makeContentBlockStart(0, 'text'),
+        makeTextDelta(0, 'hi'),
+        makeContentBlockStop(0),
+        makeMessageDelta('end_turn', 5),
+        makeMessageStop(),
+      ]
+
+      await runQueryModel(_nextEvents)
+
+      expect(_lastCreateArgs).not.toBeNull()
+      expect(_lastCreateArgs!.max_tokens).toBe(4096)
+    } finally {
+      if (origOpenai === undefined) delete process.env.OPENAI_MAX_TOKENS
+      else process.env.OPENAI_MAX_TOKENS = origOpenai
+      if (origClaude === undefined) delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+      else process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = origClaude
+    }
   })
 })
