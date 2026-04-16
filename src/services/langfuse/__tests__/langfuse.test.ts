@@ -653,6 +653,117 @@ describe('Langfuse integration', () => {
     })
   })
 
+  describe('convertToolsToLangfuse', () => {
+    test('converts Anthropic tool schema to OpenAI-style format', async () => {
+      const { convertToolsToLangfuse } = await import('../convert.js')
+      const tools = [
+        {
+          name: 'BashTool',
+          description: 'Execute a bash command',
+          input_schema: {
+            type: 'object',
+            properties: { command: { type: 'string' } },
+            required: ['command'],
+          },
+        },
+      ]
+      const result = convertToolsToLangfuse(tools) as Array<Record<string, unknown>>
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({
+        type: 'function',
+        function: {
+          name: 'BashTool',
+          description: 'Execute a bash command',
+          parameters: {
+            type: 'object',
+            properties: { command: { type: 'string' } },
+            required: ['command'],
+          },
+        },
+      })
+    })
+
+    test('converts multiple tools', async () => {
+      const { convertToolsToLangfuse } = await import('../convert.js')
+      const tools = [
+        { name: 'ReadTool', description: 'Read a file', input_schema: { type: 'object' } },
+        { name: 'WriteTool', description: 'Write a file', input_schema: { type: 'object' } },
+      ]
+      const result = convertToolsToLangfuse(tools) as Array<Record<string, unknown>>
+      expect(result).toHaveLength(2)
+      expect((result[0]!.function as Record<string, unknown>).name).toBe('ReadTool')
+      expect((result[1]!.function as Record<string, unknown>).name).toBe('WriteTool')
+    })
+
+    test('falls back to parameters when input_schema is missing', async () => {
+      const { convertToolsToLangfuse } = await import('../convert.js')
+      const tools = [
+        { name: 'Tool1', description: 'desc', parameters: { type: 'object', properties: { a: { type: 'string' } } } },
+      ]
+      const result = convertToolsToLangfuse(tools) as Array<Record<string, unknown>>
+      expect((result[0]!.function as Record<string, unknown>).parameters).toEqual({
+        type: 'object',
+        properties: { a: { type: 'string' } },
+      })
+    })
+
+    test('uses empty object when neither input_schema nor parameters exist', async () => {
+      const { convertToolsToLangfuse } = await import('../convert.js')
+      const tools = [{ name: 'Tool1', description: 'desc' }]
+      const result = convertToolsToLangfuse(tools) as Array<Record<string, unknown>>
+      expect((result[0]!.function as Record<string, unknown>).parameters).toEqual({})
+    })
+
+    test('returns empty array for empty input', async () => {
+      const { convertToolsToLangfuse } = await import('../convert.js')
+      expect(convertToolsToLangfuse([])).toEqual([])
+    })
+  })
+
+  describe('recordLLMObservation with tools', () => {
+    test('wraps input into { messages, tools } when tools provided', async () => {
+      process.env.LANGFUSE_PUBLIC_KEY = 'pk-test'
+      process.env.LANGFUSE_SECRET_KEY = 'sk-test'
+      const { createTrace, recordLLMObservation } = await import('../tracing.js')
+      const span = createTrace({ sessionId: 's1', model: 'claude-3', provider: 'firstParty' })
+      mockStartObservation.mockClear()
+      const messages = [{ role: 'user', content: 'hello' }]
+      const tools = [{ type: 'function', function: { name: 'Bash', description: 'Run', parameters: {} } }]
+      recordLLMObservation(span, {
+        model: 'claude-3',
+        provider: 'firstParty',
+        input: messages,
+        output: [],
+        usage: { input_tokens: 10, output_tokens: 5 },
+        tools,
+      })
+      expect(mockStartObservation).toHaveBeenCalledWith('ChatAnthropic', expect.objectContaining({
+        input: { messages, tools },
+      }), expect.objectContaining({
+        asType: 'generation',
+      }))
+    })
+
+    test('keeps input as-is when tools not provided', async () => {
+      process.env.LANGFUSE_PUBLIC_KEY = 'pk-test'
+      process.env.LANGFUSE_SECRET_KEY = 'sk-test'
+      const { createTrace, recordLLMObservation } = await import('../tracing.js')
+      const span = createTrace({ sessionId: 's1', model: 'claude-3', provider: 'firstParty' })
+      mockStartObservation.mockClear()
+      const messages = [{ role: 'user', content: 'hello' }]
+      recordLLMObservation(span, {
+        model: 'claude-3',
+        provider: 'firstParty',
+        input: messages,
+        output: [],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      })
+      expect(mockStartObservation).toHaveBeenCalledWith('ChatAnthropic', expect.objectContaining({
+        input: messages,
+      }), expect.any(Object))
+    })
+  })
+
   describe('SDK exceptions do not affect main flow', () => {
     test('createTrace returns null on SDK error', async () => {
       process.env.LANGFUSE_PUBLIC_KEY = 'pk-test'

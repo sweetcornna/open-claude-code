@@ -230,7 +230,7 @@ import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { recordLLMObservation } from '../langfuse/index.js'
 import type { LangfuseSpan } from '../langfuse/index.js'
-import { convertMessagesToLangfuse, convertOutputToLangfuse } from '../langfuse/convert.js'
+import { convertMessagesToLangfuse, convertOutputToLangfuse, convertToolsToLangfuse } from '../langfuse/convert.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
 import { CLIENT_REQUEST_ID_HEADER, getAnthropicClient } from './client.js'
 import {
@@ -2916,6 +2916,7 @@ async function* queryModel(
     startTime: new Date(startIncludingRetries),
     endTime: new Date(),
     completionStartTime: ttftMs > 0 ? new Date(start + ttftMs) : undefined,
+    tools: convertToolsToLangfuse(toolSchemas as unknown[]),
   })
 
   void options.getToolPermissionContext().then(permissionContext => {

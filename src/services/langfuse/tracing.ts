@@ -77,6 +77,7 @@ export function recordLLMObservation(
     startTime?: Date
     endTime?: Date
     completionStartTime?: Date
+    tools?: unknown
   },
 ): void {
   if (!rootSpan || !isLangfuseEnabled()) return
@@ -90,7 +91,9 @@ export function recordLLMObservation(
       genName,
       {
         model: params.model,
-        input: params.input,
+        input: params.tools
+          ? { messages: params.input, tools: params.tools }
+          : params.input,
         metadata: {
           provider: params.provider,
           model: params.model,
