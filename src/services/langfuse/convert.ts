@@ -101,6 +101,21 @@ export function convertMessagesToLangfuse(
   return result
 }
 
+/** Convert Anthropic-style tool schemas to Langfuse-compatible OpenAI-style tool format */
+export function convertToolsToLangfuse(tools: unknown[]): unknown[] {
+  return tools.map(tool => {
+    const t = tool as Record<string, unknown>
+    return {
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema ?? t.parameters ?? {},
+      },
+    }
+  })
+}
+
 /** Convert AssistantMessage[] (newMessages) → Langfuse output format (last assistant turn) */
 export function convertOutputToLangfuse(
   messages: AssistantMessage[],
