@@ -65,7 +65,7 @@ import {
   registerProcessOutputErrorHandlers,
 } from 'src/utils/process.js'
 import type { Stream } from 'src/utils/stream.js'
-import { EMPTY_USAGE } from 'src/services/api/logging.js'
+import { EMPTY_USAGE } from '@ant/model-provider'
 import {
   loadConversationForResume,
   type TurnInterruptionState,

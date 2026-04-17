@@ -1,4 +1,14 @@
 import { describe, expect, mock, test } from 'bun:test'
+
+const _abortMock = () => ({
+  AbortError: class AbortError extends Error {
+    constructor(message?: string) { super(message); this.name = 'AbortError' }
+  },
+  isAbortError: (e: unknown) => e instanceof Error && (e as Error).name === 'AbortError',
+})
+mock.module('src/utils/errors.js', _abortMock)
+mock.module('src/utils/errors', _abortMock)
+
 import { extractBingResults, decodeHtmlEntities } from '../adapters/bingAdapter'
 
 // ---------------------------------------------------------------------------

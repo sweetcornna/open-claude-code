@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { isOpenAIThinkingEnabled, buildOpenAIRequestBody } from '../index.js'
+import { isOpenAIThinkingEnabled, buildOpenAIRequestBody } from '../requestBody.js'
 
 describe('isOpenAIThinkingEnabled', () => {
   const originalEnv = {

@@ -10,8 +10,8 @@ import type {
   ChatCompletionToolMessageParam,
   ChatCompletionUserMessageParam,
 } from 'openai/resources/chat/completions/completions.mjs'
-import type { AssistantMessage, UserMessage } from '../../../types/message.js'
-import type { SystemPrompt } from '../../../utils/systemPromptType.js'
+import type { AssistantMessage, UserMessage } from '../types/message.js'
+import type { SystemPrompt } from '../types/systemPrompt.js'
 
 export interface ConvertMessagesOptions {
   /** When true, preserve thinking blocks as reasoning_content on assistant messages
@@ -152,7 +152,6 @@ function convertInternalUserMessage(
     // OpenAI API requires that a tool message immediately follows the assistant
     // message with tool_calls. If we emit a user message first, the API will
     // reject the request with "insufficient tool messages following tool_calls".
-    // See: https://github.com/anthropics/claude-code/issues/xxx
     for (const tr of toolResults) {
       result.push(convertToolResult(tr))
     }

@@ -1,5 +1,17 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
+// Defensive mock: agent.test.ts mocks config.js which can corrupt Bun's
+// src/* path alias resolution. Provide AbortError directly so the dynamic
+// import in createAdapter() never needs to resolve the alias at runtime.
+const _abortMock = () => ({
+  AbortError: class AbortError extends Error {
+    constructor(message?: string) { super(message); this.name = 'AbortError' }
+  },
+  isAbortError: (e: unknown) => e instanceof Error && (e as Error).name === 'AbortError',
+})
+mock.module('src/utils/errors.js', _abortMock)
+mock.module('src/utils/errors', _abortMock)
+
 const originalBraveSearchApiKey = process.env.BRAVE_SEARCH_API_KEY
 const originalBraveApiKey = process.env.BRAVE_API_KEY
 

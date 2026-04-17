@@ -16,9 +16,6 @@ const DEFAULT_MODEL_MAP: Record<string, string> = {
   'claude-3-5-sonnet-20241022': 'gpt-4o',
 }
 
-/**
- * Determine the model family (haiku / sonnet / opus) from an Anthropic model ID.
- */
 function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
   if (/haiku/i.test(model)) return 'haiku'
   if (/opus/i.test(model)) return 'opus'
@@ -37,23 +34,18 @@ function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
  * 5. Pass through original model name
  */
 export function resolveOpenAIModel(anthropicModel: string): string {
-  // Highest priority: explicit override
   if (process.env.OPENAI_MODEL) {
     return process.env.OPENAI_MODEL
   }
 
-  // Strip [1m] suffix if present (Claude-specific modifier)
   const cleanModel = anthropicModel.replace(/\[1m\]$/, '')
 
-  // Check family-specific overrides
   const family = getModelFamily(cleanModel)
   if (family) {
-    // OpenAI-specific family override (preferred for openai provider)
     const openaiEnvVar = `OPENAI_DEFAULT_${family.toUpperCase()}_MODEL`
     const openaiOverride = process.env[openaiEnvVar]
     if (openaiOverride) return openaiOverride
 
-    // Anthropic env var (backward compatibility)
     const anthropicEnvVar = `ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`
     const anthropicOverride = process.env[anthropicEnvVar]
     if (anthropicOverride) return anthropicOverride

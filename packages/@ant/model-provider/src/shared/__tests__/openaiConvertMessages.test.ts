@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { anthropicMessagesToOpenAI } from '../convertMessages.js'
-import type { UserMessage, AssistantMessage } from '../../../../types/message.js'
+import { anthropicMessagesToOpenAI } from '../openaiConvertMessages.js'
+import type { UserMessage, AssistantMessage } from '../../types/message.js'
 
 // Helpers to create internal-format messages
 function makeUserMsg(content: string | any[]): UserMessage {
@@ -396,10 +396,6 @@ describe('DeepSeek thinking mode (enableThinking)', () => {
       { enableThinking: true },
     )
 
-    // All 3 assistant messages are in the current turn (after last user msg is the last tool_result,
-    // but the "last user message" boundary logic finds the last user-typed message).
-    // Actually, tool_result messages are also UserMessage type, so the last user message
-    // is the one with tool_result for toolu_002. All assistant messages after that should have reasoning.
     const assistants = result.filter(m => m.role === 'assistant')
     expect(assistants.length).toBe(3)
     // All iterations within the same turn preserve reasoning
@@ -433,6 +429,54 @@ describe('DeepSeek thinking mode (enableThinking)', () => {
     )
     const assistant = result.filter(m => m.role === 'assistant')[0] as any
     expect(assistant.reasoning_content).toBeUndefined()
+  })
+
+  // ── fix: reorder tool and user messages for OpenAI API compatibility (#168) ──
+
+  test('tool messages come BEFORE user text when mixed in same turn', () => {
+    // OpenAI requires: assistant(tool_calls) → tool → user
+    // Bug: previously user text was emitted before tool messages
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg('run ls'),
+        makeAssistantMsg([
+          { type: 'tool_use' as const, id: 'toolu_1', name: 'bash', input: { command: 'ls' } },
+        ]),
+        makeUserMsg([
+          { type: 'tool_result' as const, tool_use_id: 'toolu_1', content: 'file.txt' },
+          { type: 'text' as const, text: 'looks good' },
+        ]),
+      ],
+      [] as any,
+    )
+    // Find the tool message and the user text message
+    const toolIdx = result.findIndex(m => m.role === 'tool')
+    const userTextIdx = result.findIndex(
+      m => m.role === 'user' && typeof m.content === 'string' && m.content.includes('looks good'),
+    )
+    expect(toolIdx).toBeGreaterThanOrEqual(0)
+    expect(userTextIdx).toBeGreaterThanOrEqual(0)
+    // Tool MUST come before user text
+    expect(toolIdx).toBeLessThan(userTextIdx)
+  })
+
+  test('tool message immediately follows assistant tool_calls (no user message in between)', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg('do something'),
+        makeAssistantMsg([
+          { type: 'tool_use' as const, id: 'toolu_2', name: 'bash', input: { command: 'pwd' } },
+        ]),
+        makeUserMsg([
+          { type: 'tool_result' as const, tool_use_id: 'toolu_2', content: '/home/user' },
+        ]),
+      ],
+      [] as any,
+    )
+    const assistantIdx = result.findIndex(m => m.role === 'assistant' && (m as any).tool_calls)
+    const toolIdx = result.findIndex(m => m.role === 'tool')
+    expect(assistantIdx).toBeGreaterThanOrEqual(0)
+    expect(toolIdx).toBe(assistantIdx + 1)
   })
 
   test('sets content to null when only thinking and tool_calls present', () => {

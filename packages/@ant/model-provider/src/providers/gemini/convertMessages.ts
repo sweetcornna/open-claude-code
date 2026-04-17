@@ -2,15 +2,24 @@ import type {
   BetaToolResultBlockParam,
   BetaToolUseBlock,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { AssistantMessage, UserMessage } from '../../../types/message.js'
-import { safeParseJSON } from '../../../utils/json.js'
-import type { SystemPrompt } from '../../../utils/systemPromptType.js'
+import type { AssistantMessage, UserMessage } from '../../types/message.js'
+import type { SystemPrompt } from '../../types/systemPrompt.js'
 import {
   GEMINI_THOUGHT_SIGNATURE_FIELD,
   type GeminiContent,
   type GeminiGenerateContentRequest,
   type GeminiPart,
 } from './types.js'
+
+// Simple JSON parse utility (replaces safeParseJSON from main project)
+function safeParseJSON(json: string | null | undefined): unknown {
+  if (!json) return null
+  try {
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
 
 export function anthropicMessagesToGemini(
   messages: (UserMessage | AssistantMessage)[],
@@ -113,7 +122,7 @@ function convertUserContentBlockToGeminiParts(
     ]
   }
 
-  // 将 Anthropic image 块转换为 Gemini inlineData
+  // Convert Anthropic image blocks to Gemini inlineData
   if (block.type === 'image') {
     const source = block.source as Record<string, unknown> | undefined
     if (source?.type === 'base64' && typeof source.data === 'string') {
@@ -127,7 +136,7 @@ function convertUserContentBlockToGeminiParts(
         },
       ]
     }
-    // url 类型的图片，Gemini 不直接支持，转为文本描述
+    // URL images not directly supported by Gemini, convert to text description
     if (source?.type === 'url' && typeof source.url === 'string') {
       return createTextGeminiParts(`[image: ${source.url}]`)
     }

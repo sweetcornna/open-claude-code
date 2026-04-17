@@ -1,4 +1,5 @@
 {
+    "extends": "./tsconfig.base.json",
     "compilerOptions": {
         "target": "ESNext",
         "module": "ESNext",
@@ -10,7 +11,7 @@
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,
         "resolveJsonModule": true,
-        "types": ["bun", "@types/node"],
+        "types": ["bun"],
         "paths": {
             "src/*": ["./src/*"],
             "@claude-code-best/builtin-tools/*": ["./packages/builtin-tools/src/*"],
