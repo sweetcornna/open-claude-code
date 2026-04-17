@@ -24,7 +24,9 @@ jobs:
         run: bunx tsc --noEmit
 
       - name: Test with Coverage
-        run: bun test --coverage --coverage-reporter=lcov
+        run: |
+          set -o pipefail
+          bun test --coverage --coverage-reporter=lcov 2>&1 | grep -vE '^\s*(\(pass\)|\(skip\))' | sed '/^.*\/__tests__\/.*:$/d' | cat -s
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
