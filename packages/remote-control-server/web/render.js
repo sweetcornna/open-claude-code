@@ -597,7 +597,7 @@ function renderSystemMessage(text) {
 const LOADING_ID = "loading-indicator";
 
 // TUI star spinner frames (same as Claude Code CLI)
-const SPINNER_FRAMES = ["·", "✢", "✳", "✶", "✻", "✽"];
+const SPINNER_FRAMES = ["·", "✢", "✱", "✶", "✻", "✽"];
 const SPINNER_CYCLE = [...SPINNER_FRAMES, ...SPINNER_FRAMES.slice().reverse()];
 
 // 204 verbs from TUI src/constants/spinnerVerbs.ts
