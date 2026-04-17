@@ -1,17 +1,5 @@
 import { mock, describe, expect, test, beforeEach, afterEach } from "bun:test";
 
-// Mock slowOperations to cut bootstrap/state dependency chain
-// (figures.js → env.js → fsOperations.js → slowOperations.js → bootstrap/state.js)
-mock.module("src/utils/slowOperations.ts", () => ({
-  jsonStringify: JSON.stringify,
-  jsonParse: JSON.parse,
-  slowLogging: { enabled: false },
-  clone: (v: any) => structuredClone(v),
-  cloneDeep: (v: any) => structuredClone(v),
-  callerFrame: () => "",
-  SLOW_OPERATION_THRESHOLD_MS: 100,
-  writeFileSync_DEPRECATED: () => {},
-}));
 mock.module("src/utils/log.ts", () => ({
   logError: () => {},
   logToFile: () => {},

@@ -26,14 +26,7 @@ mock.module('../../../Tool.js', () => ({
   buildTool: mock((def: any) => def),
 }))
 
-mock.module('../../../utils/config.js', () => ({
-  enableConfigs: mock(() => {}),
-}))
-
-// Also mock via src/ alias to prevent alias resolution corruption for other test files.
-// See: agent.test.ts's relative-path mock for config.js breaks Bun's src/* path
-// alias for subsequent test files (Cannot find module 'src/utils/errors.js' etc.)
-mock.module('src/utils/config.js', () => ({
+mock.module('src/utils/config.ts', () => ({
   enableConfigs: mock(() => {}),
 }))
 
