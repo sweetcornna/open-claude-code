@@ -247,13 +247,22 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 ## Testing
 
 - **框架**: `bun:test`（内置断言 + mock）
-- **当前状态**: 2472 tests / 138 files / 0 fail
+- **当前状态**: 2992 tests / 188 files / 0 fail
 - **单元测试**: 就近放置于 `src/**/__tests__/`，文件名 `<module>.test.ts`
 - **集成测试**: `tests/integration/` — 4 个文件（cli-arguments, context-build, message-pipeline, tool-chain）
 - **共享 mock/fixture**: `tests/mocks/`（api-responses, file-system, fixtures/）
 - **命名**: `describe("functionName")` + `test("behavior description")`，英文
-- **Mock 模式**: 对重依赖模块使用 `mock.module()` + `await import()` 解锁（必须内联在测试文件中，不能从共享 helper 导入）
 - **包测试**: `packages/` 下各包也有独立测试（如 `color-diff-napi` 11 tests）
+
+### Mock 使用规范
+
+**只 mock 有副作用的依赖链，不 mock 纯函数/纯数据模块。**
+
+被迫 mock 的根源：`log.ts` / `debug.ts` → `bootstrap/state.ts`（模块级 `realpathSync` / `randomUUID` 副作用）。必须 mock 的模块：`log.ts`、`debug.ts`、`bun:bundle`、`settings/settings.js`、`config.ts`、`auth.ts`、第三方网络库。
+
+不要 mock：纯函数模块（`errors.ts`、`stringUtils.js`）、mock 值与真实实现相同的模块、mock 路径与实际 import 不匹配的模块。
+
+路径规则：统一用 `.ts` 扩展名 + `src/*` 别名路径，禁止双重 mock 同一模块。
 
 ### 类型检查
 
