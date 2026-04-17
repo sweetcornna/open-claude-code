@@ -17,14 +17,12 @@ export function resolveGeminiModel(anthropicModel: string): string {
     return cleanModel
   }
 
-  // First, try Gemini-specific DEFAULT variables (separated from Anthropic)
   const geminiEnvVar = `GEMINI_DEFAULT_${family.toUpperCase()}_MODEL`
   const geminiModel = process.env[geminiEnvVar]
   if (geminiModel) {
     return geminiModel
   }
 
-  // Fallback to Anthropic DEFAULT variables for backward compatibility
   const sharedEnvVar = `ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`
   const resolvedModel = process.env[sharedEnvVar]
   if (resolvedModel) {

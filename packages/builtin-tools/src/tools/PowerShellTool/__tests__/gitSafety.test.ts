@@ -7,6 +7,18 @@ mock.module("src/utils/cwd.js", () => ({
   getCwd: () => mockCwd,
 }));
 
+// Defensive: agent.test.ts can corrupt Bun's src/* path alias at runtime.
+mock.module("src/utils/powershell/parser.js", () => ({
+  PS_TOKENIZER_DASH_CHARS: new Set(['-', '\u2013', '\u2014', '\u2015']),
+  COMMON_ALIASES: {},
+  commandHasArgAbbreviation: () => false,
+  deriveSecurityFlags: () => ({}),
+  getAllCommands: () => [],
+  getVariablesByScope: () => [],
+  hasCommandNamed: () => false,
+  parsePowerShellCommandCached: () => ({ valid: false, errors: [], statements: [], variables: [], hasStopParsing: false, originalCommand: "" }),
+}))
+
 const { isGitInternalPathPS, isDotGitPathPS } = await import("../gitSafety");
 
 describe("isGitInternalPathPS", () => {

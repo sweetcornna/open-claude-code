@@ -32,6 +32,58 @@ mock.module("src/utils/powershell/dangerousCmdlets.js", () => ({
   ]),
 }));
 
+// Defensive: agent.test.ts can corrupt Bun's src/* path alias at runtime.
+// Provide parser stubs so powershellSecurity.ts loads without the alias.
+// The tests build ParsedPowerShellCommand objects manually via makeParsed(),
+// so the real parser implementations are not needed for these specific tests.
+const MOCK_COMMON_ALIASES: Record<string, string> = {
+  iex: "Invoke-Expression",
+  ii: "Invoke-Item",
+  sal: "Set-Alias",
+  ipmo: "Import-Module",
+  iwmi: "Invoke-WmiMethod",
+  saps: "Start-Process",
+  start: "Start-Process",
+};
+
+mock.module("src/utils/powershell/parser.js", () => ({
+  COMMON_ALIASES: MOCK_COMMON_ALIASES,
+  commandHasArgAbbreviation: (cmd: any, fullParam: string, minPrefix: string) => {
+    const fullLower = fullParam.toLowerCase()
+    const prefixLower = minPrefix.toLowerCase()
+    return cmd.args.some((a: string) => {
+      const lower = a.toLowerCase()
+      const colonIdx = lower.indexOf(':')
+      const paramPart = colonIdx > 0 ? lower.slice(0, colonIdx) : lower
+      return paramPart.startsWith(prefixLower) && fullLower.startsWith(paramPart)
+    })
+  },
+  deriveSecurityFlags: () => ({ hasRedirectToVariable: false, hasPipelineVariable: false, hasFormatHex: false, hasScriptBlocks: false, hasSubExpressions: false, hasExpandableStrings: false, hasSplatting: false, hasStopParsing: false, hasMemberInvocations: false, hasAssignments: false }),
+  getAllCommands: (parsed: any) => parsed.statements.flatMap((s: any) => s.commands || []),
+  getVariablesByScope: () => [],
+  hasCommandNamed: (parsed: any, name: string) => {
+    const lower = name.toLowerCase()
+    const canonicalFromAlias = MOCK_COMMON_ALIASES[lower]?.toLowerCase()
+    return parsed.statements.some((s: any) => (s.commands || []).some((c: any) => {
+      const cmdLower = c.name.toLowerCase()
+      if (cmdLower === lower) return true
+      const canonical = MOCK_COMMON_ALIASES[cmdLower]?.toLowerCase()
+      if (canonical === lower) return true
+      if (canonicalFromAlias && cmdLower === canonicalFromAlias) return true
+      return false
+    }))
+  },
+  parsePowerShellCommandCached: () => ({ valid: false, errors: [], statements: [], variables: [], hasStopParsing: false, originalCommand: "" }),
+  PARSE_SCRIPT_BODY: "",
+  WINDOWS_MAX_COMMAND_LENGTH: 32000,
+  MAX_COMMAND_LENGTH: 32000,
+  PS_TOKENIZER_DASH_CHARS: new Set(['-', '\u2013', '\u2014', '\u2015']),
+  mapStatementType: (t: string) => t,
+  mapElementType: (t: string) => t,
+  classifyCommandName: () => ({ type: 'external', name: '' }),
+  stripModulePrefix: (n: string) => n,
+}));
+
 // Real parser functions work without mocks since they're pure
 const { powershellCommandIsSafe } = await import("../powershellSecurity.js");
 

@@ -7,6 +7,17 @@ mock.module("src/utils/model/agent.js", () => ({
 
 mock.module("src/utils/settings/constants.js", () => ({
   getSourceDisplayName: (source: string) => source,
+  getSourceDisplayNameLowercase: (source: string) => source,
+  getSourceDisplayNameCapitalized: (source: string) => source,
+  getSettingSourceName: (source: string) => source,
+  getSettingSourceDisplayNameLowercase: (source: string) => source,
+  getSettingSourceDisplayNameCapitalized: (source: string) => source,
+  parseSettingSourcesFlag: () => [],
+  getEnabledSettingSources: () => [],
+  isSettingSourceEnabled: () => true,
+  SETTING_SOURCES: ["localSettings", "userSettings", "projectSettings"],
+  SOURCES: ["localSettings", "userSettings", "projectSettings"],
+  CLAUDE_CODE_SETTINGS_SCHEMA_URL: "https://json.schemastore.org/claude-code-settings.json",
 }));
 
 const {
