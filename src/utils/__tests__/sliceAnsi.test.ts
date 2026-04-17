@@ -1,27 +1,4 @@
-import { mock, describe, expect, test } from "bun:test";
-
-// Mock ink/stringWidth to avoid heavy Ink import chain
-mock.module("src/ink/stringWidth.js", () => ({
-  stringWidth: (str: string) => {
-    // Simplified width calculation for test purposes
-    let width = 0;
-    for (const char of str) {
-      const code = char.codePointAt(0)!;
-      // CJK Unified Ideographs and common full-width ranges
-      if (
-        (code >= 0x4e00 && code <= 0x9fff) || // CJK
-        (code >= 0x3000 && code <= 0x303f) || // CJK Symbols
-        (code >= 0xff01 && code <= 0xff60) || // Fullwidth Forms
-        (code >= 0xf900 && code <= 0xfaff)    // CJK Compatibility
-      ) {
-        width += 2;
-      } else if (code > 0) {
-        width += 1;
-      }
-    }
-    return width;
-  },
-}));
+import { describe, expect, test } from "bun:test";
 
 const sliceAnsi = (await import("../sliceAnsi")).default;
 

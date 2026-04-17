@@ -87,7 +87,7 @@ mock.module("src/tasks/LocalAgentTask/LocalAgentTask.js", () => ({
   updateProgressFromMessage: noop,
 }));
 
-mock.module("src/utils/debug.js", () => ({
+mock.module("src/utils/debug.ts", () => ({
   getMinDebugLogLevel: () => "warn",
   isDebugMode: () => false,
   enableDebugLogging: () => false,

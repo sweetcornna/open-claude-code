@@ -18,18 +18,6 @@ mock.module("src/utils/log.ts", () => ({
   _resetErrorLogForTesting: () => {},
 }));
 
-// Mock slowOperations to avoid bun:bundle
-mock.module("src/utils/slowOperations.ts", () => ({
-  jsonStringify: JSON.stringify,
-  jsonParse: JSON.parse,
-  slowLogging: { enabled: false },
-  clone: (v: any) => structuredClone(v),
-  cloneDeep: (v: any) => structuredClone(v),
-  callerFrame: () => "",
-  SLOW_OPERATION_THRESHOLD_MS: 100,
-  writeFileSync_DEPRECATED: () => {},
-}));
-
 const {
   getDenyRuleForTool,
   getAskRuleForTool,

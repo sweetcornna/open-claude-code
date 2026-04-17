@@ -1,11 +1,4 @@
-import { mock, describe, expect, test } from "bun:test";
-
-// Mock commands.ts to cut the heavy shell/prefix.ts → analytics → api chain
-mock.module("src/utils/bash/commands.ts", () => ({
-  splitCommand_DEPRECATED: (cmd: string) =>
-    cmd.split(/\s*(?:[|;&]+)\s*/).filter(Boolean),
-  quote: (args: string[]) => args.join(" "),
-}));
+import { describe, expect, test } from "bun:test";
 
 const { interpretCommandResult } = await import("../commandSemantics");
 

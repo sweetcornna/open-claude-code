@@ -1,16 +1,4 @@
-import { mock, describe, expect, test } from "bun:test";
-
-mock.module("figures", () => ({
-  default: {
-    lineUpDownRight: "├",
-    lineUpRight: "└",
-    lineVertical: "│",
-  },
-}));
-
-mock.module("src/ink.js", () => ({
-  color: (colorKey: string, themeName: string) => (text: string) => text,
-}));
+import { describe, expect, test } from "bun:test";
 
 const { treeify } = await import("../treeify");
 

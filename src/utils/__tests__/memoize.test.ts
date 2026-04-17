@@ -1,21 +1,11 @@
 import { mock, describe, expect, test, beforeEach } from "bun:test";
 
-// Mock heavy deps before importing memoize
+// Mock log.ts to cut the bootstrap/state dependency chain
 mock.module("src/utils/log.ts", () => ({
   logError: () => {},
   logToFile: () => {},
   getLogDisplayTitle: () => "",
   logEvent: () => {},
-}));
-mock.module("src/utils/slowOperations.ts", () => ({
-  jsonStringify: JSON.stringify,
-  jsonParse: JSON.parse,
-  slowLogging: { enabled: false },
-  clone: (v: any) => structuredClone(v),
-  cloneDeep: (v: any) => structuredClone(v),
-  callerFrame: () => "",
-  SLOW_OPERATION_THRESHOLD_MS: 100,
-  writeFileSync_DEPRECATED: () => {},
 }));
 
 const { memoizeWithTTL, memoizeWithTTLAsync, memoizeWithLRU } = await import(
