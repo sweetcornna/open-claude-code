@@ -2,7 +2,7 @@
 // Unified Chat Data Model — shared between ACP and RCS chat interfaces
 // =============================================================================
 
-import type { ToolCallContent, PermissionOption } from "../acp/types";
+import type { ToolCallContent, PermissionOption, PlanEntry } from "../acp/types";
 
 // 工具调用状态
 export type ToolCallStatus =
@@ -62,11 +62,19 @@ export interface ToolCallEntry {
   toolCall: ToolCallData;
 }
 
+// Plan 展示条目（Agent 执行计划）
+export interface PlanDisplayEntry {
+  type: "plan";
+  id: string;
+  entries: PlanEntry[];
+}
+
 // 统一聊天条目类型
 export type ThreadEntry =
   | UserMessageEntry
   | AssistantMessageEntry
-  | ToolCallEntry;
+  | ToolCallEntry
+  | PlanDisplayEntry;
 
 // =============================================================================
 // Chat 组件 Props 类型

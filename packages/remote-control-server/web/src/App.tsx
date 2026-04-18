@@ -1,14 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Navbar } from "./components/Navbar";
-import { Dashboard } from "./pages/Dashboard";
-import { SessionDetail } from "./pages/SessionDetail";
 import { IdentityPanel } from "./components/IdentityPanel";
 import { ThemeProvider } from "./lib/theme";
 import { getUuid, setUuid, apiBind } from "./api/client";
+import { ACPDirectView } from "./components/ACPDirectView";
+
+const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
+const SessionDetail = lazy(() => import("./pages/SessionDetail").then((m) => ({ default: m.SessionDetail })));
 
 export default function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [identityOpen, setIdentityOpen] = useState(false);
+  const [acpDirect, setAcpDirect] = useState<{ url: string; token: string } | null>(null);
 
   // Simple hash-based router
   const parseRoute = useCallback(() => {
@@ -25,6 +28,28 @@ export default function App() {
       const url = new URL(window.location.href);
       url.searchParams.delete("uuid");
       window.history.replaceState(null, "", url);
+    }
+
+    // Check for ACP direct connection (?acp=1)
+    const acpParam = params.get("acp");
+    if (acpParam === "1") {
+      const stored = sessionStorage.getItem("acp_connection");
+      if (stored) {
+        try {
+          const acpData = JSON.parse(stored);
+          if (acpData.url && acpData.token) {
+            setAcpDirect({ url: acpData.url, token: acpData.token });
+            sessionStorage.removeItem("acp_connection");
+            // Clean URL
+            const url = new URL(window.location.href);
+            url.searchParams.delete("acp");
+            window.history.replaceState(null, "", url);
+            return;
+          }
+        } catch {
+          sessionStorage.removeItem("acp_connection");
+        }
+      }
     }
 
     // Check for CLI session bind (?sid=xxx) — bind session to current UUID
@@ -64,20 +89,29 @@ export default function App() {
   const navigateToDashboard = useCallback(() => {
     window.history.pushState(null, "", "/code/");
     setCurrentSessionId(null);
+    setAcpDirect(null);
   }, []);
 
   return (
-    <ThemeProvider defaultTheme="light">
+    <ThemeProvider defaultTheme="system">
       <div className="flex h-screen flex-col bg-surface-0 text-text-primary">
-        <Navbar onIdentityClick={() => setIdentityOpen(true)} />
+        <Navbar
+          onIdentityClick={() => setIdentityOpen(true)}
+          sessionTitle={currentSessionId || (acpDirect ? "ACP" : undefined)}
+          onBack={(currentSessionId || acpDirect) ? navigateToDashboard : undefined}
+        />
 
-        {currentSessionId ? (
-          <SessionDetail key={currentSessionId} sessionId={currentSessionId} />
-        ) : (
-          <div className="flex-1 overflow-y-auto">
-            <Dashboard onNavigateSession={navigateToSession} />
-          </div>
-        )}
+        <Suspense fallback={<div className="flex flex-1 items-center justify-center text-text-muted">Loading...</div>}>
+          {acpDirect ? (
+            <ACPDirectView url={acpDirect.url} token={acpDirect.token} onBack={navigateToDashboard} />
+          ) : currentSessionId ? (
+            <SessionDetail key={currentSessionId} sessionId={currentSessionId} />
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              <Dashboard onNavigateSession={navigateToSession} />
+            </div>
+          )}
+        </Suspense>
 
         <IdentityPanel open={identityOpen} onClose={() => setIdentityOpen(false)} />
       </div>

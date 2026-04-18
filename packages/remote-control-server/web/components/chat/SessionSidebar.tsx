@@ -80,10 +80,10 @@ export function SessionSidebar({
                   type="button"
                   onClick={() => onSelect?.(session.id)}
                   className={cn(
-                    "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors border-l-2",
+                    "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
                     session.id === activeId
-                      ? "bg-brand/10 text-text-primary border-l-brand"
-                      : "text-text-secondary hover:bg-surface-1/50 hover:text-text-primary border-l-transparent",
+                      ? "bg-brand/10 text-text-primary"
+                      : "text-text-secondary hover:bg-surface-1/50 hover:text-text-primary",
                   )}
                   title={session.title || session.id}
                 >

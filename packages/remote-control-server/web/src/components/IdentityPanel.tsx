@@ -3,6 +3,14 @@ import QRCode from "qrcode";
 import QrScanner from "qr-scanner";
 import { getUuid, setUuid } from "../api/client";
 import { cn } from "../lib/utils";
+import { Scan } from "lucide-react";
+import { useTheme } from "../lib/theme";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 
 interface IdentityPanelProps {
   open: boolean;
@@ -16,16 +24,28 @@ export function IdentityPanel({ open, onClose }: IdentityPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QrScanner | null>(null);
   const uuid = getUuid();
+  const { resolvedTheme } = useTheme();
+
+  const qrColors = resolvedTheme === "dark"
+    ? { dark: "#ECE9E0", light: "#1C1B18" }
+    : { dark: "#141413", light: "#FDFCF8" };
 
   useEffect(() => {
-    if (!open || !canvasRef.current) return;
-    const qrUrl = `${window.location.origin}/code?uuid=${encodeURIComponent(uuid)}`;
-    QRCode.toCanvas(canvasRef.current, qrUrl, {
-      width: 200,
-      margin: 1,
-      color: { dark: "#f0f0f2", light: "#141416" },
+    if (!open) return;
+    // Defer one frame so Radix Dialog Portal has finished mounting the canvas
+    const rafId = requestAnimationFrame(() => {
+      if (!canvasRef.current) return;
+      const qrUrl = `${window.location.origin}/code?uuid=${encodeURIComponent(uuid)}`;
+      QRCode.toCanvas(canvasRef.current, qrUrl, {
+        width: 200,
+        margin: 1,
+        color: qrColors,
+      }).catch((err: unknown) => {
+        console.error("QR generation failed:", err);
+      });
     });
-  }, [open, uuid]);
+    return () => cancelAnimationFrame(rafId);
+  }, [open, uuid, resolvedTheme]);
 
   // Cleanup scanner on close
   useEffect(() => {
@@ -78,9 +98,11 @@ export function IdentityPanel({ open, onClose }: IdentityPanelProps) {
       // Try ACP format: { url, token }
       const parsed = JSON.parse(data);
       if (parsed.url && parsed.token) {
-        // ACP format — extract token as UUID-like identifier
+        // Store ACP connection data and navigate to ACP direct connect view
         stopCamera();
         onClose();
+        sessionStorage.setItem("acp_connection", JSON.stringify({ url: parsed.url, token: parsed.token }));
+        window.location.href = "/code/?acp=1";
         return;
       }
     } catch {
@@ -130,20 +152,11 @@ export function IdentityPanel({ open, onClose }: IdentityPanelProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="w-full max-w-sm rounded-2xl border border-border bg-surface-1 p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-lg font-semibold text-text-primary">Identity</h3>
-          <button
-            onClick={onClose}
-            className="rounded-md px-2 py-1 text-text-muted hover:bg-surface-2 hover:text-text-secondary transition-colors"
-          >
-            &times;
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm rounded-2xl border-border bg-surface-1 p-6 shadow-2xl">
+        <DialogHeader>
+          <DialogTitle className="font-display text-lg font-semibold text-text-primary">Identity</DialogTitle>
+        </DialogHeader>
 
         <div className="space-y-6">
           {/* UUID */}
@@ -199,9 +212,7 @@ export function IdentityPanel({ open, onClose }: IdentityPanelProps) {
                   : "border-border text-text-secondary hover:bg-surface-2",
               )}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M1 1H5V3H3V5H1V1ZM11 1H15V5H13V3H11V1ZM1 11H3V13H5V15H1V11ZM13 11H15V15H11V13H13V11ZM6 6H10V10H6V6Z" fill="currentColor" />
-              </svg>
+              <Scan className="h-4 w-4" />
               {scanning ? "Stop Camera" : "Scan with Camera"}
             </button>
             <button
@@ -212,7 +223,7 @@ export function IdentityPanel({ open, onClose }: IdentityPanelProps) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

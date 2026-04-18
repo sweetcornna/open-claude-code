@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { cn, isClosedSessionStatus } from "../lib/utils";
+import { Square, SendHorizonal } from "lucide-react";
 
 interface ControlBarProps {
   sessionId: string;
@@ -70,13 +71,9 @@ export function ControlBar({
           title={closed ? "Session is closed" : working ? "Stop" : "Send"}
         >
           {working ? (
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="3" y="3" width="12" height="12" rx="2" fill="currentColor" />
-            </svg>
+            <Square className="h-4.5 w-4.5 fill-current" />
           ) : (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M3 10L17 3L10 17L9 11L3 10Z" fill="currentColor" />
-            </svg>
+            <SendHorizonal className="h-5 w-5 fill-current" />
           )}
         </button>
       </div>

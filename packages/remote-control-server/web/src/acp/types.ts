@@ -88,7 +88,7 @@ export type BrowserToolResult =
 export type ProxyMessage =
   | { type: "connect" }
   | { type: "disconnect" }
-  | { type: "new_session"; payload?: { cwd?: string } }
+  | { type: "new_session"; payload?: { cwd?: string; permissionMode?: string } }
   | { type: "prompt"; payload: { content: ContentBlock[] } }  // Changed from { text: string } to match Zed
   | { type: "cancel" }
   | { type: "permission_response"; payload: PermissionResponsePayload }
@@ -295,8 +295,20 @@ export interface AgentThoughtChunkUpdate {
   content: ContentBlock;
 }
 
+export type PlanEntryPriority = "high" | "medium" | "low";
+export type PlanEntryStatus = "pending" | "in_progress" | "completed";
+
+export interface PlanEntry {
+  _meta?: Record<string, unknown> | null;
+  content: string;
+  priority: PlanEntryPriority;
+  status: PlanEntryStatus;
+}
+
 export interface PlanUpdate {
   sessionUpdate: "plan";
+  _meta?: Record<string, unknown> | null;
+  entries: PlanEntry[];
 }
 
 export interface UserMessageChunkUpdate {
