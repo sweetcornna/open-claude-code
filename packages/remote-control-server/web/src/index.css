@@ -1,0 +1,220 @@
+/* Font imports must precede @import "tailwindcss" per CSS spec */
+@import url("https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@import "tailwindcss";
+
+
+
+/* ============================================================
+   Theme — Anthropic-inspired warm design tokens
+   ============================================================ */
+@theme {
+  /* Fonts — Lora (serif body) + Poppins (sans-serif UI) + JetBrains Mono */
+  --font-sans: "Lora", Georgia, serif;
+  --font-display: "Poppins", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Brand — signature orange */
+  --color-brand: #D97757;
+  --color-brand-light: #C96A4D;
+  --color-brand-subtle: rgba(217, 119, 87, 0.1);
+
+  /* Surfaces — warm beige palette (not white) */
+  --color-surface-0: #ECE9E0;
+  --color-surface-1: #F5F3EC;
+  --color-surface-2: #FDFCF8;
+  --color-surface-3: #E8E6DC;
+
+  /* Text — warm dark tones */
+  --color-text-primary: #141413;
+  --color-text-secondary: #6B6860;
+  --color-text-muted: #9C9890;
+
+  /* Inverted — for user message bubbles */
+  --color-bg-inverted: #2D2B27;
+  --color-text-inverted: #F5F3EC;
+
+  /* Warning — warm yellow for permission panels */
+  --color-warning-bg: #FEF3C7;
+  --color-warning-border: #F59E0B;
+  --color-warning-text: #92400E;
+
+  /* Status */
+  --color-status-active: #6B8F47;
+  --color-status-running: #4A7FB5;
+  --color-status-idle: #7C3aed;
+  --color-status-error: #C0453A;
+  --color-status-warning: #C9943A;
+
+  /* Tool card */
+  --color-tool-card: #F5F3EC;
+
+  /* shadcn/ui tokens (oklch — warm hue ~85) */
+  --color-background: oklch(0.94 0.01 85);
+  --color-foreground: oklch(0.20 0.01 85);
+  --color-card: oklch(0.97 0.008 85);
+  --color-card-foreground: oklch(0.20 0.01 85);
+  --color-popover: oklch(0.97 0.008 85);
+  --color-popover-foreground: oklch(0.20 0.01 85);
+  --color-primary: oklch(0.20 0.01 85);
+  --color-primary-foreground: oklch(0.96 0.01 85);
+  --color-secondary: oklch(0.95 0.01 85);
+  --color-secondary-foreground: oklch(0.20 0.01 85);
+  --color-muted: oklch(0.93 0.01 85);
+  --color-muted-foreground: oklch(0.50 0.02 85);
+  --color-accent: oklch(0.95 0.01 85);
+  --color-accent-foreground: oklch(0.20 0.01 85);
+  --color-destructive: oklch(0.577 0.245 27.325);
+
+  /* Border / Input / Ring */
+  --color-border: oklch(0.88 0.015 85);
+  --color-border-light: #E8E6DC;
+  --color-input: oklch(0.88 0.015 85);
+  --color-ring: oklch(0.65 0.08 50);
+
+  /* Default utility values */
+  --default-border-color: var(--color-border);
+  --default-ring-color: var(--color-ring);
+
+  /* Radius */
+  --radius: 0.625rem;
+}
+
+/* ============================================================
+   Dark mode — warm dark palette
+   ============================================================ */
+.dark {
+  --color-surface-0: #1C1B18;
+  --color-surface-1: #242320;
+  --color-surface-2: #2D2B27;
+  --color-surface-3: #3A3832;
+  --color-text-primary: #ECE9E0;
+  --color-text-secondary: #9C9890;
+  --color-text-muted: #6B6860;
+  --color-bg-inverted: #F5F3EC;
+  --color-text-inverted: #2D2B27;
+  --color-border: #3A3832;
+  --color-border-light: #2D2B27;
+  --color-tool-card: #2D2B27;
+  --color-warning-bg: #45290A;
+  --color-warning-border: #B47818;
+  --color-warning-text: #FCD980;
+}
+
+/* ============================================================
+   Base styles — layered so they coexist with Tailwind preflight
+   ============================================================ */
+@layer base {
+  html,
+  body {
+    background-color: var(--color-surface-0);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+}
+
+/* ============================================================
+   Custom utilities (unlayered so they always win)
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 3px;
+}
+
+/* Glimmer sweep — reverse sweep highlight (same visual as TUI) */
+.glimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-text-secondary) 0%,
+    var(--color-text-secondary) 40%,
+    var(--color-brand) 50%,
+    var(--color-text-secondary) 60%,
+    var(--color-text-secondary) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: glimmer-sweep 3s ease-in-out infinite;
+}
+
+@keyframes glimmer-sweep {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* ============================================================
+   Chat UI — Anthropic style overrides
+   ============================================================ */
+
+/* Chat input — warm orange focus ring */
+.chat-input-focus:focus-within {
+  box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.25);
+}
+
+/* Markdown content in message bubbles */
+.message-content pre {
+  background-color: var(--color-surface-1);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.message-content code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.message-content :not(pre) > code {
+  background-color: var(--color-surface-1);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+}
+
+/* ============================================================
+   Animations — Anthropic entrance effects
+   ============================================================ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* Typing indicator dots */
+.chat-typing-indicator {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 20px;
+}
+.chat-typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-brand);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.chat-typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.chat-typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
