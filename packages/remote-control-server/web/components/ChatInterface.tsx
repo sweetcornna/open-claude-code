@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import imageCompression from "browser-image-compression";
 import type { ACPClient } from "../src/acp/client";
 import type { SessionUpdate, PermissionRequestPayload, PermissionOption, ContentBlock, ImageContent } from "../src/acp/types";
-import type { ThreadEntry, ToolCallStatus, ToolCallData, UserMessageImage, UserMessageEntry, AssistantMessageEntry, ToolCallEntry, ChatInputMessage, PendingPermission } from "../src/lib/types";
+import type { ThreadEntry, ToolCallStatus, ToolCallData, UserMessageImage, UserMessageEntry, AssistantMessageEntry, ToolCallEntry, ChatInputMessage, PendingPermission, PlanDisplayEntry } from "../src/lib/types";
 import { ChatView } from "./chat/ChatView";
 import { ChatInput } from "./chat/ChatInput";
 import { PermissionPanel } from "./chat/PermissionPanel";
@@ -44,13 +44,14 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-import { Plus } from "lucide-react";
+import { Plus, Shield, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "./ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 // =============================================================================
 // Type Definitions - imported from shared types module
@@ -58,6 +59,72 @@ import {
 
 interface ChatInterfaceProps {
   client: ACPClient;
+  agentId?: string;
+}
+
+// =============================================================================
+// Permission Mode Selector
+// =============================================================================
+
+const PERMISSION_MODES = [
+  { value: "default", label: "默认", description: "手动审批权限请求" },
+  { value: "acceptEdits", label: "自动接受编辑", description: "自动允许文件编辑操作" },
+  { value: "bypassPermissions", label: "跳过权限", description: "跳过所有权限检查" },
+  { value: "plan", label: "规划模式", description: "仅规划，不执行工具" },
+  { value: "dontAsk", label: "不询问", description: "不弹出询问，自动拒绝" },
+  { value: "auto", label: "自动判断", description: "AI 自动判断是否批准" },
+] as const;
+
+function PermissionModeSelector({
+  mode,
+  onModeChange,
+}: {
+  mode: string;
+  onModeChange: (mode: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = PERMISSION_MODES.find((m) => m.value === mode) ?? PERMISSION_MODES[0];
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-muted-foreground hover:text-foreground h-7 px-2"
+        >
+          <Shield className="h-3 w-3" />
+          <span className="max-w-24 truncate">{current.label}</span>
+          {open ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-1" align="start">
+        {PERMISSION_MODES.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            onClick={() => {
+              onModeChange(m.value);
+              setOpen(false);
+            }}
+            className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left hover:bg-surface-2 transition-colors"
+          >
+            <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center">
+              {mode === m.value && <Check className="h-3.5 w-3.5 text-brand" />}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-text-primary">{m.label}</div>
+              <div className="text-xs text-text-muted">{m.description}</div>
+            </div>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 // =============================================================================
@@ -86,7 +153,7 @@ function findToolCallIndex(entries: ThreadEntry[], toolCallId: string): number {
 // ChatInterface Component
 // =============================================================================
 
-export function ChatInterface({ client }: ChatInterfaceProps) {
+export function ChatInterface({ client, agentId }: ChatInterfaceProps) {
   // Flat list of entries (like Zed's entries: Vec<AgentThreadEntry>)
   const [entries, setEntries] = useState<ThreadEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -95,6 +162,7 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
   const activeSessionIdRef = useRef<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [permissionMode, setPermissionMode] = useState(() => localStorage.getItem("acp_permission_mode") || "default");
   // Reference: Zed's supports_images() checks prompt_capabilities.image
   const [supportsImages, setSupportsImages] = useState(false);
   const { commands: availableCommands } = useCommands(client);
@@ -109,6 +177,8 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
     setSessionReady(false);
   }, []);
 
+  const storageKey = agentId ? `acp_last_session_${agentId}` : null;
+
   const activateSession = useCallback((sessionId: string, options?: { resetEntries?: boolean }) => {
     const shouldResetEntries = options?.resetEntries ?? true;
     if (shouldResetEntries) {
@@ -118,8 +188,12 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
     setActiveSessionId(sessionId);
     setSessionReady(true);
     setSupportsImages(client.supportsImages);
+    // Persist session ID for restoration on remount
+    if (storageKey) {
+      try { localStorage.setItem(storageKey, sessionId); } catch {}
+    }
     console.log("[ChatInterface] Active session:", sessionId, "supportsImages:", client.supportsImages);
-  }, [client]);
+  }, [client, storageKey]);
 
   // =============================================================================
   // Permission Request Handler
@@ -384,6 +458,38 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
         });
       });
     }
+    // Handle plan update (replace entire plan)
+    else if (update.sessionUpdate === "plan") {
+      setEntries((prev) => {
+        // Empty entries → remove existing plan
+        if (update.entries.length === 0) {
+          return prev.filter((e) => e.type !== "plan");
+        }
+
+        // Find last plan entry
+        const lastPlanIndex = prev.reduce(
+          (acc, entry, i) => (entry.type === "plan" ? i : acc),
+          -1,
+        );
+
+        if (lastPlanIndex >= 0) {
+          // Update existing plan in place
+          return prev.map((entry, index) =>
+            index === lastPlanIndex
+              ? { ...entry, entries: update.entries }
+              : entry,
+          );
+        }
+
+        // Create new plan entry
+        const newPlanEntry: PlanDisplayEntry = {
+          type: "plan",
+          id: `plan-${Date.now()}`,
+          entries: update.entries,
+        };
+        return [...prev, newPlanEntry];
+      });
+    }
   }, []);
 
   // =============================================================================
@@ -429,8 +535,26 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
       errorTimerRef.current = setTimeout(() => setErrorMessage(null), 5000);
     });
 
-    // Create session
-    client.createSession();
+    // Restore last session or create a new one
+    const lastSessionId = storageKey ? localStorage.getItem(storageKey) : null;
+    if (lastSessionId && (client.supportsLoadSession || client.supportsResumeSession)) {
+      console.log("[ChatInterface] Restoring session:", lastSessionId);
+      const restore = async () => {
+        try {
+          if (client.supportsLoadSession) {
+            await client.loadSession({ sessionId: lastSessionId });
+          } else {
+            await client.resumeSession({ sessionId: lastSessionId });
+          }
+        } catch (err) {
+          console.warn("[ChatInterface] Failed to restore session, creating new one:", err);
+          client.createSession(undefined, permissionMode);
+        }
+      };
+      restore();
+    } else {
+      client.createSession(undefined, permissionMode);
+    }
     return () => {
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       client.setSessionCreatedHandler(() => {});
@@ -465,8 +589,8 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
 
     // 3. Create new session (like Zed's initial_state -> connection.new_session())
     // The session_created handler will set sessionReady=true when ready
-    client.createSession();
-  }, [client, isLoading, resetThreadState]);
+    client.createSession(undefined, permissionMode);
+  }, [client, isLoading, resetThreadState, permissionMode]);
 
   // Cancel handler - matches Zed's cancel() logic in acp_thread.rs
   // 1. Mark all pending/running/waiting_for_confirmation tool calls as canceled
@@ -559,9 +683,36 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
 
   // Handle permission respond for unified PermissionPanel
   const handlePermissionPanelRespond = useCallback((requestId: string, approved: boolean) => {
-    const kind = approved ? "accept_once" : "reject_once";
-    handlePermissionResponse(requestId, null, kind as PermissionOption["kind"] | null);
-  }, [handlePermissionResponse]);
+    // Find the matching permission request to get the real optionId
+    const perm = pendingPermissions.find((p) => p.requestId === requestId);
+    let optionId: string | null = null;
+    let optionKind: PermissionOption["kind"] | null = null;
+
+    if (perm?.options && perm.options.length > 0) {
+      if (approved) {
+        // Pick the first allow option (prefer allow_once, then allow_always)
+        const allowOpt = perm.options.find((o) => o.kind === "allow_once") ?? perm.options.find((o) => o.kind === "allow_always");
+        if (allowOpt) {
+          optionId = allowOpt.optionId;
+          optionKind = allowOpt.kind;
+        }
+      } else {
+        // Pick the first reject option
+        const rejectOpt = perm.options.find((o) => o.kind === "reject_once") ?? perm.options.find((o) => o.kind === "reject_always");
+        if (rejectOpt) {
+          optionId = rejectOpt.optionId;
+          optionKind = rejectOpt.kind;
+        }
+      }
+    }
+
+    // Fallback: if no matching option found, use null (cancelled)
+    if (!optionId) {
+      optionKind = approved ? "allow_once" : "reject_once";
+    }
+
+    handlePermissionResponse(requestId, optionId, optionKind);
+  }, [handlePermissionResponse, pendingPermissions]);
 
   // Handle ChatInput submit — convert ChatInputMessage to ContentBlock[]
   const handleChatInputSubmit = useCallback(async (message: ChatInputMessage) => {
@@ -667,7 +818,7 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
 
       {/* Error banner */}
       {errorMessage && (
-        <div className="mx-auto max-w-3xl w-full px-4 pb-1">
+        <div className="mx-auto max-w-3xl w-full px-4 sm:px-8 pb-1">
           <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-300 flex items-center justify-between">
             <span>{errorMessage}</span>
             <button
@@ -683,8 +834,11 @@ export function ChatInterface({ client }: ChatInterfaceProps) {
 
       {/* Model selector + New thread + ChatInput */}
       <div className="flex-shrink-0">
-        <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 pb-1 flex items-center justify-between">
-          <ModelSelectorPopover client={client} />
+        <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 pb-1 flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <PermissionModeSelector mode={permissionMode} onModeChange={(m: string) => { setPermissionMode(m); localStorage.setItem("acp_permission_mode", m); }} />
+            <ModelSelectorPopover client={client} />
+          </div>
           {entries.length > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>

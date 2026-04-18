@@ -71,8 +71,12 @@ export function ChatInput({
           setShowCommandMenu(false);
           return;
         }
-        // Let cmdk handle arrow keys and Enter for selection
-        // Tab also closes the menu
+        // Arrow keys and Enter are handled by CommandMenu via document-level listener
+        // Don't submit or move cursor when menu is open
+        if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Enter") {
+          e.preventDefault();
+          return;
+        }
         if (e.key === "Tab") {
           e.preventDefault();
           setShowCommandMenu(false);
@@ -161,7 +165,7 @@ export function ChatInput({
   const canSend = (text.trim() || images.length > 0) && !disabled;
 
   return (
-    <div className={cn("w-full max-w-3xl mx-auto px-3 sm:px-4 pb-4 pt-2", className)}>
+    <div className={cn("w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2", className)}>
       <div className="relative">
         {/* Slash command menu — floating above input */}
         {showCommandMenu && commands && commands.length > 0 && (
@@ -187,13 +191,14 @@ export function ChatInput({
               <div key={i} className="relative group">
                 <img
                   src={`data:${img.mimeType};base64,${img.data}`}
-                  alt="附件"
+                  alt={`Attached image ${i + 1}`}
                   className="h-14 w-14 object-cover rounded-lg border border-border"
                 />
                 <button
                   type="button"
                   onClick={() => removeImage(i)}
-                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-muted hover:text-text-primary text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-1.5 -right-1.5 min-h-[32px] min-w-[32px] h-5 w-5 rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-muted hover:text-text-primary text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={`Remove image ${i + 1}`}
                 >
                   {"\u00D7"}
                 </button>
@@ -214,6 +219,7 @@ export function ChatInput({
                 disabled={disabled}
               >
                 <Paperclip className="h-4 w-4" />
+                <span className="sr-only">Attach file</span>
               </button>
               <input
                 ref={fileInputRef}

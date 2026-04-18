@@ -35,13 +35,8 @@ export function Dashboard({ onNavigateSession }: DashboardProps) {
     onNavigateSession(session.id);
   };
 
-  const handleSelectEnvironment = useCallback((env: Environment) => {
-    if (env.worker_type === "acp") {
-      // Navigate to ACP agent detail page (same origin, shares UUID auth)
-      window.history.pushState(null, "", `/acp/agent/${env.id}`);
-      // Force page reload to load ACP app
-      window.location.href = `/acp/agent/${env.id}`;
-    }
+  const handleSelectEnvironment = useCallback((_env: Environment) => {
+    // ACP agents require WebSocket connection and cannot be navigated to directly
     // Bridge environments: no direct navigation (sessions are listed below)
   }, []);
 
@@ -51,6 +46,7 @@ export function Dashboard({ onNavigateSession }: DashboardProps) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
+      <h1 className="sr-only">Dashboard</h1>
       {/* Environments */}
       <section className="mb-10">
         <h2 className="mb-4 font-display text-lg font-semibold text-text-primary">Environments</h2>

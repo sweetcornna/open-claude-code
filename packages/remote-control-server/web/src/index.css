@@ -6,7 +6,9 @@
 
 
 /* ============================================================
-   Theme — Anthropic-inspired warm design tokens
+   Theme — Refined stone palette (warm gray, not beige)
+   Hue shifted from 85 (yellow-cream) to 65 (warm stone)
+   Brand orange pops harder against cleaner neutrals
    ============================================================ */
 @theme {
   /* Fonts — Lora (serif body) + Poppins (sans-serif UI) + JetBrains Mono */
@@ -14,63 +16,67 @@
   --font-display: "Poppins", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
-  /* Brand — signature orange */
-  --color-brand: #D97757;
-  --color-brand-light: #C96A4D;
-  --color-brand-subtle: rgba(217, 119, 87, 0.1);
+  /* Brand — signature orange (unchanged) */
+  --color-brand: #C96442;
+  --color-brand-light: #B55838;
+  --color-brand-subtle: oklch(0.65 0.12 30 / 0.08);
 
-  /* Surfaces — warm beige palette (not white) */
-  --color-surface-0: #ECE9E0;
-  --color-surface-1: #F5F3EC;
-  --color-surface-2: #FDFCF8;
-  --color-surface-3: #E8E6DC;
+  /* Surfaces — warm stone gray (not yellow-beige) */
+  --color-surface-0: #EFEEE9;
+  --color-surface-1: #F6F5F2;
+  --color-surface-2: #FBFAF8;
+  --color-surface-3: #DFDDD8;
 
-  /* Text — warm dark tones */
-  --color-text-primary: #141413;
-  --color-text-secondary: #6B6860;
-  --color-text-muted: #9C9890;
+  /* Text — warm near-black tones */
+  --color-text-primary: #1A1917;
+  --color-text-secondary: #5E5A54;
+  --color-text-muted: #969088;
 
   /* Inverted — for user message bubbles */
-  --color-bg-inverted: #2D2B27;
-  --color-text-inverted: #F5F3EC;
+  --color-bg-inverted: #2C2A27;
+  --color-text-inverted: #F6F5F2;
 
-  /* Warning — warm yellow for permission panels */
-  --color-warning-bg: #FEF3C7;
-  --color-warning-border: #F59E0B;
-  --color-warning-text: #92400E;
+  /* User bubble — brand-tinted surface */
+  --color-user-bubble: #C96442;
+  --color-user-bubble-border: #B55838;
+
+  /* Warning — refined amber (less construction-zone) */
+  --color-warning-bg: oklch(0.96 0.02 85);
+  --color-warning-border: oklch(0.75 0.14 75);
+  --color-warning-text: oklch(0.40 0.08 60);
 
   /* Status */
-  --color-status-active: #6B8F47;
-  --color-status-running: #4A7FB5;
+  --color-status-active: #5D8A3C;
+  --color-status-running: #3D72A8;
   --color-status-idle: #7C3aed;
-  --color-status-error: #C0453A;
-  --color-status-warning: #C9943A;
+  --color-status-error: #B83B31;
+  --color-status-warning: #B88630;
 
   /* Tool card */
-  --color-tool-card: #F5F3EC;
+  --color-tool-card: #F6F5F2;
 
-  /* shadcn/ui tokens (oklch — warm hue ~85) */
-  --color-background: oklch(0.94 0.01 85);
-  --color-foreground: oklch(0.20 0.01 85);
-  --color-card: oklch(0.97 0.008 85);
-  --color-card-foreground: oklch(0.20 0.01 85);
-  --color-popover: oklch(0.97 0.008 85);
-  --color-popover-foreground: oklch(0.20 0.01 85);
-  --color-primary: oklch(0.20 0.01 85);
-  --color-primary-foreground: oklch(0.96 0.01 85);
-  --color-secondary: oklch(0.95 0.01 85);
-  --color-secondary-foreground: oklch(0.20 0.01 85);
-  --color-muted: oklch(0.93 0.01 85);
-  --color-muted-foreground: oklch(0.50 0.02 85);
-  --color-accent: oklch(0.95 0.01 85);
-  --color-accent-foreground: oklch(0.20 0.01 85);
+  /* shadcn/ui tokens (oklch — warm stone hue ~65) */
+  --color-background: oklch(0.955 0.006 65);
+  --color-foreground: oklch(0.19 0.008 65);
+  --color-card: oklch(0.975 0.005 65);
+  --color-card-foreground: oklch(0.19 0.008 65);
+  --color-popover: oklch(0.975 0.005 65);
+  --color-popover-foreground: oklch(0.19 0.008 65);
+  --color-primary: oklch(0.19 0.008 65);
+  --color-primary-foreground: oklch(0.97 0.005 65);
+  --color-secondary: oklch(0.955 0.006 65);
+  --color-secondary-foreground: oklch(0.19 0.008 65);
+  --color-muted: oklch(0.935 0.006 65);
+  --color-muted-foreground: oklch(0.48 0.015 65);
+  --color-accent: oklch(0.955 0.006 65);
+  --color-accent-foreground: oklch(0.19 0.008 65);
   --color-destructive: oklch(0.577 0.245 27.325);
 
   /* Border / Input / Ring */
-  --color-border: oklch(0.88 0.015 85);
-  --color-border-light: #E8E6DC;
-  --color-input: oklch(0.88 0.015 85);
-  --color-ring: oklch(0.65 0.08 50);
+  --color-border: oklch(0.905 0.008 65);
+  --color-border-light: #DFDDD8;
+  --color-input: oklch(0.905 0.008 65);
+  --color-ring: oklch(0.65 0.10 40);
 
   /* Default utility values */
   --default-border-color: var(--color-border);
@@ -81,24 +87,26 @@
 }
 
 /* ============================================================
-   Dark mode — warm dark palette
+   Dark mode — warm stone dark palette
    ============================================================ */
 .dark {
-  --color-surface-0: #1C1B18;
-  --color-surface-1: #242320;
-  --color-surface-2: #2D2B27;
-  --color-surface-3: #3A3832;
-  --color-text-primary: #ECE9E0;
-  --color-text-secondary: #9C9890;
-  --color-text-muted: #6B6860;
-  --color-bg-inverted: #F5F3EC;
-  --color-text-inverted: #2D2B27;
-  --color-border: #3A3832;
-  --color-border-light: #2D2B27;
-  --color-tool-card: #2D2B27;
-  --color-warning-bg: #45290A;
-  --color-warning-border: #B47818;
-  --color-warning-text: #FCD980;
+  --color-surface-0: #1A1917;
+  --color-surface-1: #222120;
+  --color-surface-2: #2C2A28;
+  --color-surface-3: #3A3835;
+  --color-text-primary: #EFEEE9;
+  --color-text-secondary: #969088;
+  --color-text-muted: #5E5A54;
+  --color-bg-inverted: #F6F5F2;
+  --color-text-inverted: #2C2A28;
+  --color-user-bubble: #C96442;
+  --color-user-bubble-border: #B55838;
+  --color-border: #3A3835;
+  --color-border-light: #2C2A28;
+  --color-tool-card: #2C2A28;
+  --color-warning-bg: oklch(0.22 0.03 75);
+  --color-warning-border: oklch(0.62 0.12 75);
+  --color-warning-text: oklch(0.82 0.08 85);
 }
 
 /* ============================================================
@@ -124,6 +132,7 @@
    ============================================================ */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -133,30 +142,15 @@
   border-radius: 3px;
 }
 
-/* Glimmer sweep — reverse sweep highlight (same visual as TUI) */
+/* Glimmer sweep — opacity pulse for thinking indicator */
 .glimmer-text {
-  background: linear-gradient(
-    90deg,
-    var(--color-text-secondary) 0%,
-    var(--color-text-secondary) 40%,
-    var(--color-brand) 50%,
-    var(--color-text-secondary) 60%,
-    var(--color-text-secondary) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: glimmer-sweep 3s ease-in-out infinite;
+  color: var(--color-text-secondary);
+  animation: glimmer-pulse 2s ease-in-out infinite;
 }
 
-@keyframes glimmer-sweep {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
+@keyframes glimmer-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 
 /* ============================================================
@@ -165,7 +159,7 @@
 
 /* Chat input — warm orange focus ring */
 .chat-input-focus:focus-within {
-  box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.25);
+  box-shadow: 0 0 0 2px oklch(0.65 0.12 30 / 0.20);
 }
 
 /* Markdown content in message bubbles */
@@ -187,6 +181,19 @@
   background-color: var(--color-surface-1);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
+}
+
+/* ============================================================
+   Reduced motion — respect user preference
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ============================================================

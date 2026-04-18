@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Question } from "../types";
 import { esc, cn, truncate } from "../lib/utils";
+import { TriangleAlert, Check } from "lucide-react";
 
 // ============================================================
 // PermissionPromptView — simple approve/reject for tool use
@@ -24,12 +25,10 @@ export function PermissionPromptView({
   const inputStr = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput, null, 2);
 
   return (
-    <div className="rounded-xl border border-warning-border/30 border-l-3 border-l-warning-border bg-surface-1 p-4">
+    <div className="rounded-xl border border-warning-border/30 bg-surface-1 p-4">
       <div className="mb-2 flex items-center gap-2">
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-warning-border/15 text-warning-text">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M6 1L11 10H1L6 1Z" fill="currentColor" />
-          </svg>
+          <TriangleAlert className="h-3 w-3" />
         </span>
         <span className="text-sm font-semibold text-warning-text">Permission Request</span>
       </div>
@@ -284,9 +283,7 @@ export function PlanPanelView({
     <div className="rounded-xl border border-brand/30 bg-surface-1 p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand/15 text-brand">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="1.5" fill="none" />
-          </svg>
+          <Check className="h-3 w-3" strokeWidth={2.5} />
         </span>
         <span className="text-sm font-semibold text-text-primary">
           {isEmpty ? "Exit plan mode?" : "Ready to code?"}

@@ -17,12 +17,13 @@ export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupPro
 
   if (entries.length === 0) return null;
 
-  // 单个工具调用
+  // 单个工具调用 — 默认折叠，不展开内容详情
   if (entries.length === 1) {
     return (
       <div className="pl-10">
         <SingleToolCard
           tool={entries[0].toolCall}
+          compact
           onPermissionRespond={onPermissionRespond}
         />
       </div>
@@ -34,7 +35,7 @@ export function ToolCallGroup({ entries, onPermissionRespond }: ToolCallGroupPro
 
   return (
     <div className="pl-10">
-      <div className="rounded-lg border border-border border-l-3 border-l-brand/50 bg-surface-2/50 overflow-hidden">
+      <div className="rounded-lg border border-border bg-surface-2/50 overflow-hidden">
         {/* 折叠头 */}
         <button
           type="button"
@@ -108,8 +109,9 @@ function SingleToolCard({ tool, compact, onPermissionRespond }: SingleToolCardPr
   return (
     <div className={cn("px-3 py-2", compact && "py-1.5")}>
       {/* 标题行 — 单行紧凑 */}
-      <div
-        className="flex items-center gap-1.5 cursor-pointer group"
+      <button
+        type="button"
+        className="flex w-full items-center gap-1.5 text-left group"
         onClick={() => setExpanded(!expanded)}
       >
         {statusIcon}
@@ -119,7 +121,7 @@ function SingleToolCard({ tool, compact, onPermissionRespond }: SingleToolCardPr
         {tool.status === "running" && (
           <span className="text-[10px] text-status-running animate-pulse">running</span>
         )}
-      </div>
+      </button>
 
       {/* 权限请求按钮 */}
       {tool.status === "waiting_for_confirmation" && tool.permissionRequest && (

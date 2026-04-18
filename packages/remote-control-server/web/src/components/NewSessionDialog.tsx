@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import type { Environment, Session } from "../types";
 import { apiCreateSession } from "../api/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../../components/ui/dialog";
 
 interface NewSessionDialogProps {
   open: boolean;
@@ -23,8 +30,6 @@ export function NewSessionDialog({ open, environments, onClose, onCreated }: New
     }
   }, [open]);
 
-  if (!open) return null;
-
   const handleCreate = async () => {
     setCreating(true);
     setError("");
@@ -42,12 +47,11 @@ export function NewSessionDialog({ open, environments, onClose, onCreated }: New
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="w-full max-w-md rounded-2xl border border-border bg-surface-1 p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="mb-4 font-display text-lg font-semibold text-text-primary">New Session</h3>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md rounded-2xl border-border bg-surface-1 p-6 shadow-2xl">
+        <DialogHeader>
+          <DialogTitle className="font-display text-lg font-semibold text-text-primary">New Session</DialogTitle>
+        </DialogHeader>
 
         <div className="space-y-4">
           <div>
@@ -78,24 +82,24 @@ export function NewSessionDialog({ open, environments, onClose, onCreated }: New
           </div>
 
           {error && <div className="text-sm text-status-error">{error}</div>}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              onClick={onClose}
-              className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={creating}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light disabled:opacity-50 transition-colors"
-            >
-              {creating ? "Creating..." : "Create"}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+
+        <DialogFooter>
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-light disabled:opacity-50 transition-colors"
+          >
+            {creating ? "Creating..." : "Create"}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

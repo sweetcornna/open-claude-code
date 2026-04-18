@@ -1,41 +1,63 @@
 import { cn } from "../lib/utils";
+import { ThemeToggle } from "../../components/ui/theme-toggle";
+import { ChevronLeft, LayoutGrid, UserPlus } from "lucide-react";
 
 interface NavbarProps {
   onIdentityClick: () => void;
+  sessionTitle?: string;
+  onBack?: () => void;
 }
 
-export function Navbar({ onIdentityClick }: NavbarProps) {
+export function Navbar({ onIdentityClick, sessionTitle, onBack }: NavbarProps) {
   return (
     <nav className="sticky top-0 z-40 border-b border-border bg-surface-1/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-        <a href="/code/" className="flex items-center gap-2 font-display text-lg font-semibold text-text-primary no-underline">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 1L12.2 7.8L19 10L12.2 12.2L10 19L7.8 12.2L1 10L7.8 7.8L10 1Z"
-              fill="#D97757"
-            />
-          </svg>
-          Remote Control
-        </a>
-        <div className="flex items-center gap-1">
-          <a
-            href="/code/"
-            className="rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary no-underline transition-colors"
-          >
-            Dashboard
-          </a>
-          <button
-            onClick={onIdentityClick}
-            className="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary transition-colors"
-            title="Identity & QR"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <div className="mx-auto flex h-11 sm:h-12 max-w-5xl items-center justify-between px-3 sm:px-4">
+        {sessionTitle ? (
+          /* Session 页面 — 返回按钮 + agent 名 */
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1 text-sm text-text-muted hover:text-text-primary transition-colors flex-shrink-0"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </button>
+            <span className="text-text-muted/40">/</span>
+            <span className="text-sm font-display font-medium text-text-primary truncate">{sessionTitle}</span>
+            <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-medium text-brand flex-shrink-0">ACP</span>
+          </div>
+        ) : (
+          /* Dashboard 页面 — 品牌 */
+          <a href="/code/" className="flex items-center gap-2 font-display text-lg font-semibold text-text-primary no-underline">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="flex-shrink-0">
               <path
-                d="M6 8C7.66 8 9 6.66 9 5C9 3.34 7.66 2 6 2C4.34 2 3 3.34 3 5C3 6.66 4.34 8 6 8ZM6 10C3.99 10 0 11.01 0 13V14H12V13C12 11.01 8.01 10 6 10ZM13 8V5H11V8H8V10H11V13H13V10H16V8H13Z"
-                fill="currentColor"
+                d="M10 1L12.2 7.8L19 10L12.2 12.2L10 19L7.8 12.2L1 10L7.8 7.8L10 1Z"
+                fill="var(--color-brand)"
               />
             </svg>
-            Identity
+            <span className="hidden sm:inline">Remote Control</span>
+          </a>
+        )}
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          {!sessionTitle && (
+            <a
+              href="/code/"
+              className="flex items-center gap-1 rounded-md px-2 sm:px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary no-underline transition-colors"
+              title="Dashboard"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </a>
+          )}
+          <ThemeToggle />
+          <button
+            onClick={onIdentityClick}
+            className="flex items-center gap-1 rounded-md px-2 sm:px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary transition-colors"
+            title="Identity & QR"
+          >
+            <UserPlus className="h-4 w-4" />
+            <span className="hidden sm:inline">Identity</span>
           </button>
         </div>
       </div>

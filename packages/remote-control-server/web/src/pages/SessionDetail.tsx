@@ -6,6 +6,7 @@ import {
 } from "../api/client";
 import type { Session, SessionEvent } from "../types";
 import { isClosedSessionStatus, formatTime, cn } from "../lib/utils";
+import { Info } from "lucide-react";
 import { RCSChatAdapter } from "../lib/rcs-chat-adapter";
 import type { ThreadEntry, PendingPermission } from "../lib/types";
 import { StatusBadge } from "../components/Navbar";
@@ -25,7 +26,6 @@ import { TooltipProvider } from "../../components/ui/tooltip";
 import { ACPClient, DisconnectRequestedError } from "../acp/client";
 import { createRelayClient } from "../acp/relay-client";
 import { ACPMain } from "../../components/ACPMain";
-import { StatusDot } from "../../components/ui/connection-status";
 
 interface SessionDetailProps {
   sessionId: string;
@@ -246,6 +246,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
   return (
     <TooltipProvider>
       <div className="flex flex-1 flex-col overflow-hidden">
+        <h1 className="sr-only">{session.title || session.id}</h1>
         {/* Session Header */}
         <div className="border-b bg-surface-1 px-4 py-3">
           <div className="mx-auto max-w-5xl">
@@ -275,7 +276,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                   className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted hover:bg-surface-2 hover:text-text-secondary transition-colors"
                   title="Session info"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                  <Info className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={() => setTaskPanelOpen(!taskPanelOpen)}
@@ -434,24 +435,6 @@ function ACPSessionDetail({ sessionId, agentId }: { sessionId: string; agentId: 
   return (
     <TooltipProvider>
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header */}
-        <div className="border-b bg-surface-1 px-4 py-3">
-          <div className="mx-auto max-w-5xl">
-            <div className="mb-1">
-              <a href="/code/" className="text-sm text-text-muted hover:text-text-secondary transition-colors no-underline">
-                &larr; Dashboard
-              </a>
-            </div>
-            <div className="flex items-center gap-3">
-              <StatusDot state={connectionState} />
-              <h2 className="font-display text-lg font-semibold text-text-primary">
-                {agentId}
-              </h2>
-              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">ACP</span>
-            </div>
-          </div>
-        </div>
-
         {error && connectionState === "error" && (
           <div className="px-4 py-2 bg-destructive/10 text-destructive text-sm border-b">
             {error}
@@ -478,7 +461,7 @@ function ACPSessionDetail({ sessionId, agentId }: { sessionId: string; agentId: 
 
         {client && connectionState === "connected" && (
           <div className="flex-1 min-h-0">
-            <ACPMain client={client} />
+            <ACPMain client={client} agentId={agentId} />
           </div>
         )}
       </div>

@@ -41,7 +41,7 @@ interface PermissionCardProps {
 
 function PermissionCard({ request, onRespond }: PermissionCardProps) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-warning-border/30 border-l-3 border-l-warning-border bg-warning-bg/50 px-4 py-3">
+    <div className="flex items-center gap-3 rounded-xl border border-warning-border/30 bg-warning-bg/50 px-4 py-3">
       <ShieldAlert className="h-5 w-5 text-warning-text flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-warning-text">

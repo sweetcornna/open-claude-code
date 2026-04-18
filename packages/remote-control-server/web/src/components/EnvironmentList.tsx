@@ -21,13 +21,15 @@ export function EnvironmentList({ environments, onSelectEnvironment }: Environme
       {environments.map((env) => {
         const isAcp = env.worker_type === "acp";
         const typeLabel = isAcp ? "ACP Agent" : "Claude Code";
-        const typeColor = isAcp ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700";
+        const typeColor = isAcp ? "bg-brand/15 text-brand" : "bg-status-running/15 text-status-running";
 
         return (
-          <div
+          <button
             key={env.id}
+            type="button"
             onClick={() => onSelectEnvironment?.(env)}
-            className={`flex items-center justify-between rounded-xl border border-border bg-surface-1 px-4 py-3 transition-colors hover:border-border-light ${onSelectEnvironment ? "cursor-pointer" : ""}`}
+            disabled={isAcp}
+            className={`flex w-full items-center justify-between rounded-xl border border-border bg-surface-1 px-4 py-3 text-left transition-colors ${isAcp ? "cursor-default opacity-80" : "hover:border-border-light cursor-pointer"}`}
           >
             <div className="flex items-center gap-3">
               <div>
@@ -48,7 +50,7 @@ export function EnvironmentList({ environments, onSelectEnvironment }: Environme
                 {env.branch || ""}
               </div>
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

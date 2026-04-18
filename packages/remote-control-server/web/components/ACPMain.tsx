@@ -7,13 +7,14 @@ import { MessageSquare, Plus, PanelLeftClose, PanelLeft } from "lucide-react";
 
 interface ACPMainProps {
   client: ACPClient;
+  agentId?: string;
 }
 
 /**
  * Main container — Anthropic sidebar + chat layout.
  * Sidebar: sectioned by recency, orange active state, warm raised bg.
  */
-export function ACPMain({ client }: ACPMainProps) {
+export function ACPMain({ client, agentId }: ACPMainProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Handle session selection
@@ -36,16 +37,16 @@ export function ACPMain({ client }: ACPMainProps) {
       {/* 侧边栏 — Anthropic warm sidebar, hidden on mobile */}
       <div
         className={cn(
-          "hidden md:flex flex-col border-r border-border bg-surface-1 transition-all duration-200 flex-shrink-0",
+          "hidden md:flex flex-col border-r border-border/60 bg-surface-1/50 transition-all duration-200 flex-shrink-0",
           sidebarCollapsed ? "w-12" : "w-64",
         )}
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between px-3 py-3 border-b border-border">
+        <div className="flex items-center justify-between px-3 py-4">
           {!sidebarCollapsed && (
-            <span className="text-xs font-display font-medium text-text-muted uppercase tracking-wider px-1">会话</span>
+            <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">会话</span>
           )}
-          <div className="flex items-center gap-0.5">
+          <div className={cn("flex items-center gap-0.5", sidebarCollapsed && "mx-auto")}>
             {!sidebarCollapsed && (
               <button
                 type="button"
@@ -82,7 +83,7 @@ export function ACPMain({ client }: ACPMainProps) {
 
       {/* 聊天区域 */}
       <div className="flex-1 flex flex-col min-w-0">
-        <ChatInterface client={client} />
+        <ChatInterface client={client} agentId={agentId} />
       </div>
     </div>
   );
@@ -170,11 +171,12 @@ function SidebarSessionList({
   const groups = groupByRecency(sorted);
 
   return (
-    <nav className="py-2" aria-label="历史会话">
-      {groups.map((group) => (
+    <nav className="py-1" aria-label="历史会话">
+      {groups.map((group, gi) => (
         <div key={group.label}>
-          <div className="px-3 py-1.5">
-            <span className="text-[10px] font-display font-medium uppercase tracking-widest text-text-muted">
+          {gi > 0 && <div className="mx-3 my-2 border-t border-border/40" />}
+          <div className="px-4 py-2">
+            <span className="text-[10px] font-display font-semibold uppercase tracking-widest text-text-muted/70">
               {group.label}
             </span>
           </div>
@@ -187,15 +189,15 @@ function SidebarSessionList({
                 onSelectSession(session);
               }}
               className={cn(
-                "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
+                "w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors rounded-none",
                 session.sessionId === activeId
-                  ? "bg-brand/10 text-text-primary border-l-2 border-l-brand"
-                  : "text-text-secondary hover:bg-surface-1/50 hover:text-text-primary border-l-2 border-l-transparent",
+                  ? "bg-brand/8 text-text-primary"
+                  : "text-text-secondary hover:bg-surface-2/60 hover:text-text-primary",
               )}
               title={session.title || session.sessionId}
             >
-              <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-              <span className="text-sm font-display truncate">
+              <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+              <span className="text-[13px] font-display truncate leading-snug">
                 {session.title && session.title.trim() ? session.title : "新会话"}
               </span>
             </button>

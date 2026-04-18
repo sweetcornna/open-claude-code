@@ -20,6 +20,8 @@ export interface ServerConfig {
   debug?: boolean;
   token?: string;
   https?: boolean;
+  /** Default permission mode for new sessions (e.g. "auto", "default", "bypassPermissions") */
+  permissionMode?: string;
 }
 
 // Pending permission request
@@ -85,6 +87,7 @@ let AGENT_CWD: string;
 let SERVER_PORT: number;
 let SERVER_HOST: string;
 let AUTH_TOKEN: string | undefined;
+let DEFAULT_PERMISSION_MODE: string | undefined;
 
 const clients = new Map<WSContext, ClientState>();
 
@@ -318,7 +321,7 @@ async function handleConnect(ws: WSContext): Promise<void> {
 
 async function handleNewSession(
   ws: WSContext,
-  params: { cwd?: string },
+  params: { cwd?: string; permissionMode?: string },
 ): Promise<void> {
   const state = clients.get(ws);
   if (!state?.connection) {
@@ -329,9 +332,11 @@ async function handleNewSession(
 
   try {
     const sessionCwd = params.cwd || AGENT_CWD;
+    const permissionMode = params.permissionMode || DEFAULT_PERMISSION_MODE;
     const result = await state.connection.newSession({
       cwd: sessionCwd,
       mcpServers: [],
+      ...(permissionMode ? { _meta: { permissionMode } } : {}),
     });
 
     state.sessionId = result.sessionId;
@@ -598,6 +603,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
   SERVER_PORT = port;
   SERVER_HOST = host;
   AUTH_TOKEN = token;
+  DEFAULT_PERMISSION_MODE = config.permissionMode || process.env.ACP_PERMISSION_MODE;
 
   // Initialize RCS upstream client if configured
   const rcsUrl = process.env.ACP_RCS_URL;
@@ -634,7 +640,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
             handleDisconnect(relayWs);
             break;
           case "new_session":
-            await handleNewSession(relayWs, (msg.payload as { cwd?: string }) || {});
+            await handleNewSession(relayWs, (msg.payload as { cwd?: string; permissionMode?: string }) || {});
             break;
           case "prompt":
             await handlePrompt(relayWs, msg.payload as { content: ContentBlock[] });
@@ -734,7 +740,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
               handleDisconnect(ws);
               break;
             case "new_session":
-              await handleNewSession(ws, (data.payload as { cwd?: string }) || {});
+              await handleNewSession(ws, (data.payload as { cwd?: string; permissionMode?: string }) || {});
               break;
             case "prompt":
               await handlePrompt(ws, data.payload as { content: ContentBlock[] });

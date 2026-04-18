@@ -9,7 +9,7 @@ import {
 import { cn } from "../../src/lib/utils";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { createContext, memo, useContext, useEffect, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useState } from "react";
 import { Shimmer } from "./shimmer";
 
 interface ReasoningContextValue {
@@ -77,8 +77,12 @@ export const Reasoning = memo(
     }, [isStreaming, startTime, setDuration]);
 
     // Auto-open when streaming starts, auto-close when streaming ends (once only)
+    // Respect prefers-reduced-motion: skip animation auto-close
+    const prefersReducedMotion = typeof window !== "undefined"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     useEffect(() => {
-      if (defaultOpen && !isStreaming && isOpen && !hasAutoClosed) {
+      if (!prefersReducedMotion && defaultOpen && !isStreaming && isOpen && !hasAutoClosed) {
         const timer = setTimeout(() => {
           setIsOpen(false);
           setHasAutoClosed(true);
@@ -86,7 +90,7 @@ export const Reasoning = memo(
 
         return () => clearTimeout(timer);
       }
-    }, [isStreaming, isOpen, defaultOpen, setIsOpen, hasAutoClosed]);
+    }, [isStreaming, isOpen, defaultOpen, setIsOpen, hasAutoClosed, prefersReducedMotion]);
 
     const handleOpenChange = (newOpen: boolean) => {
       setIsOpen(newOpen);
