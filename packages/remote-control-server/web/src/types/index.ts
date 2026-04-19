@@ -5,6 +5,7 @@ export interface Environment {
   status: string;
   branch?: string;
   worker_type?: string;
+  channel_group_id?: string | null;
   capabilities?: Record<string, unknown> | null;
 }
 
