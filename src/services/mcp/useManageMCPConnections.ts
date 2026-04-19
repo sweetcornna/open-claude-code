@@ -538,7 +538,7 @@ export function useManageMCPConnections(
               if (
                 client.capabilities?.experimental?.[
                   'claude/channel/permission'
-                ] !== undefined
+                ]
               ) {
                 client.client.setNotificationHandler(
                   ChannelPermissionNotificationSchema(),

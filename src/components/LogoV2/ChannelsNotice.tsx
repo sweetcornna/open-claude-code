@@ -11,6 +11,7 @@ import {
   getAllowedChannels,
   getHasDevChannels,
 } from '../../bootstrap/state.js'
+import { getBuiltinPlugins } from '../../plugins/builtinPlugins.js'
 import { Box, Text } from '@anthropic/ink'
 import { getMcpConfigsByScope } from '../../services/mcp/config.js'
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js'
@@ -75,25 +76,39 @@ function formatEntry(c: ChannelEntry): string {
 
 type Unmatched = { entry: ChannelEntry; why: string }
 
-function findUnmatched(
+type FindUnmatchedDeps = {
+  configuredServerNames?: ReadonlySet<string>
+  installedPluginIds?: ReadonlySet<string>
+}
+
+export function findUnmatched(
   entries: readonly ChannelEntry[],
+  deps?: FindUnmatchedDeps,
 ): Unmatched[] {
   // Server-kind: build one Set from all scopes up front. getMcpConfigsByScope
   // is not cached (project scope walks the dir tree); getMcpConfigByName would
   // redo that walk per entry.
-  const scopes = ['enterprise', 'user', 'project', 'local'] as const
-  const configured = new Set<string>()
-  for (const scope of scopes) {
-    for (const name of Object.keys(getMcpConfigsByScope(scope).servers)) {
-      configured.add(name)
+  const configured = deps?.configuredServerNames ?? (() => {
+    const scopes = ['enterprise', 'user', 'project', 'local'] as const
+    const names = new Set<string>()
+    for (const scope of scopes) {
+      for (const name of Object.keys(getMcpConfigsByScope(scope).servers)) {
+        names.add(name)
+      }
     }
-  }
+    return names
+  })()
 
   // Plugin-kind installed check: installed_plugins.json keys are
   // `name@marketplace`. loadInstalledPluginsV2 is cached.
-  const installedPluginIds = new Set(
-    Object.keys(loadInstalledPluginsV2().plugins),
-  )
+  const installedPluginIds = deps?.installedPluginIds ?? (() => {
+    const ids = new Set(Object.keys(loadInstalledPluginsV2().plugins))
+    const builtinPlugins = getBuiltinPlugins()
+    for (const plugin of [...builtinPlugins.enabled, ...builtinPlugins.disabled]) {
+      ids.add(plugin.source)
+    }
+    return ids
+  })()
 
   const out: Unmatched[] = []
   for (const entry of entries) {

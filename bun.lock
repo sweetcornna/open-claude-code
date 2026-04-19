@@ -34,6 +34,7 @@
         "@claude-code-best/agent-tools": "workspace:*",
         "@claude-code-best/builtin-tools": "workspace:*",
         "@claude-code-best/mcp-client": "workspace:*",
+        "@claude-code-best/weixin": "workspace:*",
         "@commander-js/extra-typings": "^14.0.0",
         "@growthbook/growthbook": "^1.6.5",
         "@langfuse/otel": "^5.1.0",
@@ -322,6 +323,13 @@
       "name": "url-handler-napi",
       "version": "1.0.0",
     },
+    "packages/weixin": {
+      "name": "@claude-code-best/weixin",
+      "version": "1.0.0",
+      "dependencies": {
+        "qrcode": "^1.5.4",
+      },
+    },
   },
   "packages": {
     "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@0.19.0", "https://registry.npmmirror.com/@agentclientprotocol/sdk/-/sdk-0.19.0.tgz", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-U9I8ws9WTOk6jCBAWpXefGSDgVXn14/kV6HFzwWGcstQ02mOQgClMAROHmoIn9GqZbDBDEOkdIbP4P4TEMQdug=="],
@@ -565,6 +573,8 @@
     "@claude-code-best/mcp-chrome-bridge": ["@claude-code-best/mcp-chrome-bridge@2.0.8", "https://registry.npmmirror.com/@claude-code-best/mcp-chrome-bridge/-/mcp-chrome-bridge-2.0.8.tgz", { "dependencies": { "@fastify/cors": "^11.0.1", "@modelcontextprotocol/sdk": "^1.11.0", "chalk": "^5.4.1", "chrome-mcp-shared": "^1.0.2", "commander": "^13.1.0", "fastify": "^5.3.2", "is-admin": "^4.0.0", "pino": "^9.6.0", "uuid": "^11.1.0" }, "bin": { "mcp-chrome-bridge": "dist/cli.js", "mcp-chrome-stdio": "dist/mcp/mcp-server-stdio.js" } }, "sha512-f7J1e4PQ6qxXzdHwL7QRrMZ4lPfD/L1MWxWDbyHmHY7jaW2GL6WcArKpk/fApg3V/q0racqUWzXHQdpE/HJZqg=="],
 
     "@claude-code-best/mcp-client": ["@claude-code-best/mcp-client@workspace:packages/mcp-client"],
+
+    "@claude-code-best/weixin": ["@claude-code-best/weixin@workspace:packages/weixin"],
 
     "@commander-js/extra-typings": ["@commander-js/extra-typings@14.0.0", "https://registry.npmmirror.com/@commander-js/extra-typings/-/extra-typings-14.0.0.tgz", { "peerDependencies": { "commander": "~14.0.0" } }, "sha512-hIn0ncNaJRLkZrxBIp5AsW/eXEHNKYQBh0aPdoUqNgD+Io3NIykQqpKFyKcuasZhicGaEZJX/JBSIkZ4e5x8Dg=="],
 
