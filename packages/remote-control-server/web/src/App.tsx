@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Navbar } from "./components/Navbar";
 import { IdentityPanel } from "./components/IdentityPanel";
+import { TokenManagerDialog } from "./components/TokenManagerDialog";
 import { ThemeProvider } from "./lib/theme";
-import { getUuid, setUuid, apiBind } from "./api/client";
+import { getUuid, setUuid, apiBind, setActiveApiToken } from "./api/client";
 import { ACPDirectView } from "./components/ACPDirectView";
+import { useTokens } from "./hooks/useTokens";
 
 const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
 const SessionDetail = lazy(() => import("./pages/SessionDetail").then((m) => ({ default: m.SessionDetail })));
@@ -11,7 +13,18 @@ const SessionDetail = lazy(() => import("./pages/SessionDetail").then((m) => ({ 
 export default function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [identityOpen, setIdentityOpen] = useState(false);
+  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [acpDirect, setAcpDirect] = useState<{ url: string; token: string } | null>(null);
+  const { tokens, activeTokenId, activeLabel, activeTokenValue, setActiveTokenId, addToken, removeToken, updateToken } = useTokens();
+
+  // Sync active token to API client
+  useEffect(() => {
+    setActiveApiToken(activeTokenValue);
+  }, [activeTokenValue]);
+
+  const handleSetActiveToken = useCallback((id: string) => {
+    setActiveTokenId(id);
+  }, [setActiveTokenId]);
 
   // Simple hash-based router
   const parseRoute = useCallback(() => {
@@ -97,6 +110,8 @@ export default function App() {
       <div className="flex h-screen flex-col bg-surface-0 text-text-primary">
         <Navbar
           onIdentityClick={() => setIdentityOpen(true)}
+          onTokenClick={() => setTokenDialogOpen(true)}
+          activeTokenLabel={currentSessionId ? undefined : activeLabel}
           sessionTitle={currentSessionId || (acpDirect ? "ACP" : undefined)}
           onBack={(currentSessionId || acpDirect) ? navigateToDashboard : undefined}
         />
@@ -114,6 +129,17 @@ export default function App() {
         </Suspense>
 
         <IdentityPanel open={identityOpen} onClose={() => setIdentityOpen(false)} />
+
+        <TokenManagerDialog
+          open={tokenDialogOpen}
+          onClose={() => setTokenDialogOpen(false)}
+          tokens={tokens}
+          activeTokenId={activeTokenId}
+          onSetActive={handleSetActiveToken}
+          onAdd={addToken}
+          onRemove={removeToken}
+          onUpdate={updateToken}
+        />
       </div>
     </ThemeProvider>
   );

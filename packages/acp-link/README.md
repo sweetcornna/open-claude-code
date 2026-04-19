@@ -41,6 +41,9 @@ acp-link --https /path/to/agent
 # Disable authentication (dangerous)
 acp-link --no-auth /path/to/agent
 
+# Register to RCS with a specific channel group
+acp-link --group my-team /path/to/agent
+
 # Pass arguments to the agent (use -- to separate)
 acp-link /path/to/agent -- --verbose --model gpt-4
 ```
@@ -49,7 +52,7 @@ acp-link /path/to/agent -- --verbose --model gpt-4
 
 ```
 USAGE
-  acp-link [--port value] [--host value] [--debug] [--no-auth] [--https] <command>...
+  acp-link [--port value] [--host value] [--debug] [--no-auth] [--https] [--group value] <command>...
   acp-link --help
   acp-link --version
 
@@ -59,6 +62,7 @@ FLAGS
        [--debug]    Enable debug logging to file
        [--no-auth]  Disable authentication (dangerous)
        [--https]    Enable HTTPS with self-signed cert
+       [--group]    Channel group ID for RCS registration (letters, digits, hyphens, underscores only)
     -h  --help      Print help information and exit
     -v  --version   Print version information and exit
 
@@ -83,6 +87,18 @@ ws://localhost:9315/ws?token=<your-token>
 ```
 
 Set `ACP_AUTH_TOKEN` env var to use a fixed token, or use `--no-auth` to disable (not recommended).
+
+## RCS Upstream
+
+acp-link can register to a Remote Control Server (RCS) for remote access. Set the following environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `ACP_RCS_URL` | RCS server URL (e.g. `http://rcs.example.com:3000`) |
+| `ACP_RCS_TOKEN` | API token for RCS authentication |
+| `ACP_RCS_GROUP` | Channel group ID to lock the agent into (letters, digits, `-`, `_` only) |
+
+You can also use `--group <id>` on the CLI. The CLI flag takes priority over the env var.
 
 ## License
 

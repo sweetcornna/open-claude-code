@@ -40,6 +40,17 @@ export const command = buildCommand({
         brief: "Enable HTTPS with auto-generated self-signed certificate",
         default: false,
       },
+      group: {
+        kind: "parsed",
+        parse: (value: string) => {
+          if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+            throw new Error(`Invalid group "${value}": only letters, digits, hyphens, and underscores are allowed`);
+          }
+          return value;
+        },
+        brief: "Channel group ID for RCS registration (env: ACP_RCS_GROUP)",
+        optional: true,
+      },
     },
     positional: {
       kind: "array",
@@ -53,7 +64,7 @@ export const command = buildCommand({
   },
   func: async function (
     this: LocalContext,
-    flags: { port: number; host: string; debug: boolean; "no-auth": boolean; https: boolean },
+    flags: { port: number; host: string; debug: boolean; "no-auth": boolean; https: boolean; group: string | undefined },
     ...args: readonly string[]
   ) {
     const port = flags.port;
@@ -61,6 +72,7 @@ export const command = buildCommand({
     const debug = flags.debug;
     const noAuth = flags["no-auth"];
     const https = flags.https;
+    const group = flags.group;
     const [command, ...agentArgs] = args;
     const cwd = process.cwd();
 
@@ -85,6 +97,6 @@ export const command = buildCommand({
 
     // Import and run the server
     const { startServer } = await import("../server.js");
-    await startServer({ port, host, command: command!, args: [...agentArgs], cwd, debug, token, https });
+    await startServer({ port, host, command: command!, args: [...agentArgs], cwd, debug, token, https, group });
   },
 });

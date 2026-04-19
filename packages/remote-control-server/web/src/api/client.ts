@@ -24,11 +24,35 @@ export function setUuid(uuid: string): void {
   localStorage.setItem("rcs_uuid", uuid);
 }
 
+/** Active API token for Authorization header (set by useTokens) */
+let _activeToken: string | null = null;
+
+export function setActiveApiToken(token: string | null): void {
+  _activeToken = token;
+}
+
+export function getActiveApiToken(): string | null {
+  return _activeToken;
+}
+
 async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const uuid = getUuid();
-  const sep = path.includes("?") ? "&" : "?";
-  const url = `${BASE}${path}${sep}uuid=${encodeURIComponent(uuid)}`;
+
+  if (_activeToken) {
+    headers["Authorization"] = `Bearer ${_activeToken}`;
+  }
+
+  // When using Bearer token auth, backend derives UUID from the token — no need to send query param.
+  // Otherwise fall back to UUID auth via query param.
+  let url: string;
+  if (_activeToken) {
+    const sep = path.includes("?") ? "&" : "?";
+    url = `${BASE}${path}${sep}uuid=${encodeURIComponent(_activeToken)}`;
+  } else {
+    const uuid = getUuid();
+    const sep = path.includes("?") ? "&" : "?";
+    url = `${BASE}${path}${sep}uuid=${encodeURIComponent(uuid)}`;
+  }
   const opts: RequestInit = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
 
