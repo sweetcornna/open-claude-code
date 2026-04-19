@@ -41,8 +41,12 @@
 不用克隆仓库, 从 NPM 下载后, 直接使用
 
 ```sh
-bun  i -g claude-code-best
-bun pm -g trust claude-code-best
+npm i -g claude-code-best
+
+# bun 安装比较多问题, 推荐 npm 装
+# bun  i -g claude-code-best
+# bun pm -g trust claude-code-best
+
 ccb # 以 nodejs 打开 claude code
 ccb-bun # 以 bun 形态打开
 CLAUDE_BRIDGE_BASE_URL=https://remote-control.claude-code-best.win/ CLAUDE_BRIDGE_OAUTH_TOKEN=test-my-key ccb --remote-control # 我们有自部署的远程控制
