@@ -18,6 +18,6 @@ export const config = {
 } as const;
 
 export function getBaseUrl(): string {
-  if (config.baseUrl) return config.baseUrl;
-  return `http://localhost:${config.port}`;
+  const url = config.baseUrl || `http://localhost:${config.port}`;
+  return url.replace(/\/+$/, "");
 }
