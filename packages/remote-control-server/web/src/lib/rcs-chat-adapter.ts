@@ -1,4 +1,5 @@
 import type { SetStateAction } from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
   apiFetchSession,
   apiFetchSessionHistory,
@@ -421,7 +422,7 @@ export class RCSChatAdapter {
     // Send to backend
     await apiSendEvent(this.sessionId, {
       type: "user",
-      uuid: crypto.randomUUID(),
+      uuid: uuidv4(),
       content: text,
       message: { content: text },
     });

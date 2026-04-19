@@ -444,7 +444,7 @@ function AskUserPanel({
   const handleSubmit = () => {
     const mapped: Record<string, unknown> = {};
     for (const [qIdx, val] of Object.entries(answers)) {
-      const q = questions[parseInt(qIdx)];
+      const q = questions[parseInt(qIdx, 10)];
       if (!q) continue;
       if (typeof val === "number") {
         mapped[qIdx] = q.options?.[val]?.label || String(val);

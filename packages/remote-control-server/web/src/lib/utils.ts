@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { v4 as uuidv4 } from "uuid";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -42,10 +43,7 @@ export function truncate(str: string | null | undefined, max: number): string {
 }
 
 export function generateMessageUuid(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return uuidv4();
 }
 
 export function extractEventText(payload: Record<string, unknown> | null | undefined): string {
