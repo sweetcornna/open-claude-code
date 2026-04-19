@@ -33,6 +33,17 @@ const app = new Hono();
 
 // Middleware
 app.use("*", logger());
+app.use("*", async (c, next) => {
+  // Normalize double slashes in path (e.g. //v1/environments/bridge → /v1/environments/bridge)
+  const path = new URL(c.req.url).pathname;
+  if (path.includes("//")) {
+    const normalized = path.replace(/\/+/g, "/");
+    const url = new URL(c.req.url);
+    url.pathname = normalized;
+    return app.fetch(new Request(url.toString(), c.req.raw));
+  }
+  await next();
+});
 app.use("/web/*", cors());
 
 // Health check
