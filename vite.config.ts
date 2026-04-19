@@ -1,11 +1,12 @@
 import { defineConfig, type Plugin } from "vite";
 import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { readFileSync } from "fs";
 import { getMacroDefines } from "./scripts/defines";
 import featureFlagsPlugin from "./scripts/vite-plugin-feature-flags";
 import importMetaRequirePlugin from "./scripts/vite-plugin-import-meta-require";
 
-const projectRoot = dirname(new URL(import.meta.url).pathname);
+const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Plugin to import .md files as raw strings (Bun's text loader behavior).

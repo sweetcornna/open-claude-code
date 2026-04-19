@@ -5,6 +5,7 @@ mock.module("src/services/analytics/growthbook.js", () => ({
 }));
 
 const {
+  filterPermissionRelayClients,
   shortRequestId,
   truncateForPreview,
   PERMISSION_REPLY_RE,
@@ -158,5 +159,36 @@ describe("createChannelPermissionCallbacks", () => {
     });
     expect(cb.resolve("abc", "deny", "server")).toBe(true);
     expect(received?.behavior).toBe("deny");
+  });
+});
+
+describe("filterPermissionRelayClients", () => {
+  test("requires truthy permission capability", () => {
+    const clients = [
+      {
+        type: "connected",
+        name: "plugin:weixin:weixin",
+        capabilities: {
+          experimental: {
+            "claude/channel": {},
+            "claude/channel/permission": false,
+          },
+        },
+      },
+      {
+        type: "connected",
+        name: "plugin:telegram:telegram",
+        capabilities: {
+          experimental: {
+            "claude/channel": {},
+            "claude/channel/permission": {},
+          },
+        },
+      },
+    ];
+
+    expect(
+      filterPermissionRelayClients(clients, () => true).map(client => client.name),
+    ).toEqual(["plugin:telegram:telegram"]);
   });
 });
