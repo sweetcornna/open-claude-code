@@ -457,9 +457,14 @@ describe("buildClassifierUnavailableMessage", () => {
     expect(msg).toContain("classifier-v1");
     expect(msg).toContain("unavailable");
   });
+
+  test("tells the model to wait and retry later", () => {
+    const msg = buildClassifierUnavailableMessage("Bash", "classifier-v1");
+    expect(msg).toContain("Wait briefly and then try this action again.");
+    expect(msg).toContain("come back to it later");
+  });
 });
 
-// ─── normalizeMessages ──────────────────────────────────────────────────
 
 describe("normalizeMessages", () => {
   test("splits multi-block assistant message into individual messages", () => {

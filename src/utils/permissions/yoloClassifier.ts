@@ -28,7 +28,8 @@ import { errorMessage } from '../errors.js'
 import { lazySchema } from '../lazySchema.js'
 import { extractTextContent } from '../messages.js'
 import { resolveAntModel } from '../model/antModels.js'
-import { getMainLoopModel } from '../model/model.js'
+import { getDefaultSonnetModel, getMainLoopModel } from '../model/model.js'
+import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
 import { sideQuery } from '../sideQuery.js'
 import type { LangfuseSpan } from '../../services/langfuse/index.js'
@@ -1349,6 +1350,10 @@ function getClassifierModel(): string {
   )
   if (config?.model) {
     return config.model
+  }
+  // Poor mode: downgrade classifier to Sonnet to reduce cost
+  if (isPoorModeActive()) {
+    return getDefaultSonnetModel()
   }
   return getMainLoopModel()
 }
