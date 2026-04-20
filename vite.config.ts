@@ -64,15 +64,6 @@ export default defineConfig({
         chunkFileNames: "chunks/[name]-[hash].js",
       },
 
-      // Externalize native addon packages (they contain .node binaries)
-      external: [
-        /audio-capture-napi/,
-        /color-diff-napi/,
-        /image-processor-napi/,
-        /modifiers-napi/,
-        /url-handler-napi/,
-      ],
-
       plugins: [
         rawAssetPlugin([".md", ".txt", ".html", ".css"]),
         featureFlagsPlugin(),
