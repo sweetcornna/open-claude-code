@@ -1,3 +1,9 @@
+import { createRequire } from 'node:module'
+
+// createRequire works in both Bun and Node.js ESM contexts.
+// Needed because this package is "type": "module" but uses require() for
+// loading native .node addons — bare require is not available in Node.js ESM.
+const nodeRequire = createRequire(import.meta.url)
 
 type AudioCaptureNapi = {
   startRecording(
@@ -41,7 +47,7 @@ function loadModule(): AudioCaptureNapi | null {
   if (process.env.AUDIO_CAPTURE_NODE_PATH) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      cachedModule = require(
+      cachedModule = nodeRequire(
         process.env.AUDIO_CAPTURE_NODE_PATH,
       ) as AudioCaptureNapi
       return cachedModule
@@ -63,7 +69,7 @@ function loadModule(): AudioCaptureNapi | null {
   for (const p of fallbacks) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      cachedModule = require(p) as AudioCaptureNapi
+      cachedModule = nodeRequire(p) as AudioCaptureNapi
       return cachedModule
     } catch {
       // try next

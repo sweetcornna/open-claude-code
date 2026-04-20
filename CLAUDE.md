@@ -58,6 +58,9 @@ bun run health
 # Check unused exports
 bun run check:unused
 
+# Full check (typecheck + lint + test) — run after completing any task
+bun run test:all
+
 bun run typecheck
 
 # Remote Control Server
