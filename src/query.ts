@@ -235,6 +235,9 @@ export async function* query(
   // When called as a sub-agent, langfuseTrace is already set by runAgent()
   // — reuse it instead of creating an independent trace.
   const ownsTrace = !params.toolUseContext.langfuseTrace
+  logForDebugging(
+    `[query] ownsTrace=${ownsTrace} incoming langfuseTrace=${params.toolUseContext.langfuseTrace ? 'present' : 'null/undefined'} isLangfuseEnabled=${isLangfuseEnabled()}`,
+  )
   const langfuseTrace = params.toolUseContext.langfuseTrace
     ?? (isLangfuseEnabled()
       ? createTrace({

@@ -14,6 +14,9 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
+import { createTrace, endTrace, isLangfuseEnabled } from '../../services/langfuse/index.js'
+import { getSessionId } from '../../bootstrap/state.js'
+import { getAPIProvider } from '../../utils/model/providers.js'
 import { jsonParse } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 
@@ -146,6 +149,15 @@ export async function generateAgent(
     ? AGENT_CREATION_SYSTEM_PROMPT + AGENT_MEMORY_INSTRUCTIONS
     : AGENT_CREATION_SYSTEM_PROMPT
 
+  const langfuseTrace = isLangfuseEnabled()
+    ? createTrace({
+        sessionId: getSessionId(),
+        model,
+        provider: getAPIProvider(),
+        name: 'agent-creation',
+      })
+    : null
+
   const response = await queryModelWithoutStreaming({
     messages: normalizeMessagesForAPI(messagesWithContext),
     systemPrompt: asSystemPrompt([systemPrompt]),
@@ -161,8 +173,11 @@ export async function generateAgent(
       hasAppendSystemPrompt: false,
       querySource: 'agent_creation',
       mcpTools: [],
+      langfuseTrace,
     },
   })
+
+  endTrace(langfuseTrace)
 
   const textBlocks = (Array.isArray(response.message.content) ? response.message.content : []).filter(
     (block): block is ContentBlock & { type: 'text' } => block.type === 'text',
