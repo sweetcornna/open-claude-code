@@ -49,6 +49,7 @@ npm i -g claude-code-best
 
 ccb # 以 nodejs 打开 claude code
 ccb-bun # 以 bun 形态打开
+ccb update # 更新到最新版本
 CLAUDE_BRIDGE_BASE_URL=https://remote-control.claude-code-best.win/ CLAUDE_BRIDGE_OAUTH_TOKEN=test-my-key ccb --remote-control # 我们有自部署的远程控制
 ```
 

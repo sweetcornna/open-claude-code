@@ -6551,6 +6551,15 @@ async function run(): Promise<CommanderCommand> {
 			},
 		);
 
+	// claude update — update ccb to the latest version via npm or bun
+	program
+		.command("update")
+		.description("Update claude-code-best (ccb) to the latest version")
+		.action(async () => {
+			const { updateCCB } = await import("./cli/updateCCB.js");
+			await updateCCB();
+		});
+
 	// ant-only commands
 	if (process.env.USER_TYPE === "ant") {
 		const validateLogId = (value: string) => {
