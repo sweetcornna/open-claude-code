@@ -109,7 +109,6 @@ const externalTips: Tip[] = [
       `Use Plan Mode to prepare for a complex request before making changes. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to enable.`,
     cooldownSessions: 5,
     isRelevant: async () => {
-      if (process.env.USER_TYPE === 'ant') return false
       const config = getGlobalConfig()
       // Show to users who haven't used plan mode recently (7+ days)
       const daysSinceLastUse = config.lastPlanModeUse
@@ -401,9 +400,7 @@ const externalTips: Tip[] = [
   {
     id: 'shift-tab',
     content: async () =>
-      process.env.USER_TYPE === 'ant'
-        ? `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode and auto mode`
-        : `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode, auto-accept edit mode, and plan mode`,
+      `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default, accept edits, plan, auto, and bypass modes`,
     cooldownSessions: 10,
     isRelevant: async () => true,
   },

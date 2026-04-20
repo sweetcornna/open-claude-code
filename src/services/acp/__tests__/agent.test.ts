@@ -42,7 +42,7 @@ const mockGetDefaultAppState = mock(() => ({
     alwaysAllowRules: { user: [], project: [], local: [] },
     alwaysDenyRules: { user: [], project: [], local: [] },
     alwaysAskRules: { user: [], project: [], local: [] },
-    isBypassPermissionsModeAvailable: false,
+    isBypassPermissionsModeAvailable: true,
   },
   fastMode: false,
   settings: {},
@@ -626,6 +626,23 @@ describe('AcpAgent', () => {
       await expect(
         agent.setSessionMode({ sessionId: 'ghost', modeId: 'auto' } as any),
       ).rejects.toThrow('Session not found')
+    })
+
+    test('availableModes includes bypassPermissions when not root', async () => {
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      const session = agent.sessions.get(sessionId)
+      const modeIds = session?.modes.availableModes.map((m: any) => m.id)
+      expect(modeIds).toContain('bypassPermissions')
+    })
+
+    test('can switch to bypassPermissions mode', async () => {
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      await agent.setSessionMode({ sessionId, modeId: 'bypassPermissions' } as any)
+      const session = agent.sessions.get(sessionId)
+      expect(session?.modes.currentModeId).toBe('bypassPermissions')
+      expect(session?.appState.toolPermissionContext.mode).toBe('bypassPermissions')
     })
   })
 

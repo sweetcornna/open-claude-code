@@ -146,7 +146,7 @@ export const getEmptyToolPermissionContext: () => ToolPermissionContext =
     alwaysAllowRules: {},
     alwaysDenyRules: {},
     alwaysAskRules: {},
-    isBypassPermissionsModeAvailable: false,
+    isBypassPermissionsModeAvailable: true,
   })
 
 export type CompactProgressEvent =
