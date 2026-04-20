@@ -17,9 +17,15 @@
  *   getSyntaxTheme always returns the default for the given Claude theme.
  */
 
+import { createRequire } from 'node:module'
 import { diffArrays } from 'diff'
 import type * as hljsNamespace from 'highlight.js'
 import { basename, extname } from 'path'
+
+// createRequire works in both Bun and Node.js ESM contexts.
+// Needed because this package is "type": "module" but uses require() for
+// lazy loading — bare require is not available in Node.js ESM.
+const nodeRequire = createRequire(import.meta.url)
 
 // Lazy: defers loading highlight.js until first render. The full bundle
 // registers 190+ language grammars at require time (~50MB, 100-200ms on
@@ -34,8 +40,7 @@ type HLJSApi = typeof hljsNamespace.default
 let cachedHljs: HLJSApi | null = null
 function hljs(): HLJSApi {
   if (cachedHljs) return cachedHljs
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require('highlight.js')
+  const mod = nodeRequire('highlight.js')
   // highlight.js uses `export =` (CJS). Under bun/ESM the interop wraps it
   // in .default; under node CJS the module IS the API. Check at runtime.
   cachedHljs = 'default' in mod && mod.default ? mod.default : mod

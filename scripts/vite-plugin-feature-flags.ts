@@ -1,41 +1,5 @@
 import type { Plugin } from "rollup";
-
-/**
- * Default features that match the official CLI build.
- * Additional features can be enabled via FEATURE_<NAME>=1 env vars.
- */
-const DEFAULT_BUILD_FEATURES = [
-  "AGENT_TRIGGERS_REMOTE",
-  "CHICAGO_MCP",
-  "VOICE_MODE",
-  "SHOT_STATS",
-  "PROMPT_CACHE_BREAK_DETECTION",
-  "TOKEN_BUDGET",
-  // P0: local features
-  "AGENT_TRIGGERS",
-  "ULTRATHINK",
-  "BUILTIN_EXPLORE_PLAN_AGENTS",
-  "LODESTONE",
-  // P1: API-dependent features
-  "EXTRACT_MEMORIES",
-  "VERIFICATION_AGENT",
-  "KAIROS_BRIEF",
-  "AWAY_SUMMARY",
-  "ULTRAPLAN",
-  // P2: daemon + remote control server
-  "DAEMON",
-  // PR-package restored features
-  "WORKFLOW_SCRIPTS",
-  "HISTORY_SNIP",
-  "CONTEXT_COLLAPSE",
-  "MONITOR_TOOL",
-  "FORK_SUBAGENT",
-  "KAIROS",
-  "COORDINATOR_MODE",
-  "LAN_PIPES",
-  // P3: poor mode
-  "POOR",
-];
+import { DEFAULT_BUILD_FEATURES } from "./defines.ts";
 
 /**
  * Collect enabled feature flags from defaults + env vars.
