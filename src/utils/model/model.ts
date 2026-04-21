@@ -28,6 +28,18 @@ import { getAPIProvider } from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
+
+/**
+ * Returns true if the value is a model alias or a model alias with a suffix
+ * like [1m] (e.g. "opus", "opus[1m]", "sonnet", "haiku[1m]").
+ * Used to guard against infinite recursion when getDefault*Model() falls back
+ * to the user-specified setting — an alias like "opus[1m]" would cause
+ * parseUserSpecifiedModel → getDefaultOpusModel → parseUserSpecifiedModel loop.
+ */
+function isAliasOrAliasWithSuffix(value: string): boolean {
+  const base = value.replace(/\[1m\]$/i, '').trim()
+  return isModelAlias(base)
+}
 import { capitalize } from '../stringUtils.js'
 
 export type ModelShortName = string
@@ -128,8 +140,10 @@ export function getDefaultOpusModel(): ModelName {
   }
   // Fall back to user's configured model — custom providers may not
   // recognize hardcoded Anthropic model IDs.
+  // Skip if the user setting is a model alias (e.g. "opus", "opus[1m]") to
+  // avoid infinite recursion: parseUserSpecifiedModel(alias) → getDefaultOpusModel().
   const userSpecifiedOpus = getUserSpecifiedModelSetting()
-  if (userSpecifiedOpus) {
+  if (userSpecifiedOpus && !isAliasOrAliasWithSuffix(userSpecifiedOpus)) {
     return parseUserSpecifiedModel(userSpecifiedOpus)
   }
   // 3P providers (Bedrock, Vertex, Foundry) — kept as a separate branch
@@ -162,8 +176,9 @@ export function getDefaultSonnetModel(): ModelName {
   // Fall back to user's configured model (ANTHROPIC_MODEL / settings) —
   // custom providers (proxies, national clouds) may not recognize the
   // hardcoded Anthropic model IDs.
+  // Skip if the user setting is a model alias to avoid infinite recursion.
   const userSpecified = getUserSpecifiedModelSetting()
-  if (userSpecified) {
+  if (userSpecified && !isAliasOrAliasWithSuffix(userSpecified)) {
     return parseUserSpecifiedModel(userSpecified)
   }
   // Default to Sonnet 4.5 for 3P since they may not have 4.6 yet
@@ -190,8 +205,9 @@ export function getDefaultHaikuModel(): ModelName {
   }
   // Fall back to user's configured model — custom providers may not
   // recognize hardcoded Anthropic model IDs.
+  // Skip if the user setting is a model alias to avoid infinite recursion.
   const userSpecifiedHaiku = getUserSpecifiedModelSetting()
-  if (userSpecifiedHaiku) {
+  if (userSpecifiedHaiku && !isAliasOrAliasWithSuffix(userSpecifiedHaiku)) {
     return parseUserSpecifiedModel(userSpecifiedHaiku)
   }
 
