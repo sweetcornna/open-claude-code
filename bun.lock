@@ -264,10 +264,6 @@
       "name": "modifiers-napi",
       "version": "1.0.0",
     },
-    "packages/pokemon": {
-      "name": "@claude-code-best/pokemon",
-      "version": "1.0.0",
-    },
     "packages/remote-control-server": {
       "name": "@anthropic/remote-control-server",
       "version": "0.1.0",
@@ -576,8 +572,6 @@
     "@claude-code-best/mcp-chrome-bridge": ["@claude-code-best/mcp-chrome-bridge@3.0.1", "", { "dependencies": { "@hono/node-server": "^1.19.13", "@modelcontextprotocol/sdk": "^1.11.0", "commander": "^13.1.0", "hono": "^4.12.12", "is-admin": "^4.0.0" }, "bin": { "mcp-chrome-bridge": "dist/cli.js", "mcp-chrome-stdio": "dist/mcp/mcp-server-stdio.js" } }, "sha512-ozeLHVOdckTUsWKJneJAL+CclrUlwVyBpfzFxgsrSL9f0LvjlJXE7+VcF5OmjDPwmZy6QNorvtg3/8NT2cIlzA=="],
 
     "@claude-code-best/mcp-client": ["@claude-code-best/mcp-client@workspace:packages/mcp-client"],
-
-    "@claude-code-best/pokemon": ["@claude-code-best/pokemon@workspace:packages/pokemon"],
 
     "@claude-code-best/weixin": ["@claude-code-best/weixin@workspace:packages/weixin"],
 
