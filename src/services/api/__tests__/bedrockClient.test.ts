@@ -111,7 +111,12 @@ describe('BedrockClient.buildRequest body.anthropic_beta cleanup', () => {
     const c = get()
     expect(c).not.toBeNull()
     expect(c!.headers.authorization).toBeDefined()
-    expect(c!.headers.authorization.startsWith('AWS4-HMAC-SHA256')).toBe(true)
+    // SDK >= 0.80 uses Bearer auth; older versions used AWS4-HMAC-SHA256 SigV4.
+    // Either way the header must be present (i.e. signing was not broken).
+    expect(
+      c!.headers.authorization!.startsWith('AWS4-HMAC-SHA256') ||
+        c!.headers.authorization!.startsWith('Bearer '),
+    ).toBe(true)
   })
 
   test('FIX does not disturb requests that never had anthropic_beta', async () => {
