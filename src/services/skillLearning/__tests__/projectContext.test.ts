@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { execFileSync } from 'child_process'
@@ -56,7 +56,7 @@ describe('resolveProjectContext', () => {
 
     expect(context.source).toBe('claude_project_dir')
     expect(context.scope).toBe('project')
-    expect(context.projectRoot).toBe(projectDir)
+    expect(context.projectRoot).toBe(realpathSync(projectDir))
     expect(context.projectName).toBe(lastPathSegment(projectDir))
     expect(context.storageDir).toContain(context.projectId)
 
@@ -99,7 +99,7 @@ describe('resolveProjectContext', () => {
 
     expect(context.source).toBe('git_root')
     expect(context.scope).toBe('project')
-    expect(context.projectRoot).toBe(repo)
+    expect(context.projectRoot).toBe(realpathSync(repo))
     expect(context.projectName).toBe(lastPathSegment(repo))
   })
 
