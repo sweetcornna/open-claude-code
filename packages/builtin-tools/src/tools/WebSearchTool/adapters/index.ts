@@ -47,7 +47,7 @@ export function createAdapter(): WebSearchAdapter {
         ? 'bing'
         : isFirstPartyAnthropicBaseUrl()
           ? 'api'
-          : 'bing'
+          : 'exa'
 
   if (cachedAdapter && cachedAdapterKey === adapterKey) return cachedAdapter
 
