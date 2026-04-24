@@ -75,27 +75,24 @@ powershell -c "irm bun.sh/install.ps1 | iex"
 
 **安装后的操作：**
 
-1. **重启终端** 或重新加载 shell 配置文件：
-   ```bash
-   # macOS/Linux (zsh)
-   source ~/.zshrc
-   
-   # macOS/Linux (bash)
-   source ~/.bashrc
-   
-   # Windows PowerShell
-   # 关闭并重新打开 PowerShell 即可
-   ```
+Bun 安装脚本会将 `~/.bun/bin` 添加到对应的 shell 配置文件中，例如 zsh 环境下会显示：
 
-2. **验证安装：**
-   ```bash
-   bun --version
-   ```
+```text
+Added "~/.bun/bin" to $PATH in "~/.zshrc"
+```
 
-3. **更新到最新版本（如果已安装）：**
-   ```bash
-   bun upgrade
-   ```
+To get started, run:
+
+```bash
+exec /bin/zsh
+bun --help
+```
+
+如果已经安装过 Bun，可以更新到最新版本：
+
+```bash
+bun upgrade
+```
 
 - ⚙️ 常规的配置 CC 的方式, 各大提供商都有自己的配置方式
 
