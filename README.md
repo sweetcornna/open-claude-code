@@ -60,6 +60,41 @@ CLAUDE_BRIDGE_BASE_URL=https://remote-control.claude-code-best.win/ CLAUDE_BRIDG
 一定要最新版本的 bun 啊, 不然一堆奇奇怪怪的 BUG!!! bun upgrade!!!
 
 - 📦 [Bun](https://bun.sh/) >= 1.3.11
+
+**安装 Bun：**
+
+```bash
+# Linux 和 macOS
+curl -fsSL https://bun.sh/install | bash
+
+# Windows (PowerShell)
+powershell -c "irm bun.sh/install.ps1 | iex"
+```
+
+**安装后的操作：**
+
+1. **重启终端** 或重新加载 shell 配置文件：
+   ```bash
+   # macOS/Linux (zsh)
+   source ~/.zshrc
+   
+   # macOS/Linux (bash)
+   source ~/.bashrc
+   
+   # Windows PowerShell
+   # 关闭并重新打开 PowerShell 即可
+   ```
+
+2. **验证安装：**
+   ```bash
+   bun --version
+   ```
+
+3. **更新到最新版本（如果已安装）：**
+   ```bash
+   bun upgrade
+   ```
+
 - ⚙️ 常规的配置 CC 的方式, 各大提供商都有自己的配置方式
 
 ### 📥 安装
