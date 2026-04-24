@@ -75,30 +75,53 @@ powershell -c "irm bun.sh/install.ps1 | iex"
 
 **安装后的操作：**
 
-Bun 安装脚本会将 `~/.bun/bin` 添加到对应的 shell 配置文件中，例如 zsh 环境下会显示：
+1. **让当前终端识别 `bun` 命令**
 
-```text
-Added "~/.bun/bin" to $PATH in "~/.zshrc"
-```
+   安装脚本会把 `~/.bun/bin` 写入对应的 shell 配置文件。macOS 默认 zsh 环境通常会看到：
 
-To get started, run:
+   ```text
+   Added "~/.bun/bin" to $PATH in "~/.zshrc"
+   ```
 
-```bash
-exec /bin/zsh
-bun --help
-```
+   可以按安装脚本提示重启当前 shell：
 
-如果已经安装过 Bun，可以更新到最新版本：
+   ```bash
+   exec /bin/zsh
+   ```
 
-```bash
-bun upgrade
-```
+   如果你使用 bash，重新加载 bash 配置：
+
+   ```bash
+   source ~/.bashrc
+   ```
+
+   Windows PowerShell 用户关闭并重新打开 PowerShell 即可。
+
+2. **验证 Bun 是否可用**
+
+   ```bash
+   bun --help
+   bun --version
+   ```
+
+3. **如果已经安装过 Bun，更新到最新版本**
+
+   ```bash
+   bun upgrade
+   ```
 
 - ⚙️ 常规的配置 CC 的方式, 各大提供商都有自己的配置方式
+
+### 📍 命令执行位置
+
+- 安装或检查 Bun 的命令可以在任意目录执行：
+  `curl -fsSL https://bun.sh/install | bash`、`bun --help`、`bun --version`、`bun upgrade`
+- 安装本项目依赖、启动开发模式、构建项目时，必须先进入本仓库根目录，也就是包含 `package.json` 的目录。
 
 ### 📥 安装
 
 ```bash
+cd /path/to/claude-code
 bun install
 ```
 
