@@ -48,6 +48,41 @@ Sponsor placeholder.
 Make sure you're on the latest version of Bun, otherwise you'll run into all sorts of weird bugs. Run `bun upgrade`!
 
 - [Bun](https://bun.sh/) >= 1.3.11
+
+**Install Bun:**
+
+```bash
+# Linux and macOS
+curl -fsSL https://bun.sh/install | bash
+
+# Windows (PowerShell)
+powershell -c "irm bun.sh/install.ps1 | iex"
+```
+
+**Post-installation steps:**
+
+1. **Restart your terminal** or reload your shell configuration:
+   ```bash
+   # macOS/Linux (zsh)
+   source ~/.zshrc
+
+   # macOS/Linux (bash)
+   source ~/.bashrc
+
+   # Windows PowerShell
+   # Close and reopen PowerShell
+   ```
+
+2. **Verify installation:**
+   ```bash
+   bun --version
+   ```
+
+3. **Update to latest version (if already installed):**
+   ```bash
+   bun upgrade
+   ```
+
 - Standard Claude Code configuration — each provider has its own setup method
 
 ### Install
