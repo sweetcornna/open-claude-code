@@ -3051,12 +3051,22 @@ export function REPL({
             // are O(n) per render, so drop everything before the previous
             // boundary to keep n bounded across multi-day sessions.
             if (isFullscreenEnvEnabled()) {
-              setMessages(old => [
-                ...getMessagesAfterCompactBoundary(old, {
+              setMessages(old => {
+                const postBoundary = getMessagesAfterCompactBoundary(old, {
                   includeSnipped: true,
-                }),
-                newMessage,
-              ]);
+                })
+                // Hard cap: keep at most 500 messages in fullscreen scrollback
+                // to prevent unbounded memory growth in multi-day sessions.
+                // normalizeMessages/applyGrouping are O(n), and Ink fiber
+                // trees cost ~250KB RSS per message. Without this cap,
+                // scrollback after several compactions can reach thousands
+                // of messages (observed: 13k+, 1GB+ heap).
+                const MAX_FULLSCREEN_SCROLLBACK = 500
+                const kept = postBoundary.length > MAX_FULLSCREEN_SCROLLBACK
+                  ? postBoundary.slice(-MAX_FULLSCREEN_SCROLLBACK)
+                  : postBoundary
+                return [...kept, newMessage]
+              });
             } else {
               setMessages(() => [newMessage]);
             }
@@ -3082,17 +3092,23 @@ export function REPL({
             // history). Replacing those leaves the AgentTool UI stuck at
             // "Initializing…" because it renders the full progress trail.
             setMessages(oldMessages => {
-              const last = oldMessages.at(-1);
-              const lastData = last?.data as Record<string, unknown> | undefined;
               const newData = newMessage.data as Record<string, unknown>;
-              if (
-                last?.type === 'progress' &&
-                last.parentToolUseID === newMessage.parentToolUseID &&
-                lastData?.type === newData.type
-              ) {
-                const copy = oldMessages.slice();
-                copy[copy.length - 1] = newMessage;
-                return copy;
+              // Scan backwards to find the last ephemeral progress with matching
+              // parentToolUseID and type. Previously only checked the last message,
+              // so interleaved non-ephemeral messages caused duplicate progress
+              // entries to accumulate (observed 13k+ entries in sleep-heavy sessions).
+              for (let i = oldMessages.length - 1; i >= 0; i--) {
+                const m = oldMessages[i]!
+                if (m.type !== 'progress') break
+                const mData = m.data as Record<string, unknown> | undefined
+                if (
+                  m.parentToolUseID === newMessage.parentToolUseID &&
+                  mData?.type === newData.type
+                ) {
+                  const copy = oldMessages.slice();
+                  copy[i] = newMessage;
+                  return copy;
+                }
               }
               return [...oldMessages, newMessage];
             });
