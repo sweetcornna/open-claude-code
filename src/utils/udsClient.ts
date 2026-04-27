@@ -36,6 +36,19 @@ export type PeerSession = {
   alive: boolean
 }
 
+export class UdsPeerConnectionError extends Error {
+  readonly socketPath: string
+
+  constructor(socketPath: string, cause: unknown) {
+    super(
+      `Failed to connect to peer at ${socketPath}: ${errorMessage(cause)}`,
+      { cause },
+    )
+    this.name = 'UdsPeerConnectionError'
+    this.socketPath = socketPath
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Session directory
 // ---------------------------------------------------------------------------
@@ -193,6 +206,7 @@ export async function isPeerAlive(
 export async function sendToUdsSocket(
   targetSocketPath: string,
   message: string | Record<string, unknown>,
+  timeoutMs = 5000,
 ): Promise<void> {
   const { parseUdsTarget } = await import('./udsMessaging.js')
   const target = parseUdsTarget(targetSocketPath)
@@ -237,12 +251,15 @@ export async function sendToUdsSocket(
       maxFrameBytes: MAX_UDS_FRAME_BYTES,
       onSettled: finish,
       formatSocketError: err =>
-        new Error(
-          `Failed to connect to peer at ${target.socketPath}: ${errorMessage(err)}`,
-        ),
+        new UdsPeerConnectionError(target.socketPath, err),
     })
-    conn.setTimeout(5000, () => {
-      finish(new Error('Connection timed out'))
+    conn.setTimeout(timeoutMs, () => {
+      finish(
+        new UdsPeerConnectionError(
+          target.socketPath,
+          new Error('Connection timed out'),
+        ),
+      )
     })
   })
 }
