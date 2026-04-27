@@ -1776,6 +1776,10 @@ async function* queryModel(
   // captures only primitives instead of paramsFromContext's full closure scope
   // (messagesForAPI, system, allTools, betas — the entire request-building
   // context), which would otherwise be pinned until the promise resolves.
+  // Also capture thinking params for Langfuse observability.
+  // Pass the entire thinking config object so all fields (type, budget_tokens,
+  // and any future additions) flow through without cherry-picking.
+  let langfuseThinking: BetaMessageStreamParams['thinking'] | undefined
   {
     const queryParams = paramsFromContext({
       model: options.model,
@@ -1783,8 +1787,10 @@ async function* queryModel(
     })
     const logMessagesLength = queryParams.messages.length
     const logBetas = useBetas ? (queryParams.betas ?? []) : []
-    const logThinkingType = queryParams.thinking?.type ?? 'disabled'
     const logEffortValue = queryParams.output_config?.effort
+    if (queryParams.thinking && queryParams.thinking.type !== 'disabled') {
+      langfuseThinking = queryParams.thinking
+    }
     void options.getToolPermissionContext().then(permissionContext => {
       logAPIQuery({
         model: options.model,
@@ -1794,7 +1800,7 @@ async function* queryModel(
         permissionMode: permissionContext.mode,
         querySource: options.querySource,
         queryTracking: options.queryTracking,
-        thinkingType: logThinkingType,
+        thinkingConfig,
         effortValue: logEffortValue,
         fastMode: isFastMode,
         previousRequestId,
@@ -2545,6 +2551,9 @@ async function* queryModel(
           maxOutputTokens,
           thinkingType:
             thinkingConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          ...(thinkingConfig.type === 'enabled' && {
+            thinkingBudgetTokens: thinkingConfig.budgetTokens,
+          }),
           fallback_disabled: true,
           request_id: (streamRequestId ??
             'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -2577,6 +2586,9 @@ async function* queryModel(
         maxOutputTokens,
         thinkingType:
           thinkingConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        ...(thinkingConfig.type === 'enabled' && {
+          thinkingBudgetTokens: thinkingConfig.budgetTokens,
+        }),
         fallback_disabled: false,
         request_id: (streamRequestId ??
           'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -2693,6 +2705,9 @@ async function* queryModel(
         maxOutputTokens,
         thinkingType:
           thinkingConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        ...(thinkingConfig.type === 'enabled' && {
+          thinkingBudgetTokens: thinkingConfig.budgetTokens,
+        }),
         request_id:
           failedRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         fallback_cause:
@@ -2925,6 +2940,7 @@ async function* queryModel(
     endTime: new Date(),
     completionStartTime: ttftMs > 0 ? new Date(start + ttftMs) : undefined,
     tools: convertToolsToLangfuse(toolSchemas as unknown[]),
+    thinking: langfuseThinking,
   })
 
   void options.getToolPermissionContext().then(permissionContext => {
