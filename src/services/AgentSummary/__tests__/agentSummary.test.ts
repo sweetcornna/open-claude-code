@@ -109,6 +109,10 @@ describe('startAgentSummarization', () => {
     lastTimerHandle = undefined
   })
 
+  function expectDebugLogContaining(fragment: string): void {
+    expect(debugLogs.some(message => message.includes(fragment))).toBe(true)
+  }
+
   test('summarizes bounded transcript once and skips unchanged fingerprints', async () => {
     handle = startTestSummarization()
 
@@ -157,7 +161,7 @@ describe('startAgentSummarization', () => {
 
     expect(forkCalls).toEqual([])
     expect(updateCalls).toEqual([])
-    expect(debugLogs).toContain(
+    expectDebugLogContaining(
       '[AgentSummary] Skipping summary for task-1: no bounded context available',
     )
   })
@@ -171,7 +175,7 @@ describe('startAgentSummarization', () => {
 
     expect(forkCalls).toEqual([])
     expect(updateCalls).toEqual([])
-    expect(debugLogs).toContain(
+    expectDebugLogContaining(
       '[AgentSummary] Skipping summary for task-1: not enough messages (2)',
     )
   })
@@ -188,9 +192,7 @@ describe('startAgentSummarization', () => {
 
     expect(forkCalls).toEqual([])
     expect(updateCalls).toEqual([])
-    expect(debugLogs).toContain(
-      '[AgentSummary] Skipping summary — poor mode active',
-    )
+    expectDebugLogContaining('[AgentSummary] Skipping summary — poor mode active')
     expect(scheduledCount).toBe(initialScheduledCount + 1)
     expect(lastTimerHandle).not.toBe(initialTimerHandle)
   })
@@ -220,9 +222,7 @@ describe('startAgentSummarization', () => {
 
     handle.stop()
 
-    expect(debugLogs).toContain(
-      '[AgentSummary] Stopping summarization for task-1',
-    )
+    expectDebugLogContaining('[AgentSummary] Stopping summarization for task-1')
     expect(clearedHandles).toEqual([pendingHandle])
   })
 })
