@@ -16,7 +16,8 @@ import { errorMessage, isFsInaccessible } from './errors.js'
 import { isProcessRunning } from './genericProcessUtils.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { SessionKind } from './concurrentSessions.js'
-import type { UdsMessage } from './udsMessaging.js'
+import { MAX_UDS_FRAME_BYTES, type UdsMessage } from './udsMessaging.js'
+import { attachUdsResponseReader, getChunkBytes } from './udsResponseReader.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,9 +105,14 @@ export async function listAllLiveSessions(): Promise<PeerSession[]> {
  */
 export async function listPeers(): Promise<PeerSession[]> {
   const all = await listAllLiveSessions()
-  return all.filter(
-    s => s.pid !== process.pid && s.messagingSocketPath != null,
-  )
+  return all.filter(s => s.pid !== process.pid && s.messagingSocketPath != null)
+}
+
+async function findAuthTokenForSocketPath(
+  socketPath: string,
+): Promise<string | undefined> {
+  const { readUdsCapabilityToken } = await import('./udsMessaging.js')
+  return readUdsCapabilityToken(socketPath)
 }
 
 // ---------------------------------------------------------------------------
@@ -117,10 +123,21 @@ export async function listPeers(): Promise<PeerSession[]> {
  * Probe a UDS socket to check if a server is listening (ping/pong).
  * Returns true if the peer responds within the timeout.
  */
-export async function isPeerAlive(socketPath: string, timeoutMs = 3000): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
+export async function isPeerAlive(
+  socketPath: string,
+  timeoutMs = 3000,
+  authToken?: string,
+): Promise<boolean> {
+  const token = authToken ?? (await findAuthTokenForSocketPath(socketPath))
+  if (!token) return false
+
+  return new Promise<boolean>(resolve => {
     const conn = createConnection(socketPath, () => {
-      const ping: UdsMessage = { type: 'ping', ts: new Date().toISOString() }
+      const ping: UdsMessage = {
+        type: 'ping',
+        ts: new Date().toISOString(),
+        meta: { authToken: token },
+      }
       conn.write(jsonStringify(ping) + '\n')
     })
 
@@ -135,7 +152,19 @@ export async function isPeerAlive(socketPath: string, timeoutMs = 3000): Promise
     }, timeoutMs)
 
     let buffer = ''
-    conn.on('data', (chunk) => {
+    conn.on('data', chunk => {
+      if (
+        Buffer.byteLength(buffer, 'utf8') + getChunkBytes(chunk) >
+        MAX_UDS_FRAME_BYTES
+      ) {
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timer)
+          conn.destroy()
+          resolve(false)
+        }
+        return
+      }
       buffer += chunk.toString()
       if (buffer.includes('"pong"')) {
         if (!resolved) {
@@ -165,6 +194,13 @@ export async function sendToUdsSocket(
   targetSocketPath: string,
   message: string | Record<string, unknown>,
 ): Promise<void> {
+  const { parseUdsTarget } = await import('./udsMessaging.js')
+  const target = parseUdsTarget(targetSocketPath)
+  const authToken = await findAuthTokenForSocketPath(target.socketPath)
+  if (!authToken) {
+    throw new Error(`No auth token found for peer at ${target.socketPath}`)
+  }
+
   const data = typeof message === 'string' ? message : jsonStringify(message)
   const udsMsg: UdsMessage = {
     type: 'text',
@@ -177,18 +213,36 @@ export async function sendToUdsSocket(
   udsMsg.from = getUdsMessagingSocketPath()
 
   return new Promise<void>((resolve, reject) => {
-    const conn = createConnection(targetSocketPath, () => {
-      conn.write(jsonStringify(udsMsg) + '\n', (err) => {
+    let settled = false
+    let conn: ReturnType<typeof createConnection>
+    const finish = (error?: Error): void => {
+      if (settled) return
+      settled = true
+      if (error) {
+        conn.destroy(error)
+        reject(error)
+      } else {
         conn.end()
-        if (err) reject(err)
-        else resolve()
+        resolve()
+      }
+    }
+
+    conn = createConnection(target.socketPath, () => {
+      udsMsg.meta = { ...udsMsg.meta, authToken }
+      conn.write(jsonStringify(udsMsg) + '\n', err => {
+        if (err) finish(err)
       })
     })
-    conn.on('error', (err) => {
-      reject(new Error(`Failed to connect to peer at ${targetSocketPath}: ${errorMessage(err)}`))
+    attachUdsResponseReader(conn, {
+      maxFrameBytes: MAX_UDS_FRAME_BYTES,
+      onSettled: finish,
+      formatSocketError: err =>
+        new Error(
+          `Failed to connect to peer at ${target.socketPath}: ${errorMessage(err)}`,
+        ),
     })
     conn.setTimeout(5000, () => {
-      conn.destroy(new Error('Connection timed out'))
+      finish(new Error('Connection timed out'))
     })
   })
 }

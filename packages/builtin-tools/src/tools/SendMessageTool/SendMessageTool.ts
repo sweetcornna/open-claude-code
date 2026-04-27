@@ -130,6 +130,41 @@ export type SendMessageToolOutput =
   | RequestOutput
   | ResponseOutput
 
+const UDS_INLINE_TOKEN_MARKER = '#token='
+
+function stripInlineUdsToken(target: string): string {
+  const markerIndex = target.indexOf(UDS_INLINE_TOKEN_MARKER)
+  return markerIndex === -1 ? target : target.slice(0, markerIndex)
+}
+
+function hasInlineUdsToken(to: string): boolean {
+  const addr = parseAddress(to)
+  // Empty-token markers are still inline-token attempts. Observable input
+  // redaction preserves "#token=" so cloned inputs remain rejected.
+  return (
+    addr.scheme === 'uds' && addr.target.includes(UDS_INLINE_TOKEN_MARKER)
+  )
+}
+
+function recipientForDisplay(to: string): string {
+  const addr = parseAddress(to)
+  if (addr.scheme !== 'uds') return to
+  return `uds:${stripInlineUdsToken(addr.target)}`
+}
+
+function redactInlineUdsTokenForRejection(to: string): string {
+  const addr = parseAddress(to)
+  if (addr.scheme !== 'uds') return to
+  const markerIndex = addr.target.indexOf(UDS_INLINE_TOKEN_MARKER)
+  if (markerIndex === -1) return to
+  return `uds:${addr.target.slice(0, markerIndex)}${UDS_INLINE_TOKEN_MARKER}`
+}
+
+function redactObservableInlineUdsToken(input: { to: string }): void {
+  if (!hasInlineUdsToken(input.to)) return
+  input.to = redactInlineUdsTokenForRejection(input.to)
+}
+
 function findTeammateColor(
   appState: {
     teamContext?: { teammates: { [id: string]: { color?: string } } }
@@ -541,15 +576,17 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     backfillObservableInput(input) {
-      if ('type' in input) return
       if (typeof input.to !== 'string') return
+
+      redactObservableInlineUdsToken(input as { to: string })
+      if ('type' in input) return
 
       if (input.to === '*') {
         input.type = 'broadcast'
         if (typeof input.message === 'string') input.content = input.message
       } else if (typeof input.message === 'string') {
         input.type = 'message'
-        input.recipient = input.to
+        input.recipient = recipientForDisplay(input.to)
         input.content = input.message
       } else if (typeof input.message === 'object' && input.message !== null) {
         const msg = input.message as {
@@ -560,7 +597,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           feedback?: string
         }
         input.type = msg.type
-        input.recipient = input.to
+        input.recipient = recipientForDisplay(input.to)
         if (msg.request_id !== undefined) input.request_id = msg.request_id
         if (msg.approve !== undefined) input.approve = msg.approve
         const content = msg.reason ?? msg.feedback
@@ -569,16 +606,17 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     toAutoClassifierInput(input) {
+      const recipient = recipientForDisplay(input.to)
       if (typeof input.message === 'string') {
-        return `to ${input.to}: ${input.message}`
+        return `to ${recipient}: ${input.message}`
       }
       switch (input.message.type) {
         case 'shutdown_request':
-          return `shutdown_request to ${input.to}`
+          return `shutdown_request to ${recipient}`
         case 'shutdown_response':
           return `shutdown_response ${input.message.approve ? 'approve' : 'reject'} ${input.message.request_id}`
         case 'plan_approval_response':
-          return `plan_approval ${input.message.approve ? 'approve' : 'reject'} to ${input.to}`
+          return `plan_approval ${input.message.approve ? 'approve' : 'reject'} to ${recipient}`
       }
     },
 
@@ -627,6 +665,17 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
         return {
           result: false,
           message: 'address target must not be empty',
+          errorCode: 9,
+        }
+      }
+      if (
+        addr.scheme === 'uds' &&
+        hasInlineUdsToken(input.to)
+      ) {
+        return {
+          result: false,
+          message:
+            'uds addresses must not include inline auth tokens; use the ListPeers address',
           errorCode: 9,
         }
       }
@@ -753,6 +802,19 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     async call(input, context, canUseTool, assistantMessage) {
+      if (typeof input.message === 'string') {
+        const addr = parseAddress(input.to)
+        if (addr.scheme === 'uds' && hasInlineUdsToken(input.to)) {
+          return {
+            data: {
+              success: false,
+              message:
+                'uds addresses must not include inline auth tokens; use the ListPeers address',
+            },
+          }
+        }
+      }
+
       if (feature('UDS_INBOX') && typeof input.message === 'string') {
         const addr = parseAddress(input.to)
         if (addr.scheme === 'bridge') {
@@ -772,10 +834,10 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           const { postInterClaudeMessage } =
             require('src/bridge/peerSessions.js') as typeof import('src/bridge/peerSessions.js')
           /* eslint-enable @typescript-eslint/no-require-imports */
-          const result = await postInterClaudeMessage(
+          const result = (await postInterClaudeMessage(
             addr.target,
             input.message,
-          ) as { ok: boolean; error?: string }
+          )) as { ok: boolean; error?: string }
           const preview = input.summary || truncate(input.message, 50)
           return {
             data: {
@@ -787,6 +849,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           }
         }
         if (addr.scheme === 'uds') {
+          const recipient = recipientForDisplay(input.to)
           /* eslint-disable @typescript-eslint/no-require-imports */
           const { sendToUdsSocket } =
             require('src/utils/udsClient.js') as typeof import('src/utils/udsClient.js')
@@ -797,14 +860,14 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             return {
               data: {
                 success: true,
-                message: `”${preview}” → ${input.to}`,
+                message: `”${preview}” → ${recipient}`,
               },
             }
           } catch (e) {
             return {
               data: {
                 success: false,
-                message: `Failed to send to ${input.to}: ${errorMessage(e)}`,
+                message: `Failed to send to ${recipient}: ${errorMessage(e)}`,
               },
             }
           }
