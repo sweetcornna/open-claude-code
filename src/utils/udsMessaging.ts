@@ -557,7 +557,26 @@ export async function startUdsMessaging(
         void (async () => {
           try {
             if (process.platform !== 'win32') {
-              await chmod(path, 0o600)
+              // Restrict socket permissions to owner-only. On macOS with
+              // Node.js v22, the listen callback may fire before the socket
+              // file is visible on disk (observed with nested tmpdir paths).
+              // The parent directory is already 0o700, so skipping chmod when
+              // the file is not yet visible is safe.
+              try {
+                await chmod(path, 0o600)
+              } catch (err: unknown) {
+                if (
+                  !(
+                    err instanceof Error &&
+                    (err as NodeJS.ErrnoException).code === 'ENOENT'
+                  )
+                ) {
+                  throw err
+                }
+                logForDebugging(
+                  `[udsMessaging] chmod skipped: socket file not yet visible at ${path}`,
+                )
+              }
             }
             srv.off('error', rejectBeforeListen)
             srv.on('error', logRuntimeError)
