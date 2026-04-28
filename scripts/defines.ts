@@ -68,7 +68,7 @@ export const DEFAULT_BUILD_FEATURES = [
     'DIRECT_CONNECT',              // 直连模式（claude server / claude open）
     // Skill search & learning
     'EXPERIMENTAL_SKILL_SEARCH',   // 实验性技能搜索（DiscoverSkills）
-    'SKILL_LEARNING',              // projectContext cache 无淘汰机制（非 GB 级主因）
+    // 'SKILL_LEARNING',              // projectContext cache 无淘汰机制（非 GB 级主因）
     // P3: poor mode
     'POOR',                        // 穷鬼模式，跳过 extract_memories/prompt_suggestion 减少消耗
     // Team Memory
