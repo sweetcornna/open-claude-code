@@ -25,6 +25,8 @@ import type { EffortValue } from './effort.js'
 import type { FileHistoryState } from './fileHistory.js'
 import { fileHistoryEnabled, fileHistoryMakeSnapshot } from './fileHistory.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
+import { toError } from './errors.js'
+import { logError } from './log.js'
 import { enqueue } from './messageQueueManager.js'
 import { resolveSkillModelOverride } from './model/model.js'
 import {
@@ -464,6 +466,10 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     commands = queuedAutonomyClaim.attachmentCommands
     const claimedAutonomyCommands = queuedAutonomyClaim.claimedCommands
     if (commands.length === 0) {
+      // Clear the abort controller published a few lines above so this turn's
+      // stale controller does not leak into the next turn when every claimed
+      // autonomy command was skipped as non-consumable.
+      setAbortController(null)
       return
     }
 
@@ -487,6 +493,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     // context — isolated from the parent's continuation. A process-global
     // mutable slot would be clobbered at the detached closure's first
     // await by this function's synchronous return path. See state.ts.
+    let turnError: unknown
     try {
       await runWithWorkload(turnWorkload, async () => {
         for (let i = 0; i < commands.length; i++) {
@@ -618,37 +625,52 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
           }
         }
       }) // end runWithWorkload — ALS context naturally scoped, no finally needed
-      if (claimedAutonomyCommands.length) {
-        const finalizableCommands = claimedAutonomyCommands.filter(command => {
-          const runId = command.autonomy?.runId
-          return !runId || !deferredAutonomyRunIds.has(runId)
-        })
-        const nextCommands = await finalizeAutonomyCommandsForTurn({
-          commands: finalizableCommands,
-          outcome: { type: 'completed' },
-          currentDir: getCwd(),
-          priority: 'later',
-          workload: turnWorkload,
-        })
-        for (const nextCommand of nextCommands) {
-          enqueue(nextCommand)
+    } catch (error) {
+      turnError = error
+    }
+
+    // Finalize claimed autonomy commands as `completed` only if the turn
+    // body itself succeeded. Run the finalize call in its own try/catch so a
+    // failure there does not double-finalize the same commands as `failed`
+    // (which previously cancelled follow-up queue state after a successful
+    // turn).
+    if (claimedAutonomyCommands.length) {
+      const finalizableCommands = claimedAutonomyCommands.filter(command => {
+        const runId = command.autonomy?.runId
+        return !runId || !deferredAutonomyRunIds.has(runId)
+      })
+      if (turnError) {
+        try {
+          await finalizeAutonomyCommandsForTurn({
+            commands: finalizableCommands,
+            outcome: { type: 'failed', error: turnError },
+            currentDir: getCwd(),
+            priority: 'later',
+            workload: turnWorkload,
+          })
+        } catch (finalizeError) {
+          logError(toError(finalizeError))
+        }
+      } else {
+        try {
+          const nextCommands = await finalizeAutonomyCommandsForTurn({
+            commands: finalizableCommands,
+            outcome: { type: 'completed' },
+            currentDir: getCwd(),
+            priority: 'later',
+            workload: turnWorkload,
+          })
+          for (const nextCommand of nextCommands) {
+            enqueue(nextCommand)
+          }
+        } catch (finalizeError) {
+          logError(toError(finalizeError))
         }
       }
-    } catch (error) {
-      if (claimedAutonomyCommands.length) {
-        const finalizableCommands = claimedAutonomyCommands.filter(command => {
-          const runId = command.autonomy?.runId
-          return !runId || !deferredAutonomyRunIds.has(runId)
-        })
-        await finalizeAutonomyCommandsForTurn({
-          commands: finalizableCommands,
-          outcome: { type: 'failed', error },
-          currentDir: getCwd(),
-          priority: 'later',
-          workload: turnWorkload,
-        })
-      }
-      throw error
+    }
+
+    if (turnError) {
+      throw turnError
     }
   } finally {
     // Safety net: release the guard reservation if processUserInput threw

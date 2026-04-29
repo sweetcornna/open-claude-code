@@ -10,8 +10,20 @@
  * surface stays consistent when `auth.ts` exports change.
  */
 export const authMock = () => ({
-  checkAndRefreshOAuthTokenIfNeeded: async () => {},
-  getClaudeAIOAuthTokens: () => ({ accessToken: 'token' }),
+  // Mirrors the production contract: src/utils/auth.ts returns
+  // Promise<boolean> ("did the access token change") and a token object that
+  // carries scopes, subscriptionType, expiresAt, etc. Tests that branch on
+  // these values must see the full shape so they can not silently drift away
+  // from production.
+  checkAndRefreshOAuthTokenIfNeeded: async () => false,
+  getClaudeAIOAuthTokens: () => ({
+    accessToken: 'token',
+    refreshToken: null,
+    expiresAt: null,
+    scopes: ['user:inference'],
+    subscriptionType: null,
+    rateLimitTier: null,
+  }),
   isClaudeAISubscriber: () => true,
   isProSubscriber: () => false,
   isMaxSubscriber: () => false,

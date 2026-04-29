@@ -266,7 +266,14 @@ async function executeForkedSlashCommand(
       // this ordering, both land at `priority: 'later'` and the next autonomy
       // step can run before the main thread sees this worker's output.
       enqueueResult(`<scheduled-task-result command="/${commandName}">\n${resultText}\n</scheduled-task-result>`);
-      await finalizeDeferredAutonomyRunCompleted();
+      // The slash command itself succeeded; an error from the finalize call
+      // must not surface as a contradictory <scheduled-task-result status="failed">
+      // via the outer catch below. Log it locally and stop.
+      try {
+        await finalizeDeferredAutonomyRunCompleted();
+      } catch (finalizeError) {
+        logError(finalizeError);
+      }
     })().catch(async err => {
       logError(err);
       enqueueResult(
