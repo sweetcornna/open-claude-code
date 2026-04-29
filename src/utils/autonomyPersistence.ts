@@ -4,6 +4,15 @@ import { lock } from './lockfile.js'
 
 const persistenceLocks = new Map<string, Promise<void>>()
 
+export function getAutonomyPersistenceLockCountForTests(): number {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error(
+      'getAutonomyPersistenceLockCountForTests can only be called in tests',
+    )
+  }
+  return persistenceLocks.size
+}
+
 export async function withAutonomyPersistenceLock<T>(
   rootDir: string,
   fn: () => Promise<T>,
@@ -16,10 +25,8 @@ export async function withAutonomyPersistenceLock<T>(
   const current = new Promise<void>(resolve => {
     release = resolve
   })
-  persistenceLocks.set(
-    key,
-    previous.then(() => current),
-  )
+  const chained = previous.then(() => current)
+  persistenceLocks.set(key, chained)
 
   await previous
   try {
@@ -41,7 +48,7 @@ export async function withAutonomyPersistenceLock<T>(
     }
   } finally {
     release()
-    if (persistenceLocks.get(key) === current) {
+    if (persistenceLocks.get(key) === chained) {
       persistenceLocks.delete(key)
     }
   }
