@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -78,7 +78,7 @@ describe('dependency security overrides', () => {
     expect(cryptoProvider.createNewGuid()).toMatch(uuidV4Pattern)
   })
 
-  test('remote control markdown renderer loads streamdown and mermaid', async () => {
+  test('remote control markdown renderer resolves streamdown and mermaid', async () => {
     const rcsRequire = createRequire(
       join(repoRoot, 'packages/remote-control-server/package.json'),
     )
@@ -90,13 +90,24 @@ describe('dependency security overrides', () => {
     const uuid = (await import(
       pathToFileURL(streamdownRequire.resolve('uuid')).href
     )) as { v4(): string }
-    const mermaid = (await import(
-      pathToFileURL(streamdownRequire.resolve('mermaid')).href
-    )) as { default?: { initialize?: unknown } }
+    const mermaidPath = streamdownRequire.resolve('mermaid')
+    const mermaidPackagePath = streamdownRequire.resolve(
+      'mermaid/package.json',
+    )
+    const mermaidPackage = JSON.parse(
+      readFileSync(mermaidPackagePath, 'utf8'),
+    ) as {
+      name?: unknown
+      exports?: { '.'?: { import?: unknown } }
+    }
 
     expect(streamdown.Streamdown).toBeDefined()
     expect(uuid.v4()).toMatch(uuidV4Pattern)
-    expect(typeof mermaid.default?.initialize).toBe('function')
+    expect(mermaidPackage.name).toBe('mermaid')
+    expect(mermaidPath).toContain('mermaid.core.mjs')
+    expect(mermaidPackage.exports?.['.']?.import).toBe(
+      './dist/mermaid.core.mjs',
+    )
   })
 
   test('grpc proto-loader keeps its protobuf 7 parser path working', () => {

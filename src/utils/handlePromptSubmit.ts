@@ -19,6 +19,7 @@ import {
 } from '../types/textInputTypes.js'
 import { createAbortController } from './abortController.js'
 import type { PastedContent } from './config.js'
+import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import type { EffortValue } from './effort.js'
 import type { FileHistoryState } from './fileHistory.js'
@@ -27,11 +28,9 @@ import { gracefulShutdownSync } from './gracefulShutdown.js'
 import { enqueue } from './messageQueueManager.js'
 import { resolveSkillModelOverride } from './model/model.js'
 import {
-  finalizeAutonomyRunCompleted,
-  finalizeAutonomyRunFailed,
-  markAutonomyRunFailed,
-  markAutonomyRunRunning,
-} from './autonomyRuns.js'
+  claimConsumableQueuedAutonomyCommands,
+  finalizeAutonomyCommandsForTurn,
+} from './autonomyQueueLifecycle.js'
 import type { ProcessUserInputContext } from './processUserInput/processUserInput.js'
 import { processUserInput } from './processUserInput/processUserInput.js'
 import type { QueryGuard } from './QueryGuard.js'
@@ -459,7 +458,14 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     // Iterate all commands uniformly. First command gets attachments +
     // ideSelection + pastedContents, rest skip attachments to avoid
     // duplicating turn-level context (IDE selection, todos, diffs).
-    const commands = queuedCommands ?? []
+    let commands = queuedCommands ?? []
+    const queuedAutonomyClaim =
+      await claimConsumableQueuedAutonomyCommands(commands)
+    commands = queuedAutonomyClaim.attachmentCommands
+    const claimedAutonomyCommands = queuedAutonomyClaim.claimedCommands
+    if (commands.length === 0) {
+      return
+    }
 
     // Compute the workload tag for this turn. queueProcessor can batch a
     // cron prompt with a same-tick human prompt; only tag when EVERY
@@ -471,7 +477,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
       commands.every(c => c.workload === firstWorkload)
         ? firstWorkload
         : undefined
-    let autonomyRunIds: string[] | undefined
+    const deferredAutonomyRunIds = new Set<string>()
 
     // Wrap the entire turn (processUserInput loop + onQuery) in an
     // AsyncLocalStorage context. This is the ONLY way to correctly
@@ -486,10 +492,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
         for (let i = 0; i < commands.length; i++) {
           const cmd = commands[i]!
           const isFirst = i === 0
-          if (cmd.autonomy?.runId) {
-            ;(autonomyRunIds ??= []).push(cmd.autonomy.runId)
-            await markAutonomyRunRunning(cmd.autonomy.runId)
-          }
+          const runId = cmd.autonomy?.runId
           const result = await processUserInput({
             input: cmd.value,
             preExpansionInput: cmd.preExpansionValue,
@@ -510,7 +513,11 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
             bridgeOrigin: cmd.bridgeOrigin,
             isMeta: cmd.isMeta,
             skipAttachments: !isFirst,
+            autonomy: cmd.autonomy,
           })
+          if (runId && result.deferAutonomyCompletion) {
+            deferredAutonomyRunIds.add(runId)
+          }
           // Stamp origin here rather than threading another arg through
           // processUserInput → processUserInputBase → processTextPrompt → createUserMessage.
           // Derive origin from mode for task-notifications — mirrors the origin
@@ -611,26 +618,35 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
           }
         }
       }) // end runWithWorkload — ALS context naturally scoped, no finally needed
-      if (autonomyRunIds?.length) {
-        for (const runId of autonomyRunIds) {
-          const nextCommands = await finalizeAutonomyRunCompleted({
-            runId,
-            priority: 'later',
-            workload: turnWorkload,
-          })
-          for (const nextCommand of nextCommands) {
-            enqueue(nextCommand)
-          }
+      if (claimedAutonomyCommands.length) {
+        const finalizableCommands = claimedAutonomyCommands.filter(command => {
+          const runId = command.autonomy?.runId
+          return !runId || !deferredAutonomyRunIds.has(runId)
+        })
+        const nextCommands = await finalizeAutonomyCommandsForTurn({
+          commands: finalizableCommands,
+          outcome: { type: 'completed' },
+          currentDir: getCwd(),
+          priority: 'later',
+          workload: turnWorkload,
+        })
+        for (const nextCommand of nextCommands) {
+          enqueue(nextCommand)
         }
       }
     } catch (error) {
-      if (autonomyRunIds?.length) {
-        for (const runId of autonomyRunIds) {
-          await finalizeAutonomyRunFailed({
-            runId,
-            error: String(error),
-          })
-        }
+      if (claimedAutonomyCommands.length) {
+        const finalizableCommands = claimedAutonomyCommands.filter(command => {
+          const runId = command.autonomy?.runId
+          return !runId || !deferredAutonomyRunIds.has(runId)
+        })
+        await finalizeAutonomyCommandsForTurn({
+          commands: finalizableCommands,
+          outcome: { type: 'failed', error },
+          currentDir: getCwd(),
+          priority: 'later',
+          workload: turnWorkload,
+        })
       }
       throw error
     }
