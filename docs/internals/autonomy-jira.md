@@ -260,7 +260,7 @@ Acceptance criteria:
 - Proactive hook cancellation checks run both before commit and after command
   creation.
 - Headless proactive and cron paths cancel any already-created command that is
-  dropped due input close.
+  dropped due to input close.
 - REPL scheduled-task cleanup cancels already-created commands when unmounted.
 - A regression test verifies a proactive command created but dropped before
   enqueue is marked cancelled.

@@ -3474,7 +3474,7 @@ export function REPL({
       onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>,
       input?: string,
       effort?: EffortValue,
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       // If this is a teammate, mark them as active when starting a turn
       if (isAgentSwarmsEnabled()) {
         const teamName = getTeamName();
@@ -3505,7 +3505,7 @@ export function REPL({
               logEvent('tengu_concurrent_onquery_enqueued', {});
             }
           });
-        return;
+        return false;
       }
 
       try {
@@ -3538,7 +3538,7 @@ export function REPL({
         if (onBeforeQueryCallback && input) {
           const shouldProceed = await onBeforeQueryCallback(input, latestMessages);
           if (!shouldProceed) {
-            return;
+            return true;
           }
         }
 
@@ -3687,6 +3687,7 @@ export function REPL({
           }
         }
       }
+      return true;
     },
     [onQueryImpl, setAppState, resetLoadingState, queryGuard, mrOnBeforeQuery, mrOnTurnComplete],
   );
@@ -4851,13 +4852,37 @@ export function REPL({
 
         // Create a user message with the formatted content (includes XML wrapper)
         const userMessage = createUserMessage({
-          content: command.value as string,
+          content: command.value,
           isMeta: command.isMeta ? true : undefined,
           origin: command.origin,
         });
 
+        let executed = false;
         try {
-          await onQuery([userMessage], newAbortController, true, [], mainLoopModel);
+          executed = (await onQuery([userMessage], newAbortController, true, [], mainLoopModel)) !== false;
+        } catch (error: unknown) {
+          try {
+            await finalizeAutonomyCommandsForTurn({
+              commands: claim.claimedCommands,
+              outcome: { type: 'failed', error },
+              currentDir: getCwd(),
+              priority: 'later',
+            });
+          } catch (finalizeError: unknown) {
+            logError(toError(finalizeError));
+          }
+          logError(toError(error));
+          return;
+        }
+
+        // Only finalize as completed when onQuery actually executed the turn
+        // (it returns false from the concurrent-guard path without running).
+        // Keep this finalize in its own try/catch so a failure here does not
+        // trigger a second finalize as `failed` for the same commands.
+        if (!executed) {
+          return;
+        }
+        try {
           const nextCommands = await finalizeAutonomyCommandsForTurn({
             commands: claim.claimedCommands,
             outcome: { type: 'completed' },
@@ -4867,14 +4892,8 @@ export function REPL({
           for (const nextCommand of nextCommands) {
             enqueue(nextCommand);
           }
-        } catch (error: unknown) {
-          await finalizeAutonomyCommandsForTurn({
-            commands: claim.claimedCommands,
-            outcome: { type: 'failed', error },
-            currentDir: getCwd(),
-            priority: 'later',
-          });
-          logError(toError(error));
+        } catch (finalizeError: unknown) {
+          logError(toError(finalizeError));
         }
       })().catch((error: unknown) => {
         logError(toError(error));

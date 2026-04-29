@@ -74,7 +74,7 @@ type BaseExecutionParams = {
     onBeforeQuery?: (input: string, newMessages: Message[]) => Promise<boolean>,
     input?: string,
     effort?: EffortValue,
-  ) => Promise<void>
+  ) => Promise<boolean>
   setAppState: (updater: (prev: AppState) => AppState) => void
   onBeforeQuery?: (input: string, newMessages: Message[]) => Promise<boolean>
   canUseTool?: CanUseToolFn
