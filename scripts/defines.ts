@@ -66,9 +66,16 @@ export const DEFAULT_BUILD_FEATURES = [
     'COMMIT_ATTRIBUTION',          // Git 提交归属追踪（记录 AI 辅助贡献）
     // Server mode (claude server / claude open)
     'DIRECT_CONNECT',              // 直连模式（claude server / claude open）
-    // Skill search & learning
-    'EXPERIMENTAL_SKILL_SEARCH',   // 实验性技能搜索（DiscoverSkills）
-    // 'SKILL_LEARNING',              // projectContext cache 无淘汰机制（非 GB 级主因）
+    // Skill search & learning — feature flags compiled in (so the slash
+    // commands /skill-* etc. exist), but the runtime "enabled" toggle
+    // defaults to OFF (see featureCheck.ts). Operators turn on via the
+    // slash-command toggle or env vars (SKILL_SEARCH_ENABLED=1,
+    // SKILL_LEARNING_ENABLED=1). Rationale: bounded caches added on
+    // this branch (see docs/agent/sur-skill-overflow-bugs.md) close the
+    // overflow risk, but Haiku-on-first-Chinese-query and disk-side
+    // observation accumulation remain operator-discretion concerns.
+    'EXPERIMENTAL_SKILL_SEARCH',
+    'SKILL_LEARNING',
     // P3: poor mode
     'POOR',                        // 穷鬼模式，跳过 extract_memories/prompt_suggestion 减少消耗
     // Team Memory

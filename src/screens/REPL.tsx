@@ -79,10 +79,9 @@ import { isEnvTruthy } from '../utils/envUtils.js';
 import { formatTokens, truncateToWidth } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
 import {
-  finalizeAutonomyRunCompleted,
-  finalizeAutonomyRunFailed,
-  markAutonomyRunRunning,
-} from '../utils/autonomyRuns.js';
+  claimConsumableQueuedAutonomyCommands,
+  finalizeAutonomyCommandsForTurn,
+} from '../utils/autonomyQueueLifecycle.js';
 
 import { setMemberActive } from '../utils/swarm/teamHelpers.js';
 import {
@@ -3054,18 +3053,19 @@ export function REPL({
               setMessages(old => {
                 const postBoundary = getMessagesAfterCompactBoundary(old, {
                   includeSnipped: true,
-                })
+                });
                 // Hard cap: keep at most 500 messages in fullscreen scrollback
                 // to prevent unbounded memory growth in multi-day sessions.
                 // normalizeMessages/applyGrouping are O(n), and Ink fiber
                 // trees cost ~250KB RSS per message. Without this cap,
                 // scrollback after several compactions can reach thousands
                 // of messages (observed: 13k+, 1GB+ heap).
-                const MAX_FULLSCREEN_SCROLLBACK = 500
-                const kept = postBoundary.length > MAX_FULLSCREEN_SCROLLBACK
-                  ? postBoundary.slice(-MAX_FULLSCREEN_SCROLLBACK)
-                  : postBoundary
-                return [...kept, newMessage]
+                const MAX_FULLSCREEN_SCROLLBACK = 500;
+                const kept =
+                  postBoundary.length > MAX_FULLSCREEN_SCROLLBACK
+                    ? postBoundary.slice(-MAX_FULLSCREEN_SCROLLBACK)
+                    : postBoundary;
+                return [...kept, newMessage];
               });
             } else {
               setMessages(() => [newMessage]);
@@ -3098,13 +3098,10 @@ export function REPL({
               // so interleaved non-ephemeral messages caused duplicate progress
               // entries to accumulate (observed 13k+ entries in sleep-heavy sessions).
               for (let i = oldMessages.length - 1; i >= 0; i--) {
-                const m = oldMessages[i]!
-                if (m.type !== 'progress') break
-                const mData = m.data as Record<string, unknown> | undefined
-                if (
-                  m.parentToolUseID === newMessage.parentToolUseID &&
-                  mData?.type === newData.type
-                ) {
+                const m = oldMessages[i]!;
+                if (m.type !== 'progress') break;
+                const mData = m.data as Record<string, unknown> | undefined;
+                if (m.parentToolUseID === newMessage.parentToolUseID && mData?.type === newData.type) {
                   const copy = oldMessages.slice();
                   copy[i] = newMessage;
                   return copy;
@@ -3477,7 +3474,7 @@ export function REPL({
       onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>,
       input?: string,
       effort?: EffortValue,
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       // If this is a teammate, mark them as active when starting a turn
       if (isAgentSwarmsEnabled()) {
         const teamName = getTeamName();
@@ -3508,7 +3505,7 @@ export function REPL({
               logEvent('tengu_concurrent_onquery_enqueued', {});
             }
           });
-        return;
+        return false;
       }
 
       try {
@@ -3541,7 +3538,7 @@ export function REPL({
         if (onBeforeQueryCallback && input) {
           const shouldProceed = await onBeforeQueryCallback(input, latestMessages);
           if (!shouldProceed) {
-            return;
+            return true;
           }
         }
 
@@ -3690,6 +3687,7 @@ export function REPL({
           }
         }
       }
+      return true;
     },
     [onQueryImpl, setAppState, resetLoadingState, queryGuard, mrOnBeforeQuery, mrOnTurnComplete],
   );
@@ -4844,44 +4842,62 @@ export function REPL({
             } satisfies QueuedCommand)
           : input;
 
-      const newAbortController = createAbortController();
-      setAbortController(newAbortController);
+      void (async () => {
+        const claim = await claimConsumableQueuedAutonomyCommands([queuedCommand]);
+        const command = claim.attachmentCommands[0];
+        if (!command) return;
 
-      // Create a user message with the formatted content (includes XML wrapper)
-      const userMessage = createUserMessage({
-        content: queuedCommand.value as string,
-        isMeta: queuedCommand.isMeta ? true : undefined,
-        origin: queuedCommand.origin,
-      });
+        const newAbortController = createAbortController();
+        setAbortController(newAbortController);
 
-      const autonomyRunId = queuedCommand.autonomy?.runId;
-      if (autonomyRunId) {
-        void markAutonomyRunRunning(autonomyRunId);
-      }
+        // Create a user message with the formatted content (includes XML wrapper)
+        const userMessage = createUserMessage({
+          content: command.value,
+          isMeta: command.isMeta ? true : undefined,
+          origin: command.origin,
+        });
 
-      void onQuery([userMessage], newAbortController, true, [], mainLoopModel)
-        .then(() => {
-          if (autonomyRunId) {
-            void finalizeAutonomyRunCompleted({
-              runId: autonomyRunId,
+        let executed = false;
+        try {
+          executed = (await onQuery([userMessage], newAbortController, true, [], mainLoopModel)) !== false;
+        } catch (error: unknown) {
+          try {
+            await finalizeAutonomyCommandsForTurn({
+              commands: claim.claimedCommands,
+              outcome: { type: 'failed', error },
               currentDir: getCwd(),
               priority: 'later',
-            }).then(nextCommands => {
-              for (const command of nextCommands) {
-                enqueue(command);
-              }
             });
-          }
-        })
-        .catch((error: unknown) => {
-          if (autonomyRunId) {
-            void finalizeAutonomyRunFailed({
-              runId: autonomyRunId,
-              error: String(error),
-            });
+          } catch (finalizeError: unknown) {
+            logError(toError(finalizeError));
           }
           logError(toError(error));
-        });
+          return;
+        }
+
+        // Only finalize as completed when onQuery actually executed the turn
+        // (it returns false from the concurrent-guard path without running).
+        // Keep this finalize in its own try/catch so a failure here does not
+        // trigger a second finalize as `failed` for the same commands.
+        if (!executed) {
+          return;
+        }
+        try {
+          const nextCommands = await finalizeAutonomyCommandsForTurn({
+            commands: claim.claimedCommands,
+            outcome: { type: 'completed' },
+            currentDir: getCwd(),
+            priority: 'later',
+          });
+          for (const nextCommand of nextCommands) {
+            enqueue(nextCommand);
+          }
+        } catch (finalizeError: unknown) {
+          logError(toError(finalizeError));
+        }
+      })().catch((error: unknown) => {
+        logError(toError(error));
+      });
       return true;
     },
     [onQuery, mainLoopModel, store],
