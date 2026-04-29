@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { authMock } from '../../../../../../tests/mocks/auth'
 
 let requestStatus = 200
 const auditRecords: Record<string, unknown>[] = []
@@ -12,11 +13,7 @@ mock.module('axios', () => ({
   },
 }))
 
-mock.module('src/utils/auth.js', () => ({
-  checkAndRefreshOAuthTokenIfNeeded: async () => {},
-  getClaudeAIOAuthTokens: () => ({ accessToken: 'token' }),
-  isClaudeAISubscriber: () => true,
-}))
+mock.module('src/utils/auth.js', authMock)
 
 mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org',
@@ -30,17 +27,19 @@ mock.module('src/services/policyLimits/index.js', () => ({
   isPolicyAllowed: () => true,
 }))
 
-mock.module('src/constants/oauth.js', () => ({
-  ALL_OAUTH_SCOPES: ['user:profile', 'user:inference'],
-  CLAUDE_AI_INFERENCE_SCOPE: 'user:inference',
-  CLAUDE_AI_OAUTH_SCOPES: ['user:profile', 'user:inference'],
-  CLAUDE_AI_PROFILE_SCOPE: 'user:profile',
-  CONSOLE_OAUTH_SCOPES: ['org:create_api_key', 'user:profile'],
-  MCP_CLIENT_METADATA_URL: 'https://example.test/oauth/metadata',
-  OAUTH_BETA_HEADER: 'oauth-test',
-  fileSuffixForOauthConfig: () => '',
-  getOauthConfig: () => ({ BASE_API_URL: 'https://example.test' }),
-}))
+// Narrow mock for the side-effectful entries in `src/constants/oauth.js`.
+// Pure data exports (ALL_OAUTH_SCOPES, CLAUDE_AI_*_SCOPE, etc.) come from
+// the real module and are not mocked, per the test policy that constants
+// modules without side effects should not be replaced wholesale.
+mock.module('src/constants/oauth.js', () => {
+  const actual = require('../../../../../../src/constants/oauth.js')
+  return {
+    ...actual,
+    fileSuffixForOauthConfig: () => '',
+    getOauthConfig: () => ({ BASE_API_URL: 'https://example.test' }),
+    MCP_CLIENT_METADATA_URL: 'https://example.test/oauth/metadata',
+  }
+})
 
 mock.module('src/utils/remoteTriggerAudit.js', () => ({
   appendRemoteTriggerAuditRecord: async (

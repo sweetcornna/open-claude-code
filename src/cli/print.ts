@@ -2839,10 +2839,7 @@ function runHeadlessStreaming(
             workload: WORKLOAD_CRON,
           })
           if (inputClosed) {
-            await markAutonomyRunCancelled(
-              command.autonomy!.runId,
-              command.autonomy!.rootDir,
-            )
+            await cancelQueuedAutonomyCommands({ commands: [command] })
             return
           }
           enqueue({
@@ -2875,10 +2872,7 @@ function runHeadlessStreaming(
             })
             if (!command) return
             if (inputClosed) {
-              await markAutonomyRunCancelled(
-                command.autonomy!.runId,
-                command.autonomy!.rootDir,
-              )
+              await cancelQueuedAutonomyCommands({ commands: [command] })
               return
             }
             await markAutonomyRunFailed(
@@ -2899,10 +2893,7 @@ function runHeadlessStreaming(
           })
           if (!command) return
           if (inputClosed) {
-            await markAutonomyRunCancelled(
-              command.autonomy!.runId,
-              command.autonomy!.rootDir,
-            )
+            await cancelQueuedAutonomyCommands({ commands: [command] })
             return
           }
           enqueue({

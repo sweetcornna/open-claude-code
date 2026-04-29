@@ -260,8 +260,13 @@ async function executeForkedSlashCommand(
       }
       const resultText = extractResultText(agentMessages, 'Command completed');
       logForDebugging(`Background forked command /${commandName} completed (agent ${agentId})`);
-      await finalizeDeferredAutonomyRunCompleted();
+      // Enqueue the worker's result before finalizing the autonomy run so the
+      // <scheduled-task-result> notification is observed before any follow-up
+      // autonomy commands the finalizer enqueues at the same priority. Without
+      // this ordering, both land at `priority: 'later'` and the next autonomy
+      // step can run before the main thread sees this worker's output.
       enqueueResult(`<scheduled-task-result command="/${commandName}">\n${resultText}\n</scheduled-task-result>`);
+      await finalizeDeferredAutonomyRunCompleted();
     })().catch(async err => {
       logError(err);
       enqueueResult(

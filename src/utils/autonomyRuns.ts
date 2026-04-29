@@ -130,20 +130,18 @@ function isAutonomyRunActive(run: AutonomyRunRecord): boolean {
 function selectPersistedAutonomyRuns(
   runs: AutonomyRunRecord[],
 ): AutonomyRunRecord[] {
-  const retained = runs
-    .slice()
-    .map(cloneRunRecord)
-    .sort((left, right) => {
-      const leftActive = isAutonomyRunActive(left)
-      const rightActive = isAutonomyRunActive(right)
-      if (leftActive !== rightActive) {
-        return leftActive ? -1 : 1
-      }
-      return right.createdAt - left.createdAt
-    })
-    .slice(0, AUTONOMY_RUNS_MAX)
+  const cloned = runs.slice().map(cloneRunRecord)
+  const active = cloned
+    .filter(isAutonomyRunActive)
+    .sort((left, right) => right.createdAt - left.createdAt)
+  const history = cloned
+    .filter(run => !isAutonomyRunActive(run))
+    .sort((left, right) => right.createdAt - left.createdAt)
+    .slice(0, Math.max(0, AUTONOMY_RUNS_MAX - active.length))
 
-  return retained.sort((left, right) => right.createdAt - left.createdAt)
+  return [...active, ...history].sort(
+    (left, right) => right.createdAt - left.createdAt,
+  )
 }
 
 function normalizePersistedRunRecord(
@@ -260,7 +258,7 @@ function isValidOwnerProcessId(pid: number | undefined): pid is number {
     typeof pid === 'number' &&
     Number.isInteger(pid) &&
     pid > 0 &&
-    pid < 4_194_304
+    pid <= 4_194_304
   )
 }
 
@@ -407,10 +405,7 @@ async function persistAutonomyRunRecord(
           continue
         }
         if (isStaleActiveAutonomyRun(run)) {
-          const recovered = recoverStaleActiveAutonomyRun(
-            run,
-            record.createdAt,
-          )
+          const recovered = recoverStaleActiveAutonomyRun(run, record.createdAt)
           runs[i] = recovered
           recoveredStaleRuns.push(recovered)
           staleRecoveriesApplied = true

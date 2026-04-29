@@ -143,15 +143,24 @@ function mergeAgentsAuthority(files: AutonomyAuthorityFile[]): string | null {
 function maskCodeFencedLines(lines: string[]): string[] {
   const masked = lines.slice()
   let activeFenceChar: '`' | '~' | null = null
+  let activeFenceLen = 0
   for (let i = 0; i < masked.length; i++) {
     const trimmed = masked[i]!.trim()
-    const fenceMatch = trimmed.match(/^(```+|~~~+)/)
+    const fenceMatch = trimmed.match(/^([`~])\1{2,}/)
     if (fenceMatch) {
-      const fenceChar = fenceMatch[1]![0] as '`' | '~'
+      const fenceChar = fenceMatch[1]! as '`' | '~'
+      const fenceLen = fenceMatch[0]!.length
+      const trailing = trimmed.slice(fenceLen)
       if (activeFenceChar === null) {
         activeFenceChar = fenceChar
-      } else if (activeFenceChar === fenceChar) {
+        activeFenceLen = fenceLen
+      } else if (
+        activeFenceChar === fenceChar &&
+        fenceLen >= activeFenceLen &&
+        trailing.trim() === ''
+      ) {
         activeFenceChar = null
+        activeFenceLen = 0
       }
       masked[i] = ''
       continue
