@@ -42,8 +42,8 @@ async function runAutonomyCli(args: string[]): Promise<string> {
     proc.exited,
   ])
 
-  expect(stderr).toBe('')
-  expect(exitCode).toBe(0)
+  expect(stderr, `unexpected stderr output:\n${stderr}`).toBe('')
+  expect(exitCode, `non-zero exit ${exitCode}; stderr:\n${stderr}`).toBe(0)
   return stdout
 }
 

@@ -321,11 +321,8 @@ import {
 } from 'src/utils/queryProfiler.js'
 import { asSessionId } from 'src/types/ids.js'
 import {
-  commitAutonomyQueuedPrompt,
-  createAutonomyQueuedPrompt,
   createAutonomyQueuedPromptIfNoActiveSource,
   createProactiveAutonomyCommands,
-  markAutonomyRunCancelled,
   markAutonomyRunFailed,
 } from 'src/utils/autonomyRuns.js'
 import {
@@ -333,7 +330,6 @@ import {
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
 } from 'src/utils/autonomyQueueLifecycle.js'
-import { prepareAutonomyTurnPrompt } from 'src/utils/autonomyAuthority.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { skillChangeDetector } from '../utils/skills/skillChangeDetector.js'
 import { getCommands, clearCommandsCache } from '../commands.js'
@@ -2827,17 +2823,22 @@ function runHeadlessStreaming(
       onFire: prompt => {
         if (inputClosed) return
         void (async () => {
-          const prepared = await prepareAutonomyTurnPrompt({
+          // Use the prompt itself as the dedup source: legacy KAIROS-style
+          // cron entries fire the same prompt repeatedly, and without a
+          // dedicated task id the prompt text is what uniquely identifies
+          // the entry. Without source-dedup, repeated fires would stack
+          // additional runs while an earlier one is still active. Match the
+          // onFireTask branch below to keep the two paths consistent.
+          const command = await createAutonomyQueuedPromptIfNoActiveSource({
             basePrompt: prompt,
             trigger: 'scheduled-task',
             currentDir: cwd(),
-          })
-          if (inputClosed) return
-          const command = await commitAutonomyQueuedPrompt({
-            prepared,
-            currentDir: cwd(),
+            sourceId: prompt,
+            sourceLabel: prompt,
             workload: WORKLOAD_CRON,
+            shouldCreate: () => !inputClosed,
           })
+          if (!command) return
           if (inputClosed) {
             await cancelQueuedAutonomyCommands({ commands: [command] })
             return
