@@ -3,7 +3,10 @@ import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
 import { getProjectRoot } from '../bootstrap/state.js'
 import { AUTONOMY_DIR, type AutonomyTriggerKind } from './autonomyAuthority.js'
-import { withAutonomyPersistenceLock } from './autonomyPersistence.js'
+import {
+  retainActiveFirst,
+  withAutonomyPersistenceLock,
+} from './autonomyPersistence.js'
 import { getFsImplementation } from './fsOperations.js'
 
 const AUTONOMY_FLOWS_MAX = 100
@@ -170,26 +173,12 @@ function isManagedFlowStatusActive(status: AutonomyFlowStatus): boolean {
 function selectPersistedAutonomyFlows(
   flows: AutonomyFlowRecord[],
 ): AutonomyFlowRecord[] {
-  // Two-phase sort. Phase 1: priority sort (active flows first, then by
-  // updatedAt desc) selects the AUTONOMY_FLOWS_MAX most-relevant records to
-  // retain — active flows are guaranteed a slot before any inactive flow is
-  // considered. Phase 2: re-sort the retained slice by updatedAt desc only,
-  // so the persisted file is in plain reverse-chronological order regardless
-  // of activity status. Listings/UI consume the persisted order directly.
-  const retained = flows
-    .slice()
-    .map(cloneFlowRecord)
-    .sort((left, right) => {
-      const leftActive = isManagedFlowStatusActive(left.status)
-      const rightActive = isManagedFlowStatusActive(right.status)
-      if (leftActive !== rightActive) {
-        return leftActive ? -1 : 1
-      }
-      return right.updatedAt - left.updatedAt
-    })
-    .slice(0, AUTONOMY_FLOWS_MAX)
-
-  return retained.sort((left, right) => right.updatedAt - left.updatedAt)
+  return retainActiveFirst(
+    flows.map(cloneFlowRecord),
+    flow => isManagedFlowStatusActive(flow.status),
+    flow => flow.updatedAt,
+    AUTONOMY_FLOWS_MAX,
+  )
 }
 
 function defaultFlowSource(params: {

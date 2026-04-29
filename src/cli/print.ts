@@ -2819,97 +2819,89 @@ function runHeadlessStreaming(
   let cronScheduler: import('../utils/cronScheduler.js').CronScheduler | null =
     null
   if (cronGate.isKairosCronEnabled()) {
+    // Shared dedup-claim → input-close-recheck → onSuccess pipeline for the
+    // three cron entry points (legacy onFire, onFireTask agent, onFireTask
+    // non-agent). Centralizing the cancel-on-late-shutdown contract here keeps
+    // the three branches from drifting on what happens between claim and
+    // dispatch. onSuccess receives the claimed QueuedCommand and decides
+    // whether to enqueue it (normal path) or mark the run failed (agent path).
+    const dispatchHeadlessCronCommand = (params: {
+      basePrompt: string
+      sourceId: string
+      sourceLabel: string
+      logSuffix: string
+      onSuccess: (command: QueuedCommand) => void | Promise<void>
+    }): void => {
+      if (inputClosed) return
+      void (async () => {
+        const command = await createAutonomyQueuedPromptIfNoActiveSource({
+          basePrompt: params.basePrompt,
+          trigger: 'scheduled-task',
+          currentDir: cwd(),
+          sourceId: params.sourceId,
+          sourceLabel: params.sourceLabel,
+          workload: WORKLOAD_CRON,
+          shouldCreate: () => !inputClosed,
+        })
+        if (!command) return
+        if (inputClosed) {
+          await cancelQueuedAutonomyCommands({ commands: [command] })
+          return
+        }
+        await params.onSuccess(command)
+      })().catch(error => {
+        logError(error)
+        logForDebugging(
+          `[ScheduledTasks] failed to enqueue headless task${params.logSuffix}: ${error}`,
+          { level: 'error' },
+        )
+      })
+    }
+
+    const enqueueAndRun = (command: QueuedCommand): void => {
+      enqueue({
+        ...command,
+        uuid: randomUUID(),
+      })
+      void run()
+    }
+
     cronScheduler = cronSchedulerModule.createCronScheduler({
       onFire: prompt => {
-        if (inputClosed) return
-        void (async () => {
-          // Use the prompt itself as the dedup source: legacy KAIROS-style
-          // cron entries fire the same prompt repeatedly, and without a
-          // dedicated task id the prompt text is what uniquely identifies
-          // the entry. Without source-dedup, repeated fires would stack
-          // additional runs while an earlier one is still active. Match the
-          // onFireTask branch below to keep the two paths consistent.
-          const command = await createAutonomyQueuedPromptIfNoActiveSource({
-            basePrompt: prompt,
-            trigger: 'scheduled-task',
-            currentDir: cwd(),
-            sourceId: prompt,
-            sourceLabel: prompt,
-            workload: WORKLOAD_CRON,
-            shouldCreate: () => !inputClosed,
-          })
-          if (!command) return
-          if (inputClosed) {
-            await cancelQueuedAutonomyCommands({ commands: [command] })
-            return
-          }
-          enqueue({
-            ...command,
-            uuid: randomUUID(),
-          })
-          void run()
-        })().catch(error => {
-          logError(error)
-          logForDebugging(
-            `[ScheduledTasks] failed to enqueue headless task: ${error}`,
-            {
-              level: 'error',
-            },
-          )
+        // Legacy KAIROS-style entries: the prompt text is what uniquely
+        // identifies the cron entry, so it doubles as both source id and
+        // source label for dedup.
+        dispatchHeadlessCronCommand({
+          basePrompt: prompt,
+          sourceId: prompt,
+          sourceLabel: prompt,
+          logSuffix: '',
+          onSuccess: enqueueAndRun,
         })
       },
       onFireTask: task => {
-        if (inputClosed) return
-        void (async () => {
-          if (task.agentId) {
-            const command = await createAutonomyQueuedPromptIfNoActiveSource({
-              basePrompt: task.prompt,
-              trigger: 'scheduled-task',
-              currentDir: cwd(),
-              sourceId: task.id,
-              sourceLabel: task.prompt,
-              workload: WORKLOAD_CRON,
-              shouldCreate: () => !inputClosed,
-            })
-            if (!command) return
-            if (inputClosed) {
-              await cancelQueuedAutonomyCommands({ commands: [command] })
-              return
-            }
-            await markAutonomyRunFailed(
-              command.autonomy!.runId,
-              `No teammate runtime available for scheduled task owner ${task.agentId} in headless mode.`,
-              command.autonomy!.rootDir,
-            )
-            return
-          }
-          const command = await createAutonomyQueuedPromptIfNoActiveSource({
+        if (task.agentId) {
+          dispatchHeadlessCronCommand({
             basePrompt: task.prompt,
-            trigger: 'scheduled-task',
-            currentDir: cwd(),
             sourceId: task.id,
             sourceLabel: task.prompt,
-            workload: WORKLOAD_CRON,
-            shouldCreate: () => !inputClosed,
-          })
-          if (!command) return
-          if (inputClosed) {
-            await cancelQueuedAutonomyCommands({ commands: [command] })
-            return
-          }
-          enqueue({
-            ...command,
-            uuid: randomUUID(),
-          })
-          void run()
-        })().catch(error => {
-          logError(error)
-          logForDebugging(
-            `[ScheduledTasks] failed to enqueue headless task ${task.id}: ${error}`,
-            {
-              level: 'error',
+            logSuffix: ` ${task.id}`,
+            onSuccess: async command => {
+              await markAutonomyRunFailed(
+                command.autonomy!.runId,
+                `No teammate runtime available for scheduled task owner ${task.agentId} in headless mode.`,
+                command.autonomy!.rootDir,
+              )
             },
-          )
+          })
+          return
+        }
+        dispatchHeadlessCronCommand({
+          basePrompt: task.prompt,
+          sourceId: task.id,
+          sourceLabel: task.prompt,
+          logSuffix: ` ${task.id}`,
+          onSuccess: enqueueAndRun,
         })
       },
       isLoading: () => running || inputClosed,
