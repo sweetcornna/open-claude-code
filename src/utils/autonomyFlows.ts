@@ -170,6 +170,12 @@ function isManagedFlowStatusActive(status: AutonomyFlowStatus): boolean {
 function selectPersistedAutonomyFlows(
   flows: AutonomyFlowRecord[],
 ): AutonomyFlowRecord[] {
+  // Two-phase sort. Phase 1: priority sort (active flows first, then by
+  // updatedAt desc) selects the AUTONOMY_FLOWS_MAX most-relevant records to
+  // retain — active flows are guaranteed a slot before any inactive flow is
+  // considered. Phase 2: re-sort the retained slice by updatedAt desc only,
+  // so the persisted file is in plain reverse-chronological order regardless
+  // of activity status. Listings/UI consume the persisted order directly.
   const retained = flows
     .slice()
     .map(cloneFlowRecord)

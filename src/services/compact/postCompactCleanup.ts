@@ -69,6 +69,12 @@ export function runPostCompactCleanup(querySource?: QuerySource): void {
   // cacheUtils resets. See compactConversation() for full rationale.
   clearBetaTracingState()
   if (feature('COMMIT_ATTRIBUTION')) {
+    // Intentionally fire-and-forget: the file-content cache sweep is a
+    // best-effort memory release whose completion no caller depends on.
+    // Keeping `runPostCompactCleanup` synchronous lets compaction call sites
+    // (REPL post-compact handler, /compact command, autoCompact) finish their
+    // own state transitions without an extra microtask round-trip — the sweep
+    // catches up on the next event-loop tick.
     void import('../../utils/attributionHooks.js').then(m =>
       m.sweepFileContentCache(),
     )
