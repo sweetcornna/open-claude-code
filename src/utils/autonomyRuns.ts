@@ -27,12 +27,22 @@ import {
   type AutonomyFlowSyncMode,
   type ManagedAutonomyFlowStepDefinition,
 } from './autonomyFlows.js'
-import { withAutonomyPersistenceLock } from './autonomyPersistence.js'
+import {
+  retainActiveFirst,
+  withAutonomyPersistenceLock,
+} from './autonomyPersistence.js'
 import { getFsImplementation } from './fsOperations.js'
 import { isProcessRunning } from './genericProcessUtils.js'
 import { logError } from './log.js'
 
 const AUTONOMY_RUNS_MAX = 200
+// Diagnostic threshold for active (queued/running) runs. Active records are
+// deliberately exempt from AUTONOMY_RUNS_MAX so a leak in finalization cannot
+// silently evict in-flight work; that exemption only makes sense if a leak is
+// loud when it appears. Crossing this threshold warns once per process so
+// operators see the divergence in logs before runs.json grows pathologically.
+const AUTONOMY_ACTIVE_RUNS_WARN_THRESHOLD = 100
+let warnedActiveRunsThresholdCrossed = false
 const AUTONOMY_RUNS_RELATIVE_PATH = join(AUTONOMY_DIR, 'runs.json')
 // Sentinel string surfaced to operators via runs.json error fields and
 // referenced literally by the HEARTBEAT.md `stale-recovery-health` task.
@@ -130,17 +140,24 @@ function isAutonomyRunActive(run: AutonomyRunRecord): boolean {
 function selectPersistedAutonomyRuns(
   runs: AutonomyRunRecord[],
 ): AutonomyRunRecord[] {
-  const cloned = runs.slice().map(cloneRunRecord)
-  const active = cloned
-    .filter(isAutonomyRunActive)
-    .sort((left, right) => right.createdAt - left.createdAt)
-  const history = cloned
-    .filter(run => !isAutonomyRunActive(run))
-    .sort((left, right) => right.createdAt - left.createdAt)
-    .slice(0, Math.max(0, AUTONOMY_RUNS_MAX - active.length))
-
-  return [...active, ...history].sort(
-    (left, right) => right.createdAt - left.createdAt,
+  const cloned = runs.map(cloneRunRecord)
+  const activeCount = cloned.filter(isAutonomyRunActive).length
+  if (
+    !warnedActiveRunsThresholdCrossed &&
+    activeCount >= AUTONOMY_ACTIVE_RUNS_WARN_THRESHOLD
+  ) {
+    warnedActiveRunsThresholdCrossed = true
+    logError(
+      new Error(
+        `autonomy: ${activeCount} active runs exceed warn threshold ${AUTONOMY_ACTIVE_RUNS_WARN_THRESHOLD}; check for finalize leaks`,
+      ),
+    )
+  }
+  return retainActiveFirst(
+    cloned,
+    isAutonomyRunActive,
+    run => run.createdAt,
+    AUTONOMY_RUNS_MAX,
   )
 }
 

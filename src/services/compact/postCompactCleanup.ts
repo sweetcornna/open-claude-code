@@ -5,6 +5,7 @@ import { getUserContext } from '../../context.js'
 import { clearSpeculativeChecks } from '@claude-code-best/builtin-tools/tools/BashTool/bashPermissions.js'
 import { clearClassifierApprovals } from '../../utils/classifierApprovals.js'
 import { resetGetMemoryFilesCache } from '../../utils/claudemd.js'
+import { logError } from '../../utils/log.js'
 import { clearSessionMessagesCache } from '../../utils/sessionStorage.js'
 import { clearBetaTracingState } from '../../utils/telemetry/betaSessionTracing.js'
 import { resetMicrocompactState } from './microCompact.js'
@@ -75,9 +76,16 @@ export function runPostCompactCleanup(querySource?: QuerySource): void {
     // (REPL post-compact handler, /compact command, autoCompact) finish their
     // own state transitions without an extra microtask round-trip — the sweep
     // catches up on the next event-loop tick.
-    void import('../../utils/attributionHooks.js').then(m =>
-      m.sweepFileContentCache(),
-    )
+    //
+    // The .catch is required even though the current attributionHooks.ts is a
+    // no-op stub: without it, a future restored sweepFileContentCache that
+    // throws would surface as an unhandled promise rejection from a function
+    // whose synchronous signature gives callers no way to observe it.
+    void import('../../utils/attributionHooks.js')
+      .then(m => m.sweepFileContentCache())
+      .catch(error => {
+        logError(error)
+      })
   }
   clearSessionMessagesCache()
 }

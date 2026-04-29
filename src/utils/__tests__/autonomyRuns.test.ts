@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'fs'
-import { mkdir, writeFile } from 'fs/promises'
-import { join, resolve as resolvePath } from 'path'
+import { join, resolve as resolvePath } from 'node:path'
 import {
   resetStateForTests,
   setCwdState,
@@ -42,11 +40,14 @@ import {
   cleanupTempDir,
   createTempDir,
   createTempSubdir,
+  readTempFile,
+  tempPathExists,
   writeTempFile,
 } from '../../../tests/mocks/file-system'
 
 const AGENTS_REL = join(AUTONOMY_DIR, 'AGENTS.md')
 const HEARTBEAT_REL = join(AUTONOMY_DIR, 'HEARTBEAT.md')
+const RUNS_REL = join(AUTONOMY_DIR, 'runs.json')
 
 let tempDir = ''
 
@@ -349,9 +350,9 @@ describe('autonomyRuns', () => {
     )
 
     // Seed an active queued run for cron-1 so the next dedup attempt skips.
-    await mkdir(join(tempDir, AUTONOMY_DIR), { recursive: true })
-    await writeFile(
-      resolveAutonomyRunsPath(tempDir),
+    await writeTempFile(
+      tempDir,
+      RUNS_REL,
       `${JSON.stringify(
         {
           runs: [
@@ -373,7 +374,6 @@ describe('autonomyRuns', () => {
         null,
         2,
       )}\n`,
-      'utf-8',
     )
 
     const skipped = await createAutonomyQueuedPromptIfNoActiveSource({
@@ -400,9 +400,9 @@ describe('autonomyRuns', () => {
   })
 
   test('createAutonomyQueuedPromptIfNoActiveSource recovers stale active runs from dead owner processes', async () => {
-    await mkdir(join(tempDir, AUTONOMY_DIR), { recursive: true })
-    await writeFile(
-      resolveAutonomyRunsPath(tempDir),
+    await writeTempFile(
+      tempDir,
+      RUNS_REL,
       `${JSON.stringify(
         {
           runs: [
@@ -426,7 +426,6 @@ describe('autonomyRuns', () => {
         null,
         2,
       )}\n`,
-      'utf-8',
     )
 
     await expect(
@@ -483,7 +482,7 @@ describe('autonomyRuns', () => {
     await markAutonomyRunRunning(runId, tempDir, 100)
 
     const runsPath = resolveAutonomyRunsPath(tempDir)
-    const file = JSON.parse(readFileSync(runsPath, 'utf-8')) as {
+    const file = JSON.parse(await readTempFile(runsPath)) as {
       runs: Array<Record<string, unknown>>
     }
     file.runs = file.runs.map(run =>
@@ -491,7 +490,7 @@ describe('autonomyRuns', () => {
         ? { ...run, ownerProcessId: 2_147_483_647 }
         : run,
     )
-    await writeFile(runsPath, `${JSON.stringify(file, null, 2)}\n`, 'utf-8')
+    await writeTempFile(tempDir, RUNS_REL, `${JSON.stringify(file, null, 2)}\n`)
 
     const replacement = await createAutonomyQueuedPromptIfNoActiveSource({
       basePrompt: 'replacement prompt',
@@ -615,11 +614,10 @@ describe('autonomyRuns', () => {
         endedAt: 2_000 + index,
       })),
     ]
-    await mkdir(join(tempDir, AUTONOMY_DIR), { recursive: true })
-    await writeFile(
-      resolveAutonomyRunsPath(tempDir),
+    await writeTempFile(
+      tempDir,
+      RUNS_REL,
       `${JSON.stringify({ runs }, null, 2)}\n`,
-      'utf-8',
     )
 
     await createAutonomyRun({
@@ -637,10 +635,9 @@ describe('autonomyRuns', () => {
   })
 
   test('listAutonomyRuns keeps older persisted records by normalizing missing runtime and owner metadata', async () => {
-    const runsPath = resolveAutonomyRunsPath(tempDir)
-    await mkdir(join(tempDir, '.claude', 'autonomy'), { recursive: true })
-    await writeFile(
-      runsPath,
+    await writeTempFile(
+      tempDir,
+      RUNS_REL,
       `${JSON.stringify(
         {
           runs: [
@@ -657,7 +654,6 @@ describe('autonomyRuns', () => {
         null,
         2,
       )}\n`,
-      'utf-8',
     )
 
     const [legacy] = await listAutonomyRuns(tempDir)
@@ -832,7 +828,7 @@ describe('autonomyRuns', () => {
     expect(recovered!.autonomy?.flowId).toBe(flow!.flowId)
   })
 
-  test('STALE_ACTIVE_RUN_ERROR_PREFIX stays in sync with HEARTBEAT.md stale-recovery-health task', () => {
+  test('STALE_ACTIVE_RUN_ERROR_PREFIX stays in sync with HEARTBEAT.md stale-recovery-health task', async () => {
     // The HEARTBEAT.md stale-recovery-health task prompt embeds this prefix
     // as a literal string. Changing the constant without updating the
     // heartbeat prompt would silently break the monitor — this test fails
@@ -846,12 +842,12 @@ describe('autonomyRuns', () => {
       'autonomy',
       'HEARTBEAT.md',
     )
-    if (!existsSync(heartbeatPath)) {
+    if (!(await tempPathExists(heartbeatPath))) {
       // .claude/ may be absent in some checkout layouts (e.g., shallow clone
       // for npm pack). Skip rather than fail in that case.
       return
     }
-    const content = readFileSync(heartbeatPath, 'utf8')
+    const content = await readTempFile(heartbeatPath)
     expect(content).toContain(STALE_ACTIVE_RUN_ERROR_PREFIX)
   })
 })
