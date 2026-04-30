@@ -74,8 +74,8 @@ export const DEFAULT_BUILD_FEATURES = [
     // this branch (see docs/agent/sur-skill-overflow-bugs.md) close the
     // overflow risk, but Haiku-on-first-Chinese-query and disk-side
     // observation accumulation remain operator-discretion concerns.
-    'EXPERIMENTAL_SKILL_SEARCH',
-    'SKILL_LEARNING',
+    // 'EXPERIMENTAL_SKILL_SEARCH',
+    // 'SKILL_LEARNING',
     // P3: poor mode
     'POOR',                        // 穷鬼模式，跳过 extract_memories/prompt_suggestion 减少消耗
     // Team Memory
