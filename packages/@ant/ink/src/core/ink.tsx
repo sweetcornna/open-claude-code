@@ -329,7 +329,6 @@ export default class Ink {
       }
     };
 
-    // @ts-expect-error createContainer arg count varies across react-reconciler versions
     this.container = reconciler.createContainer(
       this.rootNode,
       ConcurrentRoot,
@@ -881,7 +880,6 @@ export default class Ink {
 
   pause(): void {
     // Flush pending React updates and render before pausing.
-    // @ts-expect-error flushSyncFromReconciler exists in react-reconciler but not in @types
     reconciler.flushSyncFromReconciler();
     this.onRender();
 
@@ -1580,9 +1578,7 @@ export default class Ink {
       </App>
     );
 
-    // @ts-expect-error updateContainerSync exists in react-reconciler but not in @types
     reconciler.updateContainerSync(tree, this.container, null, noop);
-    // @ts-expect-error flushSyncWork exists in react-reconciler but not in @types
     reconciler.flushSyncWork();
   }
 
@@ -1651,9 +1647,7 @@ export default class Ink {
       this.drainTimer = null;
     }
 
-    // @ts-expect-error updateContainerSync exists in react-reconciler but not in @types
     reconciler.updateContainerSync(null, this.container, null, noop);
-    // @ts-expect-error flushSyncWork exists in react-reconciler but not in @types
     reconciler.flushSyncWork();
     instances.delete(this.options.stdout);
 
