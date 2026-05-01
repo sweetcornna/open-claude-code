@@ -118,6 +118,7 @@ export class ACPClient {
     reject: (err: Error) => void
     timer: ReturnType<typeof setTimeout>
   } | null = null
+  private pendingSessionTarget: string | null = null
 
   private connectResolve: ((value: undefined) => void) | null = null
   private connectReject: ((error: Error) => void) | null = null

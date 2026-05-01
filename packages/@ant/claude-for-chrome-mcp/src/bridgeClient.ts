@@ -71,6 +71,8 @@ export class BridgeClient implements SocketClient {
   private peerConnectedWaiters: Array<(arrived: boolean) => void> = []
   /** The request_id of the current pending pairing broadcast. */
   private pendingPairingRequestId: string | undefined
+  /** Whether a pairing broadcast is in progress (multiple extensions, no persisted selection). */
+  private pairingInProgress = false
   /** The deviceId from a previous persisted pairing. */
   private persistedDeviceId: string | undefined
   /** Resolve callback for a blocking switchBrowser() call. */
