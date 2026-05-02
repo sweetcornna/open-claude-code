@@ -439,6 +439,54 @@ describe('thinking support (reasoning_content)', () => {
     expect(blockStarts[1].content_block.type).toBe('tool_use')
   })
 
+  test('opens thinking block on empty reasoning_content (DeepSeek v4 direct-answer)', async () => {
+    // DeepSeek v4 thinking mode sometimes streams reasoning_content: ""
+    // before answering directly. We must still open a thinking block so the
+    // resulting assistant message carries an (empty) thinking block — that
+    // round-trips back as reasoning_content: "" in the next request,
+    // satisfying DeepSeek's requirement (see issue #399).
+    const events = await collectEvents([
+      makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: { reasoning_content: '' },
+            finish_reason: null,
+          },
+        ],
+      }),
+      makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: { content: 'Direct answer.' },
+            finish_reason: null,
+          },
+        ],
+      }),
+      makeChunk({
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      }),
+    ])
+
+    // A thinking block was opened (and closed before the text block starts)
+    const blockStarts = events.filter(
+      e => e.type === 'content_block_start',
+    ) as any[]
+    expect(blockStarts.length).toBe(2)
+    expect(blockStarts[0].content_block.type).toBe('thinking')
+    expect(blockStarts[0].content_block.thinking).toBe('')
+    expect(blockStarts[1].content_block.type).toBe('text')
+
+    // No empty thinking_delta should be emitted — the empty string is
+    // already conveyed by the thinking block's initial value.
+    const thinkingDeltas = events.filter(
+      e =>
+        e.type === 'content_block_delta' && e.delta.type === 'thinking_delta',
+    )
+    expect(thinkingDeltas.length).toBe(0)
+  })
+
   test('thinking block index is 0, text block index is 1', async () => {
     const events = await collectEvents([
       makeChunk({
