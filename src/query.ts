@@ -7,6 +7,9 @@ import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { FallbackTriggeredError } from './services/api/withRetry.js'
 import {
   calculateTokenWarningState,
+  estimateMaxTurnGrowth,
+  getAutoCompactThreshold,
+  getEffectiveContextWindowSize,
   isAutoCompactEnabled,
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
@@ -474,7 +477,7 @@ async function* queryLoop(
       queryTracking,
     }
 
-    let messagesForQuery = [...getMessagesAfterCompactBoundary(messages)]
+    let messagesForQuery = getMessagesAfterCompactBoundary(messages)
 
     let tracking = autoCompactTracking
 
@@ -766,6 +769,48 @@ async function* queryLoop(
           error: 'invalid_request',
         })
         return { reason: 'blocking_limit' }
+      }
+    }
+
+    // Predictive autocompact: estimate if this turn's growth will push
+    // us past the context window. Uses effectiveContextWindow directly
+    // (without the autocompact buffer) to avoid double-reserving with
+    // getAutoCompactThreshold which already subtracts buffer.
+    if (!compactionResult && isAutoCompactEnabled()) {
+      const model = toolUseContext.options.mainLoopModel
+      const currentTokens =
+        tokenCountWithEstimation(messagesForQuery) - snipTokensFreed
+      const estimatedGrowth = estimateMaxTurnGrowth(model)
+      const predictiveThreshold =
+        getEffectiveContextWindowSize(model) - estimatedGrowth
+      if (currentTokens > predictiveThreshold) {
+        const predictiveResult = await deps.autocompact(
+          messagesForQuery,
+          toolUseContext,
+          {
+            systemPrompt,
+            userContext,
+            systemContext,
+            toolUseContext,
+            forkContextMessages: messagesForQuery,
+          },
+          querySource,
+          tracking,
+          snipTokensFreed,
+        )
+        if (predictiveResult.compactionResult) {
+          messagesForQuery = buildPostCompactMessages(
+            predictiveResult.compactionResult,
+          )
+          snipTokensFreed = 0
+          tracking = tracking
+            ? {
+                ...tracking,
+                compacted: true,
+                consecutiveFailures: predictiveResult.consecutiveFailures ?? 0,
+              }
+            : tracking
+        }
       }
     }
 
@@ -1142,7 +1187,7 @@ async function* queryLoop(
     // Execute post-sampling hooks after model response is complete
     if (assistantMessages.length > 0) {
       void executePostSamplingHooks(
-        [...messagesForQuery, ...assistantMessages],
+        messagesForQuery.concat(assistantMessages),
         systemPrompt,
         userContext,
         systemContext,
@@ -1864,11 +1909,10 @@ async function* queryLoop(
           userContext,
           systemContext,
           toolUseContext,
-          forkContextMessages: [
-            ...messagesForQuery,
-            ...assistantMessages,
-            ...toolResults,
-          ],
+          forkContextMessages: messagesForQuery.concat(
+            assistantMessages,
+            toolResults,
+          ),
         })
       }
     }
@@ -1885,7 +1929,7 @@ async function* queryLoop(
 
     queryCheckpoint('query_recursive_call')
     const next: State = {
-      messages: [...messagesForQuery, ...assistantMessages, ...toolResults],
+      messages: messagesForQuery.concat(assistantMessages, toolResults),
       toolUseContext: toolUseContextWithQueryTracking,
       autoCompactTracking: tracking,
       turnCount: nextTurnCount,

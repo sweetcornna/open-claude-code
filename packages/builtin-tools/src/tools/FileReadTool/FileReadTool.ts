@@ -761,6 +761,16 @@ async function validateContentTokens(
   const effectiveMaxTokens =
     maxTokens ?? getDefaultFileReadingLimits().maxTokens
 
+  // Fast rejection: if raw byte count exceeds 4x the token limit,
+  // no encoding can possibly fit (worst case is ~4 bytes/token).
+  const byteLength = Buffer.byteLength(content)
+  if (byteLength > effectiveMaxTokens * 4) {
+    throw new MaxFileReadTokenExceededError(
+      Math.ceil(byteLength / 4),
+      effectiveMaxTokens,
+    )
+  }
+
   const tokenEstimate = roughTokenCountEstimationForFileType(content, ext)
   if (!tokenEstimate || tokenEstimate <= effectiveMaxTokens / 4) return
 

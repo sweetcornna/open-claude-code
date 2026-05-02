@@ -1566,7 +1566,15 @@ export function REPL({
   // Deferred messages for the Messages component — renders at transition
   // priority so the reconciler yields every 5ms, keeping input responsive
   // while the expensive message processing pipeline runs.
-  const deferredMessages = useDeferredValue(messages);
+  // Cap at 500 messages to limit memory double-buffering. The bypass
+  // at display-time uses sync messages during streaming and non-loading,
+  // so this cap only affects reduced-motion scenarios.
+  const DEFERRED_CAP = 500;
+  const cappedMessages = React.useMemo(
+    () => (messages.length > DEFERRED_CAP ? messages.slice(-DEFERRED_CAP) : messages),
+    [messages],
+  );
+  const deferredMessages = useDeferredValue(cappedMessages);
   const deferredBehind = messages.length - deferredMessages.length;
   if (deferredBehind > 0) {
     logForDebugging(

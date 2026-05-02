@@ -334,13 +334,12 @@ export type RecompactionInfo = {
  * Order: boundaryMarker, summaryMessages, messagesToKeep, attachments, hookResults
  */
 export function buildPostCompactMessages(result: CompactionResult): Message[] {
-  return [
-    result.boundaryMarker,
-    ...result.summaryMessages,
-    ...(result.messagesToKeep ?? []),
-    ...result.attachments,
-    ...result.hookResults,
-  ]
+  return ([result.boundaryMarker] as Message[]).concat(
+    result.summaryMessages,
+    result.messagesToKeep ?? [],
+    result.attachments,
+    result.hookResults,
+  )
 }
 
 /**
