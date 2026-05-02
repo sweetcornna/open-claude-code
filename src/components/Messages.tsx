@@ -18,6 +18,7 @@ import type { Tools } from '../Tool.js';
 import { findToolByName } from '../Tool.js';
 import type { AgentDefinitionsResult } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type {
+  AssistantMessage,
   Message as MessageType,
   NormalizedMessage,
   ProgressMessage as ProgressMessageType,
@@ -36,6 +37,7 @@ import {
   buildMessageLookups,
   computeMessageStructureKey,
   type MessageLookups,
+  updateMessageLookupsIncremental,
   createAssistantMessage,
   deriveUUID,
   getMessagesAfterCompactBoundary,
@@ -516,7 +518,13 @@ const MessagesImpl = ({
   // message content changed during streaming (text/thinking deltas). The key
   // captures only structural info (types, IDs), so content-only deltas skip
   // the rebuild entirely.
-  const lookupsCacheRef = useRef<{ key: string; lookups: MessageLookups } | null>(null);
+  const lookupsCacheRef = useRef<{
+    key: string;
+    lookups: MessageLookups;
+    normalizedCount: number;
+    messageCount: number;
+    lastAssistantMsgId: string | undefined;
+  } | null>(null);
 
   // Expensive message transforms — filter, reorder, group, collapse, lookups.
   // All O(n) over 27k messages. Split from the renderRange slice so scrolling
@@ -587,12 +595,57 @@ const MessagesImpl = ({
     );
 
     const lookupsKey = computeMessageStructureKey(normalizedMessages, messagesToShow as MessageType[]);
+    const currentLastAssistantMsgId = (() => {
+      const lastMsg = (messagesToShow as MessageType[]).at(-1);
+      return lastMsg?.type === 'assistant' ? (lastMsg as AssistantMessage).message?.id : undefined;
+    })();
     let lookups: MessageLookups;
     if (lookupsCacheRef.current && lookupsCacheRef.current.key === lookupsKey) {
       lookups = lookupsCacheRef.current.lookups;
+    } else if (
+      lookupsCacheRef.current &&
+      normalizedMessages.length >= lookupsCacheRef.current.normalizedCount &&
+      (messagesToShow as MessageType[]).length >= lookupsCacheRef.current.messageCount &&
+      // If lastAssistantMsgId changed, previous "in-progress" assistant may
+      // now be orphaned — force a full rebuild to pick up the new status.
+      lookupsCacheRef.current.lastAssistantMsgId === currentLastAssistantMsgId
+    ) {
+      // Try incremental update when only new messages were appended
+      const updated = updateMessageLookupsIncremental(
+        lookupsCacheRef.current.lookups,
+        lookupsCacheRef.current.normalizedCount,
+        lookupsCacheRef.current.messageCount,
+        normalizedMessages,
+        messagesToShow as MessageType[],
+      );
+      if (updated) {
+        lookups = updated;
+        lookupsCacheRef.current = {
+          key: lookupsKey,
+          lookups,
+          normalizedCount: normalizedMessages.length,
+          messageCount: (messagesToShow as MessageType[]).length,
+          lastAssistantMsgId: currentLastAssistantMsgId,
+        };
+      } else {
+        lookups = buildMessageLookups(normalizedMessages, messagesToShow as MessageType[]);
+        lookupsCacheRef.current = {
+          key: lookupsKey,
+          lookups,
+          normalizedCount: normalizedMessages.length,
+          messageCount: (messagesToShow as MessageType[]).length,
+          lastAssistantMsgId: currentLastAssistantMsgId,
+        };
+      }
     } else {
       lookups = buildMessageLookups(normalizedMessages, messagesToShow as MessageType[]);
-      lookupsCacheRef.current = { key: lookupsKey, lookups };
+      lookupsCacheRef.current = {
+        key: lookupsKey,
+        lookups,
+        normalizedCount: normalizedMessages.length,
+        messageCount: (messagesToShow as MessageType[]).length,
+        lastAssistantMsgId: currentLastAssistantMsgId,
+      };
     }
 
     const hiddenMessageCount = messagesToShowNotTruncated.length - MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE;
