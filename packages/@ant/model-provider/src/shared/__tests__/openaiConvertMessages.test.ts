@@ -468,7 +468,11 @@ describe('DeepSeek thinking mode (enableThinking)', () => {
     expect(assistant.reasoning_content).toBe('First thought.\nSecond thought.')
   })
 
-  test('skips empty thinking blocks', () => {
+  test('preserves empty thinking blocks as reasoning_content: "" (DeepSeek v4 thinking mode)', () => {
+    // DeepSeek v4 thinking mode sometimes returns reasoning_content: ""
+    // when the model answers directly without reasoning. The empty value
+    // must be echoed back in the next request — otherwise DeepSeek returns
+    // 400 ("reasoning_content ... must be passed back"). See issue #399.
     const result = anthropicMessagesToOpenAI(
       [
         makeUserMsg('question'),
@@ -481,7 +485,23 @@ describe('DeepSeek thinking mode (enableThinking)', () => {
       { enableThinking: true },
     )
     const assistant = result.filter(m => m.role === 'assistant')[0] as any
+    expect(assistant.reasoning_content).toBe('')
+    expect(assistant.content).toBe('Answer.')
+  })
+
+  test('omits reasoning_content when no thinking block is present', () => {
+    // No thinking block at all → no reasoning_content field on the
+    // OpenAI-format assistant message (relevant for non-thinking models).
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg('question'),
+        makeAssistantMsg([{ type: 'text', text: 'Answer.' }]),
+      ],
+      [] as any,
+    )
+    const assistant = result.filter(m => m.role === 'assistant')[0] as any
     expect(assistant.reasoning_content).toBeUndefined()
+    expect(assistant.content).toBe('Answer.')
   })
 
   // ── fix: reorder tool and user messages for OpenAI API compatibility (#168) ──
