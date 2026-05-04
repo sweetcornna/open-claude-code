@@ -320,6 +320,16 @@ async function doInitializeTelemetry(): Promise<void> {
     return
   }
 
+  // Skip entire OTel initialization when telemetry is not enabled.
+  // Prevents PerformanceMeasure accumulation in long-running sessions.
+  if (!isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TELEMETRY)) {
+    telemetryInitialized = true
+    logForDebugging(
+      '[3P telemetry] Skipped — CLAUDE_CODE_ENABLE_TELEMETRY not set',
+    )
+    return
+  }
+
   // Set flag before init to prevent double initialization
   telemetryInitialized = true
   try {

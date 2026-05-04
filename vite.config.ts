@@ -83,7 +83,7 @@ export default defineConfig({
     target: 'es2020',
     copyPublicDir: false,
     sourcemap: false,
-    minify: false,
+    minify: true,
 
     // SSR build mode — uses Rollup with Node.js target
     ssr: true,
