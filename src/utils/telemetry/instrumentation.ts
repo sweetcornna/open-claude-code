@@ -206,49 +206,10 @@ async function getOtlpReaders() {
 
   return exporters.map(exporter => {
     if ('export' in exporter) {
-      const reader = new PeriodicExportingMetricReader({
+      return new PeriodicExportingMetricReader({
         exporter,
         exportIntervalMillis: exportInterval,
       })
-      // Wrap the export callback to auto-shutdown the reader on auth
-      // failures (401/403). Without this the PeriodicExportingMetricReader's
-      // internal setInterval keeps retrying forever, leaking handles.
-      const originalExport = (
-        exporter as unknown as {
-          export: (
-            metrics: unknown,
-            callback: (result: { error?: Error }) => void,
-          ) => unknown
-        }
-      ).export.bind(exporter)
-      ;(
-        exporter as unknown as {
-          export: (
-            metrics: unknown,
-            callback: (result: { error?: Error }) => void,
-          ) => unknown
-        }
-      ).export = (metrics, callback) => {
-        return originalExport(metrics, result => {
-          if (result.error) {
-            const msg = result.error.message || ''
-            if (
-              msg.includes('401') ||
-              msg.includes('403') ||
-              msg.includes('Unauthorized') ||
-              msg.includes('authentication')
-            ) {
-              logForDebugging(
-                `[3P telemetry] Auth error detected, shutting down metric reader`,
-                { level: 'error' },
-              )
-              void reader.shutdown()
-            }
-          }
-          callback(result)
-        })
-      }
-      return reader
     }
     return exporter
   })
