@@ -61,3 +61,18 @@
 1. **`src/components/ModelPicker.tsx`** — 副标题从技术说明改为操作提示（"← → 调整 effort，Space 切换 1M context"），控制在 120 字符内
 2. **`src/commands/resume/resume.tsx`** — 错误提示添加 "Run /resume to browse" 操作引导
 3. **`src/commands/resume/__tests__/resume.test.ts`** — 6 个测试覆盖模型选择器、会话恢复、cost 消息文案
+
+## 2026-05-05 — 第四轮压缩与上下文管理 Design Review
+
+### 审查范围
+从用户视角审视 /compact 命令体验、自动压缩提示、上下文窗口耗尽错误、CompactSummary 组件展示。
+
+### 发现的不友好问题
+1. **"Not enough messages to compact" 缺乏指导**：用户不知下一步该做什么
+2. **"Conversation too long" 提示的 "Press esc twice" 操作不直观**：esc twice 对用户来说是模糊的操作
+3. **"Compact summary" 标题对用户没有信息量**：自动压缩时用户不知道发生了什么
+
+### 变更内容
+1. **`src/services/compact/compact.ts`** — "Not enough messages" 添加 "Send a few more messages first" 引导；"Conversation too long" 改为建议 `/compact` 或 `/clear`
+2. **`src/components/CompactSummary.tsx`** — 自动压缩标题从 "Compact summary" 改为 "Conversation summarized to free up context"，快捷键提示从 "expand" 改为 "view summary"
+3. **`src/components/__tests__/compactMessages.test.ts`** — 7 个测试覆盖压缩错误消息和展示文案
