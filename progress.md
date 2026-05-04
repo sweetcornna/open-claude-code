@@ -47,3 +47,17 @@
 3. **`src/components/permissions/FilePermissionDialog/FilePermissionDialog.tsx`** — 同步底部提示用词
 4. **`src/components/permissions/FilePermissionDialog/permissionOptions.tsx`** — .claude/ 选项标签从 60 字符缩至 49 字符
 5. **`src/components/HelpV2/__tests__/General.test.ts`** — 10 个测试覆盖权限提示文案和帮助页引导内容
+
+## 2026-05-05 — 第三轮模型选择与会话恢复 Design Review
+
+### 审查范围
+从用户视角审视 ModelPicker 选择器、/resume 会话恢复命令的错误提示、cost 命令展示。
+
+### 发现的不友好问题
+1. **ModelPicker 副标题信息过载**：一句话里混合了模型切换说明和 --model 参数提示，新用户容易困惑
+2. **Resume 错误提示缺乏操作指导**："Session X was not found" 没告诉用户怎么列出所有会话
+
+### 变更内容
+1. **`src/components/ModelPicker.tsx`** — 副标题从技术说明改为操作提示（"← → 调整 effort，Space 切换 1M context"），控制在 120 字符内
+2. **`src/commands/resume/resume.tsx`** — 错误提示添加 "Run /resume to browse" 操作引导
+3. **`src/commands/resume/__tests__/resume.test.ts`** — 6 个测试覆盖模型选择器、会话恢复、cost 消息文案
