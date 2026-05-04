@@ -1003,15 +1003,6 @@ export class QueryEngine {
               uuid: msg.uuid,
             }
           }
-          // Proactive truncation: prevent unbounded growth when API doesn't
-          // return compact_boundary (e.g. third-party compat layers).
-          if (feature('HISTORY_SNIP') && snipModule) {
-            const truncated = snipModule.proactiveTruncate(this.mutableMessages)
-            if (truncated !== this.mutableMessages) {
-              this.mutableMessages.length = 0
-              this.mutableMessages.push(...truncated)
-            }
-          }
           // Don't yield other system messages in headless mode
           break
         }
