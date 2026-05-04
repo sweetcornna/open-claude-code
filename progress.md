@@ -30,3 +30,20 @@
 3. **`src/components/Onboarding.tsx`** — 安全步骤标题改为 "Before you start, keep in mind"，条目文案更口语化
 4. **`src/components/TrustDialog/TrustDialog.tsx`** — 精简为两句核心信息，降低认知负荷
 5. **`src/cli/__tests__/userFacingErrorMessages.test.ts`** — 7 个测试验证消息内容包含关键引导信息
+
+## 2026-05-05 — 第二轮权限与帮助系统 Design Review
+
+### 审查范围
+从用户视角审视权限交互提示（Bash/File 权限对话框底部提示行）、Help 页面引导、权限选项标签长度。
+
+### 发现的不友好问题
+1. **权限对话框底部提示语义模糊**："Esc to cancel" 不如 "Esc to reject" 明确，"Tab to amend" 用户不知能做什么
+2. **Help General 页面缺乏新手引导**：只有一句话 + 全部快捷键，新用户不知从何开始
+3. **.claude/ 文件夹权限选项标签过长**（60+ 字符），窄终端截断
+
+### 变更内容
+1. **`src/components/HelpV2/General.tsx`** — 添加 3 步"Getting started"引导，取代原来的单段描述
+2. **`src/components/permissions/BashPermissionRequest/BashPermissionRequest.tsx`** — 底部 "cancel"→"reject"，"amend"→"add feedback"
+3. **`src/components/permissions/FilePermissionDialog/FilePermissionDialog.tsx`** — 同步底部提示用词
+4. **`src/components/permissions/FilePermissionDialog/permissionOptions.tsx`** — .claude/ 选项标签从 60 字符缩至 49 字符
+5. **`src/components/HelpV2/__tests__/General.test.ts`** — 10 个测试覆盖权限提示文案和帮助页引导内容
