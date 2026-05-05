@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { getOauthProfileFromApiKey } from 'src/services/oauth/getOauthProfile.js';
 import { isClaudeAISubscriber } from 'src/utils/auth.js';
 import { Text } from '@anthropic/ink';

@@ -1,4 +1,4 @@
-import React, { createContext, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import type { WizardContextValue, WizardProviderProps } from './types.js';
 

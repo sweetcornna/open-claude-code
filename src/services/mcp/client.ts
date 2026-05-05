@@ -117,13 +117,7 @@ import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
 // Package imports — delegate to mcp-client package utilities where applicable
 import {
-  createMcpClient as createMcpClientFromPackage,
-  captureStderr,
   isMcpSessionExpiredError as isMcpSessionExpiredErrorFromPackage,
-  installConnectionMonitor,
-  createCleanup as createCleanupFromPackage,
-  buildConnectedServer,
-  DEFAULT_CONNECTION_TIMEOUT_MS,
   MAX_MCP_DESCRIPTION_LENGTH as PKG_MAX_MCP_DESCRIPTION_LENGTH,
 } from '@claude-code-best/mcp-client'
 import { recursivelySanitizeUnicode } from '@claude-code-best/mcp-client'

@@ -11,12 +11,12 @@ import { getSSLErrorHint } from '@ant/model-provider';
 import { sendNotification } from '../services/notifier.js';
 import { OAuthService } from '../services/oauth/index.js';
 import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth.js';
+
 import { logError } from '../utils/log.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
-import { fi } from 'zod/v4/locales';
 
 type Props = {
   onDone(): void;
@@ -596,7 +596,7 @@ function OAuthStatusMessage({
         [activeField, baseUrl, apiKey, haikuModel, sonnetModel, opusModel],
       );
 
-      const switchTo = useCallback(
+      const _switchTo = useCallback(
         (target: Field) => {
           setOAuthStatus(buildState(activeField, inputValue, target));
           setInputValue(displayValues[target] ?? '');

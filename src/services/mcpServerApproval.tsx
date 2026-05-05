@@ -1,4 +1,3 @@
-import React from 'react';
 import { MCPServerApprovalDialog } from '../components/MCPServerApprovalDialog.js';
 import { MCPServerMultiselectDialog } from '../components/MCPServerMultiselectDialog.js';
 import type { Root } from '@anthropic/ink';

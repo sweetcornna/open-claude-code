@@ -28,7 +28,6 @@ import { readFileSync } from 'fs';
 import mapValues from 'lodash-es/mapValues.js';
 import pickBy from 'lodash-es/pickBy.js';
 import uniqBy from 'lodash-es/uniqBy.js';
-import React from 'react';
 import { getOauthConfig } from './constants/oauth.js';
 import { getRemoteSessionUrl } from './constants/product.js';
 import { getSystemContext, getUserContext } from './context.js';
@@ -383,7 +382,7 @@ function logManagedSettings(): void {
 }
 
 // Check if running in debug/inspection mode
-function isBeingDebugged() {
+function _isBeingDebugged() {
   const isBun = isRunningWithBun();
 
   // Check for inspect flags in process arguments (including all variants)

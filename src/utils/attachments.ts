@@ -18,7 +18,7 @@ import {
 import { FileTooLargeError, readFileInRange } from './readFileInRange.js'
 import { expandPath } from './path.js'
 import { countCharInString } from './stringUtils.js'
-import { count, uniq } from './array.js'
+import { uniq } from './array.js'
 import { getFsImplementation } from './fsOperations.js'
 import { readdir, stat } from 'fs/promises'
 import type { IDESelection } from '../hooks/useIdeSelection.js'
@@ -37,9 +37,7 @@ import {
 import { getPlanFilePath, getPlan } from './plans.js'
 import { getConnectedIdeName } from './ide.js'
 import {
-  filterInjectedMemoryFiles,
   getManagedAndUserConditionalRules,
-  getMemoryFiles,
   getMemoryFilesForNestedDirectory,
   getConditionalRulesForCwdLevelDirectory,
   type MemoryFileInfo,
@@ -63,7 +61,6 @@ import {
   isValidImagePaste,
 } from 'src/types/textInputTypes.js'
 import { randomUUID, type UUID } from 'crypto'
-import { getSettings_DEPRECATED } from './settings/settings.js'
 import { getSnippetForTwoFileDiff } from '@claude-code-best/builtin-tools/tools/FileEditTool/utils.js'
 import type {
   ContentBlockParam,
@@ -72,7 +69,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { maybeResizeAndDownsampleImageBlock } from './imageResizer.js'
 import type { PastedContent } from './config.js'
-import { getGlobalConfig } from './config.js'
+import { getSettings_DEPRECATED } from './settings/settings.js'
 import {
   getDefaultSonnetModel,
   getDefaultHaikuModel,
@@ -3533,7 +3530,7 @@ async function getAsyncHookResponseAttachments(): Promise<Attachment[]> {
       hookName,
       hookEvent,
       toolName,
-      pluginId,
+      pluginId: _pluginId,
       stdout,
       stderr,
       exitCode,

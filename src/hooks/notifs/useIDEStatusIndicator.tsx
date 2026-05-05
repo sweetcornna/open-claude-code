@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNotifications } from 'src/context/notifications.js';
 import { Text } from '@anthropic/ink';
 import type { MCPServerConnection } from 'src/services/mcp/types.js';

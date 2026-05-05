@@ -270,7 +270,7 @@ import { useManagePlugins } from '../hooks/useManagePlugins.js';
 import { Messages } from '../components/Messages.js';
 import { TaskListV2 } from '../components/TaskListV2.js';
 import { TeammateViewHeader } from '../components/TeammateViewHeader.js';
-import { getPipeDisplayRole, getPipeIpc, isPipeControlled } from '../utils/pipeTransport.js';
+import { getPipeIpc } from '../utils/pipeTransport.js';
 import { useTasksV2WithCollapseEffect } from '../hooks/useTasksV2.js';
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js';
 import type { MCPServerConnection } from '../services/mcp/types.js';
@@ -808,8 +808,8 @@ export function REPL({
   pendingHookMessages,
   initialFileHistorySnapshots,
   initialContentReplacements,
-  initialAgentName,
-  initialAgentColor,
+  initialAgentName: _initialAgentName,
+  initialAgentColor: _initialAgentColor,
   mcpClients: initialMcpClients,
   dynamicMcpConfig: initialDynamicMcpConfig,
   autoConnectIdeFlag,
@@ -2797,7 +2797,7 @@ export function REPL({
   const getToolUseContext = useCallback(
     (
       messages: MessageType[],
-      newMessages: MessageType[],
+      _newMessages: MessageType[],
       abortController: AbortController,
       mainLoopModel: string,
     ): ProcessUserInputContext => {
@@ -4937,7 +4937,7 @@ export function REPL({
   useMailboxBridge({ isLoading, onSubmitMessage: handleIncomingPrompt });
   useMasterMonitor();
   useSlaveNotifications();
-  const pipeIpcState = useAppState(s => getPipeIpc(s as any));
+  const _pipeIpcState = useAppState(s => getPipeIpc(s as any));
 
   usePipePermissionForward({ store, tools, setMessages, setToolUseConfirmQueue, getToolUseContext, mainLoopModel });
   usePipeMuteSync({ setToolUseConfirmQueue });

@@ -1,4 +1,3 @@
-import * as React from 'react';
 import type { Notification } from '../context/notifications.js';
 import { Text } from '@anthropic/ink';
 import { logForDebugging } from '../utils/debug.js';

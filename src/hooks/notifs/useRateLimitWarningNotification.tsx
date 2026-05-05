@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNotifications } from 'src/context/notifications.js';
 import { Text } from '@anthropic/ink';

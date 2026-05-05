@@ -53,8 +53,6 @@ import type {
 import type {
   AssistantMessage,
   CollapsibleMessage,
-  NormalizedAssistantMessage,
-  NormalizedUserMessage,
   UserMessage,
 } from '@ant/model-provider'
 import type { UUID } from 'crypto'

@@ -12,7 +12,7 @@ type Props = {
 };
 
 export function FileEditToolUpdatedMessage({
-  filePath,
+  filePath: _filePath,
   structuredPatch,
   style,
   verbose,
