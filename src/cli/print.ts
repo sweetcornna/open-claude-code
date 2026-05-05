@@ -112,7 +112,6 @@ import type {
   ModelInfo,
   SDKMessage,
   SDKUserMessage,
-  SDKUserMessageReplay,
   PermissionResult,
   McpServerConfigForProcessTransport,
   McpServerStatus,
@@ -5477,7 +5476,7 @@ function getStructuredIO(
  */
 export async function handleOrphanedPermissionResponse({
   message,
-  setAppState,
+  setAppState: _setAppState,
   onEnqueued,
   handledToolUseIds,
 }: {

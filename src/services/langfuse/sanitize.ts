@@ -60,7 +60,7 @@ function sanitizeObject(obj: Record<string, unknown>): Record<string, unknown> {
   return result
 }
 
-export function sanitizeToolInput(toolName: string, input: unknown): unknown {
+export function sanitizeToolInput(_toolName: string, input: unknown): unknown {
   if (typeof input !== 'object' || input === null) return input
   const obj = { ...(input as Record<string, unknown>) }
 

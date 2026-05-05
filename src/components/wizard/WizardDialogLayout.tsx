@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import type { Theme } from '../../utils/theme.js';
 import { Dialog } from '@anthropic/ink';
 import { useWizard } from './useWizard.js';

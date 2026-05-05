@@ -72,7 +72,6 @@ import type {
   SDKControlResponse,
 } from '../entrypoints/sdk/controlTypes.js'
 import type { StdoutMessage } from '../entrypoints/sdk/controlTypes.js'
-import type { SDKResultSuccess } from '../entrypoints/sdk/coreTypes.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { setSessionMetadataChangedListener } from '../utils/sessionState.js'
 

@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Text } from '@anthropic/ink';
 import { isClaudeAISubscriber } from '../utils/auth.js';
 import { isChromeExtensionInstalled, shouldEnableClaudeInChrome } from '../utils/claudeInChrome/setup.js';

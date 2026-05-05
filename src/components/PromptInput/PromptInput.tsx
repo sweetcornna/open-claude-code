@@ -55,7 +55,6 @@ import {
 } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
 import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type { Message } from '../../types/message.js';
-import type { PermissionMode } from '../../types/permissions.js';
 import type { BaseTextInputProps, PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { count } from '../../utils/array.js';
@@ -329,7 +328,7 @@ function PromptInput({
   const hasTungstenSession = useAppState(s => process.env.USER_TYPE === 'ant' && s.tungstenActiveSession !== undefined);
   const tmuxFooterVisible = process.env.USER_TYPE === 'ant' && hasTungstenSession;
   // WebBrowser pill — visible when a browser is open
-  const bagelFooterVisible = useAppState(s => false);
+  const bagelFooterVisible = useAppState(_s => false);
   const teamContext = useAppState(s => s.teamContext);
   const queuedCommands = useCommandQueue();
   const promptSuggestionState = useAppState(s => s.promptSuggestion);
@@ -538,7 +537,7 @@ function PromptInput({
 
   const tasksSelected = footerItemSelected === 'tasks';
   const tmuxSelected = footerItemSelected === 'tmux';
-  const bagelSelected = footerItemSelected === 'bagel';
+  const _bagelSelected = footerItemSelected === 'bagel';
   const teamsSelected = footerItemSelected === 'teams';
   const bridgeSelected = footerItemSelected === 'bridge';
 

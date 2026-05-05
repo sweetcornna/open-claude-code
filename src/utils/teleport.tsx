@@ -1,7 +1,6 @@
 import axios from 'axios';
 import chalk from 'chalk';
 import { randomUUID } from 'crypto';
-import React from 'react';
 import { getOriginalCwd, getSessionId } from 'src/bootstrap/state.js';
 import { checkGate_CACHED_OR_BLOCKING } from 'src/services/analytics/growthbook.js';
 import {

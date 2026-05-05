@@ -24,7 +24,7 @@ type Props = {
  */
 export function WorkflowDetailDialog({
   workflow,
-  onDone,
+  onDone: _onDone,
   onKill,
   onSkipAgent: _onSkipAgent,
   onRetryAgent: _onRetryAgent,

@@ -1,7 +1,6 @@
 import { type ChildProcess } from 'child_process'
 import { resolve } from 'path'
 import { buildCliLaunch, spawnCli } from '../utils/cliLaunch.js'
-import { errorMessage } from '../utils/errors.js'
 import {
   writeDaemonState,
   removeDaemonState,

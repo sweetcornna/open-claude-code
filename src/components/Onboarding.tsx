@@ -111,7 +111,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     </Box>
   );
 
-  const preflightStep = <PreflightStep onSuccess={goToNextStep} />;
+  const _preflightStep = <PreflightStep onSuccess={goToNextStep} />;
   // Create the steps array - determine which steps to include based on reAuth and oauthEnabled
   const apiKeyNeedingApproval = useMemo(() => {
     // Add API key step if needed
