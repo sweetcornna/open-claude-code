@@ -340,6 +340,15 @@ export async function* query(
         terminal?.reason === 'aborted_tools'
       endTrace(langfuseTrace, undefined, isAborted ? 'interrupted' : undefined)
     }
+
+    // Break the closure chain: toolUseContext captures langfuseTrace which
+    // holds SpanImpl → otperformance (the 571MB Performance object). Nulling
+    // these after endTrace allows GC to reclaim the span tree.
+    if (paramsWithTrace !== params) {
+      paramsWithTrace.toolUseContext.langfuseTrace = null
+      paramsWithTrace.toolUseContext.langfuseRootTrace = null
+      paramsWithTrace.toolUseContext.langfuseBatchSpan = null
+    }
   }
 
   // Only reached if queryLoop returned normally. Skipped on throw (error
