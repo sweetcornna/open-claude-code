@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import type { Tools } from '../../../../Tool.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';

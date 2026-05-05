@@ -6,7 +6,6 @@
 import { stat } from 'fs/promises';
 import pMap from 'p-map';
 import { cwd } from 'process';
-import React from 'react';
 import { MCPServerDesktopImportDialog } from '../../components/MCPServerDesktopImportDialog.js';
 import { wrappedRender as render } from '@anthropic/ink';
 import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js';

@@ -8,7 +8,6 @@ import { FallbackTriggeredError } from './services/api/withRetry.js'
 import {
   calculateTokenWarningState,
   estimateMaxTurnGrowth,
-  getAutoCompactThreshold,
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
   type AutoCompactTrackingState,
@@ -69,7 +68,7 @@ import {
 const skillPrefetch = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
   : null
-const jobClassifier = feature('TEMPLATES')
+const _jobClassifier = feature('TEMPLATES')
   ? (require('./jobs/classifier.js') as typeof import('./jobs/classifier.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */

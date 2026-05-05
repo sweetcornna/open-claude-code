@@ -1,5 +1,5 @@
 import { basename, sep } from 'path';
-import React, { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { getOriginalCwd } from '../../bootstrap/state.js';
 import { Text } from '@anthropic/ink';
 import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js';

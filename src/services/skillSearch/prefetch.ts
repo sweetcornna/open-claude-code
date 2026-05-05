@@ -307,7 +307,7 @@ export async function collectSkillDiscoveryPrefetch(
 
 export async function getTurnZeroSkillDiscovery(
   input: string,
-  messages: Message[],
+  _messages: Message[],
   context: ToolUseContext,
 ): Promise<Attachment | null> {
   if (!isSkillSearchEnabled()) return null

@@ -2,7 +2,6 @@ import OpenAI from 'openai'
 import { openaiAdapter } from 'src/services/providerUsage/adapters/openai.js'
 import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
 import { getProxyFetchOptions } from 'src/utils/proxy.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
 
 /**
  * Environment variables:
