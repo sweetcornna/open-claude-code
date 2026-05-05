@@ -82,7 +82,7 @@ function estimateMessageTokens(message: Message): number {
  */
 export function snipCompactIfNeeded(
   messages: Message[],
-  options?: { force?: boolean },
+  _options?: { force?: boolean },
 ): {
   messages: Message[]
   executed: boolean

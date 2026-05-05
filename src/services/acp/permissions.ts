@@ -32,7 +32,7 @@ import { toolInfoFromToolUse } from './bridge.js'
 export function createAcpCanUseTool(
   conn: AgentSideConnection,
   sessionId: string,
-  getCurrentMode: () => string,
+  _getCurrentMode: () => string,
   clientCapabilities?: ClientCapabilities,
   cwd?: string,
   onModeChange?: (modeId: string) => void,

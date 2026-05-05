@@ -9,8 +9,6 @@ import type {
 } from '../../../types/message.js'
 import type { AgentId } from '../../../types/ids.js'
 import type { Tools } from '../../../Tool.js'
-import type { Stream } from 'openai/streaming.mjs'
-import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
 import { getOpenAIClient } from './client.js'
 import {
   anthropicMessagesToOpenAI,

@@ -270,7 +270,6 @@ function cosineSimilarity(
 const DISPLAY_MIN_SCORE = Number(
   process.env.SKILL_SEARCH_DISPLAY_MIN_SCORE ?? '0.10',
 )
-const NAME_MATCH_BONUS = 0.4
 const NAME_MATCH_MIN_LENGTH = 4
 const CJK_MIN_BIGRAM_MATCHES = 2
 
