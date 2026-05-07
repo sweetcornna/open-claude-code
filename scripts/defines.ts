@@ -62,11 +62,11 @@ export const DEFAULT_BUILD_FEATURES = [
   'HISTORY_SNIP', // 历史消息裁剪，压缩上下文窗口
   // 'CONTEXT_COLLAPSE', // 已禁用：实现是空壳 stub，启用后会抑制 auto compact 导致上下文管理完全失效
   'MONITOR_TOOL', // Monitor 工具，流式监控后台进程输出
-  // 'FORK_SUBAGENT',            // 已禁用：显式 `fork: true` 参数触发 fork 路径（继承父级上下文和模型），不影响 forceAsync 和探索任务模型选择
-  // 'UDS_INBOX',                   // inbox 数组只增不减（非 GB 级主因）
+  // 'FORK_SUBAGENT',            // 已禁用：通过 Agent tool 的特殊方式实现了等效功能，无需再开
+  'UDS_INBOX', // 进程间通信管道（inbox/pipe/peers 等命令），内存问题已解决
   'KAIROS', // Kairos 定时任务系统核心
   'COORDINATOR_MODE', // 多 worker 编排模式（AgentSummary 泄露已在 52b61c2c 修复）
-  // 'LAN_PIPES',                   // 依赖 UDS_INBOX（已随 UDS_INBOX 恢复）
+  'LAN_PIPES', // 局域网管道，依赖 UDS_INBOX（内存问题已解决）
   'BG_SESSIONS', // 后台会话管理（ps/logs/attach/kill）
   'TEMPLATES', // 模板任务（new/list/reply 子命令）
   // 'REVIEW_ARTIFACT',          // 代码审查产物（API 请求无响应，待排查 schema 兼容性）
@@ -84,7 +84,7 @@ export const DEFAULT_BUILD_FEATURES = [
   // this branch (see docs/agent/sur-skill-overflow-bugs.md) close the
   // overflow risk, but Haiku-on-first-Chinese-query and disk-side
   // observation accumulation remain operator-discretion concerns.
-  // 'EXPERIMENTAL_SKILL_SEARCH',
+  'EXPERIMENTAL_SKILL_SEARCH', // 技能搜索（bounded caches 已修复 overflow，内存问题已解决）
   // 'SKILL_LEARNING',
   // P3: poor mode
   'POOR', // 穷鬼模式，跳过 extract_memories/prompt_suggestion 减少消耗
