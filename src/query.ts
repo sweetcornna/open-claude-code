@@ -68,6 +68,9 @@ import {
 const skillPrefetch = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
   : null
+const toolSearchPrefetch = feature('EXPERIMENTAL_TOOL_SEARCH')
+  ? (require('./services/toolSearch/prefetch.js') as typeof import('./services/toolSearch/prefetch.js'))
+  : null
 const _jobClassifier = feature('TEMPLATES')
   ? (require('./jobs/classifier.js') as typeof import('./jobs/classifier.js'))
   : null
@@ -481,6 +484,10 @@ async function* queryLoop(
       null,
       messages,
       toolUseContext,
+    )
+    const pendingToolPrefetch = toolSearchPrefetch?.startToolSearchPrefetch(
+      toolUseContext.options.tools ?? [],
+      messages,
     )
 
     yield { type: 'stream_request_start' }
@@ -1911,6 +1918,17 @@ async function* queryLoop(
       const skillAttachments =
         await skillPrefetch.collectSkillDiscoveryPrefetch(pendingSkillPrefetch)
       for (const att of skillAttachments) {
+        const msg = createAttachmentMessage(att)
+        yield msg
+        toolResults.push(msg)
+      }
+    }
+
+    // Inject prefetched tool discovery.
+    if (toolSearchPrefetch && pendingToolPrefetch) {
+      const toolAttachments =
+        await toolSearchPrefetch.collectToolSearchPrefetch(pendingToolPrefetch)
+      for (const att of toolAttachments) {
         const msg = createAttachmentMessage(att)
         yield msg
         toolResults.push(msg)

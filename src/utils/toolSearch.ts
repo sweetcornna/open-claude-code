@@ -1,9 +1,9 @@
 /**
  * Tool Search utilities for dynamically discovering deferred tools.
  *
- * When enabled, deferred tools (MCP and shouldDefer tools) are sent with
+ * When enabled, deferred tools (all non-core tools) are sent with
  * defer_loading: true and discovered via ToolSearchTool rather than being
- * loaded upfront.
+ * loaded upfront. Core tools are defined in CORE_TOOLS (src/constants/tools.ts).
  */
 
 import memoize from 'lodash-es/memoize.js'
@@ -152,8 +152,8 @@ const getDeferredToolTokenCount = memoize(
 )
 
 /**
- * Tool search mode. Determines how deferrable tools (MCP + shouldDefer) are
- * surfaced:
+ * Tool search mode. Determines how deferred tools (all non-core tools)
+ * are surfaced:
  *   - 'tst': Tool Search Tool — deferred tools discovered via ToolSearchTool (always enabled)
  *   - 'tst-auto': auto — tools deferred only when they exceed threshold
  *   - 'standard': tool search disabled — all tools exposed inline
@@ -167,7 +167,7 @@ export type ToolSearchMode = 'tst' | 'tst-auto' | 'standard'
  *   auto / auto:1-99      tst-auto
  *   true / auto:0         tst
  *   false / auto:100      standard
- *   (unset)               tst (default: always defer MCP and shouldDefer tools)
+ *   (unset)               tst (default: always defer non-core tools)
  */
 export function getToolSearchMode(): ToolSearchMode {
   // CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS is a kill switch for beta API
@@ -194,7 +194,7 @@ export function getToolSearchMode(): ToolSearchMode {
 
   if (isEnvTruthy(value)) return 'tst'
   if (isEnvDefinedFalsy(process.env.ENABLE_TOOL_SEARCH)) return 'standard'
-  return 'tst' // default: always defer MCP and shouldDefer tools
+  return 'tst' // default: always defer non-core tools
 }
 
 /**

@@ -3909,7 +3909,24 @@ Read the team config to discover your teammates' names. Check the task list peri
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- teammate_mailbox/team_context/skill_discovery/bagel_console handled above
+  // tool_discovery handled here (not in the switch) so the 'tool_discovery'
+  // string literal lives inside a feature()-guarded block.
+  if (feature('EXPERIMENTAL_TOOL_SEARCH')) {
+    if (attachment.type === 'tool_discovery') {
+      if (attachment.tools.length === 0) return []
+      const lines = attachment.tools.map(
+        t => `- ${t.name}: ${t.description.slice(0, 100)}`,
+      )
+      return wrapMessagesInSystemReminder([
+        createUserMessage({
+          content: `The following tools were discovered as relevant to your task. Use ExecuteTool to invoke any of them by name:\n\n${lines.join('\n')}`,
+          isMeta: true,
+        }),
+      ])
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- teammate_mailbox/team_context/skill_discovery/tool_discovery/bagel_console handled above
   switch (attachment.type) {
     case 'directory': {
       return wrapMessagesInSystemReminder([
