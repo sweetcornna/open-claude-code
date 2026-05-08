@@ -1,4 +1,5 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+import type { ToolDiscoveryResult } from '../services/toolSearch/prefetch.js'
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -95,6 +96,12 @@ const skillSearchModules = feature('EXPERIMENTAL_SKILL_SEARCH')
         require('../services/skillSearch/featureCheck.js') as typeof import('../services/skillSearch/featureCheck.js'),
       prefetch:
         require('../services/skillSearch/prefetch.js') as typeof import('../services/skillSearch/prefetch.js'),
+    }
+  : null
+const toolSearchModules = feature('EXPERIMENTAL_TOOL_SEARCH')
+  ? {
+      prefetch:
+        require('../services/toolSearch/prefetch.js') as typeof import('../services/toolSearch/prefetch.js'),
     }
   : null
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
@@ -554,6 +561,14 @@ export type Attachment =
       }
     }
   | {
+      type: 'tool_discovery'
+      tools: ToolDiscoveryResult[]
+      trigger: 'assistant_turn' | 'user_input'
+      queryText: string
+      durationMs: number
+      indexSize: number
+    }
+  | {
       type: 'queued_command'
       prompt: string | Array<ContentBlockParam>
       source_uuid?: UUID
@@ -825,6 +840,25 @@ export async function getAttachments(
                     input,
                     messages ?? [],
                     context,
+                  )
+                return result ? [result] : []
+              }),
+            ]
+          : []),
+        // Tool discovery on turn 0. Inter-turn discovery runs via
+        // startToolSearchPrefetch in query.ts.
+        ...(feature('EXPERIMENTAL_TOOL_SEARCH') &&
+        toolSearchModules &&
+        !options?.skipSkillDiscovery
+          ? [
+              maybe('tool_discovery', async () => {
+                if (suppressNextDiscovery) {
+                  return []
+                }
+                const result =
+                  await toolSearchModules.prefetch.getTurnZeroToolSearchPrefetch(
+                    input,
+                    context.options.tools ?? [],
                   )
                 return result ? [result] : []
               }),

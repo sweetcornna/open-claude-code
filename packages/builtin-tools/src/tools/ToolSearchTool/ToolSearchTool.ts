@@ -15,8 +15,16 @@ import {
 import { logForDebugging } from 'src/utils/debug.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { escapeRegExp } from 'src/utils/stringUtils.js'
-import { isToolSearchEnabledOptimistic } from 'src/utils/toolSearch.js'
+import {
+  isToolSearchEnabledOptimistic,
+  modelSupportsToolReference,
+} from 'src/utils/toolSearch.js'
 import { getPrompt, isDeferredTool, TOOL_SEARCH_TOOL_NAME } from './prompt.js'
+import { getToolIndex, searchTools } from 'src/services/toolSearch/toolIndex.js'
+import type { ToolSearchResult } from 'src/services/toolSearch/toolIndex.js'
+
+const KEYWORD_WEIGHT = Number(process.env.TOOL_SEARCH_WEIGHT_KEYWORD ?? '0.4')
+const TFIDF_WEIGHT = Number(process.env.TOOL_SEARCH_WEIGHT_TFIDF ?? '0.6')
 
 export const inputSchema = lazySchema(() =>
   z.object({
@@ -405,13 +413,66 @@ export const ToolSearchTool = buildTool({
       return buildSearchResult(found, query, deferredTools.length)
     }
 
-    // Keyword search
-    const matches = await searchToolsWithKeywords(
-      query,
-      deferredTools,
-      tools,
-      max_results,
-    )
+    // Check for discover: prefix — pure discovery search.
+    // Returns tool info (name + description + schema) as text,
+    // does NOT trigger deferred tool loading.
+    const discoverMatch = query.match(/^discover:(.+)$/i)
+    if (discoverMatch) {
+      const discoverQuery = discoverMatch[1]!.trim()
+      const index = await getToolIndex(deferredTools)
+      const tfIdfResults = searchTools(discoverQuery, index, max_results)
+      const textResults = tfIdfResults.map(r => {
+        let line = `**${r.name}** (score: ${r.score.toFixed(2)})\n${r.description}`
+        if (r.inputSchema) {
+          line += `\nSchema: ${JSON.stringify(r.inputSchema)}`
+        }
+        return line
+      })
+      const text =
+        textResults.length > 0
+          ? `Found ${textResults.length} tools:\n${textResults.join('\n\n')}`
+          : 'No matching deferred tools found'
+      logSearchOutcome(
+        tfIdfResults.map(r => r.name),
+        'keyword',
+      )
+      return buildSearchResult(
+        tfIdfResults.map(r => r.name),
+        query,
+        deferredTools.length,
+      )
+    }
+
+    // Keyword search + TF-IDF search in parallel
+    const [keywordMatches, index] = await Promise.all([
+      searchToolsWithKeywords(query, deferredTools, tools, max_results),
+      getToolIndex(deferredTools),
+    ])
+    const tfIdfResults = searchTools(query, index, max_results)
+
+    // Merge results: keyword score * 0.4 + TF-IDF score * 0.6
+    const mergedScores = new Map<string, number>()
+    // Add keyword results (assign scores inversely proportional to rank)
+    keywordMatches.forEach((name, rank) => {
+      const score = (keywordMatches.length - rank) / keywordMatches.length
+      mergedScores.set(
+        name,
+        (mergedScores.get(name) ?? 0) + score * KEYWORD_WEIGHT,
+      )
+    })
+    // Add TF-IDF results
+    tfIdfResults.forEach(result => {
+      mergedScores.set(
+        result.name,
+        (mergedScores.get(result.name) ?? 0) + result.score * TFIDF_WEIGHT,
+      )
+    })
+
+    // Sort by merged score, take top-N
+    const matches = [...mergedScores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, max_results)
+      .map(([name]) => name)
 
     logForDebugging(
       `ToolSearchTool: keyword search for "${query}", found ${matches.length} matches`,
@@ -444,6 +505,7 @@ export const ToolSearchTool = buildTool({
   mapToolResultToToolResultBlockParam(
     content: Output,
     toolUseID: string,
+    context?: { mainLoopModel?: string },
   ): ToolResultBlockParam {
     if (content.matches.length === 0) {
       let text = 'No matching deferred tools found'
@@ -459,6 +521,19 @@ export const ToolSearchTool = buildTool({
         content: text,
       }
     }
+
+    const supportsToolRef = context?.mainLoopModel
+      ? modelSupportsToolReference(context.mainLoopModel)
+      : true // default: assume supported (backwards compatible)
+    if (!supportsToolRef) {
+      // Text mode: return tool name list for non-Anthropic providers
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUseID,
+        content: `Found ${content.matches.length} tool(s): ${content.matches.join(', ')}. Use ExecuteTool with tool_name and params to invoke.`,
+      }
+    }
+
     return {
       type: 'tool_result',
       tool_use_id: toolUseID,
