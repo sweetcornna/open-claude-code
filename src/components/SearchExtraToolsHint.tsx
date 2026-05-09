@@ -3,21 +3,21 @@ import { Box, Text } from '@anthropic/ink';
 import { Select } from './CustomSelect/select.js';
 import { PermissionDialog } from './permissions/PermissionDialog.js';
 
-type ToolSearchHintItem = {
+type SearchExtraToolsHintItem = {
   name: string;
   description: string;
   score: number;
 };
 
 type Props = {
-  tools: ToolSearchHintItem[];
+  tools: SearchExtraToolsHintItem[];
   onSelect: (toolName: string) => void;
   onDismiss: () => void;
 };
 
 const AUTO_DISMISS_MS = 30_000;
 
-export function ToolSearchHint({ tools, onSelect, onDismiss }: Props): React.ReactNode {
+export function SearchExtraToolsHint({ tools, onSelect, onDismiss }: Props): React.ReactNode {
   const onSelectRef = React.useRef(onSelect);
   const onDismissRef = React.useRef(onDismiss);
   onSelectRef.current = onSelect;

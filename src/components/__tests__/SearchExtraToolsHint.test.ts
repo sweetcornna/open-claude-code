@@ -30,35 +30,37 @@ mock.module('src/services/analytics/growthbook.js', () => ({
 }))
 
 const {
-  subscribeToToolSearchPrefetch,
-  getToolSearchPrefetchSnapshot,
-  clearToolSearchPrefetchResults,
-} = await import('src/services/toolSearch/prefetch.js')
+  subscribeToSearchExtraToolsPrefetch,
+  getSearchExtraToolsPrefetchSnapshot,
+  clearSearchExtraToolsPrefetchResults,
+} = await import('src/services/searchExtraTools/prefetch.js')
 
-const { useToolSearchHint } = await import('src/hooks/useToolSearchHint.js')
+const { useSearchExtraToolsHint } = await import(
+  'src/hooks/useSearchExtraToolsHint.js'
+)
 
-describe('useToolSearchHint', () => {
+describe('useSearchExtraToolsHint', () => {
   // We test the subscription/snapshot API directly since
   // React hooks require a renderer.
   test('returns empty tools when no prefetch result', () => {
-    clearToolSearchPrefetchResults()
-    const snapshot = getToolSearchPrefetchSnapshot()
+    clearSearchExtraToolsPrefetchResults()
+    const snapshot = getSearchExtraToolsPrefetchSnapshot()
     expect(snapshot).toEqual([])
   })
 
   test('snapshot updates when listeners are notified', () => {
-    clearToolSearchPrefetchResults()
+    clearSearchExtraToolsPrefetchResults()
 
     // Simulate what prefetch does: set results and notify
     const mockSetResults = (results: unknown[]) => {
       // We can't directly set latestPrefetchResult, but we can test
       // the clear function and subscription mechanism
-      clearToolSearchPrefetchResults()
+      clearSearchExtraToolsPrefetchResults()
     }
 
     // Test subscription
     let callCount = 0
-    const unsubscribe = subscribeToToolSearchPrefetch(() => {
+    const unsubscribe = subscribeToSearchExtraToolsPrefetch(() => {
       callCount++
     })
     expect(callCount).toBe(0)
@@ -69,12 +71,12 @@ describe('useToolSearchHint', () => {
 
     // Unsubscribe and verify no more calls
     unsubscribe()
-    clearToolSearchPrefetchResults()
+    clearSearchExtraToolsPrefetchResults()
     expect(callCount).toBe(1)
   })
 
-  test('clearToolSearchPrefetchResults resets snapshot', () => {
-    clearToolSearchPrefetchResults()
-    expect(getToolSearchPrefetchSnapshot()).toEqual([])
+  test('clearSearchExtraToolsPrefetchResults resets snapshot', () => {
+    clearSearchExtraToolsPrefetchResults()
+    expect(getSearchExtraToolsPrefetchSnapshot()).toEqual([])
   })
 })

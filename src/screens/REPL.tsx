@@ -446,8 +446,8 @@ import { useLspPluginRecommendation } from 'src/hooks/useLspPluginRecommendation
 import { LspRecommendationMenu } from 'src/components/LspRecommendation/LspRecommendationMenu.js';
 import { useClaudeCodeHintRecommendation } from 'src/hooks/useClaudeCodeHintRecommendation.js';
 import { PluginHintMenu } from 'src/components/ClaudeCodeHint/PluginHintMenu.js';
-import { ToolSearchHint } from 'src/components/ToolSearchHint.js';
-import { useToolSearchHint } from 'src/hooks/useToolSearchHint.js';
+import { SearchExtraToolsHint } from 'src/components/SearchExtraToolsHint.js';
+import { useSearchExtraToolsHint } from 'src/hooks/useSearchExtraToolsHint.js';
 import {
   DesktopUpsellStartup,
   shouldShowDesktopUpsellStartup,
@@ -1038,7 +1038,7 @@ export function REPL({
   useTeammateLifecycleNotification();
   const { recommendation: lspRecommendation, handleResponse: handleLspResponse } = useLspPluginRecommendation();
   const { recommendation: hintRecommendation, handleResponse: handleHintResponse } = useClaudeCodeHintRecommendation();
-  const toolSearchHint = useToolSearchHint();
+  const searchExtraToolsHint = useSearchExtraToolsHint();
 
   // Memoize the combined initial tools array to prevent reference changes
   const combinedInitialTools = useMemo(() => {
@@ -2394,7 +2394,7 @@ export function REPL({
     | 'remote-callout'
     | 'lsp-recommendation'
     | 'plugin-hint'
-    | 'tool-search-hint'
+    | 'search-extra-tools-hint'
     | 'desktop-upsell'
     | 'ultraplan-choice'
     | 'ultraplan-launch'
@@ -2450,7 +2450,7 @@ export function REPL({
     if (allowDialogsWithAnimation && hintRecommendation) return 'plugin-hint';
 
     // Tool search hint (discovered tools relevant to current query)
-    if (allowDialogsWithAnimation && toolSearchHint.visible) return 'tool-search-hint';
+    if (allowDialogsWithAnimation && searchExtraToolsHint.visible) return 'search-extra-tools-hint';
 
     // Desktop app upsell (max 3 launches, lowest priority)
     if (allowDialogsWithAnimation && showDesktopUpsellStartup) return 'desktop-upsell';
@@ -6180,11 +6180,11 @@ export function REPL({
                   />
                 )}
 
-                {focusedInputDialog === 'tool-search-hint' && toolSearchHint.visible && (
-                  <ToolSearchHint
-                    tools={toolSearchHint.tools}
-                    onSelect={toolSearchHint.handleSelect}
-                    onDismiss={toolSearchHint.handleDismiss}
+                {focusedInputDialog === 'search-extra-tools-hint' && searchExtraToolsHint.visible && (
+                  <SearchExtraToolsHint
+                    tools={searchExtraToolsHint.tools}
+                    onSelect={searchExtraToolsHint.handleSelect}
+                    onDismiss={searchExtraToolsHint.handleDismiss}
                   />
                 )}
 

@@ -30,7 +30,7 @@ mock.module('src/services/analytics/growthbook.js', () => ({
 
 const { CORE_TOOLS } = await import('../tools.js')
 const { isDeferredTool } = await import(
-  '@claude-code-best/builtin-tools/tools/ToolSearchTool/prompt.js'
+  '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 )
 
 type MockTool = {
@@ -66,7 +66,7 @@ describe('CORE_TOOLS', () => {
       'Grep',
       'Agent',
       'AskUserQuestion',
-      'ToolSearch',
+      'SearchExtraTools',
       'WebSearch',
       'WebFetch',
       'Sleep',

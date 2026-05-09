@@ -28,12 +28,12 @@ mock.module('src/services/analytics/growthbook.js', () => ({
   stopPeriodicGrowthBookRefresh: () => {},
 }))
 
-mock.module('src/utils/toolSearch.js', () => ({
-  isToolSearchEnabledOptimistic: () => true,
-  getAutoToolSearchCharThreshold: () => 100,
-  getToolSearchMode: () => 'tst' as const,
-  isToolSearchToolAvailable: async () => true,
-  isToolSearchEnabled: async () => true,
+mock.module('src/utils/searchExtraTools.js', () => ({
+  isSearchExtraToolsEnabledOptimistic: () => true,
+  getAutoSearchExtraToolsCharThreshold: () => 100,
+  getSearchExtraToolsMode: () => 'tst' as const,
+  isSearchExtraToolsToolAvailable: async () => true,
+  isSearchExtraToolsEnabled: async () => true,
   isToolReferenceBlock: () => false,
   extractDiscoveredToolNames: () => new Set(),
   isDeferredToolsDeltaEnabled: () => false,
@@ -41,11 +41,11 @@ mock.module('src/utils/toolSearch.js', () => ({
 }))
 
 mock.module('src/constants/tools.js', () => ({
-  CORE_TOOLS: new Set(['Read', 'Edit', 'ToolSearch', 'ExecuteExtraTool']),
+  CORE_TOOLS: new Set(['Read', 'Edit', 'SearchExtraTools', 'ExecuteExtraTool']),
 }))
 
 // Mock toolIndex module
-type MockToolSearchResult = {
+type MockSearchExtraToolsResult = {
   name: string
   description: string
   searchHint: string | undefined
@@ -59,11 +59,11 @@ const mockSearchTools = mock(
     _query: string,
     _index: unknown,
     _limit?: number,
-  ): MockToolSearchResult[] => [],
+  ): MockSearchExtraToolsResult[] => [],
 )
 const mockGetToolIndex = mock(async (_tools: unknown) => [])
 
-mock.module('src/services/toolSearch/toolIndex.js', () => ({
+mock.module('src/services/searchExtraTools/toolIndex.js', () => ({
   getToolIndex: mockGetToolIndex,
   searchTools: mockSearchTools,
 }))
@@ -73,7 +73,7 @@ mock.module('src/services/analytics/index.js', () => ({
   logEvent: () => {},
 }))
 
-const { ToolSearchTool } = await import('../ToolSearchTool.js')
+const { SearchExtraToolsTool } = await import('../SearchExtraToolsTool.js')
 
 function makeDeferredTool(name: string, desc: string = 'A tool') {
   return {
@@ -100,7 +100,7 @@ function makeContext(tools: unknown[] = []) {
   } as never
 }
 
-describe('ToolSearchTool search enhancements', () => {
+describe('SearchExtraToolsTool search enhancements', () => {
   test('discover: prefix triggers TF-IDF search and returns matches', async () => {
     const mockTool = makeDeferredTool('CronCreate', 'Schedule cron jobs')
     mockGetToolIndex.mockResolvedValueOnce([])
@@ -117,7 +117,7 @@ describe('ToolSearchTool search enhancements', () => {
     ])
 
     const result: { data: { matches: string[] } } = await (
-      ToolSearchTool as any
+      SearchExtraToolsTool as any
     ).call(
       { query: 'discover:schedule cron job', max_results: 5 },
       makeContext([mockTool]),
@@ -158,7 +158,7 @@ describe('ToolSearchTool search enhancements', () => {
     ])
 
     const result: { data: { matches: string[] } } = await (
-      ToolSearchTool as any
+      SearchExtraToolsTool as any
     ).call(
       { query: 'tool B', max_results: 5 },
       makeContext([toolA, toolB, toolC]),
@@ -190,7 +190,7 @@ describe('ToolSearchTool search enhancements', () => {
     ])
 
     // mapToolResultToToolResultBlockParam always returns text, not tool_reference
-    const blockParam = ToolSearchTool.mapToolResultToToolResultBlockParam(
+    const blockParam = SearchExtraToolsTool.mapToolResultToToolResultBlockParam(
       { matches: ['TestTool'], query: 'test', total_deferred_tools: 1 },
       'tool-use-123',
       { mainLoopModel: 'claude-3-haiku-20240307' },
@@ -202,7 +202,7 @@ describe('ToolSearchTool search enhancements', () => {
   })
 
   test('text output works for any model without distinction', async () => {
-    const blockParam = ToolSearchTool.mapToolResultToToolResultBlockParam(
+    const blockParam = SearchExtraToolsTool.mapToolResultToToolResultBlockParam(
       { matches: ['TestTool'], query: 'test', total_deferred_tools: 1 },
       'tool-use-123',
       { mainLoopModel: 'claude-sonnet-4-20250514' },
@@ -214,7 +214,7 @@ describe('ToolSearchTool search enhancements', () => {
   })
 
   test('backwards compatible without context parameter', async () => {
-    const blockParam = ToolSearchTool.mapToolResultToToolResultBlockParam(
+    const blockParam = SearchExtraToolsTool.mapToolResultToToolResultBlockParam(
       { matches: ['TestTool'], query: 'test', total_deferred_tools: 1 },
       'tool-use-123',
     )
@@ -225,7 +225,7 @@ describe('ToolSearchTool search enhancements', () => {
   })
 
   test('empty results return helpful message', async () => {
-    const blockParam = ToolSearchTool.mapToolResultToToolResultBlockParam(
+    const blockParam = SearchExtraToolsTool.mapToolResultToToolResultBlockParam(
       { matches: [], query: 'nonexistent', total_deferred_tools: 5 },
       'tool-use-123',
     )

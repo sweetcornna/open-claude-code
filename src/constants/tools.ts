@@ -22,7 +22,7 @@ import { TASK_CREATE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/Tas
 import { TASK_GET_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TaskGetTool/constants.js'
 import { TASK_LIST_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TaskListTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/TaskUpdateTool/constants.js'
-import { TOOL_SEARCH_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/ToolSearchTool/constants.js'
+import { SEARCH_EXTRA_TOOLS_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/constants.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import { SLEEP_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/SleepTool/prompt.js'
 import { LSP_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/LSPTool/prompt.js'
@@ -71,7 +71,7 @@ export const ASYNC_AGENT_ALLOWED_TOOLS = new Set([
   NOTEBOOK_EDIT_TOOL_NAME,
   SKILL_TOOL_NAME,
   SYNTHETIC_OUTPUT_TOOL_NAME,
-  TOOL_SEARCH_TOOL_NAME,
+  SEARCH_EXTRA_TOOLS_TOOL_NAME,
   ENTER_WORKTREE_TOOL_NAME,
   EXIT_WORKTREE_TOOL_NAME,
 ])
@@ -121,7 +121,7 @@ export const COORDINATOR_MODE_ALLOWED_TOOLS = new Set([
  * Core tools that are always loaded with full schema at initialization.
  * These tools are never deferred — they appear in the initial prompt.
  * All other tools (non-core built-in + all MCP tools) are deferred
- * and must be discovered via ToolSearchTool / ExecuteExtraTool.
+ * and must be discovered via SearchExtraToolsTool / ExecuteExtraTool.
  */
 export const CORE_TOOLS = new Set([
   // File operations
@@ -157,7 +157,7 @@ export const CORE_TOOLS = new Set([
   // Scheduling & monitoring
   SLEEP_TOOL_NAME, // 'Sleep'
   // Tool discovery (always loaded)
-  TOOL_SEARCH_TOOL_NAME, // 'ToolSearch'
+  SEARCH_EXTRA_TOOLS_TOOL_NAME, // 'SearchExtraTools'
   EXECUTE_TOOL_NAME, // 'ExecuteExtraTool'
   SYNTHETIC_OUTPUT_TOOL_NAME, // 'SyntheticOutput'
 ]) as ReadonlySet<string>

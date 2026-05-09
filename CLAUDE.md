@@ -133,7 +133,7 @@ bun run docs:dev
   - **调度**: CronCreateTool, CronDeleteTool, CronListTool
   - **其他**: LSPTool, ConfigTool, SkillTool, EnterWorktreeTool, ExitWorktreeTool 等
 - **`src/tools/shared/`** / **`packages/builtin-tools/src/tools/shared/`** — Tool 共享工具函数。
-- **`src/services/toolSearch/`** — TF-IDF 工具索引模块（`toolIndex.ts`），为延迟工具提供语义搜索能力。复用 `localSearch.ts` 的 TF-IDF 算法函数（`computeWeightedTf`、`computeIdf`、`cosineSimilarity` 已导出）。修改这些函数时需同步检查工具索引测试。`ToolSearchTool.mapToolResultToToolResultBlockParam` 新增可选第三个参数 `context?: { mainLoopModel?: string }`，用于判断当前模型是否支持 `tool_reference`。不支持时回退到文本输出，引导模型使用 ExecuteTool。调用方（`src/services/api/claude.ts` 的 tool_result 处理逻辑）需传入 context 参数。`prefetch.ts` 的 `extractQueryFromMessages` 复用了 `skillSearch/prefetch.ts` 的同名导出函数，修改 skill prefetch 的该函数时需同步检查工具预取行为。工具预取使用独立的 `discoveredToolsThisSession` Set，与 skill prefetch 的去重集合互不影响。
+- **`src/services/searchExtraTools/`** — TF-IDF 工具索引模块（`toolIndex.ts`），为延迟工具提供语义搜索能力。复用 `localSearch.ts` 的 TF-IDF 算法函数（`computeWeightedTf`、`computeIdf`、`cosineSimilarity` 已导出）。修改这些函数时需同步检查工具索引测试。`SearchExtraToolsTool.mapToolResultToToolResultBlockParam` 新增可选第三个参数 `context?: { mainLoopModel?: string }`，用于判断当前模型是否支持 `tool_reference`。不支持时回退到文本输出，引导模型使用 ExecuteTool。调用方（`src/services/api/claude.ts` 的 tool_result 处理逻辑）需传入 context 参数。`prefetch.ts` 的 `extractQueryFromMessages` 复用了 `skillSearch/prefetch.ts` 的同名导出函数，修改 skill prefetch 的该函数时需同步检查工具预取行为。工具预取使用独立的 `discoveredToolsThisSession` Set，与 skill prefetch 的去重集合互不影响。
 
 ### UI Layer (Ink)
 
