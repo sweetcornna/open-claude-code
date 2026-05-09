@@ -1,9 +1,26 @@
-import { mock, describe, expect, test, afterEach } from 'bun:test'
+import {
+  mock,
+  describe,
+  expect,
+  test,
+  afterEach,
+  beforeAll,
+  afterAll,
+} from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug'
+import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
-mock.module('axios', () => ({
-  default: { get: async () => ({ data: { servers: [] } }) },
-}))
+const axiosHandle = setupAxiosMock()
+axiosHandle.stubs.get = async () => ({ data: { servers: [] } })
+
+beforeAll(() => {
+  axiosHandle.useStubs = true
+})
+
+afterAll(() => {
+  axiosHandle.useStubs = false
+})
+
 mock.module('src/utils/debug.ts', debugMock)
 
 const { isOfficialMcpUrl, resetOfficialMcpUrlsForTesting } = await import(

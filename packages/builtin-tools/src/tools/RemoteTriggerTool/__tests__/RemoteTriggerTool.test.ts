@@ -1,17 +1,31 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { authMock } from '../../../../../../tests/mocks/auth'
+import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
 
 let requestStatus = 200
 const auditRecords: Record<string, unknown>[] = []
 
-mock.module('axios', () => ({
-  default: {
-    request: async () => ({
-      status: requestStatus,
-      data: { ok: requestStatus >= 200 && requestStatus < 300 },
-    }),
-  },
-}))
+const axiosHandle = setupAxiosMock()
+axiosHandle.stubs.request = async () => ({
+  status: requestStatus,
+  data: { ok: requestStatus >= 200 && requestStatus < 300 },
+})
+
+beforeAll(() => {
+  axiosHandle.useStubs = true
+})
+afterAll(() => {
+  axiosHandle.useStubs = false
+})
 
 mock.module('src/utils/auth.js', authMock)
 
