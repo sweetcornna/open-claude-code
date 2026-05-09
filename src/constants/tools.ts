@@ -135,10 +135,6 @@ export const CORE_TOOLS = new Set([
   // Agent & interaction
   AGENT_TOOL_NAME, // 'Agent'
   ASK_USER_QUESTION_TOOL_NAME, // 'AskUserQuestion'
-  SEND_MESSAGE_TOOL_NAME, // 'SendMessage'
-  // Team (swarm)
-  TEAM_CREATE_TOOL_NAME, // 'TeamCreate'
-  TEAM_DELETE_TOOL_NAME, // 'TeamDelete'
   // Task management
   TASK_OUTPUT_TOOL_NAME, // 'TaskOutput'
   TASK_STOP_TOOL_NAME, // 'TaskStop'

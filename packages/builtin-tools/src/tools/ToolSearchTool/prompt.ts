@@ -6,7 +6,7 @@ export { TOOL_SEARCH_TOOL_NAME } from './constants.js'
 
 import { TOOL_SEARCH_TOOL_NAME } from './constants.js'
 
-const PROMPT_HEAD = `Search for deferred tools by name or keyword. LOW PRIORITY — only use this tool when no core tool can accomplish the task. Core tools (Read, Edit, Write, Bash, Glob, Grep, Agent, WebFetch, WebSearch, Skill) are always available and should be used directly. This tool is only for discovering additional capabilities like MCP tools, cron scheduling, worktree management, etc.
+const PROMPT_HEAD = `Search for deferred tools by name or keyword. LOW PRIORITY — only use this tool when no core tool can accomplish the task. Core tools (Read, Edit, Write, Bash, Glob, Grep, Agent, WebFetch, WebSearch, Skill) are always available and should be used directly. This tool is for discovering additional capabilities like MCP tools, cron scheduling, worktree management, agent teams (TeamCreate, TeamDelete, SendMessage), etc.
 
 `
 
