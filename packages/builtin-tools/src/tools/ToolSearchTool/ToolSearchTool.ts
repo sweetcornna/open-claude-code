@@ -554,6 +554,15 @@ export const ToolSearchTool = buildTool({
       n => !alreadyLoadedNames.includes(n),
     )
 
+    // If ALL results are already-loaded core tools, there's nothing to discover
+    if (deferredNames.length === 0 && alreadyLoadedNames.length > 0) {
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUseID,
+        content: `No deferred tools found. ${alreadyLoadedNames.join(', ')} ${alreadyLoadedNames.length === 1 ? 'is' : 'are'} already loaded as core tool(s) — call directly, do NOT search for or wrap in ExecuteExtraTool. ToolSearch is only for discovering tools NOT already in your tool list.`,
+      }
+    }
+
     const parts: string[] = []
 
     // Core tools: clear "call directly" message, NO ExecuteExtraTool hint
