@@ -52,8 +52,8 @@ function makeTool(overrides: Partial<MockTool> = {}): MockTool {
 
 describe('CORE_TOOLS', () => {
   test('contains expected number of tools', () => {
-    // 7 SHELL_TOOL_NAMES + 22 independent tool names
-    expect(CORE_TOOLS.size).toBeGreaterThanOrEqual(29)
+    // 7 SHELL_TOOL_NAMES + 19 independent tool names
+    expect(CORE_TOOLS.size).toBeGreaterThanOrEqual(26)
   })
 
   test('contains key core tool names', () => {
@@ -72,8 +72,6 @@ describe('CORE_TOOLS', () => {
       'Sleep',
       'LSP',
       'Skill',
-      'TeamCreate',
-      'TeamDelete',
       'TaskCreate',
       'TaskGet',
       'TaskUpdate',
@@ -122,6 +120,15 @@ describe('isDeferredTool', () => {
   test('returns true for non-core built-in tools', () => {
     const tool = makeTool({ name: 'ConfigTool' })
     expect(isDeferredTool(tool as never)).toBe(true)
+  })
+
+  test('returns true for agent/team tools (TeamCreate, TeamDelete, SendMessage)', () => {
+    for (const name of ['TeamCreate', 'TeamDelete', 'SendMessage']) {
+      const tool = makeTool({ name })
+      expect(isDeferredTool(tool as never), `${name} should be deferred`).toBe(
+        true,
+      )
+    }
   })
 
   test('returns true for MCP tools', () => {
