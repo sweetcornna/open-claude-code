@@ -149,14 +149,12 @@ describe('startSearchExtraToolsPrefetch', () => {
 })
 
 describe('getTurnZeroSearchExtraToolsPrefetch', () => {
-  beforeEach(() => {
+  // Turn-zero user-input tool recommendations are disabled to avoid frequent
+  // popups. All cases return null regardless of input/match state.
+  test('returns null (feature disabled)', async () => {
     mockGetToolIndex.mockResolvedValue([
       { name: 'index-entry', tokens: ['test'], tfVector: new Map() },
     ] as never)
-    mockSearchTools.mockReturnValue([])
-  })
-
-  test('returns non-null attachment for matching tools', async () => {
     mockSearchTools.mockReturnValue([
       {
         name: 'CronCreateTool',
@@ -173,9 +171,7 @@ describe('getTurnZeroSearchExtraToolsPrefetch', () => {
       'schedule cron job',
       [],
     )
-    expect(result).not.toBeNull()
-    expect(result!.type).toBe('tool_discovery')
-    expect((result as Record<string, unknown>).trigger).toBe('user_input')
+    expect(result).toBeNull()
   })
 
   test('returns null for empty input', async () => {
