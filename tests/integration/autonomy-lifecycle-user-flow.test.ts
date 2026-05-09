@@ -1,4 +1,22 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+// Why we use the BUILT bundle instead of src/entrypoints/cli.tsx:
+// `Bun.spawn` runs the CLI in a fresh process whose cwd is the per-test
+// tempDir. Bun resolves the `src/*` tsconfig path alias from the cwd's
+// nearest tsconfig.json, NOT from the entrypoint file's directory — so a
+// subprocess started with cwd=tempDir cannot resolve `import 'src/bootstrap/
+// state.js'`. The built dist/cli.js has all aliases pre-resolved, which
+// makes it usable from any cwd.
+//
+// CI runs `bun test` BEFORE `bun run build`, so we lazy-build cli.tsx in a
+// `beforeAll` if dist/cli.js is missing. Local runs after `bun run build`
+// just see the file and skip the build.
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -13,11 +31,36 @@ import {
 } from '../../src/utils/autonomyRuns'
 import { listAutonomyFlows } from '../../src/utils/autonomyFlows'
 
-const CLI_ENTRYPOINT = resolve(import.meta.dir, '../../src/entrypoints/cli.tsx')
+const CLI_ENTRYPOINT = resolve(import.meta.dir, '../../dist/cli.js')
+const PROJECT_ROOT = resolve(import.meta.dir, '../..')
 
 let tempDir = ''
 let configDir = ''
 let previousConfigDir: string | undefined
+
+async function ensureCliBundle(): Promise<void> {
+  if (existsSync(CLI_ENTRYPOINT)) return
+  const proc = Bun.spawn({
+    cmd: [process.execPath, 'run', 'build'],
+    cwd: PROJECT_ROOT,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [stderr, exitCode] = await Promise.all([
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0 || !existsSync(CLI_ENTRYPOINT)) {
+    throw new Error(
+      `Failed to build dist/cli.js for autonomy CLI tests (exit=${exitCode}):\n${stderr}`,
+    )
+  }
+}
+
+beforeAll(async () => {
+  await ensureCliBundle()
+}, 120_000)
 
 async function runAutonomyCli(args: string[]): Promise<string> {
   const proc = Bun.spawn({
