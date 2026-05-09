@@ -458,8 +458,7 @@ function OAuthStatusMessage({
                 {
                   label: (
                     <Text>
-                      ChatGPT account with subscription ·{' '}
-                      <Text dimColor>Plus, Pro, Business, Edu, or Enterprise</Text>
+                      ChatGPT account with subscription · <Text dimColor>Plus, Pro, Business, Edu, or Enterprise</Text>
                       {'\n'}
                     </Text>
                   ),

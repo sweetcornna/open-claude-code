@@ -56,9 +56,7 @@ function clearChatGPTSettingsAuthMode(): void {
     Boolean(env.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY) &&
     Boolean(env.OPENAI_BASE_URL ?? process.env.OPENAI_BASE_URL);
   const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
-    ...(userSettings.modelType === 'openai' && !hasOpenAICompatibleConfig
-      ? { modelType: undefined }
-      : {}),
+    ...(userSettings.modelType === 'openai' && !hasOpenAICompatibleConfig ? { modelType: undefined } : {}),
     env: {
       OPENAI_AUTH_MODE: undefined,
     } as unknown as Record<string, string>,
@@ -92,7 +90,7 @@ export async function clearAuthRelatedCaches(): Promise<void> {
 export async function call(): Promise<React.ReactNode> {
   await performLogout({ clearOnboarding: true });
 
-  const message = <Text>Successfully logged out.</Text>
+  const message = <Text>Successfully logged out.</Text>;
 
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');

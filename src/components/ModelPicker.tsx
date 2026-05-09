@@ -176,21 +176,11 @@ export function ModelPicker({
     (direction: 'left' | 'right') => {
       if (!focusedSupportsEffort) return;
       setEffort(prev =>
-        cycleEffortLevel(
-          prev ?? focusedDefaultEffort,
-          direction,
-          focusedSupportsXhigh,
-          focusedSupportsMax,
-        ),
+        cycleEffortLevel(prev ?? focusedDefaultEffort, direction, focusedSupportsXhigh, focusedSupportsMax),
       );
       setHasToggledEffort(true);
     },
-    [
-      focusedSupportsEffort,
-      focusedSupportsXhigh,
-      focusedSupportsMax,
-      focusedDefaultEffort,
-    ],
+    [focusedSupportsEffort, focusedSupportsXhigh, focusedSupportsMax, focusedDefaultEffort],
   );
 
   useKeybindings(
