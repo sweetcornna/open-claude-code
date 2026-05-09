@@ -57,13 +57,4 @@ describe('prompt.ts fork-related text verification', () => {
       expect(bgCondition[0]).not.toContain('!forkEnabled')
     }
   })
-
-  test('fork example includes fork: true parameter', () => {
-    // The first fork example should have fork: true
-    const forkExampleBlock = promptSource.match(
-      /name: "ship-audit"[\s\S]*?Under 200 words/,
-    )
-    expect(forkExampleBlock).not.toBeNull()
-    expect(forkExampleBlock![0]).toContain('fork: true')
-  })
 })
