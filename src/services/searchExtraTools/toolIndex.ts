@@ -6,7 +6,7 @@ import {
   computeIdf,
   cosineSimilarity,
 } from '../skillSearch/localSearch.js'
-import { isDeferredTool } from '@claude-code-best/builtin-tools/tools/ToolSearchTool/prompt.js'
+import { isDeferredTool } from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 
 export interface ToolIndexEntry {
   name: string
@@ -20,7 +20,7 @@ export interface ToolIndexEntry {
   tfVector: Map<string, number>
 }
 
-export interface ToolSearchResult {
+export interface SearchExtraToolsResult {
   name: string
   description: string
   searchHint: string | undefined
@@ -36,8 +36,8 @@ const TOOL_FIELD_WEIGHT = {
   description: 1.0,
 } as const
 
-const TOOL_SEARCH_DISPLAY_MIN_SCORE = Number(
-  process.env.TOOL_SEARCH_DISPLAY_MIN_SCORE ?? '0.10',
+const SEARCH_EXTRA_TOOLS_DISPLAY_MIN_SCORE = Number(
+  process.env.SEARCH_EXTRA_TOOLS_DISPLAY_MIN_SCORE ?? '0.10',
 )
 
 const CJK_MIN_BIGRAM_MATCHES = 2
@@ -143,7 +143,7 @@ export async function buildToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
   }
 
   logForDebugging(
-    `[tool-search] indexed ${entries.length} deferred tools from ${tools.length} total tools`,
+    `[search-extra-tools] indexed ${entries.length} deferred tools from ${tools.length} total tools`,
   )
   return entries
 }
@@ -152,7 +152,7 @@ export function searchTools(
   query: string,
   index: ToolIndexEntry[],
   limit = 5,
-): ToolSearchResult[] {
+): SearchExtraToolsResult[] {
   if (index.length === 0 || !query.trim()) return []
 
   const queryTokens = tokenizeAndStem(query)
@@ -175,7 +175,7 @@ export function searchTools(
   const queryAsciiTokens = queryTokens.filter(t => !isCjk(t[0] ?? ''))
   const queryLower = query.toLowerCase().replace(/[-_]/g, ' ')
 
-  const results: ToolSearchResult[] = []
+  const results: SearchExtraToolsResult[] = []
   for (const entry of index) {
     let score = cosineSimilarity(queryTfIdf, entry.tfVector)
 
@@ -191,7 +191,7 @@ export function searchTools(
       score = Math.max(score, 0.75)
     }
 
-    if (score >= TOOL_SEARCH_DISPLAY_MIN_SCORE) {
+    if (score >= SEARCH_EXTRA_TOOLS_DISPLAY_MIN_SCORE) {
       results.push({
         name: entry.name,
         description: entry.description,
@@ -229,5 +229,5 @@ export async function getToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
 export function clearToolIndexCache(): void {
   cachedIndex = null
   cachedToolNames = null
-  logForDebugging('[tool-search] index cache cleared')
+  logForDebugging('[search-extra-tools] index cache cleared')
 }

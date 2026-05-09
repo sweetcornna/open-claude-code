@@ -29,7 +29,7 @@ mock.module('src/services/analytics/growthbook.js', () => ({
   getDynamicConfig_BLOCKS_ON_INIT: async () => undefined,
 }))
 
-// Mock skillSearch/prefetch.js (dependency of toolSearch/prefetch.ts)
+// Mock skillSearch/prefetch.js (dependency of searchExtraTools/prefetch.ts)
 mock.module('src/services/skillSearch/prefetch.js', () => ({
   extractQueryFromMessages: (
     _input: string | null,
@@ -60,7 +60,7 @@ mock.module('src/services/skillSearch/prefetch.js', () => ({
 const mockGetToolIndex = mock(() => Promise.resolve([] as never[]))
 const mockSearchTools = mock(() => [] as never[])
 
-mock.module('src/services/toolSearch/toolIndex.js', () => ({
+mock.module('src/services/searchExtraTools/toolIndex.js', () => ({
   getToolIndex: mockGetToolIndex,
   searchTools: mockSearchTools,
   clearToolIndexCache: () => {},
@@ -73,9 +73,9 @@ mock.module('src/services/toolSearch/toolIndex.js', () => ({
 }))
 
 const {
-  startToolSearchPrefetch,
-  getTurnZeroToolSearchPrefetch,
-  collectToolSearchPrefetch,
+  startSearchExtraToolsPrefetch,
+  getTurnZeroSearchExtraToolsPrefetch,
+  collectSearchExtraToolsPrefetch,
   buildToolDiscoveryAttachment,
 } = await import('../prefetch.js')
 
@@ -89,7 +89,7 @@ function makeMockMessages(text: string) {
   ] as never
 }
 
-describe('startToolSearchPrefetch', () => {
+describe('startSearchExtraToolsPrefetch', () => {
   beforeEach(() => {
     mockGetToolIndex.mockResolvedValue([
       { name: 'index-entry', tokens: ['test'], tfVector: new Map() },
@@ -110,7 +110,7 @@ describe('startToolSearchPrefetch', () => {
       },
     ] as never)
 
-    const result = await startToolSearchPrefetch(
+    const result = await startSearchExtraToolsPrefetch(
       [],
       makeMockMessages('schedule a cron job'),
     )
@@ -123,7 +123,7 @@ describe('startToolSearchPrefetch', () => {
   })
 
   test('returns empty array for empty query', async () => {
-    const result = await startToolSearchPrefetch([], [
+    const result = await startSearchExtraToolsPrefetch([], [
       { type: 'assistant', content: [] },
     ] as never)
     expect(result).toEqual([])
@@ -131,7 +131,7 @@ describe('startToolSearchPrefetch', () => {
 
   test('returns empty array when no tools match', async () => {
     mockSearchTools.mockReturnValue([])
-    const result = await startToolSearchPrefetch(
+    const result = await startSearchExtraToolsPrefetch(
       [],
       makeMockMessages('quantum physics'),
     )
@@ -140,12 +140,15 @@ describe('startToolSearchPrefetch', () => {
 
   test('returns empty array on error (exception safety)', async () => {
     mockGetToolIndex.mockRejectedValue(new Error('index failed'))
-    const result = await startToolSearchPrefetch([], makeMockMessages('test'))
+    const result = await startSearchExtraToolsPrefetch(
+      [],
+      makeMockMessages('test'),
+    )
     expect(result).toEqual([])
   })
 })
 
-describe('getTurnZeroToolSearchPrefetch', () => {
+describe('getTurnZeroSearchExtraToolsPrefetch', () => {
   beforeEach(() => {
     mockGetToolIndex.mockResolvedValue([
       { name: 'index-entry', tokens: ['test'], tfVector: new Map() },
@@ -166,25 +169,31 @@ describe('getTurnZeroToolSearchPrefetch', () => {
       },
     ] as never)
 
-    const result = await getTurnZeroToolSearchPrefetch('schedule cron job', [])
+    const result = await getTurnZeroSearchExtraToolsPrefetch(
+      'schedule cron job',
+      [],
+    )
     expect(result).not.toBeNull()
     expect(result!.type).toBe('tool_discovery')
     expect((result as Record<string, unknown>).trigger).toBe('user_input')
   })
 
   test('returns null for empty input', async () => {
-    const result = await getTurnZeroToolSearchPrefetch('', [])
+    const result = await getTurnZeroSearchExtraToolsPrefetch('', [])
     expect(result).toBeNull()
   })
 
   test('returns null when no tools match', async () => {
     mockSearchTools.mockReturnValue([])
-    const result = await getTurnZeroToolSearchPrefetch('quantum physics', [])
+    const result = await getTurnZeroSearchExtraToolsPrefetch(
+      'quantum physics',
+      [],
+    )
     expect(result).toBeNull()
   })
 })
 
-describe('collectToolSearchPrefetch', () => {
+describe('collectSearchExtraToolsPrefetch', () => {
   test('returns resolved attachment array', async () => {
     const attachment = {
       type: 'tool_discovery' as const,
@@ -194,7 +203,7 @@ describe('collectToolSearchPrefetch', () => {
       durationMs: 10,
       indexSize: 5,
     }
-    const result = await collectToolSearchPrefetch(
+    const result = await collectSearchExtraToolsPrefetch(
       Promise.resolve([
         attachment,
       ] as unknown as import('../../../utils/attachments.js').Attachment[]),
@@ -204,7 +213,7 @@ describe('collectToolSearchPrefetch', () => {
   })
 
   test('returns empty array on rejected promise', async () => {
-    const result = await collectToolSearchPrefetch(
+    const result = await collectSearchExtraToolsPrefetch(
       Promise.reject(new Error('fail')),
     )
     expect(result).toEqual([])

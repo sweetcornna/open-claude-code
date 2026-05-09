@@ -2,16 +2,16 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/grow
 import type { Tool } from 'src/Tool.js'
 import { CORE_TOOLS } from 'src/constants/tools.js'
 
-export { TOOL_SEARCH_TOOL_NAME } from './constants.js'
+export { SEARCH_EXTRA_TOOLS_TOOL_NAME } from './constants.js'
 
-import { TOOL_SEARCH_TOOL_NAME } from './constants.js'
+import { SEARCH_EXTRA_TOOLS_TOOL_NAME } from './constants.js'
 
 const PROMPT_HEAD = `Search for deferred tools by name or keyword. LOW PRIORITY — only use this tool when no core tool can accomplish the task. Core tools (Read, Edit, Write, Bash, Glob, Grep, Agent, WebFetch, WebSearch, Skill) are always available and should be used directly. This tool is for discovering additional capabilities like MCP tools, cron scheduling, worktree management, agent teams (TeamCreate, TeamDelete, SendMessage), etc.
 
 `
 
-// Matches isDeferredToolsDeltaEnabled in toolSearch.ts (not imported —
-// toolSearch.ts imports from this file). When enabled: tools announced
+// Matches isDeferredToolsDeltaEnabled in searchExtraTools.ts (not imported —
+// searchExtraTools.ts imports from this file). When enabled: tools announced
 // via system-reminder attachments. When disabled: prepended
 // <available-deferred-tools> block (pre-gate behavior).
 function getToolLocationHint(): string {
@@ -25,7 +25,7 @@ function getToolLocationHint(): string {
 
 const PROMPT_TAIL = ` Returns matching tool names.
 
-ExecuteExtraTool is a first-class tool that is always available — you do NOT need to search for it. After this search returns tool names, call ExecuteExtraTool directly with {"tool_name": "<returned_name>", "params": {...}} to invoke any deferred tool.
+IMPORTANT: ExecuteExtraTool is always available in your tool list. After this search returns tool names, you MUST call ExecuteExtraTool with {"tool_name": "<returned_name>", "params": {...}} to invoke the deferred tool. This is the ONLY way to execute deferred tools — do not read source code or analyze whether the tool is callable, just use ExecuteExtraTool directly.
 
 Query forms:
 - "select:CronCreate,Snip" — fetch these exact tools by name
@@ -34,11 +34,11 @@ Query forms:
 - "+slack send" — require "slack" in the name, rank by remaining terms`
 
 /**
- * Check if a tool should be deferred (requires ToolSearch to load).
+ * Check if a tool should be deferred (requires SearchExtraTools to load).
  * A tool is deferred if it is NOT in CORE_TOOLS and does NOT have alwaysLoad: true.
  * Core tools are always loaded — never deferred.
  * All other tools (non-core built-in + all MCP tools) are deferred
- * and must be discovered via ToolSearchTool / ExecuteExtraTool.
+ * and must be discovered via SearchExtraToolsTool / ExecuteExtraTool.
  */
 export function isDeferredTool(tool: Tool): boolean {
   // Explicit opt-out via _meta['anthropic/alwaysLoad']

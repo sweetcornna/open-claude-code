@@ -140,7 +140,7 @@ export function AttachmentMessage({ attachment, addMargin, verbose, isTranscript
 
   // tool_discovery rendered here (not in the switch) so the 'tool_discovery'
   // string literal stays inside a feature()-guarded block.
-  if (feature('EXPERIMENTAL_TOOL_SEARCH')) {
+  if (feature('EXPERIMENTAL_SEARCH_EXTRA_TOOLS')) {
     if (attachment.type === 'tool_discovery') {
       if (attachment.tools.length === 0) return null;
       const names = attachment.tools.map(t => t.name).join(', ');

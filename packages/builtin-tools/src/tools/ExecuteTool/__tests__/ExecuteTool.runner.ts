@@ -29,12 +29,12 @@ mock.module('src/services/analytics/growthbook.js', () => ({
   stopPeriodicGrowthBookRefresh: () => {},
 }))
 
-mock.module('src/utils/toolSearch.js', () => ({
-  isToolSearchEnabledOptimistic: () => true,
-  getAutoToolSearchCharThreshold: () => 100,
-  getToolSearchMode: () => 'tst' as const,
-  isToolSearchToolAvailable: async () => true,
-  isToolSearchEnabled: async () => true,
+mock.module('src/utils/searchExtraTools.js', () => ({
+  isSearchExtraToolsEnabledOptimistic: () => true,
+  getAutoSearchExtraToolsCharThreshold: () => 100,
+  getSearchExtraToolsMode: () => 'tst' as const,
+  isSearchExtraToolsToolAvailable: async () => true,
+  isSearchExtraToolsEnabled: async () => true,
   isToolReferenceBlock: () => false,
   extractDiscoveredToolNames: () => new Set(),
   isDeferredToolsDeltaEnabled: () => false,
@@ -42,7 +42,7 @@ mock.module('src/utils/toolSearch.js', () => ({
 }))
 
 mock.module('src/constants/tools.js', () => ({
-  CORE_TOOLS: new Set(['ExecuteExtraTool', 'ToolSearch']),
+  CORE_TOOLS: new Set(['ExecuteExtraTool', 'SearchExtraTools']),
 }))
 
 // Mock messages module

@@ -68,8 +68,8 @@ import {
 const skillPrefetch = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
   : null
-const toolSearchPrefetch = feature('EXPERIMENTAL_TOOL_SEARCH')
-  ? (require('./services/toolSearch/prefetch.js') as typeof import('./services/toolSearch/prefetch.js'))
+const searchExtraToolsPrefetch = feature('EXPERIMENTAL_SEARCH_EXTRA_TOOLS')
+  ? (require('./services/searchExtraTools/prefetch.js') as typeof import('./services/searchExtraTools/prefetch.js'))
   : null
 const _jobClassifier = feature('TEMPLATES')
   ? (require('./jobs/classifier.js') as typeof import('./jobs/classifier.js'))
@@ -485,10 +485,11 @@ async function* queryLoop(
       messages,
       toolUseContext,
     )
-    const pendingToolPrefetch = toolSearchPrefetch?.startToolSearchPrefetch(
-      toolUseContext.options.tools ?? [],
-      messages,
-    )
+    const pendingToolPrefetch =
+      searchExtraToolsPrefetch?.startSearchExtraToolsPrefetch(
+        toolUseContext.options.tools ?? [],
+        messages,
+      )
 
     yield { type: 'stream_request_start' }
 
@@ -1925,9 +1926,11 @@ async function* queryLoop(
     }
 
     // Inject prefetched tool discovery.
-    if (toolSearchPrefetch && pendingToolPrefetch) {
+    if (searchExtraToolsPrefetch && pendingToolPrefetch) {
       const toolAttachments =
-        await toolSearchPrefetch.collectToolSearchPrefetch(pendingToolPrefetch)
+        await searchExtraToolsPrefetch.collectSearchExtraToolsPrefetch(
+          pendingToolPrefetch,
+        )
       for (const att of toolAttachments) {
         const msg = createAttachmentMessage(att)
         yield msg

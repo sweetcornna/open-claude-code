@@ -15,13 +15,24 @@ import {
 import { logForDebugging } from 'src/utils/debug.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { escapeRegExp } from 'src/utils/stringUtils.js'
-import { isToolSearchEnabledOptimistic } from 'src/utils/toolSearch.js'
-import { getPrompt, isDeferredTool, TOOL_SEARCH_TOOL_NAME } from './prompt.js'
-import { getToolIndex, searchTools } from 'src/services/toolSearch/toolIndex.js'
-import type { ToolSearchResult } from 'src/services/toolSearch/toolIndex.js'
+import { isSearchExtraToolsEnabledOptimistic } from 'src/utils/searchExtraTools.js'
+import {
+  getPrompt,
+  isDeferredTool,
+  SEARCH_EXTRA_TOOLS_TOOL_NAME,
+} from './prompt.js'
+import {
+  getToolIndex,
+  searchTools,
+} from 'src/services/searchExtraTools/toolIndex.js'
+import type { SearchExtraToolsResult } from 'src/services/searchExtraTools/toolIndex.js'
 
-const KEYWORD_WEIGHT = Number(process.env.TOOL_SEARCH_WEIGHT_KEYWORD ?? '0.4')
-const TFIDF_WEIGHT = Number(process.env.TOOL_SEARCH_WEIGHT_TFIDF ?? '0.6')
+const KEYWORD_WEIGHT = Number(
+  process.env.SEARCH_EXTRA_TOOLS_WEIGHT_KEYWORD ?? '0.4',
+)
+const TFIDF_WEIGHT = Number(
+  process.env.SEARCH_EXTRA_TOOLS_WEIGHT_TFIDF ?? '0.6',
+)
 
 export const inputSchema = lazySchema(() =>
   z.object({
@@ -99,14 +110,14 @@ function maybeInvalidateCache(deferredTools: Tools): void {
   const currentKey = getDeferredToolsCacheKey(deferredTools)
   if (cachedDeferredToolNames !== currentKey) {
     logForDebugging(
-      `ToolSearchTool: cache invalidated - deferred tools changed`,
+      `SearchExtraToolsTool: cache invalidated - deferred tools changed`,
     )
     getToolDescriptionMemoized.cache.clear?.()
     cachedDeferredToolNames = currentKey
   }
 }
 
-export function clearToolSearchDescriptionCache(): void {
+export function clearSearchExtraToolsDescriptionCache(): void {
   getToolDescriptionMemoized.cache.clear?.()
   cachedDeferredToolNames = null
 }
@@ -312,9 +323,9 @@ async function searchToolsWithKeywords(
     .map(item => item.name)
 }
 
-export const ToolSearchTool = buildTool({
+export const SearchExtraToolsTool = buildTool({
   isEnabled() {
-    return isToolSearchEnabledOptimistic()
+    return isSearchExtraToolsEnabledOptimistic()
   },
   isConcurrencySafe() {
     return true
@@ -322,7 +333,7 @@ export const ToolSearchTool = buildTool({
   isReadOnly() {
     return true
   },
-  name: TOOL_SEARCH_TOOL_NAME,
+  name: SEARCH_EXTRA_TOOLS_TOOL_NAME,
   maxResultSizeChars: 100_000,
   async description() {
     return getPrompt()
@@ -354,7 +365,7 @@ export const ToolSearchTool = buildTool({
       matches: string[],
       queryType: 'select' | 'keyword',
     ): void {
-      logEvent('tengu_tool_search_outcome', {
+      logEvent('tengu_search_extra_tools_outcome', {
         query:
           query as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         queryType:
@@ -398,7 +409,7 @@ export const ToolSearchTool = buildTool({
 
       if (found.length === 0) {
         logForDebugging(
-          `ToolSearchTool: select failed — none found: ${missing.join(', ')}`,
+          `SearchExtraToolsTool: select failed — none found: ${missing.join(', ')}`,
         )
         logSearchOutcome([], 'select')
         const pendingServers = getPendingServerNames()
@@ -412,10 +423,10 @@ export const ToolSearchTool = buildTool({
 
       if (missing.length > 0) {
         logForDebugging(
-          `ToolSearchTool: partial select — found: ${found.join(', ')}, missing: ${missing.join(', ')}`,
+          `SearchExtraToolsTool: partial select — found: ${found.join(', ')}, missing: ${missing.join(', ')}`,
         )
       } else {
-        logForDebugging(`ToolSearchTool: selected ${found.join(', ')}`)
+        logForDebugging(`SearchExtraToolsTool: selected ${found.join(', ')}`)
       }
       logSearchOutcome(found, 'select')
       return buildSearchResult(
@@ -493,7 +504,7 @@ export const ToolSearchTool = buildTool({
     const alreadyLoaded = matches.filter(name => !deferredToolNames.has(name))
 
     logForDebugging(
-      `ToolSearchTool: keyword search for "${query}", found ${matches.length} matches`,
+      `SearchExtraToolsTool: keyword search for "${query}", found ${matches.length} matches`,
     )
 
     logSearchOutcome(matches, 'keyword')
@@ -522,7 +533,7 @@ export const ToolSearchTool = buildTool({
     return `"${input.query}"`
   },
   userFacingName() {
-    return 'ToolSearch'
+    return 'SearchExtraTools'
   },
   /**
    * Returns a tool_result with text output guiding the model to use ExecuteExtraTool.
@@ -559,7 +570,7 @@ export const ToolSearchTool = buildTool({
       return {
         type: 'tool_result',
         tool_use_id: toolUseID,
-        content: `No deferred tools found. ${alreadyLoadedNames.join(', ')} ${alreadyLoadedNames.length === 1 ? 'is' : 'are'} already loaded as core tool(s) — call directly, do NOT search for or wrap in ExecuteExtraTool. ToolSearch is only for discovering tools NOT already in your tool list.`,
+        content: `No deferred tools found. ${alreadyLoadedNames.join(', ')} ${alreadyLoadedNames.length === 1 ? 'is' : 'are'} already loaded as core tool(s) — call directly, do NOT search for or wrap in ExecuteExtraTool. SearchExtraTools is only for discovering tools NOT already in your tool list.`,
       }
     }
 

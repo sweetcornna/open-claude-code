@@ -2,7 +2,7 @@
  * Tool Search utilities for dynamically discovering deferred tools.
  *
  * When enabled, deferred tools (all non-core tools) are sent with
- * defer_loading: true and discovered via ToolSearchTool rather than being
+ * defer_loading: true and discovered via SearchExtraToolsTool rather than being
  * loaded upfront. Core tools are defined in CORE_TOOLS (src/constants/tools.ts).
  */
 
@@ -22,8 +22,8 @@ import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/Agen
 import {
   formatDeferredToolLine,
   isDeferredTool,
-  TOOL_SEARCH_TOOL_NAME,
-} from '@claude-code-best/builtin-tools/tools/ToolSearchTool/prompt.js'
+  SEARCH_EXTRA_TOOLS_TOOL_NAME,
+} from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 import type { Message } from '../types/message.js'
 import {
   countToolDefinitionTokens,
@@ -40,12 +40,12 @@ import { zodToJsonSchema } from './zodToJsonSchema.js'
 /**
  * Default percentage of context window at which to auto-enable tool search.
  * When MCP tool descriptions exceed this percentage (in tokens), tool search is enabled.
- * Can be overridden via ENABLE_TOOL_SEARCH=auto:N where N is 0-100.
+ * Can be overridden via ENABLE_SEARCH_EXTRA_TOOLS=auto:N where N is 0-100.
  */
-const DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE = 10 // 10%
+const DEFAULT_AUTO_SEARCH_EXTRA_TOOLS_PERCENTAGE = 10 // 10%
 
 /**
- * Parse auto:N syntax from ENABLE_TOOL_SEARCH env var.
+ * Parse auto:N syntax from ENABLE_SEARCH_EXTRA_TOOLS env var.
  * Returns the percentage clamped to 0-100, or null if not auto:N format or not a number.
  */
 function parseAutoPercentage(value: string): number | null {
@@ -56,7 +56,7 @@ function parseAutoPercentage(value: string): number | null {
 
   if (isNaN(percent)) {
     logForDebugging(
-      `Invalid ENABLE_TOOL_SEARCH value "${value}": expected auto:N where N is a number.`,
+      `Invalid ENABLE_SEARCH_EXTRA_TOOLS value "${value}": expected auto:N where N is a number.`,
     )
     return null
   }
@@ -66,9 +66,9 @@ function parseAutoPercentage(value: string): number | null {
 }
 
 /**
- * Check if ENABLE_TOOL_SEARCH is set to auto mode (auto or auto:N).
+ * Check if ENABLE_SEARCH_EXTRA_TOOLS is set to auto mode (auto or auto:N).
  */
-function isAutoToolSearchMode(value: string | undefined): boolean {
+function isAutoSearchExtraToolsMode(value: string | undefined): boolean {
   if (!value) return false
   return value === 'auto' || value.startsWith('auto:')
 }
@@ -76,16 +76,16 @@ function isAutoToolSearchMode(value: string | undefined): boolean {
 /**
  * Get the auto-enable percentage from env var or default.
  */
-function getAutoToolSearchPercentage(): number {
-  const value = process.env.ENABLE_TOOL_SEARCH
-  if (!value) return DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE
+function getAutoSearchExtraToolsPercentage(): number {
+  const value = process.env.ENABLE_SEARCH_EXTRA_TOOLS
+  if (!value) return DEFAULT_AUTO_SEARCH_EXTRA_TOOLS_PERCENTAGE
 
-  if (value === 'auto') return DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE
+  if (value === 'auto') return DEFAULT_AUTO_SEARCH_EXTRA_TOOLS_PERCENTAGE
 
   const parsed = parseAutoPercentage(value)
   if (parsed !== null) return parsed
 
-  return DEFAULT_AUTO_TOOL_SEARCH_PERCENTAGE
+  return DEFAULT_AUTO_SEARCH_EXTRA_TOOLS_PERCENTAGE
 }
 
 /**
@@ -97,10 +97,10 @@ const CHARS_PER_TOKEN = 2.5
 /**
  * Get the token threshold for auto-enabling tool search for a given model.
  */
-function getAutoToolSearchTokenThreshold(model: string): number {
+function getAutoSearchExtraToolsTokenThreshold(model: string): number {
   const betas = getMergedBetas(model)
   const contextWindow = getContextWindowForModel(model, betas)
-  const percentage = getAutoToolSearchPercentage() / 100
+  const percentage = getAutoSearchExtraToolsPercentage() / 100
   return Math.floor(contextWindow * percentage)
 }
 
@@ -108,8 +108,10 @@ function getAutoToolSearchTokenThreshold(model: string): number {
  * Get the character threshold for auto-enabling tool search for a given model.
  * Used as fallback when the token counting API is unavailable.
  */
-export function getAutoToolSearchCharThreshold(model: string): number {
-  return Math.floor(getAutoToolSearchTokenThreshold(model) * CHARS_PER_TOKEN)
+export function getAutoSearchExtraToolsCharThreshold(model: string): number {
+  return Math.floor(
+    getAutoSearchExtraToolsTokenThreshold(model) * CHARS_PER_TOKEN,
+  )
 }
 
 /**
@@ -150,22 +152,22 @@ const getDeferredToolTokenCount = memoize(
 /**
  * Tool search mode. Determines how deferred tools (all non-core tools)
  * are surfaced:
- *   - 'tst': Tool Search Tool — deferred tools discovered via ToolSearchTool (always enabled)
+ *   - 'tst': Tool Search Tool — deferred tools discovered via SearchExtraToolsTool (always enabled)
  *   - 'tst-auto': auto — tools deferred only when they exceed threshold
  *   - 'standard': tool search disabled — all tools exposed inline
  */
-export type ToolSearchMode = 'tst' | 'tst-auto' | 'standard'
+export type SearchExtraToolsMode = 'tst' | 'tst-auto' | 'standard'
 
 /**
- * Determines the tool search mode from ENABLE_TOOL_SEARCH.
+ * Determines the tool search mode from ENABLE_SEARCH_EXTRA_TOOLS.
  *
- *   ENABLE_TOOL_SEARCH    Mode
+ *   ENABLE_SEARCH_EXTRA_TOOLS    Mode
  *   auto / auto:1-99      tst-auto
  *   true / auto:0         tst
  *   false / auto:100      standard
  *   (unset)               tst (default: always defer non-core tools)
  */
-export function getToolSearchMode(): ToolSearchMode {
+export function getSearchExtraToolsMode(): SearchExtraToolsMode {
   // CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS still acts as a kill switch
   // for tool search, even though we no longer send beta headers.
   // Users who set this flag explicitly opt out of tool search.
@@ -173,18 +175,19 @@ export function getToolSearchMode(): ToolSearchMode {
     return 'standard'
   }
 
-  const value = process.env.ENABLE_TOOL_SEARCH
+  const value = process.env.ENABLE_SEARCH_EXTRA_TOOLS
 
   // Handle auto:N syntax - check edge cases first
   const autoPercent = value ? parseAutoPercentage(value) : null
   if (autoPercent === 0) return 'tst' // auto:0 = always enabled
   if (autoPercent === 100) return 'standard'
-  if (isAutoToolSearchMode(value)) {
+  if (isAutoSearchExtraToolsMode(value)) {
     return 'tst-auto' // auto or auto:1-99
   }
 
   if (isEnvTruthy(value)) return 'tst'
-  if (isEnvDefinedFalsy(process.env.ENABLE_TOOL_SEARCH)) return 'standard'
+  if (isEnvDefinedFalsy(process.env.ENABLE_SEARCH_EXTRA_TOOLS))
+    return 'standard'
   return 'tst' // default: always defer non-core tools
 }
 
@@ -193,22 +196,22 @@ export function getToolSearchMode(): ToolSearchMode {
  *
  * Returns true if tool search could potentially be enabled, without checking
  * dynamic factors like threshold. Use this for:
- * - Including ToolSearchTool in base tools (so it's available if needed)
- * - Checking if ToolSearchTool should report itself as enabled
+ * - Including SearchExtraToolsTool in base tools (so it's available if needed)
+ * - Checking if SearchExtraToolsTool should report itself as enabled
  *
  * Returns false only when tool search is definitively disabled (standard mode).
  *
- * For the definitive check that includes threshold, use isToolSearchEnabled().
+ * For the definitive check that includes threshold, use isSearchExtraToolsEnabled().
  */
 let loggedOptimistic = false
 
-export function isToolSearchEnabledOptimistic(): boolean {
-  const mode = getToolSearchMode()
+export function isSearchExtraToolsEnabledOptimistic(): boolean {
+  const mode = getSearchExtraToolsMode()
   if (mode === 'standard') {
     if (!loggedOptimistic) {
       loggedOptimistic = true
       logForDebugging(
-        `[ToolSearch:optimistic] mode=${mode}, ENABLE_TOOL_SEARCH=${process.env.ENABLE_TOOL_SEARCH}, result=false`,
+        `[SearchExtraTools:optimistic] mode=${mode}, ENABLE_SEARCH_EXTRA_TOOLS=${process.env.ENABLE_SEARCH_EXTRA_TOOLS}, result=false`,
       )
     }
     return false
@@ -216,29 +219,29 @@ export function isToolSearchEnabledOptimistic(): boolean {
 
   // All providers use the unified self-built tool search (TF-IDF + keyword).
   // No first-party / tool_reference / defer_loading distinction.
-  // Users can still disable via ENABLE_TOOL_SEARCH=false.
+  // Users can still disable via ENABLE_SEARCH_EXTRA_TOOLS=false.
 
   if (!loggedOptimistic) {
     loggedOptimistic = true
     logForDebugging(
-      `[ToolSearch:optimistic] mode=${mode}, ENABLE_TOOL_SEARCH=${process.env.ENABLE_TOOL_SEARCH}, result=true`,
+      `[SearchExtraTools:optimistic] mode=${mode}, ENABLE_SEARCH_EXTRA_TOOLS=${process.env.ENABLE_SEARCH_EXTRA_TOOLS}, result=true`,
     )
   }
   return true
 }
 
 /**
- * Check if ToolSearchTool is available in the provided tools list.
- * If ToolSearchTool is not available (e.g., disallowed via disallowedTools),
+ * Check if SearchExtraToolsTool is available in the provided tools list.
+ * If SearchExtraToolsTool is not available (e.g., disallowed via disallowedTools),
  * tool search cannot function and should be disabled.
  *
  * @param tools Array of tools with a 'name' property
- * @returns true if ToolSearchTool is in the tools list, false otherwise
+ * @returns true if SearchExtraToolsTool is in the tools list, false otherwise
  */
-export function isToolSearchToolAvailable(
+export function isSearchExtraToolsToolAvailable(
   tools: readonly { name: string }[],
 ): boolean {
-  return tools.some(tool => toolMatchesName(tool, TOOL_SEARCH_TOOL_NAME))
+  return tools.some(tool => toolMatchesName(tool, SEARCH_EXTRA_TOOLS_TOOL_NAME))
 }
 
 /**
@@ -278,7 +281,7 @@ async function calculateDeferredToolDescriptionChars(
  * This is the definitive check that includes:
  * - MCP mode (Tst, TstAuto, McpCli, Standard)
  * - Model compatibility (haiku doesn't support tool_reference)
- * - ToolSearchTool availability (must be in tools list)
+ * - SearchExtraToolsTool availability (must be in tools list)
  * - Threshold check for TstAuto mode
  *
  * Use this when making actual API calls where all context is available.
@@ -290,7 +293,7 @@ async function calculateDeferredToolDescriptionChars(
  * @param source Optional identifier for the caller (for debugging)
  * @returns true if tool search should be enabled for this request
  */
-export async function isToolSearchEnabled(
+export async function isSearchExtraToolsEnabled(
   model: string,
   tools: Tools,
   getToolPermissionContext: () => Promise<ToolPermissionContext>,
@@ -302,11 +305,11 @@ export async function isToolSearchEnabled(
   // Helper to log the mode decision event
   function logModeDecision(
     enabled: boolean,
-    mode: ToolSearchMode,
+    mode: SearchExtraToolsMode,
     reason: string,
     extraProps?: Record<string, number>,
   ): void {
-    logEvent('tengu_tool_search_mode_decision', {
+    logEvent('tengu_search_extra_tools_mode_decision', {
       enabled,
       mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       reason:
@@ -324,18 +327,18 @@ export async function isToolSearchEnabled(
   }
 
   // Tool search is enabled uniformly regardless of provider or model.
-  // All providers use self-built TF-IDF + keyword search via ToolSearchTool + ExecuteExtraTool.
+  // All providers use self-built TF-IDF + keyword search via SearchExtraToolsTool + ExecuteExtraTool.
 
-  // Check if ToolSearchTool is available (respects disallowedTools)
-  if (!isToolSearchToolAvailable(tools)) {
+  // Check if SearchExtraToolsTool is available (respects disallowedTools)
+  if (!isSearchExtraToolsToolAvailable(tools)) {
     logForDebugging(
-      `Tool search disabled: ToolSearchTool is not available (may have been disallowed via disallowedTools).`,
+      `Tool search disabled: SearchExtraToolsTool is not available (may have been disallowed via disallowedTools).`,
     )
     logModeDecision(false, 'standard', 'mcp_search_unavailable')
     return false
   }
 
-  const mode = getToolSearchMode()
+  const mode = getSearchExtraToolsMode()
 
   switch (mode) {
     case 'tst':
@@ -401,7 +404,7 @@ function isToolReferenceWithName(
 
 /**
  * Type representing a tool_result block with array content.
- * Used for extracting tool_reference blocks from ToolSearchTool results.
+ * Used for extracting tool_reference blocks from SearchExtraToolsTool results.
  */
 type ToolResultBlock = {
   type: 'tool_result'
@@ -410,7 +413,7 @@ type ToolResultBlock = {
 
 /**
  * Type representing a tool_result block with string content.
- * Used for extracting tool names from ToolSearchTool text output.
+ * Used for extracting tool names from SearchExtraToolsTool text output.
  */
 type ToolResultBlockWithStringContent = {
   type: 'tool_result'
@@ -448,14 +451,14 @@ function isToolResultBlockWithStringContent(
 }
 
 /**
- * Regex to extract tool names from ToolSearchTool text output.
+ * Regex to extract tool names from SearchExtraToolsTool text output.
  * Matches: "Found N deferred tool(s): ToolA, mcp.server.ToolB."
  * Uses multiline + end-of-line anchor so dots inside tool names (e.g. mcp__s__t) don't break parsing.
  */
 const DISCOVERED_TOOLS_PATTERN = /^Found \d+ deferred tool\(s\): (.+)\.$/m
 
 /**
- * Extract tool names from ToolSearchTool text output.
+ * Extract tool names from SearchExtraToolsTool text output.
  * Format: "Found N deferred tool(s): ToolA, ToolB.\n..."
  */
 function extractToolNamesFromText(text: string): string[] {
@@ -468,7 +471,7 @@ function extractToolNamesFromText(text: string): string[] {
 }
 
 /**
- * Extract tool names from ToolSearchTool results in message history.
+ * Extract tool names from SearchExtraToolsTool results in message history.
  *
  * Supports two formats:
  * 1. Legacy tool_reference blocks (backward compat with old sessions)
@@ -530,7 +533,7 @@ export function extractDiscoveredToolNames(messages: Message[]): Set<string> {
         }
       }
 
-      // Unified self-built search: text output from ToolSearchTool
+      // Unified self-built search: text output from SearchExtraToolsTool
       if (isToolResultBlockWithStringContent(block)) {
         const names = extractToolNamesFromText(block.content)
         for (const name of names) {
@@ -689,12 +692,12 @@ async function checkAutoThreshold(
   )
 
   if (deferredToolTokens !== null) {
-    const threshold = getAutoToolSearchTokenThreshold(model)
+    const threshold = getAutoSearchExtraToolsTokenThreshold(model)
     return {
       enabled: deferredToolTokens >= threshold,
       debugDescription:
         `${deferredToolTokens} tokens (threshold: ${threshold}, ` +
-        `${getAutoToolSearchPercentage()}% of context)`,
+        `${getAutoSearchExtraToolsPercentage()}% of context)`,
       metrics: { deferredToolTokens, threshold },
     }
   }
@@ -706,12 +709,12 @@ async function checkAutoThreshold(
       getToolPermissionContext,
       agents,
     )
-  const charThreshold = getAutoToolSearchCharThreshold(model)
+  const charThreshold = getAutoSearchExtraToolsCharThreshold(model)
   return {
     enabled: deferredToolDescriptionChars >= charThreshold,
     debugDescription:
       `${deferredToolDescriptionChars} chars (threshold: ${charThreshold}, ` +
-      `${getAutoToolSearchPercentage()}% of context) (char fallback)`,
+      `${getAutoSearchExtraToolsPercentage()}% of context) (char fallback)`,
     metrics: { deferredToolDescriptionChars, charThreshold },
   }
 }

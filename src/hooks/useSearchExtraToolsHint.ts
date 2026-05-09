@@ -1,19 +1,19 @@
 import * as React from 'react'
 import {
-  subscribeToToolSearchPrefetch,
-  getToolSearchPrefetchSnapshot,
-  clearToolSearchPrefetchResults,
+  subscribeToSearchExtraToolsPrefetch,
+  getSearchExtraToolsPrefetchSnapshot,
+  clearSearchExtraToolsPrefetchResults,
   type ToolDiscoveryResult,
-} from 'src/services/toolSearch/prefetch.js'
+} from 'src/services/searchExtraTools/prefetch.js'
 
-type ToolSearchHintItem = {
+type SearchExtraToolsHintItem = {
   name: string
   description: string
   score: number
 }
 
-type ToolSearchHintResult = {
-  tools: ToolSearchHintItem[]
+type SearchExtraToolsHintResult = {
+  tools: SearchExtraToolsHintItem[]
   visible: boolean
   handleSelect: (toolName: string) => void
   handleDismiss: () => void
@@ -22,13 +22,13 @@ type ToolSearchHintResult = {
 const MAX_HINT_SCORE = 0.15
 const MAX_HINT_TOOLS = 3
 
-export function useToolSearchHint(): ToolSearchHintResult {
+export function useSearchExtraToolsHint(): SearchExtraToolsHintResult {
   const prefetchResult = React.useSyncExternalStore(
-    subscribeToToolSearchPrefetch,
-    getToolSearchPrefetchSnapshot,
+    subscribeToSearchExtraToolsPrefetch,
+    getSearchExtraToolsPrefetchSnapshot,
   )
 
-  const tools: ToolSearchHintItem[] = React.useMemo(() => {
+  const tools: SearchExtraToolsHintItem[] = React.useMemo(() => {
     if (prefetchResult.length === 0) return []
     return prefetchResult
       .slice(0, MAX_HINT_TOOLS)
@@ -42,11 +42,11 @@ export function useToolSearchHint(): ToolSearchHintResult {
   const visible = tools.length > 0 && (tools[0]?.score ?? 0) >= MAX_HINT_SCORE
 
   const handleSelect = React.useCallback((_toolName: string) => {
-    clearToolSearchPrefetchResults()
+    clearSearchExtraToolsPrefetchResults()
   }, [])
 
   const handleDismiss = React.useCallback(() => {
-    clearToolSearchPrefetchResults()
+    clearSearchExtraToolsPrefetchResults()
   }, [])
 
   return { tools, visible, handleSelect, handleDismiss }

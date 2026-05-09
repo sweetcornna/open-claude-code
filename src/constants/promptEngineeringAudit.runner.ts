@@ -663,7 +663,7 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
       const prompt = await getFullPrompt()
       expect(prompt).toContain('search for it')
       expect(prompt).toContain(
-        'Only state something is unavailable after ToolSearch returns no match',
+        'Only state something is unavailable after SearchExtraTools returns no match',
       )
     })
 

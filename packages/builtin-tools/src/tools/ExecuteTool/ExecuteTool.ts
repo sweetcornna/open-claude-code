@@ -68,7 +68,7 @@ export const ExecuteTool = buildTool({
         },
         newMessages: [
           createUserMessage({
-            content: `Tool "${input.tool_name}" not found. Use ToolSearch to discover available tools.`,
+            content: `Tool "${input.tool_name}" not found. Use SearchExtraTools to discover available tools.`,
           }),
         ],
       }

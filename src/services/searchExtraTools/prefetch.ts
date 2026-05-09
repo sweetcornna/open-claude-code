@@ -4,7 +4,7 @@ import type { Tools } from '../../Tool.js'
 import {
   getToolIndex,
   searchTools,
-  type ToolSearchResult,
+  type SearchExtraToolsResult,
 } from './toolIndex.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { extractQueryFromMessages } from '../skillSearch/prefetch.js'
@@ -31,7 +31,7 @@ function notifyPrefetchListeners(): void {
   for (const listener of prefetchListeners) listener()
 }
 
-export function subscribeToToolSearchPrefetch(
+export function subscribeToSearchExtraToolsPrefetch(
   listener: () => void,
 ): () => void {
   prefetchListeners.add(listener)
@@ -40,11 +40,11 @@ export function subscribeToToolSearchPrefetch(
   }
 }
 
-export function getToolSearchPrefetchSnapshot(): ToolDiscoveryResult[] {
+export function getSearchExtraToolsPrefetchSnapshot(): ToolDiscoveryResult[] {
   return latestPrefetchResult
 }
 
-export function clearToolSearchPrefetchResults(): void {
+export function clearSearchExtraToolsPrefetchResults(): void {
   latestPrefetchResult = []
   notifyPrefetchListeners()
 }
@@ -62,7 +62,7 @@ function addBoundedSessionEntry(set: Set<string>, value: string): void {
   }
 }
 
-function toDiscoveryResult(r: ToolSearchResult): ToolDiscoveryResult {
+function toDiscoveryResult(r: SearchExtraToolsResult): ToolDiscoveryResult {
   return {
     name: r.name,
     description: r.description,
@@ -91,7 +91,7 @@ export function buildToolDiscoveryAttachment(
   } as Attachment
 }
 
-export async function startToolSearchPrefetch(
+export async function startSearchExtraToolsPrefetch(
   tools: Tools,
   messages: Message[],
 ): Promise<Attachment[]> {
@@ -113,7 +113,7 @@ export async function startToolSearchPrefetch(
 
     const durationMs = Date.now() - startedAt
     logForDebugging(
-      `[tool-search] prefetch found ${newResults.length} tools in ${durationMs}ms`,
+      `[search-extra-tools] prefetch found ${newResults.length} tools in ${durationMs}ms`,
     )
 
     const discoveryResults = newResults.map(toDiscoveryResult)
@@ -130,50 +130,22 @@ export async function startToolSearchPrefetch(
       ),
     ]
   } catch (error) {
-    logForDebugging(`[tool-search] prefetch error: ${error}`)
+    logForDebugging(`[search-extra-tools] prefetch error: ${error}`)
     return []
   }
 }
 
-export async function getTurnZeroToolSearchPrefetch(
-  input: string,
-  tools: Tools,
+export async function getTurnZeroSearchExtraToolsPrefetch(
+  _input: string,
+  _tools: Tools,
 ): Promise<Attachment | null> {
-  if (!input.trim()) return null
-
-  const startedAt = Date.now()
-
-  try {
-    const index = await getToolIndex(tools)
-    const results = searchTools(input, index, 3)
-    if (results.length === 0) return null
-
-    for (const r of results)
-      addBoundedSessionEntry(discoveredToolsThisSession, r.name)
-
-    const durationMs = Date.now() - startedAt
-    logForDebugging(
-      `[tool-search] turn-zero found ${results.length} tools in ${durationMs}ms`,
-    )
-
-    const discoveryResults = results.map(toDiscoveryResult)
-    latestPrefetchResult = discoveryResults
-    notifyPrefetchListeners()
-
-    return buildToolDiscoveryAttachment(
-      discoveryResults,
-      'user_input',
-      input,
-      durationMs,
-      index.length,
-    )
-  } catch (error) {
-    logForDebugging(`[tool-search] turn-zero error: ${error}`)
-    return null
-  }
+  // Disabled: turn-zero user-input tool recommendations caused frequent
+  // popups. Inter-turn discovery (startSearchExtraToolsPrefetch) is still
+  // active and provides non-intrusive suggestions during assistant turns.
+  return null
 }
 
-export async function collectToolSearchPrefetch(
+export async function collectSearchExtraToolsPrefetch(
   pending: Promise<Attachment[]>,
 ): Promise<Attachment[]> {
   try {
