@@ -1,10 +1,8 @@
-import type { Command } from '../../commands.js'
-
-const stats = {
-  type: 'local-jsx',
-  name: 'stats',
-  description: 'Show your Claude Code usage statistics and activity',
-  load: () => import('./stats.js'),
-} satisfies Command
-
-export default stats
+/**
+ * /stats — alias for /usage (v2.1.118 upstream alignment).
+ *
+ * /usage is the primary command; /cost and /stats are registered as aliases.
+ * This file re-exports the unified usage command so that any code that imports
+ * from stats/index directly still gets the correct Command object.
+ */
+export { default } from '../usage/index.js'

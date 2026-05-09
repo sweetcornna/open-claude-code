@@ -1,6 +1,7 @@
 import axios from 'axios';
 import chalk from 'chalk';
 import { randomUUID } from 'crypto';
+import React from 'react';
 import { getOriginalCwd, getSessionId } from 'src/bootstrap/state.js';
 import { checkGate_CACHED_OR_BLOCKING } from 'src/services/analytics/growthbook.js';
 import {
@@ -877,6 +878,13 @@ export async function teleportToRemote(options: {
    * identify the PR associated with this session.
    */
   githubPr?: { owner: string; repo: string; number: number };
+  /**
+   * Identifies which command/flow originated this teleport. CCR backend
+   * uses this for routing/observability. Known values: 'autofix_pr',
+   * 'ultrareview', 'ultraplan'. Pass-through field — not interpreted
+   * client-side; if backend doesn't recognize it, it's silently ignored.
+   */
+  source?: string;
 }): Promise<TeleportToRemoteResponse | null> {
   const { initialMessage, signal } = options;
   try {
@@ -1227,6 +1235,7 @@ export async function teleportToRemote(options: {
       model: options.model ?? getMainLoopModel(),
       ...(options.reuseOutcomeBranch && { reuse_outcome_branches: true }),
       ...(options.githubPr && { github_pr: options.githubPr }),
+      ...(options.source && { source: options.source }),
     };
 
     // CreateCCRSessionPayload has no permission_mode field — a top-level
