@@ -449,13 +449,14 @@ function isToolResultBlockWithStringContent(
 
 /**
  * Regex to extract tool names from ToolSearchTool text output.
- * Matches: "Found N deferred tool(s): ToolA, ToolB."
+ * Matches: "Found N deferred tool(s): ToolA, mcp.server.ToolB."
+ * Uses multiline + end-of-line anchor so dots inside tool names (e.g. mcp__s__t) don't break parsing.
  */
-const DISCOVERED_TOOLS_PATTERN = /Found \d+ deferred tool\(s\): ([^.]+)\./
+const DISCOVERED_TOOLS_PATTERN = /^Found \d+ deferred tool\(s\): (.+)\.$/m
 
 /**
  * Extract tool names from ToolSearchTool text output.
- * Format: "Found N deferred tool(s): ToolA, ToolB. ..."
+ * Format: "Found N deferred tool(s): ToolA, ToolB.\n..."
  */
 function extractToolNamesFromText(text: string): string[] {
   const match = DISCOVERED_TOOLS_PATTERN.exec(text)
@@ -498,6 +499,18 @@ export function extractDiscoveredToolNames(messages: Message[]): Set<string> {
         for (const name of carried) discoveredTools.add(name)
         carriedFromBoundary += carried.length
       }
+      continue
+    }
+
+    // Deferred-tools-delta attachments announce tools that the model should
+    // see as available. Include their addedNames so the filter in claude.ts
+    // keeps the corresponding tool schemas in the API request.
+    if (
+      msg.type === 'attachment' &&
+      (msg as any).attachment?.type === 'deferred_tools_delta'
+    ) {
+      const added: string[] = (msg as any).attachment.addedNames ?? []
+      for (const name of added) discoveredTools.add(name)
       continue
     }
 

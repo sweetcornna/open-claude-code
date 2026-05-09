@@ -53,7 +53,6 @@ import {
 import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
 import {
   isToolSearchEnabled,
-  extractDiscoveredToolNames,
   isDeferredToolsDeltaEnabled,
 } from '../../../utils/toolSearch.js'
 import {
@@ -213,17 +212,18 @@ export async function* queryModelOpenAI(
     }
 
     // 5. Filter tools (similar to Anthropic path)
+    // Never include deferred tools in the API tools array — they are invoked
+    // via ExecuteExtraTool which looks them up from the global tool registry
+    // at runtime. Keeping the tools array stable preserves the prompt cache.
     let filteredTools = tools
     if (useToolSearch && deferredToolNames.size > 0) {
-      const discoveredToolNames = extractDiscoveredToolNames(messages)
-
       filteredTools = tools.filter(tool => {
         // Always include non-deferred tools
         if (!deferredToolNames.has(tool.name)) return true
         // Always include ToolSearchTool (so it can discover more tools)
         if (toolMatchesName(tool, TOOL_SEARCH_TOOL_NAME)) return true
-        // Only include deferred tools that have been discovered
-        return discoveredToolNames.has(tool.name)
+        // All other deferred tools are excluded — use ExecuteExtraTool instead
+        return false
       })
     }
 

@@ -184,7 +184,6 @@ import {
   type ThinkingConfig,
 } from 'src/utils/thinking.js'
 import {
-  extractDiscoveredToolNames,
   isDeferredToolsDeltaEnabled,
   isToolSearchEnabled,
 } from 'src/utils/toolSearch.js'
@@ -1186,28 +1185,24 @@ async function* queryModel(
     useToolSearch = false
   }
 
-  // Filter out ToolSearchTool if tool search is not enabled for this model
-  // ToolSearchTool returns tool_reference blocks which unsupported models can't handle
+  // Dynamic tool loading: filter deferred tools that haven't been discovered yet
   let filteredTools: Tools
 
-  // canDefer is true when the model supports defer_loading.
   // Deferred tools that haven't been discovered are filtered out from the API
   // request — their schemas are only included after ToolSearch discovers them.
-  // With defer_loading, we only include discovered tools to save prompt tokens.
 
   if (useToolSearch) {
-    // Dynamic tool loading: Only include deferred tools that have been discovered
-    // via tool_reference blocks in the message history. This eliminates the need
-    // to predeclare all deferred tools upfront and removes limits on tool quantity.
-    const discoveredToolNames = extractDiscoveredToolNames(messages)
-
+    // Never include deferred tools in the API tools array — they are invoked
+    // via ExecuteExtraTool which looks them up from the global tool registry
+    // at runtime. Keeping the tools array stable preserves the prompt cache
+    // across turns (discovered tools no longer bloat the tools JSON).
     filteredTools = tools.filter(tool => {
-      // Always include non-deferred tools
+      // Always include non-deferred tools (core tools)
       if (!deferredToolNames.has(tool.name)) return true
       // Always include ToolSearchTool (so it can discover more tools)
       if (toolMatchesName(tool, TOOL_SEARCH_TOOL_NAME)) return true
-      // Only include deferred tools that have been discovered
-      return discoveredToolNames.has(tool.name)
+      // All other deferred tools are excluded — use ExecuteExtraTool instead
+      return false
     })
   } else {
     filteredTools = tools.filter(
@@ -1284,11 +1279,8 @@ async function* queryModel(
   )
 
   if (useToolSearch) {
-    const includedDeferredTools = count(filteredTools, t =>
-      deferredToolNames.has(t.name),
-    )
     logForDebugging(
-      `Dynamic tool loading: ${includedDeferredTools}/${deferredToolNames.size} deferred tools included`,
+      `Dynamic tool loading: 0/${deferredToolNames.size} deferred tools in API tools array (all via ExecuteExtraTool)`,
     )
   }
 
