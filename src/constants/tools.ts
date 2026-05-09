@@ -38,6 +38,8 @@ import {
   CRON_DELETE_TOOL_NAME,
   CRON_LIST_TOOL_NAME,
 } from '@claude-code-best/builtin-tools/tools/ScheduleCronTool/prompt.js'
+import { LOCAL_MEMORY_RECALL_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/LocalMemoryRecallTool/constants.js'
+import { VAULT_HTTP_FETCH_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/VaultHttpFetchTool/constants.js'
 
 export const ALL_AGENT_DISALLOWED_TOOLS = new Set([
   TASK_OUTPUT_TOOL_NAME,
@@ -49,6 +51,14 @@ export const ALL_AGENT_DISALLOWED_TOOLS = new Set([
   TASK_STOP_TOOL_NAME,
   // Prevent recursive workflow execution inside subagents.
   ...(feature('WORKFLOW_SCRIPTS') ? [WORKFLOW_TOOL_NAME] : []),
+  // LOCAL-WIRING PR-1: keep local-memory recall on the main thread only.
+  // Cross-session user notes shouldn't be siphoned by spawned subagents.
+  // Layer 2 of the gate (fork path useExactTools) is enforced separately
+  // by filterParentToolsForFork in src/utils/agentToolFilter.ts.
+  LOCAL_MEMORY_RECALL_TOOL_NAME,
+  // LOCAL-WIRING PR-2: vault HTTP fetch is even more sensitive (touches
+  // user secrets). Same two-layer gate applies — keep main thread only.
+  VAULT_HTTP_FETCH_TOOL_NAME,
 ])
 
 export const CUSTOM_AGENT_DISALLOWED_TOOLS = new Set([
