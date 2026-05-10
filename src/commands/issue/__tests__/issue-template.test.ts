@@ -202,9 +202,9 @@ function createTemplateInCwd(files: Record<string, string>): string {
   for (const [name, content] of Object.entries(files)) {
     writeFileSync(join(templateDir, name), content)
   }
-  // Track the .github dir for cleanup (remove whole .github if it didn't exist)
-  const githubDir = join(realCwd, '.github')
-  createdTemplatePath = githubDir
+  // Track the ISSUE_TEMPLATE dir for cleanup — never delete the whole .github/
+  // as it may contain workflows, settings, or other project config.
+  createdTemplatePath = templateDir
   return templateDir
 }
 
