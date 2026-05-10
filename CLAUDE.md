@@ -82,11 +82,11 @@ bun run docs:dev
 - **Vendor 路径解析**: 构建后 chunk 文件位于 `dist/` 或 `dist/chunks/` 下，vendor 二进制在 `dist/vendor/`。`src/utils/ripgrep.ts` 和 `packages/audio-capture-napi/src/index.ts` 均通过 `import.meta.url` 路径中 `lastIndexOf('dist')` 定位 dist 根目录，再拼接 `vendor/` 子路径，确保不同构建产物层级下路径一致。
 - **Dev mode**: `scripts/dev.ts` 通过 Bun `-d` flag 注入 `MACRO.*` defines，运行 `src/entrypoints/cli.tsx`。默认启用全部 feature。
 - **Module system**: ESM (`"type": "module"`), TSX with `react-jsx` transform.
-- **Monorepo**: Bun workspaces — 15 个 workspace packages + 若干辅助目录 in `packages/` resolved via `workspace:*`。
+- **Monorepo**: Bun workspaces — 17 个 workspace packages + 若干辅助目录 in `packages/` resolved via `workspace:*`。
 - **Lint/Format**: Biome (`biome.json`)。覆盖 `src/`、`scripts/`、`packages/` 全项目（含 `packages/@ant/`）。`bun run lint` / `bun run lint:fix` / `bun run format` / `bun run check` / `bun run check:fix`。42 条规则因 decompiled 代码被关闭，仅保留 `recommended` 基线。
 - **Pre-commit**: husky + lint-staged。提交时自动对暂存文件执行 `biome check --fix`（TS/JS）和 `biome format --write`（JSON）。
 - **CI Lint**: `ci.yml` 在依赖安装后、类型检查前执行 `bunx biome ci .`，lint 或格式化不达标则 CI 失败。
-- **Defines**: 集中管理在 `scripts/defines.ts`。当前版本 `2.1.888`。
+- **Defines**: 集中管理在 `scripts/defines.ts`。当前版本 `2.2.1`。
 - **CI**: GitHub Actions — `ci.yml`（lint + 构建 + 测试）、`release-rcs.yml`（RCS 发布）、`update-contributors.yml`（自动更新贡献者）。
 
 ### Entry & Bootstrap
@@ -104,7 +104,7 @@ bun run docs:dev
    - `environment-runner` / `self-hosted-runner` — BYOC runner
    - `--tmux` + `--worktree` 组合
    - 默认路径：加载 `main.tsx` 启动完整 CLI
-2. **`src/main.tsx`** (~6981 行) — Commander.js CLI definition。注册大量 subcommands：`mcp` (serve/add/remove/list...)、`server`、`ssh`、`open`、`auth`、`plugin`、`agents`、`auto-mode`、`doctor`、`update` 等。主 `.action()` 处理器负责权限、MCP、会话恢复、REPL/Headless 模式分发。
+2. **`src/main.tsx`** (~5674 行) — Commander.js CLI definition。注册大量 subcommands：`mcp` (serve/add/remove/list...)、`server`、`ssh`、`open`、`auth`、`plugin`、`agents`、`auto-mode`、`doctor`、`update` 等。主 `.action()` 处理器负责权限、MCP、会话恢复、REPL/Headless 模式分发。
 3. **`src/entrypoints/init.ts`** — One-time initialization (telemetry, config, trust dialog)。
 
 ### Core Loop
@@ -123,17 +123,18 @@ bun run docs:dev
 
 - **`src/Tool.ts`** — Tool interface definition (`Tool` type) and utilities (`findToolByName`, `toolMatchesName`).
 - **`src/tools.ts`** — Tool registry. Assembles the tool list; tools are imported from `@claude-code-best/builtin-tools` package. Some tools are conditionally loaded via `feature()` flags or `process.env.USER_TYPE`.
-- **`src/constants/tools.ts`** — `CORE_TOOLS` 白名单常量（约 29 个核心工具名），用于 `isDeferredTool` 白名单制判定。
-- **`packages/builtin-tools/src/tools/`** — 59 个子目录（含 shared/testing 等工具目录），通过 `@claude-code-best/builtin-tools` 包导出。主要分类：
+- **`src/constants/tools.ts`** — `CORE_TOOLS` 白名单常量（38 个核心工具名），用于 `isDeferredTool` 白名单制判定。
+- **`packages/builtin-tools/src/tools/`** — 60 个工具目录（含 shared/testing 等工具目录），通过 `@claude-code-best/builtin-tools` 包导出。主要分类：
   - **文件操作**: FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool
   - **Shell/执行**: BashTool, PowerShellTool, REPLTool
   - **Agent 系统**: AgentTool, TaskCreateTool, TaskUpdateTool, TaskListTool, TaskGetTool
   - **规划**: EnterPlanModeTool, ExitPlanModeV2Tool, VerifyPlanExecutionTool
   - **Web/MCP**: WebFetchTool, WebSearchTool, MCPTool, McpAuthTool
   - **调度**: CronCreateTool, CronDeleteTool, CronListTool
+  - **工具发现**: SearchExtraToolsTool, ExecuteExtraTool, SyntheticOutput（CORE_TOOLS，用于延迟工具按需加载）
   - **其他**: LSPTool, ConfigTool, SkillTool, EnterWorktreeTool, ExitWorktreeTool 等
 - **`src/tools/shared/`** / **`packages/builtin-tools/src/tools/shared/`** — Tool 共享工具函数。
-- **`src/services/searchExtraTools/`** — TF-IDF 工具索引模块（`toolIndex.ts`），为延迟工具提供语义搜索能力。复用 `localSearch.ts` 的 TF-IDF 算法函数（`computeWeightedTf`、`computeIdf`、`cosineSimilarity` 已导出）。修改这些函数时需同步检查工具索引测试。`SearchExtraToolsTool.mapToolResultToToolResultBlockParam` 新增可选第三个参数 `context?: { mainLoopModel?: string }`，用于判断当前模型是否支持 `tool_reference`。不支持时回退到文本输出，引导模型使用 ExecuteTool。调用方（`src/services/api/claude.ts` 的 tool_result 处理逻辑）需传入 context 参数。`prefetch.ts` 的 `extractQueryFromMessages` 复用了 `skillSearch/prefetch.ts` 的同名导出函数，修改 skill prefetch 的该函数时需同步检查工具预取行为。工具预取使用独立的 `discoveredToolsThisSession` Set，与 skill prefetch 的去重集合互不影响。
+- **`src/services/searchExtraTools/`** — TF-IDF 工具索引模块（`toolIndex.ts`），为延迟工具提供语义搜索能力。复用 `localSearch.ts` 的 TF-IDF 算法函数（`computeWeightedTf`、`computeIdf`、`cosineSimilarity` 已导出）。修改这些函数时需同步检查工具索引测试。`prefetch.ts` 的 `extractQueryFromMessages` 复用了 `skillSearch/prefetch.ts` 的同名导出函数，修改 skill prefetch 的该函数时需同步检查工具预取行为。工具预取使用独立的 `discoveredToolsThisSession` Set，与 skill prefetch 的去重集合互不影响。
 
 ### UI Layer (Ink)
 
@@ -168,18 +169,16 @@ bun run docs:dev
 | `packages/builtin-tools/` | 内置工具集（60 个 tool 实现，通过 `@claude-code-best/builtin-tools` 导出） |
 | `packages/agent-tools/` | Agent 工具集 |
 | `packages/acp-link/` | ACP 代理服务器（WebSocket → ACP agent 桥接） |
-| `packages/cc-knowledge/` | Claude Code 知识库（非 workspace 包） |
-| `packages/langfuse-dashboard/` | Langfuse 可观测性面板（非 workspace 包） |
 | `packages/mcp-client/` | MCP 客户端库 |
-| `packages/mcp-server/` | MCP 服务端库（非 workspace 包） |
 | `packages/remote-control-server/` | 自托管 Remote Control Server（Docker 部署，含 Web UI）— Web UI 已重构为 React + Vite + Radix UI，支持 ACP agent 接入 |
-| `packages/swarm/` | Swarm 解耦模块（非 workspace 包） |
-| `packages/shell/` | Shell 抽象（非 workspace 包） |
 | `packages/audio-capture-napi/` | 原生音频捕获（已恢复） |
 | `packages/color-diff-napi/` | 颜色差异计算（完整实现，11 tests） |
 | `packages/image-processor-napi/` | 图像处理（已恢复） |
 | `packages/modifiers-napi/` | 键盘修饰键检测（macOS FFI 实现） |
 | `packages/url-handler-napi/` | URL scheme 处理（环境变量 + CLI 参数读取） |
+| `packages/weixin/` | 微信集成（非 workspace 包） |
+
+辅助目录（无 package.json，非 workspace 包）: `langfuse-dashboard`（Langfuse 面板）、`shared-web-ui`（共享 Web UI 组件）、`highlight-code`（代码高亮）、`claude-pencil`（编辑器）、`vscode-ide-bridge`（VS Code 桥接）、`pokemon`（示例/测试）。
 
 ### Bridge / Remote Control
 
@@ -210,12 +209,18 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 **启用方式**: 环境变量 `FEATURE_<FLAG_NAME>=1`。例如 `FEATURE_BUDDY=1 bun run dev`。
 
-**Build 默认 features**（19 个，见 `build.ts`）:
+**Build 默认 features**（65+ 个，见 `build.ts` 中 `DEFAULT_BUILD_FEATURES`）:
 - 基础: `BUDDY`, `TRANSCRIPT_CLASSIFIER`, `BRIDGE_MODE`, `AGENT_TRIGGERS_REMOTE`, `CHICAGO_MCP`, `VOICE_MODE`
 - 统计/缓存: `SHOT_STATS`, `PROMPT_CACHE_BREAK_DETECTION`, `TOKEN_BUDGET`
 - P0 本地: `AGENT_TRIGGERS`, `ULTRATHINK`, `BUILTIN_EXPLORE_PLAN_AGENTS`, `LODESTONE`
 - P1 API 依赖: `EXTRACT_MEMORIES`, `VERIFICATION_AGENT`, `KAIROS_BRIEF`, `AWAY_SUMMARY`, `ULTRAPLAN`
-- P2: `DAEMON`
+- P2: `DAEMON`, `ACP`
+- 工作流: `WORKFLOW_SCRIPTS`, `HISTORY_SNIP`, `MONITOR_TOOL`, `KAIROS`
+- 多 worker: `COORDINATOR_MODE`, `BG_SESSIONS`, `TEMPLATES`
+- 连接器: `CONNECTOR_TEXT`, `COMMIT_ATTRIBUTION`, `DIRECT_CONNECT`
+- 实验性: `EXPERIMENTAL_SKILL_SEARCH`, `EXPERIMENTAL_SEARCH_EXTRA_TOOLS`
+- 模式: `POOR`, `SSH_REMOTE`
+- 已禁用: `CONTEXT_COLLAPSE`, `FORK_SUBAGENT`, `UDS_INBOX`, `LAN_PIPES`, `REVIEW_ARTIFACT`, `TEAMMEM`, `SKILL_LEARNING`
 
 **Dev mode 默认**: 全部启用（见 `scripts/dev.ts`）。
 
@@ -265,6 +270,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 | Voice Mode | Restored — Push-to-Talk 语音输入（需 Anthropic OAuth） |
 | OpenAI/Gemini/Grok 兼容层 | Restored |
 | Remote Control Server | Restored — 自托管 RCS + Web UI |
+| `packages/shell/`, `packages/swarm/`, `packages/mcp-server/`, `packages/cc-knowledge/` | Removed — 功能合并或废弃 |
 | Analytics / GrowthBook / Sentry | Empty implementations |
 | Magic Docs / LSP Server | Restored — Magic Docs 自动更新 + LSP 服务器管理器 |
 | Plugins / Marketplace | Restored — 插件安装/卸载/启用/禁用 + Marketplace 浏览 |
@@ -281,7 +287,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 - **框架**: `bun:test`（内置断言 + mock）
 - **单元测试**: 就近放置于 `src/**/__tests__/`，文件名 `<module>.test.ts`
-- **集成测试**: `tests/integration/` — 4 个文件（cli-arguments, context-build, message-pipeline, tool-chain）
+- **集成测试**: `tests/integration/` — 6 个文件（cli-arguments, context-build, message-pipeline, tool-chain, autonomy-lifecycle-user-flow, dependency-overrides）
 - **共享 mock/fixture**: `tests/mocks/`（api-responses, file-system, fixtures/）
 - **命名**: `describe("functionName")` + `test("behavior description")`，英文
 - **包测试**: `packages/` 下各包也有独立测试（如 `color-diff-napi` 11 tests）
