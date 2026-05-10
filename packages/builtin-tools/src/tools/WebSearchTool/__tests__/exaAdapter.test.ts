@@ -1,4 +1,12 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test'
+import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
+
+// Each test below calls `mock.module('axios', ...)` per-test. Re-register a
+// spread-real axios mock at end-of-file so the per-test stubs do not leak
+// into subsequent test files (mock.module is process-global, last-write-wins).
+afterAll(() => {
+  setupAxiosMock()
+})
 
 const _abortMock = () => ({
   AbortError: class AbortError extends Error {

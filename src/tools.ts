@@ -87,6 +87,8 @@ import { EnterPlanModeTool } from '@claude-code-best/builtin-tools/tools/EnterPl
 import { EnterWorktreeTool } from '@claude-code-best/builtin-tools/tools/EnterWorktreeTool/EnterWorktreeTool.js'
 import { ExitWorktreeTool } from '@claude-code-best/builtin-tools/tools/ExitWorktreeTool/ExitWorktreeTool.js'
 import { ConfigTool } from '@claude-code-best/builtin-tools/tools/ConfigTool/ConfigTool.js'
+import { LocalMemoryRecallTool } from '@claude-code-best/builtin-tools/tools/LocalMemoryRecallTool/LocalMemoryRecallTool.js'
+import { VaultHttpFetchTool } from '@claude-code-best/builtin-tools/tools/VaultHttpFetchTool/VaultHttpFetchTool.js'
 import { TaskCreateTool } from '@claude-code-best/builtin-tools/tools/TaskCreateTool/TaskCreateTool.js'
 import { TaskGetTool } from '@claude-code-best/builtin-tools/tools/TaskGetTool/TaskGetTool.js'
 import { TaskUpdateTool } from '@claude-code-best/builtin-tools/tools/TaskUpdateTool/TaskUpdateTool.js'
@@ -233,6 +235,8 @@ export function getAllBaseTools(): Tools {
     AskUserQuestionTool,
     SkillTool,
     EnterPlanModeTool,
+    LocalMemoryRecallTool,
+    VaultHttpFetchTool,
     ...(process.env.USER_TYPE === 'ant' ? [ConfigTool] : []),
     ...(process.env.USER_TYPE === 'ant' ? [TungstenTool] : []),
     ...(SuggestBackgroundPRTool ? [SuggestBackgroundPRTool] : []),

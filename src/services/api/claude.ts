@@ -20,6 +20,7 @@ import type {
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
+import { existsSync, unlinkSync } from 'node:fs'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
@@ -93,7 +94,10 @@ import {
   asSystemPrompt,
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
-import { cloneDeep } from 'lodash-es'
+import {
+  getBreakCacheMarkerPath,
+  getBreakCacheAlwaysPath,
+} from '../../commands/break-cache/index.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
 import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
 import {
@@ -507,30 +511,10 @@ export function getAPIMetadata() {
     }
   }
 
-  const deviceId = getOrCreateUserID()
-
-  // Third-party API providers (DeepSeek, etc.) validate user_id against
-  // ^[a-zA-Z0-9_-]+$ which rejects JSON strings containing {, ", :, etc.
-  // When using a non-Anthropic base URL, send only the device_id (hex string).
-  const baseUrl = process.env.ANTHROPIC_BASE_URL
-  const isThirdParty =
-    baseUrl &&
-    (() => {
-      try {
-        return new URL(baseUrl).host !== 'api.anthropic.com'
-      } catch {
-        return false
-      }
-    })()
-
-  if (isThirdParty) {
-    return { user_id: deviceId }
-  }
-
   return {
     user_id: jsonStringify({
       ...extra,
-      device_id: deviceId,
+      device_id: getOrCreateUserID(),
       // Only include OAuth account UUID when actively using OAuth authentication
       account_uuid: getOauthAccountInfo()?.accountUuid ?? '',
       session_id: getSessionId(),
@@ -1441,12 +1425,37 @@ async function* queryModel(
     ].filter(Boolean),
   )
 
+  // ── Break-cache integration ──
+  // If a one-time break-cache marker exists, or always-mode is on, append a
+  // unique ephemeral nonce comment to the system prompt so the prefix-cache
+  // hash changes for this request, forcing a cache miss.
+  {
+    const onceMarker = getBreakCacheMarkerPath()
+    const alwaysFlag = getBreakCacheAlwaysPath()
+    const shouldBreak = existsSync(onceMarker) || existsSync(alwaysFlag)
+    if (shouldBreak) {
+      const nonce = randomUUID()
+      systemPrompt = asSystemPrompt([
+        ...systemPrompt,
+        `<!-- cache-break nonce: ${nonce} -->`,
+      ])
+      // Only delete the once marker; the always flag persists until /break-cache off
+      if (existsSync(onceMarker)) {
+        try {
+          unlinkSync(onceMarker)
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+  }
+
   // Prepend system prompt block for easy API identification
   logAPIPrefix(systemPrompt)
 
   const enablePromptCaching =
     options.enablePromptCaching ?? getPromptCachingEnabled(options.model)
-  let system = buildSystemPromptBlocks(systemPrompt, enablePromptCaching, {
+  const system = buildSystemPromptBlocks(systemPrompt, enablePromptCaching, {
     skipGlobalCacheForSystemPrompt: needsToolBasedCacheMarker,
     querySource: options.querySource,
   })
@@ -1466,7 +1475,7 @@ async function* queryModel(
       model: advisorModel,
     } as unknown as BetaToolUnion)
   }
-  let allTools = [...toolSchemas, ...extraToolSchemas]
+  const allTools = [...toolSchemas, ...extraToolSchemas]
 
   const isFastMode =
     isFastModeEnabled() &&
@@ -1590,39 +1599,6 @@ async function* queryModel(
   const consumedCacheEdits = cachedMCEnabled ? consumePendingCacheEdits() : null
   const consumedPinnedEdits = cachedMCEnabled ? getPinnedCacheEdits() : []
 
-  // ---------------------------------------------------------------------------
-  // Serialization boundary: deep-clone heavy data so the closure below captures
-  // independent copies, not references to the originals. After this point the
-  // original variables (messagesForAPI, system, allTools) are nulled out so
-  // they can be GC'd even while the generator/closure is still alive (during
-  // long streaming responses or retry backoff).
-  // ---------------------------------------------------------------------------
-  const frozenMessages = addCacheBreakpoints(
-    messagesForAPI,
-    enablePromptCaching,
-    options.querySource,
-    cachedMCEnabled &&
-      getAPIProvider() === 'firstParty' &&
-      options.querySource === 'repl_main_thread',
-    consumedCacheEdits as any,
-    consumedPinnedEdits as any,
-    options.skipCacheWrite,
-  )
-  const frozenSystem = cloneDeep(system)
-  const frozenTools = cloneDeep(allTools)
-
-  // Pre-compute scalars that post-streaming code needs, so messagesForAPI
-  // can be released before streaming starts.
-  const preMessagesCount = messagesForAPI.length
-  const preMessagesTokenCount = tokenCountFromLastAPIResponse(messagesForAPI)
-
-  // Release originals for GC — the frozen* copies and pre-computed scalars
-  // are now the only references to this data inside the closure.
-  // After null-out, all downstream code uses frozen* or pre-computed scalars.
-  messagesForAPI = null!
-  system = null!
-  allTools = null!
-
   // Capture the betas sent in the last API request, including the ones that
   // were dynamically added, so we can log and send it to telemetry.
   let lastRequestBetas: string[] | undefined
@@ -1725,6 +1701,9 @@ async function* queryModel(
       clearAllThinking: false,
     })
 
+    const enablePromptCaching =
+      options.enablePromptCaching ?? getPromptCachingEnabled(retryContext.model)
+
     // Fast mode: header is latched session-stable (cache-safe), but
     // `speed='fast'` stays dynamic so cooldown still suppresses the actual
     // fast-mode request without changing the cache key.
@@ -1755,10 +1734,13 @@ async function* queryModel(
       }
     }
 
-    // Cache editing beta: header is latched session-stable.
-    // The useCachedMC gate (cache_edits body behavior) is baked into
-    // frozenMessages at the serialization boundary above, so this block
-    // only controls the beta header.
+    // Cache editing beta: header is latched session-stable; useCachedMC
+    // (controls cache_edits body behavior) stays live so edits stop when
+    // the feature disables but the header doesn't flip.
+    const useCachedMC =
+      cachedMCEnabled &&
+      getAPIProvider() === 'firstParty' &&
+      options.querySource === 'repl_main_thread'
     if (
       cacheEditingHeaderLatched &&
       cacheEditingBetaHeader &&
@@ -1787,9 +1769,17 @@ async function* queryModel(
 
     return {
       model: normalizeModelStringForAPI(options.model),
-      messages: frozenMessages,
-      system: frozenSystem,
-      tools: frozenTools,
+      messages: addCacheBreakpoints(
+        messagesForAPI,
+        enablePromptCaching,
+        options.querySource,
+        useCachedMC,
+        consumedCacheEdits as any,
+        consumedPinnedEdits as any,
+        options.skipCacheWrite,
+      ),
+      system,
+      tools: allTools,
       tool_choice: options.toolChoice,
       ...(useBetas && { betas: filteredBetas }),
       metadata: getAPIMetadata(),
@@ -1849,9 +1839,7 @@ async function* queryModel(
   let ttftMs = 0
   let partialMessage: BetaMessage | undefined
   const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
-  // Accumulate streaming deltas in arrays to avoid O(n²) string concatenation.
-  // Joined and assigned to contentBlock fields at content_block_stop.
-  const streamingDeltas = new Map<number, string[]>()
+  const textDeltas = new Map<number, string[]>()
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
   let stopReason: BetaStopReason | null = null
@@ -1950,6 +1938,7 @@ async function* queryModel(
     ttftMs = 0
     partialMessage = undefined
     contentBlocks.length = 0
+    textDeltas.clear()
     usage = EMPTY_USAGE
     stopReason = null
     isAdvisorInProgress = false
@@ -2106,6 +2095,7 @@ async function* queryModel(
                 }
                 break
               case 'text':
+                textDeltas.set(part.index, [])
                 contentBlocks[part.index] = {
                   ...part.content_block,
                   // awkwardly, the sdk sometimes returns text as part of a
@@ -2138,8 +2128,6 @@ async function* queryModel(
                 }
                 break
             }
-            // Initialize delta accumulator for this content block
-            streamingDeltas.set(part.index, [])
             break
           case 'content_block_delta': {
             const contentBlock = contentBlocks[part.index]
@@ -2169,9 +2157,8 @@ async function* queryModel(
                 })
                 throw new Error('Content block is not a connector_text block')
               }
-              streamingDeltas
-                .get(part.index)
-                ?.push(delta.connector_text as string)
+              ;(contentBlock as { connector_text: string }).connector_text +=
+                delta.connector_text
             } else {
               switch (delta.type) {
                 case 'citations_delta':
@@ -2201,9 +2188,7 @@ async function* queryModel(
                     })
                     throw new Error('Content block input is not a string')
                   }
-                  streamingDeltas
-                    .get(part.index)
-                    ?.push(delta.partial_json as string)
+                  contentBlock.input += delta.partial_json
                   break
                 case 'text_delta':
                   if (contentBlock.type !== 'text') {
@@ -2217,7 +2202,7 @@ async function* queryModel(
                     })
                     throw new Error('Content block is not a text block')
                   }
-                  streamingDeltas.get(part.index)?.push(delta.text!)
+                  textDeltas.get(part.index)?.push(delta.text!)
                   break
                 case 'signature_delta':
                   if (
@@ -2252,7 +2237,8 @@ async function* queryModel(
                     })
                     throw new Error('Content block is not a thinking block')
                   }
-                  streamingDeltas.get(part.index)?.push(delta.thinking!)
+                  ;(contentBlock as { thinking: string }).thinking +=
+                    delta.thinking
                   break
               }
             }
@@ -2284,31 +2270,11 @@ async function* queryModel(
               })
               throw new Error('Message not found')
             }
-            // Join accumulated streaming deltas into the contentBlock fields
-            // to avoid O(n²) string concatenation during streaming.
-            const deltas = streamingDeltas.get(part.index)
-            if (deltas && deltas.length > 0) {
-              const joined = deltas.join('')
-              switch (contentBlock.type) {
-                case 'text':
-                  ;(contentBlock as { text: string }).text = joined
-                  break
-                case 'thinking':
-                  ;(contentBlock as { thinking: string }).thinking = joined
-                  break
-                case 'tool_use':
-                case 'server_tool_use':
-                  contentBlock.input = joined
-                  break
-                default:
-                  if ((contentBlock.type as string) === 'connector_text') {
-                    ;(
-                      contentBlock as { connector_text: string }
-                    ).connector_text = joined
-                  }
-                  break
-              }
-              streamingDeltas.delete(part.index)
+            // Merge accumulated text deltas into the content block (O(n) join instead of O(n^2) +=)
+            const deltas = textDeltas.get(part.index)
+            if (deltas) {
+              ;(contentBlock as { text: string }).text = deltas.join('')
+              textDeltas.delete(part.index)
             }
             const m: AssistantMessage = {
               message: {
@@ -2864,8 +2830,8 @@ async function* queryModel(
         logAPIError({
           error,
           model: errorModel,
-          messageCount: preMessagesCount,
-          messageTokens: preMessagesTokenCount,
+          messageCount: messagesForAPI.length,
+          messageTokens: tokenCountFromLastAPIResponse(messagesForAPI),
           durationMs: Date.now() - start,
           durationMsIncludingRetries: Date.now() - startIncludingRetries,
           attempt: attemptNumber,
@@ -2886,10 +2852,7 @@ async function* queryModel(
 
         yield getAssistantMessageFromError(error, errorModel, {
           messages,
-          messagesForAPI: frozenMessages as unknown as (
-            | UserMessage
-            | AssistantMessage
-          )[],
+          messagesForAPI,
         })
         releaseStreamResources()
         return
@@ -2923,8 +2886,8 @@ async function* queryModel(
       logAPIError({
         error,
         model: errorModel,
-        messageCount: preMessagesCount,
-        messageTokens: preMessagesTokenCount,
+        messageCount: messagesForAPI.length,
+        messageTokens: tokenCountFromLastAPIResponse(messagesForAPI),
         durationMs: Date.now() - start,
         durationMsIncludingRetries: Date.now() - startIncludingRetries,
         attempt: attemptNumber,
@@ -2947,10 +2910,7 @@ async function* queryModel(
 
       yield getAssistantMessageFromError(error, errorModel, {
         messages,
-        messagesForAPI: frozenMessages as unknown as (
-          | UserMessage
-          | AssistantMessage
-        )[],
+        messagesForAPI,
       })
       releaseStreamResources()
       return
@@ -3006,19 +2966,14 @@ async function* queryModel(
   // Precompute scalars so the fire-and-forget .then() closure doesn't pin the
   // full messagesForAPI array (the entire conversation up to the context window
   // limit) until getToolPermissionContext() resolves.
-  // Note: messagesForAPI was nulled above (serialization boundary), so we use
-  // the pre-computed scalars captured before the null-out.
-  const logMessageCount = preMessagesCount
-  const logMessageTokens = preMessagesTokenCount
+  const logMessageCount = messagesForAPI.length
+  const logMessageTokens = tokenCountFromLastAPIResponse(messagesForAPI)
 
   // Record LLM observation in Langfuse (no-op if not configured)
   recordLLMObservation(options.langfuseTrace ?? null, {
     model: resolvedModel,
     provider: getAPIProvider(),
-    input: convertMessagesToLangfuse(
-      frozenMessages as Parameters<typeof convertMessagesToLangfuse>[0],
-      systemPrompt,
-    ),
+    input: convertMessagesToLangfuse(messagesForAPI, systemPrompt),
     output: convertOutputToLangfuse(newMessages),
     usage: {
       input_tokens: usage.input_tokens,

@@ -15,9 +15,8 @@ import commitPushPr from './commands/commit-push-pr.js'
 import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
-import cost from './commands/cost/index.js'
+// cost/index.ts re-exports usage — /cost is now an alias of /usage
 import diff from './commands/diff/index.js'
-import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
 import help from './commands/help/index.js'
@@ -30,7 +29,9 @@ import login from './commands/login/index.js'
 import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
-import breakCache from './commands/break-cache/index.js'
+import breakCache, {
+  breakCacheNonInteractive,
+} from './commands/break-cache/index.js'
 import mcp from './commands/mcp/index.js'
 import mobile from './commands/mobile/index.js'
 import onboarding from './commands/onboarding/index.js'
@@ -45,12 +46,13 @@ import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
 import tasks from './commands/tasks/index.js'
 import teleport from './commands/teleport/index.js'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const agentsPlatform =
-  process.env.USER_TYPE === 'ant'
-    ? require('./commands/agents-platform/index.js').default
-    : null
-/* eslint-enable @typescript-eslint/no-require-imports */
+import agentsPlatform from './commands/agents-platform/index.js'
+import scheduleCommand from './commands/schedule/index.js'
+import memoryStoresCommand from './commands/memory-stores/index.js'
+import skillStoreCommand from './commands/skill-store/index.js'
+import vaultCommand from './commands/vault/index.js'
+import localVaultCommand from './commands/local-vault/index.js'
+import localMemoryCommand from './commands/local-memory/index.js'
 import securityReview from './commands/security-review.js'
 import bughunter from './commands/bughunter/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
@@ -179,6 +181,7 @@ import mockLimits from './commands/mock-limits/index.js'
 import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
 import summary from './commands/summary/index.js'
+import recap from './commands/recap/index.js'
 import skillLearning from './commands/skill-learning/index.js'
 import skillSearch from './commands/skill-search/index.js'
 import {
@@ -188,6 +191,7 @@ import {
 import antTrace from './commands/ant-trace/index.js'
 import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
+import tui, { tuiNonInteractive } from './commands/tui/index.js'
 import chrome from './commands/chrome/index.js'
 import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
@@ -227,7 +231,7 @@ import {
 import rateLimitOptions from './commands/rate-limit-options/index.js'
 import statusline from './commands/statusline.js'
 import effort from './commands/effort/index.js'
-import stats from './commands/stats/index.js'
+// stats/index.ts re-exports usage — /stats is now an alias of /usage
 // insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
 // shim defers the heavy module until /insights is actually invoked.
 const usageReport: Command = {
@@ -265,32 +269,19 @@ export type {
 export { getCommandName, isCommandEnabled } from './types/command.js'
 
 // Commands that get eliminated from the external build
+// Public-but-previously-locked commands moved to the main COMMANDS array below:
+//   commit, commitPushPr, bridgeKick, initVerifiers, autofixPr, onboarding
+// Remaining items here are truly Anthropic-internal (admin/diagnostics endpoints
+// with no fork backend), so they only show up under USER_TYPE=ant.
 export const INTERNAL_ONLY_COMMANDS = [
   backfillSessions,
-  breakCache,
   bughunter,
-  commit,
-  commitPushPr,
-  ctx_viz,
   goodClaude,
-  issue,
-  initVerifiers,
   mockLimits,
-  bridgeKick,
-  version,
-  ...(subscribePr ? [subscribePr] : []),
   resetLimits,
   resetLimitsNonInteractive,
-  onboarding,
-  share,
-  teleport,
   antTrace,
-  perfIssue,
-  env,
   oauthRefresh,
-  debugToolCall,
-  agentsPlatform,
-  autofixPr,
 ].filter(Boolean)
 
 // Declared as a function so that we don't run this until getCommands is called,
@@ -298,6 +289,13 @@ export const INTERNAL_ONLY_COMMANDS = [
 const COMMANDS = memoize((): Command[] => [
   addDir,
   advisor,
+  agentsPlatform,
+  scheduleCommand,
+  memoryStoresCommand,
+  skillStoreCommand,
+  vaultCommand,
+  localVaultCommand,
+  localMemoryCommand,
   autonomy,
   provider,
   agents,
@@ -312,7 +310,6 @@ const COMMANDS = memoize((): Command[] => [
   desktop,
   context,
   contextNonInteractive,
-  cost,
   diff,
   doctor,
   effort,
@@ -341,7 +338,6 @@ const COMMANDS = memoize((): Command[] => [
   resume,
   session,
   skills,
-  stats,
   status,
   statusline,
   stickers,
@@ -398,8 +394,27 @@ const COMMANDS = memoize((): Command[] => [
   ...(jobCmd ? [jobCmd] : []),
   ...(forceSnip ? [forceSnip] : []),
   summary,
+  recap,
   skillLearning,
   skillSearch,
+  autofixPr,
+  commit,
+  commitPushPr,
+  bridgeKick,
+  version,
+  ...(subscribePr ? [subscribePr] : []),
+  initVerifiers,
+  env,
+  debugToolCall,
+  perfIssue,
+  breakCache,
+  breakCacheNonInteractive,
+  issue,
+  share,
+  teleport,
+  tui,
+  tuiNonInteractive,
+  onboarding,
   ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
     ? INTERNAL_ONLY_COMMANDS
     : []),
@@ -684,8 +699,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   theme, // Change terminal theme
   color, // Change agent color
   vim, // Toggle vim mode
-  cost, // Show session cost (local cost tracking)
-  usage, // Show usage info
+  usage, // Show session cost, plan usage, and activity stats (/cost and /stats are aliases)
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback
@@ -713,7 +727,7 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
   [
     compact, // Shrink context — useful mid-session from a phone
     clear, // Wipe transcript
-    cost, // Show session cost
+    usage, // Show session cost (/cost alias)
     summary, // Summarize conversation
     releaseNotes, // Show changelog
     files, // List tracked files
