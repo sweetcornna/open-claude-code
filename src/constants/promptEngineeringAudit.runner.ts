@@ -424,8 +424,8 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
 
     test('includes anti-postamble guidance', async () => {
       const prompt = await getFullPrompt()
-      expect(prompt).toContain('Do not restate')
-      expect(prompt).toContain('the user can read the diff')
+      expect(prompt).toContain("don't restate")
+      expect(prompt).toContain('report the outcome')
     })
 
     test('discourages offering unchosen approach', async () => {
@@ -505,19 +505,18 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
   describe('#11 Formatting discipline', () => {
     test('prompt contains prose-first guidance (existing)', async () => {
       const prompt = await getFullPrompt()
-      expect(prompt).toContain('direct answer in prose')
+      expect(prompt).toContain('prose paragraphs')
     })
 
     test('discourages over-formatting', async () => {
       const prompt = await getFullPrompt()
       expect(prompt).toContain('over-formatting')
-      expect(prompt).toContain('natural language')
+      expect(prompt).toContain('simple answers')
     })
 
     test('bullet points must be 1-2 sentences, not fragments', async () => {
       const prompt = await getFullPrompt()
       expect(prompt).toContain('1-2 sentences')
-      expect(prompt).toContain('not sentence fragments')
     })
   })
 
@@ -613,7 +612,8 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
   describe('#15 Conversation end respect', () => {
     test('discourages "anything else?" appendages', async () => {
       const prompt = await getFullPrompt()
-      expect(prompt).toContain('the user will ask if they need more')
+      expect(prompt).toContain('Do not append')
+      expect(prompt).toContain('Is there anything else?')
     })
   })
 
@@ -656,7 +656,7 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
     test('no-machinery-narration: describe in user terms', async () => {
       const prompt = await getFullPrompt()
       expect(prompt).toContain("Don't narrate internal machinery")
-      expect(prompt).toContain('Describe the action in user terms')
+      expect(prompt).toContain('describe the action in user terms')
     })
 
     test('tool_discovery: search before saying unavailable', async () => {
@@ -669,7 +669,7 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
 
     test('false-claims mitigation: report outcomes faithfully', async () => {
       const prompt = await getFullPrompt()
-      expect(prompt).toContain('Report outcomes faithfully')
+      expect(prompt).toContain('report the outcome')
     })
 
     test('CYBER_RISK_INSTRUCTION: allows security testing', async () => {
