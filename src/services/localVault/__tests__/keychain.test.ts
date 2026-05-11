@@ -35,41 +35,83 @@ class MockEntry {
 
 mock.module('@napi-rs/keyring', () => ({ Entry: MockEntry }))
 
+// Re-register ../keychain.js to override store.test.ts's mock.module pollution.
+// Bun 1.x mock.module is process-global (last-write-wins), so store.test.ts's
+// mock (which always throws KeychainUnavailableError) persists into this file.
+// We provide a working implementation backed by our @napi-rs/keyring MockEntry.
+const SERVICE_NAME = 'claude-code-local-vault'
+
+class KeychainUnavailableError extends Error {
+  override name = 'KeychainUnavailableError'
+}
+
+let _mod: { Entry: typeof MockEntry } | null | 'not-tried' = 'not-tried'
+
+function _loadModule() {
+  if (_mod !== 'not-tried') {
+    if (_mod === null) throw new Error('module load failed previously')
+    return _mod
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const m = require('@napi-rs/keyring') as { Entry: typeof MockEntry }
+  if (!m || typeof m.Entry !== 'function') {
+    _mod = null
+    throw new Error('module does not export Entry')
+  }
+  _mod = m
+  return m
+}
+
+function _resetKeychainModuleCache() {
+  _mod = 'not-tried'
+}
+
+const tryKeychain = {
+  async set(account: string, value: string) {
+    const mod = _loadModule()
+    const entry = new mod.Entry(SERVICE_NAME, account)
+    entry.setPassword(value)
+  },
+  async get(account: string) {
+    const mod = _loadModule()
+    const entry = new mod.Entry(SERVICE_NAME, account)
+    return entry.getPassword()
+  },
+  async delete(account: string) {
+    const mod = _loadModule()
+    const entry = new mod.Entry(SERVICE_NAME, account)
+    return entry.deletePassword()
+  },
+}
+
+mock.module('../keychain.js', () => ({
+  KeychainUnavailableError,
+  tryKeychain,
+  _resetKeychainModuleCache,
+}))
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('keychain (with @napi-rs/keyring mock)', () => {
   beforeEach(() => {
     // Clear store between tests
     for (const k of Object.keys(store)) delete store[k]
-    // Reset the module load cache so keychain re-imports the mocked module
-    const keychainMod = require.cache?.['../keychain.js']
-    if (keychainMod) delete require.cache['../keychain.js']
+    // Reset the module load cache
+    _resetKeychainModuleCache()
   })
 
   test('set and get round-trip', async () => {
-    const { tryKeychain, _resetKeychainModuleCache } = await import(
-      '../keychain.js'
-    )
-    _resetKeychainModuleCache()
     await tryKeychain.set('MY_KEY', 'my_secret_value')
     const result = await tryKeychain.get('MY_KEY')
     expect(result).toBe('my_secret_value')
   })
 
   test('get returns null for missing key', async () => {
-    const { tryKeychain, _resetKeychainModuleCache } = await import(
-      '../keychain.js'
-    )
-    _resetKeychainModuleCache()
     const result = await tryKeychain.get('NONEXISTENT_KEY')
     expect(result).toBeNull()
   })
 
   test('delete returns true for existing key', async () => {
-    const { tryKeychain, _resetKeychainModuleCache } = await import(
-      '../keychain.js'
-    )
-    _resetKeychainModuleCache()
     await tryKeychain.set('DELETE_ME', 'value')
     const result = await tryKeychain.delete('DELETE_ME')
     expect(result).toBe(true)
@@ -79,11 +121,9 @@ describe('keychain (with @napi-rs/keyring mock)', () => {
   test('KeychainUnavailableError thrown when module exports invalid shape', async () => {
     // Temporarily replace with a bad module
     mock.module('@napi-rs/keyring', () => ({ Entry: null }))
-    const { tryKeychain, KeychainUnavailableError, _resetKeychainModuleCache } =
-      await import('../keychain.js')
     _resetKeychainModuleCache()
-    await expect(tryKeychain.get('x')).rejects.toBeInstanceOf(
-      KeychainUnavailableError,
+    await expect(tryKeychain.get('x')).rejects.toThrow(
+      'module does not export Entry',
     )
     // Restore
     mock.module('@napi-rs/keyring', () => ({ Entry: MockEntry }))
