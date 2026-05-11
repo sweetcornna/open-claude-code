@@ -1,8 +1,26 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
+import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
 import {
   isOpenAIThinkingEnabled,
   buildOpenAIRequestBody,
 } from '../requestBody.js'
+
+// Re-register envUtils.js with correct isEnvDefinedFalsy and isEnvTruthy to
+// override pollution from other test files (debug-tool-call, issue,
+// break-cache, MagicDocs/prompts, SessionMemory/prompts, cacheStats) that
+// mock this module without exporting isEnvDefinedFalsy.
+mock.module('src/utils/envUtils.js', () => ({
+  isEnvTruthy: (v: string | boolean | undefined): boolean => {
+    if (!v) return false
+    if (typeof v === 'boolean') return v
+    return ['1', 'true', 'yes', 'on'].includes(v.toLowerCase().trim())
+  },
+  isEnvDefinedFalsy: (v: string | boolean | undefined): boolean => {
+    if (v === undefined) return false
+    if (typeof v === 'boolean') return !v
+    if (!v) return false
+    return ['0', 'false', 'no', 'off'].includes(v.toLowerCase().trim())
+  },
+}))
 
 describe('isOpenAIThinkingEnabled', () => {
   const originalEnv = {

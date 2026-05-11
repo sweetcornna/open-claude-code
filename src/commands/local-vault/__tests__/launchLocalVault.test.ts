@@ -7,9 +7,30 @@ import { logMock } from '../../../../tests/mocks/log.js'
 mock.module('src/utils/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
-// No keychain mock here — the real store falls back to encrypted file when
-// @napi-rs/keyring is not installed (which it is not in this environment).
-// This exercises the full file-fallback path without cross-test module pollution.
+// Re-register ../keychain.js to override pollution from store.test.ts (which
+// mocks keychain as always-throwing) and keychain.test.ts (which mocks it with
+// an in-memory MockEntry). Force KeychainUnavailableError so the store always
+// uses the encrypted-file fallback path.
+class KeychainUnavailableError extends Error {
+  override name = 'KeychainUnavailableError'
+}
+
+const keychainUnavailable = async (): Promise<never> => {
+  throw new KeychainUnavailableError('test: keychain mocked as unavailable')
+}
+
+mock.module('../../../services/localVault/keychain.js', () => ({
+  KeychainUnavailableError,
+  tryKeychain: {
+    set: keychainUnavailable,
+    get: keychainUnavailable,
+    delete: keychainUnavailable,
+    list: keychainUnavailable,
+    _addToIndex: keychainUnavailable,
+    _removeFromIndex: keychainUnavailable,
+  },
+  _resetKeychainModuleCache: () => {},
+}))
 
 let callLocalVault: typeof import('../launchLocalVault.js').callLocalVault
 
