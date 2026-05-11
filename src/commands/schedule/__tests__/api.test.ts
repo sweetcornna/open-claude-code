@@ -78,9 +78,6 @@ axiosHandle.stubs.delete = axiosDeleteMock
 axiosHandle.stubs.isAxiosError = axiosIsAxiosError
 
 // ── Lazy import after mocks ─────────────────────────────────────────────────
-// Use the src/ alias path (same canonical key used in launchSchedule.test.ts mock)
-// so that if launchSchedule.test.ts runs first and replaces the mock, this file's
-// own beforeAll re-registers the real implementation under that same key.
 let listTriggers: typeof import('../triggersApi.js').listTriggers
 let getTrigger: typeof import('../triggersApi.js').getTrigger
 let createTrigger: typeof import('../triggersApi.js').createTrigger

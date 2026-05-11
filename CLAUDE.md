@@ -314,6 +314,48 @@ mock.module("src/utils/debug.ts", debugMock);
 
 路径规则：统一用 `.ts` 扩展名 + `src/*` 别名路径，禁止双重 mock 同一模块。
 
+#### 跨文件 mock 污染（process-global `mock.module`）
+
+**Bun 的 `mock.module` 是进程全局的（last-write-wins），不是 per-file 隔离的。** 一个测试文件的 `mock.module` 会污染同一进程中所有其他测试文件的 `require`/`import`。
+
+**关键事实（Bun 1.x 实测验证）：**
+- 测试文件执行顺序**不是严格字母序**，不要假设文件 A 一定在文件 B 之前执行。
+- `mock.module` 在 `beforeAll` 内部调用时**不会被提升**（hoist），但仍会污染后续加载的文件。
+- `require()` 和 `import()` 共享同一模块注册表，`mock.module` 对两者都生效。
+- 一个模块一旦被某个文件的 `mock.module` 替换，同一进程中所有后续 `require`/`import` 都会返回 mock 值，即使调用方使用不同的 specifier 路径。
+
+**核心规则：不要 mock 被测模块的上层业务模块。**
+
+错误做法（会污染同目录的 `api.test.ts`）：
+```ts
+// launchSchedule.test.ts — 直接 mock 源 API 模块 ❌
+mock.module('src/commands/schedule/triggersApi.js', () => ({
+  listTriggers: listTriggersMock,
+  // ...
+}))
+```
+
+正确做法（mock 底层 HTTP 层，不污染业务模块）：参考 `launchSkillStore.test.ts`、`launchVault.test.ts` 的模式。
+```ts
+// launchSchedule.test.ts — mock axios 而非 triggersApi ✅
+import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
+
+const axiosHandle = setupAxiosMock()
+axiosHandle.stubs.get = axiosGetMock
+axiosHandle.stubs.post = axiosPostMock
+
+beforeAll(() => { axiosHandle.useStubs = true })
+afterAll(() => { axiosHandle.useStubs = false })
+```
+
+**判断标准：** 如果目录下同时有 `launch*.test.ts`（集成测试）和 `api.test.ts`（回归测试），`launch*.test.ts` 必须 mock axios 而非源 API 模块。`api.test.ts` 需要测试真实 API 模块的 HTTP 方法/URL/错误处理逻辑，被 mock 后就无法测试。
+
+**排查 mock 污染的方法：**
+1. 单独运行可疑文件确认其通过：`bun test path/to/suspect.test.ts`
+2. 与同目录其他文件一起运行定位污染源：`bun test path/to/__tests__/`
+3. 在两个文件中各加 `console.error('[file] milestone')` 追踪实际执行顺序
+4. 检查 `mock.module` 的 specifier 是否与同目录其他测试的 `require`/`import` 路径解析到同一模块
+
 ### 类型检查
 
 项目使用 TypeScript strict 模式，**tsc 必须零错误**。每次修改后运行：
