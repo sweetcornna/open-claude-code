@@ -1396,7 +1396,7 @@ async function* queryModel(
       messagesForAPI = [
         ...messagesForAPI,
         createUserMessage({
-          content: `<system-reminder>\n<available-deferred-tools>\n${deferredToolList}\n</available-deferred-tools>\nTo invoke any tool listed above, use ExecuteExtraTool with {"tool_name": "<name>", "params": {...}}. This is the ONLY way to call deferred tools — do not read source code or analyze implementation, just call ExecuteExtraTool directly.\n</system-reminder>`,
+          content: `<system-reminder>\n<available-deferred-tools>\n${deferredToolList}\n</available-deferred-tools>\nIMPORTANT: These tools are deferred-loading. You MUST first discover a tool via SearchExtraTools before invoking it with ExecuteExtraTool. Do NOT call ExecuteExtraTool directly — it will fail if the tool has not been discovered.\n\nSteps:\n1. SearchExtraTools("select:<tool_name>") — discover the tool and its schema\n2. ExecuteExtraTool({"tool_name": "<name>", "params": {...}}) — invoke it with correct parameters\n</system-reminder>`,
           isMeta: true,
         }),
       ]
