@@ -69,8 +69,11 @@ mockModulePreservingExports('../../../utils/config.ts', {
   enableConfigs: mock(() => {}),
 })
 
+const mockSwitchSession = mock(() => {})
+
 mockModulePreservingExports('../../../bootstrap/state.ts', {
   setOriginalCwd: mock(() => {}),
+  switchSession: mockSwitchSession,
   addSlowOperation: mock(() => {}),
 })
 
@@ -222,6 +225,7 @@ describe('AcpAgent', () => {
     delete process.env.ACP_PERMISSION_MODE
     delete process.env.CLAUDE_CODE_ACP_ALLOW_BYPASS_PERMISSIONS
     mockSetModel.mockClear()
+    mockSwitchSession.mockClear()
     mockSubmitMessage.mockReset()
     mockSubmitMessage.mockImplementation(async function* (_input: string) {})
     mockGetMainLoopModel.mockClear()
@@ -1155,6 +1159,68 @@ describe('AcpAgent', () => {
         (c: any) => c.name === 'commit',
       )
       expect(commit.input).toEqual({ hint: '[message]' })
+    })
+  })
+
+  describe('sessionId alignment with global state', () => {
+    test('newSession calls switchSession with the generated sessionId', async () => {
+      const agent = new AcpAgent(makeConn())
+      const res = await agent.newSession({ cwd: '/tmp' } as any)
+      expect(mockSwitchSession).toHaveBeenCalledWith(res.sessionId)
+    })
+
+    test('resumeSession calls switchSession with the requested sessionId', async () => {
+      const agent = new AcpAgent(makeConn())
+      const requestedId = 'resume-test-session-id'
+      await agent.unstable_resumeSession({
+        sessionId: requestedId,
+        cwd: '/tmp',
+        mcpServers: [],
+      } as any)
+
+      expect(mockSwitchSession).toHaveBeenCalledWith(requestedId)
+    })
+
+    test('loadSession calls switchSession with the requested sessionId', async () => {
+      const agent = new AcpAgent(makeConn())
+      const requestedId = 'load-test-session-id'
+      await agent.loadSession({
+        sessionId: requestedId,
+        cwd: '/tmp',
+        mcpServers: [],
+      } as any)
+
+      expect(mockSwitchSession).toHaveBeenCalledWith(requestedId)
+    })
+
+    test('resumeSession with existing session still calls switchSession', async () => {
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      mockSwitchSession.mockClear()
+
+      // Resume the same session — should still align global state
+      await agent.unstable_resumeSession({
+        sessionId,
+        cwd: '/tmp',
+        mcpServers: [],
+      } as any)
+
+      expect(mockSwitchSession).toHaveBeenCalledWith(sessionId)
+    })
+
+    test('prompt does not trigger additional switchSession for multi-session', async () => {
+      const agent = new AcpAgent(makeConn())
+      await agent.newSession({ cwd: '/tmp' } as any)
+      await agent.newSession({ cwd: '/tmp' } as any)
+      mockSwitchSession.mockClear()
+
+      // Prompts should not call switchSession — alignment happens at session creation
+      const s1 = agent.sessions.keys().next().value
+      await agent.prompt({
+        sessionId: s1,
+        prompt: [{ type: 'text', text: 'hello' }],
+      } as any)
+      expect(mockSwitchSession).not.toHaveBeenCalled()
     })
   })
 })
