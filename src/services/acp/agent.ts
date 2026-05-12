@@ -53,7 +53,8 @@ import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { PermissionMode } from '../../types/permissions.js'
 import type { Command } from '../../types/command.js'
 import { getCommands } from '../../commands.js'
-import { setOriginalCwd } from '../../bootstrap/state.js'
+import { setOriginalCwd, switchSession } from '../../bootstrap/state.js'
+import type { SessionId } from '../../types/ids.js'
 import { enableConfigs } from '../../utils/config.js'
 import { FileStateCache } from '../../utils/fileStateCache.js'
 import { getDefaultAppState } from '../../state/AppStateStore.js'
@@ -471,6 +472,10 @@ export class AcpAgent implements Agent {
     const sessionId = opts.sessionId ?? randomUUID()
     const cwd = params.cwd
 
+    // Align the global session state so that transcript persistence,
+    // analytics, and cost tracking use the ACP session ID.
+    switchSession(sessionId as SessionId)
+
     // Set CWD for the session
     setOriginalCwd(cwd)
     const previousProcessCwd = process.cwd()
@@ -675,6 +680,8 @@ export class AcpAgent implements Agent {
           | undefined,
       })
       if (fingerprint === existingSession.sessionFingerprint) {
+        // Align global state so subsequent operations use the correct session
+        switchSession(params.sessionId as SessionId)
         return {
           sessionId: params.sessionId,
           modes: existingSession.modes,
@@ -686,6 +693,10 @@ export class AcpAgent implements Agent {
       // Session-defining params changed — tear down and recreate
       await this.teardownSession(params.sessionId)
     }
+
+    // Align global state BEFORE sessionIdExists() check — the lookup uses
+    // getSessionId() internally when resolving project-scoped paths.
+    switchSession(params.sessionId as SessionId)
 
     // Set CWD early so session file lookup can find the right project directory
     setOriginalCwd(params.cwd)
