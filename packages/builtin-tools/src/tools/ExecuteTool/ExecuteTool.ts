@@ -10,8 +10,14 @@ import {
 } from 'src/Tool.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { createUserMessage } from 'src/utils/messages.js'
+import {
+  extractDiscoveredToolNames,
+  isSearchExtraToolsEnabledOptimistic,
+  isSearchExtraToolsToolAvailable,
+} from 'src/utils/searchExtraTools.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'
 import { EXECUTE_TOOL_NAME } from './constants.js'
+import { isDeferredTool } from '../SearchExtraToolsTool/prompt.js'
 
 export const inputSchema = lazySchema(() =>
   z.object({
@@ -71,6 +77,32 @@ export const ExecuteTool = buildTool({
             content: `Tool "${input.tool_name}" not found. Use SearchExtraTools to discover available tools.`,
           }),
         ],
+      }
+    }
+
+    // Guard: block execution of undiscovered deferred tools.
+    // When tool search is active, deferred tools must be discovered via
+    // SearchExtraTools first so the model has seen their schemas and knows
+    // the correct parameters.  Executing an undiscovered tool almost always
+    // fails with parameter validation errors.
+    if (
+      isSearchExtraToolsEnabledOptimistic() &&
+      isSearchExtraToolsToolAvailable(tools) &&
+      isDeferredTool(targetTool)
+    ) {
+      const discovered = extractDiscoveredToolNames(context.messages)
+      if (!discovered.has(input.tool_name)) {
+        return {
+          data: {
+            result: null,
+            tool_name: input.tool_name,
+          },
+          newMessages: [
+            createUserMessage({
+              content: `Tool "${input.tool_name}" has not been discovered yet. You must first use SearchExtraTools to discover this tool before executing it.\n\nUsage: SearchExtraTools("select:${input.tool_name}")`,
+            }),
+          ],
+        }
       }
     }
 
