@@ -24,6 +24,12 @@ interface CacheWarningState {
 // 模块级状态，每个 querySource 独立跟踪
 const cacheWarningStateBySource = new Map<string, CacheWarningState>()
 
+// Limit the number of tracked sources to prevent unbounded Map growth.
+// querySource strings are effectively unbounded (typed as `any`), so a
+// long-running session that spawns many subagents could leak memory.
+// Evict the oldest entry (by insertion order) when the limit is exceeded.
+const MAX_SOURCE_ENTRIES = 50
+
 const DEFAULT_CACHE_THRESHOLD = 80
 
 /**
@@ -81,6 +87,13 @@ export function shouldShowCacheWarning(
   let state = cacheWarningStateBySource.get(querySource)
   if (!state) {
     state = { lastHitRate: null, lastTimestamp: null }
+    // Evict oldest entry when at capacity so the Map stays bounded
+    if (cacheWarningStateBySource.size >= MAX_SOURCE_ENTRIES) {
+      const oldestKey = cacheWarningStateBySource.keys().next().value
+      if (oldestKey !== undefined) {
+        cacheWarningStateBySource.delete(oldestKey)
+      }
+    }
     cacheWarningStateBySource.set(querySource, state)
   }
 
@@ -131,4 +144,11 @@ export function createCacheWarningMessage(info: CacheHitRateInfo): Message {
     uuid: randomUUID(),
     isMeta: false,
   } as Message
+}
+
+/**
+ * Reset the per-source tracking state — only used in tests.
+ */
+export function _resetCacheWarningStateForTest(): void {
+  cacheWarningStateBySource.clear()
 }
