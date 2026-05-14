@@ -147,6 +147,22 @@ describe('isOpenAIThinkingEnabled', () => {
       expect(isOpenAIThinkingEnabled('deepseek-coder')).toBe(true)
     })
 
+    test('returns true when model name is "mimo-v2-flash"', () => {
+      expect(isOpenAIThinkingEnabled('mimo-v2-flash')).toBe(true)
+    })
+
+    test('returns true when model name is "mimo-v2-pro"', () => {
+      expect(isOpenAIThinkingEnabled('mimo-v2-pro')).toBe(true)
+    })
+
+    test('returns true when model name is "mimo-v2.5-pro"', () => {
+      expect(isOpenAIThinkingEnabled('mimo-v2.5-pro')).toBe(true)
+    })
+
+    test('returns true when model name contains "mimo"', () => {
+      expect(isOpenAIThinkingEnabled('MiMo-V2-Omni')).toBe(true)
+    })
+
     test('returns false when model name is "gpt-4o"', () => {
       expect(isOpenAIThinkingEnabled('gpt-4o')).toBe(false)
     })
@@ -197,7 +213,10 @@ describe('buildOpenAIRequestBody — thinking params', () => {
   test('includes vLLM/self-hosted thinking format when enabled', () => {
     const body = buildOpenAIRequestBody({ ...baseParams, enableThinking: true })
     expect(body.enable_thinking).toBe(true)
-    expect(body.chat_template_kwargs).toEqual({ thinking: true })
+    expect(body.chat_template_kwargs).toEqual({
+      thinking: true,
+      enable_thinking: true,
+    })
   })
 
   test('includes both formats simultaneously when enabled', () => {
