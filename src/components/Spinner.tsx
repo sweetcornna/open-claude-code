@@ -210,15 +210,22 @@ function SpinnerWithVerbInner({
   const hasRunningTeammates = runningTeammates.length > 0;
   const allIdle = hasRunningTeammates && runningTeammates.every(t => t.isIdle);
 
-  // Gather aggregate token stats from all running swarm teammates
-  // In spinner-tree mode, skip aggregation (teammates have their own lines in the tree)
+  // Gather aggregate token stats from all running agents.
+  // In spinner-tree mode, skip in-process teammates (they have their own
+  // per-teammate lines in the tree) but still count local-agent tasks
+  // (background agents) which have no dedicated tree rows.
   let teammateTokens = 0;
-  if (!showSpinnerTree) {
-    for (const task of Object.values(tasks)) {
-      if (task.status === 'running' && (isInProcessTeammateTask(task) || isLocalAgentTask(task))) {
-        if (task.progress?.tokenCount) {
-          teammateTokens += task.progress.tokenCount;
-        }
+  for (const task of Object.values(tasks)) {
+    if (task.status !== 'running') continue;
+    if (isInProcessTeammateTask(task)) {
+      if (!showSpinnerTree && task.progress?.tokenCount) {
+        teammateTokens += task.progress.tokenCount;
+      }
+      continue;
+    }
+    if (isLocalAgentTask(task)) {
+      if (task.progress?.tokenCount) {
+        teammateTokens += task.progress.tokenCount;
       }
     }
   }
