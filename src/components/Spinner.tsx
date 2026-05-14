@@ -23,6 +23,7 @@ import { getDefaultCharacters, type SpinnerMode } from './Spinner/index.js';
 import { SpinnerAnimationRow } from './Spinner/SpinnerAnimationRow.js';
 import { useSettings } from '../hooks/useSettings.js';
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js';
+import { isLocalAgentTask } from '../tasks/LocalAgentTask/LocalAgentTask.js';
 import { isBackgroundTask } from '../tasks/types.js';
 import { getAllInProcessTeammateTasks } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
 import { getEffortSuffix } from '../utils/effort.js';
@@ -214,7 +215,7 @@ function SpinnerWithVerbInner({
   let teammateTokens = 0;
   if (!showSpinnerTree) {
     for (const task of Object.values(tasks)) {
-      if (isInProcessTeammateTask(task) && task.status === 'running') {
+      if (task.status === 'running' && (isInProcessTeammateTask(task) || isLocalAgentTask(task))) {
         if (task.progress?.tokenCount) {
           teammateTokens += task.progress.tokenCount;
         }
