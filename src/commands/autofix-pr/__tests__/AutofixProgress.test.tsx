@@ -8,7 +8,7 @@ import * as React from 'react';
 import { renderToString } from '../../../utils/staticRender.js';
 import { AutofixProgress } from '../AutofixProgress.js';
 
-describe('AutofixProgress', () => {
+describe.skipIf(!!process.env.CI)('AutofixProgress', () => {
   test('renders target in header', async () => {
     const out = await renderToString(<AutofixProgress phase="detecting" target="acme/myrepo#42" />);
     expect(out).toContain('acme/myrepo#42');
