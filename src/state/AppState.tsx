@@ -11,11 +11,24 @@ import { applySettingsChange } from '../utils/settings/applySettingsChange.js';
 import type { SettingSource } from '../utils/settings/constants.js';
 import { createStore } from './store.js';
 
-// DCE: voice context is ant-only. External builds get a passthrough.
+// DCE: voice context is ant-only. External builds get a noop provider that
+// still wraps children in VoiceContext so useVoiceState never throws.
 /* eslint-disable @typescript-eslint/no-require-imports */
 const VoiceProvider: (props: { children: React.ReactNode }) => React.ReactNode = feature('VOICE_MODE')
   ? require('../context/voice.js').VoiceProvider
-  : ({ children }) => children;
+  : (() => {
+      const { VoiceContext } = require('../context/voice.js');
+      const noopStore = createStore({
+        voiceState: 'idle' as const,
+        voiceError: null as string | null,
+        voiceInterimTranscript: '',
+        voiceAudioLevels: [] as number[],
+        voiceWarmingUp: false,
+      });
+      return ({ children }: { children: React.ReactNode }) => (
+        <VoiceContext.Provider value={noopStore}>{children}</VoiceContext.Provider>
+      );
+    })();
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { type AppState, type AppStateStore, getDefaultAppState } from './AppStateStore.js';
