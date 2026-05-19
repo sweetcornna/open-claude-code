@@ -4593,7 +4593,7 @@ You have exited auto mode. The user may now want to interact more directly. You 
       const parts: string[] = []
       if (attachment.addedLines.length > 0) {
         parts.push(
-          `The following deferred tools are now available via SearchExtraTools:\n${attachment.addedLines.join('\n')}`,
+          `The following deferred tools are now available:\n${attachment.addedLines.join('\n')}\n\nTo use these tools, call SearchExtraTools then ExecuteExtraTool — both are core tools already in your tool list. Call them directly, do NOT use Bash/Glob to find them.`,
         )
       }
       if (attachment.removedNames.length > 0) {
