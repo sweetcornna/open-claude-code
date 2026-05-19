@@ -1897,12 +1897,12 @@ export function getAccountInformation() {
     accountInfo.apiKeySource = apiKeySource
   }
 
-  // We don't know the organization if we're relying on an external API key or auth token
+  // 如果我们依赖外部 API 密钥或认证令牌，则不知道组织
   if (
     authTokenSource === 'claude.ai' ||
     apiKeySource === '/login managed key'
   ) {
-    // Get organization name from OAuth account info
+    // 从 OAuth 账户信息获取组织名称
     const orgName = getOauthAccountInfo()?.organizationName
     if (orgName) {
       accountInfo.organization = orgName
