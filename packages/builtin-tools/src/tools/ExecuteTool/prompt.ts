@@ -15,5 +15,12 @@ Inputs:
 - tool_name: The exact name of the target tool (string)
 - params: The parameters to pass to the target tool (object)
 
-If the tool is not found, an error message will be returned suggesting to use SearchExtraTools to discover available tools.`
+If the tool is not found, an error message will be returned suggesting to use SearchExtraTools to discover available tools.
+
+FAILURE HANDLING — CRITICAL:
+If ExecuteExtraTool returns an error (missing parameters, validation error, permission denied, tool not found, or any other failure), you MUST:
+1. Stop immediately — do NOT retry the same tool.
+2. Do NOT call SearchExtraTools again for the same tool name.
+3. Inform the user about the failure and suggest alternatives.
+Never enter a SearchExtraTools → ExecuteExtraTool retry loop for the same tool.`
 }

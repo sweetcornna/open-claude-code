@@ -27,6 +27,9 @@ const PROMPT_TAIL = ` Returns matching tool names.
 
 IMPORTANT: ExecuteExtraTool is always available in your tool list. After this search returns tool names, you MUST call ExecuteExtraTool with {"tool_name": "<returned_name>", "params": {...}} to invoke the deferred tool. This is the ONLY way to execute deferred tools — do not read source code or analyze whether the tool is callable, just use ExecuteExtraTool directly.
 
+FAILURE RETRY POLICY:
+If ExecuteExtraTool fails for a tool, do NOT search for that same tool again. Searching again will not fix the failure — it will only repeat the same error in a loop. Stop immediately and inform the user about the failure.
+
 Query forms:
 - "select:CronCreate,Snip" — fetch these exact tools by name
 - "discover:schedule cron job" — pure discovery, returns tool info (name, description) without loading. Use when you want to understand available tools before deciding which to invoke.
