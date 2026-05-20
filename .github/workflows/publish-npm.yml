@@ -3,11 +3,11 @@ name: Publish to npm
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号 (例如: v1.9.0)'
+        description: "版本号 (例如: v1.9.0)"
         required: true
         type: string
 
@@ -38,9 +38,9 @@ jobs:
         run: bun test
 
       - name: Publish to npm
-        run: bun publish --access public
+        run: bun publish -p --access public
         env:
-          BUN_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate changelog
         id: changelog
