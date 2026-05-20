@@ -19,7 +19,7 @@ const DEFAULT_STATE: VoiceState = {
 
 type VoiceStore = Store<VoiceState>;
 
-const VoiceContext = createContext<VoiceStore | null>(null);
+export const VoiceContext = createContext<VoiceStore | null>(null);
 
 type Props = {
   children: React.ReactNode;
