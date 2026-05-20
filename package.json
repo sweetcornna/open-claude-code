@@ -1,6 +1,6 @@
 {
   "name": "claude-code-best",
-  "version": "2.4.5",
+  "version": "2.4.4",
   "description": "Reverse-engineered Anthropic Claude Code CLI — interactive AI coding assistant in the terminal",
   "type": "module",
   "author": "claude-code-best <claude-code-best@proton.me>",
@@ -53,7 +53,7 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --fix .",
-    "prepare": "bunx husky",
+    "prepare": "husky",
     "test": "bun test",
     "test:production": "bun run scripts/production-test.ts",
     "test:production:offline": "bun run scripts/production-test.ts --offline",

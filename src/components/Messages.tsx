@@ -798,9 +798,7 @@ const MessagesImpl = ({
 
     // Collapse diffs for messages beyond the latest N messages.
     // verbose (ctrl+o) overrides and always shows full diffs.
-    // 0 was too aggressive — tool results are never the last message (assistant
-    // text follows), so diffs were always collapsed.  3 keeps recent edits visible.
-    const DIFF_COLLAPSE_DISTANCE = 3;
+    const DIFF_COLLAPSE_DISTANCE = 0;
     const shouldCollapseDiffs = renderableMessages.length - 1 - index > DIFF_COLLAPSE_DISTANCE;
 
     const k = messageKey(msg);
