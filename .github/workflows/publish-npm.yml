@@ -37,10 +37,14 @@ jobs:
       - name: Run tests
         run: bun test
 
+      - name: Configure npm registry auth
+        run: |
+          cat > ~/.npmrc << EOF
+          //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
+          EOF
+
       - name: Publish to npm
         run: bun publish --access public
-        env:
-          BUN_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate changelog
         id: changelog
