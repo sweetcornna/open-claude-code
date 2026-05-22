@@ -185,10 +185,6 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // API rejects 'xhigh' on pre-Opus-4.7 models — downgrade to 'high'.
-  if (resolved === 'xhigh' && !modelSupportsXhighEffort(model)) {
-    return 'high'
-  }
   // OpenAI Responses uses xhigh as its highest public reasoning effort.
   // Keep /effort max usable as a familiar alias in ChatGPT subscription mode.
   if (
@@ -198,10 +194,6 @@ export function resolveAppliedEffort(
     modelSupportsXhighEffort(model)
   ) {
     return 'xhigh'
-  }
-  // API rejects 'max' on non-Opus-4.6 models — downgrade to 'high'.
-  if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
-    return 'high'
   }
   return resolved
 }
