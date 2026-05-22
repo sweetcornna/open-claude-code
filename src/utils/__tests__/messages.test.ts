@@ -27,6 +27,7 @@ import {
   AUTO_REJECT_MESSAGE,
   DONT_ASK_REJECT_MESSAGE,
   SYNTHETIC_MODEL,
+  ensureToolResultPairing,
 } from '../messages'
 import type {
   Message,
@@ -514,5 +515,98 @@ describe('normalizeMessagesForAPI', () => {
 
     expect(block.type).toBe('tool_use')
     expect(block._geminiThoughtSignature).toBe('sig-123')
+  })
+})
+
+describe('ensureToolResultPairing', () => {
+  test('does not produce consecutive user messages when orphaned tool_result is stripped after an existing user message (CC-1215)', () => {
+    // Reproduce the scenario from the bug report:
+    // Streaming yields assistant[thinking] and assistant[tool_use] separately.
+    // normalizeMessagesForAPI merges them, but if the merge fails (e.g. intervening
+    // user message breaks backward walk), ensureToolResultPairing sees duplicate
+    // tool_use ID, strips it, leaving empty content in the next user message,
+    // which becomes NO_CONTENT_MESSAGE. If the previous result entry is already
+    // user, this must NOT create consecutive user messages.
+    const toolUseId = 'toolu_test_dup_001'
+
+    const messages: (UserMessage | AssistantMessage)[] = [
+      // Previous turn: user with tool_result
+      createUserMessage({
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: 'previous result',
+          },
+        ],
+      }),
+      // Current turn: assistant with thinking only (tool_use was deduped away)
+      makeAssistantMsg([{ type: 'thinking', thinking: 'let me think...' }]),
+      // Current turn: assistant with tool_use (second streaming yield, same ID)
+      makeAssistantMsg([
+        {
+          type: 'tool_use',
+          id: toolUseId,
+          name: 'Bash',
+          input: { command: 'pwd' },
+        },
+      ]),
+      // Tool result for the tool_use
+      createUserMessage({
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: '/home/user',
+          },
+        ],
+      }),
+    ]
+
+    const result = ensureToolResultPairing(messages)
+
+    // Verify no consecutive user messages
+    for (let i = 1; i < result.length; i++) {
+      if (result[i - 1]!.type === 'user') {
+        expect(result[i]!.type).not.toBe('user')
+      }
+    }
+  })
+
+  test('inserts NO_CONTENT_MESSAGE when previous result entry is assistant', () => {
+    // When the orphan strip empties a user message and the previous entry is
+    // assistant, the placeholder should still be inserted to maintain alternation.
+    const toolUseId = 'toolu_test_orphan_001'
+
+    const messages: (UserMessage | AssistantMessage)[] = [
+      makeAssistantMsg([{ type: 'text', text: 'hello' }]),
+      // This assistant has a tool_use with an ID that won't match any result
+      makeAssistantMsg([
+        {
+          type: 'tool_use',
+          id: toolUseId,
+          name: 'Bash',
+          input: { command: 'ls' },
+        },
+      ]),
+      // User message with ONLY a tool_result for a non-existent tool_use
+      // After orphan stripping, content becomes empty
+      createUserMessage({
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'nonexistent_id',
+            content: 'orphan',
+          },
+        ],
+      }),
+    ]
+
+    const result = ensureToolResultPairing(messages)
+
+    // Should have assistant, [possibly modified assistant], user placeholder
+    // The key assertion: last message should be a user placeholder
+    const lastMsg = result[result.length - 1]!
+    expect(lastMsg.type).toBe('user')
   })
 })
