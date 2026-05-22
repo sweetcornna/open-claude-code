@@ -224,6 +224,22 @@ describe('getEffortLevelDescription', () => {
     const desc = getEffortLevelDescription('max')
     expect(desc).toContain('Maximum')
   })
+
+  test('max description does not contain model names', () => {
+    const desc = getEffortLevelDescription('max')
+    expect(desc).not.toContain('Opus')
+    expect(desc).not.toContain('DeepSeek')
+  })
+
+  test("returns description for 'xhigh'", () => {
+    const desc = getEffortLevelDescription('xhigh')
+    expect(desc).toContain('Extended reasoning')
+  })
+
+  test('xhigh description does not contain model names', () => {
+    const desc = getEffortLevelDescription('xhigh')
+    expect(desc).not.toContain('Opus')
+  })
 })
 
 // ─── resolvePickerEffortPersistence ────────────────────────────────────
