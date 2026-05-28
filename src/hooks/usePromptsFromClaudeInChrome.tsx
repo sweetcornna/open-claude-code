@@ -48,7 +48,7 @@ export function usePromptsFromClaudeInChrome(
     }
 
     if (mcpClient) {
-      mcpClient.client.setNotificationHandler(ClaudeInChromePromptNotificationSchema(), notification => {
+      mcpClient.client.setNotificationHandler(ClaudeInChromePromptNotificationSchema() as any, notification => {
         if (mcpClientRef.current !== mcpClient) {
           return;
         }

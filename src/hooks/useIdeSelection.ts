@@ -110,7 +110,7 @@ export function useIdeSelection(
 
     // Register notification handler for selection_changed events
     ideClient.client.setNotificationHandler(
-      SelectionChangedSchema(),
+      SelectionChangedSchema() as any,
       notification => {
         if (currentIDERef.current !== ideClient) {
           return
