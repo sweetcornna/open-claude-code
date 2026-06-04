@@ -827,6 +827,7 @@ export async function forwardSessionUpdates(
             {
               clientCapabilities,
               cwd,
+              parentToolUseId,
             },
           )
           for (const notification of notifications) {

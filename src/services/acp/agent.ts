@@ -54,6 +54,7 @@ import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { PermissionMode } from '../../types/permissions.js'
 import type { Command } from '../../types/command.js'
 import { getCommands } from '../../commands.js'
+import { getAgentDefinitionsWithOverrides } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import {
   setOriginalCwd,
   switchSession,
@@ -549,8 +550,14 @@ export class AcpAgent implements Agent {
         },
       }
 
-      // Load commands for slash command and skill support
-      const commands = await getCommands(cwd)
+      // Load commands and agent definitions for subagent support
+      const [commands, agentDefinitionsResult] = await Promise.all([
+        getCommands(cwd),
+        getAgentDefinitionsWithOverrides(cwd),
+      ])
+
+      // Inject agent definitions into appState
+      appState.agentDefinitions = agentDefinitionsResult
 
       // Build QueryEngine config
       const engineConfig: QueryEngineConfig = {
@@ -558,7 +565,7 @@ export class AcpAgent implements Agent {
         tools,
         commands,
         mcpClients: [],
-        agents: [],
+        agents: agentDefinitionsResult.activeAgents,
         canUseTool,
         getAppState: () => appState,
         setAppState: (updater: (prev: AppState) => AppState) => {
