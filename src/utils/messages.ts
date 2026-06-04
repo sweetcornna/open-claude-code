@@ -2541,21 +2541,26 @@ export function normalizeMessagesForAPI(
           }
 
           // Find a previous assistant message with the same message ID and merge.
-          // Walk backwards, skipping tool results and different-ID assistants,
-          // since concurrent agents (teammates) can interleave streaming content
-          // blocks from multiple API responses with different message IDs.
+          // Walk backwards, skipping different-ID assistants, since concurrent
+          // agents (teammates) can interleave streaming content blocks from
+          // multiple API responses with different message IDs.
+          //
+          // Do NOT skip tool_result messages — when claude.ts yields separate
+          // AssistantMessages for thinking and tool_use blocks (same message.id),
+          // a StreamingToolExecutor tool_result can land between them. Merging
+          // across that boundary produces duplicate tool_use IDs that downstream
+          // ensureToolResultPairing strips, leaving orphaned tool_results and
+          // ultimately consecutive user messages → API 400 (CC-1215).
           for (let i = result.length - 1; i >= 0; i--) {
             const msg = result[i]!
 
-            if (msg.type !== 'assistant' && !isToolResultMessage(msg)) {
+            if (msg.type !== 'assistant') {
               break
             }
 
-            if (msg.type === 'assistant') {
-              if (msg.message.id === normalizedMessage.message.id) {
-                result[i] = mergeAssistantMessages(msg, normalizedMessage)
-                return
-              }
+            if (msg.message.id === normalizedMessage.message.id) {
+              result[i] = mergeAssistantMessages(msg, normalizedMessage)
+              return
             }
           }
 
