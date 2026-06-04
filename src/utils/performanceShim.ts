@@ -135,6 +135,9 @@ const shim = {
   clearResourceTimings: (() => {}) as typeof performance.clearResourceTimings,
   setResourceTimingBufferSize:
     (() => {}) as typeof performance.setResourceTimingBufferSize,
+  // Node.js v22 undici internal calls this after every fetch — must exist to
+  // avoid TypeError: markResourceTiming is not a function
+  markResourceTiming: (() => {}) as any,
   // Delegate read-only properties to the original
   get timeOrigin() {
     return original.timeOrigin
@@ -148,7 +151,7 @@ const shim = {
   toJSON() {
     return original.toJSON()
   },
-} as typeof performance
+} as unknown as typeof performance
 
 /**
  * Install the shim onto globalThis.performance. Safe to call multiple times.
