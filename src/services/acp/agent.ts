@@ -39,6 +39,7 @@ import type {
   SessionConfigOption,
 } from '@agentclientprotocol/sdk'
 import { randomUUID, type UUID } from 'node:crypto'
+import { dirname } from 'node:path'
 import type { Message } from '../../types/message.js'
 import { deserializeMessages } from '../../utils/conversationRecovery.js'
 import {
@@ -53,7 +54,11 @@ import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { PermissionMode } from '../../types/permissions.js'
 import type { Command } from '../../types/command.js'
 import { getCommands } from '../../commands.js'
-import { setOriginalCwd, switchSession } from '../../bootstrap/state.js'
+import {
+  setOriginalCwd,
+  switchSession,
+  getSessionProjectDir,
+} from '../../bootstrap/state.js'
 import type { SessionId } from '../../types/ids.js'
 import { enableConfigs } from '../../utils/config.js'
 import { FileStateCache } from '../../utils/fileStateCache.js'
@@ -72,6 +77,7 @@ import {
 } from './utils.js'
 import { promptToQueryInput } from './promptConversion.js'
 import { listSessionsImpl } from '../../utils/listSessionsImpl.js'
+import { resolveSessionFilePath } from '../../utils/sessionStoragePortable.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import { getModelOptions } from '../../utils/model/modelOptions.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
@@ -474,7 +480,10 @@ export class AcpAgent implements Agent {
 
     // Align the global session state so that transcript persistence,
     // analytics, and cost tracking use the ACP session ID.
-    switchSession(sessionId as SessionId)
+    // Preserve the projectDir set by getOrCreateSession so that
+    // getSessionProjectDir() continues to resolve correctly.
+    const currentProjectDir = getSessionProjectDir()
+    switchSession(sessionId as SessionId, currentProjectDir)
 
     // Set CWD for the session
     setOriginalCwd(cwd)
@@ -680,8 +689,18 @@ export class AcpAgent implements Agent {
           | undefined,
       })
       if (fingerprint === existingSession.sessionFingerprint) {
-        // Align global state so subsequent operations use the correct session
-        switchSession(params.sessionId as SessionId)
+        const resolved = await resolveSessionFilePath(
+          params.sessionId,
+          params.cwd,
+        )
+        switchSession(
+          params.sessionId as SessionId,
+          resolved ? dirname(resolved.filePath) : null,
+        )
+        setOriginalCwd(params.cwd)
+
+        await this.replaySessionHistory(params)
+
         return {
           sessionId: params.sessionId,
           modes: existingSession.modes,
@@ -690,20 +709,20 @@ export class AcpAgent implements Agent {
         }
       }
 
-      // Session-defining params changed — tear down and recreate
       await this.teardownSession(params.sessionId)
     }
 
-    // Align global state BEFORE sessionIdExists() check — the lookup uses
-    // getSessionId() internally when resolving project-scoped paths.
-    switchSession(params.sessionId as SessionId)
-
-    // Set CWD early so session file lookup can find the right project directory
+    // Locate the session file by sessionId across all project directories.
+    // params.cwd may not match the project directory where the session was
+    // originally created (e.g. client sends a subdirectory path), so we
+    // search by sessionId first and fall back to cwd-based lookup.
+    const resolved = await resolveSessionFilePath(params.sessionId, params.cwd)
+    const projectDir = resolved ? dirname(resolved.filePath) : null
+    switchSession(params.sessionId as SessionId, projectDir)
     setOriginalCwd(params.cwd)
 
-    // Try to load session history for resume/load
     let initialMessages: Message[] | undefined
-    if (sessionIdExists(params.sessionId)) {
+    if (resolved) {
       try {
         const log = await getLastSessionLog(params.sessionId as UUID)
         if (log && log.messages.length > 0) {
@@ -752,6 +771,37 @@ export class AcpAgent implements Agent {
 
     await this.cancel({ sessionId })
     this.sessions.delete(sessionId)
+  }
+
+  /**
+   * Load session history from disk and replay it to the ACP client.
+   * Used when switching back to a session that is already in memory
+   * (the client needs the conversation replayed to display it).
+   */
+  private async replaySessionHistory(params: {
+    sessionId: string
+    cwd: string
+  }): Promise<void> {
+    try {
+      const log = await getLastSessionLog(params.sessionId as UUID)
+      if (!log || log.messages.length === 0) return
+      const messages = deserializeMessages(log.messages)
+      if (messages.length === 0) return
+
+      const session = this.sessions.get(params.sessionId)
+      if (!session) return
+
+      await replayHistoryMessages(
+        params.sessionId,
+        messages as unknown as Array<Record<string, unknown>>,
+        this.conn,
+        session.toolUseCache,
+        this.clientCapabilities,
+        session.cwd,
+      )
+    } catch (err) {
+      console.error('[ACP] Failed to replay session history:', err)
+    }
   }
 
   private applySessionMode(sessionId: string, modeId: string): void {

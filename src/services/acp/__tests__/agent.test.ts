@@ -120,6 +120,15 @@ mockModulePreservingExports('../../../utils/listSessionsImpl.ts', {
   listSessionsImpl: mock(async () => []),
 })
 
+const mockResolveSessionFilePath = mock(async () => ({
+  filePath: '/fake/project/dir/session.jsonl',
+  projectPath: '/tmp',
+  fileSize: 100,
+}))
+mockModulePreservingExports('../../../utils/sessionStoragePortable.js', {
+  resolveSessionFilePath: mockResolveSessionFilePath,
+})
+
 const mockGetMainLoopModel = mock(() => 'claude-sonnet-4-6')
 
 mockModulePreservingExports('../../../utils/model/model.ts', {
@@ -1166,7 +1175,7 @@ describe('AcpAgent', () => {
     test('newSession calls switchSession with the generated sessionId', async () => {
       const agent = new AcpAgent(makeConn())
       const res = await agent.newSession({ cwd: '/tmp' } as any)
-      expect(mockSwitchSession).toHaveBeenCalledWith(res.sessionId)
+      expect(mockSwitchSession).toHaveBeenCalledWith(res.sessionId, null)
     })
 
     test('resumeSession calls switchSession with the requested sessionId', async () => {
@@ -1178,7 +1187,10 @@ describe('AcpAgent', () => {
         mcpServers: [],
       } as any)
 
-      expect(mockSwitchSession).toHaveBeenCalledWith(requestedId)
+      expect(mockSwitchSession).toHaveBeenCalledWith(
+        requestedId,
+        expect.any(String),
+      )
     })
 
     test('loadSession calls switchSession with the requested sessionId', async () => {
@@ -1190,7 +1202,10 @@ describe('AcpAgent', () => {
         mcpServers: [],
       } as any)
 
-      expect(mockSwitchSession).toHaveBeenCalledWith(requestedId)
+      expect(mockSwitchSession).toHaveBeenCalledWith(
+        requestedId,
+        expect.any(String),
+      )
     })
 
     test('resumeSession with existing session still calls switchSession', async () => {
@@ -1205,7 +1220,10 @@ describe('AcpAgent', () => {
         mcpServers: [],
       } as any)
 
-      expect(mockSwitchSession).toHaveBeenCalledWith(sessionId)
+      expect(mockSwitchSession).toHaveBeenCalledWith(
+        sessionId,
+        expect.any(String),
+      )
     })
 
     test('prompt does not trigger additional switchSession for multi-session', async () => {
