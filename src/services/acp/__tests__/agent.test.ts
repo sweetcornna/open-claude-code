@@ -1226,19 +1226,20 @@ describe('AcpAgent', () => {
       )
     })
 
-    test('prompt does not trigger additional switchSession for multi-session', async () => {
+    test('prompt switches global sessionId to the correct session', async () => {
       const agent = new AcpAgent(makeConn())
       await agent.newSession({ cwd: '/tmp' } as any)
       await agent.newSession({ cwd: '/tmp' } as any)
       mockSwitchSession.mockClear()
 
-      // Prompts should not call switchSession — alignment happens at session creation
+      // Prompts must switch global state so recordTranscript writes to
+      // the correct session file in multi-session scenarios.
       const s1 = agent.sessions.keys().next().value
       await agent.prompt({
         sessionId: s1,
         prompt: [{ type: 'text', text: 'hello' }],
       } as any)
-      expect(mockSwitchSession).not.toHaveBeenCalled()
+      expect(mockSwitchSession).toHaveBeenCalledWith(s1, null)
     })
   })
 })

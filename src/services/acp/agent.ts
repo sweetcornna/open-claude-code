@@ -300,6 +300,10 @@ export class AcpAgent implements Agent {
       // After a previous interrupt(), the internal controller is stuck in
       // aborted state — without this, submitMessage() fails immediately.
       session.queryEngine.resetAbortController()
+      // Switch global session state so recordTranscript writes to the correct
+      // session file. Without this, multi-session scenarios (or creating a new
+      // session after another) write transcript data to the wrong file.
+      switchSession(params.sessionId as SessionId, getSessionProjectDir())
 
       const sdkMessages = session.queryEngine.submitMessage(promptInput)
 
