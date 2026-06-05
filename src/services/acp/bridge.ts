@@ -633,6 +633,7 @@ export async function forwardSessionUpdates(
   let lastAssistantTotalUsage: number | null = null
   let lastAssistantModel: string | null = null
   let lastContextWindowSize = 200000
+  let streamingActive = false
 
   try {
     while (!abortSignal.aborted) {
@@ -788,6 +789,7 @@ export async function forwardSessionUpdates(
           for (const notification of notifications) {
             await conn.sessionUpdate(notification)
           }
+          streamingActive = true
           break
         }
 
@@ -828,6 +830,7 @@ export async function forwardSessionUpdates(
               clientCapabilities,
               cwd,
               parentToolUseId,
+              streamingActive,
             },
           )
           for (const notification of notifications) {
@@ -943,6 +946,7 @@ function assistantMessageToAcpNotifications(
     clientCapabilities?: ClientCapabilities
     parentToolUseId?: string | null
     cwd?: string
+    streamingActive?: boolean
   },
 ): SessionNotification[] {
   const message = msg.message as Record<string, unknown> | undefined
@@ -967,8 +971,20 @@ function assistantMessageToAcpNotifications(
     ]
   }
 
+  // When streaming is active, text/thinking were already sent via stream_event
+  // messages. Filter them out to avoid duplicate agent_message_chunk /
+  // agent_thought_chunk notifications. String content (synthetic messages)
+  // is unaffected — those have no corresponding stream_events.
+  const contentToProcess = options?.streamingActive
+    ? content.filter(
+        block => block.type !== 'text' && block.type !== 'thinking',
+      )
+    : content
+
+  if (contentToProcess.length === 0) return []
+
   return toAcpNotifications(
-    content,
+    contentToProcess,
     'assistant',
     sessionId,
     toolUseCache,
@@ -988,6 +1004,7 @@ function streamEventToAcpNotifications(
   options?: {
     clientCapabilities?: ClientCapabilities
     cwd?: string
+    streamingActive?: boolean
   },
 ): SessionNotification[] {
   const event = (msg as unknown as { event: Record<string, unknown> }).event
@@ -1056,6 +1073,7 @@ function toAcpNotifications(
     clientCapabilities?: ClientCapabilities
     parentToolUseId?: string | null
     cwd?: string
+    streamingActive?: boolean
   },
 ): SessionNotification[] {
   const output: SessionNotification[] = []
