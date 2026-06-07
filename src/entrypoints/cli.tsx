@@ -146,7 +146,7 @@ async function main(): Promise<void> {
         shutdown1PEventLogging,
         logForDebugging,
         registerPermissionHandler(server, handler) {
-          server.setNotificationHandler(ChannelPermissionRequestNotificationSchema() as any, async notification =>
+          server.setNotificationHandler(ChannelPermissionRequestNotificationSchema(), async notification =>
             handler(notification.params),
           );
         },
