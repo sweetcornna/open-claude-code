@@ -17,23 +17,9 @@ import { asSystemPrompt } from 'src/utils/systemPromptType.js'
 import { isPreapprovedHost } from './preapproved.js'
 import { makeSecondaryModelPrompt } from './prompt.js'
 
-// Custom error classes for domain blocking
-class DomainBlockedError extends Error {
-  constructor(domain: string) {
-    super(`Claude Code is unable to fetch from ${domain}`)
-    this.name = 'DomainBlockedError'
-  }
-}
+const DEFAULT_TAVILY_EXTRACT_URL = 'https://tavily.claude-code-best.win/extract'
 
-class DomainCheckFailedError extends Error {
-  constructor(domain: string) {
-    super(
-      `Unable to verify if domain ${domain} is safe to fetch. This may be due to network restrictions or enterprise security policies blocking claude.ai.`,
-    )
-    this.name = 'DomainCheckFailedError'
-  }
-}
-
+// Custom error class for egress proxy blocks
 class EgressBlockedError extends Error {
   constructor(public readonly domain: string) {
     super(
@@ -68,18 +54,8 @@ const URL_CACHE = new LRUCache<string, CacheEntry>({
   ttl: CACHE_TTL_MS,
 })
 
-// Separate cache for preflight domain checks. URL_CACHE is URL-keyed, so
-// fetching two paths on the same domain triggers two identical preflight
-// HTTP round-trips to api.anthropic.com. This hostname-keyed cache avoids
-// that. Only 'allowed' is cached — blocked/failed re-check on next attempt.
-const DOMAIN_CHECK_CACHE = new LRUCache<string, true>({
-  max: 128,
-  ttl: 5 * 60 * 1000, // 5 minutes — shorter than URL_CACHE TTL
-})
-
 export function clearWebFetchCache(): void {
   URL_CACHE.clear()
-  DOMAIN_CHECK_CACHE.clear()
 }
 
 function responseHeaderToString(value: unknown): string | undefined {
@@ -143,9 +119,6 @@ const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024
 // Prevents hanging indefinitely on slow/unresponsive servers.
 const FETCH_TIMEOUT_MS = 60_000
 
-// Timeout for the domain blocklist preflight check (10 seconds).
-const DOMAIN_CHECK_TIMEOUT_MS = 10_000
-
 // Cap same-host redirect hops. Without this a malicious server can return
 // a redirect loop (/a → /b → /a …) and the per-request FETCH_TIMEOUT_MS
 // resets on every hop, hanging the tool until user interrupt. 10 matches
@@ -194,40 +167,6 @@ export function validateURL(url: string): boolean {
   }
 
   return true
-}
-
-type DomainCheckResult =
-  | { status: 'allowed' }
-  | { status: 'blocked' }
-  | { status: 'check_failed'; error: Error }
-
-export async function checkDomainBlocklist(
-  domain: string,
-): Promise<DomainCheckResult> {
-  if (DOMAIN_CHECK_CACHE.has(domain)) {
-    return { status: 'allowed' }
-  }
-  try {
-    const response = await axios.get(
-      `https://api.anthropic.com/api/web/domain_info?domain=${encodeURIComponent(domain)}`,
-      { timeout: DOMAIN_CHECK_TIMEOUT_MS },
-    )
-    if (response.status === 200) {
-      if (response.data.can_fetch === true) {
-        DOMAIN_CHECK_CACHE.set(domain, true)
-        return { status: 'allowed' }
-      }
-      return { status: 'blocked' }
-    }
-    // Non-200 status but didn't throw
-    return {
-      status: 'check_failed',
-      error: new Error(`Domain check returned status ${response.status}`),
-    }
-  } catch (e) {
-    logError(e)
-    return { status: 'check_failed', error: e as Error }
-  }
 }
 
 /**
@@ -412,23 +351,6 @@ export async function getURLMarkdownContent(
 
     const hostname = parsedUrl.hostname
 
-    // Check if the user has opted to skip the blocklist check
-    // This is for enterprise customers with restrictive security policies
-    // that prevent outbound connections to claude.ai
-    const settings = getSettings_DEPRECATED()
-    if (settings.skipWebFetchPreflight === false) {
-      const checkResult = await checkDomainBlocklist(hostname)
-      switch (checkResult.status) {
-        case 'allowed':
-          // Continue with the fetch
-          break
-        case 'blocked':
-          throw new DomainBlockedError(hostname)
-        case 'check_failed':
-          throw new DomainCheckFailedError(hostname)
-      }
-    }
-
     if (process.env.USER_TYPE === 'ant') {
       logEvent('tengu_web_fetch_host', {
         hostname:
@@ -436,13 +358,6 @@ export async function getURLMarkdownContent(
       })
     }
   } catch (e) {
-    if (
-      e instanceof DomainBlockedError ||
-      e instanceof DomainCheckFailedError
-    ) {
-      // Expected user-facing failures - re-throw without logging as internal error
-      throw e
-    }
     logError(e)
   }
 
@@ -509,6 +424,109 @@ export async function getURLMarkdownContent(
     persistedSize,
   }
   // lru-cache requires positive integers; clamp to 1 for empty responses.
+  URL_CACHE.set(url, entry, { size: Math.max(1, contentBytes) })
+  return entry
+}
+
+/**
+ * Fetch URL content via Tavily Extract API, which directly returns Markdown.
+ * This skips the HTML→Markdown conversion (turndown) and the secondary
+ * model call (queryHaiku) — Tavily already delivers clean Markdown.
+ */
+export async function fetchContentWithTavily(
+  url: string,
+  abortController: AbortController,
+): Promise<FetchedContent | RedirectInfo> {
+  if (!validateURL(url)) {
+    throw new Error('Invalid URL')
+  }
+
+  // Check cache (LRUCache handles TTL automatically)
+  const cachedEntry = URL_CACHE.get(url)
+  if (cachedEntry) {
+    return {
+      bytes: cachedEntry.bytes,
+      code: cachedEntry.code,
+      codeText: cachedEntry.codeText,
+      content: cachedEntry.content,
+      contentType: cachedEntry.contentType,
+      persistedPath: cachedEntry.persistedPath,
+      persistedSize: cachedEntry.persistedSize,
+    }
+  }
+
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(url)
+  } catch {
+    throw new Error('Invalid URL')
+  }
+
+  // Upgrade http to https if needed
+  if (parsedUrl.protocol === 'http:') {
+    parsedUrl.protocol = 'https:'
+    url = parsedUrl.toString()
+  }
+
+  const abortSignal = abortController.signal
+
+  const settings = getSettings_DEPRECATED() as Record<string, unknown> & {
+    tavilyEndpointUrl?: string
+  }
+  const baseUrl = settings.tavilyEndpointUrl || DEFAULT_TAVILY_EXTRACT_URL
+  // Derive extract URL from the base Tavily endpoint
+  const extractUrl = baseUrl.endsWith('/search')
+    ? baseUrl.replace(/\/search$/, '/extract')
+    : baseUrl.endsWith('/extract')
+      ? baseUrl
+      : `${baseUrl.replace(/\/$/, '')}/extract`
+
+  const response = await axios.post<{ url: string; raw_content: string }>(
+    extractUrl,
+    {
+      urls: [url],
+    },
+    {
+      signal: abortSignal,
+      timeout: FETCH_TIMEOUT_MS,
+      headers: { 'Content-Type': 'application/json' },
+    },
+  )
+
+  if (abortSignal.aborted) {
+    throw new AbortError()
+  }
+
+  const rawContent = response.data?.raw_content ?? ''
+  // If raw_content is a JSON string (extract may return {url:..., raw_content:...}
+  // per URL), unwrap it.
+  let markdownContent = rawContent
+  if (!markdownContent.trim()) {
+    // Try to extract from results array
+    const resp = response.data as unknown as {
+      results?: Array<{ raw_content?: string }>
+    }
+    const results = resp.results ?? []
+    if (results.length > 0 && results[0].raw_content) {
+      markdownContent = results[0].raw_content
+    }
+  }
+
+  if (!markdownContent.trim()) {
+    throw new Error(
+      `Tavily Extract returned empty content for ${url}. The page may require authentication or JavaScript rendering.`,
+    )
+  }
+
+  const contentBytes = Buffer.byteLength(markdownContent)
+
+  const entry: CacheEntry = {
+    bytes: contentBytes,
+    code: 200,
+    codeText: 'OK',
+    content: markdownContent,
+    contentType: 'text/markdown',
+  }
   URL_CACHE.set(url, entry, { size: Math.max(1, contentBytes) })
   return entry
 }
