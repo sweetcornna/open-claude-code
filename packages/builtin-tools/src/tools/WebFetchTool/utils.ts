@@ -117,10 +117,19 @@ const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024
 
 // Timeout for the main HTTP fetch request (60 seconds).
 // Prevents hanging indefinitely on slow/unresponsive servers.
-const FETCH_TIMEOUT_MS = 60_000
+// Overridable via settings.webFetchHttpTimeoutMs (set in /web-tools panel).
+const DEFAULT_FETCH_TIMEOUT_MS = 60_000
+
+function getFetchTimeoutMs(): number {
+  const settings = getSettings_DEPRECATED() as Record<string, unknown> & {
+    webFetchHttpTimeoutMs?: number
+  }
+  return settings.webFetchHttpTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS
+}
 
 // Cap same-host redirect hops. Without this a malicious server can return
-// a redirect loop (/a → /b → /a …) and the per-request FETCH_TIMEOUT_MS
+// a redirect loop (/a → /b → /a …) and the per-request timeout
+// (controlled by settings.webFetchHttpTimeoutMs)
 // resets on every hop, hanging the tool until user interrupt. 10 matches
 // common client defaults (axios=5, follow-redirects=21, Chrome=20).
 const MAX_REDIRECTS = 10
@@ -238,7 +247,7 @@ export async function getWithPermittedRedirects(
   try {
     return await axios.get(url, {
       signal,
-      timeout: FETCH_TIMEOUT_MS,
+      timeout: getFetchTimeoutMs(),
       maxRedirects: 0,
       responseType: 'arraybuffer',
       maxContentLength: MAX_HTTP_CONTENT_LENGTH,
@@ -488,7 +497,7 @@ export async function fetchContentWithTavily(
     },
     {
       signal: abortSignal,
-      timeout: FETCH_TIMEOUT_MS,
+      timeout: getFetchTimeoutMs(),
       headers: { 'Content-Type': 'application/json' },
     },
   )

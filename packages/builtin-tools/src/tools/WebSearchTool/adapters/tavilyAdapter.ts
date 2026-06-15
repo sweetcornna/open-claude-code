@@ -43,7 +43,11 @@ export class TavilySearchAdapter implements WebSearchAdapter {
     const settings = getSettings_DEPRECATED() as Record<string, unknown> & {
       tavilyEndpointUrl?: string
     }
-    const searchUrl = settings.tavilyEndpointUrl || DEFAULT_TAVILY_SEARCH_URL
+    const baseUrl = settings.tavilyEndpointUrl || DEFAULT_TAVILY_SEARCH_URL
+    // Ensure the URL ends with /search (same pattern as fetchContentWithTavily for /extract)
+    const searchUrl = baseUrl.endsWith('/search')
+      ? baseUrl
+      : `${baseUrl.replace(/\/$/, '')}/search`
 
     try {
       const response = await axios.post<{
