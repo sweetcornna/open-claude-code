@@ -661,6 +661,54 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Skip the WebFetch blocklist check for enterprise environments with restrictive security policies',
         ),
+      webSearchAdapter: z
+        .enum(['api', 'bing', 'brave', 'exa', 'tavily'])
+        .optional()
+        .describe(
+          'Web search backend adapter. "tavily" uses Tavily Search API (default), ' +
+            '"api" uses Anthropic server-side search, "bing" scrapes Bing HTML, ' +
+            '"brave" uses Brave Search API, "exa" uses Exa AI.',
+        ),
+      webFetchAdapter: z
+        .enum(['tavily', 'http'])
+        .optional()
+        .describe(
+          'Web fetch backend. "tavily" uses Tavily Extract API which returns Markdown directly (default), ' +
+            '"http" fetches the URL directly via HTTP.',
+        ),
+      tavilyEndpointUrl: z
+        .string()
+        .optional()
+        .describe(
+          'Custom Tavily API endpoint URL. Defaults to https://tavily.claude-code-best.win. ' +
+            'Used by both WebSearch and WebFetch when tavily adapter is selected.',
+        ),
+      braveApiKey: z
+        .string()
+        .optional()
+        .describe(
+          'Brave Search API key. Required when using the brave web search adapter.',
+        ),
+      webFetchHttpTimeoutMs: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'HTTP timeout in milliseconds for the HTTP direct web fetch backend. Defaults to 60000 (60s).',
+        ),
+      exaApiKey: z
+        .string()
+        .optional()
+        .describe(
+          'Exa AI API key. Required when using the exa web search adapter.',
+        ),
+      exaEndpointUrl: z
+        .string()
+        .optional()
+        .describe(
+          'Custom Exa AI MCP endpoint URL. Defaults to https://mcp.exa.ai/mcp.',
+        ),
       sandbox: SandboxSettingsSchema().optional(),
       feedbackSurveyRate: z
         .number()
