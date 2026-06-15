@@ -1136,6 +1136,18 @@ export function REPL({
   const abortControllerRef = useRef<AbortController | null>(null);
   abortControllerRef.current = abortController;
 
+  // Timestamp (ms) of the most recent local-jsx panel dismissal (e.g. ESC on
+  // /workflows). Used by onCancel's grace-period guard: the ESC that closes
+  // a local-jsx panel (or any quick follow-up ESC within the grace window)
+  // must not fall through to abortController.abort('user-cancel') — otherwise
+  // closing the /workflows panel via ESC would kill the in-flight Workflow
+  // tool. The chat:cancel keybinding's isActive gate (`!isLocalJSXCommand`)
+  // only shields the panel while it's mounted; once React commits the
+  // unmount, the next ESC reaches onCancel unguarded. This ref closes that
+  // race without touching keybinding registration order.
+  const LOCAL_JSX_CLOSE_CANCEL_GRACE_MS = 500;
+  const localJSXClosedAtRef = useRef(0);
+
   // Track whether the last turn was user-aborted (Ctrl+C / Escape).
   // When true, useGoalContinuation skips the continuation enqueue so
   // interrupted turns don't spin into an unstoppable loop. Reset to
@@ -1355,6 +1367,9 @@ export function REPL({
         if (args?.clearLocalJSX) {
           localJSXCommandRef.current = null;
           setToolJSXInternal(null);
+          // Stamp the dismissal so onCancel's grace-period guard can swallow
+          // the ESC that just dismissed the panel (and any quick follow-up).
+          localJSXClosedAtRef.current = Date.now();
           return;
         }
         // Otherwise, keep the local JSX command visible - ignore tool updates
@@ -2533,6 +2548,24 @@ export function REPL({
       // Elicitation dialog handles its own Escape, and closing it shouldn't affect any loading state.
       return;
     }
+
+    // Grace-period guard: if a local-jsx panel (e.g. /workflows) was just
+    // dismissed via ESC, swallow the same / immediately-following ESC so it
+    // doesn't fall through to abortController.abort('user-cancel') and kill
+    // the in-flight Workflow tool. Single-press ESC closes the panel
+    // (handled by the panel's own useInput → onDone → setToolJSX); the
+    // chat:cancel keybinding's isActive gate shields while the panel is
+    // mounted but not in the React commit window right after unmount.
+    // Reset the stamp so a later, deliberate ESC still cancels normally.
+    if (
+      localJSXClosedAtRef.current !== 0 &&
+      Date.now() - localJSXClosedAtRef.current < LOCAL_JSX_CLOSE_CANCEL_GRACE_MS
+    ) {
+      localJSXClosedAtRef.current = 0;
+      logForDebugging('[onCancel] suppressed: local-jsx panel just dismissed');
+      return;
+    }
+    localJSXClosedAtRef.current = 0;
 
     logForDebugging(`[onCancel] focusedInputDialog=${focusedInputDialog} streamMode=${streamMode}`);
 
