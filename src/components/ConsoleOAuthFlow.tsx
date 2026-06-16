@@ -11,9 +11,11 @@ import { getSSLErrorHint } from '@ant/model-provider';
 import { sendNotification } from '../services/notifier.js';
 import {
   completeChatGPTDeviceLogin,
+  removeChatGPTAuth,
   requestChatGPTDeviceCode,
   type ChatGPTDeviceCode,
 } from '../services/api/openai/chatgptAuth.js';
+import { clearOpenAIClientCache } from '../services/api/openai/client.js';
 import { OAuthService } from '../services/oauth/index.js';
 import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth.js';
 import { openBrowser } from '../utils/browser.js';
@@ -909,6 +911,11 @@ function OAuthStatusMessage({
               process.env[k] = v;
             }
           }
+          // Drop any cached OpenAI client so the next request rebuilds it
+          // with the new env vars. Also clear ChatGPT auth file so a prior
+          // ChatGPT Subscription login can't leak into the OpenAI Compatible path.
+          clearOpenAIClientCache();
+          void removeChatGPTAuth().catch(() => {});
           setOAuthStatus({ state: 'success' });
           void onDone();
         }
@@ -1043,6 +1050,11 @@ function OAuthStatusMessage({
               throw new Error('Failed to save settings. Please try again.');
             }
             for (const [k, v] of Object.entries(env)) process.env[k] = v;
+            // Drop any cached OpenAI client built from prior OpenAI Compatible
+            // env vars; the ChatGPT Subscription path bypasses the SDK client
+            // entirely (uses createChatGPTResponsesStream) but a stale cached
+            // client would still be picked up by sideQuery.
+            clearOpenAIClientCache();
             setOAuthStatus({ state: 'success' });
             void onDone();
           } catch (err) {
@@ -1468,6 +1480,10 @@ function OAuthStatusMessage({
               process.env[k] = v;
             }
           }
+          // Drop any cached OpenAI client and ChatGPT auth so the new
+          // provider/credentials take effect on the next request.
+          clearOpenAIClientCache();
+          void removeChatGPTAuth().catch(() => {});
           logEvent('tengu_china_login_success', {});
           setOAuthStatus({ state: 'success' });
           void onDone();
