@@ -804,6 +804,31 @@
 | unstable_setSessionModel | unstable_setSessionModel | UNSTABLE | 保留 |
 | session/update | sessionUpdate (notification) | stable | 保留（usage_update 为 UNSTABLE 但为 interop 保留,见 §4.1） |
 
+## 附录 A.2: UNSTABLE RFD 实现记录（2026-06-19）
+
+下列 UNSTABLE RFD 不属于严格 v1 合规范围,但为提升 interop 与客户端 UX 已主动实现。所有字段均已存在于 SDK 0.19.0 bundled schema 的 unstable 区段,主要 ACP 客户端（Zed / Cursor / RCS Web UI）均实现。
+
+### A.2.1 session/delete（rfds/session-delete.mdx）✅ 已实现
+
+- **能力广告**: `sessionCapabilities.delete: {}`（通过类型增强写入,因 SDK 0.19.0 的 SessionCapabilities 类型早于该 RFD）。
+- **方法路由**: SDK 0.19.0 的方法分发器 `default` 分支调用 `agent.extMethod(method, params)`,因此 `session/delete` 通过 extMethod 钩子路由到 `unstable_deleteSession`。
+- **语义**: 硬删除（unlink `~/.claude/projects/<sanitized-path>/<sessionId>.jsonl`）。spec 允许 soft/hard delete,选 hard delete 简化实现。
+- **幂等性**: 删不存在的 session 也成功（ENOENT 视为成功）。
+- **未知方法**: extMethod 对未识别方法抛 `RequestError.methodNotFound(method)`（JSON-RPC -32601）。
+- **测试覆盖**: 6 个测试用例（能力广播 / extMethod 路由 / 幂等 / 内存清理 / 缺 sessionId 拒绝 / 未知方法拒绝）。
+
+### A.2.2 message-id（rfds/message-id.mdx）✅ 已实现
+
+- **覆盖范围**: `agent_message_chunk` / `user_message_chunk` / `agent_thought_chunk` 三个 chunk update 携带 `messageId`（UUID）。同消息的所有 chunks 共享 ID,不同消息 ID 不同。
+- **不覆盖**: `tool_call` / `tool_call_update` / `plan` 不携带 messageId（spec 仅规定 chunk 类型）。
+- **生成策略**:
+  - **Assistant 消息**: 在 `forwardSessionUpdates` 中维护 `currentAgentMessageId: string | null`,在 `stream_event` 或 `assistant` SDK 消息（`parent_tool_use_id === null`）首次出现时 lazy 生成 UUID；assistant 消息处理完后 reset 为 null,下一条触发新 UUID。所有 chunks（包括 streaming text/thinking 和最终 assistant message 中的 text/image）共享同一个 ID。
+  - **Subagent 消息**（`parent_tool_use_id !== null`）: 不追踪 messageId,因 spec 中嵌套 tool 消息不属于顶层 chunk 流。
+  - **历史重放**（`replayHistoryMessages`）: 每条 replayed user/assistant 消息独立生成 UUID（JSONL 不保留原始 ACP messageId）。
+- **格式**: `crypto.randomUUID()`（不用 Anthropic 的 `message.id` —— 它是 `msg_xxx` 格式,不符合 spec 要求的 UUID）。
+- **PromptRequest.messageId → PromptResponse.userMessageId**: 仅当客户端传入 `params.messageId` 时回显（spec 用词为 MAY 自行生成 → 取保守做法,不自行生成）。
+- **测试覆盖**: 7 个测试用例（assistant chunk / 多消息不同 ID / streaming 共享 ID / tool_call 不带 ID / subagent 不带 ID / replay per-message UUID / replay 字符串内容带 ID）+ 2 个 prompt 回显测试（echo / omit）。
+
 ## 附录 B: 不修复项及理由
 
 以下 finding 出于技术权衡或非合规范围,暂不修复:

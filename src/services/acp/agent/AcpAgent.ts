@@ -14,39 +14,42 @@
  * `./index.js` imports those side-effect modules so the prototype is fully
  * populated before any AcpAgent instance is constructed.
  */
-import type {
-  Agent,
-  AgentSideConnection,
-  InitializeRequest,
-  InitializeResponse,
-  AuthenticateRequest,
-  AuthenticateResponse,
-  NewSessionRequest,
-  NewSessionResponse,
-  PromptRequest,
-  PromptResponse,
-  CancelNotification,
-  LoadSessionRequest,
-  LoadSessionResponse,
-  ListSessionsRequest,
-  ListSessionsResponse,
-  ResumeSessionRequest,
-  ResumeSessionResponse,
-  ForkSessionRequest,
-  ForkSessionResponse,
-  CloseSessionRequest,
-  CloseSessionResponse,
-  SetSessionModeRequest,
-  SetSessionModeResponse,
-  SetSessionModelRequest,
-  SetSessionModelResponse,
-  SetSessionConfigOptionRequest,
-  SetSessionConfigOptionResponse,
-  ClientCapabilities,
+import {
+  RequestError,
+  type Agent,
+  type AgentSideConnection,
+  type InitializeRequest,
+  type InitializeResponse,
+  type AuthenticateRequest,
+  type AuthenticateResponse,
+  type NewSessionRequest,
+  type NewSessionResponse,
+  type PromptRequest,
+  type PromptResponse,
+  type CancelNotification,
+  type LoadSessionRequest,
+  type LoadSessionResponse,
+  type ListSessionsRequest,
+  type ListSessionsResponse,
+  type ResumeSessionRequest,
+  type ResumeSessionResponse,
+  type ForkSessionRequest,
+  type ForkSessionResponse,
+  type CloseSessionRequest,
+  type CloseSessionResponse,
+  type SetSessionModeRequest,
+  type SetSessionModeResponse,
+  type SetSessionModelRequest,
+  type SetSessionModelResponse,
+  type SetSessionConfigOptionRequest,
+  type SetSessionConfigOptionResponse,
+  type ClientCapabilities,
 } from '@agentclientprotocol/sdk'
+import { unlink } from 'node:fs/promises'
 import type { Message } from '../../../types/message.js'
 import { sanitizeTitle } from '../utils.js'
 import { listSessionsImpl } from '../../../utils/listSessionsImpl.js'
+import { resolveSessionFilePath } from '../../../utils/sessionStoragePortable.js'
 import type { AcpSession } from './sessionTypes.js'
 
 // ── Agent class ───────────────────────────────────────────────────
@@ -123,6 +126,11 @@ export class AcpAgent implements Agent {
           list: {},
           resume: {},
           close: {},
+          // UNSTABLE per session-delete.mdx: capability-gated session/delete.
+          // SDK 0.19.0's SessionCapabilities type predates this field — clients
+          // implementing the RFD read `sessionCapabilities.delete`, so we
+          // advertise it at the standard path via type augmentation.
+          ...({ delete: {} } as { delete: Record<string, never> }),
         },
       },
     }
@@ -234,6 +242,51 @@ export class AcpAgent implements Agent {
     }
     await this.teardownSession(params.sessionId)
     return {}
+  }
+
+  // ── deleteSession (UNSTABLE, routed via extMethod) ──────────────
+
+  async unstable_deleteSession(params: {
+    sessionId: string
+  }): Promise<Record<string, never>> {
+    // Per session-delete.mdx §Semantics: idempotent — deleting a session
+    // that doesn't exist (or was already deleted) MUST succeed silently.
+    const resolved = await resolveSessionFilePath(params.sessionId)
+    if (resolved) {
+      try {
+        await unlink(resolved.filePath)
+      } catch (err) {
+        // ENOENT is fine — file was concurrently removed. Any other error
+        // (EACCES, EISDIR, ...) we propagate.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      }
+    }
+    // Tear down in-memory session if present (e.g., session was active in
+    // another connection). teardownSession is a no-op if not loaded.
+    if (this.sessions.has(params.sessionId)) {
+      await this.teardownSession(params.sessionId)
+    }
+    return {}
+  }
+
+  // ── extMethod (UNSTABLE method dispatch) ────────────────────────
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    // SDK 0.19.0 routes unknown methods here (acp.js:139 default branch).
+    // We surface UNSTABLE capabilities that the SDK hasn't typed yet.
+    if (method === 'session/delete') {
+      const sessionId = params.sessionId
+      if (typeof sessionId !== 'string' || sessionId.length === 0) {
+        throw new Error('session/delete requires a non-empty sessionId')
+      }
+      return this.unstable_deleteSession({ sessionId })
+    }
+    // Unknown method — surface as JSON-RPC methodNotFound so clients see a
+    // standard error code (-32601) rather than a generic internal error.
+    throw RequestError.methodNotFound(method)
   }
 
   // ── cancel ────────────────────────────────────────────────────

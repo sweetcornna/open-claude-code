@@ -297,6 +297,16 @@ describe('AcpAgent', () => {
         (res.agentCapabilities?._meta as any)?.claudeCode?.forkSession,
       ).toBe(true)
     })
+
+    test('advertises session/delete capability per session-delete RFD', async () => {
+      // UNSTABLE per session-delete.mdx: capability-gated session/delete.
+      // SDK 0.19.0's SessionCapabilities type predates this field; we advertise
+      // it via type augmentation so clients implementing the RFD can find it.
+      const agent = new AcpAgent(makeConn())
+      const res = await agent.initialize({} as any)
+      const caps = res.agentCapabilities?.sessionCapabilities as any
+      expect(caps.delete).toEqual({})
+    })
   })
 
   describe('authenticate', () => {
@@ -634,6 +644,54 @@ describe('AcpAgent', () => {
     })
   })
 
+  describe('deleteSession (session/delete via extMethod)', () => {
+    test('extMethod routes session/delete to unstable_deleteSession', async () => {
+      const agent = new AcpAgent(makeConn())
+      const result = await agent.extMethod('session/delete', {
+        sessionId: 'nonexistent-sid-for-delete-test',
+      })
+      // Idempotent: returns empty object even when session doesn't exist
+      expect(result).toEqual({})
+    })
+
+    test('rejects session/delete without sessionId', async () => {
+      const agent = new AcpAgent(makeConn())
+      await expect(agent.extMethod('session/delete', {})).rejects.toThrow(
+        'non-empty sessionId',
+      )
+    })
+
+    test('rejects unknown methods with methodNotFound-style error', async () => {
+      const agent = new AcpAgent(makeConn())
+      await expect(
+        agent.extMethod('totally/unknown/method', {}),
+      ).rejects.toThrow()
+    })
+
+    test('unstable_deleteSession is idempotent for missing session', async () => {
+      const agent = new AcpAgent(makeConn())
+      // No file exists for this ID; both calls must succeed (per spec §Semantics)
+      const r1 = await agent.unstable_deleteSession({
+        sessionId: 'definitely-missing-id-1',
+      })
+      const r2 = await agent.unstable_deleteSession({
+        sessionId: 'definitely-missing-id-2',
+      })
+      expect(r1).toEqual({})
+      expect(r2).toEqual({})
+    })
+
+    test('unstable_deleteSession tears down active in-memory session', async () => {
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      expect(agent.sessions.has(sessionId)).toBe(true)
+      // deleteSession should remove the in-memory entry even though there's
+      // no on-disk file (newSession doesn't persist immediately in tests).
+      await agent.unstable_deleteSession({ sessionId })
+      expect(agent.sessions.has(sessionId)).toBe(false)
+    })
+  })
+
   describe('setSessionModel', () => {
     test('updates model on queryEngine', async () => {
       const agent = new AcpAgent(makeConn())
@@ -713,6 +771,50 @@ describe('AcpAgent', () => {
         prompt: [{ type: 'text', text: 'hello' }],
       } as any)
       expect((res as any)._meta).toBeUndefined()
+    })
+  })
+
+  describe('prompt userMessageId echo (message-id RFD)', () => {
+    test('echoes client-supplied messageId as userMessageId', async () => {
+      // Per rfds/message-id.mdx: when the client provides a `messageId` on
+      // PromptRequest, the Agent echoes it back as `userMessageId`.
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      ;(forwardSessionUpdates as ReturnType<typeof mock>).mockResolvedValueOnce(
+        {
+          stopReason: 'end_turn',
+          usage: {
+            inputTokens: 10,
+            outputTokens: 5,
+            cachedReadTokens: 0,
+            cachedWriteTokens: 0,
+          },
+        },
+      )
+      const clientMessageId = '11111111-2222-3333-4444-555555555555'
+      const res = await agent.prompt({
+        sessionId,
+        prompt: [{ type: 'text', text: 'hello' }],
+        messageId: clientMessageId,
+      } as any)
+      expect((res as any).userMessageId).toBe(clientMessageId)
+    })
+
+    test('omits userMessageId when client does not supply messageId', async () => {
+      // Per rfds/message-id.mdx: agent MAY self-generate; we take the
+      // conservative approach of staying silent when the client didn't ask.
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+      ;(forwardSessionUpdates as ReturnType<typeof mock>).mockResolvedValueOnce(
+        {
+          stopReason: 'end_turn',
+        },
+      )
+      const res = await agent.prompt({
+        sessionId,
+        prompt: [{ type: 'text', text: 'hello' }],
+      } as any)
+      expect((res as any).userMessageId).toBeUndefined()
     })
   })
 

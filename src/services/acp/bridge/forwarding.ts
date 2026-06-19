@@ -5,6 +5,7 @@
 // the notification converters, accumulating usage and mapping stop reasons.
 // `replayHistoryMessages` replays stored user/assistant history through
 // `toAcpNotifications`.
+import { randomUUID } from 'node:crypto'
 import type {
   AgentSideConnection,
   ClientCapabilities,
@@ -74,6 +75,16 @@ export async function forwardSessionUpdates(
   let lastAssistantModel: string | null = null
   let lastContextWindowSize = 200000
   let streamingActive = false
+
+  // Per message-id.mdx RFD: UUID identifying the current top-level agent
+  // message. Lazily generated on the first sign of a new assistant message
+  // (stream_event or assistant SDK message with parent_tool_use_id === null)
+  // and reset to null after the assistant message completes. All chunks of
+  // the same message share this ID; different messages get different IDs.
+  // Subagent messages (parent_tool_use_id !== null) don't get a tracked ID
+  // — they're nested inside a tool call and don't surface as top-level
+  // agent_message_chunk / agent_thought_chunk in the spec sense.
+  let currentAgentMessageId: string | null = null
 
   try {
     while (!abortSignal.aborted) {
@@ -197,6 +208,19 @@ export async function forwardSessionUpdates(
 
         // ── Stream events ──────────────────────────────────────────
         case 'stream_event': {
+          // Lazily generate messageId for top-level assistant messages on the
+          // first stream event. Subagent stream_events (parent_tool_use_id !==
+          // null) don't get a tracked ID — they're nested inside a tool call.
+          const streamParent = msg.parent_tool_use_id
+          if (streamParent === null && currentAgentMessageId === null) {
+            currentAgentMessageId = randomUUID()
+          }
+          // After the lazy-generate above, currentAgentMessageId is a string
+          // when streamParent === null. Capture it locally so TS narrows.
+          const streamMessageId =
+            streamParent === null
+              ? (currentAgentMessageId ?? undefined)
+              : undefined
           const notifications = streamEventToAcpNotifications(
             msg,
             sessionId,
@@ -205,6 +229,7 @@ export async function forwardSessionUpdates(
             {
               clientCapabilities,
               cwd,
+              messageId: streamMessageId,
             },
           )
           for (const notification of notifications) {
@@ -245,6 +270,18 @@ export async function forwardSessionUpdates(
             lastAssistantModel = assistantMsg.model
           }
 
+          // Reuse the messageId already generated for stream_events of this
+          // top-level message; if no stream_events arrived (e.g., synthetic
+          // message without streaming), generate one now. Then reset so the
+          // next assistant message gets a fresh UUID.
+          let assistantMessageId: string | undefined
+          if (parentToolUseId === null) {
+            if (currentAgentMessageId === null) {
+              currentAgentMessageId = randomUUID()
+            }
+            assistantMessageId = currentAgentMessageId
+          }
+
           const notifications = assistantMessageToAcpNotifications(
             msg,
             sessionId,
@@ -255,10 +292,17 @@ export async function forwardSessionUpdates(
               cwd,
               parentToolUseId,
               streamingActive,
+              messageId: assistantMessageId,
             },
           )
           for (const notification of notifications) {
             await conn.sessionUpdate(notification)
+          }
+
+          // Reset after the top-level assistant message completes so the
+          // next message (stream_event or assistant) gets a fresh UUID.
+          if (parentToolUseId === null) {
+            currentAgentMessageId = null
           }
           break
         }
@@ -384,11 +428,16 @@ export async function replayHistoryMessages(
 
     if (typeof content === 'string') {
       if (!content.trim()) continue
+      // Per message-id.mdx RFD: each replayed message gets its own UUID
+      // (JSONL doesn't preserve the original ACP messageId). All chunks of
+      // the same message share the ID.
+      const replayMessageId = randomUUID()
       await conn.sessionUpdate({
         sessionId,
         update: {
           sessionUpdate:
             role === 'assistant' ? 'agent_message_chunk' : 'user_message_chunk',
+          ...(replayMessageId ? { messageId: replayMessageId } : {}),
           content: { type: 'text', text: content },
         },
       })
@@ -396,6 +445,8 @@ export async function replayHistoryMessages(
     }
 
     if (Array.isArray(content)) {
+      // Each replayed message gets a fresh UUID independent of other messages.
+      const replayMessageId = randomUUID()
       const notifications = toAcpNotifications(
         content as Array<Record<string, unknown>>,
         role,
@@ -403,7 +454,7 @@ export async function replayHistoryMessages(
         toolUseCache,
         conn,
         undefined,
-        { clientCapabilities, cwd },
+        { clientCapabilities, cwd, messageId: replayMessageId },
       )
       for (const notification of notifications) {
         await conn.sessionUpdate(notification)
