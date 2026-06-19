@@ -83,13 +83,35 @@ describe('toolInfoFromToolUse', () => {
     ])
   })
 
-  test('Bash with terminalOutput → returns terminalId content', () => {
+  test('Bash with terminalOutput flag → no longer emits fake terminalId (audit §5.2)', () => {
+    // Standard ACP terminal lifecycle is not wired through BashTool; previously
+    // this returned { type: 'terminal', terminalId: toolUse.id } which would
+    // cause compliant clients to fail terminal/output lookups. The flag is now
+    // ignored until terminal/create is actually plumbed through.
     const info = toolInfoFromToolUse(
       { name: 'Bash', id: 'tu_123', input: { command: 'ls' } },
       true,
     )
     expect(info.kind).toBe('execute')
-    expect(info.content).toEqual([{ type: 'terminal', terminalId: 'tu_123' }])
+    expect(info.content).toEqual([])
+    expect(info.title).toBe('ls')
+  })
+
+  test('Bash with terminalOutput flag + description → falls back to description text', () => {
+    const info = toolInfoFromToolUse(
+      {
+        name: 'Bash',
+        id: 'tu_456',
+        input: { command: 'ls', description: 'list files' },
+      },
+      true,
+    )
+    expect(info.content).toEqual([
+      {
+        type: 'content',
+        content: { type: 'text', text: 'list files' },
+      },
+    ])
   })
 
   test('Bash without description → empty content', () => {
@@ -511,7 +533,9 @@ describe('toolUpdateFromToolResult', () => {
     ])
   })
 
-  test('returns terminal metadata for Bash with terminalOutput', () => {
+  test('Bash with terminalOutput flag → falls back to inline text (audit §5.2)', () => {
+    // Standard ACP terminal lifecycle is not wired; the flag is now ignored
+    // and no fake terminalId / non-standard _meta keys are emitted.
     const result = toolUpdateFromToolResult(
       {
         content: [{ type: 'text', text: 'output' }],
@@ -521,20 +545,13 @@ describe('toolUpdateFromToolResult', () => {
       { name: 'Bash', id: 't1' },
       true,
     )
-    expect(result.content).toEqual([{ type: 'terminal', terminalId: 't1' }])
-    expect(result._meta).toBeDefined()
-    expect((result._meta as Record<string, unknown>).terminal_info).toEqual({
-      terminal_id: 't1',
-    })
-    expect((result._meta as Record<string, unknown>).terminal_output).toEqual({
-      terminal_id: 't1',
-      data: 'output',
-    })
-    expect((result._meta as Record<string, unknown>).terminal_exit).toEqual({
-      terminal_id: 't1',
-      exit_code: 0,
-      signal: null,
-    })
+    expect(result.content).toEqual([
+      {
+        type: 'content',
+        content: { type: 'text', text: '```console\noutput\n```' },
+      },
+    ])
+    expect(result._meta).toBeUndefined()
   })
 
   test('handles bash_code_execution_result format', () => {
@@ -552,9 +569,15 @@ describe('toolUpdateFromToolResult', () => {
       { name: 'Bash', id: 't1' },
       true,
     )
-    const meta = result._meta as Record<string, unknown>
-    const termOutput = meta.terminal_output as { data: string }
-    expect(termOutput.data).toBe('out\nerr')
+    // terminalOutput flag is ignored; bash_code_execution_result is rendered
+    // as inline console text just like plain string content.
+    expect(result.content).toEqual([
+      {
+        type: 'content',
+        content: { type: 'text', text: '```console\nout\nerr\n```' },
+      },
+    ])
+    expect(result._meta).toBeUndefined()
   })
 
   test('returns empty when no toolUse', () => {
@@ -1163,6 +1186,67 @@ describe('forwardSessionUpdates', () => {
     expect(update.status).toBe('pending')
     expect(update.rawInput).toEqual(input)
     expect(update.rawInput).not.toBe(input)
+  })
+
+  test('emits tool_call_update with status in_progress when tool_use is encountered again (audit §4.2)', async () => {
+    // When the same tool_use block is seen twice (first via content_block_start
+    // in stream_event, then again in the final assistant message), the second
+    // encounter signals "input fully received, about to execute" and is emitted
+    // as a tool_call_update with status:'in_progress' per ACP v1 ToolCallStatus
+    // lifecycle (pending → in_progress → completed|failed).
+    const conn = makeConn()
+    const input = { command: 'ls' }
+    const msgs: SDKMessage[] = [
+      // streaming content_block_start: first sighting of tool_use
+      {
+        type: 'stream_event',
+        event: {
+          type: 'content_block_start',
+          content_block: {
+            type: 'tool_use',
+            id: 'tu_2',
+            name: 'Bash',
+            input: {},
+          },
+        },
+      } as unknown as SDKMessage,
+      // final assistant message: tool_use block with full input
+      {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'tu_2', name: 'Bash', input }],
+          role: 'assistant',
+        },
+      } as unknown as SDKMessage,
+    ]
+    await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const statuses = calls
+      .map((c: unknown[]) => {
+        const u = (c[0] as { update?: Record<string, unknown> }).update
+        return u && u.toolCallId === 'tu_2'
+          ? {
+              sessionUpdate: u.sessionUpdate,
+              status: u.status,
+            }
+          : null
+      })
+      .filter(Boolean)
+    // First: tool_call pending; second: tool_call_update in_progress
+    expect(statuses[0]).toEqual({
+      sessionUpdate: 'tool_call',
+      status: 'pending',
+    })
+    expect(statuses[1]).toEqual({
+      sessionUpdate: 'tool_call_update',
+      status: 'in_progress',
+    })
   })
 
   test('returns accumulated usage on result message without sending usage_update', async () => {
