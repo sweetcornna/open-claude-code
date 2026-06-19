@@ -92,12 +92,10 @@ export async function forwardSessionUpdates(
           const subtype = msg.subtype
 
           if (subtype === 'compact_boundary') {
-            // Reset assistant usage tracking after compaction
+            // Reset assistant usage tracking after compaction. We don't emit a
+            // usage_update here because we don't know the post-compaction context
+            // size — the next prompt's result will carry the corrected value.
             lastAssistantTotalUsage = 0
-            // NOTE: usage_update is an UNSTABLE SessionUpdate discriminator (not in
-            // stable v1 schema). Token/cost info has no v1-stable carrier; we drop
-            // it from session/update and rely on PromptResponse._meta for clients
-            // that need it (see audit §4.1).
             await conn.sessionUpdate({
               sessionId,
               update: {
@@ -132,10 +130,23 @@ export async function forwardSessionUpdates(
             }
           }
 
-          // NOTE: usage_update was removed — it is an UNSTABLE SessionUpdate
-          // discriminator not present in the stable v1 schema (audit §4.1). Token
-          // and cost information is returned via PromptResponse._meta.claudeCode.usage
-          // instead.
+          // Per session-usage.mdx RFD: emit usage_update so clients can display
+          // context window utilization (e.g. "53K / 200K"). Although usage_update
+          // is currently UNSTABLE in the v1 schema, it is the only standardized
+          // carrier for context-window state and is implemented by all major ACP
+          // clients (Zed, Cursor, etc.). Strict v1-stable compliance broke this
+          // UX (clients showed 0/0), so we emit it whenever we have usage data.
+          // See audit §4.1 for the prior strict-compliance rationale and revert.
+          if (lastAssistantTotalUsage !== null) {
+            await conn.sessionUpdate({
+              sessionId,
+              update: {
+                sessionUpdate: 'usage_update',
+                used: lastAssistantTotalUsage,
+                size: lastContextWindowSize,
+              },
+            })
+          }
 
           // Determine stop reason
           const subtype = msg.subtype
@@ -307,9 +318,9 @@ export async function forwardSessionUpdates(
 
         // ── Compact boundary ───────────────────────────────────────
         case 'compact_boundary': {
+          // Don't emit usage_update here — we don't know the post-compaction
+          // context size. The next prompt's result will carry the corrected value.
           lastAssistantTotalUsage = 0
-          // NOTE: usage_update removed — UNSTABLE discriminator, not in v1 stable
-          // schema (audit §4.1). Token info flows through PromptResponse._meta.
           await conn.sessionUpdate({
             sessionId,
             update: {

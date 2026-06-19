@@ -576,7 +576,7 @@ describe('AcpAgent', () => {
       ).rejects.toThrow('unexpected')
     })
 
-    test('returns usage under _meta.claudeCode.usage from forwardSessionUpdates', async () => {
+    test('returns usage at root and under _meta.claudeCode.usage from forwardSessionUpdates', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
       ;(forwardSessionUpdates as ReturnType<typeof mock>).mockResolvedValueOnce(
@@ -594,13 +594,18 @@ describe('AcpAgent', () => {
         sessionId,
         prompt: [{ type: 'text', text: 'hello' }],
       } as any)
-      // Stable v1 PromptResponse has no root `usage`; it lives under _meta.
-      expect((res as any).usage).toBeUndefined()
-      const usage = (res as any)._meta?.claudeCode?.usage
-      expect(usage).toBeDefined()
-      expect(usage.inputTokens).toBe(100)
-      expect(usage.outputTokens).toBe(50)
-      expect(usage.totalTokens).toBe(165)
+      // Per session-usage.mdx RFD: PromptResponse.usage is at the root
+      // (UNSTABLE in v1 but implemented by all major ACP clients).
+      const rootUsage = (res as any).usage
+      expect(rootUsage).toBeDefined()
+      expect(rootUsage.inputTokens).toBe(100)
+      expect(rootUsage.outputTokens).toBe(50)
+      expect(rootUsage.totalTokens).toBe(165)
+      // The same payload is mirrored under _meta.claudeCode.usage for
+      // consumers that read the vendor namespace.
+      const metaUsage = (res as any)._meta?.claudeCode?.usage
+      expect(metaUsage).toBeDefined()
+      expect(metaUsage.totalTokens).toBe(165)
     })
   })
 

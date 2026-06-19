@@ -109,31 +109,34 @@ async function prompt(
     // channel. The title is derived from the first user prompt.
     await emitSessionInfoUpdate(this, params.sessionId, promptInput)
 
-    // Per extensibility.mdx:39 the root of PromptResponse is reserved —
-    // stable v1 defines only `stopReason` (+ optional `_meta`). Token usage
-    // is therefore carried under the `_meta.claudeCode.usage` extension
-    // namespace rather than as a non-spec root field. thoughtTokens are
-    // included in totalTokens so reported totals match billable tokens;
-    // until bridge.ts tracks them they are reported as 0.
+    // Per session-usage.mdx RFD and the bundled SDK schema, PromptResponse
+    // carries an optional `usage` field at the root with cumulative token
+    // totals for the session. The field is UNSTABLE in v1 but is implemented
+    // by all major ACP clients. We additionally mirror the same payload into
+    // `_meta.claudeCode.usage` for consumers that read the vendor namespace.
+    // thoughtTokens are reported as 0 until the bridge tracks them, but are
+    // included in totalTokens so totals match the sum of components.
     if (usage) {
       const thoughtTokens = 0
+      const usagePayload = {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cachedReadTokens: usage.cachedReadTokens,
+        cachedWriteTokens: usage.cachedWriteTokens,
+        thoughtTokens,
+        totalTokens:
+          usage.inputTokens +
+          usage.outputTokens +
+          usage.cachedReadTokens +
+          usage.cachedWriteTokens +
+          thoughtTokens,
+      }
       return {
         stopReason,
+        usage: usagePayload,
         _meta: {
           claudeCode: {
-            usage: {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              cachedReadTokens: usage.cachedReadTokens,
-              cachedWriteTokens: usage.cachedWriteTokens,
-              thoughtTokens,
-              totalTokens:
-                usage.inputTokens +
-                usage.outputTokens +
-                usage.cachedReadTokens +
-                usage.cachedWriteTokens +
-                thoughtTokens,
-            },
+            usage: usagePayload,
           },
         },
       }

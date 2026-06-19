@@ -1249,10 +1249,10 @@ describe('forwardSessionUpdates', () => {
     })
   })
 
-  test('returns accumulated usage on result message without sending usage_update', async () => {
-    // usage_update is an UNSTABLE SessionUpdate discriminator and is no longer
-    // emitted (audit §4.1). Token totals are still aggregated for the
-    // PromptResponse return value so callers can include them via _meta.
+  test('returns accumulated usage on result message without sending usage_update when no assistant message seen', async () => {
+    // Without a preceding assistant message we have no reliable "tokens
+    // currently in context" reading, so usage_update is skipped. Token totals
+    // are still aggregated for the PromptResponse return value.
     const conn = makeConn()
     const msgs: SDKMessage[] = [
       {
@@ -1290,9 +1290,10 @@ describe('forwardSessionUpdates', () => {
     expect(usageUpdate).toBeUndefined()
   })
 
-  test('does not emit usage_update even when modelUsage reports context window', async () => {
-    // Context-window resolution still runs internally (so PromptResponse can
-    // surface it), but no usage_update notification is sent for v1 compliance.
+  test('emits usage_update with exact modelUsage context window when assistant message precedes result', async () => {
+    // Per session-usage.mdx RFD: after a turn, emit usage_update so clients can
+    // display context window utilization. The size comes from modelUsage keyed
+    // by exact model id match.
     const conn = makeConn()
     const msgs: SDKMessage[] = [
       {
@@ -1340,10 +1341,18 @@ describe('forwardSessionUpdates', () => {
           'sessionUpdate'
         ] === 'usage_update',
     )
-    expect(usageUpdate).toBeUndefined()
+    expect(usageUpdate).toBeDefined()
+    const update = (
+      usageUpdate![0] as { update: { used: number; size: number } }
+    ).update
+    // used = lastAssistantTotalUsage = 100 + 50 + 10 + 5 = 165
+    expect(update.used).toBe(165)
+    expect(update.size).toBe(1000000)
   })
 
-  test('prefix-matches modelUsage without emitting usage_update', async () => {
+  test('emits usage_update with prefix-matched modelUsage context window', async () => {
+    // Model id 'claude-opus-4-6-20250514' prefix-matches the modelUsage key
+    // 'claude-opus-4-6' to resolve contextWindow = 2000000.
     const conn = makeConn()
     const msgs: SDKMessage[] = [
       {
@@ -1391,7 +1400,12 @@ describe('forwardSessionUpdates', () => {
           'sessionUpdate'
         ] === 'usage_update',
     )
-    expect(usageUpdate).toBeUndefined()
+    expect(usageUpdate).toBeDefined()
+    const update = (
+      usageUpdate![0] as { update: { used: number; size: number } }
+    ).update
+    expect(update.used).toBe(150)
+    expect(update.size).toBe(2000000)
   })
 
   test('maps refusal stop_reason to ACP refusal stop reason', async () => {
