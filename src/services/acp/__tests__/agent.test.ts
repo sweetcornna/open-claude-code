@@ -260,13 +260,20 @@ describe('AcpAgent', () => {
       expect(typeof res.agentInfo?.version).toBe('string')
     })
 
-    test('advertises image and embeddedContext capability', async () => {
+    test('advertises embeddedContext capability and disables image until multimodal input lands', async () => {
       const agent = new AcpAgent(makeConn())
       const res = await agent.initialize({} as any)
-      expect(res.agentCapabilities?.promptCapabilities?.image).toBe(true)
+      // image:false — promptToQueryInput does not parse image blocks yet
+      expect(res.agentCapabilities?.promptCapabilities?.image).toBe(false)
       expect(res.agentCapabilities?.promptCapabilities?.embeddedContext).toBe(
         true,
       )
+    })
+
+    test('returns explicit empty authMethods', async () => {
+      const agent = new AcpAgent(makeConn())
+      const res = await agent.initialize({} as any)
+      expect(res.authMethods).toEqual([])
     })
 
     test('loadSession capability is true', async () => {
@@ -275,10 +282,20 @@ describe('AcpAgent', () => {
       expect(res.agentCapabilities?.loadSession).toBe(true)
     })
 
-    test('session capabilities include fork, list, resume, close', async () => {
+    test('session capabilities include list, resume, close (fork advertised via _meta)', async () => {
       const agent = new AcpAgent(makeConn())
       const res = await agent.initialize({} as any)
-      expect(res.agentCapabilities?.sessionCapabilities).toBeDefined()
+      const caps = res.agentCapabilities?.sessionCapabilities as any
+      expect(caps).toBeDefined()
+      expect(caps.list).toBeDefined()
+      expect(caps.resume).toBeDefined()
+      expect(caps.close).toBeDefined()
+      // fork is UNSTABLE — advertised under _meta.claudeCode.forkSession, not
+      // under sessionCapabilities (which is stable-v1 only).
+      expect(caps.fork).toBeUndefined()
+      expect(
+        (res.agentCapabilities?._meta as any)?.claudeCode?.forkSession,
+      ).toBe(true)
     })
   })
 
@@ -298,12 +315,13 @@ describe('AcpAgent', () => {
       expect(res.sessionId.length).toBeGreaterThan(0)
     })
 
-    test('returns modes and models', async () => {
+    test('returns modes and configOptions (models omitted for v1 compliance)', async () => {
       const agent = new AcpAgent(makeConn())
       const res = await agent.newSession({ cwd: '/tmp' } as any)
       expect(res.modes).toBeDefined()
-      expect(res.models).toBeDefined()
       expect(res.configOptions).toBeDefined()
+      // Stable v1 NewSessionResponse does not define `models`
+      expect((res as any).models).toBeUndefined()
     })
 
     test('each call returns a unique sessionId', async () => {
@@ -328,9 +346,10 @@ describe('AcpAgent', () => {
 
     test('calls getMainLoopModel to resolve current model', async () => {
       const agent = new AcpAgent(makeConn())
-      const res = await agent.newSession({ cwd: '/tmp' } as any)
+      await agent.newSession({ cwd: '/tmp' } as any)
       expect(mockGetMainLoopModel).toHaveBeenCalled()
-      expect(res.models?.currentModelId).toBe('claude-sonnet-4-6')
+      // models is no longer in the v1 response, but the engine still receives it
+      expect(mockSetModel).toHaveBeenCalledWith('claude-sonnet-4-6')
     })
 
     test('calls queryEngine.setModel with resolved model', async () => {
@@ -342,8 +361,7 @@ describe('AcpAgent', () => {
     test('respects model alias resolution via getMainLoopModel', async () => {
       mockGetMainLoopModel.mockReturnValueOnce('glm-5.1')
       const agent = new AcpAgent(makeConn())
-      const res = await agent.newSession({ cwd: '/tmp' } as any)
-      expect(res.models?.currentModelId).toBe('glm-5.1')
+      await agent.newSession({ cwd: '/tmp' } as any)
       expect(mockSetModel).toHaveBeenCalledWith('glm-5.1')
     })
 
@@ -464,21 +482,23 @@ describe('AcpAgent', () => {
       ).rejects.toThrow('nonexistent')
     })
 
-    test('returns end_turn for empty prompt text', async () => {
+    test('rejects empty prompt text with an error', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
-      const res = await agent.prompt({ sessionId, prompt: [] } as any)
-      expect(res.stopReason).toBe('end_turn')
+      await expect(
+        agent.prompt({ sessionId, prompt: [] } as any),
+      ).rejects.toThrow('Prompt content is empty')
     })
 
-    test('returns end_turn for whitespace-only prompt', async () => {
+    test('rejects whitespace-only prompt with an error', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
-      const res = await agent.prompt({
-        sessionId,
-        prompt: [{ type: 'text', text: '   ' }],
-      } as any)
-      expect(res.stopReason).toBe('end_turn')
+      await expect(
+        agent.prompt({
+          sessionId,
+          prompt: [{ type: 'text', text: '   ' }],
+        } as any),
+      ).rejects.toThrow('Prompt content is empty')
     })
 
     test('calls forwardSessionUpdates for valid prompt', async () => {
@@ -556,7 +576,7 @@ describe('AcpAgent', () => {
       ).rejects.toThrow('unexpected')
     })
 
-    test('returns usage from forwardSessionUpdates', async () => {
+    test('returns usage under _meta.claudeCode.usage from forwardSessionUpdates', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
       ;(forwardSessionUpdates as ReturnType<typeof mock>).mockResolvedValueOnce(
@@ -574,10 +594,13 @@ describe('AcpAgent', () => {
         sessionId,
         prompt: [{ type: 'text', text: 'hello' }],
       } as any)
-      expect(res.usage).toBeDefined()
-      expect(res.usage!.inputTokens).toBe(100)
-      expect(res.usage!.outputTokens).toBe(50)
-      expect(res.usage!.totalTokens).toBe(165)
+      // Stable v1 PromptResponse has no root `usage`; it lives under _meta.
+      expect((res as any).usage).toBeUndefined()
+      const usage = (res as any)._meta?.claudeCode?.usage
+      expect(usage).toBeDefined()
+      expect(usage.inputTokens).toBe(100)
+      expect(usage.outputTokens).toBe(50)
+      expect(usage.totalTokens).toBe(165)
     })
   })
 
@@ -649,7 +672,7 @@ describe('AcpAgent', () => {
   })
 
   describe('prompt usage tracking', () => {
-    test('returns totalTokens as sum of all token types', async () => {
+    test('reports totalTokens as sum of all token types under _meta.claudeCode.usage', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
       ;(forwardSessionUpdates as ReturnType<typeof mock>).mockResolvedValueOnce(
@@ -667,11 +690,12 @@ describe('AcpAgent', () => {
         sessionId,
         prompt: [{ type: 'text', text: 'hello' }],
       } as any)
-      expect(res.usage).toBeDefined()
-      expect(res.usage!.totalTokens).toBe(165)
+      const usage = (res as any)._meta?.claudeCode?.usage
+      expect(usage).toBeDefined()
+      expect(usage.totalTokens).toBe(165)
     })
 
-    test('returns undefined usage when forwardSessionUpdates returns none', async () => {
+    test('omits _meta.usage when forwardSessionUpdates returns none', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
       ;(forwardSessionUpdates as ReturnType<typeof mock>).mockResolvedValueOnce(
@@ -683,7 +707,7 @@ describe('AcpAgent', () => {
         sessionId,
         prompt: [{ type: 'text', text: 'hello' }],
       } as any)
-      expect(res.usage).toBeUndefined()
+      expect((res as any)._meta).toBeUndefined()
     })
   })
 
@@ -734,7 +758,8 @@ describe('AcpAgent', () => {
       } as any)
       expect(agent.sessions.has(requestedId)).toBe(true)
       expect(res.modes).toBeDefined()
-      expect(res.models).toBeDefined()
+      // models is omitted for v1 compliance
+      expect((res as any).models).toBeUndefined()
     })
 
     test('reuses existing session when sessionId matches and fingerprint unchanged', async () => {
@@ -805,11 +830,25 @@ describe('AcpAgent', () => {
       const agent = new AcpAgent(makeConn())
       const original = await agent.newSession({ cwd: '/tmp' } as any)
       const forked = await agent.unstable_forkSession({
+        // params.sessionId is the source session to fork from
+        sessionId: original.sessionId,
         cwd: '/tmp',
         mcpServers: [],
       } as any)
       expect(forked.sessionId).not.toBe(original.sessionId)
       expect(agent.sessions.has(forked.sessionId)).toBe(true)
+    })
+
+    test('attempts to load source session history when forking', async () => {
+      const agent = new AcpAgent(makeConn())
+      const original = await agent.newSession({ cwd: '/tmp' } as any)
+      mockGetLastSessionLog.mockClear()
+      await agent.unstable_forkSession({
+        sessionId: original.sessionId,
+        cwd: '/tmp',
+        mcpServers: [],
+      } as any)
+      expect(mockGetLastSessionLog).toHaveBeenCalledWith(original.sessionId)
     })
   })
 
@@ -919,16 +958,31 @@ describe('AcpAgent', () => {
       const session = agent.sessions.get(sessionId)
       removeBypassMode(session)
 
+      // The value is rejected because it is not in the option's listed values
+      // (config-option validation runs before the mode-availability check).
       await expect(
         agent.setSessionConfigOption({
           sessionId,
           configId: 'mode',
           value: 'bypassPermissions',
         } as any),
-      ).rejects.toThrow('Mode not available')
+      ).rejects.toThrow(/Invalid value 'bypassPermissions'/)
 
       expect(session?.modes.currentModeId).toBe('default')
       expect(session?.appState.toolPermissionContext.mode).toBe('default')
+    })
+
+    test('rejects mode values not listed in the option options array', async () => {
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+
+      await expect(
+        agent.setSessionConfigOption({
+          sessionId,
+          configId: 'mode',
+          value: 'totally-not-a-real-mode',
+        } as any),
+      ).rejects.toThrow(/must be one of:/)
     })
   })
 
