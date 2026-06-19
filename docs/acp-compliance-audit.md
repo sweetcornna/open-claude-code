@@ -25,8 +25,8 @@
 | P0 | acp-link 传输层违反 JSON-RPC 2.0（维度 8） | 4 (2 critical + 2 major) | 高 | 是 |
 | P0 | promptCapabilities.image 声明与实现脱节（维度 1/3/7） | 3 (3 major, 重复根因) | 低 | 是 |
 | P0 | session/resume 重放历史违反 MUST NOT（维度 2） | 1 (1 critical) | 中 | 是 |
-| P0 | session/update usage_update 非稳定 v1 判别器（维度 4） | 1 (1 critical) | 低 | 是 |
-| P1 | PromptResponse.usage 非规范根字段（维度 3） | 1 (1 major) | 低 | 否 |
+| P0 | session/update usage_update 非稳定 v1 判别器（维度 4） | 1 (1 critical) | 低 | ⚠️ **撤销**（interop 优先,见 §4.1） |
+| P1 | PromptResponse.usage 非规范根字段（维度 3） | 1 (1 major) | 低 | ⚠️ **撤销**（同 §4.1 决策,根部 usage 与 _meta 镜像并存） |
 | P1 | refusal stop_reason 丢失（维度 3） | 1 (1 major) | 低 | 否 |
 | P1 | terminal 能力误用 `_meta` + 缺失标准生命周期（维度 5） | 2 (2 major) | 高 | 否 |
 | P1 | 权限 `cancelled` 未传播为 StopReason::Cancelled（维度 5） | 1 (1 major) | 中 | 否 |
@@ -357,22 +357,21 @@
 
 ## 4. session/update 通知形状（所有 update 变体）（维度 4）
 
-### 4.1 [critical] usage_update 非稳定 v1 SessionUpdate 判别器
+### 4.1 [critical] usage_update 非稳定 v1 SessionUpdate 判别器 🔶 已撤销原修复 (2026-06-19)
 
-- 位置: `src/services/acp/bridge.ts:794, 846, 1027` (forwardSessionUpdates, 'result' 和 'compact_boundary' 情况)
+- 位置: `src/services/acp/bridge/forwarding.ts` (forwardSessionUpdates, 'result' 情况)
 - 规范要求: ACP v1 稳定版 schema schema.json:2942-3108 定义 SessionUpdate 为通过 propertyName `sessionUpdate` 进行 oneOf 判别,包含 10 个有效常量: `user_message_chunk`、`agent_message_chunk`、`agent_thought_chunk`、`tool_call`、`tool_call_update`、`plan`、`available_commands_update`、`current_mode_update`、`config_option_update`、`session_info_update`。`usage_update` 不在 v1 稳定版规范中。（Claude Code 捆绑的 SDK schema v0.19.0 第 5789 行将其标记为 "UNSTABLE——此功能尚未包含在规范中,随时可能被删除或更改"。）
-- 当前实现: bridge.ts 在 3 处发送 `sessionUpdate: 'usage_update'` 以及非标准字段（`used`、`size`、`cost`）: (1) 第 791-798 行,在 'system' 消息上检测到 compact_boundary 子类型后；(2) 第 843-854 行,在带有累计 token 计数和 total_cost_usd 的每条 'result' 消息上；(3) 第 1024-1031 行,在独立的 'compact_boundary' 消息情况下。这些仅因为捆绑的 SDK 的类型允许（其草案模式包含 usage_update）而通过类型检查；合规 v1 的客户端会拒绝这些通知。
-- 修复建议: 完全移除 usage_update 通知。token/cost 信息没有 v1 稳定版的 SessionUpdate 变体；它必须通过 `_meta` 承载或直接丢弃。最小合规修复方案: 删除 bridge.ts:791-798、843-854 和 1024-1031 处的三个 sessionUpdate 块,保留 token 聚合用于 PromptResponse 结果。如果客户端仍然需要利用率信号,请通过有效的变体发送:
+- **决策回滚**: 原修复（2026-06-19 早期）完全移除了 `usage_update` 以追求严格 v1 stable 合规。但现实中所有主流 ACP 客户端（Zed、Cursor 等）实现的是 unstable spec,移除 `usage_update` 后客户端 context 使用量一律显示 `0/0`,严重破坏 UX。鉴于:
+  - SDK 已包含 `UsageUpdate` 类型(`sessionUpdate: 'usage_update'`, 字段 `used` + `size` + 可选 `cost`)
+  - `PromptResponse.usage` 也已由 SDK 在根部支持(UNSTABLE 但被广泛实现)
+  - 这是 context 使用量报告的**唯一**标准化载体
 
-  ~~~ts
-  await conn.sessionUpdate({
-    sessionId,
-    update: {
-      sessionUpdate: 'session_info_update',
-      _meta: { claudeCode: { usage: { used: usedTokens, size: lastContextWindowSize, cost: totalCostUsd != null ? { amount: totalCostUsd, currency: 'USD' } : undefined } } },
-    },
-  })
-  ~~~
+  现行实现选择**优先保证 interop**: 在 'result' 消息后发送 `usage_update`,并在 PromptResponse 根部填充 `usage`。同时保留 `_meta.claudeCode.usage` 作为厂商扩展命名空间下的镜像,以便消费者任选读取路径。
+- 当前实现: `bridge/forwarding.ts` 在收到 'result' 消息且 `lastAssistantTotalUsage !== null` 时发出 `usage_update`:
+  - `used` = 最近一条 assistant 消息的 input + output + cache_read + cache_creation token 总和（≈ 当前上下文占用）
+  - `size` = `lastContextWindowSize`（默认 200000，通过 modelUsage prefix-match 解析）
+  - compact_boundary 时不发（不知道压缩后的实际占用；下一轮的 result 会自然修正）
+- 同步调整: `agent/promptFlow.ts` 在 PromptResponse 根部添加 `usage: { totalTokens, inputTokens, outputTokens, thoughtTokens, cachedReadTokens, cachedWriteTokens }`,并镜像到 `_meta.claudeCode.usage`。
 
 ### 4.2 [minor] 从未发出 tool_call in_progress 状态 ✅ 已修复 (2026-06-19)
 
@@ -803,7 +802,7 @@
 | setSessionMode | setSessionMode | stable | 保留（需补 current_mode_update 通知） |
 | setSessionConfigOption | setSessionConfigOption | stable | 保留（需补 value 校验） |
 | unstable_setSessionModel | unstable_setSessionModel | UNSTABLE | 保留 |
-| session/update | sessionUpdate (notification) | stable | 保留（需删除 usage_update） |
+| session/update | sessionUpdate (notification) | stable | 保留（usage_update 为 UNSTABLE 但为 interop 保留,见 §4.1） |
 
 ## 附录 B: 不修复项及理由
 
@@ -840,7 +839,7 @@
 
 3. **session/resume 去除重放**（§2.1）——中成本,需要将 resume 与 load 路径分离,引入 `replay` 标志。
 
-4. **删除 usage_update 通知**（§4.1）——低成本,删除 bridge.ts 三处 sessionUpdate 块。Token 信息改由 PromptResponse._meta.claudeCode.usage 承载。
+4. **~~删除 usage_update 通知~~（§4.1）** —— ⚠️ **已撤销**: 删除后客户端显示 0/0,严重破坏 interop。现保留 `usage_update` 发送(见 §4.1 决策回滚说明)。
 
 ### P1 重要修复（非阻断但影响协议契约）
 
