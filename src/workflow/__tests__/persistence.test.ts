@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  cleanupOldRuns,
   getRunsDir,
   listPersistedRuns,
   readRunState,
@@ -196,4 +197,109 @@ test('getRunsDir returns <projectRoot>/.claude/workflow-runs shape', () => {
   const dir = getRunsDir()
   // do not hard-code projectRoot (differs across machines), only check suffix structure
   expect(dir.endsWith(`${join('.claude', 'workflow-runs')}`)).toBe(true)
+})
+
+test('listPersistedRuns limit N returns the N newest by updatedAt desc', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-'))
+  try {
+    await writeRunState(dir, makeRun({ runId: 'old', updatedAt: 1000 }))
+    await writeRunState(dir, makeRun({ runId: 'mid', updatedAt: 2000 }))
+    await writeRunState(dir, makeRun({ runId: 'new', updatedAt: 3000 }))
+
+    expect((await listPersistedRuns(dir, 0)).map(r => r.runId)).toEqual([])
+    expect((await listPersistedRuns(dir, 1)).map(r => r.runId)).toEqual(['new'])
+    expect((await listPersistedRuns(dir, 2)).map(r => r.runId)).toEqual([
+      'new',
+      'mid',
+    ])
+    // limit larger than total → returns all (no padding)
+    expect((await listPersistedRuns(dir, 99)).map(r => r.runId)).toEqual([
+      'new',
+      'mid',
+      'old',
+    ])
+    // undefined → unchanged "load everything" semantics (back-compat)
+    expect((await listPersistedRuns(dir)).map(r => r.runId)).toEqual([
+      'new',
+      'mid',
+      'old',
+    ])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('cleanupOldRuns keeps the newest keepMax runs and removes the rest', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-'))
+  try {
+    await writeRunState(dir, makeRun({ runId: 'old', updatedAt: 1000 }))
+    await writeRunState(dir, makeRun({ runId: 'mid', updatedAt: 2000 }))
+    await writeRunState(dir, makeRun({ runId: 'new', updatedAt: 3000 }))
+
+    const removed = await cleanupOldRuns(dir, 1)
+    expect(removed).toBe(2)
+    const remaining = (await listPersistedRuns(dir)).map(r => r.runId)
+    expect(remaining).toEqual(['new'])
+    // pruned dirs are fully gone (state.json included)
+    await expect(readRunState(dir, 'old')).resolves.toBeNull()
+    await expect(readRunState(dir, 'mid')).resolves.toBeNull()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('cleanupOldRuns prunes orphan dirs (no state.json) first', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-'))
+  try {
+    await writeRunState(dir, makeRun({ runId: 'r1', updatedAt: 1000 }))
+    await writeRunState(dir, makeRun({ runId: 'r2', updatedAt: 2000 }))
+    // orphan: no state.json → treated as updatedAt=0, sorted last, pruned first
+    await mkdir(join(dir, 'orphan'), { recursive: true })
+
+    const removed = await cleanupOldRuns(dir, 2)
+    expect(removed).toBe(1)
+    const entries = await readdir(dir)
+    expect(entries).not.toContain('orphan')
+    expect(entries).toContain('r1')
+    expect(entries).toContain('r2')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('cleanupOldRuns under keepMax is a no-op', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-'))
+  try {
+    await writeRunState(dir, makeRun({ runId: 'r1', updatedAt: 1000 }))
+    await writeRunState(dir, makeRun({ runId: 'r2', updatedAt: 2000 }))
+
+    const removed = await cleanupOldRuns(dir, 5)
+    expect(removed).toBe(0)
+    expect((await listPersistedRuns(dir)).map(r => r.runId)).toEqual([
+      'r2',
+      'r1',
+    ])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('cleanupOldRuns on missing dir returns 0 (no throw)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-'))
+  await rm(dir, { recursive: true, force: true })
+  await expect(cleanupOldRuns(dir, 5)).resolves.toBe(0)
+})
+
+test('cleanupOldRuns negative keepMax is clamped to 0 (removes everything, no slice(-N) inversion)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-'))
+  try {
+    await writeRunState(dir, makeRun({ runId: 'r1', updatedAt: 1000 }))
+    await writeRunState(dir, makeRun({ runId: 'r2', updatedAt: 2000 }))
+
+    // Without the clamp, slice(-1) would keep 1 entry — violating "keep 0 means keep none".
+    await expect(cleanupOldRuns(dir, -1)).resolves.toBe(2)
+    expect(await listPersistedRuns(dir)).toEqual([])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
