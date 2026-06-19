@@ -234,19 +234,24 @@ export function toolInfoFromToolUse(
     case 'Bash': {
       const command = (input?.command as string | undefined) ?? 'Terminal'
       const description = input?.description as string | undefined
+      // Standard ACP terminal lifecycle (terminal/create → embed real terminalId →
+      // terminal/release) is not wired through BashTool yet. Embedding a fake
+      // terminalId here would cause compliant clients to fail terminal/output
+      // lookups, so we fall back to inline text content per audit doc §5.2.
+      // The _supportsTerminalOutput flag is retained for forward compatibility
+      // once terminal/create is actually plumbed through.
+      void _supportsTerminalOutput
       return {
         title: command,
         kind: 'execute',
-        content: _supportsTerminalOutput
-          ? [{ type: 'terminal' as const, terminalId: toolUse.id }]
-          : description
-            ? [
-                {
-                  type: 'content' as const,
-                  content: { type: 'text' as const, text: description },
-                },
-              ]
-            : [],
+        content: description
+          ? [
+              {
+                type: 'content' as const,
+                content: { type: 'text' as const, text: description },
+              },
+            ]
+          : [],
       }
     }
 
@@ -492,8 +497,16 @@ export function toolUpdateFromToolResult(
 
     case 'Bash': {
       let output = ''
-      let exitCode = isError ? 1 : 0
-      const terminalId = String(toolUse.id)
+      // Standard ACP terminal lifecycle (terminal/create → embed real terminalId
+      // → terminal/release) is not wired through BashTool yet. Previously this
+      // branch embedded a fake terminalId (= toolUse.id, never registered via
+      // terminal/create) and injected non-standard _meta keys (terminal_info /
+      // terminal_output / terminal_exit) that compliant clients cannot
+      // interpret. We now fall back to inline text content for the output; see
+      // audit doc §5.2/§4.4. The _supportsTerminalOutput flag is retained on
+      // the signature for forward compatibility once terminal/create is plumbed
+      // through.
+      void _supportsTerminalOutput
 
       // Handle bash_code_execution_result format
       if (
@@ -507,7 +520,6 @@ export function toolUpdateFromToolResult(
         output = [bashResult.stdout, bashResult.stderr]
           .filter(Boolean)
           .join('\n')
-        exitCode = (bashResult.return_code as number) ?? (isError ? 1 : 0)
       } else if (typeof resultContent === 'string') {
         output = resultContent
       } else if (Array.isArray(resultContent) && resultContent.length > 0) {
@@ -516,21 +528,6 @@ export function toolUpdateFromToolResult(
             c.type === 'text' ? (c.text as string) : '',
           )
           .join('\n')
-      }
-
-      if (_supportsTerminalOutput) {
-        return {
-          content: [{ type: 'terminal' as const, terminalId }],
-          _meta: {
-            terminal_info: { terminal_id: terminalId },
-            terminal_output: { terminal_id: terminalId, data: output },
-            terminal_exit: {
-              terminal_id: terminalId,
-              exit_code: exitCode,
-              signal: null,
-            },
-          },
-        }
       }
 
       if (output.trim()) {
@@ -1320,13 +1317,18 @@ function toAcpNotifications(
           const rawInput = toolInput ? { ...toolInput } : {}
 
           if (alreadyCached) {
-            // Second encounter — send as tool_call_update
+            // Second encounter — tool_use input is now fully received.
+            // The tool is about to execute (pending permission, then run).
+            // Emit a tool_call_update with status 'in_progress' so clients
+            // can distinguish "awaiting approval / running" from the initial
+            // 'pending' (per ACP v1 ToolCallStatus lifecycle, schema.json:3525).
             update = {
               _meta: {
                 claudeCode: { toolName },
               },
               toolCallId: toolUseId,
               sessionUpdate: 'tool_call_update',
+              status: 'in_progress',
               rawInput,
               ...toolInfoFromToolUse(
                 { name: toolName, id: toolUseId, input: toolInput ?? {} },

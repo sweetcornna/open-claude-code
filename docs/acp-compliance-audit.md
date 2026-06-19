@@ -374,11 +374,11 @@
   })
   ~~~
 
-### 4.2 [minor] 从未发出 tool_call in_progress 状态
+### 4.2 [minor] 从未发出 tool_call in_progress 状态 ✅ 已修复 (2026-06-19)
 
-- 位置: `src/services/acp/bridge.ts:1300-1316` (toAcpNotifications, 'tool_use' 第一次遇到 → tool_call) 和 1321-1348 ('tool_result' → tool_call_update)
+- 位置: `src/services/acp/bridge.ts` `toAcpNotifications` 的 `tool_use` 分支 alreadyCached 路径
 - 规范要求: schema.json:3525-3548 ToolCallStatus 枚举为 `pending`、`in_progress`、`completed`、`failed`。tool-calls.mdx:76-91 ('Updating') 文档化了一个生命周期,其中 Agent 在工具实际运行时报告 `status: 'in_progress'`。v1 规范称工具 "在其生命周期中会经历不同状态"。
-- 当前实现: 实现仅发送两种状态转换: 初始 'tool_call' 为 `status: 'pending'`（第 1309 行）,以及随后的 'tool_call_update' 为 `status: 'completed' | 'failed'`（第 1340-1343 行）。从未发出 `in_progress` 状态,因此客户端无法区分 "awaiting approval / streaming input" 和 "currently executing"。
+- 修复: 当同一 tool_use 块被第二次遇到时(streaming `content_block_start` 首次 + assistant 完整消息回放第二次),发 `tool_call_update` with `status: 'in_progress'`。此时语义为"input 已收齐,即将执行"。完整 ToolCallStatus 生命周期现在是 pending → in_progress → completed|failed。
 - 修复建议: 当 Claude Code 知道工具开始执行时,发出一个中间的 tool_call_update:
 
   ~~~ts
@@ -403,16 +403,11 @@
 
   这通过 v1 稳定版规范中记录的通道,为客户端提供了规范的会话显示名称。
 
-### 4.4 [nit] Bash 工具 _meta 键未命名空间化
+### 4.4 [nit] Bash 工具 _meta 键未命名空间化 ✅ 已修复 (2026-06-19,与 §5.2 合并)
 
-- 位置: `src/services/acp/bridge.ts:501-503` (toolUpdateFromToolResult, 'Bash' 情况)
-- 规范要求: schema.json 将 `_meta` 记录为保留的扩展点（"实现不得对这些键上的值做出假设"）。为了向前兼容,建议使用反向 DNS / 供应商命名空间的自定义键。SessionUpdate 上的其他 _meta 用法（bridge.ts:1288, 1304, 1336, 1370）正确使用了 `_meta.claudeCode.*` 命名空间。
-- 当前实现: Bash 工具结果在 ToolCallContent._meta 中放置了未命名空间的键: `_meta: { terminal_info: { terminal_id }, terminal_output: { terminal_id, data }, terminal_exit: { terminal_id, exit_code, signal } }`。这些是附加的,因此符合规范,但它们破坏了在其他所有地方使用的 `_meta.claudeCode.*` 命名空间约定,并且仅依赖于客户端知道这些键。
-- 修复建议: 为了与文件的其余部分保持一致,请在 `_meta.claudeCode` 下进行命名空间处理（可选；这并非规范违规）:
-
-  ~~~ts
-  _meta: { claudeCode: { terminal: { info: {...}, output: {...}, exit: {...} } } }
-  ~~~
+- 位置: `src/services/acp/bridge.ts` `toolUpdateFromToolResult` Bash 分支
+- 规范要求: schema.json 将 `_meta` 记录为保留的扩展点（"实现不得对这些键上的值做出假设"）。建议使用反向 DNS / 供应商命名空间的自定义键。
+- 修复: 与 §5.2 合并处理 — 完全删除了 `terminal_info` / `terminal_output` / `terminal_exit` 三个非标准 `_meta` 键,以及伪造的 `terminalId`。Bash 工具结果现在统一走 inline `{type:'text'}` content,不再向 `_meta` 注入任何键。命名空间问题随之消失。
 
 ---
 
@@ -435,12 +430,12 @@
   }
   ~~~
 
-### 5.2 [major] terminal 生命周期未实现,伪造 terminalId 且 _meta 注入非标准键
+### 5.2 [major] terminal 生命周期未实现,伪造 terminalId 且 _meta 注入非标准键 — 🔶 简化版已修复 (2026-06-19),完整版待办
 
-- 位置: `src/services/acp/bridge.ts:498-511` (toolUpdateFromToolResult, Bash branch)
+- 位置: `src/services/acp/bridge.ts` `toolUpdateFromToolResult` Bash 分支 + `toolInfoFromToolUse` Bash 分支
 - 规范要求: Terminals doc (docs/protocol/terminals.mdx:27-110) defines the standard terminal lifecycle: the Agent MUST call `terminal/create` to obtain a real `terminalId`, embed it via ToolCallContent `{type:'terminal', terminalId}` (schema.json:3242-3256), and the Client retrieves output via `terminal/output`。ToolCallUpdate._meta is reserved: "Implementations MUST NOT make assumptions about values at these keys" (schema.json:3555)。
-- 当前实现: 对于 Bash results,当 supportsTerminalOutput 为 true 时,代码伪造了一个 `terminalId: toolUse.id`（从未通过 `terminal/create` 注册）,发出 `{type:'terminal', terminalId}` content,并注入了三个非标准键到 `_meta`: `terminal_info`、`terminal_output`（携带实际的 stdout/stderr 数据）和 `terminal_exit`。从未发出 `terminal/create` / `terminal/release`。标准 ACP 客户端没有义务读取这些 `_meta` 键,且嵌入的 `terminalId` 对其 terminal 子系统未知,因此 `terminal/output` / `terminal/wait_for_exit` 将失败。
-- 修复建议: 当 `clientCapabilities.terminal === true` 时实现标准 terminal 流程: 在工具运行前（或首次输出时）调用 `conn.request('terminal/create', {sessionId, command, cwd, outputByteLimit})`,在 tool_call content 中嵌入返回的真实 `terminalId`,通过 terminal 子系统流式输出,并在完成时 `terminal/release`。在此之前,不要宣告 terminal 支持；回退到 inline `{type:'text'}` content 并丢弃 `_meta.terminal_*` 键（它们对合规客户端不可解释）。
+- 简化版修复（已落地）: 按文档建议回退到 inline `{type:'text'}` content,删除了伪造的 `terminalId: toolUse.id`（toolInfoFromToolUse + toolUpdateFromToolResult 两处）和三个非标准 `_meta` 键（`terminal_info` / `terminal_output` / `terminal_exit`）。合规客户端不再被误导去查找不存在的 terminal。Bash 输出仍以 ```console 围栏文本形式呈现给客户端。
+- 完整版（待办）: 实现标准 terminal 流程,需要 BashTool 接入 PTY 子系统:在工具运行前调用 `conn.request('terminal/create', {sessionId, command, cwd, outputByteLimit})`,嵌入返回的真实 `terminalId` 到 ToolCallContent,通过 terminal 子系统流式输出,完成时 `terminal/release`。此改造涉及 BashTool 执行管线（影响 CLI REPL 路径）,需单独决策是否仅 ACP 路径启用。
 
 ### 5.3 [major] cancelled 权限结果被当作普通拒绝
 
