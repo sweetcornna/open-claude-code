@@ -299,6 +299,91 @@ describe('toolInfoFromToolUse', () => {
     ])
   })
 
+  test('Read with relative file_path and cwd → locations resolved to absolute', () => {
+    // Audit §5.5: ToolCallLocation.path MUST be absolute. A relative input
+    // path is resolved against the session cwd before being emitted.
+    const info = toolInfoFromToolUse(
+      {
+        name: 'Read',
+        id: 'x',
+        input: { file_path: 'src/main.ts' },
+      },
+      false,
+      '/Users/test/project',
+    )
+    expect(info.locations).toEqual([
+      { path: '/Users/test/project/src/main.ts', line: 1 },
+    ])
+  })
+
+  test('Write with relative file_path and cwd → diff path resolved absolute', () => {
+    // Audit §5.5: Diff.path MUST be absolute.
+    const info = toolInfoFromToolUse(
+      {
+        name: 'Write',
+        id: 'x',
+        input: { file_path: 'rel/file.txt', content: 'hi' },
+      },
+      false,
+      '/Users/test/project',
+    )
+    expect(info.content).toEqual([
+      {
+        type: 'diff',
+        path: '/Users/test/project/rel/file.txt',
+        oldText: null,
+        newText: 'hi',
+      },
+    ])
+    expect(info.locations).toEqual([
+      { path: '/Users/test/project/rel/file.txt' },
+    ])
+  })
+
+  test('Edit with relative file_path and cwd → diff path resolved absolute', () => {
+    // Audit §5.5: Diff.path MUST be absolute.
+    const info = toolInfoFromToolUse(
+      {
+        name: 'Edit',
+        id: 'x',
+        input: {
+          file_path: 'rel/edit.txt',
+          old_string: 'a',
+          new_string: 'b',
+        },
+      },
+      false,
+      '/Users/test/project',
+    )
+    expect(info.content).toEqual([
+      {
+        type: 'diff',
+        path: '/Users/test/project/rel/edit.txt',
+        oldText: 'a',
+        newText: 'b',
+      },
+    ])
+    expect(info.locations).toEqual([
+      { path: '/Users/test/project/rel/edit.txt' },
+    ])
+  })
+
+  test('Glob with relative path and cwd → locations resolved absolute', () => {
+    // Audit §5.5: ToolCallLocation.path MUST be absolute. Title keeps the raw
+    // input for display, but the emitted location is resolved against cwd.
+    const info = toolInfoFromToolUse(
+      {
+        name: 'Glob',
+        id: 'x',
+        input: { pattern: '*.ts', path: 'src' },
+      },
+      false,
+      '/Users/test/project',
+    )
+    expect(info.title).toBe('Find `src` `*.ts`')
+    expect(info.locations).toEqual([{ path: '/Users/test/project/src' }])
+  })
+
   // ── WebSearch ─────────────────────────────────────────────────
 
   test('WebSearch with allowed/blocked domains', () => {
@@ -543,6 +628,91 @@ describe('toolUpdateFromToolResult', () => {
     )
     expect(result.title).toBe('Exited Plan Mode')
   })
+
+  test('renders resource_link content as ACP ResourceLink (audit §7.3)', () => {
+    const result = toolUpdateFromToolResult(
+      {
+        content: [
+          {
+            type: 'resource_link',
+            uri: 'file:///tmp/spec.md',
+            name: 'Spec',
+            mimeType: 'text/markdown',
+          },
+        ],
+        is_error: false,
+        tool_use_id: 't1',
+      },
+      { name: 'SomeTool', id: 't1' },
+    )
+    expect(result.content).toEqual([
+      {
+        type: 'content',
+        content: {
+          type: 'resource_link',
+          uri: 'file:///tmp/spec.md',
+          name: 'Spec',
+          mimeType: 'text/markdown',
+        },
+      },
+    ])
+  })
+
+  test('resource_link without name falls back to uri (audit §7.3)', () => {
+    const result = toolUpdateFromToolResult(
+      {
+        content: [{ type: 'resource_link', uri: 'file:///tmp/x.md' }],
+        is_error: false,
+        tool_use_id: 't1',
+      },
+      { name: 'SomeTool', id: 't1' },
+    )
+    expect(result.content).toEqual([
+      {
+        type: 'content',
+        content: {
+          type: 'resource_link',
+          uri: 'file:///tmp/x.md',
+          name: 'file:///tmp/x.md',
+          mimeType: undefined,
+        },
+      },
+    ])
+  })
+
+  test('renders resource content as ACP EmbeddedResource (audit §7.3)', () => {
+    const result = toolUpdateFromToolResult(
+      {
+        content: [
+          {
+            type: 'resource',
+            resource: {
+              uri: 'file:///tmp/readme.md',
+              mimeType: 'text/markdown',
+              text: '# Hello',
+            },
+          },
+        ],
+        is_error: false,
+        tool_use_id: 't1',
+      },
+      { name: 'SomeTool', id: 't1' },
+    )
+    expect(result.content).toEqual([
+      {
+        type: 'content',
+        content: {
+          type: 'resource',
+          resource: {
+            uri: 'file:///tmp/readme.md',
+            mimeType: 'text/markdown',
+            text: '# Hello',
+            blob: undefined,
+          },
+        },
+      },
+    ])
+  })
 })
 
 // ── toolUpdateFromEditToolResponse ─────────────────────────────────
@@ -649,6 +819,56 @@ describe('toolUpdateFromEditToolResponse', () => {
         structuredPatch: [],
       }),
     ).toEqual({})
+  })
+
+  test('resolves relative filePath against cwd (audit §5.5)', () => {
+    // ToolCallLocation.path / Diff.path MUST be absolute.
+    const result = toolUpdateFromEditToolResponse(
+      {
+        filePath: 'rel/file.ts',
+        structuredPatch: [
+          {
+            oldStart: 1,
+            oldLines: 1,
+            newStart: 1,
+            newLines: 1,
+            lines: ['-old', '+new'],
+          },
+        ],
+      },
+      '/Users/test/project',
+    )
+    expect(result).toEqual({
+      content: [
+        {
+          type: 'diff',
+          path: '/Users/test/project/rel/file.ts',
+          oldText: 'old',
+          newText: 'new',
+        },
+      ],
+      locations: [{ path: '/Users/test/project/rel/file.ts', line: 1 }],
+    })
+  })
+
+  test('keeps absolute filePath unchanged when cwd provided', () => {
+    const result = toolUpdateFromEditToolResponse(
+      {
+        filePath: '/abs/file.ts',
+        structuredPatch: [
+          {
+            oldStart: 1,
+            oldLines: 1,
+            newStart: 1,
+            newLines: 1,
+            lines: ['-old', '+new'],
+          },
+        ],
+      },
+      '/Users/test/project',
+    )
+    expect(result.content![0]).toMatchObject({ path: '/abs/file.ts' })
+    expect(result.locations![0]).toMatchObject({ path: '/abs/file.ts' })
   })
 })
 
@@ -945,7 +1165,10 @@ describe('forwardSessionUpdates', () => {
     expect(update.rawInput).not.toBe(input)
   })
 
-  test('sends usage_update on result message with correct tokens', async () => {
+  test('returns accumulated usage on result message without sending usage_update', async () => {
+    // usage_update is an UNSTABLE SessionUpdate discriminator and is no longer
+    // emitted (audit §4.1). Token totals are still aggregated for the
+    // PromptResponse return value so callers can include them via _meta.
     const conn = makeConn()
     const msgs: SDKMessage[] = [
       {
@@ -973,9 +1196,19 @@ describe('forwardSessionUpdates', () => {
     expect(result.usage).toBeDefined()
     expect(result.usage!.inputTokens).toBe(100)
     expect(result.usage!.outputTokens).toBe(50)
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const usageUpdate = calls.find(
+      (c: unknown[]) =>
+        ((c[0] as Record<string, Record<string, unknown>>).update ?? {})[
+          'sessionUpdate'
+        ] === 'usage_update',
+    )
+    expect(usageUpdate).toBeUndefined()
   })
 
-  test('sends usage_update with context window from modelUsage', async () => {
+  test('does not emit usage_update even when modelUsage reports context window', async () => {
+    // Context-window resolution still runs internally (so PromptResponse can
+    // surface it), but no usage_update notification is sent for v1 compliance.
     const conn = makeConn()
     const msgs: SDKMessage[] = [
       {
@@ -1023,18 +1256,10 @@ describe('forwardSessionUpdates', () => {
           'sessionUpdate'
         ] === 'usage_update',
     )
-    expect(usageUpdate).toBeDefined()
-    expect(
-      (
-        (usageUpdate![0] as Record<string, unknown>).update as Record<
-          string,
-          unknown
-        >
-      ).size,
-    ).toBe(1000000)
+    expect(usageUpdate).toBeUndefined()
   })
 
-  test('sends usage_update with prefix-matched modelUsage', async () => {
+  test('prefix-matches modelUsage without emitting usage_update', async () => {
     const conn = makeConn()
     const msgs: SDKMessage[] = [
       {
@@ -1082,18 +1307,125 @@ describe('forwardSessionUpdates', () => {
           'sessionUpdate'
         ] === 'usage_update',
     )
-    expect(usageUpdate).toBeDefined()
-    expect(
-      (
-        (usageUpdate![0] as Record<string, unknown>).update as Record<
-          string,
-          unknown
-        >
-      ).size,
-    ).toBe(2000000)
+    expect(usageUpdate).toBeUndefined()
   })
 
-  test('resets usage on compact_boundary', async () => {
+  test('maps refusal stop_reason to ACP refusal stop reason', async () => {
+    // Audit §3.3: a safety refusal must surface as StopReason::refusal rather
+    // than being misreported as end_turn.
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: '',
+        stop_reason: 'refusal',
+      } as unknown as SDKMessage,
+    ]
+    const result = await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    expect(result.stopReason).toBe('refusal')
+  })
+
+  test('success with max_tokens stop_reason maps to max_tokens when not error', async () => {
+    // Audit §3.3/§3.4: success + max_tokens + no error surfaces max_tokens.
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: '',
+        stop_reason: 'max_tokens',
+      } as unknown as SDKMessage,
+    ]
+    const result = await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    expect(result.stopReason).toBe('max_tokens')
+  })
+
+  test('success with max_tokens stop_reason falls back to end_turn when isError', async () => {
+    // Audit §3.3: in the success branch, isError acts as a last-resort
+    // override to end_turn per the merged fix diff.
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: '',
+        stop_reason: 'max_tokens',
+      } as unknown as SDKMessage,
+    ]
+    const result = await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    expect(result.stopReason).toBe('end_turn')
+  })
+
+  test('maps error_during_execution with max_tokens stop_reason', async () => {
+    // Audit §3.4: error_during_execution branch must preserve max_tokens even
+    // when isError is set (mutually exclusive branches).
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'result',
+        subtype: 'error_during_execution',
+        is_error: true,
+        result: '',
+        stop_reason: 'max_tokens',
+      } as unknown as SDKMessage,
+    ]
+    const result = await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    expect(result.stopReason).toBe('max_tokens')
+  })
+
+  test('maps error_during_execution without max_tokens to end_turn', async () => {
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'result',
+        subtype: 'error_during_execution',
+        is_error: true,
+        result: '',
+        stop_reason: 'end_turn',
+      } as unknown as SDKMessage,
+    ]
+    const result = await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    expect(result.stopReason).toBe('end_turn')
+  })
+
+  test('compact_boundary emits completion message without usage_update', async () => {
+    // After audit §4.1, compact_boundary still sends the "Compacting completed."
+    // agent_message_chunk but no longer emits the unstable usage_update
+    // notification.
     const conn = makeConn()
     const msgs: SDKMessage[] = [
       { type: 'system', subtype: 'compact_boundary' } as unknown as SDKMessage,
@@ -1112,15 +1444,14 @@ describe('forwardSessionUpdates', () => {
           'sessionUpdate'
         ] === 'usage_update',
     )
-    expect(usageCall).toBeDefined()
-    expect(
-      (
-        (usageCall![0] as Record<string, unknown>).update as Record<
-          string,
-          unknown
-        >
-      ).used,
-    ).toBe(0)
+    expect(usageCall).toBeUndefined()
+    const messageCall = calls.find(
+      (c: unknown[]) =>
+        ((c[0] as Record<string, Record<string, unknown>>).update ?? {})[
+          'sessionUpdate'
+        ] === 'agent_message_chunk',
+    )
+    expect(messageCall).toBeDefined()
   })
 
   test('ignores unknown message types without crashing', async () => {

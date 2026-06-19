@@ -40,6 +40,7 @@ import type {
 } from '@agentclientprotocol/sdk'
 import { randomUUID, type UUID } from 'node:crypto'
 import { dirname } from 'node:path'
+import * as path from 'node:path'
 import type { Message } from '../../types/message.js'
 import { deserializeMessages } from '../../utils/conversationRecovery.js'
 import {
@@ -78,7 +79,11 @@ import {
 } from './utils.js'
 import { promptToQueryInput } from './promptConversion.js'
 import { listSessionsImpl } from '../../utils/listSessionsImpl.js'
-import { resolveSessionFilePath } from '../../utils/sessionStoragePortable.js'
+import {
+  resolveSessionFilePath,
+  readSessionLite,
+  extractJsonStringField,
+} from '../../utils/sessionStoragePortable.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import { getModelOptions } from '../../utils/model/modelOptions.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
@@ -126,6 +131,9 @@ export class AcpAgent implements Agent {
 
     return {
       protocolVersion: 1,
+      // Explicit empty authMethods signals "no authentication required" to
+      // Clients rather than "capability unknown". Matches authenticate() no-op.
+      authMethods: [],
       agentInfo: {
         name: 'claude-code',
         title: 'Claude Code',
@@ -150,10 +158,16 @@ export class AcpAgent implements Agent {
         _meta: {
           claudeCode: {
             promptQueueing: true,
+            // session/fork is UNSTABLE — not part of stable v1 SessionCapabilities.
+            // Advertise via _meta namespace per extensibility.mdx "Advertising
+            // Custom Capabilities" instead of the standard sessionCapabilities map.
+            forkSession: true,
           },
         },
+        // image:false — promptToQueryInput() does not parse ContentBlock::Image
+        // blocks yet. Re-enable only after multimodal query input support lands.
         promptCapabilities: {
-          image: true,
+          image: false,
           embeddedContext: true,
         },
         mcpCapabilities: {
@@ -162,7 +176,6 @@ export class AcpAgent implements Agent {
         },
         loadSession: true,
         sessionCapabilities: {
-          fork: {},
           list: {},
           resume: {},
           close: {},
@@ -193,7 +206,11 @@ export class AcpAgent implements Agent {
   async unstable_resumeSession(
     params: ResumeSessionRequest,
   ): Promise<ResumeSessionResponse> {
-    const result = await this.getOrCreateSession(params)
+    // Per session-setup.mdx "Resuming a Session": the Agent MUST NOT replay the
+    // conversation history via session/update notifications before responding.
+    // Only restore context + MCP connections, then return immediately. This
+    // differs from session/load which DOES replay history.
+    const result = await this.getOrCreateSession({ ...params, replay: false })
     this.scheduleAvailableCommandsUpdate(result.sessionId)
     return result
   }
@@ -211,18 +228,29 @@ export class AcpAgent implements Agent {
   async listSessions(
     params: ListSessionsRequest,
   ): Promise<ListSessionsResponse> {
+    // Pagination is not implemented: we always return all available sessions
+    // for the requested cwd (no nextCursor). Per session-list.mdx the Agent
+    // SHOULD return an error if the cursor is invalid, so explicitly reject
+    // any client-supplied cursor rather than silently accepting it.
+    if (params.cursor !== undefined && params.cursor !== null) {
+      throw new Error(
+        'Pagination cursor not supported: listSessions returns all results in a single page.',
+      )
+    }
+
     const candidates = await listSessionsImpl({
       dir: params.cwd ?? undefined,
-      limit: 100,
     })
 
     const sessions = []
     for (const candidate of candidates) {
       if (!candidate.cwd) continue
+      // Only include title when non-empty; schema allows null/omitted title.
+      const title = sanitizeTitle(candidate.summary ?? '')
       sessions.push({
         sessionId: candidate.sessionId,
         cwd: candidate.cwd,
-        title: sanitizeTitle(candidate.summary ?? ''),
+        ...(title ? { title } : {}),
         updatedAt: new Date(candidate.lastModified).toISOString(),
       })
     }
@@ -235,11 +263,26 @@ export class AcpAgent implements Agent {
   async unstable_forkSession(
     params: ForkSessionRequest,
   ): Promise<ForkSessionResponse> {
-    const response = await this.createSession({
-      cwd: params.cwd,
-      mcpServers: params.mcpServers ?? [],
-      _meta: params._meta,
-    })
+    // Load the source session's messages so the fork actually branches from
+    // the source conversation rather than starting a blank session. Per the
+    // unstable ForkSessionRequest, params.sessionId is the ID to fork from.
+    let initialMessages: Message[] | undefined
+    try {
+      const log = await getLastSessionLog(params.sessionId as UUID)
+      if (log && log.messages.length > 0) {
+        initialMessages = deserializeMessages(log.messages)
+      }
+    } catch (err) {
+      console.error('[ACP] fork source load failed:', err)
+    }
+    const response = await this.createSession(
+      {
+        cwd: params.cwd,
+        mcpServers: params.mcpServers ?? [],
+        _meta: params._meta,
+      },
+      { initialMessages },
+    )
     this.scheduleAvailableCommandsUpdate(response.sessionId)
     return response
   }
@@ -268,8 +311,11 @@ export class AcpAgent implements Agent {
     // Extract text/image content from the prompt
     const promptInput = promptToQueryInput(params.prompt)
 
+    // Per prompt-turn.mdx, `prompt` is a required ContentBlock[] and an
+    // effectively-empty prompt is malformed input — reject it with an
+    // invalid_params error rather than fabricating a successful end_turn.
     if (!promptInput.trim()) {
-      return { stopReason: 'end_turn' }
+      throw new Error('Prompt content is empty')
     }
 
     const promptCancelGeneration = session.cancelGeneration
@@ -323,24 +369,51 @@ export class AcpAgent implements Agent {
         return { stopReason: 'cancelled' }
       }
 
-      return {
-        stopReason,
-        usage: usage
-          ? {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              cachedReadTokens: usage.cachedReadTokens,
-              cachedWriteTokens: usage.cachedWriteTokens,
-              totalTokens:
-                usage.inputTokens +
-                usage.outputTokens +
-                usage.cachedReadTokens +
-                usage.cachedWriteTokens,
-            }
-          : undefined,
+      // Emit a session_info_update so Clients learn the session's display
+      // title / last-activity timestamp via the stable v1 session/update
+      // channel. The title is derived from the first user prompt.
+      await this.maybeEmitSessionInfoUpdate(params.sessionId, promptInput)
+
+      // Per extensibility.mdx:39 the root of PromptResponse is reserved —
+      // stable v1 defines only `stopReason` (+ optional `_meta`). Token usage
+      // is therefore carried under the `_meta.claudeCode.usage` extension
+      // namespace rather than as a non-spec root field. thoughtTokens are
+      // included in totalTokens so reported totals match billable tokens;
+      // until bridge.ts tracks them they are reported as 0.
+      if (usage) {
+        const thoughtTokens = 0
+        return {
+          stopReason,
+          _meta: {
+            claudeCode: {
+              usage: {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cachedReadTokens: usage.cachedReadTokens,
+                cachedWriteTokens: usage.cachedWriteTokens,
+                thoughtTokens,
+                totalTokens:
+                  usage.inputTokens +
+                  usage.outputTokens +
+                  usage.cachedReadTokens +
+                  usage.cachedWriteTokens +
+                  thoughtTokens,
+              },
+            },
+          },
+        }
       }
+      return { stopReason }
     } catch (err: unknown) {
-      if (session.cancelled) {
+      // Treat AbortError / cancellation-shaped errors as a turn cancellation
+      // regardless of the session.cancelled flag, to close the race window
+      // between interrupt() firing and cancel() setting the flag. Per
+      // prompt-turn.mdx the Agent MUST return `cancelled` for aborts.
+      const isAbort =
+        err instanceof Error &&
+        (err.name === 'AbortError' ||
+          /abort|cancelled|interrupt/i.test(err.message))
+      if (session.cancelled || isAbort) {
         return { stopReason: 'cancelled' }
       }
 
@@ -402,6 +475,17 @@ export class AcpAgent implements Agent {
     }
 
     this.applySessionMode(params.sessionId, params.modeId)
+    // Per session-modes.mdx: when the Agent changes its own mode it MUST send
+    // a current_mode_update notification so mode-only Clients learn the
+    // switch. Mirrors the current_mode_update sent by setSessionConfigOption
+    // when configId === 'mode'.
+    await this.conn.sessionUpdate({
+      sessionId: params.sessionId,
+      update: {
+        sessionUpdate: 'current_mode_update',
+        currentModeId: params.modeId,
+      },
+    })
     await this.updateConfigOption(params.sessionId, 'mode', params.modeId)
     return {}
   }
@@ -440,6 +524,21 @@ export class AcpAgent implements Agent {
     const option = session.configOptions.find(o => o.id === params.configId)
     if (!option) {
       throw new Error(`Unknown config option: ${params.configId}`)
+    }
+
+    // Per session-config-options.mdx: value MUST be one of the values listed
+    // in the option's options array. Reject unknown values with an error
+    // rather than silently persisting them. Only `select` options carry an
+    // options array; `boolean` options have no enumerated values.
+    if (option.type === 'select') {
+      const validValues = flattenConfigOptionValues(
+        (option as { options?: unknown }).options,
+      )
+      if (!validValues.includes(params.value)) {
+        throw new Error(
+          `Invalid value '${params.value}' for config option ${params.configId}; must be one of: ${validValues.join(', ')}`,
+        )
+      }
     }
 
     const value = params.value
@@ -672,9 +771,10 @@ export class AcpAgent implements Agent {
 
       this.sessions.set(sessionId, session)
 
+      // Stable v1 NewSessionResponse only defines sessionId/modes/configOptions.
+      // `models` is a draft/unstable field — omit it for v1 compliance.
       return {
         sessionId,
-        models,
         modes,
         configOptions,
       }
@@ -690,7 +790,13 @@ export class AcpAgent implements Agent {
     cwd: string
     mcpServers?: NewSessionRequest['mcpServers']
     _meta?: NewSessionRequest['_meta']
+    // replay:true (default, session/load) streams the conversation history back
+    // to the client via session/update. replay:false (session/resume) only
+    // restores the in-process context — per session-setup.mdx the Agent MUST
+    // NOT replay history when resuming.
+    replay?: boolean
   }): Promise<NewSessionResponse> {
+    const shouldReplay = params.replay !== false
     const existingSession = this.sessions.get(params.sessionId)
     if (existingSession) {
       const fingerprint = computeSessionFingerprint({
@@ -710,12 +816,13 @@ export class AcpAgent implements Agent {
         )
         setOriginalCwd(params.cwd)
 
-        await this.replaySessionHistory(params)
+        if (shouldReplay) {
+          await this.replaySessionHistory(params)
+        }
 
         return {
           sessionId: params.sessionId,
           modes: existingSession.modes,
-          models: existingSession.models,
           configOptions: existingSession.configOptions,
         }
       }
@@ -729,6 +836,25 @@ export class AcpAgent implements Agent {
     // search by sessionId first and fall back to cwd-based lookup.
     const resolved = await resolveSessionFilePath(params.sessionId, params.cwd)
     const projectDir = resolved ? dirname(resolved.filePath) : null
+
+    // Per session-setup.mdx "Working Directory": the cwd MUST be the absolute
+    // path used for the session regardless of where the Agent was spawned.
+    // Reject cross-project loads where the persisted session's original cwd
+    // does not match the requested cwd, otherwise the client could load a
+    // session belonging to project B while passing project A's cwd.
+    if (resolved) {
+      const lite = await readSessionLite(resolved.filePath)
+      const originalCwd = lite && extractJsonStringField(lite.head, 'cwd')
+      if (
+        originalCwd &&
+        path.resolve(originalCwd) !== path.resolve(params.cwd)
+      ) {
+        throw new Error(
+          `Session cwd mismatch: session belongs to ${originalCwd}, requested ${params.cwd}`,
+        )
+      }
+    }
+
     switchSession(params.sessionId as SessionId, projectDir)
     setOriginalCwd(params.cwd)
 
@@ -753,8 +879,8 @@ export class AcpAgent implements Agent {
       { sessionId: params.sessionId, initialMessages },
     )
 
-    // Replay history to client if loaded
-    if (initialMessages && initialMessages.length > 0) {
+    // Replay history to client if loaded. session/resume skips this block.
+    if (shouldReplay && initialMessages && initialMessages.length > 0) {
       const session = this.sessions.get(params.sessionId)
       if (session) {
         await replayHistoryMessages(
@@ -771,7 +897,6 @@ export class AcpAgent implements Agent {
     return {
       sessionId: response.sessionId,
       modes: response.modes,
-      models: response.models,
       configOptions: response.configOptions,
     }
   }
@@ -912,6 +1037,39 @@ export class AcpAgent implements Agent {
     }, 0)
   }
 
+  /**
+   * Emit a session_info_update notification carrying a derived session title
+   * (truncated first user prompt) and the current last-activity timestamp.
+   * Sent once per session — subsequent turns reuse the same title.
+   */
+  private async maybeEmitSessionInfoUpdate(
+    sessionId: string,
+    firstPrompt: string,
+  ): Promise<void> {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    // sessionInfoTitleSent is tracked via toolUseCache to avoid reshaping
+    // AcpSession; use a dedicated per-session flag instead.
+    const cache = session.toolUseCache as ToolUseCache & {
+      __sessionInfoTitleSent?: boolean
+    }
+    if (cache.__sessionInfoTitleSent) return
+    cache.__sessionInfoTitleSent = true
+    const title = sanitizeTitle(firstPrompt).slice(0, 100)
+    try {
+      await this.conn.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: 'session_info_update',
+          ...(title ? { title } : {}),
+          updatedAt: new Date().toISOString(),
+        },
+      })
+    } catch (err) {
+      console.error('[ACP] Failed to send session_info_update:', err)
+    }
+  }
+
   /** Read a setting from Claude config (simplified — no file watching) */
   private getSetting<T>(key: string): T | undefined {
     const settings = getSettings_DEPRECATED() as Record<string, unknown>
@@ -1034,6 +1192,37 @@ function isSettingsBypassPermissionMode(settingsMode: unknown): boolean {
 
 function isTruthyEnv(value: string | undefined): boolean {
   return value === '1' || value?.toLowerCase() === 'true'
+}
+
+/**
+ * Flatten a SessionConfigOption's `options` (which may be flat
+ * SessionConfigSelectOption entries or grouped SessionConfigSelectGroup
+ * entries) into a list of valid value strings. Used to validate that a
+ * setSessionConfigOption value is one of the listed options.
+ */
+function flattenConfigOptionValues(options: unknown): string[] {
+  const values: string[] = []
+  if (!Array.isArray(options)) return values
+  for (const opt of options) {
+    if (typeof opt !== 'object' || opt === null) continue
+    const maybeGroup = opt as { group?: unknown; options?: unknown[] }
+    if (Array.isArray(maybeGroup.options)) {
+      // SessionConfigSelectGroup — recurse into its options
+      for (const inner of maybeGroup.options) {
+        if (
+          inner &&
+          typeof inner === 'object' &&
+          typeof (inner as { value?: unknown }).value === 'string'
+        ) {
+          values.push((inner as { value: string }).value)
+        }
+      }
+    } else if (typeof (opt as { value?: unknown }).value === 'string') {
+      // SessionConfigSelectOption
+      values.push((opt as { value: string }).value)
+    }
+  }
+  return values
 }
 
 function popNextPendingPrompt(session: AcpSession): PendingPrompt | undefined {

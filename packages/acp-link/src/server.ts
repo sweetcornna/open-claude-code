@@ -10,10 +10,26 @@ import type { WebSocket as RawWebSocket } from 'ws'
 import { createLogger } from './logger.js'
 import { getOrCreateCertificate, getLanIPs } from './cert.js'
 import { RcsUpstreamClient, type RcsUpstreamConfig } from './rcs-upstream.js'
-import { decodeJsonWsMessage, WsPayloadTooLargeError } from './ws-message.js'
+import {
+  decodeJsonWsMessage,
+  isJsonRpc2Message,
+  WsPayloadTooLargeError,
+  type JsonRpc2ClientMessage,
+} from './ws-message.js'
 import { authTokensEqual, extractWebSocketAuthToken } from './ws-auth.js'
 
-export { MAX_CLIENT_WS_PAYLOAD_BYTES } from './ws-message.js'
+export {
+  MAX_CLIENT_WS_PAYLOAD_BYTES,
+  isJsonRpc2Message,
+  type JsonRpc2ClientMessage,
+} from './ws-message.js'
+
+// JSON-RPC 2.0 reserved error codes (spec §5.1)
+const JSONRPC_PARSE_ERROR = -32700
+const JSONRPC_INVALID_REQUEST = -32600
+const JSONRPC_METHOD_NOT_FOUND = -32601
+const JSONRPC_INVALID_PARAMS = -32602
+const JSONRPC_INTERNAL_ERROR = -32603
 
 export interface ServerConfig {
   port: number
@@ -88,6 +104,63 @@ interface ClientState {
   promptCapabilities: PromptCapabilities | null
   modelState: SessionModelState | null
   isAlive: boolean
+  /**
+   * True when this client speaks JSON-RPC 2.0 (determined from the first
+   * framed message). When true, responses are emitted as JSON-RPC responses
+   * that preserve the request `id`; otherwise the legacy `{type, payload}`
+   * envelope is used for backwards compatibility.
+   */
+  jsonRpc: boolean
+  /**
+   * Client-supplied identity and capabilities, captured from the JSON-RPC
+   * `initialize` request or legacy `connect` payload and forwarded to the
+   * agent instead of the hardcoded Zed fallback. See audit §8.7.
+   */
+  clientInfo: { name: string; version: string }
+  clientCapabilities: Record<string, unknown>
+  /** Negotiated ACP protocolVersion surfaced back to the client (audit §8.13). */
+  protocolVersion: number | null
+  /** Agent identity from InitializeResult.agentInfo (audit §8.13). */
+  agentInfo: { name: string; version: string; [k: string]: unknown } | null
+  /**
+   * Currently in-flight JSON-RPC request being serviced. The proxy echoes this
+   * id back in the JSON-RPC response (audit §8.2). At most one request is
+   * processed per client at a time because onMessage is awaited serially.
+   */
+  pendingJsonRpc: {
+    id: string | number | null
+    /** Legacy response type the handler will emit via send(). */
+    responseType: string
+  } | null
+}
+
+// Default fallback client identity (used only when the client provides none)
+const DEFAULT_CLIENT_INFO = Object.freeze({ name: 'zed', version: '1.0.0' })
+const DEFAULT_CLIENT_CAPABILITIES = Object.freeze({
+  fs: { readTextFile: true, writeTextFile: true },
+})
+
+/**
+ * Create a fresh ClientState with the default fallback client identity and
+ * capabilities. Used by every WebSocket open handler and the RCS relay.
+ */
+function createClientState(): ClientState {
+  return {
+    process: null,
+    connection: null,
+    sessionId: null,
+    pendingPermissions: new Map(),
+    agentCapabilities: null,
+    promptCapabilities: null,
+    modelState: null,
+    isAlive: true,
+    jsonRpc: false,
+    clientInfo: { ...DEFAULT_CLIENT_INFO },
+    clientCapabilities: { ...DEFAULT_CLIENT_CAPABILITIES },
+    protocolVersion: null,
+    agentInfo: null,
+    pendingJsonRpc: null,
+  }
 }
 
 // Module-level state (set when server starts)
@@ -143,7 +216,22 @@ function generateRequestId(): string {
   return `perm_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 }
 
-// Send a message to the WebSocket client (and optionally forward to RCS upstream)
+// Maps legacy notification type strings to their JSON-RPC method names so
+// agent→client notifications are also emitted as JSON-RPC notifications for
+// JSON-RPC 2.0 clients (audit §8.1). Notifications have no id.
+const LEGACY_NOTIFICATION_TO_JSONRPC: Record<string, string> = {
+  session_update: 'session/update',
+  permission_request: 'session/request_permission',
+}
+
+// Send a notification/response to the WebSocket client.
+//
+// For legacy `{type, payload}` clients this emits the proprietary envelope.
+// For JSON-RPC 2.0 clients this additionally emits a JSON-RPC response that
+// echoes the in-flight request id when the message type matches the pending
+// request's expected response type (audit §8.2). Agent→client notifications
+// (`session_update`, `permission_request`) are emitted as JSON-RPC
+// notifications without an id.
 function send(ws: WSContext, type: string, payload?: unknown): void {
   if (ws.readyState === 1) {
     // WebSocket.OPEN
@@ -153,6 +241,64 @@ function send(ws: WSContext, type: string, payload?: unknown): void {
   if (rcsUpstream?.isRegistered()) {
     rcsUpstream.send({ type, payload })
   }
+
+  const state = clients.get(ws)
+  if (!state?.jsonRpc) return
+
+  // If this is the response to an in-flight JSON-RPC request, emit the
+  // standard JSON-RPC result with the preserved id.
+  if (state.pendingJsonRpc?.responseType === type) {
+    sendJsonRpcRaw(ws, {
+      jsonrpc: '2.0',
+      id: state.pendingJsonRpc.id,
+      result: payload ?? {},
+    })
+    state.pendingJsonRpc = null
+    return
+  }
+
+  // Agent→client notifications are also emitted as JSON-RPC notifications
+  // (no id) so JSON-RPC clients receive them in their native format.
+  const notificationMethod = LEGACY_NOTIFICATION_TO_JSONRPC[type]
+  if (notificationMethod) {
+    sendJsonRpcRaw(ws, {
+      jsonrpc: '2.0',
+      method: notificationMethod,
+      params: payload ?? {},
+    })
+  }
+}
+
+// Serialize a JSON-RPC 2.0 message and send it to a connected WS client.
+function sendJsonRpcRaw(ws: WSContext, message: object): void {
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify(message))
+  }
+}
+
+/**
+ * Send a JSON-RPC 2.0 error response with a reserved -32xxx code (audit §8.3).
+ * Also emits the legacy `{type: 'error', payload: {message}}` envelope for
+ * backwards compatibility.
+ */
+function sendJsonRpcError(
+  ws: WSContext,
+  state: ClientState | undefined,
+  id: string | number | null,
+  code: number,
+  message: string,
+): void {
+  if (state?.jsonRpc) {
+    sendJsonRpcRaw(ws, {
+      jsonrpc: '2.0',
+      id,
+      error: { code, message },
+    })
+  } else {
+    send(ws, 'error', { message, code: String(code) })
+  }
+  // Error consumed the in-flight request, if any.
+  if (state) state.pendingJsonRpc = null
 }
 
 // Create a Client implementation that forwards events to WebSocket
@@ -259,8 +405,9 @@ async function handleConnect(ws: WSContext): Promise<void> {
     logAgent.info('already connected, resending status')
     send(ws, 'status', {
       connected: true,
-      agentInfo: { name: AGENT_COMMAND },
+      agentInfo: state.agentInfo ?? { name: AGENT_COMMAND },
       capabilities: state.agentCapabilities,
+      protocolVersion: state.protocolVersion,
     })
     return
   }
@@ -312,23 +459,23 @@ async function handleConnect(ws: WSContext): Promise<void> {
 
     const initResult = await connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
-      clientInfo: { name: 'zed', version: '1.0.0' },
-      clientCapabilities: {
-        fs: { readTextFile: true, writeTextFile: true },
-      },
+      // Forward the real client identity/capabilities (audit §8.7). Falls back
+      // to the Zed defaults only when the client did not provide any.
+      clientInfo: state.clientInfo,
+      clientCapabilities: state.clientCapabilities,
     })
 
+    // Pass the raw agentCapabilities through unchanged so present and future
+    // capability fields (auth, terminal, ...) reach the client (audit §8.6).
     const agentCaps = initResult.agentCapabilities
-    state.agentCapabilities = agentCaps
-      ? {
-          _meta: agentCaps._meta,
-          loadSession: agentCaps.loadSession,
-          mcpCapabilities: agentCaps.mcpCapabilities,
-          promptCapabilities: agentCaps.promptCapabilities,
-          sessionCapabilities: agentCaps.sessionCapabilities,
-        }
-      : null
+    state.agentCapabilities = (agentCaps as AgentCapabilities | null) ?? null
     state.promptCapabilities = agentCaps?.promptCapabilities ?? null
+    // Remember the negotiated protocolVersion + agentInfo so reconnects and
+    // JSON-RPC initialize responses can forward them to the client (§8.13).
+    state.protocolVersion = initResult.protocolVersion
+    state.agentInfo =
+      (initResult.agentInfo as ClientState['agentInfo'] | null | undefined) ??
+      null
 
     logAgent.info(
       {
@@ -345,6 +492,8 @@ async function handleConnect(ws: WSContext): Promise<void> {
       connected: true,
       agentInfo: initResult.agentInfo,
       capabilities: state.agentCapabilities,
+      // Surface the negotiated protocolVersion to downstream clients (audit §8.13).
+      protocolVersion: initResult.protocolVersion,
     })
 
     connection.closed.then(() => {
@@ -355,9 +504,13 @@ async function handleConnect(ws: WSContext): Promise<void> {
     })
   } catch (error) {
     logAgent.error({ error: (error as Error).message }, 'connect failed')
-    send(ws, 'error', {
-      message: `Failed to connect: ${(error as Error).message}`,
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      null,
+      JSONRPC_INTERNAL_ERROR,
+      `Failed to connect: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -376,7 +529,13 @@ async function handleNewSession(
       },
       'handleNewSession: not connected to agent',
     )
-    send(ws, 'error', { message: 'Not connected to agent' })
+    sendJsonRpcError(
+      ws,
+      state,
+      state?.pendingJsonRpc?.id ?? null,
+      JSONRPC_INVALID_REQUEST,
+      'Not connected to agent',
+    )
     return
   }
 
@@ -389,7 +548,13 @@ async function handleNewSession(
         DEFAULT_PERMISSION_MODE,
       )
     } catch (error) {
-      send(ws, 'error', { message: (error as Error).message })
+      sendJsonRpcError(
+        ws,
+        state,
+        state.pendingJsonRpc?.id ?? null,
+        JSONRPC_INVALID_PARAMS,
+        (error as Error).message,
+      )
       return
     }
     const result = await state.connection.newSession({
@@ -416,9 +581,13 @@ async function handleNewSession(
     })
   } catch (error) {
     logSession.error({ error: (error as Error).message }, 'create failed')
-    send(ws, 'error', {
-      message: `Failed to create session: ${(error as Error).message}`,
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_INTERNAL_ERROR,
+      `Failed to create session: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -442,14 +611,24 @@ async function handleListSessions(
       },
       'handleListSessions: not connected to agent',
     )
-    send(ws, 'error', { message: 'Not connected to agent' })
+    sendJsonRpcError(
+      ws,
+      state,
+      state?.pendingJsonRpc?.id ?? null,
+      JSONRPC_INVALID_REQUEST,
+      'Not connected to agent',
+    )
     return
   }
 
   if (!state.agentCapabilities?.sessionCapabilities?.list) {
-    send(ws, 'error', {
-      message: 'Listing sessions is not supported by this agent',
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_METHOD_NOT_FOUND,
+      'Listing sessions is not supported by this agent',
+    )
     return
   }
 
@@ -483,9 +662,13 @@ async function handleListSessions(
     })
   } catch (error) {
     logSession.error({ error: (error as Error).message }, 'list failed')
-    send(ws, 'error', {
-      message: `Failed to list sessions: ${(error as Error).message}`,
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_INTERNAL_ERROR,
+      `Failed to list sessions: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -504,14 +687,24 @@ async function handleLoadSession(
       },
       'handleLoadSession: not connected to agent',
     )
-    send(ws, 'error', { message: 'Not connected to agent' })
+    sendJsonRpcError(
+      ws,
+      state,
+      state?.pendingJsonRpc?.id ?? null,
+      JSONRPC_INVALID_REQUEST,
+      'Not connected to agent',
+    )
     return
   }
 
   if (!state.agentCapabilities?.loadSession) {
-    send(ws, 'error', {
-      message: 'Loading sessions is not supported by this agent',
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_METHOD_NOT_FOUND,
+      'Loading sessions is not supported by this agent',
+    )
     return
   }
 
@@ -535,9 +728,13 @@ async function handleLoadSession(
     })
   } catch (error) {
     logSession.error({ error: (error as Error).message }, 'load failed')
-    send(ws, 'error', {
-      message: `Failed to load session: ${(error as Error).message}`,
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_INTERNAL_ERROR,
+      `Failed to load session: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -556,14 +753,24 @@ async function handleResumeSession(
       },
       'handleResumeSession: not connected to agent',
     )
-    send(ws, 'error', { message: 'Not connected to agent' })
+    sendJsonRpcError(
+      ws,
+      state,
+      state?.pendingJsonRpc?.id ?? null,
+      JSONRPC_INVALID_REQUEST,
+      'Not connected to agent',
+    )
     return
   }
 
   if (!state.agentCapabilities?.sessionCapabilities?.resume) {
-    send(ws, 'error', {
-      message: 'Resuming sessions is not supported by this agent',
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_METHOD_NOT_FOUND,
+      'Resuming sessions is not supported by this agent',
+    )
     return
   }
 
@@ -586,9 +793,13 @@ async function handleResumeSession(
     })
   } catch (error) {
     logSession.error({ error: (error as Error).message }, 'resume failed')
-    send(ws, 'error', {
-      message: `Failed to resume session: ${(error as Error).message}`,
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_INTERNAL_ERROR,
+      `Failed to resume session: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -599,7 +810,13 @@ async function handlePrompt(
 ): Promise<void> {
   const state = clients.get(ws)
   if (!state?.connection || !state.sessionId) {
-    send(ws, 'error', { message: 'No active session' })
+    sendJsonRpcError(
+      ws,
+      state,
+      state?.pendingJsonRpc?.id ?? null,
+      JSONRPC_INVALID_REQUEST,
+      'No active session',
+    )
     return
   }
 
@@ -624,7 +841,13 @@ async function handlePrompt(
     send(ws, 'prompt_complete', result)
   } catch (error) {
     logPrompt.error({ error: (error as Error).message }, 'failed')
-    send(ws, 'error', { message: `Prompt failed: ${(error as Error).message}` })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_INTERNAL_ERROR,
+      `Prompt failed: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -668,14 +891,24 @@ async function handleSetSessionModel(
 ): Promise<void> {
   const state = clients.get(ws)
   if (!state?.connection || !state.sessionId) {
-    send(ws, 'error', { message: 'No active session' })
+    sendJsonRpcError(
+      ws,
+      state,
+      state?.pendingJsonRpc?.id ?? null,
+      JSONRPC_INVALID_REQUEST,
+      'No active session',
+    )
     return
   }
 
   if (!state.modelState) {
-    send(ws, 'error', {
-      message: 'Model selection not supported by this agent',
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_METHOD_NOT_FOUND,
+      'Model selection not supported by this agent',
+    )
     return
   }
 
@@ -693,9 +926,13 @@ async function handleSetSessionModel(
     logSession.info({ modelId: params.modelId }, 'model changed')
   } catch (error) {
     logSession.error({ error: (error as Error).message }, 'set model failed')
-    send(ws, 'error', {
-      message: `Failed to set model: ${(error as Error).message}`,
-    })
+    sendJsonRpcError(
+      ws,
+      state,
+      state.pendingJsonRpc?.id ?? null,
+      JSONRPC_INTERNAL_ERROR,
+      `Failed to set model: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -918,10 +1155,278 @@ async function dispatchClientMessage(
   }
 }
 
+/**
+ * Maps JSON-RPC method names to their legacy handler + the legacy response
+ * type the handler emits via send(). Used by dispatchJsonRpcMessage to route
+ * standard ACP methods (audit §8.1, §8.4).
+ */
+const JSONRPC_METHOD_HANDLERS: Record<
+  string,
+  {
+    responseType: string
+    handle: (ws: WSContext, params: unknown) => Promise<void> | void
+  }
+> = {
+  initialize: { responseType: 'status', handle: handleConnect },
+  'session/new': {
+    responseType: 'session_created',
+    handle: handleJsonRpcNewSession,
+  },
+  'session/prompt': {
+    responseType: 'prompt_complete',
+    handle: handleJsonRpcPrompt,
+  },
+  'session/cancel': { responseType: '', handle: handleCancel },
+  'session/list': {
+    responseType: 'session_list',
+    handle: handleJsonRpcListSessions,
+  },
+  'session/load': {
+    responseType: 'session_loaded',
+    handle: handleJsonRpcLoadSession,
+  },
+  'session/resume': {
+    responseType: 'session_resumed',
+    handle: handleJsonRpcResumeSession,
+  },
+  'session/set_model': {
+    responseType: 'model_changed',
+    handle: handleJsonRpcSetSessionModel,
+  },
+  'session/set_mode': {
+    responseType: 'session_mode_set',
+    handle: handleJsonRpcSetSessionMode,
+  },
+  'session/close': {
+    responseType: 'session_closed',
+    handle: handleJsonRpcCloseSession,
+  },
+}
+
+// JSON-RPC method wrappers that accept `params: unknown` and forward to the
+// existing handlers with the decoded payload.
+async function handleJsonRpcNewSession(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const payload = optionalPayloadRecord(params, 'session/new')
+  await handleNewSession(ws, {
+    cwd: optionalStringField(payload, 'cwd', 'session/new.cwd'),
+    permissionMode: optionalStringField(
+      payload,
+      'permissionMode',
+      'session/new.permissionMode',
+    ),
+  })
+}
+
+async function handleJsonRpcPrompt(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const payload = payloadRecord(params, 'session/prompt')
+  // ACP session/prompt params: { sessionId, prompt: ContentBlock[] }
+  // Accept either `prompt` (spec) or `content` (legacy) for compatibility.
+  const content = payload.prompt ?? payload.content
+  await handlePrompt(ws, { content: decodeContentBlocks(content) })
+}
+
+async function handleJsonRpcListSessions(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const payload = optionalRecord(params)
+  await handleListSessions(ws, {
+    cwd: optionalString(payload.cwd),
+    cursor: optionalString(payload.cursor),
+  })
+}
+
+async function handleJsonRpcLoadSession(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const payload = payloadRecord(params, 'session/load')
+  if (typeof payload.sessionId !== 'string') {
+    throw new Error('Invalid session/load payload')
+  }
+  await handleLoadSession(ws, {
+    sessionId: payload.sessionId,
+    cwd: optionalString(payload.cwd),
+  })
+}
+
+async function handleJsonRpcResumeSession(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const payload = payloadRecord(params, 'session/resume')
+  if (typeof payload.sessionId !== 'string') {
+    throw new Error('Invalid session/resume payload')
+  }
+  await handleResumeSession(ws, {
+    sessionId: payload.sessionId,
+    cwd: optionalString(payload.cwd),
+  })
+}
+
+async function handleJsonRpcSetSessionModel(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const payload = payloadRecord(params, 'session/set_model')
+  if (typeof payload.modelId !== 'string') {
+    throw new Error('Invalid session/set_model payload')
+  }
+  await handleSetSessionModel(ws, { modelId: payload.modelId })
+}
+
+/**
+ * Pass-through handlers for v1 baseline methods that the proprietary
+ * whitelist previously dropped (audit §8.4). They forward the call to the
+ * underlying SDK ClientSideConnection and surface the result.
+ */
+async function handleJsonRpcSetSessionMode(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const state = clients.get(ws)
+  if (!state?.connection) {
+    throw new Error('Not connected to agent')
+  }
+  const result = await state.connection.setSessionMode(
+    params as { sessionId: string; modeId: string },
+  )
+  send(ws, 'session_mode_set', result ?? {})
+}
+
+async function handleJsonRpcCloseSession(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const state = clients.get(ws)
+  if (!state?.connection) {
+    throw new Error('Not connected to agent')
+  }
+  const result = await state.connection.unstable_closeSession(
+    params as { sessionId: string },
+  )
+  send(ws, 'session_closed', result ?? {})
+}
+
+/**
+ * Handle the JSON-RPC standard cancellation primitive `$/cancel_request`
+ * (audit §8.5). Unlike the ACP-specific `session/cancel` notification, this
+ * cancels an in-flight request by id. We forward to the ACP cancel path and
+ * also clear any pending permission request.
+ */
+async function handleJsonRpcCancelRequest(
+  ws: WSContext,
+  params: unknown,
+): Promise<void> {
+  const payload = optionalRecord(params)
+  logWs.info({ cancelledId: payload.id }, '$/cancel_request received')
+  await handleCancel(ws)
+}
+
+/**
+ * Route a JSON-RPC 2.0 message. Requests get a response with the echoed id;
+ * notifications (no id) are dispatched without a response. Unknown methods
+ * yield a JSON-RPC -32601 error (audit §8.4). `$/cancel_request` is handled
+ * specially (audit §8.5).
+ */
+async function dispatchJsonRpcMessage(
+  ws: WSContext,
+  msg: JsonRpc2ClientMessage,
+): Promise<void> {
+  const state = clients.get(ws)
+  // Mark this client as JSON-RPC from the first framed message.
+  if (state) state.jsonRpc = true
+
+  // Capture client identity/capabilities from initialize (audit §8.7).
+  if (msg.method === 'initialize' && state) {
+    const params = isRecord(msg.params) ? msg.params : {}
+    if (isRecord(params.clientInfo)) {
+      const ci = params.clientInfo
+      if (typeof ci.name === 'string' && typeof ci.version === 'string') {
+        state.clientInfo = { name: ci.name, version: ci.version }
+      }
+    }
+    if (isRecord(params.clientCapabilities)) {
+      state.clientCapabilities = params.clientCapabilities
+    }
+  }
+
+  // Notification (no id) — dispatch without a response.
+  if (!('id' in msg) || msg.id === undefined) {
+    if (msg.method === '$/cancel_request') {
+      await handleJsonRpcCancelRequest(ws, msg.params)
+      return
+    }
+    if (msg.method === 'session/cancel') {
+      await handleCancel(ws)
+      return
+    }
+    // Unknown notification — silently ignore per JSON-RPC 2.0 (notifications
+    // cannot be responded to).
+    logWs.debug({ method: msg.method }, 'ignoring unknown notification')
+    return
+  }
+
+  // Request (has id) — dispatch and the handler will emit a response.
+  if (msg.method === '$/cancel_request') {
+    await handleJsonRpcCancelRequest(ws, msg.params)
+    // Cancellation is itself a notification-style request; respond with null.
+    if (state) state.pendingJsonRpc = { id: msg.id, responseType: '' }
+    sendJsonRpcRaw(ws, { jsonrpc: '2.0', id: msg.id, result: null })
+    if (state) state.pendingJsonRpc = null
+    return
+  }
+
+  const entry = JSONRPC_METHOD_HANDLERS[msg.method]
+  if (!entry) {
+    sendJsonRpcError(
+      ws,
+      state,
+      msg.id,
+      JSONRPC_METHOD_NOT_FOUND,
+      `Method not found: ${msg.method}`,
+    )
+    return
+  }
+
+  // Track the in-flight request so the handler's send() emits a JSON-RPC
+  // response with the echoed id (audit §8.2).
+  if (state)
+    state.pendingJsonRpc = { id: msg.id, responseType: entry.responseType }
+  try {
+    await entry.handle(ws, msg.params)
+    // If the handler did not emit the expected response (e.g. it short
+    // circuited with an error already), still clear the pending slot.
+    if (state?.pendingJsonRpc) {
+      sendJsonRpcRaw(ws, {
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {},
+      })
+      state.pendingJsonRpc = null
+    }
+  } catch (error) {
+    const code = (error as Error).message.startsWith('Invalid ')
+      ? JSONRPC_INVALID_PARAMS
+      : JSONRPC_INTERNAL_ERROR
+    sendJsonRpcError(ws, state, msg.id, code, (error as Error).message)
+  }
+}
+
 export const __testing = {
   dispatchClientMessage(ws: WSContext, data: unknown): Promise<void> {
     assertTestingInternalsEnabled()
     return dispatchClientMessage(ws, data as ProxyMessage)
+  },
+  dispatchJsonRpcMessage(ws: WSContext, data: unknown): Promise<void> {
+    assertTestingInternalsEnabled()
+    return dispatchJsonRpcMessage(ws, data as JsonRpc2ClientMessage)
   },
   registerClient(
     ws: WSContext,
@@ -929,19 +1434,22 @@ export const __testing = {
       connection?: unknown
       process?: ChildProcess | null
       sessionId?: string | null
+      clientInfo?: { name: string; version: string }
+      clientCapabilities?: Record<string, unknown>
+      jsonRpc?: boolean
     },
   ): () => void {
     assertTestingInternalsEnabled()
-    clients.set(ws, {
-      process: state.process ?? null,
-      connection: (state.connection ?? null) as acp.ClientSideConnection | null,
-      sessionId: state.sessionId ?? null,
-      pendingPermissions: new Map(),
-      agentCapabilities: null,
-      promptCapabilities: null,
-      modelState: null,
-      isAlive: true,
-    })
+    const full = createClientState()
+    full.process = state.process ?? null
+    full.connection = (state.connection ??
+      null) as acp.ClientSideConnection | null
+    full.sessionId = state.sessionId ?? null
+    if (state.clientInfo) full.clientInfo = state.clientInfo
+    if (state.clientCapabilities)
+      full.clientCapabilities = state.clientCapabilities
+    if (typeof state.jsonRpc === 'boolean') full.jsonRpc = state.jsonRpc
+    clients.set(ws, full)
     return () => {
       clients.delete(ws)
     }
@@ -1071,23 +1579,21 @@ export async function startServer(config: ServerConfig): Promise<void> {
     })
 
     const relayWs = createRelayWs()
-    const relayState: ClientState = {
-      process: null,
-      connection: null,
-      sessionId: null,
-      pendingPermissions: new Map(),
-      agentCapabilities: null,
-      promptCapabilities: null,
-      modelState: null,
-      isAlive: true,
-    }
+    const relayState = createClientState()
     clients.set(relayWs, relayState)
 
     rcsUpstream.setMessageHandler(async msg => {
       try {
-        const data = decodeClientMessage(msg)
-        logRelay.debug({ type: data.type }, 'processing')
-        await dispatchClientMessage(relayWs, data)
+        // The RCS relay forwards messages from the Web UI. Accept both
+        // JSON-RPC 2.0 (audit §8.12) and the legacy `{type, payload}` envelope.
+        if (isJsonRpc2Message(msg)) {
+          logRelay.debug({ method: msg.method }, 'processing jsonrpc')
+          await dispatchJsonRpcMessage(relayWs, msg)
+        } else {
+          const data = decodeClientMessage(msg)
+          logRelay.debug({ type: data.type }, 'processing')
+          await dispatchClientMessage(relayWs, data)
+        }
       } catch (error) {
         logRelay.error({ error: (error as Error).message }, 'handler error')
       }
@@ -1134,16 +1640,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       return {
         onOpen(_event, ws) {
           logWs.info('client connected')
-          const state: ClientState = {
-            process: null,
-            connection: null,
-            sessionId: null,
-            pendingPermissions: new Map(),
-            agentCapabilities: null,
-            promptCapabilities: null,
-            modelState: null,
-            isAlive: true,
-          }
+          const state = createClientState()
           clients.set(ws, state)
 
           const rawWs = ws.raw as RawWebSocket
@@ -1153,9 +1650,18 @@ export async function startServer(config: ServerConfig): Promise<void> {
         },
         async onMessage(event, ws) {
           try {
-            const data = decodeClientWsMessage(event.data)
-            logWs.debug({ type: data.type }, 'received')
-            await dispatchClientMessage(ws, data)
+            // Decode the raw frame once. JSON-RPC 2.0 messages are routed by
+            // method name (audit §8.1, §8.4, §8.5); legacy `{type, payload}`
+            // messages keep the existing dispatch path for backwards compat.
+            const decoded = decodeJsonWsMessage(event.data)
+            if (isJsonRpc2Message(decoded)) {
+              logWs.debug({ method: decoded.method }, 'received jsonrpc')
+              await dispatchJsonRpcMessage(ws, decoded)
+            } else {
+              const data = decodeClientMessage(decoded)
+              logWs.debug({ type: data.type }, 'received')
+              await dispatchClientMessage(ws, data)
+            }
           } catch (error) {
             if (error instanceof WsPayloadTooLargeError) {
               logWs.warn({ error: error.message }, 'message too large')
@@ -1163,7 +1669,14 @@ export async function startServer(config: ServerConfig): Promise<void> {
               return
             }
             logWs.error({ error: (error as Error).message }, 'message error')
-            send(ws, 'error', { message: `Error: ${(error as Error).message}` })
+            const state = clients.get(ws)
+            sendJsonRpcError(
+              ws,
+              state,
+              state?.pendingJsonRpc?.id ?? null,
+              JSONRPC_PARSE_ERROR,
+              `Error: ${(error as Error).message}`,
+            )
           }
         },
         onClose(_event, ws) {

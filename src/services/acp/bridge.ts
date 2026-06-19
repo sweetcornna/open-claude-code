@@ -25,6 +25,22 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type { SDKMessage } from '../../entrypoints/sdk/coreTypes.generated.js'
 import { toDisplayPath, markdownEscape } from './utils.js'
+import { isAbsolute, resolve } from 'node:path'
+
+/**
+ * Normalises an emitted file path against the session cwd so that
+ * ToolCallLocation.path / Diff.path values are always absolute, as required
+ * by the ACP v1 spec (tool-calls.mdx:304-306; all file paths MUST be absolute).
+ * If no cwd is available, the original value is returned unchanged.
+ */
+function toAbsolutePath(
+  filePath: string | undefined,
+  cwd?: string,
+): string | undefined {
+  if (!filePath) return undefined
+  if (!cwd) return filePath
+  return isAbsolute(filePath) ? filePath : resolve(cwd, filePath)
+}
 
 // ── ToolUseCache ──────────────────────────────────────────────────
 
@@ -235,7 +251,8 @@ export function toolInfoFromToolUse(
     }
 
     case 'Read': {
-      const filePath = (input?.file_path as string | undefined) ?? 'File'
+      const inputFilePath = input?.file_path as string | undefined
+      const filePath = inputFilePath ?? 'File'
       const offset = input?.offset as number | undefined
       const limit = input?.limit as number | undefined
       let suffix = ''
@@ -245,10 +262,13 @@ export function toolInfoFromToolUse(
         suffix = ` (from line ${offset})`
       }
       const displayPath = filePath ? toDisplayPath(filePath, cwd) : 'File'
+      const absReadPath = toAbsolutePath(inputFilePath, cwd)
       return {
         title: `Read ${displayPath}${suffix}`,
         kind: 'read',
-        locations: filePath ? [{ path: filePath, line: offset ?? 1 }] : [],
+        locations: absReadPath
+          ? [{ path: absReadPath, line: offset ?? 1 }]
+          : [],
         content: [],
       }
     }
@@ -257,14 +277,15 @@ export function toolInfoFromToolUse(
       const filePath = (input?.file_path as string | undefined) ?? ''
       const content = (input?.content as string | undefined) ?? ''
       const displayPath = filePath ? toDisplayPath(filePath, cwd) : undefined
+      const absWritePath = toAbsolutePath(filePath, cwd)
       return {
         title: displayPath ? `Write ${displayPath}` : 'Write',
         kind: 'edit',
-        content: filePath
+        content: absWritePath
           ? [
               {
                 type: 'diff' as const,
-                path: filePath,
+                path: absWritePath,
                 oldText: null,
                 newText: content,
               },
@@ -275,7 +296,7 @@ export function toolInfoFromToolUse(
                 content: { type: 'text' as const, text: content },
               },
             ],
-        locations: filePath ? [{ path: filePath }] : [],
+        locations: absWritePath ? [{ path: absWritePath }] : [],
       }
     }
 
@@ -284,26 +305,28 @@ export function toolInfoFromToolUse(
       const oldString = (input?.old_string as string | undefined) ?? ''
       const newString = (input?.new_string as string | undefined) ?? ''
       const displayPath = filePath ? toDisplayPath(filePath, cwd) : undefined
+      const absEditPath = toAbsolutePath(filePath, cwd)
       return {
         title: displayPath ? `Edit ${displayPath}` : 'Edit',
         kind: 'edit',
-        content: filePath
+        content: absEditPath
           ? [
               {
                 type: 'diff' as const,
-                path: filePath,
+                path: absEditPath,
                 oldText: oldString || null,
                 newText: newString,
               },
             ]
           : [],
-        locations: filePath ? [{ path: filePath }] : [],
+        locations: absEditPath ? [{ path: absEditPath }] : [],
       }
     }
 
     case 'Glob': {
       const globPath = (input?.path as string | undefined) ?? ''
       const pattern = (input?.pattern as string | undefined) ?? ''
+      const absGlobPath = toAbsolutePath(globPath, cwd)
       let label = 'Find'
       if (globPath) label += ` \`${globPath}\``
       if (pattern) label += ` \`${pattern}\``
@@ -311,7 +334,7 @@ export function toolInfoFromToolUse(
         title: label,
         kind: 'search',
         content: [],
-        locations: globPath ? [{ path: globPath }] : [],
+        locations: absGlobPath ? [{ path: absGlobPath }] : [],
       }
     }
 
@@ -599,6 +622,37 @@ function toAcpContentBlock(
           : '[image: file reference]',
       )
     }
+    case 'resource_link': {
+      // ACP v1 ResourceLink requires name + uri. Name falls back to uri when
+      // absent so the client always has a display label. mimeType is optional.
+      const uri = content.uri as string | undefined
+      const name =
+        (content.name as string | undefined) ?? (uri as string | undefined)
+      return {
+        type: 'resource_link',
+        uri: uri as string,
+        name: name as string,
+        mimeType: content.mimeType as string | undefined,
+      }
+    }
+    case 'resource': {
+      // ACP v1 EmbeddedResource wraps an optional TextResource / BlobResource
+      // shape. Forward the standard fields the client knows how to render.
+      const r = content.resource as Record<string, unknown> | undefined
+      // Construct a TextResource or BlobResource payload depending on what is
+      // present. Cast through unknown because not every source shape satisfies
+      // the full union contract.
+      const resourcePayload = {
+        uri: (r?.uri as string | undefined) ?? '',
+        mimeType: r?.mimeType as string | null | undefined,
+        ...(typeof r?.text === 'string' ? { text: r.text as string } : {}),
+        ...(typeof r?.blob === 'string' ? { blob: r.blob as string } : {}),
+      }
+      return {
+        type: 'resource',
+        resource: resourcePayload,
+      } as unknown as ContentBlock
+    }
     case 'tool_reference':
       return wrapText(`Tool: ${content.tool_name as string}`)
     case 'tool_search_tool_search_result': {
@@ -671,14 +725,23 @@ interface EditToolResponse {
  * Builds diff ToolUpdate content from the structured Edit toolResponse.
  * Parses structuredPatch hunks (lines prefixed with -, +, space) into
  * oldText/newText diff pairs.
+ *
+ * The optional `cwd` is used to normalise the emitted path against the
+ * session cwd so that Diff.path / ToolCallLocation.path are absolute as
+ * required by the ACP v1 spec (audit §5.5).
  */
-export function toolUpdateFromEditToolResponse(toolResponse: unknown): {
+export function toolUpdateFromEditToolResponse(
+  toolResponse: unknown,
+  cwd?: string,
+): {
   content?: ToolCallContent[]
   locations?: ToolCallLocation[]
 } {
   if (!toolResponse || typeof toolResponse !== 'object') return {}
   const response = toolResponse as EditToolResponse
   if (!response.filePath || !Array.isArray(response.structuredPatch)) return {}
+
+  const absPath = toAbsolutePath(response.filePath, cwd) ?? response.filePath
 
   const content: ToolCallContent[] = []
   const locations: ToolCallLocation[] = []
@@ -697,10 +760,10 @@ export function toolUpdateFromEditToolResponse(toolResponse: unknown): {
       }
     }
     if (oldText.length > 0 || newText.length > 0) {
-      locations.push({ path: response.filePath, line: newStart })
+      locations.push({ path: absPath, line: newStart })
       content.push({
         type: 'diff',
-        path: response.filePath,
+        path: absPath,
         oldText: oldText.join('\n') || null,
         newText: newText.join('\n'),
       })
@@ -787,15 +850,10 @@ export async function forwardSessionUpdates(
           if (subtype === 'compact_boundary') {
             // Reset assistant usage tracking after compaction
             lastAssistantTotalUsage = 0
-            // Send usage reset after compaction
-            await conn.sessionUpdate({
-              sessionId,
-              update: {
-                sessionUpdate: 'usage_update',
-                used: 0,
-                size: lastContextWindowSize,
-              },
-            })
+            // NOTE: usage_update is an UNSTABLE SessionUpdate discriminator (not in
+            // stable v1 schema). Token/cost info has no v1-stable carrier; we drop
+            // it from session/update and rely on PromptResponse._meta for clients
+            // that need it (see audit §4.1).
             await conn.sessionUpdate({
               sessionId,
               update: {
@@ -830,28 +888,10 @@ export async function forwardSessionUpdates(
             }
           }
 
-          // Send usage_update — use lastAssistantTotalUsage if available
-          // (more accurate than accumulatedUsage which may include background tasks)
-          const usedTokens =
-            lastAssistantTotalUsage ??
-            accumulatedUsage.inputTokens +
-              accumulatedUsage.outputTokens +
-              accumulatedUsage.cachedReadTokens +
-              accumulatedUsage.cachedWriteTokens
-
-          const totalCostUsd = msg.total_cost_usd
-          await conn.sessionUpdate({
-            sessionId,
-            update: {
-              sessionUpdate: 'usage_update',
-              used: usedTokens,
-              size: lastContextWindowSize,
-              cost:
-                totalCostUsd != null
-                  ? { amount: totalCostUsd, currency: 'USD' }
-                  : undefined,
-            },
-          })
+          // NOTE: usage_update was removed — it is an UNSTABLE SessionUpdate
+          // discriminator not present in the stable v1 schema (audit §4.1). Token
+          // and cost information is returned via PromptResponse._meta.claudeCode.usage
+          // instead.
 
           // Determine stop reason
           const subtype = msg.subtype
@@ -864,21 +904,24 @@ export async function forwardSessionUpdates(
 
           switch (subtype) {
             case 'success': {
-              const stopReasonStr = msg.stop_reason
-              if (stopReasonStr === 'max_tokens') {
-                stopReason = 'max_tokens'
-              }
-              if (isError) {
-                // Report error as end_turn
-                stopReason = 'end_turn'
-              }
+              // Map Anthropic stop_reason to ACP StopReason. Branches are mutually
+              // exclusive so a max_tokens termination that is also flagged isError
+              // no longer silently flips to end_turn (audit §3.3, §3.4). refusal
+              // (safety refusal) is a first-class ACP stop reason that must surface
+              // to the client instead of being misreported as end_turn.
+              const r = msg.stop_reason
+              if (r === 'max_tokens') stopReason = 'max_tokens'
+              else if (r === 'refusal') stopReason = 'refusal'
+              else stopReason = 'end_turn'
+              if (isError) stopReason = 'end_turn'
               break
             }
             case 'error_during_execution': {
+              // Mutually exclusive: max_tokens wins when reported, otherwise the
+              // error path falls back to end_turn. Avoids the prior two-if
+              // sequence that overwrote max_tokens with end_turn (audit §3.4).
               if (msg.stop_reason === 'max_tokens') {
                 stopReason = 'max_tokens'
-              } else if (isError) {
-                stopReason = 'end_turn'
               } else {
                 stopReason = 'end_turn'
               }
@@ -1021,14 +1064,8 @@ export async function forwardSessionUpdates(
         // ── Compact boundary ───────────────────────────────────────
         case 'compact_boundary': {
           lastAssistantTotalUsage = 0
-          await conn.sessionUpdate({
-            sessionId,
-            update: {
-              sessionUpdate: 'usage_update',
-              used: 0,
-              size: lastContextWindowSize,
-            },
-          })
+          // NOTE: usage_update removed — UNSTABLE discriminator, not in v1 stable
+          // schema (audit §4.1). Token info flows through PromptResponse._meta.
           await conn.sessionUpdate({
             sessionId,
             update: {
