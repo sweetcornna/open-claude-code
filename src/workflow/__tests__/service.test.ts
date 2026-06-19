@@ -220,6 +220,41 @@ test('launch inline script → returns scriptPath (persisted to cwdOverride dir)
   }
 })
 
+test('launch inline script with title → workflowName comes from title (not the "workflow" default)', async () => {
+  __resetWorkflowServiceForTests()
+  const { ports, store } = fakePorts()
+  const svc = makeService(ports, store)
+  const { runId } = await svc.launch(
+    { script: `return agent('x')`, title: 'Review PR #42' },
+    stubTUC,
+    stubCanUseTool,
+  )
+  await settle()
+  const r = svc.getRun(runId)
+  expect(r).toBeDefined()
+  expect(r!.workflowName).toBe('Review PR #42')
+})
+
+test('launch scriptPath with title → workflowName still honors title', async () => {
+  __resetWorkflowServiceForTests()
+  const dir = await mkdtemp(join(tmpdir(), 'wf-svc-'))
+  try {
+    const file = join(dir, 'wf.js')
+    await writeFile(file, `return agent('x')`)
+    const { ports, store } = fakePorts()
+    const svc = makeService(ports, store)
+    const { runId } = await svc.launch(
+      { scriptPath: file, title: 'From File' },
+      stubTUC,
+      stubCanUseTool,
+    )
+    await settle()
+    expect(svc.getRun(runId)!.workflowName).toBe('From File')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('kill goes through taskRegistrar.kill', async () => {
   __resetWorkflowServiceForTests()
   const { ports, store, killed } = fakePorts()
