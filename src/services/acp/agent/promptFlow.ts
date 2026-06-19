@@ -43,6 +43,12 @@ async function prompt(
     throw new Error(`Session ${params.sessionId} not found`)
   }
 
+  // Per message-id.mdx RFD: if the client supplied a `messageId` on the
+  // PromptRequest, echo it back as `userMessageId` to confirm receipt.
+  // We do not self-generate when omitted — the spec makes that optional and
+  // staying quiet avoids surfacing IDs the client didn't ask to track.
+  const userMessageId = params.messageId ?? undefined
+
   // Extract text/image content from the prompt
   const promptInput = promptToQueryInput(params.prompt)
 
@@ -134,6 +140,7 @@ async function prompt(
       return {
         stopReason,
         usage: usagePayload,
+        ...(userMessageId ? { userMessageId } : {}),
         _meta: {
           claudeCode: {
             usage: usagePayload,
@@ -141,7 +148,10 @@ async function prompt(
         },
       }
     }
-    return { stopReason }
+    return {
+      stopReason,
+      ...(userMessageId ? { userMessageId } : {}),
+    }
   } catch (err: unknown) {
     // Treat AbortError / cancellation-shaped errors as a turn cancellation
     // regardless of the session.cancelled flag, to close the race window

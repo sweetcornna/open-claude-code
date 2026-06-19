@@ -40,6 +40,10 @@ export function toAcpNotifications(
     parentToolUseId?: string | null
     cwd?: string
     streamingActive?: boolean
+    // Per message-id.mdx RFD: UUID identifying the message these chunks
+    // belong to. Only attached to agent_message_chunk / user_message_chunk /
+    // agent_thought_chunk (spec scope). undefined = omit the field entirely.
+    messageId?: string
   },
 ): SessionNotification[] {
   const output: SessionNotification[] = []
@@ -55,6 +59,7 @@ export function toAcpNotifications(
         update = {
           sessionUpdate:
             role === 'assistant' ? 'agent_message_chunk' : 'user_message_chunk',
+          ...(options?.messageId ? { messageId: options.messageId } : {}),
           content: { type: 'text', text },
         }
         break
@@ -65,6 +70,7 @@ export function toAcpNotifications(
         const thinking = (chunk.thinking as string) ?? ''
         update = {
           sessionUpdate: 'agent_thought_chunk',
+          ...(options?.messageId ? { messageId: options.messageId } : {}),
           content: { type: 'text', text: thinking },
         }
         break
@@ -78,6 +84,7 @@ export function toAcpNotifications(
               role === 'assistant'
                 ? 'agent_message_chunk'
                 : 'user_message_chunk',
+            ...(options?.messageId ? { messageId: options.messageId } : {}),
             content: {
               type: 'image',
               data: source.data as string,
@@ -237,6 +244,7 @@ export function assistantMessageToAcpNotifications(
     parentToolUseId?: string | null
     cwd?: string
     streamingActive?: boolean
+    messageId?: string
   },
 ): SessionNotification[] {
   const message = msg.message as Record<string, unknown> | undefined
@@ -255,6 +263,7 @@ export function assistantMessageToAcpNotifications(
         sessionId,
         update: {
           sessionUpdate: 'agent_message_chunk',
+          ...(options?.messageId ? { messageId: options.messageId } : {}),
           content: { type: 'text', text: content },
         },
       },
@@ -296,6 +305,7 @@ export function streamEventToAcpNotifications(
     clientCapabilities?: ClientCapabilities
     cwd?: string
     streamingActive?: boolean
+    messageId?: string
   },
 ): SessionNotification[] {
   const event = (msg as unknown as { event: Record<string, unknown> }).event
@@ -318,6 +328,7 @@ export function streamEventToAcpNotifications(
           clientCapabilities: options?.clientCapabilities,
           parentToolUseId: msg.parent_tool_use_id as string | null | undefined,
           cwd: options?.cwd,
+          messageId: options?.messageId,
         },
       )
     }
@@ -335,6 +346,7 @@ export function streamEventToAcpNotifications(
           clientCapabilities: options?.clientCapabilities,
           parentToolUseId: msg.parent_tool_use_id as string | null | undefined,
           cwd: options?.cwd,
+          messageId: options?.messageId,
         },
       )
     }

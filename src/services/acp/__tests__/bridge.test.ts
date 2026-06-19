@@ -5,6 +5,7 @@ import {
   toolUpdateFromEditToolResponse,
   forwardSessionUpdates,
   nextSdkMessageOrAbort,
+  replayHistoryMessages,
 } from '../bridge.js'
 import { promptToQueryInput } from '../promptConversion.js'
 import { markdownEscape, toDisplayPath } from '../utils.js'
@@ -1593,5 +1594,280 @@ describe('forwardSessionUpdates', () => {
         {},
       ),
     ).rejects.toThrow('stream exploded')
+  })
+})
+
+// ── message-id (RFD) ──────────────────────────────────────────────
+//
+// Per rfds/message-id.mdx: agent_message_chunk / user_message_chunk /
+// agent_thought_chunk MUST carry a `messageId` (UUID). All chunks of the
+// same message share the ID; different messages get different IDs. tool_call
+// and plan updates are out of scope and must NOT carry messageId.
+
+describe('forwardSessionUpdates — message-id (RFD)', () => {
+  test('attaches messageId to assistant text chunk (non-streaming)', async () => {
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [{ type: 'text', text: 'Hello!' }],
+          role: 'assistant',
+        },
+      } as unknown as SDKMessage,
+    ]
+    await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const chunkCall = calls.find(
+      (c: unknown[]) =>
+        ((c[0] as Record<string, Record<string, unknown>>).update ?? {})[
+          'sessionUpdate'
+        ] === 'agent_message_chunk',
+    )
+    expect(chunkCall).toBeDefined()
+    const update = (chunkCall![0] as { update: Record<string, unknown> }).update
+    expect(typeof update.messageId).toBe('string')
+    // UUID format check (v4-ish, 36 chars with hyphens)
+    expect(update.messageId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    )
+  })
+
+  test('different assistant messages get different messageIds', async () => {
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [{ type: 'text', text: 'First' }],
+          role: 'assistant',
+        },
+      } as unknown as SDKMessage,
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [{ type: 'text', text: 'Second' }],
+          role: 'assistant',
+        },
+      } as unknown as SDKMessage,
+    ]
+    await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const chunkCalls = calls.filter(
+      (c: unknown[]) =>
+        ((c[0] as Record<string, Record<string, unknown>>).update ?? {})[
+          'sessionUpdate'
+        ] === 'agent_message_chunk',
+    )
+    expect(chunkCalls.length).toBe(2)
+    const id1 = (chunkCalls[0][0] as { update: { messageId: string } }).update
+      .messageId
+    const id2 = (chunkCalls[1][0] as { update: { messageId: string } }).update
+      .messageId
+    expect(id1).not.toBe(id2)
+  })
+
+  test('streaming text + thinking chunks share the same messageId', async () => {
+    // stream_events for a single assistant message (text + thinking) must
+    // share one messageId, then the assistant message itself reuses it.
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'content_block_start',
+          content_block: { type: 'thinking', thinking: '' },
+        },
+      } as unknown as SDKMessage,
+      {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'content_block_delta',
+          delta: { type: 'thinking_delta', thinking: 'reasoning...' },
+        },
+      } as unknown as SDKMessage,
+      {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'content_block_start',
+          content_block: { type: 'text', text: '' },
+        },
+      } as unknown as SDKMessage,
+      {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: 'Answer' },
+        },
+      } as unknown as SDKMessage,
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'reasoning...' },
+            { type: 'text', text: 'Answer' },
+          ],
+          role: 'assistant',
+        },
+      } as unknown as SDKMessage,
+    ]
+    await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const chunkCalls = calls
+      .map(c => (c[0] as { update: Record<string, unknown> }).update)
+      .filter(
+        u =>
+          u.sessionUpdate === 'agent_message_chunk' ||
+          u.sessionUpdate === 'agent_thought_chunk',
+      )
+    // streamingActive filters out the duplicate text/thinking from the
+    // final assistant message, so we only get the 4 streaming chunks here.
+    expect(chunkCalls.length).toBeGreaterThanOrEqual(4)
+    const ids = chunkCalls.map(u => u.messageId)
+    const uniqueIds = new Set(ids)
+    expect(uniqueIds.size).toBe(1)
+    expect(typeof ids[0]).toBe('string')
+  })
+
+  test('tool_call chunk does NOT carry messageId', async () => {
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tu_mid',
+              name: 'Bash',
+              input: { command: 'ls' },
+            },
+          ],
+          role: 'assistant',
+        },
+      } as unknown as SDKMessage,
+    ]
+    await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const toolCall = calls
+      .map(c => (c[0] as { update: Record<string, unknown> }).update)
+      .find(u => u.sessionUpdate === 'tool_call')
+    expect(toolCall).toBeDefined()
+    expect(toolCall!.messageId).toBeUndefined()
+  })
+
+  test('subagent stream_events do not carry messageId (parent_tool_use_id !== null)', async () => {
+    // Subagent messages are nested inside a tool call; per our scope decision
+    // we only track top-level messageIds, so subagent chunks must NOT carry one.
+    const conn = makeConn()
+    const msgs: SDKMessage[] = [
+      {
+        type: 'stream_event',
+        parent_tool_use_id: 'tu_subagent',
+        event: {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: 'subagent text' },
+        },
+      } as unknown as SDKMessage,
+    ]
+    await forwardSessionUpdates(
+      's1',
+      makeStream(msgs),
+      conn,
+      new AbortController().signal,
+      {},
+    )
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const chunkCall = calls
+      .map(c => (c[0] as { update: Record<string, unknown> }).update)
+      .find(u => u.sessionUpdate === 'agent_message_chunk')
+    expect(chunkCall).toBeDefined()
+    expect(chunkCall!.messageId).toBeUndefined()
+  })
+})
+
+// ── replayHistoryMessages — message-id (RFD) ─────────────────────
+
+describe('replayHistoryMessages — message-id (RFD)', () => {
+  test('each replayed message gets its own messageId', async () => {
+    const conn = makeConn()
+    const messages: Array<Record<string, unknown>> = [
+      {
+        type: 'user',
+        message: { content: [{ type: 'text', text: 'question' }] },
+      },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'answer' }] },
+      },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'follow-up' }] },
+      },
+    ]
+    await replayHistoryMessages('s1', messages, conn, {}, undefined, undefined)
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const chunkCalls = calls
+      .map(c => (c[0] as { update: Record<string, unknown> }).update)
+      .filter(
+        u =>
+          u.sessionUpdate === 'agent_message_chunk' ||
+          u.sessionUpdate === 'user_message_chunk',
+      )
+    expect(chunkCalls.length).toBe(3)
+    const ids = chunkCalls.map(u => u.messageId)
+    expect(ids.every(id => typeof id === 'string')).toBe(true)
+    // All three IDs should be distinct (one per message)
+    expect(new Set(ids).size).toBe(3)
+  })
+
+  test('replayed string-content message carries messageId', async () => {
+    const conn = makeConn()
+    const messages: Array<Record<string, unknown>> = [
+      {
+        type: 'assistant',
+        message: { content: 'plain string reply' },
+      },
+    ]
+    await replayHistoryMessages('s1', messages, conn, {}, undefined, undefined)
+    const calls = (conn.sessionUpdate as ReturnType<typeof mock>).mock.calls
+    const chunkCall = calls
+      .map(c => (c[0] as { update: Record<string, unknown> }).update)
+      .find(u => u.sessionUpdate === 'agent_message_chunk')
+    expect(chunkCall).toBeDefined()
+    expect(typeof chunkCall!.messageId).toBe('string')
   })
 })
