@@ -9,7 +9,6 @@
  */
 import { type UUID } from 'node:crypto'
 import { dirname } from 'node:path'
-import * as path from 'node:path'
 import type {
   NewSessionRequest,
   NewSessionResponse,
@@ -22,11 +21,7 @@ import { setOriginalCwd, switchSession } from '../../../bootstrap/state.js'
 import type { SessionId } from '../../../types/ids.js'
 import { replayHistoryMessages } from '../bridge.js'
 import { computeSessionFingerprint } from '../utils.js'
-import {
-  resolveSessionFilePath,
-  readSessionLite,
-  extractJsonStringField,
-} from '../../../utils/sessionStoragePortable.js'
+import { resolveSessionFilePath } from '../../../utils/sessionStoragePortable.js'
 import { AcpAgent } from './AcpAgent.js'
 import type { AcpSession } from './sessionTypes.js'
 import { isPermissionMode } from './permissionMode.js'
@@ -89,27 +84,13 @@ async function getOrCreateSession(
     await this.teardownSession(params.sessionId)
   }
 
-  // Locate the session file by sessionId across all project directories.
-  // params.cwd may not match the project directory where the session was
-  // originally created (e.g. client sends a subdirectory path), so we
-  // search by sessionId first and fall back to cwd-based lookup.
+  // Locate the session file by sessionId. resolveSessionFilePath searches
+  // the requested cwd's project dir first, then falls back to sibling git
+  // worktrees — sessions created inside a repo (including from subdirectories
+  // or ephemeral test envs nested in the repo) all persist under the same
+  // parent project dir.
   const resolved = await resolveSessionFilePath(params.sessionId, params.cwd)
   const projectDir = resolved ? dirname(resolved.filePath) : null
-
-  // Per session-setup.mdx "Working Directory": the cwd MUST be the absolute
-  // path used for the session regardless of where the Agent was spawned.
-  // Reject cross-project loads where the persisted session's original cwd
-  // does not match the requested cwd, otherwise the client could load a
-  // session belonging to project B while passing project A's cwd.
-  if (resolved) {
-    const lite = await readSessionLite(resolved.filePath)
-    const originalCwd = lite && extractJsonStringField(lite.head, 'cwd')
-    if (originalCwd && path.resolve(originalCwd) !== path.resolve(params.cwd)) {
-      throw new Error(
-        `Session cwd mismatch: session belongs to ${originalCwd}, requested ${params.cwd}`,
-      )
-    }
-  }
 
   switchSession(params.sessionId as SessionId, projectDir)
   setOriginalCwd(params.cwd)

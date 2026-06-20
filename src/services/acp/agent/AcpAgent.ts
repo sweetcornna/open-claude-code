@@ -49,7 +49,11 @@ import { unlink } from 'node:fs/promises'
 import type { Message } from '../../../types/message.js'
 import { sanitizeTitle } from '../utils.js'
 import { listSessionsImpl } from '../../../utils/listSessionsImpl.js'
-import { resolveSessionFilePath } from '../../../utils/sessionStoragePortable.js'
+import {
+  resolveSessionFilePath,
+  canonicalizePath,
+} from '../../../utils/sessionStoragePortable.js'
+import { getOriginalCwd } from '../../../bootstrap/state.js'
 import type { AcpSession } from './sessionTypes.js'
 
 // ── Agent class ───────────────────────────────────────────────────
@@ -190,13 +194,31 @@ export class AcpAgent implements Agent {
       )
     }
 
+    // Resolve the effective cwd: client-provided wins, fall back to the
+    // agent's current working directory (set by the most recent session/new
+    // or session/load). Standard ACP clients (e.g. Goose) call session/list
+    // with empty params and no cwd — without a fallback, listSessionsImpl
+    // treats undefined dir as "all projects" and returns every session on
+    // disk, which is unrelated to the workspace the user actually has open.
+    const requestedCwd = params.cwd || getOriginalCwd()
+    const canonicalRequested = await canonicalizePath(requestedCwd)
+
     const candidates = await listSessionsImpl({
-      dir: params.cwd ?? undefined,
+      dir: requestedCwd,
     })
 
     const sessions = []
     for (const candidate of candidates) {
       if (!candidate.cwd) continue
+      // Per session-list.mdx: "Only sessions with a matching cwd are
+      // returned." listSessionsImpl filters by which project directory
+      // the file lives in, but a project directory can hold sessions
+      // whose stored cwd points elsewhere (e.g. a session created in
+      // env_A whose file ended up in the parent repo's project dir via
+      // session/load's worktree fallback). Apply a strict canonical-cwd
+      // filter so the list reflects what the spec promises.
+      const canonicalCandidate = await canonicalizePath(candidate.cwd)
+      if (canonicalCandidate !== canonicalRequested) continue
       // Only include title when non-empty; schema allows null/omitted title.
       const title = sanitizeTitle(candidate.summary ?? '')
       sessions.push({
