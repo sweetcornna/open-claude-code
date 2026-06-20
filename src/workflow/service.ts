@@ -21,6 +21,13 @@ import {
   listPersistedRuns,
   readRunState,
 } from './persistence.js'
+
+/**
+ * How many newest persisted runs to hydrate into the store on panel open. Tuned to cover a normal
+ * day's worth of workflow iterations without overrunning the panel tab row; anything older stays
+ * on disk and is still resumable via getRunAsync until cleanupOldRuns reclaims it.
+ */
+const LOAD_PERSISTED_LIMIT = 20
 import { createProgressBus } from './progress/bus.js'
 import {
   createProgressStoreFromBus,
@@ -135,19 +142,23 @@ export function makeService(
     script?: string
     name?: string
     scriptPath?: string
+    title?: string
   }): Promise<{
     script: string
     workflowFile?: string
     workflowName: string
   }> {
+    // Mirrors WorkflowTool.ts: name takes priority over title; only fall back to the literal
+    // 'workflow' when neither is supplied (so /workflows tabs don't pile up under a same default name).
+    const workflowName = input.name ?? input.title ?? 'workflow'
     if (input.script) {
-      return { script: input.script, workflowName: 'workflow' }
+      return { script: input.script, workflowName }
     }
     if (input.scriptPath) {
       return {
         script: await readFile(input.scriptPath, 'utf-8'),
         workflowFile: input.scriptPath,
-        workflowName: 'workflow',
+        workflowName,
       }
     }
     if (input.name) {
@@ -280,7 +291,13 @@ export function makeService(
       if (persistedLoaded) return
       persistedLoaded = true
       try {
-        const runs = await listPersistedRuns(runsDirProvider())
+        // Cap hydration at LOAD_PERSISTED_LIMIT newest runs so the panel tab row doesn't drown
+        // under accumulated history. Older state.json files stay on disk (within KEEP_MAX_RUNS,
+        // maintained by cleanupOldRuns) and remain resumable via getRunAsync.
+        const runs = await listPersistedRuns(
+          runsDirProvider(),
+          LOAD_PERSISTED_LIMIT,
+        )
         for (const run of runs) store.hydrate(run)
       } catch (e) {
         // Scan failure does not block the panel: log + reset flag to allow next retry
