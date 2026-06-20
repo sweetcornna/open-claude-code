@@ -270,11 +270,16 @@ async function createSession(
 
     this.sessions.set(sessionId, session)
 
-    // Stable v1 NewSessionResponse only defines sessionId/modes/configOptions.
-    // `models` is a draft/unstable field — omit it for v1 compliance.
+    // Return models even though SDK 0.19.2 marks it UNSTABLE. The schema does allow the field
+    // (NewSessionResponse.models?: SessionModelState | null), and standard clients (Cursor/Zed/
+    // VS Code ACP) rely on it to populate the model selector — omitting it forces
+    // supportsModelSelection=false on the client and the user can never switch models.
+    // The UNSTABLE marker only means "this field may change in a future schema version", not
+    // "agents MUST NOT return it". The previous "v1 compliance" omission was overzealous.
     return {
       sessionId,
       modes,
+      models,
       configOptions,
     }
   } finally {
