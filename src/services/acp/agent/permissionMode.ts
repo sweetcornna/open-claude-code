@@ -26,10 +26,10 @@ export function resolveSessionPermissionMode(
     )
     if (
       metaResolved === 'bypassPermissions' &&
-      !isAcpBypassPermissionModeAvailable(settingsMode)
+      !isAcpBypassPermissionModeAvailable()
     ) {
       throw new Error(
-        'Mode not available: bypassPermissions requires a local ACP bypass opt-in.',
+        'Mode not available: bypassPermissions cannot run as root (start the agent as a non-root user, or set IS_SANDBOX=1).',
       )
     }
 
@@ -78,14 +78,20 @@ export function hasOwnField(
   return !!value && Object.hasOwn(value, key)
 }
 
-export function isAcpBypassPermissionModeAvailable(
-  settingsMode?: unknown,
-): boolean {
-  return (
-    isProcessBypassPermissionModeAvailable() &&
-    (isAcpBypassLocallyEnabled() ||
-      isSettingsBypassPermissionMode(settingsMode))
-  )
+/**
+ * Whether bypassPermissions is selectable by ACP clients.
+ *
+ * The previous implementation required a local opt-in (ACP_PERMISSION_MODE env var,
+ * CLAUDE_CODE_ACP_ALLOW_BYPASS_PERMISSIONS env var, or settings.permissions.defaultMode).
+ * That gate made the mode invisible to standard clients unless the operator already
+ * pre-configured it — defeating the point of exposing it through the ACP mode list.
+ *
+ * The only remaining guard is the process-level one: bypass must not silently run
+ * as root (where every skipped permission check is a privilege boundary crossed),
+ * unless explicitly marked as a sandbox.
+ */
+export function isAcpBypassPermissionModeAvailable(): boolean {
+  return isProcessBypassPermissionModeAvailable()
 }
 
 function isProcessBypassPermissionModeAvailable(): boolean {
@@ -93,23 +99,4 @@ function isProcessBypassPermissionModeAvailable(): boolean {
   if (typeof process.geteuid === 'function') return process.geteuid() !== 0
   if (typeof process.getuid === 'function') return process.getuid() !== 0
   return true
-}
-
-function isAcpBypassLocallyEnabled(): boolean {
-  return (
-    process.env.ACP_PERMISSION_MODE === 'bypassPermissions' ||
-    isTruthyEnv(process.env.CLAUDE_CODE_ACP_ALLOW_BYPASS_PERMISSIONS)
-  )
-}
-
-function isSettingsBypassPermissionMode(settingsMode: unknown): boolean {
-  try {
-    return resolvePermissionMode(settingsMode) === 'bypassPermissions'
-  } catch {
-    return false
-  }
-}
-
-function isTruthyEnv(value: string | undefined): boolean {
-  return value === '1' || value?.toLowerCase() === 'true'
 }
