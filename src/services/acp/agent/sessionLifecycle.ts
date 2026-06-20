@@ -79,6 +79,9 @@ async function getOrCreateSession(
       return {
         sessionId: params.sessionId,
         modes: existingSession.modes,
+        // Carry models over on reconnect so the client keeps its model selector
+        // populated (standard clients gate supportsModelSelection on this field).
+        models: existingSession.models,
         configOptions: existingSession.configOptions,
       }
     }
@@ -150,6 +153,8 @@ async function getOrCreateSession(
   return {
     sessionId: response.sessionId,
     modes: response.modes,
+    // createSession already returns models; pass it through. Same reason as above.
+    models: response.models,
     configOptions: response.configOptions,
   }
 }

@@ -325,13 +325,17 @@ describe('AcpAgent', () => {
       expect(res.sessionId.length).toBeGreaterThan(0)
     })
 
-    test('returns modes and configOptions (models omitted for v1 compliance)', async () => {
+    test('returns modes, configOptions, and models (clients need models to populate selector)', async () => {
       const agent = new AcpAgent(makeConn())
       const res = await agent.newSession({ cwd: '/tmp' } as any)
       expect(res.modes).toBeDefined()
       expect(res.configOptions).toBeDefined()
-      // Stable v1 NewSessionResponse does not define `models`
-      expect((res as any).models).toBeUndefined()
+      // SDK 0.19.2 marks NewSessionResponse.models as UNSTABLE but the schema allows it, and
+      // standard clients (Cursor/Zed/VS Code) read it to populate the model selector. Omitting
+      // it forces supportsModelSelection=false on the client.
+      expect(res.models).toBeDefined()
+      expect(Array.isArray(res.models!.availableModels)).toBe(true)
+      expect(typeof res.models!.currentModelId).toBe('string')
     })
 
     test('each call returns a unique sessionId', async () => {
@@ -865,8 +869,8 @@ describe('AcpAgent', () => {
       } as any)
       expect(agent.sessions.has(requestedId)).toBe(true)
       expect(res.modes).toBeDefined()
-      // models is omitted for v1 compliance
-      expect((res as any).models).toBeUndefined()
+      // resume also returns models so clients can render the selector after reconnect.
+      expect(res.models).toBeDefined()
     })
 
     test('reuses existing session when sessionId matches and fingerprint unchanged', async () => {
