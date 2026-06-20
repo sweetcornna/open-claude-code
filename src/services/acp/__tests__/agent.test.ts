@@ -71,10 +71,13 @@ mockModulePreservingExports('../../../utils/config.ts', {
 
 const mockSwitchSession = mock(() => {})
 
+const mockGetOriginalCwd = mock(() => '/current/working/dir')
 mockModulePreservingExports('../../../bootstrap/state.ts', {
   setOriginalCwd: mock(() => {}),
   switchSession: mockSwitchSession,
   addSlowOperation: mock(() => {}),
+  getOriginalCwd: mockGetOriginalCwd,
+  getSessionProjectDir: mock(() => null),
 })
 
 const mockGetDefaultAppState = mock(() => ({
@@ -116,8 +119,9 @@ mockModulePreservingExports('../bridge.ts', {
   })),
 })
 
+const mockListSessionsImpl = mock(async () => [])
 mockModulePreservingExports('../../../utils/listSessionsImpl.ts', {
-  listSessionsImpl: mock(async () => []),
+  listSessionsImpl: mockListSessionsImpl,
 })
 
 const mockResolveSessionFilePath = mock(async () => ({
@@ -241,6 +245,10 @@ describe('AcpAgent', () => {
     mockGetDefaultAppState.mockClear()
     mockGetSettings.mockReset()
     mockGetSettings.mockImplementation(() => ({}))
+    mockListSessionsImpl.mockReset()
+    mockListSessionsImpl.mockImplementation(async () => [])
+    mockGetOriginalCwd.mockReset()
+    mockGetOriginalCwd.mockImplementation(() => '/current/working/dir')
     ;(forwardSessionUpdates as ReturnType<typeof mock>).mockReset()
     ;(forwardSessionUpdates as ReturnType<typeof mock>).mockImplementation(
       async () => ({ stopReason: 'end_turn' as const }),
@@ -1317,6 +1325,63 @@ describe('AcpAgent', () => {
         (c: any) => c.name === 'commit',
       )
       expect(commit.input).toEqual({ hint: '[message]' })
+    })
+  })
+
+  describe('listSessions', () => {
+    test('passes params.cwd through to listSessionsImpl when provided', async () => {
+      const agent = new AcpAgent(makeConn())
+      await agent.listSessions({ cwd: '/explicit/path' } as any)
+      expect(mockListSessionsImpl).toHaveBeenCalledWith({
+        dir: '/explicit/path',
+      })
+    })
+
+    test('falls back to current working dir when client omits cwd', async () => {
+      // Standard clients (Goose, possibly others) call session/list with
+      // empty params. Without a fallback, listSessionsImpl treats undefined
+      // dir as "all projects" and returns every session on disk.
+      mockGetOriginalCwd.mockImplementation(() => '/active/project')
+      const agent = new AcpAgent(makeConn())
+      await agent.listSessions({} as any)
+      expect(mockListSessionsImpl).toHaveBeenCalledWith({
+        dir: '/active/project',
+      })
+    })
+
+    test('falls back to current working dir when client sends null cwd', async () => {
+      mockGetOriginalCwd.mockImplementation(() => '/active/project')
+      const agent = new AcpAgent(makeConn())
+      await agent.listSessions({ cwd: null } as any)
+      expect(mockListSessionsImpl).toHaveBeenCalledWith({
+        dir: '/active/project',
+      })
+    })
+
+    test('rejects client-supplied cursor (pagination not implemented)', async () => {
+      const agent = new AcpAgent(makeConn())
+      await expect(
+        agent.listSessions({ cursor: 'page2' } as any),
+      ).rejects.toThrow(/Pagination cursor not supported/)
+    })
+
+    test('filters out candidates without a cwd field', async () => {
+      mockListSessionsImpl.mockImplementation(
+        async () =>
+          [
+            {
+              sessionId: 'with-cwd',
+              cwd: '/p',
+              summary: 'Has cwd',
+              lastModified: 0,
+            },
+            { sessionId: 'no-cwd', summary: 'No cwd', lastModified: 0 },
+          ] as any,
+      )
+      const agent = new AcpAgent(makeConn())
+      const res = await agent.listSessions({ cwd: '/p' } as any)
+      expect(res.sessions).toHaveLength(1)
+      expect(res.sessions[0].sessionId).toBe('with-cwd')
     })
   })
 
