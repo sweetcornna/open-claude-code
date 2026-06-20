@@ -137,10 +137,10 @@ async function createSession(
     // Parse MCP servers from ACP params
     // MCP server config is handled separately in the tools system
 
-    // ACP clients can expose bypass only when both the process and local config allow it.
-    const isBypassAvailable = isAcpBypassPermissionModeAvailable(
-      settingsPermissionMode,
-    )
+    // bypassPermissions is exposed to ACP clients whenever the process itself allows it
+    // (non-root or sandbox). The previous additional opt-in gate made the mode invisible
+    // to standard clients and defeated the purpose of listing it. See permissionMode.ts.
+    const isBypassAvailable = isAcpBypassPermissionModeAvailable()
 
     // Create a mutable AppState for the session
     const appState: AppState = {

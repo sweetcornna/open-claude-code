@@ -411,29 +411,23 @@ describe('AcpAgent', () => {
       expect(res.modes?.currentModeId).toBe('plan')
     })
 
-    test('rejects _meta.permissionMode bypass without a local ACP bypass gate', async () => {
-      mockGetSettings.mockImplementationOnce(() => ({
-        permissions: { defaultMode: 'acceptEdits' },
-      }))
-      const consoleErrorSpy = spyOn(console, 'error').mockImplementation(
-        () => {},
-      )
+    test('honors _meta.permissionMode bypass without any opt-in (always available when process allows)', async () => {
+      // bypass is exposed by default; only the root/sandbox process guard remains.
       const agent = new AcpAgent(makeConn())
-      try {
-        await expect(
-          agent.newSession({
-            cwd: '/tmp',
-            _meta: { permissionMode: 'bypassPermissions' },
-          } as any),
-        ).rejects.toThrow('Mode not available: bypassPermissions')
+      const res = await agent.newSession({
+        cwd: '/tmp',
+        _meta: { permissionMode: 'bypassPermissions' },
+      } as any)
 
-        expect(consoleErrorSpy).not.toHaveBeenCalled()
-      } finally {
-        consoleErrorSpy.mockRestore()
-      }
+      expect(res.modes?.currentModeId).toBe('bypassPermissions')
+      expect(res.modes?.availableModes.map((mode: any) => mode.id)).toContain(
+        'bypassPermissions',
+      )
     })
 
-    test('honors _meta.permissionMode bypass with a local ACP bypass gate', async () => {
+    test('honors _meta.permissionMode bypass regardless of local env gate', async () => {
+      // The old CLAUDE_CODE_ACP_ALLOW_BYPASS_PERMISSIONS opt-in no longer gates availability,
+      // but setting it should still not break the request.
       process.env.CLAUDE_CODE_ACP_ALLOW_BYPASS_PERMISSIONS = '1'
       const agent = new AcpAgent(makeConn())
       const res = await agent.newSession({
@@ -987,28 +981,15 @@ describe('AcpAgent', () => {
       ).rejects.toThrow('Session not found')
     })
 
-    test('availableModes excludes bypassPermissions without a local ACP bypass gate', async () => {
+    test('availableModes includes bypassPermissions by default (no opt-in needed)', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
       const session = agent.sessions.get(sessionId)
       const modeIds = session?.modes.availableModes.map((m: any) => m.id)
-      expect(modeIds).not.toContain('bypassPermissions')
+      expect(modeIds).toContain('bypassPermissions')
     })
 
-    test('rejects bypassPermissions without a local ACP bypass gate', async () => {
-      const agent = new AcpAgent(makeConn())
-      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
-      await expect(
-        agent.setSessionMode({ sessionId, modeId: 'bypassPermissions' } as any),
-      ).rejects.toThrow('Mode not available')
-
-      const session = agent.sessions.get(sessionId)
-      expect(session?.modes.currentModeId).toBe('default')
-      expect(session?.appState.toolPermissionContext.mode).toBe('default')
-    })
-
-    test('can switch to bypassPermissions mode with a local ACP bypass gate', async () => {
-      process.env.CLAUDE_CODE_ACP_ALLOW_BYPASS_PERMISSIONS = '1'
+    test('can switch to bypassPermissions without any opt-in gate', async () => {
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
       await agent.setSessionMode({
@@ -1023,7 +1004,8 @@ describe('AcpAgent', () => {
     })
 
     test('rejects bypassPermissions when the session does not expose it', async () => {
-      process.env.CLAUDE_CODE_ACP_ALLOW_BYPASS_PERMISSIONS = '1'
+      // Even though bypass is available by default, removeBypassMode simulates a session
+      // where the mode was stripped (e.g., future custom filter). The rejection still fires.
       const agent = new AcpAgent(makeConn())
       const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
       const session = agent.sessions.get(sessionId)
@@ -1069,15 +1051,17 @@ describe('AcpAgent', () => {
       const session = agent.sessions.get(sessionId)
       removeBypassMode(session)
 
-      // The value is rejected because it is not in the option's listed values
-      // (config-option validation runs before the mode-availability check).
+      // bypassPermissions passes the config-option layer (it's still listed in the
+      // option's options array — removeBypassMode only strips it from modes.availableModes
+      // and isBypassPermissionsModeAvailable), then applySessionMode rejects it with
+      // "Mode not available". This covers the second of the two validation layers.
       await expect(
         agent.setSessionConfigOption({
           sessionId,
           configId: 'mode',
           value: 'bypassPermissions',
         } as any),
-      ).rejects.toThrow(/Invalid value 'bypassPermissions'/)
+      ).rejects.toThrow('Mode not available')
 
       expect(session?.modes.currentModeId).toBe('default')
       expect(session?.appState.toolPermissionContext.mode).toBe('default')
