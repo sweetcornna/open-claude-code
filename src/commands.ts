@@ -179,6 +179,7 @@ import privacySettings from './commands/privacy-settings/index.js'
 import hooks from './commands/hooks/index.js'
 import files from './commands/files/index.js'
 import branch from './commands/branch/index.js'
+import artifacts from './commands/artifacts/index.js'
 import agents from './commands/agents/index.js'
 import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
@@ -305,6 +306,7 @@ const COMMANDS = memoize((): Command[] => [
   localMemoryCommand,
   autonomy,
   provider,
+  artifacts,
   agents,
   branch,
   btw,

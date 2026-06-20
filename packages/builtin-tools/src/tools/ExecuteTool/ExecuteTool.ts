@@ -236,4 +236,29 @@ export const ExecuteTool = buildTool({
       content: JSON.stringify(content),
     }
   },
+  // Output shape: { result: <inner tool output>, tool_name: string }.
+  // Delegate rendering to the inner tool when it defines its own
+  // renderToolResultMessage so deferred tools can show their own UI
+  // (e.g. ArtifactTool displays its uploaded URL). Without this, the
+  // ExecuteExtraTool tool_result row renders nothing below the tool_use
+  // line. The inner tool expects its own input shape, so unwrap params.
+  //
+  // Inline the lookup rather than calling findToolByName — deferred tools
+  // are matched by exact name (no aliases needed), and avoiding the
+  // shared helper keeps this method resilient to src/Tool.js mocks in
+  // co-located test files (process-global mock.module pollution).
+  renderToolResultMessage(content, progressMessages, options) {
+    const innerTool = options.tools.find(t => t.name === content.tool_name)
+    if (!innerTool?.renderToolResultMessage) return null
+    const innerInput = (options.input as { params?: unknown } | undefined)
+      ?.params
+    return innerTool.renderToolResultMessage(
+      content.result as never,
+      progressMessages,
+      {
+        ...options,
+        input: innerInput,
+      },
+    )
+  },
 } satisfies ToolDef<InputSchema, Output>)

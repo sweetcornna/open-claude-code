@@ -62,6 +62,7 @@ import { TaskOutputTool } from '@claude-code-best/builtin-tools/tools/TaskOutput
 import { WebSearchTool } from '@claude-code-best/builtin-tools/tools/WebSearchTool/WebSearchTool.js'
 import { TodoWriteTool } from '@claude-code-best/builtin-tools/tools/TodoWriteTool/TodoWriteTool.js'
 import { ExitPlanModeV2Tool } from '@claude-code-best/builtin-tools/tools/ExitPlanModeTool/ExitPlanModeV2Tool.js'
+import { ArtifactTool } from '@claude-code-best/builtin-tools/tools/ArtifactTool/ArtifactTool.js'
 import { TestingPermissionTool } from '@claude-code-best/builtin-tools/tools/testing/TestingPermissionTool.js'
 import { GrepTool } from '@claude-code-best/builtin-tools/tools/GrepTool/GrepTool.js'
 import { TungstenTool } from '@claude-code-best/builtin-tools/tools/TungstenTool/TungstenTool.js'
@@ -228,6 +229,7 @@ export function getAllBaseTools(): Tools {
     FileEditTool,
     FileWriteTool,
     NotebookEditTool,
+    ArtifactTool,
     WebFetchTool,
     TodoWriteTool,
     WebSearchTool,
