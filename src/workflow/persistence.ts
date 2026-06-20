@@ -1,4 +1,11 @@
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { getProjectRoot } from '../bootstrap/state.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -9,6 +16,13 @@ import type { ProgressStore, RunProgress } from './progress/store.js'
 const SCHEMA_VERSION = 1
 const STATE_FILE = 'state.json'
 const STATE_TMP = 'state.json.tmp'
+
+/**
+ * Hard ceiling on persisted run directories on disk. Beyond this, the oldest runs (by updatedAt)
+ * are pruned by cleanupOldRuns. Set generously above LOAD_PERSISTED_LIMIT so runs hidden from the
+ * panel can still be resumed manually before aging out.
+ */
+const KEEP_MAX_RUNS = 50
 
 /**
  * Single source for runsDir: shares the same root as ports.ts journalStore (${projectRoot}/.claude/workflow-runs).
@@ -86,9 +100,12 @@ export async function readRunState(
  * - A subdirectory without state.json (half-written run) → skip
  * - A subdirectory whose state.json is corrupted → skip that single one, keep scanning the rest
  * - Sort by updatedAt descending (consistent with store.list() ordering)
+ * - Optional limit: keep only the first N newest (used by loadPersistedRuns so the panel
+ *   doesn't drown under months of history; full scan stays available by omitting the arg).
  */
 export async function listPersistedRuns(
   runsDir: string,
+  limit?: number,
 ): Promise<RunProgress[]> {
   let entries: string[]
   try {
@@ -101,7 +118,56 @@ export async function listPersistedRuns(
     const run = await readRunState(runsDir, name)
     if (run) runs.push(run)
   }
-  return runs.sort((a, b) => b.updatedAt - a.updatedAt)
+  runs.sort((a, b) => b.updatedAt - a.updatedAt)
+  return limit !== undefined && limit >= 0 ? runs.slice(0, limit) : runs
+}
+
+/**
+ * Garbage-collect stale run directories: sort subdirs of runsDir by their state.json.updatedAt
+ * (newest first), then recursively remove everything past keepMax. Subdirs without state.json are
+ * treated as oldest (they're orphans — half-written, killed-mid-write, or pre-schema leftovers) so
+ * they get pruned first.
+ *
+ * Best-effort: per-dir failures only log, do not abort the sweep. Safe to call repeatedly
+ * (idempotent — once under the cap, it's a no-op).
+ *
+ * @returns number of directories actually removed.
+ */
+export async function cleanupOldRuns(
+  runsDir: string,
+  keepMax: number = KEEP_MAX_RUNS,
+): Promise<number> {
+  let entries: string[]
+  try {
+    entries = await readdir(runsDir)
+  } catch {
+    return 0
+  }
+  type Candidate = { name: string; updatedAt: number }
+  const candidates: Candidate[] = []
+  for (const name of entries) {
+    const run = await readRunState(runsDir, name)
+    // updatedAt=0 → orphan dir without parseable state.json; sorts first → pruned first.
+    candidates.push({ name, updatedAt: run?.updatedAt ?? 0 })
+  }
+  // Newest first; orphans (updatedAt=0) sink to the tail and get pruned first.
+  candidates.sort((a, b) => b.updatedAt - a.updatedAt)
+  // Guard against negative keepMax: slice(-N) would invert semantics and keep N newest instead of
+  // pruning them, which contradicts the contract. Clamp to 0 so a bad caller at worst wipes everything.
+  const cap = Math.max(0, Math.trunc(keepMax))
+  const victims = candidates.slice(cap)
+  let removed = 0
+  for (const v of victims) {
+    try {
+      await rm(join(runsDir, v.name), { recursive: true, force: true })
+      removed++
+    } catch (e) {
+      logForDebugging(
+        `[workflow warn] cleanupOldRuns failed to remove ${v.name}: ${(e as Error).message}`,
+      )
+    }
+  }
+  return removed
 }
 
 /**
@@ -112,6 +178,10 @@ export async function listPersistedRuns(
  *
  * Disk write is best-effort: writeRunState swallows IO exceptions and only logs, does not propagate —
  * so other bus subscribers (store, etc.) are not affected by persistence failures.
+ *
+ * Also fires-and-forgets cleanupOldRuns so the runs directory stays bounded across long-lived
+ * sessions (KEEP_MAX_RUNS). The cleanup runs *after* the new state is written, guaranteeing the
+ * just-finished run is already on disk and counted as newest — never swept out from under itself.
  *
  * @param runsDirProvider Optional runsDir resolver (defaults to getRunsDir).
  *   Production path uses the default; tests inject a tmpdir to avoid writing to the real project directory (Bun ESM module namespace is read-only,
@@ -126,6 +196,15 @@ export function attachRunStatePersistence(
     if (event.type !== 'run_done') return
     const run = store.get(event.runId)
     if (!run) return
-    void writeRunState(runsDirProvider(), run)
+    const dir = runsDirProvider()
+    void writeRunState(dir, run).then(() => {
+      // Sweep only after the new state lands on disk — avoids a race where the just-finished run
+      // itself gets pruned because its state.json wasn't counted yet.
+      void cleanupOldRuns(dir).catch(e => {
+        logForDebugging(
+          `[workflow warn] cleanupOldRuns after run_done threw: ${(e as Error).message}`,
+        )
+      })
+    })
   })
 }
