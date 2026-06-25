@@ -753,6 +753,7 @@ export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
   // and remains true for all subsequent messages in the normalization process.
   let isNewChain = false
   return messages.flatMap(message => {
+    if (!message) return []
     switch (message.type) {
       case 'assistant': {
         const aMsg = message as AssistantMessage
@@ -776,7 +777,7 @@ export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
             isVirtual: message.isVirtual,
             requestId: message.requestId,
             uuid,
-            error: message.error,
+            error: message?.error,
             isApiErrorMessage: message.isApiErrorMessage,
             advisorModel: message.advisorModel,
           } as NormalizedAssistantMessage
@@ -2376,6 +2377,7 @@ export function normalizeMessagesForAPI(
       },
     )
     .forEach(message => {
+      if (!message) return []
       switch (message.type) {
         case 'system': {
           // local_command system messages need to be included as user messages
