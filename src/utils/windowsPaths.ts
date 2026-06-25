@@ -36,6 +36,13 @@ export type GitBashDiscoveryDeps = {
   /** Returns the current working directory (used to filter PATH-based lookups). */
   cwdFn: () => string
   /**
+   * `USERPROFILE` used to derive Scoop Git install paths. When provided,
+   * this is used instead of `process.env.USERPROFILE` — keeps the pure
+   * helper hermetic so the Scoop fallback can be tested without
+   * depending on the live environment.
+   */
+  userProfile?: string | undefined
+  /**
    * Optional override for `process.env.CLAUDE_CODE_GIT_BASH_PATH`. When
    * provided, this is used instead of the live environment — useful for tests.
    */
@@ -47,6 +54,7 @@ const DEFAULT_DEPS: GitBashDiscoveryDeps = {
   execCommand: cmd =>
     execSync_DEPRECATED(cmd, { stdio: 'pipe', encoding: 'utf8' }).trim(),
   cwdFn: getCwd,
+  userProfile: process.env.USERPROFILE,
   envOverride: undefined,
 }
 
@@ -57,6 +65,7 @@ const DEFAULT_DEPS: GitBashDiscoveryDeps = {
  */
 function searchDefaultBashLocations(
   checkExists: (p: string) => boolean,
+  userProfile?: string,
 ): string | null {
   const candidates = [
     // Standard Git for Windows install locations (both layouts).
@@ -66,7 +75,6 @@ function searchDefaultBashLocations(
     'C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe',
   ]
   // Scoop install: %USERPROFILE%\scoop\apps\git\current\usr\bin\bash.exe
-  const userProfile = process.env.USERPROFILE
   if (userProfile) {
     candidates.push(
       `${userProfile}\\scoop\\apps\\git\\current\\usr\\bin\\bash.exe`,
@@ -114,16 +122,35 @@ function findExecutableWithDeps(
     const result = deps.execCommand(`where.exe ${executable}`)
     // SECURITY: Filter out any results from the current directory
     // to prevent executing malicious git.bat/cmd/exe files
-    const paths = result.split('\r\n').filter(Boolean)
-    const cwd = deps.cwdFn().toLowerCase()
+    //
+    // Use path.win32.* here so that `where.exe`'s Windows-style backslash
+    // paths are evaluated with Windows semantics regardless of the host
+    // OS. On POSIX, `path.resolve('C:\\foo')` treats the backslashes as
+    // literal characters and produces a wrong (relative) result, which
+    // would let cwd shadowing slip past this check. pathWin32 is
+    // already imported for the bash derivation below.
+    const paths = result
+      .split(/\r?\n/)
+      .map(p => p.trim())
+      .filter(Boolean)
+    const cwd = pathWin32.resolve(deps.cwdFn()).toLowerCase()
 
     for (const candidatePath of paths) {
       // Normalize and compare paths to ensure we're not in current directory
-      const normalizedPath = path.resolve(candidatePath).toLowerCase()
-      const pathDir = path.dirname(normalizedPath).toLowerCase()
+      const normalizedPath = pathWin32.resolve(candidatePath).toLowerCase()
+      const pathDir = pathWin32.dirname(normalizedPath).toLowerCase()
+      // path.win32.relative(cwd, pathDir) returns:
+      //   ''               → pathDir === cwd
+      //   '..' / '../...'   → pathDir is outside cwd (or above it)
+      //   'subdir/...'     → pathDir is inside cwd
+      // We reject entries whose dir is cwd itself or anywhere inside cwd.
+      const relativePathDir = pathWin32.relative(cwd, pathDir)
 
-      // Skip if the executable is in the current working directory
-      if (pathDir === cwd || normalizedPath.startsWith(cwd + path.sep)) {
+      if (
+        relativePathDir === '' ||
+        (!relativePathDir.startsWith('..') &&
+          !pathWin32.isAbsolute(relativePathDir))
+      ) {
         logForDebugging(
           `Skipping potentially malicious executable in current directory: ${candidatePath}`,
         )
@@ -188,7 +215,7 @@ export function findGitBashPathOrNullWithDeps(
   }
 
   // 4. Last resort: scan common install locations for bash.exe directly
-  return searchDefaultBashLocations(deps.checkExists)
+  return searchDefaultBashLocations(deps.checkExists, deps.userProfile)
 }
 
 /**

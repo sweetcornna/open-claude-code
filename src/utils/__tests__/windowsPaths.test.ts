@@ -287,6 +287,10 @@ describe('findGitBashPathOrNullWithDeps', () => {
         return ''
       },
       cwdFn: () => '/safe/cwd',
+      // Bypass process.env.CLAUDE_CODE_GIT_BASH_PATH so the test exercises
+      // the intended PATH short-circuit behavior rather than passing for
+      // the wrong reason (env override).
+      envOverride: '',
     }
     expect(findGitBashPathOrNullWithDeps(deps)).toBe(bashPath)
     expect(gitProbed).toBe(false)
