@@ -137,7 +137,10 @@ export const GoalTool = buildTool({
     return `Updating goal: ${input.status}${input.reason ? ` — ${input.reason}` : ''}`
   },
   renderToolResultMessage(output: Output) {
-    if (output.error) return `Goal error: ${output.error}`
+    if (!output) {
+      return null
+    }
+    if (output?.error) return `Goal error: ${output.error}`
     if (output.report) return output.report
     if (output.goal) {
       return `Goal "${output.goal.objective}" — ${output.goal.status}`
