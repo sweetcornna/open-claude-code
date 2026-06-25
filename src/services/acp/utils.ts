@@ -172,7 +172,9 @@ export function sanitizeTitle(text: string): string {
 
 // ── Path display helpers ──────────────────────────────────────────
 
-import * as path from 'node:path'
+// POSIX semantics so paths are normalised consistently regardless of host OS.
+// ACP paths are always POSIX-style (see bridge/paths.ts for the same rationale).
+import * as path from 'node:path/posix'
 
 /**
  * Convert an absolute file path to a project-relative path for display.
@@ -186,7 +188,7 @@ export function toDisplayPath(filePath: string, cwd?: string): string {
     resolvedFile.startsWith(resolvedCwd + path.sep) ||
     resolvedFile === resolvedCwd
   ) {
-    return path.relative(resolvedCwd, resolvedFile).replaceAll('\\', '/')
+    return path.relative(resolvedCwd, resolvedFile)
   }
   return filePath
 }
