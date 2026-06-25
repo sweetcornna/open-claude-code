@@ -29,7 +29,7 @@ export function toInternalMessages(
   messages: readonly DeepImmutable<SDKMessage>[],
 ): Message[] {
   return messages.flatMap(message => {
-    if (!message) return [];
+    if (!message) return []
     switch (message.type) {
       case 'assistant':
         return [
@@ -128,7 +128,7 @@ export function fromSDKCompactMetadata(
 
 export function toSDKMessages(messages: Message[]): SDKMessage[] {
   return messages.flatMap((message): SDKMessage[] => {
-    if (!message) return [];
+    if (!message) return []
     switch (message.type) {
       case 'assistant':
         return [
