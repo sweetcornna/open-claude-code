@@ -1,5 +1,12 @@
 // Pure path-normalisation helper used by toolInfo / toolResults / forwarding.
-import { isAbsolute, resolve } from 'node:path'
+//
+// POSIX semantics are used so that emitted paths are platform-independent:
+// ACP v1 spec (tool-calls.mdx:304-306) requires ToolCallLocation.path /
+// Diff.path to be absolute, and the wire format is POSIX-style regardless of
+// the host OS. Using the platform-specific `node:path` here would prepend the
+// Windows drive letter (e.g. "D:\...") to POSIX-style inputs like
+// "/Users/test/project" — silently corrupting paths emitted to ACP clients.
+import { isAbsolute, resolve } from 'node:path/posix'
 
 /**
  * Normalises an emitted file path against the session cwd so that
