@@ -36,6 +36,12 @@ export type ResolvedPathCheckResult = PathCheckResult & {
   resolvedPath: string
 }
 
+/**
+ * Format a list of working directories for inclusion in permission-prompt
+ * messages. When the list is short (≤ {@link MAX_DIRS_TO_LIST}) all
+ * directories are listed; when longer, a truncated form is shown with
+ * the remaining count.
+ */
 export function formatDirectoryList(directories: string[]): string {
   const dirCount = directories.length
 
