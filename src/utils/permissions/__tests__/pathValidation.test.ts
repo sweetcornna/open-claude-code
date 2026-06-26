@@ -48,6 +48,14 @@ const describeIfWindows = isWindows ? describe : describe.skip
 // The fix runs `posixPathToWindowsPath` on Windows before resolution,
 // converting `/c/...` and `/cygdrive/c/...` to their `C:\...` form so the
 // validator's path space matches the shell's.
+/**
+ * Tests that `validatePath` normalizes MinGW-style absolute paths
+ * (`/c/Users/foo`, `/cygdrive/c/Users/foo`) to Windows paths
+ * (`C:\\Users\\foo`) on Windows. Without this, the validator runs in
+ * Windows host path space while the Git Bash shell runs in MinGW path
+ * space, leading to a sandbox-escape class — see the comment block
+ * at the top of this file for the full security rationale.
+ */
 describeIfWindows('validatePath MinGW path normalization', () => {
   test('converts /c/Users/foo/file.txt to C:\\Users\\foo\\file.txt', () => {
     const result = validatePath(
@@ -151,6 +159,16 @@ describeIfWindows('validatePath MinGW path normalization', () => {
 // Then we check that `/c/Users/foo/sensitive.txt` is denied with a
 // resolvedPath pointing at C:\Users\foo — proving the validator now sees
 // the same path the shell will write to.
+/**
+ * Regression tests for the sandbox-escape class the MinGW-normalization
+ * fix prevents. Without the fix, a MinGW-style path like
+ * `/c/Users/foo/sensitive.txt` is resolved (by `path.resolve`) against
+ * the current drive (`D:\c\Users\foo\sensitive.txt`) and compared to
+ * the allowed-directories list — while Git Bash actually writes to
+ * `C:\Users\foo\sensitive.txt`. With the fix, both sides of the
+ * comparison use the same Windows path so a path the shell will write
+ * to but isn't in any allowed dir is denied.
+ */
 describeIfWindows('validatePath sandbox escape regression', () => {
   test('MinGW path that escapes allowed dirs is denied at correct location', () => {
     // Without the fix, this would resolve to `D:\c\Users\foo\sensitive.txt`
