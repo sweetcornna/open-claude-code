@@ -3942,23 +3942,54 @@ async function loadSessionFile(sessionId: UUID): Promise<{
 }
 
 /**
- * Gets message UUIDs for a specific session without loading all sessions.
- * Memoized to avoid re-reading the same session file multiple times.
+ * Bounded cache for {@link getSessionMessages}. Bounded at
+ * {@link MAX_CACHED_SESSION_FILES} to prevent unbounded Map growth in
+ * long-running daemon / swarm sessions that spawn many agents — mirrors
+ * the existingSessionFiles pattern above. Entries are evicted in FIFO
+ * order via `Map` insertion order.
  */
-const getSessionMessages = memoize(
-  async (sessionId: UUID): Promise<Set<UUID>> => {
-    const { messages } = await loadSessionFile(sessionId)
-    return new Set(messages.keys())
-  },
-  (sessionId: UUID) => sessionId,
-)
+const sessionMessagesCache = new Map<UUID, Promise<Set<UUID>>>()
 
 /**
- * Clear the memoized session messages cache.
+ * Gets message UUIDs for a specific session without loading all sessions.
+ * Cached (bounded) to avoid re-reading the same session file multiple
+ * times. Concurrent calls for the same `sessionId` share one in-flight
+ * load promise.
+ *
+ * Exported so tests can verify cache eviction behavior directly; not
+ * intended as a public API — prefer {@link doesMessageExistInSession}.
+ */
+export async function getSessionMessages(sessionId: UUID): Promise<Set<UUID>> {
+  const existing = sessionMessagesCache.get(sessionId)
+  if (existing !== undefined) {
+    return existing
+  }
+  // Evict oldest entry when at capacity so the Map stays bounded.
+  if (sessionMessagesCache.size >= MAX_CACHED_SESSION_FILES) {
+    const oldestKey = sessionMessagesCache.keys().next().value
+    if (oldestKey !== undefined) {
+      sessionMessagesCache.delete(oldestKey)
+    }
+  }
+  const promise = (async () => {
+    const { messages } = await loadSessionFile(sessionId)
+    return new Set(messages.keys())
+  })()
+  sessionMessagesCache.set(sessionId, promise)
+  return promise
+}
+
+/** Underlying cache for direct manipulation (priming, clearing, tests). */
+export function getSessionMessagesCache(): Map<UUID, Promise<Set<UUID>>> {
+  return sessionMessagesCache
+}
+
+/**
+ * Clear the cached session messages.
  * Call after compaction when old message UUIDs are no longer valid.
  */
 export function clearSessionMessagesCache(): void {
-  getSessionMessages.cache.clear?.()
+  sessionMessagesCache.clear()
 }
 
 /**
@@ -3996,11 +4027,9 @@ export async function getLastSessionLog(
   // Guard: only prime if cache is empty. Mid-session callers (e.g. IssueFeedback)
   // may call getLastSessionLog on the current session — overwriting a live cache
   // with a stale disk snapshot would lose unflushed UUIDs and break dedup.
-  if (!getSessionMessages.cache.has(sessionId)) {
-    getSessionMessages.cache.set(
-      sessionId,
-      Promise.resolve(new Set(messages.keys())),
-    )
+  const messagesCache = getSessionMessagesCache()
+  if (!messagesCache.has(sessionId)) {
+    messagesCache.set(sessionId, Promise.resolve(new Set(messages.keys())))
   }
 
   // Find the most recent non-sidechain message
