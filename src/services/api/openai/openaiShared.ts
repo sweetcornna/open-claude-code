@@ -4,7 +4,47 @@
  * Both the OpenAI path (queryModelOpenAI) and Grok path (queryModelGrok) use
  * the same adapters (openaiStreamAdapter, openaiConvertMessages), so the event
  * processing logic should be shared rather than duplicated.
+ *
+ * Keep this module free of bootstrap/state imports so pure request-body unit
+ * tests and isolated mocks do not need a full session runtime.
  */
+import { randomUUID } from 'crypto'
+
+/**
+ * Build a stable OpenAI `prompt_cache_key` for a session.
+ *
+ * OpenAI automatic prefix caching benefits from routing sticky keys so multi-turn
+ * requests land on the same cache-bearing compute node. The key must be stable
+ * for the whole conversation — never derived from full message bodies (that
+ * changes every turn and defeats routing).
+ *
+ * Format: `ccb:<sessionId>`
+ */
+export function formatOpenAIPromptCacheKey(sessionId: string): string {
+  return `ccb:${sessionId}`
+}
+
+/**
+ * Process-scoped sticky key. OpenAI uses this for cache-node routing, not as a
+ * content hash — it only needs to be stable across multi-turn requests in the
+ * same CCB process. Avoids a bootstrap/state import so pure unit tests and
+ * partial mocks stay isolated.
+ */
+let processPromptCacheKey: string | null = null
+
+/**
+ * Stable OpenAI `prompt_cache_key` for this process.
+ * Prefer an explicit override (session id) when the caller already has one.
+ */
+export function getOpenAIPromptCacheKey(sessionIdOverride?: string): string {
+  if (sessionIdOverride) {
+    return formatOpenAIPromptCacheKey(sessionIdOverride)
+  }
+  if (!processPromptCacheKey) {
+    processPromptCacheKey = formatOpenAIPromptCacheKey(randomUUID())
+  }
+  return processPromptCacheKey
+}
 
 /**
  * Merge a delta usage into the accumulated usage, preserving cache-related

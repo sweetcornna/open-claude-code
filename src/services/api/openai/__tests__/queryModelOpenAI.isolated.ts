@@ -222,20 +222,20 @@ mock.module('@ant/model-provider', () => ({
   anthropicToolChoiceToOpenAI: () => undefined,
 }))
 
-mock.module('../../../../utils/envUtils.js', () => ({
-  isEnvTruthy: (value: string | undefined) =>
-    value === '1' || value === 'true' || value === 'yes' || value === 'on',
-  isEnvDefinedFalsy: (value: string | undefined) =>
-    value === '0' || value === 'false' || value === 'no' || value === 'off',
-}))
-
 mock.module('../../../../services/analytics/growthbook.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: (_key: string, fallback: unknown) =>
     fallback,
+  checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
+  getFeatureValue_CACHED_WITH_REFRESH: (_key: string, fallback: unknown) =>
+    fallback,
 }))
 
-mock.module('src/bootstrap/state.js', () => ({
-  isReplBridgeActive: () => false,
+// Force Chat Completions path so stream/client mocks apply (not Responses).
+// Avoid partial mocks of bootstrap/state and envUtils — incomplete surfaces
+// break transitive named imports when this file is run alone.
+mock.module('../chatgptAuth.js', () => ({
+  isChatGPTAuthEnabled: () => false,
+  getValidChatGPTAuth: async () => null,
 }))
 
 mock.module('bun:bundle', () => ({
@@ -601,6 +601,8 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(8192)
+    // Process-sticky OpenAI cache routing (not message-derived)
+    expect(_lastCreateArgs!.prompt_cache_key).toMatch(/^ccb:[0-9a-f-]+$/i)
   })
 })
 

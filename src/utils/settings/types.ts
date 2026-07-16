@@ -1135,7 +1135,7 @@ export const SettingsSchema = lazySchema(() =>
         .max(100)
         .optional()
         .describe(
-          'Prompt cache hit rate threshold (0-100). Warnings shown when cache hit rate falls below this percentage. Default: 80.',
+          'Prompt cache hit rate threshold (0-100). Warnings shown when cache hit rate falls below this percentage. Default: 70.',
         ),
       cacheWarningEnabled: z
         .boolean()
