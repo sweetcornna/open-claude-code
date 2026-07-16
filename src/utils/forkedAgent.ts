@@ -587,6 +587,18 @@ export async function runForkedAgent({
         if (isMessageDeltaStreamEvent(message)) {
           const turnUsage = updateUsage({ ...EMPTY_USAGE }, message.event.usage)
           totalUsage = accumulateUsage(totalUsage, turnUsage)
+        } else {
+          // Feed streamed text length into the (optionally shared) response
+          // length callback so callers with shareSetResponseLength can drive
+          // token-based UI (e.g. the compaction progress bar). No-op by default.
+          const event = (message as StreamEventMessage).event
+          if (
+            event.type === 'content_block_delta' &&
+            event.delta.type === 'text_delta'
+          ) {
+            const textLength = event.delta.text.length
+            isolatedToolUseContext.setResponseLength(len => len + textLength)
+          }
         }
         continue
       }
