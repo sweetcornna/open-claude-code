@@ -1,10 +1,16 @@
 import { randomUUID } from 'crypto'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getValidChatGPTAuth } from './chatgptAuth.js'
+import { getOpenAIPromptCacheKey } from './openaiShared.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
-export type ResponsesReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+export type ResponsesReasoningEffort =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
 
 type ResponsesRequest = {
   model: string
@@ -16,6 +22,8 @@ type ResponsesRequest = {
   tool_choice?: unknown
   reasoning?: { effort: ResponsesReasoningEffort }
   parallel_tool_calls?: boolean
+  /** Sticky cache routing key — stable for the CCB session. */
+  prompt_cache_key: string
 }
 
 type AnthropicUsage = {
@@ -168,6 +176,8 @@ export function buildResponsesRequest(params: {
   tools: unknown[]
   toolChoice: unknown
   reasoningEffort?: ResponsesReasoningEffort
+  /** Override for tests; production uses the current CCB session id. */
+  promptCacheKey?: string
 }): ResponsesRequest {
   const { input, instructions } = convertMessagesToResponsesInput(
     params.messages,
@@ -187,6 +197,9 @@ export function buildResponsesRequest(params: {
       ? { reasoning: { effort: params.reasoningEffort } }
       : {}),
     parallel_tool_calls: true,
+    // Same process/session → same key so OpenAI can sticky-route to a cache node.
+    // Must not hash the full message list (would change every turn).
+    prompt_cache_key: params.promptCacheKey ?? getOpenAIPromptCacheKey(),
   }
 }
 
@@ -221,23 +234,50 @@ async function* parseSSE(
   }
 }
 
-function extractUsage(
+/**
+ * Map OpenAI Responses usage → Anthropic-style mutually exclusive fields.
+ *
+ * OpenAI:  input_tokens is TOTAL input; cached_tokens ⊆ input_tokens;
+ *          cache_write_tokens (GPT-5.6+) reports tokens written this turn.
+ * Anthropic: input + cache_creation + cache_read are disjoint and sum to total.
+ *
+ * Without subtracting cached from input, cacheWarning hit-rate becomes
+ * cached/(total+cached) with a hard ceiling of 50%.
+ */
+export function extractUsage(
   response: Record<string, unknown> | undefined,
 ): AnthropicUsage {
   const usage = response?.usage as Record<string, unknown> | undefined
   const inputDetails = usage?.input_tokens_details as
     | Record<string, unknown>
     | undefined
+
+  const totalInput =
+    typeof usage?.input_tokens === 'number' ? usage.input_tokens : 0
+  const outputTokens =
+    typeof usage?.output_tokens === 'number' ? usage.output_tokens : 0
+
+  const cachedRaw =
+    typeof inputDetails?.cached_tokens === 'number'
+      ? inputDetails.cached_tokens
+      : 0
+  const writeRaw =
+    typeof inputDetails?.cache_write_tokens === 'number'
+      ? inputDetails.cache_write_tokens
+      : 0
+
+  // Cap segments so they stay non-negative and do not exceed total input.
+  // Prefer preserving cache_read for hit-rate accuracy, then cache_creation.
+  const cacheRead = Math.min(Math.max(0, cachedRaw), Math.max(0, totalInput))
+  const remainingAfterRead = Math.max(0, totalInput - cacheRead)
+  const cacheCreation = Math.min(Math.max(0, writeRaw), remainingAfterRead)
+  const inputTokens = Math.max(0, remainingAfterRead - cacheCreation)
+
   return {
-    input_tokens:
-      typeof usage?.input_tokens === 'number' ? usage.input_tokens : 0,
-    output_tokens:
-      typeof usage?.output_tokens === 'number' ? usage.output_tokens : 0,
-    cache_creation_input_tokens: 0,
-    cache_read_input_tokens:
-      typeof inputDetails?.cached_tokens === 'number'
-        ? inputDetails.cached_tokens
-        : 0,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    cache_creation_input_tokens: cacheCreation,
+    cache_read_input_tokens: cacheRead,
   }
 }
 

@@ -14,7 +14,7 @@ import type {
 import type { AgentId } from '../../../types/ids.js'
 import type { Tools } from '../../../Tool.js'
 import { getOpenAIClient } from './client.js'
-import { updateOpenAIUsage } from './openaiShared.js'
+import { getOpenAIPromptCacheKey, updateOpenAIUsage } from './openaiShared.js'
 import {
   anthropicMessagesToOpenAI,
   resolveOpenAIModel,
@@ -79,7 +79,8 @@ function convertToResponsesReasoningEffort(
   if (effortValue === 'low') return 'low'
   if (effortValue === 'medium') return 'medium'
   if (effortValue === 'high') return 'high'
-  if (effortValue === 'xhigh' || effortValue === 'max') return 'xhigh'
+  if (effortValue === 'xhigh') return 'xhigh'
+  if (effortValue === 'max') return 'max'
   if (typeof effortValue === 'number') return 'high'
   return undefined
 }
@@ -345,8 +346,13 @@ export async function* queryModelOpenAI(
       options.maxOutputTokensOverride,
     )
 
+    // Sticky cache routing key: stable for this CCB process so OpenAI can
+    // co-locate multi-turn requests on the same cache-bearing node. Never hash
+    // the full message body (that changes every turn and defeats routing).
+    const promptCacheKey = getOpenAIPromptCacheKey()
+
     logForDebugging(
-      `[OpenAI] Calling model=${openaiModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}`,
+      `[OpenAI] Calling model=${openaiModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}, prompt_cache_key=${promptCacheKey}`,
     )
 
     // 11. Call OpenAI API with streaming. ChatGPT subscription auth uses the
@@ -361,6 +367,7 @@ export async function* queryModelOpenAI(
               tools: openaiTools,
               toolChoice: openaiToolChoice,
               reasoningEffort,
+              promptCacheKey,
             }),
             signal,
             fetchOverride: options.fetchOverride as unknown as typeof fetch,
@@ -381,6 +388,7 @@ export async function* queryModelOpenAI(
               enableThinking,
               maxTokens,
               temperatureOverride: options.temperatureOverride,
+              promptCacheKey,
             }),
             { signal },
           ),
