@@ -8,7 +8,31 @@
  * Keep this module free of bootstrap/state imports so pure request-body unit
  * tests and isolated mocks do not need a full session runtime.
  */
-import { randomUUID } from 'crypto'
+
+/**
+ * Whether a configured base URL resolves directly to OpenAI's official API.
+ *
+ * An absent URL means the OpenAI SDK default (`api.openai.com`). Regional
+ * endpoints are subdomains of `api.openai.com`. Keep this strict so generic
+ * OpenAI-compatible providers never receive OpenAI-specific cache parameters.
+ */
+export function isOfficialOpenAIBaseURL(baseURL: string | undefined): boolean {
+  if (!baseURL?.trim()) return true
+
+  try {
+    const url = new URL(baseURL)
+    const isOfficialHost =
+      url.hostname === 'api.openai.com' ||
+      url.hostname.endsWith('.api.openai.com')
+    return (
+      url.protocol === 'https:' &&
+      isOfficialHost &&
+      (url.port === '' || url.port === '443')
+    )
+  } catch {
+    return false
+  }
+}
 
 /**
  * Build a stable OpenAI `prompt_cache_key` for a session.
@@ -25,25 +49,16 @@ export function formatOpenAIPromptCacheKey(sessionId: string): string {
 }
 
 /**
- * Process-scoped sticky key. OpenAI uses this for cache-node routing, not as a
- * content hash — it only needs to be stable across multi-turn requests in the
- * same CCB process. Avoids a bootstrap/state import so pure unit tests and
- * partial mocks stay isolated.
+ * Return a session-sticky cache key only for OpenAI's official API endpoint.
+ * Compatible providers must not receive OpenAI-specific request parameters.
  */
-let processPromptCacheKey: string | null = null
-
-/**
- * Stable OpenAI `prompt_cache_key` for this process.
- * Prefer an explicit override (session id) when the caller already has one.
- */
-export function getOpenAIPromptCacheKey(sessionIdOverride?: string): string {
-  if (sessionIdOverride) {
-    return formatOpenAIPromptCacheKey(sessionIdOverride)
-  }
-  if (!processPromptCacheKey) {
-    processPromptCacheKey = formatOpenAIPromptCacheKey(randomUUID())
-  }
-  return processPromptCacheKey
+export function getOfficialOpenAIPromptCacheKey(
+  baseURL: string | undefined,
+  sessionId: string,
+): string | undefined {
+  return isOfficialOpenAIBaseURL(baseURL)
+    ? formatOpenAIPromptCacheKey(sessionId)
+    : undefined
 }
 
 /**

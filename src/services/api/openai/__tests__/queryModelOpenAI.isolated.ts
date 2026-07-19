@@ -220,6 +220,28 @@ mock.module('@ant/model-provider', () => ({
       },
     })),
   anthropicToolChoiceToOpenAI: () => undefined,
+  normalizeOpenAIUsage: (params: {
+    totalInputTokens: number
+    outputTokens: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+  }) => {
+    const cacheRead = Math.min(
+      Math.max(0, params.cacheReadTokens ?? 0),
+      Math.max(0, params.totalInputTokens),
+    )
+    const remaining = Math.max(0, params.totalInputTokens - cacheRead)
+    const cacheCreation = Math.min(
+      Math.max(0, params.cacheWriteTokens ?? 0),
+      remaining,
+    )
+    return {
+      input_tokens: Math.max(0, remaining - cacheCreation),
+      output_tokens: Math.max(0, params.outputTokens),
+      cache_creation_input_tokens: cacheCreation,
+      cache_read_input_tokens: cacheRead,
+    }
+  },
 }))
 
 mock.module('../../../../services/analytics/growthbook.js', () => ({
@@ -347,8 +369,15 @@ mock.module('../../../../utils/modelCost.js', () => ({
   getModelPricingString: () => undefined,
 }))
 
-mock.module('../../../../services/langfuse/tracing.js', () => ({
+mock.module('src/services/langfuse/tracing.ts', () => ({
+  createTrace: () => null,
   recordLLMObservation: () => {},
+  recordToolObservation: () => {},
+  createToolBatchSpan: () => null,
+  endToolBatchSpan: () => {},
+  createSubagentTrace: () => null,
+  createChildSpan: () => null,
+  endTrace: () => {},
 }))
 
 mock.module('../../../../services/langfuse/convert.js', () => ({
@@ -587,7 +616,7 @@ describe('queryModelOpenAI — stream_events forwarded', () => {
 })
 
 describe('queryModelOpenAI — max_tokens forwarded to request', () => {
-  test('buildOpenAIRequestBody includes max_tokens in the request payload', async () => {
+  test('official OpenAI requests include max_tokens and a session cache key', async () => {
     _nextEvents = [
       makeMessageStart(),
       makeContentBlockStart(0, 'text'),
@@ -601,8 +630,18 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(8192)
-    // Process-sticky OpenAI cache routing (not message-derived)
-    expect(_lastCreateArgs!.prompt_cache_key).toMatch(/^ccb:[0-9a-f-]+$/i)
+    expect(_lastCreateArgs!.prompt_cache_key).toStartWith('ccb:')
+  })
+
+  test('compatible providers do not receive OpenAI cache parameters', async () => {
+    _nextEvents = [makeMessageStart(), makeMessageStop()]
+
+    await runQueryModel(_nextEvents, {
+      OPENAI_BASE_URL: 'https://api.deepseek.com/v1',
+    })
+
+    expect(_lastCreateArgs).not.toBeNull()
+    expect('prompt_cache_key' in _lastCreateArgs!).toBe(false)
   })
 })
 

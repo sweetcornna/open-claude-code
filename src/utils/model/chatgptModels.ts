@@ -6,8 +6,33 @@ export type ChatGPTCodexModelOption = {
 
 /** Default ChatGPT/Codex model (newest frontier). */
 export const CHATGPT_CODEX_DEFAULT_MODEL = 'gpt-5.6-sol'
+export const CHATGPT_CODEX_BALANCED_MODEL = 'gpt-5.6-terra'
 /** Fast/small default for lighter tasks. */
 export const CHATGPT_CODEX_FAST_MODEL = 'gpt-5.6-luna'
+
+export const CHATGPT_CODEX_MODELS_BY_TIER = {
+  opus: CHATGPT_CODEX_DEFAULT_MODEL,
+  sonnet: CHATGPT_CODEX_BALANCED_MODEL,
+  haiku: CHATGPT_CODEX_FAST_MODEL,
+} as const
+
+export type ChatGPTCodexModelTier = keyof typeof CHATGPT_CODEX_MODELS_BY_TIER
+
+/** Resolve one CCB capability tier without coupling the policy to settings. */
+export function resolveChatGPTCodexModelForTier(params: {
+  tier: ChatGPTCodexModelTier
+  isChatGPTAuth: boolean
+  tierOverride?: string
+  taskOverride?: string
+}): string | undefined {
+  return (
+    params.taskOverride ??
+    params.tierOverride ??
+    (params.isChatGPTAuth
+      ? CHATGPT_CODEX_MODELS_BY_TIER[params.tier]
+      : undefined)
+  )
+}
 
 /**
  * ChatGPT OAuth / Codex subscription practical context window.
