@@ -4,6 +4,8 @@ import { formatOpenAIPromptCacheKey } from '../openaiShared.js'
 import { calculateCacheHitRate } from '../../../../utils/cacheWarning.js'
 
 describe('buildResponsesRequest', () => {
+  const promptCacheKey = formatOpenAIPromptCacheKey('session-abc-123')
+
   test('includes max reasoning effort for ChatGPT Responses requests', () => {
     const request = buildResponsesRequest({
       model: 'gpt-5.6-sol',
@@ -11,6 +13,7 @@ describe('buildResponsesRequest', () => {
       tools: [],
       toolChoice: undefined,
       reasoningEffort: 'max',
+      promptCacheKey,
     })
 
     expect(request.reasoning).toEqual({ effort: 'max' })
@@ -23,6 +26,7 @@ describe('buildResponsesRequest', () => {
       tools: [],
       toolChoice: undefined,
       reasoningEffort: 'xhigh',
+      promptCacheKey,
     })
 
     expect(request.reasoning).toEqual({ effort: 'xhigh' })
@@ -34,40 +38,22 @@ describe('buildResponsesRequest', () => {
       messages: [{ role: 'user', content: 'hello' }],
       tools: [],
       toolChoice: undefined,
+      promptCacheKey,
     }) as Record<string, unknown>
 
     expect('max_output_tokens' in request).toBe(false)
   })
 
   test('includes stable prompt_cache_key for session-sticky cache routing', () => {
-    const key = formatOpenAIPromptCacheKey('session-abc-123')
     const request = buildResponsesRequest({
       model: 'gpt-5.6-sol',
       messages: [{ role: 'user', content: 'hello' }],
       tools: [],
       toolChoice: undefined,
-      promptCacheKey: key,
+      promptCacheKey,
     })
 
     expect(request.prompt_cache_key).toBe('ccb:session-abc-123')
-  })
-
-  test('defaults prompt_cache_key to process-stable fallback when not overridden', () => {
-    const request = buildResponsesRequest({
-      model: 'gpt-5.5',
-      messages: [{ role: 'user', content: 'hello' }],
-      tools: [],
-      toolChoice: undefined,
-    })
-    const again = buildResponsesRequest({
-      model: 'gpt-5.5',
-      messages: [{ role: 'user', content: 'next' }],
-      tools: [],
-      toolChoice: undefined,
-    })
-
-    expect(request.prompt_cache_key).toMatch(/^ccb:[0-9a-f-]+$/i)
-    expect(again.prompt_cache_key).toBe(request.prompt_cache_key)
   })
 
   test('prompt_cache_key is stable across turns (not derived from messages)', () => {

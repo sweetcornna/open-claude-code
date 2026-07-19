@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import { normalizeOpenAIUsage, type AnthropicUsage } from '@ant/model-provider'
 import { getValidChatGPTAuth } from './chatgptAuth.js'
-import { getOpenAIPromptCacheKey } from './openaiShared.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
@@ -24,13 +24,6 @@ type ResponsesRequest = {
   parallel_tool_calls?: boolean
   /** Sticky cache routing key — stable for the CCB session. */
   prompt_cache_key: string
-}
-
-type AnthropicUsage = {
-  input_tokens: number
-  output_tokens: number
-  cache_creation_input_tokens: number
-  cache_read_input_tokens: number
 }
 
 function textFromContent(content: unknown): string {
@@ -176,8 +169,8 @@ export function buildResponsesRequest(params: {
   tools: unknown[]
   toolChoice: unknown
   reasoningEffort?: ResponsesReasoningEffort
-  /** Override for tests; production uses the current CCB session id. */
-  promptCacheKey?: string
+  /** Session-scoped key supplied only by the ChatGPT OAuth route. */
+  promptCacheKey: string
 }): ResponsesRequest {
   const { input, instructions } = convertMessagesToResponsesInput(
     params.messages,
@@ -197,9 +190,9 @@ export function buildResponsesRequest(params: {
       ? { reasoning: { effort: params.reasoningEffort } }
       : {}),
     parallel_tool_calls: true,
-    // Same process/session → same key so OpenAI can sticky-route to a cache node.
+    // Same OAuth session → same key so OpenAI can sticky-route to a cache node.
     // Must not hash the full message list (would change every turn).
-    prompt_cache_key: params.promptCacheKey ?? getOpenAIPromptCacheKey(),
+    prompt_cache_key: params.promptCacheKey,
   }
 }
 
@@ -266,19 +259,12 @@ export function extractUsage(
       ? inputDetails.cache_write_tokens
       : 0
 
-  // Cap segments so they stay non-negative and do not exceed total input.
-  // Prefer preserving cache_read for hit-rate accuracy, then cache_creation.
-  const cacheRead = Math.min(Math.max(0, cachedRaw), Math.max(0, totalInput))
-  const remainingAfterRead = Math.max(0, totalInput - cacheRead)
-  const cacheCreation = Math.min(Math.max(0, writeRaw), remainingAfterRead)
-  const inputTokens = Math.max(0, remainingAfterRead - cacheCreation)
-
-  return {
-    input_tokens: inputTokens,
-    output_tokens: outputTokens,
-    cache_creation_input_tokens: cacheCreation,
-    cache_read_input_tokens: cacheRead,
-  }
+  return normalizeOpenAIUsage({
+    totalInputTokens: totalInput,
+    outputTokens,
+    cacheReadTokens: cachedRaw,
+    cacheWriteTokens: writeRaw,
+  })
 }
 
 function mapStopReason(response: Record<string, unknown> | undefined): string {
