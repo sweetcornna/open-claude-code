@@ -5,7 +5,6 @@
  */
 import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
 import { isEnvTruthy, isEnvDefinedFalsy } from '../../../utils/envUtils.js'
-import { getOpenAIPromptCacheKey } from './openaiShared.js'
 
 /**
  * Detect whether thinking mode should be enabled for this model.
@@ -76,7 +75,7 @@ export function buildOpenAIRequestBody(params: {
   enableThinking: boolean
   maxTokens: number
   temperatureOverride?: number
-  /** Override for tests; production uses the current CCB session id. */
+  /** Session-scoped routing key for official OpenAI requests. */
   promptCacheKey?: string
 }): ChatCompletionCreateParamsStreaming & {
   thinking?: { type: string }
@@ -99,15 +98,13 @@ export function buildOpenAIRequestBody(params: {
     model,
     messages,
     max_tokens: maxTokens,
+    ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
     ...(tools.length > 0 && {
       tools,
       ...(toolChoice && { tool_choice: toolChoice }),
     }),
     stream: true,
     stream_options: { include_usage: true },
-    // Sticky cache routing for multi-turn OpenAI/compatible endpoints that
-    // honor prompt_cache_key. Process-stable by default (not message-derived).
-    prompt_cache_key: promptCacheKey ?? getOpenAIPromptCacheKey(),
     // Enable chain-of-thought output for DeepSeek and MiMo models.
     // When active, temperature/top_p/presence_penalty/frequency_penalty are ignored.
     ...(enableThinking && {

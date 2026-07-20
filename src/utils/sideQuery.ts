@@ -41,6 +41,10 @@ import {
   createChatGPTResponsesStream,
 } from '../services/api/openai/responsesAdapter.js'
 import {
+  formatOpenAIPromptCacheKey,
+  getOfficialOpenAIPromptCacheKey,
+} from '../services/api/openai/openaiShared.js'
+import {
   anthropicMessagesToOpenAI,
   resolveOpenAIModel,
   anthropicToolsToOpenAI,
@@ -49,6 +53,7 @@ import {
   resolveGeminiModel,
   anthropicToolsToGemini,
   anthropicToolChoiceToGemini,
+  normalizeOpenAIUsage,
 } from '@ant/model-provider'
 import type { SystemPrompt } from './systemPromptType.js'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
@@ -574,6 +579,7 @@ async function sideQueryViaChatGPTResponses(
     messages: openaiMessages,
     tools: openaiTools ?? [],
     toolChoice: openaiToolChoice,
+    promptCacheKey: formatOpenAIPromptCacheKey(getSessionId()),
   })
 
   const rawStream = await createChatGPTResponsesStream({
@@ -693,6 +699,14 @@ async function sideQueryViaOpenAICompatible(
     messages: openaiMessages,
     max_tokens,
   }
+  const promptCacheKey =
+    provider === 'openai'
+      ? getOfficialOpenAIPromptCacheKey(
+          process.env.OPENAI_BASE_URL,
+          getSessionId(),
+        )
+      : undefined
+  if (promptCacheKey) requestParams.prompt_cache_key = promptCacheKey
   if (temperature !== undefined) requestParams.temperature = temperature
   if (openaiTools && openaiTools.length > 0) {
     requestParams.tools = openaiTools
@@ -733,6 +747,26 @@ async function sideQueryViaOpenAICompatible(
     }
   }
 
+  const responseUsage = response.usage
+  const usageRecord = responseUsage as unknown as
+    | Record<string, unknown>
+    | undefined
+  const detailsValue = usageRecord?.prompt_tokens_details
+  const details =
+    detailsValue && typeof detailsValue === 'object'
+      ? (detailsValue as Record<string, unknown>)
+      : undefined
+  const usage = normalizeOpenAIUsage({
+    totalInputTokens: responseUsage?.prompt_tokens ?? 0,
+    outputTokens: responseUsage?.completion_tokens ?? 0,
+    cacheReadTokens:
+      typeof details?.cached_tokens === 'number' ? details.cached_tokens : 0,
+    cacheWriteTokens:
+      promptCacheKey && typeof details?.cache_write_tokens === 'number'
+        ? details.cache_write_tokens
+        : 0,
+  })
+
   const now = Date.now()
   const requestId = response.id
   const lastCompletion = getLastApiCompletionTimestamp()
@@ -743,10 +777,10 @@ async function sideQueryViaOpenAICompatible(
       opts.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     model:
       openaiModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    inputTokens: response.usage?.prompt_tokens ?? 0,
-    outputTokens: response.usage?.completion_tokens ?? 0,
-    cachedInputTokens: 0,
-    uncachedInputTokens: response.usage?.prompt_tokens ?? 0,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cachedInputTokens: usage.cache_read_input_tokens,
+    uncachedInputTokens: usage.cache_creation_input_tokens,
     durationMsIncludingRetries: now - start,
     timeSinceLastApiCallMs:
       lastCompletion !== null ? now - lastCompletion : undefined,
@@ -768,10 +802,7 @@ async function sideQueryViaOpenAICompatible(
     model: openaiModel,
     stop_reason: stopReason as BetaMessage['stop_reason'],
     stop_sequence: null,
-    usage: {
-      input_tokens: response.usage?.prompt_tokens ?? 0,
-      output_tokens: response.usage?.completion_tokens ?? 0,
-    },
+    usage,
   } as BetaMessage
 }
 

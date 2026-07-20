@@ -29,6 +29,7 @@ mock.module('src/services/analytics/index.js', () => ({
 let getOpenAIClientCallCount = 0
 let chatCompletionsCreateCount = 0
 let lastChatCompletionsArgs: Record<string, unknown> | null = null
+let chatCompletionsUsage: Record<string, unknown> = {}
 
 mock.module('src/services/api/openai/client.js', () => ({
   getOpenAIClient: () => {
@@ -59,7 +60,7 @@ mock.module('src/services/api/openai/client.js', () => ({
                   },
                 },
               ],
-              usage: { prompt_tokens: 3, completion_tokens: 2 },
+              usage: chatCompletionsUsage,
             }
           },
         },
@@ -103,6 +104,7 @@ const ENV_KEYS = [
   'CLAUDE_CODE_USE_FOUNDRY',
   'OPENAI_AUTH_MODE',
   'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
 ] as const
 
 const savedEnv: Record<string, string | undefined> = {}
@@ -158,6 +160,7 @@ beforeEach(() => {
   getOpenAIClientCallCount = 0
   chatCompletionsCreateCount = 0
   lastChatCompletionsArgs = null
+  chatCompletionsUsage = { prompt_tokens: 3, completion_tokens: 2 }
   capturedFetch = null
   enableOpenAIProvider()
   originalFetch = globalThis.fetch
@@ -266,9 +269,18 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
     expect(result.usage.output_tokens).toBe(7)
   })
 
-  test('API key mode still uses Chat Completions client', async () => {
+  test('official API key mode uses a session cache key and normalized usage', async () => {
     delete process.env.OPENAI_AUTH_MODE
+    delete process.env.OPENAI_BASE_URL
     process.env.OPENAI_API_KEY = 'sk-test-not-real'
+    chatCompletionsUsage = {
+      prompt_tokens: 1000,
+      completion_tokens: 50,
+      prompt_tokens_details: {
+        cached_tokens: 600,
+        cache_write_tokens: 250,
+      },
+    }
     const { sideQuery } = await import('../sideQuery.js')
 
     const result = await sideQuery({
@@ -283,12 +295,43 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
     expect(chatCompletionsCreateCount).toBe(1)
     expect(capturedFetch).toBeNull()
     expect(lastChatCompletionsArgs?.model).toBe('gpt-4o')
+    expect(lastChatCompletionsArgs?.prompt_cache_key).toMatch(/^ccb:/)
 
     const toolUse = result.content.find(b => b.type === 'tool_use') as
       | { type: 'tool_use'; name: string; input: unknown }
       | undefined
     expect(toolUse?.name).toBe('classify_result')
     expect(toolUse?.input).toEqual({ shouldBlock: false })
+    expect(result.usage.input_tokens).toBe(150)
+    expect(result.usage.cache_read_input_tokens).toBe(600)
+    expect(result.usage.cache_creation_input_tokens).toBe(250)
+  })
+
+  test('compatible API key mode omits official cache fields', async () => {
+    delete process.env.OPENAI_AUTH_MODE
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com/v1'
+    process.env.OPENAI_API_KEY = 'sk-test-not-real'
+    chatCompletionsUsage = {
+      prompt_tokens: 1000,
+      completion_tokens: 50,
+      prompt_tokens_details: {
+        cached_tokens: 600,
+        cache_write_tokens: 250,
+      },
+    }
+    const { sideQuery } = await import('../sideQuery.js')
+
+    const result = await sideQuery({
+      querySource: 'auto_mode',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    expect(lastChatCompletionsArgs).not.toBeNull()
+    expect('prompt_cache_key' in lastChatCompletionsArgs!).toBe(false)
+    expect(result.usage.input_tokens).toBe(400)
+    expect(result.usage.cache_read_input_tokens).toBe(600)
+    expect(result.usage.cache_creation_input_tokens).toBe(0)
   })
 
   test('ChatGPT OAuth request failure propagates for fail-closed classifiers', async () => {
