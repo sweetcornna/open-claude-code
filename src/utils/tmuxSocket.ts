@@ -23,6 +23,7 @@
  * user's TMUX in all child processes spawned by Shell.ts.
  */
 
+import { BIN_NAME } from 'src/config/paths.js'
 import { posix } from 'path'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
@@ -33,7 +34,7 @@ import { getPlatform } from './platform.js'
 
 // Constants for tmux socket management
 const TMUX_COMMAND = 'tmux'
-const CLAUDE_SOCKET_PREFIX = 'claude'
+const CLAUDE_SOCKET_PREFIX = BIN_NAME
 
 /**
  * Executes a tmux command, routing through WSL on Windows.

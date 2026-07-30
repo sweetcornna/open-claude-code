@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/config/paths.js'
 import type { Subprocess } from 'bun'
 import { SSHSessionManagerImpl } from './SSHSessionManager.js'
 import type {
@@ -127,7 +128,7 @@ export async function createSSHSession(
   const sshArgs = ['ssh']
 
   if (!isWindows) {
-    const remoteSocket = `/tmp/claude-ssh-auth-${remoteSocketId}.sock`
+    const remoteSocket = `/tmp/${BIN_NAME}-ssh-auth-${remoteSocketId}.sock`
     sshArgs.push('-R', `${remoteSocket}:${localAddress}`)
     sshArgs.push('-o', 'StreamLocalBindUnlink=yes')
     // Override auth env to use the remote socket path

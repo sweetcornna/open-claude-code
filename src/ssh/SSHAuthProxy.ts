@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/config/paths.js'
 import { randomUUID } from 'crypto'
 import { unlinkSync } from 'fs'
 import { getClaudeAIOAuthTokens } from 'src/utils/auth.js'
@@ -107,7 +108,7 @@ export async function createAuthProxy(): Promise<AuthProxyInfo> {
 }
 
 async function createUnixSocketAuthProxy(id: string): Promise<AuthProxyInfo> {
-  const socketPath = `/tmp/claude-ssh-auth-${id}.sock`
+  const socketPath = `/tmp/${BIN_NAME}-ssh-auth-${id}.sock`
 
   const server = Bun.serve({
     unix: socketPath,

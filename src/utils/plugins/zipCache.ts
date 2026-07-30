@@ -29,6 +29,7 @@
  *               └── 2.1.3.zip
  */
 
+import { BIN_NAME } from 'src/config/paths.js'
 import { randomBytes } from 'crypto'
 import {
   chmod,
@@ -129,7 +130,7 @@ export async function getSessionPluginCachePath(): Promise<string> {
   if (!sessionPluginCachePromise) {
     sessionPluginCachePromise = (async () => {
       const suffix = randomBytes(8).toString('hex')
-      const dir = join(tmpdir(), `claude-plugin-session-${suffix}`)
+      const dir = join(tmpdir(), `${BIN_NAME}-plugin-session-${suffix}`)
       await getFsImplementation().mkdir(dir)
       sessionPluginCachePath = dir
       logForDebugging(`Created session plugin cache at ${dir}`)

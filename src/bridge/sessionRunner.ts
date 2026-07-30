@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/config/paths.js'
 import { type ChildProcess, spawn } from 'child_process'
 import { createWriteStream, type WriteStream } from 'fs'
 import { tmpdir } from 'os'
@@ -262,7 +263,7 @@ export function createSessionSpawner(deps: SessionSpawnerDeps): SessionSpawner {
           debugFile = `${deps.debugFile}-${safeId}`
         }
       } else if (deps.verbose || process.env.USER_TYPE === 'ant') {
-        debugFile = join(tmpdir(), 'claude', `bridge-session-${safeId}.log`)
+        debugFile = join(tmpdir(), BIN_NAME, `bridge-session-${safeId}.log`)
       }
 
       // Transcript file: write raw NDJSON lines for post-hoc analysis.

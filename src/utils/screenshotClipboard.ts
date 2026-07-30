@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/config/paths.js'
 import { mkdir, unlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -18,7 +19,7 @@ export async function copyAnsiToClipboard(
   options?: AnsiToPngOptions,
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const tempDir = join(tmpdir(), 'claude-code-screenshots')
+    const tempDir = join(tmpdir(), `${BIN_NAME}-screenshots`)
     await mkdir(tempDir, { recursive: true })
 
     const pngPath = join(tempDir, `screenshot-${Date.now()}.png`)
