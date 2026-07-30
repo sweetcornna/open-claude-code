@@ -4,6 +4,7 @@
  * settings system, tool integration, and additional features.
  */
 
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import type {
   FsReadRestrictionConfig,
   FsWriteRestrictionConfig,
@@ -240,8 +241,8 @@ export function convertToSandboxRuntimeConfig(
   const cwd = getCwdState()
   const originalCwd = getOriginalCwd()
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'settings.json'))
-    denyWrite.push(resolve(cwd, '.claude', 'settings.local.json'))
+    denyWrite.push(resolve(cwd, PROJECT_DIR_NAME, 'settings.json'))
+    denyWrite.push(resolve(cwd, PROJECT_DIR_NAME, 'settings.local.json'))
   }
 
   // Block writes to .claude/skills in both original and current working directories.
@@ -249,9 +250,9 @@ export function convertToSandboxRuntimeConfig(
   // .claude/agents but not .claude/skills. Skills have the same privilege level
   // (auto-discovered, auto-loaded, full Claude capabilities) so they need the
   // same OS-level sandbox protection.
-  denyWrite.push(resolve(originalCwd, '.claude', 'skills'))
+  denyWrite.push(resolve(originalCwd, PROJECT_DIR_NAME, 'skills'))
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'skills'))
+    denyWrite.push(resolve(cwd, PROJECT_DIR_NAME, 'skills'))
   }
 
   // SECURITY: Git's is_git_directory() treats cwd as a bare repo if it has

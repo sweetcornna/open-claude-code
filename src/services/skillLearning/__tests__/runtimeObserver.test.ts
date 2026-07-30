@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -132,7 +133,7 @@ describe('runtimeObserver', () => {
       existsSync(
         join(
           root,
-          '.claude',
+          PROJECT_DIR_NAME,
           'skills',
           'testing-choosing-between-mock-testing-library',
           'SKILL.md',

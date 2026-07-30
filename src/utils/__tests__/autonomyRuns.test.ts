@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { join, resolve as resolvePath } from 'node:path'
 import {
@@ -107,7 +108,7 @@ describe('autonomyRuns', () => {
     })
     expect(runs[0]?.ownerSessionId).toBeString()
     expect(flows).toHaveLength(0)
-    expect(resolveAutonomyRunsPath(tempDir)).toContain('.claude')
+    expect(resolveAutonomyRunsPath(tempDir)).toContain(PROJECT_DIR_NAME)
   })
 
   test('createAutonomyQueuedPrompt defaults currentDir to the active cwd for nested authority', async () => {
@@ -836,7 +837,7 @@ describe('autonomyRuns', () => {
       '..',
       '..',
       '..',
-      '.claude',
+      PROJECT_DIR_NAME,
       'autonomy',
       'HEARTBEAT.md',
     )

@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import {
   mkdir,
   readFile,
@@ -30,7 +31,7 @@ const KEEP_MAX_RUNS = 50
  * Tests monkey-patch this function to point at a tmpdir.
  */
 export function getRunsDir(): string {
-  return join(getProjectRoot(), '.claude', 'workflow-runs')
+  return join(getProjectRoot(), PROJECT_DIR_NAME, 'workflow-runs')
 }
 
 type StateFile = {

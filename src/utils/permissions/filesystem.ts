@@ -79,6 +79,7 @@ export const DANGEROUS_DIRECTORIES = [
   '.git',
   '.vscode',
   '.idea',
+  '.occ',
   '.claude',
 ] as const
 
@@ -234,9 +235,9 @@ function isClaudeConfigFilePath(filePath: string): boolean {
   // Check if file is within .claude/commands or .claude/agents directories
   // using proper path segment validation (not string matching with includes())
   // pathInWorkingPath now handles case-insensitive comparison to prevent bypasses
-  const commandsDir = join(getOriginalCwd(), '.claude', 'commands')
-  const agentsDir = join(getOriginalCwd(), '.claude', 'agents')
-  const skillsDir = join(getOriginalCwd(), '.claude', 'skills')
+  const commandsDir = join(getOriginalCwd(), PROJECT_DIR_NAME, 'commands')
+  const agentsDir = join(getOriginalCwd(), PROJECT_DIR_NAME, 'agents')
+  const skillsDir = join(getOriginalCwd(), PROJECT_DIR_NAME, 'skills')
 
   return (
     pathInWorkingPath(filePath, commandsDir) ||
@@ -461,7 +462,7 @@ function isDangerousFilePathToAutoEdit(path: string): boolean {
       // git worktrees), not a user-created dangerous directory. Skip the .claude
       // segment when it's followed by 'worktrees'. Any nested .claude directories
       // within the worktree (not followed by 'worktrees') are still blocked.
-      if (dir === '.claude') {
+      if (dir === PROJECT_DIR_NAME) {
         const nextSegment = pathSegments[i + 1]
         if (
           nextSegment &&
@@ -1598,7 +1599,9 @@ export function checkEditableInternalPath(
   // .claude/ only (not ~/.claude/) since launch.json is per-project.
   if (
     normalizeCaseForComparison(normalizedPath) ===
-    normalizeCaseForComparison(join(getOriginalCwd(), '.claude', 'launch.json'))
+    normalizeCaseForComparison(
+      join(getOriginalCwd(), PROJECT_DIR_NAME, 'launch.json'),
+    )
   ) {
     return {
       behavior: 'allow',

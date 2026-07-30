@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   existsSync,
@@ -98,7 +99,13 @@ describe('skillLearning smoke', () => {
     }
 
     const skillName = 'testing-choosing-between-mock-testing-library'
-    const skillFile = join(root, '.claude', 'skills', skillName, 'SKILL.md')
+    const skillFile = join(
+      root,
+      PROJECT_DIR_NAME,
+      'skills',
+      skillName,
+      'SKILL.md',
+    )
     expect(existsSync(skillFile)).toBe(true)
     expect(readFileSync(skillFile, 'utf8')).toContain('Prefer testing-library')
 

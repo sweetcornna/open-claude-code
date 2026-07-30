@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { expect, test } from 'bun:test'
 import {
   mkdir,
@@ -196,7 +197,7 @@ test('writeRunState writes full AgentProgress (no output content, includes label
 test('getRunsDir returns <projectRoot>/.claude/workflow-runs shape', () => {
   const dir = getRunsDir()
   // do not hard-code projectRoot (differs across machines), only check suffix structure
-  expect(dir.endsWith(`${join('.claude', 'workflow-runs')}`)).toBe(true)
+  expect(dir.endsWith(`${join(PROJECT_DIR_NAME, 'workflow-runs')}`)).toBe(true)
 })
 
 test('listPersistedRuns limit N returns the N newest by updatedAt desc', async () => {

@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
@@ -167,7 +168,7 @@ export function getLearnedSkillPath(
 ): string {
   if (options?.outputRoot) return join(options.outputRoot, name)
   if (scope === 'project') {
-    return join(options?.cwd ?? process.cwd(), '.claude', 'skills', name)
+    return join(options?.cwd ?? process.cwd(), PROJECT_DIR_NAME, 'skills', name)
   }
   return join(
     options?.globalSkillsDir ?? join(getClaudeConfigHomeDir(), 'skills'),

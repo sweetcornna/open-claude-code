@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -39,7 +40,7 @@ describe('withAutonomyPersistenceLock', () => {
     )
     await withAutonomyPersistenceLock(tempDir, async () => 'ok')
 
-    const autonomyDir = join(tempDir, '.claude', 'autonomy')
+    const autonomyDir = join(tempDir, PROJECT_DIR_NAME, 'autonomy')
     expect(existsSync(autonomyDir)).toBe(true)
   })
 

@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -76,7 +77,7 @@ export function getLearnedAgentPath(
 ): string {
   if (options?.outputRoot) return options.outputRoot
   if (scope === 'project') {
-    return join(options?.cwd ?? process.cwd(), '.claude', 'agents')
+    return join(options?.cwd ?? process.cwd(), PROJECT_DIR_NAME, 'agents')
   }
   return options?.globalAgentsDir ?? join(getClaudeConfigHomeDir(), 'agents')
 }

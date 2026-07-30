@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import {
   basename,
   dirname,
@@ -11,8 +12,11 @@ import { getCwd } from './cwd.js'
 import { getFsImplementation } from './fsOperations.js'
 import { normalizePathForConfigKey } from './path.js'
 
-export const AUTONOMY_DIR = join('.claude', 'autonomy')
-export const AUTONOMY_DIR_POSIX = '.claude/autonomy'
+export const AUTONOMY_DIR = join(PROJECT_DIR_NAME, 'autonomy')
+// Derived, not a second literal: these two must never drift apart. AUTONOMY_DIR
+// is platform-native (for fs calls) and this is always forward-slashed (for
+// relative paths surfaced to the model and in snapshots).
+export const AUTONOMY_DIR_POSIX = `${PROJECT_DIR_NAME}/autonomy`
 export const AUTONOMY_AGENTS_FILENAME = 'AGENTS.md'
 export const AUTONOMY_HEARTBEAT_FILENAME = 'HEARTBEAT.md'
 export const AUTONOMY_AGENTS_PATH_POSIX = `${AUTONOMY_DIR_POSIX}/${AUTONOMY_AGENTS_FILENAME}`

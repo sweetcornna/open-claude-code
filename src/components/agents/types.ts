@@ -1,8 +1,9 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import type { SettingSource } from 'src/utils/settings/constants.js'
 import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 
 export const AGENT_PATHS = {
-  FOLDER_NAME: '.claude',
+  FOLDER_NAME: PROJECT_DIR_NAME,
   AGENTS_DIR: 'agents',
 } as const
 
