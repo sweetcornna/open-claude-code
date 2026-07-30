@@ -6,6 +6,7 @@
 // send/finalize/close pattern used by useVoice.ts.
 
 import { homedir } from 'node:os'
+import { occConfigPath } from 'src/config/paths.js'
 import type { ASRResponse } from 'doubaoime-asr'
 import type {
   FinalizeSource,
@@ -166,7 +167,7 @@ export async function connectDoubaoStream(
 
   // Start the ASR session in the background
   const config = new ASRConfig({
-    credentialPath: `${homedir()}/.claude/tts/doubao/credentials.json`,
+    credentialPath: occConfigPath('tts', 'doubao', 'credentials.json'),
   })
 
   // Ensure credentials are initialized (may auto-generate)

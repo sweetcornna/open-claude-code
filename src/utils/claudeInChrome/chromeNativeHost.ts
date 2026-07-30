@@ -16,6 +16,7 @@ import {
   unlink,
 } from 'fs/promises'
 import { createServer, type Server, type Socket } from 'net'
+import { occConfigPath } from 'src/config/paths.js'
 import { homedir, platform } from 'os'
 import { join } from 'path'
 import { z } from 'zod'
@@ -28,7 +29,7 @@ const MAX_MESSAGE_SIZE = 1024 * 1024 // 1MB - Max message size that can be sent 
 
 const LOG_FILE =
   process.env.USER_TYPE === 'ant'
-    ? join(homedir(), '.claude', 'debug', 'chrome-native-host.txt')
+    ? occConfigPath('debug', 'chrome-native-host.txt')
     : undefined
 
 function log(message: string, ...args: unknown[]): void {

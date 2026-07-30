@@ -1,6 +1,7 @@
 import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
+import { occConfigDir, occConfigPath } from 'src/config/paths.js'
 import { logForDebugging } from 'src/utils/debug.js'
 
 const ISSUER = 'https://auth.openai.com'
@@ -40,13 +41,7 @@ type StoredAuthFile = {
 }
 
 function authFilePath(): string {
-  return join(getClaudeConfigHomeDirLocal(), AUTH_FILE)
-}
-
-function getClaudeConfigHomeDirLocal(): string {
-  return (
-    process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
-  ).normalize('NFC')
+  return occConfigPath(AUTH_FILE)
 }
 
 function codexAuthFilePath(): string {
@@ -147,7 +142,7 @@ async function readStoredAuth(path: string): Promise<ChatGPTAuthTokens | null> {
 
 async function saveStoredAuth(tokens: ChatGPTAuthTokens): Promise<void> {
   const path = authFilePath()
-  await mkdir(getClaudeConfigHomeDirLocal(), { recursive: true })
+  await mkdir(occConfigDir(), { recursive: true })
   const body: StoredAuthFile = {
     auth_mode: 'chatgpt',
     tokens: {

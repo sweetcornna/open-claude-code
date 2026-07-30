@@ -4,6 +4,7 @@ import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
 import { homedir, tmpdir } from 'os'
 import { join, normalize, posix, sep } from 'path'
+import { occConfigPath, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { hasAutoMemPathOverride, isAutoMemPath } from 'src/memdir/paths.js'
 import { isAgentMemoryPath } from '@claude-code-best/builtin-tools/tools/AgentTool/agentMemory.js'
 import {
@@ -106,12 +107,12 @@ export function getClaudeSkillScope(
 
   const bases = [
     {
-      dir: expandPath(join(getOriginalCwd(), '.claude', 'skills')),
-      prefix: '/.claude/skills/',
+      dir: expandPath(join(getOriginalCwd(), PROJECT_DIR_NAME, 'skills')),
+      prefix: `/${PROJECT_DIR_NAME}/skills/`,
     },
     {
-      dir: expandPath(join(homedir(), '.claude', 'skills')),
-      prefix: '~/.claude/skills/',
+      dir: expandPath(occConfigPath('skills')),
+      prefix: `~/${PROJECT_DIR_NAME}/skills/`,
     },
   ]
 

@@ -22,18 +22,19 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import { occConfigDir } from 'src/config/paths.js'
 import { randomBytes } from 'node:crypto'
 import { validateKey } from '../../utils/localValidate.js'
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
-// L8 fix: cache the result so repeated tool calls don't re-do homedir() +
-// join() on every list/fetch. Cache is keyed on the env var so a test that
-// changes CLAUDE_CONFIG_DIR mid-process still picks up the new dir.
+// L8 fix: cache the result so repeated tool calls don't re-do the join() on
+// every list/fetch. Cache is keyed on the resolved config dir so a test that
+// changes OCC_CONFIG_DIR / CLAUDE_CONFIG_DIR mid-process still picks up the
+// new dir (occConfigDir() is itself memoized on both vars).
 let _baseDirCache: { configDir: string; baseDir: string } | undefined
 function getBaseDir(): string {
-  const configDir =
-    process.env['CLAUDE_CONFIG_DIR'] ?? join(homedir(), '.claude')
+  const configDir = occConfigDir()
   if (_baseDirCache && _baseDirCache.configDir === configDir) {
     return _baseDirCache.baseDir
   }

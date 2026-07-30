@@ -11,6 +11,7 @@
  */
 
 import { constants as fsConstants, type Stats } from 'fs'
+import { occConfigPath } from 'src/config/paths.js'
 import {
   access,
   chmod,
@@ -1685,8 +1686,8 @@ export async function cleanupNpmInstallations(): Promise<{
     }
   }
 
-  // Check for local installation at ~/.claude/local
-  const localInstallDir = join(homedir(), '.claude', 'local')
+  // Check for local installation at <configDir>/local
+  const localInstallDir = occConfigPath('local')
 
   try {
     await rm(localInstallDir, { recursive: true })

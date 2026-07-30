@@ -6,6 +6,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
+import { occConfigPath } from 'src/config/paths.js'
 import { join } from 'node:path'
 import type { Command, LocalCommandResult } from '../../types/command.js'
 import {
@@ -363,7 +364,7 @@ const issue: Command = {
             fullBodyText.slice(0, MAX_URL_BODY) +
             '\n\n... (truncated, see CLI for full body)'
           try {
-            const draftsDir = join(homedir(), '.claude', 'issue-drafts')
+            const draftsDir = occConfigPath('issue-drafts')
             mkdirSync(draftsDir, { recursive: true })
             const stamp = new Date().toISOString().replace(/[:.]/g, '-')
             draftPath = join(draftsDir, `issue-${stamp}.md`)

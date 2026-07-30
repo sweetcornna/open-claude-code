@@ -2,6 +2,10 @@
  * Utilities for handling local installation
  */
 
+import {
+  CONFIG_DIR_BASENAME,
+  LEGACY_CONFIG_DIR_BASENAME,
+} from 'src/config/paths.js'
 import { access, chmod, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { type ReleaseChannel, saveGlobalConfig } from './config.js'
@@ -28,7 +32,14 @@ export function getLocalClaudePath(): string {
  */
 export function isRunningFromLocalInstallation(): boolean {
   const execPath = process.argv[1] || ''
-  return execPath.includes('/.claude/local/node_modules/')
+  // Matched against the config dir basename rather than a literal, so this
+  // keeps working when OCC_CONFIG_DIR moves the install root. The legacy
+  // '.claude' form is still recognised so a pre-rename local install is
+  // detected instead of being silently treated as a global one.
+  return (
+    execPath.includes(`/${CONFIG_DIR_BASENAME}/local/node_modules/`) ||
+    execPath.includes(`/${LEGACY_CONFIG_DIR_BASENAME}/local/node_modules/`)
+  )
 }
 
 /**
