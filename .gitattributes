@@ -1,0 +1,69 @@
+# Normalize line endings across all platforms.
+#
+# Rationale: this repo is developed on Windows/WSL (/mnt/d) as well as macOS and
+# Linux. Without these rules, git stored whatever the checkout produced, so the
+# same file would flip between CRLF and LF and show up as a whole-file diff.
+# `.editorconfig` already declares `end_of_line = lf`; this makes git enforce it.
+#
+# `text=auto eol=lf` means: detect text vs binary, and always store AND check out
+# text files with LF. Do not change `eol=lf` to `eol=native` — shell scripts,
+# the husky hook and the Bun shebang entrypoints break with CRLF.
+* text=auto eol=lf
+
+# Source
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.py    text eol=lf
+
+# Config / data
+*.json  text eol=lf
+*.jsonc text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.toml  text eol=lf
+*.lock  text eol=lf
+
+# Docs
+*.md    text eol=lf
+*.mdx   text eol=lf
+*.mmd   text eol=lf
+*.txt   text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.svg   text eol=lf
+
+# Scripts must be LF or they fail to execute
+*.sh            text eol=lf
+.husky/*        text eol=lf
+Dockerfile      text eol=lf
+*.example       text eol=lf
+
+# Binary — never touch, never diff
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.node  binary
+*.wasm  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.zip   binary
+*.gz    binary
+*.pdf   binary
+*.dylib binary
+*.so    binary
+*.dll   binary
+*.exe   binary
+vendor/audio-capture/** binary
+
+# Generated files: keep out of diffs and language stats
+bun.lock         text eol=lf -diff linguist-generated
+contributors.svg text eol=lf -diff linguist-generated
