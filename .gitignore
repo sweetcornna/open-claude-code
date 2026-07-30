@@ -14,6 +14,10 @@ src/utils/vendor/
 # AI tool runtime directories
 .agents/
 .claude/
+# occ's own project-level directory. Blanket-ignored like .claude/ above;
+# anything meant to be team-shared (skills/, agents/, settings.json) is
+# force-added with `git add -f`, which is how .claude/ is tracked today.
+.occ/
 .omx/
 .docs/task/
 # Binary / screenshot files (root only)
