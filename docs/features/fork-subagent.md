@@ -29,9 +29,9 @@ Agent({ prompt: "修复这个 bug" })  // 无 subagent_type
 Agent({ subagent_type: "general-purpose", prompt: "..." })
 ```
 
-### /fork 命令
+### 关于 `/fork` 命令
 
-注册了 `/fork` 斜杠命令（当前为 stub）。当 FORK_SUBAGENT 开启时，`/branch` 命令失去 `fork` 别名，避免冲突。
+本仓库**没有** `/fork` 斜杠命令 —— fork 路径只能通过 AgentTool 调用（不指定 `subagent_type`）触发。`fork` 现在是 `/branch`（会话分支）命令的无条件别名，见 `src/commands/branch/index.ts:6` 的 `aliases: ['fork']`，不受 `FORK_SUBAGENT` 开关影响。
 
 ## 三、实现架构
 
@@ -192,4 +192,3 @@ FEATURE_FORK_SUBAGENT=1 bun run dev
 | `packages/builtin-tools/src/tools/AgentTool/resumeAgent.ts` | — | Fork agent 恢复 |
 | `src/constants/xml.ts` | — | XML 标签常量 |
 | `src/utils/forkedAgent.ts` | — | CacheSafeParams + ContentReplacementState 克隆 |
-| `src/commands/fork/index.ts` | — | /fork 命令（stub） |

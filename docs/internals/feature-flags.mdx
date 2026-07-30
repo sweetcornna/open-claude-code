@@ -36,15 +36,15 @@ declare module 'bun:bundle' {
 
 <CardGroup cols={2}>
   <Card title="Agent / 自动化" icon="robot">
-    **15 个 flags** — 控制 AI 的自主能力边界
+    **14 个 flags** — 控制 AI 的自主能力边界
 
-    `KAIROS` · `KAIROS_BRIEF` · `KAIROS_CHANNELS` · `KAIROS_DREAM` · `KAIROS_GITHUB_WEBHOOKS` · `KAIROS_PUSH_NOTIFICATION` · `PROACTIVE` · `COORDINATOR_MODE` · `FORK_SUBAGENT` · `AGENT_MEMORY_SNAPSHOT` · `AGENT_TRIGGERS` · `AGENT_TRIGGERS_REMOTE` · `VERIFICATION_AGENT` · `BUILTIN_EXPLORE_PLAN_AGENTS` · `MONITOR_TOOL`
+    `KAIROS` · `KAIROS_BRIEF` · `KAIROS_CHANNELS` · `KAIROS_GITHUB_WEBHOOKS` · `KAIROS_PUSH_NOTIFICATION` · `PROACTIVE` · `COORDINATOR_MODE` · `FORK_SUBAGENT` · `AGENT_MEMORY_SNAPSHOT` · `AGENT_TRIGGERS` · `AGENT_TRIGGERS_REMOTE` · `VERIFICATION_AGENT` · `BUILTIN_EXPLORE_PLAN_AGENTS` · `MONITOR_TOOL`
   </Card>
 
   <Card title="基础设施" icon="server">
-    **10 个 flags** — 控制运行环境和连接方式
+    **7 个 flags** — 控制运行环境和连接方式
 
-    `DAEMON` · `BG_SESSIONS` · `BRIDGE_MODE` · `CCR_AUTO_CONNECT` · `CCR_MIRROR` · `CCR_REMOTE_SETUP` · `DIRECT_CONNECT` · `SSH_REMOTE` · `SELF_HOSTED_RUNNER` · `BYOC_ENVIRONMENT_RUNNER`
+    `DAEMON` · `BG_SESSIONS` · `BRIDGE_MODE` · `CCR_AUTO_CONNECT` · `CCR_MIRROR` · `CCR_REMOTE_SETUP` · `SSH_REMOTE`
   </Card>
 
   <Card title="安全 / 分类" icon="shield-halved">
@@ -54,9 +54,9 @@ declare module 'bun:bundle' {
   </Card>
 
   <Card title="工具 / 能力" icon="toolbox">
-    **10 个 flags** — 新增的 AI 能力
+    **6 个 flags** — 新增的 AI 能力
 
-    `WEB_BROWSER_TOOL` · `TERMINAL_PANEL` · `CONTEXT_COLLAPSE` · `HISTORY_SNIP` · `OVERFLOW_TEST_TOOL` · `WORKFLOW_SCRIPTS` · `VOICE_MODE` · `MCP_RICH_OUTPUT` · `MCP_SKILLS` · `UDS_INBOX`
+    `WEB_BROWSER_TOOL` · `TERMINAL_PANEL` · `WORKFLOW_SCRIPTS` · `VOICE_MODE` · `MCP_RICH_OUTPUT` · `MCP_SKILLS`
   </Card>
 
   <Card title="UI / 体验" icon="palette">
@@ -111,7 +111,7 @@ export const AFK_MODE_BETA_HEADER = feature('TRANSCRIPT_CLASSIFIER')
 
 ## 有趣的发现
 
-- **KAIROS 家族**最庞大——6 个相关 flag 控制从核心功能到推送通知的方方面面
+- **KAIROS 家族**最庞大——5 个相关 flag 控制从核心功能到推送通知的方方面面
 - **ABLATION_BASELINE** 是用于"科学对照实验"的——它会关闭 thinking、compaction、auto-memory 等高级功能，测量裸 API 调用的基线性能
 - **BUDDY** 是一个 AI 吉祥物/精灵系统——在 `src/buddy/` 目录下有完整实现
 - **ULTRAPLAN** 和 **ULTRATHINK** 暗示着比当前 extended thinking 更高级的推理模式

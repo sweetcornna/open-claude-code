@@ -402,9 +402,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  A["SendMessage(to)"] --> B{"cross-session scheme?"}
-  B -->|yes| C["UDS / LAN / bridge plain text"]
-  B -->|no| D{"matches LocalAgentTask?"}
+  A["SendMessage(to)"] --> D{"matches LocalAgentTask?"}
   D -->|running| E["queuePendingMessage"]
   D -->|stopped or evicted| F["resumeAgentBackground from sidechain"]
   D -->|no| G{"to == * ?"}
@@ -414,7 +412,7 @@ flowchart TD
   I -->|no| K["write teammate mailbox"]
 ```
 
-plain text `SendMessage` 要带 `summary`。structured message 不能 broadcast，也不能跨 `uds/bridge/tcp` session。单 session 下 teammate name 是裸 name，`to` 不应写成含 `@` 的跨域地址。
+plain text `SendMessage` 要带 `summary`。structured message 不能 broadcast。teammate name 是裸 name，`to` 里带 `@` 会被 `validateInput` 直接拒绝（一个 session 只有一个 team，没有跨 session 寻址）。
 
 ## Mailbox 协议表
 

@@ -47,22 +47,21 @@ const SuggestBackgroundPRTool =
 
 ## Ant-Only 命令
 
-`src/commands.ts` 注册了 **24+** 个仅在内部构建中可用的斜杠命令（`INTERNAL_ONLY_COMMANDS`，lines 267-295），在 `USER_TYPE === 'ant' && !IS_DEMO` 时才加载（line 400-401）：
+`src/commands.ts`（780 行）在反编译版本中**已不存在** `INTERNAL_ONLY_COMMANDS` 数组，也没有集中式的 `USER_TYPE` / `IS_DEMO` 门控。原先 ant-only 的斜杠命令改为两种注册方式：受 feature flag 保护的走条件 `require()`（`commands.ts:62-134`），其余作为普通数组项直接列入 `COMMANDS()`（`commands.ts:240-363`）；身份门控则下沉到各命令自己的 `isEnabled()`（由 `src/types/command.ts:229` 的 `isCommandEnabled()` 调用）。以下清单按类别整理，其中部分命令在反编译版本中已随内部功能一并移除：
 
 <AccordionGroup>
   <Accordion title="调试类">
     - `breakCache` — 清除缓存
-    - `ctx_viz` — 可视化上下文窗口使用情况
+    - `ctx_viz` — 可视化上下文窗口使用情况（已移除，功能由已注册的 `context` / `contextNonInteractive` 承接）
     - `debugToolCall` — 调试工具调用
     - `env` — 显示环境变量
-    - `mockLimits` — 模拟速率限制
-    - `resetLimits` — 重置速率限制
-    - `resetLimitsNonInteractive` — 重置速率限制（非交互式）
+    - `mockLimits` — 模拟速率限制（命令已移除）
+    - `resetLimits` — 重置速率限制（命令已移除；`src/services/rateLimitMessages.ts:340` 仍向 ant 用户提示 `/reset-limits`）
+    - `resetLimitsNonInteractive` — 重置速率限制（非交互式）（命令已移除）
   </Accordion>
   <Accordion title="实验类">
-    - `bughunter` — Bug 猎人模式
-    - `goodClaude` — 质量评估工具
-    - `antTrace` — 追踪分析
+    - `goodClaude` — 质量评估工具（反编译版本中命令已移除，但 `src/utils/autoRunIssue.tsx:76` 仍在 ant 构建下派发 `/good-claude`）
+    - `antTrace` — 追踪分析（已移除）
     - `perfIssue` — 性能问题诊断
   </Accordion>
   <Accordion title="工作流类">
@@ -73,13 +72,10 @@ const SuggestBackgroundPRTool =
     - `share` — 分享会话
     - `summary` — 生成摘要
     - `subscribePr` — 订阅 PR（需要 `KAIROS_GITHUB_WEBHOOKS` feature flag）
-    - `forceSnip` — 强制截断历史（需要 `HISTORY_SNIP` feature flag）
-    - `ultraplan` — 超级规划（需要 `ULTRAPLAN` feature flag，单独注册于 `commands.ts:396`）
+    - `ultraplan` — 超级规划（需要 `ULTRAPLAN` feature flag，条件 require 于 `commands.ts:108-110`，注册于 `commands.ts:337`）
   </Accordion>
   <Accordion title="基础设施类">
-    - `backfillSessions` — 回填会话数据
-    - `bridgeKick` — 重启 Bridge 连接
-    - `oauthRefresh` — 刷新 OAuth Token
+    - `bridgeKick` — 重启 Bridge 连接（仍为 ant-only：`src/commands/bridge-kick.ts:195` 的 `isEnabled: () => process.env.USER_TYPE === 'ant'`）
     - `teleport` — 传送到指定上下文
     - `onboarding` — 新手引导
     - `agentsPlatform` — Agents 平台管理
@@ -89,7 +85,7 @@ const SuggestBackgroundPRTool =
 </AccordionGroup>
 
 <Note>
-这些命令在 `IS_DEMO` 模式下也会被隐藏，防止在演示环境中暴露内部功能。
+原始内部构建中这些命令在 `IS_DEMO` 模式下也会被隐藏；反编译版本的 `commands.ts` 已无此门控，`IS_DEMO` 现仅用于跳过 onboarding 与隐藏账号/组织信息（`src/interactiveHelpers.tsx:142`、`src/utils/status.tsx:275`）。
 </Note>
 
 ## Beta API Headers
@@ -200,7 +196,7 @@ Anthropic 有浓厚的"动物命名"文化：
     - `CLAUDE_CODE_REMOTE` — 远程执行模式（自动增加堆内存限制）
     - `CLAUDE_CODE_COORDINATOR_MODE` — 启用 Coordinator 模式
     - `CLAUDE_INTERNAL_FC_OVERRIDES` — GrowthBook flag 覆盖（ant-only）
-    - `IS_DEMO` — 演示模式（隐藏内部命令和敏感信息）
+    - `IS_DEMO` — 演示模式（跳过 onboarding、隐藏敏感账号信息）
     - `CLAUDE_CODE_ENTRYPOINT` — 入口类型标识（`cli` | 其他）
   </Accordion>
 </AccordionGroup>
