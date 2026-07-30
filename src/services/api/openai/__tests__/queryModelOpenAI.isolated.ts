@@ -630,7 +630,7 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.max_tokens).toBe(8192)
-    expect(_lastCreateArgs!.prompt_cache_key).toStartWith('ccb:')
+    expect(_lastCreateArgs!.prompt_cache_key).toStartWith('occ:')
   })
 
   test('compatible providers do not receive OpenAI cache parameters', async () => {

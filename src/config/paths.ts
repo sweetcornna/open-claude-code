@@ -43,15 +43,14 @@ export const LEGACY_PROJECT_DIR_NAME = '.claude'
 export const CONFIG_DIR_BASENAME = '.occ'
 
 /**
- * Name of the CLI binary on PATH.
+ * Re-exported from `src/constants/brand.ts` so path code has one import.
  *
- * Lives here for now because the install tree and the `~/.local/bin` shim
- * derive from it; it will move to `src/constants/brand.ts` when the rest of
- * the rename lands. Note this is an isolation concern, not just cosmetics:
- * installing occ under the name `claude` would overwrite the official CLI's
- * binary.
+ * The binary name is an isolation concern, not just cosmetics: installing occ
+ * under the name `claude` would overwrite the official CLI's binary on PATH.
+ * brand.ts has no imports of its own, so pulling it in here is safe for the
+ * startup keychain prefetch (see macOsKeychainHelpers.ts).
  */
-export const BIN_NAME = 'occ'
+export { BIN_NAME } from '../constants/brand.js'
 
 /**
  * Namespace for the `env-paths` cache tree (`~/.cache/occ-nodejs` on Linux).

@@ -1,6 +1,6 @@
 import type { PermissionMode } from '../types/permissions.js'
 
-export interface CCBMode {
+export interface OccMode {
   name: string
   slug: string
   description: string

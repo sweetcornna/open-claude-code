@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/constants/brand.js'
 import chalk from 'chalk'
 import { logForDebugging } from 'src/utils/debug.js'
 import { fileHistoryEnabled } from 'src/utils/fileHistory.js'
@@ -376,7 +377,7 @@ const externalTips: Tip[] = [
   {
     id: 'continue',
     content: async () =>
-      'Run ccb --continue or ccb --resume to resume a conversation',
+      `Run ${BIN_NAME} --continue or ${BIN_NAME} --resume to resume a conversation`,
     cooldownSessions: 10,
     isRelevant: async () => true,
   },

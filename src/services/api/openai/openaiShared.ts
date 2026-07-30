@@ -7,7 +7,12 @@
  *
  * Keep this module free of bootstrap/state imports so pure request-body unit
  * tests and isolated mocks do not need a full session runtime.
+ *
+ * `src/constants/brand.ts` is the one permitted import: it is a leaf module of
+ * plain string constants with no imports of its own, so it pulls in no runtime.
  */
+
+import { BIN_NAME } from 'src/constants/brand.js'
 
 /**
  * Whether a configured base URL resolves directly to OpenAI's official API.
@@ -42,10 +47,10 @@ export function isOfficialOpenAIBaseURL(baseURL: string | undefined): boolean {
  * for the whole conversation — never derived from full message bodies (that
  * changes every turn and defeats routing).
  *
- * Format: `ccb:<sessionId>`
+ * Format: `occ:<sessionId>`
  */
 export function formatOpenAIPromptCacheKey(sessionId: string): string {
-  return `ccb:${sessionId}`
+  return `${BIN_NAME}:${sessionId}`
 }
 
 /**

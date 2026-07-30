@@ -32,11 +32,11 @@ describe('isOfficialOpenAIBaseURL', () => {
 describe('getOfficialOpenAIPromptCacheKey', () => {
   test('returns a session key for the SDK default and official endpoint', () => {
     expect(getOfficialOpenAIPromptCacheKey(undefined, 'session-1')).toBe(
-      'ccb:session-1',
+      'occ:session-1',
     )
     expect(
       getOfficialOpenAIPromptCacheKey('https://api.openai.com/v1', 'session-2'),
-    ).toBe('ccb:session-2')
+    ).toBe('occ:session-2')
   })
 
   test('returns undefined for compatible endpoints', () => {

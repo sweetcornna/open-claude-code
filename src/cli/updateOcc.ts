@@ -1,10 +1,11 @@
 /**
- * `ccb update` — Check and install the latest version of claude-code-best.
+ * `occ update` — Check and install the latest published version.
  *
  * Detection strategy:
  *  1. If `bun` is available and the current installation was done via bun → use `bun update -g`
  *  2. Otherwise → use `npm install -g`
  */
+import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
 import chalk from 'chalk'
 import { execSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -16,7 +17,7 @@ import { execFileNoThrowWithCwd } from '../utils/execFileNoThrow.js'
 import { gracefulShutdown } from '../utils/gracefulShutdown.js'
 import { writeToStdout } from '../utils/process.js'
 
-const PACKAGE_NAME = 'claude-code-best'
+const PACKAGE_NAME = NPM_PACKAGE_NAME
 
 function getCurrentVersion(): string {
   // Read version from the nearest package.json (walks up from dist root)
@@ -91,7 +92,7 @@ function gte(a: string, b: string): boolean {
   return true
 }
 
-export async function updateCCB(): Promise<void> {
+export async function updateOcc(): Promise<void> {
   const currentVersion = getCurrentVersion()
   writeToStdout(`Current version: ${currentVersion}\n`)
 
@@ -114,7 +115,9 @@ export async function updateCCB(): Promise<void> {
 
   // Already up to date?
   if (latestVersion === currentVersion || gte(currentVersion, latestVersion)) {
-    writeToStdout(chalk.green(`ccb is up to date (${currentVersion})`) + '\n')
+    writeToStdout(
+      chalk.green(`${BIN_NAME} is up to date (${currentVersion})`) + '\n',
+    )
     await gracefulShutdown(0)
     return
   }

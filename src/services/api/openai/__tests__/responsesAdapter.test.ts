@@ -53,7 +53,7 @@ describe('buildResponsesRequest', () => {
       promptCacheKey,
     })
 
-    expect(request.prompt_cache_key).toBe('ccb:session-abc-123')
+    expect(request.prompt_cache_key).toBe('occ:session-abc-123')
   })
 
   test('prompt_cache_key is stable across turns (not derived from messages)', () => {
@@ -78,7 +78,7 @@ describe('buildResponsesRequest', () => {
     })
 
     expect(turn1.prompt_cache_key).toBe(turn2.prompt_cache_key)
-    expect(turn1.prompt_cache_key).toBe('ccb:same-session')
+    expect(turn1.prompt_cache_key).toBe('occ:same-session')
   })
 })
 

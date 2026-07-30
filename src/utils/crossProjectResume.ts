@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/constants/brand.js'
 import { sep } from 'path'
 import { getOriginalCwd } from '../bootstrap/state.js'
 import type { LogOption } from '../types/logs.js'
@@ -41,7 +42,7 @@ export function checkCrossProjectResume(
   // Gate worktree detection to ants only for staged rollout
   if (process.env.USER_TYPE !== 'ant') {
     const sessionId = getSessionIdFromLog(log)
-    const command = `cd ${quote([log.projectPath])} && ccb --resume ${sessionId}`
+    const command = `cd ${quote([log.projectPath])} && ${BIN_NAME} --resume ${sessionId}`
     return {
       isCrossProject: true,
       isSameRepoWorktree: false,
@@ -65,7 +66,7 @@ export function checkCrossProjectResume(
 
   // Different repo - generate cd command
   const sessionId = getSessionIdFromLog(log)
-  const command = `cd ${quote([log.projectPath])} && ccb --resume ${sessionId}`
+  const command = `cd ${quote([log.projectPath])} && ${BIN_NAME} --resume ${sessionId}`
   return {
     isCrossProject: true,
     isSameRepoWorktree: false,

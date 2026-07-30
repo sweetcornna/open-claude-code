@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/constants/brand.js';
 import * as React from 'react';
 import { join } from 'path';
 import { stat, writeFile } from 'fs/promises';
@@ -139,7 +140,7 @@ export function UltraplanChoiceDialog({
             setMessages(prev => [
               ...prev,
               createSystemMessage(
-                `Previous session saved · resume with: ccb --resume ${previousSessionId}`,
+                `Previous session saved · resume with: ${BIN_NAME} --resume ${previousSessionId}`,
                 'suggestion',
               ),
             ]);
