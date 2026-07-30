@@ -3,7 +3,8 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { fileSuffixForOauthConfig } from '../constants/oauth.js'
 import { isRunningWithBun } from './bundledMode.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { occConfigPath, occGlobalConfigFile } from 'src/config/paths.js'
+import { isEnvTruthy } from './envUtils.js'
 import { findExecutable } from './findExecutable.js'
 import { getFsImplementation } from './fsOperations.js'
 import { which } from './which.js'
@@ -13,16 +14,15 @@ type Platform = 'win32' | 'darwin' | 'linux'
 // Config and data paths
 export const getGlobalClaudeFile = memoize((): string => {
   // Legacy fallback for backwards compatibility
-  if (
-    getFsImplementation().existsSync(
-      join(getClaudeConfigHomeDir(), '.config.json'),
-    )
-  ) {
-    return join(getClaudeConfigHomeDir(), '.config.json')
+  const legacyConfigJson = occConfigPath('.config.json')
+  if (getFsImplementation().existsSync(legacyConfigJson)) {
+    return legacyConfigJson
   }
 
-  const filename = `.claude${fileSuffixForOauthConfig()}.json`
-  return join(process.env.CLAUDE_CONFIG_DIR || homedir(), filename)
+  // ~/.occ.json — deliberately NOT ~/.claude.json, which the official CLI
+  // owns. That file holds mcpServers, per-project state and cached Statsig
+  // gates; sharing it meant the two CLIs fought over the same document.
+  return occGlobalConfigFile(fileSuffixForOauthConfig())
 })
 
 const hasInternetAccess = memoize(async (): Promise<boolean> => {

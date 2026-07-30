@@ -320,7 +320,10 @@ export async function exec(
         ...subprocessEnv(),
         SHELL: shellType === 'bash' ? binShell : undefined,
         GIT_EDITOR: 'true',
+        // CLAUDECODE stays for the cross-tool hints protocol that user hooks and
+        // third-party CLIs gate on; OCC identifies this CLI specifically.
         CLAUDECODE: '1',
+        OCC: '1',
         ...envOverrides,
         ...(process.env.USER_TYPE === 'ant'
           ? {

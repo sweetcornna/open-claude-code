@@ -4,7 +4,7 @@ import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
 import { homedir, tmpdir } from 'os'
 import { join, normalize, posix, sep } from 'path'
-import { occConfigPath, PROJECT_DIR_NAME } from 'src/config/paths.js'
+import { BIN_NAME, occConfigPath, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { hasAutoMemPathOverride, isAutoMemPath } from 'src/memdir/paths.js'
 import { isAgentMemoryPath } from '@claude-code-best/builtin-tools/tools/AgentTool/agentMemory.js'
 import {
@@ -65,6 +65,9 @@ export const DANGEROUS_FILES = [
   '.profile',
   '.ripgreprc',
   '.mcp.json',
+  // occ's own global state file, plus the official CLI's — a user may well
+  // have both on disk, and neither should be auto-edited.
+  '.occ.json',
   '.claude.json',
 ] as const
 
@@ -307,12 +310,12 @@ export function isScratchpadEnabled(): boolean {
  */
 export function getClaudeTempDirName(): string {
   if (getPlatform() === 'windows') {
-    return 'claude'
+    return BIN_NAME
   }
   // Use UID to create per-user directories, preventing permission conflicts
   // when multiple users share the same /tmp directory
   const uid = process.getuid?.() ?? 0
-  return `claude-${uid}`
+  return `${BIN_NAME}-${uid}`
 }
 
 /**

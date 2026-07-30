@@ -11,7 +11,7 @@
  */
 
 import { constants as fsConstants, type Stats } from 'fs'
-import { occConfigPath } from 'src/config/paths.js'
+import { BIN_NAME, occConfigPath, XDG_SUBDIR } from 'src/config/paths.js'
 import {
   access,
   chmod,
@@ -110,7 +110,7 @@ export function getPlatform(): string {
 }
 
 export function getBinaryName(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
+  return platform.startsWith('win32') ? `${BIN_NAME}.exe` : BIN_NAME
 }
 
 function getBaseDirectories() {
@@ -119,13 +119,13 @@ function getBaseDirectories() {
 
   return {
     // Data directories (permanent storage)
-    versions: join(getXDGDataHome(), 'claude', 'versions'),
+    versions: join(getXDGDataHome(), XDG_SUBDIR, 'versions'),
 
     // Cache directories (can be deleted)
-    staging: join(getXDGCacheHome(), 'claude', 'staging'),
+    staging: join(getXDGCacheHome(), XDG_SUBDIR, 'staging'),
 
     // State directories
-    locks: join(getXDGStateHome(), 'claude', 'locks'),
+    locks: join(getXDGStateHome(), XDG_SUBDIR, 'locks'),
 
     // User bin
     executable: join(getUserBinDir(), executableName),

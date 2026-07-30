@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/config/paths.js'
 import { execFileSync } from 'child_process'
 import { diffLines } from 'diff'
 import { constants as fsConstants, type Dirent } from 'fs'
@@ -105,7 +106,7 @@ const collectFromRemoteHost: (
         const result = { copied: 0, skipped: 0 }
 
         // Create temp directory
-        const tempDir = await mkdtemp(join(tmpdir(), 'claude-hs-'))
+        const tempDir = await mkdtemp(join(tmpdir(), `${BIN_NAME}-hs-`))
 
         try {
           // SCP the projects folder

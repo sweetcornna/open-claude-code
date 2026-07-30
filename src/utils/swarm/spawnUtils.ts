@@ -139,7 +139,7 @@ const TEAMMATE_ENV_VARS = [
 
 /**
  * Builds the `env KEY=VALUE ...` string for teammate spawn commands.
- * Always includes CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
+ * Always includes CLAUDECODE=1, OCC=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
  * plus any provider/config env vars that are set in the current process.
  */
 export function buildInheritedEnvVars(): string {
@@ -151,6 +151,7 @@ export function buildInheritedEnvVars(): string {
 export function getInheritedEnvVarAssignments(): Array<[string, string]> {
   const envVars: Array<[string, string]> = [
     ['CLAUDECODE', '1'],
+    ['OCC', '1'],
     ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', '1'],
   ]
 
