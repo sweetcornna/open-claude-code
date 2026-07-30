@@ -8,9 +8,9 @@ assignees: []
 
 ## 发帖前必读
 
-- [ ] 我已经搜索过 [现有 Issues](https://github.com/claude-code-best/claude-code/issues)，没有找到重复。
+- [ ] 我已经搜索过 [现有 Issues](https://github.com/sweetcornna/open-claude-code/issues)，没有找到重复。
 - [ ] 这是功能建议，不是 Bug 报告或使用问题。
-- [ ] 使用问题请前往 [Discussions](https://github.com/claude-code-best/claude-code/discussions)。
+- [ ] 使用问题请前往 [Discussions](https://github.com/sweetcornna/open-claude-code/discussions)。
 
 ---
 

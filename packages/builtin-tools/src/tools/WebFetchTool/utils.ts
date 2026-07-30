@@ -17,6 +17,10 @@ import { asSystemPrompt } from 'src/utils/systemPromptType.js'
 import { isPreapprovedHost } from './preapproved.js'
 import { makeSecondaryModelPrompt } from './prompt.js'
 
+// Live deployment. Kept pointing at the existing host on purpose: this is a
+// real DNS record serving users today, and renaming it as part of a rebrand
+// sweep would break WebFetch until a replacement is stood up. Override with
+// OCC_TAVILY_URL / the tavilyEndpointUrl setting for self-hosted deployments.
 const DEFAULT_TAVILY_EXTRACT_URL = 'https://tavily.claude-code-best.win/extract'
 
 // Custom error class for egress proxy blocks

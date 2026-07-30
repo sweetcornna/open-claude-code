@@ -8,9 +8,9 @@ assignees: []
 
 ## 发帖前必读
 
-- [ ] 我已经搜索过 [现有 Issues](https://github.com/claude-code-best/claude-code/issues)，没有找到重复。
+- [ ] 我已经搜索过 [现有 Issues](https://github.com/sweetcornna/open-claude-code/issues)，没有找到重复。
 - [ ] 我使用的是 **最新版本**（`bun run build` 或最新 release）。
-- [ ] 我已经阅读过 [README](https://github.com/claude-code-best/claude-code) 和相关文档。
+- [ ] 我已经阅读过 [README](https://github.com/sweetcornna/open-claude-code) 和相关文档。
 
 **未完成以上检查的 Issue 将被直接关闭。**
 
