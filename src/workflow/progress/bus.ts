@@ -1,4 +1,4 @@
-import type { ProgressEvent } from '@claude-code-best/workflow-engine'
+import type { ProgressEvent } from '@open-claude-code/workflow-engine'
 
 /** Typed progress event bus. engine progressEmitter.emit -> broadcasts to all subscribers (store / telemetry). */
 export type ProgressBus = {

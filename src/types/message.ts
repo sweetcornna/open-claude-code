@@ -49,7 +49,7 @@ import type {
   BranchAction,
   CommitKind,
   PrAction,
-} from '@claude-code-best/builtin-tools/tools/shared/gitOperationTracking.js'
+} from '@open-claude-code/builtin-tools/tools/shared/gitOperationTracking.js'
 import type {
   AssistantMessage,
   CollapsibleMessage,

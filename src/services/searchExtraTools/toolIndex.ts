@@ -6,7 +6,7 @@ import {
   computeIdf,
   cosineSimilarity,
 } from '../skillSearch/localSearch.js'
-import { isDeferredTool } from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+import { isDeferredTool } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 
 export interface ToolIndexEntry {
   name: string

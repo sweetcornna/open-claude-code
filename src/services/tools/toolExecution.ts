@@ -35,19 +35,19 @@ import {
   type ToolProgressData,
   type ToolUseContext,
 } from '../../Tool.js'
-import type { BashToolInput } from '@claude-code-best/builtin-tools/tools/BashTool/BashTool.js'
-import { startSpeculativeClassifierCheck } from '@claude-code-best/builtin-tools/tools/BashTool/bashPermissions.js'
-import { BASH_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/BashTool/toolName.js'
-import { FILE_EDIT_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/FileEditTool/constants.js'
-import { FILE_READ_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/FileReadTool/prompt.js'
-import { FILE_WRITE_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/FileWriteTool/prompt.js'
-import { NOTEBOOK_EDIT_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/NotebookEditTool/constants.js'
-import { POWERSHELL_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/PowerShellTool/toolName.js'
-import { parseGitCommitId } from '@claude-code-best/builtin-tools/tools/shared/gitOperationTracking.js'
+import type { BashToolInput } from '@open-claude-code/builtin-tools/tools/BashTool/BashTool.js'
+import { startSpeculativeClassifierCheck } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js'
+import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js'
+import { FILE_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
+import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js'
+import { FILE_WRITE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileWriteTool/prompt.js'
+import { NOTEBOOK_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/NotebookEditTool/constants.js'
+import { POWERSHELL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/PowerShellTool/toolName.js'
+import { parseGitCommitId } from '@open-claude-code/builtin-tools/tools/shared/gitOperationTracking.js'
 import {
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
-} from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+} from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 import { getAllBaseTools } from '../../tools.js'
 import type { HookProgress } from '../../types/hooks.js'
 import { recordToolObservation } from '../langfuse/index.js'

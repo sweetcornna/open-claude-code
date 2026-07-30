@@ -76,7 +76,7 @@ import {
   formatDeferredToolLine,
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
-} from '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+} from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 
 function convertToResponsesReasoningEffort(
   effortValue: unknown,

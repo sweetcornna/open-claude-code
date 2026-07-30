@@ -13,7 +13,7 @@ import { useOptionalKeybindingContext, useRegisterKeybindingContext } from '../k
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { useAppState, useAppStateStore } from '../state/AppState.js';
-import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
+import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type { InlineGhostText, PromptInputMode } from '../types/textInputTypes.js';
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { generateProgressiveArgumentHint, parseArguments } from '../utils/argumentSubstitution.js';

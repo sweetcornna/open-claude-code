@@ -15,7 +15,7 @@ import {
   getSessionId,
   setPlanSlugCacheEntry,
 } from '../bootstrap/state.js'
-import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/ExitPlanModeTool/constants.js'
+import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/constants.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'

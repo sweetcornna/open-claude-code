@@ -53,8 +53,8 @@ import {
   AGENT_COLOR_TO_THEME_COLOR,
   AGENT_COLORS,
   type AgentColorName,
-} from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
-import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
+} from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
+import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type { Message } from '../../types/message.js';
 import type { BaseTextInputProps, PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';

@@ -1,6 +1,6 @@
 import { roughTokenCountEstimation } from '../services/tokenEstimation.js'
 import type { Tool, ToolPermissionContext } from '../Tool.js'
-import type { AgentDefinitionsResult } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+import type { AgentDefinitionsResult } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { countMcpToolTokens } from './analyzeContext.js'
 import {
   getLargeMemoryFiles,

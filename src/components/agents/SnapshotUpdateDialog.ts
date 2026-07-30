@@ -1,6 +1,6 @@
 import React from 'react'
 import { Dialog, Text } from '@anthropic/ink'
-import type { AgentMemoryScope } from '@claude-code-best/builtin-tools/tools/AgentTool/agentMemory.js'
+import type { AgentMemoryScope } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js'
 import { Select } from '../CustomSelect/index.js'
 
 interface SnapshotUpdateDialogProps {

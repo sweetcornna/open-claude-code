@@ -2,7 +2,7 @@ import {
   CRON_DELETE_TOOL_NAME,
   CRON_LIST_TOOL_NAME,
   isKairosCronEnabled,
-} from '@claude-code-best/builtin-tools/tools/ScheduleCronTool/prompt.js'
+} from '@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 export function registerCronListSkill(): void {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { filterIncompleteToolCalls } from '@claude-code-best/builtin-tools/tools/AgentTool/filterIncompleteToolCalls.js'
+import { filterIncompleteToolCalls } from '@open-claude-code/builtin-tools/tools/AgentTool/filterIncompleteToolCalls.js'
 import type { Message } from '../../types/message.js'
 
 export const MAX_SUMMARY_CONTEXT_MESSAGES = 120

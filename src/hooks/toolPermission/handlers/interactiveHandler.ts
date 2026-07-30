@@ -18,8 +18,8 @@ import {
   shortRequestId,
   truncateForPreview,
 } from '../../../services/mcp/channelPermissions.js'
-import { executeAsyncClassifierCheck } from '@claude-code-best/builtin-tools/tools/BashTool/bashPermissions.js'
-import { BASH_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/BashTool/toolName.js'
+import { executeAsyncClassifierCheck } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js'
+import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js'
 import {
   clearClassifierChecking,
   setClassifierApproval,

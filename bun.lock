@@ -32,15 +32,15 @@
         "@aws-sdk/credential-providers": "^3.1037.0",
         "@azure/identity": "^4.13.1",
         "@biomejs/biome": "^2.4.12",
-        "@claude-code-best/agent-tools": "workspace:*",
-        "@claude-code-best/builtin-tools": "workspace:*",
-        "@claude-code-best/mcp-client": "workspace:*",
-        "@claude-code-best/weixin": "workspace:*",
         "@commander-js/extra-typings": "^14.0.0",
         "@growthbook/growthbook": "^1.6.5",
         "@langfuse/otel": "^5.1.0",
         "@langfuse/tracing": "^5.1.0",
         "@modelcontextprotocol/sdk": "^1.29.0",
+        "@open-claude-code/agent-tools": "workspace:*",
+        "@open-claude-code/builtin-tools": "workspace:*",
+        "@open-claude-code/mcp-client": "workspace:*",
+        "@open-claude-code/workflow-engine": "workspace:*",
         "@opentelemetry/api": "^1.9.1",
         "@opentelemetry/api-logs": "^0.215.0",
         "@opentelemetry/core": "^2.7.0",
@@ -222,7 +222,7 @@
       },
     },
     "packages/agent-tools": {
-      "name": "@claude-code-best/agent-tools",
+      "name": "@open-claude-code/agent-tools",
       "version": "1.0.0",
       "dependencies": {
         "zod": "^3.25.0",
@@ -233,10 +233,10 @@
       "version": "1.0.0",
     },
     "packages/builtin-tools": {
-      "name": "@claude-code-best/builtin-tools",
+      "name": "@open-claude-code/builtin-tools",
       "version": "1.0.0",
       "dependencies": {
-        "@claude-code-best/agent-tools": "workspace:*",
+        "@open-claude-code/agent-tools": "workspace:*",
         "marked": "^17.0.6",
       },
     },
@@ -266,11 +266,11 @@
       },
     },
     "packages/mcp-client": {
-      "name": "@claude-code-best/mcp-client",
+      "name": "@open-claude-code/mcp-client",
       "version": "1.0.0",
       "dependencies": {
-        "@claude-code-best/agent-tools": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.29.0",
+        "@open-claude-code/agent-tools": "workspace:*",
         "lodash-es": "^4.17.21",
         "lru-cache": "^10.0.0",
         "p-map": "^4.0.0",
@@ -337,15 +337,8 @@
       "name": "url-handler-napi",
       "version": "1.0.0",
     },
-    "packages/weixin": {
-      "name": "@claude-code-best/weixin",
-      "version": "1.0.0",
-      "dependencies": {
-        "qrcode": "^1.5.4",
-      },
-    },
     "packages/workflow-engine": {
-      "name": "@claude-code-best/workflow-engine",
+      "name": "@open-claude-code/workflow-engine",
       "version": "0.1.0",
       "dependencies": {
         "ajv": "^8.18.0",
@@ -600,17 +593,7 @@
 
     "@chevrotain/utils": ["@chevrotain/utils@12.0.0", "https://registry.npmmirror.com/@chevrotain/utils/-/utils-12.0.0.tgz", {}, "sha512-lB59uJoaGIfOOL9knQqQRfhl9g7x8/wqFkp13zTdkRu1huG9kg6IJs1O8hqj9rs6h7orGxHJUKb+mX3rPbWGhA=="],
 
-    "@claude-code-best/agent-tools": ["@claude-code-best/agent-tools@workspace:packages/agent-tools"],
-
-    "@claude-code-best/builtin-tools": ["@claude-code-best/builtin-tools@workspace:packages/builtin-tools"],
-
     "@claude-code-best/mcp-chrome-bridge": ["@claude-code-best/mcp-chrome-bridge@3.0.1", "", { "dependencies": { "@hono/node-server": "^1.19.13", "@modelcontextprotocol/sdk": "^1.11.0", "commander": "^13.1.0", "hono": "^4.12.12", "is-admin": "^4.0.0" }, "bin": { "mcp-chrome-bridge": "dist/cli.js", "mcp-chrome-stdio": "dist/mcp/mcp-server-stdio.js" } }, "sha512-ozeLHVOdckTUsWKJneJAL+CclrUlwVyBpfzFxgsrSL9f0LvjlJXE7+VcF5OmjDPwmZy6QNorvtg3/8NT2cIlzA=="],
-
-    "@claude-code-best/mcp-client": ["@claude-code-best/mcp-client@workspace:packages/mcp-client"],
-
-    "@claude-code-best/weixin": ["@claude-code-best/weixin@workspace:packages/weixin"],
-
-    "@claude-code-best/workflow-engine": ["@claude-code-best/workflow-engine@workspace:packages/workflow-engine"],
 
     "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
 
@@ -833,6 +816,14 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "https://registry.npmmirror.com/@nodelib/fs.walk/-/fs.walk-1.2.8.tgz", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@npmcli/fs": ["@npmcli/fs@5.0.0", "https://registry.npmmirror.com/@npmcli/fs/-/fs-5.0.0.tgz", { "dependencies": { "semver": "^7.3.5" } }, "sha512-7OsC1gNORBEawOa5+j2pXN9vsicaIOH5cPXxoR6fJOmH6/EXpJB2CajXOu1fPRFun2m1lktEFX11+P89hqO/og=="],
+
+    "@open-claude-code/agent-tools": ["@open-claude-code/agent-tools@workspace:packages/agent-tools"],
+
+    "@open-claude-code/builtin-tools": ["@open-claude-code/builtin-tools@workspace:packages/builtin-tools"],
+
+    "@open-claude-code/mcp-client": ["@open-claude-code/mcp-client@workspace:packages/mcp-client"],
+
+    "@open-claude-code/workflow-engine": ["@open-claude-code/workflow-engine@workspace:packages/workflow-engine"],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "https://registry.npmmirror.com/@opentelemetry/api/-/api-1.9.1.tgz", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
 
@@ -3134,15 +3125,7 @@
 
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "https://registry.npmmirror.com/semver/-/semver-6.3.1.tgz", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
-    "@claude-code-best/agent-tools/zod": ["zod@3.25.76", "https://registry.npmmirror.com/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
-
     "@claude-code-best/mcp-chrome-bridge/@hono/node-server": ["@hono/node-server@1.19.13", "https://registry.npmmirror.com/@hono/node-server/-/node-server-1.19.13.tgz", { "peerDependencies": { "hono": "^4" } }, "sha512-TsQLe4i2gvoTtrHje625ngThGBySOgSK3Xo2XRYOdqGN1teR8+I7vchQC46uLJi8OF62YTYA3AhSpumtkhsaKQ=="],
-
-    "@claude-code-best/mcp-client/lru-cache": ["lru-cache@10.4.3", "https://registry.npmmirror.com/lru-cache/-/lru-cache-10.4.3.tgz", {}, "sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ=="],
-
-    "@claude-code-best/mcp-client/p-map": ["p-map@4.0.0", "https://registry.npmmirror.com/p-map/-/p-map-4.0.0.tgz", { "dependencies": { "aggregate-error": "^3.0.0" } }, "sha512-/bjOqmgETBYB5BoEeGVea8dmvHb2m9GLy1E9W43yeyfP6QQCZGFNa+XRceJEuDB6zqr+gKpIAmlLebMpykw/MQ=="],
-
-    "@claude-code-best/mcp-client/zod": ["zod@3.25.76", "https://registry.npmmirror.com/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@cspotcode/source-map-support/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
 
@@ -3157,6 +3140,14 @@
     "@hono/node-ws/@hono/node-server": ["@hono/node-server@1.19.13", "https://registry.npmmirror.com/@hono/node-server/-/node-server-1.19.13.tgz", { "peerDependencies": { "hono": "^4" } }, "sha512-TsQLe4i2gvoTtrHje625ngThGBySOgSK3Xo2XRYOdqGN1teR8+I7vchQC46uLJi8OF62YTYA3AhSpumtkhsaKQ=="],
 
     "@modelcontextprotocol/sdk/@hono/node-server": ["@hono/node-server@1.19.13", "https://registry.npmmirror.com/@hono/node-server/-/node-server-1.19.13.tgz", { "peerDependencies": { "hono": "^4" } }, "sha512-TsQLe4i2gvoTtrHje625ngThGBySOgSK3Xo2XRYOdqGN1teR8+I7vchQC46uLJi8OF62YTYA3AhSpumtkhsaKQ=="],
+
+    "@open-claude-code/agent-tools/zod": ["zod@3.25.76", "https://registry.npmmirror.com/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+
+    "@open-claude-code/mcp-client/lru-cache": ["lru-cache@10.4.3", "https://registry.npmmirror.com/lru-cache/-/lru-cache-10.4.3.tgz", {}, "sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ=="],
+
+    "@open-claude-code/mcp-client/p-map": ["p-map@4.0.0", "https://registry.npmmirror.com/p-map/-/p-map-4.0.0.tgz", { "dependencies": { "aggregate-error": "^3.0.0" } }, "sha512-/bjOqmgETBYB5BoEeGVea8dmvHb2m9GLy1E9W43yeyfP6QQCZGFNa+XRceJEuDB6zqr+gKpIAmlLebMpykw/MQ=="],
+
+    "@open-claude-code/mcp-client/zod": ["zod@3.25.76", "https://registry.npmmirror.com/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@opentelemetry/instrumentation/@opentelemetry/api-logs": ["@opentelemetry/api-logs@0.214.0", "https://registry.npmmirror.com/@opentelemetry/api-logs/-/api-logs-0.214.0.tgz", { "dependencies": { "@opentelemetry/api": "^1.3.0" } }, "sha512-40lSJeqYO8Uz2Yj7u94/SJWE/wONa7rmMKjI1ZcIjgf3MHNHv1OZUCrCETGuaRF62d5pQD1wKIW+L4lmSMTzZA=="],
 

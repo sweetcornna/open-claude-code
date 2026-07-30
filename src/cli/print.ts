@@ -37,7 +37,7 @@ import {
   type AgentDefinition,
   isBuiltInAgent,
   parseAgentsFromJson,
-} from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+} from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { Message, NormalizedUserMessage } from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
@@ -199,7 +199,7 @@ import {
   getInitJsonSchema,
   setSdkAgentProgressSummariesEnabled,
 } from 'src/bootstrap/state.js'
-import { createSyntheticOutputTool } from '@claude-code-best/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
+import { createSyntheticOutputTool } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import { parseSessionIdentifier } from 'src/utils/sessionUrl.js'
 import {
   hydrateRemoteSession,
@@ -376,7 +376,7 @@ const cronSchedulerModule =
 const cronJitterConfigModule =
   require('../utils/cronJitterConfig.js') as typeof import('../utils/cronJitterConfig.js')
 const cronGate =
-  require('@claude-code-best/builtin-tools/tools/ScheduleCronTool/prompt.js') as typeof import('@claude-code-best/builtin-tools/tools/ScheduleCronTool/prompt.js')
+  require('@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js') as typeof import('@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js')
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 const SHUTDOWN_TEAM_PROMPT = `<system-reminder>
@@ -5129,7 +5129,7 @@ async function loadInitialMessages(
               getActiveAgentsFromList,
             } =
               // eslint-disable-next-line @typescript-eslint/no-require-imports
-              require('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js')
+              require('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js')
             getAgentDefinitionsWithOverrides.cache.clear?.()
             const freshAgentDefs = await getAgentDefinitionsWithOverrides(
               getCwd(),
@@ -5331,7 +5331,7 @@ async function loadInitialMessages(
           // Refresh agent definitions to reflect the mode switch
           const { getAgentDefinitionsWithOverrides, getActiveAgentsFromList } =
             // eslint-disable-next-line @typescript-eslint/no-require-imports
-            require('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js')
+            require('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js')
           getAgentDefinitionsWithOverrides.cache.clear?.()
           const freshAgentDefs = await getAgentDefinitionsWithOverrides(
             getCwd(),
