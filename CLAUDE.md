@@ -6,6 +6,35 @@ This file provides guidance to Claude Code (claude.ai/code) and other AI coding 
 
 This is a **reverse-engineered / decompiled** version of Anthropic's official Claude Code CLI tool. The goal is to restore core functionality while trimming secondary capabilities. Many modules are stubbed or feature-flagged off. TypeScript strict mode is enforced — **`bun run precheck` 必须零错误通过**（包含 typecheck + lint fix + test）。
 
+本项目正在改名为 **open-claude-code**（CLI 名 `occ`），并已与官方 Claude Code 做了用户态隔离。**动任何路径相关代码前，先读下面这节。**
+
+## 路径与隔离不变式（最容易被破坏的一组约定）
+
+occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不是洁癖 —— 隔离之前，两者共用同一条 macOS keychain 记录，任一边登录都会**覆盖对方的 OAuth token**。
+
+**唯一真源是 `src/config/paths.ts`。所有路径都必须从那里派生。**
+
+| 要什么 | 用什么 | 绝对不要写 |
+| --- | --- | --- |
+| 用户配置根 | `occConfigDir()` / `occConfigPath(...)` | `join(homedir(), '.claude')`、`join(homedir(), '.occ')` |
+| 全局状态文件 | `occGlobalConfigFile()` | `~/.claude.json`、`~/.occ.json` 字面量 |
+| 项目内资产目录 | `PROJECT_DIR_NAME` | `'.claude'`、`'.occ'` 字面量 |
+| CLI 名 / 进程名 / socket 前缀 | `BIN_NAME` | `'claude'` |
+| 缓存树 / XDG 子目录 | `CACHE_NAMESPACE` / `XDG_SUBDIR` | `'claude-cli'`、`'claude'` |
+
+为什么这么严：改造前有 **12 处**绕过配置目录 helper 直接拼 `homedir() + '.claude'`。它们全都无视 `CLAUDE_CONFIG_DIR`，所以那个本就存在的隔离开关一直是漏的。其中两处是真实事故：`nativeInstaller/installer.ts` 会 `rm -rf ~/.claude/local`（隔离后等于**删掉官方 CLI 的本地安装**），`doctorDiagnostic.ts` 上报的路径和它实际检查的路径根本不是同一个。
+
+**环境变量**：`OCC_CONFIG_DIR` > `CLAUDE_CONFIG_DIR`（弃用回退，约 50 个测试文件在用，暂不删）> `~/.occ`。
+
+**故意保持不变的东西**（改了会坏，不要"顺手统一"）：
+
+- **`CLAUDE.md` / `CLAUDE.local.md` / `AGENTS.md` 文件名** —— 是跨工具生态约定，改名会让所有既有仓库丢失上下文。
+- **`CLAUDECODE=1`** 子进程环境变量 —— 大量用户 hook 脚本和第三方 CLI 靠它判断"跑在 Claude Code 里"。occ 另外加了 `OCC=1`，两个都发。
+- **`~/.claude/ide` 锁文件目录** —— `getIdeLockfilesPaths()` **同时**搜两个根。这些锁文件是 IDE 插件写的、我们只读，而市面上的插件是 Anthropic 的 `anthropic.claude-code`，它写 `~/.claude/ide`。只搜 occ 自己的根 = 静默断掉 IDE 集成。
+- **系统提示词、User-Agent `claude-code/<ver>`、OTel `service.name`** —— 见改名计划的"明确不改"清单。
+
+**迁移**：`occ migrate` 把用户既有配置从 `~/.claude` 拷进来。`~/.claude` **只读**，凭据和会话历史**永不复制**（凭据与官方共用，复制等于把要拆掉的耦合又搬回来）。见 `src/config/migrateFromClaude.ts` 顶部的四条规则。
+
 ## Git Commit Message Convention
 
 使用 **Conventional Commits** 规范：
