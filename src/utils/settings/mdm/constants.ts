@@ -8,22 +8,30 @@
 import { homedir, userInfo } from 'os'
 import { join } from 'path'
 
-/** macOS preference domain for Claude Code MDM profiles. */
-export const MACOS_PREFERENCE_DOMAIN = 'com.anthropic.claudecode'
+/**
+ * macOS preference domain for occ's OWN MDM profiles.
+ *
+ * Deliberately not `com.anthropic.claudecode`: a profile deployed for
+ * Anthropic's Claude Code does not govern occ, and occ must not read it. occ
+ * ships from a different publisher, so honouring another product's managed
+ * preferences would be surprising and can reference infrastructure that does
+ * not apply here. Administrators managing occ deploy to this domain instead.
+ */
+export const MACOS_PREFERENCE_DOMAIN = 'win.open-claude-code.occ'
 
 /**
- * Windows registry key paths for Claude Code MDM policies.
+ * Windows registry key paths for occ's own MDM policies.
  *
  * These keys live under SOFTWARE\Policies which is on the WOW64 shared key
  * list — both 32-bit and 64-bit processes see the same values without
- * redirection. Do not move these to SOFTWARE\ClaudeCode, as SOFTWARE is
+ * redirection. Do not move these to SOFTWARE\OpenClaudeCode, as SOFTWARE is
  * redirected and 32-bit processes would silently read from WOW6432Node.
  * See: https://learn.microsoft.com/en-us/windows/win32/winprog64/shared-registry-keys
  */
 export const WINDOWS_REGISTRY_KEY_PATH_HKLM =
-  'HKLM\\SOFTWARE\\Policies\\ClaudeCode'
+  'HKLM\\SOFTWARE\\Policies\\OpenClaudeCode'
 export const WINDOWS_REGISTRY_KEY_PATH_HKCU =
-  'HKCU\\SOFTWARE\\Policies\\ClaudeCode'
+  'HKCU\\SOFTWARE\\Policies\\OpenClaudeCode'
 
 /** Windows registry value name containing the JSON settings blob. */
 export const WINDOWS_REGISTRY_VALUE_NAME = 'Settings'
