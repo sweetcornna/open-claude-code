@@ -1,4 +1,4 @@
-import type { CCBMode } from './types.js'
+import type { OccMode } from './types.js'
 
 const DR_SHARP_SYSTEM_PROMPT = `You are Dr. Sharp, a meticulous code reviewer and diagnostician.
 
@@ -45,7 +45,7 @@ const DR_SHARP_SYSTEM_PROMPT = `You are Dr. Sharp, a meticulous code reviewer an
 - Performance: N+1 queries, unnecessary allocations, missing indexes
 - Type safety: any \`as any\` casts, missing null checks, loose types`
 
-export const DEFAULT_MODES: CCBMode[] = [
+export const DEFAULT_MODES: OccMode[] = [
   {
     name: 'Default',
     slug: 'default',

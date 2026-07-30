@@ -1,16 +1,16 @@
 {
-  "name": "claude-code-best",
+  "name": "open-claude-code",
   "version": "2.8.4",
   "description": "Reverse-engineered Anthropic Claude Code CLI — interactive AI coding assistant in the terminal",
   "type": "module",
-  "author": "claude-code-best <claude-code-best@proton.me>",
+  "author": "open-claude-code",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/claude-code-best/claude-code.git"
+    "url": "git+https://github.com/sweetcornna/open-claude-code.git"
   },
-  "homepage": "https://github.com/claude-code-best/claude-code#readme",
+  "homepage": "https://github.com/sweetcornna/open-claude-code#readme",
   "bugs": {
-    "url": "https://github.com/claude-code-best/claude-code/issues"
+    "url": "https://github.com/sweetcornna/open-claude-code/issues"
   },
   "keywords": [
     "claude",
@@ -25,9 +25,11 @@
     "bun": ">=1.3.0"
   },
   "bin": {
+    "occ": "dist/cli-node.js",
+    "occ-bun": "dist/cli-bun.js",
+    "open-claude-code": "dist/cli-node.js",
     "ccb": "dist/cli-node.js",
-    "ccb-bun": "dist/cli-bun.js",
-    "claude-code-best": "dist/cli-node.js"
+    "ccb-bun": "dist/cli-bun.js"
   },
   "workspaces": [
     "packages/*",

@@ -1,3 +1,4 @@
+import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
 /**
  * `claude rollback [target]` — roll back to a previous Claude Code version.
  *
@@ -38,9 +39,15 @@ export async function rollback(
         '  --dry-run      Show what would be installed\n' +
         '  --safe         Roll back to server-pinned safe version\n\n' +
         'Examples:\n' +
-        '  claude rollback 2.1.880\n' +
-        '  claude rollback --list\n' +
-        '  claude rollback --safe',
+        '  ' +
+        BIN_NAME +
+        ' rollback 2.1.880\n' +
+        '  ' +
+        BIN_NAME +
+        ' rollback --list\n' +
+        '  ' +
+        BIN_NAME +
+        ' rollback --safe',
     )
     process.exitCode = 1
     return
@@ -57,7 +64,7 @@ export async function rollback(
   const { spawnSync } = await import('child_process')
   const result = spawnSync(
     'npm',
-    ['install', '-g', `@anthropic-ai/claude-code@${target}`],
+    ['install', '-g', `${NPM_PACKAGE_NAME}@${target}`],
     { stdio: 'inherit' },
   )
 

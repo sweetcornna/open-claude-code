@@ -8,10 +8,10 @@ import {
 } from '../utils/settings/settings.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { DEFAULT_MODES } from './defaults.js'
-import type { CCBMode } from './types.js'
+import type { OccMode } from './types.js'
 
 let currentModeSlug: string | null = null
-let customModes: CCBMode[] | null = null
+let customModes: OccMode[] | null = null
 const modeListeners = new Set<() => void>()
 
 /**
@@ -47,7 +47,7 @@ function parseMarkdownFrontmatter(raw: string): {
   }
 }
 
-function loadCustomModes(): CCBMode[] {
+function loadCustomModes(): OccMode[] {
   if (customModes !== null) return customModes
   customModes = []
   try {
@@ -91,7 +91,7 @@ function loadCustomModes(): CCBMode[] {
           permissions: {
             defaultMode:
               ((data.permissions as Record<string, unknown>)
-                ?.default_mode as CCBMode['permissions']['defaultMode']) ||
+                ?.default_mode as OccMode['permissions']['defaultMode']) ||
               'default',
             memoryExtract: Boolean(
               (data.permissions as Record<string, unknown>)?.memory_extract ??
@@ -101,7 +101,7 @@ function loadCustomModes(): CCBMode[] {
           responseStyle: {
             verbosity:
               ((data.response_style as Record<string, unknown>)
-                ?.verbosity as CCBMode['responseStyle']['verbosity']) ||
+                ?.verbosity as OccMode['responseStyle']['verbosity']) ||
               'normal',
           },
         })
@@ -115,7 +115,7 @@ function loadCustomModes(): CCBMode[] {
   return customModes
 }
 
-function getAllModes(): CCBMode[] {
+function getAllModes(): OccMode[] {
   const custom = loadCustomModes()
   if (custom.length === 0) return DEFAULT_MODES
   // Custom modes override defaults with same slug
@@ -123,15 +123,26 @@ function getAllModes(): CCBMode[] {
   return [...custom, ...DEFAULT_MODES.filter(m => !slugs.has(m.slug))]
 }
 
+/** Settings key holding the selected mode. */
+const MODE_SETTINGS_KEY = 'occMode'
+/** Pre-rename key. Read for backwards compatibility, never written. */
+const LEGACY_MODE_SETTINGS_KEY = 'ccbMode'
+
 export function getCurrentModeSlug(): string {
   if (currentModeSlug === null) {
     const settings = getInitialSettings() as Record<string, unknown>
-    currentModeSlug = (settings.ccbMode as string) || 'default'
+    // Fall back to the old key so an existing user's selected mode survives
+    // the rename instead of silently resetting to 'default'. The next
+    // setCurrentMode() writes the new key.
+    currentModeSlug =
+      (settings[MODE_SETTINGS_KEY] as string) ||
+      (settings[LEGACY_MODE_SETTINGS_KEY] as string) ||
+      'default'
   }
   return currentModeSlug
 }
 
-export function getCurrentMode(): CCBMode {
+export function getCurrentMode(): OccMode {
   const slug = getCurrentModeSlug()
   const modes = getAllModes()
   return modes.find(m => m.slug === slug) ?? DEFAULT_MODES[0]
@@ -146,10 +157,9 @@ export function setCurrentMode(slug: string): void {
     )
   }
   currentModeSlug = slug
-  updateSettingsForSource('userSettings', { ccbMode: slug } as Record<
-    string,
-    unknown
-  >)
+  updateSettingsForSource('userSettings', {
+    [MODE_SETTINGS_KEY]: slug,
+  } as Record<string, unknown>)
   for (const listener of modeListeners) listener()
 }
 
@@ -159,15 +169,15 @@ function subscribeMode(listener: () => void): () => void {
 }
 
 /** Reactive hook — re-renders the component when the mode changes. */
-export function useCurrentMode(): CCBMode {
+export function useCurrentMode(): OccMode {
   return useSyncExternalStore(subscribeMode, getCurrentMode)
 }
 
-export function listModes(): CCBMode[] {
+export function listModes(): OccMode[] {
   return getAllModes()
 }
 
-export function cycleMode(): CCBMode {
+export function cycleMode(): OccMode {
   const modes = listModes()
   const current = getCurrentModeSlug()
   const idx = modes.findIndex(m => m.slug === current)

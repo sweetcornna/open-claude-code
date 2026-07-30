@@ -295,7 +295,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
     expect(chatCompletionsCreateCount).toBe(1)
     expect(capturedFetch).toBeNull()
     expect(lastChatCompletionsArgs?.model).toBe('gpt-4o')
-    expect(lastChatCompletionsArgs?.prompt_cache_key).toMatch(/^ccb:/)
+    expect(lastChatCompletionsArgs?.prompt_cache_key).toMatch(/^occ:/)
 
     const toolUse = result.content.find(b => b.type === 'tool_use') as
       | { type: 'tool_use'; name: string; input: unknown }

@@ -6,6 +6,7 @@
 //    key) in parallel — isRemoteManagedSettingsEligible() otherwise reads them
 //    sequentially via sync spawn inside applySafeConfigEnvironmentVariables()
 //    (~65ms on every macOS startup)
+import { PRODUCT_NAME } from './constants/brand.js';
 import { BIN_NAME } from 'src/config/paths.js';
 import { profileCheckpoint, profileReport } from './utils/startupProfiler.js';
 
@@ -5080,13 +5081,13 @@ async function run(): Promise<CommanderCommand> {
       await installHandler(target, options);
     });
 
-  // claude update — update ccb to the latest version via npm or bun
+  // occ update — update to the latest published version via npm or bun
   program
     .command('update')
-    .description('Update claude-code-best (ccb) to the latest version')
+    .description(`Update ${PRODUCT_NAME} to the latest version`)
     .action(async () => {
-      const { updateCCB } = await import('./cli/updateCCB.js');
-      await updateCCB();
+      const { updateOcc } = await import('./cli/updateOcc.js');
+      await updateOcc();
     });
 
   // ant-only commands

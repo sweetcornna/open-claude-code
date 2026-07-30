@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/constants/brand.js'
 import chalk from 'chalk'
 import { writeSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'
@@ -169,7 +170,9 @@ function printResumeHint(): void {
 
       writeSync(
         1,
-        chalk.dim(`\nResume this session with:\nccb --resume ${resumeArg}\n`),
+        chalk.dim(
+          `\nResume this session with:\n${BIN_NAME} --resume ${resumeArg}\n`,
+        ),
       )
       resumeHintPrinted = true
     } catch {

@@ -1,3 +1,4 @@
+import { DISPLAY_NAME } from 'src/constants/brand.js'
 import { feature } from 'bun:bundle'
 import { stat } from 'fs/promises'
 import { getClientType } from '../bootstrap/state.js'
@@ -64,7 +65,7 @@ export function getAttributionTexts(): AttributionTexts {
 
   const modelName = getRealModelName()
   const email = getAttributionEmail(modelName)
-  const defaultAttribution = `🤖 Generated with [Claude Code Best](${PRODUCT_URL})`
+  const defaultAttribution = `🤖 Generated with [${DISPLAY_NAME}](${PRODUCT_URL})`
   const defaultCommit = `Co-Authored-By: ${modelName} <${email}>`
 
   const settings = getInitialSettings()
@@ -313,7 +314,7 @@ export async function getEnhancedPRAttribution(
     return ''
   }
 
-  const defaultAttribution = `🤖 Generated with [Claude Code](${PRODUCT_URL})`
+  const defaultAttribution = `🤖 Generated with [${DISPLAY_NAME}](${PRODUCT_URL})`
 
   // Get AppState first
   const appState = getAppState()
@@ -356,7 +357,7 @@ export async function getEnhancedPRAttribution(
     memoryAccessCount > 0
       ? `, ${memoryAccessCount} ${memoryAccessCount === 1 ? 'memory' : 'memories'} recalled`
       : ''
-  const summary = `🤖 Generated with [Claude Code Best](${PRODUCT_URL}) (${claudePercent}% ${promptCount}-shotted by ${realModelName}${memSuffix})`
+  const summary = `🤖 Generated with [${DISPLAY_NAME}](${PRODUCT_URL}) (${claudePercent}% ${promptCount}-shotted by ${realModelName}${memSuffix})`
 
   // Append trailer lines for squash-merge survival. Only for allowlisted repos
   // (INTERNAL_MODEL_REPOS) and only in builds with COMMIT_ATTRIBUTION enabled —
