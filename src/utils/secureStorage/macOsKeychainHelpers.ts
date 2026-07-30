@@ -9,15 +9,16 @@
  * so a heavy transitive import here defeats the prefetch. The execa →
  * human-signals → cross-spawn chain alone is ~58ms of synchronous init.
  *
- * The imports below (envUtils, oauth constants, crypto, os) are already
+ * The imports below (config/paths, oauth constants, crypto, os) are already
  * evaluated by startupProfiler.ts at main.tsx:5, so they add no module-init
- * cost when keychainPrefetch.ts pulls this file in.
+ * cost when keychainPrefetch.ts pulls this file in. src/config/paths.ts
+ * itself only pulls os, path and lodash-es/memoize, so it is safe here.
  */
 
 import { createHash } from 'crypto'
 import { userInfo } from 'os'
 import { getOauthConfig } from 'src/constants/oauth.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { occConfigDir } from 'src/config/paths.js'
 import type { SecureStorageData } from './types.js'
 
 // Suffix distinguishing the OAuth credentials keychain entry from the legacy
@@ -26,18 +27,28 @@ import type { SecureStorageData } from './types.js'
 // orphan existing stored credentials.
 export const CREDENTIALS_SERVICE_SUFFIX = '-credentials'
 
+/**
+ * Keychain service-name prefix. Deliberately NOT "Claude Code": that is the
+ * official CLI's prefix, and sharing it means sharing the credential entry.
+ */
+const KEYCHAIN_SERVICE_PREFIX = 'Open Claude Code'
+
 export function getMacOsKeychainStorageServiceName(
   serviceSuffix: string = '',
 ): string {
-  const configDir = getClaudeConfigHomeDir()
-  const isDefaultDir = !process.env.CLAUDE_CONFIG_DIR
-
-  // Use a hash of the config dir path to create a unique but stable suffix
-  // Only add suffix for non-default directories to maintain backwards compatibility
-  const dirHash = isDefaultDir
-    ? ''
-    : `-${createHash('sha256').update(configDir).digest('hex').substring(0, 8)}`
-  return `Claude Code${getOauthConfig().OAUTH_FILE_SUFFIX}${serviceSuffix}${dirHash}`
+  // The config-dir hash is appended UNCONDITIONALLY.
+  //
+  // The original only appended it when CLAUDE_CONFIG_DIR was set, "to maintain
+  // backwards compatibility". The effect was that a default install produced
+  // exactly `Claude Code-credentials` — byte-identical to the official Claude
+  // Code's entry — so signing in to either CLI overwrote the other's OAuth
+  // token. Two installs pointed at different config dirs must never collide,
+  // and the default config dir is not a special case.
+  const dirHash = createHash('sha256')
+    .update(occConfigDir())
+    .digest('hex')
+    .substring(0, 8)
+  return `${KEYCHAIN_SERVICE_PREFIX}${getOauthConfig().OAUTH_FILE_SUFFIX}${serviceSuffix}-${dirHash}`
 }
 
 export function getUsername(): string {
