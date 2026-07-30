@@ -210,7 +210,7 @@ export function isDuplicatePath(
  * (the path's existing ancestors all resolve to themselves).
  *
  * Handles: live parent symlinks, dangling file symlinks, dangling parent
- * symlinks. Same core algorithm as teamMemPaths.ts:realpathDeepestExisting.
+ * symlinks.
  */
 export function resolveDeepestExistingAncestorSync(
   fs: FsOperations,

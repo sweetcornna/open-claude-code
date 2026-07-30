@@ -55,7 +55,9 @@ export const TEAMMATE_MESSAGE_TAG = 'teammate-message'
 export const CHANNEL_MESSAGE_TAG = 'channel-message'
 export const CHANNEL_TAG = 'channel'
 
-// XML tag name for cross-session UDS messages (another Claude session's inbox)
+// XML tag for messages injected from another Claude session. No in-tree
+// producer remains after the UDS inbox removal; kept because bridgeMessaging
+// still strips this tag out of running-state text.
 export const CROSS_SESSION_MESSAGE_TAG = 'cross-session-message'
 
 // XML tag wrapping the rules/format boilerplate in a fork child's first message.

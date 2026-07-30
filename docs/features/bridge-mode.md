@@ -152,7 +152,6 @@ FEATURE_BRIDGE_MODE=1 FEATURE_DAEMON=1 bun run dev
 | `src/bridge/pollConfigDefaults.ts` | — | 轮询配置默认值 |
 | `src/bridge/bridgeUI.ts` | — | UI 组件 |
 | `src/bridge/codeSessionApi.ts` | — | 代码会话 API |
-| `src/bridge/peerSessions.ts` | — | 对等会话管理 |
 | `src/bridge/sessionIdCompat.ts` | — | Session ID 兼容层 |
 | `src/bridge/createSession.ts` | — | 会话创建 |
 | `src/bridge/replBridgeHandle.ts` | — | Bridge 句柄 |
