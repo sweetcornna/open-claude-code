@@ -482,6 +482,11 @@ export async function createChatGPTResponsesStream(params: {
     'OpenAI-Beta': 'responses=experimental',
     Origin: 'https://chatgpt.com',
     Referer: 'https://chatgpt.com/',
+    // Deliberately NOT renamed with the rest of the rebrand. This value is
+    // sent to chatgpt.com's Codex responses endpoint, which may allowlist or
+    // fingerprint known originators; changing it risks breaking
+    // ChatGPT-subscription auth in a way that is slow to diagnose. Verify
+    // upstream behaviour before touching it.
     originator: 'claude-code-best',
   }
   if (auth.accountId) {
