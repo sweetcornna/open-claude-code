@@ -222,14 +222,14 @@ CLAUDE_GB_ADAPTER_KEY=sdk-xxx
 
 ## 优先级 P3：需要自建服务或 Anthropic OAuth
 
-### P3-1. 团队记忆
+### P3-1. 团队记忆（已移除，本条不再可实施）
 - **Gate**: `tengu_herring_clock` → `true`
-- **编译 flag**: `TEAMMEM`（需新增）
-- **代码量**: 1180+ 行，完整实现
+- **编译 flag**: `TEAMMEM`（曾在 `DEFAULT_BUILD_FEATURES` 中启用，因内存溢出被注释禁用，最终随代码于 2026-07 在 60694378 删除）
+- **代码量**: 原为 1180+ 行完整实现，代码已于 2026-07 删除（`src/services/teamMemorySync/`、`src/memdir/teamMemPaths.ts`、`src/memdir/teamMemPrompts.ts` 均已不存在）
 - **功能**: 跨 agent 共享记忆，同步到 Anthropic API
 - **依赖**: Anthropic OAuth + GitHub remote
 - **状态**: 需要 Anthropic 的 `/api/claude_code/team_memory` 端点
-- **可行性**: 除非自建兼容 API，否则无法使用
+- **可行性**: 已移除，如需恢复必须先重新实现同步层
 
 ### P3-2. 设置同步
 - **Gate**: `tengu_enable_settings_sync_push` + `tengu_strap_foyer` → `true`
@@ -273,9 +273,9 @@ CLAUDE_GB_ADAPTER_KEY=sdk-xxx
 
 ---
 
-## 需要新增的编译 flag
+## 编译 flag 状态
 
-以下编译时 flag 尚未在 `build.ts` / `scripts/dev.ts` 中启用，但功能代码完整：
+以下 flag 已全部进入 `DEFAULT_BUILD_FEATURES`，本表保留为历史记录。
 
 | Flag | 用于 | 优先级 |
 |---|---|---|
@@ -284,7 +284,6 @@ CLAUDE_GB_ADAPTER_KEY=sdk-xxx
 | `VERIFICATION_AGENT` | 验证代理（P1-4） | P1 |
 | `KAIROS` 或 `KAIROS_BRIEF` | Brief 模式（P1-5） | P1 |
 | `AWAY_SUMMARY` | 离开摘要（P1-6） | P1 |
-| `TEAMMEM` | 团队记忆（P3-1） | P3 |
 
 ---
 

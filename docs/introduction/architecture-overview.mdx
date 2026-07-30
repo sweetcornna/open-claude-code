@@ -50,7 +50,7 @@ Claude Code 从上到下分为五个层次，每一层职责清晰、边界分�
 
 ```
 ① 上下文预处理管道：
-   applyToolResultBudget → snipCompact → microcompact → contextCollapse → autocompact
+   applyToolResultBudget → microcompact → autocompact
 
 ② 流式 API 调用：
    deps.callModel() → AsyncGenerator<StreamEvent | Message>
@@ -109,7 +109,7 @@ API 客户端支持 7 种 Provider：
 
 | 入口 | 文件 | 说明 |
 |------|------|------|
-| CLI 启动 | `src/entrypoints/cli.tsx` | 注入 `feature()` polyfill（始终返回 false）、MACRO 全局变量 |
+| CLI 启动 | `src/entrypoints/cli.tsx` | 从 `bun:bundle` 导入 `feature()`（取值由构建 / dev defines 在编译期求值）、为 MACRO 全局变量提供运行时兜底（`cli.tsx:11-21`） |
 | 命令定义 | `src/main.tsx` | Commander.js 解析参数，初始化 auth/analytics/policy |
 | 一次性初始化 | `src/entrypoints/init.ts` | 遥测配置、信任对话框 |
 | 管道模式 | `src/main.tsx` `-p` flag | `echo "say hello" \| bun run dev -p` |

@@ -37,7 +37,7 @@ Claude Code 是一个**运行在本地终端中的 agentic coding system**。它
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ 1. 入口层 (cli.tsx → main.tsx)                          │
-│    feature() = false, MACRO 注入, 启动 Commander.js CLI  │
+│    feature() 编译期求值, MACRO 兜底, 启动 Commander.js   │
 ├─────────────────────────────────────────────────────────┤
 │ 2. 交互层 (REPL.tsx — React/Ink)                        │
 │    PromptInput 捕获用户输入 → UserMessage 加入会话       │
@@ -81,16 +81,16 @@ Claude Code 是一个**运行在本地终端中的 agentic coding system**。它
 真正的代码入口是 `src/entrypoints/cli.tsx`，它做了三件关键的事：
 
 ```typescript
-// 1. 注入运行时 polyfill —— feature() 永远返回 false
-const feature = (_name: string) => false;
+// 1. 首个 import：performance shim（替换 globalThis.performance）
+import '../utils/performanceShim.js';
 
-// 2. 注入构建时宏
-globalThis.MACRO = { VERSION: "2.1.888", BUILD_TIME: ..., };
+// 2. 从 bun:bundle 导入 feature()——取值由构建 / dev defines 在编译期求值
+import { feature } from 'bun:bundle';
 
-// 3. 声明构建目标
-globalThis.BUILD_TARGET = "external";  // 外部构建（非 Anthropic 内部）
-globalThis.BUILD_ENV = "production";
-globalThis.INTERFACE_TYPE = "stdio";   // 标准 I/O 交互
+// 3. MACRO 全局变量的运行时兜底（直接跑 cli.tsx、未经 dev/dist 注入时生效）
+if (typeof globalThis.MACRO === 'undefined') {
+  globalThis.MACRO = { VERSION: "2.1.888", BUILD_TIME: ..., };
+}
 ```
 
 然后控制流传递到 `src/main.tsx`：

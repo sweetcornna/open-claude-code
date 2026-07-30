@@ -62,9 +62,9 @@ Three reasons aside from the unbounded-cache concern:
 2. **Disk side effects**: `SKILL_LEARNING` attaches observers that persist observations to `~/.claude` storage. Storage volume should be opt-in, not background.
 3. **Experimental status**: the flag is literally named `EXPERIMENTAL_*`. Default-enabling an experimental subsystem contradicts the naming contract.
 
-**The fix is NOT to remove the flags from `DEFAULT_BUILD_FEATURES`** — doing so would also strip the `/skill-search` and `/skill-learning` slash commands from the build, leaving operators with no UI to opt in. Instead the activation logic in `featureCheck.ts` was changed to a two-layer gate:
+**At the time of this report the fix was NOT to remove the flags from `DEFAULT_BUILD_FEATURES`** — doing so would also strip the `/skill-search` and `/skill-learning` slash commands from the build, leaving operators with no UI to opt in. Instead the activation logic in `featureCheck.ts` was changed to a two-layer gate (`SKILL_LEARNING` was nonetheless dropped from the default build list later — see Layer 1 below):
 
-- **Layer 1 (compile-time)**: `feature('EXPERIMENTAL_SKILL_SEARCH')` / `feature('SKILL_LEARNING')` must be on. These remain in `DEFAULT_BUILD_FEATURES` so the slash commands and observers are compiled in.
+- **Layer 1 (compile-time)**: `feature('EXPERIMENTAL_SKILL_SEARCH')` must be on; it remains in `DEFAULT_BUILD_FEATURES` so `/skill-search` and its prefetch / intentNormalize hot paths are compiled in. `SKILL_LEARNING` was subsequently commented out of `DEFAULT_BUILD_FEATURES` in commit `42100d62` (2026-04-30, `feat: 关闭 skill learning`; see `scripts/defines.ts:82`), so `/skill-learning` and its observers are only present in builds that explicitly opt in via `FEATURE_SKILL_LEARNING=1` — which also satisfies Layer 2 below.
 - **Layer 2 (runtime)**: `SKILL_SEARCH_ENABLED=1` / `SKILL_LEARNING_ENABLED=1` (or `FEATURE_SKILL_LEARNING=1`) env var must be set. Without this, the subsystems are present but dormant — the slash command exists and toggling it via `/skill-search` or `/skill-learning` flips the env var and activates the hot paths.
 
 Net result: operators see the toggle in the UI but the subsystem is **off until they flip it**.

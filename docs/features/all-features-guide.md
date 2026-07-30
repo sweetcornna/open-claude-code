@@ -15,15 +15,12 @@
 7. [Feature Flags 与 GrowthBook](#7-feature-flags-与-growthbook)
 8. [/ultraplan 高级规划](#8-ultraplan-高级规划)
 9. [Daemon 后台守护](#9-daemon-后台守护)
-10. [Pipe IPC 多实例协作](#10-pipe-ipc-多实例协作)
-11. [LAN Pipes 局域网群控](#11-lan-pipes-局域网群控)
-12. [Monitor 后台监控](#12-monitor-后台监控)
-13. [Workflow 工作流脚本](#13-workflow-工作流脚本)
-14. [Coordinator 多Worker协调](#14-coordinator-多worker协调)
-15. [Proactive 自主模式](#15-proactive-自主模式)
-16. [History / Snip 历史管理](#16-history--snip-历史管理)
-17. [Fork 子Agent](#17-fork-子agent)
-18. [其他恢复的工具](#18-其他恢复的工具)
+10. [Monitor 后台监控](#10-monitor-后台监控)
+11. [Workflow 工作流脚本](#11-workflow-工作流脚本)
+12. [Coordinator 多Worker协调](#12-coordinator-多worker协调)
+13. [Proactive 自主模式](#13-proactive-自主模式)
+14. [Fork 子Agent](#14-fork-子agent)
+15. [其他恢复的工具](#15-其他恢复的工具)
 
 ---
 
@@ -244,111 +241,7 @@ bun run rcs
 
 ---
 
-## 10. Pipe IPC 多实例协作
-
-**PR**: #241 `feat: restore pipe IPC, LAN pipes, monitor tool`
-**Feature Flag**: `UDS_INBOX`
-
-### 说明
-同一台机器上的多个 Claude Code 实例通过 UDS（Unix Domain Socket / Windows Named Pipe）自动发现并协作。首个启动的实例成为 main，后续自动注册为 sub。
-
-### 使用
-
-**启动多实例**：
-```bash
-# 终端 1
-bun run dev
-# → 自动成为 main
-
-# 终端 2
-bun run dev
-# → 自动成为 sub-1，被 main attach
-```
-
-**管理实例**：
-```
-/pipes                — 显示所有实例，Shift+↓ 展开选择面板
-/pipes select <name>  — 选中实例
-/pipes all            — 全选
-/pipes none           — 取消全选
-/attach <name>        — 手动 attach 某实例
-/detach <name>        — 断开连接
-/send <name> <msg>    — 向指定实例发送消息
-/claim-main           — 强制声明为 main
-/pipe-status          — 显示详细状态
-/peers                — 列出所有已发现的 peer
-```
-
-**选择面板操作**：
-1. 按 `Shift+↓` 展开面板
-2. `↑/↓` 移动光标
-3. `Space` 选中/取消 pipe
-4. `Enter` 确认关闭
-5. `←/→` 切换路由模式（selected pipes ↔ local main）
-
-**消息广播**：
-选中 pipe 后，输入的消息自动路由到所有选中的 slave 执行，结果流式回传到 main。
-
-**权限转发**：
-slave 执行需要权限的工具时（如 BashTool），权限请求自动转发到 main 的确认队列。
-
----
-
-## 11. LAN Pipes 局域网群控
-
-**PR**: #241（同上）
-**Feature Flag**: `LAN_PIPES`
-
-### 说明
-在 Pipe IPC 基础上增加 TCP 传输层和 UDP Multicast 发现，实现跨机器零配置协作。
-
-### 使用
-
-**局域网多机器**：
-```bash
-# 机器 A (192.168.50.22)
-bun run dev
-
-# 机器 B (192.168.50.27)
-bun run dev
-
-# 两边启动后 3-5 秒自动发现和 attach
-# /pipes 显示 [LAN] 标记的远端实例
-```
-
-**防火墙配置**（每台机器都需要）：
-
-Windows（管理员 PowerShell）：
-```powershell
-New-NetFirewallRule -DisplayName "CCB LAN Beacon (UDP)" -Direction Inbound -Protocol UDP -LocalPort 7101 -Action Allow -Profile Private
-New-NetFirewallRule -DisplayName "CCB LAN Pipes (TCP)" -Direction Inbound -Protocol TCP -LocalPort 1024-65535 -Program (Get-Command bun).Source -Action Allow -Profile Private
-New-NetFirewallRule -DisplayName "CCB LAN Beacon Out (UDP)" -Direction Outbound -Protocol UDP -RemotePort 7101 -Action Allow -Profile Private
-```
-
-macOS：
-```bash
-# 首次运行时系统弹对话框，点"允许"即可
-```
-
-Linux：
-```bash
-sudo firewall-cmd --zone=trusted --add-port=7101/udp --permanent
-sudo firewall-cmd --zone=trusted --add-port=1024-65535/tcp --permanent
-sudo firewall-cmd --reload
-```
-
-**通知显示格式**：
-```
-# 本机 sub
-Routed to [sub-1]; main can continue other tasks
-
-# LAN peer
-Routed to [main] vmwin11/192.168.50.27; main can continue other tasks
-```
-
----
-
-## 12. Monitor 后台监控
+## 10. Monitor 后台监控
 
 **PR**: #241（同上）
 **Feature Flag**: `MONITOR_TOOL`
@@ -380,7 +273,7 @@ AI 可在对话中自动调用 `MonitorTool` 监控日志、构建输出等。
 
 ---
 
-## 13. Workflow 工作流脚本
+## 11. Workflow 工作流脚本
 
 **PR**: #241（同上）
 **Feature Flag**: `WORKFLOW_SCRIPTS`
@@ -417,7 +310,7 @@ AI 可通过 `WorkflowTool` 自动执行工作流：
 
 ---
 
-## 14. Coordinator 多Worker协调
+## 12. Coordinator 多Worker协调
 
 **PR**: #241（同上）
 **Feature Flag**: `COORDINATOR_MODE`
@@ -438,7 +331,7 @@ AI 可通过 `WorkflowTool` 自动执行工作流：
 
 ---
 
-## 15. Proactive 自主模式
+## 13. Proactive 自主模式
 
 **PR**: #241（同上）
 **Feature Flag**: `PROACTIVE` / `KAIROS`
@@ -453,39 +346,22 @@ AI 可通过 `WorkflowTool` 自动执行工作流：
 
 ---
 
-## 16. History / Snip 历史管理
+## 14. Fork 子Agent
 
 **PR**: #241（同上）
-**Feature Flag**: `HISTORY_SNIP`
-
-### 说明
-查看和管理对话历史，支持手动截断以释放上下文窗口空间。
-
-### 使用
-```
-/history           — 显示对话历史摘要
-/force-snip        — 强制在当前位置截断历史
-```
-
-AI 也可通过 `SnipTool` 自动截断过长的对话：
-```
-对话太长了，请帮我截断历史
-```
-
----
-
-## 17. Fork 子Agent
-
-**PR**: #241（同上）
-**Feature Flag**: `FORK_SUBAGENT`
+**Feature Flag**: `FORK_SUBAGENT`（不在默认启用列表中，需 `FEATURE_FORK_SUBAGENT=1`）
 
 ### 说明
 在当前对话上下文中 fork 一个独立的子 agent，继承完整会话状态独立执行。
 
 ### 使用
+该功能没有专属斜杠命令 —— `/fork` 现在只是 `/branch`（对话分支）的别名。fork 路径通过 AgentTool 触发：`subagent_type` 本身一直是可选参数，flag 关闭时省略它会回落到 general-purpose，flag 启用后省略它即进入 fork 分支。
+
+```bash
+FEATURE_FORK_SUBAGENT=1 bun run dev
 ```
-/fork              — 基于当前上下文 fork 子 agent
-```
+
+> 与 coordinator 模式互斥；非交互式会话下不启用。
 
 子 agent 会：
 - 继承当前的全部对话历史
@@ -494,7 +370,7 @@ AI 也可通过 `SnipTool` 自动截断过长的对话：
 
 ---
 
-## 18. 其他恢复的工具
+## 15. 其他恢复的工具
 
 以下工具从 stub 恢复为完整实现：
 
@@ -504,13 +380,11 @@ AI 也可通过 `SnipTool` 自动截断过长的对话：
 | `WebBrowserTool` | 终端内网页交互 | AI 需要查看网页时调用 |
 | `SubscribePRTool` | 订阅 GitHub PR 变更 | `/subscribe-pr` 或 AI 调用 |
 | `PushNotificationTool` | 推送桌面通知 | AI 在长任务完成时调用 |
-| `CtxInspectTool` | 检查上下文窗口使用 | AI 判断上下文剩余空间 |
 | `TerminalCaptureTool` | 截取终端屏幕 | AI 需要看终端输出时调用 |
 | `SendUserFileTool` | 向用户发送文件 | AI 导出文件时调用 |
 | `REPLTool` | 启动子 REPL 会话 | AI 需要独立交互环境时调用 |
 | `VerifyPlanExecutionTool` | 验证执行计划完成度 | AI 完成计划后自动验证 |
 | `SuggestBackgroundPRTool` | 建议创建后台 PR | AI 发现可独立的变更时提议 |
-| `ListPeersTool` | 列出已发现的 peer | AI 查询多实例状态时调用 |
 
 ---
 
@@ -528,15 +402,11 @@ AI 也可通过 `SnipTool` 自动截断过长的对话：
 | `PROMPT_CACHE_BREAK_DETECTION` | ✅ dev+build | 缓存检测 |
 | `ULTRAPLAN` | ✅ dev+build | 高级规划 |
 | `DAEMON` | ✅ dev+build | 后台守护 |
-| `UDS_INBOX` | ✅ dev only | Pipe IPC |
-| `LAN_PIPES` | ✅ dev only | LAN 群控 |
 | `MONITOR_TOOL` | ✅ dev+build | 后台监控 |
 | `WORKFLOW_SCRIPTS` | ✅ dev+build | 工作流脚本 |
-| `FORK_SUBAGENT` | ✅ dev+build | 子 Agent |
+| `FORK_SUBAGENT` | ❌ 需手动启用（`FEATURE_FORK_SUBAGENT=1`） | 子 Agent |
 | `KAIROS` | ✅ dev+build | Kairos 调度 |
 | `COORDINATOR_MODE` | ✅ dev+build | 多 Worker |
-| `HISTORY_SNIP` | ✅ dev+build | 历史管理 |
-| `CONTEXT_COLLAPSE` | ✅ dev+build | 上下文折叠 |
 | `ULTRATHINK` | ✅ dev+build | 扩展思考 |
 | `EXTRACT_MEMORIES` | ✅ dev+build | 自动记忆提取 |
 | `VERIFICATION_AGENT` | ✅ dev+build | 验证 Agent |
@@ -574,3 +444,5 @@ FEATURE_FLAG_NAME=1 bun run dev
 | #156 | 2026-04-06 | feat: enable /ultraplan |
 | #170 | 2026-04-07 | feat: restore daemon supervisor |
 | #241 | 2026-04-11 | feat: restore pipe IPC, LAN pipes, monitor tool |
+
+> 说明：#241 中的 pipe IPC（`UDS_INBOX`）与 LAN Pipes（`LAN_PIPES`）已于 2026-07 移除（`MONITOR_TOOL` 不受影响）；同期移除的还有 History / Snip（`HISTORY_SNIP`）、上下文折叠（`CONTEXT_COLLAPSE`，非 #241 引入）及 `SnipTool`、`CtxInspectTool`、`ListPeersTool` 等工具，对应章节与 flag 已从本指南删除。

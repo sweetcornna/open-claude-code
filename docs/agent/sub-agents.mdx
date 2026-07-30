@@ -12,8 +12,8 @@ Claude Code 里常被一起称为"子 Agent"的东西，其实有四类执行路
 
 | 类型 | 谁触发 | 是否经过 Tool 协议 | 结果怎么回来 | 典型入口 |
 |------|--------|--------------------|--------------|----------|
-| 命名子 Agent | 主模型调用 `Agent(...)`，并提供 `subagent_type` | 是，属于一次 `tool_use` | 当前 turn 的 `tool_result`，或后台完成后的 `<task-notification>` | `src/tools/AgentTool/AgentTool.tsx` |
-| AgentTool fork | 主模型调用 `Agent(...)`，省略 `subagent_type`，且 fork gate 开启 | 是，仍然是 `Agent` 工具 | 先返回 `async_launched`，完成后通过任务通知回到主模型 | `src/tools/AgentTool/AgentTool.tsx`、`src/tools/AgentTool/forkSubagent.ts` |
+| 命名子 Agent | 主模型调用 `Agent(...)`，并提供 `subagent_type` | 是，属于一次 `tool_use` | 当前 turn 的 `tool_result`，或后台完成后的 `<task-notification>` | `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` |
+| AgentTool fork | 主模型调用 `Agent(...)`，省略 `subagent_type`，且 fork gate 开启 | 是，仍然是 `Agent` 工具 | 先返回 `async_launched`，完成后通过任务通知回到主模型 | `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx`、`packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` |
 | Slash command fork | 用户执行 `context: fork` 的 slash command / skill | 否，不是模型发出的 `Agent` tool_use | 普通模式同步返回命令输出；assistant 模式后台回注隐藏 prompt | `src/utils/processUserInput/processSlashCommand.tsx` |
 | `runForkedAgent()` | 运行时内部服务直接分叉一条执行支线 | 否，内部 API | 调用方内部消费结果 | `src/utils/forkedAgent.ts` |
 
@@ -43,8 +43,8 @@ assistant message
 
 | 代码 | 作用 |
 |------|------|
-| `src/tools/AgentTool/AgentTool.tsx` | `Agent` 工具定义、路由、同步/异步生命周期 |
-| `src/tools/AgentTool/runAgent.ts` | 子 Agent 的 query loop、system prompt、MCP、sidechain transcript |
+| `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` | `Agent` 工具定义、路由、同步/异步生命周期 |
+| `packages/builtin-tools/src/tools/AgentTool/runAgent.ts` | 子 Agent 的 query loop、system prompt、MCP、sidechain transcript |
 | `src/services/tools/toolExecution.ts` | 外层工具执行器，`await tool.call(...)` 的地方 |
 | `src/query.ts` | 主 agentic loop，收集 tool results 并进入下一轮模型调用 |
 | `src/tasks/LocalAgentTask/LocalAgentTask.tsx` | 后台本地 Agent task 的注册、状态更新、完成通知 |
@@ -399,7 +399,6 @@ runAsyncAgentLifecycle()
 | running agent 不会立刻中断当前工具调用 | 消息先排进 `pendingMessages`，等 agent loop 到安全边界再处理 |
 | stopped agent 会变成新的后台运行 | `resumeAgentBackground()` 返回 output file，之后靠完成通知回注 |
 | `name` 只在注册还在时可靠 | name registry 是运行时状态；跨很久恢复时 raw `agentId` 更稳定 |
-| cross-session send 有额外限制 | `bridge:` / `uds:` 地址只支持 plain text，且可能需要显式权限或连接状态 |
 
 ### TaskOutput
 
@@ -846,9 +845,9 @@ Audit the authentication flow and return only correctness risks.
 
 | 文件 | 为什么重要 |
 |------|------------|
-| `src/tools/AgentTool/AgentTool.tsx` | 路由、权限、同步/异步、结果映射都在这里汇合 |
-| `src/tools/AgentTool/forkSubagent.ts` | AgentTool fork 的 gate、FORK_AGENT、消息构造 |
-| `src/tools/AgentTool/runAgent.ts` | 子 Agent 真正的运行循环 |
+| `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` | 路由、权限、同步/异步、结果映射都在这里汇合 |
+| `packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` | AgentTool fork 的 gate、FORK_AGENT、消息构造 |
+| `packages/builtin-tools/src/tools/AgentTool/runAgent.ts` | 子 Agent 真正的运行循环 |
 | `src/tasks/LocalAgentTask/LocalAgentTask.tsx` | 后台 Agent 状态和通知 |
 | `src/utils/messageQueueManager.ts` | 统一 command queue |
 | `src/utils/queueProcessor.ts` | REPL 队列消费规则 |

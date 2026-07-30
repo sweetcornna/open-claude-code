@@ -6,13 +6,13 @@
 
 ## 一、功能概述
 
-Background Agent Selector 是渲染在 PromptInput 下方的常驻状态条，列出当前所有 **backgrounded 的 local_agent 任务**（包括 `/fork` 派生的 fork agent 和 Task/AgentTool 调用 `run_in_background: true` 派生的子 agent）。用户可以用 ↑/↓ 方向键在 `main` 和各 agent 之间切换焦点，按 Enter 把 REPL 主视图替换为所选 agent 的实时 transcript，再按 Enter 选中 `main` 即可回到主对话。
+Background Agent Selector 是渲染在 PromptInput 下方的常驻状态条，列出当前所有 **backgrounded 的 local_agent 任务**（包括 AgentTool fork 路径 —— 调用时不指定 `subagent_type` —— 派生的 fork agent，和 Task/AgentTool 调用 `run_in_background: true` 派生的子 agent）。用户可以用 ↑/↓ 方向键在 `main` 和各 agent 之间切换焦点，按 Enter 把 REPL 主视图替换为所选 agent 的实时 transcript，再按 Enter 选中 `main` 即可回到主对话。
 
 整个机制完全复用官方已有的 teammate transcript 查看基础设施，不引入新的视图层 / 数据流，仅新增一条 footer pill 类型。
 
 ### 核心特性
 
-- **统一入口**：`/fork`、Task 派生的 subagent、所有 `run_in_background: true` 的 agent 都在同一栏显示
+- **统一入口**：AgentTool fork 路径（不指定 `subagent_type`）、Task 派生的 subagent、所有 `run_in_background: true` 的 agent 都在同一栏显示
 - **就地切换**：prompt 为空时按 ↓ 溢出进入底部 selector，↑↓ 选中某行，Enter 即切主视图
 - **实时状态**：每行显示 agent 类型 + 描述 + 运行时长 + 已消耗 token；running 时圆点为绿色
 - **Keep-alive 视图**：agent 完成后在 `evictAfter` grace 窗口内保留一段时间，用户可回看
@@ -79,7 +79,7 @@ export function useBackgroundAgentTasks(): LocalAgentTaskState[] {
 }
 ```
 
-`/fork` 和 `AgentTool` 的 `run_in_background: true` 底层都走 `registerAsyncAgent → runAsyncAgentLifecycle`，最终写入同一个 `appState.tasks` Map；此 hook 是唯一数据源，Selector 和 PromptInput 的 `bgAgentList` 都消费它。
+AgentTool 的 fork 路径（不指定 `subagent_type`）和 `AgentTool` 的 `run_in_background: true` 底层都走 `registerAsyncAgent → runAsyncAgentLifecycle`，最终写入同一个 `appState.tasks` Map；此 hook 是唯一数据源，Selector 和 PromptInput 的 `bgAgentList` 都消费它。
 
 ### 3.2 状态层：新增两个字段
 
@@ -152,7 +152,7 @@ const displayedMessages = viewedAgentTask ? displayedAgentMessages : messages
 
 #### Fork agent prompt 归一化
 
-`/fork` agent 的 transcript 和普通 subagent 不同：它继承 main agent 的上下文，真实初始消息形态是：
+AgentTool fork 路径（不指定 `subagent_type`）派生的 agent，其 transcript 和普通 subagent 不同：它继承 main agent 的上下文，真实初始消息形态是：
 
 ```text
 ...parent messages
@@ -196,7 +196,7 @@ user([tool_result..., text("<fork-boilerplate>...Your directive: <prompt>")])
 | 官方已有能力 | selector 如何使用 |
 |---|---|
 | `AppState.tasks` | 单一数据源，无需 file watcher / output JSONL 订阅 |
-| `registerAsyncAgent` | `/fork` 和 AgentTool 共用，selector 不区分来源 |
+| `registerAsyncAgent` | AgentTool fork 路径（不指定 `subagent_type`）和普通 AgentTool 调用共用，selector 不区分来源 |
 | `enterTeammateView(id)` | Enter 时调用，负责 retain + disk bootstrap |
 | `exitTeammateView` | Enter 选中 `main` 时调用 |
 | `release(task)` + `PANEL_GRACE_MS` | 30s keep-alive，selector 自动生效 |

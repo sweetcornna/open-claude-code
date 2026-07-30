@@ -179,4 +179,3 @@ KAIROS（长驻助手模式）中，agent 以追加方式写入日期日志文�
 
 - **extractMemories**（`src/services/extractMemories/`）：每轮次结束时从对话中提取新记忆并写入。Dream 不负责提取，只负责整理。
 - **CLAUDE.md**：项目级指令文件，加载到上下文中但不属于记忆系统。
-- **Team Memory**（`TEAMMEM` feature）：团队共享记忆目录，与个人记忆使用相同的 Dream 机制。

@@ -14,16 +14,17 @@ keywords: ["隐藏功能", "未公开功能", "秘密功能", "Claude Code 彩�
   <Accordion title="KAIROS：永不下线的 AI 助手">
     **门控**: `feature('KAIROS')` + `tengu_kairos`
 
-    KAIROS 是 Claude Code 最庞大的隐藏功能群——6 个独立 flag 控制着一个完整的"持久化 AI 助手"系统：
+    KAIROS 是 Claude Code 最庞大的隐藏功能群——5 个独立 flag 控制着一个完整的"持久化 AI 助手"系统：
 
     | Flag | 能力 |
     |------|------|
     | `KAIROS` | 核心助手模式——AI 不再随对话结束而"消失" |
     | `KAIROS_BRIEF` | 精简输出模式 |
     | `KAIROS_CHANNELS` | 基于频道的消息系统 |
-    | `KAIROS_DREAM` | 后台"做梦"——自主整理记忆 |
     | `KAIROS_GITHUB_WEBHOOKS` | 订阅 GitHub PR 事件，自动响应 |
     | `KAIROS_PUSH_NOTIFICATION` | 向移动端推送通知 |
+
+    `KAIROS_DREAM`（后台"做梦"——自主整理记忆）已毕业为默认能力，不再由构建 flag 门控：实现在 `src/services/autoDream/`，开关是 settings.json 的 `autoDreamEnabled`（另有 `/dream` 手动触发）。
 
     KAIROS 的工具集包括 `SleepTool`（让 AI 主动"休眠"等待事件）、`SendUserFileTool`（向用户发送文件）、`PushNotificationTool`（推送通知）和 `SubscribePRTool`（监听 PR）。
 
@@ -64,7 +65,6 @@ keywords: ["隐藏功能", "未公开功能", "秘密功能", "Claude Code 彩�
     - `src/bridge/` 目录包含完整的 WebSocket 桥接实现
     - 支持 IDE 扩展作为远程前端
     - 包含 ant-only 的故障注入测试（`bridgeDebug.ts`）
-    - 配合 `DIRECT_CONNECT` flag 可通过 `cc://` URL 直连
 
     **推测方向**: Claude Code 的 UI 前端与后端执行分离——你可以在 VS Code 中操作，但 AI 在远程服务器上执行。
   </Accordion>

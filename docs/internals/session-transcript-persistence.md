@@ -11,7 +11,7 @@
 | 为什么 resume 能恢复到正确位置 | `总览`、`读取与链路重建`、`恢复入口` |
 | 为什么 compact 后历史还在但模型看不到 | `上下文视图`、`Compact 与投影` |
 | 为什么 subagent 不污染主会话 | `存储拓扑`、`Subagent 与 Fork Agent` |
-| `/branch`、`--fork-session`、`/fork` 有什么区别 | `分支与 Fork 对比` |
+| `/branch`（别名 `/fork`）、`--fork-session`、AgentTool fork 有什么区别 | `分支与 Fork 对比` |
 | 崩溃、超限、取消后如何恢复 | `错误恢复矩阵` |
 
 ## 总览
@@ -22,7 +22,7 @@ Claude Code 的本地会话核心是 append-only JSONL。每一行是一个 `Ent
 2. 把 metadata entry 放入各自 map 或数组。
 3. 选择最新 leaf。
 4. 从 leaf 沿 `parentUuid` 回溯，得到当前有效链。
-5. 应用 compact、snip、preserved segment、content replacement 等投影。
+5. 应用 compact、preserved segment、content replacement 等投影。
 6. 恢复 sessionId、worktree、mode、agent setting、任务状态等内存状态。
 
 核心不变量：
@@ -41,7 +41,7 @@ Claude Code 的本地会话核心是 append-only JSONL。每一行是一个 `Ent
 ```mermaid
 flowchart TD
   A[磁盘层<br/>append-only JSONL + sidecar metadata] --> B[链路层<br/>uuid / parentUuid / leaf]
-  B --> C[投影层<br/>compact / snip / tool_result budget / context-collapse]
+  B --> C[投影层<br/>compact / microcompact / tool_result budget]
   C --> D[恢复层<br/>deserialize / interrupt detection / metadata restore]
   D --> E[运行层<br/>REPL / QueryEngine / AgentTask / RemoteTask]
 ```
@@ -81,9 +81,8 @@ flowchart TD
 | SDK/headless query 写 transcript | `src/QueryEngine.ts` |
 | API query loop、compact、错误恢复 | `src/query.ts` |
 | compact 实现 | `src/services/compact/*` |
-| context-collapse stub 与持久化接口 | `src/services/contextCollapse/*` |
 | `/branch` | `src/commands/branch/branch.ts` |
-| `/fork` | `src/commands/fork/fork.tsx` |
+| `/fork`（`/branch` 的别名） | `src/commands/branch/index.ts` |
 | AgentTool 和 subagent | `packages/builtin-tools/src/tools/AgentTool/*` |
 | 通用 forked side query | `src/utils/forkedAgent.ts` |
 | remote agent task | `src/tasks/RemoteAgentTask/RemoteAgentTask.tsx` |
@@ -98,7 +97,6 @@ flowchart TD
 | session metadata | `custom-title`、`tag`、`mode`、`worktree-state`、`pr-link`、`agent-setting` | 否 | `sessionId` | 恢复标题、标签、模式、worktree、PR、agent 设置。 |
 | message metadata | `file-history-snapshot`、`attribution-snapshot`、`summary` | 否 | `messageId` 或 `leafUuid` | 恢复文件历史、归因、摘要。 |
 | replacement metadata | `content-replacement` | 否 | `sessionId` + optional `agentId` | 恢复大 tool_result 的替换决策。 |
-| context-collapse metadata | `marble-origami-commit`、`marble-origami-snapshot` | 否 | `sessionId` | 预留 context-collapse 恢复接口；当前实现为 stub。 |
 | queue/task metadata | `queue-operation`、`task-summary`、`speculation-accept` | 否 | 各自字段 | 恢复队列、任务摘要、推测接受统计。 |
 
 ### TranscriptMessage 字段
@@ -243,7 +241,7 @@ flowchart TD
   B --> C[parseJSONL Entry]
   C --> D[messages Map uuid->TranscriptMessage]
   C --> E[metadata maps/arrays]
-  D --> F[progress bridge / preserved relink / snip removal]
+  D --> F[progress bridge / preserved relink]
   F --> G[select leaf]
   G --> H[buildConversationChain]
   H --> I[recoverOrphanedParallelToolResults]
@@ -260,7 +258,6 @@ flowchart TD
 | `fileHistorySnapshots` / `attributionSnapshots` | 文件状态恢复。 |
 | `contentReplacements` | 主线程 replacement records。 |
 | `agentContentReplacements` | `agentId -> replacement records`。 |
-| `contextCollapseCommits` / `contextCollapseSnapshot` | context-collapse 恢复输入。 |
 
 ### leaf 与 parent 链
 
@@ -294,8 +291,6 @@ u1 <- a1 <- u2 <- a2
 | `file-history-snapshot`、`attribution-snapshot` | messageId keyed / array | 恢复文件历史与归因。 |
 | `content-replacement` | append array | 多轮 replacement 决策都要保留。 |
 | `agentContentReplacements` | agentId keyed + append array | agent resume 重建 sidechain replacement state。 |
-| `marble-origami-commit` | ordered array | 顺序有语义，后一个 commit 可能引用前一个 summary。 |
-| `marble-origami-snapshot` | last-wins | staged snapshot 只恢复最新状态。 |
 
 ### 大文件读取优化
 
@@ -312,7 +307,7 @@ transcript 可增长到几百 MB 甚至 GB，读取路径有几层防护。
 
 `walkChainBeforeParse()` 只有预计能丢掉至少一半 buffer 时才做 concat，避免优化本身变成额外成本。
 
-### preserved segment 与 snip
+### preserved segment
 
 compact boundary 可以带 `compactMetadata.preservedSegment`。恢复时 `applyPreservedSegmentRelinks()` 会：
 
@@ -328,8 +323,6 @@ compact boundary 可以带 `compactMetadata.preservedSegment`。恢复时 `apply
 compact 前: old... -> anchor -> head -> ... -> tail -> next
 compact 后: boundary/summary -> head -> ... -> tail -> next
 ```
-
-`snip` 和 compact 不同：compact 截断前缀，snip 删除中段。JSONL 不能真的删除旧行，所以 `applySnipRemovals()` 在内存 map 中删除 `removedUuids`，再把 dangling `parentUuid` 重连到最近未删除祖先。
 
 ### 旧链路修复
 
@@ -365,7 +358,7 @@ flowchart TD
   F --> G{fork session?}
   G -- no --> H[switchSession + adoptResumedSessionFile]
   G -- yes --> I[keep fresh sessionId + seed content replacement]
-  H --> J[restore mode/worktree/agent/context-collapse/cost]
+  H --> J[restore mode/worktree/agent/cost]
   I --> J
   J --> K[start REPL or print]
 ```
@@ -375,8 +368,8 @@ flowchart TD
 | 函数 | 责任 |
 |---|---|
 | `loadConversationForResume()` | 统一加载最近 session、sessionId、LogOption 或 JSONL path；补 lite log；复制 plan/file history；做 consistency check；反序列化和中断检测；返回 metadata。 |
-| `processResumedConversation()` | CLI interactive 启动恢复；切换或 fork session；恢复 cost、worktree、mode、agent setting、context-collapse、attribution。 |
-| `restoreSessionStateFromLog()` | 恢复 AppState 侧状态：file history、attribution、context-collapse、TodoWrite todos。 |
+| `processResumedConversation()` | CLI interactive 启动恢复；切换或 fork session；恢复 cost、worktree、mode、agent setting、attribution。 |
+| `restoreSessionStateFromLog()` | 恢复 AppState 侧状态：file history、attribution、TodoWrite todos。 |
 
 ### REPL `/resume`
 
@@ -425,7 +418,7 @@ REPL 内 resume 比 CLI 启动路径多了“从当前 session 切换到另一�
 |---|---|---|
 | API 前进程崩溃 | 用户 prompt 已由 `QueryEngine.ask()` 先写入。 | resume 看到普通 user，触发 `interrupted_prompt`。 |
 | streaming fallback 产生孤儿 assistant | yield tombstone，REPL 移除 UI message 并调用 `removeTranscriptMessage(uuid)`。 | 优先只改 JSONL 尾部 64KB；大文件目标不在尾部时跳过慢 rewrite。 |
-| prompt-too-long / media-too-large | streaming 阶段先 withheld；先 context-collapse drain，再 reactive compact；失败才暴露错误。 | compact 成功则写 boundary/summary 并重试；失败才写 API error message。 |
+| prompt-too-long / media-too-large | streaming 阶段先 withheld，再走 reactive compact；失败才暴露错误。 | compact 成功则写 boundary/summary 并重试；失败才写 API error message。 |
 | max_output_tokens | 先提高 max output override；仍失败则注入内部 recovery prompt 续写；耗尽才暴露错误。 | 内部 retry prompt 不一定成为普通 transcript，取决于是否 yield 到外层。 |
 | auto compact 关闭但到 blocking limit | 直接 yield prompt-too-long 风格 API error。 | 保留用户手动 `/compact` 空间。 |
 | abort during streaming/tools | 补齐缺失 tool_result，必要时 yield user interruption message。 | `reason === interrupt` 时跳过 interruption message，因为后续 queued user message 已提供上下文。 |
@@ -441,20 +434,18 @@ REPL 内 resume 比 CLI 启动路径多了“从当前 session 切换到另一�
 |---|---|---|
 | Raw transcript | JSONL 中所有 entry，包括旧历史、dead branch、metadata、sidechain。 | 磁盘持久化和审计。 |
 | UI scrollback | REPL 当前展示的消息，可能保留 compact 前历史和 collapsed UI group。 | 终端 UI。 |
-| Active query view | `getMessagesAfterCompactBoundary()` 后的消息，默认再投影 snip。 | `query.ts` 上下文管理。 |
+| Active query view | `getMessagesAfterCompactBoundary()` 后的消息。 | `query.ts` 上下文管理。 |
 | API wire view | `normalizeMessagesForAPI()` 后，过滤 system boundary、修复 tool pairing、插入 cache edits。 | Anthropic/OpenAI/Gemini 等 API client。 |
 
 每轮 query 的 active context 顺序：
 
-1. `getMessagesAfterCompactBoundary(messages)`：取最近 compact boundary 之后的 active slice，默认叠加 snip 投影。
+1. `getMessagesAfterCompactBoundary(messages)`：取最近 compact boundary 之后的 active slice。
 2. 删除旧 `toolUseResult` 原始 payload，只保留 API 需要的 `message.content`。
 3. `applyToolResultBudget()`：过大的 tool_result 替换为 preview/stub，并写 `content-replacement`。
-4. `snipCompactIfNeeded()`：`HISTORY_SNIP` 下删除中段历史。
-5. `microcompactMessages()`：time-based microcompact，再 cached microcompact。
-6. `contextCollapse.applyCollapsesIfNeeded()`：当前为 identity stub。
-7. `autoCompactIfNeeded()`：主动 compact，优先 session memory compact。
-8. predictive autocompact：API 前估算本 turn 增长，必要时提前 compact。
-9. API 真实超限后：context-collapse drain，再 reactive compact。
+4. `microcompactMessages()`：time-based microcompact，再 cached microcompact。
+5. `autoCompactIfNeeded()`：主动 compact，优先 session memory compact。
+6. predictive autocompact：API 前估算本 turn 增长，必要时提前 compact。
+7. API 真实超限后：reactive compact。
 
 ## Compact 与投影
 
@@ -468,7 +459,6 @@ REPL 内 resume 比 CLI 启动路径多了“从当前 session 切换到另一�
 | reactive compact | API 真实 413/media error 后 | `compactConversation()` | 是 | 当前 wrapper 取决于 compact 实现 | `hasAttemptedReactiveCompact` 防循环。 |
 | session memory compact | manual/auto 前置尝试 | session memory 文件 | 否 | 是 | 若 post-compact 仍超阈值，放弃并回退传统 compact。 |
 | microcompact | time/cached 小型压缩 | 局部清理或 API cache edit | 不一定 | 不适用 | 通常不改变 JSONL 主历史。 |
-| snip | `HISTORY_SNIP` | 删除中段 | 否 | 保留前后上下文 | 通过 snip metadata 投影，不物理删旧行。 |
 
 ### Compact 结果形态
 
@@ -547,26 +537,11 @@ boundary 本身是 system message，最后会被 API normalization 过滤；它�
 
 因为产物仍是标准 `CompactionResult`，下游写 transcript 和恢复逻辑与传统 compact 共用。
 
-### Context-collapse 当前状态
+### Context-collapse 已移除
 
-本仓库保留了 context-collapse 的持久化接口，但核心实现是 stub：
+context-collapse（marble origami）的 stub 实现和持久化接口已从本仓库移除：`src/services/contextCollapse/` 目录、`recordContextCollapseCommit()` / `recordContextCollapseSnapshot()` 写入接口，以及 `marble-origami-commit` / `marble-origami-snapshot` 两种 JSONL entry 都不再存在，loader 也不再收集它们。
 
-| 模块 | 当前行为 |
-|---|---|
-| `contextCollapse/index.ts` | `applyCollapsesIfNeeded()` 返回原 messages；`recoverFromOverflow()` 返回 committed=0；`isWithheldPromptTooLong()` 恒 false。 |
-| `contextCollapse/operations.ts` | `projectView()` 是 identity。 |
-| `contextCollapse/persist.ts` | `restoreFromEntries()` 是 no-op。 |
-
-已预留 JSONL entry：
-
-| Entry | 写入接口 | 内容 |
-|---|---|---|
-| `marble-origami-commit` | `recordContextCollapseCommit()` | `collapseId`、summary UUID/content、archived span 边界。 |
-| `marble-origami-snapshot` | `recordContextCollapseSnapshot()` | staged spans、armed、lastSpawnTokens。 |
-
-loader 会收集这些 entry；遇到 compact boundary 时会清空旧 commits/snapshot，避免它们引用已被 compact 丢弃的 UUID。
-
-所以当前真实生效的上下文缩减主要是 compact、session memory compact、tool_result budget、microcompact 和 snip；context-collapse 只是接口已接好。
+所以当前真实生效的上下文缩减是 compact、session memory compact、tool_result budget 和 microcompact。
 
 ### Compact 后清理
 
@@ -583,11 +558,10 @@ loader 会收集这些 entry；遇到 compact boundary 时会清空旧 commits/s
 
 只在主线程 compact 清：
 
-- context-collapse store。
 - `getUserContext` cache。
 - memory files cache。
 
-原因：subagent 和主线程同进程，共享模块级状态。`agent:*` compact 如果清主线程 context-collapse 或 memory cache，会破坏父会话状态。
+原因：subagent 和主线程同进程，共享模块级状态。`agent:*` compact 如果清主线程 `getUserContext` 或 memory cache，会破坏父会话状态。
 
 它明确不清 `resetSentSkillNames()`，避免 compact 后重新注入完整 skill listing，浪费 token 和 prompt cache。
 
@@ -595,10 +569,9 @@ loader 会收集这些 entry；遇到 compact boundary 时会清空旧 commits/s
 
 | 入口 | 本质 | 是否新主 session | 是否 subagent | 持久化位置 | 父会话看到什么 | 恢复方式 |
 |---|---|---:|---:|---|---|---|
-| `/branch` | 复制当前主 transcript 成新 JSONL | 是 | 否 | `<newSessionId>.jsonl` | 直接切到新分支会话 | 普通 session resume。 |
+| `/branch`（别名 `/fork`） | 复制当前主 transcript 成新 JSONL | 是 | 否 | `<newSessionId>.jsonl` | 直接切到新分支会话 | 普通 session resume。 |
 | `--fork-session` | resume/continue 时把旧消息作为新 session 初始消息 | 是 | 否 | 新 session 首次写入时 materialize | 启动即在新 session 中继续 | 新 session resume。 |
-| `/fork <directive>` | slash wrapper，调用 AgentTool fork | 否 | 是 | `subagents/agent-<id>.jsonl` + `.meta.json` | fork started + task notification | `resumeAgentBackground()`。 |
-| `AgentTool({ fork: true })` | Tool 层 fork 子 agent | 否 | 是 | `subagents/agent-<id>.jsonl` + `.meta.json` | sync final tool_result 或 async notification | `resumeAgentBackground()`。 |
+| `AgentTool` 省略 `subagent_type`（需 `FORK_SUBAGENT`） | Tool 层 fork 子 agent | 否 | 是 | `subagents/agent-<id>.jsonl` + `.meta.json` | sync final tool_result 或 async notification | `resumeAgentBackground()`。 |
 | 普通 AgentTool async | 后台本地 subagent | 否 | 是 | `subagents/agent-<id>.jsonl` + `.meta.json` | `async_launched` + task notification | `resumeAgentBackground()`。 |
 | remote AgentTool | CCR remote session | 否 | 远端 | `remote-agents/*.meta.json` | remote task output/notification | `restoreRemoteAgentTasks()` + CCR。 |
 
@@ -782,11 +755,11 @@ sequenceDiagram
 | JSONL 顺序就是会话顺序 | 恢复靠 leaf + `parentUuid`，不是简单顺序 replay。 |
 | compact 删除了旧历史 | compact 追加 boundary；旧历史仍在 raw transcript。 |
 | boundary 会发给模型 | boundary 是本地 system marker，API normalization 会过滤。 |
-| `/branch` 和 `/fork` 都是 fork | `/branch` 是新主 session；`/fork` 是 fork subagent sidechain。 |
+| `/fork` 会创建 fork subagent | `/fork` 现在只是 `/branch` 的别名（新主 session）；fork subagent 由 AgentTool 省略 `subagent_type` 触发，且需要默认关闭的 `FORK_SUBAGENT`。 |
 | `--fork-session` 等于 `/branch` | 它不是复制文件命令，而是 resume 时保持 fresh session ownership。 |
 | subagent 消息会进入主上下文 | 父会话只看到 Agent tool result/notification，完整内部消息在 sidechain。 |
 | remote agent 有本地 sidechain | remote 只有 sidecar 身份，执行状态来自 CCR。 |
-| context-collapse 已经真实压缩上下文 | 当前仓库中 context-collapse 核心实现是 stub。 |
+| context-collapse 已经真实压缩上下文 | context-collapse 的实现已从本仓库移除，当前没有任何 collapse 路径。 |
 
 ## 源码入口索引
 
@@ -807,7 +780,6 @@ sequenceDiagram
 | parent 链重建 | `buildConversationChain()`。 |
 | parallel tool_result 补回 | `recoverOrphanedParallelToolResults()`。 |
 | preserved segment | `applyPreservedSegmentRelinks()`。 |
-| snip removal | `applySnipRemovals()`。 |
 | CLI resume 加载 | `loadConversationForResume()`。 |
 | resume 状态切换 | `processResumedConversation()`。 |
 | AppState 恢复 | `restoreSessionStateFromLog()`。 |
@@ -819,9 +791,7 @@ sequenceDiagram
 | session memory compact | `src/services/compact/sessionMemoryCompact.ts`。 |
 | reactive compact | `src/services/compact/reactiveCompact.ts`。 |
 | post compact cleanup | `runPostCompactCleanup()`。 |
-| context-collapse stub | `src/services/contextCollapse/*`。 |
-| `/branch` | `src/commands/branch/branch.ts`。 |
-| `/fork` | `src/commands/fork/fork.tsx`。 |
+| `/branch`（别名 `/fork`） | `src/commands/branch/branch.ts` + `src/commands/branch/index.ts`。 |
 | AgentTool fork | `AgentTool.tsx` + `forkSubagent.ts`。 |
 | 普通 subagent 运行 | `runAgent.ts`。 |
 | agent resume | `resumeAgent.ts`。 |

@@ -29,7 +29,7 @@
 2. **`src/QueryEngine.ts`** — 预算超限错误消息添加 `--max-budget-usd` 指引
 3. **`src/components/Onboarding.tsx`** — 安全步骤标题改为 "Before you start, keep in mind"，条目文案更口语化
 4. **`src/components/TrustDialog/TrustDialog.tsx`** — 精简为两句核心信息，降低认知负荷
-5. **`src/cli/__tests__/userFacingErrorMessages.test.ts`** — 7 个测试验证消息内容包含关键引导信息
+5. **`src/cli/__tests__/userFacingErrorMessages.test.ts`** — 6 个测试验证消息内容包含关键引导信息
 
 ## 2026-05-05 — 第二轮权限与帮助系统 Design Review
 

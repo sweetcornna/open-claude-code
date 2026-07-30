@@ -58,13 +58,13 @@ AI 没有真正的"记忆"，Claude Code 通过精心分层营造了这个幻觉
 
 ### 4. Feature Flag 的全局开关
 
-`src/entrypoints/cli.tsx` 中一行代码决定了整个系统的行为：
+`src/entrypoints/cli.tsx` 只是从 `bun:bundle` 导入 `feature()`；真正决定系统行为的是 `scripts/defines.ts` 里的 `DEFAULT_BUILD_FEATURES`（本仓库 34 个）：
 
 ```typescript
-const feature = (_name: string) => false;
+import { feature } from 'bun:bundle';  // 未启用的 flag 在编译期被求值为 false 并 DCE 掉
 ```
 
-所有 `feature('FLAG_NAME')` 调用返回 `false`——这意味着 Anthropic 内部的实验功能（COORDINATOR_MODE、KAIROS、PROACTIVE 等）全部禁用。在官方构建中，这些 flag 通过 Bun 的 `bun:bundle` 在编译时注入，不同用户群体看到不同功能。
+未列入 `DEFAULT_BUILD_FEATURES`（`scripts/defines.ts`，本仓库默认启用 34 个）的 `feature('FLAG_NAME')` 调用在编译期被求值为 `false` 并被 DCE 掉；这些 flag（例如 `PROACTIVE`、`FORK_SUBAGENT`）并没有被删除，仍可用 `FEATURE_<NAME>=1` 单独开启。在官方构建中，这些 flag 通过 Bun 的 `bun:bundle` 在编译时注入，不同用户群体看到不同功能。
 
 这是一个**渐进式发布架构**：同一个代码库，通过 feature flag 控制功能可见性，而不需要维护多个分支。
 
