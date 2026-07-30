@@ -1,5 +1,6 @@
 import { execa } from 'execa'
 import { readFile, realpath } from 'fs/promises'
+import { occConfigPath } from 'src/config/paths.js'
 import { homedir } from 'os'
 import { delimiter, join, posix, win32 } from 'path'
 import { checkGlobalInstallPermissions } from './autoUpdater.js'
@@ -210,7 +211,7 @@ async function detectMultipleInstallations(): Promise<
   const installations: Array<{ type: string; path: string }> = []
 
   // Check for local installation
-  const localPath = join(homedir(), '.claude', 'local')
+  const localPath = occConfigPath('local')
   if (await localInstallationExists()) {
     installations.push({ type: 'npm-local', path: localPath })
   }

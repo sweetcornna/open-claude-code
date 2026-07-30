@@ -217,7 +217,7 @@ async function main(): Promise<void> {
   }
   clientRef.client = new Anthropic({ apiKey, logLevel: 'off' })
   const runsDir =
-    process.env.RESEARCH_RUNS_DIR ?? join(homedir(), '.claude', 'workflow-runs')
+    process.env.RESEARCH_RUNS_DIR ?? join(homedir(), '.occ', 'workflow-runs')
 
   const result = await runWorkflow({
     script: SMOKE_SCRIPT,
