@@ -1,5 +1,5 @@
 /**
- * research-report runner —— 直接用 @claude-code-best/workflow-engine 运行 workflow，
+ * research-report runner —— 直接用 @open-claude-code/workflow-engine 运行 workflow，
  * 完全绕开 Workflow 工具与核心 runAgent。agent() 后端直连 Anthropic SDK
  * （@anthropic-ai/sdk）：子 agent = 一次 messages.create。
  *
@@ -25,7 +25,7 @@ import {
   type AgentRunResult,
   type ProgressEvent,
   type WorkflowPorts,
-} from '@claude-code-best/workflow-engine'
+} from '@open-claude-code/workflow-engine'
 
 const SCRIPT_FILE = `${import.meta.dir}/research-report.workflow.mjs`
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-5'

@@ -1,4 +1,4 @@
-import type { ProgressEvent } from '@claude-code-best/workflow-engine'
+import type { ProgressEvent } from '@open-claude-code/workflow-engine'
 import type { ProgressBus } from './bus.js'
 
 export type AgentProgress = {

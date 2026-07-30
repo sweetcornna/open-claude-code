@@ -10,8 +10,8 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
-import { GREP_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/GrepTool/prompt.js'
-import { isReplModeEnabled } from '@claude-code-best/builtin-tools/tools/REPLTool/constants.js'
+import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/prompt.js'
+import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/constants.js'
 import { logForDebugging } from '../utils/debug.js'
 import { hasEmbeddedSearchTools } from '../utils/embeddedTools.js'
 import { isEnvTruthy } from '../utils/envUtils.js'

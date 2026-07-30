@@ -612,7 +612,7 @@ describe('AC18: VaultHttpFetch is in ALL_AGENT_DISALLOWED_TOOLS', () => {
     // (a) constant is imported
     expect(src).toContain('VAULT_HTTP_FETCH_TOOL_NAME')
     expect(src).toContain(
-      "from '@claude-code-best/builtin-tools/tools/VaultHttpFetchTool/constants.js'",
+      "from '@open-claude-code/builtin-tools/tools/VaultHttpFetchTool/constants.js'",
     )
     // (b) and used in the ALL_AGENT_DISALLOWED_TOOLS region.
     // Find the export and verify VAULT_HTTP_FETCH_TOOL_NAME appears before the

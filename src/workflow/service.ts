@@ -8,7 +8,7 @@ import {
   type WorkflowHostContext,
   type WorkflowInput,
   type WorkflowPorts,
-} from '@claude-code-best/workflow-engine'
+} from '@open-claude-code/workflow-engine'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getProjectRoot } from '../bootstrap/state.js'

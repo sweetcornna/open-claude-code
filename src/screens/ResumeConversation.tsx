@@ -18,8 +18,8 @@ import {
 import type { MCPServerConnection, ScopedMcpServerConfig } from '../services/mcp/types.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
 import type { Tool } from '../Tool.js';
-import type { AgentColorName } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
-import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
+import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
+import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { asSessionId } from '../types/ids.js';
 import type { LogOption } from '../types/logs.js';
 import type { Message } from '../types/message.js';
@@ -241,7 +241,7 @@ export function ResumeConversation({
         if (warning) {
           /* eslint-disable @typescript-eslint/no-require-imports */
           const { getAgentDefinitionsWithOverrides, getActiveAgentsFromList } =
-            require('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js');
+            require('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js');
           /* eslint-enable @typescript-eslint/no-require-imports */
           getAgentDefinitionsWithOverrides.cache.clear?.();
           const freshAgentDefs = await getAgentDefinitionsWithOverrides(getOriginalCwd());

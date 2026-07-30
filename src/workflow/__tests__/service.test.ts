@@ -17,7 +17,7 @@ import type {
   AgentRunResult,
   ProgressEvent,
   WorkflowPorts,
-} from '@claude-code-best/workflow-engine'
+} from '@open-claude-code/workflow-engine'
 
 // Construct FAKE ports: registry.run returns a fixed AgentRunResult, taskRegistrar has bindings,
 // journalStore is an in-memory empty impl. progressEmitter.emit → bus.emit (store subscribes to bus at construction).

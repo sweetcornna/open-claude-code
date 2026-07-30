@@ -10,7 +10,7 @@ import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { type AppState, useAppState, useSetAppState } from '../../state/AppState.js';
 import { getEmptyToolPermissionContext } from '../../Tool.js';
-import { AGENT_COLOR_TO_THEME_COLOR } from '@claude-code-best/builtin-tools/tools/AgentTool/agentColorManager.js';
+import { AGENT_COLOR_TO_THEME_COLOR } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
 import { truncateToWidth } from '../../utils/format.js';

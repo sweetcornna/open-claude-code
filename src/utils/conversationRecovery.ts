@@ -56,18 +56,18 @@ import type { ContentReplacementRecord } from './toolResultStorage.js'
 const BRIEF_TOOL_NAME: string | null =
   feature('KAIROS') || feature('KAIROS_BRIEF')
     ? (
-        require('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js') as typeof import('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js')
+        require('@open-claude-code/builtin-tools/tools/BriefTool/prompt.js') as typeof import('@open-claude-code/builtin-tools/tools/BriefTool/prompt.js')
       ).BRIEF_TOOL_NAME
     : null
 const LEGACY_BRIEF_TOOL_NAME: string | null =
   feature('KAIROS') || feature('KAIROS_BRIEF')
     ? (
-        require('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js') as typeof import('@claude-code-best/builtin-tools/tools/BriefTool/prompt.js')
+        require('@open-claude-code/builtin-tools/tools/BriefTool/prompt.js') as typeof import('@open-claude-code/builtin-tools/tools/BriefTool/prompt.js')
       ).LEGACY_BRIEF_TOOL_NAME
     : null
 const SEND_USER_FILE_TOOL_NAME: string | null = feature('KAIROS')
   ? (
-      require('@claude-code-best/builtin-tools/tools/SendUserFileTool/prompt.js') as typeof import('@claude-code-best/builtin-tools/tools/SendUserFileTool/prompt.js')
+      require('@open-claude-code/builtin-tools/tools/SendUserFileTool/prompt.js') as typeof import('@open-claude-code/builtin-tools/tools/SendUserFileTool/prompt.js')
     ).SEND_USER_FILE_TOOL_NAME
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */

@@ -122,22 +122,22 @@ afterEach(() => {
 describe('Agent Teams lifecycle', () => {
   test('runs TeamCreate -> spawn -> TaskUpdate -> SendMessage -> TeamDelete', async () => {
     const { TeamCreateTool } = await import(
-      '@claude-code-best/builtin-tools/tools/TeamCreateTool/TeamCreateTool.js'
+      '@open-claude-code/builtin-tools/tools/TeamCreateTool/TeamCreateTool.js'
     )
     const { spawnTeammate } = await import(
-      '@claude-code-best/builtin-tools/tools/shared/spawnMultiAgent.js'
+      '@open-claude-code/builtin-tools/tools/shared/spawnMultiAgent.js'
     )
     const { TaskCreateTool } = await import(
-      '@claude-code-best/builtin-tools/tools/TaskCreateTool/TaskCreateTool.js'
+      '@open-claude-code/builtin-tools/tools/TaskCreateTool/TaskCreateTool.js'
     )
     const { TaskUpdateTool } = await import(
-      '@claude-code-best/builtin-tools/tools/TaskUpdateTool/TaskUpdateTool.js'
+      '@open-claude-code/builtin-tools/tools/TaskUpdateTool/TaskUpdateTool.js'
     )
     const { SendMessageTool } = await import(
-      '@claude-code-best/builtin-tools/tools/SendMessageTool/SendMessageTool.js'
+      '@open-claude-code/builtin-tools/tools/SendMessageTool/SendMessageTool.js'
     )
     const { TeamDeleteTool } = await import(
-      '@claude-code-best/builtin-tools/tools/TeamDeleteTool/TeamDeleteTool.js'
+      '@open-claude-code/builtin-tools/tools/TeamDeleteTool/TeamDeleteTool.js'
     )
 
     const context = {
@@ -214,7 +214,7 @@ describe('Agent Teams lifecycle', () => {
 
   test('TeamDelete waits for active teammates to become inactive before cleanup', async () => {
     const { TeamDeleteTool } = await import(
-      '@claude-code-best/builtin-tools/tools/TeamDeleteTool/TeamDeleteTool.js'
+      '@open-claude-code/builtin-tools/tools/TeamDeleteTool/TeamDeleteTool.js'
     )
     const now = Date.now()
     writeTeamConfig('alpha', {

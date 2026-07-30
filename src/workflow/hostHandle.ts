@@ -2,7 +2,7 @@ import {
   createHostHandle,
   unwrapHostHandle,
   type HostHandle,
-} from '@claude-code-best/workflow-engine'
+} from '@open-claude-code/workflow-engine'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type { AssistantMessage } from '../types/message.js'
 import type { AgentId } from '../types/ids.js'

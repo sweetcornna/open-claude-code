@@ -3,7 +3,7 @@ import {
   workflowInputSchema,
   WORKFLOW_TOOL_NAME,
   type WorkflowToolDescriptor,
-} from '@claude-code-best/workflow-engine'
+} from '@open-claude-code/workflow-engine'
 import { buildTool, type Tool } from '../Tool.js'
 import { getWorkflowService } from './service.js'
 

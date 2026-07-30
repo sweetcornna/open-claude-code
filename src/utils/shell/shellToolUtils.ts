@@ -1,5 +1,5 @@
-import { BASH_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/BashTool/toolName.js'
-import { POWERSHELL_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/PowerShellTool/toolName.js'
+import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js'
+import { POWERSHELL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/PowerShellTool/toolName.js'
 import { isEnvDefinedFalsy } from '../envUtils.js'
 import { getPlatform } from '../platform.js'
 

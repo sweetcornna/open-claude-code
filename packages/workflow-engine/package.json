@@ -1,5 +1,5 @@
 {
-  "name": "@claude-code-best/workflow-engine",
+  "name": "@open-claude-code/workflow-engine",
   "version": "0.1.0",
   "description": "Deterministic JS script orchestration engine for multi-agent workflows. Zero core-layer runtime dependencies; talks to the world via port adapters.",
   "type": "module",

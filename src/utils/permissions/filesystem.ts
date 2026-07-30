@@ -6,17 +6,17 @@ import { homedir, tmpdir } from 'os'
 import { join, normalize, posix, sep } from 'path'
 import { BIN_NAME, occConfigPath, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { hasAutoMemPathOverride, isAutoMemPath } from 'src/memdir/paths.js'
-import { isAgentMemoryPath } from '@claude-code-best/builtin-tools/tools/AgentTool/agentMemory.js'
+import { isAgentMemoryPath } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js'
 import {
   CLAUDE_FOLDER_PERMISSION_PATTERN,
   FILE_EDIT_TOOL_NAME,
   GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
-} from '@claude-code-best/builtin-tools/tools/FileEditTool/constants.js'
+} from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
 import type { z } from 'zod/v4'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { AnyObject, Tool, ToolPermissionContext } from '../../Tool.js'
-import { FILE_READ_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/FileReadTool/prompt.js'
+import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js'
 import { getCwd } from '../cwd.js'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
 import {

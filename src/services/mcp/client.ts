@@ -50,13 +50,13 @@ import {
   type ToolCallProgress,
   toolMatchesName,
 } from '../../Tool.js'
-import { ListMcpResourcesTool } from '@claude-code-best/builtin-tools/tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
+import { ListMcpResourcesTool } from '@open-claude-code/builtin-tools/tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import {
   type MCPProgress,
   MCPTool,
-} from '@claude-code-best/builtin-tools/tools/MCPTool/MCPTool.js'
-import { createMcpAuthTool } from '@claude-code-best/builtin-tools/tools/McpAuthTool/McpAuthTool.js'
-import { ReadMcpResourceTool } from '@claude-code-best/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
+} from '@open-claude-code/builtin-tools/tools/MCPTool/MCPTool.js'
+import { createMcpAuthTool } from '@open-claude-code/builtin-tools/tools/McpAuthTool/McpAuthTool.js'
+import { ReadMcpResourceTool } from '@open-claude-code/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import { createAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
 import {
@@ -123,8 +123,8 @@ import { getLoggingSafeMcpBaseUrl } from './utils.js'
 import {
   isMcpSessionExpiredError as isMcpSessionExpiredErrorFromPackage,
   MAX_MCP_DESCRIPTION_LENGTH as PKG_MAX_MCP_DESCRIPTION_LENGTH,
-} from '@claude-code-best/mcp-client'
-import { recursivelySanitizeUnicode } from '@claude-code-best/mcp-client'
+} from '@open-claude-code/mcp-client'
+import { recursivelySanitizeUnicode } from '@open-claude-code/mcp-client'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fetchMcpSkillsForClient = feature('MCP_SKILLS')
@@ -136,7 +136,7 @@ const fetchMcpSkillsForClient = feature('MCP_SKILLS')
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { AssistantMessage } from 'src/types/message.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { classifyMcpToolForCollapse } from '@claude-code-best/builtin-tools/tools/MCPTool/classifyForCollapse.js'
+import { classifyMcpToolForCollapse } from '@open-claude-code/builtin-tools/tools/MCPTool/classifyForCollapse.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
 import { sleep } from '../../utils/sleep.js'
 import {

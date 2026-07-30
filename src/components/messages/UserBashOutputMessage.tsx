@@ -1,5 +1,5 @@
 import * as React from 'react';
-import BashToolResultMessage from '@claude-code-best/builtin-tools/tools/BashTool/BashToolResultMessage.js';
+import BashToolResultMessage from '@open-claude-code/builtin-tools/tools/BashTool/BashToolResultMessage.js';
 import { extractTag } from '../../utils/messages.js';
 
 export function UserBashOutputMessage({ content, verbose }: { content: string; verbose?: boolean }): React.ReactNode {

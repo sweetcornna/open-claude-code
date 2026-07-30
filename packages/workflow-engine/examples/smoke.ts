@@ -22,7 +22,7 @@ import {
   type AgentRunResult,
   type ProgressEvent,
   type WorkflowPorts,
-} from '@claude-code-best/workflow-engine'
+} from '@open-claude-code/workflow-engine'
 
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-5'
 const clientRef: { client: Anthropic | null } = { client: null }

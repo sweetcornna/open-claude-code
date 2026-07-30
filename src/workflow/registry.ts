@@ -1,4 +1,4 @@
-import { AgentAdapterRegistry } from '@claude-code-best/workflow-engine'
+import { AgentAdapterRegistry } from '@open-claude-code/workflow-engine'
 import { claudeCodeBackend } from './backends/claudeCodeBackend.js'
 
 /**

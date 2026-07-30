@@ -1,6 +1,6 @@
 // research-report.workflow.mjs
 // 技术研究报告 workflow。
-// 由 run.ts 通过 @claude-code-best/workflow-engine 的 runWorkflow() 直接执行——
+// 由 run.ts 通过 @open-claude-code/workflow-engine 的 runWorkflow() 直接执行——
 // 不经 Workflow 工具、不经核心 runAgent。脚本内的 agent / parallel / pipeline /
 // phase / log / args 均为引擎运行时注入的全局（见 src/engine/script.ts 的沙箱）。
 //

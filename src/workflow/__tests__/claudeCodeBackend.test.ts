@@ -1,10 +1,10 @@
 import { expect, test, mock } from 'bun:test'
 
 // Note: mock specifier must resolve to the same module that impl actually imports (bun mock.module
-// matches by resolved module). impl uses '@claude-code-best/builtin-tools/...' and 'src/*' alias
+// matches by resolved module). impl uses '@open-claude-code/builtin-tools/...' and 'src/*' alias
 // path imports, so the same specifier is used here.
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AgentTool/runAgent.js',
+  '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
   () => ({
     runAgent: async function* () {
       yield {
@@ -15,7 +15,7 @@ mock.module(
   }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AgentTool/agentToolUtils.js',
+  '@open-claude-code/builtin-tools/tools/AgentTool/agentToolUtils.js',
   () => ({
     finalizeAgentTool: () => ({
       content: [{ type: 'text', text: 'agent-text' }],
@@ -26,7 +26,7 @@ mock.module(
   }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js',
+  '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js',
   () => ({
     isBuiltInAgent: () => true,
   }),
@@ -87,7 +87,7 @@ mock.module('src/utils/worktree.js', () => ({
   },
 }))
 
-import { WorkflowAbortedError } from '@claude-code-best/workflow-engine'
+import { WorkflowAbortedError } from '@open-claude-code/workflow-engine'
 import {
   claudeCodeBackend,
   resolveAgentDefinition,
@@ -189,7 +189,7 @@ test('no isolation → no worktree created', async () => {
 test('runAgent throws → dead', async () => {
   // override mock so runAgent throws (last-write-wins)
   mock.module(
-    '@claude-code-best/builtin-tools/tools/AgentTool/runAgent.js',
+    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
     () => ({
       // biome-ignore lint/correctness/useYield: intentionally throws to test dead branch (no yield)
       runAgent: async function* () {
@@ -209,7 +209,7 @@ test('ctx.signal pre-abort → backend bridge: override.abortController.signal.a
   // use capturedOverride to expose the agentAbort created by backend (the override.abortController received by mock)
   let capturedController: AbortController | undefined
   mock.module(
-    '@claude-code-best/builtin-tools/tools/AgentTool/runAgent.js',
+    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
     () => ({
       runAgent: async function* (opts: {
         override?: { abortController?: AbortController }
@@ -235,7 +235,7 @@ test('ctx.signal pre-abort → backend bridge: override.abortController.signal.a
 
 test('runAgent throws AbortError → backend throws WorkflowAbortedError (not swallowed as dead)', async () => {
   mock.module(
-    '@claude-code-best/builtin-tools/tools/AgentTool/runAgent.js',
+    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
     () => ({
       // biome-ignore lint/correctness/useYield: intentionally throws AbortError to test recognition branch
       runAgent: async function* () {
@@ -253,7 +253,7 @@ test('runAgent throws AbortError → backend throws WorkflowAbortedError (not sw
 test('registerAgentAbort/unregisterAgentAbort injection: key=ctx.agentId (number), controller from bridge', async () => {
   // restore default mock (previous test changed it to throw AbortError)
   mock.module(
-    '@claude-code-best/builtin-tools/tools/AgentTool/runAgent.js',
+    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
     () => ({
       runAgent: async function* () {
         yield {

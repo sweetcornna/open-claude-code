@@ -85,72 +85,72 @@ mock.module('src/constants/systemPromptSections.js', () => ({
 
 // Tool name mocks
 mock.module(
-  '@claude-code-best/builtin-tools/tools/BashTool/toolName.js',
+  '@open-claude-code/builtin-tools/tools/BashTool/toolName.js',
   () => ({ BASH_TOOL_NAME: 'Bash' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/FileReadTool/prompt.js',
+  '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js',
   () => ({ FILE_READ_TOOL_NAME: 'Read' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/FileEditTool/constants.js',
+  '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js',
   () => ({ FILE_EDIT_TOOL_NAME: 'Edit' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/FileWriteTool/prompt.js',
+  '@open-claude-code/builtin-tools/tools/FileWriteTool/prompt.js',
   () => ({ FILE_WRITE_TOOL_NAME: 'Write' }),
 )
-mock.module('@claude-code-best/builtin-tools/tools/GlobTool/prompt.js', () => ({
+mock.module('@open-claude-code/builtin-tools/tools/GlobTool/prompt.js', () => ({
   GLOB_TOOL_NAME: 'Glob',
 }))
-mock.module('@claude-code-best/builtin-tools/tools/GrepTool/prompt.js', () => ({
+mock.module('@open-claude-code/builtin-tools/tools/GrepTool/prompt.js', () => ({
   GREP_TOOL_NAME: 'Grep',
 }))
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AgentTool/constants.js',
+  '@open-claude-code/builtin-tools/tools/AgentTool/constants.js',
   () => ({ AGENT_TOOL_NAME: 'Agent', VERIFICATION_AGENT_TYPE: 'verification' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AgentTool/forkSubagent.js',
+  '@open-claude-code/builtin-tools/tools/AgentTool/forkSubagent.js',
   () => ({ isForkSubagentEnabled: () => false }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AgentTool/builtInAgents.js',
+  '@open-claude-code/builtin-tools/tools/AgentTool/builtInAgents.js',
   () => ({ areExplorePlanAgentsEnabled: () => false }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AgentTool/built-in/exploreAgent.js',
+  '@open-claude-code/builtin-tools/tools/AgentTool/built-in/exploreAgent.js',
   () => ({
     EXPLORE_AGENT: { agentType: 'explore' },
     EXPLORE_AGENT_MIN_QUERIES: 5,
   }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/AskUserQuestionTool/prompt.js',
+  '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/prompt.js',
   () => ({ ASK_USER_QUESTION_TOOL_NAME: 'AskUserQuestion' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/TodoWriteTool/constants.js',
+  '@open-claude-code/builtin-tools/tools/TodoWriteTool/constants.js',
   () => ({ TODO_WRITE_TOOL_NAME: 'TodoWrite' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/TaskCreateTool/constants.js',
+  '@open-claude-code/builtin-tools/tools/TaskCreateTool/constants.js',
   () => ({ TASK_CREATE_TOOL_NAME: 'TaskCreate' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/DiscoverSkillsTool/prompt.js',
+  '@open-claude-code/builtin-tools/tools/DiscoverSkillsTool/prompt.js',
   () => ({ DISCOVER_SKILLS_TOOL_NAME: 'DiscoverSkills' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/SkillTool/constants.js',
+  '@open-claude-code/builtin-tools/tools/SkillTool/constants.js',
   () => ({ SKILL_TOOL_NAME: 'Skill' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/SleepTool/prompt.js',
+  '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js',
   () => ({ SLEEP_TOOL_NAME: 'Sleep' }),
 )
 mock.module(
-  '@claude-code-best/builtin-tools/tools/REPLTool/constants.js',
+  '@open-claude-code/builtin-tools/tools/REPLTool/constants.js',
   () => ({ isReplModeEnabled: () => false }),
 )
 

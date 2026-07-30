@@ -6,9 +6,9 @@ import {
 } from 'src/services/analytics/index.js';
 import { useSetAppState } from 'src/state/AppState.js';
 import type { Tools } from '../../../../Tool.js';
-import type { AgentDefinition } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { getActiveAgentsFromList } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { clearAgentDefinitionsCache } from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js';
+import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
+import { getActiveAgentsFromList } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
+import { clearAgentDefinitionsCache } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { editFileInEditor } from '../../../../utils/promptEditor.js';
 import { useWizard } from '../../../wizard/index.js';
 import { getNewAgentFilePath, saveAgentToFile } from '../../agentFileUtils.js';

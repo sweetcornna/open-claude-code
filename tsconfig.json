@@ -14,18 +14,18 @@
     "types": ["bun"],
     "paths": {
       "src/*": ["./src/*"],
-      "@claude-code-best/builtin-tools/*": ["./packages/builtin-tools/src/*"],
-      "@claude-code-best/builtin-tools": [
+      "@open-claude-code/builtin-tools/*": ["./packages/builtin-tools/src/*"],
+      "@open-claude-code/builtin-tools": [
         "./packages/builtin-tools/src/index.ts"
       ],
-      "@claude-code-best/mcp-client/*": ["./packages/mcp-client/src/*"],
-      "@claude-code-best/mcp-client": ["./packages/mcp-client/src/index.ts"],
-      "@claude-code-best/agent-tools/*": ["./packages/agent-tools/src/*"],
-      "@claude-code-best/agent-tools": ["./packages/agent-tools/src/index.ts"],
-      "@claude-code-best/workflow-engine/*": [
+      "@open-claude-code/mcp-client/*": ["./packages/mcp-client/src/*"],
+      "@open-claude-code/mcp-client": ["./packages/mcp-client/src/index.ts"],
+      "@open-claude-code/agent-tools/*": ["./packages/agent-tools/src/*"],
+      "@open-claude-code/agent-tools": ["./packages/agent-tools/src/index.ts"],
+      "@open-claude-code/workflow-engine/*": [
         "./packages/workflow-engine/src/*"
       ],
-      "@claude-code-best/workflow-engine": [
+      "@open-claude-code/workflow-engine": [
         "./packages/workflow-engine/src/index.ts"
       ]
     }

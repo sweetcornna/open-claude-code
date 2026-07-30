@@ -32,12 +32,12 @@ import {
 import type {
   AgentDefinition,
   AgentDefinitionsResult,
-} from '@claude-code-best/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import { SKILL_TOOL_NAME } from '@claude-code-best/builtin-tools/tools/SkillTool/constants.js'
+} from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+import { SKILL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SkillTool/constants.js'
 import {
   getLimitedSkillToolCommands,
   getSkillToolInfo as getSlashCommandInfo,
-} from '@claude-code-best/builtin-tools/tools/SkillTool/prompt.js'
+} from '@open-claude-code/builtin-tools/tools/SkillTool/prompt.js'
 import type {
   AssistantMessage,
   AttachmentMessage,
@@ -389,7 +389,7 @@ async function countBuiltInToolTokens(
   // Check if tool search is enabled
   const { isSearchExtraToolsEnabled } = await import('./searchExtraTools.js')
   const { isDeferredTool } = await import(
-    '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+    '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
   )
   const isDeferred = await isSearchExtraToolsEnabled(
     model ?? '',
@@ -675,7 +675,7 @@ export async function countMcpToolTokens(
   // isSearchExtraToolsEnabled handles threshold calculation internally for TstAuto mode
   const { isSearchExtraToolsEnabled } = await import('./searchExtraTools.js')
   const { isDeferredTool } = await import(
-    '@claude-code-best/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+    '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
   )
 
   const isDeferred = await isSearchExtraToolsEnabled(
