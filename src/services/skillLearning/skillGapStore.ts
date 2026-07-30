@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
@@ -249,7 +250,7 @@ async function writeSkillGapDraft(
   const instinct = createGapInstinct(gap, 'pending')
   const draftsRoot = join(
     project.projectRoot ?? project.cwd,
-    '.claude',
+    PROJECT_DIR_NAME,
     'skills',
     '.drafts',
   )

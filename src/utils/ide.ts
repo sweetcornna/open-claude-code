@@ -1,3 +1,4 @@
+import { legacyClaudeConfigDir } from 'src/config/paths.js'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import axios from 'axios'
 import { execa } from 'execa'
@@ -460,7 +461,16 @@ const getWindowsUserProfile = memoize(async (): Promise<string | undefined> => {
  * stat loop compounded startup latency.
  */
 export async function getIdeLockfilesPaths(): Promise<string[]> {
-  const paths: string[] = [join(getClaudeConfigHomeDir(), 'ide')]
+  // Both roots, deliberately. These lockfiles are WRITTEN by the IDE
+  // extension and only read here, and the extension in the marketplace is
+  // Anthropic's (`anthropic.claude-code`), which writes to ~/.claude/ide.
+  // Searching only occ's own root would silently break IDE integration for
+  // every user who has that extension installed. The Windows/WSL paths below
+  // are left on `.claude` for the same reason.
+  const paths: string[] = [
+    join(getClaudeConfigHomeDir(), 'ide'),
+    join(legacyClaudeConfigDir(), 'ide'),
+  ]
 
   if (getPlatform() !== 'wsl') {
     return paths

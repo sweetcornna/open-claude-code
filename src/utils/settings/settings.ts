@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { feature } from 'bun:bundle'
 import mergeWith from 'lodash-es/mergeWith.js'
 import { dirname, join, resolve } from 'path'
@@ -300,9 +301,9 @@ export function getRelativeSettingsFilePathForSource(
 ): string {
   switch (source) {
     case 'projectSettings':
-      return join('.claude', 'settings.json')
+      return join(PROJECT_DIR_NAME, 'settings.json')
     case 'localSettings':
-      return join('.claude', 'settings.local.json')
+      return join(PROJECT_DIR_NAME, 'settings.local.json')
   }
 }
 

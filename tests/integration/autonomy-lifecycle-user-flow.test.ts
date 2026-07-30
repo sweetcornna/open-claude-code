@@ -7,8 +7,12 @@
 // makes it usable from any cwd.
 //
 // CI runs `bun test` BEFORE `bun run build`, so we lazy-build cli.tsx in a
-// `beforeAll` if dist/cli.js is missing. Local runs after `bun run build`
-// just see the file and skip the build.
+// `beforeAll` when dist/cli.js is missing OR older than the newest file in
+// src/. The mtime check matters: with a bare existence check a stale bundle
+// silently satisfies it, and every assertion here compares in-process source
+// against that stale subprocess — which surfaces as a baffling assertion
+// failure rather than "rebuild your bundle".
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import {
   afterEach,
   beforeAll,
@@ -17,7 +21,7 @@ import {
   expect,
   test,
 } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -34,12 +38,59 @@ import { listAutonomyFlows } from '../../src/utils/autonomyFlows'
 const CLI_ENTRYPOINT = resolve(import.meta.dir, '../../dist/cli.js')
 const PROJECT_ROOT = resolve(import.meta.dir, '../..')
 
+/**
+ * True when any tracked source file is newer than the built bundle.
+ *
+ * Only src/ is walked: it is what the bundle is built from, and walking the
+ * whole repo would pull in node_modules.
+ */
+function isBundleStale(): boolean {
+  let bundleMtime: number
+  try {
+    bundleMtime = statSync(CLI_ENTRYPOINT).mtimeMs
+  } catch {
+    return true
+  }
+  const stack = [join(PROJECT_ROOT, 'src')]
+  while (stack.length > 0) {
+    const dir = stack.pop() as string
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules') {
+          stack.push(full)
+        }
+        continue
+      }
+      try {
+        if (statSync(full).mtimeMs > bundleMtime) return true
+      } catch {
+        // Raced with a delete — ignore.
+      }
+    }
+  }
+  return false
+}
+
 let tempDir = ''
 let configDir = ''
 let previousConfigDir: string | undefined
 
 async function ensureCliBundle(): Promise<void> {
-  if (existsSync(CLI_ENTRYPOINT)) return
+  // Rebuild when the bundle is missing OR older than the newest source file.
+  //
+  // This used to be a bare existsSync() check, which meant any stale dist/
+  // silently satisfied it — the in-process half of each assertion ran fresh
+  // source while the subprocess half ran whatever was built hours earlier.
+  // A change to a path constant then showed up as an inexplicable assertion
+  // failure rather than "your bundle is stale".
+  if (existsSync(CLI_ENTRYPOINT) && !isBundleStale()) return
   const proc = Bun.spawn({
     cmd: [process.execPath, 'run', 'build'],
     cwd: PROJECT_ROOT,
@@ -119,12 +170,12 @@ describe('autonomy lifecycle user-equivalent CLI flow', () => {
     expect(output).toContain('# Autonomy Deep Status')
     expect(output).toContain('Autonomy runs: 0')
     expect(output).toContain('Autonomy flows: 0')
-    expect(existsSync(join(tempDir, '.claude', 'autonomy', 'runs.json'))).toBe(
-      false,
-    )
-    expect(existsSync(join(tempDir, '.claude', 'autonomy', 'flows.json'))).toBe(
-      false,
-    )
+    expect(
+      existsSync(join(tempDir, PROJECT_DIR_NAME, 'autonomy', 'runs.json')),
+    ).toBe(false)
+    expect(
+      existsSync(join(tempDir, PROJECT_DIR_NAME, 'autonomy', 'flows.json')),
+    ).toBe(false)
   })
 
   test('real CLI can inspect, resume, and cancel a persisted managed flow', async () => {

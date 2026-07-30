@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   existsSync,
@@ -19,7 +20,7 @@ let skillsRoot: string
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'skill-learning-dedup-'))
-  skillsRoot = join(root, '.claude', 'skills')
+  skillsRoot = join(root, PROJECT_DIR_NAME, 'skills')
   mkdirSync(skillsRoot, { recursive: true })
 })
 

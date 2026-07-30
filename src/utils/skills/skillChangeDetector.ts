@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import chokidar, { type FSWatcher } from 'chokidar'
 import * as platformPath from 'path'
 import { getAdditionalDirectoriesForClaudeMd } from '../../bootstrap/state.js'
@@ -222,7 +223,11 @@ async function getWatchablePaths(): Promise<string[]> {
 
   // Additional directories (--add-dir) skills
   for (const dir of getAdditionalDirectoriesForClaudeMd()) {
-    const additionalSkillsPath = platformPath.join(dir, '.claude', 'skills')
+    const additionalSkillsPath = platformPath.join(
+      dir,
+      PROJECT_DIR_NAME,
+      'skills',
+    )
     try {
       await fs.stat(additionalSkillsPath)
       paths.push(additionalSkillsPath)

@@ -1,9 +1,10 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { readdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { getProjectRoot } from '../bootstrap/state.js'
 import { safeParseJSON } from './json.js'
 
-const WORKFLOW_RUNS_REL = join('.claude', 'workflow-runs')
+const WORKFLOW_RUNS_REL = join(PROJECT_DIR_NAME, 'workflow-runs')
 const MAX_WORKFLOW_RUNS = 200
 
 const WORKFLOW_RUN_STATUSES = ['running', 'completed', 'cancelled'] as const

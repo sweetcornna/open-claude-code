@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -69,7 +70,9 @@ describe('cronTasks baseline', () => {
     const fileTasks = await readCronTasks()
 
     expect(existsSync(filePath)).toBe(true)
-    expect(filePath).toBe(join(tempDir, '.claude', 'scheduled_tasks.json'))
+    expect(filePath).toBe(
+      join(tempDir, PROJECT_DIR_NAME, 'scheduled_tasks.json'),
+    )
     expect(fileTasks).toHaveLength(1)
     expect(fileTasks[0]).toMatchObject({
       id,

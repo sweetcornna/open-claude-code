@@ -1,3 +1,4 @@
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   existsSync,
@@ -50,7 +51,7 @@ afterEach(() => {
 
 describe('skill search prefetch', () => {
   test('auto-loads high-confidence project skill content', async () => {
-    const skillDir = join(root, '.claude', 'skills', 'feature-audit')
+    const skillDir = join(root, PROJECT_DIR_NAME, 'skills', 'feature-audit')
     mkdirSync(skillDir, { recursive: true })
     writeFileSync(
       join(skillDir, 'SKILL.md'),
