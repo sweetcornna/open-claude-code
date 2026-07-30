@@ -1,17 +1,18 @@
-import memoize from 'lodash-es/memoize.js'
-import { homedir } from 'os'
 import { join } from 'path'
+import { occConfigDir } from 'src/config/paths.js'
 
-// Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
-// tests that change the env var get a fresh value without explicit cache.clear.
-export const getClaudeConfigHomeDir = memoize(
-  (): string => {
-    return (
-      process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
-    ).normalize('NFC')
-  },
-  () => process.env.CLAUDE_CONFIG_DIR,
-)
+/**
+ * @deprecated Use `occConfigDir()` from `src/config/paths.ts` directly.
+ *
+ * Kept as a thin forwarder because ~120 call sites reference it. The real
+ * definition, the env precedence (`OCC_CONFIG_DIR` > `CLAUDE_CONFIG_DIR` >
+ * `~/.occ`) and the memoization all live in `src/config/paths.ts`.
+ *
+ * Note for `keychainPrefetch.ts`: `src/config/paths.ts` imports only
+ * `os`, `path` and `lodash-es/memoize`, all of which this module already
+ * pulled in, so routing through it adds no module-init cost to the prefetch.
+ */
+export const getClaudeConfigHomeDir = occConfigDir
 
 export function getTeamsDir(): string {
   return join(getClaudeConfigHomeDir(), 'teams')
