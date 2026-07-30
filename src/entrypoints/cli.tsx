@@ -87,6 +87,17 @@ async function main(): Promise<void> {
   const { profileCheckpoint } = await import('../utils/startupProfiler.js');
   profileCheckpoint('cli_entry');
 
+  // Fast-path for `occ migrate`. Must run before the normal bootstrap: a user
+  // migrating from Claude Code has no occ configuration yet, so the usual
+  // startup would show them the trust dialog and onboarding before the
+  // migration could run. Also registered in main.tsx so it appears in --help.
+  if (args[0] === 'migrate') {
+    profileCheckpoint('cli_migrate_path');
+    const { parseMigrateArgs, runMigrate } = await import('../cli/handlers/migrate.js');
+    const code = await runMigrate(parseMigrateArgs(args.slice(1)));
+    process.exit(code);
+  }
+
   // Fast-path for --dump-system-prompt: output the rendered system prompt and exit.
   // Used by prompt sensitivity evals to extract the system prompt at a specific commit.
   // Ant-only: eliminated from external builds via feature flag.
