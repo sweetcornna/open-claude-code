@@ -197,8 +197,8 @@ type State = {
   mainThreadAgentType: string | undefined
   // Remote mode (--remote flag)
   isRemoteMode: boolean
-  // Direct connect server URL (for display in header)
-  directConnectServerUrl: string | undefined
+  // Remote host/URL shown in the header (set by `claude ssh`)
+  remoteServerUrl: string | undefined
   // System prompt section cache state
   systemPromptSectionCache: Map<string, string | null>
   // Last date emitted to the model (for detecting midnight date changes)
@@ -389,7 +389,7 @@ function getInitialState(): State {
         }
       : {}),
     // Direct connect server URL
-    directConnectServerUrl: undefined,
+    remoteServerUrl: undefined,
     // System prompt section cache state
     systemPromptSectionCache: new Map(),
     // Last date emitted to the model
@@ -526,12 +526,12 @@ export function setCwdState(cwd: string): void {
   STATE.cwd = cwd.normalize('NFC')
 }
 
-export function getDirectConnectServerUrl(): string | undefined {
-  return STATE.directConnectServerUrl
+export function getRemoteServerUrl(): string | undefined {
+  return STATE.remoteServerUrl
 }
 
-export function setDirectConnectServerUrl(url: string): void {
-  STATE.directConnectServerUrl = url
+export function setRemoteServerUrl(url: string): void {
+  STATE.remoteServerUrl = url
 }
 
 export function addToTotalDurationState(

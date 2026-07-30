@@ -59,23 +59,16 @@ export const DEFAULT_BUILD_FEATURES = [
   'DAEMON', // 守护进程模式，长驻 supervisor 管理后台 worker（非 GB 级主因）
   'ACP', // ACP 代理协议，支持外部 agent 接入
   'WORKFLOW_SCRIPTS', // 工作流脚本（.claude/workflows/ 中的 YAML/MD）
-  // 'HISTORY_SNIP', // 已禁用：snip 功能暂时关闭
-  // 'CONTEXT_COLLAPSE', // 已禁用：实现是空壳 stub，启用后会抑制 auto compact 导致上下文管理完全失效
   'MONITOR_TOOL', // Monitor 工具，流式监控后台进程输出
-  // 'FORK_SUBAGENT',            // 已禁用：通过 Agent tool 的特殊方式实现了等效功能，无需再开
   'KAIROS', // Kairos 定时任务系统核心
   'COORDINATOR_MODE', // 多 worker 编排模式（AgentSummary 泄露已在 52b61c2c 修复）
-  // 'UDS_INBOX', // 进程间通信管道（inbox/pipe/peers 等命令）构建后 nodejs 环境卡住
-  // 'LAN_PIPES', // 局域网管道，依赖 UDS_INBOX  构建后 nodejs 环境卡住
   'BG_SESSIONS', // 后台会话管理（ps/logs/attach/kill）
   'TEMPLATES', // 模板任务（new/list/reply 子命令）
-  // 'REVIEW_ARTIFACT',          // 代码审查产物（API 请求无响应，待排查 schema 兼容性）
   // API content block types
   'CONNECTOR_TEXT', // Connector 文本块类型，扩展 API 内容格式
   // Attribution tracking
   'COMMIT_ATTRIBUTION', // Git 提交归属追踪（记录 AI 辅助贡献）
   // Server mode (claude server / claude open)
-  'DIRECT_CONNECT', // 直连模式（claude server / claude open）
   // Skill search & learning — feature flags compiled in (so the slash
   // commands /skill-* etc. exist), but the runtime "enabled" toggle
   // defaults to OFF (see featureCheck.ts). Operators turn on via the
@@ -89,8 +82,6 @@ export const DEFAULT_BUILD_FEATURES = [
   // 'SKILL_LEARNING',
   // P3: poor mode
   'POOR', // 穷鬼模式，跳过 extract_memories/prompt_suggestion 减少消耗
-  // Team Memory
-  // 'TEAMMEM',                  // 已禁用：依赖 COORDINATOR_MODE，邮箱文件无限增长
   // SSH Remote
   'SSH_REMOTE', // SSH 远程连接，本地 REPL + 远端工具执行
   // Autofix PR

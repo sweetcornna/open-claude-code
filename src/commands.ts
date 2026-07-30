@@ -1,9 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
-import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
-import goodClaude from './commands/good-claude/index.js'
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
@@ -55,7 +53,6 @@ import vaultCommand from './commands/vault/index.js'
 import localVaultCommand from './commands/local-vault/index.js'
 import localMemoryCommand from './commands/local-memory/index.js'
 import securityReview from './commands/security-review.js'
-import bughunter from './commands/bughunter/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
 import theme from './commands/theme/index.js'
@@ -90,9 +87,6 @@ const monitorCmd = feature('MONITOR_TOOL')
 const coordinatorCmd = feature('COORDINATOR_MODE')
   ? require('./commands/coordinator.js').default
   : null
-const forceSnip = feature('HISTORY_SNIP')
-  ? require('./commands/force-snip.js').default
-  : null
 const workflowsCmd = feature('WORKFLOW_SCRIPTS')
   ? (
       require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
@@ -121,37 +115,6 @@ const daemonCmd =
     : null
 const jobCmd = feature('TEMPLATES')
   ? require('./commands/job/index.js').default
-  : null
-const peersCmd = feature('UDS_INBOX')
-  ? (
-      require('./commands/peers/index.js') as typeof import('./commands/peers/index.js')
-    ).default
-  : null
-const attachCmd = feature('UDS_INBOX')
-  ? require('./commands/attach/index.js').default
-  : null
-const detachCmd = feature('UDS_INBOX')
-  ? require('./commands/detach/index.js').default
-  : null
-const sendCmd = feature('UDS_INBOX')
-  ? require('./commands/send/index.js').default
-  : null
-const pipesCmd = feature('UDS_INBOX')
-  ? require('./commands/pipes/index.js').default
-  : null
-const pipeStatusCmd = feature('UDS_INBOX')
-  ? require('./commands/pipe-status/index.js').default
-  : null
-const historyCmd = feature('UDS_INBOX')
-  ? require('./commands/history/index.js').default
-  : null
-const claimMainCmd = feature('UDS_INBOX')
-  ? require('./commands/claim-main/index.js').default
-  : null
-const forkCmd = feature('FORK_SUBAGENT')
-  ? (
-      require('./commands/fork/index.js') as typeof import('./commands/fork/index.js')
-    ).default
   : null
 const buddy = feature('BUDDY')
   ? (
@@ -185,18 +148,12 @@ import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
-import mockLimits from './commands/mock-limits/index.js'
 import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
 import summary from './commands/summary/index.js'
 import recap from './commands/recap/index.js'
 import skillLearning from './commands/skill-learning/index.js'
 import skillSearch from './commands/skill-search/index.js'
-import {
-  resetLimits,
-  resetLimitsNonInteractive,
-} from './commands/reset-limits/index.js'
-import antTrace from './commands/ant-trace/index.js'
 import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
 import tui, { tuiNonInteractive } from './commands/tui/index.js'
@@ -255,7 +212,6 @@ const usageReport: Command = {
     return real.getPromptForCommand(args, context)
   },
 }
-import oauthRefresh from './commands/oauth-refresh/index.js'
 import debugToolCall from './commands/debug-tool-call/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
 import {
@@ -279,19 +235,6 @@ export { getCommandName, isCommandEnabled } from './types/command.js'
 // Commands that get eliminated from the external build
 // Public-but-previously-locked commands moved to the main COMMANDS array below:
 //   commit, commitPushPr, bridgeKick, initVerifiers, autofixPr, onboarding
-// Remaining items here are truly Anthropic-internal (admin/diagnostics endpoints
-// with no fork backend), so they only show up under USER_TYPE=ant.
-export const INTERNAL_ONLY_COMMANDS = [
-  backfillSessions,
-  bughunter,
-  goodClaude,
-  mockLimits,
-  resetLimits,
-  resetLimitsNonInteractive,
-  antTrace,
-  oauthRefresh,
-].filter(Boolean)
-
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
@@ -368,7 +311,6 @@ const COMMANDS = memoize((): Command[] => [
   vim,
   webTools,
   ...(webCmd ? [webCmd] : []),
-  ...(forkCmd ? [forkCmd] : []),
   ...(buddy ? [buddy] : []),
   ...(poor ? [poor] : []),
   ...(goalCmd ? [goalCmd] : []),
@@ -390,21 +332,12 @@ const COMMANDS = memoize((): Command[] => [
   sandboxToggle,
   ...(!isUsing3PServices() ? [logout, login()] : []),
   passes,
-  ...(peersCmd ? [peersCmd] : []),
-  ...(attachCmd ? [attachCmd] : []),
-  ...(detachCmd ? [detachCmd] : []),
-  ...(sendCmd ? [sendCmd] : []),
-  ...(pipesCmd ? [pipesCmd] : []),
-  ...(pipeStatusCmd ? [pipeStatusCmd] : []),
-  ...(historyCmd ? [historyCmd] : []),
-  ...(claimMainCmd ? [claimMainCmd] : []),
   tasks,
   ...(workflowsCmd ? [workflowsCmd] : []),
   ...(ultraplan ? [ultraplan] : []),
   ...(torch ? [torch] : []),
   ...(daemonCmd ? [daemonCmd] : []),
   ...(jobCmd ? [jobCmd] : []),
-  ...(forceSnip ? [forceSnip] : []),
   summary,
   recap,
   skillLearning,
@@ -427,9 +360,6 @@ const COMMANDS = memoize((): Command[] => [
   tui,
   tuiNonInteractive,
   onboarding,
-  ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
-    ? INTERNAL_ONLY_COMMANDS
-    : []),
 ])
 
 export const builtInCommandNames = memoize(

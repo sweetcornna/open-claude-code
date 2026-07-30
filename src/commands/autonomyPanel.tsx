@@ -87,11 +87,6 @@ function AutonomyPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.Rea
         run: () => getAutonomyDeepSectionText('teams'),
       },
       {
-        label: 'Pipes',
-        description: 'Show UDS/named-pipe and LAN registry for terminal messaging',
-        run: () => getAutonomyDeepSectionText('pipes'),
-      },
-      {
         label: 'Runtime',
         description: 'Show daemon state and live background or interactive sessions',
         run: () => getAutonomyDeepSectionText('runtime'),

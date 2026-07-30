@@ -23,12 +23,6 @@ import { projectIsInGitRepo } from '../../utils/memory/versions.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 import { Select } from '../CustomSelect/index.js';
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM')
-  ? (require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js'))
-  : null;
-/* eslint-enable @typescript-eslint/no-require-imports */
-
 interface ExtendedMemoryFileInfo extends MemoryFileInfo {
   isNested?: boolean;
   exists: boolean;
@@ -55,11 +49,11 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
   const hasUserMemory = existingMemoryFiles.some(f => f.path === userMemoryPath);
   const hasProjectMemory = existingMemoryFiles.some(f => f.path === projectMemoryPath);
 
-  // Filter out AutoMem/TeamMem entrypoints: these are MEMORY.md files, and
-  // /memory already surfaces "Open auto-memory folder" / "Open team memory
-  // folder" options below. Listing the entrypoint file separately is redundant.
+  // Filter out AutoMem entrypoints: these are MEMORY.md files, and /memory
+  // already surfaces the "Open auto-memory folder" option below. Listing the
+  // entrypoint file separately is redundant.
   const allMemoryFiles: ExtendedMemoryFileInfo[] = [
-    ...existingMemoryFiles.filter(f => f.type !== 'AutoMem' && f.type !== 'TeamMem').map(f => ({ ...f, exists: true })),
+    ...existingMemoryFiles.filter(f => f.type !== 'AutoMem').map(f => ({ ...f, exists: true })),
     // Add User memory if it doesn't exist
     ...(hasUserMemory
       ? []
@@ -150,15 +144,6 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
       value: `${OPEN_FOLDER_PREFIX}${getAutoMemPath()}`,
       description: '',
     });
-
-    // Team memory directly below auto-memory (team dir is a subdir of auto dir)
-    if (feature('TEAMMEM') && teamMemPaths!.isTeamMemoryEnabled()) {
-      folderOptions.push({
-        label: 'Open team memory folder',
-        value: `${OPEN_FOLDER_PREFIX}${teamMemPaths!.getTeamMemPath()}`,
-        description: '',
-      });
-    }
 
     // Add agent memory folders for agents that have memory configured
     for (const agent of agentDefinitions.activeAgents) {

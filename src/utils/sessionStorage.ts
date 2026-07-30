@@ -44,8 +44,6 @@ import {
 import type { AttributionSnapshotMessage } from '../types/logs.js'
 import {
   type ContentReplacementEntry,
-  type ContextCollapseCommitEntry,
-  type ContextCollapseSnapshotEntry,
   type Entry,
   type FileHistorySnapshotMessage,
   type GoalState,
@@ -1228,14 +1226,6 @@ class Project {
         ? getAgentTranscriptPath(entry.agentId)
         : sessionFile
       void this.enqueueWrite(targetFile, entry)
-    } else if (entry.type === 'marble-origami-commit') {
-      // Always append. Commit order matters for restore (later commits may
-      // reference earlier commits' summary messages), so these must be
-      // written in the order received and read back sequentially.
-      void this.enqueueWrite(sessionFile, entry)
-    } else if (entry.type === 'marble-origami-snapshot') {
-      // Always append. Last-wins on restore — later entries supersede.
-      void this.enqueueWrite(sessionFile, entry)
     } else if (entry.type === 'goal') {
       void this.enqueueWrite(sessionFile, entry)
     } else if (entry.type === 'goal-cleared') {
@@ -1568,53 +1558,6 @@ export function adoptResumedSessionFile(): void {
   const project = getProject()
   project.sessionFile = getTranscriptPath()
   project.reAppendSessionMetadata(true)
-}
-
-/**
- * Append a context-collapse commit entry to the transcript. One entry per
- * commit, in commit order. On resume these are collected into an ordered
- * array and handed to restoreFromEntries() which rebuilds the commit log.
- */
-export async function recordContextCollapseCommit(commit: {
-  collapseId: string
-  summaryUuid: string
-  summaryContent: string
-  summary: string
-  firstArchivedUuid: string
-  lastArchivedUuid: string
-}): Promise<void> {
-  const sessionId = getSessionId() as UUID
-  if (!sessionId) return
-  await getProject().appendEntry({
-    type: 'marble-origami-commit',
-    sessionId,
-    ...commit,
-  })
-}
-
-/**
- * Snapshot the staged queue + spawn state. Written after each ctx-agent
- * spawn resolves (when staged contents may have changed). Last-wins on
- * restore — the loader keeps only the most recent snapshot entry.
- */
-export async function recordContextCollapseSnapshot(snapshot: {
-  staged: Array<{
-    startUuid: string
-    endUuid: string
-    summary: string
-    risk: number
-    stagedAt: number
-  }>
-  armed: boolean
-  lastSpawnTokens: number
-}): Promise<void> {
-  const sessionId = getSessionId() as UUID
-  if (!sessionId) return
-  await getProject().appendEntry({
-    type: 'marble-origami-snapshot',
-    sessionId,
-    ...snapshot,
-  })
 }
 
 export async function flushSessionStorage(): Promise<void> {
@@ -1993,89 +1936,6 @@ function applyPreservedSegmentRelinks(
 }
 
 /**
- * Delete messages that Snip executions removed from the in-memory array,
- * and relink parentUuid across the gaps.
- *
- * Unlike compact_boundary which truncates a prefix, snip removes
- * middle ranges. The JSONL is append-only, so removed messages stay on disk
- * and the surviving messages' parentUuid chains walk through them. Without
- * this filter, buildConversationChain reconstructs the full unsnipped history
- * and resume immediately PTLs (adamr-20260320-165831: 397K displayed → 1.65M
- * actual).
- *
- * Deleting alone is not enough: the surviving message AFTER a removed range
- * has parentUuid pointing INTO the gap. buildConversationChain would hit
- * messages.get(undefined) and stop, orphaning everything before the gap. So
- * after delete we relink: for each survivor with a dangling parentUuid, walk
- * backward through the removed region's own parent links to the first
- * non-removed ancestor.
- *
- * The boundary records removedUuids at execution time so we can replay the
- * exact removal on load. Older boundaries without removedUuids are skipped —
- * resume loads their pre-snip history (the pre-fix behavior).
- *
- * Mutates the Map in place.
- */
-function applySnipRemovals(messages: Map<UUID, TranscriptMessage>): void {
-  // Structural check — snipMetadata only exists on the boundary subtype.
-  // Avoids the subtype literal which is in excluded-strings.txt
-  // (HISTORY_SNIP is ant-only; the literal must not leak into external builds).
-  type WithSnipMeta = { snipMetadata?: { removedUuids?: UUID[] } }
-  const toDelete = new Set<UUID>()
-  for (const entry of messages.values()) {
-    const removedUuids = (entry as WithSnipMeta).snipMetadata?.removedUuids
-    if (!removedUuids) continue
-    for (const uuid of removedUuids) toDelete.add(uuid)
-  }
-  if (toDelete.size === 0) return
-
-  // Capture each to-delete entry's own parentUuid BEFORE deleting so we can
-  // walk backward through contiguous removed ranges. Entries not in the Map
-  // (already absent, e.g. from a prior compact_boundary prune) contribute no
-  // link; the relink walk will stop at the gap and pick up null (chain-root
-  // behavior — same as if compact truncated there, which it did).
-  const deletedParent = new Map<UUID, UUID | null>()
-  let removedCount = 0
-  for (const uuid of toDelete) {
-    const entry = messages.get(uuid)
-    if (!entry) continue
-    deletedParent.set(uuid, entry.parentUuid)
-    messages.delete(uuid)
-    removedCount++
-  }
-
-  // Relink survivors with dangling parentUuid. Walk backward through
-  // deletedParent until we hit a UUID not in toDelete (or null). Path
-  // compression: after resolving, seed the map with the resolved link so
-  // subsequent survivors sharing the same chain segment don't re-walk.
-  const resolve = (start: UUID): UUID | null => {
-    const path: UUID[] = []
-    let cur: UUID | null | undefined = start
-    while (cur && toDelete.has(cur)) {
-      path.push(cur)
-      cur = deletedParent.get(cur)
-      if (cur === undefined) {
-        cur = null
-        break
-      }
-    }
-    for (const p of path) deletedParent.set(p, cur)
-    return cur
-  }
-  let relinkedCount = 0
-  for (const [uuid, msg] of messages) {
-    if (!msg.parentUuid || !toDelete.has(msg.parentUuid)) continue
-    messages.set(uuid, { ...msg, parentUuid: resolve(msg.parentUuid) })
-    relinkedCount++
-  }
-
-  logEvent('tengu_snip_resume_filtered', {
-    removed_count: removedCount,
-    relinked_count: relinkedCount,
-  })
-}
-
-/**
  * O(n) single-pass: find the message with the latest timestamp matching a predicate.
  * Replaces the `[...values].filter(pred).sort((a,b) => Date(b)-Date(a))[0]` pattern
  * which is O(n log n) + 2n Date allocations.
@@ -2341,11 +2201,9 @@ export async function loadTranscriptFromFile(
       tags,
       fileHistorySnapshots,
       attributionSnapshots,
-      contextCollapseCommits,
-      contextCollapseSnapshot,
-      leafUuids,
       contentReplacements,
       worktreeStates,
+      leafUuids,
     } = await loadTranscriptFile(filePath)
 
     if (messages.size === 0) {
@@ -2381,13 +2239,6 @@ export async function loadTranscriptFromFile(
         undefined,
         contentReplacements.get(sessionId) ?? [],
       ),
-      contextCollapseCommits: contextCollapseCommits.filter(
-        e => e.sessionId === sessionId,
-      ),
-      contextCollapseSnapshot:
-        contextCollapseSnapshot?.sessionId === sessionId
-          ? contextCollapseSnapshot
-          : undefined,
       worktreeSession: worktreeStates.has(sessionId)
         ? worktreeStates.get(sessionId)
         : undefined,
@@ -3060,8 +2911,6 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       fileHistorySnapshots,
       attributionSnapshots,
       contentReplacements,
-      contextCollapseCommits,
-      contextCollapseSnapshot,
       leafUuids,
     } = await loadTranscriptFile(sessionFile)
 
@@ -3130,16 +2979,6 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       contentReplacements: sessionId
         ? (contentReplacements.get(sessionId) ?? [])
         : log.contentReplacements,
-      // Filter to the resumed session's entries. loadTranscriptFile reads
-      // the file sequentially so the array is already in commit order;
-      // filter preserves that.
-      contextCollapseCommits: sessionId
-        ? contextCollapseCommits.filter(e => e.sessionId === sessionId)
-        : undefined,
-      contextCollapseSnapshot:
-        sessionId && contextCollapseSnapshot?.sessionId === sessionId
-          ? contextCollapseSnapshot
-          : undefined,
     }
   } catch {
     // If loading fails, return the original log
@@ -3584,8 +3423,6 @@ export async function loadTranscriptFile(
   attributionSnapshots: Map<UUID, AttributionSnapshotMessage>
   contentReplacements: Map<UUID, ContentReplacementRecord[]>
   agentContentReplacements: Map<AgentId, ContentReplacementRecord[]>
-  contextCollapseCommits: ContextCollapseCommitEntry[]
-  contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
   leafUuids: Set<UUID>
 }> {
   const messages = new Map<UUID, TranscriptMessage>()
@@ -3608,10 +3445,6 @@ export async function loadTranscriptFile(
     AgentId,
     ContentReplacementRecord[]
   >()
-  // Array, not Map — commit order matters (nested collapses).
-  const contextCollapseCommits: ContextCollapseCommitEntry[] = []
-  // Last-wins — later entries supersede.
-  let contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
 
   try {
     // For large transcripts, avoid materializing megabytes of stale content.
@@ -3744,17 +3577,6 @@ export async function loadTranscriptFile(
           entry.parentUuid = progressBridge.get(entry.parentUuid) ?? null
         }
         messages.set(entry.uuid, entry)
-        // Compact boundary: prior marble-origami-commit entries reference
-        // messages that won't be in the post-boundary chain. The >5MB
-        // backward-scan path discards them naturally by never reading the
-        // pre-boundary bytes; the <5MB path reads everything, so discard
-        // here. Without this, getStats().collapsedSpans in /context
-        // overcounts (projectView silently skips the stale commits but
-        // they're still in the log).
-        if (isCompactBoundaryMessage(entry)) {
-          contextCollapseCommits.length = 0
-          contextCollapseSnapshot = undefined
-        }
       } else if (entry.type === 'summary' && entry.leafUuid) {
         summaries.set(entry.leafUuid, entry.summary)
       } else if (entry.type === 'custom-title' && entry.sessionId) {
@@ -3795,10 +3617,6 @@ export async function loadTranscriptFile(
           contentReplacements.set(entry.sessionId, existing)
           existing.push(...entry.replacements)
         }
-      } else if (entry.type === 'marble-origami-commit') {
-        contextCollapseCommits.push(entry)
-      } else if (entry.type === 'marble-origami-snapshot') {
-        contextCollapseSnapshot = entry
       }
     }
   } catch {
@@ -3806,7 +3624,6 @@ export async function loadTranscriptFile(
   }
 
   applyPreservedSegmentRelinks(messages)
-  applySnipRemovals(messages)
 
   // Compute leaf UUIDs once at load time
   // Only user/assistant messages should be considered as leaves for anchoring resume.
@@ -3911,8 +3728,6 @@ export async function loadTranscriptFile(
     attributionSnapshots,
     contentReplacements,
     agentContentReplacements,
-    contextCollapseCommits,
-    contextCollapseSnapshot,
     leafUuids,
   }
 }
@@ -3931,8 +3746,6 @@ async function loadSessionFile(sessionId: UUID): Promise<{
   fileHistorySnapshots: Map<UUID, FileHistorySnapshotMessage>
   attributionSnapshots: Map<UUID, AttributionSnapshotMessage>
   contentReplacements: Map<UUID, ContentReplacementRecord[]>
-  contextCollapseCommits: ContextCollapseCommitEntry[]
-  contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
 }> {
   const sessionFile = join(
     getSessionProjectDir() ?? getProjectDir(getOriginalCwd()),
@@ -4018,8 +3831,6 @@ export async function getLastSessionLog(
     attributionSnapshots,
     contentReplacements,
     goals,
-    contextCollapseCommits,
-    contextCollapseSnapshot,
   } = await loadSessionFile(sessionId)
   if (messages.size === 0) return null
   // Prime getSessionMessages cache so recordTranscript (called after REPL
@@ -4058,13 +3869,6 @@ export async function getLastSessionLog(
     ),
     worktreeSession: worktreeStates.get(sessionId),
     goal: goals.get(sessionId),
-    contextCollapseCommits: contextCollapseCommits.filter(
-      e => e.sessionId === sessionId,
-    ),
-    contextCollapseSnapshot:
-      contextCollapseSnapshot?.sessionId === sessionId
-        ? contextCollapseSnapshot
-        : undefined,
   }
 }
 

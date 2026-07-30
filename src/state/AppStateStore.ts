@@ -36,7 +36,6 @@ import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import type { SettingsJson } from '../utils/settings/types.js'
 import { shouldEnableThinkingByDefault } from '../utils/thinking.js'
-import type { PipeIpcState } from '../utils/pipeTransport.js'
 import type { Store } from './store.js'
 
 export type CompletionBoundary =
@@ -161,7 +160,6 @@ export type AppState = DeepImmutable<{
   // Always-on bridge: first-time remote dialog pending (set by /remote-control command)
   showRemoteCallout: boolean
   // Pipe IPC state — added at runtime when feature('PIPE_IPC') is enabled.
-  pipeIpc?: PipeIpcState
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
