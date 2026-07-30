@@ -54,9 +54,6 @@ bun run format            # format all (全项目)
 bun run check             # lint + format check (全项目)
 bun run check:fix         # lint + format auto-fix
 
-# Health check
-bun run health
-
 # Check unused exports
 bun run check:unused
 
@@ -70,7 +67,7 @@ bun run rcs
 bun run docs:dev
 ```
 
-详细的测试规范、覆盖状态和改进计划见 `docs/testing-spec.md`。
+测试规范见下方 [Testing](#testing) 章节。`docs/testing/SLASH-COMMANDS-TEST-CHECKLIST.md` 是 slash 命令的人工验收清单。
 
 ## Architecture
 
@@ -105,7 +102,7 @@ bun run docs:dev
    - `environment-runner` / `self-hosted-runner` — BYOC runner
    - `--tmux` + `--worktree` 组合
    - 默认路径：加载 `main.tsx` 启动完整 CLI
-2. **`src/main.tsx`** (~5674 行) — Commander.js CLI definition。注册大量 subcommands：`mcp` (serve/add/remove/list...)、`server`、`ssh`、`open`、`auth`、`plugin`、`agents`、`auto-mode`、`doctor`、`update` 等。主 `.action()` 处理器负责权限、MCP、会话恢复、REPL/Headless 模式分发。
+2. **`src/main.tsx`** (~5400 行) — Commander.js CLI definition。注册 56 个 subcommand：`mcp` (serve/add/remove/list...)、`ssh`、`auth`、`plugin`、`agents`、`auto-mode`、`autonomy`、`remote-control`、`doctor`、`update` 等。主 `.action()` 处理器负责权限、MCP、会话恢复、REPL/Headless 模式分发。
 3. **`src/entrypoints/init.ts`** — One-time initialization (telemetry, config, trust dialog)。
 
 ### Core Loop
@@ -124,7 +121,7 @@ bun run docs:dev
 
 - **`src/Tool.ts`** — Tool interface definition (`Tool` type) and utilities (`findToolByName`, `toolMatchesName`).
 - **`src/tools.ts`** — Tool registry. Assembles the tool list; tools are imported from `@claude-code-best/builtin-tools` package. Some tools are conditionally loaded via `feature()` flags or `process.env.USER_TYPE`.
-- **`src/constants/tools.ts`** — `CORE_TOOLS` 白名单常量（30 个核心工具名），用于 `isDeferredTool` 白名单制判定。
+- **`src/constants/tools.ts`** — `CORE_TOOLS` 白名单常量（29 个核心工具名），用于 `isDeferredTool` 白名单制判定。
 - **`packages/builtin-tools/src/tools/`** — 58 个工具目录（含 shared/testing 等工具目录），通过 `@claude-code-best/builtin-tools` 包导出。主要分类：
   - **文件操作**: FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool
   - **Shell/执行**: BashTool, PowerShellTool, REPLTool
@@ -139,10 +136,10 @@ bun run docs:dev
 
 ### UI Layer (Ink)
 
-- **`src/ink.ts`** — Ink render wrapper with ThemeProvider injection.
+- **`src/interactiveHelpers.tsx`** — Ink render wrapper with ThemeProvider injection.
 - **`packages/@ant/ink/`** — Custom Ink framework（forked/internal），包含 components、core、hooks、keybindings、theme、utils。注意：不是 `src/ink/`。
 - **老控制台兼容模式** — `packages/@ant/ink/src/core/legacyConsole.ts`：检测 Windows build < 17763（无 ConPTY 的老系统，如 1709/LTSC 内网机器）时自动启用；`log-update.ts` 的渲染循环每约 1 秒（`LEGACY_CONSOLE_RESET_MS`）用一次全量重绘替换增量 diff，自愈老 conhost 的光标漂移花屏。`CLAUDE_CODE_LEGACY_CONSOLE=1`/`=0` 可强制开/关。其他环境完全不走此路径。
-- **`src/components/`** — 149 个组件目录/文件，渲染于终端 Ink 环境中。关键组件：
+- **`src/components/`** — 151 个组件目录/文件，渲染于终端 Ink 环境中。关键组件：
   - `App.tsx` — Root provider (AppState, Stats, FpsMetrics)
   - `Messages.tsx` / `MessageRow.tsx` — Conversation message rendering
   - `PromptInput/` — User input handling
@@ -179,6 +176,7 @@ bun run docs:dev
 | `packages/image-processor-napi/` | 图像处理（已恢复） |
 | `packages/modifiers-napi/` | 键盘修饰键检测（macOS FFI 实现） |
 | `packages/url-handler-napi/` | URL scheme 处理（环境变量 + CLI 参数读取） |
+| `packages/workflow-engine/` | Workflow 工具实现（`@claude-code-best/workflow-engine`，被 32 个文件引用） |
 
 `packages/` 下没有非 workspace 的辅助目录 —— 每个子目录都有 `package.json`。Langfuse 集成在 `src/services/langfuse/`（被 11 个生产文件引用），不是独立包。
 
@@ -226,11 +224,14 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - 连接器: `CONNECTOR_TEXT`, `COMMIT_ATTRIBUTION`
 - 实验性: `EXPERIMENTAL_SKILL_SEARCH`, `EXPERIMENTAL_SEARCH_EXTRA_TOOLS`
 - 模式: `POOR`, `SSH_REMOTE`
-- 编译进但运行时默认关: `SKILL_LEARNING`（由 `SKILL_LEARNING_ENABLED` 环境变量控制，不走 build flag）
+- 其他: `AUTOFIX_PR`（`/autofix-pr` 命令）, `GOAL`（持久化 thread goal）
+- **未**编译进默认列表: `SKILL_LEARNING`（`scripts/defines.ts` 里已注释掉，需显式 `FEATURE_SKILL_LEARNING=1` 才编译进；运行时另由 `SKILL_LEARNING_ENABLED` 控制）
 
 > `packages/weixin/`（微信 Channel）与整个 `DIRECT_CONNECT` 直连模式（`src/server/`、`useDirectConnect`、`claude server` / `claude open` / `cc://`）已于 2026-07 移除 —— 服务端全是 stub，客户端因 `parseConnectUrl` 返回空串而不可能连通。`claude ssh` 不受影响（它只依赖 `src/remote/`）。`src/plugins/bundled/` 现在没有任何内置 plugin，但注册表仍在用，保留为扩展点。
 >
-> 以下 flag 及其全部代码已于 2026-07 移除，不要再引用：`CONTEXT_COLLAPSE`、`FORK_SUBAGENT`、`UDS_INBOX`、`LAN_PIPES`、`REVIEW_ARTIFACT`、`TEAMMEM`、`HISTORY_SNIP`、`OVERFLOW_TEST_TOOL`。对应的 `/peers`、`/attach`、`/detach`、`/send`、`/pipes`、`/pipe-status`、`/history`、`/claim-main`、`/fork`、`/force-snip` 命令与 SnipTool / CtxInspectTool / ListPeersTool / ReviewArtifactTool / OverflowTestTool 一并删除。
+> 以下 flag 及其全部代码已于 2026-07 移除，不要再引用：`CONTEXT_COLLAPSE`、`UDS_INBOX`、`LAN_PIPES`、`REVIEW_ARTIFACT`、`TEAMMEM`、`HISTORY_SNIP`、`OVERFLOW_TEST_TOOL`。对应的 `/peers`、`/attach`、`/detach`、`/send`、`/pipes`、`/pipe-status`、`/history`、`/claim-main`、`/force-snip` 命令与 SnipTool / CtxInspectTool / ListPeersTool / ReviewArtifactTool / OverflowTestTool 一并删除。
+>
+> **`FORK_SUBAGENT` 并未被移除**（这份文档此前写错了）—— 它在 `scripts/defines.ts` 中一直是注释掉的状态（不进默认编译列表），但 `packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` 仍然存在，`isForkSubagentEnabled()` 有 8 个运行时门控点，`FEATURE_FORK_SUBAGENT=1 bun run dev` 可正常启用。只有 `/fork` slash 命令的独立实现被删除，该名字现在是 `/branch` 的 alias（`src/commands/branch/index.ts:6`）。
 
 **Dev mode 默认**: 与 build 相同的 34 个（`scripts/dev.ts:40` 同样读 `DEFAULT_BUILD_FEATURES`）。不在表里的 flag 必须显式 `FEATURE_<NAME>=1`。
 
@@ -297,7 +298,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 - **框架**: `bun:test`（内置断言 + mock）
 - **单元测试**: 就近放置于 `src/**/__tests__/`，文件名 `<module>.test.ts`
-- **集成测试**: `tests/integration/` — 6 个文件（cli-arguments, context-build, message-pipeline, tool-chain, autonomy-lifecycle-user-flow, dependency-overrides）
+- **集成测试**: `tests/integration/` — 7 个文件（cli-arguments, context-build, message-pipeline, tool-chain, autonomy-lifecycle-user-flow, dependency-overrides, goal-lifecycle）
 - **共享 mock/fixture**: `tests/mocks/`（api-responses, file-system, fixtures/）
 - **命名**: `describe("functionName")` + `test("behavior description")`，英文
 - **包测试**: `packages/` 下各包也有独立测试（如 `color-diff-napi` 11 tests）
