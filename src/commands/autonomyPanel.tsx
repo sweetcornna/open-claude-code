@@ -12,12 +12,7 @@ type AutonomyAction = {
   run: () => Promise<string>;
 };
 
-const BASE_AUTONOMY_PANEL_ACTION_COUNT = 14;
 const ACTION_LABEL_COLUMN_WIDTH = 24;
-
-export function getAutonomyPanelBaseActionCountForTests(): number {
-  return BASE_AUTONOMY_PANEL_ACTION_COUNT;
-}
 
 function AutonomyPanel({ onDone }: { onDone: LocalJSXCommandOnDone }): React.ReactNode {
   useRegisterOverlay('autonomy-panel');

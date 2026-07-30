@@ -101,8 +101,7 @@
             "pages": [
               "docs/features/coordinator-mode",
               "docs/features/fork-subagent",
-              "docs/features/daemon",
-              "docs/features/teammem"
+              "docs/features/daemon"
             ]
           },
           {
@@ -130,7 +129,6 @@
             "group": "上下文与自动化",
             "pages": [
               "docs/features/token-budget",
-              "docs/features/context-collapse",
               "docs/features/workflow-scripts",
               "docs/features/auto-dream"
             ]

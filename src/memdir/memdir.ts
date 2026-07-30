@@ -104,8 +104,6 @@ export function truncateEntrypointContent(raw: string): EntrypointTruncation {
  */
 export const DIR_EXISTS_GUIDANCE =
   'This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence).'
-export const DIRS_EXIST_GUIDANCE =
-  'Both directories already exist — write to them directly with the Write tool (do not run mkdir or check for their existence).'
 
 /**
  * Ensure a memory directory exists. Idempotent — called from loadMemoryPrompt
@@ -361,7 +359,7 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
 /**
  * Build the "Searching past context" section if the feature gate is enabled.
  */
-export function buildSearchingPastContextSection(autoMemDir: string): string[] {
+function buildSearchingPastContextSection(autoMemDir: string): string[] {
   if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_coral_fern', false)) {
     return []
   }
@@ -455,9 +453,9 @@ export async function loadMemoryPrompt(): Promise<string | null> {
       !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY) &&
       getInitialSettings().autoMemoryEnabled === false,
   })
-  // Gate on the GB flag directly, not isTeamMemoryEnabled() — that function
-  // checks isAutoMemoryEnabled() first, which is definitionally false in this
-  // branch. We want "was this user in the team-memory cohort at all."
+  // Gate on the GB flag directly, not on the auto-memory check, which is
+  // definitionally false in this branch. We want "was this user in the
+  // team-memory cohort at all."
   if (getFeatureValue_CACHED_MAY_BE_STALE('tengu_herring_clock', false)) {
     logEvent('tengu_team_memdir_disabled', {})
   }

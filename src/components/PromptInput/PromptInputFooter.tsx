@@ -22,8 +22,6 @@ import { CoordinatorTaskPanel, useCoordinatorTaskCount } from '../CoordinatorAge
 import { getLastAssistantMessageId, StatusLine, statusLineShouldDisplay } from '../StatusLine.js';
 import { Notifications } from './Notifications.js';
 import { PromptInputFooterLeftSide } from './PromptInputFooterLeftSide.js';
-
-// Inline pipe status is shown only after /pipes sets pipeIpc.statusVisible.
 import { PromptInputFooterSuggestions, type SuggestionItem } from './PromptInputFooterSuggestions.js';
 import { PromptInputHelpMenu } from './PromptInputHelpMenu.js';
 

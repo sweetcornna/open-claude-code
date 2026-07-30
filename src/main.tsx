@@ -4581,7 +4581,6 @@ async function run(): Promise<CommanderCommand> {
       await mcpResetChoicesHandler();
     });
 
-  // claude server
   // `claude ssh <host> [dir]` — registered here only so --help shows it.
   // The actual interactive flow is handled by early argv rewriting in main()
   // If commander reaches
