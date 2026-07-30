@@ -163,7 +163,11 @@ function getAnthropicEnvMetadata() {
 }
 
 function getBuildAgeMinutes(): number | undefined {
-  if (!MACRO.BUILD_TIME) return undefined
+  // `MACRO.BUILD_TIME` is substituted at build/dev time, but the bare `MACRO`
+  // global only exists via the cli.tsx fallback. Any entrypoint that skips it
+  // (bun test, direct module import) would otherwise throw here and take down
+  // the whole API request path for the sake of one telemetry field.
+  if (typeof MACRO === 'undefined' || !MACRO.BUILD_TIME) return undefined
   const buildTime = new Date(MACRO.BUILD_TIME).getTime()
   if (isNaN(buildTime)) return undefined
   return Math.floor((Date.now() - buildTime) / 60000)

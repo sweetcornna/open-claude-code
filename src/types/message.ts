@@ -102,8 +102,5 @@ export type CollapsedReadSearchGroup = {
   hookCount?: number
   hookInfos?: StopHookInfo[]
   relevantMemories?: { path: string; content: string; mtimeMs: number }[]
-  teamMemorySearchCount?: number
-  teamMemoryReadCount?: number
-  teamMemoryWriteCount?: number
   [key: string]: unknown
 }

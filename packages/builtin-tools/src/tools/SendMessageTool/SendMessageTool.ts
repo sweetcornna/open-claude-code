@@ -18,7 +18,6 @@ import { errorMessage } from 'src/utils/errors.js'
 import { truncate } from 'src/utils/format.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
-import { parseAddress } from 'src/utils/peerAddress.js'
 import { semanticBoolean } from 'src/utils/semanticBoolean.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import type { BackendType } from 'src/utils/swarm/backends/types.js'
@@ -69,9 +68,7 @@ const inputSchema = lazySchema(() =>
     to: z
       .string()
       .describe(
-        feature('UDS_INBOX')
-          ? `Recipient: teammate name, "*" for broadcast, "uds:<socket-path>" for a local peer, "bridge:<session-id>" for a Remote Control peer${feature('LAN_PIPES') ? ', or "tcp:<host>:<port>" for a LAN peer' : ''} (use ListPeers to discover)`
-          : 'Recipient: teammate name, or "*" for broadcast to all teammates',
+        'Recipient: teammate name, or "*" for broadcast to all teammates',
       ),
     summary: z
       .string()
@@ -129,39 +126,6 @@ export type SendMessageToolOutput =
   | BroadcastOutput
   | RequestOutput
   | ResponseOutput
-
-const UDS_INLINE_TOKEN_MARKER = '#token='
-
-function stripInlineUdsToken(target: string): string {
-  const markerIndex = target.indexOf(UDS_INLINE_TOKEN_MARKER)
-  return markerIndex === -1 ? target : target.slice(0, markerIndex)
-}
-
-function hasInlineUdsToken(to: string): boolean {
-  const addr = parseAddress(to)
-  // Empty-token markers are still inline-token attempts. Observable input
-  // redaction preserves "#token=" so cloned inputs remain rejected.
-  return addr.scheme === 'uds' && addr.target.includes(UDS_INLINE_TOKEN_MARKER)
-}
-
-function recipientForDisplay(to: string): string {
-  const addr = parseAddress(to)
-  if (addr.scheme !== 'uds') return to
-  return `uds:${stripInlineUdsToken(addr.target)}`
-}
-
-function redactInlineUdsTokenForRejection(to: string): string {
-  const addr = parseAddress(to)
-  if (addr.scheme !== 'uds') return to
-  const markerIndex = addr.target.indexOf(UDS_INLINE_TOKEN_MARKER)
-  if (markerIndex === -1) return to
-  return `uds:${addr.target.slice(0, markerIndex)}${UDS_INLINE_TOKEN_MARKER}`
-}
-
-function redactObservableInlineUdsToken(input: { to: string }): void {
-  if (!hasInlineUdsToken(input.to)) return
-  input.to = redactInlineUdsTokenForRejection(input.to)
-}
 
 function findTeammateColor(
   appState: {
@@ -578,7 +542,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     backfillObservableInput(input) {
       if (typeof input.to !== 'string') return
 
-      redactObservableInlineUdsToken(input as { to: string })
       if ('type' in input) return
 
       if (input.to === '*') {
@@ -586,7 +549,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
         if (typeof input.message === 'string') input.content = input.message
       } else if (typeof input.message === 'string') {
         input.type = 'message'
-        input.recipient = recipientForDisplay(input.to)
+        input.recipient = input.to
         input.content = input.message
       } else if (typeof input.message === 'object' && input.message !== null) {
         const msg = input.message as {
@@ -597,7 +560,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           feedback?: string
         }
         input.type = msg.type
-        input.recipient = recipientForDisplay(input.to)
+        input.recipient = input.to
         if (msg.request_id !== undefined) input.request_id = msg.request_id
         if (msg.approve !== undefined) input.approve = msg.approve
         const content = msg.reason ?? msg.feedback
@@ -606,7 +569,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     toAutoClassifierInput(input) {
-      const recipient = recipientForDisplay(input.to)
+      const recipient = input.to
       if (typeof input.message === 'string') {
         return `to ${recipient}: ${input.message}`
       }
@@ -621,29 +584,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     async checkPermissions(input, _context) {
-      if (feature('UDS_INBOX') && parseAddress(input.to).scheme === 'bridge') {
-        return {
-          behavior: 'ask' as const,
-          message: `Send a message to Remote Control session ${input.to}? It arrives as a user prompt on the receiving Claude (possibly another machine) via Anthropic's servers.`,
-          decisionReason: {
-            type: 'safetyCheck',
-            reason:
-              'Cross-machine bridge message requires explicit user consent',
-            classifierApprovable: false,
-          },
-        }
-      }
-      if (feature('LAN_PIPES') && parseAddress(input.to).scheme === 'tcp') {
-        return {
-          behavior: 'ask' as const,
-          message: `Send a message to LAN peer ${input.to}? This connects directly over TCP to a machine on your local network.`,
-          decisionReason: {
-            type: 'safetyCheck',
-            reason: 'Cross-machine LAN message requires explicit user consent',
-            classifierApprovable: false,
-          },
-        }
-      }
       return { behavior: 'allow' as const, updatedInput: input }
     },
 
@@ -655,27 +595,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           errorCode: 9,
         }
       }
-      const addr = parseAddress(input.to)
-      if (
-        (addr.scheme === 'bridge' ||
-          addr.scheme === 'uds' ||
-          addr.scheme === 'tcp') &&
-        addr.target.trim().length === 0
-      ) {
-        return {
-          result: false,
-          message: 'address target must not be empty',
-          errorCode: 9,
-        }
-      }
-      if (addr.scheme === 'uds' && hasInlineUdsToken(input.to)) {
-        return {
-          result: false,
-          message:
-            'uds addresses must not include inline auth tokens; use the ListPeers address',
-          errorCode: 9,
-        }
-      }
       if (input.to.includes('@')) {
         return {
           result: false,
@@ -683,46 +602,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             'to must be a bare teammate name or "*" — there is only one team per session',
           errorCode: 9,
         }
-      }
-      if (feature('UDS_INBOX') && parseAddress(input.to).scheme === 'bridge') {
-        // Structured-message rejection first — it's the permanent constraint.
-        // Showing "not connected" first would make the user reconnect only to
-        // hit this error on retry.
-        if (typeof input.message !== 'string') {
-          return {
-            result: false,
-            message:
-              'structured messages cannot be sent cross-session — only plain text',
-            errorCode: 9,
-          }
-        }
-        // postInterClaudeMessage derives from= via getReplBridgeHandle() —
-        // check handle directly for the init-timing window. Also check
-        // isReplBridgeActive() to reject outbound-only (CCR mirror) mode
-        // where the bridge is write-only and peer messaging is unsupported.
-        if (!getReplBridgeHandle() || !isReplBridgeActive()) {
-          return {
-            result: false,
-            message:
-              'Remote Control is not connected — cannot send to a bridge: target. Reconnect with /remote-control first.',
-            errorCode: 9,
-          }
-        }
-        return { result: true }
-      }
-      if (
-        feature('UDS_INBOX') &&
-        parseAddress(input.to).scheme === 'uds' &&
-        typeof input.message === 'string'
-      ) {
-        return { result: true }
-      }
-      if (
-        feature('LAN_PIPES') &&
-        parseAddress(input.to).scheme === 'tcp' &&
-        typeof input.message === 'string'
-      ) {
-        return { result: true }
       }
       if (typeof input.message === 'string') {
         if (!input.summary || input.summary.trim().length === 0) {
@@ -739,14 +618,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
         return {
           result: false,
           message: 'structured messages cannot be broadcast (to: "*")',
-          errorCode: 9,
-        }
-      }
-      if (feature('UDS_INBOX') && parseAddress(input.to).scheme !== 'other') {
-        return {
-          result: false,
-          message:
-            'structured messages cannot be sent cross-session — only plain text',
           errorCode: 9,
         }
       }
@@ -799,113 +670,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     async call(input, context, canUseTool, assistantMessage) {
-      if (typeof input.message === 'string') {
-        const addr = parseAddress(input.to)
-        if (addr.scheme === 'uds' && hasInlineUdsToken(input.to)) {
-          return {
-            data: {
-              success: false,
-              message:
-                'uds addresses must not include inline auth tokens; use the ListPeers address',
-            },
-          }
-        }
-      }
-
-      if (feature('UDS_INBOX') && typeof input.message === 'string') {
-        const addr = parseAddress(input.to)
-        if (addr.scheme === 'bridge') {
-          // Re-check handle — checkPermissions blocks on user approval (can be
-          // minutes). validateInput's check is stale if the bridge dropped
-          // during the prompt wait; without this, from="unknown" ships.
-          // Also re-check isReplBridgeActive for outbound-only mode.
-          if (!getReplBridgeHandle() || !isReplBridgeActive()) {
-            return {
-              data: {
-                success: false,
-                message: `Remote Control disconnected before send — cannot deliver to ${input.to}`,
-              },
-            }
-          }
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const { postInterClaudeMessage } =
-            require('src/bridge/peerSessions.js') as typeof import('src/bridge/peerSessions.js')
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          const result = (await postInterClaudeMessage(
-            addr.target,
-            input.message,
-          )) as { ok: boolean; error?: string }
-          const preview = input.summary || truncate(input.message, 50)
-          return {
-            data: {
-              success: result.ok,
-              message: result.ok
-                ? `”${preview}” → ${input.to}`
-                : `Failed to send to ${input.to}: ${result.error ?? 'unknown'}`,
-            },
-          }
-        }
-        if (addr.scheme === 'uds') {
-          const recipient = recipientForDisplay(input.to)
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const { sendToUdsSocket } =
-            require('src/utils/udsClient.js') as typeof import('src/utils/udsClient.js')
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          try {
-            await sendToUdsSocket(addr.target, input.message)
-            const preview = input.summary || truncate(input.message, 50)
-            return {
-              data: {
-                success: true,
-                message: `”${preview}” → ${recipient}`,
-              },
-            }
-          } catch (e) {
-            return {
-              data: {
-                success: false,
-                message: `Failed to send to ${recipient}: ${errorMessage(e)}`,
-              },
-            }
-          }
-        }
-        if (addr.scheme === 'tcp' && feature('LAN_PIPES')) {
-          const { parseTcpTarget } =
-            require('src/utils/peerAddress.js') as typeof import('src/utils/peerAddress.js')
-          const { PipeClient } =
-            require('src/utils/pipeTransport.js') as typeof import('src/utils/pipeTransport.js')
-          const ep = parseTcpTarget(addr.target)
-          if (!ep) {
-            return {
-              data: {
-                success: false,
-                message: `Invalid TCP target format: ${addr.target}. Expected host:port`,
-              },
-            }
-          }
-          try {
-            const client = new PipeClient(input.to, `send-${process.pid}`, ep)
-            await client.connect(5000)
-            client.send({ type: 'chat', data: input.message })
-            client.disconnect()
-            const preview = input.summary || truncate(input.message, 50)
-            return {
-              data: {
-                success: true,
-                message: `”${preview}” → ${input.to} (TCP ${ep.host}:${ep.port})`,
-              },
-            }
-          } catch (e) {
-            return {
-              data: {
-                success: false,
-                message: `Failed to send via TCP to ${input.to}: ${errorMessage(e)}`,
-              },
-            }
-          }
-        }
-      }
-
       // Route to in-process subagent by name or raw agentId before falling
       // through to ambient-team resolution. Stopped agents are auto-resumed.
       if (typeof input.message === 'string' && input.to !== '*') {

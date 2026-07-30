@@ -23,7 +23,6 @@ import {
   listRemoteTriggerAuditRecords,
 } from './remoteTriggerAudit.js'
 import { formatWorkflowRunsStatus, listWorkflowRuns } from './workflowRuns.js'
-import { formatPipeRegistryStatus } from './pipeStatus.js'
 import { formatRemoteControlLocalStatus } from './remoteControlStatus.js'
 
 type DeepStatusParams = {
@@ -39,7 +38,6 @@ export type AutonomyDeepStatusSectionId =
   | 'cron'
   | 'workflow-runs'
   | 'teams'
-  | 'pipes'
   | 'runtime'
   | 'remote-control'
   | 'remote-trigger'
@@ -181,11 +179,6 @@ export async function formatAutonomyDeepStatusSections({
     formatTeamsSection().then(content => ({
       id: 'teams' as const,
       title: 'Teams',
-      content,
-    })),
-    formatPipeRegistryStatus().then(content => ({
-      id: 'pipes' as const,
-      title: 'Pipes',
       content,
     })),
     formatRuntimeSection().then(content => ({

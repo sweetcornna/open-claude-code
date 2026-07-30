@@ -32,18 +32,6 @@ import { SkillPermissionRequest } from './SkillPermissionRequest/SkillPermission
 import { WebFetchPermissionRequest } from './WebFetchPermissionRequest/WebFetchPermissionRequest.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const ReviewArtifactTool = feature('REVIEW_ARTIFACT')
-  ? (
-      require('@claude-code-best/builtin-tools/tools/ReviewArtifactTool/ReviewArtifactTool.js') as typeof import('@claude-code-best/builtin-tools/tools/ReviewArtifactTool/ReviewArtifactTool.js')
-    ).ReviewArtifactTool
-  : null;
-
-const ReviewArtifactPermissionRequest = feature('REVIEW_ARTIFACT')
-  ? (
-      require('./ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.js') as typeof import('./ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.js')
-    ).ReviewArtifactPermissionRequest
-  : null;
-
 const WorkflowTool = feature('WORKFLOW_SCRIPTS')
   ? (require('../../workflow/wiring.js') as typeof import('../../workflow/wiring.js')).createWorkflowToolCore()
   : null;
@@ -82,8 +70,6 @@ function permissionComponentForTool(tool: Tool): React.ComponentType<PermissionR
       return BashPermissionRequest;
     case PowerShellTool:
       return PowerShellPermissionRequest;
-    case ReviewArtifactTool:
-      return ReviewArtifactPermissionRequest ?? FallbackPermissionRequest;
     case WebFetchTool:
       return WebFetchPermissionRequest;
     case NotebookEditTool:
@@ -170,10 +156,6 @@ function getNotificationMessage(toolUseConfirm: ToolUseConfirm): string {
 
   if (toolUseConfirm.tool === EnterPlanModeTool) {
     return 'Claude Code wants to enter plan mode';
-  }
-
-  if (feature('REVIEW_ARTIFACT') && toolUseConfirm.tool === ReviewArtifactTool) {
-    return 'Claude needs your approval for a review artifact';
   }
 
   if (!toolName || toolName.trim() === '') {

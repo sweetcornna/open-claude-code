@@ -133,8 +133,6 @@ import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
 import { useRemoteSession } from '../hooks/useRemoteSession.js';
-import { useDirectConnect } from '../hooks/useDirectConnect.js';
-import type { DirectConnectConfig } from '../server/directConnectManager.js';
 import { useSSHSession } from '../hooks/useSSHSession.js';
 import { useAssistantHistory } from '../hooks/useAssistantHistory.js';
 import type { SSHSession } from '../ssh/createSSHSession.js';
@@ -277,7 +275,6 @@ import { useManagePlugins } from '../hooks/useManagePlugins.js';
 import { Messages } from '../components/Messages.js';
 import { TaskListV2 } from '../components/TaskListV2.js';
 import { TeammateViewHeader } from '../components/TeammateViewHeader.js';
-import { getPipeIpc } from '../utils/pipeTransport.js';
 import { useTasksV2WithCollapseEffect } from '../hooks/useTasksV2.js';
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js';
 import type { MCPServerConnection } from '../services/mcp/types.js';
@@ -358,23 +355,6 @@ const useScheduledTasks = feature('AGENT_TRIGGERS') ? require('../hooks/useSched
 const useGoalContinuation: typeof import('../hooks/useGoalContinuation.js').useGoalContinuation | null = feature('GOAL')
   ? require('../hooks/useGoalContinuation.js').useGoalContinuation
   : null;
-const useMasterMonitor = feature('UDS_INBOX')
-  ? require('../hooks/useMasterMonitor.js').useMasterMonitor
-  : () => undefined;
-const useSlaveNotifications = feature('UDS_INBOX')
-  ? require('../hooks/useSlaveNotifications.js').useSlaveNotifications
-  : () => undefined;
-const usePipeIpc = feature('UDS_INBOX') ? require('../hooks/usePipeIpc.js').usePipeIpc : () => undefined;
-const usePipeRelay = feature('UDS_INBOX')
-  ? require('../hooks/usePipeRelay.js').usePipeRelay
-  : () => ({ relayPipeMessage: () => false, pipeReturnHadErrorRef: { current: false } });
-const usePipePermissionForward = feature('UDS_INBOX')
-  ? require('../hooks/usePipePermissionForward.js').usePipePermissionForward
-  : () => undefined;
-const usePipeMuteSync = feature('UDS_INBOX') ? require('../hooks/usePipeMuteSync.js').usePipeMuteSync : () => undefined;
-const usePipeRouter = feature('UDS_INBOX')
-  ? require('../hooks/usePipeRouter.js').usePipeRouter
-  : () => ({ routeToSelectedPipes: () => false });
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { useTaskListWatcher } from '../hooks/useTaskListWatcher.js';
@@ -803,8 +783,6 @@ export type Props = {
   taskListId?: string;
   // Remote session config for --remote mode (uses CCR as execution engine)
   remoteSessionConfig?: RemoteSessionConfig;
-  // Direct connect config for `claude connect` mode (connects to a claude server)
-  directConnectConfig?: DirectConnectConfig;
   // SSH session for `claude ssh` mode (local REPL, remote tools over ssh)
   sshSession?: SSHSession;
   // Thinking configuration to use when thinking is enabled
@@ -851,7 +829,6 @@ export function REPL({
   disableSlashCommands = false,
   taskListId,
   remoteSessionConfig,
-  directConnectConfig,
   sshSession,
   thinkingConfig,
 }: Props): React.ReactNode {
@@ -1190,7 +1167,7 @@ export function REPL({
   const isQueryActive = React.useSyncExternalStore(queryGuard.subscribe, queryGuard.getSnapshot);
 
   // Separate loading flag for operations outside the local query guard:
-  // remote sessions (useRemoteSession / useDirectConnect) and foregrounded
+  // remote sessions (useRemoteSession / useSSHSession) and foregrounded
   // background tasks (useSessionBackgrounding). These don't route through
   // onQuery / queryGuard, so they need their own spinner-visibility state.
   // Initialize true if remote mode with initial prompt (CCR processing it).
@@ -1722,18 +1699,7 @@ export function REPL({
     setInProgressToolUseIDs,
   });
 
-  // Direct connect hook - manages WebSocket to a claude server for `claude connect` mode
-  const directConnect = useDirectConnect({
-    config: directConnectConfig,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools,
-  });
-
   // SSH session hook - manages ssh child process for `claude ssh` mode.
-  // Same callback shape as useDirectConnect; only the transport under the
-  // hood differs (ChildProcess stdin/stdout vs WebSocket).
   const sshRemote = useSSHSession({
     session: sshSession,
     setMessages,
@@ -1743,7 +1709,7 @@ export function REPL({
   });
 
   // Use whichever remote mode is active
-  const activeRemote = sshRemote.isRemoteMode ? sshRemote : directConnect.isRemoteMode ? directConnect : remoteSession;
+  const activeRemote = sshRemote.isRemoteMode ? sshRemote : remoteSession;
 
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
   const [submitCount, setSubmitCount] = useState(0);
@@ -3164,9 +3130,7 @@ export function REPL({
             // boundary to keep n bounded across multi-day sessions.
             if (isFullscreenEnvEnabled()) {
               setMessages(old => {
-                const postBoundary = getMessagesAfterCompactBoundary(old, {
-                  includeSnipped: true,
-                });
+                const postBoundary = getMessagesAfterCompactBoundary(old);
                 // Hard cap: keep at most 500 messages in fullscreen scrollback
                 // to prevent unbounded memory growth in multi-day sessions.
                 // normalizeMessages/applyGrouping are O(n), and Ink fiber
@@ -3270,34 +3234,6 @@ export function REPL({
                   priority: 'immediate',
                 });
               }
-            }
-          }
-          // Relay assistant response to master when in slave mode.
-          if (feature('UDS_INBOX') && newMessage.type === 'assistant') {
-            // Extract text from content blocks (API format)
-            const msg = newMessage.message as any;
-            const contentBlocks = msg?.content ?? (newMessage as any).content ?? [];
-            const textParts: string[] = [];
-            if (Array.isArray(contentBlocks)) {
-              for (const block of contentBlocks) {
-                if (typeof block === 'string') {
-                  textParts.push(block);
-                } else if (block?.type === 'text' && block.text) {
-                  textParts.push(block.text);
-                }
-              }
-            } else if (typeof contentBlocks === 'string') {
-              textParts.push(contentBlocks);
-            }
-            const text = textParts.join('\n').trim();
-            if ('isApiErrorMessage' in newMessage && newMessage.isApiErrorMessage) {
-              pipeReturnHadErrorRef.current = true;
-              relayPipeMessage({
-                type: 'error',
-                data: text || 'Slave request failed',
-              });
-            } else if (text) {
-              relayPipeMessage({ type: 'stream', data: text });
             }
           }
         },
@@ -3538,16 +3474,6 @@ export function REPL({
 
       queryCheckpoint('query_end');
 
-      if (feature('UDS_INBOX')) {
-        if (abortController.signal.aborted) {
-          pipeReturnHadErrorRef.current = true;
-          relayPipeMessage({
-            type: 'error',
-            data: 'Slave request was interrupted before completion.',
-          });
-        }
-      }
-
       // Capture ant-only API metrics before resetLoadingState clears the ref.
       // For multi-request turns (tool use loops), compute P50 across all requests.
       if (process.env.USER_TYPE === 'ant' && apiMetricsRef.current.length > 0) {
@@ -3659,7 +3585,6 @@ export function REPL({
       }
 
       try {
-        pipeReturnHadErrorRef.current = false;
         setWasAborted(false);
         // isLoading is derived from queryGuard — tryStart() above already
         // transitioned dispatching→running, so no setter call needed here.
@@ -3693,26 +3618,15 @@ export function REPL({
           }
         }
 
-        try {
-          await onQueryImpl(
-            latestMessages,
-            newMessages,
-            abortController,
-            shouldQuery,
-            additionalAllowedTools,
-            mainLoopModelParam,
-            effort,
-          );
-        } catch (error) {
-          if (feature('UDS_INBOX')) {
-            pipeReturnHadErrorRef.current = true;
-            relayPipeMessage({
-              type: 'error',
-              data: error instanceof Error ? error.message : String(error),
-            });
-          }
-          throw error;
-        }
+        await onQueryImpl(
+          latestMessages,
+          newMessages,
+          abortController,
+          shouldQuery,
+          additionalAllowedTools,
+          mainLoopModelParam,
+          effort,
+        );
       } finally {
         // queryGuard.end() atomically checks generation and transitions
         // running→idle. Returns false if a newer query owns the guard
@@ -3727,13 +3641,6 @@ export function REPL({
           resetLoadingState();
 
           await mrOnTurnComplete(messagesRef.current, abortController.signal.aborted);
-
-          if (feature('UDS_INBOX') && !pipeReturnHadErrorRef.current) {
-            relayPipeMessage({
-              type: 'done',
-              data: '',
-            });
-          }
 
           // Notify bridge clients that the turn is complete so mobile apps
           // can stop the spark animation and show post-turn UI.
@@ -3985,27 +3892,6 @@ export function REPL({
       // Resume loop mode if paused
       if (feature('PROACTIVE') || feature('KAIROS')) {
         proactiveModule?.resumeProactive();
-      }
-
-      // Route user input to selected pipe targets (extracted to usePipeRouter)
-      if (routeToSelectedPipes(input)) {
-        // Show the user's prompt in the message list so they can see what was sent
-        const userMessage = createUserMessage({ content: input });
-        setMessages(prev => [...prev, userMessage]);
-
-        if (!options?.fromKeybinding) {
-          addToHistory({
-            display: prependModeCharacterToInput(input, inputMode),
-            pastedContents,
-          });
-        }
-        setInputValue('');
-        helpers.setCursorOffset(0);
-        helpers.clearBuffer();
-        setPastedContents({});
-        setInputMode('prompt');
-        setIDESelection(undefined);
-        return;
       }
 
       // Handle immediate commands - these bypass the queue and execute right away
@@ -4585,19 +4471,6 @@ export function REPL({
       // Reset cached microcompact state so stale pinned cache edits
       // don't reference tool_use_ids from truncated messages
       resetMicrocompactState();
-      if (feature('CONTEXT_COLLAPSE')) {
-        // Rewind truncates the REPL array. Commits whose archived span
-        // was past the rewind point can't be projected anymore
-        // (projectView silently skips them) but the staged queue and ID
-        // maps reference stale uuids. Simplest safe reset: drop
-        // everything. The ctx-agent will re-stage on the next
-        // threshold crossing.
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        (
-          require('../services/contextCollapse/index.js') as typeof import('../services/contextCollapse/index.js')
-        ).resetContextCollapse();
-        /* eslint-enable @typescript-eslint/no-require-imports */
-      }
 
       // Restore state from the message we're rewinding to
       const permMode = message.permissionMode as InternalPermissionMode | undefined;
@@ -5057,8 +4930,6 @@ export function REPL({
     [onQuery, mainLoopModel, store],
   );
 
-  const { relayPipeMessage, pipeReturnHadErrorRef } = usePipeRelay();
-
   // Voice input integration (VOICE_MODE builds only)
   const voiceIntegrationResult = useVoiceIntegration({ setInputValueRaw, inputValueRef, insertTextRef });
   const voice = feature('VOICE_MODE')
@@ -5078,17 +4949,6 @@ export function REPL({
   });
 
   useMailboxBridge({ isLoading, onSubmitMessage: handleIncomingPrompt });
-  useMasterMonitor();
-  useSlaveNotifications();
-  const _pipeIpcState = useAppState(s => getPipeIpc(s));
-
-  usePipePermissionForward({ store, tools, setMessages, setToolUseConfirmQueue, getToolUseContext, mainLoopModel });
-  usePipeMuteSync({ setToolUseConfirmQueue });
-
-  // Pipe IPC lifecycle — extracted to usePipeIpc hook
-  usePipeIpc({ store, handleIncomingPrompt });
-  const { routeToSelectedPipes } = usePipeRouter({ store, setAppState, addNotification });
-
   // Scheduled tasks from .claude/scheduled_tasks.json (CronCreate/Delete/List)
   if (feature('AGENT_TRIGGERS')) {
     // Assistant mode bypasses the isLoading gate (the proactive tick →
@@ -5514,15 +5374,8 @@ export function REPL({
   // Handle shift+down for teammate navigation and background task management.
   // Guard onOpenBackgroundTasks when a local-jsx dialog (e.g. /mcp) is open —
   // otherwise Shift+Down stacks BackgroundTasksDialog on top and deadlocks input.
-  // Third case: Shift+Down toggles the pipe IPC selector panel when pipes are active.
   useBackgroundTaskNavigation({
     onOpenBackgroundTasks: isShowingLocalJSXCommand ? undefined : () => setShowBashesDialog(true),
-    onTogglePipeSelector: () => {
-      setAppState((prev: any) => {
-        const pIpc = prev.pipeIpc ?? {};
-        return { ...prev, pipeIpc: { ...pIpc, selectorOpen: !pIpc.selectorOpen } };
-      });
-    },
   });
   // Auto-exit viewing mode when teammate completes or errors
   useTeammateViewAutoExit();

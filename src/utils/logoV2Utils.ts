@@ -1,4 +1,4 @@
-import { getDirectConnectServerUrl, getSessionId } from '../bootstrap/state.js'
+import { getRemoteServerUrl, getSessionId } from '../bootstrap/state.js'
 import { stringWidth } from '@anthropic/ink'
 import type { LogOption } from '../types/logs.js'
 import { getSubscriptionName, isClaudeAISubscriber } from './auth.js'
@@ -246,7 +246,7 @@ export function getLogoDisplayData(): {
   agentName: string | undefined
 } {
   const version = process.env.DEMO_VERSION ?? MACRO.VERSION
-  const serverUrl = getDirectConnectServerUrl()
+  const serverUrl = getRemoteServerUrl()
   const displayPath = process.env.DEMO_VERSION
     ? '/code/claude'
     : getDisplayPath(getCwd())

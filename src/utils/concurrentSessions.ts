@@ -18,6 +18,18 @@ import { getAgentId } from './teammate.js'
 export type SessionKind = 'interactive' | 'bg' | 'daemon' | 'daemon-worker'
 export type SessionStatus = 'busy' | 'idle' | 'waiting'
 
+export type PeerSession = {
+  pid: number
+  sessionId?: string
+  cwd?: string
+  startedAt?: number
+  kind?: SessionKind
+  name?: string
+  entrypoint?: string
+  bridgeSessionId?: string | null
+  alive: boolean
+}
+
 function getSessionsDir(): string {
   return join(getClaudeConfigHomeDir(), 'sessions')
 }
@@ -83,9 +95,6 @@ export async function registerSession(): Promise<boolean> {
         startedAt: Date.now(),
         kind,
         entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT,
-        ...(feature('UDS_INBOX')
-          ? { messagingSocketPath: process.env.CLAUDE_CODE_MESSAGING_SOCKET }
-          : {}),
         ...(feature('BG_SESSIONS')
           ? {
               name: process.env.CLAUDE_CODE_SESSION_NAME,
@@ -201,4 +210,53 @@ export async function countConcurrentSessions(): Promise<number> {
     }
   }
   return count
+}
+
+/**
+ * List all live sessions from the PID registry. Sessions whose PID is no
+ * longer running are excluded (concurrentSessions handles cleanup).
+ */
+export async function listAllLiveSessions(): Promise<PeerSession[]> {
+  const dir = getSessionsDir()
+  let files: string[]
+  try {
+    files = await readdir(dir)
+  } catch (e) {
+    if (!isFsInaccessible(e)) {
+      logForDebugging(`[concurrentSessions] readdir failed: ${errorMessage(e)}`)
+    }
+    return []
+  }
+
+  const results: PeerSession[] = []
+
+  for (const file of files) {
+    if (!/^\d+\.json$/.test(file)) continue
+    const pid = parseInt(file.slice(0, -5), 10)
+
+    if (!isProcessRunning(pid)) {
+      // Stale — skip (concurrentSessions handles cleanup)
+      continue
+    }
+
+    try {
+      const raw = await readFile(join(dir, file), 'utf8')
+      const data = jsonParse(raw) as Record<string, unknown>
+      results.push({
+        pid,
+        sessionId: data.sessionId as string | undefined,
+        cwd: data.cwd as string | undefined,
+        startedAt: data.startedAt as number | undefined,
+        kind: data.kind as SessionKind | undefined,
+        name: data.name as string | undefined,
+        entrypoint: data.entrypoint as string | undefined,
+        bridgeSessionId: data.bridgeSessionId as string | null | undefined,
+        alive: true,
+      })
+    } catch {
+      // Corrupted file — skip
+    }
+  }
+
+  return results
 }

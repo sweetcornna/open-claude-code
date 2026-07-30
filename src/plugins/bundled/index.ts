@@ -14,11 +14,11 @@
  * 2. Call registerBuiltinPlugin() with the plugin definition here
  */
 
-import { registerWeixinBuiltinPlugin } from './weixin.js'
-
 /**
  * Initialize built-in plugins. Called during CLI startup.
+ *
+ * Currently empty — no plugin ships built-in. The registry itself
+ * (../builtinPlugins.js) is still live and used by /plugin, ChannelsNotice
+ * and pluginOperations, so this stays as the extension point.
  */
-export function initBuiltinPlugins(): void {
-  registerWeixinBuiltinPlugin()
-}
+export function initBuiltinPlugins(): void {}

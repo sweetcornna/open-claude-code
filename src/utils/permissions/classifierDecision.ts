@@ -29,11 +29,6 @@ const TERMINAL_CAPTURE_TOOL_NAME = feature('TERMINAL_PANEL')
       require('@claude-code-best/builtin-tools/tools/TerminalCaptureTool/prompt.js') as typeof import('@claude-code-best/builtin-tools/tools/TerminalCaptureTool/prompt.js')
     ).TERMINAL_CAPTURE_TOOL_NAME
   : null
-const OVERFLOW_TEST_TOOL_NAME = feature('OVERFLOW_TEST_TOOL')
-  ? (
-      require('@claude-code-best/builtin-tools/tools/OverflowTestTool/OverflowTestTool.js') as typeof import('@claude-code-best/builtin-tools/tools/OverflowTestTool/OverflowTestTool.js')
-    ).OVERFLOW_TEST_TOOL_NAME
-  : null
 const VERIFY_PLAN_EXECUTION_TOOL_NAME =
   process.env.USER_TYPE === 'ant'
     ? (
@@ -87,7 +82,6 @@ const SAFE_YOLO_ALLOWLISTED_TOOLS = new Set([
   SLEEP_TOOL_NAME,
   // Ant-only safe tools (gates mirror tools.ts)
   ...(TERMINAL_CAPTURE_TOOL_NAME ? [TERMINAL_CAPTURE_TOOL_NAME] : []),
-  ...(OVERFLOW_TEST_TOOL_NAME ? [OVERFLOW_TEST_TOOL_NAME] : []),
   ...(VERIFY_PLAN_EXECUTION_TOOL_NAME ? [VERIFY_PLAN_EXECUTION_TOOL_NAME] : []),
   // Internal classifier tool
   YOLO_CLASSIFIER_TOOL_NAME,

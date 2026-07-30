@@ -201,26 +201,6 @@ function MessageImpl({
         // Logged at creation time in createMicrocompactBoundaryMessage
         return null;
       }
-      if (feature('HISTORY_SNIP')) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const { isSnipBoundaryMessage } =
-          require('../services/compact/snipProjection.js') as typeof import('../services/compact/snipProjection.js');
-        const { isSnipMarkerMessage } =
-          require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
-        if (isSnipBoundaryMessage(message)) {
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const { SnipBoundaryMessage } =
-            require('./messages/SnipBoundaryMessage.js') as typeof import('./messages/SnipBoundaryMessage.js');
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          return <SnipBoundaryMessage message={message} />;
-        }
-        if (isSnipMarkerMessage(message)) {
-          // Internal registration marker — not user-facing. The boundary
-          // message (above) is what shows when snips actually execute.
-          return null;
-        }
-      }
       if (message.subtype === 'local_command') {
         return (
           <UserTextMessage

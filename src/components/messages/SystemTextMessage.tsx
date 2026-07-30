@@ -11,9 +11,6 @@ import { basename } from 'path';
 import { MessageResponse } from '../MessageResponse.js';
 
 import { openPath } from '../../utils/browser.js';
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemSaved = feature('TEAMMEM') ? (require('./teamMemSaved.js') as typeof import('./teamMemSaved.js')) : null;
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { TURN_COMPLETION_VERBS } from '../../constants/turnCompletionVerbs.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type {
@@ -347,12 +344,10 @@ function MemorySavedMessage({
 }): React.ReactNode {
   const bg = useSelectedMessageBg();
   const writtenPaths = (message.writtenPaths ?? []) as string[];
-  const team = feature('TEAMMEM') ? teamMemSaved!.teamMemSavedPart(message) : null;
-  const privateCount = writtenPaths.length - (team?.count ?? 0);
-  const parts = [
-    privateCount > 0 ? `${privateCount} ${privateCount === 1 ? 'memory' : 'memories'}` : null,
-    team?.segment as React.ReactNode,
-  ].filter(Boolean);
+  const privateCount = writtenPaths.length;
+  const parts = [privateCount > 0 ? `${privateCount} ${privateCount === 1 ? 'memory' : 'memories'}` : null].filter(
+    Boolean,
+  );
   return (
     <Box flexDirection="column" marginTop={addMargin ? 1 : 0} backgroundColor={bg}>
       <Box flexDirection="row">

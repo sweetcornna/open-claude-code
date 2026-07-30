@@ -81,21 +81,15 @@ describe('autonomy CLI handler', () => {
 
     expect(output).toContain('# Autonomy Deep Status')
     expect(output).toContain('## Workflow Runs')
-    expect(output).toContain('## Pipes')
     expect(output).toContain('## Remote Control')
     expect(output).toContain('## RemoteTrigger')
   })
 
   test('prints individual deep status sections for panel actions', async () => {
-    const pipes = await getAutonomyDeepSectionText('pipes', {
-      rootDir: tempDir,
-    })
     const remoteControl = await getAutonomyDeepSectionText('remote-control', {
       rootDir: tempDir,
     })
 
-    expect(pipes).toContain('# Pipes')
-    expect(pipes).toContain('Pipe registry:')
     expect(remoteControl).toContain('# Remote Control')
     expect(remoteControl).toContain('Remote Control:')
   })

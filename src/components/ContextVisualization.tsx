@@ -11,58 +11,6 @@ import { ContextSuggestions } from './ContextSuggestions.js';
 
 const RESERVED_CATEGORY_NAME = 'Autocompact buffer';
 
-/**
- * One-liner for the legend header showing what context-collapse has done.
- * Returns null when nothing's summarized/staged so we don't add visual
- * noise in the common case. This is the one place a user can see that
- * their context was rewritten — the <collapsed> placeholders are isMeta
- * and don't appear in the conversation view.
- */
-function CollapseStatus(): React.ReactNode {
-  if (feature('CONTEXT_COLLAPSE')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { getStats, isContextCollapseEnabled } =
-      require('../services/contextCollapse/index.js') as typeof import('../services/contextCollapse/index.js');
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    if (!isContextCollapseEnabled()) return null;
-
-    const s = getStats();
-    const { health: h } = s;
-
-    const parts: string[] = [];
-    if (s.collapsedSpans > 0) {
-      parts.push(`${s.collapsedSpans} ${plural(s.collapsedSpans, 'span')} summarized (${s.collapsedMessages} msgs)`);
-    }
-    if (s.stagedSpans > 0) parts.push(`${s.stagedSpans} staged`);
-    const summary =
-      parts.length > 0
-        ? parts.join(', ')
-        : h.totalSpawns > 0
-          ? `${h.totalSpawns} ${plural(h.totalSpawns, 'spawn')}, nothing staged yet`
-          : 'waiting for first trigger';
-
-    let line2: React.ReactNode = null;
-    if (h.totalErrors > 0) {
-      line2 = (
-        <Text color="warning">
-          Collapse errors: {h.totalErrors}/{h.totalSpawns} spawns failed
-          {h.lastError ? ` (last: ${h.lastError.slice(0, 60)})` : ''}
-        </Text>
-      );
-    } else if (h.emptySpawnWarningEmitted) {
-      line2 = <Text color="warning">Collapse idle: {h.totalEmptySpawns} consecutive empty runs</Text>;
-    }
-
-    return (
-      <>
-        <Text dimColor>Context strategy: collapse ({summary})</Text>
-        {line2}
-      </>
-    );
-  }
-  return null;
-}
-
 // Order for displaying source groups: Project > User > Managed > Plugin > Built-in
 const SOURCE_DISPLAY_ORDER = ['Project', 'User', 'Managed', 'Plugin', 'Built-in'];
 
@@ -167,7 +115,6 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           <Text dimColor>
             {model} · {formatTokens(totalTokens)}/{formatTokens(rawMaxTokens)} tokens ({percentage}%)
           </Text>
-          <CollapseStatus />
           {cacheHitRate !== undefined && cacheThreshold !== undefined && (
             <Text color={cacheHitRate < cacheThreshold ? 'warning' : undefined}>
               Cache hit rate: {cacheHitRate.toFixed(0)}%

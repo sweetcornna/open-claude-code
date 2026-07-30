@@ -92,23 +92,6 @@ export async function setup(
     // --messaging-socket-path is passed. Awaited so the server is bound
     // and $CLAUDE_CODE_MESSAGING_SOCKET is exported before any hook
     // (SessionStart in particular) can spawn and snapshot process.env.
-    if (feature('UDS_INBOX')) {
-      const m = await import('./utils/udsMessaging.js')
-      try {
-        await m.startUdsMessaging(
-          messagingSocketPath ?? m.getDefaultUdsSocketPath(),
-          { isExplicit: messagingSocketPath !== undefined },
-        )
-      } catch (error) {
-        logError(error)
-        console.error(
-          chalk.red(
-            `Error: Failed to start messaging socket (UDS_INBOX): ${errorMessage(error)}`,
-          ),
-        )
-        process.exit(1)
-      }
-    }
   }
 
   // Teammate snapshot — SIMPLE-only gate (no escape hatch, swarm not used in bare)
@@ -297,13 +280,6 @@ export async function setup(
   if (!isBareMode()) {
     initSessionMemory() // Synchronous - registers hook, gate check happens lazily
     initSkillLearning() // Synchronous - registers hook, gate check happens lazily
-    if (feature('CONTEXT_COLLAPSE')) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      ;(
-        require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js')
-      ).initContextCollapse()
-      /* eslint-enable @typescript-eslint/no-require-imports */
-    }
   }
   void lockCurrentVersion() // Lock current version to prevent deletion by other processes
   logForDiagnosticsNoPII('info', 'setup_background_jobs_launched')
@@ -367,11 +343,6 @@ export async function setup(
     void import('./utils/sessionFileAccessHooks.js').then(m =>
       m.registerSessionFileAccessHooks(),
     ) // Register session file access analytics hooks
-    if (feature('TEAMMEM')) {
-      void import('./services/teamMemorySync/watcher.js').then(m =>
-        m.startTeamMemoryWatcher(),
-      ) // Start team memory sync watcher
-    }
   }
   initSinks() // Attach error log + analytics sinks and drain queued events
 
