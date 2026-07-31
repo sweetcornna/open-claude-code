@@ -46,7 +46,7 @@ occ-bun       # 以 Bun 启动
 occ update    # 更新到最新版本
 ```
 
-> 旧的 `ccb` / `ccb-bun` 命令名仍然保留为别名，现有脚本不会断。
+> 2.8 之前的 `ccb` / `ccb-bun` 命令名已移除，沿用旧命令的脚本请改为 `occ` / `occ-bun`。
 
 > **安装/更新失败？** 先 `npm rm -g open-claude-code` 清理，再 `npm i -g open-claude-code@latest`。仍失败则指定版本号。
 

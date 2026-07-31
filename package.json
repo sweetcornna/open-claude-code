@@ -27,9 +27,7 @@
   "bin": {
     "occ": "dist/cli-node.js",
     "occ-bun": "dist/cli-bun.js",
-    "open-claude-code": "dist/cli-node.js",
-    "ccb": "dist/cli-node.js",
-    "ccb-bun": "dist/cli-bun.js"
+    "open-claude-code": "dist/cli-node.js"
   },
   "workspaces": [
     "packages/*",

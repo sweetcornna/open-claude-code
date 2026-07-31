@@ -48,7 +48,7 @@ occ-bun       # run on Bun
 occ update    # update to the latest version
 ```
 
-> The old `ccb` / `ccb-bun` names are kept as aliases, so existing scripts keep working.
+> The pre-2.8 `ccb` / `ccb-bun` names have been removed — scripts still calling them must switch to `occ` / `occ-bun`.
 
 ## Quick start (from source)
 
