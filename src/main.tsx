@@ -179,15 +179,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type { LogOption } from './types/logs.js';
 import type { Message as MessageType } from './types/message.js';
-import {
-  CLAUDE_IN_CHROME_SKILL_HINT,
-  CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER,
-} from './utils/claudeInChrome/prompt.js';
-import {
-  setupClaudeInChrome,
-  shouldAutoEnableClaudeInChrome,
-  shouldEnableClaudeInChrome,
-} from './utils/claudeInChrome/setup.js';
+import { setupChromeDevtools, shouldEnableChromeDevtools } from './utils/chromeDevtools/setup.js';
 import { getContextWindowForModel } from './utils/context.js';
 import { loadConversationForResume } from './utils/conversationRecovery.js';
 import { buildDeepLinkBanner } from './utils/deepLink/banner.js';
@@ -1371,8 +1363,8 @@ async function run(): Promise<CommanderCommand> {
       [] as string[],
     )
     .option('--disable-slash-commands', 'Disable all skills', () => true)
-    .option('--chrome', 'Enable Claude in Chrome integration')
-    .option('--no-chrome', 'Disable Claude in Chrome integration')
+    .option('--chrome', 'Enable Chrome browser tools (Chrome DevTools MCP)')
+    .option('--no-chrome', 'Disable Chrome browser tools')
     .option(
       '--file <specs...>',
       'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)',
@@ -1932,18 +1924,18 @@ async function run(): Promise<CommanderCommand> {
         }
       }
 
-      // Extract Claude in Chrome option and enforce claude.ai subscriber check (unless user is ant)
+      // Attach Google's chrome-devtools-mcp server when --chrome is active.
+      // Unlike the extension stack this replaced, it has no account gate: it is
+      // a local stdio subprocess with no Anthropic-side identity at all.
       const chromeOpts = options as { chrome?: boolean };
       // Store the explicit CLI flag so teammates can inherit it
       setChromeFlagOverride(chromeOpts.chrome);
-      const enableClaudeInChrome =
-        shouldEnableClaudeInChrome(chromeOpts.chrome) && (process.env.USER_TYPE === 'ant' || isClaudeAISubscriber());
-      const autoEnableClaudeInChrome = !enableClaudeInChrome && shouldAutoEnableClaudeInChrome();
+      const enableChromeDevtools = shouldEnableChromeDevtools(chromeOpts.chrome);
 
-      if (enableClaudeInChrome) {
+      if (enableChromeDevtools) {
         const platform = getPlatform();
         try {
-          logEvent('tengu_claude_in_chrome_setup', {
+          logEvent('tengu_chrome_devtools_setup', {
             platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           });
 
@@ -1951,7 +1943,7 @@ async function run(): Promise<CommanderCommand> {
             mcpConfig: chromeMcpConfig,
             allowedTools: chromeMcpTools,
             systemPrompt: chromeSystemPrompt,
-          } = setupClaudeInChrome();
+          } = setupChromeDevtools();
           dynamicMcpConfig = {
             ...dynamicMcpConfig,
             ...chromeMcpConfig,
@@ -1963,30 +1955,15 @@ async function run(): Promise<CommanderCommand> {
               : chromeSystemPrompt;
           }
         } catch (error) {
-          logEvent('tengu_claude_in_chrome_setup_failed', {
+          logEvent('tengu_chrome_devtools_setup_failed', {
             platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           });
-          logForDebugging(`[Claude in Chrome] Error: ${error}`);
+          logForDebugging(`[chrome-devtools] Error: ${error}`);
           logError(error);
-          console.error(`Error: ${error instanceof Error ? error.message : 'Failed to run with Claude in Chrome.'}`);
+          console.error(
+            `Error: ${error instanceof Error ? error.message : 'Failed to start the Chrome DevTools MCP server.'}`,
+          );
           process.exit(1);
-        }
-      } else if (autoEnableClaudeInChrome) {
-        try {
-          const { mcpConfig: chromeMcpConfig } = setupClaudeInChrome();
-          dynamicMcpConfig = {
-            ...dynamicMcpConfig,
-            ...chromeMcpConfig,
-          };
-
-          const hint =
-            feature('WEB_BROWSER_TOOL') && typeof Bun !== 'undefined' && 'WebView' in Bun
-              ? CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER
-              : CLAUDE_IN_CHROME_SKILL_HINT;
-          appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${hint}` : hint;
-        } catch (error) {
-          // Silently skip any errors for the auto-enable
-          logForDebugging(`[Claude in Chrome] Error (auto-enable): ${error}`);
         }
       }
 
@@ -2712,7 +2689,7 @@ async function run(): Promise<CommanderCommand> {
           permissionMode,
           allowDangerouslySkipPermissions,
           commands,
-          enableClaudeInChrome,
+          enableChromeDevtools,
           devChannels,
         );
         logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);

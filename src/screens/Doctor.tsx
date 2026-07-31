@@ -224,6 +224,15 @@ export function Doctor({ onDone }: Props): React.ReactNode {
           )
         </Text>
         {diagnostic.ripgrepStatus.note && <Text color="warning">└ Note: {diagnostic.ripgrepStatus.note}</Text>}
+        <Text>
+          └ Chrome (--chrome): {diagnostic.chromeStatus.version ?? 'not found'}
+          {diagnostic.chromeStatus.mode === 'browser-url'
+            ? ` (attaching to ${diagnostic.chromeStatus.browserUrl})`
+            : diagnostic.chromeStatus.mode === 'auto-connect'
+              ? ' (autoConnect)'
+              : ' (will launch its own browser)'}
+        </Text>
+        {diagnostic.chromeStatus.note && <Text color="warning">└ Note: {diagnostic.chromeStatus.note}</Text>}
 
         {/* Show recommendation if auto-updates are disabled */}
         {diagnostic.recommendation && (
