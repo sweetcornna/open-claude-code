@@ -77,7 +77,7 @@ The following areas are intentionally deferred because they require higher-cost 
 1. `useScheduledTasks.ts` hook-level runtime behavior
 2. `src/cli/print.ts` full headless scheduler loop behavior
 3. `useProactive.ts` hook timer behavior
-4. end-to-end queue interaction between proactive ticks and `SleepTool`
+4. end-to-end queue interaction between proactive ticks and `Monitor` wait_seconds timers
 
 ## Acceptance
 

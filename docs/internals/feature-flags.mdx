@@ -14,8 +14,8 @@ Claude Code 使用 Bun 打包器的 `bun:bundle` 模块提供编译时特性门�
 // 源码中的用法（src/tools.ts 等）
 import { feature } from 'bun:bundle'
 
-const SleepTool = feature('PROACTIVE') || feature('KAIROS')
-  ? require('@open-claude-code/builtin-tools/tools/SleepTool/SleepTool.js').SleepTool
+const RemoteTriggerTool = feature('AGENT_TRIGGERS')
+  ? require('@open-claude-code/builtin-tools/tools/RemoteTriggerTool/RemoteTriggerTool.js').RemoteTriggerTool
   : null
 ```
 

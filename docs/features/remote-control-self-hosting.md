@@ -294,7 +294,7 @@ ACP session 在 Web UI 中显示品牌色标签，与普通 Claude Code session 
 ### Web UI 看不到当前 Autopilot 状态
 
 - `standby`：proactive 已开启，正在等待下一个 tick
-- `sleeping`：模型正在 `SleepTool` 等待窗口中
+- `sleeping`：**遗留值**。Sleep 工具移除后不再有任何代码发出该状态，仅为兼容旧客户端保留在协议里
 
 这两个状态通过 worker `external_metadata.automation_state` 上报。如果页面只显示普通 working spinner，优先检查 CLI 和 RCS 之间的 worker metadata PUT 是否成功。
 

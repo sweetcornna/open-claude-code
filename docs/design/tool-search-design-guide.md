@@ -44,7 +44,7 @@ ToolSearch 采用 **延迟加载（Deferred Loading）** 模式：
 | Web | WebFetch, WebSearch |
 | 代码智能 | LSP |
 | 技能 | Skill |
-| 调度/监控 | Sleep |
+| 调度/监控 | Monitor |
 | 工具发现 | SearchExtraTools, ExecuteExtraTool, SyntheticOutput |
 
 **isDeferredTool 判定逻辑**（`packages/builtin-tools/src/tools/SearchExtraToolsTool/prompt.ts`）：

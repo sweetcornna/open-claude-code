@@ -1,7 +1,7 @@
 # KAIROS — 常驻助手模式
 
 > Feature Flag: `FEATURE_KAIROS=1`（及子 Feature）
-> 实现状态：核心框架完整，部分子模块为 stub；proactive/sleep 节奏控制已可用
+> 实现状态：核心框架完整，部分子模块为 stub；proactive 节奏控制已可用
 > 引用数：154（全库最大）
 
 ## 一、功能概述
@@ -45,8 +45,8 @@ KAIROS 在系统提示中注入两大段落：
 当 `feature('PROACTIVE') || feature('KAIROS')` 且 `isProactiveActive()` 时注入。核心行为指令：
 
 - **Tick 驱动**：通过 `<tick_tag>` prompt 保持存活，每个 tick 包含用户当前本地时间
-- **节奏控制**：使用 `SleepTool` 控制等待间隔（prompt cache 5 分钟过期）
-- **空操作时必须 Sleep**：禁止输出 "still waiting" 类文本（浪费 turn 和 token）
+- **节奏控制**：由 tick 调度器唤醒；需要定点唤醒时用 `Monitor` 的 `wait_seconds` 计时器（prompt cache 5 分钟过期）
+- **空操作时直接结束 turn**：禁止输出 "still waiting" 类文本（浪费 turn 和 token）
 - **偏向行动**：读文件、搜索代码、修改文件、commit — 都不需询问
 - **终端焦点感知**：`terminalFocus` 字段指示用户是否在看终端
   - Unfocused → 高度自主行动
@@ -68,15 +68,15 @@ KAIROS 在系统提示中注入两大段落：
 | Dream Task | `src/components/tasks/src/tasks/DreamTask/` | Stub | 记忆蒸馏任务 |
 | Memory Directory | `src/memdir/memdir.ts` | Stub | 记忆目录管理 |
 
-### 3.2 SleepTool（与 Proactive 共享）
+### 3.2 节奏控制（与 Proactive 共享）
 
-文件：`src/tools/SleepTool/prompt.ts`
+历史上 KAIROS/Proactive 靠一个专用的 `Sleep` 工具控制节奏。该工具已移除 —— 它在非 proactive 会话里必定立刻返回 `interrupted: true`（"Sleep interrupted after 0s"），且 tick 调度器本来就会重新唤醒模型。
 
-SleepTool 是 KAIROS/Proactive 的节奏控制核心。工具描述让模型理解"休眠"概念：
-- 工具名：`Sleep`
-- 功能：等待指定时间后响应 tick prompt；若队列出现新工作或 proactive 被关闭，会提前唤醒
-- 与 `<tick_tag>` 配合实现心跳式自主工作
-- 远程控制 surfaces 可通过 `automation_state` 看到 `standby` / `sleeping` 两种状态
+现在的模型：
+- 无事可做 → 直接结束 turn，等下一个 tick
+- 需要在某个时间点再看一眼 → `Monitor` 的 `wait_seconds` 模式后台计时，结束 turn，计时到点由 task notification 唤醒
+- 需要等一个*条件*成立 → `Monitor` 的 command 模式跑 until 循环
+- 远程控制 surfaces 通过 `automation_state` 可看到 `standby`；`sleeping` 是仅为兼容旧客户端保留的遗留值，不再发出
 
 ### 3.3 Bridge 集成
 
@@ -131,7 +131,7 @@ sessionRunner 创建/恢复 REPL session
 
 ## 四、关键设计决策
 
-1. **Tick 驱动而非事件驱动**：模型通过 SleepTool 自行控制唤醒频率，而非外部事件推送。简化架构但增加 API 调用开销
+1. **Tick 驱动而非事件驱动**：由 tick 调度器唤醒模型（模型可另起 Monitor 计时器做定点唤醒），而非外部事件推送。简化架构但增加 API 调用开销
 2. **KAIROS ⊃ PROACTIVE**：所有 proactive 检查都包含 KAIROS，无需同时开启两个 flag
 3. **Brief 显示/行为分离**：`/brief` toggle 只控制 UI 过滤，模型始终可以使用 BriefTool
 4. **Terminal Focus 感知**：模型根据用户是否在看终端自动调节自主程度
@@ -172,8 +172,7 @@ FEATURE_KAIROS=1 FEATURE_TOKEN_BUDGET=1 bun run dev
 | `src/assistant/sessionHistory.ts` | — | Session 历史（stub） |
 | `src/assistant/AssistantSessionChooser.ts` | — | Session 选择 UI（stub） |
 | `src/tools/BriefTool/` | — | BriefTool 实现（stub） |
-| `src/tools/SleepTool/prompt.ts` | ~30 | SleepTool 工具提示 |
-| `src/tools/SleepTool/SleepTool.ts` | ~200 | 休眠/唤醒与 automation metadata |
+| `packages/builtin-tools/src/tools/MonitorTool/MonitorTool.tsx` | ~230 | Monitor 工具（含 `wait_seconds` 计时器模式） |
 | `src/services/mcp/channelNotification.ts` | 5 | 频道消息接入（stub） |
 | `src/memdir/memdir.ts` | — | 记忆目录管理（stub） |
 | `src/constants/prompts.ts:557,847-918` | 72 | 系统提示注入 |
