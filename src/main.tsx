@@ -1405,7 +1405,7 @@ async function run(): Promise<CommanderCommand> {
       // apply as normal. REPL-typed messages already default to 'next'
       // priority (messageQueueManager.enqueue) so they drain mid-turn between
       // tool calls. SendUserMessage (BriefTool) is enabled via the brief env
-      // var. SleepTool stays disabled (its isEnabled() gates on proactive).
+      // var.
       // kairosEnabled is computed once here and reused at the
       // getAssistantSystemPromptAddendum() call site further down.
       //
@@ -2277,9 +2277,9 @@ async function run(): Promise<CommanderCommand> {
       let inputPrompt = await getInputPrompt(effectivePrompt, (inputFormat ?? 'text') as 'text' | 'stream-json');
       profileCheckpoint('action_after_input_prompt');
 
-      // Activate proactive mode BEFORE getTools() so SleepTool.isEnabled()
-      // (which returns isProactiveActive()) passes and Sleep is included.
-      // The later REPL-path maybeActivateProactive() calls are idempotent.
+      // Activate proactive mode BEFORE getTools() so proactive-gated tools
+      // are registered. The later REPL-path maybeActivateProactive() calls
+      // are idempotent.
       maybeActivateProactive(options);
 
       let tools = getTools(toolPermissionContext);
@@ -2651,9 +2651,8 @@ async function run(): Promise<CommanderCommand> {
           setUserMsgOptIn(true);
         }
       }
-      // Coordinator mode has its own system prompt and filters out Sleep, so
-      // the generic proactive prompt would tell it to call a tool it can't
-      // access and conflict with delegation instructions.
+      // Coordinator mode has its own system prompt, so the generic proactive
+      // prompt would conflict with its delegation instructions.
       if (
         (feature('PROACTIVE') || feature('KAIROS')) &&
         ((options as { proactive?: boolean }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)) &&
@@ -2669,7 +2668,7 @@ async function run(): Promise<CommanderCommand> {
               : 'The user will see any text you output.'
             : 'The user will see any text you output.';
         /* eslint-enable @typescript-eslint/no-require-imports */
-        const proactivePrompt = `\n# Proactive Mode\n\nYou are in proactive mode. Take initiative — explore, act, and make progress without waiting for instructions.\n\nStart by briefly greeting the user.\n\nYou will receive periodic <tick> prompts. These are check-ins. Do whatever seems most useful, or call Sleep if there's nothing to do. ${briefVisibility}`;
+        const proactivePrompt = `\n# Proactive Mode\n\nYou are in proactive mode. Take initiative — explore, act, and make progress without waiting for instructions.\n\nStart by briefly greeting the user.\n\nYou will receive periodic <tick> prompts. These are check-ins. Do whatever seems most useful, or just end the turn if there's nothing to do — the next tick will wake you. ${briefVisibility}`;
         appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${proactivePrompt}` : proactivePrompt;
       }
 

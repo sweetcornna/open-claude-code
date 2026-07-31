@@ -25,6 +25,10 @@ export type RequiresActionDetails = {
   input?: Record<string, unknown>
 }
 
+/**
+ * 'sleeping' is legacy: nothing emits it since the Sleep tool was removed.
+ * Kept in the union for remote-control wire compatibility with older clients.
+ */
 export type AutomationStatePhase = 'standby' | 'sleeping'
 
 export type AutomationStateMetadata = {
@@ -122,6 +126,9 @@ function normalizeAutomationState(
 
   return {
     enabled: true,
+    // 'sleeping' is retained for remote-control wire compatibility only — it
+    // has not been emitted since the Sleep tool was removed, but older RCS /
+    // bridge clients still parse the phase field and must keep accepting it.
     phase:
       state.phase === 'standby' || state.phase === 'sleeping'
         ? state.phase

@@ -119,7 +119,6 @@ const TOOL_NAMES = {
   TaskCreate: 'TaskCreate',
   DiscoverSkills: 'DiscoverSkills',
   Skill: 'Skill',
-  Sleep: 'Sleep',
 }
 
 mock.module(
@@ -185,10 +184,6 @@ mock.module(
 mock.module(
   '@open-claude-code/builtin-tools/tools/SkillTool/constants.js',
   () => ({ SKILL_TOOL_NAME: TOOL_NAMES.Skill }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js',
-  () => ({ SLEEP_TOOL_NAME: TOOL_NAMES.Sleep }),
 )
 mock.module(
   '@open-claude-code/builtin-tools/tools/REPLTool/constants.js',

@@ -96,7 +96,6 @@ import {
 } from './utils/tokens.js'
 import { ESCALATED_MAX_TOKENS } from './utils/context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
-import { SLEEP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './utils/hooks.js'
 import type { QuerySource } from './constants/querySource.js'
@@ -1741,10 +1740,10 @@ async function* queryLoop(
     // Get queued commands snapshot before processing attachments.
     // These will be sent as attachments so Claude can respond to them in the current turn.
     //
-    // Drain pending notifications. LocalShellTask completions are 'next'
-    // (when MONITOR_TOOL is on) and drain without Sleep. Other task types
-    // (agent/workflow/framework) still default to 'later' — the Sleep flush
-    // covers those. If all task types move to 'next', this branch could go.
+    // Drain pending notifications at 'next' priority. LocalShellTask
+    // completions are already 'next' (when MONITOR_TOOL is on) and drain
+    // here mid-turn. Other task types (agent/workflow/framework) default to
+    // 'later' and are left for the end-of-turn queue processor.
     //
     // Slash commands are excluded from mid-turn drain — they must go through
     // processSlashCommand after the turn ends (via useQueueProcessor), not be
@@ -1756,20 +1755,20 @@ async function* queryLoop(
     // addressed to it — main thread drains agentId===undefined, subagents
     // drain their own agentId. User prompts (mode:'prompt') still go to main
     // only; subagents never see the prompt stream.
-    // eslint-disable-next-line custom-rules/require-tool-match-name -- ToolUseBlock.name has no aliases
-    const sleepRan = toolUseBlocks.some(b => b.name === SLEEP_TOOL_NAME)
     const isMainThread =
       querySource.startsWith('repl_main_thread') || querySource === 'sdk'
     const currentAgentId = toolUseContext.agentId
-    const queuedCommandsSnapshot = getCommandsByMaxPriority(
-      sleepRan ? 'later' : 'next',
-    ).filter(cmd => {
-      if (isSlashCommand(cmd)) return false
-      if (isMainThread) return cmd.agentId === undefined
-      // Subagents only drain task-notifications addressed to them — never
-      // user prompts, even if someone stamps an agentId on one.
-      return cmd.mode === 'task-notification' && cmd.agentId === currentAgentId
-    })
+    const queuedCommandsSnapshot = getCommandsByMaxPriority('next').filter(
+      cmd => {
+        if (isSlashCommand(cmd)) return false
+        if (isMainThread) return cmd.agentId === undefined
+        // Subagents only drain task-notifications addressed to them — never
+        // user prompts, even if someone stamps an agentId on one.
+        return (
+          cmd.mode === 'task-notification' && cmd.agentId === currentAgentId
+        )
+      },
+    )
     const queuedAutonomyClaim = await claimConsumableQueuedAutonomyCommands(
       queuedCommandsSnapshot,
     )

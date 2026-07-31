@@ -2,7 +2,7 @@
  * /proactive — Toggle proactive (autonomous tick-driven) mode.
  *
  * When enabled, the model receives periodic <tick> prompts and works
- * autonomously between user inputs.  SleepTool controls pacing.
+ * autonomously between user inputs.  The tick scheduler controls pacing.
  */
 import { feature } from 'bun:bundle'
 import type { ToolUseContext } from '../Tool.js'

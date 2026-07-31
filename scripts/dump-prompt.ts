@@ -146,10 +146,6 @@ mock.module(
   () => ({ SKILL_TOOL_NAME: 'Skill' }),
 )
 mock.module(
-  '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js',
-  () => ({ SLEEP_TOOL_NAME: 'Sleep' }),
-)
-mock.module(
   '@open-claude-code/builtin-tools/tools/REPLTool/constants.js',
   () => ({ isReplModeEnabled: () => false }),
 )

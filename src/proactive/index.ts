@@ -4,8 +4,9 @@
  * State machine: inactive → active (→ paused → active) → inactive
  *
  * When active, the REPL periodically injects <tick> prompts so the model
- * keeps working even when the user is idle.  SleepTool lets the model
- * control its own wake-up cadence.
+ * keeps working even when the user is idle.  The model paces itself by
+ * ending idle turns and, when it needs a specific wake-up time, starting a
+ * Monitor wait_seconds timer.
  */
 
 // ---------------------------------------------------------------------------
