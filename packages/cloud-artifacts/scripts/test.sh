@@ -11,7 +11,7 @@
 set -uo pipefail
 
 WORKER_URL="${WORKER_URL:-https://cloud-artifacts.claude-code-best.win}"
-TOKEN="${TOKEN:-claude-code-best}"
+TOKEN="${TOKEN:-2f7f02afff3f9a6e72ea1454b748d9019b1e7939e3a6377e}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

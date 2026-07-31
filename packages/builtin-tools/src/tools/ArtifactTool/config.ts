@@ -1,18 +1,22 @@
 /**
  * Cloud Artifacts service configuration.
  *
- * The defaults still point at the existing deployment, and deliberately so:
- * the token below is the Bearer value that the live Cloudflare Worker
- * validates, and the hostname is a live DNS record. Renaming either without
- * first standing up the replacement and rotating the Worker secret would break
- * artifact upload for every user. Change them together with the deployment,
- * not as part of a rename sweep.
+ * The token below is PUBLIC by design: it ships inside every npm bundle, so
+ * it can never be a secret. Its only job is abuse throttling for the free
+ * community Worker. Rotating it requires coordinating with the deployment —
+ * see "Bearer token rotation" in packages/cloud-artifacts/README.md (deploy
+ * the Worker with TOKEN_PREVIOUS set BEFORE releasing a CLI that carries the
+ * new value).
+ *
+ * The hostname is a live DNS record; changing it without standing up a
+ * replacement breaks artifact upload for every user.
  *
  * Self-hosted deployments override via env. `OCC_*` is canonical; the
  * `CLAUDE_ARTIFACTS_*` names are kept as a deprecated fallback so existing
  * setups keep working.
  */
-export const ARTIFACTS_DEFAULT_TOKEN = 'claude-code-best'
+export const ARTIFACTS_DEFAULT_TOKEN =
+  '2f7f02afff3f9a6e72ea1454b748d9019b1e7939e3a6377e'
 export const ARTIFACTS_DEFAULT_URL =
   'https://cloud-artifacts.claude-code-best.win'
 

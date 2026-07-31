@@ -162,3 +162,23 @@ describe('ArtifactTool.call', () => {
     expect((result.data as { error?: string }).error).toContain('.md')
   })
 })
+
+describe('getArtifactsToken', () => {
+  test('falls back to the baked default when both env overrides are unset', async () => {
+    const savedOcc = process.env.OCC_ARTIFACTS_TOKEN
+    const savedClaude = process.env.CLAUDE_ARTIFACTS_TOKEN
+    delete process.env.OCC_ARTIFACTS_TOKEN
+    delete process.env.CLAUDE_ARTIFACTS_TOKEN
+    try {
+      const { getArtifactsToken, ARTIFACTS_DEFAULT_TOKEN } = await import(
+        '../config.js'
+      )
+      expect(getArtifactsToken()).toBe(ARTIFACTS_DEFAULT_TOKEN)
+      expect(ARTIFACTS_DEFAULT_TOKEN).not.toContain('claude-code-best')
+    } finally {
+      if (savedOcc !== undefined) process.env.OCC_ARTIFACTS_TOKEN = savedOcc
+      if (savedClaude !== undefined)
+        process.env.CLAUDE_ARTIFACTS_TOKEN = savedClaude
+    }
+  })
+})
