@@ -35,20 +35,21 @@ describe('waitForUrlEvent', () => {
     await expect(waitForUrlEvent()).resolves.toBe('occ-cli://open?q=hello')
   })
 
-  test('accepts a legacy Claude URL as compatibility input', async () => {
-    process.env.CLAUDE_CODE_URL_EVENT = 'claude-cli://open?q=hello'
+  test('returns an occ URL from argv', async () => {
+    process.argv = [...originalArgv, 'occ-cli://prompt?q=hello']
 
-    await expect(waitForUrlEvent()).resolves.toBe('claude-cli://open?q=hello')
+    await expect(waitForUrlEvent()).resolves.toBe('occ-cli://prompt?q=hello')
   })
 
-  test('returns a Claude URL from argv', async () => {
+  test('ignores the official CLI deep link schemes', async () => {
+    process.env.CLAUDE_CODE_URL_EVENT = 'claude-cli://open?q=hello'
     process.argv = [...originalArgv, 'claude://prompt?q=hello']
 
-    await expect(waitForUrlEvent()).resolves.toBe('claude://prompt?q=hello')
+    await expect(waitForUrlEvent()).resolves.toBeNull()
   })
 
   test('rejects URLs exceeding the maximum length', async () => {
-    process.env.CLAUDE_CODE_URL_EVENT = `claude-cli://${'x'.repeat(2048)}`
+    process.env.CLAUDE_CODE_URL_EVENT = `occ-cli://${'x'.repeat(2048)}`
 
     await expect(waitForUrlEvent()).resolves.toBeNull()
   })

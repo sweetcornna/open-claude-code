@@ -4,7 +4,6 @@ import { resolve } from 'node:path'
 import {
   BIN_NAME,
   DEEP_LINK_PROTOCOL,
-  LEGACY_DEEP_LINK_PROTOCOL,
   MACOS_DEEP_LINK_BUNDLE_ID,
   NPM_PACKAGE_NAME,
 } from 'src/constants/brand.js'
@@ -94,7 +93,7 @@ describe('occ update isolation', () => {
     })
   })
 
-  test('deep links register an occ identity while accepting legacy input', () => {
+  test('deep links register an occ identity and reject the legacy protocol', () => {
     expect(DEEP_LINK_PROTOCOL).toBe('occ-cli')
     expect(MACOS_DEEP_LINK_BUNDLE_ID).not.toContain('anthropic')
     expect(buildDeepLink({ query: 'hello' })).toStartWith('occ-cli://open')
@@ -103,9 +102,9 @@ describe('occ update isolation', () => {
       cwd: undefined,
       repo: undefined,
     })
-    expect(
-      parseDeepLink(`${LEGACY_DEEP_LINK_PROTOCOL}://open?q=legacy`),
-    ).toEqual({ query: 'legacy', cwd: undefined, repo: undefined })
+    // `claude-cli:` belongs to Anthropic's CLI. Accepting it would let the
+    // official product's deep links drive occ.
+    expect(() => parseDeepLink('claude-cli://open?q=legacy')).toThrow()
 
     const registrationSource = readSource('utils/deepLink/registerProtocol.ts')
     expect(registrationSource).toContain('MACOS_DEEP_LINK_BUNDLE_ID')

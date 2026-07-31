@@ -2,7 +2,7 @@
  * Deep Link Origin Banner
  *
  * Builds the warning text shown when a session was opened by an external
- * claude-cli:// deep link. Linux xdg-open and browsers with "always allow"
+ * occ-cli:// deep link. Linux xdg-open and browsers with "always allow"
  * set dispatch the link with no OS-level confirmation, so the application
  * provides its own provenance signal — mirroring claude.ai's security
  * interstitial for external-source prefills.
