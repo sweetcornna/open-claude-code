@@ -1,33 +1,17 @@
-import { isEnvDefinedFalsy, isEnvTruthy } from 'src/utils/envUtils.js'
+// Pure leaf: tool names and static strings only. See BashTool/constants.ts.
+//
+// isReplModeEnabled() used to live here; it needs src/utils/envUtils.js and
+// moved to replMode.ts.
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
-import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
+import { BASH_TOOL_NAME } from '../BashTool/constants.js'
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
-import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js'
-import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/prompt.js'
-import { GLOB_TOOL_NAME } from '../GlobTool/prompt.js'
-import { GREP_TOOL_NAME } from '../GrepTool/prompt.js'
+import { FILE_READ_TOOL_NAME } from '../FileReadTool/constants.js'
+import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/constants.js'
+import { GLOB_TOOL_NAME } from '../GlobTool/constants.js'
+import { GREP_TOOL_NAME } from '../GrepTool/constants.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'
 
 export const REPL_TOOL_NAME = 'REPL'
-
-/**
- * REPL mode is default-on for ants in the interactive CLI (opt out with
- * CLAUDE_CODE_REPL=0). The legacy CLAUDE_REPL_MODE=1 also forces it on.
- *
- * SDK entrypoints (sdk-ts, sdk-py, sdk-cli) are NOT defaulted on — SDK
- * consumers script direct tool calls (Bash, Read, etc.) and REPL mode
- * hides those tools. USER_TYPE is a build-time --define, so the ant-native
- * binary would otherwise force REPL mode on every SDK subprocess regardless
- * of the env the caller passes.
- */
-export function isReplModeEnabled(): boolean {
-  if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_REPL)) return false
-  if (isEnvTruthy(process.env.CLAUDE_REPL_MODE)) return true
-  return (
-    process.env.USER_TYPE === 'ant' &&
-    process.env.CLAUDE_CODE_ENTRYPOINT === 'cli'
-  )
-}
 
 /**
  * Tools that are only accessible via REPL when REPL mode is enabled.

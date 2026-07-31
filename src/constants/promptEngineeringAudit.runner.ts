@@ -186,8 +186,10 @@ mock.module(
   () => ({ SKILL_TOOL_NAME: TOOL_NAMES.Skill }),
 )
 mock.module(
-  '@open-claude-code/builtin-tools/tools/REPLTool/constants.js',
-  () => ({ isReplModeEnabled: () => false }),
+  '@open-claude-code/builtin-tools/tools/REPLTool/replMode.js',
+  () => ({
+    isReplModeEnabled: () => false,
+  }),
 )
 
 // --- 导入被测模块 ---
