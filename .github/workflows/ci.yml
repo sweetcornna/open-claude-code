@@ -45,6 +45,11 @@ jobs:
         timeout-minutes: 20
         run: bun run check:cycles
 
+      # Same two-sided ratchet, but on tool prompt/constants leaves. Pure
+      # import scanning, so it also runs inside `precheck` (~0.3s).
+      - name: Check prompt purity
+        run: bun run check:prompt-purity
+
       - name: Test with Coverage
         run: |
           # Tolerate pre-existing flaky tests (Bun mock pollution / order-dependent state).
