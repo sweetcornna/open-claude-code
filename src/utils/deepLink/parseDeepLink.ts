@@ -18,10 +18,7 @@
  * use (terminalLauncher.ts) — that escaping is the injection boundary.
  */
 
-import {
-  DEEP_LINK_PROTOCOL,
-  LEGACY_DEEP_LINK_PROTOCOL,
-} from 'src/constants/brand.js'
+import { DEEP_LINK_PROTOCOL } from 'src/constants/brand.js'
 import { partiallySanitizeUnicode } from '../sanitization.js'
 
 export { DEEP_LINK_PROTOCOL }
@@ -81,12 +78,15 @@ const MAX_QUERY_LENGTH = 5000
 const MAX_CWD_LENGTH = 4096
 
 /**
- * Parse an occ deep link or a legacy read-only compatibility URI.
+ * Parse an occ deep link.
+ *
+ * Only `occ-cli:` is accepted. Both `occ-cli:` and `occ-cli://` spellings
+ * work; the former is normalized to the latter.
  *
  * @throws {Error} if the URI is malformed or contains dangerous characters
  */
 export function parseDeepLink(uri: string): DeepLinkAction {
-  const acceptedProtocols = [DEEP_LINK_PROTOCOL, LEGACY_DEEP_LINK_PROTOCOL]
+  const acceptedProtocols = [DEEP_LINK_PROTOCOL]
   const protocol = acceptedProtocols.find(
     candidate =>
       uri.startsWith(`${candidate}://`) || uri.startsWith(`${candidate}:`),

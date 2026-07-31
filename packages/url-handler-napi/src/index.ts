@@ -34,21 +34,24 @@ function findUrlEvent(): string | null {
     'CLAUDE_CODE_URL',
   ]) {
     const value = process.env[key]
-    if (isClaudeUrl(value)) {
+    if (isOccUrl(value)) {
       return value
     }
   }
 
-  const arg = process.argv.find(isClaudeUrl)
+  const arg = process.argv.find(isOccUrl)
   return arg ?? null
 }
 
-function isClaudeUrl(value: unknown): value is string {
+/**
+ * Only occ's own scheme is accepted. `claude-cli://` and `claude://` belong to
+ * Anthropic's CLI — honouring them here let the official product's deep links
+ * drive occ, and parseDeepLink rejects them downstream anyway.
+ */
+function isOccUrl(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length <= MAX_URL_LENGTH &&
-    (value.startsWith('occ-cli://') ||
-      value.startsWith('claude-cli://') ||
-      value.startsWith('claude://'))
+    value.startsWith('occ-cli://')
   )
 }
