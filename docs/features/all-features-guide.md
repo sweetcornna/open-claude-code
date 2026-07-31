@@ -271,6 +271,9 @@ while($true){ <cmd>; Start-Sleep -Seconds <sec> }
 **AI 调用**：
 AI 可在对话中自动调用 `MonitorTool` 监控日志、构建输出等。
 
+**定时唤醒模式（`wait_seconds`）**：
+`MonitorTool` 接受 `command` 或 `wait_seconds` 之一（不能同时给）。传 `wait_seconds` 时它在后台跑一个计时器，AI 立刻结束当前 turn，计时结束由 task notification 唤醒 —— 用来替代会阻塞会话的前台 `Bash(sleep ...)`。要等的是**条件**而非固定时长时，仍用 command 模式跑 until 循环（例如 `until curl -sf localhost:3000/health; do sleep 2; done`）。
+
 ---
 
 ## 11. Workflow 工作流脚本
@@ -375,7 +378,7 @@ FEATURE_FORK_SUBAGENT=1 bun run dev
 
 | 工具 | 说明 | 使用 |
 |------|------|------|
-| `SleepTool` | 暂停执行指定时间 | AI 在轮询场景自动调用 |
+| `MonitorTool` | 后台监控命令输出；`wait_seconds` 模式作为定时唤醒器 | AI 在轮询/等待场景自动调用 |
 | `WebBrowserTool` | 终端内网页交互 | AI 需要查看网页时调用 |
 | `SubscribePRTool` | 订阅 GitHub PR 变更 | `/subscribe-pr` 或 AI 调用 |
 | `PushNotificationTool` | 推送桌面通知 | AI 在长任务完成时调用 |

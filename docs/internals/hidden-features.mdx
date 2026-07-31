@@ -26,7 +26,7 @@ keywords: ["隐藏功能", "未公开功能", "秘密功能", "Claude Code 彩�
 
     `KAIROS_DREAM`（后台"做梦"——自主整理记忆）已毕业为默认能力，不再由构建 flag 门控：实现在 `src/services/autoDream/`，开关是 settings.json 的 `autoDreamEnabled`（另有 `/dream` 手动触发）。
 
-    KAIROS 的工具集包括 `SleepTool`（让 AI 主动"休眠"等待事件）、`SendUserFileTool`（向用户发送文件）、`PushNotificationTool`（推送通知）和 `SubscribePRTool`（监听 PR）。
+    KAIROS 的工具集包括 `SendUserFileTool`（向用户发送文件）、`PushNotificationTool`（推送通知）和 `SubscribePRTool`（监听 PR）。等待/定时唤醒由 `MonitorTool` 的 `wait_seconds` 模式承担（早期的专用 `SleepTool` 已移除）。
 
     **推测方向**: 一个 7x24 在线的 AI 团队成员，能自主监控代码库、响应事件、管理任务。
   </Accordion>
@@ -36,7 +36,7 @@ keywords: ["隐藏功能", "未公开功能", "秘密功能", "Claude Code 彩�
 
     在标准模式中，Claude Code 是被动的——等待你输入，然后响应。PROACTIVE 模式颠覆了这一范式：
 
-    - AI 拥有 `SleepTool`，可以主动"打盹"一段时间
+    - AI 无事可做时直接结束 turn；需要定点唤醒时用 `MonitorTool` 的 `wait_seconds` 起一个后台计时器
     - 系统定期发送 `<tick>` 提示，触发 AI 检查是否有需要主动做的事
     - AI 可以在没有用户输入的情况下自行决策和执行
 
