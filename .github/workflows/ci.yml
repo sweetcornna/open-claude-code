@@ -104,6 +104,7 @@ jobs:
         run: >
           bun test
           'src/utils/permissions/__tests__/pathValidation.test.ts'
+          'src/utils/__tests__/ideIsolation.test.ts'
           'src/utils/__tests__/ripgrepConfig.test.ts'
           'src/utils/__tests__/teammateMailbox.test.ts'
           'packages/@ant/ink/src/core/__tests__/legacyConsole.test.ts'
