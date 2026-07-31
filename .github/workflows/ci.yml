@@ -59,3 +59,44 @@ jobs:
 
       - name: Build
         run: bun run build:vite
+
+  # Deliberately a separate job rather than a matrix leg of `ci`: it runs a
+  # different, much narrower set of steps. The full suite is slow and flaky on
+  # Windows, so we only run the suites that encode Windows-specific behaviour
+  # (path validation / sandbox escape, ripgrep binary resolution, mailbox and
+  # legacy-console handling) plus a type check.
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, 2026-04-25
+        env:
+          GIT_CONFIG_COUNT: 2
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+          GIT_CONFIG_KEY_1: advice.defaultBranchName
+          GIT_CONFIG_VALUE_1: "false"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2, 2026-04-25
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        env:
+          CLAUDE_CODE_SKIP_CHROME_MCP_SETUP: "1"
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        run: bun run typecheck
+
+      # Paths are single-quoted: the default shell here is pwsh, and quoting
+      # keeps the '@' in packages/@ant/... from being read as a splat/array
+      # operator. These are literal file paths, not globs — no shell expansion
+      # is expected or relied upon.
+      - name: Test Windows-sensitive suites
+        run: >
+          bun test
+          'src/utils/permissions/__tests__/pathValidation.test.ts'
+          'src/utils/__tests__/ripgrepConfig.test.ts'
+          'src/utils/__tests__/teammateMailbox.test.ts'
+          'packages/@ant/ink/src/core/__tests__/legacyConsole.test.ts'
