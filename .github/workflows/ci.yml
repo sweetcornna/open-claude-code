@@ -38,6 +38,13 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
+      # Two-sided ratchet: fails if cycles were added, and also if cycles were
+      # removed without committing the lower baseline. Kept out of `precheck`
+      # because a full run walks 2300+ modules and takes minutes.
+      - name: Check circular dependencies
+        timeout-minutes: 20
+        run: bun run check:cycles
+
       - name: Test with Coverage
         run: |
           # Tolerate pre-existing flaky tests (Bun mock pollution / order-dependent state).
