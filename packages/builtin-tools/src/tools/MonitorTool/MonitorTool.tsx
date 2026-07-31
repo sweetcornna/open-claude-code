@@ -19,13 +19,24 @@ const inputSchema = lazySchema(() =>
   z.strictObject({
     command: z
       .string()
+      .optional()
       .describe(
-        'The shell command to run as a long-running monitor. Should produce streaming output (e.g., tail -f, watch, polling loops).',
+        'The shell command to run as a long-running monitor. Should produce streaming output (e.g., tail -f, watch, polling loops). Provide either this or wait_seconds, never both.',
+      ),
+    wait_seconds: z
+      .number()
+      .int()
+      .positive()
+      .max(86_400)
+      .optional()
+      .describe(
+        'Wake-up timer mode: wait this many seconds in the background, then send a task notification. Use instead of a foreground `sleep`. Provide either this or command, never both.',
       ),
     description: z
       .string()
+      .optional()
       .describe(
-        'Clear, concise description of what this monitor watches. Used as the label in the background tasks UI.',
+        'Clear, concise description of what this monitor watches. Used as the label in the background tasks UI. Required in command mode; defaults to a timer label in wait_seconds mode.',
       ),
   }),
 );
@@ -41,9 +52,30 @@ const outputSchema = lazySchema(() =>
 type OutputSchema = ReturnType<typeof outputSchema>;
 export type MonitorOutput = z.infer<OutputSchema>;
 
+/** Wait mode is selected purely by the presence of `wait_seconds`. */
+function isWaitMode(input: Partial<MonitorInput>): boolean {
+  return input?.wait_seconds !== undefined;
+}
+
+/**
+ * The shell command actually executed. Wait mode synthesizes a plain `sleep`
+ * so both modes share one exec/spawnShellTask path (and one notification path).
+ */
+function resolveCommand(input: Partial<MonitorInput>): string {
+  return isWaitMode(input) ? `sleep ${input.wait_seconds}` : (input.command ?? '');
+}
+
+function resolveDescription(input: Partial<MonitorInput>): string {
+  const explicit = input?.description?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  return isWaitMode(input) ? `Wake-up timer: ${input.wait_seconds}s` : resolveCommand(input);
+}
+
 export const MonitorTool = buildTool({
   name: MONITOR_TOOL_NAME,
-  searchHint: 'start long-running background monitor for streaming events',
+  searchHint: 'start long-running background monitor for streaming events, or wait pause idle timer for a duration',
   maxResultSizeChars: 10_000,
   strict: true,
 
@@ -55,23 +87,31 @@ export const MonitorTool = buildTool({
   },
 
   async description() {
-    return 'Start a long-running background monitor';
+    return 'Start a long-running background monitor or wake-up timer';
   },
   async prompt() {
-    return `Use Monitor to start a long-running background process that streams output (watching logs, polling APIs, tailing files, etc.). The command runs in the background and you receive a notification when it exits. Use the Read tool with the output file path to check its output at any time.
+    return `Use Monitor to start a long-running background process that streams output (watching logs, polling APIs, tailing files, etc.), or to set a wake-up timer. Work runs in the background and you receive a task notification when it finishes. Use the Read tool with the output file path to check output at any time.
 
-Guidelines:
-- Use Monitor for commands that produce ongoing streaming output: \`tail -f\`, log watchers, file watchers, API polling loops, \`watch\` commands
-- Do NOT use Monitor for one-shot commands that finish quickly — use Bash for those
-- Do NOT use Monitor for commands that need interactive input — they will hang
+Monitor has two mutually exclusive modes — pass exactly one of \`command\` or \`wait_seconds\`.
+
+Command mode (\`command\`) — watch something:
+- Use it for commands that produce ongoing streaming output: \`tail -f\`, log watchers, file watchers, API polling loops, \`watch\` commands
+- Do NOT use it for one-shot commands that finish quickly — use Bash for those
+- Do NOT use it for commands that need interactive input — they will hang
 - The description should clearly explain what is being monitored
-- You'll get a task notification when the monitor process exits (stream ends, script fails, or killed)
-- To check output at any time, use Read on the output file path returned by this tool
+- You'll get a task notification when the process exits (stream ends, script fails, or killed)
+
+Wait mode (\`wait_seconds\`) — wait for a fixed duration:
+- To wait a fixed amount of time, use \`wait_seconds\`. NEVER run a foreground \`Bash(sleep ...)\` — that blocks you and holds a shell process for the whole duration.
+- The timer runs in the background: you end your turn immediately and a task notification wakes you when it elapses.
+- To wait for a *condition* rather than a fixed duration, use command mode with an until-loop so you wake as soon as it is true, e.g. \`until curl -sf http://localhost:3000/health; do sleep 2; done\`.
 
 Examples:
 - Watching a log file: command="tail -f /var/log/app.log", description="Watch app log for errors"
 - Polling an API: command="while true; do curl -s http://localhost:3000/health; sleep 5; done", description="Poll health endpoint every 5s"
-- Watching for file changes: command="inotifywait -m -r ./src", description="Watch src directory for file changes"`;
+- Watching for file changes: command="inotifywait -m -r ./src", description="Watch src directory for file changes"
+- Waiting 5 minutes: wait_seconds=300, description="Re-check the deploy in 5 minutes"
+- Waiting until a port is up: command="until nc -z localhost 8080; do sleep 2; done", description="Wait for the dev server to accept connections"`;
   },
 
   isConcurrencySafe() {
@@ -84,12 +124,17 @@ Examples:
   },
 
   toAutoClassifierInput(input: MonitorInput) {
-    return `Monitor: ${input.command}`;
+    return `Monitor: ${resolveCommand(input)}`;
   },
 
   async checkPermissions(input: MonitorInput, context: ToolUseContext): Promise<PermissionResult> {
+    // Wait mode is a pure timer — the synthesized `sleep N` has no side
+    // effects and no user-supplied shell text, so it needs no bash permission.
+    if (isWaitMode(input)) {
+      return { behavior: 'allow', updatedInput: input };
+    }
     // Reuse bash permission checking for the underlying command
-    return bashToolHasPermission({ command: input.command }, context);
+    return bashToolHasPermission({ command: input.command ?? '' }, context);
   },
 
   userFacingName() {
@@ -97,6 +142,9 @@ Examples:
   },
 
   getActivityDescription(input: MonitorInput) {
+    if (isWaitMode(input)) {
+      return `Waiting ${input.wait_seconds}s`;
+    }
     if (!input?.description) {
       return 'Starting monitor';
     }
@@ -104,6 +152,28 @@ Examples:
   },
 
   async validateInput(input: MonitorInput): Promise<ValidationResult> {
+    const hasCommand = input.command !== undefined;
+    const hasWait = input.wait_seconds !== undefined;
+
+    if (hasCommand && hasWait) {
+      return {
+        result: false,
+        message: 'Monitor accepts either command or wait_seconds, not both.',
+        errorCode: 3,
+      };
+    }
+    if (!hasCommand && !hasWait) {
+      return {
+        result: false,
+        message: 'Monitor requires either command (to watch something) or wait_seconds (to set a wake-up timer).',
+        errorCode: 4,
+      };
+    }
+    // Wait mode: zod already enforced a positive integer within bounds, and
+    // the description is optional (it defaults to a timer label).
+    if (hasWait) {
+      return { result: true };
+    }
     if (!input.command || input.command.trim() === '') {
       return {
         result: false,
@@ -122,7 +192,8 @@ Examples:
   },
 
   async call(input: MonitorInput, context: ToolUseContext) {
-    const { command, description } = input;
+    const command = resolveCommand(input);
+    const description = resolveDescription(input);
     const { abortController, setAppState, toolUseId, agentId } = context;
 
     logEvent('tengu_monitor_tool_used', {});
@@ -158,7 +229,7 @@ Examples:
   },
 
   renderToolUseMessage(input: MonitorInput, { verbose }) {
-    const desc = truncate(input.description || input.command, 80);
+    const desc = truncate(resolveDescription(input), 80);
     return `Monitor: ${desc}`;
   },
 
