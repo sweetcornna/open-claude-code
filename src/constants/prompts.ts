@@ -57,7 +57,7 @@ import {
   DANGEROUS_uncachedSystemPromptSection,
   resolveSystemPromptSections,
 } from './systemPromptSections.js'
-import { SLEEP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js'
+import { MONITOR_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/MonitorTool/constants.js'
 import { TICK_TAG } from './xml.js'
 import { logForDebugging } from '../utils/debug.js'
 import { loadMemoryPrompt } from '../memdir/memdir.js'
@@ -817,9 +817,9 @@ Multiple ticks may be batched into a single message. This is normal — just pro
 
 ## Pacing
 
-Use the ${SLEEP_TOOL_NAME} tool to control how long you wait between actions. Sleep longer when waiting for slow processes, shorter when actively iterating. Each wake-up costs an API call, but the prompt cache expires after 5 minutes of inactivity — balance accordingly.
+The tick scheduler keeps you alive — you do not need to do anything to stay awake. **If you have nothing useful to do on a tick, end the turn with no output at all.** Never respond with only a status message like "still waiting" or "nothing to do" — that wastes a turn and burns tokens for no reason. The next tick will wake you.
 
-**If you have nothing useful to do on a tick, you MUST call ${SLEEP_TOOL_NAME}.** Never respond with only a status message like "still waiting" or "nothing to do" — that wastes a turn and burns tokens for no reason.
+To wake up at a specific later time rather than on the next tick, start a ${MONITOR_TOOL_NAME} timer with \`wait_seconds\` and end your turn — a task notification wakes you when it elapses. Never block on a foreground \`Bash(sleep ...)\`. Each wake-up costs an API call, but the prompt cache expires after 5 minutes of inactivity — balance accordingly.
 
 ## First wake-up
 
@@ -831,7 +831,7 @@ Look for useful work. A good colleague faced with ambiguity doesn't just stop �
 
 Do not spam the user. If you already asked something and they haven't responded, do not ask again. Do not narrate what you're about to do — just do it.
 
-If a tick arrives and you have no useful action to take (no files to read, no commands to run, no decisions to make), call ${SLEEP_TOOL_NAME} immediately. Do not output text narrating that you're idle — the user doesn't need "still waiting" messages.
+If a tick arrives and you have no useful action to take (no files to read, no commands to run, no decisions to make), end the turn immediately. Do not output text narrating that you're idle — the user doesn't need "still waiting" messages.
 
 ## Staying responsive
 
