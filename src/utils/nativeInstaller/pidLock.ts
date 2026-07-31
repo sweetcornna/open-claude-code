@@ -1,7 +1,7 @@
 /**
  * PID-Based Version Locking
  *
- * This module provides PID-based locking for running Claude Code versions.
+ * This module provides PID-based locking for running occ versions.
  * Unlike mtime-based locking (which can hold locks for 30 days after a crash),
  * PID-based locking can immediately detect when a process is no longer running.
  *
@@ -10,6 +10,7 @@
  */
 
 import { basename, join } from 'path'
+import { BIN_NAME, PRODUCT_NAME } from '../../constants/brand.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logForDebugging } from '../debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
@@ -95,36 +96,70 @@ export function isProcessRunning(pid: number): boolean {
 }
 
 /**
- * Validate that a running process is actually a Claude process
- * This helps mitigate PID reuse issues
+ * Does this command line belong to an occ process?
+ *
+ * Pure predicate, split out so the matching rules can be tested without
+ * spawning processes.
+ *
+ * This used to match any command containing the bare token 'claude', which
+ * also matches Anthropic's official `claude` CLI. That coupled the two
+ * products: an unrelated official-CLI process holding a recycled PID made occ
+ * treat its own version lock as live, so version GC silently skipped
+ * deletions. Match occ's own identity instead.
+ *
+ * `expectedExecPath` is retained because occ is often launched indirectly —
+ * e.g. `bun /path/to/dist/cli-bun.js`, where the command contains the
+ * install path but never the string 'occ'.
  */
-function isClaudeProcess(pid: number, expectedExecPath: string): boolean {
+export function commandLooksLikeOcc(
+  command: string,
+  expectedExecPath: string,
+): boolean {
+  const normalizedCommand = command.toLowerCase()
+
+  if (normalizedCommand.includes(expectedExecPath.toLowerCase())) {
+    return true
+  }
+
+  // Match BIN_NAME / PRODUCT_NAME only at a word boundary, so unrelated
+  // commands that merely contain the letters (e.g. a path like /opt/occupancy)
+  // do not register as occ.
+  return [BIN_NAME, PRODUCT_NAME].some(name =>
+    new RegExp(`(^|[^a-z0-9-])${name}([^a-z0-9-]|$)`).test(normalizedCommand),
+  )
+}
+
+/**
+ * Validate that a running process is actually an occ process.
+ * This helps mitigate PID reuse issues.
+ *
+ * `readCommand` is injectable so the fallback behaviour can be tested without
+ * spawning processes or mocking the shared process utils module.
+ */
+export function isOccProcess(
+  pid: number,
+  expectedExecPath: string,
+  readCommand: (pid: number) => string | null = getProcessCommand,
+): boolean {
   if (!isProcessRunning(pid)) {
     return false
   }
 
-  // If the PID matches our current process, we know it's valid
-  // This handles test environments where the command might not contain 'claude'
+  // If the PID matches our current process, we know it's valid.
+  // This handles test environments where the command might not name occ.
   if (pid === process.pid) {
     return true
   }
 
   try {
-    const command = getProcessCommand(pid)
+    const command = readCommand(pid)
     if (!command) {
-      // If we can't get the command, trust the PID check
-      // This is conservative - we'd rather not delete a running version
+      // If we can't get the command, trust the PID check.
+      // This is conservative - we'd rather not delete a running version.
       return true
     }
 
-    // Check if the command contains 'claude' or the expected exec path
-    const normalizedCommand = command.toLowerCase()
-    const normalizedExecPath = expectedExecPath.toLowerCase()
-
-    return (
-      normalizedCommand.includes('claude') ||
-      normalizedCommand.includes(normalizedExecPath)
-    )
+    return commandLooksLikeOcc(command, expectedExecPath)
   } catch {
     // If command check fails, trust the PID check
     return true
@@ -175,11 +210,11 @@ export function isLockActive(lockFilePath: string): boolean {
     return false
   }
 
-  // Secondary validation: is it actually a Claude process?
+  // Secondary validation: is it actually an occ process?
   // This helps with PID reuse scenarios
-  if (!isClaudeProcess(pid, execPath)) {
+  if (!isOccProcess(pid, execPath)) {
     logForDebugging(
-      `Lock PID ${pid} is running but does not appear to be Claude - treating as stale`,
+      `Lock PID ${pid} is running but does not appear to be ${BIN_NAME} - treating as stale`,
     )
     return false
   }
