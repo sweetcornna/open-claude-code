@@ -24,7 +24,7 @@ const inputSchema = lazySchema(() =>
       .regex(/^[A-Za-z0-9_-]{1,128}$/, 'must match ^[A-Za-z0-9_-]{1,128}$')
       .optional()
       .describe(
-        'If provided, overwrites the existing artifact with this hash (URL stays stable). If omitted, a new random id is generated.',
+        'Worker backend only. If provided, overwrites the existing artifact with this hash (URL stays stable). If omitted, a new random id is generated.',
       ),
     ttl: z
       .union([z.literal(7), z.literal(30)])

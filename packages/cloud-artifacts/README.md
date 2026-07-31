@@ -129,6 +129,44 @@ curl "https://cloud-artifacts.claude-code-best.win/7d/V1StGXR8_Z5jdHi6B-myT.html
 
 不指定 `?hash=` 时：用 `nanoid(21)` 随机 ID，几乎不可能碰撞，不做碰撞检查。
 
+## Self-hosting with rustypaste
+
+ArtifactTool can upload to a self-hosted
+[rustypaste](https://github.com/orhun/rustypaste) server instead of the default
+Worker:
+
+```bash
+export OCC_ARTIFACTS_BACKEND=rustypaste
+export OCC_ARTIFACTS_URL=https://artifacts.example.com
+export OCC_ARTIFACTS_TOKEN=<auth-token>
+```
+
+`OCC_ARTIFACTS_URL` is the rustypaste server root. The token must match
+rustypaste's `AUTH_TOKEN`, `AUTH_TOKENS_FILE`, or `[server].auth_tokens`
+configuration. ArtifactTool sends it as a raw `Authorization` value, as
+rustypaste requires, rather than the Worker's `Bearer <token>` scheme. The
+tool maps its 7-day and 30-day TTLs to rustypaste's `expire: 7d` and
+`expire: 30d` request headers. Custom `hash` values are Worker-only; the
+rustypaste backend returns an explicit error instead of silently ignoring one.
+
+Rustypaste serves text-like files as `text/plain` by default to prevent script
+execution. Add an HTML filename override to the existing `[paste]` section so
+ArtifactTool pages render as HTML (merge this entry with any existing
+`mime_override` values):
+
+```toml
+[paste]
+mime_override = [
+  { mime = "text/html", regex = "^.*\\.html$" },
+]
+```
+
+> **SECURITY WARNING:** Artifact pages contain user-supplied active HTML. Any
+> script in an artifact runs with the privileges of the rustypaste origin.
+> Serve artifacts from a dedicated, isolated domain with no application
+> cookies or authenticated services on that origin, exactly as the production
+> deployment separates artifact hosting from other services.
+
 ## 部署
 
 前置：本机已 `npx wrangler login` 登录目标 Cloudflare 账号。Deno Deploy 代理层由部署者另配（CNAME `cloud-artifacts.<your-domain>` → `alias.deno.net`，并在 Deno Deploy 项目里把上游设为 `https://<worker>.<account>.workers.dev`）。
