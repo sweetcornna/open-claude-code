@@ -13,7 +13,7 @@ import { exec } from 'src/utils/Shell.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { logEvent } from 'src/services/analytics/index.js';
 
-const MONITOR_TOOL_NAME = 'Monitor';
+import { MONITOR_TOOL_NAME } from './constants.js';
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
