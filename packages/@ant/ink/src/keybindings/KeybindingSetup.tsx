@@ -190,11 +190,107 @@ export function KeybindingSetup({
  * captured by PromptInput and added to the input field before the keybinding
  * system could recognize it as completing a chord.
  */
-type HandlerRegistration = {
+export type HandlerRegistration = {
   action: string;
   context: KeybindingContextName;
   handler: () => void;
 };
+
+export type ChordInterceptorDeps = {
+  bindings: ParsedBinding[];
+  pendingChordRef: React.RefObject<ParsedKeystroke[] | null>;
+  setPendingChord: (pending: ParsedKeystroke[] | null) => void;
+  activeContexts: Set<KeybindingContextName>;
+  handlerRegistryRef: React.RefObject<Map<string, Set<HandlerRegistration>>>;
+};
+
+/**
+ * Chord interception logic. Extracted from the ChordInterceptor component
+ * because it touches no React state directly — everything it needs arrives
+ * through `deps` — which makes it unit-testable without a render harness.
+ */
+export function interceptChordInput(input: string, key: Key, event: InputEvent, deps: ChordInterceptorDeps): void {
+  const { bindings, pendingChordRef, setPendingChord, activeContexts, handlerRegistryRef } = deps;
+
+  // Wheel events can never start chord sequences — scroll:lineUp/Down are
+  // single-key bindings handled by per-component useKeybindings hooks, not
+  // here. Skip the registry scan. Mid-chord wheel still falls through so
+  // scrolling cancels the pending chord like any other non-matching key.
+  if ((key.wheelUp || key.wheelDown) && pendingChordRef.current === null) {
+    return;
+  }
+
+  // Build context list from registered handlers + activeContexts + Global
+  const registry = handlerRegistryRef.current;
+  const handlerContexts = new Set<KeybindingContextName>();
+  if (registry) {
+    for (const handlers of registry.values()) {
+      for (const registration of handlers) {
+        handlerContexts.add(registration.context);
+      }
+    }
+  }
+  const contexts: KeybindingContextName[] = [...handlerContexts, ...activeContexts, 'Global'];
+
+  // Track whether we're completing a chord (pending was non-null)
+  const wasInChord = pendingChordRef.current !== null;
+
+  // Check if this keystroke is part of a chord sequence
+  const result = resolveKeyWithChordState(input, key, contexts, bindings, pendingChordRef.current);
+
+  switch (result.type) {
+    case 'chord_started':
+      // This key starts a chord - store pending state and stop propagation
+      setPendingChord(result.pending);
+      event.stopImmediatePropagation();
+      break;
+
+    case 'match': {
+      // Clear pending state
+      setPendingChord(null);
+
+      // Only invoke handlers and stop propagation for chord completions
+      // (multi-keystroke sequences). Single-keystroke matches should propagate
+      // to per-hook handlers to avoid interfering with other input handling.
+      if (wasInChord) {
+        // Consume the keystroke whether or not a handler is registered for the
+        // action. The prefix key already committed the user to the chord, so
+        // letting the final key through would fire whatever single-key binding
+        // it also maps to — e.g. completing "ctrl+x k" with no handler for the
+        // action would still trigger the standalone "k" binding.
+        event.stopImmediatePropagation();
+
+        const contextsSet = new Set(contexts);
+        if (registry) {
+          const handlers = registry.get(result.action);
+          if (handlers && handlers.size > 0) {
+            for (const registration of handlers) {
+              if (contextsSet.has(registration.context)) {
+                registration.handler();
+                break;
+              }
+            }
+          }
+        }
+      }
+      break;
+    }
+
+    case 'chord_cancelled':
+      setPendingChord(null);
+      event.stopImmediatePropagation();
+      break;
+
+    case 'unbound':
+      setPendingChord(null);
+      event.stopImmediatePropagation();
+      break;
+
+    case 'none':
+      // No chord involvement - let other handlers process
+      break;
+  }
+}
 
 function ChordInterceptor({
   bindings,
@@ -202,87 +298,16 @@ function ChordInterceptor({
   setPendingChord,
   activeContexts,
   handlerRegistryRef,
-}: {
-  bindings: ParsedBinding[];
-  pendingChordRef: React.RefObject<ParsedKeystroke[] | null>;
-  setPendingChord: (pending: ParsedKeystroke[] | null) => void;
-  activeContexts: Set<KeybindingContextName>;
-  handlerRegistryRef: React.RefObject<Map<string, Set<HandlerRegistration>>>;
-}): null {
+}: ChordInterceptorDeps): null {
   const handleInput = useCallback(
     (input: string, key: Key, event: InputEvent) => {
-      // Wheel events can never start chord sequences — scroll:lineUp/Down are
-      // single-key bindings handled by per-component useKeybindings hooks, not
-      // here. Skip the registry scan. Mid-chord wheel still falls through so
-      // scrolling cancels the pending chord like any other non-matching key.
-      if ((key.wheelUp || key.wheelDown) && pendingChordRef.current === null) {
-        return;
-      }
-
-      // Build context list from registered handlers + activeContexts + Global
-      const registry = handlerRegistryRef.current;
-      const handlerContexts = new Set<KeybindingContextName>();
-      if (registry) {
-        for (const handlers of registry.values()) {
-          for (const registration of handlers) {
-            handlerContexts.add(registration.context);
-          }
-        }
-      }
-      const contexts: KeybindingContextName[] = [...handlerContexts, ...activeContexts, 'Global'];
-
-      // Track whether we're completing a chord (pending was non-null)
-      const wasInChord = pendingChordRef.current !== null;
-
-      // Check if this keystroke is part of a chord sequence
-      const result = resolveKeyWithChordState(input, key, contexts, bindings, pendingChordRef.current);
-
-      switch (result.type) {
-        case 'chord_started':
-          // This key starts a chord - store pending state and stop propagation
-          setPendingChord(result.pending);
-          event.stopImmediatePropagation();
-          break;
-
-        case 'match': {
-          // Clear pending state
-          setPendingChord(null);
-
-          // Only invoke handlers and stop propagation for chord completions
-          // (multi-keystroke sequences). Single-keystroke matches should propagate
-          // to per-hook handlers to avoid interfering with other input handling.
-          if (wasInChord) {
-            const contextsSet = new Set(contexts);
-            if (registry) {
-              const handlers = registry.get(result.action);
-              if (handlers && handlers.size > 0) {
-                for (const registration of handlers) {
-                  if (contextsSet.has(registration.context)) {
-                    registration.handler();
-                    event.stopImmediatePropagation();
-                    break;
-                  }
-                }
-              }
-            }
-          }
-          break;
-        }
-
-        case 'chord_cancelled':
-          setPendingChord(null);
-          event.stopImmediatePropagation();
-          break;
-
-        case 'unbound':
-          setPendingChord(null);
-          event.stopImmediatePropagation();
-          break;
-
-        case 'none':
-          // No chord involvement - let other handlers process
-          break;
-      }
+      interceptChordInput(input, key, event, {
+        bindings,
+        pendingChordRef,
+        setPendingChord,
+        activeContexts,
+        handlerRegistryRef,
+      });
     },
     [bindings, pendingChordRef, setPendingChord, activeContexts, handlerRegistryRef],
   );
