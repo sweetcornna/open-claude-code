@@ -114,7 +114,7 @@ bun run docs:dev
 - **Pre-commit**: husky + lint-staged。提交时自动对暂存文件执行 `biome check --fix`（TS/JS）和 `biome format --write`（JSON）。
 - **CI Lint**: `ci.yml` 在依赖安装后、类型检查前执行 `bunx biome ci .`，lint 或格式化不达标则 CI 失败。
 - **Defines**: 集中管理在 `scripts/defines.ts`。版本号从 `package.json` 读取（不再硬编码）。
-- **CI**: GitHub Actions — `ci.yml`（lint + 构建 + 测试）、`release-rcs.yml`（RCS 发布）、`update-contributors.yml`（自动更新贡献者）。
+- **CI**: GitHub Actions — `ci.yml`（lint + 构建 + 测试）、`publish-npm.yml`（npm 发布）、`release-rcs.yml`（RCS 发布）。
 
 ### Entry & Bootstrap
 
