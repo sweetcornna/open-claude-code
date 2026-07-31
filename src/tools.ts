@@ -23,11 +23,6 @@ const SuggestBackgroundPRTool =
     ? require('@open-claude-code/builtin-tools/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.js')
         .SuggestBackgroundPRTool
     : null
-const SleepTool =
-  feature('PROACTIVE') || feature('KAIROS')
-    ? require('@open-claude-code/builtin-tools/tools/SleepTool/SleepTool.js')
-        .SleepTool
-    : null
 const cronTools = [
   require('@open-claude-code/builtin-tools/tools/ScheduleCronTool/CronCreateTool.js')
     .CronCreateTool,
@@ -235,7 +230,6 @@ export function getAllBaseTools(): Tools {
     ...(VerifyPlanExecutionTool ? [VerifyPlanExecutionTool] : []),
     ...(process.env.USER_TYPE === 'ant' && REPLTool ? [REPLTool] : []),
     ...(WorkflowTool ? [WorkflowTool] : []),
-    ...(SleepTool ? [SleepTool] : []),
     ...cronTools,
     ...(RemoteTriggerTool ? [RemoteTriggerTool] : []),
     ...(MonitorTool ? [MonitorTool] : []),

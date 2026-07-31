@@ -8,7 +8,6 @@ import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/p
 import { LIST_MCP_RESOURCES_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ListMcpResourcesTool/prompt.js'
 import { LSP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/LSPTool/prompt.js'
 import { SEND_MESSAGE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SendMessageTool/constants.js'
-import { SLEEP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js'
 import { TASK_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskCreateTool/constants.js'
 import { TASK_GET_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskGetTool/constants.js'
 import { TASK_LIST_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskListTool/constants.js'
@@ -78,8 +77,6 @@ const SAFE_YOLO_ALLOWLISTED_TOOLS = new Set([
   SEND_MESSAGE_TOOL_NAME,
   // Workflow orchestration — subagents go through canUseTool individually
   ...(WORKFLOW_TOOL_NAME ? [WORKFLOW_TOOL_NAME] : []),
-  // Misc safe
-  SLEEP_TOOL_NAME,
   // Ant-only safe tools (gates mirror tools.ts)
   ...(TERMINAL_CAPTURE_TOOL_NAME ? [TERMINAL_CAPTURE_TOOL_NAME] : []),
   ...(VERIFY_PLAN_EXECUTION_TOOL_NAME ? [VERIFY_PLAN_EXECUTION_TOOL_NAME] : []),

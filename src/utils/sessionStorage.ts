@@ -177,18 +177,20 @@ function isLegacyProgressEntry(entry: unknown): entry is LegacyProgressEntry {
 }
 
 /**
- * High-frequency tool progress ticks (1/sec for Sleep, per-chunk for Bash).
- * These are UI-only: not sent to the API, not rendered after the tool
- * completes. Used by REPL.tsx to replace-in-place instead of appending, and
- * by loadTranscriptFile to skip legacy entries from old transcripts.
+ * High-frequency tool progress ticks (per-chunk for Bash). These are UI-only:
+ * not sent to the API, not rendered after the tool completes. Used by
+ * REPL.tsx to replace-in-place instead of appending, and by loadTranscriptFile
+ * to skip legacy entries from old transcripts.
+ *
+ * 'sleep_progress' is never emitted since the Sleep tool was removed — it is
+ * kept (and no longer feature-gated) so transcripts recorded before the
+ * removal still load cleanly.
  */
 const EPHEMERAL_PROGRESS_TYPES = new Set([
   'bash_progress',
   'powershell_progress',
   'mcp_progress',
-  ...(feature('PROACTIVE') || feature('KAIROS')
-    ? (['sleep_progress'] as const)
-    : []),
+  'sleep_progress',
 ])
 export function isEphemeralToolProgress(dataType: unknown): boolean {
   return typeof dataType === 'string' && EPHEMERAL_PROGRESS_TYPES.has(dataType)

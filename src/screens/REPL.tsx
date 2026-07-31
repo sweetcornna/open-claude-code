@@ -215,7 +215,6 @@ import { buildPermissionUpdates } from '../components/permissions/ExitPlanModePe
 import { stripDangerousPermissionsForAutoMode } from '../utils/permissions/permissionSetup.js';
 import { getScratchpadDir, isScratchpadEnabled } from '../utils/permissions/filesystem.js';
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js';
-import { SLEEP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js';
 import { clearSpeculativeChecks } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js';
 import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
 import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config.js';
@@ -923,7 +922,7 @@ export function REPL({
   // Watch for skill file changes and reload all commands
   useSkillsChange(isRemoteSession ? undefined : getProjectRoot(), setLocalCommands);
 
-  // Track proactive mode for tools dependency - SleepTool filters by proactive state
+  // Track proactive mode for tools dependency - the tool list varies by proactive state
   const proactiveActive = React.useSyncExternalStore(
     proactiveModule?.subscribeToProactiveChanges ?? PROACTIVE_NO_OP_SUBSCRIBE,
     proactiveModule?.isProactiveActive ?? PROACTIVE_FALSE,
@@ -1970,22 +1969,6 @@ export function REPL({
     ]);
   }, [setMessages]);
 
-  // Hide spinner when the only in-progress tool is Sleep
-  const onlySleepToolActive = useMemo(() => {
-    const lastAssistant = messages.findLast(m => m.type === 'assistant');
-    if (lastAssistant?.type !== 'assistant') return false;
-    const content = lastAssistant.message?.content;
-    const contentArray = Array.isArray(content) ? content : [];
-    const inProgressToolUses = contentArray.filter(
-      (b): b is ContentBlock & { type: 'tool_use'; id: string } =>
-        b.type === 'tool_use' && inProgressToolUseIDs.has((b as { id: string }).id),
-    );
-    return (
-      inProgressToolUses.length > 0 &&
-      inProgressToolUses.every(b => b.type === 'tool_use' && b.name === SLEEP_TOOL_NAME)
-    );
-  }, [messages, inProgressToolUseIDs]);
-
   const {
     onBeforeQuery: mrOnBeforeQuery,
     onTurnComplete: mrOnTurnComplete,
@@ -2014,7 +1997,6 @@ export function REPL({
       getCommandQueueLength() > 0) &&
     // Hide spinner when waiting for leader to approve permission request
     !pendingWorkerRequest &&
-    !onlySleepToolActive &&
     // Hide spinner when streaming text is visible (the text IS the feedback),
     // but keep it when isBriefOnly suppresses the streaming text display
     (!visibleStreamingText || isBriefOnly);
@@ -3158,11 +3140,11 @@ export function REPL({
             isEphemeralToolProgress((newMessage as unknown as { data?: { type?: string } }).data?.type)
           ) {
             // Replace the previous ephemeral progress tick for the same tool
-            // call instead of appending. Sleep/Bash emit a tick per second and
-            // only the last one is rendered; appending blows up the messages
-            // array (13k+ observed) and the transcript (120MB of sleep_progress
-            // lines). useLogMessages tracks length, so same-length replacement
-            // also skips the transcript write.
+            // call instead of appending. Bash emits a tick per chunk and only
+            // the last one is rendered; appending blows up the messages array
+            // (13k+ observed) and the transcript (120MB of progress lines).
+            // useLogMessages tracks length, so same-length replacement also
+            // skips the transcript write.
             // agent_progress / hook_progress / skill_progress are NOT ephemeral
             // — each carries distinct state the UI needs (e.g. subagent tool
             // history). Replacing those leaves the AgentTool UI stuck at
@@ -4950,8 +4932,8 @@ export function REPL({
   useMailboxBridge({ isLoading, onSubmitMessage: handleIncomingPrompt });
   // Scheduled tasks from .claude/scheduled_tasks.json (CronCreate/Delete/List)
   if (feature('AGENT_TRIGGERS')) {
-    // Assistant mode bypasses the isLoading gate (the proactive tick →
-    // Sleep → tick loop would otherwise starve the scheduler).
+    // Assistant mode bypasses the isLoading gate (a busy proactive tick
+    // loop would otherwise starve the scheduler).
     // kairosEnabled is set once in initialState (main.tsx) and never mutated — no
     // subscription needed. The tengu_kairos_cron runtime gate is checked inside
     // useScheduledTasks's effect (not here) since wrapping a hook call in a dynamic

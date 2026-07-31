@@ -69,7 +69,6 @@ describe('CORE_TOOLS', () => {
       'SearchExtraTools',
       'WebSearch',
       'WebFetch',
-      'Sleep',
       'LSP',
       'Skill',
       'TaskCreate',

@@ -24,7 +24,6 @@ import { TASK_LIST_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskL
 import { TASK_UPDATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskUpdateTool/constants.js'
 import { SEARCH_EXTRA_TOOLS_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/constants.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
-import { SLEEP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SleepTool/prompt.js'
 import { LSP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/LSPTool/prompt.js'
 import { VERIFY_PLAN_EXECUTION_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/VerifyPlanExecutionTool/constants.js'
 import { TEAM_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TeamCreateTool/constants.js'
@@ -170,8 +169,6 @@ export const CORE_TOOLS = new Set([
   // and callable without a SearchExtraTools round-trip. Registration itself
   // is still feature-gated (feature('WORKFLOW_SCRIPTS')) in tools.ts.
   WORKFLOW_TOOL_NAME, // 'Workflow'
-  // Scheduling & monitoring
-  SLEEP_TOOL_NAME, // 'Sleep'
   // Tool discovery (always loaded)
   SEARCH_EXTRA_TOOLS_TOOL_NAME, // 'SearchExtraTools'
   EXECUTE_TOOL_NAME, // 'ExecuteExtraTool'

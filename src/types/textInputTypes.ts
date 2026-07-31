@@ -277,14 +277,9 @@ export type EditablePromptInputMode = Exclude<
  *              see a 'now' command.
  *  - `next`  — Mid-turn drain. Let the current tool call finish, then
  *              send this message between the tool result and the next API
- *              round-trip. Wakes an in-progress SleepTool call.
+ *              round-trip.
  *  - `later` — End-of-turn drain. Wait for the current turn to finish,
- *              then process as a new query. Wakes an in-progress SleepTool
- *              call (query.ts upgrades the drain threshold after sleep so
- *              the message is attached to the same turn).
- *
- * The SleepTool is only available in proactive mode, so "wakes SleepTool"
- * is a no-op in normal mode.
+ *              then process as a new query.
  */
 export type QueuePriority = 'now' | 'next' | 'later'
 

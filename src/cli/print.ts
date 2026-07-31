@@ -520,10 +520,10 @@ export async function runHeadless(
     }
   })
 
-  // Proactive activation is now handled in main.tsx before getTools() so
-  // SleepTool passes isEnabled() filtering. This fallback covers the case
-  // where CLAUDE_CODE_PROACTIVE is set but main.tsx's check didn't fire
-  // (e.g. env was injected by the SDK transport after argv parsing).
+  // Proactive activation is normally handled in main.tsx before getTools().
+  // This fallback covers the case where CLAUDE_CODE_PROACTIVE is set but
+  // main.tsx's check didn't fire (e.g. env was injected by the SDK transport
+  // after argv parsing).
   if (
     (feature('PROACTIVE') || feature('KAIROS')) &&
     proactiveModule &&
