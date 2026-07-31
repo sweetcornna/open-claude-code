@@ -1,10 +1,9 @@
 # System Understanding Report — Loop / Scheduled Autonomy OOM
 
 - **Flow id**: `recurring-bug-loop-oom` (pilot flow for autonomy ↔ deep-debug binding)
-- **Branch**: `fix/loop-scheduled-autonomy-oom`
-- **Worktree**: `E:\Source_code\Claude-code-bast-loop-scheduled-oom-fix`
+- **Branch**: `fix/loop-scheduled-autonomy-oom`（历史信息，已随合并删除）
 - **Author**: back-filled from existing working-tree diff (no commits ahead of `main`)
-- **Status**: `report` (this document) — pending human approval before `regression-test` advances
+- **Status**: **SHIPPED** — 本修复与本文档同在 commit `f2e9af49`（2026-04-29，`feat: harden autonomy lifecycle, OOM bounds, and provider-boundary finalization`）合入 `main`。2026-07-31 复核：§11 全部 5 个设计要素在位、3 个测试文件齐全（21+2+3 tests）、突变测试证实去重守卫 load-bearing（禁用后 5 个测试失败）。已知遗留不对称：`useScheduledTasks` 的 legacy `onFire` 错过任务路径无 `sourceId` 去重（低危，启动时一次性路径，见 §11 注记）。
 
 ---
 
