@@ -32,10 +32,7 @@ import { logForDebugging } from '../../utils/debug.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { classifyAxiosError } from '../../utils/errors.js'
 import { safeParseJSON } from '../../utils/json.js'
-import {
-  getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
-} from '../../utils/model/providers.js'
+import { isDirectAnthropicApi } from '../../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
@@ -165,13 +162,9 @@ function computeChecksum(
  * getSettings() to avoid circular dependencies during settings loading.
  */
 export function isPolicyLimitsEligible(): boolean {
-  // 3p provider users should not hit the policy limits endpoint
-  if (getAPIProvider() !== 'firstParty') {
-    return false
-  }
-
-  // Custom base URL users should not hit the policy limits endpoint
-  if (!isFirstPartyAnthropicBaseUrl()) {
+  // 3p provider users and custom base URL users should not hit the policy
+  // limits endpoint
+  if (!isDirectAnthropicApi()) {
     return false
   }
 

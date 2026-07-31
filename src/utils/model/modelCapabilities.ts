@@ -13,7 +13,7 @@ import { safeParseJSON } from '../json.js'
 import { lazySchema } from '../lazySchema.js'
 import { isEssentialTrafficOnly } from '../privacyLevel.js'
 import { jsonStringify } from '../slowOperations.js'
-import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from './providers.js'
+import { isDirectAnthropicApi } from './providers.js'
 
 // .strip() — don't persist internal-only fields (mycro_deployments etc.) to disk
 const ModelCapabilitySchema = lazySchema(() =>
@@ -48,9 +48,7 @@ function isModelCapabilitiesEligible(): boolean {
   // to all firstParty users (API key and OAuth). Enabling for everyone
   // lets model capabilities (max_input_tokens, max_tokens) be fetched
   // dynamically instead of relying on hardcoded values in context.ts.
-  if (getAPIProvider() !== 'firstParty') return false
-  if (!isFirstPartyAnthropicBaseUrl()) return false
-  return true
+  return isDirectAnthropicApi()
 }
 
 // Longest-id-first so substring match prefers most specific; secondary key for stable isEqual

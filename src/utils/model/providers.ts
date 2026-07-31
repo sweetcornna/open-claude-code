@@ -39,10 +39,16 @@ export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS
  * Check if ANTHROPIC_BASE_URL is a first-party Anthropic API URL.
  * Returns true if not set (default API) or points to api.anthropic.com
  * (or api-staging.anthropic.com for ant users).
+ *
+ * NOTE: "unset" means "the Anthropic endpoint was not overridden", which is NOT
+ * the same thing as "this session talks to Anthropic". A user who selects a
+ * third-party provider through settings.modelType ('openai' / 'gemini' / 'grok')
+ * normally leaves ANTHROPIC_BASE_URL alone, so this returns true for them too.
+ * It is only a base-URL check and must always be paired with a provider check —
+ * use isDirectAnthropicApi() rather than calling this on its own.
  */
 export function isFirstPartyAnthropicBaseUrl(): boolean {
   const baseUrl = process.env.ANTHROPIC_BASE_URL
-  // TODO: 这里会有问题, 只配置了 openai 协议的用户, 按理说会为 true 导致问题
   if (!baseUrl) {
     return true
   }
@@ -56,4 +62,22 @@ export function isFirstPartyAnthropicBaseUrl(): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Whether this session talks directly to the Anthropic first-party API — the
+ * selected provider is Anthropic *and* the endpoint has not been pointed at a
+ * proxy or gateway.
+ *
+ * Both halves are required. isFirstPartyAnthropicBaseUrl() alone is true for
+ * anyone who never set ANTHROPIC_BASE_URL, including users on a third-party
+ * provider chosen via settings.modelType, and getAPIProvider() alone is true
+ * for gateway users proxying Anthropic traffic through a custom base URL.
+ */
+export function isDirectAnthropicApi(
+  settings: Pick<SettingsJson, 'modelType'> = getInitialSettings(),
+): boolean {
+  return (
+    getAPIProvider(settings) === 'firstParty' && isFirstPartyAnthropicBaseUrl()
+  )
 }
