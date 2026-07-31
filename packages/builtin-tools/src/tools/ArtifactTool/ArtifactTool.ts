@@ -8,9 +8,8 @@ import {
   describeArtifactTool,
   getArtifactToolPrompt,
 } from './prompt.js'
-import { getArtifactsToken, getUploadUrl } from './config.js'
-import { uploadArtifact } from './client.js'
 import { markdownToHtml } from './markdown.js'
+import { getArtifactStore } from './store.js'
 import { renderToolResultMessage } from './UI.js'
 
 const inputSchema = lazySchema(() =>
@@ -102,10 +101,11 @@ export const ArtifactTool = buildTool({
         content: content.error,
       }
     }
+    const expiry = content.expiresAt ? `, expires: ${content.expiresAt}` : ''
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `Artifact uploaded: ${content.url} (id: ${content.id}, expires: ${content.expiresAt})`,
+      content: `Artifact uploaded: ${content.url} (id: ${content.id}${expiry})`,
     }
   },
   renderToolResultMessage,
@@ -181,14 +181,12 @@ export const ArtifactTool = buildTool({
     }
 
     try {
-      const result = await uploadArtifact({
+      const result = await getArtifactStore().upload({
         html,
-        token: getArtifactsToken(),
-        uploadUrl: getUploadUrl(),
         hash,
-        ttl,
+        ttlDays: ttl,
       })
-      return { data: result }
+      return { data: { ...result, expiresAt: result.expiresAt ?? '' } }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       return { data: { id: '', url: '', expiresAt: '', error: message } }
