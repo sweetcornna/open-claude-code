@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text } from '../index.js';
+import Text from './ThemedText.js';
 import type { Theme } from './theme-types.js';
 
 type Props = {
