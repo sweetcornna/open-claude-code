@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) and other AI coding 
 
 This is a **reverse-engineered / decompiled** version of Anthropic's official Claude Code CLI tool. The goal is to restore core functionality while trimming secondary capabilities. Many modules are stubbed or feature-flagged off. TypeScript strict mode is enforced — **`bun run precheck` 必须零错误通过**（包含 typecheck + lint fix + test）。
 
-本项目正在改名为 **open-claude-code**（CLI 名 `occ`），并已与官方 Claude Code 做了用户态隔离。**动任何路径相关代码前，先读下面这节。**
+本项目已改名为 **open-claude-code**（CLI 名 `occ`），并与官方 Claude Code 完成了用户态隔离。**动任何路径相关代码前，先读下面这节。**
 
 ## 路径与隔离不变式（最容易被破坏的一组约定）
 
@@ -31,7 +31,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - **`CLAUDE.md` / `CLAUDE.local.md` / `AGENTS.md` 文件名** —— 是跨工具生态约定，改名会让所有既有仓库丢失上下文。
 - **`CLAUDECODE=1`** 子进程环境变量 —— 大量用户 hook 脚本和第三方 CLI 靠它判断"跑在 Claude Code 里"。occ 另外加了 `OCC=1`，两个都发。
 - **`~/.claude/ide` 锁文件目录** —— `getIdeLockfilesPaths()` **同时**搜两个根。这些锁文件是 IDE 插件写的、我们只读，而市面上的插件是 Anthropic 的 `anthropic.claude-code`，它写 `~/.claude/ide`。只搜 occ 自己的根 = 静默断掉 IDE 集成。
-- **系统提示词、User-Agent `claude-code/<ver>`、OTel `service.name`** —— 见改名计划的"明确不改"清单。
+- **系统提示词、User-Agent `claude-code/<ver>`、OTel `service.name`** —— 见 `src/constants/brand.ts` 顶部注释的"明确不改"清单。
 
 **迁移**：`occ migrate` 把用户既有配置从 `~/.claude` 拷进来。`~/.claude` **只读**，凭据和会话历史**永不复制**（凭据与官方共用，复制等于把要拆掉的耦合又搬回来）。见 `src/config/migrateFromClaude.ts` 顶部的四条规则。
 
@@ -149,9 +149,9 @@ bun run docs:dev
 ### Tool System
 
 - **`src/Tool.ts`** — Tool interface definition (`Tool` type) and utilities (`findToolByName`, `toolMatchesName`).
-- **`src/tools.ts`** — Tool registry. Assembles the tool list; tools are imported from `@claude-code-best/builtin-tools` package. Some tools are conditionally loaded via `feature()` flags or `process.env.USER_TYPE`.
+- **`src/tools.ts`** — Tool registry. Assembles the tool list; tools are imported from `@open-claude-code/builtin-tools` package. Some tools are conditionally loaded via `feature()` flags or `process.env.USER_TYPE`.
 - **`src/constants/tools.ts`** — `CORE_TOOLS` 白名单常量（29 个核心工具名），用于 `isDeferredTool` 白名单制判定。
-- **`packages/builtin-tools/src/tools/`** — 58 个工具目录（含 shared/testing 等工具目录），通过 `@claude-code-best/builtin-tools` 包导出。主要分类：
+- **`packages/builtin-tools/src/tools/`** — 58 个工具目录（含 shared/testing 等工具目录），通过 `@open-claude-code/builtin-tools` 包导出。主要分类：
   - **文件操作**: FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool
   - **Shell/执行**: BashTool, PowerShellTool, REPLTool
   - **Agent 系统**: AgentTool, TaskCreateTool, TaskUpdateTool, TaskListTool, TaskGetTool
@@ -194,7 +194,7 @@ bun run docs:dev
 | `packages/@ant/computer-use-swift/` | 截图 + 应用管理（dispatcher + per-platform backend） |
 | `packages/@ant/claude-for-chrome-mcp/` | Chrome 浏览器控制（通过 `--chrome` 启用） |
 | `packages/@ant/model-provider/` | Model provider 抽象层 |
-| `packages/builtin-tools/` | 内置工具集（60 个 tool 实现，通过 `@claude-code-best/builtin-tools` 导出） |
+| `packages/builtin-tools/` | 内置工具集（60 个 tool 实现，通过 `@open-claude-code/builtin-tools` 导出） |
 | `packages/agent-tools/` | Agent 工具集 |
 | `packages/acp-link/` | ACP 代理服务器（WebSocket → ACP agent 桥接） |
 | `packages/mcp-client/` | MCP 客户端库 |
@@ -205,7 +205,7 @@ bun run docs:dev
 | `packages/image-processor-napi/` | 图像处理（已恢复） |
 | `packages/modifiers-napi/` | 键盘修饰键检测（macOS FFI 实现） |
 | `packages/url-handler-napi/` | URL scheme 处理（环境变量 + CLI 参数读取） |
-| `packages/workflow-engine/` | Workflow 工具实现（`@claude-code-best/workflow-engine`，被 32 个文件引用） |
+| `packages/workflow-engine/` | Workflow 工具实现（`@open-claude-code/workflow-engine`，被 19 个文件引用） |
 
 `packages/` 下没有非 workspace 的辅助目录 —— 每个子目录都有 `package.json`。Langfuse 集成在 `src/services/langfuse/`（被 11 个生产文件引用），不是独立包。
 
@@ -213,7 +213,7 @@ bun run docs:dev
 
 - **`src/bridge/`** — Remote Control / Bridge 模式。feature-gated by `BRIDGE_MODE`。包含 bridge API、会话管理、JWT 认证、消息传输、权限回调等。Entry: `bridgeMain.ts`。
 - **`packages/remote-control-server/`** — 自托管 RCS，支持 Docker 部署，含 Web UI 控制面板（React 19 + Vite + Radix UI）。支持 ACP agent 通过 acp-link 接入（ACP WebSocket handler、relay handler、SSE event stream）。通过 `bun run rcs` 启动。
-- CLI 快速路径: `claude remote-control` / `claude rc` / `claude bridge`。
+- CLI 快速路径: `occ remote-control` / `occ rc` / `occ bridge`。
 - 详见 `docs/features/remote-control-self-hosting.md`。
 
 ### HTML Artifact Hosting
@@ -256,7 +256,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - 其他: `AUTOFIX_PR`（`/autofix-pr` 命令）, `GOAL`（持久化 thread goal）
 - **未**编译进默认列表: `SKILL_LEARNING`（`scripts/defines.ts` 里已注释掉，需显式 `FEATURE_SKILL_LEARNING=1` 才编译进；运行时另由 `SKILL_LEARNING_ENABLED` 控制）
 
-> `packages/weixin/`（微信 Channel）与整个 `DIRECT_CONNECT` 直连模式（`src/server/`、`useDirectConnect`、`claude server` / `claude open` / `cc://`）已于 2026-07 移除 —— 服务端全是 stub，客户端因 `parseConnectUrl` 返回空串而不可能连通。`claude ssh` 不受影响（它只依赖 `src/remote/`）。`src/plugins/bundled/` 现在没有任何内置 plugin，但注册表仍在用，保留为扩展点。
+> `packages/weixin/`（微信 Channel）与整个 `DIRECT_CONNECT` 直连模式（`src/server/`、`useDirectConnect`、`claude server` / `claude open` / `cc://`）已于 2026-07 移除 —— 服务端全是 stub，客户端因 `parseConnectUrl` 返回空串而不可能连通。`occ ssh` 不受影响（它只依赖 `src/remote/`）。`src/plugins/bundled/` 现在没有任何内置 plugin，但注册表仍在用，保留为扩展点。
 >
 > 以下 flag 及其全部代码已于 2026-07 移除，不要再引用：`CONTEXT_COLLAPSE`、`UDS_INBOX`、`LAN_PIPES`、`REVIEW_ARTIFACT`、`TEAMMEM`、`HISTORY_SNIP`、`OVERFLOW_TEST_TOOL`。对应的 `/peers`、`/attach`、`/detach`、`/send`、`/pipes`、`/pipe-status`、`/history`、`/claim-main`、`/force-snip` 命令与 SnipTool / CtxInspectTool / ListPeersTool / ReviewArtifactTool / OverflowTestTool 一并删除。
 >
