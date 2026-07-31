@@ -31,6 +31,7 @@ import {
   getPackageManager,
 } from './nativeInstaller/packageManagers.js'
 import { getPlatform } from './platform.js'
+import { detectChrome } from './chromeDevtools/chromeVersion.js'
 import { getRipgrepStatus } from './ripgrep.js'
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from './settings/managedPath.js'
@@ -61,6 +62,20 @@ export type DiagnosticInfo = {
     working: boolean
     mode: 'system' | 'builtin' | 'embedded'
     systemPath: string | null
+    note: string | null
+  }
+  /**
+   * Whether `occ --chrome` can attach to the user's own browser. Reported
+   * unconditionally, because the failure it warns about is silent: with Chrome
+   * older than 144 the DevTools MCP server launches a fresh browser with an
+   * empty profile, and the user only finds out when every site is logged out.
+   */
+  chromeStatus: {
+    version: string | null
+    supportsAutoConnect: boolean
+    /** 'browser-url' when OCC_CHROME_BROWSER_URL points somewhere. */
+    mode: 'auto-connect' | 'browser-url' | 'launch'
+    browserUrl: string | null
     note: string | null
   }
 }
@@ -428,6 +443,20 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     note: ripgrepStatusRaw.note ?? null,
   }
 
+  // Chrome availability for `--chrome` (chrome-devtools-mcp)
+  const chrome = await detectChrome()
+  const chromeStatus = {
+    version: chrome.version,
+    supportsAutoConnect: chrome.supportsAutoConnect,
+    mode: chrome.browserUrl
+      ? ('browser-url' as const)
+      : chrome.supportsAutoConnect
+        ? ('auto-connect' as const)
+        : ('launch' as const),
+    browserUrl: chrome.browserUrl,
+    note: chrome.note,
+  }
+
   // Get package manager info if running from package manager
   const packageManager =
     installationType === 'package-manager'
@@ -451,6 +480,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     warnings,
     packageManager,
     ripgrepStatus,
+    chromeStatus,
   }
 
   return diagnostic

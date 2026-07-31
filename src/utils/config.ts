@@ -498,6 +498,9 @@ export type GlobalConfig = {
   officialMarketplaceAutoInstallLastAttemptTime?: number // Timestamp of last attempt
   officialMarketplaceAutoInstallNextRetryTime?: number // Earliest time to retry again
 
+  // Chrome DevTools MCP settings
+  chromeDevtoolsDefaultEnabled?: boolean // Attach the Chrome DevTools MCP server without passing --chrome
+
   // Claude in Chrome settings
   hasCompletedClaudeInChromeOnboarding?: boolean // Whether Claude in Chrome onboarding has been shown
   claudeInChromeDefaultEnabled?: boolean // Whether Claude in Chrome is enabled by default (undefined means platform default)
@@ -658,6 +661,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'inputNeededNotifEnabled',
   'agentPushNotifEnabled',
   'respectGitignore',
+  'chromeDevtoolsDefaultEnabled',
   'claudeInChromeDefaultEnabled',
   'hasCompletedClaudeInChromeOnboarding',
   'lspRecommendationDisabled',
