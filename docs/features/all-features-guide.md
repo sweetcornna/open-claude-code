@@ -113,30 +113,29 @@ occ auth login
 
 ## 5. Chrome 浏览器控制
 
-**PR**: #93 `feat: enable Claude in Chrome MCP with full browser control`
-**Feature Flag**: `CHICAGO_MCP`
+**Feature Flag**: 无（`--chrome` 直接开启）
 
 ### 说明
-通过 Chrome 扩展控制浏览器：导航、点击、填表、截图、执行 JS。
+通过 Google 官方的 `chrome-devtools-mcp`（stdio MCP server）控制浏览器：导航、点击、填表、快照、截图、控制台/网络读取、性能 trace 与 Lighthouse。默认用 `--autoConnect` 附着到用户已经开着的 Chrome（需 144+），WSL/远程用 `OCC_CHROME_BROWSER_URL` 指向带 `--remote-debugging-port` 的 Chrome。
+
+旧的 Chrome 扩展 + native host 方案已删除 —— 它只认官方 Claude Code 的 host 身份，在 occ 里始终 fail-closed。
 
 ### 使用
 ```bash
 # 启动带 Chrome 控制的模式
 bun run dev -- --chrome
 
-# 安装 Chrome 扩展后，AI 可以：
-# - 打开网页、点击按钮
-# - 填写表单
-# - 截取页面内容
-# - 执行 JavaScript
+# WSL：Chrome 在 Windows 侧
+export OCC_CHROME_BROWSER_URL=http://127.0.0.1:9222
+occ --chrome
 ```
 
+REPL 里 `/chrome` 看状态，`occ doctor` 看 Chrome 版本与连接模式。
+
 ### AI 可用工具
-- `navigate` — 导航到 URL
-- `click` / `find` / `form_input` — 页面交互
-- `get_page_text` / `read_page` — 读取内容
-- `javascript_tool` — 执行 JS
-- `gif_creator` — 录制操作 GIF
+工具全名为 `mcp__chrome-devtools__*`，默认 29 个。只读的 9 个（`take_snapshot` / `take_screenshot` / `list_pages` / 控制台与网络读取等）免确认；其余会改变浏览器状态的（`click` / `type_text` / `navigate_page` / `evaluate_script` / `upload_file` …）一律走权限确认。
+
+详见 `docs/features/chrome-devtools-mcp.md`。
 
 ---
 

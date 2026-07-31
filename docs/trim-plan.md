@@ -512,6 +512,13 @@ git log --all --oneline --name-only --diff-filter=A | grep -iE "langfuse-dashboa
 
 ## Claude in Chrome（浏览器控制模块）
 
+> **状态（2026-07-31）：已执行，但结论与本节的建议不同。** 这套扩展 + native host 链路
+> 已整体删除，浏览器控制**没有被砍掉**，而是换成了 Google 官方的 `chrome-devtools-mcp`
+> （stdio 子进程，`--chrome` 开启）。`--chrome` / `/chrome` / `CLAUDE_CODE_ENABLE_CFC`
+> 全部保留并继续有效，保留名从 `claude-in-chrome` 变成 `chrome-devtools`。
+> 下面的分析是删除前的现状快照，保留作为记录 —— **不要照着它的「功能性后果」一节做判断**。
+> 当前实现见 `docs/features/chrome-devtools-mcp.md`。
+
 ### 1. 是什么 / 干什么用
 
 **是什么**：Claude Code 控制用户**真实 Chrome 浏览器**的一整套链路，由两半组成：
@@ -588,7 +595,7 @@ chrome-extension://fcoeoabgfenejglbffodgkkbkcdhcgfn/   // PROD_EXTENSION_ID
 - 额外前提：站点级权限由**扩展侧**管理，CLI 只能开链接过去（`chrome.tsx:169-172`）；`mcpServer.ts:112-116` 提示账号不匹配会认证失败。
 - 扩展配对信息回写 CLI 配置：`mcpServer.ts:120-140` 的 `onExtensionPaired` 存 `chromeExtension.pairedDeviceId/Name`。
 
-注：`docs/features/chrome-use-mcp.md` 描述的是**另一个东西**（第三方 `hangwin/mcp-chrome`，对应 `src/main.tsx:1869-1876` 里默认注册但默认禁用的 `mcp-chrome` HTTP server，端口 12306），跟本模块无关，别混淆。本模块的文档是 `docs/features/claude-in-chrome-mcp.md`。
+注：`docs/features/chrome-use-mcp.md` 描述的是**另一个东西**（第三方 `hangwin/mcp-chrome`，对应 `src/main.tsx:1869-1876` 里默认注册但默认禁用的 `mcp-chrome` HTTP server，端口 12306），跟本模块无关，别混淆。本模块当时的文档已重写为 `docs/features/chrome-devtools-mcp.md`。
 
 ### 4. 规模（文件数 + LOC）
 

@@ -129,7 +129,7 @@
               "docs/features/experimental-skill-search",
               "docs/features/langfuse-monitoring",
               "docs/features/computer-use",
-              "docs/features/claude-in-chrome-mcp"
+              "docs/features/chrome-devtools-mcp"
             ]
           },
           {

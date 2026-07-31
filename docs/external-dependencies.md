@@ -22,7 +22,7 @@
 | 14 | Web Search Pages | `www.bing.com`, `search.brave.com` | HTTPS | WebSearch 工具，可通过 `WEB_SEARCH_ADAPTER=bing|brave` 切换 |
 | 15 | Google Cloud Storage (更新) | `storage.googleapis.com` | HTTPS | 版本检查 |
 | 16 | GitHub Raw (Changelog/Stats) | `raw.githubusercontent.com` | HTTPS | 更新提示 |
-| 17 | Claude in Chrome Bridge | `bridge.claudeusercontent.com` | WSS | Chrome 集成 |
+| 17 | Chrome UX Report (CrUX) | `chromeuxreport.googleapis.com` | HTTPS | `--chrome` 下跑性能 trace 时 |
 | 18 | CCR Upstream Proxy | `api.anthropic.com` | WS | CCR 远程会话 |
 | 19 | Voice STT | `api.anthropic.com/api/ws/...` | WSS | Voice Mode |
 | 20 | Desktop App Download | `claude.ai/api/desktop/...` | HTTPS | 下载引导 |
@@ -147,10 +147,16 @@ WebSearch 工具支持直接抓取 Bing 搜索结果页面，也支持通过 Bra
 - **端点**: `https://raw.githubusercontent.com/anthropics/claude-plugins-official/refs/heads/stats/stats/plugin-installs.json`
 - **文件**: `src/utils/releaseNotes.ts`, `src/utils/plugins/installCounts.ts`
 
-### 17. Claude in Chrome Bridge
+### 17. Chrome UX Report (CrUX)
 
-- **端点**: `wss://bridge.claudeusercontent.com` (生产) / `wss://bridge-staging.claudeusercontent.com` (staging)
-- **文件**: `src/utils/claudeInChrome/mcpServer.ts`
+由 `chrome-devtools-mcp` 子进程发起，不是 occ 自己发的。
+
+- **端点**: `https://chromeuxreport.googleapis.com`
+- **激活**: 仅在 `--chrome` 启用 **且** 模型调用 `performance_start_trace` / `performance_analyze_insight` 时。trace 里的 URL 会被发给 Google 以换取真实用户性能数据。
+- **关闭**: 给 server 加 `--no-performance-crux`
+- **文件**: `src/utils/chromeDevtools/setup.ts`（构造 server 参数）
+
+> `chrome-devtools-mcp` 的使用统计上报和更新检查已被 occ 默认关闭（`--no-usage-statistics` + `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` / `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`），不在此表内。
 
 ### 18. CCR Upstream Proxy
 
