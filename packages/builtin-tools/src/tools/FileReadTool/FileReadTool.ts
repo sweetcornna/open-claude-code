@@ -73,7 +73,6 @@ import { readFileInRange } from 'src/utils/readFileInRange.js'
 import { semanticNumber } from 'src/utils/semanticNumber.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
-import { getDefaultFileReadingLimits } from './limits.js'
 import {
   DESCRIPTION,
   FILE_READ_TOOL_NAME,
@@ -81,8 +80,9 @@ import {
   LINE_FORMAT_INSTRUCTION,
   OFFSET_INSTRUCTION_DEFAULT,
   OFFSET_INSTRUCTION_TARGETED,
-  renderPromptTemplate,
-} from './prompt.js'
+} from './constants.js'
+import { getDefaultFileReadingLimits } from './limits.js'
+import { renderPromptTemplate } from './prompt.js'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -352,11 +352,12 @@ export const FileReadTool = buildTool({
     const offsetInstruction = limits.targetedRangeNudge
       ? OFFSET_INSTRUCTION_TARGETED
       : OFFSET_INSTRUCTION_DEFAULT
-    return renderPromptTemplate(
-      pickLineFormatInstruction(),
+    return renderPromptTemplate({
+      lineFormat: pickLineFormatInstruction(),
       maxSizeInstruction,
       offsetInstruction,
-    )
+      pdfSupported: isPDFSupported(),
+    })
   },
   get inputSchema(): InputSchema {
     return inputSchema()

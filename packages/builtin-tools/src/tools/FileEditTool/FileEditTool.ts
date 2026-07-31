@@ -21,6 +21,7 @@ import {
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
   getFileModificationTime,
+  isCompactLinePrefixEnabled,
   suggestPathUnderCwd,
   writeTextContent,
 } from 'src/utils/file.js'
@@ -50,7 +51,7 @@ import {
   FILE_EDIT_TOOL_NAME,
   FILE_UNEXPECTEDLY_MODIFIED_ERROR,
 } from './constants.js'
-import { getEditToolDescription } from './prompt.js'
+import { renderEditToolDescription } from './prompt.js'
 import {
   type FileEditInput,
   type FileEditOutput,
@@ -87,7 +88,10 @@ export const FileEditTool = buildTool({
     return 'A tool for editing files'
   },
   async prompt() {
-    return getEditToolDescription()
+    return renderEditToolDescription({
+      compactLinePrefix: isCompactLinePrefixEnabled(),
+      includeMinimalUniquenessHint: process.env.USER_TYPE === 'ant',
+    })
   },
   userFacingName,
   getToolUseSummary,

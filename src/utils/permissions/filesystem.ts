@@ -12,11 +12,11 @@ import {
 } from 'src/config/paths.js'
 import { hasAutoMemPathOverride, isAutoMemPath } from 'src/memdir/paths.js'
 import { isAgentMemoryPath } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js'
+import { FILE_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
 import {
-  FILE_EDIT_TOOL_NAME,
   getGlobalOccFolderPermissionPattern,
   OCC_FOLDER_PERMISSION_PATTERN,
-} from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
+} from '@open-claude-code/builtin-tools/tools/FileEditTool/occFolderPermissions.js'
 import type { z } from 'zod/v4'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
