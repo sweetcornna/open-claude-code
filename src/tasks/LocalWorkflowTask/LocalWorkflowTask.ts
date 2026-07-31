@@ -12,6 +12,13 @@ import { registerTask, updateTaskState } from '../../utils/task/framework.js'
 
 export type LocalWorkflowTaskState = TaskStateBase & {
   type: 'local_workflow'
+  /**
+   * Engine run id this task is bound to. Equal to the task id for a fresh run,
+   * but a resumed run keeps its original runId while getting a new task id — so
+   * consumers that need to correlate back to the ProgressStore must read this,
+   * not `id`.
+   */
+  runId: string
   /** meta.name from the workflow script (e.g. 'spec'). */
   workflowName: string
   /** Absolute path to the workflow file on disk. */
@@ -60,6 +67,8 @@ export function registerLocalWorkflowTask(
     toolUseId?: string
     agentId?: AgentId
     abortController?: AbortController
+    /** Engine run id when resuming; defaults to the freshly generated task id. */
+    runId?: string
   },
 ): string {
   const id = generateTaskId('local_workflow')
@@ -72,6 +81,7 @@ export function registerLocalWorkflowTask(
     ),
     type: 'local_workflow',
     status: 'running',
+    runId: opts.runId ?? id,
     workflowName: opts.workflowName,
     workflowFile: opts.workflowFile,
     summary: opts.summary,
