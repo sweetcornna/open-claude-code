@@ -1,10 +1,11 @@
 import { nanoid } from 'nanoid'
 
-// TOKEN 通过 `wrangler secret put TOKEN` 注入，wrangler types 不为 secret 生成类型
+// TOKEN/TOKEN_PREVIOUS 通过 `wrangler secret put` 注入，wrangler types 不为 secret 生成类型
 // 所以这里显式扩展全局 Env（与 worker-configuration.d.ts 合并）
 declare global {
   interface Env {
     TOKEN: string
+    TOKEN_PREVIOUS?: string
   }
 }
 
@@ -54,7 +55,9 @@ async function handleUpload(
 ): Promise<Response> {
   const auth = req.headers.get('authorization') ?? ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-  if (!env.TOKEN || !token || token !== env.TOKEN) {
+  const tokenMatches =
+    token === env.TOKEN || (env.TOKEN_PREVIOUS && token === env.TOKEN_PREVIOUS)
+  if (!env.TOKEN || !token || !tokenMatches) {
     return json({ error: 'unauthorized' }, 401)
   }
 

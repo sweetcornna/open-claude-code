@@ -148,6 +148,22 @@ bun run setup                        # 创建 bucket + 加 lifecycle rule + 设�
 bun run deploy
 ```
 
+### Bearer token rotation
+
+Deploy the Worker before releasing a CLI version that contains a new token.
+During the release window, the Worker accepts both the current token and the
+previous token:
+
+```bash
+cd packages/cloud-artifacts
+wrangler secret put TOKEN_PREVIOUS  # paste the old token
+wrangler secret put TOKEN           # paste the new token
+wrangler deploy
+
+# One release cycle later:
+wrangler secret delete TOKEN_PREVIOUS && wrangler deploy
+```
+
 ## 测试
 
 `scripts/test.sh` 覆盖 7 个错误用例 + 3 个成功用例 + R2 写入验证。**支持双模式**：直连 Worker 时按 HTTP status code 断言；经 Deno Deploy 代理（status 抹平为 200）时自动按 body 的 `error` 字段断言（标记 `[via body]`）。
