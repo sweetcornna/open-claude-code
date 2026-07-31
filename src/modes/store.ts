@@ -125,19 +125,11 @@ function getAllModes(): OccMode[] {
 
 /** Settings key holding the selected mode. */
 const MODE_SETTINGS_KEY = 'occMode'
-/** Pre-rename key. Read for backwards compatibility, never written. */
-const LEGACY_MODE_SETTINGS_KEY = 'ccbMode'
 
 export function getCurrentModeSlug(): string {
   if (currentModeSlug === null) {
     const settings = getInitialSettings() as Record<string, unknown>
-    // Fall back to the old key so an existing user's selected mode survives
-    // the rename instead of silently resetting to 'default'. The next
-    // setCurrentMode() writes the new key.
-    currentModeSlug =
-      (settings[MODE_SETTINGS_KEY] as string) ||
-      (settings[LEGACY_MODE_SETTINGS_KEY] as string) ||
-      'default'
+    currentModeSlug = (settings[MODE_SETTINGS_KEY] as string) || 'default'
   }
   return currentModeSlug
 }
