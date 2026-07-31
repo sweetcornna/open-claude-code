@@ -3,13 +3,13 @@
  * restricted tier instead of `"full"`:
  *
  *   - **browser** → `"read"` tier — visible in screenshots, NO interaction.
- *     The model can read an already-open page but must use the Claude-in-Chrome
- *     MCP for navigation/clicking/typing.
+ *     The model can read an already-open page but must use the Chrome
+ *     DevTools MCP for navigation/clicking/typing.
  *   - **terminal** → `"click"` tier — visible + clickable, NO typing. The
  *     model can click a Run button or scroll test output in an IDE, but can't
  *     type into the integrated terminal. Use the Bash tool for shell work.
  *   - **trading** → `"read"` tier — same restrictions as browsers, but no
- *     CiC-MCP alternative exists. For platforms where a stray click can
+ *     browser-MCP alternative exists. For platforms where a stray click can
  *     execute a trade or send a message to a counterparty.
  *
  * Uncategorized apps default to `"full"`. See `getDefaultTierForApp`.
@@ -39,7 +39,7 @@ export type DeniedCategory = 'browser' | 'terminal' | 'trading'
  * authoritative type is `CuAppPermTier` in types.ts — keep in sync.
  *
  * Not bijective — both `"browser"` and `"trading"` map to `"read"`. Copy
- * that differs by category (the "use CiC" hint is browser-only) must check
+ * that differs by category (the "use the browser MCP" hint is browser-only) must check
  * the category, not just the tier.
  */
 export function categoryToTier(

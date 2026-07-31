@@ -515,7 +515,7 @@ async function runInputActionGates(
     // mouse_full/keyboard-specific messages apply.
     if (frontmostTier === 'read') {
       // tier "read" is not category-unique (browser AND trading map to it) —
-      // re-look-up so the CiC hint only shows for actual browsers.
+      // re-look-up so the browser-MCP hint only shows for actual browsers.
       const isBrowser =
         getDeniedCategoryForApp(frontmost.bundleId, frontmost.displayName) ===
         'browser'
@@ -523,8 +523,8 @@ async function runInputActionGates(
         `"${frontmost.displayName}" is granted at tier "read" — ` +
           `visible in screenshots only, no clicks or typing.` +
           (isBrowser
-            ? ' Use the Claude-in-Chrome MCP for browser interaction (tools ' +
-              'named `mcp__Claude_in_Chrome__*`; load via SearchExtraTools if ' +
+            ? ' Use the Chrome DevTools MCP for browser interaction (tools ' +
+              'named `mcp__chrome-devtools__*`; load via SearchExtraTools if ' +
               'deferred).'
             : ' No interaction is permitted; ask the user to take any ' +
               'actions in this app themselves.') +
@@ -669,7 +669,7 @@ async function runHitTestGate(
     `Click at these coordinates would land on "${target.displayName}", ` +
       `which is granted at tier "read" (screenshots only, no interaction). ` +
       (isBrowser
-        ? 'Use the Claude-in-Chrome MCP for browser interaction.'
+        ? 'Use the Chrome DevTools MCP for browser interaction.'
         : 'Ask the user to take any actions in this app themselves.') +
       TIER_ANTI_SUBVERSION,
     'tier_insufficient',
@@ -1285,7 +1285,7 @@ async function buildAccessRequest(
  * do with each app, instead of learning by hitting the tier gate.
  */
 function buildTierGuidanceMessage(tiered: TieredApp[]): string {
-  // tier "read" is not category-unique — split so browsers get the CiC hint
+  // tier "read" is not category-unique — split so browsers get the browser hint
   // and trading platforms get "ask the user" instead.
   const readBrowsers = tiered.filter(
     t =>
@@ -1308,8 +1308,8 @@ function buildTierGuidanceMessage(tiered: TieredApp[]): string {
         `granted at tier "read" (visible in screenshots only; no clicks or ` +
         `typing). You can read what's on screen but cannot navigate, click, ` +
         `or type into ${readBrowsers.length === 1 ? 'it' : 'them'}. For browser ` +
-        `interaction, use the Claude-in-Chrome MCP (tools named ` +
-        `\`mcp__Claude_in_Chrome__*\`; load via SearchExtraTools if deferred).`,
+        `interaction, use the Chrome DevTools MCP (tools named ` +
+        `\`mcp__chrome-devtools__*\`; load via SearchExtraTools if deferred).`,
     )
   }
 

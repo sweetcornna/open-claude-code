@@ -49,7 +49,7 @@ Supported actions:
 Limitations:
 - No JavaScript execution — only sees server-rendered HTML
 - click/type/scroll require a full browser runtime (not available)
-- For full browser interaction, use the Claude-in-Chrome MCP tools instead
+- For full browser interaction, use the Chrome DevTools MCP tools instead (start occ with --chrome)
 
 Use this for:
 - Reading web page content and documentation

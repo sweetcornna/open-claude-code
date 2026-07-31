@@ -115,25 +115,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (process.argv[2] === '--claude-in-chrome-mcp') {
-    const { CHROME_NATIVE_HOST_ISOLATION_ERROR, isChromeBrowserBridgeAvailable } = await import(
-      '../utils/claudeInChrome/setup.js'
-    );
-    if (!isChromeBrowserBridgeAvailable()) {
-      console.error(`Error: ${CHROME_NATIVE_HOST_ISOLATION_ERROR}`);
-      process.exitCode = 1;
-      return;
-    }
-    profileCheckpoint('cli_claude_in_chrome_mcp_path');
-    const { runClaudeInChromeMcpServer } = await import('../utils/claudeInChrome/mcpServer.js');
-    await runClaudeInChromeMcpServer();
-    return;
-  } else if (process.argv[2] === '--chrome-native-host') {
-    const { CHROME_NATIVE_HOST_ISOLATION_ERROR } = await import('../utils/claudeInChrome/setup.js');
-    console.error(`Error: ${CHROME_NATIVE_HOST_ISOLATION_ERROR}`);
-    process.exitCode = 1;
-    return;
-  } else if (feature('CHICAGO_MCP') && process.argv[2] === '--computer-use-mcp') {
+  // Browser control is `--chrome`, which attaches Google's chrome-devtools-mcp
+  // as an ordinary stdio server. There is no occ-hosted browser entrypoint to
+  // fast-path to any more.
+  if (feature('CHICAGO_MCP') && process.argv[2] === '--computer-use-mcp') {
     profileCheckpoint('cli_computer_use_mcp_path');
     const { runComputerUseMcpServer } = await import('../utils/computerUse/mcpServer.js');
     await runComputerUseMcpServer();

@@ -9,7 +9,7 @@ import type {
 export type ScreenshotDims = Omit<ScreenshotResult, 'base64'>
 
 /**
- * Logger 第二参数的可选类型（与 claude-for-chrome-mcp 对齐）。
+ * Logger 第二参数的可选类型。
  * 实践中多为 catch 到的 Error。
  */
 export type LoggerDetail = Error | NodeJS.ErrnoException
@@ -19,7 +19,7 @@ export function toLoggerDetail(detail: unknown): LoggerDetail | undefined {
   return detail instanceof Error ? detail : undefined
 }
 
-/** 宿主注入的日志接口（与 claude-for-chrome-mcp/src/types.ts 对齐）。 */
+/** 宿主注入的日志接口。 */
 export interface Logger {
   info: (message: string, detail?: LoggerDetail) => void // 信息
   error: (message: string, detail?: LoggerDetail) => void // 错误
@@ -34,8 +34,8 @@ export interface Logger {
  *
  *   - `"read"` — visible in screenshots, NO interaction (no clicks, no typing).
  *     Browsers land here: the model can read a page that's already open, but
- *     must use the Claude-in-Chrome MCP for any navigation/clicking. Trading
- *     platforms land here too (no CiC alternative — the model asks the user).
+ *     must use the Chrome DevTools MCP for any navigation/clicking. Trading
+ *     platforms land here too (no browser alternative — the model asks the user).
  *   - `"click"` — visible + plain left-click, scroll. NO typing/keys,
  *     NO right/middle-click, NO modifier-clicks, NO drag-drop (all text-
  *     injection vectors). Terminals/IDEs land here: the model can click a
@@ -220,7 +220,7 @@ export interface CuPermissionResponse {
 }
 
 // ----------------------------------------------------------------------------
-// Host adapter (mirror of ClaudeForChromeContext, types.ts:33-62)
+// Host adapter
 // ----------------------------------------------------------------------------
 
 /**

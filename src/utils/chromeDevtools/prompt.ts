@@ -33,3 +33,23 @@ If the tools are not connected, the user can enable them by restarting with \`--
 export function getChromeDevtoolsSystemPrompt(): string {
   return CHROME_DEVTOOLS_SYSTEM_PROMPT
 }
+
+/**
+ * Extra instructions for when tool search is on. MCP tools are deferred-loading
+ * under SearchExtraTools, so the model has to discover them before it can call
+ * them — without this it reports "I don't have browser tools" while the server
+ * sits connected.
+ *
+ * Injected only when tool search is actually enabled, not optimistically:
+ * appending it per-request would bust the prompt cache every time Chrome
+ * connects late in a session.
+ */
+export const CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS = `**IMPORTANT: Before using any Chrome browser tools, you MUST first load them using SearchExtraTools.**
+
+Chrome DevTools tools are MCP tools that require loading before use. Before calling any \`${CHROME_DEVTOOLS_TOOL_PREFIX}\` tool:
+1. Use SearchExtraTools with \`select:${CHROME_DEVTOOLS_TOOL_PREFIX}<tool_name>\` to load the specific tool
+2. Then call the tool
+
+For example, to see the open pages:
+1. First: SearchExtraTools with query "select:${CHROME_DEVTOOLS_TOOL_PREFIX}list_pages"
+2. Then: Call ${CHROME_DEVTOOLS_TOOL_PREFIX}list_pages`

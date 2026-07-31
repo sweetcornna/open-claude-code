@@ -261,7 +261,7 @@ import { excludeCommandsByServer, excludeResourcesByServer } from 'src/services/
 import { isXaaEnabled } from 'src/services/mcp/xaaIdpLogin.js';
 import { getRelevantTips } from 'src/services/tips/tipRegistry.js';
 import { logContextMetrics } from 'src/utils/api.js';
-import { CLAUDE_IN_CHROME_MCP_SERVER_NAME, isClaudeInChromeMCPServer } from 'src/utils/claudeInChrome/common.js';
+import { CHROME_DEVTOOLS_MCP_SERVER_NAME, isChromeDevtoolsMCPServer } from 'src/utils/chromeDevtools/common.js';
 import { registerCleanup } from 'src/utils/cleanupRegistry.js';
 import { eagerParseCliFlag } from 'src/utils/cliArgs.js';
 import { createEmptyAttributionState } from 'src/utils/commitAttribution.js';
@@ -1879,8 +1879,8 @@ async function run(): Promise<CommanderCommand> {
             .map(([name]) => name);
 
           let reservedNameError: string | null = null;
-          if (nonSdkConfigNames.some(isClaudeInChromeMCPServer)) {
-            reservedNameError = `Invalid MCP configuration: "${CLAUDE_IN_CHROME_MCP_SERVER_NAME}" is a reserved MCP name.`;
+          if (nonSdkConfigNames.some(isChromeDevtoolsMCPServer)) {
+            reservedNameError = `Invalid MCP configuration: "${CHROME_DEVTOOLS_MCP_SERVER_NAME}" is a reserved MCP name.`;
           } else if (feature('CHICAGO_MCP')) {
             const { isComputerUseMCPServer, COMPUTER_USE_MCP_SERVER_NAME } = await import(
               'src/utils/computerUse/common.js'
@@ -2689,7 +2689,6 @@ async function run(): Promise<CommanderCommand> {
           permissionMode,
           allowDangerouslySkipPermissions,
           commands,
-          enableChromeDevtools,
           devChannels,
         );
         logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);

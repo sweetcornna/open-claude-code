@@ -1,6 +1,6 @@
 /**
  * MCP tool schemas for the computer-use server. Mirrors
- * claude-for-chrome-mcp/src/browserTools.ts in shape (plain `Tool`-shaped
+ * the browser MCP tool definitions in shape (plain `Tool`-shaped
  * object literals, no zod).
  *
  * Coordinate descriptions are baked in at tool-list build time from the
@@ -15,7 +15,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import type { CoordinateMode } from './types.js'
 
 // See packages/desktop/computer-use-mcp/COORDINATES.md before touching any
-// model-facing coordinate text. Chrome's browserTools.ts:143 is the reference
+// model-facing coordinate text. Chrome's browser tools are the reference
 // phrasing — "pixels from the left edge", no geometry, no number to do math with.
 const COORD_DESC: Record<CoordinateMode, { x: string; y: string }> = {
   pixels: {

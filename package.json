@@ -37,8 +37,7 @@
   "files": [
     "dist",
     "scripts/postinstall.cjs",
-    "scripts/run-parallel.mjs",
-    "scripts/setup-chrome-mcp.mjs"
+    "scripts/run-parallel.mjs"
   ],
   "scripts": {
     "build": "bun run build.ts",
@@ -73,7 +72,6 @@
   },
   "devDependencies": {
     "@alcalzone/ansi-tokenize": "^0.3.0",
-    "@ant/claude-for-chrome-mcp": "workspace:*",
     "@ant/computer-use-input": "workspace:*",
     "@ant/computer-use-mcp": "workspace:*",
     "@ant/computer-use-swift": "workspace:*",
