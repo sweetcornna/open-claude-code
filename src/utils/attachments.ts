@@ -175,8 +175,8 @@ import {
   isMcpInstructionsDeltaEnabled,
   type ClientSideInstruction,
 } from './mcpInstructionsDelta.js'
-import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from './claudeInChrome/common.js'
-import { CHROME_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from './claudeInChrome/prompt.js'
+import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from './chromeDevtools/common.js'
+import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from './chromeDevtools/prompt.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import type {
   HookEvent,
@@ -1620,8 +1620,8 @@ export function getMcpInstructionsDeltaAttachment(
     isSearchExtraToolsToolAvailable(tools)
   ) {
     clientSide.push({
-      serverName: CLAUDE_IN_CHROME_MCP_SERVER_NAME,
-      block: CHROME_SEARCH_EXTRA_TOOLS_INSTRUCTIONS,
+      serverName: CHROME_DEVTOOLS_MCP_SERVER_NAME,
+      block: CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS,
     })
   }
 

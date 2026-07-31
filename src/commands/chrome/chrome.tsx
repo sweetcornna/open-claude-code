@@ -2,82 +2,52 @@ import React, { useState } from 'react';
 import { type OptionWithDescription, Select } from '../../components/CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
-import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js';
+import { BIN_NAME } from '../../constants/brand.js';
 import { useAppState } from '../../state/AppState.js';
-import { isClaudeAISubscriber } from '../../utils/auth.js';
 import { openBrowser } from '../../utils/browser.js';
-import { CLAUDE_IN_CHROME_MCP_SERVER_NAME, openInChrome } from '../../utils/claudeInChrome/common.js';
-import { isChromeExtensionInstalled } from '../../utils/claudeInChrome/setup.js';
+import type { ChromeDetection } from '../../utils/chromeDevtools/chromeVersion.js';
+import { detectChrome } from '../../utils/chromeDevtools/chromeVersion.js';
+import {
+  CHROME_AUTOCONNECT_MIN_MAJOR,
+  CHROME_BROWSER_URL_ENV,
+  CHROME_DEVTOOLS_MCP_SERVER_NAME,
+} from '../../utils/chromeDevtools/common.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { env } from '../../utils/env.js';
-import { isRunningOnHomespace } from '../../utils/envUtils.js';
 
-const CHROME_EXTENSION_URL = 'https://claude.ai/chrome';
-const CHROME_PERMISSIONS_URL = 'https://clau.de/chrome/permissions';
-const CHROME_RECONNECT_URL = 'https://clau.de/chrome/reconnect';
+const CHROME_DOWNLOAD_URL = 'https://www.google.com/chrome/';
+const CHROME_DEVTOOLS_MCP_URL = 'https://github.com/ChromeDevTools/chrome-devtools-mcp';
 
-type MenuAction = 'install-extension' | 'reconnect' | 'manage-permissions' | 'toggle-default';
+type MenuAction = 'install-chrome' | 'toggle-default' | 'learn-more';
 
 type Props = {
   onDone: (result?: string) => void;
-  isExtensionInstalled: boolean;
+  chrome: ChromeDetection;
   configEnabled: boolean | undefined;
-  isClaudeAISubscriber: boolean;
-  isWSL: boolean;
 };
 
-function ClaudeInChromeMenu({
-  onDone,
-  isExtensionInstalled: installed,
-  configEnabled,
-  isClaudeAISubscriber,
-  isWSL,
-}: Props): React.ReactNode {
+function ChromeDevtoolsMenu({ onDone, chrome, configEnabled }: Props): React.ReactNode {
   const mcpClients = useAppState(s => s.mcp.clients);
-  const [selectKey, setSelectKey] = useState(0);
   const [enabledByDefault, setEnabledByDefault] = useState(configEnabled ?? false);
-  const [showInstallHint, setShowInstallHint] = useState(false);
-  const [isExtensionInstalled, setIsExtensionInstalled] = useState(installed);
 
-  const isHomespace = process.env.USER_TYPE === 'ant' && isRunningOnHomespace();
+  const client = mcpClients.find(c => c.name === CHROME_DEVTOOLS_MCP_SERVER_NAME);
+  const isConnected = client?.type === 'connected';
 
-  const chromeClient = mcpClients.find(c => c.name === CLAUDE_IN_CHROME_MCP_SERVER_NAME);
-  const isConnected = chromeClient?.type === 'connected';
-
-  function openUrl(url: string): void {
-    if (isHomespace) {
-      void openBrowser(url);
-    } else {
-      void openInChrome(url);
-    }
-  }
+  // Same three-way split doctor reports, so the two surfaces never disagree.
+  const mode = chrome.browserUrl ? 'browser-url' : chrome.supportsAutoConnect ? 'auto-connect' : 'launch';
 
   function handleAction(action: MenuAction): void {
     switch (action) {
-      case 'install-extension':
-        setSelectKey(k => k + 1);
-        setShowInstallHint(true);
-        openUrl(CHROME_EXTENSION_URL);
+      case 'install-chrome':
+        void openBrowser(CHROME_DOWNLOAD_URL);
         break;
-      case 'reconnect':
-        setSelectKey(k => k + 1);
-        void isChromeExtensionInstalled().then(installed => {
-          setIsExtensionInstalled(installed);
-          if (installed) {
-            setShowInstallHint(false);
-          }
-        });
-        openUrl(CHROME_RECONNECT_URL);
-        break;
-      case 'manage-permissions':
-        setSelectKey(k => k + 1);
-        openUrl(CHROME_PERMISSIONS_URL);
+      case 'learn-more':
+        void openBrowser(CHROME_DEVTOOLS_MCP_URL);
         break;
       case 'toggle-default': {
         const newValue = !enabledByDefault;
         saveGlobalConfig(current => ({
           ...current,
-          claudeInChromeDefaultEnabled: newValue,
+          chromeDevtoolsDefaultEnabled: newValue,
         }));
         setEnabledByDefault(newValue);
         break;
@@ -86,112 +56,76 @@ function ClaudeInChromeMenu({
   }
 
   const options: OptionWithDescription<MenuAction>[] = [];
-  const requiresExtensionSuffix = isExtensionInstalled ? '' : ' (requires extension)';
-
-  if (!isExtensionInstalled && !isHomespace) {
-    options.push({
-      label: 'Install Chrome extension',
-      value: 'install-extension',
-    });
+  if (!chrome.version && !chrome.browserUrl) {
+    options.push({ label: 'Install Google Chrome', value: 'install-chrome' });
   }
-
   options.push(
-    {
-      label: (
-        <>
-          <Text>Manage permissions</Text>
-          <Text dimColor>{requiresExtensionSuffix}</Text>
-        </>
-      ),
-      value: 'manage-permissions',
-    },
-    {
-      label: (
-        <>
-          <Text>Reconnect extension</Text>
-          <Text dimColor>{requiresExtensionSuffix}</Text>
-        </>
-      ),
-      value: 'reconnect',
-    },
-    {
-      label: `Enabled by default: ${enabledByDefault ? 'Yes' : 'No'}`,
-      value: 'toggle-default',
-    },
+    { label: `Enabled by default: ${enabledByDefault ? 'Yes' : 'No'}`, value: 'toggle-default' },
+    { label: 'Open the chrome-devtools-mcp docs', value: 'learn-more' },
   );
 
-  const isDisabled = isWSL || ((process.env.USER_TYPE as string) !== 'ant' && !isClaudeAISubscriber);
-
   return (
-    <Dialog title="Claude in Chrome (Beta)" onCancel={() => onDone()} color="chromeYellow">
+    <Dialog title="Chrome browser tools" onCancel={() => onDone()} color="chromeYellow">
       <Box flexDirection="column" gap={1}>
         <Text>
-          Claude in Chrome works with the Chrome extension to let you control your browser directly from {DISPLAY_NAME}.
-          Navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network
-          requests.
+          Browser control runs through Google&apos;s chrome-devtools-mcp server. It can navigate pages, click and type,
+          capture snapshots and screenshots, and read console output, network requests, performance traces, and
+          Lighthouse audits.
         </Text>
 
-        {isWSL && <Text color="error">Claude in Chrome is not supported in WSL at this time.</Text>}
-
-        {(process.env.USER_TYPE as string) !== 'ant' && !isClaudeAISubscriber && (
-          <Text color="error">Claude in Chrome requires a claude.ai subscription.</Text>
-        )}
-
-        {!isDisabled && (
-          <>
-            {!isHomespace && (
-              <Box flexDirection="column">
-                <Text>
-                  Status: {isConnected ? <Text color="success">Enabled</Text> : <Text color="inactive">Disabled</Text>}
-                </Text>
-                <Text>
-                  Extension:{' '}
-                  {isExtensionInstalled ? (
-                    <Text color="success">Installed</Text>
-                  ) : (
-                    <Text color="warning">Not detected</Text>
-                  )}
-                </Text>
-              </Box>
+        <Box flexDirection="column">
+          <Text>
+            Status: {isConnected ? <Text color="success">Connected</Text> : <Text color="inactive">Not connected</Text>}
+          </Text>
+          <Text>
+            Chrome:{' '}
+            {chrome.version ? (
+              <Text color={chrome.supportsAutoConnect ? 'success' : 'warning'}>{chrome.version}</Text>
+            ) : (
+              <Text color="warning">not detected</Text>
             )}
-            <Select key={selectKey} options={options} onChange={handleAction} hideIndexes />
-
-            {showInstallHint && (
-              <Text color="warning">Once installed, select {'"Reconnect extension"'} to connect.</Text>
+          </Text>
+          <Text>
+            Connection:{' '}
+            {mode === 'browser-url' ? (
+              <Text color="success">{chrome.browserUrl}</Text>
+            ) : mode === 'auto-connect' ? (
+              <Text color="success">attach to your running Chrome (autoConnect)</Text>
+            ) : (
+              <Text color="warning">launch a separate browser (no logins)</Text>
             )}
+          </Text>
+        </Box>
 
-            <Text>
-              <Text dimColor>Usage: </Text>
-              <Text>{BIN_NAME} --chrome</Text>
-              <Text dimColor> or </Text>
-              <Text>{BIN_NAME} --no-chrome</Text>
-            </Text>
+        {chrome.note && <Text color="warning">{chrome.note}</Text>}
 
-            <Text dimColor>
-              Site-level permissions are inherited from the Chrome extension. Manage permissions in the Chrome extension
-              settings to control which sites Claude can browse, click, and type on.
-            </Text>
-          </>
-        )}
-        <Text dimColor>Learn more: https://code.claude.com/docs/en/chrome</Text>
+        <Select options={options} onChange={handleAction} hideIndexes />
+
+        <Text>
+          <Text dimColor>Usage: </Text>
+          <Text>{BIN_NAME} --chrome</Text>
+          <Text dimColor> or </Text>
+          <Text>{BIN_NAME} --no-chrome</Text>
+        </Text>
+
+        <Text dimColor>
+          Read-only tools (snapshots, screenshots, console, network) run unprompted. Anything that clicks, types,
+          navigates, or evaluates script asks for permission first.
+        </Text>
+
+        <Text dimColor>
+          autoConnect needs Chrome {CHROME_AUTOCONNECT_MIN_MAJOR}+ with remote debugging enabled via
+          chrome://inspect/#remote-debugging. On WSL or a remote host, start Chrome with --remote-debugging-port=9222
+          and set {CHROME_BROWSER_URL_ENV}.
+        </Text>
       </Box>
     </Dialog>
   );
 }
 
 export const call = async function (onDone: (result?: string) => void): Promise<React.ReactNode> {
-  const isExtensionInstalled = await isChromeExtensionInstalled();
+  const chrome = await detectChrome();
   const config = getGlobalConfig();
-  const isSubscriber = isClaudeAISubscriber();
-  const isWSL = env.isWslEnvironment();
 
-  return (
-    <ClaudeInChromeMenu
-      onDone={onDone}
-      isExtensionInstalled={isExtensionInstalled}
-      configEnabled={config.claudeInChromeDefaultEnabled}
-      isClaudeAISubscriber={isSubscriber}
-      isWSL={isWSL}
-    />
-  );
+  return <ChromeDevtoolsMenu onDone={onDone} chrome={chrome} configEnabled={config.chromeDevtoolsDefaultEnabled} />;
 };

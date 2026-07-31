@@ -7,7 +7,7 @@
  * Not all bundled features should be built-in plugins — use this for
  * features that users should be able to explicitly enable/disable. For
  * features with complex setup or automatic-enabling logic (e.g.
- * claude-in-chrome), use src/skills/bundled/ instead.
+ * chrome-devtools), use src/skills/bundled/ instead.
  *
  * To add a new built-in plugin:
  * 1. Import registerBuiltinPlugin from '../builtinPlugins.js'

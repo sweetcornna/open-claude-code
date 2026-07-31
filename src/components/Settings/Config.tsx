@@ -961,20 +961,20 @@ export function Config({
         ]
       : []),
     {
-      id: 'claudeInChromeDefaultEnabled',
-      label: 'Claude in Chrome enabled by default',
-      value: globalConfig.claudeInChromeDefaultEnabled ?? true,
+      id: 'chromeDevtoolsDefaultEnabled',
+      label: 'Chrome browser tools enabled by default',
+      value: globalConfig.chromeDevtoolsDefaultEnabled ?? false,
       type: 'boolean' as const,
       onChange(enabled: boolean) {
         saveGlobalConfig(current => ({
           ...current,
-          claudeInChromeDefaultEnabled: enabled,
+          chromeDevtoolsDefaultEnabled: enabled,
         }));
         setGlobalConfig({
           ...getGlobalConfig(),
-          claudeInChromeDefaultEnabled: enabled,
+          chromeDevtoolsDefaultEnabled: enabled,
         });
-        logEvent('tengu_claude_in_chrome_setting_changed', {
+        logEvent('tengu_chrome_devtools_setting_changed', {
           enabled,
         });
       },

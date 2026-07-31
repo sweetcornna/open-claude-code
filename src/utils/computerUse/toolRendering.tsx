@@ -39,7 +39,7 @@ const RESULT_SUMMARY: Readonly<Partial<Record<string, string>>> = {
 /**
  * Rendering overrides for `mcp__computer-use__*` tools. Spread into the MCP
  * tool object in `client.ts` after the default `userFacingName`, so these win.
- * Mirror of `getClaudeInChromeMCPToolOverrides`.
+ * Per-tool render overrides for the Computer Use MCP tools.
  */
 export function getComputerUseMCPRenderingOverrides(toolName: string): {
   userFacingName: () => string;
