@@ -5,6 +5,7 @@ import { BIN_NAME } from 'src/constants/brand.js'
 import { dirname } from 'path'
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
+import { shouldForceGc } from 'src/cli/headlessGc.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
 import {
   type Command,
@@ -532,14 +533,18 @@ export async function runHeadless(
     proactiveModule.activateProactive('command')
   }
 
-  // Periodically run GC to keep memory usage in check.
-  // Uses a memory threshold to trigger a forced (major) GC when RSS grows
-  // beyond 350MB — the incremental GC may not reclaim enough during peaks
-  // (compact, long sessions with many mounted DOM nodes).
+  // Periodically run GC to keep memory usage in check. The incremental GC may
+  // not reclaim enough during peaks (compact, long sessions with many mounted
+  // DOM nodes), so a forced (major) GC takes over once RSS is genuinely high —
+  // rate-limited, because RSS never comes back down. See shouldForceGc and
+  // docs/memory-peak-analysis.md for the thresholds.
   if (typeof Bun !== 'undefined') {
+    let lastForcedGcAt: number | undefined
     const gcTimer = setInterval(() => {
       const rss = process.memoryUsage.rss()
-      if (rss > 350 * 1024 * 1024) {
+      const now = Date.now()
+      if (shouldForceGc(rss, now, lastForcedGcAt)) {
+        lastForcedGcAt = now
         Bun.gc(true)
       } else {
         Bun.gc(false)
