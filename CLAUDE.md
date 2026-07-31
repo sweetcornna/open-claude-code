@@ -114,7 +114,10 @@ bun run docs:dev
 - **Pre-commit**: husky + lint-staged。提交时自动对暂存文件执行 `biome check --fix`（TS/JS）和 `biome format --write`（JSON）。
 - **CI Lint**: `ci.yml` 在依赖安装后、类型检查前执行 `bunx biome ci .`，lint 或格式化不达标则 CI 失败。
 - **Defines**: 集中管理在 `scripts/defines.ts`。版本号从 `package.json` 读取（不再硬编码）。
-- **CI**: GitHub Actions — `ci.yml`（lint + 构建 + 测试）、`publish-npm.yml`（npm 发布）、`release-rcs.yml`（RCS 发布）。
+- **CI**: GitHub Actions — 三条 workflow：
+  - `ci.yml` — push / PR 触发。`ci` job（ubuntu）跑 `bunx biome ci .` → `typecheck` → `check:cycles`（循环依赖棘轮）→ 带覆盖率的 `bun test` → `build:vite`；`windows` job（windows-latest）单独跑 typecheck + Windows 敏感测试套件（路径校验/沙箱逃逸回归、隔离、ripgrep 解析、mailbox、legacy console）。windows 是独立 job 而非 matrix 分支，因为它有意跑一套不同的、更窄的步骤。
+  - `publish-npm.yml` — npm 发布通道，`v*` tag 触发，`npm publish --provenance`，并生成 changelog + GitHub Release。
+  - `release-rcs.yml` — GHCR Docker 通道，`rcs-v*` tag 触发，构建并推送 remote-control-server 镜像。
 
 ### Entry & Bootstrap
 
