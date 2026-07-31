@@ -8,6 +8,7 @@ import {
   type WorkflowInput,
   type WorkflowPorts,
 } from '@open-claude-code/workflow-engine'
+import { feature } from 'bun:bundle'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getProjectRoot } from '../bootstrap/state.js'
@@ -37,6 +38,7 @@ import {
   type RunProgress,
 } from './progress/store.js'
 import { createWorkflowPorts } from './ports.js'
+import { installWorkflowTaskStateBridge } from './taskStateBridge.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type { ToolUseContext } from '../Tool.js'
 
@@ -108,6 +110,12 @@ export function getWorkflowService(): WorkflowService {
   attachRunStatePersistence(bus, store)
   // Install the state-change notification bridge (commit 0768d4dc promised "auto-notify on completion" but the old implementation left it unfulfilled)
   installWorkflowNotifications(service)
+  // Stream live phase/agent progress into the registered background task so the footer
+  // pill and the Shift+Down dialog show run status without opening the /workflows panel.
+  // Reads the same `bindings` map the registrar uses for kill routing (via ports).
+  if (feature('WORKFLOW_SCRIPTS')) {
+    installWorkflowTaskStateBridge(store, ports)
+  }
   cached = service
   return cached
 }

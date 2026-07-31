@@ -38,6 +38,23 @@ type RunBinding = {
   agentAbortControllers: Map<number, AbortController>
 }
 
+/**
+ * Read-only view over the runId → background-task bindings that `taskRegistrar`
+ * already maintains for kill routing.
+ *
+ * Exposed rather than duplicated: {@link import('./taskStateBridge.js')} needs to find the
+ * LocalWorkflowTask behind a run in order to patch live progress into it, and a second
+ * runId→taskId map would inevitably drift from this one (which is deleted on
+ * complete/fail/kill). Both lookups return undefined once the binding is reclaimed, which
+ * is exactly the "no host/task context" signal the bridge treats as inert.
+ */
+export type WorkflowTaskBindings = {
+  /** runId → id of the registered LocalWorkflowTask; undefined once the run is reclaimed. */
+  getTaskIdForRun(runId: string): string | undefined
+  /** runId → the setAppState captured at registration (needed to write into AppState). */
+  getSetAppStateForRun(runId: string): SetAppState | undefined
+}
+
 /** Constructs a WorkflowHostContext from toolUseContext on each tool invocation. */
 function makeHostFactory(): WorkflowPorts['hostFactory'] {
   return ({ context, canUseTool, parentMessage }) => {
@@ -71,7 +88,7 @@ function makeHostFactory(): WorkflowPorts['hostFactory'] {
 export function createWorkflowPorts(opts: {
   bus: ProgressBus
   store: ProgressStore
-}): WorkflowPorts {
+}): WorkflowPorts & WorkflowTaskBindings {
   const bindings = new Map<string, RunBinding>()
   const runsDir = getRunsDir()
   const registry = buildRegistry()
@@ -101,6 +118,9 @@ export function createWorkflowPorts(opts: {
         workflowFile: regOpts.workflowFile ?? '',
         summary: regOpts.summary,
         ...(regOpts.toolUseId ? { toolUseId: regOpts.toolUseId } : {}),
+        // Resume keeps the original runId while minting a new taskId; stamping it at
+        // registration means no consumer has to re-derive the mapping later.
+        ...(regOpts.runId ? { runId: regOpts.runId } : {}),
         abortController,
       })
       const runId = regOpts.runId ?? taskId
@@ -175,6 +195,8 @@ export function createWorkflowPorts(opts: {
   }
 
   return {
+    getTaskIdForRun: runId => bindings.get(runId)?.taskId,
+    getSetAppStateForRun: runId => bindings.get(runId)?.setAppState,
     hostFactory: makeHostFactory(),
     agentAdapterRegistry: registry,
     agentRunner: {
