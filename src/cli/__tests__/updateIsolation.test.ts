@@ -165,7 +165,10 @@ describe('occ update isolation', () => {
     )
     const panelSource = readSource('utils/terminalPanel.ts')
     const powershellSource = readSource('utils/shell/powershellProvider.ts')
-    const bootstrapSource = readSource('bootstrap/state.ts')
+    // addSlowOperation moved out of the (now re-export-only) bootstrap/state.ts
+    // barrel when it was split into leaf modules; the assertions below are
+    // unchanged, only the file that carries the check.
+    const bootstrapSource = readSource('bootstrap/state/sessionRuntime.ts')
     const shareSource = readSource('commands/share/index.ts')
     const replSource = readSource('screens/REPL.tsx')
     const executorContract = readFileSync(
