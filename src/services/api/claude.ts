@@ -23,7 +23,7 @@ import { randomUUID } from 'crypto'
 import { existsSync, unlinkSync } from 'node:fs'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
+  isDirectAnthropicApi,
 } from 'src/utils/model/providers.js'
 import {
   getAttributionHeader,
@@ -1906,10 +1906,7 @@ async function* queryModel(
         // Generate and track client request ID so timeouts (which return no
         // server request ID) can still be correlated with server logs.
         // First-party only — 3P providers don't log it (inc-4029 class).
-        clientRequestId =
-          getAPIProvider() === 'firstParty' && isFirstPartyAnthropicBaseUrl()
-            ? randomUUID()
-            : undefined
+        clientRequestId = isDirectAnthropicApi() ? randomUUID() : undefined
 
         // Use raw stream instead of BetaMessageStream to avoid O(n²) partial JSON parsing
         // BetaMessageStream calls partialParse() on every input_json_delta, which we don't need

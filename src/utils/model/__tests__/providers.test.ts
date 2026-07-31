@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
+import { isDirectAnthropicApi } from 'src/utils/model/providers.js'
 
 /**
  * Inlined provider logic for hermetic testing.
@@ -240,5 +241,82 @@ describe('isFirstPartyAnthropicBaseUrl', () => {
   test('returns false for subdomain attack', () => {
     process.env.ANTHROPIC_BASE_URL = 'https://evil-api.anthropic.com'
     expect(isFirstPartyAnthropicBaseUrlTest()).toBe(false)
+  })
+})
+
+/**
+ * Unlike the two suites above, this exercises the real implementation. It is
+ * safe to import here because every case passes settings in explicitly, so the
+ * default `getInitialSettings()` argument is never evaluated and the polluted
+ * settings chain is never touched.
+ */
+describe('isDirectAnthropicApi', () => {
+  const envKeys = [
+    'ANTHROPIC_BASE_URL',
+    'USER_TYPE',
+    'CLAUDE_CODE_USE_BEDROCK',
+    'CLAUDE_CODE_USE_VERTEX',
+    'CLAUDE_CODE_USE_FOUNDRY',
+    'CLAUDE_CODE_USE_OPENAI',
+    'CLAUDE_CODE_USE_GEMINI',
+    'CLAUDE_CODE_USE_GROK',
+  ] as const
+  const savedEnv: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    for (const key of envKeys) {
+      savedEnv[key] = process.env[key]
+      delete process.env[key]
+    }
+  })
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (savedEnv[key] !== undefined) {
+        process.env[key] = savedEnv[key]
+      } else {
+        delete process.env[key]
+      }
+    }
+  })
+
+  test('returns true for default settings with no provider env vars', () => {
+    expect(isDirectAnthropicApi({})).toBe(true)
+    expect(isDirectAnthropicApi({ modelType: 'anthropic' })).toBe(true)
+  })
+
+  test('returns false for a settings-selected OpenAI user who never set ANTHROPIC_BASE_URL', () => {
+    // The regression this guards: isFirstPartyAnthropicBaseUrl() alone returns
+    // true here, because "unset" is not the same as "talks to Anthropic".
+    expect(isDirectAnthropicApi({ modelType: 'openai' })).toBe(false)
+  })
+
+  test('returns false for the other settings-selected providers', () => {
+    expect(isDirectAnthropicApi({ modelType: 'gemini' })).toBe(false)
+    expect(isDirectAnthropicApi({ modelType: 'grok' })).toBe(false)
+  })
+
+  test('returns false when ANTHROPIC_BASE_URL points at a proxy', () => {
+    process.env.ANTHROPIC_BASE_URL = 'https://proxy.example'
+    expect(isDirectAnthropicApi({})).toBe(false)
+  })
+
+  test('returns true when ANTHROPIC_BASE_URL is the first-party API', () => {
+    process.env.ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
+    expect(isDirectAnthropicApi({})).toBe(true)
+  })
+
+  test('returns false when CLAUDE_CODE_USE_OPENAI is set', () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    expect(isDirectAnthropicApi({})).toBe(false)
+  })
+
+  test('returns false for the 3P cloud providers', () => {
+    process.env.CLAUDE_CODE_USE_BEDROCK = '1'
+    expect(isDirectAnthropicApi({})).toBe(false)
+    delete process.env.CLAUDE_CODE_USE_BEDROCK
+
+    process.env.CLAUDE_CODE_USE_VERTEX = '1'
+    expect(isDirectAnthropicApi({})).toBe(false)
   })
 })

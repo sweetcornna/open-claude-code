@@ -179,7 +179,7 @@ import {
 } from './utils/plugins/loadPluginCommands.js'
 import memoize from 'lodash-es/memoize.js'
 import { isUsing3PServices, isClaudeAISubscriber } from './utils/auth.js'
-import { isFirstPartyAnthropicBaseUrl } from './utils/model/providers.js'
+import { isDirectAnthropicApi } from './utils/model/providers.js'
 import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
@@ -440,10 +440,13 @@ export function meetsAvailabilityRequirement(cmd: Command): boolean {
         // Console API key user = direct 1P API customer (not 3P, not claude.ai).
         // Excludes 3P (Bedrock/Vertex/Foundry) who don't set ANTHROPIC_BASE_URL
         // and gateway users who proxy through a custom base URL.
+        // isUsing3PServices() only reads CLAUDE_CODE_USE_* env vars, so it is
+        // kept for the pre-settings-load case, while isDirectAnthropicApi()
+        // additionally covers providers selected via settings.modelType.
         if (
           !isClaudeAISubscriber() &&
           !isUsing3PServices() &&
-          isFirstPartyAnthropicBaseUrl()
+          isDirectAnthropicApi()
         )
           return true
         break
