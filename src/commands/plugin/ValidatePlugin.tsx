@@ -1,5 +1,6 @@
 import figures from 'figures';
 import * as React from 'react';
+import { BIN_NAME } from '../../constants/brand.js';
 import { useEffect } from 'react';
 import { Box, Text } from '@anthropic/ink';
 import { errorMessage } from '../../utils/errors.js';
@@ -27,7 +28,7 @@ export function ValidatePlugin({ onComplete, path }: Props): React.ReactNode {
             'When given a directory, automatically validates .claude-plugin/marketplace.json\n' +
             'or .claude-plugin/plugin.json (prefers marketplace if both exist).\n\n' +
             'Or from the command line:\n' +
-            '  claude plugin validate <path>',
+            `  ${BIN_NAME} plugin validate <path>`,
         );
         return;
       }

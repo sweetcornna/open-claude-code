@@ -7,6 +7,7 @@
  * @see scripts/generate-sdk-types.ts for type generation
  */
 
+import { PROJECT_DIR_NAME, occConfigPath } from 'src/config/paths.js'
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
 
@@ -1170,7 +1171,7 @@ export const AgentDefinitionSchema = lazySchema(() =>
         .enum(['user', 'project', 'local'])
         .optional()
         .describe(
-          "Scope for auto-loading agent memory files. 'user' - ~/.claude/agent-memory/<agentType>/, 'project' - .claude/agent-memory/<agentType>/, 'local' - .claude/agent-memory-local/<agentType>/",
+          `Scope for auto-loading agent memory files. 'user' - ${occConfigPath('agent-memory', '<agentType>')}/, 'project' - ${PROJECT_DIR_NAME}/agent-memory/<agentType>/, 'local' - ${PROJECT_DIR_NAME}/agent-memory-local/<agentType>/`,
         ),
       effort: z
         .union([
@@ -1201,9 +1202,9 @@ export const SettingSourceSchema = lazySchema(() =>
     .enum(['user', 'project', 'local'])
     .describe(
       'Source for loading filesystem-based settings. ' +
-        "'user' - Global user settings (~/.claude/settings.json). " +
-        "'project' - Project settings (.claude/settings.json). " +
-        "'local' - Local settings (.claude/settings.local.json).",
+        `'user' - Global user settings (${occConfigPath('settings.json')}). ` +
+        `'project' - Project settings (${PROJECT_DIR_NAME}/settings.json). ` +
+        `'local' - Local settings (${PROJECT_DIR_NAME}/settings.local.json).`,
     ),
 )
 

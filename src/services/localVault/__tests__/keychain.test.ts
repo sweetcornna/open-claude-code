@@ -1,131 +1,158 @@
-import { describe, test, expect, mock, beforeEach } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { createHash } from 'node:crypto'
+import { PRODUCT_NAME } from 'src/constants/brand.js'
+import { occConfigDir } from 'src/config/paths.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
-// ── In-memory store backing the mock ─────────────────────────────────────────
-
+const LEGACY_SERVICE_NAME = 'claude-code-local-vault'
 const store: Record<string, string> = {}
-
-// ── Class-based Entry mock ────────────────────────────────────────────────────
+const entryCalls: Array<{ service: string; account: string }> = []
 
 class MockEntry {
   constructor(
     public service: string,
     public account: string,
-  ) {}
-
-  getPassword(): string | null {
-    return store[this.account] ?? null
+  ) {
+    entryCalls.push({ service, account })
   }
 
-  setPassword(pw: string): void {
-    store[this.account] = pw
+  getPassword(): string | null {
+    return store[`${this.service}\u0000${this.account}`] ?? null
+  }
+
+  setPassword(password: string): void {
+    store[`${this.service}\u0000${this.account}`] = password
   }
 
   deletePassword(): boolean {
-    if (this.account in store) {
-      delete store[this.account]
-      return true
-    }
-    return false
+    const key = `${this.service}\u0000${this.account}`
+    if (!(key in store)) return false
+    delete store[key]
+    return true
   }
 }
 
 mock.module('@napi-rs/keyring', () => ({ Entry: MockEntry }))
 
-// Re-register ../keychain.js to override store.test.ts's mock.module pollution.
-// Bun 1.x mock.module is process-global (last-write-wins), so store.test.ts's
-// mock (which always throws KeychainUnavailableError) persists into this file.
-// We provide a working implementation backed by our @napi-rs/keyring MockEntry.
-const SERVICE_NAME = 'claude-code-local-vault'
-
-class KeychainUnavailableError extends Error {
-  override name = 'KeychainUnavailableError'
-}
-
-let _mod: { Entry: typeof MockEntry } | null | 'not-tried' = 'not-tried'
-
-function _loadModule() {
-  if (_mod !== 'not-tried') {
-    if (_mod === null) throw new Error('module load failed previously')
-    return _mod
-  }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const m = require('@napi-rs/keyring') as { Entry: typeof MockEntry }
-  if (!m || typeof m.Entry !== 'function') {
-    _mod = null
-    throw new Error('module does not export Entry')
-  }
-  _mod = m
-  return m
-}
-
-function _resetKeychainModuleCache() {
-  _mod = 'not-tried'
-}
-
-const tryKeychain = {
-  async set(account: string, value: string) {
-    const mod = _loadModule()
-    const entry = new mod.Entry(SERVICE_NAME, account)
-    entry.setPassword(value)
-  },
-  async get(account: string) {
-    const mod = _loadModule()
-    const entry = new mod.Entry(SERVICE_NAME, account)
-    return entry.getPassword()
-  },
-  async delete(account: string) {
-    const mod = _loadModule()
-    const entry = new mod.Entry(SERVICE_NAME, account)
-    return entry.deletePassword()
-  },
-}
-
-mock.module('../keychain.js', () => ({
-  KeychainUnavailableError,
-  tryKeychain,
+const {
   _resetKeychainModuleCache,
-}))
+  getLocalVaultKeychainServiceName,
+  tryKeychain,
+} = await import('../keychain.js')
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+function expectedServiceName(): string {
+  const profileHash = createHash('sha256')
+    .update(occConfigDir())
+    .digest('hex')
+    .slice(0, 32)
+  return `${PRODUCT_NAME}-local-vault-${profileHash}`
+}
 
-describe('keychain (with @napi-rs/keyring mock)', () => {
+describe('local vault keychain isolation', () => {
+  let savedOccConfigDir: string | undefined
+  let savedLegacyConfigDir: string | undefined
+
   beforeEach(() => {
-    // Clear store between tests
-    for (const k of Object.keys(store)) delete store[k]
-    // Reset the module load cache
+    savedOccConfigDir = process.env.OCC_CONFIG_DIR
+    savedLegacyConfigDir = process.env.CLAUDE_CONFIG_DIR
+    process.env.OCC_CONFIG_DIR = '/tmp/occ-local-vault-test'
+    delete process.env.CLAUDE_CONFIG_DIR
+    occConfigDir.cache.clear?.()
+    for (const key of Object.keys(store)) delete store[key]
+    entryCalls.length = 0
     _resetKeychainModuleCache()
   })
 
-  test('set and get round-trip', async () => {
+  afterEach(() => {
+    if (savedOccConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+    else process.env.OCC_CONFIG_DIR = savedOccConfigDir
+    if (savedLegacyConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = savedLegacyConfigDir
+    occConfigDir.cache.clear?.()
+  })
+
+  function expectOnlyOccService(): void {
+    const expected = expectedServiceName()
+    expect(entryCalls.length).toBeGreaterThan(0)
+    expect(new Set(entryCalls.map(call => call.service))).toEqual(
+      new Set([expected]),
+    )
+    expect(expected).not.toBe(LEGACY_SERVICE_NAME)
+    expect(getLocalVaultKeychainServiceName()).toBe(expected)
+  }
+
+  test('writes and reads only the occ-owned service', async () => {
     await tryKeychain.set('MY_KEY', 'my_secret_value')
-    const result = await tryKeychain.get('MY_KEY')
-    expect(result).toBe('my_secret_value')
+    expect(await tryKeychain.get('MY_KEY')).toBe('my_secret_value')
+    expectOnlyOccService()
   })
 
-  test('get returns null for missing key', async () => {
-    const result = await tryKeychain.get('NONEXISTENT_KEY')
-    expect(result).toBeNull()
+  test('does not read a value from the inherited service', async () => {
+    store[`${LEGACY_SERVICE_NAME}\u0000MY_KEY`] = 'inherited_secret'
+    expect(await tryKeychain.get('MY_KEY')).toBeNull()
+    expectOnlyOccService()
   })
 
-  test('delete returns true for existing key', async () => {
-    await tryKeychain.set('DELETE_ME', 'value')
-    const result = await tryKeychain.delete('DELETE_ME')
-    expect(result).toBe(true)
-    expect(await tryKeychain.get('DELETE_ME')).toBeNull()
+  test('deletes only from the occ-owned service', async () => {
+    const legacyKey = `${LEGACY_SERVICE_NAME}\u0000DELETE_ME`
+    store[legacyKey] = 'inherited_secret'
+    await tryKeychain.set('DELETE_ME', 'occ_secret')
+    entryCalls.length = 0
+
+    expect(await tryKeychain.delete('DELETE_ME')).toBe(true)
+    expect(store[legacyKey]).toBe('inherited_secret')
+    expectOnlyOccService()
   })
 
-  test('KeychainUnavailableError thrown when module exports invalid shape', async () => {
-    // Temporarily replace with a bad module
+  test('index operations use only the occ-owned service', async () => {
+    const legacyIndex = `${LEGACY_SERVICE_NAME}\u0000__index__`
+    store[legacyIndex] = JSON.stringify(['INHERITED_KEY'])
+
+    await tryKeychain._addToIndex('KEY_A')
+    await tryKeychain._addToIndex('KEY_B')
+    expect(await tryKeychain.list()).toEqual(['KEY_A', 'KEY_B'])
+    await tryKeychain._removeFromIndex('KEY_A')
+    expect(await tryKeychain.list()).toEqual(['KEY_B'])
+    expect(store[legacyIndex]).toBe(JSON.stringify(['INHERITED_KEY']))
+    expect(entryCalls.every(call => call.account === '__index__')).toBe(true)
+    expectOnlyOccService()
+  })
+
+  test('isolates different OCC_CONFIG_DIR profiles', () => {
+    const first = getLocalVaultKeychainServiceName()
+    process.env.OCC_CONFIG_DIR = '/tmp/occ-local-vault-other-profile'
+    occConfigDir.cache.clear?.()
+    const second = getLocalVaultKeychainServiceName()
+    expect(first).not.toBe(second)
+    expect(first).toMatch(/[a-f0-9]{32}$/)
+  })
+
+  test('does not collide for profiles with the same former 32-bit digest', () => {
+    process.env.OCC_CONFIG_DIR = '/tmp/occ-profile-55519'
+    occConfigDir.cache.clear?.()
+    const first = getLocalVaultKeychainServiceName()
+    process.env.OCC_CONFIG_DIR = '/tmp/occ-profile-102538'
+    occConfigDir.cache.clear?.()
+    expect(getLocalVaultKeychainServiceName()).not.toBe(first)
+  })
+
+  test('rejects every malformed keychain index shape', async () => {
+    const indexKey = `${expectedServiceName()}\u0000__index__`
+    for (const invalid of ['null', '{}', '["VALID", 42]', 'not-json']) {
+      store[indexKey] = invalid
+      await expect(tryKeychain.list()).rejects.toThrow('index is corrupt')
+    }
+  })
+
+  test('throws when the keyring module exports an invalid shape', async () => {
     mock.module('@napi-rs/keyring', () => ({ Entry: null }))
     _resetKeychainModuleCache()
     await expect(tryKeychain.get('x')).rejects.toThrow(
       'module does not export Entry',
     )
-    // Restore
     mock.module('@napi-rs/keyring', () => ({ Entry: MockEntry }))
   })
 })

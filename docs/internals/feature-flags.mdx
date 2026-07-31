@@ -15,7 +15,7 @@ Claude Code 使用 Bun 打包器的 `bun:bundle` 模块提供编译时特性门�
 import { feature } from 'bun:bundle'
 
 const SleepTool = feature('PROACTIVE') || feature('KAIROS')
-  ? require('@claude-code-best/builtin-tools/tools/SleepTool/SleepTool.js').SleepTool
+  ? require('@open-claude-code/builtin-tools/tools/SleepTool/SleepTool.js').SleepTool
   : null
 ```
 
@@ -81,7 +81,7 @@ Feature flags 在代码中主要有三种使用模式：
 ```typescript
 // src/tools.ts — 最常见的模式
 const MonitorTool = feature('MONITOR_TOOL')
-  ? require('@claude-code-best/builtin-tools/tools/MonitorTool/MonitorTool.js').MonitorTool
+  ? require('@open-claude-code/builtin-tools/tools/MonitorTool/MonitorTool.js').MonitorTool
   : null
 ```
 

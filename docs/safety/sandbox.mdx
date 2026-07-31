@@ -109,7 +109,7 @@ keywords: ["沙箱", "sandbox", "权限", "Bash", "PowerShell", "bubblewrap", "s
 这个仓库在 `src/utils/sandbox/sandbox-adapter.ts` 里专门把一些高风险路径额外加入 `denyWrite`，例如：
 
 - `settings.json`
-- `.claude/skills`
+- `.occ/skills`
 - 一些 bare git repo 相关路径
 
 它还专门处理 bare git repo 逃逸这一类攻击面。它们的意义不是“让更多命令通过”，而是“即使命令已经执行，也别让它顺手把护栏本身拆掉”，避免通过改配置、改技能、改 git 结构来扩大后续权限。
@@ -319,7 +319,7 @@ REPL / CLI 启动
 即使有别的配置，项目还会额外加固一些高风险路径，例如：
 
 - settings 文件
-- `.claude/skills`
+- `.occ/skills`
 - 一些 bare git repo 相关路径
 
 这样做的原因是：这些路径一旦可写，攻击者可能反过来修改 Claude Code 自己的配置、技能或 git 行为，从而扩大权限。

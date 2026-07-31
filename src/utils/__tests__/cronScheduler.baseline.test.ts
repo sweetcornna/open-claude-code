@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { PROJECT_DIR_NAME } from '../../config/paths.js'
 import {
   buildMissedTaskNotification,
   isRecurringTaskAged,
@@ -72,6 +73,8 @@ describe('cronScheduler baseline helpers', () => {
 
     expect(msg).toContain('AskUserQuestion')
     expect(msg).toContain('Do NOT execute this prompt yet')
+    expect(msg).toContain(`${PROJECT_DIR_NAME}/scheduled_tasks.json`)
+    expect(msg).not.toContain('.claude/scheduled_tasks.json')
     expect(msg).toContain('check deployment')
   })
 

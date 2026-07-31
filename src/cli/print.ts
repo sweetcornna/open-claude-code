@@ -1,11 +1,8 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle'
 import { readFile, stat } from 'fs/promises'
+import { BIN_NAME } from 'src/constants/brand.js'
 import { dirname } from 'path'
-import {
-  downloadUserSettings,
-  redownloadUserSettings,
-} from 'src/services/settingsSync/index.js'
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
@@ -503,18 +500,6 @@ export async function runHeadless(
     )
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(0)
-  }
-
-  // Fire user settings download now so it overlaps with the MCP/tool setup
-  // below. Managed settings already started in main.tsx preAction; this gives
-  // user settings a similar head start. The cached promise is joined in
-  // installPluginsAndApplyMcpInBackground before plugin install reads
-  // enabledPlugins.
-  if (
-    feature('DOWNLOAD_USER_SETTINGS') &&
-    (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
-  ) {
-    void downloadUserSettings()
   }
 
   // In headless mode there is no React tree, so the useSettingsChange hook
@@ -1735,20 +1720,9 @@ function runHeadlessStreaming(
   // NOTE: Nested function required - needs closure access to applyMcpServerChanges and updateSdkMcp
   async function installPluginsAndApplyMcpInBackground(): Promise<void> {
     try {
-      // Join point for user settings (fired at runHeadless entry) and managed
-      // settings (fired in main.tsx preAction). downloadUserSettings() caches
-      // its promise so this awaits the same in-flight request.
-      await Promise.all([
-        feature('DOWNLOAD_USER_SETTINGS') &&
-        (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
-          ? withDiagnosticsTiming('headless_user_settings_download', () =>
-              downloadUserSettings(),
-            )
-          : Promise.resolve(),
-        withDiagnosticsTiming('headless_managed_settings_wait', () =>
-          waitForRemoteManagedSettingsToLoad(),
-        ),
-      ])
+      await withDiagnosticsTiming('headless_managed_settings_wait', () =>
+        waitForRemoteManagedSettingsToLoad(),
+      )
 
       const pluginsInstalled = await installPluginsForHeadless()
 
@@ -3240,18 +3214,6 @@ function runHeadlessStreaming(
           }
         } else if (msg.request.subtype === 'reload_plugins') {
           try {
-            if (
-              feature('DOWNLOAD_USER_SETTINGS') &&
-              (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
-            ) {
-              // Re-pull user settings so enabledPlugins pushed from the
-              // user's local CLI take effect before the cache sweep.
-              const applied = await redownloadUserSettings()
-              if (applied) {
-                settingsChangeDetector.notifyChange('userSettings')
-              }
-            }
-
             const r = await refreshActivePlugins(setAppState)
 
             const sdkAgents = currentAgents.filter(
@@ -5239,8 +5201,7 @@ async function loadInitialMessages(
         typeof options.resume === 'string' ? options.resume : '',
       )
       if (!parsedSessionId) {
-        let errorMessage =
-          'Error: --resume requires a valid session ID when used with --print. Usage: claude -p --resume <session-id>'
+        let errorMessage = `Error: --resume requires a valid session ID when used with --print. Usage: ${BIN_NAME} -p --resume <session-id>`
         if (typeof options.resume === 'string') {
           errorMessage += `. Session IDs must be in UUID format (e.g., 550e8400-e29b-41d4-a716-446655440000). Provided value "${options.resume}" is not a valid UUID`
         }

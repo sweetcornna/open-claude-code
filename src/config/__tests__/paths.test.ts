@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { homedir } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import {
+  getProtectedConfigDirectories,
+  LEGACY_PROJECT_DIR_NAME,
   legacyClaudeConfigDir,
   occConfigDir,
   occConfigPath,
+  PROJECT_CONFIG_DIR_NAMES,
   PROJECT_DIR_NAME,
 } from '../paths.js'
 
@@ -45,6 +48,12 @@ describe('occConfigDir', () => {
     process.env[OCC] = '/tmp/occ-explicit'
     occConfigDir.cache.clear?.()
     expect(occConfigDir()).toBe('/tmp/occ-explicit')
+  })
+
+  test('resolves a relative override to an absolute profile path', () => {
+    process.env[OCC] = 'occ-relative-profile'
+    occConfigDir.cache.clear?.()
+    expect(occConfigDir()).toBe(join(process.cwd(), 'occ-relative-profile'))
   })
 
   test('falls back to the deprecated CLAUDE_CONFIG_DIR', () => {
@@ -101,8 +110,35 @@ describe('occConfigPath', () => {
   })
 })
 
-describe('PROJECT_DIR_NAME', () => {
-  test('is .occ so project assets do not collide with official Claude Code', () => {
+describe('project config directories', () => {
+  test('uses .occ while retaining the official directory as read-only input', () => {
     expect(PROJECT_DIR_NAME).toBe('.occ')
+    expect(LEGACY_PROJECT_DIR_NAME).toBe('.claude')
+    expect(PROJECT_CONFIG_DIR_NAMES).toEqual(['.occ', '.claude'])
+  })
+
+  test('protects global and project config roots from sandboxed shell writes', () => {
+    process.env[OCC] = '/tmp/custom-occ-root'
+    occConfigDir.cache.clear?.()
+
+    expect(getProtectedConfigDirectories(['/repo', '/worktree'])).toEqual([
+      '/tmp/custom-occ-root',
+      join(homedir(), '.claude').normalize('NFC'),
+      resolve('/repo/.occ'),
+      resolve('/repo/.claude'),
+      resolve('/worktree/.occ'),
+      resolve('/worktree/.claude'),
+    ])
+  })
+
+  test('deduplicates a working directory that is already a protected root', () => {
+    process.env[OCC] = '/repo/.occ'
+    occConfigDir.cache.clear?.()
+
+    expect(getProtectedConfigDirectories(['/repo'])).toEqual([
+      '/repo/.occ',
+      join(homedir(), '.claude').normalize('NFC'),
+      resolve('/repo/.claude'),
+    ])
   })
 })

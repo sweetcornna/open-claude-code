@@ -8,12 +8,7 @@ import { Box, wrappedRender as render, Text } from '@anthropic/ink';
 import { logForDebugging } from '../utils/debug.js';
 import { env } from '../utils/env.js';
 import { errorMessage } from '../utils/errors.js';
-import {
-  checkInstall,
-  cleanupNpmInstallations,
-  cleanupShellAliases,
-  installLatest,
-} from '../utils/nativeInstaller/index.js';
+import { checkInstall, cleanupShellAliases, installLatest } from '../utils/nativeInstaller/index.js';
 import { getInitialSettings, updateSettingsForSource } from '../utils/settings/settings.js';
 
 interface InstallProps {
@@ -111,19 +106,6 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
           setupMessages.forEach(msg => logForDebugging(`Install: Setup message: ${msg.message}`));
         }
 
-        // Now that native installation succeeded, clean up old npm installations
-        logForDebugging('Install: Cleaning up npm installations after successful install');
-        const { removed, errors, warnings } = await cleanupNpmInstallations();
-
-        if (removed > 0) {
-          logForDebugging(`Cleaned up ${removed} npm installation(s)`);
-        }
-
-        if (errors.length > 0) {
-          logForDebugging(`Cleanup errors: ${errors.join(', ')}`);
-          // Continue despite cleanup errors - native install already succeeded
-        }
-
         // Clean up old shell aliases
         const aliasMessages = await cleanupShellAliases();
         if (aliasMessages.length > 0) {
@@ -145,7 +127,7 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
         }
 
         // Combine all warning/info messages (convert SetupMessage to string)
-        const allWarnings = [...warnings, ...aliasMessages.map(m => m.message)];
+        const allWarnings = aliasMessages.map(m => m.message);
 
         // Check if there were any setup errors or notes
         if (setupMessages.length > 0) {

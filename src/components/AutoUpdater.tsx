@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { BIN_NAME } from 'src/constants/brand.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -18,8 +19,7 @@ import {
 import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
-import { installOrUpdateClaudePackage, localInstallationExists } from '../utils/localInstaller.js';
-import { removeInstalledSymlink } from '../utils/nativeInstaller/index.js';
+import { installOrUpdateOccPackage } from '../utils/localInstaller.js';
 import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 
@@ -44,12 +44,7 @@ export function AutoUpdater({
     global?: string | null;
     latest?: string | null;
   }>({});
-  const [hasLocalInstall, setHasLocalInstall] = useState(false);
   const updateSemver = useUpdateNotification(autoUpdaterResult?.version);
-
-  useEffect(() => {
-    void localInstallationExists().then(setHasLocalInstall);
-  }, []);
 
   // Track latest isUpdating value in a ref so the memoized checkForUpdates
   // callback always sees the current value. Without this, the 30-minute
@@ -103,12 +98,7 @@ export function AutoUpdater({
       const startTime = Date.now();
       onChangeIsUpdating(true);
 
-      // Remove native installer symlink since we're using JS-based updates
-      // But only if user hasn't migrated to native installation
       const config = getGlobalConfig();
-      if (config.installMethod !== 'native') {
-        await removeInstalledSymlink();
-      }
 
       // Detect actual running installation type
       const installationType = await getCurrentInstallationType();
@@ -129,17 +119,12 @@ export function AutoUpdater({
         // Use local update for local installations
         logForDebugging('AutoUpdater: Using local update method');
         updateMethod = 'local';
-        installStatus = await installOrUpdateClaudePackage(channel);
+        installStatus = await installOrUpdateOccPackage(channel);
       } else if (installationType === 'npm-global') {
         // Use global update for global installations
         logForDebugging('AutoUpdater: Using global update method');
         updateMethod = 'global';
         installStatus = await installGlobalPackage();
-      } else if (installationType === 'native') {
-        // This shouldn't happen - native should use NativeAutoUpdater
-        logForDebugging('AutoUpdater: Unexpected native installation in non-native updater');
-        onChangeIsUpdating(false);
-        return;
       } else {
         // Fallback to config-based detection for unknown types
         logForDebugging(`AutoUpdater: Unknown installation type, falling back to config`);
@@ -147,7 +132,7 @@ export function AutoUpdater({
         updateMethod = isMigrated ? 'local' : 'global';
 
         if (isMigrated) {
-          installStatus = await installOrUpdateClaudePackage(channel);
+          installStatus = await installOrUpdateOccPackage(channel);
         } else {
           installStatus = await installGlobalPackage();
         }
@@ -227,12 +212,7 @@ export function AutoUpdater({
       )}
       {(autoUpdaterResult?.status === 'install_failed' || autoUpdaterResult?.status === 'no_permissions') && (
         <Text color="error" wrap="truncate">
-          ✗ Auto-update failed &middot; Try <Text bold>claude doctor</Text> or{' '}
-          <Text bold>
-            {hasLocalInstall
-              ? `cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}`
-              : `npm i -g ${MACRO.PACKAGE_URL}`}
-          </Text>
+          ✗ Auto-update failed &middot; Try <Text bold>{BIN_NAME} doctor</Text> or <Text bold>{BIN_NAME} update</Text>
         </Text>
       )}
     </Box>

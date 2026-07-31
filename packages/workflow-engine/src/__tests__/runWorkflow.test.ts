@@ -195,9 +195,9 @@ test('abort → killed', async () => {
 test('workflow() nesting (one level) shares counts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {
-    await mkdir(join(dir, '.claude', 'workflows'), { recursive: true })
+    await mkdir(join(dir, '.occ', 'workflows'), { recursive: true })
     await writeFile(
-      join(dir, '.claude', 'workflows', 'child.ts'),
+      join(dir, '.occ', 'workflows', 'child.ts'),
       `return agent('child')\n// child workflow`,
     )
     const ports = portsWith(
@@ -528,8 +528,8 @@ test('maxConcurrency passthrough: parallel agents bounded by run-level concurren
 test('workflow() references a syntactically broken sub-script → failed', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {
-    await mkdir(join(dir, '.claude', 'workflows'), { recursive: true })
-    await writeFile(join(dir, '.claude', 'workflows', 'broken.ts'), `return ((`)
+    await mkdir(join(dir, '.occ', 'workflows'), { recursive: true })
+    await writeFile(join(dir, '.occ', 'workflows', 'broken.ts'), `return ((`)
     const ports = portsWith(dir, new Map())
     const result = await runWorkflow({
       script: `return workflow('broken')`,
@@ -542,6 +542,29 @@ test('workflow() references a syntactically broken sub-script → failed', async
     })
     expect(result.status).toBe('failed')
     expect(result.error).toMatch(/Sub-workflow|script error/i)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('workflow() resolves sub-workflows from a host-provided directory', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
+  try {
+    const workflowDir = join('.custom', 'workflows')
+    await mkdir(join(dir, workflowDir), { recursive: true })
+    await writeFile(join(dir, workflowDir, 'nested.js'), 'return 7')
+    const ports = portsWith(dir, new Map())
+    const result = await runWorkflow({
+      script: `return workflow('nested')`,
+      runId: 'run-sub-occ',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      workflowDir,
+    })
+    expect(result).toEqual({ status: 'completed', returnValue: 7 })
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

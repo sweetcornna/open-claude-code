@@ -1,8 +1,8 @@
 # WORKFLOW_SCRIPTS — 确定性多 agent 工作流编排
 
 > Feature Flag：`FEATURE_WORKFLOW_SCRIPTS=1`
-> 引擎包：[`@claude-code-best/workflow-engine`](../../packages/workflow-engine/)（确定性 JS 脚本编排，零核心层运行时依赖）
-> 集成层：[`src/workflow/`](../../src/workflow/)
+> 引擎包：`@open-claude-code/workflow-engine`（`packages/workflow-engine/`，确定性 JS 脚本编排，零核心层运行时依赖）
+> 集成层：`src/workflow/`
 
 ## 一、功能概述
 
@@ -19,7 +19,7 @@ WORKFLOW_SCRIPTS 让 Claude Code 用**确定性 JavaScript 脚本**编排多个�
 ## 二、实现架构
 
 ```
-   .claude/workflows/<name>.ts        Workflow 工具（name/script/scriptPath/args/resumeFromRunId）
+   .occ/workflows/<name>.ts           Workflow 工具（name/script/scriptPath/args/resumeFromRunId）
             │                                       │
             ▼                                       ▼
    namedWorkflowCommands.ts              src/workflow/wiring.ts (createWorkflowToolCore)
@@ -37,7 +37,7 @@ WORKFLOW_SCRIPTS 让 Claude Code 用**确定性 JavaScript 脚本**编排多个�
                      （不透明 host）       （深度读会话体系，跑真实 agent）
                                   │
                                   ▼
-                  @claude-code-best/workflow-engine
+                  @open-claude-code/workflow-engine
                   （runWorkflow / hooks / journal / budget / 并发信号量）
 ```
 
@@ -55,7 +55,7 @@ WORKFLOW_SCRIPTS 让 Claude Code 用**确定性 JavaScript 脚本**编排多个�
 | 进度总线 | `src/workflow/progress/bus.ts` | 基于 Set 的进度事件发射 |
 | 进度状态 | `src/workflow/progress/store.ts` | reducer：按 `agentId` 精确关联 `agent_done`（修并发竞态） |
 | 监控面板 | `src/workflow/panel/*.tsx` | `/workflows` 双栏 UI（见 §六） |
-| 命名命令 | `src/workflow/namedWorkflowCommands.ts` | 扫描 `.claude/workflows/` 生成 `/<name>` 命令 |
+| 命名命令 | `src/workflow/namedWorkflowCommands.ts` | 扫描 `.occ/workflows/` 生成 `/<name>` 命令 |
 | 权限请求 | `src/workflow/WorkflowPermissionRequest.tsx` | workflow 启动权限 UI |
 
 ### 2.2 注册点
@@ -83,10 +83,10 @@ workflow 脚本内可用的钩子（语义详见引擎包 `engine/hooks.ts`）�
 
 ## 四、编写 workflow
 
-脚本置于 `.claude/workflows/<name>.js|.mjs`（也接受 `.ts`，但**引擎不转译 TS**，含类型注解会报语法错——推荐 `.js`/`.mjs`），自动成为 `/<name>` 命令。
+脚本置于 `.occ/workflows/<name>.js|.mjs`（也接受 `.ts`，但**引擎不转译 TS**，含类型注解会报语法错——推荐 `.js`/`.mjs`），自动成为 `/<name>` 命令。
 
 ```js
-// .claude/workflows/review-changes.js
+// .occ/workflows/review-changes.js
 export const meta = {
   name: 'review-changes',
   description: '按维度审查改动并对抗式验证',
@@ -130,7 +130,7 @@ return results.flat().filter(Boolean)
 | 字段 | 说明 |
 |------|------|
 | `script` | 内联脚本字符串 |
-| `name` | 命名 workflow 名（对应 `.claude/workflows/<name>`） |
+| `name` | 命名 workflow 名（对应 `.occ/workflows/<name>`） |
 | `scriptPath` | 脚本文件路径 |
 | `args` | 透传给脚本的 `args`（任意 JSON 值） |
 | `resumeFromRunId` | 从既有 runId 重放（已完成 `agent()` 秒回，发散点后现场重跑） |
@@ -157,7 +157,7 @@ return results.flat().filter(Boolean)
 
 ## 八、resume / journal / budget
 
-- **journal**：每次 run 记录到 `.claude/workflow-runs/<runId>/journal.jsonl`。`resumeFromRunId` 重放 journal，已完成 `agent()` 秒回缓存结果。
+- **journal**：每次 run 记录到 `.occ/workflow-runs/<runId>/journal.jsonl`。`resumeFromRunId` 重放 journal，已完成 `agent()` 秒回缓存结果。
 - **budget**：`budget.total` 为 token 硬顶（默认 `null` = 无限）；`budget.spent()` / `budget.remaining()` 读实时消耗；耗尽后再发 `agent()` 抛错。
 - **并发**：引擎 `Semaphore` 默认许可 3（`DEFAULT_MAX_CONCURRENCY`），可经 Workflow 工具的 `maxConcurrency` 入参 per-run 覆盖（钳到 `[1, MAX_CONCURRENCY_CAP=16]`）。
 - **错误**：脚本语法/meta 错 → `parseScript` 即时返错（不进后台）；agent 抛错 → `kind:'dead'` → `null`，workflow 继续（`parallel`/`pipeline` 容错）；`WorkflowAbortedError` → `killed`。

@@ -1,5 +1,6 @@
 import memoize from 'lodash-es/memoize.js'
 import { basename } from 'path'
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { isAutoMemoryEnabled } from '../../memdir/paths.js'
 import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js'
 import {
@@ -153,15 +154,16 @@ async function loadAgentFromFile(
     // permissionMode, hooks, and mcpServers are intentionally NOT parsed for
     // plugin agents. Plugins are third-party marketplace code; these fields
     // escalate what the agent can do beyond what the user approved at install
-    // time. For this level of control, define the agent in .claude/agents/
-    // where the user explicitly wrote the frontmatter. (Note: plugins can
+    // time. For this level of control, define the agent in the project's
+    // configured agents directory, where the user explicitly wrote the
+    // frontmatter. (Note: plugins can
     // still ship hooks and MCP servers at the manifest level — that's the
     // install-time trust boundary. Per-agent declarations would let a single
     // agent file buried in agents/ silently add them.) See PR #22558 review.
     for (const field of ['permissionMode', 'hooks', 'mcpServers'] as const) {
       if (frontmatter[field] !== undefined) {
         logForDebugging(
-          `Plugin agent file ${filePath} sets ${field}, which is ignored for plugin agents. Use .claude/agents/ for this level of control.`,
+          `Plugin agent file ${filePath} sets ${field}, which is ignored for plugin agents. Use ${PROJECT_DIR_NAME}/agents/ for this level of control.`,
           { level: 'warn' },
         )
       }

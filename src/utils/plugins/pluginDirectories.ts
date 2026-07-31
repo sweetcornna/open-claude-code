@@ -2,64 +2,33 @@
  * Centralized plugin directory configuration.
  *
  * This module provides the single source of truth for the plugins directory path.
- * It supports switching between 'plugins' and 'cowork_plugins' directories via:
- * - CLI flag: --cowork
- * - Environment variable: CLAUDE_CODE_USE_COWORK_PLUGINS
- *
- * The base directory can be overridden via CLAUDE_CODE_PLUGIN_CACHE_DIR.
+ * The base directory can be overridden via OCC_PLUGIN_CACHE_DIR.
  */
 
+import { occConfigPath } from 'src/config/paths.js'
 import { mkdirSync } from 'fs'
 import { readdir, rm, stat } from 'fs/promises'
 import { delimiter, join } from 'path'
-import { getUseCoworkPlugins } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
 import { errorMessage, isFsInaccessible } from '../errors.js'
 import { formatFileSize } from '../format.js'
 import { expandTilde } from '../permissions/pathValidation.js'
-
-const PLUGINS_DIR = 'plugins'
-const COWORK_PLUGINS_DIR = 'cowork_plugins'
-
-/**
- * Get the plugins directory name based on current mode.
- * Uses session state (from --cowork flag) or env var.
- *
- * Priority:
- * 1. Session state (set by CLI flag --cowork)
- * 2. Environment variable CLAUDE_CODE_USE_COWORK_PLUGINS
- * 3. Default: 'plugins'
- */
-function getPluginsDirectoryName(): string {
-  // Session state takes precedence (set by CLI flag)
-  if (getUseCoworkPlugins()) {
-    return COWORK_PLUGINS_DIR
-  }
-  // Fall back to env var
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_COWORK_PLUGINS)) {
-    return COWORK_PLUGINS_DIR
-  }
-  return PLUGINS_DIR
-}
 
 /**
  * Get the full path to the plugins directory.
  *
  * Priority:
- * 1. CLAUDE_CODE_PLUGIN_CACHE_DIR env var (explicit override)
- * 2. Default: ~/.claude/plugins or ~/.claude/cowork_plugins
+ * 1. OCC_PLUGIN_CACHE_DIR env var (explicit override)
+ * 2. The plugins directory under occ's config root
  */
 export function getPluginsDirectory(): string {
-  // expandTilde: when CLAUDE_CODE_PLUGIN_CACHE_DIR is set via settings.json
-  // `env` (not shell), ~ is not expanded by the shell. Without this, a value
-  // like "~/.claude/plugins" becomes a literal `~` directory created in the
-  // cwd of every project (gh-30794 / CC-212).
-  const envOverride = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR
+  // expandTilde: environment values are not expanded by a shell. Without this,
+  // a value like "~/.occ/plugins" becomes a literal `~` directory in the cwd.
+  const envOverride = process.env.OCC_PLUGIN_CACHE_DIR
   if (envOverride) {
     return expandTilde(envOverride)
   }
-  return join(getClaudeConfigHomeDir(), getPluginsDirectoryName())
+  return occConfigPath('plugins')
 }
 
 /**

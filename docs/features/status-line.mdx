@@ -14,13 +14,13 @@ StatusLine 是 Claude Code REPL 底部显示的一行自定义文本，由**用�
 
 ## 配置
 
-`~/.claude/settings.json` 里添加 `statusLine` 字段：
+`~/.occ/settings.json` 里添加 `statusLine` 字段：
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/statusline-command.sh",
+    "command": "bash ~/.occ/statusline-command.sh",
     "refreshInterval": 1,
     "padding": 0
   }
@@ -41,7 +41,7 @@ Schema 定义在 `src/utils/settings/types.ts:550`（`statusLine` Zod object）�
 ```
 ┌─────────────────────── Ink 侧 ───────────────────────┐     ┌──────── 用户侧 ────────┐
 │                                                      │     │                        │
-│  buildStatusLineCommandInput()  ──┐                  │     │  ~/.claude/            │
+│  buildStatusLineCommandInput()  ──┐                  │     │  ~/.occ/               │
 │     收集运行时状态                  │                  │     │   statusline-*.sh      │
 │                                   ▼                  │     │                        │
 │  executeStatusLineCommand()  ─── JSON via stdin ────────────►  jq '.model...'       │
@@ -200,13 +200,13 @@ Create an AgentTool with subagent_type "statusline-setup" and the prompt "<user-
 默认 prompt 是 `"Configure my statusLine from my shell PS1 configuration"`。主 Agent 收到后会调用内置子 agent `statusline-setup`。该子 agent 权限极小：
 
 - **Tools**: 仅 `Read`、`Edit`
-- **Allowed paths**: `Read(~/**)`、`Edit(~/.claude/settings.json)`
+- **Allowed paths**: `Read(~/**)`、`Edit(~/.occ/settings.json)`
 
 也就是说它**不能 Write 新文件、不能跑 Bash**。典型工作是读用户的 shell 配置、读/改 `settings.json`、增量编辑已有的 statusline 脚本。
 
 ## 编写自定义脚本的要点
 
-1. **脚本必须无状态** — 每次 tick 主进程 fork 一次新 shell，进程内变量不跨调用保留。需要跨 tick 的状态（上次时间戳、上次 token 数）用 `~/.claude/statusline-state/<hash>.state` 文件持久化。
+1. **脚本必须无状态** — 每次 tick 主进程 fork 一次新 shell，进程内变量不跨调用保留。需要跨 tick 的状态（上次时间戳、上次 token 数）用 `~/.occ/statusline-state/<hash>.state` 文件持久化。
 2. **按 `session_id` 哈希隔离状态文件** — 多会话同时开着时共享一个 state 文件会串。典型做法：`md5(session_id) | head -c 16` 作为文件名。
 3. **防御性读取** — state 文件可能损坏/被截断，按行 read + 字段校验（数字字段用 `case "$var" in ''|*[!0-9]*) invalid ;;`）。
 4. **`refreshInterval` 不等于"脚本秒级调用"** — tick 和事件触发（新消息、模式切换）都走同一 debounce 队列，脚本实际被调用的频率介于"每 N 秒"和"每 N+0.3 秒"之间；且 abort 机制下，上一次没跑完会被 kill。
@@ -217,12 +217,12 @@ Create an AgentTool with subagent_type "statusline-setup" and the prompt "<user-
 
 ### 示例：Cache 命中率 + TTL 倒计时
 
-本仓库默认安装了一个示例脚本 `~/.claude/statusline-command.sh`（用户侧），输出格式 `<dir> | <model> | ctx:N% | Cache 97% 59:43`：
+本仓库默认安装了一个示例脚本 `~/.occ/statusline-command.sh`（用户侧），输出格式 `<dir> | <model> | ctx:N% | Cache 97% 59:43`：
 
 - **命中率** = `cache_read / (input + cache_creation + cache_read)`（取自 `current_usage`）
 - **TTL** 从上次响应倒数 60 分钟，**只在 token signature 变化时重置时间戳**，避免秒级 tick 把 TTL 一直锁在 60:00
 - **颜色分段** — 命中率 ≥50% 绿 / <50% 灰；TTL 0-20m 绿 / 20-40m 黄 / 40-55m 红 / 最后 5m 闪红 / 过期 `exp` 灰
-- **Per-session state** — `~/.claude/statusline-state/<md5(session_id)[:16]>.state` 三行（signature、timestamp、hit），读前做 numeric 校验
+- **Per-session state** — `~/.occ/statusline-state/<md5(session_id)[:16]>.state` 三行（signature、timestamp、hit），读前做 numeric 校验
 - **Fallback** — `current_usage` 为 null 时读 state 显示上次命中率
 
 > 该脚本配合 `refreshInterval: 1` 即可秒刷 TTL，前提是 `refreshInterval` 触发路径已实现（见下节）。

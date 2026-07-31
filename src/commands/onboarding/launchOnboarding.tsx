@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { Box, Pane, Text, useTheme } from '@anthropic/ink';
+import { BIN_NAME } from '../../constants/brand.js';
+import { getGlobalClaudeFile } from '../../utils/env.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -124,7 +126,7 @@ export const callOnboarding: LocalJSXCommandCall = async (onDone, _context, args
       hasTrustDialogAccepted: false,
     }));
     onDone(
-      'Workspace trust cleared for the current project. ' + 'The trust dialog will appear on the next `claude` launch.',
+      `Workspace trust cleared for the current project. The trust dialog will appear on the next \`${BIN_NAME}\` launch.`,
       { display: 'system' },
     );
     return null;
@@ -144,10 +146,10 @@ export const callOnboarding: LocalJSXCommandCall = async (onDone, _context, args
     onDone(
       'MCP server setup:\n' +
         '  - `/mcp` — list configured MCP servers\n' +
-        '  - `claude mcp add <name> <command>` — add a server (in your shell)\n' +
-        '  - `claude mcp remove <name>` — remove a server\n' +
+        `  - \`${BIN_NAME} mcp add <name> <command>\` — add a server (in your shell)\n` +
+        `  - \`${BIN_NAME} mcp remove <name>\` — remove a server\n` +
         'Servers also load from `.mcp.json` in the workspace and from ' +
-        '`~/.claude.json` globally.',
+        `\`${getGlobalClaudeFile()}\` globally.`,
       { display: 'system' },
     );
     return null;
@@ -177,7 +179,7 @@ export const callOnboarding: LocalJSXCommandCall = async (onDone, _context, args
   onDone(
     'Onboarding flag cleared. The full first-run setup ' +
       '(theme, OAuth/API key, security notes, terminal-setup) ' +
-      'will run on the next `claude` launch.\n\n' +
+      `will run on the next \`${BIN_NAME}\` launch.\n\n` +
       'For individual steps in this session, use:\n' +
       '  /onboarding theme   — re-pick theme inline\n' +
       '  /onboarding trust   — re-confirm workspace trust on next launch\n' +

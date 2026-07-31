@@ -1,3 +1,5 @@
+import { occConfigPath } from 'src/config/paths.js'
+
 export function getPrompt(): string {
   return `
 # TeamDelete
@@ -5,8 +7,8 @@ export function getPrompt(): string {
 Remove team and task directories when the swarm work is complete.
 
 This operation:
-- Removes the team directory (\`~/.claude/teams/{team-name}/\`)
-- Removes the task directory (\`~/.claude/tasks/{team-name}/\`)
+- Removes the team directory (\`${occConfigPath('teams', '{team-name}')}/\`)
+- Removes the task directory (\`${occConfigPath('tasks', '{team-name}')}/\`)
 - Clears team context from the current session
 
 **IMPORTANT**: TeamDelete will fail if the team still has active members. Gracefully terminate teammates first, then call TeamDelete after all teammates have shut down.

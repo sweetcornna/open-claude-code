@@ -6,13 +6,13 @@
 
 ## 一、功能概述
 
-ACP (Agent Client Protocol) 是一种标准化的 stdio 协议，允许 IDE 和编辑器通过 stdin/stdout 的 NDJSON 流驱动 AI Agent。CCB 实现了完整的 ACP agent 端，可以被 Zed、Cursor 等支持 ACP 的客户端直接调用。
+ACP (Agent Client Protocol) 是一种标准化的 stdio 协议，允许 IDE 和编辑器通过 stdin/stdout 的 NDJSON 流驱动 AI Agent。occ 实现了完整的 ACP agent 端，可以被 Zed、Cursor 等支持 ACP 的客户端直接调用。
 
 ### 核心特性
 
 - **会话管理**：新建 / 恢复 / 加载 / 分叉 / 关闭会话
 - **历史回放**：恢复会话时自动加载并回放对话历史
-- **权限桥接**：ACP 客户端的权限决策映射到 CCB 的工具权限系统
+- **权限桥接**：ACP 客户端的权限决策映射到 occ 的工具权限系统
 - **斜杠命令 & Skills**：加载真实命令列表，支持 `/commit`、`/review` 等 prompt 型 skill
 - **Context Window 跟踪**：精确的 usage_update，含 model prefix matching
 - **Prompt 排队**：支持连续发送多条 prompt，自动排队处理
@@ -23,7 +23,7 @@ ACP (Agent Client Protocol) 是一种标准化的 stdio 协议，允许 IDE 和�
 
 ```
 ┌──────────────┐    NDJSON/stdio    ┌──────────────────┐
-│  Zed / IDE   │ ◄────────────────► │  CCB ACP Agent   │
+│  Zed / IDE   │ ◄────────────────► │  occ ACP Agent   │
 │  (Client)    │   stdin / stdout   │  (Agent)         │
 └──────────────┘                    │                  │
                                     │  entry.ts        │ ← stdio → NDJSON stream
@@ -43,7 +43,7 @@ ACP (Agent Client Protocol) 是一种标准化的 stdio 协议，允许 IDE 和�
 | `entry.ts` | 入口，创建 stdio → NDJSON stream，启动 `AgentSideConnection` |
 | `agent.ts` | 实现 ACP `Agent` 接口：会话 CRUD、prompt、cancel、模式/模型切换 |
 | `bridge.ts` | `SDKMessage` → ACP `SessionUpdate` 转换：文本/思考/工具/用量/编辑 diff |
-| `permissions.ts` | ACP `requestPermission()` → CCB `CanUseToolFn` 桥接 |
+| `permissions.ts` | ACP `requestPermission()` → occ `CanUseToolFn` 桥接 |
 | `utils.ts` | Pushable、流转换、权限模式解析、session fingerprint、路径显示 |
 
 ## 三、配置 Zed 编辑器
@@ -55,9 +55,9 @@ ACP (Agent Client Protocol) 是一种标准化的 stdio 协议，允许 IDE 和�
 ```json
 {
   "agent_servers": {
-    "ccb": {
+    "occ": {
       "type": "custom",
-      "command": "ccb",
+      "command": "occ",
       "args": ["--acp"]
     }
   }
@@ -66,7 +66,7 @@ ACP (Agent Client Protocol) 是一种标准化的 stdio 协议，允许 IDE 和�
 
 ### 3.3 API 认证配置
 
-CCB 的 ACP agent 在启动时会自动加载 `settings.json` 中的环境变量（`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 等）。确保已通过 `/login` 配置好 API 供应商。
+occ 的 ACP agent 在启动时会自动加载 `settings.json` 中的环境变量（`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 等）。确保已通过 `/login` 配置好 API 供应商。
 
 也可通过环境变量传入：
 
@@ -74,7 +74,7 @@ CCB 的 ACP agent 在启动时会自动加载 `settings.json` 中的环境变量
 {
   "agent_servers": {
     "claude-code": {
-      "command": "ccb",
+      "command": "occ",
       "args": ["--acp"],
       "env": {
         "ANTHROPIC_BASE_URL": "https://api.example.com/v1",
@@ -106,10 +106,10 @@ CCB 的 ACP agent 在启动时会自动加载 `settings.json` 中的环境变量
 
 ## 四、配置其他 ACP 客户端
 
-ACP 是开放协议，任何支持 ACP 的客户端都可以连接 CCB。通用配置模式：
+ACP 是开放协议，任何支持 ACP 的客户端都可以连接 occ。通用配置模式：
 
 ```
-命令: ccb --acp
+命令: occ --acp
 参数: ["--acp"]
 通信: stdin/stdout NDJSON
 协议版本: ACP v1
@@ -117,7 +117,7 @@ ACP 是开放协议，任何支持 ACP 的客户端都可以连接 CCB。通用�
 
 ### 4.1 Cursor
 
-在 Cursor 的设置中配置 MCP / Agent Server，使用同样的 `ccb --acp` 命令。
+在 Cursor 的设置中配置 MCP / Agent Server，使用同样的 `occ --acp` 命令。
 
 ### 4.2 自定义客户端
 
@@ -126,8 +126,8 @@ ACP 是开放协议，任何支持 ACP 的客户端都可以连接 CCB。通用�
 ```typescript
 import { ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk'
 
-// 创建连接（将 ccb --acp 作为子进程启动）
-const child = spawn('ccb', ['--acp'])
+// 创建连接（将 occ --acp 作为子进程启动）
+const child = spawn('occ', ['--acp'])
 const stream = ndJsonStream(
   Writable.toWeb(child.stdin),
   Readable.toWeb(child.stdout),

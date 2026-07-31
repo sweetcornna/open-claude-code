@@ -16,17 +16,19 @@ export async function waitForUrlEvent(
 }
 
 /**
- * Checks three env var sources (set by the OS URL scheme handler or installer)
- * and then CLI arguments for a claude:// deep link URL.
+ * Checks the occ event source first, then legacy compatibility variables and
+ * CLI arguments. Legacy sources are read-only and are never registered by occ.
  *
  * Priority order:
- * 1. CLAUDE_CODE_URL_EVENT — set by the OS URL scheme handler on activation
- * 2. CLAUDE_CODE_DEEP_LINK_URL — set by the desktop app launcher
- * 3. CLAUDE_CODE_URL — legacy / manual override
- * 4. CLI arguments — e.g. `claude claude://...`
+ * 1. OCC_URL_EVENT — set by the occ OS URL scheme handler
+ * 2. CLAUDE_CODE_URL_EVENT — legacy compatibility
+ * 3. CLAUDE_CODE_DEEP_LINK_URL — legacy desktop launcher
+ * 4. CLAUDE_CODE_URL — legacy manual override
+ * 5. CLI arguments
  */
 function findUrlEvent(): string | null {
   for (const key of [
+    'OCC_URL_EVENT',
     'CLAUDE_CODE_URL_EVENT',
     'CLAUDE_CODE_DEEP_LINK_URL',
     'CLAUDE_CODE_URL',
@@ -45,6 +47,8 @@ function isClaudeUrl(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length <= MAX_URL_LENGTH &&
-    (value.startsWith('claude-cli://') || value.startsWith('claude://'))
+    (value.startsWith('occ-cli://') ||
+      value.startsWith('claude-cli://') ||
+      value.startsWith('claude://'))
   )
 }

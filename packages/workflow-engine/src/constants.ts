@@ -7,10 +7,10 @@
 export const WORKFLOW_TOOL_NAME = 'Workflow'
 
 /** Directory for user-named workflow files (relative to project root). */
-export const WORKFLOW_DIR_NAME = '.claude/workflows'
+export const WORKFLOW_DIR_NAME = '.occ/workflows'
 
 /** Persistence directory for workflow runs (journal + run records). */
-export const WORKFLOW_RUNS_DIR = '.claude/workflow-runs'
+export const WORKFLOW_RUNS_DIR = '.occ/workflow-runs'
 
 /** Supported script extensions for named workflows (in priority order). */
 export const WORKFLOW_SCRIPT_EXTENSIONS = ['.ts', '.js', '.mjs'] as const

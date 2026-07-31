@@ -24,23 +24,23 @@ DAEMON 将 Claude Code 变为后台守护进程。主进程（supervisor）管�
 
 ```
 # 启动守护进程
-claude daemon start
+occ daemon start
 
 # 查看状态（默认子命令）
-claude daemon status
-claude daemon ps
+occ daemon status
+occ daemon ps
 
 # 停止守护进程
-claude daemon stop
+occ daemon stop
 
 # 以 worker 身份启动（由 supervisor 自动调用）
-claude --daemon-worker=remoteControl
+occ --daemon-worker=remoteControl
 
 # 后台会话管理
-claude daemon bg
-claude daemon attach <session>
-claude daemon logs <session>
-claude daemon kill <session>
+occ daemon bg
+occ daemon attach <session>
+occ daemon logs <session>
+occ daemon kill <session>
 ```
 
 ### 2.3 架构
@@ -94,16 +94,16 @@ if (feature('DAEMON') && feature('BRIDGE_MODE')) {
 FEATURE_DAEMON=1 FEATURE_BRIDGE_MODE=1 bun run dev
 
 # 启动守护进程
-claude daemon start
+occ daemon start
 
 # 查看状态
-claude daemon status
+occ daemon status
 
 # 停止守护进程
-claude daemon stop
+occ daemon stop
 
 # 以特定 worker 启动（通常由 supervisor 自动调用）
-claude --daemon-worker=remoteControl
+occ --daemon-worker=remoteControl
 ```
 
 ## 五、文件索引

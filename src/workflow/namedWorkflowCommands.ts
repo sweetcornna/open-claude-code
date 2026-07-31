@@ -1,12 +1,12 @@
 import { join } from 'node:path'
-import {
-  listNamedWorkflows,
-  WORKFLOW_DIR_NAME,
-} from '@open-claude-code/workflow-engine'
+import { listNamedWorkflows } from '@open-claude-code/workflow-engine'
 import type { Command } from '../types/command.js'
 import { getProjectRoot } from '../bootstrap/state.js'
+import { PROJECT_DIR_NAME } from '../config/paths.js'
 
-/** Scan *.ts|*.js|*.mjs under .claude/workflows/ and generate a /<name> command for each. */
+const WORKFLOW_DIR_NAME = join(PROJECT_DIR_NAME, 'workflows')
+
+/** Scan *.ts|*.js|*.mjs under the project workflow directory and generate a /<name> command for each. */
 export async function getWorkflowCommands(
   cwd: string = getProjectRoot(),
 ): Promise<Command[]> {

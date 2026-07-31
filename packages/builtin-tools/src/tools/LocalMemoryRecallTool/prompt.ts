@@ -1,5 +1,9 @@
+import { occConfigPath } from 'src/config/paths.js'
+
+const LOCAL_MEMORY_DIR = occConfigPath('local-memory')
+
 export const DESCRIPTION =
-  "Recall the user's local cross-session notes stored in ~/.claude/local-memory/. " +
+  `Recall the user's local cross-session notes stored in ${LOCAL_MEMORY_DIR}/. ` +
   'The user manages these via /local-memory CLI (list, create, store, fetch, archive). ' +
   "Use this tool when the user references prior notes, says 'last time' or 'my saved X', " +
   'or when continuing multi-session work. This tool is read-only — to write notes, ' +
@@ -10,7 +14,7 @@ export const DESCRIPTION =
 export const PROMPT = `LocalMemoryRecall — read-only access to user-stored cross-session notes.
 
 Actions:
-  list_stores                          → list all stores under ~/.claude/local-memory/
+  list_stores                          → list all stores under ${LOCAL_MEMORY_DIR}/
   list_entries(store)                  → list entry keys in a store
   fetch(store, key, preview_only?)     → read entry content. Default preview_only=true returns 2KB preview.
                                          Set preview_only=false for full content (up to 50KB), which prompts for user approval.

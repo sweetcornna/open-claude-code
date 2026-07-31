@@ -18,11 +18,11 @@ Git worktree 是 git 原生的解决方案——在同一个仓库中创建多�
 
 ## 目录结构与命名规则
 
-Worktree 文件统一存放在仓库根目录下的 `.claude/worktrees/`：
+Worktree 文件统一存放在仓库根目录下的 `.occ/worktrees/`：
 
 ```
 <repo-root>/
-├── .claude/
+├── .occ/
 │   └── worktrees/
 │       ├── fix-auth-bug/          # worktree 工作目录
 │       │   ├── .git               # 指向主仓库的链接文件
@@ -57,7 +57,7 @@ EnterWorktreeTool.call({ name? })
           ├── 快速恢复：检查 worktree 目录是否已存在
           │   └── 读取 .git 指针文件的 HEAD SHA（无子进程）
           └── 新建：
-              i.   mkdir .claude/worktrees/（recursive）
+              i.   mkdir .occ/worktrees/（recursive）
               ii.  fetch origin/<default-branch>（有缓存则跳过）
               iii. git worktree add -b worktree/<slug> <path> <base>
               iv.  performPostCreationSetup()（sparse checkout 等）

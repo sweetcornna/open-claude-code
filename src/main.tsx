@@ -6,8 +6,7 @@
 //    key) in parallel — isRemoteManagedSettingsEligible() otherwise reads them
 //    sequentially via sync spawn inside applySafeConfigEnvironmentVariables()
 //    (~65ms on every macOS startup)
-import { PRODUCT_NAME } from './constants/brand.js';
-import { BIN_NAME } from 'src/config/paths.js';
+import { BIN_NAME, DISPLAY_NAME, MACOS_DEEP_LINK_BUNDLE_ID, PRODUCT_NAME } from './constants/brand.js';
 import { profileCheckpoint, profileReport } from './utils/startupProfiler.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
@@ -247,7 +246,7 @@ import type { ValidationError } from './utils/settings/validation.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID, TASK_STATUSES } from './utils/tasks.js';
 import { logPluginLoadErrors, logPluginsEnabledForSession } from './utils/telemetry/pluginTelemetry.js';
 import { logSkillsLoaded } from './utils/telemetry/skillLoadedEvent.js';
-import { generateTempFilePath } from './utils/tempfile.js';
+import { generateTempFilePath, SETTINGS_TEMP_PREFIX } from './utils/tempfile.js';
 import { validateUuid } from './utils/uuid.js';
 // Plugin startup checks are now handled non-blockingly in REPL.tsx
 
@@ -604,7 +603,7 @@ function loadSettingsFromFlag(settingsFile: string): void {
       // the cache prefix and causing a 12x input token cost penalty.
       // The content hash ensures identical settings produce the same path
       // across process boundaries (each SDK query() spawns a new process).
-      settingsPath = generateTempFilePath('claude-settings', '.json', {
+      settingsPath = generateTempFilePath(SETTINGS_TEMP_PREFIX, '.json', {
         contentHash: trimmedSettings,
       });
       writeFileSync_DEPRECATED(settingsPath, trimmedSettings, 'utf8');
@@ -779,7 +778,7 @@ export async function main() {
     // URL arrives via Apple Event (not argv). LaunchServices overwrites
     // __CFBundleIdentifier to the launching bundle's ID, which is a precise
     // positive signal — cheaper than importing and guessing with heuristics.
-    if (process.platform === 'darwin' && process.env.__CFBundleIdentifier === 'com.anthropic.claude-code-url-handler') {
+    if (process.platform === 'darwin' && process.env.__CFBundleIdentifier === MACOS_DEEP_LINK_BUNDLE_ID) {
       const { enableConfigs } = await import('./utils/config.js');
       enableConfigs();
       const { handleUrlSchemeLaunch } = await import('./utils/deepLink/protocolHandler.js');
@@ -898,7 +897,7 @@ export async function main() {
       // Headless (-p) mode is not supported with SSH in v1 — reject early
       // so the flag doesn't silently cause local execution.
       if (rest.includes('-p') || rest.includes('--print')) {
-        process.stderr.write('Error: headless (-p/--print) mode is not supported with claude ssh\n');
+        process.stderr.write(`Error: headless (-p/--print) mode is not supported with ${BIN_NAME} ssh\n`);
         gracefulShutdownSync(1);
         return;
       }
@@ -1090,19 +1089,13 @@ async function run(): Promise<CommanderCommand> {
     void loadPolicyLimits();
 
     profileCheckpoint('preAction_after_remote_settings');
-
-    // Load settings sync (non-blocking, fail-open)
-    // CLI: uploads local settings to remote (CCR download is handled by print.ts)
-    if (feature('UPLOAD_USER_SETTINGS')) {
-      void import('./services/settingsSync/index.js').then(m => m.uploadUserSettingsInBackground());
-    }
-
-    profileCheckpoint('preAction_after_settings_sync');
   });
 
   program
-    .name('claude')
-    .description(`Claude Code - starts an interactive session by default, use -p/--print for non-interactive output`)
+    .name(BIN_NAME)
+    .description(
+      `${DISPLAY_NAME} - starts an interactive session by default, use -p/--print for non-interactive output`,
+    )
     .argument('[prompt]', 'Your prompt', String)
     // Subcommands inherit helpOption via commander's copyInheritedSettings —
     // setting it once here covers mcp, plugin, auth, and all other subcommands.
@@ -1397,7 +1390,7 @@ async function run(): Promise<CommanderCommand> {
       // Ignore "code" as a prompt - treat it the same as no prompt
       if (prompt === 'code') {
         logEvent('tengu_code_prompt_ignored', {});
-        console.warn(chalk.yellow('Tip: You can launch Claude Code with just `claude`'));
+        console.warn(chalk.yellow(`Tip: You can launch ${DISPLAY_NAME} with just \`${BIN_NAME}\``));
         prompt = undefined;
       }
 
@@ -1975,7 +1968,7 @@ async function run(): Promise<CommanderCommand> {
           });
           logForDebugging(`[Claude in Chrome] Error: ${error}`);
           logError(error);
-          console.error(`Error: Failed to run with Claude in Chrome.`);
+          console.error(`Error: ${error instanceof Error ? error.message : 'Failed to run with Claude in Chrome.'}`);
           process.exit(1);
         }
       } else if (autoEnableClaudeInChrome) {
@@ -3800,7 +3793,7 @@ async function run(): Promise<CommanderCommand> {
             // establish a bridge session before discovery will find it.
             return await exitWithMessage(
               root,
-              `Assistant installed in ${installedDir}. The daemon is starting up — run \`claude assistant\` again in a few seconds to connect.`,
+              `Assistant installed in ${installedDir}. The daemon is starting up — run \`${BIN_NAME} assistant\` again in a few seconds to connect.`,
               {
                 exitCode: 0,
                 beforeExit: () => gracefulShutdown(0),
@@ -3951,7 +3944,7 @@ async function run(): Promise<CommanderCommand> {
           if (!isRemoteTuiEnabled && !hasInitialPrompt) {
             return await exitWithError(
               root,
-              'Error: --remote requires a description.\nUsage: claude --remote "your task description"',
+              `Error: --remote requires a description.\nUsage: ${BIN_NAME} --remote "your task description"`,
               () => gracefulShutdown(1),
             );
           }
@@ -3983,7 +3976,7 @@ async function run(): Promise<CommanderCommand> {
             // Original behavior: print session info and exit
             process.stdout.write(`Created remote session: ${createdSession.title}\n`);
             process.stdout.write(`View: ${getRemoteSessionUrl(createdSession.id)}?m=0\n`);
-            process.stdout.write(`Resume with: claude --teleport ${createdSession.id}\n`);
+            process.stdout.write(`Resume with: ${BIN_NAME} --teleport ${createdSession.id}\n`);
             await gracefulShutdown(0);
             process.exit(0);
           }
@@ -4104,9 +4097,9 @@ async function run(): Promise<CommanderCommand> {
                   } else {
                     // No known paths - show original error
                     throw new TeleportOperationError(
-                      `You must run claude --teleport ${teleport} from a checkout of ${sessionRepo}.`,
+                      `You must run ${BIN_NAME} --teleport ${teleport} from a checkout of ${sessionRepo}.`,
                       chalk.red(
-                        `You must run claude --teleport ${teleport} from a checkout of ${chalk.bold(sessionRepo)}.\n`,
+                        `You must run ${BIN_NAME} --teleport ${teleport} from a checkout of ${chalk.bold(sessionRepo)}.\n`,
                       ),
                     );
                   }
@@ -4612,9 +4605,9 @@ async function run(): Promise<CommanderCommand> {
         // commander runs. Reaching here means host was missing or the
         // rewrite predicate didn't match.
         process.stderr.write(
-          'Usage: claude ssh <user@host | ssh-config-alias> [dir]\n\n' +
-            "Runs Claude Code on a remote Linux host. You don't need to install\n" +
-            'anything on the remote or run `claude auth login` there — the binary is\n' +
+          `Usage: ${BIN_NAME} ssh <user@host | ssh-config-alias> [dir]\n\n` +
+            `Runs ${DISPLAY_NAME} on a remote Linux host. You don't need to install\n` +
+            `anything on the remote or run \`${BIN_NAME} auth login\` there — the binary is\n` +
             'deployed over SSH and API auth tunnels back through your local machine.\n',
         );
         process.exit(1);
@@ -4985,7 +4978,7 @@ async function run(): Promise<CommanderCommand> {
         // (e.g. `--debug assistant`) and the position-0 predicate
         // didn't match. Print usage like the ssh stub does.
         process.stderr.write(
-          'Usage: claude assistant [sessionId]\n\n' +
+          `Usage: ${BIN_NAME} assistant [sessionId]\n\n` +
             'Attach the REPL as a viewer client to a running bridge session.\n' +
             'Omit sessionId to discover and pick from available sessions.\n',
         );
@@ -5049,7 +5042,7 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('rollback [target]')
       .description(
-        '[ANT-ONLY] Roll back to a previous release\n\nExamples:\n  claude rollback                                    Go 1 version back from current\n  claude rollback 3                                  Go 3 versions back from current\n  claude rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version',
+        `[ANT-ONLY] Roll back to a previous release\n\nExamples:\n  ${BIN_NAME} rollback                                    Go 1 version back from current\n  ${BIN_NAME} rollback 3                                  Go 3 versions back from current\n  ${BIN_NAME} rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version`,
       )
       .option('-l, --list', 'List recent published versions with ages')
       .option('--dry-run', 'Show what would be installed without installing')
@@ -5068,18 +5061,6 @@ async function run(): Promise<CommanderCommand> {
         },
       );
   }
-
-  // claude install
-  program
-    .command('install [target]')
-    .description(
-      'Install Claude Code native build. Use [target] to specify version (stable, latest, or specific version)',
-    )
-    .option('--force', 'Force installation even if already installed')
-    .action(async (target: string | undefined, options: { force?: boolean }) => {
-      const { installHandler } = await import('./cli/handlers/util.js');
-      await installHandler(target, options);
-    });
 
   // occ update — update to the latest published version via npm or bun
   program
@@ -5134,10 +5115,10 @@ async function run(): Promise<CommanderCommand> {
         'after',
         `
 Examples:
-  $ claude export 0 conversation.txt                Export conversation at log index 0
-  $ claude export <uuid> conversation.txt           Export conversation by session ID
-  $ claude export input.json output.txt             Render JSON log file to text
-  $ claude export <uuid>.jsonl output.txt           Render JSONL session file to text`,
+  $ ${BIN_NAME} export 0 conversation.txt                Export conversation at log index 0
+  $ ${BIN_NAME} export <uuid> conversation.txt           Export conversation by session ID
+  $ ${BIN_NAME} export input.json output.txt             Render JSON log file to text
+  $ ${BIN_NAME} export <uuid>.jsonl output.txt           Render JSONL session file to text`,
       )
       .action(async (source: string, outputFile: string) => {
         const { exportHandler } = await import('./cli/handlers/ant.js');

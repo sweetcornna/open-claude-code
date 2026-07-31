@@ -42,6 +42,15 @@ import { join } from 'node:path'
 import { logError } from '../../utils/log.js'
 import { KeychainUnavailableError, tryKeychain } from './keychain.js'
 
+let keychainBackend = tryKeychain
+
+/** @internal Test-only backend override. */
+export function _setKeychainBackendForTesting(
+  backend: typeof tryKeychain | undefined,
+): void {
+  keychainBackend = backend ?? tryKeychain
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** Maximum secret value size: 64 KB (OS keychain typically < 4 KB; file fallback keeps overhead low). */
@@ -53,6 +62,7 @@ const IV_BYTES = 12
 const TAG_BYTES = 16
 const KEY_BYTES = 32
 const SALT_BYTES = 16
+const RESERVED_SECRET_KEYS = new Set(['__index__', '_salt', '_version'])
 
 /** scrypt parameters: N=16384 (2^14), r=8, p=1. OWASP-recommended minimum for interactive. */
 const SCRYPT_PARAMS: Parameters<typeof scryptSync>[3] = { N: 16384, r: 8, p: 1 }
@@ -341,8 +351,15 @@ async function getOrCreateSalt(vaultData: VaultFile): Promise<Buffer> {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function setSecret(key: string, value: string): Promise<void> {
+function assertValidSecretKey(key: string): void {
   if (!key) throw new Error('key must not be empty')
+  if (RESERVED_SECRET_KEYS.has(key)) {
+    throw new Error(`key "${key}" is reserved for Local Vault metadata`)
+  }
+}
+
+export async function setSecret(key: string, value: string): Promise<void> {
+  assertValidSecretKey(key)
 
   // D1: Guard against unbounded value sizes
   const byteLength = Buffer.byteLength(value, 'utf8')
@@ -352,8 +369,8 @@ export async function setSecret(key: string, value: string): Promise<void> {
 
   // Primary: OS keychain
   try {
-    await tryKeychain.set(key, value)
-    await tryKeychain._addToIndex(key)
+    await keychainBackend.set(key, value)
+    await keychainBackend._addToIndex(key)
     return
   } catch (err: unknown) {
     if (!(err instanceof KeychainUnavailableError)) {
@@ -385,9 +402,11 @@ export async function setSecret(key: string, value: string): Promise<void> {
 }
 
 export async function getSecret(key: string): Promise<string | null> {
+  assertValidSecretKey(key)
+
   // Primary: OS keychain
   try {
-    const val = await tryKeychain.get(key)
+    const val = await keychainBackend.get(key)
     return val
   } catch (err: unknown) {
     if (!(err instanceof KeychainUnavailableError)) {
@@ -425,10 +444,12 @@ export async function getSecret(key: string): Promise<string | null> {
 }
 
 export async function deleteSecret(key: string): Promise<boolean> {
+  assertValidSecretKey(key)
+
   // Primary: OS keychain
   try {
-    const deleted = await tryKeychain.delete(key)
-    await tryKeychain._removeFromIndex(key)
+    const deleted = await keychainBackend.delete(key)
+    await keychainBackend._removeFromIndex(key)
     return deleted
   } catch (err: unknown) {
     if (!(err instanceof KeychainUnavailableError)) {
@@ -448,7 +469,7 @@ export async function deleteSecret(key: string): Promise<boolean> {
 export async function listKeys(): Promise<string[]> {
   // Primary: OS keychain index
   try {
-    return await tryKeychain.list()
+    return await keychainBackend.list()
   } catch (err: unknown) {
     if (!(err instanceof KeychainUnavailableError)) {
       throw err
@@ -457,8 +478,7 @@ export async function listKeys(): Promise<string[]> {
 
   // Fallback: encrypted file keys (no decryption needed — just keys)
   const vaultData = await readVaultFile()
-  // Filter out internal metadata keys
-  return Object.keys(vaultData).filter(k => !k.startsWith('_'))
+  return Object.keys(vaultData).filter(k => !RESERVED_SECRET_KEYS.has(k))
 }
 
 /** Mask a secret value for display: first 4 chars + ... + last 2 chars + length */

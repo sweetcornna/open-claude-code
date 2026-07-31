@@ -14,16 +14,16 @@ Channel 是一个 MCP 服务器，它将外部事件推送到你运行中的 Cla
 
 ```bash
 # 启用频道监听（plugin 格式）
-ccb --channels plugin:feishu@claude-code-feishu-channel
+occ --channels plugin:feishu@claude-code-feishu-channel
 
 # 启用频道监听（server 格式）
-ccb --channels server:my-slack-bridge
+occ --channels server:my-slack-bridge
 
 # 同时启用多个频道
-ccb --channels plugin:feishu@claude-code-feishu-channel --channels server:discord-bot
+occ --channels plugin:feishu@claude-code-feishu-channel --channels server:discord-bot
 
 # 开发模式（跳过 allowlist 检查，用于测试自定义 channel）
-ccb --dangerously-load-development-channels server:my-custom-channel
+occ --dangerously-load-development-channels server:my-custom-channel
 ```
 
 ## 支持的 Channel

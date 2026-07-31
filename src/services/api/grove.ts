@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { BIN_NAME } from 'src/constants/brand.js'
 import memoize from 'lodash-es/memoize.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -343,13 +344,13 @@ export async function checkGroveForNonInteractive(): Promise<void> {
     if (config === null || config.notice_is_grace_period) {
       // Grace period is still active - show informational message and continue
       writeToStderr(
-        '\nAn update to our Consumer Terms and Privacy Policy will take effect on October 8, 2025. Run `claude` to review the updated terms.\n\n',
+        `\nAn update to our Consumer Terms and Privacy Policy will take effect on October 8, 2025. Run \`${BIN_NAME}\` to review the updated terms.\n\n`,
       )
       await markGroveNoticeViewed()
     } else {
       // Grace period has ended - show error message and exit
       writeToStderr(
-        '\n[ACTION REQUIRED] An update to our Consumer Terms and Privacy Policy has taken effect on October 8, 2025. You must run `claude` to review the updated terms.\n\n',
+        `\n[ACTION REQUIRED] An update to our Consumer Terms and Privacy Policy has taken effect on October 8, 2025. You must run \`${BIN_NAME}\` to review the updated terms.\n\n`,
       )
       await gracefulShutdown(1)
     }

@@ -5,9 +5,9 @@ import {
 import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js'
 import type { ToolPermissionContext } from '../../../Tool.js'
 import {
-  CLAUDE_FOLDER_PERMISSION_PATTERN,
   FILE_EDIT_TOOL_NAME,
-  GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+  getGlobalOccFolderPermissionPattern,
+  OCC_FOLDER_PERMISSION_PATTERN,
 } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
 import { env } from '../../../utils/env.js'
 import { generateSuggestions } from '../../../utils/permissions/filesystem.js'
@@ -57,7 +57,7 @@ export type PermissionHandlerOptions = {
   hasFeedback?: boolean
   feedback?: string
   enteredFeedbackMode?: boolean
-  scope?: 'claude-folder' | 'global-claude-folder'
+  scope?: 'occ-folder' | 'global-occ-folder'
 }
 
 function handleAcceptOnce(
@@ -101,15 +101,15 @@ function handleAcceptSession(
 
   logPermissionEvent('accept', completionType, languageName, messageId)
 
-  // For claude-folder scope, grant session-level access to all .claude/ files
+  // For occ-folder scope, grant session-level access to occ config files
   if (
-    options?.scope === 'claude-folder' ||
-    options?.scope === 'global-claude-folder'
+    options?.scope === 'occ-folder' ||
+    options?.scope === 'global-occ-folder'
   ) {
     const pattern =
-      options.scope === 'global-claude-folder'
-        ? GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN
-        : CLAUDE_FOLDER_PERMISSION_PATTERN
+      options.scope === 'global-occ-folder'
+        ? getGlobalOccFolderPermissionPattern()
+        : OCC_FOLDER_PERMISSION_PATTERN
     const suggestions: PermissionUpdate[] = [
       {
         type: 'addRules',

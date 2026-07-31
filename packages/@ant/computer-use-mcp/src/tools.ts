@@ -536,7 +536,7 @@ export function buildComputerUseTools(
             description:
               'Open a new terminal window and launch an AI agent CLI. ' +
               'This is a workflow tool that automates: open terminal → type startup command → press Enter → wait → verify. ' +
-              "Supported agents: claude (runs 'claude'), codex (runs 'codex'), gemini (runs 'gemini'), " +
+              "Supported agents: self (runs the current host CLI), codex (runs 'codex'), gemini (runs 'gemini'), " +
               'or any custom command. After launching, the tool binds to the new terminal window ' +
               'and takes a screenshot to verify the agent started successfully. ' +
               "Use this when the user says: 'open Claude Code', 'start a Codex terminal', 'launch Gemini', etc.",
@@ -545,10 +545,10 @@ export function buildComputerUseTools(
               properties: {
                 agent: {
                   type: 'string',
-                  enum: ['claude', 'codex', 'gemini', 'custom'],
+                  enum: ['self', 'codex', 'gemini', 'custom'],
                   description:
                     'Which agent to launch. ' +
-                    "claude: runs 'claude' command. " +
+                    'self: runs the current host CLI. ' +
                     "codex: runs 'codex' command. " +
                     "gemini: runs 'gemini' command. " +
                     "custom: runs the command specified in 'command' parameter.",

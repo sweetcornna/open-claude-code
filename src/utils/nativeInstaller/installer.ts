@@ -39,7 +39,6 @@ import { getMaxVersion, shouldSkipVersion } from '../autoUpdater.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
-import { getCurrentInstallationType } from '../doctorDiagnostic.js'
 import { env } from '../env.js'
 import { envDynamic } from '../envDynamic.js'
 import { isEnvTruthy } from '../envUtils.js'
@@ -50,7 +49,7 @@ import * as lockfile from '../lockfile.js'
 import { logError } from '../log.js'
 import { gt, gte } from '../semver.js'
 import {
-  filterClaudeAliases,
+  filterOccAliases,
   getShellConfigPaths,
   readFileLines,
   writeFileLines,
@@ -803,25 +802,11 @@ export async function checkInstall(
     return []
   }
 
-  // Get the actual installation type and config
-  const installationType = await getCurrentInstallationType()
-
-  // Skip checks for development builds - config.installMethod from a previous
-  // native installation shouldn't trigger warnings when running dev builds
-  if (installationType === 'development') {
-    return []
-  }
-
-  const config = getGlobalConfig()
-
-  // Only show warnings if:
-  // 1. User is actually running from native installation, OR
-  // 2. User has explicitly set installMethod to 'native' in config (they're trying to use native)
-  // 3. force is true (used during installation process)
-  const shouldCheckNative =
-    force || installationType === 'native' || config.installMethod === 'native'
-
-  if (!shouldCheckNative) {
+  // occ has no supported native release channel. Startup callers must never
+  // inspect or repair the official Claude Code native installation based on a
+  // migrated installMethod value. The force path is retained only for the
+  // unregistered inherited installer module.
+  if (!force) {
     return []
   }
 
@@ -1192,8 +1177,11 @@ export async function cleanupOldVersions(): Promise<void> {
     try {
       const files = await readdir(executableDir)
       let cleanedCount = 0
+      const oldExecutablePattern = new RegExp(
+        `^${BIN_NAME}\\.exe\\.old\\.\\d+$`,
+      )
       for (const file of files) {
-        if (!/^claude\.exe\.old\.\d+$/.test(file)) continue
+        if (!oldExecutablePattern.test(file)) continue
         try {
           await unlink(join(executableDir, file))
           cleanedCount++
@@ -1496,16 +1484,16 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
       const lines = await readFileLines(configFile)
       if (!lines) continue
 
-      const { filtered, hadAlias } = filterClaudeAliases(lines)
+      const { filtered, hadAlias } = filterOccAliases(lines)
 
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
         messages.push({
-          message: `Removed claude alias from ${configFile}. Run: unalias claude`,
+          message: `Removed ${BIN_NAME} alias from ${configFile}. Run: unalias ${BIN_NAME}`,
           userActionRequired: true,
           type: 'alias',
         })
-        logForDebugging(`Cleaned up claude alias from ${shellType} config`)
+        logForDebugging(`Cleaned up ${BIN_NAME} alias from ${shellType} config`)
       }
     } catch (error) {
       logError(error)
@@ -1518,189 +1506,4 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
   }
 
   return messages
-}
-
-async function manualRemoveNpmPackage(
-  packageName: string,
-): Promise<{ success: boolean; error?: string; warning?: string }> {
-  try {
-    // Get npm global prefix
-    const prefixResult = await execFileNoThrowWithCwd('npm', [
-      'config',
-      'get',
-      'prefix',
-    ])
-    if (prefixResult.code !== 0 || !prefixResult.stdout) {
-      return {
-        success: false,
-        error: 'Failed to get npm global prefix',
-      }
-    }
-
-    const globalPrefix = prefixResult.stdout.trim()
-    let manuallyRemoved = false
-
-    // Helper to try removing a file. unlink alone is sufficient — it throws
-    // ENOENT if the file is missing, which the catch handles identically.
-    // A stat() pre-check would add a syscall and a TOCTOU window where
-    // concurrent cleanup causes a false-negative return.
-    async function tryRemove(filePath: string, description: string) {
-      try {
-        await unlink(filePath)
-        logForDebugging(`Manually removed ${description}: ${filePath}`)
-        return true
-      } catch {
-        return false
-      }
-    }
-
-    if (getPlatform().startsWith('win32')) {
-      // Windows - only remove executables, not the package directory
-      const binCmd = join(globalPrefix, 'claude.cmd')
-      const binPs1 = join(globalPrefix, 'claude.ps1')
-      const binExe = join(globalPrefix, 'claude')
-
-      if (await tryRemove(binCmd, 'bin script')) {
-        manuallyRemoved = true
-      }
-
-      if (await tryRemove(binPs1, 'PowerShell script')) {
-        manuallyRemoved = true
-      }
-
-      if (await tryRemove(binExe, 'bin executable')) {
-        manuallyRemoved = true
-      }
-    } else {
-      // Unix/Mac - only remove symlink, not the package directory
-      const binSymlink = join(globalPrefix, 'bin', 'claude')
-
-      if (await tryRemove(binSymlink, 'bin symlink')) {
-        manuallyRemoved = true
-      }
-    }
-
-    if (manuallyRemoved) {
-      logForDebugging(`Successfully removed ${packageName} manually`)
-      const nodeModulesPath = getPlatform().startsWith('win32')
-        ? join(globalPrefix, 'node_modules', packageName)
-        : join(globalPrefix, 'lib', 'node_modules', packageName)
-
-      return {
-        success: true,
-        warning: `${packageName} executables removed, but node_modules directory was left intact for safety. You may manually delete it later at: ${nodeModulesPath}`,
-      }
-    } else {
-      return { success: false }
-    }
-  } catch (manualError) {
-    logForDebugging(`Manual removal failed: ${manualError}`, {
-      level: 'error',
-    })
-    return {
-      success: false,
-      error: `Manual removal failed: ${manualError}`,
-    }
-  }
-}
-
-async function attemptNpmUninstall(
-  packageName: string,
-): Promise<{ success: boolean; error?: string; warning?: string }> {
-  const { code, stderr } = await execFileNoThrowWithCwd(
-    'npm',
-    ['uninstall', '-g', packageName],
-    // eslint-disable-next-line custom-rules/no-process-cwd -- matches original behavior
-    { cwd: process.cwd() },
-  )
-
-  if (code === 0) {
-    logForDebugging(`Removed global npm installation of ${packageName}`)
-    return { success: true }
-  } else if (stderr && !stderr.includes('npm ERR! code E404')) {
-    // Check for ENOTEMPTY error and try manual removal
-    if (stderr.includes('npm error code ENOTEMPTY')) {
-      logForDebugging(
-        `Failed to uninstall global npm package ${packageName}: ${stderr}`,
-        { level: 'error' },
-      )
-      logForDebugging(`Attempting manual removal due to ENOTEMPTY error`)
-
-      const manualResult = await manualRemoveNpmPackage(packageName)
-      if (manualResult.success) {
-        return { success: true, warning: manualResult.warning }
-      } else if (manualResult.error) {
-        return {
-          success: false,
-          error: `Failed to remove global npm installation of ${packageName}: ${stderr}. Manual removal also failed: ${manualResult.error}`,
-        }
-      }
-    }
-
-    // Only report as error if it's not a "package not found" error
-    logForDebugging(
-      `Failed to uninstall global npm package ${packageName}: ${stderr}`,
-      { level: 'error' },
-    )
-    return {
-      success: false,
-      error: `Failed to remove global npm installation of ${packageName}: ${stderr}`,
-    }
-  }
-
-  return { success: false } // Package not found, not an error
-}
-
-export async function cleanupNpmInstallations(): Promise<{
-  removed: number
-  errors: string[]
-  warnings: string[]
-}> {
-  const errors: string[] = []
-  const warnings: string[] = []
-  let removed = 0
-
-  // Always attempt to remove @anthropic-ai/claude-code
-  const codePackageResult = await attemptNpmUninstall(
-    '@anthropic-ai/claude-code',
-  )
-  if (codePackageResult.success) {
-    removed++
-    if (codePackageResult.warning) {
-      warnings.push(codePackageResult.warning)
-    }
-  } else if (codePackageResult.error) {
-    errors.push(codePackageResult.error)
-  }
-
-  // Also attempt to remove MACRO.PACKAGE_URL if it's defined and different
-  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code') {
-    const macroPackageResult = await attemptNpmUninstall(MACRO.PACKAGE_URL)
-    if (macroPackageResult.success) {
-      removed++
-      if (macroPackageResult.warning) {
-        warnings.push(macroPackageResult.warning)
-      }
-    } else if (macroPackageResult.error) {
-      errors.push(macroPackageResult.error)
-    }
-  }
-
-  // Check for local installation at <configDir>/local
-  const localInstallDir = occConfigPath('local')
-
-  try {
-    await rm(localInstallDir, { recursive: true })
-    removed++
-    logForDebugging(`Removed local installation at ${localInstallDir}`)
-  } catch (error) {
-    if (!isENOENT(error)) {
-      errors.push(`Failed to remove ${localInstallDir}: ${error}`)
-      logForDebugging(`Failed to remove local installation: ${error}`, {
-        level: 'error',
-      })
-    }
-  }
-
-  return { removed, errors, warnings }
 }

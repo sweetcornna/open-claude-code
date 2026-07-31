@@ -1,6 +1,6 @@
 # research-report —— 库优先运行示例
 
-用 `@claude-code-best/workflow-engine` **直接**运行一个 workflow，绕开 Workflow 工具与核心 `runAgent`。
+用 `@open-claude-code/workflow-engine` **直接**运行一个 workflow，绕开 Workflow 工具与核心 `runAgent`。
 
 ## 状态
 
@@ -10,7 +10,7 @@
 
 ## 它演示了什么
 
-- **库可独立使用**：`run.ts` 只 `import { runWorkflow, ... } from '@claude-code-best/workflow-engine'`，自己组装 7 个端口，不依赖 `src/` 任何核心模块。
+- **库可独立使用**：`run.ts` 只 `import { runWorkflow, ... } from '@open-claude-code/workflow-engine'`，自己组装 7 个端口，不依赖 `src/` 任何核心模块。
 - **agent 后端直连 Anthropic SDK**：`agentRunner` 调 `client.messages.create`，子 agent = 一次模型调用（不经核心 `runAgent`、不经 Workflow 工具）。
 - **真实 LLM + 结构化输出**：`agent(schema)` → prompt 追加 JSON 指令 → 提取 JSON → `validateAgainstSchema`（Ajv）校验，失败回退 `dead`。
 - **引擎能力全覆盖**：`parallel`（屏障，多角度 fan-out）→ `pipeline`（无屏障，逐条深挖）→ `phase` / `log` / `args`。
@@ -27,7 +27,7 @@ ANTHROPIC_API_KEY=sk-... \
 - `ANTHROPIC_API_KEY`（必填）
 - `ANTHROPIC_MODEL`：默认 `claude-sonnet-4-5`
 - `WORKFLOW_API_CONCURRENCY`：API 并发上限，默认 `3`（见下）。低 tier 可设 `1` 串行
-- `RESEARCH_RUNS_DIR`：journal 目录，默认 `~/.claude/workflow-runs`（resume 时复用）
+- `RESEARCH_RUNS_DIR`：journal 目录，默认 `~/.occ/workflow-runs`（resume 时复用）
 
 ## 健壮性与排错
 
@@ -59,7 +59,7 @@ runner 内置了几项让真实 API 跑得稳的处理：
 ## 扩展点
 
 - **联网调研**：给 `llmAgent` 的 `messages.create` 加 `tools: [{ type: 'web_search_20250305' }]`（Anthropic server-side web search），research 角度即可联网。
-- **命名命令复用**：把 `research-report.workflow.mjs` 复制到项目 `.claude/workflows/research-report.mjs`，即可通过 `/research-report` 或 Workflow 工具运行（同一脚本，两种入口）。
+- **命名命令复用**：把 `research-report.workflow.mjs` 复制到项目 `.occ/workflows/research-report.mjs`，即可通过 `/research-report` 或 Workflow 工具运行（同一脚本，两种入口）。
 - **token 预算**：`runWorkflow({ budgetTotal: 200000 })` 设上限；脚本内用 `budget.remaining()` 自适应规模。
 - **resume**：同 `runId` + `resume: true` 重放 journal，已完成的 agent 不重跑。
 

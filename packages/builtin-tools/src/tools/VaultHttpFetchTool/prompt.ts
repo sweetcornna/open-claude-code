@@ -1,6 +1,10 @@
+import { occConfigPath } from 'src/config/paths.js'
+
+const LOCAL_VAULT_FILE = occConfigPath('local-vault.enc.json')
+
 export const DESCRIPTION =
   "Make an authenticated HTTPS request using a secret stored in the user's " +
-  'encrypted local vault (~/.claude/local-vault/). You only specify the vault ' +
+  `encrypted local vault (${LOCAL_VAULT_FILE}). You only specify the vault ` +
   'key NAME — never the secret value. The tool framework injects the secret ' +
   'directly into a request header and the secret is NEVER returned in tool_result, ' +
   'NEVER logged, NEVER passed to a shell. ' +

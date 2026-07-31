@@ -4,7 +4,7 @@
 
 Auto Dream 是 Claude Code 的后台记忆整合机制。它在会话间自动审查、组织和修剪持久化记忆文件，确保未来会话能快速获得准确的上下文。
 
-记忆系统存储在文件系统中（默认 `~/.claude/projects/<project-slug>/memory/`），由 `MEMORY.md` 索引文件和若干主题文件（如 `user_language.md`、`project_overview.md`）组成。随着会话积累，记忆会变得过时、冗余或矛盾——Dream 负责清理这些堆积。
+记忆系统存储在文件系统中（默认 `~/.occ/projects/<project-slug>/memory/`），由 `MEMORY.md` 索引文件和若干主题文件（如 `user_language.md`、`project_overview.md`）组成。随着会话积累，记忆会变得过时、冗余或矛盾——Dream 负责清理这些堆积。
 
 ## 架构
 
@@ -27,7 +27,7 @@ Auto Dream 是 Claude Code 的后台记忆整合机制。它在会话间自动�
 2. `autoMemoryDirectory` 设置项（`settings.json`，支持 `~/` 展开）
 3. 默认：`<memoryBase>/projects/<sanitized-git-root>/memory/`
 
-其中 `memoryBase` = `CLAUDE_CODE_REMOTE_MEMORY_DIR` 或 `~/.claude`。
+其中 `memoryBase` = `CLAUDE_CODE_REMOTE_MEMORY_DIR` 或 `~/.occ`。
 
 ## 触发机制
 

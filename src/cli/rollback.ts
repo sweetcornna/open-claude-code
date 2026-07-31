@@ -16,7 +16,7 @@ export async function rollback(
   if (options?.list) {
     console.log('Recent versions:')
     console.log('  (version listing requires access to the release registry)')
-    console.log('  Use `claude update --list` for available versions.')
+    console.log(`  Use \`${BIN_NAME} update --list\` for available versions.`)
     return
   }
 
@@ -33,7 +33,7 @@ export async function rollback(
 
   if (!target) {
     console.error(
-      'Usage: claude rollback [target]\n\n' +
+      `Usage: ${BIN_NAME} rollback [target]\n\n` +
         'Options:\n' +
         '  -l, --list     List recent published versions\n' +
         '  --dry-run      Show what would be installed\n' +

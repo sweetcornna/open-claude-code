@@ -50,7 +50,7 @@ export function createPowerShellProvider(shellPath: string): ShellProvider {
       // on Windows native, sandbox is never enabled so this branch is dead.
       const cwdFilePath =
         opts.useSandbox && opts.sandboxTmpDir
-          ? posixJoin(opts.sandboxTmpDir, `claude-pwd-ps-${opts.id}`)
+          ? posixJoin(opts.sandboxTmpDir, `${BIN_NAME}-pwd-ps-${opts.id}`)
           : join(tmpdir(), `${BIN_NAME}-pwd-ps-${opts.id}`)
       const escapedCwdFilePath = cwdFilePath.replace(/'/g, "''")
       // Exit-code capture: prefer $LASTEXITCODE when a native exe ran.

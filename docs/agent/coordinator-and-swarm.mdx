@@ -30,7 +30,7 @@ Swarm 是有成员、有邮箱、有任务白板的团队。
 | coordinator worker | Coordinator 派出的 `worker` async subagent | Coordinator 调 `Agent({ subagent_type: "worker" })` | `LocalAgentTask` | `<task-notification>` + `SendMessage(to: agentId)` |
 | swarm teammate | 长生命周期团队成员 | `Agent({ name, team_name?, prompt })` | `InProcessTeammateTask` 或 pane member | mailbox by name，可 idle 后继续 |
 | remote agent | 远端执行体的本地镜像 | `Agent(..., isolation: "remote")` | `RemoteAgentTask` + remote sidecar | CCR events / polling |
-| work item task | 共享任务白板条目 | `TaskCreate/Update/List/Get` | `~/.claude/tasks/<taskListId>/*.json` | teammate / lead 认领和更新 |
+| work item task | 共享任务白板条目 | `TaskCreate/Update/List/Get` | `~/.occ/tasks/<taskListId>/*.json` | teammate / lead 认领和更新 |
 | runtime task | 正在运行或曾运行的后台执行体 | agent、shell、workflow、remote 等入口 | `AppState.tasks` | UI、spinner、resume、kill |
 
 ## 系统分层
@@ -293,10 +293,10 @@ flowchart TD
 
 ### 存储拓扑
 
-Swarm 的核心状态在 `~/.claude/teams` 和 `~/.claude/tasks`：
+Swarm 的核心状态在 `~/.occ/teams` 和 `~/.occ/tasks`：
 
 ```text
-~/.claude/
+~/.occ/
   teams/
     <team-name>/
       config.json
@@ -419,7 +419,7 @@ plain text `SendMessage` 要带 `summary`。structured message 不能 broadcast�
 Mailbox 路径是：
 
 ```text
-~/.claude/teams/<team-name>/inboxes/<agent-name>.json
+~/.occ/teams/<team-name>/inboxes/<agent-name>.json
 ```
 
 它有 lock、原子 rename、大小上限和压缩策略：
@@ -456,7 +456,7 @@ Mailbox 路径是：
 
 | 名称 | 源码类型 | 存储 | 状态 | 谁消费 |
 |---|---|---|---|---|
-| work item task | `src/utils/tasks.ts` 的 `Task` | `~/.claude/tasks/<taskListId>/<id>.json` | `pending/in_progress/completed` | Task tools、TaskList UI、teammate 认领 |
+| work item task | `src/utils/tasks.ts` 的 `Task` | `~/.occ/tasks/<taskListId>/<id>.json` | `pending/in_progress/completed` | Task tools、TaskList UI、teammate 认领 |
 | runtime task | `TaskStateBase` 子类型 | `AppState.tasks`，部分有 sidecar/output | `running/completed/failed/killed` 等 | UI、spinner、background selector、kill/resume |
 
 共享任务生命周期：
@@ -506,9 +506,9 @@ runtime task 类型包括：
 | coordinator worker | local agent sidechain + `.meta.json` | agent task 身份和历史 | 通常可 `resumeAgentBackground()` | 缺 sidechain/meta 或工具定义变化会失败。 |
 | ordinary/fork subagent | local agent sidechain + `.meta.json` | agent 历史 | 可恢复，fork 依赖 `agentType:"fork"` | fork 恢复需要 metadata 正确。 |
 | remote agent | `remote-agents/remote-agent-<taskId>.meta.json` + CCR | remote task 镜像 | 取决于 CCR session 状态 | 404/archive 会删除 sidecar。 |
-| team config | `~/.claude/teams/<team>/config.json` | team/member roster | 不代表 teammate runner 还活 | `TeamFile` 是事实源，`AppState` 是投影。 |
-| mailbox | `~/.claude/teams/<team>/inboxes/*.json` | 未读普通/协议消息 | 可继续投递 | structured message 需要 poller/runner 正确消费。 |
-| shared tasks | `~/.claude/tasks/<team>/*.json` | task list / owner / status | 可继续认领/更新 | owner 可能指向已经不活跃的 teammate。 |
+| team config | `~/.occ/teams/<team>/config.json` | team/member roster | 不代表 teammate runner 还活 | `TeamFile` 是事实源，`AppState` 是投影。 |
+| mailbox | `~/.occ/teams/<team>/inboxes/*.json` | 未读普通/协议消息 | 可继续投递 | structured message 需要 poller/runner 正确消费。 |
+| shared tasks | `~/.occ/tasks/<team>/*.json` | task list / owner / status | 可继续认领/更新 | owner 可能指向已经不活跃的 teammate。 |
 | in-process teammate runner | leader 进程内存 | 不能完整看到 runner 内态 | 不能完整跨进程恢复 | AbortController、pending queue、recent messages 都在内存。 |
 | pane-based teammate | 外部 pane + transcript + team file | 可能仍可见 | best-effort | leader 侧 backend map 不持久化，active/kill 依赖 pane 状态。 |
 

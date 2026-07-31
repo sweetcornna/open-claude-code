@@ -1,6 +1,11 @@
 import { Text } from '@anthropic/ink';
 import { isClaudeAISubscriber } from '../utils/auth.js';
-import { isChromeExtensionInstalled, shouldEnableClaudeInChrome } from '../utils/claudeInChrome/setup.js';
+import {
+  CHROME_NATIVE_HOST_ISOLATION_ERROR,
+  isChromeBrowserBridgeAvailable,
+  isChromeExtensionInstalled,
+  shouldEnableClaudeInChrome,
+} from '../utils/claudeInChrome/setup.js';
 import { isRunningOnHomespace } from '../utils/envUtils.js';
 import { useStartupNotification } from './notifs/useStartupNotification.js';
 
@@ -26,6 +31,15 @@ export function useChromeExtensionNotification(): void {
         jsx: <Text color="error">Claude in Chrome requires a claude.ai subscription</Text>,
         priority: 'immediate',
         timeoutMs: 5000,
+      };
+    }
+
+    if (!isChromeBrowserBridgeAvailable()) {
+      return {
+        key: 'chrome-native-host-isolation',
+        jsx: <Text color="error">{CHROME_NATIVE_HOST_ISOLATION_ERROR}</Text>,
+        priority: 'immediate',
+        timeoutMs: 7000,
       };
     }
 

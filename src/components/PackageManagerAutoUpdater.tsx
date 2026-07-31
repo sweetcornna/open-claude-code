@@ -1,16 +1,11 @@
 import * as React from 'react';
 import { useState } from 'react';
+import { BIN_NAME } from 'src/constants/brand.js';
 import { useInterval } from 'usehooks-ts';
 import { Text } from '@anthropic/ink';
-import {
-  type AutoUpdaterResult,
-  getLatestVersionFromGcs,
-  getMaxVersion,
-  shouldSkipVersion,
-} from '../utils/autoUpdater.js';
+import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
-import { getPackageManager, type PackageManager } from '../utils/nativeInstaller/packageManagers.js';
 import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 
@@ -25,7 +20,6 @@ type Props = {
 
 export function PackageManagerAutoUpdater({ verbose }: Props): React.ReactNode {
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [packageManager, setPackageManager] = useState<PackageManager>('unknown');
 
   const checkForUpdates = React.useCallback(async () => {
     if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
@@ -36,13 +30,8 @@ export function PackageManagerAutoUpdater({ verbose }: Props): React.ReactNode {
       return;
     }
 
-    const [channel, pm] = await Promise.all([
-      Promise.resolve(getInitialSettings()?.autoUpdatesChannel ?? 'latest'),
-      getPackageManager(),
-    ]);
-    setPackageManager(pm);
-
-    let latest = await getLatestVersionFromGcs(channel);
+    const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest';
+    let latest = await getLatestVersion(channel);
 
     // Check if max version is set (server-side kill switch for auto-updates)
     const maxVersion = await getMaxVersion();
@@ -82,18 +71,6 @@ export function PackageManagerAutoUpdater({ verbose }: Props): React.ReactNode {
     return null;
   }
 
-  // pacman, deb, and rpm don't get specific commands because they each have
-  // multiple frontends (pacman: yay/paru/makepkg, deb: apt/apt-get/aptitude/nala,
-  // rpm: dnf/yum/zypper)
-  const updateCommand =
-    packageManager === 'homebrew'
-      ? 'brew upgrade claude-code'
-      : packageManager === 'winget'
-        ? 'winget upgrade Anthropic.ClaudeCode'
-        : packageManager === 'apk'
-          ? 'apk upgrade claude-code'
-          : 'your package manager update command';
-
   return (
     <>
       {verbose && (
@@ -102,7 +79,7 @@ export function PackageManagerAutoUpdater({ verbose }: Props): React.ReactNode {
         </Text>
       )}
       <Text color="warning" wrap="truncate">
-        Update available! Run: <Text bold>{updateCommand}</Text>
+        Update available! Run: <Text bold>{BIN_NAME} update</Text>
       </Text>
     </>
   );

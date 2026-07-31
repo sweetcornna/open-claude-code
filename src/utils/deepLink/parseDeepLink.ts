@@ -1,16 +1,16 @@
 /**
  * Deep Link URI Parser
  *
- * Parses `claude-cli://open` URIs. All parameters are optional:
+ * Parses `occ-cli://open` URIs. All parameters are optional:
  *   q    — pre-fill the prompt input (not submitted)
  *   cwd  — working directory (absolute path)
  *   repo — owner/name slug, resolved against githubRepoPaths config
  *
  * Examples:
- *   claude-cli://open
- *   claude-cli://open?q=hello+world
- *   claude-cli://open?q=fix+tests&repo=owner/repo
- *   claude-cli://open?cwd=/path/to/project
+ *   occ-cli://open
+ *   occ-cli://open?q=hello+world
+ *   occ-cli://open?q=fix+tests&repo=owner/repo
+ *   occ-cli://open?cwd=/path/to/project
  *
  * Security: values are URL-decoded, Unicode-sanitized, and rejected if they
  * contain ASCII control characters (newlines etc. can act as command
@@ -18,9 +18,13 @@
  * use (terminalLauncher.ts) — that escaping is the injection boundary.
  */
 
+import {
+  DEEP_LINK_PROTOCOL,
+  LEGACY_DEEP_LINK_PROTOCOL,
+} from 'src/constants/brand.js'
 import { partiallySanitizeUnicode } from '../sanitization.js'
 
-export const DEEP_LINK_PROTOCOL = 'claude-cli'
+export { DEEP_LINK_PROTOCOL }
 
 export type DeepLinkAction = {
   query?: string
@@ -77,17 +81,21 @@ const MAX_QUERY_LENGTH = 5000
 const MAX_CWD_LENGTH = 4096
 
 /**
- * Parse a claude-cli:// URI into a structured action.
+ * Parse an occ deep link or a legacy read-only compatibility URI.
  *
  * @throws {Error} if the URI is malformed or contains dangerous characters
  */
 export function parseDeepLink(uri: string): DeepLinkAction {
-  // Normalize: accept with or without the trailing colon in protocol
-  const normalized = uri.startsWith(`${DEEP_LINK_PROTOCOL}://`)
-    ? uri
-    : uri.startsWith(`${DEEP_LINK_PROTOCOL}:`)
-      ? uri.replace(`${DEEP_LINK_PROTOCOL}:`, `${DEEP_LINK_PROTOCOL}://`)
-      : null
+  const acceptedProtocols = [DEEP_LINK_PROTOCOL, LEGACY_DEEP_LINK_PROTOCOL]
+  const protocol = acceptedProtocols.find(
+    candidate =>
+      uri.startsWith(`${candidate}://`) || uri.startsWith(`${candidate}:`),
+  )
+  const normalized = protocol
+    ? uri.startsWith(`${protocol}://`)
+      ? uri
+      : uri.replace(`${protocol}:`, `${protocol}://`)
+    : null
 
   if (!normalized) {
     throw new Error(
@@ -153,7 +161,7 @@ export function parseDeepLink(uri: string): DeepLinkAction {
 }
 
 /**
- * Build a claude-cli:// deep link URL.
+ * Build an occ-owned deep link URL.
  */
 export function buildDeepLink(action: DeepLinkAction): string {
   const url = new URL(`${DEEP_LINK_PROTOCOL}://open`)

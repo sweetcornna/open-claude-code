@@ -15,7 +15,7 @@ import type { Command, LocalCommandResult } from '../../types/command.js'
  * Shell-profile integration: add the following to ~/.bashrc / ~/.zshrc to
  * auto-enable TUI mode when the marker is present:
  *
- *   [ -f "$HOME/.claude/.tui-mode" ] && export CLAUDE_CODE_NO_FLICKER=1
+ *   [ -f "$HOME/.occ/.tui-mode" ] && export CLAUDE_CODE_NO_FLICKER=1
  *
  * Note: setting CLAUDE_CODE_NO_FLICKER at runtime cannot retroactively enter
  * the alternate screen buffer — the Ink render tree is already mounted. The
@@ -33,26 +33,29 @@ export function isTuiModeEnabled(): boolean {
   return existsSync(getTuiMarkerPath())
 }
 
-const USAGE_TEXT = [
-  'Usage: /tui [subcommand]',
-  '',
-  '  (no args)   Toggle flicker-free TUI mode (alternate screen buffer)',
-  '  on          Enable TUI mode',
-  '  off         Disable TUI mode',
-  '  status      Show current TUI mode state',
-  '',
-  'TUI mode uses the ANSI alternate screen buffer (\\x1b[?1049h) so the',
-  'Claude Code UI occupies a clean full-screen area with no scroll-back',
-  'flicker.  The setting is stored in ~/.claude/.tui-mode and takes effect',
-  'on the next session start.',
-  '',
-  'Shell-profile integration (auto-enable on every start):',
-  '  [ -f "$HOME/.claude/.tui-mode" ] && export CLAUDE_CODE_NO_FLICKER=1',
-  '',
-  'Environment override:',
-  '  CLAUDE_CODE_NO_FLICKER=1   force on (overrides marker)',
-  '  CLAUDE_CODE_NO_FLICKER=0   force off (overrides marker)',
-].join('\n')
+function getUsageText(): string {
+  const markerPath = getTuiMarkerPath()
+  return [
+    'Usage: /tui [subcommand]',
+    '',
+    '  (no args)   Toggle flicker-free TUI mode (alternate screen buffer)',
+    '  on          Enable TUI mode',
+    '  off         Disable TUI mode',
+    '  status      Show current TUI mode state',
+    '',
+    'TUI mode uses the ANSI alternate screen buffer (\\x1b[?1049h) so the',
+    'Open Claude Code occupies a clean full-screen area with no scroll-back',
+    `flicker. The setting is stored in ${markerPath} and takes effect on the`,
+    'next session start.',
+    '',
+    'Shell-profile integration (auto-enable on every start):',
+    `  [ -f "${markerPath}" ] && export CLAUDE_CODE_NO_FLICKER=1`,
+    '',
+    'Environment override:',
+    '  CLAUDE_CODE_NO_FLICKER=1   force on (overrides marker)',
+    '  CLAUDE_CODE_NO_FLICKER=0   force off (overrides marker)',
+  ].join('\n')
+}
 
 function enableTui(): LocalCommandResult {
   const markerPath = getTuiMarkerPath()
@@ -68,7 +71,7 @@ function enableTui(): LocalCommandResult {
       'Flicker-free alternate-screen rendering will be active on the next',
       'session start.  Add this to your shell profile to make it permanent:',
       '',
-      '  [ -f "$HOME/.claude/.tui-mode" ] && export CLAUDE_CODE_NO_FLICKER=1',
+      `  [ -f "${markerPath}" ] && export CLAUDE_CODE_NO_FLICKER=1`,
       '',
       'To disable: `/tui off`',
     ].join('\n'),
@@ -147,7 +150,7 @@ export async function callTui(args: string): Promise<LocalCommandResult> {
   // ── unknown subcommand ───────────────────────────────────────────────
   return {
     type: 'text',
-    value: [`Unknown subcommand: "${sub}"`, '', USAGE_TEXT].join('\n'),
+    value: [`Unknown subcommand: "${sub}"`, '', getUsageText()].join('\n'),
   }
 }
 

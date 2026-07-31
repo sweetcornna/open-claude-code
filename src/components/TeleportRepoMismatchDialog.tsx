@@ -5,6 +5,7 @@ import { removePathFromRepo, validateRepoAtPath } from '../utils/githubRepoPathM
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from '@anthropic/ink';
 import { Spinner } from './Spinner.js';
+import { BIN_NAME, DISPLAY_NAME } from '../constants/brand.js';
 
 type Props = {
   targetRepo: string;
@@ -70,7 +71,7 @@ export function TeleportRepoMismatchDialog({
           <Box flexDirection="column" gap={1}>
             {errorMessage && <Text color="error">{errorMessage}</Text>}
             <Text>
-              Open Claude Code in <Text bold>{targetRepo}</Text>:
+              Open {DISPLAY_NAME} in <Text bold>{targetRepo}</Text>:
             </Text>
           </Box>
 
@@ -86,7 +87,9 @@ export function TeleportRepoMismatchDialog({
       ) : (
         <Box flexDirection="column" gap={1}>
           {errorMessage && <Text color="error">{errorMessage}</Text>}
-          <Text dimColor>Run claude --teleport from a checkout of {targetRepo}</Text>
+          <Text dimColor>
+            Run {BIN_NAME} --teleport from a checkout of {targetRepo}
+          </Text>
         </Box>
       )}
     </Dialog>

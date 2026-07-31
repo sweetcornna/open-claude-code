@@ -1,5 +1,6 @@
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handler intentionally exits */
 
+import { BIN_NAME } from '../../constants/brand.js'
 import {
   clearAuthRelatedCaches,
   performLogout,
@@ -291,7 +292,7 @@ export async function authStatus(opts: {
     }
     if (!loggedIn) {
       process.stdout.write(
-        'Not logged in. Run claude auth login to authenticate.\n',
+        `Not logged in. Run ${BIN_NAME} auth login to authenticate.\n`,
       )
     }
   } else {

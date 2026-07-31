@@ -1,5 +1,5 @@
-import { BIN_NAME } from 'src/config/paths.js'
 import { feature } from 'bun:bundle'
+import { BIN_NAME } from '../constants/brand.js'
 import { randomUUID } from 'crypto'
 import { hostname, tmpdir } from 'os'
 import { basename, join, resolve } from 'path'
@@ -1552,7 +1552,7 @@ export async function runBridgeLoop(
     !fatalExit
   ) {
     logger.logStatus(
-      `Resume this session by running \`claude remote-control --continue\``,
+      `Resume this session by running \`${BIN_NAME} remote-control --continue\``,
     )
     logForDebugging(
       `[bridge:shutdown] Skipping archive+deregister to allow resume of session ${initialSessionId}`,
@@ -1843,7 +1843,7 @@ export function parseArgs(args: string[]): ParsedArgs {
       createSessionInDir = false
     } else {
       return makeError(
-        `Unknown argument: ${arg}\nRun 'claude remote-control --help' for usage.`,
+        `Unknown argument: ${arg}\nRun '${BIN_NAME} remote-control --help' for usage.`,
       )
     }
   }
@@ -1944,7 +1944,7 @@ async function printHelp(): Promise<void> {
 Remote Control - Connect your local environment to claude.ai/code
 
 USAGE
-  claude remote-control [options]
+  ${BIN_NAME} remote-control [options]
 OPTIONS
   --name <name>                    Name for the session (shown in claude.ai/code)
 ${
@@ -1967,7 +1967,7 @@ DESCRIPTION
 ${serverDescription}
 NOTES
   - You must be logged in with a Claude account that has a subscription
-  - Run \`claude\` first in the directory to accept the workspace trust dialog
+  - Run \`${BIN_NAME}\` first in the directory to accept the workspace trust dialog
 ${serverNote}`
   console.log(help)
 }
@@ -2101,10 +2101,10 @@ export async function bridgeMain(args: string[]): Promise<void> {
   setCwdState(dir)
 
   // The bridge bypasses main.tsx (which renders the interactive TrustDialog via showSetupScreens),
-  // so we must verify trust was previously established by a normal `claude` session.
+  // so we must verify trust was previously established by a normal `${BIN_NAME}` session.
   if (!checkHasTrustDialogAccepted()) {
     console.error(
-      `Error: Workspace not trusted. Please run \`claude\` in ${dir} first to review and accept the workspace trust dialog.`,
+      `Error: Workspace not trusted. Please run \`${BIN_NAME}\` in ${dir} first to review and accept the workspace trust dialog.`,
     )
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(1)
@@ -2169,7 +2169,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
     const found = await readBridgePointerAcrossWorktrees(dir)
     if (!found) {
       console.error(
-        `Error: No recent session found in this directory or its worktrees. Run \`claude remote-control\` to start a new one.`,
+        `Error: No recent session found in this directory or its worktrees. Run \`${BIN_NAME} remote-control\` to start a new one.`,
       )
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)
@@ -2397,7 +2397,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
         await clearBridgePointer(resumePointerDir)
       }
       console.error(
-        `Error: Session ${resumeSessionId} not found. It may have been archived or expired, or your login may have lapsed (run \`claude /login\`).`,
+        `Error: Session ${resumeSessionId} not found. It may have been archived or expired, or your login may have lapsed (run \`${BIN_NAME} auth login\`).`,
       )
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)
@@ -2831,7 +2831,7 @@ export async function runBridgeHeadless(
 
   if (!checkHasTrustDialogAccepted()) {
     throw new BridgeHeadlessPermanentError(
-      `Workspace not trusted: ${dir}. Run \`claude\` in that directory first to accept the trust dialog.`,
+      `Workspace not trusted: ${dir}. Run \`${BIN_NAME}\` in that directory first to accept the trust dialog.`,
     )
   }
 

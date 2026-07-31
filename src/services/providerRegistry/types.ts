@@ -45,7 +45,7 @@ export const ProviderConfigSchema = z.object({
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>
 
 /**
- * Schema for the entire ~/.claude/providers.json file.
+ * Schema for the entire ~/.occ/providers.json file.
  * Top-level must be an array of ProviderConfig.
  */
 export const ProvidersFileSchema = z.array(ProviderConfigSchema)

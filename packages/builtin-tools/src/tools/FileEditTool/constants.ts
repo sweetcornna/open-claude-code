@@ -1,11 +1,19 @@
-// In its own file to avoid circular dependencies
+import { occConfigDir, PROJECT_DIR_NAME } from 'src/config/paths.js'
+
 export const FILE_EDIT_TOOL_NAME = 'Edit'
 
-// Permission pattern for granting session-level access to the project's .claude/ folder
-export const CLAUDE_FOLDER_PERMISSION_PATTERN = '/.claude/**'
+export const OCC_FOLDER_PERMISSION_PATTERN = `/${PROJECT_DIR_NAME}/**`
 
-// Permission pattern for granting session-level access to the global ~/.claude/ folder
-export const GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN = '~/.claude/**'
+export function getGlobalOccFolderPermissionPattern(): string {
+  let normalized = occConfigDir().replaceAll('\\', '/')
+  const drive = normalized.match(/^([a-z]):\/(.*)$/i)
+  if (drive) {
+    normalized = `${drive[1]?.toLowerCase()}/${drive[2]}`
+  } else {
+    normalized = normalized.replace(/^\/+/, '')
+  }
+  return `//${normalized}/**`
+}
 
 export const FILE_UNEXPECTEDLY_MODIFIED_ERROR =
   'File has been unexpectedly modified. Read it again before attempting to write it.'

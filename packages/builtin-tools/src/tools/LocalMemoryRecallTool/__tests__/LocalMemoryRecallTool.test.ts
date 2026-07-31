@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { mockToolContext } from '../../../../../../tests/mocks/toolContext.js'
 
+const { LocalMemoryRecallTool } = await import('../LocalMemoryRecallTool.js')
+
 // We test the tool through its public interface: schema validation +
 // checkPermissions logic + call return shape. The tool is read-only and
 // uses the multiStore backend, so we drive it with a real tmpdir and the

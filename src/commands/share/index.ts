@@ -16,6 +16,10 @@ import {
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { sanitizePath } from '../../utils/path.js'
 import {
+  SESSION_EXPORT_FILENAME,
+  SHARE_TEMP_PREFIX,
+} from '../../utils/tempfile.js'
+import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
@@ -182,7 +186,7 @@ async function uploadToGist(
       filePath,
       visibility,
       '--filename',
-      'claude-session.jsonl',
+      SESSION_EXPORT_FILENAME,
     ],
     { timeout: 30000 },
   )
@@ -331,7 +335,7 @@ const share: Command = {
             '  https://cli.github.com/',
             '',
             'Then run:',
-            `  \`gh gist create "${logPath}" --secret --filename claude-session.jsonl\``,
+            `  \`gh gist create "${logPath}" --secret --filename ${SESSION_EXPORT_FILENAME}\``,
             '',
             'Or use `--allow-public-fallback` to upload to 0x0.st instead.',
             '',
@@ -361,8 +365,8 @@ const share: Command = {
       }
 
       // Write to a temp file so we can pass the (possibly modified) content
-      const tmpDir = mkdtempSync(join(tmpdir(), 'cc-share-'))
-      const tmpFile = join(tmpDir, 'claude-session.jsonl')
+      const tmpDir = mkdtempSync(join(tmpdir(), `${SHARE_TEMP_PREFIX}-`))
+      const tmpFile = join(tmpDir, SESSION_EXPORT_FILENAME)
       try {
         writeFileSync(tmpFile, uploadContent, 'utf8')
       } catch (writeErr: unknown) {

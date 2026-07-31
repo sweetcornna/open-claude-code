@@ -86,7 +86,7 @@ export function getSkillsPath(
     case 'userSettings':
       return join(getClaudeConfigHomeDir(), dir)
     case 'projectSettings':
-      return `.claude/${dir}`
+      return join(PROJECT_DIR_NAME, dir)
     case 'plugin':
       return 'plugin'
     default:

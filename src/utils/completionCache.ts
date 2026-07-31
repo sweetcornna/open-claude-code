@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/constants/brand.js'
 import { occConfigDir } from 'src/config/paths.js'
 import chalk from 'chalk'
 import { mkdir, readFile, writeFile } from 'fs/promises'
@@ -13,6 +14,8 @@ import { logError } from './log.js'
 import type { ThemeName } from './theme.js'
 
 const EOL = '\n'
+const COMPLETION_COMMAND = `${BIN_NAME} completion`
+const COMPLETION_MARKER = `# ${BIN_NAME} shell completions`
 
 type ShellInfo = {
   name: string
@@ -25,10 +28,10 @@ type ShellInfo = {
 function detectShell(): ShellInfo | null {
   const shell = process.env.SHELL || ''
   const home = homedir()
-  const claudeDir = occConfigDir()
+  const configDir = occConfigDir()
 
   if (shell.endsWith('/zsh') || shell.endsWith('/zsh.exe')) {
-    const cacheFile = join(claudeDir, 'completion.zsh')
+    const cacheFile = join(configDir, 'completion.zsh')
     return {
       name: 'zsh',
       rcFile: join(home, '.zshrc'),
@@ -38,7 +41,7 @@ function detectShell(): ShellInfo | null {
     }
   }
   if (shell.endsWith('/bash') || shell.endsWith('/bash.exe')) {
-    const cacheFile = join(claudeDir, 'completion.bash')
+    const cacheFile = join(configDir, 'completion.bash')
     return {
       name: 'bash',
       rcFile: join(home, '.bashrc'),
@@ -49,7 +52,7 @@ function detectShell(): ShellInfo | null {
   }
   if (shell.endsWith('/fish') || shell.endsWith('/fish.exe')) {
     const xdg = process.env.XDG_CONFIG_HOME || join(home, '.config')
-    const cacheFile = join(claudeDir, 'completion.fish')
+    const cacheFile = join(configDir, 'completion.fish')
     return {
       name: 'fish',
       rcFile: join(xdg, 'fish', 'config.fish'),
@@ -59,6 +62,16 @@ function detectShell(): ShellInfo | null {
     }
   }
   return null
+}
+
+export function hasOccCompletion(
+  existing: string,
+  completionLine: string,
+): boolean {
+  return (
+    existing.includes(COMPLETION_COMMAND) ||
+    (existing.includes(COMPLETION_MARKER) && existing.includes(completionLine))
+  )
 }
 
 function formatPathLink(filePath: string): string {
@@ -84,31 +97,28 @@ export async function setupShellCompletion(theme: ThemeName): Promise<string> {
     await mkdir(dirname(shell.cacheFile), { recursive: true })
   } catch (e: unknown) {
     logError(e)
-    return `${EOL}${color('warning', theme)(`Could not write ${shell.name} completion cache`)}${EOL}${chalk.dim(`Run manually: claude completion ${shell.shellFlag} > ${shell.cacheFile}`)}${EOL}`
+    return `${EOL}${color('warning', theme)(`Could not write ${shell.name} completion cache`)}${EOL}${chalk.dim(`Run manually: ${BIN_NAME} completion ${shell.shellFlag} > ${shell.cacheFile}`)}${EOL}`
   }
 
   // Generate the completion script by writing directly to the cache file.
   // Using --output avoids piping through stdout where process.exit() can
   // truncate output before the pipe buffer drains.
-  const claudeBin = process.argv[1] || 'claude'
-  const result = await execFileNoThrow(claudeBin, [
+  const cliBin = process.argv[1] || BIN_NAME
+  const result = await execFileNoThrow(cliBin, [
     'completion',
     shell.shellFlag,
     '--output',
     shell.cacheFile,
   ])
   if (result.code !== 0) {
-    return `${EOL}${color('warning', theme)(`Could not generate ${shell.name} shell completions`)}${EOL}${chalk.dim(`Run manually: claude completion ${shell.shellFlag} > ${shell.cacheFile}`)}${EOL}`
+    return `${EOL}${color('warning', theme)(`Could not generate ${shell.name} shell completions`)}${EOL}${chalk.dim(`Run manually: ${BIN_NAME} completion ${shell.shellFlag} > ${shell.cacheFile}`)}${EOL}`
   }
 
   // Check if rc file already sources completions
   let existing = ''
   try {
     existing = await readFile(shell.rcFile, { encoding: 'utf-8' })
-    if (
-      existing.includes('claude completion') ||
-      existing.includes(shell.cacheFile)
-    ) {
+    if (hasOccCompletion(existing, shell.completionLine)) {
       return `${EOL}${color('success', theme)(`Shell completions updated for ${shell.name}`)}${EOL}${chalk.dim(`See ${formatPathLink(shell.rcFile)}`)}${EOL}`
     }
   } catch (e: unknown) {
@@ -124,7 +134,7 @@ export async function setupShellCompletion(theme: ThemeName): Promise<string> {
     await mkdir(configDir, { recursive: true })
 
     const separator = existing && !existing.endsWith('\n') ? '\n' : ''
-    const content = `${existing}${separator}\n# Claude Code shell completions\n${shell.completionLine}\n`
+    const content = `${existing}${separator}\n${COMPLETION_MARKER}\n${shell.completionLine}\n`
     await writeFile(shell.rcFile, content, { encoding: 'utf-8' })
 
     return `${EOL}${color('success', theme)(`Installed ${shell.name} shell completions`)}${EOL}${chalk.dim(`Added to ${formatPathLink(shell.rcFile)}`)}${EOL}${chalk.dim(`Run: source ${shell.rcFile}`)}${EOL}`
@@ -146,8 +156,8 @@ export async function regenerateCompletionCache(): Promise<void> {
 
   logForDebugging(`update: Regenerating ${shell.name} completion cache`)
 
-  const claudeBin = process.argv[1] || 'claude'
-  const result = await execFileNoThrow(claudeBin, [
+  const cliBin = process.argv[1] || BIN_NAME
+  const result = await execFileNoThrow(cliBin, [
     'completion',
     shell.shellFlag,
     '--output',

@@ -29,7 +29,7 @@
 
 - **服务端**: `https://api.anthropic.com/`（remote eval 模式）
 - **行为**: 启动时拉取全量 feature flags，每 6h（外部用户）/ 20min（ant）定时刷新
-- **磁盘缓存**: feature values 写入 `~/.claude.json` 的 `cachedGrowthBookFeatures`
+- **磁盘缓存**: feature values 写入 `~/.occ.json` 的 `cachedGrowthBookFeatures`
 - **用途**:
   - 控制 Datadog 开关（`tengu_log_datadog_events`）
   - 控制事件采样率（`tengu_event_sampling_config`）

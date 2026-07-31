@@ -29,7 +29,7 @@ GrowthBook 的完整实现位于 `src/services/analytics/growthbook.ts`（1258 �
     SDK 收集当前用户的属性（设备 ID、订阅类型、组织 UUID 等），用于决定该用户属于哪些实验的哪个分组。
   </Step>
   <Step title="缓存到本地">
-    计算结果缓存到 `~/.claude.json` 的 `cachedGrowthBookFeatures` 字段。刷新间隔：Anthropic 员工 20 分钟，外部用户 6 小时。
+    计算结果缓存到 `~/.occ.json` 的 `cachedGrowthBookFeatures` 字段。刷新间隔：Anthropic 员工 20 分钟，外部用户 6 小时。
   </Step>
   <Step title="代码中查询 flag">
     业务代码通过 `tengu_*` 前缀的 flag 名查询功能状态，GrowthBook SDK 返回当前用户的分组值。
@@ -97,7 +97,7 @@ Anthropic 员工拥有两种方式绕过 GrowthBook 的远程求值：
 
 ```bash
 # 仅在 USER_TYPE=ant 的构建中生效
-CLAUDE_INTERNAL_FC_OVERRIDES='{"tengu_kairos": true}' claude
+CLAUDE_INTERNAL_FC_OVERRIDES='{"tengu_kairos": true}' occ
 ```
 
 通过 `CLAUDE_INTERNAL_FC_OVERRIDES` 环境变量传入 JSON 对象，直接覆盖任意 flag 的值。

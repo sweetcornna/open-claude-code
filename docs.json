@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "Open Claude Code",
   "colors": {
-    "primary": "#D97706",
-    "light": "#F59E0B",
-    "dark": "#B45309"
+    "primary": "#D77757",
+    "light": "#D77757",
+    "dark": "#D77757"
   },
   "favicon": "/docs/favicon.svg",
   "navigation": {
@@ -62,6 +62,7 @@
         "group": "可扩展性",
         "pages": [
           "docs/extensibility/mcp-protocol",
+          "docs/extensibility/mcp-configuration",
           "docs/extensibility/hooks",
           "docs/extensibility/skills",
           "docs/extensibility/custom-agents"
@@ -108,9 +109,11 @@
             "group": "运行模式",
             "pages": [
               "docs/features/kairos",
+              "docs/features/channels",
               "docs/features/voice-mode",
               "docs/features/bridge-mode",
               "docs/features/remote-control-self-hosting",
+              "docs/features/acp-link",
               "docs/features/proactive",
               "docs/features/ultraplan"
             ]
@@ -122,7 +125,11 @@
               "docs/features/tree-sitter-bash",
               "docs/features/bash-classifier",
               "docs/features/web-browser-tool",
-              "docs/features/experimental-skill-search"
+              "docs/features/web-search-tool",
+              "docs/features/experimental-skill-search",
+              "docs/features/langfuse-monitoring",
+              "docs/features/computer-use",
+              "docs/features/claude-in-chrome-mcp"
             ]
           },
           {
@@ -153,8 +160,8 @@
   },
   "background": {
     "color": {
-      "light": "#FFFFFF",
-      "dark": "#0F172A"
+      "light": "#FFFDFB",
+      "dark": "#1C1917"
     }
   },
   "navbar": {
@@ -164,19 +171,14 @@
     }
   },
   "search": {
-    "prompt": "搜索 Claude Code 架构文档..."
+    "prompt": "搜索 Open Claude Code 文档..."
   },
   "seo": {
-    "metatags": {
-      "og:image": "https://ccb.agent-aura.top/docs/images/og-cover.png",
-      "twitter:image": "https://ccb.agent-aura.top/docs/images/og-cover.png",
-      "twitter:card": "summary_large_image"
-    },
     "indexing": "navigable"
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/anthropics/claude-code"
+      "github": "https://github.com/sweetcornna/open-claude-code"
     }
   },
   "redirects": [

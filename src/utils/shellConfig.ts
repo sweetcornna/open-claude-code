@@ -1,16 +1,22 @@
 /**
  * Utilities for managing shell configuration files (like .bashrc, .zshrc)
- * Used for managing claude aliases and PATH entries
+ * Used for managing occ aliases and PATH entries
  */
 
-import { open, readFile, stat } from 'fs/promises'
+import { open, readFile } from 'fs/promises'
 import { homedir as osHomedir } from 'os'
 import { join } from 'path'
+import { BIN_NAME } from 'src/constants/brand.js'
+import { occConfigPath } from 'src/config/paths.js'
 import { isFsInaccessible } from './errors.js'
-import { getLocalClaudePath } from './localInstaller.js'
 
-export const CLAUDE_ALIAS_REGEX = /^\s*alias\s+claude\s*=/
-
+export const OCC_ALIAS_REGEX = new RegExp(`^\\s*alias\\s+${BIN_NAME}\\s*=`)
+const QUOTED_OCC_ALIAS_REGEX = new RegExp(
+  `alias\\s+${BIN_NAME}\\s*=\\s*["']([^"']+)["']`,
+)
+const UNQUOTED_OCC_ALIAS_REGEX = new RegExp(
+  `alias\\s+${BIN_NAME}\\s*=\\s*([^#\\n]+)`,
+)
 type EnvLike = Record<string, string | undefined>
 
 type ShellConfigOptions = {
@@ -37,32 +43,28 @@ export function getShellConfigPaths(
 }
 
 /**
- * Filter out installer-created claude aliases from an array of lines
- * Only removes aliases pointing to $HOME/.claude/local/claude
- * Preserves custom user aliases that point to other locations
+ * Filter out installer-created occ aliases from an array of lines.
+ * Only removes aliases pointing to the current occ local install path.
+ * Preserves custom user aliases that point to other locations.
  * Returns the filtered lines and whether our default installer alias was found
  */
-export function filterClaudeAliases(lines: string[]): {
+export function filterOccAliases(lines: string[]): {
   filtered: string[]
   hadAlias: boolean
 } {
   let hadAlias = false
   const filtered = lines.filter(line => {
-    // Check if this is a claude alias
-    if (CLAUDE_ALIAS_REGEX.test(line)) {
-      // Extract the alias target - handle spaces, quotes, and various formats
-      // First try with quotes
-      let match = line.match(/alias\s+claude\s*=\s*["']([^"']+)["']/)
+    if (OCC_ALIAS_REGEX.test(line)) {
+      let match = line.match(QUOTED_OCC_ALIAS_REGEX)
       if (!match) {
-        // Try without quotes (capturing until end of line or comment)
-        match = line.match(/alias\s+claude\s*=\s*([^#\n]+)/)
+        match = line.match(UNQUOTED_OCC_ALIAS_REGEX)
       }
 
       if (match && match[1]) {
         const target = match[1].trim()
         // Only remove if it points to the installer location
         // The installer always creates aliases with the full expanded path
-        if (target === getLocalClaudePath()) {
+        if (target === occConfigPath('local', BIN_NAME)) {
           hadAlias = true
           return false // Remove this line
         }
@@ -104,64 +106,4 @@ export async function writeFileLines(
   } finally {
     await fh.close()
   }
-}
-
-/**
- * Check if a claude alias exists in any shell config file
- * Returns the alias target if found, null otherwise
- * @param options Optional overrides for testing (env, homedir)
- */
-export async function findClaudeAlias(
-  options?: ShellConfigOptions,
-): Promise<string | null> {
-  const configs = getShellConfigPaths(options)
-
-  for (const configPath of Object.values(configs)) {
-    const lines = await readFileLines(configPath)
-    if (!lines) continue
-
-    for (const line of lines) {
-      if (CLAUDE_ALIAS_REGEX.test(line)) {
-        // Extract the alias target
-        const match = line.match(/alias\s+claude=["']?([^"'\s]+)/)
-        if (match && match[1]) {
-          return match[1]
-        }
-      }
-    }
-  }
-
-  return null
-}
-
-/**
- * Check if a claude alias exists and points to a valid executable
- * Returns the alias target if valid, null otherwise
- * @param options Optional overrides for testing (env, homedir)
- */
-export async function findValidClaudeAlias(
-  options?: ShellConfigOptions,
-): Promise<string | null> {
-  const aliasTarget = await findClaudeAlias(options)
-  if (!aliasTarget) return null
-
-  const home = options?.homedir ?? osHomedir()
-
-  // Expand ~ to home directory
-  const expandedPath = aliasTarget.startsWith('~')
-    ? aliasTarget.replace('~', home)
-    : aliasTarget
-
-  // Check if the target exists and is executable
-  try {
-    const stats = await stat(expandedPath)
-    // Check if it's a file (could be executable or symlink)
-    if (stats.isFile() || stats.isSymbolicLink()) {
-      return aliasTarget
-    }
-  } catch {
-    // Target doesn't exist or can't be accessed
-  }
-
-  return null
 }

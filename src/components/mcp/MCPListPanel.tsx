@@ -1,6 +1,7 @@
 import figures from 'figures';
 import React, { useCallback, useState } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
+import { BIN_NAME } from '../../constants/brand.js';
 import { Box, color, Link, Text, useTheme } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { ConfigScope } from '../../services/mcp/types.js';
@@ -289,7 +290,7 @@ export function MCPListPanel({
           <Box flexDirection="column">
             {hasFailedClients && (
               <Text dimColor>
-                {debugMode ? '※ Error logs shown inline with --debug' : '※ Run claude --debug to see error logs'}
+                {debugMode ? '※ Error logs shown inline with --debug' : `※ Run ${BIN_NAME} --debug to see error logs`}
               </Text>
             )}
             <Text dimColor>

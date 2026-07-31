@@ -74,6 +74,41 @@ test('call returns launch message and completes in background', async () => {
   }
 })
 
+test('host options override named workflow and run directories', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
+  try {
+    const workflowDir = join('.custom', 'workflows')
+    const workflowRunsDir = join('.custom', 'workflow-runs')
+    await mkdir(join(dir, workflowDir), { recursive: true })
+    await writeFile(join(dir, workflowDir, 'named.js'), 'return 1')
+    const { ports } = mockPorts(dir, new Map())
+    const tool = createWorkflowTool(ports, { workflowDir, workflowRunsDir })
+
+    expect(await tool.prompt()).toContain('.custom/workflows/')
+    expect(await tool.prompt()).not.toContain('.occ/workflows/')
+
+    const named = await tool.call(
+      { name: 'named' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    expect(named.data.output).toContain(join(dir, workflowDir, 'named.js'))
+
+    const inline = await tool.call(
+      { script: 'return 1' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    expect(inline.data.output).toContain(
+      join(dir, workflowRunsDir, 'run-x', 'script.js'),
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('inline script persists to run directory, returns real scriptPath', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
   try {
@@ -90,7 +125,7 @@ test('inline script persists to run directory, returns real scriptPath', async (
     )
     const expectedPath = join(
       dir,
-      '.claude',
+      '.occ',
       'workflow-runs',
       'run-x',
       'script.js',
@@ -133,12 +168,12 @@ test('script syntax error → returns validation error (does not enter backgroun
   }
 })
 
-test('name resolves to .claude/workflows/<name>.ts', async () => {
+test('name resolves to .occ/workflows/<name>.ts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
   try {
-    await mkdir(join(dir, '.claude', 'workflows'), { recursive: true })
+    await mkdir(join(dir, '.occ', 'workflows'), { recursive: true })
     await writeFile(
-      join(dir, '.claude', 'workflows', 'release.ts'),
+      join(dir, '.occ', 'workflows', 'release.ts'),
       `return agent('compute')`,
     )
     const { ports, runStatus } = mockPorts(
@@ -246,6 +281,8 @@ test('prompt includes default concurrency 3 + AskUserQuestion guidance', async (
   const { ports } = mockPorts('/tmp', new Map())
   const tool = createWorkflowTool(ports)
   const p = await tool.prompt()
+  expect(p).toContain('.occ/workflows/')
+  expect(p).not.toContain('.claude/workflows/')
   expect(p).toMatch(/default is 3/i)
   expect(p).toMatch(/maxConcurrency/i)
   expect(p).toMatch(/AskUserQuestion/i)
@@ -254,7 +291,7 @@ test('prompt includes default concurrency 3 + AskUserQuestion guidance', async (
 test('name does not exist → returns error (does not enter background)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
   try {
-    await mkdir(join(dir, '.claude', 'workflows'), { recursive: true })
+    await mkdir(join(dir, '.occ', 'workflows'), { recursive: true })
     const { ports, runStatus } = mockPorts(dir, new Map())
     const tool = createWorkflowTool(ports)
     const res = await tool.call(
@@ -462,9 +499,9 @@ test('scriptPath out of bounds (resolved outside cwd) → rejected with error (p
 test('name contains ".." path segment → rejected (prevents path traversal escaping workflowDir)', async () => {
   const outer = await mkdtemp(join(tmpdir(), 'wf-outer-'))
   try {
-    // place evil.ts at outer root (outside .claude/workflows)
+    // place evil.ts at outer root (outside .occ/workflows)
     await writeFile(join(outer, 'evil.ts'), `return agent('x')`)
-    await mkdir(join(outer, '.claude', 'workflows'), { recursive: true })
+    await mkdir(join(outer, '.occ', 'workflows'), { recursive: true })
     const { ports, runStatus } = mockPorts(outer, new Map())
     const tool = createWorkflowTool(ports)
     // name = '../../evil' → after join escapes the workflows directory to outer/evil.ts
@@ -484,7 +521,7 @@ test('name contains ".." path segment → rejected (prevents path traversal esca
 test('name contains path separators or is absolute → rejected', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
   try {
-    await mkdir(join(dir, '.claude', 'workflows'), { recursive: true })
+    await mkdir(join(dir, '.occ', 'workflows'), { recursive: true })
     const { ports } = mockPorts(dir, new Map())
     const tool = createWorkflowTool(ports)
     for (const badName of ['foo/bar', '/etc/passwd', '..', '.']) {

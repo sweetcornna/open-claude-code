@@ -165,6 +165,8 @@ describe('callOnboarding behavior', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.opts?.display).toBe('system');
     expect(calls[0]?.msg).toContain('Onboarding flag cleared');
+    expect(calls[0]?.msg).toContain('`occ` launch');
+    expect(calls[0]?.msg).not.toContain('`claude` launch');
     expect(loggedEvents.some(e => e.name === 'tengu_onboarding_step')).toBe(true);
   });
 
@@ -181,13 +183,15 @@ describe('callOnboarding behavior', () => {
     expect(React.isValidElement(result)).toBe(true);
   });
 
-  test('trust subcommand clears project trust and notifies', async () => {
+  test('trust subcommand clears project trust and names the occ binary', async () => {
     fakeProjectConfig.hasTrustDialogAccepted = true;
     const { fn, calls } = makeOnDone();
     const result = await callOnboarding(fn, makeContext(), 'trust');
     expect(result).toBeNull();
     expect(fakeProjectConfig.hasTrustDialogAccepted).toBe(false);
     expect(calls[0]?.msg).toContain('trust cleared');
+    expect(calls[0]?.msg).toContain('`occ` launch');
+    expect(calls[0]?.msg).not.toContain('`claude` launch');
   });
 
   test('model subcommand prints /model deferral hint', async () => {
@@ -197,12 +201,16 @@ describe('callOnboarding behavior', () => {
     expect(calls[0]?.msg).toContain('/model');
   });
 
-  test('mcp subcommand prints MCP setup hints', async () => {
+  test('mcp subcommand prints occ commands and the resolved global config path', async () => {
     const { fn, calls } = makeOnDone();
     const result = await callOnboarding(fn, makeContext(), 'mcp');
     expect(result).toBeNull();
-    expect(calls[0]?.msg).toContain('mcp add');
+    expect(calls[0]?.msg).toContain('`occ mcp add');
+    expect(calls[0]?.msg).toContain('`occ mcp remove');
     expect(calls[0]?.msg).toContain('.mcp.json');
+    expect(calls[0]?.msg).toContain('.occ.json');
+    expect(calls[0]?.msg).not.toContain('claude mcp');
+    expect(calls[0]?.msg).not.toContain('.claude.json');
   });
 
   test('status subcommand renders state view (React element)', async () => {

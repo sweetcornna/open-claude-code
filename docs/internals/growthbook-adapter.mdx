@@ -140,11 +140,11 @@ bun run dev
 ```
 1. CLAUDE_INTERNAL_FC_OVERRIDES 环境变量（JSON 对象覆盖）
    ↓ 未命中
-2. growthBookOverrides 配置（~/.claude.json，仅 ant 构建）
+2. growthBookOverrides 配置（~/.occ.json，仅 ant 构建）
    ↓ 未命中
 3. 内存缓存（remoteEvalFeatureValues，本次进程从服务器拉取）
    ↓ 未命中
-4. 磁盘缓存（~/.claude.json 的 cachedGrowthBookFeatures）
+4. 磁盘缓存（~/.occ.json 的 cachedGrowthBookFeatures）
    ↓ 未命中
 5. 代码中的 defaultValue 参数
 ```
@@ -153,7 +153,7 @@ bun run dev
 
 | 机制 | 说明 |
 |---|---|
-| **磁盘缓存** | `~/.claude.json` 的 `cachedGrowthBookFeatures` 字段，跨进程持久化 |
+| **磁盘缓存** | `~/.occ.json` 的 `cachedGrowthBookFeatures` 字段，跨进程持久化 |
 | **周期刷新** | 每 6 小时自动从服务器拉取最新值（`setInterval` + `unref`） |
 | **初始化超时** | 首次连接超时 5 秒，超时后使用磁盘缓存或默认值 |
 | **Auth 变更** | 登录/登出时自动销毁并重建客户端 |

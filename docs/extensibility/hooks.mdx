@@ -187,7 +187,7 @@ Hook 可以指定 `if` 条件，只在特定输入时触发。`prepareIfConditio
 
 ## 工作区信任检查
 
-**所有 Hook 都要求工作区信任**（`shouldSkipHookDueToTrust()` 函数，`src/utils/hooks.ts`）。这是纵深防御措施——防止恶意仓库的 `.claude/settings.json` 在未信任的情况下执行任意命令。
+**所有 Hook 都要求工作区信任**（`shouldSkipHookDueToTrust()` 函数，`src/utils/hooks.ts`）。这是纵深防御措施——防止恶意仓库的 `.occ/settings.json` 在未信任的情况下执行任意命令。
 
 ```typescript
 // 交互模式下，所有 Hook 要求信任

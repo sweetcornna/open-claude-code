@@ -13,6 +13,8 @@
  */
 import { dirname, join } from 'path'
 import { getOriginalCwd } from '../../bootstrap/state.js'
+import { PROJECT_DIR_NAME } from '../../config/paths.js'
+import { BIN_NAME } from '../../constants/brand.js'
 import { isBuiltinPluginId } from '../../plugins/builtinPlugins.js'
 import type { LoadedPlugin, PluginManifest } from '../../types/plugin.js'
 import { isENOENT, toError } from '../../utils/errors.js'
@@ -487,7 +489,7 @@ export async function uninstallPluginOp(
       if (actualScope === 'project') {
         return {
           success: false,
-          message: `Plugin "${plugin}" is enabled at project scope (.claude/settings.json, shared with your team). To disable just for you: claude plugin disable ${plugin} --scope local`,
+          message: `Plugin "${plugin}" is enabled at project scope (${PROJECT_DIR_NAME}/settings.json, shared with your team). To disable just for you: ${BIN_NAME} plugin disable ${plugin} --scope local`,
         }
       }
       return {

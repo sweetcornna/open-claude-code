@@ -5,6 +5,7 @@
 
 import { stat } from 'fs/promises';
 import pMap from 'p-map';
+import { BIN_NAME } from '../../constants/brand.js';
 import { cwd } from 'process';
 import { MCPServerDesktopImportDialog } from '../../components/MCPServerDesktopImportDialog.js';
 import { wrappedRender as render } from '@anthropic/ink';
@@ -139,7 +140,7 @@ export async function mcpRemoveHandler(name: string, options: { scope?: string }
       });
       process.stderr.write('\nTo remove from a specific scope, use:\n');
       scopes.forEach(scope => {
-        process.stderr.write(`  claude mcp remove "${name}" -s ${scope}\n`);
+        process.stderr.write(`  ${BIN_NAME} mcp remove "${name}" -s ${scope}\n`);
       });
       cliError();
     }
@@ -153,7 +154,7 @@ export async function mcpListHandler(): Promise<void> {
   logEvent('tengu_mcp_list', {});
   const { servers: configs } = await getAllMcpConfigs();
   if (Object.keys(configs).length === 0) {
-    console.log('No MCP servers configured. Use `claude mcp add` to add a server.');
+    console.log(`No MCP servers configured. Use \`${BIN_NAME} mcp add\` to add a server.`);
   } else {
     console.log('Checking MCP server health...\n');
 
@@ -257,7 +258,7 @@ export async function mcpGetHandler(name: string): Promise<void> {
       }
     }
   }
-  console.log(`\nTo remove this server, run: claude mcp remove "${name}" -s ${server.scope}`);
+  console.log(`\nTo remove this server, run: ${BIN_NAME} mcp remove "${name}" -s ${server.scope}`);
   // Use gracefulShutdown to properly clean up MCP server connections
   // (process.exit bypasses cleanup handlers, leaving child processes orphaned)
   await gracefulShutdown(0);

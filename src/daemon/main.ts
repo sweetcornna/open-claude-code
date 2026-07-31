@@ -1,5 +1,6 @@
 import { type ChildProcess } from 'child_process'
 import { resolve } from 'path'
+import { BIN_NAME, DISPLAY_NAME } from '../constants/brand.js'
 import { buildCliLaunch, spawnCli } from '../utils/cliLaunch.js'
 import {
   writeDaemonState,
@@ -103,10 +104,10 @@ export async function daemonMain(args: string[]): Promise<void> {
 
 function printHelp(): void {
   console.log(`
-Claude Code Daemon — background process management
+${DISPLAY_NAME} Daemon — background process management
 
 USAGE
-  claude daemon [subcommand]
+  ${BIN_NAME} daemon [subcommand]
 
 SUBCOMMANDS
   status      Show daemon and session status (default)

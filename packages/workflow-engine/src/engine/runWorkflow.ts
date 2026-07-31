@@ -26,6 +26,8 @@ export type RunWorkflowOptions = {
   resume?: boolean
   /** Whether the script source hash changed on resume. When true, ignore the journal and re-run everything. */
   scriptChanged?: boolean
+  /** Named workflow directory relative to cwd. */
+  workflowDir?: string
 }
 
 export async function runWorkflow(
@@ -81,7 +83,11 @@ export async function runWorkflow(
 
   // Sub-workflow executor: reuses the same ctx (sharing journal/concurrency/budget/counters), temporarily +1 depth
   const runSubWorkflow: SubWorkflowRunner = async sub => {
-    const script = await resolveSubScript(sub, opts.cwd)
+    const script = await resolveSubScript(
+      sub,
+      opts.cwd,
+      opts.workflowDir ?? WORKFLOW_DIR_NAME,
+    )
     let subParsed: ParsedScript
     try {
       subParsed = parseScript(script)
@@ -141,14 +147,12 @@ export async function runWorkflow(
 async function resolveSubScript(
   sub: { name?: string; scriptPath?: string; script?: string },
   cwd: string,
+  workflowDir: string,
 ): Promise<string> {
   if (sub.script) return sub.script
   if (sub.scriptPath) return await readFile(sub.scriptPath, 'utf-8')
   if (sub.name) {
-    const found = await resolveNamedWorkflow(
-      join(cwd, WORKFLOW_DIR_NAME),
-      sub.name,
-    )
+    const found = await resolveNamedWorkflow(join(cwd, workflowDir), sub.name)
     if (!found) throw new WorkflowError(`Sub-workflow "${sub.name}" not found`)
     return found.content
   }

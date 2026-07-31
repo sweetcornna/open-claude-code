@@ -26,7 +26,7 @@ const STATE_TMP = 'state.json.tmp'
 const KEEP_MAX_RUNS = 50
 
 /**
- * Single source for runsDir: shares the same root as ports.ts journalStore (${projectRoot}/.claude/workflow-runs).
+ * Single source for runsDir: shares the same PROJECT_DIR_NAME root as ports.ts journalStore.
  * Extracted as a function: eliminates duplicated path concatenation between ports.ts and persistence logic, staying in the same root when entering worktree/subdirectory.
  * Tests monkey-patch this function to point at a tmpdir.
  */

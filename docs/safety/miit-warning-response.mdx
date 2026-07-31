@@ -1,51 +1,47 @@
 ---
-title: "工信部预警 Claude Code 后门 - 5 分钟切到 CCB 兼容"
-description: "工信部 NVDB 预警官方 Claude Code 2.1.91–2.1.196 版本存在后门。CCB 项目已将 Analytics、GrowthBook、Sentry 替换为空实现、不启用遥测、源码可审计。本文给你一份 5 分钟迁移指南：卸载官方、装 CCB、配 claude 别名，从根上断了回传隐患。"
+title: "工信部预警 Claude Code 后门 - 5 分钟切到 Open Claude Code"
+description: "工信部 NVDB 预警官方 Claude Code 2.1.91–2.1.196 版本存在后门。Open Claude Code 将 Analytics、GrowthBook、Sentry 替换为空实现，默认不启用遥测且源码可审计。本文给出一份非破坏性的并存迁移指南：安装 occ、迁移用户配置、重新登录，同时保留官方 Claude Code 的独立环境。"
 keywords: ["工信部", "NVDB", "安全后门", "遥测", "逆向工程", "迁移指南"]
 ---
 
-# Claude Code 有安全问题 - 5 分钟切到 CCB 兼容
+# Claude Code 有安全问题 - 5 分钟切到 Open Claude Code
 
-## 预警！Claude Code 官方版本有安全问题
+## 预警：Claude Code 官方版本有安全问题
 
-> CCB 项目：[github.com/claude-code-best/claude-code](https://github.com/claude-code-best/claude-code) · 在线文档：[ccb.agent-aura.top](https://ccb.agent-aura.top/)
+> Open Claude Code 项目：[github.com/sweetcornna/open-claude-code](https://github.com/sweetcornna/open-claude-code)
 
-2026 年 7 月，工信部 NVDB 预警：官方 Claude Code `2.1.91`（2026-04-02）至 `2.1.196`（2026-06-29）版本内置隐蔽监控，读取系统时区、代理地址判断是否与中国相关，在请求中隐写标记回传地域、身份标识等敏感信息。Claude Code 本身有文件读写、命令执行等高危权限，企业核心代码、密钥、内网架构都可能被一并带走。阿里 7 月 3 日已将其列入高风险名单，7 月 10 日起全面禁用；腾讯、美团、京东等也在收敛外部 AI 模型调用。
+2026 年 7 月，工信部 NVDB 预警：官方 Claude Code `2.1.91`（2026-04-02）至 `2.1.196`（2026-06-29）版本内置隐蔽监控，读取系统时区、代理地址判断是否与中国相关，在请求中隐写标记回传地域、身份标识等敏感信息。Claude Code 本身有文件读写、命令执行等高权限，企业核心代码、密钥、内网架构都可能受影响。阿里 7 月 3 日已将其列入高风险名单，7 月 10 日起全面禁用；腾讯、美团、京东等也在收敛外部 AI 模型调用。
 
-说实话，这个预警我没觉得意外。今年 1 月面试时我就当面跟面试官提过：Claude Code 是闭源黑盒，没法 grep 网络行为、没法验证数据流向，企业要用必须满足"开源 + 审计"两个前提。半年后工信部预警，算是验证了判断。
+官方随后发布了修复版本，但产品仍是闭源黑盒，用户无法直接检查网络行为和数据流向。Open Claude Code 是对官方 Claude Code CLI 的逆向工程与反编译复原版本：保留可审计的 TypeScript 源码，将遥测组件替换为空实现，并支持自托管关键基础设施。
 
-官方已放出清除后门的 `2.1.204`，但仍是闭源黑盒——下次再冒出来你没法验证。CCB 项目就是我对这个风险的直接回应：逆向工程、源码可审计、遥测组件空实现、当前版本 `2.8.2`，从根上断了这条隐患。官方 12 个遥测通道的源码级审计见 [遥测与远程配置下发系统审计](https://ccb.agent-aura.top/docs/telemetry-remote-config-audit)。
+完整的遥测通道、文件路径、端点和触发条件见[遥测与远程配置下发系统审计](../telemetry-remote-config-audit)。
 
-> 与其升级到官方 2.1.204，不如直接切到 CCB。下面是 5 分钟迁移指南。
-
-## CCB 项目不启用遥测
-
-CCB 项目是对官方 Claude Code CLI 的**逆向工程 / 反编译复原版本**。在处理这些隐患的时候，我的思路是"**遥测组件空实现 + 源码透明 + 基础设施可自托管**"，不是简单地把代码删掉了事。
+## Open Claude Code 默认不启用遥测
 
 ### 1. 遥测组件已替换为空实现
 
-我把官方版本的三大遥测组件都替换成了**空实现**（empty implementations，见 `CLAUDE.md` 的 Stubbed/Deleted Modules 表）：
+Open Claude Code 将三类遥测组件替换成了空实现（empty implementations，见仓库 `CLAUDE.md` 的 Stubbed/Deleted Modules 表）：
 
-| 组件                               | 官方行为                            | CCB 项目           |
-| ---------------------------------- | ----------------------------------- | ------------------ |
-| Analytics（Datadog + 1P BigQuery） | 生产环境批量上报 `tengu_*` 系列事件 | **空实现，不上报** |
-| GrowthBook 远程配置                | 启动即拉取，每 6h 刷新              | **空实现，不拉取** |
-| Sentry 错误追踪                    | 上报异常堆栈                        | **空实现，不上报** |
+| 组件 | 官方行为 | Open Claude Code |
+| --- | --- | --- |
+| Analytics（Datadog + 1P BigQuery） | 生产环境批量上报 `tengu_*` 系列事件 | 空实现，不上报 |
+| GrowthBook 远程配置 | 启动即拉取，每 6h 刷新 | 空实现，不拉取 |
+| Sentry 错误追踪 | 上报异常堆栈 | 空实现，不上报 |
 
-也就是说，CCB 项目启动时**不会向 `api.anthropic.com`、`us5.datadoghq.com`、`api.datadoghq.com` 这些遥测端点发送任何数据**。代码路径留着是为了功能完整性，但实际的网络请求已经被我移除了。
+因此，Open Claude Code 不会通过这些遥测组件向 `us5.datadoghq.com`、`api.datadoghq.com` 等端点发送数据。相关代码路径仍保留接口形态，但实际网络上报已移除。
 
-其余通道（OpenTelemetry、Beta Session Tracing、Remote Managed Settings 等）代码也保留着，但都需要你显式配置环境变量才会启用：
+其余通道（OpenTelemetry、Beta Session Tracing、Remote Managed Settings 等）仍保留，但需要显式配置才会启用：
 
-| 机制                    | 官方默认                            | CCB 项目                                        |
-| ----------------------- | ----------------------------------- | ----------------------------------------------- |
-| OpenTelemetry           | 需 `CLAUDE_CODE_ENABLE_TELEMETRY=1` | 同上，默认不启用                                |
-| Beta Session Tracing    | GrowthBook gate 控制                | `feature('ENHANCED_TELEMETRY_BETA')` 默认 false |
-| Remote Managed Settings | API key 用户全部拉取                | 代码保留，未配置企业端点时不拉取                |
-| Settings Sync           | feature gate 控制                   | 默认关闭                                        |
+| 机制 | 官方默认 | Open Claude Code |
+| --- | --- | --- |
+| OpenTelemetry | 需 `CLAUDE_CODE_ENABLE_TELEMETRY=1` | 同上，默认不启用 |
+| Beta Session Tracing | GrowthBook gate 控制 | 对应 feature 默认关闭 |
+| Remote Managed Settings | API key 用户可能拉取 | 未配置企业端点时不拉取 |
+| Settings Sync | feature gate 控制 | 默认关闭 |
 
-### 2. 源码可审计
+### 2. 源码可以自行审计
 
-官方 Claude Code 是混淆后的单文件产物，你没法直接看。CCB 项目保留了完整的 TypeScript 源码，任何网络请求你都能用 `grep` 找出来：
+官方 Claude Code 是混淆后的单文件产物；Open Claude Code 保留完整 TypeScript 源码，可以直接检查网络请求和遥测调用：
 
 ```bash
 # 查找所有对 Anthropic API 的请求
@@ -58,239 +54,174 @@ grep -rn "logEvent\|trackDatadogEvent\|logEventTo1P" src/
 grep -rn "growthbook\|remoteManagedSettings\|settingsSync" src/
 ```
 
-完整的 12 个通道清单、文件路径、端点 URL、触发条件、数据字段，我都记在 [遥测与远程配置下发系统审计](https://ccb.agent-aura.top/docs/telemetry-remote-config-audit) 里了，基于源码逐行分析，你可以自己复核。
+完整审计记录见[遥测与远程配置下发系统审计](../telemetry-remote-config-audit)，可以按源码逐项复核。
 
-### 3. 基础设施可自托管
+### 3. 关键基础设施可以自托管
 
-官方版本的数据流向 Anthropic 自有基础设施。CCB 项目支持你把关键基础设施全部自托管：
+| 组件 | 自托管方案 | 文档 |
+| --- | --- | --- |
+| Feature Flag 平台 | 自建 GrowthBook 实例 | [GrowthBook 适配器](../internals/growthbook-adapter) |
+| 错误追踪 | 自建 Sentry 实例 | [Sentry 配置](../internals/sentry-setup) |
+| 远程控制面板 | 自托管 RCS（Docker） | [Remote Control Server](../features/remote-control-self-hosting) |
+| HTML Artifact 托管 | Cloudflare Worker + R2 | [Cloud Artifacts](https://github.com/sweetcornna/open-claude-code/blob/main/packages/cloud-artifacts/README.md) |
+| API 端点 | 任意 Anthropic API 兼容服务 | `/login` 命令配置 |
 
-| 组件               | 自托管方案                    | 文档                                                                                                                          |
-| ------------------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Feature Flag 平台  | 自建 GrowthBook 实例（开源）  | [GrowthBook 适配器](https://ccb.agent-aura.top/docs/internals/growthbook-adapter)                                             |
-| 错误追踪           | 自建 Sentry 实例              | [Sentry 配置](https://ccb.agent-aura.top/docs/internals/sentry-setup)                                                         |
-| 远程控制面板       | 自托管 RCS（Docker）          | [Remote Control Server](https://ccb.agent-aura.top/docs/features/remote-control-self-hosting)                                 |
-| HTML Artifact 托管 | 自部署 Cloudflare Worker + R2 | [Cloud Artifacts](https://github.com/claude-code-best/claude-code/blob/main/packages/cloud-artifacts/README.md) |
-| API 端点           | 任意 Anthropic API 兼容服务   | `/login` 命令配置                                                                                                             |
-
-自托管意味着数据不经过 Anthropic 的服务器，从网络层面就把回传路径切断了。
-
-### 4. 双重保险：隐私环境变量
-
-即使遥测组件已经是空实现，我还是保留了官方的隐私控制环境变量，作为双重保险：
+### 4. 隐私环境变量仍可作为额外保险
 
 ```bash
-# 禁用所有非必要网络（含自动更新、release notes、grove 等）
-CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 ccb
+# 禁用所有非必要网络（含自动更新、release notes 等）
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 occ
 
-# 使用第三方提供商，自动绕过 Anthropic 直连
-CLAUDE_CODE_USE_OPENAI=1 ccb        # OpenAI 兼容协议
-CLAUDE_CODE_USE_GEMINI=1 ccb        # Gemini
-CLAUDE_CODE_USE_GROK=1 ccb          # Grok
-CLAUDE_CODE_USE_BEDROCK=1 ccb       # AWS Bedrock
+# 使用第三方提供商，绕过 Anthropic 直连
+CLAUDE_CODE_USE_OPENAI=1 occ        # OpenAI 兼容协议
+CLAUDE_CODE_USE_GEMINI=1 occ        # Gemini
+CLAUDE_CODE_USE_GROK=1 occ          # Grok
+CLAUDE_CODE_USE_BEDROCK=1 occ       # AWS Bedrock
 ```
 
-`src/utils/privacyLevel.ts` 是集中控制点，定义三个级别：`default < no-telemetry < essential-traffic`。
+`src/utils/privacyLevel.ts` 是集中控制点，定义 `default < no-telemetry < essential-traffic` 三个级别。
 
-## 换 CCB 不丢功能，新特性一个不拉下
+## 换到 Open Claude Code 不需要牺牲核心功能
 
-你可能担心：换过来之后，官方那些好用的功能还在不在？
+Open Claude Code 保留权限系统、沙箱、Plan Mode、Auto Mode、MCP、Skills、Hooks、Computer Use、Chrome Use、Voice Mode 和内置工具，并在此基础上扩展了一组社区功能：
 
-放心，一个不拉下。CCB 是对官方 Claude Code 的完整逆向工程复原，官方有的功能都有，还在此基础上扩展了一堆官方没有的特性。
+| 特性 | 说明 |
+| --- | --- |
+| Goal 持续驱动 | `/goal <objective>` 设定目标后跨轮推进，支持 token budget、完成/阻塞审计及 `pause`、`resume`、`continue`、`clear` |
+| Artifacts | 将 HTML、看板和报告上传到公开 URL，支持 7/30 天自动过期和自托管 |
+| Dynamic Workflow | `/ultracode` + `Workflow` 工具运行确定性 JS 编排，支持 journal 重放、token budget 和并发上限 |
+| ACP | 接入 Zed 等支持 ACP 的客户端，支持会话恢复、Skills 和权限桥接 |
+| Remote Control | Docker 自托管远程界面，可从其他设备查看和控制会话 |
+| Langfuse | 记录 agent loop、模型调用和工具执行，可转为数据集 |
+| Channels | MCP server 将飞书、Slack、Discord 等外部消息推入会话 |
+| Web Search | 内置网页搜索，支持 Bing 和 Brave |
+| Poor Mode | 关闭记忆提取和提示建议，减少并发请求 |
+| `/dream` | 整理和优化记忆文件 |
+| 自定义模型供应商 | 支持 Anthropic、OpenAI、Gemini、Grok 等兼容端点 |
 
-**官方特性完整保留**：权限系统、沙箱、Plan Mode、Auto Mode、MCP 协议、Skills、Hooks、Computer Use、Chrome Use、Voice Mode、60+ 内置工具，全部在。
+完整清单见[全特性指南](../features/all-features-guide)。
 
-**CCB 扩展的新特性**：
+## 非破坏性迁移到 Open Claude Code
 
-| 特性                                  | 说明                                                                                                                                                  |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 🎯 **Goal 持续驱动**                  | `/goal <objective>` 设定目标后自动跨轮驱动 agent 直至完成，带 token budget、completion/blocked audit、`pause`/`resume`/`continue`/`clear` 子命令      |
-| 📦 **Artifacts（HTML 上传）**         | 复刻官方 Artifacts：模型把 HTML / 数据看板 / 报告上传到公开 URL（7d/30d 自动过期），`/artifacts` 命令集中管理                                         |
-| 🧠 **Dynamic Workflow 多 Agent 编排** | `/ultracode` 注入编排手册 + `Workflow` 工具跑确定性 JS 脚本（`agent` / `pipeline` / `parallel` / `phase`），支持 journal 重放、token budget、并发 cap |
-| 🤖 Claude 群控                        | Pipe IPC 多实例协作：同机 main/sub 自动编排 + LAN 跨机器零配置发现与通讯                                                                              |
-| 📡 ACP 协议                           | 接入 Zed、Cursor 等 IDE，会话恢复、Skills、权限桥接                                                                                                   |
-| 🏠 Remote Control                     | Docker 自托管远程界面，手机上看 CC                                                                                                                    |
-| 📊 Langfuse 监控                      | 企业级 Agent 监控，每次 loop 细节可见，一键转数据集                                                                                                   |
-| 🔔 Channels                           | MCP 服务器推送外部消息到会话（飞书 / Slack / Discord / 微信等）                                                                                       |
-| 🔍 Web Search                         | 内置网页搜索，支持 Bing 和 Brave                                                                                                                      |
-| 💰 Poor Mode                          | 穷鬼模式，关闭记忆提取和键入建议，大幅减少并发请求                                                                                                    |
-| 🧘 /dream                             | 自动整理和优化记忆文件                                                                                                                                |
-| 🔧 自定义模型供应商                   | OpenAI / Anthropic / Gemini / Grok 兼容，`/login` 一键配置                                                                                            |
+Open Claude Code 使用独立的命令和配置命名空间：
 
-完整特性清单见 [全特性指南](https://ccb.agent-aura.top/docs/features/all-features-guide)。
+| Open Claude Code | 官方 Claude Code |
+| --- | --- |
+| `occ` / `occ-bun` | `claude` |
+| `~/.occ/` | `~/.claude/` |
+| `~/.occ.json` | `~/.claude.json` |
+| 项目内 `.occ/` | 项目内 `.claude/` |
 
-> 也就是说：换 CCB 不是"牺牲功能换安全"，而是"安全 + 功能一个不落"。
+两者可以安装在同一台机器上。迁移过程中不要删除或修改 `~/.claude`，也不要把 `claude` 命令覆盖成 `occ`；这样才能保留真正的环境隔离。
 
-## 迁移到 CCB 项目
-
-如果你当前用的就是官方受影响版本（2.1.91–2.1.196），按下面的步骤迁过来就行，整个过程大概 5 分钟。
-
-### 步骤 1：确认当前版本
+### 步骤 1：确认官方版本
 
 ```bash
 claude --version
-# 若输出在 2.1.91 ~ 2.1.196 之间，属于受影响版本
+# 若版本在 2.1.91 ~ 2.1.196 之间，属于预警涉及区间
 ```
 
-CCB 项目当前版本是 `2.8.2`（见 `package.json`，通过 `scripts/defines.ts` 注入为 `MACRO.VERSION`），不在受影响区间内。
+### 步骤 2：安装 Open Claude Code
 
-### 步骤 2：卸载官方 Claude Code
-
-官方 Claude Code 可能是通过多种方式装的，按你的实际情况挑一个：
+#### 方式 A：npm 全局安装
 
 ```bash
-# 2a. npm 全局安装的
+npm i -g open-claude-code
+
+occ --version      # 验证 Node.js 入口
+occ-bun --version  # 验证 Bun 入口
+occ update         # 后续更新
+```
+
+旧的 `ccb` / `ccb-bun` 命令仍作为兼容别名保留，但新脚本应使用 `occ` / `occ-bun`。
+
+#### 方式 B：从源码构建
+
+```bash
+git clone https://github.com/sweetcornna/open-claude-code.git
+cd open-claude-code
+
+# 需要 Bun >= 1.3.11
+bun install
+bun run build:vite
+
+node dist/cli-node.js --version
+bun dist/cli-bun.js --version
+
+# 可选：从当前源码目录全局安装
+bun install -g .
+occ --version
+```
+
+### 步骤 3：迁移已有配置
+
+先预览，再执行迁移：
+
+```bash
+occ migrate --dry-run
+occ migrate
+```
+
+会复制用户编写或安装的配置：
+
+- `settings.json`
+- `skills/`、`agents/`、`commands/`
+- `output-styles/`、`workflows/`、`plugins/`、`rules/`
+- 旧全局配置中的 MCP server 定义
+
+不会复制凭据、会话历史、缓存、日志和 IDE 锁文件。迁移是幂等的，不覆盖 `~/.occ` 中已经存在的文件，并且对 `~/.claude` 全程只读。
+
+### 步骤 4：重新登录或配置 API 端点
+
+凭据不会迁移。首次运行 `occ` 后，在 REPL 输入 `/login`，选择需要的供应商：
+
+| 选项 | 适用场景 |
+| --- | --- |
+| Anthropic Compatible | 第三方 Anthropic API 兼容服务 |
+| OpenAI | Ollama、DeepSeek、vLLM 等 OpenAI 协议端点 |
+| Gemini | Google Gemini |
+| Grok | xAI Grok |
+
+根据供应商填写 Base URL、API Key 和模型 ID。快速开始与字段说明见[项目 README](https://github.com/sweetcornna/open-claude-code#readme)。
+
+### 步骤 5：处理受影响的官方安装
+
+occ 已经可以独立使用。对仍处于受影响区间的官方 Claude Code，请按企业安全策略选择升级或卸载；这一步不会影响 `occ` 的安装和 `~/.occ` 配置。
+
+```bash
+# npm 安装的官方版本
 npm rm -g @anthropic-ai/claude-code
 
-# 2b. Homebrew 安装的（macOS）
-brew uninstall claude-code 2>/dev/null || true
-
-# 2c. 手动二进制 / 未知来源
-which claude                       # 先查找位置
-rm -f "$(which claude)"            # 再删除
-
-# 2d. 检查 shell alias / 函数（可能指向官方二进制）
-grep -n "claude" ~/.zshrc ~/.bashrc ~/.bash_profile 2>/dev/null
-# 如果找到 alias claude='...' 或 claude() {...} 指向官方，先注释掉
+# Homebrew 安装的官方版本（macOS）
+brew uninstall claude-code
 ```
 
-顺手清理一下官方版本的本地缓存与配置（建议先备份再清理）：
+如果还要继续使用官方版本，请安装已修复版本，并保持 `claude` 与 `occ` 两个命令各自独立。
+
+### 步骤 6：验证隔离与运行状态
 
 ```bash
-# 备份现有配置（如有自定义 settings）
-cp ~/.claude/settings.json ~/claude-settings.backup.json 2>/dev/null || true
+# 两个命令互不覆盖
+occ --version
+command -v occ
 
-# 清理官方缓存
-rm -f ~/.claude.json                  # GrowthBook 远程配置缓存
-rm -rf ~/.claude/logs/                # 1P 事件重试队列
-rm -rf ~/.claude/remoteManagedSettings/  # 企业远程配置缓存
+# occ 的配置写入独立目录
+ls -la ~/.occ
+
+# 启动 Open Claude Code
+occ
 ```
 
-> `~/.claude/settings.json` 建议留着，CCB 项目会复用它存 `/login` 配置。真遇到冲突了再删也不迟。
-
-### 步骤 3：安装 CCB 项目
-
-我给你准备了两种装法，按场景挑一个。
-
-#### 方式 A：npm 全局安装（推荐，快速）
+在另一个终端可以按需观察网络连接：
 
 ```bash
-npm i -g claude-code-best
-
-ccb --version      # 验证安装，应输出 2.8.x
-ccb                # Node.js 形态启动
-ccb-bun            # Bun 形态启动（更快）
-ccb update         # 后续更新到最新版本
+sudo lsof -i -n -P | grep -E "occ|claude"
 ```
 
-#### 方式 B：源码编译（企业内网 / 需要定制 / 想审阅代码）
+使用 Anthropic 或第三方 API 时出现对应 API 连接是正常的；重点是确认没有意外的 Datadog 遥测连接，并核对实际使用的 API 域名。
 
-适合想完全掌控构建产物、或者网络受限访问不了 npm 的朋友。
+## 这是开源项目，欢迎审计和贡献
 
-```bash
-# 3a. 克隆源码
-git clone https://github.com/claude-code-best/claude-code.git
-cd claude-code
+所有源码都在 [sweetcornna/open-claude-code](https://github.com/sweetcornna/open-claude-code)。欢迎提交 issue、PR、迁移经验和安全审计结果。
 
-# 3b. 安装依赖（需要 Bun >= 1.3.11）
-curl -fsSL https://bun.sh/install | bash   # 如果还没装 Bun
-bun install
-
-# 3c. 构建（code splitting，产物输出到 dist/）
-bun run build
-# 产物：dist/cli.js + 约 450 个 chunk 文件
-
-# 3d. 验证构建产物
-node dist/cli.js --version
-# 或
-bun dist/cli.js --version
-
-# 3e. 链接到 PATH（任选一种）
-
-# 方式 1：symlink 到 /usr/local/bin（需要 sudo）
-sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/ccb
-chmod +x /usr/local/bin/ccb
-
-# 方式 2：加入用户 PATH（无需 sudo）
-echo 'export PATH="'$(pwd)'/dist:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# 方式 3：bun 形态直接链接
-sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/ccb-bun
-
-# 3f. 验证
-ccb --version
-```
-
-后续更新源码编译版本：
-
-```bash
-cd /path/to/claude-code
-git pull
-bun install
-bun run build
-# symlink 自动指向最新构建产物
-```
-
-### 步骤 4：配置 `claude` 别名指向 `ccb`
-
-迁过来之后，你的肌肉记忆、shell 脚本、IDE 配置可能还在调 `claude` 命令。别急着全改——给 `claude` 加个别名指向 `ccb`，下游啥都不用动。
-
-```bash
-# 方式 1：shell alias（推荐，最灵活）
-echo "alias claude='ccb'" >> ~/.zshrc
-source ~/.zshrc
-
-# 方式 2：symlink（兼容不识别 alias 的脚本 / GUI 程序）
-sudo ln -s "$(which ccb)" /usr/local/bin/claude
-
-# 方式 3：shell 函数（需要透传所有参数时）
-cat >> ~/.zshrc << 'EOF'
-claude() { ccb "$@"; }
-EOF
-source ~/.zshrc
-```
-
-bash 用户把 `~/.zshrc` 换成 `~/.bashrc` 就行。
-
-验证别名生效：
-
-```bash
-claude --version    # 应输出 ccb 的版本号 2.8.x
-type claude         # 确认指向 alias 或 ccb
-```
-
-### 步骤 5：配置 API 端点
-
-首次运行后在 REPL 里输入 `/login`，选一个对接方式：
-
-| 选项                     | 适用场景                                                                           |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| **Anthropic Compatible** | 对接第三方 API 兼容服务（OpenRouter、AWS Bedrock 代理等），无需 Anthropic 官方账号 |
-| **OpenAI**               | Ollama / DeepSeek / vLLM 等 OpenAI 协议端点                                        |
-| **Gemini**               | Google Gemini                                                                      |
-| **Grok**                 | xAI Grok                                                                           |
-
-需要填的字段：Base URL、API Key、Haiku/Sonnet/Opus Model ID。详见 [快速开始](https://ccb.agent-aura.top/)。
-
-### 步骤 6：验证迁移成功
-
-迁完之后跑一遍验证，心里踏实：
-
-```bash
-# 1. 确认命令指向 CCB 项目
-claude --version
-# 期望输出：2.8.x（CCB 项目版本），而非 2.1.91~2.1.196
-
-# 2. 启动并确认无遥测请求
-ccb
-# 在 REPL 中输入任意命令，用另一个终端监控网络：
-sudo lsof -i -n -P | grep -E "claude|ccb"
-# 不应出现对 us5.datadoghq.com 的连接
-# 对 api.anthropic.com 的连接仅在你使用 Anthropic 兼容 API 时出现
-```
-
-## 这是开源项目，欢迎贡献
-
-CCB 是开源项目，所有源码在 GitHub：[github.com/claude-code-best/claude-code](https://github.com/claude-code-best/claude-code)。欢迎提 issue、提 PR、分享迁移经验、补充文档。如果你在迁移过程中遇到问题，或者有安全审计的新发现，都欢迎来仓库交流—— Discord 群组 [discord.gg/uApuzJWGKX](https://discord.gg/uApuzJWGKX) 也能找到我。
-
-> 用的人越多，审计的眼睛越多，这个项目就越安全。
+> 使用者和审计者越多，项目的安全边界就越容易被持续验证。

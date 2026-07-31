@@ -5,7 +5,6 @@ import { isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
 import { AutoUpdater } from './AutoUpdater.js';
-import { NativeAutoUpdater } from './NativeAutoUpdater.js';
 import { PackageManagerAutoUpdater } from './PackageManagerAutoUpdater.js';
 
 type Props = {
@@ -25,7 +24,6 @@ export function AutoUpdaterWrapper({
   showSuccessMessage,
   verbose,
 }: Props): React.ReactNode {
-  const [useNativeInstaller, setUseNativeInstaller] = React.useState<boolean | null>(null);
   const [isPackageManager, setIsPackageManager] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
@@ -39,7 +37,6 @@ export function AutoUpdaterWrapper({
 
       const installationType = await getCurrentInstallationType();
       logForDebugging(`AutoUpdaterWrapper: Installation type: ${installationType}`);
-      setUseNativeInstaller(installationType === 'native');
       setIsPackageManager(installationType === 'package-manager');
     }
 
@@ -47,7 +44,7 @@ export function AutoUpdaterWrapper({
   }, []);
 
   // Don't render until we know the installation type
-  if (useNativeInstaller === null || isPackageManager === null) {
+  if (isPackageManager === null) {
     return null;
   }
 
@@ -64,10 +61,8 @@ export function AutoUpdaterWrapper({
     );
   }
 
-  const Updater = useNativeInstaller ? NativeAutoUpdater : AutoUpdater;
-
   return (
-    <Updater
+    <AutoUpdater
       verbose={verbose}
       onAutoUpdaterResult={onAutoUpdaterResult}
       autoUpdaterResult={autoUpdaterResult}

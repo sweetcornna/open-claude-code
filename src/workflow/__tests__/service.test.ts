@@ -7,6 +7,7 @@ import { expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { makeService, __resetWorkflowServiceForTests } from '../service.js'
 import { createProgressBus } from '../progress/bus.js'
 import {
@@ -209,7 +210,7 @@ test('launch inline script → returns scriptPath (persisted to cwdOverride dir)
       stubCanUseTool,
     )
     expect(result.scriptPath).toBe(
-      join(dir, '.claude', 'workflow-runs', 'run-1', 'script.js'),
+      join(dir, PROJECT_DIR_NAME, 'workflow-runs', 'run-1', 'script.js'),
     )
     const { readFile } = await import('node:fs/promises')
     expect(await readFile(result.scriptPath!, 'utf-8')).toBe(

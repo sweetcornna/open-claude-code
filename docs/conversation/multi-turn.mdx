@@ -16,7 +16,7 @@ REPL关注交互形态，SDK关注接入方式，ACP则关注通信协议。
 | 维度 | 🖥️ REPL (交互形态) | 🧩 SDK (接入方式) | 🌉 ACP (通信协议) |
 | :--- | :--- | :--- | :--- |
 | **是什么** | 供开发者直接在终端使用的**交互式对话环境** | 面向开发者的**程序化调用库**，供集成到其他应用 | 一种**开放式的通信标准**，连接不同AI Agent与编辑器 |
-| **使用方式** | 1. 直接在终端输入`claude`命令<br>2. 进入专用界面（基于React Ink渲染）<br>3. 通过斜杠命令（如`/help`）交互 | 1. 在自己的Node.js/Python项目中安装SDK包（如`npm install claude-code-sdk`）<br>2. 通过API发送查询 | 1. 通过ACP适配器（如`claude-code-acp`）启动Claude Code<br>2. 供编辑器通过ACP协议与其通信 |
+| **使用方式** | 1. 直接在终端输入`occ`命令<br>2. 进入专用界面（基于React Ink渲染）<br>3. 通过斜杠命令（如`/help`）交互 | 1. 在自己的Node.js/Python项目中安装SDK包（如`npm install claude-code-sdk`）<br>2. 通过API发送查询 | 1. 通过ACP适配器（如`claude-code-acp`）启动Claude Code<br>2. 供编辑器通过ACP协议与其通信 |
 | **典型场景** | 开发者日常编写代码时，随时向其提问、修改代码或执行任务 | 将Claude Code的核心能力（对话、工具执行等）集成到自动化脚本、CI/CD流程或其他应用的后台中 | 将Claude Code的能力集成到JetBrains IDE、Zed等第三方编辑器中，利用其UI交互功能 |
 | **主要特点** | - **面向人**：交互式、直观<br>- **功能完整**：可使用所有内置工具，并支持MCP集成<br>- **处理复杂任务**：可自主规划、执行多步操作 | - **面向程序**：编程化、可集成<br>- **轻量级**：不依赖Claude Code的完整运行时<br>- **由你控制**：适合在自有应用中实现自动化 | - **标准化**：统一不同Agent与编辑器间的通信<br>- **双向通信**：Agent可主动向编辑器请求文件、执行命令等<br>- **与编辑器深度整合**：能完全复用Claude Code的能力 |
 
@@ -110,8 +110,7 @@ J --> K["构建有效系统提示"]
 K --> L["重置各类耗时计时器"]
 L --> M["执行query生成器，流式处理事件"]
 M --> N["若BUDDY开启，触发companion观察者"]
-N --> O["若UDS_INBOX且中断，记录错误"]
-O --> P["ant用户：收集API指标并插入指标消息"]
+N --> P["ant用户：收集API指标并插入指标消息"]
 P --> Q["重置加载状态，输出性能报告，调用onTurnComplete"]
 Q --> R["结束"]
 D --> R
@@ -281,18 +280,7 @@ if (feature('BUDDY') && typeof fireCompanionObserver === 'function') {
 
 - 将当前消息列表传递给 companion 观察者，并根据返回的反应更新全局状态。
 
-##### 3.7.2 UDS_INBOX 中断处理
-
-```typescript
-if (feature('UDS_INBOX') && abortController.signal.aborted) {
-  pipeReturnHadErrorRef.current = true;
-  relayPipeMessage({ type: 'error', data: 'Slave request was interrupted before completion.' });
-}
-```
-
-- 若因中断导致查询未完成，标记错误并通过管道中继消息。
-
-##### 3.7.3 Ant 内部用户的 API 指标记录
+##### 3.7.2 Ant 内部用户的 API 指标记录
 
 ```typescript
 if (process.env.USER_TYPE === 'ant' && apiMetricsRef.current.length > 0) {
@@ -310,7 +298,7 @@ if (process.env.USER_TYPE === 'ant' && apiMetricsRef.current.length > 0) {
 - 若本轮包含多次请求（例如工具调用循环），计算中位数（P50）后存入指标消息。
 - 同时记录钩子耗时、工具耗时、分类器耗时、本轮总时长、配置写入次数等。
 
-##### 3.7.4 重置与清理
+##### 3.7.3 重置与清理
 
 ```typescript
 resetLoadingState();
@@ -395,7 +383,7 @@ async *submitMessage(
 ### 存储路径
 
 ```
-~/.claude/projects/<sanitized-cwd>/<session-uuid>.jsonl
+~/.occ/projects/<sanitized-cwd>/<session-uuid>.jsonl
 ```
 
 - 路径由 `getProjectDir(originalCwd)` 生成，使用 `sanitizePath()` 将项目目录路径转换为安全的目录名（非 hash），同一项目目录的会话归入同一子目录

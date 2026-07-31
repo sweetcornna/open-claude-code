@@ -31,6 +31,7 @@ import { createServer, type Server } from 'http'
 import { join } from 'path'
 import { parse } from 'url'
 import xss from 'xss'
+import { BIN_NAME } from '../../constants/brand.js'
 import { MCP_CLIENT_METADATA_URL } from '../../constants/oauth.js'
 import { openBrowser } from '../../utils/browser.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
@@ -676,7 +677,7 @@ async function performMCPXaaAuth(
   const idp = getXaaIdpSettings()
   if (!idp) {
     throw new Error(
-      "XAA: no IdP connection configured. Run 'claude mcp xaa setup --issuer <url> --client-id <id> --client-secret' to configure.",
+      `XAA: no IdP connection configured. Run '${BIN_NAME} mcp xaa setup --issuer <url> --client-id <id> --client-secret' to configure.`,
     )
   }
 

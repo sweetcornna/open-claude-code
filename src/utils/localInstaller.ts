@@ -2,29 +2,23 @@
  * Utilities for handling local installation
  */
 
-import {
-  CONFIG_DIR_BASENAME,
-  LEGACY_CONFIG_DIR_BASENAME,
-} from 'src/config/paths.js'
+import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
+import { occConfigPath } from 'src/config/paths.js'
 import { access, chmod, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { join, sep } from 'path'
 import { type ReleaseChannel, saveGlobalConfig } from './config.js'
-import { getClaudeConfigHomeDir } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
 import { jsonStringify } from './slowOperations.js'
 
-// Lazy getters: getClaudeConfigHomeDir() is memoized and reads process.env.
-// Evaluating at module scope would capture the value before entrypoints like
-// hfi.tsx get a chance to set CLAUDE_CONFIG_DIR in main(), and would also
-// populate the memoize cache with that stale value for all 150+ other callers.
 function getLocalInstallDir(): string {
-  return join(getClaudeConfigHomeDir(), 'local')
+  return occConfigPath('local')
 }
-export function getLocalClaudePath(): string {
-  return join(getLocalInstallDir(), 'claude')
+
+export function getLocalOccPath(): string {
+  return join(getLocalInstallDir(), BIN_NAME)
 }
 
 /**
@@ -32,13 +26,10 @@ export function getLocalClaudePath(): string {
  */
 export function isRunningFromLocalInstallation(): boolean {
   const execPath = process.argv[1] || ''
-  // Matched against the config dir basename rather than a literal, so this
-  // keeps working when OCC_CONFIG_DIR moves the install root. The legacy
-  // '.claude' form is still recognised so a pre-rename local install is
-  // detected instead of being silently treated as a global one.
+  const localModulesPath = occConfigPath('local', 'node_modules')
   return (
-    execPath.includes(`/${CONFIG_DIR_BASENAME}/local/node_modules/`) ||
-    execPath.includes(`/${LEGACY_CONFIG_DIR_BASENAME}/local/node_modules/`)
+    execPath === localModulesPath ||
+    execPath.startsWith(`${localModulesPath}${sep}`)
   )
 }
 
@@ -75,17 +66,17 @@ export async function ensureLocalPackageEnvironment(): Promise<boolean> {
     await writeIfMissing(
       join(localInstallDir, 'package.json'),
       jsonStringify(
-        { name: 'claude-local', version: '0.0.1', private: true },
+        { name: 'occ-local', version: '0.0.1', private: true },
         null,
         2,
       ),
     )
 
     // Create the wrapper script if it doesn't exist
-    const wrapperPath = join(localInstallDir, 'claude')
+    const wrapperPath = getLocalOccPath()
     const created = await writeIfMissing(
       wrapperPath,
-      `#!/bin/sh\nexec "${localInstallDir}/node_modules/.bin/claude" "$@"`,
+      `#!/bin/sh\nexec "${localInstallDir}/node_modules/.bin/${BIN_NAME}" "$@"`,
       0o755,
     )
     if (created) {
@@ -101,11 +92,11 @@ export async function ensureLocalPackageEnvironment(): Promise<boolean> {
 }
 
 /**
- * Install or update Claude CLI package in the local directory
+ * Install or update the occ package in the local directory
  * @param channel - Release channel to use (latest or stable)
  * @param specificVersion - Optional specific version to install (overrides channel)
  */
-export async function installOrUpdateClaudePackage(
+export async function installOrUpdateOccPackage(
   channel: ReleaseChannel,
   specificVersion?: string | null,
 ): Promise<'in_progress' | 'success' | 'install_failed'> {
@@ -123,13 +114,13 @@ export async function installOrUpdateClaudePackage(
         : 'latest'
     const result = await execFileNoThrowWithCwd(
       'npm',
-      ['install', `${MACRO.PACKAGE_URL}@${versionSpec}`],
+      ['install', `${NPM_PACKAGE_NAME}@${versionSpec}`],
       { cwd: getLocalInstallDir(), maxBuffer: 1000000 },
     )
 
     if (result.code !== 0) {
       const error = new Error(
-        `Failed to install Claude CLI package: ${result.stderr}`,
+        `Failed to install ${NPM_PACKAGE_NAME}: ${result.stderr}`,
       )
       logError(error)
       return result.code === 190 ? 'in_progress' : 'install_failed'
@@ -154,7 +145,7 @@ export async function installOrUpdateClaudePackage(
  */
 export async function localInstallationExists(): Promise<boolean> {
   try {
-    await access(join(getLocalInstallDir(), 'node_modules', '.bin', 'claude'))
+    await access(join(getLocalInstallDir(), 'node_modules', '.bin', BIN_NAME))
     return true
   } catch {
     return false

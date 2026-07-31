@@ -1,15 +1,16 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import type { Command } from '../commands.js';
 import { AGENT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js';
+import { occConfigPath } from '../config/paths.js';
 
 const statusline = {
   type: 'prompt',
-  description: "Set up Claude Code's status line UI",
+  description: "Set up Open Claude Code's status line UI",
   contentLength: 0, // Dynamic content
   aliases: [],
   name: 'statusline',
   progressMessage: 'setting up statusLine',
-  allowedTools: [AGENT_TOOL_NAME, 'Read(~/**)', 'Edit(~/.claude/settings.json)'],
+  allowedTools: [AGENT_TOOL_NAME, 'Read(~/**)', `Edit(${occConfigPath('settings.json')})`],
   source: 'builtin',
   disableNonInteractive: true,
   async getPromptForCommand(args): Promise<ContentBlockParam[]> {

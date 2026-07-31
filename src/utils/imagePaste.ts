@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import { execa } from 'execa'
 import { tmpdir } from 'os'
-import { basename, extname, isAbsolute, join } from 'path'
+import { basename, extname, isAbsolute } from 'path'
 import {
   IMAGE_MAX_HEIGHT,
   IMAGE_MAX_WIDTH,
@@ -19,6 +19,7 @@ import {
   maybeResizeAndDownsampleImageBuffer,
 } from './imageResizer.js'
 import { logError } from './log.js'
+import { CLIPBOARD_TEMP_PREFIX, generateTempFilePath } from './tempfile.js'
 
 // Native NSPasteboard reader. GrowthBook gate tengu_collage_kaleidoscope is
 // a kill switch (default on). Falls through to osascript when off.
@@ -38,14 +39,9 @@ function getClipboardCommands() {
   const baseTmpDir =
     process.env.CLAUDE_CODE_TMPDIR ||
     (platform === 'win32' ? process.env.TEMP || 'C:\\Temp' : tmpdir())
-  const screenshotFilename = 'claude_cli_latest_screenshot.png'
-  const tempPaths: Record<SupportedPlatform, string> = {
-    darwin: join(baseTmpDir, screenshotFilename),
-    linux: join(baseTmpDir, screenshotFilename),
-    win32: join(baseTmpDir, screenshotFilename),
-  }
-
-  const screenshotPath = tempPaths[platform] || tempPaths.linux
+  const screenshotPath = generateTempFilePath(CLIPBOARD_TEMP_PREFIX, '.png', {
+    tempDirectory: baseTmpDir,
+  })
 
   // Platform-specific clipboard commands
   const commands: Record<
@@ -237,9 +233,6 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     // Detect format from magic bytes
     const mediaType = detectImageFormatFromBase64(base64Image)
 
-    // Cleanup (fire-and-forget, don't await)
-    void execa(commands.deleteFile, { shell: true, reject: false })
-
     return {
       base64: base64Image,
       mediaType,
@@ -247,6 +240,13 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     }
   } catch {
     return null
+  } finally {
+    // The same generated path is used by save, read, and cleanup on every path.
+    try {
+      await execa(commands.deleteFile, { shell: true, reject: false })
+    } catch {
+      // Ignore cleanup errors.
+    }
   }
 }
 

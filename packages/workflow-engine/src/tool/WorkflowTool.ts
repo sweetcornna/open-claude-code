@@ -39,7 +39,7 @@ export type WorkflowToolDescriptor = {
 
 const WORKFLOW_TOOL_PROMPT = `Use the Workflow tool to execute a workflow script that orchestrates multiple subagents deterministically. The script runs in the background; you receive a run_id immediately and are notified on completion.
 
-Provide the script inline via "script", or reference a named workflow via "name" (resolved from .claude/workflows/), or an existing file via "scriptPath". Pass "args" as a real JSON value (object/array/string), not a stringified string.
+Provide the script inline via "script", or reference a named workflow via "name" (resolved from ${WORKFLOW_DIR_NAME}/), or an existing file via "scriptPath". Pass "args" as a real JSON value (object/array/string), not a stringified string.
 
 Use "resumeFromRunId" to resume a prior run — completed agent() calls replay from the journal instantly.
 
@@ -52,8 +52,14 @@ Script execution model (common pitfalls — getting these wrong is the #1 cause 
 - Return the result with a top-level \`return\`.
 Prefer .js / .mjs. See /ultracode for the full playbook and quality patterns.`
 
+export type WorkflowToolOptions = {
+  workflowDir?: string
+  workflowRunsDir?: string
+}
+
 export function createWorkflowTool(
   ports: WorkflowPorts,
+  options: WorkflowToolOptions = {},
 ): WorkflowToolDescriptor {
   return {
     name: WORKFLOW_TOOL_NAME,
@@ -70,7 +76,10 @@ export function createWorkflowTool(
     },
 
     async prompt() {
-      return WORKFLOW_TOOL_PROMPT
+      return WORKFLOW_TOOL_PROMPT.replaceAll(
+        WORKFLOW_DIR_NAME,
+        options.workflowDir ?? WORKFLOW_DIR_NAME,
+      )
     },
 
     renderToolUseMessage(input) {
@@ -88,7 +97,11 @@ export function createWorkflowTool(
       let script: string
       let workflowFile: string | undefined
       try {
-        const resolved = await resolveScriptSource(input, host.cwd)
+        const resolved = await resolveScriptSource(
+          input,
+          host.cwd,
+          options.workflowDir ?? WORKFLOW_DIR_NAME,
+        )
         script = resolved.script
         workflowFile = resolved.workflowFile
       } catch (e) {
@@ -127,6 +140,7 @@ export function createWorkflowTool(
             input.script,
             runId,
             host.cwd,
+            options.workflowRunsDir,
           )
         } catch (e) {
           ports.logger.warn?.(
@@ -152,6 +166,7 @@ export function createWorkflowTool(
           ? { maxConcurrency: input.maxConcurrency }
           : {}),
         ...(input.resumeFromRunId ? { resume: true } : {}),
+        ...(options.workflowDir ? { workflowDir: options.workflowDir } : {}),
       })
         .then(result => onFinish(ports, result, runId))
         .catch(e => ports.taskRegistrar.fail(runId, (e as Error).message))
@@ -226,6 +241,7 @@ function normalizeArgs(raw: unknown): unknown {
 async function resolveScriptSource(
   input: WorkflowInput,
   cwd: string,
+  workflowDir: string,
 ): Promise<{ script: string; workflowFile?: string }> {
   if (input.script) return { script: input.script }
   if (input.scriptPath) {
@@ -246,13 +262,10 @@ async function resolveScriptSource(
         `Named workflow name "${input.name}" is invalid (contains path separators or is . / ..)`,
       )
     }
-    const found = await resolveNamedWorkflow(
-      join(cwd, WORKFLOW_DIR_NAME),
-      input.name,
-    )
+    const found = await resolveNamedWorkflow(join(cwd, workflowDir), input.name)
     if (!found) {
       throw new Error(
-        `Named workflow "${input.name}" not found (looked in ${WORKFLOW_DIR_NAME}/)`,
+        `Named workflow "${input.name}" not found (looked in ${workflowDir}/)`,
       )
     }
     return { script: found.content, workflowFile: found.path }

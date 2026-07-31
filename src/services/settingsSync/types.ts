@@ -5,6 +5,7 @@
  * Based on the backend API contract from anthropic/anthropic#218817.
  */
 
+import { CONFIG_DIR_BASENAME, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
 
@@ -46,22 +47,13 @@ export type SettingsSyncFetchResult = {
 }
 
 /**
- * Result from uploading user settings
- */
-export type SettingsSyncUploadResult = {
-  success: boolean
-  checksum?: string
-  lastModified?: string
-  error?: string
-}
-
-/**
  * Keys used for sync entries
  */
 export const SYNC_KEYS = {
-  USER_SETTINGS: '~/.claude/settings.json',
-  USER_MEMORY: '~/.claude/CLAUDE.md',
+  USER_SETTINGS: `~/${CONFIG_DIR_BASENAME}/settings.json`,
+  USER_MEMORY: `~/${CONFIG_DIR_BASENAME}/CLAUDE.md`,
   projectSettings: (projectId: string) =>
-    `projects/${projectId}/.claude/settings.local.json`,
-  projectMemory: (projectId: string) => `projects/${projectId}/CLAUDE.local.md`,
+    `projects/${projectId}/${PROJECT_DIR_NAME}/settings.local.json`,
+  projectMemory: (projectId: string) =>
+    `projects/${projectId}/${PROJECT_DIR_NAME}/CLAUDE.local.md`,
 } as const

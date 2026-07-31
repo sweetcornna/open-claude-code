@@ -1,3 +1,4 @@
+import { BIN_NAME } from 'src/config/paths.js'
 import { logForDebugging } from 'src/utils/debug.js'
 
 const PROBE_TIMEOUT_MS = 15_000
@@ -18,6 +19,11 @@ export class SSHProbeError extends Error {
   }
 }
 
+export function buildRemoteProbeCommand(): string {
+  const remoteBin = `$HOME/.local/bin/${BIN_NAME}`
+  return `OCC_BIN=$(test -x "${remoteBin}" && echo "${remoteBin}" || command -v ${BIN_NAME} 2>/dev/null); echo "$OCC_BIN"; $OCC_BIN --version 2>/dev/null; uname -sm; pwd`
+}
+
 export async function probeRemote(
   host: string,
   onProgress?: (msg: string) => void,
@@ -32,7 +38,7 @@ export async function probeRemote(
       '-o',
       'ConnectTimeout=10',
       host,
-      'CLAUDE_BIN=$(test -x "$HOME/.local/bin/claude" && echo "$HOME/.local/bin/claude" || command -v claude 2>/dev/null); echo "$CLAUDE_BIN"; $CLAUDE_BIN --version 2>/dev/null; uname -sm; pwd',
+      buildRemoteProbeCommand(),
     ],
     { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
   )

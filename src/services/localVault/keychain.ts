@@ -5,6 +5,10 @@
  * file storage.
  */
 
+import { createHash } from 'node:crypto'
+import { PRODUCT_NAME } from 'src/constants/brand.js'
+import { occConfigDir } from 'src/config/paths.js'
+
 export class KeychainUnavailableError extends Error {
   constructor(reason: string) {
     super(`OS keychain not available: ${reason}`)
@@ -12,7 +16,18 @@ export class KeychainUnavailableError extends Error {
   }
 }
 
-const SERVICE_NAME = 'claude-code-local-vault'
+/**
+ * Keep Local Vault state in an occ-owned service, partitioned by config profile.
+ * The unconditional profile hash ensures both the default profile and every
+ * OCC_CONFIG_DIR/CLAUDE_CONFIG_DIR override get isolated keychain state.
+ */
+export function getLocalVaultKeychainServiceName(): string {
+  const profileHash = createHash('sha256')
+    .update(occConfigDir())
+    .digest('hex')
+    .slice(0, 32)
+  return `${PRODUCT_NAME}-local-vault-${profileHash}`
+}
 
 type KeyringEntry = {
   getPassword: () => string | null
@@ -22,6 +37,10 @@ type KeyringEntry = {
 
 type KeyringModule = {
   Entry: new (service: string, account: string) => KeyringEntry
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
 }
 
 let _mod: KeyringModule | null | 'not-tried' = 'not-tried'
@@ -63,19 +82,19 @@ export function _resetKeychainModuleCache(): void {
 export const tryKeychain = {
   async set(account: string, value: string): Promise<void> {
     const mod = await loadModule()
-    const entry = new mod.Entry(SERVICE_NAME, account)
+    const entry = new mod.Entry(getLocalVaultKeychainServiceName(), account)
     entry.setPassword(value)
   },
 
   async get(account: string): Promise<string | null> {
     const mod = await loadModule()
-    const entry = new mod.Entry(SERVICE_NAME, account)
+    const entry = new mod.Entry(getLocalVaultKeychainServiceName(), account)
     return entry.getPassword()
   },
 
   async delete(account: string): Promise<boolean> {
     const mod = await loadModule()
-    const entry = new mod.Entry(SERVICE_NAME, account)
+    const entry = new mod.Entry(getLocalVaultKeychainServiceName(), account)
     return entry.deletePassword()
   },
 
@@ -94,7 +113,10 @@ export const tryKeychain = {
    */
   async list(): Promise<string[]> {
     const mod = await loadModule()
-    const indexEntry = new mod.Entry(SERVICE_NAME, '__index__')
+    const indexEntry = new mod.Entry(
+      getLocalVaultKeychainServiceName(),
+      '__index__',
+    )
     const raw = indexEntry.getPassword()
     if (!raw) return []
     let parsed: unknown
@@ -103,20 +125,23 @@ export const tryKeychain = {
     } catch {
       // A3: corrupt index — throw so caller can fall back, not silently lose key references
       throw new KeychainUnavailableError(
-        'keychain index is corrupt (invalid JSON). Reset via: /local-vault list (will regenerate index on next set).',
+        'keychain index is corrupt (invalid JSON).',
       )
     }
-    if (Array.isArray(parsed)) {
-      return (parsed as unknown[]).filter(
-        (x): x is string => typeof x === 'string',
+    if (!isStringArray(parsed)) {
+      throw new KeychainUnavailableError(
+        'keychain index is corrupt (expected an array of strings).',
       )
     }
-    return []
+    return parsed
   },
 
   async _addToIndex(account: string): Promise<void> {
     const mod = await loadModule()
-    const indexEntry = new mod.Entry(SERVICE_NAME, '__index__')
+    const indexEntry = new mod.Entry(
+      getLocalVaultKeychainServiceName(),
+      '__index__',
+    )
     const existing = await this.list()
     if (!existing.includes(account)) {
       indexEntry.setPassword(JSON.stringify([...existing, account]))
@@ -125,7 +150,10 @@ export const tryKeychain = {
 
   async _removeFromIndex(account: string): Promise<void> {
     const mod = await loadModule()
-    const indexEntry = new mod.Entry(SERVICE_NAME, '__index__')
+    const indexEntry = new mod.Entry(
+      getLocalVaultKeychainServiceName(),
+      '__index__',
+    )
     const existing = await this.list()
     const updated = existing.filter(k => k !== account)
     indexEntry.setPassword(JSON.stringify(updated))

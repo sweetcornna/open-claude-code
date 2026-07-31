@@ -1,4 +1,5 @@
 import { getMainThreadAgentType } from '../bootstrap/state.js'
+import { PROJECT_DIR_NAME, occConfigPath } from '../config/paths.js'
 import type { HookResultMessage } from '../types/message.js'
 import { createAttachmentMessage } from './attachments.js'
 import { logForDebugging } from './debug.js'
@@ -100,16 +101,14 @@ export async function processSessionStartHooks(
         errorMessage.includes('EACCES') ||
         errorMessage.includes('EPERM')
       ) {
-        userGuidance =
-          'This appears to be a permissions issue. Check file permissions on ~/.claude/plugins/'
+        userGuidance = `This appears to be a permissions issue. Check file permissions on ${occConfigPath('plugins')}/`
       } else if (
         errorMessage.includes('Invalid') ||
         errorMessage.includes('parse') ||
         errorMessage.includes('JSON') ||
         errorMessage.includes('schema')
       ) {
-        userGuidance =
-          'This appears to be a configuration issue. Check your plugin settings in .claude/settings.json'
+        userGuidance = `This appears to be a configuration issue. Check your plugin settings in ${PROJECT_DIR_NAME}/settings.json`
       } else {
         userGuidance =
           'Please fix the plugin configuration or remove problematic plugins from your settings.'
@@ -122,7 +121,7 @@ export async function processSessionStartHooks(
       )
 
       // Continue execution - plugin hooks won't be available, but project-level hooks
-      // from .claude/settings.json (loaded via captureHooksConfigSnapshot) will still work
+      // from the project settings file (loaded via captureHooksConfigSnapshot) will still work
     }
   }
 
