@@ -1,6 +1,19 @@
-import { DIAMOND_FILLED, DIAMOND_OPEN } from '../constants/figures.js'
+import {
+  DIAMOND_FILLED,
+  DIAMOND_OPEN,
+  GEAR_ICON,
+} from '../constants/figures.js'
 import { count } from '../utils/array.js'
+import { truncateToWidth } from '../utils/truncate.js'
 import type { BackgroundTaskState } from './types.js'
+
+/**
+ * Display-width budget for the live workflow detail appended to the pill.
+ * The pill shares the footer line with the mode/model indicators, so the detail
+ * gives up its tail rather than pushing them off screen; BackgroundTaskStatus's
+ * own width handling deals with whatever is left.
+ */
+export const WORKFLOW_SUMMARY_MAX_COLS = 40
 
 /**
  * Produces the compact footer-pill label for a set of background tasks.
@@ -54,8 +67,19 @@ export function getPillLabel(tasks: BackgroundTaskState[]): string {
           ? `${DIAMOND_OPEN} 1 cloud session`
           : `${DIAMOND_OPEN} ${n} cloud sessions`
       }
-      case 'local_workflow':
+      case 'local_workflow': {
+        // A single run can afford to name itself and its live position — the summary
+        // is kept current by workflow/taskStateBridge. Past one run there is no
+        // meaningful shared phase, so fall back to the plain count.
+        const first = tasks[0]!
+        if (n === 1 && first.type === 'local_workflow') {
+          const detail = first.summary
+            ? ` · ${truncateToWidth(first.summary, WORKFLOW_SUMMARY_MAX_COLS)}`
+            : ''
+          return `${GEAR_ICON} ${first.workflowName}${detail}`
+        }
         return n === 1 ? '1 background workflow' : `${n} background workflows`
+      }
       case 'monitor_mcp':
         return n === 1 ? '1 monitor' : `${n} monitors`
       case 'dream':

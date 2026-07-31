@@ -31,6 +31,10 @@ export const REFERENCE_MARK = '\u203b' // ※ - komejirushi, away-summary recap 
 // Issue flag indicator
 export const FLAG_ICON = '\u2691' // ⚑ - used for issue flag banner
 
+// Workflow indicator. Bare U+2699 (no VS16) so terminals render it as a
+// single-cell text glyph rather than a double-width emoji in the footer pill.
+export const GEAR_ICON = '\u2699' // gear - running workflow
+
 // Blockquote indicator
 export const BLOCKQUOTE_BAR = '\u258e' // ▎ - left one-quarter block, used as blockquote line prefix
 export const HEAVY_HORIZONTAL = '\u2501' // ━ - heavy box-drawing horizontal
