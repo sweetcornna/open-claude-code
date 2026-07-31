@@ -43,7 +43,9 @@ import { asAgentId } from 'src/types/ids.js';
 import { runWithAgentContext, type SubagentContext } from 'src/utils/agentContext.js';
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from 'src/utils/cwd.js';
+import { getSubscriptionType } from 'src/utils/auth.js';
 import { logForDebugging } from 'src/utils/debug.js';
+import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { AbortError, errorMessage, toError } from 'src/utils/errors.js';
 import type { CacheSafeParams } from 'src/utils/forkedAgent.js';
@@ -70,6 +72,7 @@ import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
+import { formatAgentLine, shouldInjectAgentListInMessages } from './agentListing.js';
 import {
   agentToolResultSchema,
   classifyHandoffIfNeeded,
@@ -90,7 +93,7 @@ import {
 } from './forkSubagent.js';
 import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
-import { getPrompt } from './prompt.js';
+import { renderAgentPrompt } from './prompt.js';
 import { runAgent } from './runAgent.js';
 import {
   renderGroupedAgentToolUse,
@@ -304,7 +307,33 @@ export const AgentTool = buildTool({
     // Use inline env check instead of coordinatorModule to avoid circular
     // dependency issues during test module loading.
     const isCoordinator = feature('COORDINATOR_MODE') ? isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE) : false;
-    return await getPrompt(filteredAgents, isCoordinator, allowedAgentTypes);
+
+    // Filter agents by allowed types when Agent(x,y) restricts which agents can be spawned
+    const effectiveAgents = allowedAgentTypes
+      ? filteredAgents.filter(a => allowedAgentTypes.includes(a.agentType))
+      : filteredAgents;
+
+    // When the gate is on, the agent list lives in an agent_listing_delta
+    // attachment (see attachments.ts) instead of inline in the description.
+    // This keeps the tool description static across MCP/plugin/permission
+    // changes so the tools-block prompt cache doesn't bust every time an
+    // agent loads.
+    const listViaAttachment = shouldInjectAgentListInMessages();
+    const inProcessTeammate = isInProcessTeammate();
+
+    return renderAgentPrompt({
+      agentLines: listViaAttachment ? null : effectiveAgents.map(formatAgentLine),
+      isCoordinator,
+      forkEnabled: isForkSubagentEnabled(),
+      // Coordinator mode returns before either is read; don't pay for the
+      // embedded-tools probe or the auth round-trip in that path.
+      embeddedSearchTools: isCoordinator ? false : hasEmbeddedSearchTools(),
+      includeConcurrencyNote: !isCoordinator && !listViaAttachment && getSubscriptionType() !== 'pro',
+      backgroundAgentsAvailable: !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS) && !inProcessTeammate,
+      antUser: process.env.USER_TYPE === 'ant',
+      inProcessTeammate,
+      teammate: inProcessTeammate ? false : isTeammate(),
+    });
   },
   name: AGENT_TOOL_NAME,
   searchHint: 'delegate work to a subagent',

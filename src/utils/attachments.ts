@@ -129,7 +129,7 @@ import { AGENT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AgentTool
 import {
   formatAgentLine,
   shouldInjectAgentListInMessages,
-} from '@open-claude-code/builtin-tools/tools/AgentTool/prompt.js'
+} from '@open-claude-code/builtin-tools/tools/AgentTool/agentListing.js'
 import { filterDeniedAgents } from './permissions/permissions.js'
 import { getSubscriptionType } from './auth.js'
 import { mcpInfoFromString } from '../services/mcp/mcpStringUtils.js'
