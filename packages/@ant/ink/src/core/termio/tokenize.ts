@@ -132,6 +132,19 @@ function tokenize(
     textStart = i
   }
 
+  // A sequence turned out to be malformed (invalid byte for the current
+  // state). Bail back to ground and let the remaining bytes be re-scanned as
+  // text — but start that text *after* the introducing ESC rather than
+  // rewinding onto it. A literal 0x1b inside a text token flows straight
+  // through the keypress parser to the renderer and paints a garbage glyph;
+  // the ESC is protocol framing, not content, so it is dropped here. Note
+  // that `i` is deliberately not advanced: the byte that invalidated the
+  // sequence still has to be handled by the ground state.
+  const abortSequence = (): void => {
+    result.state = 'ground'
+    textStart = seqStart + 1
+  }
+
   while (i < data.length) {
     const code = data.charCodeAt(i)
 
@@ -179,9 +192,8 @@ function tokenize(
           result.state = 'escape'
           i++
         } else {
-          // Invalid - treat ESC as text
-          result.state = 'ground'
-          textStart = seqStart
+          // Invalid - re-scan the rest as text, dropping the ESC
+          abortSequence()
         }
         break
 
@@ -195,9 +207,8 @@ function tokenize(
           i++
           emitSequence(data.slice(seqStart, i))
         } else {
-          // Invalid - treat as text
-          result.state = 'ground'
-          textStart = seqStart
+          // Invalid - re-scan the rest as text, dropping the ESC
+          abortSequence()
         }
         break
 
@@ -249,9 +260,8 @@ function tokenize(
         } else if (isCSIParam(code) || isCSIIntermediate(code)) {
           i++
         } else {
-          // Invalid CSI - abort, treat as text
-          result.state = 'ground'
-          textStart = seqStart
+          // Invalid CSI - re-scan the rest as text, dropping the ESC
+          abortSequence()
         }
         break
 
@@ -261,9 +271,8 @@ function tokenize(
           i++
           emitSequence(data.slice(seqStart, i))
         } else {
-          // Invalid - treat as text
-          result.state = 'ground'
-          textStart = seqStart
+          // Invalid - re-scan the rest as text, dropping the ESC
+          abortSequence()
         }
         break
 
