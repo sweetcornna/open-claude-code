@@ -1,4 +1,4 @@
-import type { DOMElement } from './dom.js'
+import type { DOMElement, FocusManagerLike } from './dom-types.js'
 import { FocusEvent } from './events/focus-event.js'
 
 const MAX_FOCUS_STACK = 32
@@ -12,7 +12,7 @@ const MAX_FOCUS_STACK = 32
  * Stored on the root DOMElement so any node can reach it by walking
  * parentNode (like browser's `node.ownerDocument`).
  */
-export class FocusManager {
+export class FocusManager implements FocusManagerLike {
   activeElement: DOMElement | null = null
   private dispatchFocusEvent: (target: DOMElement, event: FocusEvent) => boolean
   private enabled = true
@@ -176,6 +176,6 @@ export function getRootNode(node: DOMElement): DOMElement {
  * Walk up to root and return its FocusManager.
  * Like browser's `node.ownerDocument` — focus belongs to the root.
  */
-export function getFocusManager(node: DOMElement): FocusManager {
+export function getFocusManager(node: DOMElement): FocusManagerLike {
   return getRootNode(node).focusManager!
 }

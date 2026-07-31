@@ -1,36 +1,14 @@
 import chalk from 'chalk'
-import cliBoxes, { type Boxes, type BoxStyle } from 'cli-boxes'
+import cliBoxes, { type Boxes } from 'cli-boxes'
+import { CUSTOM_BORDER_STYLES } from './border-styles.js'
 import { applyColor } from './colorize.js'
-import type { DOMNode } from './dom.js'
+import type { DOMNode } from './dom-types.js'
 import type Output from './output.js'
 import { stringWidth } from './stringWidth.js'
 import type { Color } from './styles.js'
 
-export type BorderTextOptions = {
-  content: string // Pre-rendered string with ANSI color codes
-  position: 'top' | 'bottom'
-  align: 'start' | 'end' | 'center'
-  offset?: number // Only used with 'start' or 'end' alignment. Number of characters from the edge.
-}
-
-export const CUSTOM_BORDER_STYLES = {
-  dashed: {
-    top: '╌',
-    left: '╎',
-    right: '╎',
-    bottom: '╌',
-    // there aren't any line-drawing characters for dashes unfortunately
-    topLeft: ' ',
-    topRight: ' ',
-    bottomLeft: ' ',
-    bottomRight: ' ',
-  },
-} as const
-
-export type BorderStyle =
-  | keyof Boxes
-  | keyof typeof CUSTOM_BORDER_STYLES
-  | BoxStyle
+export { CUSTOM_BORDER_STYLES } from './border-styles.js'
+export type { BorderStyle, BorderTextOptions } from './border-styles.js'
 
 function embedTextInBorder(
   borderLine: string,
