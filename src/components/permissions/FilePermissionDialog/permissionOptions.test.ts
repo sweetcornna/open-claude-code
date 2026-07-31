@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import { getGlobalOccFolderPermissionPattern } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
+import { getGlobalOccFolderPermissionPattern } from '@open-claude-code/builtin-tools/tools/FileEditTool/occFolderPermissions.js'
 import { PROJECT_DIR_NAME, occConfigDir } from '../../../config/paths.js'
 import { getOriginalCwd } from '../../../bootstrap/state.js'
 import { isInGlobalOccFolder, isInOccFolder } from './permissionOptions.js'

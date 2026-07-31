@@ -4,11 +4,11 @@ import {
 } from '../../../services/analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js'
 import type { ToolPermissionContext } from '../../../Tool.js'
+import { FILE_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
 import {
-  FILE_EDIT_TOOL_NAME,
   getGlobalOccFolderPermissionPattern,
   OCC_FOLDER_PERMISSION_PATTERN,
-} from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
+} from '@open-claude-code/builtin-tools/tools/FileEditTool/occFolderPermissions.js'
 import { env } from '../../../utils/env.js'
 import { generateSuggestions } from '../../../utils/permissions/filesystem.js'
 import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpdateSchema.js'
