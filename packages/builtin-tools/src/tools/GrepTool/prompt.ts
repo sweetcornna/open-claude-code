@@ -1,7 +1,9 @@
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
-import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
+import { BASH_TOOL_NAME } from '../BashTool/constants.js'
+import { GREP_TOOL_NAME } from './constants.js'
 
-export const GREP_TOOL_NAME = 'Grep'
+// Compat shim — GREP_TOOL_NAME now lives in the pure constants leaf.
+export { GREP_TOOL_NAME }
 
 export function getDescription(): string {
   return `A powerful search tool built on ripgrep

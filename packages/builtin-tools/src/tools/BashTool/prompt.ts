@@ -1,60 +1,75 @@
-import { feature } from 'bun:bundle'
-import { prependBullets } from 'src/constants/prompts.js'
-import { getAttributionTexts } from 'src/utils/attribution.js'
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
-import { shouldIncludeGitInstructions } from 'src/utils/gitSettings.js'
-import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js'
-import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
-import {
-  getDefaultBashTimeoutMs,
-  getMaxBashTimeoutMs,
-} from 'src/utils/timeouts.js'
-import {
-  getUndercoverInstructions,
-  isUndercover,
-} from 'src/utils/undercover.js'
+/**
+ * Bash tool prompt text.
+ *
+ * PURE LEAF — must not import from `src/`, and may only import other tools'
+ * `constants.ts`. Every environment, settings, feature-flag and sandbox read
+ * that used to live here now happens in BashTool.tsx's `prompt()` method,
+ * which computes the params below and calls `renderBashPrompt()`.
+ *
+ * Why: this file used to pull SandboxManager, the attribution/settings stack,
+ * the permissions filesystem helpers and the whole TodoWriteTool object into
+ * the graph. Anything that merely wanted `BASH_TOOL_NAME` paid for all of it,
+ * and the resulting import cycles were the dominant seed in the module graph.
+ *
+ * The output of these renderers feeds the API prompt cache. Changing a byte
+ * busts the cached tools block for every session — see the characterization
+ * snapshots in tools/__tests__/promptCharacterization.runner.ts.
+ */
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
-import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js'
-import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/prompt.js'
-import { GLOB_TOOL_NAME } from '../GlobTool/prompt.js'
-import { GREP_TOOL_NAME } from '../GrepTool/prompt.js'
-import { TodoWriteTool } from '../TodoWriteTool/TodoWriteTool.js'
-import { BASH_TOOL_NAME } from './toolName.js'
+import { FILE_READ_TOOL_NAME } from '../FileReadTool/constants.js'
+import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/constants.js'
+import { GLOB_TOOL_NAME } from '../GlobTool/constants.js'
+import { GREP_TOOL_NAME } from '../GrepTool/constants.js'
+import { TODO_WRITE_TOOL_NAME } from '../TodoWriteTool/constants.js'
+import { BASH_TOOL_NAME } from './constants.js'
 
-export function getDefaultTimeoutMs(): number {
-  return getDefaultBashTimeoutMs()
+/**
+ * Local copy of `prependBullets` from src/constants/prompts.ts. Importing it
+ * would re-anchor this module in the src/ graph, which is exactly what the
+ * leaf extraction removed. Six lines of duplication buys the whole isolation.
+ */
+function prependBullets(items: Array<string | string[]>): string[] {
+  return items.flatMap(item =>
+    Array.isArray(item)
+      ? item.map(subitem => `  - ${subitem}`)
+      : [` - ${item}`],
+  )
 }
 
-export function getMaxTimeoutMs(): number {
-  return getMaxBashTimeoutMs()
+const BACKGROUND_USAGE_NOTE =
+  "You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away - you'll be notified when it finishes. You do not need to use '&' at the end of the command when using this parameter."
+
+export interface BashGitPromptParams {
+  /**
+   * Undercover instructions plus a trailing newline, or ''. Computed by the
+   * caller because the text and the "am I undercover" check both live in
+   * src/utils/undercover.ts.
+   *
+   * Defense-in-depth: this survives even when git instructions are disabled
+   * entirely. Attribution stripping and model-ID hiding are mechanical and
+   * work regardless, but the explicit "don't blow your cover" instructions
+   * are the last line of defense against the model volunteering an internal
+   * codename in a commit message.
+   */
+  undercoverSection: string
+  /** settings.includeGitInstructions / CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS. */
+  includeGitInstructions: boolean
+  /** USER_TYPE === 'ant' — gets the short version pointing at skills. */
+  antUser: boolean
+  /** Ant users only: false under CLAUDE_CODE_SIMPLE. */
+  includeSkillsSection: boolean
+  /** External users only: attribution trailer for commits, or ''. */
+  commitAttribution: string
+  /** External users only: attribution trailer for PR bodies, or ''. */
+  prAttribution: string
 }
 
-function getBackgroundUsageNote(): string | null {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS)) {
-    return null
-  }
-  return "You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away - you'll be notified when it finishes. You do not need to use '&' at the end of the command when using this parameter."
-}
+function renderCommitAndPRInstructions(p: BashGitPromptParams): string {
+  if (!p.includeGitInstructions) return p.undercoverSection
 
-function getCommitAndPRInstructions(): string {
-  // Defense-in-depth: undercover instructions must survive even if the user
-  // has disabled git instructions entirely. Attribution stripping and model-ID
-  // hiding are mechanical and work regardless, but the explicit "don't blow
-  // your cover" instructions are the last line of defense against the model
-  // volunteering an internal codename in a commit message.
-  const undercoverSection =
-    process.env.USER_TYPE === 'ant' && isUndercover()
-      ? getUndercoverInstructions() + '\n'
-      : ''
-
-  if (!shouldIncludeGitInstructions()) return undercoverSection
-
-  // For ant users, use the short version pointing to skills
-  if (process.env.USER_TYPE === 'ant') {
-    const skillsSection = !isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+  if (p.antUser) {
+    const skillsSection = p.includeSkillsSection
       ? `For git commits and pull requests, use the \`/commit\` and \`/commit-push-pr\` skills:
 - \`/commit\` - Create a git commit with staged changes
 - \`/commit-push-pr\` - Commit, push, and create a pull request
@@ -65,7 +80,7 @@ Before creating a pull request, run \`/simplify\` to review your changes, then t
 
 `
       : ''
-    return `${undercoverSection}# Git operations
+    return `${p.undercoverSection}# Git operations
 
 ${skillsSection}IMPORTANT: NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it.
 
@@ -75,8 +90,7 @@ Use the gh command via the Bash tool for other GitHub-related tasks including wo
 - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`
   }
 
-  // For external users, include full inline instructions
-  const { commit: commitAttribution, pr: prAttribution } = getAttributionTexts()
+  const { commitAttribution, prAttribution } = p
 
   return `# Committing changes with git
 
@@ -111,7 +125,7 @@ Git Safety Protocol:
 
 Important notes:
 - NEVER run additional commands to read or explore code, besides git bash commands
-- NEVER use the ${TodoWriteTool.name} or ${AGENT_TOOL_NAME} tools
+- NEVER use the ${TODO_WRITE_TOOL_NAME} or ${AGENT_TOOL_NAME} tools
 - DO NOT push to the remote repository unless the user explicitly asks you to do so
 - IMPORTANT: Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported.
 - IMPORTANT: Do not use --no-edit with git rebase commands, as the --no-edit flag is not a valid option for git rebase.
@@ -153,80 +167,48 @@ EOF
 </example>
 
 Important:
-- DO NOT use the ${TodoWriteTool.name} or ${AGENT_TOOL_NAME} tools
+- DO NOT use the ${TODO_WRITE_TOOL_NAME} or ${AGENT_TOOL_NAME} tools
 - Return the PR URL when you're done, so the user can see it
 
 # Other common operations
 - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`
 }
 
-// SandboxManager merges config from multiple sources (settings layers, defaults,
-// CLI flags) without deduping, so paths like ~/.cache appear 3× in allowOnly.
-// Dedup here before inlining into the prompt — affects only what the model sees,
-// not sandbox enforcement. Saves ~150-200 tokens/request when sandbox is enabled.
-function dedup<T>(arr: T[] | undefined): T[] | undefined {
-  if (!arr || arr.length === 0) return arr
-  return [...new Set(arr)]
+export interface BashSandboxPromptParams {
+  /**
+   * `jsonStringify` of the filesystem config, or null when it has no keys.
+   *
+   * Serialized by the caller: SandboxManager merges config from multiple
+   * sources (settings layers, defaults, CLI flags) without deduping, so paths
+   * like ~/.cache appear 3× in allowOnly, and the per-UID temp dir has to be
+   * rewritten to "$TMPDIR" so the prompt is identical across users. Both are
+   * data-shaping concerns that belong next to SandboxManager, not here.
+   */
+  filesystemJson: string | null
+  /** `jsonStringify` of the network config, or null when it has no keys. */
+  networkJson: string | null
+  /** `jsonStringify` of the ignored-violations config, or null when unset. */
+  ignoredViolationsJson: string | null
+  /** Whether `dangerouslyDisableSandbox: true` is permitted by policy. */
+  allowUnsandboxedCommands: boolean
 }
 
-function getSimpleSandboxSection(): string {
-  if (!SandboxManager.isSandboxingEnabled()) {
-    return ''
-  }
-
-  const fsReadConfig = SandboxManager.getFsReadConfig()
-  const fsWriteConfig = SandboxManager.getFsWriteConfig()
-  const networkRestrictionConfig = SandboxManager.getNetworkRestrictionConfig()
-  const allowUnixSockets = SandboxManager.getAllowUnixSockets()
-  const ignoreViolations = SandboxManager.getIgnoreViolations()
-  const allowUnsandboxedCommands =
-    SandboxManager.areUnsandboxedCommandsAllowed()
-
-  // Replace the per-UID temp dir literal (e.g. /private/tmp/claude-1001/) with
-  // "$TMPDIR" so the prompt is identical across users — avoids busting the
-  // cross-user global prompt cache. The sandbox already sets $TMPDIR at runtime.
-  const claudeTempDir = getClaudeTempDir()
-  const normalizeAllowOnly = (paths: string[]): string[] =>
-    [...new Set(paths)].map(p => (p === claudeTempDir ? '$TMPDIR' : p))
-
-  const filesystemConfig = {
-    read: {
-      denyOnly: dedup(fsReadConfig.denyOnly),
-      ...(fsReadConfig.allowWithinDeny && {
-        allowWithinDeny: dedup(fsReadConfig.allowWithinDeny),
-      }),
-    },
-    write: {
-      allowOnly: normalizeAllowOnly(fsWriteConfig.allowOnly),
-      denyWithinAllow: dedup(fsWriteConfig.denyWithinAllow),
-    },
-  }
-
-  const networkConfig = {
-    ...(networkRestrictionConfig?.allowedHosts && {
-      allowedHosts: dedup(networkRestrictionConfig.allowedHosts),
-    }),
-    ...(networkRestrictionConfig?.deniedHosts && {
-      deniedHosts: dedup(networkRestrictionConfig.deniedHosts),
-    }),
-    ...(allowUnixSockets && { allowUnixSockets: dedup(allowUnixSockets) }),
-  }
+function renderSandboxSection(p: BashSandboxPromptParams | null): string {
+  if (p === null) return ''
 
   const restrictionsLines = []
-  if (Object.keys(filesystemConfig).length > 0) {
-    restrictionsLines.push(`Filesystem: ${jsonStringify(filesystemConfig)}`)
+  if (p.filesystemJson !== null) {
+    restrictionsLines.push(`Filesystem: ${p.filesystemJson}`)
   }
-  if (Object.keys(networkConfig).length > 0) {
-    restrictionsLines.push(`Network: ${jsonStringify(networkConfig)}`)
+  if (p.networkJson !== null) {
+    restrictionsLines.push(`Network: ${p.networkJson}`)
   }
-  if (ignoreViolations) {
-    restrictionsLines.push(
-      `Ignored violations: ${jsonStringify(ignoreViolations)}`,
-    )
+  if (p.ignoredViolationsJson !== null) {
+    restrictionsLines.push(`Ignored violations: ${p.ignoredViolationsJson}`)
   }
 
   const sandboxOverrideItems: Array<string | string[]> =
-    allowUnsandboxedCommands
+    p.allowUnsandboxedCommands
       ? [
           'You should always default to running commands within the sandbox. Do NOT attempt to set `dangerouslyDisableSandbox: true` unless:',
           [
@@ -272,10 +254,27 @@ function getSimpleSandboxSection(): string {
   ].join('\n')
 }
 
-export function getSimplePrompt(): string {
-  // Ant-native builds alias find/grep to embedded bfs/ugrep in Claude's shell,
-  // so we don't steer away from them (and Glob/Grep tools are removed).
-  const embedded = hasEmbeddedSearchTools()
+export interface BashPromptParams {
+  /**
+   * Ant-native builds alias find/grep to embedded bfs/ugrep in Claude's shell,
+   * so we don't steer away from them (and Glob/Grep tools are removed).
+   */
+  embeddedSearchTools: boolean
+  /** Ceiling accepted by the `timeout` parameter, in milliseconds. */
+  maxTimeoutMs: number
+  /** Timeout applied when the model omits `timeout`, in milliseconds. */
+  defaultTimeoutMs: number
+  /** False under CLAUDE_CODE_DISABLE_BACKGROUND_TASKS. */
+  backgroundTasksEnabled: boolean
+  /** feature('MONITOR_TOOL') — swaps in the Monitor-aware sleep guidance. */
+  monitorTool: boolean
+  /** Null when sandboxing is disabled. */
+  sandbox: BashSandboxPromptParams | null
+  git: BashGitPromptParams
+}
+
+export function renderBashPrompt(p: BashPromptParams): string {
+  const embedded = p.embeddedSearchTools
 
   const toolPreferenceItems = [
     ...(embedded
@@ -309,14 +308,14 @@ export function getSimplePrompt(): string {
 
   const sleepSubitems = [
     'Do not sleep between commands that can run immediately — just run them.',
-    ...(feature('MONITOR_TOOL')
+    ...(p.monitorTool
       ? [
           'Use the Monitor tool to stream events from a background process (each stdout line is a notification). For one-shot "wait until done," use Bash with run_in_background instead.',
         ]
       : []),
     'For long-running commands, use `run_in_background` — you will be notified when it completes. Do not poll.',
     'Do not retry failing commands in a sleep loop — diagnose the root cause.',
-    ...(feature('MONITOR_TOOL')
+    ...(p.monitorTool
       ? [
           '`sleep N` as the first command with N ≥ 2 is blocked. If you need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.',
         ]
@@ -324,14 +323,13 @@ export function getSimplePrompt(): string {
           'If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.',
         ]),
   ]
-  const backgroundNote = getBackgroundUsageNote()
 
   const instructionItems: Array<string | string[]> = [
     'If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.',
     'Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
     'Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it.',
-    `You may specify an optional timeout in milliseconds (up to ${getMaxTimeoutMs()}ms / ${getMaxTimeoutMs() / 60000} minutes). By default, your command will timeout after ${getDefaultTimeoutMs()}ms (${getDefaultTimeoutMs() / 60000} minutes).`,
-    ...(backgroundNote !== null ? [backgroundNote] : []),
+    `You may specify an optional timeout in milliseconds (up to ${p.maxTimeoutMs}ms / ${p.maxTimeoutMs / 60000} minutes). By default, your command will timeout after ${p.defaultTimeoutMs}ms (${p.defaultTimeoutMs / 60000} minutes).`,
+    ...(p.backgroundTasksEnabled ? [BACKGROUND_USAGE_NOTE] : []),
     'When issuing multiple commands:',
     multipleCommandsSubitems,
     'For git commands:',
@@ -349,6 +347,8 @@ export function getSimplePrompt(): string {
       : []),
   ]
 
+  const gitInstructions = renderCommitAndPRInstructions(p.git)
+
   return [
     'Executes a given bash command and returns its output.',
     '',
@@ -361,7 +361,7 @@ export function getSimplePrompt(): string {
     '',
     '# Instructions',
     ...prependBullets(instructionItems),
-    getSimpleSandboxSection(),
-    ...(getCommitAndPRInstructions() ? ['', getCommitAndPRInstructions()] : []),
+    renderSandboxSection(p.sandbox),
+    ...(gitInstructions ? ['', gitInstructions] : []),
   ].join('\n')
 }

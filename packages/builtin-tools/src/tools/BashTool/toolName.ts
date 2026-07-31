@@ -1,2 +1,2 @@
-// Here to break circular dependency from prompt.ts
-export const BASH_TOOL_NAME = 'Bash'
+// Compat shim — BASH_TOOL_NAME now lives in the pure constants leaf.
+export { BASH_TOOL_NAME } from './constants.js'
