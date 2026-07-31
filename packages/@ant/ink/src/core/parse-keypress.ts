@@ -719,6 +719,13 @@ function parseKeypress(s: string = ''): ParsedKey {
   } else if (s === '\x1f') {
     key.name = '_'
     key.ctrl = true
+  } else if (s === '\x00') {
+    // NUL is what a legacy terminal sends for Ctrl+Space. It must be caught
+    // before the `s <= '\x1a'` branch below, which would map charCode 0 to
+    // 'a' - 1 == '`' and report ctrl+backtick. Matches the kitty CSI-u path
+    // (ESC[32;5u -> keycodeToName(32) -> 'space' + ctrl).
+    key.name = 'space'
+    key.ctrl = true
   } else if (s <= '\x1a' && s.length === 1) {
     key.name = String.fromCharCode(s.charCodeAt(0) + 'a'.charCodeAt(0) - 1)
     key.ctrl = true
