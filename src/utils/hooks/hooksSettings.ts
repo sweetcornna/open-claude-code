@@ -1,4 +1,5 @@
 import { resolve } from 'path'
+import { occConfigPath, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import type { AppState } from '../../state/AppState.js'
@@ -170,16 +171,13 @@ export function getHooksForEvent(
 export function hookSourceDescriptionDisplayString(source: HookSource): string {
   switch (source) {
     case 'userSettings':
-      return 'User settings (~/.claude/settings.json)'
+      return `User settings (${occConfigPath('settings.json')})`
     case 'projectSettings':
-      return 'Project settings (.claude/settings.json)'
+      return `Project settings (${PROJECT_DIR_NAME}/settings.json)`
     case 'localSettings':
-      return 'Local settings (.claude/settings.local.json)'
+      return `Local settings (${PROJECT_DIR_NAME}/settings.local.json)`
     case 'pluginHook':
-      // TODO: Get the actual plugin hook file paths instead of using glob pattern
-      // We should capture the specific plugin paths during hook registration and display them here
-      // e.g., "Plugin hooks (~/.claude/plugins/repos/source/example-plugin/example-plugin/hooks/hooks.json)"
-      return 'Plugin hooks (~/.claude/plugins/*/hooks/hooks.json)'
+      return `Plugin hooks (${occConfigPath('plugins')}/*/hooks/hooks.json)`
     case 'sessionHook':
       return 'Session hooks (in-memory, temporary)'
     case 'builtinHook':

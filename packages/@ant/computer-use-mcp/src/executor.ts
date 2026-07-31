@@ -131,7 +131,7 @@ export interface ComputerExecutor {
   // ── Element-targeted actions (Windows UIA, optional) ────────────────────
   /** Open terminal and launch an agent CLI */
   openTerminal?(opts: {
-    agent: 'claude' | 'codex' | 'gemini' | 'custom'
+    agent: 'self' | 'codex' | 'gemini' | 'custom'
     command?: string
     terminal?: 'wt' | 'powershell' | 'cmd'
     workingDirectory?: string

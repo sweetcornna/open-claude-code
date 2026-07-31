@@ -1,3 +1,4 @@
+import { BIN_NAME } from '../../constants/brand.js';
 import type { LocalJSXCommandOnDone, LocalJSXCommandContext } from '../../types/command.js';
 
 /**
@@ -16,7 +17,9 @@ export async function call(
 
   // attach is interactive/blocking — not available inside the REPL
   if (sub === 'attach') {
-    onDone('Use `claude daemon attach` from the CLI. Attach is not available inside the REPL.', { display: 'system' });
+    onDone(`Use \`${BIN_NAME} daemon attach\` from the CLI. Attach is not available inside the REPL.`, {
+      display: 'system',
+    });
     return null;
   }
 

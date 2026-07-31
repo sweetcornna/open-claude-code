@@ -1,8 +1,10 @@
+import { BIN_NAME } from '../../constants/brand.js'
+
 export const TEAM_LEAD_NAME = 'team-lead'
-export const SWARM_SESSION_NAME = 'claude-swarm'
+export const SWARM_SESSION_NAME = `${BIN_NAME}-swarm`
 export const SWARM_VIEW_WINDOW_NAME = 'swarm-view'
 export const TMUX_COMMAND = 'tmux'
-export const HIDDEN_SESSION_NAME = 'claude-hidden'
+export const HIDDEN_SESSION_NAME = `${BIN_NAME}-hidden`
 
 /**
  * Gets the socket name for external swarm sessions (when user is not in tmux).
@@ -10,7 +12,7 @@ export const HIDDEN_SESSION_NAME = 'claude-hidden'
  * Includes PID to ensure multiple Claude instances don't conflict.
  */
 export function getSwarmSocketName(): string {
-  return `claude-swarm-${process.pid}`
+  return `${BIN_NAME}-swarm-${process.pid}`
 }
 
 /**

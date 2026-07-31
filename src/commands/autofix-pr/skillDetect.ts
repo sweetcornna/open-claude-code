@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 
 export function detectAutofixSkills(cwd: string): string[] {
   const candidates = [
     'AUTOFIX.md',
-    '.claude/skills/autofix.md',
-    '.claude/skills/autofix-pr/SKILL.md',
+    join(PROJECT_DIR_NAME, 'skills', 'autofix.md'),
+    join(PROJECT_DIR_NAME, 'skills', 'autofix-pr', 'SKILL.md'),
   ]
   return candidates.filter(rel => existsSync(join(cwd, rel)))
 }

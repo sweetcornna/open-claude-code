@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import { occGlobalConfigFile, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { getModelOptions } from 'src/utils/model/modelOptions.js'
 import { isVoiceGrowthBookEnabled } from 'src/voice/voiceModeEnabled.js'
 import {
@@ -59,10 +60,10 @@ export function generatePrompt(): string {
 ## Configurable settings list
 The following settings are available for you to change:
 
-### Global Settings (stored in ~/.claude.json)
+### Global Settings (stored in ${occGlobalConfigFile()})
 ${globalSettings.join('\n')}
 
-### Project Settings (stored in settings.json)
+### Project Settings (stored in ${PROJECT_DIR_NAME}/settings.json)
 ${projectSettings.join('\n')}
 
 ${modelSection}

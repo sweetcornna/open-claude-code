@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { type OptionWithDescription, Select } from '../../components/CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
+import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js';
 import { useAppState } from '../../state/AppState.js';
 import { isClaudeAISubscriber } from '../../utils/auth.js';
 import { openBrowser } from '../../utils/browser.js';
@@ -125,7 +126,7 @@ function ClaudeInChromeMenu({
     <Dialog title="Claude in Chrome (Beta)" onCancel={() => onDone()} color="chromeYellow">
       <Box flexDirection="column" gap={1}>
         <Text>
-          Claude in Chrome works with the Chrome extension to let you control your browser directly from Claude Code.
+          Claude in Chrome works with the Chrome extension to let you control your browser directly from {DISPLAY_NAME}.
           Navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network
           requests.
         </Text>
@@ -161,9 +162,9 @@ function ClaudeInChromeMenu({
 
             <Text>
               <Text dimColor>Usage: </Text>
-              <Text>claude --chrome</Text>
+              <Text>{BIN_NAME} --chrome</Text>
               <Text dimColor> or </Text>
-              <Text>claude --no-chrome</Text>
+              <Text>{BIN_NAME} --no-chrome</Text>
             </Text>
 
             <Text dimColor>

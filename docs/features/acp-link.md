@@ -63,17 +63,17 @@ packages/acp-link/
 
 ```bash
 # 直接运行（在 monorepo 中）
-# 注意：claude 本身不支持 ACP，需要用 ccb-bun --acp 启动 ACP agent
-bun packages/acp-link/src/cli/bin.ts ccb-bun -- --acp
+# 注意：claude 本身不支持 ACP，需要用 occ-bun --acp 启动 ACP agent
+bun packages/acp-link/src/cli/bin.ts occ-bun -- --acp
 
 # 指定端口和主机
-acp-link --port 9000 --host 0.0.0.0 ccb-bun -- --acp
+acp-link --port 9000 --host 0.0.0.0 occ-bun -- --acp
 
 # 启用 HTTPS（自签名证书）
-acp-link --https ccb-bun -- --acp
+acp-link --https occ-bun -- --acp
 
 # 调试模式
-acp-link --debug ccb-bun -- --acp
+acp-link --debug occ-bun -- --acp
 ```
 
 ### CLI 参考
@@ -94,7 +94,7 @@ FLAGS
     -v  --version   Print version information and exit
 
 ARGUMENTS
-  command...  Agent command followed by its arguments (e.g. "ccb-bun -- --acp")
+  command...  Agent command followed by its arguments (e.g. "occ-bun -- --acp")
 ```
 
 ## 四、认证
@@ -111,13 +111,13 @@ ws://localhost:9315/ws
 配置固定 token：
 
 ```bash
-ACP_AUTH_TOKEN=my-fixed-token acp-link ccb-bun -- --acp
+ACP_AUTH_TOKEN=my-fixed-token acp-link occ-bun -- --acp
 ```
 
 禁用认证（不推荐，仅用于开发）：
 
 ```bash
-acp-link --no-auth ccb-bun -- --acp
+acp-link --no-auth occ-bun -- --acp
 ```
 
 ## 五、RCS 集成
@@ -130,7 +130,7 @@ acp-link 支持将 ACP agent 注册到 Remote Control Server，通过 Web UI 远
 # 通过环境变量配置 RCS 连接
 ACP_RCS_URL=http://localhost:3000 \
 ACP_RCS_TOKEN=sk-rcs-your-key \
-acp-link ccb-bun -- --acp
+acp-link occ-bun -- --acp
 ```
 
 ### 注册流程（两步）
@@ -180,7 +180,7 @@ acp-link                          RCS
 示例：
 
 ```bash
-ACP_PERMISSION_MODE=auto acp-link ccb-bun -- --acp
+ACP_PERMISSION_MODE=auto acp-link occ-bun -- --acp
 ```
 
 ## 七、权限管道（2026-04-18 改进）

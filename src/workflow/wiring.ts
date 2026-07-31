@@ -5,7 +5,11 @@ import {
   type WorkflowToolDescriptor,
 } from '@open-claude-code/workflow-engine'
 import { buildTool, type Tool } from '../Tool.js'
-import { getWorkflowService } from './service.js'
+import {
+  getWorkflowService,
+  OCC_WORKFLOW_DIR,
+  OCC_WORKFLOW_RUNS_DIR,
+} from './service.js'
 
 /**
  * Adapts the engine's self-contained descriptor into a buildTool-compatible Tool.
@@ -23,7 +27,10 @@ function buildWorkflowTool(): Tool {
   const descriptor = (): WorkflowToolDescriptor => {
     if (!cachedDescriptor) {
       const { ports } = getWorkflowService()
-      cachedDescriptor = createWorkflowTool(ports)
+      cachedDescriptor = createWorkflowTool(ports, {
+        workflowDir: OCC_WORKFLOW_DIR,
+        workflowRunsDir: OCC_WORKFLOW_RUNS_DIR,
+      })
     }
     return cachedDescriptor
   }

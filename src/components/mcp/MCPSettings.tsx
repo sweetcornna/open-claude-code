@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
+import { BIN_NAME } from '../../constants/brand.js';
 import { ClaudeAuthProvider } from '../../services/mcp/auth.js';
 import type {
   McpClaudeAIProxyServerConfig,
@@ -125,7 +126,7 @@ export function MCPSettings({ onComplete }: Props): React.ReactNode {
     // Only show "no servers" message if no regular servers AND no agent servers
     if (servers.length === 0 && agentMcpServers.length === 0) {
       onComplete(
-        'No MCP servers configured. Please run /doctor if this is unexpected. Otherwise, run `claude mcp --help` or visit https://code.claude.com/docs/en/mcp to learn more.',
+        `No MCP servers configured. Please run /doctor if this is unexpected. Otherwise, run \`${BIN_NAME} mcp --help\` or visit https://code.claude.com/docs/en/mcp to learn more.`,
       );
     }
   }, [servers.length, filteredClients.length, agentMcpServers.length, onComplete]);

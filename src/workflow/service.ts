@@ -4,7 +4,6 @@ import {
   persistInlineScript,
   resolveNamedWorkflow,
   runWorkflow,
-  WORKFLOW_DIR_NAME,
   type WorkflowHostContext,
   type WorkflowInput,
   type WorkflowPorts,
@@ -12,6 +11,7 @@ import {
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getProjectRoot } from '../bootstrap/state.js'
+import { PROJECT_DIR_NAME } from '../config/paths.js'
 import { logForDebugging } from '../utils/debug.js'
 import { buildHostBundle, makeHostHandle } from './hostHandle.js'
 import { installWorkflowNotifications } from './notifications.js'
@@ -28,6 +28,8 @@ import {
  * on disk and is still resumable via getRunAsync until cleanupOldRuns reclaims it.
  */
 const LOAD_PERSISTED_LIMIT = 20
+export const OCC_WORKFLOW_DIR = join(PROJECT_DIR_NAME, 'workflows')
+export const OCC_WORKFLOW_RUNS_DIR = join(PROJECT_DIR_NAME, 'workflow-runs')
 import { createProgressBus } from './progress/bus.js'
 import {
   createProgressStoreFromBus,
@@ -162,11 +164,11 @@ export function makeService(
       }
     }
     if (input.name) {
-      const dir = join(getProjectRoot(), WORKFLOW_DIR_NAME)
+      const dir = join(getProjectRoot(), OCC_WORKFLOW_DIR)
       const found = await resolveNamedWorkflow(dir, input.name)
       if (!found) {
         throw new Error(
-          `Named workflow "${input.name}" not found (looked in ${WORKFLOW_DIR_NAME}/)`,
+          `Named workflow "${input.name}" not found (looked in ${OCC_WORKFLOW_DIR}/)`,
         )
       }
       return {
@@ -214,6 +216,7 @@ export function makeService(
             input.script,
             runId,
             host.cwd,
+            OCC_WORKFLOW_RUNS_DIR,
           )
         } catch (e) {
           logForDebugging(
@@ -237,6 +240,7 @@ export function makeService(
           ? { maxConcurrency: input.maxConcurrency }
           : {}),
         ...(input.resumeFromRunId ? { resume: true } : {}),
+        workflowDir: OCC_WORKFLOW_DIR,
       })
         .then(result => {
           if (result.status === 'completed') {
@@ -311,7 +315,7 @@ export function makeService(
 
     async listNamed(workflowDir) {
       return listNamedWorkflows(
-        workflowDir ?? join(getProjectRoot(), WORKFLOW_DIR_NAME),
+        workflowDir ?? join(getProjectRoot(), OCC_WORKFLOW_DIR),
       )
     },
   }

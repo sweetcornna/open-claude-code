@@ -25,7 +25,7 @@
 
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 
 /**
  * Directory name for project-level assets (settings, skills, agents,
@@ -38,6 +38,12 @@ export const PROJECT_DIR_NAME = '.occ'
  * used by the first-run migration and by compatibility fallbacks, never written.
  */
 export const LEGACY_PROJECT_DIR_NAME = '.claude'
+
+/** Both executable project-config roots must remain protected from writes. */
+export const PROJECT_CONFIG_DIR_NAMES = [
+  PROJECT_DIR_NAME,
+  LEGACY_PROJECT_DIR_NAME,
+] as const
 
 /** Basename of the user-level config root, under the home directory. */
 export const CONFIG_DIR_BASENAME = '.occ'
@@ -78,15 +84,12 @@ function configDirKey(): string {
  *
  * Memoized because this sits on hot startup paths with ~120 callers.
  */
-export const occConfigDir = memoize(
-  (): string =>
-    (
-      process.env.OCC_CONFIG_DIR ??
-      process.env.CLAUDE_CONFIG_DIR ??
-      join(homedir(), CONFIG_DIR_BASENAME)
-    ).normalize('NFC'),
-  configDirKey,
-)
+export const occConfigDir = memoize((): string => {
+  const configured = process.env.OCC_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR
+  return (
+    configured ? resolve(configured) : join(homedir(), CONFIG_DIR_BASENAME)
+  ).normalize('NFC')
+}, configDirKey)
 
 /**
  * The official Claude Code config root. Only the first-run migration and
@@ -99,6 +102,24 @@ export function legacyClaudeConfigDir(): string {
 /** Resolve a path inside the occ config root. */
 export function occConfigPath(...segments: string[]): string {
   return join(occConfigDir(), ...segments)
+}
+
+/** Config roots that sandboxed shell commands must never modify. */
+export function getProtectedConfigDirectories(
+  workingDirectories: readonly string[],
+): string[] {
+  const projectDirectories = workingDirectories.flatMap(directory =>
+    PROJECT_CONFIG_DIR_NAMES.map(projectConfigDirectory =>
+      resolve(directory, projectConfigDirectory),
+    ),
+  )
+  return [
+    ...new Set([
+      occConfigDir(),
+      legacyClaudeConfigDir(),
+      ...projectDirectories,
+    ]),
+  ]
 }
 
 /** Basename of the global state file, without the `.json` extension. */
@@ -118,7 +139,7 @@ export const GLOBAL_CONFIG_BASENAME = '.occ'
  * the startup keychain prefetch and must not drag in extra module init.
  */
 export function occGlobalConfigFile(oauthSuffix: string = ''): string {
-  const base =
-    process.env.OCC_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? homedir()
+  const configured = process.env.OCC_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR
+  const base = configured ? resolve(configured) : homedir()
   return join(base, `${GLOBAL_CONFIG_BASENAME}${oauthSuffix}.json`)
 }

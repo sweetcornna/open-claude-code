@@ -3159,6 +3159,25 @@ async function handlePromptRespond(
   )
 }
 
+type OpenTerminalOptions = Parameters<
+  NonNullable<ComputerExecutor['openTerminal']>
+>[0]
+
+function isTerminalAgent(value: string): value is OpenTerminalOptions['agent'] {
+  return (
+    value === 'self' ||
+    value === 'codex' ||
+    value === 'gemini' ||
+    value === 'custom'
+  )
+}
+
+function isTerminalKind(
+  value: unknown,
+): value is NonNullable<OpenTerminalOptions['terminal']> {
+  return value === 'wt' || value === 'powershell' || value === 'cmd'
+}
+
 async function handleOpenTerminal(
   adapter: ComputerUseHostAdapter,
   args: Record<string, unknown>,
@@ -3172,10 +3191,9 @@ async function handleOpenTerminal(
   const agent = requireString(args, 'agent')
   if (agent instanceof Error) return errorResult(agent.message, 'bad_args')
 
-  const validAgents = new Set(['claude', 'codex', 'gemini', 'custom'])
-  if (!validAgents.has(agent)) {
+  if (!isTerminalAgent(agent)) {
     return errorResult(
-      `Invalid agent "${agent}". Valid: claude, codex, gemini, custom.`,
+      `Invalid agent "${agent}". Valid: self, codex, gemini, custom.`,
       'bad_args',
     )
   }
@@ -3187,10 +3205,9 @@ async function handleOpenTerminal(
   }
 
   const result = await adapter.executor.openTerminal({
-    agent: agent as any,
+    agent,
     command: typeof args.command === 'string' ? args.command : undefined,
-    terminal:
-      typeof args.terminal === 'string' ? (args.terminal as any) : undefined,
+    terminal: isTerminalKind(args.terminal) ? args.terminal : undefined,
     workingDirectory:
       typeof args.working_directory === 'string'
         ? args.working_directory
@@ -3211,7 +3228,7 @@ async function handleOpenTerminal(
   }
 
   const agentNames: Record<string, string> = {
-    claude: 'Claude Code',
+    self: 'the host CLI',
     codex: 'Codex',
     gemini: 'Gemini',
     custom: args.command as string,

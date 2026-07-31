@@ -145,7 +145,7 @@ bun run dist/cli.js
 /remote-control
 ```
 
-环境型 Remote Control（例如 `claude remote-control` 子命令）会向 RCS 注册环境，注册成功后在终端显示连接 URL：
+环境型 Remote Control（例如 `occ remote-control` 子命令）会向 RCS 注册环境，注册成功后在终端显示连接 URL：
 
 ```
 https://rcs.example.com/code?bridge=<environmentId>
@@ -167,11 +167,11 @@ https://rcs.example.com/code/session_<id>
 也可通过 CLI 参数直接启动：
 
 ```bash
-claude remote-control
+occ remote-control
 # 或简写
-claude rc
+occ rc
 # 或
-claude bridge
+occ bridge
 ```
 
 ## Web UI 控制面板
@@ -236,10 +236,10 @@ API key。浏览器 `EventSource` 不能发送 `Authorization` header，外部�
 
 ```bash
 # 在 RCS 环境中启动 acp-link
-# 注意：claude 本身不支持 ACP，需要用 ccb-bun --acp
+# 注意：claude 本身不支持 ACP，需要用 occ-bun --acp
 ACP_RCS_URL=http://localhost:3000 \
 ACP_RCS_TOKEN=sk-rcs-your-key \
-acp-link ccb-bun -- --acp
+acp-link occ-bun -- --acp
 ```
 
 ACP session 在 Web UI 中显示品牌色标签，与普通 Claude Code session 区分。

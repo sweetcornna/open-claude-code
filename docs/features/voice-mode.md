@@ -146,7 +146,7 @@ finalize() 立即返回（豆包在录音过程中已返回结果，无需等待
 
 **connectDoubaoStream()** — 连接入口：
 - 动态导入 `doubaoime-asr`（optionalDependencies）
-- 从 `~/.claude/tts/doubao/credentials.json` 加载凭证
+- 从 `~/.occ/tts/doubao/credentials.json` 加载凭证
 - 创建 AudioChunkQueue 和 VoiceStreamConnection
 - 立即触发 `onReady`（避免与 useVoice 的音频缓冲死锁）
 - `finalize()` 立即返回（豆包在录音过程中已返回结果）
@@ -212,7 +212,7 @@ FEATURE_VOICE_MODE=1 bun run dev
 
 # 在 REPL 中使用豆包 ASR 后端
 # 1. 确保 doubaoime-asr 已安装（bun add doubaoime-asr）
-# 2. 配置凭证文件：~/.claude/tts/doubao/credentials.json
+# 2. 配置凭证文件：~/.occ/tts/doubao/credentials.json
 # 3. 输入 /voice doubao 启用
 # 4. 按住空格键说话
 # 5. 释放空格键，转录结果即刻显示
@@ -225,7 +225,7 @@ FEATURE_VOICE_MODE=1 bun run dev
 
 ### 豆包凭证配置
 
-凭证文件路径：`~/.claude/tts/doubao/credentials.json`
+凭证文件路径：`~/.occ/tts/doubao/credentials.json`
 
 ```json
 {
@@ -247,7 +247,7 @@ FEATURE_VOICE_MODE=1 bun run dev
 | macOS 原生音频 或 SoX | 音频录制 | 通用 |
 | Nova 3 STT | Anthropic 语音转文本模型 | Anthropic |
 | doubaoime-asr | 豆包 ASR SDK（optionalDependencies） | 豆包 |
-| 凭证文件 | `~/.claude/tts/doubao/credentials.json` | 豆包 |
+| 凭证文件 | `~/.occ/tts/doubao/credentials.json` | 豆包 |
 
 ## 七、文件索引
 

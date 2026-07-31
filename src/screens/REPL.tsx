@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle';
+import { PROJECT_DIR_NAME } from '../config/paths.js';
 import { spawnSync } from 'child_process';
 import {
   snapshotOutputTokensForTurn,
@@ -11,7 +12,6 @@ import {
 import { parseTokenBudget } from '../utils/tokenBudget.js';
 import { count } from '../utils/array.js';
 import { dirname, join } from 'path';
-import { tmpdir } from 'os';
 import figures from 'figures';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- / n N Esc [ v are bare letters in transcript modal context, same class as g/G/j/k in ScrollKeybindingHandler
 import { useInput } from '@anthropic/ink';
@@ -21,6 +21,7 @@ import { useSearchHighlight } from '@anthropic/ink';
 import type { JumpHandle } from '../components/VirtualMessageList.js';
 import { renderMessagesToPlainText } from '../utils/exportRenderer.js';
 import { openFileInExternalEditor } from '../utils/editor.js';
+import { generateTempFilePath, TRANSCRIPT_TEMP_PREFIX } from '../utils/tempfile.js';
 import { writeFile } from 'fs/promises';
 import {
   type TabStatusKind,
@@ -408,7 +409,6 @@ import { FeedbackSurvey } from 'src/components/FeedbackSurvey/FeedbackSurvey.js'
 import { useInstallMessages } from 'src/hooks/notifs/useInstallMessages.js';
 import { useAwaySummary } from 'src/hooks/useAwaySummary.js';
 import { useChromeExtensionNotification } from 'src/hooks/useChromeExtensionNotification.js';
-import { useOfficialMarketplaceNotification } from 'src/hooks/useOfficialMarketplaceNotification.js';
 import { usePromptsFromClaudeInChrome } from 'src/hooks/usePromptsFromClaudeInChrome.js';
 import { getTipToShowOnSpinner, recordShownTip } from 'src/services/tips/tipScheduler.js';
 import type { Theme } from 'src/utils/theme.js';
@@ -1013,7 +1013,6 @@ export function REPL({
   useAntOrgWarningNotification();
   useInstallMessages();
   useChromeExtensionNotification();
-  useOfficialMarketplaceNotification();
   useLspInitializationNotification();
   useTeammateLifecycleNotification();
   const { recommendation: lspRecommendation, handleResponse: handleLspResponse } = useLspPluginRecommendation();
@@ -1965,7 +1964,7 @@ export function REPL({
     setMessages(prev => [
       ...prev,
       createSystemMessage(
-        `Worktree creation took ${secs}s. For large repos, set \`worktree.sparsePaths\` in .claude/settings.json to check out only the directories you need — e.g. \`{"worktree": {"sparsePaths": ["src", "packages/foo"]}}\`.`,
+        `Worktree creation took ${secs}s. For large repos, set \`worktree.sparsePaths\` in ${PROJECT_DIR_NAME}/settings.json to check out only the directories you need — e.g. \`{"worktree": {"sparsePaths": ["src", "packages/foo"]}}\`.`,
         'info',
       ),
     ]);
@@ -5301,7 +5300,7 @@ export function REPL({
             const w = Math.max(80, (process.stdout.columns ?? 80) - 6);
             const raw = await renderMessagesToPlainText(deferredMessages, tools, w);
             const text = raw.replace(/[ \t]+$/gm, '');
-            const path = join(tmpdir(), `cc-transcript-${Date.now()}.txt`);
+            const path = generateTempFilePath(TRANSCRIPT_TEMP_PREFIX, '.txt');
             await writeFile(path, text);
             const opened = openFileInExternalEditor(path);
             setStatus(opened ? `opening ${path}` : `wrote ${path} · no $VISUAL/$EDITOR set`);

@@ -1,3 +1,4 @@
+import { occConfigDir, occConfigPath } from 'src/config/paths.js'
 import type { BuiltInAgentDefinition } from '../loadAgentsDir.js'
 
 const STATUSLINE_SYSTEM_PROMPT = `You are a status line setup agent for Claude Code. Your job is to create or update the statusLine command in the user's Claude Code settings.
@@ -110,10 +111,10 @@ How to use the statusLine command:
    To display both 5-hour and 7-day limits when available:
    - input=$(cat); five=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty'); week=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty'); out=""; [ -n "$five" ] && out="5h:$(printf '%.0f' "$five")%"; [ -n "$week" ] && out="$out 7d:$(printf '%.0f' "$week")%"; echo "$out"
 
-2. For longer commands, you can save a new file in the user's ~/.claude directory, e.g.:
-   - ~/.claude/statusline-command.sh and reference that file in the settings.
+2. For longer commands, you can save a new file in the user's ${occConfigDir()} directory, e.g.:
+   - ${occConfigPath('statusline-command.sh')} and reference that file in the settings.
 
-3. Update the user's ~/.claude/settings.json with:
+3. Update the user's ${occConfigPath('settings.json')} with:
    {
      "statusLine": {
        "type": "command", 
@@ -121,7 +122,7 @@ How to use the statusLine command:
      }
    }
 
-4. If ~/.claude/settings.json is a symlink, update the target file instead.
+4. If ${occConfigPath('settings.json')} is a symlink, update the target file instead.
 
 Guidelines:
 - Preserve existing settings when updating

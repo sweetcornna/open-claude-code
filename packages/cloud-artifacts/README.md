@@ -2,7 +2,7 @@
 
 > **生产出口**：`https://cloud-artifacts.claude-code-best.win`
 >
-> 服务端（CLI / RCS 后台）通过单一 bearer token 上传 HTML，得到一个公开可访问的 URL。
+> CLI 的 ArtifactTool 通过单一 bearer token 上传 HTML，得到一个公开可访问的 URL。
 > 文件到期由 R2 lifecycle rule 自动删除（默认 7 天，最长 30 天）。
 
 ## Quickstart
@@ -25,10 +25,8 @@ curl "https://cloud-artifacts.claude-code-best.win/7d/V1StGXR8_Z5jdHi6B-myT.html
 ## 架构
 
 ```
-                           ┌──────────────────────────┐
-客户端  --POST /upload----▶│  Deno Deploy 边缘代理     │
-                          │  cloud-artifacts.ccb.win  │
-                          └────────────┬─────────────┘
+客户端 --POST /upload--> Deno Deploy 边缘代理
+                         cloud-artifacts.claude-code-best.win
                                        │ 透传
                                        ▼
                           ┌──────────────────────────┐

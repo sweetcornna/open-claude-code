@@ -13,9 +13,9 @@ Claude Code 的 MCP 配置来自多个来源，每个来源对应一个 `scope`�
 | 来源 | Scope | 文件/接口 | 说明 |
 |------|-------|----------|------|
 | 企业管控 | `enterprise` | 系统管理路径 `managed-mcp.json` | **排他模式**：存在时忽略所有其他来源 |
-| 本地项目 | `local` | `<project>/.claude/settings.local.json` | 项目级私有配置（不提交到 VCS） |
+| 本地项目 | `local` | `<project>/.occ/settings.local.json` | 项目级私有配置（不提交到 VCS） |
 | 项目配置 | `project` | `<project>/.mcp.json` | 项目级共享配置（可提交到 VCS） |
-| 用户全局 | `user` | `~/.claude/settings.json` | 用户级配置，所有项目共享 |
+| 用户全局 | `user` | `~/.occ/settings.json` | 用户级配置，所有项目共享 |
 | 插件 | `dynamic` | 插件 manifest 中 `.mcp.json` / `.mcpb` | 插件提供的 MCP 服务器 |
 | claude.ai | `claudeai` | 通过 API 获取 | claude.ai 网页端配置的连接器 |
 | 内置动态 | `dynamic` | 代码中注册 | Computer Use / Chrome 等内置服务器 |
@@ -143,17 +143,17 @@ HTTP 流式传输。
 
 ### 添加 MCP 服务器
 
-通过 CLI 命令 `claude mcp add` 或 API 调用 `addMcpConfig()`：
+通过 CLI 命令 `occ mcp add` 或 API 调用 `addMcpConfig()`：
 
 ```bash
 # 添加到用户配置
-claude mcp add my-server -s user -- npx @my-org/mcp-server
+occ mcp add my-server -s user -- npx @my-org/mcp-server
 
 # 添加到项目配置
-claude mcp add my-server -s project -- npx @my-org/mcp-server
+occ mcp add my-server -s project -- npx @my-org/mcp-server
 
 # 添加 HTTP 类型
-claude mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
+occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 ```
 
 添加时的验证流程：
@@ -167,13 +167,13 @@ claude mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 ### 移除 MCP 服务器
 
 ```bash
-claude mcp remove my-server -s user
+occ mcp remove my-server -s user
 ```
 
 ### 列出 MCP 服务器
 
 ```bash
-claude mcp list
+occ mcp list
 ```
 
 ## 项目配置审批

@@ -123,13 +123,6 @@ mock.module('src/bootstrap/state.js', () => ({
   addSlowOperation: noop,
 }))
 
-// Mock skillDetect so initialMessage is deterministic across CI environments
-// (real existsSync would depend on .claude/skills/* in the working dir).
-mock.module('src/commands/autofix-pr/skillDetect.js', () => ({
-  detectAutofixSkills: () => [] as string[],
-  formatSkillsHint: () => '',
-}))
-
 // ── Import SUT after mocks ──
 let callAutofixPr: LocalJSXCommandCall
 let clearActiveMonitor: () => void

@@ -16,7 +16,26 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { occConfigDir } from 'src/config/paths.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+
+const originalOccConfigDir = process.env.OCC_CONFIG_DIR
+const originalLegacyConfigDir = process.env.CLAUDE_CONFIG_DIR
+
+function useTestConfigDir(directory: string): void {
+  process.env.OCC_CONFIG_DIR = directory
+  delete process.env.CLAUDE_CONFIG_DIR
+  occConfigDir.cache.clear?.()
+}
+
+function restoreConfigDirs(): void {
+  if (originalOccConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+  else process.env.OCC_CONFIG_DIR = originalOccConfigDir
+  if (originalLegacyConfigDir === undefined)
+    delete process.env.CLAUDE_CONFIG_DIR
+  else process.env.CLAUDE_CONFIG_DIR = originalLegacyConfigDir
+  occConfigDir.cache.clear?.()
+}
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
@@ -38,11 +57,17 @@ const keychainMock = {
   _removeFromIndex: mock(keychainUnavailable),
 }
 
-mock.module('../keychain.js', () => ({
-  KeychainUnavailableError,
-  tryKeychain: keychainMock,
-  _resetKeychainModuleCache: () => {},
-}))
+const { _setKeychainBackendForTesting } = await import('../store.js')
+
+function useFallbackKeychain(): void {
+  keychainMock.set.mockImplementation(keychainUnavailable)
+  keychainMock.get.mockImplementation(keychainUnavailable)
+  keychainMock.delete.mockImplementation(keychainUnavailable)
+  keychainMock.list.mockImplementation(keychainUnavailable)
+  keychainMock._addToIndex.mockImplementation(keychainUnavailable)
+  keychainMock._removeFromIndex.mockImplementation(keychainUnavailable)
+  _setKeychainBackendForTesting(keychainMock)
+}
 
 // ── Crypto fallback tests ─────────────────────────────────────────────────────
 
@@ -51,23 +76,19 @@ describe('store (AES-256-GCM file fallback)', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'local-vault-test-'))
-    process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+    useTestConfigDir(tmpDir)
     // Use a fixed passphrase via env to avoid file creation
     process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE'] =
       'test-passphrase-fixed-32chars-xxx'
     // Reset all keychain mocks to unavailable
-    keychainMock.set.mockImplementation(keychainUnavailable)
-    keychainMock.get.mockImplementation(keychainUnavailable)
-    keychainMock.delete.mockImplementation(keychainUnavailable)
-    keychainMock.list.mockImplementation(keychainUnavailable)
-    keychainMock._addToIndex.mockImplementation(keychainUnavailable)
-    keychainMock._removeFromIndex.mockImplementation(keychainUnavailable)
+    useFallbackKeychain()
   })
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
-    delete process.env['CLAUDE_CONFIG_DIR']
-    delete process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE']
+    restoreConfigDirs()
+    _setKeychainBackendForTesting(undefined)
+    delete process.env.CLAUDE_LOCAL_VAULT_PASSPHRASE
   })
 
   test('round-trip: set then get returns same value', async () => {
@@ -101,11 +122,22 @@ describe('store (AES-256-GCM file fallback)', () => {
     const { setSecret, listKeys } = await import('../store.js')
     await setSecret('KEY_A', 'value-a')
     await setSecret('KEY_B', 'value-b')
+    await setSecret('_USER_KEY', 'value-c')
     const keys = await listKeys()
     expect(keys).toContain('KEY_A')
     expect(keys).toContain('KEY_B')
+    expect(keys).toContain('_USER_KEY')
     expect(keys.join('')).not.toContain('value-a')
     expect(keys.join('')).not.toContain('value-b')
+  })
+
+  test('public operations reject reserved metadata keys', async () => {
+    const { setSecret, getSecret, deleteSecret } = await import('../store.js')
+    for (const key of ['__index__', '_salt', '_version']) {
+      await expect(setSecret(key, 'value')).rejects.toThrow('is reserved')
+      await expect(getSecret(key)).rejects.toThrow('is reserved')
+      await expect(deleteSecret(key)).rejects.toThrow('is reserved')
+    }
   })
 
   test('wrong passphrase throws LocalVaultDecryptionError (does not leak bytes)', async () => {
@@ -222,21 +254,17 @@ describe('store: security invariants (I1)', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'vault-sec-'))
-    process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+    useTestConfigDir(tmpDir)
     process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE'] =
       'test-passphrase-fixed-32chars-xxx'
-    keychainMock.set.mockImplementation(keychainUnavailable)
-    keychainMock.get.mockImplementation(keychainUnavailable)
-    keychainMock.delete.mockImplementation(keychainUnavailable)
-    keychainMock.list.mockImplementation(keychainUnavailable)
-    keychainMock._addToIndex.mockImplementation(keychainUnavailable)
-    keychainMock._removeFromIndex.mockImplementation(keychainUnavailable)
+    useFallbackKeychain()
   })
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
-    delete process.env['CLAUDE_CONFIG_DIR']
-    delete process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE']
+    restoreConfigDirs()
+    _setKeychainBackendForTesting(undefined)
+    delete process.env.CLAUDE_LOCAL_VAULT_PASSPHRASE
   })
 
   test('secret value never appears in console.warn calls after setSecret', async () => {
@@ -267,21 +295,17 @@ describe('store: AES-GCM tamper detection (I2)', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'vault-tamper-'))
-    process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+    useTestConfigDir(tmpDir)
     process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE'] =
       'test-passphrase-fixed-32chars-xxx'
-    keychainMock.set.mockImplementation(keychainUnavailable)
-    keychainMock.get.mockImplementation(keychainUnavailable)
-    keychainMock.delete.mockImplementation(keychainUnavailable)
-    keychainMock.list.mockImplementation(keychainUnavailable)
-    keychainMock._addToIndex.mockImplementation(keychainUnavailable)
-    keychainMock._removeFromIndex.mockImplementation(keychainUnavailable)
+    useFallbackKeychain()
   })
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
-    delete process.env['CLAUDE_CONFIG_DIR']
-    delete process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE']
+    restoreConfigDirs()
+    _setKeychainBackendForTesting(undefined)
+    delete process.env.CLAUDE_LOCAL_VAULT_PASSPHRASE
   })
 
   test('flipping a byte in data causes LocalVaultDecryptionError', async () => {
@@ -340,21 +364,17 @@ describe('store: invalid-UTF-8 decryption rejection (H3)', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'vault-utf8-'))
-    process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+    useTestConfigDir(tmpDir)
     process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE'] =
       'test-passphrase-fixed-32chars-xxx'
-    keychainMock.set.mockImplementation(keychainUnavailable)
-    keychainMock.get.mockImplementation(keychainUnavailable)
-    keychainMock.delete.mockImplementation(keychainUnavailable)
-    keychainMock.list.mockImplementation(keychainUnavailable)
-    keychainMock._addToIndex.mockImplementation(keychainUnavailable)
-    keychainMock._removeFromIndex.mockImplementation(keychainUnavailable)
+    useFallbackKeychain()
   })
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
-    delete process.env['CLAUDE_CONFIG_DIR']
-    delete process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE']
+    restoreConfigDirs()
+    _setKeychainBackendForTesting(undefined)
+    delete process.env.CLAUDE_LOCAL_VAULT_PASSPHRASE
   })
 
   test('regression: decrypted payload with invalid UTF-8 throws LocalVaultDecryptionError (no silent U+FFFD)', async () => {
@@ -440,17 +460,17 @@ describe('store: value size limit (D1)', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'vault-size-'))
-    process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+    useTestConfigDir(tmpDir)
     process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE'] =
       'test-passphrase-fixed-32chars-xxx'
-    keychainMock.set.mockImplementation(keychainUnavailable)
-    keychainMock._addToIndex.mockImplementation(keychainUnavailable)
+    useFallbackKeychain()
   })
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
-    delete process.env['CLAUDE_CONFIG_DIR']
-    delete process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE']
+    restoreConfigDirs()
+    _setKeychainBackendForTesting(undefined)
+    delete process.env.CLAUDE_LOCAL_VAULT_PASSPHRASE
   })
 
   test('setSecret rejects value >64KB', async () => {

@@ -7,6 +7,7 @@
  */
 import type { Command } from '@commander-js/extra-typings'
 import { cliError, cliOk } from '../../cli/exit.js'
+import { BIN_NAME } from '../../constants/brand.js'
 import {
   acquireIdpIdToken,
   clearIdpClientSecret,
@@ -170,7 +171,7 @@ export function registerMcpXaaIdpCommand(mcp: Command): void {
       const idp = getXaaIdpSettings()
       if (!idp) {
         return cliError(
-          "Error: no XAA IdP connection. Run 'claude mcp xaa setup' first.",
+          `Error: no XAA IdP connection. Run '${BIN_NAME} mcp xaa setup' first.`,
         )
       }
 
@@ -235,7 +236,7 @@ export function registerMcpXaaIdpCommand(mcp: Command): void {
         `Client secret: ${hasSecret ? '(stored in keychain)' : '(not set — PKCE-only)'}\n`,
       )
       process.stdout.write(
-        `Logged in:     ${hasIdToken ? 'yes (id_token cached)' : "no — run 'claude mcp xaa login'"}\n`,
+        `Logged in:     ${hasIdToken ? 'yes (id_token cached)' : `no — run '${BIN_NAME} mcp xaa login'`}\n`,
       )
       cliOk()
     })

@@ -4,6 +4,7 @@
 // Without this, JSC's C++ Vector grows without bound in long-running sessions.
 import '../utils/performanceShim.js';
 import { feature } from 'bun:bundle';
+import { BIN_NAME } from '../constants/brand.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 
 // Runtime fallback for MACRO.* when not injected by build/dev defines.
@@ -115,14 +116,22 @@ async function main(): Promise<void> {
   }
 
   if (process.argv[2] === '--claude-in-chrome-mcp') {
+    const { CHROME_NATIVE_HOST_ISOLATION_ERROR, isChromeBrowserBridgeAvailable } = await import(
+      '../utils/claudeInChrome/setup.js'
+    );
+    if (!isChromeBrowserBridgeAvailable()) {
+      console.error(`Error: ${CHROME_NATIVE_HOST_ISOLATION_ERROR}`);
+      process.exitCode = 1;
+      return;
+    }
     profileCheckpoint('cli_claude_in_chrome_mcp_path');
     const { runClaudeInChromeMcpServer } = await import('../utils/claudeInChrome/mcpServer.js');
     await runClaudeInChromeMcpServer();
     return;
   } else if (process.argv[2] === '--chrome-native-host') {
-    profileCheckpoint('cli_chrome_native_host_path');
-    const { runChromeNativeHost } = await import('../utils/claudeInChrome/chromeNativeHost.js');
-    await runChromeNativeHost();
+    const { CHROME_NATIVE_HOST_ISOLATION_ERROR } = await import('../utils/claudeInChrome/setup.js');
+    console.error(`Error: ${CHROME_NATIVE_HOST_ISOLATION_ERROR}`);
+    process.exitCode = 1;
     return;
   } else if (feature('CHICAGO_MCP') && process.argv[2] === '--computer-use-mcp') {
     profileCheckpoint('cli_computer_use_mcp_path');
@@ -263,7 +272,7 @@ async function main(): Promise<void> {
     (args[0] === 'ps' || args[0] === 'logs' || args[0] === 'attach' || args[0] === 'kill')
   ) {
     const mapped = args[0] === 'ps' ? 'status' : args[0];
-    console.error(`[deprecated] Use: claude daemon ${mapped}${args[1] ? ' ' + args[1] : ''}`);
+    console.error(`[deprecated] Use: ${BIN_NAME} daemon ${mapped}${args[1] ? ' ' + args[1] : ''}`);
     profileCheckpoint('cli_daemon_path');
     const { enableConfigs } = await import('../utils/config.js');
     enableConfigs();
@@ -289,7 +298,7 @@ async function main(): Promise<void> {
 
   // Backward-compat: new/list/reply → job <sub> (deprecated)
   if (feature('TEMPLATES') && (args[0] === 'new' || args[0] === 'list' || args[0] === 'reply')) {
-    console.error(`[deprecated] Use: claude job ${args[0]} ${args.slice(1).join(' ')}`.trim());
+    console.error(`[deprecated] Use: ${BIN_NAME} job ${args[0]} ${args.slice(1).join(' ')}`.trim());
     profileCheckpoint('cli_templates_path');
     const { templatesMain } = await import('../cli/handlers/templateJobs.js');
     await templatesMain(args);

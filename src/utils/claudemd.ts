@@ -39,6 +39,7 @@ import {
   relative,
 } from 'path'
 import picomatch from 'picomatch'
+import { LEGACY_PROJECT_DIR_NAME, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import {
   getAdditionalDirectoriesForClaudeMd,
@@ -888,28 +889,28 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .claude/CLAUDE.md (Project)
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
-        result.push(
-          ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
-
-        // Try reading .claude/rules/*.md files (Project)
-        const rulesDir = join(dir, '.claude', 'rules')
-        result.push(
-          ...(await processMdRules({
-            rulesDir,
-            type: 'Project',
-            processedPaths,
-            includeExternal,
-            conditionalRule: false,
-          })),
-        )
+        for (const projectDirName of [
+          LEGACY_PROJECT_DIR_NAME,
+          PROJECT_DIR_NAME,
+        ]) {
+          result.push(
+            ...(await processMemoryFile(
+              join(dir, projectDirName, 'CLAUDE.md'),
+              'Project',
+              processedPaths,
+              includeExternal,
+            )),
+          )
+          result.push(
+            ...(await processMdRules({
+              rulesDir: join(dir, projectDirName, 'rules'),
+              type: 'Project',
+              processedPaths,
+              includeExternal,
+              conditionalRule: false,
+            })),
+          )
+        }
       }
 
       // Try reading CLAUDE.local.md (Local) - only if localSettings is enabled
@@ -944,28 +945,28 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .claude/CLAUDE.md from the additional directory
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
-        result.push(
-          ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
-
-        // Try reading .claude/rules/*.md files from the additional directory
-        const rulesDir = join(dir, '.claude', 'rules')
-        result.push(
-          ...(await processMdRules({
-            rulesDir,
-            type: 'Project',
-            processedPaths,
-            includeExternal,
-            conditionalRule: false,
-          })),
-        )
+        for (const projectDirName of [
+          LEGACY_PROJECT_DIR_NAME,
+          PROJECT_DIR_NAME,
+        ]) {
+          result.push(
+            ...(await processMemoryFile(
+              join(dir, projectDirName, 'CLAUDE.md'),
+              'Project',
+              processedPaths,
+              includeExternal,
+            )),
+          )
+          result.push(
+            ...(await processMdRules({
+              rulesDir: join(dir, projectDirName, 'rules'),
+              type: 'Project',
+              processedPaths,
+              includeExternal,
+              conditionalRule: false,
+            })),
+          )
+        }
       }
     }
 
@@ -1222,61 +1223,60 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (CLAUDE.md and .claude/CLAUDE.md)
   if (isSettingSourceEnabled('projectSettings')) {
-    const projectPath = join(dir, 'CLAUDE.md')
     result.push(
       ...(await processMemoryFile(
-        projectPath,
+        join(dir, 'CLAUDE.md'),
         'Project',
         processedPaths,
         false,
       )),
     )
-    const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
-    result.push(
-      ...(await processMemoryFile(
-        dotClaudePath,
-        'Project',
-        processedPaths,
-        false,
-      )),
-    )
+    for (const projectDirName of [LEGACY_PROJECT_DIR_NAME, PROJECT_DIR_NAME]) {
+      result.push(
+        ...(await processMemoryFile(
+          join(dir, projectDirName, 'CLAUDE.md'),
+          'Project',
+          processedPaths,
+          false,
+        )),
+      )
+    }
   }
 
-  // Process local memory file (CLAUDE.local.md)
   if (isSettingSourceEnabled('localSettings')) {
-    const localPath = join(dir, 'CLAUDE.local.md')
     result.push(
-      ...(await processMemoryFile(localPath, 'Local', processedPaths, false)),
+      ...(await processMemoryFile(
+        join(dir, 'CLAUDE.local.md'),
+        'Local',
+        processedPaths,
+        false,
+      )),
     )
   }
 
-  const rulesDir = join(dir, '.claude', 'rules')
-
-  // Process project unconditional .claude/rules/*.md files, which were not eagerly loaded
-  // Use a separate processedPaths set to avoid marking conditional rule files as processed
   const unconditionalProcessedPaths = new Set(processedPaths)
-  result.push(
-    ...(await processMdRules({
-      rulesDir,
-      type: 'Project',
-      processedPaths: unconditionalProcessedPaths,
-      includeExternal: false,
-      conditionalRule: false,
-    })),
-  )
-
-  // Process project conditional .claude/rules/*.md files
-  result.push(
-    ...(await processConditionedMdRules(
-      targetPath,
-      rulesDir,
-      'Project',
-      processedPaths,
-      false,
-    )),
-  )
+  for (const projectDirName of [LEGACY_PROJECT_DIR_NAME, PROJECT_DIR_NAME]) {
+    const rulesDir = join(dir, projectDirName, 'rules')
+    result.push(
+      ...(await processMdRules({
+        rulesDir,
+        type: 'Project',
+        processedPaths: unconditionalProcessedPaths,
+        includeExternal: false,
+        conditionalRule: false,
+      })),
+    )
+    result.push(
+      ...(await processConditionedMdRules(
+        targetPath,
+        rulesDir,
+        'Project',
+        processedPaths,
+        false,
+      )),
+    )
+  }
 
   // processedPaths must be seeded with unconditional paths for subsequent directories
   for (const path of unconditionalProcessedPaths) {
@@ -1300,14 +1300,19 @@ export async function getConditionalRulesForCwdLevelDirectory(
   targetPath: string,
   processedPaths: Set<string>,
 ): Promise<MemoryFileInfo[]> {
-  const rulesDir = join(dir, '.claude', 'rules')
-  return processConditionedMdRules(
-    targetPath,
-    rulesDir,
-    'Project',
-    processedPaths,
-    false,
-  )
+  const result: MemoryFileInfo[] = []
+  for (const projectDirName of [LEGACY_PROJECT_DIR_NAME, PROJECT_DIR_NAME]) {
+    result.push(
+      ...(await processConditionedMdRules(
+        targetPath,
+        join(dir, projectDirName, 'rules'),
+        'Project',
+        processedPaths,
+        false,
+      )),
+    )
+  }
+  return result
 }
 
 /**
@@ -1410,8 +1415,15 @@ export function isMemoryFilePath(filePath: string): boolean {
     return true
   }
 
-  // .md files in .claude/rules/ directories
-  if (name.endsWith('.md') && normalizedPath.includes('/.claude/rules/')) {
+  const rulesDirectories = [PROJECT_DIR_NAME, LEGACY_PROJECT_DIR_NAME].map(
+    projectDirName => `/${projectDirName}/rules/`,
+  )
+  if (
+    name.endsWith('.md') &&
+    rulesDirectories.some(rulesDirectory =>
+      normalizedPath.includes(rulesDirectory),
+    )
+  ) {
     return true
   }
 

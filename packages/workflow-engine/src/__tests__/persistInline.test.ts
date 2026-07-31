@@ -5,12 +5,29 @@ import { join } from 'node:path'
 
 import { persistInlineScript } from '../tool/persistInline.js'
 
-test('persists to <cwd>/.claude/workflow-runs/<runId>/script.js and returns path', async () => {
+test('persists to <cwd>/.occ/workflow-runs/<runId>/script.js and returns path', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-pi-'))
   try {
     const path = await persistInlineScript('return 1', 'r1', dir)
-    expect(path).toBe(join(dir, '.claude', 'workflow-runs', 'r1', 'script.js'))
+    expect(path).toBe(join(dir, '.occ', 'workflow-runs', 'r1', 'script.js'))
     expect(await readFile(path, 'utf-8')).toBe('return 1')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('accepts a host-provided workflow runs directory', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-pi-'))
+  try {
+    const path = await persistInlineScript(
+      'return 1',
+      'r-custom',
+      dir,
+      '.custom/workflow-runs',
+    )
+    expect(path).toBe(
+      join(dir, '.custom', 'workflow-runs', 'r-custom', 'script.js'),
+    )
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

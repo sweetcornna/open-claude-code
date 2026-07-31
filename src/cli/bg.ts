@@ -1,6 +1,7 @@
 import { readdir, readFile, unlink } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { BIN_NAME } from '../constants/brand.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { isProcessRunning } from '../utils/genericProcessUtils.js'
 import { jsonParse } from '../utils/slowOperations.js'
@@ -169,7 +170,7 @@ export async function attachHandler(target: string | undefined): Promise<void> {
     )
     if (bgSessions.length === 0) {
       console.log(
-        'No background sessions to attach to. Start one with `claude daemon bg`.',
+        `No background sessions to attach to. Start one with \`${BIN_NAME} daemon bg\`.`,
       )
       return
     }
@@ -292,8 +293,8 @@ export async function handleBgStart(args: string[]): Promise<void> {
       'Error: Background sessions with detached engine require -p/--print flag.\n' +
         'The detached engine has no terminal for interactive input.\n\n' +
         'Usage:\n' +
-        '  claude daemon bg -p "your prompt here"\n' +
-        '  echo "prompt" | claude daemon bg --pipe',
+        `  ${BIN_NAME} daemon bg -p "your prompt here"\n` +
+        `  echo "prompt" | ${BIN_NAME} daemon bg --pipe`,
     )
     if (process.platform !== 'win32') {
       console.error(
@@ -305,7 +306,7 @@ export async function handleBgStart(args: string[]): Promise<void> {
     return
   }
 
-  const sessionName = `claude-bg-${randomUUID().slice(0, 8)}`
+  const sessionName = `${BIN_NAME}-bg-${randomUUID().slice(0, 8)}`
   const logPath = join(
     getClaudeConfigHomeDir(),
     'sessions',
@@ -327,10 +328,12 @@ export async function handleBgStart(args: string[]): Promise<void> {
     console.log(`  Log: ${result.logPath}`)
     console.log()
     console.log(
-      `Use \`claude daemon attach ${result.sessionName}\` to reconnect.`,
+      `Use \`${BIN_NAME} daemon attach ${result.sessionName}\` to reconnect.`,
     )
-    console.log(`Use \`claude daemon status\` to check status.`)
-    console.log(`Use \`claude daemon kill ${result.sessionName}\` to stop.`)
+    console.log(`Use \`${BIN_NAME} daemon status\` to check status.`)
+    console.log(
+      `Use \`${BIN_NAME} daemon kill ${result.sessionName}\` to stop.`,
+    )
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e))
     process.exitCode = 1

@@ -34,6 +34,7 @@ import type {
   ScreenshotResult,
 } from '@ant/computer-use-mcp'
 
+import { BIN_NAME } from '../../constants/brand.js'
 import { logForDebugging } from '../debug.js'
 import { sleep } from '../sleep.js'
 import { CLI_CU_CAPABILITIES, CLI_HOST_BUNDLE_ID } from './common.js'
@@ -576,7 +577,7 @@ $i = New-Object MUp+INPUT; $i.type=0; $i.mi.dwFlags=0x0004; [MUp]::SendInput(1, 
 
     // ── Open terminal + launch agent ─────────────────────────────────
     async openTerminal(opts: {
-      agent: 'claude' | 'codex' | 'gemini' | 'custom'
+      agent: 'self' | 'codex' | 'gemini' | 'custom'
       command?: string
       terminal?: 'wt' | 'powershell' | 'cmd'
       workingDirectory?: string
@@ -589,7 +590,7 @@ $i = New-Object MUp+INPUT; $i.type=0; $i.mi.dwFlags=0x0004; [MUp]::SendInput(1, 
           require('./platforms/win32.js') as typeof import('./platforms/win32.js')
 
         const agentCmd: Record<string, string> = {
-          claude: 'claude',
+          self: BIN_NAME,
           codex: 'codex',
           gemini: 'gemini',
           custom: opts.command ?? '',

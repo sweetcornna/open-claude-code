@@ -78,7 +78,7 @@ const claudeAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
         <Text color="warning">{figures.warning}</Text>
         <Text color="warning">
           Auth conflict: Using {authTokenInfo.source} instead of Claude account subscription token. Either unset{' '}
-          {authTokenInfo.source}, or run `claude /logout`.
+          {authTokenInfo.source}, or run `/logout`.
         </Text>
       </Box>
     );
@@ -106,7 +106,7 @@ const apiKeyConflictNotice: StatusNoticeDefinition = {
         <Text color="warning">{figures.warning}</Text>
         <Text color="warning">
           Auth conflict: Using {apiKeySource} instead of Anthropic Console key. Either unset {apiKeySource}, or run
-          `claude /logout`.
+          `/logout`.
         </Text>
       </Box>
     );
@@ -145,15 +145,15 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
           <Text color="warning">
             · Trying to use {authTokenInfo.source === 'claude.ai' ? 'claude.ai' : authTokenInfo.source}?{' '}
             {apiKeySource === 'ANTHROPIC_API_KEY'
-              ? 'Unset the ANTHROPIC_API_KEY environment variable, or claude /logout then say "No" to the API key approval before login.'
+              ? 'Unset the ANTHROPIC_API_KEY environment variable, or /logout then say "No" to the API key approval before login.'
               : apiKeySource === 'apiKeyHelper'
                 ? 'Unset the apiKeyHelper setting.'
-                : 'claude /logout'}
+                : '/logout'}
           </Text>
           <Text color="warning">
             · Trying to use {apiKeySource}?{' '}
             {authTokenInfo.source === 'claude.ai'
-              ? 'claude /logout to sign out of claude.ai.'
+              ? '/logout to sign out of claude.ai.'
               : `Unset the ${authTokenInfo.source} environment variable.`}
           </Text>
         </Box>

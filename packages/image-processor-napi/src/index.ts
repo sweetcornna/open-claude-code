@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import { readFileSync, unlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import sharpModule from 'sharp'
 
 export const sharp = sharpModule
@@ -38,10 +41,10 @@ function createDarwinNativeModule(): NativeModule {
     },
 
     readClipboardImage(maxWidth?: number, maxHeight?: number) {
+      // Use osascript to read clipboard image as PNG data and write to a temp file,
+      // then read the temp file back.
+      const tmpPath = join(tmpdir(), `occ-clipboard-native-${randomUUID()}.png`)
       try {
-        // Use osascript to read clipboard image as PNG data and write to a temp file,
-        // then read the temp file back
-        const tmpPath = `/tmp/claude_clipboard_native_${Date.now()}.png`
         const script = `
 set png_data to (the clipboard as «class PNGf»)
 set fp to open for access POSIX file "${tmpPath}" with write permission
@@ -59,15 +62,7 @@ return "${tmpPath}"
           return null
         }
 
-        const file = Bun.file(tmpPath)
         const buffer: Buffer = readFileSync(tmpPath)
-
-        // Clean up temp file
-        try {
-          unlinkSync(tmpPath)
-        } catch {
-          // ignore cleanup errors
-        }
 
         if (buffer.length === 0) {
           return null
@@ -112,6 +107,12 @@ return "${tmpPath}"
         }
       } catch {
         return null
+      } finally {
+        try {
+          unlinkSync(tmpPath)
+        } catch {
+          // ignore cleanup errors
+        }
       }
     },
   }

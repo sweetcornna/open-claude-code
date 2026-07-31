@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Box, Byline, KeyboardShortcutHint } from '@anthropic/ink';
+import { PROJECT_DIR_NAME, occConfigPath } from '../../../../config/paths.js';
 import type { SettingSource } from '../../../../utils/settings/constants.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { Select } from '../../../CustomSelect/select.js';
@@ -12,11 +13,11 @@ export function LocationStep(): ReactNode {
 
   const locationOptions = [
     {
-      label: 'Project (.claude/agents/)',
+      label: `Project (${PROJECT_DIR_NAME}/agents/)`,
       value: 'projectSettings' as SettingSource,
     },
     {
-      label: 'Personal (~/.claude/agents/)',
+      label: `Personal (${occConfigPath('agents')}/)`,
       value: 'userSettings' as SettingSource,
     },
   ];

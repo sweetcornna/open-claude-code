@@ -23,7 +23,6 @@ import {
 import { logForDebugging } from './debug.js'
 import { parseJSONL } from './json.js'
 import { logError } from './log.js'
-import { getAttributionEmail } from './attributionEmail.js'
 import { getRealModelName } from './attributionModel.js'
 import { isMemoryFileAccess } from './sessionFileAccessHooks.js'
 import { getTranscriptPath } from './sessionStorage.js'
@@ -39,8 +38,6 @@ export type AttributionTexts = {
 /**
  * Returns attribution text for commits and PRs based on user settings.
  * Handles:
- * - Dynamic model name via getRealModelName()
- * - Auto email mapping via getAttributionEmail()
  * - Custom attribution settings (settings.attribution.commit/pr)
  * - Backward compatibility with deprecated includeCoAuthoredBy setting
  * - Remote mode: returns session URL for attribution
@@ -63,27 +60,25 @@ export function getAttributionTexts(): AttributionTexts {
     return { commit: '', pr: '' }
   }
 
-  const modelName = getRealModelName()
-  const email = getAttributionEmail(modelName)
   const defaultAttribution = `🤖 Generated with [${DISPLAY_NAME}](${PRODUCT_URL})`
-  const defaultCommit = `Co-Authored-By: ${modelName} <${email}>`
-
   const settings = getInitialSettings()
 
-  // New attribution setting takes precedence over deprecated includeCoAuthoredBy
+  // Attribution is opt-in for commits until occ owns a dedicated coauthor
+  // identity. Preserve explicit user-configured text without claiming Anthropic
+  // provenance through model-specific names or email addresses.
   if (settings.attribution) {
     return {
-      commit: settings.attribution.commit ?? defaultCommit,
+      commit: settings.attribution.commit ?? '',
       pr: settings.attribution.pr ?? defaultAttribution,
     }
   }
 
-  // Backward compatibility: deprecated includeCoAuthoredBy setting
+  // Preserve the deprecated opt-out for PR attribution as well.
   if (settings.includeCoAuthoredBy === false) {
     return { commit: '', pr: '' }
   }
 
-  return { commit: defaultCommit, pr: defaultAttribution }
+  return { commit: '', pr: defaultAttribution }
 }
 
 /**

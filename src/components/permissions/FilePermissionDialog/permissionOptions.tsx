@@ -1,6 +1,6 @@
 import { homedir } from 'os';
 import { basename, join, sep } from 'path';
-import { occConfigDir } from 'src/config/paths.js';
+import { occConfigDir, PROJECT_DIR_NAME } from 'src/config/paths.js';
 import { type ReactNode } from 'react';
 import { getOriginalCwd } from '../../../bootstrap/state.js';
 import { Text } from '@anthropic/ink';
@@ -10,46 +10,40 @@ import { expandPath, getDirectoryForPath } from '../../../utils/path.js';
 import { normalizeCaseForComparison, pathInAllowedWorkingPath } from '../../../utils/permissions/filesystem.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 /**
- * Check if a path is within the project's .claude/ folder.
- * This is used to determine whether to show the special ".claude folder" permission option.
+ * Check if a path is within the project's occ config folder.
  */
-export function isInClaudeFolder(filePath: string): boolean {
+export function isInOccFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
-  const claudeFolderPath = expandPath(`${getOriginalCwd()}/.claude`);
+  const occFolderPath = expandPath(join(getOriginalCwd(), PROJECT_DIR_NAME));
 
-  // Check if the path is within the project's .claude folder
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedClaudeFolderPath = normalizeCaseForComparison(claudeFolderPath);
+  const normalizedOccFolderPath = normalizeCaseForComparison(occFolderPath);
 
-  // Path must start with the .claude folder path (and be inside it, not just the folder itself)
   return (
-    normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + sep.toLowerCase()) ||
-    // Also match case where sep is / on posix systems
-    normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + '/')
+    normalizedAbsolutePath.startsWith(normalizedOccFolderPath + sep.toLowerCase()) ||
+    normalizedAbsolutePath.startsWith(normalizedOccFolderPath + '/')
   );
 }
 
 /**
- * Check if a path is within the global ~/.claude/ folder.
- * This is used to determine whether to show the special ".claude folder" permission option
- * for files in the user's home directory.
+ * Check if a path is within the global occ config folder.
  */
-export function isInGlobalClaudeFolder(filePath: string): boolean {
+export function isInGlobalOccFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
-  const globalClaudeFolderPath = occConfigDir();
+  const globalOccFolderPath = occConfigDir();
 
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedGlobalClaudeFolderPath = normalizeCaseForComparison(globalClaudeFolderPath);
+  const normalizedGlobalOccFolderPath = normalizeCaseForComparison(globalOccFolderPath);
 
   return (
-    normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + sep.toLowerCase()) ||
-    normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + '/')
+    normalizedAbsolutePath.startsWith(normalizedGlobalOccFolderPath + sep.toLowerCase()) ||
+    normalizedAbsolutePath.startsWith(normalizedGlobalOccFolderPath + '/')
   );
 }
 
 export type PermissionOption =
   | { type: 'accept-once' }
-  | { type: 'accept-session'; scope?: 'claude-folder' | 'global-claude-folder' }
+  | { type: 'accept-session'; scope?: 'occ-folder' | 'global-occ-folder' }
   | { type: 'reject' };
 
 export type PermissionOptionWithLabel = OptionWithDescription<string> & {
@@ -99,21 +93,21 @@ export function getFilePermissionOptions({
 
   const inAllowedPath = pathInAllowedWorkingPath(filePath, toolPermissionContext);
 
-  // Check if this is a .claude/ folder path (project or global)
-  const inClaudeFolder = isInClaudeFolder(filePath);
-  const inGlobalClaudeFolder = isInGlobalClaudeFolder(filePath);
+  // Check if this is an occ config folder path (project or global)
+  const inOccFolder = isInOccFolder(filePath);
+  const inGlobalOccFolder = isInGlobalOccFolder(filePath);
 
-  // Option 2: For .claude/ folder, show special option instead of generic session option
+  // Option 2: For occ config folders, show a scoped session option
   // Note: Session-level options are always shown since they only affect in-memory state,
   // not persisted settings. The allowManagedPermissionRulesOnly setting only restricts
   // persisted permission rules.
-  if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
+  if ((inOccFolder || inGlobalOccFolder) && operationType !== 'read') {
     options.push({
-      label: 'Yes, allow edits to .claude/ config for this session',
-      value: 'yes-claude-folder',
+      label: `Yes, allow edits to ${PROJECT_DIR_NAME}/ config for this session`,
+      value: 'yes-occ-folder',
       option: {
         type: 'accept-session',
-        scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder',
+        scope: inGlobalOccFolder ? 'global-occ-folder' : 'occ-folder',
       },
     });
   } else {

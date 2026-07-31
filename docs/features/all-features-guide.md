@@ -1,6 +1,6 @@
-# Claude Code Best (CCB) — 全功能使用指南
+# Open Claude Code (occ) — 全功能使用指南
 
-本文档覆盖我们通过 13 个 PR 为 CCB 恢复/新增的**全部功能**，按类别组织，每个功能包含说明、使用方法和示例。
+本文档覆盖我们通过 13 个 PR 为 occ 恢复/新增的**全部功能**，按类别组织，每个功能包含说明、使用方法和示例。
 
 ---
 
@@ -64,8 +64,8 @@ CLAUDE_BRIDGE_BASE_URL=https://your-server.com CLAUDE_BRIDGE_OAUTH_TOKEN=your-to
 ```
 
 ### 命令
-- `claude remote-control` / `claude rc` — 启动远程控制客户端
-- `claude bridge` — 同上（别名）
+- `occ remote-control` / `occ rc` — 启动远程控制客户端
+- `occ bridge` — 同上（别名）
 
 ---
 
@@ -99,7 +99,7 @@ Push-to-Talk 语音输入，音频通过 WebSocket 流式传输到 Anthropic STT
 ### 使用
 ```bash
 # 确保已通过 OAuth 登录
-claude auth login
+occ auth login
 
 # 在会话中按住指定键说话
 # 松开后自动转写为文字输入
@@ -227,13 +227,13 @@ Daemon 模式允许 Claude Code 作为后台长驻进程运行，管理多个 wo
 ### 使用
 ```bash
 # 启动 daemon
-claude daemon start
+occ daemon start
 
 # 查看状态
-claude daemon status
+occ daemon status
 
 # 停止
-claude daemon stop
+occ daemon stop
 
 # 启动远程控制服务器
 bun run rcs
@@ -279,22 +279,21 @@ AI 可在对话中自动调用 `MonitorTool` 监控日志、构建输出等。
 **Feature Flag**: `WORKFLOW_SCRIPTS`
 
 ### 说明
-执行 `.claude/workflows/` 目录下的用户定义工作流脚本。
+执行 `.occ/workflows/` 目录下的用户定义工作流脚本。
 
 ### 使用
 
 **创建工作流**：
 ```bash
-mkdir -p .claude/workflows
-cat > .claude/workflows/deploy.sh << 'EOF'
-#!/bin/bash
-echo "Running tests..."
-bun test
-echo "Building..."
-bun run build
-echo "Deploying..."
+mkdir -p .occ/workflows
+cat > .occ/workflows/deploy.mjs << 'EOF'
+export const meta = { name: 'deploy', description: 'verify a release build' }
+phase('Verify')
+const tests = await agent('Run the project test suite and summarize the result.', { label: 'tests' })
+const build = await agent('Run the production build and summarize the result.', { label: 'build' })
+log('Deployment checks finished')
+return { tests, build }
 EOF
-chmod +x .claude/workflows/deploy.sh
 ```
 
 **列出可用工作流**：

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useCallback } from 'react';
+import { occConfigPath } from '../../../config/paths.js';
 import { Select } from '../../../components/CustomSelect/select.js';
 import { Box, Dialog, Text } from '@anthropic/ink';
 import type { ToolPermissionContext } from '../../../Tool.js';
@@ -35,7 +36,7 @@ export function optionForPermissionSaveDestination(saveDestination: EditableSett
     case 'userSettings':
       return {
         label: 'User settings',
-        description: `Saved in at ~/.claude/settings.json`,
+        description: `Saved at ${occConfigPath('settings.json')}`,
         value: saveDestination,
       };
   }

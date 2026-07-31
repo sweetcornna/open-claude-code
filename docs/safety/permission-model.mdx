@@ -23,9 +23,9 @@ keywords: ["权限模型", "Allow Ask Deny", "PermissionRule", "checkPermissions
 规则从 8 个来源汇聚（`PERMISSION_RULE_SOURCES`，`permissions.ts:109`），优先级从低到高（后者覆盖前者）：
 
 ```
-1. userSettings   — ~/.claude/settings.json（跨项目）
-2. projectSettings — .claude/settings.json（团队共享）
-3. localSettings  — .claude/settings.local.json（gitignored，个人覆盖）
+1. userSettings   — ~/.occ/settings.json（跨项目）
+2. projectSettings — .occ/settings.json（团队共享）
+3. localSettings  — .occ/settings.local.json（gitignored，个人覆盖）
 4. flagSettings   — --settings 命令行参数
 5. policySettings — 企业管理员下发的策略（用户不可覆盖）
 6. cliArg         — 命令行 --allow/--deny 参数

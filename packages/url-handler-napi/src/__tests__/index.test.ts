@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { waitForUrlEvent } from '../index'
 
 const originalEnv = {
+  OCC_URL_EVENT: process.env.OCC_URL_EVENT,
   CLAUDE_CODE_URL_EVENT: process.env.CLAUDE_CODE_URL_EVENT,
   CLAUDE_CODE_DEEP_LINK_URL: process.env.CLAUDE_CODE_DEEP_LINK_URL,
   CLAUDE_CODE_URL: process.env.CLAUDE_CODE_URL,
@@ -28,10 +29,16 @@ describe('waitForUrlEvent', () => {
     await expect(waitForUrlEvent(1)).resolves.toBeNull()
   })
 
-  test('returns a Claude URL from environment variables', async () => {
-    process.env.CLAUDE_CODE_URL_EVENT = 'claude-cli://prompt?q=hello'
+  test('returns an occ URL from the occ event variable', async () => {
+    process.env.OCC_URL_EVENT = 'occ-cli://open?q=hello'
 
-    await expect(waitForUrlEvent()).resolves.toBe('claude-cli://prompt?q=hello')
+    await expect(waitForUrlEvent()).resolves.toBe('occ-cli://open?q=hello')
+  })
+
+  test('accepts a legacy Claude URL as compatibility input', async () => {
+    process.env.CLAUDE_CODE_URL_EVENT = 'claude-cli://open?q=hello'
+
+    await expect(waitForUrlEvent()).resolves.toBe('claude-cli://open?q=hello')
   })
 
   test('returns a Claude URL from argv', async () => {

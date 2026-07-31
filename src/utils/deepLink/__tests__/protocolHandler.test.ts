@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { MACOS_DEEP_LINK_BUNDLE_ID } from 'src/constants/brand.js'
 
 const mockParseDeepLink = mock((uri: string) => {
   if (uri === null || uri === undefined || uri === 'bad-uri') {
@@ -12,7 +13,7 @@ mock.module('../parseDeepLink.js', () => ({
   parseDeepLink: mockParseDeepLink,
 }))
 mock.module('../registerProtocol.js', () => ({
-  MACOS_BUNDLE_ID: 'com.anthropic.claude-code-url-handler',
+  MACOS_BUNDLE_ID: MACOS_DEEP_LINK_BUNDLE_ID,
 }))
 mock.module('../terminalLauncher.js', () => ({
   launchInTerminal: mockLaunchInTerminal,
@@ -34,21 +35,21 @@ const { handleDeepLinkUri, handleUrlSchemeLaunch } = await import(
 )
 
 const originalBundleId = process.env.__CFBundleIdentifier
-const originalUrlEvent = process.env.CLAUDE_CODE_URL_EVENT
+const originalUrlEvent = process.env.OCC_URL_EVENT
 
 beforeEach(() => {
   mockParseDeepLink.mockClear()
   mockLaunchInTerminal.mockClear()
   process.env.__CFBundleIdentifier = undefined
-  delete process.env.CLAUDE_CODE_URL_EVENT
+  delete process.env.OCC_URL_EVENT
 })
 
 afterEach(() => {
   process.env.__CFBundleIdentifier = originalBundleId
   if (originalUrlEvent === undefined) {
-    delete process.env.CLAUDE_CODE_URL_EVENT
+    delete process.env.OCC_URL_EVENT
   } else {
-    process.env.CLAUDE_CODE_URL_EVENT = originalUrlEvent
+    process.env.OCC_URL_EVENT = originalUrlEvent
   }
 })
 
@@ -61,20 +62,18 @@ describe('handleUrlSchemeLaunch', () => {
   })
 
   test('returns null for a matching bundle id when no URL event arrives', async () => {
-    process.env.__CFBundleIdentifier = 'com.anthropic.claude-code-url-handler'
+    process.env.__CFBundleIdentifier = MACOS_DEEP_LINK_BUNDLE_ID
 
     await expect(handleUrlSchemeLaunch()).resolves.toBeNull()
     expect(mockParseDeepLink).not.toHaveBeenCalled()
   })
 
   test('handles a URL event after waiting for url-handler-napi', async () => {
-    process.env.__CFBundleIdentifier = 'com.anthropic.claude-code-url-handler'
-    process.env.CLAUDE_CODE_URL_EVENT = 'claude-cli://prompt?q=hello'
+    process.env.__CFBundleIdentifier = MACOS_DEEP_LINK_BUNDLE_ID
+    process.env.OCC_URL_EVENT = 'occ-cli://prompt?q=hello'
 
     await expect(handleUrlSchemeLaunch()).resolves.toBe(0)
-    expect(mockParseDeepLink).toHaveBeenCalledWith(
-      'claude-cli://prompt?q=hello',
-    )
+    expect(mockParseDeepLink).toHaveBeenCalledWith('occ-cli://prompt?q=hello')
   })
 })
 
@@ -85,9 +84,7 @@ describe('handleDeepLinkUri', () => {
   })
 
   test('returns 0 when parsing succeeds and terminal launch succeeds', async () => {
-    await expect(
-      handleDeepLinkUri('claude-cli://prompt?q=hello'),
-    ).resolves.toBe(0)
+    await expect(handleDeepLinkUri('occ-cli://prompt?q=hello')).resolves.toBe(0)
     expect(mockLaunchInTerminal).toHaveBeenCalled()
   })
 })

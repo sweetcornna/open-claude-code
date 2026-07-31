@@ -14,9 +14,9 @@ Claude Code 的 Agent 不仅仅来自用户自定义——系统有三类来源�
 |------|------|--------|
 | **Built-in** | `packages/builtin-tools/src/tools/AgentTool/built-in/` 硬编码 | 最低（可被覆盖） |
 | **Plugin** | 通过插件系统注册 | 中 |
-| **User/Project/Policy** | `.claude/agents/*.md` 或 settings.json | 最高 |
+| **User/Project/Policy** | `.occ/agents/*.md` 或 settings.json | 最高 |
 
-合并逻辑在 `getActiveAgentsFromList()` 中：按 `agentType` 去重，后者覆盖前者。这意味着你可以在 `.claude/agents/` 中放一个 `Explore.md` 来完全替换内置的 Explore Agent。
+合并逻辑在 `getActiveAgentsFromList()` 中：按 `agentType` 去重，后者覆盖前者。这意味着你可以在 `.occ/agents/` 中放一个 `Explore.md` 来完全替换内置的 Explore Agent。
 
 ## Markdown Agent 文件的完整格式
 
@@ -84,8 +84,8 @@ color: "blue"                       # 终端中的 Agent 颜色标识
 ```
 1. 加载 Markdown 文件
    ├── loadMarkdownFilesForSubdir('agents', cwd)
-   │   ├── ~/.claude/agents/*.md  （用户级，source = 'userSettings'）
-   │   ├── .claude/agents/*.md    （项目级，source = 'projectSettings'）
+   │   ├── ~/.occ/agents/*.md  （用户级，source = 'userSettings'）
+   │   ├── .occ/agents/*.md    （项目级，source = 'projectSettings'）
    │   └── managed/policy sources （策略级，source = 'policySettings'）
    │
    └── 每个 .md 文件：

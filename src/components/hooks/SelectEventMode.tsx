@@ -9,6 +9,7 @@
 
 import figures from 'figures';
 import * as React from 'react';
+import { occConfigPath, PROJECT_DIR_NAME } from 'src/config/paths.js';
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js';
 import type { HookEventMetadata } from 'src/utils/hooks/hooksConfigManager.js';
 import { Box, Link, Text } from '@anthropic/ink';
@@ -42,8 +43,8 @@ export function SelectEventMode({
           <Box flexDirection="column">
             <Text color="suggestion">{figures.info} Hooks Restricted by Policy</Text>
             <Text dimColor>
-              Only hooks from managed settings can run. User-defined hooks from ~/.claude/settings.json,
-              .claude/settings.json, and .claude/settings.local.json are blocked.
+              Only hooks from managed settings can run. User-defined hooks from {occConfigPath('settings.json')},{' '}
+              {PROJECT_DIR_NAME}/settings.json, and {PROJECT_DIR_NAME}/settings.local.json are blocked.
             </Text>
           </Box>
         )}

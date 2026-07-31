@@ -22,14 +22,6 @@ mock.module('src/utils/teammate.ts', () => ({
 mock.module('src/utils/teammateContext.ts', () => ({
   getTeammateContext: () => undefined,
 }))
-mock.module('src/utils/slowOperations.ts', () => ({
-  jsonParse: (s: string) => JSON.parse(s),
-  jsonStringify: (
-    v: unknown,
-    ...args: Parameters<typeof JSON.stringify>[1][]
-  ) => JSON.stringify(v, ...args),
-}))
-
 import {
   createTask,
   getTask,

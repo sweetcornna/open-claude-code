@@ -21,6 +21,7 @@ mock.module('bun:bundle', () => ({
 }
 
 const { validatePath } = await import('../pathValidation.js')
+const { isClaudeSettingsPath } = await import('../filesystem.js')
 const { getEmptyToolPermissionContext } = await import('../../../Tool.js')
 
 function makeContext(): ReturnType<typeof getEmptyToolPermissionContext> {
@@ -29,6 +30,24 @@ function makeContext(): ReturnType<typeof getEmptyToolPermissionContext> {
 
 const isWindows = process.platform === 'win32'
 const describeIfWindows = isWindows ? describe : describe.skip
+
+describe('isClaudeSettingsPath', () => {
+  test.each([
+    '.occ/settings.json',
+    '.occ/settings.local.json',
+    '.claude/settings.json',
+    '.claude/settings.local.json',
+  ])('protects %s in an arbitrary project', relativePath => {
+    expect(isClaudeSettingsPath(`/tmp/unrelated-project/${relativePath}`)).toBe(
+      true,
+    )
+  })
+
+  test('does not classify unrelated files inside either config root as settings', () => {
+    expect(isClaudeSettingsPath('/tmp/project/.occ/README.md')).toBe(false)
+    expect(isClaudeSettingsPath('/tmp/project/.claude/README.md')).toBe(false)
+  })
+})
 
 // ─── MinGW path normalization (Windows) ──────────────────────────────────
 //

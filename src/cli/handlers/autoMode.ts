@@ -1,8 +1,9 @@
 /**
  * Auto mode subcommand handlers — dump default/merged classifier rules and
- * critique user-written rules. Dynamically imported when `claude auto-mode ...` runs.
+ * critique user-written rules. Dynamically imported by the auto-mode subcommands.
  */
 
+import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
   getMainLoopModel,
@@ -49,9 +50,9 @@ export function autoModeConfigHandler(): void {
 }
 
 const CRITIQUE_SYSTEM_PROMPT =
-  'You are an expert reviewer of auto mode classifier rules for Claude Code.\n' +
+  `You are an expert reviewer of auto mode classifier rules for ${DISPLAY_NAME}.\n` +
   '\n' +
-  'Claude Code has an "auto mode" that uses an AI classifier to decide whether ' +
+  `${DISPLAY_NAME} has an "auto mode" that uses an AI classifier to decide whether ` +
   'tool calls should be auto-approved or require user confirmation. Users can ' +
   'write custom rules in three categories:\n' +
   '\n' +
@@ -85,7 +86,7 @@ export async function autoModeCritiqueHandler(options: {
     process.stdout.write(
       'No custom auto mode rules found.\n\n' +
         'Add rules to your settings file under autoMode.{allow, soft_deny, environment}.\n' +
-        'Run `claude auto-mode defaults` to see the default rules for reference.\n',
+        `Run \`${BIN_NAME} auto-mode defaults\` to see the default rules for reference.\n`,
     )
     return
   }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
+    "dev": "bun run build:web && bun run --watch src/index.ts",
     "dev:web": "cd web && bunx vite",
     "start": "bun run src/index.ts",
     "build:web": "cd web && bunx vite build",

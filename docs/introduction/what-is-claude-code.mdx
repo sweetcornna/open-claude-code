@@ -2,7 +2,6 @@
 title: "什么是 Claude Code - Terminal Native Agentic Coding System"
 description: "Claude Code 是运行在终端中的 agentic coding system，直接在你的项目目录中读代码、改文件、跑命令、调试程序。了解它的技术定位、架构差异和核心能力。"
 keywords: ["Claude Code", "AI 编程助手", "Agentic Coding", "终端 AI", "CLI AI"]
-og:image: "https://ccb.agent-aura.top/docs/images/og-cover.png"
 ---
 
 ## 一句话定义
@@ -105,7 +104,7 @@ if (typeof globalThis.MACRO === 'undefined') {
 
 - **完整的 shell 访问**：可以运行任何命令行工具，无需为每个能力写插件
 - **项目原生**：直接在项目目录工作，理解文件系统结构、git 状态
-- **可组合性**：管道模式（`echo "..." | claude -p`）允许嵌入 CI/CD 和自动化流程
+- **可组合性**：管道模式（`echo "..." | occ -p`）允许嵌入 CI/CD 和自动化流程
 - **低延迟**：没有 Electron 开销，React/Ink 渲染的 TUI 响应极快
 
 代价是用户需要适应命令行界面——但也正因如此，它吸引的是需要**真正掌控开发环境**的开发者。

@@ -48,3 +48,9 @@ export const NPM_PACKAGE_NAME = 'open-claude-code'
 
 /** Legacy binary name, still accepted so existing scripts and aliases work. */
 export const LEGACY_BIN_NAME = 'ccb'
+
+/** OS-level deep-link identity owned exclusively by occ. */
+export const DEEP_LINK_PROTOCOL = 'occ-cli'
+export const LEGACY_DEEP_LINK_PROTOCOL = 'claude-cli'
+export const MACOS_DEEP_LINK_BUNDLE_ID =
+  'io.github.sweetcornna.open-claude-code-url-handler'

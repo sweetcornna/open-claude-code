@@ -20,7 +20,7 @@ docker run -d \
   -p 3000:3000 \
   -e RCS_API_KEYS=your-api-key-here \
   -v rcs-data:/app/data \
-  ghcr.io/claude-code-best/remote-control-server:latest
+  ghcr.io/sweetcornna/remote-control-server:latest
 ```
 
 ## 环境变量
@@ -61,7 +61,7 @@ export CLAUDE_BRIDGE_OAUTH_TOKEN="your-api-key-here"
 然后启动远程控制模式：
 
 ```bash
-ccb --remote-control
+occ --remote-control
 ```
 
 > **注意**：远程控制功能需要启用 `BRIDGE_MODE` feature flag。开发模式下默认启用。
@@ -103,7 +103,7 @@ volumes:
 
 
 ```sh
-ACP_RCS_URL=http://localhost:3000 ACP_RCS_TOKEN=test-my-key acp-link ccb-bun -- --acp
+ACP_RCS_URL=http://localhost:3000 ACP_RCS_TOKEN=test-my-key acp-link occ-bun -- --acp
 ```
 
 ## 反向代理配置
@@ -155,16 +155,19 @@ rcs.example.com {
 - **传输层**：WebSocket（V1）和 SSE + HTTP POST（V2）
 - **存储**：纯内存存储（Map），重启后数据清除
 - **认证**：API Key（客户端）+ JWT（Worker）
-- **前端**：原生 JS SPA，通过 `/code/*` 路径访问
+- **前端**：React + Vite SPA，通过 `/code/*` 路径访问
 
 ## 开发
 
 ```bash
-# 安装依赖
+# 在 monorepo 根安装依赖
 bun install
 
-# 开发模式（热重载）
+# 在 packages/remote-control-server 中构建前端并启动后端（后端热重载）
 bun run dev
+
+# 也可以从 monorepo 根启动同一开发流程
+bun run rcs
 
 # 类型检查
 bun run typecheck
@@ -172,3 +175,5 @@ bun run typecheck
 # 运行测试
 bun test packages/remote-control-server/
 ```
+
+`bun run dev` 和根目录的 `bun run rcs` 都会先将 React/Vite 前端构建到 `web/dist`，再由后端通过 `/code/*` 提供构建产物。仅修改前端时需重新运行启动命令；如需 Vite 前端热更新，可另行运行 `bun run dev:web`。

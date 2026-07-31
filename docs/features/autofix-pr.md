@@ -27,7 +27,7 @@ export default { isEnabled: () => false, isHidden: true, name: 'stub' };
 
 ### 1.2 用户场景
 
-用户在 fork 仓库（`feat/autonomy-lifecycle-upstream` 分支）尝试对上游 `claude-code-best/claude-code#386` 跑 `/autofix-pr 386`，多次报 `git_repository source setup error`。根因：官方派发的远程 session 落在被 MCP 拒绝访问的仓库（`amdosion/claude-code-bast`），权限/可见性问题。
+用户在 fork 仓库（`feat/autonomy-lifecycle-upstream` 分支）尝试对上游 `sweetcornna/open-claude-code#386` 跑 `/autofix-pr 386`，多次报 `git_repository source setup error`。根因：官方派发的远程 session 落在被 MCP 拒绝访问的仓库（`amdosion/claude-code-bast`），权限/可见性问题。
 
 ### 1.3 目标
 
@@ -133,7 +133,7 @@ registerRemoteAgentTask({
     parentSessionId,
   }
   ```
-- **Skills 探测**：扫项目里 autofix-related skills（如 `.claude/skills/autofix-*` 或根目录 `AUTOFIX.md`），命中后拼到 prompt：`Run X and Y for custom instructions on how to autofix.`
+- **Skills 探测**：扫项目里 autofix-related skills（如 `.occ/skills/autofix-*` 或根目录 `AUTOFIX.md`），命中后拼到 prompt：`Run X and Y for custom instructions on how to autofix.`
 
 ### 2.6 Telemetry
 
@@ -394,8 +394,8 @@ import { join } from 'path'
 export function detectAutofixSkills(cwd: string): string[] {
   const candidates = [
     'AUTOFIX.md',
-    '.claude/skills/autofix.md',
-    '.claude/skills/autofix-pr/SKILL.md',
+    '.occ/skills/autofix.md',
+    '.occ/skills/autofix-pr/SKILL.md',
   ]
   return candidates.filter(rel => existsSync(join(cwd, rel)))
 }

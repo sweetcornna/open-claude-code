@@ -160,6 +160,9 @@ describe('callTeleport', () => {
     await callTeleport(onDone, makeContext(), '')
     const firstArg = onDone.mock.calls[0]?.[0] as string | undefined
     expect(firstArg).toMatch(/permission denied/)
+    expect(firstArg).toContain('/status')
+    expect(firstArg).toContain('/login')
+    expect(firstArg).not.toContain('claude auth status')
     const events = getLoggedEvents()
     expect(events).toContain('tengu_teleport_events_fetch_forbidden')
   })
@@ -182,6 +185,8 @@ describe('callTeleport', () => {
     await callTeleport(onDone, makeContext(), '')
     const firstArg = onDone.mock.calls[0]?.[0] as string | undefined
     expect(firstArg).toMatch(/authentication error/)
+    expect(firstArg).toContain('/login')
+    expect(firstArg).not.toContain('claude auth login')
     const events = getLoggedEvents()
     expect(events).toContain('tengu_teleport_error_bad_token')
   })

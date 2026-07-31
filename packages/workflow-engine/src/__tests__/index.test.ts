@@ -44,8 +44,8 @@ test('tool descriptor and input schema exported', () => {
 })
 
 test('engine constant values are stable', () => {
-  expect(wf.WORKFLOW_DIR_NAME).toBe('.claude/workflows')
-  expect(wf.WORKFLOW_RUNS_DIR).toBe('.claude/workflow-runs')
+  expect(wf.WORKFLOW_DIR_NAME).toBe('.occ/workflows')
+  expect(wf.WORKFLOW_RUNS_DIR).toBe('.occ/workflow-runs')
   expect(wf.WORKFLOW_TOOL_NAME).toBe('Workflow')
   expect(wf.MAX_TOTAL_AGENTS).toBe(1000)
   expect(wf.MAX_ITEMS_PER_CALL).toBe(4096)

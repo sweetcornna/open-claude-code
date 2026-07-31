@@ -25,6 +25,13 @@ test('args accepts any JSON value (object/array/string/number/boolean/null)', ()
   }
 })
 
+test('named workflow description uses the isolated public default', () => {
+  expect(workflowInputSchema.shape.name.description).toContain('.occ/workflows')
+  expect(workflowInputSchema.shape.name.description).not.toContain(
+    '.claude/workflows',
+  )
+})
+
 test('type errors rejected (script/name/scriptPath not strings)', () => {
   expect(workflowInputSchema.safeParse({ script: 123 }).success).toBe(false)
   expect(workflowInputSchema.safeParse({ name: 42 }).success).toBe(false)

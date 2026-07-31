@@ -1,4 +1,5 @@
 import { BIN_NAME } from 'src/constants/brand.js'
+import { PROJECT_DIR_NAME, occConfigPath } from 'src/config/paths.js'
 import chalk from 'chalk'
 import { logForDebugging } from 'src/utils/debug.js'
 import { fileHistoryEnabled } from 'src/utils/fileHistory.js'
@@ -324,13 +325,6 @@ const externalTips: Tip[] = [
     },
   },
   {
-    id: 'install-github-app',
-    content: async () =>
-      'Run /install-github-app to tag @claude right from your Github issues and PRs',
-    cooldownSessions: 10,
-    isRelevant: async () => !getGlobalConfig().githubActionSetupCount,
-  },
-  {
     id: 'install-slack-app',
     content: async () => 'Run /install-slack-app to use Claude in Slack',
     cooldownSessions: 10,
@@ -392,7 +386,7 @@ const externalTips: Tip[] = [
   {
     id: 'custom-commands',
     content: async () =>
-      'Create skills by adding .md files to .claude/skills/ in your project or ~/.claude/skills/ for skills that work in any project',
+      `Create skills by adding .md files to ${PROJECT_DIR_NAME}/skills/ in your project or ${occConfigPath('skills')}/ for skills that work in any project`,
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()

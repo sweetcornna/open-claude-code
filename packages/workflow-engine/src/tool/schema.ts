@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { WORKFLOW_DIR_NAME } from '../constants.js'
 
 /** Workflow tool input schema. args is any JSON value (object/array/string/etc.). */
 export const workflowInputSchema = z.object({
@@ -9,7 +10,9 @@ export const workflowInputSchema = z.object({
   name: z
     .string()
     .optional()
-    .describe('Named workflow, resolved to .claude/workflows/<name>.ts|js|mjs'),
+    .describe(
+      `Named workflow, resolved to ${WORKFLOW_DIR_NAME}/<name>.ts|js|mjs`,
+    ),
   scriptPath: z
     .string()
     .optional()

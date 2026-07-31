@@ -86,7 +86,11 @@ describe('isMemoryFilePath', () => {
     expect(isMemoryFilePath('/project/CLAUDE.local.md')).toBe(true)
   })
 
-  test('returns true for .claude/rules/ path', () => {
+  test('returns true for .occ/rules/ path', () => {
+    expect(isMemoryFilePath('/project/.occ/rules/foo.md')).toBe(true)
+  })
+
+  test('returns true for legacy .claude/rules/ path', () => {
     expect(isMemoryFilePath('/project/.claude/rules/foo.md')).toBe(true)
   })
 

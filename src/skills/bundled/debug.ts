@@ -1,6 +1,7 @@
 import { open, stat } from 'fs/promises'
 import { CLAUDE_CODE_GUIDE_AGENT_TYPE } from '@open-claude-code/builtin-tools/tools/AgentTool/built-in/claudeCodeGuideAgent.js'
 import { getSettingsFilePathForSource } from 'src/utils/settings/settings.js'
+import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js'
 import { enableDebugLogging, getDebugLogPath } from '../../utils/debug.js'
 import { errorMessage, isENOENT } from '../../utils/errors.js'
 import { formatFileSize } from '../../utils/format.js'
@@ -14,7 +15,7 @@ export function registerDebugSkill(): void {
     name: 'debug',
     description:
       process.env.USER_TYPE === 'ant'
-        ? 'Debug your current Claude Code session by reading the session debug log. Includes all event logging'
+        ? `Debug your current ${DISPLAY_NAME} session by reading the session debug log. Includes all event logging`
         : 'Enable debug logging for this session and help diagnose issues',
     allowedTools: ['Read', 'Grep', 'Glob'],
     argumentHint: '[issue description]',
@@ -63,12 +64,12 @@ export function registerDebugSkill(): void {
 
 Debug logging was OFF for this session until now. Nothing prior to this /debug invocation was captured.
 
-Tell the user that debug logging is now active at \`${debugLogPath}\`, ask them to reproduce the issue, then re-read the log. If they can't reproduce, they can also restart with \`claude --debug\` to capture logs from startup.
+Tell the user that debug logging is now active at \`${debugLogPath}\`, ask them to reproduce the issue, then re-read the log. If they can't reproduce, they can also restart with \`${BIN_NAME} --debug\` to capture logs from startup.
 `
 
       const prompt = `# Debug Skill
 
-Help the user debug an issue they're encountering in this current Claude Code session.
+Help the user debug an issue they're encountering in this current ${DISPLAY_NAME} session.
 ${justEnabledSection}
 ## Session Debug Log
 
@@ -93,7 +94,7 @@ Remember that settings are in:
 
 1. Review the user's issue description
 2. The last ${DEFAULT_DEBUG_LINES_READ} lines show the debug file format. Look for [ERROR] and [WARN] entries, stack traces, and failure patterns across the file
-3. Consider launching the ${CLAUDE_CODE_GUIDE_AGENT_TYPE} subagent to understand the relevant Claude Code features
+3. Consider launching the ${CLAUDE_CODE_GUIDE_AGENT_TYPE} subagent to understand the relevant ${DISPLAY_NAME} features
 4. Explain what you found in plain language
 5. Suggest concrete fixes or next steps
 `

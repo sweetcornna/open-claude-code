@@ -10,7 +10,7 @@ keywords: ["MCP", "Model Context Protocol", "工具扩展", "MCP 客户端", "�
 
 ```
 配置层（多来源合并）
-  ├── settings.json: { mcpServers: { "my-db": { command: "npx", args: [...] } } }   ← 外部
+  ├── ~/.occ.json: 用户级 mcpServers + projects[<project>] 本地覆盖                   ← 外部
   ├── .mcp.json: 项目级 MCP 配置                                                      ← 外部
   ├── 插件 manifest (.mcp.json / .mcpb)                                               ← 外部（插件）
   ├── claude.ai connectors                                                            ← 外部（远程）
@@ -176,8 +176,8 @@ export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
 | 来源 | Scope | 文件位置 | 优先级 |
 |------|-------|---------|--------|
 | 项目配置 | `project` | `<project>/.mcp.json` | 最高（同名覆盖） |
-| 本地配置 | `local` | `<project>/.claude/settings.local.json` | 高 |
-| 用户配置 | `user` | `~/.claude/settings.json` | 中 |
+| 本地配置 | `local` | `~/.occ.json` 的 `projects[<project>]` 条目 | 高 |
+| 用户配置 | `user` | `~/.occ.json` | 中 |
 | 插件 | `dynamic` | 插件 manifest 中 `.mcp.json` | 中 |
 | claude.ai | `claudeai` | 通过 API 获取 | 低 |
 | 企业管控 | `enterprise` | 系统管理路径 `managed-mcp.json` | 排他（存在时覆盖全部） |
@@ -185,7 +185,7 @@ export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
 #### 配置示例
 
 ```json
-// settings.json / .mcp.json 中的 MCP 配置
+// ~/.occ.json / .mcp.json 中的 MCP 配置
 {
   "mcpServers": {
     // stdio 类型 — 启动子进程
@@ -252,7 +252,7 @@ SIGINT (100ms) → SIGTERM (400ms) → SIGKILL
 
 ### 远程传输的认证状态机
 
-SSE/HTTP 类型使用 `ClaudeAuthProvider` 实现 OAuth 认证流程。认证失败时进入 `needs-auth` 状态，并写入 15 分钟 TTL 的缓存文件（`mcp-needs-auth-cache.json`），避免重复弹出认证提示。
+SSE/HTTP 类型使用 `ClaudeAuthProvider` 实现 OAuth 认证流程。认证失败时进入 `needs-auth` 状态，并写入 15 分钟 TTL 的缓存文件（`~/.occ/mcp-needs-auth-cache.json`），避免重复弹出认证提示。
 
 ```
 连接尝试 → 401 Unauthorized
@@ -380,7 +380,7 @@ getRemoteMcpServerConnectionBatchSize()  // 默认 20
 | 维度 | 内置 MCP | 外部 MCP |
 |------|---------|---------|
 | **Transport** | `InProcessTransport`（同进程） | stdio / SSE / HTTP / WebSocket |
-| **配置来源** | `setupComputerUseMCP()` / `setupClaudeInChrome()` 等动态注册 | settings.json / .mcp.json / 插件 / claude.ai |
+| **配置来源** | `setupComputerUseMCP()` / `setupClaudeInChrome()` 等动态注册 | `~/.occ.json` / `.mcp.json` / 插件 / claude.ai |
 | **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
 | **进程模型** | 同进程，零开销 | 子进程（stdio）或网络连接 |
 | **名称保护** | 保留名，用户不可添加同名 | 自由命名（字母数字 + `-_`） |

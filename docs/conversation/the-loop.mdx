@@ -24,19 +24,17 @@ Claude Code 不一样：你说一个需求，它可能连续执行十几步操�
 
 ### 阶段 1：上下文预处理（Pre-Processing Pipeline）
 
-在调用 API 之前，依次执行 5 个压缩/优化步骤：
+在调用 API 之前，依次执行 3 个压缩/优化步骤：
 
 ```
 messagesForQuery（原始消息）
   ↓ applyToolResultBudget()    — 工具结果预算截断（按 maxResultSizeChars）
-  ↓ snipCompactIfNeeded()      — 历史 Snip 压缩（HISTORY_SNIP feature）
   ↓ microcompact()             — 微压缩（工具结果摘要）
-  ↓ applyCollapsesIfNeeded()   — 上下文折叠（CONTEXT_COLLAPSE feature）
   ↓ autocompact()              — 自动压缩（超出阈值时触发）
 messagesForQuery（处理后的消息）→ 发往 API
 ```
 
-每个步骤的输出是下一步的输入，形成串行管道。Snip 和 Microcompact 的释放 token 数会传递给 autocompact 的阈值计算（`snipTokensFreed`），避免重复压缩。
+每个步骤的输出是下一步的输入，形成串行管道。Microcompact 先清理较早的工具结果，autocompact 再根据处理后的消息判断是否需要生成完整摘要。
 
 ### 阶段 2：流式 API 调用（Streaming Loop）
 
@@ -98,10 +96,8 @@ const toolUpdates = streamingToolExecutor
 - **提升阶段**（`max_output_tokens_escalate`）：首次截断时，将 `maxOutputTokens` 从默认值提升到 `ESCALATED_MAX_TOKENS`（64K）。静默重试，不注入 meta 消息。
 - **恢复阶段**（`max_output_tokens_recovery`）：提升后仍然截断时，注入恢复消息"Output token limit hit. Resume directly..."，最多重试 `MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3` 次。恢复耗尽后，暂扣的错误消息被释放。
 
-### 3. Prompt-Too-Long 恢复（`collapse_drain_retry` / `reactive_compact_retry`）
-当遇到 413 错误时，按优先级尝试两种压缩策略：
-- **Context Collapse Drain**（`collapse_drain_retry`）：提交所有已暂存的折叠（collapse），释放空间后重试。如果上一轮已经是 `collapse_drain_retry` 则跳过，避免无限循环。
-- **Reactive Compact**（`reactive_compact_retry`）：如果 collapse drain 无法恢复，触发即时压缩（reactive compact），生成摘要后重试。`hasAttemptedReactiveCompact` 标志防止无限循环。
+### 3. Prompt-Too-Long 恢复（`reactive_compact_retry`）
+当遇到 413 错误时，触发即时压缩（reactive compact），生成摘要后重试。`hasAttemptedReactiveCompact` 标志防止无限循环；如果重试仍无法恢复，暂扣的错误消息会被释放并终止本轮。
 
 ### 4. Stop Hook 阻塞重试（`stop_hook_blocking`）
 Stop hook 可以注入阻塞错误消息，强制 AI 重新思考。新的消息（包含阻塞错误）被追加到对话中，`stopHookActive = true`，进入下一轮迭代。
@@ -139,7 +135,7 @@ type State = {
 }
 ```
 
-每次 `continue` 都创建新的 State 对象（不可变更新），而非就地修改。`transition` 字段记录了为什么继续——让后续迭代能检测特定恢复路径（如 `collapse_drain_retry`）避免循环。
+每次 `continue` 都创建新的 State 对象（不可变更新），而非就地修改。`transition` 字段记录了为什么继续——让后续迭代能检测特定恢复路径并避免循环。
 
 ## Token Budget（实验性）
 
@@ -156,7 +152,7 @@ type State = {
 </Note>
 
 - **每一步都产生真实信息**：`runTools()` 返回的 `toolResults` 是 API 不可能预知的——命令输出、文件内容、错误信息
-- **动态上下文管理**：每轮迭代前都重新评估压缩需求（autocompact → microcompact → snip），基于最新的 token 计数
+- **动态上下文管理**：每轮迭代前都重新评估压缩需求（tool-result budget → microcompact → autocompact），基于最新的 token 计数
 - **错误即时恢复**：工具失败不需要推倒重来——stop hook 可以注入阻塞错误让 AI 修正策略
 - **用户可控**：`abortController.signal` 在循环的多个检查点被检测（第 1059、1095、1529 行），用户按 ESC 可以优雅中断
 - **成本控制**：Token Budget 在每轮终止前检查，防止 AI 无效循环
@@ -167,7 +163,7 @@ type State = {
 
 ```
 迭代 1: 思考→行动
-  预处理管道: applyToolResultBudget → snipCompact(HISTORY_SNIP feature) → microcompact → applyCollapses(CONTEXT_COLLAPSE feature) → autocompact
+  预处理管道: applyToolResultBudget → microcompact → autocompact
     → 上下文很短，无需压缩
   API 调用: 返回 tool_use(Glob, "**/*.ts")
   工具执行: 返回 42 个文件路径

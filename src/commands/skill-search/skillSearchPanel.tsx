@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { PROJECT_DIR_NAME, occConfigPath } from '../../config/paths.js';
 import { Box, Text, useInput } from '@anthropic/ink';
 import { Dialog } from '@anthropic/ink';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
@@ -21,7 +22,7 @@ Skill Search 控制对话中的自动技能匹配功能。
 无需手动指定。搜索基于 TF-IDF 向量余弦相似度，支持英文词干化和 CJK bi-gram 分词。
 
 ## 工作原理
-1. 对话开始时，自动索引 .claude/skills/ 和 ~/.claude/skills/ 下的 Markdown 文件
+1. 对话开始时，自动索引 ${PROJECT_DIR_NAME}/skills/ 和 ${occConfigPath('skills')}/ 下的 Markdown 文件
 2. 每轮对话根据上下文自动匹配最相关的 skill
 3. 匹配到的 skill 内容会作为上下文注入，指导 Claude Code 的行为
 

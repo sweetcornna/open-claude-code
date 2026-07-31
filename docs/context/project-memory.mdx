@@ -15,7 +15,7 @@ Claude Code 的记忆系统是**纯文件**的——没有数据库、没有向�
 ### 目录布局
 
 ```
-~/.claude/projects/<sanitized-git-root>/memory/
+~/.occ/projects/<sanitized-git-root>/memory/
 ├── MEMORY.md                    ← 入口索引（每次对话加载）
 ├── user_role.md                 ← 用户记忆
 ├── feedback_testing.md          ← 反馈记忆
@@ -32,7 +32,7 @@ Claude Code 的记忆系统是**纯文件**的——没有数据库、没有向�
 2. `autoMemoryDirectory` 设置（仅限 `policySettings`/`localSettings`/`userSettings`——**故意排除** `projectSettings`，防止恶意仓库将记忆路径指向 `~/.ssh`）
 3. 默认：`<memoryBase>/projects/<sanitized-git-root>/memory/`
 
-同一个 Git 仓库的所有 worktree 共享一个记忆目录（通过 `findCanonicalGitRoot()` 找到真正的 `.git` 根）。
+同一个 Git 仓库的所有 worktree 共享一个记忆目录（通过 `findCanonicalGitRoot()` 找到真正的 `.git` 根）。项目根及祖先目录中的 `CLAUDE.md` / `CLAUDE.local.md` 文件名保持不变；`.claude/CLAUDE.md` 和 `.claude/rules/*.md` 仅作为只读兼容来源加载，不会由 occ 写入。
 
 ### MEMORY.md 索引
 
@@ -146,14 +146,11 @@ System Prompt 明确指示："如果已提供最近使用的工具列表，不�
 `loadMemoryPrompt()` 是记忆注入的入口，每会话调用一次（通过 `systemPromptSection('memory', ...)` 缓存）：
 
 ```typescript
-// memdir.ts:419-507
+// memdir.ts
 export async function loadMemoryPrompt(): Promise<string | null> {
-  // 优先级：KAIROS 日志模式 → TEAMMEM 组合模式 → 纯自动记忆
+  // 优先级：KAIROS 日志模式 → 纯自动记忆
   if (feature('KAIROS') && autoEnabled && getKairosActive()) {
     return buildAssistantDailyLogPrompt(skipIndex)
-  }
-  if (feature('TEAMMEM') && teamMemPaths!.isTeamMemoryEnabled()) {
-    return teamMemPrompts!.buildCombinedMemoryPrompt(...)
   }
   if (autoEnabled) {
     return buildMemoryLines('auto memory', autoDir, ...).join('\n')
@@ -161,6 +158,8 @@ export async function loadMemoryPrompt(): Promise<string | null> {
   return null
 }
 ```
+
+`TEAMMEM` 组合模式及其远程团队记忆同步已从当前源码移除；现在不会加载或合并团队记忆目录。
 
 注入时机：`context.ts` 中 `getSystemContext()` 调用时，记忆 Prompt 作为 system prompt 的一个 section 被组装。`MEMORY.md` 的内容作为 **user context message** 注入（而非 system prompt），这样可以利用 Prompt Cache 的 prefix 共享。
 

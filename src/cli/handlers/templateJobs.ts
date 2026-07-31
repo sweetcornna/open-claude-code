@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import { BIN_NAME } from '../../constants/brand.js'
+import { occConfigPath, PROJECT_DIR_NAME } from '../../config/paths.js'
 import { listTemplates, loadTemplate } from '../../jobs/templates.js'
 import {
   createJob,
@@ -38,17 +40,17 @@ function printUsage(): void {
   console.log(`
 Template Job Commands:
 
-  claude job list                    List available templates
-  claude job new <template> [args]   Create a new job from a template
-  claude job reply <job-id> <text>   Reply to an existing job
-  claude job status <job-id>         Show job status
+  ${BIN_NAME} job list                    List available templates
+  ${BIN_NAME} job new <template> [args]   Create a new job from a template
+  ${BIN_NAME} job reply <job-id> <text>   Reply to an existing job
+  ${BIN_NAME} job status <job-id>         Show job status
 `)
 }
 
 function handleStatus(args: string[]): void {
   const jobId = args[0]
   if (!jobId) {
-    console.error('Usage: claude job status <job-id>')
+    console.error(`Usage: ${BIN_NAME} job status <job-id>`)
     process.exitCode = 1
     return
   }
@@ -73,7 +75,9 @@ function handleList(): void {
 
   if (templates.length === 0) {
     console.log('No templates found.')
-    console.log('Place .md files in .claude/templates/ or ~/.claude/templates/')
+    console.log(
+      `Place .md files in ${PROJECT_DIR_NAME}/templates/ or ${occConfigPath('templates')}/`,
+    )
     return
   }
 
@@ -92,7 +96,7 @@ function handleList(): void {
 function handleNew(args: string[]): void {
   const templateName = args[0]
   if (!templateName) {
-    console.error('Usage: claude job new <template> [args...]')
+    console.error(`Usage: ${BIN_NAME} job new <template> [args...]`)
     process.exitCode = 1
     return
   }
@@ -135,7 +139,7 @@ function handleReply(args: string[]): void {
   const text = args.slice(1).join(' ')
 
   if (!jobId || !text) {
-    console.error('Usage: claude job reply <job-id> <text>')
+    console.error(`Usage: ${BIN_NAME} job reply <job-id> <text>`)
     process.exitCode = 1
     return
   }

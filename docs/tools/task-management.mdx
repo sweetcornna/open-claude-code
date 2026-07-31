@@ -13,7 +13,7 @@ Claude Code 的任务管理并非单一系统，而是两个并存、按运行�
 | 维度 | V1: TodoWrite | V2: TaskCreate / TaskUpdate / TaskList / TaskGet |
 |------|--------------|--------------------------------------------------|
 | **启用条件** | 非交互式（pipe/SDK）或 `isTodoV2Enabled()` 返回 `false` | 交互式 REPL（默认）或 `CLAUDE_CODE_ENABLE_TASKS=1` |
-| **存储** | 内存中 `AppState.todos[sessionId]`（Zustand store） | 文件系统 `~/.claude/tasks/<taskListId>/<id>.json` |
+| **存储** | 内存中 `AppState.todos[sessionId]`（Zustand store） | 文件系统 `~/.occ/tasks/<taskListId>/<id>.json` |
 | **数据模型** | `{content, status, activeForm}` — 扁平三元组 | `{id, subject, description, activeForm, owner, status, blocks[], blockedBy[], metadata}` — 完整实体 |
 | **持久化** | 进程退出即丢失 | 跨进程存活，支持多 Agent 并发访问 |
 | **并发安全** | 无（单会话单写者） | 文件锁 + 高水位标记 + TOCTOU 防护 |
@@ -56,7 +56,7 @@ if (allDone && todos.length >= 3 && !todos.some(t => /verif/i.test(t.content))) 
 
 ### 数据模型
 
-每个任务是一个独立 JSON 文件，路径为 `~/.claude/tasks/<taskListId>/<id>.json`：
+每个任务是一个独立 JSON 文件，路径为 `~/.occ/tasks/<taskListId>/<id>.json`：
 
 ```typescript
 // src/utils/tasks.ts — TaskSchema

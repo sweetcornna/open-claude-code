@@ -5,6 +5,7 @@ import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/p
 import { SEND_MESSAGE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SendMessageTool/constants.js'
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js'
 import { WEB_SEARCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebSearchTool/prompt.js'
+import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { isUsing3PServices } from 'src/utils/auth.js'
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
@@ -74,7 +75,7 @@ function getClaudeCodeGuideBasePrompt(): string {
 4. Fetch the specific documentation pages
 5. Provide clear, actionable guidance based on official documentation
 6. Use ${WEB_SEARCH_TOOL_NAME} if docs don't cover the topic
-7. Reference local project files (CLAUDE.md, .claude/ directory) when relevant using ${localSearchHint}
+7. Reference local project files (CLAUDE.md, ${PROJECT_DIR_NAME}/ directory) when relevant using ${localSearchHint}
 
 **Guidelines:**
 - Always prioritize official documentation over assumptions
@@ -135,7 +136,7 @@ export const CLAUDE_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
       )
     }
 
-    // 2. Custom agents from .claude/agents/
+    // 2. Custom agents from the active occ agent sources.
     const customAgents =
       toolUseContext.options.agentDefinitions.activeAgents.filter(
         (a: AgentDefinition) => a.source !== 'built-in',

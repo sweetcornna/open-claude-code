@@ -19,8 +19,9 @@ export async function persistInlineScript(
   script: string,
   runId: string,
   cwd: string,
+  workflowRunsDir: string = WORKFLOW_RUNS_DIR,
 ): Promise<string> {
-  const dir = join(cwd, WORKFLOW_RUNS_DIR, runId)
+  const dir = join(cwd, workflowRunsDir, runId)
   await mkdir(dir, { recursive: true })
   const filePath = join(dir, 'script.js')
   await writeFile(filePath, script, 'utf-8')

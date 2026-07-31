@@ -11,6 +11,7 @@ import {
 import { isPolicyAllowed } from 'src/services/policyLimits/index.js';
 import { z } from 'zod/v4';
 import { getTeleportErrors, TeleportError, type TeleportLocalErrorType } from '../components/TeleportError.js';
+import { BIN_NAME } from '../constants/brand.js';
 import { getOauthConfig } from '../constants/oauth.js';
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js';
 import type { Root } from '@anthropic/ink';
@@ -469,7 +470,7 @@ export async function teleportResumeCodeSession(
         error_type: 'no_access_token' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
       throw new Error(
-        'Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.',
+        `Claude Code web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run ${BIN_NAME} auth login to authenticate, or check your authentication status with ${BIN_NAME} auth status.`,
       );
     }
 
@@ -502,9 +503,9 @@ export async function teleportResumeCodeSession(
             ? `${repoValidation.sessionHost}/${repoValidation.sessionRepo}`
             : repoValidation.sessionRepo;
         throw new TeleportOperationError(
-          `You must run claude --teleport ${sessionId} from a checkout of ${notInRepoDisplay}.`,
+          `You must run ${BIN_NAME} --teleport ${sessionId} from a checkout of ${notInRepoDisplay}.`,
           chalk.red(
-            `You must run claude --teleport ${sessionId} from a checkout of ${chalk.bold(notInRepoDisplay)}.\n`,
+            `You must run ${BIN_NAME} --teleport ${sessionId} from a checkout of ${chalk.bold(notInRepoDisplay)}.\n`,
           ),
         );
       }
@@ -526,9 +527,9 @@ export async function teleportResumeCodeSession(
           ? `${repoValidation.currentHost}/${repoValidation.currentRepo}`
           : repoValidation.currentRepo;
         throw new TeleportOperationError(
-          `You must run claude --teleport ${sessionId} from a checkout of ${sessionDisplay}.\nThis repo is ${currentDisplay}.`,
+          `You must run ${BIN_NAME} --teleport ${sessionId} from a checkout of ${sessionDisplay}.\nThis repo is ${currentDisplay}.`,
           chalk.red(
-            `You must run claude --teleport ${sessionId} from a checkout of ${chalk.bold(sessionDisplay)}.\nThis repo is ${chalk.bold(currentDisplay)}.\n`,
+            `You must run ${BIN_NAME} --teleport ${sessionId} from a checkout of ${chalk.bold(sessionDisplay)}.\nThis repo is ${chalk.bold(currentDisplay)}.\n`,
           ),
         );
       }
@@ -694,7 +695,7 @@ export async function teleportFromSessionsAPI(
       });
       throw new TeleportOperationError(
         `${sessionId} not found.`,
-        `${sessionId} not found.\n${chalk.dim('Run /status in Claude Code to check your account.')}`,
+        `${sessionId} not found.\n${chalk.dim(`Run ${BIN_NAME} auth status to check your account.`)}`,
       );
     }
 

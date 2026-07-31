@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { PROJECT_DIR_NAME } from '../../config/paths.js'
 
 // init-verifiers.ts has no external dependencies that need mocking
 // It's a simple prompt-type command that returns a static text prompt
@@ -81,6 +82,12 @@ describe('init-verifiers getPromptForCommand', () => {
   test('text mentions SKILL.md template', async () => {
     const result = await initVerifiers.getPromptForCommand()
     expect(result[0].text).toContain('SKILL.md')
+  })
+
+  test('creates verifier skills in the occ project directory', async () => {
+    const result = await initVerifiers.getPromptForCommand()
+    expect(result[0].text).toContain(`${PROJECT_DIR_NAME}/skills/`)
+    expect(result[0].text).not.toContain('.claude/skills/')
   })
 
   test('text mentions TodoWrite tool', async () => {

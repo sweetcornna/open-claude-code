@@ -2,37 +2,33 @@ import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { occConfigDir } from 'src/config/paths.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
-// Re-register ../keychain.js to override pollution from store.test.ts (which
-// mocks keychain as always-throwing) and keychain.test.ts (which mocks it with
-// an in-memory MockEntry). Force KeychainUnavailableError so the store always
-// uses the encrypted-file fallback path.
-class KeychainUnavailableError extends Error {
-  override name = 'KeychainUnavailableError'
-}
-
+const { KeychainUnavailableError } = await import(
+  '../../../services/localVault/keychain.js'
+)
 const keychainUnavailable = async (): Promise<never> => {
   throw new KeychainUnavailableError('test: keychain mocked as unavailable')
 }
+const fallbackKeychain = {
+  set: keychainUnavailable,
+  get: keychainUnavailable,
+  delete: keychainUnavailable,
+  list: keychainUnavailable,
+  _addToIndex: keychainUnavailable,
+  _removeFromIndex: keychainUnavailable,
+}
+const { _setKeychainBackendForTesting } = await import(
+  '../../../services/localVault/store.js'
+)
 
-mock.module('../../../services/localVault/keychain.js', () => ({
-  KeychainUnavailableError,
-  tryKeychain: {
-    set: keychainUnavailable,
-    get: keychainUnavailable,
-    delete: keychainUnavailable,
-    list: keychainUnavailable,
-    _addToIndex: keychainUnavailable,
-    _removeFromIndex: keychainUnavailable,
-  },
-  _resetKeychainModuleCache: () => {},
-}))
-
-let callLocalVault: typeof import('../launchLocalVault.js').callLocalVault
+const originalOccConfigDir = process.env.OCC_CONFIG_DIR
+const originalLegacyConfigDir = process.env.CLAUDE_CONFIG_DIR
+const { callLocalVault } = await import('../launchLocalVault.js')
 
 describe('callLocalVault', () => {
   let tmpDir: string
@@ -41,20 +37,27 @@ describe('callLocalVault', () => {
     if (msg) messages.push(msg)
   }
 
-  beforeEach(async () => {
+  beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'lv-launch-test-'))
-    process.env['CLAUDE_CONFIG_DIR'] = tmpDir
-    process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE'] =
+    process.env.OCC_CONFIG_DIR = tmpDir
+    delete process.env.CLAUDE_CONFIG_DIR
+    process.env.CLAUDE_LOCAL_VAULT_PASSPHRASE =
       'test-passphrase-fixed-32chars-xxx'
+    occConfigDir.cache.clear?.()
+    _setKeychainBackendForTesting(fallbackKeychain)
     messages.length = 0
-    const mod = await import('../launchLocalVault.js')
-    callLocalVault = mod.callLocalVault
   })
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
-    delete process.env['CLAUDE_CONFIG_DIR']
-    delete process.env['CLAUDE_LOCAL_VAULT_PASSPHRASE']
+    if (originalOccConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+    else process.env.OCC_CONFIG_DIR = originalOccConfigDir
+    if (originalLegacyConfigDir === undefined)
+      delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = originalLegacyConfigDir
+    delete process.env.CLAUDE_LOCAL_VAULT_PASSPHRASE
+    occConfigDir.cache.clear?.()
+    _setKeychainBackendForTesting(undefined)
   })
 
   test('no args renders action panel without completing', async () => {

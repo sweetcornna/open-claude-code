@@ -9,7 +9,7 @@
  *
  * 可选环境变量：
  *   ANTHROPIC_MODEL     模型名，默认 claude-sonnet-4-5
- *   RESEARCH_RUNS_DIR   journal 目录，默认 ~/.claude/workflow-runs（resume 复用）
+ *   RESEARCH_RUNS_DIR   journal 目录，默认 ~/.occ/workflow-runs（resume 复用）
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { readFile } from 'node:fs/promises'

@@ -4,6 +4,7 @@ import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { isAutoMemoryEnabled } from '../../../../memdir/paths.js';
 import {
   type AgentMemoryScope,
+  getMemoryScopeDisplay,
   loadAgentMemoryPrompt,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
@@ -29,21 +30,21 @@ export function MemoryStep(): ReactNode {
   const memoryOptions: MemoryOption[] = isUserScope
     ? [
         {
-          label: 'User scope (~/.claude/agent-memory/) (Recommended)',
+          label: `${getMemoryScopeDisplay('user')} (Recommended)`,
           value: 'user',
         },
         { label: 'None (no persistent memory)', value: 'none' },
-        { label: 'Project scope (.claude/agent-memory/)', value: 'project' },
-        { label: 'Local scope (.claude/agent-memory-local/)', value: 'local' },
+        { label: getMemoryScopeDisplay('project'), value: 'project' },
+        { label: getMemoryScopeDisplay('local'), value: 'local' },
       ]
     : [
         {
-          label: 'Project scope (.claude/agent-memory/) (Recommended)',
+          label: `${getMemoryScopeDisplay('project')} (Recommended)`,
           value: 'project',
         },
         { label: 'None (no persistent memory)', value: 'none' },
-        { label: 'User scope (~/.claude/agent-memory/)', value: 'user' },
-        { label: 'Local scope (.claude/agent-memory-local/)', value: 'local' },
+        { label: getMemoryScopeDisplay('user'), value: 'user' },
+        { label: getMemoryScopeDisplay('local'), value: 'local' },
       ];
 
   const handleSelect = (value: string): void => {

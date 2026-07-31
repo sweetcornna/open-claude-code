@@ -1,4 +1,4 @@
-import { PROJECT_DIR_NAME } from 'src/config/paths.js';
+import { PROJECT_DIR_NAME, XDG_SUBDIR } from 'src/config/paths.js';
 import figures from 'figures';
 import { join } from 'path';
 import React, { Suspense, use, useCallback, useEffect, useMemo, useState } from 'react';
@@ -19,7 +19,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState } from '../state/AppState.js';
 import { getPluginErrorMessage } from '../types/plugin.js';
-import { getGcsDistTags, getNpmDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
+import { getNpmDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
 import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
 import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/doctorDiagnostic.js';
 import { validateBoundedIntEnvVar } from '../utils/envValidation.js';
@@ -88,15 +88,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
   const [versionLockInfo, setVersionLockInfo] = useState<VersionLockInfo | null>(null);
   const validationErrors = useSettingsErrors();
 
-  // Create promise once for dist-tags fetch (depends on diagnostic)
-  const distTagsPromise = useMemo(
-    () =>
-      getDoctorDiagnostic().then(diag => {
-        const fetchDistTags = diag.installationType === 'native' ? getGcsDistTags : getNpmDistTags;
-        return fetchDistTags().catch(() => ({ latest: null, stable: null }));
-      }),
-    [],
-  );
+  const distTagsPromise = useMemo(() => getNpmDistTags().catch(() => ({ latest: null, stable: null })), []);
   const autoUpdatesChannel = getInitialSettings()?.autoUpdatesChannel ?? 'latest';
 
   const errorsExcludingMcp = validationErrors.filter(error => error.mcpErrorMetadata === undefined);
@@ -168,7 +160,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
 
       // Fetch version lock info if PID-based locking is enabled
       if (isPidBasedLockingEnabled()) {
-        const locksDir = join(getXDGStateHome(), 'claude', 'locks');
+        const locksDir = join(getXDGStateHome(), XDG_SUBDIR, 'locks');
         const staleLocksCleaned = cleanupStaleLocks(locksDir);
         const locks = getAllLockInfo(locksDir);
         setVersionLockInfo({
@@ -189,7 +181,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
   }, [toolPermissionContext, tools, agentDefinitions]);
 
   const handleDismiss = useCallback(() => {
-    onDone('Claude Code diagnostics dismissed', { display: 'system' });
+    onDone('Open Claude Code diagnostics dismissed', { display: 'system' });
   }, [onDone]);
 
   // Handle dismiss via keybindings (Enter, Escape, or Ctrl+C)

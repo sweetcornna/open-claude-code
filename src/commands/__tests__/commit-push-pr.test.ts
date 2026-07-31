@@ -221,13 +221,16 @@ describe('commit-push-pr getPromptForCommand', () => {
     expect(result[0].type).toBe('text')
   })
 
-  test('with ant user type and not undercover, includes reviewer arg', async () => {
+  test('does not request the official Anthropic reviewer', async () => {
     process.env.USER_TYPE = 'external'
     const result = await (commitPushPr as any).getPromptForCommand(
       '',
       makeContext(),
     )
     expect(result[0].text).toContain('gh pr create')
+    expect(result[0].text).not.toContain('anthropics/claude-code')
+    expect(result[0].text).not.toContain('--reviewer')
+    expect(result[0].text).not.toContain('--add-reviewer')
   })
 
   test('with SAFEUSER env var set, text contains context', async () => {

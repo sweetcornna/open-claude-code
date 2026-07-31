@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useMemo, useState } from 'react';
+import { PROJECT_DIR_NAME, occConfigPath } from '../../config/paths.js';
 import {
   type Command,
   type CommandBase,
@@ -102,7 +103,9 @@ export function SkillsMenu({ onExit, commands }: Props): React.ReactNode {
   if (skills.length === 0) {
     return (
       <Dialog title="Skills" subtitle="No skills found" onCancel={handleCancel} hideInputGuide>
-        <Text dimColor>Create skills in .claude/skills/ or ~/.claude/skills/</Text>
+        <Text dimColor>
+          Create skills in {PROJECT_DIR_NAME}/skills/ or {occConfigPath('skills')}/
+        </Text>
         <Text dimColor italic>
           <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="close" />
         </Text>
