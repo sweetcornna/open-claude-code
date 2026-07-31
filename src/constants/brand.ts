@@ -39,10 +39,10 @@ export const DISPLAY_NAME = 'Open Claude Code'
  * The npm package the self-updater installs from.
  *
  * This MUST match the `name` field in package.json. Three separate places used
- * to disagree about it — `updateCCB.ts` said `claude-code-best`, `autoUpdater`
- * read an empty `MACRO.PACKAGE_URL`, and `rollback.ts` hardcoded Anthropic's
- * `@anthropic-ai/claude-code`, meaning "rolling back" installed a different
- * product over the user's binary.
+ * to disagree about it — `updateOcc.ts` (né `updateCCB.ts`) said
+ * `claude-code-best`, `autoUpdater` read an empty `MACRO.PACKAGE_URL`, and
+ * `rollback.ts` hardcoded Anthropic's `@anthropic-ai/claude-code`, meaning
+ * "rolling back" installed a different product over the user's binary.
  */
 export const NPM_PACKAGE_NAME = 'open-claude-code'
 

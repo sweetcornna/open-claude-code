@@ -5,14 +5,14 @@
   "type": "module",
   "license": "MIT",
   "author": "open-claude-code",
-  "homepage": "https://github.com/claude-code-best/claude-code/tree/main/packages/workflow-engine#readme",
+  "homepage": "https://github.com/sweetcornna/open-claude-code/tree/main/packages/workflow-engine#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/claude-code-best/claude-code.git",
+    "url": "git+https://github.com/sweetcornna/open-claude-code.git",
     "directory": "packages/workflow-engine"
   },
   "bugs": {
-    "url": "https://github.com/claude-code-best/claude-code/issues"
+    "url": "https://github.com/sweetcornna/open-claude-code/issues"
   },
   "keywords": [
     "workflow",
