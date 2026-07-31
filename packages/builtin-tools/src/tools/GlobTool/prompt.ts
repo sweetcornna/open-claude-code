@@ -1,4 +1,5 @@
-export const GLOB_TOOL_NAME = 'Glob'
+// Compat shim — GLOB_TOOL_NAME now lives in the pure constants leaf.
+export { GLOB_TOOL_NAME } from './constants.js'
 
 export const DESCRIPTION = `- Fast file pattern matching tool that works with any codebase size
 - Supports glob patterns like "**/*.js" or "src/**/*.ts"

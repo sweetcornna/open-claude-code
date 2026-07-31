@@ -25,9 +25,12 @@ import type { AgentId } from 'src/types/ids.js';
 import type { AssistantMessage } from 'src/types/message.js';
 import { parseForSecurity } from 'src/utils/bash/ast.js';
 import { splitCommand_DEPRECATED, splitCommandWithOperators } from 'src/utils/bash/commands.js';
+import { getAttributionTexts } from 'src/utils/attribution.js';
 import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
 import { detectCodeIndexingFromCommand } from 'src/utils/codeIndexing.js';
+import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
+import { shouldIncludeGitInstructions } from 'src/utils/gitSettings.js';
 import { isENOENT, ShellError } from 'src/utils/errors.js';
 import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from 'src/utils/file.js';
 import { fileHistoryEnabled, fileHistoryTrackEdit } from 'src/utils/fileHistory.js';
@@ -35,6 +38,7 @@ import { truncate } from 'src/utils/format.js';
 import { getFsImplementation } from 'src/utils/fsOperations.js';
 import { lazySchema } from 'src/utils/lazySchema.js';
 import { expandPath } from 'src/utils/path.js';
+import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js';
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
 import { exec } from 'src/utils/Shell.js';
@@ -42,10 +46,16 @@ import type { ExecResult } from 'src/utils/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from 'src/utils/semanticBoolean.js';
 import { semanticNumber } from 'src/utils/semanticNumber.js';
+import { jsonStringify } from 'src/utils/slowOperations.js';
 import { EndTruncatingAccumulator } from 'src/utils/stringUtils.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { TaskOutput } from 'src/utils/task/TaskOutput.js';
 import { isOutputLineTruncated } from 'src/utils/terminal.js';
+import {
+  getDefaultBashTimeoutMs as getDefaultTimeoutMs,
+  getMaxBashTimeoutMs as getMaxTimeoutMs,
+} from 'src/utils/timeouts.js';
+import { getUndercoverInstructions, isUndercover } from 'src/utils/undercover.js';
 import {
   buildLargeToolResultMessage,
   ensureToolResultsDir,
@@ -62,7 +72,8 @@ import {
   permissionRuleExtractPrefix,
 } from './bashPermissions.js';
 import { interpretCommandResult } from './commandSemantics.js';
-import { getDefaultTimeoutMs, getMaxTimeoutMs, getSimplePrompt } from './prompt.js';
+import type { BashGitPromptParams, BashSandboxPromptParams } from './prompt.js';
+import { renderBashPrompt } from './prompt.js';
 import { checkReadOnlyConstraints } from './readOnlyValidation.js';
 import { parseSedEditCommand } from './sedEditParser.js';
 import { shouldUseSandbox } from './shouldUseSandbox.js';
@@ -555,6 +566,84 @@ async function applySedEdit(
   };
 }
 
+// SandboxManager merges config from multiple sources (settings layers, defaults,
+// CLI flags) without deduping, so paths like ~/.cache appear 3× in allowOnly.
+// Dedup before inlining into the prompt — affects only what the model sees,
+// not sandbox enforcement. Saves ~150-200 tokens/request when sandbox is enabled.
+function dedup<T>(arr: T[] | undefined): T[] | undefined {
+  if (!arr || arr.length === 0) return arr;
+  return [...new Set(arr)];
+}
+
+function buildSandboxPromptParams(): BashSandboxPromptParams | null {
+  if (!SandboxManager.isSandboxingEnabled()) {
+    return null;
+  }
+
+  const fsReadConfig = SandboxManager.getFsReadConfig();
+  const fsWriteConfig = SandboxManager.getFsWriteConfig();
+  const networkRestrictionConfig = SandboxManager.getNetworkRestrictionConfig();
+  const allowUnixSockets = SandboxManager.getAllowUnixSockets();
+  const ignoreViolations = SandboxManager.getIgnoreViolations();
+
+  // Replace the per-UID temp dir literal (e.g. /private/tmp/claude-1001/) with
+  // "$TMPDIR" so the prompt is identical across users — avoids busting the
+  // cross-user global prompt cache. The sandbox already sets $TMPDIR at runtime.
+  const claudeTempDir = getClaudeTempDir();
+  const normalizeAllowOnly = (paths: string[]): string[] =>
+    [...new Set(paths)].map(p => (p === claudeTempDir ? '$TMPDIR' : p));
+
+  const filesystemConfig = {
+    read: {
+      denyOnly: dedup(fsReadConfig.denyOnly),
+      ...(fsReadConfig.allowWithinDeny && {
+        allowWithinDeny: dedup(fsReadConfig.allowWithinDeny),
+      }),
+    },
+    write: {
+      allowOnly: normalizeAllowOnly(fsWriteConfig.allowOnly),
+      denyWithinAllow: dedup(fsWriteConfig.denyWithinAllow),
+    },
+  };
+
+  const networkConfig = {
+    ...(networkRestrictionConfig?.allowedHosts && {
+      allowedHosts: dedup(networkRestrictionConfig.allowedHosts),
+    }),
+    ...(networkRestrictionConfig?.deniedHosts && {
+      deniedHosts: dedup(networkRestrictionConfig.deniedHosts),
+    }),
+    ...(allowUnixSockets && { allowUnixSockets: dedup(allowUnixSockets) }),
+  };
+
+  return {
+    filesystemJson: Object.keys(filesystemConfig).length > 0 ? jsonStringify(filesystemConfig) : null,
+    networkJson: Object.keys(networkConfig).length > 0 ? jsonStringify(networkConfig) : null,
+    ignoredViolationsJson: ignoreViolations ? jsonStringify(ignoreViolations) : null,
+    allowUnsandboxedCommands: SandboxManager.areUnsandboxedCommandsAllowed(),
+  };
+}
+
+function buildGitPromptParams(): BashGitPromptParams {
+  const antUser = process.env.USER_TYPE === 'ant';
+  // Undercover instructions must survive even if the user has disabled git
+  // instructions entirely — see BashGitPromptParams.undercoverSection.
+  const undercoverSection = antUser && isUndercover() ? getUndercoverInstructions() + '\n' : '';
+  const includeGitInstructions = shouldIncludeGitInstructions();
+  // Only the external-user branch renders attribution, so don't pay for the
+  // settings read otherwise.
+  const attribution = includeGitInstructions && !antUser ? getAttributionTexts() : { commit: '', pr: '' };
+
+  return {
+    undercoverSection,
+    includeGitInstructions,
+    antUser,
+    includeSkillsSection: !isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE),
+    commitAttribution: attribution.commit,
+    prAttribution: attribution.pr,
+  };
+}
+
 export const BashTool = buildTool({
   name: BASH_TOOL_NAME,
   searchHint: 'execute shell commands',
@@ -565,7 +654,15 @@ export const BashTool = buildTool({
     return description || 'Run shell command';
   },
   async prompt() {
-    return getSimplePrompt();
+    return renderBashPrompt({
+      embeddedSearchTools: hasEmbeddedSearchTools(),
+      maxTimeoutMs: getMaxTimeoutMs(),
+      defaultTimeoutMs: getDefaultTimeoutMs(),
+      backgroundTasksEnabled: !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS),
+      monitorTool: feature('MONITOR_TOOL') ? true : false,
+      sandbox: buildSandboxPromptParams(),
+      git: buildGitPromptParams(),
+    });
   },
   isConcurrencySafe(input) {
     return this.isReadOnly?.(input) ?? false;
