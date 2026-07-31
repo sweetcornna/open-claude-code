@@ -47,7 +47,7 @@ import {
   getScratchpadDir,
 } from '../utils/permissions/filesystem.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
-import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/constants.js'
+import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/replMode.js'
 import { feature } from 'bun:bundle'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { shouldUseGlobalCacheScope } from '../utils/betas.js'

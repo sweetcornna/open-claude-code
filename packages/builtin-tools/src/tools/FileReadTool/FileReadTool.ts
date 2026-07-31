@@ -72,7 +72,7 @@ import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js
 import { readFileInRange } from 'src/utils/readFileInRange.js'
 import { semanticNumber } from 'src/utils/semanticNumber.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
-import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
+import { BASH_TOOL_NAME } from '../BashTool/constants.js'
 import {
   DESCRIPTION,
   FILE_READ_TOOL_NAME,
