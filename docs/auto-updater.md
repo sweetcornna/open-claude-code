@@ -17,8 +17,6 @@ occ update
 | Open Claude Code | `occ` / `occ-bun` | `open-claude-code` | `~/.occ/`、`~/.occ.json` |
 | Anthropic Claude Code | `claude` | `@anthropic-ai/claude-code` | `~/.claude/`、`~/.claude.json` |
 
-`ccb` 和 `ccb-bun` 仍是 occ 的兼容别名，但新脚本应使用 `occ` 和 `occ-bun`。
-
 ## 安装与手动更新
 
 使用 npm 安装或更新：
