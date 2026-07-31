@@ -184,7 +184,7 @@ describe('toRelativePath', () => {
 describe('getDirectoryForPath', () => {
   test('returns the path itself when given an existing directory', () => {
     setOriginalFsImplementation()
-    const dir = resolve(tmpdir(), 'ccb-existing-dir')
+    const dir = resolve(tmpdir(), 'occ-existing-dir')
     const baseFs = getFsImplementation()
     setFsImplementation({
       ...baseFs,
@@ -205,7 +205,7 @@ describe('getDirectoryForPath', () => {
 
   test('returns parent directory for a known file', () => {
     setOriginalFsImplementation()
-    const expectedParent = resolve(tmpdir(), 'ccb-file-parent')
+    const expectedParent = resolve(tmpdir(), 'occ-file-parent')
     const file = resolve(expectedParent, 'sample.txt')
     const baseFs = getFsImplementation()
     setFsImplementation({
@@ -227,7 +227,7 @@ describe('getDirectoryForPath', () => {
 
   test('returns parent directory for a non-existent path', () => {
     setOriginalFsImplementation()
-    const expectedParent = resolve(tmpdir(), 'ccb-missing-parent')
+    const expectedParent = resolve(tmpdir(), 'occ-missing-parent')
     const nonExistent = resolve(expectedParent, 'does-not-exist-xyz123.ts')
     const baseFs = getFsImplementation()
     setFsImplementation({
