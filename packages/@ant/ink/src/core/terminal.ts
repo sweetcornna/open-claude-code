@@ -157,12 +157,18 @@ const EXTENDED_KEYS_TERMINALS = [
   'WezTerm',
   'ghostty',
   'tmux',
-  'windows-terminal',
 ]
 
 /** True if this terminal correctly handles extended key reporting
  *  (Kitty keyboard protocol + xterm modifyOtherKeys). */
 export function supportsExtendedKeys(): boolean {
+  // Windows Terminal never sets TERM_PROGRAM, so the allowlist below can
+  // never match it — WT_SESSION is the only marker it exposes (the rest of
+  // this file already keys off it). This also covers WSL running inside
+  // Windows Terminal, where platform is linux but keystrokes still come
+  // from WT, which is exactly the behavior we want.
+  if (process.env.WT_SESSION) return true
+
   return EXTENDED_KEYS_TERMINALS.includes(process.env.TERM_PROGRAM ?? '')
 }
 
