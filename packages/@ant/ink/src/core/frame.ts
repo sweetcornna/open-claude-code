@@ -1,6 +1,5 @@
 import type { Cursor } from './cursor.js'
 import type { Size } from './layout/geometry.js'
-import type { ScrollHint } from './render-node-to-output.js'
 import {
   type CharPool,
   createScreen,
@@ -8,6 +7,17 @@ import {
   type Screen,
   type StylePool,
 } from './screen.js'
+
+// DECSTBM scroll optimization hint. When a ScrollBox's scrollTop changes
+// between frames (and nothing else moved), log-update.ts can emit a
+// hardware scroll (DECSTBM + SU/SD) instead of rewriting the whole
+// viewport. top/bottom are 0-indexed inclusive screen rows; delta > 0 =
+// content moved up (scrollTop increased, CSI n S).
+//
+// Declared with Frame (rather than in render-node-to-output.ts, which
+// produces it) so the frame types stay independent of the renderer —
+// render-node-to-output.ts reaches back here through terminal.ts.
+export type ScrollHint = { top: number; bottom: number; delta: number }
 
 export type Frame = {
   readonly screen: Screen

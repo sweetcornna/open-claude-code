@@ -101,10 +101,16 @@ export class TerminalEvent extends Event {
   _prepareForTarget(_target: EventTarget): void {}
 }
 
-import type { EventHandlerProps } from './event-handlers.js'
-
-/** 终端事件系统的目标节点（DOM 树节点或根节点）。 */
+/**
+ * 终端事件系统的目标节点（DOM 树节点或根节点）。
+ *
+ * `_eventHandlers` 在这里刻意不写精确类型：精确形状是
+ * `Partial<EventHandlerProps>`（event-handlers.ts），但那个模块要引用
+ * FocusEvent / KeyboardEvent 等事件类，而它们又继承本文件的 TerminalEvent
+ * —— 在此 import 回去就闭成一个环。精确声明在 dom-types.ts 的 DOMElement
+ * 上；dispatcher 用 HANDLER_FOR_EVENT 取到键名后再窄化。
+ */
 export type EventTarget = {
   parentNode: EventTarget | undefined // 父节点，根节点为 undefined
-  _eventHandlers?: Partial<EventHandlerProps> // 事件处理器，与 dom.ts DOMElement 同构
+  _eventHandlers?: Record<string, unknown> // 事件处理器，与 dom-types.ts DOMElement 同构
 }

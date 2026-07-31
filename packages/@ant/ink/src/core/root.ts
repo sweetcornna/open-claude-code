@@ -86,6 +86,10 @@ export const renderSync = (
     ...opts,
   }
 
+  // Ink can't reach the instances map itself (instances.js names the Ink
+  // type, so importing it back would be a cycle) — hand it the removal.
+  inkOptions.onDispose = () => instances.delete(inkOptions.stdout)
+
   const instance: Ink = getInstance(
     inkOptions.stdout,
     () => new Ink(inkOptions),
@@ -144,6 +148,7 @@ export async function createRoot({
     exitOnCtrlC,
     patchConsole,
     onFrame,
+    onDispose: () => instances.delete(stdout),
   })
 
   // Register in the instances map so that code that looks up the Ink
