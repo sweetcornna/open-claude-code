@@ -1,6 +1,7 @@
 import React from 'react';
 import { type ExitState, useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCD.js';
-import { Box, Text } from '../index.js';
+import Box from './ThemedBox.js';
+import Text from './ThemedText.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import type { Theme } from './theme-types.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
