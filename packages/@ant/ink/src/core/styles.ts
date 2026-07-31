@@ -10,7 +10,7 @@ import {
   LayoutPositionType,
   LayoutWrap,
 } from './layout/node.js'
-import type { BorderStyle, BorderTextOptions } from './render-border.js'
+import type { BorderStyle, BorderTextOptions } from './border-styles.js'
 
 export type RGBColor = `rgb(${number},${number},${number})`
 export type HexColor = `#${string}`
