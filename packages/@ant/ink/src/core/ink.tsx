@@ -17,7 +17,6 @@ import { KeyboardEvent } from './events/keyboard-event.js';
 import { FocusManager } from './focus.js';
 import { emptyFrame, type Frame, type FrameEvent } from './frame.js';
 import { dispatchClick, dispatchHover } from './hit-test.js';
-import instances from './instances.js';
 import { LogUpdate } from './log-update.js';
 import { nodeCache } from './node-cache.js';
 import { optimize } from './optimizer.js';
@@ -134,6 +133,13 @@ export type Options = {
   onBeforeRender?: () => void;
   /** Injected logger. Replaces logForDebugging / logError imports. */
   logger?: Logger;
+  /**
+   * Called once from unmount(), after the tree is torn down. Used by root.ts
+   * to drop this instance from the instances map. Replaces the instances.js
+   * import — instances.js has to name the Ink type, so importing it back
+   * closed a cycle.
+   */
+  onDispose?: () => void;
 };
 
 /** No-op logger used when no logger is injected. */
@@ -1654,7 +1660,7 @@ export default class Ink {
 
     reconciler.updateContainerSync(null, this.container, null, noop);
     reconciler.flushSyncWork();
-    instances.delete(this.options.stdout);
+    this.options.onDispose?.();
 
     // Free the root yoga node, then clear its reference. Children are already
     // freed by the reconciler's removeChildFromContainer; using .free() (not

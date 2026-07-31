@@ -1,6 +1,7 @@
 import indentString from 'indent-string'
 import { applyTextStyles } from './colorize.js'
 import type { DOMElement } from './dom.js'
+import type { ScrollHint } from './frame.js'
 import getMaxWidth from './get-max-width.js'
 import type { Rectangle } from './layout/geometry.js'
 import { LayoutDisplay, LayoutEdge, type LayoutNode } from './layout/node.js'
@@ -41,12 +42,6 @@ export function didLayoutShift(): boolean {
   return layoutShifted
 }
 
-// DECSTBM scroll optimization hint. When a ScrollBox's scrollTop changes
-// between frames (and nothing else moved), log-update.ts can emit a
-// hardware scroll (DECSTBM + SU/SD) instead of rewriting the whole
-// viewport. top/bottom are 0-indexed inclusive screen rows; delta > 0 =
-// content moved up (scrollTop increased, CSI n S).
-export type ScrollHint = { top: number; bottom: number; delta: number }
 let scrollHint: ScrollHint | null = null
 
 // Rects of position:absolute nodes from the PREVIOUS frame, used by
