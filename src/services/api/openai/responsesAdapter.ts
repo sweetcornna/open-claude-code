@@ -22,7 +22,7 @@ type ResponsesRequest = {
   tool_choice?: unknown
   reasoning?: { effort: ResponsesReasoningEffort }
   parallel_tool_calls?: boolean
-  /** Sticky cache routing key — stable for the CCB session. */
+  /** Sticky cache routing key — stable for the occ session. */
   prompt_cache_key: string
 }
 

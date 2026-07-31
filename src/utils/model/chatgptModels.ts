@@ -18,7 +18,7 @@ export const CHATGPT_CODEX_MODELS_BY_TIER = {
 
 export type ChatGPTCodexModelTier = keyof typeof CHATGPT_CODEX_MODELS_BY_TIER
 
-/** Resolve one CCB capability tier without coupling the policy to settings. */
+/** Resolve one occ capability tier without coupling the policy to settings. */
 export function resolveChatGPTCodexModelForTier(params: {
   tier: ChatGPTCodexModelTier
   isChatGPTAuth: boolean
@@ -136,7 +136,7 @@ export function isChatGPTCodexReasoningModel(model: string): boolean {
 }
 
 /**
- * Context window for GPT-5.6 models used by CCB for local budgeting
+ * Context window for GPT-5.6 models used by occ for local budgeting
  * (status bar %, auto-compact thresholds). Not sent as a request field.
  *
  * - ChatGPT OAuth / Codex backend: 272k (subscription product limit)
