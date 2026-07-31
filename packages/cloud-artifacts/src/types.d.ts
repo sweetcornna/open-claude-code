@@ -87,9 +87,9 @@ interface ExportedHandler<Env = unknown> {
 }
 
 // -- Env -------------------------------------------------------------------
-// Wrangler-generated worker-configuration.d.ts supplies TOKEN via `wrangler secret put`.
-// This declaration provides the R2 binding + wrangler vars so the Worker compiles
-// without the generated file.
+// Wrangler-generated worker-configuration.d.ts does not type secrets added via
+// `wrangler secret put`. This declaration provides those secrets, the R2 binding,
+// and wrangler vars so the Worker compiles without the generated file.
 //
 // NOTE: 这个文件是脚本（没有 top-level import/export），顶层 interface 自动是 global
 // ambient，会和 worker-configuration.d.ts 的 `interface Env` 走 interface declaration
@@ -98,6 +98,7 @@ interface ExportedHandler<Env = unknown> {
 interface Env {
   BUCKET: R2Bucket
   TOKEN: string
+  TOKEN_PREVIOUS?: string
   MAX_BYTES: string
   DEFAULT_TTL_DAYS: string
   PUBLIC_URL: string
