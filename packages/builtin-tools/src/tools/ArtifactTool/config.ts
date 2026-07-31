@@ -20,6 +20,16 @@ export const ARTIFACTS_DEFAULT_TOKEN =
 export const ARTIFACTS_DEFAULT_URL =
   'https://cloud-artifacts.claude-code-best.win'
 
+export type ArtifactsBackend = 'worker' | 'rustypaste'
+
+export function getArtifactsBackend(): ArtifactsBackend {
+  const backend = process.env.OCC_ARTIFACTS_BACKEND ?? 'worker'
+  if (backend === 'worker' || backend === 'rustypaste') return backend
+  throw new Error(
+    `Unsupported artifact backend: ${backend}. Expected "worker" or "rustypaste".`,
+  )
+}
+
 export function getArtifactsToken(): string {
   return (
     process.env.OCC_ARTIFACTS_TOKEN ??

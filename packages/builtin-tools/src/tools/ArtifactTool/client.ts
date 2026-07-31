@@ -1,3 +1,6 @@
+import { getArtifactsToken, getUploadUrl } from './config.js'
+import type { ArtifactStore } from './store.js'
+
 export type UploadResult = {
   id: string
   url: string
@@ -56,4 +59,16 @@ export async function uploadArtifact(
     )
   }
   return { id: data.id, url: data.url, expiresAt: data.expiresAt }
+}
+
+export const workerStore: ArtifactStore = {
+  upload({ html, hash, ttlDays }) {
+    return uploadArtifact({
+      html,
+      token: getArtifactsToken(),
+      uploadUrl: getUploadUrl(),
+      hash,
+      ttl: ttlDays,
+    })
+  },
 }
