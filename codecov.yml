@@ -1,3 +1,4 @@
+# Upload is disabled in CI ("codecov 坏了"); retain this dormant config for when it returns.
 coverage:
   status:
     project:
