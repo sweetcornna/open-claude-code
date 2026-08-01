@@ -258,7 +258,13 @@ export async function dispatchAction(
       return handleWriteClipboard(adapter, a, overrides, subGates)
 
     case 'computer_batch':
-      return handleComputerBatch(adapter, a, overrides, subGates)
+      return handleComputerBatch(
+        adapter,
+        a,
+        overrides,
+        subGates,
+        dispatchAction,
+      )
 
     default:
       return errorResult(`Unknown tool "${name}".`, 'bad_args')
