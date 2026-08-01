@@ -152,53 +152,32 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude remote-control` (also accepts legacy `claude remote` / `claude sync` / `claude bridge`):
-  // serve local machine as bridge environment.
-  // feature() must stay inline for build-time dead code elimination;
-  // isBridgeEnabled() checks the runtime GrowthBook gate.
+  // Fast-path for `occ remote-control` (aliases: `rc` / `remote` / `sync` / `bridge`).
+  // Remote control is delegated to Happy, which drives occ's own ACP agent:
+  // `happy acp -- <occ> --acp`. Gated on ACP because that is the capability
+  // this path actually depends on. feature() stays inline for build-time DCE.
   if (
-    feature('BRIDGE_MODE') &&
+    feature('ACP') &&
     (args[0] === 'remote-control' ||
       args[0] === 'rc' ||
       args[0] === 'remote' ||
       args[0] === 'sync' ||
       args[0] === 'bridge')
   ) {
-    profileCheckpoint('cli_bridge_path');
+    profileCheckpoint('cli_remote_control_path');
     const { enableConfigs } = await import('../utils/config.js');
     enableConfigs();
 
-    const { getBridgeDisabledReason, checkBridgeMinVersion } = await import('../bridge/bridgeEnabled.js');
-    const { BRIDGE_LOGIN_ERROR } = await import('../bridge/types.js');
-    const { bridgeMain } = await import('../bridge/bridgeMain.js');
-    const { exitWithError } = await import('../utils/process.js');
-
-    // Auth check must come before the GrowthBook gate check — without auth,
-    // GrowthBook has no user context and would return a stale/default false.
-    // getBridgeDisabledReason awaits GB init, so the returned value is fresh
-    // (not the stale disk cache), but init still needs auth headers to work.
-    const { getClaudeAIOAuthTokens } = await import('../utils/auth.js');
-    const { getBridgeAccessToken } = await import('../bridge/bridgeConfig.js');
-    if (!getClaudeAIOAuthTokens()?.accessToken && !getBridgeAccessToken()) {
-      exitWithError(BRIDGE_LOGIN_ERROR);
-    }
-    const disabledReason = await getBridgeDisabledReason();
-    if (disabledReason) {
-      exitWithError(`Error: ${disabledReason}`);
-    }
-    const versionError = checkBridgeMinVersion();
-    if (versionError) {
-      exitWithError(versionError);
-    }
-
-    // Bridge is a remote control feature - check policy limits
+    // Remote control is subject to org policy regardless of who transports it.
     const { waitForPolicyLimitsToLoad, isPolicyAllowed } = await import('../services/policyLimits/index.js');
     await waitForPolicyLimitsToLoad();
     if (!isPolicyAllowed('allow_remote_control')) {
+      const { exitWithError } = await import('../utils/process.js');
       exitWithError("Error: Remote Control is disabled by your organization's policy.");
     }
 
-    await bridgeMain(args.slice(1));
+    const { runRemoteControlLauncher } = await import('../cli/remoteControlLauncher.js');
+    process.exitCode = await runRemoteControlLauncher(args.slice(1));
     return;
   }
 
