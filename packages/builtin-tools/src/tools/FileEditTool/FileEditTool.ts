@@ -43,7 +43,7 @@ import {
   checkWritePermissionForTool,
   matchingRuleForInput,
 } from 'src/utils/permissions/filesystem.js'
-import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
 import { validateInputForSettingsFileEdit } from 'src/utils/settings/validateEditTool.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'

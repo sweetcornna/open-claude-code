@@ -7,7 +7,7 @@
  */
 
 import type { ToolPermissionContext } from 'src/Tool.js'
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import type { ParsedPowerShellCommand } from 'src/utils/powershell/parser.js'
 import {
   deriveSecurityFlags,

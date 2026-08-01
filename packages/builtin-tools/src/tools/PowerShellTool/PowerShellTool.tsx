@@ -28,7 +28,7 @@ import { errorMessage as getErrorMessage, ShellError } from '@open-claude-code/t
 import { truncate } from 'src/utils/format.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { logError } from 'src/utils/log.js';
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { getPlatform } from 'src/utils/platform.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
 import { exec } from 'src/utils/Shell.js';

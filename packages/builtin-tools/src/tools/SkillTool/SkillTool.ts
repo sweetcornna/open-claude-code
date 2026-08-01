@@ -26,7 +26,7 @@ import type {
   UserMessage,
 } from 'src/types/message.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { getRuleByContentsForTool } from 'src/utils/permissions/permissions.js'
 import {
   isOfficialMarketplaceName,

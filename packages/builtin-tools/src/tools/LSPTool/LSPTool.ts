@@ -30,7 +30,7 @@ import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logError } from 'src/utils/log.js'
 import { expandPath } from 'src/utils/path.js'
 import { checkReadPermissionForTool } from 'src/utils/permissions/filesystem.js'
-import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import {
   formatDocumentSymbolResult,
   formatFindReferencesResult,

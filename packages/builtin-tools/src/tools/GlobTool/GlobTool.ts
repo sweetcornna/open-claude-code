@@ -9,7 +9,7 @@ import { glob } from 'src/utils/glob.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { expandPath, toRelativePath } from 'src/utils/path.js'
 import { checkReadPermissionForTool } from 'src/utils/permissions/filesystem.js'
-import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
 import { DESCRIPTION, GLOB_TOOL_NAME } from './prompt.js'
 import {

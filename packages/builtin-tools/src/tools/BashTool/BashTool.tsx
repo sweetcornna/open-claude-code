@@ -39,7 +39,7 @@ import { getFsImplementation } from 'src/utils/fsOperations.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { expandPath } from 'src/utils/path.js';
 import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js';
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
 import { exec } from 'src/utils/Shell.js';
 import type { ExecResult } from 'src/utils/ShellCommand.js';

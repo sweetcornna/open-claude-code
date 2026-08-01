@@ -7,7 +7,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import type { ToolPermissionContext, ToolUseContext } from 'src/Tool.js'
-import type { PendingClassifierCheck } from 'src/types/permissions.js'
+import type { PendingClassifierCheck } from '@open-claude-code/tool-runtime/types/permissions.js'
 import { count } from 'src/utils/array.js'
 import {
   checkSemantics,
@@ -43,7 +43,7 @@ import {
 import type {
   PermissionDecisionReason,
   PermissionResult,
-} from 'src/utils/permissions/PermissionResult.js'
+} from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import type {
   PermissionRule,
   PermissionRuleValue,
