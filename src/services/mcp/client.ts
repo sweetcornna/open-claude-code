@@ -133,6 +133,7 @@ import {
 } from './auth.js'
 import { createMcpClient, mcpProtocolEra } from './clientFactory.js'
 import { clearMrtrRound, mrtrProgressCallback } from './mrtrRounds.js'
+import { outputSchemaViolation } from './outputSchemaDegradation.js'
 import { markClaudeAiMcpConnected } from './claudeai.js'
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
 import { getMcpServerHeaders } from './headersHelper.js'
@@ -210,52 +211,6 @@ function isConnectionClosedError(error: Error): boolean {
   }
   const legacyCode = (error as Error & { code?: unknown }).code
   return legacyCode === -32000 && error.message.includes('Connection closed')
-}
-
-/**
- * Classifies the errors the SDK raises when a tool's ADVERTISED `outputSchema`
- * and its actual result disagree.
- *
- * Both SDK generations enforce output schemas client-side and hard-fail the
- * call: a server that declares `outputSchema` and answers with plain text, or
- * with structured content that does not validate, makes `callTool()` throw.
- * That verdict is about the SERVER's self-description, not about whether the
- * tool did its job — failing the whole tool call over it turns a cosmetic
- * server bug into a broken turn. `callMCPTool` degrades these to a text
- * result instead (see the call site).
- *
- * Note this is currently a safety net rather than a hot path: tool discovery
- * goes through `request({ method: 'tools/list' })`, which does not populate
- * the response cache the validator reads, so the validator is inert unless
- * something else armed it. It is wired anyway because arming it is a
- * one-line change (`listTools()`), and because the modern era arms more of
- * the same machinery.
- */
-function outputSchemaViolation(error: unknown): string | undefined {
-  if (!(error instanceof ProtocolError)) {
-    return undefined
-  }
-  if (
-    error.code === ProtocolErrorCode.InvalidRequest &&
-    error.message.includes(
-      'has an output schema but did not return structured content',
-    )
-  ) {
-    return 'missing_structured_content'
-  }
-  if (error.code !== ProtocolErrorCode.InvalidParams) {
-    return undefined
-  }
-  if (error.message.startsWith('Structured content does not match')) {
-    return 'schema_mismatch'
-  }
-  if (error.message.startsWith('Failed to validate structured content')) {
-    return 'validator_failed'
-  }
-  if (/^Tool .* has an invalid outputSchema: /.test(error.message)) {
-    return 'invalid_output_schema'
-  }
-  return undefined
 }
 
 /**
@@ -1787,14 +1742,18 @@ export const fetchToolsForClient = memoizeWithLRU(
         return []
       }
 
-      // Deliberately `request()` and not `listTools()`: the aggregating
-      // `listTools()` writes the SDK's response cache, and a cached
-      // `tools/list` is what arms `callTool()`'s STRICT client-side
-      // output-schema enforcement (a server that advertises `outputSchema`
-      // but answers with plain text then makes every call throw). See the
-      // degradation note in `callMCPTool` — this keeps the pre-migration
-      // behaviour, where no client-side output validation ran at all.
-      const result = await client.client.request({ method: 'tools/list' })
+      // `listTools()` rather than `request({ method: 'tools/list' })`: the
+      // aggregating helper walks every page AND writes the SDK's response
+      // cache, and that cached document is what compiles the validators
+      // arming `callTool()`'s client-side `outputSchema` enforcement. The
+      // raw request leaves the cache — and so the enforcement — inert.
+      //
+      // Arming it is the point: a server whose advertised schema disagrees
+      // with its own result used to slip through silently, and now degrades
+      // to a text result plus telemetry (see `outputSchemaDegradation.ts`).
+      // The degradation net must stay in place for this call to be safe —
+      // without it, every such server would hard-fail instead.
+      const result = await client.client.listTools()
 
       // Sanitize tool data from MCP server
       const toolsToProcess = recursivelySanitizeUnicode(result.tools)
