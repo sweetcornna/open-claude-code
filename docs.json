@@ -120,6 +120,7 @@
             "group": "工具增强",
             "pages": [
               "docs/features/mcp-skills",
+              "docs/features/mcp-2026",
               "docs/features/tree-sitter-bash",
               "docs/features/bash-classifier",
               "docs/features/web-browser-tool",
