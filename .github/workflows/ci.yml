@@ -70,6 +70,14 @@ jobs:
       - name: Build
         run: bun run build:vite
 
+      - name: Check bundle integrity
+        run: bun run check:bundle
+
+      # Surface knip drift without gating merges yet; promote this check after a clean period.
+      - name: Check unused exports
+        continue-on-error: true
+        run: bun run check:unused
+
   # Deliberately a separate job rather than a matrix leg of `ci`: it runs a
   # different, much narrower set of steps. The full suite is slow and flaky on
   # Windows, so we only run the suites that encode Windows-specific behaviour
