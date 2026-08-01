@@ -51,8 +51,15 @@ export async function discoverTools(
 
   try {
     // v2 resolves the result schema from the spec method name; there is no
-    // schema argument any more. Kept on `request()` rather than `listTools()`
-    // on purpose — see the note in `src/services/mcp/client.ts`.
+    // schema argument any more.
+    //
+    // Deliberately still `request()` where the host's own discovery has moved
+    // to `listTools()`. The aggregating helper writes the response cache that
+    // ARMS client-side `outputSchema` enforcement, and this module's sibling
+    // `callMcpTool` has no degradation net: arming it here would turn a server
+    // whose advertised schema disagrees with its own result into a hard tool
+    // failure, where the host degrades it to a text result. Wire that net into
+    // `execution.ts` before changing this line.
     const result = await client.request({ method: 'tools/list' })
 
     // Sanitize tool data from MCP server
