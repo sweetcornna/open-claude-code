@@ -1549,13 +1549,23 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     return this._authorizationUrl
   }
 
-  get clientMetadata(): OAuthClientMetadata {
-    const metadata: OAuthClientMetadata = {
+  get clientMetadata(): OAuthClientMetadata & { application_type?: string } {
+    const metadata: OAuthClientMetadata & { application_type?: string } = {
       client_name: `Claude Code (${this.serverName})`,
       redirect_uris: [this.redirectUri],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none', // Public client
+      // RFC 7591 / RFC 8252 §8.3 (SEP-837): occ redirects to a loopback URI,
+      // which makes it a native client. Authorization servers key policy off
+      // this — a `web` client asking for `http://localhost` is a red flag and
+      // some servers reject the registration outright.
+      //
+      // Stated rather than left to default because the v1 SDK's DCR path
+      // (which `performMCPOAuthFlow` still uses) sends `clientMetadata`
+      // verbatim; only the v2 SDK derives the field. An explicit value is
+      // never overwritten by either.
+      application_type: 'native',
     }
 
     // Include scope from metadata if available
