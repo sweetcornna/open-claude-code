@@ -5,7 +5,6 @@ import type {
 } from '../types.js'
 import { errorResult, okJson } from './core.js'
 import type { CuCallToolResult } from './core.js'
-import { dispatchAction } from './dispatch.js'
 import { releaseHeldMouse } from './mouse.js'
 import { sleep } from './timing.js'
 
@@ -73,11 +72,24 @@ export interface BatchActionResult {
  * always refer to the PRE-BATCH `lastScreenshot`. If the model wants to click
  * based on a new screenshot, it ends the batch and screenshots separately.
  */
+/**
+ * Executes one inner action of a batch. Injected by dispatch.ts so this
+ * module never imports the dispatcher back (would be an import cycle).
+ */
+export type BatchActionDispatcher = (
+  action: string,
+  args: Record<string, unknown>,
+  adapter: ComputerUseHostAdapter,
+  overrides: ComputerUseOverrides,
+  subGates: CuSubGates,
+) => Promise<CuCallToolResult>
+
 export async function handleComputerBatch(
   adapter: ComputerUseHostAdapter,
   args: Record<string, unknown>,
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
+  dispatchAction: BatchActionDispatcher,
 ): Promise<CuCallToolResult> {
   const actions = args.actions
   if (!Array.isArray(actions) || actions.length === 0) {
