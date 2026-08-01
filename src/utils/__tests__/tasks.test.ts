@@ -16,8 +16,14 @@ mock.module('src/bootstrap/state.ts', () => ({
   getSessionId: () => 'test-session-123',
   getIsNonInteractiveSession: () => false,
 }))
+// `mock.module` is process-global and replaces the WHOLE module, so this stub
+// has to cover every export other files reach for — `getDefaultAppState()`
+// lazily requires this module and calls `isTeammate()`/`isPlanModeRequired()`.
+// Omitting them only fails when suite ordering puts this file first.
 mock.module('src/utils/teammate.ts', () => ({
   getTeamName: () => undefined,
+  isTeammate: () => false,
+  isPlanModeRequired: () => false,
 }))
 mock.module('src/utils/teammateContext.ts', () => ({
   getTeammateContext: () => undefined,
