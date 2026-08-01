@@ -79,6 +79,18 @@ export const DEFAULT_BUILD_FEATURES = [
   'EXPERIMENTAL_SKILL_SEARCH', // 技能搜索（bounded caches 已修复 overflow，内存问题已解决）
   'EXPERIMENTAL_SEARCH_EXTRA_TOOLS', // 工具搜索预取管道（TF-IDF 索引 + inter-turn 异步预取）
   // 'SKILL_LEARNING',
+  // MCP protocol revision 2026-07-28 negotiation on the CLIENT side.
+  // Deliberately NOT in the default build for one release: with the flag
+  // off the MCP client is constructed with no `versionNegotiation`, i.e.
+  // the SDK's default legacy posture — the 2025 `initialize` handshake,
+  // byte-identical to what shipped before.
+  // Turning it on makes `connect()` probe with `server/discover` first
+  // (`mode: 'auto'`), which costs one extra round trip per connect (and one
+  // extra short-lived child process on the SDK's stdio transport) and opens
+  // the modern era against servers that answer the probe. Flipping the
+  // comment below is the whole rollout; re-commenting it is the rollback.
+  // Enable for dev without a rebuild: FEATURE_MCP_2026=1 bun run dev
+  // 'MCP_2026',
   // P3: poor mode
   'POOR', // 穷鬼模式，跳过 extract_memories/prompt_suggestion 减少消耗
   // SSH Remote
