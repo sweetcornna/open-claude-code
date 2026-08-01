@@ -7,7 +7,7 @@ import { MessageResponse } from 'src/components/MessageResponse.js';
 import { linkifyUrlsInText, OutputLine } from 'src/components/shell/OutputLine.js';
 import { Ansi, Box, Text, stringWidth } from '@anthropic/ink';
 import { createHyperlink } from 'src/utils/hyperlink.js';
-import type { ToolProgressData } from 'src/Tool.js';
+import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { MCPProgress } from 'src/types/tools.js';
 import { formatNumber } from 'src/utils/format.js';

@@ -4,8 +4,8 @@ import { getOauthConfig } from 'src/constants/oauth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { getOrganizationUUID } from 'src/services/oauth/client.js'
 import { isPolicyAllowed } from 'src/services/policyLimits/index.js'
-import type { ToolUseContext } from 'src/Tool.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,

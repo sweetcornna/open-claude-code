@@ -6,8 +6,8 @@ import { BLACK_CIRCLE } from 'src/constants/figures.js';
 import { getModeColor } from 'src/utils/permissions/PermissionMode.js';
 import { z } from 'zod/v4';
 import { Box, Text } from '@anthropic/ink';
-import type { Tool } from 'src/Tool.js';
-import { buildTool, type ToolDef } from 'src/Tool.js';
+import type { Tool } from '@open-claude-code/tool-runtime/Tool.js';
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import {
   ASK_USER_QUESTION_TOOL_CHIP_WIDTH,

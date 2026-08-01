@@ -9,7 +9,7 @@ import { Byline } from '@anthropic/ink';
 import { Message as MessageComponent } from 'src/components/Message.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { Box, Text } from '@anthropic/ink';
-import type { Tools } from 'src/Tool.js';
+import type { Tools } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { buildSubagentLookups, EMPTY_LOOKUPS } from 'src/utils/messages.js';
 import { plural } from '@open-claude-code/tool-runtime/stringUtils.js';

@@ -1,4 +1,4 @@
-import type { ToolPermissionContext } from 'src/Tool.js'
+import type { ToolPermissionContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { splitCommand_DEPRECATED } from 'src/utils/bash/commands.js'
 import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'

@@ -7,7 +7,7 @@ import { OutputLine } from 'src/components/shell/OutputLine.js';
 import { ShellProgressMessage } from 'src/components/shell/ShellProgressMessage.js';
 import { ShellTimeDisplay } from 'src/components/shell/ShellTimeDisplay.js';
 import { Box, Text } from '@anthropic/ink';
-import type { Tool } from 'src/Tool.js';
+import type { Tool } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { PowerShellProgress } from 'src/types/tools.js';
 import type { ThemeName } from 'src/utils/theme.js';

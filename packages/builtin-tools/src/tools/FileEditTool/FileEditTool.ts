@@ -10,8 +10,8 @@ import {
   addSkillDirectories,
   discoverSkillDirsForPaths,
 } from 'src/skills/loadSkillsDir.js'
-import type { ToolUseContext } from 'src/Tool.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { countLinesChanged } from 'src/utils/diff.js'

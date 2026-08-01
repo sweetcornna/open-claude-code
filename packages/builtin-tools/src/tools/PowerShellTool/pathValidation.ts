@@ -8,7 +8,7 @@
 
 import { homedir } from 'os'
 import { isAbsolute, resolve } from 'path'
-import type { ToolPermissionContext } from 'src/Tool.js'
+import type { ToolPermissionContext } from '@open-claude-code/tool-runtime/Tool.js'
 import type { PermissionRule } from '@open-claude-code/tool-runtime/types/permissions.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js'

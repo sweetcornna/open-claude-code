@@ -19,8 +19,8 @@ import type {
   ToolPermissionContext,
   Tools,
   ToolUseContext,
-} from 'src/Tool.js'
-import { toolMatchesName } from 'src/Tool.js'
+} from '@open-claude-code/tool-runtime/Tool.js'
+import { toolMatchesName } from '@open-claude-code/tool-runtime/Tool.js'
 import {
   completeAgentTask as completeAsyncAgent,
   createActivityDescriptionResolver,

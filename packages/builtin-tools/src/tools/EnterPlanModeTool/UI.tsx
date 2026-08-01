@@ -2,7 +2,7 @@ import * as React from 'react';
 import { BLACK_CIRCLE } from 'src/constants/figures.js';
 import { getModeColor } from 'src/utils/permissions/PermissionMode.js';
 import { Box, Text } from '@anthropic/ink';
-import type { ToolProgressData } from 'src/Tool.js';
+import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { ThemeName } from 'src/utils/theme.js';
 import type { Output } from './EnterPlanModeTool.js';

@@ -15,8 +15,8 @@ import type {
   ToolResult,
   ToolUseContext,
   ValidationResult,
-} from 'src/Tool.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+} from '@open-claude-code/tool-runtime/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import type { Command } from 'src/types/command.js'
 import type {
   AssistantMessage,

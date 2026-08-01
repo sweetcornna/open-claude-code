@@ -4,7 +4,10 @@
  */
 
 import { resolve } from 'path'
-import type { ToolPermissionContext, ToolUseContext } from 'src/Tool.js'
+import type {
+  ToolPermissionContext,
+  ToolUseContext,
+} from '@open-claude-code/tool-runtime/Tool.js'
 import type {
   PermissionDecisionReason,
   PermissionResult,
