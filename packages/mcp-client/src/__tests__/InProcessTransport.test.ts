@@ -1,12 +1,30 @@
 import { describe, expect, test } from 'bun:test'
 import { createLinkedTransportPair } from '../transport/InProcessTransport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+import type { Transport as LegacyTransport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { Transport as ModernTransport } from '@modelcontextprotocol/server'
 
 describe('InProcessTransport', () => {
   test('creates linked pair', () => {
     const [client, server] = createLinkedTransportPair()
     expect(client).toBeDefined()
     expect(server).toBeDefined()
+  })
+
+  test('satisfies both the v1 and the v2 SDK Transport contract', () => {
+    const [client, server] = createLinkedTransportPair()
+
+    // Compile-time: accepted wherever either SDK generation asks for a
+    // Transport, with no cast.
+    const asLegacy: LegacyTransport = client
+    const asModern: ModernTransport = server
+
+    expect(typeof asLegacy.start).toBe('function')
+    expect(typeof asLegacy.send).toBe('function')
+    expect(typeof asLegacy.close).toBe('function')
+    // Both peers share one channel, so the v2-only per-request-stream flag
+    // stays unset.
+    expect(asModern.hasPerRequestStream).toBeUndefined()
   })
 
   test('delivers messages from client to server', async () => {

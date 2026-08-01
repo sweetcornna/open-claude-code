@@ -1,4 +1,5 @@
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { Transport as ModernTransport } from '@modelcontextprotocol/server'
+import type { Transport as LegacyTransport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import {
   type JSONRPCMessage,
   JSONRPCMessageSchema,
@@ -19,7 +20,17 @@ type WebSocketLike = {
   send(data: string): void
 }
 
-export class WebSocketTransport implements Transport {
+/**
+ * MCP transport over a WebSocket, drivable by both SDK generations.
+ *
+ * The v2 `Transport` interface only adds optional members over v1, so one
+ * implementation satisfies both. A WebSocket multiplexes every request over a
+ * single channel, so this leaves `hasPerRequestStream` unset and ignores the
+ * per-request `send` options (`requestSignal`, `onRequestStreamEnd`,
+ * `headers`) that the v2 spec reserves for the POST-per-request Streamable
+ * HTTP model.
+ */
+export class WebSocketTransport implements LegacyTransport, ModernTransport {
   private started = false
   private opened: Promise<void>
   private isBun = typeof Bun !== 'undefined'

@@ -1,7 +1,5 @@
 import { Client as ModernClient } from '@modelcontextprotocol/client'
 import { Client as LegacyClient } from '@modelcontextprotocol/sdk/client/index.js'
-import type { Transport as LegacyTransport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { Transport as ModernTransport } from '@modelcontextprotocol/server'
 import { serveStdio } from '@modelcontextprotocol/server/stdio'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createLinkedTransportPair } from '../../services/mcp/InProcessTransport.js'
@@ -55,7 +53,7 @@ describe('createMcpServerFactory', () => {
     async () => {
       const [clientSide, serverSide] = createLinkedTransportPair()
       const handle = serveStdio(factory, {
-        transport: serverSide as ModernTransport,
+        transport: serverSide,
       })
       const client = new LegacyClient(
         { name: 'legacy-test-client', version: '1.0.0' },
@@ -63,7 +61,7 @@ describe('createMcpServerFactory', () => {
       )
 
       try {
-        await client.connect(clientSide as LegacyTransport)
+        await client.connect(clientSide)
 
         const listed = await client.listTools()
         expect(listed.tools.length).toBeGreaterThan(0)
@@ -91,7 +89,7 @@ describe('createMcpServerFactory', () => {
     async () => {
       const [clientSide, serverSide] = createLinkedTransportPair()
       const handle = serveStdio(factory, {
-        transport: serverSide as ModernTransport,
+        transport: serverSide,
       })
       const client = new ModernClient(
         { name: 'modern-test-client', version: '1.0.0' },
@@ -99,7 +97,7 @@ describe('createMcpServerFactory', () => {
       )
 
       try {
-        await client.connect(clientSide as ModernTransport)
+        await client.connect(clientSide)
         // Pinning would have failed negotiation against a 2025-only server;
         // assert the era the handshake actually settled on.
         expect(client.getProtocolEra()).toBe('modern')
