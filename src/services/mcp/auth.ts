@@ -1,3 +1,4 @@
+import type { OAuthClientInformationContext } from '@modelcontextprotocol/client'
 import {
   discoverAuthorizationServerMetadata,
   discoverOAuthServerInfo,
@@ -46,6 +47,12 @@ import { sleep } from '../../utils/sleep.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { logEvent } from '../analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics/metadata.js'
+import {
+  type McpOAuthStore,
+  mcpOAuthKeysForServer,
+  migrateMcpOAuthKeying,
+  resolveMcpOAuthKey,
+} from './oauthCredentialKey.js'
 import {
   assertAuthorizationResponseIssuer,
   isAuthorizationResponseIssuerMismatch,
@@ -100,6 +107,15 @@ type MCPOAuthFlowErrorReason =
   | 'unknown'
 
 const MAX_LOCK_RETRIES = 5
+
+/**
+ * The per-call issuer context the v2 SDK threads through credential hooks
+ * (SEP-2352). Optional on every hook: the v1 `auth()` that still drives
+ * `performMCPOAuthFlow` passes nothing, and the v2 transport's per-request
+ * bearer-token read deliberately passes nothing either — that call means "the
+ * most recently saved token set", not "no credentials".
+ */
+type IssuerContext = OAuthClientInformationContext
 
 /**
  * OAuth query parameters that should be redacted from logs.
@@ -326,9 +342,17 @@ export class AuthenticationCancelledError extends Error {
 }
 
 /**
- * Generates a unique key for server credentials based on both name and config hash
- * This prevents credentials from being reused across different servers
- * with the same name or different configurations
+ * The *base* key for one configured server: name plus a hash of the connection
+ * config, so credentials are never reused across servers that happen to share a
+ * name or across differing configurations of the same name.
+ *
+ * This identifies the server, not the authorization server. Token and client
+ * credentials hang off an issuer-scoped extension of it — see
+ * `oauthCredentialKey.ts` and {@link credentialKeyFor}. The base key itself
+ * remains the key for `mcpOAuthClientConfig`, which holds the client secret the
+ * *user* configured via `mcp add --client-secret`: that is a property of the
+ * server config, is written before any discovery has happened, and so has no
+ * issuer to be keyed by.
  */
 export function getServerKey(
   serverName: string,
@@ -349,6 +373,26 @@ export function getServerKey(
 }
 
 /**
+ * The slot holding this server's OAuth credentials.
+ *
+ * With `issuer` known the answer is exact; without it the store is consulted so
+ * an already-migrated slot is found instead of the (empty) base key. See
+ * `oauthCredentialKey.ts` for why credentials are keyed by issuer at all.
+ */
+function credentialKeyFor(
+  serverName: string,
+  serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
+  store: McpOAuthStore | undefined,
+  issuer?: string,
+): string {
+  return resolveMcpOAuthKey(
+    store,
+    getServerKey(serverName, serverConfig),
+    issuer,
+  )
+}
+
+/**
  * True when we have probed this server before (OAuth discovery state is
  * stored) but hold no credentials to try. A connection attempt in this
  * state is guaranteed to 401 — the only way out is the user running
@@ -365,8 +409,9 @@ export function hasMcpDiscoveryButNoToken(
   if (isXaaEnabled() && serverConfig.oauth?.xaa) {
     return false
   }
-  const serverKey = getServerKey(serverName, serverConfig)
-  const entry = getSecureStorage().read()?.mcpOAuth?.[serverKey]
+  const data = getSecureStorage().read()
+  const serverKey = credentialKeyFor(serverName, serverConfig, data?.mcpOAuth)
+  const entry = data?.mcpOAuth?.[serverKey]
   return entry !== undefined && !entry.accessToken && !entry.refreshToken
 }
 
@@ -481,7 +526,11 @@ export async function revokeServerTokens(
   const existingData = storage.read()
   if (!existingData?.mcpOAuth) return
 
-  const serverKey = getServerKey(serverName, serverConfig)
+  const serverKey = credentialKeyFor(
+    serverName,
+    serverConfig,
+    existingData.mcpOAuth,
+  )
   const tokenData = existingData.mcpOAuth[serverKey]
 
   // Attempt server-side revocation if there are tokens to revoke (best-effort)
@@ -602,6 +651,10 @@ export async function revokeServerTokens(
           serverUrl: serverConfig.url,
           accessToken: freshData.mcpOAuth?.[serverKey]?.accessToken ?? '',
           expiresAt: freshData.mcpOAuth?.[serverKey]?.expiresAt ?? 0,
+          // The slot is issuer-derived, so the surviving stub has to carry the
+          // attribution too — otherwise the next flow would read it back as
+          // unattributed and be free to claim it for a different issuer.
+          ...(tokenData.issuer ? { issuer: tokenData.issuer } : {}),
           ...(tokenData.stepUpScope
             ? { stepUpScope: tokenData.stepUpScope }
             : {}),
@@ -633,9 +686,18 @@ export function clearServerTokensFromLocalStorage(
   const existingData = storage.read()
   if (!existingData?.mcpOAuth) return
 
-  const serverKey = getServerKey(serverName, serverConfig)
-  if (existingData.mcpOAuth[serverKey]) {
-    delete existingData.mcpOAuth[serverKey]
+  // Every issuer's slot, not just the one currently resolved: "clear auth"
+  // means the user is done with this server, and leaving another issuer's
+  // credentials behind would both surprise them and keep consuming the
+  // credential blob's hard size budget (#30337).
+  const serverKeys = mcpOAuthKeysForServer(
+    existingData.mcpOAuth,
+    getServerKey(serverName, serverConfig),
+  )
+  if (serverKeys.length > 0) {
+    for (const serverKey of serverKeys) {
+      delete existingData.mcpOAuth[serverKey]
+    }
     storage.update(existingData)
     logMCPDebug(serverName, 'Cleared stored tokens')
   }
@@ -803,16 +865,25 @@ async function performMCPXaaAuth(
     // whole provider just to write the same keys.
     const storage = getSecureStorage()
     const existingData = storage.read() || {}
-    const serverKey = getServerKey(serverName, serverConfig)
-    const prev = existingData.mcpOAuth?.[serverKey]
+    // `tokens.authorizationServerUrl` is the AS metadata document's `issuer`
+    // (see xaa.ts), so XAA credentials get the same issuer-scoped slot as the
+    // consent flow's. Migrating first folds in anything this server left under
+    // the pre-issuer base key.
+    const issuer = tokens.authorizationServerUrl
+    const store: McpOAuthStore = existingData.mcpOAuth ?? {}
+    const baseKey = getServerKey(serverName, serverConfig)
+    migrateMcpOAuthKeying(store, baseKey, issuer)
+    const serverKey = resolveMcpOAuthKey(store, baseKey, issuer)
+    const prev = store[serverKey]
     storage.update({
       ...existingData,
       mcpOAuth: {
-        ...existingData.mcpOAuth,
+        ...store,
         [serverKey]: {
           ...prev,
           serverName,
           serverUrl: serverConfig.url,
+          issuer,
           accessToken: tokens.access_token,
           // AS may omit refresh_token on jwt-bearer — preserve any existing one
           refreshToken: tokens.refresh_token ?? prev?.refreshToken,
@@ -912,8 +983,11 @@ export async function performMCPOAuthFlow(
   // tokens. The transport-attached auth provider persists scope when it receives
   // a step-up 401, so we can use it here instead of making an extra probe request.
   const storage = getSecureStorage()
-  const serverKey = getServerKey(serverName, serverConfig)
-  const cachedEntry = storage.read()?.mcpOAuth?.[serverKey]
+  const cachedData = storage.read()
+  const cachedEntry =
+    cachedData?.mcpOAuth?.[
+      credentialKeyFor(serverName, serverConfig, cachedData?.mcpOAuth)
+    ]
   const cachedStepUpScope = cachedEntry?.stepUpScope
   const cachedResourceMetadataUrl =
     cachedEntry?.discoveryState?.resourceMetadataUrl
@@ -1361,10 +1435,18 @@ export async function performMCPOAuthFlow(
       ) {
         const storage = getSecureStorage()
         const existingData = storage.read() || {}
-        const serverKey = getServerKey(serverName, serverConfig)
-        if (existingData.mcpOAuth?.[serverKey]) {
-          delete existingData.mcpOAuth[serverKey].clientId
-          delete existingData.mcpOAuth[serverKey].clientSecret
+        // Which issuer rejected the client is not known here, and a
+        // registration this server no longer recognises is worthless under
+        // any of them — drop the client credentials from every slot.
+        const serverKeys = mcpOAuthKeysForServer(
+          existingData.mcpOAuth,
+          getServerKey(serverName, serverConfig),
+        )
+        if (serverKeys.length > 0) {
+          for (const serverKey of serverKeys) {
+            delete existingData.mcpOAuth[serverKey].clientId
+            delete existingData.mcpOAuth[serverKey].clientSecret
+          }
           storage.update(existingData)
         }
       }
@@ -1439,6 +1521,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   >
   private _refreshInProgress?: Promise<OAuthTokens | undefined>
   private _pendingStepUpScope?: string
+  private _issuer?: string
   private onAuthorizationUrlCallback?: (url: string) => void
   private skipBrowserOpen: boolean
 
@@ -1507,6 +1590,55 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     metadata: Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>,
   ): void {
     this._metadata = metadata
+    this.adoptIssuer(metadata?.issuer)
+  }
+
+  /**
+   * Records which authorization server this provider is talking to, and folds
+   * any credentials still sitting under the pre-issuer base key into that
+   * issuer's slot.
+   *
+   * Every hook that can learn the issuer authentically routes through here: the
+   * v2 SDK's `saveAuthorizationServerUrl` and its per-call
+   * `OAuthClientInformationContext` (SEP-2352), the `issuer` stamped on
+   * credentials it hands back, and — for the v1 `auth()` that still drives
+   * `performMCPOAuthFlow` — the metadata this class fetches itself.
+   *
+   * Idempotent, and a no-op until an issuer is actually known: until then reads
+   * and writes fall back to the base key, which is exactly where a pre-upgrade
+   * install's credentials already are.
+   */
+  private adoptIssuer(issuer: string | undefined): void {
+    if (!issuer || issuer === this._issuer) {
+      return
+    }
+    this._issuer = issuer
+
+    const storage = getSecureStorage()
+    const data = storage.read()
+    if (!data?.mcpOAuth) {
+      return
+    }
+    const baseKey = getServerKey(this.serverName, this.serverConfig)
+    if (migrateMcpOAuthKeying(data.mcpOAuth, baseKey, issuer)) {
+      storage.update(data)
+      logMCPDebug(this.serverName, `Re-keyed stored credentials by issuer`)
+    }
+  }
+
+  /** The slot this provider reads and writes. See {@link credentialKeyFor}. */
+  private credentialKey(store: McpOAuthStore | undefined): string {
+    return credentialKeyFor(
+      this.serverName,
+      this.serverConfig,
+      store,
+      this._issuer,
+    )
+  }
+
+  /** Attribution to stamp on anything this provider persists. */
+  private issuerStamp(): { issuer?: string } {
+    return this._issuer ? { issuer: this._issuer } : {}
   }
 
   /**
@@ -1548,10 +1680,13 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     return this._state
   }
 
-  async clientInformation(): Promise<OAuthClientInformation | undefined> {
+  async clientInformation(
+    ctx?: IssuerContext,
+  ): Promise<(OAuthClientInformation & { issuer?: string }) | undefined> {
+    this.adoptIssuer(ctx?.issuer)
     const storage = getSecureStorage()
     const data = storage.read()
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    const serverKey = this.credentialKey(data?.mcpOAuth)
 
     // Check session credentials first (from DCR or previous auth)
     const storedInfo = data?.mcpOAuth?.[serverKey]
@@ -1560,13 +1695,21 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       return {
         client_id: storedInfo.clientId,
         client_secret: storedInfo.clientSecret,
+        // Round-tripped so the SDK's SEP-2352 check can see the binding
+        // instead of warning that the credential is unattributed.
+        ...(storedInfo.issuer ? { issuer: storedInfo.issuer } : {}),
       }
     }
 
-    // Fallback: pre-configured client ID from server config
+    // Fallback: pre-configured client ID from server config. The paired secret
+    // lives under the base key — it is user-supplied config, written by
+    // `mcp add` long before any issuer exists to key it by.
     const configClientId = this.serverConfig.oauth?.clientId
     if (configClientId) {
-      const clientConfig = data?.mcpOAuthClientConfig?.[serverKey]
+      const clientConfig =
+        data?.mcpOAuthClientConfig?.[
+          getServerKey(this.serverName, this.serverConfig)
+        ]
       logMCPDebug(this.serverName, `Using pre-configured client ID`)
       return {
         client_id: configClientId,
@@ -1580,11 +1723,13 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   }
 
   async saveClientInformation(
-    clientInformation: OAuthClientInformationFull,
+    clientInformation: OAuthClientInformationFull & { issuer?: string },
+    ctx?: IssuerContext,
   ): Promise<void> {
+    this.adoptIssuer(clientInformation.issuer ?? ctx?.issuer)
     const storage = getSecureStorage()
     const existingData = storage.read() || {}
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    const serverKey = this.credentialKey(existingData.mcpOAuth)
 
     const updatedData: SecureStorageData = {
       ...existingData,
@@ -1594,6 +1739,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
           ...existingData.mcpOAuth?.[serverKey],
           serverName: this.serverName,
           serverUrl: this.serverConfig.url,
+          ...this.issuerStamp(),
           clientId: clientInformation.client_id,
           clientSecret: clientInformation.client_secret,
           // Provide default values for required fields if not present
@@ -1606,7 +1752,10 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     storage.update(updatedData)
   }
 
-  async tokens(): Promise<OAuthTokens | undefined> {
+  async tokens(
+    ctx?: IssuerContext,
+  ): Promise<(OAuthTokens & { issuer?: string }) | undefined> {
+    this.adoptIssuer(ctx?.issuer)
     // Cross-process token changes (another CC instance refreshed or invalidated)
     // are picked up via the keychain cache TTL (see macOsKeychainStorage.ts).
     // In-process writes already invalidate the cache via storage.update().
@@ -1616,7 +1765,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     // See CPU profile: spawnSync was 7.2% of total CPU after PR #19436.
     const storage = getSecureStorage()
     const data = await storage.readAsync()
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    const serverKey = this.credentialKey(data?.mcpOAuth)
 
     const tokenData = data?.mcpOAuth?.[serverKey]
 
@@ -1760,6 +1909,10 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       expires_in: expiresIn,
       scope: tokenData.scope,
       token_type: 'Bearer',
+      // The slot itself is issuer-derived, so anything read out of it belongs
+      // to `this._issuer` by construction; the stored stamp is preferred only
+      // because it survives a session that never learned the issuer.
+      ...(tokenData.issuer ? { issuer: tokenData.issuer } : this.issuerStamp()),
     }
 
     logMCPDebug(this.serverName, `Returning tokens`)
@@ -1770,11 +1923,15 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     return tokens
   }
 
-  async saveTokens(tokens: OAuthTokens): Promise<void> {
+  async saveTokens(
+    tokens: OAuthTokens & { issuer?: string },
+    ctx?: IssuerContext,
+  ): Promise<void> {
+    this.adoptIssuer(tokens.issuer ?? ctx?.issuer)
     this._pendingStepUpScope = undefined
     const storage = getSecureStorage()
     const existingData = storage.read() || {}
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    const serverKey = this.credentialKey(existingData.mcpOAuth)
 
     logMCPDebug(this.serverName, `Saving tokens`)
     logMCPDebug(this.serverName, `Token expires in: ${tokens.expires_in}`)
@@ -1788,6 +1945,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
           ...existingData.mcpOAuth?.[serverKey],
           serverName: this.serverName,
           serverUrl: this.serverConfig.url,
+          ...this.issuerStamp(),
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
@@ -1870,6 +2028,11 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
         },
         this.serverName,
       )
+      // `tokens.authorizationServerUrl` is the AS metadata's `issuer` (see
+      // xaa.ts), so this lands in the same issuer-scoped slot as the consent
+      // flow's tokens.
+      this.adoptIssuer(tokens.authorizationServerUrl)
+
       // Write directly (not via saveTokens) so clientId + clientSecret land in
       // storage even when this is the first write for serverKey. saveTokens
       // only spreads existing data; if no prior performMCPXaaAuth ran,
@@ -1877,7 +2040,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       // and send a client_id-less RFC 7009 request that strict ASes reject.
       const storage = getSecureStorage()
       const existingData = storage.read() || {}
-      const serverKey = getServerKey(this.serverName, this.serverConfig)
+      const serverKey = this.credentialKey(existingData.mcpOAuth)
       const prev = existingData.mcpOAuth?.[serverKey]
       storage.update({
         ...existingData,
@@ -1887,6 +2050,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
             ...prev,
             serverName: this.serverName,
             serverUrl: this.serverConfig.url,
+            ...this.issuerStamp(),
             accessToken: tokens.access_token,
             refreshToken: tokens.refresh_token ?? prev?.refreshToken,
             expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
@@ -1959,7 +2123,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     if (this._scopes && !this.handleRedirection) {
       const storage = getSecureStorage()
       const existingData = storage.read() || {}
-      const serverKey = getServerKey(this.serverName, this.serverConfig)
+      const serverKey = this.credentialKey(existingData.mcpOAuth)
       const existing = existingData.mcpOAuth?.[serverKey]
       if (existing) {
         existing.stepUpScope = this._scopes
@@ -2033,7 +2197,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     const existingData = storage.read()
     if (!existingData?.mcpOAuth) return
 
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    const serverKey = this.credentialKey(existingData.mcpOAuth)
     const tokenData = existingData.mcpOAuth[serverKey]
     if (!tokenData) return
 
@@ -2063,15 +2227,40 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     logMCPDebug(this.serverName, `Invalidated credentials (scope: ${scope})`)
   }
 
-  async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
-    const storage = getSecureStorage()
-    const existingData = storage.read() || {}
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+  /**
+   * v2 SEP-2352 hook. The SDK calls this with the resolved issuer as soon as
+   * discovery settles and before it touches any credential, which is the
+   * earliest and most authoritative point at which this provider can pick the
+   * right slot. (The v1 `auth()` has no equivalent; there the issuer arrives
+   * via `setMetadata` / `saveDiscoveryState` instead.)
+   *
+   * Named for the parameter the SDK passes, which despite the name is the
+   * issuer identifier, not the URL discovery was aimed at.
+   */
+  async saveAuthorizationServerUrl(
+    authorizationServerUrl: string,
+  ): Promise<void> {
+    this.adoptIssuer(authorizationServerUrl)
+  }
 
+  async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
     logMCPDebug(
       this.serverName,
       `Saving discovery state (authServer: ${state.authorizationServerUrl})`,
     )
+
+    // The metadata's `issuer` is the authentic identifier; `authorizationServerUrl`
+    // is only what discovery was aimed at, and the v1 SDK does not enforce the
+    // RFC 8414 §3.3 echo between them. Falling back to it when there is no
+    // metadata mirrors exactly what the v2 SDK uses in the same situation, so
+    // both eras agree on the slot.
+    this.adoptIssuer(
+      state.authorizationServerMetadata?.issuer ?? state.authorizationServerUrl,
+    )
+
+    const storage = getSecureStorage()
+    const existingData = storage.read() || {}
+    const serverKey = this.credentialKey(existingData.mcpOAuth)
 
     // Keep the metadata in memory even though it is deliberately not persisted
     // (see below). It is the only authentic source for the RFC 9207 baseline,
@@ -2099,6 +2288,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
           ...existingData.mcpOAuth?.[serverKey],
           serverName: this.serverName,
           serverUrl: this.serverConfig.url,
+          ...this.issuerStamp(),
           accessToken: existingData.mcpOAuth?.[serverKey]?.accessToken || '',
           expiresAt: existingData.mcpOAuth?.[serverKey]?.expiresAt || 0,
           discoveryState: {
@@ -2115,7 +2305,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
     const storage = getSecureStorage()
     const data = storage.read()
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    const serverKey = this.credentialKey(data?.mcpOAuth)
 
     const cached = data?.mcpOAuth?.[serverKey]?.discoveryState
     if (cached?.authorizationServerUrl) {
@@ -2168,10 +2358,14 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   async refreshAuthorization(
     refreshToken: string,
   ): Promise<OAuthTokens | undefined> {
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    // The lock is deliberately named after the BASE key, not the issuer-scoped
+    // slot: it serializes refreshes for one configured server, and an older
+    // build (or a session that has not learned the issuer yet) must contend for
+    // the same file or the mutual exclusion is lost across versions.
+    const baseKey = getServerKey(this.serverName, this.serverConfig)
     const claudeDir = getClaudeConfigHomeDir()
     await mkdir(claudeDir, { recursive: true })
-    const sanitizedKey = serverKey.replace(/[^a-zA-Z0-9]/g, '_')
+    const sanitizedKey = baseKey.replace(/[^a-zA-Z0-9]/g, '_')
     const lockfilePath = join(claudeDir, `mcp-refresh-${sanitizedKey}.lock`)
 
     let release: (() => Promise<void>) | undefined
@@ -2218,7 +2412,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       clearKeychainCache()
       const storage = getSecureStorage()
       const data = storage.read()
-      const tokenData = data?.mcpOAuth?.[serverKey]
+      const tokenData = data?.mcpOAuth?.[this.credentialKey(data?.mcpOAuth)]
       if (tokenData) {
         const expiresIn = (tokenData.expiresAt - Date.now()) / 1000
         if (expiresIn > 300) {
@@ -2372,8 +2566,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
           clearKeychainCache()
           const storage = getSecureStorage()
           const data = storage.read()
-          const serverKey = getServerKey(this.serverName, this.serverConfig)
-          const tokenData = data?.mcpOAuth?.[serverKey]
+          const tokenData = data?.mcpOAuth?.[this.credentialKey(data?.mcpOAuth)]
           if (tokenData) {
             const expiresIn = (tokenData.expiresAt - Date.now()) / 1000
             if (expiresIn > 300) {
