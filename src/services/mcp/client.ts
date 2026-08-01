@@ -132,6 +132,7 @@ import {
   wrapFetchWithStepUpDetection,
 } from './auth.js'
 import { createMcpClient, mcpProtocolEra } from './clientFactory.js'
+import { clearMrtrRound, mrtrProgressCallback } from './mrtrRounds.js'
 import { markClaudeAiMcpConnected } from './claudeai.js'
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
 import { getMcpServerHeaders } from './headersHelper.js'
@@ -3221,19 +3222,29 @@ async function callMCPTool({
         {
           signal,
           timeout: timeoutMs,
-          onprogress: onProgress
-            ? sdkProgress => {
-                onProgress({
-                  type: 'mcp_progress',
-                  status: 'progress',
-                  serverName: name,
-                  toolName: tool,
-                  progress: sdkProgress.progress,
-                  total: sdkProgress.total,
-                  progressMessage: sdkProgress.message,
-                })
-              }
-            : undefined,
+          // On the modern era the SDK's multi-round-trip driver reports which
+          // round it is fulfilling through this callback (and only through it),
+          // so the tracker is installed here even when the caller wants no
+          // progress of its own. `mrtrProgressCallback` still returns
+          // `undefined` on a legacy-era connection in that case, because
+          // supplying `onprogress` is what makes the SDK attach a
+          // `_meta.progressToken` to the request.
+          onprogress: mrtrProgressCallback(
+            client,
+            onProgress
+              ? sdkProgress => {
+                  onProgress({
+                    type: 'mcp_progress',
+                    status: 'progress',
+                    serverName: name,
+                    toolName: tool,
+                    progress: sdkProgress.progress,
+                    total: sdkProgress.total,
+                    progressMessage: sdkProgress.message,
+                  })
+                }
+              : undefined,
+          ),
         },
       ),
       timeoutPromise,
@@ -3388,6 +3399,9 @@ async function callMCPTool({
     if (progressInterval !== undefined) {
       clearInterval(progressInterval)
     }
+    // The round belongs to this call. Leaving it set would hand a stale round
+    // number to the next elicitation this connection raises.
+    clearMrtrRound(client)
   }
 }
 

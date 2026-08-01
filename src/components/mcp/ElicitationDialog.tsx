@@ -39,6 +39,18 @@ type Props = {
 
 const isTextField = (s: PrimitiveSchemaDefinition) => ['string', 'number', 'integer'].includes(s.type);
 
+/**
+ * Appends the multi-round-trip round to a dialog title.
+ *
+ * Only from round 2 on. Round 1 is indistinguishable from an ordinary one-shot
+ * elicitation, so labelling it would put a counter on every MCP prompt to say
+ * nothing; the number earns its space exactly when the user is being asked a
+ * second time and wants to know why.
+ */
+function withRound(title: string, round: number | undefined): string {
+  return round !== undefined && round > 1 ? `${title} (round ${round})` : title;
+}
+
 const RESOLVING_SPINNER_CHARS = '\u280B\u2819\u2839\u2838\u283C\u2834\u2826\u2827\u2807\u280F';
 const advanceSpinnerFrame = (f: number) => (f + 1) % RESOLVING_SPINNER_CHARS.length;
 
@@ -116,7 +128,7 @@ function ElicitationFormDialog({
   event: ElicitationRequestEvent;
   onResponse: Props['onResponse'];
 }): React.ReactNode {
-  const { serverName, signal } = event;
+  const { serverName, signal, round } = event;
   const request = event.params as ElicitRequestFormParams;
   const { message, requestedSchema } = request;
   const hasFields = Object.keys(requestedSchema.properties).length > 0;
@@ -1043,7 +1055,7 @@ function ElicitationFormDialog({
 
   return (
     <Dialog
-      title={`MCP server \u201c${serverName}\u201d requests your input`}
+      title={withRound(`MCP server \u201c${serverName}\u201d requests your input`, round)}
       subtitle={`\n${message}`}
       color="permission"
       onCancel={() => onResponse('cancel')}
@@ -1111,7 +1123,7 @@ function ElicitationURLDialog({
   onResponse: Props['onResponse'];
   onWaitingDismiss: Props['onWaitingDismiss'];
 }): React.ReactNode {
-  const { serverName, signal, waitingState } = event;
+  const { serverName, signal, waitingState, round } = event;
   const urlParams = event.params as ElicitRequestURLParams;
   const { message, url } = urlParams;
   const [phase, setPhase] = useState<'prompt' | 'waiting'>('prompt');
@@ -1214,7 +1226,7 @@ function ElicitationURLDialog({
     const actionLabel = waitingState?.actionLabel ?? 'Continue without waiting';
     return (
       <Dialog
-        title={`MCP server \u201c${serverName}\u201d \u2014 waiting for completion`}
+        title={withRound(`MCP server \u201c${serverName}\u201d \u2014 waiting for completion`, round)}
         subtitle={`\n${message}`}
         color="permission"
         onCancel={() => onWaitingDismiss?.('cancel')}
@@ -1286,7 +1298,7 @@ function ElicitationURLDialog({
 
   return (
     <Dialog
-      title={`MCP server \u201c${serverName}\u201d wants to open a URL`}
+      title={withRound(`MCP server \u201c${serverName}\u201d wants to open a URL`, round)}
       subtitle={`\n${message}`}
       color="permission"
       onCancel={() => onResponse('cancel')}
