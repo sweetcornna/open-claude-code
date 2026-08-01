@@ -1,11 +1,7 @@
 // MCP tool discovery — fetch and process tools from connected MCP servers
 // Extracted from src/services/mcp/client.ts (fetchToolsForClient)
 
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import {
-  ListToolsResultSchema,
-  type ListToolsResult,
-} from '@modelcontextprotocol/sdk/types.js'
+import type { Client } from '@modelcontextprotocol/client'
 import type { CoreTool } from '@open-claude-code/agent-tools'
 import type { ConnectedMCPServer } from './types.js'
 import type { McpClientDependencies } from './interfaces.js'
@@ -54,10 +50,10 @@ export async function discoverTools(
   }
 
   try {
-    const result = (await client.request(
-      { method: 'tools/list' },
-      ListToolsResultSchema,
-    )) as ListToolsResult
+    // v2 resolves the result schema from the spec method name; there is no
+    // schema argument any more. Kept on `request()` rather than `listTools()`
+    // on purpose — see the note in `src/services/mcp/client.ts`.
+    const result = await client.request({ method: 'tools/list' })
 
     // Sanitize tool data from MCP server
     const toolsToProcess = recursivelySanitizeUnicode(result.tools)

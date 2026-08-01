@@ -1,9 +1,7 @@
-import {
-  type ListResourcesResult,
-  ListResourcesResultSchema,
-  type ReadResourceResult,
-  ReadResourceResultSchema,
-} from '@modelcontextprotocol/sdk/types.js'
+import type {
+  ListResourcesResult,
+  ReadResourceResult,
+} from '@modelcontextprotocol/client'
 import type { Command } from '../commands.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { normalizeNameForMCP } from '../services/mcp/normalization.js'
@@ -36,11 +34,11 @@ export const fetchMcpSkillsForClient = memoizeWithLRU(
         return []
       }
 
-      // List all resources and filter to skill:// URIs
-      const result = (await client.client.request(
-        { method: 'resources/list' },
-        ListResourcesResultSchema,
-      )) as ListResourcesResult
+      // List all resources and filter to skill:// URIs. v2 resolves the
+      // result schema from the spec method name — no schema argument.
+      const result: ListResourcesResult = await client.client.request({
+        method: 'resources/list',
+      })
 
       if (!result.resources) return []
 
@@ -63,13 +61,10 @@ export const fetchMcpSkillsForClient = memoizeWithLRU(
       for (const resource of skillResources) {
         try {
           // Read the skill resource content
-          const readResult = (await client.client.request(
-            {
-              method: 'resources/read',
-              params: { uri: resource.uri },
-            },
-            ReadResourceResultSchema,
-          )) as ReadResourceResult
+          const readResult: ReadResourceResult = await client.client.request({
+            method: 'resources/read',
+            params: { uri: resource.uri },
+          })
 
           // Extract text content from the resource
           const textContent = readResult.contents

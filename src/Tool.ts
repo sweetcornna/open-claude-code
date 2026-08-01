@@ -6,7 +6,7 @@ export type { ToolResultBlockParam }
 import type {
   ElicitRequestURLParams,
   ElicitResult,
-} from '@modelcontextprotocol/sdk/types.js'
+} from '@modelcontextprotocol/client'
 import type { UUID } from 'crypto'
 import type { z } from 'zod/v4'
 import type { Command } from './commands.js'

@@ -1,7 +1,4 @@
-import {
-  type ReadResourceResult,
-  ReadResourceResultSchema,
-} from '@modelcontextprotocol/sdk/types.js'
+import type { ReadResourceResult } from '@modelcontextprotocol/client'
 import { z } from 'zod/v4'
 import { ensureConnectedClient } from 'src/services/mcp/client.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
@@ -92,13 +89,10 @@ export const ReadMcpResourceTool = buildTool({
     }
 
     const connectedClient = await ensureConnectedClient(client)
-    const result = (await connectedClient.client.request(
-      {
-        method: 'resources/read',
-        params: { uri },
-      },
-      ReadResourceResultSchema,
-    )) as ReadResourceResult
+    const result: ReadResourceResult = await connectedClient.client.request({
+      method: 'resources/read',
+      params: { uri },
+    })
 
     // Intercept any blob fields: decode, write raw bytes to disk with a
     // mime-derived extension, and replace with a path. Otherwise the base64

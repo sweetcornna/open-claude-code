@@ -1,9 +1,9 @@
 // MCP tool execution — call tools on connected MCP servers
 // Extracted from src/services/mcp/client.ts (callMCPTool)
 
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { ConnectedMCPServer } from './types.js'
 import type { McpClientDependencies } from './interfaces.js'
+import { getMcpHttpStatus } from './connection.js'
 import { McpToolCallError, McpAuthError } from './errors.js'
 
 // ============================================================================
@@ -72,13 +72,14 @@ export async function callMcpTool(
     }, 30_000)
 
     const result = await Promise.race([
+      // v2 dropped the result-schema argument: `callTool` always decodes
+      // with the spec `CallToolResult` shape.
       mcpClient.callTool(
         {
           name: tool,
           arguments: args,
           _meta: meta,
         },
-        CallToolResultSchema,
         {
           signal,
           timeout: effectiveTimeout,
@@ -127,8 +128,7 @@ export async function callMcpTool(
 
     // Check for 401 errors
     if (e instanceof Error) {
-      const errorCode = 'code' in e ? (e.code as number | undefined) : undefined
-      if (errorCode === 401) {
+      if (getMcpHttpStatus(e) === 401) {
         throw new McpAuthError(
           serverName,
           `MCP server "${serverName}" requires re-authorization (token expired)`,

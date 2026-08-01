@@ -74,7 +74,8 @@ import type {
   ScopedMcpServerConfig,
 } from 'src/services/mcp/types.js'
 import {
-  ChannelMessageNotificationSchema,
+  CHANNEL_MESSAGE_METHOD,
+  ChannelMessageParamsSchema,
   gateChannelServer,
   wrapChannelMessage,
   findChannelEntry,
@@ -232,10 +233,6 @@ import {
   runElicitationResultHooks,
 } from 'src/services/mcp/elicitationHandler.js'
 import { executeNotificationHooks } from 'src/utils/hooks.js'
-import {
-  ElicitRequestSchema,
-  ElicitationCompleteNotificationSchema,
-} from '@modelcontextprotocol/sdk/types.js'
 import { getMcpPrefix } from 'src/services/mcp/mcpStringUtils.js'
 import {
   commandBelongsToServer,
@@ -1293,8 +1290,9 @@ function runHeadlessStreaming(
       // created with elicitation capability declared (e.g., SDK-created clients).
       try {
         connection.client.setRequestHandler(
-          ElicitRequestSchema,
-          async (request, extra) => {
+          'elicitation/create',
+          async (request, ctx) => {
+            const { signal } = ctx.mcpReq
             logMCPDebug(
               serverName,
               `Elicitation request received in print mode: ${jsonStringify(request)}`,
@@ -1310,7 +1308,7 @@ function runHeadlessStreaming(
             const hookResponse = await runElicitationHooks(
               serverName,
               request.params,
-              extra.signal,
+              signal,
             )
             if (hookResponse) {
               logMCPDebug(
@@ -1346,7 +1344,7 @@ function runHeadlessStreaming(
               serverName,
               request.params.message,
               requestedSchema,
-              extra.signal,
+              signal,
               mode,
               url,
               elicitationId,
@@ -1355,7 +1353,7 @@ function runHeadlessStreaming(
             const result = await runElicitationResultHooks(
               serverName,
               rawResult,
-              extra.signal,
+              signal,
               mode,
               elicitationId,
             )
@@ -1371,7 +1369,7 @@ function runHeadlessStreaming(
 
         // Surface completion notifications to SDK consumers (URL mode)
         connection.client.setNotificationHandler(
-          ElicitationCompleteNotificationSchema,
+          'notifications/elicitation/complete',
           notification => {
             const { elicitationId } = notification.params
             logMCPDebug(
@@ -4727,9 +4725,10 @@ function handleChannelEnable(
   // channel messages queue at priority 'next' and are seen by the model on
   // the turn after they arrive.
   connection.client.setNotificationHandler(
-    ChannelMessageNotificationSchema() as any,
-    async notification => {
-      const { content, meta } = notification.params
+    CHANNEL_MESSAGE_METHOD,
+    { params: ChannelMessageParamsSchema() },
+    async params => {
+      const { content, meta } = params
       logMCPDebug(
         serverName,
         `notifications/claude/channel: ${content.slice(0, 80)}`,
@@ -4803,9 +4802,10 @@ function reregisterChannelHandlerAfterReconnect(
     'Channel notifications re-registered after reconnect',
   )
   connection.client.setNotificationHandler(
-    ChannelMessageNotificationSchema() as any,
-    async notification => {
-      const { content, meta } = notification.params
+    CHANNEL_MESSAGE_METHOD,
+    { params: ChannelMessageParamsSchema() },
+    async params => {
+      const { content, meta } = params
       logMCPDebug(
         connection.name,
         `notifications/claude/channel: ${content.slice(0, 80)}`,
