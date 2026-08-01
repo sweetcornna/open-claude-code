@@ -10,13 +10,11 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { logMock } from '../../../../tests/mocks/log'
-import { setupSecureStorageMock } from '../../../../tests/mocks/secureStorage'
-
-const secureStorage = setupSecureStorageMock()
+import { secureStorageMock } from '../../../../tests/mocks/secureStorage'
 
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
-mock.module('src/utils/secureStorage/index.ts', secureStorage.mock)
+mock.module('src/utils/secureStorage/index.ts', secureStorageMock.mock)
 
 const SERVER_NAME = 'tenant-mcp'
 const SERVER_CONFIG = {
@@ -64,7 +62,7 @@ function newProvider() {
 }
 
 function storedOAuth(): Record<string, Record<string, unknown>> {
-  return (secureStorage.snapshot()?.mcpOAuth ?? {}) as Record<
+  return (secureStorageMock.snapshot()?.mcpOAuth ?? {}) as Record<
     string,
     Record<string, unknown>
   >
@@ -72,12 +70,12 @@ function storedOAuth(): Record<string, Record<string, unknown>> {
 
 describe('ClaudeAuthProvider issuer keying', () => {
   beforeEach(() => {
-    secureStorage.reset()
+    secureStorageMock.reset()
   })
 
   test('reads pre-upgrade credentials before any issuer is known', async () => {
     const { base } = keys()
-    secureStorage.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
+    secureStorageMock.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
 
     const provider = newProvider()
     expect((await provider.tokens())?.access_token).toBe('legacy-access-token')
@@ -88,7 +86,7 @@ describe('ClaudeAuthProvider issuer keying', () => {
 
   test('re-homes them under the issuer without losing anything', async () => {
     const { base, a } = keys()
-    secureStorage.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
+    secureStorageMock.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
 
     const provider = newProvider()
     await provider.saveAuthorizationServerUrl(ISSUER_A)
@@ -106,7 +104,7 @@ describe('ClaudeAuthProvider issuer keying', () => {
 
   test('learns the issuer from the SEP-2352 call context too', async () => {
     const { base, a } = keys()
-    secureStorage.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
+    secureStorageMock.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
 
     const provider = newProvider()
     const tokens = await provider.tokens({ issuer: ISSUER_A })
@@ -120,7 +118,7 @@ describe('ClaudeAuthProvider issuer keying', () => {
 
   test('learns it from discovery metadata on the v1 flow, which has no context', async () => {
     const { base, a } = keys()
-    secureStorage.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
+    secureStorageMock.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
 
     const provider = newProvider()
     await provider.saveDiscoveryState({
@@ -186,7 +184,7 @@ describe('ClaudeAuthProvider issuer keying', () => {
 
   test("does not hand one issuer the other issuer's pre-upgrade tokens", async () => {
     const { base, a, b } = keys()
-    secureStorage.seed({
+    secureStorageMock.seed({
       mcpOAuth: { [base]: { ...LEGACY_ENTRY, issuer: ISSUER_A } },
     })
 
@@ -201,7 +199,7 @@ describe('ClaudeAuthProvider issuer keying', () => {
 
   test('clearing auth removes every issuer slot for the server', async () => {
     const { base, a, b } = keys()
-    secureStorage.seed({
+    secureStorageMock.seed({
       mcpOAuth: {
         [base]: LEGACY_ENTRY,
         [a]: { ...LEGACY_ENTRY, issuer: ISSUER_A },
@@ -220,7 +218,7 @@ describe('ClaudeAuthProvider issuer keying', () => {
     const { a } = keys()
     expect(hasMcpDiscoveryButNoToken(SERVER_NAME, SERVER_CONFIG)).toBe(false)
 
-    secureStorage.seed({
+    secureStorageMock.seed({
       mcpOAuth: {
         [a]: {
           serverName: SERVER_NAME,
@@ -241,7 +239,7 @@ describe('ClaudeAuthProvider issuer keying', () => {
     saveMcpClientSecret(SERVER_NAME, SERVER_CONFIG, 'configured-secret')
     expect(
       (
-        secureStorage.snapshot()?.mcpOAuthClientConfig as Record<
+        secureStorageMock.snapshot()?.mcpOAuthClientConfig as Record<
           string,
           unknown
         >
@@ -257,16 +255,16 @@ describe('ClaudeAuthProvider issuer keying', () => {
 
   test('migrates once, not on every hook', async () => {
     const { base } = keys()
-    secureStorage.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
+    secureStorageMock.seed({ mcpOAuth: { [base]: LEGACY_ENTRY } })
 
     const provider = newProvider()
     await provider.saveAuthorizationServerUrl(ISSUER_A)
-    const writesAfterMigration = secureStorage.writes()
+    const writesAfterMigration = secureStorageMock.writes()
 
     await provider.saveAuthorizationServerUrl(ISSUER_A)
     await provider.tokens({ issuer: ISSUER_A })
     await provider.clientInformation({ issuer: ISSUER_A })
 
-    expect(secureStorage.writes()).toBe(writesAfterMigration)
+    expect(secureStorageMock.writes()).toBe(writesAfterMigration)
   })
 })

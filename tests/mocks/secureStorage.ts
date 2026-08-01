@@ -1,70 +1,65 @@
 /**
  * Shared in-memory mock for `src/utils/secureStorage/index.js`. Use it via:
  *
- *   import { setupSecureStorageMock } from '../../tests/mocks/secureStorage'
+ *   import { secureStorageMock } from '../../tests/mocks/secureStorage'
  *
- *   const secureStorage = setupSecureStorageMock()
- *   mock.module('src/utils/secureStorage/index.ts', secureStorage.mock)
+ *   mock.module('src/utils/secureStorage/index.ts', secureStorageMock.mock)
+ *   beforeEach(() => secureStorageMock.reset())
  *
  * Any test that exercises credential storage has to substitute the real thing:
  * on macOS it shells out to the login keychain, everywhere else it reads and
  * writes `~/.occ/.credentials.json`. Either way an unmocked test would touch
  * the developer's own credentials and behave differently per platform.
  *
+ * There is deliberately ONE store rather than a per-file factory. `mock.module`
+ * is process-global and last-write-wins, so two files each registering their
+ * own store would depend on Bun re-binding an already-imported module for their
+ * assertions to read the store their own code just wrote — and would silently
+ * assert against each other's if it ever stopped. Sharing one store makes the
+ * ordering irrelevant; `reset()` provides the isolation instead.
+ *
  * `seed()` / `snapshot()` expose the backing object so a test can arrange a
- * pre-migration store and assert on what was persisted, without reaching
- * through the storage interface.
+ * pre-migration store and assert on what was persisted, without going through
+ * the storage interface.
  */
 
 type StorageData = Record<string, unknown>
 
-export type SecureStorageMockHandle = {
-  /** Pass to `mock.module('src/utils/secureStorage/index.ts', …)`. */
-  mock: () => { getSecureStorage: () => unknown }
-  /** Replace the stored blob wholesale. */
-  seed: (data: StorageData | null) => void
-  /** The stored blob as it currently stands (a deep copy). */
-  snapshot: () => StorageData | null
-  /** Number of successful writes, for asserting a migration wrote exactly once. */
-  writes: () => number
-  /** Reset to empty. */
-  reset: () => void
+let data: StorageData | null = null
+let writeCount = 0
+
+// Mirrors `plainTextStorage`'s surface exactly — production code type-checks
+// against `SecureStorage`, which is `any` in this codebase, so a missing method
+// would only surface as a runtime failure in some unrelated test.
+const storage = {
+  name: 'in-memory-test',
+  read: () => data,
+  readAsync: async () => data,
+  update: (next: StorageData) => {
+    data = structuredClone(next)
+    writeCount++
+    return { success: true }
+  },
+  delete: () => {
+    data = null
+    return true
+  },
 }
 
-export function setupSecureStorageMock(
-  initial: StorageData | null = null,
-): SecureStorageMockHandle {
-  let data: StorageData | null = initial ? structuredClone(initial) : null
-  let writes = 0
-
-  // Mirrors `plainTextStorage`'s surface exactly — production code type-checks
-  // against `SecureStorage`, which is `any` in this codebase, so a missing
-  // method would only show up as a runtime failure in an unrelated test.
-  const storage = {
-    name: 'in-memory-test',
-    read: () => data,
-    readAsync: async () => data,
-    update: (next: StorageData) => {
-      data = structuredClone(next)
-      writes++
-      return { success: true }
-    },
-    delete: () => {
-      data = null
-      return true
-    },
-  }
-
-  return {
-    mock: () => ({ getSecureStorage: () => storage }),
-    seed: next => {
-      data = next ? structuredClone(next) : null
-    },
-    snapshot: () => (data ? structuredClone(data) : null),
-    writes: () => writes,
-    reset: () => {
-      data = null
-      writes = 0
-    },
-  }
+export const secureStorageMock = {
+  /** Pass to `mock.module('src/utils/secureStorage/index.ts', …)`. */
+  mock: () => ({ getSecureStorage: () => storage }),
+  /** Replace the stored blob wholesale. */
+  seed: (next: StorageData | null) => {
+    data = next ? structuredClone(next) : null
+  },
+  /** The stored blob as it currently stands (a deep copy). */
+  snapshot: (): StorageData | null => (data ? structuredClone(data) : null),
+  /** Successful writes so far — for asserting a migration wrote exactly once. */
+  writes: () => writeCount,
+  /** Drop everything. Call from `beforeEach`. */
+  reset: () => {
+    data = null
+    writeCount = 0
+  },
 }
