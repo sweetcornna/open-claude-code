@@ -11,6 +11,10 @@
  * `getAllBaseTools()` keeps its old no-argument signature: it evaluates the host
  * runtime predicates and hands them to the registry as a `RegistryEnv`.
  */
+// Load the host slow-operations implementation before builtin tool modules.
+// It self-registers with tool-runtime; standalone package use keeps the facade's
+// native JSON fallback instead.
+import './utils/slowOperations.js'
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from '@open-claude-code/builtin-tools/tools/AgentTool/AgentTool.js'
 import { BashTool } from '@open-claude-code/builtin-tools/tools/BashTool/BashTool.js'

@@ -7,6 +7,10 @@ import {
   openSync,
 } from 'fs'
 import lodashCloneDeep from 'lodash-es/cloneDeep.js'
+import {
+  registerSlowOperationsHost,
+  type SlowOperationsHost,
+} from '@open-claude-code/tool-runtime/slowOperations.js'
 import { addSlowOperation } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
 
@@ -287,3 +291,8 @@ export function writeFileSync_DEPRECATED(
     fsWriteFileSync(filePath, data, options as WriteFileOptions)
   }
 }
+
+registerSlowOperationsHost({
+  jsonParse,
+  jsonStringify,
+} satisfies SlowOperationsHost)
