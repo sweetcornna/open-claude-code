@@ -8,7 +8,7 @@ This file exists because `AGENTS.md` is the cross-tool convention. It deliberate
 
 1. **`bun run precheck` must pass with zero errors before you call any task done.** It runs `tsc --noEmit`, `biome check --fix` and the full `bun test` suite. Note it *rewrites your files* (`check:fix`, not `check`). Current baseline: typecheck clean, biome clean, 5814 pass / 10 skip / 0 fail.
 
-2. **This is a Bun project, not Node.** All imports, builds and execution use Bun APIs (`engines.bun >= 1.3.0`). Do not reach for `npx` — use `bunx`. The pre-commit hook was broken for exactly this reason.
+2. **This is a Bun project, not Node.** All imports, builds and execution use Bun APIs (`engines.bun >= 1.3.11`). Do not reach for `npx` — use `bunx`. The pre-commit hook was broken for exactly this reason.
 
 3. **Commit messages follow Conventional Commits**: `<type>: <描述>`, where type is one of `feat` / `fix` / `docs` / `chore` / `refactor`.
 
