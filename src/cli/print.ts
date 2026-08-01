@@ -3095,7 +3095,7 @@ function runHeadlessStreaming(
             sdkClient.client?.transport?.onmessage
           ) {
             sdkClient.client.transport.onmessage(
-              mcpRequest.message as import('@modelcontextprotocol/sdk/types.js').JSONRPCMessage,
+              mcpRequest.message as import('@modelcontextprotocol/client').JSONRPCMessage,
             )
           }
           sendControlResponseSuccess(msg)
