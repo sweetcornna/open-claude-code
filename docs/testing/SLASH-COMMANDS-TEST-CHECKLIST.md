@@ -111,7 +111,6 @@ bun run dev
 | C12 | `/schedule update <id> <field> <value>` | 子命令 | **POST**（不是 PATCH） | ☐ |
 | C13 | `/cron list` `/triggers list` | aliases | 同 C9 | ☐ |
 | C14 | `/init-verifiers` | 无参 | 创建项目 verifier skills | ☐ |
-| C15 | `/bridge-kick` | 无参 | bridge 故障注入测试 | ☐ |
 | C16 | `/subscribe-pr` | 无参 | 列本地 `~/.claude/pr-subscriptions.json` | ☐ |
 | C17 | `/ultrareview <PR#>` | 参数 | preflight gate（v1 已有） | ☐ |
 

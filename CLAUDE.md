@@ -89,9 +89,6 @@ bun run check:unused
 # Full check (typecheck + lint fix + test) — 任务完成后必须运行
 bun run precheck
 
-# Remote Control Server
-bun run rcs
-
 # Docs dev server (Mintlify)
 bun run docs:dev
 ```
@@ -103,21 +100,20 @@ bun run docs:dev
 ### Runtime & Build
 
 - **Runtime**: Bun (not Node.js). All imports, builds, and execution use Bun APIs.
-- **Build**: `build.ts` 执行 `Bun.build()` with `splitting: true`，入口 `src/entrypoints/cli.tsx`，输出 `dist/cli.js` + chunk files。Build 默认启用 34 个 feature（见下方 Feature Flag 段）。构建后自动替换 `import.meta.require` 为 Node.js 兼容版本（产物 bun/node 都可运行）。构建时会将 `vendor/audio-capture/` 和 `src/utils/vendor/ripgrep/` 复制到 `dist/vendor/` 下。
+- **Build**: `build.ts` 执行 `Bun.build()` with `splitting: true`，入口 `src/entrypoints/cli.tsx`，输出 `dist/cli.js` + chunk files。Build 默认启用 33 个 feature（见下方 Feature Flag 段）。构建后自动替换 `import.meta.require` 为 Node.js 兼容版本（产物 bun/node 都可运行）。构建时会将 `vendor/audio-capture/` 和 `src/utils/vendor/ripgrep/` 复制到 `dist/vendor/` 下。
 - **Build (Vite)**: `vite.config.ts` + `scripts/post-build.ts`，代码分割模式，chunk 输出到 `dist/chunks/`。post-build 遍历 `dist/` 和 `dist/chunks/` 下所有 `.js` 文件做 `globalThis.Bun` 解构 patch，复制 vendor 文件到 `dist/vendor/`。
 - **Vendor 路径解析**: 构建后 chunk 文件位于 `dist/` 或 `dist/chunks/` 下，vendor 二进制在 `dist/vendor/`。`src/utils/distRoot.ts` 提供共享的 `distRoot` 函数，通过 `import.meta.url` 路径中 `lastIndexOf('dist')` 或 `lastIndexOf('src')` 定位根目录。`ripgrep.ts`、`computerUse/setup.ts`、`updateOcc.ts` 均使用 `distRoot` 而非内联 `import.meta.url` 路径推算。`packages/audio-capture-napi/src/index.ts` 有独立的 `lastIndexOf('dist')` 逻辑，功能等价。
 - **为什么 Vite 必须代码分割**: Bun/JSC 会全量解析单个大 JS 文件的 bytecode 和 JIT，单文件 17MB 产物导致 RSS 暴涨至 ~1GB（Node/V8 懒解析仅需 ~220MB）。代码分割为 600+ 小 chunk 后 Bun 按需加载，`--version` RSS 从 966MB 降至 35MB，完整加载从 1GB+ 降至 ~500MB。
 - **Dev mode**: `scripts/dev.ts` 通过 Bun `-d` flag 注入 `MACRO.*` defines，运行 `src/entrypoints/cli.tsx`。feature 列表与 build 相同（同样来自 `DEFAULT_BUILD_FEATURES`），不是「全部启用」。
 - **Module system**: ESM (`"type": "module"`), TSX with `react-jsx` transform.
-- **Monorepo**: Bun workspaces — 17 个 workspace packages in `packages/`（含 `packages/@ant/` 下 5 个）resolved via `workspace:*`。
+- **Monorepo**: Bun workspaces — 15 个 workspace packages in `packages/`（含 `packages/@ant/` 下 5 个）resolved via `workspace:*`。
 - **Lint/Format**: Biome (`biome.json`)。覆盖 `src/`、`scripts/`、`packages/` 全项目（含 `packages/@ant/`）。`bun run lint` / `bun run lint:fix` / `bun run format` / `bun run check` / `bun run check:fix`。42 条规则因 decompiled 代码被关闭，仅保留 `recommended` 基线。
 - **Pre-commit**: husky + lint-staged。提交时自动对暂存文件执行 `biome check --fix`（TS/JS）和 `biome format --write`（JSON）。
 - **CI Lint**: `ci.yml` 在依赖安装后、类型检查前执行 `bunx biome ci .`，lint 或格式化不达标则 CI 失败。
 - **Defines**: 集中管理在 `scripts/defines.ts`。版本号从 `package.json` 读取（不再硬编码）。
-- **CI**: GitHub Actions — 三条 workflow：
+- **CI**: GitHub Actions — 两条 workflow：
   - `ci.yml` — push / PR 触发。`ci` job（ubuntu）跑 `bunx biome ci .` → `typecheck` → `check:cycles`（循环依赖棘轮）→ 带覆盖率的 `bun test` → `build:vite`；`windows` job（windows-latest）单独跑 typecheck + Windows 敏感测试套件（路径校验/沙箱逃逸回归、隔离、ripgrep 解析、mailbox、legacy console）。windows 是独立 job 而非 matrix 分支，因为它有意跑一套不同的、更窄的步骤。
   - `publish-npm.yml` — npm 发布通道，`v*` tag 触发，`npm publish --provenance`，并生成 changelog + GitHub Release。
-  - `release-rcs.yml` — GHCR Docker 通道，`rcs-v*` tag 触发，构建并推送 remote-control-server 镜像。
 
 ### Entry & Bootstrap
 
@@ -126,7 +122,7 @@ bun run docs:dev
    - `--dump-system-prompt` — feature-gated (DUMP_SYSTEM_PROMPT)
    - `--computer-use-mcp` — 独立 MCP server 模式
    - `--daemon-worker=<kind>` — feature-gated (DAEMON)
-   - `remote-control` / `rc` / `remote` / `sync` / `bridge` — feature-gated (BRIDGE_MODE)
+   - `remote-control` / `rc` / `remote` / `sync` / `bridge` — feature-gated (ACP)，exec `happy acp -- occ --acp`
    - `daemon` [subcommand] — feature-gated (DAEMON)
    - `ps` / `logs` / `attach` / `kill` / `--bg` — feature-gated (BG_SESSIONS)
    - `new` / `list` / `reply` — Template job commands
@@ -195,11 +191,9 @@ bun run docs:dev
 | `packages/@ant/computer-use-input/` | 键鼠模拟（dispatcher + darwin/win32/linux backend） |
 | `packages/@ant/computer-use-swift/` | 截图 + 应用管理（dispatcher + per-platform backend） |
 | `packages/@ant/model-provider/` | Model provider 抽象层 |
-| `packages/builtin-tools/` | 内置工具集（60 个 tool 实现，通过 `@open-claude-code/builtin-tools` 导出） |
+| `packages/builtin-tools/` | 内置工具集（58 个 tool 实现，通过 `@open-claude-code/builtin-tools` 导出） |
 | `packages/agent-tools/` | Agent 工具集 |
-| `packages/acp-link/` | ACP 代理服务器（WebSocket → ACP agent 桥接） |
 | `packages/mcp-client/` | MCP 客户端库 |
-| `packages/remote-control-server/` | 自托管 Remote Control Server（Docker 部署，含 Web UI）— Web UI 已重构为 React + Vite + Radix UI，支持 ACP agent 接入 |
 | `packages/cloud-artifacts/` | 独立 Cloudflare Worker + R2 服务：POST `/upload` HTML 上传返回 hash URL，GET `/<7d\|30d>/<id>.html` 由 Worker 代理读取；R2 lifecycle rule 自动 7/30 天过期 |
 | `packages/audio-capture-napi/` | 原生音频捕获（已恢复） |
 | `packages/color-diff-napi/` | 颜色差异计算（完整实现，11 tests） |
@@ -210,27 +204,31 @@ bun run docs:dev
 
 `packages/` 下没有非 workspace 的辅助目录 —— 每个子目录都有 `package.json`。Langfuse 集成在 `src/services/langfuse/`（被 11 个生产文件引用），不是独立包。
 
-### Bridge / Remote Control
+### Remote Control
 
-- **`src/bridge/`** — Remote Control / Bridge 模式。feature-gated by `BRIDGE_MODE`。包含 bridge API、会话管理、JWT 认证、消息传输、权限回调等。Entry: `bridgeMain.ts`。
-- **`packages/remote-control-server/`** — 自托管 RCS，支持 Docker 部署，含 Web UI 控制面板（React 19 + Vite + Radix UI）。支持 ACP agent 通过 acp-link 接入（ACP WebSocket handler、relay handler、SSE event stream）。通过 `bun run rcs` 启动。
-- CLI 快速路径: `occ remote-control` / `occ rc` / `occ bridge`。
+occ **不再自带远程控制的传输层**。它自带 ACP agent（`occ --acp`），客户端那一半交给 [Happy](https://github.com/slopus/happy)（MIT）—— 手机 App、Web、端到端加密、可自托管中继。
+
+- **`src/cli/remoteControlLauncher.ts`**（~100 行）—— 唯一的实现。在 PATH 上找 `happy`，exec `happy acp -- <occ> --acp`。occ 那一半的命令行由 `buildCliLaunch()` 推导（与 daemon / bg session / tmux 重启同一套引导约定），**不要**手写 `process.execPath + argv[1]`。
+- CLI 快速路径: `occ remote-control` / `rc` / `remote` / `sync` / `bridge`，gate 在 `ACP`（默认编译进）而非已删除的 `BRIDGE_MODE`。组织策略 `allow_remote_control` 在拉起 Happy **之前**检查。
+- 自托管：`HAPPY_SERVER_URL` 指向自建 Happy 服务端即可，occ 侧零配置。
+- `packages/remote-control-server/`（自托管 RCS）、`packages/acp-link/`（WS↔ACP 代理）、`src/bridge/`、`BRIDGE_MODE` 已于 2026-07 全部删除（约 45k 行）。已发布的 GHCR 镜像 `ghcr.io/<owner>/remote-control-server` 仍可拉取但已冻结归档。
 - 详见 `docs/features/remote-control-self-hosting.md`。
 
 ### HTML Artifact Hosting
 
-- **`packages/cloud-artifacts/`** — 独立 Cloudflare Worker + R2 服务，类似 `remote-control-server/` 的"独立部署服务"定位，**不被主 CLI import**。Worker 处理 `POST /upload`（Bearer token 鉴权 + text/html 校验 + 10MB 上限 + ttl∈{7,30}）和 `GET /<7d|30d>/<id>.html`（从 R2 读 + Cache-Control: max-age=86400）。R2 用 prefix + lifecycle rule 实现 TTL（`7d/` 删 7 天、`30d/` 删 30 天），Worker 不参与过期处理。ID 默认 `nanoid(21)`（126 bit 熵），可指定 `?hash=` 自定义 ID（覆盖语义：先删 7d/30d prefix 旧 key 再写新 key）。Worker 用 `wrangler types` 生成的全局 `Env` 类型（`worker-configuration.d.ts`，已 gitignore），不依赖 `@cloudflare/workers-types`。部署用 `npm create cloudflare@latest` 初始化 + `bun run setup`（创建 bucket + lifecycle + secret）+ `bun run deploy`。生产出口经 Deno Deploy 边缘代理（`https://cloud-artifacts.claude-code-best.win`），副作用是 HTTP status code 被抹平为 200（body 的 `{error}` 字段仍保留）。详见 `packages/cloud-artifacts/README.md`。
+- **`packages/cloud-artifacts/`** — 独立 Cloudflare Worker + R2 服务，workspace 成员但**不被主 CLI import**。Worker 处理 `POST /upload`（Bearer token 鉴权 + text/html 校验 + 10MB 上限 + ttl∈{7,30}）和 `GET /<7d|30d>/<id>.html`（从 R2 读 + Cache-Control: max-age=86400）。R2 用 prefix + lifecycle rule 实现 TTL（`7d/` 删 7 天、`30d/` 删 30 天），Worker 不参与过期处理。ID 默认 `nanoid(21)`（126 bit 熵），可指定 `?hash=` 自定义 ID（覆盖语义：先删 7d/30d prefix 旧 key 再写新 key）。Worker 用 `wrangler types` 生成的全局 `Env` 类型（`worker-configuration.d.ts`，已 gitignore），不依赖 `@cloudflare/workers-types`。部署用 `npm create cloudflare@latest` 初始化 + `bun run setup`（创建 bucket + lifecycle + secret）+ `bun run deploy`。生产出口经 Deno Deploy 边缘代理（`https://cloud-artifacts.claude-code-best.win`），副作用是 HTTP status code 被抹平为 200（body 的 `{error}` 字段仍保留）。详见 `packages/cloud-artifacts/README.md`。
 
 ### ACP Protocol (Agent Client Protocol)
 
 - **`src/services/acp/`** — ACP agent 实现，包含 `agent.ts`（AcpAgent 类）、`bridge.ts`（Claude Code ↔ ACP 桥接）、`permissions.ts`（权限处理）、`entry.ts`（入口）。
-- **`packages/acp-link/`** — ACP 代理服务器，将 WebSocket 客户端桥接到 ACP agent。提供 `acp-link` CLI 命令，支持自定义端口/HTTPS/认证/会话管理、RCS 集成（REST 注册 + WS identify 两步流程）、权限模式透传（fallback: 客户端传值 > config > `ACP_PERMISSION_MODE` 环境变量）。
+- 编辑器（Zed、JetBrains）可以直接把 occ 当 agent 起：`occ --acp`，不需要 Happy。远程控制走 Happy，编辑器集成走直连，两者共用同一个 agent。
 - ACP 权限管道改进：`createAcpCanUseTool` 统一权限流水线，`applySessionMode` 模式同步，`bypassPermissions` 可用性检测（非 root/sandbox 环境）。
 - ACP Plan 可视化已支持 `session/update plan` 类型的消息展示（PlanView 组件，含进度条/状态图标/优先级标签）。
 
 ### Daemon Mode
 
 - **`src/daemon/`** — Daemon 模式（长驻 supervisor）。feature-gated by `DAEMON`。包含 `main.ts`（entry）和 `workerRegistry.ts`（worker 管理）。
+- `DAEMON_WORKER_KINDS` 目前是**空的** —— 唯一的 worker `remoteControl` 是 bridge 的 headless 驱动，随 bridge 一起删了。supervisor 的 spawn / backoff / park / state file 机制保留为下一个长驻 worker 的扩展点；`daemon start` 会明说"这个 build 没有注册 worker"。后台会话（`daemon bg` / `attach` / `logs` / `kill`，BG_SESSIONS）不受影响。
 
 ### Context & System Prompt
 
@@ -243,8 +241,8 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 **启用方式**: 环境变量 `FEATURE_<FLAG_NAME>=1`。例如 `FEATURE_BUDDY=1 bun run dev`。
 
-**Build 默认 features**（34 个，见 `scripts/defines.ts` 的 `DEFAULT_BUILD_FEATURES`；`build.ts` 从那里 import）:
-- 基础: `BUDDY`, `TRANSCRIPT_CLASSIFIER`, `BRIDGE_MODE`, `AGENT_TRIGGERS_REMOTE`, `CHICAGO_MCP`, `VOICE_MODE`
+**Build 默认 features**（33 个，见 `scripts/defines.ts` 的 `DEFAULT_BUILD_FEATURES`；`build.ts` 从那里 import）:
+- 基础: `BUDDY`, `TRANSCRIPT_CLASSIFIER`, `AGENT_TRIGGERS_REMOTE`, `CHICAGO_MCP`, `VOICE_MODE`
 - 统计/缓存: `SHOT_STATS`, `PROMPT_CACHE_BREAK_DETECTION`, `TOKEN_BUDGET`
 - P0 本地: `AGENT_TRIGGERS`, `ULTRATHINK`, `BUILTIN_EXPLORE_PLAN_AGENTS`, `LODESTONE`
 - P1 API 依赖: `EXTRACT_MEMORIES`, `VERIFICATION_AGENT`, `KAIROS_BRIEF`, `AWAY_SUMMARY`, `ULTRAPLAN`
@@ -263,7 +261,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 >
 > **`FORK_SUBAGENT` 并未被移除**（这份文档此前写错了）—— 它在 `scripts/defines.ts` 中一直是注释掉的状态（不进默认编译列表），但 `packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` 仍然存在，`isForkSubagentEnabled()` 有 8 个运行时门控点，`FEATURE_FORK_SUBAGENT=1 bun run dev` 可正常启用。只有 `/fork` slash 命令的独立实现被删除，该名字现在是 `/branch` 的 alias（`src/commands/branch/index.ts:6`）。
 
-**Dev mode 默认**: 与 build 相同的 34 个（`scripts/dev.ts:40` 同样读 `DEFAULT_BUILD_FEATURES`）。不在表里的 flag 必须显式 `FEATURE_<NAME>=1`。
+**Dev mode 默认**: 与 build 相同的 33 个（`scripts/dev.ts:40` 同样读 `DEFAULT_BUILD_FEATURES`）。不在表里的 flag 必须显式 `FEATURE_<NAME>=1`。
 
 **类型声明**: `src/types/internal-modules.d.ts` 中声明了 `bun:bundle` 模块的 `feature` 函数签名。
 
@@ -311,7 +309,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 | `*-napi` packages | 全部已恢复/实现：`audio-capture-napi`、`image-processor-napi` 已恢复；`color-diff-napi` 完整；`modifiers-napi`（macOS FFI）；`url-handler-napi`（环境变量+CLI） |
 | Voice Mode | Restored — Push-to-Talk 语音输入（需 Anthropic OAuth） |
 | OpenAI/Gemini/Grok 兼容层 | Restored |
-| Remote Control Server | Restored — 自托管 RCS + Web UI |
+| Remote Control | Delegated — `occ remote-control` 交给 Happy（`happy acp -- occ --acp`）；自建 RCS / acp-link / `src/bridge/` 已删除 |
 | `packages/shell/`, `packages/swarm/`, `packages/mcp-server/`, `packages/cc-knowledge/` | Removed — 功能合并或废弃 |
 | Analytics / GrowthBook / Sentry | Empty implementations |
 | Magic Docs / LSP Server | Restored — Magic Docs 自动更新 + LSP 服务器管理器 |

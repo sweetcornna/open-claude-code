@@ -103,7 +103,7 @@ Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-part
 | **Ultracode multi-agent orchestration** | `/ultracode` plus the `Workflow` tool runs deterministic JS scripts (`agent`/`pipeline`/`parallel`/`phase`); `/workflows` gives a live panel, with journal replay and a concurrency cap | [docs](./docs/features/workflow-scripts.md) |
 | **Artifacts** | The model uploads HTML/dashboards/reports to a public URL (7d/30d expiry). Cloudflare Worker + R2, self-hostable | [docs](./packages/cloud-artifacts/README.md) |
 | **ACP protocol** | Connect Zed, Cursor and other IDEs, with session resume, Skills and permission bridging | [docs](./docs/features/acp-zed.md) |
-| **Remote Control** | Self-hosted Docker remote UI — usable from a phone | [docs](./docs/features/remote-control-self-hosting.md) |
+| **Remote Control** | `occ remote-control` hands the session to [Happy](https://github.com/slopus/happy) (phone / web / end-to-end encrypted) over occ's own ACP agent; the server is self-hostable | [docs](./docs/features/remote-control-self-hosting.md) |
 | **Langfuse monitoring** | Inspect every agent loop in detail, export to a dataset in one click | [docs](./docs/features/langfuse-monitoring.md) |
 | **Web search** | Built-in search via Bing / Brave | [docs](./docs/features/web-browser-tool.md) |
 | **Poor mode** | Disables memory extraction and typing suggestions to cut concurrent requests | `/poor` |

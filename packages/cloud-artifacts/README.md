@@ -251,4 +251,4 @@ curl -X POST "http://localhost:8787/upload" \
 
 ## 不被主 CLI 引用
 
-这是独立 Cloudflare Worker 服务，类似 `packages/remote-control-server/` 的定位。Monorepo 根 `package.json` 的 `workspaces: ["packages/*", ...]` 自动识别本包，但主 CLI 不会 import 它。
+这是独立部署的 Cloudflare Worker 服务。Monorepo 根 `package.json` 的 `workspaces: ["packages/*", ...]` 自动识别本包，但主 CLI 不会 import 它。

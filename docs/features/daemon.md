@@ -6,7 +6,9 @@
 
 ## 一、功能概述
 
-DAEMON 将 Claude Code 变为后台守护进程。主进程（supervisor）管理多个 worker 子进程的生命周期，通过文件系统状态文件进行通信。适用于持续运行的后台服务场景（如配合 BRIDGE_MODE 提供远程控制服务）。
+DAEMON 将 occ 变为后台守护进程。主进程（supervisor）管理多个 worker 子进程的生命周期，通过文件系统状态文件进行通信。
+
+> **当前没有注册任何 supervisor worker。** 唯一的 worker `remoteControl` 是自建 bridge 的 headless 驱动，随 bridge 一起于 2026-07 删除（远程控制现在交给 Happy，见 [Remote Control](./remote-control-self-hosting.md)）。`DAEMON_WORKER_KINDS` 现在是空数组，`occ daemon start` 会明说这一点并直接返回。spawn / 退避 / parking / 状态文件这套机制完整保留，作为下一个长驻 worker 的扩展点。后台会话子命令（`daemon bg` / `attach` / `logs` / `kill`，由 `BG_SESSIONS` 门控）不受影响，照常可用。
 
 ## 二、实现架构
 
@@ -15,10 +17,10 @@ DAEMON 将 Claude Code 变为后台守护进程。主进程（supervisor）管�
 | 模块 | 文件 | 状态 |
 |------|------|------|
 | 守护主进程 | `src/daemon/main.ts` | **已实现** — Supervisor 含子命令、Worker 生命周期管理、指数退避重启 |
-| Worker 注册 | `src/daemon/workerRegistry.ts` | **已实现** — remoteControl Worker（headless bridge） |
+| Worker 注册 | `src/daemon/workerRegistry.ts` | **已实现** — `DAEMON_WORKER_KINDS` 目前为空 |
 | Daemon 状态 | `src/daemon/state.ts` | **已实现** — PID/状态文件的读写与查询 |
 | CLI 路由 | `src/entrypoints/cli.tsx` | **布线** — `--daemon-worker` 和 `daemon` 子命令 |
-| 命令注册 | `src/commands.ts` | **布线** — DAEMON + BRIDGE_MODE 门控 |
+| 命令注册 | `src/commands.ts` | **布线** — DAEMON 门控 |
 
 ### 2.2 CLI 入口
 
@@ -66,24 +68,15 @@ Supervisor 为每个 worker 实现：
 - **永久错误退出码**：78 (EXIT_CODE_PERMANENT) 导致直接 parking
 - **优雅关闭**：SIGTERM/SIGINT → abort signal → 30s 强制 SIGKILL
 
-### 2.5 与 BRIDGE_MODE 的关系
+### 2.5 注册新的 worker
 
-DAEMON 和 BRIDGE_MODE 常组合使用：
-
-```ts
-// src/commands.ts
-if (feature('DAEMON') && feature('BRIDGE_MODE')) {
-  // 加载 remoteControlServer 命令
-}
-```
-
-双重门控：两个 feature 都需要开启才能使用远程控制服务器。
+在 `src/daemon/workerRegistry.ts` 的 `DAEMON_WORKER_KINDS` 里加上 kind 名，并在 `runDaemonWorker()` 里处理它。supervisor 会按这个列表 spawn `occ --daemon-worker=<kind>`，其余（退避、parking、优雅关闭、状态文件）自动生效。
 
 ## 三、关键设计决策
 
 1. **多进程架构**：一个 supervisor + 多个 worker，进程隔离
 2. **文件系统状态通信**：通过 `daemon-state.json` 文件进行状态共享（非 Unix 域套接字）
-3. **与 BRIDGE_MODE 强绑定**：守护进程最常见的用途是提供远程控制服务
+3. **worker 与 supervisor 解耦**：worker kind 是一张可扩展的注册表，supervisor 不认识任何具体 worker
 4. **CLI 子命令路由**：`daemon` 子命令和 `--daemon-worker` 参数在 `cli.tsx` 中路由
 5. **Worker 环境变量**：supervisor 通过环境变量（`DAEMON_WORKER_*`）向 worker 传递配置
 
@@ -91,7 +84,7 @@ if (feature('DAEMON') && feature('BRIDGE_MODE')) {
 
 ```bash
 # 启用守护进程模式
-FEATURE_DAEMON=1 FEATURE_BRIDGE_MODE=1 bun run dev
+FEATURE_DAEMON=1 bun run dev
 
 # 启动守护进程
 occ daemon start

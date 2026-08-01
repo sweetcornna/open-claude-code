@@ -45,27 +45,27 @@ bun run dev
 
 ## 2. Remote Control 远程控制
 
-**PR**: #60 `feat: enable Remote Control (BRIDGE_MODE)` + #170 `feat: restore daemon supervisor`
-**Feature Flag**: `BRIDGE_MODE`
+**Feature Flag**: `ACP`（默认编译进）
 
 ### 说明
-通过 WebSocket 远程控制 Claude Code 会话。支持自托管私有部署。
+从手机或浏览器控制会话。occ 提供 ACP agent（`occ --acp`），客户端和中继交给 [Happy](https://github.com/slopus/happy)（MIT）—— 手机 App、Web、端到端加密、服务端可自托管。
 
 ### 使用
 ```bash
-# 启动远程控制模式
-bun run dev -- remote-control
+# 安装 Happy CLI（一次性）
+npm install -g happy-coder
 
-# 使用自托管服务器
-CLAUDE_BRIDGE_BASE_URL=https://your-server.com CLAUDE_BRIDGE_OAUTH_TOKEN=your-token bun run dev --remote-control
+# 在项目目录里启动；等价于 happy acp -- <occ> --acp
+occ remote-control
 
-# 或通过 /remote-control 命令在会话中启动
-/remote-control
+# 自托管中继
+HAPPY_SERVER_URL=https://happy.example.com occ remote-control
 ```
 
 ### 命令
-- `occ remote-control` / `occ rc` — 启动远程控制客户端
-- `occ bridge` — 同上（别名）
+- `occ remote-control` / `occ rc` / `occ remote` / `occ sync` / `occ bridge` — 同一个命令的别名
+
+> occ 自建的 bridge、`packages/remote-control-server/`、`packages/acp-link/` 和 `BRIDGE_MODE` 已于 2026-07 删除。迁移见 [Remote Control 文档](./remote-control-self-hosting.md)。
 
 ---
 
@@ -380,9 +380,7 @@ FEATURE_FORK_SUBAGENT=1 bun run dev
 | `MonitorTool` | 后台监控命令输出；`wait_seconds` 模式作为定时唤醒器 | AI 在轮询/等待场景自动调用 |
 | `WebBrowserTool` | 终端内网页交互 | AI 需要查看网页时调用 |
 | `SubscribePRTool` | 订阅 GitHub PR 变更 | `/subscribe-pr` 或 AI 调用 |
-| `PushNotificationTool` | 推送桌面通知 | AI 在长任务完成时调用 |
 | `TerminalCaptureTool` | 截取终端屏幕 | AI 需要看终端输出时调用 |
-| `SendUserFileTool` | 向用户发送文件 | AI 导出文件时调用 |
 | `REPLTool` | 启动子 REPL 会话 | AI 需要独立交互环境时调用 |
 | `VerifyPlanExecutionTool` | 验证执行计划完成度 | AI 完成计划后自动验证 |
 | `SuggestBackgroundPRTool` | 建议创建后台 PR | AI 发现可独立的变更时提议 |
@@ -394,7 +392,6 @@ FEATURE_FORK_SUBAGENT=1 bun run dev
 | Flag | 默认 | 说明 |
 |------|------|------|
 | `BUDDY` | ✅ dev only | 伴侣系统 |
-| `BRIDGE_MODE` | ✅ dev only | 远程控制 |
 | `VOICE_MODE` | ✅ dev+build | 语音模式 |
 | `CHICAGO_MCP` | ✅ dev+build | Computer Use + Chrome |
 | `AGENT_TRIGGERS_REMOTE` | ✅ dev+build | 定时任务 |
