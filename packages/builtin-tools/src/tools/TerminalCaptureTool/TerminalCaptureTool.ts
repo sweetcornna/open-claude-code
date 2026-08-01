@@ -1,7 +1,7 @@
 import { z } from 'zod/v4'
 import type { ToolResultBlockParam } from 'src/Tool.js'
 import { buildTool } from 'src/Tool.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { TERMINAL_CAPTURE_TOOL_NAME } from './prompt.js'
 
 const inputSchema = lazySchema(() =>

@@ -12,8 +12,8 @@ import type { LocalAgentTaskState } from 'src/tasks/LocalAgentTask/LocalAgentTas
 import type { LocalShellTaskState } from 'src/tasks/LocalShellTask/guards.js';
 import type { RemoteAgentTaskState } from 'src/tasks/RemoteAgentTask/RemoteAgentTask.js';
 import type { TaskState } from 'src/tasks/types.js';
-import { AbortError } from 'src/utils/errors.js';
-import { lazySchema } from 'src/utils/lazySchema.js';
+import { AbortError } from '@open-claude-code/tool-runtime/errors.js';
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { extractTextContent } from 'src/utils/messages.js';
 import { semanticBoolean } from 'src/utils/semanticBoolean.js';
 import { sleep } from 'src/utils/sleep.js';

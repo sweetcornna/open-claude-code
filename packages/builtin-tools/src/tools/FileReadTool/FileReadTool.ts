@@ -29,7 +29,10 @@ import type { ToolUseContext } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from 'src/utils/envUtils.js'
-import { getErrnoCode, isENOENT } from 'src/utils/errors.js'
+import {
+  getErrnoCode,
+  isENOENT,
+} from '@open-claude-code/tool-runtime/errors.js'
 import {
   addLineNumbers,
   FILE_NOT_FOUND_CWD_NOTE,
@@ -48,7 +51,7 @@ import {
   ImageResizeError,
   maybeResizeAndDownsampleImageBuffer,
 } from 'src/utils/imageResizer.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logError } from 'src/utils/log.js'
 import { isAutoMemFile } from 'src/utils/memoryFileDetection.js'
 import { createUserMessage } from 'src/utils/messages.js'

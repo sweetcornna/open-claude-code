@@ -10,7 +10,7 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
 } from 'src/utils/auth.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { appendRemoteTriggerAuditRecord } from 'src/utils/remoteTriggerAudit.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { DESCRIPTION, PROMPT, REMOTE_TRIGGER_TOOL_NAME } from './prompt.js'

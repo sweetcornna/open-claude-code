@@ -13,7 +13,7 @@ import {
   type Tools,
 } from 'src/Tool.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { escapeRegExp } from 'src/utils/stringUtils.js'
 import { isSearchExtraToolsEnabledOptimistic } from 'src/utils/searchExtraTools.js'
 import {

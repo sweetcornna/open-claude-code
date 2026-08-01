@@ -2,7 +2,7 @@ import type { ReadResourceResult } from '@modelcontextprotocol/client'
 import { z } from 'zod/v4'
 import { ensureConnectedClient } from 'src/services/mcp/client.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   getBinaryBlobSavedMessage,
   persistBinaryContent,

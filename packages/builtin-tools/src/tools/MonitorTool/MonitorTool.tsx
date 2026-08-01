@@ -7,7 +7,7 @@ import { buildTool } from 'src/Tool.js';
 import { spawnShellTask } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 import { bashToolHasPermission } from '../BashTool/bashPermissions.js';
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
-import { lazySchema } from 'src/utils/lazySchema.js';
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { truncate } from 'src/utils/format.js';
 import { exec } from 'src/utils/Shell.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';

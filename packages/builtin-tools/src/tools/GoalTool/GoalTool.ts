@@ -1,7 +1,7 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   completeGoal,
   formatGoalElapsed,

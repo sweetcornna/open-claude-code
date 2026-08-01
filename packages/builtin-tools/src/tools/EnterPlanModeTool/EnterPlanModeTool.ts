@@ -6,7 +6,7 @@ import {
 } from 'src/bootstrap/state.js'
 import type { Tool } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { applyPermissionUpdate } from 'src/utils/permissions/PermissionUpdate.js'
 import { prepareContextForPlanMode } from 'src/utils/permissions/permissionSetup.js'
 import { isPlanModeInterviewPhaseEnabled } from 'src/utils/planModeV2.js'

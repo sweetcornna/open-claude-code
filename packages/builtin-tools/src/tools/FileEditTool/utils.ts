@@ -7,7 +7,10 @@ import {
   getPatchForDisplay,
   getPatchFromContents,
 } from 'src/utils/diff.js'
-import { errorMessage, isENOENT } from 'src/utils/errors.js'
+import {
+  errorMessage,
+  isENOENT,
+} from '@open-claude-code/tool-runtime/errors.js'
 import {
   addLineNumbers,
   convertLeadingTabsToSpaces,

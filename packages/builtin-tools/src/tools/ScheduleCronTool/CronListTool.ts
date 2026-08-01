@@ -3,7 +3,7 @@ import { buildTool, type ToolDef } from 'src/Tool.js'
 import { cronToHuman } from 'src/utils/cron.js'
 import { listAllCronTasks } from 'src/utils/cronTasks.js'
 import { truncate } from 'src/utils/format.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getTeammateContext } from 'src/utils/teammateContext.js'
 import {
   buildCronListPrompt,

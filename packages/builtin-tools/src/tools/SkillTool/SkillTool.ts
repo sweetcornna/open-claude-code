@@ -47,13 +47,13 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { getAgentContext } from 'src/utils/agentContext.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import {
   extractResultText,
   prepareForkedCommandContext,
 } from 'src/utils/forkedAgent.js'
 import { parseFrontmatter } from 'src/utils/frontmatterParser.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { createUserMessage, normalizeMessages } from 'src/utils/messages.js'
 import type { ModelAlias } from 'src/utils/model/aliases.js'
 import { resolveSkillModelOverride } from 'src/utils/model/model.js'

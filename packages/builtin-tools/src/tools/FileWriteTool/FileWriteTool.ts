@@ -17,7 +17,7 @@ import { getCwd } from 'src/utils/cwd.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { countLinesChanged, getPatchForDisplay } from 'src/utils/diff.js'
 import { isEnvTruthy } from 'src/utils/envUtils.js'
-import { isENOENT } from 'src/utils/errors.js'
+import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
 import { getFileModificationTime, writeTextContent } from 'src/utils/file.js'
 import {
   fileHistoryEnabled,
@@ -27,7 +27,7 @@ import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
 import { fetchSingleFileGitDiff, type ToolUseDiff } from 'src/utils/gitDiff.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logError } from 'src/utils/log.js'
 import { expandPath } from 'src/utils/path.js'
 import {

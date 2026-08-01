@@ -7,7 +7,7 @@ import { buildTool, type ToolDef } from 'src/Tool.js'
 import { formatAgentId } from 'src/utils/agentId.js'
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
 import { getCwd } from 'src/utils/cwd.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   getDefaultMainLoopModel,
   parseUserSpecifiedModel,

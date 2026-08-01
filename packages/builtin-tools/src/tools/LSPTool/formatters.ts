@@ -13,7 +13,7 @@ import type {
   SymbolKind,
 } from 'vscode-languageserver-types'
 import { logForDebugging } from 'src/utils/debug.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { plural } from 'src/utils/stringUtils.js'
 
 /**

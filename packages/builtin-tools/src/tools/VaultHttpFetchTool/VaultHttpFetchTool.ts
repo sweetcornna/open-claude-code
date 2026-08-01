@@ -8,7 +8,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { getWebFetchUserAgent } from 'src/utils/http.js'
 import { isValidKey } from 'src/utils/localValidate.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getRuleByContentsForToolName } from 'src/utils/permissions/permissions.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import {

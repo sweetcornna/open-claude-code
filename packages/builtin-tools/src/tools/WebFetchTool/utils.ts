@@ -5,7 +5,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { queryHaiku } from 'src/services/api/claude.js'
-import { AbortError } from 'src/utils/errors.js'
+import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import { getWebFetchUserAgent } from 'src/utils/http.js'
 import { logError } from 'src/utils/log.js'
 import {

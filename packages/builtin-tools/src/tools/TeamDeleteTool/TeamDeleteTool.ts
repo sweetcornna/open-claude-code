@@ -4,7 +4,7 @@ import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 
 import type { Tool } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js'
 import {
