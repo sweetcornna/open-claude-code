@@ -35,7 +35,7 @@ import { BIN_NAME } from '../../constants/brand.js'
 import { MCP_CLIENT_METADATA_URL } from '../../constants/oauth.js'
 import { openBrowser } from '../../utils/browser.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
-import { errorMessage, getErrnoCode } from '../../utils/errors.js'
+import { errorMessage, getErrnoCode, toError } from '../../utils/errors.js'
 import * as lockfile from '../../utils/lockfile.js'
 import { logMCPDebug } from '../../utils/log.js'
 import { getPlatform } from '../../utils/platform.js'
@@ -46,6 +46,12 @@ import { sleep } from '../../utils/sleep.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { logEvent } from '../analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics/metadata.js'
+import {
+  assertAuthorizationResponseIssuer,
+  isAuthorizationResponseIssuerMismatch,
+  type IssuerBaseline,
+  issuerBaselineFromMetadata,
+} from './oauthIssuer.js'
 import { buildRedirectUri, findAvailablePort } from './oauthPort.js'
 import type { McpHTTPServerConfig, McpSSEServerConfig } from './types.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
@@ -87,6 +93,7 @@ type MCPOAuthFlowErrorReason =
   | 'timeout'
   | 'provider_denied'
   | 'state_mismatch'
+  | 'issuer_mismatch'
   | 'port_unavailable'
   | 'sdk_auth_failed'
   | 'token_exchange_failed'
@@ -1058,6 +1065,20 @@ export async function performMCPOAuthFlow(
         options.onWaitingForCallback((callbackUrl: string) => {
           try {
             const parsed = new URL(callbackUrl)
+
+            // RFC 9207 §2.4 before anything else in the response is read —
+            // see the loopback handler below for why the order matters.
+            try {
+              assertAuthorizationResponseIssuer(
+                parsed.searchParams,
+                provider.issuerBaseline,
+              )
+            } catch (issuerError) {
+              cleanup()
+              rejectOnce(toError(issuerError))
+              return
+            }
+
             const code = parsed.searchParams.get('code')
             const state = parsed.searchParams.get('state')
             const error = parsed.searchParams.get('error')
@@ -1101,6 +1122,31 @@ export async function performMCPOAuthFlow(
         const parsedUrl = parse(req.url || '', true)
 
         if (parsedUrl.pathname === '/callback') {
+          // RFC 9207 §2.4 — a MUST as of MCP revision 2026-07-28, and the
+          // first thing checked. In an authorization-server mix-up every
+          // other parameter here (`code`, `state`, `error`,
+          // `error_description`, `error_uri`) is attacker-supplied, so none
+          // of them may reach the token exchange — or the user's screen —
+          // before the response is known to have come from the authorization
+          // server this flow was started against.
+          try {
+            assertAuthorizationResponseIssuer(
+              parsedUrl.query,
+              provider.issuerBaseline,
+            )
+          } catch (issuerError) {
+            res.writeHead(400, { 'Content-Type': 'text/html' })
+            // Deliberately says nothing about the received issuer: it is
+            // attacker-controlled, and rendering it would turn a mix-up into
+            // a phishing surface. The detail goes to the rejected promise.
+            res.end(
+              `<h1>Authentication Error</h1><p>The response came from an unexpected authorization server. Please try again.</p><p>You can close this window.</p>`,
+            )
+            cleanup()
+            rejectOnce(toError(issuerError))
+            return
+          }
+
           const code = parsedUrl.query.code as string
           const state = parsedUrl.query.state as string
           const error = parsedUrl.query.error
@@ -1269,6 +1315,11 @@ export async function performMCPOAuthFlow(
 
     if (error instanceof AuthenticationCancelledError) {
       reason = 'cancelled'
+    } else if (isAuthorizationResponseIssuerMismatch(error)) {
+      // Checked ahead of `authorizationCodeObtained` because the RFC 9207 gate
+      // runs before the code is accepted: this can never be a token-exchange
+      // failure, and mislabelling it would hide mix-up attempts in telemetry.
+      reason = 'issuer_mismatch'
     } else if (authorizationCodeObtained) {
       reason = 'token_exchange_failed'
     } else {
@@ -1456,6 +1507,23 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     metadata: Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>,
   ): void {
     this._metadata = metadata
+  }
+
+  /**
+   * RFC 9207 baseline for this flow's authorization callback: the `issuer`
+   * from the authorization server's metadata, plus whether that metadata
+   * advertises `authorization_response_iss_parameter_supported`.
+   *
+   * Read at callback time rather than snapshotted at flow start, because the
+   * metadata can arrive from either side: `performMCPOAuthFlow` pre-fetches it
+   * (best-effort), and `saveDiscoveryState` backfills it from the SDK's own
+   * discovery when that pre-fetch failed. By the time the browser redirects
+   * back, one of the two has run for any server that has usable metadata at
+   * all — and when neither did, the baseline is empty and the check correctly
+   * degenerates to a no-op instead of failing every such server closed.
+   */
+  get issuerBaseline(): IssuerBaseline {
+    return issuerBaselineFromMetadata(this._metadata)
   }
 
   /**
@@ -2004,6 +2072,15 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       this.serverName,
       `Saving discovery state (authServer: ${state.authorizationServerUrl})`,
     )
+
+    // Keep the metadata in memory even though it is deliberately not persisted
+    // (see below). It is the only authentic source for the RFC 9207 baseline,
+    // and this is the one hook that gets it when `performMCPOAuthFlow`'s own
+    // best-effort pre-fetch failed. In-memory only, so the keychain blob is
+    // unaffected.
+    if (!this._metadata && state.authorizationServerMetadata) {
+      this._metadata = state.authorizationServerMetadata
+    }
 
     // Persist only the URLs, NOT the full metadata blobs.
     // authorizationServerMetadata alone is ~1.5-2KB per MCP server (every
