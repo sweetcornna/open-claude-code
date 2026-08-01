@@ -8,7 +8,7 @@ import {
   type ToolResult,
   type Tools,
 } from 'src/Tool.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import { formatZodValidationError } from 'src/utils/toolErrors.js'
 import {

@@ -10,8 +10,8 @@ import {
   getGlobalConfig,
   saveGlobalConfig,
 } from 'src/utils/config.js'
-import { errorMessage } from 'src/utils/errors.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logError } from 'src/utils/log.js'
 import {
   getInitialSettings,

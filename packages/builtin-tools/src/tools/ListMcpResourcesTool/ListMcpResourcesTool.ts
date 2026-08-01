@@ -4,8 +4,8 @@ import {
   fetchResourcesForClient,
 } from 'src/services/mcp/client.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
-import { errorMessage } from 'src/utils/errors.js'
-import { lazySchema } from 'src/utils/lazySchema.js'
+import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
+import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logMCPError } from 'src/utils/log.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { isOutputLineTruncated } from 'src/utils/terminal.js'

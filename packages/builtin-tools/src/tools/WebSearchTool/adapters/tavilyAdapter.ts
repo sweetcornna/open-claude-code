@@ -5,7 +5,7 @@
  */
 
 import axios from 'axios'
-import { AbortError } from 'src/utils/errors.js'
+import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
 import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
 

@@ -7,7 +7,7 @@ import { stat } from 'fs/promises'
 import type { ValidationResult } from 'src/Tool.js'
 
 import { getCwd } from 'src/utils/cwd.js'
-import { getErrnoCode } from 'src/utils/errors.js'
+import { getErrnoCode } from '@open-claude-code/tool-runtime/errors.js'
 import { IMAGE_EXTENSION_REGEX } from 'src/utils/imagePaste.js'
 import { expandPath } from 'src/utils/path.js'
 

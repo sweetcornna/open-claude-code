@@ -13,7 +13,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { count } from 'src/utils/array.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import { toError } from 'src/utils/errors.js'
+import { toError } from '@open-claude-code/tool-runtime/errors.js'
 import { truncate } from 'src/utils/format.js'
 import { logError } from 'src/utils/log.js'
 
