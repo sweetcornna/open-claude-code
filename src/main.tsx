@@ -4920,24 +4920,20 @@ async function run(): Promise<CommanderCommand> {
       });
   }
 
-  // Remote Control command — connect local environment to claude.ai/code.
+  // Remote Control command — run this machine's occ as an ACP agent under
+  // Happy, which supplies the mobile/web clients and the (self-hostable) relay.
   // The actual command is intercepted by the fast-path in cli.tsx before
   // Commander.js runs, so this registration exists only for help output.
-  // Always hidden: isBridgeEnabled() at this point (before enableConfigs)
-  // would throw inside isClaudeAISubscriber → getGlobalConfig and return
-  // false via the try/catch — but not before paying ~65ms of side effects
-  // (25ms settings Zod parse + 40ms sync `security` keychain subprocess).
-  // The dynamic visibility never worked; the command was always hidden.
-  if (feature('BRIDGE_MODE')) {
+  if (feature('ACP')) {
     program
-      .command('remote-control', { hidden: true })
+      .command('remote-control')
       .alias('rc')
-      .description('Connect your local environment for remote-control sessions via claude.ai/code')
+      .description('Control this session from your phone or browser via Happy (runs `happy acp -- occ --acp`)')
       .action(async () => {
-        // Unreachable — cli.tsx fast-path handles this command before main.tsx loads.
-        // If somehow reached, delegate to bridgeMain.
-        const { bridgeMain } = await import('./bridge/bridgeMain.js');
-        await bridgeMain(process.argv.slice(3));
+        // Normally unreachable — cli.tsx intercepts this command before
+        // main.tsx loads. Kept as a fallback if the fast path is bypassed.
+        const { runRemoteControlLauncher } = await import('./cli/remoteControlLauncher.js');
+        process.exit(await runRemoteControlLauncher(process.argv.slice(3)));
       });
   }
 
