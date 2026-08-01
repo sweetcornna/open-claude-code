@@ -13,7 +13,7 @@ import type { MCPProgress } from 'src/types/tools.js';
 import { formatNumber } from 'src/utils/format.js';
 
 import { getContentSizeEstimate, type MCPToolResult } from 'src/utils/mcpValidation.js';
-import { jsonParse, jsonStringify } from 'src/utils/slowOperations.js';
+import { jsonParse, jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js';
 import type { inputSchema } from './MCPTool.js';
 
 // Threshold for displaying warning about large MCP responses

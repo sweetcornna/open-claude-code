@@ -7,7 +7,7 @@ import {
   getBinaryBlobSavedMessage,
   persistBinaryContent,
 } from 'src/utils/mcpOutputStorage.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { isOutputLineTruncated } from 'src/utils/terminal.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 import {

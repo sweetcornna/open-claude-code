@@ -18,7 +18,7 @@ import { getSessionId } from 'src/bootstrap/state.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import { getMainLoopModel, getSmallFastModel } from 'src/utils/model/model.js'
-import { jsonParse } from 'src/utils/slowOperations.js'
+import { jsonParse } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { asSystemPrompt } from 'src/utils/systemPromptType.js'
 import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
 

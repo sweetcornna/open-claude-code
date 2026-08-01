@@ -51,7 +51,7 @@ import type { ExecResult } from 'src/utils/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js';
 import { semanticNumber } from 'src/utils/semanticNumber.js';
-import { jsonStringify } from 'src/utils/slowOperations.js';
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js';
 import { EndTruncatingAccumulator } from '@open-claude-code/tool-runtime/stringUtils.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { TaskOutput } from 'src/utils/task/TaskOutput.js';

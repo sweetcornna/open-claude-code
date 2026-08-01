@@ -4,7 +4,7 @@ import { MessageResponse } from 'src/components/MessageResponse.js';
 import { OutputLine } from 'src/components/shell/OutputLine.js';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
-import { jsonStringify } from 'src/utils/slowOperations.js';
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js';
 import type { Output } from './LocalMemoryRecallTool.js';
 
 // H6 fix: second `options` parameter matches Tool interface contract

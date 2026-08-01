@@ -1,6 +1,6 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   completeGoal,
