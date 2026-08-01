@@ -11,7 +11,7 @@ import { MessageResponse } from 'src/components/MessageResponse.js';
 import { NotebookEditToolUseRejectedMessage } from 'src/components/NotebookEditToolUseRejectedMessage.js';
 import { Box, Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';
-import type { Tools } from 'src/Tool.js';
+import type { Tools } from '@open-claude-code/tool-runtime/Tool.js';
 import { getDisplayPath } from 'src/utils/file.js';
 import type { inputSchema, Output } from './NotebookEditTool.js';
 

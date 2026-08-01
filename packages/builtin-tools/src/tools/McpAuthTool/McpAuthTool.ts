@@ -14,7 +14,7 @@ import type {
   McpSSEServerConfig,
   ScopedMcpServerConfig,
 } from 'src/services/mcp/types.js'
-import type { Tool } from 'src/Tool.js'
+import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logMCPDebug, logMCPError } from 'src/utils/log.js'

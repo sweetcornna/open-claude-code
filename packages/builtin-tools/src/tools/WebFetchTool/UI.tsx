@@ -2,7 +2,7 @@ import React from 'react';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js';
 import { Box, Text } from '@anthropic/ink';
-import type { ToolProgressData } from 'src/Tool.js';
+import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { formatFileSize, truncate } from 'src/utils/format.js';
 import type { Output } from './WebFetchTool.js';

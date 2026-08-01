@@ -1,8 +1,8 @@
 import { z } from 'zod/v4'
 import { setScheduledTasksEnabled } from 'src/bootstrap/state.js'
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
-import type { ValidationResult } from 'src/Tool.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { cronToHuman, parseCronExpression } from 'src/utils/cron.js'
 import {
   addCronTask,

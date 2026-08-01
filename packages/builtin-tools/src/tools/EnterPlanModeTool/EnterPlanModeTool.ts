@@ -4,8 +4,8 @@ import {
   getAllowedChannels,
   handlePlanModeTransition,
 } from 'src/bootstrap/state.js'
-import type { Tool } from 'src/Tool.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { applyPermissionUpdate } from 'src/utils/permissions/PermissionUpdate.js'
 import { prepareContextForPlanMode } from 'src/utils/permissions/permissionSetup.js'

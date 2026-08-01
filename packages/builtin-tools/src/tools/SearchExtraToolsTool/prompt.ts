@@ -1,5 +1,5 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
-import type { Tool } from 'src/Tool.js'
+import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { CORE_TOOLS } from 'src/constants/tools.js'
 
 export { SEARCH_EXTRA_TOOLS_TOOL_NAME } from './constants.js'

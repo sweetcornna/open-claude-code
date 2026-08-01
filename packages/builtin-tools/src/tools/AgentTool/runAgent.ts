@@ -25,7 +25,11 @@ import type {
   MCPServerConnection,
   ScopedMcpServerConfig,
 } from 'src/services/mcp/types.js'
-import type { Tool, Tools, ToolUseContext } from 'src/Tool.js'
+import type {
+  Tool,
+  Tools,
+  ToolUseContext,
+} from '@open-claude-code/tool-runtime/Tool.js'
 import { killShellTasksForAgent } from 'src/tasks/LocalShellTask/killShellTasks.js'
 import type { Command } from 'src/types/command.js'
 import type { AgentId } from 'src/types/ids.js'

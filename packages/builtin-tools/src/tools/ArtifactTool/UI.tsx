@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Link, Text } from '@anthropic/ink';
-import type { ToolProgressData } from 'src/Tool.js';
+import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { ArtifactOutput } from './ArtifactTool.js';
 

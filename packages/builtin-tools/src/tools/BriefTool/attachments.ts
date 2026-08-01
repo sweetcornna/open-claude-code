@@ -4,7 +4,7 @@
 
 import { stat } from 'fs/promises'
 
-import type { ValidationResult } from 'src/Tool.js'
+import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 
 import { getCwd } from 'src/utils/cwd.js'
 import { getErrnoCode } from '@open-claude-code/tool-runtime/errors.js'

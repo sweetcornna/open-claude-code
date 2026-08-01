@@ -6,7 +6,7 @@ import React from 'react'
  */
 
 import { getSessionId } from 'src/bootstrap/state.js'
-import type { ToolUseContext } from 'src/Tool.js'
+import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { formatAgentId } from 'src/utils/agentId.js'
 import { getGlobalConfig } from 'src/utils/config.js'
 import { getCwd } from 'src/utils/cwd.js'

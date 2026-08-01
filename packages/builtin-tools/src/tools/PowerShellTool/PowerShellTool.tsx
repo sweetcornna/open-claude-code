@@ -11,8 +11,8 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js';
-import type { SetToolJSXFn, Tool, ToolCallProgress, ValidationResult } from 'src/Tool.js';
-import { buildTool, type ToolDef } from 'src/Tool.js';
+import type { SetToolJSXFn, Tool, ToolCallProgress, ValidationResult } from '@open-claude-code/tool-runtime/Tool.js';
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js';
 import {
   backgroundExistingForegroundTask,
   markTaskNotified,

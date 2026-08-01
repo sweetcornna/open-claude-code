@@ -1,6 +1,6 @@
 import { z } from 'zod/v4'
 import type { TaskStateBase } from 'src/Task.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { stopTask } from 'src/tasks/stopTask.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'

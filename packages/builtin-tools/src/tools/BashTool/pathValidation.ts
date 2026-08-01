@@ -1,7 +1,7 @@
 import { homedir } from 'os'
 import { isAbsolute, resolve } from 'path'
 import type { z } from 'zod/v4'
-import type { ToolPermissionContext } from 'src/Tool.js'
+import type { ToolPermissionContext } from '@open-claude-code/tool-runtime/Tool.js'
 import type { Redirect, SimpleCommand } from 'src/utils/bash/ast.js'
 import {
   extractOutputRedirections,

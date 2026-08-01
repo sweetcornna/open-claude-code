@@ -14,7 +14,7 @@ import { HighlightedCode } from 'src/components/HighlightedCode.js';
 import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
 import { Box, Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';
-import type { ToolProgressData } from 'src/Tool.js';
+import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { getCwd } from 'src/utils/cwd.js';
 import { getPatchForDisplay } from 'src/utils/diff.js';

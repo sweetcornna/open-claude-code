@@ -12,8 +12,13 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js';
 import { notifyVscodeFileUpdated } from 'src/services/mcp/vscodeSdkMcp.js';
-import type { SetToolJSXFn, ToolCallProgress, ToolUseContext, ValidationResult } from 'src/Tool.js';
-import { buildTool, type ToolDef } from 'src/Tool.js';
+import type {
+  SetToolJSXFn,
+  ToolCallProgress,
+  ToolUseContext,
+  ValidationResult,
+} from '@open-claude-code/tool-runtime/Tool.js';
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js';
 import {
   backgroundExistingForegroundTask,
   markTaskNotified,

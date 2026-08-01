@@ -1,7 +1,10 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import type { Tool, ToolUseContext } from 'src/Tool.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import type {
+  Tool,
+  ToolUseContext,
+} from '@open-claude-code/tool-runtime/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { findTeammateTaskByAgentId } from 'src/tasks/InProcessTeammateTask/InProcessTeammateTask.js'
 import {
   isLocalAgentTask,

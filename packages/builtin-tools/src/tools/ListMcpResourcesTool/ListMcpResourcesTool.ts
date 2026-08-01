@@ -3,7 +3,7 @@ import {
   ensureConnectedClient,
   fetchResourcesForClient,
 } from 'src/services/mcp/client.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logMCPError } from 'src/utils/log.js'

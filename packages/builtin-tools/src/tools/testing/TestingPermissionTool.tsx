@@ -3,8 +3,8 @@
  * the model.
  */
 import { z } from 'zod/v4';
-import type { Tool } from 'src/Tool.js';
-import { buildTool, type ToolDef } from 'src/Tool.js';
+import type { Tool } from '@open-claude-code/tool-runtime/Tool.js';
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 
 const NAME = 'TestingPermission';

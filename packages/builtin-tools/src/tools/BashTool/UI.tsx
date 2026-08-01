@@ -8,7 +8,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useKeybinding } from 'src/keybindings/useKeybinding.js';
 import { useShortcutDisplay } from 'src/keybindings/useShortcutDisplay.js';
 import { useAppStateStore, useSetAppState } from 'src/state/AppState.js';
-import type { Tool } from 'src/Tool.js';
+import type { Tool } from '@open-claude-code/tool-runtime/Tool.js';
 import { backgroundAll } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { env } from 'src/utils/env.js';

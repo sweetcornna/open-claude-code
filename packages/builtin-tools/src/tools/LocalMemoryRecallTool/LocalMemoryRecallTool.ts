@@ -5,7 +5,7 @@ import {
   listEntriesBounded,
   listStores,
 } from 'src/services/SessionMemory/multiStore.js'
-import { buildTool, type ToolDef } from 'src/Tool.js'
+import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { isValidKey } from 'src/utils/localValidate.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getRuleByContentsForToolName } from 'src/utils/permissions/permissions.js'
