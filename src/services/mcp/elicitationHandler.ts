@@ -11,6 +11,7 @@ import {
 } from '../../utils/hooks.js'
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { currentMrtrRound } from './mrtrRounds.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -26,8 +27,24 @@ export type ElicitationWaitingState = {
 
 export type ElicitationRequestEvent = {
   serverName: string
-  /** The JSON-RPC request ID, unique per server connection. */
+  /**
+   * Correlation id for the request.
+   *
+   * On a legacy-era connection this is the JSON-RPC request id, unique per
+   * server connection. On the modern era (2026-07-28) the elicitation arrives
+   * embedded in an `input_required` result instead, and the SDK synthesizes
+   * the context with the `inputRequests` KEY as its id — a server-chosen label
+   * that is only unique within one round and typically REPEATS across the
+   * rounds of a single exchange. Pair it with {@link ElicitationRequestEvent.round}
+   * wherever identity has to survive a round boundary (React keys, dedupe).
+   */
   requestId: string | number
+  /**
+   * 1-based multi-round-trip round this elicitation belongs to, or `undefined`
+   * on a legacy-era connection (and on the modern era when the round could not
+   * be recovered — see `mrtrRounds.ts`). Display and identity only.
+   */
+  round?: number
   params: ElicitRequestParams
   signal: AbortSignal
   /**
@@ -74,9 +91,14 @@ export function registerElicitationHandler(
   try {
     client.setRequestHandler('elicitation/create', async (request, ctx) => {
       const { signal, id: requestId } = ctx.mcpReq
+      // Read before awaiting anything: the driver reports the round on the
+      // originating call's `onprogress` immediately before dispatching this
+      // round's embedded requests, so the tracker is current on entry and can
+      // advance once a later round starts.
+      const round = currentMrtrRound(client)
       logMCPDebug(
         serverName,
-        `Received elicitation request: ${jsonStringify(request)}`,
+        `Received elicitation request${round !== undefined ? ` (round ${round})` : ''}: ${jsonStringify(request)}`,
       )
 
       const mode = getElicitationMode(request.params)
@@ -131,6 +153,7 @@ export function registerElicitationHandler(
                 {
                   serverName,
                   requestId,
+                  ...(round !== undefined && { round }),
                   params: request.params,
                   signal: signal,
                   waitingState,

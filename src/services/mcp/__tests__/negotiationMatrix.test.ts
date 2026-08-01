@@ -16,7 +16,10 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { logMock } from '../../../../tests/mocks/log'
+import type { AppState } from '../../../state/AppState.js'
+import type { ElicitationRequestEvent } from '../elicitationHandler.js'
 import {
   createLinkedTransportPair,
   type DualEraTransport,
@@ -25,6 +28,21 @@ import {
   createMcpClient,
   MCP_MODERN_PROTOCOL_VERSION,
 } from '../clientFactory.js'
+import {
+  clearMrtrRound,
+  currentMrtrRound,
+  mrtrProgressCallback,
+} from '../mrtrRounds.js'
+
+// `registerElicitationHandler` logs through `utils/log.ts`, whose module-level
+// bootstrap side effects (realpathSync / randomUUID) do not belong in a
+// protocol test. Shared mock, per the repo's mock policy.
+mock.module('src/utils/log.ts', logMock)
+
+// Imported after the mock is installed: a static import is hoisted above it
+// and would bind the real logger. `import type` above is erased, so it does
+// not pull the module in early.
+const { registerElicitationHandler } = await import('../elicitationHandler.js')
 
 // `mcpClientIdentity()` reads `MACRO.VERSION` when a client is constructed.
 if (typeof globalThis.MACRO === 'undefined') {
@@ -76,8 +94,36 @@ const CONFIRM_TOOL = {
   },
 } satisfies ModernTool
 
+/** A tool that demands TWO consecutive rounds of client input. */
+const CONFIRM_TWICE_TOOL = {
+  name: 'confirm-twice',
+  description: 'Deploys, but only after the client confirms twice.',
+  inputSchema: {
+    type: 'object',
+    properties: { env: { type: 'string' } },
+    required: ['env'],
+  },
+} satisfies ModernTool
+
 /** Opaque server state the MRTR round trip must echo back verbatim. */
 const MRTR_REQUEST_STATE = 'deploy-round-1'
+
+/**
+ * The two states the multi-round fixture mints, one per round.
+ *
+ * The second deliberately carries round 1's ANSWER. The driver sends only the
+ * current round's `inputResponses` on each retry — round 1's response is never
+ * resent — so a server that wants an earlier answer has to smuggle it through
+ * `requestState`. That makes byte-exactness load-bearing rather than cosmetic.
+ */
+const MRTR_ROUND_ONE_STATE = 'twice-round-1'
+const MRTR_ROUND_TWO_STATE = 'twice-round-2|env=prod|confirmed=true'
+
+/**
+ * The `requestState` the two-round fixture saw on each leg, in call order.
+ * Reset by {@link startDualEraServer}; one server per test.
+ */
+let observedRequestStates: (string | undefined)[] = []
 
 /** Teardown for whatever a test opened, run even when an assertion throws. */
 let cleanups: (() => Promise<void>)[] = []
@@ -170,7 +216,7 @@ const dualEraFactory: McpServerFactory = () => {
   )
 
   server.setRequestHandler('tools/list', async () => ({
-    tools: [ECHO_TOOL, CONFIRM_TOOL],
+    tools: [ECHO_TOOL, CONFIRM_TOOL, CONFIRM_TWICE_TOOL],
   }))
 
   server.setRequestHandler('tools/call', async (request, ctx) => {
@@ -212,6 +258,63 @@ const dualEraFactory: McpServerFactory = () => {
         ],
       }
     }
+    if (request.params.name === 'confirm-twice') {
+      // The whole state machine is keyed on `requestState`, so an echo that is
+      // not byte-exact cannot reach the end: the tool falls straight through
+      // to the `isError` arm naming the state it actually saw.
+      const state = ctx.mcpReq.requestState<string>()
+      observedRequestStates.push(state)
+
+      if (state === undefined) {
+        return inputRequired({
+          inputRequests: {
+            confirm: inputRequired.elicit({
+              message: 'Deploy to prod?',
+              requestedSchema: {
+                type: 'object',
+                properties: { confirm: { type: 'boolean' } },
+                required: ['confirm'],
+              },
+            }),
+          },
+          requestState: MRTR_ROUND_ONE_STATE,
+        })
+      }
+      if (state === MRTR_ROUND_ONE_STATE) {
+        // Round 1's answer is folded into round 2's state on purpose — the
+        // retry the driver is about to send will NOT carry it again.
+        const answered = acceptedContent<{ confirm: boolean }>(
+          ctx.mcpReq.inputResponses,
+          'confirm',
+        )
+        if (!answered?.confirm) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: 'round 1 was not confirmed' }],
+          }
+        }
+        return inputRequired({
+          inputRequests: {
+            confirm: inputRequired.elicit({
+              message: 'Really deploy to prod? This is irreversible.',
+              requestedSchema: {
+                type: 'object',
+                properties: { confirm: { type: 'boolean' } },
+                required: ['confirm'],
+              },
+            }),
+          },
+          requestState: MRTR_ROUND_TWO_STATE,
+        })
+      }
+      if (state === MRTR_ROUND_TWO_STATE) {
+        return { content: [{ type: 'text', text: `deployed:${state}` }] }
+      }
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `unexpected requestState:${state}` }],
+      }
+    }
     return {
       isError: true,
       content: [{ type: 'text', text: `unknown tool ${request.params.name}` }],
@@ -223,6 +326,7 @@ const dualEraFactory: McpServerFactory = () => {
 
 /** Serves the dual-era fixture and returns the client end of the pair. */
 function startDualEraServer(): DualEraTransport {
+  observedRequestStates = []
   const [clientSide, serverSide] = createLinkedTransportPair()
   const handle = serveStdio(dualEraFactory, { transport: serverSide })
   cleanups.push(() => handle.close())
@@ -314,6 +418,34 @@ describe('createMcpClient legacy-era negotiation', () => {
     },
     ROUND_TRIP_TIMEOUT_MS,
   )
+
+  test(
+    'installs no round tracker on a legacy connection',
+    async () => {
+      // The SDK attaches `_meta.progressToken` to a request IFF `onprogress`
+      // is supplied. A legacy connection has no driver and so no rounds to
+      // report, and tracking it anyway would start advertising a progress
+      // token on every tool call to every 2025 server — a wire change for a
+      // dialog subtitle. The caller's own progress handler is still honoured.
+      const client = createMcpClient({ capabilities: { roots: {} } })
+      cleanups.push(() => client.close())
+
+      await client.connect(startLegacyEraServer('2025-06-18'))
+      expect(client.getProtocolEra()).toBe('legacy')
+
+      expect(mrtrProgressCallback(client)).toBeUndefined()
+      expect(mrtrProgressCallback(client, () => {})).toBeDefined()
+
+      // Even a server whose progress text mimics the driver's cannot mint a
+      // round on a connection that has no driver.
+      mrtrProgressCallback(client, () => {})?.({
+        progress: 1,
+        message: "Fulfilling input required by 'tools/call' (round 7)",
+      })
+      expect(currentMrtrRound(client)).toBeUndefined()
+    },
+    ROUND_TRIP_TIMEOUT_MS,
+  )
 })
 
 describe('createMcpClient modern-era negotiation', () => {
@@ -337,6 +469,7 @@ describe('createMcpClient modern-era negotiation', () => {
       expect(listed.tools.map(tool => tool.name)).toEqual([
         'echo',
         'confirm-deploy',
+        'confirm-twice',
       ])
 
       const called = await client.callTool({
@@ -461,6 +594,147 @@ describe('modern-era multi-round-trip results', () => {
 
       expect(resumed.isError).toBeFalsy()
       expect(firstText(resumed)).toBe(`deployed:${MRTR_REQUEST_STATE}`)
+    },
+    ROUND_TRIP_TIMEOUT_MS,
+  )
+})
+
+describe('modern-era multi-round elicitation', () => {
+  test(
+    'echoes each round-s requestState back byte-exact across two rounds',
+    async () => {
+      // Continuity across MORE than one round is the property the round
+      // counter is worth having for, and it is the SDK driver — not this
+      // codebase — that owns it: it replaces the carried payload wholesale
+      // each round and never resends an earlier round's responses. A
+      // regression there would look like an ordinary tool failure, so the
+      // fixture makes it look like a state-machine failure instead.
+      const client = createMcpClient({
+        capabilities: { roots: {}, elicitation: {} },
+        versionNegotiation: { mode: { pin: MCP_MODERN_PROTOCOL_VERSION } },
+      })
+      cleanups.push(() => client.close())
+
+      await client.connect(startDualEraServer())
+      expect(client.getProtocolEra()).toBe('modern')
+
+      const prompts: string[] = []
+      client.setRequestHandler('elicitation/create', async request => {
+        prompts.push(request.params.message)
+        return { action: 'accept' as const, content: { confirm: true } }
+      })
+
+      const called = await client.callTool({
+        name: 'confirm-twice',
+        arguments: { env: 'prod' },
+      })
+
+      expect(called.isError).toBeFalsy()
+      expect(prompts).toEqual([
+        'Deploy to prod?',
+        'Really deploy to prod? This is irreversible.',
+      ])
+      // The original leg carries no state; each retry carries exactly the
+      // state the preceding round minted.
+      expect(observedRequestStates).toEqual([
+        undefined,
+        MRTR_ROUND_ONE_STATE,
+        MRTR_ROUND_TWO_STATE,
+      ])
+      expect(firstText(called)).toBe(`deployed:${MRTR_ROUND_TWO_STATE}`)
+    },
+    ROUND_TRIP_TIMEOUT_MS,
+  )
+
+  test(
+    'tags each queued elicitation with its round through the real handler',
+    async () => {
+      // End to end through the code the REPL runs: the production elicitation
+      // handler, fed by the production progress callback. The round is not in
+      // the handler's context — the driver only reports it on the originating
+      // call's `onprogress` — so this is the assertion that the two halves are
+      // actually connected.
+      const client = createMcpClient({
+        capabilities: { roots: {}, elicitation: {} },
+        versionNegotiation: { mode: { pin: MCP_MODERN_PROTOCOL_VERSION } },
+      })
+      cleanups.push(() => client.close())
+
+      await client.connect(startDualEraServer())
+
+      type QueueState = { elicitation: { queue: ElicitationRequestEvent[] } }
+      let appState: QueueState = { elicitation: { queue: [] } }
+      const queued: {
+        requestId: string | number
+        round: number | undefined
+      }[] = []
+
+      // Stands in for the REPL: take the head of the queue, record it, drop
+      // it, and answer — the same order the dialog's onResponse does.
+      const setAppState = (update: (prev: AppState) => AppState): void => {
+        appState = update(
+          appState as unknown as AppState,
+        ) as unknown as QueueState
+        const pending = appState.elicitation.queue[0]
+        if (!pending) return
+        queued.push({ requestId: pending.requestId, round: pending.round })
+        appState = {
+          elicitation: { queue: appState.elicitation.queue.slice(1) },
+        }
+        pending.respond({ action: 'accept', content: { confirm: true } })
+      }
+
+      registerElicitationHandler(client, 'matrix-fixture', setAppState)
+
+      const called = await client.callTool(
+        { name: 'confirm-twice', arguments: { env: 'prod' } },
+        { onprogress: mrtrProgressCallback(client) },
+      )
+
+      expect(called.isError).toBeFalsy()
+      expect(queued.map(entry => entry.round)).toEqual([1, 2])
+      // Both rounds reuse the server's `inputRequests` key as their id, which
+      // is why the round has to take part in the dialog's React key.
+      expect(queued.map(entry => entry.requestId)).toEqual([
+        'confirm',
+        'confirm',
+      ])
+      expect(observedRequestStates).toEqual([
+        undefined,
+        MRTR_ROUND_ONE_STATE,
+        MRTR_ROUND_TWO_STATE,
+      ])
+    },
+    ROUND_TRIP_TIMEOUT_MS,
+  )
+
+  test(
+    'leaves the round untracked once the originating call settles',
+    async () => {
+      const client = createMcpClient({
+        capabilities: { roots: {}, elicitation: {} },
+        versionNegotiation: { mode: { pin: MCP_MODERN_PROTOCOL_VERSION } },
+      })
+      cleanups.push(() => client.close())
+
+      await client.connect(startDualEraServer())
+
+      client.setRequestHandler('elicitation/create', async () => ({
+        action: 'accept' as const,
+        content: { confirm: true },
+      }))
+
+      await client.callTool(
+        { name: 'confirm-twice', arguments: { env: 'prod' } },
+        { onprogress: mrtrProgressCallback(client) },
+      )
+
+      // The tracker still holds the last round of the finished call; without
+      // the caller clearing it, the NEXT elicitation on this connection would
+      // be labelled 'round 2' for no reason.
+      expect(currentMrtrRound(client)).toBe(2)
+      clearMrtrRound(client)
+      expect(currentMrtrRound(client)).toBeUndefined()
     },
     ROUND_TRIP_TIMEOUT_MS,
   )

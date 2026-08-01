@@ -5904,7 +5904,19 @@ export function REPL({
                 )}
                 {focusedInputDialog === 'elicitation' && (
                   <ElicitationDialog
-                    key={elicitation.queue[0]!.serverName + ':' + String(elicitation.queue[0]!.requestId)}
+                    // The round is part of the identity, not decoration: on the
+                    // modern era the requestId is the server's `inputRequests`
+                    // key, which typically REPEATS every round, so without it
+                    // two consecutive rounds of the same exchange can collide
+                    // on one key and reuse a form still holding the previous
+                    // round's answers.
+                    key={
+                      elicitation.queue[0]!.serverName +
+                      ':' +
+                      String(elicitation.queue[0]!.requestId) +
+                      ':' +
+                      String(elicitation.queue[0]!.round ?? 0)
+                    }
                     event={elicitation.queue[0]!}
                     onResponse={(action, content) => {
                       const currentRequest = elicitation.queue[0];
