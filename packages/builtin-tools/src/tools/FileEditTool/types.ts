@@ -1,6 +1,6 @@
 import { z } from 'zod/v4'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { semanticBoolean } from 'src/utils/semanticBoolean.js'
+import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js'
 
 // The input schema with optional replace_all
 const inputSchema = lazySchema(() =>

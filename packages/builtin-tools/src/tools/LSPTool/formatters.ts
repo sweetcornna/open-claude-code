@@ -14,7 +14,7 @@ import type {
 } from 'vscode-languageserver-types'
 import { logForDebugging } from 'src/utils/debug.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
-import { plural } from 'src/utils/stringUtils.js'
+import { plural } from '@open-claude-code/tool-runtime/stringUtils.js'
 
 /**
  * Formats a URI by converting it to a relative path if possible.

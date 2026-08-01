@@ -7,7 +7,7 @@ import type { ValidationResult } from 'src/Tool.js'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { isEnvTruthy } from 'src/utils/envUtils.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { plural } from 'src/utils/stringUtils.js'
+import { plural } from '@open-claude-code/tool-runtime/stringUtils.js'
 import { resolveAttachments, validateAttachmentPaths } from './attachments.js'
 import {
   BRIEF_TOOL_NAME,
