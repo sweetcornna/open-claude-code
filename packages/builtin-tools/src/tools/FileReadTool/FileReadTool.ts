@@ -74,7 +74,7 @@ import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissi
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
 import { readFileInRange } from 'src/utils/readFileInRange.js'
 import { semanticNumber } from 'src/utils/semanticNumber.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { BASH_TOOL_NAME } from '../BashTool/constants.js'
 import {
   DESCRIPTION,

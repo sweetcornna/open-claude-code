@@ -10,7 +10,7 @@ import { getWebFetchUserAgent } from 'src/utils/http.js'
 import { isValidKey } from 'src/utils/localValidate.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getRuleByContentsForToolName } from 'src/utils/permissions/permissions.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import {
   REQUEST_TIMEOUT_MS,
   RESPONSE_BODY_CAP_BYTES,

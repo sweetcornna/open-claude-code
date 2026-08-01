@@ -2,7 +2,7 @@ import type { PermissionResult } from '@open-claude-code/tool-runtime/permission
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { createAdapter } from './adapters/index.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import {

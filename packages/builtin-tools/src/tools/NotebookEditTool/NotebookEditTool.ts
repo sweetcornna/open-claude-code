@@ -20,7 +20,10 @@ import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { parseCellId } from 'src/utils/notebook.js'
 import { checkWritePermissionForTool } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
-import { jsonParse, jsonStringify } from 'src/utils/slowOperations.js'
+import {
+  jsonParse,
+  jsonStringify,
+} from '@open-claude-code/tool-runtime/slowOperations.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 import {

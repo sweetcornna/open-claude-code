@@ -3,7 +3,7 @@ import type { TaskStateBase } from 'src/Task.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { stopTask } from 'src/tasks/stopTask.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { DESCRIPTION, TASK_STOP_TOOL_NAME } from './prompt.js'
 import { renderToolResultMessage, renderToolUseMessage } from './UI.js'
 

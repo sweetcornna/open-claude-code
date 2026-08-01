@@ -4,7 +4,7 @@ import { OutputLine } from 'src/components/shell/OutputLine.js';
 import { Text } from '@anthropic/ink';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
-import { jsonStringify } from 'src/utils/slowOperations.js';
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js';
 import type { Output } from './ListMcpResourcesTool.js';
 
 export function renderToolUseMessage(input: Partial<{ server?: string }>): React.ReactNode {

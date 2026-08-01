@@ -9,7 +9,7 @@ import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { isValidKey } from 'src/utils/localValidate.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getRuleByContentsForToolName } from 'src/utils/permissions/permissions.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import {
   FETCH_CAP_BYTES,
   LIST_ENTRIES_CAP_BYTES,
