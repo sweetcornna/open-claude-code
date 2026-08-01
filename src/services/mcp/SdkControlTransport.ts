@@ -36,8 +36,17 @@
  * - Message IDs are preserved through the entire flow for proper correlation
  */
 
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { Transport as ModernTransport } from '@modelcontextprotocol/server'
+import type { Transport as LegacyTransport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+
+/**
+ * Both transports below satisfy the v1 and the v2 `Transport` interfaces at
+ * once. The v2 interface only adds optional members over v1, and both of
+ * these bridge a single control channel, so they leave `hasPerRequestStream`
+ * unset and ignore the per-request `send` options the way the v2 spec expects
+ * single-channel transports to.
+ */
 
 /**
  * Callback function to send an MCP message and get the response
@@ -57,7 +66,9 @@ export type SendMcpMessageCallback = (
  * It converts MCP protocol messages into control requests that can be sent
  * through stdout/stdin to the SDK process.
  */
-export class SdkControlClientTransport implements Transport {
+export class SdkControlClientTransport
+  implements LegacyTransport, ModernTransport
+{
   private isClosed = false
 
   onclose?: () => void
@@ -106,7 +117,9 @@ export class SdkControlClientTransport implements Transport {
  *
  * Note: Query handles all request/response correlation and async flow.
  */
-export class SdkControlServerTransport implements Transport {
+export class SdkControlServerTransport
+  implements LegacyTransport, ModernTransport
+{
   private isClosed = false
 
   constructor(private sendMcpMessage: (message: JSONRPCMessage) => void) {}

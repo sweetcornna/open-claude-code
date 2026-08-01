@@ -1,5 +1,25 @@
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { Transport as ModernTransport } from '@modelcontextprotocol/server'
+import type { Transport as LegacyTransport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+
+/**
+ * A transport both SDK generations can drive.
+ *
+ * The v2 `Transport` interface is a structural superset of the v1 one: it adds
+ * only optional members (`hasPerRequestStream`, `setSupportedProtocolVersions`)
+ * and optional `send` options (`requestSignal`, `onRequestStreamEnd`,
+ * `headers`). Nothing a transport must provide changed, so the two types are
+ * mutually assignable and this alias is accepted wherever either SDK asks for
+ * a `Transport` — which is what keeps the v1 client working while
+ * `occ mcp serve` runs on the v2 server.
+ *
+ * The alias is the v2 type rather than an intersection on purpose: an
+ * intersection of the two generic `onmessage` signatures is an overload set,
+ * which silently drops contextual typing for `onmessage = msg => …` callbacks.
+ * The v1 side is enforced by `implements LegacyTransport` on the class below,
+ * so a future SDK release that breaks the overlap still fails the build.
+ */
+export type DualEraTransport = ModernTransport
 
 /**
  * In-process linked transport pair for running an MCP server and client
@@ -7,8 +27,12 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
  *
  * `send()` on one side delivers to `onmessage` on the other.
  * `close()` on either side calls `onclose` on both.
+ *
+ * This shares one channel between both peers, so it deliberately leaves
+ * `hasPerRequestStream` unset and ignores the per-request `send` options —
+ * the v2 spec reserves those for the POST-per-request Streamable HTTP model.
  */
-class InProcessTransport implements Transport {
+class InProcessTransport implements LegacyTransport, ModernTransport {
   private peer: InProcessTransport | undefined
   private closed = false
 
@@ -54,7 +78,10 @@ class InProcessTransport implements Transport {
  *
  * @returns [clientTransport, serverTransport]
  */
-export function createLinkedTransportPair(): [Transport, Transport] {
+export function createLinkedTransportPair(): [
+  DualEraTransport,
+  DualEraTransport,
+] {
   const a = new InProcessTransport()
   const b = new InProcessTransport()
   a._setPeer(b)

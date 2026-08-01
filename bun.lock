@@ -245,6 +245,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
+        "@modelcontextprotocol/server": "^2.0.0",
         "@open-claude-code/agent-tools": "workspace:*",
         "lodash-es": "^4.17.21",
         "lru-cache": "^10.0.0",
