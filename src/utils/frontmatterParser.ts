@@ -50,6 +50,15 @@ export type FrontmatterData = {
   // When set, the skill is only activated when the model touches matching files
   // Uses the same format as CLAUDE.md paths frontmatter
   paths?: string | string[] | null
+  // agentskills.io optional metadata. Parsed and passed through onto the loaded
+  // skill; the loader does not interpret them.
+  // SPDX license identifier or license text reference.
+  license?: string | null
+  // Free-form compatibility declaration (spec leaves the shape open: a version
+  // string or a map of runtime -> constraint).
+  compatibility?: string | Record<string, unknown> | null
+  // Arbitrary author-defined key/value metadata.
+  metadata?: Record<string, unknown> | null
   // Shell to use for !`cmd` and ```! blocks in skill/command .md content.
   // 'bash' (default) or 'powershell'. File-scoped — applies to all !-blocks.
   // Never consults settings.defaultShell: skills are portable across platforms,
