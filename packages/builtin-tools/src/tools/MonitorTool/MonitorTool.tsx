@@ -6,7 +6,7 @@ import type { ToolResultBlockParam, ToolUseContext, ValidationResult } from 'src
 import { buildTool } from 'src/Tool.js';
 import { spawnShellTask } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 import { bashToolHasPermission } from '../BashTool/bashPermissions.js';
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { truncate } from 'src/utils/format.js';
 import { exec } from 'src/utils/Shell.js';

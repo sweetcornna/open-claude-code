@@ -8,7 +8,7 @@ import type { ToolPermissionContext, ToolUseContext } from 'src/Tool.js'
 import type {
   PermissionDecisionReason,
   PermissionResult,
-} from 'src/types/permissions.js'
+} from '@open-claude-code/tool-runtime/types/permissions.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { isCurrentDirectoryBareGitRepo } from 'src/utils/git.js'
 import type { PermissionRule } from 'src/utils/permissions/PermissionRule.js'

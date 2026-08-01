@@ -1,4 +1,4 @@
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from 'src/Tool.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'

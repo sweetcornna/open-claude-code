@@ -9,7 +9,7 @@
 import { homedir } from 'os'
 import { isAbsolute, resolve } from 'path'
 import type { ToolPermissionContext } from 'src/Tool.js'
-import type { PermissionRule } from 'src/types/permissions.js'
+import type { PermissionRule } from '@open-claude-code/tool-runtime/types/permissions.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js'
 import { containsPathTraversal, getDirectoryForPath } from 'src/utils/path.js'
@@ -21,7 +21,7 @@ import {
   matchingRuleForInput,
   pathInAllowedWorkingPath,
 } from 'src/utils/permissions/filesystem.js'
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { createReadRuleSuggestion } from 'src/utils/permissions/PermissionUpdate.js'
 import type { PermissionUpdate } from 'src/utils/permissions/PermissionUpdateSchema.js'
 import {
@@ -50,7 +50,7 @@ type FileOperationType = 'read' | 'write' | 'create'
 
 type PathCheckResult = {
   allowed: boolean
-  decisionReason?: import('src/utils/permissions/PermissionResult.js').PermissionDecisionReason
+  decisionReason?: import('@open-claude-code/tool-runtime/permissions/PermissionResult.js').PermissionDecisionReason
 }
 
 type ResolvedPathCheckResult = PathCheckResult & {

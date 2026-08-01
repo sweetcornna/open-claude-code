@@ -7,7 +7,7 @@ import {
   tryParseShellCommand,
 } from 'src/utils/bash/shellQuote.js'
 import type { TreeSitterAnalysis } from 'src/utils/bash/treeSitterAnalysis.js'
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 
 const HEREDOC_IN_SUBSTITUTION = /\$\(.*<</
 

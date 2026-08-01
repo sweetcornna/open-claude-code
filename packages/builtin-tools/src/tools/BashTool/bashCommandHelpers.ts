@@ -9,7 +9,7 @@ import {
   ParsedCommand,
 } from 'src/utils/bash/ParsedCommand.js'
 import { type Node, PARSE_ABORTED } from 'src/utils/bash/parser.js'
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import type { PermissionUpdate } from 'src/utils/permissions/PermissionUpdateSchema.js'
 import { createPermissionRequestMessage } from 'src/utils/permissions/permissions.js'
 import { BashTool } from './BashTool.js'

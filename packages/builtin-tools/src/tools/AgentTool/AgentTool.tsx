@@ -53,7 +53,7 @@ import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { createUserMessage, extractTextContent, isSyntheticMessage, normalizeMessages } from 'src/utils/messages.js';
 import { getAgentModel } from 'src/utils/model/agent.js';
 import { permissionModeSchema } from 'src/utils/permissions/PermissionMode.js';
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js';
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { filterDeniedAgents, getDenyRuleForAgent } from 'src/utils/permissions/permissions.js';
 import { enqueueSdkEvent } from 'src/utils/sdkEventQueue.js';
 import { writeAgentMetadata } from 'src/utils/sessionStorage.js';

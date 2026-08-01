@@ -1,7 +1,7 @@
 import type { z } from 'zod/v4'
 import type { ToolPermissionContext } from 'src/Tool.js'
 import { splitCommand_DEPRECATED } from 'src/utils/bash/commands.js'
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import type { BashTool } from './BashTool.js'
 
 const ACCEPT_EDITS_ALLOWED_COMMANDS = [

@@ -18,7 +18,7 @@ import type { Tool } from 'src/Tool.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logMCPDebug, logMCPError } from 'src/utils/log.js'
-import type { PermissionDecision } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 
 const inputSchema = lazySchema(() => z.object({}))
 type InputSchema = ReturnType<typeof inputSchema>

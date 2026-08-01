@@ -10,7 +10,7 @@ import {
 import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
 import { getDirectoryForPath } from 'src/utils/path.js'
 import { allWorkingDirectories } from 'src/utils/permissions/filesystem.js'
-import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
+import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { createReadRuleSuggestion } from 'src/utils/permissions/PermissionUpdate.js'
 import type { PermissionUpdate } from 'src/utils/permissions/PermissionUpdateSchema.js'
 import {
