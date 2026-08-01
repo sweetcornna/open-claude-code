@@ -1,7 +1,134 @@
-# Computer Use — macOS / Windows / Linux 跨平台实施计划
+# Computer Use
 
-更新时间：2026-04-03
+更新时间：2026-07-31
 参考项目：`E:\源码\claude-code-source-main\claude-code-source-main`
+
+## 后端选择
+
+`computerUse.backend` 控制 occ 如何提供 Computer Use 工具：
+
+| 值 | 行为 |
+|---|---|
+| `"builtin"` | 默认值。注册进程内的 `@ant/computer-use-mcp`，使用本项目的审批 UI 和安全层。 |
+| `"external"` | 不注册、不连接进程内服务器。名为 `computer-use` 的服务器也不再视为内置保留名，必须通过普通 MCP 配置显式添加。 |
+
+用户设置示例：
+
+```json
+{
+  "computerUse": {
+    "backend": "external"
+  }
+}
+```
+
+设置外部后端后，重启正在运行的 occ 会话，再按外部服务器自己的安装说明添加其 stdio 命令：
+
+```bash
+occ mcp add computer-use -s user -- <server-command> <server-args...>
+occ mcp list
+```
+
+推荐使用 `computer-use` 作为服务器名，以得到稳定的
+`mcp__computer-use__*` 工具前缀。在 `external` 模式下，该名称通过普通
+stdio MCP 客户端启动，不会被替换为进程内服务器。切回 `builtin` 前应先移除同名外部配置：
+
+```bash
+occ mcp remove computer-use -s user
+```
+
+> **安全警告：外部后端会绕过本项目的 Computer Use 安全层。** 外部服务器的工具调用不经过
+> `ComputerUseHostAdapter`、`toolCalls` 调度器或 Computer Use 审批 UI，因此没有
+> `deniedApps` / `sentinelApps` 策略、每应用 `read` / `click` / `full` 授权层级、
+> `keyBlocklist`、剪贴板保护、`pixelCompare` 点击校验、跨会话锁或 ESC 中止。
+> 它只获得普通、粒度更粗的 MCP 工具权限提示。启用前必须独立审查服务器及其操作系统权限。
+
+可调研的社区项目包括：
+
+- [CursorTouch/Windows-MCP](https://github.com/CursorTouch/Windows-MCP)：面向 Windows。
+- [QwenLM/open-computer-use](https://github.com/QwenLM/open-computer-use)：跨平台方向。
+
+这些链接只是社区选项，不代表本项目的认可、安全审计或兼容性承诺；具体启动命令、工具名称和依赖以各项目文档为准。
+
+## Host Adapter 合约
+
+`packages/@ant/computer-use-mcp/src/index.ts` 导出的
+`ComputerUseHostAdapter` / `ComputerExecutor` 是保留内置安全层时的受支持插入点。
+它适合接入新的桌面宿主或原生自动化实现。它与 `external` 后端不是同一种扩展方式：
+adapter 接入仍走本项目的授权和安全调度；外部 MCP 则替换整个实现。
+
+相关公开接口包括：
+
+```ts
+import {
+  bindSessionContext,
+  createComputerUseMcpServer,
+  type ComputerExecutor,
+  type ComputerUseHostAdapter,
+  type ComputerUseSessionContext,
+  type CoordinateMode,
+} from '@ant/computer-use-mcp'
+```
+
+宿主应构造一个进程生命周期内复用的 `ComputerUseHostAdapter`，并为每个会话构造
+`ComputerUseSessionContext`。最直接的接法是把两者交给
+`createComputerUseMcpServer(adapter, coordinateMode, sessionContext)`；若宿主已有 MCP
+管理层，可调用 `bindSessionContext()` 得到会话绑定的工具分发函数。没有
+`sessionContext` 的 `createComputerUseMcpServer()` 只适合列出工具，其工具调用处理器不会获得真实会话状态。
+
+### `ComputerUseHostAdapter`
+
+| 成员 | 宿主责任 | 安全触点 |
+|---|---|---|
+| `serverName`, `logger` | 提供稳定的 MCP 身份和五级日志实现。日志不得把截图、剪贴板或应用内容变成遥测字段。 | 调度异常会被记录并转换为工具错误。 |
+| `executor` | 实现下述操作系统能力。所有异步操作必须在完成后才 resolve，失败时 reject。 | 输入只应由受保护的调度器调用。 |
+| `ensureOsPermissions()` | 做纯检查，不弹窗、不重启。macOS 必须准确返回 Accessibility 和 Screen Recording 状态。 | kill switch 之后、任何 executor 调用之前的全局门。 |
+| `isDisabled()` | 实时读取宿主的 Computer Use 总开关。 | 每次工具调用的第一道门。 |
+| `getAutoUnhideEnabled()` | 返回回合结束时是否恢复被隐藏应用的宿主偏好。 | 用于授权 UI 的隐藏预告；实际清理由宿主负责。 |
+| `getSubGates()` | 每次调用返回当前 `CuSubGates`，不要在 adapter 内冻结动态配置。 | 控制截图点击校验、剪贴板保护、隐藏、显示器选择等子门。 |
+| `cropRawPatch()` | 将 base64 图片解码，裁剪矩形并返回稳定的原始像素字节；失败返回 `null`。 | `pixelCompare` 使用它验证点击区域。`null` 表示跳过校验，不应伪造像素。 |
+
+### `ComputerExecutor`
+
+必选方法按责任分组如下。完整签名以 `src/executor.ts` 的导出接口为准。
+
+| 分组 | 方法 | 合约要求 |
+|---|---|---|
+| 能力 | `capabilities` | `hostBundleId` 必须标识宿主 UI；`screenshotFiltering` 必须如实声明是否能按应用过滤；`platform` 当前公开类型为 `darwin \| win32`。 |
+| 显示器和截图 | `getDisplaySize`, `listDisplays`, `findWindowDisplays`, `resolvePrepareCapture`, `screenshot`, `zoom` | 坐标使用全局逻辑点并包含显示器原点。`ScreenshotResult` 的图像尺寸、捕获时显示器尺寸、原点和 `displayId` 必须属于同一次捕获。`resolvePrepareCapture` 应把选择显示器、隐藏应用和截图作为一个一致操作。 |
+| 隐藏预处理 | `previewHideSet`, `prepareForAction` | `previewHideSet` 不得改变桌面；`prepareForAction` 隐藏非 allowlist 应用、移开宿主焦点，并返回实际隐藏的应用 ID。Finder/桌面等平台例外必须与宿主策略一致。 |
+| 应用身份 | `listInstalledApps`, `listRunningApps`, `getFrontmostApp`, `appUnderPoint`, `getAppIcon`, `openApp` | 所有方法必须使用同一种稳定应用 ID。前台查询和命中测试的 ID 必须能与授权 grant 精确比较，否则每应用层级会失效。 |
+| 键鼠输入 | `key`, `holdKey`, `type`, `moveMouse`, `click`, `mouseDown`, `mouseUp`, `getCursorPosition`, `drag`, `scroll` | 接收已经缩放的逻辑坐标。不要自行绕过调度器启动第二条全局输入路径。部分完成后失败必须 reject，便于上层 fail closed。 |
+| 剪贴板 | `readClipboard`, `writeClipboard` | 精确读写文本，并保留空字符串。click-tier 剪贴板暂存、清空和恢复依赖这两个方法。 |
+
+Windows 的窗口绑定、UI Automation、虚拟键鼠、状态指示器和终端启动方法在接口中均为可选。
+未实现时保持 `undefined`；实现后用 `false` / `null` 表示“当前无绑定或未找到”，用 reject
+表示执行故障。不要返回伪成功，否则模型会在错误的窗口状态上继续操作。
+
+平台约束：
+
+- `screenshotFiltering: "native"` 表示截图实现真的只暴露授权应用，并能提供有意义的前台应用和坐标命中测试。
+- `screenshotFiltering: "none"` 会让审批 UI 告知用户所有应用可能可见；非 macOS 的全局前台门也不会被当成隔离保证。
+- 公开 `ComputerExecutorCapabilities.platform` 目前只声明 `darwin | win32`。仓库内 Linux CLI 通过兼容层路由，尚不是 adapter 合约中的一等平台字面量。
+- `CoordinateMode` 在工具 schema 建立后必须保持固定。截图和点击不能在会话中途从 `pixels` 切换为 `normalized_0_100`。
+
+### 会话状态和安全层
+
+`ComputerUseSessionContext` 不是可选的便利封装，而是多数安全状态的宿主边界：
+
+- `onPermissionRequest` / `onTeachPermissionRequest` 必须展示用户可见的阻塞式审批，并响应传入的 `AbortSignal`；`onAllowedAppsChanged` 保存每会话 grant 和 grant flags。
+- `getAllowedApps`、`getGrantFlags` 和 `getUserDeniedBundleIds` 必须读取最新状态。内置调度器据此执行 `deniedApps`、`sentinelApps` 和每应用授权层级。
+- `checkCuLock` / `acquireCuLock` 必须原子地保证同一时间只有一个会话控制桌面。锁的释放属于宿主的 idle、stop 和 archive 生命周期。
+- `isAborted` 必须连接到宿主的停止操作；ESC 热键由宿主捕获后也应更新同一中止状态，使批处理和长文本输入能在循环中停止。
+- `getClipboardStash` / `onClipboardStashChanged` 保存 click-tier 剪贴板保护状态。宿主必须在回合结束时恢复并清除仍存在的 stash。
+- `onAppsHidden` 记录本回合隐藏的应用。宿主必须在回合结束或中止时按偏好恢复它们。
+- `onScreenshotCaptured` 应持久化不含 base64 的尺寸元数据；`bindSessionContext` 自己保留当前截图 blob，供坐标缩放和点击校验使用。
+
+安全判断应留在 `@ant/computer-use-mcp` 的工具调度器中。adapter/executor 的职责是准确报告桌面状态并执行已批准的原语，而不是复制或放宽策略。executor 抛出的异常会转换为工具错误；宿主仍应让多步骤原语尽量幂等，并在中途失败时释放按键、鼠标键和临时资源。
+
+---
+
+## 跨平台实施记录
 
 ## 1. 现状
 

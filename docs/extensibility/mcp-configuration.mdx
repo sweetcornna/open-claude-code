@@ -159,7 +159,7 @@ occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 添加时的验证流程：
 
 1. **名称校验**：只允许字母、数字、连字符和下划线
-2. **保留名检查**：`chrome-devtools` 和 `computer-use` 被保留
+2. **保留名检查**：`chrome-devtools` 被保留；`computer-use` 仅在 `computerUse.backend` 为 `builtin`（默认）时保留
 3. **企业管控检查**：企业模式下拒绝添加
 4. **Schema 验证**：Zod 校验配置格式
 5. **策略检查**：denylist 拒绝、allowlist 验证
