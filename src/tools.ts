@@ -1,16 +1,22 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+/**
+ * Host-side tool policy.
+ *
+ * The tool inventory itself now lives in
+ * `@open-claude-code/builtin-tools/registry.js` (wave C of the tool-runtime
+ * dependency inversion). What stays here is everything that is a *host* decision
+ * on top of that inventory: presets, deny-rule filtering, --bare/REPL/coordinator
+ * shaping, and merging in MCP tools.
+ *
+ * `getAllBaseTools()` keeps its old no-argument signature: it evaluates the host
+ * runtime predicates and hands them to the registry as a `RegistryEnv`.
+ */
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from '@open-claude-code/builtin-tools/tools/AgentTool/AgentTool.js'
-import { SkillTool } from '@open-claude-code/builtin-tools/tools/SkillTool/SkillTool.js'
 import { BashTool } from '@open-claude-code/builtin-tools/tools/BashTool/BashTool.js'
 import { FileEditTool } from '@open-claude-code/builtin-tools/tools/FileEditTool/FileEditTool.js'
 import { FileReadTool } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
-import { FileWriteTool } from '@open-claude-code/builtin-tools/tools/FileWriteTool/FileWriteTool.js'
-import { GlobTool } from '@open-claude-code/builtin-tools/tools/GlobTool/GlobTool.js'
-import { NotebookEditTool } from '@open-claude-code/builtin-tools/tools/NotebookEditTool/NotebookEditTool.js'
-import { WebFetchTool } from '@open-claude-code/builtin-tools/tools/WebFetchTool/WebFetchTool.js'
 import { TaskStopTool } from '@open-claude-code/builtin-tools/tools/TaskStopTool/TaskStopTool.js'
-import { BriefTool } from '@open-claude-code/builtin-tools/tools/BriefTool/BriefTool.js'
 // Dead code elimination: conditional import for ant-only tools
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const REPLTool =
@@ -18,84 +24,23 @@ const REPLTool =
     ? require('@open-claude-code/builtin-tools/tools/REPLTool/REPLTool.js')
         .REPLTool
     : null
-const SuggestBackgroundPRTool =
-  process.env.USER_TYPE === 'ant'
-    ? require('@open-claude-code/builtin-tools/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.js')
-        .SuggestBackgroundPRTool
-    : null
-const cronTools = [
-  require('@open-claude-code/builtin-tools/tools/ScheduleCronTool/CronCreateTool.js')
-    .CronCreateTool,
-  require('@open-claude-code/builtin-tools/tools/ScheduleCronTool/CronDeleteTool.js')
-    .CronDeleteTool,
-  require('@open-claude-code/builtin-tools/tools/ScheduleCronTool/CronListTool.js')
-    .CronListTool,
-]
-const RemoteTriggerTool = feature('AGENT_TRIGGERS_REMOTE')
-  ? require('@open-claude-code/builtin-tools/tools/RemoteTriggerTool/RemoteTriggerTool.js')
-      .RemoteTriggerTool
-  : null
-const MonitorTool = feature('MONITOR_TOOL')
-  ? require('@open-claude-code/builtin-tools/tools/MonitorTool/MonitorTool.js')
-      .MonitorTool
-  : null
-const SubscribePRTool = feature('KAIROS_GITHUB_WEBHOOKS')
-  ? require('@open-claude-code/builtin-tools/tools/SubscribePRTool/SubscribePRTool.js')
-      .SubscribePRTool
-  : null
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-import { TaskOutputTool } from '@open-claude-code/builtin-tools/tools/TaskOutputTool/TaskOutputTool.js'
-import { WebSearchTool } from '@open-claude-code/builtin-tools/tools/WebSearchTool/WebSearchTool.js'
-import { TodoWriteTool } from '@open-claude-code/builtin-tools/tools/TodoWriteTool/TodoWriteTool.js'
-import { ExitPlanModeV2Tool } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/ExitPlanModeV2Tool.js'
-import { ArtifactTool } from '@open-claude-code/builtin-tools/tools/ArtifactTool/ArtifactTool.js'
-import { TestingPermissionTool } from '@open-claude-code/builtin-tools/tools/testing/TestingPermissionTool.js'
-import { GrepTool } from '@open-claude-code/builtin-tools/tools/GrepTool/GrepTool.js'
-import { TungstenTool } from '@open-claude-code/builtin-tools/tools/TungstenTool/TungstenTool.js'
-// Lazy require to break circular dependency: tools.ts -> TeamCreateTool/TeamDeleteTool -> ... -> tools.ts
+// Lazy require to break circular dependency: tools.ts -> SendMessageTool -> ... -> tools.ts
 /* eslint-disable @typescript-eslint/no-require-imports */
-const getTeamCreateTool = () =>
-  require('@open-claude-code/builtin-tools/tools/TeamCreateTool/TeamCreateTool.js')
-    .TeamCreateTool as typeof import('@open-claude-code/builtin-tools/tools/TeamCreateTool/TeamCreateTool.js').TeamCreateTool
-const getTeamDeleteTool = () =>
-  require('@open-claude-code/builtin-tools/tools/TeamDeleteTool/TeamDeleteTool.js')
-    .TeamDeleteTool as typeof import('@open-claude-code/builtin-tools/tools/TeamDeleteTool/TeamDeleteTool.js').TeamDeleteTool
 const getSendMessageTool = () =>
   require('@open-claude-code/builtin-tools/tools/SendMessageTool/SendMessageTool.js')
     .SendMessageTool as typeof import('@open-claude-code/builtin-tools/tools/SendMessageTool/SendMessageTool.js').SendMessageTool
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { AskUserQuestionTool } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/AskUserQuestionTool.js'
-import { LSPTool } from '@open-claude-code/builtin-tools/tools/LSPTool/LSPTool.js'
 import { ListMcpResourcesTool } from '@open-claude-code/builtin-tools/tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { ReadMcpResourceTool } from '@open-claude-code/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
-import { SearchExtraToolsTool } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/SearchExtraToolsTool.js'
-import { ExecuteTool } from '@open-claude-code/builtin-tools/tools/ExecuteTool/ExecuteTool.js'
-import { EnterPlanModeTool } from '@open-claude-code/builtin-tools/tools/EnterPlanModeTool/EnterPlanModeTool.js'
-import { EnterWorktreeTool } from '@open-claude-code/builtin-tools/tools/EnterWorktreeTool/EnterWorktreeTool.js'
-import { ExitWorktreeTool } from '@open-claude-code/builtin-tools/tools/ExitWorktreeTool/ExitWorktreeTool.js'
-import { ConfigTool } from '@open-claude-code/builtin-tools/tools/ConfigTool/ConfigTool.js'
-const GoalTool = feature('GOAL')
-  ? require('@open-claude-code/builtin-tools/tools/GoalTool/GoalTool.js')
-      .GoalTool
-  : null
-import { LocalMemoryRecallTool } from '@open-claude-code/builtin-tools/tools/LocalMemoryRecallTool/LocalMemoryRecallTool.js'
-import { VaultHttpFetchTool } from '@open-claude-code/builtin-tools/tools/VaultHttpFetchTool/VaultHttpFetchTool.js'
-import { TaskCreateTool } from '@open-claude-code/builtin-tools/tools/TaskCreateTool/TaskCreateTool.js'
-import { TaskGetTool } from '@open-claude-code/builtin-tools/tools/TaskGetTool/TaskGetTool.js'
-import { TaskUpdateTool } from '@open-claude-code/builtin-tools/tools/TaskUpdateTool/TaskUpdateTool.js'
-import { TaskListTool } from '@open-claude-code/builtin-tools/tools/TaskListTool/TaskListTool.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { isSearchExtraToolsEnabledOptimistic } from './utils/searchExtraTools.js'
 import { isTodoV2Enabled } from './utils/tasks.js'
-// Dead code elimination: conditional import for CLAUDE_CODE_VERIFY_PLAN
-/* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-const VerifyPlanExecutionTool =
-  process.env.CLAUDE_CODE_VERIFY_PLAN === 'true'
-    ? require('@open-claude-code/builtin-tools/tools/VerifyPlanExecutionTool/VerifyPlanExecutionTool.js')
-        .VerifyPlanExecutionTool
-    : null
-/* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
+import {
+  getAllBaseTools as getAllBaseToolsFromRegistry,
+  type RegistryEnv,
+} from '@open-claude-code/builtin-tools/registry.js'
 export {
   ALL_AGENT_DISALLOWED_TOOLS,
   CUSTOM_AGENT_DISALLOWED_TOOLS,
@@ -104,23 +49,8 @@ export {
 } from './constants/tools.js'
 import { feature } from 'bun:bundle'
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-const TerminalCaptureTool = feature('TERMINAL_PANEL')
-  ? require('@open-claude-code/builtin-tools/tools/TerminalCaptureTool/TerminalCaptureTool.js')
-      .TerminalCaptureTool
-  : null
-const WebBrowserTool = feature('WEB_BROWSER_TOOL')
-  ? require('@open-claude-code/builtin-tools/tools/WebBrowserTool/WebBrowserTool.js')
-      .WebBrowserTool
-  : null
 const coordinatorModeModule = feature('COORDINATOR_MODE')
   ? (require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js'))
-  : null
-const DiscoverSkillsTool = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? require('@open-claude-code/builtin-tools/tools/DiscoverSkillsTool/DiscoverSkillsTool.js')
-      .DiscoverSkillsTool
-  : null
-const WorkflowTool = feature('WORKFLOW_SCRIPTS')
-  ? require('./workflow/wiring.js').createWorkflowToolCore()
   : null
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import type { ToolPermissionContext } from './Tool.js'
@@ -128,7 +58,6 @@ import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
 import { isEnvTruthy } from './utils/envUtils.js'
 import { isPowerShellToolEnabled } from './utils/shell/shellToolUtils.js'
-import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js'
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js'
 import {
   REPL_TOOL_NAME,
@@ -136,14 +65,6 @@ import {
 } from '@open-claude-code/builtin-tools/tools/REPLTool/constants.js'
 import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/replMode.js'
 export { REPL_ONLY_TOOLS }
-/* eslint-disable @typescript-eslint/no-require-imports */
-const getPowerShellTool = () => {
-  if (!isPowerShellToolEnabled()) return null
-  return (
-    require('@open-claude-code/builtin-tools/tools/PowerShellTool/PowerShellTool.js') as typeof import('@open-claude-code/builtin-tools/tools/PowerShellTool/PowerShellTool.js')
-  ).PowerShellTool
-}
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
  * Predefined tool presets that can be used with --tools flag
@@ -173,71 +94,33 @@ export function getToolsForDefaultPreset(): string[] {
 }
 
 /**
+ * Snapshot of the host runtime predicates the registry needs.
+ *
+ * Evaluated on every call, exactly like the inline predicate calls this
+ * replaced — none of these are cheap-to-stale values the registry may cache.
+ */
+function buildRegistryEnv(): RegistryEnv {
+  return {
+    hasEmbeddedSearchTools: hasEmbeddedSearchTools(),
+    isTodoV2Enabled: isTodoV2Enabled(),
+    isLspToolEnabled: isEnvTruthy(process.env.ENABLE_LSP_TOOL),
+    isWorktreeModeEnabled: isWorktreeModeEnabled(),
+    isPowerShellToolEnabled: isPowerShellToolEnabled(),
+    isSearchExtraToolsEnabled: isSearchExtraToolsEnabledOptimistic(),
+  }
+}
+
+/**
  * Get the complete exhaustive list of all tools that could be available
  * in the current environment (respecting process.env flags).
  * This is the source of truth for ALL tools.
- */
-/**
- * NOTE: This MUST stay in sync with https://console.statsig.com/4aF3Ewatb6xPVpCwxb5nA3/dynamic_configs/claude_code_global_system_caching, in order to cache the system prompt across users.
+ *
+ * The list and its order live in
+ * `@open-claude-code/builtin-tools/registry.js`; this is the host binding that
+ * supplies the runtime predicates it is parameterised over.
  */
 export function getAllBaseTools(): Tools {
-  return [
-    AgentTool,
-    TaskOutputTool,
-    BashTool,
-    // Ant-native builds have bfs/ugrep embedded in the bun binary (same ARGV0
-    // trick as ripgrep). When available, find/grep in Claude's shell are aliased
-    // to these fast tools, so the dedicated Glob/Grep tools are unnecessary.
-    ...(hasEmbeddedSearchTools() ? [] : [GlobTool, GrepTool]),
-    ExitPlanModeV2Tool,
-    FileReadTool,
-    FileEditTool,
-    FileWriteTool,
-    NotebookEditTool,
-    ArtifactTool,
-    WebFetchTool,
-    TodoWriteTool,
-    WebSearchTool,
-    TaskStopTool,
-    AskUserQuestionTool,
-    SkillTool,
-    EnterPlanModeTool,
-    LocalMemoryRecallTool,
-    VaultHttpFetchTool,
-    ...(process.env.USER_TYPE === 'ant' ? [ConfigTool] : []),
-    ...(GoalTool ? [GoalTool] : []),
-    ...(process.env.USER_TYPE === 'ant' ? [TungstenTool] : []),
-    ...(SuggestBackgroundPRTool ? [SuggestBackgroundPRTool] : []),
-    ...(WebBrowserTool ? [WebBrowserTool] : []),
-    ...(isTodoV2Enabled()
-      ? [TaskCreateTool, TaskGetTool, TaskUpdateTool, TaskListTool]
-      : []),
-    ...(TerminalCaptureTool ? [TerminalCaptureTool] : []),
-    ...(isEnvTruthy(process.env.ENABLE_LSP_TOOL) ? [LSPTool] : []),
-    ...(isWorktreeModeEnabled() ? [EnterWorktreeTool, ExitWorktreeTool] : []),
-    getSendMessageTool(),
-    getTeamCreateTool(),
-    getTeamDeleteTool(),
-    ...(VerifyPlanExecutionTool ? [VerifyPlanExecutionTool] : []),
-    ...(process.env.USER_TYPE === 'ant' && REPLTool ? [REPLTool] : []),
-    ...(WorkflowTool ? [WorkflowTool] : []),
-    ...cronTools,
-    ...(RemoteTriggerTool ? [RemoteTriggerTool] : []),
-    ...(MonitorTool ? [MonitorTool] : []),
-    BriefTool,
-    ...(SubscribePRTool ? [SubscribePRTool] : []),
-    ...(getPowerShellTool() ? [getPowerShellTool()] : []),
-    ...(DiscoverSkillsTool ? [DiscoverSkillsTool] : []),
-    ...(process.env.NODE_ENV === 'test' ? [TestingPermissionTool] : []),
-    ListMcpResourcesTool,
-    ReadMcpResourceTool,
-    // Include SearchExtraToolsTool when tool search might be enabled (optimistic check)
-    // The actual decision to defer tools happens at request time in claude.ts
-    ...(isSearchExtraToolsEnabledOptimistic() ? [SearchExtraToolsTool] : []),
-    // ExecuteExtraTool (ExecuteTool) is a first-class tool — always available, not deferred.
-    // Models use it to invoke deferred tools discovered via SearchExtraTools.
-    ExecuteTool,
-  ]
+  return getAllBaseToolsFromRegistry(buildRegistryEnv())
 }
 
 /**
