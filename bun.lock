@@ -41,6 +41,7 @@
         "@open-claude-code/agent-tools": "workspace:*",
         "@open-claude-code/builtin-tools": "workspace:*",
         "@open-claude-code/mcp-client": "workspace:*",
+        "@open-claude-code/tool-runtime": "workspace:*",
         "@open-claude-code/workflow-engine": "workspace:*",
         "@opentelemetry/api": "^1.9.1",
         "@opentelemetry/api-logs": "^0.215.0",
@@ -212,6 +213,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@open-claude-code/agent-tools": "workspace:*",
+        "@open-claude-code/tool-runtime": "workspace:*",
         "marked": "^17.0.6",
       },
     },
@@ -244,6 +246,7 @@
       "name": "@open-claude-code/mcp-client",
       "version": "1.0.0",
       "dependencies": {
+        "@modelcontextprotocol/client": "^2.0.0",
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@modelcontextprotocol/server": "^2.0.0",
         "@open-claude-code/agent-tools": "workspace:*",
@@ -255,6 +258,10 @@
     },
     "packages/modifiers-napi": {
       "name": "modifiers-napi",
+      "version": "1.0.0",
+    },
+    "packages/tool-runtime": {
+      "name": "@open-claude-code/tool-runtime",
       "version": "1.0.0",
     },
     "packages/url-handler-napi": {
@@ -676,6 +683,8 @@
     "@open-claude-code/builtin-tools": ["@open-claude-code/builtin-tools@workspace:packages/builtin-tools"],
 
     "@open-claude-code/mcp-client": ["@open-claude-code/mcp-client@workspace:packages/mcp-client"],
+
+    "@open-claude-code/tool-runtime": ["@open-claude-code/tool-runtime@workspace:packages/tool-runtime"],
 
     "@open-claude-code/workflow-engine": ["@open-claude-code/workflow-engine@workspace:packages/workflow-engine"],
 

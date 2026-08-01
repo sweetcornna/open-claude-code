@@ -100,6 +100,7 @@
     "@open-claude-code/agent-tools": "workspace:*",
     "@open-claude-code/builtin-tools": "workspace:*",
     "@open-claude-code/mcp-client": "workspace:*",
+    "@open-claude-code/tool-runtime": "workspace:*",
     "@open-claude-code/workflow-engine": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/api-logs": "^0.215.0",

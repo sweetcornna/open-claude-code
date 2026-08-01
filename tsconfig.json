@@ -18,6 +18,10 @@
       "@open-claude-code/builtin-tools": [
         "./packages/builtin-tools/src/index.ts"
       ],
+      "@open-claude-code/tool-runtime/*": ["./packages/tool-runtime/src/*"],
+      "@open-claude-code/tool-runtime": [
+        "./packages/tool-runtime/src/index.ts"
+      ],
       "@open-claude-code/mcp-client/*": ["./packages/mcp-client/src/*"],
       "@open-claude-code/mcp-client": ["./packages/mcp-client/src/index.ts"],
       "@open-claude-code/agent-tools/*": ["./packages/agent-tools/src/*"],
