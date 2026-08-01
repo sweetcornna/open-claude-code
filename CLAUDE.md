@@ -193,7 +193,7 @@ bun run docs:dev
 | `packages/@ant/model-provider/` | Model provider 抽象层 |
 | `packages/builtin-tools/` | 内置工具集（58 个 tool 实现，通过 `@open-claude-code/builtin-tools` 导出） |
 | `packages/agent-tools/` | Agent 工具集 |
-| `packages/mcp-client/` | MCP 客户端库 |
+| `packages/mcp-client/` | MCP 客户端库。**平行实现，连接/发现/执行那半边当前未接线** —— `src/services/mcp/client.ts` 只用了它的 4 个工具函数（`getMcpHttpStatus`、`isMcpSessionExpiredError`、`MAX_MCP_DESCRIPTION_LENGTH`、`recursivelySanitizeUnicode`），`discoverTools` / `callMcpTool` 没有任何生产调用方 |
 | `packages/cloud-artifacts/` | 独立 Cloudflare Worker + R2 服务：POST `/upload` HTML 上传返回 hash URL，GET `/<7d\|30d>/<id>.html` 由 Worker 代理读取；R2 lifecycle rule 自动 7/30 天过期 |
 | `packages/audio-capture-napi/` | 原生音频捕获（已恢复） |
 | `packages/color-diff-napi/` | 颜色差异计算（完整实现，11 tests） |
@@ -253,7 +253,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - 实验性: `EXPERIMENTAL_SKILL_SEARCH`, `EXPERIMENTAL_SEARCH_EXTRA_TOOLS`
 - 模式: `POOR`, `SSH_REMOTE`
 - 其他: `AUTOFIX_PR`（`/autofix-pr` 命令）, `GOAL`（持久化 thread goal）
-- **未**编译进默认列表: `SKILL_LEARNING`（`scripts/defines.ts` 里已注释掉，需显式 `FEATURE_SKILL_LEARNING=1` 才编译进；运行时另由 `SKILL_LEARNING_ENABLED` 控制）、`MCP_2026`（MCP 协议 2026-07-28 版本协商，同样注释掉；关着时 MCP 客户端走 v2 SDK 的默认 legacy 姿势，开启后 `connect()` 先用 `server/discover` 探测。`FEATURE_MCP_2026=1 bun run dev`）
+- **未**编译进默认列表: `SKILL_LEARNING`（`scripts/defines.ts` 里已注释掉，需显式 `FEATURE_SKILL_LEARNING=1` 才编译进；运行时另由 `SKILL_LEARNING_ENABLED` 控制）、`MCP_2026`（MCP 协议 2026-07-28 版本协商，同样注释掉；关着时 MCP 客户端走 v2 SDK 的默认 legacy 姿势，开启后 `connect()` 先用 `server/discover` 探测。`FEATURE_MCP_2026=1 bun run dev`）。**注意这个标志只管客户端要不要探测** —— serve 模式的双时代、outputSchema 降级、OAuth 加固都**不**受它门控，默认构建即生效；协商到的「时代」是连接的属性而非构建的属性（问 `getProtocolEra()`，不要再判一次标志）。见 `docs/features/mcp-2026.md`
 
 > `packages/weixin/`（微信 Channel）与整个 `DIRECT_CONNECT` 直连模式（`src/server/`、`useDirectConnect`、`claude server` / `claude open` / `cc://`）已于 2026-07 移除 —— 服务端全是 stub，客户端因 `parseConnectUrl` 返回空串而不可能连通。`occ ssh` 不受影响（它只依赖 `src/remote/`）。`src/plugins/bundled/` 现在没有任何内置 plugin，但注册表仍在用，保留为扩展点。
 >
@@ -314,7 +314,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 | Analytics / GrowthBook / Sentry | Empty implementations |
 | Magic Docs / LSP Server | Restored — Magic Docs 自动更新 + LSP 服务器管理器 |
 | Plugins / Marketplace | Restored — 插件安装/卸载/启用/禁用 + Marketplace 浏览 |
-| MCP OAuth | Simplified |
+| MCP OAuth | Hardened — RFC 9207 `iss` 校验、凭据按 issuer 分槽、DCR `application_type: 'native'`。**不受 `MCP_2026` 门控**，默认构建即生效。见 `docs/features/mcp-2026.md` |
 
 ### Key Type Files
 
