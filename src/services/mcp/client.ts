@@ -103,6 +103,7 @@ import {
   runElicitationResultHooks,
 } from './elicitationHandler.js'
 import { buildMcpToolName } from './mcpStringUtils.js'
+import { inputRequiredRoundsExceededDegradation } from './inputRequiredDegradation.js'
 import { normalizeNameForMCP } from './normalization.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
@@ -3308,6 +3309,22 @@ async function callMCPTool({
       return {
         content: `MCP server "${name}" tool "${tool}" declares an output schema that its own result does not satisfy, so the client could not validate the structured output (${schemaViolation}). Treat this call as having returned no usable result and, if the data matters, retry or use another tool.`,
       }
+    }
+
+    // The v2 SDK throws after its multi-round input driver reaches its cap,
+    // but preserves the final input_required payload on the error. Surface
+    // those pending field names to the model instead of failing the turn.
+    const roundsExceeded = inputRequiredRoundsExceededDegradation(e, tool)
+    if (roundsExceeded) {
+      logMCPDebug(
+        name,
+        `Tool '${tool}' exceeded the input-required round limit (${roundsExceeded.rounds ?? 'unknown'}); degrading to a text result`,
+      )
+      logEvent('tengu_mcp_input_rounds_exceeded', {
+        rounds: roundsExceeded.rounds,
+        input_request_count: roundsExceeded.inputRequestFields.length,
+      })
+      return { content: roundsExceeded.content }
     }
 
     // Check for 401 errors indicating expired/invalid OAuth tokens.
