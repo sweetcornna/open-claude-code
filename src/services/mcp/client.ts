@@ -242,6 +242,11 @@ const isComputerUseMCPServer = feature('CHICAGO_MCP')
       require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')
     ).isComputerUseMCPServer
   : undefined
+const shouldUseBuiltinComputerUse = feature('CHICAGO_MCP')
+  ? (
+      require('../../utils/computerUse/gates.js') as typeof import('../../utils/computerUse/gates.js')
+    ).shouldUseBuiltinComputerUse
+  : undefined
 
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
@@ -899,6 +904,7 @@ export const connectToServer = memoize(
         logMCPDebug(name, `claude.ai proxy transport created successfully`)
       } else if (
         feature('CHICAGO_MCP') &&
+        shouldUseBuiltinComputerUse!() &&
         ((serverRef as ScopedMcpServerConfig).type === 'stdio' ||
           !(serverRef as ScopedMcpServerConfig).type) &&
         isComputerUseMCPServer!(name)
@@ -1958,6 +1964,7 @@ export const fetchToolsForClient = memoizeWithLRU(
               return `${client.name} - ${displayName} (MCP)`
             },
             ...(feature('CHICAGO_MCP') &&
+            shouldUseBuiltinComputerUse!() &&
             (client.config.type === 'stdio' || !client.config.type) &&
             isComputerUseMCPServer!(client.name)
               ? computerUseWrapper!().getComputerUseMCPToolOverrides(tool.name)

@@ -39,6 +39,24 @@ describe('SettingsSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  test('validates computer use backend settings', () => {
+    expect(
+      SettingsSchema().safeParse({
+        computerUse: { backend: 'builtin' },
+      }).success,
+    ).toBe(true)
+    expect(
+      SettingsSchema().safeParse({
+        computerUse: { backend: 'external' },
+      }).success,
+    ).toBe(true)
+    expect(
+      SettingsSchema().safeParse({
+        computerUse: { backend: 'other' },
+      }).success,
+    ).toBe(false)
+  })
+
   test('accepts permissions block with allow rules', () => {
     const result = SettingsSchema().safeParse({
       permissions: { allow: ['Bash(npm install)'] },
