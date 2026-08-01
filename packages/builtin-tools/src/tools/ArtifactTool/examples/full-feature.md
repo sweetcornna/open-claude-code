@@ -102,7 +102,7 @@ JSON：
   "name": "claude-code-best",
   "version": "2.2.1",
   "runtime": "bun",
-  "features": ["buddy", "bridge_mode", "ultrathink"]
+  "features": ["buddy", "acp", "ultrathink"]
 }
 ```
 

@@ -71,12 +71,6 @@ const briefCommand =
 const assistantCommand = feature('KAIROS')
   ? require('./commands/assistant/index.js').default
   : null
-const bridge = feature('BRIDGE_MODE')
-  ? require('./commands/bridge/index.js').default
-  : null
-const remoteControlServerCommand = feature('BRIDGE_MODE')
-  ? require('./commands/remoteControlServer/index.js').default
-  : null
 const voiceCommand = feature('VOICE_MODE')
   ? require('./commands/voice/index.js').default
   : null
@@ -147,7 +141,6 @@ import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
-import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
 import summary from './commands/summary/index.js'
 import recap from './commands/recap/index.js'
@@ -233,7 +226,7 @@ export { getCommandName, isCommandEnabled } from './types/command.js'
 
 // Commands that get eliminated from the external build
 // Public-but-previously-locked commands moved to the main COMMANDS array below:
-//   commit, commitPushPr, bridgeKick, initVerifiers, autofixPr, onboarding
+//   commit, commitPushPr, initVerifiers, autofixPr, onboarding
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
@@ -317,8 +310,6 @@ const COMMANDS = memoize((): Command[] => [
   ...(coordinatorCmd ? [coordinatorCmd] : []),
   ...(briefCommand ? [briefCommand] : []),
   ...(assistantCommand ? [assistantCommand] : []),
-  ...(bridge ? [bridge] : []),
-  ...(remoteControlServerCommand ? [remoteControlServerCommand] : []),
   ...(voiceCommand ? [voiceCommand] : []),
   thinkback,
   thinkbackPlay,
@@ -343,7 +334,6 @@ const COMMANDS = memoize((): Command[] => [
   autofixPr,
   commit,
   commitPushPr,
-  bridgeKick,
   version,
   ...(subscribePr ? [subscribePr] : []),
   initVerifiers,
@@ -656,8 +646,9 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
 
 /**
  * Builtin commands of type 'local' that ARE safe to execute when received
- * over the Remote Control bridge. These produce text output that streams
- * back to the mobile/web client and have no terminal-only side effects.
+ * from a remote client (Happy over ACP, an SDK consumer). These produce text
+ * output that streams back to the client and have no terminal-only side
+ * effects.
  *
  * 'local-jsx' commands are blocked by type (they render Ink UI) and
  * 'prompt' commands are allowed by type (they expand to text sent to the
@@ -679,9 +670,9 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
 
 /**
  * Whether a slash command is safe to execute when its input arrived over the
- * Remote Control bridge (mobile/web client).
+ * a remote client (mobile/web).
  *
- * PR #19134 blanket-blocked all slash commands from bridge inbound because
+ * PR #19134 blanket-blocked all slash commands from remote inbound because
  * `/model` from iOS was popping the local Ink picker. This predicate relaxes
  * that with an explicit allowlist: 'prompt' commands (skills) expand to text
  * and are safe by construction; 'local' commands need an explicit opt-in via

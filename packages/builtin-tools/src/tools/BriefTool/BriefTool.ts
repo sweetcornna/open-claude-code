@@ -8,7 +8,6 @@ import { buildTool, type ToolDef } from 'src/Tool.js'
 import { isEnvTruthy } from 'src/utils/envUtils.js'
 import { lazySchema } from 'src/utils/lazySchema.js'
 import { plural } from 'src/utils/stringUtils.js'
-import { isBridgeEnabled } from 'src/bridge/bridgeEnabled.js'
 import { resolveAttachments, validateAttachmentPaths } from './attachments.js'
 import {
   BRIEF_TOOL_NAME,
@@ -150,7 +149,7 @@ export const BriefTool = buildTool({
     return outputSchema()
   },
   isEnabled() {
-    return isBridgeEnabled()
+    return isBriefEnabled()
   },
   isConcurrencySafe() {
     return true
@@ -193,9 +192,7 @@ export const BriefTool = buildTool({
     if (!attachments || attachments.length === 0) {
       return { data: { message, sentAt } }
     }
-    const appState = context.getAppState()
     const resolved = await resolveAttachments(attachments, {
-      replBridgeEnabled: appState.replBridgeEnabled,
       signal: context.abortController.signal,
     })
     return {

@@ -8,6 +8,7 @@ import {
   queryDaemonStatus,
   stopDaemonByPid,
 } from './state.js'
+import { DAEMON_WORKER_KINDS } from './workerRegistry.js'
 
 /**
  * Exit code used by workers for permanent (non-retryable) failures.
@@ -232,19 +233,25 @@ async function runSupervisor(args: string[]): Promise<void> {
   const config = parseSupervisorArgs(args)
   const dir = config.dir || resolve('.')
 
+  if (DAEMON_WORKER_KINDS.length === 0) {
+    console.log(
+      `[daemon] no supervisor workers are registered in this build — nothing to start.\n` +
+        `Background sessions still work: \`${BIN_NAME} daemon bg\`.`,
+    )
+    return
+  }
+
   console.log(`[daemon] supervisor starting in ${dir}`)
 
-  const workers: WorkerState[] = [
-    {
-      kind: 'remoteControl',
-      process: null,
-      backoffMs: BACKOFF_INITIAL_MS,
-      failureCount: 0,
-      parked: false,
-      lastStartTime: 0,
-      restartTimer: null,
-    },
-  ]
+  const workers: WorkerState[] = DAEMON_WORKER_KINDS.map(kind => ({
+    kind,
+    process: null,
+    backoffMs: BACKOFF_INITIAL_MS,
+    failureCount: 0,
+    parked: false,
+    lastStartTime: 0,
+    restartTimer: null,
+  }))
 
   // Write daemon state file so other CLI processes can query/stop us
   writeDaemonState({

@@ -1,7 +1,7 @@
 import axios, { type AxiosError } from 'axios'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { rcLog } from '../../bridge/rcDebugLog.js'
+import { rcLog } from '../../utils/rcDebugLog.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
 import { SerialBatchEventUploader } from './SerialBatchEventUploader.js'
@@ -16,7 +16,7 @@ const BATCH_FLUSH_INTERVAL_MS = 100
 const POST_TIMEOUT_MS = 15_000
 // Grace period for queued writes on close(). Covers a healthy POST (~100ms)
 // plus headroom; best-effort, not a delivery guarantee under degraded network.
-// Void-ed (nothing awaits it) so this is a last resort — replBridge teardown
+// Void-ed (nothing awaits it) so this is a last resort — transport teardown
 // now closes AFTER archive so archive latency is the primary drain window.
 // NOTE: gracefulShutdown's cleanup budget is 2s (not the 5s outer failsafe);
 // 3s here exceeds it, but the process lives ~2s longer for hooks+analytics.
@@ -89,7 +89,7 @@ export class HybridTransport extends WebSocketTransport {
       jitterMs: 1000,
       // Optional cap so a persistently-failing server can't pin the drain
       // loop for the lifetime of the process. Undefined = indefinite retry.
-      // replBridge sets this; the 1P transportUtils path does not.
+      // In-process callers set this; the 1P transportUtils path does not.
       maxConsecutiveFailures,
       onBatchDropped: (batchSize, failures) => {
         logForDiagnosticsNoPII(
@@ -111,7 +111,7 @@ export class HybridTransport extends WebSocketTransport {
   /**
    * Enqueue a message and wait for the queue to drain. Returning flush()
    * preserves the contract that `await write()` resolves after the event is
-   * POSTed (relied on by tests and replBridge's initial flush). Fire-and-forget
+   * POSTed (relied on by tests and the initial flush). Fire-and-forget
    * callers (`void transport.write()`) are unaffected — they don't await,
    * so the later resolution doesn't add latency.
    */
@@ -175,7 +175,7 @@ export class HybridTransport extends WebSocketTransport {
       this.streamEventTimer = null
     }
     this.streamEventBuffer = []
-    // Grace period for queued writes — fallback. replBridge teardown now
+    // Grace period for queued writes — fallback. Transport teardown now
     // awaits archive between write and close (see CLOSE_GRACE_MS), so
     // archive latency is the primary drain window and this is a last
     // resort. Keep close() sync (returns immediately) but defer

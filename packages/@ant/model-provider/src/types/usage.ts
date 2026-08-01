@@ -29,7 +29,7 @@ export type NonNullableUsage = {
 
 /**
  * Zero-initialized usage object. Extracted from logging.ts so that
- * bridge/replBridge.ts can import it without transitively pulling in
+ * remote transports can import it without transitively pulling in
  * api/errors.ts → utils/messages.ts → BashTool.tsx → the world.
  */
 export const EMPTY_USAGE: Readonly<NonNullableUsage> = {

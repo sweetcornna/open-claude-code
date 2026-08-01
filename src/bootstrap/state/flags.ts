@@ -223,7 +223,3 @@ export function getHasDevChannels(): boolean {
 export function setHasDevChannels(value: boolean): void {
   STATE.hasDevChannels = value
 }
-
-export function isReplBridgeActive(): boolean {
-  return false
-}

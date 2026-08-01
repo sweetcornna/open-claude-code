@@ -8,7 +8,6 @@ import { buildTool, type ToolDef } from 'src/Tool.js'
 import {
   type GlobalConfig,
   getGlobalConfig,
-  getRemoteControlAtStartup,
   saveGlobalConfig,
 } from 'src/utils/config.js'
 import { errorMessage } from 'src/utils/errors.js'
@@ -144,40 +143,6 @@ export const ConfigTool = buildTool({
     }
 
     // 3. SET operation
-
-    // Handle "default" — unset the config key so it falls back to the
-    // platform-aware default (determined by the bridge feature gate).
-    if (
-      setting === 'remoteControlAtStartup' &&
-      typeof value === 'string' &&
-      value.toLowerCase().trim() === 'default'
-    ) {
-      saveGlobalConfig(prev => {
-        if (prev.remoteControlAtStartup === undefined) return prev
-        const next = { ...prev }
-        delete next.remoteControlAtStartup
-        return next
-      })
-      const resolved = getRemoteControlAtStartup()
-      // Sync to AppState so useReplBridge reacts immediately
-      context.setAppState(prev => {
-        if (prev.replBridgeEnabled === resolved && !prev.replBridgeOutboundOnly)
-          return prev
-        return {
-          ...prev,
-          replBridgeEnabled: resolved,
-          replBridgeOutboundOnly: false,
-        }
-      })
-      return {
-        data: {
-          success: true,
-          operation: 'set',
-          setting,
-          value: resolved,
-        },
-      }
-    }
 
     let finalValue: unknown = value
 
@@ -358,25 +323,6 @@ export const ConfigTool = buildTool({
         context.setAppState(prev => {
           if (prev[appKey] === finalValue) return prev
           return { ...prev, [appKey]: finalValue }
-        })
-      }
-
-      // Sync remoteControlAtStartup to AppState so the bridge reacts
-      // immediately (the config key differs from the AppState field name,
-      // so the generic appStateKey mechanism can't handle this).
-      if (setting === 'remoteControlAtStartup') {
-        const resolved = getRemoteControlAtStartup()
-        context.setAppState(prev => {
-          if (
-            prev.replBridgeEnabled === resolved &&
-            !prev.replBridgeOutboundOnly
-          )
-            return prev
-          return {
-            ...prev,
-            replBridgeEnabled: resolved,
-            replBridgeOutboundOnly: false,
-          }
         })
       }
 

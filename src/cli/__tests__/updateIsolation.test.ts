@@ -249,27 +249,10 @@ describe('occ update isolation', () => {
   })
 
   test('Remote Control guidance invokes only the occ binary', () => {
-    const enabledSource = readSource('bridge/bridgeEnabled.ts')
-    const configSource = readSource('bridge/envLessBridgeConfig.ts')
-    const replSource = readSource('bridge/initReplBridge.ts')
-    const apiSource = readSource('bridge/bridgeApi.ts')
-    const mainSource = readSource('bridge/bridgeMain.ts')
+    const launcherSource = readSource('cli/remoteControlLauncher.ts')
 
-    expect(enabledSource).toMatch(/\\`\$\{BIN_NAME\} auth login\\`/)
-    expect(enabledSource).toMatch(/\\`\$\{BIN_NAME\} setup-token\\`/)
-    expect(enabledSource).toMatch(/\\`\$\{BIN_NAME\} update\\`/)
-    expect(configSource).toMatch(/\\`\$\{BIN_NAME\} update\\`/)
-    expect(replSource).toMatch(/\\`\$\{BIN_NAME\} update\\`/)
-    expect(apiSource).toMatch(/\\`\$\{BIN_NAME\} remote-control\\`/)
-    expect(mainSource).toMatch(/\$\{BIN_NAME\} remote-control \[options\]/)
-    expect(mainSource).toMatch(/\$\{BIN_NAME\} remote-control --continue/)
-
-    for (const source of [enabledSource, configSource, replSource, apiSource]) {
-      expect(source).not.toMatch(
-        /`claude (?:auth|setup-token|update|remote-control)/,
-      )
-    }
-    expect(mainSource).not.toMatch(/Run ['`\\]*claude remote-control/)
-    expect(mainSource).not.toContain('  claude remote-control [options]')
+    expect(launcherSource).toMatch(/\\`\$\{BIN_NAME\} remote-control\\`/)
+    expect(launcherSource).toMatch(/\\`\$\{BIN_NAME\} --acp\\`/)
+    expect(launcherSource).not.toMatch(/`claude (?:remote-control|--acp)/)
   })
 })

@@ -1,6 +1,5 @@
 import type { Notification } from 'src/context/notifications.js'
 import type { TodoList } from 'src/utils/todo/types.js'
-import type { BridgePermissionCallbacks } from '../bridge/bridgePermissionCallbacks.js'
 import type { Command } from '../commands.js'
 import type { ChannelPermissionCallbacks } from '../services/mcp/channelPermissions.js'
 import type { ElicitationRequestEvent } from '../services/mcp/elicitationHandler.js'
@@ -83,7 +82,6 @@ export type FooterItem =
   | 'tmux'
   | 'bagel'
   | 'teams'
-  | 'bridge'
   | 'companion'
   | 'bg_agent'
 
@@ -134,31 +132,6 @@ export type AppState = DeepImmutable<{
   // AppState.tasks is always empty in viewer mode — the tasks live in a
   // different process.
   remoteBackgroundTaskCount: number
-  // Always-on bridge: desired state (controlled by /config or footer toggle)
-  replBridgeEnabled: boolean
-  // Always-on bridge: true when activated via /remote-control command, false when config-driven
-  replBridgeExplicit: boolean
-  // Outbound-only mode: forward events to CCR but reject inbound prompts/control
-  replBridgeOutboundOnly: boolean
-  // Always-on bridge: env registered + session created (= "Ready")
-  replBridgeConnected: boolean
-  // Always-on bridge: ingress WebSocket is open (= "Connected" - user on claude.ai)
-  replBridgeSessionActive: boolean
-  // Always-on bridge: poll loop is in error backoff (= "Reconnecting")
-  replBridgeReconnecting: boolean
-  // Always-on bridge: connect URL for Ready state (?bridge=envId)
-  replBridgeConnectUrl: string | undefined
-  // Always-on bridge: session URL on claude.ai (set when connected)
-  replBridgeSessionUrl: string | undefined
-  // Always-on bridge: IDs for debugging (shown in dialog when --verbose)
-  replBridgeEnvironmentId: string | undefined
-  replBridgeSessionId: string | undefined
-  // Always-on bridge: error message when connection fails (shown in BridgeDialog)
-  replBridgeError: string | undefined
-  // Always-on bridge: session name set via `/remote-control <name>` (used as session title)
-  replBridgeInitialName: string | undefined
-  // Always-on bridge: first-time remote dialog pending (set by /remote-control command)
-  showRemoteCallout: boolean
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
@@ -447,10 +420,8 @@ export type AppState = DeepImmutable<{
   // Remote-harness side: set via set_permission_mode control_request,
   // pushed to CCR external_metadata.is_ultraplan_mode by onChangeAppState.
   isUltraplanMode?: boolean
-  // Always-on bridge: permission callbacks for bidirectional permission checks
-  replBridgePermissionCallbacks?: BridgePermissionCallbacks
   // Channel permission callbacks — permission prompts over Telegram/iMessage/etc.
-  // Races against local UI + bridge + hooks + classifier via claim() in
+  // Races against local UI + hooks + classifier via claim() in
   // interactiveHandler.ts. Constructed once in useManageMCPConnections.
   channelPermissionCallbacks?: ChannelPermissionCallbacks
 }
@@ -489,19 +460,6 @@ export function getDefaultAppState(): AppState {
     remoteSessionUrl: undefined,
     remoteConnectionStatus: 'connecting',
     remoteBackgroundTaskCount: 0,
-    replBridgeEnabled: false,
-    replBridgeExplicit: false,
-    replBridgeOutboundOnly: false,
-    replBridgeConnected: false,
-    replBridgeSessionActive: false,
-    replBridgeReconnecting: false,
-    replBridgeConnectUrl: undefined,
-    replBridgeSessionUrl: undefined,
-    replBridgeEnvironmentId: undefined,
-    replBridgeSessionId: undefined,
-    replBridgeError: undefined,
-    replBridgeInitialName: undefined,
-    showRemoteCallout: false,
     toolPermissionContext: {
       ...getEmptyToolPermissionContext(),
       mode: initialMode,

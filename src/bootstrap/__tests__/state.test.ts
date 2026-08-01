@@ -164,7 +164,6 @@ const EXPECTED_EXPORTS = [
   'hasShownLspRecommendationThisSession',
   'hasUnknownModelCost',
   'incrementBudgetContinuationCount',
-  'isReplBridgeActive',
   'isSessionPersistenceDisabled',
   'markFirstTeleportMessageLogged',
   'markPostCompaction',

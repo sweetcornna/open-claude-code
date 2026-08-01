@@ -1,37 +1,36 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { formatRemoteControlLocalStatus } from '../remoteControlStatus'
 
-let previousBaseUrl: string | undefined
-let previousToken: string | undefined
+describe('formatRemoteControlLocalStatus', () => {
+  test('reports the Happy-over-ACP model', () => {
+    const out = formatRemoteControlLocalStatus()
+    expect(out).toContain('Remote Control:')
+    expect(out).toContain('via Happy over ACP')
+    expect(out).toContain('agent=occ --acp')
+  })
 
-beforeEach(() => {
-  previousBaseUrl = process.env.CLAUDE_BRIDGE_BASE_URL
-  previousToken = process.env.CLAUDE_BRIDGE_OAUTH_TOKEN
-})
+  test('reports the self-hosted server when HAPPY_SERVER_URL is set', () => {
+    const prev = process.env.HAPPY_SERVER_URL
+    process.env.HAPPY_SERVER_URL = 'https://happy.example.test'
+    try {
+      expect(formatRemoteControlLocalStatus()).toContain(
+        'https://happy.example.test (self-hosted)',
+      )
+    } finally {
+      if (prev === undefined) delete process.env.HAPPY_SERVER_URL
+      else process.env.HAPPY_SERVER_URL = prev
+    }
+  })
 
-afterEach(() => {
-  if (previousBaseUrl === undefined) {
-    delete process.env.CLAUDE_BRIDGE_BASE_URL
-  } else {
-    process.env.CLAUDE_BRIDGE_BASE_URL = previousBaseUrl
-  }
-  if (previousToken === undefined) {
-    delete process.env.CLAUDE_BRIDGE_OAUTH_TOKEN
-  } else {
-    process.env.CLAUDE_BRIDGE_OAUTH_TOKEN = previousToken
-  }
-})
-
-describe('remote control status', () => {
-  test('formats self-hosted bridge local config without remote calls', () => {
-    process.env.CLAUDE_BRIDGE_BASE_URL = 'http://127.0.0.1:8787'
-    process.env.CLAUDE_BRIDGE_OAUTH_TOKEN = 'token'
-
-    const status = formatRemoteControlLocalStatus()
-
-    expect(status).toContain('Remote Control: self-hosted')
-    expect(status).toContain('base_url=http://127.0.0.1:8787')
-    expect(status).toContain('token=present')
-    expect(status).toContain('entitlement=checked at remote-control startup')
+  test('falls back to the hosted relay when unset', () => {
+    const prev = process.env.HAPPY_SERVER_URL
+    delete process.env.HAPPY_SERVER_URL
+    try {
+      expect(formatRemoteControlLocalStatus()).toContain(
+        'default (Happy hosted relay)',
+      )
+    } finally {
+      if (prev !== undefined) process.env.HAPPY_SERVER_URL = prev
+    }
   })
 })

@@ -165,7 +165,7 @@ export function quoteCliLaunch(spec: CliLaunchSpec): string {
 
 /**
  * Get the frozen bootstrap args snapshot.
- * Useful for call sites that need the raw args (e.g. bridgeMain deps).
+ * Useful for call sites that need the raw args.
  */
 export function getBootstrapArgs(): readonly string[] {
   return BOOTSTRAP_ARGS

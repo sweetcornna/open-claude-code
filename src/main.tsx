@@ -83,7 +83,6 @@ import {
 import {
   checkHasTrustDialogAccepted,
   getGlobalConfig,
-  getRemoteControlAtStartup,
   isAutoUpdaterDisabled,
   saveGlobalConfig,
 } from './utils/config.js';
@@ -317,7 +316,6 @@ import { migrateEnableAllProjectMcpServersToSettings } from './migrations/migrat
 import { migrateFennecToOpus } from './migrations/migrateFennecToOpus.js';
 import { migrateLegacyOpusToCurrent } from './migrations/migrateLegacyOpusToCurrent.js';
 import { migrateOpusToOpus1m } from './migrations/migrateOpusToOpus1m.js';
-import { migrateReplBridgeEnabledToRemoteControlAtStartup } from './migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.js';
 import { migrateSonnet1mToSonnet45 } from './migrations/migrateSonnet1mToSonnet45.js';
 import { migrateSonnet45ToSonnet46 } from './migrations/migrateSonnet45ToSonnet46.js';
 import { resetAutoModeOptInForDefaultOffer } from './migrations/resetAutoModeOptInForDefaultOffer.js';
@@ -471,7 +469,6 @@ function runMigrations(): void {
     migrateLegacyOpusToCurrent();
     migrateSonnet45ToSonnet46();
     migrateOpusToOpus1m();
-    migrateReplBridgeEnabledToRemoteControlAtStartup();
     if (feature('TRANSCRIPT_CLASSIFIER')) {
       resetAutoModeOptInForDefaultOffer();
     }
@@ -1626,15 +1623,6 @@ async function run(): Promise<CommanderCommand> {
       const remoteOption = (options as { remote?: string | true }).remote;
       const remote = remoteOption === true ? '' : (remoteOption ?? null);
 
-      // Extract --remote-control / --rc flag (enable bridge in interactive session)
-      const remoteControlOption =
-        (options as { remoteControl?: string | true }).remoteControl ?? (options as { rc?: string | true }).rc;
-      // Actual bridge check is deferred to after showSetupScreens() so that
-      // trust is established and GrowthBook has auth headers.
-      let remoteControl = false;
-      const remoteControlName =
-        typeof remoteControlOption === 'string' && remoteControlOption.length > 0 ? remoteControlOption : undefined;
-
       // Validate session ID if provided
       if (sessionId) {
         // Check for conflicting flags
@@ -2693,17 +2681,6 @@ async function run(): Promise<CommanderCommand> {
         );
         logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
-        // Now that trust is established and GrowthBook has auth headers,
-        // resolve the --remote-control / --rc entitlement gate.
-        if (feature('BRIDGE_MODE') && remoteControlOption !== undefined) {
-          const { getBridgeDisabledReason } = await import('./bridge/bridgeEnabled.js');
-          const disabledReason = await getBridgeDisabledReason();
-          remoteControl = disabledReason === null;
-          if (disabledReason) {
-            process.stderr.write(chalk.yellow(`${disabledReason}\n--rc flag ignored.\n`));
-          }
-        }
-
         // Check for pending agent memory snapshot updates (only for --agent mode, ant-only)
         if (
           feature('AGENT_MEMORY_SNAPSHOT') &&
@@ -2740,15 +2717,6 @@ async function run(): Promise<CommanderCommand> {
           resetUserCache();
           // Refresh GrowthBook after login to get updated feature flags (e.g., for claude.ai MCPs)
           refreshGrowthBookAfterAuthChange();
-          // Clear any stale trusted device token then enroll for Remote Control.
-          // Both self-gate on tengu_sessions_elevated_auth_enforcement internally
-          // — enrollTrustedDevice() via checkGate_CACHED_OR_BLOCKING (awaits
-          // the GrowthBook reinit above), clearTrustedDeviceToken() via the
-          // sync cached check (acceptable since clear is idempotent).
-          void import('./bridge/trustedDevice.js').then(m => {
-            m.clearTrustedDeviceToken();
-            return m.enrollTrustedDevice();
-          });
         }
 
         // Validate that the active token's org matches forceLoginOrgUUID (if set
@@ -3383,16 +3351,6 @@ async function run(): Promise<CommanderCommand> {
       // All startup opt-in paths (--tools, --brief, defaultView) have fired
       // above; initialIsBriefOnly just reads the resulting state.
       const initialIsBriefOnly = feature('KAIROS') || feature('KAIROS_BRIEF') ? getUserMsgOptIn() : false;
-      const fullRemoteControl = remoteControl || getRemoteControlAtStartup() || kairosEnabled;
-      let ccrMirrorEnabled = false;
-      if (feature('CCR_MIRROR') && !fullRemoteControl) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const { isCcrMirrorEnabled } =
-          require('./bridge/bridgeEnabled.js') as typeof import('./bridge/bridgeEnabled.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
-        ccrMirrorEnabled = isCcrMirrorEnabled();
-      }
-
       const initialState: AppState = {
         settings: getInitialSettings(),
         tasks: {},
@@ -3438,19 +3396,6 @@ async function run(): Promise<CommanderCommand> {
         remoteSessionUrl: undefined,
         remoteConnectionStatus: 'connecting',
         remoteBackgroundTaskCount: 0,
-        replBridgeEnabled: fullRemoteControl || ccrMirrorEnabled,
-        replBridgeExplicit: remoteControl,
-        replBridgeOutboundOnly: ccrMirrorEnabled,
-        replBridgeConnected: false,
-        replBridgeSessionActive: false,
-        replBridgeReconnecting: false,
-        replBridgeConnectUrl: undefined,
-        replBridgeSessionUrl: undefined,
-        replBridgeEnvironmentId: undefined,
-        replBridgeSessionId: undefined,
-        replBridgeError: undefined,
-        replBridgeInitialName: remoteControlName,
-        showRemoteCallout: false,
         notifications: {
           current: null,
           queue: initialNotifications,
@@ -3739,7 +3684,7 @@ async function run(): Promise<CommanderCommand> {
 
         let targetSessionId = _pendingAssistantChat.sessionId;
 
-        // Discovery flow — list bridge environments, filter sessions
+        // Discovery flow — list remote environments, filter sessions
         if (!targetSessionId) {
           let sessions;
           try {
@@ -3765,7 +3710,7 @@ async function run(): Promise<CommanderCommand> {
               process.exit(0);
             }
             // The daemon needs a few seconds to spin up its worker and
-            // establish a bridge session before discovery will find it.
+            // establish a session before discovery will find it.
             return await exitWithMessage(
               root,
               `Assistant installed in ${installedDir}. The daemon is starting up — run \`${BIN_NAME} assistant\` again in a few seconds to connect.`,
@@ -3826,7 +3771,6 @@ async function run(): Promise<CommanderCommand> {
           ...initialState,
           isBriefOnly: true,
           kairosEnabled: false,
-          replBridgeEnabled: false,
         };
 
         const remoteCommands = filterCommandsForRemoteMode(commands);
@@ -3900,7 +3844,6 @@ async function run(): Promise<CommanderCommand> {
         }
 
         // --remote and --teleport both create/resume Claude Code Web (CCR) sessions.
-        // Remote Control (--rc) is a separate feature gated in initReplBridge.ts.
         if (remote !== null || teleport) {
           await waitForPolicyLimitsToLoad();
           if (!isPolicyAllowed('allow_remote_sessions')) {
@@ -4432,20 +4375,6 @@ async function run(): Promise<CommanderCommand> {
   program.addOption(
     new Option('--remote [description]', 'Create a remote session with the given description').hideHelp(),
   );
-  if (feature('BRIDGE_MODE')) {
-    program.addOption(
-      new Option(
-        '--remote-control [name]',
-        'Start an interactive session with Remote Control enabled (optionally named)',
-      )
-        .argParser(value => value || true)
-        .hideHelp(),
-    );
-    program.addOption(
-      new Option('--rc [name]', 'Alias for --remote-control').argParser(value => value || true).hideHelp(),
-    );
-  }
-
   if (feature('HARD_FAIL')) {
     program.addOption(new Option('--hard-fail', 'Crash on logError calls instead of silently logging').hideHelp());
   }
@@ -4456,9 +4385,7 @@ async function run(): Promise<CommanderCommand> {
   // (mcp, auth, plugin, skill, task, config, doctor, update, etc.) are
   // never dispatched in print mode — commander routes the prompt to the
   // default action. The subcommand registration path was measured at ~65ms
-  // on baseline — mostly the isBridgeEnabled() call (25ms settings Zod parse
-  // + 40ms sync keychain subprocess), both hidden by the try/catch that
-  // always returns false before enableConfigs().
+  // on baseline.
   const isPrintMode = process.argv.includes('-p') || process.argv.includes('--print');
   if (isPrintMode) {
     profileCheckpoint('run_before_parse');
@@ -4941,7 +4868,7 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('assistant [sessionId]')
       .description(
-        'Attach the REPL as a client to a running bridge session. Discovers sessions via API if no sessionId given.',
+        'Attach the REPL as a client to a running remote session. Discovers sessions via API if no sessionId given.',
       )
       .action(() => {
         // Argv rewriting above should have consumed `assistant [id]`
@@ -4950,7 +4877,7 @@ async function run(): Promise<CommanderCommand> {
         // didn't match. Print usage like the ssh stub does.
         process.stderr.write(
           `Usage: ${BIN_NAME} assistant [sessionId]\n\n` +
-            'Attach the REPL as a viewer client to a running bridge session.\n' +
+            'Attach the REPL as a viewer client to a running remote session.\n' +
             'Omit sessionId to discover and pick from available sessions.\n',
         );
         process.exit(1);

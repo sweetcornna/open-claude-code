@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { clearTrustedDeviceTokenCache } from '../../bridge/trustedDevice.js';
 import { Text } from '@anthropic/ink';
 import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
 import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove.js';
@@ -68,7 +67,6 @@ function clearChatGPTSettingsAuthMode(): void {
 export async function clearAuthRelatedCaches(): Promise<void> {
   // Clear the OAuth token cache
   getClaudeAIOAuthTokens.cache?.clear?.();
-  clearTrustedDeviceTokenCache();
   clearBetasCaches();
   clearToolSchemaCache();
 

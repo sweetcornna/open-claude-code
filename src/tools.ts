@@ -39,15 +39,6 @@ const MonitorTool = feature('MONITOR_TOOL')
   ? require('@open-claude-code/builtin-tools/tools/MonitorTool/MonitorTool.js')
       .MonitorTool
   : null
-const SendUserFileTool = feature('KAIROS')
-  ? require('@open-claude-code/builtin-tools/tools/SendUserFileTool/SendUserFileTool.js')
-      .SendUserFileTool
-  : null
-const PushNotificationTool =
-  feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION')
-    ? require('@open-claude-code/builtin-tools/tools/PushNotificationTool/PushNotificationTool.js')
-        .PushNotificationTool
-    : null
 const SubscribePRTool = feature('KAIROS_GITHUB_WEBHOOKS')
   ? require('@open-claude-code/builtin-tools/tools/SubscribePRTool/SubscribePRTool.js')
       .SubscribePRTool
@@ -234,8 +225,6 @@ export function getAllBaseTools(): Tools {
     ...(RemoteTriggerTool ? [RemoteTriggerTool] : []),
     ...(MonitorTool ? [MonitorTool] : []),
     BriefTool,
-    ...(SendUserFileTool ? [SendUserFileTool] : []),
-    ...(PushNotificationTool ? [PushNotificationTool] : []),
     ...(SubscribePRTool ? [SubscribePRTool] : []),
     ...(getPowerShellTool() ? [getPowerShellTool()] : []),
     ...(DiscoverSkillsTool ? [DiscoverSkillsTool] : []),

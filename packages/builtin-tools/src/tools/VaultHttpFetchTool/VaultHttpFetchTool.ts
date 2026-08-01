@@ -279,7 +279,7 @@ export const VaultHttpFetchTool = buildTool({
     } catch (e) {
       void e
       // H7 fix: use AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      // pattern (per fork convention in src/bridge/bridgeMain.ts) to attest
+      // pattern (per fork convention) to attest
       // the string field is safe. The hash field is non-string already.
       logEvent('vault_http_fetch_lookup_failed', {
         key_hash: hashKey(

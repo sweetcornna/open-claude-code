@@ -46,7 +46,7 @@ export type SystemInitInputs = {
  * Called from two paths that must produce identical shapes:
  *   - QueryEngine (spawn-bridge / print-mode / SDK) — yielded as the first
  *     stream message per query turn
- *   - useReplBridge (REPL Remote Control) — sent via writeSdkMessages() on
+ *   - remote clients — sent via writeSdkMessages() on
  *     bridge connect, since REPL uses query() directly and never hits the
  *     QueryEngine SDKMessage layer
  */
