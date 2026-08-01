@@ -1026,7 +1026,7 @@ export async function removeAgentWorktree(
  * (`wf_<8hex>-<3hex>-<n>` derived from sha256(runId:agentId) in
  * claudeCodeBackend — taskId is `w`+base36, not a UUID, so the slug cannot
  * embed runId directly and is hashed to satisfy this hex pattern), and
- * bridgeMain (`bridge-<safeFilenameId>`). These leak when the parent process
+ * the remote session runner (`bridge-<safeFilenameId>`). These leak when the parent process
  * is killed (Ctrl+C, ESC, crash) before their in-process cleanup runs.
  * Exact-shape patterns avoid sweeping user-named EnterWorktree slugs like `wf-myfeature`.
  */

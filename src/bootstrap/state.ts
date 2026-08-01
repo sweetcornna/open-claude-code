@@ -174,7 +174,6 @@ export {
   getStrictToolResultPairing,
   getUseCoworkPlugins,
   getUserMsgOptIn,
-  isReplBridgeActive,
   isSessionPersistenceDisabled,
   preferThirdPartyAuthentication,
   setAdditionalDirectoriesForClaudeMd,

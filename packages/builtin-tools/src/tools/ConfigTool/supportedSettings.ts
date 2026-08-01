@@ -1,5 +1,4 @@
 import { feature } from 'bun:bundle'
-import { getRemoteControlAtStartup } from 'src/utils/config.js'
 import {
   EDITOR_MODES,
   NOTIFICATION_CHANNELS,
@@ -147,17 +146,6 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
           source: 'settings' as const,
           type: 'boolean' as const,
           description: 'Enable voice dictation (hold-to-talk)',
-        },
-      }
-    : {}),
-  ...(feature('BRIDGE_MODE')
-    ? {
-        remoteControlAtStartup: {
-          source: 'global' as const,
-          type: 'boolean' as const,
-          description:
-            'Enable Remote Control for all sessions (true | false | default)',
-          formatOnRead: () => getRemoteControlAtStartup(),
         },
       }
     : {}),

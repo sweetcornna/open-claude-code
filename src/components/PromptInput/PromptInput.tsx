@@ -108,7 +108,6 @@ import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } fr
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 // AutoModeOptInDialog removed — auto mode is available to all users
-import { BridgeDialog } from '../BridgeDialog.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getEffortNotificationText } from '../EffortIndicator.js';
@@ -318,13 +317,6 @@ function PromptInput({
   const store = useAppStateStore();
   const setAppState = useSetAppState();
   const tasks = useAppState(s => s.tasks);
-  const replBridgeConnected = useAppState(s => s.replBridgeConnected);
-  const replBridgeExplicit = useAppState(s => s.replBridgeExplicit);
-  const replBridgeReconnecting = useAppState(s => s.replBridgeReconnecting);
-  // Must match BridgeStatusIndicator's render condition (PromptInputFooter.tsx) —
-  // the pill returns null for implicit-and-not-reconnecting, so nav must too,
-  // otherwise bridge becomes an invisible selection stop.
-  const bridgeFooterVisible = replBridgeConnected && (replBridgeExplicit || replBridgeReconnecting);
   // Tmux pill (ant-only) — visible when there's an active tungsten session
   const hasTungstenSession = useAppState(s => process.env.USER_TYPE === 'ant' && s.tungstenActiveSession !== undefined);
   const tmuxFooterVisible = process.env.USER_TYPE === 'ant' && hasTungstenSession;
@@ -410,7 +402,6 @@ function PromptInput({
   const pendingSpaceAfterPillRef = useRef(false);
 
   const [showTeamsDialog, setShowTeamsDialog] = useState(false);
-  const [showBridgeDialog, setShowBridgeDialog] = useState(false);
   const [teammateFooterIndex, setTeammateFooterIndex] = useState(0);
   // -1 sentinel: tasks pill is selected but no specific agent row is selected yet.
   // First ↓ selects the pill, second ↓ moves to row 0. Prevents double-select
@@ -523,7 +514,6 @@ function PromptInput({
         tmuxFooterVisible && 'tmux',
         bagelFooterVisible && 'bagel',
         teamsFooterVisible && 'teams',
-        bridgeFooterVisible && 'bridge',
         companionFooterVisible && 'companion',
       ].filter(Boolean) as FooterItem[],
     [
@@ -532,13 +522,12 @@ function PromptInput({
       tmuxFooterVisible,
       bagelFooterVisible,
       teamsFooterVisible,
-      bridgeFooterVisible,
       companionFooterVisible,
     ],
   );
 
-  // Effective selection: null if the selected pill stopped rendering (bridge
-  // disconnected, task finished). The derivation makes the UI correct
+  // Effective selection: null if the selected pill stopped rendering (task
+  // finished). The derivation makes the UI correct
   // immediately; the useEffect below clears the raw state so it doesn't
   // resurrect when the same pill reappears (new task starts → focus stolen).
   const rawFooterSelection = useAppState(s => s.footerSelection);
@@ -554,7 +543,6 @@ function PromptInput({
   const tmuxSelected = footerItemSelected === 'tmux';
   const _bagelSelected = footerItemSelected === 'bagel';
   const teamsSelected = footerItemSelected === 'teams';
-  const bridgeSelected = footerItemSelected === 'bridge';
   const bgAgentSelected = footerItemSelected === 'bg_agent';
 
   function selectFooterItem(item: FooterItem | null): void {
@@ -1937,10 +1925,6 @@ function PromptInput({
             setShowTeamsDialog(true);
             selectFooterItem(null);
             break;
-          case 'bridge':
-            setShowBridgeDialog(true);
-            selectFooterItem(null);
-            break;
           case 'bg_agent':
             if (selectedBgAgentIndex === -1) {
               exitTeammateView(setAppState);
@@ -2352,17 +2336,6 @@ function PromptInput({
     return thinkingToggleElement;
   }
 
-  if (showBridgeDialog) {
-    return (
-      <BridgeDialog
-        onDone={() => {
-          setShowBridgeDialog(false);
-          selectFooterItem(null);
-        }}
-      />
-    );
-  }
-
   const baseProps: BaseTextInputProps = {
     multiline: true,
     onSubmit,
@@ -2539,7 +2512,6 @@ function PromptInput({
         isLoading={isLoading}
         tasksSelected={tasksSelected}
         teamsSelected={teamsSelected}
-        bridgeSelected={bridgeSelected}
         tmuxSelected={tmuxSelected}
         teammateFooterIndex={teammateFooterIndex}
         ideSelection={ideSelection}

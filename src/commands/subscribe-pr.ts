@@ -7,7 +7,7 @@ import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 /**
  * File-backed store for PR webhook subscriptions.
  * Each subscription tracks the repo + PR number so the bridge layer
- * (useReplBridge / webhookSanitizer) can filter inbound events.
+ * can filter inbound events.
  */
 interface PRSubscription {
   repo: string // "owner/repo"

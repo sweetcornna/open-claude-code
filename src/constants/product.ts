@@ -64,15 +64,12 @@ export function getClaudeAiBaseUrl(
 /**
  * Get the full session URL for a remote session.
  *
- * The cse_→session_ translation is a temporary shim gated by
- * tengu_bridge_repl_v2_cse_shim_enabled (see isCseShimEnabled). Worker
- * endpoints (/v1/code/sessions/{id}/worker/*) want `cse_*` but the claude.ai
- * frontend currently routes on `session_*` (compat/convert.go:27 validates
- * TagSession). Same UUID body, different tag prefix. Once the server tags by
- * environment_kind and the frontend accepts `cse_*` directly, flip the gate
- * off. No-op for IDs already in `session_*` form. See toCompatSessionId in
- * src/bridge/sessionIdCompat.ts for the canonical helper (lazy-required here
- * to keep constants/ leaf-of-DAG at module-load time).
+ * The cse_→session_ translation is a compat shim. Worker endpoints
+ * (/v1/code/sessions/{id}/worker/*) want `cse_*` but the claude.ai frontend
+ * routes on `session_*` (compat/convert.go:27 validates TagSession). Same UUID
+ * body, different tag prefix. No-op for IDs already in `session_*` form. See
+ * toCompatSessionId in src/utils/sessionIdCompat.ts for the canonical helper
+ * (lazy-required here to keep constants/ leaf-of-DAG at module-load time).
  */
 export function getRemoteSessionUrl(
   sessionId: string,
@@ -80,7 +77,7 @@ export function getRemoteSessionUrl(
 ): string {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const { toCompatSessionId } =
-    require('../bridge/sessionIdCompat.js') as typeof import('../bridge/sessionIdCompat.js')
+    require('../utils/sessionIdCompat.js') as typeof import('../utils/sessionIdCompat.js')
   /* eslint-enable @typescript-eslint/no-require-imports */
   const compatId = toCompatSessionId(sessionId)
   // Use CLAUDE_BRIDGE_BASE_URL from env if available, otherwise fall back to default logic

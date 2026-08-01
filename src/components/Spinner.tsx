@@ -2,7 +2,7 @@
 import { Box, Text, stringWidth } from '@anthropic/ink';
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from '../bridge/bridgeStatusUtil.js';
+import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from '../utils/shimmer.js';
 import { feature } from 'bun:bundle';
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';

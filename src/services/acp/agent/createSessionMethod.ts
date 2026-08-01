@@ -106,7 +106,7 @@ async function createSession(
     const permissionContext = getEmptyToolPermissionContext()
     const tools: Tools = getTools(permissionContext)
 
-    // Parse permission mode from _meta (passed by RCS/acp-link) or settings.
+    // Parse permission mode from _meta (passed by the ACP client) or settings.
     const meta = params._meta as Record<string, unknown> | null | undefined
     const hasMetaPermissionMode = hasOwnField(meta, 'permissionMode')
     const metaPermissionMode = hasMetaPermissionMode

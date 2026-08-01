@@ -61,8 +61,7 @@
     "postinstall": "node scripts/postinstall.cjs",
     "docs:dev": "npx mintlify dev",
     "typecheck": "tsc --noEmit",
-    "precheck": "bun run typecheck && bun run check:fix && bun run check:prompt-purity && bun test",
-    "rcs": "bun run --cwd packages/remote-control-server dev"
+    "precheck": "bun run typecheck && bun run check:fix && bun run check:prompt-purity && bun test"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.19.0",

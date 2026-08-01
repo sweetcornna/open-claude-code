@@ -1,7 +1,7 @@
 import axios, { type AxiosError } from 'axios'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { rcLog } from '../../bridge/rcDebugLog.js'
+import { rcLog } from '../../utils/rcDebugLog.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { errorMessage } from '../../utils/errors.js'
 import { getSessionIngressAuthHeaders } from '../../utils/sessionIngressAuth.js'
@@ -230,7 +230,7 @@ export class SSETransport implements Transport {
 
   /**
    * High-water mark of sequence numbers seen on this stream. Callers that
-   * recreate the transport (e.g. replBridge onWorkReceived) read this before
+   * recreate the transport (e.g. on work received) read this before
    * close() and pass it as `initialSequenceNum` to the next instance so the
    * server resumes from the right point instead of replaying everything.
    */

@@ -4,7 +4,6 @@
  */
 import { feature } from 'bun:bundle'
 import { randomUUID, type UUID } from 'crypto'
-import { getReplBridgeHandle } from '../../bridge/replBridgeHandle.js'
 import {
   getLastMainRequestId,
   getOriginalCwd,
@@ -52,21 +51,6 @@ import {
 } from '../../utils/task/diskOutput.js'
 import { getCurrentWorktreeSession } from '../../utils/worktree.js'
 import { clearSessionCaches } from './caches.js'
-
-function notifyRemoteConversationCleared(): void {
-  const handle = getReplBridgeHandle()
-  if (!handle) return
-  handle.markTranscriptReset?.()
-
-  const message: SDKStatusMessage = {
-    type: 'status',
-    subtype: 'status',
-    status: 'conversation_cleared',
-    message: 'conversation_cleared',
-    uuid: randomUUID(),
-  }
-  handle.writeSdkMessages([message])
-}
 
 export async function clearConversation({
   setMessages,
@@ -129,7 +113,6 @@ export async function clearConversation({
   }
 
   setMessages(() => [])
-  notifyRemoteConversationCleared()
 
   // Clear context-blocked flag so proactive ticks resume after /clear
   if (feature('PROACTIVE') || feature('KAIROS')) {
