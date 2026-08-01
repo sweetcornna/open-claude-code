@@ -15,14 +15,14 @@ export type IDEAtMentioned = {
 
 const NOTIFICATION_METHOD = 'at_mentioned'
 
-const AtMentionedSchema = lazySchema(() =>
+// v2 registers custom notification handlers by method name and validates
+// only `params`, so this is the params schema rather than the whole
+// notification envelope.
+const AtMentionedParamsSchema = lazySchema(() =>
   z.object({
-    method: z.literal(NOTIFICATION_METHOD),
-    params: z.object({
-      filePath: z.string(),
-      lineStart: z.number().optional(),
-      lineEnd: z.number().optional(),
-    }),
+    filePath: z.string(),
+    lineStart: z.number().optional(),
+    lineEnd: z.number().optional(),
   }),
 )
 
@@ -47,13 +47,13 @@ export function useIdeAtMentioned(
     // If we found a connected IDE client, register our handler
     if (ideClient) {
       ideClient.client.setNotificationHandler(
-        AtMentionedSchema() as any,
-        notification => {
+        NOTIFICATION_METHOD,
+        { params: AtMentionedParamsSchema() },
+        data => {
           if (ideClientRef.current !== ideClient) {
             return
           }
           try {
-            const data = notification.params
             // Adjust line numbers to be 1-based instead of 0-based
             const lineStart =
               data.lineStart !== undefined ? data.lineStart + 1 : undefined

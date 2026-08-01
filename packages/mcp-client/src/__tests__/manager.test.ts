@@ -7,7 +7,7 @@ import type {
   MCPServerConnection,
   ConnectedMCPServer,
 } from '../types.js'
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Client } from '@modelcontextprotocol/client'
 
 function createMockDeps(): McpClientDependencies {
   return {

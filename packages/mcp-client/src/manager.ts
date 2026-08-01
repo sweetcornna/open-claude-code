@@ -1,8 +1,6 @@
 // McpManager — imperative API for MCP protocol client
 // Factory function that creates a manager instance with event-based notifications
 
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import type { ListToolsResult } from '@modelcontextprotocol/sdk/types.js'
 import memoize from 'lodash-es/memoize.js'
 import { buildMcpToolName } from './strings.js'
 import type { CoreTool } from '@open-claude-code/agent-tools'

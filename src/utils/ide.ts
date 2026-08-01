@@ -1,5 +1,5 @@
 import { legacyClaudeConfigDir, occConfigPath } from 'src/config/paths.js'
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Client } from '@modelcontextprotocol/client'
 import { execa } from 'execa'
 import capitalize from 'lodash-es/capitalize.js'
 import memoize from 'lodash-es/memoize.js'

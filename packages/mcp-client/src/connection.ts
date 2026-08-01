@@ -1,10 +1,12 @@
 // MCP connection utilities — protocol-level helpers for establishing and managing connections
 // These are building blocks used by the host's connectToServer implementation.
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import {
+  Client,
+  type Transport,
+  type VersionNegotiationOptions,
+} from '@modelcontextprotocol/client'
+import type { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type { McpClientDependencies } from './interfaces.js'
 import type { ConnectedMCPServer, ScopedMcpServerConfig } from './types.js'
 
@@ -38,6 +40,13 @@ export interface CreateClientOptions {
   websiteUrl?: string
   /** Root URI for ListRoots requests (defaults to current working directory) */
   rootUri?: string
+  /**
+   * Protocol-era negotiation. Omitted means the SDK default, which is
+   * `'legacy'` — the plain 2025 `initialize` handshake. The host decides the
+   * posture (occ derives it from the compiled `MCP_2026` flag); this package
+   * stays free of build-time flags.
+   */
+  versionNegotiation?: VersionNegotiationOptions
 }
 
 /**
@@ -58,11 +67,14 @@ export function createMcpClient(options: CreateClientOptions): Client {
         roots: {},
         elicitation: {},
       },
+      ...(options.versionNegotiation
+        ? { versionNegotiation: options.versionNegotiation }
+        : {}),
     },
   )
 
-  // Register default ListRoots handler
-  client.setRequestHandler(ListRootsRequestSchema, async () => ({
+  // Register default ListRoots handler. v2 keys handlers by method name.
+  client.setRequestHandler('roots/list', async () => ({
     roots: [
       {
         uri: options.rootUri ?? `file://${process.cwd()}`,
@@ -167,12 +179,34 @@ export function isTerminalConnectionError(msg: string): boolean {
 }
 
 /**
+ * The HTTP status an MCP transport error carries, across both SDK
+ * generations.
+ *
+ * v1's `StreamableHTTPError` put the status in a NUMERIC `code`. v2's
+ * `SdkHttpError` puts a descriptive string in `code` (e.g.
+ * `'CLIENT_HTTP_NOT_IMPLEMENTED'`) and the status in `data.status`, exposed
+ * through a `status` getter. Reading both keeps the 401 / 404-session
+ * classifications working while the two generations coexist.
+ */
+export function getMcpHttpStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined
+  }
+  const candidate = error as { status?: unknown; code?: unknown }
+  if (typeof candidate.status === 'number') {
+    return candidate.status
+  }
+  if (typeof candidate.code === 'number') {
+    return candidate.code
+  }
+  return undefined
+}
+
+/**
  * Detects MCP "Session not found" errors (HTTP 404 + JSON-RPC code -32001).
  */
 export function isMcpSessionExpiredError(error: Error): boolean {
-  const httpStatus =
-    'code' in error ? (error as Error & { code?: number }).code : undefined
-  if (httpStatus !== 404) {
+  if (getMcpHttpStatus(error) !== 404) {
     return false
   }
   return (

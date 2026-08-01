@@ -16,7 +16,7 @@
  * must explicitly opt in via channelsEnabled: true in managed settings.
  */
 
-import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js'
+import type { ServerCapabilities } from '@modelcontextprotocol/client'
 import type { AnyObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js'
 import { z } from 'zod/v4'
 import { type ChannelEntry, getAllowedChannels } from '../../bootstrap/state.js'
@@ -30,15 +30,28 @@ import {
   getChannelAllowlist,
 } from './channelAllowlist.js'
 
+export const CHANNEL_MESSAGE_METHOD = 'notifications/claude/channel'
+
+/**
+ * The `params` half of the inbound channel message. The v2 SDK registers
+ * custom notification handlers as `(method, { params }, handler)` — the
+ * method name is the key, and only the params are schema-validated — so the
+ * params schema is what handlers need. The full notification schema below is
+ * kept for documentation and for anything still validating whole messages.
+ */
+export const ChannelMessageParamsSchema = lazySchema(() =>
+  z.object({
+    content: z.string(),
+    // Opaque passthrough — thread_id, user, whatever the channel wants the
+    // model to see. Rendered as attributes on the <channel> tag.
+    meta: z.record(z.string(), z.string()).optional(),
+  }),
+)
+
 export const ChannelMessageNotificationSchema = lazySchema(() =>
   z.object({
-    method: z.literal('notifications/claude/channel'),
-    params: z.object({
-      content: z.string(),
-      // Opaque passthrough — thread_id, user, whatever the channel wants the
-      // model to see. Rendered as attributes on the <channel> tag.
-      meta: z.record(z.string(), z.string()).optional(),
-    }),
+    method: z.literal(CHANNEL_MESSAGE_METHOD),
+    params: ChannelMessageParamsSchema(),
   }),
 )
 
@@ -57,13 +70,17 @@ export const ChannelMessageNotificationSchema = lazySchema(() =>
  */
 export const CHANNEL_PERMISSION_METHOD =
   'notifications/claude/channel/permission'
+export const ChannelPermissionParamsSchema = lazySchema(() =>
+  z.object({
+    request_id: z.string(),
+    behavior: z.enum(['allow', 'deny']),
+  }),
+)
+
 export const ChannelPermissionNotificationSchema = lazySchema(() =>
   z.object({
     method: z.literal(CHANNEL_PERMISSION_METHOD),
-    params: z.object({
-      request_id: z.string(),
-      behavior: z.enum(['allow', 'deny']),
-    }),
+    params: ChannelPermissionParamsSchema(),
   }),
 )
 

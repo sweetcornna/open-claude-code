@@ -94,6 +94,7 @@ export {
   withConnectionTimeout,
   captureStderr,
   isTerminalConnectionError,
+  getMcpHttpStatus,
   isMcpSessionExpiredError,
   installConnectionMonitor,
   terminateWithSignalEscalation,
