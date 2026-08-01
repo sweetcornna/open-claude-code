@@ -73,6 +73,24 @@ export type LoadedFrom =
   | 'bundled'
   | 'mcp'
 
+/** Maximum skill name length permitted by the agentskills.io spec. */
+export const MAX_SKILL_NAME_LENGTH = 64
+
+const SPEC_CONFORMANT_SKILL_NAME_REGEX = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+
+/**
+ * Whether a skill directory name conforms to the agentskills.io naming rules:
+ * lowercase alphanumerics and hyphens, 1..64 characters, no leading or
+ * trailing hyphen.
+ */
+export function isSpecConformantSkillName(name: string): boolean {
+  return (
+    name.length >= 1 &&
+    name.length <= MAX_SKILL_NAME_LENGTH &&
+    SPEC_CONFORMANT_SKILL_NAME_REGEX.test(name)
+  )
+}
+
 /**
  * Returns a claude config directory path for a given source.
  */
@@ -178,6 +196,37 @@ function parseSkillPaths(frontmatter: FrontmatterData): string[] | undefined {
   return patterns
 }
 
+/** Parses a non-empty skill license string. */
+function parseSkillLicense(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+/** Parses a string or plain-object skill compatibility declaration. */
+function parseSkillCompatibility(
+  value: unknown,
+): string | Record<string, unknown> | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  }
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return undefined
+}
+
+/** Parses plain-object author-defined skill metadata. */
+function parseSkillMetadata(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return undefined
+}
+
 /**
  * Parses all skill frontmatter fields that are shared between file-based and
  * MCP skill loading. Caller supplies the resolved skill name and the
@@ -205,6 +254,9 @@ export function parseSkillFrontmatterFields(
   agent: string | undefined
   effort: EffortValue | undefined
   shell: FrontmatterShell | undefined
+  license: string | undefined
+  compatibility: string | Record<string, unknown> | undefined
+  metadata: Record<string, unknown> | undefined
 } {
   const validatedDescription = coerceDescriptionToString(
     frontmatter.description,
@@ -262,6 +314,9 @@ export function parseSkillFrontmatterFields(
     agent: frontmatter.agent as string | undefined,
     effort,
     shell: parseShellFrontmatter(frontmatter.shell, resolvedName),
+    license: parseSkillLicense(frontmatter.license),
+    compatibility: parseSkillCompatibility(frontmatter.compatibility),
+    metadata: parseSkillMetadata(frontmatter.metadata),
   }
 }
 
@@ -291,6 +346,9 @@ export function createSkillCommand({
   paths,
   effort,
   shell,
+  license,
+  compatibility,
+  metadata,
 }: {
   skillName: string
   displayName: string | undefined
@@ -314,6 +372,9 @@ export function createSkillCommand({
   paths: string[] | undefined
   effort: EffortValue | undefined
   shell: FrontmatterShell | undefined
+  license: string | undefined
+  compatibility: string | Record<string, unknown> | undefined
+  metadata: Record<string, unknown> | undefined
 }): Command {
   return {
     type: 'prompt',
@@ -332,6 +393,9 @@ export function createSkillCommand({
     agent,
     effort,
     paths,
+    license,
+    compatibility,
+    metadata,
     contentLength: markdownContent.length,
     isHidden: !userInvocable,
     progressMessage: 'running',
@@ -451,6 +515,13 @@ async function loadSkillsFromSkillsDir(
         )
 
         const skillName = entry.name
+        if (!isSpecConformantSkillName(skillName)) {
+          logForDebugging(
+            `[skills] skill name '${skillName}' (${skillFilePath}) does not conform to the agentskills.io naming rules ` +
+              `(lowercase alphanumerics and hyphens, max ${MAX_SKILL_NAME_LENGTH} chars, no leading/trailing hyphen); loading it anyway`,
+            { level: 'warn' },
+          )
+        }
         const parsed = parseSkillFrontmatterFields(
           frontmatter,
           markdownContent,

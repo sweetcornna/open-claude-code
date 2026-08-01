@@ -50,6 +50,12 @@ export type PromptCommand = {
   // Glob patterns for file paths this skill applies to
   // When set, the skill is only visible after the model touches matching files
   paths?: string[]
+  /** agentskills.io passthrough: SPDX license identifier from SKILL.md frontmatter. */
+  license?: string
+  /** agentskills.io passthrough: free-form compatibility declaration. */
+  compatibility?: string | Record<string, unknown>
+  /** agentskills.io passthrough: arbitrary author-defined metadata. */
+  metadata?: Record<string, unknown>
   getPromptForCommand(
     args: string,
     context: ToolUseContext,
