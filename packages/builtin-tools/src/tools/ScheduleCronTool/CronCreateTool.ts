@@ -11,7 +11,7 @@ import {
   nextCronRunMs,
 } from 'src/utils/cronTasks.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { semanticBoolean } from 'src/utils/semanticBoolean.js'
+import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js'
 import { getTeammateContext } from 'src/utils/teammateContext.js'
 import {
   buildCronCreateDescription,

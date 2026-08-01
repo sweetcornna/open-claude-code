@@ -12,7 +12,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { Tools } from 'src/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { buildSubagentLookups, EMPTY_LOOKUPS } from 'src/utils/messages.js';
-import { plural } from 'src/utils/stringUtils.js';
+import { plural } from '@open-claude-code/tool-runtime/stringUtils.js';
 import type { inputSchema, Output, Progress } from './SkillTool.js';
 
 type Input = z.infer<ReturnType<typeof inputSchema>>;
