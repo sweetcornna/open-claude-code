@@ -78,24 +78,23 @@ KAIROS 在系统提示中注入两大段落：
 - 需要等一个*条件*成立 → `Monitor` 的 command 模式跑 until 循环
 - 远程控制 surfaces 通过 `automation_state` 可看到 `standby`；`sleeping` 是仅为兼容旧客户端保留的遗留值，不再发出
 
-### 3.3 Bridge 集成
+### 3.3 远程接入
 
-KAIROS 通过 Bridge Mode（`src/bridge/`）连接到 claude.ai 服务器：
+> **已变更（2026-07）**：KAIROS 原先通过自建的 Bridge Mode（`src/bridge/`）长轮询 claude.ai 服务器。`src/bridge/` 与 `BRIDGE_MODE` 已删除。
+
+现在的远程接入走 ACP：occ 作为 ACP agent（`occ --acp`），客户端由 [Happy](https://github.com/slopus/happy) 提供，`occ remote-control` 把两者接起来。
 
 ```
-claude.ai web/app
+Happy 手机 App / Web
       │
-      ▼ (HTTPS long-poll)
+      ▼ (E2E 加密，服务端可自托管)
 ┌──────────────────────┐
-│  Bridge API Client   │  src/bridge/bridgeApi.ts
-│  (register/poll/     │
-│   acknowledge)       │
+│  Happy Server        │
 └──────────┬───────────┘
-           │
+           │ ACP over stdio
            ▼
 ┌──────────────────────┐
-│  Session Runner      │  src/bridge/sessionRunner.ts
-│  (创建/恢复 REPL)     │
+│  occ ACP Agent       │  src/services/acp/
 └──────────┬───────────┘
            │
            ▼
@@ -105,29 +104,7 @@ claude.ai web/app
 └──────────────────────┘
 ```
 
-### 3.4 数据流
-
-```
-用户从 claude.ai 发送消息
-         │
-         ▼
-Bridge pollForWork() 收到 WorkResponse
-         │
-         ▼
-acknowledgeWork() 确认接收
-         │
-         ▼
-sessionRunner 创建/恢复 REPL session
-         │
-         ▼
-用户消息注入到 REPL 对话
-         │
-         ▼
-模型处理 → 工具调用 → BriefTool 结构化输出
-         │
-         ▼
-结果通过 Bridge API 回传到 claude.ai
-```
+KAIROS 的本地能力（tick 调度、Brief 结构化输出、terminal focus 感知）不依赖任何远程传输，单机也完整可用。
 
 ## 四、关键设计决策
 
@@ -135,7 +112,7 @@ sessionRunner 创建/恢复 REPL session
 2. **KAIROS ⊃ PROACTIVE**：所有 proactive 检查都包含 KAIROS，无需同时开启两个 flag
 3. **Brief 显示/行为分离**：`/brief` toggle 只控制 UI 过滤，模型始终可以使用 BriefTool
 4. **Terminal Focus 感知**：模型根据用户是否在看终端自动调节自主程度
-5. **GrowthBook 门控**：部分功能（如推送通知）即使 feature flag 开启还需要服务端 GrowthBook 开关
+5. **GrowthBook 门控**：部分功能即使 feature flag 开启还需要服务端 GrowthBook 开关
 
 ## 五、使用方式
 
@@ -159,8 +136,8 @@ FEATURE_KAIROS=1 FEATURE_TOKEN_BUDGET=1 bun run dev
 ## 六、外部依赖
 
 - **Anthropic OAuth**：必须使用 claude.ai 订阅登录（非 API key）
-- **GrowthBook**：服务端特性门控（`tengu_ccr_bridge` 等）
-- **Bridge API**：`/v1/environments/bridge` 系列端点
+- **GrowthBook**：服务端特性门控
+- **远程接入**（可选）：Happy CLI（`npm install -g happy-coder`）
 
 ## 七、文件索引
 

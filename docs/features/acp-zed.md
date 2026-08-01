@@ -155,7 +155,16 @@ client.on('sessionUpdate', (update) => {
 })
 ```
 
-## 五、ACP 协议支持矩阵
+## 五、和 Remote Control 的关系
+
+同一个 ACP agent 有两种用法：
+
+- **编辑器直连**（本文）—— Zed / JetBrains 直接 spawn `occ --acp`，走 stdio，不需要任何中间件。
+- **手机 / Web 远程** —— `occ remote-control` 把 `occ --acp` 交给 [Happy](https://github.com/slopus/happy)，由它提供客户端、端到端加密和（可自托管的）中继。见 [Remote Control](./remote-control-self-hosting.md)。
+
+occ 自己不再有远程控制的传输层实现：`packages/acp-link/`（WS↔ACP 代理）和 `packages/remote-control-server/` 已删除，原先用 `acp-link occ-bun -- --acp` 的场景改用 `happy acp -- occ --acp`（即 `occ remote-control`）。
+
+## 六、ACP 协议支持矩阵
 
 | 方法 | 状态 | 说明 |
 |------|------|------|

@@ -40,7 +40,6 @@ ignore:
   - "packages/image-processor-napi/**"
   - "packages/modifiers-napi/**"
   - "packages/url-handler-napi/**"
-  - "packages/remote-control-server/web/**"
   - "src/types/**"
   - "**/*.d.ts"
   - "build.ts"

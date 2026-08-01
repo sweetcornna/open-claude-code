@@ -105,7 +105,7 @@ bun run build    # 构建
 | **🧠 Ultracode 多 Agent 编排** | `/ultracode` + `Workflow` 工具跑确定性 JS 脚本（`agent`/`pipeline`/`parallel`/`phase`），`/workflows` 双栏监控面板，支持 journal 重放与并发上限 | [文档](./docs/features/workflow-scripts.md) |
 | **📦 Artifacts** | 模型把 HTML/看板/报告上传到公开 URL（7d/30d 自动过期），Cloudflare Worker + R2 可自托管 | [说明](./packages/cloud-artifacts/README.md) |
 | **ACP 协议支持** | 接入 Zed、Cursor 等 IDE，支持会话恢复、Skills、权限桥接 | [文档](./docs/features/acp-zed.md) |
-| **Remote Control 私有部署** | Docker 自托管远程界面，手机上也能看 | [文档](./docs/features/remote-control-self-hosting.md) |
+| **Remote Control** | `occ remote-control` 把会话交给 [Happy](https://github.com/slopus/happy)（手机 / Web / 端到端加密），走的是 occ 自己的 ACP agent；服务端可自托管 | [文档](./docs/features/remote-control-self-hosting.md) |
 | **Langfuse 监控** | 每次 agent loop 的细节都能看到，可一键转为数据集 | [文档](./docs/features/langfuse-monitoring.md) |
 | **Web Search** | 内置网页搜索，支持 Bing / Brave | [文档](./docs/features/web-browser-tool.md) |
 | **Poor Mode** | 穷鬼模式，关掉记忆提取和键入建议，大幅减少并发请求 | `/poor` 开关 |
