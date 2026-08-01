@@ -1,5 +1,5 @@
 import type { ScreenshotResult } from '../executor.js'
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult } from '@modelcontextprotocol/server'
 
 /**
  * Categorical error classes for the cu_tool_call telemetry event. Never

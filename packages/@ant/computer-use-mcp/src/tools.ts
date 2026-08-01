@@ -10,7 +10,7 @@
  * `scaleCoord` — both must agree or clicks land in the wrong space.
  */
 
-import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+import type { Tool } from '@modelcontextprotocol/server'
 
 import type { CoordinateMode } from './types.js'
 

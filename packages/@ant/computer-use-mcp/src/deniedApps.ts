@@ -26,7 +26,8 @@
  *
  * Keep this file **import-free** (like sentinelApps.ts) — the renderer may
  * import it via a package.json subpath export, and pulling in
- * `@modelcontextprotocol/sdk` (a devDep) through the index → mcpServer chain
+ * `@modelcontextprotocol/server` (not a renderer dependency) through the
+ * index → mcpServer chain
  * would fail module resolution in Next.js. The `CuAppPermTier` type is
  * duplicated as a string literal below rather than imported.
  */

@@ -17,12 +17,8 @@
  *   is the same either way.
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js'
+import { Server } from '@modelcontextprotocol/server'
+import type { CallToolResult } from '@modelcontextprotocol/server'
 
 import type { ScreenshotResult } from './executor.js'
 import type { CuCallToolResult } from './toolCalls.js'
@@ -269,14 +265,14 @@ export function createComputerUseMcpServer(
     coordinateMode,
   )
 
-  server.setRequestHandler(ListToolsRequestSchema, async () =>
+  server.setRequestHandler('tools/list', async () =>
     adapter.isDisabled() ? { tools: [] } : { tools },
   )
 
   if (context) {
     const dispatch = bindSessionContext(adapter, coordinateMode, context)
     server.setRequestHandler(
-      CallToolRequestSchema,
+      'tools/call',
       async (request): Promise<CallToolResult> => {
         const {
           screenshot: _s,
@@ -293,7 +289,7 @@ export function createComputerUseMcpServer(
   // server over MCP transport WITHOUT going through a binder (a wiring
   // regression). Clear error instead of silent failure.
   server.setRequestHandler(
-    CallToolRequestSchema,
+    'tools/call',
     async (request): Promise<CallToolResult> => {
       logger.warn(
         `[${serverName}] tool call "${request.params.name}" reached the stub handler — no session context bound. Per-session state unavailable.`,
