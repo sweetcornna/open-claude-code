@@ -642,7 +642,10 @@ export async function addMcpConfig(
     const { isComputerUseMCPServer } = await import(
       '../../utils/computerUse/common.js'
     )
-    if (isComputerUseMCPServer(name)) {
+    const { shouldUseBuiltinComputerUse } = await import(
+      '../../utils/computerUse/gates.js'
+    )
+    if (shouldUseBuiltinComputerUse() && isComputerUseMCPServer(name)) {
       throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
     }
   }
@@ -1510,20 +1513,19 @@ export function areMcpConfigsAllowedWithEnterpriseMcpConfig(
  * enabledMcpServers. They show up in /mcp as disabled until the user enables them.
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
-const DEFAULT_DISABLED_BUILTINS: Set<string> = new Set([
-  'mcp-chrome',
-  ...(feature('CHICAGO_MCP')
-    ? [
-        (
-          require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')
-        ).COMPUTER_USE_MCP_SERVER_NAME,
-      ]
-    : []),
-])
+const DEFAULT_DISABLED_BUILTINS: Set<string> = new Set(['mcp-chrome'])
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 function isDefaultDisabledBuiltin(name: string): boolean {
-  return DEFAULT_DISABLED_BUILTINS.has(name)
+  if (DEFAULT_DISABLED_BUILTINS.has(name)) return true
+  if (feature('CHICAGO_MCP')) {
+    const { isComputerUseMCPServer } =
+      require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')
+    const { shouldUseBuiltinComputerUse } =
+      require('../../utils/computerUse/gates.js') as typeof import('../../utils/computerUse/gates.js')
+    return isComputerUseMCPServer(name) && shouldUseBuiltinComputerUse()
+  }
+  return false
 }
 
 /**

@@ -1873,7 +1873,8 @@ async function run(): Promise<CommanderCommand> {
             const { isComputerUseMCPServer, COMPUTER_USE_MCP_SERVER_NAME } = await import(
               'src/utils/computerUse/common.js'
             );
-            if (nonSdkConfigNames.some(isComputerUseMCPServer)) {
+            const { shouldUseBuiltinComputerUse } = await import('src/utils/computerUse/gates.js');
+            if (shouldUseBuiltinComputerUse() && nonSdkConfigNames.some(isComputerUseMCPServer)) {
               reservedNameError = `Invalid MCP configuration: "${COMPUTER_USE_MCP_SERVER_NAME}" is a reserved MCP name.`;
             }
           }
@@ -1991,7 +1992,8 @@ async function run(): Promise<CommanderCommand> {
       if (feature('CHICAGO_MCP') && getPlatform() !== 'unknown' && !getIsNonInteractiveSession()) {
         try {
           const { getChicagoEnabled } = await import('src/utils/computerUse/gates.js');
-          if (getChicagoEnabled()) {
+          const { shouldUseBuiltinComputerUse } = await import('src/utils/computerUse/gates.js');
+          if (getChicagoEnabled() && shouldUseBuiltinComputerUse()) {
             const { setupComputerUseMCP } = await import('src/utils/computerUse/setup.js');
             const { mcpConfig, allowedTools: cuTools } = setupComputerUseMCP();
             dynamicMcpConfig = {

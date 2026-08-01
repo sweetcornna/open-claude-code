@@ -2,6 +2,8 @@ import type { CoordinateMode, CuSubGates } from '@ant/computer-use-mcp/types'
 
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { isEnvTruthy } from '../envUtils.js'
+import { getInitialSettings } from '../settings/settings.js'
+import { isBuiltinComputerUseBackend } from './backend.js'
 
 type ChicagoConfig = CuSubGates & {
   enabled: boolean
@@ -52,6 +54,10 @@ export function getChicagoEnabled(): boolean {
     return false
   }
   return hasRequiredSubscription() && readConfig().enabled
+}
+
+export function shouldUseBuiltinComputerUse(): boolean {
+  return isBuiltinComputerUseBackend(getInitialSettings())
 }
 
 export function getChicagoSubGates(): CuSubGates {

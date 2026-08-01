@@ -371,6 +371,17 @@ export const SettingsSchema = lazySchema(() =>
       permissions: PermissionsSchema()
         .optional()
         .describe('Tool usage permissions configuration'),
+      computerUse: z
+        .object({
+          backend: z
+            .enum(['builtin', 'external'])
+            .optional()
+            .describe(
+              'Computer Use backend. "builtin" uses the guarded in-process implementation (default); "external" uses a separately configured MCP server.',
+            ),
+        })
+        .optional()
+        .describe('Computer Use backend configuration'),
       modelType: z
         .enum(['anthropic', 'openai', 'gemini', 'grok'])
         .optional()
