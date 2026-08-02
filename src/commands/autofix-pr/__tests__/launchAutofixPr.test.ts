@@ -118,7 +118,6 @@ mock.module('src/bootstrap/state.js', () => ({
   getProjectRoot: () => '/mock/project',
   setCwdState: noop,
   setOriginalCwd: noop,
-  setLastAPIRequestMessages: noop,
   getIsNonInteractiveSession: () => false,
   addSlowOperation: noop,
 }))

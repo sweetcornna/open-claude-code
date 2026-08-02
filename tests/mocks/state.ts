@@ -80,8 +80,6 @@ export function stateMock() {
     // API request state
     setLastAPIRequest: noop,
     getLastAPIRequest: () => null,
-    setLastAPIRequestMessages: noop,
-    getLastAPIRequestMessages: () => [],
 
     // Various getters (add as needed)
     getIsNonInteractiveSession: () => false,
