@@ -21,6 +21,7 @@
  * Run:
  *   bun run scripts/bench-message-lookups.ts [turns] [repeats]
  */
+import { heapStats } from 'bun:jsc'
 import {
   assistantToolUse,
   fixtureUuid,
@@ -220,13 +221,17 @@ function timeReplay(
 }
 
 /**
- * heapUsed once collection has settled. One `Bun.gc(true)` is not enough after
+ * Heap size once collection has settled. One `Bun.gc(true)` is not enough after
  * a replay has produced a few hundred MB of garbage — JSC frees the rest on
  * later passes, which is how this probe first reported a *negative* size.
+ *
+ * Deliberately `bun:jsc` rather than `process.memoryUsage().heapUsed`: on
+ * Bun 1.3.13 heapUsed is a frozen constant (same value before and after
+ * allocating 200k objects), so it cannot measure anything.
  */
 function settledHeapUsed(): number {
   for (let i = 0; i < 4; i++) Bun.gc(true)
-  return process.memoryUsage().heapUsed
+  return heapStats().heapSize
 }
 
 /**
