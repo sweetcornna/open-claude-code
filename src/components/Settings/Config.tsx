@@ -3,6 +3,7 @@ import { feature } from 'bun:bundle';
 import { type KeyboardEvent, Box, Text, useTheme, useThemeSetting, useTerminalFocus } from '@anthropic/ink';
 import * as React from 'react';
 import { useState, useCallback } from 'react';
+import { useSearchExclusionKeys } from '../../keybindings/searchExclusions.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import figures from 'figures';
 import {
@@ -82,6 +83,25 @@ import {
 } from '../../utils/model/fastMode.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import { getPlatform } from '../../utils/process/platform.js';
+
+// The actions the config panel handles (useKeybinding/useKeybindings below).
+// Type-to-search must not swallow keys bound to them; module-level so the
+// useSearchExclusionKeys memo stays keyed on a stable identity. Deliberately
+// excludes settings:retry — this panel doesn't handle it, so its key ('r' by
+// default) keeps typing into the search box.
+const CONFIG_LIST_KEY_CONTEXTS = ['Settings', 'Global'];
+const CONFIG_LIST_KEY_ACTIONS = [
+  'select:previous',
+  'select:next',
+  'scroll:lineUp',
+  'scroll:lineDown',
+  'select:accept',
+  'select:previousValue',
+  'select:nextValue',
+  'settings:search',
+  'settings:close',
+  'confirm:no',
+];
 
 type Props = {
   onClose: (result?: string, options?: { display?: CommandResultDisplay }) => void;
@@ -1484,6 +1504,8 @@ export function Config({
     adjustScrollOffset(newIndex);
   };
 
+  const searchExclusionKeys = useSearchExclusionKeys(CONFIG_LIST_KEY_CONTEXTS, CONFIG_LIST_KEY_ACTIONS);
+
   useKeybindings(
     {
       'select:previous': () => {
@@ -1554,18 +1576,20 @@ export function Config({
         return;
       }
       // Fallback: printable characters (other than those bound to actions)
-      // enter search mode. Carve out j/k// — useKeybindings (still on the
-      // useInput path) consumes these via stopImmediatePropagation, but
-      // onKeyDown dispatches independently so we must skip them explicitly.
+      // enter search mode. Carve out the keys bound to this panel's actions
+      // (j/k// by default) — useKeybindings (still on the useInput path)
+      // consumes these via stopImmediatePropagation, but onKeyDown dispatches
+      // independently so we must skip them explicitly. Derived from the live
+      // binding table so user rebinds stay consistent.
       if (e.ctrl || e.meta) return;
-      if (e.key === 'j' || e.key === 'k' || e.key === '/') return;
+      if (searchExclusionKeys.has(e.key)) return;
       if (e.key.length === 1 && e.key !== ' ') {
         e.preventDefault();
         setIsSearchMode(true);
         setSearchQuery(e.key);
       }
     },
-    [showSubmenu, headerFocused, isSearchMode, searchQuery, setSearchQuery, toggleSetting],
+    [showSubmenu, headerFocused, isSearchMode, searchQuery, setSearchQuery, toggleSetting, searchExclusionKeys],
   );
 
   return (

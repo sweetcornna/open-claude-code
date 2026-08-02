@@ -10,6 +10,7 @@ import { Select } from '../../../components/CustomSelect/select.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useSearchInput } from '../../../hooks/useSearchInput.js';
 import { type KeyboardEvent, Box, Text, useTerminalFocus } from '@anthropic/ink';
+import { useSearchExclusionKeys } from '../../../keybindings/searchExclusions.js';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
 import { type AutoModeDenial, getAutoModeDenials } from '../../../utils/permissions/autoModeDenials.js';
 import type {
@@ -37,6 +38,13 @@ import { PermissionRuleInput } from './PermissionRuleInput.js';
 import { RecentDenialsTab } from './RecentDenialsTab.js';
 import { RemoveWorkspaceDirectory } from './RemoveWorkspaceDirectory.js';
 import { WorkspaceTab } from './WorkspaceTab.js';
+
+// Actions handled inside this dialog whose keys type-to-search must not
+// swallow: list navigation comes from the child Select ('Select' context,
+// j/k by default) and dismissal from confirm:no. Module-level so the
+// useSearchExclusionKeys memo stays keyed on a stable identity.
+const RULES_LIST_KEY_CONTEXTS = ['Select', 'Confirmation', 'Global'];
+const RULES_LIST_KEY_ACTIONS = ['select:previous', 'select:next', 'select:accept', 'confirm:no'];
 
 type TabType = 'recent' | 'allow' | 'ask' | 'deny' | 'workspace';
 
@@ -377,6 +385,8 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
     },
   });
 
+  const searchExclusionKeys = useSearchExclusionKeys(RULES_LIST_KEY_CONTEXTS, RULES_LIST_KEY_ACTIONS);
+
   // Handle entering search mode
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -394,11 +404,12 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
         setSearchQuery('');
       } else if (
         e.key.length === 1 &&
-        // Don't enter search mode for vim-nav / space / retry key
-        e.key !== 'j' &&
-        e.key !== 'k' &&
-        e.key !== 'm' &&
-        e.key !== 'i' &&
+        // Keys bound to this dialog's actions (vim-nav j/k by default),
+        // derived from the live binding table so user rebinds stay
+        // consistent.
+        !searchExclusionKeys.has(e.key) &&
+        // 'r' retries a denial via RecentDenialsTab's raw useInput — a
+        // view-specific key, not a rebindable action, so it stays hardcoded.
         e.key !== 'r' &&
         e.key !== ' '
       ) {
@@ -407,7 +418,7 @@ export function PermissionRuleList({ onExit, initialTab, onRetryDenials }: Props
         setSearchQuery(e.key);
       }
     },
-    [isSearchModeActive, isSearchMode, setSearchQuery],
+    [isSearchModeActive, isSearchMode, setSearchQuery, searchExclusionKeys],
   );
 
   const handleToolSelect = useCallback(
