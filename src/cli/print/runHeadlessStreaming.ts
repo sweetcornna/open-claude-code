@@ -72,16 +72,6 @@ import {
 } from 'src/utils/sessionStorage.js'
 import { incrementPromptCount } from 'src/utils/commitAttribution.js'
 import {
-  clearServerCache,
-  reconnectMcpServerImpl,
-} from 'src/services/mcp/client.js'
-import {
-  getMcpConfigByName,
-  setMcpServerEnabled,
-} from 'src/services/mcp/config.js'
-import { getMcpPrefix } from 'src/services/mcp/mcpStringUtils.js'
-import { commandBelongsToServer } from 'src/services/mcp/utils.js'
-import {
   toInternalMessages,
   toSDKRateLimitInfo,
 } from 'src/utils/messages/mappers.js'
@@ -124,10 +114,6 @@ import {
   handleSetPermissionMode,
 } from './controlHandlers.js'
 import {
-  handleChannelEnable,
-  reregisterChannelHandlerAfterReconnect,
-} from './channels.js'
-import {
   proactiveModule,
   receivedMessageUuids,
   trackReceivedMessageUuid,
@@ -142,7 +128,6 @@ import {
   applyMcpServerChanges,
   buildAllTools,
   buildMcpServerStatuses,
-  registerElicitationHandlers,
   updateSdkMcp,
 } from './headlessMcpRuntime.js'
 import {
@@ -156,6 +141,11 @@ import {
   sendControlResponseError,
   sendControlResponseSuccess,
 } from './headlessControlResponses.js'
+import {
+  handleChannelEnableRequest,
+  handleMcpReconnect,
+  handleMcpToggle,
+} from './headlessMcpControl.js'
 import {
   handleClaudeAuthenticate,
   handleClaudeOAuthCallback,
@@ -766,194 +756,11 @@ export function runHeadlessStreaming(
             sendControlResponseError(state, msg, errorMessage(error))
           }
         } else if (msg.request.subtype === 'mcp_reconnect') {
-          const currentAppState = getAppState()
-          const { serverName } = msg.request
-          state.elicitationRegistered.delete(serverName)
-          // Config-existence gate must cover the SAME sources as the
-          // operations below. SDK-injected servers (query({mcpServers:{...}}))
-          // and dynamically-added servers were missing here, so
-          // toggleMcpServer/reconnect returned "Server not found" even though
-          // the disconnect/reconnect would have worked (gh-31339 / CC-314).
-          const config =
-            getMcpConfigByName(serverName) ??
-            mcpClients.find(c => c.name === serverName)?.config ??
-            state.sdkClients.find(c => c.name === serverName)?.config ??
-            state.dynamicMcpState.clients.find(c => c.name === serverName)
-              ?.config ??
-            currentAppState.mcp.clients.find(c => c.name === serverName)
-              ?.config ??
-            null
-          if (!config) {
-            sendControlResponseError(
-              state,
-              msg,
-              `Server not found: ${serverName}`,
-            )
-          } else {
-            const result = await reconnectMcpServerImpl(serverName, config)
-            // Update appState.mcp with the new client, tools, commands, and resources
-            const prefix = getMcpPrefix(serverName)
-            setAppState(prev => ({
-              ...prev,
-              mcp: {
-                ...prev.mcp,
-                clients: prev.mcp.clients.map(c =>
-                  c.name === serverName ? result.client : c,
-                ),
-                tools: [
-                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
-                  ...result.tools,
-                ],
-                commands: [
-                  ...reject(prev.mcp.commands, c =>
-                    commandBelongsToServer(c, serverName),
-                  ),
-                  ...result.commands,
-                ],
-                resources:
-                  result.resources && result.resources.length > 0
-                    ? { ...prev.mcp.resources, [serverName]: result.resources }
-                    : omit(prev.mcp.resources, serverName),
-              },
-            }))
-            // Also update dynamicMcpState so run() picks up the new tools
-            // on the next turn (run() reads dynamicMcpState, not appState)
-            state.dynamicMcpState = {
-              ...state.dynamicMcpState,
-              clients: [
-                ...state.dynamicMcpState.clients.filter(
-                  c => c.name !== serverName,
-                ),
-                result.client,
-              ],
-              tools: [
-                ...state.dynamicMcpState.tools.filter(
-                  t => !t.name?.startsWith(prefix),
-                ),
-                ...result.tools,
-              ],
-            }
-            if (result.client.type === 'connected') {
-              registerElicitationHandlers(state, [result.client])
-              reregisterChannelHandlerAfterReconnect(result.client)
-              sendControlResponseSuccess(state, msg)
-            } else {
-              const errorMessage =
-                result.client.type === 'failed'
-                  ? (result.client.error ?? 'Connection failed')
-                  : `Server status: ${result.client.type}`
-              sendControlResponseError(state, msg, errorMessage)
-            }
-          }
+          await handleMcpReconnect(state, msg, msg.request)
         } else if (msg.request.subtype === 'mcp_toggle') {
-          const currentAppState = getAppState()
-          const { serverName, enabled } = msg.request
-          state.elicitationRegistered.delete(serverName)
-          // Gate must match the client-lookup spread below (which
-          // includes sdkClients and dynamicMcpState.clients). Same fix as
-          // mcp_reconnect above (gh-31339 / CC-314).
-          const config =
-            getMcpConfigByName(serverName) ??
-            mcpClients.find(c => c.name === serverName)?.config ??
-            state.sdkClients.find(c => c.name === serverName)?.config ??
-            state.dynamicMcpState.clients.find(c => c.name === serverName)
-              ?.config ??
-            currentAppState.mcp.clients.find(c => c.name === serverName)
-              ?.config ??
-            null
-
-          if (!config) {
-            sendControlResponseError(
-              state,
-              msg,
-              `Server not found: ${serverName}`,
-            )
-          } else if (!enabled) {
-            // Disabling: persist + disconnect (matches TUI toggleMcpServer behavior)
-            setMcpServerEnabled(serverName, false)
-            const client = [
-              ...mcpClients,
-              ...state.sdkClients,
-              ...state.dynamicMcpState.clients,
-              ...currentAppState.mcp.clients,
-            ].find(c => c.name === serverName)
-            if (client && client.type === 'connected') {
-              await clearServerCache(serverName, config)
-            }
-            // Update appState.mcp to reflect disabled status and remove tools/commands/resources
-            const prefix = getMcpPrefix(serverName)
-            setAppState(prev => ({
-              ...prev,
-              mcp: {
-                ...prev.mcp,
-                clients: prev.mcp.clients.map(c =>
-                  c.name === serverName
-                    ? { name: serverName, type: 'disabled' as const, config }
-                    : c,
-                ),
-                tools: reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
-                commands: reject(prev.mcp.commands, c =>
-                  commandBelongsToServer(c, serverName),
-                ),
-                resources: omit(prev.mcp.resources, serverName),
-              },
-            }))
-            sendControlResponseSuccess(state, msg)
-          } else {
-            // Enabling: persist + reconnect
-            setMcpServerEnabled(serverName, true)
-            const result = await reconnectMcpServerImpl(serverName, config)
-            // Update appState.mcp with the new client, tools, commands, and resources
-            // This ensures the LLM sees updated tools after enabling the server
-            const prefix = getMcpPrefix(serverName)
-            setAppState(prev => ({
-              ...prev,
-              mcp: {
-                ...prev.mcp,
-                clients: prev.mcp.clients.map(c =>
-                  c.name === serverName ? result.client : c,
-                ),
-                tools: [
-                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
-                  ...result.tools,
-                ],
-                commands: [
-                  ...reject(prev.mcp.commands, c =>
-                    commandBelongsToServer(c, serverName),
-                  ),
-                  ...result.commands,
-                ],
-                resources:
-                  result.resources && result.resources.length > 0
-                    ? { ...prev.mcp.resources, [serverName]: result.resources }
-                    : omit(prev.mcp.resources, serverName),
-              },
-            }))
-            if (result.client.type === 'connected') {
-              registerElicitationHandlers(state, [result.client])
-              reregisterChannelHandlerAfterReconnect(result.client)
-              sendControlResponseSuccess(state, msg)
-            } else {
-              const errorMessage =
-                result.client.type === 'failed'
-                  ? (result.client.error ?? 'Connection failed')
-                  : `Server status: ${result.client.type}`
-              sendControlResponseError(state, msg, errorMessage)
-            }
-          }
+          await handleMcpToggle(state, msg, msg.request)
         } else if (req.subtype === 'channel_enable') {
-          const currentAppState = getAppState()
-          handleChannelEnable(
-            msg.request_id,
-            req.serverName as string,
-            // Pool spread matches mcp_status — all three client sources.
-            [
-              ...currentAppState.mcp.clients,
-              ...state.sdkClients,
-              ...state.dynamicMcpState.clients,
-            ],
-            output,
-          )
+          handleChannelEnableRequest(state, msg, req)
         } else if (req.subtype === 'mcp_authenticate') {
           await handleMcpAuthenticate(state, msg, req)
         } else if (req.subtype === 'mcp_oauth_callback_url') {
