@@ -267,15 +267,15 @@ export function getPluginHookCounts(
 /**
  * Build a map of {hookType: count} from matched hooks.
  */
-export function getHookTypeCounts(
-  hooks: MatchedHook[],
-): Record<string, number> {
+function getHookTypeCounts(hooks: MatchedHook[]): Record<string, number> {
   const counts: Record<string, number> = {}
   for (const h of hooks) {
     counts[h.hook.type] = (counts[h.hook.type] || 0) + 1
   }
   return counts
 }
+
+export { getHookTypeCounts }
 
 function getHooksConfig(
   appState: AppState | undefined,
