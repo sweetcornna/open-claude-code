@@ -878,3 +878,19 @@
 8. **BlobResource 处理**（§7.2）
 9. **agentCapabilities/clientInfo 透传**（§8.6、§8.7）
 10. **ClientCapabilities/ServerCapabilities 类型陈旧**（§8.8）
+
+---
+
+## 2026-08-02 修复状态
+
+> 本节基于 `main @ e1dda9af` 的当前树复核，仅记录后续状态，不改写
+> 2026-06-19 审计时的历史结论。
+
+| 审计条目 | 结论 | 当前树复核依据 |
+|---|---|---|
+| §2.1 | 已不适用 | `unstable_resumeSession` 已以 `replay:false` 进入 `getOrCreateSession`，内存会话和磁盘恢复两条路径均只恢复上下文、不通过 `session/update` 重放历史；ACP 回归测试覆盖两条路径。 |
+| §1.1 / §3.1 / §7.1 | 已不适用 | `initialize` 当前声明 `promptCapabilities.image:false`；`promptToQueryInput` 仍是字符串输入，能力声明与实际支持范围一致。 |
+| §8.1–§8.14 | 已不适用 | `packages/acp-link/` 与 `src/bridge/` 已于 2026-07-31 删除，远程控制改由 Happy 承担；原传输层不再属于当前运行时。 |
+| §4.1 | 维持撤销 | `usage_update` 继续作为 SDK 0.19.0 的 unstable interop 通道发送，避免主流客户端上下文用量显示为 `0/0`。 |
+| §3.2 | 维持撤销 | `PromptResponse.usage` 根字段继续与 `_meta.claudeCode.usage` 镜像并存，沿用 §4.1 的 interop 决策。 |
+| §3.3 | 已不适用 | `forwardSessionUpdates` 已将 Anthropic `stop_reason:'refusal'` 显式映射为 ACP `StopReason::refusal`，并有独立回归测试。 |
