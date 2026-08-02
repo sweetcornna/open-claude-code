@@ -114,9 +114,7 @@ describe('samplingHandler', () => {
     const result = await handler(
       {
         params: {
-          messages: [
-            { role: 'user', content: [{ type: 'text', text: 'hi' }] },
-          ],
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
           maxTokens: 999_999,
         },
       },
@@ -126,10 +124,7 @@ describe('samplingHandler', () => {
     expect(result.stopReason).toBe('maxTokens')
 
     await expect(
-      handler(
-        { params: { messages: [{ role: 'user', content: [] }] } },
-        CTX,
-      ),
+      handler({ params: { messages: [{ role: 'user', content: [] }] } }, CTX),
     ).rejects.toThrow('at least one text message')
   })
 
