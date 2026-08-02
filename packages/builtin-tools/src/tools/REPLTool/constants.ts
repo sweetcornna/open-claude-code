@@ -1,6 +1,6 @@
 // Pure leaf: tool names and static strings only. See BashTool/constants.ts.
 //
-// isReplModeEnabled() used to live here; it needs src/utils/envUtils.js and
+// isReplModeEnabled() used to live here; it needs src/utils/config/envUtils.js and
 // moved to replMode.ts.
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 import { BASH_TOOL_NAME } from '../BashTool/constants.js'

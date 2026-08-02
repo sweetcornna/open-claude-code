@@ -2,7 +2,7 @@
  * REPL mode gate.
  *
  * Split out of constants.ts so that file can stay a pure leaf — this one needs
- * src/utils/envUtils.js.
+ * src/utils/config/envUtils.js.
  */
 import { isEnvDefinedFalsy, isEnvTruthy } from 'src/utils/config/envUtils.js'
 

@@ -81,7 +81,7 @@ export type DenialTrackingState = {
   totalDenials: number
 }
 
-/** Mirrors `src/utils/toolResultStorage.ts`. */
+/** Mirrors `src/utils/tools/toolResultStorage.ts`. */
 export type ContentReplacementState = {
   seenIds: Set<string>
   replacements: Map<string, string>
@@ -188,21 +188,21 @@ export type ThemeColorName =
   | 'rainbow_indigo_shimmer'
   | 'rainbow_violet_shimmer'
 
-/** Mirrors `src/utils/fileHistory.ts`. */
+/** Mirrors `src/utils/filesystem/fileHistory.ts`. */
 export type FileHistoryBackup = {
   backupFileName: string | null
   version: number
   backupTime: Date
 }
 
-/** Mirrors `src/utils/fileHistory.ts`. */
+/** Mirrors `src/utils/filesystem/fileHistory.ts`. */
 export type FileHistorySnapshot = {
   messageId: UUID
   trackedFileBackups: Record<string, FileHistoryBackup>
   timestamp: Date
 }
 
-/** Mirrors `src/utils/fileHistory.ts`. */
+/** Mirrors `src/utils/filesystem/fileHistory.ts`. */
 export type FileHistoryState = {
   snapshots: FileHistorySnapshot[]
   trackedFiles: Set<string>

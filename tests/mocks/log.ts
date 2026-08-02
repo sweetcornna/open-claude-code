@@ -1,8 +1,8 @@
 /**
- * Shared mock for src/utils/log.ts
+ * Shared mock for src/utils/telemetry/log.ts
  *
  * Cuts the bootstrap/state.ts dependency chain (module-level realpathSync + randomUUID).
- * Must be called via mock.module("src/utils/log.ts", logMock) BEFORE any import that
+ * Must be called via mock.module("src/utils/telemetry/log.ts", logMock) BEFORE any import that
  * transitively depends on log.ts.
  *
  * Exported as a factory so each call produces a fresh object (mock.module requirement).
