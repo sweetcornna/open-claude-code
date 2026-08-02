@@ -10,7 +10,7 @@ import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseError
 import { FallbackToolUseRejectedMessage } from 'src/components/FallbackToolUseRejectedMessage.js';
 import { Markdown } from 'src/components/Markdown.js';
 import { Message as MessageComponent } from 'src/components/Message.js';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { ToolUseLoader } from 'src/components/ToolUseLoader.js';
 import { Box, Text } from '@anthropic/ink';
 import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { removeSandboxViolationTags } from 'src/utils/sandbox/sandbox-ui-utils.js';
 import { KeyboardShortcutHint } from '@anthropic/ink';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { OutputLine } from 'src/components/shell/OutputLine.js';
 import { ShellTimeDisplay } from 'src/components/shell/ShellTimeDisplay.js';
 import { Box, Text } from '@anthropic/ink';

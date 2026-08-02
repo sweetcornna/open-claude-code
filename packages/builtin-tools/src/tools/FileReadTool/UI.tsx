@@ -3,7 +3,7 @@ import * as React from 'react';
 import { extractTag } from 'src/utils/messages.js';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';
 import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from 'src/utils/file.js';

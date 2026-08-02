@@ -7,7 +7,7 @@ import type { z } from 'zod/v4';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 
 import { HighlightedCode } from 'src/components/HighlightedCode.js';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { NotebookEditToolUseRejectedMessage } from 'src/components/NotebookEditToolUseRejectedMessage.js';
 import { Box, Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';

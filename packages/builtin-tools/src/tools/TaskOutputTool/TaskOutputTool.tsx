@@ -2,7 +2,7 @@ import React from 'react';
 import { z } from 'zod/v4';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 import { FallbackToolUseRejectedMessage } from 'src/components/FallbackToolUseRejectedMessage.js';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { Box, Text } from '@anthropic/ink';
 import { useShortcutDisplay } from 'src/keybindings/useShortcutDisplay.js';
 import type { TaskType } from 'src/Task.js';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { Text, stringWidth } from '@anthropic/ink';
 import { truncateToWidthNoEllipsis } from 'src/utils/format.js';
 import type { Output } from './TaskStopTool.js';

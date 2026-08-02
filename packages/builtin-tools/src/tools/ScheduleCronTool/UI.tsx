@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { Text } from '@anthropic/ink';
 import { truncate } from 'src/utils/format.js';
 import type { CreateOutput } from './CronCreateTool.js';
