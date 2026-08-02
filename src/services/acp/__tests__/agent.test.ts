@@ -106,11 +106,12 @@ mockModulePreservingExports('../utils.ts', {
   sanitizeTitle: mock((s: string) => s),
 })
 
+const mockReplayHistoryMessages = mock(async () => {})
 mockModulePreservingExports('../bridge.ts', {
   forwardSessionUpdates: mock(async () => ({
     stopReason: 'end_turn' as const,
   })),
-  replayHistoryMessages: mock(async () => {}),
+  replayHistoryMessages: mockReplayHistoryMessages,
   toolInfoFromToolUse: mock(() => ({
     title: 'Test',
     kind: 'other',
@@ -249,6 +250,9 @@ describe('AcpAgent', () => {
     mockListSessionsImpl.mockImplementation(async () => [])
     mockGetOriginalCwd.mockReset()
     mockGetOriginalCwd.mockImplementation(() => '/current/working/dir')
+    mockGetLastSessionLog.mockReset()
+    mockGetLastSessionLog.mockImplementation(async () => null)
+    mockReplayHistoryMessages.mockClear()
     ;(forwardSessionUpdates as ReturnType<typeof mock>).mockReset()
     ;(forwardSessionUpdates as ReturnType<typeof mock>).mockImplementation(
       async () => ({ stopReason: 'end_turn' as const }),
@@ -886,6 +890,38 @@ describe('AcpAgent', () => {
         mcpServers: [],
       } as any)
       expect(agent.sessions.get(sid)).toBe(originalSession)
+    })
+
+    test('does not replay history for an existing in-memory session', async () => {
+      const agent = new AcpAgent(makeConn())
+      const { sessionId } = await agent.newSession({ cwd: '/tmp' } as any)
+
+      await agent.unstable_resumeSession({
+        sessionId,
+        cwd: '/tmp',
+        mcpServers: [],
+      } as any)
+
+      expect(mockGetLastSessionLog).not.toHaveBeenCalled()
+      expect(mockReplayHistoryMessages).not.toHaveBeenCalled()
+    })
+
+    test('restores disk history without replaying it to the client', async () => {
+      mockGetLastSessionLog.mockResolvedValueOnce({
+        messages: [{ type: 'user', message: { content: 'hello' } }],
+      } as any)
+      const agent = new AcpAgent(makeConn())
+
+      await agent.unstable_resumeSession({
+        sessionId: 'resume-with-disk-history',
+        cwd: '/tmp',
+        mcpServers: [],
+      } as any)
+
+      expect(mockGetLastSessionLog).toHaveBeenCalledWith(
+        'resume-with-disk-history',
+      )
+      expect(mockReplayHistoryMessages).not.toHaveBeenCalled()
     })
 
     test('can prompt after resumeSession with previously unknown sessionId', async () => {
