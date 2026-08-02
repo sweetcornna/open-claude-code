@@ -302,7 +302,26 @@ export class Project {
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private activeDrain: Promise<void> | null = null
   private FLUSH_INTERVAL_MS = 100
-  private readonly MAX_CHUNK_BYTES = 100 * 1024 * 1024
+  // How much serialized transcript drainWriteQueue accumulates before it
+  // appends. `content += line` is a JSC rope, so the accumulation itself is
+  // cheap, but the rope has to be flattened into one contiguous string to be
+  // handed to appendFile and then encoded to UTF-8 — so at flush time the line
+  // strings, the flat document and its encoding are all live at once.
+  //
+  // This was 100MB, which the 1000-entry queue cap can actually reach once a
+  // turn produces large tool results (1000 x 96KB lands right on it). Measured
+  // with scripts/bench-transcript-drain.ts on a 93.75MB drain: 286.5MB peak
+  // RSS growth at 100MB, 75.4MB at 4MB — and wall time improves too (87ms ->
+  // 72ms), since flattening one 94MB rope is not free either.
+  //
+  // 4MB, not smaller: a typical drain is a handful of entries and never
+  // reaches the threshold, so it still flushes exactly once. Do NOT "fix" this
+  // further by swapping the rope for array + join, which is the shape the
+  // hydration path uses — measured at the same threshold it is worse (86.9MB
+  // vs 75.4MB), because join allocates the flat result while the array still
+  // holds every piece. The bench keeps that variant around as the rejected
+  // alternative.
+  private readonly MAX_CHUNK_BYTES = 4 * 1024 * 1024
 
   constructor() {}
 
