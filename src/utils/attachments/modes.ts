@@ -1,7 +1,7 @@
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from 'src/types/message.js'
 import { feature } from 'bun:bundle'
-import { getPlanFilePath, getPlan } from '../plans.js'
+import { getPlanFilePath, getPlan } from '../agents/plans.js'
 import {
   hasExitedPlanModeInSession,
   setHasExitedPlanMode,
@@ -14,7 +14,7 @@ import {
   getKairosActive,
 } from '../../bootstrap/state.js'
 import { getLocalISODate } from '../../constants/common.js'
-import { hasUltrathinkKeyword, isUltrathinkEnabled } from '../thinking.js'
+import { hasUltrathinkKeyword, isUltrathinkEnabled } from '../model/thinking.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import {
   AUTO_MODE_ATTACHMENT_CONFIG,

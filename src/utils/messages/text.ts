@@ -14,8 +14,8 @@ import type {
   UserMessage,
 } from '../../types/message.js'
 import type { DeepImmutable } from 'src/types/utils.js'
-import { stripIdeContextTags } from '../displayTags.js'
-import { escapeRegExp } from '../stringUtils.js'
+import { stripIdeContextTags } from '../text/displayTags.js'
+import { escapeRegExp } from '../text/stringUtils.js'
 
 const MEMORY_CORRECTION_HINT =
   "\n\nNote: The user's next message may contain a correction or preference. Pay close attention — if they explain what went wrong or how they'd prefer you to work, consider saving that to memory for future sessions."

@@ -13,13 +13,13 @@ import {
   type PersistedWorktreeSession,
   type TranscriptMessage,
 } from '../../types/logs.js'
-import { isEnvTruthy } from '../envUtils.js'
-import { parseJSONL } from '../json.js'
+import { isEnvTruthy } from '../config/envUtils.js'
+import { parseJSONL } from '../text/json.js'
 import {
   readTranscriptForLoad,
   SKIP_PRECOMPACT_THRESHOLD,
-} from '../sessionStoragePortable.js'
-import type { ContentReplacementRecord } from '../toolResultStorage.js'
+} from '../session/sessionStoragePortable.js'
+import type { ContentReplacementRecord } from '../tools/toolResultStorage.js'
 import { applyPreservedSegmentRelinks } from './conversationChain.js'
 import { MAX_CACHED_SESSION_FILES } from './constants.js'
 import { isLegacyProgressEntry, isTranscriptMessage } from './entries.js'

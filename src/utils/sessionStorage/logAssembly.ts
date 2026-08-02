@@ -6,9 +6,9 @@ import {
   type LogOption,
   type TranscriptMessage,
 } from '../../types/logs.js'
-import type { FileHistorySnapshot } from '../fileHistory.js'
-import { jsonParse } from '../slowOperations.js'
-import type { ContentReplacementRecord } from '../toolResultStorage.js'
+import type { FileHistorySnapshot } from '../filesystem/fileHistory.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
+import type { ContentReplacementRecord } from '../tools/toolResultStorage.js'
 import { extractFirstPrompt, removeExtraFields } from './entries.js'
 import { buildConversationChain } from './conversationChain.js'
 import { getTranscriptPathForSession } from './paths.js'

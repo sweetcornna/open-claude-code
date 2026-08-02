@@ -17,19 +17,19 @@ import { getSessionId } from '../../bootstrap/state.js'
 import { getAPIProvider } from '../model/providers.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
-import { createAbortController } from '../abortController.js'
-import { count } from '../array.js'
-import { getCwd } from '../cwd.js'
-import { toError } from '../errors.js'
-import { logError } from '../log.js'
+import { createAbortController } from '../process/abortController.js'
+import { count } from '../collections/array.js'
+import { getCwd } from '../filesystem/cwd.js'
+import { toError } from '../runtime/errors.js'
+import { logError } from '../telemetry/log.js'
 import {
   createUserMessage,
   extractTag,
   extractTextContent,
 } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
-import { jsonParse } from '../slowOperations.js'
-import { asSystemPrompt } from '../systemPromptType.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
+import { asSystemPrompt } from '../session/systemPromptType.js'
 import {
   type ApiQueryHookConfig,
   createApiQueryHook,

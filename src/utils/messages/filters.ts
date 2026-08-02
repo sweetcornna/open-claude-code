@@ -28,7 +28,7 @@ import type {
   Message,
   UserMessage,
 } from '../../types/message.js'
-import { isAdvisorBlock } from '../advisor.js'
+import { isAdvisorBlock } from '../agents/advisor.js'
 import { mergeUserMessages } from './merge.js'
 
 export function filterUnresolvedToolUses(messages: Message[]): Message[] {

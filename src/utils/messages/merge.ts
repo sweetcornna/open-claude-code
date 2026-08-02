@@ -15,7 +15,7 @@ import type {
   UserMessage,
 } from '../../types/message.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { isToolReferenceBlock } from '../searchExtraTools.js'
+import { isToolReferenceBlock } from '../tools/searchExtraTools.js'
 
 /**
  * Final pass: smoosh any `<system-reminder>`-prefixed text siblings into the

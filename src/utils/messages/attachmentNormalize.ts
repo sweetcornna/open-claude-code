@@ -28,14 +28,14 @@ import { OUTPUT_STYLE_CONFIG } from '../../constants/outputStyles.js'
 import { DiagnosticTrackingService } from '../../services/diagnosticTracking.js'
 import type { AnyObject, Tool } from '../../Tool.js'
 import type { MessageOrigin, UserMessage } from '../../types/message.js'
-import { isAgentSwarmsEnabled } from '../agentSwarmsEnabled.js'
+import { isAgentSwarmsEnabled } from '../agents/agentSwarmsEnabled.js'
 import { type Attachment, memoryHeader } from '../attachments.js'
 import { quote } from '../bash/shellQuote.js'
-import { logAntError } from '../debug.js'
-import { formatFileSize, formatNumber } from '../format.js'
-import { logMCPDebug } from '../log.js'
-import { jsonStringify } from '../slowOperations.js'
-import { isTodoV2Enabled } from '../tasks.js'
+import { logAntError } from '../telemetry/debug.js'
+import { formatFileSize, formatNumber } from '../text/format.js'
+import { logMCPDebug } from '../telemetry/log.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
+import { isTodoV2Enabled } from '../task/tasks.js'
 import { createUserMessage } from './constructors.js'
 import {
   getAutoModeInstructions,
@@ -48,9 +48,9 @@ import {
 } from './text.js'
 
 // Lazy import to avoid circular dependency (teammateMailbox -> teammate -> ... -> messages)
-function getTeammateMailbox(): typeof import('../teammateMailbox.js') {
+function getTeammateMailbox(): typeof import('../agents/teammateMailbox.js') {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../teammateMailbox.js')
+  return require('../agents/teammateMailbox.js')
 }
 
 export function normalizeAttachmentForAPI(

@@ -23,7 +23,7 @@ import type {
 import type { DeepImmutable } from 'src/types/utils.js'
 import stripAnsi from 'strip-ansi'
 import { createAssistantMessage } from '../messages.js'
-import { getPlan } from '../plans.js'
+import { getPlan } from '../agents/plans.js'
 
 export function toInternalMessages(
   messages: readonly DeepImmutable<SDKMessage>[],
