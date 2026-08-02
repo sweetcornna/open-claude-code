@@ -2,8 +2,6 @@
 import { feature } from 'bun:bundle'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { type Command } from 'src/commands.js'
-import type { ThinkingConfig } from 'src/utils/thinking.js'
-import uniqBy from 'lodash-es/uniqBy.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js'
 import { type Tools } from 'src/Tool.js'
@@ -27,13 +25,9 @@ import type {
 import { ask } from 'src/QueryEngine.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
 import { registerCleanup } from 'src/utils/cleanupRegistry.js'
-import type { SDKStatus } from 'src/entrypoints/agentSdkTypes.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { cwd } from 'process'
-import omit from 'lodash-es/omit.js'
-import reject from 'lodash-es/reject.js'
-import { getRemoteSessionUrl } from 'src/constants/product.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
 import { toSDKRateLimitInfo } from 'src/utils/messages/mappers.js'
@@ -41,7 +35,7 @@ import {
   statusListeners,
   type ClaudeAILimits,
 } from 'src/services/claudeAiLimits.js'
-import { getSessionId, getIsRemoteMode } from 'src/bootstrap/state.js'
+import { getSessionId } from 'src/bootstrap/state.js'
 import { randomUUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
@@ -57,6 +51,7 @@ import { updateSdkMcp } from './headlessMcpRuntime.js'
 import {
   createHeadlessRunState,
   type HeadlessRunState,
+  type HeadlessStreamingOptions,
 } from './headlessRunState.js'
 import { runHeadlessTurn } from './headlessTurnLoop.js'
 import { startHeadlessCronScheduler } from './headlessCron.js'
@@ -73,27 +68,7 @@ export function runHeadlessStreaming(
   getAppState: () => AppState,
   setAppState: (f: (prev: AppState) => AppState) => void,
   agents: AgentDefinition[],
-  options: {
-    verbose: boolean | undefined
-    jsonSchema: Record<string, unknown> | undefined
-    permissionPromptToolName: string | undefined
-    allowedTools: string[] | undefined
-    thinkingConfig: ThinkingConfig | undefined
-    maxTurns: number | undefined
-    maxBudgetUsd: number | undefined
-    taskBudget: { total: number } | undefined
-    systemPrompt: string | undefined
-    appendSystemPrompt: string | undefined
-    userSpecifiedModel: string | undefined
-    fallbackModel: string | undefined
-    replayUserMessages?: boolean | undefined
-    includePartialMessages?: boolean | undefined
-    enableAuthStatus?: boolean | undefined
-    agent?: string | undefined
-    setSDKStatus?: (status: SDKStatus) => void
-    promptSuggestions?: boolean | undefined
-    workload?: string | undefined
-  },
+  options: HeadlessStreamingOptions,
   turnInterruptionState?: TurnInterruptionState,
 ): AsyncIterable<StdoutMessage> {
   // Set up rate limit status listener to emit SDKRateLimitEvent for all status
