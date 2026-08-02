@@ -153,8 +153,8 @@ facade 的形状、注册触发点、各自不同的 fallback 语义已写进 `C
 这些都是 lane 在自己范围内发现、按「记录不修」纪律留下的，按值得处理的程度排：
 
 **有用户可见影响**
-- `headlessControlRequests.ts:199` 的 `initialize` 处理器报的是 `state.initialCommands`/`initialAgents` 而非 `currentCommands`/`currentAgents`。若插件在 `initialize` 到达前完成安装，SDK 消费方拿到的是装插件前的命令集。
-- `/compact` 不清 `lastAPIRequest`（完整 system prompt + 全部 tool schema，**对所有用户**留存，且它有真实读者，不像 5.6 删掉的那个）。
+- ~~`headlessControlRequests.ts:199` 的 `initialize` 处理器报的是 `state.initialCommands`/`initialAgents` 而非 `currentCommands`/`currentAgents`。若插件在 `initialize` 到达前完成安装，SDK 消费方拿到的是装插件前的命令集。~~ **已修**（`41fadb7e`，2026-08-02）：统一读写 `current*`，`initial*` 字段删除；取证时发现问题比记录的更重 —— 该顺序下 stdin 提供的 agent 也会被 push 进死数组而丢失。回归测试 `headlessControlRequests.initialize.test.ts`。
+- ~~`/compact` 不清 `lastAPIRequest`（完整 system prompt + 全部 tool schema，**对所有用户**留存，且它有真实读者，不像 5.6 删掉的那个）。~~ **已修**（`ce9207a3`，2026-08-02）：集中清在 `runPostCompactCleanup` 主线程分支（四条 compact 路径都汇到这里），subagent compact 不清主线程快照。伴随 total 环数预算 2038 → 2039（runtime 不变，边集判定为表示性 +1，理由见提交信息）。
 - `Config.tsx:1547` 与 `PermissionRuleList.tsx:385` 硬编码了按键排除清单，与绑定表重复，用户重绑后会失效。**不能简单地从 resolver 推导** —— `r` 绑给了 `settings:retry` 却不在排除清单里，推导版会让 `r` 无法进入搜索框，那是行为改动。
 
 **架构层面**
