@@ -14,7 +14,6 @@ import {
   subscribeToCommandQueue,
   getCommandsByMaxPriority,
 } from 'src/utils/messageQueueManager.js'
-import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
 import {
   getSessionState,
   notifySessionMetadataChanged,
@@ -28,35 +27,21 @@ import type {
 import { ask } from 'src/QueryEngine.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
 import { registerCleanup } from 'src/utils/cleanupRegistry.js'
-import type {
-  SDKStatus,
-  SDKMessage,
-  SDKUserMessage,
-} from 'src/entrypoints/agentSdkTypes.js'
+import type { SDKStatus } from 'src/entrypoints/agentSdkTypes.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { cwd } from 'process'
 import omit from 'lodash-es/omit.js'
 import reject from 'lodash-es/reject.js'
 import { getRemoteSessionUrl } from 'src/constants/product.js'
-import { resolveAndPrepend } from 'src/cli/inboundAttachments.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
-import {
-  doesMessageExistInSession,
-  recordAttributionSnapshot,
-} from 'src/utils/sessionStorage.js'
-import { incrementPromptCount } from 'src/utils/commitAttribution.js'
-import {
-  toInternalMessages,
-  toSDKRateLimitInfo,
-} from 'src/utils/messages/mappers.js'
+import { toSDKRateLimitInfo } from 'src/utils/messages/mappers.js'
 import {
   statusListeners,
   type ClaudeAILimits,
 } from 'src/services/claudeAiLimits.js'
 import { getSessionId, getIsRemoteMode } from 'src/bootstrap/state.js'
-import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
@@ -65,7 +50,6 @@ import { getCommands, clearCommandsCache } from '../../commands.js'
 import { isBareMode, isEnvTruthy } from '../../utils/envUtils.js'
 import { getRunningTasks } from '../../utils/task/framework.js'
 import { isBackgroundTask } from '../../tasks/types.js'
-import { receivedMessageUuids, trackReceivedMessageUuid } from './runtime.js'
 import { removeInterruptedMessage } from './sessionLoading.js'
 import { handleOrphanedPermissionResponse } from './structuredIO.js'
 import { installPluginsAndApplyMcpInBackground } from './headlessPlugins.js'
@@ -74,10 +58,9 @@ import {
   createHeadlessRunState,
   type HeadlessRunState,
 } from './headlessRunState.js'
-import { finalizeHeadlessOutput } from './headlessTeardown.js'
 import { runHeadlessTurn } from './headlessTurnLoop.js'
 import { startHeadlessCronScheduler } from './headlessCron.js'
-import { handleHeadlessControlRequest } from './headlessControlRequests.js'
+import { runHeadlessInputLoop } from './headlessStdin.js'
 
 export function runHeadlessStreaming(
   structuredIO: StructuredIO,
@@ -204,9 +187,6 @@ export function runHeadlessStreaming(
     }
   })
 
-  // Prompt suggestion tracking (push model)
-  const suggestionState = state.suggestionState
-
   // Set up AWS auth status listener if enabled
   if (options.enableAuthStatus) {
     const authStatusManager = AwsAuthStatusManager.getInstance()
@@ -225,7 +205,6 @@ export function runHeadlessStreaming(
   statusListeners.add(rateLimitListener)
 
   const mutableMessages = state.mutableMessages
-  const pendingSeeds = state.pendingSeeds
 
   // Auto-resume interrupted turns on restart so CC continues from where it
   // left off without requiring the SDK to re-send the prompt.
@@ -254,8 +233,6 @@ export function runHeadlessStreaming(
     })
   }
 
-  const modelInfos = state.modelInfos
-
   void updateSdkMcp(state)
 
   // Background plugin installation for all headless users
@@ -271,9 +248,6 @@ export function runHeadlessStreaming(
       void installPluginsAndApplyMcpInBackground(state)
     }
   }
-
-  // Idle timeout management
-  const idleTimeout = state.idleTimeout
 
   // Subscribe to skill changes for hot reloading
   state.unsubscribeSkillChanges = skillChangeDetector.subscribe(() => {
@@ -311,146 +285,13 @@ export function runHeadlessStreaming(
     })
   })
 
-  const activeOAuthFlows = state.activeOAuthFlows
-  const oauthCallbackSubmitters = state.oauthCallbackSubmitters
-  const oauthManualCallbackUsed = state.oauthManualCallbackUsed
-  const oauthAuthPromises = state.oauthAuthPromises
-
   // This is essentially spawning a parallel async task- we have two
   // running in parallel- one reading from stdin and adding to the
   // queue to be processed and another reading from the queue,
   // processing and returning the result of the generation.
   // The process is complete when the input stream completes and
   // the last generation of the queue has complete.
-  void (async () => {
-    logForDiagnosticsNoPII('info', 'cli_message_loop_started')
-    for await (const message of structuredIO.structuredInput) {
-      // Non-user events are handled inline (no queue). started→completed in
-      // the same tick carries no information, so only fire completed.
-      // control_response is reported by StructuredIO.processLine (which also
-      // sees orphans that never yield here).
-      const eventId = 'uuid' in message ? message.uuid : undefined
-      if (
-        eventId &&
-        message.type !== 'user' &&
-        message.type !== 'control_response'
-      ) {
-        notifyCommandLifecycle(eventId as string, 'completed')
-      }
-
-      if (message.type === 'control_request') {
-        if ((await handleHeadlessControlRequest(state, message)) === 'stop') {
-          break // falls through to inputClosed=true drain below
-        }
-        continue
-      } else if (message.type === 'control_response') {
-        // Replay control_response messages when replay mode is enabled
-        if (options.replayUserMessages) {
-          output.enqueue(message as StdoutMessage)
-        }
-        continue
-      } else if (message.type === 'keep_alive') {
-        // Silently ignore keep-alive messages
-        continue
-      } else if (message.type === 'update_environment_variables') {
-        // Handled in structuredIO.ts, but TypeScript needs the type guard
-        continue
-      } else if (message.type === 'assistant' || message.type === 'system') {
-        // History replay from bridge: inject into mutableMessages as
-        // conversation context so the model sees prior turns.
-        const internalMsgs = toInternalMessages([message as SDKMessage])
-        mutableMessages.push(...internalMsgs)
-        // Echo assistant messages back so CCR displays them
-        if (message.type === 'assistant' && options.replayUserMessages) {
-          output.enqueue(message as StdoutMessage)
-        }
-        continue
-      }
-      // After handling control, keep-alive, env-var, assistant, and system
-      // messages above, only user messages should remain.
-      if (message.type !== 'user') {
-        continue
-      }
-      // Type assertion: after the type guard, message is a user message.
-      // The union with SDKMessage (any) prevents proper narrowing.
-      const userMsg = message as SDKUserMessage
-
-      // First prompt message implicitly initializes if not already done.
-      state.initialized = true
-
-      // Check for duplicate user message - skip if already processed
-      if (userMsg.uuid) {
-        const sessionId = getSessionId() as UUID
-        const existsInSession = await doesMessageExistInSession(
-          sessionId,
-          userMsg.uuid as UUID,
-        )
-
-        // Check both historical duplicates (from file) and runtime duplicates (this session)
-        if (existsInSession || receivedMessageUuids.has(userMsg.uuid as UUID)) {
-          logForDebugging(`Skipping duplicate user message: ${userMsg.uuid}`)
-          // Send acknowledgment for duplicate message if replay mode is enabled
-          if (options.replayUserMessages) {
-            logForDebugging(
-              `Sending acknowledgment for duplicate user message: ${userMsg.uuid}`,
-            )
-            output.enqueue({
-              type: 'user',
-              content: (userMsg.message as { content?: string })?.content ?? '',
-              message: userMsg.message as unknown,
-              session_id: sessionId,
-              parent_tool_use_id: null,
-              uuid: userMsg.uuid as string,
-              timestamp: (userMsg as { timestamp?: string }).timestamp,
-              isReplay: true,
-            } as unknown as StdoutMessage)
-          }
-          // Historical dup = transcript already has this turn's output, so it
-          // ran but its lifecycle was never closed (interrupted before ack).
-          // Runtime dups don't need this — the original enqueue path closes them.
-          if (existsInSession) {
-            notifyCommandLifecycle(userMsg.uuid as string, 'completed')
-          }
-          // Don't enqueue duplicate messages for execution
-          continue
-        }
-
-        // Track this UUID to prevent runtime duplicates
-        trackReceivedMessageUuid(userMsg.uuid as UUID)
-      }
-
-      enqueue({
-        mode: 'prompt' as const,
-        // file_attachments rides the protobuf catchall from the web composer.
-        // Same-ref no-op when absent (no 'file_attachments' key).
-        value: await resolveAndPrepend(
-          userMsg,
-          (userMsg.message as { content: ContentBlockParam[] }).content,
-        ),
-        uuid: userMsg.uuid as `${string}-${string}-${string}-${string}-${string}`,
-        priority: (userMsg as { priority?: string })
-          .priority as import('src/types/textInputTypes.js').QueuePriority,
-      })
-      // Increment prompt count for attribution tracking and save snapshot
-      // The snapshot persists promptCount so it survives compaction
-      if (feature('COMMIT_ATTRIBUTION')) {
-        setAppState(prev => ({
-          ...prev,
-          attribution: incrementPromptCount(prev.attribution, snapshot => {
-            void recordAttributionSnapshot(snapshot).catch(error => {
-              logForDebugging(`Attribution: Failed to save snapshot: ${error}`)
-            })
-          }),
-        }))
-      }
-      void runHeadlessTurn(state)
-    }
-    state.inputClosed = true
-    state.cronScheduler?.stop()
-    if (!state.running) {
-      await finalizeHeadlessOutput(state)
-    }
-  })()
+  void runHeadlessInputLoop(state)
 
   return output
 }
