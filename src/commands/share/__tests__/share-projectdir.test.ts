@@ -88,6 +88,9 @@ mock.module('src/services/analytics/index.js', () => ({
 
 // ── State mock with non-null projectDir ──
 let _mockProjectDir: string | null = null
+// Faithful pair, not noop/null: this mock leaks process-globally into later
+// test files (postCompactCleanup asserts clear/retain through these).
+let _mockLastAPIRequest: unknown = null
 
 mock.module('src/bootstrap/state.js', () => ({
   getSessionId: () => 'test-session-pd',
@@ -137,8 +140,10 @@ mock.module('src/bootstrap/state.js', () => ({
   getTotalWebSearchRequests: () => 0,
   getTurnOutputTokens: () => 0,
   getCurrentTurnTokenBudget: () => null,
-  setLastAPIRequest: () => {},
-  getLastAPIRequest: () => null,
+  setLastAPIRequest: (params: unknown) => {
+    _mockLastAPIRequest = params
+  },
+  getLastAPIRequest: () => _mockLastAPIRequest,
   getSdkAgentProgressSummariesEnabled: () => false,
   addSlowOperation: () => {},
   getCwdState: () => '/mock/cwd',

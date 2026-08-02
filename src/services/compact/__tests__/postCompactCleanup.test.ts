@@ -9,6 +9,13 @@
  * Subagent compacts must NOT clear it: the slot only ever holds main-thread
  * captures, and a subagent compacting mid-session would otherwise destroy
  * the main thread's diagnostic snapshot.
+ *
+ * Asserts through the same bootstrap/state.js accessors production uses.
+ * Several test files register process-global mock.module replacements for
+ * that barrel; Bun patches live bindings, so production and this file always
+ * observe the same instance — which is why those mocks must implement
+ * setLastAPIRequest/getLastAPIRequest as a faithful pair (tests/mocks/
+ * state.ts and share-projectdir's inline mock do), not noop/null.
  */
 import { describe, expect, test } from 'bun:test'
 import { getLastAPIRequest, setLastAPIRequest } from 'src/bootstrap/state.js'
