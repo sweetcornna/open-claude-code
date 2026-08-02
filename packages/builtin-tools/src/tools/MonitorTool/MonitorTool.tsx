@@ -11,7 +11,7 @@ import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { truncate } from 'src/utils/format.js';
 import { exec } from 'src/utils/Shell.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '@open-claude-code/tool-runtime/analytics.js';
 
 import { MONITOR_TOOL_NAME } from './constants.js';
 

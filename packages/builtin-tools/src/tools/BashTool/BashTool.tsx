@@ -10,7 +10,7 @@ import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js';
+} from '@open-claude-code/tool-runtime/analytics.js';
 import { notifyVscodeFileUpdated } from 'src/services/mcp/vscodeSdkMcp.js';
 import type {
   SetToolJSXFn,

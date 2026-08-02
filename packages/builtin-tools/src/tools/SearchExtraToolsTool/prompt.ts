@@ -1,4 +1,4 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { CORE_TOOLS } from 'src/constants/tools.js'
 

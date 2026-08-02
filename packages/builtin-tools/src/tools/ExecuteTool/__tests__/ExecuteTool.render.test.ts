@@ -9,7 +9,7 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
 
-mock.module('src/services/analytics/growthbook.js', () => ({
+mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
   getFeatureValue_DEPRECATED: async () => undefined,

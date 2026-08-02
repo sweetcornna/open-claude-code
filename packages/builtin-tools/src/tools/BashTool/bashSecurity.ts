@@ -1,4 +1,4 @@
-import { logEvent } from 'src/services/analytics/index.js'
+import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import { extractHeredocs } from 'src/utils/bash/heredoc.js'
 import { ParsedCommand } from 'src/utils/bash/ParsedCommand.js'
 import {

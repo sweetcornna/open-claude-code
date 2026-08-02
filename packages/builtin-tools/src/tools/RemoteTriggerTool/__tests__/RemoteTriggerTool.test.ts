@@ -33,7 +33,7 @@ mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org',
 }))
 
-mock.module('src/services/analytics/growthbook.js', () => ({
+mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: () => true,
 }))
 

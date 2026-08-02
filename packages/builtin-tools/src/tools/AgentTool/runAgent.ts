@@ -13,7 +13,7 @@ import type { QuerySource } from 'src/constants/querySource.js'
 import { getSystemContext, getUserContext } from 'src/context.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import { query } from 'src/query.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js'
 import { cleanupAgentTracking } from 'src/services/api/promptCacheBreakDetection.js'
 import {

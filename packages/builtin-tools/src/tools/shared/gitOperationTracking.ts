@@ -12,7 +12,7 @@ import { getCommitCounter, getPrCounter } from 'src/bootstrap/state.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js'
+} from '@open-claude-code/tool-runtime/analytics.js'
 
 /**
  * Build a regex that matches `git <subcmd>` while tolerating git's global

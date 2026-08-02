@@ -1,7 +1,7 @@
 import { z } from 'zod/v4'
 import { getSessionId, setOriginalCwd } from 'src/bootstrap/state.js'
 import { clearSystemPromptSections } from 'src/constants/systemPromptSections.js'
-import { logEvent } from 'src/services/analytics/index.js'
+import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { clearMemoryFileCaches } from 'src/utils/claudemd.js'

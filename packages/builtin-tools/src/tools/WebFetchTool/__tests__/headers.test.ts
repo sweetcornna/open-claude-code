@@ -34,7 +34,7 @@ axiosHandle.stubs.isAxiosError = (error: unknown): boolean =>
   error !== null &&
   (error as { isAxiosError?: unknown }).isAxiosError === true
 
-mock.module('src/services/analytics/index.js', () => ({
+mock.module('@open-claude-code/tool-runtime/analytics.js', () => ({
   logEvent: () => {},
 }))
 

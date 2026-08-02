@@ -1,4 +1,4 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { splitCommand_DEPRECATED } from 'src/utils/bash/commands.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'

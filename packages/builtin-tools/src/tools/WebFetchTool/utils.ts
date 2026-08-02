@@ -3,7 +3,7 @@ import { LRUCache } from 'lru-cache'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js'
+} from '@open-claude-code/tool-runtime/analytics.js'
 import { queryHaiku } from 'src/services/api/claude.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import { getWebFetchUserAgent } from 'src/utils/http.js'
