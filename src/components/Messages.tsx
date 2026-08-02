@@ -34,10 +34,7 @@ import { getGlobalConfig } from '../utils/config.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { applyGrouping } from '../utils/groupToolUses.js';
 import {
-  buildMessageLookups,
-  computeMessageStructureKey,
   type MessageLookups,
-  updateMessageLookupsIncremental,
   createAssistantMessage,
   deriveUUID,
   getToolUseID,
@@ -50,6 +47,7 @@ import {
   type StreamingToolUse,
   shouldShowUserMessage,
 } from '../utils/messages.js';
+import { type MessageLookupsCache, resolveMessageLookups } from '../utils/messages/lookupsCache.js';
 import { plural } from '../utils/stringUtils.js';
 import { renderableSearchText } from '../utils/transcriptSearch.js';
 import { Divider } from '@anthropic/ink';
@@ -512,13 +510,7 @@ const MessagesImpl = ({
   // message content changed during streaming (text/thinking deltas). The key
   // captures only structural info (types, IDs), so content-only deltas skip
   // the rebuild entirely.
-  const lookupsCacheRef = useRef<{
-    key: string;
-    lookups: MessageLookups;
-    normalizedCount: number;
-    messageCount: number;
-    lastAssistantMsgId: string | undefined;
-  } | null>(null);
+  const lookupsCacheRef = useRef<MessageLookupsCache | null>(null);
 
   // Expensive message transforms — filter, reorder, group, collapse, lookups.
   // All O(n) over 27k messages. Split from the renderRange slice so scrolling
@@ -589,59 +581,16 @@ const MessagesImpl = ({
       verbose,
     );
 
-    const lookupsKey = computeMessageStructureKey(normalizedMessages, messagesToShow as MessageType[]);
-    const currentLastAssistantMsgId = (() => {
-      const lastMsg = (messagesToShow as MessageType[]).at(-1);
-      return lastMsg?.type === 'assistant' ? (lastMsg as AssistantMessage).message?.id : undefined;
-    })();
-    let lookups: MessageLookups;
-    if (lookupsCacheRef.current && lookupsCacheRef.current.key === lookupsKey) {
-      lookups = lookupsCacheRef.current.lookups;
-    } else if (
-      lookupsCacheRef.current &&
-      normalizedMessages.length >= lookupsCacheRef.current.normalizedCount &&
-      (messagesToShow as MessageType[]).length >= lookupsCacheRef.current.messageCount &&
-      // If lastAssistantMsgId changed, previous "in-progress" assistant may
-      // now be orphaned — force a full rebuild to pick up the new status.
-      lookupsCacheRef.current.lastAssistantMsgId === currentLastAssistantMsgId
-    ) {
-      // Try incremental update when only new messages were appended
-      const updated = updateMessageLookupsIncremental(
-        lookupsCacheRef.current.lookups,
-        lookupsCacheRef.current.normalizedCount,
-        lookupsCacheRef.current.messageCount,
-        normalizedMessages,
-        messagesToShow as MessageType[],
-      );
-      if (updated) {
-        lookups = updated;
-        lookupsCacheRef.current = {
-          key: lookupsKey,
-          lookups,
-          normalizedCount: normalizedMessages.length,
-          messageCount: (messagesToShow as MessageType[]).length,
-          lastAssistantMsgId: currentLastAssistantMsgId,
-        };
-      } else {
-        lookups = buildMessageLookups(normalizedMessages, messagesToShow as MessageType[]);
-        lookupsCacheRef.current = {
-          key: lookupsKey,
-          lookups,
-          normalizedCount: normalizedMessages.length,
-          messageCount: (messagesToShow as MessageType[]).length,
-          lastAssistantMsgId: currentLastAssistantMsgId,
-        };
-      }
-    } else {
-      lookups = buildMessageLookups(normalizedMessages, messagesToShow as MessageType[]);
-      lookupsCacheRef.current = {
-        key: lookupsKey,
-        lookups,
-        normalizedCount: normalizedMessages.length,
-        messageCount: (messagesToShow as MessageType[]).length,
-        lastAssistantMsgId: currentLastAssistantMsgId,
-      };
-    }
+    // Reuse / update in place / rebuild — see resolveMessageLookups. Writing
+    // the ref during render is idempotent (the entry is derived purely from
+    // this render's inputs), so a StrictMode double-render is harmless.
+    const resolved = resolveMessageLookups(
+      lookupsCacheRef.current,
+      normalizedMessages,
+      messagesToShow as MessageType[],
+    );
+    lookupsCacheRef.current = resolved.cache;
+    const lookups = resolved.lookups;
 
     const hiddenMessageCount = messagesToShowNotTruncated.length - MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE;
 
@@ -1051,7 +1000,7 @@ export function shouldRenderStatically(
   inProgressToolUseIDs: Set<string>,
   siblingToolUseIDs: ReadonlySet<string>,
   screen: Screen,
-  lookups: ReturnType<typeof buildMessageLookups>,
+  lookups: MessageLookups,
 ): boolean {
   if (screen === 'transcript') {
     return true;
