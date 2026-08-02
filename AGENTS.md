@@ -6,7 +6,7 @@ This file exists because `AGENTS.md` is the cross-tool convention. It deliberate
 
 ## The three things you must know up front
 
-1. **`bun run precheck` must pass with zero errors before you call any task done.** It runs `tsc --noEmit`, `biome check --fix` and the full `bun test` suite. Note it *rewrites your files* (`check:fix`, not `check`). Current baseline: typecheck clean, biome clean, 5814 pass / 10 skip / 0 fail.
+1. **`bun run precheck` must pass with zero errors before you call any task done.** It runs `tsc --noEmit`, `biome check --fix` and the full `bun test` suite. Note it *rewrites your files* (`check:fix`, not `check`). Current baseline: typecheck clean, biome clean, 5945 pass / 10 skip / 0 fail.
 
 2. **This is a Bun project, not Node.** All imports, builds and execution use Bun APIs (`engines.bun >= 1.3.11`). Do not reach for `npx` — use `bunx`. The pre-commit hook was broken for exactly this reason.
 
@@ -15,3 +15,5 @@ This file exists because `AGENTS.md` is the cross-tool convention. It deliberate
 ## Everything else
 
 See `CLAUDE.md` for the architecture map, the feature-flag system and the `bun:bundle` `feature()` positional constraint, the multi-API compatibility layers, the type rules (no `as any` in production code), and the testing conventions — including the cross-file `mock.module` pollution rules, which are easy to violate and hard to debug.
+
+See `CONTRIBUTING.md` for the workflow side: commit conventions, the cycle-count ratchet, PR expectations, and where each kind of document belongs.
