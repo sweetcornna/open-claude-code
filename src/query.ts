@@ -105,6 +105,10 @@ import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js
 import { queryCheckpoint } from './utils/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'
 import { applyToolResultBudget } from './utils/toolResultStorage.js'
+import {
+  createToolResultReleaseCache,
+  releaseToolUseResults,
+} from './utils/toolResultRelease.js'
 import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
 import { buildQueryConfig } from './query/config.js'
@@ -440,6 +444,35 @@ async function* queryLoop(
   // for what's included and why feature() gates are intentionally excluded.
   const config = buildQueryConfig()
 
+  // Stripped-copy cache for the toolUseResult release below. Loop-local so it
+  // cannot outlive the generator or leak between sessions; within one user
+  // turn it is exactly the span where the same history is re-derived on every
+  // iteration.
+  const toolResultReleaseCache = createToolResultReleaseCache()
+
+  // Tools exempt from the tool-result budget, keyed on the tool array's
+  // identity. The list only changes when refreshTools() returns a new array
+  // (see the refresh below), so rebuilding the Set every iteration was pure
+  // waste — and it was built even when the budget is off and ignores it.
+  let unboundedToolNames:
+    | { tools: ToolUseContext['options']['tools']; names: ReadonlySet<string> }
+    | undefined
+  const resolveUnboundedToolNames = (
+    tools: ToolUseContext['options']['tools'],
+  ): ReadonlySet<string> => {
+    if (unboundedToolNames?.tools !== tools) {
+      unboundedToolNames = {
+        tools,
+        names: new Set(
+          tools
+            .filter(t => !Number.isFinite(t.maxResultSizeChars))
+            .map(t => t.name),
+        ),
+      }
+    }
+    return unboundedToolNames.names
+  }
+
   // Fired once per user turn — the prompt is invariant across loop iterations,
   // so per-iteration firing would ask sideQuery the same question N times.
   // Consume point polls settledAt (never blocks). `using` disposes on all
@@ -521,29 +554,15 @@ async function* queryLoop(
     // before compact triggers (a single FileRead of a 400KB file would
     // otherwise stay in mutableMessages forever).
     //
-    // IMPORTANT: shallow-copy rather than mutate. messagesForQuery elements
-    // are references shared with mutableMessages (UI state); deleting
-    // toolUseResult in place strips it from the live message while React may
-    // still be rendering it. The next query can start within milliseconds of
-    // tool_result creation (model immediately calls the next tool), before
-    // the UI commit lands — UserToolSuccessMessage reads
-    // message.toolUseResult to delegate to tool.renderToolResultMessage, so a
-    // mutation race makes tool-result rows render blank. Map to a stripped
-    // copy so mutableMessages keeps the original for the UI; downstream API
-    // transformations (applyToolResultBudget, snip, microcompact) already
-    // build new arrays via .map(), so they compose cleanly with this copy.
-    messagesForQuery = messagesForQuery.map(msg => {
-      if (
-        msg.type !== 'user' ||
-        !('toolUseResult' in msg) ||
-        (msg as { toolUseResult?: unknown }).toolUseResult === undefined
-      ) {
-        return msg
-      }
-      const copy: typeof msg = { ...msg }
-      delete (copy as Message & { toolUseResult?: unknown }).toolUseResult
-      return copy
-    })
+    // Cached per source message: the strip is pure and the history is
+    // append-only, so rebuilding every copy on every iteration was O(history)
+    // per turn and O(history^2) across a turn that drives many tool
+    // round-trips. See toolResultRelease.ts for why the copy must not be a
+    // mutation, and scripts/bench-query-turn-pipeline.ts for the numbers.
+    messagesForQuery = releaseToolUseResults(
+      messagesForQuery,
+      toolResultReleaseCache,
+    )
 
     let tracking = autoCompactTracking
 
@@ -567,11 +586,7 @@ async function* queryLoop(
               toolUseContext.agentId,
             ).catch(logError)
         : undefined,
-      new Set(
-        toolUseContext.options.tools
-          .filter(t => !Number.isFinite(t.maxResultSizeChars))
-          .map(t => t.name),
-      ),
+      resolveUnboundedToolNames(toolUseContext.options.tools),
     )
 
     // Apply microcompact before autocompact
