@@ -165,16 +165,6 @@ export type HeadlessRunState = {
   readonly structuredIO: StructuredIO
   /** MCP clients as passed in at construction; a config-lookup fallback. */
   readonly mcpClients: MCPServerConnection[]
-  /**
-   * Commands as passed in at construction. `initialize` reports these, not
-   * `currentCommands` — preserved verbatim from the original closure.
-   */
-  readonly initialCommands: Command[]
-  /**
-   * Agents as passed in at construction. `handleInitializeRequest` pushes
-   * stdin-supplied agents into this array, so the reference must be shared.
-   */
-  readonly initialAgents: AgentDefinition[]
   readonly tools: Tools
   readonly canUseTool: CanUseToolFn
   /** Mutated in place (delete + Object.assign) by `applyMcpServerChanges`. */
@@ -225,7 +215,13 @@ export type HeadlessRunState = {
 
   // ---- plugin-derived commands / agents -----------------------------------
   pluginInstallPromise: Promise<void> | null
+  /** `initialize` reports these; `refreshPluginState` replaces the array. */
   currentCommands: Command[]
+  /**
+   * `initialize` reports these AND `handleInitializeRequest` pushes
+   * stdin-supplied agents into the array in place, so mutating helpers must
+   * push rather than swap the reference mid-initialize.
+   */
   currentAgents: AgentDefinition[]
 
   // ---- teardown handles ---------------------------------------------------
@@ -309,8 +305,6 @@ export function createHeadlessRunState(
   const state: HeadlessRunState = {
     structuredIO: input.structuredIO,
     mcpClients: input.mcpClients,
-    initialCommands: input.commands,
-    initialAgents: input.agents,
     tools: input.tools,
     canUseTool: input.canUseTool,
     sdkMcpConfigs: input.sdkMcpConfigs,
