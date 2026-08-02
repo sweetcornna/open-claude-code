@@ -6,9 +6,9 @@
 // with the async-suffixed names.
 import { closeSync, fstatSync, openSync, readSync } from 'fs'
 import { dirname } from 'path'
-import { getFsImplementation } from '../filesystem/fsOperations.js'
+import { getFsImplementation } from '../fsOperations.js'
 import { LITE_READ_BUF_SIZE } from '../sessionStoragePortable.js'
-import { jsonStringify } from '../telemetry/slowOperations.js'
+import { jsonStringify } from '../slowOperations.js'
 
 /**
  * Append an entry to a session file. Creates the parent dir if missing.

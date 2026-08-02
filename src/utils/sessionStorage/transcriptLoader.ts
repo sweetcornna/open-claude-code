@@ -13,8 +13,8 @@ import {
   type PersistedWorktreeSession,
   type TranscriptMessage,
 } from '../../types/logs.js'
-import { isEnvTruthy } from '../config/envUtils.js'
-import { parseJSONL } from '../text/json.js'
+import { isEnvTruthy } from '../envUtils.js'
+import { parseJSONL } from '../json.js'
 import {
   readTranscriptForLoad,
   SKIP_PRECOMPACT_THRESHOLD,

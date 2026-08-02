@@ -14,7 +14,7 @@ import type {
   SystemMessage,
   UserMessage,
 } from '../../types/message.js'
-import { isEnvTruthy } from '../config/envUtils.js'
+import { isEnvTruthy } from '../envUtils.js'
 import { extractTag } from '../messages.js'
 import { getUserType } from './paths.js'
 

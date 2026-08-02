@@ -4,8 +4,8 @@ import {
   SYNTHETIC_OUTPUT_TOOL_NAME,
   SyntheticOutputTool,
 } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
-import { substituteArguments } from '../shell/argumentSubstitution.js'
-import { lazySchema } from '../collections/lazySchema.js'
+import { substituteArguments } from '../argumentSubstitution.js'
+import { lazySchema } from '../lazySchema.js'
 import type { SetAppState } from '../messageQueueManager.js'
 import { hasSuccessfulToolCall } from '../messages.js'
 import { addFunctionHook } from './sessionHooks.js'

@@ -28,26 +28,23 @@ import {
 } from '../../types/logs.js'
 import type { Message } from '../../types/message.js'
 import type { QueueOperationMessage } from '../../types/messageQueueTypes.js'
-import { registerCleanup } from '../process/cleanupRegistry.js'
-import { getCwd } from '../filesystem/cwd.js'
-import { logForDebugging } from '../telemetry/debug.js'
-import { isEnvTruthy } from '../config/envUtils.js'
+import { registerCleanup } from '../cleanupRegistry.js'
+import { getCwd } from '../cwd.js'
+import { logForDebugging } from '../debug.js'
+import { isEnvTruthy } from '../envUtils.js'
 import { isFsInaccessible } from '../errors.js'
-import type { FileHistorySnapshot } from '../filesystem/fileHistory.js'
-import { formatFileSize } from '../text/format.js'
-import { getBranch } from '../git/git.js'
-import {
-  gracefulShutdownSync,
-  isShuttingDown,
-} from '../process/gracefulShutdown.js'
-import { logError } from '../telemetry/log.js'
+import type { FileHistorySnapshot } from '../fileHistory.js'
+import { formatFileSize } from '../format.js'
+import { getBranch } from '../git.js'
+import { gracefulShutdownSync, isShuttingDown } from '../gracefulShutdown.js'
+import { logError } from '../log.js'
 import { isCompactBoundaryMessage } from '../messages.js'
 import {
   extractLastJsonStringField,
   LITE_READ_BUF_SIZE,
 } from '../sessionStoragePortable.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
-import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
+import { jsonParse, jsonStringify } from '../slowOperations.js'
 import type { ContentReplacementRecord } from '../toolResultStorage.js'
 import { MAX_CACHED_SESSION_FILES } from './constants.js'
 import {

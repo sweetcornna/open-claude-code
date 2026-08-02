@@ -25,10 +25,10 @@ import type {
   SystemMessage,
   UserMessage,
 } from '../../types/message.js'
-import { normalizeToolInput } from '../telemetry/api.js'
-import { logForDebugging } from '../telemetry/debug.js'
-import { safeParseJSON } from '../text/json.js'
-import { logError } from '../telemetry/log.js'
+import { normalizeToolInput } from '../api.js'
+import { logForDebugging } from '../debug.js'
+import { safeParseJSON } from '../json.js'
+import { logError } from '../log.js'
 import { createUserMessage } from './constructors.js'
 import {
   isToolUseRequestMessage,

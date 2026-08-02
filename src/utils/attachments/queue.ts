@@ -4,13 +4,13 @@ import type {
   ImageBlockParam,
   Base64ImageSource,
 } from '@anthropic-ai/sdk/resources/messages.mjs'
-import type { PastedContent } from '../config/config.js'
+import type { PastedContent } from '../config.js'
 import {
   type QueuedCommand,
   getImagePasteIds,
   isValidImagePaste,
 } from 'src/types/textInputTypes.js'
-import { maybeResizeAndDownsampleImageBlock } from '../terminal/imageResizer.js'
+import { maybeResizeAndDownsampleImageBlock } from '../imageResizer.js'
 import { extractTextContent } from '../messages.js'
 import { drainPendingMessages } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { MessageOrigin } from 'src/types/message.js'
