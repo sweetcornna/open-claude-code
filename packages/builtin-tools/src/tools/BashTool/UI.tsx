@@ -13,7 +13,7 @@ import { backgroundAll } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { env } from 'src/utils/env.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
-import { getDisplayPath } from 'src/utils/file.js';
+import { getDisplayPath } from 'src/utils/filesystem/file.js';
 import { isFullscreenEnvEnabled } from 'src/utils/fullscreen.js';
 import type { ThemeName } from 'src/utils/theme.js';
 import type { BashProgress, BashToolInput, Out } from './BashTool.js';

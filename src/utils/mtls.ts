@@ -5,7 +5,7 @@ import type * as tls from 'tls'
 import type * as undici from 'undici'
 import { getCACertificates } from './caCerts.js'
 import { logForDebugging } from './debug.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 
 export type MTLSConfig = {
   cert?: string

@@ -35,7 +35,7 @@ import {
   isEnvTruthy,
 } from '../envUtils.js'
 import { errorMessage } from '../errors.js'
-import { djb2Hash } from '../hash.js'
+import { djb2Hash } from '../filesystem/hash.js'
 import { jsonStringify } from '../slowOperations.js'
 import { getAgentId, getAgentName, getParentSessionId } from '../teammate.js'
 

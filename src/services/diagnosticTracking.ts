@@ -3,7 +3,10 @@ import { logError } from 'src/utils/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { ClaudeError } from '../utils/errors.js'
-import { normalizePathForComparison, pathsEqual } from '../utils/file.js'
+import {
+  normalizePathForComparison,
+  pathsEqual,
+} from '../utils/filesystem/file.js'
 import { getConnectedIdeClient } from '../utils/ide.js'
 import { jsonParse } from '../utils/slowOperations.js'
 

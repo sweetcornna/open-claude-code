@@ -50,7 +50,7 @@ import type {
   FileHistoryBackup,
   FileHistorySnapshot,
   FileHistoryState,
-} from 'src/utils/fileHistory.js'
+} from 'src/utils/filesystem/fileHistory.js'
 import type { DenialTrackingState } from 'src/utils/permissions/denialTracking.js'
 import type { Theme, ThemeName } from 'src/utils/theme.js'
 import type { ThinkingConfig } from 'src/utils/thinking.js'

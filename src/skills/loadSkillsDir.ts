@@ -45,7 +45,7 @@ import {
   parseShellFrontmatter,
   splitPathInFrontmatter,
 } from '../utils/text/frontmatterParser.js'
-import { getFsImplementation } from '../utils/fsOperations.js'
+import { getFsImplementation } from '../utils/filesystem/fsOperations.js'
 import { isPathGitignored } from '../utils/git/gitignore.js'
 import { logError } from '../utils/log.js'
 import {

@@ -68,8 +68,8 @@ import {
   toError,
 } from '../errors.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
-import { pathExists } from '../file.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { pathExists } from '../filesystem/file.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { gitExe } from '../git.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { logError } from '../log.js'

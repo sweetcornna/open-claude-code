@@ -4,8 +4,8 @@ import { Ansi, Text } from '@anthropic/ink';
 import { LRUCache } from 'lru-cache';
 import { getCliHighlightPromise } from '../../utils/text/cliHighlight.js';
 import { logForDebugging } from '../../utils/debug.js';
-import { convertLeadingTabsToSpaces } from '../../utils/file.js';
-import { hashPair } from '../../utils/hash.js';
+import { convertLeadingTabsToSpaces } from '../../utils/filesystem/file.js';
+import { hashPair } from '../../utils/filesystem/hash.js';
 
 type Props = {
   code: string;

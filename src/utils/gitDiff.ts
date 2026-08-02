@@ -1,10 +1,10 @@
 import type { StructuredPatchHunk } from 'diff'
 import { access, readFile } from 'fs/promises'
 import { dirname, join, relative, sep } from 'path'
-import { getCwd } from './cwd.js'
+import { getCwd } from './filesystem/cwd.js'
 import { getCachedRepository } from './detectRepository.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from './execFileNoThrow.js'
-import { isFileWithinReadSizeLimit } from './file.js'
+import { isFileWithinReadSizeLimit } from './filesystem/file.js'
 import {
   findGitRoot,
   getDefaultBranch,

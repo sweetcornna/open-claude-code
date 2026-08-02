@@ -11,10 +11,10 @@ import {
   getGlobalConfig,
   type InstallMethod,
 } from './config.js'
-import { getCwd } from './cwd.js'
+import { getCwd } from './filesystem/cwd.js'
 import { isEnvTruthy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
   isRunningFromLocalInstallation,
   localInstallationExists,
@@ -32,7 +32,7 @@ import {
 } from './nativeInstaller/packageManagers.js'
 import { getPlatform } from './platform.js'
 import { detectChrome } from './chromeDevtools/chromeVersion.js'
-import { getRipgrepStatus } from './ripgrep.js'
+import { getRipgrepStatus } from './filesystem/ripgrep.js'
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { CUSTOMIZATION_SURFACES } from './settings/types.js'

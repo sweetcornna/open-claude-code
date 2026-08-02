@@ -11,7 +11,7 @@ import {
   type SerializedMessage,
   sortLogs,
 } from '../types/logs.js'
-import { CACHE_PATHS } from './cachePaths.js'
+import { CACHE_PATHS } from './filesystem/cachePaths.js'
 import {
   stripDisplayTags,
   stripDisplayTagsAllowEmpty,

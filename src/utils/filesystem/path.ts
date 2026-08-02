@@ -8,10 +8,10 @@ import {
   relative,
   resolve,
 } from 'path'
-import { getCwd } from '../cwd.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { getCwd } from './cwd.js'
+import { getFsImplementation } from './fsOperations.js'
 import { getPlatform } from '../platform.js'
-import { posixPathToWindowsPath } from '../windowsPaths.js'
+import { posixPathToWindowsPath } from './windowsPaths.js'
 
 /**
  * Expands a path that may contain tilde notation (~) to an absolute path.

@@ -3,7 +3,7 @@ import { Box, Text } from '@anthropic/ink';
 import * as React from 'react';
 import { getLargeMemoryFiles, MAX_MEMORY_CHARACTER_COUNT, type MemoryFileInfo } from './claudemd.js';
 import figures from 'figures';
-import { getCwd } from './cwd.js';
+import { getCwd } from './filesystem/cwd.js';
 import { relative } from 'path';
 import { formatNumber } from './text/format.js';
 import type { getGlobalConfig } from './config.js';

@@ -27,7 +27,7 @@ import { TEAM_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/Tea
 import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js';
 import { calculateContextPercentages, getContextWindowForModel } from '../../../utils/context.js';
 import { getExternalEditor } from '../../../utils/editor.js';
-import { getDisplayPath } from '../../../utils/file.js';
+import { getDisplayPath } from '../../../utils/filesystem/file.js';
 import { toIDEDisplayName } from '../../../utils/ide.js';
 import { logError } from '../../../utils/log.js';
 import { enqueuePendingNotification } from '../../../utils/messageQueueManager.js';

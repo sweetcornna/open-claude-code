@@ -15,7 +15,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/gr
 import { logForDebugging } from '../debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
 import { isENOENT, toError } from '../errors.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { getProcessCommand } from '../genericProcessUtils.js'
 import { logError } from '../log.js'
 import {

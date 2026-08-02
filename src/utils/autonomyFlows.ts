@@ -7,7 +7,7 @@ import {
   retainActiveFirst,
   withAutonomyPersistenceLock,
 } from './autonomyPersistence.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 
 const AUTONOMY_FLOWS_MAX = 100
 const AUTONOMY_FLOWS_RELATIVE_PATH = join(AUTONOMY_DIR, 'flows.json')

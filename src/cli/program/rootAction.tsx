@@ -110,7 +110,7 @@ import {
   isCustomAgent,
   parseAgentsFromJson,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { getCwd } from 'src/utils/cwd.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
 import {
   getDefaultMainLoopModel,
   getUserSpecifiedModelSetting,

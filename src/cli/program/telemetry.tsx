@@ -10,7 +10,7 @@ import {
 import { isRunningWithBun } from 'src/utils/bundledMode.js';
 import { isAutoUpdaterDisabled } from 'src/utils/config.js';
 import { getContextWindowForModel } from 'src/utils/context.js';
-import { getCwd } from 'src/utils/cwd.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { hasNodeOption } from 'src/utils/envUtils.js';
 import { getIsGit, getWorktreeCount } from 'src/utils/git.js';
 import { getGhAuthStatus } from 'src/utils/github/ghAuthStatus.js';

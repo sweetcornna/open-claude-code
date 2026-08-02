@@ -22,8 +22,8 @@
 import { join } from 'path'
 import { logForDebugging } from '../../debug.js'
 import { logForDiagnosticsNoPII } from '../../diagLogs.js'
-import { readFileSync } from '../../fileRead.js'
-import { getFsImplementation } from '../../fsOperations.js'
+import { readFileSync } from '../../filesystem/fileRead.js'
+import { getFsImplementation } from '../../filesystem/fsOperations.js'
 import { safeParseJSON } from '../../text/json.js'
 import { profileCheckpoint } from '../../startupProfiler.js'
 import {

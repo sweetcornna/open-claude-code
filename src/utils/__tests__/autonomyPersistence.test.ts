@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { cleanupTempDir, createTempDir } from '../../../tests/mocks/file-system'
 
 // Mock the lockfile module so tests don't need real file locks
-mock.module('../lockfile.js', () => ({
+mock.module('../filesystem/lockfile.js', () => ({
   lock: async (_file: string, _options?: unknown) => {
     return async () => {}
   },

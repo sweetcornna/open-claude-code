@@ -37,12 +37,17 @@ import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { shouldIncludeGitInstructions } from 'src/utils/gitSettings.js';
 import { isENOENT, ShellError } from '@open-claude-code/tool-runtime/errors.js';
-import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from 'src/utils/file.js';
-import { fileHistoryEnabled, fileHistoryTrackEdit } from 'src/utils/fileHistory.js';
+import {
+  detectFileEncoding,
+  detectLineEndings,
+  getFileModificationTime,
+  writeTextContent,
+} from 'src/utils/filesystem/file.js';
+import { fileHistoryEnabled, fileHistoryTrackEdit } from 'src/utils/filesystem/fileHistory.js';
 import { truncate } from 'src/utils/text/format.js';
-import { getFsImplementation } from 'src/utils/fsOperations.js';
+import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
-import { expandPath } from 'src/utils/path.js';
+import { expandPath } from 'src/utils/filesystem/path.js';
 import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';

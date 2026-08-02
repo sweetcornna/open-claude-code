@@ -25,7 +25,7 @@ import type { PermissionMode } from '../types/permissions.js';
 import { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } from './auth.js';
 import { checkGithubAppInstalled } from './background/remote/preconditions.js';
 import { deserializeMessages, type TeleportRemoteResponse } from './conversationRecovery.js';
-import { getCwd } from './cwd.js';
+import { getCwd } from './filesystem/cwd.js';
 import { logForDebugging } from './debug.js';
 import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote } from './detectRepository.js';
 import { isEnvTruthy } from './envUtils.js';

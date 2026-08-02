@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../debug.js'
 import { logError } from '../log.js'
 import type { SettingSource } from '../settings/constants.js'

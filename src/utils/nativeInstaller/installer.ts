@@ -45,7 +45,7 @@ import { isEnvTruthy } from '../envUtils.js'
 import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getShellType } from '../localInstaller.js'
-import * as lockfile from '../lockfile.js'
+import * as lockfile from '../filesystem/lockfile.js'
 import { logError } from '../log.js'
 import { gt, gte } from '../text/semver.js'
 import {
@@ -60,7 +60,7 @@ import {
   getXDGCacheHome,
   getXDGDataHome,
   getXDGStateHome,
-} from '../xdg.js'
+} from '../filesystem/xdg.js'
 import { downloadVersion, getLatestVersion } from './download.js'
 import {
   acquireProcessLifetimeLock,

@@ -1,5 +1,8 @@
-import { readFileSync } from '../fileRead.js'
-import { getFsImplementation, safeResolvePath } from '../fsOperations.js'
+import { readFileSync } from '../filesystem/fileRead.js'
+import {
+  getFsImplementation,
+  safeResolvePath,
+} from '../filesystem/fsOperations.js'
 import { safeParseJSON } from '../text/json.js'
 import { logError } from '../log.js'
 import {

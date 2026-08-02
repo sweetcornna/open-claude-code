@@ -8,9 +8,9 @@ import {
   resolve,
 } from 'node:path'
 import { getProjectRoot } from '../bootstrap/state.js'
-import { getCwd } from './cwd.js'
-import { getFsImplementation } from './fsOperations.js'
-import { normalizePathForConfigKey } from './path.js'
+import { getCwd } from './filesystem/cwd.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
+import { normalizePathForConfigKey } from './filesystem/path.js'
 
 export const AUTONOMY_DIR = join(PROJECT_DIR_NAME, 'autonomy')
 // Derived, not a second literal: these two must never drift apart. AUTONOMY_DIR

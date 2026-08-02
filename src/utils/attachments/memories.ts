@@ -13,7 +13,7 @@ import { isAbortError } from '../errors.js'
 import { logError } from '../log.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { memoryAge, memoryFreshnessText } from '../../memdir/memoryAge.js'
-import { readFileInRange } from '../readFileInRange.js'
+import { readFileInRange } from '../filesystem/readFileInRange.js'
 import {
   MAX_MEMORY_BYTES,
   MAX_MEMORY_LINES,

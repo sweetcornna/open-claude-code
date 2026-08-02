@@ -59,7 +59,7 @@ async function makeLogWithToolCalls(
   claudeDir: string,
   count: number,
 ): Promise<void> {
-  const { sanitizePath } = await import('../../../utils/path.js')
+  const { sanitizePath } = await import('../../../utils/filesystem/path.js')
   const { getSessionId, getOriginalCwd } = await import(
     '../../../bootstrap/state.js'
   )
@@ -136,7 +136,7 @@ describe('debug-tool-call command', () => {
   })
 
   test('shows no-tool-calls message when log has no tool blocks', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -198,7 +198,7 @@ describe('debug-tool-call command', () => {
     // Since the value comes from JSON.parse, it will always be serializable.
     // Therefore lines 53-54 are unreachable in normal flow. This test
     // documents this by passing a valid log and confirming the happy path works.
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -277,7 +277,7 @@ describe('debug-tool-call command', () => {
   })
 
   async function runWithLogLines(lines: string[]): Promise<string> {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )

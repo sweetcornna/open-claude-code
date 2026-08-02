@@ -1,12 +1,15 @@
 import * as fs from 'fs/promises'
 import { join } from 'path'
 import { logEvent } from '../services/analytics/index.js'
-import { CACHE_PATHS } from './cachePaths.js'
+import { CACHE_PATHS } from './filesystem/cachePaths.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'
-import { type FsOperations, getFsImplementation } from './fsOperations.js'
+import {
+  type FsOperations,
+  getFsImplementation,
+} from './filesystem/fsOperations.js'
 import { cleanupOldImageCaches } from './imageStore.js'
-import * as lockfile from './lockfile.js'
+import * as lockfile from './filesystem/lockfile.js'
 import { logError } from './log.js'
 import { cleanupOldVersions } from './nativeInstaller/index.js'
 import { cleanupOldPastes } from './pasteStore.js'

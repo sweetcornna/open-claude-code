@@ -8,7 +8,7 @@ import { getReplPrimitiveTools } from '@open-claude-code/builtin-tools/tools/REP
 import type { CollapsedReadSearchGroup, NormalizedAssistantMessage } from '../../types/message.js';
 import { uniq } from '../../utils/collections/array.js';
 import { getToolUseIdsFromCollapsedGroup } from '../../utils/collapseReadSearch.js';
-import { getDisplayPath } from '../../utils/file.js';
+import { getDisplayPath } from '../../utils/filesystem/file.js';
 import { formatDuration, formatSecondsShort } from '../../utils/text/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import type { buildMessageLookups } from '../../utils/messages.js';

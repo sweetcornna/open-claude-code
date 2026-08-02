@@ -116,7 +116,7 @@ describe('perf-issue command', () => {
   })
 
   test('log with timestamps and tool_use/result pairs covers lines 109-148', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -180,7 +180,7 @@ describe('perf-issue command', () => {
   })
 
   test('log exists but is malformed → parse error path (lines 154-156)', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -229,7 +229,7 @@ describe('perf-issue command', () => {
   })
 
   test('includes token usage when log file exists with usage data', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -273,7 +273,7 @@ describe('perf-issue command', () => {
   })
 
   test('--format=json produces a .json file with token fields', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -317,7 +317,7 @@ describe('perf-issue command', () => {
   })
 
   test('--format=csv produces a .csv file with metric rows', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -360,7 +360,7 @@ describe('perf-issue command', () => {
   })
 
   test('report includes estimated_cost_usd and cache_hit_rate sections', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -407,7 +407,7 @@ describe('perf-issue command', () => {
 
   // ── H1 regression: tool durations must use log timestamps, not Date.now() ──
   test('H1: tool durations are computed from log entry timestamps, not parse-time Date.now()', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -466,7 +466,7 @@ describe('perf-issue command', () => {
 
   // ── H2 regression: per-model cost lookup, unknown model → null ──
   test('H2: known model produces cost estimate; unknown model produces null', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -512,7 +512,7 @@ describe('perf-issue command', () => {
   })
 
   test('H2: unrecognized model produces null estimated_cost_usd in JSON', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -591,7 +591,7 @@ describe('perf-issue command', () => {
 
   // ── M4 regression: --limit caps lines read ──
   test('M4: --limit N caps the number of log lines analyzed', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )

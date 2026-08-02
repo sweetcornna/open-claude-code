@@ -20,14 +20,17 @@ import type { OrphanedPermission } from '../types/textInputTypes.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import { isFsInaccessible } from './errors.js'
-import { getFileModificationTime, stripLineNumberPrefix } from './file.js'
-import { readFileSyncWithMetadata } from './fileRead.js'
+import {
+  getFileModificationTime,
+  stripLineNumberPrefix,
+} from './filesystem/file.js'
+import { readFileSyncWithMetadata } from './filesystem/fileRead.js'
 import {
   createFileStateCacheWithSizeLimit,
   type FileStateCache,
 } from './fileStateCache.js'
 import { isNotEmptyMessage, normalizeMessages } from './messages.js'
-import { expandPath } from './path.js'
+import { expandPath } from './filesystem/path.js'
 import type {
   inputSchema as permissionToolInputSchema,
   outputSchema as permissionToolOutputSchema,

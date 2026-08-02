@@ -1,7 +1,7 @@
 import * as path from 'path'
 import { pathToFileURL } from 'url'
 import type { InitializeParams } from 'vscode-languageserver-protocol'
-import { getCwd } from '../../utils/cwd.js'
+import { getCwd } from '../../utils/filesystem/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'

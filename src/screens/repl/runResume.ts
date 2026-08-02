@@ -15,7 +15,7 @@ import { restoreRemoteAgentTasks } from '../../tasks/RemoteAgentTask/RemoteAgent
 import { asSessionId } from '../../types/ids.js'
 import { updateSessionName } from '../../utils/concurrentSessions.js'
 import { deserializeMessages } from '../../utils/conversationRecovery.js'
-import { copyFileHistoryForResume } from '../../utils/fileHistory.js'
+import { copyFileHistoryForResume } from '../../utils/filesystem/fileHistory.js'
 import {
   executeSessionEndHooks,
   getSessionEndHookTimeoutMs,

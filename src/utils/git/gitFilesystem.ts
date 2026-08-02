@@ -17,7 +17,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import { join, resolve } from 'path'
 import { waitForScrollIdle } from '../../bootstrap/state.js'
 import { registerCleanup } from '../cleanupRegistry.js'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { findGitRoot } from '../git.js'
 import { parseGitConfigValue } from './gitConfigParser.js'
 

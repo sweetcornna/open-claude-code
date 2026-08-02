@@ -4,7 +4,7 @@ import { CtrlOToExpand } from 'src/components/CtrlOToExpand.js';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { Box, Text } from '@anthropic/ink';
-import { getDisplayPath } from 'src/utils/file.js';
+import { getDisplayPath } from 'src/utils/filesystem/file.js';
 import { extractTag } from 'src/utils/messages.js';
 import type { Input, Output } from './LSPTool.js';
 import { getSymbolAtPosition } from './symbolContext.js';

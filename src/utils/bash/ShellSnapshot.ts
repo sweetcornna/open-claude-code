@@ -5,18 +5,18 @@ import * as os from 'os'
 import { join } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { registerCleanup } from '../cleanupRegistry.js'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../debug.js'
 import {
   embeddedSearchToolsBinaryPath,
   hasEmbeddedSearchTools,
 } from '../embeddedTools.js'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
-import { pathExists } from '../file.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { pathExists } from '../filesystem/file.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../log.js'
 import { getPlatform } from '../platform.js'
-import { ripgrepCommand } from '../ripgrep.js'
+import { ripgrepCommand } from '../filesystem/ripgrep.js'
 import { subprocessEnv } from '../subprocessEnv.js'
 import { quote } from './shellQuote.js'
 

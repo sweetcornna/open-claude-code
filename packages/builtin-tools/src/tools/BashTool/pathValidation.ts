@@ -8,7 +8,7 @@ import {
   splitCommand_DEPRECATED,
 } from 'src/utils/bash/commands.js'
 import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
-import { getDirectoryForPath } from 'src/utils/path.js'
+import { getDirectoryForPath } from 'src/utils/filesystem/path.js'
 import { allWorkingDirectories } from 'src/utils/permissions/filesystem.js'
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { createReadRuleSuggestion } from 'src/utils/permissions/PermissionUpdate.js'

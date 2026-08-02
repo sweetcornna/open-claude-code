@@ -18,7 +18,10 @@ import {
   parseFrontmatter,
   parseShellFrontmatter,
 } from '../text/frontmatterParser.js'
-import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
+import {
+  getFsImplementation,
+  isDuplicatePath,
+} from '../filesystem/fsOperations.js'
 import {
   extractDescriptionFromMarkdown,
   parseSlashCommandToolsFromFrontmatter,

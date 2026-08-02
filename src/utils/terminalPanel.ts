@@ -20,7 +20,7 @@ import { getSessionId } from '../bootstrap/state.js'
 import { BIN_NAME, DISPLAY_NAME } from '../constants/brand.js'
 import { instances } from '@anthropic/ink'
 import { registerCleanup } from './cleanupRegistry.js'
-import { pwd } from './cwd.js'
+import { pwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 
 const TMUX_SESSION = 'panel'

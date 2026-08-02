@@ -15,9 +15,12 @@ import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
 import { getErrnoCode, isENOENT } from '../errors.js'
-import { writeFileSyncAndFlush_DEPRECATED } from '../file.js'
-import { readFileSync } from '../fileRead.js'
-import { getFsImplementation, safeResolvePath } from '../fsOperations.js'
+import { writeFileSyncAndFlush_DEPRECATED } from '../filesystem/file.js'
+import { readFileSync } from '../filesystem/fileRead.js'
+import {
+  getFsImplementation,
+  safeResolvePath,
+} from '../filesystem/fsOperations.js'
 import { addFileGlobRuleToGitignore } from '../git/gitignore.js'
 import { safeParseJSON } from '../text/json.js'
 import { logError } from '../log.js'

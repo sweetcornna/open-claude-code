@@ -4,7 +4,7 @@ import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
 
 import { isInBundledMode } from '../bundledMode.js'
-import { distRoot } from '../distRoot.js'
+import { distRoot } from '../filesystem/distRoot.js'
 import { CLI_CU_CAPABILITIES, COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
 import { getChicagoCoordinateMode } from './gates.js'
 

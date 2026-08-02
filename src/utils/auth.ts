@@ -57,7 +57,7 @@ import {
 } from './envUtils.js'
 import { errorMessage } from './errors.js'
 import { execSyncWithDefaults_DEPRECATED } from './execFileNoThrow.js'
-import * as lockfile from './lockfile.js'
+import * as lockfile from './filesystem/lockfile.js'
 import { logError } from './log.js'
 import { memoizeWithTTLAsync } from './collections/memoize.js'
 import { getSecureStorage } from './secureStorage/index.js'

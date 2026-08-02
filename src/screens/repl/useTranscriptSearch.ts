@@ -10,7 +10,7 @@ import { openFileInExternalEditor } from '../../utils/editor.js'
 import {
   generateTempFilePath,
   TRANSCRIPT_TEMP_PREFIX,
-} from '../../utils/tempfile.js'
+} from '../../utils/filesystem/tempfile.js'
 import type { Message as MessageType } from '../../types/message.js'
 import type { Screen } from './types.js'
 

@@ -9,7 +9,7 @@ import { assembleToolPool } from 'src/tools.js'
 import { filterParentToolsForFork } from 'src/utils/agentToolFilter.js'
 import { asAgentId } from 'src/types/ids.js'
 import { runWithAgentContext } from 'src/utils/agentContext.js'
-import { runWithCwdOverride } from 'src/utils/cwd.js'
+import { runWithCwdOverride } from 'src/utils/filesystem/cwd.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import {
   createUserMessage,

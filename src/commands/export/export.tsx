@@ -4,7 +4,7 @@ import { ExportDialog } from '../../components/ExportDialog.js';
 import type { ToolUseContext } from '../../Tool.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import type { Message } from '../../types/message.js';
-import { getCwd } from '../../utils/cwd.js';
+import { getCwd } from '../../utils/filesystem/cwd.js';
 import { renderMessagesToPlainText } from '../../utils/exportRenderer.js';
 import { writeFileSync_DEPRECATED } from '../../utils/slowOperations.js';
 

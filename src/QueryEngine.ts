@@ -46,14 +46,14 @@ import type { OrphanedPermission } from './types/textInputTypes.js'
 import { createAbortController } from './utils/abortController.js'
 import type { AttributionState } from './utils/commitAttribution.js'
 import { getGlobalConfig } from './utils/config.js'
-import { getCwd } from './utils/cwd.js'
+import { getCwd } from './utils/filesystem/cwd.js'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { getFastModeState } from './utils/fastMode.js'
 import {
   type FileHistoryState,
   fileHistoryEnabled,
   fileHistoryMakeSnapshot,
-} from './utils/fileHistory.js'
+} from './utils/filesystem/fileHistory.js'
 import {
   cloneFileStateCache,
   type FileStateCache,

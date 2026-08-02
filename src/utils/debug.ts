@@ -3,7 +3,10 @@ import memoize from 'lodash-es/memoize.js'
 import { dirname, join, resolve } from 'path'
 import { getSessionId } from 'src/bootstrap/state.js'
 
-import { type BufferedWriter, createBufferedWriter } from './bufferedWriter.js'
+import {
+  type BufferedWriter,
+  createBufferedWriter,
+} from './filesystem/bufferedWriter.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import {
   type DebugFilter,
@@ -11,7 +14,7 @@ import {
   shouldShowDebugMessage,
 } from './debugFilter.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import { writeToStderr } from './process.js'
 import { jsonStringify } from './slowOperations.js'
 

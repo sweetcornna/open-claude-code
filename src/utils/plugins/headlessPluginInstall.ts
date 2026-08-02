@@ -13,7 +13,7 @@ import { logEvent } from '../../services/analytics/index.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { withDiagnosticsTiming } from '../diagLogs.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../log.js'
 import {
   clearMarketplacesCache,

@@ -6,7 +6,7 @@ import { isRunningWithBun } from './bundledMode.js'
 import { occConfigPath, occGlobalConfigFile } from 'src/config/paths.js'
 import { isEnvTruthy } from './envUtils.js'
 import { findExecutable } from './findExecutable.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import { which } from './which.js'
 
 type Platform = 'win32' | 'darwin' | 'linux'

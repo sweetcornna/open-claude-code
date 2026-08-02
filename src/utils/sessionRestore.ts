@@ -34,10 +34,10 @@ import {
   restoreAttributionStateFromSnapshots,
 } from './commitAttribution.js'
 import { updateSessionName } from './concurrentSessions.js'
-import { getCwd } from './cwd.js'
+import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
-import type { FileHistorySnapshot } from './fileHistory.js'
-import { fileHistoryRestoreStateFromLog } from './fileHistory.js'
+import type { FileHistorySnapshot } from './filesystem/fileHistory.js'
+import { fileHistoryRestoreStateFromLog } from './filesystem/fileHistory.js'
 import { createSystemMessage } from './messages.js'
 import { parseUserSpecifiedModel } from './model/model.js'
 import { getPlansDirectory } from './plans.js'

@@ -290,7 +290,7 @@ const realFsAdapter = {
   realpath: (p: string) => nodeFs.realpath(p),
 }
 
-mock.module('src/utils/fsOperations.js', () => ({
+mock.module('src/utils/filesystem/fsOperations.js', () => ({
   getFsImplementation: () =>
     useMockForMagicDocs
       ? ({

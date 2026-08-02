@@ -43,7 +43,7 @@ function getContentItems(content: MessageContent | undefined): ContentItem[] {
   if (!content || typeof content === 'string') return []
   return content
 }
-import { getDisplayPath } from './file.js'
+import { getDisplayPath } from './filesystem/file.js'
 import { isFullscreenEnvEnabled } from './fullscreen.js'
 import {
   isAutoManagedMemoryFile,

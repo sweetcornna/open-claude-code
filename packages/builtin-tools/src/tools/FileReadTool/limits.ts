@@ -14,7 +14,7 @@
  */
 import memoize from 'lodash-es/memoize.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
-import { MAX_OUTPUT_SIZE } from 'src/utils/file.js'
+import { MAX_OUTPUT_SIZE } from 'src/utils/filesystem/file.js'
 export const DEFAULT_MAX_OUTPUT_TOKENS = 25000
 
 /**

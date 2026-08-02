@@ -4,7 +4,7 @@ import {
   getXDGCacheHome,
   getXDGDataHome,
   getUserBinDir,
-} from '../xdg'
+} from '../filesystem/xdg'
 
 describe('getXDGStateHome', () => {
   test('returns ~/.local/state by default', () => {

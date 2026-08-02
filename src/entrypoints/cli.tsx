@@ -188,7 +188,7 @@ async function main(): Promise<void> {
     profileCheckpoint('cli_daemon_path');
     const { enableConfigs } = await import('../utils/config.js');
     enableConfigs();
-    const { setShellIfWindows } = await import('../utils/windowsPaths.js');
+    const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
     const { initSinks } = await import('../utils/sinks.js');
     initSinks();
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
     profileCheckpoint('cli_daemon_path');
     const { enableConfigs } = await import('../utils/config.js');
     enableConfigs();
-    const { setShellIfWindows } = await import('../utils/windowsPaths.js');
+    const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
     const bg = await import('../cli/bg.js');
     await bg.handleBgStart(args.filter(a => a !== '--bg' && a !== '--background'));
@@ -240,7 +240,7 @@ async function main(): Promise<void> {
     profileCheckpoint('cli_daemon_path');
     const { enableConfigs } = await import('../utils/config.js');
     enableConfigs();
-    const { setShellIfWindows } = await import('../utils/windowsPaths.js');
+    const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
     const { initSinks } = await import('../utils/sinks.js');
     initSinks();
