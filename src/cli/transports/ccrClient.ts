@@ -7,7 +7,7 @@ import { decodeJwtExpiry } from '../../utils/jwt.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
-import { createAxiosInstance } from '../../utils/proxy.js'
+import { createAxiosInstance } from '../../utils/network/proxy.js'
 import {
   registerSessionActivityCallback,
   unregisterSessionActivityCallback,
@@ -21,7 +21,7 @@ import type {
   SessionState,
 } from '../../utils/sessionState.js'
 import { sleep } from '../../utils/process/sleep.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 import {
   RetryableError,
   SerialBatchEventUploader,

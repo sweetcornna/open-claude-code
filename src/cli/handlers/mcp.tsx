@@ -332,7 +332,7 @@ export async function mcpAddFromDesktopHandler(options: { scope?: string }): Pro
       source: 'desktop' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
 
-    const { readClaudeDesktopMcpServers } = await import('../../utils/claudeDesktop.js');
+    const { readClaudeDesktopMcpServers } = await import('../../utils/deepLink/claudeDesktop.js');
     const servers = await readClaudeDesktopMcpServers();
 
     if (Object.keys(servers).length === 0) {

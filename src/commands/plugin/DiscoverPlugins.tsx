@@ -11,7 +11,7 @@ import { Box, Text, useInput, useTerminalFocus } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { LoadedPlugin } from '../../types/plugin.js';
 import { count } from '../../utils/collections/array.js';
-import { openBrowser } from '../../utils/browser.js';
+import { openBrowser } from '../../utils/network/browser.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { errorMessage } from '../../utils/errors.js';
 import { clearAllCaches } from '../../utils/plugins/cacheUtils.js';

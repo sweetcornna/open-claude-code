@@ -59,7 +59,7 @@ import {
   errorMessage,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
-import { getMCPUserAgent } from '../../utils/http.js'
+import { getMCPUserAgent } from '../../utils/network/http.js'
 import { maybeNotifyIDEConnected } from '../../utils/terminal/ide.js'
 import {
   type ImageLimits,
@@ -71,21 +71,21 @@ import {
   getFormatDescription,
   getLargeOutputInstructions,
   persistBinaryContent,
-} from '../../utils/mcpOutputStorage.js'
+} from '../../utils/mcp/mcpOutputStorage.js'
 import {
   getContentSizeEstimate,
   type MCPToolResult,
   mcpContentNeedsTruncation,
   truncateMcpContentIfNeeded,
-} from '../../utils/mcpValidation.js'
-import { WebSocketTransport } from '../../utils/mcpWebSocketTransport.js'
+} from '../../utils/mcp/mcpValidation.js'
+import { WebSocketTransport } from '../../utils/mcp/mcpWebSocketTransport.js'
 import { memoizeWithLRU } from '../../utils/collections/memoize.js'
-import { getWebSocketTLSOptions } from '../../utils/mtls.js'
+import { getWebSocketTLSOptions } from '../../utils/network/mtls.js'
 import {
   getProxyFetchOptions,
   getWebSocketProxyAgent,
   getWebSocketProxyUrl,
-} from '../../utils/proxy.js'
+} from '../../utils/network/proxy.js'
 import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
 import { subprocessEnv } from '../../utils/process/subprocessEnv.js'
 import {

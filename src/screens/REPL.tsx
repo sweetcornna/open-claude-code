@@ -170,7 +170,7 @@ import { stripDangerousPermissionsForAutoMode } from '../utils/permissions/permi
 import { getScratchpadDir, isScratchpadEnabled } from '../utils/permissions/filesystem.js';
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js';
 import { clearSpeculativeChecks } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js';
-import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
+import type { AutoUpdaterResult } from '../utils/update/autoUpdater.js';
 import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config.js';
 import { hasConsoleBillingAccess } from '../utils/billing.js';
 import {

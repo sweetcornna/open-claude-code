@@ -17,11 +17,11 @@ import { queryHaiku } from '../services/api/claude.js';
 import { startsWithApiErrorPrefix } from '../services/api/errors.js';
 import type { Message } from '../types/message.js';
 import { checkAndRefreshOAuthTokenIfNeeded } from '../utils/auth.js';
-import { openBrowser } from '../utils/browser.js';
+import { openBrowser } from '../utils/network/browser.js';
 import { logForDebugging } from '../utils/debug.js';
 import { env } from '../utils/env.js';
 import { type GitRepoState, getGitState, getIsGit } from '../utils/git.js';
-import { getAuthHeaders, getUserAgent } from '../utils/http.js';
+import { getAuthHeaders, getUserAgent } from '../utils/network/http.js';
 import { getInMemoryErrors, logError } from '../utils/log.js';
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js';
 import {

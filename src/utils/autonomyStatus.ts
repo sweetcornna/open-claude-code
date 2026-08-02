@@ -23,7 +23,7 @@ import {
   listRemoteTriggerAuditRecords,
 } from './remoteTriggerAudit.js'
 import { formatWorkflowRunsStatus, listWorkflowRuns } from './workflowRuns.js'
-import { formatRemoteControlLocalStatus } from './remoteControlStatus.js'
+import { formatRemoteControlLocalStatus } from './network/remoteControlStatus.js'
 
 type DeepStatusParams = {
   runs: AutonomyRunRecord[]

@@ -10,7 +10,7 @@ import figures from 'figures';
 import { basename } from 'path';
 import { MessageResponse } from '../MessageResponse.js';
 
-import { openPath } from '../../utils/browser.js';
+import { openPath } from '../../utils/network/browser.js';
 import { TURN_COMPLETION_VERBS } from '../../constants/turnCompletionVerbs.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type {

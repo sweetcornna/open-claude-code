@@ -3,7 +3,7 @@ import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { createCombinedAbortSignal } from '../process/combinedAbortSignal.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
-import { getProxyUrl, shouldBypassProxy } from '../proxy.js'
+import { getProxyUrl, shouldBypassProxy } from '../network/proxy.js'
 // Import as namespace so spyOn works in tests (direct imports bypass spies)
 import * as settingsModule from '../settings/settings.js'
 import type { HttpHook } from '../settings/types.js'

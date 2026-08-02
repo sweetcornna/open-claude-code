@@ -84,7 +84,7 @@ mock.module('src/utils/undercover.js', () => ({
 mock.module('src/utils/model/antModels.js', () => ({
   getAntModelOverrideConfig: () => null,
 }))
-mock.module('src/utils/mcpInstructionsDelta.js', () => ({
+mock.module('src/utils/mcp/mcpInstructionsDelta.js', () => ({
   isMcpInstructionsDeltaEnabled: () => false,
 }))
 mock.module('src/memdir/memdir.js', () => ({

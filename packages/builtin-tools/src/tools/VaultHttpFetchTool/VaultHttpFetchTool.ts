@@ -6,7 +6,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '@open-claude-code/tool-runtime/analytics.js'
-import { getWebFetchUserAgent } from 'src/utils/http.js'
+import { getWebFetchUserAgent } from 'src/utils/network/http.js'
 import { isValidKey } from 'src/utils/localValidate.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getRuleByContentsForToolName } from 'src/utils/permissions/permissions.js'

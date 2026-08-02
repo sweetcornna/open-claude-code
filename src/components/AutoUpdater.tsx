@@ -15,11 +15,11 @@ import {
   type InstallStatus,
   installGlobalPackage,
   shouldSkipVersion,
-} from '../utils/autoUpdater.js';
+} from '../utils/update/autoUpdater.js';
 import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
-import { installOrUpdateOccPackage } from '../utils/localInstaller.js';
+import { installOrUpdateOccPackage } from '../utils/update/localInstaller.js';
 import { gt, gte } from '../utils/text/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 

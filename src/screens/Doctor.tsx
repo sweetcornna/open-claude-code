@@ -19,7 +19,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState } from '../state/AppState.js';
 import { getPluginErrorMessage } from '../types/plugin.js';
-import { getNpmDistTags, type NpmDistTags } from '../utils/autoUpdater.js';
+import { getNpmDistTags, type NpmDistTags } from '../utils/update/autoUpdater.js';
 import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
 import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/doctorDiagnostic.js';
 import { validateBoundedIntEnvVar } from '../utils/envValidation.js';
