@@ -2,7 +2,7 @@
  * User-facing blocking messages produced from hook execution results.
  * Implementations moved verbatim from src/utils/hooks.ts.
  */
-import type { HookBlockingError } from '../hooks.js'
+import type { HookBlockingError } from './execution.js'
 /**
  * Format a list of blocking errors from a PreTool hook's configured commands.
  * @param hookName The name of the hook (e.g., 'PreToolUse:Write', 'PreToolUse:Edit', 'PreToolUse:Bash')
