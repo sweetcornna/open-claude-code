@@ -196,6 +196,10 @@ export const CORE_TOOLS_PROMPT_LEADING_NAMES = [
   'Glob',
   'Grep',
 ] as const
+// NOTE: the previous hand-written list also claimed CronCreate/CronDelete/
+// CronList/Config/MCPTool were core — they are NOT in CORE_TOOLS (they are
+// deferred tools reachable only via SearchExtraTools/ExecuteExtraTool). The
+// guardrail runner's membership assertion now prevents that lie recurring.
 export const CORE_TOOLS_PROMPT_TRAILING_NAMES = [
   'Agent',
   'WebFetch',
@@ -208,12 +212,7 @@ export const CORE_TOOLS_PROMPT_TRAILING_NAMES = [
   'TaskGet',
   'TodoWrite',
   'Skill',
-  'CronCreate',
-  'CronDelete',
-  'CronList',
-  'Config',
   'LSP',
-  'MCPTool',
 ] as const
 
 // Shared between the main prompt's Communication style section and the
