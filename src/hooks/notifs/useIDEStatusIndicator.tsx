@@ -3,7 +3,12 @@ import { useNotifications } from 'src/context/notifications.js';
 import { Text } from '@anthropic/ink';
 import type { MCPServerConnection } from 'src/services/mcp/types.js';
 import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
-import { detectIDEs, type IDEExtensionInstallationStatus, isJetBrainsIde, isSupportedTerminal } from 'src/utils/ide.js';
+import {
+  detectIDEs,
+  type IDEExtensionInstallationStatus,
+  isJetBrainsIde,
+  isSupportedTerminal,
+} from 'src/utils/terminal/ide.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 import { useIdeConnectionStatus } from '../useIdeConnectionStatus.js';
 import type { IDESelection } from '../useIdeSelection.js';

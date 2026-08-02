@@ -42,7 +42,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import {
   buildAccountProperties,
   buildAPIProviderProperties,
-} from '../../utils/status.js'
+} from '../../utils/terminal/status.js'
 
 /**
  * Shared post-token-acquisition logic. Saves tokens, fetches profile/roles,

@@ -60,7 +60,7 @@ import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { EndTruncatingAccumulator } from '@open-claude-code/tool-runtime/stringUtils.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { TaskOutput } from 'src/utils/task/TaskOutput.js';
-import { isOutputLineTruncated } from 'src/utils/terminal.js';
+import { isOutputLineTruncated } from 'src/utils/terminal/terminal.js';
 import {
   getDefaultBashTimeoutMs as getDefaultTimeoutMs,
   getMaxBashTimeoutMs as getMaxTimeoutMs,

@@ -4,7 +4,7 @@
  * Pure functions for resolving vim motions to cursor positions.
  */
 
-import type { Cursor } from '../utils/Cursor.js'
+import type { Cursor } from '../utils/terminal/Cursor.js'
 
 /**
  * Resolve a motion to a target cursor position.

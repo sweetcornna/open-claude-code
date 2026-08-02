@@ -60,7 +60,7 @@ import type { BaseTextInputProps, PromptInputMode, VimMode } from '../../types/t
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { count } from '../../utils/collections/array.js';
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
-import { Cursor } from '../../utils/Cursor.js';
+import { Cursor } from '../../utils/terminal/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
@@ -75,18 +75,18 @@ import {
   isFastModeEnabled,
   isFastModeSupportedByModel,
 } from '../../utils/fastMode.js';
-import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import type { PromptInputHelpers } from '../../utils/handlePromptSubmit.js';
-import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/imagePaste.js';
-import type { ImageDimensions } from '../../utils/imageResizer.js';
-import { cacheImagePath, storeImage } from '../../utils/imageStore.js';
-import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/keyboardShortcuts.js';
+import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/terminal/imagePaste.js';
+import type { ImageDimensions } from '../../utils/terminal/imageResizer.js';
+import { cacheImagePath, storeImage } from '../../utils/terminal/imageStore.js';
+import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/terminal/keyboardShortcuts.js';
 import { logError } from '../../utils/log.js';
 import { isOpus1mMergeEnabled, modelDisplayString } from '../../utils/model/model.js';
 import { cyclePermissionMode, getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import { getPlatform } from '../../utils/process/platform.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
-import { editPromptInEditor } from '../../utils/promptEditor.js';
+import { editPromptInEditor } from '../../utils/terminal/promptEditor.js';
 // hasAutoModeOptIn removed — auto mode is available to all users
 import { findBtwTriggerPositions } from '../../utils/sideQuestion.js';
 import { findSlashCommandPositions } from '../../utils/suggestions/commandSuggestions.js';
@@ -103,7 +103,7 @@ import { getTeammateColor } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/text/textHighlighting.js';
-import type { Theme } from '../../utils/theme.js';
+import type { Theme } from '../../utils/terminal/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';

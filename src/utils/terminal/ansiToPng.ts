@@ -25,7 +25,7 @@ import {
   DEFAULT_BG,
   type ParsedLine,
   parseAnsi,
-} from '../ansiToSvg.js'
+} from './ansiToSvg.js'
 
 // Glyph cell size — rasterized at output resolution so the default scale=1
 // is crisp (no nearest-neighbor upscaling artifacts).

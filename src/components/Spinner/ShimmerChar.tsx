@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Text } from '@anthropic/ink';
-import type { Theme } from '../../utils/theme.js';
+import type { Theme } from '../../utils/terminal/theme.js';
 
 type Props = {
   char: string;

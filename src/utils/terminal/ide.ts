@@ -20,7 +20,7 @@ import {
 } from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { getAncestorPidsAsync } from '../process/genericProcessUtils.js'
-import { isJetBrainsPluginInstalledCached } from '../jetbrains.js'
+import { isJetBrainsPluginInstalledCached } from './jetbrains.js'
 import { logError } from '../log.js'
 import { getPlatform } from '../process/platform.js'
 
@@ -38,7 +38,7 @@ import { errorMessage, isFsInaccessible } from '../errors.js'
 import {
   checkWSLDistroMatch,
   WindowsToWSLConverter,
-} from '../idePathConversion.js'
+} from './idePathConversion.js'
 import { sleep } from '../process/sleep.js'
 import { jsonParse } from '../slowOperations.js'
 

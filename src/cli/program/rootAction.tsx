@@ -166,7 +166,7 @@ import {
   verifyAutoModeGateAccess,
 } from 'src/utils/permissions/permissionSetup.js';
 import { initializeVersionedPlugins } from 'src/utils/plugins/installedPluginsManager.js';
-import { installAsciicastRecorder } from 'src/utils/asciicast.js';
+import { installAsciicastRecorder } from 'src/utils/terminal/asciicast.js';
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
 import { isBareMode, isEnvTruthy, isInProtectedNamespace } from 'src/utils/envUtils.js';
 import { isInBundledMode } from 'src/utils/bundledMode.js';
@@ -203,7 +203,7 @@ import { registerCleanup } from 'src/utils/process/cleanupRegistry.js';
 import { relative, resolve } from 'path';
 import { resetUserCache } from 'src/utils/user.js';
 import { safeParseJSON } from 'src/utils/text/json.js';
-import { seedEarlyInput } from 'src/utils/earlyInput.js';
+import { seedEarlyInput } from 'src/utils/terminal/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { setCwd } from 'src/utils/shell/Shell.js';
 import { setupChromeDevtools, shouldEnableChromeDevtools } from 'src/utils/chromeDevtools/setup.js';

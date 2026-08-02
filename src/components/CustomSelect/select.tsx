@@ -3,7 +3,7 @@ import React, { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Ansi, Box, Text, stringWidth, useDeclaredCursor } from '@anthropic/ink';
 import { count } from '../../utils/collections/array.js';
 import type { PastedContent } from '../../utils/config.js';
-import type { ImageDimensions } from '../../utils/imageResizer.js';
+import type { ImageDimensions } from '../../utils/terminal/imageResizer.js';
 import { SelectInputOption } from './select-input-option.js';
 import { SelectOption } from './select-option.js';
 import { useSelectInput } from './use-select-input.js';

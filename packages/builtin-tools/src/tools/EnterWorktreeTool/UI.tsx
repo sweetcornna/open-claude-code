@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
-import type { ThemeName } from 'src/utils/theme.js';
+import type { ThemeName } from 'src/utils/terminal/theme.js';
 import type { Output } from './EnterWorktreeTool.js';
 
 export function renderToolUseMessage(): React.ReactNode {

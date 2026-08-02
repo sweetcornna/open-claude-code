@@ -8,7 +8,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
 import type { PromptInputMode } from 'src/types/textInputTypes.js';
 import { getTeammateColor } from 'src/utils/teammate.js';
-import type { Theme } from 'src/utils/theme.js';
+import type { Theme } from 'src/utils/terminal/theme.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 
 type Props = {

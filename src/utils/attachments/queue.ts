@@ -10,7 +10,7 @@ import {
   getImagePasteIds,
   isValidImagePaste,
 } from 'src/types/textInputTypes.js'
-import { maybeResizeAndDownsampleImageBlock } from '../imageResizer.js'
+import { maybeResizeAndDownsampleImageBlock } from '../terminal/imageResizer.js'
 import { extractTextContent } from '../messages.js'
 import { drainPendingMessages } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { MessageOrigin } from 'src/types/message.js'

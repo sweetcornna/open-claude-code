@@ -14,9 +14,9 @@ import {
   isClaudeAISubscriber,
 } from '../auth.js';
 import type { AgentDefinitionsResult } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from '../statusNoticeHelpers.js';
-import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from '../ide.js';
-import { isJetBrainsPluginInstalledCachedSync } from '../jetbrains.js';
+import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
+import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
+import { isJetBrainsPluginInstalledCachedSync } from './jetbrains.js';
 
 // Types
 export type StatusNoticeType = 'warning' | 'info';

@@ -7,7 +7,7 @@ import {
   normalizePathForComparison,
   pathsEqual,
 } from '../utils/filesystem/file.js'
-import { getConnectedIdeClient } from '../utils/ide.js'
+import { getConnectedIdeClient } from '../utils/terminal/ide.js'
 import { jsonParse } from '../utils/slowOperations.js'
 
 class DiagnosticsTrackingError extends ClaudeError {}

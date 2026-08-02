@@ -47,7 +47,7 @@ import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { formatTokens } from '../utils/text/format.js';
-import { consumeEarlyInput } from '../utils/earlyInput.js';
+import { consumeEarlyInput } from '../utils/terminal/earlyInput.js';
 
 import { setMemberActive } from '../utils/swarm/teamHelpers.js';
 import {
@@ -272,7 +272,7 @@ import {
   closeOpenDiffs,
   getConnectedIdeClient,
   type IdeType,
-} from '../utils/ide.js';
+} from '../utils/terminal/ide.js';
 import { useIDEIntegration } from '../hooks/useIDEIntegration.js';
 import exit from '../commands/exit/index.js';
 import { ExitFlow } from '../components/ExitFlow.js';
@@ -306,7 +306,7 @@ import { FeedbackSurvey } from 'src/components/FeedbackSurvey/FeedbackSurvey.js'
 import { useInstallMessages } from 'src/hooks/notifs/useInstallMessages.js';
 import { useAwaySummary } from 'src/hooks/useAwaySummary.js';
 import { getTipToShowOnSpinner, recordShownTip } from 'src/services/tips/tipScheduler.js';
-import type { Theme } from 'src/utils/theme.js';
+import type { Theme } from 'src/utils/terminal/theme.js';
 import {
   checkAndDisableAutoModeIfNeeded,
   useKickOffCheckAndDisableAutoModeIfNeeded,
@@ -364,7 +364,7 @@ import { launchUltraplan } from '../commands/ultraplan.js';
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
 import type { RemoteMessageContent } from '../utils/teleport/api.js';
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
-import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/fullscreen.js';
+import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/terminal/fullscreen.js';
 import { AlternateScreen } from '@anthropic/ink';
 import { ScrollKeybindingHandler } from '../components/ScrollKeybindingHandler.js';
 import {

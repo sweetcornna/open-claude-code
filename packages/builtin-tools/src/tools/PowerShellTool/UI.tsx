@@ -10,7 +10,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { PowerShellProgress } from 'src/types/tools.js';
-import type { ThemeName } from 'src/utils/theme.js';
+import type { ThemeName } from 'src/utils/terminal/theme.js';
 import type { Out, PowerShellToolInput } from './PowerShellTool.js';
 
 // Constants for command display

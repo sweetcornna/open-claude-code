@@ -5,7 +5,7 @@ import type {
   ConnectedMCPServer,
   MCPServerConnection,
 } from '../services/mcp/types.js'
-import { getConnectedIdeClient } from '../utils/ide.js'
+import { getConnectedIdeClient } from '../utils/terminal/ide.js'
 import { lazySchema } from '../utils/collections/lazySchema.js'
 export type IDEAtMentioned = {
   filePath: string

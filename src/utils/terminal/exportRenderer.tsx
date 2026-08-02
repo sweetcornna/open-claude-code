@@ -7,7 +7,7 @@ import type { KeybindingContextName } from '../../keybindings/types.js';
 import { AppStateProvider } from '../../state/AppState.js';
 import type { Tools } from '../../Tool.js';
 import type { Message } from '../../types/message.js';
-import { renderToAnsiString } from '../staticRender.js';
+import { renderToAnsiString } from './staticRender.js';
 
 /**
  * Minimal keybinding provider for static/headless renders.

@@ -23,7 +23,7 @@ import { startKeychainPrefetch } from './utils/secureStorage/keychainPrefetch.js
 startKeychainPrefetch();
 
 import { feature } from 'bun:bundle';
-import { stopCapturingEarlyInput } from './utils/earlyInput.js';
+import { stopCapturingEarlyInput } from './utils/terminal/earlyInput.js';
 import { initializeWarningHandler } from './utils/warningHandler.js';
 
 import { SHOW_CURSOR } from '@anthropic/ink';

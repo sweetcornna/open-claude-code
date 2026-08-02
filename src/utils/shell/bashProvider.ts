@@ -21,7 +21,7 @@ import {
   ensureSocketInitialized,
   getClaudeTmuxEnv,
   hasTmuxToolBeenUsed,
-} from '../tmuxSocket.js'
+} from '../terminal/tmuxSocket.js'
 import { windowsPathToPosixPath } from '../filesystem/windowsPaths.js'
 import type { ShellProvider } from './shellProvider.js'
 

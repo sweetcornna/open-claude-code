@@ -17,7 +17,7 @@ import {
   detectImageFormatFromBase64,
   type ImageDimensions,
   maybeResizeAndDownsampleImageBuffer,
-} from '../imageResizer.js'
+} from './imageResizer.js'
 import { logError } from '../log.js'
 import {
   CLIPBOARD_TEMP_PREFIX,

@@ -1,5 +1,5 @@
 import { getAgentColorMap } from '@open-claude-code/tool-runtime/bootstrapState.js'
-import type { Theme } from 'src/utils/theme.js'
+import type { Theme } from 'src/utils/terminal/theme.js'
 
 export type AgentColorName =
   | 'red'

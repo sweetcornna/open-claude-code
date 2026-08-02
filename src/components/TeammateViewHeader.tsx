@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Text, KeyboardShortcutHint } from '@anthropic/ink';
-import { toInkColor } from '../utils/ink.js';
+import { toInkColor } from '../utils/terminal/ink.js';
 import { useAppState } from '../state/AppState.js';
 import { getViewedTeammateTask } from '../state/selectors.js';
 

@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { Text, Dialog } from '@anthropic/ink';
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
-import { isSupportedTerminal } from '../utils/ide.js';
+import { isSupportedTerminal } from '../utils/terminal/ide.js';
 import { Select } from './CustomSelect/index.js';
 
 type IdeAutoConnectDialogProps = {

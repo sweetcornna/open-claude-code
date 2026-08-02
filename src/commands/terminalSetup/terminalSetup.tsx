@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { homedir, platform } from 'os';
 import { dirname, join } from 'path';
-import type { ThemeName } from 'src/utils/theme.js';
+import type { ThemeName } from 'src/utils/terminal/theme.js';
 import { pathToFileURL } from 'url';
 import { supportsHyperlinks } from '@anthropic/ink';
 import { color } from '@anthropic/ink';
@@ -15,7 +15,7 @@ import {
   checkAndRestoreTerminalBackup,
   getTerminalPlistPath,
   markTerminalSetupComplete,
-} from '../../utils/appleTerminalBackup.js';
+} from '../../utils/terminal/appleTerminalBackup.js';
 import { setupShellCompletion } from '../../utils/collections/completionCache.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { env } from '../../utils/env.js';

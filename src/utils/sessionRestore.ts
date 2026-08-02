@@ -26,7 +26,7 @@ import type {
   PersistedWorktreeSession,
 } from '../types/logs.js'
 import type { Message } from '../types/message.js'
-import { renameRecordingForSession } from './asciicast.js'
+import { renameRecordingForSession } from './terminal/asciicast.js'
 import { clearMemoryFileCaches } from './claudemd.js'
 import {
   type AttributionState,

@@ -235,7 +235,7 @@ export async function runResume(
     )
     // Rename asciicast recording to match the resumed session ID
     const { renameRecordingForSession } = await import(
-      '../../utils/asciicast.js'
+      '../../utils/terminal/asciicast.js'
     )
     await renameRecordingForSession()
     await resetSessionFilePointer()

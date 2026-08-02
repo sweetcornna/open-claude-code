@@ -9,7 +9,7 @@ import {
   type IDEExtensionInstallationStatus,
   isJetBrainsIde,
   toIDEDisplayName,
-} from '../utils/ide.js';
+} from '../utils/terminal/ide.js';
 import { Dialog } from '@anthropic/ink';
 
 interface Props {

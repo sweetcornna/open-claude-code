@@ -6,7 +6,7 @@ import {
 } from '../../keybindings/loadUserBindings.js'
 import { generateKeybindingsTemplate } from '../../keybindings/template.js'
 import { getErrnoCode } from '../../utils/errors.js'
-import { editFileInEditor } from '../../utils/promptEditor.js'
+import { editFileInEditor } from '../../utils/terminal/promptEditor.js'
 
 export async function call(): Promise<{ type: 'text'; value: string }> {
   if (!isKeybindingCustomizationEnabled()) {
