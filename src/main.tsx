@@ -68,19 +68,8 @@ import {
 import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { count, uniq } from './utils/array.js';
 import { installAsciicastRecorder } from './utils/asciicast.js';
-import {
-  getSubscriptionType,
-  isClaudeAISubscriber,
-  prefetchAwsCredentialsAndBedRockInfoIfSafe,
-  prefetchGcpCredentialsIfSafe,
-  validateForceLoginOrg,
-} from './utils/auth.js';
-import {
-  checkHasTrustDialogAccepted,
-  getGlobalConfig,
-  isAutoUpdaterDisabled,
-  saveGlobalConfig,
-} from './utils/config.js';
+import { getSubscriptionType, validateForceLoginOrg } from './utils/auth.js';
+import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from './utils/config.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
 import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
 import {
@@ -93,42 +82,17 @@ import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import { createSystemMessage, createUserMessage } from './utils/messages.js';
 import { getPlatform } from './utils/platform.js';
 import { getSessionIngressAuthToken } from './utils/sessionIngressAuth.js';
-import { settingsChangeDetector } from './utils/settings/changeDetector.js';
-import { skillChangeDetector } from './utils/skills/skillChangeDetector.js';
-import { jsonParse, writeFileSync_DEPRECATED } from './utils/slowOperations.js';
+import { jsonParse } from './utils/slowOperations.js';
 import { computeInitialTeamContext } from './utils/swarm/reconnection.js';
 import { initializeWarningHandler } from './utils/warningHandler.js';
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js';
 
-// Lazy require to avoid circular dependency: teammate.ts -> AppState.tsx -> ... -> main.tsx
-/* eslint-disable @typescript-eslint/no-require-imports */
-const getTeammateUtils = () => require('./utils/teammate.js') as typeof import('./utils/teammate.js');
-const getTeammatePromptAddendum = () =>
-  require('./utils/swarm/teammatePromptAddendum.js') as typeof import('./utils/swarm/teammatePromptAddendum.js');
-const getTeammateModeSnapshot = () =>
-  require('./utils/swarm/backends/teammateModeSnapshot.js') as typeof import('./utils/swarm/backends/teammateModeSnapshot.js');
-/* eslint-enable @typescript-eslint/no-require-imports */
-// Dead code elimination: conditional import for COORDINATOR_MODE
-/* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = feature('COORDINATOR_MODE')
-  ? (require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js'))
-  : null;
-/* eslint-enable @typescript-eslint/no-require-imports */
-// Dead code elimination: conditional import for KAIROS (assistant mode)
-/* eslint-disable @typescript-eslint/no-require-imports */
-const assistantModule = feature('KAIROS')
-  ? (require('./assistant/index.js') as typeof import('./assistant/index.js'))
-  : null;
-const kairosGate = feature('KAIROS') ? (require('./assistant/gate.js') as typeof import('./assistant/gate.js')) : null;
-
 import { relative, resolve } from 'path';
-import { isAnalyticsDisabled } from 'src/services/analytics/config.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js';
-import { initializeAnalyticsGates } from 'src/services/analytics/sink.js';
 import {
   getOriginalCwd,
   setAdditionalDirectoriesForClaudeMd,
@@ -157,7 +121,6 @@ import {
   showSetupScreens,
 } from './interactiveHelpers.js';
 import { initBuiltinPlugins } from './plugins/bundled/index.js';
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { checkQuotaStatus } from './services/claudeAiLimits.js';
 import { getMcpToolsCommandsAndResources, prefetchAllMcpResources } from './services/mcp/client.js';
 import { initBundledSkills } from './skills/bundled/index.js';
@@ -172,15 +135,13 @@ import {
 import type { LogOption } from './types/logs.js';
 import type { Message as MessageType } from './types/message.js';
 import { setupChromeDevtools, shouldEnableChromeDevtools } from './utils/chromeDevtools/setup.js';
-import { getContextWindowForModel } from './utils/context.js';
 import { loadConversationForResume } from './utils/conversationRecovery.js';
 import { buildDeepLinkBanner } from './utils/deepLink/banner.js';
-import { hasNodeOption, isBareMode, isEnvTruthy, isInProtectedNamespace } from './utils/envUtils.js';
+import { isBareMode, isEnvTruthy, isInProtectedNamespace } from './utils/envUtils.js';
 import { refreshExampleCommands } from './utils/exampleCommands.js';
 import type { FpsMetrics } from './utils/fpsTracker.js';
 import { getWorktreePaths } from './utils/getWorktreePaths.js';
-import { findGitRoot, getBranch, getIsGit, getWorktreeCount } from './utils/git.js';
-import { getGhAuthStatus } from './utils/github/ghAuthStatus.js';
+import { findGitRoot, getBranch, getIsGit } from './utils/git.js';
 import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
 import { getModelDeprecationWarning } from './utils/model/deprecation.js';
@@ -202,10 +163,7 @@ import {
 } from './utils/permissions/permissionSetup.js';
 import { cleanupOrphanedPluginVersionsInBackground } from './utils/plugins/cacheUtils.js';
 import { initializeVersionedPlugins } from './utils/plugins/installedPluginsManager.js';
-import { getManagedPluginNames } from './utils/plugins/managedPlugins.js';
 import { getGlobExclusionsForPluginCache } from './utils/plugins/orphanedPluginFilter.js';
-import { getPluginSeedDirs } from './utils/plugins/pluginDirectories.js';
-import { countFilesRoundedRg } from './utils/ripgrep.js';
 import { processSessionStartHooks, processSetupHooks } from './utils/sessionStart.js';
 import {
   cacheSessionTitle,
@@ -216,22 +174,26 @@ import {
   searchSessionsByCustomTitle,
   sessionIdExists,
 } from './utils/sessionStorage.js';
-import {
-  getInitialSettings,
-  getManagedSettingsKeysForLogging,
-  getSettingsForSource,
-  getSettingsWithErrors,
-} from './utils/settings/settings.js';
-import { resetSettingsCache } from './utils/settings/settingsCache.js';
+import { getInitialSettings, getSettingsWithErrors } from './utils/settings/settings.js';
 import type { ValidationError } from './utils/settings/validation.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID } from './utils/tasks.js';
-import { logPluginLoadErrors, logPluginsEnabledForSession } from './utils/telemetry/pluginTelemetry.js';
-import { logSkillsLoaded } from './utils/telemetry/skillLoadedEvent.js';
-import { generateTempFilePath, SETTINGS_TEMP_PREFIX } from './utils/tempfile.js';
 import { validateUuid } from './utils/uuid.js';
 // Plugin startup checks are now handled non-blockingly in REPL.tsx
 
 import { createSortedHelpConfig } from './cli/program/helpConfig.js';
+import {
+  assistantModule,
+  autoModeStateModule,
+  coordinatorModeModule,
+  getTeammateModeSnapshot,
+  getTeammatePromptAddendum,
+  getTeammateUtils,
+  kairosGate,
+} from './cli/program/lazyModules.js';
+import { _pendingAssistantChat, _pendingSSH, _pendingSSH as _pendingSSHState } from './cli/program/pendingState.js';
+import { startDeferredPrefetches } from './cli/program/prefetch.js';
+import { eagerLoadSettings, initializeEntrypoint } from './cli/program/settingsFlags.js';
+import { logManagedSettings, logSessionTelemetry, logStartupTelemetry } from './cli/program/telemetry.js';
 import { registerPreActionHook } from './cli/program/preAction.js';
 import { applyExtraRootOptions, applyRootOptions } from './cli/program/rootOptions.js';
 import { logPermissionContextForAnts } from 'src/services/internalLogging.js';
@@ -248,39 +210,31 @@ import {
   parseMcpConfigFromFilePath,
 } from 'src/services/mcp/config.js';
 import { excludeCommandsByServer, excludeResourcesByServer } from 'src/services/mcp/utils.js';
-import { getRelevantTips } from 'src/services/tips/tipRegistry.js';
 import { logContextMetrics } from 'src/utils/api.js';
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME, isChromeDevtoolsMCPServer } from 'src/utils/chromeDevtools/common.js';
 import { registerCleanup } from 'src/utils/cleanupRegistry.js';
-import { eagerParseCliFlag } from 'src/utils/cliArgs.js';
 import { createEmptyAttributionState } from 'src/utils/commitAttribution.js';
 import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/concurrentSessions.js';
 import { getCwd } from 'src/utils/cwd.js';
 import { logForDebugging, setHasFormattedOutput } from 'src/utils/debug.js';
 import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError } from 'src/utils/errors.js';
-import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js';
 import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
-import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
 import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
 import { setCwd } from 'src/utils/Shell.js';
 import { type ProcessedResume, processResumedConversation } from 'src/utils/sessionRestore.js';
-import { parseSettingSourcesFlag } from 'src/utils/settings/constants.js';
 import { plural } from 'src/utils/stringUtils.js';
 import {
   type ChannelEntry,
   getInitialMainLoopModel,
   getIsNonInteractiveSession,
-  getSdkBetas,
   getSessionId,
   getUserMsgOptIn,
   setAllowedChannels,
-  setAllowedSettingSources,
   setChromeFlagOverride,
   setClientType,
   setCwdState,
   setRemoteServerUrl,
-  setFlagSettingsPath,
   setInitialMainLoopModel,
   setIsInteractive,
   setKairosActive,
@@ -294,14 +248,8 @@ import {
   switchSession,
 } from './bootstrap/state.js';
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
-  ? (require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js'))
-  : null;
-
 // TeleportRepoMismatchDialog, TeleportResumeWrapper dynamically imported at call sites
 import { createRemoteSessionConfig } from './remote/RemoteSessionManager.js';
-/* eslint-enable @typescript-eslint/no-require-imports */
 // teleportWithProgress dynamically imported at call site
 import { initializeLspServerManager } from './services/lsp/manager.js';
 import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/promptSuggestion.js';
@@ -310,11 +258,9 @@ import { onChangeAppState } from './state/onChangeAppState.js';
 import { createStore } from './state/store.js';
 import { asSessionId } from './types/ids.js';
 import { filterAllowedSdkBetas } from './utils/betas.js';
-import { isInBundledMode, isRunningWithBun } from './utils/bundledMode.js';
+import { isInBundledMode } from './utils/bundledMode.js';
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js';
 import { filterExistingPaths, getKnownPathsForRepo } from './utils/githubRepoPathMapping.js';
-import { loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js';
-import { SandboxManager } from './utils/sandbox/sandbox-adapter.js';
 import { fetchSession, prepareApiRequest } from './utils/teleport/api.js';
 import {
   checkOutTeleportedSessionBranch,
@@ -324,345 +270,11 @@ import {
   validateSessionRepository,
 } from './utils/teleport.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from './utils/thinking.js';
-import { initUser, resetUserCache } from './utils/user.js';
+import { resetUserCache } from './utils/user.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from './utils/worktree.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_imports_loaded');
-
-/**
- * Log managed settings keys to Statsig for analytics.
- * This is called after init() completes to ensure settings are loaded
- * and environment variables are applied before model resolution.
- */
-function logManagedSettings(): void {
-  try {
-    const policySettings = getSettingsForSource('policySettings');
-    if (policySettings) {
-      const allKeys = getManagedSettingsKeysForLogging(policySettings);
-      logEvent('tengu_managed_settings_loaded', {
-        keyCount: allKeys.length,
-        keys: allKeys.join(',') as unknown as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      });
-    }
-  } catch {
-    // Silently ignore errors - this is just for analytics
-  }
-}
-
-// Check if running in debug/inspection mode
-function _isBeingDebugged() {
-  const isBun = isRunningWithBun();
-
-  // Check for inspect flags in process arguments (including all variants)
-  const hasInspectArg = process.execArgv.some(arg => {
-    if (isBun) {
-      // Note: Bun has an issue with single-file executables where application arguments
-      // from process.argv leak into process.execArgv (similar to https://github.com/oven-sh/bun/issues/11673)
-      // This breaks use of --debug mode if we omit this branch
-      // We're fine to skip that check, because Bun doesn't support Node.js legacy --debug or --debug-brk flags
-      return /--inspect(-brk)?/.test(arg);
-    } else {
-      // In Node.js, check for both --inspect and legacy --debug flags
-      return /--inspect(-brk)?|--debug(-brk)?/.test(arg);
-    }
-  });
-
-  // Check if NODE_OPTIONS contains inspect flags
-  const hasInspectEnv = process.env.NODE_OPTIONS && /--inspect(-brk)?|--debug(-brk)?/.test(process.env.NODE_OPTIONS);
-
-  // Check if inspector is available and active (indicates debugging)
-  try {
-    // Dynamic import would be better but is async - use global object instead
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const inspector = (global as any).require('inspector');
-    const hasInspectorUrl = !!inspector.url();
-    return hasInspectorUrl || hasInspectArg || hasInspectEnv;
-  } catch {
-    // Ignore error and fall back to argument detection
-    return hasInspectArg || hasInspectEnv;
-  }
-}
-
-/**
- * Per-session skill/plugin telemetry. Called from both the interactive path
- * and the headless -p path (before runHeadless) — both go through
- * main.tsx but branch before the interactive startup path, so it needs two
- * call sites here rather than one here + one in QueryEngine.
- */
-function logSessionTelemetry(): void {
-  const model = parseUserSpecifiedModel(getInitialMainLoopModel() ?? getDefaultMainLoopModel());
-  void logSkillsLoaded(getCwd(), getContextWindowForModel(model, getSdkBetas()));
-  void loadAllPluginsCacheOnly()
-    .then(({ enabled, errors }) => {
-      const managedNames = getManagedPluginNames();
-      logPluginsEnabledForSession(enabled, managedNames, getPluginSeedDirs());
-      logPluginLoadErrors(errors, managedNames);
-    })
-    .catch(err => logError(err));
-}
-
-function getCertEnvVarTelemetry(): Record<string, boolean> {
-  const result: Record<string, boolean> = {};
-  if (process.env.NODE_EXTRA_CA_CERTS) {
-    result.has_node_extra_ca_certs = true;
-  }
-  if (process.env.CLAUDE_CODE_CLIENT_CERT) {
-    result.has_client_cert = true;
-  }
-  if (hasNodeOption('--use-system-ca')) {
-    result.has_use_system_ca = true;
-  }
-  if (hasNodeOption('--use-openssl-ca')) {
-    result.has_use_openssl_ca = true;
-  }
-  return result;
-}
-
-async function logStartupTelemetry(): Promise<void> {
-  if (isAnalyticsDisabled()) return;
-  const [isGit, worktreeCount, ghAuthStatus] = await Promise.all([getIsGit(), getWorktreeCount(), getGhAuthStatus()]);
-
-  logEvent('tengu_startup_telemetry', {
-    is_git: isGit,
-    worktree_count: worktreeCount,
-    gh_auth_status: ghAuthStatus as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    sandbox_enabled: SandboxManager.isSandboxingEnabled(),
-    are_unsandboxed_commands_allowed: SandboxManager.areUnsandboxedCommandsAllowed(),
-    is_auto_bash_allowed_if_sandbox_enabled: SandboxManager.isAutoAllowBashIfSandboxedEnabled(),
-    auto_updater_disabled: isAutoUpdaterDisabled(),
-    prefers_reduced_motion: getInitialSettings().prefersReducedMotion ?? false,
-    ...getCertEnvVarTelemetry(),
-  });
-}
-
-/**
- * Prefetch system context (including git status) only when it's safe to do so.
- * Git commands can execute arbitrary code via hooks and config (e.g., core.fsmonitor,
- * diff.external), so we must only run them after trust is established or in
- * non-interactive mode where trust is implicit.
- */
-function prefetchSystemContextIfSafe(): void {
-  const isNonInteractiveSession = getIsNonInteractiveSession();
-
-  // In non-interactive mode (--print), trust dialog is skipped and
-  // execution is considered trusted (as documented in help text)
-  if (isNonInteractiveSession) {
-    logForDiagnosticsNoPII('info', 'prefetch_system_context_non_interactive');
-    void getSystemContext();
-    return;
-  }
-
-  // In interactive mode, only prefetch if trust has already been established
-  const hasTrust = checkHasTrustDialogAccepted();
-  if (hasTrust) {
-    logForDiagnosticsNoPII('info', 'prefetch_system_context_has_trust');
-    void getSystemContext();
-  } else {
-    logForDiagnosticsNoPII('info', 'prefetch_system_context_skipped_no_trust');
-  }
-  // Otherwise, don't prefetch - wait for trust to be established first
-}
-
-/**
- * Start background prefetches and housekeeping that are NOT needed before first render.
- * These are deferred from setup() to reduce event loop contention and child process
- * spawning during the critical startup path.
- * Call this after the REPL has been rendered.
- */
-export function startDeferredPrefetches(): void {
-  // This function runs after first render, so it doesn't block the initial paint.
-  // However, the spawned processes and async work still contend for CPU and event
-  // loop time, which skews startup benchmarks (CPU profiles, time-to-first-render
-  // measurements). Skip all of it when we're only measuring startup performance.
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_EXIT_AFTER_FIRST_RENDER) ||
-    // --bare: skip ALL prefetches. These are cache-warms for the REPL's
-    // first-turn responsiveness (initUser, getUserContext, tips, countFiles,
-    // modelCapabilities, change detectors). Scripted -p calls don't have a
-    // "user is typing" window to hide this work in — it's pure overhead on
-    // the critical path.
-    isBareMode()
-  ) {
-    return;
-  }
-
-  // Process-spawning prefetches (consumed at first API call, user is still typing)
-  void initUser();
-  void getUserContext();
-  prefetchSystemContextIfSafe();
-  void getRelevantTips();
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) && !isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH)) {
-    void prefetchAwsCredentialsAndBedRockInfoIfSafe();
-  }
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) && !isEnvTruthy(process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH)) {
-    void prefetchGcpCredentialsIfSafe();
-  }
-  void countFilesRoundedRg(getCwd(), AbortSignal.timeout(3000), []);
-
-  // Analytics and feature flag initialization
-  void initializeAnalyticsGates();
-
-  void refreshModelCapabilities();
-
-  // File change detectors deferred from init() to unblock first render
-  void settingsChangeDetector.initialize();
-  if (!isBareMode()) {
-    void skillChangeDetector.initialize();
-  }
-
-  // Event loop stall detector — logs when the main thread is blocked >500ms
-  if (process.env.USER_TYPE === 'ant') {
-    void import('./utils/eventLoopStallDetector.js').then(m => m.startEventLoopStallDetector());
-  }
-}
-
-function loadSettingsFromFlag(settingsFile: string): void {
-  try {
-    const trimmedSettings = settingsFile.trim();
-    const looksLikeJson = trimmedSettings.startsWith('{') && trimmedSettings.endsWith('}');
-
-    let settingsPath: string;
-
-    if (looksLikeJson) {
-      // It's a JSON string - validate and create temp file
-      const parsedJson = safeParseJSON(trimmedSettings);
-      if (!parsedJson) {
-        process.stderr.write(chalk.red('Error: Invalid JSON provided to --settings\n'));
-        process.exit(1);
-      }
-
-      // Create a temporary file and write the JSON to it.
-      // Use a content-hash-based path instead of random UUID to avoid
-      // busting the Anthropic API prompt cache. The settings path ends up
-      // in the Bash tool's sandbox denyWithinAllow list, which is part of
-      // the tool description sent to the API. A random UUID per subprocess
-      // changes the tool description on every query() call, invalidating
-      // the cache prefix and causing a 12x input token cost penalty.
-      // The content hash ensures identical settings produce the same path
-      // across process boundaries (each SDK query() spawns a new process).
-      settingsPath = generateTempFilePath(SETTINGS_TEMP_PREFIX, '.json', {
-        contentHash: trimmedSettings,
-      });
-      writeFileSync_DEPRECATED(settingsPath, trimmedSettings, 'utf8');
-    } else {
-      // It's a file path - resolve and validate by attempting to read
-      const { resolvedPath: resolvedSettingsPath } = safeResolvePath(getFsImplementation(), settingsFile);
-      try {
-        readFileSync(resolvedSettingsPath, 'utf8');
-      } catch (e) {
-        if (isENOENT(e)) {
-          process.stderr.write(chalk.red(`Error: Settings file not found: ${resolvedSettingsPath}\n`));
-          process.exit(1);
-        }
-        throw e;
-      }
-      settingsPath = resolvedSettingsPath;
-    }
-
-    setFlagSettingsPath(settingsPath);
-    resetSettingsCache();
-  } catch (error) {
-    if (error instanceof Error) {
-      logError(error);
-    }
-    process.stderr.write(chalk.red(`Error processing settings: ${errorMessage(error)}\n`));
-    process.exit(1);
-  }
-}
-
-function loadSettingSourcesFromFlag(settingSourcesArg: string): void {
-  try {
-    const sources = parseSettingSourcesFlag(settingSourcesArg);
-    setAllowedSettingSources(sources);
-    resetSettingsCache();
-  } catch (error) {
-    if (error instanceof Error) {
-      logError(error);
-    }
-    process.stderr.write(chalk.red(`Error processing --setting-sources: ${errorMessage(error)}\n`));
-    process.exit(1);
-  }
-}
-
-/**
- * Parse and load settings flags early, before init()
- * This ensures settings are filtered from the start of initialization
- */
-function eagerLoadSettings(): void {
-  profileCheckpoint('eagerLoadSettings_start');
-  // Parse --settings flag early to ensure settings are loaded before init()
-  const settingsFile = eagerParseCliFlag('--settings');
-  if (settingsFile) {
-    loadSettingsFromFlag(settingsFile);
-  }
-
-  // Parse --setting-sources flag early to control which sources are loaded
-  const settingSourcesArg = eagerParseCliFlag('--setting-sources');
-  if (settingSourcesArg !== undefined) {
-    loadSettingSourcesFromFlag(settingSourcesArg);
-  }
-  profileCheckpoint('eagerLoadSettings_end');
-}
-
-function initializeEntrypoint(isNonInteractive: boolean): void {
-  // Skip if already set (e.g., by SDK or other entrypoints)
-  if (process.env.CLAUDE_CODE_ENTRYPOINT) {
-    return;
-  }
-
-  const cliArgs = process.argv.slice(2);
-
-  // Check for MCP serve command (handle flags before mcp serve, e.g., --debug mcp serve)
-  const mcpIndex = cliArgs.indexOf('mcp');
-  if (mcpIndex !== -1 && cliArgs[mcpIndex + 1] === 'serve') {
-    process.env.CLAUDE_CODE_ENTRYPOINT = 'mcp';
-    return;
-  }
-
-  if (isEnvTruthy(process.env.CLAUDE_CODE_ACTION)) {
-    process.env.CLAUDE_CODE_ENTRYPOINT = 'claude-code-github-action';
-    return;
-  }
-
-  // Note: 'local-agent' entrypoint is set by the local agent mode launcher
-  // via CLAUDE_CODE_ENTRYPOINT env var (handled by early return above)
-
-  // Set based on interactive status
-  process.env.CLAUDE_CODE_ENTRYPOINT = isNonInteractive ? 'sdk-cli' : 'cli';
-}
-
-// Set by early argv processing when `claude assistant [sessionId]` is detected
-type PendingAssistantChat = { sessionId?: string; discover: boolean };
-const _pendingAssistantChat: PendingAssistantChat | undefined = feature('KAIROS')
-  ? { sessionId: undefined, discover: false }
-  : undefined;
-
-// `claude ssh <host> [dir]` — parsed from argv early so the main command
-// path can pick it up and hand
-// the REPL an SSH-backed session instead of a local one.
-type PendingSSH = {
-  host: string | undefined;
-  cwd: string | undefined;
-  permissionMode: string | undefined;
-  dangerouslySkipPermissions: boolean;
-  /** --local: spawn the child CLI directly, skip ssh/probe/deploy. e2e test mode. */
-  local: boolean;
-  /** Extra CLI args to forward to the remote CLI on initial spawn (--resume, -c). */
-  extraCliArgs: string[];
-  remoteBin: string | undefined;
-};
-const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE')
-  ? {
-      host: undefined,
-      cwd: undefined,
-      permissionMode: undefined,
-      dangerouslySkipPermissions: false,
-      local: false,
-      extraCliArgs: [],
-      remoteBin: undefined,
-    }
-  : undefined;
 
 export async function main() {
   profileCheckpoint('main_function_start');
@@ -752,7 +364,11 @@ export async function main() {
   // runs (full interactive TUI), stash the host/dir for the REPL branch at
   // ~line 3720 to pick up. Headless (-p) mode not supported in v1: SSH
   // sessions need the local REPL to drive them (interrupt, permissions).
-  if (feature('SSH_REMOTE') && _pendingSSH) {
+  if (feature('SSH_REMOTE') && _pendingSSHState) {
+    // Local alias: TypeScript does not carry the narrowing of an *imported*
+    // binding into the nested `extractFlag` closure below, so re-bind it here.
+    // Everything after this line is unchanged from the pre-split original.
+    const _pendingSSH = _pendingSSHState;
     const rawCliArgs = process.argv.slice(2);
     // SSH-specific flags can appear before the host positional (e.g.
     // `ssh --permission-mode auto host /tmp` — standard POSIX flags-before-
@@ -4089,3 +3705,5 @@ function extractTeammateOptions(options: unknown): TeammateOptions {
     agentType: typeof opts.agentType === 'string' ? opts.agentType : undefined,
   };
 }
+
+export { startDeferredPrefetches } from './cli/program/prefetch.js';
