@@ -12,7 +12,10 @@ import {
   isAutoCompactEnabled,
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
-import { buildPostCompactMessages } from './services/compact/compact.js'
+import {
+  buildPostCompactMessages,
+  type CompactionResult,
+} from './services/compact/compact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = feature('REACTIVE_COMPACT')
   ? (require('./services/compact/reactiveCompact.js') as typeof import('./services/compact/reactiveCompact.js'))
@@ -229,6 +232,146 @@ function getAutonomyTurnOutcome(params: {
         type: 'failed',
         message: `query ended without successful completion: ${reason}`,
       }
+  }
+}
+
+// -- compaction application
+//
+// Lives here rather than in its own module: query.ts and
+// services/compact/compact.ts are already in an import cycle, so any new
+// module between them adds cycles that the check:cycles ratchet counts.
+
+/**
+ * Which threshold fired. The query loop checks twice per iteration:
+ *
+ *   threshold  - the conversation is already past the autocompact threshold.
+ *   predictive - it is not, but this turn's estimated growth would push it
+ *                past the context window, so compact before spending the
+ *                request rather than after failing it.
+ *
+ * Both produce the same kind of result and must be applied the same way; the
+ * trigger is carried only so telemetry can tell them apart.
+ */
+export type CompactionTrigger = 'threshold' | 'predictive'
+
+export type AppliedCompaction = {
+  /** The post-compact history the rest of the iteration should use. */
+  messages: Message[]
+  tracking: AutoCompactTrackingState
+  taskBudgetRemaining: number | undefined
+}
+
+/**
+ * Applies a successful compaction to the query loop's state, yielding the
+ * post-compact messages as it goes.
+ *
+ * Yielding is the load-bearing part. `QueryEngine` builds `mutableMessages`
+ * purely by pushing what `query()` yields, and `mutableMessages` is both what
+ * seeds the next `query()` call and what gets written to the transcript. A
+ * compaction that is applied to the loop-local array but never yielded
+ * therefore survives only until the turn ends: the next user turn starts from
+ * the full uncompacted history again, and the memory the compaction paid an
+ * API call to release is never actually released.
+ *
+ * The predictive path used to do exactly that — it assigned the compacted
+ * array and yielded nothing — which is why this lives in one place now
+ * instead of being open-coded at each call site.
+ */
+export async function* applyCompaction(args: {
+  compactionResult: CompactionResult
+  /** History as it stood before compacting; the task-budget anchor. */
+  preCompactMessages: Message[]
+  /** Full conversation length, for telemetry only. */
+  originalMessageCount: number
+  trigger: CompactionTrigger
+  taskBudget: { total: number } | undefined
+  taskBudgetRemaining: number | undefined
+  queryChainId: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  queryDepth: number
+  uuid: () => string
+}): AsyncGenerator<Message, AppliedCompaction> {
+  const { compactionResult } = args
+  const {
+    preCompactTokenCount,
+    postCompactTokenCount,
+    truePostCompactTokenCount,
+    compactionUsage,
+  } = compactionResult
+
+  logEvent('tengu_auto_compact_succeeded', {
+    originalMessageCount: args.originalMessageCount,
+    compactedMessageCount:
+      compactionResult.summaryMessages.length +
+      compactionResult.attachments.length +
+      compactionResult.hookResults.length,
+    preCompactTokenCount,
+    postCompactTokenCount,
+    truePostCompactTokenCount,
+    compactionInputTokens: compactionUsage?.input_tokens,
+    compactionOutputTokens: compactionUsage?.output_tokens,
+    compactionCacheReadTokens: compactionUsage?.cache_read_input_tokens ?? 0,
+    compactionCacheCreationTokens:
+      compactionUsage?.cache_creation_input_tokens ?? 0,
+    compactionTotalTokens: compactionUsage
+      ? compactionUsage.input_tokens +
+        (compactionUsage.cache_creation_input_tokens ?? 0) +
+        (compactionUsage.cache_read_input_tokens ?? 0) +
+        compactionUsage.output_tokens
+      : 0,
+    // logEvent metadata is numeric/boolean only, so the trigger rides as a
+    // flag rather than the label.
+    isPredictiveCompaction: args.trigger === 'predictive',
+    queryChainId: args.queryChainId,
+    queryDepth: args.queryDepth,
+  })
+
+  // task_budget: capture the pre-compact final context window before the
+  // history is replaced. iterations[-1] is the authoritative final window
+  // (post server tool loops); see #304930.
+  let taskBudgetRemaining = args.taskBudgetRemaining
+  if (args.taskBudget) {
+    const preCompactContext = finalContextTokensFromLastResponse(
+      args.preCompactMessages,
+    )
+    taskBudgetRemaining = Math.max(
+      0,
+      (taskBudgetRemaining ?? args.taskBudget.total) - preCompactContext,
+    )
+  }
+
+  // Reset on every compact so turnCounter/turnId reflect the MOST RECENT
+  // compact. recompactionInfo (autoCompact.ts) already captured the old
+  // values for turnsSincePreviousCompact/previousCompactTurnId before the
+  // call, so this reset doesn't lose those.
+  const tracking: AutoCompactTrackingState = {
+    compacted: true,
+    turnId: args.uuid(),
+    turnCounter: 0,
+    consecutiveFailures: 0,
+  }
+
+  const postCompactMessages = buildPostCompactMessages(compactionResult)
+  for (const message of postCompactMessages) {
+    yield message
+  }
+
+  return { messages: postCompactMessages, tracking, taskBudgetRemaining }
+}
+
+/**
+ * Folds a failed compaction's failure count into the tracking state so the
+ * circuit breaker in `autoCompactIfNeeded` can stop retrying. Returns the
+ * tracking unchanged when the attempt reported no failure count (i.e. it
+ * declined rather than failed).
+ */
+export function recordCompactionFailure(
+  tracking: AutoCompactTrackingState | undefined,
+  consecutiveFailures: number | undefined,
+): AutoCompactTrackingState | undefined {
+  if (consecutiveFailures === undefined) return tracking
+  return {
+    ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
+    consecutiveFailures,
   }
 }
 
@@ -648,78 +791,25 @@ async function* queryLoop(
     queryCheckpoint('query_autocompact_end')
 
     if (compactionResult) {
-      const {
-        preCompactTokenCount,
-        postCompactTokenCount,
-        truePostCompactTokenCount,
-        compactionUsage,
-      } = compactionResult
-
-      logEvent('tengu_auto_compact_succeeded', {
+      const applied = yield* applyCompaction({
+        compactionResult,
+        preCompactMessages: messagesForQuery,
         originalMessageCount: messages.length,
-        compactedMessageCount:
-          compactionResult.summaryMessages.length +
-          compactionResult.attachments.length +
-          compactionResult.hookResults.length,
-        preCompactTokenCount,
-        postCompactTokenCount,
-        truePostCompactTokenCount,
-        compactionInputTokens: compactionUsage?.input_tokens,
-        compactionOutputTokens: compactionUsage?.output_tokens,
-        compactionCacheReadTokens:
-          compactionUsage?.cache_read_input_tokens ?? 0,
-        compactionCacheCreationTokens:
-          compactionUsage?.cache_creation_input_tokens ?? 0,
-        compactionTotalTokens: compactionUsage
-          ? compactionUsage.input_tokens +
-            (compactionUsage.cache_creation_input_tokens ?? 0) +
-            (compactionUsage.cache_read_input_tokens ?? 0) +
-            compactionUsage.output_tokens
-          : 0,
-
+        trigger: 'threshold',
+        taskBudget: params.taskBudget,
+        taskBudgetRemaining,
         queryChainId: queryChainIdForAnalytics,
         queryDepth: queryTracking.depth,
+        uuid: deps.uuid,
       })
-
-      // task_budget: capture pre-compact final context window before
-      // messagesForQuery is replaced with postCompactMessages below.
-      // iterations[-1] is the authoritative final window (post server tool
-      // loops); see #304930.
-      if (params.taskBudget) {
-        const preCompactContext =
-          finalContextTokensFromLastResponse(messagesForQuery)
-        taskBudgetRemaining = Math.max(
-          0,
-          (taskBudgetRemaining ?? params.taskBudget.total) - preCompactContext,
-        )
-      }
-
-      // Reset on every compact so turnCounter/turnId reflect the MOST RECENT
-      // compact. recompactionInfo (autoCompact.ts:190) already captured the
-      // old values for turnsSincePreviousCompact/previousCompactTurnId before
-      // the call, so this reset doesn't lose those.
-      tracking = {
-        compacted: true,
-        turnId: deps.uuid(),
-        turnCounter: 0,
-        consecutiveFailures: 0,
-      }
-
-      const postCompactMessages = buildPostCompactMessages(compactionResult)
-
-      for (const message of postCompactMessages) {
-        yield message
-      }
-
       // Continue on with the current query call using the post compact messages
-      messagesForQuery = postCompactMessages
-    } else if (consecutiveFailures !== undefined) {
+      messagesForQuery = applied.messages
+      tracking = applied.tracking
+      taskBudgetRemaining = applied.taskBudgetRemaining
+    } else {
       // Autocompact failed — propagate failure count so the circuit breaker
       // can stop retrying on the next iteration.
-      tracking = {
-        ...(tracking ?? { compacted: false, turnId: '', turnCounter: 0 }),
-        consecutiveFailures,
-      }
+      tracking = recordCompactionFailure(tracking, consecutiveFailures)
     }
 
     //TODO: no need to set toolUseContext.messages during set-up since it is updated here
@@ -839,16 +929,31 @@ async function* queryLoop(
           tracking,
         )
         if (predictiveResult.compactionResult) {
-          messagesForQuery = buildPostCompactMessages(
-            predictiveResult.compactionResult,
+          // Applied exactly like the threshold-triggered compaction above —
+          // in particular the post-compact messages are yielded, so the
+          // caller's history (and the transcript) actually gets compacted
+          // rather than the saving being discarded when the turn ends.
+          const applied = yield* applyCompaction({
+            compactionResult: predictiveResult.compactionResult,
+            preCompactMessages: messagesForQuery,
+            originalMessageCount: messages.length,
+            trigger: 'predictive',
+            taskBudget: params.taskBudget,
+            taskBudgetRemaining,
+            queryChainId: queryChainIdForAnalytics,
+            queryDepth: queryTracking.depth,
+            uuid: deps.uuid,
+          })
+          messagesForQuery = applied.messages
+          tracking = applied.tracking
+          taskBudgetRemaining = applied.taskBudgetRemaining
+        } else {
+          // Feed failures to the circuit breaker too. Dropping them here let
+          // a session that cannot be compacted retry on every single turn.
+          tracking = recordCompactionFailure(
+            tracking,
+            predictiveResult.consecutiveFailures,
           )
-          tracking = tracking
-            ? {
-                ...tracking,
-                compacted: true,
-                consecutiveFailures: predictiveResult.consecutiveFailures ?? 0,
-              }
-            : tracking
         }
       }
     }

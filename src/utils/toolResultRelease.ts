@@ -1,4 +1,9 @@
-import type { Message } from '../types/message.js'
+/**
+ * Structural stand-in for `Message`. Kept local rather than importing the
+ * real union so this stays a leaf module — `types/message.ts` sits in a large
+ * import cycle, and pulling it in here would add more.
+ */
+type MessageLike = { type: string }
 
 /**
  * Releasing `toolUseResult` payloads from the API-bound view of the history.
@@ -23,7 +28,7 @@ import type { Message } from '../types/message.js'
  * is O(history) per turn and O(history^2) over a user turn that drives many
  * tool round-trips; see `scripts/bench-query-turn-pipeline.ts`.
  */
-export type ToolResultReleaseCache = WeakMap<Message, Message>
+export type ToolResultReleaseCache = WeakMap<object, object>
 
 /**
  * One cache per `queryLoop` invocation. Deliberately not module-level: the
@@ -36,7 +41,7 @@ export function createToolResultReleaseCache(): ToolResultReleaseCache {
   return new WeakMap()
 }
 
-function hasToolUseResult(msg: Message): boolean {
+function hasToolUseResult(msg: MessageLike): boolean {
   return (
     msg.type === 'user' &&
     'toolUseResult' in msg &&
@@ -54,17 +59,17 @@ function hasToolUseResult(msg: Message): boolean {
  * `normalizeMessagesForAPI`) build new arrays of their own, so they compose
  * either way, but keeping the array fresh keeps the change to the copies.
  */
-export function releaseToolUseResults(
-  messages: Message[],
+export function releaseToolUseResults<T extends MessageLike>(
+  messages: T[],
   cache: ToolResultReleaseCache,
-): Message[] {
+): T[] {
   return messages.map(msg => {
     if (!hasToolUseResult(msg)) return msg
-    const cached = cache.get(msg)
-    if (cached) return cached
-    const copy: Message = { ...msg }
-    delete (copy as Message & { toolUseResult?: unknown }).toolUseResult
-    cache.set(msg, copy)
+    const cached = cache.get(msg as object)
+    if (cached) return cached as T
+    const copy: T = { ...msg }
+    delete (copy as T & { toolUseResult?: unknown }).toolUseResult
+    cache.set(msg as object, copy as object)
     return copy
   })
 }
