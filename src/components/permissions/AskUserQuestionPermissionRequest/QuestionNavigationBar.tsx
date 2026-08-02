@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
 import { Box, Text, stringWidth } from '@anthropic/ink';
 import type { Question } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/AskUserQuestionTool.js';
-import { truncateToWidth } from '../../../utils/format.js';
+import { truncateToWidth } from '../../../utils/text/format.js';
 
 type Props = {
   questions: Question[];

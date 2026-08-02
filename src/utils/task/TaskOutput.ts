@@ -3,7 +3,7 @@ import { CircularBuffer } from '../collections/CircularBuffer.js'
 import { logForDebugging } from '../debug.js'
 import { readFileRange, tailFile } from '../fsOperations.js'
 import { getMaxOutputLength } from '../shell/outputLimits.js'
-import { safeJoinLines } from '../stringUtils.js'
+import { safeJoinLines } from '../text/stringUtils.js'
 import { DiskTaskOutput, getTaskOutputPath } from './diskOutput.js'
 
 const DEFAULT_MAX_MEMORY = 8 * 1024 * 1024 // 8MB

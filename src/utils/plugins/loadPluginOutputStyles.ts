@@ -6,9 +6,9 @@ import { logForDebugging } from '../debug.js'
 import {
   coerceDescriptionToString,
   parseFrontmatter,
-} from '../frontmatterParser.js'
+} from '../text/frontmatterParser.js'
 import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
-import { extractDescriptionFromMarkdown } from '../markdownConfigLoader.js'
+import { extractDescriptionFromMarkdown } from '../text/markdownConfigLoader.js'
 import { loadAllPluginsCacheOnly } from './pluginLoader.js'
 import { walkPluginMarkdown } from './walkPluginMarkdown.js'
 

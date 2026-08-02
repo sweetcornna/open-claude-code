@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react'
 import type { Key } from '@anthropic/ink'
 import type { VimInputState, VimMode } from '../types/textInputTypes.js'
 import { Cursor } from '../utils/Cursor.js'
-import { lastGrapheme } from '../utils/intl.js'
+import { lastGrapheme } from '../utils/text/intl.js'
 import {
   executeIndent,
   executeJoin,

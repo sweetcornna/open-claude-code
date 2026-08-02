@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   partiallySanitizeUnicode,
   recursivelySanitizeUnicode,
-} from '../sanitization'
+} from '../text/sanitization'
 
 // ─── partiallySanitizeUnicode ───────────────────────────────────────────
 

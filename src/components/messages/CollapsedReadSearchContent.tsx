@@ -9,7 +9,7 @@ import type { CollapsedReadSearchGroup, NormalizedAssistantMessage } from '../..
 import { uniq } from '../../utils/collections/array.js';
 import { getToolUseIdsFromCollapsedGroup } from '../../utils/collapseReadSearch.js';
 import { getDisplayPath } from '../../utils/file.js';
-import { formatDuration, formatSecondsShort } from '../../utils/format.js';
+import { formatDuration, formatSecondsShort } from '../../utils/text/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import type { buildMessageLookups } from '../../utils/messages.js';
 import type { ThemeName } from '../../utils/theme.js';

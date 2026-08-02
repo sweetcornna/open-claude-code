@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   segmentTextByHighlights,
   type TextHighlight,
-} from '../textHighlighting'
+} from '../text/textHighlighting'
 
 describe('segmentTextByHighlights', () => {
   // Basic

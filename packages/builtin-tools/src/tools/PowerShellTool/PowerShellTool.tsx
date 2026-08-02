@@ -25,7 +25,7 @@ import type { AssistantMessage } from 'src/types/message.js';
 import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { errorMessage as getErrorMessage, ShellError } from '@open-claude-code/tool-runtime/errors.js';
-import { truncate } from 'src/utils/format.js';
+import { truncate } from 'src/utils/text/format.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { logError } from 'src/utils/log.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';

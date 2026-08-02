@@ -25,7 +25,7 @@ import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js'
 import { setCwd } from '../utils/Shell.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { getErrorParts } from '../utils/toolErrors.js'
-import { zodToJsonSchema } from '../utils/zodToJsonSchema.js'
+import { zodToJsonSchema } from '../utils/text/zodToJsonSchema.js'
 
 type ToolInput = McpTool['inputSchema']
 type ToolOutput = McpTool['outputSchema']

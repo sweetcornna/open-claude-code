@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Text, stringWidth } from '@anthropic/ink';
-import { truncate } from '../../utils/format.js';
+import { truncate } from '../../utils/text/format.js';
 
 export type FeedLine = {
   text: string;

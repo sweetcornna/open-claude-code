@@ -4,7 +4,7 @@ import { useNotifications } from '../../context/notifications.js';
 import { Text } from '@anthropic/ink';
 import { useAppState } from '../../state/AppState.js';
 import { logForDebugging } from '../../utils/debug.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 
 export function usePluginInstallationStatus(): void {
   const { addNotification } = useNotifications();

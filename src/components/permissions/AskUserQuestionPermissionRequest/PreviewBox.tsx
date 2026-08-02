@@ -2,9 +2,9 @@ import React, { Suspense, use, useMemo } from 'react';
 import { useSettings } from '../../../hooks/useSettings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
 import { Ansi, Box, Text, stringWidth, useTheme } from '@anthropic/ink';
-import { type CliHighlight, getCliHighlightPromise } from '../../../utils/cliHighlight.js';
-import { applyMarkdown } from '../../../utils/markdown.js';
-import sliceAnsi from '../../../utils/sliceAnsi.js';
+import { type CliHighlight, getCliHighlightPromise } from '../../../utils/text/cliHighlight.js';
+import { applyMarkdown } from '../../../utils/text/markdown.js';
+import sliceAnsi from '../../../utils/text/sliceAnsi.js';
 
 type PreviewBoxProps = {
   /** The preview content to display. Markdown is rendered with syntax highlighting

@@ -60,7 +60,7 @@ import { jsonStringify } from './slowOperations.js'
 import type { SystemPrompt } from './systemPromptType.js'
 import { getToolSchemaCache } from './toolSchemaCache.js'
 import { windowsPathToPosixPath } from './windowsPaths.js'
-import { zodToJsonSchema } from './zodToJsonSchema.js'
+import { zodToJsonSchema } from './text/zodToJsonSchema.js'
 
 // Extended BetaTool type with strict mode and defer_loading support
 type BetaToolWithExtras = BetaTool & {

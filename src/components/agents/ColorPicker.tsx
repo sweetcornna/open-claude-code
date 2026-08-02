@@ -7,7 +7,7 @@ import {
   AGENT_COLORS,
   type AgentColorName,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
-import { capitalize } from '../../utils/stringUtils.js';
+import { capitalize } from '../../utils/text/stringUtils.js';
 
 type ColorOption = AgentColorName | 'automatic';
 

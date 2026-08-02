@@ -8,7 +8,7 @@ import {
   type PreferredLanguage,
   getLanguageDisplayName,
   getResolvedLanguage,
-} from '../../utils/language.js'
+} from '../../utils/text/language.js'
 
 const VALID_LANGS: readonly PreferredLanguage[] = ['en', 'zh', 'auto']
 

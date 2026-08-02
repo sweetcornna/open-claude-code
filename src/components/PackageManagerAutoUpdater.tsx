@@ -6,7 +6,7 @@ import { Text } from '@anthropic/ink';
 import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
-import { gt, gte } from '../utils/semver.js';
+import { gt, gte } from '../utils/text/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 
 type Props = {

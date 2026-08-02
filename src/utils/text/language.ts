@@ -1,5 +1,5 @@
 import { getGlobalConfig } from '../config.js'
-import { getSystemLocaleLanguage } from '../intl.js'
+import { getSystemLocaleLanguage } from './intl.js'
 
 export type PreferredLanguage = 'auto' | 'en' | 'zh'
 export type ResolvedLanguage = 'en' | 'zh'

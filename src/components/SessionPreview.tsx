@@ -4,7 +4,7 @@ import { Box, Text, Byline, KeyboardShortcutHint, LoadingState } from '@anthropi
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getAllBaseTools } from '../tools.js';
 import type { LogOption } from '../types/logs.js';
-import { formatRelativeTimeAgo } from '../utils/format.js';
+import { formatRelativeTimeAgo } from '../utils/text/format.js';
 import { getSessionIdFromLog, isLiteLog, loadFullLog } from '../utils/sessionStorage.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Messages } from './Messages.js';

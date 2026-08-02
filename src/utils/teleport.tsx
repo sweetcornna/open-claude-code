@@ -31,9 +31,9 @@ import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote 
 import { isEnvTruthy } from './envUtils.js';
 import { TeleportOperationError, toError } from './errors.js';
 import { execFileNoThrow } from './execFileNoThrow.js';
-import { truncateToWidth } from './format.js';
+import { truncateToWidth } from './text/format.js';
 import { findGitRoot, getDefaultBranch, getIsClean, gitExe } from './git.js';
-import { safeParseJSON } from './json.js';
+import { safeParseJSON } from './text/json.js';
 import { logError } from './log.js';
 import { createSystemMessage, createUserMessage } from './messages.js';
 import { getMainLoopModel } from './model/model.js';

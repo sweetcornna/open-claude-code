@@ -14,7 +14,7 @@ import { startInteractionSpan } from '../telemetry/sessionTracing.js'
 import {
   matchesKeepGoingKeyword,
   matchesNegativeKeyword,
-} from '../userPromptKeywords.js'
+} from '../text/userPromptKeywords.js'
 
 export function processTextPrompt(
   input: string | Array<ContentBlockParam>,

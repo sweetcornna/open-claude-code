@@ -43,7 +43,7 @@ import {
   getModelMaxOutputTokens,
 } from './utils/context.js'
 import { isFastModeEnabled } from './utils/fastMode.js'
-import { formatDuration, formatNumber } from './utils/format.js'
+import { formatDuration, formatNumber } from './utils/text/format.js'
 import type { FpsMetrics } from './utils/fpsTracker.js'
 import { getCanonicalName } from './utils/model/model.js'
 import { calculateUSDCost } from './utils/modelCost.js'

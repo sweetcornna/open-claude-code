@@ -3,8 +3,8 @@ import React from 'react';
 import stripAnsi from 'strip-ansi';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { Ansi, stringWidth, useTheme, wrapAnsi } from '@anthropic/ink';
-import type { CliHighlight } from '../utils/cliHighlight.js';
-import { formatToken, padAligned } from '../utils/markdown.js';
+import type { CliHighlight } from '../utils/text/cliHighlight.js';
+import { formatToken, padAligned } from '../utils/text/markdown.js';
 
 /** Accounts for parent indentation (e.g. message dot prefix) and terminal
  *  resize races. Without enough margin the table overflows its layout box

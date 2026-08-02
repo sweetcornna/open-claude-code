@@ -18,7 +18,7 @@ import type { InlineGhostText, PromptInputMode } from '../types/textInputTypes.j
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { generateProgressiveArgumentHint, parseArguments } from '../utils/argumentSubstitution.js';
 import { getShellCompletions, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
-import { formatLogMetadata } from '../utils/format.js';
+import { formatLogMetadata } from '../utils/text/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
 import {
   applyCommandSuggestion,

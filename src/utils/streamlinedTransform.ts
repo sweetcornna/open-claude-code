@@ -22,7 +22,7 @@ import { TASK_STOP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskS
 import { WEB_SEARCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebSearchTool/prompt.js'
 import { extractTextContent } from 'src/utils/messages.js'
 import { SHELL_TOOL_NAMES } from 'src/utils/shell/shellToolUtils.js'
-import { capitalize } from 'src/utils/stringUtils.js'
+import { capitalize } from 'src/utils/text/stringUtils.js'
 
 type ToolCounts = {
   searches: number

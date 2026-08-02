@@ -4,7 +4,7 @@ import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/p
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js'
 import type { ContextData } from './analyzeContext.js'
 import { getDisplayPath } from './file.js'
-import { formatTokens } from './format.js'
+import { formatTokens } from './text/format.js'
 
 // --
 

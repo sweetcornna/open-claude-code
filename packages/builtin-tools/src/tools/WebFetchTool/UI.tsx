@@ -4,7 +4,7 @@ import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js';
 import { Box, Text } from '@anthropic/ink';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
-import { formatFileSize, truncate } from 'src/utils/format.js';
+import { formatFileSize, truncate } from 'src/utils/text/format.js';
 import type { Output } from './WebFetchTool.js';
 
 export function renderToolUseMessage(

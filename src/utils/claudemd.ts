@@ -63,7 +63,7 @@ import { cacheKeys, type FileStateCache } from './fileStateCache.js'
 import {
   parseFrontmatter,
   splitPathInFrontmatter,
-} from './frontmatterParser.js'
+} from './text/frontmatterParser.js'
 import { getFsImplementation, safeResolvePath } from './fsOperations.js'
 import { findCanonicalGitRoot, findGitRoot } from './git.js'
 import {

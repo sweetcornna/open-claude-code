@@ -5,8 +5,8 @@ import { BLACK_CIRCLE } from 'src/constants/figures.js';
 import { Box, Text } from '@anthropic/ink';
 import type { ProgressMessage } from 'src/types/message.js';
 import { getDisplayPath } from 'src/utils/file.js';
-import { formatFileSize } from 'src/utils/format.js';
-import { formatBriefTimestamp } from 'src/utils/formatBriefTimestamp.js';
+import { formatFileSize } from 'src/utils/text/format.js';
+import { formatBriefTimestamp } from 'src/utils/text/formatBriefTimestamp.js';
 import type { Output } from './BriefTool.js';
 
 export function renderToolUseMessage(): React.ReactNode {

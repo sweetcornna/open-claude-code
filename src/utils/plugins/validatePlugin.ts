@@ -3,9 +3,9 @@ import { readdir, readFile, stat } from 'fs/promises'
 import * as path from 'path'
 import { z } from 'zod/v4'
 import { errorMessage, getErrnoCode, isENOENT } from '../errors.js'
-import { FRONTMATTER_REGEX } from '../frontmatterParser.js'
+import { FRONTMATTER_REGEX } from '../text/frontmatterParser.js'
 import { jsonParse } from '../slowOperations.js'
-import { parseYaml } from '../yaml.js'
+import { parseYaml } from '../text/yaml.js'
 import {
   PluginHooksSchema,
   PluginManifestSchema,

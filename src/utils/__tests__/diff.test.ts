@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { adjustHunkLineNumbers, getPatchFromContents } from '../diff'
+import { adjustHunkLineNumbers, getPatchFromContents } from '../text/diff'
 
 describe('adjustHunkLineNumbers', () => {
   test('shifts hunk line numbers by offset', () => {

@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { useDiffInIDE } from '../../../hooks/useDiffInIDE.js';
 import { Box, Text } from '@anthropic/ink';
 import type { ToolUseContext } from '../../../Tool.js';
-import { getLanguageName } from '../../../utils/cliHighlight.js';
+import { getLanguageName } from '../../../utils/text/cliHighlight.js';
 import { getCwd } from '../../../utils/cwd.js';
 import { getFsImplementation, safeResolvePath } from '../../../utils/fsOperations.js';
 import { expandPath } from '../../../utils/path.js';

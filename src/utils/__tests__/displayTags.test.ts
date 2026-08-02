@@ -3,7 +3,7 @@ import {
   stripDisplayTags,
   stripDisplayTagsAllowEmpty,
   stripIdeContextTags,
-} from '../displayTags'
+} from '../text/displayTags'
 
 describe('stripDisplayTags', () => {
   test('strips a single system tag and returns remaining text', () => {

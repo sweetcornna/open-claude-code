@@ -36,7 +36,7 @@ export type RecapResult =
 
 async function getRecapPrompt(): Promise<string> {
   try {
-    const { getResolvedLanguage } = await import('../../utils/language.js')
+    const { getResolvedLanguage } = await import('../../utils/text/language.js')
     return getResolvedLanguage() === 'zh' ? RECAP_PROMPT_ZH : RECAP_PROMPT_EN
   } catch {
     return RECAP_PROMPT_EN

@@ -200,7 +200,7 @@ import {
 import { count } from '../../utils/collections/array.js'
 import { insertBlockAfterToolResults } from '../../utils/collections/contentArray.js'
 import { validateBoundedIntEnvVar } from '../../utils/envValidation.js'
-import { safeParseJSON } from '../../utils/json.js'
+import { safeParseJSON } from '../../utils/text/json.js'
 import { getInferenceProfileBackingModel } from '../../utils/model/bedrock.js'
 import {
   normalizeModelStringForAPI,

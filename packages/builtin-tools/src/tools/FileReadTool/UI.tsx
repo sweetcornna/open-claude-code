@@ -7,7 +7,7 @@ import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.
 import { Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';
 import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from 'src/utils/file.js';
-import { formatFileSize } from 'src/utils/format.js';
+import { formatFileSize } from 'src/utils/text/format.js';
 import { getPlansDirectory } from 'src/utils/plans.js';
 import { getTaskOutputDir } from 'src/utils/task/diskOutput.js';
 import type { Input, Output } from './FileReadTool.js';

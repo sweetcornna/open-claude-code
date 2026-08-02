@@ -49,7 +49,7 @@ import {
   type StreamingToolUse,
   shouldShowUserMessage,
 } from '../utils/messages.js';
-import { plural } from '../utils/stringUtils.js';
+import { plural } from '../utils/text/stringUtils.js';
 import { renderableSearchText } from '../utils/transcriptSearch.js';
 import { Divider } from '@anthropic/ink';
 import type { UnseenDivider } from './FullscreenLayout.js';

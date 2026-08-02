@@ -11,7 +11,7 @@
  * (mark, getEntriesByType, clearMarks, now) backed by a plain JS Map.
  */
 
-import { formatFileSize } from './format.js'
+import { formatFileSize } from './text/format.js'
 
 /** Minimal PerformanceEntry-like object used by profilers */
 export interface CheckpointEntry {

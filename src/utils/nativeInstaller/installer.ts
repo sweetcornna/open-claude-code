@@ -47,7 +47,7 @@ import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getShellType } from '../localInstaller.js'
 import * as lockfile from '../lockfile.js'
 import { logError } from '../log.js'
-import { gt, gte } from '../semver.js'
+import { gt, gte } from '../text/semver.js'
 import {
   filterOccAliases,
   getShellConfigPaths,

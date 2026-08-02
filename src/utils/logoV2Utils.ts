@@ -8,9 +8,9 @@ import {
   truncate,
   truncateToWidth,
   truncateToWidthNoEllipsis,
-} from './format.js'
+} from './text/format.js'
 import { getStoredChangelogFromMemory, parseChangelog } from './releaseNotes.js'
-import { gt } from './semver.js'
+import { gt } from './text/semver.js'
 import { loadMessageLogs } from './sessionStorage.js'
 import { getInitialSettings } from './settings/settings.js'
 

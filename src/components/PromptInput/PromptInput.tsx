@@ -102,7 +102,7 @@ import type { TeamSummary } from '../../utils/teamDiscovery.js';
 import { getTeammateColor } from '../../utils/teammate.js';
 import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { writeToMailbox } from '../../utils/teammateMailbox.js';
-import type { TextHighlight } from '../../utils/textHighlighting.js';
+import type { TextHighlight } from '../../utils/text/textHighlighting.js';
 import type { Theme } from '../../utils/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';

@@ -16,7 +16,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/imageProcessor.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage } from './errors.js'
-import { formatFileSize } from './format.js'
+import { formatFileSize } from './text/format.js'
 import { logError } from './log.js'
 
 type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'

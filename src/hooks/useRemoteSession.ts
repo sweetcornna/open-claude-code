@@ -25,7 +25,7 @@ import type {
   PermissionUpdate,
 } from '../types/permissions.js'
 import { logForDebugging } from '../utils/debug.js'
-import { truncateToWidth } from '../utils/format.js'
+import { truncateToWidth } from '../utils/text/format.js'
 import {
   createSystemMessage,
   extractTextContent,

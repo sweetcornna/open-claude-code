@@ -8,7 +8,7 @@ import {
   MaxFileReadTokenExceededError,
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
 import { FileTooLargeError } from '../readFileInRange.js'
-import { countCharInString } from '../stringUtils.js'
+import { countCharInString } from '../text/stringUtils.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { parse, relative } from 'path'
 import { getCwd } from 'src/utils/cwd.js'

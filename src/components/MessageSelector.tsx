@@ -19,7 +19,7 @@ import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeyb
 import { Box, Text, Divider } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../keybindings/useKeybinding.js';
 import type { Message, PartialCompactDirection, UserMessage } from '../types/message.js';
-import { stripDisplayTags } from '../utils/displayTags.js';
+import { stripDisplayTags } from '../utils/text/displayTags.js';
 import {
   createUserMessage,
   extractTag,
@@ -49,7 +49,7 @@ import {
   TICK_TAG,
 } from '../constants/xml.js';
 import { count } from '../utils/collections/array.js';
-import { formatRelativeTimeAgo, truncate } from '../utils/format.js';
+import { formatRelativeTimeAgo, truncate } from '../utils/text/format.js';
 import type { Theme } from '../utils/theme.js';
 type RestoreOption = 'both' | 'conversation' | 'code' | 'summarize' | 'summarize_up_to' | 'nevermind';
 

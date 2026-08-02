@@ -17,7 +17,7 @@ import { FilePathLink } from 'src/components/FilePathLink.js';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { getCwd } from 'src/utils/cwd.js';
-import { getPatchForDisplay } from 'src/utils/diff.js';
+import { getPatchForDisplay } from 'src/utils/text/diff.js';
 import { getDisplayPath } from 'src/utils/file.js';
 import { logError } from 'src/utils/log.js';
 import { getPlansDirectory } from 'src/utils/plans.js';

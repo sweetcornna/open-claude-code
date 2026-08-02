@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { generateWordSlug, generateShortWordSlug } from '../words'
+import { generateWordSlug, generateShortWordSlug } from '../text/words'
 
 describe('generateWordSlug', () => {
   test('returns three-part hyphenated slug', () => {

@@ -15,7 +15,7 @@ import {
   AGENT_DESCRIPTIONS_THRESHOLD,
   getAgentDescriptionsTotalTokens,
 } from './statusNoticeHelpers.js'
-import { plural } from './stringUtils.js'
+import { plural } from './text/stringUtils.js'
 
 // Thresholds (matching status notices and existing patterns)
 const MCP_TOOLS_THRESHOLD = 25_000 // 15k tokens

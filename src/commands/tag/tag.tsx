@@ -9,7 +9,7 @@ import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js';
 import { Box, Text } from '@anthropic/ink';
 import { logEvent } from '../../services/analytics/index.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { recursivelySanitizeUnicode } from '../../utils/sanitization.js';
+import { recursivelySanitizeUnicode } from '../../utils/text/sanitization.js';
 import { getCurrentSessionTag, getTranscriptPath, saveTag } from '../../utils/sessionStorage.js';
 
 function ConfirmRemoveTag({

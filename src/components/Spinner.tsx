@@ -2,14 +2,14 @@
 import { Box, Text, stringWidth } from '@anthropic/ink';
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from '../utils/shimmer.js';
+import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from '../utils/text/shimmer.js';
 import { feature } from 'bun:bundle';
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { count } from '../utils/collections/array.js';
 import sample from 'lodash-es/sample.js';
-import { formatDuration, formatNumber } from '../utils/format.js';
+import { formatDuration, formatNumber } from '../utils/text/format.js';
 import type { Theme } from 'src/utils/theme.js';
 import { activityManager } from '../utils/activityManager.js';
 import { getSpinnerVerbs } from '../constants/spinnerVerbs.js';

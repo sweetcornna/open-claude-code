@@ -14,7 +14,7 @@ import {
 import { count } from 'src/utils/collections/array.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { toError } from '@open-claude-code/tool-runtime/errors.js'
-import { truncate } from 'src/utils/format.js'
+import { truncate } from 'src/utils/text/format.js'
 import { logError } from 'src/utils/log.js'
 
 // Skill listing gets 1% of the context window (in characters)

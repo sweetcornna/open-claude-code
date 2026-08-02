@@ -14,7 +14,7 @@ import { Box, Text, stringWidth, wrapText } from '@anthropic/ink';
 import { type AppState, useAppState, useSetAppState } from '../state/AppState.js';
 import { enterTeammateView, exitTeammateView } from '../state/teammateViewHelpers.js';
 import { isPanelAgentTask, type LocalAgentTaskState } from '../tasks/LocalAgentTask/LocalAgentTask.js';
-import { formatDuration, formatNumber } from '../utils/format.js';
+import { formatDuration, formatNumber } from '../utils/text/format.js';
 import { evictTerminalTask } from '../utils/task/framework.js';
 import { isTerminalStatus } from './tasks/taskStatusUtils.js';
 

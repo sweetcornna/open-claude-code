@@ -192,7 +192,7 @@ import { logManagedSettings, logSessionTelemetry, logStartupTelemetry } from './
 import { logPermissionContextForAnts } from 'src/services/internalLogging.js';
 import { onChangeAppState } from 'src/state/onChangeAppState.js';
 import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
-import { plural } from 'src/utils/stringUtils.js';
+import { plural } from 'src/utils/text/stringUtils.js';
 import { prefetchPassesEligibility } from 'src/services/api/referral.js';
 import { processSessionStartHooks, processSetupHooks } from 'src/utils/sessionStart.js';
 import { profileCheckpoint } from 'src/utils/startupProfiler.js';
@@ -202,7 +202,7 @@ import { refreshRemoteManagedSettings } from 'src/services/remoteManagedSettings
 import { registerCleanup } from 'src/utils/cleanupRegistry.js';
 import { relative, resolve } from 'path';
 import { resetUserCache } from 'src/utils/user.js';
-import { safeParseJSON } from 'src/utils/json.js';
+import { safeParseJSON } from 'src/utils/text/json.js';
 import { seedEarlyInput } from 'src/utils/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { setCwd } from 'src/utils/Shell.js';

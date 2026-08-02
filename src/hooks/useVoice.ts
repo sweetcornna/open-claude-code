@@ -26,7 +26,7 @@ import {
 } from '../services/doubaoSTT.js'
 import { logForDebugging } from '../utils/debug.js'
 import { toError } from '../utils/errors.js'
-import { getSystemLocaleLanguage } from '../utils/intl.js'
+import { getSystemLocaleLanguage } from '../utils/text/intl.js'
 import { logError } from '../utils/log.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import { sleep } from '../utils/sleep.js'

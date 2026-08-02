@@ -24,7 +24,7 @@ import { getEnvironmentKind } from './filePersistence/outputsScanner.js'
 import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
 import { getInitialSettings } from './settings/settings.js'
-import { generateWordSlug } from './words.js'
+import { generateWordSlug } from './text/words.js'
 
 const MAX_SLUG_RETRIES = 10
 

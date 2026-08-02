@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import z from 'zod/v4'
-import { zodToJsonSchema } from '../zodToJsonSchema'
+import { zodToJsonSchema } from '../text/zodToJsonSchema'
 
 describe('zodToJsonSchema', () => {
   test('converts string schema', () => {

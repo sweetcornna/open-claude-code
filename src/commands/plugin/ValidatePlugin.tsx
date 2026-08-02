@@ -6,7 +6,7 @@ import { Box, Text } from '@anthropic/ink';
 import { errorMessage } from '../../utils/errors.js';
 import { logError } from '../../utils/log.js';
 import { validateManifest } from '../../utils/plugins/validatePlugin.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 
 type Props = {
   onComplete: (result?: string) => void;

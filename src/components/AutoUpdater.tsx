@@ -20,7 +20,7 @@ import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
 import { installOrUpdateOccPackage } from '../utils/localInstaller.js';
-import { gt, gte } from '../utils/semver.js';
+import { gt, gte } from '../utils/text/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 
 type Props = {

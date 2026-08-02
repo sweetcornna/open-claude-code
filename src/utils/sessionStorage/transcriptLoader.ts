@@ -14,7 +14,7 @@ import {
   type TranscriptMessage,
 } from '../../types/logs.js'
 import { isEnvTruthy } from '../envUtils.js'
-import { parseJSONL } from '../json.js'
+import { parseJSONL } from '../text/json.js'
 import {
   readTranscriptForLoad,
   SKIP_PRECOMPACT_THRESHOLD,

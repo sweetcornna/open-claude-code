@@ -12,7 +12,7 @@ import { Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';
 import type { Tools } from '@open-claude-code/tool-runtime/Tool.js';
 import type { Message, ProgressMessage } from 'src/types/message.js';
-import { adjustHunkLineNumbers, CONTEXT_LINES } from 'src/utils/diff.js';
+import { adjustHunkLineNumbers, CONTEXT_LINES } from 'src/utils/text/diff.js';
 import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from 'src/utils/file.js';
 import { logError } from 'src/utils/log.js';
 import { getPlansDirectory } from 'src/utils/plans.js';

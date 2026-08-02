@@ -7,7 +7,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/gr
 import { useAppState } from '../../state/AppState.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { logError } from '../../utils/log.js';
-import { countCharInString } from '../../utils/stringUtils.js';
+import { countCharInString } from '../../utils/text/stringUtils.js';
 import { MessageActionsSelectedContext } from '../messageActions.js';
 import { HighlightedThinkingText } from './HighlightedThinkingText.js';
 
