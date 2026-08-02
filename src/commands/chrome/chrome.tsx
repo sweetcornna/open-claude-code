@@ -4,7 +4,7 @@ import { Dialog } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
 import { BIN_NAME } from '../../constants/brand.js';
 import { useAppState } from '../../state/AppState.js';
-import { openBrowser } from '../../utils/browser.js';
+import { openBrowser } from '../../utils/network/browser.js';
 import type { ChromeDetection } from '../../utils/chromeDevtools/chromeVersion.js';
 import { detectChrome } from '../../utils/chromeDevtools/chromeVersion.js';
 import {
@@ -12,7 +12,7 @@ import {
   CHROME_BROWSER_URL_ENV,
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
 } from '../../utils/chromeDevtools/common.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 
 const CHROME_DOWNLOAD_URL = 'https://www.google.com/chrome/';
 const CHROME_DEVTOOLS_MCP_URL = 'https://github.com/ChromeDevTools/chrome-devtools-mcp';

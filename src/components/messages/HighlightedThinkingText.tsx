@@ -3,8 +3,8 @@ import * as React from 'react';
 import { useContext } from 'react';
 import { useQueuedMessage } from '../../context/QueuedMessageContext.js';
 import { Box, Text } from '@anthropic/ink';
-import { formatBriefTimestamp } from '../../utils/formatBriefTimestamp.js';
-import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
+import { formatBriefTimestamp } from '../../utils/text/formatBriefTimestamp.js';
+import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/model/thinking.js';
 import { MessageActionsSelectedContext } from '../messageActions.js';
 
 type Props = {

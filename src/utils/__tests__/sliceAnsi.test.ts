@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-const sliceAnsi = (await import('../sliceAnsi')).default
+const sliceAnsi = (await import('../text/sliceAnsi')).default
 const ESC = '\x1b'
 
 describe('sliceAnsi', () => {

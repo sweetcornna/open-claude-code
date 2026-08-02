@@ -1,1 +1,1 @@
-export * from '@open-claude-code/tool-runtime/lazySchema.js'
+export * from './collections/lazySchema.js'

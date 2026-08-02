@@ -7,8 +7,8 @@ import {
   getCachedOverageCreditGrant,
   refreshOverageCreditGrantCache,
 } from '../../services/api/overageCreditGrant.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { truncate } from '../../utils/format.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
+import { truncate } from '../../utils/text/format.js';
 import type { FeedConfig } from './Feed.js';
 
 const MAX_IMPRESSIONS = 3;

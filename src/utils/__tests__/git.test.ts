@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { normalizeGitRemoteUrl } from '../git'
+import { normalizeGitRemoteUrl } from '../git/git'
 
 describe('normalizeGitRemoteUrl', () => {
   describe('SSH format (git@host:owner/repo)', () => {

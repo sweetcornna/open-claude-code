@@ -15,7 +15,7 @@ import {
   getActiveAgentsFromList,
   getAgentDefinitionsWithOverrides,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import { getCwd } from '../../utils/cwd.js'
+import { getCwd } from '../../utils/filesystem/cwd.js'
 
 function formatAgent(agent: ResolvedAgent): string {
   const model = resolveAgentModelDisplay(agent)

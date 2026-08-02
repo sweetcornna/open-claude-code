@@ -10,14 +10,14 @@ import {
 import axios from 'axios'
 import { checkMetricsEnabled } from 'src/services/api/metricsOptOut.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
-import { getSubscriptionType, isClaudeAISubscriber } from '../auth.js'
-import { checkHasTrustDialogAccepted } from '../config.js'
-import { logForDebugging } from '../debug.js'
-import { errorMessage, toError } from '../errors.js'
-import { getAuthHeaders } from '../http.js'
-import { logError } from '../log.js'
-import { jsonStringify } from '../slowOperations.js'
-import { getClaudeCodeUserAgent } from '../userAgent.js'
+import { getSubscriptionType, isClaudeAISubscriber } from '../auth/auth.js'
+import { checkHasTrustDialogAccepted } from '../config/config.js'
+import { logForDebugging } from './debug.js'
+import { errorMessage, toError } from '../runtime/errors.js'
+import { getAuthHeaders } from '../network/http.js'
+import { logError } from './log.js'
+import { jsonStringify } from './slowOperations.js'
+import { getClaudeCodeUserAgent } from '../network/userAgent.js'
 
 type DataPoint = {
   attributes: Record<string, string>

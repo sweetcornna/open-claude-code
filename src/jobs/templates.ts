@@ -1,13 +1,13 @@
 import { readdirSync, readFileSync } from 'fs'
 import { join, basename } from 'path'
-import { parseFrontmatter } from '../utils/frontmatterParser.js'
-import type { FrontmatterData } from '../utils/frontmatterParser.js'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { parseFrontmatter } from '../utils/text/frontmatterParser.js'
+import type { FrontmatterData } from '../utils/text/frontmatterParser.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import {
   getProjectDirsUpToHome,
   extractDescriptionFromMarkdown,
   type ClaudeConfigDirectory,
-} from '../utils/markdownConfigLoader.js'
+} from '../utils/text/markdownConfigLoader.js'
 
 export interface TemplateInfo {
   name: string

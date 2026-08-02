@@ -1,1 +1,1 @@
-export * from '@open-claude-code/tool-runtime/stringUtils.js'
+export * from './text/stringUtils.js'

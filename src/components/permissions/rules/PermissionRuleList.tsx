@@ -11,7 +11,7 @@ import { useExitOnCtrlCDWithKeybindings } from '../../../hooks/useExitOnCtrlCDWi
 import { useSearchInput } from '../../../hooks/useSearchInput.js';
 import { type KeyboardEvent, Box, Text, useTerminalFocus } from '@anthropic/ink';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
-import { type AutoModeDenial, getAutoModeDenials } from '../../../utils/autoModeDenials.js';
+import { type AutoModeDenial, getAutoModeDenials } from '../../../utils/permissions/autoModeDenials.js';
 import type {
   PermissionBehavior,
   PermissionRule,
@@ -26,7 +26,7 @@ import {
   permissionRuleSourceDisplayString,
 } from '../../../utils/permissions/permissions.js';
 import type { UnreachableRule } from '../../../utils/permissions/shadowedRuleDetection.js';
-import { jsonStringify } from '../../../utils/slowOperations.js';
+import { jsonStringify } from '../../../utils/telemetry/slowOperations.js';
 import { Pane, Tab, Tabs, useTabHeaderFocus, useTabsWidth } from '@anthropic/ink';
 import { SearchBox } from '../../SearchBox.js';
 import type { Option } from '../../ui/option.js';

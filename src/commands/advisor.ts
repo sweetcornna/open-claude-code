@@ -4,7 +4,7 @@ import {
   canUserConfigureAdvisor,
   isValidAdvisorModel,
   modelSupportsAdvisor,
-} from '../utils/advisor.js'
+} from '../utils/agents/advisor.js'
 import {
   getDefaultMainLoopModelSetting,
   normalizeModelStringForAPI,

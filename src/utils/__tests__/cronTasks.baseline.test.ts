@@ -21,7 +21,7 @@ import {
   readCronTasks,
   removeCronTasks,
   writeCronTasks,
-} from '../cronTasks'
+} from '../task/cronTasks'
 import { cleanupTempDir, createTempDir } from '../../../tests/mocks/file-system'
 
 let tempDir = ''

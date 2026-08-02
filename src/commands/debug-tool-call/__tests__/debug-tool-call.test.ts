@@ -20,7 +20,7 @@ let claudeDir: string
 // mock envUtils with static paths — by reading process.env at call time,
 // our mock stays compatible with the full suite where other tests also
 // drive the real CLAUDE_CONFIG_DIR.
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   getClaudeConfigHomeDir: () =>
     process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`,
   isEnvTruthy: (value: unknown) =>
@@ -59,7 +59,7 @@ async function makeLogWithToolCalls(
   claudeDir: string,
   count: number,
 ): Promise<void> {
-  const { sanitizePath } = await import('../../../utils/path.js')
+  const { sanitizePath } = await import('../../../utils/filesystem/path.js')
   const { getSessionId, getOriginalCwd } = await import(
     '../../../bootstrap/state.js'
   )
@@ -136,7 +136,7 @@ describe('debug-tool-call command', () => {
   })
 
   test('shows no-tool-calls message when log has no tool blocks', async () => {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -198,7 +198,7 @@ describe('debug-tool-call command', () => {
     // Since the value comes from JSON.parse, it will always be serializable.
     // Therefore lines 53-54 are unreachable in normal flow. This test
     // documents this by passing a valid log and confirming the happy path works.
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )
@@ -277,7 +277,7 @@ describe('debug-tool-call command', () => {
   })
 
   async function runWithLogLines(lines: string[]): Promise<string> {
-    const { sanitizePath } = await import('../../../utils/path.js')
+    const { sanitizePath } = await import('../../../utils/filesystem/path.js')
     const { getSessionId, getOriginalCwd } = await import(
       '../../../bootstrap/state.js'
     )

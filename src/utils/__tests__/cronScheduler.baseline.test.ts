@@ -3,7 +3,7 @@ import { PROJECT_DIR_NAME } from '../../config/paths.js'
 import {
   buildMissedTaskNotification,
   isRecurringTaskAged,
-} from '../cronScheduler'
+} from '../task/cronScheduler'
 
 describe('cronScheduler baseline helpers', () => {
   test('isRecurringTaskAged returns false when maxAgeMs is zero', () => {

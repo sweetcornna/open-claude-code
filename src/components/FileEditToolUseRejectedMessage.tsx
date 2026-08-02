@@ -2,7 +2,7 @@ import type { StructuredPatchHunk } from 'diff';
 import { relative } from 'path';
 import * as React from 'react';
 import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
-import { getCwd } from 'src/utils/cwd.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { Box, Text } from '@anthropic/ink';
 import { HighlightedCode } from './HighlightedCode.js';
 import { MessageResponse } from './MessageResponse.js';

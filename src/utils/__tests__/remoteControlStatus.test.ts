@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { formatRemoteControlLocalStatus } from '../remoteControlStatus'
+import { formatRemoteControlLocalStatus } from '../network/remoteControlStatus'
 
 describe('formatRemoteControlLocalStatus', () => {
   test('reports the Happy-over-ACP model', () => {

@@ -22,7 +22,7 @@ import axios from 'axios'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { assertWorkspaceHost } from '../../services/auth/hostGuard.js'
 import { prepareWorkspaceApiRequest } from '../../utils/teleport/api.js'
-import { sanitizeId } from '../../utils/sanitizeId.js'
+import { sanitizeId } from '../../utils/text/sanitizeId.js'
 
 export type Vault = {
   vault_id: string

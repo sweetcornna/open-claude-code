@@ -6,11 +6,11 @@ import { generateFileSuggestions } from '../hooks/fileSuggestions.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { Text } from '@anthropic/ink';
 import { logEvent } from '../services/analytics/index.js';
-import { getCwd } from '../utils/cwd.js';
-import { openFileInExternalEditor } from '../utils/editor.js';
-import { truncatePathMiddle, truncateToWidth } from '../utils/format.js';
-import { highlightMatch } from '../utils/highlightMatch.js';
-import { readFileInRange } from '../utils/readFileInRange.js';
+import { getCwd } from '../utils/filesystem/cwd.js';
+import { openFileInExternalEditor } from '../utils/terminal/editor.js';
+import { truncatePathMiddle, truncateToWidth } from '../utils/text/format.js';
+import { highlightMatch } from '../utils/text/highlightMatch.js';
+import { readFileInRange } from '../utils/filesystem/readFileInRange.js';
 import { FuzzyPicker, LoadingState } from '@anthropic/ink';
 
 type Props = {

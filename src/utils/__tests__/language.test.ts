@@ -4,18 +4,18 @@ import { describe, test, expect, mock } from 'bun:test'
 let mockPreferredLanguage: string | undefined
 let mockSystemLocale: string | undefined
 
-mock.module('src/utils/config.js', () => ({
+mock.module('src/utils/config/config.js', () => ({
   getGlobalConfig: () => ({
     preferredLanguage: mockPreferredLanguage,
   }),
 }))
 
-mock.module('src/utils/intl.js', () => ({
+mock.module('src/utils/text/intl.js', () => ({
   getSystemLocaleLanguage: () => mockSystemLocale,
 }))
 
 const { getResolvedLanguage, getLanguageDisplayName } = await import(
-  'src/utils/language.js'
+  'src/utils/text/language.js'
 )
 
 describe('getResolvedLanguage', () => {

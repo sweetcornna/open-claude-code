@@ -7,7 +7,7 @@
  */
 import type { GoalState, GoalStatus } from '../../types/logs.js'
 import { getSessionId } from '../../bootstrap/state.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 
 export const BLOCKED_CONSECUTIVE_THRESHOLD = 3
 export const MAX_GOAL_TURNS = 150

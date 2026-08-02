@@ -1,6 +1,6 @@
-import { profileCheckpoint } from '../utils/startupProfiler.js'
+import { profileCheckpoint } from '../utils/telemetry/startupProfiler.js'
 import '../bootstrap/state.js'
-import '../utils/config.js'
+import '../utils/config/config.js'
 import type { Attributes, MetricOptions } from '@opentelemetry/api'
 import memoize from 'lodash-es/memoize.js'
 import { getIsNonInteractiveSession } from 'src/bootstrap/state.js'
@@ -17,31 +17,31 @@ import {
   isEligibleForRemoteManagedSettings,
   waitForRemoteManagedSettingsToLoad,
 } from '../services/remoteManagedSettings/index.js'
-import { preconnectAnthropicApi } from '../utils/apiPreconnect.js'
-import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
-import { registerCleanup } from '../utils/cleanupRegistry.js'
+import { preconnectAnthropicApi } from '../utils/network/apiPreconnect.js'
+import { applyExtraCACertsFromConfig } from '../utils/network/caCertsConfig.js'
+import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import {
   enableConfigs,
   getGlobalConfig,
   recordFirstStartTime,
   saveGlobalConfig,
-} from '../utils/config.js'
-import { logForDebugging } from '../utils/debug.js'
-import { detectCurrentRepository } from '../utils/detectRepository.js'
-import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
-import { initJetBrainsDetection } from '../utils/envDynamic.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
-import { ConfigParseError, errorMessage } from '../utils/errors.js'
+} from '../utils/config/config.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { detectCurrentRepository } from '../utils/git/detectRepository.js'
+import { logForDiagnosticsNoPII } from '../utils/telemetry/diagLogs.js'
+import { initJetBrainsDetection } from '../utils/config/envDynamic.js'
+import { isEnvTruthy } from '../utils/config/envUtils.js'
+import { ConfigParseError, errorMessage } from '../utils/runtime/errors.js'
 // showInvalidConfigDialog is dynamically imported in the error path to avoid loading React at init
 import {
   gracefulShutdownSync,
   setupGracefulShutdown,
-} from '../utils/gracefulShutdown.js'
+} from '../utils/process/gracefulShutdown.js'
 import {
   applyConfigEnvironmentVariables,
   applySafeConfigEnvironmentVariables,
-} from '../utils/managedEnv.js'
-import { configureGlobalMTLS } from '../utils/mtls.js'
+} from '../utils/config/managedEnv.js'
+import { configureGlobalMTLS } from '../utils/network/mtls.js'
 import {
   ensureScratchpadDir,
   isScratchpadEnabled,
@@ -49,12 +49,12 @@ import {
 // initializeTelemetry is loaded lazily via import() in setMeterState() to defer
 // ~400KB of OpenTelemetry + protobuf modules until telemetry is actually initialized.
 // gRPC exporters (~700KB via @grpc/grpc-js) are further lazy-loaded within instrumentation.ts.
-import { configureGlobalAgents } from '../utils/proxy.js'
+import { configureGlobalAgents } from '../utils/network/proxy.js'
 import { isBetaTracingEnabled } from '../utils/telemetry/betaSessionTracing.js'
-import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
-import { setShellIfWindows } from '../utils/windowsPaths.js'
-import { initSentry } from '../utils/sentry.js'
-import { initUser } from '../utils/user.js'
+import { getTelemetryAttributes } from '../utils/telemetry/telemetryAttributes.js'
+import { setShellIfWindows } from '../utils/filesystem/windowsPaths.js'
+import { initSentry } from '../utils/telemetry/sentry.js'
+import { initUser } from '../utils/auth/user.js'
 import { initLangfuse, shutdownLangfuse } from '../services/langfuse/index.js'
 import { setThemeConfigCallbacks } from '@anthropic/ink'
 
@@ -199,7 +199,7 @@ export const init = memoize(async (): Promise<void> => {
           '../upstreamproxy/upstreamproxy.js'
         )
         const { registerUpstreamProxyEnvFn } = await import(
-          '../utils/subprocessEnv.js'
+          '../utils/process/subprocessEnv.js'
         )
         registerUpstreamProxyEnvFn(getUpstreamProxyEnv)
         await initUpstreamProxy()
@@ -240,7 +240,9 @@ export const init = memoize(async (): Promise<void> => {
     // Surface ripgrep fallback (e.g. Android/Termux) once per session.
     // Goes to stderr so it doesn't corrupt pipe-mode (`-p`) stdout.
     try {
-      const { getRipgrepStatus } = await import('../utils/ripgrep.js')
+      const { getRipgrepStatus } = await import(
+        '../utils/filesystem/ripgrep.js'
+      )
       const status = getRipgrepStatus()
       if (status.note) {
         process.stderr.write(`[ripgrep] ${status.note}\n`)

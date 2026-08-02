@@ -1,16 +1,19 @@
-import { createAbortController } from '../../utils/abortController.js'
+import { createAbortController } from '../../utils/process/abortController.js'
 import { createUserMessage } from '../../utils/messages.js'
-import { enqueue, getCommandQueue } from '../../utils/messageQueueManager.js'
+import {
+  enqueue,
+  getCommandQueue,
+} from '../../utils/session/messageQueueManager.js'
 import {
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
-} from '../../utils/autonomyQueueLifecycle.js'
-import { getCwd } from '../../utils/cwd.js'
-import { logError } from '../../utils/log.js'
-import { toError } from '../../utils/errors.js'
+} from '../../utils/agents/autonomyQueueLifecycle.js'
+import { getCwd } from '../../utils/filesystem/cwd.js'
+import { logError } from '../../utils/telemetry/log.js'
+import { toError } from '../../utils/runtime/errors.js'
 import type { QueuedCommand } from '../../types/textInputTypes.js'
 import type { Message as MessageType } from '../../types/message.js'
-import type { QueryGuard } from '../../utils/QueryGuard.js'
+import type { QueryGuard } from '../../utils/session/QueryGuard.js'
 
 /** Everything REPL's `handleIncomingPrompt` closure captured. */
 export type IncomingPromptContext = {

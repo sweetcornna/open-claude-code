@@ -41,24 +41,24 @@ import {
   getMcpInstructionsDeltaAttachment,
   type Attachment,
 } from '../../utils/attachments.js'
-import { getMemoryPath } from '../../utils/config.js'
-import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
+import { getMemoryPath } from '../../utils/config/config.js'
+import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/session/context.js'
 import {
   analyzeContext,
   tokenStatsToStatsigMetrics,
-} from '../../utils/contextAnalysis.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { hasExactErrorMessage } from '../../utils/errors.js'
+} from '../../utils/session/contextAnalysis.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { hasExactErrorMessage } from '../../utils/runtime/errors.js'
 import { cacheToObject } from '../../utils/fileStateCache.js'
 import {
   type CacheSafeParams,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
+} from '../../utils/agents/forkedAgent.js'
 import {
   executePostCompactHooks,
   executePreCompactHooks,
 } from '../../utils/hooks.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { MEMORY_TYPE_VALUES } from '../../utils/memory/types.js'
 import {
   createCompactBoundaryMessage,
@@ -69,31 +69,31 @@ import {
   isCompactBoundaryMessage,
   normalizeMessagesForAPI,
 } from '../../utils/messages.js'
-import { expandPath } from '../../utils/path.js'
-import { getPlan, getPlanFilePath } from '../../utils/plans.js'
+import { expandPath } from '../../utils/filesystem/path.js'
+import { getPlan, getPlanFilePath } from '../../utils/agents/plans.js'
 import {
   isSessionActivityTrackingActive,
   sendSessionActivitySignal,
-} from '../../utils/sessionActivity.js'
-import { processSessionStartHooks } from '../../utils/sessionStart.js'
+} from '../../utils/session/sessionActivity.js'
+import { processSessionStartHooks } from '../../utils/session/sessionStart.js'
 import {
   getTranscriptPath,
   reAppendSessionMetadata,
 } from '../../utils/sessionStorage.js'
-import { sleep } from '../../utils/sleep.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { sleep } from '../../utils/process/sleep.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
 import {
   getTokenUsage,
   tokenCountFromLastAPIResponse,
   tokenCountWithEstimation,
-} from '../../utils/tokens.js'
+} from '../../utils/session/tokens.js'
 import {
   extractDiscoveredToolNames,
   isSearchExtraToolsEnabled,
-} from '../../utils/searchExtraTools.js'
+} from '../../utils/tools/searchExtraTools.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

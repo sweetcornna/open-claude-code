@@ -6,11 +6,11 @@ import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { registerAsyncAgent } from 'src/tasks/LocalAgentTask/LocalAgentTask.js'
 import { assembleToolPool } from 'src/tools.js'
-import { filterParentToolsForFork } from 'src/utils/agentToolFilter.js'
+import { filterParentToolsForFork } from 'src/utils/agents/agentToolFilter.js'
 import { asAgentId } from 'src/types/ids.js'
-import { runWithAgentContext } from 'src/utils/agentContext.js'
-import { runWithCwdOverride } from 'src/utils/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { runWithAgentContext } from 'src/utils/agents/agentContext.js'
+import { runWithCwdOverride } from 'src/utils/filesystem/cwd.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   createUserMessage,
   filterOrphanedThinkingOnlyMessages,
@@ -18,16 +18,16 @@ import {
   filterWhitespaceOnlyAssistantMessages,
 } from 'src/utils/messages.js'
 import { getAgentModel } from 'src/utils/model/agent.js'
-import { getQuerySourceForAgent } from 'src/utils/promptCategory.js'
+import { getQuerySourceForAgent } from 'src/utils/text/promptCategory.js'
 import {
   getAgentTranscript,
   readAgentMetadata,
 } from 'src/utils/sessionStorage.js'
-import { buildEffectiveSystemPrompt } from 'src/utils/systemPrompt.js'
-import type { SystemPrompt } from 'src/utils/systemPromptType.js'
+import { buildEffectiveSystemPrompt } from 'src/utils/session/systemPrompt.js'
+import type { SystemPrompt } from 'src/utils/session/systemPromptType.js'
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js'
-import { getParentSessionId } from 'src/utils/teammate.js'
-import { reconstructForSubagentResume } from 'src/utils/toolResultStorage.js'
+import { getParentSessionId } from 'src/utils/agents/teammate.js'
+import { reconstructForSubagentResume } from 'src/utils/tools/toolResultStorage.js'
 import { runAsyncAgentLifecycle } from './agentToolUtils.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { FORK_AGENT, isForkSubagentEnabled } from './forkSubagent.js'

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { buildEffectiveSystemPrompt } from '../systemPrompt'
+import { buildEffectiveSystemPrompt } from '../session/systemPrompt'
 
 const defaultPrompt = ['You are a helpful assistant.', 'Follow instructions.']
 

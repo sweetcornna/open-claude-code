@@ -17,10 +17,10 @@ import {
   type FilesApiConfig,
   uploadSessionFiles,
 } from '../../services/api/filesApi.js'
-import { getCwd } from '../cwd.js'
-import { errorMessage } from '../errors.js'
-import { logError } from '../log.js'
-import { getSessionIngressAuthToken } from '../sessionIngressAuth.js'
+import { getCwd } from '../filesystem/cwd.js'
+import { errorMessage } from '../runtime/errors.js'
+import { logError } from '../telemetry/log.js'
+import { getSessionIngressAuthToken } from '../auth/sessionIngressAuth.js'
 import {
   findModifiedFiles,
   getEnvironmentKind,

@@ -22,16 +22,16 @@ import { setLastSummarizedMessageId } from '../../services/SessionMemory/session
 import type { ToolUseContext } from '../../Tool.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import type { Message } from '../../types/message.js'
-import { hasExactErrorMessage } from '../../utils/errors.js'
-import { formatTokens } from '../../utils/format.js'
+import { hasExactErrorMessage } from '../../utils/runtime/errors.js'
+import { formatTokens } from '../../utils/text/format.js'
 import { executePreCompactHooks } from '../../utils/hooks.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
 import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.js'
 import {
   buildEffectiveSystemPrompt,
   type SystemPrompt,
-} from '../../utils/systemPrompt.js'
+} from '../../utils/session/systemPrompt.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = feature('REACTIVE_COMPACT')

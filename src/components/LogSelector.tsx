@@ -21,17 +21,17 @@ import {
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { logEvent } from '../services/analytics/index.js';
 import type { LogOption, SerializedMessage } from '../types/logs.js';
-import { formatLogMetadata, truncateToWidth } from '../utils/format.js';
-import { getWorktreePaths } from '../utils/getWorktreePaths.js';
-import { getBranch } from '../utils/git.js';
-import { getLogDisplayTitle } from '../utils/log.js';
+import { formatLogMetadata, truncateToWidth } from '../utils/text/format.js';
+import { getWorktreePaths } from '../utils/git/getWorktreePaths.js';
+import { getBranch } from '../utils/git/git.js';
+import { getLogDisplayTitle } from '../utils/telemetry/log.js';
 import {
   getFirstMeaningfulUserMessageTextContent,
   getSessionIdFromLog,
   isCustomTitleEnabled,
   saveCustomTitle,
 } from '../utils/sessionStorage.js';
-import { getTheme } from '../utils/theme.js';
+import { getTheme } from '../utils/terminal/theme.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/select.js';
 import { SearchBox } from './SearchBox.js';

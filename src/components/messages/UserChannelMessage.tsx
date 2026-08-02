@@ -3,7 +3,7 @@ import * as React from 'react';
 import { CHANNEL_ARROW } from '../../constants/figures.js';
 import { CHANNEL_TAG } from '../../constants/xml.js';
 import { Box, Text } from '@anthropic/ink';
-import { truncateToWidth } from '../../utils/format.js';
+import { truncateToWidth } from '../../utils/text/format.js';
 
 type Props = {
   addMargin: boolean;

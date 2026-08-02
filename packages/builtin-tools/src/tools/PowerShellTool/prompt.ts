@@ -1,4 +1,4 @@
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { getMaxOutputLength } from 'src/utils/shell/outputLimits.js'
 import {
   getPowerShellEdition,
@@ -7,7 +7,7 @@ import {
 import {
   getDefaultBashTimeoutMs,
   getMaxBashTimeoutMs,
-} from 'src/utils/timeouts.js'
+} from 'src/utils/process/timeouts.js'
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/constants.js'
 import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/constants.js'

@@ -3,10 +3,10 @@ import React from 'react';
 import { getCwdState } from '../../bootstrap/state.js';
 import { SandboxSettings } from '../../components/sandbox/SandboxSettings.js';
 import { color } from '@anthropic/ink';
-import { getPlatform } from '../../utils/platform.js';
+import { getPlatform } from '../../utils/process/platform.js';
 import { addToExcludedCommands, SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { getSettings_DEPRECATED, getSettingsFilePathForSource } from '../../utils/settings/settings.js';
-import type { ThemeName } from '../../utils/theme.js';
+import type { ThemeName } from '../../utils/terminal/theme.js';
 
 export async function call(
   onDone: (result?: string) => void,

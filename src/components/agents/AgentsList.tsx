@@ -10,7 +10,7 @@ import {
   resolveAgentModelDisplay,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentDisplay.js';
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { count } from '../../utils/array.js';
+import { count } from '../../utils/collections/array.js';
 import { Dialog, Divider } from '@anthropic/ink';
 import { getAgentSourceDisplayName } from './utils.js';
 

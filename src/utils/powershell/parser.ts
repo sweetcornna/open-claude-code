@@ -1,8 +1,8 @@
 import { execa } from 'execa'
-import { logForDebugging } from '../debug.js'
-import { memoizeWithLRU } from '../memoize.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { memoizeWithLRU } from '../collections/memoize.js'
 import { getCachedPowerShellPath } from '../shell/powershellDetection.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 
 // ---------------------------------------------------------------------------
 // Public types describing the parsed output returned to callers.

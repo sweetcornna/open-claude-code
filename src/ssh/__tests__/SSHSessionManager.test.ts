@@ -1,7 +1,7 @@
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
 import { debugMock } from '../../../tests/mocks/debug'
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 import { SSHSessionManagerImpl } from '../SSHSessionManager'
 import type { SSHSessionManagerOptions } from '../SSHSessionManager'

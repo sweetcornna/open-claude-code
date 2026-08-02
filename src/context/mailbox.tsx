@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { Mailbox } from '../utils/mailbox.js';
+import { Mailbox } from '../utils/agents/mailbox.js';
 
 const MailboxContext = createContext<Mailbox | undefined>(undefined);
 

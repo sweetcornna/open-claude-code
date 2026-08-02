@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Markdown } from '../../components/Markdown.js';
 import { Box, Text } from '@anthropic/ink';
-import { jsonParse } from '../../utils/slowOperations.js';
+import { jsonParse } from '../../utils/telemetry/slowOperations.js';
 import {
   type IdleNotificationMessage,
   isIdleNotification,
@@ -9,7 +9,7 @@ import {
   isPlanApprovalResponse,
   type PlanApprovalRequestMessage,
   type PlanApprovalResponseMessage,
-} from '../../utils/teammateMailbox.js';
+} from '../../utils/agents/teammateMailbox.js';
 import { getShutdownMessageSummary } from './ShutdownMessage.js';
 import { getTaskAssignmentSummary } from './TaskAssignmentMessage.js';
 

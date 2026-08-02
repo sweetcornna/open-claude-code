@@ -30,19 +30,19 @@ import {
   isUsing3PServices,
   saveOAuthTokensIfNeeded,
   validateForceLoginOrg,
-} from '../../utils/auth.js'
-import { saveGlobalConfig } from '../../utils/config.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { isRunningOnHomespace } from '../../utils/envUtils.js'
-import { errorMessage } from '../../utils/errors.js'
-import { logError } from '../../utils/log.js'
+} from '../../utils/auth/auth.js'
+import { saveGlobalConfig } from '../../utils/config/config.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { isRunningOnHomespace } from '../../utils/config/envUtils.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   buildAccountProperties,
   buildAPIProviderProperties,
-} from '../../utils/status.js'
+} from '../../utils/terminal/status.js'
 
 /**
  * Shared post-token-acquisition logic. Saves tokens, fetches profile/roles,

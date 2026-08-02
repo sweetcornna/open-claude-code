@@ -3,8 +3,8 @@ import { resolve } from 'path';
 import React, { useMemo } from 'react';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text } from '@anthropic/ink';
-import { getCwd } from '../../utils/cwd.js';
-import { readFileSafe } from '../../utils/file.js';
+import { getCwd } from '../../utils/filesystem/cwd.js';
+import { readFileSafe } from '../../utils/filesystem/file.js';
 import { Divider } from '@anthropic/ink';
 import { StructuredDiff } from '../StructuredDiff.js';
 

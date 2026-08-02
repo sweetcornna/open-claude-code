@@ -2,7 +2,7 @@ import { SdkError, SdkErrorCode } from '@modelcontextprotocol/client'
 import { describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 const { inputRequiredRoundsExceededDegradation } = await import(
   '../inputRequiredDegradation.js'

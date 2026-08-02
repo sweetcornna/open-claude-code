@@ -5,7 +5,7 @@ import {
   notifySessionMetadataChanged,
   resetSessionStateForTests,
   setSessionMetadataChangedListener,
-} from '../sessionState'
+} from '../session/sessionState'
 
 describe('sessionState metadata replay', () => {
   beforeEach(() => {

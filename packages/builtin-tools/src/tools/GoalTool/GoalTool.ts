@@ -16,7 +16,7 @@ import { DESCRIPTION, generatePrompt } from './prompt.js'
 function toolLog(msg: string): void {
   try {
     const { logForDebugging } =
-      require('src/utils/debug.js') as typeof import('src/utils/debug.js')
+      require('src/utils/telemetry/debug.js') as typeof import('src/utils/telemetry/debug.js')
     logForDebugging(`[goal] tool: ${msg}`)
   } catch {
     /* debug not available */

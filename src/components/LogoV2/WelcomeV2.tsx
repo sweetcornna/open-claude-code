@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, useTheme } from '@anthropic/ink';
-import { env } from '../../utils/env.js';
+import { env } from '../../utils/config/env.js';
 
 const WELCOME_V2_WIDTH = 58;
 

@@ -2,8 +2,8 @@ import chalk from 'chalk';
 import * as React from 'react';
 import { LIGHTNING_BOLT } from '../constants/figures.js';
 import { Text, color } from '@anthropic/ink';
-import { getGlobalConfig } from '../utils/config.js';
-import { resolveThemeSetting } from '../utils/systemTheme.js';
+import { getGlobalConfig } from '../utils/config/config.js';
+import { resolveThemeSetting } from '../utils/terminal/systemTheme.js';
 
 type Props = {
   cooldown?: boolean;

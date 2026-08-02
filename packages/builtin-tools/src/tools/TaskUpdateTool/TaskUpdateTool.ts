@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
+import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js'
 import {
   executeTaskCompletedHooks,
   getTaskCompletedHookMessage,
@@ -18,14 +18,14 @@ import {
   type TaskStatus,
   TaskStatusSchema,
   updateTask,
-} from 'src/utils/tasks.js'
+} from 'src/utils/task/tasks.js'
 import {
   getAgentId,
   getAgentName,
   getTeammateColor,
   getTeamName,
-} from 'src/utils/teammate.js'
-import { writeToMailbox } from 'src/utils/teammateMailbox.js'
+} from 'src/utils/agents/teammate.js'
+import { writeToMailbox } from 'src/utils/agents/teammateMailbox.js'
 import { VERIFICATION_AGENT_TYPE } from '../AgentTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'

@@ -67,7 +67,7 @@ mock.module('@langfuse/tracing', () => ({
 }))
 
 // Mock debug logger
-mock.module('src/utils/debug.js', () => ({
+mock.module('src/utils/telemetry/debug.js', () => ({
   logForDebugging: mock(() => {}),
   logAntError: mock(() => {}),
   isDebugToStdErr: () => false,
@@ -76,7 +76,7 @@ mock.module('src/utils/debug.js', () => ({
 }))
 
 // Mock user module to avoid heavy dependency chain (execa, config, cwd, env, etc.)
-mock.module('src/utils/user.js', () => ({
+mock.module('src/utils/auth/user.js', () => ({
   getCoreUserData: () => ({
     email: 'test@example.com',
     deviceId: 'test-device',

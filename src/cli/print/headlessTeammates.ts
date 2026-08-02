@@ -8,22 +8,22 @@
  */
 import { randomUUID } from 'crypto'
 import { TEAMMATE_MESSAGE_TAG } from 'src/constants/xml.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
-import { sleep } from 'src/utils/sleep.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
+import { sleep } from 'src/utils/process/sleep.js'
 import {
   hasActiveInProcessTeammates,
   hasWorkingInProcessTeammates,
   isTeamLead,
   waitForTeammatesToBecomeIdle,
-} from 'src/utils/teammate.js'
+} from 'src/utils/agents/teammate.js'
 import {
   isShutdownApproved,
   markMessagesAsRead,
   readUnreadMessages,
-} from 'src/utils/teammateMailbox.js'
+} from 'src/utils/agents/teammateMailbox.js'
 import { removeTeammateFromTeamFile } from 'src/utils/swarm/teamHelpers.js'
-import { unassignTeammateTasks } from 'src/utils/tasks.js'
+import { unassignTeammateTasks } from 'src/utils/task/tasks.js'
 import { SHUTDOWN_TEAM_PROMPT } from './runtime.js'
 import type { HeadlessRunState } from './headlessRunState.js'
 

@@ -1,5 +1,5 @@
 import type { Command } from '../../commands.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
 
 const installGitHubApp = {
   type: 'local-jsx',

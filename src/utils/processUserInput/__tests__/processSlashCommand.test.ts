@@ -11,8 +11,8 @@ import {
   getAutonomyRunById,
   listAutonomyRuns,
   markAutonomyRunRunning,
-} from '../../autonomyRuns'
-import { resetAutonomyAuthorityForTests } from '../../autonomyAuthority'
+} from '../../agents/autonomyRuns'
+import { resetAutonomyAuthorityForTests } from '../../agents/autonomyAuthority'
 import { createScheduledTaskQueuedCommand } from '../../../hooks/useScheduledTasks'
 import {
   cleanupTempDir,
@@ -117,8 +117,11 @@ mock.module('@open-claude-code/builtin-tools/tools/AgentTool/UI.js', () => ({
   userFacingNameBackgroundColor: () => 'gray',
 }))
 
-mock.module('../../messageQueueManager', createMessageQueueManagerMock)
-mock.module('../../messageQueueManager.js', createMessageQueueManagerMock)
+mock.module('../../session/messageQueueManager', createMessageQueueManagerMock)
+mock.module(
+  '../../session/messageQueueManager.js',
+  createMessageQueueManagerMock,
+)
 
 const { processSlashCommand } = await import('../processSlashCommand')
 

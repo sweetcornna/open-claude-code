@@ -4,7 +4,7 @@
  * Split out of constants.ts so that file can stay a pure leaf — this one needs
  * src/utils/envUtils.js.
  */
-import { isEnvDefinedFalsy, isEnvTruthy } from 'src/utils/envUtils.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from 'src/utils/config/envUtils.js'
 
 /**
  * REPL mode is default-on for ants in the interactive CLI (opt out with

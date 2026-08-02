@@ -5,10 +5,10 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 
 const noop = () => {}
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const sdkEvents: any[] = []
-mock.module('src/utils/sdkEventQueue.js', () => ({
+mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: (event: any) => sdkEvents.push(event),
 }))
 
@@ -19,7 +19,7 @@ mock.module('src/utils/task/diskOutput.js', () => ({
   initTaskOutputAsSymlink: async () => {},
 }))
 
-mock.module('src/utils/messageQueueManager.js', () => ({
+mock.module('src/utils/session/messageQueueManager.js', () => ({
   enqueuePendingNotification: noop,
 }))
 

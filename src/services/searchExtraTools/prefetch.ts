@@ -6,7 +6,7 @@ import {
   searchTools,
   type SearchExtraToolsResult,
 } from './toolIndex.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { extractQueryFromMessages } from '../skillSearch/prefetch.js'
 
 export type ToolDiscoveryResult = {

@@ -1,5 +1,5 @@
 import { BIN_NAME } from 'src/config/paths.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 
 const PROBE_TIMEOUT_MS = 15_000
 

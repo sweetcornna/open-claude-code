@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Message } from 'src/types/message.js'
-import { getErrnoCode } from 'src/utils/errors.js'
+import { getErrnoCode } from 'src/utils/runtime/errors.js'
 import {
   compactMailboxMessages,
   getLastPeerDmSummary,
@@ -21,7 +21,7 @@ import {
   readMailbox,
   type TeammateMessage,
   writeToMailbox,
-} from 'src/utils/teammateMailbox.js'
+} from 'src/utils/agents/teammateMailbox.js'
 
 let tempHome = ''
 let previousConfigDir: string | undefined

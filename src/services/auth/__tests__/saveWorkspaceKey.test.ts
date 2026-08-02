@@ -11,8 +11,8 @@ import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
 
 // Mock side-effect modules first
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 // Pre-import the real settings module so we keep all its exports for any
 // downstream test file in the same process (mock.module is global).
@@ -38,7 +38,7 @@ let _mockGetGlobalConfig: () => unknown = () => ({
 let _mockSaveGlobalConfig: (updater: unknown) => unknown = (_u: unknown) =>
   undefined
 const _originalOccConfigDir = process.env.OCC_CONFIG_DIR
-mock.module('src/utils/config.ts', () => ({
+mock.module('src/utils/config/config.ts', () => ({
   isConfigEnabled: () => true,
   getGlobalConfig: () =>
     _useMockForConfig ? _mockGetGlobalConfig() : { workspaceApiKey: undefined },

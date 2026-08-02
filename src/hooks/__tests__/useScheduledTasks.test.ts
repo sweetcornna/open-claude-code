@@ -9,8 +9,8 @@ import { createScheduledTaskQueuedCommand } from '../useScheduledTasks'
 import {
   listAutonomyRuns,
   markAutonomyRunCompleted,
-} from '../../utils/autonomyRuns'
-import { resetAutonomyAuthorityForTests } from '../../utils/autonomyAuthority'
+} from '../../utils/agents/autonomyRuns'
+import { resetAutonomyAuthorityForTests } from '../../utils/agents/autonomyAuthority'
 import { cleanupTempDir, createTempDir } from '../../../tests/mocks/file-system'
 
 let tempDir = ''

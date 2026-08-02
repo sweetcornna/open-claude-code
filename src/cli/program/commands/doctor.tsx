@@ -1,6 +1,6 @@
 // Extracted verbatim from the former `run()` in src/main.tsx (S7-4b split).
 import type { Command as CommanderCommand } from '@commander-js/extra-typings';
-import { getBaseRenderOptions } from 'src/utils/renderOptions.js';
+import { getBaseRenderOptions } from 'src/utils/terminal/renderOptions.js';
 
 export function registerDoctorCommand(program: CommanderCommand): void {
   // Doctor command - check installation health

@@ -110,7 +110,7 @@ mock.module('src/utils/model/model.js', () => ({
   isNonCustomOpusModel: mock(() => false),
 }))
 
-mock.module('src/utils/effort.js', () => ({
+mock.module('src/utils/model/effort.js', () => ({
   getDisplayedEffortLevel: mockGetDisplayedEffortLevel as (
     _m: string,
     _e: unknown,
@@ -176,7 +176,7 @@ const mockedGetClaudeConfigHomeDirSM: (() => string) & {
   { cache: { clear: () => {}, get: (_k: unknown) => undefined } },
 )
 
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   getClaudeConfigHomeDir: mockedGetClaudeConfigHomeDirSM,
   isEnvTruthy: realIsEnvTruthy,
   getEnvBool: () => false,
@@ -233,7 +233,7 @@ mock.module('src/utils/envUtils.js', () => ({
   isInProtectedNamespace: () => false,
 }))
 
-mock.module('src/utils/log.js', () => ({
+mock.module('src/utils/telemetry/log.js', () => ({
   logError: mock(() => {}),
   getLogDisplayTitle: mock(() => ''),
   dateToFilename: mock((d: Date) => d.toISOString()),
@@ -252,7 +252,7 @@ mock.module('src/services/tokenEstimation.js', () => ({
   countTokens: mock(async () => 0),
 }))
 
-mock.module('src/utils/errors.js', () => ({
+mock.module('src/utils/runtime/errors.js', () => ({
   getErrnoCode: mock((e: unknown) => (e as NodeJS.ErrnoException)?.code),
   toError: mock((e: unknown) =>
     e instanceof Error ? e : new Error(String(e)),

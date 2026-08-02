@@ -21,8 +21,8 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // ── Analytics mock ──────────────────────────────────────────────────────────
 const logEventMock = mock(() => {})
@@ -31,7 +31,7 @@ mock.module('src/services/analytics/index.js', () => ({
 }))
 
 // ── Cron utility mock ───────────────────────────────────────────────────────
-mock.module('src/utils/cron.js', () => ({
+mock.module('src/utils/task/cron.js', () => ({
   parseCronExpression: (cron: string) => {
     const fields = cron.trim().split(/\s+/)
     if (fields.length !== 5) return null
@@ -56,7 +56,7 @@ mock.module('src/commands/schedule/ScheduleView.js', () => ({
 }))
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-schedule' }),
 }))
 mock.module('src/services/oauth/client.js', () => ({

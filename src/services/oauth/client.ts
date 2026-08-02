@@ -16,10 +16,10 @@ import {
   hasProfileScope,
   isClaudeAISubscriber,
   saveApiKey,
-} from '../../utils/auth.js'
-import type { AccountInfo } from '../../utils/config.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
-import { logForDebugging } from '../../utils/debug.js'
+} from '../../utils/auth/auth.js'
+import type { AccountInfo } from '../../utils/config/config.js'
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { getOauthProfileFromOauthToken } from './getOauthProfile.js'
 import type {
   BillingType,

@@ -6,7 +6,7 @@ import { FILE_WRITE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/File
 import { GLOB_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GlobTool/constants.js'
 import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/constants.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/NotebookEditTool/constants.js'
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
+import { hasEmbeddedSearchTools } from 'src/utils/tools/embeddedTools.js'
 import { AGENT_TOOL_NAME } from '../constants.js'
 import type { BuiltInAgentDefinition } from '../loadAgentsDir.js'
 import { EXPLORE_AGENT } from './exploreAgent.js'

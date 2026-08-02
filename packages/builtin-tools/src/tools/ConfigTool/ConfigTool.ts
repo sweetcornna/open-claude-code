@@ -9,10 +9,10 @@ import {
   type GlobalConfig,
   getGlobalConfig,
   saveGlobalConfig,
-} from 'src/utils/config.js'
+} from 'src/utils/config/config.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import {
   getInitialSettings,
   updateSettingsForSource,
@@ -203,7 +203,9 @@ export const ConfigTool = buildTool({
         'src/voice/voiceModeEnabled.js'
       )
       if (!isVoiceModeEnabled()) {
-        const { isAnthropicAuthEnabled } = await import('src/utils/auth.js')
+        const { isAnthropicAuthEnabled } = await import(
+          'src/utils/auth/auth.js'
+        )
         return {
           data: {
             success: false,

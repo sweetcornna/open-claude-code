@@ -1,5 +1,5 @@
 import { getInitialSettings } from '../settings/settings.js'
-import { getPlatform } from '../platform.js'
+import { getPlatform } from '../process/platform.js'
 import { isPowerShellToolEnabled } from './shellToolUtils.js'
 
 /**

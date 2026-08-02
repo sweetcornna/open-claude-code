@@ -37,7 +37,7 @@ function restoreConfigDirs(): void {
   occConfigDir.cache.clear?.()
 }
 
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
 // ── Keychain mock (unavailable by default to test fallback path) ───────────────

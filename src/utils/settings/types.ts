@@ -7,8 +7,8 @@ import {
 } from '../../config/paths.js'
 import { z } from 'zod/v4'
 import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
-import { isEnvTruthy } from '../envUtils.js'
-import { lazySchema } from '../lazySchema.js'
+import { isEnvTruthy } from '../config/envUtils.js'
+import { lazySchema } from '../collections/lazySchema.js'
 import { PERMISSION_MODES } from '../permissions/PermissionMode.js'
 import { MarketplaceSourceSchema } from '../plugins/schemas.js'
 import { CLAUDE_CODE_SETTINGS_SCHEMA_URL } from './constants.js'
@@ -30,7 +30,7 @@ export {
 
 // Also import for use within this file
 import { type HookCommand, HooksSchema } from '../../schemas/hooks.js'
-import { count } from '../array.js'
+import { count } from '../collections/array.js'
 
 /**
  * Schema for environment variables

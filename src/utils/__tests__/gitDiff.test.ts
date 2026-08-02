@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseGitNumstat, parseGitDiff, parseShortstat } from '../gitDiff'
+import { parseGitNumstat, parseGitDiff, parseShortstat } from '../git/gitDiff'
 
 describe('parseGitNumstat', () => {
   test('parses single file', () => {

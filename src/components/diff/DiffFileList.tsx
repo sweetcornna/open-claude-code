@@ -3,8 +3,8 @@ import React, { useMemo } from 'react';
 import type { DiffFile } from '../../hooks/useDiffData.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text } from '@anthropic/ink';
-import { truncateStartToWidth } from '../../utils/format.js';
-import { plural } from '../../utils/stringUtils.js';
+import { truncateStartToWidth } from '../../utils/text/format.js';
+import { plural } from '../../utils/text/stringUtils.js';
 
 const MAX_VISIBLE_FILES = 5;
 

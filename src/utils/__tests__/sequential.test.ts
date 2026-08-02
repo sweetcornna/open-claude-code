@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { sequential } from '../sequential'
+import { sequential } from '../collections/sequential'
 
 describe('sequential', () => {
   test('wraps async function, returns same result', async () => {

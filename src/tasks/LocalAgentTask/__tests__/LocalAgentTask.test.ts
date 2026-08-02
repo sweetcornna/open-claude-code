@@ -6,8 +6,8 @@ import { logMock } from '../../../../tests/mocks/log.js'
 
 const noop = () => {}
 
-mock.module('src/utils/debug.ts', debugMock)
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 mock.module('src/utils/sessionStorage.js', () => ({
   getAgentTranscriptPath: (id: string) => `/tmp/transcripts/${id}.jsonl`,
@@ -25,7 +25,7 @@ mock.module('src/utils/task/diskOutput.js', () => ({
 
 // Capture enqueuePendingNotification calls for verification
 const enqueuedNotifications: string[] = []
-mock.module('src/utils/messageQueueManager.js', () => ({
+mock.module('src/utils/session/messageQueueManager.js', () => ({
   enqueuePendingNotification: (cmd: any) => {
     enqueuedNotifications.push(cmd.value)
   },
@@ -44,11 +44,11 @@ mock.module('src/services/PromptSuggestion/speculation.js', () => ({
 }))
 
 const cleanupFns: (() => void)[] = []
-mock.module('src/utils/cleanupRegistry.js', () => ({
+mock.module('src/utils/process/cleanupRegistry.js', () => ({
   registerCleanup: () => noop,
 }))
 
-mock.module('src/utils/abortController.js', () => ({
+mock.module('src/utils/process/abortController.js', () => ({
   createAbortController: () => new AbortController(),
   createChildAbortController: (parent: AbortController) => {
     const ac = new AbortController()
@@ -61,7 +61,7 @@ mock.module('src/utils/task/sdkProgress.js', () => ({
   emitTaskProgress: noop,
 }))
 
-mock.module('src/utils/sdkEventQueue.js', () => ({
+mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: noop,
 }))
 
@@ -87,7 +87,7 @@ mock.module('src/services/analytics/index.js', () => ({
   AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS: undefined,
 }))
 
-mock.module('src/utils/collapseReadSearch.js', () => ({
+mock.module('src/utils/session/collapseReadSearch.js', () => ({
   getSearchExtraToolsOrReadInfo: () => undefined,
 }))
 

@@ -25,19 +25,22 @@ import memoize from 'lodash-es/memoize.js'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'path'
 import { BIN_NAME } from '../../constants/brand.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { logForDebugging } from '../debug.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import {
   ConfigParseError,
   errorMessage,
   getErrnoCode,
   isENOENT,
   toError,
-} from '../errors.js'
-import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
-import { getFsImplementation } from '../fsOperations.js'
-import { gitExe } from '../git.js'
-import { logError } from '../log.js'
+} from '../runtime/errors.js'
+import {
+  execFileNoThrow,
+  execFileNoThrowWithCwd,
+} from '../process/execFileNoThrow.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
+import { gitExe } from '../git/git.js'
+import { logError } from '../telemetry/log.js'
 import {
   getInitialSettings,
   getSettingsForSource,
@@ -48,7 +51,7 @@ import {
   jsonParse,
   jsonStringify,
   writeFileSync_DEPRECATED,
-} from '../slowOperations.js'
+} from '../telemetry/slowOperations.js'
 import {
   getAddDirEnabledPlugins,
   getAddDirExtraMarketplaces,

@@ -14,21 +14,21 @@ import type {
 } from '../../types/message.js'
 import type { PermissionDecision } from '../../types/permissions.js'
 import { createAttachmentMessage } from '../../utils/attachments.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   executePostToolHooks,
   executePostToolUseFailureHooks,
   executePreToolHooks,
   getPreToolHookBlockingMessage,
 } from '../../utils/hooks.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import {
   getRuleBehaviorDescription,
   type PermissionDecisionReason,
   type PermissionResult,
 } from '../../utils/permissions/PermissionResult.js'
 import { checkRuleBasedPermissions } from '../../utils/permissions/permissions.js'
-import { formatError } from '../../utils/toolErrors.js'
+import { formatError } from '../../utils/tools/toolErrors.js'
 import { isMcpTool } from '../mcp/utils.js'
 import type { McpServerType, MessageUpdateLazy } from './toolExecution.js'
 

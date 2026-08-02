@@ -3,9 +3,9 @@ import type { QuerySource } from '../../constants/querySource.js'
 import { clearSystemPromptSections } from '../../constants/systemPromptSections.js'
 import { getUserContext } from '../../context.js'
 import { clearSpeculativeChecks } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js'
-import { clearClassifierApprovals } from '../../utils/classifierApprovals.js'
-import { resetGetMemoryFilesCache } from '../../utils/claudemd.js'
-import { logError } from '../../utils/log.js'
+import { clearClassifierApprovals } from '../../utils/permissions/classifierApprovals.js'
+import { resetGetMemoryFilesCache } from '../../utils/session/claudemd.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { clearSessionMessagesCache } from '../../utils/sessionStorage.js'
 import { clearBetaTracingState } from '../../utils/telemetry/betaSessionTracing.js'
 import { resetMicrocompactState } from './microCompact.js'
@@ -83,7 +83,7 @@ export function runPostCompactCleanup(querySource?: QuerySource): void {
     // no-op stub: without it, a future restored sweepFileContentCache that
     // throws would surface as an unhandled promise rejection from a function
     // whose synchronous signature gives callers no way to observe it.
-    void import('../../utils/attributionHooks.js')
+    void import('../../utils/git/attributionHooks.js')
       .then(m => m.sweepFileContentCache())
       .catch(error => {
         logError(error)

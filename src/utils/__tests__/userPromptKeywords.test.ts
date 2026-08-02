@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   matchesNegativeKeyword,
   matchesKeepGoingKeyword,
-} from '../userPromptKeywords'
+} from '../text/userPromptKeywords'
 
 describe('matchesNegativeKeyword', () => {
   test("matches 'wtf'", () => {

@@ -12,8 +12,8 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
 // ── Mock module-level side effects before any imports ──
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => true,
 }))
@@ -24,7 +24,7 @@ const teleportMock = mock(
   (): Promise<TeleportResult> =>
     Promise.resolve({ id: 'session-123', title: 'Autofix PR: acme/myrepo#42' }),
 )
-mock.module('src/utils/teleport.js', () => ({
+mock.module('src/utils/teleport/teleport.js', () => ({
   teleportToRemote: teleportMock,
   // Stubs for other exports — Bun mock-module is process-level, so when
   // run combined with teleport-command tests these would otherwise leak as
@@ -94,7 +94,7 @@ mock.module('src/commands/autofix-pr/prFetch.js', () => ({
 const detectRepoMock = mock(() =>
   Promise.resolve({ host: 'github.com', owner: 'acme', name: 'myrepo' }),
 )
-mock.module('src/utils/detectRepository.js', () => ({
+mock.module('src/utils/git/detectRepository.js', () => ({
   detectCurrentRepositoryWithHost: detectRepoMock,
 }))
 

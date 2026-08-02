@@ -21,8 +21,8 @@
  */
 
 import { queryHaiku } from '../api/claude.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 
 const INTENT_SYSTEM_PROMPT = `You are a query normalizer for a skill-search index.
 

@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test'
-import { formatBriefTimestamp } from '../formatBriefTimestamp'
+import { formatBriefTimestamp } from '../text/formatBriefTimestamp'
 
 let savedLcAll: string | undefined
 beforeAll(() => {

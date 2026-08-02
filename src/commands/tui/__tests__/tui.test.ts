@@ -8,7 +8,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getClaudeConfigHomeDir } from '../../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../../utils/config/envUtils.js'
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => true,

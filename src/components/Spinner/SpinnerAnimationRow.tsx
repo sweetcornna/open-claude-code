@@ -2,11 +2,11 @@ import figures from 'figures';
 import * as React from 'react';
 import { useMemo, useRef } from 'react';
 import { Box, Text, useAnimationFrame, stringWidth, Byline, ProgressBar } from '@anthropic/ink';
-import { toInkColor } from '../../utils/ink.js';
+import { toInkColor } from '../../utils/terminal/ink.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
-import { formatDuration, formatNumber } from '../../utils/format.js';
+import { formatDuration, formatNumber } from '../../utils/text/format.js';
 
-import type { Theme } from '../../utils/theme.js';
+import type { Theme } from '../../utils/terminal/theme.js';
 
 import { GlimmerMessage } from './GlimmerMessage.js';
 import { SpinnerGlyph } from './SpinnerGlyph.js';

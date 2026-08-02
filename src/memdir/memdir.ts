@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { join } from 'path'
-import { getFsImplementation } from '../utils/fsOperations.js'
+import { getFsImplementation } from '../utils/filesystem/fsOperations.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
 
 import { getKairosActive, getOriginalCwd } from '../bootstrap/state.js'
@@ -12,10 +12,10 @@ import {
 } from '../services/analytics/index.js'
 import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/prompt.js'
 import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/replMode.js'
-import { logForDebugging } from '../utils/debug.js'
-import { hasEmbeddedSearchTools } from '../utils/embeddedTools.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
-import { formatFileSize } from '../utils/format.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { hasEmbeddedSearchTools } from '../utils/tools/embeddedTools.js'
+import { isEnvTruthy } from '../utils/config/envUtils.js'
+import { formatFileSize } from '../utils/text/format.js'
 import { getProjectDir } from '../utils/sessionStorage.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import {

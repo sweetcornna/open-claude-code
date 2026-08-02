@@ -1,8 +1,8 @@
 import figures from 'figures';
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import type { PastedContent } from '../../utils/config.js';
-import type { ImageDimensions } from '../../utils/imageResizer.js';
+import type { PastedContent } from '../../utils/config/config.js';
+import type { ImageDimensions } from '../../utils/terminal/imageResizer.js';
 import type { OptionWithDescription } from './select.js';
 import { SelectInputOption } from './select-input-option.js';
 import { SelectOption } from './select-option.js';

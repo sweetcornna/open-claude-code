@@ -5,7 +5,7 @@ import {
   parsePositiveIntFromFrontmatter,
   parseBooleanFrontmatter,
   parseShellFrontmatter,
-} from '../frontmatterParser'
+} from '../text/frontmatterParser'
 
 describe('parseFrontmatter', () => {
   test('parses valid frontmatter', () => {

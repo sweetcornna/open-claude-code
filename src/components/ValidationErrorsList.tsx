@@ -2,7 +2,7 @@ import setWith from 'lodash-es/setWith.js';
 import * as React from 'react';
 import { Box, Text, useTheme } from '@anthropic/ink';
 import type { ValidationError } from '../utils/settings/validation.js';
-import { type TreeNode, treeify } from '../utils/treeify.js';
+import { type TreeNode, treeify } from '../utils/collections/treeify.js';
 
 /**
  * Builds a nested tree structure from dot-notation paths

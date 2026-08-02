@@ -7,10 +7,10 @@ import { TURN_COMPLETION_VERBS } from '../../constants/turnCompletionVerbs.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text, stringWidth } from '@anthropic/ink';
-import { toInkColor } from '../../utils/ink.js';
+import { toInkColor } from '../../utils/terminal/ink.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
-import { summarizeRecentActivities } from '../../utils/collapseReadSearch.js';
-import { formatDuration, formatNumber, truncateToWidth } from '../../utils/format.js';
+import { summarizeRecentActivities } from '../../utils/session/collapseReadSearch.js';
+import { formatDuration, formatNumber, truncateToWidth } from '../../utils/text/format.js';
 
 import { TEAMMATE_SELECT_HINT } from './teammateSelectHint.js';
 

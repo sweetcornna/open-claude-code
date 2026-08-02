@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Link, Text } from '@anthropic/ink';
-import { type AwsAuthStatus, AwsAuthStatusManager } from '../utils/awsAuthStatusManager.js';
+import { type AwsAuthStatus, AwsAuthStatusManager } from '../utils/auth/awsAuthStatusManager.js';
 
 const URL_RE = /https?:\/\/\S+/;
 

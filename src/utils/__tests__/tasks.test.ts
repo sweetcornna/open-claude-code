@@ -7,8 +7,8 @@ import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
 
 // Mock dependencies before importing the module under test
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({
   feature: () => false,
 }))
@@ -28,12 +28,12 @@ mock.module('src/bootstrap/state.ts', () => ({
 // has to cover every export other files reach for — `getDefaultAppState()`
 // lazily requires this module and calls `isTeammate()`/`isPlanModeRequired()`.
 // Omitting them only fails when suite ordering puts this file first.
-mock.module('src/utils/teammate.ts', () => ({
+mock.module('src/utils/agents/teammate.ts', () => ({
   getTeamName: () => undefined,
   isTeammate: () => false,
   isPlanModeRequired: () => false,
 }))
-mock.module('src/utils/teammateContext.ts', () => ({
+mock.module('src/utils/agents/teammateContext.ts', () => ({
   getTeammateContext: () => undefined,
 }))
 import {
@@ -53,7 +53,7 @@ import {
   clearLeaderTeamName,
   isTodoV2Enabled,
   type Task,
-} from '../tasks'
+} from '../task/tasks'
 
 // Use a temp dir as CLAUDE_CONFIG_DIR for isolation
 let configDir: string
@@ -66,7 +66,7 @@ beforeEach(async () => {
   )
   process.env.CLAUDE_CONFIG_DIR = configDir
   // Reset memoize cache by changing env
-  const { getClaudeConfigHomeDir } = await import('src/utils/envUtils')
+  const { getClaudeConfigHomeDir } = await import('src/utils/config/envUtils')
   getClaudeConfigHomeDir.cache.clear?.()
 })
 
@@ -76,7 +76,7 @@ afterEach(async () => {
   } else {
     delete process.env.CLAUDE_CONFIG_DIR
   }
-  const { getClaudeConfigHomeDir } = await import('src/utils/envUtils')
+  const { getClaudeConfigHomeDir } = await import('src/utils/config/envUtils')
   getClaudeConfigHomeDir.cache.clear?.()
   await rm(configDir, { recursive: true, force: true }).catch(() => {})
 })

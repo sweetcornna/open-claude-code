@@ -9,20 +9,20 @@ import { clearSystemPromptSections } from 'src/constants/systemPromptSections.js
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { count } from 'src/utils/array.js'
-import { clearMemoryFileCaches } from 'src/utils/claudemd.js'
-import { execFileNoThrow } from 'src/utils/execFileNoThrow.js'
+import { count } from 'src/utils/collections/array.js'
+import { clearMemoryFileCaches } from 'src/utils/session/claudemd.js'
+import { execFileNoThrow } from 'src/utils/process/execFileNoThrow.js'
 import { updateHooksConfigSnapshot } from 'src/utils/hooks/hooksConfigSnapshot.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { getPlansDirectory } from 'src/utils/plans.js'
-import { setCwd } from 'src/utils/Shell.js'
+import { getPlansDirectory } from 'src/utils/agents/plans.js'
+import { setCwd } from 'src/utils/shell/Shell.js'
 import { saveWorktreeState } from 'src/utils/sessionStorage.js'
 import {
   cleanupWorktree,
   getCurrentWorktreeSession,
   keepWorktree,
   killTmuxSession,
-} from 'src/utils/worktree.js'
+} from 'src/utils/git/worktree.js'
 import { EXIT_WORKTREE_TOOL_NAME } from './constants.js'
 import { getExitWorktreeToolPrompt } from './prompt.js'
 import { renderToolResultMessage, renderToolUseMessage } from './UI.js'

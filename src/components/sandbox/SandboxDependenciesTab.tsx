@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { getPlatform } from '../../utils/platform.js';
+import { getPlatform } from '../../utils/process/platform.js';
 import type { SandboxDependencyCheck } from '../../utils/sandbox/sandbox-adapter.js';
 
 type Props = {

@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { createAbortController } from '../utils/abortController'
-import { QueryGuard } from '../utils/QueryGuard'
-import { handlePromptSubmit } from '../utils/handlePromptSubmit'
+import { createAbortController } from '../utils/process/abortController'
+import { QueryGuard } from '../utils/session/QueryGuard'
+import { handlePromptSubmit } from '../utils/session/handlePromptSubmit'
 import {
   getCommandQueue,
   resetCommandQueue,
-} from '../utils/messageQueueManager'
+} from '../utils/session/messageQueueManager'
 import { cleanupTempDir, createTempDir } from '../../tests/mocks/file-system'
 import {
   createAutonomyQueuedPrompt,
   markAutonomyRunCancelled,
-} from '../utils/autonomyRuns'
+} from '../utils/agents/autonomyRuns'
 
 let tempDirs: string[] = []
 

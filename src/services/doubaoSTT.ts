@@ -13,8 +13,8 @@ import type {
   VoiceStreamCallbacks,
   VoiceStreamConnection,
 } from './voiceStreamSTT.js'
-import { logForDebugging } from '../utils/debug.js'
-import { logError } from '../utils/log.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { logError } from '../utils/telemetry/log.js'
 
 // Re-export FinalizeSource so useVoice can import from either module
 export type { FinalizeSource } from './voiceStreamSTT.js'

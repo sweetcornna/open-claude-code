@@ -4,7 +4,7 @@ import { Dialog } from '@anthropic/ink';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- raw text input for config dialog
 import { Box, Text, useInput, stringWidth } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
-import { isEnvTruthy } from '../../utils/envUtils.js';
+import { isEnvTruthy } from '../../utils/config/envUtils.js';
 import type { PluginOptionSchema, PluginOptionValues } from '../../utils/plugins/pluginOptionsStorage.js';
 
 /**

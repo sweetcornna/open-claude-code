@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { createBufferedWriter } from '../bufferedWriter'
+import { createBufferedWriter } from '../filesystem/bufferedWriter'
 
 describe('createBufferedWriter', () => {
   test('immediateMode calls writeFn directly', () => {

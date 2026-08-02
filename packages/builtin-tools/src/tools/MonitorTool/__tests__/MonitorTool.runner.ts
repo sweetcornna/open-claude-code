@@ -13,8 +13,8 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 type ExecCall = { command: string; shellType: string }
 type SpawnCall = {
@@ -30,8 +30,8 @@ const spawnCalls: SpawnCall[] = []
 
 // Spread the real modules so only exec/spawnShellTask are stubbed — replacing
 // the whole module would strip exports other importers still need.
-const realShell = await import('src/utils/Shell.js')
-mock.module('src/utils/Shell.js', () => ({
+const realShell = await import('src/utils/shell/Shell.js')
+mock.module('src/utils/shell/Shell.js', () => ({
   ...realShell,
   exec: async (command: string, _signal: AbortSignal, shellType: string) => {
     execCalls.push({ command, shellType })

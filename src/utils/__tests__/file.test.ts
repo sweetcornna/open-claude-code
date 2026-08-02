@@ -5,7 +5,7 @@ import {
   stripLineNumberPrefix,
   pathsEqual,
   normalizePathForComparison,
-} from '../file'
+} from '../filesystem/file'
 
 describe('convertLeadingTabsToSpaces', () => {
   test('converts leading tabs to 2 spaces each', () => {

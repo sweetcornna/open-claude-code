@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Ansi, Box, Text, useAnimationFrame } from '@anthropic/ink';
-import { segmentTextByHighlights, type TextHighlight } from '../../utils/textHighlighting.js';
+import { segmentTextByHighlights, type TextHighlight } from '../../utils/text/textHighlighting.js';
 import { ShimmerChar } from '../Spinner/ShimmerChar.js';
 
 type Props = {

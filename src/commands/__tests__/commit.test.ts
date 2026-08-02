@@ -7,19 +7,19 @@ mock.module('bun:bundle', () => ({
 }))
 
 // Mock dependencies to avoid side effects
-mock.module('src/utils/attribution.ts', () => ({
+mock.module('src/utils/git/attribution.ts', () => ({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
   getEnhancedPRAttribution: async () => undefined,
   countUserPromptsInMessages: () => 0,
 }))
 
-mock.module('src/utils/undercover.ts', () => ({
+mock.module('src/utils/auth/undercover.ts', () => ({
   isUndercover: () => false,
   getUndercoverInstructions: () => '',
   shouldShowUndercoverAutoNotice: () => false,
 }))
 
-mock.module('src/utils/promptShellExecution.ts', () => ({
+mock.module('src/utils/shell/promptShellExecution.ts', () => ({
   executeShellCommandsInPrompt: async (content: string) => content,
 }))
 
@@ -152,7 +152,7 @@ describe('commit command getPromptForCommand', () => {
     }
 
     // Wrap executeShellCommandsInPrompt to capture context
-    mock.module('src/utils/promptShellExecution.ts', () => ({
+    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedAppState = ctx.getAppState()
         return content
@@ -202,13 +202,13 @@ describe('commit command getPromptForCommand', () => {
   test('ant undercover path prepends undercover instructions', async () => {
     process.env.USER_TYPE = 'ant'
 
-    mock.module('src/utils/undercover.ts', () => ({
+    mock.module('src/utils/auth/undercover.ts', () => ({
       isUndercover: () => true,
       getUndercoverInstructions: () => 'SECRET_UNDERCOVER_PREFIX',
       shouldShowUndercoverAutoNotice: () => false,
     }))
 
-    mock.module('src/utils/attribution.ts', () => ({
+    mock.module('src/utils/git/attribution.ts', () => ({
       getAttributionTexts: () => ({ commit: 'Co-Authored-By: Claude', pr: '' }),
       getEnhancedPRAttribution: async () => undefined,
       countUserPromptsInMessages: () => 0,
@@ -235,7 +235,7 @@ describe('commit command getPromptForCommand', () => {
   test('getAppState override in context passes ALLOWED_TOOLS', async () => {
     let capturedCtx: any
 
-    mock.module('src/utils/promptShellExecution.ts', () => ({
+    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedCtx = ctx
         return content

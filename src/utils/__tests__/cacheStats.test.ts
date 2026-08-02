@@ -76,7 +76,7 @@ const mockedGetClaudeConfigHomeDir: (() => string) & {
   },
 )
 
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   getClaudeConfigHomeDir: mockedGetClaudeConfigHomeDir,
   isEnvTruthy: realIsEnvTruthy,
   hasNodeOption: (flag: string) => {
@@ -143,14 +143,14 @@ import {
   writeStateAtomic,
   type CacheUsage,
   type CacheStatsState,
-} from '../cacheStats.js'
+} from '../telemetry/cacheStats.js'
 
 import {
   onResponse,
   getCacheStatsState,
   initCacheStatsState,
   _resetCacheStatsStateForTest,
-} from '../cacheStatsState.js'
+} from '../telemetry/cacheStatsState.js'
 
 // ---------------------------------------------------------------------------
 // Helpers

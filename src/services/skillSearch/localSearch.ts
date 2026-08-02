@@ -1,4 +1,4 @@
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 
 export interface SkillIndexEntry {
   name: string

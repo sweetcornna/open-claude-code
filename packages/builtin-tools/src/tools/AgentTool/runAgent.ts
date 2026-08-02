@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import uniqBy from 'lodash-es/uniqBy.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   getProjectRoot,
   getSessionId,
@@ -49,7 +49,7 @@ import type {
 } from 'src/types/message.js'
 import { createAttachmentMessage } from 'src/utils/attachments.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
-import { getDisplayPath } from 'src/utils/file.js'
+import { getDisplayPath } from 'src/utils/filesystem/file.js'
 import {
   createFileStateCacheWithSizeLimit,
   READ_FILE_STATE_CACHE_SIZE,
@@ -57,7 +57,7 @@ import {
 import {
   type CacheSafeParams,
   createSubagentContext,
-} from 'src/utils/forkedAgent.js'
+} from 'src/utils/agents/forkedAgent.js'
 import { registerFrontmatterHooks } from 'src/utils/hooks/registerFrontmatterHooks.js'
 import { clearSessionHooks } from 'src/utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from 'src/utils/hooks.js'
@@ -83,14 +83,14 @@ import {
 import {
   asSystemPrompt,
   type SystemPrompt,
-} from 'src/utils/systemPromptType.js'
+} from 'src/utils/session/systemPromptType.js'
 import {
   isPerfettoTracingEnabled,
   registerAgent as registerPerfettoAgent,
   unregisterAgent as unregisterPerfettoAgent,
 } from 'src/utils/telemetry/perfettoTracing.js'
-import type { ContentReplacementState } from 'src/utils/toolResultStorage.js'
-import { createAgentId } from 'src/utils/uuid.js'
+import type { ContentReplacementState } from 'src/utils/tools/toolResultStorage.js'
+import { createAgentId } from 'src/utils/collections/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { filterIncompleteToolCalls } from './filterIncompleteToolCalls.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'

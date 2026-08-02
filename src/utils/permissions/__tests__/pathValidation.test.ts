@@ -3,8 +3,8 @@ import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
 
 // Cut the bootstrap/state dependency chain (mock.module requirement).
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))

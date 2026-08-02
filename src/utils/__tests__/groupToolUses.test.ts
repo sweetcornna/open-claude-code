@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { applyGrouping } from '../groupToolUses'
+import { applyGrouping } from '../tools/groupToolUses'
 
 // Helper: build minimal tool-use assistant message
 function makeToolUseMsg(

@@ -11,7 +11,7 @@ import type {
   ToolUseContext,
 } from '@open-claude-code/tool-runtime/Tool.js'
 import type { PendingClassifierCheck } from '@open-claude-code/tool-runtime/types/permissions.js'
-import { count } from 'src/utils/array.js'
+import { count } from 'src/utils/collections/array.js'
 import {
   checkSemantics,
   nodeTypeId,
@@ -28,9 +28,9 @@ import {
 } from 'src/utils/bash/commands.js'
 import { parseCommandRaw } from 'src/utils/bash/parser.js'
 import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
-import { getCwd } from 'src/utils/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import type {
   ClassifierBehavior,
@@ -66,10 +66,10 @@ import {
   suggestionForExactCommand as sharedSuggestionForExactCommand,
   suggestionForPrefix as sharedSuggestionForPrefix,
 } from 'src/utils/permissions/shellRuleMatching.js'
-import { getPlatform } from 'src/utils/platform.js'
+import { getPlatform } from 'src/utils/process/platform.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
-import { windowsPathToPosixPath } from 'src/utils/windowsPaths.js'
+import { windowsPathToPosixPath } from 'src/utils/filesystem/windowsPaths.js'
 import { BashTool } from './BashTool.js'
 import { checkCommandOperatorPermissions } from './bashCommandHelpers.js'
 import {

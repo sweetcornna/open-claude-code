@@ -25,8 +25,8 @@ import {
   getSessionProjectDir,
 } from '../../../bootstrap/state.js'
 import type { SessionId } from '../../../types/ids.js'
-import { enableConfigs } from '../../../utils/config.js'
-import { applySafeConfigEnvironmentVariables } from '../../../utils/managedEnv.js'
+import { enableConfigs } from '../../../utils/config/config.js'
+import { applySafeConfigEnvironmentVariables } from '../../../utils/config/managedEnv.js'
 import { resetSettingsCache } from '../../../utils/settings/settingsCache.js'
 import { FileStateCache } from '../../../utils/fileStateCache.js'
 import { getDefaultAppState } from '../../../state/AppStateStore.js'

@@ -91,9 +91,9 @@ mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
   updateProgressFromMessage: noop,
 }))
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
-mock.module('src/utils/errors.js', () => ({
+mock.module('src/utils/runtime/errors.js', () => ({
   ClaudeError: class extends Error {},
   MalformedCommandError: class extends Error {},
   AbortError: class extends Error {},
@@ -113,7 +113,7 @@ mock.module('src/utils/errors.js', () => ({
   classifyAxiosError: () => ({ category: 'unknown' }),
 }))
 
-mock.module('src/utils/forkedAgent.js', () => ({}))
+mock.module('src/utils/agents/forkedAgent.js', () => ({}))
 
 mock.module('src/utils/permissions/yoloClassifier.js', () => ({
   buildTranscriptForClassifier: () => '',
@@ -124,7 +124,7 @@ mock.module('src/utils/task/sdkProgress.js', () => ({
   emitTaskProgress: noop,
 }))
 
-mock.module('src/utils/tokens.js', () => ({
+mock.module('src/utils/session/tokens.js', () => ({
   getTokenCountFromUsage: () => 0,
 }))
 

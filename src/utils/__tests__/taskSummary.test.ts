@@ -17,21 +17,21 @@ mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))
 
-mock.module('../concurrentSessions.js', () => ({
+mock.module('../session/concurrentSessions.js', () => ({
   isBgSession: () => false,
   updateSessionActivity: async (data: any) => {
     _updateCalls.push(data)
   },
 }))
 
-mock.module('../debug.js', () => ({
+mock.module('../telemetry/debug.js', () => ({
   logForDebugging: () => {},
 }))
 
 // ─── import after mocks ─────────────────────────────────────────────────────
 
 const { shouldGenerateTaskSummary, maybeGenerateTaskSummary } = await import(
-  '../taskSummary.js'
+  '../task/taskSummary.js'
 )
 
 // ─── tests ──────────────────────────────────────────────────────────────────

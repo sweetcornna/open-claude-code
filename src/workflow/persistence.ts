@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getProjectRoot } from '../bootstrap/state.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import type { ProgressBus } from './progress/bus.js'
 import type { ProgressStore, RunProgress } from './progress/store.js'
 

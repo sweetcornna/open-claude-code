@@ -295,7 +295,7 @@ mock.module('../convertTools.js', () => ({
   anthropicToolChoiceToOpenAI: () => undefined,
 }))
 
-mock.module('../../../../utils/context.js', () => ({
+mock.module('../../../../utils/session/context.js', () => ({
   MODEL_CONTEXT_WINDOW_DEFAULT: 200_000,
   COMPACT_MAX_OUTPUT_TOKENS: 20_000,
   CAPPED_DEFAULT_MAX_TOKENS: 8_000,
@@ -334,11 +334,11 @@ mock.module('../../../../utils/messages.js', () => ({
   }),
 }))
 
-mock.module('../../../../utils/api.js', () => ({
+mock.module('../../../../utils/telemetry/api.js', () => ({
   toolToAPISchema: async (t: any) => t,
 }))
 
-mock.module('../../../../utils/searchExtraTools.js', () => ({
+mock.module('../../../../utils/tools/searchExtraTools.js', () => ({
   isSearchExtraToolsEnabled: async () => _searchExtraToolsEnabled,
   extractDiscoveredToolNames: () => new Set(),
   isDeferredToolsDeltaEnabled: () => false,
@@ -353,7 +353,7 @@ mock.module('../../../../cost-tracker.js', () => ({
   addToTotalSessionCost: () => {},
 }))
 
-mock.module('../../../../utils/modelCost.js', () => ({
+mock.module('../../../../utils/model/modelCost.js', () => ({
   COST_TIER_3_15: {},
   COST_TIER_15_75: {},
   COST_TIER_5_25: {},
@@ -386,7 +386,7 @@ mock.module('../../../../services/langfuse/convert.js', () => ({
   convertToolsToLangfuse: () => [],
 }))
 
-mock.module('../../../../utils/debug.js', () => ({
+mock.module('../../../../utils/telemetry/debug.js', () => ({
   logForDebugging: () => {},
   logAntError: () => {},
   isDebugMode: () => false,

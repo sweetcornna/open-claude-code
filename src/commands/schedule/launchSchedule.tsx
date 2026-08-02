@@ -3,7 +3,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js';
-import { parseCronExpression } from '../../utils/cron.js';
+import { parseCronExpression } from '../../utils/task/cron.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import { createTrigger, deleteTrigger, getTrigger, listTriggers, runTrigger, updateTrigger } from './triggersApi.js';
 import { ScheduleView } from './ScheduleView.js';

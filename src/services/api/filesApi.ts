@@ -11,12 +11,12 @@ import axios from 'axios'
 import { randomUUID } from 'crypto'
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import { count } from '../../utils/array.js'
-import { getCwd } from '../../utils/cwd.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { errorMessage } from '../../utils/errors.js'
-import { logError } from '../../utils/log.js'
-import { sleep } from '../../utils/sleep.js'
+import { count } from '../../utils/collections/array.js'
+import { getCwd } from '../../utils/filesystem/cwd.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
+import { logError } from '../../utils/telemetry/log.js'
+import { sleep } from '../../utils/process/sleep.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

@@ -1,4 +1,4 @@
-import type { EffortValue } from '../../utils/effort.js'
+import type { EffortValue } from '../../utils/model/effort.js'
 
 /**
  * 光标在面板上的位置。仅面板内部使用，不进入 AppState / settings / API。

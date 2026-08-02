@@ -38,20 +38,20 @@ import type { Progress as AgentProgress } from '@open-claude-code/builtin-tools/
 import { runAgent } from '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js';
 import { renderToolUseProgressMessage } from '@open-claude-code/builtin-tools/tools/AgentTool/UI.js';
 import type { CommandResultDisplay } from '../../types/command.js';
-import { createAbortController } from '../abortController.js';
-import { getAgentContext } from '../agentContext.js';
+import { createAbortController } from '../process/abortController.js';
+import { getAgentContext } from '../agents/agentContext.js';
 import { createAttachmentMessage, getAttachmentMessages } from '../attachments.js';
-import { logForDebugging } from '../debug.js';
-import { isEnvTruthy } from '../envUtils.js';
-import { AbortError, MalformedCommandError } from '../errors.js';
-import { getDisplayPath } from '../file.js';
-import { extractResultText, prepareForkedCommandContext } from '../forkedAgent.js';
-import { getFsImplementation } from '../fsOperations.js';
-import { isFullscreenEnvEnabled } from '../fullscreen.js';
-import { toArray } from '../generators.js';
+import { logForDebugging } from '../telemetry/debug.js';
+import { isEnvTruthy } from '../config/envUtils.js';
+import { AbortError, MalformedCommandError } from '../runtime/errors.js';
+import { getDisplayPath } from '../filesystem/file.js';
+import { extractResultText, prepareForkedCommandContext } from '../agents/forkedAgent.js';
+import { getFsImplementation } from '../filesystem/fsOperations.js';
+import { isFullscreenEnvEnabled } from '../terminal/fullscreen.js';
+import { toArray } from '../collections/generators.js';
 import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
-import { logError } from '../log.js';
-import { enqueue, enqueuePendingNotification } from '../messageQueueManager.js';
+import { logError } from '../telemetry/log.js';
+import { enqueue, enqueuePendingNotification } from '../session/messageQueueManager.js';
 import {
   createCommandInputMessage,
   createSyntheticUserCaveatMessage,
@@ -69,15 +69,15 @@ import { parseToolListFromCLI } from '../permissions/permissionSetup.js';
 import { hasPermissionsToUseTool } from '../permissions/permissions.js';
 import { isOfficialMarketplaceName, parsePluginIdentifier } from '../plugins/pluginIdentifier.js';
 import { isRestrictedToPluginOnly, isSourceAdminTrusted } from '../settings/pluginOnlyPolicy.js';
-import { parseSlashCommand } from '../slashCommandParsing.js';
-import { sleep } from '../sleep.js';
+import { parseSlashCommand } from '../text/slashCommandParsing.js';
+import { sleep } from '../process/sleep.js';
 import { recordSkillUsage } from '../suggestions/skillUsageTracking.js';
 import { logOTelEvent, redactIfDisabled } from '../telemetry/events.js';
 import { buildPluginCommandTelemetryFields } from '../telemetry/pluginTelemetry.js';
-import { getAssistantMessageContentLength } from '../tokens.js';
-import { createAgentId } from '../uuid.js';
-import { finalizeAutonomyRunCompleted, finalizeAutonomyRunFailed } from '../autonomyRuns.js';
-import { getWorkload } from '../workloadContext.js';
+import { getAssistantMessageContentLength } from '../session/tokens.js';
+import { createAgentId } from '../collections/uuid.js';
+import { finalizeAutonomyRunCompleted, finalizeAutonomyRunFailed } from '../agents/autonomyRuns.js';
+import { getWorkload } from '../session/workloadContext.js';
 import type { ProcessUserInputBaseResult, ProcessUserInputContext } from './processUserInput.js';
 
 type SlashCommandResult = ProcessUserInputBaseResult & {

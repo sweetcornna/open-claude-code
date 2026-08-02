@@ -39,7 +39,7 @@ import {
 import {
   createToolResultReleaseCache,
   releaseToolUseResults,
-} from '../src/utils/toolResultRelease.js'
+} from '../src/utils/tools/toolResultRelease.js'
 
 /**
  * A tool-result message as the query loop actually sees it: the API content

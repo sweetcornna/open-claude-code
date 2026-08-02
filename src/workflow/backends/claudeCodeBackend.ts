@@ -16,16 +16,16 @@ import {
   type BuiltInAgentDefinition,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { createUserMessage, extractTextContent } from '../../utils/messages.js'
-import { getTokenCountFromUsage } from '../../utils/tokens.js'
+import { getTokenCountFromUsage } from '../../utils/session/tokens.js'
 import { createHash } from 'node:crypto'
-import { createAgentId } from '../../utils/uuid.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { runWithCwdOverride } from '../../utils/cwd.js'
+import { createAgentId } from '../../utils/collections/uuid.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { runWithCwdOverride } from '../../utils/filesystem/cwd.js'
 import {
   createAgentWorktree,
   hasWorktreeChanges,
   removeAgentWorktree,
-} from '../../utils/worktree.js'
+} from '../../utils/git/worktree.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
 import type { Message } from '../../types/message.js'

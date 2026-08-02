@@ -3,7 +3,7 @@ import { extname, isAbsolute, resolve } from 'path'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
-} from 'src/utils/fileHistory.js'
+} from 'src/utils/filesystem/fileHistory.js'
 import { z } from 'zod/v4'
 import {
   buildTool,
@@ -11,13 +11,16 @@ import {
   type ToolUseContext,
 } from '@open-claude-code/tool-runtime/Tool.js'
 import type { NotebookCell, NotebookContent } from 'src/types/notebook.js'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
-import { getFileModificationTime, writeTextContent } from 'src/utils/file.js'
-import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
-import { safeParseJSON } from 'src/utils/json.js'
+import {
+  getFileModificationTime,
+  writeTextContent,
+} from 'src/utils/filesystem/file.js'
+import { readFileSyncWithMetadata } from 'src/utils/filesystem/fileRead.js'
+import { safeParseJSON } from 'src/utils/text/json.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { parseCellId } from 'src/utils/notebook.js'
+import { parseCellId } from 'src/utils/filesystem/notebook.js'
 import { checkWritePermissionForTool } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import {

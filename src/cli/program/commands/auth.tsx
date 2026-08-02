@@ -1,6 +1,6 @@
 // Extracted verbatim from the former `run()` in src/main.tsx (S7-4b split).
 import type { Command as CommanderCommand } from '@commander-js/extra-typings';
-import { getBaseRenderOptions } from 'src/utils/renderOptions.js';
+import { getBaseRenderOptions } from 'src/utils/terminal/renderOptions.js';
 import { createSortedHelpConfig } from '../helpConfig.js';
 
 export function registerAuthCommands(program: CommanderCommand): void {

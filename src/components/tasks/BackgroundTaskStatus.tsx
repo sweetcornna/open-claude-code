@@ -8,14 +8,14 @@ import { enterTeammateView, exitTeammateView } from 'src/state/teammateViewHelpe
 import { isPanelAgentTask } from 'src/tasks/LocalAgentTask/LocalAgentTask.js';
 import { getPillLabel, pillNeedsCta } from 'src/tasks/pillLabel.js';
 import { type BackgroundTaskState, isBackgroundTask, type TaskState } from 'src/tasks/types.js';
-import { calculateHorizontalScrollWindow } from 'src/utils/horizontalScroll.js';
+import { calculateHorizontalScrollWindow } from 'src/utils/terminal/horizontalScroll.js';
 import { Box, Text } from '@anthropic/ink';
 import {
   AGENT_COLOR_TO_THEME_COLOR,
   AGENT_COLORS,
   type AgentColorName,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
-import type { Theme } from '../../utils/theme.js';
+import type { Theme } from '../../utils/terminal/theme.js';
 import { KeyboardShortcutHint } from '@anthropic/ink';
 import { shouldHideTasksFooter } from './taskStatusUtils.js';
 

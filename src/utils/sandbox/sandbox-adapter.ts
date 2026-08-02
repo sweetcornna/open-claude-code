@@ -30,9 +30,9 @@ import {
   getCwdState,
   getOriginalCwd,
 } from '../../bootstrap/state.js'
-import { logForDebugging } from '../debug.js'
-import { expandPath } from '../path.js'
-import { getPlatform, type Platform } from '../platform.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { expandPath } from '../filesystem/path.js'
+import { getPlatform, type Platform } from '../process/platform.js'
 import { settingsChangeDetector } from '../settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../settings/constants.js'
 import { getManagedSettingsDropInDir } from '../settings/managedPath.js'
@@ -54,10 +54,10 @@ import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/t
 import { FILE_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js'
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { getClaudeTempDir } from '../permissions/filesystem.js'
 import type { PermissionRuleValue } from '../permissions/PermissionRule.js'
-import { ripgrepCommand } from '../ripgrep.js'
+import { ripgrepCommand } from '../filesystem/ripgrep.js'
 
 // Local copies to avoid circular dependency
 // (permissions.ts imports SandboxManager, bashPermissions.ts imports permissions.ts)

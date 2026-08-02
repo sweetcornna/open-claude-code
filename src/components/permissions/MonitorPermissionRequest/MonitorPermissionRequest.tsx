@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo } from 'react';
 import { Box, Text, useTheme } from '@anthropic/ink';
-import { getTheme } from '../../../utils/theme.js';
-import { env } from '../../../utils/env.js';
+import { getTheme } from '../../../utils/terminal/theme.js';
+import { env } from '../../../utils/config/env.js';
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
-import { truncateToLines } from '../../../utils/stringUtils.js';
-import { logUnaryEvent } from '../../../utils/unaryLogging.js';
+import { truncateToLines } from '../../../utils/text/stringUtils.js';
+import { logUnaryEvent } from '../../../utils/telemetry/unaryLogging.js';
 import { PermissionDialog } from '../PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption } from '../PermissionPrompt.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';

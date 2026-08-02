@@ -17,11 +17,15 @@ import {
 } from '../services/api/openai/chatgptAuth.js';
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
 import { OAuthService } from '../services/oauth/index.js';
-import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth.js';
-import { openBrowser } from '../utils/browser.js';
-import { logError } from '../utils/log.js';
+import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth/auth.js';
+import { openBrowser } from '../utils/network/browser.js';
+import { logError } from '../utils/telemetry/log.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
-import { CHINA_LLM_PROVIDERS, type ProviderPreset, resolveChinaProviderBaseURL } from 'src/utils/chinaLlmProviders.js';
+import {
+  CHINA_LLM_PROVIDERS,
+  type ProviderPreset,
+  resolveChinaProviderBaseURL,
+} from 'src/utils/model/chinaLlmProviders.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';

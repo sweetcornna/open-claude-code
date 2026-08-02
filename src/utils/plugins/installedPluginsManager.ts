@@ -14,15 +14,15 @@
  */
 
 import { dirname, join } from 'path'
-import { logForDebugging } from '../debug.js'
-import { errorMessage, isENOENT, toError } from '../errors.js'
-import { getFsImplementation } from '../fsOperations.js'
-import { logError } from '../log.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { errorMessage, isENOENT, toError } from '../runtime/errors.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
+import { logError } from '../telemetry/log.js'
 import {
   jsonParse,
   jsonStringify,
   writeFileSync_DEPRECATED,
-} from '../slowOperations.js'
+} from '../telemetry/slowOperations.js'
 import { getPluginsDirectory } from './pluginDirectories.js'
 import {
   type InstalledPlugin,
@@ -41,7 +41,7 @@ type InstalledPluginsMapV2 = Record<string, PluginInstallationEntry[]>
 export type PersistableScope = Exclude<PluginScope, never> // All scopes are persistable in the schema
 
 import { getOriginalCwd } from '../../bootstrap/state.js'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { getHeadForDir } from '../git/gitFilesystem.js'
 import type { EditableSettingSource } from '../settings/constants.js'
 import {

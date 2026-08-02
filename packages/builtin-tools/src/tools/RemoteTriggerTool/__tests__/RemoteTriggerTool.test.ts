@@ -27,7 +27,7 @@ afterAll(() => {
   axiosHandle.useStubs = false
 })
 
-mock.module('src/utils/auth.js', authMock)
+mock.module('src/utils/auth/auth.js', authMock)
 
 mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org',
@@ -55,7 +55,7 @@ mock.module('src/constants/oauth.js', () => {
   }
 })
 
-mock.module('src/utils/remoteTriggerAudit.js', () => ({
+mock.module('src/utils/agents/remoteTriggerAudit.js', () => ({
   appendRemoteTriggerAuditRecord: async (record: Record<string, unknown>) => {
     const fullRecord = {
       auditId: `audit-${auditRecords.length + 1}`,

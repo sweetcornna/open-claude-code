@@ -1,11 +1,11 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { getPlatform } from 'src/utils/platform.js';
+import { getPlatform } from 'src/utils/process/platform.js';
 import { isKeybindingCustomizationEnabled } from '../../keybindings/loadUserBindings.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
-import { isFastModeAvailable, isFastModeEnabled } from '../../utils/fastMode.js';
+import { isFastModeAvailable, isFastModeEnabled } from '../../utils/model/fastMode.js';
 import { getNewlineInstructions } from './utils.js';
 
 /** Format a shortcut for display in the help menu (e.g., "ctrl+o" → "ctrl + o") */

@@ -13,7 +13,7 @@ import { occConfigPath, PROJECT_DIR_NAME } from 'src/config/paths.js';
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js';
 import type { HookEventMetadata } from 'src/utils/hooks/hooksConfigManager.js';
 import { Box, Link, Text } from '@anthropic/ink';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 

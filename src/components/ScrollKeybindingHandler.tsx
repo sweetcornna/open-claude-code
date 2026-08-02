@@ -4,7 +4,7 @@ import { useCopyOnSelect, useSelectionBgColor } from '../hooks/useCopyOnSelect.j
 import type { ScrollBoxHandle, FocusMove, SelectionState } from '@anthropic/ink';
 import { useSelection, type Key, useInput, isXtermJs, getClipboardPath } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 
 type Props = {
   scrollRef: RefObject<ScrollBoxHandle | null>;

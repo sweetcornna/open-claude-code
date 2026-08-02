@@ -1,5 +1,5 @@
 import type { Tools } from '../../Tool.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   tokenizeAndStem,
   computeWeightedTf,

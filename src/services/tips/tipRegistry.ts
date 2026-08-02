@@ -1,8 +1,8 @@
 import { BIN_NAME } from 'src/constants/brand.js'
 import { PROJECT_DIR_NAME, occConfigPath } from 'src/config/paths.js'
 import chalk from 'chalk'
-import { logForDebugging } from 'src/utils/debug.js'
-import { fileHistoryEnabled } from 'src/utils/fileHistory.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { fileHistoryEnabled } from 'src/utils/filesystem/fileHistory.js'
 import {
   getInitialSettings,
   getSettings_DEPRECATED,
@@ -14,16 +14,16 @@ import { color } from '@anthropic/ink'
 import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCreditUpsell.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { isKairosCronEnabled } from '@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js'
-import { is1PApiCustomer } from '../../utils/auth.js'
-import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
-import { getGlobalConfig } from '../../utils/config.js'
+import { is1PApiCustomer } from '../../utils/auth/auth.js'
+import { countConcurrentSessions } from '../../utils/session/concurrentSessions.js'
+import { getGlobalConfig } from '../../utils/config/config.js'
 import {
   getEffortEnvOverride,
   modelSupportsEffort,
-} from '../../utils/effort.js'
-import { env } from '../../utils/env.js'
+} from '../../utils/model/effort.js'
+import { env } from '../../utils/config/env.js'
 import { cacheKeys } from '../../utils/fileStateCache.js'
-import { getWorktreeCount } from '../../utils/git.js'
+import { getWorktreeCount } from '../../utils/git/git.js'
 import {
   detectRunningIDEsCached,
   getSortedIdeLockfiles,
@@ -32,12 +32,12 @@ import {
   isSupportedVSCodeTerminal,
   isVSCodeInstalled,
   isWindsurfInstalled,
-} from '../../utils/ide.js'
+} from '../../utils/terminal/ide.js'
 import {
   getMainLoopModel,
   getUserSpecifiedModelSetting,
 } from '../../utils/model/model.js'
-import { getPlatform } from '../../utils/platform.js'
+import { getPlatform } from '../../utils/process/platform.js'
 import { isPluginInstalled } from '../../utils/plugins/installedPluginsManager.js'
 import { loadKnownMarketplacesConfigSafe } from '../../utils/plugins/marketplaceManager.js'
 import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js'

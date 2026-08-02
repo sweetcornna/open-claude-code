@@ -22,14 +22,14 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
 const mockAccessToken = 'test-token-triggers'
 const mockOrgUUID = 'org-uuid-triggers'
 
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   getClaudeAIOAuthTokens: () => ({ accessToken: mockAccessToken }),
 }))
 mock.module('src/services/oauth/client.js', () => ({

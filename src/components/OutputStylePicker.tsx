@@ -2,8 +2,8 @@ import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { getAllOutputStyles, OUTPUT_STYLE_CONFIG, type OutputStyleConfig } from '../constants/outputStyles.js';
 import { Box, Text, Dialog } from '@anthropic/ink';
-import type { OutputStyle } from '../utils/config.js';
-import { getCwd } from '../utils/cwd.js';
+import type { OutputStyle } from '../utils/config/config.js';
+import { getCwd } from '../utils/filesystem/cwd.js';
 import type { OptionWithDescription } from './CustomSelect/select.js';
 import { Select } from './CustomSelect/select.js';
 

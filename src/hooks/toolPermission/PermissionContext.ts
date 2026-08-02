@@ -20,8 +20,8 @@ import type {
   PermissionDecisionReason,
   PermissionDenyDecision,
 } from '../../types/permissions.js'
-import { setClassifierApproval } from '../../utils/classifierApprovals.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { setClassifierApproval } from '../../utils/permissions/classifierApprovals.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { executePermissionRequestHooks } from '../../utils/hooks.js'
 import {
   REJECT_MESSAGE,

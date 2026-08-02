@@ -26,17 +26,17 @@ import {
   resolveAutonomyRunsPath,
   STALE_ACTIVE_RUN_ERROR_PREFIX,
   startManagedAutonomyFlowFromHeartbeatTask,
-} from '../autonomyRuns'
+} from '../agents/autonomyRuns'
 import {
   formatAutonomyFlowsList,
   getAutonomyFlowById,
   listAutonomyFlows,
-} from '../autonomyFlows'
+} from '../agents/autonomyFlows'
 import {
   AUTONOMY_DIR,
   resetAutonomyAuthorityForTests,
-} from '../autonomyAuthority'
-import { resetCommandQueue } from '../messageQueueManager'
+} from '../agents/autonomyAuthority'
+import { resetCommandQueue } from '../session/messageQueueManager'
 import {
   cleanupTempDir,
   createTempDir,

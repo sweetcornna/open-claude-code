@@ -10,7 +10,7 @@ import {
   safeJoinLines,
   EndTruncatingAccumulator,
   truncateToLines,
-} from '../stringUtils'
+} from '../text/stringUtils'
 
 describe('escapeRegExp', () => {
   test('escapes special regex chars', () => {

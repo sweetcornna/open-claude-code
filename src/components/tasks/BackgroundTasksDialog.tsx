@@ -19,7 +19,7 @@ import type { MonitorMcpTaskState } from 'src/tasks/MonitorMcpTask/MonitorMcpTas
 import { RemoteAgentTask, type RemoteAgentTaskState } from 'src/tasks/RemoteAgentTask/RemoteAgentTask.js';
 import { type BackgroundTaskState, isBackgroundTask, type TaskState } from 'src/tasks/types.js';
 import type { DeepImmutable } from 'src/types/utils.js';
-import { intersperse } from 'src/utils/array.js';
+import { intersperse } from 'src/utils/collections/array.js';
 import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js';
 import { stopUltraplan } from '../../commands/ultraplan.js';
 import type { CommandResultDisplay } from '../../commands.js';
@@ -28,7 +28,7 @@ import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
-import { count } from '../../utils/array.js';
+import { count } from '../../utils/collections/array.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { AsyncAgentDetailDialog } from './AsyncAgentDetailDialog.js';
 import { BackgroundTask as BackgroundTaskComponent } from './BackgroundTask.js';

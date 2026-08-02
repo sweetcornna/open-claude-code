@@ -5,19 +5,19 @@ mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))
 
-mock.module('src/utils/attribution.ts', () => ({
+mock.module('src/utils/git/attribution.ts', () => ({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
   getEnhancedPRAttribution: async () => undefined,
   countUserPromptsInMessages: () => 0,
 }))
 
-mock.module('src/utils/undercover.ts', () => ({
+mock.module('src/utils/auth/undercover.ts', () => ({
   isUndercover: () => false,
   getUndercoverInstructions: () => '',
   shouldShowUndercoverAutoNotice: () => false,
 }))
 
-mock.module('src/utils/promptShellExecution.ts', () => ({
+mock.module('src/utils/shell/promptShellExecution.ts', () => ({
   executeShellCommandsInPrompt: async (content: string) => content,
 }))
 
@@ -62,7 +62,7 @@ const realNormalizeGitRemoteUrl = (url: string): string | null => {
   return null
 }
 
-mock.module('src/utils/git.ts', () => ({
+mock.module('src/utils/git/git.ts', () => ({
   getDefaultBranch: async () => 'main',
   findGitRoot: (_startPath?: string) => '/fake/root',
   findCanonicalGitRoot: (_startPath?: string) => '/fake/root',
@@ -266,7 +266,7 @@ describe('commit-push-pr getPromptForCommand', () => {
     let capturedGetAppState: (() => any) | undefined
 
     // Re-mock executeShellCommandsInPrompt to capture the context argument
-    mock.module('src/utils/promptShellExecution.ts', () => ({
+    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedGetAppState = ctx.getAppState.bind(ctx)
         return content
@@ -302,14 +302,14 @@ describe('commit-push-pr getPromptForCommand', () => {
     process.env.USER_TYPE = 'ant'
 
     // Re-mock undercover to return true for this test
-    mock.module('src/utils/undercover.ts', () => ({
+    mock.module('src/utils/auth/undercover.ts', () => ({
       isUndercover: () => true,
       getUndercoverInstructions: () => 'UNDERCOVER_INSTRUCTIONS',
       shouldShowUndercoverAutoNotice: () => false,
     }))
 
     // Also re-mock attribution to return commit text
-    mock.module('src/utils/attribution.ts', () => ({
+    mock.module('src/utils/git/attribution.ts', () => ({
       getAttributionTexts: () => ({
         commit: 'Attribution text',
         pr: 'PR Attribution',

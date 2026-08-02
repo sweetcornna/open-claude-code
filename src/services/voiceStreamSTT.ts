@@ -18,13 +18,16 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
   isAnthropicAuthEnabled,
-} from '../utils/auth.js'
-import { logForDebugging } from '../utils/debug.js'
-import { getUserAgent } from '../utils/http.js'
-import { logError } from '../utils/log.js'
-import { getWebSocketTLSOptions } from '../utils/mtls.js'
-import { getWebSocketProxyAgent, getWebSocketProxyUrl } from '../utils/proxy.js'
-import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
+} from '../utils/auth/auth.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { getUserAgent } from '../utils/network/http.js'
+import { logError } from '../utils/telemetry/log.js'
+import { getWebSocketTLSOptions } from '../utils/network/mtls.js'
+import {
+  getWebSocketProxyAgent,
+  getWebSocketProxyUrl,
+} from '../utils/network/proxy.js'
+import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
 
 const KEEPALIVE_MSG = '{"type":"KeepAlive"}'
 const CLOSE_STREAM_MSG = '{"type":"CloseStream"}'

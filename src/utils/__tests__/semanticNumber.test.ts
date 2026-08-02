@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod/v4'
-import { semanticNumber } from '../semanticNumber'
+import { semanticNumber } from '../collections/semanticNumber'
 
 describe('semanticNumber', () => {
   test('parses number 42', () => {

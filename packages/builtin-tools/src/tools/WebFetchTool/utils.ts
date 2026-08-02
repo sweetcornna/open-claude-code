@@ -6,14 +6,14 @@ import {
 } from '@open-claude-code/tool-runtime/analytics.js'
 import { queryHaiku } from 'src/services/api/claude.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
-import { getWebFetchUserAgent } from 'src/utils/http.js'
-import { logError } from 'src/utils/log.js'
+import { getWebFetchUserAgent } from 'src/utils/network/http.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import {
   isBinaryContentType,
   persistBinaryContent,
-} from 'src/utils/mcpOutputStorage.js'
+} from 'src/utils/mcp/mcpOutputStorage.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
-import { asSystemPrompt } from 'src/utils/systemPromptType.js'
+import { asSystemPrompt } from 'src/utils/session/systemPromptType.js'
 import { isPreapprovedHost } from './preapproved.js'
 import { makeSecondaryModelPrompt } from './prompt.js'
 

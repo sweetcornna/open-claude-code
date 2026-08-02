@@ -14,8 +14,8 @@ import {
   type TaskType,
 } from '../../Task.js'
 import type { TaskState } from '../../tasks/types.js'
-import { enqueuePendingNotification } from '../messageQueueManager.js'
-import { enqueueSdkEvent } from '../sdkEventQueue.js'
+import { enqueuePendingNotification } from '../session/messageQueueManager.js'
+import { enqueueSdkEvent } from '../session/sdkEventQueue.js'
 import { getTaskOutputDelta, getTaskOutputPath } from './diskOutput.js'
 
 // Standard polling interval for all tasks

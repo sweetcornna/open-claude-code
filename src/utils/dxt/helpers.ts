@@ -1,6 +1,6 @@
 import type { McpbManifestAny } from '@anthropic-ai/mcpb'
-import { errorMessage } from '../errors.js'
-import { jsonParse } from '../slowOperations.js'
+import { errorMessage } from '../runtime/errors.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 
 /**
  * Parses and validates a DXT manifest from a JSON object.

@@ -21,19 +21,19 @@ import {
   useTabHeaderFocus,
 } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
-import { getGlobalConfig } from '../utils/config.js';
-import { formatDuration, formatNumber } from '../utils/format.js';
-import { generateHeatmap } from '../utils/heatmap.js';
+import { getGlobalConfig } from '../utils/config/config.js';
+import { formatDuration, formatNumber } from '../utils/text/format.js';
+import { generateHeatmap } from '../utils/telemetry/heatmap.js';
 import { renderModelName } from '../utils/model/model.js';
-import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js';
+import { copyAnsiToClipboard } from '../utils/terminal/screenshotClipboard.js';
 import {
   aggregateClaudeCodeStatsForRange,
   type ClaudeCodeStats,
   type DailyModelTokens,
   type StatsDateRange,
-} from '../utils/stats.js';
-import { resolveThemeSetting } from '../utils/systemTheme.js';
-import { getTheme, themeColorToAnsi } from '../utils/theme.js';
+} from '../utils/telemetry/stats.js';
+import { resolveThemeSetting } from '../utils/terminal/systemTheme.js';
+import { getTheme, themeColorToAnsi } from '../utils/terminal/theme.js';
 import { Spinner } from './Spinner.js';
 
 function formatPeakDay(dateStr: string): string {

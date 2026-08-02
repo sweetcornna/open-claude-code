@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { getProxyFetchOptions } from 'src/utils/proxy.js'
+import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 
 /**
  * Environment variables:

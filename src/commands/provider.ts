@@ -3,7 +3,7 @@ import type { LocalCommandCall } from '../types/command.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
-import { applyConfigEnvironmentVariables } from '../utils/managedEnv.js'
+import { applyConfigEnvironmentVariables } from '../utils/config/managedEnv.js'
 
 function getEnvVarForProvider(provider: string): string {
   switch (provider) {

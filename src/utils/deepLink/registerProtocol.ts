@@ -26,13 +26,13 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
-import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
-import { getErrnoCode } from '../errors.js'
-import { execFileNoThrow } from '../execFileNoThrow.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
+import { getErrnoCode } from '../runtime/errors.js'
+import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'
-import { which } from '../which.js'
-import { getUserBinDir, getXDGDataHome } from '../xdg.js'
+import { which } from '../process/which.js'
+import { getUserBinDir, getXDGDataHome } from '../filesystem/xdg.js'
 
 export const MACOS_BUNDLE_ID = MACOS_DEEP_LINK_BUNDLE_ID
 const APP_NAME = `${DISPLAY_NAME} URL Handler`

@@ -6,8 +6,8 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 // (growthbook, searchExtraTools, messages) loads real modules with side
 // effects otherwise. mock.module is process-global; identical setup in
 // sibling test files in this directory is safe (last-write-wins, same stubs).
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
@@ -31,7 +31,7 @@ mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   stopPeriodicGrowthBookRefresh: () => {},
 }))
 
-mock.module('src/utils/searchExtraTools.js', () => ({
+mock.module('src/utils/tools/searchExtraTools.js', () => ({
   isSearchExtraToolsEnabledOptimistic: () => true,
   getAutoSearchExtraToolsCharThreshold: () => 100,
   getSearchExtraToolsMode: () => 'tst' as const,
@@ -56,7 +56,7 @@ mock.module('src/utils/messages.js', () => ({
   INTERRUPT_MESSAGE_FOR_TOOL_USE: '[Request interrupted]',
 }))
 
-mock.module('src/utils/toolErrors.js', () => ({
+mock.module('src/utils/tools/toolErrors.js', () => ({
   formatZodValidationError: (_name: string, error: unknown) =>
     `validation error: ${JSON.stringify(error)}`,
 }))

@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { Stream } from 'src/utils/stream.js'
+import type { Stream } from 'src/utils/collections/stream.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { MCPServerConnection } from 'src/services/mcp/types.js'
 import { parsePluginIdentifier } from 'src/utils/plugins/pluginIdentifier.js'
@@ -19,8 +19,8 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from 'src/services/analytics/index.js'
-import { logMCPDebug } from 'src/utils/log.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
+import { logMCPDebug } from 'src/utils/telemetry/log.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
 
 /**
  * IDE-triggered channel enable. Derives the ChannelEntry from the connection's

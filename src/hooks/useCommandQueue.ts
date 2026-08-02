@@ -3,7 +3,7 @@ import type { QueuedCommand } from '../types/textInputTypes.js'
 import {
   getCommandQueueSnapshot,
   subscribeToCommandQueue,
-} from '../utils/messageQueueManager.js'
+} from '../utils/session/messageQueueManager.js'
 
 /**
  * React hook to subscribe to the unified command queue.

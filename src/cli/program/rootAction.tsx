@@ -11,7 +11,7 @@ import chalk from 'chalk';
 import mapValues from 'lodash-es/mapValues.js';
 import pickBy from 'lodash-es/pickBy.js';
 import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
-import type { FpsMetrics } from 'src/utils/fpsTracker.js';
+import type { FpsMetrics } from 'src/utils/telemetry/fpsTracker.js';
 import type { LogOption } from 'src/types/logs.js';
 import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from 'src/services/mcp/types.js';
 import type { Message as MessageType } from 'src/types/message.js';
@@ -22,10 +22,10 @@ import type { ValidationError } from 'src/utils/settings/validation.js';
 import uniqBy from 'lodash-es/uniqBy.js';
 import { BIN_NAME, DISPLAY_NAME } from 'src/constants/brand.js';
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME, isChromeDevtoolsMCPServer } from 'src/utils/chromeDevtools/common.js';
-import { DEFAULT_TASKS_MODE_TASK_LIST_ID } from 'src/utils/tasks.js';
+import { DEFAULT_TASKS_MODE_TASK_LIST_ID } from 'src/utils/task/tasks.js';
 import { _pendingAssistantChat, _pendingSSH } from './pendingState.js';
 import { addToHistory } from 'src/history.js';
-import { applyConfigEnvironmentVariables } from 'src/utils/managedEnv.js';
+import { applyConfigEnvironmentVariables } from 'src/utils/config/managedEnv.js';
 import {
   areMcpConfigsAllowedWithEnterpriseMcpConfig,
   dedupClaudeAiMcpServers,
@@ -62,22 +62,22 @@ import {
   isAdvisorEnabled,
   isValidAdvisorModel,
   modelSupportsAdvisor,
-} from 'src/utils/advisor.js';
-import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
+} from 'src/utils/agents/advisor.js';
+import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from 'src/utils/config/config.js';
 import {
   checkOutTeleportedSessionBranch,
   processMessagesForTeleportResume,
   teleportToRemoteWithErrorHandling,
   validateGitState,
   validateSessionRepository,
-} from 'src/utils/teleport.js';
+} from 'src/utils/teleport/teleport.js';
 import { checkQuotaStatus } from 'src/services/claudeAiLimits.js';
 import { cleanupOrphanedPluginVersionsInBackground } from 'src/utils/plugins/cacheUtils.js';
 import { clearServerCache } from 'src/services/mcp/client.js';
 import { computeInitialTeamContext } from 'src/utils/swarm/reconnection.js';
-import { count, uniq } from 'src/utils/array.js';
-import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/concurrentSessions.js';
-import { createEmptyAttributionState } from 'src/utils/commitAttribution.js';
+import { count, uniq } from 'src/utils/collections/array.js';
+import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/session/concurrentSessions.js';
+import { createEmptyAttributionState } from 'src/utils/git/commitAttribution.js';
 import { createRemoteSessionConfig } from 'src/remote/RemoteSessionManager.js';
 import { createStore } from 'src/state/store.js';
 import {
@@ -86,7 +86,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { createSystemMessage, createUserMessage } from 'src/utils/messages.js';
 import { ensureModelStringsInitialized } from 'src/utils/model/modelStrings.js';
-import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError } from 'src/utils/errors.js';
+import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError } from 'src/utils/runtime/errors.js';
 import { excludeCommandsByServer, excludeResourcesByServer } from 'src/services/mcp/utils.js';
 import {
   exitWithError,
@@ -99,10 +99,10 @@ import { feature } from 'bun:bundle';
 import { fetchBootstrapData } from 'src/services/api/bootstrap.js';
 import { fetchClaudeAIMcpConfigsIfEligible } from 'src/services/mcp/claudeai.js';
 import { fetchSession, prepareApiRequest } from 'src/utils/teleport/api.js';
-import { filterAllowedSdkBetas } from 'src/utils/betas.js';
+import { filterAllowedSdkBetas } from 'src/utils/model/betas.js';
 import { filterCommandsForRemoteMode, getCommands } from 'src/commands.js';
-import { filterExistingPaths, getKnownPathsForRepo } from 'src/utils/githubRepoPathMapping.js';
-import { findGitRoot, getBranch } from 'src/utils/git.js';
+import { filterExistingPaths, getKnownPathsForRepo } from 'src/utils/github/githubRepoPathMapping.js';
+import { findGitRoot, getBranch } from 'src/utils/git/git.js';
 import {
   getActiveAgentsFromList,
   getAgentDefinitionsWithOverrides,
@@ -110,7 +110,7 @@ import {
   isCustomAgent,
   parseAgentsFromJson,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { getCwd } from 'src/utils/cwd.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
 import {
   getDefaultMainLoopModel,
   getUserSpecifiedModelSetting,
@@ -119,13 +119,13 @@ import {
 } from 'src/utils/model/model.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
 import { getGlobExclusionsForPluginCache } from 'src/utils/plugins/orphanedPluginFilter.js';
-import { getInitialEffortSetting, parseEffortValue } from 'src/utils/effort.js';
+import { getInitialEffortSetting, parseEffortValue } from 'src/utils/model/effort.js';
 import {
   getInitialFastModeSetting,
   isFastModeEnabled,
   prefetchFastModeStatus,
   resolveFastModeStatusFromCache,
-} from 'src/utils/fastMode.js';
+} from 'src/utils/model/fastMode.js';
 import { getInitialSettings, getSettingsWithErrors } from 'src/utils/settings/settings.js';
 import { getMcpToolsCommandsAndResources, prefetchAllMcpResources } from 'src/services/mcp/client.js';
 import { getModelDeprecationWarning } from 'src/utils/model/deprecation.js';
@@ -138,15 +138,15 @@ import {
   setMainThreadAgentType,
   setTeleportedSessionInfo,
 } from 'src/bootstrap/state.js';
-import { getPlatform } from 'src/utils/platform.js';
+import { getPlatform } from 'src/utils/process/platform.js';
 import { getRemoteSessionUrl } from 'src/constants/product.js';
-import { getSessionIngressAuthToken } from 'src/utils/sessionIngressAuth.js';
-import { getSubscriptionType, validateForceLoginOrg } from 'src/utils/auth.js';
+import { getSessionIngressAuthToken } from 'src/utils/auth/sessionIngressAuth.js';
+import { getSubscriptionType, validateForceLoginOrg } from 'src/utils/auth/auth.js';
 import { getSystemContext, getUserContext } from 'src/context.js';
-import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from 'src/utils/worktree.js';
+import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from 'src/utils/git/worktree.js';
 import { getTools } from 'src/tools.js';
-import { getWorktreePaths } from 'src/utils/getWorktreePaths.js';
-import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
+import { getWorktreePaths } from 'src/utils/git/getWorktreePaths.js';
+import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js';
 import {
   hasGrowthBookEnvOverride,
   initializeGrowthBook,
@@ -166,13 +166,13 @@ import {
   verifyAutoModeGateAccess,
 } from 'src/utils/permissions/permissionSetup.js';
 import { initializeVersionedPlugins } from 'src/utils/plugins/installedPluginsManager.js';
-import { installAsciicastRecorder } from 'src/utils/asciicast.js';
-import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
-import { isBareMode, isEnvTruthy, isInProtectedNamespace } from 'src/utils/envUtils.js';
-import { isInBundledMode } from 'src/utils/bundledMode.js';
+import { installAsciicastRecorder } from 'src/utils/terminal/asciicast.js';
+import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js';
+import { isBareMode, isEnvTruthy, isInProtectedNamespace } from 'src/utils/config/envUtils.js';
+import { isInBundledMode } from 'src/utils/config/bundledMode.js';
 import { isPolicyAllowed, refreshPolicyLimits, waitForPolicyLimitsToLoad } from 'src/services/policyLimits/index.js';
-import { isWorktreeModeEnabled } from 'src/utils/worktreeModeEnabled.js';
-import { jsonParse } from 'src/utils/slowOperations.js';
+import { isWorktreeModeEnabled } from 'src/utils/git/worktreeModeEnabled.js';
+import { jsonParse } from 'src/utils/telemetry/slowOperations.js';
 import {
   launchAssistantInstallWizard,
   launchAssistantSessionChooser,
@@ -183,32 +183,32 @@ import {
   launchTeleportResumeWrapper,
 } from 'src/dialogLaunchers.js';
 import { launchRepl } from 'src/replLauncher.js';
-import { loadConversationForResume } from 'src/utils/conversationRecovery.js';
-import { logContextMetrics } from 'src/utils/api.js';
-import { logError } from 'src/utils/log.js';
-import { logForDebugging, setHasFormattedOutput } from 'src/utils/debug.js';
-import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js';
+import { loadConversationForResume } from 'src/utils/session/conversationRecovery.js';
+import { logContextMetrics } from 'src/utils/telemetry/api.js';
+import { logError } from 'src/utils/telemetry/log.js';
+import { logForDebugging, setHasFormattedOutput } from 'src/utils/telemetry/debug.js';
+import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js';
 import { logManagedSettings, logSessionTelemetry, logStartupTelemetry } from './telemetry.js';
 import { logPermissionContextForAnts } from 'src/services/internalLogging.js';
 import { onChangeAppState } from 'src/state/onChangeAppState.js';
-import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
-import { plural } from 'src/utils/stringUtils.js';
+import { peekForStdinData, writeToStderr } from 'src/utils/process/process.js';
+import { plural } from 'src/utils/text/stringUtils.js';
 import { prefetchPassesEligibility } from 'src/services/api/referral.js';
-import { processSessionStartHooks, processSetupHooks } from 'src/utils/sessionStart.js';
-import { profileCheckpoint } from 'src/utils/startupProfiler.js';
+import { processSessionStartHooks, processSetupHooks } from 'src/utils/session/sessionStart.js';
+import { profileCheckpoint } from 'src/utils/telemetry/startupProfiler.js';
 import { readFileSync } from 'fs';
-import { refreshExampleCommands } from 'src/utils/exampleCommands.js';
+import { refreshExampleCommands } from 'src/utils/runtime/exampleCommands.js';
 import { refreshRemoteManagedSettings } from 'src/services/remoteManagedSettings/index.js';
-import { registerCleanup } from 'src/utils/cleanupRegistry.js';
+import { registerCleanup } from 'src/utils/process/cleanupRegistry.js';
 import { relative, resolve } from 'path';
-import { resetUserCache } from 'src/utils/user.js';
-import { safeParseJSON } from 'src/utils/json.js';
-import { seedEarlyInput } from 'src/utils/earlyInput.js';
+import { resetUserCache } from 'src/utils/auth/user.js';
+import { safeParseJSON } from 'src/utils/text/json.js';
+import { seedEarlyInput } from 'src/utils/terminal/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
-import { setCwd } from 'src/utils/Shell.js';
+import { setCwd } from 'src/utils/shell/Shell.js';
 import { setupChromeDevtools, shouldEnableChromeDevtools } from 'src/utils/chromeDevtools/setup.js';
 import { shouldEnablePromptSuggestion } from 'src/services/PromptSuggestion/promptSuggestion.js';
-import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/thinking.js';
+import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/model/thinking.js';
 import { startDeferredPrefetches } from './prefetch.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -240,8 +240,8 @@ import {
   type FilesApiConfig,
   parseFileSpecs,
 } from 'src/services/api/filesApi.js';
-import { type ProcessedResume, processResumedConversation } from 'src/utils/sessionRestore.js';
-import { validateUuid } from 'src/utils/uuid.js';
+import { type ProcessedResume, processResumedConversation } from 'src/utils/session/sessionRestore.js';
+import { validateUuid } from 'src/utils/collections/uuid.js';
 import type { applyRootOptions } from './rootOptions.js';
 
 type RootCommand = ReturnType<typeof applyRootOptions>;
@@ -1125,7 +1125,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   // Apply coordinator mode tool filtering for headless path
   // (mirrors useMergedTools.ts filtering for REPL/interactive path)
   if (feature('COORDINATOR_MODE') && isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)) {
-    const { applyCoordinatorToolFilter } = await import('src/utils/toolPool.js');
+    const { applyCoordinatorToolFilter } = await import('src/utils/tools/toolPool.js');
     tools = applyCoordinatorToolFilter(tools);
   }
 
@@ -2105,9 +2105,9 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     // that scripted calls don't need — the next interactive session reconciles.
     if (!isBareMode()) {
       startDeferredPrefetches();
-      void import('src/utils/backgroundHousekeeping.js').then(m => m.startBackgroundHousekeeping());
+      void import('src/utils/agents/backgroundHousekeeping.js').then(m => m.startBackgroundHousekeeping());
       if (process.env.USER_TYPE === 'ant') {
-        void import('src/utils/sdkHeapDumpMonitor.js').then(m => m.startSdkMemoryMonitor());
+        void import('src/utils/telemetry/sdkHeapDumpMonitor.js').then(m => m.startSdkMemoryMonitor());
       }
     }
 
@@ -2345,7 +2345,8 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   //   - Runtime: uploader checks github.com/anthropics/* remote + gcloud auth.
   //   - Safety: CLAUDE_CODE_DISABLE_SESSION_DATA_UPLOAD=1 bypasses (tests set this).
   // Import is dynamic + async to avoid adding startup latency.
-  const sessionUploaderPromise = process.env.USER_TYPE === 'ant' ? import('src/utils/sessionDataUploader.js') : null;
+  const sessionUploaderPromise =
+    process.env.USER_TYPE === 'ant' ? import('src/utils/session/sessionDataUploader.js') : null;
 
   // Defer session uploader resolution to the onTurnComplete callback to avoid
   // adding a new top-level await in main.tsx (performance-critical path).
@@ -2595,7 +2596,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
 
     // Auth — call prepareApiRequest() once for orgUUID, but use a
     // getAccessToken closure for the token so reconnects get fresh tokens.
-    const { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } = await import('src/utils/auth.js');
+    const { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } = await import('src/utils/auth/auth.js');
     await checkAndRefreshOAuthTokenIfNeeded();
     let apiCreds;
     try {
@@ -2772,7 +2773,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       }
 
       // Create remote session config for the REPL
-      const { getClaudeAIOAuthTokens: getTokensForRemote } = await import('src/utils/auth.js');
+      const { getClaudeAIOAuthTokens: getTokensForRemote } = await import('src/utils/auth/auth.js');
       const getAccessTokenForRemote = (): string => getTokensForRemote()?.accessToken ?? apiCreds.accessToken;
       const remoteSessionConfig = createRemoteSessionConfig(
         createdSession.id,

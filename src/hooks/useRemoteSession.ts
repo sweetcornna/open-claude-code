@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { BoundedUUIDSet } from '../utils/boundedUUIDSet.js'
+import { BoundedUUIDSet } from '../utils/collections/boundedUUIDSet.js'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
 import type { SpinnerMode } from '../components/Spinner/types.js'
 import {
@@ -24,15 +24,15 @@ import type {
   PermissionAskDecision,
   PermissionUpdate,
 } from '../types/permissions.js'
-import { logForDebugging } from '../utils/debug.js'
-import { truncateToWidth } from '../utils/format.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { truncateToWidth } from '../utils/text/format.js'
 import {
   createSystemMessage,
   extractTextContent,
   handleMessageFromStream,
   type StreamingToolUse,
 } from '../utils/messages.js'
-import { generateSessionTitle } from '../utils/sessionTitle.js'
+import { generateSessionTitle } from '../utils/session/sessionTitle.js'
 import type { RemoteMessageContent } from '../utils/teleport/api.js'
 import { updateSessionTitle } from '../utils/teleport/api.js'
 

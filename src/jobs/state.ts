@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 
 export interface JobState {
   jobId: string

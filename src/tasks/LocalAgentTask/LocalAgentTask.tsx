@@ -22,10 +22,10 @@ import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/Agen
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { asAgentId } from '../../types/ids.js';
 import type { Message } from '../../types/message.js';
-import { createAbortController, createChildAbortController } from '../../utils/abortController.js';
-import { registerCleanup } from '../../utils/cleanupRegistry.js';
-import { getSearchExtraToolsOrReadInfo } from '../../utils/collapseReadSearch.js';
-import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
+import { createAbortController, createChildAbortController } from '../../utils/process/abortController.js';
+import { registerCleanup } from '../../utils/process/cleanupRegistry.js';
+import { getSearchExtraToolsOrReadInfo } from '../../utils/session/collapseReadSearch.js';
+import { enqueuePendingNotification } from '../../utils/session/messageQueueManager.js';
 import { getAgentTranscriptPath } from '../../utils/sessionStorage.js';
 import { evictTaskOutput, getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js';
 import { PANEL_GRACE_MS, registerTask, updateTaskState } from '../../utils/task/framework.js';

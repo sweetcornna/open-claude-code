@@ -1,7 +1,7 @@
 import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { BIN_NAME } from 'src/config/paths.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 
 const SSH_TIMEOUT_MS = 60_000
 export const REMOTE_BIN_DIR = '~/.local/bin'

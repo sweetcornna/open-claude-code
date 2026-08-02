@@ -2,16 +2,16 @@ import chokidar, { type FSWatcher } from 'chokidar'
 import { stat } from 'fs/promises'
 import * as platformPath from 'path'
 import { getIsRemoteMode } from '../../bootstrap/state.js'
-import { registerCleanup } from '../cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
-import { errorMessage } from '../errors.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { errorMessage } from '../runtime/errors.js'
 import {
   type ConfigChangeSource,
   executeConfigChangeHooks,
   hasBlockingResult,
 } from '../hooks.js'
-import { createSignal } from '../signal.js'
-import { jsonStringify } from '../slowOperations.js'
+import { createSignal } from '../process/signal.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import { SETTING_SOURCES, type SettingSource } from './constants.js'
 import { clearInternalWrites, consumeInternalWrite } from './internalWrites.js'
 import { getManagedSettingsDropInDir } from './managedPath.js'

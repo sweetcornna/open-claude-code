@@ -14,7 +14,7 @@
 // Load the host slow-operations implementation before builtin tool modules.
 // It self-registers with tool-runtime; standalone package use keeps the facade's
 // native JSON fallback instead.
-import './utils/slowOperations.js'
+import './utils/telemetry/slowOperations.js'
 // Load the host MessageResponse implementation before builtin tool modules.
 // It self-registers with tool-runtime; standalone package use keeps the facade's
 // children-only fallback instead.
@@ -51,8 +51,8 @@ const getSendMessageTool = () =>
 import { ListMcpResourcesTool } from '@open-claude-code/builtin-tools/tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { ReadMcpResourceTool } from '@open-claude-code/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import uniqBy from 'lodash-es/uniqBy.js'
-import { isSearchExtraToolsEnabledOptimistic } from './utils/searchExtraTools.js'
-import { isTodoV2Enabled } from './utils/tasks.js'
+import { isSearchExtraToolsEnabledOptimistic } from './utils/tools/searchExtraTools.js'
+import { isTodoV2Enabled } from './utils/task/tasks.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import {
   getAllBaseTools as getAllBaseToolsFromRegistry,
@@ -72,10 +72,10 @@ const coordinatorModeModule = feature('COORDINATOR_MODE')
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import type { ToolPermissionContext } from './Tool.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
-import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
-import { isEnvTruthy } from './utils/envUtils.js'
+import { hasEmbeddedSearchTools } from './utils/tools/embeddedTools.js'
+import { isEnvTruthy } from './utils/config/envUtils.js'
 import { isPowerShellToolEnabled } from './utils/shell/shellToolUtils.js'
-import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js'
+import { isWorktreeModeEnabled } from './utils/git/worktreeModeEnabled.js'
 import {
   REPL_TOOL_NAME,
   REPL_ONLY_TOOLS,

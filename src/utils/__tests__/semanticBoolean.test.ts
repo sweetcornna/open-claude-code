@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod/v4'
-import { semanticBoolean } from '../semanticBoolean'
+import { semanticBoolean } from '../collections/semanticBoolean'
 
 describe('semanticBoolean', () => {
   test('parses boolean true to true', () => {

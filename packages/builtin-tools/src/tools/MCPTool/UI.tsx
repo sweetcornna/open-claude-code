@@ -6,13 +6,13 @@ import { ProgressBar } from '@anthropic/ink';
 import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { linkifyUrlsInText, OutputLine } from 'src/components/shell/OutputLine.js';
 import { Ansi, Box, Text, stringWidth } from '@anthropic/ink';
-import { createHyperlink } from 'src/utils/hyperlink.js';
+import { createHyperlink } from 'src/utils/text/hyperlink.js';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import type { MCPProgress } from 'src/types/tools.js';
-import { formatNumber } from 'src/utils/format.js';
+import { formatNumber } from 'src/utils/text/format.js';
 
-import { getContentSizeEstimate, type MCPToolResult } from 'src/utils/mcpValidation.js';
+import { getContentSizeEstimate, type MCPToolResult } from 'src/utils/mcp/mcpValidation.js';
 import { jsonParse, jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js';
 import type { inputSchema } from './MCPTool.js';
 

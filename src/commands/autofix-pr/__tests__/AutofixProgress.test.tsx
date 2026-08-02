@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 import * as React from 'react';
-import { renderToString } from '../../../utils/staticRender.js';
+import { renderToString } from '../../../utils/terminal/staticRender.js';
 import { AutofixProgress } from '../AutofixProgress.js';
 
 describe.skipIf(!!process.env.CI)('AutofixProgress', () => {

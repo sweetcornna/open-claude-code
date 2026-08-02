@@ -6,8 +6,8 @@ import {
   getSessionId,
   getSessionProjectDir,
 } from '../../bootstrap/state.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
-import { sanitizePath } from '../../utils/path.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
+import { sanitizePath } from '../../utils/filesystem/path.js'
 import type { Command, LocalCommandResult } from '../../types/command.js'
 
 /**

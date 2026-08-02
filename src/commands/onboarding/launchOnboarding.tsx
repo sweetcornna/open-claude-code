@@ -1,15 +1,15 @@
 import * as React from 'react';
 import { Box, Pane, Text, useTheme } from '@anthropic/ink';
 import { BIN_NAME } from '../../constants/brand.js';
-import { getGlobalClaudeFile } from '../../utils/env.js';
+import { getGlobalClaudeFile } from '../../utils/config/env.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import { ThemePicker } from '../../components/ThemePicker.js';
-import { getGlobalConfig, saveCurrentProjectConfig, saveGlobalConfig } from '../../utils/config.js';
-import type { ThemeSetting } from '../../utils/theme.js';
+import { getGlobalConfig, saveCurrentProjectConfig, saveGlobalConfig } from '../../utils/config/config.js';
+import type { ThemeSetting } from '../../utils/terminal/theme.js';
 
 /**
  * /onboarding [subcommand]

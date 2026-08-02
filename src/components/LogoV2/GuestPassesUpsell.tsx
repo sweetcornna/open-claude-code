@@ -8,7 +8,7 @@ import {
   getCachedReferrerReward,
   getCachedRemainingPasses,
 } from '../../services/api/referral.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 
 function resetIfPassesRefreshed(): void {
   const remaining = getCachedRemainingPasses();

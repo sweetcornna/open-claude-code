@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { gracefulShutdown } from 'src/utils/gracefulShutdown.js';
-import { writeToStdout } from 'src/utils/process.js';
+import { gracefulShutdown } from 'src/utils/process/gracefulShutdown.js';
+import { writeToStdout } from 'src/utils/process/process.js';
 import { Box, color, Text, useTheme, Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { addMcpConfig, getAllMcpConfigs } from '../services/mcp/config.js';
 import type { ConfigScope, McpServerConfig, ScopedMcpServerConfig } from '../services/mcp/types.js';
-import { plural } from '../utils/stringUtils.js';
+import { plural } from '../utils/text/stringUtils.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { SelectMulti } from './CustomSelect/SelectMulti.js';
 

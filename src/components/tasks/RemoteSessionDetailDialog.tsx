@@ -12,13 +12,13 @@ import { getRemoteTaskSessionUrl } from '../../tasks/RemoteAgentTask/RemoteAgent
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js';
 import { ASK_USER_QUESTION_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/prompt.js';
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/constants.js';
-import { openBrowser } from '../../utils/browser.js';
-import { errorMessage } from '../../utils/errors.js';
-import { formatDuration, truncateToWidth } from '../../utils/format.js';
+import { openBrowser } from '../../utils/network/browser.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
+import { formatDuration, truncateToWidth } from '../../utils/text/format.js';
 import { toInternalMessages } from '../../utils/messages/mappers.js';
 import { EMPTY_LOOKUPS, normalizeMessages } from '../../utils/messages.js';
-import { plural } from '../../utils/stringUtils.js';
-import { teleportResumeCodeSession } from '../../utils/teleport.js';
+import { plural } from '../../utils/text/stringUtils.js';
+import { teleportResumeCodeSession } from '../../utils/teleport/teleport.js';
 import { Select } from '../CustomSelect/select.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { Message } from '../Message.js';

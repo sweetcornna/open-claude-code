@@ -11,9 +11,9 @@ import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { type AppState, useAppState, useSetAppState } from '../../state/AppState.js';
 import { getEmptyToolPermissionContext } from '../../Tool.js';
 import { AGENT_COLOR_TO_THEME_COLOR } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
-import { logForDebugging } from '../../utils/debug.js';
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
-import { truncateToWidth } from '../../utils/format.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
+import { truncateToWidth } from '../../utils/text/format.js';
 import { getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import {
   getModeColor,
@@ -21,19 +21,19 @@ import {
   permissionModeFromString,
   permissionModeSymbol,
 } from '../../utils/permissions/PermissionMode.js';
-import { jsonStringify } from '../../utils/slowOperations.js';
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js';
 import { IT2_COMMAND, isInsideTmuxSync } from '../../utils/swarm/backends/detection.js';
 import { ensureBackendsRegistered, getBackendByType, getCachedBackend } from '../../utils/swarm/backends/registry.js';
 import { isPaneBackend, type PaneBackendType } from '../../utils/swarm/backends/types.js';
 import { getSwarmSocketName, TMUX_COMMAND } from '../../utils/swarm/constants.js';
 import { removeMemberFromTeam, setMemberMode, setMultipleMemberModes } from '../../utils/swarm/teamHelpers.js';
-import { listTasks, type Task, unassignTeammateTasks } from '../../utils/tasks.js';
-import { getTeammateStatuses, type TeammateStatus, type TeamSummary } from '../../utils/teamDiscovery.js';
+import { listTasks, type Task, unassignTeammateTasks } from '../../utils/task/tasks.js';
+import { getTeammateStatuses, type TeammateStatus, type TeamSummary } from '../../utils/agents/teamDiscovery.js';
 import {
   createModeSetRequestMessage,
   sendShutdownRequestToMailbox,
   writeToMailbox,
-} from '../../utils/teammateMailbox.js';
+} from '../../utils/agents/teammateMailbox.js';
 import { Dialog } from '@anthropic/ink';
 import ThemedText from '../design-system/ThemedText.js';
 

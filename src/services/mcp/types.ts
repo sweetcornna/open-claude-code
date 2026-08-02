@@ -4,7 +4,7 @@ import type {
   ServerCapabilities,
 } from '@modelcontextprotocol/client'
 import { z } from 'zod/v4'
-import { lazySchema } from '../../utils/lazySchema.js'
+import { lazySchema } from '../../utils/collections/lazySchema.js'
 
 // Configuration schemas and types
 export const ConfigScopeSchema = lazySchema(() =>

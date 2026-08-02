@@ -7,7 +7,7 @@
 //    sequentially via sync spawn inside applySafeConfigEnvironmentVariables()
 //    (~65ms on every macOS startup)
 import { BIN_NAME, MACOS_DEEP_LINK_BUNDLE_ID } from './constants/brand.js';
-import { profileCheckpoint } from './utils/startupProfiler.js';
+import { profileCheckpoint } from './utils/telemetry/startupProfiler.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_entry');
@@ -23,15 +23,15 @@ import { startKeychainPrefetch } from './utils/secureStorage/keychainPrefetch.js
 startKeychainPrefetch();
 
 import { feature } from 'bun:bundle';
-import { stopCapturingEarlyInput } from './utils/earlyInput.js';
-import { initializeWarningHandler } from './utils/warningHandler.js';
+import { stopCapturingEarlyInput } from './utils/terminal/earlyInput.js';
+import { initializeWarningHandler } from './utils/telemetry/warningHandler.js';
 
 import { SHOW_CURSOR } from '@anthropic/ink';
-import { isEnvTruthy } from './utils/envUtils.js';
+import { isEnvTruthy } from './utils/config/envUtils.js';
 import { run } from './cli/program/run.js';
 import { _pendingAssistantChat, _pendingSSH as _pendingSSHState } from './cli/program/pendingState.js';
 import { eagerLoadSettings, initializeEntrypoint } from './cli/program/settingsFlags.js';
-import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
+import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js';
 import { setClientType, setIsInteractive, setQuestionPreviewFormat, setSessionSource } from './bootstrap/state.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
@@ -77,7 +77,7 @@ export async function main() {
   if (feature('LODESTONE')) {
     const handleUriIdx = process.argv.indexOf('--handle-uri');
     if (handleUriIdx !== -1 && process.argv[handleUriIdx + 1]) {
-      const { enableConfigs } = await import('./utils/config.js');
+      const { enableConfigs } = await import('./utils/config/config.js');
       enableConfigs();
       const uri = process.argv[handleUriIdx + 1]!;
       const { handleDeepLinkUri } = await import('./utils/deepLink/protocolHandler.js');
@@ -90,7 +90,7 @@ export async function main() {
     // __CFBundleIdentifier to the launching bundle's ID, which is a precise
     // positive signal — cheaper than importing and guessing with heuristics.
     if (process.platform === 'darwin' && process.env.__CFBundleIdentifier === MACOS_DEEP_LINK_BUNDLE_ID) {
-      const { enableConfigs } = await import('./utils/config.js');
+      const { enableConfigs } = await import('./utils/config/config.js');
       enableConfigs();
       const { handleUrlSchemeLaunch } = await import('./utils/deepLink/protocolHandler.js');
       const urlSchemeResult = await handleUrlSchemeLaunch();

@@ -13,15 +13,15 @@ import { POWERSHELL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/Powe
 import { REPL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/REPLTool/constants.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { extractOutputRedirections } from '../bash/commands.js'
-import { logForDebugging } from '../debug.js'
-import { AbortError, toError } from '../errors.js'
-import { logError } from '../log.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { AbortError, toError } from '../runtime/errors.js'
+import { logError } from '../telemetry/log.js'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import {
   getSettingSourceDisplayNameLowercase,
   SETTING_SOURCES,
 } from '../settings/constants.js'
-import { plural } from '../stringUtils.js'
+import { plural } from '../text/stringUtils.js'
 import { permissionModeTitle } from './PermissionMode.js'
 import type {
   PermissionAskDecision,
@@ -79,8 +79,8 @@ import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.
 import {
   clearClassifierChecking,
   setClassifierChecking,
-} from '../classifierApprovals.js'
-import { isInProtectedNamespace } from '../envUtils.js'
+} from './classifierApprovals.js'
+import { isInProtectedNamespace } from '../config/envUtils.js'
 import { executePermissionRequestHooks } from '../hooks.js'
 import {
   AUTO_REJECT_MESSAGE,
@@ -88,9 +88,9 @@ import {
   buildYoloRejectionMessage,
   DONT_ASK_REJECT_MESSAGE,
 } from '../messages.js'
-import { calculateCostFromTokens } from '../modelCost.js'
+import { calculateCostFromTokens } from '../model/modelCost.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import {
   createDenialTrackingState,
   DENIAL_LIMITS,

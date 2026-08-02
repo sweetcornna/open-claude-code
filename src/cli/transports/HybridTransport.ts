@@ -1,9 +1,9 @@
 import axios, { type AxiosError } from 'axios'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { rcLog } from '../../utils/rcDebugLog.js'
-import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
-import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { rcLog } from '../../utils/telemetry/rcDebugLog.js'
+import { logForDiagnosticsNoPII } from '../../utils/telemetry/diagLogs.js'
+import { getSessionIngressAuthToken } from '../../utils/auth/sessionIngressAuth.js'
 import { SerialBatchEventUploader } from './SerialBatchEventUploader.js'
 import {
   WebSocketTransport,

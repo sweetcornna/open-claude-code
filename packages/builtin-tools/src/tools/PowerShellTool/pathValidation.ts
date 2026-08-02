@@ -10,9 +10,15 @@ import { homedir } from 'os'
 import { isAbsolute, resolve } from 'path'
 import type { ToolPermissionContext } from '@open-claude-code/tool-runtime/Tool.js'
 import type { PermissionRule } from '@open-claude-code/tool-runtime/types/permissions.js'
-import { getCwd } from 'src/utils/cwd.js'
-import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js'
-import { containsPathTraversal, getDirectoryForPath } from 'src/utils/path.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
+import {
+  getFsImplementation,
+  safeResolvePath,
+} from 'src/utils/filesystem/fsOperations.js'
+import {
+  containsPathTraversal,
+  getDirectoryForPath,
+} from 'src/utils/filesystem/path.js'
 import {
   allWorkingDirectories,
   checkEditableInternalPath,
@@ -28,7 +34,7 @@ import {
   isDangerousRemovalPath,
   isPathInSandboxWriteAllowlist,
 } from 'src/utils/permissions/pathValidation.js'
-import { getPlatform } from 'src/utils/platform.js'
+import { getPlatform } from 'src/utils/process/platform.js'
 import type {
   ParsedCommandElement,
   ParsedPowerShellCommand,

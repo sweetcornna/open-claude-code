@@ -7,7 +7,7 @@ import { NOTEBOOK_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/N
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js'
 import { WEB_SEARCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebSearchTool/prompt.js'
 import { SHELL_TOOL_NAMES } from 'src/utils/shell/shellToolUtils.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
 
 // docs: https://docs.google.com/document/d/1oCT4evvWTh3P6z-kcfNQwWTCxAhkoFndSaNS9Gm40uw/edit?tab=t.0
 

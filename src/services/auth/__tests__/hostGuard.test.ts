@@ -16,8 +16,8 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
 // Side-effect module mocks must come first
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // Re-register hostGuard to override pollution from other test files.
 // schedule/__tests__/api.test.ts mocks this module with no-op functions,

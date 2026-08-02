@@ -10,7 +10,7 @@ import {
   type EffortValue,
   getDisplayedEffortLevel,
   modelSupportsEffort,
-} from '../utils/effort.js'
+} from '../utils/model/effort.js'
 
 /**
  * Build the text for the effort-changed notification, e.g. "◐ medium · /effort".

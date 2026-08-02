@@ -19,15 +19,15 @@ import { getSessionId } from 'src/bootstrap/state.js'
 import { getInitJsonSchema } from 'src/bootstrap/state.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
-import { dequeue, peek } from 'src/utils/messageQueueManager.js'
-import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
+import { dequeue, peek } from 'src/utils/session/messageQueueManager.js'
+import { notifyCommandLifecycle } from 'src/utils/task/commandLifecycle.js'
 import { mergeFileStateCaches } from 'src/utils/fileStateCache.js'
 import { executeFilePersistence } from 'src/utils/filePersistence/filePersistence.js'
-import { createAbortController } from 'src/utils/abortController.js'
-import { isEnvDefinedFalsy } from 'src/utils/envUtils.js'
-import { logError } from 'src/utils/log.js'
-import { toError } from 'src/utils/errors.js'
-import { getLastCacheSafeParams } from 'src/utils/cacheSafeParamsSlot.js'
+import { createAbortController } from 'src/utils/process/abortController.js'
+import { isEnvDefinedFalsy } from 'src/utils/config/envUtils.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { toError } from 'src/utils/runtime/errors.js'
+import { getLastCacheSafeParams } from 'src/utils/collections/cacheSafeParamsSlot.js'
 import {
   logSuggestionOutcome,
   logSuggestionSuppressed,
@@ -36,21 +36,21 @@ import {
 import {
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
-} from 'src/utils/autonomyQueueLifecycle.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
-import { runWithWorkload } from 'src/utils/workloadContext.js'
-import { drainSdkEvents } from 'src/utils/sdkEventQueue.js'
+} from 'src/utils/agents/autonomyQueueLifecycle.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
+import { runWithWorkload } from 'src/utils/session/workloadContext.js'
+import { drainSdkEvents } from 'src/utils/session/sdkEventQueue.js'
 import { getRunningTasks } from 'src/utils/task/framework.js'
 import { isBackgroundTask } from 'src/tasks/types.js'
 import {
   headlessProfilerCheckpoint,
   headlessProfilerStartTurn,
   logHeadlessProfilerTurn,
-} from 'src/utils/headlessProfiler.js'
+} from 'src/utils/telemetry/headlessProfiler.js'
 import {
   logQueryProfileReport,
   startQueryProfile,
-} from 'src/utils/queryProfiler.js'
+} from 'src/utils/telemetry/queryProfiler.js'
 import { canBatchWith, joinPromptValues } from './promptQueue.js'
 import {
   buildAllTools,

@@ -10,7 +10,7 @@ import {
   type AgentColorName,
   getAgentColor,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js'
-import { getStandaloneAgentName } from '../../utils/standaloneAgent.js'
+import { getStandaloneAgentName } from '../../utils/agents/standaloneAgent.js'
 import { isInsideTmux } from '../../utils/swarm/backends/detection.js'
 import {
   getCachedDetectionResult,
@@ -22,9 +22,9 @@ import {
   getTeammateColor,
   getTeamName,
   isTeammate,
-} from '../../utils/teammate.js'
-import { isInProcessTeammate } from '../../utils/teammateContext.js'
-import type { Theme } from '../../utils/theme.js'
+} from '../../utils/agents/teammate.js'
+import { isInProcessTeammate } from '../../utils/agents/teammateContext.js'
+import type { Theme } from '../../utils/terminal/theme.js'
 
 type SwarmBannerInfo = {
   text: string

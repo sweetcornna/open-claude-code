@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNotifications } from '../context/notifications.js'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
-import { hasImageInClipboard } from '../utils/imagePaste.js'
+import { hasImageInClipboard } from '../utils/terminal/imagePaste.js'
 
 const NOTIFICATION_KEY = 'clipboard-image-hint'
 // Small debounce to batch rapid focus changes

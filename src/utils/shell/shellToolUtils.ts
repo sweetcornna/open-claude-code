@@ -1,7 +1,7 @@
 import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js'
 import { POWERSHELL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/PowerShellTool/toolName.js'
-import { isEnvDefinedFalsy } from '../envUtils.js'
-import { getPlatform } from '../platform.js'
+import { isEnvDefinedFalsy } from '../config/envUtils.js'
+import { getPlatform } from '../process/platform.js'
 
 export const SHELL_TOOL_NAMES: string[] = [BASH_TOOL_NAME, POWERSHELL_TOOL_NAME]
 

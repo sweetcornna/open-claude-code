@@ -13,13 +13,13 @@ import {
   fileHistoryCanRestore,
   fileHistoryEnabled,
   fileHistoryGetDiffStats,
-} from 'src/utils/fileHistory.js';
-import { logError } from 'src/utils/log.js';
+} from 'src/utils/filesystem/fileHistory.js';
+import { logError } from 'src/utils/telemetry/log.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text, Divider } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../keybindings/useKeybinding.js';
 import type { Message, PartialCompactDirection, UserMessage } from '../types/message.js';
-import { stripDisplayTags } from '../utils/displayTags.js';
+import { stripDisplayTags } from '../utils/text/displayTags.js';
 import {
   createUserMessage,
   extractTag,
@@ -48,9 +48,9 @@ import {
   TEAMMATE_MESSAGE_TAG,
   TICK_TAG,
 } from '../constants/xml.js';
-import { count } from '../utils/array.js';
-import { formatRelativeTimeAgo, truncate } from '../utils/format.js';
-import type { Theme } from '../utils/theme.js';
+import { count } from '../utils/collections/array.js';
+import { formatRelativeTimeAgo, truncate } from '../utils/text/format.js';
+import type { Theme } from '../utils/terminal/theme.js';
 type RestoreOption = 'both' | 'conversation' | 'code' | 'summarize' | 'summarize_up_to' | 'nevermind';
 
 function isSummarizeOption(option: RestoreOption | null): option is 'summarize' | 'summarize_up_to' {

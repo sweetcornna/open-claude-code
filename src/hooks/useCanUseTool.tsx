@@ -16,18 +16,18 @@ import {
 } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js';
 import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js';
 import type { AssistantMessage } from '../types/message.js';
-import { recordAutoModeDenial } from '../utils/autoModeDenials.js';
+import { recordAutoModeDenial } from '../utils/permissions/autoModeDenials.js';
 import {
   clearClassifierChecking,
   setClassifierApproval,
   setYoloClassifierApproval,
-} from '../utils/classifierApprovals.js';
-import { logForDebugging } from '../utils/debug.js';
-import { AbortError } from '../utils/errors.js';
-import { logError } from '../utils/log.js';
+} from '../utils/permissions/classifierApprovals.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
+import { AbortError } from '../utils/runtime/errors.js';
+import { logError } from '../utils/telemetry/log.js';
 import type { PermissionDecision } from '../utils/permissions/PermissionResult.js';
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js';
-import { jsonStringify } from '../utils/slowOperations.js';
+import { jsonStringify } from '../utils/telemetry/slowOperations.js';
 import { handleCoordinatorPermission } from './toolPermission/handlers/coordinatorHandler.js';
 import { handleInteractivePermission } from './toolPermission/handlers/interactiveHandler.js';
 import { handleSwarmWorkerPermission } from './toolPermission/handlers/swarmWorkerHandler.js';

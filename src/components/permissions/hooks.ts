@@ -19,9 +19,12 @@ import { permissionRuleValueToString } from 'src/utils/permissions/permissionRul
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import type { ToolUseConfirm } from '../../components/permissions/PermissionRequest.js'
 import { useSetAppState } from '../../state/AppState.js'
-import { env } from '../../utils/env.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
-import { type CompletionType, logUnaryEvent } from '../../utils/unaryLogging.js'
+import { env } from '../../utils/config/env.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
+import {
+  type CompletionType,
+  logUnaryEvent,
+} from '../../utils/telemetry/unaryLogging.js'
 
 export type UnaryEvent = {
   completion_type: CompletionType

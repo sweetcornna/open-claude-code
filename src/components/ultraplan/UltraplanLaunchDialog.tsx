@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Box, Text, Link } from '@anthropic/ink';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '../design-system/Dialog.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 import { CCR_TERMS_URL } from '../../commands/ultraplan.js';
 import { getPromptIdentifier, getDialogConfig, type PromptIdentifier } from 'src/utils/ultraplan/prompt.js';
 

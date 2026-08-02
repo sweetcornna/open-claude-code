@@ -6,7 +6,7 @@ import type { LocalJSXCommandContext } from '../../commands.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { Box, Text, useTheme } from '@anthropic/ink';
 import { type AppState, useAppState } from '../../state/AppState.js';
-import { getCwd } from '../../utils/cwd.js';
+import { getCwd } from '../../utils/filesystem/cwd.js';
 import { getCurrentSessionTitle } from '../../utils/sessionStorage.js';
 import {
   buildAccountProperties,
@@ -21,8 +21,8 @@ import {
   type Diagnostic,
   getModelDisplayLabel,
   type Property,
-} from '../../utils/status.js';
-import type { ThemeName } from '../../utils/theme.js';
+} from '../../utils/terminal/status.js';
+import type { ThemeName } from '../../utils/terminal/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 
 type Props = {

@@ -5,7 +5,7 @@
 import { describe, test, expect, mock } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log.js'
 
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
 import React from 'react'

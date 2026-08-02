@@ -2,10 +2,13 @@ import type { Command } from '../commands.js'
 import {
   getAttributionTexts,
   getEnhancedPRAttribution,
-} from '../utils/attribution.js'
-import { getDefaultBranch } from '../utils/git.js'
-import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
-import { getUndercoverInstructions, isUndercover } from '../utils/undercover.js'
+} from '../utils/git/attribution.js'
+import { getDefaultBranch } from '../utils/git/git.js'
+import { executeShellCommandsInPrompt } from '../utils/shell/promptShellExecution.js'
+import {
+  getUndercoverInstructions,
+  isUndercover,
+} from '../utils/auth/undercover.js'
 
 const ALLOWED_TOOLS = [
   'Bash(git checkout --branch:*)',

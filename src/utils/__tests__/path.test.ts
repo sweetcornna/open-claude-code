@@ -6,14 +6,14 @@ import {
   setFsImplementation,
   setOriginalFsImplementation,
   type FsOperations,
-} from '../fsOperations'
+} from '../filesystem/fsOperations'
 import {
   containsPathTraversal,
   expandPath,
   normalizePathForConfigKey,
   toRelativePath,
   getDirectoryForPath,
-} from '../path'
+} from '../filesystem/path'
 
 // ─── containsPathTraversal ──────────────────────────────────────────────
 

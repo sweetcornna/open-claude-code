@@ -2,9 +2,9 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { getKairosActive, getSessionId } from '../bootstrap/state.js'
 import type { AppState } from '../state/AppState.js'
-import { formatAgentId } from '../utils/agentId.js'
-import { getCwd } from '../utils/cwd.js'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { formatAgentId } from '../utils/agents/agentId.js'
+import { getCwd } from '../utils/filesystem/cwd.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js'
 import {
   getTeamFilePath,
@@ -18,7 +18,7 @@ import {
   ensureTasksDir,
   resetTaskList,
   setLeaderTeamName,
-} from '../utils/tasks.js'
+} from '../utils/task/tasks.js'
 
 let _assistantForced = false
 

@@ -4,7 +4,7 @@
  */
 
 import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import {
   getMainLoopModel,
   getSmallFastModel,
@@ -17,8 +17,8 @@ import {
 } from '../../utils/permissions/yoloClassifier.js'
 import { getAutoModeConfig } from '../../utils/settings/settings.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
-import { sideQuery } from '../../utils/sideQuery.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { sideQuery } from '../../utils/session/sideQuery.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 
 function writeRules(rules: AutoModeRules): void {
   process.stdout.write(jsonStringify(rules, null, 2) + '\n')

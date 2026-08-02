@@ -5,7 +5,7 @@ import { isAutoMemoryEnabled } from '../../../../memdir/paths.js';
 import type { Tools } from '../../../../Tool.js';
 import { getMemoryScopeDisplay } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js';
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { truncateToWidth } from '../../../../utils/format.js';
+import { truncateToWidth } from '../../../../utils/text/format.js';
 import { getAgentModelDisplay } from '../../../../utils/model/agent.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { useWizard } from '../../../wizard/index.js';

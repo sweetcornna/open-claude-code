@@ -4,7 +4,7 @@ import type { Message } from '../../../types/message.js'
 import type {
   CacheSafeParams,
   ForkedAgentResult,
-} from '../../../utils/forkedAgent.js'
+} from '../../../utils/agents/forkedAgent.js'
 import {
   type AgentSummaryDependencies,
   startAgentSummarization,

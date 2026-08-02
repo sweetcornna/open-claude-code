@@ -171,7 +171,7 @@ async function getCallFn(): Promise<CallFn> {
 }
 
 async function writeSessionLog(entries?: string[]): Promise<void> {
-  const { sanitizePath } = await import('../../../utils/path.js')
+  const { sanitizePath } = await import('../../../utils/filesystem/path.js')
   const { getSessionId, getOriginalCwd } = await import(
     '../../../bootstrap/state.js'
   )

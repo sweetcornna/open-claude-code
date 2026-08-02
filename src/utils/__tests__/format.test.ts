@@ -8,7 +8,7 @@ import {
   formatRelativeTime,
   formatRelativeTimeAgo,
   formatLogMetadata,
-} from '../format'
+} from '../text/format'
 
 describe('formatFileSize', () => {
   test('formats bytes', () => {

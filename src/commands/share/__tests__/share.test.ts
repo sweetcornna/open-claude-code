@@ -150,7 +150,7 @@ async function getCallFn(): Promise<CallFn> {
 async function writeSessionLog(entries?: string[]): Promise<void> {
   // Write the session log at the path share/index.ts will compute at runtime.
   // We use the real state values (no mock) to match the actual path.
-  const { sanitizePath } = await import('../../../utils/path.js')
+  const { sanitizePath } = await import('../../../utils/filesystem/path.js')
   const { getSessionId, getOriginalCwd } = await import(
     '../../../bootstrap/state.js'
   )

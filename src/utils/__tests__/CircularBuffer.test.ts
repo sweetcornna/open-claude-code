@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { CircularBuffer } from '../CircularBuffer'
+import { CircularBuffer } from '../collections/CircularBuffer'
 
 describe('CircularBuffer', () => {
   test('starts empty', () => {

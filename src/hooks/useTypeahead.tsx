@@ -15,10 +15,10 @@ import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { useAppState, useAppStateStore } from '../state/AppState.js';
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type { InlineGhostText, PromptInputMode } from '../types/textInputTypes.js';
-import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
-import { generateProgressiveArgumentHint, parseArguments } from '../utils/argumentSubstitution.js';
+import { isAgentSwarmsEnabled } from '../utils/agents/agentSwarmsEnabled.js';
+import { generateProgressiveArgumentHint, parseArguments } from '../utils/shell/argumentSubstitution.js';
 import { getShellCompletions, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
-import { formatLogMetadata } from '../utils/format.js';
+import { formatLogMetadata } from '../utils/text/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
 import {
   applyCommandSuggestion,

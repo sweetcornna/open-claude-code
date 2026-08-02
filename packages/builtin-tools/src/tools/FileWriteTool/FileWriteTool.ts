@@ -13,23 +13,29 @@ import {
 } from 'src/skills/loadSkillsDir.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { getCwd } from 'src/utils/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { countLinesChanged, getPatchForDisplay } from 'src/utils/diff.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { countLinesChanged, getPatchForDisplay } from 'src/utils/text/diff.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
-import { getFileModificationTime, writeTextContent } from 'src/utils/file.js'
+import {
+  getFileModificationTime,
+  writeTextContent,
+} from 'src/utils/filesystem/file.js'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
-} from 'src/utils/fileHistory.js'
-import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
-import { readFileSyncWithMetadata } from 'src/utils/fileRead.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
-import { fetchSingleFileGitDiff, type ToolUseDiff } from 'src/utils/gitDiff.js'
+} from 'src/utils/filesystem/fileHistory.js'
+import { logFileOperation } from 'src/utils/telemetry/fileOperationAnalytics.js'
+import { readFileSyncWithMetadata } from 'src/utils/filesystem/fileRead.js'
+import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
+import {
+  fetchSingleFileGitDiff,
+  type ToolUseDiff,
+} from 'src/utils/git/gitDiff.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
-import { expandPath } from 'src/utils/path.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { expandPath } from 'src/utils/filesystem/path.js'
 import {
   checkWritePermissionForTool,
   matchingRuleForInput,

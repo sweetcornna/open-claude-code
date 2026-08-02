@@ -27,8 +27,11 @@ import {
 } from 'src/skills/loadSkillsDir.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { getCwd } from 'src/utils/cwd.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from 'src/utils/envUtils.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
+import {
+  getClaudeConfigHomeDir,
+  isEnvTruthy,
+} from 'src/utils/config/envUtils.js'
 import {
   getErrnoCode,
   isENOENT,
@@ -39,10 +42,10 @@ import {
   findSimilarFile,
   getFileModificationTimeAsync,
   suggestPathUnderCwd,
-} from 'src/utils/file.js'
-import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
-import { formatFileSize } from 'src/utils/format.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
+} from 'src/utils/filesystem/file.js'
+import { logFileOperation } from 'src/utils/telemetry/fileOperationAnalytics.js'
+import { formatFileSize } from 'src/utils/text/format.js'
+import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
 import {
   compressImageBufferWithTokenLimit,
   createImageMetadataText,
@@ -50,30 +53,34 @@ import {
   type ImageDimensions,
   ImageResizeError,
   maybeResizeAndDownsampleImageBuffer,
-} from 'src/utils/imageResizer.js'
+} from 'src/utils/terminal/imageResizer.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
-import { isAutoMemFile } from 'src/utils/memoryFileDetection.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { isAutoMemFile } from 'src/utils/memory/memoryFileDetection.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import {
   mapNotebookCellsToToolResult,
   readNotebook,
-} from 'src/utils/notebook.js'
-import { expandPath } from 'src/utils/path.js'
-import { extractPDFPages, getPDFPageCount, readPDF } from 'src/utils/pdf.js'
+} from 'src/utils/filesystem/notebook.js'
+import { expandPath } from 'src/utils/filesystem/path.js'
+import {
+  extractPDFPages,
+  getPDFPageCount,
+  readPDF,
+} from 'src/utils/filesystem/pdf.js'
 import {
   isPDFExtension,
   isPDFSupported,
   parsePDFPageRange,
-} from 'src/utils/pdfUtils.js'
+} from 'src/utils/filesystem/pdfUtils.js'
 import {
   checkReadPermissionForTool,
   matchingRuleForInput,
 } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
-import { readFileInRange } from 'src/utils/readFileInRange.js'
-import { semanticNumber } from 'src/utils/semanticNumber.js'
+import { readFileInRange } from 'src/utils/filesystem/readFileInRange.js'
+import { semanticNumber } from 'src/utils/collections/semanticNumber.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { BASH_TOOL_NAME } from '../BashTool/constants.js'
 import {

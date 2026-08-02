@@ -9,7 +9,7 @@ import { getLastSessionLog } from '../../utils/sessionStorage.js'
 import {
   teleportResumeCodeSession,
   validateGitState,
-} from '../../utils/teleport.js'
+} from '../../utils/teleport/teleport.js'
 import { fetchCodeSessionsFromSessionsAPI } from '../../utils/teleport/api.js'
 
 // Minimum length for a UUID-like session ID (8 hex chars with dashes allowed)

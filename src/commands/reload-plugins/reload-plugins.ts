@@ -1,6 +1,6 @@
 import type { LocalCommandCall } from '../../types/command.js'
 import { refreshActivePlugins } from '../../utils/plugins/refresh.js'
-import { plural } from '../../utils/stringUtils.js'
+import { plural } from '../../utils/text/stringUtils.js'
 
 export const call: LocalCommandCall = async (_args, context) => {
   const r = await refreshActivePlugins(context.setAppState)

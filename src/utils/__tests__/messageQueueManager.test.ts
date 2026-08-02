@@ -10,7 +10,7 @@ import {
   isSlashCommand,
   peek,
   resetCommandQueue,
-} from '../messageQueueManager.js'
+} from '../session/messageQueueManager.js'
 
 // Reset module-level queue state between tests
 beforeEach(() => {

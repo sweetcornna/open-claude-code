@@ -121,7 +121,7 @@ mock.module('src/utils/model/model.js', () => ({
   isNonCustomOpusModel: mock(() => false),
 }))
 
-mock.module('src/utils/effort.js', () => ({
+mock.module('src/utils/model/effort.js', () => ({
   getDisplayedEffortLevel: mockGetDisplayedEffortLevel as (
     _m: string,
     _e: unknown,
@@ -189,7 +189,7 @@ const mockedGetClaudeConfigHomeDirMD: (() => string) & {
   { cache: { clear: () => {}, get: (_k: unknown) => undefined } },
 )
 
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   getClaudeConfigHomeDir: mockedGetClaudeConfigHomeDirMD,
   isEnvTruthy: realIsEnvTruthy,
   getEnvBool: () => false,
@@ -290,7 +290,7 @@ const realFsAdapter = {
   realpath: (p: string) => nodeFs.realpath(p),
 }
 
-mock.module('src/utils/fsOperations.js', () => ({
+mock.module('src/utils/filesystem/fsOperations.js', () => ({
   getFsImplementation: () =>
     useMockForMagicDocs
       ? ({

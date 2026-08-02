@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { occConfigDir, occConfigPath } from 'src/config/paths.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 
 const ISSUER = 'https://auth.openai.com'
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'

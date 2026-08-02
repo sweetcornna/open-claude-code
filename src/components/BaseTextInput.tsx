@@ -4,7 +4,7 @@ import { usePasteHandler } from '../hooks/usePasteHandler.js';
 import { useDeclaredCursor } from '@anthropic/ink';
 import { Ansi, Box, Text, useInput } from '@anthropic/ink';
 import type { BaseInputState, BaseTextInputProps } from '../types/textInputTypes.js';
-import type { TextHighlight } from '../utils/textHighlighting.js';
+import type { TextHighlight } from '../utils/text/textHighlighting.js';
 import { HighlightedInput } from './PromptInput/ShimmeredInput.js';
 
 type BaseTextInputComponentProps = BaseTextInputProps & {

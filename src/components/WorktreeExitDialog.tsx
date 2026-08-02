@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import type { CommandResultDisplay } from 'src/commands.js';
 import { logEvent } from 'src/services/analytics/index.js';
-import { logForDebugging } from 'src/utils/debug.js';
+import { logForDebugging } from 'src/utils/telemetry/debug.js';
 import { Box, Text, Dialog } from '@anthropic/ink';
-import { execFileNoThrow } from '../utils/execFileNoThrow.js';
-import { getPlansDirectory } from '../utils/plans.js';
-import { setCwd } from '../utils/Shell.js';
-import { cleanupWorktree, getCurrentWorktreeSession, keepWorktree, killTmuxSession } from '../utils/worktree.js';
+import { execFileNoThrow } from '../utils/process/execFileNoThrow.js';
+import { getPlansDirectory } from '../utils/agents/plans.js';
+import { setCwd } from '../utils/shell/Shell.js';
+import { cleanupWorktree, getCurrentWorktreeSession, keepWorktree, killTmuxSession } from '../utils/git/worktree.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 

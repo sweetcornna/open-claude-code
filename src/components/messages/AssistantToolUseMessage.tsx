@@ -1,15 +1,15 @@
 import type { ToolUseBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import React, { useMemo } from 'react';
 import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
-import type { ThemeName } from 'src/utils/theme.js';
+import type { ThemeName } from 'src/utils/terminal/theme.js';
 import type { Command } from '../../commands.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { Box, Text, stringWidth, useTheme } from '@anthropic/ink';
 import { useAppStateMaybeOutsideOfProvider } from '../../state/AppState.js';
 import { findToolByName, type Tool, type ToolProgressData, type Tools } from '../../Tool.js';
 import type { ProgressMessage } from '../../types/message.js';
-import { useIsClassifierChecking } from '../../utils/classifierApprovalsHook.js';
-import { logError } from '../../utils/log.js';
+import { useIsClassifierChecking } from '../../utils/permissions/classifierApprovalsHook.js';
+import { logError } from '../../utils/telemetry/log.js';
 import type { buildMessageLookups } from '../../utils/messages.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { useSelectedMessageBg } from '../messageActions.js';

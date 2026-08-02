@@ -22,9 +22,9 @@ import type {
   ProgressMessage,
   SystemMessage,
 } from '../types/message.js';
-import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js';
-import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
-import { logError } from '../utils/log.js';
+import { type AdvisorBlock, isAdvisorBlock } from '../utils/agents/advisor.js';
+import { isFullscreenEnvEnabled } from '../utils/terminal/fullscreen.js';
+import { logError } from '../utils/telemetry/log.js';
 import type { buildMessageLookups } from '../utils/messages.js';
 import { CompactSummary } from './CompactSummary.js';
 import { AdvisorMessage } from './messages/AdvisorMessage.js';
