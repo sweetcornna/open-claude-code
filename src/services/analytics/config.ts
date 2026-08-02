@@ -6,7 +6,7 @@
  */
 
 import { isEnvTruthy } from '../../utils/envUtils.js'
-import { isTelemetryDisabled } from '../../utils/privacyLevel.js'
+import { isTelemetryDisabled } from '../../utils/auth/privacyLevel.js'
 
 /**
  * Check if analytics operations should be disabled

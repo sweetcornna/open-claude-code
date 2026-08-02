@@ -4,7 +4,7 @@ import {
   isClaudeAISubscriber,
   isMaxSubscriber,
   isTeamPremiumSubscriber,
-} from '../auth.js'
+} from '../auth/auth.js'
 import { getModelStrings } from './modelStrings.js'
 import { getAntModels } from './antModels.js'
 import {

@@ -1,6 +1,6 @@
 import type { SessionId } from 'src/types/ids.js'
 // eslint-disable-next-line custom-rules/bootstrap-isolation
-import { randomUUID } from 'src/utils/crypto.js'
+import { randomUUID } from 'src/utils/auth/crypto.js'
 import { createSignal } from 'src/utils/process/signal.js'
 import { STATE } from './container.js'
 

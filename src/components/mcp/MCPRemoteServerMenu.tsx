@@ -23,7 +23,7 @@ import {
   filterMcpPromptsByServer,
 } from '../../services/mcp/utils.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
-import { getOauthAccountInfo } from '../../utils/auth.js';
+import { getOauthAccountInfo } from '../../utils/auth/auth.js';
 import { openBrowser } from '../../utils/network/browser.js';
 import { errorMessage } from '../../utils/errors.js';
 import { logMCPDebug } from '../../utils/log.js';

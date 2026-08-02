@@ -203,7 +203,9 @@ export const ConfigTool = buildTool({
         'src/voice/voiceModeEnabled.js'
       )
       if (!isVoiceModeEnabled()) {
-        const { isAnthropicAuthEnabled } = await import('src/utils/auth.js')
+        const { isAnthropicAuthEnabled } = await import(
+          'src/utils/auth/auth.js'
+        )
         return {
           data: {
             success: false,

@@ -20,7 +20,7 @@ import {
 import { getCwd } from '../filesystem/cwd.js'
 import { errorMessage } from '../errors.js'
 import { logError } from '../log.js'
-import { getSessionIngressAuthToken } from '../sessionIngressAuth.js'
+import { getSessionIngressAuthToken } from '../auth/sessionIngressAuth.js'
 import {
   findModifiedFiles,
   getEnvironmentKind,

@@ -27,7 +27,7 @@ afterAll(() => {
   axiosHandle.useStubs = false
 })
 
-mock.module('src/utils/auth.js', authMock)
+mock.module('src/utils/auth/auth.js', authMock)
 
 mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org',

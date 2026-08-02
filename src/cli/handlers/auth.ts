@@ -30,7 +30,7 @@ import {
   isUsing3PServices,
   saveOAuthTokensIfNeeded,
   validateForceLoginOrg,
-} from '../../utils/auth.js'
+} from '../../utils/auth/auth.js'
 import { saveGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isRunningOnHomespace } from '../../utils/envUtils.js'

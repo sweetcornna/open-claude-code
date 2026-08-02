@@ -11,7 +11,7 @@ mock.module('src/utils/attribution.ts', () => ({
   countUserPromptsInMessages: () => 0,
 }))
 
-mock.module('src/utils/undercover.ts', () => ({
+mock.module('src/utils/auth/undercover.ts', () => ({
   isUndercover: () => false,
   getUndercoverInstructions: () => '',
   shouldShowUndercoverAutoNotice: () => false,
@@ -302,7 +302,7 @@ describe('commit-push-pr getPromptForCommand', () => {
     process.env.USER_TYPE = 'ant'
 
     // Re-mock undercover to return true for this test
-    mock.module('src/utils/undercover.ts', () => ({
+    mock.module('src/utils/auth/undercover.ts', () => ({
       isUndercover: () => true,
       getUndercoverInstructions: () => 'UNDERCOVER_INSTRUCTIONS',
       shouldShowUndercoverAutoNotice: () => false,

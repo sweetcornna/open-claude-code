@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getOauthConfig } from '../../constants/oauth.js'
-import { isClaudeAISubscriber } from '../../utils/auth.js'
+import { isClaudeAISubscriber } from '../../utils/auth/auth.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { getOAuthHeaders, prepareApiRequest } from '../../utils/teleport/api.js'
 

@@ -1,5 +1,5 @@
 import type { Command } from '../../commands.js'
-import { hasAnthropicApiKeyAuth } from '../../utils/auth.js'
+import { hasAnthropicApiKeyAuth } from '../../utils/auth/auth.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
 export default () =>

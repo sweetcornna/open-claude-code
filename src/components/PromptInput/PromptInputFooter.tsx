@@ -15,7 +15,7 @@ import type { Message } from '../../types/message.js';
 import type { PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
-import { isUndercover } from '../../utils/undercover.js';
+import { isUndercover } from '../../utils/auth/undercover.js';
 import { CoordinatorTaskPanel, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getLastAssistantMessageId, StatusLine, statusLineShouldDisplay } from '../StatusLine.js';
 import { Notifications } from './Notifications.js';

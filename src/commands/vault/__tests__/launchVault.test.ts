@@ -25,7 +25,7 @@ mock.module('src/utils/log.ts', logMock)
 mock.module('src/utils/debug.ts', debugMock)
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token' }),
 }))
 mock.module('src/services/oauth/client.js', () => ({

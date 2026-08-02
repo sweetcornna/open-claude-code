@@ -32,8 +32,8 @@ mock.module('src/services/analytics/index.js', () => ({
 }))
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
-const realAuth = await import('src/utils/auth.js')
-mock.module('src/utils/auth.js', () => ({
+const realAuth = await import('src/utils/auth/auth.js')
+mock.module('src/utils/auth/auth.js', () => ({
   ...realAuth,
   getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-ms' }),
 }))

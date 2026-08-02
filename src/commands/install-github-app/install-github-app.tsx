@@ -9,7 +9,7 @@ import { GITHUB_ACTION_SETUP_DOCS_URL } from '../../constants/github-app.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { type KeyboardEvent, Box } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { getAnthropicApiKey, isAnthropicAuthEnabled } from '../../utils/auth.js';
+import { getAnthropicApiKey, isAnthropicAuthEnabled } from '../../utils/auth/auth.js';
 import { openBrowser } from '../../utils/network/browser.js';
 import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import { getGithubRepo } from '../../utils/git.js';

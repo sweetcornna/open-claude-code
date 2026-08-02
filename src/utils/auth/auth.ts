@@ -33,17 +33,17 @@ import type {
 import {
   getApiKeyFromFileDescriptor,
   getOAuthTokenFromFileDescriptor,
-} from '../authFileDescriptor.js'
+} from './authFileDescriptor.js'
 import {
   maybeRemoveApiKeyFromMacOSKeychainThrows,
   normalizeApiKeyForConfig,
-} from '../authPortable.js'
+} from './authPortable.js'
 import {
   checkStsCallerIdentity,
   clearAwsIniCache,
   isValidAwsStsOutput,
-} from '../aws.js'
-import { AwsAuthStatusManager } from '../awsAuthStatusManager.js'
+} from './aws.js'
+import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
 import { clearBetasCaches } from '../betas.js'
 import {
   type AccountInfo,

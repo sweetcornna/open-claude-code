@@ -6,7 +6,7 @@ import { env } from './env.js'
 import { execFileNoThrowWithCwd } from './process/execFileNoThrow.js'
 import { getIsGit, gitExe } from './git.js'
 import { logError } from './log.js'
-import { getGitEmail } from './user.js'
+import { getGitEmail } from './auth/user.js'
 
 // Patterns that mark a file as non-core (auto-generated, dependency, or config).
 // Used to filter example-command filename suggestions deterministically

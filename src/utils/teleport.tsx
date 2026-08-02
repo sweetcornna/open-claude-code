@@ -22,7 +22,7 @@ import { getOrganizationUUID } from '../services/oauth/client.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { Message, SystemMessage } from '../types/message.js';
 import type { PermissionMode } from '../types/permissions.js';
-import { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } from './auth.js';
+import { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } from './auth/auth.js';
 import { checkGithubAppInstalled } from './background/remote/preconditions.js';
 import { deserializeMessages, type TeleportRemoteResponse } from './conversationRecovery.js';
 import { getCwd } from './filesystem/cwd.js';

@@ -10,7 +10,7 @@ import {
 import axios from 'axios'
 import { checkMetricsEnabled } from 'src/services/api/metricsOptOut.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
-import { getSubscriptionType, isClaudeAISubscriber } from '../auth.js'
+import { getSubscriptionType, isClaudeAISubscriber } from '../auth/auth.js'
 import { checkHasTrustDialogAccepted } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage, toError } from '../errors.js'

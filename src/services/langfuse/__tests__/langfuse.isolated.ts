@@ -76,7 +76,7 @@ mock.module('src/utils/debug.js', () => ({
 }))
 
 // Mock user module to avoid heavy dependency chain (execa, config, cwd, env, etc.)
-mock.module('src/utils/user.js', () => ({
+mock.module('src/utils/auth/user.js', () => ({
   getCoreUserData: () => ({
     email: 'test@example.com',
     deviceId: 'test-device',

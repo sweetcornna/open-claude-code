@@ -25,7 +25,7 @@
 
 import { getOauthConfig } from '../../constants/oauth.js'
 import { isEnvTruthy } from '../envUtils.js'
-import { isEssentialTrafficOnly } from '../privacyLevel.js'
+import { isEssentialTrafficOnly } from '../auth/privacyLevel.js'
 
 let fired = false
 

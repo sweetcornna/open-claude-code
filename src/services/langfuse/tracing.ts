@@ -7,7 +7,7 @@ import type {
 import { isLangfuseEnabled } from './client.js'
 import { sanitizeToolInput, sanitizeToolOutput } from './sanitize.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import { getCoreUserData } from 'src/utils/user.js'
+import { getCoreUserData } from 'src/utils/auth/user.js'
 
 export type { LangfuseSpan }
 

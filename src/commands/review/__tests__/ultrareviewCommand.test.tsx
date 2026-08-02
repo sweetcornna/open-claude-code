@@ -35,7 +35,7 @@ mock.module('src/services/analytics/index.js', () => ({
 }));
 
 // Mock auth utilities
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   isClaudeAISubscriber: () => true,
   isTeamSubscriber: () => false,
   isEnterpriseSubscriber: () => false,
