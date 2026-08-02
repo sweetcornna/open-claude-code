@@ -44,18 +44,6 @@ export function getLastAPIRequest(): Omit<
   return STATE.lastAPIRequest
 }
 
-export function setLastAPIRequestMessages(
-  messages: BetaMessageStreamParams['messages'] | null,
-): void {
-  STATE.lastAPIRequestMessages = messages
-}
-
-export function getLastAPIRequestMessages():
-  | BetaMessageStreamParams['messages']
-  | null {
-  return STATE.lastAPIRequestMessages
-}
-
 export function setLastClassifierRequests(requests: unknown[] | null): void {
   STATE.lastClassifierRequests = requests
 }

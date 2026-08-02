@@ -11,7 +11,6 @@ import {
   regenerateSessionId,
   resetCostState,
   setLastAPIRequest,
-  setLastAPIRequestMessages,
   setLastClassifierRequests,
 } from '../../bootstrap/state.js'
 import type { SDKStatusMessage } from '../../entrypoints/sdk/coreTypes.js'
@@ -133,10 +132,9 @@ export async function clearConversation({
   clearSessionCaches(preservedAgentIds)
 
   // Clear large STATE-held data that outlives the message array.
-  // lastAPIRequestMessages can hold the full post-compaction conversation
-  // (hundreds of KB–MB) for /share; resetCostState clears modelUsage.
+  // lastAPIRequest holds the full system prompt and every tool schema;
+  // resetCostState clears modelUsage.
   setLastAPIRequest(null)
-  setLastAPIRequestMessages(null)
   setLastClassifierRequests(null)
   resetCostState()
 

@@ -4,10 +4,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
 import type { QuerySource } from 'src/constants/querySource.js'
-import {
-  setLastAPIRequest,
-  setLastAPIRequestMessages,
-} from '../bootstrap/state.js'
+import { setLastAPIRequest } from '../bootstrap/state.js'
 import { TICK_TAG } from '../constants/xml.js'
 import {
   type LogOption,
@@ -337,17 +334,12 @@ export function captureAPIRequest(
     return
   }
 
-  // Store params WITHOUT messages to avoid retaining the entire conversation
-  // for all users. Messages are already persisted to the transcript file and
-  // available via React state.
-  const { messages, ...paramsWithoutMessages } = params
+  // Store params WITHOUT messages. The conversation is already on disk in the
+  // transcript and live in React state, so a reference here would only keep
+  // the pre-compaction payload — tool results and inline base64 images
+  // included — alive after compaction dropped it.
+  const { messages: _messages, ...paramsWithoutMessages } = params
   setLastAPIRequest(paramsWithoutMessages)
-  // For ant users only: also keep a reference to the final messages array so
-  // /share's serialized_conversation.json captures the exact post-compaction,
-  // CLAUDE.md-injected payload the API received. Overwritten each turn;
-  // dumpPrompts.ts already holds 5 full request bodies for ants, so this is
-  // not a new retention class.
-  setLastAPIRequestMessages(process.env.USER_TYPE === 'ant' ? messages : null)
 }
 
 /**
