@@ -13,6 +13,50 @@ KeybindingSetup (loads config)
         └── useRegisterKeybindingContext(name, isActive)
 ```
 
+## When to use a named keybinding (and when not to)
+
+There are two independent key paths, and **both fire for every keystroke**
+(`App.tsx` emits the `InputEvent`, then dispatches the `KeyboardEvent`):
+
+```
+stdin → parse-keypress → InputEvent  → useInput / useKeybinding(s)   ← global while mounted
+                       → KeyboardEvent → Box onKeyDown (focused el)  ← focus-scoped, bubbles
+```
+
+`stopImmediatePropagation()` on one does **not** suppress the other. A component
+using both must deduplicate by hand, so pick one path per key deliberately.
+
+Use a **named keybinding** when the key is a user-facing action someone would
+plausibly want to rebind — especially destructive ones (`x` = kill a running
+task) or app-level toggles. Register the action in `defaultBindings.ts`, and
+render its hint via `useShortcutDisplay` so the UI follows the user's config.
+
+Keep a key on **raw `onKeyDown` / `useInput`** when it is:
+
+- **Generic dialog interaction** — Enter = confirm, Esc = cancel, arrows =
+  navigate a list. These are already covered by the `Confirmation` / `Select`
+  contexts; re-binding them per dialog only creates conflicts.
+- **Text entry** — printable characters, backspace, kill-ring. See
+  `useTextInput` / `useVimInput`; the whole point is that keys are *literal*.
+- **Focus-scoped by nature.** `onKeyDown` only fires on the focused element;
+  `useKeybinding` fires whenever mounted. There is no focus-aware variant, so
+  migrating a focus-scoped handler widens its scope. Safe for a modal with no
+  text input; unsafe anywhere the user can be typing.
+- **A bare letter in a context that can overlap a typing context.** Bare `y`/`n`
+  in `Confirmation` caused real accidental dismissals and were removed
+  (see `confirmation-keybindings.test.ts`). Bare letters are only safe in
+  contexts that cannot be live while an input is focused.
+
+Two sharp edges when adding a context:
+
+1. **Add it to `VALID_CONTEXTS` in `src/keybindings/validate.ts`.** The resolver
+   never consults that list, so default keys work either way — but user config
+   for a missing context is rejected as `invalid_context` and dropped silently.
+   `validContexts.test.ts` ratchets this.
+2. **Resolution is last-match-wins over the binding array, not context
+   priority.** When two active contexts bind the same key, the one declared
+   later in `DEFAULT_BINDINGS` wins. Order matters; pin it with a test.
+
 ## KeybindingSetup
 
 Loads and validates keybinding configuration at app startup.
