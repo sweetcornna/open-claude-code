@@ -14,9 +14,9 @@ import {
   CHROME_AUTOCONNECT_MIN_MAJOR,
   CHROME_BROWSER_URL_ENV,
 } from './common.js'
-import { execFileNoThrow } from '../execFileNoThrow.js'
-import { getPlatform } from '../platform.js'
-import { which } from '../which.js'
+import { execFileNoThrow } from '../process/execFileNoThrow.js'
+import { getPlatform } from '../process/platform.js'
+import { which } from '../process/which.js'
 
 export type ChromeDetection = {
   /** Full version string, e.g. `144.0.7204.50`. */

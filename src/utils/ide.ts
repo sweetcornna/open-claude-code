@@ -17,12 +17,12 @@ import {
   execFileNoThrow,
   execFileNoThrowWithCwd,
   execSyncWithDefaults_DEPRECATED,
-} from './execFileNoThrow.js'
+} from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
-import { getAncestorPidsAsync } from './genericProcessUtils.js'
+import { getAncestorPidsAsync } from './process/genericProcessUtils.js'
 import { isJetBrainsPluginInstalledCached } from './jetbrains.js'
 import { logError } from './log.js'
-import { getPlatform } from './platform.js'
+import { getPlatform } from './process/platform.js'
 
 // Lazy: IdeOnboardingDialog.tsx pulls React/ink; only needed in interactive onboarding path
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -30,7 +30,7 @@ const ideOnboardingDialog =
   (): typeof import('src/components/IdeOnboardingDialog.js') =>
     require('src/components/IdeOnboardingDialog.js')
 
-import { createAbortController } from './abortController.js'
+import { createAbortController } from './process/abortController.js'
 import { logForDebugging } from './debug.js'
 import { envDynamic } from './envDynamic.js'
 import { errorMessage, isFsInaccessible } from './errors.js'
@@ -39,7 +39,7 @@ import {
   checkWSLDistroMatch,
   WindowsToWSLConverter,
 } from './idePathConversion.js'
-import { sleep } from './sleep.js'
+import { sleep } from './process/sleep.js'
 import { jsonParse } from './slowOperations.js'
 
 function isProcessRunning(pid: number): boolean {

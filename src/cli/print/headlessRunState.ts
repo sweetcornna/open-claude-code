@@ -81,7 +81,7 @@ import {
   READ_FILE_STATE_CACHE_SIZE,
 } from 'src/utils/fileStateCache.js'
 import { extractReadFilesFromMessages } from 'src/utils/queryHelpers.js'
-import { createIdleTimeoutManager } from 'src/utils/idleTimeout.js'
+import { createIdleTimeoutManager } from 'src/utils/process/idleTimeout.js'
 import { getModelOptions } from 'src/utils/model/modelOptions.js'
 import {
   getDefaultMainLoopModel,

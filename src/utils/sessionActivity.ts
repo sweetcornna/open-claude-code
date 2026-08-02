@@ -11,7 +11,7 @@
  * Diagnostic logging always fires to help diagnose idle gaps.
  */
 
-import { registerCleanup } from './cleanupRegistry.js'
+import { registerCleanup } from './process/cleanupRegistry.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { isEnvTruthy } from './envUtils.js'
 

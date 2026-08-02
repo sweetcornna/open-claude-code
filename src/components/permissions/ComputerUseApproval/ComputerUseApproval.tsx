@@ -5,7 +5,7 @@ import figures from 'figures';
 import * as React from 'react';
 import { useMemo, useState } from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { execFileNoThrow } from '../../../utils/execFileNoThrow.js';
+import { execFileNoThrow } from '../../../utils/process/execFileNoThrow.js';
 import { plural } from '../../../utils/text/stringUtils.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 import { Select } from '../../CustomSelect/select.js';

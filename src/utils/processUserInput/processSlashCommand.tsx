@@ -38,7 +38,7 @@ import type { Progress as AgentProgress } from '@open-claude-code/builtin-tools/
 import { runAgent } from '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js';
 import { renderToolUseProgressMessage } from '@open-claude-code/builtin-tools/tools/AgentTool/UI.js';
 import type { CommandResultDisplay } from '../../types/command.js';
-import { createAbortController } from '../abortController.js';
+import { createAbortController } from '../process/abortController.js';
 import { getAgentContext } from '../agentContext.js';
 import { createAttachmentMessage, getAttachmentMessages } from '../attachments.js';
 import { logForDebugging } from '../debug.js';
@@ -70,7 +70,7 @@ import { hasPermissionsToUseTool } from '../permissions/permissions.js';
 import { isOfficialMarketplaceName, parsePluginIdentifier } from '../plugins/pluginIdentifier.js';
 import { isRestrictedToPluginOnly, isSourceAdminTrusted } from '../settings/pluginOnlyPolicy.js';
 import { parseSlashCommand } from '../text/slashCommandParsing.js';
-import { sleep } from '../sleep.js';
+import { sleep } from '../process/sleep.js';
 import { recordSkillUsage } from '../suggestions/skillUsageTracking.js';
 import { logOTelEvent, redactIfDisabled } from '../telemetry/events.js';
 import { buildPluginCommandTelemetryFields } from '../telemetry/pluginTelemetry.js';

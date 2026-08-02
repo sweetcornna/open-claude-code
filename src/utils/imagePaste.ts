@@ -11,7 +11,7 @@ import {
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { getImageProcessor } from '@open-claude-code/builtin-tools/tools/FileReadTool/imageProcessor.js'
 import { logForDebugging } from './debug.js'
-import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import { execFileNoThrowWithCwd } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
   detectImageFormatFromBase64,

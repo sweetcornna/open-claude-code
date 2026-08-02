@@ -28,7 +28,7 @@ import {
 } from '../../types/logs.js'
 import type { Message } from '../../types/message.js'
 import type { QueueOperationMessage } from '../../types/messageQueueTypes.js'
-import { registerCleanup } from '../cleanupRegistry.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
@@ -36,7 +36,10 @@ import { isFsInaccessible } from '../errors.js'
 import type { FileHistorySnapshot } from '../filesystem/fileHistory.js'
 import { formatFileSize } from '../text/format.js'
 import { getBranch } from '../git.js'
-import { gracefulShutdownSync, isShuttingDown } from '../gracefulShutdown.js'
+import {
+  gracefulShutdownSync,
+  isShuttingDown,
+} from '../process/gracefulShutdown.js'
 import { logError } from '../log.js'
 import { isCompactBoundaryMessage } from '../messages.js'
 import {

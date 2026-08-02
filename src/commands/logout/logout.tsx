@@ -9,7 +9,7 @@ import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth.js';
 import { clearBetasCaches } from '../../utils/betas.js';
 import { saveGlobalConfig } from '../../utils/config.js';
-import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
+import { gracefulShutdownSync } from '../../utils/process/gracefulShutdown.js';
 import { getSecureStorage } from '../../utils/secureStorage/index.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { clearToolSchemaCache } from '../../utils/toolSchemaCache.js';

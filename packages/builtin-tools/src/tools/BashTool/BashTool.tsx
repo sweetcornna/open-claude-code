@@ -51,8 +51,8 @@ import { expandPath } from 'src/utils/filesystem/path.js';
 import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
-import { exec } from 'src/utils/Shell.js';
-import type { ExecResult } from 'src/utils/ShellCommand.js';
+import { exec } from 'src/utils/shell/Shell.js';
+import type { ExecResult } from 'src/utils/shell/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js';
 import { semanticNumber } from 'src/utils/collections/semanticNumber.js';
@@ -64,7 +64,7 @@ import { isOutputLineTruncated } from 'src/utils/terminal.js';
 import {
   getDefaultBashTimeoutMs as getDefaultTimeoutMs,
   getMaxBashTimeoutMs as getMaxTimeoutMs,
-} from 'src/utils/timeouts.js';
+} from 'src/utils/process/timeouts.js';
 import { getUndercoverInstructions, isUndercover } from 'src/utils/undercover.js';
 import {
   buildLargeToolResultMessage,

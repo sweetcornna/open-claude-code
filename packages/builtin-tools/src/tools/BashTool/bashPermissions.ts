@@ -66,7 +66,7 @@ import {
   suggestionForExactCommand as sharedSuggestionForExactCommand,
   suggestionForPrefix as sharedSuggestionForPrefix,
 } from 'src/utils/permissions/shellRuleMatching.js'
-import { getPlatform } from 'src/utils/platform.js'
+import { getPlatform } from 'src/utils/process/platform.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { windowsPathToPosixPath } from 'src/utils/filesystem/windowsPaths.js'

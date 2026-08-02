@@ -1,7 +1,7 @@
 import { appendFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getProjectRoot, getSessionId } from './bootstrap/state.js'
-import { registerCleanup } from './utils/cleanupRegistry.js'
+import { registerCleanup } from './utils/process/cleanupRegistry.js'
 import type { HistoryEntry, PastedContent } from './utils/config.js'
 import { logForDebugging } from './utils/debug.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './utils/envUtils.js'
@@ -13,7 +13,7 @@ import {
   retrievePastedText,
   storePastedText,
 } from './utils/pasteStore.js'
-import { sleep } from './utils/sleep.js'
+import { sleep } from './utils/process/sleep.js'
 import { jsonParse, jsonStringify } from './utils/slowOperations.js'
 
 const MAX_HISTORY_ITEMS = 100

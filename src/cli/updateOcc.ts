@@ -13,9 +13,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { logForDebugging } from '../utils/debug.js'
 import { distRoot } from '../utils/filesystem/distRoot.js'
-import { execFileNoThrowWithCwd } from '../utils/execFileNoThrow.js'
-import { gracefulShutdown } from '../utils/gracefulShutdown.js'
-import { writeToStdout } from '../utils/process.js'
+import { execFileNoThrowWithCwd } from '../utils/process/execFileNoThrow.js'
+import { gracefulShutdown } from '../utils/process/gracefulShutdown.js'
+import { writeToStdout } from '../utils/process/process.js'
 
 const PACKAGE_NAME = NPM_PACKAGE_NAME
 

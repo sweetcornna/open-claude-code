@@ -22,7 +22,7 @@
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { registerCleanup } from '../utils/cleanupRegistry.js'
+import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../utils/debug.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { isENOENT } from '../utils/errors.js'

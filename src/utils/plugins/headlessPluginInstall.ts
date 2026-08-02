@@ -10,7 +10,7 @@
  */
 
 import { logEvent } from '../../services/analytics/index.js'
-import { registerCleanup } from '../cleanupRegistry.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { withDiagnosticsTiming } from '../diagLogs.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'

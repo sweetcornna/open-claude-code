@@ -7,7 +7,7 @@
  * Legacy name: originally AWS-only; now used by all cloud auth refresh flows.
  */
 
-import { createSignal } from './signal.js'
+import { createSignal } from './process/signal.js'
 
 export type AwsAuthStatus = {
   isAuthenticating: boolean

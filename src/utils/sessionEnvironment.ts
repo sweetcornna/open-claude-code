@@ -4,7 +4,7 @@ import { getSessionId } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
-import { getPlatform } from './platform.js'
+import { getPlatform } from './process/platform.js'
 
 // Cache states:
 // undefined = not yet loaded (need to check disk)

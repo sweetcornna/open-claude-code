@@ -10,7 +10,7 @@ mock.module('src/utils/settings/settings.js', () => ({
 }))
 
 // Force windows platform for these unit tests regardless of host OS.
-mock.module('src/utils/platform.js', () => ({
+mock.module('src/utils/process/platform.js', () => ({
   getPlatform: () => 'windows' as const,
   SUPPORTED_PLATFORMS: ['macos', 'wsl'],
 }))

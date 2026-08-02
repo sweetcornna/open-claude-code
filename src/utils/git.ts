@@ -7,7 +7,7 @@ import { hasBinaryExtension, isBinaryContent } from '../constants/files.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { execFileNoThrow } from './execFileNoThrow.js'
+import { execFileNoThrow } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
   getCachedBranch,
@@ -20,7 +20,7 @@ import {
 } from './git/gitFilesystem.js'
 import { logError } from './log.js'
 import { memoizeWithLRU } from './collections/memoize.js'
-import { whichSync } from './which.js'
+import { whichSync } from './process/which.js'
 
 const GIT_ROOT_NOT_FOUND = Symbol('git-root-not-found')
 

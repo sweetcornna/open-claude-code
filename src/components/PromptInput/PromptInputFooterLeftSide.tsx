@@ -43,7 +43,7 @@ import { useVoiceState } from '../../context/voice.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { isXtermJs, useHasSelection, useSelection } from '@anthropic/ink';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { getPlatform } from '../../utils/platform.js';
+import { getPlatform } from '../../utils/process/platform.js';
 import { PrBadge } from '../PrBadge.js';
 
 // Dead code elimination: conditional import for proactive mode

@@ -16,7 +16,7 @@ import { AbortError } from '@open-claude-code/tool-runtime/errors.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { extractTextContent } from 'src/utils/messages.js';
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js';
-import { sleep } from 'src/utils/sleep.js';
+import { sleep } from 'src/utils/process/sleep.js';
 import { jsonParse } from '@open-claude-code/tool-runtime/slowOperations.js';
 import { countCharInString } from '@open-claude-code/tool-runtime/stringUtils.js';
 import { getTaskOutput } from 'src/utils/task/diskOutput.js';

@@ -1,6 +1,9 @@
 import { spawnSync } from 'child_process'
-import { execFileNoThrow } from '../../../utils/execFileNoThrow.js'
-import { buildCliLaunch, quoteCliLaunch } from '../../../utils/cliLaunch.js'
+import { execFileNoThrow } from '../../../utils/process/execFileNoThrow.js'
+import {
+  buildCliLaunch,
+  quoteCliLaunch,
+} from '../../../utils/process/cliLaunch.js'
 import type {
   BgEngine,
   BgStartOptions,

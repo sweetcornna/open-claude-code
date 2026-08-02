@@ -7,9 +7,9 @@ import {
 } from 'src/services/analytics/index.js'
 import { getOauthAccountInfo, isConsumerSubscriber } from 'src/utils/auth.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
+import { gracefulShutdown } from 'src/utils/process/gracefulShutdown.js'
 import { isEssentialTrafficOnly } from 'src/utils/privacyLevel.js'
-import { writeToStderr } from 'src/utils/process.js'
+import { writeToStderr } from 'src/utils/process/process.js'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import {

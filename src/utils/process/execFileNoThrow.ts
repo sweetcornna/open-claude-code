@@ -6,7 +6,7 @@ import { type ExecaError, execa } from 'execa'
 import { getCwd } from '../filesystem/cwd.js'
 import { logError } from '../log.js'
 
-export { execSyncWithDefaults_DEPRECATED } from '../execFileNoThrowPortable.js'
+export { execSyncWithDefaults_DEPRECATED } from './execFileNoThrowPortable.js'
 
 const MS_IN_SECOND = 1000
 const SECONDS_IN_MINUTE = 60

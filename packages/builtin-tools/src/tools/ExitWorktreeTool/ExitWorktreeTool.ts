@@ -11,11 +11,11 @@ import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { count } from 'src/utils/collections/array.js'
 import { clearMemoryFileCaches } from 'src/utils/claudemd.js'
-import { execFileNoThrow } from 'src/utils/execFileNoThrow.js'
+import { execFileNoThrow } from 'src/utils/process/execFileNoThrow.js'
 import { updateHooksConfigSnapshot } from 'src/utils/hooks/hooksConfigSnapshot.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getPlansDirectory } from 'src/utils/plans.js'
-import { setCwd } from 'src/utils/Shell.js'
+import { setCwd } from 'src/utils/shell/Shell.js'
 import { saveWorktreeState } from 'src/utils/sessionStorage.js'
 import {
   cleanupWorktree,

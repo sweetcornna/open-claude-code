@@ -24,7 +24,7 @@ import type { TurnInterruptionState } from 'src/utils/conversationRecovery.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { shouldForceGc } from 'src/cli/headlessGc.js'
 import { createStreamlinedTransformer } from 'src/utils/streamlinedTransform.js'
-import { installStreamJsonStdoutGuard } from 'src/utils/streamJsonStdoutGuard.js'
+import { installStreamJsonStdoutGuard } from 'src/utils/process/streamJsonStdoutGuard.js'
 import {
   logHeadlessProfilerTurn,
   headlessProfilerCheckpoint,
@@ -35,7 +35,7 @@ import {
   checkGroveForNonInteractive,
 } from 'src/services/api/grove.js'
 import { initializeGrowthBook } from 'src/services/analytics/growthbook.js'
-import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js'
+import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js'
 import { validateUuid } from 'src/utils/collections/uuid.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import { errorMessage } from 'src/utils/errors.js'
@@ -54,7 +54,7 @@ import { jsonStringify } from 'src/utils/slowOperations.js'
 import {
   writeToStdout,
   registerProcessOutputErrorHandlers,
-} from 'src/utils/process.js'
+} from 'src/utils/process/process.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
 import { applySettingsChange } from 'src/utils/settings/applySettingsChange.js'
 import { isFastModeEnabled } from 'src/utils/fastMode.js'

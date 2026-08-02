@@ -41,7 +41,7 @@ import { fileHistoryRestoreStateFromLog } from './filesystem/fileHistory.js'
 import { createSystemMessage } from './messages.js'
 import { parseUserSpecifiedModel } from './model/model.js'
 import { getPlansDirectory } from './plans.js'
-import { setCwd } from './Shell.js'
+import { setCwd } from './shell/Shell.js'
 import {
   adoptResumedSessionFile,
   recordContentReplacement,

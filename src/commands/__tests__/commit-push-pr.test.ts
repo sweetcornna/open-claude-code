@@ -17,7 +17,7 @@ mock.module('src/utils/undercover.ts', () => ({
   shouldShowUndercoverAutoNotice: () => false,
 }))
 
-mock.module('src/utils/promptShellExecution.ts', () => ({
+mock.module('src/utils/shell/promptShellExecution.ts', () => ({
   executeShellCommandsInPrompt: async (content: string) => content,
 }))
 
@@ -266,7 +266,7 @@ describe('commit-push-pr getPromptForCommand', () => {
     let capturedGetAppState: (() => any) | undefined
 
     // Re-mock executeShellCommandsInPrompt to capture the context argument
-    mock.module('src/utils/promptShellExecution.ts', () => ({
+    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedGetAppState = ctx.getAppState.bind(ctx)
         return content

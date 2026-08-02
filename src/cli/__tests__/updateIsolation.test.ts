@@ -13,7 +13,7 @@ import {
   buildDeepLink,
   parseDeepLink,
 } from 'src/utils/deepLink/parseDeepLink.js'
-import { filterOccAliases } from 'src/utils/shellConfig.js'
+import { filterOccAliases } from 'src/utils/shell/shellConfig.js'
 
 const sourceRoot = resolve(import.meta.dir, '..', '..')
 

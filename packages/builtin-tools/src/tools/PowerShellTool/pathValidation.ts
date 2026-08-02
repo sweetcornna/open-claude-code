@@ -34,7 +34,7 @@ import {
   isDangerousRemovalPath,
   isPathInSandboxWriteAllowlist,
 } from 'src/utils/permissions/pathValidation.js'
-import { getPlatform } from 'src/utils/platform.js'
+import { getPlatform } from 'src/utils/process/platform.js'
 import type {
   ParsedCommandElement,
   ParsedPowerShellCommand,

@@ -13,7 +13,7 @@
  * Only runs on macOS - no-op on other platforms.
  */
 import { type ChildProcess, spawn } from 'child_process'
-import { registerCleanup } from '../utils/cleanupRegistry.js'
+import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../utils/debug.js'
 
 // Caffeinate timeout in seconds. Process auto-exits after this duration.

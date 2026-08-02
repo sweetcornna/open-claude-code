@@ -34,7 +34,10 @@ import {
   isENOENT,
   toError,
 } from '../errors.js'
-import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import {
+  execFileNoThrow,
+  execFileNoThrowWithCwd,
+} from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { gitExe } from '../git.js'
 import { logError } from '../log.js'

@@ -25,13 +25,13 @@ import { enqueue, peek } from 'src/utils/messageQueueManager.js'
 import {
   gracefulShutdownSync,
   isShuttingDown,
-} from 'src/utils/gracefulShutdown.js'
+} from 'src/utils/process/gracefulShutdown.js'
 import { notifySessionStateChanged } from 'src/utils/sessionState.js'
 import { drainSdkEvents } from 'src/utils/sdkEventQueue.js'
 import { headlessProfilerCheckpoint } from 'src/utils/headlessProfiler.js'
 import { getRunningTasks } from 'src/utils/task/framework.js'
 import { isBackgroundTask } from 'src/tasks/types.js'
-import { sleep } from 'src/utils/sleep.js'
+import { sleep } from 'src/utils/process/sleep.js'
 import { createProactiveAutonomyCommands } from 'src/utils/autonomyRuns.js'
 import { cancelQueuedAutonomyCommands } from 'src/utils/autonomyQueueLifecycle.js'
 import { SHUTDOWN_TEAM_PROMPT, proactiveModule } from './runtime.js'

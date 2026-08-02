@@ -2,7 +2,7 @@ import { spawnSync } from 'child_process'
 import { getIsInteractive } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
-import { execFileNoThrow } from './execFileNoThrow.js'
+import { execFileNoThrow } from './process/execFileNoThrow.js'
 
 let loggedTmuxCcDisable = false
 let checkedTmuxMouseHint = false

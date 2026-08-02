@@ -1,5 +1,5 @@
 import { HAPPY_BIN, HAPPY_NPM_PACKAGE } from '../cli/remoteControlLauncher.js'
-import { whichSync } from './which.js'
+import { whichSync } from './process/which.js'
 
 /**
  * Local view of remote-control readiness.

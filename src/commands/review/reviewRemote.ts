@@ -27,7 +27,7 @@ import {
 } from '../../tasks/RemoteAgentTask/RemoteAgentTask.js'
 import { isEnterpriseSubscriber, isTeamSubscriber } from '../../utils/auth.js'
 import { detectCurrentRepositoryWithHost } from '../../utils/detectRepository.js'
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js'
 import { getDefaultBranch, gitExe } from '../../utils/git.js'
 import { teleportToRemote } from '../../utils/teleport.js'
 

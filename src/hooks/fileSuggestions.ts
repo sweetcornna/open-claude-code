@@ -17,7 +17,7 @@ import { getGlobalConfig } from '../utils/config.js'
 import { getCwd } from '../utils/filesystem/cwd.js'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { execFileNoThrowWithCwd } from '../utils/execFileNoThrow.js'
+import { execFileNoThrowWithCwd } from '../utils/process/execFileNoThrow.js'
 import { getFsImplementation } from '../utils/filesystem/fsOperations.js'
 import { findGitRoot, gitExe } from '../utils/git.js'
 import {
@@ -28,7 +28,7 @@ import { logError } from '../utils/log.js'
 import { expandPath } from '../utils/filesystem/path.js'
 import { ripGrep } from '../utils/filesystem/ripgrep.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
-import { createSignal } from '../utils/signal.js'
+import { createSignal } from '../utils/process/signal.js'
 
 // Lazily constructed singleton
 let fileIndex: FileIndex | null = null

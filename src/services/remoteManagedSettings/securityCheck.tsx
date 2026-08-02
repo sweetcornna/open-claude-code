@@ -8,7 +8,7 @@ import {
 import { wrappedRender as render } from '@anthropic/ink';
 import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js';
 import { AppStateProvider } from '../../state/AppState.js';
-import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
+import { gracefulShutdownSync } from '../../utils/process/gracefulShutdown.js';
 import { getBaseRenderOptions } from '../../utils/renderOptions.js';
 import type { SettingsJson } from '../../utils/settings/types.js';
 import { logEvent } from '../analytics/index.js';

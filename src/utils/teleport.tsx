@@ -30,7 +30,7 @@ import { logForDebugging } from './debug.js';
 import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote } from './detectRepository.js';
 import { isEnvTruthy } from './envUtils.js';
 import { TeleportOperationError, toError } from './errors.js';
-import { execFileNoThrow } from './execFileNoThrow.js';
+import { execFileNoThrow } from './process/execFileNoThrow.js';
 import { truncateToWidth } from './text/format.js';
 import { findGitRoot, getDefaultBranch, getIsClean, gitExe } from './git.js';
 import { safeParseJSON } from './text/json.js';

@@ -61,7 +61,7 @@ const monitor = {
         const { spawnShellTask } =
           require('../tasks/LocalShellTask/LocalShellTask.js') as typeof import('../tasks/LocalShellTask/LocalShellTask.js')
         const { exec } =
-          require('../utils/Shell.js') as typeof import('../utils/Shell.js')
+          require('../utils/shell/Shell.js') as typeof import('../utils/shell/Shell.js')
         const { getTaskOutputPath } =
           require('../utils/task/diskOutput.js') as typeof import('../utils/task/diskOutput.js')
 

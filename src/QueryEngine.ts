@@ -43,7 +43,7 @@ import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tool
 import type { APIError } from '@anthropic-ai/sdk'
 import type { Message, SystemCompactBoundaryMessage } from './types/message.js'
 import type { OrphanedPermission } from './types/textInputTypes.js'
-import { createAbortController } from './utils/abortController.js'
+import { createAbortController } from './utils/process/abortController.js'
 import type { AttributionState } from './utils/commitAttribution.js'
 import { getGlobalConfig } from './utils/config.js'
 import { getCwd } from './utils/filesystem/cwd.js'
@@ -72,7 +72,7 @@ import {
   processUserInput,
 } from './utils/processUserInput/processUserInput.js'
 import { fetchSystemPromptParts } from './utils/queryContext.js'
-import { setCwd } from './utils/Shell.js'
+import { setCwd } from './utils/shell/Shell.js'
 import {
   flushSessionStorage,
   recordTranscript,

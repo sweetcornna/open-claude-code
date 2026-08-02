@@ -27,7 +27,7 @@ import { mkdirSync, writeFileSync } from 'fs'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
-import { registerCleanup } from '../cleanupRegistry.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import {
   getClaudeConfigHomeDir,

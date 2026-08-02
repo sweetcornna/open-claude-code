@@ -59,7 +59,7 @@ import {
 } from '../filesystem/fsOperations.js'
 import { modelSupportsAutoMode } from '../betas.js'
 import { logForDebugging } from '../debug.js'
-import { gracefulShutdown } from '../gracefulShutdown.js'
+import { gracefulShutdown } from '../process/gracefulShutdown.js'
 import { getMainLoopModel } from '../model/model.js'
 import {
   CROSS_PLATFORM_CODE_EXEC,

@@ -1,6 +1,6 @@
 import { sep } from 'path'
 import { logEvent } from '../services/analytics/index.js'
-import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import { execFileNoThrowWithCwd } from './process/execFileNoThrow.js'
 import { gitExe } from './git.js'
 
 /**

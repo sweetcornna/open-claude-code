@@ -14,9 +14,9 @@ import type {
   RequestStartEvent,
   StreamEvent,
 } from '../../types/message.js'
-import { createAbortController } from '../abortController.js'
+import { createAbortController } from '../process/abortController.js'
 import { createAttachmentMessage } from '../attachments.js'
-import { createCombinedAbortSignal } from '../combinedAbortSignal.js'
+import { createCombinedAbortSignal } from '../process/combinedAbortSignal.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'

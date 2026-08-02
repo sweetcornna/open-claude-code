@@ -16,11 +16,11 @@ import {
   onDynamicSkillsLoaded,
 } from '../../skills/loadSkillsDir.js'
 import { resetSentSkillNames } from '../attachments.js'
-import { registerCleanup } from '../cleanupRegistry.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { executeConfigChangeHooks, hasBlockingResult } from '../hooks.js'
-import { createSignal } from '../signal.js'
+import { createSignal } from '../process/signal.js'
 
 /**
  * Time in milliseconds to wait for file writes to stabilize before processing.

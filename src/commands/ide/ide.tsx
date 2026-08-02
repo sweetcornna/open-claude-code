@@ -16,7 +16,7 @@ import { clearServerCache } from '../../services/mcp/client.js';
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import { getCwd } from '../../utils/filesystem/cwd.js';
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import {
   type DetectedIDEInfo,
   detectIDEs,

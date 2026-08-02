@@ -31,7 +31,7 @@ import { isEnvTruthy } from './utils/envUtils.js';
 import { run } from './cli/program/run.js';
 import { _pendingAssistantChat, _pendingSSH as _pendingSSHState } from './cli/program/pendingState.js';
 import { eagerLoadSettings, initializeEntrypoint } from './cli/program/settingsFlags.js';
-import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
+import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js';
 import { setClientType, setIsInteractive, setQuestionPreviewFormat, setSessionSource } from './bootstrap/state.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects

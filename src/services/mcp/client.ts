@@ -44,14 +44,14 @@ import {
 } from '@open-claude-code/builtin-tools/tools/MCPTool/MCPTool.js'
 import { createMcpAuthTool } from '@open-claude-code/builtin-tools/tools/McpAuthTool/McpAuthTool.js'
 import { ReadMcpResourceTool } from '@open-claude-code/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
-import { createAbortController } from '../../utils/abortController.js'
+import { createAbortController } from '../../utils/process/abortController.js'
 import { count } from '../../utils/collections/array.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
 } from '../../utils/auth.js'
-import { registerCleanup } from '../../utils/cleanupRegistry.js'
+import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
 import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
@@ -87,7 +87,7 @@ import {
   getWebSocketProxyUrl,
 } from '../../utils/proxy.js'
 import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
-import { subprocessEnv } from '../../utils/subprocessEnv.js'
+import { subprocessEnv } from '../../utils/process/subprocessEnv.js'
 import {
   isPersistError,
   persistToolResult,
@@ -126,7 +126,7 @@ import type { AssistantMessage } from 'src/types/message.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { classifyMcpToolForCollapse } from '@open-claude-code/builtin-tools/tools/MCPTool/classifyForCollapse.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
-import { sleep } from '../../utils/sleep.js'
+import { sleep } from '../../utils/process/sleep.js'
 import {
   ClaudeAuthProvider,
   hasMcpDiscoveryButNoToken,

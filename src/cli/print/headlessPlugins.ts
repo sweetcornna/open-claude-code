@@ -19,7 +19,7 @@ import type { McpServerConfigForProcessTransport } from 'src/entrypoints/agentSd
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { installPluginsForHeadless } from 'src/utils/plugins/headlessPluginInstall.js'
 import { refreshActivePlugins } from 'src/utils/plugins/refresh.js'
-import { sleep } from 'src/utils/sleep.js'
+import { sleep } from 'src/utils/process/sleep.js'
 import { applyMcpServerChanges, updateSdkMcp } from './headlessMcpRuntime.js'
 import type { HeadlessRunState } from './headlessRunState.js'
 

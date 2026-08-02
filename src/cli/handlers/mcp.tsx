@@ -34,9 +34,9 @@ import { describeMcpConfigFilePath, ensureConfigScope, getScopeLabel } from '../
 import { AppStateProvider } from '../../state/AppState.js';
 import { getCurrentProjectConfig, getGlobalConfig, saveCurrentProjectConfig } from '../../utils/config.js';
 import { isFsInaccessible } from '../../utils/errors.js';
-import { gracefulShutdown } from '../../utils/gracefulShutdown.js';
+import { gracefulShutdown } from '../../utils/process/gracefulShutdown.js';
 import { safeParseJSON } from '../../utils/text/json.js';
-import { getPlatform } from '../../utils/platform.js';
+import { getPlatform } from '../../utils/process/platform.js';
 import { cliError, cliOk } from '../exit.js';
 
 async function checkMcpServerHealth(name: string, server: ScopedMcpServerConfig): Promise<string> {

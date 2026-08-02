@@ -54,7 +54,7 @@ import {
   getPlanFilePath,
   persistFileSnapshotIfRemote,
 } from './plans.js'
-import { getPlatform } from './platform.js'
+import { getPlatform } from './process/platform.js'
 import { countFilesRoundedRg } from './filesystem/ripgrep.js'
 import { jsonStringify } from './slowOperations.js'
 import type { SystemPrompt } from './systemPromptType.js'

@@ -8,7 +8,7 @@ import {
 import { getErrnoCode } from './errors.js'
 import { safeParseJSON } from './text/json.js'
 import { logError } from './log.js'
-import { getPlatform, SUPPORTED_PLATFORMS } from './platform.js'
+import { getPlatform, SUPPORTED_PLATFORMS } from './process/platform.js'
 
 export async function getClaudeDesktopConfigPath(): Promise<string> {
   const platform = getPlatform()

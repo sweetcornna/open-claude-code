@@ -36,14 +36,14 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { getMaxVersion, shouldSkipVersion } from '../autoUpdater.js'
-import { registerCleanup } from '../cleanupRegistry.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { env } from '../env.js'
 import { envDynamic } from '../envDynamic.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
-import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getShellType } from '../localInstaller.js'
 import * as lockfile from '../filesystem/lockfile.js'
 import { logError } from '../log.js'
@@ -53,8 +53,8 @@ import {
   getShellConfigPaths,
   readFileLines,
   writeFileLines,
-} from '../shellConfig.js'
-import { sleep } from '../sleep.js'
+} from '../shell/shellConfig.js'
+import { sleep } from '../process/sleep.js'
 import {
   getUserBinDir,
   getXDGCacheHome,

@@ -10,7 +10,7 @@ import { parseGitHubRepository } from '../detectRepository.js'
 import { errorMessage, toError } from '../errors.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { logError } from '../log.js'
-import { sleep } from '../sleep.js'
+import { sleep } from '../process/sleep.js'
 import { jsonStringify } from '../slowOperations.js'
 
 // Retry configuration for teleport API requests

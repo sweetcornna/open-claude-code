@@ -60,7 +60,7 @@ import type { PermissionResult } from '@open-claude-code/tool-runtime/permission
 import { filterDeniedAgents, getDenyRuleForAgent } from 'src/utils/permissions/permissions.js';
 import { enqueueSdkEvent } from 'src/utils/sdkEventQueue.js';
 import { writeAgentMetadata } from 'src/utils/sessionStorage.js';
-import { sleep } from 'src/utils/sleep.js';
+import { sleep } from 'src/utils/process/sleep.js';
 import { buildEffectiveSystemPrompt } from 'src/utils/systemPrompt.js';
 import { asSystemPrompt } from 'src/utils/systemPromptType.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';

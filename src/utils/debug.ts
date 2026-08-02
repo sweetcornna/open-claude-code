@@ -7,7 +7,7 @@ import {
   type BufferedWriter,
   createBufferedWriter,
 } from './filesystem/bufferedWriter.js'
-import { registerCleanup } from './cleanupRegistry.js'
+import { registerCleanup } from './process/cleanupRegistry.js'
 import {
   type DebugFilter,
   parseDebugFilter,
@@ -15,7 +15,7 @@ import {
 } from './debugFilter.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
-import { writeToStderr } from './process.js'
+import { writeToStderr } from './process/process.js'
 import { jsonStringify } from './slowOperations.js'
 
 export type DebugLogLevel = 'verbose' | 'debug' | 'info' | 'warn' | 'error'

@@ -17,9 +17,9 @@ import { logForDebugging } from './debug.js'
 import { env } from './env.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'
 import { ClaudeError, getErrnoCode, isENOENT } from './errors.js'
-import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import { execFileNoThrowWithCwd } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
-import { gracefulShutdownSync } from './gracefulShutdown.js'
+import { gracefulShutdownSync } from './process/gracefulShutdown.js'
 import { logError } from './log.js'
 import { gte, lt } from './text/semver.js'
 import { getInitialSettings } from './settings/settings.js'
@@ -28,7 +28,7 @@ import {
   getShellConfigPaths,
   readFileLines,
   writeFileLines,
-} from './shellConfig.js'
+} from './shell/shellConfig.js'
 import { jsonParse } from './slowOperations.js'
 
 class AutoUpdaterError extends ClaudeError {}

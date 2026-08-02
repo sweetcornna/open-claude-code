@@ -4,7 +4,7 @@ import {
   parseArgumentNames,
   generateProgressiveArgumentHint,
   substituteArguments,
-} from '../argumentSubstitution'
+} from '../shell/argumentSubstitution'
 
 // ─── parseArguments ─────────────────────────────────────────────────────
 
