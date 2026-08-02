@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useContext } from 'react';
 import { Box, NoSelect, Text, Ratchet } from '@anthropic/ink';
+import { registerMessageResponseHost } from '@open-claude-code/tool-runtime/messageResponse.js';
 
 type Props = {
   children: React.ReactNode;
@@ -38,3 +39,5 @@ const MessageResponseContext = React.createContext(false);
 function MessageResponseProvider({ children }: { children: React.ReactNode }): React.ReactNode {
   return <MessageResponseContext.Provider value={true}>{children}</MessageResponseContext.Provider>;
 }
+
+registerMessageResponseHost(MessageResponse);

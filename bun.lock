@@ -263,6 +263,9 @@
     "packages/tool-runtime": {
       "name": "@open-claude-code/tool-runtime",
       "version": "1.0.0",
+      "dependencies": {
+        "react": "^19.2.5",
+      },
     },
     "packages/url-handler-napi": {
       "name": "url-handler-napi",
