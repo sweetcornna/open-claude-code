@@ -1,0 +1,3403 @@
+// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+import { feature } from 'bun:bundle'
+import { readFile, stat } from 'fs/promises'
+import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
+import { StructuredIO } from 'src/cli/structuredIO.js'
+import { RemoteIO } from 'src/cli/remoteIO.js'
+import {
+  type Command,
+  formatDescriptionWithSource,
+  getCommandName,
+} from 'src/commands.js'
+import type { ThinkingConfig } from 'src/utils/thinking.js'
+import { assembleToolPool } from 'src/tools.js'
+import uniqBy from 'lodash-es/uniqBy.js'
+import { uniq } from 'src/utils/array.js'
+import { mergeAndFilterTools } from 'src/utils/toolPool.js'
+import {
+  logEvent,
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+} from 'src/services/analytics/index.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { logForDebugging } from 'src/utils/debug.js'
+import {
+  logForDiagnosticsNoPII,
+  withDiagnosticsTiming,
+} from 'src/utils/diagLogs.js'
+import { toolMatchesName, type Tools } from 'src/Tool.js'
+import { type AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+import type { Message } from 'src/types/message.js'
+import type { QueuedCommand } from 'src/types/textInputTypes.js'
+import {
+  dequeue,
+  dequeueAllMatching,
+  enqueue,
+  hasCommandsInQueue,
+  peek,
+  subscribeToCommandQueue,
+  getCommandsByMaxPriority,
+} from 'src/utils/messageQueueManager.js'
+import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
+import {
+  getSessionState,
+  notifySessionStateChanged,
+  notifySessionMetadataChanged,
+  setPermissionModeChangedListener,
+} from 'src/utils/sessionState.js'
+import { getInMemoryErrors, logError, logMCPDebug } from 'src/utils/log.js'
+import { EMPTY_USAGE } from '@ant/model-provider'
+import { type TurnInterruptionState } from 'src/utils/conversationRecovery.js'
+import type {
+  MCPServerConnection,
+  McpSdkServerConfig,
+} from 'src/services/mcp/types.js'
+import {
+  isChannelAllowlisted,
+  isChannelsEnabled,
+} from 'src/services/mcp/channelAllowlist.js'
+import { ask } from 'src/QueryEngine.js'
+import {
+  createFileStateCacheWithSizeLimit,
+  mergeFileStateCaches,
+  READ_FILE_STATE_CACHE_SIZE,
+} from 'src/utils/fileStateCache.js'
+import { expandPath } from 'src/utils/path.js'
+import { extractReadFilesFromMessages } from 'src/utils/queryHelpers.js'
+import { executeFilePersistence } from 'src/utils/filePersistence/filePersistence.js'
+import { finalizePendingAsyncHooks } from 'src/utils/hooks/AsyncHookRegistry.js'
+import {
+  gracefulShutdown,
+  gracefulShutdownSync,
+  isShuttingDown,
+} from 'src/utils/gracefulShutdown.js'
+import { registerCleanup } from 'src/utils/cleanupRegistry.js'
+import { createIdleTimeoutManager } from 'src/utils/idleTimeout.js'
+import type {
+  SDKStatus,
+  SDKMessage,
+  SDKUserMessage,
+  McpServerConfigForProcessTransport,
+  McpServerStatus,
+} from 'src/entrypoints/agentSdkTypes.js'
+import type {
+  StdoutMessage,
+  SDKControlRequest,
+  SDKControlMcpSetServersResponse,
+  SDKControlReloadPluginsResponse,
+} from 'src/entrypoints/sdk/controlTypes.js'
+import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
+import { cwd } from 'process'
+import omit from 'lodash-es/omit.js'
+import reject from 'lodash-es/reject.js'
+import { getRemoteSessionUrl } from 'src/constants/product.js'
+import { resolveAndPrepend } from 'src/cli/inboundAttachments.js'
+import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
+import { createAbortController } from 'src/utils/abortController.js'
+import { generateSessionTitle } from 'src/utils/sessionTitle.js'
+import { buildSideQuestionFallbackParams } from 'src/utils/queryContext.js'
+import { runSideQuestion } from 'src/utils/sideQuestion.js'
+import { TEAMMATE_MESSAGE_TAG, TICK_TAG } from 'src/constants/xml.js'
+import { getSettingsWithSources } from 'src/utils/settings/settings.js'
+import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
+import { isFastModeSupportedByModel } from 'src/utils/fastMode.js'
+import {
+  tryGenerateSuggestion,
+  logSuggestionOutcome,
+  logSuggestionSuppressed,
+  type PromptVariant,
+} from 'src/services/PromptSuggestion/promptSuggestion.js'
+import { getLastCacheSafeParams } from 'src/utils/cacheSafeParamsSlot.js'
+import { getAccountInformation } from 'src/utils/auth.js'
+import { OAuthService } from 'src/services/oauth/index.js'
+import { installOAuthTokens } from 'src/cli/handlers/auth.js'
+import { getAPIProvider } from 'src/utils/model/providers.js'
+import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
+import {
+  getInitJsonSchema,
+  setSdkAgentProgressSummariesEnabled,
+} from 'src/bootstrap/state.js'
+import { createSyntheticOutputTool } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
+import {
+  doesMessageExistInSession,
+  recordAttributionSnapshot,
+  saveAiGeneratedTitle,
+} from 'src/utils/sessionStorage.js'
+import { incrementPromptCount } from 'src/utils/commitAttribution.js'
+import {
+  setupSdkMcpClients,
+  clearServerCache,
+  reconnectMcpServerImpl,
+} from 'src/services/mcp/client.js'
+import {
+  getMcpConfigByName,
+  isMcpServerDisabled,
+  setMcpServerEnabled,
+} from 'src/services/mcp/config.js'
+import {
+  performMCPOAuthFlow,
+  revokeServerTokens,
+} from 'src/services/mcp/auth.js'
+import {
+  runElicitationHooks,
+  runElicitationResultHooks,
+} from 'src/services/mcp/elicitationHandler.js'
+import { executeNotificationHooks } from 'src/utils/hooks.js'
+import { getMcpPrefix } from 'src/services/mcp/mcpStringUtils.js'
+import {
+  commandBelongsToServer,
+  filterToolsByServer,
+} from 'src/services/mcp/utils.js'
+import { setupVscodeSdkMcp } from 'src/services/mcp/vscodeSdkMcp.js'
+import { getAllMcpConfigs } from 'src/services/mcp/config.js'
+import {
+  toInternalMessages,
+  toSDKRateLimitInfo,
+} from 'src/utils/messages/mappers.js'
+import { createModelSwitchBreadcrumbs } from 'src/utils/messages.js'
+import { collectContextData } from 'src/commands/context/context-noninteractive.js'
+import { LOCAL_COMMAND_STDOUT_TAG } from 'src/constants/xml.js'
+import {
+  statusListeners,
+  type ClaudeAILimits,
+} from 'src/services/claudeAiLimits.js'
+import {
+  getDefaultMainLoopModel,
+  getMainLoopModel,
+  modelDisplayString,
+  parseUserSpecifiedModel,
+} from 'src/utils/model/model.js'
+import { getModelOptions } from 'src/utils/model/modelOptions.js'
+import {
+  modelSupportsEffort,
+  modelSupportsMaxEffort,
+  EFFORT_LEVELS,
+  resolveAppliedEffort,
+} from 'src/utils/effort.js'
+import { modelSupportsAdaptiveThinking } from 'src/utils/thinking.js'
+import { modelSupportsAutoMode } from 'src/utils/betas.js'
+import {
+  getSessionId,
+  setMainLoopModelOverride,
+  getIsRemoteMode,
+  getFlagSettingsInline,
+  setFlagSettingsInline,
+} from 'src/bootstrap/state.js'
+import { runWithWorkload, WORKLOAD_CRON } from 'src/utils/workloadContext.js'
+import type { UUID } from 'crypto'
+import { randomUUID } from 'crypto'
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { AppState } from 'src/state/AppStateStore.js'
+import {
+  headlessProfilerStartTurn,
+  headlessProfilerCheckpoint,
+  logHeadlessProfilerTurn,
+} from 'src/utils/headlessProfiler.js'
+import {
+  startQueryProfile,
+  logQueryProfileReport,
+} from 'src/utils/queryProfiler.js'
+import {
+  createAutonomyQueuedPromptIfNoActiveSource,
+  createProactiveAutonomyCommands,
+  markAutonomyRunFailed,
+} from 'src/utils/autonomyRuns.js'
+import {
+  cancelQueuedAutonomyCommands,
+  claimConsumableQueuedAutonomyCommands,
+  finalizeAutonomyCommandsForTurn,
+} from 'src/utils/autonomyQueueLifecycle.js'
+import { jsonStringify } from '../../utils/slowOperations.js'
+import { skillChangeDetector } from '../../utils/skills/skillChangeDetector.js'
+import { getCommands, clearCommandsCache } from '../../commands.js'
+import {
+  isBareMode,
+  isEnvTruthy,
+  isEnvDefinedFalsy,
+} from '../../utils/envUtils.js'
+import { installPluginsForHeadless } from '../../utils/plugins/headlessPluginInstall.js'
+import { refreshActivePlugins } from '../../utils/plugins/refresh.js'
+import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
+import {
+  isTeamLead,
+  hasActiveInProcessTeammates,
+  hasWorkingInProcessTeammates,
+  waitForTeammatesToBecomeIdle,
+} from '../../utils/teammate.js'
+import {
+  readUnreadMessages,
+  markMessagesAsRead,
+  isShutdownApproved,
+} from '../../utils/teammateMailbox.js'
+import { removeTeammateFromTeamFile } from '../../utils/swarm/teamHelpers.js'
+import { unassignTeammateTasks } from '../../utils/tasks.js'
+import { getRunningTasks } from '../../utils/task/framework.js'
+import { isBackgroundTask } from '../../tasks/types.js'
+import { stopTask } from '../../tasks/stopTask.js'
+import { drainSdkEvents } from '../../utils/sdkEventQueue.js'
+import { errorMessage, toError } from '../../utils/errors.js'
+import { sleep } from '../../utils/sleep.js'
+import { canBatchWith, joinPromptValues } from './promptQueue.js'
+import {
+  handleInitializeRequest,
+  handleRewindFiles,
+  handleSetPermissionMode,
+} from './controlHandlers.js'
+import {
+  handleChannelEnable,
+  reregisterChannelHandlerAfterReconnect,
+} from './channels.js'
+import {
+  SHUTDOWN_TEAM_PROMPT,
+  cronGate,
+  cronJitterConfigModule,
+  cronSchedulerModule,
+  proactiveModule,
+  receivedMessageUuids,
+  trackReceivedMessageUuid,
+} from './runtime.js'
+import { removeInterruptedMessage } from './sessionLoading.js'
+import { handleOrphanedPermissionResponse } from './structuredIO.js'
+import { handleMcpSetServers, type DynamicMcpState } from './mcpServers.js'
+
+export function runHeadlessStreaming(
+  structuredIO: StructuredIO,
+  mcpClients: MCPServerConnection[],
+  commands: Command[],
+  tools: Tools,
+  initialMessages: Message[],
+  canUseTool: CanUseToolFn,
+  sdkMcpConfigs: Record<string, McpSdkServerConfig>,
+  getAppState: () => AppState,
+  setAppState: (f: (prev: AppState) => AppState) => void,
+  agents: AgentDefinition[],
+  options: {
+    verbose: boolean | undefined
+    jsonSchema: Record<string, unknown> | undefined
+    permissionPromptToolName: string | undefined
+    allowedTools: string[] | undefined
+    thinkingConfig: ThinkingConfig | undefined
+    maxTurns: number | undefined
+    maxBudgetUsd: number | undefined
+    taskBudget: { total: number } | undefined
+    systemPrompt: string | undefined
+    appendSystemPrompt: string | undefined
+    userSpecifiedModel: string | undefined
+    fallbackModel: string | undefined
+    replayUserMessages?: boolean | undefined
+    includePartialMessages?: boolean | undefined
+    enableAuthStatus?: boolean | undefined
+    agent?: string | undefined
+    setSDKStatus?: (status: SDKStatus) => void
+    promptSuggestions?: boolean | undefined
+    workload?: string | undefined
+  },
+  turnInterruptionState?: TurnInterruptionState,
+): AsyncIterable<StdoutMessage> {
+  let running = false
+  let runPhase:
+    | 'draining_commands'
+    | 'waiting_for_agents'
+    | 'finally_flush'
+    | 'finally_post_flush'
+    | undefined
+  let inputClosed = false
+  let shutdownPromptInjected = false
+  let heldBackResult: StdoutMessage | null = null
+  let abortController: AbortController | undefined
+  // Same queue sendRequest() enqueues to — one FIFO for everything.
+  const output = structuredIO.outbound
+
+  // Ctrl+C in -p mode: abort the in-flight query, then shut down gracefully.
+  // gracefulShutdown persists session state and flushes analytics, with a
+  // failsafe timer that force-exits if cleanup hangs.
+  const sigintHandler = () => {
+    logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGINT' })
+    if (abortController && !abortController.signal.aborted) {
+      abortController.abort()
+    }
+    void gracefulShutdown(0)
+  }
+  process.on('SIGINT', sigintHandler)
+
+  // Dump run()'s state at SIGTERM so a stuck session's healthsweep can name
+  // the do/while(waitingForAgents) poll without reading the transcript.
+  registerCleanup(async () => {
+    const bg: Record<string, number> = {}
+    for (const t of getRunningTasks(getAppState())) {
+      if (isBackgroundTask(t)) bg[t.type] = (bg[t.type] ?? 0) + 1
+    }
+    logForDiagnosticsNoPII('info', 'run_state_at_shutdown', {
+      run_active: running,
+      run_phase: runPhase,
+      worker_status: getSessionState(),
+      internal_events_pending: structuredIO.internalEventsPending,
+      bg_tasks: bg,
+    })
+  })
+
+  // Wire the central onChangeAppState mode-diff hook to the SDK output stream.
+  // This fires whenever ANY code path mutates toolPermissionContext.mode —
+  // Shift+Tab, ExitPlanMode dialog, /plan slash command, rewind, bridge
+  // set_permission_mode, the query loop, stop_task — rather than the two
+  // paths that previously went through a bespoke wrapper.
+  // The wrapper's body was fully redundant (it enqueued here AND called
+  // notifySessionMetadataChanged, both of which onChangeAppState now covers);
+  // keeping it would double-emit status messages.
+  setPermissionModeChangedListener(newMode => {
+    // Only emit for SDK-exposed modes.
+    if (
+      newMode === 'default' ||
+      newMode === 'acceptEdits' ||
+      newMode === 'bypassPermissions' ||
+      newMode === 'plan' ||
+      newMode === (feature('TRANSCRIPT_CLASSIFIER') && 'auto') ||
+      newMode === 'dontAsk'
+    ) {
+      output.enqueue({
+        type: 'system',
+        subtype: 'status',
+        status: null,
+        permissionMode: newMode as PermissionMode,
+        uuid: randomUUID(),
+        session_id: getSessionId(),
+      })
+    }
+  })
+
+  // Prompt suggestion tracking (push model)
+  const suggestionState: {
+    abortController: AbortController | null
+    inflightPromise: Promise<void> | null
+    lastEmitted: {
+      text: string
+      emittedAt: number
+      promptId: PromptVariant
+      generationRequestId: string | null
+    } | null
+    pendingSuggestion: {
+      type: 'prompt_suggestion'
+      suggestion: string
+      uuid: UUID
+      session_id: string
+    } | null
+    pendingLastEmittedEntry: {
+      text: string
+      promptId: PromptVariant
+      generationRequestId: string | null
+    } | null
+  } = {
+    abortController: null,
+    inflightPromise: null,
+    lastEmitted: null,
+    pendingSuggestion: null,
+    pendingLastEmittedEntry: null,
+  }
+
+  // Set up AWS auth status listener if enabled
+  let unsubscribeAuthStatus: (() => void) | undefined
+  if (options.enableAuthStatus) {
+    const authStatusManager = AwsAuthStatusManager.getInstance()
+    unsubscribeAuthStatus = authStatusManager.subscribe(status => {
+      output.enqueue({
+        type: 'auth_status',
+        isAuthenticating: status.isAuthenticating,
+        output: status.output,
+        error: status.error,
+        uuid: randomUUID(),
+        session_id: getSessionId(),
+      })
+    })
+  }
+
+  // Set up rate limit status listener to emit SDKRateLimitEvent for all status changes.
+  // Emitting for all statuses (including 'allowed') ensures consumers can clear warnings
+  // when rate limits reset. The upstream emitStatusChange already deduplicates via isEqual.
+  const rateLimitListener = (limits: ClaudeAILimits) => {
+    const rateLimitInfo = toSDKRateLimitInfo(limits)
+    if (rateLimitInfo) {
+      output.enqueue({
+        type: 'rate_limit_event',
+        rate_limit_info: rateLimitInfo,
+        uuid: randomUUID(),
+        session_id: getSessionId(),
+      } as unknown as Parameters<typeof output.enqueue>[0])
+    }
+  }
+  statusListeners.add(rateLimitListener)
+
+  // Messages for internal tracking, directly mutated by ask(). These messages
+  // include Assistant, User, Attachment, and Progress messages.
+  // TODO: Clean up this code to avoid passing around a mutable array.
+  const mutableMessages: Message[] = initialMessages
+
+  // Seed the readFileState cache from the transcript (content the model saw,
+  // with message timestamps) so getChangedFiles can detect external edits.
+  // This cache instance must persist across ask() calls, since the edit tool
+  // relies on this as a global state.
+  let readFileState = extractReadFilesFromMessages(
+    initialMessages,
+    cwd(),
+    READ_FILE_STATE_CACHE_SIZE,
+  )
+
+  // Client-supplied readFileState seeds (via seed_read_state control request).
+  // The stdin IIFE runs concurrently with ask() — a seed arriving mid-turn
+  // would be lost to ask()'s clone-then-replace (QueryEngine.ts finally block)
+  // if written directly into readFileState. Instead, seeds land here, merge
+  // into getReadFileCache's view (readFileState-wins-ties: seeds fill gaps),
+  // and are re-applied then CLEARED in setReadFileCache. One-shot: each seed
+  // survives exactly one clone-replace cycle, then becomes a regular
+  // readFileState entry subject to compact's clear like everything else.
+  const pendingSeeds = createFileStateCacheWithSizeLimit(
+    READ_FILE_STATE_CACHE_SIZE,
+  )
+
+  // Auto-resume interrupted turns on restart so CC continues from where it
+  // left off without requiring the SDK to re-send the prompt.
+  const resumeInterruptedTurnEnv =
+    process.env.CLAUDE_CODE_RESUME_INTERRUPTED_TURN
+  if (
+    turnInterruptionState &&
+    turnInterruptionState.kind !== 'none' &&
+    resumeInterruptedTurnEnv
+  ) {
+    logForDebugging(
+      `[print.ts] Auto-resuming interrupted turn (kind: ${turnInterruptionState.kind})`,
+    )
+
+    // Remove the interrupted message and its sentinel, then re-enqueue so
+    // the model sees it exactly once. For mid-turn interruptions, the
+    // deserialization layer transforms them into interrupted_prompt by
+    // appending a synthetic "Continue from where you left off." message.
+    removeInterruptedMessage(mutableMessages, turnInterruptionState.message)
+    enqueue({
+      mode: 'prompt',
+      value: turnInterruptionState.message.message!.content as
+        | string
+        | ContentBlockParam[],
+      uuid: randomUUID(),
+    })
+  }
+
+  const modelOptions = getModelOptions()
+  const modelInfos = modelOptions.map(option => {
+    const modelId = option.value === null ? 'default' : option.value
+    const resolvedModel =
+      modelId === 'default'
+        ? getDefaultMainLoopModel()
+        : parseUserSpecifiedModel(modelId)
+    const hasEffort = modelSupportsEffort(resolvedModel)
+    const hasAdaptiveThinking = modelSupportsAdaptiveThinking(resolvedModel)
+    const hasFastMode = isFastModeSupportedByModel(option.value)
+    const hasAutoMode = modelSupportsAutoMode(resolvedModel)
+    return {
+      name: modelId,
+      value: modelId,
+      displayName: option.label,
+      description: option.description,
+      ...(hasEffort && {
+        supportsEffort: true,
+        supportedEffortLevels: modelSupportsMaxEffort(resolvedModel)
+          ? [...EFFORT_LEVELS]
+          : EFFORT_LEVELS.filter(l => l !== 'max'),
+      }),
+      ...(hasAdaptiveThinking && { supportsAdaptiveThinking: true }),
+      ...(hasFastMode && { supportsFastMode: true }),
+      ...(hasAutoMode && { supportsAutoMode: true }),
+    }
+  })
+  let activeUserSpecifiedModel = options.userSpecifiedModel
+
+  function injectModelSwitchBreadcrumbs(
+    modelArg: string,
+    resolvedModel: string,
+  ): void {
+    const breadcrumbs = createModelSwitchBreadcrumbs(
+      modelArg,
+      modelDisplayString(resolvedModel),
+    )
+    mutableMessages.push(...breadcrumbs)
+    for (const crumb of breadcrumbs) {
+      if (
+        typeof crumb.message.content === 'string' &&
+        crumb.message.content.includes(`<${LOCAL_COMMAND_STDOUT_TAG}>`)
+      ) {
+        output.enqueue({
+          type: 'user',
+          content: crumb.message.content,
+          message: crumb.message as unknown,
+          session_id: getSessionId(),
+          parent_tool_use_id: null,
+          uuid: crumb.uuid,
+          timestamp: crumb.timestamp,
+          isReplay: true,
+        } as unknown as StdoutMessage)
+      }
+    }
+  }
+
+  // Cache SDK MCP clients to avoid reconnecting on each run
+  let sdkClients: MCPServerConnection[] = []
+  let sdkTools: Tools = []
+
+  // Track which MCP clients have had elicitation handlers registered
+  const elicitationRegistered = new Set<string>()
+
+  /**
+   * Register elicitation request/completion handlers on connected MCP clients
+   * that haven't been registered yet. SDK MCP servers are excluded because they
+   * route through SdkControlClientTransport. Hooks run first (matching REPL
+   * behavior); if no hook responds, the request is forwarded to the SDK
+   * consumer via the control protocol.
+   */
+  function registerElicitationHandlers(clients: MCPServerConnection[]): void {
+    for (const connection of clients) {
+      if (
+        connection.type !== 'connected' ||
+        elicitationRegistered.has(connection.name)
+      ) {
+        continue
+      }
+      // Skip SDK MCP servers — elicitation flows through SdkControlClientTransport
+      if (connection.config.type === 'sdk') {
+        continue
+      }
+      const serverName = connection.name
+
+      // Wrapped in try/catch because setRequestHandler throws if the client wasn't
+      // created with elicitation capability declared (e.g., SDK-created clients).
+      try {
+        connection.client.setRequestHandler(
+          'elicitation/create',
+          async (request, ctx) => {
+            const { signal } = ctx.mcpReq
+            logMCPDebug(
+              serverName,
+              `Elicitation request received in print mode: ${jsonStringify(request)}`,
+            )
+
+            const mode = request.params.mode === 'url' ? 'url' : 'form'
+
+            logEvent('tengu_mcp_elicitation_shown', {
+              mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            })
+
+            // Run elicitation hooks first — they can provide a response programmatically
+            const hookResponse = await runElicitationHooks(
+              serverName,
+              request.params,
+              signal,
+            )
+            if (hookResponse) {
+              logMCPDebug(
+                serverName,
+                `Elicitation resolved by hook: ${jsonStringify(hookResponse)}`,
+              )
+              logEvent('tengu_mcp_elicitation_response', {
+                mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                action:
+                  hookResponse.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+              })
+              return hookResponse
+            }
+
+            // Delegate to SDK consumer via control protocol
+            const url =
+              'url' in request.params
+                ? (request.params.url as string)
+                : undefined
+            const requestedSchema =
+              'requestedSchema' in request.params
+                ? (request.params.requestedSchema as
+                    | Record<string, unknown>
+                    | undefined)
+                : undefined
+
+            const elicitationId =
+              'elicitationId' in request.params
+                ? (request.params.elicitationId as string | undefined)
+                : undefined
+
+            const rawResult = await structuredIO.handleElicitation(
+              serverName,
+              request.params.message,
+              requestedSchema,
+              signal,
+              mode,
+              url,
+              elicitationId,
+            )
+
+            const result = await runElicitationResultHooks(
+              serverName,
+              rawResult,
+              signal,
+              mode,
+              elicitationId,
+            )
+
+            logEvent('tengu_mcp_elicitation_response', {
+              mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+              action:
+                result.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            })
+            return result
+          },
+        )
+
+        // Surface completion notifications to SDK consumers (URL mode)
+        connection.client.setNotificationHandler(
+          'notifications/elicitation/complete',
+          notification => {
+            const { elicitationId } = notification.params
+            logMCPDebug(
+              serverName,
+              `Elicitation completion notification: ${elicitationId}`,
+            )
+            void executeNotificationHooks({
+              message: `MCP server "${serverName}" confirmed elicitation ${elicitationId} complete`,
+              notificationType: 'elicitation_complete',
+            })
+            output.enqueue({
+              type: 'system',
+              subtype: 'elicitation_complete',
+              mcp_server_name: serverName,
+              elicitation_id: elicitationId,
+              uuid: randomUUID(),
+              session_id: getSessionId(),
+            })
+          },
+        )
+
+        elicitationRegistered.add(serverName)
+      } catch {
+        // setRequestHandler throws if the client wasn't created with
+        // elicitation capability — skip silently
+      }
+    }
+  }
+
+  async function updateSdkMcp() {
+    // Check if SDK MCP servers need to be updated (new servers added or removed)
+    const currentServerNames = new Set(Object.keys(sdkMcpConfigs))
+    const connectedServerNames = new Set(sdkClients.map(c => c.name))
+
+    // Check if there are any differences (additions or removals)
+    const hasNewServers = Array.from(currentServerNames).some(
+      name => !connectedServerNames.has(name),
+    )
+    const hasRemovedServers = Array.from(connectedServerNames).some(
+      name => !currentServerNames.has(name),
+    )
+    // Check if any SDK clients are pending and need to be upgraded
+    const hasPendingSdkClients = sdkClients.some(c => c.type === 'pending')
+    // Check if any SDK clients failed their handshake and need to be retried.
+    // Without this, a client that lands in 'failed' (e.g. handshake timeout on
+    // a WS reconnect race) stays failed forever — its name satisfies the
+    // connectedServerNames diff but it contributes zero tools.
+    const hasFailedSdkClients = sdkClients.some(c => c.type === 'failed')
+
+    const haveServersChanged =
+      hasNewServers ||
+      hasRemovedServers ||
+      hasPendingSdkClients ||
+      hasFailedSdkClients
+
+    if (haveServersChanged) {
+      // Clean up removed servers
+      for (const client of sdkClients) {
+        if (!currentServerNames.has(client.name)) {
+          if (client.type === 'connected') {
+            await client.cleanup()
+          }
+        }
+      }
+
+      // Re-initialize all SDK MCP servers with current config
+      const sdkSetup = await setupSdkMcpClients(
+        sdkMcpConfigs,
+        (serverName, message) =>
+          structuredIO.sendMcpMessage(serverName, message),
+      )
+      sdkClients = sdkSetup.clients
+      sdkTools = sdkSetup.tools
+
+      // Store SDK MCP tools in appState so subagents can access them via
+      // assembleToolPool. Only tools are stored here — SDK clients are already
+      // merged separately in the query loop (allMcpClients) and mcp_status handler.
+      // Use both old (connectedServerNames) and new (currentServerNames) to remove
+      // stale SDK tools when servers are added or removed.
+      const allSdkNames = uniq([...connectedServerNames, ...currentServerNames])
+      setAppState(prev => ({
+        ...prev,
+        mcp: {
+          ...prev.mcp,
+          tools: [
+            ...prev.mcp.tools.filter(
+              t =>
+                !allSdkNames.some(name =>
+                  t.name.startsWith(getMcpPrefix(name)),
+                ),
+            ),
+            ...sdkTools,
+          ],
+        },
+      }))
+
+      // Set up the special internal VSCode MCP server if necessary.
+      setupVscodeSdkMcp(sdkClients)
+    }
+  }
+
+  void updateSdkMcp()
+
+  // State for dynamically added MCP servers (via mcp_set_servers control message)
+  // These are separate from SDK MCP servers and support all transport types
+  let dynamicMcpState: DynamicMcpState = {
+    clients: [],
+    tools: [],
+    configs: {},
+  }
+
+  // Shared tool assembly for ask() and the get_context_usage control request.
+  // Closes over the mutable sdkTools/dynamicMcpState bindings so both call
+  // sites see late-connecting servers.
+  const buildAllTools = (appState: AppState): Tools => {
+    const assembledTools = assembleToolPool(
+      appState.toolPermissionContext,
+      appState.mcp.tools,
+    )
+    let allTools = uniqBy(
+      mergeAndFilterTools(
+        [...tools, ...sdkTools, ...dynamicMcpState.tools],
+        assembledTools,
+        appState.toolPermissionContext.mode,
+      ),
+      'name',
+    )
+    if (options.permissionPromptToolName) {
+      allTools = allTools.filter(
+        tool => !toolMatchesName(tool, options.permissionPromptToolName!),
+      )
+    }
+    const initJsonSchema = getInitJsonSchema()
+    if (initJsonSchema && !options.jsonSchema) {
+      const syntheticOutputResult = createSyntheticOutputTool(initJsonSchema)
+      if ('tool' in syntheticOutputResult) {
+        allTools = [...allTools, syntheticOutputResult.tool]
+      }
+    }
+    return allTools
+  }
+
+  // Helper to apply MCP server changes - used by both mcp_set_servers control message
+  // and background plugin installation.
+  // NOTE: Nested function required - mutates closure state (sdkMcpConfigs, sdkClients, etc.)
+  let mcpChangesPromise: Promise<{
+    response: SDKControlMcpSetServersResponse
+    sdkServersChanged: boolean
+  }> = Promise.resolve({
+    response: {
+      added: [] as string[],
+      removed: [] as string[],
+      errors: {} as Record<string, string>,
+    },
+    sdkServersChanged: false,
+  })
+
+  function applyMcpServerChanges(
+    servers: Record<string, McpServerConfigForProcessTransport>,
+  ): Promise<{
+    response: SDKControlMcpSetServersResponse
+    sdkServersChanged: boolean
+  }> {
+    // Serialize calls to prevent race conditions between concurrent callers
+    // (background plugin install and mcp_set_servers control messages)
+    const doWork = async (): Promise<{
+      response: SDKControlMcpSetServersResponse
+      sdkServersChanged: boolean
+    }> => {
+      const oldSdkClientNames = new Set(sdkClients.map(c => c.name))
+
+      const result = await handleMcpSetServers(
+        servers,
+        { configs: sdkMcpConfigs, clients: sdkClients, tools: sdkTools },
+        dynamicMcpState,
+        setAppState,
+      )
+
+      // Update SDK state (need to mutate sdkMcpConfigs since it's shared)
+      for (const key of Object.keys(sdkMcpConfigs)) {
+        delete sdkMcpConfigs[key]
+      }
+      Object.assign(sdkMcpConfigs, result.newSdkState.configs)
+      sdkClients = result.newSdkState.clients
+      sdkTools = result.newSdkState.tools
+      dynamicMcpState = result.newDynamicState
+
+      // Keep appState.mcp.tools in sync so subagents can see SDK MCP tools.
+      // Use both old and new SDK client names to remove stale tools.
+      if (result.sdkServersChanged) {
+        const newSdkClientNames = new Set(sdkClients.map(c => c.name))
+        const allSdkNames = uniq([...oldSdkClientNames, ...newSdkClientNames])
+        setAppState(prev => ({
+          ...prev,
+          mcp: {
+            ...prev.mcp,
+            tools: [
+              ...prev.mcp.tools.filter(
+                t =>
+                  !allSdkNames.some(name =>
+                    t.name.startsWith(getMcpPrefix(name)),
+                  ),
+              ),
+              ...sdkTools,
+            ],
+          },
+        }))
+      }
+
+      return {
+        response: result.response,
+        sdkServersChanged: result.sdkServersChanged,
+      }
+    }
+
+    mcpChangesPromise = mcpChangesPromise.then(doWork, doWork)
+    return mcpChangesPromise
+  }
+
+  // Build McpServerStatus[] for control responses. Shared by mcp_status and
+  // reload_plugins handlers. Reads closure state: sdkClients, dynamicMcpState.
+  function buildMcpServerStatuses(): McpServerStatus[] {
+    const currentAppState = getAppState()
+    const currentMcpClients = currentAppState.mcp.clients
+    const allMcpTools = uniqBy(
+      [...currentAppState.mcp.tools, ...dynamicMcpState.tools],
+      'name',
+    )
+    const existingNames = new Set([
+      ...currentMcpClients.map(c => c.name),
+      ...sdkClients.map(c => c.name),
+    ])
+    return [
+      ...currentMcpClients,
+      ...sdkClients,
+      ...dynamicMcpState.clients.filter(c => !existingNames.has(c.name)),
+    ].map(connection => {
+      let config
+      if (
+        connection.config.type === 'sse' ||
+        connection.config.type === 'http'
+      ) {
+        config = {
+          type: connection.config.type,
+          url: connection.config.url,
+          headers: connection.config.headers,
+          oauth: connection.config.oauth,
+        }
+      } else if (connection.config.type === 'claudeai-proxy') {
+        config = {
+          type: 'claudeai-proxy' as const,
+          url: connection.config.url,
+          id: connection.config.id,
+        }
+      } else if (
+        connection.config.type === 'stdio' ||
+        connection.config.type === undefined
+      ) {
+        const stdioConfig = connection.config as {
+          command: string
+          args: string[]
+        }
+        config = {
+          type: 'stdio' as const,
+          command: stdioConfig.command,
+          args: stdioConfig.args,
+        }
+      }
+      const serverTools =
+        connection.type === 'connected'
+          ? filterToolsByServer(allMcpTools, connection.name).map(tool => ({
+              name: tool.mcpInfo?.toolName ?? tool.name,
+              annotations: {
+                readOnly: tool.isReadOnly({}) || undefined,
+                destructive: tool.isDestructive?.({}) || undefined,
+                openWorld: tool.isOpenWorld?.({}) || undefined,
+              },
+            }))
+          : undefined
+      // Capabilities passthrough with allowlist pre-filter. The IDE reads
+      // experimental['claude/channel'] to decide whether to show the
+      // Enable-channel prompt — only echo it if channel_enable would
+      // actually pass the allowlist. Not a security boundary (the
+      // handler re-runs the full gate); just avoids dead buttons.
+      let capabilities: { experimental?: Record<string, unknown> } | undefined
+      if (
+        (feature('KAIROS') || feature('KAIROS_CHANNELS')) &&
+        connection.type === 'connected' &&
+        connection.capabilities.experimental
+      ) {
+        const exp = { ...connection.capabilities.experimental }
+        if (
+          exp['claude/channel'] &&
+          (!isChannelsEnabled() ||
+            !isChannelAllowlisted(connection.config.pluginSource))
+        ) {
+          delete exp['claude/channel']
+        }
+        if (Object.keys(exp).length > 0) {
+          capabilities = { experimental: exp }
+        }
+      }
+      return {
+        name: connection.name,
+        status: connection.type as McpServerStatus['status'],
+        serverInfo:
+          connection.type === 'connected' ? connection.serverInfo : undefined,
+        error: connection.type === 'failed' ? connection.error : undefined,
+        config,
+        scope: connection.config.scope,
+        tools: serverTools,
+        capabilities,
+      }
+    }) as McpServerStatus[]
+  }
+
+  // NOTE: Nested function required - needs closure access to applyMcpServerChanges and updateSdkMcp
+  async function installPluginsAndApplyMcpInBackground(): Promise<void> {
+    try {
+      await withDiagnosticsTiming('headless_managed_settings_wait', () =>
+        waitForRemoteManagedSettingsToLoad(),
+      )
+
+      const pluginsInstalled = await installPluginsForHeadless()
+
+      if (pluginsInstalled) {
+        await applyPluginMcpDiff()
+      }
+    } catch (error) {
+      logError(error)
+    }
+  }
+
+  // Background plugin installation for all headless users
+  // Installs marketplaces from extraKnownMarketplaces and missing enabled plugins
+  // CLAUDE_CODE_SYNC_PLUGIN_INSTALL=true: resolved in run() before the first
+  // query so plugins are guaranteed available on the first ask().
+  let pluginInstallPromise: Promise<void> | null = null
+  // --bare / SIMPLE: skip plugin install. Scripted calls don't add plugins
+  // mid-session; the next interactive run reconciles.
+  if (!isBareMode()) {
+    if (isEnvTruthy(process.env.CLAUDE_CODE_SYNC_PLUGIN_INSTALL)) {
+      pluginInstallPromise = installPluginsAndApplyMcpInBackground()
+    } else {
+      void installPluginsAndApplyMcpInBackground()
+    }
+  }
+
+  // Idle timeout management
+  const idleTimeout = createIdleTimeoutManager(() => !running)
+
+  // Mutable commands and agents for hot reloading
+  let currentCommands = commands
+  let currentAgents = agents
+
+  // Clear all plugin-related caches, reload commands/agents/hooks.
+  // Called after CLAUDE_CODE_SYNC_PLUGIN_INSTALL completes (before first query)
+  // and after non-sync background install finishes.
+  // refreshActivePlugins calls clearAllCaches() which is required because
+  // loadAllPlugins() may have run during main.tsx startup BEFORE managed
+  // settings were fetched. Without clearing, getCommands() would rebuild
+  // from a stale plugin list.
+  async function refreshPluginState(): Promise<void> {
+    // refreshActivePlugins handles the full cache sweep (clearAllCaches),
+    // reloads all plugin component loaders, writes AppState.plugins +
+    // AppState.agentDefinitions, registers hooks, and bumps mcp.pluginReconnectKey.
+    const { agentDefinitions: freshAgentDefs } =
+      await refreshActivePlugins(setAppState)
+
+    // Headless-specific: currentCommands/currentAgents are local mutable refs
+    // captured by the query loop (REPL uses AppState instead). getCommands is
+    // fresh because refreshActivePlugins cleared its cache.
+    currentCommands = await getCommands(cwd())
+
+    // Preserve SDK-provided agents (--agents CLI flag or SDK initialize
+    // control_request) — both inject via parseAgentsFromJson with
+    // source='flagSettings'. loadMarkdownFilesForSubdir never assigns this
+    // source, so it cleanly discriminates "injected, not disk-loadable".
+    //
+    // The previous filter used a negative set-diff (!freshAgentTypes.has(a))
+    // which also matched plugin agents that were in the poisoned initial
+    // currentAgents but correctly excluded from freshAgentDefs after managed
+    // settings applied — leaking policy-blocked agents into the init message.
+    // See gh-23085: isBridgeEnabled() at Commander-definition time poisoned
+    // the settings cache before setEligibility(true) ran.
+    const sdkAgents = currentAgents.filter(a => a.source === 'flagSettings')
+    currentAgents = [...freshAgentDefs.allAgents, ...sdkAgents]
+  }
+
+  // Re-diff MCP configs after plugin state changes. Filters to
+  // process-transport-supported types and carries SDK-mode servers through
+  // so applyMcpServerChanges' diff doesn't close their transports.
+  // Nested: needs closure access to sdkMcpConfigs, applyMcpServerChanges,
+  // updateSdkMcp.
+  async function applyPluginMcpDiff(): Promise<void> {
+    const { servers: newConfigs } = await getAllMcpConfigs()
+    const supportedConfigs: Record<string, McpServerConfigForProcessTransport> =
+      {}
+    for (const [name, config] of Object.entries(newConfigs)) {
+      const type = config.type
+      if (
+        type === undefined ||
+        type === 'stdio' ||
+        type === 'sse' ||
+        type === 'http' ||
+        type === 'sdk'
+      ) {
+        supportedConfigs[name] = config as McpServerConfigForProcessTransport
+      }
+    }
+    for (const [name, config] of Object.entries(sdkMcpConfigs)) {
+      if (config.type === 'sdk' && !(name in supportedConfigs)) {
+        supportedConfigs[name] =
+          config as unknown as McpServerConfigForProcessTransport
+      }
+    }
+    const { response, sdkServersChanged } =
+      await applyMcpServerChanges(supportedConfigs)
+    if (sdkServersChanged) {
+      void updateSdkMcp()
+    }
+    logForDebugging(
+      `Headless MCP refresh: added=${response.added.length}, removed=${response.removed.length}`,
+    )
+  }
+
+  // Subscribe to skill changes for hot reloading
+  const unsubscribeSkillChanges = skillChangeDetector.subscribe(() => {
+    clearCommandsCache()
+    void getCommands(cwd()).then(newCommands => {
+      currentCommands = newCommands
+    })
+  })
+
+  // Proactive mode: schedule a tick to keep the model looping autonomously.
+  // setTimeout(0) yields to the event loop so pending stdin messages
+  // (interrupts, user messages) are processed before the tick fires.
+  const scheduleProactiveTick =
+    feature('PROACTIVE') || feature('KAIROS')
+      ? () => {
+          setTimeout(() => {
+            if (
+              !proactiveModule?.isProactiveActive() ||
+              proactiveModule.isProactivePaused() ||
+              inputClosed
+            ) {
+              return
+            }
+            void (async () => {
+              const commands = await createProactiveAutonomyCommands({
+                basePrompt: `<${TICK_TAG}>${new Date().toLocaleTimeString()}</${TICK_TAG}>`,
+                currentDir: cwd(),
+                shouldCreate: () => !inputClosed,
+              })
+              if (inputClosed) {
+                await cancelQueuedAutonomyCommands({ commands })
+                return
+              }
+              for (const command of commands) {
+                enqueue({
+                  ...command,
+                  uuid: randomUUID(),
+                })
+              }
+              void run()
+            })().catch(error => {
+              logError(error)
+              logForDebugging(
+                `[Proactive] failed to create headless tick: ${error}`,
+                {
+                  level: 'error',
+                },
+              )
+            })
+          }, 0)
+        }
+      : undefined
+
+  // Abort the current operation when a 'now' priority message arrives.
+  subscribeToCommandQueue(() => {
+    if (abortController && getCommandsByMaxPriority('now').length > 0) {
+      abortController.abort('interrupt')
+    }
+  })
+
+  const run = async () => {
+    if (running) {
+      return
+    }
+
+    running = true
+    runPhase = undefined
+    notifySessionStateChanged('running')
+    idleTimeout.stop()
+
+    headlessProfilerCheckpoint('run_entry')
+    // TODO(custom-tool-refactor): Should move to the init message, like browser
+
+    await updateSdkMcp()
+    headlessProfilerCheckpoint('after_updateSdkMcp')
+
+    // Resolve deferred plugin installation (CLAUDE_CODE_SYNC_PLUGIN_INSTALL).
+    // The promise was started eagerly so installation overlaps with other init.
+    // Awaiting here guarantees plugins are available before the first ask().
+    // If CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS is set, races against that
+    // deadline and proceeds without plugins on timeout (logging an error).
+    if (pluginInstallPromise) {
+      const timeoutMs = parseInt(
+        process.env.CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS || '',
+        10,
+      )
+      if (timeoutMs > 0) {
+        const timeout = sleep(timeoutMs).then(() => 'timeout' as const)
+        const result = await Promise.race([pluginInstallPromise, timeout])
+        if (result === 'timeout') {
+          logError(
+            new Error(
+              `CLAUDE_CODE_SYNC_PLUGIN_INSTALL: plugin installation timed out after ${timeoutMs}ms`,
+            ),
+          )
+          logEvent('tengu_sync_plugin_install_timeout', {
+            timeout_ms: timeoutMs,
+          })
+        }
+      } else {
+        await pluginInstallPromise
+      }
+      pluginInstallPromise = null
+
+      // Refresh commands, agents, and hooks now that plugins are installed
+      await refreshPluginState()
+
+      // Set up hot-reload for plugin hooks now that the initial install is done.
+      // In sync-install mode, setup.ts skips this to avoid racing with the install.
+      const { setupPluginHookHotReload } = await import(
+        '../../utils/plugins/loadPluginHooks.js'
+      )
+      setupPluginHookHotReload()
+    }
+
+    // Only main-thread commands (agentId===undefined) — subagent
+    // notifications are drained by the subagent's mid-turn gate in query.ts.
+    // Defined outside the try block so it's accessible in the post-finally
+    // queue re-checks at the bottom of run().
+    const isMainThread = (cmd: QueuedCommand) => cmd.agentId === undefined
+
+    try {
+      let command: QueuedCommand | undefined
+      let waitingForAgents = false
+
+      // Extract command processing into a named function for the do-while pattern.
+      // Drains the queue, batching consecutive prompt-mode commands into one
+      // ask() call so messages that queued up during a long turn coalesce
+      // into a single follow-up turn instead of N separate turns.
+      const drainCommandQueue = async () => {
+        while ((command = dequeue(isMainThread))) {
+          if (
+            command.mode !== 'prompt' &&
+            command.mode !== 'orphaned-permission' &&
+            command.mode !== 'task-notification'
+          ) {
+            throw new Error(
+              'only prompt commands are supported in streaming mode',
+            )
+          }
+
+          // Non-prompt commands (task-notification, orphaned-permission) carry
+          // side effects or orphanedPermission state, so they process singly.
+          // Prompt commands greedily collect followers with matching workload.
+          let batch: QueuedCommand[] = [command]
+          if (command.mode === 'prompt') {
+            while (canBatchWith(command, peek(isMainThread))) {
+              batch.push(dequeue(isMainThread)!)
+            }
+          }
+          const queuedAutonomyClaim =
+            await claimConsumableQueuedAutonomyCommands(batch)
+          batch = queuedAutonomyClaim.attachmentCommands
+          if (batch.length === 0) {
+            continue
+          }
+          command = batch[0]!
+          if (command.mode === 'prompt' && batch.length > 1) {
+            command = {
+              ...command,
+              value: joinPromptValues(batch.map(c => c.value)),
+              uuid: batch.findLast(c => c.uuid)?.uuid ?? command.uuid,
+            }
+          }
+          const batchUuids = batch.map(c => c.uuid).filter(u => u !== undefined)
+
+          // QueryEngine will emit a replay for command.uuid (the last uuid in
+          // the batch) via its messagesToAck path. Emit replays here for the
+          // rest so consumers that track per-uuid delivery (clank's
+          // asyncMessages footer, CCR) see an ack for every message they sent,
+          // not just the one that survived the merge.
+          if (options.replayUserMessages && batch.length > 1) {
+            for (const c of batch) {
+              if (c.uuid && c.uuid !== command.uuid) {
+                output.enqueue({
+                  type: 'user',
+                  content: c.value,
+                  message: { role: 'user', content: c.value } as unknown,
+                  session_id: getSessionId(),
+                  parent_tool_use_id: null,
+                  uuid: c.uuid as string,
+                  isReplay: true,
+                } as unknown as StdoutMessage)
+              }
+            }
+          }
+
+          // Combine all MCP clients. appState.mcp is populated incrementally
+          // per-server by main.tsx (mirrors useManageMCPConnections). Reading
+          // fresh per-command means late-connecting servers are visible on the
+          // next turn. registerElicitationHandlers is idempotent (tracking set).
+          const appState = getAppState()
+          const allMcpClients = [
+            ...appState.mcp.clients,
+            ...sdkClients,
+            ...dynamicMcpState.clients,
+          ]
+          registerElicitationHandlers(allMcpClients)
+          // Channel handlers for servers allowlisted via --channels at
+          // construction time (or enableChannel() mid-session). Runs every
+          // turn like registerElicitationHandlers — idempotent per-client
+          // (setNotificationHandler replaces, not stacks) and no-ops for
+          // non-allowlisted servers (one feature-flag check).
+          for (const client of allMcpClients) {
+            reregisterChannelHandlerAfterReconnect(client)
+          }
+
+          const allTools = buildAllTools(appState)
+
+          for (const uuid of batchUuids) {
+            notifyCommandLifecycle(uuid, 'started')
+          }
+
+          // Task notifications arrive when background agents complete.
+          // Emit an SDK system event for SDK consumers, then fall through
+          // to ask() so the model sees the agent result and can act on it.
+          // This matches TUI behavior where useQueueProcessor always feeds
+          // notifications to the model regardless of coordinator mode.
+          if (command.mode === 'task-notification') {
+            const notificationText =
+              typeof command.value === 'string' ? command.value : ''
+            // Parse the XML-formatted notification
+            const taskIdMatch = notificationText.match(
+              /<task-id>([^<]+)<\/task-id>/,
+            )
+            const toolUseIdMatch = notificationText.match(
+              /<tool-use-id>([^<]+)<\/tool-use-id>/,
+            )
+            const outputFileMatch = notificationText.match(
+              /<output-file>([^<]+)<\/output-file>/,
+            )
+            const statusMatch = notificationText.match(
+              /<status>([^<]+)<\/status>/,
+            )
+            const summaryMatch = notificationText.match(
+              /<summary>([^<]+)<\/summary>/,
+            )
+
+            const isValidStatus = (
+              s: string | undefined,
+            ): s is 'completed' | 'failed' | 'stopped' | 'killed' =>
+              s === 'completed' ||
+              s === 'failed' ||
+              s === 'stopped' ||
+              s === 'killed'
+            const rawStatus = statusMatch?.[1]
+            const status = isValidStatus(rawStatus)
+              ? rawStatus === 'killed'
+                ? 'stopped'
+                : rawStatus
+              : 'completed'
+
+            const usageMatch = notificationText.match(
+              /<usage>([\s\S]*?)<\/usage>/,
+            )
+            const usageContent = usageMatch?.[1] ?? ''
+            const totalTokensMatch = usageContent.match(
+              /<total_tokens>(\d+)<\/total_tokens>/,
+            )
+            const toolUsesMatch = usageContent.match(
+              /<tool_uses>(\d+)<\/tool_uses>/,
+            )
+            const durationMsMatch = usageContent.match(
+              /<duration_ms>(\d+)<\/duration_ms>/,
+            )
+
+            // Only emit a task_notification SDK event when a <status> tag is
+            // present — that means this is a terminal notification (completed/
+            // failed/stopped). Stream events from enqueueStreamEvent carry no
+            // <status> (they're progress pings); emitting them here would
+            // default to 'completed' and falsely close the task for SDK
+            // consumers. Terminal bookends are now emitted directly via
+            // emitTaskTerminatedSdk, so skipping statusless events is safe.
+            if (statusMatch) {
+              output.enqueue({
+                type: 'system',
+                subtype: 'task_notification',
+                task_id: taskIdMatch?.[1] ?? '',
+                tool_use_id: toolUseIdMatch?.[1],
+                status,
+                output_file: outputFileMatch?.[1] ?? '',
+                summary: summaryMatch?.[1] ?? '',
+                usage:
+                  totalTokensMatch && toolUsesMatch
+                    ? {
+                        total_tokens: parseInt(totalTokensMatch[1]!, 10),
+                        tool_uses: parseInt(toolUsesMatch[1]!, 10),
+                        duration_ms: durationMsMatch
+                          ? parseInt(durationMsMatch[1]!, 10)
+                          : 0,
+                      }
+                    : undefined,
+                session_id: getSessionId(),
+                uuid: randomUUID(),
+              })
+            }
+            // No continue -- fall through to ask() so the model processes the result
+          }
+
+          const input = command.value
+          const claimedAutonomyCommands = queuedAutonomyClaim.claimedCommands
+
+          if (structuredIO instanceof RemoteIO && command.mode === 'prompt') {
+            logEvent('tengu_bridge_message_received', {
+              is_repl: false,
+            })
+          }
+
+          // Abort any in-flight suggestion generation and track acceptance
+          suggestionState.abortController?.abort()
+          suggestionState.abortController = null
+          suggestionState.pendingSuggestion = null
+          suggestionState.pendingLastEmittedEntry = null
+          if (suggestionState.lastEmitted) {
+            if (command.mode === 'prompt') {
+              // SDK user messages enqueue ContentBlockParam[], not a plain string
+              const inputText =
+                typeof input === 'string'
+                  ? input
+                  : (
+                      input.find(b => b.type === 'text') as
+                        | { type: 'text'; text: string }
+                        | undefined
+                    )?.text
+              if (typeof inputText === 'string') {
+                logSuggestionOutcome(
+                  suggestionState.lastEmitted.text,
+                  inputText,
+                  suggestionState.lastEmitted.emittedAt,
+                  suggestionState.lastEmitted.promptId,
+                  suggestionState.lastEmitted.generationRequestId,
+                )
+              }
+              suggestionState.lastEmitted = null
+            }
+          }
+
+          abortController = createAbortController()
+          const turnStartTime = feature('FILE_PERSISTENCE')
+            ? Date.now()
+            : undefined
+
+          headlessProfilerCheckpoint('before_ask')
+          startQueryProfile()
+          // Per-iteration ALS context so bg agents spawned inside ask()
+          // inherit workload across their detached awaits. In-process cron
+          // stamps cmd.workload; the SDK --workload flag is options.workload.
+          // const-capture: TS loses `while ((command = dequeue()))` narrowing
+          // inside the closure.
+          const cmd = command
+          let lastResultIsError = false
+          try {
+            await runWithWorkload(
+              cmd.workload ?? options.workload,
+              async () => {
+                for await (const message of ask({
+                  commands: uniqBy(
+                    [...currentCommands, ...appState.mcp.commands],
+                    'name',
+                  ),
+                  prompt: input,
+                  promptUuid: cmd.uuid,
+                  isMeta: cmd.isMeta,
+                  cwd: cwd(),
+                  tools: allTools,
+                  verbose: options.verbose,
+                  mcpClients: allMcpClients,
+                  thinkingConfig: options.thinkingConfig,
+                  maxTurns: options.maxTurns,
+                  maxBudgetUsd: options.maxBudgetUsd,
+                  taskBudget: options.taskBudget,
+                  canUseTool,
+                  userSpecifiedModel: activeUserSpecifiedModel,
+                  fallbackModel: options.fallbackModel,
+                  jsonSchema: getInitJsonSchema() ?? options.jsonSchema,
+                  mutableMessages,
+                  getReadFileCache: () =>
+                    pendingSeeds.size === 0
+                      ? readFileState
+                      : mergeFileStateCaches(readFileState, pendingSeeds),
+                  setReadFileCache: cache => {
+                    readFileState = cache
+                    for (const [path, seed] of pendingSeeds.entries()) {
+                      const existing = readFileState.get(path)
+                      if (!existing || seed.timestamp > existing.timestamp) {
+                        readFileState.set(path, seed)
+                      }
+                    }
+                    pendingSeeds.clear()
+                  },
+                  customSystemPrompt: options.systemPrompt,
+                  appendSystemPrompt: options.appendSystemPrompt,
+                  getAppState,
+                  setAppState,
+                  abortController,
+                  replayUserMessages: options.replayUserMessages,
+                  includePartialMessages: options.includePartialMessages,
+                  handleElicitation: (serverName, params, elicitSignal) =>
+                    structuredIO.handleElicitation(
+                      serverName,
+                      params.message,
+                      undefined,
+                      elicitSignal,
+                      params.mode,
+                      params.url,
+                      'elicitationId' in params
+                        ? params.elicitationId
+                        : undefined,
+                    ),
+                  agents: currentAgents,
+                  orphanedPermission: cmd.orphanedPermission,
+                  setSDKStatus: status => {
+                    output.enqueue({
+                      type: 'system',
+                      subtype: 'status',
+                      status: status as 'compacting' | null,
+                      session_id: getSessionId(),
+                      uuid: randomUUID(),
+                    })
+                  },
+                })) {
+                  if (message.type === 'result') {
+                    lastResultIsError = !!(message as Record<string, unknown>)
+                      .is_error
+                    // Flush pending SDK events so they appear before result on the stream.
+                    for (const event of drainSdkEvents()) {
+                      output.enqueue(event)
+                    }
+
+                    // Hold-back: don't emit result while background agents are running
+                    const currentState = getAppState()
+                    if (
+                      getRunningTasks(currentState).some(
+                        t =>
+                          (t.type === 'local_agent' ||
+                            t.type === 'local_workflow') &&
+                          isBackgroundTask(t),
+                      )
+                    ) {
+                      heldBackResult = message as StdoutMessage
+                    } else {
+                      heldBackResult = null
+                      output.enqueue(message as StdoutMessage)
+                    }
+                  } else {
+                    // Flush SDK events (task_started, task_progress) so background
+                    // agent progress is streamed in real-time, not batched until result.
+                    for (const event of drainSdkEvents()) {
+                      output.enqueue(event)
+                    }
+                    output.enqueue(message as StdoutMessage)
+                  }
+                }
+              },
+            ) // end runWithWorkload
+            if (lastResultIsError) {
+              await finalizeAutonomyCommandsForTurn({
+                commands: claimedAutonomyCommands,
+                outcome: {
+                  type: 'failed',
+                  message: 'ask() returned an error result',
+                },
+                currentDir: cwd(),
+                priority: 'later',
+                workload: cmd.workload ?? options.workload,
+              })
+            } else {
+              const nextCommands = await finalizeAutonomyCommandsForTurn({
+                commands: claimedAutonomyCommands,
+                outcome: { type: 'completed' },
+                currentDir: cwd(),
+                priority: 'later',
+                workload: cmd.workload ?? options.workload,
+              })
+              for (const nextCommand of nextCommands) {
+                enqueue({
+                  ...nextCommand,
+                  uuid: randomUUID(),
+                })
+              }
+            }
+          } catch (error) {
+            await finalizeAutonomyCommandsForTurn({
+              commands: claimedAutonomyCommands,
+              outcome: { type: 'failed', error },
+              currentDir: cwd(),
+              priority: 'later',
+              workload: cmd.workload ?? options.workload,
+            })
+            throw error
+          }
+
+          for (const uuid of batchUuids) {
+            notifyCommandLifecycle(uuid, 'completed')
+          }
+
+          if (feature('FILE_PERSISTENCE') && turnStartTime !== undefined) {
+            void executeFilePersistence(
+              {
+                turnStartTime,
+              } as import('src/utils/filePersistence/types.js').TurnStartTime,
+              abortController.signal,
+              result => {
+                const filesResult = result as unknown as {
+                  persistedFiles: { filename: string; file_id: string }[]
+                  failedFiles: { filename: string; error: string }[]
+                }
+                output.enqueue({
+                  type: 'system' as const,
+                  subtype: 'files_persisted' as const,
+                  files: filesResult.persistedFiles,
+                  failed: filesResult.failedFiles,
+                  processed_at: new Date().toISOString(),
+                  uuid: randomUUID(),
+                  session_id: getSessionId(),
+                })
+              },
+            )
+          }
+
+          // Generate and emit prompt suggestion for SDK consumers
+          if (
+            options.promptSuggestions &&
+            !isEnvDefinedFalsy(process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION)
+          ) {
+            // TS narrows suggestionState to never in the while loop body;
+            // cast via unknown to reset narrowing.
+            const state = suggestionState as unknown as typeof suggestionState
+            state.abortController?.abort()
+            const localAbort = new AbortController()
+            suggestionState.abortController = localAbort
+
+            const cacheSafeParams = getLastCacheSafeParams()
+            if (!cacheSafeParams) {
+              logSuggestionSuppressed(
+                'sdk_no_params',
+                undefined,
+                undefined,
+                'sdk',
+              )
+            } else {
+              // Use a ref object so the IIFE's finally can compare against its own
+              // promise without a self-reference (which upsets TypeScript's flow analysis).
+              const ref: { promise: Promise<void> | null } = { promise: null }
+              ref.promise = (async () => {
+                try {
+                  const result = await tryGenerateSuggestion(
+                    localAbort,
+                    mutableMessages,
+                    getAppState,
+                    cacheSafeParams,
+                    'sdk',
+                  )
+                  if (!result || localAbort.signal.aborted) return
+                  const suggestionMsg = {
+                    type: 'prompt_suggestion' as const,
+                    suggestion: result.suggestion,
+                    uuid: randomUUID(),
+                    session_id: getSessionId(),
+                  }
+                  const lastEmittedEntry = {
+                    text: result.suggestion,
+                    emittedAt: Date.now(),
+                    promptId: result.promptId,
+                    generationRequestId: result.generationRequestId,
+                  }
+                  // Defer emission if the result is being held for background agents,
+                  // so that prompt_suggestion always arrives after result.
+                  // Only set lastEmitted when the suggestion is actually delivered
+                  // to the consumer; deferred suggestions may be discarded before
+                  // delivery if a new command arrives first.
+                  if (heldBackResult) {
+                    suggestionState.pendingSuggestion = suggestionMsg
+                    suggestionState.pendingLastEmittedEntry = {
+                      text: lastEmittedEntry.text,
+                      promptId: lastEmittedEntry.promptId,
+                      generationRequestId: lastEmittedEntry.generationRequestId,
+                    }
+                  } else {
+                    suggestionState.lastEmitted = lastEmittedEntry
+                    output.enqueue(suggestionMsg)
+                  }
+                } catch (error) {
+                  if (
+                    error instanceof Error &&
+                    (error.name === 'AbortError' ||
+                      error.name === 'APIUserAbortError')
+                  ) {
+                    logSuggestionSuppressed(
+                      'aborted',
+                      undefined,
+                      undefined,
+                      'sdk',
+                    )
+                    return
+                  }
+                  logError(toError(error))
+                } finally {
+                  if (suggestionState.inflightPromise === ref.promise) {
+                    suggestionState.inflightPromise = null
+                  }
+                }
+              })()
+              suggestionState.inflightPromise = ref.promise
+            }
+          }
+
+          // Log headless profiler metrics for this turn and start next turn
+          logHeadlessProfilerTurn()
+          logQueryProfileReport()
+          headlessProfilerStartTurn()
+        }
+      }
+
+      // Use a do-while loop to drain commands and then wait for any
+      // background agents that are still running. When agents complete,
+      // their notifications are enqueued and the loop re-drains.
+      do {
+        // Drain SDK events (task_started, task_progress) before command queue
+        // so progress events precede task_notification on the stream.
+        for (const event of drainSdkEvents()) {
+          output.enqueue(event)
+        }
+
+        runPhase = 'draining_commands'
+        await drainCommandQueue()
+
+        // Check for running background tasks before exiting.
+        // Exclude in_process_teammate — teammates are long-lived by design
+        // (status: 'running' for their whole lifetime, cleaned up by the
+        // shutdown protocol, not by transitioning to 'completed'). Waiting
+        // on them here loops forever (gh-30008). Same exclusion already
+        // exists at useBackgroundTaskNavigation.ts:55 for the same reason;
+        // L1839 above is already narrower (type === 'local_agent') so it
+        // doesn't hit this.
+        waitingForAgents = false
+        {
+          const state = getAppState()
+          const hasRunningBg = getRunningTasks(state).some(
+            t => isBackgroundTask(t) && t.type !== 'in_process_teammate',
+          )
+          const hasMainThreadQueued = peek(isMainThread) !== undefined
+          if (hasRunningBg || hasMainThreadQueued) {
+            waitingForAgents = true
+            if (!hasMainThreadQueued) {
+              runPhase = 'waiting_for_agents'
+              // No commands ready yet, wait for tasks to complete
+              await sleep(100)
+            }
+            // Loop back to drain any newly queued commands
+          }
+        }
+      } while (waitingForAgents)
+
+      if (heldBackResult) {
+        output.enqueue(heldBackResult)
+        heldBackResult = null
+        if (suggestionState.pendingSuggestion) {
+          output.enqueue(suggestionState.pendingSuggestion)
+          // Now that the suggestion is actually delivered, record it for acceptance tracking
+          if (suggestionState.pendingLastEmittedEntry) {
+            suggestionState.lastEmitted = {
+              ...suggestionState.pendingLastEmittedEntry,
+              emittedAt: Date.now(),
+            }
+            suggestionState.pendingLastEmittedEntry = null
+          }
+          suggestionState.pendingSuggestion = null
+        }
+      }
+    } catch (error) {
+      // Emit error result message before shutting down
+      // Write directly to structuredIO to ensure immediate delivery
+      try {
+        await structuredIO.write({
+          type: 'result',
+          subtype: 'error_during_execution',
+          duration_ms: 0,
+          duration_api_ms: 0,
+          is_error: true,
+          num_turns: 0,
+          stop_reason: null,
+          session_id: getSessionId(),
+          total_cost_usd: 0,
+          usage: EMPTY_USAGE,
+          modelUsage: {},
+          permission_denials: [],
+          uuid: randomUUID(),
+          errors: [
+            errorMessage(error),
+            ...getInMemoryErrors().map(_ => _.error),
+          ],
+        })
+      } catch {
+        // If we can't emit the error result, continue with shutdown anyway
+      }
+      suggestionState.abortController?.abort()
+      gracefulShutdownSync(1)
+      return
+    } finally {
+      runPhase = 'finally_flush'
+      // Flush pending internal events before going idle
+      await structuredIO.flushInternalEvents()
+      runPhase = 'finally_post_flush'
+      if (!isShuttingDown()) {
+        notifySessionStateChanged('idle')
+        // Drain so the idle session_state_changed SDK event (plus any
+        // terminal task_notification bookends emitted during bg-agent
+        // teardown) reach the output stream before we block on the next
+        // command. The do-while drain above only runs while
+        // waitingForAgents; once we're here the next drain would be the
+        // top of the next run(), which won't come if input is idle.
+        for (const event of drainSdkEvents()) {
+          output.enqueue(event)
+        }
+      }
+      running = false
+      // Start idle timer when we finish processing and are waiting for input
+      idleTimeout.start()
+    }
+
+    // Proactive tick: if proactive is active and queue is empty, inject a tick
+    if (
+      (feature('PROACTIVE') || feature('KAIROS')) &&
+      proactiveModule?.isProactiveActive() &&
+      !proactiveModule.isProactivePaused()
+    ) {
+      if (peek(isMainThread) === undefined && !inputClosed) {
+        scheduleProactiveTick!()
+        return
+      }
+    }
+
+    // Re-check the queue after releasing the mutex. A message may have
+    // arrived (and called run()) between the last dequeue() returning
+    // undefined and `running = false` above. In that case the caller
+    // saw `running === true` and returned immediately, leaving the
+    // message stranded in the queue with no one to process it.
+    if (peek(isMainThread) !== undefined) {
+      void run()
+      return
+    }
+
+    // Check for unread teammate messages and process them
+    // This mirrors what useInboxPoller does in interactive REPL mode
+    // Poll until no more messages (teammates may still be working)
+    {
+      const currentAppState = getAppState()
+      const teamContext = currentAppState.teamContext
+
+      if (teamContext && isTeamLead(teamContext)) {
+        const agentName = 'team-lead'
+
+        // Poll for messages while teammates are active
+        // This is needed because teammates may send messages while we're waiting
+        // Keep polling until the team is shut down
+        const POLL_INTERVAL_MS = 500
+
+        while (true) {
+          // Check if teammates are still active
+          const refreshedState = getAppState()
+          const hasActiveTeammates =
+            hasActiveInProcessTeammates(refreshedState) ||
+            (refreshedState.teamContext &&
+              Object.keys(refreshedState.teamContext.teammates).length > 0)
+
+          if (!hasActiveTeammates) {
+            logForDebugging(
+              '[print.ts] No more active teammates, stopping poll',
+            )
+            break
+          }
+
+          const unread = await readUnreadMessages(
+            agentName,
+            refreshedState.teamContext?.teamName,
+          )
+
+          if (unread.length > 0) {
+            logForDebugging(
+              `[print.ts] Team-lead found ${unread.length} unread messages`,
+            )
+
+            // Mark as read immediately to avoid duplicate processing
+            await markMessagesAsRead(
+              agentName,
+              refreshedState.teamContext?.teamName,
+            )
+
+            // Process shutdown_approved messages - remove teammates from team file
+            // This mirrors what useInboxPoller does in interactive mode (lines 546-606)
+            const teamName = refreshedState.teamContext?.teamName
+            for (const m of unread) {
+              const shutdownApproval = isShutdownApproved(m.text)
+              if (shutdownApproval && teamName) {
+                const teammateToRemove = shutdownApproval.from
+                logForDebugging(
+                  `[print.ts] Processing shutdown_approved from ${teammateToRemove}`,
+                )
+
+                // Find the teammate ID by name
+                const teammateId = refreshedState.teamContext?.teammates
+                  ? Object.entries(refreshedState.teamContext.teammates).find(
+                      ([, t]) => t.name === teammateToRemove,
+                    )?.[0]
+                  : undefined
+
+                if (teammateId) {
+                  // Remove from team file
+                  removeTeammateFromTeamFile(teamName, {
+                    agentId: teammateId,
+                    name: teammateToRemove,
+                  })
+                  logForDebugging(
+                    `[print.ts] Removed ${teammateToRemove} from team file`,
+                  )
+
+                  // Unassign tasks owned by this teammate
+                  await unassignTeammateTasks(
+                    teamName,
+                    teammateId,
+                    teammateToRemove,
+                    'shutdown',
+                  )
+
+                  // Remove from teamContext in AppState
+                  setAppState(prev => {
+                    if (!prev.teamContext?.teammates) return prev
+                    if (!(teammateId in prev.teamContext.teammates)) return prev
+                    const { [teammateId]: _, ...remainingTeammates } =
+                      prev.teamContext.teammates
+                    return {
+                      ...prev,
+                      teamContext: {
+                        ...prev.teamContext,
+                        teammates: remainingTeammates,
+                      },
+                    }
+                  })
+                }
+              }
+            }
+
+            // Format messages same as useInboxPoller
+            const formatted = unread
+              .map(
+                (m: { from: string; text: string; color?: string }) =>
+                  `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${m.color ? ` color="${m.color}"` : ''}>\n${m.text}\n</${TEAMMATE_MESSAGE_TAG}>`,
+              )
+              .join('\n\n')
+
+            // Enqueue and process
+            enqueue({
+              mode: 'prompt',
+              value: formatted,
+              uuid: randomUUID(),
+            })
+            void run()
+            return // run() will come back here after processing
+          }
+
+          // No messages - check if we need to prompt for shutdown
+          // If input is closed and teammates are active, inject shutdown prompt once
+          if (inputClosed && !shutdownPromptInjected) {
+            shutdownPromptInjected = true
+            logForDebugging(
+              '[print.ts] Input closed with active teammates, injecting shutdown prompt',
+            )
+            enqueue({
+              mode: 'prompt',
+              value: SHUTDOWN_TEAM_PROMPT,
+              uuid: randomUUID(),
+            })
+            void run()
+            return // run() will come back here after processing
+          }
+
+          // Wait and check again
+          await sleep(POLL_INTERVAL_MS)
+        }
+      }
+    }
+
+    if (inputClosed) {
+      // Check for active swarm that needs shutdown
+      const hasActiveSwarm = await (async () => {
+        // Wait for any working in-process team members to finish
+        const currentAppState = getAppState()
+        if (hasWorkingInProcessTeammates(currentAppState)) {
+          await waitForTeammatesToBecomeIdle(setAppState, currentAppState)
+        }
+
+        // Re-fetch state after potential wait
+        const refreshedAppState = getAppState()
+        const refreshedTeamContext = refreshedAppState.teamContext
+        const hasTeamMembersNotCleanedUp =
+          refreshedTeamContext &&
+          Object.keys(refreshedTeamContext.teammates).length > 0
+
+        return (
+          hasTeamMembersNotCleanedUp ||
+          hasActiveInProcessTeammates(refreshedAppState)
+        )
+      })()
+
+      if (hasActiveSwarm) {
+        // Team members are idle or pane-based - inject prompt to shut down team
+        enqueue({
+          mode: 'prompt',
+          value: SHUTDOWN_TEAM_PROMPT,
+          uuid: randomUUID(),
+        })
+        void run()
+      } else {
+        // Wait for any in-flight push suggestion before closing the output stream.
+        if (suggestionState.inflightPromise) {
+          await Promise.race([suggestionState.inflightPromise, sleep(5000)])
+        }
+        suggestionState.abortController?.abort()
+        suggestionState.abortController = null
+        await finalizePendingAsyncHooks()
+        unsubscribeSkillChanges()
+        unsubscribeAuthStatus?.()
+        statusListeners.delete(rateLimitListener)
+        output.done()
+      }
+    }
+  }
+
+  // Set up UDS inbox callback so the query loop is kicked off
+  // when a message arrives via the UDS socket in headless mode.
+
+  // Cron scheduler: runs scheduled_tasks.json tasks in SDK/-p mode.
+  // Mirrors REPL's useScheduledTasks hook. Fired prompts enqueue + kick
+  // off run() directly — unlike REPL, there's no queue subscriber here
+  // that drains on enqueue while idle. The run() mutex makes this safe
+  // during an active turn: the call no-ops and the post-run recheck at
+  // the end of run() picks up the queued command.
+  let cronScheduler:
+    | import('../../utils/cronScheduler.js').CronScheduler
+    | null = null
+  if (cronGate.isKairosCronEnabled()) {
+    // Shared dedup-claim → input-close-recheck → onSuccess pipeline for the
+    // three cron entry points (legacy onFire, onFireTask agent, onFireTask
+    // non-agent). Centralizing the cancel-on-late-shutdown contract here keeps
+    // the three branches from drifting on what happens between claim and
+    // dispatch. onSuccess receives the claimed QueuedCommand and decides
+    // whether to enqueue it (normal path) or mark the run failed (agent path).
+    const dispatchHeadlessCronCommand = (params: {
+      basePrompt: string
+      sourceId: string
+      sourceLabel: string
+      logSuffix: string
+      onSuccess: (command: QueuedCommand) => void | Promise<void>
+    }): void => {
+      if (inputClosed) return
+      void (async () => {
+        const command = await createAutonomyQueuedPromptIfNoActiveSource({
+          basePrompt: params.basePrompt,
+          trigger: 'scheduled-task',
+          currentDir: cwd(),
+          sourceId: params.sourceId,
+          sourceLabel: params.sourceLabel,
+          workload: WORKLOAD_CRON,
+          shouldCreate: () => !inputClosed,
+        })
+        if (!command) return
+        if (inputClosed) {
+          await cancelQueuedAutonomyCommands({ commands: [command] })
+          return
+        }
+        await params.onSuccess(command)
+      })().catch(error => {
+        logError(error)
+        logForDebugging(
+          `[ScheduledTasks] failed to enqueue headless task${params.logSuffix}: ${error}`,
+          { level: 'error' },
+        )
+      })
+    }
+
+    const enqueueAndRun = (command: QueuedCommand): void => {
+      enqueue({
+        ...command,
+        uuid: randomUUID(),
+      })
+      void run()
+    }
+
+    cronScheduler = cronSchedulerModule.createCronScheduler({
+      onFire: prompt => {
+        // Legacy KAIROS-style entries: the prompt text is what uniquely
+        // identifies the cron entry, so it doubles as both source id and
+        // source label for dedup.
+        dispatchHeadlessCronCommand({
+          basePrompt: prompt,
+          sourceId: prompt,
+          sourceLabel: prompt,
+          logSuffix: '',
+          onSuccess: enqueueAndRun,
+        })
+      },
+      onFireTask: task => {
+        if (task.agentId) {
+          dispatchHeadlessCronCommand({
+            basePrompt: task.prompt,
+            sourceId: task.id,
+            sourceLabel: task.prompt,
+            logSuffix: ` ${task.id}`,
+            onSuccess: async command => {
+              await markAutonomyRunFailed(
+                command.autonomy!.runId,
+                `No teammate runtime available for scheduled task owner ${task.agentId} in headless mode.`,
+                command.autonomy!.rootDir,
+              )
+            },
+          })
+          return
+        }
+        dispatchHeadlessCronCommand({
+          basePrompt: task.prompt,
+          sourceId: task.id,
+          sourceLabel: task.prompt,
+          logSuffix: ` ${task.id}`,
+          onSuccess: enqueueAndRun,
+        })
+      },
+      isLoading: () => running || inputClosed,
+      getJitterConfig: cronJitterConfigModule?.getCronJitterConfig,
+      isKilled: () => !cronGate?.isKairosCronEnabled(),
+    })
+    cronScheduler.start()
+  }
+
+  const sendControlResponseSuccess = function (
+    message: { request_id: string } | SDKControlRequest,
+    response?: Record<string, unknown>,
+  ) {
+    output.enqueue({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: message.request_id,
+        response: response,
+      },
+    })
+  }
+
+  const sendControlResponseError = function (
+    message: { request_id: string } | SDKControlRequest,
+    errorMessage: string,
+  ) {
+    output.enqueue({
+      type: 'control_response',
+      response: {
+        subtype: 'error',
+        request_id: message.request_id,
+        error: errorMessage,
+      },
+    })
+  }
+
+  // Handle unexpected permission responses by looking up the unresolved tool
+  // call in the transcript and executing it
+  const handledOrphanedToolUseIds = new Set<string>()
+  structuredIO.setUnexpectedResponseCallback(async message => {
+    await handleOrphanedPermissionResponse({
+      message,
+      setAppState,
+      handledToolUseIds: handledOrphanedToolUseIds,
+      onEnqueued: () => {
+        // The first message of a session might be the orphaned permission
+        // check rather than a user prompt, so kick off the loop.
+        void run()
+      },
+    })
+  })
+
+  // Track active OAuth flows per server so we can abort a previous flow
+  // when a new mcp_authenticate request arrives for the same server.
+  const activeOAuthFlows = new Map<string, AbortController>()
+  // Track manual callback URL submit functions for active OAuth flows.
+  // Used when localhost is not reachable (e.g., browser-based IDEs).
+  const oauthCallbackSubmitters = new Map<
+    string,
+    (callbackUrl: string) => void
+  >()
+  // Track servers where the manual callback was actually invoked (so the
+  // automatic reconnect path knows to skip — the extension will reconnect).
+  const oauthManualCallbackUsed = new Set<string>()
+  // Track OAuth auth-only promises so mcp_oauth_callback_url can await
+  // token exchange completion. Reconnect is handled separately by the
+  // extension via handleAuthDone → mcp_reconnect.
+  const oauthAuthPromises = new Map<string, Promise<void>>()
+
+  // In-flight Anthropic OAuth flow (claude_authenticate). Single-slot: a
+  // second authenticate request cleans up the first. The service holds the
+  // PKCE verifier + localhost listener; the promise settles after
+  // installOAuthTokens — after it resolves, the in-process memoized token
+  // cache is already cleared and the next API call picks up the new creds.
+  let claudeOAuth: {
+    service: OAuthService
+    flow: Promise<void>
+  } | null = null
+
+  // This is essentially spawning a parallel async task- we have two
+  // running in parallel- one reading from stdin and adding to the
+  // queue to be processed and another reading from the queue,
+  // processing and returning the result of the generation.
+  // The process is complete when the input stream completes and
+  // the last generation of the queue has complete.
+  void (async () => {
+    let initialized = false
+    logForDiagnosticsNoPII('info', 'cli_message_loop_started')
+    for await (const message of structuredIO.structuredInput) {
+      // Non-user events are handled inline (no queue). started→completed in
+      // the same tick carries no information, so only fire completed.
+      // control_response is reported by StructuredIO.processLine (which also
+      // sees orphans that never yield here).
+      const eventId = 'uuid' in message ? message.uuid : undefined
+      if (
+        eventId &&
+        message.type !== 'user' &&
+        message.type !== 'control_response'
+      ) {
+        notifyCommandLifecycle(eventId as string, 'completed')
+      }
+
+      if (message.type === 'control_request') {
+        // Type assertion: structuredInput yields StdinMessage | SDKMessage, but
+        // when type === 'control_request' the object has request_id and request.
+        // The union with SDKMessage (typed as `any`) causes request to be `unknown`.
+        // Cast to SDKControlRequest (via unknown) for type safety on known subtypes,
+        // and use Record<string, unknown> for subtypes not in the zod schema union.
+        const msg = message as unknown as SDKControlRequest
+        // Wider-typed alias for request properties on subtypes not in the zod schema.
+        // The schema union doesn't include end_session, channel_enable, mcp_authenticate,
+        // claude_authenticate, etc. so accessing their properties narrows to `never`.
+        const req = msg.request as Record<string, unknown>
+        if (msg.request.subtype === 'interrupt') {
+          // Track escapes for attribution (ant-only feature)
+          if (feature('COMMIT_ATTRIBUTION')) {
+            setAppState(prev => ({
+              ...prev,
+              attribution: {
+                ...prev.attribution,
+                escapeCount: prev.attribution.escapeCount + 1,
+              },
+            }))
+          }
+          if (abortController) {
+            abortController.abort()
+          }
+          suggestionState.abortController?.abort()
+          suggestionState.abortController = null
+          suggestionState.lastEmitted = null
+          suggestionState.pendingSuggestion = null
+          sendControlResponseSuccess(msg)
+        } else if (req.subtype === 'end_session') {
+          logForDebugging(
+            `[print.ts] end_session received, reason=${req.reason ?? 'unspecified'}`,
+          )
+          if (abortController) {
+            abortController.abort()
+          }
+          suggestionState.abortController?.abort()
+          suggestionState.abortController = null
+          suggestionState.lastEmitted = null
+          suggestionState.pendingSuggestion = null
+          sendControlResponseSuccess(msg)
+          break // exits for-await → falls through to inputClosed=true drain below
+        } else if (msg.request.subtype === 'initialize') {
+          // SDK MCP server names from the initialize message
+          // Populated by both browser and ProcessTransport sessions
+          if (
+            msg.request.sdkMcpServers &&
+            msg.request.sdkMcpServers.length > 0
+          ) {
+            for (const serverName of msg.request.sdkMcpServers) {
+              // Create placeholder config for SDK MCP servers
+              // The actual server connection is managed by the SDK Query class
+              sdkMcpConfigs[serverName] = {
+                type: 'sdk',
+                name: serverName,
+              }
+            }
+          }
+
+          await handleInitializeRequest(
+            msg.request,
+            msg.request_id,
+            initialized,
+            output,
+            commands,
+            modelInfos,
+            structuredIO,
+            !!options.enableAuthStatus,
+            options,
+            agents,
+            getAppState,
+          )
+
+          // Enable prompt suggestions in AppState when SDK consumer opts in.
+          // shouldEnablePromptSuggestion() returns false for non-interactive
+          // sessions, but the SDK consumer explicitly requested suggestions.
+          if (msg.request.promptSuggestions) {
+            setAppState(prev => {
+              if (prev.promptSuggestionEnabled) return prev
+              return { ...prev, promptSuggestionEnabled: true }
+            })
+          }
+
+          if (
+            msg.request.agentProgressSummaries &&
+            getFeatureValue_CACHED_MAY_BE_STALE('tengu_slate_prism', true)
+          ) {
+            setSdkAgentProgressSummariesEnabled(true)
+          }
+
+          initialized = true
+
+          // If the auto-resume logic pre-enqueued a command, drain it now
+          // that initialize has set up systemPrompt, agents, hooks, etc.
+          if (hasCommandsInQueue()) {
+            void run()
+          }
+        } else if (msg.request.subtype === 'set_permission_mode') {
+          const m = msg.request // for typescript (TODO: use readonly types to avoid this)
+          setAppState(prev => ({
+            ...prev,
+            toolPermissionContext: handleSetPermissionMode(
+              m,
+              msg.request_id,
+              prev.toolPermissionContext,
+              output,
+            ),
+            isUltraplanMode: m.ultraplan ?? prev.isUltraplanMode,
+          }))
+          // handleSetPermissionMode sends the control_response; the
+          // notifySessionMetadataChanged that used to follow here is
+          // now fired by onChangeAppState (with externalized mode name).
+        } else if (msg.request.subtype === 'set_model') {
+          const requestedModel = msg.request.model ?? 'default'
+          const model =
+            requestedModel === 'default'
+              ? getDefaultMainLoopModel()
+              : requestedModel
+          activeUserSpecifiedModel = model
+          setMainLoopModelOverride(model)
+          notifySessionMetadataChanged({ model })
+          injectModelSwitchBreadcrumbs(requestedModel, model)
+
+          sendControlResponseSuccess(msg)
+        } else if (msg.request.subtype === 'set_max_thinking_tokens') {
+          if (msg.request.max_thinking_tokens === null) {
+            options.thinkingConfig = undefined
+          } else if (msg.request.max_thinking_tokens === 0) {
+            options.thinkingConfig = { type: 'disabled' }
+          } else {
+            options.thinkingConfig = {
+              type: 'enabled',
+              budgetTokens: msg.request.max_thinking_tokens,
+            }
+          }
+          sendControlResponseSuccess(msg)
+        } else if (msg.request.subtype === 'mcp_status') {
+          sendControlResponseSuccess(msg, {
+            mcpServers: buildMcpServerStatuses(),
+          })
+        } else if (msg.request.subtype === 'get_context_usage') {
+          try {
+            const appState = getAppState()
+            const data = await collectContextData({
+              messages: mutableMessages,
+              getAppState,
+              options: {
+                mainLoopModel: getMainLoopModel(),
+                tools: buildAllTools(appState),
+                agentDefinitions: appState.agentDefinitions,
+                customSystemPrompt: options.systemPrompt,
+                appendSystemPrompt: options.appendSystemPrompt,
+              },
+            })
+            sendControlResponseSuccess(msg, { ...data })
+          } catch (error) {
+            sendControlResponseError(msg, errorMessage(error))
+          }
+        } else if (msg.request.subtype === 'mcp_message') {
+          // Handle MCP notifications from SDK servers
+          const mcpRequest = msg.request as Record<string, unknown>
+          const sdkClient = sdkClients.find(
+            client => client.name === mcpRequest.server_name,
+          )
+          // Check client exists - dynamically added SDK servers may have
+          // placeholder clients with null client until updateSdkMcp() runs
+          if (
+            sdkClient &&
+            sdkClient.type === 'connected' &&
+            sdkClient.client?.transport?.onmessage
+          ) {
+            sdkClient.client.transport.onmessage(
+              mcpRequest.message as import('@modelcontextprotocol/client').JSONRPCMessage,
+            )
+          }
+          sendControlResponseSuccess(msg)
+        } else if (msg.request.subtype === 'rewind_files') {
+          const appState = getAppState()
+          const result = await handleRewindFiles(
+            msg.request.user_message_id as UUID,
+            appState,
+            setAppState,
+            msg.request.dry_run ?? false,
+          )
+          if (result.canRewind || msg.request.dry_run) {
+            sendControlResponseSuccess(msg, result)
+          } else {
+            sendControlResponseError(
+              msg,
+              (result.error as string) ?? 'Unexpected error',
+            )
+          }
+        } else if (msg.request.subtype === 'cancel_async_message') {
+          const targetUuid = msg.request.message_uuid
+          const removed = dequeueAllMatching(cmd => cmd.uuid === targetUuid)
+          sendControlResponseSuccess(msg, {
+            cancelled: removed.length > 0,
+          })
+        } else if (msg.request.subtype === 'seed_read_state') {
+          // Client observed a Read that was later removed from context (e.g.
+          // by snip), so transcript-based seeding missed it. Queued into
+          // pendingSeeds; applied at the next clone-replace boundary.
+          try {
+            // expandPath: all other readFileState writers normalize (~, relative,
+            // session cwd vs process cwd). FileEditTool looks up by expandPath'd
+            // key — a verbatim client path would miss.
+            const normalizedPath = expandPath(msg.request.path)
+            // Check disk mtime before reading content. If the file changed
+            // since the client's observation, readFile would return C_current
+            // but we'd store it with the client's M_observed — getChangedFiles
+            // then sees disk > cache.timestamp, re-reads, diffs C_current vs
+            // C_current = empty, emits no attachment, and the model is never
+            // told about the C_observed → C_current change. Skipping the seed
+            // makes Edit fail "file not read yet" → forces a fresh Read.
+            // Math.floor matches FileReadTool and getFileModificationTime.
+            const diskMtime = Math.floor((await stat(normalizedPath)).mtimeMs)
+            if (diskMtime <= msg.request.mtime) {
+              const raw = await readFile(normalizedPath, 'utf-8')
+              // Strip BOM + normalize CRLF→LF to match readFileInRange and
+              // readFileSyncWithMetadata. FileEditTool's content-compare
+              // fallback (for Windows mtime bumps without content change)
+              // compares against LF-normalized disk reads.
+              const content = (
+                raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+              ).replaceAll('\r\n', '\n')
+              pendingSeeds.set(normalizedPath, {
+                content,
+                timestamp: diskMtime,
+                offset: undefined,
+                limit: undefined,
+              })
+            }
+          } catch {
+            // ENOENT etc — skip seeding but still succeed
+          }
+          sendControlResponseSuccess(msg)
+        } else if (msg.request.subtype === 'mcp_set_servers') {
+          const { response, sdkServersChanged } = await applyMcpServerChanges(
+            msg.request.servers as Record<
+              string,
+              McpServerConfigForProcessTransport
+            >,
+          )
+          sendControlResponseSuccess(msg, response)
+
+          // Connect SDK servers AFTER response to avoid deadlock
+          if (sdkServersChanged) {
+            void updateSdkMcp()
+          }
+        } else if (msg.request.subtype === 'reload_plugins') {
+          try {
+            const r = await refreshActivePlugins(setAppState)
+
+            const sdkAgents = currentAgents.filter(
+              a => a.source === 'flagSettings',
+            )
+            currentAgents = [...r.agentDefinitions.allAgents, ...sdkAgents]
+
+            // Reload succeeded — gather response data best-effort so a
+            // read failure doesn't mask the successful state change.
+            // allSettled so one failure doesn't discard the others.
+            let plugins: SDKControlReloadPluginsResponse['plugins'] = []
+            const [cmdsR, mcpR, pluginsR] = await Promise.allSettled([
+              getCommands(cwd()),
+              applyPluginMcpDiff(),
+              loadAllPluginsCacheOnly(),
+            ])
+            if (cmdsR.status === 'fulfilled') {
+              currentCommands = cmdsR.value
+            } else {
+              logError(cmdsR.reason)
+            }
+            if (mcpR.status === 'rejected') {
+              logError(mcpR.reason)
+            }
+            if (pluginsR.status === 'fulfilled') {
+              plugins = pluginsR.value.enabled.map(p => ({
+                name: p.name,
+                path: p.path,
+                source: p.source,
+              }))
+            } else {
+              logError(pluginsR.reason)
+            }
+
+            sendControlResponseSuccess(msg, {
+              commands: currentCommands
+                .filter(cmd => cmd.userInvocable !== false)
+                .map(cmd => ({
+                  name: getCommandName(cmd),
+                  description: formatDescriptionWithSource(cmd),
+                  argumentHint: cmd.argumentHint || '',
+                })),
+              agents: currentAgents.map(a => ({
+                name: a.agentType,
+                description: a.whenToUse,
+                model: a.model === 'inherit' ? undefined : a.model,
+              })),
+              plugins,
+              mcpServers:
+                buildMcpServerStatuses() as SDKControlReloadPluginsResponse['mcpServers'],
+              error_count: r.error_count,
+            } satisfies SDKControlReloadPluginsResponse)
+          } catch (error) {
+            sendControlResponseError(msg, errorMessage(error))
+          }
+        } else if (msg.request.subtype === 'mcp_reconnect') {
+          const currentAppState = getAppState()
+          const { serverName } = msg.request
+          elicitationRegistered.delete(serverName)
+          // Config-existence gate must cover the SAME sources as the
+          // operations below. SDK-injected servers (query({mcpServers:{...}}))
+          // and dynamically-added servers were missing here, so
+          // toggleMcpServer/reconnect returned "Server not found" even though
+          // the disconnect/reconnect would have worked (gh-31339 / CC-314).
+          const config =
+            getMcpConfigByName(serverName) ??
+            mcpClients.find(c => c.name === serverName)?.config ??
+            sdkClients.find(c => c.name === serverName)?.config ??
+            dynamicMcpState.clients.find(c => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find(c => c.name === serverName)
+              ?.config ??
+            null
+          if (!config) {
+            sendControlResponseError(msg, `Server not found: ${serverName}`)
+          } else {
+            const result = await reconnectMcpServerImpl(serverName, config)
+            // Update appState.mcp with the new client, tools, commands, and resources
+            const prefix = getMcpPrefix(serverName)
+            setAppState(prev => ({
+              ...prev,
+              mcp: {
+                ...prev.mcp,
+                clients: prev.mcp.clients.map(c =>
+                  c.name === serverName ? result.client : c,
+                ),
+                tools: [
+                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
+                  ...result.tools,
+                ],
+                commands: [
+                  ...reject(prev.mcp.commands, c =>
+                    commandBelongsToServer(c, serverName),
+                  ),
+                  ...result.commands,
+                ],
+                resources:
+                  result.resources && result.resources.length > 0
+                    ? { ...prev.mcp.resources, [serverName]: result.resources }
+                    : omit(prev.mcp.resources, serverName),
+              },
+            }))
+            // Also update dynamicMcpState so run() picks up the new tools
+            // on the next turn (run() reads dynamicMcpState, not appState)
+            dynamicMcpState = {
+              ...dynamicMcpState,
+              clients: [
+                ...dynamicMcpState.clients.filter(c => c.name !== serverName),
+                result.client,
+              ],
+              tools: [
+                ...dynamicMcpState.tools.filter(
+                  t => !t.name?.startsWith(prefix),
+                ),
+                ...result.tools,
+              ],
+            }
+            if (result.client.type === 'connected') {
+              registerElicitationHandlers([result.client])
+              reregisterChannelHandlerAfterReconnect(result.client)
+              sendControlResponseSuccess(msg)
+            } else {
+              const errorMessage =
+                result.client.type === 'failed'
+                  ? (result.client.error ?? 'Connection failed')
+                  : `Server status: ${result.client.type}`
+              sendControlResponseError(msg, errorMessage)
+            }
+          }
+        } else if (msg.request.subtype === 'mcp_toggle') {
+          const currentAppState = getAppState()
+          const { serverName, enabled } = msg.request
+          elicitationRegistered.delete(serverName)
+          // Gate must match the client-lookup spread below (which
+          // includes sdkClients and dynamicMcpState.clients). Same fix as
+          // mcp_reconnect above (gh-31339 / CC-314).
+          const config =
+            getMcpConfigByName(serverName) ??
+            mcpClients.find(c => c.name === serverName)?.config ??
+            sdkClients.find(c => c.name === serverName)?.config ??
+            dynamicMcpState.clients.find(c => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find(c => c.name === serverName)
+              ?.config ??
+            null
+
+          if (!config) {
+            sendControlResponseError(msg, `Server not found: ${serverName}`)
+          } else if (!enabled) {
+            // Disabling: persist + disconnect (matches TUI toggleMcpServer behavior)
+            setMcpServerEnabled(serverName, false)
+            const client = [
+              ...mcpClients,
+              ...sdkClients,
+              ...dynamicMcpState.clients,
+              ...currentAppState.mcp.clients,
+            ].find(c => c.name === serverName)
+            if (client && client.type === 'connected') {
+              await clearServerCache(serverName, config)
+            }
+            // Update appState.mcp to reflect disabled status and remove tools/commands/resources
+            const prefix = getMcpPrefix(serverName)
+            setAppState(prev => ({
+              ...prev,
+              mcp: {
+                ...prev.mcp,
+                clients: prev.mcp.clients.map(c =>
+                  c.name === serverName
+                    ? { name: serverName, type: 'disabled' as const, config }
+                    : c,
+                ),
+                tools: reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
+                commands: reject(prev.mcp.commands, c =>
+                  commandBelongsToServer(c, serverName),
+                ),
+                resources: omit(prev.mcp.resources, serverName),
+              },
+            }))
+            sendControlResponseSuccess(msg)
+          } else {
+            // Enabling: persist + reconnect
+            setMcpServerEnabled(serverName, true)
+            const result = await reconnectMcpServerImpl(serverName, config)
+            // Update appState.mcp with the new client, tools, commands, and resources
+            // This ensures the LLM sees updated tools after enabling the server
+            const prefix = getMcpPrefix(serverName)
+            setAppState(prev => ({
+              ...prev,
+              mcp: {
+                ...prev.mcp,
+                clients: prev.mcp.clients.map(c =>
+                  c.name === serverName ? result.client : c,
+                ),
+                tools: [
+                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
+                  ...result.tools,
+                ],
+                commands: [
+                  ...reject(prev.mcp.commands, c =>
+                    commandBelongsToServer(c, serverName),
+                  ),
+                  ...result.commands,
+                ],
+                resources:
+                  result.resources && result.resources.length > 0
+                    ? { ...prev.mcp.resources, [serverName]: result.resources }
+                    : omit(prev.mcp.resources, serverName),
+              },
+            }))
+            if (result.client.type === 'connected') {
+              registerElicitationHandlers([result.client])
+              reregisterChannelHandlerAfterReconnect(result.client)
+              sendControlResponseSuccess(msg)
+            } else {
+              const errorMessage =
+                result.client.type === 'failed'
+                  ? (result.client.error ?? 'Connection failed')
+                  : `Server status: ${result.client.type}`
+              sendControlResponseError(msg, errorMessage)
+            }
+          }
+        } else if (req.subtype === 'channel_enable') {
+          const currentAppState = getAppState()
+          handleChannelEnable(
+            msg.request_id,
+            req.serverName as string,
+            // Pool spread matches mcp_status — all three client sources.
+            [
+              ...currentAppState.mcp.clients,
+              ...sdkClients,
+              ...dynamicMcpState.clients,
+            ],
+            output,
+          )
+        } else if (req.subtype === 'mcp_authenticate') {
+          const serverName = req.serverName as string
+          const currentAppState = getAppState()
+          const config =
+            getMcpConfigByName(serverName) ??
+            mcpClients.find(c => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find(c => c.name === serverName)
+              ?.config ??
+            null
+          if (!config) {
+            sendControlResponseError(msg, `Server not found: ${serverName}`)
+          } else if (config.type !== 'sse' && config.type !== 'http') {
+            sendControlResponseError(
+              msg,
+              `Server type "${config.type}" does not support OAuth authentication`,
+            )
+          } else {
+            try {
+              // Abort any previous in-flight OAuth flow for this server
+              activeOAuthFlows.get(serverName as string)?.abort()
+              const controller = new AbortController()
+              activeOAuthFlows.set(serverName as string, controller)
+
+              // Capture the auth URL from the callback
+              let resolveAuthUrl: (url: string) => void
+              const authUrlPromise = new Promise<string>(resolve => {
+                resolveAuthUrl = resolve
+              })
+
+              // Start the OAuth flow in the background
+              const oauthPromise = performMCPOAuthFlow(
+                serverName as string,
+                config,
+                url => resolveAuthUrl!(url),
+                controller.signal,
+                {
+                  skipBrowserOpen: true,
+                  onWaitingForCallback: submit => {
+                    oauthCallbackSubmitters.set(serverName as string, submit)
+                  },
+                },
+              )
+
+              // Wait for the auth URL (or the flow to complete without needing redirect)
+              const authUrl = await Promise.race([
+                authUrlPromise,
+                oauthPromise.then(() => null as string | null),
+              ])
+
+              if (authUrl) {
+                sendControlResponseSuccess(msg, {
+                  authUrl,
+                  requiresUserAction: true,
+                })
+              } else {
+                sendControlResponseSuccess(msg, {
+                  requiresUserAction: false,
+                })
+              }
+
+              // Store auth-only promise for mcp_oauth_callback_url handler.
+              // Don't swallow errors — the callback handler needs to detect
+              // auth failures and report them to the caller.
+              oauthAuthPromises.set(serverName, oauthPromise)
+
+              // Handle background completion — reconnect after auth.
+              // When manual callback is used, skip the reconnect here;
+              // the extension's handleAuthDone → mcp_reconnect handles it
+              // (which also updates dynamicMcpState for tool registration).
+              const fullFlowPromise = oauthPromise
+                .then(async () => {
+                  // Don't reconnect if the server was disabled during the OAuth flow
+                  if (isMcpServerDisabled(serverName as string)) {
+                    return
+                  }
+                  // Skip reconnect if the manual callback path was used —
+                  // handleAuthDone will do it via mcp_reconnect (which
+                  // updates dynamicMcpState for tool registration).
+                  if (oauthManualCallbackUsed.has(serverName as string)) {
+                    return
+                  }
+                  // Reconnect the server after successful auth
+                  const result = await reconnectMcpServerImpl(
+                    serverName as string,
+                    config,
+                  )
+                  const prefix = getMcpPrefix(serverName as string)
+                  setAppState(prev => ({
+                    ...prev,
+                    mcp: {
+                      ...prev.mcp,
+                      clients: prev.mcp.clients.map(c =>
+                        c.name === (serverName as string) ? result.client : c,
+                      ),
+                      tools: [
+                        ...reject(prev.mcp.tools, t =>
+                          t.name?.startsWith(prefix),
+                        ),
+                        ...result.tools,
+                      ],
+                      commands: [
+                        ...reject(prev.mcp.commands, c =>
+                          commandBelongsToServer(c, serverName as string),
+                        ),
+                        ...result.commands,
+                      ],
+                      resources:
+                        result.resources && result.resources.length > 0
+                          ? {
+                              ...prev.mcp.resources,
+                              [serverName as string]: result.resources,
+                            }
+                          : omit(prev.mcp.resources, serverName as string),
+                    },
+                  }))
+                  // Also update dynamicMcpState so run() picks up the new tools
+                  // on the next turn (run() reads dynamicMcpState, not appState)
+                  dynamicMcpState = {
+                    ...dynamicMcpState,
+                    clients: [
+                      ...dynamicMcpState.clients.filter(
+                        c => c.name !== serverName,
+                      ),
+                      result.client,
+                    ],
+                    tools: [
+                      ...dynamicMcpState.tools.filter(
+                        t => !t.name?.startsWith(prefix),
+                      ),
+                      ...result.tools,
+                    ],
+                  }
+                })
+                .catch(error => {
+                  logForDebugging(
+                    `MCP OAuth failed for ${serverName as string}: ${error}`,
+                    { level: 'error' },
+                  )
+                })
+                .finally(() => {
+                  // Clean up only if this is still the active flow
+                  if (
+                    activeOAuthFlows.get(serverName as string) === controller
+                  ) {
+                    activeOAuthFlows.delete(serverName as string)
+                    oauthCallbackSubmitters.delete(serverName as string)
+                    oauthManualCallbackUsed.delete(serverName as string)
+                    oauthAuthPromises.delete(serverName as string)
+                  }
+                })
+              void fullFlowPromise
+            } catch (error) {
+              sendControlResponseError(msg, errorMessage(error))
+            }
+          }
+        } else if (req.subtype === 'mcp_oauth_callback_url') {
+          const serverName = req.serverName as string
+          const callbackUrl = req.callbackUrl as string
+          const submit = oauthCallbackSubmitters.get(serverName)
+          if (submit) {
+            // Validate the callback URL before submitting. The submit
+            // callback in auth.ts silently ignores URLs missing a code
+            // param, which would leave the auth promise unresolved and
+            // block the control message loop until timeout.
+            let hasCodeOrError = false
+            try {
+              const parsed = new URL(callbackUrl as string | URL)
+              hasCodeOrError =
+                parsed.searchParams.has('code') ||
+                parsed.searchParams.has('error')
+            } catch {
+              // Invalid URL
+            }
+            if (!hasCodeOrError) {
+              sendControlResponseError(
+                msg,
+                'Invalid callback URL: missing authorization code. Please paste the full redirect URL including the code parameter.',
+              )
+            } else {
+              oauthManualCallbackUsed.add(serverName)
+              submit(callbackUrl as string)
+              // Wait for auth (token exchange) to complete before responding.
+              // Reconnect is handled by the extension via handleAuthDone →
+              // mcp_reconnect (which updates dynamicMcpState for tools).
+              const authPromise = oauthAuthPromises.get(serverName)
+              if (authPromise) {
+                try {
+                  await authPromise
+                  sendControlResponseSuccess(msg)
+                } catch (error) {
+                  sendControlResponseError(
+                    msg,
+                    error instanceof Error
+                      ? error.message
+                      : 'OAuth authentication failed',
+                  )
+                }
+              } else {
+                sendControlResponseSuccess(msg)
+              }
+            }
+          } else {
+            sendControlResponseError(
+              msg,
+              `No active OAuth flow for server: ${serverName}`,
+            )
+          }
+        } else if (req.subtype === 'claude_authenticate') {
+          // Anthropic OAuth over the control channel. The SDK client owns
+          // the user's browser (we're headless in -p mode); we hand back
+          // both URLs and wait. Automatic URL → localhost listener catches
+          // the redirect if the browser is on this host; manual URL → the
+          // success page shows "code#state" for claude_oauth_callback.
+          const loginWithClaudeAi = req.loginWithClaudeAi as boolean | undefined
+
+          // Clean up any prior flow. cleanup() closes the localhost listener
+          // and nulls the manual resolver. The prior `flow` promise is left
+          // pending (AuthCodeListener.close() does not reject) but its object
+          // graph becomes unreachable once the server handle is released and
+          // is GC'd — no fd or port is held.
+          claudeOAuth?.service.cleanup()
+
+          logEvent('tengu_oauth_flow_start', {
+            loginWithClaudeAi: (loginWithClaudeAi ?? true) as boolean | number,
+          })
+
+          const service = new OAuthService()
+          let urlResolver!: (urls: {
+            manualUrl: string
+            automaticUrl: string
+          }) => void
+          const urlPromise = new Promise<{
+            manualUrl: string
+            automaticUrl: string
+          }>(resolve => {
+            urlResolver = resolve
+          })
+
+          const flow = service
+            .startOAuthFlow(
+              async (manualUrl, automaticUrl) => {
+                // automaticUrl is always defined when skipBrowserOpen is set;
+                // the signature is optional only for the existing single-arg callers.
+                urlResolver({ manualUrl, automaticUrl: automaticUrl! })
+              },
+              {
+                loginWithClaudeAi: (loginWithClaudeAi ?? true) as boolean,
+                skipBrowserOpen: true,
+              },
+            )
+            .then(async tokens => {
+              // installOAuthTokens: performLogout (clear stale state) →
+              // store profile → saveOAuthTokensIfNeeded → clearOAuthTokenCache
+              // → clearAuthRelatedCaches. After this resolves, the memoized
+              // getClaudeAIOAuthTokens in this process is invalidated; the
+              // next API call re-reads keychain/file and works. No respawn.
+              await installOAuthTokens(tokens)
+              logEvent('tengu_oauth_success', {
+                loginWithClaudeAi: (loginWithClaudeAi ?? true) as
+                  | boolean
+                  | number,
+              })
+            })
+            .finally(() => {
+              service.cleanup()
+              if (claudeOAuth?.service === service) {
+                claudeOAuth = null
+              }
+            })
+
+          claudeOAuth = { service, flow }
+
+          // Attach the rejection handler before awaiting so a synchronous
+          // startOAuthFlow failure doesn't surface as an unhandled rejection.
+          // The claude_oauth_callback handler re-awaits flow for the manual
+          // path and surfaces the real error to the client.
+          void flow.catch(err =>
+            logForDebugging(`claude_authenticate flow ended: ${err}`, {
+              level: 'info',
+            }),
+          )
+
+          try {
+            // Race against flow: if startOAuthFlow rejects before calling
+            // the authURLHandler (e.g. AuthCodeListener.start() fails with
+            // EACCES or fd exhaustion), urlPromise would pend forever and
+            // wedge the stdin loop. flow resolving first is unreachable in
+            // practice (it's suspended on the same urls we're waiting for).
+            const { manualUrl, automaticUrl } = await Promise.race([
+              urlPromise,
+              flow.then(() => {
+                throw new Error(
+                  'OAuth flow completed without producing auth URLs',
+                )
+              }),
+            ])
+            sendControlResponseSuccess(msg, {
+              manualUrl,
+              automaticUrl,
+            })
+          } catch (error) {
+            sendControlResponseError(msg, errorMessage(error))
+          }
+        } else if (
+          req.subtype === 'claude_oauth_callback' ||
+          req.subtype === 'claude_oauth_wait_for_completion'
+        ) {
+          if (!claudeOAuth) {
+            sendControlResponseError(msg, 'No active claude_authenticate flow')
+          } else {
+            // Inject the manual code synchronously — must happen in stdin
+            // message order so a subsequent claude_authenticate doesn't
+            // replace the service before this code lands.
+            if (req.subtype === 'claude_oauth_callback') {
+              claudeOAuth.service.handleManualAuthCodeInput({
+                authorizationCode: req.authorizationCode as string,
+                state: req.state as string,
+              })
+            }
+            // Detach the await — the stdin reader is serial and blocking
+            // here deadlocks claude_oauth_wait_for_completion: flow may
+            // only resolve via a future claude_oauth_callback on stdin,
+            // which can't be read while we're parked. Capture the binding;
+            // claudeOAuth is nulled in flow's own .finally.
+            const { flow } = claudeOAuth
+            void flow.then(
+              () => {
+                const accountInfo = getAccountInformation()
+                sendControlResponseSuccess(msg, {
+                  account: {
+                    email: accountInfo?.email,
+                    organization: accountInfo?.organization,
+                    subscriptionType: accountInfo?.subscription,
+                    tokenSource: accountInfo?.tokenSource,
+                    apiKeySource: accountInfo?.apiKeySource,
+                    apiProvider: getAPIProvider(),
+                  },
+                })
+              },
+              (error: unknown) =>
+                sendControlResponseError(msg, errorMessage(error)),
+            )
+          }
+        } else if (req.subtype === 'mcp_clear_auth') {
+          const serverName = req.serverName as string
+          const currentAppState = getAppState()
+          const config =
+            getMcpConfigByName(serverName) ??
+            mcpClients.find(c => c.name === serverName)?.config ??
+            currentAppState.mcp.clients.find(c => c.name === serverName)
+              ?.config ??
+            null
+          if (!config) {
+            sendControlResponseError(msg, `Server not found: ${serverName}`)
+          } else if (config.type !== 'sse' && config.type !== 'http') {
+            sendControlResponseError(
+              msg,
+              `Cannot clear auth for server type "${config.type}"`,
+            )
+          } else {
+            await revokeServerTokens(serverName, config)
+            const result = await reconnectMcpServerImpl(serverName, config)
+            const prefix = getMcpPrefix(serverName)
+            setAppState(prev => ({
+              ...prev,
+              mcp: {
+                ...prev.mcp,
+                clients: prev.mcp.clients.map(c =>
+                  c.name === (serverName as string) ? result.client : c,
+                ),
+                tools: [
+                  ...reject(prev.mcp.tools, t => t.name?.startsWith(prefix)),
+                  ...result.tools,
+                ],
+                commands: [
+                  ...reject(prev.mcp.commands, c =>
+                    commandBelongsToServer(c, serverName),
+                  ),
+                  ...result.commands,
+                ],
+                resources:
+                  result.resources && result.resources.length > 0
+                    ? {
+                        ...prev.mcp.resources,
+                        [serverName]: result.resources,
+                      }
+                    : omit(prev.mcp.resources, serverName),
+              },
+            }))
+            sendControlResponseSuccess(msg, {})
+          }
+        } else if (msg.request.subtype === 'apply_flag_settings') {
+          // Snapshot the current model before applying — we need to detect
+          // model switches so we can inject breadcrumbs and notify listeners.
+          const prevModel = getMainLoopModel()
+
+          // Merge the provided settings into the in-memory flag settings
+          const existing = getFlagSettingsInline() ?? {}
+          const incoming = msg.request.settings
+          // Shallow-merge top-level keys; getSettingsForSource handles
+          // the deep merge with file-based flag settings via mergeWith.
+          // JSON serialization drops `undefined`, so callers use `null`
+          // to signal "clear this key". Convert nulls to deletions so
+          // SettingsSchema().safeParse() doesn't reject the whole object
+          // (z.string().optional() accepts string | undefined, not null).
+          const merged = { ...existing, ...incoming }
+          for (const key of Object.keys(merged)) {
+            if (merged[key as keyof typeof merged] === null) {
+              delete merged[key as keyof typeof merged]
+            }
+          }
+          setFlagSettingsInline(merged)
+          // Route through notifyChange so fanOut() resets the settings cache
+          // before listeners run. The subscriber at :392 calls
+          // applySettingsChange for us. Pre-#20625 this was a direct
+          // applySettingsChange() call that relied on its own internal reset —
+          // now that the reset is centralized in fanOut, a direct call here
+          // would read stale cached settings and silently drop the update.
+          // Bonus: going through notifyChange also tells the other subscribers
+          // (loadPluginHooks, sandbox-adapter) about the change, which the
+          // previous direct call skipped.
+          settingsChangeDetector.notifyChange('flagSettings')
+
+          // If the incoming settings include a model change, update the
+          // override so getMainLoopModel() reflects it. The override has
+          // higher priority than the settings cascade in
+          // getUserSpecifiedModelSetting(), so without this update,
+          // getMainLoopModel() returns the stale override and the model
+          // change is silently ignored (matching set_model at :2811).
+          if ('model' in incoming) {
+            if (incoming.model != null) {
+              setMainLoopModelOverride(String(incoming.model))
+            } else {
+              setMainLoopModelOverride(undefined)
+            }
+          }
+
+          // If the model changed, inject breadcrumbs so the model sees the
+          // mid-conversation switch, and notify metadata listeners (CCR).
+          const newModel = getMainLoopModel()
+          if (newModel !== prevModel) {
+            activeUserSpecifiedModel = newModel
+            const modelArg = incoming.model ? String(incoming.model) : 'default'
+            notifySessionMetadataChanged({ model: newModel })
+            injectModelSwitchBreadcrumbs(modelArg, newModel)
+          }
+
+          sendControlResponseSuccess(msg)
+        } else if (msg.request.subtype === 'get_settings') {
+          const currentAppState = getAppState()
+          const model = getMainLoopModel()
+          // modelSupportsEffort gate matches claude.ts — applied.effort must
+          // mirror what actually goes to the API, not just what's configured.
+          const effort = modelSupportsEffort(model)
+            ? resolveAppliedEffort(model, currentAppState.effortValue)
+            : undefined
+          sendControlResponseSuccess(msg, {
+            ...getSettingsWithSources(),
+            applied: {
+              model,
+              // Numeric effort (ant-only) → null; SDK schema is string-level only.
+              effort: typeof effort === 'string' ? effort : null,
+            },
+          })
+        } else if (msg.request.subtype === 'stop_task') {
+          const { task_id: taskId } = msg.request
+          try {
+            await stopTask(taskId, {
+              getAppState,
+              setAppState,
+            })
+            sendControlResponseSuccess(msg, {})
+          } catch (error) {
+            sendControlResponseError(msg, errorMessage(error))
+          }
+        } else if (req.subtype === 'generate_session_title') {
+          // Fire-and-forget so the Haiku call does not block the stdin loop
+          // (which would delay processing of subsequent user messages /
+          // interrupts for the duration of the API roundtrip).
+          const description = req.description as string
+          const persist = req.persist as boolean
+          // Reuse the live controller only if it has not already been aborted
+          // (e.g. by interrupt()); an aborted signal would cause queryHaiku to
+          // immediately throw APIUserAbortError → {title: null}.
+          const titleSignal = (
+            abortController && !abortController.signal.aborted
+              ? abortController
+              : createAbortController()
+          ).signal
+          void (async () => {
+            try {
+              const title = await generateSessionTitle(description, titleSignal)
+              if (title && persist) {
+                try {
+                  saveAiGeneratedTitle(getSessionId() as UUID, title)
+                } catch (e) {
+                  logError(e)
+                }
+              }
+              sendControlResponseSuccess(msg, { title })
+            } catch (e) {
+              // Unreachable in practice — generateSessionTitle wraps its
+              // own body and returns null, saveAiGeneratedTitle is wrapped
+              // above. Propagate (not swallow) so unexpected failures are
+              // visible to the SDK caller (hostComms.ts catches and logs).
+              sendControlResponseError(msg, errorMessage(e))
+            }
+          })()
+        } else if (req.subtype === 'side_question') {
+          // Same fire-and-forget pattern as generate_session_title above —
+          // the forked agent's API roundtrip must not block the stdin loop.
+          //
+          // The snapshot captured by stopHooks (for querySource === 'sdk')
+          // holds the exact systemPrompt/userContext/systemContext/messages
+          // sent on the last main-thread turn. Reusing them gives a byte-
+          // identical prefix → prompt cache hit.
+          //
+          // Fallback (resume before first turn completes — no snapshot yet):
+          // rebuild from scratch. buildSideQuestionFallbackParams mirrors
+          // QueryEngine.ts:ask()'s system prompt assembly (including
+          // --system-prompt / --append-system-prompt) so the rebuilt prefix
+          // matches in the common case. May still miss the cache for
+          // coordinator mode or memory-mechanics extras — acceptable, the
+          // alternative is the side question failing entirely.
+          const question = req.question as string
+          void (async () => {
+            try {
+              const saved = getLastCacheSafeParams()
+              const cacheSafeParams = saved
+                ? {
+                    ...saved,
+                    // If the last turn was interrupted, the snapshot holds an
+                    // already-aborted controller; createChildAbortController in
+                    // createSubagentContext would propagate it and the fork
+                    // would die before sending a request. The controller is
+                    // not part of the cache key — swapping in a fresh one is
+                    // safe. Same guard as generate_session_title above.
+                    toolUseContext: {
+                      ...saved.toolUseContext,
+                      abortController: createAbortController(),
+                    },
+                  }
+                : await buildSideQuestionFallbackParams({
+                    tools: buildAllTools(getAppState()),
+                    commands: currentCommands,
+                    mcpClients: [
+                      ...getAppState().mcp.clients,
+                      ...sdkClients,
+                      ...dynamicMcpState.clients,
+                    ],
+                    messages: mutableMessages,
+                    readFileState,
+                    getAppState,
+                    setAppState,
+                    customSystemPrompt: options.systemPrompt,
+                    appendSystemPrompt: options.appendSystemPrompt,
+                    thinkingConfig: options.thinkingConfig,
+                    agents: currentAgents,
+                  })
+              const result = await runSideQuestion({
+                question,
+                cacheSafeParams,
+              })
+              sendControlResponseSuccess(msg, { response: result.response })
+            } catch (e) {
+              sendControlResponseError(msg, errorMessage(e))
+            }
+          })()
+        } else if (
+          (feature('PROACTIVE') || feature('KAIROS')) &&
+          (msg.request as { subtype: string }).subtype === 'set_proactive'
+        ) {
+          const req = msg.request as unknown as {
+            subtype: string
+            enabled: boolean
+          }
+          if (req.enabled) {
+            if (!proactiveModule!.isProactiveActive()) {
+              proactiveModule!.activateProactive('command')
+              scheduleProactiveTick!()
+            }
+          } else {
+            proactiveModule!.deactivateProactive()
+          }
+          sendControlResponseSuccess(msg)
+        } else {
+          // Unknown control request subtype — send an error response so
+          // the caller doesn't hang waiting for a reply that never comes.
+          sendControlResponseError(
+            msg,
+            `Unsupported control request subtype: ${(msg.request as { subtype: string }).subtype}`,
+          )
+        }
+        continue
+      } else if (message.type === 'control_response') {
+        // Replay control_response messages when replay mode is enabled
+        if (options.replayUserMessages) {
+          output.enqueue(message as StdoutMessage)
+        }
+        continue
+      } else if (message.type === 'keep_alive') {
+        // Silently ignore keep-alive messages
+        continue
+      } else if (message.type === 'update_environment_variables') {
+        // Handled in structuredIO.ts, but TypeScript needs the type guard
+        continue
+      } else if (message.type === 'assistant' || message.type === 'system') {
+        // History replay from bridge: inject into mutableMessages as
+        // conversation context so the model sees prior turns.
+        const internalMsgs = toInternalMessages([message as SDKMessage])
+        mutableMessages.push(...internalMsgs)
+        // Echo assistant messages back so CCR displays them
+        if (message.type === 'assistant' && options.replayUserMessages) {
+          output.enqueue(message as StdoutMessage)
+        }
+        continue
+      }
+      // After handling control, keep-alive, env-var, assistant, and system
+      // messages above, only user messages should remain.
+      if (message.type !== 'user') {
+        continue
+      }
+      // Type assertion: after the type guard, message is a user message.
+      // The union with SDKMessage (any) prevents proper narrowing.
+      const userMsg = message as SDKUserMessage
+
+      // First prompt message implicitly initializes if not already done.
+      initialized = true
+
+      // Check for duplicate user message - skip if already processed
+      if (userMsg.uuid) {
+        const sessionId = getSessionId() as UUID
+        const existsInSession = await doesMessageExistInSession(
+          sessionId,
+          userMsg.uuid as UUID,
+        )
+
+        // Check both historical duplicates (from file) and runtime duplicates (this session)
+        if (existsInSession || receivedMessageUuids.has(userMsg.uuid as UUID)) {
+          logForDebugging(`Skipping duplicate user message: ${userMsg.uuid}`)
+          // Send acknowledgment for duplicate message if replay mode is enabled
+          if (options.replayUserMessages) {
+            logForDebugging(
+              `Sending acknowledgment for duplicate user message: ${userMsg.uuid}`,
+            )
+            output.enqueue({
+              type: 'user',
+              content: (userMsg.message as { content?: string })?.content ?? '',
+              message: userMsg.message as unknown,
+              session_id: sessionId,
+              parent_tool_use_id: null,
+              uuid: userMsg.uuid as string,
+              timestamp: (userMsg as { timestamp?: string }).timestamp,
+              isReplay: true,
+            } as unknown as StdoutMessage)
+          }
+          // Historical dup = transcript already has this turn's output, so it
+          // ran but its lifecycle was never closed (interrupted before ack).
+          // Runtime dups don't need this — the original enqueue path closes them.
+          if (existsInSession) {
+            notifyCommandLifecycle(userMsg.uuid as string, 'completed')
+          }
+          // Don't enqueue duplicate messages for execution
+          continue
+        }
+
+        // Track this UUID to prevent runtime duplicates
+        trackReceivedMessageUuid(userMsg.uuid as UUID)
+      }
+
+      enqueue({
+        mode: 'prompt' as const,
+        // file_attachments rides the protobuf catchall from the web composer.
+        // Same-ref no-op when absent (no 'file_attachments' key).
+        value: await resolveAndPrepend(
+          userMsg,
+          (userMsg.message as { content: ContentBlockParam[] }).content,
+        ),
+        uuid: userMsg.uuid as `${string}-${string}-${string}-${string}-${string}`,
+        priority: (userMsg as { priority?: string })
+          .priority as import('src/types/textInputTypes.js').QueuePriority,
+      })
+      // Increment prompt count for attribution tracking and save snapshot
+      // The snapshot persists promptCount so it survives compaction
+      if (feature('COMMIT_ATTRIBUTION')) {
+        setAppState(prev => ({
+          ...prev,
+          attribution: incrementPromptCount(prev.attribution, snapshot => {
+            void recordAttributionSnapshot(snapshot).catch(error => {
+              logForDebugging(`Attribution: Failed to save snapshot: ${error}`)
+            })
+          }),
+        }))
+      }
+      void run()
+    }
+    inputClosed = true
+    cronScheduler?.stop()
+    if (!running) {
+      // If a push-suggestion is in-flight, wait for it to emit before closing
+      // the output stream (5 s safety timeout to prevent hanging).
+      if (suggestionState.inflightPromise) {
+        await Promise.race([suggestionState.inflightPromise, sleep(5000)])
+      }
+      suggestionState.abortController?.abort()
+      suggestionState.abortController = null
+      await finalizePendingAsyncHooks()
+      unsubscribeSkillChanges()
+      unsubscribeAuthStatus?.()
+      statusListeners.delete(rateLimitListener)
+      output.done()
+    }
+  })()
+
+  return output
+}
