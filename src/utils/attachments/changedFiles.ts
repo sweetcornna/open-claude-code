@@ -7,12 +7,12 @@ import {
   FileReadTool,
   readImageWithTokenBudget,
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
-import { expandPath } from '../filesystem/path.js'
+import { expandPath } from '../path.js'
 import { cacheKeys } from '../fileStateCache.js'
-import { getFileModificationTimeAsync } from '../filesystem/file.js'
+import { getFileModificationTimeAsync } from '../file.js'
 import { getSnippetForTwoFileDiff } from '@open-claude-code/builtin-tools/tools/FileEditTool/utils.js'
 import { isENOENT } from '../errors.js'
-import { logError } from '../telemetry/log.js'
+import { logError } from '../log.js'
 import type { Attachment } from './types.js'
 import { isFileReadDenied } from './files.js'
 

@@ -5,7 +5,7 @@ import type {
   Message,
   SystemCompactBoundaryMessage,
 } from '../../types/message.js'
-import { logError } from '../telemetry/log.js'
+import { logError } from '../log.js'
 import { isCompactBoundaryMessage } from '../messages.js'
 
 /**

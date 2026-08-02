@@ -15,7 +15,7 @@ import type {
   NormalizedAssistantMessage,
   NormalizedMessage,
 } from '../../types/message.js'
-import { count } from '../collections/array.js'
+import { count } from '../array.js'
 import {
   type HookAttachmentWithName,
   isHookAttachmentMessage,

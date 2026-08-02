@@ -5,8 +5,8 @@ import {
   checkForLSPDiagnostics,
   clearAllLSPDiagnostics,
 } from '../../services/lsp/LSPDiagnosticRegistry.js'
-import { logError } from '../telemetry/log.js'
-import { logForDebugging } from '../telemetry/debug.js'
+import { logError } from '../log.js'
+import { logForDebugging } from '../debug.js'
 import { toError } from '../errors.js'
 import type { Attachment } from './types.js'
 

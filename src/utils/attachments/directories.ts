@@ -6,8 +6,8 @@ import {
   type MemoryFileInfo,
 } from '../claudemd.js'
 import { dirname, parse, relative, resolve } from 'path'
-import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { logError } from '../telemetry/log.js'
+import { getCwd } from 'src/utils/cwd.js'
+import { logError } from '../log.js'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { pathInAllowedWorkingPath } from '../permissions/filesystem.js'
 import {

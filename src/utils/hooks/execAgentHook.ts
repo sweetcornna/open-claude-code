@@ -14,10 +14,10 @@ import type {
   RequestStartEvent,
   StreamEvent,
 } from '../../types/message.js'
-import { createAbortController } from '../process/abortController.js'
+import { createAbortController } from '../abortController.js'
 import { createAttachmentMessage } from '../attachments.js'
-import { createCombinedAbortSignal } from '../process/combinedAbortSignal.js'
-import { logForDebugging } from '../telemetry/debug.js'
+import { createCombinedAbortSignal } from '../combinedAbortSignal.js'
+import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
 import { createUserMessage, handleMessageFromStream } from '../messages.js'
@@ -25,7 +25,7 @@ import { getSmallFastModel } from '../model/model.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { getAgentTranscriptPath, getTranscriptPath } from '../sessionStorage.js'
 import type { AgentHook } from '../settings/types.js'
-import { jsonStringify } from '../telemetry/slowOperations.js'
+import { jsonStringify } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import {
   addArgumentsToPrompt,

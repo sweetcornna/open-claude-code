@@ -11,7 +11,7 @@ import {
   getMcpInstructionsDelta,
   isMcpInstructionsDeltaEnabled,
   type ClientSideInstruction,
-} from '../mcp/mcpInstructionsDelta.js'
+} from '../mcpInstructionsDelta.js'
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from '../chromeDevtools/common.js'
 import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from '../chromeDevtools/prompt.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
@@ -22,7 +22,7 @@ import {
   shouldInjectAgentListInMessages,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentListing.js'
 import { filterDeniedAgents } from '../permissions/permissions.js'
-import { getSubscriptionType } from '../auth/auth.js'
+import { getSubscriptionType } from '../auth.js'
 import { mcpInfoFromString } from '../../services/mcp/mcpStringUtils.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { Attachment } from './types.js'
