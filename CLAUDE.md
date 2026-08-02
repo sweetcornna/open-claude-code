@@ -100,7 +100,7 @@ bun run docs:dev
 ### Runtime & Build
 
 - **Runtime**: Bun (not Node.js). All imports, builds, and execution use Bun APIs.
-- **Build**: `build.ts` 执行 `Bun.build()` with `splitting: true`，入口 `src/entrypoints/cli.tsx`，输出 `dist/cli.js` + chunk files。Build 默认启用 33 个 feature（见下方 Feature Flag 段）。构建后自动替换 `import.meta.require` 为 Node.js 兼容版本（产物 bun/node 都可运行）。构建时会将 `vendor/audio-capture/` 和 `src/utils/vendor/ripgrep/` 复制到 `dist/vendor/` 下。
+- **Build**: `build.ts` 执行 `Bun.build()` with `splitting: true`，入口 `src/entrypoints/cli.tsx`，输出 `dist/cli.js` + chunk files。Build 默认启用 34 个 feature（见下方 Feature Flag 段）。构建后自动替换 `import.meta.require` 为 Node.js 兼容版本（产物 bun/node 都可运行）。构建时会将 `vendor/audio-capture/` 和 `src/utils/vendor/ripgrep/` 复制到 `dist/vendor/` 下。
 - **Build (Vite)**: `vite.config.ts` + `scripts/post-build.ts`，代码分割模式，chunk 输出到 `dist/chunks/`。post-build 遍历 `dist/` 和 `dist/chunks/` 下所有 `.js` 文件做 `globalThis.Bun` 解构 patch，复制 vendor 文件到 `dist/vendor/`。
 - **Vendor 路径解析**: 构建后 chunk 文件位于 `dist/` 或 `dist/chunks/` 下，vendor 二进制在 `dist/vendor/`。`src/utils/distRoot.ts` 提供共享的 `distRoot` 函数，通过 `import.meta.url` 路径中 `lastIndexOf('dist')` 或 `lastIndexOf('src')` 定位根目录。`ripgrep.ts`、`computerUse/setup.ts`、`updateOcc.ts` 均使用 `distRoot` 而非内联 `import.meta.url` 路径推算。`packages/audio-capture-napi/src/index.ts` 有独立的 `lastIndexOf('dist')` 逻辑，功能等价。
 - **为什么 Vite 必须代码分割**: Bun/JSC 会全量解析单个大 JS 文件的 bytecode 和 JIT，单文件 17MB 产物导致 RSS 暴涨至 ~1GB（Node/V8 懒解析仅需 ~220MB）。代码分割为 600+ 小 chunk 后 Bun 按需加载，`--version` RSS 从 966MB 降至 35MB，完整加载从 1GB+ 降至 ~500MB。
@@ -253,7 +253,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 **启用方式**: 环境变量 `FEATURE_<FLAG_NAME>=1`。例如 `FEATURE_BUDDY=1 bun run dev`。
 
-**Build 默认 features**（33 个，见 `scripts/defines.ts` 的 `DEFAULT_BUILD_FEATURES`；`build.ts` 从那里 import）:
+**Build 默认 features**（34 个，见 `scripts/defines.ts` 的 `DEFAULT_BUILD_FEATURES`；`build.ts` 从那里 import）:
 - 基础: `BUDDY`, `TRANSCRIPT_CLASSIFIER`, `AGENT_TRIGGERS_REMOTE`, `CHICAGO_MCP`, `VOICE_MODE`
 - 统计/缓存: `SHOT_STATS`, `PROMPT_CACHE_BREAK_DETECTION`, `TOKEN_BUDGET`
 - P0 本地: `AGENT_TRIGGERS`, `ULTRATHINK`, `BUILTIN_EXPLORE_PLAN_AGENTS`, `LODESTONE`
@@ -265,7 +265,8 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 - 实验性: `EXPERIMENTAL_SKILL_SEARCH`, `EXPERIMENTAL_SEARCH_EXTRA_TOOLS`
 - 模式: `POOR`, `SSH_REMOTE`
 - 其他: `AUTOFIX_PR`（`/autofix-pr` 命令）, `GOAL`（持久化 thread goal）
-- **未**编译进默认列表: `SKILL_LEARNING`（`scripts/defines.ts` 里已注释掉，需显式 `FEATURE_SKILL_LEARNING=1` 才编译进；运行时另由 `SKILL_LEARNING_ENABLED` 控制）、`MCP_2026`（MCP 协议 2026-07-28 版本协商，同样注释掉；关着时 MCP 客户端走 v2 SDK 的默认 legacy 姿势，开启后 `connect()` 先用 `server/discover` 探测。`FEATURE_MCP_2026=1 bun run dev`）。**注意这个标志只管客户端要不要探测** —— serve 模式的双时代、outputSchema 降级、OAuth 加固都**不**受它门控，默认构建即生效；协商到的「时代」是连接的属性而非构建的属性（问 `getProtocolEra()`，不要再判一次标志）。见 `docs/features/mcp-2026.md`
+- MCP: `MCP_2026`（MCP 协议 2026-07-28 版本协商，2026-08-02 起默认编译进；开启后 `connect()` 先用 `server/discover` 探测，回滚 = 重新注释该行）。**注意这个标志只管客户端要不要探测** —— serve 模式的双时代、outputSchema 降级、OAuth 加固都**不**受它门控，默认构建即生效；协商到的「时代」是连接的属性而非构建的属性（问 `getProtocolEra()`，不要再判一次标志）。见 `docs/features/mcp-2026.md`
+- **未**编译进默认列表: `SKILL_LEARNING`（`scripts/defines.ts` 里已注释掉，需显式 `FEATURE_SKILL_LEARNING=1` 才编译进；运行时另由 `SKILL_LEARNING_ENABLED` 控制）
 
 > `packages/weixin/`（微信 Channel）与整个 `DIRECT_CONNECT` 直连模式（`src/server/`、`useDirectConnect`、`claude server` / `claude open` / `cc://`）已于 2026-07 移除 —— 服务端全是 stub，客户端因 `parseConnectUrl` 返回空串而不可能连通。`occ ssh` 不受影响（它只依赖 `src/remote/`）。`src/plugins/bundled/` 现在没有任何内置 plugin，但注册表仍在用，保留为扩展点。
 >
@@ -273,7 +274,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 >
 > **`FORK_SUBAGENT` 并未被移除**（这份文档此前写错了）—— 它在 `scripts/defines.ts` 中一直是注释掉的状态（不进默认编译列表），但 `packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` 仍然存在，`isForkSubagentEnabled()` 有 8 个运行时门控点，`FEATURE_FORK_SUBAGENT=1 bun run dev` 可正常启用。只有 `/fork` slash 命令的独立实现被删除，该名字现在是 `/branch` 的 alias（`src/commands/branch/index.ts:6`）。
 
-**Dev mode 默认**: 与 build 相同的 33 个（`scripts/dev.ts:40` 同样读 `DEFAULT_BUILD_FEATURES`）。不在表里的 flag 必须显式 `FEATURE_<NAME>=1`。
+**Dev mode 默认**: 与 build 相同的 34 个（`scripts/dev.ts:40` 同样读 `DEFAULT_BUILD_FEATURES`）。不在表里的 flag 必须显式 `FEATURE_<NAME>=1`。
 
 **类型声明**: `src/types/internal-modules.d.ts` 中声明了 `bun:bundle` 模块的 `feature` 函数签名。
 
@@ -289,6 +290,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 - **`src/services/api/openai/`** — client、消息/工具转换、流适配、模型映射
 - 关键环境变量：`CLAUDE_CODE_USE_OPENAI`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`
+- **双线协议**：`OPENAI_WIRE_API=responses` 切到 Responses API（`<OPENAI_BASE_URL>/responses`，事件流经 `responsesAdapter.ts` 转 Anthropic 内部格式）；默认 `chat`（Chat Completions）。ChatGPT 订阅认证（`OPENAI_AUTH_MODE=chatgpt`）强制 responses 且走 Codex 专有后端（带指纹头、不发 `max_output_tokens`）；通用 `/responses` 路线发标准头 + `max_output_tokens`。选择逻辑在 `wireProtocol.ts`
 
 #### Gemini 兼容层
 
