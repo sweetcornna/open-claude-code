@@ -1,7 +1,7 @@
 import type { Tool, ToolUseContext } from 'src/Tool.js'
 import z from 'zod/v4'
-import { logForDebugging } from '../debug.js'
-import { lazySchema } from '../lazySchema.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { lazySchema } from '../collections/lazySchema.js'
 import type {
   PermissionDecision,
   PermissionDecisionReason,

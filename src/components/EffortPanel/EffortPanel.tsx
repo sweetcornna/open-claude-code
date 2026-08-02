@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { BaseText, Box, Text, useTerminalSize } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
-import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride } from '../../utils/effort.js';
+import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride } from '../../utils/model/effort.js';
 import {
   type PanelPosition,
   CANCEL_MESSAGE,

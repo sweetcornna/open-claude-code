@@ -3,11 +3,11 @@ import {
   clearApiKeyHelperCache,
   clearAwsCredentialsCache,
   clearGcpCredentialsCache,
-} from '../utils/auth.js'
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
-import { toError } from '../utils/errors.js'
-import { logError } from '../utils/log.js'
-import { applyConfigEnvironmentVariables } from '../utils/managedEnv.js'
+} from '../utils/auth/auth.js'
+import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js'
+import { toError } from '../utils/runtime/errors.js'
+import { logError } from '../utils/telemetry/log.js'
+import { applyConfigEnvironmentVariables } from '../utils/config/managedEnv.js'
 import {
   permissionModeFromString,
   toExternalPermissionMode,
@@ -16,7 +16,7 @@ import {
   notifyPermissionModeChanged,
   notifySessionMetadataChanged,
   type SessionExternalMetadata,
-} from '../utils/sessionState.js'
+} from '../utils/session/sessionState.js'
 import type { AppState } from './AppStateStore.js'
 
 // Inverse of the push below — restore on worker restart.

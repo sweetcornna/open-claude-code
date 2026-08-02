@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { EffortValue } from '../../../utils/effort.js'
+import type { EffortValue } from '../../../utils/model/effort.js'
 import {
   CANCEL_MESSAGE,
   type ApplyFn,

@@ -4,7 +4,7 @@ import {
   posixPathToWindowsPath,
   findGitBashPathOrNullWithDeps,
   type GitBashDiscoveryDeps,
-} from '../windowsPaths'
+} from '../filesystem/windowsPaths'
 
 // ─── windowsPathToPosixPath ────────────────────────────────────────────
 

@@ -1,16 +1,16 @@
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
-import { fromArray } from 'src/utils/generators.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { fromArray } from 'src/utils/collections/generators.js'
+import { jsonStringify } from 'src/utils/telemetry/slowOperations.js'
 import type {
   PermissionResult,
   SDKUserMessage,
 } from 'src/entrypoints/agentSdkTypes.js'
 import type { SDKControlResponse } from 'src/entrypoints/sdk/controlTypes.js'
 import type { AppState } from 'src/state/AppStateStore.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { findUnresolvedToolUse } from 'src/utils/sessionStorage.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
 
 function getStructuredIO(
   inputPrompt: string | AsyncIterable<string>,

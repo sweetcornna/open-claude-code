@@ -7,8 +7,8 @@ import {
 } from 'src/services/analytics/index.js';
 import { isPolicyAllowed } from '../../services/policyLimits/index.js';
 import type { Message } from '../../types/message.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { isEnvTruthy } from '../../utils/envUtils.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
+import { isEnvTruthy } from '../../utils/config/envUtils.js';
 import { getLastAssistantMessage } from '../../utils/messages.js';
 import { getMainLoopModel } from '../../utils/model/model.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';

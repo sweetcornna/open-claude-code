@@ -15,12 +15,12 @@ import {
   registerRemoteAgentTask,
 } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import type { LocalJSXCommandCall } from '../types/command.js';
-import { logForDebugging } from '../utils/debug.js';
-import { errorMessage } from '../utils/errors.js';
-import { logError } from '../utils/log.js';
-import { enqueuePendingNotification } from '../utils/messageQueueManager.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
+import { errorMessage } from '../utils/runtime/errors.js';
+import { logError } from '../utils/telemetry/log.js';
+import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js';
 import { updateTaskState } from '../utils/task/framework.js';
-import { archiveRemoteSession, teleportToRemote } from '../utils/teleport.js';
+import { archiveRemoteSession, teleportToRemote } from '../utils/teleport/teleport.js';
 import { pollForApprovedExitPlanMode, UltraplanPollError } from '../utils/ultraplan/ccrSession.js';
 import {
   getPromptText,
@@ -28,7 +28,7 @@ import {
   getPromptIdentifier,
   type PromptIdentifier,
 } from '../utils/ultraplan/prompt.js';
-import { registerCleanup } from '../utils/cleanupRegistry.js';
+import { registerCleanup } from '../utils/process/cleanupRegistry.js';
 
 // TODO(prod-hardening): OAuth token may go stale over the 30min poll;
 // consider refresh.

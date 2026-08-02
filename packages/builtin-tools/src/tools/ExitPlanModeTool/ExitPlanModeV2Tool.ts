@@ -16,28 +16,28 @@ import {
   type ToolDef,
   toolMatchesName,
 } from '@open-claude-code/tool-runtime/Tool.js'
-import { formatAgentId, generateRequestId } from 'src/utils/agentId.js'
-import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { formatAgentId, generateRequestId } from 'src/utils/agents/agentId.js'
+import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   findInProcessTeammateTaskId,
   setAwaitingPlanApproval,
-} from 'src/utils/inProcessTeammateHelpers.js'
+} from 'src/utils/agents/inProcessTeammateHelpers.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import {
   getPlan,
   getPlanFilePath,
   persistFileSnapshotIfRemote,
-} from 'src/utils/plans.js'
+} from 'src/utils/agents/plans.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import {
   getAgentName,
   getTeamName,
   isPlanModeRequired,
   isTeammate,
-} from 'src/utils/teammate.js'
-import { writeToMailbox } from 'src/utils/teammateMailbox.js'
+} from 'src/utils/agents/teammate.js'
+import { writeToMailbox } from 'src/utils/agents/teammateMailbox.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 import { TEAM_CREATE_TOOL_NAME } from '../TeamCreateTool/constants.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from './constants.js'

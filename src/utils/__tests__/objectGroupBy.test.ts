@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { objectGroupBy } from '../objectGroupBy'
+import { objectGroupBy } from '../collections/objectGroupBy'
 
 describe('objectGroupBy', () => {
   test('groups items by key', () => {

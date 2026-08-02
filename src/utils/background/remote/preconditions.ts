@@ -6,12 +6,12 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
   isClaudeAISubscriber,
-} from '../../auth.js'
-import { getCwd } from '../../cwd.js'
-import { logForDebugging } from '../../debug.js'
-import { detectCurrentRepository } from '../../detectRepository.js'
-import { errorMessage } from '../../errors.js'
-import { findGitRoot, getIsClean } from '../../git.js'
+} from '../../auth/auth.js'
+import { getCwd } from '../../filesystem/cwd.js'
+import { logForDebugging } from '../../telemetry/debug.js'
+import { detectCurrentRepository } from '../../git/detectRepository.js'
+import { errorMessage } from '../../runtime/errors.js'
+import { findGitRoot, getIsClean } from '../../git/git.js'
 import { getOAuthHeaders } from '../../teleport/api.js'
 import { fetchEnvironments } from '../../teleport/environments.js'
 

@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { pathToFileURL } from 'url';
 import { Link, supportsHyperlinks, Text } from '@anthropic/ink';
-import { getStoredImagePath } from '../utils/imageStore.js';
-import type { Theme } from '../utils/theme.js';
+import { getStoredImagePath } from '../utils/terminal/imageStore.js';
+import type { Theme } from '../utils/terminal/theme.js';
 
 type Props = {
   imageId: number;

@@ -9,7 +9,7 @@
 
 import { PROJECT_DIR_NAME, occConfigPath } from 'src/config/paths.js'
 import { z } from 'zod/v4'
-import { lazySchema } from '../../utils/lazySchema.js'
+import { lazySchema } from '../../utils/collections/lazySchema.js'
 
 // ============================================================================
 // Usage & Model Types

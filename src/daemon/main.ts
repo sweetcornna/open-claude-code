@@ -1,7 +1,7 @@
 import { type ChildProcess } from 'child_process'
 import { resolve } from 'path'
 import { BIN_NAME, DISPLAY_NAME } from '../constants/brand.js'
-import { buildCliLaunch, spawnCli } from '../utils/cliLaunch.js'
+import { buildCliLaunch, spawnCli } from '../utils/process/cliLaunch.js'
 import {
   writeDaemonState,
   removeDaemonState,

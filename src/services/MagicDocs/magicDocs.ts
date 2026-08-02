@@ -15,7 +15,7 @@ import {
   type Output as FileReadToolOutput,
   registerFileReadListener,
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
-import { isFsInaccessible } from '../../utils/errors.js'
+import { isFsInaccessible } from '../../utils/runtime/errors.js'
 import { cloneFileStateCache } from '../../utils/fileStateCache.js'
 import {
   type REPLHookContext,
@@ -25,7 +25,7 @@ import {
   createUserMessage,
   hasToolCallsInLastAssistantTurn,
 } from '../../utils/messages.js'
-import { sequential } from '../../utils/sequential.js'
+import { sequential } from '../../utils/collections/sequential.js'
 import { buildMagicDocsUpdatePrompt } from './prompts.js'
 
 // Magic Doc header pattern: # MAGIC DOC: [title]

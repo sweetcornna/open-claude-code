@@ -13,17 +13,17 @@ import {
   checkHasTrustDialogAccepted,
   getGlobalConfig,
   saveGlobalConfig,
-} from '../../utils/config.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { toError } from '../../utils/errors.js'
-import { getAuthHeaders } from '../../utils/http.js'
-import { logError } from '../../utils/log.js'
-import { createSignal } from '../../utils/signal.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+} from '../../utils/config/config.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { toError } from '../../utils/runtime/errors.js'
+import { getAuthHeaders } from '../../utils/network/http.js'
+import { logError } from '../../utils/telemetry/log.js'
+import { createSignal } from '../../utils/process/signal.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   type GitHubActionsMetadata,
   getUserForGrowthBook,
-} from '../../utils/user.js'
+} from '../../utils/auth/user.js'
 import {
   is1PEventLoggingEnabled,
   logGrowthBookExperimentTo1P,

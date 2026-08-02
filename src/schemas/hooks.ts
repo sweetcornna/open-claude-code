@@ -10,7 +10,7 @@
 
 import { HOOK_EVENTS, type HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import { z } from 'zod/v4'
-import { lazySchema } from '../utils/lazySchema.js'
+import { lazySchema } from '../utils/collections/lazySchema.js'
 import { SHELL_TYPES } from '../utils/shell/shellProvider.js'
 
 // Shared schema for the `if` condition field.

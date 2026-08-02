@@ -1,20 +1,20 @@
 import { appendFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getProjectRoot, getSessionId } from './bootstrap/state.js'
-import { registerCleanup } from './utils/cleanupRegistry.js'
-import type { HistoryEntry, PastedContent } from './utils/config.js'
-import { logForDebugging } from './utils/debug.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './utils/envUtils.js'
-import { getErrnoCode } from './utils/errors.js'
-import { readLinesReverse } from './utils/fsOperations.js'
-import { lock } from './utils/lockfile.js'
+import { registerCleanup } from './utils/process/cleanupRegistry.js'
+import type { HistoryEntry, PastedContent } from './utils/config/config.js'
+import { logForDebugging } from './utils/telemetry/debug.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from './utils/config/envUtils.js'
+import { getErrnoCode } from './utils/runtime/errors.js'
+import { readLinesReverse } from './utils/filesystem/fsOperations.js'
+import { lock } from './utils/filesystem/lockfile.js'
 import {
   hashPastedText,
   retrievePastedText,
   storePastedText,
-} from './utils/pasteStore.js'
-import { sleep } from './utils/sleep.js'
-import { jsonParse, jsonStringify } from './utils/slowOperations.js'
+} from './utils/terminal/pasteStore.js'
+import { sleep } from './utils/process/sleep.js'
+import { jsonParse, jsonStringify } from './utils/telemetry/slowOperations.js'
 
 const MAX_HISTORY_ITEMS = 100
 const MAX_PASTED_CONTENT_LENGTH = 1024

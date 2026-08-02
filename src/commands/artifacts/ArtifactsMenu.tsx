@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Box, Text, setClipboard, useInput } from '@anthropic/ink';
 import type { ArtifactInfo } from './scanner.js';
-import { openBrowser } from 'src/utils/browser.js';
+import { openBrowser } from 'src/utils/network/browser.js';
 
 type Props = {
   artifacts: ArtifactInfo[];

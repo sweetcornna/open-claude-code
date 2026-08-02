@@ -3,7 +3,7 @@ import type {
   BetaMessage,
   BetaUsage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { SystemPrompt } from '../../../utils/systemPromptType.js'
+import type { SystemPrompt } from '../../../utils/session/systemPromptType.js'
 import type {
   Message,
   StreamEvent,
@@ -35,14 +35,14 @@ import {
   type ResponsesReasoningEffort,
 } from './responsesAdapter.js'
 import { normalizeMessagesForAPI } from '../../../utils/messages.js'
-import { toolToAPISchema } from '../../../utils/api.js'
+import { toolToAPISchema } from '../../../utils/telemetry/api.js'
 import {
   getEmptyToolPermissionContext,
   toolMatchesName,
 } from '../../../Tool.js'
-import { logForDebugging } from '../../../utils/debug.js'
+import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
-import { calculateUSDCost } from '../../../utils/modelCost.js'
+import { calculateUSDCost } from '../../../utils/model/modelCost.js'
 import {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
@@ -59,7 +59,7 @@ export {
   resolveOpenAIMaxTokens,
   buildOpenAIRequestBody,
 }
-import { getModelMaxOutputTokens } from '../../../utils/context.js'
+import { getModelMaxOutputTokens } from '../../../utils/session/context.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
 import {
@@ -71,7 +71,7 @@ import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkType
 import {
   isSearchExtraToolsEnabled,
   isDeferredToolsDeltaEnabled,
-} from '../../../utils/searchExtraTools.js'
+} from '../../../utils/tools/searchExtraTools.js'
 import {
   formatDeferredToolLine,
   isDeferredTool,

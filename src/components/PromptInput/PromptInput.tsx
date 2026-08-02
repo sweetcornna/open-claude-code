@@ -12,8 +12,8 @@ import {
 } from 'src/services/analytics/index.js';
 import { type AppState, useAppState, useAppStateStore, useSetAppState } from 'src/state/AppState.js';
 import type { FooterItem } from 'src/state/AppStateStore.js';
-import { getCwd } from 'src/utils/cwd.js';
-import { isQueuedCommandEditable, popAllEditable } from 'src/utils/messageQueueManager.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
+import { isQueuedCommandEditable, popAllEditable } from 'src/utils/session/messageQueueManager.js';
 import stripAnsi from 'strip-ansi';
 import { companionReservedColumns } from '../../buddy/CompanionSprite.js';
 import { findBuddyTriggerPositions, useBuddyNotification } from '../../buddy/useBuddyNotification.js';
@@ -57,38 +57,38 @@ import {
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type { Message } from '../../types/message.js';
 import type { BaseTextInputProps, PromptInputMode, VimMode } from '../../types/textInputTypes.js';
-import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
-import { count } from '../../utils/array.js';
-import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
-import { Cursor } from '../../utils/Cursor.js';
-import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config.js';
-import { logForDebugging } from '../../utils/debug.js';
-import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
-import type { EffortLevel } from '../../utils/effort.js';
-import { env } from '../../utils/env.js';
-import { errorMessage } from '../../utils/errors.js';
-import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
+import { isAgentSwarmsEnabled } from '../../utils/agents/agentSwarmsEnabled.js';
+import { count } from '../../utils/collections/array.js';
+import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
+import { Cursor } from '../../utils/terminal/Cursor.js';
+import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config/config.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
+import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/session/directMemberMessage.js';
+import type { EffortLevel } from '../../utils/model/effort.js';
+import { env } from '../../utils/config/env.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
+import { isBilledAsExtraUsage } from '../../utils/telemetry/extraUsage.js';
 import {
   getFastModeUnavailableReason,
   isFastModeAvailable,
   isFastModeCooldown,
   isFastModeEnabled,
   isFastModeSupportedByModel,
-} from '../../utils/fastMode.js';
-import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
-import type { PromptInputHelpers } from '../../utils/handlePromptSubmit.js';
-import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/imagePaste.js';
-import type { ImageDimensions } from '../../utils/imageResizer.js';
-import { cacheImagePath, storeImage } from '../../utils/imageStore.js';
-import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/keyboardShortcuts.js';
-import { logError } from '../../utils/log.js';
+} from '../../utils/model/fastMode.js';
+import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
+import type { PromptInputHelpers } from '../../utils/session/handlePromptSubmit.js';
+import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/terminal/imagePaste.js';
+import type { ImageDimensions } from '../../utils/terminal/imageResizer.js';
+import { cacheImagePath, storeImage } from '../../utils/terminal/imageStore.js';
+import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/terminal/keyboardShortcuts.js';
+import { logError } from '../../utils/telemetry/log.js';
 import { isOpus1mMergeEnabled, modelDisplayString } from '../../utils/model/model.js';
 import { cyclePermissionMode, getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
-import { getPlatform } from '../../utils/platform.js';
+import { getPlatform } from '../../utils/process/platform.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
-import { editPromptInEditor } from '../../utils/promptEditor.js';
+import { editPromptInEditor } from '../../utils/terminal/promptEditor.js';
 // hasAutoModeOptIn removed — auto mode is available to all users
-import { findBtwTriggerPositions } from '../../utils/sideQuestion.js';
+import { findBtwTriggerPositions } from '../../utils/session/sideQuestion.js';
 import { findSlashCommandPositions } from '../../utils/suggestions/commandSuggestions.js';
 import {
   findSlackChannelPositions,
@@ -98,14 +98,14 @@ import {
 } from '../../utils/suggestions/slackChannelSuggestions.js';
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
 import { syncTeammateMode } from '../../utils/swarm/teamHelpers.js';
-import type { TeamSummary } from '../../utils/teamDiscovery.js';
-import { getTeammateColor } from '../../utils/teammate.js';
-import { isInProcessTeammate } from '../../utils/teammateContext.js';
-import { writeToMailbox } from '../../utils/teammateMailbox.js';
-import type { TextHighlight } from '../../utils/textHighlighting.js';
-import type { Theme } from '../../utils/theme.js';
-import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
-import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
+import type { TeamSummary } from '../../utils/agents/teamDiscovery.js';
+import { getTeammateColor } from '../../utils/agents/teammate.js';
+import { isInProcessTeammate } from '../../utils/agents/teammateContext.js';
+import { writeToMailbox } from '../../utils/agents/teammateMailbox.js';
+import type { TextHighlight } from '../../utils/text/textHighlighting.js';
+import type { Theme } from '../../utils/terminal/theme.js';
+import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/model/thinking.js';
+import { findTokenBudgetPositions } from '../../utils/session/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 // AutoModeOptInDialog removed — auto mode is available to all users
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';

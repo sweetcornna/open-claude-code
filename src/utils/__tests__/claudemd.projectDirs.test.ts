@@ -16,7 +16,7 @@ import {
   clearMemoryFileCaches,
   getConditionalRulesForCwdLevelDirectory,
   getMemoryFiles,
-} from '../claudemd.js'
+} from '../session/claudemd.js'
 
 const originalOccConfigDir = process.env.OCC_CONFIG_DIR
 let tempDir = ''

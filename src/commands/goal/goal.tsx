@@ -32,7 +32,7 @@ import {
 } from 'src/services/goal/goalState.js';
 import { persistCurrentGoal, persistGoalClear } from 'src/services/goal/goalStorage.js';
 import type { LocalJSXCommandOnDone } from 'src/types/command.js';
-import { removeByFilter } from 'src/utils/messageQueueManager.js';
+import { removeByFilter } from 'src/utils/session/messageQueueManager.js';
 import { GoalReplaceConfirmDialog } from './GoalReplaceConfirmDialog.js';
 
 const MAX_OBJECTIVE_CHARS = 4000;

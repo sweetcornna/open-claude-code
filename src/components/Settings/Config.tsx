@@ -5,9 +5,18 @@ import * as React from 'react';
 import { useState, useCallback } from 'react';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import figures from 'figures';
-import { type GlobalConfig, saveGlobalConfig, getCurrentProjectConfig, type OutputStyle } from '../../utils/config.js';
-import { normalizeApiKeyForConfig } from '../../utils/authPortable.js';
-import { getGlobalConfig, getAutoUpdaterDisabledReason, formatAutoUpdaterDisabledReason } from '../../utils/config.js';
+import {
+  type GlobalConfig,
+  saveGlobalConfig,
+  getCurrentProjectConfig,
+  type OutputStyle,
+} from '../../utils/config/config.js';
+import { normalizeApiKeyForConfig } from '../../utils/auth/authPortable.js';
+import {
+  getGlobalConfig,
+  getAutoUpdaterDisabledReason,
+  formatAutoUpdaterDisabledReason,
+} from '../../utils/config/config.js';
 import chalk from 'chalk';
 import {
   permissionModeShortTitle,
@@ -22,7 +31,7 @@ import {
   hasAutoModeOptInAnySource,
   transitionPlanAutoMode,
 } from '../../utils/permissions/permissionSetup.js';
-import { logError } from '../../utils/log.js';
+import { logError } from '../../utils/telemetry/log.js';
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -31,7 +40,7 @@ import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
 import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
-import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
+import { isBilledAsExtraUsage } from '../../utils/telemetry/extraUsage.js';
 import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialog.js';
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
 import { Dialog } from '@anthropic/ink';
@@ -43,19 +52,19 @@ import {
   getExternalClaudeMdIncludes,
   getMemoryFiles,
   hasExternalClaudeMdIncludes,
-} from 'src/utils/claudemd.js';
+} from 'src/utils/session/claudemd.js';
 import { Byline, KeyboardShortcutHint, useTabHeaderFocus } from '@anthropic/ink';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { SearchBox } from '../SearchBox.js';
-import { isSupportedTerminal, hasAccessToIDEExtensionDiffFeature } from '../../utils/ide.js';
+import { isSupportedTerminal, hasAccessToIDEExtensionDiffFeature } from '../../utils/terminal/ide.js';
 import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js';
 import { DEFAULT_OUTPUT_STYLE_NAME } from 'src/constants/outputStyles.js';
-import { isEnvTruthy, isRunningOnHomespace } from 'src/utils/envUtils.js';
+import { isEnvTruthy, isRunningOnHomespace } from 'src/utils/config/envUtils.js';
 import type { LocalJSXCommandContext, CommandResultDisplay } from '../../commands.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
-import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
+import { isAgentSwarmsEnabled } from '../../utils/agents/agentSwarmsEnabled.js';
 import {
   getCliTeammateModeOverride,
   clearCliTeammateModeOverride,
@@ -70,9 +79,9 @@ import {
   isFastModeEnabled,
   getFastModeModel,
   isFastModeSupportedByModel,
-} from '../../utils/fastMode.js';
-import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
-import { getPlatform } from '../../utils/platform.js';
+} from '../../utils/model/fastMode.js';
+import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
+import { getPlatform } from '../../utils/process/platform.js';
 
 type Props = {
   onClose: (result?: string, options?: { display?: CommandResultDisplay }) => void;

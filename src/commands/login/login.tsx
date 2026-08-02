@@ -16,7 +16,7 @@ import {
   checkAndDisableAutoModeIfNeeded,
   resetAutoModeGateCheck,
 } from '../../utils/permissions/bypassPermissionsKillswitch.js';
-import { resetUserCache } from '../../utils/user.js';
+import { resetUserCache } from '../../utils/auth/user.js';
 import { AuthPlaneSummary } from './AuthPlaneSummary.js';
 import { getAuthStatus } from './getAuthStatus.js';
 import { WorkspaceKeyInputContainer } from './WorkspaceKeyInput.js';

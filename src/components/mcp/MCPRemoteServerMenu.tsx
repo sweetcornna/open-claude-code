@@ -23,11 +23,11 @@ import {
   filterMcpPromptsByServer,
 } from '../../services/mcp/utils.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
-import { getOauthAccountInfo } from '../../utils/auth.js';
-import { openBrowser } from '../../utils/browser.js';
-import { errorMessage } from '../../utils/errors.js';
-import { logMCPDebug } from '../../utils/log.js';
-import { capitalize } from '../../utils/stringUtils.js';
+import { getOauthAccountInfo } from '../../utils/auth/auth.js';
+import { openBrowser } from '../../utils/network/browser.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
+import { logMCPDebug } from '../../utils/telemetry/log.js';
+import { capitalize } from '../../utils/text/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Select } from '../CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';

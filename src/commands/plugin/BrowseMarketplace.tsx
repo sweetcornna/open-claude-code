@@ -5,10 +5,10 @@ import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutH
 import { Box, Byline, Text } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { LoadedPlugin } from '../../types/plugin.js';
-import { count } from '../../utils/array.js';
-import { openBrowser } from '../../utils/browser.js';
-import { logForDebugging } from '../../utils/debug.js';
-import { errorMessage } from '../../utils/errors.js';
+import { count } from '../../utils/collections/array.js';
+import { openBrowser } from '../../utils/network/browser.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
 import { clearAllCaches } from '../../utils/plugins/cacheUtils.js';
 import { formatInstallCount, getInstallCounts } from '../../utils/plugins/installCounts.js';
 import { isPluginGloballyInstalled, isPluginInstalled } from '../../utils/plugins/installedPluginsManager.js';
@@ -23,8 +23,8 @@ import { getMarketplace, loadKnownMarketplacesConfig } from '../../utils/plugins
 import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js';
 import { installPluginFromMarketplace } from '../../utils/plugins/pluginInstallationHelpers.js';
 import { isPluginBlockedByPolicy } from '../../utils/plugins/pluginPolicy.js';
-import { plural } from '../../utils/stringUtils.js';
-import { truncateToWidth } from '../../utils/truncate.js';
+import { plural } from '../../utils/text/stringUtils.js';
+import { truncateToWidth } from '../../utils/text/truncate.js';
 import { findPluginOptionsTarget, PluginOptionsFlow } from './PluginOptionsFlow.js';
 import { PluginTrustWarning } from './PluginTrustWarning.js';
 import {

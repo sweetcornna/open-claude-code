@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   buildTaskStateMessage,
   getTaskStateSnapshotKey,
-} from '../taskStateMessage'
+} from '../task/taskStateMessage'
 
 describe('buildTaskStateMessage', () => {
   test('filters internal tasks and preserves public task fields', () => {

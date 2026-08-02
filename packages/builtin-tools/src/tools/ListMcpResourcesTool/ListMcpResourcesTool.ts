@@ -6,9 +6,9 @@ import {
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logMCPError } from 'src/utils/log.js'
+import { logMCPError } from 'src/utils/telemetry/log.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
-import { isOutputLineTruncated } from 'src/utils/terminal.js'
+import { isOutputLineTruncated } from 'src/utils/terminal/terminal.js'
 import { DESCRIPTION, LIST_MCP_RESOURCES_TOOL_NAME, PROMPT } from './prompt.js'
 import { renderToolResultMessage, renderToolUseMessage } from './UI.js'
 

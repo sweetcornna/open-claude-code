@@ -1,4 +1,4 @@
-import { getGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig } from '../../utils/config/config.js'
 import type { Command } from '../../types/command.js'
 
 // Visible when a workspace API key is available from env or saved settings.

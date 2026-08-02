@@ -25,7 +25,7 @@ import type {
   SystemMessage,
   UserMessage,
 } from 'src/types/message.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { getRuleByContentsForTool } from 'src/utils/permissions/permissions.js'
 import {
@@ -46,19 +46,19 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '@open-claude-code/tool-runtime/analytics.js'
-import { getAgentContext } from 'src/utils/agentContext.js'
+import { getAgentContext } from 'src/utils/agents/agentContext.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import {
   extractResultText,
   prepareForkedCommandContext,
-} from 'src/utils/forkedAgent.js'
-import { parseFrontmatter } from 'src/utils/frontmatterParser.js'
+} from 'src/utils/agents/forkedAgent.js'
+import { parseFrontmatter } from 'src/utils/text/frontmatterParser.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { createUserMessage, normalizeMessages } from 'src/utils/messages.js'
 import type { ModelAlias } from 'src/utils/model/aliases.js'
 import { resolveSkillModelOverride } from 'src/utils/model/model.js'
 import { recordSkillUsage } from 'src/utils/suggestions/skillUsageTracking.js'
-import { createAgentId } from 'src/utils/uuid.js'
+import { createAgentId } from 'src/utils/collections/uuid.js'
 import { runAgent } from '../AgentTool/runAgent.js'
 import {
   getToolUseIDFromParentMessage,

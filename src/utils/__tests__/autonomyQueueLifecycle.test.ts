@@ -7,20 +7,20 @@ import {
   getAutonomyRunById,
   markAutonomyRunCancelled,
   startManagedAutonomyFlowFromHeartbeatTask,
-} from '../autonomyRuns'
-import { getAutonomyFlowById, listAutonomyFlows } from '../autonomyFlows'
+} from '../agents/autonomyRuns'
+import { getAutonomyFlowById, listAutonomyFlows } from '../agents/autonomyFlows'
 import {
   cancelQueuedAutonomyCommands,
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
   partitionConsumableQueuedAutonomyCommands,
-} from '../autonomyQueueLifecycle'
+} from '../agents/autonomyQueueLifecycle'
 import {
   enqueue,
   getCommandsByMaxPriority,
   remove as removeFromQueue,
   resetCommandQueue,
-} from '../messageQueueManager'
+} from '../session/messageQueueManager'
 
 let tempDir = ''
 let extraTempDirs: string[] = []

@@ -15,8 +15,8 @@ import { Box, Text } from '@anthropic/ink';
 import { clearServerCache } from '../../services/mcp/client.js';
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
-import { getCwd } from '../../utils/cwd.js';
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
+import { getCwd } from '../../utils/filesystem/cwd.js';
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import {
   type DetectedIDEInfo,
   detectIDEs,
@@ -26,8 +26,8 @@ import {
   isSupportedJetBrainsTerminal,
   isSupportedTerminal,
   toIDEDisplayName,
-} from '../../utils/ide.js';
-import { getCurrentWorktreeSession } from '../../utils/worktree.js';
+} from '../../utils/terminal/ide.js';
+import { getCurrentWorktreeSession } from '../../utils/git/worktree.js';
 
 type IDEScreenProps = {
   availableIDEs: DetectedIDEInfo[];

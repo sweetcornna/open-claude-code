@@ -12,10 +12,10 @@ import {
 } from 'src/skills/loadSkillsDir.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { getCwd } from 'src/utils/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { countLinesChanged } from 'src/utils/diff.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { countLinesChanged } from 'src/utils/text/diff.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
 import {
   FILE_NOT_FOUND_CWD_NOTE,
@@ -24,21 +24,24 @@ import {
   isCompactLinePrefixEnabled,
   suggestPathUnderCwd,
   writeTextContent,
-} from 'src/utils/file.js'
+} from 'src/utils/filesystem/file.js'
 import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
-} from 'src/utils/fileHistory.js'
-import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
+} from 'src/utils/filesystem/fileHistory.js'
+import { logFileOperation } from 'src/utils/telemetry/fileOperationAnalytics.js'
 import {
   type LineEndingType,
   readFileSyncWithMetadata,
-} from 'src/utils/fileRead.js'
-import { formatFileSize } from 'src/utils/format.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
-import { fetchSingleFileGitDiff, type ToolUseDiff } from 'src/utils/gitDiff.js'
-import { logError } from 'src/utils/log.js'
-import { expandPath } from 'src/utils/path.js'
+} from 'src/utils/filesystem/fileRead.js'
+import { formatFileSize } from 'src/utils/text/format.js'
+import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
+import {
+  fetchSingleFileGitDiff,
+  type ToolUseDiff,
+} from 'src/utils/git/gitDiff.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { expandPath } from 'src/utils/filesystem/path.js'
 import {
   checkWritePermissionForTool,
   matchingRuleForInput,

@@ -1,13 +1,13 @@
 import axios from 'axios'
-import { hasProfileScope, isClaudeAISubscriber } from '../../utils/auth.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { errorMessage } from '../../utils/errors.js'
-import { getAuthHeaders, withOAuth401Retry } from '../../utils/http.js'
-import { logError } from '../../utils/log.js'
-import { memoizeWithTTLAsync } from '../../utils/memoize.js'
-import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+import { hasProfileScope, isClaudeAISubscriber } from '../../utils/auth/auth.js'
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
+import { getAuthHeaders, withOAuth401Retry } from '../../utils/network/http.js'
+import { logError } from '../../utils/telemetry/log.js'
+import { memoizeWithTTLAsync } from '../../utils/collections/memoize.js'
+import { isEssentialTrafficOnly } from '../../utils/auth/privacyLevel.js'
+import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 
 type MetricsEnabledResponse = {
   metrics_logging_enabled: boolean

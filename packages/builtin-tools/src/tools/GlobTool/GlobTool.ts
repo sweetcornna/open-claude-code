@@ -1,13 +1,16 @@
 import { z } from 'zod/v4'
 import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
-import { FILE_NOT_FOUND_CWD_NOTE, suggestPathUnderCwd } from 'src/utils/file.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
-import { glob } from 'src/utils/glob.js'
+import {
+  FILE_NOT_FOUND_CWD_NOTE,
+  suggestPathUnderCwd,
+} from 'src/utils/filesystem/file.js'
+import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
+import { glob } from 'src/utils/filesystem/glob.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { expandPath, toRelativePath } from 'src/utils/path.js'
+import { expandPath, toRelativePath } from 'src/utils/filesystem/path.js'
 import { checkReadPermissionForTool } from 'src/utils/permissions/filesystem.js'
 import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'

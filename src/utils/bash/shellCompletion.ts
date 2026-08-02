@@ -4,9 +4,9 @@ import {
   quote,
   tryParseShellCommand,
 } from '../bash/shellQuote.js'
-import { logForDebugging } from '../debug.js'
-import { getShellType } from '../localInstaller.js'
-import * as Shell from '../Shell.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { getShellType } from '../update/localInstaller.js'
+import * as Shell from '../shell/Shell.js'
 
 // Constants
 const MAX_SHELL_COMPLETIONS = 15

@@ -10,7 +10,7 @@ import figures from 'figures';
 import { basename } from 'path';
 import { MessageResponse } from '../MessageResponse.js';
 
-import { openPath } from '../../utils/browser.js';
+import { openPath } from '../../utils/network/browser.js';
 import { TURN_COMPLETION_VERBS } from '../../constants/turnCompletionVerbs.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type {
@@ -22,8 +22,8 @@ import type {
   SystemMemorySavedMessage,
 } from '../../types/message.js';
 import { SystemAPIErrorMessage } from './SystemAPIErrorMessage.js';
-import { formatDuration, formatNumber, formatSecondsShort } from '../../utils/format.js';
-import { getGlobalConfig } from '../../utils/config.js';
+import { formatDuration, formatNumber, formatSecondsShort } from '../../utils/text/format.js';
+import { getGlobalConfig } from '../../utils/config/config.js';
 import ThemedText from '../design-system/ThemedText.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { useAppStateStore } from '../../state/AppState.js';

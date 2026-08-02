@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { calculateHorizontalScrollWindow } from '../horizontalScroll'
+import { calculateHorizontalScrollWindow } from '../terminal/horizontalScroll'
 
 describe('calculateHorizontalScrollWindow', () => {
   // Basic scenarios

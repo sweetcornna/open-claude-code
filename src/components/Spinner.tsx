@@ -2,21 +2,21 @@
 import { Box, Text, stringWidth } from '@anthropic/ink';
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from '../utils/shimmer.js';
+import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from '../utils/text/shimmer.js';
 import { feature } from 'bun:bundle';
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
-import { count } from '../utils/array.js';
+import { isEnvTruthy } from '../utils/config/envUtils.js';
+import { count } from '../utils/collections/array.js';
 import sample from 'lodash-es/sample.js';
-import { formatDuration, formatNumber } from '../utils/format.js';
-import type { Theme } from 'src/utils/theme.js';
-import { activityManager } from '../utils/activityManager.js';
+import { formatDuration, formatNumber } from '../utils/text/format.js';
+import type { Theme } from 'src/utils/terminal/theme.js';
+import { activityManager } from '../utils/telemetry/activityManager.js';
 import { getSpinnerVerbs } from '../constants/spinnerVerbs.js';
 import { MessageResponse } from './MessageResponse.js';
 import { TaskListV2 } from './TaskListV2.js';
 import { useTasksV2 } from '../hooks/useTasksV2.js';
-import type { Task } from '../utils/tasks.js';
+import type { Task } from '../utils/task/tasks.js';
 import { useAppState } from '../state/AppState.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { getDefaultCharacters, type SpinnerMode } from './Spinner/index.js';
@@ -26,7 +26,7 @@ import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js
 import { isLocalAgentTask } from '../tasks/LocalAgentTask/LocalAgentTask.js';
 import { isBackgroundTask } from '../tasks/types.js';
 import { getAllInProcessTeammateTasks } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
-import { getEffortSuffix } from '../utils/effort.js';
+import { getEffortSuffix } from '../utils/model/effort.js';
 import { getMainLoopModel } from '../utils/model/model.js';
 import { getViewedTeammateTask } from '../state/selectors.js';
 import { TEARDROP_ASTERISK } from '../constants/figures.js';
@@ -35,7 +35,7 @@ import { getCurrentTurnTokenBudget, getTurnOutputTokens } from '../bootstrap/sta
 
 import { TeammateSpinnerTree } from './Spinner/TeammateSpinnerTree.js';
 import { useAnimationFrame } from '@anthropic/ink';
-import { getGlobalConfig } from '../utils/config.js';
+import { getGlobalConfig } from '../utils/config/config.js';
 export type { SpinnerMode } from './Spinner/index.js';
 
 const DEFAULT_CHARACTERS = getDefaultCharacters();

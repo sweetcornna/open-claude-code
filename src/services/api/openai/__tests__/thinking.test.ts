@@ -8,7 +8,7 @@ import {
 // override pollution from other test files (debug-tool-call, issue,
 // break-cache, MagicDocs/prompts, SessionMemory/prompts, cacheStats) that
 // mock this module without exporting isEnvDefinedFalsy.
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   isEnvTruthy: (v: string | boolean | undefined): boolean => {
     if (!v) return false
     if (typeof v === 'boolean') return v

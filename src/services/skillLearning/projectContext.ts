@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'fs'
 import { basename, join, resolve } from 'path'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import type {
   ProjectContextSource,
   SkillLearningProjectContext,

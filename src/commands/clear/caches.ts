@@ -26,11 +26,11 @@ import { clearTrackedMagicDocs } from '../../services/MagicDocs/magicDocs.js'
 import { clearDynamicSkills } from '../../skills/loadSkillsDir.js'
 import { resetSentSkillNames } from '../../utils/attachments.js'
 import { clearCommandPrefixCaches } from '../../utils/bash/commands.js'
-import { resetGetMemoryFilesCache } from '../../utils/claudemd.js'
-import { clearRepositoryCaches } from '../../utils/detectRepository.js'
+import { resetGetMemoryFilesCache } from '../../utils/session/claudemd.js'
+import { clearRepositoryCaches } from '../../utils/git/detectRepository.js'
 import { clearResolveGitDirCache } from '../../utils/git/gitFilesystem.js'
-import { clearStoredImagePaths } from '../../utils/imageStore.js'
-import { clearSessionEnvVars } from '../../utils/sessionEnvVars.js'
+import { clearStoredImagePaths } from '../../utils/terminal/imageStore.js'
+import { clearSessionEnvVars } from '../../utils/session/sessionEnvVars.js'
 
 /**
  * Clear all session-related caches.
@@ -103,7 +103,7 @@ export function clearSessionCaches(
   // Clear attribution caches (file content cache, pending bash states)
   // Dynamic import to preserve dead code elimination for COMMIT_ATTRIBUTION feature flag
   if (feature('COMMIT_ATTRIBUTION')) {
-    void import('../../utils/attributionHooks.js').then(
+    void import('../../utils/git/attributionHooks.js').then(
       ({ clearAttributionCaches }) => clearAttributionCaches(),
     )
   }

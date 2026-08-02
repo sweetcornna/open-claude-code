@@ -11,7 +11,7 @@ import type {
   PermissionUpdate,
   PermissionUpdateDestination,
 } from '../../types/permissions.js'
-import { lazySchema } from '../lazySchema.js'
+import { lazySchema } from '../collections/lazySchema.js'
 import { externalPermissionModeSchema } from './PermissionMode.js'
 import {
   permissionBehaviorSchema,

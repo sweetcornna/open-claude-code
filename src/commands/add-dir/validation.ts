@@ -2,8 +2,8 @@ import chalk from 'chalk'
 import { stat } from 'fs/promises'
 import { dirname, resolve } from 'path'
 import type { ToolPermissionContext } from '../../Tool.js'
-import { getErrnoCode } from '../../utils/errors.js'
-import { expandPath } from '../../utils/path.js'
+import { getErrnoCode } from '../../utils/runtime/errors.js'
+import { expandPath } from '../../utils/filesystem/path.js'
 import {
   allWorkingDirectories,
   pathInWorkingPath,

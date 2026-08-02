@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   detectImageFormatFromBase64,
   detectImageFormatFromBuffer,
-} from '../imageResizer.js'
+} from '../terminal/imageResizer.js'
 
 // ── Magic byte helpers ────────────────────────────────────────────────────────
 

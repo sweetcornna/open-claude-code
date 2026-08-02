@@ -2,8 +2,8 @@ import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { Stream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { AcpAgent } from './agent.js'
-import { enableConfigs } from '../../utils/config.js'
-import { applySafeConfigEnvironmentVariables } from '../../utils/managedEnv.js'
+import { enableConfigs } from '../../utils/config/config.js'
+import { applySafeConfigEnvironmentVariables } from '../../utils/config/managedEnv.js'
 
 /**
  * Creates an ACP Stream from a pair of Node.js streams.

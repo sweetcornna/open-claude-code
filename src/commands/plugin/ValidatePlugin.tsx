@@ -3,10 +3,10 @@ import * as React from 'react';
 import { BIN_NAME } from '../../constants/brand.js';
 import { useEffect } from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { errorMessage } from '../../utils/errors.js';
-import { logError } from '../../utils/log.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
+import { logError } from '../../utils/telemetry/log.js';
 import { validateManifest } from '../../utils/plugins/validatePlugin.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 
 type Props = {
   onComplete: (result?: string) => void;

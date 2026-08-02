@@ -16,12 +16,12 @@ import { Box, Text } from '@anthropic/ink';
 import { FilePathLink } from 'src/components/FilePathLink.js';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
-import { getCwd } from 'src/utils/cwd.js';
-import { getPatchForDisplay } from 'src/utils/diff.js';
-import { getDisplayPath } from 'src/utils/file.js';
-import { logError } from 'src/utils/log.js';
-import { getPlansDirectory } from 'src/utils/plans.js';
-import { openForScan, readCapped } from 'src/utils/readEditContext.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
+import { getPatchForDisplay } from 'src/utils/text/diff.js';
+import { getDisplayPath } from 'src/utils/filesystem/file.js';
+import { logError } from 'src/utils/telemetry/log.js';
+import { getPlansDirectory } from 'src/utils/agents/plans.js';
+import { openForScan, readCapped } from 'src/utils/filesystem/readEditContext.js';
 import type { Output } from './FileWriteTool.js';
 
 const MAX_LINES_TO_RENDER = 10;

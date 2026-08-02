@@ -1,5 +1,5 @@
 import { queryHaiku } from '../api/claude.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
 import { getSkillLearningConfig } from './config.js'
 import type { InstinctCandidate } from './instinctParser.js'
 import type { StoredSkillObservation } from './observationStore.js'

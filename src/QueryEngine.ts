@@ -43,24 +43,24 @@ import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tool
 import type { APIError } from '@anthropic-ai/sdk'
 import type { Message, SystemCompactBoundaryMessage } from './types/message.js'
 import type { OrphanedPermission } from './types/textInputTypes.js'
-import { createAbortController } from './utils/abortController.js'
-import type { AttributionState } from './utils/commitAttribution.js'
-import { getGlobalConfig } from './utils/config.js'
-import { getCwd } from './utils/cwd.js'
-import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
-import { getFastModeState } from './utils/fastMode.js'
+import { createAbortController } from './utils/process/abortController.js'
+import type { AttributionState } from './utils/git/commitAttribution.js'
+import { getGlobalConfig } from './utils/config/config.js'
+import { getCwd } from './utils/filesystem/cwd.js'
+import { isBareMode, isEnvTruthy } from './utils/config/envUtils.js'
+import { getFastModeState } from './utils/model/fastMode.js'
 import {
   type FileHistoryState,
   fileHistoryEnabled,
   fileHistoryMakeSnapshot,
-} from './utils/fileHistory.js'
+} from './utils/filesystem/fileHistory.js'
 import {
   cloneFileStateCache,
   type FileStateCache,
 } from './utils/fileStateCache.js'
-import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
+import { headlessProfilerCheckpoint } from './utils/telemetry/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
-import { getInMemoryErrors } from './utils/log.js'
+import { getInMemoryErrors } from './utils/telemetry/log.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
   getMainLoopModel,
@@ -71,18 +71,18 @@ import {
   type ProcessUserInputContext,
   processUserInput,
 } from './utils/processUserInput/processUserInput.js'
-import { fetchSystemPromptParts } from './utils/queryContext.js'
-import { setCwd } from './utils/Shell.js'
+import { fetchSystemPromptParts } from './utils/session/queryContext.js'
+import { setCwd } from './utils/shell/Shell.js'
 import {
   flushSessionStorage,
   recordTranscript,
 } from './utils/sessionStorage.js'
-import { asSystemPrompt } from './utils/systemPromptType.js'
-import { resolveThemeSetting } from './utils/systemTheme.js'
+import { asSystemPrompt } from './utils/session/systemPromptType.js'
+import { resolveThemeSetting } from './utils/terminal/systemTheme.js'
 import {
   shouldEnableThinkingByDefault,
   type ThinkingConfig,
-} from './utils/thinking.js'
+} from './utils/model/thinking.js'
 
 // Lazy: MessageSelector.tsx pulls React/ink; only needed for message filtering at query time
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -113,7 +113,7 @@ import {
   handleOrphanedPermission,
   isResultSuccessful,
   normalizeMessage,
-} from './utils/queryHelpers.js'
+} from './utils/session/queryHelpers.js'
 
 // Dead code elimination: conditional import for coordinator mode
 /* eslint-disable @typescript-eslint/no-require-imports */

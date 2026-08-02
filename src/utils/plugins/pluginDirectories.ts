@@ -9,9 +9,9 @@ import { occConfigPath } from 'src/config/paths.js'
 import { mkdirSync } from 'fs'
 import { readdir, rm, stat } from 'fs/promises'
 import { delimiter, join } from 'path'
-import { logForDebugging } from '../debug.js'
-import { errorMessage, isFsInaccessible } from '../errors.js'
-import { formatFileSize } from '../format.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { errorMessage, isFsInaccessible } from '../runtime/errors.js'
+import { formatFileSize } from '../text/format.js'
 import { expandTilde } from '../permissions/pathValidation.js'
 
 /**

@@ -4,7 +4,10 @@
  * triggering heavy module side-effects (OpenAI client, stream adapter, etc.).
  */
 import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
-import { isEnvTruthy, isEnvDefinedFalsy } from '../../../utils/envUtils.js'
+import {
+  isEnvTruthy,
+  isEnvDefinedFalsy,
+} from '../../../utils/config/envUtils.js'
 
 /**
  * Detect whether thinking mode should be enabled for this model.

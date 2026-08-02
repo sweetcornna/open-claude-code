@@ -3,8 +3,8 @@ import {
   DIAMOND_OPEN,
   GEAR_ICON,
 } from '../constants/figures.js'
-import { count } from '../utils/array.js'
-import { truncateToWidth } from '../utils/truncate.js'
+import { count } from '../utils/collections/array.js'
+import { truncateToWidth } from '../utils/text/truncate.js'
 import type { BackgroundTaskState } from './types.js'
 
 /**

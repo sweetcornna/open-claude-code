@@ -9,22 +9,25 @@ import {
   isClaudeAISubscriber,
   refreshAndGetAwsCredentials,
   refreshGcpCredentialsIfNeeded,
-} from 'src/utils/auth.js'
-import { getUserAgent } from 'src/utils/http.js'
+} from 'src/utils/auth/auth.js'
+import { getUserAgent } from 'src/utils/network/http.js'
 import { getSmallFastModel } from 'src/utils/model/model.js'
 import { isDirectAnthropicApi } from 'src/utils/model/providers.js'
-import { getProxyFetchOptions } from 'src/utils/proxy.js'
+import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import {
   getIsNonInteractiveSession,
   getSessionId,
 } from '../../bootstrap/state.js'
 import { getOauthConfig } from '../../constants/oauth.js'
-import { isDebugToStdErr, logForDebugging } from '../../utils/debug.js'
+import {
+  isDebugToStdErr,
+  logForDebugging,
+} from '../../utils/telemetry/debug.js'
 import {
   getAWSRegion,
   getVertexRegionForModel,
   isEnvTruthy,
-} from '../../utils/envUtils.js'
+} from '../../utils/config/envUtils.js'
 
 /**
  * Environment variables for different client types:

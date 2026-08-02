@@ -9,7 +9,7 @@ import {
 import type { AppState } from 'src/state/AppStateStore.js'
 import type { Command } from 'src/commands.js'
 import { formatDescriptionWithSource, getCommandName } from 'src/commands.js'
-import type { Stream } from 'src/utils/stream.js'
+import type { Stream } from 'src/utils/collections/stream.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import type {
   ModelInfo,
@@ -20,13 +20,13 @@ import type {
   SDKControlInitializeResponse,
   StdoutMessage,
 } from 'src/entrypoints/sdk/controlTypes.js'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import {
   DEFAULT_OUTPUT_STYLE_NAME,
   getAllOutputStyles,
 } from 'src/constants/outputStyles.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
-import { getAccountInformation } from 'src/utils/auth.js'
+import { getAccountInformation } from 'src/utils/auth/auth.js'
 import type { HookCallbackMatcher } from 'src/types/hooks.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import {
@@ -43,15 +43,15 @@ import {
   getFastModeState,
   isFastModeAvailable,
   isFastModeEnabled,
-} from 'src/utils/fastMode.js'
-import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
+} from 'src/utils/model/fastMode.js'
+import { AwsAuthStatusManager } from 'src/utils/auth/awsAuthStatusManager.js'
 import {
   fileHistoryCanRestore,
   fileHistoryEnabled,
   fileHistoryGetDiffStats,
   fileHistoryRewind,
-} from 'src/utils/fileHistory.js'
-import { errorMessage } from 'src/utils/errors.js'
+} from 'src/utils/filesystem/fileHistory.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import type { ToolPermissionContext } from 'src/Tool.js'
 import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'
 import {

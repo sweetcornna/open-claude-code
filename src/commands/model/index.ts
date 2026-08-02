@@ -1,5 +1,5 @@
 import type { Command } from '../../commands.js'
-import { shouldInferenceConfigCommandBeImmediate } from '../../utils/immediateCommand.js'
+import { shouldInferenceConfigCommandBeImmediate } from '../../utils/shell/immediateCommand.js'
 import { getMainLoopModel, renderModelName } from '../../utils/model/model.js'
 
 export default {

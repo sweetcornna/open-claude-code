@@ -2,8 +2,8 @@ import { describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { logMock } from '../../../../tests/mocks/log'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const { commandLooksLikeOcc, isOccProcess } = await import('../pidLock.js')
 

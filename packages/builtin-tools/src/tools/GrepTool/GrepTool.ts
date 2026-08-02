@@ -1,12 +1,15 @@
 import { z } from 'zod/v4'
 import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
-import { FILE_NOT_FOUND_CWD_NOTE, suggestPathUnderCwd } from 'src/utils/file.js'
-import { getFsImplementation } from 'src/utils/fsOperations.js'
+import {
+  FILE_NOT_FOUND_CWD_NOTE,
+  suggestPathUnderCwd,
+} from 'src/utils/filesystem/file.js'
+import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { expandPath, toRelativePath } from 'src/utils/path.js'
+import { expandPath, toRelativePath } from 'src/utils/filesystem/path.js'
 import {
   checkReadPermissionForTool,
   getFileReadIgnorePatterns,
@@ -15,9 +18,9 @@ import {
 import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js'
 import { getGlobExclusionsForPluginCache } from 'src/utils/plugins/orphanedPluginFilter.js'
-import { ripGrep } from 'src/utils/ripgrep.js'
+import { ripGrep } from 'src/utils/filesystem/ripgrep.js'
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js'
-import { semanticNumber } from 'src/utils/semanticNumber.js'
+import { semanticNumber } from 'src/utils/collections/semanticNumber.js'
 import { plural } from '@open-claude-code/tool-runtime/stringUtils.js'
 import { GREP_TOOL_NAME, getDescription } from './prompt.js'
 import {

@@ -13,7 +13,7 @@ import {
   buildDeepLink,
   parseDeepLink,
 } from 'src/utils/deepLink/parseDeepLink.js'
-import { filterOccAliases } from 'src/utils/shellConfig.js'
+import { filterOccAliases } from 'src/utils/shell/shellConfig.js'
 
 const sourceRoot = resolve(import.meta.dir, '..', '..')
 
@@ -68,7 +68,7 @@ describe('occ update isolation', () => {
   })
 
   test('doctor never diagnoses or removes the official installation', () => {
-    const source = readSource('utils/doctorDiagnostic.ts')
+    const source = readSource('utils/runtime/doctorDiagnostic.ts')
 
     expect(source).toContain('which(BIN_NAME)')
     expect(source).toContain("join(npmPrefix, 'bin', BIN_NAME)")
@@ -82,8 +82,8 @@ describe('occ update isolation', () => {
   })
 
   test('background npm updates target only the occ package', () => {
-    const updaterSource = readSource('utils/autoUpdater.ts')
-    const localInstallerSource = readSource('utils/localInstaller.ts')
+    const updaterSource = readSource('utils/update/autoUpdater.ts')
+    const localInstallerSource = readSource('utils/update/localInstaller.ts')
     const autoUpdaterComponent = readSource('components/AutoUpdater.tsx')
 
     expect(updaterSource).toContain('NPM_PACKAGE_NAME')
@@ -149,8 +149,10 @@ describe('occ update isolation', () => {
   })
 
   test('background housekeeping never mutates the official npm cache', () => {
-    const cleanupSource = readSource('utils/cleanup.ts')
-    const housekeepingSource = readSource('utils/backgroundHousekeeping.ts')
+    const cleanupSource = readSource('utils/process/cleanup.ts')
+    const housekeepingSource = readSource(
+      'utils/agents/backgroundHousekeeping.ts',
+    )
 
     expect(cleanupSource).not.toContain('cleanupNpmCacheForAnthropicPackages')
     expect(cleanupSource).not.toContain("join(homedir(), '.npm', '_cacache')")
@@ -178,7 +180,7 @@ describe('occ update isolation', () => {
     const executorSource = readSource(
       'utils/computerUse/executorCrossPlatform.ts',
     )
-    const panelSource = readSource('utils/terminalPanel.ts')
+    const panelSource = readSource('utils/terminal/terminalPanel.ts')
     const powershellSource = readSource('utils/shell/powershellProvider.ts')
     // addSlowOperation moved out of the (now re-export-only) bootstrap/state.ts
     // barrel when it was split into leaf modules; the assertions below are
@@ -223,7 +225,7 @@ describe('occ update isolation', () => {
   })
 
   test('IDE compatibility never mutates official lockfiles or extensions', () => {
-    const source = readSource('utils/ide.ts')
+    const source = readSource('utils/terminal/ide.ts')
 
     expect(source).toContain('canDeleteIdeLockfile(lockfilePath)')
     expect(source).not.toContain("'--install-extension'")

@@ -2,8 +2,8 @@
 import { feature } from 'bun:bundle'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { type Command } from 'src/commands.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
 import { type Tools } from 'src/Tool.js'
 import { type AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { Message } from 'src/types/message.js'
@@ -11,25 +11,25 @@ import {
   enqueue,
   subscribeToCommandQueue,
   getCommandsByMaxPriority,
-} from 'src/utils/messageQueueManager.js'
+} from 'src/utils/session/messageQueueManager.js'
 import {
   getSessionState,
   notifySessionMetadataChanged,
   setPermissionModeChangedListener,
-} from 'src/utils/sessionState.js'
-import { type TurnInterruptionState } from 'src/utils/conversationRecovery.js'
+} from 'src/utils/session/sessionState.js'
+import { type TurnInterruptionState } from 'src/utils/session/conversationRecovery.js'
 import type {
   MCPServerConnection,
   McpSdkServerConfig,
 } from 'src/services/mcp/types.js'
 import { ask } from 'src/QueryEngine.js'
-import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
-import { registerCleanup } from 'src/utils/cleanupRegistry.js'
+import { gracefulShutdown } from 'src/utils/process/gracefulShutdown.js'
+import { registerCleanup } from 'src/utils/process/cleanupRegistry.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { cwd } from 'process'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
+import { AwsAuthStatusManager } from 'src/utils/auth/awsAuthStatusManager.js'
 import { toSDKRateLimitInfo } from 'src/utils/messages/mappers.js'
 import {
   statusListeners,
@@ -41,7 +41,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs
 import type { AppState } from 'src/state/AppStateStore.js'
 import { skillChangeDetector } from '../../utils/skills/skillChangeDetector.js'
 import { getCommands, clearCommandsCache } from '../../commands.js'
-import { isBareMode, isEnvTruthy } from '../../utils/envUtils.js'
+import { isBareMode, isEnvTruthy } from '../../utils/config/envUtils.js'
 import { getRunningTasks } from '../../utils/task/framework.js'
 import { isBackgroundTask } from '../../tasks/types.js'
 import { removeInterruptedMessage } from './sessionLoading.js'

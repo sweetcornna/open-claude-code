@@ -13,23 +13,23 @@ import {
 } from '../../cost-tracker.js'
 import { restoreRemoteAgentTasks } from '../../tasks/RemoteAgentTask/RemoteAgentTask.js'
 import { asSessionId } from '../../types/ids.js'
-import { updateSessionName } from '../../utils/concurrentSessions.js'
-import { deserializeMessages } from '../../utils/conversationRecovery.js'
-import { copyFileHistoryForResume } from '../../utils/fileHistory.js'
+import { updateSessionName } from '../../utils/session/concurrentSessions.js'
+import { deserializeMessages } from '../../utils/session/conversationRecovery.js'
+import { copyFileHistoryForResume } from '../../utils/filesystem/fileHistory.js'
 import {
   executeSessionEndHooks,
   getSessionEndHookTimeoutMs,
 } from '../../utils/hooks.js'
 import { createSystemMessage } from '../../utils/messages.js'
-import { copyPlanForFork, copyPlanForResume } from '../../utils/plans.js'
+import { copyPlanForFork, copyPlanForResume } from '../../utils/agents/plans.js'
 import {
   computeStandaloneAgentContext,
   exitRestoredWorktree,
   restoreAgentFromSession,
   restoreSessionStateFromLog,
   restoreWorktreeForResume,
-} from '../../utils/sessionRestore.js'
-import { processSessionStartHooks } from '../../utils/sessionStart.js'
+} from '../../utils/session/sessionRestore.js'
+import { processSessionStartHooks } from '../../utils/session/sessionStart.js'
 import {
   adoptResumedSessionFile,
   clearSessionMetadata,
@@ -37,8 +37,8 @@ import {
   restoreSessionMetadata,
   saveWorktreeState,
 } from '../../utils/sessionStorage.js'
-import { reconstructContentReplacementState } from '../../utils/toolResultStorage.js'
-import { getCurrentWorktreeSession } from '../../utils/worktree.js'
+import { reconstructContentReplacementState } from '../../utils/tools/toolResultStorage.js'
+import { getCurrentWorktreeSession } from '../../utils/git/worktree.js'
 import { dirname } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/index.js'
@@ -46,7 +46,7 @@ import type { LogOption } from '../../types/logs.js'
 import type { ResumeEntrypoint } from '../../commands.js'
 import type { Message as MessageType } from '../../types/message.js'
 import type { AppState } from '../../state/AppState.js'
-import type { SetAppState } from '../../utils/messageQueueManager.js'
+import type { SetAppState } from '../../utils/session/messageQueueManager.js'
 import type { useAppStateStore } from '../../state/AppState.js'
 import type { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
@@ -235,7 +235,7 @@ export async function runResume(
     )
     // Rename asciicast recording to match the resumed session ID
     const { renameRecordingForSession } = await import(
-      '../../utils/asciicast.js'
+      '../../utils/terminal/asciicast.js'
     )
     await renameRecordingForSession()
     await resetSessionFilePointer()

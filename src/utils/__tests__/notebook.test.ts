@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import type { NotebookCellSource } from '../../types/notebook.js'
-import { parseCellId, mapNotebookCellsToToolResult } from '../notebook'
+import {
+  parseCellId,
+  mapNotebookCellsToToolResult,
+} from '../filesystem/notebook'
 
 // ─── parseCellId ───────────────────────────────────────────────────────
 

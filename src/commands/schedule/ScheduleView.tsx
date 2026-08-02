@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { Trigger } from './triggersApi.js';
-import { cronToHuman } from '../../utils/cron.js';
+import { cronToHuman } from '../../utils/task/cron.js';
 
 type Props =
   | { mode: 'list'; triggers: Trigger[] }

@@ -1,7 +1,7 @@
 import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
-import { has1mContext } from '../utils/context.js';
+import { has1mContext } from '../utils/session/context.js';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -12,7 +12,7 @@ import {
   isFastModeAvailable,
   isFastModeCooldown,
   isFastModeEnabled,
-} from 'src/utils/fastMode.js';
+} from 'src/utils/model/fastMode.js';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
@@ -25,7 +25,7 @@ import {
   modelSupportsXhighEffort,
   resolvePickerEffortPersistence,
   toPersistableEffort,
-} from '../utils/effort.js';
+} from '../utils/model/effort.js';
 import {
   getDefaultMainLoopModel,
   type ModelSetting,

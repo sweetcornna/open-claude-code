@@ -13,8 +13,8 @@ import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
 // Mock side-effect modules first
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // ── Workspace API key mock ──────────────────────────────────────────────────
 const mockApiKey = 'sk-ant-api03-test-agents-key'

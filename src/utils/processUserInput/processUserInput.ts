@@ -36,9 +36,9 @@ import {
   createAttachmentMessage,
   getAttachmentMessages,
 } from '../attachments.js'
-import type { PastedContent } from '../config.js'
-import type { EffortValue } from '../effort.js'
-import { toArray } from '../generators.js'
+import type { PastedContent } from '../config/config.js'
+import type { EffortValue } from '../model/effort.js'
+import { toArray } from '../collections/generators.js'
 import {
   executeUserPromptSubmitHooks,
   getUserPromptSubmitHookBlockingMessage,
@@ -46,15 +46,15 @@ import {
 import {
   createImageMetadataText,
   maybeResizeAndDownsampleImageBlock,
-} from '../imageResizer.js'
-import { storeImages } from '../imageStore.js'
+} from '../terminal/imageResizer.js'
+import { storeImages } from '../terminal/imageStore.js'
 import {
   createCommandInputMessage,
   createSystemMessage,
   createUserMessage,
 } from '../messages.js'
-import { queryCheckpoint } from '../queryProfiler.js'
-import { parseSlashCommand } from '../slashCommandParsing.js'
+import { queryCheckpoint } from '../telemetry/queryProfiler.js'
+import { parseSlashCommand } from '../text/slashCommandParsing.js'
 import {
   hasUltraplanKeyword,
   replaceUltraplanKeyword,

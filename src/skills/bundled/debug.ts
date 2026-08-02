@@ -2,9 +2,12 @@ import { open, stat } from 'fs/promises'
 import { CLAUDE_CODE_GUIDE_AGENT_TYPE } from '@open-claude-code/builtin-tools/tools/AgentTool/built-in/claudeCodeGuideAgent.js'
 import { getSettingsFilePathForSource } from 'src/utils/settings/settings.js'
 import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js'
-import { enableDebugLogging, getDebugLogPath } from '../../utils/debug.js'
-import { errorMessage, isENOENT } from '../../utils/errors.js'
-import { formatFileSize } from '../../utils/format.js'
+import {
+  enableDebugLogging,
+  getDebugLogPath,
+} from '../../utils/telemetry/debug.js'
+import { errorMessage, isENOENT } from '../../utils/runtime/errors.js'
+import { formatFileSize } from '../../utils/text/format.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 const DEFAULT_DEBUG_LINES_READ = 20

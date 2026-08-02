@@ -8,7 +8,7 @@ import { Box, Text } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { PluginError } from '../../types/plugin.js';
-import { errorMessage } from '../../utils/errors.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
 import { clearAllCaches } from '../../utils/plugins/cacheUtils.js';
 import { loadMarketplacesWithGracefulDegradation } from '../../utils/plugins/marketplaceHelpers.js';
 import { loadKnownMarketplacesConfig, removeMarketplaceSource } from '../../utils/plugins/marketplaceManager.js';

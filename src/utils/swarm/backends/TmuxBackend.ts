@@ -1,9 +1,9 @@
 import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js'
-import { logForDebugging } from '../../../utils/debug.js'
-import { execFileNoThrow } from '../../../utils/execFileNoThrow.js'
-import { logError } from '../../../utils/log.js'
-import { count } from '../../array.js'
-import { sleep } from '../../sleep.js'
+import { logForDebugging } from '../../telemetry/debug.js'
+import { execFileNoThrow } from '../../process/execFileNoThrow.js'
+import { logError } from '../../telemetry/log.js'
+import { count } from '../../collections/array.js'
+import { sleep } from '../../process/sleep.js'
 import {
   getSwarmSocketName,
   HIDDEN_SESSION_NAME,

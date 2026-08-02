@@ -3,7 +3,7 @@ import {
   parseTokenBudget,
   findTokenBudgetPositions,
   getBudgetContinuationMessage,
-} from '../tokenBudget'
+} from '../session/tokenBudget'
 
 describe('parseTokenBudget', () => {
   // --- shorthand at start ---

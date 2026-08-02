@@ -10,16 +10,16 @@ import type {
   SystemAPIErrorMessage,
 } from '../../../types/message.js'
 import { type Tools } from '../../../Tool.js'
-import { toolToAPISchema } from '../../../utils/api.js'
-import { logForDebugging } from '../../../utils/debug.js'
+import { toolToAPISchema } from '../../../utils/telemetry/api.js'
+import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
   normalizeMessagesForAPI,
 } from '../../../utils/messages.js'
 import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
-import type { SystemPrompt } from '../../../utils/systemPromptType.js'
-import type { ThinkingConfig } from '../../../utils/thinking.js'
+import type { SystemPrompt } from '../../../utils/session/systemPromptType.js'
+import type { ThinkingConfig } from '../../../utils/model/thinking.js'
 import type { Options } from '../claude.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
 import {

@@ -10,9 +10,11 @@ mock.module('src/bootstrap/state.js', () => ({
   sessionId: 'test-session',
   getCwd: () => '/test/project',
 }))
-mock.module('src/utils/cwd.js', () => ({ getCwd: () => '/test/project' }))
-mock.module('src/utils/git.js', () => ({ getIsGit: async () => true }))
-mock.module('src/utils/worktree.js', () => ({
+mock.module('src/utils/filesystem/cwd.js', () => ({
+  getCwd: () => '/test/project',
+}))
+mock.module('src/utils/git/git.js', () => ({ getIsGit: async () => true }))
+mock.module('src/utils/git/worktree.js', () => ({
   getCurrentWorktreeSession: () => null,
 }))
 mock.module('src/constants/common.js', () => ({
@@ -24,8 +26,10 @@ mock.module('src/utils/settings/settings.js', () => ({
 mock.module('src/commands/poor/poorMode.js', () => ({
   isPoorModeActive: () => false,
 }))
-mock.module('src/utils/env.js', () => ({ env: { platform: 'linux' } }))
-mock.module('src/utils/envUtils.js', () => ({ isEnvTruthy: () => false }))
+mock.module('src/utils/config/env.js', () => ({ env: { platform: 'linux' } }))
+mock.module('src/utils/config/envUtils.js', () => ({
+  isEnvTruthy: () => false,
+}))
 mock.module('src/utils/model/model.js', () => ({
   getCanonicalName: (id: string) => id,
   getMarketingNameForModel: (id: string) => {
@@ -41,27 +45,31 @@ mock.module('src/commands.js', () => ({
 mock.module('src/constants/outputStyles.js', () => ({
   getOutputStyleConfig: async () => null,
 }))
-mock.module('src/utils/embeddedTools.js', () => ({
+mock.module('src/utils/tools/embeddedTools.js', () => ({
   hasEmbeddedSearchTools: () => false,
 }))
 mock.module('src/utils/permissions/filesystem.js', () => ({
   isScratchpadEnabled: () => false,
   getScratchpadDir: () => '/tmp/scratchpad',
 }))
-mock.module('src/utils/betas.js', () => ({
+mock.module('src/utils/model/betas.js', () => ({
   shouldUseGlobalCacheScope: () => false,
 }))
-mock.module('src/utils/undercover.js', () => ({ isUndercover: () => false }))
+mock.module('src/utils/auth/undercover.js', () => ({
+  isUndercover: () => false,
+}))
 mock.module('src/utils/model/antModels.js', () => ({
   getAntModelOverrideConfig: () => null,
 }))
-mock.module('src/utils/mcpInstructionsDelta.js', () => ({
+mock.module('src/utils/mcp/mcpInstructionsDelta.js', () => ({
   isMcpInstructionsDeltaEnabled: () => false,
 }))
 mock.module('src/memdir/memdir.js', () => ({
   loadMemoryPrompt: async () => null,
 }))
-mock.module('src/utils/debug.js', () => ({ logForDebugging: () => {} }))
+mock.module('src/utils/telemetry/debug.js', () => ({
+  logForDebugging: () => {},
+}))
 mock.module('src/services/analytics/growthbook.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
 }))

@@ -2,8 +2,8 @@ import { describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../tests/mocks/log'
 import { debugMock } from '../../tests/mocks/debug'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 import { fixtureUuid } from '../../tests/mocks/fixtures/conversation.js'
 import type { Message } from '../types/message.js'

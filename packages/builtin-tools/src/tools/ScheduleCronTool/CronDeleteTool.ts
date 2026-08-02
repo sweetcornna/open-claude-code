@@ -5,9 +5,9 @@ import {
   getCronFilePath,
   listAllCronTasks,
   removeCronTasks,
-} from 'src/utils/cronTasks.js'
+} from 'src/utils/task/cronTasks.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { getTeammateContext } from 'src/utils/teammateContext.js'
+import { getTeammateContext } from 'src/utils/agents/teammateContext.js'
 import {
   buildCronDeletePrompt,
   CRON_DELETE_DESCRIPTION,

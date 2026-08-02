@@ -30,44 +30,49 @@ import type { AgentId } from 'src/types/ids.js';
 import type { AssistantMessage } from 'src/types/message.js';
 import { parseForSecurity } from 'src/utils/bash/ast.js';
 import { splitCommand_DEPRECATED, splitCommandWithOperators } from 'src/utils/bash/commands.js';
-import { getAttributionTexts } from 'src/utils/attribution.js';
-import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
-import { detectCodeIndexingFromCommand } from 'src/utils/codeIndexing.js';
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
-import { shouldIncludeGitInstructions } from 'src/utils/gitSettings.js';
+import { getAttributionTexts } from 'src/utils/git/attribution.js';
+import { extractClaudeCodeHints } from 'src/utils/runtime/claudeCodeHints.js';
+import { detectCodeIndexingFromCommand } from 'src/utils/runtime/codeIndexing.js';
+import { hasEmbeddedSearchTools } from 'src/utils/tools/embeddedTools.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
+import { shouldIncludeGitInstructions } from 'src/utils/git/gitSettings.js';
 import { isENOENT, ShellError } from '@open-claude-code/tool-runtime/errors.js';
-import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from 'src/utils/file.js';
-import { fileHistoryEnabled, fileHistoryTrackEdit } from 'src/utils/fileHistory.js';
-import { truncate } from 'src/utils/format.js';
-import { getFsImplementation } from 'src/utils/fsOperations.js';
+import {
+  detectFileEncoding,
+  detectLineEndings,
+  getFileModificationTime,
+  writeTextContent,
+} from 'src/utils/filesystem/file.js';
+import { fileHistoryEnabled, fileHistoryTrackEdit } from 'src/utils/filesystem/fileHistory.js';
+import { truncate } from 'src/utils/text/format.js';
+import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
-import { expandPath } from 'src/utils/path.js';
+import { expandPath } from 'src/utils/filesystem/path.js';
 import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
-import { exec } from 'src/utils/Shell.js';
-import type { ExecResult } from 'src/utils/ShellCommand.js';
+import { exec } from 'src/utils/shell/Shell.js';
+import type { ExecResult } from 'src/utils/shell/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js';
-import { semanticNumber } from 'src/utils/semanticNumber.js';
+import { semanticNumber } from 'src/utils/collections/semanticNumber.js';
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js';
 import { EndTruncatingAccumulator } from '@open-claude-code/tool-runtime/stringUtils.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { TaskOutput } from 'src/utils/task/TaskOutput.js';
-import { isOutputLineTruncated } from 'src/utils/terminal.js';
+import { isOutputLineTruncated } from 'src/utils/terminal/terminal.js';
 import {
   getDefaultBashTimeoutMs as getDefaultTimeoutMs,
   getMaxBashTimeoutMs as getMaxTimeoutMs,
-} from 'src/utils/timeouts.js';
-import { getUndercoverInstructions, isUndercover } from 'src/utils/undercover.js';
+} from 'src/utils/process/timeouts.js';
+import { getUndercoverInstructions, isUndercover } from 'src/utils/auth/undercover.js';
 import {
   buildLargeToolResultMessage,
   ensureToolResultsDir,
   generatePreview,
   getToolResultPath,
   PREVIEW_SIZE_BYTES,
-} from 'src/utils/toolResultStorage.js';
+} from 'src/utils/tools/toolResultStorage.js';
 import { userFacingName as fileEditUserFacingName } from '../FileEditTool/UI.js';
 import { trackGitOperations } from '../shared/gitOperationTracking.js';
 import {

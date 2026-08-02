@@ -5,7 +5,7 @@ import {
   isBuiltInAgent,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { Command } from 'src/commands.js'
-import type { ThinkingConfig } from 'src/utils/thinking.js'
+import type { ThinkingConfig } from 'src/utils/model/thinking.js'
 import { filterToolsByDenyRules } from 'src/tools.js'
 import { toolMatchesName, type Tools } from 'src/Tool.js'
 import type { AppState } from 'src/state/AppStateStore.js'
@@ -20,48 +20,48 @@ import type {
 } from 'src/services/mcp/types.js'
 import type { Message } from 'src/types/message.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import type { TurnInterruptionState } from 'src/utils/conversationRecovery.js'
+import type { TurnInterruptionState } from 'src/utils/session/conversationRecovery.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { shouldForceGc } from 'src/cli/headlessGc.js'
-import { createStreamlinedTransformer } from 'src/utils/streamlinedTransform.js'
-import { installStreamJsonStdoutGuard } from 'src/utils/streamJsonStdoutGuard.js'
+import { createStreamlinedTransformer } from 'src/utils/session/streamlinedTransform.js'
+import { installStreamJsonStdoutGuard } from 'src/utils/process/streamJsonStdoutGuard.js'
 import {
   logHeadlessProfilerTurn,
   headlessProfilerCheckpoint,
   headlessProfilerStartTurn,
-} from 'src/utils/headlessProfiler.js'
+} from 'src/utils/telemetry/headlessProfiler.js'
 import {
   isQualifiedForGrove,
   checkGroveForNonInteractive,
 } from 'src/services/api/grove.js'
 import { initializeGrowthBook } from 'src/services/analytics/growthbook.js'
-import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js'
-import { validateUuid } from 'src/utils/uuid.js'
+import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js'
+import { validateUuid } from 'src/utils/collections/uuid.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import { registerHookEventHandler } from 'src/utils/hooks/hookEvents.js'
 import { getMainThreadAgentType, getSessionId } from 'src/bootstrap/state.js'
 import {
   processSessionStartHooks,
   processSetupHooks,
   takeInitialUserMessage,
-} from 'src/utils/sessionStart.js'
-import { restoreAgentFromSession } from 'src/utils/sessionRestore.js'
+} from 'src/utils/session/sessionStart.js'
+import { restoreAgentFromSession } from 'src/utils/session/sessionRestore.js'
 import { saveAgentSetting } from 'src/utils/sessionStorage.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { isExtractModeActive } from 'src/memdir/paths.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from 'src/utils/telemetry/slowOperations.js'
 import {
   writeToStdout,
   registerProcessOutputErrorHandlers,
-} from 'src/utils/process.js'
+} from 'src/utils/process/process.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
 import { applySettingsChange } from 'src/utils/settings/applySettingsChange.js'
-import { isFastModeEnabled } from 'src/utils/fastMode.js'
+import { isFastModeEnabled } from 'src/utils/model/fastMode.js'
 import {
   notifySessionStateChanged,
   type RequiresActionDetails,
-} from 'src/utils/sessionState.js'
+} from 'src/utils/session/sessionState.js'
 import { ensureModelStringsInitialized } from 'src/utils/model/modelStrings.js'
 import { getCanUseToolFn } from './toolPermissions.js'
 import { handleRewindFiles } from './controlHandlers.js'

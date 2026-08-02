@@ -12,7 +12,8 @@ import { feature } from 'bun:bundle';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Lazy require to avoid circular dependency: teammate.ts -> AppState.tsx -> ... -> main.tsx
-export const getTeammateUtils = () => require('src/utils/teammate.js') as typeof import('src/utils/teammate.js');
+export const getTeammateUtils = () =>
+  require('src/utils/agents/teammate.js') as typeof import('src/utils/agents/teammate.js');
 export const getTeammatePromptAddendum = () =>
   require('src/utils/swarm/teammatePromptAddendum.js') as typeof import('src/utils/swarm/teammatePromptAddendum.js');
 export const getTeammateModeSnapshot = () =>

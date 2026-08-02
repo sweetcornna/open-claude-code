@@ -1,6 +1,6 @@
 import type { UUID } from 'crypto'
-import type { FileHistorySnapshot } from 'src/utils/fileHistory.js'
-import type { ContentReplacementRecord } from 'src/utils/toolResultStorage.js'
+import type { FileHistorySnapshot } from 'src/utils/filesystem/fileHistory.js'
+import type { ContentReplacementRecord } from 'src/utils/tools/toolResultStorage.js'
 import type { AgentId } from './ids.js'
 import type { Message } from './message.js'
 import type { QueueOperationMessage } from './messageQueueTypes.js'

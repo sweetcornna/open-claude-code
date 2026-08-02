@@ -22,19 +22,19 @@ import type {
   ClassifierUsage,
   YoloClassifierResult,
 } from '../../types/permissions.js'
-import { isDebugMode, logForDebugging } from '../debug.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
-import { errorMessage } from '../errors.js'
-import { lazySchema } from '../lazySchema.js'
+import { isDebugMode, logForDebugging } from '../telemetry/debug.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
+import { errorMessage } from '../runtime/errors.js'
+import { lazySchema } from '../collections/lazySchema.js'
 import { extractTextContent } from '../messages.js'
 import { resolveAntModel } from '../model/antModels.js'
 import { getDefaultSonnetModel, getMainLoopModel } from '../model/model.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from '../session/sideQuery.js'
 import type { LangfuseSpan } from '../../services/langfuse/index.js'
-import { jsonStringify } from '../slowOperations.js'
-import { tokenCountWithEstimation } from '../tokens.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
+import { tokenCountWithEstimation } from '../session/tokens.js'
 import {
   getBashPromptAllowDescriptions,
   getBashPromptDenyDescriptions,

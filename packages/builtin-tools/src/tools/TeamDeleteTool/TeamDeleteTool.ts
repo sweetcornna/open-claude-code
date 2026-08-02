@@ -3,7 +3,7 @@ import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@open-claude-code/tool-runtime/analytics.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
+import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js'
@@ -13,7 +13,7 @@ import {
   unregisterTeamForSessionCleanup,
 } from 'src/utils/swarm/teamHelpers.js'
 import { clearTeammateColors } from 'src/utils/swarm/teammateLayoutManager.js'
-import { clearLeaderTeamName } from 'src/utils/tasks.js'
+import { clearLeaderTeamName } from 'src/utils/task/tasks.js'
 import {
   ensureBackendsRegistered,
   getBackendByType,
@@ -21,7 +21,7 @@ import {
 } from 'src/utils/swarm/backends/registry.js'
 import { createPaneBackendExecutor } from 'src/utils/swarm/backends/PaneBackendExecutor.js'
 import { isPaneBackend } from 'src/utils/swarm/backends/types.js'
-import { sleep } from 'src/utils/sleep.js'
+import { sleep } from 'src/utils/process/sleep.js'
 import { TEAM_DELETE_TOOL_NAME } from './constants.js'
 import { getPrompt } from './prompt.js'
 import { renderToolResultMessage, renderToolUseMessage } from './UI.js'

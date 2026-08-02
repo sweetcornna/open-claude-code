@@ -3,7 +3,7 @@ import { useBackgroundAgentTasks } from '../../hooks/useBackgroundAgentTasks.js'
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { useAppState } from '../../state/AppState.js';
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
-import { formatTokens } from '../../utils/format.js';
+import { formatTokens } from '../../utils/text/format.js';
 
 function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boolean }) {
   const elapsed = useElapsedTime(task.startTime, task.status === 'running');

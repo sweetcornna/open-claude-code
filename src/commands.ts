@@ -154,9 +154,9 @@ import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
 import autonomy from './commands/autonomy.js'
 import provider from './commands/provider.js'
-import { logError } from './utils/log.js'
-import { toError } from './utils/errors.js'
-import { logForDebugging } from './utils/debug.js'
+import { logError } from './utils/telemetry/log.js'
+import { toError } from './utils/runtime/errors.js'
+import { logForDebugging } from './utils/telemetry/debug.js'
 import {
   getSkillDirCommands,
   clearSkillCaches,
@@ -171,7 +171,7 @@ import {
   clearPluginSkillsCache,
 } from './utils/plugins/loadPluginCommands.js'
 import memoize from 'lodash-es/memoize.js'
-import { isUsing3PServices, isClaudeAISubscriber } from './utils/auth.js'
+import { isUsing3PServices, isClaudeAISubscriber } from './utils/auth/auth.js'
 import { isDirectAnthropicApi } from './utils/model/providers.js'
 import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'

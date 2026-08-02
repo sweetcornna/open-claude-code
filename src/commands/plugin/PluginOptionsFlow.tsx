@@ -9,7 +9,7 @@
 
 import * as React from 'react';
 import type { LoadedPlugin } from '../../types/plugin.js';
-import { errorMessage } from '../../utils/errors.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
 import { loadMcpServerUserConfig, saveMcpServerUserConfig } from '../../utils/plugins/mcpbHandler.js';
 import { getUnconfiguredChannels, type UnconfiguredChannel } from '../../utils/plugins/mcpPluginIntegration.js';
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js';

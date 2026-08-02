@@ -17,9 +17,9 @@ import { createRequire } from 'node:module'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
-import { getGlobalConfig } from '../config.js'
-import { logForDebugging } from '../debug.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
+import { getGlobalConfig } from '../config/config.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
 import {
   CHROME_AUTOCONNECT_ENV,
   CHROME_BROWSER_URL_ENV,

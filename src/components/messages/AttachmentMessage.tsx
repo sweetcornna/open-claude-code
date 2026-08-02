@@ -2,28 +2,28 @@
 import React, { useMemo } from 'react';
 import { Ansi, Box, Text } from '@anthropic/ink';
 import { FilePathLink } from '../FilePathLink.js';
-import { toInkColor } from '../../utils/ink.js';
+import { toInkColor } from '../../utils/terminal/ink.js';
 import type { Attachment } from 'src/utils/attachments.js';
 import type { NullRenderingAttachmentType } from './nullRenderingAttachments.js';
 import { useAppState } from '../../state/AppState.js';
-import { getDisplayPath } from 'src/utils/file.js';
-import { formatFileSize } from 'src/utils/format.js';
+import { getDisplayPath } from 'src/utils/filesystem/file.js';
+import { formatFileSize } from 'src/utils/text/format.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { basename, sep } from 'path';
 import { UserTextMessage } from './UserTextMessage.js';
 import { DiagnosticsDisplay } from '../DiagnosticsDisplay.js';
 import { getContentText } from 'src/utils/messages.js';
-import type { Theme } from 'src/utils/theme.js';
+import type { Theme } from 'src/utils/terminal/theme.js';
 import { UserImageMessage } from './UserImageMessage.js';
 
-import { jsonParse } from '../../utils/slowOperations.js';
-import { plural } from '../../utils/stringUtils.js';
-import { isEnvTruthy } from '../../utils/envUtils.js';
-import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
+import { jsonParse } from '../../utils/telemetry/slowOperations.js';
+import { plural } from '../../utils/text/stringUtils.js';
+import { isEnvTruthy } from '../../utils/config/envUtils.js';
+import { isAgentSwarmsEnabled } from '../../utils/agents/agentSwarmsEnabled.js';
 import { tryRenderPlanApprovalMessage, formatTeammateMessageContent } from './PlanApprovalMessage.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { TeammateMessageContent } from './UserTeammateMessage.js';
-import { isShutdownApproved } from '../../utils/teammateMailbox.js';
+import { isShutdownApproved } from '../../utils/agents/teammateMailbox.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 
 import { feature } from 'bun:bundle';

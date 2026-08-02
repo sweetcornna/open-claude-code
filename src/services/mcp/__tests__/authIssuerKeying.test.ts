@@ -12,8 +12,8 @@ import { debugMock } from '../../../../tests/mocks/debug'
 import { logMock } from '../../../../tests/mocks/log'
 import { secureStorageMock } from '../../../../tests/mocks/secureStorage'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('src/utils/secureStorage/index.ts', secureStorageMock.mock)
 
 const SERVER_NAME = 'tenant-mcp'

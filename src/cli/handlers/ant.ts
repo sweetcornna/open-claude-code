@@ -5,8 +5,8 @@ import {
   updateTask,
   listTasks,
   getTasksDir,
-} from '../../utils/tasks.js'
-import { getRecentActivity } from '../../utils/logoV2Utils.js'
+} from '../../utils/task/tasks.js'
+import { getRecentActivity } from '../../utils/terminal/logoV2Utils.js'
 import type { LogOption } from '../../types/logs.js'
 
 const DEFAULT_LIST = 'default'
@@ -201,7 +201,7 @@ export async function completionHandler(
   _program: Command,
 ): Promise<void> {
   const { regenerateCompletionCache } = await import(
-    '../../utils/completionCache.js'
+    '../../utils/collections/completionCache.js'
   )
 
   if (opts.output) {

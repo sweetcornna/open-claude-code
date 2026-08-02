@@ -7,8 +7,8 @@ mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }));
 
-mock.module('src/utils/log.ts', logMock);
-mock.module('src/utils/debug.ts', debugMock);
+mock.module('src/utils/telemetry/log.ts', logMock);
+mock.module('src/utils/telemetry/debug.ts', debugMock);
 
 const loggedEvents: Array<{ name: string; payload: unknown }> = [];
 mock.module('src/services/analytics/index.js', () => ({
@@ -26,7 +26,7 @@ const fakeGlobalConfig: {
 } = {};
 const fakeProjectConfig: { hasTrustDialogAccepted?: boolean } = {};
 
-mock.module('src/utils/config.js', () => ({
+mock.module('src/utils/config/config.js', () => ({
   getGlobalConfig: () => ({ ...fakeGlobalConfig }),
   saveGlobalConfig: (updater: (cur: typeof fakeGlobalConfig) => typeof fakeGlobalConfig) => {
     Object.assign(fakeGlobalConfig, updater({ ...fakeGlobalConfig }));

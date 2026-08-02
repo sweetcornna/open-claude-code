@@ -27,17 +27,17 @@ import {
 import { isLocalShellTask } from '../../tasks/LocalShellTask/guards.js'
 import { asAgentId } from '../../types/ids.js'
 import type { Message } from '../../types/message.js'
-import { saveCacheSafeParams } from '../../utils/cacheSafeParamsSlot.js'
-import { createEmptyAttributionState } from '../../utils/commitAttribution.js'
+import { saveCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js'
+import { createEmptyAttributionState } from '../../utils/git/commitAttribution.js'
 import type { FileStateCache } from '../../utils/fileStateCache.js'
 import {
   executeSessionEndHooks,
   getSessionEndHookTimeoutMs,
 } from '../../utils/hooks.js'
-import { logError } from '../../utils/log.js'
-import { clearAllPlanSlugs } from '../../utils/plans.js'
-import { setCwd } from '../../utils/Shell.js'
-import { processSessionStartHooks } from '../../utils/sessionStart.js'
+import { logError } from '../../utils/telemetry/log.js'
+import { clearAllPlanSlugs } from '../../utils/agents/plans.js'
+import { setCwd } from '../../utils/shell/Shell.js'
+import { processSessionStartHooks } from '../../utils/session/sessionStart.js'
 import {
   clearSessionMetadata,
   getAgentTranscriptPath,
@@ -48,7 +48,7 @@ import {
   evictTaskOutput,
   initTaskOutputAsSymlink,
 } from '../../utils/task/diskOutput.js'
-import { getCurrentWorktreeSession } from '../../utils/worktree.js'
+import { getCurrentWorktreeSession } from '../../utils/git/worktree.js'
 import { clearSessionCaches } from './caches.js'
 
 export async function clearConversation({

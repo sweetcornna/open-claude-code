@@ -3,7 +3,7 @@ import { ASK_USER_QUESTION_TOOL_NAME } from '@open-claude-code/builtin-tools/too
 import { ENTER_PLAN_MODE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/EnterPlanModeTool/constants.js'
 import { EXIT_PLAN_MODE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/constants.js'
 import { SKILL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SkillTool/constants.js'
-import { getIsGit } from '../../utils/git.js'
+import { getIsGit } from '../../utils/git/git.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 const MIN_AGENTS = 5

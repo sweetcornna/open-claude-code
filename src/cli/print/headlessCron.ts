@@ -10,15 +10,15 @@
 import { randomUUID } from 'crypto'
 import { cwd } from 'process'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { logError } from 'src/utils/log.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
-import { WORKLOAD_CRON } from 'src/utils/workloadContext.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
+import { WORKLOAD_CRON } from 'src/utils/session/workloadContext.js'
 import {
   createAutonomyQueuedPromptIfNoActiveSource,
   markAutonomyRunFailed,
-} from 'src/utils/autonomyRuns.js'
-import { cancelQueuedAutonomyCommands } from 'src/utils/autonomyQueueLifecycle.js'
+} from 'src/utils/agents/autonomyRuns.js'
+import { cancelQueuedAutonomyCommands } from 'src/utils/agents/autonomyQueueLifecycle.js'
 import {
   cronGate,
   cronJitterConfigModule,

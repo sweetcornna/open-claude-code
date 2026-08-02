@@ -2,7 +2,7 @@ import type { Transport as ModernTransport } from '@modelcontextprotocol/server'
 import type { Transport as LegacyTransport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, test } from 'bun:test'
-import { WebSocketTransport } from '../mcpWebSocketTransport.js'
+import { WebSocketTransport } from '../mcp/mcpWebSocketTransport.js'
 
 const WS_CONNECTING = 0
 const WS_OPEN = 1

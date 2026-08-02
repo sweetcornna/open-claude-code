@@ -1,7 +1,7 @@
 import { relative } from 'path'
 import type { ToolUseContext } from '../../Tool.js'
 import type { LocalCommandResult } from '../../types/command.js'
-import { getCwd } from '../../utils/cwd.js'
+import { getCwd } from '../../utils/filesystem/cwd.js'
 import { cacheKeys } from '../../utils/fileStateCache.js'
 
 export async function call(

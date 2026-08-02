@@ -2,10 +2,10 @@
 // Performance shim MUST be the first import — it replaces globalThis.performance
 // with a JS-backed implementation before React/OTel capture the native reference.
 // Without this, JSC's C++ Vector grows without bound in long-running sessions.
-import '../utils/performanceShim.js';
+import '../utils/runtime/performanceShim.js';
 import { feature } from 'bun:bundle';
 import { BIN_NAME } from '../constants/brand.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { isEnvTruthy } from '../utils/config/envUtils.js';
 
 // Runtime fallback for MACRO.* when not injected by build/dev defines.
 // This happens when running cli.tsx directly (not via `bun run dev` or built dist/).
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   }
 
   // For all other paths, load the startup profiler
-  const { profileCheckpoint } = await import('../utils/startupProfiler.js');
+  const { profileCheckpoint } = await import('../utils/telemetry/startupProfiler.js');
   profileCheckpoint('cli_entry');
 
   // Fast-path for `occ migrate`. Must run before the normal bootstrap: a user
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
   // Ant-only: eliminated from external builds via feature flag.
   if (feature('DUMP_SYSTEM_PROMPT') && args[0] === '--dump-system-prompt') {
     profileCheckpoint('cli_dump_system_prompt_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
     const { getMainLoopModel } = await import('../utils/model/model.js');
     const modelIdx = args.indexOf('--model');
@@ -165,14 +165,14 @@ async function main(): Promise<void> {
       args[0] === 'bridge')
   ) {
     profileCheckpoint('cli_remote_control_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
 
     // Remote control is subject to org policy regardless of who transports it.
     const { waitForPolicyLimitsToLoad, isPolicyAllowed } = await import('../services/policyLimits/index.js');
     await waitForPolicyLimitsToLoad();
     if (!isPolicyAllowed('allow_remote_control')) {
-      const { exitWithError } = await import('../utils/process.js');
+      const { exitWithError } = await import('../utils/process/process.js');
       exitWithError("Error: Remote Control is disabled by your organization's policy.");
     }
 
@@ -186,11 +186,11 @@ async function main(): Promise<void> {
   // subcommands under one namespace.
   if ((feature('DAEMON') || feature('BG_SESSIONS')) && args[0] === 'daemon') {
     profileCheckpoint('cli_daemon_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
-    const { setShellIfWindows } = await import('../utils/windowsPaths.js');
+    const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
-    const { initSinks } = await import('../utils/sinks.js');
+    const { initSinks } = await import('../utils/telemetry/sinks.js');
     initSinks();
     const { daemonMain } = await import('../daemon/main.js');
     await daemonMain(args.slice(1));
@@ -221,9 +221,9 @@ async function main(): Promise<void> {
   // Fast-path for `--bg`/`--background` shortcut → daemon bg.
   if (feature('BG_SESSIONS') && (args.includes('--bg') || args.includes('--background'))) {
     profileCheckpoint('cli_daemon_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
-    const { setShellIfWindows } = await import('../utils/windowsPaths.js');
+    const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
     const bg = await import('../cli/bg.js');
     await bg.handleBgStart(args.filter(a => a !== '--bg' && a !== '--background'));
@@ -238,11 +238,11 @@ async function main(): Promise<void> {
     const mapped = args[0] === 'ps' ? 'status' : args[0];
     console.error(`[deprecated] Use: ${BIN_NAME} daemon ${mapped}${args[1] ? ' ' + args[1] : ''}`);
     profileCheckpoint('cli_daemon_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
-    const { setShellIfWindows } = await import('../utils/windowsPaths.js');
+    const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
-    const { initSinks } = await import('../utils/sinks.js');
+    const { initSinks } = await import('../utils/telemetry/sinks.js');
     initSinks();
     const { daemonMain } = await import('../daemon/main.js');
     await daemonMain([args[0] === 'ps' ? 'status' : args[0]!, ...args.slice(1)]);
@@ -277,18 +277,18 @@ async function main(): Promise<void> {
     (args.includes('-w') || args.includes('--worktree') || args.some(a => a.startsWith('--worktree=')))
   ) {
     profileCheckpoint('cli_tmux_worktree_fast_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
-    const { isWorktreeModeEnabled } = await import('../utils/worktreeModeEnabled.js');
+    const { isWorktreeModeEnabled } = await import('../utils/git/worktreeModeEnabled.js');
     if (isWorktreeModeEnabled()) {
-      const { execIntoTmuxWorktree } = await import('../utils/worktree.js');
+      const { execIntoTmuxWorktree } = await import('../utils/git/worktree.js');
       const result = await execIntoTmuxWorktree(args);
       if (result.handled) {
         return;
       }
       // If not handled (e.g., error), fall through to normal CLI
       if (result.error) {
-        const { exitWithError } = await import('../utils/process.js');
+        const { exitWithError } = await import('../utils/process/process.js');
         exitWithError(result.error);
       }
     }
@@ -306,7 +306,7 @@ async function main(): Promise<void> {
   }
 
   // No special flags detected, load and run the full CLI
-  const { startCapturingEarlyInput } = await import('../utils/earlyInput.js');
+  const { startCapturingEarlyInput } = await import('../utils/terminal/earlyInput.js');
   startCapturingEarlyInput();
   profileCheckpoint('cli_before_main_import');
   const { main: cliMain } = await import('../main.jsx');

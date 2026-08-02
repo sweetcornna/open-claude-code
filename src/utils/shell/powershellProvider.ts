@@ -2,7 +2,7 @@ import { BIN_NAME } from 'src/config/paths.js'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { join as posixJoin } from 'path/posix'
-import { getSessionEnvVars } from '../sessionEnvVars.js'
+import { getSessionEnvVars } from '../session/sessionEnvVars.js'
 import type { ShellProvider } from './shellProvider.js'
 
 /**

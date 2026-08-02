@@ -22,20 +22,20 @@ import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { AnyObject, Tool, ToolPermissionContext } from '../../Tool.js'
 import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js'
-import { getCwd } from '../cwd.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { getCwd } from '../filesystem/cwd.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import {
   getFsImplementation,
   getPathsForPermissionCheck,
-} from '../fsOperations.js'
+} from '../filesystem/fsOperations.js'
 import {
   containsPathTraversal,
   expandPath,
   getDirectoryForPath,
   sanitizePath,
-} from '../path.js'
-import { getPlanSlug, getPlansDirectory } from '../plans.js'
-import { getPlatform } from '../platform.js'
+} from '../filesystem/path.js'
+import { getPlanSlug, getPlansDirectory } from '../agents/plans.js'
+import { getPlatform } from '../process/platform.js'
 import { getProjectDir } from '../sessionStorage.js'
 import { SETTING_SOURCES } from '../settings/constants.js'
 import {
@@ -43,8 +43,8 @@ import {
   getSettingsRootPathForSource,
 } from '../settings/settings.js'
 import { containsVulnerableUncPath } from '../shell/readOnlyCommandValidation.js'
-import { getToolResultsDir } from '../toolResultStorage.js'
-import { windowsPathToPosixPath } from '../windowsPaths.js'
+import { getToolResultsDir } from '../tools/toolResultStorage.js'
+import { windowsPathToPosixPath } from '../filesystem/windowsPaths.js'
 import type {
   PermissionDecision,
   PermissionResult,

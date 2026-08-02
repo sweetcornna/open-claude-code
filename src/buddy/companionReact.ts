@@ -6,10 +6,10 @@
  * generate a reaction shown in the CompanionSprite speech bubble.
  */
 import { getCompanion } from './companion.js'
-import { getGlobalConfig } from '../utils/config.js'
-import { getClaudeAIOAuthTokens } from '../utils/auth.js'
+import { getGlobalConfig } from '../utils/config/config.js'
+import { getClaudeAIOAuthTokens } from '../utils/auth/auth.js'
 import { getOauthConfig } from '../constants/oauth.js'
-import { getUserAgent } from '../utils/http.js'
+import { getUserAgent } from '../utils/network/http.js'
 import type { Message } from '../types/message.js'
 
 // ─── Rate limiting ──────────────────────────────────

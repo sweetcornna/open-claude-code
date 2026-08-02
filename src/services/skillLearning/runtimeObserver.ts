@@ -42,7 +42,7 @@ import { readObservations } from './observationStore.js'
 import { checkPromotion } from './promotion.js'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 
 export const RUNTIME_SESSION_ID = 'runtime-session'
 

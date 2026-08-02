@@ -1,6 +1,6 @@
 import { parseSSEFrames } from 'src/cli/transports/SSETransport.js'
-import { errorMessage } from 'src/utils/errors.js'
-import { getProxyFetchOptions } from 'src/utils/proxy.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
+import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import type {
   GeminiGenerateContentRequest,
   GeminiStreamChunk,

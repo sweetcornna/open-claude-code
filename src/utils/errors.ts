@@ -1,1 +1,1 @@
-export * from '@open-claude-code/tool-runtime/errors.js'
+export * from './runtime/errors.js'

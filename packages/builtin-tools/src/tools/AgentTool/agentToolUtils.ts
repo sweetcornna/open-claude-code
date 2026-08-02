@@ -37,14 +37,14 @@ import {
 } from 'src/tasks/LocalAgentTask/LocalAgentTask.js'
 import { asAgentId } from 'src/types/ids.js'
 import type { Message as MessageType, ContentItem } from 'src/types/message.js'
-import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { isInProtectedNamespace } from 'src/utils/envUtils.js'
+import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { isInProtectedNamespace } from 'src/utils/config/envUtils.js'
 import {
   AbortError,
   errorMessage,
 } from '@open-claude-code/tool-runtime/errors.js'
-import type { CacheSafeParams } from 'src/utils/forkedAgent.js'
+import type { CacheSafeParams } from 'src/utils/agents/forkedAgent.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   extractTextContent,
@@ -57,8 +57,8 @@ import {
   classifyYoloAction,
 } from 'src/utils/permissions/yoloClassifier.js'
 import { emitTaskProgress as emitTaskProgressEvent } from 'src/utils/task/sdkProgress.js'
-import { isInProcessTeammate } from 'src/utils/teammateContext.js'
-import { getTokenCountFromUsage } from 'src/utils/tokens.js'
+import { isInProcessTeammate } from 'src/utils/agents/teammateContext.js'
+import { getTokenCountFromUsage } from 'src/utils/session/tokens.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import type { AgentDefinition } from './loadAgentsDir.js'

@@ -16,7 +16,7 @@ import {
   isCustomAgent,
   isPluginAgent,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { editFileInEditor } from '../../utils/promptEditor.js';
+import { editFileInEditor } from '../../utils/terminal/promptEditor.js';
 import { getActualAgentFilePath, updateAgentFile } from './agentFileUtils.js';
 import { ColorPicker } from './ColorPicker.js';
 import { ModelSelector } from './ModelSelector.js';

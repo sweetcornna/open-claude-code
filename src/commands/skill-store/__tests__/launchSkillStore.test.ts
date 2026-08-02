@@ -22,8 +22,8 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // ── Analytics mock ──────────────────────────────────────────────────────────
 const realAnalytics = await import('src/services/analytics/index.js')
@@ -34,8 +34,8 @@ mock.module('src/services/analytics/index.js', () => ({
 }))
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
-const realAuth = await import('src/utils/auth.js')
-mock.module('src/utils/auth.js', () => ({
+const realAuth = await import('src/utils/auth/auth.js')
+mock.module('src/utils/auth/auth.js', () => ({
   ...realAuth,
   getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token' }),
 }))
@@ -115,14 +115,14 @@ mock.module('node:fs/promises', () => {
 
 // ── Lazy imports ─────────────────────────────────────────────────────────────
 let callSkillStore: typeof import('../launchSkillStore.js').callSkillStore
-let getClaudeConfigHomeDir: typeof import('../../../utils/envUtils.js').getClaudeConfigHomeDir
+let getClaudeConfigHomeDir: typeof import('../../../utils/config/envUtils.js').getClaudeConfigHomeDir
 let origConfigDir: string | undefined
 
 beforeAll(async () => {
   axiosHandle.useStubs = true
   const mod = await import('../launchSkillStore.js')
   callSkillStore = mod.callSkillStore
-  const envMod = await import('../../../utils/envUtils.js')
+  const envMod = await import('../../../utils/config/envUtils.js')
   getClaudeConfigHomeDir = envMod.getClaudeConfigHomeDir
   origConfigDir = process.env.CLAUDE_CONFIG_DIR
   useSkillStoreFsStubs = true

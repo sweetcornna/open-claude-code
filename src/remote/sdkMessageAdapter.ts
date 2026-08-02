@@ -15,7 +15,7 @@ import type {
   StreamEvent,
   SystemMessage,
 } from '../types/message.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import { fromSDKCompactMetadata } from '../utils/messages/mappers.js'
 import { createUserMessage } from '../utils/messages.js'
 

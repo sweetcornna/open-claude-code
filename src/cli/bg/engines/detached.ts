@@ -1,6 +1,6 @@
 import { closeSync, mkdirSync, openSync } from 'fs'
 import { dirname } from 'path'
-import { buildCliLaunch, spawnCli } from '../../../utils/cliLaunch.js'
+import { buildCliLaunch, spawnCli } from '../../../utils/process/cliLaunch.js'
 import type {
   BgEngine,
   BgStartOptions,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { buildResponsesRequest, extractUsage } from '../responsesAdapter.js'
 import { formatOpenAIPromptCacheKey } from '../openaiShared.js'
-import { calculateCacheHitRate } from '../../../../utils/cacheWarning.js'
+import { calculateCacheHitRate } from '../../../../utils/telemetry/cacheWarning.js'
 
 describe('buildResponsesRequest', () => {
   const promptCacheKey = formatOpenAIPromptCacheKey('session-abc-123')

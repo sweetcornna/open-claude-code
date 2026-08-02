@@ -12,17 +12,17 @@
 import { basename, join } from 'path'
 import { BIN_NAME, PRODUCT_NAME } from '../../constants/brand.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { logForDebugging } from '../debug.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
-import { isENOENT, toError } from '../errors.js'
-import { getFsImplementation } from '../fsOperations.js'
-import { getProcessCommand } from '../genericProcessUtils.js'
-import { logError } from '../log.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
+import { isENOENT, toError } from '../runtime/errors.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
+import { getProcessCommand } from '../process/genericProcessUtils.js'
+import { logError } from '../telemetry/log.js'
 import {
   jsonParse,
   jsonStringify,
   writeFileSync_DEPRECATED,
-} from '../slowOperations.js'
+} from '../telemetry/slowOperations.js'
 
 /**
  * Check if PID-based version locking is enabled.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseGitRemote, parseGitHubRepository } from '../detectRepository'
+import { parseGitRemote, parseGitHubRepository } from '../git/detectRepository'
 
 describe('parseGitRemote', () => {
   // HTTPS

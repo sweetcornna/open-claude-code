@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as React from 'react';
-import { renderToString } from '../../../utils/staticRender.js';
+import { renderToString } from '../../../utils/terminal/staticRender.js';
 import type { Message } from '../../../types/message.js';
 
 let transcriptShareDismissed = false;
 let productFeedbackAllowed = true;
 const mockSubmitTranscriptShare = mock(async () => ({ success: true }));
 
-mock.module('../../../utils/config.js', () => ({
+mock.module('../../../utils/config/config.js', () => ({
   getGlobalConfig: () => ({ transcriptShareDismissed }),
   saveGlobalConfig: (
     updater: (current: { transcriptShareDismissed?: boolean }) => {

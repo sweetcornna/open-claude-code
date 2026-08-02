@@ -19,8 +19,8 @@ import { asSessionId } from 'src/types/ids.js'
 import {
   getLastCacheSafeParams,
   saveCacheSafeParams,
-} from 'src/utils/cacheSafeParamsSlot.js'
-import type { CacheSafeParams } from 'src/utils/forkedAgent.js'
+} from 'src/utils/collections/cacheSafeParamsSlot.js'
+import type { CacheSafeParams } from 'src/utils/agents/forkedAgent.js'
 
 function makeParams(tag: string): CacheSafeParams {
   // Only identity matters for the slot; the shape is opaque to it.

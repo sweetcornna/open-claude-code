@@ -1,7 +1,7 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { SettingsJson } from '../settings/types.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 
 export type APIProvider =
   | 'firstParty'

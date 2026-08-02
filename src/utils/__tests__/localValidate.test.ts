@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { isValidKey, validateKey } from '../localValidate.js'
+import { isValidKey, validateKey } from '../runtime/localValidate.js'
 
 describe('validateKey', () => {
   test('rejects empty', () => {

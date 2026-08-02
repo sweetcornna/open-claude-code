@@ -5,14 +5,14 @@ import type { Command } from '../../commands.js'
 import type { AgentMcpServerInfo } from '../../components/mcp/types.js'
 import type { Tool } from '../../Tool.js'
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import { getCwd } from '../../utils/cwd.js'
-import { getGlobalClaudeFile } from '../../utils/env.js'
+import { getCwd } from '../../utils/filesystem/cwd.js'
+import { getGlobalClaudeFile } from '../../utils/config/env.js'
 import { isSettingSourceEnabled } from '../../utils/settings/constants.js'
 import {
   getSettings_DEPRECATED,
   hasSkipDangerousModePermissionPrompt,
 } from '../../utils/settings/settings.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { getEnterpriseMcpFilePath, getMcpConfigByName } from './config.js'
 import { mcpInfoFromString } from './mcpStringUtils.js'
 import { normalizeNameForMCP } from './normalization.js'

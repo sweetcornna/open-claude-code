@@ -18,7 +18,7 @@ import {
   TASK_NOTIFICATION_TAG,
   TASK_TYPE_TAG,
 } from '../constants/xml.js'
-import { enqueuePendingNotification } from '../utils/messageQueueManager.js'
+import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js'
 import type { RunProgress } from './progress/store.js'
 import type { WorkflowService } from './service.js'
 

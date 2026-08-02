@@ -2,8 +2,8 @@ import { randomUUID } from 'crypto'
 import { basename } from 'path'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { logEvent } from 'src/services/analytics/index.js'
-import { readFileSync } from 'src/utils/fileRead.js'
-import { expandPath } from 'src/utils/path.js'
+import { readFileSync } from 'src/utils/filesystem/fileRead.js'
+import { expandPath } from 'src/utils/filesystem/path.js'
 import type { PermissionOption } from '../components/permissions/FilePermissionDialog/permissionOptions.js'
 import type {
   MCPServerConnection,
@@ -16,18 +16,18 @@ import {
   getEditsForPatch,
   getPatchForEdits,
 } from '@open-claude-code/builtin-tools/tools/FileEditTool/utils.js'
-import { getGlobalConfig } from '../utils/config.js'
-import { getPatchFromContents } from '../utils/diff.js'
-import { isENOENT } from '../utils/errors.js'
+import { getGlobalConfig } from '../utils/config/config.js'
+import { getPatchFromContents } from '../utils/text/diff.js'
+import { isENOENT } from '../utils/runtime/errors.js'
 import {
   callIdeRpc,
   getConnectedIdeClient,
   getConnectedIdeName,
   hasAccessToIDEExtensionDiffFeature,
-} from '../utils/ide.js'
-import { WindowsToWSLConverter } from '../utils/idePathConversion.js'
-import { logError } from '../utils/log.js'
-import { getPlatform } from '../utils/platform.js'
+} from '../utils/terminal/ide.js'
+import { WindowsToWSLConverter } from '../utils/terminal/idePathConversion.js'
+import { logError } from '../utils/telemetry/log.js'
+import { getPlatform } from '../utils/process/platform.js'
 
 type Props = {
   onChange(

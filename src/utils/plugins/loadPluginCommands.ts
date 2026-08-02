@@ -6,25 +6,28 @@ import { getPluginErrorMessage } from '../../types/plugin.js'
 import {
   parseArgumentNames,
   substituteArguments,
-} from '../argumentSubstitution.js'
-import { logForDebugging } from '../debug.js'
-import { EFFORT_LEVELS, parseEffortValue } from '../effort.js'
-import { isBareMode } from '../envUtils.js'
-import { isENOENT } from '../errors.js'
+} from '../shell/argumentSubstitution.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { EFFORT_LEVELS, parseEffortValue } from '../model/effort.js'
+import { isBareMode } from '../config/envUtils.js'
+import { isENOENT } from '../runtime/errors.js'
 import {
   coerceDescriptionToString,
   type FrontmatterData,
   parseBooleanFrontmatter,
   parseFrontmatter,
   parseShellFrontmatter,
-} from '../frontmatterParser.js'
-import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
+} from '../text/frontmatterParser.js'
+import {
+  getFsImplementation,
+  isDuplicatePath,
+} from '../filesystem/fsOperations.js'
 import {
   extractDescriptionFromMarkdown,
   parseSlashCommandToolsFromFrontmatter,
-} from '../markdownConfigLoader.js'
+} from '../text/markdownConfigLoader.js'
 import { parseUserSpecifiedModel } from '../model/model.js'
-import { executeShellCommandsInPrompt } from '../promptShellExecution.js'
+import { executeShellCommandsInPrompt } from '../shell/promptShellExecution.js'
 import { loadAllPluginsCacheOnly } from './pluginLoader.js'
 import {
   loadPluginOptions,

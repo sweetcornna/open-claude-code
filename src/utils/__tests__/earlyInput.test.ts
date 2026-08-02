@@ -23,7 +23,7 @@ import {
   seedEarlyInput,
   consumeEarlyInput,
   hasEarlyInput,
-} from '../earlyInput.js'
+} from '../terminal/earlyInput.js'
 
 // Reset buffer state before each test
 beforeEach(() => {

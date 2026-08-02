@@ -58,18 +58,18 @@ import type {
   ProgressMessage,
   StopHookInfo,
 } from '../../types/message.js'
-import { count } from '../../utils/array.js'
+import { count } from '../../utils/collections/array.js'
 import { createAttachmentMessage } from '../../utils/attachments.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   AbortError,
   errorMessage,
   getErrnoCode,
   ShellError,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from '../../utils/errors.js'
+} from '../../utils/runtime/errors.js'
 import { executePermissionDeniedHooks } from '../../utils/hooks.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import {
   CANCEL_MESSAGE,
   createProgressMessage,
@@ -85,9 +85,9 @@ import type {
 import {
   startSessionActivity,
   stopSessionActivity,
-} from '../../utils/sessionActivity.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
-import { Stream } from '../../utils/stream.js'
+} from '../../utils/session/sessionActivity.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
+import { Stream } from '../../utils/collections/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
 import {
   addToolContentEvent,
@@ -102,16 +102,16 @@ import {
 import {
   formatError,
   formatZodValidationError,
-} from '../../utils/toolErrors.js'
+} from '../../utils/tools/toolErrors.js'
 import {
   processPreMappedToolResultBlock,
   processToolResultBlock,
-} from '../../utils/toolResultStorage.js'
+} from '../../utils/tools/toolResultStorage.js'
 import {
   extractDiscoveredToolNames,
   isSearchExtraToolsEnabledOptimistic,
   isSearchExtraToolsToolAvailable,
-} from '../../utils/searchExtraTools.js'
+} from '../../utils/tools/searchExtraTools.js'
 import {
   McpAuthError,
   McpToolCallError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

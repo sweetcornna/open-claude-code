@@ -10,7 +10,7 @@ import {
   type TeleportProgressStep,
   type TeleportResult,
   teleportResumeCodeSession,
-} from '../utils/teleport.js';
+} from '../utils/teleport/teleport.js';
 
 type Props = {
   currentStep: TeleportProgressStep;

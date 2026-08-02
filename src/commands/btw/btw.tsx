@@ -13,15 +13,15 @@ import { type KeyboardEvent, type ScrollBoxHandle, ScrollBox } from '@anthropic/
 import { Box, Text } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import type { Message } from '../../types/message.js';
-import { createAbortController } from '../../utils/abortController.js';
-import { saveGlobalConfig } from '../../utils/config.js';
-import { errorMessage } from '../../utils/errors.js';
-import { getLastCacheSafeParams } from '../../utils/cacheSafeParamsSlot.js';
-import type { CacheSafeParams } from '../../utils/forkedAgent.js';
+import { createAbortController } from '../../utils/process/abortController.js';
+import { saveGlobalConfig } from '../../utils/config/config.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
+import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js';
+import type { CacheSafeParams } from '../../utils/agents/forkedAgent.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
-import { runSideQuestion } from '../../utils/sideQuestion.js';
-import { asSystemPrompt } from '../../utils/systemPromptType.js';
+import { runSideQuestion } from '../../utils/session/sideQuestion.js';
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js';
 
 type BtwComponentProps = {
   question: string;

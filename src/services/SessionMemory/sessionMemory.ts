@@ -18,13 +18,13 @@ import {
   type Output as FileReadToolOutput,
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
 import type { Message } from '../../types/message.js'
-import { count } from '../../utils/array.js'
+import { count } from '../../utils/collections/array.js'
 import {
   createCacheSafeParams,
   createSubagentContext,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
-import { getFsImplementation } from '../../utils/fsOperations.js'
+} from '../../utils/agents/forkedAgent.js'
+import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
 import {
   type REPLHookContext,
   registerPostSamplingHook,
@@ -37,9 +37,12 @@ import {
   getSessionMemoryDir,
   getSessionMemoryPath,
 } from '../../utils/permissions/filesystem.js'
-import { sequential } from '../../utils/sequential.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
-import { getTokenUsage, tokenCountWithEstimation } from '../../utils/tokens.js'
+import { sequential } from '../../utils/collections/sequential.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
+import {
+  getTokenUsage,
+  tokenCountWithEstimation,
+} from '../../utils/session/tokens.js'
 import { logEvent } from '../analytics/index.js'
 import { isAutoCompactEnabled } from '../compact/autoCompact.js'
 import {
@@ -68,7 +71,7 @@ import {
 // These functions return cached values from disk immediately without blocking
 // on GrowthBook initialization. Values may be stale but are updated in background.
 
-import { errorMessage, getErrnoCode } from '../../utils/errors.js'
+import { errorMessage, getErrnoCode } from '../../utils/runtime/errors.js'
 import {
   getDynamicConfig_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,

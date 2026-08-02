@@ -22,32 +22,32 @@ import {
 } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 import type { AgentId } from 'src/types/ids.js';
 import type { AssistantMessage } from 'src/types/message.js';
-import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
+import { extractClaudeCodeHints } from 'src/utils/runtime/claudeCodeHints.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { errorMessage as getErrorMessage, ShellError } from '@open-claude-code/tool-runtime/errors.js';
-import { truncate } from 'src/utils/format.js';
+import { truncate } from 'src/utils/text/format.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
-import { logError } from 'src/utils/log.js';
+import { logError } from 'src/utils/telemetry/log.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
-import { getPlatform } from 'src/utils/platform.js';
+import { getPlatform } from 'src/utils/process/platform.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
-import { exec } from 'src/utils/Shell.js';
-import type { ExecResult } from 'src/utils/ShellCommand.js';
+import { exec } from 'src/utils/shell/Shell.js';
+import type { ExecResult } from 'src/utils/shell/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js';
-import { semanticNumber } from 'src/utils/semanticNumber.js';
+import { semanticNumber } from 'src/utils/collections/semanticNumber.js';
 import { getCachedPowerShellPath } from 'src/utils/shell/powershellDetection.js';
 import { EndTruncatingAccumulator } from '@open-claude-code/tool-runtime/stringUtils.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { TaskOutput } from 'src/utils/task/TaskOutput.js';
-import { isOutputLineTruncated } from 'src/utils/terminal.js';
+import { isOutputLineTruncated } from 'src/utils/terminal/terminal.js';
 import {
   buildLargeToolResultMessage,
   ensureToolResultsDir,
   generatePreview,
   getToolResultPath,
   PREVIEW_SIZE_BYTES,
-} from 'src/utils/toolResultStorage.js';
+} from 'src/utils/tools/toolResultStorage.js';
 import { shouldUseSandbox } from '../BashTool/shouldUseSandbox.js';
 import { BackgroundHint } from '../BashTool/UI.js';
 import {

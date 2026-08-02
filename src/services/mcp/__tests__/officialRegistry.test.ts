@@ -21,7 +21,7 @@ afterAll(() => {
   axiosHandle.useStubs = false
 })
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const { isOfficialMcpUrl, resetOfficialMcpUrlsForTesting } = await import(
   '../officialRegistry'

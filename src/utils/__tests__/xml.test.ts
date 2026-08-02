@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { escapeXml, escapeXmlAttr } from '../xml'
+import { escapeXml, escapeXmlAttr } from '../text/xml'
 
 describe('escapeXml', () => {
   test('escapes ampersand', () => {

@@ -22,10 +22,10 @@ import {
   LEGACY_AGENT_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js'
 import type { LogOption } from '../types/logs.js'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
-import { toError } from '../utils/errors.js'
-import { execFileNoThrow } from '../utils/execFileNoThrow.js'
-import { logError } from '../utils/log.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
+import { toError } from '../utils/runtime/errors.js'
+import { execFileNoThrow } from '../utils/process/execFileNoThrow.js'
+import { logError } from '../utils/telemetry/log.js'
 import { extractTextContent } from '../utils/messages.js'
 import { getDefaultOpusModel } from '../utils/model/model.js'
 import {
@@ -34,10 +34,10 @@ import {
   getSessionIdFromLog,
   loadAllLogsFromSessionFile,
 } from '../utils/sessionStorage.js'
-import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
-import { countCharInString } from '../utils/stringUtils.js'
-import { asSystemPrompt } from '../utils/systemPromptType.js'
-import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
+import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
+import { countCharInString } from '../utils/text/stringUtils.js'
+import { asSystemPrompt } from '../utils/session/systemPromptType.js'
+import { escapeXmlAttr as escapeHtml } from '../utils/text/xml.js'
 
 // Model for facet extraction and summarization (Opus - best quality)
 function getAnalysisModel(): string {

@@ -1,10 +1,10 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { cronToHuman } from 'src/utils/cron.js'
-import { listAllCronTasks } from 'src/utils/cronTasks.js'
-import { truncate } from 'src/utils/format.js'
+import { cronToHuman } from 'src/utils/task/cron.js'
+import { listAllCronTasks } from 'src/utils/task/cronTasks.js'
+import { truncate } from 'src/utils/text/format.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { getTeammateContext } from 'src/utils/teammateContext.js'
+import { getTeammateContext } from 'src/utils/agents/teammateContext.js'
 import {
   buildCronListPrompt,
   CRON_LIST_DESCRIPTION,

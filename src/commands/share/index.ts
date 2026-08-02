@@ -13,12 +13,12 @@ import {
   getSessionProjectDir,
   getOriginalCwd,
 } from '../../bootstrap/state.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
-import { sanitizePath } from '../../utils/path.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
+import { sanitizePath } from '../../utils/filesystem/path.js'
 import {
   SESSION_EXPORT_FILENAME,
   SHARE_TEMP_PREFIX,
-} from '../../utils/tempfile.js'
+} from '../../utils/filesystem/tempfile.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

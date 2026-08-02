@@ -3,7 +3,7 @@ import {
   type ProgressEvent,
   type WorkflowPorts,
 } from '@open-claude-code/workflow-engine'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import { getProjectRoot } from '../bootstrap/state.js'
 import { getRunsDir } from './persistence.js'
 import {

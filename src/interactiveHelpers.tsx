@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle';
 import { appendFileSync } from 'fs';
 import React from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
-import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
+import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js';
 import {
   type ChannelEntry,
   getAllowedChannels,
@@ -25,25 +25,25 @@ import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { ThemeProvider } from '@anthropic/ink';
-import { normalizeApiKeyForConfig } from './utils/authPortable.js';
+import { normalizeApiKeyForConfig } from './utils/auth/authPortable.js';
 import {
   getExternalClaudeMdIncludes,
   getMemoryFiles,
   shouldShowClaudeMdExternalIncludesWarning,
-} from './utils/claudemd.js';
+} from './utils/session/claudemd.js';
 import {
   checkHasTrustDialogAccepted,
   getCustomApiKeyStatus,
   getGlobalConfig,
   saveGlobalConfig,
-} from './utils/config.js';
+} from './utils/config/config.js';
 import { updateDeepLinkTerminalPreference } from './utils/deepLink/terminalPreference.js';
-import { isEnvTruthy, isRunningOnHomespace } from './utils/envUtils.js';
-import { type FpsMetrics, FpsTracker } from './utils/fpsTracker.js';
-import { updateGithubRepoPathMapping } from './utils/githubRepoPathMapping.js';
-import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
+import { isEnvTruthy, isRunningOnHomespace } from './utils/config/envUtils.js';
+import { type FpsMetrics, FpsTracker } from './utils/telemetry/fpsTracker.js';
+import { updateGithubRepoPathMapping } from './utils/github/githubRepoPathMapping.js';
+import { applyConfigEnvironmentVariables } from './utils/config/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';
-import { getBaseRenderOptions } from './utils/renderOptions.js';
+import { getBaseRenderOptions } from './utils/terminal/renderOptions.js';
 import { getSettingsWithAllErrors } from './utils/settings/allErrors.js';
 import { hasSkipDangerousModePermissionPrompt } from './utils/settings/settings.js';
 

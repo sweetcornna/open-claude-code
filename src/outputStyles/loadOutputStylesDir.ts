@@ -1,13 +1,13 @@
 import memoize from 'lodash-es/memoize.js'
 import { basename } from 'path'
 import type { OutputStyleConfig } from '../constants/outputStyles.js'
-import { logForDebugging } from '../utils/debug.js'
-import { coerceDescriptionToString } from '../utils/frontmatterParser.js'
-import { logError } from '../utils/log.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { coerceDescriptionToString } from '../utils/text/frontmatterParser.js'
+import { logError } from '../utils/telemetry/log.js'
 import {
   extractDescriptionFromMarkdown,
   loadMarkdownFilesForSubdir,
-} from '../utils/markdownConfigLoader.js'
+} from '../utils/text/markdownConfigLoader.js'
 import { clearPluginOutputStyleCache } from '../utils/plugins/loadPluginOutputStyles.js'
 
 /**

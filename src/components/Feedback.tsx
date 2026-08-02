@@ -16,22 +16,22 @@ import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { queryHaiku } from '../services/api/claude.js';
 import { startsWithApiErrorPrefix } from '../services/api/errors.js';
 import type { Message } from '../types/message.js';
-import { checkAndRefreshOAuthTokenIfNeeded } from '../utils/auth.js';
-import { openBrowser } from '../utils/browser.js';
-import { logForDebugging } from '../utils/debug.js';
-import { env } from '../utils/env.js';
-import { type GitRepoState, getGitState, getIsGit } from '../utils/git.js';
-import { getAuthHeaders, getUserAgent } from '../utils/http.js';
-import { getInMemoryErrors, logError } from '../utils/log.js';
-import { isEssentialTrafficOnly } from '../utils/privacyLevel.js';
+import { checkAndRefreshOAuthTokenIfNeeded } from '../utils/auth/auth.js';
+import { openBrowser } from '../utils/network/browser.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
+import { env } from '../utils/config/env.js';
+import { type GitRepoState, getGitState, getIsGit } from '../utils/git/git.js';
+import { getAuthHeaders, getUserAgent } from '../utils/network/http.js';
+import { getInMemoryErrors, logError } from '../utils/telemetry/log.js';
+import { isEssentialTrafficOnly } from '../utils/auth/privacyLevel.js';
 import {
   extractTeammateTranscriptsFromTasks,
   getTranscriptPath,
   loadAllSubagentTranscriptsFromDisk,
   MAX_TRANSCRIPT_READ_BYTES,
 } from '../utils/sessionStorage.js';
-import { jsonStringify } from '../utils/slowOperations.js';
-import { asSystemPrompt } from '../utils/systemPromptType.js';
+import { jsonStringify } from '../utils/telemetry/slowOperations.js';
+import { asSystemPrompt } from '../utils/session/systemPromptType.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import TextInput from './TextInput.js';

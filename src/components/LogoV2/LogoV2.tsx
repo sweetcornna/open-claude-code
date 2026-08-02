@@ -11,9 +11,9 @@ import {
   getRecentActivitySync,
   getRecentReleaseNotesSync,
   getLogoDisplayData,
-} from '../../utils/logoV2Utils.js';
-import { truncate } from '../../utils/format.js';
-import { getDisplayPath } from '../../utils/file.js';
+} from '../../utils/terminal/logoV2Utils.js';
+import { truncate } from '../../utils/text/format.js';
+import { getDisplayPath } from '../../utils/filesystem/file.js';
 import { Clawd } from './Clawd.js';
 import { FeedColumn } from './FeedColumn.js';
 import {
@@ -22,10 +22,10 @@ import {
   createProjectOnboardingFeed,
   createGuestPassesFeed,
 } from './feedConfigs.js';
-import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
-import { resolveThemeSetting } from 'src/utils/systemTheme.js';
+import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config/config.js';
+import { resolveThemeSetting } from 'src/utils/terminal/systemTheme.js';
 import { getInitialSettings } from 'src/utils/settings/settings.js';
-import { isDebugMode, isDebugToStdErr, getDebugLogPath } from 'src/utils/debug.js';
+import { isDebugMode, isDebugToStdErr, getDebugLogPath } from 'src/utils/telemetry/debug.js';
 import { useEffect, useState } from 'react';
 import {
   getSteps,
@@ -34,10 +34,10 @@ import {
 } from '../../projectOnboardingState.js';
 import { CondensedLogo } from './CondensedLogo.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
-import { checkForReleaseNotesSync } from '../../utils/releaseNotes.js';
+import { checkForReleaseNotesSync } from '../../utils/update/releaseNotes.js';
 import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
-import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/startupProfiler.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
+import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/telemetry/startupProfiler.js';
 import { EmergencyTip } from './EmergencyTip.js';
 import { VoiceModeNotice } from './VoiceModeNotice.js';
 import { Opus1mMergeNotice } from './Opus1mMergeNotice.js';
@@ -64,7 +64,7 @@ import {
   createOverageCreditFeed,
 } from './OverageCreditUpsell.js';
 import { useAppState } from '../../state/AppState.js';
-import { getEffortSuffix } from '../../utils/effort.js';
+import { getEffortSuffix } from '../../utils/model/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 

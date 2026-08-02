@@ -6,7 +6,7 @@
  */
 
 import memoize from 'lodash-es/memoize.js'
-import { which } from '../which.js'
+import { which } from '../process/which.js'
 
 /**
  * Check if a command is available in PATH.

@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { execFileSync } from 'child_process'
-import { getClaudeConfigHomeDir } from '../../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../../utils/config/envUtils.js'
 import {
   getProjectContextPath,
   getProjectsRegistryPath,

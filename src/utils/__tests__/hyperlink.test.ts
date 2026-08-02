@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { createHyperlink, OSC8_START, OSC8_END } from '../hyperlink'
+import { createHyperlink, OSC8_START, OSC8_END } from '../text/hyperlink'
 
 // ─── OSC8 constants ────────────────────────────────────────────────────
 

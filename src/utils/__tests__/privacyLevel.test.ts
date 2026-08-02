@@ -4,7 +4,7 @@ import {
   isEssentialTrafficOnly,
   isTelemetryDisabled,
   getEssentialTrafficOnlyReason,
-} from '../privacyLevel'
+} from '../auth/privacyLevel'
 
 describe('getPrivacyLevel', () => {
   const originalDisableNonessential =

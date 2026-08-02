@@ -8,7 +8,7 @@ import axios from 'axios'
 import { randomUUID } from 'crypto'
 import { appendFile, mkdir, readdir, unlink, writeFile } from 'fs/promises'
 import * as path from 'path'
-import type { CoreUserData } from 'src/utils/user.js'
+import type { CoreUserData } from 'src/utils/auth/user.js'
 import {
   getIsNonInteractiveSession,
   getSessionId,
@@ -19,17 +19,21 @@ import {
   getClaudeAIOAuthTokens,
   hasProfileScope,
   isClaudeAISubscriber,
-} from '../../utils/auth.js'
-import { checkHasTrustDialogAccepted } from '../../utils/config.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
-import { errorMessage, isFsInaccessible, toError } from '../../utils/errors.js'
-import { getAuthHeaders } from '../../utils/http.js'
-import { readJSONLFile } from '../../utils/json.js'
-import { logError } from '../../utils/log.js'
-import { sleep } from '../../utils/sleep.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+} from '../../utils/auth/auth.js'
+import { checkHasTrustDialogAccepted } from '../../utils/config/config.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
+import {
+  errorMessage,
+  isFsInaccessible,
+  toError,
+} from '../../utils/runtime/errors.js'
+import { getAuthHeaders } from '../../utils/network/http.js'
+import { readJSONLFile } from '../../utils/text/json.js'
+import { logError } from '../../utils/telemetry/log.js'
+import { sleep } from '../../utils/process/sleep.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
+import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 import { isOAuthTokenExpired } from '../oauth/client.js'
 import { stripProtoFields } from './index.js'
 import { type EventMetadata, to1PEventFormat } from './metadata.js'

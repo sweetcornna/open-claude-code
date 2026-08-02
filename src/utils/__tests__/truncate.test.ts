@@ -7,7 +7,7 @@ import {
   truncateToWidthNoEllipsis,
   truncate,
   wrapText,
-} from '../truncate'
+} from '../text/truncate'
 
 // ─── truncateToWidth ────────────────────────────────────────────────────
 

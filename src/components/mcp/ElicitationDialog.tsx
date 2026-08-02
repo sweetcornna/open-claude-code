@@ -13,7 +13,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text, useInput } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import type { ElicitationRequestEvent } from '../../services/mcp/elicitationHandler.js';
-import { openBrowser } from '../../utils/browser.js';
+import { openBrowser } from '../../utils/network/browser.js';
 import {
   getEnumLabel,
   getEnumValues,
@@ -25,7 +25,7 @@ import {
   validateElicitationInput,
   validateElicitationInputAsync,
 } from '../../utils/mcp/elicitationValidation.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import TextInput from '../TextInput.js';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from '@anthropic/ink';
-import { formatDuration } from '../../utils/format.js';
+import { formatDuration } from '../../utils/text/format.js';
 
 type Props = {
   elapsedTimeSeconds?: number;

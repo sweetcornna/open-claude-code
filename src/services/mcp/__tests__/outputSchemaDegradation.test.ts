@@ -16,7 +16,7 @@ import { outputSchemaViolation } from '../outputSchemaDegradation.js'
 
 // `client.ts` logs through `utils/log.ts`, whose module-level bootstrap side
 // effects (realpathSync / randomUUID) do not belong in a protocol test.
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 // Imported after the mock is installed: a static import is hoisted above it
 // and would bind the real logger.

@@ -45,16 +45,16 @@ import type { AgentId } from 'src/types/ids.js'
 import type { FileAttributionState } from 'src/types/logs.js'
 import type { ToolProgressData } from 'src/types/tools.js'
 import type { DeepImmutable } from 'src/types/utils.js'
-import type { AttributionState } from 'src/utils/commitAttribution.js'
+import type { AttributionState } from 'src/utils/git/commitAttribution.js'
 import type {
   FileHistoryBackup,
   FileHistorySnapshot,
   FileHistoryState,
-} from 'src/utils/fileHistory.js'
+} from 'src/utils/filesystem/fileHistory.js'
 import type { DenialTrackingState } from 'src/utils/permissions/denialTracking.js'
-import type { Theme, ThemeName } from 'src/utils/theme.js'
-import type { ThinkingConfig } from 'src/utils/thinking.js'
-import type { ContentReplacementState } from 'src/utils/toolResultStorage.js'
+import type { Theme, ThemeName } from 'src/utils/terminal/theme.js'
+import type { ThinkingConfig } from 'src/utils/model/thinking.js'
+import type { ContentReplacementState } from 'src/utils/tools/toolResultStorage.js'
 
 /**
  * Asserts `A` and `B` are the same type, invariantly.

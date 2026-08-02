@@ -4,8 +4,8 @@ import { logMock } from '../../../../tests/mocks/log.js'
 
 // ─── Mocks（仅 mock 有副作用的依赖链）───
 
-mock.module('src/utils/debug.ts', debugMock)
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 mock.module('src/constants/xml.js', () => ({
   TASK_NOTIFICATION_TAG: 'task_notification',
@@ -20,11 +20,11 @@ mock.module('src/constants/xml.js', () => ({
   TASK_TYPE_TAG: 'task_type',
 }))
 
-mock.module('src/utils/messageQueueManager.js', () => ({
+mock.module('src/utils/session/messageQueueManager.js', () => ({
   enqueuePendingNotification: () => {},
 }))
 
-mock.module('src/utils/sdkEventQueue.js', () => ({
+mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: () => {},
 }))
 

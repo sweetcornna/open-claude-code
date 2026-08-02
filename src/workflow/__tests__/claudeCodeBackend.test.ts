@@ -50,9 +50,13 @@ mock.module('src/utils/messages.js', () => ({
   }),
   extractTextContent: () => 'agent-text',
 }))
-mock.module('src/utils/uuid.js', () => ({ createAgentId: () => 'agent-1' }))
+mock.module('src/utils/collections/uuid.js', () => ({
+  createAgentId: () => 'agent-1',
+}))
 mock.module('src/services/analytics/index.js', () => ({ logEvent: () => {} }))
-mock.module('src/utils/debug.js', () => ({ logForDebugging: () => {} }))
+mock.module('src/utils/telemetry/debug.js', () => ({
+  logForDebugging: () => {},
+}))
 
 // isolation:'worktree' tests: mock worktree trio (to avoid actually running git worktree add).
 // Note mock.module is process-global; worktreeState is defined outside the factory for test reset.
@@ -65,7 +69,7 @@ const worktreeState = {
   removed: [] as string[],
   changesCalls: 0,
 }
-mock.module('src/utils/worktree.js', () => ({
+mock.module('src/utils/git/worktree.js', () => ({
   createAgentWorktree: async (slug: string) => {
     if (worktreeState.shouldThrow) throw new Error('wt boom')
     worktreeState.created.push(slug)

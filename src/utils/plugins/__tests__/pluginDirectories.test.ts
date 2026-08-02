@@ -3,7 +3,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const { getPluginsDirectory } = await import('../pluginDirectories.js')
 

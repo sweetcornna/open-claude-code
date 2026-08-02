@@ -1,7 +1,7 @@
 import figures from 'figures';
 import * as React from 'react';
 import { Box, color, Text, useTheme } from '@anthropic/ink';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import type { UnifiedInstalledItem } from './unifiedTypes.js';
 
 type Props = {

@@ -20,8 +20,8 @@ import {
   getPendingHintSnapshot,
   markShownThisSession,
   subscribeToPendingHint,
-} from '../utils/claudeCodeHints.js';
-import { logForDebugging } from '../utils/debug.js';
+} from '../utils/runtime/claudeCodeHints.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import {
   disableHintRecommendations,
   markHintPluginShown,

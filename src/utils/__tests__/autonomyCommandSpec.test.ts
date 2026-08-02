@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   AUTONOMY_ARGUMENT_HINT,
   parseAutonomyArgs,
-} from '../autonomyCommandSpec'
+} from '../agents/autonomyCommandSpec'
 
 describe('autonomy command spec', () => {
   test('provides a command-panel argument hint', () => {

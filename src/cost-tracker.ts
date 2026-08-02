@@ -33,20 +33,20 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from './services/analytics/index.js'
-import { getAdvisorUsage } from './utils/advisor.js'
+import { getAdvisorUsage } from './utils/agents/advisor.js'
 import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
-} from './utils/config.js'
+} from './utils/config/config.js'
 import {
   getContextWindowForModel,
   getModelMaxOutputTokens,
-} from './utils/context.js'
-import { isFastModeEnabled } from './utils/fastMode.js'
-import { formatDuration, formatNumber } from './utils/format.js'
-import type { FpsMetrics } from './utils/fpsTracker.js'
+} from './utils/session/context.js'
+import { isFastModeEnabled } from './utils/model/fastMode.js'
+import { formatDuration, formatNumber } from './utils/text/format.js'
+import type { FpsMetrics } from './utils/telemetry/fpsTracker.js'
 import { getCanonicalName } from './utils/model/model.js'
-import { calculateUSDCost } from './utils/modelCost.js'
+import { calculateUSDCost } from './utils/model/modelCost.js'
 export {
   getTotalCostUSD as getTotalCost,
   getTotalDuration,
@@ -294,7 +294,7 @@ export function addToTotalSessionCost(
     const currentGoal = getGoal()
     if (totalDelta > 0 && currentGoal?.status === 'active') {
       const { logForDebugging: goalDbg } =
-        require('./utils/debug.js') as typeof import('./utils/debug.js')
+        require('./utils/telemetry/debug.js') as typeof import('./utils/telemetry/debug.js')
       goalDbg(
         `[goal] cost: in=${usage.input_tokens ?? 0} out=${usage.output_tokens ?? 0} cache_r=${usage.cache_read_input_tokens ?? 0} cache_w=${usage.cache_creation_input_tokens ?? 0} delta=${totalDelta}`,
       )

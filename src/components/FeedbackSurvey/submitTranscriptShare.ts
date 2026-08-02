@@ -1,10 +1,10 @@
 import axios from 'axios'
 import { readFile, stat } from 'fs/promises'
 import type { Message } from '../../types/message.js'
-import { checkAndRefreshOAuthTokenIfNeeded } from '../../utils/auth.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { errorMessage } from '../../utils/errors.js'
-import { getAuthHeaders, getUserAgent } from '../../utils/http.js'
+import { checkAndRefreshOAuthTokenIfNeeded } from '../../utils/auth/auth.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
+import { getAuthHeaders, getUserAgent } from '../../utils/network/http.js'
 import { normalizeMessagesForAPI } from '../../utils/messages.js'
 import {
   extractAgentIdsFromMessages,
@@ -12,7 +12,7 @@ import {
   loadSubagentTranscripts,
   MAX_TRANSCRIPT_READ_BYTES,
 } from '../../utils/sessionStorage.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { redactSensitiveInfo } from '../Feedback.js'
 
 type TranscriptShareResult = {

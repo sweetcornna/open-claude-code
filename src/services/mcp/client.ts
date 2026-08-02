@@ -44,54 +44,54 @@ import {
 } from '@open-claude-code/builtin-tools/tools/MCPTool/MCPTool.js'
 import { createMcpAuthTool } from '@open-claude-code/builtin-tools/tools/McpAuthTool/McpAuthTool.js'
 import { ReadMcpResourceTool } from '@open-claude-code/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
-import { createAbortController } from '../../utils/abortController.js'
-import { count } from '../../utils/array.js'
+import { createAbortController } from '../../utils/process/abortController.js'
+import { count } from '../../utils/collections/array.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
-} from '../../utils/auth.js'
-import { registerCleanup } from '../../utils/cleanupRegistry.js'
-import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
+} from '../../utils/auth/auth.js'
+import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
+import { detectCodeIndexingFromMcpServerName } from '../../utils/runtime/codeIndexing.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/config/envUtils.js'
 import {
   errorMessage,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from '../../utils/errors.js'
-import { getMCPUserAgent } from '../../utils/http.js'
-import { maybeNotifyIDEConnected } from '../../utils/ide.js'
+} from '../../utils/runtime/errors.js'
+import { getMCPUserAgent } from '../../utils/network/http.js'
+import { maybeNotifyIDEConnected } from '../../utils/terminal/ide.js'
 import {
   type ImageLimits,
   maybeResizeAndDownsampleImageBuffer,
-} from '../../utils/imageResizer.js'
-import { logMCPDebug, logMCPError } from '../../utils/log.js'
+} from '../../utils/terminal/imageResizer.js'
+import { logMCPDebug, logMCPError } from '../../utils/telemetry/log.js'
 import {
   getBinaryBlobSavedMessage,
   getFormatDescription,
   getLargeOutputInstructions,
   persistBinaryContent,
-} from '../../utils/mcpOutputStorage.js'
+} from '../../utils/mcp/mcpOutputStorage.js'
 import {
   getContentSizeEstimate,
   type MCPToolResult,
   mcpContentNeedsTruncation,
   truncateMcpContentIfNeeded,
-} from '../../utils/mcpValidation.js'
-import { WebSocketTransport } from '../../utils/mcpWebSocketTransport.js'
-import { memoizeWithLRU } from '../../utils/memoize.js'
-import { getWebSocketTLSOptions } from '../../utils/mtls.js'
+} from '../../utils/mcp/mcpValidation.js'
+import { WebSocketTransport } from '../../utils/mcp/mcpWebSocketTransport.js'
+import { memoizeWithLRU } from '../../utils/collections/memoize.js'
+import { getWebSocketTLSOptions } from '../../utils/network/mtls.js'
 import {
   getProxyFetchOptions,
   getWebSocketProxyAgent,
   getWebSocketProxyUrl,
-} from '../../utils/proxy.js'
-import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
-import { subprocessEnv } from '../../utils/subprocessEnv.js'
+} from '../../utils/network/proxy.js'
+import { getSessionIngressAuthToken } from '../../utils/auth/sessionIngressAuth.js'
+import { subprocessEnv } from '../../utils/process/subprocessEnv.js'
 import {
   isPersistError,
   persistToolResult,
-} from '../../utils/toolResultStorage.js'
+} from '../../utils/tools/toolResultStorage.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -126,7 +126,7 @@ import type { AssistantMessage } from 'src/types/message.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { classifyMcpToolForCollapse } from '@open-claude-code/builtin-tools/tools/MCPTool/classifyForCollapse.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
-import { sleep } from '../../utils/sleep.js'
+import { sleep } from '../../utils/process/sleep.js'
 import {
   ClaudeAuthProvider,
   hasMcpDiscoveryButNoToken,
@@ -258,9 +258,12 @@ const shouldUseBuiltinComputerUse = feature('CHICAGO_MCP')
 
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
+import {
+  jsonParse,
+  jsonStringify,
+} from '../../utils/telemetry/slowOperations.js'
 
 const MCP_AUTH_CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
 

@@ -7,16 +7,16 @@ import { getIsNonInteractiveSession } from 'src/bootstrap/state.js';
 import { getSystemContext, getUserContext } from 'src/context.js';
 import { initializeAnalyticsGates } from 'src/services/analytics/sink.js';
 import { getRelevantTips } from 'src/services/tips/tipRegistry.js';
-import { prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe } from 'src/utils/auth.js';
-import { checkHasTrustDialogAccepted } from 'src/utils/config.js';
-import { getCwd } from 'src/utils/cwd.js';
-import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js';
-import { isBareMode, isEnvTruthy } from 'src/utils/envUtils.js';
+import { prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe } from 'src/utils/auth/auth.js';
+import { checkHasTrustDialogAccepted } from 'src/utils/config/config.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
+import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js';
+import { isBareMode, isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
-import { countFilesRoundedRg } from 'src/utils/ripgrep.js';
+import { countFilesRoundedRg } from 'src/utils/filesystem/ripgrep.js';
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js';
 import { skillChangeDetector } from 'src/utils/skills/skillChangeDetector.js';
-import { initUser } from 'src/utils/user.js';
+import { initUser } from 'src/utils/auth/user.js';
 
 /**
  * Prefetch system context (including git status) only when it's safe to do so.
@@ -95,6 +95,6 @@ export function startDeferredPrefetches(): void {
 
   // Event loop stall detector — logs when the main thread is blocked >500ms
   if (process.env.USER_TYPE === 'ant') {
-    void import('src/utils/eventLoopStallDetector.js').then(m => m.startEventLoopStallDetector());
+    void import('src/utils/telemetry/eventLoopStallDetector.js').then(m => m.startEventLoopStallDetector());
   }
 }

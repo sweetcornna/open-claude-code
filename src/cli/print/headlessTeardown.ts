@@ -9,7 +9,7 @@
  */
 import { statusListeners } from 'src/services/claudeAiLimits.js'
 import { finalizePendingAsyncHooks } from 'src/utils/hooks/AsyncHookRegistry.js'
-import { sleep } from 'src/utils/sleep.js'
+import { sleep } from 'src/utils/process/sleep.js'
 import type { HeadlessRunState } from './headlessRunState.js'
 
 export async function finalizeHeadlessOutput(

@@ -11,13 +11,13 @@
 import omit from 'lodash-es/omit.js'
 import reject from 'lodash-es/reject.js'
 import { logEvent } from 'src/services/analytics/index.js'
-import { getAccountInformation } from 'src/utils/auth.js'
+import { getAccountInformation } from 'src/utils/auth/auth.js'
 import { installOAuthTokens } from 'src/cli/handlers/auth.js'
 import { OAuthService } from 'src/services/oauth/index.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import type { SDKControlRequest } from 'src/entrypoints/sdk/controlTypes.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import { reconnectMcpServerImpl } from 'src/services/mcp/client.js'
 import {
   getMcpConfigByName,

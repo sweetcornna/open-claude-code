@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { toTaggedId } from '../taggedId'
+import { toTaggedId } from '../collections/taggedId'
 
 const BASE_58_CHARS =
   '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'

@@ -25,10 +25,13 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from 'src/services/analytics/index.js'
-import { ImageSizeError } from './utils/imageValidation.js'
-import { ImageResizeError } from './utils/imageResizer.js'
+import { ImageSizeError } from './utils/terminal/imageValidation.js'
+import { ImageResizeError } from './utils/terminal/imageResizer.js'
 import { findToolByName, type ToolUseContext } from './Tool.js'
-import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
+import {
+  asSystemPrompt,
+  type SystemPrompt,
+} from './utils/session/systemPromptType.js'
 import type {
   AssistantMessage,
   AttachmentMessage,
@@ -39,12 +42,12 @@ import type {
   UserMessage,
   TombstoneMessage,
 } from './types/message.js'
-import { logError } from './utils/log.js'
+import { logError } from './utils/telemetry/log.js'
 import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
-import { logAntError, logForDebugging } from './utils/debug.js'
+import { logAntError, logForDebugging } from './utils/telemetry/debug.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -57,7 +60,10 @@ import {
   stripSignatureBlocks,
 } from './utils/messages.js'
 import { generateToolUseSummary } from './services/toolUseSummary/toolUseSummaryGenerator.js'
-import { prependUserContext, appendSystemContext } from './utils/api.js'
+import {
+  prependUserContext,
+  appendSystemContext,
+} from './utils/telemetry/api.js'
 import {
   createAttachmentMessage,
   filterDuplicateMemoryAttachments,
@@ -80,14 +86,14 @@ import {
   remove as removeFromQueue,
   getCommandsByMaxPriority,
   isSlashCommand,
-} from './utils/messageQueueManager.js'
+} from './utils/session/messageQueueManager.js'
 import {
   type AutonomyTurnOutcome,
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
-} from './utils/autonomyQueueLifecycle.js'
-import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
-import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
+} from './utils/agents/autonomyQueueLifecycle.js'
+import { notifyCommandLifecycle } from './utils/task/commandLifecycle.js'
+import { headlessProfilerCheckpoint } from './utils/telemetry/headlessProfiler.js'
 import {
   getRuntimeMainLoopModel,
   renderModelName,
@@ -96,8 +102,8 @@ import {
   doesMostRecentAssistantMessageExceed200k,
   finalContextTokensFromLastResponse,
   tokenCountWithEstimation,
-} from './utils/tokens.js'
-import { ESCALATED_MAX_TOKENS } from './utils/context.js'
+} from './utils/session/tokens.js'
+import { ESCALATED_MAX_TOKENS } from './utils/session/context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './utils/hooks.js'
@@ -105,13 +111,13 @@ import type { QuerySource } from './constants/querySource.js'
 import type { QueuedCommand } from './types/textInputTypes.js'
 import { createDumpPromptsFetch } from './services/api/dumpPrompts.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
-import { queryCheckpoint } from './utils/queryProfiler.js'
+import { queryCheckpoint } from './utils/telemetry/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'
-import { applyToolResultBudget } from './utils/toolResultStorage.js'
+import { applyToolResultBudget } from './utils/tools/toolResultStorage.js'
 import {
   createToolResultReleaseCache,
   releaseToolUseResults,
-} from './utils/toolResultRelease.js'
+} from './utils/tools/toolResultRelease.js'
 import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
 import { buildQueryConfig } from './query/config.js'
@@ -125,7 +131,7 @@ import {
   getSessionId,
 } from './bootstrap/state.js'
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
-import { count } from './utils/array.js'
+import { count } from './utils/collections/array.js'
 import {
   createTrace,
   endTrace,
@@ -138,11 +144,11 @@ import {
   getCacheThreshold,
   isCacheWarningEnabled,
   shouldShowCacheWarning,
-} from './utils/cacheWarning.js'
+} from './utils/telemetry/cacheWarning.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const taskSummaryModule = feature('BG_SESSIONS')
-  ? (require('./utils/taskSummary.js') as typeof import('./utils/taskSummary.js'))
+  ? (require('./utils/task/taskSummary.js') as typeof import('./utils/task/taskSummary.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 

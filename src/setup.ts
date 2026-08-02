@@ -6,10 +6,10 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
-import { getCwd } from 'src/utils/cwd.js'
-import { checkForReleaseNotes } from 'src/utils/releaseNotes.js'
-import { setCwd } from 'src/utils/Shell.js'
-import { initSinks } from 'src/utils/sinks.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
+import { checkForReleaseNotes } from 'src/utils/update/releaseNotes.js'
+import { setCwd } from 'src/utils/shell/Shell.js'
+import { initSinks } from 'src/utils/telemetry/sinks.js'
 import {
   getIsNonInteractiveSession,
   getProjectRoot,
@@ -22,37 +22,40 @@ import { getCommands } from './commands.js'
 import { initSessionMemory } from './services/SessionMemory/sessionMemory.js'
 import { initSkillLearning } from './services/skillLearning/runtimeObserver.js'
 import { asSessionId } from './types/ids.js'
-import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js'
-import { checkAndRestoreTerminalBackup } from './utils/appleTerminalBackup.js'
-import { prefetchApiKeyFromApiKeyHelperIfSafe } from './utils/auth.js'
-import { clearMemoryFileCaches } from './utils/claudemd.js'
-import { getCurrentProjectConfig, getGlobalConfig } from './utils/config.js'
-import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
-import { env } from './utils/env.js'
-import { envDynamic } from './utils/envDynamic.js'
-import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
-import { errorMessage } from './utils/errors.js'
-import { findCanonicalGitRoot, findGitRoot, getIsGit } from './utils/git.js'
+import { isAgentSwarmsEnabled } from './utils/agents/agentSwarmsEnabled.js'
+import { checkAndRestoreTerminalBackup } from './utils/terminal/appleTerminalBackup.js'
+import { prefetchApiKeyFromApiKeyHelperIfSafe } from './utils/auth/auth.js'
+import { clearMemoryFileCaches } from './utils/session/claudemd.js'
+import {
+  getCurrentProjectConfig,
+  getGlobalConfig,
+} from './utils/config/config.js'
+import { logForDiagnosticsNoPII } from './utils/telemetry/diagLogs.js'
+import { env } from './utils/config/env.js'
+import { envDynamic } from './utils/config/envDynamic.js'
+import { isBareMode, isEnvTruthy } from './utils/config/envUtils.js'
+import { errorMessage } from './utils/runtime/errors.js'
+import { findCanonicalGitRoot, findGitRoot, getIsGit } from './utils/git/git.js'
 import { initializeFileChangedWatcher } from './utils/hooks/fileChangedWatcher.js'
 import {
   captureHooksConfigSnapshot,
   updateHooksConfigSnapshot,
 } from './utils/hooks/hooksConfigSnapshot.js'
 import { hasWorktreeCreateHook } from './utils/hooks.js'
-import { checkAndRestoreITerm2Backup } from './utils/iTermBackup.js'
-import { logError } from './utils/log.js'
-import { getRecentActivity } from './utils/logoV2Utils.js'
+import { checkAndRestoreITerm2Backup } from './utils/terminal/iTermBackup.js'
+import { logError } from './utils/telemetry/log.js'
+import { getRecentActivity } from './utils/terminal/logoV2Utils.js'
 import { lockCurrentVersion } from './utils/nativeInstaller/index.js'
 import type { PermissionMode } from './utils/permissions/PermissionMode.js'
-import { getPlanSlug } from './utils/plans.js'
+import { getPlanSlug } from './utils/agents/plans.js'
 import { saveWorktreeState } from './utils/sessionStorage.js'
-import { profileCheckpoint } from './utils/startupProfiler.js'
+import { profileCheckpoint } from './utils/telemetry/startupProfiler.js'
 import {
   createTmuxSessionForWorktree,
   createWorktreeForSession,
   generateTmuxSessionName,
   worktreeBranchName,
-} from './utils/worktree.js'
+} from './utils/git/worktree.js'
 
 export async function setup(
   cwd: string,
@@ -319,7 +322,7 @@ export async function setup(
       // Prime repo classification cache for auto-undercover mode. Default is
       // undercover ON until proven internal; if this resolves to internal, clear
       // the prompt cache so the next turn picks up the OFF state.
-      void import('./utils/commitAttribution.js').then(async m => {
+      void import('./utils/git/commitAttribution.js').then(async m => {
         if (await m.isInternalModelRepo()) {
           const { clearSystemPromptSections } = await import(
             './constants/systemPromptSections.js'
@@ -333,14 +336,14 @@ export async function setup(
       // Defer to next tick so the git subprocess spawn runs after first render
       // rather than during the setup() microtask window.
       setImmediate(() => {
-        void import('./utils/attributionHooks.js').then(
+        void import('./utils/git/attributionHooks.js').then(
           ({ registerAttributionHooks }) => {
             registerAttributionHooks() // Register attribution tracking hooks (ant-only feature)
           },
         )
       })
     }
-    void import('./utils/sessionFileAccessHooks.js').then(m =>
+    void import('./utils/session/sessionFileAccessHooks.js').then(m =>
       m.registerSessionFileAccessHooks(),
     ) // Register session file access analytics hooks
   }

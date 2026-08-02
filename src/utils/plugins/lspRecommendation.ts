@@ -11,9 +11,9 @@
  */
 
 import { extname } from 'path'
-import { isBinaryInstalled } from '../binaryCheck.js'
-import { getGlobalConfig, saveGlobalConfig } from '../config.js'
-import { logForDebugging } from '../debug.js'
+import { isBinaryInstalled } from '../update/binaryCheck.js'
+import { getGlobalConfig, saveGlobalConfig } from '../config/config.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { isPluginInstalled } from './installedPluginsManager.js'
 import {
   getMarketplace,

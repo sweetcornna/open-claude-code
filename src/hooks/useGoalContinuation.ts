@@ -26,7 +26,7 @@
  */
 import { useLayoutEffect, useRef } from 'react'
 
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   markGoalMaxTurnsReached,
   getGoal,
@@ -41,7 +41,7 @@ import {
 import {
   enqueue,
   getCommandQueueSnapshot,
-} from 'src/utils/messageQueueManager.js'
+} from 'src/utils/session/messageQueueManager.js'
 
 function hookLog(msg: string): void {
   logForDebugging(`[goal] hook: ${msg}`)

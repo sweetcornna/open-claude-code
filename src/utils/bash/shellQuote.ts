@@ -8,8 +8,8 @@ import {
   parse as shellQuoteParse,
   quote as shellQuoteQuote,
 } from 'shell-quote'
-import { logError } from '../log.js'
-import { jsonStringify } from '../slowOperations.js'
+import { logError } from '../telemetry/log.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 
 export type { ParseEntry } from 'shell-quote'
 

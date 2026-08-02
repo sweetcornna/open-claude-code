@@ -5,7 +5,7 @@ import type { UUID } from 'crypto';
 import type { RefObject } from 'react';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { every } from 'src/utils/set.js';
+import { every } from 'src/utils/collections/set.js';
 import { getIsRemoteMode } from '../bootstrap/state.js';
 import type { Command } from '../commands.js';
 import { BLACK_CIRCLE } from '../constants/figures.js';
@@ -25,14 +25,14 @@ import type {
   ProgressMessage as ProgressMessageType,
   RenderableMessage,
 } from '../types/message.js';
-import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js';
-import { collapseBackgroundBashNotifications } from '../utils/collapseBackgroundBashNotifications.js';
-import { collapseHookSummaries } from '../utils/collapseHookSummaries.js';
-import { collapseReadSearchGroups } from '../utils/collapseReadSearch.js';
-import { collapseTeammateShutdowns } from '../utils/collapseTeammateShutdowns.js';
-import { getGlobalConfig } from '../utils/config.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
-import { applyGrouping } from '../utils/groupToolUses.js';
+import { type AdvisorBlock, isAdvisorBlock } from '../utils/agents/advisor.js';
+import { collapseBackgroundBashNotifications } from '../utils/session/collapseBackgroundBashNotifications.js';
+import { collapseHookSummaries } from '../utils/session/collapseHookSummaries.js';
+import { collapseReadSearchGroups } from '../utils/session/collapseReadSearch.js';
+import { collapseTeammateShutdowns } from '../utils/session/collapseTeammateShutdowns.js';
+import { getGlobalConfig } from '../utils/config/config.js';
+import { isEnvTruthy } from '../utils/config/envUtils.js';
+import { applyGrouping } from '../utils/tools/groupToolUses.js';
 import {
   type MessageLookups,
   type MessageLookupsCache,
@@ -49,8 +49,8 @@ import {
   type StreamingToolUse,
   shouldShowUserMessage,
 } from '../utils/messages.js';
-import { plural } from '../utils/stringUtils.js';
-import { renderableSearchText } from '../utils/transcriptSearch.js';
+import { plural } from '../utils/text/stringUtils.js';
+import { renderableSearchText } from '../utils/session/transcriptSearch.js';
 import { Divider } from '@anthropic/ink';
 import type { UnseenDivider } from './FullscreenLayout.js';
 import { LogoV2 } from './LogoV2/LogoV2.js';

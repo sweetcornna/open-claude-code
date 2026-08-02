@@ -5,8 +5,8 @@ import { extractTag } from 'src/utils/messages.js';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
 import { TOOL_SUMMARY_MAX_LENGTH } from 'src/constants/toolLimits.js';
 import { Text } from '@anthropic/ink';
-import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from 'src/utils/file.js';
-import { truncate } from 'src/utils/format.js';
+import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from 'src/utils/filesystem/file.js';
+import { truncate } from 'src/utils/text/format.js';
 import { GrepTool } from '../GrepTool/GrepTool.js';
 
 export function userFacingName(): string {

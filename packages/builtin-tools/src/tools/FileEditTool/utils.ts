@@ -1,12 +1,12 @@
 import { type StructuredPatchHunk, structuredPatch } from 'diff'
-import { logError } from 'src/utils/log.js'
-import { expandPath } from 'src/utils/path.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { expandPath } from 'src/utils/filesystem/path.js'
 import { countCharInString } from '@open-claude-code/tool-runtime/stringUtils.js'
 import {
   DIFF_TIMEOUT_MS,
   getPatchForDisplay,
   getPatchFromContents,
-} from 'src/utils/diff.js'
+} from 'src/utils/text/diff.js'
 import {
   errorMessage,
   isENOENT,
@@ -15,7 +15,7 @@ import {
   addLineNumbers,
   convertLeadingTabsToSpaces,
   readFileSyncCached,
-} from 'src/utils/file.js'
+} from 'src/utils/filesystem/file.js'
 import type { EditInput, FileEdit } from './types.js'
 
 /**

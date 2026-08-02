@@ -13,16 +13,16 @@ import {
   rewriteWindowsNullRedirect,
   shouldAddStdinRedirect,
 } from '../bash/shellQuoting.js'
-import { logForDebugging } from '../debug.js'
-import { getPlatform } from '../platform.js'
-import { getSessionEnvironmentScript } from '../sessionEnvironment.js'
-import { getSessionEnvVars } from '../sessionEnvVars.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { getPlatform } from '../process/platform.js'
+import { getSessionEnvironmentScript } from '../session/sessionEnvironment.js'
+import { getSessionEnvVars } from '../session/sessionEnvVars.js'
 import {
   ensureSocketInitialized,
   getClaudeTmuxEnv,
   hasTmuxToolBeenUsed,
-} from '../tmuxSocket.js'
-import { windowsPathToPosixPath } from '../windowsPaths.js'
+} from '../terminal/tmuxSocket.js'
+import { windowsPathToPosixPath } from '../filesystem/windowsPaths.js'
 import type { ShellProvider } from './shellProvider.js'
 
 /**

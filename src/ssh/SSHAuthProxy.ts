@@ -1,9 +1,9 @@
 import { BIN_NAME } from 'src/config/paths.js'
 import { randomUUID } from 'crypto'
 import { unlinkSync } from 'fs'
-import { getClaudeAIOAuthTokens } from 'src/utils/auth.js'
+import { getClaudeAIOAuthTokens } from 'src/utils/auth/auth.js'
 import { getOauthConfig } from 'src/constants/oauth.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 
 export interface SSHAuthProxy {
   stop(): void

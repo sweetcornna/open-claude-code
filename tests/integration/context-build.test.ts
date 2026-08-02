@@ -3,8 +3,8 @@ import {
   stripHtmlComments,
   isMemoryFilePath,
   getLargeMemoryFiles,
-} from '../../src/utils/claudemd'
-import { buildEffectiveSystemPrompt } from '../../src/utils/systemPrompt'
+} from '../../src/utils/session/claudemd'
+import { buildEffectiveSystemPrompt } from '../../src/utils/session/systemPrompt'
 import {
   createTempDir,
   cleanupTempDir,

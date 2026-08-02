@@ -19,7 +19,7 @@ import {
   getClaudeAIOAuthTokens,
   getOauthAccountInfo,
   isClaudeAISubscriber,
-} from 'src/utils/auth.js'
+} from 'src/utils/auth/auth.js'
 import {
   createAssistantAPIErrorMessage,
   NO_RESPONSE_REQUESTED,
@@ -35,10 +35,10 @@ import {
   API_PDF_MAX_PAGES,
   PDF_TARGET_RAW_SIZE,
 } from '../../constants/apiLimits.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
-import { formatFileSize } from '../../utils/format.js'
-import { ImageResizeError } from '../../utils/imageResizer.js'
-import { ImageSizeError } from '../../utils/imageValidation.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
+import { formatFileSize } from '../../utils/text/format.js'
+import { ImageResizeError } from '../../utils/terminal/imageResizer.js'
+import { ImageSizeError } from '../../utils/terminal/imageValidation.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

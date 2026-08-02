@@ -5,9 +5,9 @@ import { type CodeSession, fetchCodeSessionsFromSessionsAPI } from 'src/utils/te
 import { Box, Text, useInput } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
-import { logForDebugging } from '../utils/debug.js';
-import { detectCurrentRepository } from '../utils/detectRepository.js';
-import { formatRelativeTime } from '../utils/format.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
+import { detectCurrentRepository } from '../utils/git/detectRepository.js';
+import { formatRelativeTime } from '../utils/text/format.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';

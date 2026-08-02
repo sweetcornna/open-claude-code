@@ -12,7 +12,7 @@ import {
   hookSourceInlineDisplayString,
   type IndividualHookConfig,
 } from '../../utils/hooks/hooksSettings.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 

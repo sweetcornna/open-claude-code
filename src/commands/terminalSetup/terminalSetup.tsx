@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { homedir, platform } from 'os';
 import { dirname, join } from 'path';
-import type { ThemeName } from 'src/utils/theme.js';
+import type { ThemeName } from 'src/utils/terminal/theme.js';
 import { pathToFileURL } from 'url';
 import { supportsHyperlinks } from '@anthropic/ink';
 import { color } from '@anthropic/ink';
@@ -15,16 +15,16 @@ import {
   checkAndRestoreTerminalBackup,
   getTerminalPlistPath,
   markTerminalSetupComplete,
-} from '../../utils/appleTerminalBackup.js';
-import { setupShellCompletion } from '../../utils/completionCache.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { env } from '../../utils/env.js';
-import { isFsInaccessible } from '../../utils/errors.js';
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
-import { addItemToJSONCArray, safeParseJSONC } from '../../utils/json.js';
-import { logError } from '../../utils/log.js';
-import { getPlatform } from '../../utils/platform.js';
-import { jsonParse, jsonStringify } from '../../utils/slowOperations.js';
+} from '../../utils/terminal/appleTerminalBackup.js';
+import { setupShellCompletion } from '../../utils/collections/completionCache.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
+import { env } from '../../utils/config/env.js';
+import { isFsInaccessible } from '../../utils/runtime/errors.js';
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
+import { addItemToJSONCArray, safeParseJSONC } from '../../utils/text/json.js';
+import { logError } from '../../utils/telemetry/log.js';
+import { getPlatform } from '../../utils/process/platform.js';
+import { jsonParse, jsonStringify } from '../../utils/telemetry/slowOperations.js';
 
 const EOL = '\n';
 

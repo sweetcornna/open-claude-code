@@ -4,8 +4,8 @@ import { z } from 'zod/v4'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // Mock all heavy dependencies before importing ExecuteTool
 mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
@@ -30,7 +30,7 @@ mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   stopPeriodicGrowthBookRefresh: () => {},
 }))
 
-mock.module('src/utils/searchExtraTools.js', () => ({
+mock.module('src/utils/tools/searchExtraTools.js', () => ({
   isSearchExtraToolsEnabledOptimistic: () => true,
   getAutoSearchExtraToolsCharThreshold: () => 100,
   getSearchExtraToolsMode: () => 'tst' as const,

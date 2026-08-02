@@ -4,20 +4,20 @@ import { randomUUID } from 'crypto'
 import { EMPTY_USAGE } from '@ant/model-provider'
 import { BIN_NAME } from 'src/constants/brand.js'
 import type { Message, NormalizedUserMessage } from 'src/types/message.js'
-import type { TurnInterruptionState } from 'src/utils/conversationRecovery.js'
-import { loadConversationForResume } from 'src/utils/conversationRecovery.js'
+import type { TurnInterruptionState } from 'src/utils/session/conversationRecovery.js'
+import { loadConversationForResume } from 'src/utils/session/conversationRecovery.js'
 import type { AppState } from 'src/state/AppStateStore.js'
-import type { SessionExternalMetadata } from 'src/utils/sessionState.js'
-import { processSessionStartHooks } from 'src/utils/sessionStart.js'
+import type { SessionExternalMetadata } from 'src/utils/session/sessionState.js'
+import { processSessionStartHooks } from 'src/utils/session/sessionStart.js'
 import { getSessionId } from 'src/bootstrap/state.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from 'src/utils/telemetry/slowOperations.js'
 import { isSessionPersistenceDisabled } from 'src/bootstrap/state.js'
 import { logEvent } from 'src/services/analytics/index.js'
-import { logError } from 'src/utils/log.js'
-import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js'
 import { isPolicyAllowed } from 'src/services/policyLimits/index.js'
-import { parseSessionIdentifier } from 'src/utils/sessionUrl.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { parseSessionIdentifier } from 'src/utils/session/sessionUrl.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import {
   hydrateFromCCRv2InternalEvents,
   hydrateRemoteSession,
@@ -28,8 +28,8 @@ import {
 import { externalMetadataToAppState } from 'src/state/onChangeAppState.js'
 import { setMainLoopModelOverride, switchSession } from 'src/bootstrap/state.js'
 import { asSessionId } from 'src/types/ids.js'
-import { getCwd } from 'src/utils/cwd.js'
-import { restoreSessionStateFromLog } from 'src/utils/sessionRestore.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
+import { restoreSessionStateFromLog } from 'src/utils/session/sessionRestore.js'
 import { coordinatorModeModule } from './runtime.js'
 
 /**
@@ -203,7 +203,7 @@ async function loadInitialMessages(
         processMessagesForTeleportResume,
         teleportResumeCodeSession,
         validateGitState,
-      } = await import('src/utils/teleport.js')
+      } = await import('src/utils/teleport/teleport.js')
       await validateGitState()
       const teleportResult = await teleportResumeCodeSession(options.teleport)
       const { branchError } = await checkOutTeleportedSessionBranch(

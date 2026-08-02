@@ -1,8 +1,8 @@
 import type { SDKMessage } from 'src/entrypoints/agentSdkTypes.js'
 import { checkGate_CACHED_OR_BLOCKING } from '../../../services/analytics/growthbook.js'
 import { isPolicyAllowed } from '../../../services/policyLimits/index.js'
-import { detectCurrentRepositoryWithHost } from '../../detectRepository.js'
-import { isEnvTruthy } from '../../envUtils.js'
+import { detectCurrentRepositoryWithHost } from '../../git/detectRepository.js'
+import { isEnvTruthy } from '../../config/envUtils.js'
 import type { TodoList } from '../../todo/types.js'
 import {
   checkGithubAppInstalled,

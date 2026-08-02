@@ -76,10 +76,10 @@ mock.module('@langfuse/tracing', () => ({
 }))
 
 // Mock debug logger
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // Mock user data — resolveLangfuseUserId uses getCoreUserData().email and .deviceId
-mock.module('src/utils/user.js', () => ({
+mock.module('src/utils/auth/user.js', () => ({
   getCoreUserData: mock(() => ({
     email: 'test-device-id',
     deviceId: 'test-device-id',

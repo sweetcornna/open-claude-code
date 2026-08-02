@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { padAligned } from '../markdown'
+import { padAligned } from '../text/markdown'
 
 describe('padAligned', () => {
   test('left-aligns: pads with spaces on right', () => {

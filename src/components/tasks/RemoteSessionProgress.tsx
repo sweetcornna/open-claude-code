@@ -4,8 +4,8 @@ import type { DeepImmutable } from 'src/types/utils.js';
 import { DIAMOND_FILLED, DIAMOND_OPEN } from '../../constants/figures.js';
 import { useSettings } from '../../hooks/useSettings.js';
 import { Text, useAnimationFrame } from '@anthropic/ink';
-import { count } from '../../utils/array.js';
-import { getRainbowColor } from '../../utils/thinking.js';
+import { count } from '../../utils/collections/array.js';
+import { getRainbowColor } from '../../utils/model/thinking.js';
 
 const TICK_MS = 80;
 

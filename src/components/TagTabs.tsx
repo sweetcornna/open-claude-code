@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, stringWidth } from '@anthropic/ink';
-import { truncateToWidth } from '../utils/format.js';
+import { truncateToWidth } from '../utils/text/format.js';
 
 // Constants for width calculations - derived from actual rendered strings
 const ALL_TAB_LABEL = 'All';

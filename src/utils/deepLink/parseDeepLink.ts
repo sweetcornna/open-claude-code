@@ -19,7 +19,7 @@
  */
 
 import { DEEP_LINK_PROTOCOL } from 'src/constants/brand.js'
-import { partiallySanitizeUnicode } from '../sanitization.js'
+import { partiallySanitizeUnicode } from '../text/sanitization.js'
 
 export { DEEP_LINK_PROTOCOL }
 

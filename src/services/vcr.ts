@@ -8,7 +8,7 @@ import isPlainObject from 'lodash-es/isPlainObject.js'
 import mapValues from 'lodash-es/mapValues.js'
 import { dirname, join } from 'path'
 import { addToTotalSessionCost } from 'src/cost-tracker.js'
-import { calculateUSDCost } from 'src/utils/modelCost.js'
+import { calculateUSDCost } from 'src/utils/model/modelCost.js'
 import type {
   AssistantMessage,
   Message,
@@ -16,12 +16,15 @@ import type {
   SystemAPIErrorMessage,
   UserMessage,
 } from '../types/message.js'
-import { getCwd } from '../utils/cwd.js'
-import { env } from '../utils/env.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../utils/envUtils.js'
-import { getErrnoCode } from '../utils/errors.js'
+import { getCwd } from '../utils/filesystem/cwd.js'
+import { env } from '../utils/config/env.js'
+import {
+  getClaudeConfigHomeDir,
+  isEnvTruthy,
+} from '../utils/config/envUtils.js'
+import { getErrnoCode } from '../utils/runtime/errors.js'
 import { normalizeMessagesForAPI } from '../utils/messages.js'
-import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
+import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
 
 function shouldUseVCR(): boolean {
   if (process.env.NODE_ENV === 'test') {

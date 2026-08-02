@@ -9,7 +9,7 @@ import {
 import { query } from '../query'
 import { getEmptyToolPermissionContext } from '../Tool'
 import type { AssistantMessage } from '../types/message'
-import { asSystemPrompt } from '../utils/systemPromptType'
+import { asSystemPrompt } from '../utils/session/systemPromptType'
 import {
   createAssistantAPIErrorMessage,
   createUserMessage,
@@ -19,12 +19,15 @@ import {
   enqueue,
   getCommandsByMaxPriority,
   resetCommandQueue,
-} from '../utils/messageQueueManager'
-import { getAutonomyFlowById, listAutonomyFlows } from '../utils/autonomyFlows'
+} from '../utils/session/messageQueueManager'
+import {
+  getAutonomyFlowById,
+  listAutonomyFlows,
+} from '../utils/agents/autonomyFlows'
 import {
   getAutonomyRunById,
   startManagedAutonomyFlowFromHeartbeatTask,
-} from '../utils/autonomyRuns'
+} from '../utils/agents/autonomyRuns'
 
 let tempDir = ''
 let originalProcessCwd = ''

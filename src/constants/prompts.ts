@@ -1,10 +1,10 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { type as osType, version as osVersion, release as osRelease } from 'os'
-import { env } from '../utils/env.js'
-import { getIsGit } from '../utils/git.js'
-import { getCwd } from '../utils/cwd.js'
+import { env } from '../utils/config/env.js'
+import { getIsGit } from '../utils/git/git.js'
+import { getCwd } from '../utils/filesystem/cwd.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
-import { getCurrentWorktreeSession } from '../utils/worktree.js'
+import { getCurrentWorktreeSession } from '../utils/git/worktree.js'
 import { getSessionStartDate } from './common.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import { isPoorModeActive } from '../commands/poor/poorMode.js'
@@ -35,7 +35,7 @@ import type {
 } from '../services/mcp/types.js'
 import { GLOB_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GlobTool/prompt.js'
 import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/prompt.js'
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
+import { hasEmbeddedSearchTools } from 'src/utils/tools/embeddedTools.js'
 import { ASK_USER_QUESTION_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/prompt.js'
 import {
   EXPLORE_AGENT,
@@ -46,11 +46,11 @@ import {
   isScratchpadEnabled,
   getScratchpadDir,
 } from '../utils/permissions/filesystem.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
+import { isEnvTruthy } from '../utils/config/envUtils.js'
 import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/replMode.js'
 import { feature } from 'bun:bundle'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
-import { shouldUseGlobalCacheScope } from '../utils/betas.js'
+import { shouldUseGlobalCacheScope } from '../utils/model/betas.js'
 import { isForkSubagentEnabled } from '@open-claude-code/builtin-tools/tools/AgentTool/forkSubagent.js'
 import {
   systemPromptSection,
@@ -59,11 +59,11 @@ import {
 } from './systemPromptSections.js'
 import { MONITOR_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/MonitorTool/constants.js'
 import { TICK_TAG } from './xml.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import { loadMemoryPrompt } from '../memdir/memdir.js'
-import { isUndercover } from '../utils/undercover.js'
+import { isUndercover } from '../utils/auth/undercover.js'
 import { getAntModelOverrideConfig } from '../utils/model/antModels.js'
-import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
+import { isMcpInstructionsDeltaEnabled } from '../utils/mcp/mcpInstructionsDelta.js'
 import { getCurrentMode } from 'src/modes/store.js'
 
 // Dead code elimination: conditional imports for feature-gated modules

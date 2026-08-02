@@ -4,7 +4,7 @@ import { PRODUCT_NAME } from 'src/constants/brand.js'
 import { occConfigDir } from 'src/config/paths.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
 const LEGACY_SERVICE_NAME = 'claude-code-local-vault'

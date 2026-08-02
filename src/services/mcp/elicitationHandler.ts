@@ -9,8 +9,8 @@ import {
   executeElicitationResultHooks,
   executeNotificationHooks,
 } from '../../utils/hooks.js'
-import { logMCPDebug, logMCPError } from '../../utils/log.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { logMCPDebug, logMCPError } from '../../utils/telemetry/log.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { currentMrtrRound } from './mrtrRounds.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

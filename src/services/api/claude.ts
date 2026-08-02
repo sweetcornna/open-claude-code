@@ -56,23 +56,23 @@ import {
   logAPIPrefix,
   splitSysPromptPrefix,
   toolToAPISchema,
-} from '../../utils/api.js'
-import { getOauthAccountInfo } from '../../utils/auth.js'
+} from '../../utils/telemetry/api.js'
+import { getOauthAccountInfo } from '../../utils/auth/auth.js'
 import {
   getBedrockExtraBodyParamsBetas,
   getMergedBetas,
   getModelBetas,
-} from '../../utils/betas.js'
-import { getOrCreateUserID } from '../../utils/config.js'
+} from '../../utils/model/betas.js'
+import { getOrCreateUserID } from '../../utils/config/config.js'
 import {
   CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
   getSonnet1mExpTreatmentEnabled,
-} from '../../utils/context.js'
-import { resolveAppliedEffort } from '../../utils/effort.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
-import { errorMessage } from '../../utils/errors.js'
-import { captureAPIRequest, logError } from '../../utils/log.js'
+} from '../../utils/session/context.js'
+import { resolveAppliedEffort } from '../../utils/model/effort.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
+import { captureAPIRequest, logError } from '../../utils/telemetry/log.js'
 import {
   createAssistantAPIErrorMessage,
   createUserMessage,
@@ -92,12 +92,12 @@ import {
 import {
   asSystemPrompt,
   type SystemPrompt,
-} from '../../utils/systemPromptType.js'
+} from '../../utils/session/systemPromptType.js'
 import {
   getBreakCacheMarkerPath,
   getBreakCacheAlwaysPath,
 } from '../../commands/break-cache/index.js'
-import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
+import { tokenCountFromLastAPIResponse } from '../../utils/session/tokens.js'
 import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
 import {
   currentLimits,
@@ -156,40 +156,46 @@ import {
   isAdvisorEnabled,
   isValidAdvisorModel,
   modelSupportsAdvisor,
-} from 'src/utils/advisor.js'
-import { getAgentContext } from 'src/utils/agentContext.js'
-import { isClaudeAISubscriber } from 'src/utils/auth.js'
+} from 'src/utils/agents/advisor.js'
+import { getAgentContext } from 'src/utils/agents/agentContext.js'
+import { isClaudeAISubscriber } from 'src/utils/auth/auth.js'
 import {
   modelSupportsStructuredOutputs,
   shouldIncludeFirstPartyOnlyBetas,
   shouldUseGlobalCacheScope,
-} from 'src/utils/betas.js'
+} from 'src/utils/model/betas.js'
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from 'src/utils/chromeDevtools/common.js'
 import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from 'src/utils/chromeDevtools/prompt.js'
-import { getMaxThinkingTokensForModel } from 'src/utils/context.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js'
-import { type EffortValue, modelSupportsEffort } from 'src/utils/effort.js'
+import { getMaxThinkingTokensForModel } from 'src/utils/session/context.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
+import {
+  type EffortValue,
+  modelSupportsEffort,
+} from 'src/utils/model/effort.js'
 import {
   isFastModeAvailable,
   isFastModeCooldown,
   isFastModeEnabled,
   isFastModeSupportedByModel,
-} from 'src/utils/fastMode.js'
-import { returnValue } from 'src/utils/generators.js'
-import { headlessProfilerCheckpoint } from 'src/utils/headlessProfiler.js'
-import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcpInstructionsDelta.js'
-import { calculateUSDCost } from 'src/utils/modelCost.js'
-import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
+} from 'src/utils/model/fastMode.js'
+import { returnValue } from 'src/utils/collections/generators.js'
+import { headlessProfilerCheckpoint } from 'src/utils/telemetry/headlessProfiler.js'
+import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcp/mcpInstructionsDelta.js'
+import { calculateUSDCost } from 'src/utils/model/modelCost.js'
+import {
+  endQueryProfile,
+  queryCheckpoint,
+} from 'src/utils/telemetry/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
   modelSupportsThinking,
   type ThinkingConfig,
-} from 'src/utils/thinking.js'
+} from 'src/utils/model/thinking.js'
 import {
   isDeferredToolsDeltaEnabled,
   isSearchExtraToolsEnabled,
-} from 'src/utils/searchExtraTools.js'
+} from 'src/utils/tools/searchExtraTools.js'
 import { API_MAX_MEDIA_PER_REQUEST } from '../../constants/apiLimits.js'
 import { ADVISOR_BETA_HEADER } from '../../constants/betas.js'
 import {
@@ -197,10 +203,10 @@ import {
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
-import { count } from '../../utils/array.js'
-import { insertBlockAfterToolResults } from '../../utils/contentArray.js'
-import { validateBoundedIntEnvVar } from '../../utils/envValidation.js'
-import { safeParseJSON } from '../../utils/json.js'
+import { count } from '../../utils/collections/array.js'
+import { insertBlockAfterToolResults } from '../../utils/collections/contentArray.js'
+import { validateBoundedIntEnvVar } from '../../utils/config/envValidation.js'
+import { safeParseJSON } from '../../utils/text/json.js'
 import { getInferenceProfileBackingModel } from '../../utils/model/bedrock.js'
 import {
   normalizeModelStringForAPI,
@@ -209,8 +215,8 @@ import {
 import {
   startSessionActivity,
   stopSessionActivity,
-} from '../../utils/sessionActivity.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+} from '../../utils/session/sessionActivity.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   isBetaTracingEnabled,
   type LLMRequestNewContext,

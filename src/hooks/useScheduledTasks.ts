@@ -7,20 +7,20 @@ import {
 } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
 import { isKairosCronEnabled } from '@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import type { Message } from '../types/message.js'
-import { getCwd } from '../utils/cwd.js'
-import { getCronJitterConfig } from '../utils/cronJitterConfig.js'
-import { createCronScheduler } from '../utils/cronScheduler.js'
-import { removeCronTasks, type CronTask } from '../utils/cronTasks.js'
+import { getCwd } from '../utils/filesystem/cwd.js'
+import { getCronJitterConfig } from '../utils/task/cronJitterConfig.js'
+import { createCronScheduler } from '../utils/task/cronScheduler.js'
+import { removeCronTasks, type CronTask } from '../utils/task/cronTasks.js'
 import {
   createAutonomyQueuedPrompt,
   createAutonomyQueuedPromptIfNoActiveSource,
   markAutonomyRunCancelled,
   markAutonomyRunFailed,
-} from '../utils/autonomyRuns.js'
-import { logForDebugging } from '../utils/debug.js'
-import { enqueuePendingNotification } from '../utils/messageQueueManager.js'
+} from '../utils/agents/autonomyRuns.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js'
 import { createScheduledTaskFireMessage } from '../utils/messages.js'
-import { WORKLOAD_CRON } from '../utils/workloadContext.js'
+import { WORKLOAD_CRON } from '../utils/session/workloadContext.js'
 import type { QueuedCommand } from '../types/textInputTypes.js'
 
 type Props = {

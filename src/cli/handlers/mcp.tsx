@@ -32,11 +32,11 @@ import {
 import type { ConfigScope, ScopedMcpServerConfig } from '../../services/mcp/types.js';
 import { describeMcpConfigFilePath, ensureConfigScope, getScopeLabel } from '../../services/mcp/utils.js';
 import { AppStateProvider } from '../../state/AppState.js';
-import { getCurrentProjectConfig, getGlobalConfig, saveCurrentProjectConfig } from '../../utils/config.js';
-import { isFsInaccessible } from '../../utils/errors.js';
-import { gracefulShutdown } from '../../utils/gracefulShutdown.js';
-import { safeParseJSON } from '../../utils/json.js';
-import { getPlatform } from '../../utils/platform.js';
+import { getCurrentProjectConfig, getGlobalConfig, saveCurrentProjectConfig } from '../../utils/config/config.js';
+import { isFsInaccessible } from '../../utils/runtime/errors.js';
+import { gracefulShutdown } from '../../utils/process/gracefulShutdown.js';
+import { safeParseJSON } from '../../utils/text/json.js';
+import { getPlatform } from '../../utils/process/platform.js';
 import { cliError, cliOk } from '../exit.js';
 
 async function checkMcpServerHealth(name: string, server: ScopedMcpServerConfig): Promise<string> {
@@ -332,7 +332,7 @@ export async function mcpAddFromDesktopHandler(options: { scope?: string }): Pro
       source: 'desktop' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
 
-    const { readClaudeDesktopMcpServers } = await import('../../utils/claudeDesktop.js');
+    const { readClaudeDesktopMcpServers } = await import('../../utils/deepLink/claudeDesktop.js');
     const servers = await readClaudeDesktopMcpServers();
 
     if (Object.keys(servers).length === 0) {

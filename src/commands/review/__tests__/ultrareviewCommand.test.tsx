@@ -28,14 +28,14 @@ afterAll(() => {
 });
 
 // Mock dependency chain before any subject import
-mock.module('src/utils/debug.ts', debugMock);
-mock.module('src/utils/log.ts', logMock);
+mock.module('src/utils/telemetry/debug.ts', debugMock);
+mock.module('src/utils/telemetry/log.ts', logMock);
 mock.module('src/services/analytics/index.js', () => ({
   logEvent: () => {},
 }));
 
 // Mock auth utilities
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   isClaudeAISubscriber: () => true,
   isTeamSubscriber: () => false,
   isEnterpriseSubscriber: () => false,
@@ -101,7 +101,7 @@ _ultrareviewAxiosHandle.stubs.isAxiosError = (e: unknown) =>
   typeof e === 'object' && e !== null && (e as { isAxiosError?: boolean }).isAxiosError === true;
 
 // Mock detectCurrentRepositoryWithHost
-mock.module('src/utils/detectRepository.js', () => ({
+mock.module('src/utils/git/detectRepository.js', () => ({
   detectCurrentRepositoryWithHost: async () => ({
     host: 'github.com',
     owner: 'testowner',

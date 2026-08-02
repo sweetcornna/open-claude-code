@@ -121,7 +121,7 @@ mockModulePreservingExports('../bridge.ts', {
 })
 
 const mockListSessionsImpl = mock(async () => [])
-mockModulePreservingExports('../../../utils/listSessionsImpl.ts', {
+mockModulePreservingExports('../../../utils/session/listSessionsImpl.ts', {
   listSessionsImpl: mockListSessionsImpl,
 })
 
@@ -145,7 +145,7 @@ mockModulePreservingExports('../../../utils/model/modelOptions.ts', {
 })
 
 const mockApplySafeEnvVars = mock(() => {})
-mockModulePreservingExports('../../../utils/managedEnv.ts', {
+mockModulePreservingExports('../../../utils/config/managedEnv.ts', {
   applySafeConfigEnvironmentVariables: mockApplySafeEnvVars,
 })
 
@@ -155,7 +155,7 @@ mockModulePreservingExports('../../../utils/settings/settings.ts', {
 })
 
 const mockDeserializeMessages = mock((msgs: unknown[]) => msgs)
-mockModulePreservingExports('../../../utils/conversationRecovery.ts', {
+mockModulePreservingExports('../../../utils/session/conversationRecovery.ts', {
   deserializeMessages: mockDeserializeMessages,
 })
 

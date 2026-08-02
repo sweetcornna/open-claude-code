@@ -5,27 +5,27 @@ import {
   getAutonomyFlowById,
   listAutonomyFlows,
   requestManagedAutonomyFlowCancel,
-} from '../../utils/autonomyFlows.js'
+} from '../../utils/agents/autonomyFlows.js'
 import {
   formatAutonomyRunsList,
   formatAutonomyRunsStatus,
   listAutonomyRuns,
   markAutonomyRunCancelled,
   resumeManagedAutonomyFlowPrompt,
-} from '../../utils/autonomyRuns.js'
+} from '../../utils/agents/autonomyRuns.js'
 import {
   formatAutonomyDeepStatus,
   formatAutonomyDeepStatusSections,
   type AutonomyDeepStatusSectionId,
-} from '../../utils/autonomyStatus.js'
+} from '../../utils/agents/autonomyStatus.js'
 import {
   AUTONOMY_USAGE,
   parseAutonomyArgs,
-} from '../../utils/autonomyCommandSpec.js'
+} from '../../utils/agents/autonomyCommandSpec.js'
 import {
   enqueuePendingNotification,
   removeByFilter,
-} from '../../utils/messageQueueManager.js'
+} from '../../utils/session/messageQueueManager.js'
 
 export function parseAutonomyLimit(raw?: string | number): number {
   const parsed = typeof raw === 'number' ? raw : Number.parseInt(raw ?? '', 10)

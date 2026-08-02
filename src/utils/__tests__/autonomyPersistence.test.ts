@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { cleanupTempDir, createTempDir } from '../../../tests/mocks/file-system'
 
 // Mock the lockfile module so tests don't need real file locks
-mock.module('../lockfile.js', () => ({
+mock.module('../filesystem/lockfile.js', () => ({
   lock: async (_file: string, _options?: unknown) => {
     return async () => {}
   },
@@ -26,7 +26,7 @@ afterEach(async () => {
 describe('withAutonomyPersistenceLock', () => {
   test('runs fn and returns its result', async () => {
     const { withAutonomyPersistenceLock } = await import(
-      '../autonomyPersistence'
+      '../agents/autonomyPersistence'
     )
     const result = await withAutonomyPersistenceLock(tempDir, async () => {
       return 42
@@ -36,7 +36,7 @@ describe('withAutonomyPersistenceLock', () => {
 
   test('creates the autonomy directory and lock file', async () => {
     const { withAutonomyPersistenceLock } = await import(
-      '../autonomyPersistence'
+      '../agents/autonomyPersistence'
     )
     await withAutonomyPersistenceLock(tempDir, async () => 'ok')
 
@@ -46,7 +46,7 @@ describe('withAutonomyPersistenceLock', () => {
 
   test('propagates errors from the inner function', async () => {
     const { withAutonomyPersistenceLock } = await import(
-      '../autonomyPersistence'
+      '../agents/autonomyPersistence'
     )
     await expect(
       withAutonomyPersistenceLock(tempDir, async () => {
@@ -59,7 +59,7 @@ describe('withAutonomyPersistenceLock', () => {
     const {
       getAutonomyPersistenceLockCountForTests,
       withAutonomyPersistenceLock,
-    } = await import('../autonomyPersistence')
+    } = await import('../agents/autonomyPersistence')
 
     expect(getAutonomyPersistenceLockCountForTests()).toBe(0)
 
@@ -76,7 +76,7 @@ describe('withAutonomyPersistenceLock', () => {
 
   test('serializes concurrent calls on the same rootDir', async () => {
     const { withAutonomyPersistenceLock } = await import(
-      '../autonomyPersistence'
+      '../agents/autonomyPersistence'
     )
     const order: number[] = []
 
@@ -103,7 +103,7 @@ describe('withAutonomyPersistenceLock', () => {
 
   test('allows parallel calls on different rootDirs', async () => {
     const { withAutonomyPersistenceLock } = await import(
-      '../autonomyPersistence'
+      '../agents/autonomyPersistence'
     )
     const tempDir2 = await createTempDir('autonomy-persistence-2-')
 

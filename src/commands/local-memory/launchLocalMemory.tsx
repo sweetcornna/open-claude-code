@@ -10,7 +10,7 @@ import {
   archiveStore,
   isValidStoreName,
 } from '../../services/SessionMemory/multiStore.js';
-import { isValidKey } from '../../utils/localValidate.js';
+import { isValidKey } from '../../utils/runtime/localValidate.js';
 import TextInput from '../../components/TextInput.js';
 import { LocalMemoryView } from './LocalMemoryView.js';
 import { parseLocalMemoryArgs } from './parseArgs.js';

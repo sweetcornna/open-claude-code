@@ -14,12 +14,12 @@ import type { TaskContext } from '../../Task.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { updateAgentSummary } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { AgentId } from '../../types/ids.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   type CacheSafeParams,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
-import { logError } from '../../utils/log.js'
+} from '../../utils/agents/forkedAgent.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getAgentTranscript } from '../../utils/sessionStorage.js'
 import { buildSummaryContext } from './summaryContext.js'
 import {

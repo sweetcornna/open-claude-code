@@ -29,16 +29,16 @@ import type {
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { asAgentId } from '../types/ids.js'
 import type { Message } from '../types/message.js'
-import { createAbortController } from '../utils/abortController.js'
+import { createAbortController } from '../utils/process/abortController.js'
 import {
   runWithAgentContext,
   type SubagentContext,
-} from '../utils/agentContext.js'
-import { registerCleanup } from '../utils/cleanupRegistry.js'
-import { logForDebugging } from '../utils/debug.js'
-import { logError } from '../utils/log.js'
-import { enqueuePendingNotification } from '../utils/messageQueueManager.js'
-import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
+} from '../utils/agents/agentContext.js'
+import { registerCleanup } from '../utils/process/cleanupRegistry.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { logError } from '../utils/telemetry/log.js'
+import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js'
+import { emitTaskTerminatedSdk } from '../utils/session/sdkEventQueue.js'
 import {
   getAgentTranscriptPath,
   recordSidechainTranscript,

@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { isMaxSubscriber, isProSubscriber, isTeamSubscriber } from '../utils/auth.js';
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
-import type { EffortLevel } from '../utils/effort.js';
+import { isMaxSubscriber, isProSubscriber, isTeamSubscriber } from '../utils/auth/auth.js';
+import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js';
+import type { EffortLevel } from '../utils/model/effort.js';
 import {
   convertEffortValueToLevel,
   getDefaultEffortForModel,
   getOpusDefaultEffortConfig,
   toPersistableEffort,
-} from '../utils/effort.js';
+} from '../utils/model/effort.js';
 import { parseUserSpecifiedModel } from '../utils/model/model.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
 import type { OptionWithDescription } from './CustomSelect/select.js';

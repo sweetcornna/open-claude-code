@@ -9,7 +9,7 @@ import {
   getSearchExtraToolsOrReadInfo,
   getToolUseIdsFromCollapsedGroup,
   hasAnyToolInProgress,
-} from '../utils/collapseReadSearch.js';
+} from '../utils/session/collapseReadSearch.js';
 import {
   type buildMessageLookups,
   EMPTY_STRING_SET,

@@ -37,7 +37,7 @@ import {
 // `registerElicitationHandler` logs through `utils/log.ts`, whose module-level
 // bootstrap side effects (realpathSync / randomUUID) do not belong in a
 // protocol test. Shared mock, per the repo's mock policy.
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 // Imported after the mock is installed: a static import is hoisted above it
 // and would bind the real logger. `import type` above is erased, so it does
