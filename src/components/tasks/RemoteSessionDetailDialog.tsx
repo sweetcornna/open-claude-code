@@ -18,7 +18,7 @@ import { formatDuration, truncateToWidth } from '../../utils/text/format.js';
 import { toInternalMessages } from '../../utils/messages/mappers.js';
 import { EMPTY_LOOKUPS, normalizeMessages } from '../../utils/messages.js';
 import { plural } from '../../utils/text/stringUtils.js';
-import { teleportResumeCodeSession } from '../../utils/teleport.js';
+import { teleportResumeCodeSession } from '../../utils/teleport/teleport.js';
 import { Select } from '../CustomSelect/select.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { Message } from '../Message.js';

@@ -38,7 +38,7 @@ import {
   saveWorktreeState,
 } from '../../utils/sessionStorage.js'
 import { reconstructContentReplacementState } from '../../utils/toolResultStorage.js'
-import { getCurrentWorktreeSession } from '../../utils/worktree.js'
+import { getCurrentWorktreeSession } from '../../utils/git/worktree.js'
 import { dirname } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/index.js'

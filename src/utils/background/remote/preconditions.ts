@@ -9,9 +9,9 @@ import {
 } from '../../auth/auth.js'
 import { getCwd } from '../../filesystem/cwd.js'
 import { logForDebugging } from '../../telemetry/debug.js'
-import { detectCurrentRepository } from '../../detectRepository.js'
+import { detectCurrentRepository } from '../../git/detectRepository.js'
 import { errorMessage } from '../../errors.js'
-import { findGitRoot, getIsClean } from '../../git.js'
+import { findGitRoot, getIsClean } from '../../git/git.js'
 import { getOAuthHeaders } from '../../teleport/api.js'
 import { fetchEnvironments } from '../../teleport/environments.js'
 

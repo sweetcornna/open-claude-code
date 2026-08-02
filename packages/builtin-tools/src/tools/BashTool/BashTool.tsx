@@ -30,12 +30,12 @@ import type { AgentId } from 'src/types/ids.js';
 import type { AssistantMessage } from 'src/types/message.js';
 import { parseForSecurity } from 'src/utils/bash/ast.js';
 import { splitCommand_DEPRECATED, splitCommandWithOperators } from 'src/utils/bash/commands.js';
-import { getAttributionTexts } from 'src/utils/attribution.js';
+import { getAttributionTexts } from 'src/utils/git/attribution.js';
 import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
 import { detectCodeIndexingFromCommand } from 'src/utils/codeIndexing.js';
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/config/envUtils.js';
-import { shouldIncludeGitInstructions } from 'src/utils/gitSettings.js';
+import { shouldIncludeGitInstructions } from 'src/utils/git/gitSettings.js';
 import { isENOENT, ShellError } from '@open-claude-code/tool-runtime/errors.js';
 import {
   detectFileEncoding,

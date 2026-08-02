@@ -40,7 +40,7 @@ import {
 import { updateDeepLinkTerminalPreference } from './utils/deepLink/terminalPreference.js';
 import { isEnvTruthy, isRunningOnHomespace } from './utils/config/envUtils.js';
 import { type FpsMetrics, FpsTracker } from './utils/telemetry/fpsTracker.js';
-import { updateGithubRepoPathMapping } from './utils/githubRepoPathMapping.js';
+import { updateGithubRepoPathMapping } from './utils/github/githubRepoPathMapping.js';
 import { applyConfigEnvironmentVariables } from './utils/config/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';
 import { getBaseRenderOptions } from './utils/terminal/renderOptions.js';

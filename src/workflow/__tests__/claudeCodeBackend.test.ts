@@ -69,7 +69,7 @@ const worktreeState = {
   removed: [] as string[],
   changesCalls: 0,
 }
-mock.module('src/utils/worktree.js', () => ({
+mock.module('src/utils/git/worktree.js', () => ({
   createAgentWorktree: async (slug: string) => {
     if (worktreeState.shouldThrow) throw new Error('wt boom')
     worktreeState.created.push(slug)

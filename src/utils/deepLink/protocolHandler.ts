@@ -17,7 +17,7 @@ import { logForDebugging } from '../telemetry/debug.js'
 import {
   filterExistingPaths,
   getKnownPathsForRepo,
-} from '../githubRepoPathMapping.js'
+} from '../github/githubRepoPathMapping.js'
 import { jsonStringify } from '../telemetry/slowOperations.js'
 import { readLastFetchTime } from './banner.js'
 

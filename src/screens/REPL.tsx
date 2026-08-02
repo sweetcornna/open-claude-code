@@ -250,7 +250,7 @@ import {
   fileHistoryEnabled,
   fileHistoryHasAnyChanges,
 } from '../utils/filesystem/fileHistory.js';
-import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
+import { type AttributionState, incrementPromptCount } from '../utils/git/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { isBgSession, updateSessionActivity } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
@@ -276,7 +276,7 @@ import {
 import { useIDEIntegration } from '../hooks/useIDEIntegration.js';
 import exit from '../commands/exit/index.js';
 import { ExitFlow } from '../components/ExitFlow.js';
-import { getCurrentWorktreeSession } from '../utils/worktree.js';
+import { getCurrentWorktreeSession } from '../utils/git/worktree.js';
 import { popAllEditable, enqueue, type SetAppState, getCommandQueueLength } from '../utils/messageQueueManager.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
 import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
@@ -349,7 +349,7 @@ import {
   getAutoRunIssueReasonText,
   getAutoRunCommand,
   type AutoRunIssueReason,
-} from '../utils/autoRunIssue.js';
+} from '../utils/github/autoRunIssue.js';
 import { TungstenLiveMonitor } from '@open-claude-code/builtin-tools/tools/TungstenTool/TungstenLiveMonitor.js';
 // WebBrowserPanel removed — browser-lite returns results inline via tool_result.
 // For full browser interaction use the Chrome DevTools MCP tools (--chrome).
@@ -916,7 +916,7 @@ export function REPL({
     if (process.env.USER_TYPE === 'ant') {
       void (async () => {
         // Wait for repo classification to settle (memoized, no-op if primed).
-        const { isInternalModelRepo } = await import('../utils/commitAttribution.js');
+        const { isInternalModelRepo } = await import('../utils/git/commitAttribution.js');
         await isInternalModelRepo();
         const { shouldShowUndercoverAutoNotice } = await import('../utils/auth/undercover.js');
         if (shouldShowUndercoverAutoNotice()) {

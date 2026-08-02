@@ -4,7 +4,7 @@ import { getProjectRoot } from '@open-claude-code/tool-runtime/bootstrapState.js
 import { buildMemoryPrompt, ensureMemoryDirExists } from 'src/memdir/memdir.js'
 import { getMemoryBaseDir } from 'src/memdir/paths.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { findCanonicalGitRoot } from 'src/utils/git.js'
+import { findCanonicalGitRoot } from 'src/utils/git/git.js'
 import { sanitizePath } from 'src/utils/filesystem/path.js'
 
 // Persistent agent memory scope: user config, project-shared, or project-local.

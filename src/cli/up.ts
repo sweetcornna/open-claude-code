@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { spawnSync } from 'child_process'
-import { findGitRoot } from '../utils/git.js'
+import { findGitRoot } from '../utils/git/git.js'
 
 /**
  * `claude up` — run the "# claude up" section from the nearest CLAUDE.md.

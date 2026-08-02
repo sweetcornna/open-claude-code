@@ -37,7 +37,7 @@ import { jsonStringify } from '../../utils/telemetry/slowOperations.js';
 import { appendTaskOutput, evictTaskOutput, getTaskOutputPath, initTaskOutput } from '../../utils/task/diskOutput.js';
 import { registerTask, updateTaskState } from '../../utils/task/framework.js';
 import { fetchSession } from '../../utils/teleport/api.js';
-import { archiveRemoteSession, pollRemoteSessionEvents } from '../../utils/teleport.js';
+import { archiveRemoteSession, pollRemoteSessionEvents } from '../../utils/teleport/teleport.js';
 import type { TodoList } from '../../utils/todo/types.js';
 import type { UltraplanPhase } from '../../utils/ultraplan/ccrSession.js';
 

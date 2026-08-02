@@ -68,7 +68,7 @@ import {
   getFsImplementation,
   safeResolvePath,
 } from './filesystem/fsOperations.js'
-import { findCanonicalGitRoot, findGitRoot } from './git.js'
+import { findCanonicalGitRoot, findGitRoot } from './git/git.js'
 import {
   executeInstructionsLoadedHooks,
   hasInstructionsLoadedHook,

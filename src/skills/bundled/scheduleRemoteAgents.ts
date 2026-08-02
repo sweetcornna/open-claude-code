@@ -10,8 +10,8 @@ import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   detectCurrentRepositoryWithHost,
   parseGitRemote,
-} from '../../utils/detectRepository.js'
-import { getRemoteUrl } from '../../utils/git.js'
+} from '../../utils/git/detectRepository.js'
+import { getRemoteUrl } from '../../utils/git/git.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   createDefaultCloudEnvironment,

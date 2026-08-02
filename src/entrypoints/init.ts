@@ -27,7 +27,7 @@ import {
   saveGlobalConfig,
 } from '../utils/config/config.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
-import { detectCurrentRepository } from '../utils/detectRepository.js'
+import { detectCurrentRepository } from '../utils/git/detectRepository.js'
 import { logForDiagnosticsNoPII } from '../utils/telemetry/diagLogs.js'
 import { initJetBrainsDetection } from '../utils/config/envDynamic.js'
 import { isEnvTruthy } from '../utils/config/envUtils.js'

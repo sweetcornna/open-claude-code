@@ -20,7 +20,7 @@ import { checkAndRefreshOAuthTokenIfNeeded } from '../utils/auth/auth.js';
 import { openBrowser } from '../utils/network/browser.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
 import { env } from '../utils/config/env.js';
-import { type GitRepoState, getGitState, getIsGit } from '../utils/git.js';
+import { type GitRepoState, getGitState, getIsGit } from '../utils/git/git.js';
 import { getAuthHeaders, getUserAgent } from '../utils/network/http.js';
 import { getInMemoryErrors, logError } from '../utils/telemetry/log.js';
 import { isEssentialTrafficOnly } from '../utils/auth/privacyLevel.js';

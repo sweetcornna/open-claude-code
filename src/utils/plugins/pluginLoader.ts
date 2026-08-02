@@ -73,7 +73,7 @@ import {
 } from '../process/execFileNoThrow.js'
 import { pathExists } from '../filesystem/file.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { gitExe } from '../git.js'
+import { gitExe } from '../git/git.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { logError } from '../telemetry/log.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'

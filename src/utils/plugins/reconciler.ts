@@ -13,7 +13,7 @@ import { getOriginalCwd } from '../../bootstrap/state.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { errorMessage } from '../errors.js'
 import { pathExists } from '../filesystem/file.js'
-import { findCanonicalGitRoot } from '../git.js'
+import { findCanonicalGitRoot } from '../git/git.js'
 import { logError } from '../telemetry/log.js'
 import {
   addMarketplaceSource,

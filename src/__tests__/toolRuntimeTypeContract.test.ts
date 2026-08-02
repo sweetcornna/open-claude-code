@@ -45,7 +45,7 @@ import type { AgentId } from 'src/types/ids.js'
 import type { FileAttributionState } from 'src/types/logs.js'
 import type { ToolProgressData } from 'src/types/tools.js'
 import type { DeepImmutable } from 'src/types/utils.js'
-import type { AttributionState } from 'src/utils/commitAttribution.js'
+import type { AttributionState } from 'src/utils/git/commitAttribution.js'
 import type {
   FileHistoryBackup,
   FileHistorySnapshot,

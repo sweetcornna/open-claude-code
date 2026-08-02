@@ -22,7 +22,7 @@ import {
   getCurrentWorktreeSession,
   keepWorktree,
   killTmuxSession,
-} from 'src/utils/worktree.js'
+} from 'src/utils/git/worktree.js'
 import { EXIT_WORKTREE_TOOL_NAME } from './constants.js'
 import { getExitWorktreeToolPrompt } from './prompt.js'
 import { renderToolResultMessage, renderToolUseMessage } from './UI.js'

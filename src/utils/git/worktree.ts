@@ -34,7 +34,7 @@ import {
   getBranch,
   getDefaultBranch,
   gitExe,
-} from '../git.js'
+} from './git.js'
 import {
   executeWorktreeCreateHook,
   executeWorktreeRemoveHook,
@@ -607,7 +607,7 @@ async function performPostCreationSetup(
   if (feature('COMMIT_ATTRIBUTION')) {
     const worktreeHooksDir =
       hooksPath === huskyPath ? join(worktreePath, '.husky') : undefined
-    void import('../postCommitAttribution.js')
+    void import('./postCommitAttribution.js')
       .then(m =>
         m
           .installPrepareCommitMsgHook(worktreePath, worktreeHooksDir)

@@ -15,7 +15,7 @@ import { clearConversation } from '../../commands/clear/conversation.js';
 import { createSystemMessage } from '../../utils/messages.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
 import { updateTaskState } from '../../utils/task/framework.js';
-import { archiveRemoteSession } from '../../utils/teleport.js';
+import { archiveRemoteSession } from '../../utils/teleport/teleport.js';
 import { getCwd } from '../../utils/filesystem/cwd.js';
 import { toRelativePath } from '../../utils/filesystem/path.js';
 import type { UUID } from 'crypto';

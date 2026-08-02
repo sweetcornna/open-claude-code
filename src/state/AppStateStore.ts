@@ -24,7 +24,7 @@ import type { DeepImmutable } from '../types/utils.js'
 import {
   type AttributionState,
   createEmptyAttributionState,
-} from '../utils/commitAttribution.js'
+} from '../utils/git/commitAttribution.js'
 import type { EffortValue } from '../utils/effort.js'
 import type { FileHistoryState } from '../utils/filesystem/fileHistory.js'
 import type { REPLHookContext } from '../utils/hooks/postSamplingHooks.js'

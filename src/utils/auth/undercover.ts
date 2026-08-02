@@ -21,7 +21,7 @@
  * function in this file reduces to a trivial return.
  */
 
-import { getRepoClassCached } from '../commitAttribution.js'
+import { getRepoClassCached } from '../git/commitAttribution.js'
 import { getGlobalConfig } from '../config/config.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 

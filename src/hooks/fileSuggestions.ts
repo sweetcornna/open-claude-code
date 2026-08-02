@@ -19,7 +19,7 @@ import { logForDebugging } from '../utils/telemetry/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { execFileNoThrowWithCwd } from '../utils/process/execFileNoThrow.js'
 import { getFsImplementation } from '../utils/filesystem/fsOperations.js'
-import { findGitRoot, gitExe } from '../utils/git.js'
+import { findGitRoot, gitExe } from '../utils/git/git.js'
 import {
   createBaseHookInput,
   executeFileSuggestionCommand,

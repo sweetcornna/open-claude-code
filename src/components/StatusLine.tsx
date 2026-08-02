@@ -40,7 +40,7 @@ import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
-import { getCurrentWorktreeSession } from '../utils/worktree.js';
+import { getCurrentWorktreeSession } from '../utils/git/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
 import { computeHitRate, tokenSignature } from '../utils/telemetry/cacheStats.js';
 import {

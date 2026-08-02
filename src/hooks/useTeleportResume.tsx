@@ -7,7 +7,7 @@ import {
 import type { TeleportRemoteResponse } from 'src/utils/conversationRecovery.js';
 import type { CodeSession } from 'src/utils/teleport/api.js';
 import { errorMessage, TeleportOperationError } from '../utils/errors.js';
-import { teleportResumeCodeSession } from '../utils/teleport.js';
+import { teleportResumeCodeSession } from '../utils/teleport/teleport.js';
 
 export type TeleportResumeError = {
   message: string;

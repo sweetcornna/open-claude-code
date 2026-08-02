@@ -29,7 +29,10 @@ import {
 import { logFileOperation } from 'src/utils/telemetry/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from 'src/utils/filesystem/fileRead.js'
 import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
-import { fetchSingleFileGitDiff, type ToolUseDiff } from 'src/utils/gitDiff.js'
+import {
+  fetchSingleFileGitDiff,
+  type ToolUseDiff,
+} from 'src/utils/git/gitDiff.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logError } from 'src/utils/telemetry/log.js'
 import { expandPath } from 'src/utils/filesystem/path.js'

@@ -15,7 +15,7 @@ import type { LocalJSXCommandCall } from '../../types/command.js';
 import type { LogOption } from '../../types/logs.js';
 import { agenticSessionSearch } from '../../utils/agenticSessionSearch.js';
 import { checkCrossProjectResume } from '../../utils/crossProjectResume.js';
-import { getWorktreePaths } from '../../utils/getWorktreePaths.js';
+import { getWorktreePaths } from '../../utils/git/getWorktreePaths.js';
 import { logError } from '../../utils/telemetry/log.js';
 import {
   getLastSessionLog,

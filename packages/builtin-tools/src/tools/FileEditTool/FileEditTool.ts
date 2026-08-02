@@ -36,7 +36,10 @@ import {
 } from 'src/utils/filesystem/fileRead.js'
 import { formatFileSize } from 'src/utils/text/format.js'
 import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
-import { fetchSingleFileGitDiff, type ToolUseDiff } from 'src/utils/gitDiff.js'
+import {
+  fetchSingleFileGitDiff,
+  type ToolUseDiff,
+} from 'src/utils/git/gitDiff.js'
 import { logError } from 'src/utils/telemetry/log.js'
 import { expandPath } from 'src/utils/filesystem/path.js'
 import {

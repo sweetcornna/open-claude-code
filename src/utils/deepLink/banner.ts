@@ -17,7 +17,7 @@ import { homedir } from 'os'
 import { join, sep } from 'path'
 import { formatNumber, formatRelativeTimeAgo } from '../text/format.js'
 import { getCommonDir } from '../git/gitFilesystem.js'
-import { getGitDir } from '../git.js'
+import { getGitDir } from '../git/git.js'
 
 const STALE_FETCH_WARN_MS = 7 * 24 * 60 * 60 * 1000
 

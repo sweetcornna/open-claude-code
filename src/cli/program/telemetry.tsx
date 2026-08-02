@@ -12,7 +12,7 @@ import { isAutoUpdaterDisabled } from 'src/utils/config/config.js';
 import { getContextWindowForModel } from 'src/utils/context.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { hasNodeOption } from 'src/utils/config/envUtils.js';
-import { getIsGit, getWorktreeCount } from 'src/utils/git.js';
+import { getIsGit, getWorktreeCount } from 'src/utils/git/git.js';
 import { getGhAuthStatus } from 'src/utils/github/ghAuthStatus.js';
 import { logError } from 'src/utils/telemetry/log.js';
 import { getDefaultMainLoopModel, parseUserSpecifiedModel } from 'src/utils/model/model.js';

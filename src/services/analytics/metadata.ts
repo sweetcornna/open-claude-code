@@ -25,7 +25,7 @@ import {
   isClaudeAISubscriber,
   getSubscriptionType,
 } from '../../utils/auth/auth.js'
-import { getRepoRemoteHash } from '../../utils/git.js'
+import { getRepoRemoteHash } from '../../utils/git/git.js'
 import {
   getWslVersion,
   getLinuxDistroInfo,
