@@ -286,3 +286,30 @@ export type PromptResponse = {
   prompt_response: string
   selected: string
 }
+
+/** Mirrors `src/context/notifications.tsx`. */
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'immediate'
+
+type BaseNotification = {
+  key: string
+  /** Keys of notifications this one invalidates. */
+  invalidates?: string[]
+  priority: NotificationPriority
+  timeoutMs?: number
+  /** Combine notifications sharing a key, like Array.reduce(). */
+  fold?: (accumulator: Notification, incoming: Notification) => Notification
+}
+
+/**
+ * Mirrors `src/context/notifications.tsx`.
+ *
+ * Reproduced in full rather than narrowed to the keys the tools happen to
+ * pass today. `addNotification` takes this type as a *parameter*, so the
+ * position is contravariant: the host's handler is only assignable to the
+ * contract's field if this declaration is a subtype of the host's. Dropping a
+ * member here would silently make that assignment illegal the first time a
+ * caller used it.
+ */
+export type Notification =
+  | (BaseNotification & { text: string; color?: ThemeColorName })
+  | (BaseNotification & { jsx: import('react').ReactNode })

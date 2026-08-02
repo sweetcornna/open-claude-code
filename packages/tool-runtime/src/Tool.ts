@@ -13,52 +13,60 @@
  * from `TOOL_DEFAULTS` and the five exported functions. A runtime edge back
  * into the host would re-create the cycle this package exists to break.
  *
- * WAVE C2 BURN-DOWN — IN PROGRESS. The `import type` edges back into src/
- * are erased at compile time, so they add no runtime edge and no startup
- * cost, but they are what still keeps tool-runtime from being a true leaf.
- * Each one has to move (or be inverted) before this package can stand alone.
+ * TYPE IMPORTS BACK INTO src/: ALSO NONE, as of wave C2, and none may be
+ * added either. This file used to carry ~22 `import type` edges back into the
+ * host. They were erased at compile time and so cost nothing at runtime, but
+ * they were what kept tool-runtime from being a true leaf: `tsc` and `madge`
+ * both still saw tool-runtime → src, so every host module that touched the
+ * Tool contract sat on a cycle. They are gone, by four different routes,
+ * because they were four different kinds of problem:
  *
- * Already burned down:
+ *  1. RE-DECLARED STRUCTURALLY in `./types/hostContracts.js` — the small,
+ *     closed types. Each is a copy, so each is pinned to its host original by
+ *     `src/__tests__/toolRuntimeTypeContract.test.ts`, which asserts *exact*
+ *     type identity at compile time; drift on either side fails typecheck.
  *
- *   src/constants/querySource.js  ─┐
- *   src/entrypoints/agentSdkTypes.js│
- *   src/types/ids.js               │ re-declared structurally in
- *   src/types/utils.js             ├─ ./types/hostContracts.js and pinned
- *   src/utils/permissions/denialTracking.js │ to the host definitions by
- *   src/utils/thinking.js          │ src/__tests__/toolRuntimeTypeContract
- *   src/utils/toolResultStorage.js─┘ .test.ts
+ *       QuerySource, SDKStatus, AgentId, DeepImmutable, ToolProgressData,
+ *       ThinkingConfig, DenialTrackingState, ContentReplacementState,
+ *       SpinnerMode, ThemeName, Notification, HookProgress, PromptRequest,
+ *       PromptResponse, AttributionState, FileHistoryState
  *
- *   src/types/message.js          → `@ant/model-provider` (leaf package that
- *   src/utils/systemPromptType.js    already owns these; re-pointing keeps
- *                                    exact type identity, nothing to drift)
- *   src/services/langfuse/index.js → `@langfuse/tracing` (third party)
+ *     `keyof Theme` became `ThemeColorName`: the contract names a palette
+ *     entry, it never reads one, so the key union is the honest shape. The
+ *     test pins it to `keyof Theme`.
  *
- *   src/types/tools.js            → dropped. Only ToolProgressData was ever
- *                                   used here; the seven per-tool progress
- *                                   aliases were dead imports.
+ *  2. RE-POINTED AT A LEAF that already owns the type. Strictly better than a
+ *     copy — same type, nothing to drift, nothing to assert:
  *
- * Still to burn down:
+ *       Message family, SystemPrompt  → `@ant/model-provider`
+ *       LangfuseSpan                  → `@langfuse/tracing`
+ *       ServerResource                → `Resource` from the MCP SDK, which
+ *                                       this file already imports
  *
- *   src/commands.js                        Command
- *   src/components/Spinner.js              SpinnerMode
- *   src/context/notifications.js           Notification
- *   src/hooks/useCanUseTool.js             CanUseToolFn
- *   src/services/mcp/types.js              MCPServerConnection, ServerResource
- *   src/state/AppState.js                  AppState
- *   src/types/hooks.js                     HookProgress, PromptRequest,
- *                                          PromptResponse
- *   src/utils/commitAttribution.js         AttributionState
- *   src/utils/fileHistory.js               FileHistoryState
- *   src/utils/fileStateCache.js            FileStateCache
- *   src/utils/theme.js                     Theme, ThemeName
+ *  3. LATE-BOUND through `./types/hostBindings.js` — the types too large to
+ *     copy honestly (AppState alone is ~52 fields over a ~30-type closure,
+ *     and is rebuilt wholesale by 62 of its 65 mutation sites). The host
+ *     binds its real types by module augmentation, so the contract still sees
+ *     exact host types while the import direction stays host → package. See
+ *     that file for the measurements and for the one trap it hides.
  *
- * Plus one sibling-package type edge, which is a reverse dependency
- * (builtin-tools already depends on this package) and so belongs on the same
- * burn-down list:
+ *       AppState, Command, MCPServerConnection, AgentDefinition,
+ *       AgentDefinitionsResult
  *
- *   @open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js
- *                                          AgentDefinition,
- *                                          AgentDefinitionsResult
+ *  4. MOVED IN, because the type was always part of this contract or could
+ *     not be mirrored at all:
+ *
+ *       CanUseToolFn    takes a Tool and a ToolUseContext; it was never
+ *                       really an import into the contract. Declared below.
+ *       FileStateCache  a class with a private field, hence nominal — no
+ *                       interface is ever assignable to it. The
+ *                       implementation moved to `./fileStateCache.js`, and
+ *                       `src/utils/fileStateCache.ts` is now a re-export
+ *                       barrel, exactly like `src/Tool.ts`.
+ *
+ * The seven per-tool progress aliases that used to come from
+ * `src/types/tools.js` (AgentToolProgress, BashProgress, …) were simply dead
+ * imports and were dropped.
  *
  * `./types/permissions.js` is already local to this package (wave A) and is
  * imported relatively.
@@ -67,15 +75,62 @@ import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/index.mjs'
-export type { ToolResultBlockParam }
+import type {
+  AssistantMessage,
+  AttachmentMessage,
+  Message,
+  ProgressMessage,
+  SystemLocalCommandMessage,
+  SystemMessage,
+  SystemPrompt,
+  UserMessage,
+} from '@ant/model-provider'
+import type { LangfuseSpan } from '@langfuse/tracing'
 import type {
   ElicitRequestURLParams,
   ElicitResult,
+  Resource,
 } from '@modelcontextprotocol/client'
 import type { UUID } from 'crypto'
 import type { z } from 'zod/v4'
-import type { Command } from 'src/commands.js'
-import type { ThinkingConfig } from './types/hostContracts.js'
+import type { FileStateCache } from './fileStateCache.js'
+import type {
+  AgentDefinition,
+  AgentDefinitionsResult,
+  AppState,
+  Command,
+  MCPServerConnection,
+} from './types/hostBindings.js'
+import type {
+  AgentId,
+  AttributionState,
+  ContentReplacementState,
+  DeepImmutable,
+  DenialTrackingState,
+  FileHistoryState,
+  HookProgress,
+  Notification,
+  PromptRequest,
+  PromptResponse,
+  QuerySource,
+  SDKStatus,
+  SpinnerMode,
+  ThemeColorName,
+  ThemeName,
+  ThinkingConfig,
+  ToolProgressData,
+} from './types/hostContracts.js'
+import type {
+  AdditionalWorkingDirectory,
+  PermissionDecision,
+  PermissionMode,
+  PermissionResult,
+  ToolPermissionRulesBySource,
+} from './types/permissions.js'
+
+export type { ToolResultBlockParam }
+// Re-exported for backwards compatibility.
+export type { ToolPermissionRulesBySource }
 
 export type ToolInputJSONSchema = {
   [x: string]: unknown
@@ -85,57 +140,12 @@ export type ToolInputJSONSchema = {
   }
 }
 
-import type { Notification } from 'src/context/notifications.js'
-import type {
-  MCPServerConnection,
-  ServerResource,
-} from 'src/services/mcp/types.js'
-import type {
-  AgentDefinition,
-  AgentDefinitionsResult,
-} from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import type {
-  AssistantMessage,
-  AttachmentMessage,
-  Message,
-  ProgressMessage,
-  SystemLocalCommandMessage,
-  SystemMessage,
-  UserMessage,
-} from '@ant/model-provider'
-// Import permission types from centralized location to break import cycles
-// Import PermissionResult from centralized location to break import cycles
-import type {
-  AdditionalWorkingDirectory,
-  PermissionDecision,
-  PermissionMode,
-  PermissionResult,
-} from './types/permissions.js'
-// Tool progress payloads. The seven per-tool aliases that used to be imported
-// alongside ToolProgressData (AgentToolProgress, BashProgress, MCPProgress,
-// REPLToolProgress, SkillToolProgress, TaskOutputProgress, WebSearchProgress)
-// were never referenced by this file and have been dropped.
-import type { SystemPrompt } from '@ant/model-provider'
-import type { LangfuseSpan } from '@langfuse/tracing'
-import type { AppState } from 'src/state/AppState.js'
-import type { FileStateCache } from './fileStateCache.js'
-import type {
-  AgentId,
-  AttributionState,
-  ContentReplacementState,
-  DeepImmutable,
-  DenialTrackingState,
-  FileHistoryState,
-  HookProgress,
-  PromptRequest,
-  PromptResponse,
-  QuerySource,
-  SDKStatus,
-  SpinnerMode,
-  ThemeColorName,
-  ThemeName,
-  ToolProgressData,
-} from './types/hostContracts.js'
+/**
+ * Mirrors `src/services/mcp/types.ts`. Exact by construction: `Resource` is
+ * the MCP SDK's own type, which this file already depends on, so there is no
+ * copy to keep in sync.
+ */
+type ServerResource = Resource & { server: string }
 
 export type QueryChainTracking = {
   chainId: string
@@ -162,12 +172,6 @@ export type SetToolJSXFn = (
     clearLocalJSX?: boolean
   } | null,
 ) => void
-
-// Import tool permission types from centralized location to break import cycles
-import type { ToolPermissionRulesBySource } from './types/permissions.js'
-
-// Re-export for backwards compatibility
-export type { ToolPermissionRulesBySource }
 
 // Apply DeepImmutable to the imported type
 export type ToolPermissionContext = DeepImmutable<{
