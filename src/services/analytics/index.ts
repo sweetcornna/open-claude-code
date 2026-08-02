@@ -8,6 +8,11 @@
  * The sink handles routing to Datadog and 1P event logging.
  */
 
+import {
+  registerAnalyticsHost,
+  type AnalyticsHost,
+} from '@open-claude-code/tool-runtime/analytics.js'
+
 /**
  * Marker type for verifying analytics metadata doesn't contain sensitive data
  *
@@ -171,3 +176,5 @@ export function _resetForTesting(): void {
   sink = null
   eventQueue.length = 0
 }
+
+registerAnalyticsHost({ logEvent } satisfies AnalyticsHost)

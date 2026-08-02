@@ -1,6 +1,10 @@
 import { GrowthBook } from '@growthbook/growthbook'
 import { isEqual, memoize } from 'lodash-es'
 import {
+  registerFeatureGateHost,
+  type FeatureGateHost,
+} from '@open-claude-code/tool-runtime/featureGate.js'
+import {
   getIsNonInteractiveSession,
   getSessionTrustAccepted,
 } from '../../bootstrap/state.js'
@@ -1260,3 +1264,8 @@ export function getDynamicConfig_CACHED_MAY_BE_STALE<T>(
 ): T {
   return getFeatureValue_CACHED_MAY_BE_STALE(configName, defaultValue)
 }
+
+registerFeatureGateHost({
+  getFeatureValue_CACHED_MAY_BE_STALE,
+  getFeatureValue_CACHED_WITH_REFRESH,
+} satisfies FeatureGateHost)
