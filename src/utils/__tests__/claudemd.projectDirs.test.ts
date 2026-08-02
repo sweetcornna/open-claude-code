@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { chmod, readdir } from 'node:fs/promises'
+import { chmod, readdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   resetStateForTests,
@@ -23,7 +23,7 @@ let tempDir = ''
 let configDir = ''
 
 beforeEach(async () => {
-  tempDir = await createTempDir('claudemd-project-dirs-')
+  tempDir = await realpath(await createTempDir('claudemd-project-dirs-'))
   configDir = join(tempDir, 'user-config')
   process.env.OCC_CONFIG_DIR = configDir
   occConfigDir.cache.clear?.()
