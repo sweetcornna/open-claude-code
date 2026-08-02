@@ -10,12 +10,12 @@ import {
 } from 'src/constants/apiLimits.js'
 import { hasBinaryExtension } from 'src/constants/files.js'
 import { memoryFreshnessNote } from 'src/memdir/memoryAge.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
-import { logEvent } from 'src/services/analytics/index.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
+import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   getFileExtensionForAnalytics,
-} from 'src/services/analytics/metadata.js'
+} from '@open-claude-code/tool-runtime/analytics.js'
 import {
   countTokensWithAPI,
   roughTokenCountEstimationForFileType,

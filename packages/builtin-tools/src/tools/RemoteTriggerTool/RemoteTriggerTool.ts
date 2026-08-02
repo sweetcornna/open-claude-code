@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { z } from 'zod/v4'
 import { getOauthConfig } from 'src/constants/oauth.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { getOrganizationUUID } from 'src/services/oauth/client.js'
 import { isPolicyAllowed } from 'src/services/policyLimits/index.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'

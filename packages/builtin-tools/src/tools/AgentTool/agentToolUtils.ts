@@ -11,7 +11,7 @@ import { startAgentSummarization } from 'src/services/AgentSummary/agentSummary.
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js'
+} from '@open-claude-code/tool-runtime/analytics.js'
 import { clearDumpState } from 'src/services/api/dumpPrompts.js'
 import type { AppState } from 'src/state/AppState.js'
 import type {

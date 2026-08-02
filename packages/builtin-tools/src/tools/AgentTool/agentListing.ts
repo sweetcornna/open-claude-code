@@ -4,7 +4,7 @@
  * Split out of prompt.ts so that module can stay a pure leaf: this file needs
  * the AgentDefinition type and a GrowthBook read, prompt.ts needs neither.
  */
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from 'src/utils/envUtils.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 

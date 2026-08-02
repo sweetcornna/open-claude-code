@@ -21,7 +21,7 @@ mock.module('src/services/AgentSummary/agentSummary.js', () => ({
   startAgentSummarization: noop,
 }))
 
-mock.module('src/services/analytics/index.js', () => ({
+mock.module('@open-claude-code/tool-runtime/analytics.js', () => ({
   logEvent: noop,
   logEventAsync: async () => {},
   stripProtoFields: (v: any) => v,
