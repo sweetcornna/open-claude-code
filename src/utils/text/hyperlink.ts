@@ -12,6 +12,28 @@ type HyperlinkOptions = {
 }
 
 /**
+ * Single decision point for "may we emit OSC 8 hyperlinks?".
+ *
+ * FORCE_HYPERLINK is honored FIRST: the upstream `supports-hyperlinks`
+ * library gets this right, but the @anthropic/ink wrapper consults a
+ * TERM_PROGRAM allowlist (iTerm2/kitty/ghostty/alacritty/Hyper) AFTER the
+ * library returns false — so FORCE_HYPERLINK=0 was silently overridden on
+ * exactly the terminals that render hyperlinks (official 2.1.217 parity
+ * fix). Every CLI-side OSC 8 emitter must route through this function.
+ *
+ * Known blind spot: ink's own <Link> component (ClickableImageRef) calls the
+ * wrapper internally and is not covered here; fixing that requires patching
+ * the vendored ink package.
+ */
+export function terminalSupportsHyperlinks(): boolean {
+  const force = process.env.FORCE_HYPERLINK
+  if (force !== undefined && force.trim() !== '') {
+    return force !== '0' && force.toLowerCase() !== 'false'
+  }
+  return supportsHyperlinks()
+}
+
+/**
  * Create a clickable hyperlink using OSC 8 escape sequences.
  * Falls back to plain text if the terminal doesn't support hyperlinks.
  *
@@ -26,7 +48,7 @@ export function createHyperlink(
   content?: string,
   options?: HyperlinkOptions,
 ): string {
-  const hasSupport = options?.supportsHyperlinks ?? supportsHyperlinks()
+  const hasSupport = options?.supportsHyperlinks ?? terminalSupportsHyperlinks()
   if (!hasSupport) {
     return url
   }
