@@ -8,7 +8,7 @@ import {
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import { errorMessage, isENOENT } from './errors.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 
 /**
  * Well-known token file locations in CCR. The Go environment-manager creates

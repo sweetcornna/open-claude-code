@@ -7,7 +7,7 @@ import {
   getClaudeAIOAuthTokens,
   isClaudeAISubscriber,
 } from '../../auth.js'
-import { getCwd } from '../../cwd.js'
+import { getCwd } from '../../filesystem/cwd.js'
 import { logForDebugging } from '../../debug.js'
 import { detectCurrentRepository } from '../../detectRepository.js'
 import { errorMessage } from '../../errors.js'

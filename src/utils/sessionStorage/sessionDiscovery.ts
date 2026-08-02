@@ -13,7 +13,7 @@ import {
 } from '../../types/logs.js'
 import { logForDebugging } from '../debug.js'
 import { extractTag } from '../messages.js'
-import { sanitizePath } from '../path.js'
+import { sanitizePath } from '../filesystem/path.js'
 import {
   extractJsonStringField,
   extractLastJsonStringField,

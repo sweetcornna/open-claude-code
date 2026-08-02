@@ -2,7 +2,7 @@ import { homedir } from 'os';
 import { relative } from 'path';
 import React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { getCwd } from '../../utils/cwd.js';
+import { getCwd } from '../../utils/filesystem/cwd.js';
 
 export function getRelativeMemoryPath(path: string): string {
   const homeDir = homedir();

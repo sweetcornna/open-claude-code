@@ -29,7 +29,7 @@ mock.module('src/bootstrap/state.js', () => ({
   sessionId: 'test-session',
   getCwd: () => '/test/project',
 }))
-mock.module('src/utils/cwd.js', () => ({
+mock.module('src/utils/filesystem/cwd.js', () => ({
   getCwd: () => '/test/project',
 }))
 mock.module('src/utils/git.js', () => ({

@@ -28,7 +28,7 @@ import {
 import { externalMetadataToAppState } from 'src/state/onChangeAppState.js'
 import { setMainLoopModelOverride, switchSession } from 'src/bootstrap/state.js'
 import { asSessionId } from 'src/types/ids.js'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { restoreSessionStateFromLog } from 'src/utils/sessionRestore.js'
 import { coordinatorModeModule } from './runtime.js'
 

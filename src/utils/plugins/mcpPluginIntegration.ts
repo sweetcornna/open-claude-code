@@ -8,7 +8,7 @@ import {
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage, isENOENT } from '../errors.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { jsonParse } from '../slowOperations.js'
 import {
   isMcpbSource,

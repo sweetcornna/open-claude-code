@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { extractGlobBaseDirectory } from '../glob'
+import { extractGlobBaseDirectory } from '../filesystem/glob'
 
 describe('extractGlobBaseDirectory', () => {
   test('extracts base dir from glob with *', () => {

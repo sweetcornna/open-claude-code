@@ -5,7 +5,7 @@ import { join } from 'path'
 // Test the pure fallback function directly — no mock.module needed,
 // so this test cannot pollute other tests in the same Bun process.
 // See CLAUDE.md "Mock 使用规范" for why we avoid business-module mocking.
-const { resolveBuiltinWithFallback } = await import('../ripgrep.js')
+const { resolveBuiltinWithFallback } = await import('../filesystem/ripgrep.js')
 
 // Real temp dir with a real (or removed) fake rg binary to control existsSync.
 const tmpDir = join(

@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import type { ContextData } from '../utils/analyzeContext.js';
 import { generateContextSuggestions } from '../utils/contextSuggestions.js';
-import { getDisplayPath } from '../utils/file.js';
+import { getDisplayPath } from '../utils/filesystem/file.js';
 import { formatTokens } from '../utils/text/format.js';
 import { getSourceDisplayName, type SettingSource } from '../utils/settings/constants.js';
 import { plural } from '../utils/text/stringUtils.js';

@@ -49,7 +49,7 @@ import type {
 } from 'src/types/message.js'
 import { createAttachmentMessage } from 'src/utils/attachments.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
-import { getDisplayPath } from 'src/utils/file.js'
+import { getDisplayPath } from 'src/utils/filesystem/file.js'
 import {
   createFileStateCacheWithSizeLimit,
   READ_FILE_STATE_CACHE_SIZE,

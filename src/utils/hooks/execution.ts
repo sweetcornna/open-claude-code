@@ -41,11 +41,11 @@ import chalk from 'chalk'
 import { createAttachmentMessage } from '../attachments.js'
 import { formatShellPrefixCommand } from '../bash/shellPrefix.js'
 import { createCombinedAbortSignal } from '../combinedAbortSignal.js'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
 import { errorMessage, getErrnoCode } from '../errors.js'
-import { pathExists } from '../file.js'
+import { pathExists } from '../filesystem/file.js'
 import { all } from '../collections/generators.js'
 import { logError } from '../log.js'
 import { enqueuePendingNotification } from '../messageQueueManager.js'
@@ -76,7 +76,10 @@ import {
   startHookSpan,
 } from '../telemetry/sessionTracing.js'
 import { isEnvTruthy } from '../envUtils.js'
-import { findGitBashPath, windowsPathToPosixPath } from '../windowsPaths.js'
+import {
+  findGitBashPath,
+  windowsPathToPosixPath,
+} from '../filesystem/windowsPaths.js'
 import { registerPendingAsyncHook } from './AsyncHookRegistry.js'
 import {
   getHookDefinitionsForTelemetry,

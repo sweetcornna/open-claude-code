@@ -9,7 +9,7 @@ import {
 } from './authFileDescriptor.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage } from './errors.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 
 /**
  * Read token via file descriptor, falling back to well-known file.

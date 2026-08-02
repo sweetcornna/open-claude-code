@@ -6,7 +6,7 @@
 // with the async-suffixed names.
 import { closeSync, fstatSync, openSync, readSync } from 'fs'
 import { dirname } from 'path'
-import { getFsImplementation } from '../fsOperations.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { LITE_READ_BUF_SIZE } from '../sessionStoragePortable.js'
 import { jsonStringify } from '../slowOperations.js'
 

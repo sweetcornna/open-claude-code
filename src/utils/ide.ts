@@ -18,7 +18,7 @@ import {
   execFileNoThrowWithCwd,
   execSyncWithDefaults_DEPRECATED,
 } from './execFileNoThrow.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import { getAncestorPidsAsync } from './genericProcessUtils.js'
 import { isJetBrainsPluginInstalledCached } from './jetbrains.js'
 import { logError } from './log.js'

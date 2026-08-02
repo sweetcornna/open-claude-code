@@ -28,7 +28,7 @@ import { renameRecordingForSession } from '../utils/asciicast.js';
 import { updateSessionName } from '../utils/concurrentSessions.js';
 import { loadConversationForResume } from '../utils/conversationRecovery.js';
 import { checkCrossProjectResume } from '../utils/crossProjectResume.js';
-import type { FileHistorySnapshot } from '../utils/fileHistory.js';
+import type { FileHistorySnapshot } from '../utils/filesystem/fileHistory.js';
 import { logError } from '../utils/log.js';
 import { createSystemMessage } from '../utils/messages.js';
 import {

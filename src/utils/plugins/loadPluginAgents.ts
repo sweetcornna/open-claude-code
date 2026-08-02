@@ -19,7 +19,10 @@ import {
   parseFrontmatter,
   parsePositiveIntFromFrontmatter,
 } from '../text/frontmatterParser.js'
-import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
+import {
+  getFsImplementation,
+  isDuplicatePath,
+} from '../filesystem/fsOperations.js'
 import {
   parseAgentToolsFromFrontmatter,
   parseSlashCommandToolsFromFrontmatter,

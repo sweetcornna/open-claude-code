@@ -40,7 +40,7 @@ import {
   modelSupportsStructuredOutputs,
   shouldUseGlobalCacheScope,
 } from './betas.js'
-import { getCwd } from './cwd.js'
+import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import { createUserMessage } from './messages.js'
@@ -55,11 +55,11 @@ import {
   persistFileSnapshotIfRemote,
 } from './plans.js'
 import { getPlatform } from './platform.js'
-import { countFilesRoundedRg } from './ripgrep.js'
+import { countFilesRoundedRg } from './filesystem/ripgrep.js'
 import { jsonStringify } from './slowOperations.js'
 import type { SystemPrompt } from './systemPromptType.js'
 import { getToolSchemaCache } from './toolSchemaCache.js'
-import { windowsPathToPosixPath } from './windowsPaths.js'
+import { windowsPathToPosixPath } from './filesystem/windowsPaths.js'
 import { zodToJsonSchema } from './text/zodToJsonSchema.js'
 
 // Extended BetaTool type with strict mode and defer_loading support

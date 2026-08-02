@@ -4,7 +4,7 @@ import type {
   Message as MessageType,
   HookResultMessage,
 } from '../../types/message.js'
-import type { FileHistorySnapshot } from '../../utils/fileHistory.js'
+import type { FileHistorySnapshot } from '../../utils/filesystem/fileHistory.js'
 import type { ContentReplacementRecord } from '../../utils/toolResultStorage.js'
 import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js'
 import type {

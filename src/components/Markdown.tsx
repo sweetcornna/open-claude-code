@@ -4,7 +4,7 @@ import { LRUCache } from 'lru-cache';
 import { useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, useTheme } from '@anthropic/ink';
 import { type CliHighlight, getCliHighlightPromise } from '../utils/text/cliHighlight.js';
-import { hashContent } from '../utils/hash.js';
+import { hashContent } from '../utils/filesystem/hash.js';
 import { configureMarked, formatToken } from '../utils/text/markdown.js';
 import { stripPromptXMLTags } from '../utils/messages.js';
 import { MarkdownTable } from './MarkdownTable.js';

@@ -87,7 +87,7 @@ export const DiscoverSkillsTool = buildTool({
     const { getSkillIndex, searchSkills } = await import(
       'src/services/skillSearch/localSearch.js'
     )
-    const { getCwd } = await import('src/utils/cwd.js')
+    const { getCwd } = await import('src/utils/filesystem/cwd.js')
     const cwd = getCwd()
 
     const index = await getSkillIndex(cwd)

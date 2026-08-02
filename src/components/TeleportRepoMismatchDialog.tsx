@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { getDisplayPath } from '../utils/file.js';
+import { getDisplayPath } from '../utils/filesystem/file.js';
 import { removePathFromRepo, validateRepoAtPath } from '../utils/githubRepoPathMapping.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from '@anthropic/ink';

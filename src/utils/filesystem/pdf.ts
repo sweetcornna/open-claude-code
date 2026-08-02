@@ -8,7 +8,7 @@ import {
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { formatFileSize } from '../text/format.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { getFsImplementation } from './fsOperations.js'
 import { getToolResultsDir } from '../toolResultStorage.js'
 
 export type PDFError = {

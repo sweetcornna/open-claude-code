@@ -12,7 +12,7 @@ import {
 } from 'src/services/analytics/index.js';
 import { type AppState, useAppState, useAppStateStore, useSetAppState } from 'src/state/AppState.js';
 import type { FooterItem } from 'src/state/AppStateStore.js';
-import { getCwd } from 'src/utils/cwd.js';
+import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { isQueuedCommandEditable, popAllEditable } from 'src/utils/messageQueueManager.js';
 import stripAnsi from 'strip-ansi';
 import { companionReservedColumns } from '../../buddy/CompanionSprite.js';

@@ -13,10 +13,10 @@ import {
   saveCurrentProjectConfig,
   saveGlobalConfig,
 } from '../../utils/config.js'
-import { getCwd } from '../../utils/cwd.js'
+import { getCwd } from '../../utils/filesystem/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { getErrnoCode } from '../../utils/errors.js'
-import { getFsImplementation } from '../../utils/fsOperations.js'
+import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
 import { safeParseJSON } from '../../utils/text/json.js'
 import { logError } from '../../utils/log.js'
 import { getPluginMcpServers } from '../../utils/plugins/mcpPluginIntegration.js'

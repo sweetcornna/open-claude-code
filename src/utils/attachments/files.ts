@@ -7,18 +7,18 @@ import {
   FileReadTool,
   MaxFileReadTokenExceededError,
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
-import { FileTooLargeError } from '../readFileInRange.js'
+import { FileTooLargeError } from '../filesystem/readFileInRange.js'
 import { countCharInString } from '../text/stringUtils.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { parse, relative } from 'path'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { getDefaultFileReadingLimits } from '@open-claude-code/builtin-tools/tools/FileReadTool/limits.js'
 import {
   getFileModificationTimeAsync,
   isFileWithinReadSizeLimit,
-} from '../file.js'
-import { isPDFExtension } from '../pdfUtils.js'
-import { getPDFPageCount } from '../pdf.js'
+} from '../filesystem/file.js'
+import { isPDFExtension } from '../filesystem/pdfUtils.js'
+import { getPDFPageCount } from '../filesystem/pdf.js'
 import { PDF_AT_MENTION_INLINE_THRESHOLD } from '../../constants/apiLimits.js'
 import { matchingRuleForInput } from '../permissions/filesystem.js'
 import { MAX_LINES_TO_READ } from '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js'

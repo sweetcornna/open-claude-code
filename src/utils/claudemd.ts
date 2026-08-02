@@ -58,13 +58,16 @@ import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
-import { normalizePathForComparison } from './file.js'
+import { normalizePathForComparison } from './filesystem/file.js'
 import { cacheKeys, type FileStateCache } from './fileStateCache.js'
 import {
   parseFrontmatter,
   splitPathInFrontmatter,
 } from './text/frontmatterParser.js'
-import { getFsImplementation, safeResolvePath } from './fsOperations.js'
+import {
+  getFsImplementation,
+  safeResolvePath,
+} from './filesystem/fsOperations.js'
 import { findCanonicalGitRoot, findGitRoot } from './git.js'
 import {
   executeInstructionsLoadedHooks,
@@ -73,7 +76,7 @@ import {
   type InstructionsMemoryType,
 } from './hooks.js'
 import type { MemoryType } from './memory/types.js'
-import { expandPath } from './path.js'
+import { expandPath } from './filesystem/path.js'
 import { pathInWorkingPath } from './permissions/filesystem.js'
 import { isSettingSourceEnabled } from './settings/constants.js'
 import { getInitialSettings } from './settings/settings.js'

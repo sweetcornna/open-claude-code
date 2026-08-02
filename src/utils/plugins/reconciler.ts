@@ -12,7 +12,7 @@ import { isAbsolute, resolve } from 'path'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
-import { pathExists } from '../file.js'
+import { pathExists } from '../filesystem/file.js'
 import { findCanonicalGitRoot } from '../git.js'
 import { logError } from '../log.js'
 import {

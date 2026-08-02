@@ -11,7 +11,7 @@ import { getClaudeConfigHomeDir } from './envUtils.js'
 import {
   posixPathToWindowsPath,
   windowsPathToPosixPath,
-} from './windowsPaths.js'
+} from './filesystem/windowsPaths.js'
 
 const IS_WINDOWS = process.platform === 'win32'
 

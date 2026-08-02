@@ -1,8 +1,8 @@
 import envPaths from 'env-paths'
 import { CACHE_NAMESPACE } from 'src/config/paths.js'
 import { join } from 'path'
-import { getFsImplementation } from '../fsOperations.js'
-import { djb2Hash } from '../hash.js'
+import { getFsImplementation } from './fsOperations.js'
+import { djb2Hash } from './hash.js'
 
 const paths = envPaths(CACHE_NAMESPACE)
 

@@ -69,7 +69,7 @@ import {
   isCompactBoundaryMessage,
   normalizeMessagesForAPI,
 } from '../../utils/messages.js'
-import { expandPath } from '../../utils/path.js'
+import { expandPath } from '../../utils/filesystem/path.js'
 import { getPlan, getPlanFilePath } from '../../utils/plans.js'
 import {
   isSessionActivityTrackingActive,

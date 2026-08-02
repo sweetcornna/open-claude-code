@@ -19,7 +19,7 @@ import {
   getOriginalCwd,
 } from '../../bootstrap/state.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
-import { sanitizePath } from '../../utils/path.js'
+import { sanitizePath } from '../../utils/filesystem/path.js'
 
 import * as childProcess from 'node:child_process'
 import { promisify } from 'node:util'

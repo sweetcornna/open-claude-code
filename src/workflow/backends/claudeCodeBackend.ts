@@ -20,7 +20,7 @@ import { getTokenCountFromUsage } from '../../utils/tokens.js'
 import { createHash } from 'node:crypto'
 import { createAgentId } from '../../utils/collections/uuid.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { runWithCwdOverride } from '../../utils/cwd.js'
+import { runWithCwdOverride } from '../../utils/filesystem/cwd.js'
 import {
   createAgentWorktree,
   hasWorktreeChanges,

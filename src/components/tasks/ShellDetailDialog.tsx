@@ -6,7 +6,7 @@ import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js';
 import { formatDuration, formatFileSize, truncateToWidth } from '../../utils/text/format.js';
-import { tailFile } from '../../utils/fsOperations.js';
+import { tailFile } from '../../utils/filesystem/fsOperations.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 

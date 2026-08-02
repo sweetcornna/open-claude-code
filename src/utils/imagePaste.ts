@@ -12,14 +12,17 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growt
 import { getImageProcessor } from '@open-claude-code/builtin-tools/tools/FileReadTool/imageProcessor.js'
 import { logForDebugging } from './debug.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
   detectImageFormatFromBase64,
   type ImageDimensions,
   maybeResizeAndDownsampleImageBuffer,
 } from './imageResizer.js'
 import { logError } from './log.js'
-import { CLIPBOARD_TEMP_PREFIX, generateTempFilePath } from './tempfile.js'
+import {
+  CLIPBOARD_TEMP_PREFIX,
+  generateTempFilePath,
+} from './filesystem/tempfile.js'
 
 // Native NSPasteboard reader. GrowthBook gate tengu_collage_kaleidoscope is
 // a kill switch (default on). Falls through to osascript when off.

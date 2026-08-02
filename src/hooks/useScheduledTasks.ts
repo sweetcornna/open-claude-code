@@ -7,7 +7,7 @@ import {
 } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
 import { isKairosCronEnabled } from '@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import type { Message } from '../types/message.js'
-import { getCwd } from '../utils/cwd.js'
+import { getCwd } from '../utils/filesystem/cwd.js'
 import { getCronJitterConfig } from '../utils/cronJitterConfig.js'
 import { createCronScheduler } from '../utils/cronScheduler.js'
 import { removeCronTasks, type CronTask } from '../utils/cronTasks.js'

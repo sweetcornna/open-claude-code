@@ -8,7 +8,7 @@
  */
 
 import { basename, posix, resolve, sep } from 'path'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { PS_TOKENIZER_DASH_CHARS } from 'src/utils/powershell/parser.js'
 
 /**

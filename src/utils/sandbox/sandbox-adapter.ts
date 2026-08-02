@@ -31,7 +31,7 @@ import {
   getOriginalCwd,
 } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
-import { expandPath } from '../path.js'
+import { expandPath } from '../filesystem/path.js'
 import { getPlatform, type Platform } from '../platform.js'
 import { settingsChangeDetector } from '../settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../settings/constants.js'
@@ -57,7 +57,7 @@ import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFe
 import { errorMessage } from '../errors.js'
 import { getClaudeTempDir } from '../permissions/filesystem.js'
 import type { PermissionRuleValue } from '../permissions/PermissionRule.js'
-import { ripgrepCommand } from '../ripgrep.js'
+import { ripgrepCommand } from '../filesystem/ripgrep.js'
 
 // Local copies to avoid circular dependency
 // (permissions.ts imports SandboxManager, bashPermissions.ts imports permissions.ts)

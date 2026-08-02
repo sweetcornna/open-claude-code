@@ -44,7 +44,7 @@ import {
   dequeueAllMatching,
   hasCommandsInQueue,
 } from 'src/utils/messageQueueManager.js'
-import { expandPath } from 'src/utils/path.js'
+import { expandPath } from 'src/utils/filesystem/path.js'
 import {
   getDefaultMainLoopModel,
   getMainLoopModel,

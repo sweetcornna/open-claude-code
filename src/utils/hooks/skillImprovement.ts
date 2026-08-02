@@ -19,7 +19,7 @@ import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { createAbortController } from '../abortController.js'
 import { count } from '../collections/array.js'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { toError } from '../errors.js'
 import { logError } from '../log.js'
 import {

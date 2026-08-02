@@ -4,11 +4,11 @@ import { Suspense, use, useMemo } from 'react';
 import { Box, NoSelect, Text } from '@anthropic/ink';
 import type { NotebookCell, NotebookCellType, NotebookContent } from '../../../types/notebook.js';
 import { intersperse } from '../../../utils/collections/array.js';
-import { getCwd } from '../../../utils/cwd.js';
+import { getCwd } from '../../../utils/filesystem/cwd.js';
 import { getPatchForDisplay } from '../../../utils/text/diff.js';
-import { getFsImplementation } from '../../../utils/fsOperations.js';
+import { getFsImplementation } from '../../../utils/filesystem/fsOperations.js';
 import { safeParseJSON } from '../../../utils/text/json.js';
-import { parseCellId } from '../../../utils/notebook.js';
+import { parseCellId } from '../../../utils/filesystem/notebook.js';
 import { HighlightedCode } from '../../HighlightedCode.js';
 import { StructuredDiff } from '../../StructuredDiff.js';
 

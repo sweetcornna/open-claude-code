@@ -3,7 +3,7 @@ import {
   FINGERPRINT_SALT,
   extractFirstMessageText,
   computeFingerprint,
-} from '../fingerprint'
+} from '../filesystem/fingerprint'
 
 describe('FINGERPRINT_SALT', () => {
   test("has expected value '59cf53e54c78'", () => {

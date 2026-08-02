@@ -13,7 +13,7 @@ import {
   fileHistoryCanRestore,
   fileHistoryEnabled,
   fileHistoryGetDiffStats,
-} from 'src/utils/fileHistory.js';
+} from 'src/utils/filesystem/fileHistory.js';
 import { logError } from 'src/utils/log.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text, Divider } from '@anthropic/ink';

@@ -11,7 +11,7 @@ import { open as fsOpen, readdir, realpath, stat } from 'fs/promises'
 import { join } from 'path'
 import { getClaudeConfigHomeDir } from './envUtils.js'
 import { getWorktreePathsPortable } from './getWorktreePathsPortable.js'
-import { djb2Hash } from './hash.js'
+import { djb2Hash } from './filesystem/hash.js'
 
 /** Size of the head/tail buffer for lite metadata reads. */
 export const LITE_READ_BUF_SIZE = 65536

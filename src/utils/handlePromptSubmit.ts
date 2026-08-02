@@ -19,11 +19,14 @@ import {
 } from '../types/textInputTypes.js'
 import { createAbortController } from './abortController.js'
 import type { PastedContent } from './config.js'
-import { getCwd } from './cwd.js'
+import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import type { EffortValue } from './effort.js'
-import type { FileHistoryState } from './fileHistory.js'
-import { fileHistoryEnabled, fileHistoryMakeSnapshot } from './fileHistory.js'
+import type { FileHistoryState } from './filesystem/fileHistory.js'
+import {
+  fileHistoryEnabled,
+  fileHistoryMakeSnapshot,
+} from './filesystem/fileHistory.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
 import { toError } from './errors.js'
 import { logError } from './log.js'

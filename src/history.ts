@@ -6,8 +6,8 @@ import type { HistoryEntry, PastedContent } from './utils/config.js'
 import { logForDebugging } from './utils/debug.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './utils/envUtils.js'
 import { getErrnoCode } from './utils/errors.js'
-import { readLinesReverse } from './utils/fsOperations.js'
-import { lock } from './utils/lockfile.js'
+import { readLinesReverse } from './utils/filesystem/fsOperations.js'
+import { lock } from './utils/filesystem/lockfile.js'
 import {
   hashPastedText,
   retrievePastedText,

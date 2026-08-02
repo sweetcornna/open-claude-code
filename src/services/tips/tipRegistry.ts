@@ -2,7 +2,7 @@ import { BIN_NAME } from 'src/constants/brand.js'
 import { PROJECT_DIR_NAME, occConfigPath } from 'src/config/paths.js'
 import chalk from 'chalk'
 import { logForDebugging } from 'src/utils/debug.js'
-import { fileHistoryEnabled } from 'src/utils/fileHistory.js'
+import { fileHistoryEnabled } from 'src/utils/filesystem/fileHistory.js'
 import {
   getInitialSettings,
   getSettings_DEPRECATED,

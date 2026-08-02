@@ -2,8 +2,8 @@ import { getRemoteServerUrl, getSessionId } from '../bootstrap/state.js'
 import { stringWidth } from '@anthropic/ink'
 import type { LogOption } from '../types/logs.js'
 import { getSubscriptionName, isClaudeAISubscriber } from './auth.js'
-import { getCwd } from './cwd.js'
-import { getDisplayPath } from './file.js'
+import { getCwd } from './filesystem/cwd.js'
+import { getDisplayPath } from './filesystem/file.js'
 import {
   truncate,
   truncateToWidth,

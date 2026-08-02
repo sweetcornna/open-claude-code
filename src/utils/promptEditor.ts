@@ -7,10 +7,10 @@ import { instances } from '@anthropic/ink'
 import type { PastedContent } from './config.js'
 import { classifyGuiEditor, getExternalEditor } from './editor.js'
 import { execSync_DEPRECATED } from './execSyncWrapper.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import { toIDEDisplayName } from './ide.js'
 import { writeFileSync_DEPRECATED } from './slowOperations.js'
-import { generateTempFilePath } from './tempfile.js'
+import { generateTempFilePath } from './filesystem/tempfile.js'
 
 // Map of editor command overrides (e.g., to add wait flags)
 const EDITOR_OVERRIDES: Record<string, string> = {

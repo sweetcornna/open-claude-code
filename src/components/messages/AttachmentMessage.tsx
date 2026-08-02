@@ -6,7 +6,7 @@ import { toInkColor } from '../../utils/ink.js';
 import type { Attachment } from 'src/utils/attachments.js';
 import type { NullRenderingAttachmentType } from './nullRenderingAttachments.js';
 import { useAppState } from '../../state/AppState.js';
-import { getDisplayPath } from 'src/utils/file.js';
+import { getDisplayPath } from 'src/utils/filesystem/file.js';
 import { formatFileSize } from 'src/utils/text/format.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { basename, sep } from 'path';

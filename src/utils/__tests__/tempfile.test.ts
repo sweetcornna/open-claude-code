@@ -7,7 +7,7 @@ import {
   SETTINGS_TEMP_PREFIX,
   SHARE_TEMP_PREFIX,
   TRANSCRIPT_TEMP_PREFIX,
-} from '../tempfile.js'
+} from '../filesystem/tempfile.js'
 
 test('default prompt paths use the occ namespace and do not collide', () => {
   const first = generateTempFilePath()

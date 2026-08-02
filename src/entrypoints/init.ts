@@ -52,7 +52,7 @@ import {
 import { configureGlobalAgents } from '../utils/proxy.js'
 import { isBetaTracingEnabled } from '../utils/telemetry/betaSessionTracing.js'
 import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
-import { setShellIfWindows } from '../utils/windowsPaths.js'
+import { setShellIfWindows } from '../utils/filesystem/windowsPaths.js'
 import { initSentry } from '../utils/sentry.js'
 import { initUser } from '../utils/user.js'
 import { initLangfuse, shutdownLangfuse } from '../services/langfuse/index.js'
@@ -240,7 +240,9 @@ export const init = memoize(async (): Promise<void> => {
     // Surface ripgrep fallback (e.g. Android/Termux) once per session.
     // Goes to stderr so it doesn't corrupt pipe-mode (`-p`) stdout.
     try {
-      const { getRipgrepStatus } = await import('../utils/ripgrep.js')
+      const { getRipgrepStatus } = await import(
+        '../utils/filesystem/ripgrep.js'
+      )
       const status = getRipgrepStatus()
       if (status.note) {
         process.stderr.write(`[ripgrep] ${status.note}\n`)

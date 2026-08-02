@@ -12,7 +12,7 @@ import {
   LEGACY_AGENT_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js'
 import { getAnthropicApiKeyWithSource } from '../auth.js'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { getFastModeState } from '../fastMode.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 

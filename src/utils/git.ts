@@ -4,11 +4,11 @@ import { open, readFile, realpath, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { basename, dirname, join, resolve, sep } from 'path'
 import { hasBinaryExtension, isBinaryContent } from '../constants/files.js'
-import { getCwd } from './cwd.js'
+import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
   getCachedBranch,
   getCachedDefaultBranch,

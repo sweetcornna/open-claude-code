@@ -20,7 +20,7 @@ import type {
   SDKControlInitializeResponse,
   StdoutMessage,
 } from 'src/entrypoints/sdk/controlTypes.js'
-import { getCwd } from 'src/utils/cwd.js'
+import { getCwd } from 'src/utils/filesystem/cwd.js'
 import {
   DEFAULT_OUTPUT_STYLE_NAME,
   getAllOutputStyles,
@@ -50,7 +50,7 @@ import {
   fileHistoryEnabled,
   fileHistoryGetDiffStats,
   fileHistoryRewind,
-} from 'src/utils/fileHistory.js'
+} from 'src/utils/filesystem/fileHistory.js'
 import { errorMessage } from 'src/utils/errors.js'
 import type { ToolPermissionContext } from 'src/Tool.js'
 import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'

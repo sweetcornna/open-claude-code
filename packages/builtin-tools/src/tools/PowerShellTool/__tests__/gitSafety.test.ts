@@ -3,7 +3,7 @@ import { mock, describe, expect, test } from 'bun:test'
 // Mock dependencies before import
 const mockCwd = '/Users/test/project'
 
-mock.module('src/utils/cwd.js', () => ({
+mock.module('src/utils/filesystem/cwd.js', () => ({
   getCwd: () => mockCwd,
 }))
 

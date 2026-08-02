@@ -16,7 +16,7 @@ import type {
   SystemAPIErrorMessage,
   UserMessage,
 } from '../types/message.js'
-import { getCwd } from '../utils/cwd.js'
+import { getCwd } from '../utils/filesystem/cwd.js'
 import { env } from '../utils/env.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../utils/envUtils.js'
 import { getErrnoCode } from '../utils/errors.js'

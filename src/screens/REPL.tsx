@@ -249,7 +249,7 @@ import {
   fileHistoryRewind,
   fileHistoryEnabled,
   fileHistoryHasAnyChanges,
-} from '../utils/fileHistory.js';
+} from '../utils/filesystem/fileHistory.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { isBgSession, updateSessionActivity } from '../utils/concurrentSessions.js';

@@ -32,7 +32,7 @@ import { getErrnoCode } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'
 import { which } from '../which.js'
-import { getUserBinDir, getXDGDataHome } from '../xdg.js'
+import { getUserBinDir, getXDGDataHome } from '../filesystem/xdg.js'
 
 export const MACOS_BUNDLE_ID = MACOS_DEEP_LINK_BUNDLE_ID
 const APP_NAME = `${DISPLAY_NAME} URL Handler`

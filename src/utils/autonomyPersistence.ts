@@ -1,7 +1,7 @@
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { join, resolve } from 'path'
-import { lock } from './lockfile.js'
+import { lock } from './filesystem/lockfile.js'
 
 const persistenceLocks = new Map<string, Promise<void>>()
 

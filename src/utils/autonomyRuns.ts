@@ -12,7 +12,7 @@ import {
   type AutonomyTriggerKind,
   type HeartbeatAuthorityTask,
 } from './autonomyAuthority.js'
-import { getCwd } from './cwd.js'
+import { getCwd } from './filesystem/cwd.js'
 import {
   DEFAULT_AUTONOMY_OWNER_KEY,
   getAutonomyFlowById,
@@ -31,7 +31,7 @@ import {
   retainActiveFirst,
   withAutonomyPersistenceLock,
 } from './autonomyPersistence.js'
-import { getFsImplementation } from './fsOperations.js'
+import { getFsImplementation } from './filesystem/fsOperations.js'
 import { isProcessRunning } from './genericProcessUtils.js'
 import { logError } from './log.js'
 

@@ -11,8 +11,8 @@ import { type AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../debug.js'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
 import { isFsInaccessible } from '../errors.js'
-import { getFsImplementation } from '../fsOperations.js'
-import { sanitizePath } from '../path.js'
+import { getFsImplementation } from '../filesystem/fsOperations.js'
+import { sanitizePath } from '../filesystem/path.js'
 
 export function getProjectsDir(): string {
   return join(getClaudeConfigHomeDir(), 'projects')

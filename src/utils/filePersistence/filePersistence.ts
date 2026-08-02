@@ -17,7 +17,7 @@ import {
   type FilesApiConfig,
   uploadSessionFiles,
 } from '../../services/api/filesApi.js'
-import { getCwd } from '../cwd.js'
+import { getCwd } from '../filesystem/cwd.js'
 import { errorMessage } from '../errors.js'
 import { logError } from '../log.js'
 import { getSessionIngressAuthToken } from '../sessionIngressAuth.js'
