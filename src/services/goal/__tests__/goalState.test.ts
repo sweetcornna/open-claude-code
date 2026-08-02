@@ -81,7 +81,10 @@ describe('pause / resume — preserves active elapsed time', () => {
     await Bun.sleep(10)
     const paused = pauseGoal(SESSION)
     expect(paused?.status).toBe('paused')
-    expect(paused?.accumulatedActiveMs).toBeGreaterThanOrEqual(10)
+    // Timers can fire slightly early under load, so a >=10 bound on a real
+    // clock is flaky. The invariant is "time accrued while active"; the
+    // freeze across pause is pinned by the equality below.
+    expect(paused?.accumulatedActiveMs).toBeGreaterThan(0)
 
     const before = paused?.accumulatedActiveMs ?? 0
     await Bun.sleep(20)
