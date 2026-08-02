@@ -1,11 +1,10 @@
 import type { UUID } from 'crypto'
 import {
+  type FileHandle,
   appendFile as fsAppendFile,
   open as fsOpen,
   mkdir,
-  readFile,
   stat,
-  writeFile,
 } from 'fs/promises'
 import { dirname, join } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
@@ -44,7 +43,7 @@ import {
   LITE_READ_BUF_SIZE,
 } from '../sessionStoragePortable.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../slowOperations.js'
 import type { ContentReplacementRecord } from '../toolResultStorage.js'
 import { MAX_CACHED_SESSION_FILES } from './constants.js'
 import {
@@ -82,9 +81,96 @@ const VERSION = typeof MACRO !== 'undefined' ? MACRO.VERSION : 'unknown'
  * marker. Kept in sync with sessionStoragePortable.ts — generic pattern avoids
  * an ever-growing allowlist that falls behind as new notification types ship.
  */
-// 50MB — prevents OOM in the tombstone slow path which reads + rewrites the
-// entire session file. Session files can grow to multiple GB (inc-3930).
-const MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024
+// 50MB — how far back from EOF removeMessageByUuid is willing to hunt for a
+// tombstoned entry. Session files can grow to multiple GB (inc-3930), and the
+// target is always a very recently appended entry, so a bounded walk back from
+// the end finds it or it is not worth finding.
+//
+// This used to bound the *file size* instead, because the fallback read the
+// whole file into a string, split it into lines, filtered and re-joined —
+// four copies of the document — and a multi-GB session would OOM. Files over
+// the limit had their tombstones silently dropped. The scan is now windowed,
+// so the guard moved to the only thing that still costs anything: distance
+// walked. Every file the old limit accepted is still fully covered (a <=50MB
+// file is entirely within 50MB of EOF), and large sessions now get their
+// tombstones applied instead of skipped.
+const MAX_TOMBSTONE_SCAN_BYTES = 50 * 1024 * 1024
+
+/**
+ * Absolute byte range of the line containing `at`. `end` is exclusive and
+ * includes the terminating newline, or is EOF for a final line written
+ * without one.
+ *
+ * Scans outward in windows rather than assuming the line fits in one, so a
+ * single huge entry (a large tool result) is handled without buffering it.
+ * 0x0a never appears inside a UTF-8 multi-byte sequence, so byte-scanning for
+ * line boundaries is correct even when a window starts mid-character.
+ */
+async function lineRangeAround(
+  fh: FileHandle,
+  size: number,
+  at: number,
+  scratch: Buffer,
+): Promise<{ start: number; end: number }> {
+  let start = 0
+  let pos = at
+  while (pos > 0) {
+    const chunkStart = Math.max(0, pos - scratch.length)
+    const len = pos - chunkStart
+    const { bytesRead } = await fh.read(scratch, 0, len, chunkStart)
+    if (bytesRead === 0) break
+    const nl = scratch.subarray(0, bytesRead).lastIndexOf(0x0a)
+    if (nl >= 0) {
+      start = chunkStart + nl + 1
+      break
+    }
+    pos = chunkStart
+  }
+
+  let end = size
+  pos = at
+  while (pos < size) {
+    const len = Math.min(scratch.length, size - pos)
+    const { bytesRead } = await fh.read(scratch, 0, len, pos)
+    if (bytesRead === 0) break
+    const nl = scratch.subarray(0, bytesRead).indexOf(0x0a)
+    if (nl >= 0) {
+      end = pos + nl + 1
+      break
+    }
+    pos += bytesRead
+  }
+
+  return { start, end }
+}
+
+/**
+ * Shift `[from, size)` down to `to` and truncate, deleting `[to, from)`.
+ *
+ * Copies in windows, so the transient is one buffer however much tail there
+ * is. Forward order is safe even when the ranges overlap: `to < from`, and
+ * each window is fully read before it is written back, so a write never
+ * clobbers source bytes that have not been read yet.
+ */
+async function spliceOutRange(
+  fh: FileHandle,
+  size: number,
+  to: number,
+  from: number,
+  scratch: Buffer,
+): Promise<void> {
+  let src = from
+  let dst = to
+  while (src < size) {
+    const len = Math.min(scratch.length, size - src)
+    const { bytesRead } = await fh.read(scratch, 0, len, src)
+    if (bytesRead === 0) break
+    await fh.write(scratch, 0, bytesRead, dst)
+    src += bytesRead
+    dst += bytesRead
+  }
+  await fh.truncate(dst)
+}
 
 export let project: Project | null = null
 
@@ -531,86 +617,80 @@ export class Project {
    * Remove a message from the transcript by UUID.
    * Used for tombstoning orphaned messages from failed streaming attempts.
    *
-   * The target is almost always the most recently appended entry, so we
-   * read only the tail, locate the line, and splice it out with a
-   * positional write + truncate instead of rewriting the whole file.
+   * The target is almost always the most recently appended entry, so this
+   * walks backward from EOF one window at a time, then splices the line out
+   * with a positional rewrite of the trailing bytes plus a truncate. In the
+   * common case the first window hits and the splice is a bare ftruncate.
+   *
+   * Nothing larger than a window plus one scratch buffer is ever held, so the
+   * cost is bounded by how far back the entry sits, not by the size of the
+   * session file. The previous fallback — read the whole file into a string,
+   * split into lines, filter, re-join — needed four copies of the document
+   * and so had to refuse files over 50MB outright, dropping those tombstones.
    */
   async removeMessageByUuid(targetUuid: UUID): Promise<void> {
     return this.trackWrite(async () => {
       if (this.sessionFile === null) return
       try {
-        let fileSize = 0
         const fh = await fsOpen(this.sessionFile, 'r+')
         try {
           const { size } = await fh.stat()
-          fileSize = size
           if (size === 0) return
 
-          const chunkLen = Math.min(size, LITE_READ_BUF_SIZE)
-          const tailStart = size - chunkLen
-          const buf = Buffer.allocUnsafe(chunkLen)
-          const { bytesRead } = await fh.read(buf, 0, chunkLen, tailStart)
-          const tail = buf.subarray(0, bytesRead)
-
           // Entries are serialized via JSON.stringify (no key-value
-          // whitespace). Search for the full `"uuid":"..."` pattern, not
-          // just the bare UUID, so we do not match the same value sitting
-          // in `parentUuid` of a child entry. UUIDs are pure ASCII so a
+          // whitespace). Search for the full `"uuid":"..."` pattern, not just
+          // the bare UUID, so we do not match the same value sitting in
+          // `parentUuid` / `logicalParentUuid` of a child entry, nor the UUID
+          // quoted inside message content — JSON escaping renders that as
+          // `\"uuid\":\"`, which does not match. UUIDs are pure ASCII, so a
           // byte-level search is correct.
-          const needle = `"uuid":"${targetUuid}"`
-          const matchIdx = tail.lastIndexOf(needle)
+          const needle = Buffer.from(`"uuid":"${targetUuid}"`)
+          const scratch = Buffer.allocUnsafe(LITE_READ_BUF_SIZE)
+          const scanFloor = Math.max(0, size - MAX_TOMBSTONE_SCAN_BYTES)
 
-          if (matchIdx >= 0) {
-            // 0x0a never appears inside a UTF-8 multi-byte sequence, so
-            // byte-scanning for line boundaries is safe even if the chunk
-            // starts mid-character.
-            const prevNl = tail.lastIndexOf(0x0a, matchIdx)
-            // If the preceding newline is outside our chunk and we did not
-            // read from the start of the file, the line is longer than the
-            // window - fall through to the slow path.
-            if (prevNl >= 0 || tailStart === 0) {
-              const lineStart = prevNl + 1 // 0 when prevNl === -1
-              const nextNl = tail.indexOf(0x0a, matchIdx + needle.length)
-              const lineEnd = nextNl >= 0 ? nextNl + 1 : bytesRead
+          let windowEnd = size
+          while (windowEnd > scanFloor) {
+            const windowStart = Math.max(
+              scanFloor,
+              windowEnd - LITE_READ_BUF_SIZE,
+            )
+            const { bytesRead } = await fh.read(
+              scratch,
+              0,
+              windowEnd - windowStart,
+              windowStart,
+            )
+            if (bytesRead === 0) break
 
-              const absLineStart = tailStart + lineStart
-              const afterLen = bytesRead - lineEnd
-              // Truncate first, then re-append the trailing lines. In the
-              // common case (target is the last entry) afterLen is 0 and
-              // this is a single ftruncate.
-              await fh.truncate(absLineStart)
-              if (afterLen > 0) {
-                await fh.write(tail, lineEnd, afterLen, absLineStart)
-              }
+            const matchIdx = scratch.subarray(0, bytesRead).lastIndexOf(needle)
+            if (matchIdx >= 0) {
+              const { start, end } = await lineRangeAround(
+                fh,
+                size,
+                windowStart + matchIdx,
+                scratch,
+              )
+              await spliceOutRange(fh, size, start, end, scratch)
               return
             }
+
+            if (windowStart === scanFloor) break
+            // Step back with an overlap of needle.length - 1 so an occurrence
+            // straddling the seam is still found by the next window.
+            windowEnd = windowStart + needle.length - 1
+          }
+
+          if (scanFloor > 0) {
+            logForDebugging(
+              `Skipping tombstone removal: entry not found within ` +
+                `${formatFileSize(MAX_TOMBSTONE_SCAN_BYTES)} of the end of a ` +
+                `${formatFileSize(size)} session file`,
+              { level: 'warn' },
+            )
           }
         } finally {
           await fh.close()
         }
-
-        // Slow path: target was not in the last 64KB. Rare - requires many
-        // large entries to have landed between the write and the tombstone.
-        if (fileSize > MAX_TOMBSTONE_REWRITE_BYTES) {
-          logForDebugging(
-            `Skipping tombstone removal: session file too large (${formatFileSize(fileSize)})`,
-            { level: 'warn' },
-          )
-          return
-        }
-        const content = await readFile(this.sessionFile, { encoding: 'utf-8' })
-        const lines = content.split('\n').filter((line: string) => {
-          if (!line.trim()) return true
-          try {
-            const entry = jsonParse(line)
-            return entry.uuid !== targetUuid
-          } catch {
-            return true // Keep malformed lines
-          }
-        })
-        await writeFile(this.sessionFile, lines.join('\n'), {
-          encoding: 'utf8',
-        })
       } catch {
         // Silently ignore errors - the file might not exist yet
       }
