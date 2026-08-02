@@ -1,19 +1,17 @@
 /**
- * Default mapping from Anthropic model names to OpenAI model names.
- * Used only when ANTHROPIC_DEFAULT_*_MODEL env vars are not set.
+ * Default OpenAI model per Anthropic capability family. Used only when no
+ * env override applies. Family matching (not an exact model-ID table) so new
+ * Anthropic model IDs keep resolving without maintenance here.
+ *
+ * Values mirror the ChatGPT/Codex tier constants in
+ * `src/utils/model/chatgptModels.ts` (frontier / balanced / fast) — this
+ * package is a leaf and cannot import them, so keep the two in sync when the
+ * frontier generation changes.
  */
-const DEFAULT_MODEL_MAP: Record<string, string> = {
-  'claude-sonnet-4-20250514': 'gpt-4o',
-  'claude-sonnet-4-5-20250929': 'gpt-4o',
-  'claude-sonnet-4-6': 'gpt-4o',
-  'claude-opus-4-20250514': 'o3',
-  'claude-opus-4-1-20250805': 'o3',
-  'claude-opus-4-5-20251101': 'o3',
-  'claude-opus-4-6': 'o3',
-  'claude-haiku-4-5-20251001': 'gpt-4o-mini',
-  'claude-3-5-haiku-20241022': 'gpt-4o-mini',
-  'claude-3-7-sonnet-20250219': 'gpt-4o',
-  'claude-3-5-sonnet-20241022': 'gpt-4o',
+const DEFAULT_MODEL_BY_FAMILY: Record<'haiku' | 'sonnet' | 'opus', string> = {
+  opus: 'gpt-5.6-sol',
+  sonnet: 'gpt-5.6-terra',
+  haiku: 'gpt-5.6-luna',
 }
 
 function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
@@ -30,7 +28,7 @@ function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
  * 1. OPENAI_MODEL env var (override all)
  * 2. OPENAI_DEFAULT_{FAMILY}_MODEL env var (e.g. OPENAI_DEFAULT_SONNET_MODEL)
  * 3. ANTHROPIC_DEFAULT_{FAMILY}_MODEL env var (backward compatibility)
- * 4. DEFAULT_MODEL_MAP lookup
+ * 4. DEFAULT_MODEL_BY_FAMILY (any model name containing haiku/sonnet/opus)
  * 5. Pass through original model name
  */
 export function resolveOpenAIModel(anthropicModel: string): string {
@@ -49,7 +47,9 @@ export function resolveOpenAIModel(anthropicModel: string): string {
     const anthropicEnvVar = `ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`
     const anthropicOverride = process.env[anthropicEnvVar]
     if (anthropicOverride) return anthropicOverride
+
+    return DEFAULT_MODEL_BY_FAMILY[family]
   }
 
-  return DEFAULT_MODEL_MAP[cleanModel] ?? cleanModel
+  return cleanModel
 }
