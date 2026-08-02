@@ -29,7 +29,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import type * as TR from '@open-claude-code/tool-runtime/types/hostContracts.js'
+import type { CanUseToolFn as ContractCanUseToolFn } from '@open-claude-code/tool-runtime/Tool.js'
 
+import type { CanUseToolFn as HostCanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { SpinnerMode } from 'src/components/Spinner.js'
 import type { QuerySource } from 'src/constants/querySource.js'
 import type { Notification } from 'src/context/notifications.js'
@@ -126,12 +128,23 @@ describe('tool-runtime host type contract', () => {
     expect(true).toBe(true)
   })
 
-  test('the Notification copy is usable wherever the host type is required', () => {
+  test('the Notification copy matches the host exactly', () => {
     // `addNotification` takes this as a parameter, so the position is
     // contravariant: the host's handler is assignable to the contract's field
     // only while the package's Notification is a subtype of the host's.
+    // Exactness is the stronger guarantee, and it currently holds.
+    assertExact<TR.Notification, Notification>(true)
     assertAssignableTo<TR.Notification, Notification>()
     assertAssignableTo<Notification, TR.Notification>()
+    expect(true).toBe(true)
+  })
+
+  test('CanUseToolFn matches the host declaration exactly', () => {
+    // This one is a copy in the other direction: the contract declares it (it
+    // takes a Tool and a ToolUseContext, so it cannot be imported from the
+    // host without a cycle), and `src/hooks/useCanUseTool.tsx` still declares
+    // its own for its callers. Two declarations, so the same drift risk.
+    assertExact<ContractCanUseToolFn, HostCanUseToolFn>(true)
     expect(true).toBe(true)
   })
 })
