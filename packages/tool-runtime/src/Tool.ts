@@ -75,7 +75,6 @@ import type {
 import type { UUID } from 'crypto'
 import type { z } from 'zod/v4'
 import type { Command } from 'src/commands.js'
-import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { ThinkingConfig } from './types/hostContracts.js'
 
 export type ToolInputJSONSchema = {
@@ -108,6 +107,7 @@ import type {
 // Import PermissionResult from centralized location to break import cycles
 import type {
   AdditionalWorkingDirectory,
+  PermissionDecision,
   PermissionMode,
   PermissionResult,
 } from './types/permissions.js'
@@ -115,27 +115,27 @@ import type {
 // alongside ToolProgressData (AgentToolProgress, BashProgress, MCPProgress,
 // REPLToolProgress, SkillToolProgress, TaskOutputProgress, WebSearchProgress)
 // were never referenced by this file and have been dropped.
-import type { ToolProgressData } from './types/hostContracts.js'
-import type { FileStateCache } from 'src/utils/fileStateCache.js'
-import type { DenialTrackingState } from './types/hostContracts.js'
 import type { SystemPrompt } from '@ant/model-provider'
-import type { ContentReplacementState } from './types/hostContracts.js'
-
-import type { SpinnerMode } from 'src/components/Spinner.js'
-import type { QuerySource } from './types/hostContracts.js'
-import type { SDKStatus } from './types/hostContracts.js'
-import type { AppState } from 'src/state/AppState.js'
 import type { LangfuseSpan } from '@langfuse/tracing'
+import type { AppState } from 'src/state/AppState.js'
+import type { FileStateCache } from './fileStateCache.js'
 import type {
+  AgentId,
+  AttributionState,
+  ContentReplacementState,
+  DeepImmutable,
+  DenialTrackingState,
+  FileHistoryState,
   HookProgress,
   PromptRequest,
   PromptResponse,
-} from 'src/types/hooks.js'
-import type { AgentId } from './types/hostContracts.js'
-import type { DeepImmutable } from './types/hostContracts.js'
-import type { AttributionState } from 'src/utils/commitAttribution.js'
-import type { FileHistoryState } from 'src/utils/fileHistory.js'
-import type { Theme, ThemeName } from 'src/utils/theme.js'
+  QuerySource,
+  SDKStatus,
+  SpinnerMode,
+  ThemeColorName,
+  ThemeName,
+  ToolProgressData,
+} from './types/hostContracts.js'
 
 export type QueryChainTracking = {
   chainId: string
@@ -412,6 +412,29 @@ export type ToolCallProgress<P extends ToolProgressData = ToolProgressData> = (
 export type AnyObject = z.ZodType<{ [key: string]: unknown }>
 
 /**
+ * The permission callback threaded into every `Tool.call`.
+ *
+ * Declared here rather than imported from `src/hooks/useCanUseTool.js`
+ * because it is mutually recursive with this file: the host declaration takes
+ * a `Tool` and a `ToolUseContext`, both of which are defined below. That made
+ * it the one burn-down entry that could never be satisfied by moving the type
+ * somewhere else — it is part of the Tool contract, so it belongs in the Tool
+ * contract. The host keeps its own identical declaration for its callers; the
+ * two are structurally the same function type, and the contract test pins
+ * them together.
+ */
+export type CanUseToolFn<
+  Input extends Record<string, unknown> = Record<string, unknown>,
+> = (
+  tool: Tool,
+  input: Input,
+  toolUseContext: ToolUseContext,
+  assistantMessage: AssistantMessage,
+  toolUseID: string,
+  forceDecision?: PermissionDecision<Input>,
+) => Promise<PermissionDecision<Input>>
+
+/**
  * Checks if a tool matches the given name (primary name or alias).
  */
 export function toolMatchesName(
@@ -593,7 +616,7 @@ export type Tool<
   userFacingName(input: Partial<z.infer<Input>> | undefined): string
   userFacingNameBackgroundColor?(
     input: Partial<z.infer<Input>> | undefined,
-  ): keyof Theme | undefined
+  ): ThemeColorName | undefined
   /**
    * Transparent wrappers (e.g. REPL) delegate all rendering to their progress
    * handler, which emits native-looking blocks for each inner tool call.
