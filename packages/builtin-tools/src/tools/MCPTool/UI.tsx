@@ -12,7 +12,7 @@ import type { ProgressMessage } from 'src/types/message.js';
 import type { MCPProgress } from 'src/types/tools.js';
 import { formatNumber } from 'src/utils/text/format.js';
 
-import { getContentSizeEstimate, type MCPToolResult } from 'src/utils/mcpValidation.js';
+import { getContentSizeEstimate, type MCPToolResult } from 'src/utils/mcp/mcpValidation.js';
 import { jsonParse, jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js';
 import type { inputSchema } from './MCPTool.js';
 

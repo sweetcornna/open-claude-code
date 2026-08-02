@@ -12,7 +12,7 @@ import {
 import {
   getStoredChangelogFromMemory,
   parseChangelog,
-} from '../releaseNotes.js'
+} from '../update/releaseNotes.js'
 import { gt } from '../text/semver.js'
 import { loadMessageLogs } from '../sessionStorage.js'
 import { getInitialSettings } from '../settings/settings.js'

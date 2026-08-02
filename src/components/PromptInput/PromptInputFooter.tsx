@@ -13,7 +13,7 @@ import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { ToolPermissionContext } from '../../Tool.js';
 import type { Message } from '../../types/message.js';
 import type { PromptInputMode, VimMode } from '../../types/textInputTypes.js';
-import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
+import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import { isUndercover } from '../../utils/undercover.js';
 import { CoordinatorTaskPanel, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';

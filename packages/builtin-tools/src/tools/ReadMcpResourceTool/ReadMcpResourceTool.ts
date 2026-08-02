@@ -6,7 +6,7 @@ import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   getBinaryBlobSavedMessage,
   persistBinaryContent,
-} from 'src/utils/mcpOutputStorage.js'
+} from 'src/utils/mcp/mcpOutputStorage.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { isOutputLineTruncated } from 'src/utils/terminal/terminal.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'

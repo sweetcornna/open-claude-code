@@ -4,7 +4,7 @@ import { Dialog } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
 import { BIN_NAME } from '../../constants/brand.js';
 import { useAppState } from '../../state/AppState.js';
-import { openBrowser } from '../../utils/browser.js';
+import { openBrowser } from '../../utils/network/browser.js';
 import type { ChromeDetection } from '../../utils/chromeDevtools/chromeVersion.js';
 import { detectChrome } from '../../utils/chromeDevtools/chromeVersion.js';
 import {

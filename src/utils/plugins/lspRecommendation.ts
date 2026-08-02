@@ -11,7 +11,7 @@
  */
 
 import { extname } from 'path'
-import { isBinaryInstalled } from '../binaryCheck.js'
+import { isBinaryInstalled } from '../update/binaryCheck.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { isPluginInstalled } from './installedPluginsManager.js'

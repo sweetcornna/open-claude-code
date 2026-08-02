@@ -16,7 +16,7 @@ import { calculateTokenWarningState } from '../../services/compact/autoCompact.j
 import type { MCPServerConnection } from '../../services/mcp/types.js';
 import type { Message } from '../../types/message.js';
 import { getApiKeyHelperElapsedMs, getConfiguredApiKeyHelper, getSubscriptionType } from '../../utils/auth.js';
-import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
+import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { getExternalEditor } from '../../utils/terminal/editor.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { formatDuration } from '../../utils/text/format.js';

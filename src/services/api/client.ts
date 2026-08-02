@@ -10,10 +10,10 @@ import {
   refreshAndGetAwsCredentials,
   refreshGcpCredentialsIfNeeded,
 } from 'src/utils/auth.js'
-import { getUserAgent } from 'src/utils/http.js'
+import { getUserAgent } from 'src/utils/network/http.js'
 import { getSmallFastModel } from 'src/utils/model/model.js'
 import { isDirectAnthropicApi } from 'src/utils/model/providers.js'
-import { getProxyFetchOptions } from 'src/utils/proxy.js'
+import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import {
   getIsNonInteractiveSession,
   getSessionId,

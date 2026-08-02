@@ -59,7 +59,7 @@ import type { Message } from '../../types/message.js';
 import type { BaseTextInputProps, PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { count } from '../../utils/collections/array.js';
-import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
+import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { Cursor } from '../../utils/terminal/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config.js';
 import { logForDebugging } from '../../utils/debug.js';

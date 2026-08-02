@@ -3,7 +3,7 @@ import { Agent as HttpsAgent } from 'https'
 import memoize from 'lodash-es/memoize.js'
 import type * as tls from 'tls'
 import type * as undici from 'undici'
-import { getCACertificates } from '../caCerts.js'
+import { getCACertificates } from './caCerts.js'
 import { logForDebugging } from '../debug.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 

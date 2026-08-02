@@ -20,10 +20,13 @@ import {
   isAnthropicAuthEnabled,
 } from '../utils/auth.js'
 import { logForDebugging } from '../utils/debug.js'
-import { getUserAgent } from '../utils/http.js'
+import { getUserAgent } from '../utils/network/http.js'
 import { logError } from '../utils/log.js'
-import { getWebSocketTLSOptions } from '../utils/mtls.js'
-import { getWebSocketProxyAgent, getWebSocketProxyUrl } from '../utils/proxy.js'
+import { getWebSocketTLSOptions } from '../utils/network/mtls.js'
+import {
+  getWebSocketProxyAgent,
+  getWebSocketProxyUrl,
+} from '../utils/network/proxy.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 
 const KEEPALIVE_MSG = '{"type":"KeepAlive"}'

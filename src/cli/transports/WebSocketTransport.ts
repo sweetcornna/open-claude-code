@@ -6,11 +6,11 @@ import { logForDebugging } from '../../utils/debug.js'
 import { rcLog } from '../../utils/rcDebugLog.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
-import { getWebSocketTLSOptions } from '../../utils/mtls.js'
+import { getWebSocketTLSOptions } from '../../utils/network/mtls.js'
 import {
   getWebSocketProxyAgent,
   getWebSocketProxyUrl,
-} from '../../utils/proxy.js'
+} from '../../utils/network/proxy.js'
 import {
   registerSessionActivityCallback,
   unregisterSessionActivityCallback,

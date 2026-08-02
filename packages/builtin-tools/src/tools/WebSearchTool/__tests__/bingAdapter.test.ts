@@ -336,7 +336,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 
@@ -354,7 +354,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 
@@ -388,7 +388,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 
@@ -417,7 +417,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 
@@ -446,7 +446,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 
@@ -472,7 +472,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: (e: any) => e?.__CANCEL__ === true,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 
@@ -494,7 +494,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 
@@ -510,7 +510,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/http', () => ({
+    mock.module('src/utils/network/http', () => ({
       getWebFetchUserAgent: () => 'TestAgent/1.0',
     }))
 

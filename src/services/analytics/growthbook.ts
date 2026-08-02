@@ -16,7 +16,7 @@ import {
 } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { toError } from '../../utils/errors.js'
-import { getAuthHeaders } from '../../utils/http.js'
+import { getAuthHeaders } from '../../utils/network/http.js'
 import { logError } from '../../utils/log.js'
 import { createSignal } from '../../utils/process/signal.js'
 import { jsonStringify } from '../../utils/slowOperations.js'

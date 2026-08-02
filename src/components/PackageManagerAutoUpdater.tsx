@@ -3,7 +3,12 @@ import { useState } from 'react';
 import { BIN_NAME } from 'src/constants/brand.js';
 import { useInterval } from 'usehooks-ts';
 import { Text } from '@anthropic/ink';
-import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
+import {
+  type AutoUpdaterResult,
+  getLatestVersion,
+  getMaxVersion,
+  shouldSkipVersion,
+} from '../utils/update/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { gt, gte } from '../utils/text/semver.js';

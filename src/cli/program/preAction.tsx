@@ -23,7 +23,7 @@ import { loadRemoteManagedSettings } from 'src/services/remoteManagedSettings/in
 import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { clearPluginCache } from 'src/utils/plugins/pluginLoader.js';
-import { migrateChangelogFromConfig } from 'src/utils/releaseNotes.js';
+import { migrateChangelogFromConfig } from 'src/utils/update/releaseNotes.js';
 import { ensureKeychainPrefetchCompleted } from 'src/utils/secureStorage/keychainPrefetch.js';
 import { ensureMdmSettingsLoaded } from 'src/utils/settings/mdm/settings.js';
 import { profileCheckpoint } from 'src/utils/startupProfiler.js';

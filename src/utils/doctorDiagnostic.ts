@@ -3,7 +3,7 @@ import { readFile, realpath } from 'fs/promises'
 import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
 import { occConfigPath } from 'src/config/paths.js'
 import { join, posix, win32 } from 'path'
-import { checkGlobalInstallPermissions } from './autoUpdater.js'
+import { checkGlobalInstallPermissions } from './update/autoUpdater.js'
 import { isInBundledMode } from './bundledMode.js'
 import {
   formatAutoUpdaterDisabledReason,
@@ -18,7 +18,7 @@ import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
   isRunningFromLocalInstallation,
   localInstallationExists,
-} from './localInstaller.js'
+} from './update/localInstaller.js'
 import {
   detectApk,
   detectAsdf,

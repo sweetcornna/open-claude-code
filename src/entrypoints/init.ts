@@ -17,8 +17,8 @@ import {
   isEligibleForRemoteManagedSettings,
   waitForRemoteManagedSettingsToLoad,
 } from '../services/remoteManagedSettings/index.js'
-import { preconnectAnthropicApi } from '../utils/apiPreconnect.js'
-import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
+import { preconnectAnthropicApi } from '../utils/network/apiPreconnect.js'
+import { applyExtraCACertsFromConfig } from '../utils/network/caCertsConfig.js'
 import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import {
   enableConfigs,
@@ -41,7 +41,7 @@ import {
   applyConfigEnvironmentVariables,
   applySafeConfigEnvironmentVariables,
 } from '../utils/managedEnv.js'
-import { configureGlobalMTLS } from '../utils/mtls.js'
+import { configureGlobalMTLS } from '../utils/network/mtls.js'
 import {
   ensureScratchpadDir,
   isScratchpadEnabled,
@@ -49,7 +49,7 @@ import {
 // initializeTelemetry is loaded lazily via import() in setMeterState() to defer
 // ~400KB of OpenTelemetry + protobuf modules until telemetry is actually initialized.
 // gRPC exporters (~700KB via @grpc/grpc-js) are further lazy-loaded within instrumentation.ts.
-import { configureGlobalAgents } from '../utils/proxy.js'
+import { configureGlobalAgents } from '../utils/network/proxy.js'
 import { isBetaTracingEnabled } from '../utils/telemetry/betaSessionTracing.js'
 import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
 import { setShellIfWindows } from '../utils/filesystem/windowsPaths.js'

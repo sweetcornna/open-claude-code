@@ -11,7 +11,7 @@ import {
   getMcpInstructionsDelta,
   isMcpInstructionsDeltaEnabled,
   type ClientSideInstruction,
-} from '../mcpInstructionsDelta.js'
+} from '../mcp/mcpInstructionsDelta.js'
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from '../chromeDevtools/common.js'
 import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from '../chromeDevtools/prompt.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'

@@ -10,7 +10,7 @@ import {
   handleOAuth401Error,
   isClaudeAISubscriber,
 } from '../auth.js'
-import { getClaudeCodeUserAgent } from '../userAgent.js'
+import { getClaudeCodeUserAgent } from './userAgent.js'
 import { getWorkload } from '../workloadContext.js'
 
 // WARNING: We rely on `claude-cli` in the user agent for log filtering.

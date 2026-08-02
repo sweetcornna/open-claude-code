@@ -8,7 +8,7 @@ import type { Agent } from 'http'
 import { HttpsProxyAgent, type HttpsProxyAgentOptions } from 'https-proxy-agent'
 import memoize from 'lodash-es/memoize.js'
 import type * as undici from 'undici'
-import { getCACertificates } from '../caCerts.js'
+import { getCACertificates } from './caCerts.js'
 import { logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
 import {
@@ -16,7 +16,7 @@ import {
   getMTLSConfig,
   getTLSFetchOptions,
   type TLSConfig,
-} from '../mtls.js'
+} from './mtls.js'
 
 // Disable fetch keep-alive after a stale-pool ECONNRESET so retries open a
 // fresh TCP connection instead of reusing the dead pooled socket. Sticky for
