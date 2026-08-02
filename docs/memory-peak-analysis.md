@@ -40,8 +40,8 @@
 | 11 | colorFileCache 3x 代码存储 | 2-5 MB | `HighlightedCode.tsx:14` | 移除 value 中 code 字段 |
 | 12 | 虚拟滚动 200 组件常驻 | 50 MB | `useVirtualScroll.ts` | 降低 OVERSCAN_ROWS / MAX_MOUNTED_ITEMS |
 | 13 | FileReadTool 大文件（输出上限 100K 字符，但读取期间完整加载） | 临时数 MB | `FileReadTool.ts:342` | 读取前检测大小，流式截断 |
-| 14 | Session 恢复全量加载（磁盘→JSON→REPL 三阶段） | 200-300 MB | `sessionStorage.ts:3482` | 流式 JSONL / 增量恢复 |
-| 15 | Session 写入 100MB 累积 | ~100 MB | `sessionStorage.ts:652` | 流式写入 |
+| 14 | Session 恢复全量加载（磁盘→JSON→REPL 三阶段） | 200-300 MB | `sessionStorage/transcriptLoader.ts:477` | **读入侧已是流式**，剩余是 parse 产物，见下方「归因更正」 |
+| ~~15~~ | ~~Session 写入 100MB 累积~~ **已修复** | ~~100 MB~~ → 4 MB 上限 | `transcriptWriter.ts` `MAX_CHUNK_BYTES` | 阈值 100MB→4MB，实测 93.75MB drain 峰值 286.5→75.4 MB |
 | ~~16~~ | ~~Forked Agent FileStateCache 完整克隆~~ **已修复，原估算有误** | ~~50N MB~~ → 4.9 MB（与 fork 数无关） | `runAgent.ts:391` + `forkedAgent.ts:380` | 见下方「归因更正」 |
 | 17 | GC 阈值 350MB < 基线（每秒无意义强制 GC） | CPU 浪费 | `cli/print.ts:554` | 提高到 800MB+ |
 | 18 | PDF 100 页处理 | ~100 MB | `apiLimits.ts:54` | 分页流式处理 |
@@ -88,22 +88,34 @@ VSZ 516 GB 是虚拟映射 | Zod ~650KB | Markdown LRU-500 已优化 | useSkills
 
 **#21 lastAPIRequestMessages**：原写「常驻 30-50 MB」，位置 `bootstrap/state.ts:118` 在 state 拆分后已失效。实际该字段**早已 ant-gated**（`log.ts` 里 `USER_TYPE === 'ant' ? messages : null`），非 ant 用户恒为 `null`；实测 ant 路径的量级是 1.4-4.8 MB 而非 30-50 MB。更关键的是**它没有任何生产读取方** —— 注释里声称的 `/share` serialized_conversation.json 从未实现，`/share` 走的是磁盘 transcript。既然没有诊断价值可保留，直接删掉整个字段，而不是按原计划做截断。
 
-### 测量方法上的两个坑
+## 归因更正（2026-08-02，S7 阶段 5.4 sessionStorage 流式读写）
+
+**#15 Session 写入 100MB 累积**：量级属实，但**修法与直觉相反**。`drainWriteQueue` 的 `content += line` 本身不是问题 —— JSC 建的是 rope，不复制。真正的成本在 flush 那一刻：rope 必须摊平成连续字符串交给 `appendFile`，再编码成 UTF-8，于是行字符串 + 摊平体 + 编码体同时在世。把 `MAX_CHUNK_BYTES` 从 100MB 降到 4MB 就解决了（93.75MB drain：286.5 → 75.4 MB，3.8x），**而且 wall time 也更好**（87→72ms，摊平 94MB 的 rope 本身就不便宜）。
+
+反直觉的部分：照搬 hydration 那边的 `array + join` 写法**更差** —— 同为 4MB 阈值时 86.9 MB vs rope 的 75.4 MB，因为 `join` 分配摊平结果的同时，数组还挂着每一片。别再从 hydration 的形状反推这里该怎么改，bench 里留了一个叫 `array-join-4mb` 的策略专门钉住这个结论。
+
+**#14 Session 恢复全量加载**：**读入侧早已是流式的**，不要再照着 "流式 JSONL" 这条建议重做一遍。`readTranscriptForLoad`（`sessionStoragePortable.ts:715`）是 fd 级分块前向扫描，attr-snap 行在 fd 层就被丢弃、compact 边界在流中截断输出，峰值取决于**输出**而非文件大小（151MB 会话只分配 ~32MB）；`scanPreBoundaryMetadata` 用 `createReadStream` + 64KB carry 上限。`transcriptLoader.ts:477` 那句 `readFile` 只在两种情况下跑：文件 ≤ 5MB（`SKIP_PRECOMPACT_THRESHOLD`，有界），或显式设了 `CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP`（那是"什么都别跳过"的 kill switch，是故意的）。
+
+剩下的 200-300 MB 是 **parse 产物**：`loadTranscriptFile` 的契约就是返回全部消息的 `Map<UUID, TranscriptMessage>`，而 `buildConversationChain` 需要按 uuid 随机访问。要再降就得改这个契约和所有调用方，属于另一个量级的改动，不是"把读改成流式"能解决的。
+
+### 测量方法上的五个坑
 
 后续做内存 bench 的人会踩到，先记下来：
 
 1. **`process.memoryUsage().heapUsed` 在 Bun 1.3.13 是冻结常量** —— 分配 50k 个字符串前后都报 ~212 KB。必须用 `bun:jsc` 的 `heapStats().heapSize`。
 2. **`heapSize` 只在分配侧可靠，释放侧不可靠** —— JSC 不及时归还页，"释放后采样" 读到的是噪声（实测一个确实 pin 住 4.88 MB 的场景报 0.01 MB）。正确姿势是让**释放和重新分配都发生在两次采样之间**，测增量。
 3. **构造测试负载要用单字符 `repeat`** —— `unit.repeat(n)`（unit 是多字符）产生的是 JSC **rope**，惰性引用同一份 unit，根本不分配 payload：实测同样请求 1.56 MB，rope 只占 0.17 MB，单字符 repeat 才占 1.58 MB。用 rope 构造负载的 bench 测的是对象头，不是内容。
+4. **`heapStats().heapSize` 完全不计大字符串的 backing store**（2026-08-02，S7 阶段 5.4 新增）—— 把 2000 份 4 KB 拼成一个 8 MB 字符串，`heapSize` 动 **0.00 MB**、`heapCapacity` 动 0.05 MB，而 RSS 老老实实动了 **7.9 MB**。所以坑 1 的结论只对"很多小对象"成立；**只要负载是字符串/Buffer 字节数，就必须用 `process.memoryUsage.rss()`**。反过来这也说明 Bun 不归还页这件事有个好处：操作结束后的 RSS 就是操作峰值 RSS 的可靠代理。
+5. **每个策略必须跑在独立进程里**（同上）—— 同一进程里先后跑 before/after，先跑的那个把页让给后跑的，后者测出来接近 0。bench 的正确结构是父进程 spawn 两个子进程、各测一个策略、父进程只负责汇总和比对产物字节。
 
-可复现脚本：`scripts/bench-fork-file-state-cache.ts`、`scripts/bench-api-request-capture.ts`。
+可复现脚本：`scripts/bench-fork-file-state-cache.ts`、`scripts/bench-api-request-capture.ts`、`scripts/bench-session-jsonl-write.ts`、`scripts/bench-tombstone-removal.ts`、`scripts/bench-transcript-drain.ts`。
 
 ## 结论
 
 **内存根因排序**：
 1. 消息数组 7-8x spread 拷贝（120-320 MB）— 核心瓶颈
 2. useDeferredValue 双缓冲 + React useMemo 链全量重算（100-200 MB + GC STW）
-3. Session 恢复/写入峰值（200-300 MB）
+3. Session 恢复峰值（200-300 MB，且瓶颈是 parse 产物而非读入 —— 见归因更正）；~~写入峰值~~ 已修复（drain 上限 100MB→4MB）
 4. AutoCompact 时序缺陷 + reactiveCompact 空存根（API 超限风险）
 5. ~~Forked Agent FileStateCache 克隆（50N MB）~~ — 归因错误，实测 4.9 MB 且不随 fork 数增长，已修复
 6. 虚拟滚动 200 组件 ~50MB 常驻
