@@ -7,7 +7,7 @@ import { feature } from 'bun:bundle';
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
-import { count } from '../utils/array.js';
+import { count } from '../utils/collections/array.js';
 import sample from 'lodash-es/sample.js';
 import { formatDuration, formatNumber } from '../utils/format.js';
 import type { Theme } from 'src/utils/theme.js';

@@ -57,7 +57,7 @@ import { notifySessionMetadataChanged } from 'src/utils/sessionState.js'
 import { buildSideQuestionFallbackParams } from 'src/utils/queryContext.js'
 import { runSideQuestion } from 'src/utils/sideQuestion.js'
 import { generateSessionTitle } from 'src/utils/sessionTitle.js'
-import { getLastCacheSafeParams } from 'src/utils/cacheSafeParamsSlot.js'
+import { getLastCacheSafeParams } from 'src/utils/collections/cacheSafeParamsSlot.js'
 import { saveAiGeneratedTitle } from 'src/utils/sessionStorage.js'
 import {
   handleInitializeRequest,

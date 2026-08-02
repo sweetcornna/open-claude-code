@@ -49,7 +49,7 @@ import {
   type SessionExternalMetadata,
 } from '../utils/sessionState.js'
 import { jsonParse } from '../utils/slowOperations.js'
-import { Stream } from '../utils/stream.js'
+import { Stream } from '../utils/collections/stream.js'
 import { ndjsonSafeStringify } from './ndjsonSafeStringify.js'
 
 /**

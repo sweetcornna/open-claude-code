@@ -11,7 +11,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '@open-claude-code/tool-runtime/analytics.js'
-import { count } from 'src/utils/array.js'
+import { count } from 'src/utils/collections/array.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { toError } from '@open-claude-code/tool-runtime/errors.js'
 import { truncate } from 'src/utils/format.js'

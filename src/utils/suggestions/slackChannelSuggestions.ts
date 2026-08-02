@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { SuggestionItem } from '../../components/PromptInput/PromptInputFooterSuggestions.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import { logForDebugging } from '../debug.js'
-import { lazySchema } from '../lazySchema.js'
+import { lazySchema } from '../collections/lazySchema.js'
 import { createSignal } from '../signal.js'
 import { jsonParse } from '../slowOperations.js'
 

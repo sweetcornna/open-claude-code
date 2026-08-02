@@ -14,7 +14,7 @@ import {
   getCachedOrFetchPassesEligibility,
 } from '../../services/api/referral.js';
 import type { ReferralRedemptionsResponse, ReferrerRewardInfo } from '../../services/oauth/types.js';
-import { count } from '../../utils/array.js';
+import { count } from '../../utils/collections/array.js';
 import { logError } from '../../utils/log.js';
 import { Pane } from '@anthropic/ink';
 

@@ -5,7 +5,7 @@ import type {
 import type { Command } from '../commands.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { normalizeNameForMCP } from '../services/mcp/normalization.js'
-import { memoizeWithLRU } from '../utils/memoize.js'
+import { memoizeWithLRU } from '../utils/collections/memoize.js'
 import { errorMessage } from '../utils/errors.js'
 import { logMCPDebug, logMCPError } from '../utils/log.js'
 import { recursivelySanitizeUnicode } from '../utils/sanitization.js'

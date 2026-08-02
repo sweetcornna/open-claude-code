@@ -1,7 +1,7 @@
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type WsWebSocket from 'ws'
 import { logEvent } from '../../services/analytics/index.js'
-import { CircularBuffer } from '../../utils/CircularBuffer.js'
+import { CircularBuffer } from '../../utils/collections/CircularBuffer.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { rcLog } from '../../utils/rcDebugLog.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-const { treeify } = await import('../treeify')
+const { treeify } = await import('../collections/treeify')
 
 describe('treeify', () => {
   test('renders flat tree with two keys', () => {

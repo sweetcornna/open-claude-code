@@ -3,7 +3,7 @@ import {
   setModelStrings as setModelStringsState,
 } from 'src/bootstrap/state.js'
 import { logError } from '../log.js'
-import { sequential } from '../sequential.js'
+import { sequential } from '../collections/sequential.js'
 import { getInitialSettings } from '../settings/settings.js'
 import { findFirstMatch, getBedrockInferenceProfiles } from './bedrock.js'
 import {

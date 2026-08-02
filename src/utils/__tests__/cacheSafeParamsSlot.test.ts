@@ -19,7 +19,7 @@ import { asSessionId } from 'src/types/ids.js'
 import {
   getLastCacheSafeParams,
   saveCacheSafeParams,
-} from 'src/utils/cacheSafeParamsSlot.js'
+} from 'src/utils/collections/cacheSafeParamsSlot.js'
 import type { CacheSafeParams } from 'src/utils/forkedAgent.js'
 
 function makeParams(tag: string): CacheSafeParams {

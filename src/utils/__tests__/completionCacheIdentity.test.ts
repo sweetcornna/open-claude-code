@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { hasOccCompletion } from '../completionCache.js'
+import { hasOccCompletion } from '../collections/completionCache.js'
 
 const completionLine =
   '[[ -f "/home/test/.occ/completion.zsh" ]] && source "/home/test/.occ/completion.zsh"'

@@ -10,7 +10,7 @@ import {
   getTotalInputTokens,
 } from '../bootstrap/state.js';
 import { parseTokenBudget } from '../utils/tokenBudget.js';
-import { count } from '../utils/array.js';
+import { count } from '../utils/collections/array.js';
 import { join } from 'path';
 import { type TabStatusKind, Box, Text, useStdin, useTheme, useTerminalFocus, useTabStatus } from '@anthropic/ink';
 import { CostThresholdDialog } from '../components/CostThresholdDialog.js';

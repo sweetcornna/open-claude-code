@@ -35,7 +35,7 @@ import { exec } from 'src/utils/Shell.js';
 import type { ExecResult } from 'src/utils/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js';
-import { semanticNumber } from 'src/utils/semanticNumber.js';
+import { semanticNumber } from 'src/utils/collections/semanticNumber.js';
 import { getCachedPowerShellPath } from 'src/utils/shell/powershellDetection.js';
 import { EndTruncatingAccumulator } from '@open-claude-code/tool-runtime/stringUtils.js';
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';

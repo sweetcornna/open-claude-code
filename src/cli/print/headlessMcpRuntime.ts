@@ -16,7 +16,7 @@ import { createSyntheticOutputTool } from '@open-claude-code/builtin-tools/tools
 import { assembleToolPool } from 'src/tools.js'
 import { toolMatchesName, type Tools } from 'src/Tool.js'
 import type { AppState } from 'src/state/AppStateStore.js'
-import { uniq } from 'src/utils/array.js'
+import { uniq } from 'src/utils/collections/array.js'
 import { mergeAndFilterTools } from 'src/utils/toolPool.js'
 import {
   logEvent,

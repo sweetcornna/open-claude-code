@@ -20,7 +20,7 @@ import {
 } from 'src/services/lsp/manager.js'
 import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { uniq } from 'src/utils/array.js'
+import { uniq } from 'src/utils/collections/array.js'
 import { getCwd } from 'src/utils/cwd.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { isENOENT, toError } from '@open-claude-code/tool-runtime/errors.js'

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { withResolvers } from '../withResolvers'
+import { withResolvers } from '../collections/withResolvers'
 
 describe('withResolvers', () => {
   test('returns object with promise, resolve, reject', () => {

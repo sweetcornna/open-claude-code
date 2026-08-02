@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { sleep, withTimeout } from '../sleep'
-import { sequential } from '../sequential'
+import { sequential } from '../collections/sequential'
 
 // ─── sleep ─────────────────────────────────────────────────────────────
 

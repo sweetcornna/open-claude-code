@@ -21,7 +21,7 @@ import {
   readHeadAndTail,
 } from '../sessionStoragePortable.js'
 import { jsonParse } from '../slowOperations.js'
-import { validateUuid } from '../uuid.js'
+import { validateUuid } from '../collections/uuid.js'
 import {
   extractFirstPrompt,
   removeExtraFields,

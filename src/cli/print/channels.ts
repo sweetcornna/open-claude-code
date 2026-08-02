@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { Stream } from 'src/utils/stream.js'
+import type { Stream } from 'src/utils/collections/stream.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { MCPServerConnection } from 'src/services/mcp/types.js'
 import { parsePluginIdentifier } from 'src/utils/plugins/pluginIdentifier.js'

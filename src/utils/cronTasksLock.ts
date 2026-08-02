@@ -18,7 +18,7 @@ import { logForDebugging } from './debug.js'
 import { getErrnoCode } from './errors.js'
 import { isProcessRunning } from './genericProcessUtils.js'
 import { safeParseJSON } from './json.js'
-import { lazySchema } from './lazySchema.js'
+import { lazySchema } from './collections/lazySchema.js'
 import { jsonStringify } from './slowOperations.js'
 
 const LOCK_FILE_REL = join(PROJECT_DIR_NAME, 'scheduled_tasks.lock')

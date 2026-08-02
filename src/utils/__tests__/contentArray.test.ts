@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { insertBlockAfterToolResults } from '../contentArray'
+import { insertBlockAfterToolResults } from '../collections/contentArray'
 
 describe('insertBlockAfterToolResults', () => {
   test('inserts after last tool_result', () => {

@@ -68,7 +68,7 @@ import { getParentSessionId, isTeammate } from 'src/utils/teammate.js';
 import { isInProcessTeammate } from 'src/utils/teammateContext.js';
 import { teleportToRemote } from 'src/utils/teleport.js';
 import { getAssistantMessageContentLength } from 'src/utils/tokens.js';
-import { createAgentId } from 'src/utils/uuid.js';
+import { createAgentId } from 'src/utils/collections/uuid.js';
 import { createAgentWorktree, hasWorktreeChanges, removeAgentWorktree } from 'src/utils/worktree.js';
 import { BASH_TOOL_NAME } from '../BashTool/constants.js';
 import { BackgroundHint } from '../BashTool/UI.js';

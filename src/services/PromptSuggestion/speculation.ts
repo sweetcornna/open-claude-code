@@ -15,7 +15,7 @@ import { checkReadOnlyConstraints } from '@open-claude-code/builtin-tools/tools/
 import type { SpeculationAcceptMessage } from '../../types/logs.js'
 import type { Message } from '../../types/message.js'
 import { createChildAbortController } from '../../utils/abortController.js'
-import { count } from '../../utils/array.js'
+import { count } from '../../utils/collections/array.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'

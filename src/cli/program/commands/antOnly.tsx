@@ -2,7 +2,7 @@
 import type { Command as CommanderCommand } from '@commander-js/extra-typings';
 import { BIN_NAME } from 'src/constants/brand.js';
 import { TASK_STATUSES } from 'src/utils/tasks.js';
-import { validateUuid } from 'src/utils/uuid.js';
+import { validateUuid } from 'src/utils/collections/uuid.js';
 
 export function registerAntOnlyCommands(program: CommanderCommand): void {
   // ant-only commands

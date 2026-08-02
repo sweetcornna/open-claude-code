@@ -1,4 +1,4 @@
-import { count } from '../../utils/array.js'
+import { count } from '../../utils/collections/array.js'
 import { truncateToWidth } from '../../utils/format.js'
 import type {
   Message as MessageType,

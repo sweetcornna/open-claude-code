@@ -40,7 +40,7 @@ import {
 import { useAppState } from '../../state/AppState.js';
 import type { Tool } from '../../Tool.js';
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js';
-import { count } from '../../utils/array.js';
+import { count } from '../../utils/collections/array.js';
 import { openBrowser } from '../../utils/browser.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { errorMessage, toError } from '../../utils/errors.js';

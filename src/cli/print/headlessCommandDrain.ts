@@ -27,7 +27,7 @@ import { createAbortController } from 'src/utils/abortController.js'
 import { isEnvDefinedFalsy } from 'src/utils/envUtils.js'
 import { logError } from 'src/utils/log.js'
 import { toError } from 'src/utils/errors.js'
-import { getLastCacheSafeParams } from 'src/utils/cacheSafeParamsSlot.js'
+import { getLastCacheSafeParams } from 'src/utils/collections/cacheSafeParamsSlot.js'
 import {
   logSuggestionOutcome,
   logSuggestionSuppressed,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { lazySchema } from '../lazySchema'
+import { lazySchema } from '../collections/lazySchema'
 
 describe('lazySchema', () => {
   test('returns a function', () => {

@@ -75,7 +75,7 @@ import { checkQuotaStatus } from 'src/services/claudeAiLimits.js';
 import { cleanupOrphanedPluginVersionsInBackground } from 'src/utils/plugins/cacheUtils.js';
 import { clearServerCache } from 'src/services/mcp/client.js';
 import { computeInitialTeamContext } from 'src/utils/swarm/reconnection.js';
-import { count, uniq } from 'src/utils/array.js';
+import { count, uniq } from 'src/utils/collections/array.js';
 import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/concurrentSessions.js';
 import { createEmptyAttributionState } from 'src/utils/commitAttribution.js';
 import { createRemoteSessionConfig } from 'src/remote/RemoteSessionManager.js';
@@ -241,7 +241,7 @@ import {
   parseFileSpecs,
 } from 'src/services/api/filesApi.js';
 import { type ProcessedResume, processResumedConversation } from 'src/utils/sessionRestore.js';
-import { validateUuid } from 'src/utils/uuid.js';
+import { validateUuid } from 'src/utils/collections/uuid.js';
 import type { applyRootOptions } from './rootOptions.js';
 
 type RootCommand = ReturnType<typeof applyRootOptions>;

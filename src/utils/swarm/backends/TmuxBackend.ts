@@ -2,7 +2,7 @@ import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/Agent
 import { logForDebugging } from '../../../utils/debug.js'
 import { execFileNoThrow } from '../../../utils/execFileNoThrow.js'
 import { logError } from '../../../utils/log.js'
-import { count } from '../../array.js'
+import { count } from '../../collections/array.js'
 import { sleep } from '../../sleep.js'
 import {
   getSwarmSocketName,

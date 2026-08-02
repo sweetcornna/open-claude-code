@@ -5,7 +5,10 @@ import {
   enqueue,
   enqueuePendingNotification,
 } from '../messageQueueManager.js'
-import { hasQueuedCommands, processQueueIfReady } from '../queueProcessor.js'
+import {
+  hasQueuedCommands,
+  processQueueIfReady,
+} from '../collections/queueProcessor.js'
 
 beforeEach(() => {
   resetCommandQueue()
