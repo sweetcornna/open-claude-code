@@ -22,6 +22,11 @@ mock.module('src/constants/common.js', () => ({
 }))
 mock.module('src/utils/settings/settings.js', () => ({
   getInitialSettings: () => ({ language: undefined }),
+  getSettings: () => ({}),
+  getSettings_DEPRECATED: () => ({}),
+  getCachedOrDefaultSettings: () => ({}),
+  updateSettingsForSource: () => ({ error: null }),
+  getSettingsForSource: () => ({}),
 }))
 mock.module('src/commands/poor/poorMode.js', () => ({
   isPoorModeActive: () => false,
@@ -29,6 +34,8 @@ mock.module('src/commands/poor/poorMode.js', () => ({
 mock.module('src/utils/config/env.js', () => ({ env: { platform: 'linux' } }))
 mock.module('src/utils/config/envUtils.js', () => ({
   isEnvTruthy: () => false,
+  isEnvDefinedFalsy: () => false,
+  getClaudeConfigHomeDir: () => '/tmp/occ-dump-prompt',
 }))
 mock.module('src/utils/model/model.js', () => ({
   getCanonicalName: (id: string) => id,
