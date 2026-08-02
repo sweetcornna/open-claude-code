@@ -29,6 +29,8 @@ const { writeJsonlFile } = await import('../sessionStorage/fileIO.js')
 
 const {
   flushSessionStorage,
+  loadTranscriptFile,
+  recordTranscript,
   removeTranscriptMessage,
   resetProjectForTesting,
   setSessionFileForTesting,
@@ -320,4 +322,87 @@ describe('removeTranscriptMessage', () => {
 
     expect(await readFile(sessionFile, 'utf8')).toBe(head)
   })
+})
+
+// drainWriteQueue accumulates serialized entries and appends them once the
+// batch reaches MAX_CHUNK_BYTES. That cap dropped from 100 MB to 4 MB to bound
+// the flatten-and-encode transient, which means the multi-chunk branch — dead
+// code in practice at 100 MB — is now genuinely reachable. Pin it: a drain
+// that spans chunks has to produce the same transcript as one that does not.
+
+describe('drainWriteQueue across a chunk boundary', () => {
+  let sessionFile: string
+  let originalConfigDir: string | undefined
+  let originalTestPersistence: string | undefined
+
+  beforeEach(() => {
+    mkdirSync(join(tempDir, 'projects'), { recursive: true })
+    sessionFile = join(tempDir, 'projects', 'drain.jsonl')
+
+    originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+    process.env.CLAUDE_CONFIG_DIR = tempDir
+    // Project.shouldSkipPersistence() short-circuits every write when
+    // NODE_ENV === 'test' unless this opt-in is set.
+    originalTestPersistence = process.env.TEST_ENABLE_SESSION_PERSISTENCE
+    process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
+
+    resetProjectForTesting()
+    setSessionFileForTesting(sessionFile)
+  })
+
+  afterEach(async () => {
+    await flushSessionStorage()
+    resetProjectForTesting()
+    if (originalConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+    }
+    if (originalTestPersistence === undefined) {
+      delete process.env.TEST_ENABLE_SESSION_PERSISTENCE
+    } else {
+      process.env.TEST_ENABLE_SESSION_PERSISTENCE = originalTestPersistence
+    }
+  })
+
+  afterAll(() => {
+    resetProjectForTesting()
+  })
+
+  test('writes every entry when the batch spans several chunks', async () => {
+    // 60 x 96 KB is ~5.8 MB, so the 4 MB cap forces at least one mid-batch
+    // flush. Single-character repeat: a multi-character one would be a JSC
+    // rope that never allocates, and the batch would not actually get large.
+    const count = 60
+    const messages = Array.from({ length: count }, (_, i) => ({
+      type: i % 2 === 0 ? 'user' : 'assistant',
+      uuid: uuidOf(i + 1),
+      message:
+        i % 2 === 0
+          ? { role: 'user', content: 'q'.repeat(96 * 1024) }
+          : {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'r'.repeat(96 * 1024) }],
+            },
+    }))
+
+    await recordTranscript(
+      messages as unknown as Parameters<typeof recordTranscript>[0],
+    )
+    await flushSessionStorage()
+
+    const { messages: loaded } = await loadTranscriptFile(sessionFile)
+
+    expect(loaded.size).toBe(count)
+    // Order and content survive the flush seam.
+    expect([...loaded.keys()]).toEqual(
+      Array.from({ length: count }, (_, i) => uuidOf(i + 1)),
+    )
+    const first = loaded.get(uuidOf(1))
+    const last = loaded.get(uuidOf(count))
+    expect(first?.message?.content).toBe('q'.repeat(96 * 1024))
+    expect(last?.message?.content).toEqual([
+      { type: 'text', text: 'r'.repeat(96 * 1024) },
+    ])
+  }, 60_000)
 })
