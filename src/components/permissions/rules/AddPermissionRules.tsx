@@ -15,7 +15,7 @@ import { detectUnreachableRules, type UnreachableRule } from '../../../utils/per
 import { SandboxManager } from '../../../utils/sandbox/sandbox-adapter.js';
 import { type EditableSettingSource, SOURCES } from '../../../utils/settings/constants.js';
 import { getRelativeSettingsFilePathForSource } from '../../../utils/settings/settings.js';
-import { plural } from '../../../utils/stringUtils.js';
+import { plural } from '../../../utils/text/stringUtils.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 import { PermissionRuleDescription } from './PermissionRuleDescription.js';
 

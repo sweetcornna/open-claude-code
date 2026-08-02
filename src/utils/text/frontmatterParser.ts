@@ -5,7 +5,7 @@
 
 import { logForDebugging } from '../debug.js'
 import type { HooksSettings } from '../settings/types.js'
-import { parseYaml } from '../yaml.js'
+import { parseYaml } from './yaml.js'
 
 export type FrontmatterData = {
   // YAML can return null for keys with no value (e.g., "key:" with nothing after)

@@ -6,7 +6,7 @@ import {
   outputSchema as permissionToolOutputSchema,
   permissionPromptToolResultToPermissionDecision,
 } from 'src/utils/permissions/PermissionPromptToolResultSchema.js'
-import { safeParseJSON } from 'src/utils/json.js'
+import { safeParseJSON } from 'src/utils/text/json.js'
 import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js'
 import { toolMatchesName, type Tool } from 'src/Tool.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'

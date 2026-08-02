@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { buildTool, type ToolDef, toolMatchesName } from '@open-claude-code/tool-runtime/Tool.js';
 import type { AssistantMessage, Message as MessageType, NormalizedUserMessage } from 'src/types/message.js';
-import { getQuerySourceForAgent } from 'src/utils/promptCategory.js';
+import { getQuerySourceForAgent } from 'src/utils/text/promptCategory.js';
 import { z } from 'zod/v4';
 import {
   clearInvokedSkillsForAgent,

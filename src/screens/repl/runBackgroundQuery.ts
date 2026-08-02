@@ -1,7 +1,7 @@
 import { getSystemPrompt } from '../../constants/prompts.js'
 import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js'
 import { getSystemContext, getUserContext } from '../../context.js'
-import { getQuerySourceForREPL } from '../../utils/promptCategory.js'
+import { getQuerySourceForREPL } from '../../utils/text/promptCategory.js'
 import {
   removeByFilter,
   type SetAppState,

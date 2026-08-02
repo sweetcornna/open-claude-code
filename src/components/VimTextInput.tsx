@@ -4,7 +4,7 @@ import { useClipboardImageHint } from '../hooks/useClipboardImageHint.js';
 import { useVimInput } from '../hooks/useVimInput.js';
 import { Box, color, useTerminalFocus, useTheme } from '@anthropic/ink';
 import type { VimTextInputProps } from '../types/textInputTypes.js';
-import type { TextHighlight } from '../utils/textHighlighting.js';
+import type { TextHighlight } from '../utils/text/textHighlighting.js';
 import { BaseTextInput } from './BaseTextInput.js';
 
 export type Props = VimTextInputProps & {

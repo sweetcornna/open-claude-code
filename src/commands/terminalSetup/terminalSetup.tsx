@@ -21,7 +21,7 @@ import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { env } from '../../utils/env.js';
 import { isFsInaccessible } from '../../utils/errors.js';
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
-import { addItemToJSONCArray, safeParseJSONC } from '../../utils/json.js';
+import { addItemToJSONCArray, safeParseJSONC } from '../../utils/text/json.js';
 import { logError } from '../../utils/log.js';
 import { getPlatform } from '../../utils/platform.js';
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js';

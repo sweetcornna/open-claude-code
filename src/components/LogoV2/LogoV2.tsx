@@ -12,7 +12,7 @@ import {
   getRecentReleaseNotesSync,
   getLogoDisplayData,
 } from '../../utils/logoV2Utils.js';
-import { truncate } from '../../utils/format.js';
+import { truncate } from '../../utils/text/format.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { Clawd } from './Clawd.js';
 import { FeedColumn } from './FeedColumn.js';

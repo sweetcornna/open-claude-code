@@ -8,7 +8,7 @@ import {
 } from '../utils/messages.js'
 import { getSmallFastModel } from '../utils/model/model.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
-import { getResolvedLanguage } from '../utils/language.js'
+import { getResolvedLanguage } from '../utils/text/language.js'
 import { queryModelWithoutStreaming } from './api/claude.js'
 import { createTrace, endTrace, isLangfuseEnabled } from './langfuse/index.js'
 import { getSessionId } from '../bootstrap/state.js'

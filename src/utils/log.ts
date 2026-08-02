@@ -12,7 +12,10 @@ import {
   sortLogs,
 } from '../types/logs.js'
 import { CACHE_PATHS } from './cachePaths.js'
-import { stripDisplayTags, stripDisplayTagsAllowEmpty } from './displayTags.js'
+import {
+  stripDisplayTags,
+  stripDisplayTagsAllowEmpty,
+} from './text/displayTags.js'
 import { isEnvTruthy } from './envUtils.js'
 import { toError, shortErrorStack } from './errors.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'

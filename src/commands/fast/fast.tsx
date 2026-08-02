@@ -21,7 +21,7 @@ import {
   isFastModeSupportedByModel,
   prefetchFastModeStatus,
 } from '../../utils/fastMode.js';
-import { formatDuration } from '../../utils/format.js';
+import { formatDuration } from '../../utils/text/format.js';
 import { formatModelPricing, getOpus46CostTier } from '../../utils/modelCost.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 

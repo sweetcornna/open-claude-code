@@ -9,7 +9,7 @@ import { eagerParseCliFlag } from 'src/utils/cliArgs.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { errorMessage, isENOENT } from 'src/utils/errors.js';
 import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js';
-import { safeParseJSON } from 'src/utils/json.js';
+import { safeParseJSON } from 'src/utils/text/json.js';
 import { logError } from 'src/utils/log.js';
 import { parseSettingSourcesFlag } from 'src/utils/settings/constants.js';
 import { resetSettingsCache } from 'src/utils/settings/settingsCache.js';

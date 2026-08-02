@@ -68,7 +68,7 @@ import {
   getSettingsForSource,
   updateSettingsForSource,
 } from '../../utils/settings/settings.js'
-import { plural } from '../../utils/stringUtils.js'
+import { plural } from '../../utils/text/stringUtils.js'
 
 /** Valid installable scopes (excludes 'managed' which can only be installed from managed-settings.json) */
 export const VALID_INSTALLABLE_SCOPES = ['user', 'project', 'local'] as const

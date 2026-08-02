@@ -18,7 +18,7 @@ import { openPath } from '../../utils/browser.js';
 import { getMemoryFiles, type MemoryFileInfo } from '../../utils/claudemd.js';
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js';
 import { getDisplayPath } from '../../utils/file.js';
-import { formatRelativeTimeAgo } from '../../utils/format.js';
+import { formatRelativeTimeAgo } from '../../utils/text/format.js';
 import { projectIsInGitRepo } from '../../utils/memory/versions.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 import { Select } from '../CustomSelect/index.js';

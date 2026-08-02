@@ -12,7 +12,7 @@ import { normalizeQueryIntent } from './intentNormalize.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseFrontmatter } from '../../utils/frontmatterParser.js'
+import { parseFrontmatter } from '../../utils/text/frontmatterParser.js'
 
 /**
  * Per-session memoization to avoid re-emitting the same skill discovery /

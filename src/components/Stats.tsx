@@ -22,7 +22,7 @@ import {
 } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getGlobalConfig } from '../utils/config.js';
-import { formatDuration, formatNumber } from '../utils/format.js';
+import { formatDuration, formatNumber } from '../utils/text/format.js';
 import { generateHeatmap } from '../utils/heatmap.js';
 import { renderModelName } from '../utils/model/model.js';
 import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js';

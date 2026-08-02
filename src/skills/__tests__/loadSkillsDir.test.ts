@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
-import type { FrontmatterData } from '../../utils/frontmatterParser.js'
+import type { FrontmatterData } from '../../utils/text/frontmatterParser.js'
 import {
   createSkillCommand,
   getSkillsPath,

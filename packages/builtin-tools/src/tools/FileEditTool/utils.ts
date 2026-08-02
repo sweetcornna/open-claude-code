@@ -6,7 +6,7 @@ import {
   DIFF_TIMEOUT_MS,
   getPatchForDisplay,
   getPatchFromContents,
-} from 'src/utils/diff.js'
+} from 'src/utils/text/diff.js'
 import {
   errorMessage,
   isENOENT,

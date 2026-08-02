@@ -17,7 +17,7 @@ import {
   getPatchForEdits,
 } from '@open-claude-code/builtin-tools/tools/FileEditTool/utils.js'
 import { getGlobalConfig } from '../utils/config.js'
-import { getPatchFromContents } from '../utils/diff.js'
+import { getPatchFromContents } from '../utils/text/diff.js'
 import { isENOENT } from '../utils/errors.js'
 import {
   callIdeRpc,

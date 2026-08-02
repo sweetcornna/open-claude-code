@@ -12,7 +12,7 @@ import type {
   SerializedMessage,
   TranscriptMessage,
 } from '../../types/logs.js'
-import { parseJSONL } from '../../utils/json.js'
+import { parseJSONL } from '../../utils/text/json.js'
 import {
   getProjectDir,
   getTranscriptPath,
@@ -22,7 +22,7 @@ import {
   searchSessionsByCustomTitle,
 } from '../../utils/sessionStorage.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { escapeRegExp } from '../../utils/stringUtils.js'
+import { escapeRegExp } from '../../utils/text/stringUtils.js'
 
 type TranscriptEntry = TranscriptMessage & {
   forkedFrom?: {

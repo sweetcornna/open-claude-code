@@ -5,7 +5,7 @@ import { getLargeMemoryFiles, MAX_MEMORY_CHARACTER_COUNT, type MemoryFileInfo } 
 import figures from 'figures';
 import { getCwd } from './cwd.js';
 import { relative } from 'path';
-import { formatNumber } from './format.js';
+import { formatNumber } from './text/format.js';
 import type { getGlobalConfig } from './config.js';
 import {
   getAnthropicApiKeyWithSource,

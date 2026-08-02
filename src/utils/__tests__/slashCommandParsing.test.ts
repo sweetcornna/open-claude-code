@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseSlashCommand } from '../slashCommandParsing'
+import { parseSlashCommand } from '../text/slashCommandParsing'
 
 describe('parseSlashCommand', () => {
   test('parses simple command', () => {

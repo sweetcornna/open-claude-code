@@ -19,7 +19,7 @@ import { getApiKeyHelperElapsedMs, getConfiguredApiKeyHelper, getSubscriptionTyp
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { getExternalEditor } from '../../utils/editor.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
-import { formatDuration } from '../../utils/format.js';
+import { formatDuration } from '../../utils/text/format.js';
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js';
 import { toIDEDisplayName } from '../../utils/ide.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';

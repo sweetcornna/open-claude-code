@@ -27,7 +27,7 @@ import type {
   ToolUseSummaryMessage,
 } from '../../types/message.js'
 import { logForDebugging } from '../debug.js'
-import { formatTokens } from '../format.js'
+import { formatTokens } from '../text/format.js'
 
 export function createSystemMessage(
   content: string,

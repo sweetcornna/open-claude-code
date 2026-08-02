@@ -4,7 +4,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text, stringWidth } from '@anthropic/ink';
 import { useAppState } from '../../state/AppState.js';
 import { getEffortSuffix } from '../../utils/effort.js';
-import { truncate } from '../../utils/format.js';
+import { truncate } from '../../utils/text/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';

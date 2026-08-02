@@ -8,7 +8,7 @@ import { useTextInput } from '../hooks/useTextInput.js';
 import { Box, color, useAnimationFrame, useTerminalFocus, useTheme } from '@anthropic/ink';
 import type { BaseTextInputProps } from '../types/textInputTypes.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
-import type { TextHighlight } from '../utils/textHighlighting.js';
+import type { TextHighlight } from '../utils/text/textHighlighting.js';
 import { BaseTextInput } from './BaseTextInput.js';
 import { hueToRgb } from './Spinner/utils.js';
 

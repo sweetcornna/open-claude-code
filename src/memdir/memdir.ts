@@ -15,7 +15,7 @@ import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLToo
 import { logForDebugging } from '../utils/debug.js'
 import { hasEmbeddedSearchTools } from '../utils/embeddedTools.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
-import { formatFileSize } from '../utils/format.js'
+import { formatFileSize } from '../utils/text/format.js'
 import { getProjectDir } from '../utils/sessionStorage.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import {

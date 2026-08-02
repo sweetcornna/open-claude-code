@@ -7,7 +7,7 @@ import {
 } from '../constants/apiLimits.js'
 import { errorMessage } from './errors.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
-import { formatFileSize } from './format.js'
+import { formatFileSize } from './text/format.js'
 import { getFsImplementation } from './fsOperations.js'
 import { getToolResultsDir } from './toolResultStorage.js'
 

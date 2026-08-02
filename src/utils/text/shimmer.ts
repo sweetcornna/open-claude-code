@@ -5,7 +5,7 @@
  * colour the three segments this returns.
  */
 import { stringWidth } from '@anthropic/ink'
-import { getGraphemeSegmenter } from '../intl.js'
+import { getGraphemeSegmenter } from './intl.js'
 
 /** Interval for the shimmer animation tick (ms). */
 export const SHIMMER_INTERVAL_MS = 150

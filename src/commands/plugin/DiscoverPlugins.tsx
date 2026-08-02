@@ -29,8 +29,8 @@ import { loadKnownMarketplacesConfig } from '../../utils/plugins/marketplaceMana
 import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js';
 import { installPluginFromMarketplace } from '../../utils/plugins/pluginInstallationHelpers.js';
 import { isPluginBlockedByPolicy } from '../../utils/plugins/pluginPolicy.js';
-import { plural } from '../../utils/stringUtils.js';
-import { truncateToWidth } from '../../utils/truncate.js';
+import { plural } from '../../utils/text/stringUtils.js';
+import { truncateToWidth } from '../../utils/text/truncate.js';
 import { findPluginOptionsTarget, PluginOptionsFlow } from './PluginOptionsFlow.js';
 import { PluginTrustWarning } from './PluginTrustWarning.js';
 import { buildPluginDetailsMenuOptions, extractGitHubRepo, type InstallablePlugin } from './pluginDetailsHelpers.js';

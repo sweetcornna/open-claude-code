@@ -31,7 +31,7 @@ import { updatePluginsForMarketplaces } from '../../utils/plugins/pluginAutoupda
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js';
 import { isMarketplaceAutoUpdate } from '../../utils/plugins/schemas.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import type { ViewState } from './types.js';
 
 type Props = {

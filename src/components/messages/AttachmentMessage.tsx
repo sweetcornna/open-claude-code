@@ -7,7 +7,7 @@ import type { Attachment } from 'src/utils/attachments.js';
 import type { NullRenderingAttachmentType } from './nullRenderingAttachments.js';
 import { useAppState } from '../../state/AppState.js';
 import { getDisplayPath } from 'src/utils/file.js';
-import { formatFileSize } from 'src/utils/format.js';
+import { formatFileSize } from 'src/utils/text/format.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { basename, sep } from 'path';
 import { UserTextMessage } from './UserTextMessage.js';
@@ -17,7 +17,7 @@ import type { Theme } from 'src/utils/theme.js';
 import { UserImageMessage } from './UserImageMessage.js';
 
 import { jsonParse } from '../../utils/slowOperations.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { tryRenderPlanApprovalMessage, formatTeammateMessageContent } from './PlanApprovalMessage.js';

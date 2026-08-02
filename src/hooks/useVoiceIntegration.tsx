@@ -9,7 +9,7 @@ import { KeyboardEvent, useInput } from '@anthropic/ink';
 import { useOptionalKeybindingContext } from '../keybindings/KeybindingContext.js';
 import { keystrokesEqual } from '../keybindings/resolver.js';
 import type { ParsedKeystroke } from '../keybindings/types.js';
-import { normalizeFullWidthSpace } from '../utils/stringUtils.js';
+import { normalizeFullWidthSpace } from '../utils/text/stringUtils.js';
 import { useVoiceEnabled } from './useVoiceEnabled.js';
 
 // Dead code elimination: conditional import for voice input hook.

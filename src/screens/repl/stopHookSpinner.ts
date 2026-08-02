@@ -1,5 +1,5 @@
 import { count } from '../../utils/collections/array.js'
-import { truncateToWidth } from '../../utils/format.js'
+import { truncateToWidth } from '../../utils/text/format.js'
 import type {
   Message as MessageType,
   ProgressMessage,

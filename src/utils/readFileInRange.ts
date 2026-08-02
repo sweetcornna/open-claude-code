@@ -39,7 +39,7 @@
 
 import { createReadStream, fstat } from 'fs'
 import { stat as fsStat, readFile } from 'fs/promises'
-import { formatFileSize } from './format.js'
+import { formatFileSize } from './text/format.js'
 
 const FAST_PATH_MAX_SIZE = 10 * 1024 * 1024 // 10 MB
 

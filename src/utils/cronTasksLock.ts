@@ -17,7 +17,7 @@ import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
 import { getErrnoCode } from './errors.js'
 import { isProcessRunning } from './genericProcessUtils.js'
-import { safeParseJSON } from './json.js'
+import { safeParseJSON } from './text/json.js'
 import { lazySchema } from './collections/lazySchema.js'
 import { jsonStringify } from './slowOperations.js'
 

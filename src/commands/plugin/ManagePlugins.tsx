@@ -71,7 +71,7 @@ import {
   updateSettingsForSource,
 } from '../../utils/settings/settings.js';
 import { jsonParse } from '../../utils/slowOperations.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import { formatErrorMessage, getErrorGuidance } from './PluginErrors.js';
 import { PluginOptionsDialog } from './PluginOptionsDialog.js';
 import { PluginOptionsFlow } from './PluginOptionsFlow.js';

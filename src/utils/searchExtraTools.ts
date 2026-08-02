@@ -35,7 +35,7 @@ import { getContextWindowForModel } from './context.js'
 import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { jsonStringify } from './slowOperations.js'
-import { zodToJsonSchema } from './zodToJsonSchema.js'
+import { zodToJsonSchema } from './text/zodToJsonSchema.js'
 
 /**
  * Default percentage of context window at which to auto-enable tool search.

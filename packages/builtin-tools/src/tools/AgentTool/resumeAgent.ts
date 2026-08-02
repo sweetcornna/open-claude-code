@@ -18,7 +18,7 @@ import {
   filterWhitespaceOnlyAssistantMessages,
 } from 'src/utils/messages.js'
 import { getAgentModel } from 'src/utils/model/agent.js'
-import { getQuerySourceForAgent } from 'src/utils/promptCategory.js'
+import { getQuerySourceForAgent } from 'src/utils/text/promptCategory.js'
 import {
   getAgentTranscript,
   readAgentMetadata,

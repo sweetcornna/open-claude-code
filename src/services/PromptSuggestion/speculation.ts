@@ -29,7 +29,7 @@ import {
   createCacheSafeParams,
   runForkedAgent,
 } from '../../utils/forkedAgent.js'
-import { formatDuration, formatNumber } from '../../utils/format.js'
+import { formatDuration, formatNumber } from '../../utils/text/format.js'
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import { logError } from '../../utils/log.js'
 import type { SetAppState } from '../../utils/messageQueueManager.js'

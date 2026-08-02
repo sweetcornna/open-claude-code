@@ -11,7 +11,7 @@ import { readdir, rm, stat } from 'fs/promises'
 import { delimiter, join } from 'path'
 import { logForDebugging } from '../debug.js'
 import { errorMessage, isFsInaccessible } from '../errors.js'
-import { formatFileSize } from '../format.js'
+import { formatFileSize } from '../text/format.js'
 import { expandTilde } from '../permissions/pathValidation.js'
 
 /**

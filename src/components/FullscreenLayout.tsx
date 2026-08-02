@@ -19,7 +19,7 @@ import { Box, ScrollBox, type ScrollBoxHandle, Text, instances } from '@anthropi
 import type { Message } from '../types/message.js';
 import { openBrowser, openPath } from '../utils/browser.js';
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
-import { plural } from '../utils/stringUtils.js';
+import { plural } from '../utils/text/stringUtils.js';
 import { isNullRenderingAttachment } from './messages/nullRenderingAttachments.js';
 import PromptInputFooterSuggestions from './PromptInput/PromptInputFooterSuggestions.js';
 import type { StickyPrompt } from './VirtualMessageList.js';

@@ -24,7 +24,7 @@ import { computeNextCronRun, parseCronExpression } from './cron.js'
 import { logForDebugging } from './debug.js'
 import { isFsInaccessible } from './errors.js'
 import { getFsImplementation } from './fsOperations.js'
-import { safeParseJSON } from './json.js'
+import { safeParseJSON } from './text/json.js'
 import { logError } from './log.js'
 import { jsonStringify } from './slowOperations.js'
 

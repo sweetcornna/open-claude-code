@@ -21,7 +21,7 @@ import {
   getSettingSourceDisplayNameLowercase,
   SETTING_SOURCES,
 } from '../settings/constants.js'
-import { plural } from '../stringUtils.js'
+import { plural } from '../text/stringUtils.js'
 import { permissionModeTitle } from './PermissionMode.js'
 import type {
   PermissionAskDecision,

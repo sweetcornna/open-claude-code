@@ -9,7 +9,7 @@ import {
   isVimWhitespace,
   isVimWordChar,
 } from '../utils/Cursor.js'
-import { getGraphemeSegmenter } from '../utils/intl.js'
+import { getGraphemeSegmenter } from '../utils/text/intl.js'
 
 export type TextObjectRange = { start: number; end: number } | null
 

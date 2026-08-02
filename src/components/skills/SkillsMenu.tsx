@@ -11,9 +11,9 @@ import {
 import { Box, FuzzyPicker, Text } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import { estimateSkillFrontmatterTokens } from '../../skills/loadSkillsDir.js';
-import { formatTokens } from '../../utils/format.js';
+import { formatTokens } from '../../utils/text/format.js';
 import { getSettingSourceName, type SettingSource } from '../../utils/settings/constants.js';
-import { plural } from '../../utils/stringUtils.js';
+import { plural } from '../../utils/text/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Dialog } from '@anthropic/ink';
 import { filterSkills } from './filterSkills.js';

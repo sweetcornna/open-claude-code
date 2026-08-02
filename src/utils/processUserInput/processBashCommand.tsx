@@ -17,7 +17,7 @@ import {
 import { resolveDefaultShell } from '../shell/resolveDefaultShell.js';
 import { isPowerShellToolEnabled } from '../shell/shellToolUtils.js';
 import { processToolResultBlock } from '../toolResultStorage.js';
-import { escapeXml } from '../xml.js';
+import { escapeXml } from '../text/xml.js';
 import type { ProcessUserInputContext } from './processUserInput.js';
 
 export async function processBashCommand(

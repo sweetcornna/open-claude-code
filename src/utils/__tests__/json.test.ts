@@ -5,7 +5,7 @@ import { logMock } from '../../../tests/mocks/log'
 mock.module('src/utils/log.ts', logMock)
 
 const { safeParseJSON, safeParseJSONC, parseJSONL, addItemToJSONCArray } =
-  await import('../json')
+  await import('../text/json')
 
 // ─── safeParseJSON ──────────────────────────────────────────────────────
 

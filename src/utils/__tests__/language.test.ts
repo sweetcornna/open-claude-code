@@ -10,12 +10,12 @@ mock.module('src/utils/config.js', () => ({
   }),
 }))
 
-mock.module('src/utils/intl.js', () => ({
+mock.module('src/utils/text/intl.js', () => ({
   getSystemLocaleLanguage: () => mockSystemLocale,
 }))
 
 const { getResolvedLanguage, getLanguageDisplayName } = await import(
-  'src/utils/language.js'
+  'src/utils/text/language.js'
 )
 
 describe('getResolvedLanguage', () => {

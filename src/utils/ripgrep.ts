@@ -13,7 +13,7 @@ import { execFileNoThrow } from './execFileNoThrow.js'
 import { findExecutable } from './findExecutable.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
-import { countCharInString } from './stringUtils.js'
+import { countCharInString } from './text/stringUtils.js'
 
 const __dirname = (() => {
   if (process.env.NODE_ENV === 'test') return path.resolve(distRoot)

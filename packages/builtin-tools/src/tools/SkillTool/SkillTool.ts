@@ -52,7 +52,7 @@ import {
   extractResultText,
   prepareForkedCommandContext,
 } from 'src/utils/forkedAgent.js'
-import { parseFrontmatter } from 'src/utils/frontmatterParser.js'
+import { parseFrontmatter } from 'src/utils/text/frontmatterParser.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { createUserMessage, normalizeMessages } from 'src/utils/messages.js'
 import type { ModelAlias } from 'src/utils/model/aliases.js'

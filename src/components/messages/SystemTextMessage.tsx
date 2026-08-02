@@ -22,7 +22,7 @@ import type {
   SystemMemorySavedMessage,
 } from '../../types/message.js';
 import { SystemAPIErrorMessage } from './SystemAPIErrorMessage.js';
-import { formatDuration, formatNumber, formatSecondsShort } from '../../utils/format.js';
+import { formatDuration, formatNumber, formatSecondsShort } from '../../utils/text/format.js';
 import { getGlobalConfig } from '../../utils/config.js';
 import ThemedText from '../design-system/ThemedText.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';

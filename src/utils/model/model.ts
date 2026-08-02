@@ -28,7 +28,7 @@ import { getAPIProvider, isDirectAnthropicApi } from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
-import { capitalize } from '../stringUtils.js'
+import { capitalize } from '../text/stringUtils.js'
 import {
   type ChatGPTCodexModelTier,
   isChatGPTAuthMode,

@@ -6,7 +6,7 @@ import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { pathExists } from './file.js'
-import { gte as semverGte } from './semver.js'
+import { gte as semverGte } from './text/semver.js'
 
 const MIN_DESKTOP_VERSION = '1.1.2396'
 
