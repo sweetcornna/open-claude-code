@@ -46,16 +46,20 @@ describe('resolveOpenAIModel', () => {
     expect(resolveOpenAIModel('claude-opus-4-6')).toBe('my-opus')
   })
 
-  test('maps known Anthropic model via DEFAULT_MODEL_MAP', () => {
-    expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('gpt-4o')
+  test('maps sonnet-family models to the balanced default', () => {
+    expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('gpt-5.6-terra')
   })
 
-  test('maps haiku model', () => {
-    expect(resolveOpenAIModel('claude-haiku-4-5-20251001')).toBe('gpt-4o-mini')
+  test('maps haiku-family models to the fast default', () => {
+    expect(resolveOpenAIModel('claude-haiku-4-5-20251001')).toBe('gpt-5.6-luna')
   })
 
-  test('maps opus model', () => {
-    expect(resolveOpenAIModel('claude-opus-4-6')).toBe('o3')
+  test('maps opus-family models to the frontier default', () => {
+    expect(resolveOpenAIModel('claude-opus-4-6')).toBe('gpt-5.6-sol')
+  })
+
+  test('family match does not require a known model ID', () => {
+    expect(resolveOpenAIModel('claude-opus-9-99')).toBe('gpt-5.6-sol')
   })
 
   test('passes through unknown model name', () => {
@@ -63,6 +67,6 @@ describe('resolveOpenAIModel', () => {
   })
 
   test('strips [1m] suffix', () => {
-    expect(resolveOpenAIModel('claude-sonnet-4-6[1m]')).toBe('gpt-4o')
+    expect(resolveOpenAIModel('claude-sonnet-4-6[1m]')).toBe('gpt-5.6-terra')
   })
 })

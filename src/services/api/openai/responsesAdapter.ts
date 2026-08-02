@@ -22,8 +22,13 @@ type ResponsesRequest = {
   tool_choice?: unknown
   reasoning?: { effort: ResponsesReasoningEffort }
   parallel_tool_calls?: boolean
+  /**
+   * Generic `/responses` endpoints only. The ChatGPT Codex backend rejects
+   * this parameter, so its route never sets it.
+   */
+  max_output_tokens?: number
   /** Sticky cache routing key — stable for the occ session. */
-  prompt_cache_key: string
+  prompt_cache_key?: string
 }
 
 function textFromContent(content: unknown): string {
@@ -169,8 +174,14 @@ export function buildResponsesRequest(params: {
   tools: unknown[]
   toolChoice: unknown
   reasoningEffort?: ResponsesReasoningEffort
-  /** Session-scoped key supplied only by the ChatGPT OAuth route. */
-  promptCacheKey: string
+  /**
+   * ChatGPT OAuth route: always set (session-scoped). Generic route: set only
+   * for OpenAI's official endpoint — compatible providers must not receive
+   * OpenAI-specific request parameters.
+   */
+  promptCacheKey?: string
+  /** Generic `/responses` endpoints only — the ChatGPT backend rejects it. */
+  maxOutputTokens?: number
 }): ResponsesRequest {
   const { input, instructions } = convertMessagesToResponsesInput(
     params.messages,
@@ -190,16 +201,22 @@ export function buildResponsesRequest(params: {
       ? { reasoning: { effort: params.reasoningEffort } }
       : {}),
     parallel_tool_calls: true,
-    // Same OAuth session → same key so OpenAI can sticky-route to a cache node.
+    ...(params.maxOutputTokens !== undefined
+      ? { max_output_tokens: params.maxOutputTokens }
+      : {}),
+    // Same session → same key so OpenAI can sticky-route to a cache node.
     // Must not hash the full message list (would change every turn).
-    prompt_cache_key: params.promptCacheKey,
+    ...(params.promptCacheKey !== undefined
+      ? { prompt_cache_key: params.promptCacheKey }
+      : {}),
   }
 }
 
 async function* parseSSE(
   response: Response,
 ): AsyncGenerator<Record<string, unknown>, void> {
-  if (!response.body) throw new Error('ChatGPT response did not include a body')
+  if (!response.body)
+    throw new Error('Responses API stream did not include a body')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -313,7 +330,12 @@ export async function* adaptResponsesStreamToAnthropic(
     for await (const startedEvent of ensureStarted()) yield startedEvent
     const type = event.type
 
-    if (type === 'response.output_text.delta') {
+    // Refusal text is surfaced as ordinary text: the downstream pipeline has
+    // no refusal block type, and hiding it would make the turn end silently.
+    if (
+      type === 'response.output_text.delta' ||
+      type === 'response.refusal.delta'
+    ) {
       if (!textBlockOpen) {
         if (thinkingBlockOpen) {
           yield {
@@ -338,7 +360,10 @@ export async function* adaptResponsesStreamToAnthropic(
       continue
     }
 
-    if (type === 'response.reasoning_text.delta') {
+    if (
+      type === 'response.reasoning_text.delta' ||
+      type === 'response.reasoning_summary_text.delta'
+    ) {
       if (!thinkingBlockOpen) {
         if (textBlockOpen) {
           yield {
@@ -468,13 +493,37 @@ export async function* adaptResponsesStreamToAnthropic(
   }
 }
 
+async function fetchResponsesStream(params: {
+  url: string
+  headers: Record<string, string>
+  request: ResponsesRequest
+  signal: AbortSignal
+  fetchOverride?: typeof fetch
+  /** Human-readable route name for error messages. */
+  label: string
+}): Promise<AsyncIterable<Record<string, unknown>>> {
+  const fetchFn = params.fetchOverride ?? (globalThis.fetch as typeof fetch)
+  const response = await fetchFn(params.url, {
+    method: 'POST',
+    headers: params.headers,
+    body: JSON.stringify(params.request),
+    signal: params.signal,
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(
+      `${params.label} request failed (${response.status})${text ? `: ${text.slice(0, 500)}` : ''}`,
+    )
+  }
+  return parseSSE(response)
+}
+
 export async function createChatGPTResponsesStream(params: {
   request: ResponsesRequest
   signal: AbortSignal
   fetchOverride?: typeof fetch
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const auth = await getValidChatGPTAuth()
-  const fetchFn = params.fetchOverride ?? (globalThis.fetch as typeof fetch)
   const headers: Record<string, string> = {
     Authorization: `Bearer ${auth.accessToken}`,
     'Content-Type': 'application/json',
@@ -492,20 +541,56 @@ export async function createChatGPTResponsesStream(params: {
   if (auth.accountId) {
     headers['ChatGPT-Account-Id'] = auth.accountId
   }
-  const response = await fetchFn(
-    'https://chatgpt.com/backend-api/codex/responses',
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(params.request),
-      signal: params.signal,
-    },
+  return fetchResponsesStream({
+    url: 'https://chatgpt.com/backend-api/codex/responses',
+    headers,
+    request: params.request,
+    signal: params.signal,
+    fetchOverride: params.fetchOverride,
+    label: 'ChatGPT Responses API',
+  })
+}
+
+/**
+ * Derive the `/responses` endpoint from the configured base URL. The base is
+ * expected to already carry its path prefix (`/v1` on the official API) —
+ * identical to the convention the Chat Completions SDK client uses.
+ */
+export function resolveResponsesEndpoint(baseURL: string | undefined): string {
+  const base = (baseURL?.trim() || 'https://api.openai.com/v1').replace(
+    /\/+$/,
+    '',
   )
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
+  return `${base}/responses`
+}
+
+/**
+ * Generic Responses API route: any endpoint speaking the standard
+ * `/responses` protocol with API-key auth (official OpenAI or compatible
+ * providers). Selected via `OPENAI_WIRE_API=responses`. No ChatGPT-specific
+ * headers are sent on this route.
+ */
+export async function createOpenAIResponsesStream(params: {
+  request: ResponsesRequest
+  signal: AbortSignal
+  fetchOverride?: typeof fetch
+}): Promise<AsyncIterable<Record<string, unknown>>> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
     throw new Error(
-      `ChatGPT Responses API request failed (${response.status})${text ? `: ${text.slice(0, 500)}` : ''}`,
+      'OPENAI_API_KEY is required when OPENAI_WIRE_API=responses is set without ChatGPT auth',
     )
   }
-  return parseSSE(response)
+  return fetchResponsesStream({
+    url: resolveResponsesEndpoint(process.env.OPENAI_BASE_URL),
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    request: params.request,
+    signal: params.signal,
+    fetchOverride: params.fetchOverride,
+    label: 'Responses API',
+  })
 }

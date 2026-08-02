@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'bun:test'
-import { buildResponsesRequest, extractUsage } from '../responsesAdapter.js'
+import { afterEach, describe, expect, test } from 'bun:test'
+import {
+  adaptResponsesStreamToAnthropic,
+  buildResponsesRequest,
+  createOpenAIResponsesStream,
+  extractUsage,
+  resolveResponsesEndpoint,
+} from '../responsesAdapter.js'
 import { formatOpenAIPromptCacheKey } from '../openaiShared.js'
 import { calculateCacheHitRate } from '../../../../utils/telemetry/cacheWarning.js'
 
@@ -32,7 +38,7 @@ describe('buildResponsesRequest', () => {
     expect(request.reasoning).toEqual({ effort: 'xhigh' })
   })
 
-  test('does not include unsupported max_output_tokens parameter', () => {
+  test('does not include max_output_tokens unless explicitly passed (ChatGPT route)', () => {
     const request = buildResponsesRequest({
       model: 'gpt-5.5',
       messages: [{ role: 'user', content: 'hello' }],
@@ -42,6 +48,29 @@ describe('buildResponsesRequest', () => {
     }) as Record<string, unknown>
 
     expect('max_output_tokens' in request).toBe(false)
+  })
+
+  test('includes max_output_tokens when passed (generic route)', () => {
+    const request = buildResponsesRequest({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [],
+      toolChoice: undefined,
+      maxOutputTokens: 64000,
+    })
+
+    expect(request.max_output_tokens).toBe(64000)
+  })
+
+  test('omits prompt_cache_key when not passed (compatible providers)', () => {
+    const request = buildResponsesRequest({
+      model: 'qwen3-coder',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [],
+      toolChoice: undefined,
+    }) as Record<string, unknown>
+
+    expect('prompt_cache_key' in request).toBe(false)
   })
 
   test('includes stable prompt_cache_key for session-sticky cache routing', () => {
@@ -165,5 +194,141 @@ describe('extractUsage (OpenAI Responses → Anthropic usage)', () => {
     expect(usage.cache_read_input_tokens).toBe(4_000)
     expect(usage.cache_creation_input_tokens).toBe(1_000)
     expect(usage.input_tokens).toBe(0)
+  })
+})
+
+describe('resolveResponsesEndpoint', () => {
+  test('defaults to the official OpenAI endpoint', () => {
+    expect(resolveResponsesEndpoint(undefined)).toBe(
+      'https://api.openai.com/v1/responses',
+    )
+    expect(resolveResponsesEndpoint('')).toBe(
+      'https://api.openai.com/v1/responses',
+    )
+  })
+
+  test('appends /responses to the configured base, stripping trailing slashes', () => {
+    expect(resolveResponsesEndpoint('http://localhost:11434/v1')).toBe(
+      'http://localhost:11434/v1/responses',
+    )
+    expect(resolveResponsesEndpoint('https://example.com/v1/')).toBe(
+      'https://example.com/v1/responses',
+    )
+  })
+})
+
+describe('createOpenAIResponsesStream', () => {
+  const savedEnv = {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  }
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+
+  test('rejects without OPENAI_API_KEY', async () => {
+    delete process.env.OPENAI_API_KEY
+    await expect(
+      createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.5',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+        }),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow('OPENAI_API_KEY is required')
+  })
+
+  test('POSTs to <base>/responses with bearer auth and no ChatGPT headers', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+    let capturedUrl = ''
+    let capturedHeaders: Record<string, string> = {}
+    const fetchOverride = (async (url: unknown, init?: RequestInit) => {
+      capturedUrl = String(url)
+      capturedHeaders = (init?.headers ?? {}) as Record<string, string>
+      return new Response('data: [DONE]\n\n', { status: 200 })
+    }) as unknown as typeof fetch
+
+    await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+
+    expect(capturedUrl).toBe('http://localhost:11434/v1/responses')
+    expect(capturedHeaders.Authorization).toBe('Bearer sk-test-key')
+    expect('ChatGPT-Account-Id' in capturedHeaders).toBe(false)
+    expect('originator' in capturedHeaders).toBe(false)
+    expect('OpenAI-Beta' in capturedHeaders).toBe(false)
+  })
+})
+
+async function collectEvents(
+  events: Record<string, unknown>[],
+): Promise<Record<string, unknown>[]> {
+  async function* source() {
+    for (const event of events) yield event
+  }
+  const out: Record<string, unknown>[] = []
+  for await (const event of adaptResponsesStreamToAnthropic(
+    source(),
+    'gpt-5.5',
+  )) {
+    out.push(event as unknown as Record<string, unknown>)
+  }
+  return out
+}
+
+describe('adaptResponsesStreamToAnthropic event coverage', () => {
+  test('reasoning_summary_text.delta maps to a thinking block', async () => {
+    const out = await collectEvents([
+      { type: 'response.reasoning_summary_text.delta', delta: 'because' },
+      { type: 'response.output_text.delta', delta: 'answer' },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    const starts = out.filter(e => e.type === 'content_block_start')
+    expect((starts[0]?.content_block as Record<string, unknown>)?.type).toBe(
+      'thinking',
+    )
+    expect((starts[1]?.content_block as Record<string, unknown>)?.type).toBe(
+      'text',
+    )
+    const thinkingDelta = out.find(
+      e =>
+        e.type === 'content_block_delta' &&
+        (e.delta as Record<string, unknown>)?.type === 'thinking_delta',
+    )
+    expect((thinkingDelta?.delta as Record<string, unknown>)?.thinking).toBe(
+      'because',
+    )
+  })
+
+  test('refusal.delta is surfaced as visible text', async () => {
+    const out = await collectEvents([
+      { type: 'response.refusal.delta', delta: 'I cannot help with that.' },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    const textDelta = out.find(
+      e =>
+        e.type === 'content_block_delta' &&
+        (e.delta as Record<string, unknown>)?.type === 'text_delta',
+    )
+    expect((textDelta?.delta as Record<string, unknown>)?.text).toBe(
+      'I cannot help with that.',
+    )
   })
 })
