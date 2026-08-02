@@ -7,7 +7,7 @@ import {
   setCwdState,
   setOriginalCwd,
 } from '../../bootstrap/state'
-import { getTaskListId } from '../../utils/tasks'
+import { getTaskListId } from '../../utils/task/tasks'
 import { getTeamFilePath } from '../../utils/swarm/teamHelpers'
 import { initializeAssistantTeam } from '../index'
 

@@ -34,7 +34,7 @@ import {
   getDirectoryForPath,
   sanitizePath,
 } from '../filesystem/path.js'
-import { getPlanSlug, getPlansDirectory } from '../plans.js'
+import { getPlanSlug, getPlansDirectory } from '../agents/plans.js'
 import { getPlatform } from '../process/platform.js'
 import { getProjectDir } from '../sessionStorage.js'
 import { SETTING_SOURCES } from '../settings/constants.js'

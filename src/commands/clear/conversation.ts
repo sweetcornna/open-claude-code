@@ -35,7 +35,7 @@ import {
   getSessionEndHookTimeoutMs,
 } from '../../utils/hooks.js'
 import { logError } from '../../utils/telemetry/log.js'
-import { clearAllPlanSlugs } from '../../utils/plans.js'
+import { clearAllPlanSlugs } from '../../utils/agents/plans.js'
 import { setCwd } from '../../utils/shell/Shell.js'
 import { processSessionStartHooks } from '../../utils/session/sessionStart.js'
 import {

@@ -32,8 +32,8 @@ import {
 import {
   listAutonomyRuns,
   startManagedAutonomyFlowFromHeartbeatTask,
-} from '../../src/utils/autonomyRuns'
-import { listAutonomyFlows } from '../../src/utils/autonomyFlows'
+} from '../../src/utils/agents/autonomyRuns'
+import { listAutonomyFlows } from '../../src/utils/agents/autonomyFlows'
 
 const CLI_ENTRYPOINT = resolve(import.meta.dir, '../../dist/cli.js')
 const PROJECT_ROOT = resolve(import.meta.dir, '../..')

@@ -52,7 +52,7 @@ import { ListMcpResourcesTool } from '@open-claude-code/builtin-tools/tools/List
 import { ReadMcpResourceTool } from '@open-claude-code/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { isSearchExtraToolsEnabledOptimistic } from './utils/searchExtraTools.js'
-import { isTodoV2Enabled } from './utils/tasks.js'
+import { isTodoV2Enabled } from './utils/task/tasks.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import {
   getAllBaseTools as getAllBaseToolsFromRegistry,

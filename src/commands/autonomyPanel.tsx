@@ -4,7 +4,7 @@ import { Dialog } from '@anthropic/ink';
 import { useRegisterOverlay } from '../context/overlayContext.js';
 import type { LocalJSXCommandOnDone } from '../types/command.js';
 import { getAutonomyCommandText, getAutonomyDeepSectionText, getAutonomyStatusText } from '../cli/handlers/autonomy.js';
-import { listAutonomyFlows, type AutonomyFlowRecord } from '../utils/autonomyFlows.js';
+import { listAutonomyFlows, type AutonomyFlowRecord } from '../utils/agents/autonomyFlows.js';
 
 type AutonomyAction = {
   label: string;

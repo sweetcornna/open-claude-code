@@ -20,7 +20,7 @@ import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { getPatchForDisplay } from 'src/utils/text/diff.js';
 import { getDisplayPath } from 'src/utils/filesystem/file.js';
 import { logError } from 'src/utils/telemetry/log.js';
-import { getPlansDirectory } from 'src/utils/plans.js';
+import { getPlansDirectory } from 'src/utils/agents/plans.js';
 import { openForScan, readCapped } from 'src/utils/filesystem/readEditContext.js';
 import type { Output } from './FileWriteTool.js';
 

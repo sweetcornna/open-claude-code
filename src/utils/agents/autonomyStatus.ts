@@ -4,25 +4,28 @@ import { listLiveSessions } from '../../cli/bg.js'
 import {
   type AutonomyFlowRecord,
   formatAutonomyFlowsStatus,
-} from '../autonomyFlows.js'
+} from './autonomyFlows.js'
 import {
   type AutonomyRunRecord,
   formatAutonomyRunsStatus,
-} from '../autonomyRuns.js'
+} from './autonomyRuns.js'
 import { getTeamsDir } from '../config/envUtils.js'
 import {
   isAutoModeGateEnabled,
   getAutoModeUnavailableReason,
 } from '../permissions/permissionSetup.js'
-import { cronToHuman } from '../cron.js'
-import { listAllCronTasks, nextCronRunMs } from '../cronTasks.js'
-import { getTeammateStatuses } from '../teamDiscovery.js'
-import { listTasks } from '../tasks.js'
+import { cronToHuman } from '../task/cron.js'
+import { listAllCronTasks, nextCronRunMs } from '../task/cronTasks.js'
+import { getTeammateStatuses } from './teamDiscovery.js'
+import { listTasks } from '../task/tasks.js'
 import {
   formatRemoteTriggerAuditStatus,
   listRemoteTriggerAuditRecords,
-} from '../remoteTriggerAudit.js'
-import { formatWorkflowRunsStatus, listWorkflowRuns } from '../workflowRuns.js'
+} from './remoteTriggerAudit.js'
+import {
+  formatWorkflowRunsStatus,
+  listWorkflowRuns,
+} from '../task/workflowRuns.js'
 import { formatRemoteControlLocalStatus } from '../network/remoteControlStatus.js'
 
 type DeepStatusParams = {

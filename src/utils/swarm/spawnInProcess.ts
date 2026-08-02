@@ -24,8 +24,8 @@ import type {
   TeammateIdentity,
 } from '../../tasks/InProcessTeammateTask/types.js'
 import { createAbortController } from '../process/abortController.js'
-import { markAutonomyRunFailed } from '../autonomyRuns.js'
-import { formatAgentId } from '../agentId.js'
+import { markAutonomyRunFailed } from '../agents/autonomyRuns.js'
+import { formatAgentId } from '../agents/agentId.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { emitTaskTerminatedSdk } from '../session/sdkEventQueue.js'
@@ -35,7 +35,7 @@ import {
   registerTask,
   STOPPED_DISPLAY_MS,
 } from '../task/framework.js'
-import { createTeammateContext } from '../teammateContext.js'
+import { createTeammateContext } from '../agents/teammateContext.js'
 import {
   isPerfettoTracingEnabled,
   registerAgent as registerPerfettoAgent,

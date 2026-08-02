@@ -17,7 +17,7 @@ import { createAbortController } from '../../utils/process/abortController.js';
 import { saveGlobalConfig } from '../../utils/config/config.js';
 import { errorMessage } from '../../utils/errors.js';
 import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js';
-import type { CacheSafeParams } from '../../utils/forkedAgent.js';
+import type { CacheSafeParams } from '../../utils/agents/forkedAgent.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
 import { runSideQuestion } from '../../utils/session/sideQuestion.js';

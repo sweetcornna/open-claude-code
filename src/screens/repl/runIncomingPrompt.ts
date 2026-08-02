@@ -7,7 +7,7 @@ import {
 import {
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
-} from '../../utils/autonomyQueueLifecycle.js'
+} from '../../utils/agents/autonomyQueueLifecycle.js'
 import { getCwd } from '../../utils/filesystem/cwd.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { toError } from '../../utils/errors.js'

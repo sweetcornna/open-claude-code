@@ -13,7 +13,7 @@ import { getFeatureValue_CACHED_WITH_REFRESH } from '../../services/analytics/gr
 import {
   type CronJitterConfig,
   DEFAULT_CRON_JITTER_CONFIG,
-} from '../cronTasks.js'
+} from './cronTasks.js'
 import { lazySchema } from '../collections/lazySchema.js'
 
 // How often to re-fetch tengu_kairos_cron_config from GrowthBook. Short because

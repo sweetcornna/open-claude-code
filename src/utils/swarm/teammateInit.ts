@@ -10,12 +10,12 @@ import { logForDebugging } from '../telemetry/debug.js'
 import { addFunctionHook } from '../hooks/sessionHooks.js'
 import { applyPermissionUpdate } from '../permissions/PermissionUpdate.js'
 import { jsonStringify } from '../telemetry/slowOperations.js'
-import { getTeammateColor } from '../teammate.js'
+import { getTeammateColor } from '../agents/teammate.js'
 import {
   createIdleNotification,
   getLastPeerDmSummary,
   writeToMailbox,
-} from '../teammateMailbox.js'
+} from '../agents/teammateMailbox.js'
 import { readTeamFile, setMemberActive } from './teamHelpers.js'
 
 /**

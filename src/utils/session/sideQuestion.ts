@@ -9,7 +9,7 @@
 import { formatAPIError } from '@ant/model-provider'
 import type { NonNullableUsage } from '@ant/model-provider'
 import type { Message, SystemAPIErrorMessage } from '../../types/message.js'
-import { type CacheSafeParams, runForkedAgent } from '../forkedAgent.js'
+import { type CacheSafeParams, runForkedAgent } from '../agents/forkedAgent.js'
 import { createUserMessage, extractTextContent } from '../messages.js'
 
 // Pattern to detect "/btw" at start of input (case-insensitive, word boundary)

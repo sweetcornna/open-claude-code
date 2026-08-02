@@ -3,16 +3,16 @@ import { setScheduledTasksEnabled } from '@open-claude-code/tool-runtime/bootstr
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { cronToHuman, parseCronExpression } from 'src/utils/cron.js'
+import { cronToHuman, parseCronExpression } from 'src/utils/task/cron.js'
 import {
   addCronTask,
   getCronFilePath,
   listAllCronTasks,
   nextCronRunMs,
-} from 'src/utils/cronTasks.js'
+} from 'src/utils/task/cronTasks.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js'
-import { getTeammateContext } from 'src/utils/teammateContext.js'
+import { getTeammateContext } from 'src/utils/agents/teammateContext.js'
 import {
   buildCronCreateDescription,
   buildCronCreatePrompt,

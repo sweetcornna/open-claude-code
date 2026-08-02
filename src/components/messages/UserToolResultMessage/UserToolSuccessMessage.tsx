@@ -10,7 +10,7 @@ import {
   deleteClassifierApproval,
   getClassifierApproval,
   getYoloClassifierApproval,
-} from '../../../utils/classifierApprovals.js';
+} from '../../../utils/permissions/classifierApprovals.js';
 import type { buildMessageLookups } from '../../../utils/messages.js';
 import { MessageResponse } from '../../MessageResponse.js';
 import { HookProgressMessage } from '../HookProgressMessage.js';

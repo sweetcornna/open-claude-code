@@ -113,7 +113,7 @@ mock.module('src/utils/errors.js', () => ({
   classifyAxiosError: () => ({ category: 'unknown' }),
 }))
 
-mock.module('src/utils/forkedAgent.js', () => ({}))
+mock.module('src/utils/agents/forkedAgent.js', () => ({}))
 
 mock.module('src/utils/permissions/yoloClassifier.js', () => ({
   buildTranscriptForClassifier: () => '',

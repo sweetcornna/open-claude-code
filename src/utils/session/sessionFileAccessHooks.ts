@@ -37,7 +37,7 @@ const memoryShapeTelemetry = feature('MEMORY_SHAPE_TELEMETRY')
   : null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { getSubagentLogName } from '../agentContext.js'
+import { getSubagentLogName } from '../agents/agentContext.js'
 
 /**
  * Extract the file path from a tool input for memdir detection.

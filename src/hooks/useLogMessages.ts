@@ -2,7 +2,7 @@ import type { UUID } from 'crypto'
 import { useEffect, useRef } from 'react'
 import { useAppState } from '../state/AppState.js'
 import type { Message } from '../types/message.js'
-import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js'
+import { isAgentSwarmsEnabled } from '../utils/agents/agentSwarmsEnabled.js'
 import {
   cleanMessagesForLogging,
   isChainParticipant,

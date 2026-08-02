@@ -7,7 +7,7 @@ import {
   loadAutonomyAuthority,
   parseHeartbeatAuthorityTasks,
   resetAutonomyAuthorityForTests,
-} from '../autonomyAuthority'
+} from '../agents/autonomyAuthority'
 import {
   cleanupTempDir,
   createTempDir,

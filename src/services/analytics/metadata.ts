@@ -32,7 +32,7 @@ import {
   detectVcs,
 } from '../../utils/process/platform.js'
 import type { CoreUserData } from 'src/utils/auth/user.js'
-import { getAgentContext } from '../../utils/agentContext.js'
+import { getAgentContext } from '../../utils/agents/agentContext.js'
 import type { EnvironmentMetadata } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
 import type { PublicApiAuth } from '../../types/generated/events_mono/common/v1/auth.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
@@ -41,7 +41,7 @@ import {
   getParentSessionId as getTeammateParentSessionId,
   getTeamName,
   isTeammate,
-} from '../../utils/teammate.js'
+} from '../../utils/agents/teammate.js'
 import { feature } from 'bun:bundle'
 
 export { getFileExtensionForAnalytics }

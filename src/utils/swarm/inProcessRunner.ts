@@ -69,12 +69,15 @@ import {
   getTokenCountFromUsage,
 } from '../session/tokens.js'
 import { createAbortController } from '../process/abortController.js'
-import { type AgentContext, runWithAgentContext } from '../agentContext.js'
+import {
+  type AgentContext,
+  runWithAgentContext,
+} from '../agents/agentContext.js'
 import {
   markAutonomyRunCompleted,
   markAutonomyRunFailed,
   markAutonomyRunRunning,
-} from '../autonomyRuns.js'
+} from '../agents/autonomyRuns.js'
 import { count } from '../collections/array.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { cloneFileStateCache } from '../fileStateCache.js'
@@ -93,9 +96,9 @@ import { emitTaskTerminatedSdk } from '../session/sdkEventQueue.js'
 import { sleep } from '../process/sleep.js'
 import { jsonStringify } from '../telemetry/slowOperations.js'
 import { asSystemPrompt } from '../session/systemPromptType.js'
-import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
-import type { TeammateContext } from '../teammateContext.js'
-import { runWithTeammateContext } from '../teammateContext.js'
+import { claimTask, listTasks, type Task, updateTask } from '../task/tasks.js'
+import type { TeammateContext } from '../agents/teammateContext.js'
+import { runWithTeammateContext } from '../agents/teammateContext.js'
 import {
   createIdleNotification,
   getLastPeerDmSummary,
@@ -104,7 +107,7 @@ import {
   markMessageAsReadByIdentity,
   readMailbox,
   writeToMailbox,
-} from '../teammateMailbox.js'
+} from '../agents/teammateMailbox.js'
 import { unregisterAgent as unregisterPerfettoAgent } from '../telemetry/perfettoTracing.js'
 import { createContentReplacementState } from '../toolResultStorage.js'
 import { TEAM_LEAD_NAME } from './constants.js'

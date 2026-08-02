@@ -23,7 +23,7 @@
 
 import { AsyncLocalStorage } from 'async_hooks'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
-import { isAgentSwarmsEnabled } from '../agentSwarmsEnabled.js'
+import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 
 /**
  * Context for subagents (Agent tool agents).

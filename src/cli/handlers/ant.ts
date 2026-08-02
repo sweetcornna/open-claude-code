@@ -5,7 +5,7 @@ import {
   updateTask,
   listTasks,
   getTasksDir,
-} from '../../utils/tasks.js'
+} from '../../utils/task/tasks.js'
 import { getRecentActivity } from '../../utils/terminal/logoV2Utils.js'
 import type { LogOption } from '../../types/logs.js'
 

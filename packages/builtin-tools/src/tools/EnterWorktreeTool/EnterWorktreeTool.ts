@@ -11,7 +11,7 @@ import { clearMemoryFileCaches } from 'src/utils/session/claudemd.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { findCanonicalGitRoot } from 'src/utils/git/git.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { getPlanSlug, getPlansDirectory } from 'src/utils/plans.js'
+import { getPlanSlug, getPlansDirectory } from 'src/utils/agents/plans.js'
 import { setCwd } from 'src/utils/shell/Shell.js'
 import { saveWorktreeState } from 'src/utils/sessionStorage.js'
 import {

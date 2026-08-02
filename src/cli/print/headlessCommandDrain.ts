@@ -20,7 +20,7 @@ import { getInitJsonSchema } from 'src/bootstrap/state.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import { dequeue, peek } from 'src/utils/session/messageQueueManager.js'
-import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
+import { notifyCommandLifecycle } from 'src/utils/task/commandLifecycle.js'
 import { mergeFileStateCaches } from 'src/utils/fileStateCache.js'
 import { executeFilePersistence } from 'src/utils/filePersistence/filePersistence.js'
 import { createAbortController } from 'src/utils/process/abortController.js'
@@ -36,7 +36,7 @@ import {
 import {
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
-} from 'src/utils/autonomyQueueLifecycle.js'
+} from 'src/utils/agents/autonomyQueueLifecycle.js'
 import { enqueue } from 'src/utils/session/messageQueueManager.js'
 import { runWithWorkload } from 'src/utils/session/workloadContext.js'
 import { drainSdkEvents } from 'src/utils/session/sdkEventQueue.js'

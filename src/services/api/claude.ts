@@ -156,8 +156,8 @@ import {
   isAdvisorEnabled,
   isValidAdvisorModel,
   modelSupportsAdvisor,
-} from 'src/utils/advisor.js'
-import { getAgentContext } from 'src/utils/agentContext.js'
+} from 'src/utils/agents/advisor.js'
+import { getAgentContext } from 'src/utils/agents/agentContext.js'
 import { isClaudeAISubscriber } from 'src/utils/auth/auth.js'
 import {
   modelSupportsStructuredOutputs,

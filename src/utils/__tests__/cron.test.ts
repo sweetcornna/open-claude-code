@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { parseCronExpression, computeNextCronRun, cronToHuman } from '../cron'
+import {
+  parseCronExpression,
+  computeNextCronRun,
+  cronToHuman,
+} from '../task/cron'
 
 describe('parseCronExpression', () => {
   describe('valid expressions', () => {

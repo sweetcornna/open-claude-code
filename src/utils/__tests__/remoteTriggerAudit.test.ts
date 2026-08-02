@@ -6,7 +6,7 @@ import {
   appendRemoteTriggerAuditRecord,
   formatRemoteTriggerAuditStatus,
   listRemoteTriggerAuditRecords,
-} from '../remoteTriggerAudit'
+} from '../agents/remoteTriggerAudit'
 
 let tempDir = ''
 

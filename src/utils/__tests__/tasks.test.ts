@@ -28,12 +28,12 @@ mock.module('src/bootstrap/state.ts', () => ({
 // has to cover every export other files reach for — `getDefaultAppState()`
 // lazily requires this module and calls `isTeammate()`/`isPlanModeRequired()`.
 // Omitting them only fails when suite ordering puts this file first.
-mock.module('src/utils/teammate.ts', () => ({
+mock.module('src/utils/agents/teammate.ts', () => ({
   getTeamName: () => undefined,
   isTeammate: () => false,
   isPlanModeRequired: () => false,
 }))
-mock.module('src/utils/teammateContext.ts', () => ({
+mock.module('src/utils/agents/teammateContext.ts', () => ({
   getTeammateContext: () => undefined,
 }))
 import {
@@ -53,7 +53,7 @@ import {
   clearLeaderTeamName,
   isTodoV2Enabled,
   type Task,
-} from '../tasks'
+} from '../task/tasks'
 
 // Use a temp dir as CLAUDE_CONFIG_DIR for isolation
 let configDir: string

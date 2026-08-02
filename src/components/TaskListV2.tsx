@@ -8,11 +8,11 @@ import {
   AGENT_COLOR_TO_THEME_COLOR,
   type AgentColorName,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
-import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
+import { isAgentSwarmsEnabled } from '../utils/agents/agentSwarmsEnabled.js';
 import { count } from '../utils/collections/array.js';
 import { summarizeRecentActivities } from '../utils/session/collapseReadSearch.js';
 import { truncateToWidth } from '../utils/text/format.js';
-import { isTodoV2Enabled, type Task } from '../utils/tasks.js';
+import { isTodoV2Enabled, type Task } from '../utils/task/tasks.js';
 import type { Theme } from '../utils/terminal/theme.js';
 import ThemedText from './design-system/ThemedText.js';
 

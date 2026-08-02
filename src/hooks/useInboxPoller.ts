@@ -19,7 +19,7 @@ import { logForDebugging } from '../utils/telemetry/debug.js'
 import {
   findInProcessTeammateTaskId,
   handlePlanApprovalResponse,
-} from '../utils/inProcessTeammateHelpers.js'
+} from '../utils/agents/inProcessTeammateHelpers.js'
 import { createAssistantMessage } from '../utils/messages.js'
 import {
   permissionModeFromString,
@@ -40,14 +40,14 @@ import {
   removeTeammateFromTeamFile,
   setMemberMode,
 } from '../utils/swarm/teamHelpers.js'
-import { unassignTeammateTasks } from '../utils/tasks.js'
+import { unassignTeammateTasks } from '../utils/task/tasks.js'
 import {
   getAgentName,
   isPlanModeRequired,
   isTeamLead,
   isTeammate,
-} from '../utils/teammate.js'
-import { isInProcessTeammate } from '../utils/teammateContext.js'
+} from '../utils/agents/teammate.js'
+import { isInProcessTeammate } from '../utils/agents/teammateContext.js'
 import {
   isModeSetRequest,
   isPermissionRequest,
@@ -63,7 +63,7 @@ import {
   readUnreadMessages,
   type TeammateMessage,
   writeToMailbox,
-} from '../utils/teammateMailbox.js'
+} from '../utils/agents/teammateMailbox.js'
 import {
   hasPermissionCallback,
   hasSandboxPermissionCallback,

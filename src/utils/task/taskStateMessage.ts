@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import type { SDKMessage } from 'src/entrypoints/agentSdkTypes.js'
-import type { Task } from '../tasks.js'
+import type { Task } from './tasks.js'
 
 export type TaskStateItem = Pick<
   Task,

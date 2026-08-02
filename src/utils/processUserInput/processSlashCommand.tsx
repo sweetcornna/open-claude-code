@@ -39,13 +39,13 @@ import { runAgent } from '@open-claude-code/builtin-tools/tools/AgentTool/runAge
 import { renderToolUseProgressMessage } from '@open-claude-code/builtin-tools/tools/AgentTool/UI.js';
 import type { CommandResultDisplay } from '../../types/command.js';
 import { createAbortController } from '../process/abortController.js';
-import { getAgentContext } from '../agentContext.js';
+import { getAgentContext } from '../agents/agentContext.js';
 import { createAttachmentMessage, getAttachmentMessages } from '../attachments.js';
 import { logForDebugging } from '../telemetry/debug.js';
 import { isEnvTruthy } from '../config/envUtils.js';
 import { AbortError, MalformedCommandError } from '../errors.js';
 import { getDisplayPath } from '../filesystem/file.js';
-import { extractResultText, prepareForkedCommandContext } from '../forkedAgent.js';
+import { extractResultText, prepareForkedCommandContext } from '../agents/forkedAgent.js';
 import { getFsImplementation } from '../filesystem/fsOperations.js';
 import { isFullscreenEnvEnabled } from '../terminal/fullscreen.js';
 import { toArray } from '../collections/generators.js';
@@ -76,7 +76,7 @@ import { logOTelEvent, redactIfDisabled } from '../telemetry/events.js';
 import { buildPluginCommandTelemetryFields } from '../telemetry/pluginTelemetry.js';
 import { getAssistantMessageContentLength } from '../session/tokens.js';
 import { createAgentId } from '../collections/uuid.js';
-import { finalizeAutonomyRunCompleted, finalizeAutonomyRunFailed } from '../autonomyRuns.js';
+import { finalizeAutonomyRunCompleted, finalizeAutonomyRunFailed } from '../agents/autonomyRuns.js';
 import { getWorkload } from '../session/workloadContext.js';
 import type { ProcessUserInputBaseResult, ProcessUserInputContext } from './processUserInput.js';
 

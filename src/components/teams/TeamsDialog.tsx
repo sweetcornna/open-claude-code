@@ -27,13 +27,13 @@ import { ensureBackendsRegistered, getBackendByType, getCachedBackend } from '..
 import { isPaneBackend, type PaneBackendType } from '../../utils/swarm/backends/types.js';
 import { getSwarmSocketName, TMUX_COMMAND } from '../../utils/swarm/constants.js';
 import { removeMemberFromTeam, setMemberMode, setMultipleMemberModes } from '../../utils/swarm/teamHelpers.js';
-import { listTasks, type Task, unassignTeammateTasks } from '../../utils/tasks.js';
-import { getTeammateStatuses, type TeammateStatus, type TeamSummary } from '../../utils/teamDiscovery.js';
+import { listTasks, type Task, unassignTeammateTasks } from '../../utils/task/tasks.js';
+import { getTeammateStatuses, type TeammateStatus, type TeamSummary } from '../../utils/agents/teamDiscovery.js';
 import {
   createModeSetRequestMessage,
   sendShutdownRequestToMailbox,
   writeToMailbox,
-} from '../../utils/teammateMailbox.js';
+} from '../../utils/agents/teammateMailbox.js';
 import { Dialog } from '@anthropic/ink';
 import ThemedText from '../design-system/ThemedText.js';
 

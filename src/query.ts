@@ -91,8 +91,8 @@ import {
   type AutonomyTurnOutcome,
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
-} from './utils/autonomyQueueLifecycle.js'
-import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
+} from './utils/agents/autonomyQueueLifecycle.js'
+import { notifyCommandLifecycle } from './utils/task/commandLifecycle.js'
 import { headlessProfilerCheckpoint } from './utils/telemetry/headlessProfiler.js'
 import {
   getRuntimeMainLoopModel,
@@ -148,7 +148,7 @@ import {
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const taskSummaryModule = feature('BG_SESSIONS')
-  ? (require('./utils/taskSummary.js') as typeof import('./utils/taskSummary.js'))
+  ? (require('./utils/task/taskSummary.js') as typeof import('./utils/task/taskSummary.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 

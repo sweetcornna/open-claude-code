@@ -31,7 +31,7 @@ mock.module('../telemetry/debug.js', () => ({
 // ─── import after mocks ─────────────────────────────────────────────────────
 
 const { shouldGenerateTaskSummary, maybeGenerateTaskSummary } = await import(
-  '../taskSummary.js'
+  '../task/taskSummary.js'
 )
 
 // ─── tests ──────────────────────────────────────────────────────────────────

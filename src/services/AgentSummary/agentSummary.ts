@@ -18,7 +18,7 @@ import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   type CacheSafeParams,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
+} from '../../utils/agents/forkedAgent.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { getAgentTranscript } from '../../utils/sessionStorage.js'
 import { buildSummaryContext } from './summaryContext.js'

@@ -35,7 +35,7 @@ import {
   NO_RESPONSE_REQUESTED,
   normalizeMessages,
 } from '../messages.js'
-import { copyPlanForResume } from '../plans.js'
+import { copyPlanForResume } from '../agents/plans.js'
 import { processSessionStartHooks } from './sessionStart.js'
 import {
   buildConversationChain,

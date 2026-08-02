@@ -64,7 +64,7 @@ mock.module('src/services/auth/hostGuard.ts', () => ({
 }))
 
 // ── cron mock ───────────────────────────────────────────────────────────────
-mock.module('src/utils/cron.js', () => ({
+mock.module('src/utils/task/cron.js', () => ({
   parseCronExpression: (expr: string) =>
     expr.includes('INVALID')
       ? null

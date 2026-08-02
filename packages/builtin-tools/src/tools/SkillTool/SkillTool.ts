@@ -46,12 +46,12 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '@open-claude-code/tool-runtime/analytics.js'
-import { getAgentContext } from 'src/utils/agentContext.js'
+import { getAgentContext } from 'src/utils/agents/agentContext.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import {
   extractResultText,
   prepareForkedCommandContext,
-} from 'src/utils/forkedAgent.js'
+} from 'src/utils/agents/forkedAgent.js'
 import { parseFrontmatter } from 'src/utils/text/frontmatterParser.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { createUserMessage, normalizeMessages } from 'src/utils/messages.js'

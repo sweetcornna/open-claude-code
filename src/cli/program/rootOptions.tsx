@@ -8,7 +8,7 @@
 import { InvalidArgumentError, Option, type Command as CommanderCommand } from '@commander-js/extra-typings';
 import { feature } from 'bun:bundle';
 import { BIN_NAME, DISPLAY_NAME } from 'src/constants/brand.js';
-import { canUserConfigureAdvisor } from 'src/utils/advisor.js';
+import { canUserConfigureAdvisor } from 'src/utils/agents/advisor.js';
 import { PERMISSION_MODES } from 'src/utils/permissions/PermissionMode.js';
 
 export function applyRootOptions(program: CommanderCommand) {

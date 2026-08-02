@@ -20,7 +20,7 @@ import {
   getSessionCronTasks,
   removeSessionCronTasks,
 } from '../../bootstrap/state.js'
-import { computeNextCronRun, parseCronExpression } from '../cron.js'
+import { computeNextCronRun, parseCronExpression } from './cron.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { isFsInaccessible } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'

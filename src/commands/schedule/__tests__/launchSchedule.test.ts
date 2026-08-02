@@ -31,7 +31,7 @@ mock.module('src/services/analytics/index.js', () => ({
 }))
 
 // ── Cron utility mock ───────────────────────────────────────────────────────
-mock.module('src/utils/cron.js', () => ({
+mock.module('src/utils/task/cron.js', () => ({
   parseCronExpression: (cron: string) => {
     const fields = cron.trim().split(/\s+/)
     if (fields.length !== 5) return null
