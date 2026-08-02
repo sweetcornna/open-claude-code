@@ -148,13 +148,6 @@ import { logError } from '../utils/log.js';
 import { getCwd } from '../utils/cwd.js';
 // Dead code elimination: conditional imports
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-const useVoiceIntegration: typeof import('../hooks/useVoiceIntegration.js').useVoiceIntegration = feature('VOICE_MODE')
-  ? require('../hooks/useVoiceIntegration.js').useVoiceIntegration
-  : () => ({
-      stripTrailing: () => 0,
-      handleKeyEvent: () => {},
-      resetAnchor: () => {},
-    });
 const VoiceKeybindingHandler: typeof import('../hooks/useVoiceIntegration.js').VoiceKeybindingHandler = feature(
   'VOICE_MODE',
 )
@@ -226,7 +219,6 @@ import { escapeXml } from '../utils/xml.js';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { handlePromptSubmit, type PromptInputHelpers } from '../utils/handlePromptSubmit.js';
 import { useQueueProcessor } from '../hooks/useQueueProcessor.js';
-import { useMailboxBridge } from '../hooks/useMailboxBridge.js';
 import { queryCheckpoint, logQueryProfileReport } from '../utils/queryProfiler.js';
 import type {
   Message as MessageType,
@@ -307,7 +299,6 @@ import { isBgSession, updateSessionName, updateSessionActivity } from '../utils/
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
 import { restoreRemoteAgentTasks } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import { BackgroundAgentSelector } from '../components/tasks/BackgroundAgentSelector.js';
-import { useInboxPoller } from '../hooks/useInboxPoller.js';
 // Dead code elimination: conditional import for loop mode
 /* eslint-disable @typescript-eslint/no-require-imports */
 const proactiveModule = feature('PROACTIVE') || feature('KAIROS') ? require('../proactive/index.js') : null;
@@ -315,15 +306,8 @@ const PROACTIVE_NO_OP_SUBSCRIBE = (_cb: () => void) => () => {};
 const PROACTIVE_FALSE = () => false;
 const PROACTIVE_NULL = (): number | null => null;
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
-const useProactive =
-  feature('PROACTIVE') || feature('KAIROS') ? require('../proactive/useProactive.js').useProactive : null;
-const useScheduledTasks = feature('AGENT_TRIGGERS') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
-const useGoalContinuation: typeof import('../hooks/useGoalContinuation.js').useGoalContinuation | null = feature('GOAL')
-  ? require('../hooks/useGoalContinuation.js').useGoalContinuation
-  : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
-import { useTaskListWatcher } from '../hooks/useTaskListWatcher.js';
 import type { SandboxAskCallback, NetworkHostPattern } from '../utils/sandbox/sandbox-adapter.js';
 
 import {
@@ -450,6 +434,7 @@ import type { Props, Screen } from './repl/types.js';
 import { EMPTY_MCP_CLIENTS, HISTORY_STUB, RECENT_SCROLL_REPIN_WINDOW_MS } from './repl/constants.js';
 import { isForkBoilerplateTextBlock } from './repl/forkBoilerplate.js';
 import { median } from './repl/median.js';
+import { useReplAutomation } from './repl/useReplAutomation.js';
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
@@ -4488,91 +4473,27 @@ export function REPL({
     [onQuery, mainLoopModel, store],
   );
 
-  // Voice input integration (VOICE_MODE builds only)
-  const voiceIntegrationResult = useVoiceIntegration({ setInputValueRaw, inputValueRef, insertTextRef });
-  const voice = feature('VOICE_MODE')
-    ? voiceIntegrationResult
-    : {
-        stripTrailing: () => 0,
-        handleKeyEvent: () => {},
-        resetAnchor: () => {},
-        interimRange: null,
-      };
-
-  useInboxPoller({
-    enabled: isAgentSwarmsEnabled(),
+  // Feature-gated background automation cluster (voice / inbox / mailbox /
+  // scheduled tasks / task list / proactive / goal continuation). Extracted
+  // verbatim to src/screens/repl/useReplAutomation.ts and called from this
+  // exact position so the hook call order is unchanged.
+  const { voice } = useReplAutomation({
+    setInputValueRaw,
+    inputValueRef,
+    insertTextRef,
     isLoading,
     focusedInputDialog,
-    onSubmitMessage: handleIncomingPrompt,
-  });
-
-  useMailboxBridge({ isLoading, onSubmitMessage: handleIncomingPrompt });
-  // Scheduled tasks from .claude/scheduled_tasks.json (CronCreate/Delete/List)
-  if (feature('AGENT_TRIGGERS')) {
-    // Assistant mode bypasses the isLoading gate (a busy proactive tick
-    // loop would otherwise starve the scheduler).
-    // kairosEnabled is set once in initialState (main.tsx) and never mutated — no
-    // subscription needed. The tengu_kairos_cron runtime gate is checked inside
-    // useScheduledTasks's effect (not here) since wrapping a hook call in a dynamic
-    // condition would break rules-of-hooks.
-    const assistantMode = store.getState().kairosEnabled;
-    useScheduledTasks!({ isLoading, assistantMode, setMessages });
-  }
-
-  // Note: Permission polling is now handled by useInboxPoller
-  // - Workers receive permission responses via mailbox messages
-  // - Leaders receive permission requests via mailbox messages
-
-  if (process.env.USER_TYPE === 'ant') {
-    // Tasks mode: watch for tasks and auto-process them
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useTaskListWatcher({
-      taskListId,
-      isLoading,
-      onSubmitTask: handleIncomingPrompt,
-    });
-  }
-
-  // Proactive mode: auto-tick when enabled (via /proactive command)
-  // Moved out of USER_TYPE === 'ant' block so external users can use it.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useProactive?.({
-    // Suppress ticks while an initial message is pending — the initial
-    // message will be processed asynchronously and a premature tick would
-    // race with it, causing concurrent-query enqueue of expanded skill text.
-    isLoading: isLoading || initialMessage !== null,
-    queuedCommandsLength: queuedCommands.length,
-    hasActiveLocalJsxUI: isShowingLocalJSXCommand,
-    isInPlanMode: toolPermissionContext.mode === 'plan',
-    onQueueTick: (command: QueuedCommand) => enqueue(command),
-  });
-
-  // Goal auto-continuation: enqueue a steering prompt when idle + active goal
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useGoalContinuation?.({
-    isLoading: isLoading || initialMessage !== null,
+    handleIncomingPrompt,
+    store,
+    setMessages,
+    taskListId,
+    initialMessage,
+    queuedCommands,
+    isShowingLocalJSXCommand,
+    toolPermissionContext,
+    queryGuard,
     wasAborted,
-    queuedCommandsLength: queuedCommands.length,
-    hasActiveLocalJsxUI: isShowingLocalJSXCommand,
-    isInPlanMode: toolPermissionContext.mode === 'plan',
-    isQueryActiveNow: queryGuard.getSnapshot,
-    onContinuationEnqueued: ({ turn, objective }) => {
-      const visibleGoalTurnInput = `Goal auto-continue (${turn}/1): continue advancing "${objective}".`;
-      setMessages(oldMessages => [
-        ...oldMessages,
-        createUserMessage({
-          content: visibleGoalTurnInput,
-          isVisibleInTranscriptOnly: true,
-        }),
-      ]);
-    },
-    onMaxTurnsReached: () => {
-      addNotification({
-        key: 'goal-max-turns-reached',
-        text: 'Goal reached max continuation turns (1). Run /goal continue to reset turn counter and continue.',
-        priority: 'immediate',
-      });
-    },
+    addNotification,
   });
 
   useEffect(() => {
