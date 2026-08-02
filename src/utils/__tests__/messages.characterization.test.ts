@@ -8,10 +8,11 @@
  * the equivalence between `buildMessageLookups` (full rebuild) and
  * `updateMessageLookupsIncremental` (append-only fast path).
  *
- * They describe what the code does today, not what it ought to do. Where the
- * two lookup paths already disagree, the disagreement is pinned explicitly and
- * labelled, so a later refactor has to make a conscious decision about it
- * instead of silently changing behaviour.
+ * They describe what the code does today, not what it ought to do. The three
+ * places where the two lookup paths used to disagree were adjudicated in
+ * favour of the full rebuild and the incremental updater was changed to match;
+ * they keep their own describe block at the bottom, with the reasoning, so a
+ * future regression surfaces with its history attached.
  *
  * No `mock.module` calls: `messages.ts` is importable as-is (see the existing
  * `messages.test.ts`), and mocking anything here would leak into every other
@@ -629,6 +630,67 @@ describe('buildMessageLookups / updateMessageLookupsIncremental equivalence', ()
     expect(rebuildSteps).toEqual([])
   })
 
+  test.each([
+    [
+      'an assistant turn split across entries sharing one message id',
+      (): Message[] => [
+        userText(fixtureUuid(1), 'go'),
+        assistantToolUse({ messageId: 'msg_shared', uuid: fixtureUuid(2) }, [
+          { id: 'toolu_1', name: 'Bash' },
+        ]),
+        assistantToolUse({ messageId: 'msg_shared', uuid: fixtureUuid(3) }, [
+          { id: 'toolu_2', name: 'Read' },
+        ]),
+        userToolResult(fixtureUuid(4), 'toolu_1', 'ok'),
+      ],
+    ],
+    [
+      'one hook emitting several attachments for the same tool use',
+      (): Message[] => [
+        userText(fixtureUuid(1), 'go'),
+        assistantToolUse({ messageId: 'msg_1', uuid: fixtureUuid(2) }, [
+          { id: 'toolu_1', name: 'Bash' },
+        ]),
+        hookSuccessAttachment(fixtureUuid(3), 'toolu_1', 'same-hook'),
+        hookSuccessAttachment(fixtureUuid(4), 'toolu_1', 'same-hook'),
+        hookSuccessAttachment(fixtureUuid(5), 'toolu_1', 'other-hook'),
+        userToolResult(fixtureUuid(6), 'toolu_1', 'ok'),
+      ],
+    ],
+    [
+      'a server tool use that never gets a result',
+      (): Message[] => [
+        userText(fixtureUuid(1), 'go'),
+        assistantServerToolUseOrphaned(
+          { messageId: 'msg_1', uuid: fixtureUuid(2) },
+          'srvtoolu_orphan',
+        ),
+        userText(fixtureUuid(3), 'next'),
+        assistantText({ messageId: 'msg_2', uuid: fixtureUuid(4) }, 'done'),
+      ],
+    ],
+  ])('incremental state matches a full rebuild at every step: %s', (_label, build) => {
+    const conversation = build()
+    let stepsChecked = 0
+
+    const { rebuildSteps } = replayIncrementally(
+      conversation,
+      (step, incremental, fresh) => {
+        stepsChecked++
+        expect({ step, lookups: incremental }).toEqual({
+          step,
+          lookups: fresh,
+        })
+      },
+    )
+
+    expect(stepsChecked).toBe(conversation.length)
+    // These are the three cases the two paths used to disagree on, so the
+    // fast path must actually be exercised — a bail-out would make the
+    // equality above vacuous.
+    expect(rebuildSteps).toEqual([])
+  })
+
   test('each individual lookup table matches after the full replay', () => {
     const { incremental, fresh } = replayIncrementally(growingConversation())
 
@@ -760,16 +822,36 @@ describe('buildMessageLookups / updateMessageLookupsIncremental equivalence', ()
   })
 })
 
-// ─── 4. Known divergences between the two lookup paths ───────────────────
+// ─── 4. Former divergences between the two lookup paths ──────────────────
 
 /**
- * These pin behaviour that is currently INCONSISTENT between the full rebuild
- * and the incremental updater. They are recorded, not endorsed. A refactor that
- * makes the two agree should update these tests deliberately, in a commit that
- * says so — the failure is the signal, not the bug.
+ * These three cases used to be INCONSISTENT between the full rebuild and the
+ * incremental updater, and were pinned here as "recorded, not endorsed".
+ *
+ * All three have since been adjudicated in favour of the full rebuild, and the
+ * incremental updater was changed to agree. The rebuild won every time for the
+ * same reason: it is the path the UI is specified against, and in each case its
+ * answer is the one a reader of the screen would call correct.
+ *
+ *   1. siblings — a streamed assistant turn can arrive as several array
+ *      entries sharing one message id (see the normalizeMessagesForAPI case
+ *      "merges two assistant messages that share a message id"). Grouping per
+ *      array entry split one turn's tool uses into unrelated sibling sets.
+ *   2. resolved hooks — one hook can emit several attachment messages
+ *      (hook_success + hook_additional_context). Counting attachments
+ *      over-reported how many hooks had run; the rebuild's dedup by hook name
+ *      is what getResolvedHookCount means.
+ *   3. orphaned server tool uses — a block is only shielded from the "no
+ *      result ⇒ errored" rule while its message is still the trailing one.
+ *      Never re-judging it left the UI spinning on a tool call that had
+ *      already been abandoned.
+ *
+ * They stay as their own describe block because they are the cases the two
+ * paths disagreed on: if a future change re-opens a gap, it shows up here
+ * first with the history attached.
  */
-describe('lookup path divergences (recorded, not endorsed)', () => {
-  test('siblings: the full rebuild groups by message id, the incremental path only within one message', () => {
+describe('former lookup path divergences (now equivalent)', () => {
+  test('siblings: both paths group tool uses by message id, not by array entry', () => {
     const { fresh, incremental } = replayIncrementally([
       userText(fixtureUuid(1), 'go'),
       assistantToolUse({ messageId: 'msg_shared', uuid: fixtureUuid(2) }, [
@@ -785,12 +867,18 @@ describe('lookup path divergences (recorded, not endorsed)', () => {
       'toolu_1',
       'toolu_2',
     ])
-    expect([...incremental.siblingToolUseIDs.get('toolu_1')!]).toEqual([
+    expect([...incremental.siblingToolUseIDs.get('toolu_1')!].sort()).toEqual([
       'toolu_1',
+      'toolu_2',
+    ])
+    // The second entry's tool use sees the first one as a sibling too.
+    expect([...incremental.siblingToolUseIDs.get('toolu_2')!].sort()).toEqual([
+      'toolu_1',
+      'toolu_2',
     ])
   })
 
-  test('resolved hooks: the full rebuild dedupes by hook name, the incremental path counts attachments', () => {
+  test('resolved hooks: both paths dedupe by hook name rather than counting attachments', () => {
     const { fresh, incremental } = replayIncrementally([
       userText(fixtureUuid(1), 'go'),
       assistantToolUse({ messageId: 'msg_1', uuid: fixtureUuid(2) }, [
@@ -804,10 +892,28 @@ describe('lookup path divergences (recorded, not endorsed)', () => {
     expect(fresh.resolvedHookCounts.get('toolu_1')!.get('PreToolUse')).toBe(1)
     expect(
       incremental.resolvedHookCounts.get('toolu_1')!.get('PreToolUse'),
+    ).toBe(1)
+  })
+
+  test('resolved hooks: distinct hook names on one event still accumulate', () => {
+    // Guards the dedup fix against over-correcting into "always 1".
+    const { fresh, incremental } = replayIncrementally([
+      userText(fixtureUuid(1), 'go'),
+      assistantToolUse({ messageId: 'msg_1', uuid: fixtureUuid(2) }, [
+        { id: 'toolu_1', name: 'Bash' },
+      ]),
+      hookSuccessAttachment(fixtureUuid(3), 'toolu_1', 'hook-a'),
+      hookSuccessAttachment(fixtureUuid(4), 'toolu_1', 'hook-b'),
+      userToolResult(fixtureUuid(5), 'toolu_1', 'ok'),
+    ])
+
+    expect(fresh.resolvedHookCounts.get('toolu_1')!.get('PreToolUse')).toBe(2)
+    expect(
+      incremental.resolvedHookCounts.get('toolu_1')!.get('PreToolUse'),
     ).toBe(2)
   })
 
-  test('orphaned server tool uses: only the full rebuild re-scans older messages', () => {
+  test('orphaned server tool uses: the incremental path re-judges deferred blocks', () => {
     const { fresh, incremental } = replayIncrementally([
       userText(fixtureUuid(1), 'go'),
       assistantServerToolUseOrphaned(
@@ -819,6 +925,21 @@ describe('lookup path divergences (recorded, not endorsed)', () => {
     ])
 
     expect([...fresh.erroredToolUseIDs]).toEqual(['srvtoolu_orphan'])
+    expect([...incremental.erroredToolUseIDs]).toEqual(['srvtoolu_orphan'])
+  })
+
+  test('orphaned server tool uses: a block is still shielded while its message is trailing', () => {
+    // The deferral is the point — marking it errored too early would show a
+    // failed tool call while the turn is still streaming.
+    const { fresh, incremental } = replayIncrementally([
+      userText(fixtureUuid(1), 'go'),
+      assistantServerToolUseOrphaned(
+        { messageId: 'msg_1', uuid: fixtureUuid(2) },
+        'srvtoolu_orphan',
+      ),
+    ])
+
+    expect([...fresh.erroredToolUseIDs]).toEqual([])
     expect([...incremental.erroredToolUseIDs]).toEqual([])
   })
 })
