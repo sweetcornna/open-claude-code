@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import {
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -12,7 +13,7 @@ import { occConfigDir } from 'src/config/paths.js'
 import { canDeleteIdeLockfile } from '../ide.js'
 
 const originalOccConfigDir = process.env.OCC_CONFIG_DIR
-const root = mkdtempSync(join(tmpdir(), 'occ-ide-isolation-'))
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'occ-ide-isolation-')))
 const occRoot = join(root, '.occ')
 const occIdeDir = join(occRoot, 'ide')
 const legacyIdeDir = join(root, '.claude', 'ide')
