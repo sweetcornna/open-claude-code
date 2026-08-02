@@ -104,6 +104,10 @@ import {
 } from './elicitationHandler.js'
 import { buildMcpToolName } from './mcpStringUtils.js'
 import { inputRequiredRoundsExceededDegradation } from './inputRequiredDegradation.js'
+import {
+  isMcpSamplingEnabled,
+  registerSamplingHandler,
+} from './samplingHandler.js'
 import { normalizeNameForMCP } from './normalization.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
@@ -990,6 +994,9 @@ export const connectToServer = memoize(
           // breaks Java MCP SDK servers (Spring AI) whose Elicitation class
           // has zero fields and fails on unknown properties.
           elicitation: {},
+          // Only advertised when the operator opted in via OCC_MCP_SAMPLING —
+          // servers must not be invited to sample if requests would be refused.
+          ...(isMcpSamplingEnabled() ? { sampling: {} } : {}),
         },
       })
 
@@ -1191,6 +1198,10 @@ export const connectToServer = memoize(
         )
         return { action: 'cancel' as const }
       })
+
+      // sampling/createMessage — no-op unless OCC_MCP_SAMPLING is set (the
+      // capability is only advertised then; see samplingHandler.ts).
+      registerSamplingHandler(client, name)
 
       if (serverRef.type === 'sse-ide' || serverRef.type === 'ws-ide') {
         const ideConnectionDurationMs = Date.now() - connectStartTime
