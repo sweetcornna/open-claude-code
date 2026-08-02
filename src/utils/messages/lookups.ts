@@ -38,6 +38,58 @@ export type MessageLookups = {
 }
 
 /**
+ * Derivation state the incremental updater needs but no caller ever reads.
+ *
+ * `buildMessageLookups` used to throw these away, which is why the incremental
+ * path could not reproduce three of the rebuild's decisions (sibling grouping
+ * across a shared message id, hook-name dedup, and re-judging a deferred
+ * orphan). Keeping them in a WeakMap keyed by the lookups object means the
+ * public `MessageLookups` shape is unchanged and the state dies with the
+ * lookups it belongs to.
+ *
+ * A missing entry is a hard signal that the updater cannot trust the object it
+ * was handed (e.g. `EMPTY_LOOKUPS`), so it asks for a full rebuild instead.
+ */
+type LookupBookkeeping = {
+  /** assistant message id -> the sibling Set shared by every tool use in it */
+  toolUseIDsByMessageID: Map<string | undefined, Set<string>>
+  /** tool use id -> hook event -> distinct hook names (source of the counts) */
+  resolvedHookNames: Map<string, Map<HookEvent, Set<string>>>
+  /**
+   * server/mcp tool_use blocks that were skipped because they belong to the
+   * trailing assistant message and may still be in flight. Keyed by that
+   * message id so they can be re-judged once it stops being the trailing one.
+   */
+  deferredOrphanCandidates: Map<string | undefined, string[]>
+}
+
+const lookupBookkeeping = new WeakMap<MessageLookups, LookupBookkeeping>()
+
+/**
+ * Re-judge deferred orphan candidates against the new trailing assistant
+ * message. Anything that is no longer shielded by "might still be streaming"
+ * and still has no result is marked errored, matching what a full rebuild
+ * would decide at this point. O(deferred), not O(messages).
+ */
+function sweepDeferredOrphans(
+  lookups: MessageLookups,
+  bookkeeping: LookupBookkeeping,
+  lastAssistantMsgId: string | undefined,
+): void {
+  for (const [messageID, ids] of bookkeeping.deferredOrphanCandidates) {
+    // Still the trailing message — keep deferring, it may yet resolve.
+    if (messageID === lastAssistantMsgId) continue
+    for (const id of ids) {
+      if (!lookups.resolvedToolUseIDs.has(id)) {
+        lookups.resolvedToolUseIDs.add(id)
+        lookups.erroredToolUseIDs.add(id)
+      }
+    }
+    bookkeeping.deferredOrphanCandidates.delete(messageID)
+  }
+}
+
+/**
  * Build pre-computed lookups for efficient O(1) access to message relationships.
  * Call once per render, then use the lookups for all messages.
  *
@@ -49,13 +101,13 @@ export function buildMessageLookups(
   messages: Message[],
 ): MessageLookups {
   // First pass: group assistant messages by ID and collect all tool use IDs per message
-  const toolUseIDsByMessageID = new Map<string, Set<string>>()
-  const toolUseIDToMessageID = new Map<string, string>()
+  const toolUseIDsByMessageID = new Map<string | undefined, Set<string>>()
+  const toolUseIDToMessageID = new Map<string, string | undefined>()
   const toolUseByToolUseID = new Map<string, ToolUseBlockParam>()
   for (const msg of messages) {
     if (msg.type === 'assistant') {
       const aMsg = msg as AssistantMessage
-      const id = aMsg.message.id!
+      const id = aMsg.message.id
       let toolUseIDs = toolUseIDsByMessageID.get(id)
       if (!toolUseIDs) {
         toolUseIDs = new Set()
@@ -195,28 +247,41 @@ export function buildMessageLookups(
   const lastMsg = messages.at(-1)
   const lastAssistantMsgId =
     lastMsg?.type === 'assistant' ? lastMsg.message?.id : undefined
+  const deferredOrphanCandidates = new Map<string | undefined, string[]>()
   for (const msg of normalizedMessages) {
     if (msg.type !== 'assistant') continue
     const aMsg = msg as AssistantMessage
-    // Skip blocks from the last original message if it's an assistant,
-    // since it may still be in progress.
-    if (aMsg.message.id === lastAssistantMsgId) continue
     if (!Array.isArray(aMsg.message.content)) continue
+    // Blocks from the last original message are only deferred, not cleared:
+    // that message may still be in progress. Recording them lets the
+    // incremental updater re-judge them later exactly as a rebuild would.
+    const deferred = aMsg.message.id === lastAssistantMsgId
     for (const content of aMsg.message.content) {
+      if (typeof content === 'string') continue
       if (
-        typeof content !== 'string' &&
-        ((content.type as string) === 'server_tool_use' ||
-          (content.type as string) === 'mcp_tool_use') &&
-        !resolvedToolUseIDs.has((content as { id: string }).id)
+        (content.type as string) !== 'server_tool_use' &&
+        (content.type as string) !== 'mcp_tool_use'
       ) {
-        const id = (content as { id: string }).id
+        continue
+      }
+      const id = (content as { id: string }).id
+      if (deferred) {
+        const pending = deferredOrphanCandidates.get(aMsg.message.id)
+        if (pending) {
+          pending.push(id)
+        } else {
+          deferredOrphanCandidates.set(aMsg.message.id, [id])
+        }
+        continue
+      }
+      if (!resolvedToolUseIDs.has(id)) {
         resolvedToolUseIDs.add(id)
         erroredToolUseIDs.add(id)
       }
     }
   }
 
-  return {
+  const lookups: MessageLookups = {
     siblingToolUseIDs,
     progressMessagesByToolUseID,
     inProgressHookCounts,
@@ -227,6 +292,14 @@ export function buildMessageLookups(
     resolvedToolUseIDs,
     erroredToolUseIDs,
   }
+
+  lookupBookkeeping.set(lookups, {
+    toolUseIDsByMessageID,
+    resolvedHookNames,
+    deferredOrphanCandidates,
+  })
+
+  return lookups
 }
 
 /**
@@ -241,6 +314,13 @@ export function updateMessageLookupsIncremental(
   normalizedMessages: NormalizedMessage[],
   messages: Message[],
 ): MessageLookups | null {
+  // Without the rebuild's derivation state we cannot reproduce its decisions,
+  // so the only honest answer is "rebuild".
+  const bookkeeping = lookupBookkeeping.get(existing)
+  if (!bookkeeping) {
+    return null
+  }
+
   // Safety check: only handle append-only case
   if (
     normalizedMessages.length < previousNormalizedCount ||
@@ -248,6 +328,10 @@ export function updateMessageLookupsIncremental(
   ) {
     return null
   }
+
+  const lastMsg = messages.at(-1)
+  const lastAssistantMsgId =
+    lastMsg?.type === 'assistant' ? lastMsg.message?.id : undefined
 
   // No new messages — nothing to do, UNLESS the trailing message is a
   // progress tick. REPL.tsx replaces ephemeral progress (Bash/PowerShell/MCP)
@@ -264,6 +348,7 @@ export function updateMessageLookupsIncremental(
     if (lastNormalized && lastNormalized.type === 'progress') {
       return null
     }
+    sweepDeferredOrphans(existing, bookkeeping, lastAssistantMsgId)
     return existing
   }
 
@@ -273,23 +358,28 @@ export function updateMessageLookupsIncremental(
     const msg = messages[i]!
     if (msg.type === 'assistant') {
       const aMsg = msg as AssistantMessage
-      const _id = aMsg.message.id!
+      const id = aMsg.message.id
+      // Siblings are grouped by message id, not by array entry: a streamed
+      // assistant turn can arrive as several entries sharing one id, and the
+      // rebuild puts all of their tool uses in one sibling set. Reusing the
+      // Set stored under that id keeps earlier entries — which already point
+      // at this very Set — in sync for free.
+      let siblings = bookkeeping.toolUseIDsByMessageID.get(id)
+      if (!siblings) {
+        siblings = new Set()
+        bookkeeping.toolUseIDsByMessageID.set(id, siblings)
+      }
       if (Array.isArray(aMsg.message.content)) {
-        const newToolUseIDs: string[] = []
         for (const content of aMsg.message.content) {
           if (typeof content !== 'string' && content.type === 'tool_use') {
             const toolUseContent = content as ToolUseBlock
-            newToolUseIDs.push(toolUseContent.id)
             existing.toolUseByToolUseID.set(
               toolUseContent.id,
               content as ToolUseBlockParam,
             )
+            siblings.add(toolUseContent.id)
+            existing.siblingToolUseIDs.set(toolUseContent.id, siblings)
           }
-        }
-        // Update sibling lookup: all tool_use IDs in this message share siblings
-        const allSiblings = new Set(newToolUseIDs)
-        for (const toolUseID of newToolUseIDs) {
-          existing.siblingToolUseIDs.set(toolUseID, allSiblings)
         }
       }
     }
@@ -364,43 +454,71 @@ export function updateMessageLookupsIncremental(
       const hookEvent = msg.attachment.hookEvent
       const hookName = (msg.attachment as HookAttachmentWithName).hookName
       if (hookName !== undefined) {
+        // Count distinct hook names, not attachment messages: one hook can
+        // emit several (hook_success + hook_additional_context), and the
+        // rebuild — like getResolvedHookCount — reports it once.
+        let namesByHookEvent = bookkeeping.resolvedHookNames.get(toolUseID)
+        if (!namesByHookEvent) {
+          namesByHookEvent = new Map()
+          bookkeeping.resolvedHookNames.set(toolUseID, namesByHookEvent)
+        }
+        let names = namesByHookEvent.get(hookEvent)
+        if (!names) {
+          names = new Set()
+          namesByHookEvent.set(hookEvent, names)
+        }
+        names.add(hookName)
+
         let byHookEvent = existing.resolvedHookCounts.get(toolUseID)
         if (!byHookEvent) {
           byHookEvent = new Map()
           existing.resolvedHookCounts.set(toolUseID, byHookEvent)
         }
-        byHookEvent.set(hookEvent, (byHookEvent.get(hookEvent) ?? 0) + 1)
+        byHookEvent.set(hookEvent, names.size)
       }
     }
   }
 
   existing.normalizedMessageCount = normalizedMessages.length
 
-  // Mark orphaned server_tool_use / mcp_tool_use blocks as errored.
-  // Only scan the new normalizedMessages since the previous count —
-  // existing entries were already checked by a prior full build.
-  const lastMsg = messages.at(-1)
-  const lastAssistantMsgId =
-    lastMsg?.type === 'assistant' ? lastMsg.message?.id : undefined
+  // Mark orphaned server_tool_use / mcp_tool_use blocks as errored. Only the
+  // new normalizedMessages are classified here — older ones were already
+  // judged — but anything the trailing-message rule shielded back then is
+  // re-judged by the sweep below, which is what a rebuild would do.
   for (let i = newNormalizedStart; i < normalizedMessages.length; i++) {
     const msg = normalizedMessages[i]!
     if (msg.type !== 'assistant') continue
     const aMsg = msg as AssistantMessage
-    if (aMsg.message.id === lastAssistantMsgId) continue
     if (!Array.isArray(aMsg.message.content)) continue
+    const deferred = aMsg.message.id === lastAssistantMsgId
     for (const content of aMsg.message.content) {
+      if (typeof content === 'string') continue
       if (
-        typeof content !== 'string' &&
-        ((content.type as string) === 'server_tool_use' ||
-          (content.type as string) === 'mcp_tool_use') &&
-        !existing.resolvedToolUseIDs.has((content as { id: string }).id)
+        (content.type as string) !== 'server_tool_use' &&
+        (content.type as string) !== 'mcp_tool_use'
       ) {
-        const id = (content as { id: string }).id
+        continue
+      }
+      const id = (content as { id: string }).id
+      if (deferred) {
+        const pending = bookkeeping.deferredOrphanCandidates.get(
+          aMsg.message.id,
+        )
+        if (pending) {
+          pending.push(id)
+        } else {
+          bookkeeping.deferredOrphanCandidates.set(aMsg.message.id, [id])
+        }
+        continue
+      }
+      if (!existing.resolvedToolUseIDs.has(id)) {
         existing.resolvedToolUseIDs.add(id)
         existing.erroredToolUseIDs.add(id)
       }
     }
   }
+
+  sweepDeferredOrphans(existing, bookkeeping, lastAssistantMsgId)
 
   return existing
 }
