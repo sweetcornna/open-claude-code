@@ -6,7 +6,7 @@ import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { pathToFileURL } from 'url'
 import { color } from '@anthropic/ink'
-import { supportsHyperlinks } from '@anthropic/ink'
+import { terminalSupportsHyperlinks } from 'src/utils/text/hyperlink.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { isENOENT } from '../runtime/errors.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
@@ -75,7 +75,7 @@ export function hasOccCompletion(
 }
 
 function formatPathLink(filePath: string): string {
-  if (!supportsHyperlinks()) {
+  if (!terminalSupportsHyperlinks()) {
     return filePath
   }
   const fileUrl = pathToFileURL(filePath).href

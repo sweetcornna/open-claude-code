@@ -3,8 +3,8 @@ import { marked, type Token, type Tokens } from 'marked'
 import stripAnsi from 'strip-ansi'
 import { color } from '@anthropic/ink'
 import { BLOCKQUOTE_BAR } from '../../constants/figures.js'
-import { stringWidth, supportsHyperlinks } from '@anthropic/ink'
-import { createHyperlink } from './hyperlink.js'
+import { stringWidth } from '@anthropic/ink'
+import { createHyperlink, terminalSupportsHyperlinks } from './hyperlink.js'
 import type { CliHighlight } from './cliHighlight.js'
 import { logForDebugging } from '../telemetry/debug.js'
 
@@ -293,7 +293,7 @@ const ISSUE_REF_PATTERN =
  * Replaces owner/repo#123 references with clickable hyperlinks to GitHub.
  */
 function linkifyIssueReferences(text: string): string {
-  if (!supportsHyperlinks()) {
+  if (!terminalSupportsHyperlinks()) {
     return text
   }
   return text.replace(
