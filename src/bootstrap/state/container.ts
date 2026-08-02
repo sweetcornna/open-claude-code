@@ -139,8 +139,6 @@ export type State = {
   agentColorIndex: number
   // Last API request for bug reports
   lastAPIRequest: Omit<BetaMessageStreamParams, 'messages'> | null
-  // Last auto-mode classifier request(s) for /share transcript
-  lastClassifierRequests: unknown[] | null
   // CLAUDE.md content cached by context.ts for the auto-mode classifier.
   // Breaks the yoloClassifier → claudemd → filesystem → permissions cycle.
   cachedClaudeMdContent: string | null
@@ -359,8 +357,6 @@ export function getInitialState(): State {
     agentColorIndex: 0,
     // Last API request for bug reports
     lastAPIRequest: null,
-    // Last auto-mode classifier request(s) for /share transcript
-    lastClassifierRequests: null,
     cachedClaudeMdContent: null,
     // In-memory error log for recent errors
     inMemoryErrorLog: [],

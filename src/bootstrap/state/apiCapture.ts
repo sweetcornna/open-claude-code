@@ -44,14 +44,6 @@ export function getLastAPIRequest(): Omit<
   return STATE.lastAPIRequest
 }
 
-export function setLastClassifierRequests(requests: unknown[] | null): void {
-  STATE.lastClassifierRequests = requests
-}
-
-export function getLastClassifierRequests(): unknown[] | null {
-  return STATE.lastClassifierRequests
-}
-
 export function setCachedClaudeMdContent(content: string | null): void {
   STATE.cachedClaudeMdContent = content
 }

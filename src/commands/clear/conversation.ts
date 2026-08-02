@@ -11,7 +11,6 @@ import {
   regenerateSessionId,
   resetCostState,
   setLastAPIRequest,
-  setLastClassifierRequests,
 } from '../../bootstrap/state.js'
 import type { SDKStatusMessage } from '../../entrypoints/sdk/coreTypes.js'
 import {
@@ -135,7 +134,6 @@ export async function clearConversation({
   // lastAPIRequest holds the full system prompt and every tool schema;
   // resetCostState clears modelUsage.
   setLastAPIRequest(null)
-  setLastClassifierRequests(null)
   resetCostState()
 
   // Drop the post-turn CacheSafeParams snapshot: it holds the pre-clear

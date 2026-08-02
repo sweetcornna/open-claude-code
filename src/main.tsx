@@ -1,11 +1,17 @@
-// These side-effects must run before all other imports:
-// 1. profileCheckpoint marks entry before heavy module evaluation begins
-// 2. startMdmRawRead fires MDM subprocesses (plutil/reg query) so they run in
-//    parallel with the remaining ~135ms of imports below
-// 3. startKeychainPrefetch fires both macOS keychain reads (OAuth + legacy API
-//    key) in parallel — isRemoteManagedSettingsEligible() otherwise reads them
-//    sequentially via sync spawn inside applySafeConfigEnvironmentVariables()
-//    (~65ms on every macOS startup)
+// Startup side-effects, interleaved between imports. NOTE: the interleaving
+// is cosmetic — ESM hoists every import and evaluates the whole graph before
+// any module-body statement runs, so all three fire only after main.tsx's
+// imports have loaded. They were written intending to overlap the ~135ms
+// import phase; achieving that would require firing them from cli.tsx before
+// the dynamic import of this module, which changes startup behavior and is
+// left deliberate future work. What they still buy today:
+// 1. profileCheckpoint marks the start of main.tsx body execution
+// 2. startMdmRawRead fires MDM subprocesses (plutil/reg query) so they
+//    overlap command parsing and settings load in main()
+// 3. startKeychainPrefetch fires both macOS keychain reads (OAuth + legacy
+//    API key) in parallel — isRemoteManagedSettingsEligible() otherwise
+//    reads them sequentially via sync spawn inside
+//    applySafeConfigEnvironmentVariables() (~65ms on every macOS startup)
 import { BIN_NAME, MACOS_DEEP_LINK_BUNDLE_ID } from './constants/brand.js';
 import { profileCheckpoint } from './utils/telemetry/startupProfiler.js';
 
