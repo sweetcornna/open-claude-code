@@ -41,9 +41,9 @@ export type DeepImmutable<T> = T
  * every progress payload is `any`, so the contract's generic parameter
  * `P extends ToolProgressData` is unconstrained. Reproduced verbatim rather
  * than tightened: narrowing it here would reject existing tool progress
- * payloads that the host accepts.
+ * payloads that the host accepts. (`noExplicitAny` is among the disabled
+ * rules, so no suppression comment — it would be flagged as ineffective.)
  */
-// biome-ignore lint/suspicious/noExplicitAny: mirrors the host stub in src/types/tools.ts, which is `any`.
 export type ToolProgressData = any
 
 /**
