@@ -48,10 +48,6 @@ import { QueryGuard } from '../utils/QueryGuard.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { formatTokens } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
-import {
-  claimConsumableQueuedAutonomyCommands,
-  finalizeAutonomyCommandsForTurn,
-} from '../utils/autonomyQueueLifecycle.js';
 
 import { setMemberActive } from '../utils/swarm/teamHelpers.js';
 import {
@@ -130,10 +126,9 @@ import { CancelRequestHandler } from '../hooks/useCancelRequest.js';
 import { useBackgroundTaskNavigation } from '../hooks/useBackgroundTaskNavigation.js';
 import { useSwarmInitialization } from '../hooks/useSwarmInitialization.js';
 import { useTeammateViewAutoExit } from '../hooks/useTeammateViewAutoExit.js';
-import { errorMessage, toError } from '../utils/errors.js';
+import { errorMessage } from '../utils/errors.js';
 import { isHumanTurn } from '../utils/messagePredicates.js';
 import { logError } from '../utils/log.js';
-import { getCwd } from '../utils/cwd.js';
 // Dead code elimination: conditional imports
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const VoiceKeybindingHandler: typeof import('../hooks/useVoiceIntegration.js').VoiceKeybindingHandler = feature(
@@ -282,17 +277,9 @@ import { useIDEIntegration } from '../hooks/useIDEIntegration.js';
 import exit from '../commands/exit/index.js';
 import { ExitFlow } from '../components/ExitFlow.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
-import {
-  popAllEditable,
-  enqueue,
-  type SetAppState,
-  getCommandQueue,
-  getCommandQueueLength,
-  removeByFilter,
-} from '../utils/messageQueueManager.js';
+import { popAllEditable, enqueue, type SetAppState, getCommandQueueLength } from '../utils/messageQueueManager.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
 import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
-import { startBackgroundSession } from '../tasks/LocalMainSessionTask.js';
 import { useSessionBackgrounding } from '../hooks/useSessionBackgrounding.js';
 import { diagnosticTracker } from '../services/diagnosticTracking.js';
 import { handleSpeculationAccept, type ActiveSpeculationState } from '../services/PromptSuggestion/speculation.js';
@@ -390,7 +377,6 @@ import {
 } from '../components/messageActions.js';
 import { setClipboard } from '@anthropic/ink';
 import type { ScrollBoxHandle } from '@anthropic/ink';
-import { createAttachmentMessage, getQueuedCommandAttachments } from '../utils/attachments.js';
 import type { Props, Screen } from './repl/types.js';
 import { EMPTY_MCP_CLIENTS, HISTORY_STUB, RECENT_SCROLL_REPIN_WINDOW_MS } from './repl/constants.js';
 import { median } from './repl/median.js';
@@ -399,6 +385,8 @@ import { useTranscriptSearch } from './repl/useTranscriptSearch.js';
 import { computeStopHookSpinnerSuffix } from './repl/stopHookSpinner.js';
 import { computeDisplayedAgentMessages } from './repl/displayedAgentMessages.js';
 import { runResume } from './repl/runResume.js';
+import { runBackgroundQuery } from './repl/runBackgroundQuery.js';
+import { runIncomingPrompt } from './repl/runIncomingPrompt.js';
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
@@ -450,6 +438,8 @@ export type { Props, Screen };
  * A1  gated 自动化簇      → repl/useReplAutomation.ts   （commit cb5a1d63）
  *     voice / inbox / mailbox / scheduledTasks / taskListWatcher /
  *     proactive / goalContinuation
+ * A5  handleBackgroundQuery → repl/runBackgroundQuery.ts   （捕获 11）
+ * A6  handleIncomingPrompt  → repl/runIncomingPrompt.ts    （捕获 4）
  * A3  resume              → repl/runResume.ts
  *     220 行 body / 17 个捕获，是剩余块里比值最好的一个。useCallback 与
  *     [resetLoadingState, setAppState] dep array 原样留在 REPL.tsx，
@@ -2397,76 +2387,21 @@ export function REPL({
 
   // Session backgrounding (Ctrl+B to background/foreground)
   const handleBackgroundQuery = useCallback(() => {
-    // Stop the foreground query so the background one takes over
-    abortController?.abort('background');
-    // Aborting subagents may produce task-completed notifications.
-    // Clear task notifications so the queue processor doesn't immediately
-    // start a new foreground query; forward them to the background session.
-    const removedNotifications = removeByFilter(cmd => cmd.mode === 'task-notification');
-
-    void (async () => {
-      const toolUseContext = getToolUseContext(messagesRef.current, [], new AbortController(), mainLoopModel);
-
-      const [defaultSystemPrompt, userContext, systemContext] = await Promise.all([
-        getSystemPrompt(
-          toolUseContext.options.tools,
-          mainLoopModel,
-          Array.from(toolPermissionContext.additionalWorkingDirectories.keys()),
-          toolUseContext.options.mcpClients,
-        ),
-        getUserContext(),
-        getSystemContext(),
-      ]);
-
-      const systemPrompt = buildEffectiveSystemPrompt({
-        mainThreadAgentDefinition,
-        toolUseContext,
-        customSystemPrompt,
-        defaultSystemPrompt,
-        appendSystemPrompt,
-      });
-      toolUseContext.renderedSystemPrompt = systemPrompt;
-
-      const notificationAttachments = await getQueuedCommandAttachments(removedNotifications).catch(() => []);
-      const notificationMessages = notificationAttachments.map(createAttachmentMessage);
-
-      // Deduplicate: if the query loop already yielded a notification into
-      // messagesRef before we removed it from the queue, skip duplicates.
-      // We use prompt text for dedup because source_uuid is not set on
-      // task-notification QueuedCommands (enqueuePendingNotification callers
-      // don't pass uuid), so it would always be undefined.
-      const existingPrompts = new Set<string>();
-      for (const m of messagesRef.current) {
-        if (
-          m.type === 'attachment' &&
-          m.attachment!.type === 'queued_command' &&
-          m.attachment!.commandMode === 'task-notification' &&
-          typeof m.attachment!.prompt === 'string'
-        ) {
-          existingPrompts.add(m.attachment!.prompt);
-        }
-      }
-      const uniqueNotifications = notificationMessages.filter(
-        m =>
-          m.attachment.type === 'queued_command' &&
-          (typeof m.attachment.prompt !== 'string' || !existingPrompts.has(m.attachment.prompt)),
-      );
-
-      startBackgroundSession({
-        messages: [...messagesRef.current, ...uniqueNotifications],
-        queryParams: {
-          systemPrompt,
-          userContext,
-          systemContext,
-          canUseTool,
-          toolUseContext,
-          querySource: getQuerySourceForREPL(),
-        },
-        description: terminalTitle,
-        setAppState,
-        agentDefinition: mainThreadAgentDefinition,
-      });
-    })();
+    // Body lives in repl/runBackgroundQuery.ts; context built inside the
+    // callback so capture semantics are unchanged.
+    runBackgroundQuery({
+      abortController,
+      appendSystemPrompt,
+      canUseTool,
+      customSystemPrompt,
+      getToolUseContext,
+      mainLoopModel,
+      mainThreadAgentDefinition,
+      messagesRef,
+      setAppState,
+      terminalTitle,
+      toolPermissionContext,
+    });
   }, [
     abortController,
     mainLoopModel,
@@ -4211,85 +4146,15 @@ export function REPL({
   // Submits incoming prompts from teammate messages or tasks mode as new turns
   // Returns true if submission succeeded, false if a query is already running
   const handleIncomingPrompt = useCallback(
-    (input: string | QueuedCommand, options?: { isMeta?: boolean }): boolean => {
-      if (queryGuard.isActive) return false;
-
-      // Defer to user-queued commands — user input always takes priority
-      // over system messages (teammate messages, task list items, etc.)
-      // Read from the module-level store at call time (not the render-time
-      // snapshot) to avoid a stale closure — this callback's deps don't
-      // include the queue.
-      if (getCommandQueue().some(cmd => cmd.mode === 'prompt' || cmd.mode === 'bash')) {
-        return false;
-      }
-
-      const queuedCommand =
-        typeof input === 'string'
-          ? ({
-              value: input,
-              mode: 'prompt',
-              isMeta: options?.isMeta ? true : undefined,
-            } satisfies QueuedCommand)
-          : input;
-
-      void (async () => {
-        const claim = await claimConsumableQueuedAutonomyCommands([queuedCommand]);
-        const command = claim.attachmentCommands[0];
-        if (!command) return;
-
-        const newAbortController = createAbortController();
-        setAbortController(newAbortController);
-
-        // Create a user message with the formatted content (includes XML wrapper)
-        const userMessage = createUserMessage({
-          content: command.value,
-          isMeta: command.isMeta ? true : undefined,
-          origin: command.origin,
-        });
-
-        let executed = false;
-        try {
-          executed = (await onQuery([userMessage], newAbortController, true, [], mainLoopModel)) !== false;
-        } catch (error: unknown) {
-          try {
-            await finalizeAutonomyCommandsForTurn({
-              commands: claim.claimedCommands,
-              outcome: { type: 'failed', error },
-              currentDir: getCwd(),
-              priority: 'later',
-            });
-          } catch (finalizeError: unknown) {
-            logError(toError(finalizeError));
-          }
-          logError(toError(error));
-          return;
-        }
-
-        // Only finalize as completed when onQuery actually executed the turn
-        // (it returns false from the concurrent-guard path without running).
-        // Keep this finalize in its own try/catch so a failure here does not
-        // trigger a second finalize as `failed` for the same commands.
-        if (!executed) {
-          return;
-        }
-        try {
-          const nextCommands = await finalizeAutonomyCommandsForTurn({
-            commands: claim.claimedCommands,
-            outcome: { type: 'completed' },
-            currentDir: getCwd(),
-            priority: 'later',
-          });
-          for (const nextCommand of nextCommands) {
-            enqueue(nextCommand);
-          }
-        } catch (finalizeError: unknown) {
-          logError(toError(finalizeError));
-        }
-      })().catch((error: unknown) => {
-        logError(toError(error));
-      });
-      return true;
-    },
+    (input: string | QueuedCommand, options?: { isMeta?: boolean }): boolean =>
+      // Body lives in repl/runIncomingPrompt.ts; context built inside the
+      // callback so capture semantics are unchanged.
+      runIncomingPrompt(input, options, {
+        mainLoopModel,
+        onQuery,
+        queryGuard,
+        setAbortController,
+      }),
     [onQuery, mainLoopModel, store],
   );
 
