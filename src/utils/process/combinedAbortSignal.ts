@@ -1,4 +1,4 @@
-import { createAbortController } from '../abortController.js'
+import { createAbortController } from './abortController.js'
 
 /**
  * Creates a combined AbortSignal that aborts when the input signal aborts,

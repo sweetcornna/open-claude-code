@@ -8,7 +8,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { checkForReleaseNotes } from 'src/utils/releaseNotes.js'
-import { setCwd } from 'src/utils/Shell.js'
+import { setCwd } from 'src/utils/shell/Shell.js'
 import { initSinks } from 'src/utils/sinks.js'
 import {
   getIsNonInteractiveSession,

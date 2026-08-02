@@ -6,7 +6,7 @@ import { getPluginErrorMessage } from '../../types/plugin.js'
 import {
   parseArgumentNames,
   substituteArguments,
-} from '../argumentSubstitution.js'
+} from '../shell/argumentSubstitution.js'
 import { logForDebugging } from '../debug.js'
 import { EFFORT_LEVELS, parseEffortValue } from '../effort.js'
 import { isBareMode } from '../envUtils.js'
@@ -27,7 +27,7 @@ import {
   parseSlashCommandToolsFromFrontmatter,
 } from '../text/markdownConfigLoader.js'
 import { parseUserSpecifiedModel } from '../model/model.js'
-import { executeShellCommandsInPrompt } from '../promptShellExecution.js'
+import { executeShellCommandsInPrompt } from '../shell/promptShellExecution.js'
 import { loadAllPluginsCacheOnly } from './pluginLoader.js'
 import {
   loadPluginOptions,

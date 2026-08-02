@@ -18,7 +18,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/gr
 import { type FilesApiConfig, uploadFile } from '../../services/api/filesApi.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../debug.js'
-import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { findGitRoot, gitExe } from '../git.js'
 import { generateTempFilePath } from '../filesystem/tempfile.js'
 

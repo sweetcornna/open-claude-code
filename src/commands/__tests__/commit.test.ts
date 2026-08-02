@@ -19,7 +19,7 @@ mock.module('src/utils/undercover.ts', () => ({
   shouldShowUndercoverAutoNotice: () => false,
 }))
 
-mock.module('src/utils/promptShellExecution.ts', () => ({
+mock.module('src/utils/shell/promptShellExecution.ts', () => ({
   executeShellCommandsInPrompt: async (content: string) => content,
 }))
 
@@ -152,7 +152,7 @@ describe('commit command getPromptForCommand', () => {
     }
 
     // Wrap executeShellCommandsInPrompt to capture context
-    mock.module('src/utils/promptShellExecution.ts', () => ({
+    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedAppState = ctx.getAppState()
         return content
@@ -235,7 +235,7 @@ describe('commit command getPromptForCommand', () => {
   test('getAppState override in context passes ALLOWED_TOOLS', async () => {
     let capturedCtx: any
 
-    mock.module('src/utils/promptShellExecution.ts', () => ({
+    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedCtx = ctx
         return content

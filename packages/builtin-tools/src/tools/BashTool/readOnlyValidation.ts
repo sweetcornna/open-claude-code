@@ -8,7 +8,7 @@ import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { isCurrentDirectoryBareGitRepo } from 'src/utils/git.js'
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
-import { getPlatform } from 'src/utils/platform.js'
+import { getPlatform } from 'src/utils/process/platform.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import {
   containsVulnerableUncPath,

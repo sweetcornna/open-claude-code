@@ -29,9 +29,9 @@ import {
 import { logForDebugging } from '../debug.js'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
 import { getErrnoCode } from '../errors.js'
-import { execFileNoThrow } from '../execFileNoThrow.js'
+import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'
-import { which } from '../which.js'
+import { which } from '../process/which.js'
 import { getUserBinDir, getXDGDataHome } from '../filesystem/xdg.js'
 
 export const MACOS_BUNDLE_ID = MACOS_DEEP_LINK_BUNDLE_ID

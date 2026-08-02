@@ -11,8 +11,8 @@
  */
 import { spawn } from 'node:child_process'
 import { BIN_NAME } from '../constants/brand.js'
-import { buildCliLaunch } from '../utils/cliLaunch.js'
-import { whichSync } from '../utils/which.js'
+import { buildCliLaunch } from '../utils/process/cliLaunch.js'
+import { whichSync } from '../utils/process/which.js'
 
 /** The executable Happy installs onto PATH. */
 export const HAPPY_BIN = 'happy'

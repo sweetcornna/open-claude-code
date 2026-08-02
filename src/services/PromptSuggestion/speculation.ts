@@ -14,7 +14,7 @@ import { commandHasAnyCd } from '@open-claude-code/builtin-tools/tools/BashTool/
 import { checkReadOnlyConstraints } from '@open-claude-code/builtin-tools/tools/BashTool/readOnlyValidation.js'
 import type { SpeculationAcceptMessage } from '../../types/logs.js'
 import type { Message } from '../../types/message.js'
-import { createChildAbortController } from '../../utils/abortController.js'
+import { createChildAbortController } from '../../utils/process/abortController.js'
 import { count } from '../../utils/collections/array.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'

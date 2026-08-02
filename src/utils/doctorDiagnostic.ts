@@ -13,7 +13,7 @@ import {
 } from './config.js'
 import { getCwd } from './filesystem/cwd.js'
 import { isEnvTruthy } from './envUtils.js'
-import { execFileNoThrow } from './execFileNoThrow.js'
+import { execFileNoThrow } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
   isRunningFromLocalInstallation,
@@ -30,14 +30,14 @@ import {
   detectWinget,
   getPackageManager,
 } from './nativeInstaller/packageManagers.js'
-import { getPlatform } from './platform.js'
+import { getPlatform } from './process/platform.js'
 import { detectChrome } from './chromeDevtools/chromeVersion.js'
 import { getRipgrepStatus } from './filesystem/ripgrep.js'
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { CUSTOMIZATION_SURFACES } from './settings/types.js'
 import { jsonParse } from './slowOperations.js'
-import { which } from './which.js'
+import { which } from './process/which.js'
 
 export type InstallationType =
   | 'npm-global'

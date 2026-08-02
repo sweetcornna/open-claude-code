@@ -16,7 +16,7 @@ import { logForDebugging } from '../debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
 import { isENOENT, toError } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { getProcessCommand } from '../genericProcessUtils.js'
+import { getProcessCommand } from '../process/genericProcessUtils.js'
 import { logError } from '../log.js'
 import {
   jsonParse,

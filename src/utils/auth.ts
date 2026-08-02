@@ -56,7 +56,7 @@ import {
   isRunningOnHomespace,
 } from './envUtils.js'
 import { errorMessage } from './errors.js'
-import { execSyncWithDefaults_DEPRECATED } from './execFileNoThrow.js'
+import { execSyncWithDefaults_DEPRECATED } from './process/execFileNoThrow.js'
 import * as lockfile from './filesystem/lockfile.js'
 import { logError } from './log.js'
 import { memoizeWithTTLAsync } from './collections/memoize.js'
@@ -74,7 +74,7 @@ import {
   getSettings_DEPRECATED,
   getSettingsForSource,
 } from './settings/settings.js'
-import { sleep } from './sleep.js'
+import { sleep } from './process/sleep.js'
 import { jsonParse } from './slowOperations.js'
 import { clearToolSchemaCache } from './toolSchemaCache.js'
 

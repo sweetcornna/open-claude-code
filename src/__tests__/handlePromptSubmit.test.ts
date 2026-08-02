@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { createAbortController } from '../utils/abortController'
+import { createAbortController } from '../utils/process/abortController'
 import { QueryGuard } from '../utils/QueryGuard'
 import { handlePromptSubmit } from '../utils/handlePromptSubmit'
 import {

@@ -14,7 +14,7 @@ import {
   shouldAddStdinRedirect,
 } from '../bash/shellQuoting.js'
 import { logForDebugging } from '../debug.js'
-import { getPlatform } from '../platform.js'
+import { getPlatform } from '../process/platform.js'
 import { getSessionEnvironmentScript } from '../sessionEnvironment.js'
 import { getSessionEnvVars } from '../sessionEnvVars.js'
 import {

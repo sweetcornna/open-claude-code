@@ -16,7 +16,7 @@ import { getCwd } from '../../utils/filesystem/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
-import { sleep } from '../../utils/sleep.js'
+import { sleep } from '../../utils/process/sleep.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

@@ -4,9 +4,9 @@ import * as path from 'path'
 import * as pathWin32 from 'path/win32'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from '../debug.js'
-import { execSync_DEPRECATED } from '../execSyncWrapper.js'
+import { execSync_DEPRECATED } from '../process/execSyncWrapper.js'
 import { memoizeWithLRU } from '../collections/memoize.js'
-import { getPlatform } from '../platform.js'
+import { getPlatform } from '../process/platform.js'
 
 /**
  * If Windows, set the SHELL environment variable to git-bash path.

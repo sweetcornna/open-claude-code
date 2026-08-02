@@ -27,7 +27,7 @@ import {
 } from '../utils/ide.js'
 import { WindowsToWSLConverter } from '../utils/idePathConversion.js'
 import { logError } from '../utils/log.js'
-import { getPlatform } from '../utils/platform.js'
+import { getPlatform } from '../utils/process/platform.js'
 
 type Props = {
   onChange(

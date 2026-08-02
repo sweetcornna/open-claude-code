@@ -1,4 +1,4 @@
-import { registerCleanup } from '../cleanupRegistry.js'
+import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 
 /**

@@ -12,7 +12,7 @@ import { type AppState, useAppState, useSetAppState } from '../../state/AppState
 import { getEmptyToolPermissionContext } from '../../Tool.js';
 import { AGENT_COLOR_TO_THEME_COLOR } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
 import { logForDebugging } from '../../utils/debug.js';
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import { truncateToWidth } from '../../utils/text/format.js';
 import { getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import {

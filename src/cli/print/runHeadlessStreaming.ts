@@ -23,8 +23,8 @@ import type {
   McpSdkServerConfig,
 } from 'src/services/mcp/types.js'
 import { ask } from 'src/QueryEngine.js'
-import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
-import { registerCleanup } from 'src/utils/cleanupRegistry.js'
+import { gracefulShutdown } from 'src/utils/process/gracefulShutdown.js'
+import { registerCleanup } from 'src/utils/process/cleanupRegistry.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { cwd } from 'process'

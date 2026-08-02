@@ -14,7 +14,7 @@ import type {
   ReferralEligibilityResponse,
 } from '../services/oauth/types.js'
 import { getCwd } from './filesystem/cwd.js'
-import { registerCleanup } from './cleanupRegistry.js'
+import { registerCleanup } from './process/cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getGlobalClaudeFile } from './env.js'

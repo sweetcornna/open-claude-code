@@ -21,7 +21,7 @@ import {
 } from 'src/utils/swarm/backends/registry.js'
 import { createPaneBackendExecutor } from 'src/utils/swarm/backends/PaneBackendExecutor.js'
 import { isPaneBackend } from 'src/utils/swarm/backends/types.js'
-import { sleep } from 'src/utils/sleep.js'
+import { sleep } from 'src/utils/process/sleep.js'
 import { TEAM_DELETE_TOOL_NAME } from './constants.js'
 import { getPrompt } from './prompt.js'
 import { renderToolResultMessage, renderToolUseMessage } from './UI.js'

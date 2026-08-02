@@ -30,8 +30,8 @@ const spawnCalls: SpawnCall[] = []
 
 // Spread the real modules so only exec/spawnShellTask are stubbed — replacing
 // the whole module would strip exports other importers still need.
-const realShell = await import('src/utils/Shell.js')
-mock.module('src/utils/Shell.js', () => ({
+const realShell = await import('src/utils/shell/Shell.js')
+mock.module('src/utils/shell/Shell.js', () => ({
   ...realShell,
   exec: async (command: string, _signal: AbortSignal, shellType: string) => {
     execCalls.push({ command, shellType })

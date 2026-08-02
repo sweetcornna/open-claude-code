@@ -1,7 +1,7 @@
 import type { TerminalNotification } from '@anthropic/ink'
 import { getGlobalConfig } from '../utils/config.js'
 import { env } from '../utils/env.js'
-import { execFileNoThrow } from '../utils/execFileNoThrow.js'
+import { execFileNoThrow } from '../utils/process/execFileNoThrow.js'
 import { executeNotificationHooks } from '../utils/hooks.js'
 import { logError } from '../utils/log.js'
 import {

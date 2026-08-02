@@ -44,11 +44,11 @@ mock.module('src/services/PromptSuggestion/speculation.js', () => ({
 }))
 
 const cleanupFns: (() => void)[] = []
-mock.module('src/utils/cleanupRegistry.js', () => ({
+mock.module('src/utils/process/cleanupRegistry.js', () => ({
   registerCleanup: () => noop,
 }))
 
-mock.module('src/utils/abortController.js', () => ({
+mock.module('src/utils/process/abortController.js', () => ({
   createAbortController: () => new AbortController(),
   createChildAbortController: (parent: AbortController) => {
     const ac = new AbortController()

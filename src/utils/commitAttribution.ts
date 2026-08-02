@@ -8,7 +8,7 @@ import type {
 } from '../types/logs.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
-import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import { execFileNoThrowWithCwd } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import { isGeneratedFile } from './filesystem/generatedFiles.js'
 import { getRemoteUrlForDir, resolveGitDir } from './git/gitFilesystem.js'

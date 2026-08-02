@@ -32,7 +32,7 @@ import {
   withAutonomyPersistenceLock,
 } from './autonomyPersistence.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
-import { isProcessRunning } from './genericProcessUtils.js'
+import { isProcessRunning } from './process/genericProcessUtils.js'
 import { logError } from './log.js'
 
 const AUTONOMY_RUNS_MAX = 200

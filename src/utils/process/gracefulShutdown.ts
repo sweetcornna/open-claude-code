@@ -33,12 +33,12 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import type { AppState } from '../../state/AppState.js'
-import { runCleanupFunctions } from '../cleanupRegistry.js'
+import { runCleanupFunctions } from './cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { getCurrentSessionTitle, sessionIdExists } from '../sessionStorage.js'
-import { sleep } from '../sleep.js'
+import { sleep } from './sleep.js'
 import { closeSentry } from '../sentry.js'
 import { profileReport } from '../startupProfiler.js'
 

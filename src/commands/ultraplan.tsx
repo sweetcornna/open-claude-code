@@ -28,7 +28,7 @@ import {
   getPromptIdentifier,
   type PromptIdentifier,
 } from '../utils/ultraplan/prompt.js';
-import { registerCleanup } from '../utils/cleanupRegistry.js';
+import { registerCleanup } from '../utils/process/cleanupRegistry.js';
 
 // TODO(prod-hardening): OAuth token may go stale over the 30min poll;
 // consider refresh.

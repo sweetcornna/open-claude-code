@@ -17,7 +17,7 @@ import {
   type PromptInputMode,
   type QueuedCommand,
 } from '../types/textInputTypes.js'
-import { createAbortController } from './abortController.js'
+import { createAbortController } from './process/abortController.js'
 import type { PastedContent } from './config.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
@@ -27,7 +27,7 @@ import {
   fileHistoryEnabled,
   fileHistoryMakeSnapshot,
 } from './filesystem/fileHistory.js'
-import { gracefulShutdownSync } from './gracefulShutdown.js'
+import { gracefulShutdownSync } from './process/gracefulShutdown.js'
 import { toError } from './errors.js'
 import { logError } from './log.js'
 import { enqueue } from './messageQueueManager.js'

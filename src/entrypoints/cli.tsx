@@ -172,7 +172,7 @@ async function main(): Promise<void> {
     const { waitForPolicyLimitsToLoad, isPolicyAllowed } = await import('../services/policyLimits/index.js');
     await waitForPolicyLimitsToLoad();
     if (!isPolicyAllowed('allow_remote_control')) {
-      const { exitWithError } = await import('../utils/process.js');
+      const { exitWithError } = await import('../utils/process/process.js');
       exitWithError("Error: Remote Control is disabled by your organization's policy.");
     }
 
@@ -288,7 +288,7 @@ async function main(): Promise<void> {
       }
       // If not handled (e.g., error), fall through to normal CLI
       if (result.error) {
-        const { exitWithError } = await import('../utils/process.js');
+        const { exitWithError } = await import('../utils/process/process.js');
         exitWithError(result.error);
       }
     }

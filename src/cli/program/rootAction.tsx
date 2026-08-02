@@ -138,7 +138,7 @@ import {
   setMainThreadAgentType,
   setTeleportedSessionInfo,
 } from 'src/bootstrap/state.js';
-import { getPlatform } from 'src/utils/platform.js';
+import { getPlatform } from 'src/utils/process/platform.js';
 import { getRemoteSessionUrl } from 'src/constants/product.js';
 import { getSessionIngressAuthToken } from 'src/utils/sessionIngressAuth.js';
 import { getSubscriptionType, validateForceLoginOrg } from 'src/utils/auth.js';
@@ -146,7 +146,7 @@ import { getSystemContext, getUserContext } from 'src/context.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from 'src/utils/worktree.js';
 import { getTools } from 'src/tools.js';
 import { getWorktreePaths } from 'src/utils/getWorktreePaths.js';
-import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
+import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js';
 import {
   hasGrowthBookEnvOverride,
   initializeGrowthBook,
@@ -191,7 +191,7 @@ import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js';
 import { logManagedSettings, logSessionTelemetry, logStartupTelemetry } from './telemetry.js';
 import { logPermissionContextForAnts } from 'src/services/internalLogging.js';
 import { onChangeAppState } from 'src/state/onChangeAppState.js';
-import { peekForStdinData, writeToStderr } from 'src/utils/process.js';
+import { peekForStdinData, writeToStderr } from 'src/utils/process/process.js';
 import { plural } from 'src/utils/text/stringUtils.js';
 import { prefetchPassesEligibility } from 'src/services/api/referral.js';
 import { processSessionStartHooks, processSetupHooks } from 'src/utils/sessionStart.js';
@@ -199,13 +199,13 @@ import { profileCheckpoint } from 'src/utils/startupProfiler.js';
 import { readFileSync } from 'fs';
 import { refreshExampleCommands } from 'src/utils/exampleCommands.js';
 import { refreshRemoteManagedSettings } from 'src/services/remoteManagedSettings/index.js';
-import { registerCleanup } from 'src/utils/cleanupRegistry.js';
+import { registerCleanup } from 'src/utils/process/cleanupRegistry.js';
 import { relative, resolve } from 'path';
 import { resetUserCache } from 'src/utils/user.js';
 import { safeParseJSON } from 'src/utils/text/json.js';
 import { seedEarlyInput } from 'src/utils/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
-import { setCwd } from 'src/utils/Shell.js';
+import { setCwd } from 'src/utils/shell/Shell.js';
 import { setupChromeDevtools, shouldEnableChromeDevtools } from 'src/utils/chromeDevtools/setup.js';
 import { shouldEnablePromptSuggestion } from 'src/services/PromptSuggestion/promptSuggestion.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/thinking.js';

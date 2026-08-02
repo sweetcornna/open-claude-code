@@ -24,7 +24,7 @@ import {
 import { addFileGlobRuleToGitignore } from '../git/gitignore.js'
 import { safeParseJSON } from '../text/json.js'
 import { logError } from '../log.js'
-import { getPlatform } from '../platform.js'
+import { getPlatform } from '../process/platform.js'
 import { clone, jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
 import {

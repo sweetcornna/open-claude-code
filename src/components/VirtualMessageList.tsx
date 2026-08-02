@@ -10,7 +10,7 @@ import { ScrollChromeContext } from './FullscreenLayout.js';
 const HEADROOM = 3;
 
 import { logForDebugging } from '../utils/debug.js';
-import { sleep } from '../utils/sleep.js';
+import { sleep } from '../utils/process/sleep.js';
 import { renderableSearchText } from '../utils/transcriptSearch.js';
 import type { RenderableMessage } from '../types/message.js';
 import {

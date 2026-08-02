@@ -7,7 +7,7 @@ import { useRegisterKeybindingContext } from '../keybindings/KeybindingContext.j
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
-import { gracefulShutdown } from '../utils/gracefulShutdown.js';
+import { gracefulShutdown } from '../utils/process/gracefulShutdown.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
 import type { ThemeSetting } from '../utils/theme.js';
 import { Select } from './CustomSelect/index.js';

@@ -9,7 +9,7 @@ import { color } from '@anthropic/ink'
 import { supportsHyperlinks } from '@anthropic/ink'
 import { logForDebugging } from '../debug.js'
 import { isENOENT } from '../errors.js'
-import { execFileNoThrow } from '../execFileNoThrow.js'
+import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { logError } from '../log.js'
 import type { ThemeName } from '../theme.js'
 

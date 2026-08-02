@@ -11,7 +11,7 @@ import { type KeyboardEvent, Box } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { getAnthropicApiKey, isAnthropicAuthEnabled } from '../../utils/auth.js';
 import { openBrowser } from '../../utils/browser.js';
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import { getGithubRepo } from '../../utils/git.js';
 import { plural } from '../../utils/text/stringUtils.js';
 import { ApiKeyStep } from './ApiKeyStep.js';

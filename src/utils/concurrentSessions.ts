@@ -6,12 +6,12 @@ import {
   getSessionId,
   onSessionSwitch,
 } from '../bootstrap/state.js'
-import { registerCleanup } from './cleanupRegistry.js'
+import { registerCleanup } from './process/cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'
 import { errorMessage, isFsInaccessible } from './errors.js'
-import { isProcessRunning } from './genericProcessUtils.js'
-import { getPlatform } from './platform.js'
+import { isProcessRunning } from './process/genericProcessUtils.js'
+import { getPlatform } from './process/platform.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import { getAgentId } from './teammate.js'
 

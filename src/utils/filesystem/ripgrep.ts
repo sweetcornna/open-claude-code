@@ -9,10 +9,10 @@ import { isInBundledMode } from '../bundledMode.js'
 import { logForDebugging } from '../debug.js'
 import { distRoot } from './distRoot.js'
 import { isEnvDefinedFalsy } from '../envUtils.js'
-import { execFileNoThrow } from '../execFileNoThrow.js'
-import { findExecutable } from '../findExecutable.js'
+import { execFileNoThrow } from '../process/execFileNoThrow.js'
+import { findExecutable } from '../process/findExecutable.js'
 import { logError } from '../log.js'
-import { getPlatform } from '../platform.js'
+import { getPlatform } from '../process/platform.js'
 import { countCharInString } from '../text/stringUtils.js'
 
 const __dirname = (() => {

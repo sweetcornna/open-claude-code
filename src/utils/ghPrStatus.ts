@@ -1,4 +1,4 @@
-import { execFileNoThrow } from './execFileNoThrow.js'
+import { execFileNoThrow } from './process/execFileNoThrow.js'
 import { getBranch, getDefaultBranch, getIsGit } from './git.js'
 import { jsonParse } from './slowOperations.js'
 

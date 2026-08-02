@@ -4,7 +4,7 @@ import { coerce as semverCoerce } from 'semver'
 import { getSessionId } from '../bootstrap/state.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
-import { execFileNoThrow } from './execFileNoThrow.js'
+import { execFileNoThrow } from './process/execFileNoThrow.js'
 import { pathExists } from './filesystem/file.js'
 import { gte as semverGte } from './text/semver.js'
 

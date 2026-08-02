@@ -17,7 +17,10 @@ import { saveCurrentProjectConfig } from './config.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, getErrnoCode } from './errors.js'
-import { execFileNoThrow, execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import {
+  execFileNoThrow,
+  execFileNoThrowWithCwd,
+} from './process/execFileNoThrow.js'
 import { parseGitConfigValue } from './git/gitConfigParser.js'
 import {
   getCommonDir,
@@ -38,12 +41,12 @@ import {
   hasWorktreeCreateHook,
 } from './hooks.js'
 import { containsPathTraversal } from './filesystem/path.js'
-import { getPlatform } from './platform.js'
+import { getPlatform } from './process/platform.js'
 import {
   getInitialSettings,
   getRelativeSettingsFilePathForSource,
 } from './settings/settings.js'
-import { sleep } from './sleep.js'
+import { sleep } from './process/sleep.js'
 import { isInITerm2 } from './swarm/backends/detection.js'
 
 const VALID_WORKTREE_SLUG_SEGMENT = /^[a-zA-Z0-9._-]+$/

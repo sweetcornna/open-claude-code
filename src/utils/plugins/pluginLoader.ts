@@ -67,7 +67,10 @@ import {
   isFsInaccessible,
   toError,
 } from '../errors.js'
-import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import {
+  execFileNoThrow,
+  execFileNoThrowWithCwd,
+} from '../process/execFileNoThrow.js'
 import { pathExists } from '../filesystem/file.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { gitExe } from '../git.js'

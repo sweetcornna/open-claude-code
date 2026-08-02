@@ -11,7 +11,7 @@ import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/t
 import { checkHasTrustDialogAccepted, saveCurrentProjectConfig } from '../../utils/config.js';
 import { getCwd } from '../../utils/filesystem/cwd.js';
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js';
-import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
+import { gracefulShutdownSync } from '../../utils/process/gracefulShutdown.js';
 import { Select } from '../CustomSelect/index.js';
 import { PermissionDialog } from '../permissions/PermissionDialog.js';
 import {

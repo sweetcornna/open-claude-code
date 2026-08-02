@@ -26,7 +26,7 @@ import { fileReadCache } from './fileReadCache.js'
 import { getFsImplementation, safeResolvePath } from './fsOperations.js'
 import { logError } from '../log.js'
 import { expandPath } from './path.js'
-import { getPlatform } from '../platform.js'
+import { getPlatform } from '../process/platform.js'
 
 export type File = {
   filename: string

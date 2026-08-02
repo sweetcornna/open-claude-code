@@ -68,7 +68,7 @@ import {
   tokenCountWithEstimation,
   getTokenCountFromUsage,
 } from '../../utils/tokens.js'
-import { createAbortController } from '../abortController.js'
+import { createAbortController } from '../process/abortController.js'
 import { type AgentContext, runWithAgentContext } from '../agentContext.js'
 import {
   markAutonomyRunCompleted,
@@ -90,7 +90,7 @@ import {
 import type { PermissionUpdate } from '../permissions/PermissionUpdateSchema.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
-import { sleep } from '../sleep.js'
+import { sleep } from '../process/sleep.js'
 import { jsonStringify } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'

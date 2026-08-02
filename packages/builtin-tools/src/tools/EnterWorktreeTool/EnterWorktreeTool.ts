@@ -12,7 +12,7 @@ import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { findCanonicalGitRoot } from 'src/utils/git.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getPlanSlug, getPlansDirectory } from 'src/utils/plans.js'
-import { setCwd } from 'src/utils/Shell.js'
+import { setCwd } from 'src/utils/shell/Shell.js'
 import { saveWorktreeState } from 'src/utils/sessionStorage.js'
 import {
   createWorktreeForSession,

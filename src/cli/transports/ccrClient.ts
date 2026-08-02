@@ -20,7 +20,7 @@ import type {
   RequiresActionDetails,
   SessionState,
 } from '../../utils/sessionState.js'
-import { sleep } from '../../utils/sleep.js'
+import { sleep } from '../../utils/process/sleep.js'
 import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
 import {
   RetryableError,

@@ -32,7 +32,7 @@ import {
 } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
 import { expandPath } from '../filesystem/path.js'
-import { getPlatform, type Platform } from '../platform.js'
+import { getPlatform, type Platform } from '../process/platform.js'
 import { settingsChangeDetector } from '../settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../settings/constants.js'
 import { getManagedSettingsDropInDir } from '../settings/managedPath.js'

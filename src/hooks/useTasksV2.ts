@@ -1,7 +1,7 @@
 import { type FSWatcher, watch } from 'fs'
 import { useEffect, useSyncExternalStore } from 'react'
 import { useAppState, useSetAppState } from '../state/AppState.js'
-import { createSignal } from '../utils/signal.js'
+import { createSignal } from '../utils/process/signal.js'
 import type { Task } from '../utils/tasks.js'
 import {
   getTaskListId,

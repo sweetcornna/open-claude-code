@@ -5,7 +5,7 @@ import {
   getFileReadIgnorePatterns,
   normalizePatternsToPath,
 } from '../permissions/filesystem.js'
-import { getPlatform } from '../platform.js'
+import { getPlatform } from '../process/platform.js'
 import { getGlobExclusionsForPluginCache } from '../plugins/orphanedPluginFilter.js'
 import { ripGrep } from './ripgrep.js'
 

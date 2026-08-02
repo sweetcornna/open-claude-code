@@ -40,7 +40,7 @@ import type {
   Message,
   SystemMessage,
 } from '../../types/message.js'
-import { createAbortController } from '../../utils/abortController.js'
+import { createAbortController } from '../../utils/process/abortController.js'
 import { count, uniq } from '../../utils/collections/array.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {

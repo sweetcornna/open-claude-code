@@ -45,10 +45,10 @@ import {
   is1PApiCustomer,
   isClaudeAISubscriber,
 } from 'src/utils/auth.js'
-import { getPlatform, getWslVersion } from 'src/utils/platform.js'
+import { getPlatform, getWslVersion } from 'src/utils/process/platform.js'
 
 import { getCACertificates } from '../caCerts.js'
-import { registerCleanup } from '../cleanupRegistry.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
 import { getHasFormattedOutput, logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { errorMessage } from '../errors.js'
