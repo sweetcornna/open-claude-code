@@ -446,6 +446,60 @@ import { AnimatedTerminalTitle } from './repl/AnimatedTerminalTitle.js';
 
 export type { Props, Screen };
 
+/*
+ * ─── REPL hook 簇映射（S7-4d 拆分交接表）────────────────────────────────
+ *
+ * 行号为写下本注释时（commit 之后）的状态，会随后续提取漂移；**以 anchor
+ * 符号名为准**。已提取的簇会从表里移除并在下方「已提取」段落留档。
+ *
+ * 拆分铁律：hook 调用顺序就是行为。每个簇必须**原位替换** —— 提取出的
+ * 自定义 hook 调用要落在原簇第一行的位置，簇内 hook 相对顺序逐个不变。
+ * 任何一步之后 `bun run typecheck` 必须零错误。
+ *
+ * ── 未提取的簇 ──
+ *
+ * C1  查询管线            2670–3303   onQueryEvent / onQueryImpl / onQuery
+ *     三个连续 useCallback，中间**没有**其他 hook 插入（已核实），结构上
+ *     是干净的簇。风险在捕获面：三者合计闭包捕获 50+ 个局部变量，且
+ *     dep array 抄错不会被 tsc 抓到（只会变成 stale closure）。
+ *
+ * C2  提交管线            3425–3916   onSubmit / onAgentSubmit
+ *     onSubmit 单个 460 行，是全文件最大的块。同样是捕获面风险。
+ *
+ * C3  会话恢复/回滚       1695–1925   resume
+ *                         4004–4087   rewindConversationTo / restoreMessageSync
+ *     注意这两段**不相邻**，中间隔着大量其他 hook；若要合成一个簇必须
+ *     拆成两个 hook 调用分别原位替换，不能合并成一个调用点。
+ *
+ * C4  工具权限/执行上下文 2264–2578   sandboxAskCallback / setToolPermissionContext
+ *                                     / canUseTool / getToolUseContext
+ *
+ * C5  对话框焦点与取消    1987–2210   getFocusedInputDialog / onCancel
+ *     两者都是普通函数（非 hook），但 onCancel 里读了大量 ref，且
+ *     getFocusedInputDialog 的返回值参与 focusedInputDialogRef 赋值。
+ *
+ * C7  transcript 搜索簇   4661–4823   jumpRef / searchOpen / searchQuery /
+ *                                     searchCount / searchCurrent /
+ *                                     onSearchMatchesChange / 两个 useInput /
+ *                                     useSearchHighlight / 列宽重扫 effect /
+ *                                     inTranscript 重置 effect
+ *     最内聚、外部触点最少的一簇，**下一个提取目标**。注意重置 effect 里
+ *     顺手清了 v-for-editor 的 editorGenRef/editorTimerRef/dumpMode/
+ *     editorStatus，这几个不属于搜索，提取时要作为参数传入而不是搬走。
+ *
+ * C6  渲染树              4949–5121   transcript 分支 JSX
+ *                         5183–5993   mainReturn JSX（811 行）
+ *     合计约 985 行。拆成子组件需要把 200+ 个局部变量作为 props 下钻，
+ *     属于 orchestrator 收敛的最后一步，风险最高，留到最后做。
+ *
+ * ── 已提取 ──
+ *
+ * A1  gated 自动化簇      → repl/useReplAutomation.ts   （commit cb5a1d63）
+ *     voice / inbox / mailbox / scheduledTasks / taskListWatcher /
+ *     proactive / goalContinuation
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ */
 export function REPL({
   commands: initialCommands,
   debug,
