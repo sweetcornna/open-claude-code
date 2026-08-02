@@ -2,7 +2,7 @@ import * as React from 'react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, type DOMElement, measureElement, NoSelect, Text, useTheme } from '@anthropic/ink';
-import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
+import { isFullscreenEnvEnabled } from '../utils/terminal/fullscreen.js';
 import sliceAnsi from '../utils/text/sliceAnsi.js';
 import { countCharInString } from '../utils/text/stringUtils.js';
 import { HighlightedCodeFallback } from './HighlightedCode/Fallback.js';

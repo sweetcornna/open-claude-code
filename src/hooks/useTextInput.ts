@@ -17,11 +17,14 @@ import {
   resetYankState,
   updateYankLength,
   yankPop,
-} from '../utils/Cursor.js'
+} from '../utils/terminal/Cursor.js'
 import { env } from '../utils/env.js'
-import { isFullscreenEnvEnabled } from '../utils/fullscreen.js'
-import type { ImageDimensions } from '../utils/imageResizer.js'
-import { isModifierPressed, prewarmModifiers } from '../utils/modifiers.js'
+import { isFullscreenEnvEnabled } from '../utils/terminal/fullscreen.js'
+import type { ImageDimensions } from '../utils/terminal/imageResizer.js'
+import {
+  isModifierPressed,
+  prewarmModifiers,
+} from '../utils/terminal/modifiers.js'
 import { useDoublePress } from './useDoublePress.js'
 
 // biome-ignore lint/suspicious/noConfusingVoidType: void is the correct return type for cursor handlers that return nothing

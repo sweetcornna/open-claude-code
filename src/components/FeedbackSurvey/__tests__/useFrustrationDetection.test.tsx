@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as React from 'react';
-import { renderToString } from '../../../utils/staticRender.js';
+import { renderToString } from '../../../utils/terminal/staticRender.js';
 import type { Message } from '../../../types/message.js';
 
 let transcriptShareDismissed = false;

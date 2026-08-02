@@ -52,7 +52,7 @@ import type {
   FileHistoryState,
 } from 'src/utils/filesystem/fileHistory.js'
 import type { DenialTrackingState } from 'src/utils/permissions/denialTracking.js'
-import type { Theme, ThemeName } from 'src/utils/theme.js'
+import type { Theme, ThemeName } from 'src/utils/terminal/theme.js'
 import type { ThinkingConfig } from 'src/utils/thinking.js'
 import type { ContentReplacementState } from 'src/utils/toolResultStorage.js'
 

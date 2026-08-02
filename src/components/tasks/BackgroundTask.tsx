@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Text } from '@anthropic/ink';
-import { toInkColor } from '../../utils/ink.js';
+import { toInkColor } from '../../utils/terminal/ink.js';
 import type { BackgroundTaskState } from 'src/tasks/types.js';
 import type { DeepImmutable } from 'src/types/utils.js';
 import { truncate } from 'src/utils/text/format.js';

@@ -8,11 +8,11 @@ import {
   type FsOperations,
   getFsImplementation,
 } from '../filesystem/fsOperations.js'
-import { cleanupOldImageCaches } from '../imageStore.js'
+import { cleanupOldImageCaches } from '../terminal/imageStore.js'
 import * as lockfile from '../filesystem/lockfile.js'
 import { logError } from '../log.js'
 import { cleanupOldVersions } from '../nativeInstaller/index.js'
-import { cleanupOldPastes } from '../pasteStore.js'
+import { cleanupOldPastes } from '../terminal/pasteStore.js'
 import { getProjectsDir } from '../sessionStorage.js'
 import { getSettingsWithAllErrors } from '../settings/allErrors.js'
 import {

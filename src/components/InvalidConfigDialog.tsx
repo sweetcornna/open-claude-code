@@ -3,9 +3,9 @@ import { Box, Dialog, wrappedRender as render, Text } from '@anthropic/ink';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { ConfigParseError } from '../utils/errors.js';
-import { getBaseRenderOptions } from '../utils/renderOptions.js';
+import { getBaseRenderOptions } from '../utils/terminal/renderOptions.js';
 import { jsonStringify, writeFileSync_DEPRECATED } from '../utils/slowOperations.js';
-import type { ThemeName } from '../utils/theme.js';
+import type { ThemeName } from '../utils/terminal/theme.js';
 import { Select } from './CustomSelect/index.js';
 
 interface InvalidConfigHandlerProps {

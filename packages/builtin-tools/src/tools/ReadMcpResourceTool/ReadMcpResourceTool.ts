@@ -8,7 +8,7 @@ import {
   persistBinaryContent,
 } from 'src/utils/mcpOutputStorage.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
-import { isOutputLineTruncated } from 'src/utils/terminal.js'
+import { isOutputLineTruncated } from 'src/utils/terminal/terminal.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 import {
   renderToolResultMessage,

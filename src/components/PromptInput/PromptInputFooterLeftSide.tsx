@@ -40,7 +40,7 @@ import { formatDuration, formatFileSize } from '../../utils/text/format.js';
 import { VoiceWarmupHint } from './VoiceIndicator.js';
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js';
 import { useVoiceState } from '../../context/voice.js';
-import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import { isXtermJs, useHasSelection, useSelection } from '@anthropic/ink';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { getPlatform } from '../../utils/process/platform.js';

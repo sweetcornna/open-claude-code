@@ -5,7 +5,7 @@ import { Ansi, Text } from '@anthropic/ink';
 import { createHyperlink } from '../../utils/text/hyperlink.js';
 
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js';
-import { renderTruncatedContent } from '../../utils/terminal.js';
+import { renderTruncatedContent } from '../../utils/terminal/terminal.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { InVirtualListContext } from '../messageActions.js';
 import { useExpandShellOutput } from './ExpandShellOutputContext.js';

@@ -7,10 +7,10 @@ import type {
   QuestionOption,
 } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/AskUserQuestionTool.js';
 import type { PastedContent } from '../../../utils/config.js';
-import { getExternalEditor } from '../../../utils/editor.js';
-import { toIDEDisplayName } from '../../../utils/ide.js';
-import type { ImageDimensions } from '../../../utils/imageResizer.js';
-import { editPromptInEditor } from '../../../utils/promptEditor.js';
+import { getExternalEditor } from '../../../utils/terminal/editor.js';
+import { toIDEDisplayName } from '../../../utils/terminal/ide.js';
+import type { ImageDimensions } from '../../../utils/terminal/imageResizer.js';
+import { editPromptInEditor } from '../../../utils/terminal/promptEditor.js';
 import { type OptionWithDescription, Select, SelectMulti } from '../../CustomSelect/index.js';
 import { Divider } from '@anthropic/ink';
 import { FilePathLink } from '../../FilePathLink.js';

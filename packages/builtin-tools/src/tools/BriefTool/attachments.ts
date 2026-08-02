@@ -8,7 +8,7 @@ import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { getErrnoCode } from '@open-claude-code/tool-runtime/errors.js'
-import { IMAGE_EXTENSION_REGEX } from 'src/utils/imagePaste.js'
+import { IMAGE_EXTENSION_REGEX } from 'src/utils/terminal/imagePaste.js'
 import { expandPath } from 'src/utils/filesystem/path.js'
 
 export type ResolvedAttachment = {

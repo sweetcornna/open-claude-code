@@ -31,9 +31,9 @@ import type { MemoryType } from './memory/types.js'
 import { normalizePathForConfigKey } from './filesystem/path.js'
 import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
-import type { ThemeSetting } from './theme.js'
+import type { ThemeSetting } from './terminal/theme.js'
 
-import type { ImageDimensions } from './imageResizer.js'
+import type { ImageDimensions } from './terminal/imageResizer.js'
 import type { ModelOption } from './model/modelOptions.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 

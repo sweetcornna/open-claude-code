@@ -48,7 +48,7 @@ import { Byline, KeyboardShortcutHint, useTabHeaderFocus } from '@anthropic/ink'
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { SearchBox } from '../SearchBox.js';
-import { isSupportedTerminal, hasAccessToIDEExtensionDiffFeature } from '../../utils/ide.js';
+import { isSupportedTerminal, hasAccessToIDEExtensionDiffFeature } from '../../utils/terminal/ide.js';
 import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js';
 import { DEFAULT_OUTPUT_STYLE_NAME } from 'src/constants/outputStyles.js';
@@ -71,7 +71,7 @@ import {
   getFastModeModel,
   isFastModeSupportedByModel,
 } from '../../utils/fastMode.js';
-import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import { getPlatform } from '../../utils/process/platform.js';
 
 type Props = {

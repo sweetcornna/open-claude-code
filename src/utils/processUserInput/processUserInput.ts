@@ -46,8 +46,8 @@ import {
 import {
   createImageMetadataText,
   maybeResizeAndDownsampleImageBlock,
-} from '../imageResizer.js'
-import { storeImages } from '../imageStore.js'
+} from '../terminal/imageResizer.js'
+import { storeImages } from '../terminal/imageStore.js'
 import {
   createCommandInputMessage,
   createSystemMessage,

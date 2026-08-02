@@ -50,7 +50,7 @@ import {
 } from '../constants/xml.js';
 import { count } from '../utils/collections/array.js';
 import { formatRelativeTimeAgo, truncate } from '../utils/text/format.js';
-import type { Theme } from '../utils/theme.js';
+import type { Theme } from '../utils/terminal/theme.js';
 type RestoreOption = 'both' | 'conversation' | 'code' | 'summarize' | 'summarize_up_to' | 'nevermind';
 
 function isSummarizeOption(option: RestoreOption | null): option is 'summarize' | 'summarize_up_to' {

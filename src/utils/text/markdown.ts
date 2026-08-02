@@ -9,7 +9,7 @@ import type { CliHighlight } from './cliHighlight.js'
 import { logForDebugging } from '../debug.js'
 
 import { stripPromptXMLTags } from '../messages.js'
-import type { ThemeName } from '../theme.js'
+import type { ThemeName } from '../terminal/theme.js'
 
 // Use \n unconditionally — os.EOL is \r\n on Windows, and the extra \r
 // breaks the character-to-segment mapping in applyStylesToWrappedText,

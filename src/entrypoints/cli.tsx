@@ -306,7 +306,7 @@ async function main(): Promise<void> {
   }
 
   // No special flags detected, load and run the full CLI
-  const { startCapturingEarlyInput } = await import('../utils/earlyInput.js');
+  const { startCapturingEarlyInput } = await import('../utils/terminal/earlyInput.js');
   startCapturingEarlyInput();
   profileCheckpoint('cli_before_main_import');
   const { main: cliMain } = await import('../main.jsx');

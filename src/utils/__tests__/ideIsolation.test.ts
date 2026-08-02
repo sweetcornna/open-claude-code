@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { occConfigDir } from 'src/config/paths.js'
-import { canDeleteIdeLockfile } from '../ide.js'
+import { canDeleteIdeLockfile } from '../terminal/ide.js'
 
 const originalOccConfigDir = process.env.OCC_CONFIG_DIR
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'occ-ide-isolation-')))

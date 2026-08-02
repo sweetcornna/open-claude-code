@@ -5,8 +5,8 @@ import { useInput, useSearchHighlight } from '@anthropic/ink'
 import { writeFile } from 'fs/promises'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import type { JumpHandle } from '../../components/VirtualMessageList.js'
-import { renderMessagesToPlainText } from '../../utils/exportRenderer.js'
-import { openFileInExternalEditor } from '../../utils/editor.js'
+import { renderMessagesToPlainText } from '../../utils/terminal/exportRenderer.js'
+import { openFileInExternalEditor } from '../../utils/terminal/editor.js'
 import {
   generateTempFilePath,
   TRANSCRIPT_TEMP_PREFIX,

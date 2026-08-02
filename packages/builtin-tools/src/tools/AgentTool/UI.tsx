@@ -24,7 +24,7 @@ import { formatDuration, formatNumber } from 'src/utils/text/format.js';
 import { buildSubagentLookups, createAssistantMessage, EMPTY_LOOKUPS } from 'src/utils/messages.js';
 import type { ModelAlias } from 'src/utils/model/aliases.js';
 import { getMainLoopModel, parseUserSpecifiedModel, renderModelName } from 'src/utils/model/model.js';
-import type { Theme, ThemeName } from 'src/utils/theme.js';
+import type { Theme, ThemeName } from 'src/utils/terminal/theme.js';
 import type { outputSchema, Progress, RemoteLaunchedOutput } from './AgentTool.js';
 import { inputSchema } from './AgentTool.js';
 import { getAgentColor } from './agentColorManager.js';

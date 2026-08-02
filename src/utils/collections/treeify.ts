@@ -1,6 +1,6 @@
 import figures from 'figures'
 import { color } from '@anthropic/ink'
-import type { Theme, ThemeName } from '../theme.js'
+import type { Theme, ThemeName } from '../terminal/theme.js'
 
 export type TreeNode = {
   [key: string]: TreeNode | string | undefined

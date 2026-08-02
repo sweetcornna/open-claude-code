@@ -11,7 +11,7 @@
  * updated by the watcher once the OSC 11 response arrives.
  */
 
-import type { ThemeName, ThemeSetting } from '../theme.js'
+import type { ThemeName, ThemeSetting } from './theme.js'
 
 export type SystemTheme = 'dark' | 'light'
 

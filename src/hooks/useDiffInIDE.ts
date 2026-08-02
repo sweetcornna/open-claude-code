@@ -24,8 +24,8 @@ import {
   getConnectedIdeClient,
   getConnectedIdeName,
   hasAccessToIDEExtensionDiffFeature,
-} from '../utils/ide.js'
-import { WindowsToWSLConverter } from '../utils/idePathConversion.js'
+} from '../utils/terminal/ide.js'
+import { WindowsToWSLConverter } from '../utils/terminal/idePathConversion.js'
 import { logError } from '../utils/log.js'
 import { getPlatform } from '../utils/process/platform.js'
 

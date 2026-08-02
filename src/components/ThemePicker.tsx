@@ -9,7 +9,7 @@ import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
 import { gracefulShutdown } from '../utils/process/gracefulShutdown.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
-import type { ThemeSetting } from '../utils/theme.js';
+import type { ThemeSetting } from '../utils/terminal/theme.js';
 import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
 import { getColorModuleUnavailableReason, getSyntaxTheme } from './StructuredDiff/colorDiff.js';

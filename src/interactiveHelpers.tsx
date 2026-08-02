@@ -43,7 +43,7 @@ import { type FpsMetrics, FpsTracker } from './utils/fpsTracker.js';
 import { updateGithubRepoPathMapping } from './utils/githubRepoPathMapping.js';
 import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';
-import { getBaseRenderOptions } from './utils/renderOptions.js';
+import { getBaseRenderOptions } from './utils/terminal/renderOptions.js';
 import { getSettingsWithAllErrors } from './utils/settings/allErrors.js';
 import { hasSkipDangerousModePermissionPrompt } from './utils/settings/settings.js';
 

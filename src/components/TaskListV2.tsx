@@ -13,7 +13,7 @@ import { count } from '../utils/collections/array.js';
 import { summarizeRecentActivities } from '../utils/collapseReadSearch.js';
 import { truncateToWidth } from '../utils/text/format.js';
 import { isTodoV2Enabled, type Task } from '../utils/tasks.js';
-import type { Theme } from '../utils/theme.js';
+import type { Theme } from '../utils/terminal/theme.js';
 import ThemedText from './design-system/ThemedText.js';
 
 type Props = {

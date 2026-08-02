@@ -3,13 +3,13 @@ import { handlePlanModeTransition } from '../../bootstrap/state.js';
 import type { LocalJSXCommandContext } from '../../commands.js';
 import { Box, Text } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { getExternalEditor } from '../../utils/editor.js';
-import { toIDEDisplayName } from '../../utils/ide.js';
+import { getExternalEditor } from '../../utils/terminal/editor.js';
+import { toIDEDisplayName } from '../../utils/terminal/ide.js';
 import { applyPermissionUpdate } from '../../utils/permissions/PermissionUpdate.js';
 import { prepareContextForPlanMode } from '../../utils/permissions/permissionSetup.js';
 import { getPlan, getPlanFilePath } from '../../utils/plans.js';
-import { editFileInEditor } from '../../utils/promptEditor.js';
-import { renderToString } from '../../utils/staticRender.js';
+import { editFileInEditor } from '../../utils/terminal/promptEditor.js';
+import { renderToString } from '../../utils/terminal/staticRender.js';
 
 function PlanDisplay({
   planContent,

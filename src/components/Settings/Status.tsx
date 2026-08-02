@@ -21,8 +21,8 @@ import {
   type Diagnostic,
   getModelDisplayLabel,
   type Property,
-} from '../../utils/status.js';
-import type { ThemeName } from '../../utils/theme.js';
+} from '../../utils/terminal/status.js';
+import type { ThemeName } from '../../utils/terminal/theme.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 
 type Props = {

@@ -32,7 +32,7 @@ import {
   isSupportedVSCodeTerminal,
   isVSCodeInstalled,
   isWindsurfInstalled,
-} from '../../utils/ide.js'
+} from '../../utils/terminal/ide.js'
 import {
   getMainLoopModel,
   getUserSpecifiedModelSetting,

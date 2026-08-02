@@ -78,7 +78,7 @@ import {
   recordTranscript,
 } from './utils/sessionStorage.js'
 import { asSystemPrompt } from './utils/systemPromptType.js'
-import { resolveThemeSetting } from './utils/systemTheme.js'
+import { resolveThemeSetting } from './utils/terminal/systemTheme.js'
 import {
   shouldEnableThinkingByDefault,
   type ThinkingConfig,

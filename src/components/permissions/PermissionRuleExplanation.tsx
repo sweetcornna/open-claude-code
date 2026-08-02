@@ -6,7 +6,7 @@ import ThemedText from '../design-system/ThemedText.js';
 import { useAppState } from '../../state/AppState.js';
 import type { PermissionDecision, PermissionDecisionReason } from '../../utils/permissions/PermissionResult.js';
 import { permissionRuleValueToString } from '../../utils/permissions/permissionRuleParser.js';
-import type { Theme } from '../../utils/theme.js';
+import type { Theme } from '../../utils/terminal/theme.js';
 
 export type PermissionRuleExplanationProps = {
   permissionResult: PermissionDecision;

@@ -9,7 +9,7 @@ import {
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import { ThemePicker } from '../../components/ThemePicker.js';
 import { getGlobalConfig, saveCurrentProjectConfig, saveGlobalConfig } from '../../utils/config.js';
-import type { ThemeSetting } from '../../utils/theme.js';
+import type { ThemeSetting } from '../../utils/terminal/theme.js';
 
 /**
  * /onboarding [subcommand]

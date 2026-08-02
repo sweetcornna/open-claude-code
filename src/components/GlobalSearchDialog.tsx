@@ -6,7 +6,7 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { Text } from '@anthropic/ink';
 import { logEvent } from '../services/analytics/index.js';
 import { getCwd } from '../utils/filesystem/cwd.js';
-import { openFileInExternalEditor } from '../utils/editor.js';
+import { openFileInExternalEditor } from '../utils/terminal/editor.js';
 import { truncatePathMiddle, truncateToWidth } from '../utils/text/format.js';
 import { highlightMatch } from '../utils/text/highlightMatch.js';
 import { relativePath } from '../utils/permissions/filesystem.js';

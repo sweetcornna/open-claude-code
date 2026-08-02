@@ -9,7 +9,7 @@ import { getDoctorDiagnostic } from '../doctorDiagnostic.js';
 import { getAWSRegion, getDefaultVertexRegion, isEnvTruthy } from '../envUtils.js';
 import { getDisplayPath } from '../filesystem/file.js';
 import { formatNumber } from '../text/format.js';
-import { getIdeClientName, type IDEExtensionInstallationStatus, isJetBrainsIde, toIDEDisplayName } from '../ide.js';
+import { getIdeClientName, type IDEExtensionInstallationStatus, isJetBrainsIde, toIDEDisplayName } from './ide.js';
 import { getClaudeAiUserDefaultModelDescription, modelDisplayString } from '../model/model.js';
 import { getAPIProvider } from '../model/providers.js';
 import { getMTLSConfig } from '../mtls.js';
@@ -19,7 +19,7 @@ import { SandboxManager } from '../sandbox/sandbox-adapter.js';
 import { getSettingsWithAllErrors } from '../settings/allErrors.js';
 import { getEnabledSettingSources, getSettingSourceDisplayNameCapitalized } from '../settings/constants.js';
 import { getManagedFileSettingsPresence, getPolicySettingsOrigin, getSettingsForSource } from '../settings/settings.js';
-import type { ThemeName } from '../theme.js';
+import type { ThemeName } from './theme.js';
 
 export type Property = {
   label?: string;

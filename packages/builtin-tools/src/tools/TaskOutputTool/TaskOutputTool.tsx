@@ -22,7 +22,7 @@ import { countCharInString } from '@open-claude-code/tool-runtime/stringUtils.js
 import { getTaskOutput } from 'src/utils/task/diskOutput.js';
 import { updateTaskState } from 'src/utils/task/framework.js';
 import { formatTaskOutput } from 'src/utils/task/outputFormatting.js';
-import type { ThemeName } from 'src/utils/theme.js';
+import type { ThemeName } from 'src/utils/terminal/theme.js';
 import { AgentPromptDisplay, AgentResponseDisplay } from '../AgentTool/UI.js';
 import BashToolResultMessage from '../BashTool/BashToolResultMessage.js';
 import { TASK_OUTPUT_TOOL_NAME } from './constants.js';

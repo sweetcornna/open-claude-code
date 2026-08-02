@@ -11,7 +11,7 @@ import {
   getRecentActivitySync,
   getRecentReleaseNotesSync,
   getLogoDisplayData,
-} from '../../utils/logoV2Utils.js';
+} from '../../utils/terminal/logoV2Utils.js';
 import { truncate } from '../../utils/text/format.js';
 import { getDisplayPath } from '../../utils/filesystem/file.js';
 import { Clawd } from './Clawd.js';
@@ -23,7 +23,7 @@ import {
   createGuestPassesFeed,
 } from './feedConfigs.js';
 import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
-import { resolveThemeSetting } from 'src/utils/systemTheme.js';
+import { resolveThemeSetting } from 'src/utils/terminal/systemTheme.js';
 import { getInitialSettings } from 'src/utils/settings/settings.js';
 import { isDebugMode, isDebugToStdErr, getDebugLogPath } from 'src/utils/debug.js';
 import { useEffect, useState } from 'react';

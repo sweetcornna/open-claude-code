@@ -7,7 +7,7 @@ import { getAgentColor } from '@open-claude-code/builtin-tools/tools/AgentTool/a
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { truncateToWidth } from 'src/utils/text/format.js'
 import { logError } from 'src/utils/log.js'
-import type { Theme } from 'src/utils/theme.js'
+import type { Theme } from 'src/utils/terminal/theme.js'
 
 type FileSuggestionSource = {
   type: 'file'

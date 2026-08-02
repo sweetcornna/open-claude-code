@@ -13,9 +13,9 @@ import type { Question } from '@open-claude-code/builtin-tools/tools/AskUserQues
 import { AskUserQuestionTool } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/AskUserQuestionTool.js';
 import { type CliHighlight, getCliHighlightPromise } from '../../../utils/text/cliHighlight.js';
 import type { PastedContent } from '../../../utils/config.js';
-import type { ImageDimensions } from '../../../utils/imageResizer.js';
-import { maybeResizeAndDownsampleImageBlock } from '../../../utils/imageResizer.js';
-import { cacheImagePath, storeImage } from '../../../utils/imageStore.js';
+import type { ImageDimensions } from '../../../utils/terminal/imageResizer.js';
+import { maybeResizeAndDownsampleImageBlock } from '../../../utils/terminal/imageResizer.js';
+import { cacheImagePath, storeImage } from '../../../utils/terminal/imageStore.js';
 import { logError } from '../../../utils/log.js';
 import { applyMarkdown } from '../../../utils/text/markdown.js';
 import { isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';

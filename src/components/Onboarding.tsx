@@ -13,7 +13,7 @@ import { getCustomApiKeyStatus } from '../utils/config.js';
 import { env } from '../utils/env.js';
 import { isRunningOnHomespace } from '../utils/envUtils.js';
 import { PreflightStep } from '../utils/preflightChecks.js';
-import type { ThemeSetting } from '../utils/theme.js';
+import type { ThemeSetting } from '../utils/terminal/theme.js';
 import { ApproveApiKey } from './ApproveApiKey.js';
 import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js';
 import { Select } from './CustomSelect/select.js';

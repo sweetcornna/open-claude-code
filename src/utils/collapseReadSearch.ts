@@ -44,7 +44,7 @@ function getContentItems(content: MessageContent | undefined): ContentItem[] {
   return content
 }
 import { getDisplayPath } from './filesystem/file.js'
-import { isFullscreenEnvEnabled } from './fullscreen.js'
+import { isFullscreenEnvEnabled } from './terminal/fullscreen.js'
 import {
   isAutoManagedMemoryFile,
   isAutoManagedMemoryPattern,

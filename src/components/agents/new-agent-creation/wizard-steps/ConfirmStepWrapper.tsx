@@ -9,7 +9,7 @@ import type { Tools } from '../../../../Tool.js';
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { getActiveAgentsFromList } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { clearAgentDefinitionsCache } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { editFileInEditor } from '../../../../utils/promptEditor.js';
+import { editFileInEditor } from '../../../../utils/terminal/promptEditor.js';
 import { useWizard } from '../../../wizard/index.js';
 import { getNewAgentFilePath, saveAgentToFile } from '../../agentFileUtils.js';
 import type { AgentWizardData } from '../types.js';

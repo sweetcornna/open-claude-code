@@ -47,7 +47,7 @@ import { AbortError, MalformedCommandError } from '../errors.js';
 import { getDisplayPath } from '../filesystem/file.js';
 import { extractResultText, prepareForkedCommandContext } from '../forkedAgent.js';
 import { getFsImplementation } from '../filesystem/fsOperations.js';
-import { isFullscreenEnvEnabled } from '../fullscreen.js';
+import { isFullscreenEnvEnabled } from '../terminal/fullscreen.js';
 import { toArray } from '../collections/generators.js';
 import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
 import { logError } from '../log.js';

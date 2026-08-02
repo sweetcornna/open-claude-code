@@ -1,6 +1,6 @@
 import type { ToolUseContext } from '../../Tool.js'
 import type { IDESelection } from '../../hooks/useIdeSelection.js'
-import { getConnectedIdeName } from '../ide.js'
+import { getConnectedIdeName } from '../terminal/ide.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { relative } from 'path'
 import type { Attachment } from './types.js'

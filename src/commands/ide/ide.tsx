@@ -26,7 +26,7 @@ import {
   isSupportedJetBrainsTerminal,
   isSupportedTerminal,
   toIDEDisplayName,
-} from '../../utils/ide.js';
+} from '../../utils/terminal/ide.js';
 import { getCurrentWorktreeSession } from '../../utils/worktree.js';
 
 type IDEScreenProps = {

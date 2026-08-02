@@ -6,7 +6,7 @@ import {
   listTasks,
   getTasksDir,
 } from '../../utils/tasks.js'
-import { getRecentActivity } from '../../utils/logoV2Utils.js'
+import { getRecentActivity } from '../../utils/terminal/logoV2Utils.js'
 import type { LogOption } from '../../types/logs.js'
 
 const DEFAULT_LIST = 'default'

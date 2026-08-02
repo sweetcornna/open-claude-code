@@ -11,7 +11,7 @@ import { logForDebugging } from '../debug.js'
 import { isENOENT } from '../errors.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { logError } from '../log.js'
-import type { ThemeName } from '../theme.js'
+import type { ThemeName } from '../terminal/theme.js'
 
 const EOL = '\n'
 const COMPLETION_COMMAND = `${BIN_NAME} completion`
