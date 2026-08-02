@@ -6,6 +6,8 @@ import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
+import { clearOpenAIClientCache } from '../../services/api/openai/client.js';
+import { clearGrokClientCache } from '../../services/api/grok/client.js';
 import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth/auth.js';
 import { clearBetasCaches } from '../../utils/model/betas.js';
 import { saveGlobalConfig } from '../../utils/config/config.js';
@@ -23,6 +25,12 @@ export async function performLogout({ clearOnboarding = false }): Promise<void> 
   await removeApiKey();
   await removeChatGPTAuth();
   clearChatGPTSettingsAuthMode();
+  // Third-party API keys in settings.env are configuration, not login state,
+  // and survive logout (provider profiles preserve them anyway). But cached
+  // SDK clients hold the pre-logout auth — drop them so the next request
+  // rebuilds from current env.
+  clearOpenAIClientCache();
+  clearGrokClientCache();
 
   // Wipe all secure storage data on logout
   const secureStorage = getSecureStorage();

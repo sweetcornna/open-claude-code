@@ -1,9 +1,74 @@
 import type { Command } from '../commands.js'
 import type { LocalCommandCall } from '../types/command.js'
+import {
+  activateProfile,
+  deleteProfile,
+  listProfiles,
+  saveCurrentAsProfile,
+} from '../services/providerProfiles/activate.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { applyConfigEnvironmentVariables } from '../utils/config/managedEnv.js'
+
+const SECRET_ENV_KEY_PATTERN = /API_KEY|AUTH_TOKEN|AUTH_MODE/
+
+function describeProfileEnv(env: Record<string, string>): string {
+  const parts = Object.entries(env).map(([key, value]) =>
+    SECRET_ENV_KEY_PATTERN.test(key) && key !== 'OPENAI_AUTH_MODE'
+      ? `${key}=***`
+      : `${key}=${value}`,
+  )
+  return parts.length > 0 ? parts.join(', ') : '(no env overrides)'
+}
+
+function handleProfileSubcommand(args: string[]): string | null {
+  const [sub, name, ...rest] = args
+  switch (sub) {
+    case 'save': {
+      if (!name) return 'Usage: /provider save <name> [notes...]'
+      const result = saveCurrentAsProfile({
+        name,
+        notes: rest.join(' ') || undefined,
+      })
+      if ('error' in result) return result.error
+      return (
+        `Saved profile "${result.profile.name}" (${result.profile.modelType}): ` +
+        describeProfileEnv(result.profile.env)
+      )
+    }
+    case 'use': {
+      if (!name) return 'Usage: /provider use <name>'
+      const result = activateProfile(name)
+      if ('error' in result) return result.error
+      return (
+        `Activated profile "${result.profile.name}" → provider ${result.profile.modelType}.\n` +
+        describeProfileEnv(result.profile.env)
+      )
+    }
+    case 'delete': {
+      if (!name) return 'Usage: /provider delete <name>'
+      const result = deleteProfile(name)
+      if ('error' in result) return result.error
+      return `Deleted profile "${name}".`
+    }
+    case 'list': {
+      const { active, profiles } = listProfiles()
+      if (profiles.length === 0) {
+        return 'No saved profiles. Save the current setup with: /provider save <name>'
+      }
+      return profiles
+        .map(profile => {
+          const marker = profile.name === active ? '* ' : '  '
+          const notes = profile.notes ? ` — ${profile.notes}` : ''
+          return `${marker}${profile.name} (${profile.modelType})${notes}\n    ${describeProfileEnv(profile.env)}`
+        })
+        .join('\n')
+    }
+    default:
+      return null
+  }
+}
 
 function getEnvVarForProvider(provider: string): string {
   switch (provider) {
@@ -37,12 +102,25 @@ function getMergedEnv(): Record<string, string> {
 }
 
 const call: LocalCommandCall = async (args, _context) => {
-  const arg = args.trim().toLowerCase()
+  const rawArgs = args.trim().split(/\s+/).filter(Boolean)
+  const arg = rawArgs[0]?.toLowerCase() ?? ''
 
-  // No argument: show current provider
+  // No argument: show current provider (and active profile if any)
   if (!arg) {
     const current = getAPIProvider()
-    return { type: 'text', value: `Current API provider: ${current}` }
+    const { active } = listProfiles()
+    return {
+      type: 'text',
+      value:
+        `Current API provider: ${current}` +
+        (active ? ` (profile: ${active})` : ''),
+    }
+  }
+
+  // Profile subcommands: save/use/delete keep the raw (case-preserving) name.
+  if (['save', 'use', 'delete', 'list'].includes(arg)) {
+    const result = handleProfileSubcommand([arg, ...rawArgs.slice(1)])
+    if (result !== null) return { type: 'text', value: result }
   }
 
   // unset - clear settings, fallback to env vars
@@ -165,9 +243,10 @@ const provider = {
   type: 'local',
   name: 'provider',
   description:
-    'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry)',
+    'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry) or manage saved profiles (save/use/list/delete)',
   aliases: ['api'],
-  argumentHint: '[anthropic|openai|gemini|grok|bedrock|vertex|foundry|unset]',
+  argumentHint:
+    '[anthropic|openai|gemini|grok|bedrock|vertex|foundry|unset] | save <name> | use <name> | list | delete <name>',
   supportsNonInteractive: true,
   load: () => Promise.resolve({ call }),
 } satisfies Command

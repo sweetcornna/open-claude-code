@@ -8,6 +8,9 @@ const ISSUER = 'https://auth.openai.com'
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const AUTH_FILE = 'openai-chatgpt-auth.json'
 const REFRESH_SKEW_MS = 5 * 60 * 1000
+// codex-rs refreshes on age too (TOKEN_REFRESH_INTERVAL = 8 days), not just
+// on access-token expiry — id_token claims (plan, account) go stale otherwise.
+const MAX_TOKEN_AGE_MS = 8 * 24 * 60 * 60 * 1000
 
 export type ChatGPTDeviceCode = {
   verificationUrl: string
@@ -284,9 +287,12 @@ async function exchangeAuthorizationCode(params: {
 async function refreshTokens(
   tokens: ChatGPTAuthTokens,
 ): Promise<ChatGPTAuthTokens> {
+  // All three fields are optional in the refresh response (codex-rs
+  // token_data.rs) — write back selectively, keeping the previous value for
+  // anything omitted.
   type TokenResponse = {
-    id_token: string
-    access_token: string
+    id_token?: string
+    access_token?: string
     refresh_token?: string
   }
   const body = new URLSearchParams({
@@ -297,13 +303,15 @@ async function refreshTokens(
       'openid profile email offline_access api.connectors.read api.connectors.invoke',
   })
   const data = await postForm<TokenResponse>(`${ISSUER}/oauth/token`, body)
+  const idToken = data.id_token ?? tokens.idToken
+  const accessToken = data.access_token ?? tokens.accessToken
   return {
-    idToken: data.id_token,
-    accessToken: data.access_token,
+    idToken,
+    accessToken,
     refreshToken: data.refresh_token ?? tokens.refreshToken,
     accountId: extractAccountId({
-      idToken: data.id_token,
-      accessToken: data.access_token,
+      idToken,
+      accessToken,
       accountId: tokens.accountId,
     }),
   }
@@ -345,9 +353,26 @@ export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
     )
   }
   const expiresAt = getTokenExpiryMs(tokens.accessToken)
-  if (expiresAt !== null && expiresAt <= Date.now() + REFRESH_SKEW_MS) {
-    tokens = await refreshTokens(tokens)
-    await saveStoredAuth(tokens)
+  const expiringSoon =
+    expiresAt !== null && expiresAt <= Date.now() + REFRESH_SKEW_MS
+  const lastRefreshMs = tokens.lastRefresh
+    ? Date.parse(tokens.lastRefresh)
+    : Number.NaN
+  const stale =
+    !Number.isFinite(lastRefreshMs) ||
+    Date.now() - lastRefreshMs > MAX_TOKEN_AGE_MS
+  if (expiringSoon || stale) {
+    try {
+      tokens = await refreshTokens(tokens)
+      await saveStoredAuth(tokens)
+    } catch (error) {
+      // A stale-only refresh is opportunistic: the access token is still
+      // valid, so keep serving it rather than failing the request.
+      if (expiringSoon) throw error
+      logForDebugging(
+        `[OpenAI] Opportunistic ChatGPT token refresh failed: ${String(error)}`,
+      )
+    }
   }
   return {
     accessToken: tokens.accessToken,
