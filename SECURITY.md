@@ -1,21 +1,47 @@
-# Security Policy
+# 安全策略 / Security Policy
 
-## Supported Versions
+## 支持的版本
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+open-claude-code 只维护一条发布线。安全修复发布在最新的 `2.x` 版本上，不向后移植到更早的 tag。
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| 版本 | 状态 |
+| --- | --- |
+| 最新 `2.x` | 接受安全修复 |
+| 更早版本 | 不再维护，请升级 |
 
-## Reporting a Vulnerability
+当前版本见 [`package.json`](package.json) 的 `version` 字段，或运行 `occ --version`。
 
-Use this section to tell people how to report a vulnerability.
+## 报告漏洞
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+**请使用 GitHub Security Advisories 私密报告，不要开公开 issue，也不要发邮件。**
+
+入口：本仓库的 [Security → Report a vulnerability](https://github.com/sweetcornna/open-claude-code/security/advisories/new)。
+
+这条通道对报告者和维护者双向私密，能在公开披露前完成修复与协调。项目没有专用安全邮箱 —— 邮件既不保证送达也不保证保密，请勿用邮件报告。
+
+报告里请尽量包含：
+
+- 受影响的版本与运行环境（OS、Bun 版本、安装方式）
+- 复现步骤，或一个最小复现用例
+- 你判断的影响面（能读到什么、能执行什么、需要什么前置条件）
+
+### 处理流程
+
+这是一个社区维护的项目，没有 7×24 值班团队，请据此设定预期：
+
+1. **确认** —— 维护者在 advisory 里回复确认收到并开始评估。
+2. **评估** —— 复现并判定影响面。无法复现时会在 advisory 里追问细节，而不是直接关闭。
+3. **修复** —— 确认成立的问题在私密 advisory 分支上修复。
+4. **披露** —— 修复发布后公开 advisory，报告者若愿意会被署名致谢。
+
+不被接受的报告（例如需要攻击者已在本机拿到 shell 才能触发的问题）会在 advisory 里说明理由后关闭，不会静默丢弃。
+
+## 本项目特有的安全边界
+
+open-claude-code 是 Anthropic Claude Code CLI 的逆向社区版。以下几条边界请报告者先了解，以免把设计内行为当成漏洞：
+
+- **工具执行本身不是沙箱。** `BashTool` 等工具按用户授予的权限执行命令。**绕过权限提示**、或某条路径能在未经批准的情况下执行工具，才是漏洞。
+- **与官方 Claude Code 的隔离是硬要求。** 任何让 occ 读写官方 CLI 的配置、凭据或安装目录的路径都算安全问题 —— 这类事故真实发生过（隔离改造前，卸载逻辑会 `rm -rf ~/.claude/local`，等于删掉官方 CLI 的本地安装）。相关不变式见 [`CLAUDE.md`](CLAUDE.md) 的「路径与隔离不变式」一节。
+- **凭据。** OAuth token 存放在系统 keychain。凭据出现在日志、遥测、错误上报或会话记录里属于漏洞。
+- **MCP 服务器是第三方代码。** 用户自行配置的 MCP 服务器在用户权限下运行，这是设计如此；**MCP 客户端被恶意服务器诱导越权**才是漏洞。
+- **上游同源问题。** 若问题源自 Anthropic 官方 Claude Code 而非本项目的改动，请同时报给上游；我们只能在本项目侧缓解。
