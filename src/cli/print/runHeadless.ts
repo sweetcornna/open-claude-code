@@ -67,7 +67,8 @@ import { getCanUseToolFn } from './toolPermissions.js'
 import { handleRewindFiles } from './controlHandlers.js'
 import { loadInitialMessages } from './sessionLoading.js'
 import { getStructuredIO } from './structuredIO.js'
-import { proactiveModule, runHeadlessStreaming } from './runtime.js'
+import { proactiveModule } from './runtime.js'
+import { runHeadlessStreaming } from './runHeadlessStreaming.js'
 
 export async function runHeadless(
   inputPrompt: string | AsyncIterable<string>,
@@ -602,18 +603,3 @@ export async function runHeadless(
     lastMessage?.type === 'result' && lastMessage?.is_error ? 1 : 0,
   )
 }
-
-export type RunHeadlessStreaming = (
-  structuredIO: StructuredIO,
-  mcpClients: MCPServerConnection[],
-  commands: Command[],
-  tools: Tools,
-  initialMessages: Message[],
-  canUseTool: CanUseToolFn,
-  sdkMcpConfigs: Record<string, McpSdkServerConfig>,
-  getAppState: () => AppState,
-  setAppState: (f: (prev: AppState) => AppState) => void,
-  agents: AgentDefinition[],
-  options: Parameters<typeof runHeadless>[7],
-  turnInterruptionState?: TurnInterruptionState,
-) => AsyncIterable<StdoutMessage>

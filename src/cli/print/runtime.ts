@@ -1,12 +1,5 @@
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
-import type { RunHeadlessStreaming } from './runHeadless.js'
-
-let runHeadlessStreaming: RunHeadlessStreaming
-
-function bindRunHeadlessStreaming(implementation: RunHeadlessStreaming): void {
-  runHeadlessStreaming = implementation
-}
 
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -72,6 +65,4 @@ export {
   SHUTDOWN_TEAM_PROMPT,
   receivedMessageUuids,
   trackReceivedMessageUuid,
-  runHeadlessStreaming,
-  bindRunHeadlessStreaming,
 }
