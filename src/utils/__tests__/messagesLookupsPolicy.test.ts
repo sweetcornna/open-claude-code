@@ -22,12 +22,13 @@ import {
   userText,
   userToolResult,
 } from '../../../tests/mocks/fixtures/conversation.js'
-import { buildMessageLookups, normalizeMessages } from '../messages.js'
 import {
+  buildMessageLookups,
   type MessageLookupsCache,
   type MessageLookupsSource,
+  normalizeMessages,
   resolveMessageLookups,
-} from '../messages/lookupsCache.js'
+} from '../messages.js'
 
 /** Messages.tsx never shows progress entries; it passes the filtered array. */
 function shownFrom(

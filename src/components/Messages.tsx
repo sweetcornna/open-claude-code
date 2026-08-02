@@ -35,6 +35,8 @@ import { isEnvTruthy } from '../utils/envUtils.js';
 import { applyGrouping } from '../utils/groupToolUses.js';
 import {
   type MessageLookups,
+  type MessageLookupsCache,
+  resolveMessageLookups,
   createAssistantMessage,
   deriveUUID,
   getToolUseID,
@@ -47,7 +49,6 @@ import {
   type StreamingToolUse,
   shouldShowUserMessage,
 } from '../utils/messages.js';
-import { type MessageLookupsCache, resolveMessageLookups } from '../utils/messages/lookupsCache.js';
 import { plural } from '../utils/stringUtils.js';
 import { renderableSearchText } from '../utils/transcriptSearch.js';
 import { Divider } from '@anthropic/ink';

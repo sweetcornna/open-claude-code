@@ -158,6 +158,7 @@ const EXPECTED_RUNTIME_EXPORTS = [
   'prepareUserContent',
   'reorderAttachmentsForAPI',
   'reorderMessagesInUI',
+  'resolveMessageLookups',
   'shouldShowUserMessage',
   'stripAdvisorBlocks',
   'stripCallerFieldFromAssistantMessage',

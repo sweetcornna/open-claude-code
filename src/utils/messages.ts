@@ -100,8 +100,14 @@ export {
   buildMessageLookups,
   updateMessageLookupsIncremental,
   computeMessageStructureKey,
+  resolveMessageLookups,
 } from './messages/lookups.js'
-export type { MessageLookups } from './messages/lookups.js'
+export type {
+  MessageLookups,
+  MessageLookupsCache,
+  MessageLookupsSource,
+  ResolvedMessageLookups,
+} from './messages/lookups.js'
 export {
   EMPTY_LOOKUPS,
   EMPTY_STRING_SET,

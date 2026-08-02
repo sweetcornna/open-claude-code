@@ -33,12 +33,10 @@ import {
   buildMessageLookups,
   computeMessageStructureKey,
   type MessageLookups,
-  updateMessageLookupsIncremental,
-} from '../src/utils/messages/lookups.js'
-import {
   type MessageLookupsCache,
   resolveMessageLookups,
-} from '../src/utils/messages/lookupsCache.js'
+  updateMessageLookupsIncremental,
+} from '../src/utils/messages/lookups.js'
 
 type Step = {
   /** Appended to the normalized array (progress entries included). */
