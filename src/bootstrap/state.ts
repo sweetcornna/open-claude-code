@@ -8,6 +8,38 @@
 // Do NOT re-export STATE or getInitialState: the mutable container is
 // directory-internal and only the sibling modules may touch it.
 
+import {
+  type BootstrapStateHost,
+  registerBootstrapStateHost,
+} from '@open-claude-code/tool-runtime/bootstrapState.js'
+import {
+  getOriginalCwd,
+  getProjectRoot,
+  getSessionId,
+  setOriginalCwd,
+  setProjectRoot,
+} from './state/session.js'
+import {
+  getAllowedChannels,
+  getIsNonInteractiveSession,
+  getKairosActive,
+  getQuestionPreviewFormat,
+  getSdkAgentProgressSummariesEnabled,
+  getUserMsgOptIn,
+} from './state/flags.js'
+import {
+  addInvokedSkill,
+  clearInvokedSkillsForAgent,
+  getAgentColorMap,
+  handlePlanModeTransition,
+  hasExitedPlanModeInSession,
+  setHasExitedPlanMode,
+  setNeedsAutoModeExitAttachment,
+  setNeedsPlanModeExitAttachment,
+  setScheduledTasksEnabled,
+} from './state/sessionRuntime.js'
+import { getCommitCounter, getPrCounter } from './state/telemetry.js'
+
 // the mutable State container (types only — STATE stays internal)
 export type {
   AttributedCounter,
@@ -251,3 +283,28 @@ export {
 
 // test-only reset
 export { resetStateForTests } from './state/testing.js'
+
+registerBootstrapStateHost({
+  getProjectRoot,
+  getSessionId,
+  getOriginalCwd,
+  setOriginalCwd,
+  setProjectRoot,
+  getAllowedChannels,
+  getKairosActive,
+  getIsNonInteractiveSession,
+  getSdkAgentProgressSummariesEnabled,
+  getQuestionPreviewFormat,
+  getUserMsgOptIn,
+  clearInvokedSkillsForAgent,
+  addInvokedSkill,
+  getAgentColorMap,
+  handlePlanModeTransition,
+  hasExitedPlanModeInSession,
+  setHasExitedPlanMode,
+  setNeedsAutoModeExitAttachment,
+  setNeedsPlanModeExitAttachment,
+  setScheduledTasksEnabled,
+  getCommitCounter,
+  getPrCounter,
+} satisfies BootstrapStateHost)
