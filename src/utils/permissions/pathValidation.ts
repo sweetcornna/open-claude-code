@@ -375,6 +375,13 @@ export function isDangerousRemovalPath(resolvedPath: string): boolean {
     return true
   }
 
+  // macOS: /etc, /tmp, /var, /home are symlinks into /private — deleting
+  // /private/etc IS deleting /etc, but its parent is /private, not /, so the
+  // check above missed it (official 2.1.113 parity)
+  if (parentDir === '/private') {
+    return true
+  }
+
   if (WINDOWS_DRIVE_CHILD_REGEX.test(normalizedPath)) {
     return true
   }

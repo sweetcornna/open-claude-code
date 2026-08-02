@@ -221,6 +221,11 @@ const BARE_SHELL_PREFIXES = new Set([
   'nohup',
   'timeout',
   'time',
+  // official 2.1.113 parity — same exec-your-args shape as nice/timeout:
+  // watch re-runs its argument, ionice/setsid exec theirs
+  'watch',
+  'ionice',
+  'setsid',
   // privilege escalation — sudo:* from `sudo -u foo ...` would auto-approve
   // any future sudo invocation
   'sudo',

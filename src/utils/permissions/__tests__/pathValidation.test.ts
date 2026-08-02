@@ -21,6 +21,7 @@ mock.module('bun:bundle', () => ({
 }
 
 const { validatePath } = await import('../pathValidation.js')
+const { isDangerousRemovalPath } = await import('../pathValidation.js')
 const { isClaudeSettingsPath } = await import('../filesystem.js')
 const { getEmptyToolPermissionContext } = await import('../../../Tool.js')
 
@@ -30,6 +31,27 @@ function makeContext(): ReturnType<typeof getEmptyToolPermissionContext> {
 
 const isWindows = process.platform === 'win32'
 const describeIfWindows = isWindows ? describe : describe.skip
+
+describe('isDangerousRemovalPath', () => {
+  test('blocks root, home, root children, and wildcards (regression)', () => {
+    expect(isDangerousRemovalPath('/')).toBe(true)
+    expect(isDangerousRemovalPath('/usr')).toBe(true)
+    expect(isDangerousRemovalPath('/tmp')).toBe(true)
+    expect(isDangerousRemovalPath('/foo/*')).toBe(true)
+    expect(isDangerousRemovalPath('/usr/local')).toBe(false)
+  })
+
+  test('blocks macOS /private/* second-level system paths (2.1.113 parity)', () => {
+    // /etc, /tmp, /var, /home are symlinks into /private on macOS — deleting
+    // /private/etc IS deleting /etc
+    expect(isDangerousRemovalPath('/private/etc')).toBe(true)
+    expect(isDangerousRemovalPath('/private/tmp')).toBe(true)
+    expect(isDangerousRemovalPath('/private/var')).toBe(true)
+    expect(isDangerousRemovalPath('/private')).toBe(true)
+    // Third-level paths remain allowed (e.g. project temp dirs)
+    expect(isDangerousRemovalPath('/private/tmp/my-build')).toBe(false)
+  })
+})
 
 describe('isClaudeSettingsPath', () => {
   test.each([
