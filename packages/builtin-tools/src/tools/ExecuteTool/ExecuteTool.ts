@@ -10,12 +10,12 @@ import {
 } from '@open-claude-code/tool-runtime/Tool.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { createUserMessage } from 'src/utils/messages.js'
-import { formatZodValidationError } from 'src/utils/toolErrors.js'
+import { formatZodValidationError } from 'src/utils/tools/toolErrors.js'
 import {
   extractDiscoveredToolNames,
   isSearchExtraToolsEnabledOptimistic,
   isSearchExtraToolsToolAvailable,
-} from 'src/utils/searchExtraTools.js'
+} from 'src/utils/tools/searchExtraTools.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'
 import { EXECUTE_TOOL_NAME } from './constants.js'
 import { isDeferredTool } from '../SearchExtraToolsTool/prompt.js'

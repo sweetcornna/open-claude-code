@@ -64,7 +64,7 @@ import {
   createOverageCreditFeed,
 } from './OverageCreditUpsell.js';
 import { useAppState } from '../../state/AppState.js';
-import { getEffortSuffix } from '../../utils/effort.js';
+import { getEffortSuffix } from '../../utils/model/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 

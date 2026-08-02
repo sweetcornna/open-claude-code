@@ -5,13 +5,13 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import type { MCPResultType } from '../../services/mcp/client.js'
-import { toError } from '../errors.js'
+import { toError } from '../runtime/errors.js'
 import { formatFileSize } from '../text/format.js'
 import { logError } from '../telemetry/log.js'
 import {
   ensureToolResultsDir,
   getToolResultsDir,
-} from '../toolResultStorage.js'
+} from '../tools/toolResultStorage.js'
 
 /**
  * Generates a format description string based on the MCP result type and schema.

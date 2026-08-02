@@ -27,9 +27,12 @@ import {
   convertOutputToLangfuse,
   convertToolsToLangfuse,
 } from '../../services/langfuse/convert.js'
-import { getModelBetas, modelSupportsStructuredOutputs } from '../betas.js'
+import {
+  getModelBetas,
+  modelSupportsStructuredOutputs,
+} from '../model/betas.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { getAPIProvider } from '../model/providers.js'
 import { normalizeModelStringForAPI } from '../model/model.js'
 import { getOpenAIClient } from '../../services/api/openai/client.js'

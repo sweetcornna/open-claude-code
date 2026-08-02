@@ -25,7 +25,7 @@ import { join } from 'path'
 import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { isEnvTruthy } from '../utils/config/envUtils.js'
-import { isENOENT } from '../utils/errors.js'
+import { isENOENT } from '../utils/runtime/errors.js'
 import { startUpstreamProxyRelay } from './relay.js'
 
 export const SESSION_TOKEN_PATH = '/run/ccr/session_token'

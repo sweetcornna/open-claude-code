@@ -4,7 +4,7 @@ import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type { CompactionResult } from '../services/compact/compact.js'
 import type { ScopedMcpServerConfig } from '../services/mcp/types.js'
 import type { ToolUseContext } from '../Tool.js'
-import type { EffortValue } from '../utils/effort.js'
+import type { EffortValue } from '../utils/model/effort.js'
 import type {
   IDEExtensionInstallationStatus,
   IdeType,

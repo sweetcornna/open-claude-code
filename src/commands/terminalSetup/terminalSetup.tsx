@@ -19,7 +19,7 @@ import {
 import { setupShellCompletion } from '../../utils/collections/completionCache.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 import { env } from '../../utils/config/env.js';
-import { isFsInaccessible } from '../../utils/errors.js';
+import { isFsInaccessible } from '../../utils/runtime/errors.js';
 import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import { addItemToJSONCArray, safeParseJSONC } from '../../utils/text/json.js';
 import { logError } from '../../utils/telemetry/log.js';

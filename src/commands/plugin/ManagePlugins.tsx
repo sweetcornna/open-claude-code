@@ -43,7 +43,7 @@ import type { LoadedPlugin, PluginError } from '../../types/plugin.js';
 import { count } from '../../utils/collections/array.js';
 import { openBrowser } from '../../utils/network/browser.js';
 import { logForDebugging } from '../../utils/telemetry/debug.js';
-import { errorMessage, toError } from '../../utils/errors.js';
+import { errorMessage, toError } from '../../utils/runtime/errors.js';
 import { logError } from '../../utils/telemetry/log.js';
 import { clearAllCaches } from '../../utils/plugins/cacheUtils.js';
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js';

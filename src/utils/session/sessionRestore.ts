@@ -53,7 +53,7 @@ import {
 import { isTodoV2Enabled } from '../task/tasks.js'
 import type { TodoList } from '../todo/types.js'
 import { TodoListSchema } from '../todo/types.js'
-import type { ContentReplacementRecord } from '../toolResultStorage.js'
+import type { ContentReplacementRecord } from '../tools/toolResultStorage.js'
 import {
   getCurrentWorktreeSession,
   restoreWorktreeSession,

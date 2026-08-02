@@ -1,5 +1,5 @@
 import isEqual from 'lodash-es/isEqual.js'
-import { toError } from '../errors.js'
+import { toError } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import { getSettingsForSource } from '../settings/settings.js'
 import { plural } from '../text/stringUtils.js'

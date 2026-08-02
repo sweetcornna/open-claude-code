@@ -14,7 +14,7 @@ import { uniq } from '../collections/array.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
-import { getErrnoCode, isENOENT } from '../errors.js'
+import { getErrnoCode, isENOENT } from '../runtime/errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from '../filesystem/file.js'
 import { readFileSync } from '../filesystem/fileRead.js'
 import {

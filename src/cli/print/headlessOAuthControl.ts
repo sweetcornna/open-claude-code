@@ -17,7 +17,7 @@ import { OAuthService } from 'src/services/oauth/index.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import type { SDKControlRequest } from 'src/entrypoints/sdk/controlTypes.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import { reconnectMcpServerImpl } from 'src/services/mcp/client.js'
 import {
   getMcpConfigByName,

@@ -7,7 +7,7 @@ import { BashTool } from '@open-claude-code/builtin-tools/tools/BashTool/BashToo
 import type { AttachmentMessage, SystemMessage, UserMessage } from 'src/types/message.js';
 import type { ShellProgress } from 'src/types/tools.js';
 import { logEvent } from '../../services/analytics/index.js';
-import { errorMessage, ShellError } from '../errors.js';
+import { errorMessage, ShellError } from '../runtime/errors.js';
 import {
   createSyntheticUserCaveatMessage,
   createUserInterruptionMessage,
@@ -16,7 +16,7 @@ import {
 } from '../messages.js';
 import { resolveDefaultShell } from '../shell/resolveDefaultShell.js';
 import { isPowerShellToolEnabled } from '../shell/shellToolUtils.js';
-import { processToolResultBlock } from '../toolResultStorage.js';
+import { processToolResultBlock } from '../tools/toolResultStorage.js';
 import { escapeXml } from '../text/xml.js';
 import type { ProcessUserInputContext } from './processUserInput.js';
 

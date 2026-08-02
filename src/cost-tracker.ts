@@ -42,11 +42,11 @@ import {
   getContextWindowForModel,
   getModelMaxOutputTokens,
 } from './utils/session/context.js'
-import { isFastModeEnabled } from './utils/fastMode.js'
+import { isFastModeEnabled } from './utils/model/fastMode.js'
 import { formatDuration, formatNumber } from './utils/text/format.js'
 import type { FpsMetrics } from './utils/telemetry/fpsTracker.js'
 import { getCanonicalName } from './utils/model/model.js'
-import { calculateUSDCost } from './utils/modelCost.js'
+import { calculateUSDCost } from './utils/model/modelCost.js'
 export {
   getTotalCostUSD as getTotalCost,
   getTotalDuration,

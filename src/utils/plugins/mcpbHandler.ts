@@ -7,7 +7,12 @@ import type { McpServerConfig } from '../../services/mcp/types.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { parseAndValidateManifestFromBytes } from '../dxt/helpers.js'
 import { parseZipModes, unzipFile } from '../dxt/zip.js'
-import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
+import {
+  errorMessage,
+  getErrnoCode,
+  isENOENT,
+  toError,
+} from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../telemetry/log.js'
 import { getSecureStorage } from '../secureStorage/index.js'

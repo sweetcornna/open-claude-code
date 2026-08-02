@@ -10,7 +10,7 @@ import { logForDebugging } from '../telemetry/debug.js'
 import {
   embeddedSearchToolsBinaryPath,
   hasEmbeddedSearchTools,
-} from '../embeddedTools.js'
+} from '../tools/embeddedTools.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { pathExists } from '../filesystem/file.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'

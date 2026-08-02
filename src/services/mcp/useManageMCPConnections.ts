@@ -54,7 +54,7 @@ import {
   useAppStateStore,
   useSetAppState,
 } from '../../state/AppState.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { logMCPDebug, logMCPError } from '../../utils/telemetry/log.js'
 import { enqueue } from '../../utils/session/messageQueueManager.js'

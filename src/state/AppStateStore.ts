@@ -25,7 +25,7 @@ import {
   type AttributionState,
   createEmptyAttributionState,
 } from '../utils/git/commitAttribution.js'
-import type { EffortValue } from '../utils/effort.js'
+import type { EffortValue } from '../utils/model/effort.js'
 import type { FileHistoryState } from '../utils/filesystem/fileHistory.js'
 import type { REPLHookContext } from '../utils/hooks/postSamplingHooks.js'
 import type { SessionHooksState } from '../utils/hooks/sessionHooks.js'
@@ -34,7 +34,7 @@ import type { DenialTrackingState } from '../utils/permissions/denialTracking.js
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import type { SettingsJson } from '../utils/settings/types.js'
-import { shouldEnableThinkingByDefault } from '../utils/thinking.js'
+import { shouldEnableThinkingByDefault } from '../utils/model/thinking.js'
 import type { Store } from './store.js'
 
 export type CompletionBoundary =

@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Message } from 'src/types/message.js'
-import { getErrnoCode } from 'src/utils/errors.js'
+import { getErrnoCode } from 'src/utils/runtime/errors.js'
 import {
   compactMailboxMessages,
   getLastPeerDmSummary,

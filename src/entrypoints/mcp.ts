@@ -24,7 +24,7 @@ import { getMainLoopModel } from '../utils/model/model.js'
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js'
 import { setCwd } from '../utils/shell/Shell.js'
 import { jsonStringify } from '../utils/telemetry/slowOperations.js'
-import { getErrorParts } from '../utils/toolErrors.js'
+import { getErrorParts } from '../utils/tools/toolErrors.js'
 import { zodToJsonSchema } from '../utils/text/zodToJsonSchema.js'
 
 type ToolInput = McpTool['inputSchema']

@@ -1,7 +1,7 @@
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config/config.js'
 import { logAntError } from '../../utils/telemetry/debug.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { execFileNoThrowWithCwd } from '../../utils/process/execFileNoThrow.js'
 import {
   logError,

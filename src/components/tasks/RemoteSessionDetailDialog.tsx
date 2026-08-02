@@ -13,7 +13,7 @@ import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from '@open-claude-code/built
 import { ASK_USER_QUESTION_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/prompt.js';
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/constants.js';
 import { openBrowser } from '../../utils/network/browser.js';
-import { errorMessage } from '../../utils/errors.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
 import { formatDuration, truncateToWidth } from '../../utils/text/format.js';
 import { toInternalMessages } from '../../utils/messages/mappers.js';
 import { EMPTY_LOOKUPS, normalizeMessages } from '../../utils/messages.js';

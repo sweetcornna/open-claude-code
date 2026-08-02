@@ -8,7 +8,7 @@ import type {
 import { expandEnvVarsInString } from '../../services/mcp/envExpansion.js'
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { isENOENT, toError } from '../errors.js'
+import { isENOENT, toError } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import { jsonParse } from '../telemetry/slowOperations.js'
 import { getPluginDataDir } from './pluginDirectories.js'

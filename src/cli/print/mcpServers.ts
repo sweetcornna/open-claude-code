@@ -15,7 +15,7 @@ import {
   fetchToolsForClient,
 } from 'src/services/mcp/client.js'
 import { logError } from 'src/utils/telemetry/log.js'
-import { toError } from 'src/utils/errors.js'
+import { toError } from 'src/utils/runtime/errors.js'
 
 export type DynamicMcpState = {
   clients: MCPServerConnection[]

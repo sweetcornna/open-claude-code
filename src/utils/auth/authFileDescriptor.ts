@@ -7,7 +7,7 @@ import {
 } from '../../bootstrap/state.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
-import { errorMessage, isENOENT } from '../errors.js'
+import { errorMessage, isENOENT } from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 
 /**

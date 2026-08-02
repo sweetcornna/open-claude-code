@@ -5,7 +5,7 @@ import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
-import { getErrnoCode } from '../errors.js'
+import { getErrnoCode } from '../runtime/errors.js'
 
 const LOCK_FILENAME = 'computer-use.lock'
 

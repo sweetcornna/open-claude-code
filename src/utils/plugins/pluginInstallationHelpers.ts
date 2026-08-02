@@ -14,7 +14,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { getCwd } from '../filesystem/cwd.js'
-import { toError } from '../errors.js'
+import { toError } from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../telemetry/log.js'
 import {

@@ -29,13 +29,13 @@ import {
   EFFORT_LEVELS,
   type EffortValue,
   parseEffortValue,
-} from '../utils/effort.js'
+} from '../utils/model/effort.js'
 import {
   getClaudeConfigHomeDir,
   isBareMode,
   isEnvTruthy,
 } from '../utils/config/envUtils.js'
-import { isENOENT, isFsInaccessible } from '../utils/errors.js'
+import { isENOENT, isFsInaccessible } from '../utils/runtime/errors.js'
 import {
   coerceDescriptionToString,
   type FrontmatterData,

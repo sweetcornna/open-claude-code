@@ -8,7 +8,7 @@ import {
   onCooldownTriggered,
   onFastModeOverageRejection,
   onOrgFastModeChanged,
-} from 'src/utils/fastMode.js';
+} from 'src/utils/model/fastMode.js';
 import { formatDuration } from 'src/utils/text/format.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 

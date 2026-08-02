@@ -4,7 +4,7 @@ import type { z } from 'zod/v4';
 import { Text } from '@anthropic/ink';
 import { FileWriteTool } from '@open-claude-code/builtin-tools/tools/FileWriteTool/FileWriteTool.js';
 import { getCwd } from '../../../utils/filesystem/cwd.js';
-import { isENOENT } from '../../../utils/errors.js';
+import { isENOENT } from '../../../utils/runtime/errors.js';
 import { readFileSync } from '../../../utils/filesystem/fileRead.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
 import {

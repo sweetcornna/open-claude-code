@@ -15,7 +15,7 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import type { Message } from '../../types/message.js';
 import { createAbortController } from '../../utils/process/abortController.js';
 import { saveGlobalConfig } from '../../utils/config/config.js';
-import { errorMessage } from '../../utils/errors.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
 import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js';
 import type { CacheSafeParams } from '../../utils/agents/forkedAgent.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';

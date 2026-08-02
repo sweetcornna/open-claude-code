@@ -2,7 +2,7 @@ import { basename, relative } from 'path';
 import React, { Suspense, use, useMemo } from 'react';
 import { FileEditToolDiff } from 'src/components/FileEditToolDiff.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
-import { isENOENT } from 'src/utils/errors.js';
+import { isENOENT } from 'src/utils/runtime/errors.js';
 import { detectEncodingForResolvedPath } from 'src/utils/filesystem/fileRead.js';
 import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js';
 import { Text } from '@anthropic/ink';

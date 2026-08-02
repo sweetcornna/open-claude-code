@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { Text } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
-import { toError } from '../utils/errors.js';
+import { toError } from '../utils/runtime/errors.js';
 import { logError } from '../utils/telemetry/log.js';
 import { getSettingSourceName, type SettingSource } from '../utils/settings/constants.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';

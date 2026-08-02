@@ -44,7 +44,7 @@ import type { SystemPrompt } from '../session/systemPromptType.js'
 import {
   type ContentReplacementState,
   cloneContentReplacementState,
-} from '../toolResultStorage.js'
+} from '../tools/toolResultStorage.js'
 import { createAgentId } from '../collections/uuid.js'
 
 /**

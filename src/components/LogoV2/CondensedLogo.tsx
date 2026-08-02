@@ -3,7 +3,7 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text, stringWidth } from '@anthropic/ink';
 import { useAppState } from '../../state/AppState.js';
-import { getEffortSuffix } from '../../utils/effort.js';
+import { getEffortSuffix } from '../../utils/model/effort.js';
 import { truncate } from '../../utils/text/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/terminal/logoV2Utils.js';

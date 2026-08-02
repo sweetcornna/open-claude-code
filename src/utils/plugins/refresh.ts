@@ -25,7 +25,7 @@ import type { AgentDefinitionsResult } from '@open-claude-code/builtin-tools/too
 import { getAgentDefinitionsWithOverrides } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { PluginError } from '../../types/plugin.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import { clearAllCaches } from './cacheUtils.js'
 import { getPluginCommands } from './loadPluginCommands.js'

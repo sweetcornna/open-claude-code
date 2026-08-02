@@ -5,11 +5,11 @@ import {
   PDF_MAX_EXTRACT_SIZE,
   PDF_TARGET_RAW_SIZE,
 } from '../../constants/apiLimits.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { formatFileSize } from '../text/format.js'
 import { getFsImplementation } from './fsOperations.js'
-import { getToolResultsDir } from '../toolResultStorage.js'
+import { getToolResultsDir } from '../tools/toolResultStorage.js'
 
 export type PDFError = {
   reason:

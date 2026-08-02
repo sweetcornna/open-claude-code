@@ -5,7 +5,7 @@ import { getOrCreateUserID } from '../../utils/config/config.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { getCanonicalName } from '../../utils/model/model.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
-import { MODEL_COSTS } from '../../utils/modelCost.js'
+import { MODEL_COSTS } from '../../utils/model/modelCost.js'
 import { isAnalyticsDisabled } from './config.js'
 import { getEventMetadata } from './metadata.js'
 

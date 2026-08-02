@@ -1,5 +1,5 @@
 import { isInBundledMode } from 'src/utils/config/bundledMode.js';
-import { getCurrentInstallationType } from 'src/utils/doctorDiagnostic.js';
+import { getCurrentInstallationType } from 'src/utils/runtime/doctorDiagnostic.js';
 import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { useStartupNotification } from './useStartupNotification.js';
 

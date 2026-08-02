@@ -2,7 +2,7 @@ import figures from 'figures'
 import { logError } from 'src/utils/telemetry/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
-import { ClaudeError } from '../utils/errors.js'
+import { ClaudeError } from '../utils/runtime/errors.js'
 import {
   normalizePathForComparison,
   pathsEqual,

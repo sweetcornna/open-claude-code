@@ -3,7 +3,7 @@ import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { rcLog } from '../../utils/telemetry/rcDebugLog.js'
 import { logForDiagnosticsNoPII } from '../../utils/telemetry/diagLogs.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { getSessionIngressAuthHeaders } from '../../utils/auth/sessionIngressAuth.js'
 import { sleep } from '../../utils/process/sleep.js'
 import {

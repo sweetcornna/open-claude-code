@@ -31,7 +31,7 @@ import { detectCurrentRepository } from '../utils/git/detectRepository.js'
 import { logForDiagnosticsNoPII } from '../utils/telemetry/diagLogs.js'
 import { initJetBrainsDetection } from '../utils/config/envDynamic.js'
 import { isEnvTruthy } from '../utils/config/envUtils.js'
-import { ConfigParseError, errorMessage } from '../utils/errors.js'
+import { ConfigParseError, errorMessage } from '../utils/runtime/errors.js'
 // showInvalidConfigDialog is dynamically imported in the error path to avoid loading React at init
 import {
   gracefulShutdownSync,

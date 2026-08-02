@@ -52,13 +52,13 @@ import {
   handleOAuth401Error,
 } from '../../utils/auth/auth.js'
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
-import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
+import { detectCodeIndexingFromMcpServerName } from '../../utils/runtime/codeIndexing.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/config/envUtils.js'
 import {
   errorMessage,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from '../../utils/errors.js'
+} from '../../utils/runtime/errors.js'
 import { getMCPUserAgent } from '../../utils/network/http.js'
 import { maybeNotifyIDEConnected } from '../../utils/terminal/ide.js'
 import {
@@ -91,7 +91,7 @@ import { subprocessEnv } from '../../utils/process/subprocessEnv.js'
 import {
   isPersistError,
   persistToolResult,
-} from '../../utils/toolResultStorage.js'
+} from '../../utils/tools/toolResultStorage.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

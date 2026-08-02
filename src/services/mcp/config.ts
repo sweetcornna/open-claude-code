@@ -15,7 +15,7 @@ import {
 } from '../../utils/config/config.js'
 import { getCwd } from '../../utils/filesystem/cwd.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { getErrnoCode } from '../../utils/errors.js'
+import { getErrnoCode } from '../../utils/runtime/errors.js'
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
 import { safeParseJSON } from '../../utils/text/json.js'
 import { logError } from '../../utils/telemetry/log.js'

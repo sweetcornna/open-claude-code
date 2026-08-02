@@ -24,7 +24,7 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { occConfigDir } from 'src/config/paths.js'
 import { randomBytes } from 'node:crypto'
-import { validateKey } from '../../utils/localValidate.js'
+import { validateKey } from '../../utils/runtime/localValidate.js'
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 

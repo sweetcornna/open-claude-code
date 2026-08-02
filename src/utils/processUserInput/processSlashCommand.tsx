@@ -43,7 +43,7 @@ import { getAgentContext } from '../agents/agentContext.js';
 import { createAttachmentMessage, getAttachmentMessages } from '../attachments.js';
 import { logForDebugging } from '../telemetry/debug.js';
 import { isEnvTruthy } from '../config/envUtils.js';
-import { AbortError, MalformedCommandError } from '../errors.js';
+import { AbortError, MalformedCommandError } from '../runtime/errors.js';
 import { getDisplayPath } from '../filesystem/file.js';
 import { extractResultText, prepareForkedCommandContext } from '../agents/forkedAgent.js';
 import { getFsImplementation } from '../filesystem/fsOperations.js';

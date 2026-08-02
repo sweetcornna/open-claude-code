@@ -16,7 +16,7 @@ import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { isENOENT, isFsInaccessible } from '../errors.js'
+import { isENOENT, isFsInaccessible } from '../runtime/errors.js'
 import {
   detectEncodingForResolvedPath,
   detectLineEndingsForString,

@@ -39,7 +39,7 @@ import type {
 
 import { API_RESIZE_PARAMS, targetImageSize } from '@ant/computer-use-mcp'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { sleep } from '../process/sleep.js'
 import {

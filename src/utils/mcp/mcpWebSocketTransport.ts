@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import type WsWebSocket from 'ws'
 import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
-import { toError } from '../errors.js'
+import { toError } from '../runtime/errors.js'
 import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
 
 // WebSocket readyState constants (same for both native and ws)

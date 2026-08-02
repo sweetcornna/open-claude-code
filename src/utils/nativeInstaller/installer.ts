@@ -42,7 +42,12 @@ import { logForDebugging } from '../telemetry/debug.js'
 import { env } from '../config/env.js'
 import { envDynamic } from '../config/envDynamic.js'
 import { isEnvTruthy } from '../config/envUtils.js'
-import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
+import {
+  errorMessage,
+  getErrnoCode,
+  isENOENT,
+  toError,
+} from '../runtime/errors.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getShellType } from '../update/localInstaller.js'
 import * as lockfile from '../filesystem/lockfile.js'

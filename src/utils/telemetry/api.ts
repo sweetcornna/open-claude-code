@@ -39,7 +39,7 @@ import { isAgentSwarmsEnabled } from '../agents/agentSwarmsEnabled.js'
 import {
   modelSupportsStructuredOutputs,
   shouldUseGlobalCacheScope,
-} from '../betas.js'
+} from '../model/betas.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
@@ -58,7 +58,7 @@ import { getPlatform } from '../process/platform.js'
 import { countFilesRoundedRg } from '../filesystem/ripgrep.js'
 import { jsonStringify } from './slowOperations.js'
 import type { SystemPrompt } from '../session/systemPromptType.js'
-import { getToolSchemaCache } from '../toolSchemaCache.js'
+import { getToolSchemaCache } from '../tools/toolSchemaCache.js'
 import { windowsPathToPosixPath } from '../filesystem/windowsPaths.js'
 import { zodToJsonSchema } from '../text/zodToJsonSchema.js'
 

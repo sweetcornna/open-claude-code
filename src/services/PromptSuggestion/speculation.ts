@@ -18,7 +18,7 @@ import { createChildAbortController } from '../../utils/process/abortController.
 import { count } from '../../utils/collections/array.js'
 import { getGlobalConfig } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import {
   type FileStateCache,
   mergeFileStateCaches,

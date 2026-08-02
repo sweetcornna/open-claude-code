@@ -57,7 +57,7 @@ import {
   getFsImplementation,
   safeResolvePath,
 } from '../filesystem/fsOperations.js'
-import { modelSupportsAutoMode } from '../betas.js'
+import { modelSupportsAutoMode } from '../model/betas.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { gracefulShutdown } from '../process/gracefulShutdown.js'
 import { getMainLoopModel } from '../model/model.js'

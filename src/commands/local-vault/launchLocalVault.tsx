@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Dialog, Text, useInput } from '@anthropic/ink';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import { setSecret, getSecret, deleteSecret, listKeys, maskSecret } from '../../services/localVault/store.js';
-import { isValidKey } from '../../utils/localValidate.js';
+import { isValidKey } from '../../utils/runtime/localValidate.js';
 import TextInput from '../../components/TextInput.js';
 import { LocalVaultView } from './LocalVaultView.js';
 import { parseLocalVaultArgs } from './parseArgs.js';

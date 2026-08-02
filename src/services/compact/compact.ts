@@ -48,7 +48,7 @@ import {
   tokenStatsToStatsigMetrics,
 } from '../../utils/session/contextAnalysis.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { hasExactErrorMessage } from '../../utils/errors.js'
+import { hasExactErrorMessage } from '../../utils/runtime/errors.js'
 import { cacheToObject } from '../../utils/fileStateCache.js'
 import {
   type CacheSafeParams,
@@ -93,7 +93,7 @@ import {
 import {
   extractDiscoveredToolNames,
   isSearchExtraToolsEnabled,
-} from '../../utils/searchExtraTools.js'
+} from '../../utils/tools/searchExtraTools.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

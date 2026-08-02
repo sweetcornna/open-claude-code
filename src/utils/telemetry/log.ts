@@ -17,7 +17,7 @@ import {
   stripDisplayTagsAllowEmpty,
 } from '../text/displayTags.js'
 import { isEnvTruthy } from '../config/envUtils.js'
-import { toError, shortErrorStack } from '../errors.js'
+import { toError, shortErrorStack } from '../runtime/errors.js'
 import { isEssentialTrafficOnly } from '../auth/privacyLevel.js'
 import { jsonParse } from './slowOperations.js'
 

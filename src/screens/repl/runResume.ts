@@ -37,7 +37,7 @@ import {
   restoreSessionMetadata,
   saveWorktreeState,
 } from '../../utils/sessionStorage.js'
-import { reconstructContentReplacementState } from '../../utils/toolResultStorage.js'
+import { reconstructContentReplacementState } from '../../utils/tools/toolResultStorage.js'
 import { getCurrentWorktreeSession } from '../../utils/git/worktree.js'
 import { dirname } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'

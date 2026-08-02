@@ -15,7 +15,7 @@ import {
   type Output as FileReadToolOutput,
   registerFileReadListener,
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
-import { isFsInaccessible } from '../../utils/errors.js'
+import { isFsInaccessible } from '../../utils/runtime/errors.js'
 import { cloneFileStateCache } from '../../utils/fileStateCache.js'
 import {
   type REPLHookContext,

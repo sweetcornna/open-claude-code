@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { useNotifications } from '../context/notifications.js';
 import { Text } from '@anthropic/ink';
 import { getGlobalConfig } from '../utils/config/config.js';
-import { getRainbowColor } from '../utils/thinking.js';
+import { getRainbowColor } from '../utils/model/thinking.js';
 
 // Local date, not UTC — 24h rolling wave across timezones. Sustained Twitter
 // buzz instead of a single UTC-midnight spike, gentler on soul-gen load.

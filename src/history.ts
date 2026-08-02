@@ -5,7 +5,7 @@ import { registerCleanup } from './utils/process/cleanupRegistry.js'
 import type { HistoryEntry, PastedContent } from './utils/config/config.js'
 import { logForDebugging } from './utils/telemetry/debug.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './utils/config/envUtils.js'
-import { getErrnoCode } from './utils/errors.js'
+import { getErrnoCode } from './utils/runtime/errors.js'
 import { readLinesReverse } from './utils/filesystem/fsOperations.js'
 import { lock } from './utils/filesystem/lockfile.js'
 import {

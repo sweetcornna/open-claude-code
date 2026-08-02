@@ -8,9 +8,9 @@ import {
   substituteArguments,
 } from '../shell/argumentSubstitution.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { EFFORT_LEVELS, parseEffortValue } from '../effort.js'
+import { EFFORT_LEVELS, parseEffortValue } from '../model/effort.js'
 import { isBareMode } from '../config/envUtils.js'
-import { isENOENT } from '../errors.js'
+import { isENOENT } from '../runtime/errors.js'
 import {
   coerceDescriptionToString,
   type FrontmatterData,

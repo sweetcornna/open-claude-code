@@ -28,7 +28,7 @@ mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   stopPeriodicGrowthBookRefresh: () => {},
 }))
 
-mock.module('src/utils/searchExtraTools.js', () => ({
+mock.module('src/utils/tools/searchExtraTools.js', () => ({
   isSearchExtraToolsEnabledOptimistic: () => true,
   getAutoSearchExtraToolsCharThreshold: () => 100,
   getSearchExtraToolsMode: () => 'tst' as const,

@@ -5,7 +5,7 @@ import {
   isBuiltInAgent,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { Command } from 'src/commands.js'
-import type { ThinkingConfig } from 'src/utils/thinking.js'
+import type { ThinkingConfig } from 'src/utils/model/thinking.js'
 import { filterToolsByDenyRules } from 'src/tools.js'
 import { toolMatchesName, type Tools } from 'src/Tool.js'
 import type { AppState } from 'src/state/AppStateStore.js'
@@ -38,7 +38,7 @@ import { initializeGrowthBook } from 'src/services/analytics/growthbook.js'
 import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js'
 import { validateUuid } from 'src/utils/collections/uuid.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import { registerHookEventHandler } from 'src/utils/hooks/hookEvents.js'
 import { getMainThreadAgentType, getSessionId } from 'src/bootstrap/state.js'
 import {
@@ -57,7 +57,7 @@ import {
 } from 'src/utils/process/process.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
 import { applySettingsChange } from 'src/utils/settings/applySettingsChange.js'
-import { isFastModeEnabled } from 'src/utils/fastMode.js'
+import { isFastModeEnabled } from 'src/utils/model/fastMode.js'
 import {
   notifySessionStateChanged,
   type RequiresActionDetails,

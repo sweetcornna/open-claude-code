@@ -5,7 +5,7 @@ import {
   clearGcpCredentialsCache,
 } from '../utils/auth/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js'
-import { toError } from '../utils/errors.js'
+import { toError } from '../utils/runtime/errors.js'
 import { logError } from '../utils/telemetry/log.js'
 import { applyConfigEnvironmentVariables } from '../utils/config/managedEnv.js'
 import {

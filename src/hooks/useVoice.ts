@@ -25,7 +25,7 @@ import {
   isDoubaoAvailableSync,
 } from '../services/doubaoSTT.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
-import { toError } from '../utils/errors.js'
+import { toError } from '../utils/runtime/errors.js'
 import { getSystemLocaleLanguage } from '../utils/text/intl.js'
 import { logError } from '../utils/telemetry/log.js'
 import { getInitialSettings } from '../utils/settings/settings.js'

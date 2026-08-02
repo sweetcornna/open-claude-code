@@ -6,7 +6,7 @@ import {
   enableDebugLogging,
   getDebugLogPath,
 } from '../../utils/telemetry/debug.js'
-import { errorMessage, isENOENT } from '../../utils/errors.js'
+import { errorMessage, isENOENT } from '../../utils/runtime/errors.js'
 import { formatFileSize } from '../../utils/text/format.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 

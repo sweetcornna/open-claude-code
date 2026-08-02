@@ -121,7 +121,7 @@ mock.module('src/utils/model/model.js', () => ({
   isNonCustomOpusModel: mock(() => false),
 }))
 
-mock.module('src/utils/effort.js', () => ({
+mock.module('src/utils/model/effort.js', () => ({
   getDisplayedEffortLevel: mockGetDisplayedEffortLevel as (
     _m: string,
     _e: unknown,

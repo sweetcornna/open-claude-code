@@ -44,7 +44,7 @@ import {
   isValidAwsStsOutput,
 } from './aws.js'
 import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
-import { clearBetasCaches } from '../betas.js'
+import { clearBetasCaches } from '../model/betas.js'
 import {
   type AccountInfo,
   checkHasTrustDialogAccepted,
@@ -58,7 +58,7 @@ import {
   isEnvTruthy,
   isRunningOnHomespace,
 } from '../config/envUtils.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { execSyncWithDefaults_DEPRECATED } from '../process/execFileNoThrow.js'
 import * as lockfile from '../filesystem/lockfile.js'
 import { logError } from '../telemetry/log.js'
@@ -79,7 +79,7 @@ import {
 } from '../settings/settings.js'
 import { sleep } from '../process/sleep.js'
 import { jsonParse } from '../telemetry/slowOperations.js'
-import { clearToolSchemaCache } from '../toolSchemaCache.js'
+import { clearToolSchemaCache } from '../tools/toolSchemaCache.js'
 
 /** Default TTL for API key helper cache in milliseconds (5 minutes) */
 const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000

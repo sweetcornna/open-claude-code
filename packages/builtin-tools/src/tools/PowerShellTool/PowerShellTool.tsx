@@ -22,7 +22,7 @@ import {
 } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 import type { AgentId } from 'src/types/ids.js';
 import type { AssistantMessage } from 'src/types/message.js';
-import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
+import { extractClaudeCodeHints } from 'src/utils/runtime/claudeCodeHints.js';
 import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { errorMessage as getErrorMessage, ShellError } from '@open-claude-code/tool-runtime/errors.js';
 import { truncate } from 'src/utils/text/format.js';
@@ -47,7 +47,7 @@ import {
   generatePreview,
   getToolResultPath,
   PREVIEW_SIZE_BYTES,
-} from 'src/utils/toolResultStorage.js';
+} from 'src/utils/tools/toolResultStorage.js';
 import { shouldUseSandbox } from '../BashTool/shouldUseSandbox.js';
 import { BackgroundHint } from '../BashTool/UI.js';
 import {

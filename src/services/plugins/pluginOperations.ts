@@ -17,7 +17,7 @@ import { PROJECT_DIR_NAME } from '../../config/paths.js'
 import { BIN_NAME } from '../../constants/brand.js'
 import { isBuiltinPluginId } from '../../plugins/builtinPlugins.js'
 import type { LoadedPlugin, PluginManifest } from '../../types/plugin.js'
-import { isENOENT, toError } from '../../utils/errors.js'
+import { isENOENT, toError } from '../../utils/runtime/errors.js'
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
 import { logError } from '../../utils/telemetry/log.js'
 import {

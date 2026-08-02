@@ -20,9 +20,9 @@ import {
   isFastModeEnabled,
   isFastModeSupportedByModel,
   prefetchFastModeStatus,
-} from '../../utils/fastMode.js';
+} from '../../utils/model/fastMode.js';
 import { formatDuration } from '../../utils/text/format.js';
-import { formatModelPricing, getOpus46CostTier } from '../../utils/modelCost.js';
+import { formatModelPricing, getOpus46CostTier } from '../../utils/model/modelCost.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 
 function applyFastMode(enable: boolean, setAppState: (f: (prev: AppState) => AppState) => void): void {

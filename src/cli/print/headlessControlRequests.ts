@@ -37,7 +37,7 @@ import { loadAllPluginsCacheOnly } from 'src/utils/plugins/pluginLoader.js'
 import { refreshActivePlugins } from 'src/utils/plugins/refresh.js'
 import { createModelSwitchBreadcrumbs } from 'src/utils/messages.js'
 import { createAbortController } from 'src/utils/process/abortController.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import { logError } from 'src/utils/telemetry/log.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
@@ -50,7 +50,10 @@ import {
   getMainLoopModel,
   modelDisplayString,
 } from 'src/utils/model/model.js'
-import { modelSupportsEffort, resolveAppliedEffort } from 'src/utils/effort.js'
+import {
+  modelSupportsEffort,
+  resolveAppliedEffort,
+} from 'src/utils/model/effort.js'
 import { getSettingsWithSources } from 'src/utils/settings/settings.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
 import { notifySessionMetadataChanged } from 'src/utils/session/sessionState.js'

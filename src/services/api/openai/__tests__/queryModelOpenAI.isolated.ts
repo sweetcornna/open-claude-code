@@ -338,7 +338,7 @@ mock.module('../../../../utils/telemetry/api.js', () => ({
   toolToAPISchema: async (t: any) => t,
 }))
 
-mock.module('../../../../utils/searchExtraTools.js', () => ({
+mock.module('../../../../utils/tools/searchExtraTools.js', () => ({
   isSearchExtraToolsEnabled: async () => _searchExtraToolsEnabled,
   extractDiscoveredToolNames: () => new Set(),
   isDeferredToolsDeltaEnabled: () => false,
@@ -353,7 +353,7 @@ mock.module('../../../../cost-tracker.js', () => ({
   addToTotalSessionCost: () => {},
 }))
 
-mock.module('../../../../utils/modelCost.js', () => ({
+mock.module('../../../../utils/model/modelCost.js', () => ({
   COST_TIER_3_15: {},
   COST_TIER_15_75: {},
   COST_TIER_5_25: {},

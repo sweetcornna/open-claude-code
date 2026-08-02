@@ -15,7 +15,7 @@ import {
   saveGlobalConfig,
 } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { toError } from '../../utils/errors.js'
+import { toError } from '../../utils/runtime/errors.js'
 import { getAuthHeaders } from '../../utils/network/http.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { createSignal } from '../../utils/process/signal.js'

@@ -7,7 +7,7 @@ import {
   logEvent,
 } from '@open-claude-code/tool-runtime/analytics.js'
 import { getWebFetchUserAgent } from 'src/utils/network/http.js'
-import { isValidKey } from 'src/utils/localValidate.js'
+import { isValidKey } from 'src/utils/runtime/localValidate.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getRuleByContentsForToolName } from 'src/utils/permissions/permissions.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'

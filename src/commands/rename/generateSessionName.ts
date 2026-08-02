@@ -1,7 +1,7 @@
 import { queryHaiku } from '../../services/api/claude.js'
 import type { Message } from '../../types/message.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { safeParseJSON } from '../../utils/text/json.js'
 import { extractTextContent } from '../../utils/messages.js'
 import { extractConversationText } from '../../utils/session/sessionTitle.js'

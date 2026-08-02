@@ -23,7 +23,11 @@ import {
 import { checkHasTrustDialogAccepted } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
-import { errorMessage, isFsInaccessible, toError } from '../../utils/errors.js'
+import {
+  errorMessage,
+  isFsInaccessible,
+  toError,
+} from '../../utils/runtime/errors.js'
 import { getAuthHeaders } from '../../utils/network/http.js'
 import { readJSONLFile } from '../../utils/text/json.js'
 import { logError } from '../../utils/telemetry/log.js'

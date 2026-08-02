@@ -36,7 +36,11 @@ import { BIN_NAME } from '../../constants/brand.js'
 import { MCP_CLIENT_METADATA_URL } from '../../constants/oauth.js'
 import { openBrowser } from '../../utils/network/browser.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
-import { errorMessage, getErrnoCode, toError } from '../../utils/errors.js'
+import {
+  errorMessage,
+  getErrnoCode,
+  toError,
+} from '../../utils/runtime/errors.js'
 import * as lockfile from '../../utils/filesystem/lockfile.js'
 import { logMCPDebug } from '../../utils/telemetry/log.js'
 import { getPlatform } from '../../utils/process/platform.js'

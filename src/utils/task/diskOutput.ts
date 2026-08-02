@@ -9,7 +9,7 @@ import {
 } from 'fs/promises'
 import { join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
-import { getErrnoCode } from '../errors.js'
+import { getErrnoCode } from '../runtime/errors.js'
 import { readFileRange, tailFile } from '../filesystem/fsOperations.js'
 import { logError } from '../telemetry/log.js'
 import { getProjectTempDir } from '../permissions/filesystem.js'

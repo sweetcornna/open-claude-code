@@ -8,7 +8,7 @@ import {
   readTokenFromWellKnownFile,
 } from './authFileDescriptor.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 
 /**

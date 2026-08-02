@@ -26,7 +26,7 @@ import { executeFilePersistence } from 'src/utils/filePersistence/filePersistenc
 import { createAbortController } from 'src/utils/process/abortController.js'
 import { isEnvDefinedFalsy } from 'src/utils/config/envUtils.js'
 import { logError } from 'src/utils/telemetry/log.js'
-import { toError } from 'src/utils/errors.js'
+import { toError } from 'src/utils/runtime/errors.js'
 import { getLastCacheSafeParams } from 'src/utils/collections/cacheSafeParamsSlot.js'
 import {
   logSuggestionOutcome,

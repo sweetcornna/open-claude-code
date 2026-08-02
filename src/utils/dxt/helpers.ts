@@ -1,5 +1,5 @@
 import type { McpbManifestAny } from '@anthropic-ai/mcpb'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { jsonParse } from '../telemetry/slowOperations.js'
 
 /**

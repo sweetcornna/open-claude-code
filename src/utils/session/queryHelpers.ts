@@ -19,7 +19,7 @@ import type { Message } from '../../types/message.js'
 import type { OrphanedPermission } from '../../types/textInputTypes.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
-import { isFsInaccessible } from '../errors.js'
+import { isFsInaccessible } from '../runtime/errors.js'
 import {
   getFileModificationTime,
   stripLineNumberPrefix,

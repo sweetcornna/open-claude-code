@@ -13,7 +13,7 @@
 import { updatePluginOp } from '../../services/plugins/pluginOperations.js'
 import { shouldSkipPluginAutoupdate } from '../config/config.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import {
   getPendingUpdatesDetails,

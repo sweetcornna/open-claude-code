@@ -48,7 +48,7 @@ import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from 'src/utils/filesystem/cwd.js';
 import { getSubscriptionType } from 'src/utils/auth/auth.js';
 import { logForDebugging } from 'src/utils/telemetry/debug.js';
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
+import { hasEmbeddedSearchTools } from 'src/utils/tools/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { AbortError, errorMessage, toError } from '@open-claude-code/tool-runtime/errors.js';
 import type { CacheSafeParams } from 'src/utils/agents/forkedAgent.js';

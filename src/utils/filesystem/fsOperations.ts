@@ -12,7 +12,7 @@ import {
 } from 'fs/promises'
 import { homedir } from 'os'
 import * as nodePath from 'path'
-import { getErrnoCode } from '../errors.js'
+import { getErrnoCode } from '../runtime/errors.js'
 import { slowLogging } from '../telemetry/slowOperations.js'
 
 /**

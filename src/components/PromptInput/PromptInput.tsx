@@ -64,9 +64,9 @@ import { Cursor } from '../../utils/terminal/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config/config.js';
 import { logForDebugging } from '../../utils/telemetry/debug.js';
 import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/session/directMemberMessage.js';
-import type { EffortLevel } from '../../utils/effort.js';
+import type { EffortLevel } from '../../utils/model/effort.js';
 import { env } from '../../utils/config/env.js';
-import { errorMessage } from '../../utils/errors.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
 import { isBilledAsExtraUsage } from '../../utils/telemetry/extraUsage.js';
 import {
   getFastModeUnavailableReason,
@@ -74,7 +74,7 @@ import {
   isFastModeCooldown,
   isFastModeEnabled,
   isFastModeSupportedByModel,
-} from '../../utils/fastMode.js';
+} from '../../utils/model/fastMode.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import type { PromptInputHelpers } from '../../utils/session/handlePromptSubmit.js';
 import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/terminal/imagePaste.js';
@@ -104,7 +104,7 @@ import { isInProcessTeammate } from '../../utils/agents/teammateContext.js';
 import { writeToMailbox } from '../../utils/agents/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/text/textHighlighting.js';
 import type { Theme } from '../../utils/terminal/theme.js';
-import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
+import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/model/thinking.js';
 import { findTokenBudgetPositions } from '../../utils/session/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 // AutoModeOptInDialog removed — auto mode is available to all users

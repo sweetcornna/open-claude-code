@@ -17,7 +17,7 @@ import { assembleToolPool } from 'src/tools.js'
 import { toolMatchesName, type Tools } from 'src/Tool.js'
 import type { AppState } from 'src/state/AppStateStore.js'
 import { uniq } from 'src/utils/collections/array.js'
-import { mergeAndFilterTools } from 'src/utils/toolPool.js'
+import { mergeAndFilterTools } from 'src/utils/tools/toolPool.js'
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

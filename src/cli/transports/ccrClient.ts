@@ -6,7 +6,7 @@ import type {
 import { decodeJwtExpiry } from '../../utils/auth/jwt.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from '../../utils/telemetry/diagLogs.js'
-import { errorMessage, getErrnoCode } from '../../utils/errors.js'
+import { errorMessage, getErrnoCode } from '../../utils/runtime/errors.js'
 import { createAxiosInstance } from '../../utils/network/proxy.js'
 import {
   registerSessionActivityCallback,
