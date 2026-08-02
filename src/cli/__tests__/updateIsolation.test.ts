@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   BIN_NAME,
@@ -21,6 +21,21 @@ function readSource(relativePath: string): string {
   return readFileSync(resolve(sourceRoot, relativePath), 'utf8')
 }
 
+// The Commander program definition was split out of main.tsx into
+// src/cli/program/ (S7-4b). Isolation assertions that used to scan main.tsx
+// must cover the whole program tree, or they silently assert on a shim.
+function readProgramSources(): string {
+  const programDir = resolve(sourceRoot, 'cli', 'program')
+  const files = readdirSync(programDir, { recursive: true })
+    .map(String)
+    .filter(name => name.endsWith('.ts') || name.endsWith('.tsx'))
+    .sort()
+  return [
+    readSource('main.tsx'),
+    ...files.map(name => readFileSync(resolve(programDir, name), 'utf8')),
+  ].join('\n')
+}
+
 describe('occ update isolation', () => {
   test('targets only the open-claude-code package', () => {
     const source = readSource('cli/updateOcc.ts')
@@ -31,7 +46,7 @@ describe('occ update isolation', () => {
   })
 
   test('does not expose the inherited native installer command', () => {
-    const source = readSource('main.tsx')
+    const source = readProgramSources()
 
     expect(source).not.toMatch(/\.command\(['"]install \[target\]['"]\)/)
     expect(source).not.toMatch(/\{\s*installHandler\s*\}/)
@@ -214,7 +229,7 @@ describe('occ update isolation', () => {
   })
 
   test('core CLI help and handlers invoke only the occ binary', () => {
-    const mainSource = readSource('main.tsx')
+    const programSource = readProgramSources()
     const entrySource = readSource('entrypoints/cli.tsx')
     const bgSource = readSource('cli/bg.ts')
     const jobsSource = readSource('cli/handlers/templateJobs.ts')
@@ -223,8 +238,8 @@ describe('occ update isolation', () => {
     const pluginsSource = readSource('cli/handlers/plugins.ts')
     const rollbackSource = readSource('cli/rollback.ts')
 
-    expect(mainSource).toContain('.name(BIN_NAME)')
-    expect(mainSource).toMatch(
+    expect(programSource).toContain('.name(BIN_NAME)')
+    expect(programSource).toMatch(
       /\$\{DISPLAY_NAME\} - starts an interactive session/,
     )
     expect(entrySource).toMatch(/Use: \$\{BIN_NAME\} daemon/)
@@ -233,7 +248,7 @@ describe('occ update isolation', () => {
     expect(jobsSource).toContain("occConfigPath('templates')")
 
     for (const source of [
-      mainSource,
+      programSource,
       entrySource,
       bgSource,
       jobsSource,
