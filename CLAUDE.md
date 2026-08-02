@@ -129,14 +129,15 @@ bun run docs:dev
    - `environment-runner` / `self-hosted-runner` — BYOC runner
    - `--tmux` + `--worktree` 组合
    - 默认路径：加载 `main.tsx` 启动完整 CLI
-2. **`src/main.tsx`** (~5400 行) — Commander.js CLI definition。注册 56 个 subcommand：`mcp` (serve/add/remove/list...)、`ssh`、`auth`、`plugin`、`agents`、`auto-mode`、`autonomy`、`remote-control`、`doctor`、`update` 等。主 `.action()` 处理器负责权限、MCP、会话恢复、REPL/Headless 模式分发。
+2. **`src/main.tsx`**（302 行）— 只剩启动副作用、`main()` 与一个 re-export。Commander.js 的程序定义住在 **`src/cli/program/`**：`rootOptions.tsx`（根选项链）、`preAction.tsx`、`rootAction.tsx`（主 action 处理器，负责权限、MCP、会话恢复、REPL/Headless 分发）、`run.tsx`，加上 `commands/` 下 14 个文件按领域注册 52 个 subcommand（`mcp`、`ssh`、`auth`、`plugin`、`agents`、`auto-mode`、`autonomy`、`doctor`、`update` 等）。
+   **改这块前注意**：print 模式（`-p`/`--print`）靠 `rootAction` 里的提前 return 跳过子命令注册，`commands/` barrel 只能经那之后的**动态** import 触达。把它改成顶层静态 import 会静默让 print 路径付出注册成本，而 golden 测试测不出来（它们测输出正确性，不测启动耗时）。
 3. **`src/entrypoints/init.ts`** — One-time initialization (telemetry, config, trust dialog)。
 
 ### Core Loop
 
 - **`src/query.ts`** — The main API query function. Sends messages to Claude API, handles streaming responses, processes tool calls, and manages the conversation turn loop.
 - **`src/QueryEngine.ts`** — Higher-level orchestrator wrapping `query()`. Manages conversation state, compaction, file history snapshots, attribution, and turn-level bookkeeping. Used by the REPL screen.
-- **`src/screens/REPL.tsx`** — The interactive REPL screen (React/Ink component). Handles user input, message display, tool permission prompts, and keyboard shortcuts.
+- **`src/screens/REPL.tsx`** — The interactive REPL screen (React/Ink component). Handles user input, message display, tool permission prompts, and keyboard shortcuts. 纯 helper、内联组件与部分 hook 簇已提取到 `src/screens/repl/`；组件本体仍有 5400 行，剩余 hook 簇的捕获面都在 50 个字段以上，提取只会把同样的代码藏到巨型上下文对象后面，故有意停手。**REPL.tsx 的 hook 调用顺序由 `src/screens/__tests__/replHookOrder.test.ts` 钉住**（253 次调用的顺序快照），改动这个文件后它必须仍绿。文件头附近有一份 hook 簇映射注释，是后续提取的地图。
 
 ### API Layer
 
@@ -160,6 +161,16 @@ bun run docs:dev
   - **其他**: LSPTool, ConfigTool, SkillTool, EnterWorktreeTool, ExitWorktreeTool 等
 - **`src/tools/shared/`** / **`packages/builtin-tools/src/tools/shared/`** — Tool 共享工具函数。
 - **`src/services/searchExtraTools/`** — TF-IDF 工具索引模块（`toolIndex.ts`），为延迟工具提供语义搜索能力。复用 `localSearch.ts` 的 TF-IDF 算法函数（`computeWeightedTf`、`computeIdf`、`cosineSimilarity` 已导出）。修改这些函数时需同步检查工具索引测试。`prefetch.ts` 的 `extractQueryFromMessages` 复用了 `skillSearch/prefetch.ts` 的同名导出函数，修改 skill prefetch 的该函数时需同步检查工具预取行为。工具预取使用独立的 `discoveredToolsThisSession` Set，与 skill prefetch 的去重集合互不影响。
+
+### Host facade 模式（依赖反转）
+
+`packages/builtin-tools/` 是叶子，不该反向 import host 的 `src/`。做不到的地方（工具需要 host 能力，如埋点、会话状态、UI 组件）统一走 **facade**：**`packages/tool-runtime/` 声明接口 + host 实现模块在自己文件末尾自注册 + 消费方从 tool-runtime 取**。
+
+现有 5 个：`slowOperations`（JSON 埋点）、`analytics`（logEvent）、`featureGate`（GrowthBook）、`messageResponse`（Ink 组件）、`bootstrapState`（22 个会话状态存取器）。
+
+- **注册触发点**：host 实现模块在模块求值末尾调 `registerXxxHost({...} satisfies XxxHost)`，由 `src/tools.ts` 顶部的 side-effect import 保证它先于 builtin tool 模块加载。**例外是 `bootstrapState`** —— 它故意**不**从 `src/tools.ts` 触发（`tools.ts` 到 `bootstrap/state` 有一条 type-only 回边，加这条 import 会让类型图环数暴涨几百），改为搭 session bootstrap 的顺风车（`entrypoints/init.ts` / `main.tsx` / `query.ts` 都会先加载它）。`src/bootstrap/state.ts` 的注册语句上方有注释说明。
+- **未注册时的 fallback 各不相同，是刻意的**：`slowOperations` 退回原生 JSON、`analytics` no-op、`featureGate` 返回 defaultValue、`messageResponse` 透传 children、**`bootstrapState` fail-fast 抛错**（状态存取器没有"原生等价物"，返回默认值会掩盖注册顺序 bug）。
+- 新增 facade 照抄 `slowOperations.ts` 的形状；注册与翻转分成两个提交，与既有提交（`7bf70cee` / `9166757c`）的切法一致。
 
 ### UI Layer (Ink)
 
@@ -191,6 +202,7 @@ bun run docs:dev
 | `packages/@ant/computer-use-input/` | 键鼠模拟（dispatcher + darwin/win32/linux backend） |
 | `packages/@ant/computer-use-swift/` | 截图 + 应用管理（dispatcher + per-platform backend） |
 | `packages/@ant/model-provider/` | Model provider 抽象层 |
+| `packages/tool-runtime/` | **叶子包，依赖反转的地基**。Tool 契约 + 5 个 host facade（见下方「Host facade 模式」）。包内**零** `src/` 与 `builtin-tools` import（含 type-only），由 `src/__tests__/toolRuntimeTypeContract.test.ts` 的类型断言守着 —— 那些断言会在 host 类型漂移时直接让 typecheck 爆 |
 | `packages/builtin-tools/` | 内置工具集（58 个 tool 实现，通过 `@open-claude-code/builtin-tools` 导出） |
 | `packages/agent-tools/` | Agent 工具集 |
 | `packages/mcp-client/` | MCP 客户端库。**平行实现，连接/发现/执行那半边当前未接线** —— `src/services/mcp/client.ts` 只用了它的 4 个工具函数（`getMcpHttpStatus`、`isMcpSessionExpiredError`、`MAX_MCP_DESCRIPTION_LENGTH`、`recursivelySanitizeUnicode`），`discoverTools` / `callMcpTool` 没有任何生产调用方 |
@@ -327,7 +339,7 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 - **框架**: `bun:test`（内置断言 + mock）
 - **单元测试**: 就近放置于 `src/**/__tests__/`，文件名 `<module>.test.ts`
-- **集成测试**: `tests/integration/` — 7 个文件（cli-arguments, context-build, message-pipeline, tool-chain, autonomy-lifecycle-user-flow, dependency-overrides, goal-lifecycle）
+- **集成测试**: `tests/integration/` — 9 个文件（cli-arguments, cli-golden, context-build, headless-ndjson, message-pipeline, tool-chain, autonomy-lifecycle-user-flow, dependency-overrides, goal-lifecycle）。其中 **cli-golden**（子进程跑真 CLI，钉住命令/flag 表面）和 **headless-ndjson**（钉住 NDJSON 事件序列）是 monolith 拆分的安全网 —— 动 `src/cli/program/` 或 `src/cli/print/` 时它们是主要防线。注意 headless-ndjson 钉的是 `StructuredIO`/schema 边界的线格式，**不执行** `runHeadlessStreaming`，所以它是契约护栏而非代码路径护栏。
 - **共享 mock/fixture**: `tests/mocks/`（api-responses, file-system, fixtures/）
 - **命名**: `describe("functionName")` + `test("behavior description")`，英文
 - **包测试**: `packages/` 下各包也有独立测试（如 `color-diff-napi` 11 tests）
@@ -415,6 +427,8 @@ bun run precheck
 ## Working with This Codebase
 
 - **precheck must pass** — `bun run precheck`（typecheck + lint fix + test）必须零错误，任何修改都不能引入新的类型/lint/测试错误。
+- **循环依赖棘轮** — `bun run check:cycles` 双向严格（超预算与低于预算都 fail）。怎么处理（何时破环、何时 `--update`、以及「拆 barrel 会让 total 上升但真实耦合下降」这个反复出现的现象怎么判断）见 [`CONTRIBUTING.md`](CONTRIBUTING.md) §9。
+- **工作流规范** — 提交格式、PR 要求、文档该放哪、`.claude/` 与 `.occ/` 双目录政策，见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。本文件只管「代码是什么样」。
 - **Feature flags** — 默认全部关闭（`feature()` 返回 `false`）。Dev/build 各有自己的默认启用列表。不要在 `cli.tsx` 中重定义 `feature` 函数。
 - **React Compiler output** — Components have decompiled memoization boilerplate (`const $ = _c(N)`). This is normal.
 - **`bun:bundle` import** — `import { feature } from 'bun:bundle'` 是 Bun 内置模块，由运行时/构建器解析。不要用自定义函数替代它。**`feature()` 只能直接用在 `if` 语句或三元表达式的条件位置**（Bun 编译器限制），不能赋值给变量、不能放在箭头函数体里、不能作为 `&&` 链的一部分。正确：`if (feature('X')) {}` 或 `feature('X') ? a : b`。
