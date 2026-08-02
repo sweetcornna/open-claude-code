@@ -8,7 +8,7 @@ import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSet
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth/auth.js';
 import { clearBetasCaches } from '../../utils/betas.js';
-import { saveGlobalConfig } from '../../utils/config.js';
+import { saveGlobalConfig } from '../../utils/config/config.js';
 import { gracefulShutdownSync } from '../../utils/process/gracefulShutdown.js';
 import { getSecureStorage } from '../../utils/secureStorage/index.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';

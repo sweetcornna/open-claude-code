@@ -75,7 +75,7 @@ import {
   isBetaTracingEnabled,
   startHookSpan,
 } from '../telemetry/sessionTracing.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import {
   findGitBashPath,
   windowsPathToPosixPath,

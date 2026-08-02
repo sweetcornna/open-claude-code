@@ -9,7 +9,7 @@ import {
   type AutonomyRunRecord,
   formatAutonomyRunsStatus,
 } from './autonomyRuns.js'
-import { getTeamsDir } from './envUtils.js'
+import { getTeamsDir } from './config/envUtils.js'
 import {
   isAutoModeGateEnabled,
   getAutoModeUnavailableReason,

@@ -7,7 +7,7 @@ import {
   isAutoMemPath,
 } from '../memdir/paths.js'
 import { isAgentMemoryPath } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js'
-import { getClaudeConfigHomeDir } from './envUtils.js'
+import { getClaudeConfigHomeDir } from './config/envUtils.js'
 import {
   posixPathToWindowsPath,
   windowsPathToPosixPath,

@@ -9,7 +9,7 @@ import {
 } from '../shell/argumentSubstitution.js'
 import { logForDebugging } from '../debug.js'
 import { EFFORT_LEVELS, parseEffortValue } from '../effort.js'
-import { isBareMode } from '../envUtils.js'
+import { isBareMode } from '../config/envUtils.js'
 import { isENOENT } from '../errors.js'
 import {
   coerceDescriptionToString,

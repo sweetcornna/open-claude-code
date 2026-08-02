@@ -16,10 +16,10 @@ import {
   handleOAuth401Error,
   hasProfileScope,
 } from './auth/auth.js'
-import { isInBundledMode } from './bundledMode.js'
-import { getGlobalConfig, saveGlobalConfig } from './config.js'
+import { isInBundledMode } from './config/bundledMode.js'
+import { getGlobalConfig, saveGlobalConfig } from './config/config.js'
 import { logForDebugging } from './debug.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import {
   getDefaultMainLoopModelSetting,
   isOpus1mMergeEnabled,

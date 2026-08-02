@@ -31,9 +31,9 @@ import {
   saveOAuthTokensIfNeeded,
   validateForceLoginOrg,
 } from '../../utils/auth/auth.js'
-import { saveGlobalConfig } from '../../utils/config.js'
+import { saveGlobalConfig } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { isRunningOnHomespace } from '../../utils/envUtils.js'
+import { isRunningOnHomespace } from '../../utils/config/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { getAPIProvider } from '../../utils/model/providers.js'

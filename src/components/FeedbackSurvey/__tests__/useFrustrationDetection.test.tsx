@@ -7,7 +7,7 @@ let transcriptShareDismissed = false;
 let productFeedbackAllowed = true;
 const mockSubmitTranscriptShare = mock(async () => ({ success: true }));
 
-mock.module('../../../utils/config.js', () => ({
+mock.module('../../../utils/config/config.js', () => ({
   getGlobalConfig: () => ({ transcriptShareDismissed }),
   saveGlobalConfig: (
     updater: (current: { transcriptShareDismissed?: boolean }) => {

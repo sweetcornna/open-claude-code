@@ -14,8 +14,8 @@
  */
 
 import { promises as fs } from 'fs'
-import { getGlobalClaudeFile } from '../../utils/env.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getGlobalClaudeFile } from '../../utils/config/env.js'
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
 import { logError } from '../../utils/log.js'
 
 // ---------------------------------------------------------------------------

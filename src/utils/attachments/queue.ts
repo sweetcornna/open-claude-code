@@ -4,7 +4,7 @@ import type {
   ImageBlockParam,
   Base64ImageSource,
 } from '@anthropic-ai/sdk/resources/messages.mjs'
-import type { PastedContent } from '../config.js'
+import type { PastedContent } from '../config/config.js'
 import {
   type QueuedCommand,
   getImagePasteIds,

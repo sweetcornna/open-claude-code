@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, type SpawnOptions } from 'child_process'
-import { isInBundledMode } from '../bundledMode.js'
+import { isInBundledMode } from '../config/bundledMode.js'
 import { quote } from '../bash/shellQuote.js'
 
 /**

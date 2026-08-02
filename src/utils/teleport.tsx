@@ -28,7 +28,7 @@ import { deserializeMessages, type TeleportRemoteResponse } from './conversation
 import { getCwd } from './filesystem/cwd.js';
 import { logForDebugging } from './debug.js';
 import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote } from './detectRepository.js';
-import { isEnvTruthy } from './envUtils.js';
+import { isEnvTruthy } from './config/envUtils.js';
 import { TeleportOperationError, toError } from './errors.js';
 import { execFileNoThrow } from './process/execFileNoThrow.js';
 import { truncateToWidth } from './text/format.js';

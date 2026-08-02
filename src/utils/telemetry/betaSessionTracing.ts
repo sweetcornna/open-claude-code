@@ -31,7 +31,7 @@ import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js'
 import type { AssistantMessage, UserMessage } from '../../types/message.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import { logOTelEvent } from './events.js'
 

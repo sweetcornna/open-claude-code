@@ -10,7 +10,7 @@ import {
   isBareMode,
   shouldMaintainProjectWorkingDir,
   getClaudeConfigHomeDir,
-} from '../envUtils'
+} from '../config/envUtils'
 
 // ─── isEnvTruthy ───────────────────────────────────────────────────────
 

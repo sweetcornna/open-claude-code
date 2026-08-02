@@ -16,12 +16,12 @@ import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { isKairosCronEnabled } from '@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import { is1PApiCustomer } from '../../utils/auth/auth.js'
 import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
-import { getGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig } from '../../utils/config/config.js'
 import {
   getEffortEnvOverride,
   modelSupportsEffort,
 } from '../../utils/effort.js'
-import { env } from '../../utils/env.js'
+import { env } from '../../utils/config/env.js'
 import { cacheKeys } from '../../utils/fileStateCache.js'
 import { getWorktreeCount } from '../../utils/git.js'
 import {

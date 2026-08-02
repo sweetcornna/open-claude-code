@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, Dialog } from '@anthropic/ink';
-import { saveGlobalConfig } from '../utils/config.js';
+import { saveGlobalConfig } from '../utils/config/config.js';
 import { Select } from './CustomSelect/index.js';
 
 type Props = {

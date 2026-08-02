@@ -115,14 +115,14 @@ mock.module('node:fs/promises', () => {
 
 // ── Lazy imports ─────────────────────────────────────────────────────────────
 let callSkillStore: typeof import('../launchSkillStore.js').callSkillStore
-let getClaudeConfigHomeDir: typeof import('../../../utils/envUtils.js').getClaudeConfigHomeDir
+let getClaudeConfigHomeDir: typeof import('../../../utils/config/envUtils.js').getClaudeConfigHomeDir
 let origConfigDir: string | undefined
 
 beforeAll(async () => {
   axiosHandle.useStubs = true
   const mod = await import('../launchSkillStore.js')
   callSkillStore = mod.callSkillStore
-  const envMod = await import('../../../utils/envUtils.js')
+  const envMod = await import('../../../utils/config/envUtils.js')
   getClaudeConfigHomeDir = envMod.getClaudeConfigHomeDir
   origConfigDir = process.env.CLAUDE_CONFIG_DIR
   useSkillStoreFsStubs = true

@@ -23,7 +23,7 @@ import {
 import type { AgentId } from 'src/types/ids.js';
 import type { AssistantMessage } from 'src/types/message.js';
 import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { errorMessage as getErrorMessage, ShellError } from '@open-claude-code/tool-runtime/errors.js';
 import { truncate } from 'src/utils/text/format.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';

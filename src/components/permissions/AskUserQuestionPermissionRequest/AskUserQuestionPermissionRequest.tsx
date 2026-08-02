@@ -12,7 +12,7 @@ import { useAppState } from '../../../state/AppState.js';
 import type { Question } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/AskUserQuestionTool.js';
 import { AskUserQuestionTool } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/AskUserQuestionTool.js';
 import { type CliHighlight, getCliHighlightPromise } from '../../../utils/text/cliHighlight.js';
-import type { PastedContent } from '../../../utils/config.js';
+import type { PastedContent } from '../../../utils/config/config.js';
 import type { ImageDimensions } from '../../../utils/terminal/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/terminal/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/terminal/imageStore.js';

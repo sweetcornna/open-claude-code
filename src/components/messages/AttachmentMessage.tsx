@@ -18,7 +18,7 @@ import { UserImageMessage } from './UserImageMessage.js';
 
 import { jsonParse } from '../../utils/slowOperations.js';
 import { plural } from '../../utils/text/stringUtils.js';
-import { isEnvTruthy } from '../../utils/envUtils.js';
+import { isEnvTruthy } from '../../utils/config/envUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { tryRenderPlanApprovalMessage, formatTeammateMessageContent } from './PlanApprovalMessage.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';

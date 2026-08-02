@@ -11,7 +11,7 @@ import {
   embeddedSearchToolsBinaryPath,
   hasEmbeddedSearchTools,
 } from '../embeddedTools.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { pathExists } from '../filesystem/file.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../log.js'

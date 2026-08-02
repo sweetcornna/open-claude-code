@@ -34,7 +34,7 @@ import {
   getClaudeConfigHomeDir,
   isBareMode,
   isEnvTruthy,
-} from '../utils/envUtils.js'
+} from '../utils/config/envUtils.js'
 import { isENOENT, isFsInaccessible } from '../utils/errors.js'
 import {
   coerceDescriptionToString,

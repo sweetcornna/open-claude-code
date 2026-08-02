@@ -73,7 +73,7 @@ const coordinatorModeModule = feature('COORDINATOR_MODE')
 import type { ToolPermissionContext } from './Tool.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
-import { isEnvTruthy } from './utils/envUtils.js'
+import { isEnvTruthy } from './utils/config/envUtils.js'
 import { isPowerShellToolEnabled } from './utils/shell/shellToolUtils.js'
 import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js'
 import {

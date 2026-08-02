@@ -6,7 +6,7 @@ import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from
 import { feature } from 'bun:bundle';
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { isEnvTruthy } from '../utils/config/envUtils.js';
 import { count } from '../utils/collections/array.js';
 import sample from 'lodash-es/sample.js';
 import { formatDuration, formatNumber } from '../utils/text/format.js';
@@ -35,7 +35,7 @@ import { getCurrentTurnTokenBudget, getTurnOutputTokens } from '../bootstrap/sta
 
 import { TeammateSpinnerTree } from './Spinner/TeammateSpinnerTree.js';
 import { useAnimationFrame } from '@anthropic/ink';
-import { getGlobalConfig } from '../utils/config.js';
+import { getGlobalConfig } from '../utils/config/config.js';
 export type { SpinnerMode } from './Spinner/index.js';
 
 const DEFAULT_CHARACTERS = getDefaultCharacters();

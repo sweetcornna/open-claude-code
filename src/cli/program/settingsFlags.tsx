@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { setAllowedSettingSources, setFlagSettingsPath } from 'src/bootstrap/state.js';
 import { eagerParseCliFlag } from 'src/utils/cliArgs.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { errorMessage, isENOENT } from 'src/utils/errors.js';
 import { getFsImplementation, safeResolvePath } from 'src/utils/filesystem/fsOperations.js';
 import { safeParseJSON } from 'src/utils/text/json.js';

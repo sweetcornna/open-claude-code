@@ -12,7 +12,7 @@ import {
   CHROME_BROWSER_URL_ENV,
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
 } from '../../utils/chromeDevtools/common.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 
 const CHROME_DOWNLOAD_URL = 'https://www.google.com/chrome/';
 const CHROME_DEVTOOLS_MCP_URL = 'https://github.com/ChromeDevTools/chrome-devtools-mcp';

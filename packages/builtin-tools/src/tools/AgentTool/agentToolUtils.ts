@@ -39,7 +39,7 @@ import { asAgentId } from 'src/types/ids.js'
 import type { Message as MessageType, ContentItem } from 'src/types/message.js'
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import { isInProtectedNamespace } from 'src/utils/envUtils.js'
+import { isInProtectedNamespace } from 'src/utils/config/envUtils.js'
 import {
   AbortError,
   errorMessage,

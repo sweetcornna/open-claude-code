@@ -26,7 +26,7 @@ const fakeGlobalConfig: {
 } = {};
 const fakeProjectConfig: { hasTrustDialogAccepted?: boolean } = {};
 
-mock.module('src/utils/config.js', () => ({
+mock.module('src/utils/config/config.js', () => ({
   getGlobalConfig: () => ({ ...fakeGlobalConfig }),
   saveGlobalConfig: (updater: (cur: typeof fakeGlobalConfig) => typeof fakeGlobalConfig) => {
     Object.assign(fakeGlobalConfig, updater({ ...fakeGlobalConfig }));

@@ -31,7 +31,7 @@ mock.module('src/cost-tracker.ts', () => ({
   formatTotalCost: () => 'Total cost: $0.0012',
 }))
 
-mock.module('src/utils/config.ts', () => ({
+mock.module('src/utils/config/config.ts', () => ({
   getCurrentProjectConfig: () => ({}),
   saveCurrentProjectConfig: () => {},
   getGlobalConfig: () => ({}),

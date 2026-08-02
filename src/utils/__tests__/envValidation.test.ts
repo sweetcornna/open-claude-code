@@ -4,7 +4,7 @@ import { debugMock } from '../../../tests/mocks/debug'
 // Mock debug.ts to cut bootstrap/state dependency chain
 mock.module('src/utils/debug.ts', debugMock)
 
-const { validateBoundedIntEnvVar } = await import('../envValidation')
+const { validateBoundedIntEnvVar } = await import('../config/envValidation')
 
 describe('validateBoundedIntEnvVar', () => {
   test('returns default when value is undefined', () => {

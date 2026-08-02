@@ -33,7 +33,7 @@ import { count } from './collections/array.js'
 import { getMergedBetas } from './betas.js'
 import { getContextWindowForModel } from './context.js'
 import { logForDebugging } from './debug.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from './config/envUtils.js'
 import { jsonStringify } from './slowOperations.js'
 import { zodToJsonSchema } from './text/zodToJsonSchema.js'
 

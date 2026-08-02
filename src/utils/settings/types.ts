@@ -7,7 +7,7 @@ import {
 } from '../../config/paths.js'
 import { z } from 'zod/v4'
 import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { PERMISSION_MODES } from '../permissions/PermissionMode.js'
 import { MarketplaceSourceSchema } from '../plugins/schemas.js'

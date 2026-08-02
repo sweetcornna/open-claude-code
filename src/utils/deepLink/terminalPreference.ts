@@ -6,7 +6,7 @@
  * (which would defeat LODESTONE tree-shaking).
  */
 
-import { getGlobalConfig, saveGlobalConfig } from '../config.js'
+import { getGlobalConfig, saveGlobalConfig } from '../config/config.js'
 import { logForDebugging } from '../debug.js'
 
 /**

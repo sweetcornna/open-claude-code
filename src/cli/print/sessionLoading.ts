@@ -17,7 +17,7 @@ import { logError } from 'src/utils/log.js'
 import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js'
 import { isPolicyAllowed } from 'src/services/policyLimits/index.js'
 import { parseSessionIdentifier } from 'src/utils/sessionUrl.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import {
   hydrateFromCCRv2InternalEvents,
   hydrateRemoteSession,

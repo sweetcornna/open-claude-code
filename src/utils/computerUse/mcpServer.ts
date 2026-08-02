@@ -9,7 +9,7 @@ import { homedir } from 'os'
 import { shutdownDatadog } from '../../services/analytics/datadog.js'
 import { shutdown1PEventLogging } from '../../services/analytics/firstPartyEventLogger.js'
 
-import { enableConfigs } from '../config.js'
+import { enableConfigs } from '../config/config.js'
 import { logForDebugging } from '../debug.js'
 import { logError } from '../log.js'
 import { filterAppsForDescription } from './appNames.js'

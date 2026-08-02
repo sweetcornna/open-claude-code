@@ -1,7 +1,7 @@
 import { stat } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { getGlobalConfig, saveGlobalConfig } from '../config.js'
+import { getGlobalConfig, saveGlobalConfig } from '../config/config.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { logError } from '../log.js'
 export function markTerminalSetupInProgress(backupPath: string): void {

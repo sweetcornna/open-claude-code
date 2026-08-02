@@ -45,7 +45,7 @@ import {
 import { asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { isEnvTruthy } from '../utils/config/envUtils.js';
 import { formatTokens } from '../utils/text/format.js';
 import { consumeEarlyInput } from '../utils/terminal/earlyInput.js';
 
@@ -171,7 +171,7 @@ import { getScratchpadDir, isScratchpadEnabled } from '../utils/permissions/file
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js';
 import { clearSpeculativeChecks } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js';
 import type { AutoUpdaterResult } from '../utils/update/autoUpdater.js';
-import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config/config.js';
 import { hasConsoleBillingAccess } from '../utils/auth/billing.js';
 import {
   logEvent,
@@ -227,7 +227,7 @@ import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../state/AppState.js';
 import type { ContentBlockParam, ContentBlock, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
-import type { PastedContent } from '../utils/config.js';
+import type { PastedContent } from '../utils/config/config.js';
 import type { InternalPermissionMode } from '../types/permissions.js';
 import { getPlanSlug, setPlanSlug } from '../utils/plans.js';
 import {

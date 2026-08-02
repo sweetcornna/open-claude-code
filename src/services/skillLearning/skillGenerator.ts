@@ -1,7 +1,7 @@
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { clearSkillIndexCache } from '../skillSearch/localSearch.js'
 import type { Instinct } from './instinctParser.js'
 import { buildLearnedSkillName, normalizeSkillName } from './learningPolicy.js'

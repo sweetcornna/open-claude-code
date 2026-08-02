@@ -6,7 +6,7 @@ import { stateMock } from '../../../../tests/mocks/state'
 mock.module('src/utils/debug.ts', debugMock)
 
 let globalConfig: Record<string, unknown> = {}
-mock.module('src/utils/config.ts', () => ({
+mock.module('src/utils/config/config.ts', () => ({
   getGlobalConfig: () => globalConfig,
   getCurrentProjectConfig: () => ({}),
   saveCurrentProjectConfig: () => {},

@@ -5,7 +5,7 @@
  * across all analytics systems (Datadog, 1P)
  */
 
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { isTelemetryDisabled } from '../../utils/auth/privacyLevel.js'
 
 /**

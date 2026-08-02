@@ -53,10 +53,10 @@ import {
   getManagedClaudeRulesDir,
   getMemoryPath,
   getUserClaudeRulesDir,
-} from './config.js'
+} from './config/config.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from './config/envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { normalizePathForComparison } from './filesystem/file.js'
 import { cacheKeys, type FileStateCache } from './fileStateCache.js'

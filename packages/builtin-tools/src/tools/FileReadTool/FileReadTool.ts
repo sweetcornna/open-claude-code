@@ -28,7 +28,10 @@ import {
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from 'src/utils/envUtils.js'
+import {
+  getClaudeConfigHomeDir,
+  isEnvTruthy,
+} from 'src/utils/config/envUtils.js'
 import {
   getErrnoCode,
   isENOENT,

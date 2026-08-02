@@ -10,7 +10,7 @@ import type { ToolPermissionContext } from '@open-claude-code/tool-runtime/Tool.
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { pathInAllowedWorkingPath } from 'src/utils/permissions/filesystem.js'
 import { setCwd } from 'src/utils/shell/Shell.js'
-import { shouldMaintainProjectWorkingDir } from 'src/utils/envUtils.js'
+import { shouldMaintainProjectWorkingDir } from 'src/utils/config/envUtils.js'
 import { maybeResizeAndDownsampleImageBuffer } from 'src/utils/terminal/imageResizer.js'
 import { getMaxOutputLength } from 'src/utils/shell/outputLimits.js'
 import {

@@ -8,8 +8,8 @@
 
 import memoize from 'lodash-es/memoize.js'
 import { getFileExtensionForAnalytics } from '@open-claude-code/tool-runtime/analytics.js'
-import { env, getHostPlatformForAnalytics } from '../../utils/env.js'
-import { envDynamic } from '../../utils/envDynamic.js'
+import { env, getHostPlatformForAnalytics } from '../../utils/config/env.js'
+import { envDynamic } from '../../utils/config/envDynamic.js'
 import { getModelBetas } from '../../utils/betas.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import {
@@ -19,7 +19,7 @@ import {
   getClientType,
   getParentSessionId as getParentSessionIdFromState,
 } from '../../bootstrap/state.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { isOfficialMcpUrl } from '../mcp/officialRegistry.js'
 import {
   isClaudeAISubscriber,

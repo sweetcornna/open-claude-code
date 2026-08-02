@@ -12,10 +12,10 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
-import { type ReleaseChannel, saveGlobalConfig } from '../config.js'
+import { type ReleaseChannel, saveGlobalConfig } from '../config/config.js'
 import { logForDebugging } from '../debug.js'
-import { env } from '../env.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { env } from '../config/env.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { ClaudeError, getErrnoCode, isENOENT } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'

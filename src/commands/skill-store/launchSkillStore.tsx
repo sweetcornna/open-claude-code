@@ -6,7 +6,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js';
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js';
 import { createSkill, deleteSkill, getSkill, getSkillVersion, getSkillVersions, listSkills } from './skillsApi.js';
 import { SkillStoreView } from './SkillStoreView.js';
 import { parseSkillStoreArgs } from './parseArgs.js';

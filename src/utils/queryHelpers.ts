@@ -18,7 +18,7 @@ import { FILE_WRITE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/File
 import type { Message } from '../types/message.js'
 import type { OrphanedPermission } from '../types/textInputTypes.js'
 import { logForDebugging } from './debug.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import { isFsInaccessible } from './errors.js'
 import {
   getFileModificationTime,

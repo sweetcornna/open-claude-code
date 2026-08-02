@@ -18,7 +18,7 @@ import {
   getSessionProjectDir,
   getOriginalCwd,
 } from '../../bootstrap/state.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { sanitizePath } from '../../utils/filesystem/path.js'
 
 import * as childProcess from 'node:child_process'

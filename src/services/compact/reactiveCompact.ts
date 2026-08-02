@@ -1,4 +1,4 @@
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import {
   isMediaSizeErrorMessage,
   isPromptTooLongMessage,

@@ -4,7 +4,11 @@ import { z } from 'zod/v4'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
 import { uniq } from './collections/array.js'
 import { logForDebugging } from './debug.js'
-import { getClaudeConfigHomeDir, getTeamsDir, isEnvTruthy } from './envUtils.js'
+import {
+  getClaudeConfigHomeDir,
+  getTeamsDir,
+  isEnvTruthy,
+} from './config/envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
 import { lazySchema } from './collections/lazySchema.js'
 import * as lockfile from './filesystem/lockfile.js'

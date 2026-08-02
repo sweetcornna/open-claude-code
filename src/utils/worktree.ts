@@ -13,7 +13,7 @@ import {
 } from 'fs/promises'
 import ignore from 'ignore'
 import { basename, dirname, join } from 'path'
-import { saveCurrentProjectConfig } from './config.js'
+import { saveCurrentProjectConfig } from './config/config.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, getErrnoCode } from './errors.js'

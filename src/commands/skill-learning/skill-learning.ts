@@ -1,7 +1,7 @@
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { join } from 'node:path'
 import type { LocalCommandCall } from '../../types/command.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import {
   analyzeObservations,
   applySkillLifecycleDecision,

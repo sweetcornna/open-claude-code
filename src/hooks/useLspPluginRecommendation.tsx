@@ -15,7 +15,7 @@ import * as React from 'react';
 import { hasShownLspRecommendationThisSession, setLspRecommendationShownThisSession } from '../bootstrap/state.js';
 import { useNotifications } from '../context/notifications.js';
 import { useAppState } from '../state/AppState.js';
-import { saveGlobalConfig } from '../utils/config.js';
+import { saveGlobalConfig } from '../utils/config/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { logError } from '../utils/log.js';
 import { addToNeverSuggest, getMatchingLspPlugins, incrementIgnoredCount } from '../utils/plugins/lspRecommendation.js';

@@ -42,7 +42,7 @@ import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js';
 import { useVoiceState } from '../../context/voice.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import { isXtermJs, useHasSelection, useSelection } from '@anthropic/ink';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 import { getPlatform } from '../../utils/process/platform.js';
 import { PrBadge } from '../PrBadge.js';
 

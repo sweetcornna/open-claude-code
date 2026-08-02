@@ -25,7 +25,7 @@ let claudeDir: string
 // Dynamic envUtils mock — reads CLAUDE_CONFIG_DIR from process.env at call
 // time so it stays compatible across the full suite when other test files
 // also drive their own dirs via process.env.
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   getClaudeConfigHomeDir: () =>
     process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`,
   isEnvTruthy: (value: unknown) =>

@@ -19,7 +19,7 @@ import type { Message } from '../types/message.js';
 import { checkAndRefreshOAuthTokenIfNeeded } from '../utils/auth/auth.js';
 import { openBrowser } from '../utils/network/browser.js';
 import { logForDebugging } from '../utils/debug.js';
-import { env } from '../utils/env.js';
+import { env } from '../utils/config/env.js';
 import { type GitRepoState, getGitState, getIsGit } from '../utils/git.js';
 import { getAuthHeaders, getUserAgent } from '../utils/network/http.js';
 import { getInMemoryErrors, logError } from '../utils/log.js';

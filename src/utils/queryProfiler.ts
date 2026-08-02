@@ -28,7 +28,7 @@
  */
 
 import { logForDebugging } from './debug.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import { formatMs, formatTimelineLine, getPerformance } from './profilerBase.js'
 
 // Module-level state - initialized once when the module loads

@@ -4,7 +4,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { logForDebugging } from './debug.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import { getPlatform } from './process/platform.js'
 
 // Track warnings to avoid spam — bounded to prevent unbounded memory growth

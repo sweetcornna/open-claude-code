@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 
 /**
  * Daemon state persisted to disk so that `status` / `stop` can work

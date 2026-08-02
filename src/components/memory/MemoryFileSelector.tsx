@@ -16,7 +16,7 @@ import { useAppState } from '../../state/AppState.js';
 import { getAgentMemoryDir } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js';
 import { openPath } from '../../utils/network/browser.js';
 import { getMemoryFiles, type MemoryFileInfo } from '../../utils/claudemd.js';
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js';
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js';
 import { getDisplayPath } from '../../utils/filesystem/file.js';
 import { formatRelativeTimeAgo } from '../../utils/text/format.js';
 import { projectIsInGitRepo } from '../../utils/memory/versions.js';

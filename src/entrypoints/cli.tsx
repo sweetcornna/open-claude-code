@@ -5,7 +5,7 @@
 import '../utils/performanceShim.js';
 import { feature } from 'bun:bundle';
 import { BIN_NAME } from '../constants/brand.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { isEnvTruthy } from '../utils/config/envUtils.js';
 
 // Runtime fallback for MACRO.* when not injected by build/dev defines.
 // This happens when running cli.tsx directly (not via `bun run dev` or built dist/).
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
   // Ant-only: eliminated from external builds via feature flag.
   if (feature('DUMP_SYSTEM_PROMPT') && args[0] === '--dump-system-prompt') {
     profileCheckpoint('cli_dump_system_prompt_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
     const { getMainLoopModel } = await import('../utils/model/model.js');
     const modelIdx = args.indexOf('--model');
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
       args[0] === 'bridge')
   ) {
     profileCheckpoint('cli_remote_control_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
 
     // Remote control is subject to org policy regardless of who transports it.
@@ -186,7 +186,7 @@ async function main(): Promise<void> {
   // subcommands under one namespace.
   if ((feature('DAEMON') || feature('BG_SESSIONS')) && args[0] === 'daemon') {
     profileCheckpoint('cli_daemon_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
     const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
   // Fast-path for `--bg`/`--background` shortcut → daemon bg.
   if (feature('BG_SESSIONS') && (args.includes('--bg') || args.includes('--background'))) {
     profileCheckpoint('cli_daemon_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
     const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
@@ -238,7 +238,7 @@ async function main(): Promise<void> {
     const mapped = args[0] === 'ps' ? 'status' : args[0];
     console.error(`[deprecated] Use: ${BIN_NAME} daemon ${mapped}${args[1] ? ' ' + args[1] : ''}`);
     profileCheckpoint('cli_daemon_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
     const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
     (args.includes('-w') || args.includes('--worktree') || args.some(a => a.startsWith('--worktree=')))
   ) {
     profileCheckpoint('cli_tmux_worktree_fast_path');
-    const { enableConfigs } = await import('../utils/config.js');
+    const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
     const { isWorktreeModeEnabled } = await import('../utils/worktreeModeEnabled.js');
     if (isWorktreeModeEnabled()) {

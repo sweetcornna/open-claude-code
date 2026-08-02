@@ -34,7 +34,7 @@ import { getAttributionTexts } from 'src/utils/attribution.js';
 import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
 import { detectCodeIndexingFromCommand } from 'src/utils/codeIndexing.js';
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { shouldIncludeGitInstructions } from 'src/utils/gitSettings.js';
 import { isENOENT, ShellError } from '@open-claude-code/tool-runtime/errors.js';
 import {

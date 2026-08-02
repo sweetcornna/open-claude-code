@@ -42,7 +42,7 @@ import {
 } from './betas.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import { createUserMessage } from './messages.js'
 import { isDirectAnthropicApi } from './model/providers.js'
 import {

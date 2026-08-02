@@ -12,7 +12,7 @@ import {
   getGlobalConfig,
   saveCurrentProjectConfig,
   saveGlobalConfig,
-} from '../../utils/config.js'
+} from '../../utils/config/config.js'
 import { getCwd } from '../../utils/filesystem/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { getErrnoCode } from '../../utils/errors.js'

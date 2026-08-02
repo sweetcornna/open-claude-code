@@ -36,12 +36,12 @@ import {
   getCustomApiKeyStatus,
   getGlobalConfig,
   saveGlobalConfig,
-} from './utils/config.js';
+} from './utils/config/config.js';
 import { updateDeepLinkTerminalPreference } from './utils/deepLink/terminalPreference.js';
-import { isEnvTruthy, isRunningOnHomespace } from './utils/envUtils.js';
+import { isEnvTruthy, isRunningOnHomespace } from './utils/config/envUtils.js';
 import { type FpsMetrics, FpsTracker } from './utils/fpsTracker.js';
 import { updateGithubRepoPathMapping } from './utils/githubRepoPathMapping.js';
-import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
+import { applyConfigEnvironmentVariables } from './utils/config/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';
 import { getBaseRenderOptions } from './utils/terminal/renderOptions.js';
 import { getSettingsWithAllErrors } from './utils/settings/allErrors.js';

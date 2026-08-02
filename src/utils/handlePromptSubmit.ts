@@ -18,7 +18,7 @@ import {
   type QueuedCommand,
 } from '../types/textInputTypes.js'
 import { createAbortController } from './process/abortController.js'
-import type { PastedContent } from './config.js'
+import type { PastedContent } from './config/config.js'
 import { getCwd } from './filesystem/cwd.js'
 import { logForDebugging } from './debug.js'
 import type { EffortValue } from './effort.js'

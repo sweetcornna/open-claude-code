@@ -76,7 +76,7 @@ const mockedGetClaudeConfigHomeDir: (() => string) & {
   },
 )
 
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   getClaudeConfigHomeDir: mockedGetClaudeConfigHomeDir,
   isEnvTruthy: realIsEnvTruthy,
   hasNodeOption: (flag: string) => {

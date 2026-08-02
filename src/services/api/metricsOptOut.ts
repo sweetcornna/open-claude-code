@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { hasProfileScope, isClaudeAISubscriber } from '../../utils/auth/auth.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { getAuthHeaders, withOAuth401Retry } from '../../utils/network/http.js'

@@ -50,14 +50,14 @@ import {
   checkHasTrustDialogAccepted,
   getGlobalConfig,
   saveGlobalConfig,
-} from '../config.js'
+} from '../config/config.js'
 import { logAntError, logForDebugging } from '../debug.js'
 import {
   getClaudeConfigHomeDir,
   isBareMode,
   isEnvTruthy,
   isRunningOnHomespace,
-} from '../envUtils.js'
+} from '../config/envUtils.js'
 import { errorMessage } from '../errors.js'
 import { execSyncWithDefaults_DEPRECATED } from '../process/execFileNoThrow.js'
 import * as lockfile from '../filesystem/lockfile.js'

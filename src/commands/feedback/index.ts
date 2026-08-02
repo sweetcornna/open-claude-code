@@ -1,6 +1,6 @@
 import type { Command } from '../../commands.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { isEssentialTrafficOnly } from '../../utils/auth/privacyLevel.js'
 
 const feedback = {

@@ -14,7 +14,7 @@ import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/p
 import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/replMode.js'
 import { logForDebugging } from '../utils/debug.js'
 import { hasEmbeddedSearchTools } from '../utils/embeddedTools.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
+import { isEnvTruthy } from '../utils/config/envUtils.js'
 import { formatFileSize } from '../utils/text/format.js'
 import { getProjectDir } from '../utils/sessionStorage.js'
 import { getInitialSettings } from '../utils/settings/settings.js'

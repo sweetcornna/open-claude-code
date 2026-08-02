@@ -8,7 +8,7 @@ import { describe, expect, test, beforeEach, afterAll } from 'bun:test'
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 
 // ─── setup: real temp dir via env var ──────────────────────────────────────
 

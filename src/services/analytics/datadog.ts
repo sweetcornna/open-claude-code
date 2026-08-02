@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { createHash } from 'crypto'
 import memoize from 'lodash-es/memoize.js'
-import { getOrCreateUserID } from '../../utils/config.js'
+import { getOrCreateUserID } from '../../utils/config/config.js'
 import { logError } from '../../utils/log.js'
 import { getCanonicalName } from '../../utils/model/model.js'
 import { getAPIProvider } from '../../utils/model/providers.js'

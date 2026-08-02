@@ -5,7 +5,7 @@ import { Box, Text } from '@anthropic/ink';
 import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js';
 import { SKILL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SkillTool/constants.js';
 import { SkillTool } from '@open-claude-code/builtin-tools/tools/SkillTool/SkillTool.js';
-import { env } from '../../../utils/env.js';
+import { env } from '../../../utils/config/env.js';
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import { logUnaryEvent } from '../../../utils/unaryLogging.js';
 import { type UnaryEvent, usePermissionRequestLogging } from '../hooks.js';

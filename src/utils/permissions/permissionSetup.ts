@@ -12,7 +12,7 @@ import type {
   ToolPermissionRulesBySource,
 } from '../../Tool.js'
 import { getCwd } from '../filesystem/cwd.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import type { SettingSource } from '../settings/constants.js'
 import { SETTING_SOURCES } from '../settings/constants.js'
 import {

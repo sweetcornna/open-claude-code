@@ -3,7 +3,7 @@ import {
   NOTIFICATION_CHANNELS,
   EDITOR_MODES,
   TEAMMATE_MODES,
-} from '../configConstants'
+} from '../config/configConstants'
 
 describe('NOTIFICATION_CHANNELS', () => {
   test('contains expected channels', () => {

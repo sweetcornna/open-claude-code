@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { isENOENT } from '../errors.js'
 
 const PASTE_STORE_DIR = 'paste-cache'
