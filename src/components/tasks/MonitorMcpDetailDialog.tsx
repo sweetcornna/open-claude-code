@@ -3,6 +3,7 @@ import type { DeepImmutable } from 'src/types/utils.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { Box, Text, type KeyboardEvent } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
+import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import type { MonitorMcpTaskState } from '../../tasks/MonitorMcpTask/MonitorMcpTask.js';
 import { Byline } from '../design-system/Byline.js';
 import { Dialog } from '../design-system/Dialog.js';
@@ -22,15 +23,26 @@ type Props = {
 export function MonitorMcpDetailDialog({ task, onBack, onKill }: Props): React.ReactNode {
   const elapsedTime = useElapsedTime(task.startTime, task.status === 'running', 1000, 0);
 
-  useKeybindings({}, { context: 'MonitorMcpDetail' });
+  const killShortcut = useShortcutDisplay('taskDetail:kill', 'TaskDetail', 'x');
 
+  // Returning false leaves the key unconsumed so it keeps propagating, matching
+  // the old raw handler which simply didn't call preventDefault when not running.
+  useKeybindings(
+    {
+      'taskDetail:kill': () => {
+        if (task.status !== 'running' || !onKill) return false;
+        onKill();
+      },
+    },
+    { context: 'TaskDetail' },
+  );
+
+  // left (back) stays raw — generic dialog navigation, see the TaskDetail block
+  // in defaultBindings.ts.
   const handleKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'left' && onBack) {
       e.preventDefault();
       onBack();
-    } else if (e.key === 'x' && task.status === 'running' && onKill) {
-      e.preventDefault();
-      onKill();
     }
   };
 
@@ -48,7 +60,7 @@ export function MonitorMcpDetailDialog({ task, onBack, onKill }: Props): React.R
           <Byline>
             {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
             <KeyboardShortcutHint shortcut="Esc" action="close" />
-            {task.status === 'running' && onKill && <KeyboardShortcutHint shortcut="x" action="stop" />}
+            {task.status === 'running' && onKill && <KeyboardShortcutHint shortcut={killShortcut} action="stop" />}
           </Byline>
         )}
       >

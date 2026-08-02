@@ -4,6 +4,7 @@ import type { CommandResultDisplay } from '../../commands.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
+import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js';
 import { formatDuration, formatFileSize, truncateToWidth } from '../../utils/format.js';
 import { tailFile } from '../../utils/fsOperations.js';
@@ -63,6 +64,7 @@ export function ShellDetailDialog({ shell, onDone, onKillShell, onBack }: Props)
 
   // Handle standard close action
   const handleClose = () => onDone('Shell details dismissed', { display: 'system' });
+  const killShortcut = useShortcutDisplay('taskDetail:kill', 'TaskDetail', 'x');
 
   // Handle additional close actions beyond Dialog's built-in Esc handler
   useKeybindings(
@@ -72,7 +74,20 @@ export function ShellDetailDialog({ shell, onDone, onKillShell, onBack }: Props)
     { context: 'Confirmation' },
   );
 
-  // Handle dialog-specific keys
+  // Returning false leaves the key unconsumed so it keeps propagating, matching
+  // the old raw handler which simply didn't call preventDefault when not running.
+  useKeybindings(
+    {
+      'taskDetail:kill': () => {
+        if (shell.status !== 'running' || !onKillShell) return false;
+        onKillShell();
+      },
+    },
+    { context: 'TaskDetail' },
+  );
+
+  // space (close) and left (back) stay raw — generic dialog navigation, see the
+  // TaskDetail block in defaultBindings.ts.
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === ' ') {
       e.preventDefault();
@@ -80,9 +95,6 @@ export function ShellDetailDialog({ shell, onDone, onKillShell, onBack }: Props)
     } else if (e.key === 'left' && onBack) {
       e.preventDefault();
       onBack();
-    } else if (e.key === 'x' && shell.status === 'running' && onKillShell) {
-      e.preventDefault();
-      onKillShell();
     }
   };
 
@@ -103,7 +115,9 @@ export function ShellDetailDialog({ shell, onDone, onKillShell, onBack }: Props)
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
               <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {shell.status === 'running' && onKillShell && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {shell.status === 'running' && onKillShell && (
+                <KeyboardShortcutHint shortcut={killShortcut} action="stop" />
+              )}
             </Byline>
           )
         }
