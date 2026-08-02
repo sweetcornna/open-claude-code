@@ -14,7 +14,7 @@ import {
   endTrace,
   isLangfuseEnabled,
 } from 'src/services/langfuse/index.js'
-import { getSessionId } from 'src/bootstrap/state.js'
+import { getSessionId } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import { getMainLoopModel, getSmallFastModel } from 'src/utils/model/model.js'

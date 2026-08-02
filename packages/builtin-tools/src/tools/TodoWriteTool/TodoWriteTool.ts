@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { getSessionId } from 'src/bootstrap/state.js'
+import { getSessionId } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'

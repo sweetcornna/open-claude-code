@@ -5,7 +5,7 @@ import React from 'react'
  * Extracted from TeammateTool to allow reuse by AgentTool.
  */
 
-import { getSessionId } from 'src/bootstrap/state.js'
+import { getSessionId } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { formatAgentId } from 'src/utils/agentId.js'
 import { getGlobalConfig } from 'src/utils/config.js'

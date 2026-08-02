@@ -1,6 +1,6 @@
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { join, normalize, sep } from 'path'
-import { getProjectRoot } from 'src/bootstrap/state.js'
+import { getProjectRoot } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { buildMemoryPrompt, ensureMemoryDirExists } from 'src/memdir/memdir.js'
 import { getMemoryBaseDir } from 'src/memdir/paths.js'
 import { getCwd } from 'src/utils/cwd.js'

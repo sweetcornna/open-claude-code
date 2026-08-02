@@ -4,7 +4,10 @@ import { buildTool, type ToolDef, toolMatchesName } from '@open-claude-code/tool
 import type { AssistantMessage, Message as MessageType, NormalizedUserMessage } from 'src/types/message.js';
 import { getQuerySourceForAgent } from 'src/utils/promptCategory.js';
 import { z } from 'zod/v4';
-import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from 'src/bootstrap/state.js';
+import {
+  clearInvokedSkillsForAgent,
+  getSdkAgentProgressSummariesEnabled,
+} from '@open-claude-code/tool-runtime/bootstrapState.js';
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from 'src/constants/prompts.js';
 import { isCoordinatorMode } from 'src/coordinator/coordinatorMode.js';
 import { startAgentSummarization } from 'src/services/AgentSummary/agentSummary.js';
