@@ -46,7 +46,7 @@ import { asAgentId } from 'src/types/ids.js';
 import { runWithAgentContext, type SubagentContext } from 'src/utils/agentContext.js';
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from 'src/utils/filesystem/cwd.js';
-import { getSubscriptionType } from 'src/utils/auth.js';
+import { getSubscriptionType } from 'src/utils/auth/auth.js';
 import { logForDebugging } from 'src/utils/debug.js';
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';

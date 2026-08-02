@@ -18,7 +18,7 @@ mock.module('src/utils/debug.ts', debugMock)
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
-mock.module('src/utils/auth.ts', () => ({
+mock.module('src/utils/auth/auth.ts', () => ({
   isClaudeAISubscriber: () => false,
   getOAuthAccount: () => null,
 }))

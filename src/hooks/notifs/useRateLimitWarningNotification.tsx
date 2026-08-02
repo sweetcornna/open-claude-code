@@ -3,8 +3,8 @@ import { useNotifications } from 'src/context/notifications.js';
 import { Text } from '@anthropic/ink';
 import { getRateLimitWarning, getUsingOverageText } from 'src/services/claudeAiLimits.js';
 import { useClaudeAiLimits } from 'src/services/claudeAiLimitsHook.js';
-import { getSubscriptionType } from 'src/utils/auth.js';
-import { hasClaudeAiBillingAccess } from 'src/utils/billing.js';
+import { getSubscriptionType } from 'src/utils/auth/auth.js';
+import { hasClaudeAiBillingAccess } from 'src/utils/auth/billing.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 
 export function useRateLimitWarningNotification(model: string): void {

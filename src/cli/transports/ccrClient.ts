@@ -3,7 +3,7 @@ import type {
   SDKPartialAssistantMessage,
   StdoutMessage,
 } from 'src/entrypoints/sdk/controlTypes.js'
-import { decodeJwtExpiry } from '../../utils/jwt.js'
+import { decodeJwtExpiry } from '../../utils/auth/jwt.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
@@ -15,7 +15,7 @@ import {
 import {
   getSessionIngressAuthHeaders,
   getSessionIngressAuthToken,
-} from '../../utils/sessionIngressAuth.js'
+} from '../../utils/auth/sessionIngressAuth.js'
 import type {
   RequiresActionDetails,
   SessionState,

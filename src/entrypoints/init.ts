@@ -54,7 +54,7 @@ import { isBetaTracingEnabled } from '../utils/telemetry/betaSessionTracing.js'
 import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
 import { setShellIfWindows } from '../utils/filesystem/windowsPaths.js'
 import { initSentry } from '../utils/sentry.js'
-import { initUser } from '../utils/user.js'
+import { initUser } from '../utils/auth/user.js'
 import { initLangfuse, shutdownLangfuse } from '../services/langfuse/index.js'
 import { setThemeConfigCallbacks } from '@anthropic/ink'
 

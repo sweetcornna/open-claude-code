@@ -26,7 +26,7 @@ import {
   getAllOutputStyles,
 } from 'src/constants/outputStyles.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
-import { getAccountInformation } from 'src/utils/auth.js'
+import { getAccountInformation } from 'src/utils/auth/auth.js'
 import type { HookCallbackMatcher } from 'src/types/hooks.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import {
@@ -44,7 +44,7 @@ import {
   isFastModeAvailable,
   isFastModeEnabled,
 } from 'src/utils/fastMode.js'
-import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
+import { AwsAuthStatusManager } from 'src/utils/auth/awsAuthStatusManager.js'
 import {
   fileHistoryCanRestore,
   fileHistoryEnabled,

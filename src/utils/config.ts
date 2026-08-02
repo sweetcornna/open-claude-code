@@ -29,7 +29,7 @@ import * as lockfile from './filesystem/lockfile.js'
 import { logError } from './log.js'
 import type { MemoryType } from './memory/types.js'
 import { normalizePathForConfigKey } from './filesystem/path.js'
-import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
+import { getEssentialTrafficOnlyReason } from './auth/privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import type { ThemeSetting } from './terminal/theme.js'
 

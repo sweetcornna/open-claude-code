@@ -1,5 +1,5 @@
 import type { Command } from '../../commands.js'
-import { getSubscriptionType } from '../../utils/auth.js'
+import { getSubscriptionType } from '../../utils/auth/auth.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
 const upgrade = {

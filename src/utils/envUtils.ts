@@ -140,7 +140,7 @@ export function isInProtectedNamespace(): boolean {
   if (process.env.USER_TYPE === 'ant') {
     /* eslint-disable @typescript-eslint/no-require-imports */
     return (
-      require('./protectedNamespace.js') as typeof import('./protectedNamespace.js')
+      require('./auth/protectedNamespace.js') as typeof import('./auth/protectedNamespace.js')
     ).checkProtectedNamespace()
     /* eslint-enable @typescript-eslint/no-require-imports */
   }

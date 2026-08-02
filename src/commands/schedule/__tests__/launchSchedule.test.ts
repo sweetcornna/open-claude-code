@@ -56,7 +56,7 @@ mock.module('src/commands/schedule/ScheduleView.js', () => ({
 }))
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-schedule' }),
 }))
 mock.module('src/services/oauth/client.js', () => ({

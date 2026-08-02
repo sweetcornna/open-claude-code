@@ -15,7 +15,7 @@ import {
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
   hasProfileScope,
-} from './auth.js'
+} from './auth/auth.js'
 import { isInBundledMode } from './bundledMode.js'
 import { getGlobalConfig, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
@@ -27,7 +27,7 @@ import {
   parseUserSpecifiedModel,
 } from './model/model.js'
 import { getAPIProvider } from './model/providers.js'
-import { isEssentialTrafficOnly } from './privacyLevel.js'
+import { isEssentialTrafficOnly } from './auth/privacyLevel.js'
 import {
   getInitialSettings,
   getSettingsForSource,

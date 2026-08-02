@@ -23,7 +23,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import {
   type GitHubActionsMetadata,
   getUserForGrowthBook,
-} from '../../utils/user.js'
+} from '../../utils/auth/user.js'
 import {
   is1PEventLoggingEnabled,
   logGrowthBookExperimentTo1P,

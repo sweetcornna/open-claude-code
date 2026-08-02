@@ -7,7 +7,7 @@ mock.module('src/utils/thinking.js', () => ({
 mock.module('src/utils/settings/settings.js', () => ({
   getInitialSettings: () => ({}),
 }))
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   isProSubscriber: () => false,
   isMaxSubscriber: () => false,
   isTeamSubscriber: () => false,

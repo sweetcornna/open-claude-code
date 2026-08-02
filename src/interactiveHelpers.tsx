@@ -25,7 +25,7 @@ import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { ThemeProvider } from '@anthropic/ink';
-import { normalizeApiKeyForConfig } from './utils/authPortable.js';
+import { normalizeApiKeyForConfig } from './utils/auth/authPortable.js';
 import {
   getExternalClaudeMdIncludes,
   getMemoryFiles,

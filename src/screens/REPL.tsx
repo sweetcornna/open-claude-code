@@ -172,7 +172,7 @@ import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFe
 import { clearSpeculativeChecks } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js';
 import type { AutoUpdaterResult } from '../utils/update/autoUpdater.js';
 import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config.js';
-import { hasConsoleBillingAccess } from '../utils/billing.js';
+import { hasConsoleBillingAccess } from '../utils/auth/billing.js';
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -918,7 +918,7 @@ export function REPL({
         // Wait for repo classification to settle (memoized, no-op if primed).
         const { isInternalModelRepo } = await import('../utils/commitAttribution.js');
         await isInternalModelRepo();
-        const { shouldShowUndercoverAutoNotice } = await import('../utils/undercover.js');
+        const { shouldShowUndercoverAutoNotice } = await import('../utils/auth/undercover.js');
         if (shouldShowUndercoverAutoNotice()) {
           setShowUndercoverCallout(true);
         }

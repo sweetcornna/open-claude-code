@@ -1,6 +1,6 @@
 import type { Attributes } from '@opentelemetry/api'
 import { getSessionId } from 'src/bootstrap/state.js'
-import { getOauthAccountInfo } from './auth.js'
+import { getOauthAccountInfo } from './auth/auth.js'
 import { getOrCreateUserID } from './config.js'
 import { envDynamic } from './envDynamic.js'
 import { isEnvTruthy } from './envUtils.js'

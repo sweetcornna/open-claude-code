@@ -140,8 +140,8 @@ import {
 } from 'src/bootstrap/state.js';
 import { getPlatform } from 'src/utils/process/platform.js';
 import { getRemoteSessionUrl } from 'src/constants/product.js';
-import { getSessionIngressAuthToken } from 'src/utils/sessionIngressAuth.js';
-import { getSubscriptionType, validateForceLoginOrg } from 'src/utils/auth.js';
+import { getSessionIngressAuthToken } from 'src/utils/auth/sessionIngressAuth.js';
+import { getSubscriptionType, validateForceLoginOrg } from 'src/utils/auth/auth.js';
 import { getSystemContext, getUserContext } from 'src/context.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from 'src/utils/worktree.js';
 import { getTools } from 'src/tools.js';
@@ -201,7 +201,7 @@ import { refreshExampleCommands } from 'src/utils/exampleCommands.js';
 import { refreshRemoteManagedSettings } from 'src/services/remoteManagedSettings/index.js';
 import { registerCleanup } from 'src/utils/process/cleanupRegistry.js';
 import { relative, resolve } from 'path';
-import { resetUserCache } from 'src/utils/user.js';
+import { resetUserCache } from 'src/utils/auth/user.js';
 import { safeParseJSON } from 'src/utils/text/json.js';
 import { seedEarlyInput } from 'src/utils/terminal/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
@@ -2595,7 +2595,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
 
     // Auth — call prepareApiRequest() once for orgUUID, but use a
     // getAccessToken closure for the token so reconnects get fresh tokens.
-    const { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } = await import('src/utils/auth.js');
+    const { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } = await import('src/utils/auth/auth.js');
     await checkAndRefreshOAuthTokenIfNeeded();
     let apiCreds;
     try {
@@ -2772,7 +2772,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       }
 
       // Create remote session config for the REPL
-      const { getClaudeAIOAuthTokens: getTokensForRemote } = await import('src/utils/auth.js');
+      const { getClaudeAIOAuthTokens: getTokensForRemote } = await import('src/utils/auth/auth.js');
       const getAccessTokenForRemote = (): string => getTokensForRemote()?.accessToken ?? apiCreds.accessToken;
       const remoteSessionConfig = createRemoteSessionConfig(
         createdSession.id,

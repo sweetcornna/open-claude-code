@@ -9,7 +9,7 @@ import {
   isClaudeAISubscriber,
   refreshAndGetAwsCredentials,
   refreshGcpCredentialsIfNeeded,
-} from 'src/utils/auth.js'
+} from 'src/utils/auth/auth.js'
 import { getUserAgent } from 'src/utils/network/http.js'
 import { getSmallFastModel } from 'src/utils/model/model.js'
 import { isDirectAnthropicApi } from 'src/utils/model/providers.js'

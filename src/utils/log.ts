@@ -18,7 +18,7 @@ import {
 } from './text/displayTags.js'
 import { isEnvTruthy } from './envUtils.js'
 import { toError, shortErrorStack } from './errors.js'
-import { isEssentialTrafficOnly } from './privacyLevel.js'
+import { isEssentialTrafficOnly } from './auth/privacyLevel.js'
 import { jsonParse } from './slowOperations.js'
 
 /**

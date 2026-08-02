@@ -9,7 +9,7 @@ import {
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
   isClaudeAISubscriber,
-} from '../auth.js'
+} from '../auth/auth.js'
 import { getClaudeCodeUserAgent } from './userAgent.js'
 import { getWorkload } from '../workloadContext.js'
 

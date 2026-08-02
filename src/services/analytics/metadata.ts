@@ -21,14 +21,17 @@ import {
 } from '../../bootstrap/state.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isOfficialMcpUrl } from '../mcp/officialRegistry.js'
-import { isClaudeAISubscriber, getSubscriptionType } from '../../utils/auth.js'
+import {
+  isClaudeAISubscriber,
+  getSubscriptionType,
+} from '../../utils/auth/auth.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
   getWslVersion,
   getLinuxDistroInfo,
   detectVcs,
 } from '../../utils/process/platform.js'
-import type { CoreUserData } from 'src/utils/user.js'
+import type { CoreUserData } from 'src/utils/auth/user.js'
 import { getAgentContext } from '../../utils/agentContext.js'
 import type { EnvironmentMetadata } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
 import type { PublicApiAuth } from '../../types/generated/events_mono/common/v1/auth.js'

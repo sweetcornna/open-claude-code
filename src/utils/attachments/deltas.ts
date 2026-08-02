@@ -22,7 +22,7 @@ import {
   shouldInjectAgentListInMessages,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/agentListing.js'
 import { filterDeniedAgents } from '../permissions/permissions.js'
-import { getSubscriptionType } from '../auth.js'
+import { getSubscriptionType } from '../auth/auth.js'
 import { mcpInfoFromString } from '../../services/mcp/mcpStringUtils.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { Attachment } from './types.js'

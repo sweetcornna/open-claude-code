@@ -11,7 +11,7 @@
 import omit from 'lodash-es/omit.js'
 import reject from 'lodash-es/reject.js'
 import { logEvent } from 'src/services/analytics/index.js'
-import { getAccountInformation } from 'src/utils/auth.js'
+import { getAccountInformation } from 'src/utils/auth/auth.js'
 import { installOAuthTokens } from 'src/cli/handlers/auth.js'
 import { OAuthService } from 'src/services/oauth/index.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'

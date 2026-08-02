@@ -65,7 +65,7 @@ import {
   getDefaultBashTimeoutMs as getDefaultTimeoutMs,
   getMaxBashTimeoutMs as getMaxTimeoutMs,
 } from 'src/utils/process/timeouts.js';
-import { getUndercoverInstructions, isUndercover } from 'src/utils/undercover.js';
+import { getUndercoverInstructions, isUndercover } from 'src/utils/auth/undercover.js';
 import {
   buildLargeToolResultMessage,
   ensureToolResultsDir,

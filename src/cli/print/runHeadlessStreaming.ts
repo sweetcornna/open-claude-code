@@ -29,7 +29,7 @@ import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { cwd } from 'process'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
+import { AwsAuthStatusManager } from 'src/utils/auth/awsAuthStatusManager.js'
 import { toSDKRateLimitInfo } from 'src/utils/messages/mappers.js'
 import {
   statusListeners,

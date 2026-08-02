@@ -53,7 +53,9 @@ mock.module('src/utils/permissions/filesystem.js', () => ({
 mock.module('src/utils/betas.js', () => ({
   shouldUseGlobalCacheScope: () => false,
 }))
-mock.module('src/utils/undercover.js', () => ({ isUndercover: () => false }))
+mock.module('src/utils/auth/undercover.js', () => ({
+  isUndercover: () => false,
+}))
 mock.module('src/utils/model/antModels.js', () => ({
   getAntModelOverrideConfig: () => null,
 }))

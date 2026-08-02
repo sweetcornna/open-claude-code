@@ -7,8 +7,8 @@ import { setupTerminal, shouldOfferTerminalSetup } from '../commands/terminalSet
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Link, Newline, Text, useTheme } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
-import { isAnthropicAuthEnabled } from '../utils/auth.js';
-import { normalizeApiKeyForConfig } from '../utils/authPortable.js';
+import { isAnthropicAuthEnabled } from '../utils/auth/auth.js';
+import { normalizeApiKeyForConfig } from '../utils/auth/authPortable.js';
 import { getCustomApiKeyStatus } from '../utils/config.js';
 import { env } from '../utils/env.js';
 import { isRunningOnHomespace } from '../utils/envUtils.js';

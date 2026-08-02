@@ -13,7 +13,7 @@ mock.module('src/utils/attribution.ts', () => ({
   countUserPromptsInMessages: () => 0,
 }))
 
-mock.module('src/utils/undercover.ts', () => ({
+mock.module('src/utils/auth/undercover.ts', () => ({
   isUndercover: () => false,
   getUndercoverInstructions: () => '',
   shouldShowUndercoverAutoNotice: () => false,
@@ -202,7 +202,7 @@ describe('commit command getPromptForCommand', () => {
   test('ant undercover path prepends undercover instructions', async () => {
     process.env.USER_TYPE = 'ant'
 
-    mock.module('src/utils/undercover.ts', () => ({
+    mock.module('src/utils/auth/undercover.ts', () => ({
       isUndercover: () => true,
       getUndercoverInstructions: () => 'SECRET_UNDERCOVER_PREFIX',
       shouldShowUndercoverAutoNotice: () => false,

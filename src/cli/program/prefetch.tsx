@@ -7,7 +7,7 @@ import { getIsNonInteractiveSession } from 'src/bootstrap/state.js';
 import { getSystemContext, getUserContext } from 'src/context.js';
 import { initializeAnalyticsGates } from 'src/services/analytics/sink.js';
 import { getRelevantTips } from 'src/services/tips/tipRegistry.js';
-import { prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe } from 'src/utils/auth.js';
+import { prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe } from 'src/utils/auth/auth.js';
 import { checkHasTrustDialogAccepted } from 'src/utils/config.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js';
@@ -16,7 +16,7 @@ import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
 import { countFilesRoundedRg } from 'src/utils/filesystem/ripgrep.js';
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js';
 import { skillChangeDetector } from 'src/utils/skills/skillChangeDetector.js';
-import { initUser } from 'src/utils/user.js';
+import { initUser } from 'src/utils/auth/user.js';
 
 /**
  * Prefetch system context (including git status) only when it's safe to do so.

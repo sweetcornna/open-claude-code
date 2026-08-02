@@ -25,7 +25,10 @@ import {
   registerRemoteAgentTask,
   type BackgroundRemoteSessionPrecondition,
 } from '../../tasks/RemoteAgentTask/RemoteAgentTask.js'
-import { isEnterpriseSubscriber, isTeamSubscriber } from '../../utils/auth.js'
+import {
+  isEnterpriseSubscriber,
+  isTeamSubscriber,
+} from '../../utils/auth/auth.js'
 import { detectCurrentRepositoryWithHost } from '../../utils/detectRepository.js'
 import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js'
 import { getDefaultBranch, gitExe } from '../../utils/git.js'

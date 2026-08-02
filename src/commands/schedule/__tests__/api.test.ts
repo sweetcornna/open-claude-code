@@ -29,7 +29,7 @@ mock.module('src/utils/debug.ts', debugMock)
 const mockAccessToken = 'test-token-triggers'
 const mockOrgUUID = 'org-uuid-triggers'
 
-mock.module('src/utils/auth.js', () => ({
+mock.module('src/utils/auth/auth.js', () => ({
   getClaudeAIOAuthTokens: () => ({ accessToken: mockAccessToken }),
 }))
 mock.module('src/services/oauth/client.js', () => ({

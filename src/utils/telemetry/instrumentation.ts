@@ -44,7 +44,7 @@ import {
   getSubscriptionType,
   is1PApiCustomer,
   isClaudeAISubscriber,
-} from 'src/utils/auth.js'
+} from 'src/utils/auth/auth.js'
 import { getPlatform, getWslVersion } from 'src/utils/process/platform.js'
 
 import { getCACertificates } from '../network/caCerts.js'
