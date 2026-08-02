@@ -101,11 +101,7 @@ function WorkspaceKeyInstructions({
   return null;
 }
 
-function ActiveProviderRow({
-  activeProvider,
-}: {
-  activeProvider: AuthStatus['activeProvider'];
-}): React.ReactNode {
+function ActiveProviderRow({ activeProvider }: { activeProvider: AuthStatus['activeProvider'] }): React.ReactNode {
   const { provider, baseUrl, wireApi, chatgptAuth, profile } = activeProvider;
   const providerLabel = provider === 'firstParty' ? 'anthropic' : provider;
   const details: string[] = [];

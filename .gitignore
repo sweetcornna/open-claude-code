@@ -60,3 +60,4 @@ credentials.json
 .test-progress.md
 .squash-tmp/
 .git.*-backup
+scripts/system-prompt-dump.txt
