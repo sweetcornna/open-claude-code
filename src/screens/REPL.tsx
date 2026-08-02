@@ -135,7 +135,6 @@ import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInput
 import { useRemoteSession } from '../hooks/useRemoteSession.js';
 import { useSSHSession } from '../hooks/useSSHSession.js';
 import { useAssistantHistory } from '../hooks/useAssistantHistory.js';
-import type { SSHSession } from '../ssh/createSSHSession.js';
 import { SkillImprovementSurvey } from '../components/SkillImprovementSurvey.js';
 import { useSkillImprovementSurvey } from '../hooks/useSkillImprovementSurvey.js';
 import { useMoreRight } from '../moreright/useMoreRight.js';
@@ -241,16 +240,9 @@ import {
   formatCommandInputTags,
 } from '../utils/messages.js';
 import { generateSessionTitle } from '../utils/sessionTitle.js';
-import {
-  BASH_INPUT_TAG,
-  COMMAND_MESSAGE_TAG,
-  COMMAND_NAME_TAG,
-  FORK_BOILERPLATE_TAG,
-  LOCAL_COMMAND_STDOUT_TAG,
-} from '../constants/xml.js';
+import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
 import { FORK_SUBAGENT_TYPE } from '@open-claude-code/builtin-tools/tools/AgentTool/forkSubagent.js';
 import { escapeXml } from '../utils/xml.js';
-import type { ThinkingConfig } from '../utils/thinking.js';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { handlePromptSubmit, type PromptInputHelpers } from '../utils/handlePromptSubmit.js';
 import { useQueueProcessor } from '../hooks/useQueueProcessor.js';
@@ -260,7 +252,6 @@ import type {
   Message as MessageType,
   UserMessage,
   ProgressMessage,
-  HookResultMessage,
   PartialCompactDirection,
 } from '../types/message.js';
 import { query } from '../query.js';
@@ -283,7 +274,6 @@ import { processSessionStartHooks } from '../utils/sessionStart.js';
 import { executeSessionEndHooks, getSessionEndHookTimeoutMs } from '../utils/hooks.js';
 import { type IDESelection, useIdeSelection } from '../hooks/useIdeSelection.js';
 import { getTools, assembleToolPool } from '../tools.js';
-import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { resolveAgentTools } from '@open-claude-code/builtin-tools/tools/AgentTool/agentToolUtils.js';
 import { resumeAgentBackground } from '@open-claude-code/builtin-tools/tools/AgentTool/resumeAgent.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
@@ -313,16 +303,13 @@ import {
   createContentReplacementState,
   provisionContentReplacementState,
   reconstructContentReplacementState,
-  type ContentReplacementRecord,
 } from '../utils/toolResultStorage.js';
 import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
-import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
 import {
   fileHistoryMakeSnapshot,
   type FileHistoryState,
   fileHistoryRewind,
-  type FileHistorySnapshot,
   copyFileHistoryForResume,
   fileHistoryEnabled,
   fileHistoryHasAnyChanges,
@@ -462,7 +449,6 @@ import { UltraplanChoiceDialog } from '../components/ultraplan/UltraplanChoiceDi
 import { UltraplanLaunchDialog } from '../components/ultraplan/UltraplanLaunchDialog.js';
 import { launchUltraplan } from '../commands/ultraplan.js';
 // Session manager removed - using AppState now
-import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
 import type { RemoteMessageContent } from '../utils/teleport/api.js';
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
@@ -480,30 +466,14 @@ import {
 import { setClipboard } from '@anthropic/ink';
 import type { ScrollBoxHandle } from '@anthropic/ink';
 import { createAttachmentMessage, getQueuedCommandAttachments } from '../utils/attachments.js';
-
-// Stable empty array for hooks that accept MCPServerConnection[] — avoids
-// creating a new [] literal on every render in remote mode, which would
-// cause useEffect dependency changes and infinite re-render loops.
-const EMPTY_MCP_CLIENTS: MCPServerConnection[] = [];
-
-// Stable stub for useAssistantHistory's non-KAIROS branch — avoids a new
-// function identity each render, which would break composedOnScroll's memo.
-const HISTORY_STUB = { maybeLoadOlder: (_: ScrollBoxHandle) => {} };
-// Window after a user-initiated scroll during which type-into-empty does NOT
-// repin to bottom. Josh Rosen's workflow: Claude emits long output → scroll
-// up to read the start → start typing → before this fix, snapped to bottom.
-// https://anthropic.slack.com/archives/C07VBSHV7EV/p1773545449871739
-const RECENT_SCROLL_REPIN_WINDOW_MS = 3000;
+import type { Props, Screen } from './repl/types.js';
+import { EMPTY_MCP_CLIENTS, HISTORY_STUB, RECENT_SCROLL_REPIN_WINDOW_MS } from './repl/constants.js';
+import { isForkBoilerplateTextBlock } from './repl/forkBoilerplate.js';
+import { median } from './repl/median.js';
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
 // memory issues when working across many files in large projects
-
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? Math.round((sorted[mid - 1]! + sorted[mid]!) / 2) : sorted[mid]!;
-}
 
 /**
  * Small component to display transcript mode footer with dynamic keybinding.
@@ -740,66 +710,7 @@ function AnimatedTerminalTitle({
   return null;
 }
 
-export type Props = {
-  commands: Command[];
-  debug: boolean;
-  initialTools: Tool[];
-  // Initial messages to populate the REPL with
-  initialMessages?: MessageType[];
-  // Deferred hook messages promise — REPL renders immediately and injects
-  // hook messages when they resolve. Awaited before the first API call.
-  pendingHookMessages?: Promise<HookResultMessage[]>;
-  initialFileHistorySnapshots?: FileHistorySnapshot[];
-  // Content-replacement records from a resumed session's transcript — used to
-  // reconstruct contentReplacementState so the same results are re-replaced
-  initialContentReplacements?: ContentReplacementRecord[];
-  // Initial agent context for session resume (name/color set via /rename or /color)
-  initialAgentName?: string;
-  initialAgentColor?: AgentColorName;
-  mcpClients?: MCPServerConnection[];
-  dynamicMcpConfig?: Record<string, ScopedMcpServerConfig>;
-  autoConnectIdeFlag?: boolean;
-  strictMcpConfig?: boolean;
-  systemPrompt?: string;
-  appendSystemPrompt?: string;
-  // Optional callback invoked before query execution
-  // Called after user message is added to conversation but before API call
-  // Return false to prevent query execution
-  onBeforeQuery?: (input: string, newMessages: MessageType[]) => Promise<boolean>;
-  // Optional callback when a turn completes (model finishes responding)
-  onTurnComplete?: (messages: MessageType[]) => void | Promise<void>;
-  // When true, disables REPL input (hides prompt and prevents message selector)
-  disabled?: boolean;
-  // Optional agent definition to use for the main thread
-  mainThreadAgentDefinition?: AgentDefinition;
-  // When true, disables all slash commands
-  disableSlashCommands?: boolean;
-  // Task list id: when set, enables tasks mode that watches a task list and auto-processes tasks.
-  taskListId?: string;
-  // Remote session config for --remote mode (uses CCR as execution engine)
-  remoteSessionConfig?: RemoteSessionConfig;
-  // SSH session for `claude ssh` mode (local REPL, remote tools over ssh)
-  sshSession?: SSHSession;
-  // Thinking configuration to use when thinking is enabled
-  thinkingConfig: ThinkingConfig;
-};
-
-export type Screen = 'prompt' | 'transcript';
-
-// Boilerplate carrier lives in a mixed user message ([tool_result..., text])
-// that AgentTool/forkSubagent.buildForkedMessages emits as the fork child's
-// first user turn. The text block wraps <FORK_BOILERPLATE_TAG>...</..> + the
-// user prompt; tool_result siblings keep the parent's tool calls closed.
-const FORK_BOILERPLATE_OPEN_TAG = `<${FORK_BOILERPLATE_TAG}>`;
-
-function isForkBoilerplateTextBlock(block: { type: string; text?: string }): boolean {
-  return block.type === 'text' && typeof block.text === 'string' && block.text.includes(FORK_BOILERPLATE_OPEN_TAG);
-}
-
-function isForkBoilerplateMessage(message: MessageType): boolean {
-  if (message.type !== 'user' || !Array.isArray(message.message?.content)) return false;
-  return message.message.content.some(isForkBoilerplateTextBlock);
-}
+export type { Props, Screen };
 
 export function REPL({
   commands: initialCommands,
