@@ -12,8 +12,16 @@ mock.module('src/utils/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({
   feature: () => false,
 }))
+
+let mockedSessionId = 'test-session-123'
 mock.module('src/bootstrap/state.ts', () => ({
-  getSessionId: () => 'test-session-123',
+  getSessionId: () => mockedSessionId,
+  regenerateSessionId: () => {
+    mockedSessionId = `test-session-${Date.now()}`
+  },
+  switchSession: (sessionId: string) => {
+    mockedSessionId = sessionId
+  },
   getIsNonInteractiveSession: () => false,
 }))
 // `mock.module` is process-global and replaces the WHOLE module, so this stub

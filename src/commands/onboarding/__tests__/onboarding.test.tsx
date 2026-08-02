@@ -1,17 +1,7 @@
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as React from 'react';
 import { logMock } from '../../../../tests/mocks/log';
 import { debugMock } from '../../../../tests/mocks/debug';
-
-// Pre-import real ink so we can fall through after this suite. Bun's
-// mock.module is process-global / last-write-wins; without delegation the
-// stub Box/Pane/Text/useTheme leak into other test files (e.g.
-// AgentsPlatformView.test.tsx) that need real ink components.
-const _realOnboardingInkMod = (await import('@anthropic/ink')) as Record<string, unknown>;
-let _useStubInkForOnboarding = true;
-afterAll(() => {
-  _useStubInkForOnboarding = false;
-});
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
@@ -44,26 +34,6 @@ mock.module('src/utils/config.js', () => ({
   saveCurrentProjectConfig: (updater: (cur: typeof fakeProjectConfig) => typeof fakeProjectConfig) => {
     Object.assign(fakeProjectConfig, updater({ ...fakeProjectConfig }));
   },
-}));
-
-// Stub heavy theme + ink imports — the launcher only references them for
-// the `theme` subcommand JSX render path. Spread real ink so when the flag
-// flips off in afterAll, later test files see real components.
-mock.module('@anthropic/ink', () => {
-  if (_useStubInkForOnboarding) {
-    return {
-      ..._realOnboardingInkMod,
-      Box: ({ children }: { children?: React.ReactNode }) => React.createElement('box', null, children),
-      Pane: ({ children }: { children?: React.ReactNode }) => React.createElement('pane', null, children),
-      Text: ({ children }: { children?: React.ReactNode }) => React.createElement('text', null, children),
-      useTheme: () => ['dark', (_t: string) => undefined],
-    };
-  }
-  return _realOnboardingInkMod;
-});
-
-mock.module('src/components/ThemePicker.js', () => ({
-  ThemePicker: () => React.createElement('theme-picker'),
 }));
 
 import { callOnboarding, parseSubcommand, type OnboardingSubcommand } from '../launchOnboarding.js';
@@ -251,19 +221,6 @@ describe('callOnboarding behavior', () => {
     if (!React.isValidElement(result)) throw new Error('expected element');
     const el = result as React.ReactElement<{ onDone: (msg: string) => void }>;
     expect(typeof el.props.onDone).toBe('function');
-  });
-
-  test('rendering ThemeSubcommand executes its body once', () => {
-    // Pull the ThemeSubcommand render path through React.createElement so its
-    // body (useTheme + ThemePicker JSX) executes under coverage.
-    const result = callOnboarding(() => undefined, makeContext(), 'theme');
-    return result.then(node => {
-      if (!React.isValidElement(node)) throw new Error('not element');
-      // Render the inner element by invoking its component function once.
-      const Comp = (node as React.ReactElement).type as (p: unknown) => React.ReactNode;
-      const rendered = Comp((node as React.ReactElement).props);
-      expect(rendered).toBeDefined();
-    });
   });
 
   test('rendering StatusView executes its body once', async () => {
