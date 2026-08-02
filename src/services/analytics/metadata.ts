@@ -6,8 +6,8 @@
  * event metadata across all analytics systems (Datadog, 1P).
  */
 
-import { extname } from 'path'
 import memoize from 'lodash-es/memoize.js'
+import { getFileExtensionForAnalytics } from '@open-claude-code/tool-runtime/analytics.js'
 import { env, getHostPlatformForAnalytics } from '../../utils/env.js'
 import { envDynamic } from '../../utils/envDynamic.js'
 import { getModelBetas } from '../../utils/betas.js'
@@ -40,6 +40,8 @@ import {
   isTeammate,
 } from '../../utils/teammate.js'
 import { feature } from 'bun:bundle'
+
+export { getFileExtensionForAnalytics }
 
 /**
  * Marker type for verifying analytics metadata doesn't contain sensitive data
@@ -300,40 +302,6 @@ export function extractToolInputForTelemetry(
     json = json.slice(0, TOOL_INPUT_MAX_JSON_CHARS) + '…[truncated]'
   }
   return json
-}
-
-/**
- * Maximum length for file extensions to be logged.
- * Extensions longer than this are considered potentially sensitive
- * (e.g., hash-based filenames like "key-hash-abcd-123-456") and
- * will be replaced with 'other'.
- */
-const MAX_FILE_EXTENSION_LENGTH = 10
-
-/**
- * Extracts and sanitizes a file extension for analytics logging.
- *
- * Uses Node's path.extname for reliable cross-platform extension extraction.
- * Returns 'other' for extensions exceeding MAX_FILE_EXTENSION_LENGTH to avoid
- * logging potentially sensitive data (like hash-based filenames).
- *
- * @param filePath - The file path to extract the extension from
- * @returns The sanitized extension, 'other' for long extensions, or undefined if no extension
- */
-export function getFileExtensionForAnalytics(
-  filePath: string,
-): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS | undefined {
-  const ext = extname(filePath).toLowerCase()
-  if (!ext || ext === '.') {
-    return undefined
-  }
-
-  const extension = ext.slice(1) // remove leading dot
-  if (extension.length > MAX_FILE_EXTENSION_LENGTH) {
-    return 'other' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-  }
-
-  return extension as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 }
 
 /** Allow list of commands we extract file extensions from. */

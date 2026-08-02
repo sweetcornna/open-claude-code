@@ -19,6 +19,11 @@ import './utils/slowOperations.js'
 // It self-registers with tool-runtime; standalone package use keeps the facade's
 // children-only fallback instead.
 import './components/MessageResponse.js'
+// Load the host analytics implementations before builtin tool modules.
+// They self-register with tool-runtime; standalone package use keeps the
+// no-op and default-value facade fallbacks instead.
+import './services/analytics/index.js'
+import './services/analytics/growthbook.js'
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from '@open-claude-code/builtin-tools/tools/AgentTool/AgentTool.js'
 import { BashTool } from '@open-claude-code/builtin-tools/tools/BashTool/BashTool.js'
