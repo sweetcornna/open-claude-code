@@ -1,0 +1,95 @@
+import { feature } from 'bun:bundle'
+import { initAutoDream } from '../../services/autoDream/autoDream.js'
+import { initMagicDocs } from '../../services/MagicDocs/magicDocs.js'
+import { initSkillImprovement } from '../hooks/skillImprovement.js'
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const registerProtocolModule = feature('LODESTONE')
+  ? (require('../deepLink/registerProtocol.js') as typeof import('../deepLink/registerProtocol.js'))
+  : null
+
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+import {
+  getIsInteractive,
+  getLastInteractionTime,
+} from '../../bootstrap/state.js'
+import {
+  cleanupOldMessageFilesInBackground,
+  cleanupOldVersionsThrottled,
+} from '../process/cleanup.js'
+import { cleanupOldVersions } from '../nativeInstaller/index.js'
+import { autoUpdateMarketplacesAndPluginsInBackground } from '../plugins/pluginAutoupdate.js'
+
+// 24 hours in milliseconds
+const RECURRING_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+// 10 minutes after start.
+const DELAY_VERY_SLOW_OPERATIONS_THAT_HAPPEN_EVERY_SESSION = 10 * 60 * 1000
+
+export function startBackgroundHousekeeping(): void {
+  void initMagicDocs()
+  void initSkillImprovement()
+  if (feature('EXTRACT_MEMORIES')) {
+    void import('../../services/extractMemories/extractMemories.js')
+      .then(({ initExtractMemories }) => {
+        initExtractMemories()
+      })
+      .catch(() => {
+        // Module load failure — non-critical, memory extraction just won't run
+      })
+  }
+  initAutoDream()
+  void autoUpdateMarketplacesAndPluginsInBackground()
+  if (feature('LODESTONE') && getIsInteractive()) {
+    void registerProtocolModule!.ensureDeepLinkProtocolRegistered()
+  }
+
+  let needsCleanup = true
+  async function runVerySlowOps(): Promise<void> {
+    // If the user did something in the last minute, don't make them wait for these slow operations to run.
+    if (
+      getIsInteractive() &&
+      getLastInteractionTime() > Date.now() - 1000 * 60
+    ) {
+      setTimeout(
+        runVerySlowOps,
+        DELAY_VERY_SLOW_OPERATIONS_THAT_HAPPEN_EVERY_SESSION,
+      ).unref()
+      return
+    }
+
+    if (needsCleanup) {
+      needsCleanup = false
+      await cleanupOldMessageFilesInBackground()
+    }
+
+    // If the user did something in the last minute, don't make them wait for these slow operations to run.
+    if (
+      getIsInteractive() &&
+      getLastInteractionTime() > Date.now() - 1000 * 60
+    ) {
+      setTimeout(
+        runVerySlowOps,
+        DELAY_VERY_SLOW_OPERATIONS_THAT_HAPPEN_EVERY_SESSION,
+      ).unref()
+      return
+    }
+
+    await cleanupOldVersions()
+  }
+
+  setTimeout(
+    runVerySlowOps,
+    DELAY_VERY_SLOW_OPERATIONS_THAT_HAPPEN_EVERY_SESSION,
+  ).unref()
+
+  // For long-running sessions, clean only occ-owned version files.
+  if (process.env.USER_TYPE === 'ant') {
+    const interval = setInterval(() => {
+      void cleanupOldVersionsThrottled()
+    }, RECURRING_CLEANUP_INTERVAL_MS)
+
+    interval.unref()
+  }
+}
