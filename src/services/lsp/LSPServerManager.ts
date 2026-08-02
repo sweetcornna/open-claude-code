@@ -62,8 +62,44 @@ export function createLSPServerManager(): LSPServerManager {
   // Private state managed via closures
   const servers: Map<string, LSPServerInstance> = new Map()
   const extensionMap: Map<string, string[]> = new Map()
-  // Track which files have been opened on which servers (URI -> server name)
+  // Track which files have been opened on which servers (URI -> server name).
+  // LRU-bounded (official 2.1.208 parity): closeFile() has no callers yet, so
+  // without a cap every Read/Edit pinned a document on the server until the
+  // next compaction — unbounded memory on both sides in long sessions.
   const openedFiles: Map<string, string> = new Map()
+  const MAX_OPEN_FILES = 50
+
+  /** Map iteration order is insertion order — delete+set moves to the back. */
+  function touchOpenedFile(fileUri: string, serverName: string): void {
+    openedFiles.delete(fileUri)
+    openedFiles.set(fileUri, serverName)
+  }
+
+  async function evictOverflowOpenFiles(): Promise<void> {
+    while (openedFiles.size > MAX_OPEN_FILES) {
+      const oldest = openedFiles.entries().next()
+      if (oldest.done) break
+      const [fileUri, serverName] = oldest.value
+      openedFiles.delete(fileUri)
+      const server = servers.get(serverName)
+      if (!server || server.state !== 'running') continue
+      try {
+        // Must tell the server too — clearing only local tracking would
+        // leave the server holding the document forever (worse than no
+        // eviction at all).
+        await server.sendNotification('textDocument/didClose', {
+          textDocument: { uri: fileUri },
+        })
+        logForDebugging(`LSP: Evicted LRU document ${fileUri}`)
+      } catch (error) {
+        logError(
+          new Error(
+            `Failed to evict LSP document ${fileUri}: ${errorMessage(error)}`,
+          ),
+        )
+      }
+    }
+  }
 
   /**
    * Initialize the manager by loading all configured LSP servers.
@@ -275,8 +311,10 @@ export function createLSPServerManager(): LSPServerManager {
 
     const fileUri = pathToFileURL(path.resolve(filePath)).href
 
-    // Skip if already opened on this server
+    // Skip if already opened on this server (refresh LRU position so hot
+    // files aren't evicted)
     if (openedFiles.get(fileUri) === server.name) {
+      touchOpenedFile(fileUri, server.name)
       logForDebugging(
         `LSP: File already open, skipping didOpen for ${filePath}`,
       )
@@ -298,6 +336,7 @@ export function createLSPServerManager(): LSPServerManager {
       })
       // Track that this file is now open on this server
       openedFiles.set(fileUri, server.name)
+      await evictOverflowOpenFiles()
       logForDebugging(
         `LSP: Sent didOpen for ${filePath} (languageId: ${languageId})`,
       )
@@ -333,6 +372,7 @@ export function createLSPServerManager(): LSPServerManager {
         },
         contentChanges: [{ text: content }],
       })
+      touchOpenedFile(fileUri, server.name)
       logForDebugging(`LSP: Sent didChange for ${filePath}`)
     } catch (error) {
       const err = new Error(

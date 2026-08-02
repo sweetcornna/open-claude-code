@@ -116,6 +116,49 @@ describe('LSPServerManager closeAllFiles', () => {
     expect(sendNotificationMock).not.toHaveBeenCalled()
   })
 
+  test('51st open evicts the least-recently-used document with didClose', async () => {
+    const manager = createLSPServerManager()
+    await manager.initialize()
+
+    for (let i = 0; i < 50; i++) {
+      await manager.openFile(`/project/lru-a-${i}.ts`, 'c')
+    }
+    expect(manager.isFileOpen('/project/lru-a-0.ts')).toBe(true)
+
+    sendNotificationMock.mockClear()
+    await manager.openFile('/project/lru-a-50.ts', 'c')
+
+    // Oldest document evicted locally AND on the server (didClose)
+    expect(manager.isFileOpen('/project/lru-a-0.ts')).toBe(false)
+    expect(manager.isFileOpen('/project/lru-a-50.ts')).toBe(true)
+    const didCloseUris = sendNotificationMock.mock.calls
+      .filter((c: any[]) => c[0] === 'textDocument/didClose')
+      .map((c: any[]) => (c[1] as any)?.textDocument?.uri as string)
+    expect(didCloseUris).toHaveLength(1)
+    expect(didCloseUris[0]).toContain('lru-a-0.ts')
+
+    await manager.closeAllFiles()
+  })
+
+  test('re-opening a file refreshes its LRU position', async () => {
+    const manager = createLSPServerManager()
+    await manager.initialize()
+
+    for (let i = 0; i < 50; i++) {
+      await manager.openFile(`/project/lru-b-${i}.ts`, 'c')
+    }
+    // Touch the oldest via the already-open skip path
+    await manager.openFile('/project/lru-b-0.ts', 'c')
+
+    await manager.openFile('/project/lru-b-50.ts', 'c')
+
+    // lru-b-1 (now oldest) evicted; the touched lru-b-0 survives
+    expect(manager.isFileOpen('/project/lru-b-0.ts')).toBe(true)
+    expect(manager.isFileOpen('/project/lru-b-1.ts')).toBe(false)
+
+    await manager.closeAllFiles()
+  })
+
   test('closeAllFiles skips servers that are not running', async () => {
     // Create manager and manually register a server with 'stopped' state
     const manager = createLSPServerManager()
