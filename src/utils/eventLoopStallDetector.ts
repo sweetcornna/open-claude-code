@@ -1,3 +1,1 @@
-// Auto-generated stub — replace with real implementation
-export {}
-export const startEventLoopStallDetector: () => void = () => {}
+export * from './telemetry/eventLoopStallDetector.js'
