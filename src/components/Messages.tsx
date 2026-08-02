@@ -507,10 +507,11 @@ const MessagesImpl = ({
   // comment above for why this replaced count-based slicing.
   const sliceAnchorRef = useRef<SliceAnchor>(null);
 
-  // Cache for buildMessageLookups: avoids rebuilding 8 Maps/Sets when only
-  // message content changed during streaming (text/thinking deltas). The key
-  // captures only structural info (types, IDs), so content-only deltas skip
-  // the rebuild entirely.
+  // Carries the lookups across renders so they are rebuilt as rarely as
+  // possible: reused outright when only message content changed (streaming
+  // text/thinking deltas), updated in place when messages were appended, and
+  // rebuilt only when neither is sound. resolveMessageLookups owns that
+  // decision and documents it.
   const lookupsCacheRef = useRef<MessageLookupsCache | null>(null);
 
   // Expensive message transforms — filter, reorder, group, collapse, lookups.
