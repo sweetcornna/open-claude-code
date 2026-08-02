@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'fs'
 import { join, basename } from 'path'
 import { parseFrontmatter } from '../utils/text/frontmatterParser.js'
 import type { FrontmatterData } from '../utils/text/frontmatterParser.js'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import {
   getProjectDirsUpToHome,
   extractDescriptionFromMarkdown,

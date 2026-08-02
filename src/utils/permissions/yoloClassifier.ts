@@ -23,7 +23,7 @@ import type {
   YoloClassifierResult,
 } from '../../types/permissions.js'
 import { isDebugMode, logForDebugging } from '../debug.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
 import { errorMessage } from '../errors.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { extractTextContent } from '../messages.js'

@@ -25,7 +25,7 @@ import { CHROME_DEVTOOLS_MCP_SERVER_NAME, isChromeDevtoolsMCPServer } from 'src/
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID } from 'src/utils/tasks.js';
 import { _pendingAssistantChat, _pendingSSH } from './pendingState.js';
 import { addToHistory } from 'src/history.js';
-import { applyConfigEnvironmentVariables } from 'src/utils/managedEnv.js';
+import { applyConfigEnvironmentVariables } from 'src/utils/config/managedEnv.js';
 import {
   areMcpConfigsAllowedWithEnterpriseMcpConfig,
   dedupClaudeAiMcpServers,
@@ -63,7 +63,7 @@ import {
   isValidAdvisorModel,
   modelSupportsAdvisor,
 } from 'src/utils/advisor.js';
-import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
+import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from 'src/utils/config/config.js';
 import {
   checkOutTeleportedSessionBranch,
   processMessagesForTeleportResume,
@@ -168,8 +168,8 @@ import {
 import { initializeVersionedPlugins } from 'src/utils/plugins/installedPluginsManager.js';
 import { installAsciicastRecorder } from 'src/utils/terminal/asciicast.js';
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
-import { isBareMode, isEnvTruthy, isInProtectedNamespace } from 'src/utils/envUtils.js';
-import { isInBundledMode } from 'src/utils/bundledMode.js';
+import { isBareMode, isEnvTruthy, isInProtectedNamespace } from 'src/utils/config/envUtils.js';
+import { isInBundledMode } from 'src/utils/config/bundledMode.js';
 import { isPolicyAllowed, refreshPolicyLimits, waitForPolicyLimitsToLoad } from 'src/services/policyLimits/index.js';
 import { isWorktreeModeEnabled } from 'src/utils/worktreeModeEnabled.js';
 import { jsonParse } from 'src/utils/slowOperations.js';

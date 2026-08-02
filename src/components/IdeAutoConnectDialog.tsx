@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { Text, Dialog } from '@anthropic/ink';
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js';
 import { isSupportedTerminal } from '../utils/terminal/ide.js';
 import { Select } from './CustomSelect/index.js';
 

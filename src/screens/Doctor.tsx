@@ -5,7 +5,7 @@ import React, { Suspense, use, useCallback, useEffect, useMemo, useState } from 
 import { KeybindingWarnings } from 'src/components/KeybindingWarnings.js';
 import { McpParsingWarnings } from 'src/components/mcp/McpParsingWarnings.js';
 import { getModelMaxOutputTokens } from 'src/utils/context.js';
-import { getClaudeConfigHomeDir } from 'src/utils/envUtils.js';
+import { getClaudeConfigHomeDir } from 'src/utils/config/envUtils.js';
 import type { SettingSource } from 'src/utils/settings/constants.js';
 import { getOriginalCwd } from '../bootstrap/state.js';
 import type { CommandResultDisplay } from '../commands.js';
@@ -22,7 +22,7 @@ import { getPluginErrorMessage } from '../types/plugin.js';
 import { getNpmDistTags, type NpmDistTags } from '../utils/update/autoUpdater.js';
 import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
 import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/doctorDiagnostic.js';
-import { validateBoundedIntEnvVar } from '../utils/envValidation.js';
+import { validateBoundedIntEnvVar } from '../utils/config/envValidation.js';
 import { pathExists } from '../utils/filesystem/file.js';
 import {
   cleanupStaleLocks,

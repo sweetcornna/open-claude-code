@@ -38,7 +38,7 @@ export type AutomationStateMetadata = {
   sleep_until: number | null
 }
 
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import type { PermissionMode } from './permissions/PermissionMode.js'
 import { enqueueSdkEvent } from './sdkEventQueue.js'
 

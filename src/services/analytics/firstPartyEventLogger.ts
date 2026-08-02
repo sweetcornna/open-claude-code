@@ -10,7 +10,7 @@ import {
 } from '@opentelemetry/semantic-conventions'
 import { randomUUID } from 'crypto'
 import { isEqual } from 'lodash-es'
-import { getOrCreateUserID } from '../../utils/config.js'
+import { getOrCreateUserID } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logError } from '../../utils/log.js'
 import { getPlatform, getWslVersion } from '../../utils/process/platform.js'

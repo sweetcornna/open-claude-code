@@ -47,10 +47,10 @@ mock.module('src/utils/settings/settings.js', () => ({
 mock.module('src/commands/poor/poorMode.js', () => ({
   isPoorModeActive: () => false,
 }))
-mock.module('src/utils/env.js', () => ({
+mock.module('src/utils/config/env.js', () => ({
   env: { platform: 'linux' },
 }))
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   isEnvTruthy: () => false,
 }))
 mock.module('src/utils/model/model.js', () => ({

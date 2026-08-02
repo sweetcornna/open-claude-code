@@ -20,8 +20,8 @@ import { getCwd } from '../filesystem/cwd.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
-import { getGlobalClaudeFile } from '../env.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
+import { getGlobalClaudeFile } from './env.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { ConfigParseError, getErrnoCode } from '../errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from '../filesystem/file.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
@@ -145,9 +145,9 @@ export type InstallMethod = 'local' | 'native' | 'global' | 'unknown'
 export {
   EDITOR_MODES,
   NOTIFICATION_CHANNELS,
-} from '../configConstants.js'
+} from './configConstants.js'
 
-import type { EDITOR_MODES, NOTIFICATION_CHANNELS } from '../configConstants.js'
+import type { EDITOR_MODES, NOTIFICATION_CHANNELS } from './configConstants.js'
 
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
 

@@ -4,15 +4,15 @@ import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
 import { occConfigPath } from 'src/config/paths.js'
 import { join, posix, win32 } from 'path'
 import { checkGlobalInstallPermissions } from './update/autoUpdater.js'
-import { isInBundledMode } from './bundledMode.js'
+import { isInBundledMode } from './config/bundledMode.js'
 import {
   formatAutoUpdaterDisabledReason,
   getAutoUpdaterDisabledReason,
   getGlobalConfig,
   type InstallMethod,
-} from './config.js'
+} from './config/config.js'
 import { getCwd } from './filesystem/cwd.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import { execFileNoThrow } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import {

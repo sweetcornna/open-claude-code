@@ -8,7 +8,7 @@ import {
 } from '../bootstrap/state.js'
 import { registerCleanup } from './process/cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
-import { getClaudeConfigHomeDir } from './envUtils.js'
+import { getClaudeConfigHomeDir } from './config/envUtils.js'
 import { errorMessage, isFsInaccessible } from './errors.js'
 import { isProcessRunning } from './process/genericProcessUtils.js'
 import { getPlatform } from './process/platform.js'

@@ -7,7 +7,7 @@ import {
 import { type StoredCompanion, RARITY_STARS } from '../../buddy/types.js'
 import { renderSprite } from '../../buddy/sprites.js'
 import { CompanionCard } from '../../buddy/CompanionCard.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
 import { triggerCompanionReaction } from '../../buddy/companionReact.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type {

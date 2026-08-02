@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { Box, Text, useTheme } from '@anthropic/ink';
 import { getTheme } from '../../../utils/terminal/theme.js';
-import { env } from '../../../utils/env.js';
+import { env } from '../../../utils/config/env.js';
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import { truncateToLines } from '../../../utils/text/stringUtils.js';
 import { logUnaryEvent } from '../../../utils/unaryLogging.js';

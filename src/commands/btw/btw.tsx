@@ -14,7 +14,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import type { Message } from '../../types/message.js';
 import { createAbortController } from '../../utils/process/abortController.js';
-import { saveGlobalConfig } from '../../utils/config.js';
+import { saveGlobalConfig } from '../../utils/config/config.js';
 import { errorMessage } from '../../utils/errors.js';
 import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js';
 import type { CacheSafeParams } from '../../utils/forkedAgent.js';

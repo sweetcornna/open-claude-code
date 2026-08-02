@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Message } from '../../types/message.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
 import { submitTranscriptShare } from './submitTranscriptShare.js'
 

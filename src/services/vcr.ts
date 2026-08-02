@@ -17,8 +17,11 @@ import type {
   UserMessage,
 } from '../types/message.js'
 import { getCwd } from '../utils/filesystem/cwd.js'
-import { env } from '../utils/env.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../utils/envUtils.js'
+import { env } from '../utils/config/env.js'
+import {
+  getClaudeConfigHomeDir,
+  isEnvTruthy,
+} from '../utils/config/envUtils.js'
 import { getErrnoCode } from '../utils/errors.js'
 import { normalizeMessagesForAPI } from '../utils/messages.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'

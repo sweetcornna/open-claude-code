@@ -6,7 +6,7 @@ import figures from 'figures';
 import { getCwd } from '../filesystem/cwd.js';
 import { relative } from 'path';
 import { formatNumber } from '../text/format.js';
-import type { getGlobalConfig } from '../config.js';
+import type { getGlobalConfig } from '../config/config.js';
 import {
   getAnthropicApiKeyWithSource,
   getApiKeyFromConfigOrMacOSKeychain,

@@ -9,7 +9,7 @@ import {
   getGlobalOccFolderPermissionPattern,
   OCC_FOLDER_PERMISSION_PATTERN,
 } from '@open-claude-code/builtin-tools/tools/FileEditTool/occFolderPermissions.js'
-import { env } from '../../../utils/env.js'
+import { env } from '../../../utils/config/env.js'
 import { generateSuggestions } from '../../../utils/permissions/filesystem.js'
 import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpdateSchema.js'
 import {

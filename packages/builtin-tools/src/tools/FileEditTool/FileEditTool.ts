@@ -15,7 +15,7 @@ import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { countLinesChanged } from 'src/utils/text/diff.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
 import {
   FILE_NOT_FOUND_CWD_NOTE,

@@ -7,7 +7,7 @@
 //
 // If you're tempted to add `import settings` to git.ts — don't. Put it here.
 
-import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from './config/envUtils.js'
 import { getInitialSettings } from './settings/settings.js'
 
 export function shouldIncludeGitInstructions(): boolean {

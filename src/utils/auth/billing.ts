@@ -4,8 +4,8 @@ import {
   getSubscriptionType,
   isClaudeAISubscriber,
 } from './auth.js'
-import { getGlobalConfig } from '../config.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { getGlobalConfig } from '../config/config.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 
 export function hasConsoleBillingAccess(): boolean {
   // Check if cost reporting is disabled via environment variable

@@ -6,7 +6,7 @@ import {
   getInitialSettings,
   updateSettingsForSource,
 } from '../utils/settings/settings.js'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { DEFAULT_MODES } from './defaults.js'
 import type { OccMode } from './types.js'
 

@@ -5,7 +5,7 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { Box, Text, stringWidth } from '@anthropic/ink';
 import { useAppState, useSetAppState } from '../state/AppState.js';
 import type { AppState } from '../state/AppStateStore.js';
-import { getGlobalConfig } from '../utils/config.js';
+import { getGlobalConfig } from '../utils/config/config.js';
 import { isFullscreenActive } from '../utils/terminal/fullscreen.js';
 import type { Theme } from '../utils/terminal/theme.js';
 import { getCompanion } from './companion.js';

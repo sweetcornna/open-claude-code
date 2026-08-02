@@ -11,8 +11,8 @@ import type {
   ConnectedMCPServer,
   MCPServerConnection,
 } from '../../services/mcp/types.js'
-import { env } from '../env.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
+import { env } from '../config/env.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
 import {
   execFileNoThrow,
   execFileNoThrowWithCwd,
@@ -32,7 +32,7 @@ const ideOnboardingDialog =
 
 import { createAbortController } from '../process/abortController.js'
 import { logForDebugging } from '../debug.js'
-import { envDynamic } from '../envDynamic.js'
+import { envDynamic } from '../config/envDynamic.js'
 import { errorMessage, isFsInaccessible } from '../errors.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {

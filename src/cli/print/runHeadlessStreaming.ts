@@ -41,7 +41,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs
 import type { AppState } from 'src/state/AppStateStore.js'
 import { skillChangeDetector } from '../../utils/skills/skillChangeDetector.js'
 import { getCommands, clearCommandsCache } from '../../commands.js'
-import { isBareMode, isEnvTruthy } from '../../utils/envUtils.js'
+import { isBareMode, isEnvTruthy } from '../../utils/config/envUtils.js'
 import { getRunningTasks } from '../../utils/task/framework.js'
 import { isBackgroundTask } from '../../tasks/types.js'
 import { removeInterruptedMessage } from './sessionLoading.js'

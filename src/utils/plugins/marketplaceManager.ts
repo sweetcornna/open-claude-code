@@ -26,7 +26,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'path'
 import { BIN_NAME } from '../../constants/brand.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logForDebugging } from '../debug.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import {
   ConfigParseError,
   errorMessage,

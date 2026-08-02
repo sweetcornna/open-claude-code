@@ -6,10 +6,10 @@ import {
   getRateLimitTier,
   getSubscriptionType,
 } from './auth.js'
-import { getGlobalConfig, getOrCreateUserID } from '../config.js'
+import { getGlobalConfig, getOrCreateUserID } from '../config/config.js'
 import { getCwd } from '../filesystem/cwd.js'
-import { type env, getHostPlatformForAnalytics } from '../env.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { type env, getHostPlatformForAnalytics } from '../config/env.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 
 // Cache for email fetched asynchronously at startup
 let cachedEmail: string | undefined | null = null // null means not fetched yet

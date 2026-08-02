@@ -66,7 +66,7 @@ beforeEach(async () => {
   )
   process.env.CLAUDE_CONFIG_DIR = configDir
   // Reset memoize cache by changing env
-  const { getClaudeConfigHomeDir } = await import('src/utils/envUtils')
+  const { getClaudeConfigHomeDir } = await import('src/utils/config/envUtils')
   getClaudeConfigHomeDir.cache.clear?.()
 })
 
@@ -76,7 +76,7 @@ afterEach(async () => {
   } else {
     delete process.env.CLAUDE_CONFIG_DIR
   }
-  const { getClaudeConfigHomeDir } = await import('src/utils/envUtils')
+  const { getClaudeConfigHomeDir } = await import('src/utils/config/envUtils')
   getClaudeConfigHomeDir.cache.clear?.()
   await rm(configDir, { recursive: true, force: true }).catch(() => {})
 })

@@ -41,7 +41,7 @@ import {
   getMcpInstructionsDeltaAttachment,
   type Attachment,
 } from '../../utils/attachments.js'
-import { getMemoryPath } from '../../utils/config.js'
+import { getMemoryPath } from '../../utils/config/config.js'
 import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
 import {
   analyzeContext,

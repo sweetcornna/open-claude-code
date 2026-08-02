@@ -5,7 +5,7 @@ import type {
   MCPServerConnection,
 } from '../../services/mcp/types.js'
 import type { Message } from '../../types/message.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
 
 export type McpInstructionsDelta = {
   /** Server names — for stateless-scan reconstruction. */

@@ -6,7 +6,7 @@ import {
 import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { isBuiltInAgent } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 
 export { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'

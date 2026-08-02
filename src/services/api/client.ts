@@ -24,7 +24,7 @@ import {
   getAWSRegion,
   getVertexRegionForModel,
   isEnvTruthy,
-} from '../../utils/envUtils.js'
+} from '../../utils/config/envUtils.js'
 
 /**
  * Environment variables for different client types:

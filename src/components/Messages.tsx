@@ -30,8 +30,8 @@ import { collapseBackgroundBashNotifications } from '../utils/collapseBackground
 import { collapseHookSummaries } from '../utils/collapseHookSummaries.js';
 import { collapseReadSearchGroups } from '../utils/collapseReadSearch.js';
 import { collapseTeammateShutdowns } from '../utils/collapseTeammateShutdowns.js';
-import { getGlobalConfig } from '../utils/config.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { getGlobalConfig } from '../utils/config/config.js';
+import { isEnvTruthy } from '../utils/config/envUtils.js';
 import { applyGrouping } from '../utils/groupToolUses.js';
 import {
   type MessageLookups,

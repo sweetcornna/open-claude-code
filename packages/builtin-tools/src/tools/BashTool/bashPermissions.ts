@@ -30,7 +30,7 @@ import { parseCommandRaw } from 'src/utils/bash/parser.js'
 import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { logForDebugging } from 'src/utils/debug.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import type {
   ClassifierBehavior,

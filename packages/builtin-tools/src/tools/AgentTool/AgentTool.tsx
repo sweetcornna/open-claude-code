@@ -49,7 +49,7 @@ import { getCwd, runWithCwdOverride } from 'src/utils/filesystem/cwd.js';
 import { getSubscriptionType } from 'src/utils/auth/auth.js';
 import { logForDebugging } from 'src/utils/debug.js';
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { AbortError, errorMessage, toError } from '@open-claude-code/tool-runtime/errors.js';
 import type { CacheSafeParams } from 'src/utils/forkedAgent.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';

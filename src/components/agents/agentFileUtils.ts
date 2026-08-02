@@ -10,7 +10,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { getCwd } from '../../utils/filesystem/cwd.js'
 import type { EffortValue } from '../../utils/effort.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { getErrnoCode } from '../../utils/errors.js'
 import { AGENT_PATHS } from './types.js'
 

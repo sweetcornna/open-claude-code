@@ -37,7 +37,7 @@ import { getAdvisorUsage } from './utils/advisor.js'
 import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
-} from './utils/config.js'
+} from './utils/config/config.js'
 import {
   getContextWindowForModel,
   getModelMaxOutputTokens,

@@ -22,7 +22,7 @@
  */
 
 import { join } from 'path'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { readFileSync } from '../../utils/filesystem/fileRead.js'
 import { stripBOM } from '../../utils/filesystem/jsonRead.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'

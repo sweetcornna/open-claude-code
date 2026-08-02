@@ -8,7 +8,7 @@ import { getFeatureValue_CACHED_WITH_REFRESH } from '@open-claude-code/tool-runt
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { isEnvTruthy } from 'src/utils/envUtils.js'
+import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { plural } from '@open-claude-code/tool-runtime/stringUtils.js'
 import { resolveAttachments, validateAttachmentPaths } from './attachments.js'

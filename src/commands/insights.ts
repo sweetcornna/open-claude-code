@@ -22,7 +22,7 @@ import {
   LEGACY_AGENT_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js'
 import type { LogOption } from '../types/logs.js'
-import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/process/execFileNoThrow.js'
 import { logError } from '../utils/log.js'

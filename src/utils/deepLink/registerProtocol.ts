@@ -27,7 +27,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { getErrnoCode } from '../errors.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'

@@ -9,7 +9,7 @@ import {
   getMaxVersion,
   shouldSkipVersion,
 } from '../utils/update/autoUpdater.js';
-import { isAutoUpdaterDisabled } from '../utils/config.js';
+import { isAutoUpdaterDisabled } from '../utils/config/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { gt, gte } from '../utils/text/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';

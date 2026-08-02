@@ -9,7 +9,7 @@ import {
 } from '../../bootstrap/state.js'
 import { type AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { isFsInaccessible } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { sanitizePath } from '../filesystem/path.js'

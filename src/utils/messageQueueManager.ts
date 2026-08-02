@@ -13,7 +13,7 @@ import type {
   QueuedCommand,
   QueuePriority,
 } from '../types/textInputTypes.js'
-import type { PastedContent } from './config.js'
+import type { PastedContent } from './config/config.js'
 import { extractTextContent } from './messages.js'
 import { objectGroupBy } from './collections/objectGroupBy.js'
 import { recordQueueOperation } from './sessionStorage.js'

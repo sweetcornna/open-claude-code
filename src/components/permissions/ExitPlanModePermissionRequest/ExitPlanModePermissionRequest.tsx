@@ -68,7 +68,7 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
 
 import type { Base64ImageSource, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 /* eslint-enable @typescript-eslint/no-require-imports */
-import type { PastedContent } from '../../../utils/config.js';
+import type { PastedContent } from '../../../utils/config/config.js';
 import type { ImageDimensions } from '../../../utils/terminal/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/terminal/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/terminal/imageStore.js';

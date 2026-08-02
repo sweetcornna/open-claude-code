@@ -15,7 +15,7 @@ mock.module('src/utils/settings/settings.js', () => ({
   getCachedOrDefaultSettings: () => ({}),
   getSettings: () => ({}),
 }))
-mock.module('src/utils/config.ts', () => ({
+mock.module('src/utils/config/config.ts', () => ({
   isConfigEnabled: () => true,
   getGlobalConfig: () => ({
     workspaceApiKey: undefined,
@@ -180,7 +180,7 @@ describe('getAuthStatus', () => {
       isAnthropicAuthEnabled: () => false,
       getSubscriptionType: () => null,
     }))
-    mock.module('src/utils/config.ts', () => ({
+    mock.module('src/utils/config/config.ts', () => ({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-' + 'Y'.repeat(50),
@@ -200,7 +200,7 @@ describe('getAuthStatus', () => {
       isAnthropicAuthEnabled: () => false,
       getSubscriptionType: () => null,
     }))
-    mock.module('src/utils/config.ts', () => ({
+    mock.module('src/utils/config/config.ts', () => ({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-' + 'Z'.repeat(50),
@@ -221,7 +221,7 @@ describe('getAuthStatus', () => {
       isAnthropicAuthEnabled: () => false,
       getSubscriptionType: () => null,
     }))
-    mock.module('src/utils/config.ts', () => ({
+    mock.module('src/utils/config/config.ts', () => ({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({ workspaceApiKey: undefined }),
     }))
@@ -239,7 +239,7 @@ describe('getAuthStatus', () => {
       isAnthropicAuthEnabled: () => false,
       getSubscriptionType: () => null,
     }))
-    mock.module('src/utils/config.ts', () => ({
+    mock.module('src/utils/config/config.ts', () => ({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-FROMSETTINGS' + 'S'.repeat(40),

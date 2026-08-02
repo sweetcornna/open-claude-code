@@ -8,7 +8,7 @@ import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
 import { Box, Text } from '@anthropic/ink';
 import type { AutoUpdaterResult } from '../utils/update/autoUpdater.js';
 import { getMaxVersion, getMaxVersionMessage } from '../utils/update/autoUpdater.js';
-import { isAutoUpdaterDisabled } from '../utils/config.js';
+import { isAutoUpdaterDisabled } from '../utils/config/config.js';
 import { installLatest } from '../utils/nativeInstaller/index.js';
 import { gt } from '../utils/text/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';

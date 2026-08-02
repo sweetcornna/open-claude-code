@@ -26,7 +26,7 @@ mock.module('src/utils/settings/settings.js', () => ({
   getCachedOrDefaultSettings: () => ({}),
   getSettings: () => ({}),
 }));
-mock.module('src/utils/config.ts', () => ({
+mock.module('src/utils/config/config.ts', () => ({
   isConfigEnabled: () => true,
   getGlobalConfig: () => ({ workspaceApiKey: undefined }),
   saveGlobalConfig: (_updater: unknown) => undefined,

@@ -4,7 +4,7 @@ import { describe, test, expect, mock } from 'bun:test'
 let mockPreferredLanguage: string | undefined
 let mockSystemLocale: string | undefined
 
-mock.module('src/utils/config.js', () => ({
+mock.module('src/utils/config/config.js', () => ({
   getGlobalConfig: () => ({
     preferredLanguage: mockPreferredLanguage,
   }),

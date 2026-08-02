@@ -63,14 +63,14 @@ import {
   getMergedBetas,
   getModelBetas,
 } from '../../utils/betas.js'
-import { getOrCreateUserID } from '../../utils/config.js'
+import { getOrCreateUserID } from '../../utils/config/config.js'
 import {
   CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
 import {
@@ -199,7 +199,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 import { count } from '../../utils/collections/array.js'
 import { insertBlockAfterToolResults } from '../../utils/collections/contentArray.js'
-import { validateBoundedIntEnvVar } from '../../utils/envValidation.js'
+import { validateBoundedIntEnvVar } from '../../utils/config/envValidation.js'
 import { safeParseJSON } from '../../utils/text/json.js'
 import { getInferenceProfileBackingModel } from '../../utils/model/bedrock.js'
 import {

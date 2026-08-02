@@ -13,7 +13,7 @@
 
 import type { SubscriptionType } from '../../services/oauth/types.js'
 import { getClaudeAIOAuthTokens } from '../../utils/auth/auth.js'
-import { getGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig } from '../../utils/config/config.js'
 
 // ---------------------------------------------------------------------------
 // Public types

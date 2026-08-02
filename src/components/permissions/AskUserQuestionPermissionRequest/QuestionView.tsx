@@ -6,7 +6,7 @@ import type {
   Question,
   QuestionOption,
 } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/AskUserQuestionTool.js';
-import type { PastedContent } from '../../../utils/config.js';
+import type { PastedContent } from '../../../utils/config/config.js';
 import { getExternalEditor } from '../../../utils/terminal/editor.js';
 import { toIDEDisplayName } from '../../../utils/terminal/ide.js';
 import type { ImageDimensions } from '../../../utils/terminal/imageResizer.js';

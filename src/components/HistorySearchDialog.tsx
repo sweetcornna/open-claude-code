@@ -5,7 +5,7 @@ import { getTimestampedHistory, type TimestampedHistoryEntry } from '../history.
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { Box, Text, stringWidth, wrapAnsi } from '@anthropic/ink';
 import { logEvent } from '../services/analytics/index.js';
-import type { HistoryEntry } from '../utils/config.js';
+import type { HistoryEntry } from '../utils/config/config.js';
 import { formatRelativeTimeAgo, truncateToWidth } from '../utils/text/format.js';
 import { FuzzyPicker } from '@anthropic/ink';
 

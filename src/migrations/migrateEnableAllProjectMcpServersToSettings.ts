@@ -2,7 +2,7 @@ import { logEvent } from 'src/services/analytics/index.js'
 import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
-} from '../utils/config.js'
+} from '../utils/config/config.js'
 import { logError } from '../utils/log.js'
 import {
   getSettingsForSource,

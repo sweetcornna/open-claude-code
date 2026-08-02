@@ -1,6 +1,6 @@
 import { profileCheckpoint } from '../utils/startupProfiler.js'
 import '../bootstrap/state.js'
-import '../utils/config.js'
+import '../utils/config/config.js'
 import type { Attributes, MetricOptions } from '@opentelemetry/api'
 import memoize from 'lodash-es/memoize.js'
 import { getIsNonInteractiveSession } from 'src/bootstrap/state.js'
@@ -25,12 +25,12 @@ import {
   getGlobalConfig,
   recordFirstStartTime,
   saveGlobalConfig,
-} from '../utils/config.js'
+} from '../utils/config/config.js'
 import { logForDebugging } from '../utils/debug.js'
 import { detectCurrentRepository } from '../utils/detectRepository.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
-import { initJetBrainsDetection } from '../utils/envDynamic.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
+import { initJetBrainsDetection } from '../utils/config/envDynamic.js'
+import { isEnvTruthy } from '../utils/config/envUtils.js'
 import { ConfigParseError, errorMessage } from '../utils/errors.js'
 // showInvalidConfigDialog is dynamically imported in the error path to avoid loading React at init
 import {
@@ -40,7 +40,7 @@ import {
 import {
   applyConfigEnvironmentVariables,
   applySafeConfigEnvironmentVariables,
-} from '../utils/managedEnv.js'
+} from '../utils/config/managedEnv.js'
 import { configureGlobalMTLS } from '../utils/network/mtls.js'
 import {
   ensureScratchpadDir,

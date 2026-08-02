@@ -3,7 +3,7 @@ import { use } from 'react';
 import { Box } from '@anthropic/ink';
 import type { AgentDefinitionsResult } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { getMemoryFiles } from '../utils/claudemd.js';
-import { getGlobalConfig } from '../utils/config.js';
+import { getGlobalConfig } from '../utils/config/config.js';
 import { getActiveNotices, type StatusNoticeContext } from '../utils/terminal/statusNoticeDefinitions.js';
 
 type Props = {

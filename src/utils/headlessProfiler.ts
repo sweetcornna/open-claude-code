@@ -18,7 +18,7 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import { logForDebugging } from './debug.js'
-import { isEnvTruthy } from './envUtils.js'
+import { isEnvTruthy } from './config/envUtils.js'
 import { getPerformance } from './profilerBase.js'
 import { jsonStringify } from './slowOperations.js'
 

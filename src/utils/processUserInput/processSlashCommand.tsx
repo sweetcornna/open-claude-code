@@ -42,7 +42,7 @@ import { createAbortController } from '../process/abortController.js';
 import { getAgentContext } from '../agentContext.js';
 import { createAttachmentMessage, getAttachmentMessages } from '../attachments.js';
 import { logForDebugging } from '../debug.js';
-import { isEnvTruthy } from '../envUtils.js';
+import { isEnvTruthy } from '../config/envUtils.js';
 import { AbortError, MalformedCommandError } from '../errors.js';
 import { getDisplayPath } from '../filesystem/file.js';
 import { extractResultText, prepareForkedCommandContext } from '../forkedAgent.js';

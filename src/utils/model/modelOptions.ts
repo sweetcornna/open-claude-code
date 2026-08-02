@@ -32,7 +32,7 @@ import {
   type ModelSetting,
 } from './model.js'
 import { has1mContext } from '../context.js'
-import { getGlobalConfig } from '../config.js'
+import { getGlobalConfig } from '../config/config.js'
 import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,

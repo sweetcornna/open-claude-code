@@ -14,7 +14,7 @@ import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tool
 import { TASK_STOP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskStopTool/prompt.js'
 import { TEAM_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TeamCreateTool/constants.js'
 import { TEAM_DELETE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TeamDeleteTool/constants.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
+import { isEnvTruthy } from '../utils/config/envUtils.js'
 
 // Checks the same gate as isScratchpadEnabled() in
 // utils/permissions/filesystem.ts. Duplicated here because importing

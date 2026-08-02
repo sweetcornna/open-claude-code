@@ -7,11 +7,11 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js';
-import { isRunningWithBun } from 'src/utils/bundledMode.js';
-import { isAutoUpdaterDisabled } from 'src/utils/config.js';
+import { isRunningWithBun } from 'src/utils/config/bundledMode.js';
+import { isAutoUpdaterDisabled } from 'src/utils/config/config.js';
 import { getContextWindowForModel } from 'src/utils/context.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
-import { hasNodeOption } from 'src/utils/envUtils.js';
+import { hasNodeOption } from 'src/utils/config/envUtils.js';
 import { getIsGit, getWorktreeCount } from 'src/utils/git.js';
 import { getGhAuthStatus } from 'src/utils/github/ghAuthStatus.js';
 import { logError } from 'src/utils/log.js';

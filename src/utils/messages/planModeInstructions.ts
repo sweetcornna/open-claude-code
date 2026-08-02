@@ -13,7 +13,7 @@ import { FileWriteTool } from '@open-claude-code/builtin-tools/tools/FileWriteTo
 import { GLOB_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GlobTool/prompt.js'
 import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/prompt.js'
 import type { UserMessage } from '../../types/message.js'
-import { getCurrentProjectConfig } from '../config.js'
+import { getCurrentProjectConfig } from '../config/config.js'
 import { hasEmbeddedSearchTools } from '../embeddedTools.js'
 import {
   getPewterLedgerVariant,

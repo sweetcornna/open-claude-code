@@ -61,11 +61,11 @@ import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { count } from '../../utils/collections/array.js';
 import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { Cursor } from '../../utils/terminal/Cursor.js';
-import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config.js';
+import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config/config.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
 import type { EffortLevel } from '../../utils/effort.js';
-import { env } from '../../utils/env.js';
+import { env } from '../../utils/config/env.js';
 import { errorMessage } from '../../utils/errors.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import {

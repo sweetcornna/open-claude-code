@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { env } from '../../utils/env.js';
+import { env } from '../../utils/config/env.js';
 
 export type ClawdPose =
   | 'default'

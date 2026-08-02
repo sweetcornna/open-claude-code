@@ -38,7 +38,7 @@ let _mockGetGlobalConfig: () => unknown = () => ({
 let _mockSaveGlobalConfig: (updater: unknown) => unknown = (_u: unknown) =>
   undefined
 const _originalOccConfigDir = process.env.OCC_CONFIG_DIR
-mock.module('src/utils/config.ts', () => ({
+mock.module('src/utils/config/config.ts', () => ({
   isConfigEnabled: () => true,
   getGlobalConfig: () =>
     _useMockForConfig ? _mockGetGlobalConfig() : { workspaceApiKey: undefined },

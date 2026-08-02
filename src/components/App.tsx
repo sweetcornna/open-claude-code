@@ -5,7 +5,7 @@ import { type AppState, AppStateProvider } from '../state/AppState.js';
 import { onChangeAppState } from '../state/onChangeAppState.js';
 import type { FpsMetrics } from '../utils/fpsTracker.js';
 import { ThemeProvider } from '@anthropic/ink';
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
+import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js';
 
 type Props = {
   getFpsMetrics: () => FpsMetrics | undefined;

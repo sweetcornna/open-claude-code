@@ -8,7 +8,7 @@ import { Box, Link, Text } from '@anthropic/ink';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { getMcpConfigsByScope } from '../../services/mcp/config.js';
 import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js';
-import { checkHasTrustDialogAccepted, saveCurrentProjectConfig } from '../../utils/config.js';
+import { checkHasTrustDialogAccepted, saveCurrentProjectConfig } from '../../utils/config/config.js';
 import { getCwd } from '../../utils/filesystem/cwd.js';
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js';
 import { gracefulShutdownSync } from '../../utils/process/gracefulShutdown.js';

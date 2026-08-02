@@ -11,7 +11,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { getProjectRoot } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
 import { isFsInaccessible } from '../errors.js'
 import { normalizePathForComparison } from '../filesystem/file.js'
 import type { FrontmatterData } from './frontmatterParser.js'

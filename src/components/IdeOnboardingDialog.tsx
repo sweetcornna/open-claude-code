@@ -1,9 +1,9 @@
 import React from 'react';
-import { envDynamic } from 'src/utils/envDynamic.js';
+import { envDynamic } from 'src/utils/config/envDynamic.js';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
-import { env } from '../utils/env.js';
+import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js';
+import { env } from '../utils/config/env.js';
 import {
   getTerminalIdeType,
   type IDEExtensionInstallationStatus,

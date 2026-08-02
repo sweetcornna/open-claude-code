@@ -189,7 +189,7 @@ const mockedGetClaudeConfigHomeDirMD: (() => string) & {
   { cache: { clear: () => {}, get: (_k: unknown) => undefined } },
 )
 
-mock.module('src/utils/envUtils.js', () => ({
+mock.module('src/utils/config/envUtils.js', () => ({
   getClaudeConfigHomeDir: mockedGetClaudeConfigHomeDirMD,
   isEnvTruthy: realIsEnvTruthy,
   getEnvBool: () => false,

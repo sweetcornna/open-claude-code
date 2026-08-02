@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
 import { getDisplayedEffortLevel } from '../../utils/effort.js'
 import { getMainLoopModel } from '../../utils/model/model.js'

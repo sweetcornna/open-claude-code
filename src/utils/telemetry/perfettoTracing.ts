@@ -33,7 +33,7 @@ import {
   getClaudeConfigHomeDir,
   isEnvDefinedFalsy,
   isEnvTruthy,
-} from '../envUtils.js'
+} from '../config/envUtils.js'
 import { errorMessage } from '../errors.js'
 import { djb2Hash } from '../filesystem/hash.js'
 import { jsonStringify } from '../slowOperations.js'

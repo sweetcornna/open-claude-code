@@ -13,7 +13,7 @@ import {
   type PersistedWorktreeSession,
   type TranscriptMessage,
 } from '../../types/logs.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import { parseJSONL } from '../text/json.js'
 import {
   readTranscriptForLoad,

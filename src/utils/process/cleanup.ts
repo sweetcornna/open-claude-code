@@ -3,7 +3,7 @@ import { join } from 'path'
 import { logEvent } from '../../services/analytics/index.js'
 import { CACHE_PATHS } from '../filesystem/cachePaths.js'
 import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import {
   type FsOperations,
   getFsImplementation,

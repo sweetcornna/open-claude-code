@@ -3,7 +3,7 @@ import { join } from 'path'
 import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { logError } from '../../utils/log.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { ProvidersFileSchema, type ProviderConfig } from './types.js'
 
 /**

@@ -1,6 +1,6 @@
-import { isInBundledMode } from 'src/utils/bundledMode.js';
+import { isInBundledMode } from 'src/utils/config/bundledMode.js';
 import { getCurrentInstallationType } from 'src/utils/doctorDiagnostic.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
+import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { useStartupNotification } from './useStartupNotification.js';
 
 const NPM_DEPRECATION_MESSAGE = '';

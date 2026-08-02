@@ -5,9 +5,18 @@ import * as React from 'react';
 import { useState, useCallback } from 'react';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import figures from 'figures';
-import { type GlobalConfig, saveGlobalConfig, getCurrentProjectConfig, type OutputStyle } from '../../utils/config.js';
+import {
+  type GlobalConfig,
+  saveGlobalConfig,
+  getCurrentProjectConfig,
+  type OutputStyle,
+} from '../../utils/config/config.js';
 import { normalizeApiKeyForConfig } from '../../utils/auth/authPortable.js';
-import { getGlobalConfig, getAutoUpdaterDisabledReason, formatAutoUpdaterDisabledReason } from '../../utils/config.js';
+import {
+  getGlobalConfig,
+  getAutoUpdaterDisabledReason,
+  formatAutoUpdaterDisabledReason,
+} from '../../utils/config/config.js';
 import chalk from 'chalk';
 import {
   permissionModeShortTitle,
@@ -52,7 +61,7 @@ import { isSupportedTerminal, hasAccessToIDEExtensionDiffFeature } from '../../u
 import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js';
 import { DEFAULT_OUTPUT_STYLE_NAME } from 'src/constants/outputStyles.js';
-import { isEnvTruthy, isRunningOnHomespace } from 'src/utils/envUtils.js';
+import { isEnvTruthy, isRunningOnHomespace } from 'src/utils/config/envUtils.js';
 import type { LocalJSXCommandContext, CommandResultDisplay } from '../../commands.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
