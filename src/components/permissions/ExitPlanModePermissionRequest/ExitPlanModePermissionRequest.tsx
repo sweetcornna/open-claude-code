@@ -24,7 +24,7 @@ import { AGENT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AgentTool
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/constants.js';
 import type { AllowedPrompt } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/ExitPlanModeV2Tool.js';
 import { TEAM_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TeamCreateTool/constants.js';
-import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js';
+import { isAgentSwarmsEnabled } from '../../../utils/agents/agentSwarmsEnabled.js';
 import { calculateContextPercentages, getContextWindowForModel } from '../../../utils/session/context.js';
 import { getExternalEditor } from '../../../utils/terminal/editor.js';
 import { getDisplayPath } from '../../../utils/filesystem/file.js';
@@ -45,8 +45,8 @@ import {
   restoreDangerousPermissions,
   stripDangerousPermissionsForAutoMode,
 } from '../../../utils/permissions/permissionSetup.js';
-import { getPewterLedgerVariant, isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';
-import { getPlan, getPlanFilePath } from '../../../utils/plans.js';
+import { getPewterLedgerVariant, isPlanModeInterviewPhaseEnabled } from '../../../utils/agents/planModeV2.js';
+import { getPlan, getPlanFilePath } from '../../../utils/agents/plans.js';
 import { editFileInEditor, editPromptInEditor } from '../../../utils/terminal/promptEditor.js';
 import {
   getCurrentSessionTitle,

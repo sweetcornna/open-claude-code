@@ -57,7 +57,7 @@ import {
   sendSandboxPermissionResponseViaMailbox,
 } from '../utils/swarm/permissionSync.js';
 import { registerSandboxPermissionCallback } from '../hooks/useSwarmPermissionPoller.js';
-import { getTeamName, getAgentName } from '../utils/teammate.js';
+import { getTeamName, getAgentName } from '../utils/agents/teammate.js';
 import { WorkerPendingPermission } from '../components/permissions/WorkerPendingPermission.js';
 import {
   injectUserMessageToTeammate,
@@ -108,7 +108,7 @@ import { getSystemPrompt } from '../constants/prompts.js';
 import { buildEffectiveSystemPrompt } from '../utils/session/systemPrompt.js';
 import { getSystemContext, getUserContext } from '../context.js';
 import { getMemoryFiles } from '../utils/session/claudemd.js';
-import { startBackgroundHousekeeping } from '../utils/backgroundHousekeeping.js';
+import { startBackgroundHousekeeping } from '../utils/agents/backgroundHousekeeping.js';
 import { getTotalCost } from '../cost-tracker.js';
 import { useCostSummary } from '../costHook.js';
 import { useFpsMetrics } from '../context/fpsMetrics.js';
@@ -229,7 +229,7 @@ import type { ContentBlockParam, ContentBlock, ImageBlockParam } from '@anthropi
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
 import type { PastedContent } from '../utils/config/config.js';
 import type { InternalPermissionMode } from '../types/permissions.js';
-import { getPlanSlug, setPlanSlug } from '../utils/plans.js';
+import { getPlanSlug, setPlanSlug } from '../utils/agents/plans.js';
 import {
   removeTranscriptMessage,
   getCurrentSessionTitle,
@@ -264,7 +264,7 @@ const PROACTIVE_FALSE = () => false;
 const PROACTIVE_NULL = (): number | null => null;
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
+import { isAgentSwarmsEnabled } from '../utils/agents/agentSwarmsEnabled.js';
 import type { SandboxAskCallback, NetworkHostPattern } from '../utils/sandbox/sandbox-adapter.js';
 
 import {

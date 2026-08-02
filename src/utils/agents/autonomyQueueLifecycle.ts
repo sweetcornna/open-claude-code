@@ -5,7 +5,7 @@ import {
   listAutonomyRuns,
   markAutonomyRunCancelled,
   markAutonomyRunRunning,
-} from '../autonomyRuns.js'
+} from './autonomyRuns.js'
 
 export type AutonomyQueuePartition = {
   attachmentCommands: QueuedCommand[]

@@ -55,7 +55,7 @@ mock.module('src/constants/oauth.js', () => {
   }
 })
 
-mock.module('src/utils/remoteTriggerAudit.js', () => ({
+mock.module('src/utils/agents/remoteTriggerAudit.js', () => ({
   appendRemoteTriggerAuditRecord: async (record: Record<string, unknown>) => {
     const fullRecord = {
       auditId: `audit-${auditRecords.length + 1}`,

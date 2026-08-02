@@ -3,7 +3,7 @@ import { rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getDefaultAppState } from '../../../state/AppStateStore'
-import { readMailbox, writeToMailbox } from '../../teammateMailbox'
+import { readMailbox, writeToMailbox } from '../../agents/teammateMailbox'
 import {
   killInProcessTeammateByAgentId,
   spawnInProcessTeammate,

@@ -8,7 +8,7 @@
  */
 
 import type { AppState } from '../../state/AppState.js'
-import { getTeamName } from '../teammate.js'
+import { getTeamName } from './teammate.js'
 
 /**
  * Returns the standalone agent name if set and not a swarm teammate.

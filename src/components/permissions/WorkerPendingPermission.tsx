@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { getAgentName, getTeammateColor, getTeamName } from '../../utils/teammate.js';
+import { getAgentName, getTeammateColor, getTeamName } from '../../utils/agents/teammate.js';
 import { Spinner } from '../Spinner.js';
 import { WorkerBadge } from './WorkerBadge.js';
 

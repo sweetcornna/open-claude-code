@@ -46,7 +46,7 @@ import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   createCacheSafeParams,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
+} from '../../utils/agents/forkedAgent.js'
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import {
   createMemorySavedMessage,

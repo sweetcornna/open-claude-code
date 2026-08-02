@@ -7,7 +7,7 @@ import { getExternalEditor } from '../../utils/terminal/editor.js';
 import { toIDEDisplayName } from '../../utils/terminal/ide.js';
 import { applyPermissionUpdate } from '../../utils/permissions/PermissionUpdate.js';
 import { prepareContextForPlanMode } from '../../utils/permissions/permissionSetup.js';
-import { getPlan, getPlanFilePath } from '../../utils/plans.js';
+import { getPlan, getPlanFilePath } from '../../utils/agents/plans.js';
 import { editFileInEditor } from '../../utils/terminal/promptEditor.js';
 import { renderToString } from '../../utils/terminal/staticRender.js';
 

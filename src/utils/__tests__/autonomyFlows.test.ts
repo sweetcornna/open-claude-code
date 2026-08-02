@@ -25,8 +25,8 @@ import {
   startManagedAutonomyFlow,
   type AutonomyFlowRecord,
   type ManagedAutonomyFlowStepDefinition,
-} from '../autonomyFlows'
-import { AUTONOMY_DIR } from '../autonomyAuthority'
+} from '../agents/autonomyFlows'
+import { AUTONOMY_DIR } from '../agents/autonomyAuthority'
 import { cleanupTempDir, createTempDir } from '../../../tests/mocks/file-system'
 
 let tempDir = ''

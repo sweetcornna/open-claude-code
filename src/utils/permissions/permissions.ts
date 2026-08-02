@@ -79,7 +79,7 @@ import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.
 import {
   clearClassifierChecking,
   setClassifierChecking,
-} from '../classifierApprovals.js'
+} from './classifierApprovals.js'
 import { isInProtectedNamespace } from '../config/envUtils.js'
 import { executePermissionRequestHooks } from '../hooks.js'
 import {

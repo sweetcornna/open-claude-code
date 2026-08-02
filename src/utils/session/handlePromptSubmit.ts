@@ -39,7 +39,7 @@ import { resolveSkillModelOverride } from '../model/model.js'
 import {
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
-} from '../autonomyQueueLifecycle.js'
+} from '../agents/autonomyQueueLifecycle.js'
 import type { ProcessUserInputContext } from '../processUserInput/processUserInput.js'
 import { processUserInput } from '../processUserInput/processUserInput.js'
 import type { QueryGuard } from './QueryGuard.js'

@@ -19,11 +19,11 @@ import { UserImageMessage } from './UserImageMessage.js';
 import { jsonParse } from '../../utils/telemetry/slowOperations.js';
 import { plural } from '../../utils/text/stringUtils.js';
 import { isEnvTruthy } from '../../utils/config/envUtils.js';
-import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
+import { isAgentSwarmsEnabled } from '../../utils/agents/agentSwarmsEnabled.js';
 import { tryRenderPlanApprovalMessage, formatTeammateMessageContent } from './PlanApprovalMessage.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { TeammateMessageContent } from './UserTeammateMessage.js';
-import { isShutdownApproved } from '../../utils/teammateMailbox.js';
+import { isShutdownApproved } from '../../utils/agents/teammateMailbox.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 
 import { feature } from 'bun:bundle';

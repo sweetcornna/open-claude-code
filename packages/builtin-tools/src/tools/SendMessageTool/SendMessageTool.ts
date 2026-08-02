@@ -12,8 +12,8 @@ import {
 } from 'src/tasks/LocalAgentTask/LocalAgentTask.js'
 import { isMainSessionTask } from 'src/tasks/LocalMainSessionTask.js'
 import { toAgentId } from 'src/types/ids.js'
-import { generateRequestId } from 'src/utils/agentId.js'
-import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
+import { generateRequestId } from 'src/utils/agents/agentId.js'
+import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { truncate } from 'src/utils/text/format.js'
@@ -31,13 +31,13 @@ import {
   getTeamName,
   isTeamLead,
   isTeammate,
-} from 'src/utils/teammate.js'
+} from 'src/utils/agents/teammate.js'
 import {
   createShutdownApprovedMessage,
   createShutdownRejectedMessage,
   createShutdownRequestMessage,
   writeToMailbox,
-} from 'src/utils/teammateMailbox.js'
+} from 'src/utils/agents/teammateMailbox.js'
 import { resumeAgentBackground } from '../AgentTool/resumeAgent.js'
 import { SEND_MESSAGE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'

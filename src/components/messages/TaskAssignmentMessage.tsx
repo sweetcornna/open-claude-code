@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { isTaskAssignment, type TaskAssignmentMessage } from '../../utils/teammateMailbox.js';
+import { isTaskAssignment, type TaskAssignmentMessage } from '../../utils/agents/teammateMailbox.js';
 
 type Props = {
   assignment: TaskAssignmentMessage;

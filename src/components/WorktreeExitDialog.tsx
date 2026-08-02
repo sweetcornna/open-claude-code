@@ -4,7 +4,7 @@ import { logEvent } from 'src/services/analytics/index.js';
 import { logForDebugging } from 'src/utils/telemetry/debug.js';
 import { Box, Text, Dialog } from '@anthropic/ink';
 import { execFileNoThrow } from '../utils/process/execFileNoThrow.js';
-import { getPlansDirectory } from '../utils/plans.js';
+import { getPlansDirectory } from '../utils/agents/plans.js';
 import { setCwd } from '../utils/shell/Shell.js';
 import { cleanupWorktree, getCurrentWorktreeSession, keepWorktree, killTmuxSession } from '../utils/git/worktree.js';
 import { Select } from './CustomSelect/select.js';

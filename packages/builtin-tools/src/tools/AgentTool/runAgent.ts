@@ -57,7 +57,7 @@ import {
 import {
   type CacheSafeParams,
   createSubagentContext,
-} from 'src/utils/forkedAgent.js'
+} from 'src/utils/agents/forkedAgent.js'
 import { registerFrontmatterHooks } from 'src/utils/hooks/registerFrontmatterHooks.js'
 import { clearSessionHooks } from 'src/utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from 'src/utils/hooks.js'

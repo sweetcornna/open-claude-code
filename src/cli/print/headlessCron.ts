@@ -17,8 +17,8 @@ import { WORKLOAD_CRON } from 'src/utils/session/workloadContext.js'
 import {
   createAutonomyQueuedPromptIfNoActiveSource,
   markAutonomyRunFailed,
-} from 'src/utils/autonomyRuns.js'
-import { cancelQueuedAutonomyCommands } from 'src/utils/autonomyQueueLifecycle.js'
+} from 'src/utils/agents/autonomyRuns.js'
+import { cancelQueuedAutonomyCommands } from 'src/utils/agents/autonomyQueueLifecycle.js'
 import {
   cronGate,
   cronJitterConfigModule,

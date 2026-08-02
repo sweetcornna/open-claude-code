@@ -21,7 +21,7 @@ import {
   readMailbox,
   type TeammateMessage,
   writeToMailbox,
-} from 'src/utils/teammateMailbox.js'
+} from 'src/utils/agents/teammateMailbox.js'
 
 let tempHome = ''
 let previousConfigDir: string | undefined

@@ -18,8 +18,8 @@ import * as lockfile from '../filesystem/lockfile.js'
 import { logError } from '../telemetry/log.js'
 import { createSignal } from '../process/signal.js'
 import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
-import { getTeamName } from '../teammate.js'
-import { getTeammateContext } from '../teammateContext.js'
+import { getTeamName } from '../agents/teammate.js'
+import { getTeammateContext } from '../agents/teammateContext.js'
 
 // Listeners for task list updates (used for immediate UI refresh in same process)
 const tasksUpdated = createSignal()

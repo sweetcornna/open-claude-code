@@ -53,7 +53,7 @@ import { cacheToObject } from '../../utils/fileStateCache.js'
 import {
   type CacheSafeParams,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
+} from '../../utils/agents/forkedAgent.js'
 import {
   executePostCompactHooks,
   executePreCompactHooks,
@@ -70,7 +70,7 @@ import {
   normalizeMessagesForAPI,
 } from '../../utils/messages.js'
 import { expandPath } from '../../utils/filesystem/path.js'
-import { getPlan, getPlanFilePath } from '../../utils/plans.js'
+import { getPlan, getPlanFilePath } from '../../utils/agents/plans.js'
 import {
   isSessionActivityTrackingActive,
   sendSessionActivitySignal,

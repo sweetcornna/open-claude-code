@@ -10,7 +10,7 @@ import { cleanupTempDir, createTempDir } from '../../tests/mocks/file-system'
 import {
   createAutonomyQueuedPrompt,
   markAutonomyRunCancelled,
-} from '../utils/autonomyRuns'
+} from '../utils/agents/autonomyRuns'
 
 let tempDirs: string[] = []
 

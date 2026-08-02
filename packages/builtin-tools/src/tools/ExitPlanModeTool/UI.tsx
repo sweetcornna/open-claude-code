@@ -8,7 +8,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { ToolProgressData } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
 import { getDisplayPath } from 'src/utils/filesystem/file.js';
-import { getPlan } from 'src/utils/plans.js';
+import { getPlan } from 'src/utils/agents/plans.js';
 import type { ThemeName } from 'src/utils/terminal/theme.js';
 import type { Output } from './ExitPlanModeV2Tool.js';
 

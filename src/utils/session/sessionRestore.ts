@@ -40,7 +40,7 @@ import type { FileHistorySnapshot } from '../filesystem/fileHistory.js'
 import { fileHistoryRestoreStateFromLog } from '../filesystem/fileHistory.js'
 import { createSystemMessage } from '../messages.js'
 import { parseUserSpecifiedModel } from '../model/model.js'
-import { getPlansDirectory } from '../plans.js'
+import { getPlansDirectory } from '../agents/plans.js'
 import { setCwd } from '../shell/Shell.js'
 import {
   adoptResumedSessionFile,
@@ -50,7 +50,7 @@ import {
   saveMode,
   saveWorktreeState,
 } from '../sessionStorage.js'
-import { isTodoV2Enabled } from '../tasks.js'
+import { isTodoV2Enabled } from '../task/tasks.js'
 import type { TodoList } from '../todo/types.js'
 import { TodoListSchema } from '../todo/types.js'
 import type { ContentReplacementRecord } from '../toolResultStorage.js'

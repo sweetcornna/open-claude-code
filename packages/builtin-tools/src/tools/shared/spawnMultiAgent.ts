@@ -7,7 +7,7 @@ import React from 'react'
 
 import { getSessionId } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
-import { formatAgentId } from 'src/utils/agentId.js'
+import { formatAgentId } from 'src/utils/agents/agentId.js'
 import { getGlobalConfig } from 'src/utils/config/config.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'

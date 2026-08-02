@@ -33,7 +33,7 @@ import { createAbortController } from '../utils/process/abortController.js'
 import {
   runWithAgentContext,
   type SubagentContext,
-} from '../utils/agentContext.js'
+} from '../utils/agents/agentContext.js'
 import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { logError } from '../utils/telemetry/log.js'

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { filterParentToolsForFork } from '../agentToolFilter.js'
+import { filterParentToolsForFork } from '../agents/agentToolFilter.js'
 import { ALL_AGENT_DISALLOWED_TOOLS } from '../../constants/tools.js'
 import type { Tool } from '../../Tool.js'
 

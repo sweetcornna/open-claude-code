@@ -1,7 +1,7 @@
 import { mock, describe, expect, test } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 import { createFileStateCacheWithSizeLimit } from '../../../utils/fileStateCache.js'
-import { createSubagentContext } from '../../../utils/forkedAgent.js'
+import { createSubagentContext } from '../../agents/forkedAgent.js'
 import { getEmptyToolPermissionContext } from '../../../Tool.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)

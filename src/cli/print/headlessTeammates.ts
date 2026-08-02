@@ -16,14 +16,14 @@ import {
   hasWorkingInProcessTeammates,
   isTeamLead,
   waitForTeammatesToBecomeIdle,
-} from 'src/utils/teammate.js'
+} from 'src/utils/agents/teammate.js'
 import {
   isShutdownApproved,
   markMessagesAsRead,
   readUnreadMessages,
-} from 'src/utils/teammateMailbox.js'
+} from 'src/utils/agents/teammateMailbox.js'
 import { removeTeammateFromTeamFile } from 'src/utils/swarm/teamHelpers.js'
-import { unassignTeammateTasks } from 'src/utils/tasks.js'
+import { unassignTeammateTasks } from 'src/utils/task/tasks.js'
 import { SHUTDOWN_TEAM_PROMPT } from './runtime.js'
 import type { HeadlessRunState } from './headlessRunState.js'
 

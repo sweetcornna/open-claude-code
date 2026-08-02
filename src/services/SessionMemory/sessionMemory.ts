@@ -23,7 +23,7 @@ import {
   createCacheSafeParams,
   createSubagentContext,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
+} from '../../utils/agents/forkedAgent.js'
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
 import {
   type REPLHookContext,

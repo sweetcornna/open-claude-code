@@ -19,7 +19,7 @@ import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/Agen
 import type { Message } from '../../types/message.js'
 import { createAbortController } from '../process/abortController.js'
 import type { FileStateCache } from '../fileStateCache.js'
-import type { CacheSafeParams } from '../forkedAgent.js'
+import type { CacheSafeParams } from '../agents/forkedAgent.js'
 import { getMainLoopModel } from '../model/model.js'
 import { asSystemPrompt } from './systemPromptType.js'
 import {

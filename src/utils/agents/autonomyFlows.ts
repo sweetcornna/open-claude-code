@@ -2,11 +2,11 @@ import { randomUUID } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
 import { getProjectRoot } from '../../bootstrap/state.js'
-import { AUTONOMY_DIR, type AutonomyTriggerKind } from '../autonomyAuthority.js'
+import { AUTONOMY_DIR, type AutonomyTriggerKind } from './autonomyAuthority.js'
 import {
   retainActiveFirst,
   withAutonomyPersistenceLock,
-} from '../autonomyPersistence.js'
+} from './autonomyPersistence.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 
 const AUTONOMY_FLOWS_MAX = 100

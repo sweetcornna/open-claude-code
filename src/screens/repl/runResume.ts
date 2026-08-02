@@ -21,7 +21,7 @@ import {
   getSessionEndHookTimeoutMs,
 } from '../../utils/hooks.js'
 import { createSystemMessage } from '../../utils/messages.js'
-import { copyPlanForFork, copyPlanForResume } from '../../utils/plans.js'
+import { copyPlanForFork, copyPlanForResume } from '../../utils/agents/plans.js'
 import {
   computeStandaloneAgentContext,
   exitRestoredWorktree,

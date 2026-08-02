@@ -19,7 +19,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { cronToHuman } from '../cron.js'
+import { cronToHuman } from './cron.js'
 import {
   type CronJitterConfig,
   type CronTask,
@@ -32,11 +32,11 @@ import {
   oneShotJitteredNextCronRunMs,
   readCronTasks,
   removeCronTasks,
-} from '../cronTasks.js'
+} from './cronTasks.js'
 import {
   releaseSchedulerLock,
   tryAcquireSchedulerLock,
-} from '../cronTasksLock.js'
+} from './cronTasksLock.js'
 import { logForDebugging } from '../telemetry/debug.js'
 
 const CHECK_INTERVAL_MS = 1000

@@ -20,11 +20,14 @@ import {
   getCommandsByMaxPriority,
   resetCommandQueue,
 } from '../utils/session/messageQueueManager'
-import { getAutonomyFlowById, listAutonomyFlows } from '../utils/autonomyFlows'
+import {
+  getAutonomyFlowById,
+  listAutonomyFlows,
+} from '../utils/agents/autonomyFlows'
 import {
   getAutonomyRunById,
   startManagedAutonomyFlowFromHeartbeatTask,
-} from '../utils/autonomyRuns'
+} from '../utils/agents/autonomyRuns'
 
 let tempDir = ''
 let originalProcessCwd = ''

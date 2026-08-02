@@ -6,7 +6,7 @@ import {
   isShutdownRequest,
   type ShutdownRejectedMessage,
   type ShutdownRequestMessage,
-} from '../../utils/teammateMailbox.js';
+} from '../../utils/agents/teammateMailbox.js';
 
 type ShutdownRequestProps = {
   request: ShutdownRequestMessage;

@@ -9,8 +9,8 @@ import { useEffect, useRef } from 'react'
 import type { QueuedCommand } from '../types/textInputTypes.js'
 import { TICK_TAG } from '../constants/xml.js'
 import { getCwd } from '../utils/filesystem/cwd.js'
-import { cancelQueuedAutonomyCommands } from '../utils/autonomyQueueLifecycle.js'
-import { createProactiveAutonomyCommands } from '../utils/autonomyRuns.js'
+import { cancelQueuedAutonomyCommands } from '../utils/agents/autonomyQueueLifecycle.js'
+import { createProactiveAutonomyCommands } from '../utils/agents/autonomyRuns.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import {
   isProactiveActive,

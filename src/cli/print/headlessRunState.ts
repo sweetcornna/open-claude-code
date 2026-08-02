@@ -233,7 +233,7 @@ export type HeadlessRunState = {
   unsubscribeAuthStatus: (() => void) | undefined
   readonly rateLimitListener: (limits: ClaudeAILimits) => void
   unsubscribeSkillChanges: () => void
-  cronScheduler: import('src/utils/cronScheduler.js').CronScheduler | null
+  cronScheduler: import('src/utils/task/cronScheduler.js').CronScheduler | null
 
   // ---- OAuth --------------------------------------------------------------
   readonly handledOrphanedToolUseIds: Set<string>

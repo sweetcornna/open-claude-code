@@ -9,7 +9,7 @@
 import type { AppState } from '../../state/AppState.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { logError } from '../telemetry/log.js'
-import { getDynamicTeamContext } from '../teammate.js'
+import { getDynamicTeamContext } from '../agents/teammate.js'
 import { getTeamFilePath, readTeamFile } from './teamHelpers.js'
 
 /**

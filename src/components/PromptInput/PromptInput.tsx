@@ -57,7 +57,7 @@ import {
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import type { Message } from '../../types/message.js';
 import type { BaseTextInputProps, PromptInputMode, VimMode } from '../../types/textInputTypes.js';
-import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
+import { isAgentSwarmsEnabled } from '../../utils/agents/agentSwarmsEnabled.js';
 import { count } from '../../utils/collections/array.js';
 import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { Cursor } from '../../utils/terminal/Cursor.js';
@@ -98,10 +98,10 @@ import {
 } from '../../utils/suggestions/slackChannelSuggestions.js';
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
 import { syncTeammateMode } from '../../utils/swarm/teamHelpers.js';
-import type { TeamSummary } from '../../utils/teamDiscovery.js';
-import { getTeammateColor } from '../../utils/teammate.js';
-import { isInProcessTeammate } from '../../utils/teammateContext.js';
-import { writeToMailbox } from '../../utils/teammateMailbox.js';
+import type { TeamSummary } from '../../utils/agents/teamDiscovery.js';
+import { getTeammateColor } from '../../utils/agents/teammate.js';
+import { isInProcessTeammate } from '../../utils/agents/teammateContext.js';
+import { writeToMailbox } from '../../utils/agents/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/text/textHighlighting.js';
 import type { Theme } from '../../utils/terminal/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';

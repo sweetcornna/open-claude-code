@@ -18,8 +18,8 @@ import { maybeResizeAndDownsampleImageBlock } from '../../../utils/terminal/imag
 import { cacheImagePath, storeImage } from '../../../utils/terminal/imageStore.js';
 import { logError } from '../../../utils/telemetry/log.js';
 import { applyMarkdown } from '../../../utils/text/markdown.js';
-import { isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';
-import { getPlanFilePath } from '../../../utils/plans.js';
+import { isPlanModeInterviewPhaseEnabled } from '../../../utils/agents/planModeV2.js';
+import { getPlanFilePath } from '../../../utils/agents/plans.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { QuestionView } from './QuestionView.js';
 import { SubmitQuestionsView } from './SubmitQuestionsView.js';

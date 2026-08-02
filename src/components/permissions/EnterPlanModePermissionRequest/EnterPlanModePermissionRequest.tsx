@@ -6,7 +6,7 @@ import {
   logEvent,
 } from '../../../services/analytics/index.js';
 import { useAppState } from '../../../state/AppState.js';
-import { isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';
+import { isPlanModeInterviewPhaseEnabled } from '../../../utils/agents/planModeV2.js';
 import { Select } from '../../CustomSelect/index.js';
 import { PermissionDialog } from '../PermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';

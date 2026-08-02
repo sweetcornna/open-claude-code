@@ -35,8 +35,12 @@ import {
   createUserMessage,
 } from '../utils/messages.js'
 import type { SystemPrompt } from '../utils/session/systemPromptType.js'
-import { getTaskListId, listTasks } from '../utils/tasks.js'
-import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
+import { getTaskListId, listTasks } from '../utils/task/tasks.js'
+import {
+  getAgentName,
+  getTeamName,
+  isTeammate,
+} from '../utils/agents/teammate.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const jobClassifierModule = feature('TEMPLATES')
@@ -50,7 +54,7 @@ import { executeAutoDream } from '../services/autoDream/autoDream.js'
 import { executePromptSuggestion } from '../services/PromptSuggestion/promptSuggestion.js'
 import { isBareMode, isEnvDefinedFalsy } from '../utils/config/envUtils.js'
 import { saveCacheSafeParams } from '../utils/collections/cacheSafeParamsSlot.js'
-import { createCacheSafeParams } from '../utils/forkedAgent.js'
+import { createCacheSafeParams } from '../utils/agents/forkedAgent.js'
 
 type StopHookResult = {
   blockingErrors: Message[]

@@ -25,7 +25,7 @@ import type {
   ProgressMessage as ProgressMessageType,
   RenderableMessage,
 } from '../types/message.js';
-import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js';
+import { type AdvisorBlock, isAdvisorBlock } from '../utils/agents/advisor.js';
 import { collapseBackgroundBashNotifications } from '../utils/session/collapseBackgroundBashNotifications.js';
 import { collapseHookSummaries } from '../utils/session/collapseHookSummaries.js';
 import { collapseReadSearchGroups } from '../utils/session/collapseReadSearch.js';

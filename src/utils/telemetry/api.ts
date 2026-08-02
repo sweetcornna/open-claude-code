@@ -35,7 +35,7 @@ import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/Agen
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/constants.js'
 import { TASK_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskOutputTool/constants.js'
 import type { Message } from '../../types/message.js'
-import { isAgentSwarmsEnabled } from '../agentSwarmsEnabled.js'
+import { isAgentSwarmsEnabled } from '../agents/agentSwarmsEnabled.js'
 import {
   modelSupportsStructuredOutputs,
   shouldUseGlobalCacheScope,
@@ -53,7 +53,7 @@ import {
   getPlan,
   getPlanFilePath,
   persistFileSnapshotIfRemote,
-} from '../plans.js'
+} from '../agents/plans.js'
 import { getPlatform } from '../process/platform.js'
 import { countFilesRoundedRg } from '../filesystem/ripgrep.js'
 import { jsonStringify } from './slowOperations.js'

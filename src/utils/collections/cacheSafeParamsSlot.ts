@@ -17,7 +17,7 @@
  */
 import { getSessionId } from '../../bootstrap/state.js'
 import type { SessionId } from '../../types/ids.js'
-import type { CacheSafeParams } from '../forkedAgent.js'
+import type { CacheSafeParams } from '../agents/forkedAgent.js'
 
 let lastCacheSafeParams: CacheSafeParams | null = null
 let savedSessionId: SessionId | null = null

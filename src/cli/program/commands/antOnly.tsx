@@ -1,7 +1,7 @@
 // Extracted verbatim from the former `run()` in src/main.tsx (S7-4b split).
 import type { Command as CommanderCommand } from '@commander-js/extra-typings';
 import { BIN_NAME } from 'src/constants/brand.js';
-import { TASK_STATUSES } from 'src/utils/tasks.js';
+import { TASK_STATUSES } from 'src/utils/task/tasks.js';
 import { validateUuid } from 'src/utils/collections/uuid.js';
 
 export function registerAntOnlyCommands(program: CommanderCommand): void {

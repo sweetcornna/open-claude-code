@@ -16,12 +16,12 @@ import {
 } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js';
 import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js';
 import type { AssistantMessage } from '../types/message.js';
-import { recordAutoModeDenial } from '../utils/autoModeDenials.js';
+import { recordAutoModeDenial } from '../utils/permissions/autoModeDenials.js';
 import {
   clearClassifierChecking,
   setClassifierApproval,
   setYoloClassifierApproval,
-} from '../utils/classifierApprovals.js';
+} from '../utils/permissions/classifierApprovals.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
 import { AbortError } from '../utils/errors.js';
 import { logError } from '../utils/telemetry/log.js';

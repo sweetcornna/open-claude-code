@@ -4,8 +4,8 @@ import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@open-claude-code/tool-runtime/analytics.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { formatAgentId } from 'src/utils/agentId.js'
-import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js'
+import { formatAgentId } from 'src/utils/agents/agentId.js'
+import { isAgentSwarmsEnabled } from 'src/utils/agents/agentSwarmsEnabled.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
@@ -28,7 +28,7 @@ import {
   ensureTasksDir,
   resetTaskList,
   setLeaderTeamName,
-} from 'src/utils/tasks.js'
+} from 'src/utils/task/tasks.js'
 import { generateWordSlug } from 'src/utils/text/words.js'
 import { TEAM_CREATE_TOOL_NAME } from './constants.js'
 import { getPrompt } from './prompt.js'

@@ -36,7 +36,7 @@ import { hasPermissionsToUseTool } from 'src/utils/permissions/permissions.js'
 import { writeToStdout } from 'src/utils/process/process.js'
 import { jsonStringify } from 'src/utils/telemetry/slowOperations.js'
 import { z } from 'zod/v4'
-import { notifyCommandLifecycle } from '../utils/commandLifecycle.js'
+import { notifyCommandLifecycle } from '../utils/task/commandLifecycle.js'
 import { normalizeControlMessageKeys } from '../utils/session/controlMessageCompat.js'
 import { executePermissionRequestHooks } from '../utils/hooks.js'
 import {

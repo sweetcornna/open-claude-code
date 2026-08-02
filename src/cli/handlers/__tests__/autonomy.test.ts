@@ -7,7 +7,7 @@ import {
   setOriginalCwd,
   setProjectRoot,
 } from '../../../bootstrap/state'
-import { createAutonomyQueuedPrompt } from '../../../utils/autonomyRuns'
+import { createAutonomyQueuedPrompt } from '../../../utils/agents/autonomyRuns'
 import {
   cancelAutonomyFlowText,
   getAutonomyDeepSectionText,
@@ -19,7 +19,7 @@ import {
 import {
   listAutonomyFlows,
   startManagedAutonomyFlow,
-} from '../../../utils/autonomyFlows'
+} from '../../../utils/agents/autonomyFlows'
 
 let tempDir: string
 let previousConfigDir: string | undefined

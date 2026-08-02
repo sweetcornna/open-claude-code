@@ -11,7 +11,7 @@ import {
   prepareAutonomyTurnPrompt,
   type AutonomyTriggerKind,
   type HeartbeatAuthorityTask,
-} from '../autonomyAuthority.js'
+} from './autonomyAuthority.js'
 import { getCwd } from '../filesystem/cwd.js'
 import {
   DEFAULT_AUTONOMY_OWNER_KEY,
@@ -26,11 +26,11 @@ import {
   type AutonomyFlowRecord,
   type AutonomyFlowSyncMode,
   type ManagedAutonomyFlowStepDefinition,
-} from '../autonomyFlows.js'
+} from './autonomyFlows.js'
 import {
   retainActiveFirst,
   withAutonomyPersistenceLock,
-} from '../autonomyPersistence.js'
+} from './autonomyPersistence.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { isProcessRunning } from '../process/genericProcessUtils.js'
 import { logError } from '../telemetry/log.js'

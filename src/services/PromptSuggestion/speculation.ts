@@ -28,7 +28,7 @@ import {
   type CacheSafeParams,
   createCacheSafeParams,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
+} from '../../utils/agents/forkedAgent.js'
 import { formatDuration, formatNumber } from '../../utils/text/format.js'
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import { logError } from '../../utils/telemetry/log.js'

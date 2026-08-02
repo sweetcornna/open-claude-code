@@ -11,9 +11,9 @@ const proactiveModule =
     ? (require('../../proactive/index.js') as typeof import('../../proactive/index.js'))
     : null
 const cronSchedulerModule =
-  require('../../utils/cronScheduler.js') as typeof import('../../utils/cronScheduler.js')
+  require('../../utils/task/cronScheduler.js') as typeof import('../../utils/task/cronScheduler.js')
 const cronJitterConfigModule =
-  require('../../utils/cronJitterConfig.js') as typeof import('../../utils/cronJitterConfig.js')
+  require('../../utils/task/cronJitterConfig.js') as typeof import('../../utils/task/cronJitterConfig.js')
 const cronGate =
   require('@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js') as typeof import('@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js')
 /* eslint-enable @typescript-eslint/no-require-imports */

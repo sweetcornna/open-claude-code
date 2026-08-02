@@ -7,7 +7,7 @@ import type { AssistantMessage, Message } from '../../types/message.js'
 import { type CompactionResult, compactConversation } from './compact.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import type { CacheSafeParams } from '../../utils/forkedAgent.js'
+import type { CacheSafeParams } from '../../utils/agents/forkedAgent.js'
 
 export const isReactiveOnlyMode: () => boolean = () => false
 

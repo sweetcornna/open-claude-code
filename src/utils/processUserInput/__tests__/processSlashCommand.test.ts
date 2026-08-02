@@ -11,8 +11,8 @@ import {
   getAutonomyRunById,
   listAutonomyRuns,
   markAutonomyRunRunning,
-} from '../../autonomyRuns'
-import { resetAutonomyAuthorityForTests } from '../../autonomyAuthority'
+} from '../../agents/autonomyRuns'
+import { resetAutonomyAuthorityForTests } from '../../agents/autonomyAuthority'
 import { createScheduledTaskQueuedCommand } from '../../../hooks/useScheduledTasks'
 import {
   cleanupTempDir,

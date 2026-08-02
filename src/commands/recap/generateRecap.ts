@@ -13,7 +13,7 @@
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js'
-import { runForkedAgent } from '../../utils/forkedAgent.js'
+import { runForkedAgent } from '../../utils/agents/forkedAgent.js'
 import {
   createUserMessage,
   getAssistantMessageText,
