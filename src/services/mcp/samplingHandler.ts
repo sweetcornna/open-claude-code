@@ -115,7 +115,9 @@ export function registerSamplingHandler(
       }
       const messages = toMessageParams(params.messages ?? [])
       if (messages.length === 0) {
-        throw new Error('sampling/createMessage requires at least one text message')
+        throw new Error(
+          'sampling/createMessage requires at least one text message',
+        )
       }
       samplingCallsThisSession++
 
@@ -151,11 +153,7 @@ export function registerSamplingHandler(
         })
 
         const text = response.content
-          .filter(
-            (block): block is { type: 'text'; text: string } =>
-              block.type === 'text',
-          )
-          .map(block => block.text)
+          .map(block => (block.type === 'text' ? block.text : ''))
           .join('')
 
         return {
@@ -165,14 +163,14 @@ export function registerSamplingHandler(
           stopReason: mapStopReason(response.stop_reason),
         }
       } catch (error) {
-        logMCPError(serverName, `sampling/createMessage failed: ${String(error)}`)
+        logMCPError(
+          serverName,
+          `sampling/createMessage failed: ${String(error)}`,
+        )
         throw error
       }
     })
   } catch (error) {
-    logMCPDebug(
-      serverName,
-      `Sampling handler not registered: ${String(error)}`,
-    )
+    logMCPDebug(serverName, `Sampling handler not registered: ${String(error)}`)
   }
 }

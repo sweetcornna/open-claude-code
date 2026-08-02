@@ -106,9 +106,8 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
   grok: ['GROK_API_KEY', 'XAI_API_KEY', 'GROK_MODEL', 'GROK_BASE_URL'],
 }
 
-export const ALL_PROFILE_ENV_KEYS: readonly string[] = Object.values(
-  PROFILE_ENV_KEYS,
-).flat()
+export const ALL_PROFILE_ENV_KEYS: readonly string[] =
+  Object.values(PROFILE_ENV_KEYS).flat()
 
 export function profilesFilePath(): string {
   return occConfigPath('provider-profiles.json')
