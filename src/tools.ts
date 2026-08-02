@@ -24,6 +24,10 @@ import './components/MessageResponse.js'
 // no-op and default-value facade fallbacks instead.
 import './services/analytics/index.js'
 import './services/analytics/growthbook.js'
+// Load the host bootstrap-state implementation before builtin tool modules.
+// It self-registers with tool-runtime; standalone package use fails fast if a
+// bootstrap-state accessor is called without a host.
+import './bootstrap/state.js'
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from '@open-claude-code/builtin-tools/tools/AgentTool/AgentTool.js'
 import { BashTool } from '@open-claude-code/builtin-tools/tools/BashTool/BashTool.js'
