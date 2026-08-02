@@ -29,6 +29,20 @@ import type {
   PDFReferenceAttachment,
 } from './types.js'
 
+/**
+ * Generates a file attachment by reading a file with proper validation and truncation.
+ * This is the core file reading logic shared between @-mentioned files and post-compact restoration.
+ *
+ * @param filename The absolute path to the file to read
+ * @param toolUseContext The tool use context for calling FileReadTool
+ * @param options Optional configuration for file reading
+ * @returns A new_file attachment or null if the file couldn't be read
+ */
+/**
+ * Check if a PDF file should be represented as a lightweight reference
+ * instead of being inlined. Returns a PDFReferenceAttachment for large PDFs
+ * (more than PDF_AT_MENTION_INLINE_THRESHOLD pages), or null otherwise.
+ */
 export async function tryGetPDFReference(
   filename: string,
 ): Promise<PDFReferenceAttachment | null> {
