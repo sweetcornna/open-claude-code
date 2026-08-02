@@ -354,10 +354,10 @@ Feature flags control which functionality is enabled at runtime. 代码中统一
 
 ```ts
 import { logMock } from "../../../tests/mocks/log";
-mock.module("src/utils/log.ts", logMock);
+mock.module("src/utils/telemetry/log.ts", logMock);
 
 import { debugMock } from "../../../../tests/mocks/debug";
-mock.module("src/utils/debug.ts", debugMock);
+mock.module("src/utils/telemetry/debug.ts", debugMock);
 ```
 
 源文件导出变更时只需更新 `tests/mocks/` 下的对应文件，不需要逐个修改测试。

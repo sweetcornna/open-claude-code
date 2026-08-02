@@ -29,7 +29,7 @@ import {
   type TimeBasedMCConfig,
 } from './timeBasedMCConfig.js'
 
-// Inline from utils/toolResultStorage.ts — importing that file pulls in
+// Inline from utils/tools/toolResultStorage.ts — importing that file pulls in
 // sessionStorage → utils/messages → services/api/errors, completing a
 // circular-deps loop back through this file via promptCacheBreakDetection.
 // Drift is caught by a test asserting equality with the source-of-truth.
