@@ -33,9 +33,6 @@ mock.module('src/utils/log.ts', logMock);
 mock.module('src/services/analytics/index.js', () => ({
   logEvent: () => {},
 }));
-mock.module('src/services/analytics/growthbook.js', () => ({
-  getFeatureValue_CACHED_MAY_BE_STALE: () => null,
-}));
 
 // Mock auth utilities
 mock.module('src/utils/auth.js', () => ({
