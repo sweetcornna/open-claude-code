@@ -53,7 +53,7 @@ import {
 } from '../../utils/auth/auth.js'
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
 import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/config/envUtils.js'
 import {
   errorMessage,
@@ -65,7 +65,7 @@ import {
   type ImageLimits,
   maybeResizeAndDownsampleImageBuffer,
 } from '../../utils/terminal/imageResizer.js'
-import { logMCPDebug, logMCPError } from '../../utils/log.js'
+import { logMCPDebug, logMCPError } from '../../utils/telemetry/log.js'
 import {
   getBinaryBlobSavedMessage,
   getFormatDescription,
@@ -260,7 +260,10 @@ import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
+import {
+  jsonParse,
+  jsonStringify,
+} from '../../utils/telemetry/slowOperations.js'
 
 const MCP_AUTH_CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
 

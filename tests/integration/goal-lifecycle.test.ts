@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { logMock } from '../mocks/log.js'
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 mock.module('bun:bundle', () => ({
   feature: () => true,

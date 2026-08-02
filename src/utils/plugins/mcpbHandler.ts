@@ -4,18 +4,18 @@ import { createHash } from 'crypto'
 import { chmod, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import type { McpServerConfig } from '../../services/mcp/types.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { parseAndValidateManifestFromBytes } from '../dxt/helpers.js'
 import { parseZipModes, unzipFile } from '../dxt/zip.js'
 import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getSecureStorage } from '../secureStorage/index.js'
 import {
   getSettings_DEPRECATED,
   updateSettingsForSource,
 } from '../settings/settings.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
 import { getSystemDirectories } from '../filesystem/systemDirectories.js'
 import { classifyFetchError, logPluginFetch } from './fetchTelemetry.js'
 

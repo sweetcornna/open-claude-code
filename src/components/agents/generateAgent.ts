@@ -3,7 +3,7 @@ import { getUserContext } from 'src/context.js'
 import { queryModelWithoutStreaming } from 'src/services/api/claude.js'
 import { getEmptyToolPermissionContext } from 'src/Tool.js'
 import { AGENT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js'
-import { prependUserContext } from 'src/utils/api.js'
+import { prependUserContext } from 'src/utils/telemetry/api.js'
 import {
   createUserMessage,
   normalizeMessagesForAPI,
@@ -21,7 +21,7 @@ import {
 } from '../../services/langfuse/index.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
-import { jsonParse } from '../../utils/slowOperations.js'
+import { jsonParse } from '../../utils/telemetry/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 
 type GeneratedAgent = {

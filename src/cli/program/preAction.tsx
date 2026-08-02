@@ -26,7 +26,7 @@ import { clearPluginCache } from 'src/utils/plugins/pluginLoader.js';
 import { migrateChangelogFromConfig } from 'src/utils/update/releaseNotes.js';
 import { ensureKeychainPrefetchCompleted } from 'src/utils/secureStorage/keychainPrefetch.js';
 import { ensureMdmSettingsLoaded } from 'src/utils/settings/mdm/settings.js';
-import { profileCheckpoint } from 'src/utils/startupProfiler.js';
+import { profileCheckpoint } from 'src/utils/telemetry/startupProfiler.js';
 
 export function registerPreActionHook(program: CommanderCommand): void {
   // Use preAction hook to run initialization only when executing a command,
@@ -55,7 +55,7 @@ export function registerPreActionHook(program: CommanderCommand): void {
     // a sink attaches. setup() attaches sinks for the default command, but
     // subcommands (doctor, mcp, plugin, auth) never call setup() and would
     // silently drop events on process.exit(). Both inits are idempotent.
-    const { initSinks } = await import('src/utils/sinks.js');
+    const { initSinks } = await import('src/utils/telemetry/sinks.js');
     initSinks();
     profileCheckpoint('preAction_after_sinks');
 

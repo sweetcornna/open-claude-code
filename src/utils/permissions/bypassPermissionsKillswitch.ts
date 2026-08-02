@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
 import { useEffect, useRef } from 'react'
 import { toError } from '../../utils/errors.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../telemetry/log.js'
 import { getIsRemoteMode } from '../../bootstrap/state.js'
 import {
   useAppState,

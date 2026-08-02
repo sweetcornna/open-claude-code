@@ -24,7 +24,7 @@ import type {
   PermissionAskDecision,
   PermissionUpdate,
 } from '../types/permissions.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import { truncateToWidth } from '../utils/text/format.js'
 import {
   createSystemMessage,

@@ -46,18 +46,18 @@ import type {
   NormalizedUserMessage,
   UserMessage,
 } from '../types/message.js'
-import { toolToAPISchema } from './api.js'
+import { toolToAPISchema } from './telemetry/api.js'
 import { filterInjectedMemoryFiles, getMemoryFiles } from './claudemd.js'
 import { getContextWindowForModel } from './context.js'
 import { getCwd } from './filesystem/cwd.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { isEnvTruthy } from './config/envUtils.js'
 import { errorMessage, toError } from './errors.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 import { normalizeMessagesForAPI } from './messages.js'
 import { getRuntimeMainLoopModel } from './model/model.js'
 import type { SettingSource } from './settings/constants.js'
-import { jsonStringify } from './slowOperations.js'
+import { jsonStringify } from './telemetry/slowOperations.js'
 import { buildEffectiveSystemPrompt } from './systemPrompt.js'
 import type { Theme } from './terminal/theme.js'
 import { getCurrentUsage } from './tokens.js'
@@ -1394,7 +1394,7 @@ export async function analyzeContextUsage(
     ...(() => {
       if (!apiUsage) return {}
       const { calculateCacheHitRate, getCacheThreshold } =
-        require('./cacheWarning.js') as typeof import('./cacheWarning.js')
+        require('./telemetry/cacheWarning.js') as typeof import('./telemetry/cacheWarning.js')
       const hitRate = calculateCacheHitRate(apiUsage)
       if (hitRate === null) return {}
       return { cacheHitRate: hitRate, cacheThreshold: getCacheThreshold() }

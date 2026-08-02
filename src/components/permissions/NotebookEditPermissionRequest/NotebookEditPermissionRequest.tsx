@@ -3,7 +3,7 @@ import React from 'react';
 import type { z } from 'zod/v4';
 import { Text } from '@anthropic/ink';
 import { NotebookEditTool } from '@open-claude-code/builtin-tools/tools/NotebookEditTool/NotebookEditTool.js';
-import { logError } from '../../../utils/log.js';
+import { logError } from '../../../utils/telemetry/log.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { NotebookEditToolDiff } from './NotebookEditToolDiff.js';

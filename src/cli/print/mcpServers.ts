@@ -14,7 +14,7 @@ import {
   connectToServer,
   fetchToolsForClient,
 } from 'src/services/mcp/client.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import { toError } from 'src/utils/errors.js'
 
 export type DynamicMcpState = {

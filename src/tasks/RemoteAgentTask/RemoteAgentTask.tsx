@@ -22,8 +22,8 @@ import {
   checkBackgroundRemoteSessionEligibility,
 } from '../../utils/background/remote/remoteSession.js';
 export type { BackgroundRemoteSessionPrecondition };
-import { logForDebugging } from '../../utils/debug.js';
-import { logError } from '../../utils/log.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
+import { logError } from '../../utils/telemetry/log.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
 import { extractTag, extractTextContent } from '../../utils/messages.js';
 import { emitTaskTerminatedSdk } from '../../utils/sdkEventQueue.js';
@@ -33,7 +33,7 @@ import {
   type RemoteAgentMetadata,
   writeRemoteAgentMetadata,
 } from '../../utils/sessionStorage.js';
-import { jsonStringify } from '../../utils/slowOperations.js';
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js';
 import { appendTaskOutput, evictTaskOutput, getTaskOutputPath, initTaskOutput } from '../../utils/task/diskOutput.js';
 import { registerTask, updateTaskState } from '../../utils/task/framework.js';
 import { fetchSession } from '../../utils/teleport/api.js';

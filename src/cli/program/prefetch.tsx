@@ -10,7 +10,7 @@ import { getRelevantTips } from 'src/services/tips/tipRegistry.js';
 import { prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe } from 'src/utils/auth/auth.js';
 import { checkHasTrustDialogAccepted } from 'src/utils/config/config.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
-import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js';
+import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js';
 import { isBareMode, isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { refreshModelCapabilities } from 'src/utils/model/modelCapabilities.js';
 import { countFilesRoundedRg } from 'src/utils/filesystem/ripgrep.js';
@@ -95,6 +95,6 @@ export function startDeferredPrefetches(): void {
 
   // Event loop stall detector — logs when the main thread is blocked >500ms
   if (process.env.USER_TYPE === 'ant') {
-    void import('src/utils/eventLoopStallDetector.js').then(m => m.startEventLoopStallDetector());
+    void import('src/utils/telemetry/eventLoopStallDetector.js').then(m => m.startEventLoopStallDetector());
   }
 }

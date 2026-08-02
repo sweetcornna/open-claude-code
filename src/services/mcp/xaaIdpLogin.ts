@@ -22,11 +22,11 @@ import xss from 'xss'
 import { openBrowser } from '../../utils/network/browser.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { toError } from '../../utils/errors.js'
-import { logMCPDebug } from '../../utils/log.js'
+import { logMCPDebug } from '../../utils/telemetry/log.js'
 import { getPlatform } from '../../utils/process/platform.js'
 import { getSecureStorage } from '../../utils/secureStorage/index.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
-import { jsonParse } from '../../utils/slowOperations.js'
+import { jsonParse } from '../../utils/telemetry/slowOperations.js'
 import { buildRedirectUri, findAvailablePort } from './oauthPort.js'
 
 export function isXaaEnabled(): boolean {

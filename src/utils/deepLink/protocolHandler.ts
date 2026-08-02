@@ -13,12 +13,12 @@
 
 import { parseDeepLink } from './parseDeepLink.js'
 import { homedir } from 'os'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import {
   filterExistingPaths,
   getKnownPathsForRepo,
 } from '../githubRepoPathMapping.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import { readLastFetchTime } from './banner.js'
 
 import { MACOS_BUNDLE_ID } from './registerProtocol.js'

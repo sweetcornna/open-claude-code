@@ -29,7 +29,7 @@ import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/Agen
 import type { AgentId } from '../types/ids.js'
 import type { Message, StreamEvent } from '../types/message.js'
 import { createChildAbortController } from './process/abortController.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { cloneFileStateCache } from './fileStateCache.js'
 import type { REPLHookContext } from './hooks/postSamplingHooks.js'
 import {

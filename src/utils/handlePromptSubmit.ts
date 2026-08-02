@@ -20,7 +20,7 @@ import {
 import { createAbortController } from './process/abortController.js'
 import type { PastedContent } from './config/config.js'
 import { getCwd } from './filesystem/cwd.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import type { EffortValue } from './effort.js'
 import type { FileHistoryState } from './filesystem/fileHistory.js'
 import {
@@ -29,7 +29,7 @@ import {
 } from './filesystem/fileHistory.js'
 import { gracefulShutdownSync } from './process/gracefulShutdown.js'
 import { toError } from './errors.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 import { enqueue } from './messageQueueManager.js'
 import { resolveSkillModelOverride } from './model/model.js'
 import {
@@ -39,7 +39,10 @@ import {
 import type { ProcessUserInputContext } from './processUserInput/processUserInput.js'
 import { processUserInput } from './processUserInput/processUserInput.js'
 import type { QueryGuard } from './QueryGuard.js'
-import { queryCheckpoint, startQueryProfile } from './queryProfiler.js'
+import {
+  queryCheckpoint,
+  startQueryProfile,
+} from './telemetry/queryProfiler.js'
 import { runWithWorkload } from './workloadContext.js'
 
 function exit(): void {

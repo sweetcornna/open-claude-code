@@ -11,7 +11,7 @@ import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { type AppState, useAppState, useSetAppState } from '../../state/AppState.js';
 import { getEmptyToolPermissionContext } from '../../Tool.js';
 import { AGENT_COLOR_TO_THEME_COLOR } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
-import { logForDebugging } from '../../utils/debug.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
 import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import { truncateToWidth } from '../../utils/text/format.js';
 import { getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
@@ -21,7 +21,7 @@ import {
   permissionModeFromString,
   permissionModeSymbol,
 } from '../../utils/permissions/PermissionMode.js';
-import { jsonStringify } from '../../utils/slowOperations.js';
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js';
 import { IT2_COMMAND, isInsideTmuxSync } from '../../utils/swarm/backends/detection.js';
 import { ensureBackendsRegistered, getBackendByType, getCachedBackend } from '../../utils/swarm/backends/registry.js';
 import { isPaneBackend, type PaneBackendType } from '../../utils/swarm/backends/types.js';

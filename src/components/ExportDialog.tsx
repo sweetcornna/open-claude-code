@@ -5,7 +5,7 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { setClipboard, Box, Text, Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getCwd } from '../utils/filesystem/cwd.js';
-import { writeFileSync_DEPRECATED } from '../utils/slowOperations.js';
+import { writeFileSync_DEPRECATED } from '../utils/telemetry/slowOperations.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/select.js';
 import TextInput from './TextInput.js';

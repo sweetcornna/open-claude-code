@@ -6,7 +6,7 @@
  */
 
 import * as Sentry from '@sentry/node'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from './debug.js'
 
 declare const BUILD_ENV: string | undefined
 

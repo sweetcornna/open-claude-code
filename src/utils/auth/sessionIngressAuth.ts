@@ -7,7 +7,7 @@ import {
   maybePersistTokenForSubprocesses,
   readTokenFromWellKnownFile,
 } from './authFileDescriptor.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { errorMessage } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 

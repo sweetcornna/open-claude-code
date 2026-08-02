@@ -7,12 +7,12 @@ import {
   onSessionSwitch,
 } from '../bootstrap/state.js'
 import { registerCleanup } from './process/cleanupRegistry.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { getClaudeConfigHomeDir } from './config/envUtils.js'
 import { errorMessage, isFsInaccessible } from './errors.js'
 import { isProcessRunning } from './process/genericProcessUtils.js'
 import { getPlatform } from './process/platform.js'
-import { jsonParse, jsonStringify } from './slowOperations.js'
+import { jsonParse, jsonStringify } from './telemetry/slowOperations.js'
 import { getAgentId } from './teammate.js'
 
 export type SessionKind = 'interactive' | 'bg' | 'daemon' | 'daemon-worker'

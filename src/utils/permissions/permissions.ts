@@ -13,9 +13,9 @@ import { POWERSHELL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/Powe
 import { REPL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/REPLTool/constants.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { extractOutputRedirections } from '../bash/commands.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { AbortError, toError } from '../errors.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import {
   getSettingSourceDisplayNameLowercase,
@@ -90,7 +90,7 @@ import {
 } from '../messages.js'
 import { calculateCostFromTokens } from '../modelCost.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import {
   createDenialTrackingState,
   DENIAL_LIMITS,

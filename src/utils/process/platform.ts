@@ -2,7 +2,7 @@ import { readdir, readFile } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { release as osRelease } from 'os'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 
 export type Platform = 'macos' | 'windows' | 'wsl' | 'linux' | 'unknown'
 

@@ -3,7 +3,7 @@ import React from 'react';
 import { Box, Text } from '@anthropic/ink';
 import type { AdvisorBlock } from '../../utils/advisor.js';
 import { renderModelName } from '../../utils/model/model.js';
-import { jsonStringify } from '../../utils/slowOperations.js';
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { ToolUseLoader } from '../ToolUseLoader.js';

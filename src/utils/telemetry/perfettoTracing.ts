@@ -28,7 +28,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from './debug.js'
 import {
   getClaudeConfigHomeDir,
   isEnvDefinedFalsy,
@@ -36,7 +36,7 @@ import {
 } from '../config/envUtils.js'
 import { errorMessage } from '../errors.js'
 import { djb2Hash } from '../filesystem/hash.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from './slowOperations.js'
 import { getAgentId, getAgentName, getParentSessionId } from '../teammate.js'
 
 /**

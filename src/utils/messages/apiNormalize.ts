@@ -24,7 +24,7 @@ import {
   getPdfTooLargeErrorMessage,
   getRequestTooLargeErrorMessage,
 } from '../../services/api/errors.js'
-import { normalizeToolInputForAPI } from '../api.js'
+import { normalizeToolInputForAPI } from '../telemetry/api.js'
 import { type Attachment } from '../attachments.js'
 import { validateImagesForAPI } from '../terminal/imageValidation.js'
 import { isSearchExtraToolsEnabledOptimistic } from '../searchExtraTools.js'

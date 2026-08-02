@@ -51,7 +51,7 @@ import {
   getGlobalConfig,
   saveGlobalConfig,
 } from '../config/config.js'
-import { logAntError, logForDebugging } from '../debug.js'
+import { logAntError, logForDebugging } from '../telemetry/debug.js'
 import {
   getClaudeConfigHomeDir,
   isBareMode,
@@ -61,7 +61,7 @@ import {
 import { errorMessage } from '../errors.js'
 import { execSyncWithDefaults_DEPRECATED } from '../process/execFileNoThrow.js'
 import * as lockfile from '../filesystem/lockfile.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { memoizeWithTTLAsync } from '../collections/memoize.js'
 import { getSecureStorage } from '../secureStorage/index.js'
 import {
@@ -78,7 +78,7 @@ import {
   getSettingsForSource,
 } from '../settings/settings.js'
 import { sleep } from '../process/sleep.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 import { clearToolSchemaCache } from '../toolSchemaCache.js'
 
 /** Default TTL for API key helper cache in milliseconds (5 minutes) */

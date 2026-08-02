@@ -5,7 +5,7 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 
 const noop = () => {}
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const sdkEvents: any[] = []
 mock.module('src/utils/sdkEventQueue.js', () => ({

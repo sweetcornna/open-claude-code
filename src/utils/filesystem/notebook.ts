@@ -15,7 +15,7 @@ import type {
 } from '../../types/notebook.js'
 import { getFsImplementation } from './fsOperations.js'
 import { expandPath } from './path.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 
 const LARGE_OUTPUT_THRESHOLD = 10000
 

@@ -4,8 +4,8 @@ import { formatAgentId, parseAgentId } from '../../../utils/agentId.js'
 import { quote } from '../../../utils/bash/shellQuote.js'
 import { isInBundledMode } from '../../config/bundledMode.js'
 import { registerCleanup } from '../../process/cleanupRegistry.js'
-import { logForDebugging } from '../../../utils/debug.js'
-import { jsonStringify } from '../../../utils/slowOperations.js'
+import { logForDebugging } from '../../telemetry/debug.js'
+import { jsonStringify } from '../../telemetry/slowOperations.js'
 import { writeToMailbox } from '../../../utils/teammateMailbox.js'
 import {
   buildInheritedCliArgParts,

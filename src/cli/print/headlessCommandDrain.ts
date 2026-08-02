@@ -25,7 +25,7 @@ import { mergeFileStateCaches } from 'src/utils/fileStateCache.js'
 import { executeFilePersistence } from 'src/utils/filePersistence/filePersistence.js'
 import { createAbortController } from 'src/utils/process/abortController.js'
 import { isEnvDefinedFalsy } from 'src/utils/config/envUtils.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import { toError } from 'src/utils/errors.js'
 import { getLastCacheSafeParams } from 'src/utils/collections/cacheSafeParamsSlot.js'
 import {
@@ -46,11 +46,11 @@ import {
   headlessProfilerCheckpoint,
   headlessProfilerStartTurn,
   logHeadlessProfilerTurn,
-} from 'src/utils/headlessProfiler.js'
+} from 'src/utils/telemetry/headlessProfiler.js'
 import {
   logQueryProfileReport,
   startQueryProfile,
-} from 'src/utils/queryProfiler.js'
+} from 'src/utils/telemetry/queryProfiler.js'
 import { canBatchWith, joinPromptValues } from './promptQueue.js'
 import {
   buildAllTools,

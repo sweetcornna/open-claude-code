@@ -24,7 +24,7 @@ import type { Tool } from '../Tool.js'
 import { findToolByName } from '../Tool.js'
 import type { Message as MessageType } from '../types/message.js'
 import type { PermissionAskDecision } from '../types/permissions.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import { gracefulShutdown } from '../utils/process/gracefulShutdown.js'
 import type { RemoteMessageContent } from '../utils/teleport/api.js'
 

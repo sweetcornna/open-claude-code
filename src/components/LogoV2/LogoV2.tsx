@@ -25,7 +25,7 @@ import {
 import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config/config.js';
 import { resolveThemeSetting } from 'src/utils/terminal/systemTheme.js';
 import { getInitialSettings } from 'src/utils/settings/settings.js';
-import { isDebugMode, isDebugToStdErr, getDebugLogPath } from 'src/utils/debug.js';
+import { isDebugMode, isDebugToStdErr, getDebugLogPath } from 'src/utils/telemetry/debug.js';
 import { useEffect, useState } from 'react';
 import {
   getSteps,
@@ -37,7 +37,7 @@ import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { checkForReleaseNotesSync } from '../../utils/update/releaseNotes.js';
 import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js';
 import { isEnvTruthy } from 'src/utils/config/envUtils.js';
-import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/startupProfiler.js';
+import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/telemetry/startupProfiler.js';
 import { EmergencyTip } from './EmergencyTip.js';
 import { VoiceModeNotice } from './VoiceModeNotice.js';
 import { Opus1mMergeNotice } from './Opus1mMergeNotice.js';

@@ -21,7 +21,7 @@ import {
   saveCustomTitle,
   searchSessionsByCustomTitle,
 } from '../../utils/sessionStorage.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { escapeRegExp } from '../../utils/text/stringUtils.js'
 
 type TranscriptEntry = TranscriptMessage & {

@@ -14,11 +14,11 @@ import {
   saveGlobalConfig,
 } from '../../utils/config/config.js'
 import { getCwd } from '../../utils/filesystem/cwd.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { getErrnoCode } from '../../utils/errors.js'
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
 import { safeParseJSON } from '../../utils/text/json.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getPluginMcpServers } from '../../utils/plugins/mcpPluginIntegration.js'
 import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
 import { isSettingSourceEnabled } from '../../utils/settings/constants.js'
@@ -35,7 +35,7 @@ import {
   type SettingsJson,
 } from '../../utils/settings/types.js'
 import type { ValidationError } from '../../utils/settings/validation.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

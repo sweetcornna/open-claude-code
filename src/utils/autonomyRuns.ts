@@ -33,7 +33,7 @@ import {
 } from './autonomyPersistence.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import { isProcessRunning } from './process/genericProcessUtils.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 
 const AUTONOMY_RUNS_MAX = 200
 // Diagnostic threshold for active (queued/running) runs. Active records are

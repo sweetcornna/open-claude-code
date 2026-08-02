@@ -15,9 +15,9 @@ import {
   registerRemoteAgentTask,
 } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import type { LocalJSXCommandCall } from '../types/command.js';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import { errorMessage } from '../utils/errors.js';
-import { logError } from '../utils/log.js';
+import { logError } from '../utils/telemetry/log.js';
 import { enqueuePendingNotification } from '../utils/messageQueueManager.js';
 import { updateTaskState } from '../utils/task/framework.js';
 import { archiveRemoteSession, teleportToRemote } from '../utils/teleport.js';

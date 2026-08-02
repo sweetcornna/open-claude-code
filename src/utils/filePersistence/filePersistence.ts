@@ -19,7 +19,7 @@ import {
 } from '../../services/api/filesApi.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { errorMessage } from '../errors.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getSessionIngressAuthToken } from '../auth/sessionIngressAuth.js'
 import {
   findModifiedFiles,

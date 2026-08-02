@@ -14,7 +14,7 @@ import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { hasNodeOption } from 'src/utils/config/envUtils.js';
 import { getIsGit, getWorktreeCount } from 'src/utils/git.js';
 import { getGhAuthStatus } from 'src/utils/github/ghAuthStatus.js';
-import { logError } from 'src/utils/log.js';
+import { logError } from 'src/utils/telemetry/log.js';
 import { getDefaultMainLoopModel, parseUserSpecifiedModel } from 'src/utils/model/model.js';
 import { getManagedPluginNames } from 'src/utils/plugins/managedPlugins.js';
 import { getPluginSeedDirs } from 'src/utils/plugins/pluginDirectories.js';

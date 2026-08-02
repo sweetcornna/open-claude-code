@@ -11,7 +11,7 @@ import chalk from 'chalk';
 import mapValues from 'lodash-es/mapValues.js';
 import pickBy from 'lodash-es/pickBy.js';
 import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js';
-import type { FpsMetrics } from 'src/utils/fpsTracker.js';
+import type { FpsMetrics } from 'src/utils/telemetry/fpsTracker.js';
 import type { LogOption } from 'src/types/logs.js';
 import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from 'src/services/mcp/types.js';
 import type { Message as MessageType } from 'src/types/message.js';
@@ -172,7 +172,7 @@ import { isBareMode, isEnvTruthy, isInProtectedNamespace } from 'src/utils/confi
 import { isInBundledMode } from 'src/utils/config/bundledMode.js';
 import { isPolicyAllowed, refreshPolicyLimits, waitForPolicyLimitsToLoad } from 'src/services/policyLimits/index.js';
 import { isWorktreeModeEnabled } from 'src/utils/worktreeModeEnabled.js';
-import { jsonParse } from 'src/utils/slowOperations.js';
+import { jsonParse } from 'src/utils/telemetry/slowOperations.js';
 import {
   launchAssistantInstallWizard,
   launchAssistantSessionChooser,
@@ -184,10 +184,10 @@ import {
 } from 'src/dialogLaunchers.js';
 import { launchRepl } from 'src/replLauncher.js';
 import { loadConversationForResume } from 'src/utils/conversationRecovery.js';
-import { logContextMetrics } from 'src/utils/api.js';
-import { logError } from 'src/utils/log.js';
-import { logForDebugging, setHasFormattedOutput } from 'src/utils/debug.js';
-import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js';
+import { logContextMetrics } from 'src/utils/telemetry/api.js';
+import { logError } from 'src/utils/telemetry/log.js';
+import { logForDebugging, setHasFormattedOutput } from 'src/utils/telemetry/debug.js';
+import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js';
 import { logManagedSettings, logSessionTelemetry, logStartupTelemetry } from './telemetry.js';
 import { logPermissionContextForAnts } from 'src/services/internalLogging.js';
 import { onChangeAppState } from 'src/state/onChangeAppState.js';
@@ -195,7 +195,7 @@ import { peekForStdinData, writeToStderr } from 'src/utils/process/process.js';
 import { plural } from 'src/utils/text/stringUtils.js';
 import { prefetchPassesEligibility } from 'src/services/api/referral.js';
 import { processSessionStartHooks, processSetupHooks } from 'src/utils/sessionStart.js';
-import { profileCheckpoint } from 'src/utils/startupProfiler.js';
+import { profileCheckpoint } from 'src/utils/telemetry/startupProfiler.js';
 import { readFileSync } from 'fs';
 import { refreshExampleCommands } from 'src/utils/exampleCommands.js';
 import { refreshRemoteManagedSettings } from 'src/services/remoteManagedSettings/index.js';
@@ -2107,7 +2107,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       startDeferredPrefetches();
       void import('src/utils/backgroundHousekeeping.js').then(m => m.startBackgroundHousekeeping());
       if (process.env.USER_TYPE === 'ant') {
-        void import('src/utils/sdkHeapDumpMonitor.js').then(m => m.startSdkMemoryMonitor());
+        void import('src/utils/telemetry/sdkHeapDumpMonitor.js').then(m => m.startSdkMemoryMonitor());
       }
     }
 

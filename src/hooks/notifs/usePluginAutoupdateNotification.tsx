@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 import { useNotifications } from '../../context/notifications.js';
 import { Text } from '@anthropic/ink';
-import { logForDebugging } from '../../utils/debug.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
 import { onPluginsAutoUpdated } from '../../utils/plugins/pluginAutoupdate.js';
 
 /**

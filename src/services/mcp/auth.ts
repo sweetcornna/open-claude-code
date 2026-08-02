@@ -38,13 +38,16 @@ import { openBrowser } from '../../utils/network/browser.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { errorMessage, getErrnoCode, toError } from '../../utils/errors.js'
 import * as lockfile from '../../utils/filesystem/lockfile.js'
-import { logMCPDebug } from '../../utils/log.js'
+import { logMCPDebug } from '../../utils/telemetry/log.js'
 import { getPlatform } from '../../utils/process/platform.js'
 import { getSecureStorage } from '../../utils/secureStorage/index.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
 import type { SecureStorageData } from '../../utils/secureStorage/types.js'
 import { sleep } from '../../utils/process/sleep.js'
-import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
+import {
+  jsonParse,
+  jsonStringify,
+} from '../../utils/telemetry/slowOperations.js'
 import { logEvent } from '../analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics/metadata.js'
 import {

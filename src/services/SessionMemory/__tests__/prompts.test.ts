@@ -233,7 +233,7 @@ mock.module('src/utils/config/envUtils.js', () => ({
   isInProtectedNamespace: () => false,
 }))
 
-mock.module('src/utils/log.js', () => ({
+mock.module('src/utils/telemetry/log.js', () => ({
   logError: mock(() => {}),
   getLogDisplayTitle: mock(() => ''),
   dateToFilename: mock((d: Date) => d.toISOString()),

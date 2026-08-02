@@ -10,7 +10,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { type KeyboardEvent, setClipboard, Box, Link, Text } from '@anthropic/ink';
 import { OAuthService } from '../../services/oauth/index.js';
 import { saveOAuthTokensIfNeeded } from '../../utils/auth/auth.js';
-import { logError } from '../../utils/log.js';
+import { logError } from '../../utils/telemetry/log.js';
 
 interface OAuthFlowStepProps {
   onSuccess: (token: string) => void;

@@ -13,13 +13,16 @@ import { chmod, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { ReleaseChannel } from '../config/config.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { toError } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { sleep } from '../process/sleep.js'
-import { jsonStringify, writeFileSync_DEPRECATED } from '../slowOperations.js'
+import {
+  jsonStringify,
+  writeFileSync_DEPRECATED,
+} from '../telemetry/slowOperations.js'
 import { getBinaryName, getPlatform } from './installer.js'
 
 const GCS_BUCKET_URL =

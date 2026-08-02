@@ -3,7 +3,7 @@ import { join } from 'path'
 import { z } from 'zod/v4'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
 import { uniq } from './collections/array.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import {
   getClaudeConfigHomeDir,
   getTeamsDir,
@@ -12,9 +12,9 @@ import {
 import { errorMessage, getErrnoCode } from './errors.js'
 import { lazySchema } from './collections/lazySchema.js'
 import * as lockfile from './filesystem/lockfile.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 import { createSignal } from './process/signal.js'
-import { jsonParse, jsonStringify } from './slowOperations.js'
+import { jsonParse, jsonStringify } from './telemetry/slowOperations.js'
 import { getTeamName } from './teammate.js'
 import { getTeammateContext } from './teammateContext.js'
 

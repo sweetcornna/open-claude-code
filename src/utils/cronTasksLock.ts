@@ -14,12 +14,12 @@ import { dirname, join } from 'path'
 import { z } from 'zod/v4'
 import { getProjectRoot, getSessionId } from '../bootstrap/state.js'
 import { registerCleanup } from './process/cleanupRegistry.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { getErrnoCode } from './errors.js'
 import { isProcessRunning } from './process/genericProcessUtils.js'
 import { safeParseJSON } from './text/json.js'
 import { lazySchema } from './collections/lazySchema.js'
-import { jsonStringify } from './slowOperations.js'
+import { jsonStringify } from './telemetry/slowOperations.js'
 
 const LOCK_FILE_REL = join(PROJECT_DIR_NAME, 'scheduled_tasks.lock')
 

@@ -4,7 +4,7 @@
 
 import { readFile } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { getPlatform } from '../process/platform.js'
 

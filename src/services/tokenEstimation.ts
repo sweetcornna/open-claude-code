@@ -11,7 +11,7 @@ import {
   getVertexRegionForModel,
   isEnvTruthy,
 } from '../utils/config/envUtils.js'
-import { logError } from '../utils/log.js'
+import { logError } from '../utils/telemetry/log.js'
 import { normalizeAttachmentForAPI } from '../utils/messages.js'
 import {
   createBedrockRuntimeClient,
@@ -24,7 +24,7 @@ import {
   getSmallFastModel,
   normalizeModelStringForAPI,
 } from '../utils/model/model.js'
-import { jsonStringify } from '../utils/slowOperations.js'
+import { jsonStringify } from '../utils/telemetry/slowOperations.js'
 import { isToolReferenceBlock } from '../utils/searchExtraTools.js'
 import { getAPIMetadata, getExtraBodyParams } from './api/claude.js'
 import { getAnthropicClient } from './api/client.js'

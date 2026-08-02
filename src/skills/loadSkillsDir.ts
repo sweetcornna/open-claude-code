@@ -24,7 +24,7 @@ import {
   parseArgumentNames,
   substituteArguments,
 } from '../utils/shell/argumentSubstitution.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import {
   EFFORT_LEVELS,
   type EffortValue,
@@ -47,7 +47,7 @@ import {
 } from '../utils/text/frontmatterParser.js'
 import { getFsImplementation } from '../utils/filesystem/fsOperations.js'
 import { isPathGitignored } from '../utils/git/gitignore.js'
-import { logError } from '../utils/log.js'
+import { logError } from '../utils/telemetry/log.js'
 import {
   extractDescriptionFromMarkdown,
   getProjectDirsUpToHome,

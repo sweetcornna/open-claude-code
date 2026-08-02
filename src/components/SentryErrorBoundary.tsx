@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
-import { captureException } from 'src/utils/sentry.js';
-import { logError } from 'src/utils/log.js';
+import { captureException } from 'src/utils/telemetry/sentry.js';
+import { logError } from 'src/utils/telemetry/log.js';
 
 interface Props {
   children: React.ReactNode;

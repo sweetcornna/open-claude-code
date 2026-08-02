@@ -6,7 +6,7 @@ import { BIN_NAME } from '../../constants/brand.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { useAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
-import { logForDebugging } from '../../utils/debug.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
 
 type Props = {
   onDone: () => void;

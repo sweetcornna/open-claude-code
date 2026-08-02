@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import type { SuggestionItem } from '../../components/PromptInput/PromptInputFooterSuggestions.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { createSignal } from '../process/signal.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 
 const SLACK_SEARCH_TOOL = 'slack_search_channels'
 

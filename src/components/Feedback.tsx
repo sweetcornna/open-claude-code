@@ -18,11 +18,11 @@ import { startsWithApiErrorPrefix } from '../services/api/errors.js';
 import type { Message } from '../types/message.js';
 import { checkAndRefreshOAuthTokenIfNeeded } from '../utils/auth/auth.js';
 import { openBrowser } from '../utils/network/browser.js';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import { env } from '../utils/config/env.js';
 import { type GitRepoState, getGitState, getIsGit } from '../utils/git.js';
 import { getAuthHeaders, getUserAgent } from '../utils/network/http.js';
-import { getInMemoryErrors, logError } from '../utils/log.js';
+import { getInMemoryErrors, logError } from '../utils/telemetry/log.js';
 import { isEssentialTrafficOnly } from '../utils/auth/privacyLevel.js';
 import {
   extractTeammateTranscriptsFromTasks,
@@ -30,7 +30,7 @@ import {
   loadAllSubagentTranscriptsFromDisk,
   MAX_TRANSCRIPT_READ_BYTES,
 } from '../utils/sessionStorage.js';
-import { jsonStringify } from '../utils/slowOperations.js';
+import { jsonStringify } from '../utils/telemetry/slowOperations.js';
 import { asSystemPrompt } from '../utils/systemPromptType.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';

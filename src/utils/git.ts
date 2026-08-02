@@ -5,8 +5,8 @@ import memoize from 'lodash-es/memoize.js'
 import { basename, dirname, join, resolve, sep } from 'path'
 import { hasBinaryExtension, isBinaryContent } from '../constants/files.js'
 import { getCwd } from './filesystem/cwd.js'
-import { logForDebugging } from './debug.js'
-import { logForDiagnosticsNoPII } from './diagLogs.js'
+import { logForDebugging } from './telemetry/debug.js'
+import { logForDiagnosticsNoPII } from './telemetry/diagLogs.js'
 import { execFileNoThrow } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import {
@@ -18,7 +18,7 @@ import {
   isShallowClone as isShallowCloneFs,
   resolveGitDir,
 } from './git/gitFilesystem.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 import { memoizeWithLRU } from './collections/memoize.js'
 import { whichSync } from './process/which.js'
 

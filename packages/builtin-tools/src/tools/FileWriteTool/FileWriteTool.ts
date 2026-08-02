@@ -14,7 +14,7 @@ import {
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { countLinesChanged, getPatchForDisplay } from 'src/utils/text/diff.js'
 import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { isENOENT } from '@open-claude-code/tool-runtime/errors.js'
@@ -26,12 +26,12 @@ import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
 } from 'src/utils/filesystem/fileHistory.js'
-import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
+import { logFileOperation } from 'src/utils/telemetry/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from 'src/utils/filesystem/fileRead.js'
 import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
 import { fetchSingleFileGitDiff, type ToolUseDiff } from 'src/utils/gitDiff.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import { expandPath } from 'src/utils/filesystem/path.js'
 import {
   checkWritePermissionForTool,

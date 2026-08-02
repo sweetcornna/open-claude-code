@@ -6,8 +6,8 @@ import { logMock } from '../../../../tests/mocks/log.js'
 
 const noop = () => {}
 
-mock.module('src/utils/debug.ts', debugMock)
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 mock.module('src/utils/sessionStorage.js', () => ({
   getAgentTranscriptPath: (id: string) => `/tmp/transcripts/${id}.jsonl`,

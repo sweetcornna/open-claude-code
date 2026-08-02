@@ -6,7 +6,7 @@ import {
   finalizeAutonomyCommandsForTurn,
 } from '../../utils/autonomyQueueLifecycle.js'
 import { getCwd } from '../../utils/filesystem/cwd.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { toError } from '../../utils/errors.js'
 import type { QueuedCommand } from '../../types/textInputTypes.js'
 import type { Message as MessageType } from '../../types/message.js'

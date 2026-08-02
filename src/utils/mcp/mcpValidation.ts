@@ -9,7 +9,7 @@ import {
   roughTokenCountEstimation,
 } from '../../services/tokenEstimation.js'
 import { compressImageBlock } from '../terminal/imageResizer.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 
 export const MCP_TOKEN_COUNT_THRESHOLD_FACTOR = 0.5
 export const IMAGE_TOKEN_ESTIMATE = 1600

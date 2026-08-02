@@ -39,12 +39,12 @@ import type {
   UserMessage,
   TombstoneMessage,
 } from './types/message.js'
-import { logError } from './utils/log.js'
+import { logError } from './utils/telemetry/log.js'
 import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
-import { logAntError, logForDebugging } from './utils/debug.js'
+import { logAntError, logForDebugging } from './utils/telemetry/debug.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -57,7 +57,10 @@ import {
   stripSignatureBlocks,
 } from './utils/messages.js'
 import { generateToolUseSummary } from './services/toolUseSummary/toolUseSummaryGenerator.js'
-import { prependUserContext, appendSystemContext } from './utils/api.js'
+import {
+  prependUserContext,
+  appendSystemContext,
+} from './utils/telemetry/api.js'
 import {
   createAttachmentMessage,
   filterDuplicateMemoryAttachments,
@@ -87,7 +90,7 @@ import {
   finalizeAutonomyCommandsForTurn,
 } from './utils/autonomyQueueLifecycle.js'
 import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
-import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
+import { headlessProfilerCheckpoint } from './utils/telemetry/headlessProfiler.js'
 import {
   getRuntimeMainLoopModel,
   renderModelName,
@@ -105,7 +108,7 @@ import type { QuerySource } from './constants/querySource.js'
 import type { QueuedCommand } from './types/textInputTypes.js'
 import { createDumpPromptsFetch } from './services/api/dumpPrompts.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
-import { queryCheckpoint } from './utils/queryProfiler.js'
+import { queryCheckpoint } from './utils/telemetry/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'
 import { applyToolResultBudget } from './utils/toolResultStorage.js'
 import {
@@ -138,7 +141,7 @@ import {
   getCacheThreshold,
   isCacheWarningEnabled,
   shouldShowCacheWarning,
-} from './utils/cacheWarning.js'
+} from './utils/telemetry/cacheWarning.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const taskSummaryModule = feature('BG_SESSIONS')

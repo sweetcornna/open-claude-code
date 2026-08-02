@@ -2,7 +2,7 @@ import { toJSONSchema } from 'zod/v4'
 import { BIN_NAME } from '../../constants/brand.js'
 import { PROJECT_DIR_NAME, occConfigPath } from '../../config/paths.js'
 import { SettingsSchema } from '../../utils/settings/types.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 /**

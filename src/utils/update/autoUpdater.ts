@@ -13,14 +13,14 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { type ReleaseChannel, saveGlobalConfig } from '../config/config.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { env } from '../config/env.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { ClaudeError, getErrnoCode, isENOENT } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { gracefulShutdownSync } from '../process/gracefulShutdown.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { gte, lt } from '../text/semver.js'
 import { getInitialSettings } from '../settings/settings.js'
 import {
@@ -29,7 +29,7 @@ import {
   readFileLines,
   writeFileLines,
 } from '../shell/shellConfig.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 
 class AutoUpdaterError extends ClaudeError {}
 

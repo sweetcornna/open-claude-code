@@ -7,7 +7,7 @@
 //    sequentially via sync spawn inside applySafeConfigEnvironmentVariables()
 //    (~65ms on every macOS startup)
 import { BIN_NAME, MACOS_DEEP_LINK_BUNDLE_ID } from './constants/brand.js';
-import { profileCheckpoint } from './utils/startupProfiler.js';
+import { profileCheckpoint } from './utils/telemetry/startupProfiler.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_entry');
@@ -24,7 +24,7 @@ startKeychainPrefetch();
 
 import { feature } from 'bun:bundle';
 import { stopCapturingEarlyInput } from './utils/terminal/earlyInput.js';
-import { initializeWarningHandler } from './utils/warningHandler.js';
+import { initializeWarningHandler } from './utils/telemetry/warningHandler.js';
 
 import { SHOW_CURSOR } from '@anthropic/ink';
 import { isEnvTruthy } from './utils/config/envUtils.js';

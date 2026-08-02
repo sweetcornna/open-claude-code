@@ -4,7 +4,7 @@ import { createFileStateCacheWithSizeLimit } from '../../../utils/fileStateCache
 import { createSubagentContext } from '../../../utils/forkedAgent.js'
 import { getEmptyToolPermissionContext } from '../../../Tool.js'
 
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 const {
   getDenyRuleForTool,

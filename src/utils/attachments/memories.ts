@@ -10,7 +10,7 @@ import { getAgentMemoryDir } from '@open-claude-code/builtin-tools/tools/AgentTo
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { getUserMessageText } from '../messages.js'
 import { isAbortError } from '../errors.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { memoryAge, memoryFreshnessText } from '../../memdir/memoryAge.js'
 import { readFileInRange } from '../filesystem/readFileInRange.js'

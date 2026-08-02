@@ -7,8 +7,8 @@ import type {
   SkillLearningProjectContext,
   SkillObservationOutcome,
 } from './types.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { logError } from '../../utils/log.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { logError } from '../../utils/telemetry/log.js'
 
 /**
  * Tool event hook layer.

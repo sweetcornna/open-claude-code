@@ -8,7 +8,7 @@ import type {
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { AssistantMessage, UserMessage } from '../../types/message.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { normalizeLegacyToolName } from '../permissions/permissionRuleParser.js'
 import { isToolReferenceBlock } from '../searchExtraTools.js'
 

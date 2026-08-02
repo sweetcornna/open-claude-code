@@ -13,10 +13,10 @@ import {
 } from '../../bootstrap/state.js'
 import { generateTaskId } from '../../Task.js'
 import { pwd } from '../filesystem/cwd.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { errorMessage, isENOENT } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import {
   createAbortedCommand,
   createFailedCommand,

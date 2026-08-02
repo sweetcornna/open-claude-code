@@ -29,7 +29,7 @@ import {
   logHeadlessProfilerTurn,
   headlessProfilerCheckpoint,
   headlessProfilerStartTurn,
-} from 'src/utils/headlessProfiler.js'
+} from 'src/utils/telemetry/headlessProfiler.js'
 import {
   isQualifiedForGrove,
   checkGroveForNonInteractive,
@@ -50,7 +50,7 @@ import { restoreAgentFromSession } from 'src/utils/sessionRestore.js'
 import { saveAgentSetting } from 'src/utils/sessionStorage.js'
 import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { isExtractModeActive } from 'src/memdir/paths.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from 'src/utils/telemetry/slowOperations.js'
 import {
   writeToStdout,
   registerProcessOutputErrorHandlers,

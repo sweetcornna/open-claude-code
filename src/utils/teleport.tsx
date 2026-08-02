@@ -26,7 +26,7 @@ import { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } from './aut
 import { checkGithubAppInstalled } from './background/remote/preconditions.js';
 import { deserializeMessages, type TeleportRemoteResponse } from './conversationRecovery.js';
 import { getCwd } from './filesystem/cwd.js';
-import { logForDebugging } from './debug.js';
+import { logForDebugging } from './telemetry/debug.js';
 import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote } from './detectRepository.js';
 import { isEnvTruthy } from './config/envUtils.js';
 import { TeleportOperationError, toError } from './errors.js';
@@ -34,12 +34,12 @@ import { execFileNoThrow } from './process/execFileNoThrow.js';
 import { truncateToWidth } from './text/format.js';
 import { findGitRoot, getDefaultBranch, getIsClean, gitExe } from './git.js';
 import { safeParseJSON } from './text/json.js';
-import { logError } from './log.js';
+import { logError } from './telemetry/log.js';
 import { createSystemMessage, createUserMessage } from './messages.js';
 import { getMainLoopModel } from './model/model.js';
 import { isTranscriptMessage } from './sessionStorage.js';
 import { getSettings_DEPRECATED } from './settings/settings.js';
-import { jsonStringify } from './slowOperations.js';
+import { jsonStringify } from './telemetry/slowOperations.js';
 import { asSystemPrompt } from './systemPromptType.js';
 import {
   fetchSession,

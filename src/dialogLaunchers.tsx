@@ -15,7 +15,7 @@ import { KeybindingSetup } from './keybindings/KeybindingProviderSetup.js';
 import type { AppState } from './state/AppStateStore.js';
 import type { AgentMemoryScope } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js';
 import type { TeleportRemoteResponse } from './utils/conversationRecovery.js';
-import type { FpsMetrics } from './utils/fpsTracker.js';
+import type { FpsMetrics } from './utils/telemetry/fpsTracker.js';
 import type { ValidationError } from './utils/settings/validation.js';
 
 // Type-only access to ResumeConversation's Props via the module type.

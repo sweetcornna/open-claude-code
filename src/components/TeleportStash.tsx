@@ -1,7 +1,7 @@
 import figures from 'figures';
 import React, { useEffect, useState } from 'react';
 import { Box, Text, Dialog } from '@anthropic/ink';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import type { GitFileStatus } from '../utils/git.js';
 import { getFileStatus, stashToCleanState } from '../utils/git.js';
 import { Select } from './CustomSelect/index.js';

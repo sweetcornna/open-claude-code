@@ -7,7 +7,7 @@
 import { useCallback } from 'react';
 import { useNotifications } from '../context/notifications.js';
 import { count } from '../utils/collections/array.js';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import { plural } from '../utils/text/stringUtils.js';
 import { KeybindingSetup as InkKeybindingSetup } from '@anthropic/ink';
 import type { KeybindingWarning } from '@anthropic/ink';

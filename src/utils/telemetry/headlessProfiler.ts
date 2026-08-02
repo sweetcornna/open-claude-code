@@ -17,10 +17,10 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
-import { getPerformance } from '../profilerBase.js'
-import { jsonStringify } from '../slowOperations.js'
+import { getPerformance } from './profilerBase.js'
+import { jsonStringify } from './slowOperations.js'
 
 // Detailed profiling mode - same env var as startupProfiler
 // eslint-disable-next-line custom-rules/no-process-env-top-level

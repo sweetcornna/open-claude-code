@@ -2,7 +2,7 @@ import { mock, describe, expect, test } from 'bun:test'
 import { logMock } from '../../../tests/mocks/log'
 
 // Mock log.ts to cut the heavy dependency chain (log.ts → bootstrap/state.ts → analytics)
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 const { safeParseJSON, safeParseJSONC, parseJSONL, addItemToJSONCArray } =
   await import('../text/json')

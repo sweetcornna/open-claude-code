@@ -1,5 +1,5 @@
 import figures from 'figures'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { ClaudeError } from '../utils/errors.js'
@@ -8,7 +8,7 @@ import {
   pathsEqual,
 } from '../utils/filesystem/file.js'
 import { getConnectedIdeClient } from '../utils/terminal/ide.js'
-import { jsonParse } from '../utils/slowOperations.js'
+import { jsonParse } from '../utils/telemetry/slowOperations.js'
 
 class DiagnosticsTrackingError extends ClaudeError {}
 

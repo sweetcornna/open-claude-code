@@ -1,7 +1,7 @@
 import { mock, describe, expect, test } from 'bun:test'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const {
   formatGoToDefinitionResult,

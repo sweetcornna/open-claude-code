@@ -5,12 +5,12 @@
 import { randomUUID } from 'crypto'
 import type { FileSuggestionCommandInput } from '../../types/fileSuggestion.js'
 import type { StatusLineCommandInput } from '../../types/statusLine.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import {
   getSettings_DEPRECATED,
   getSettingsForSource,
 } from '../settings/settings.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import { shouldSkipHookDueToTrust } from './config.js'
 import { execCommandHook } from './execution.js'
 import {

@@ -10,11 +10,11 @@ import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { errorMessage, isENOENT } from 'src/utils/errors.js';
 import { getFsImplementation, safeResolvePath } from 'src/utils/filesystem/fsOperations.js';
 import { safeParseJSON } from 'src/utils/text/json.js';
-import { logError } from 'src/utils/log.js';
+import { logError } from 'src/utils/telemetry/log.js';
 import { parseSettingSourcesFlag } from 'src/utils/settings/constants.js';
 import { resetSettingsCache } from 'src/utils/settings/settingsCache.js';
-import { writeFileSync_DEPRECATED } from 'src/utils/slowOperations.js';
-import { profileCheckpoint } from 'src/utils/startupProfiler.js';
+import { writeFileSync_DEPRECATED } from 'src/utils/telemetry/slowOperations.js';
+import { profileCheckpoint } from 'src/utils/telemetry/startupProfiler.js';
 import { generateTempFilePath, SETTINGS_TEMP_PREFIX } from 'src/utils/filesystem/tempfile.js';
 
 function loadSettingsFromFlag(settingsFile: string): void {

@@ -16,11 +16,11 @@ import { getSessionId } from '../../bootstrap/state.js'
 import { createBufferedWriter } from '../filesystem/bufferedWriter.js'
 import { CACHE_PATHS } from '../filesystem/cachePaths.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from './debug.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { attachErrorLogSink, dateToFilename } from '../log.js'
-import { jsonStringify } from '../slowOperations.js'
-import { captureException } from '../sentry.js'
+import { attachErrorLogSink, dateToFilename } from './log.js'
+import { jsonStringify } from './slowOperations.js'
+import { captureException } from './sentry.js'
 
 const DATE = dateToFilename(new Date())
 

@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto'
 import { BIN_NAME } from '../constants/brand.js'
 import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { isProcessRunning } from '../utils/process/genericProcessUtils.js'
-import { jsonParse } from '../utils/slowOperations.js'
+import { jsonParse } from '../utils/telemetry/slowOperations.js'
 import { selectEngine } from './bg/engines/index.js'
 import type { SessionEntry } from './bg/engine.js'
 

@@ -16,7 +16,7 @@ import {
 import { getCwd } from '../filesystem/cwd.js'
 import { toError } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import {
   getSettingsForSource,
   updateSettingsForSource,

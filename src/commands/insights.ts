@@ -25,7 +25,7 @@ import type { LogOption } from '../types/logs.js'
 import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/process/execFileNoThrow.js'
-import { logError } from '../utils/log.js'
+import { logError } from '../utils/telemetry/log.js'
 import { extractTextContent } from '../utils/messages.js'
 import { getDefaultOpusModel } from '../utils/model/model.js'
 import {
@@ -34,7 +34,7 @@ import {
   getSessionIdFromLog,
   loadAllLogsFromSessionFile,
 } from '../utils/sessionStorage.js'
-import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
+import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
 import { countCharInString } from '../utils/text/stringUtils.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { escapeXmlAttr as escapeHtml } from '../utils/text/xml.js'

@@ -19,7 +19,7 @@ import { createUserMessage, extractTextContent } from '../../utils/messages.js'
 import { getTokenCountFromUsage } from '../../utils/tokens.js'
 import { createHash } from 'node:crypto'
 import { createAgentId } from '../../utils/collections/uuid.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { runWithCwdOverride } from '../../utils/filesystem/cwd.js'
 import {
   createAgentWorktree,

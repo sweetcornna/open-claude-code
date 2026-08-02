@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { computeHitRate } from '../../utils/cacheStats.js';
+import { computeHitRate } from '../../utils/telemetry/cacheStats.js';
 
 // ---------------------------------------------------------------------------
 // Re-export helpers that mirror CachePill internal logic for unit testing

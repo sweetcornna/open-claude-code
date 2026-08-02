@@ -3,7 +3,7 @@ import { existsSync } from 'fs'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { stateMock } from '../../../../tests/mocks/state'
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 let globalConfig: Record<string, unknown> = {}
 mock.module('src/utils/config/config.ts', () => ({

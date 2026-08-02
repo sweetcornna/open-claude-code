@@ -1,6 +1,6 @@
 import type { ToolUseContext } from '../../Tool.js'
 
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { errorMessage } from '../errors.js'
 import { withResolvers } from '../collections/withResolvers.js'
 import { isLockHeldLocally, releaseComputerUseLock } from './computerUseLock.js'

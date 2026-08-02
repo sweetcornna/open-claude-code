@@ -32,13 +32,13 @@ import {
   validateForceLoginOrg,
 } from '../../utils/auth/auth.js'
 import { saveGlobalConfig } from '../../utils/config/config.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { isRunningOnHomespace } from '../../utils/config/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   buildAccountProperties,
   buildAPIProviderProperties,

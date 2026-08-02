@@ -26,7 +26,7 @@
  */
 import { useLayoutEffect, useRef } from 'react'
 
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   markGoalMaxTurnsReached,
   getGoal,

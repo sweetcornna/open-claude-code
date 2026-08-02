@@ -7,13 +7,13 @@ import type {
   FileAttributionState,
 } from '../types/logs.js'
 import { getCwd } from './filesystem/cwd.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { execFileNoThrowWithCwd } from './process/execFileNoThrow.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import { isGeneratedFile } from './filesystem/generatedFiles.js'
 import { getRemoteUrlForDir, resolveGitDir } from './git/gitFilesystem.js'
 import { findGitRoot, gitExe } from './git.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 import { getCanonicalName, type ModelName } from './model/model.js'
 import { sequential } from './collections/sequential.js'
 

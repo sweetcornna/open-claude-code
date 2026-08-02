@@ -4,7 +4,7 @@ import * as path from 'path'
 import { z } from 'zod/v4'
 import { errorMessage, getErrnoCode, isENOENT } from '../errors.js'
 import { FRONTMATTER_REGEX } from '../text/frontmatterParser.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 import { parseYaml } from '../text/yaml.js'
 import {
   PluginHooksSchema,

@@ -28,14 +28,14 @@ import {
   getClaudeAIOAuthTokens,
 } from '../../utils/auth/auth.js'
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { classifyAxiosError } from '../../utils/errors.js'
 import { safeParseJSON } from '../../utils/text/json.js'
 import { isDirectAnthropicApi } from '../../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../../utils/auth/privacyLevel.js'
 import { sleep } from '../../utils/process/sleep.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import {

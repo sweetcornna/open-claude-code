@@ -1,5 +1,5 @@
 import memoize from 'lodash-es/memoize.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { hasNodeOption } from '../config/envUtils.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 

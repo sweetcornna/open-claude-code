@@ -28,7 +28,7 @@ import {
   convertToolsToLangfuse,
 } from '../services/langfuse/convert.js'
 import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { errorMessage } from './errors.js'
 import { getAPIProvider } from './model/providers.js'
 import { normalizeModelStringForAPI } from './model/model.js'

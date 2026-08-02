@@ -41,7 +41,7 @@ import {
   shouldUseGlobalCacheScope,
 } from '../betas.js'
 import { getCwd } from '../filesystem/cwd.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { createUserMessage } from '../messages.js'
 import { isDirectAnthropicApi } from '../model/providers.js'
@@ -56,7 +56,7 @@ import {
 } from '../plans.js'
 import { getPlatform } from '../process/platform.js'
 import { countFilesRoundedRg } from '../filesystem/ripgrep.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from './slowOperations.js'
 import type { SystemPrompt } from '../systemPromptType.js'
 import { getToolSchemaCache } from '../toolSchemaCache.js'
 import { windowsPathToPosixPath } from '../filesystem/windowsPaths.js'

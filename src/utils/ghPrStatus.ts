@@ -1,6 +1,6 @@
 import { execFileNoThrow } from './process/execFileNoThrow.js'
 import { getBranch, getDefaultBranch, getIsGit } from './git.js'
-import { jsonParse } from './slowOperations.js'
+import { jsonParse } from './telemetry/slowOperations.js'
 
 export type PrReviewState =
   | 'approved'

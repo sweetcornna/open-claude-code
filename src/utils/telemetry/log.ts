@@ -19,7 +19,7 @@ import {
 import { isEnvTruthy } from '../config/envUtils.js'
 import { toError, shortErrorStack } from '../errors.js'
 import { isEssentialTrafficOnly } from '../auth/privacyLevel.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from './slowOperations.js'
 
 /**
  * Gets the display title for a log/session with fallback logic.

@@ -154,9 +154,9 @@ import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
 import autonomy from './commands/autonomy.js'
 import provider from './commands/provider.js'
-import { logError } from './utils/log.js'
+import { logError } from './utils/telemetry/log.js'
 import { toError } from './utils/errors.js'
-import { logForDebugging } from './utils/debug.js'
+import { logForDebugging } from './utils/telemetry/debug.js'
 import {
   getSkillDirCommands,
   clearSkillCaches,

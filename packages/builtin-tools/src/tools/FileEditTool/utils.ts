@@ -1,5 +1,5 @@
 import { type StructuredPatchHunk, structuredPatch } from 'diff'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import { expandPath } from 'src/utils/filesystem/path.js'
 import { countCharInString } from '@open-claude-code/tool-runtime/stringUtils.js'
 import {

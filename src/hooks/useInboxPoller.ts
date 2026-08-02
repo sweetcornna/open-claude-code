@@ -15,7 +15,7 @@ import { findToolByName } from '../Tool.js'
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js'
 import { getAllBaseTools } from '../tools.js'
 import type { PermissionUpdate } from '../types/permissions.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import {
   findInProcessTeammateTaskId,
   handlePlanApprovalResponse,
@@ -26,7 +26,7 @@ import {
   toExternalPermissionMode,
 } from '../utils/permissions/PermissionMode.js'
 import { applyPermissionUpdate } from '../utils/permissions/PermissionUpdate.js'
-import { jsonStringify } from '../utils/slowOperations.js'
+import { jsonStringify } from '../utils/telemetry/slowOperations.js'
 import { isInsideTmux } from '../utils/swarm/backends/detection.js'
 import {
   ensureBackendsRegistered,

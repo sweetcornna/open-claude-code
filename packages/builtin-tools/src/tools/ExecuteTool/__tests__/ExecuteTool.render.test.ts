@@ -6,8 +6,8 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 // (growthbook, searchExtraTools, messages) loads real modules with side
 // effects otherwise. mock.module is process-global; identical setup in
 // sibling test files in this directory is safe (last-write-wins, same stubs).
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,

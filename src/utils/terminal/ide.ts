@@ -21,7 +21,7 @@ import {
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { getAncestorPidsAsync } from '../process/genericProcessUtils.js'
 import { isJetBrainsPluginInstalledCached } from './jetbrains.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getPlatform } from '../process/platform.js'
 
 // Lazy: IdeOnboardingDialog.tsx pulls React/ink; only needed in interactive onboarding path
@@ -31,7 +31,7 @@ const ideOnboardingDialog =
     require('src/components/IdeOnboardingDialog.js')
 
 import { createAbortController } from '../process/abortController.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { envDynamic } from '../config/envDynamic.js'
 import { errorMessage, isFsInaccessible } from '../errors.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -40,7 +40,7 @@ import {
   WindowsToWSLConverter,
 } from './idePathConversion.js'
 import { sleep } from '../process/sleep.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 
 function isProcessRunning(pid: number): boolean {
   try {

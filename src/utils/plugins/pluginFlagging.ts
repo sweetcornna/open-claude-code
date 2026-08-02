@@ -15,10 +15,10 @@
 import { randomBytes } from 'crypto'
 import { readFile, rename, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { logError } from '../telemetry/log.js'
+import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
 import { getPluginsDirectory } from './pluginDirectories.js'
 
 const FLAGGED_PLUGINS_FILENAME = 'flagged-plugins.json'

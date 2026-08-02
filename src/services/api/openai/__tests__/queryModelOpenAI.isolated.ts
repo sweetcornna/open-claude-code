@@ -334,7 +334,7 @@ mock.module('../../../../utils/messages.js', () => ({
   }),
 }))
 
-mock.module('../../../../utils/api.js', () => ({
+mock.module('../../../../utils/telemetry/api.js', () => ({
   toolToAPISchema: async (t: any) => t,
 }))
 
@@ -386,7 +386,7 @@ mock.module('../../../../services/langfuse/convert.js', () => ({
   convertToolsToLangfuse: () => [],
 }))
 
-mock.module('../../../../utils/debug.js', () => ({
+mock.module('../../../../utils/telemetry/debug.js', () => ({
   logForDebugging: () => {},
   logAntError: () => {},
   isDebugMode: () => false,

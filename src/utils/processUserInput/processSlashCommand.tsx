@@ -41,7 +41,7 @@ import type { CommandResultDisplay } from '../../types/command.js';
 import { createAbortController } from '../process/abortController.js';
 import { getAgentContext } from '../agentContext.js';
 import { createAttachmentMessage, getAttachmentMessages } from '../attachments.js';
-import { logForDebugging } from '../debug.js';
+import { logForDebugging } from '../telemetry/debug.js';
 import { isEnvTruthy } from '../config/envUtils.js';
 import { AbortError, MalformedCommandError } from '../errors.js';
 import { getDisplayPath } from '../filesystem/file.js';
@@ -50,7 +50,7 @@ import { getFsImplementation } from '../filesystem/fsOperations.js';
 import { isFullscreenEnvEnabled } from '../terminal/fullscreen.js';
 import { toArray } from '../collections/generators.js';
 import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
-import { logError } from '../log.js';
+import { logError } from '../telemetry/log.js';
 import { enqueue, enqueuePendingNotification } from '../messageQueueManager.js';
 import {
   createCommandInputMessage,

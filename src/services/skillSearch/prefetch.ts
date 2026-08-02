@@ -9,7 +9,7 @@ import {
   type SearchResult,
 } from './localSearch.js'
 import { normalizeQueryIntent } from './intentNormalize.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseFrontmatter } from '../../utils/text/frontmatterParser.js'

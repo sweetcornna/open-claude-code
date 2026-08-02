@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { logError } from 'src/utils/log.js';
+import { logError } from 'src/utils/telemetry/log.js';
 import { getOriginalCwd } from '../../../bootstrap/state.js';
 import { Box, Text } from '@anthropic/ink';
 import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js';
@@ -7,7 +7,7 @@ import { SKILL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SkillTool
 import { SkillTool } from '@open-claude-code/builtin-tools/tools/SkillTool/SkillTool.js';
 import { env } from '../../../utils/config/env.js';
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
-import { logUnaryEvent } from '../../../utils/unaryLogging.js';
+import { logUnaryEvent } from '../../../utils/telemetry/unaryLogging.js';
 import { type UnaryEvent, usePermissionRequestLogging } from '../hooks.js';
 import { PermissionDialog } from '../PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption, type ToolAnalyticsContext } from '../PermissionPrompt.js';

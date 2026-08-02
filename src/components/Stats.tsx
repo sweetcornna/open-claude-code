@@ -23,7 +23,7 @@ import {
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getGlobalConfig } from '../utils/config/config.js';
 import { formatDuration, formatNumber } from '../utils/text/format.js';
-import { generateHeatmap } from '../utils/heatmap.js';
+import { generateHeatmap } from '../utils/telemetry/heatmap.js';
 import { renderModelName } from '../utils/model/model.js';
 import { copyAnsiToClipboard } from '../utils/terminal/screenshotClipboard.js';
 import {
@@ -31,7 +31,7 @@ import {
   type ClaudeCodeStats,
   type DailyModelTokens,
   type StatsDateRange,
-} from '../utils/stats.js';
+} from '../utils/telemetry/stats.js';
 import { resolveThemeSetting } from '../utils/terminal/systemTheme.js';
 import { getTheme, themeColorToAnsi } from '../utils/terminal/theme.js';
 import { Spinner } from './Spinner.js';

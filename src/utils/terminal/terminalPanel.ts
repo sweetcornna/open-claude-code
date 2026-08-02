@@ -21,7 +21,7 @@ import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js'
 import { instances } from '@anthropic/ink'
 import { registerCleanup } from '../process/cleanupRegistry.js'
 import { pwd } from '../filesystem/cwd.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 
 const TMUX_SESSION = 'panel'
 

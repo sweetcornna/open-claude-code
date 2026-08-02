@@ -4,7 +4,7 @@ import {
   safeResolvePath,
 } from '../filesystem/fsOperations.js'
 import { safeParseJSON } from '../text/json.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import {
   type EditableSettingSource,
   getEnabledSettingSources,

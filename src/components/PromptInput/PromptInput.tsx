@@ -62,12 +62,12 @@ import { count } from '../../utils/collections/array.js';
 import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { Cursor } from '../../utils/terminal/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config/config.js';
-import { logForDebugging } from '../../utils/debug.js';
+import { logForDebugging } from '../../utils/telemetry/debug.js';
 import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
 import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/config/env.js';
 import { errorMessage } from '../../utils/errors.js';
-import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
+import { isBilledAsExtraUsage } from '../../utils/telemetry/extraUsage.js';
 import {
   getFastModeUnavailableReason,
   isFastModeAvailable,
@@ -81,7 +81,7 @@ import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/terminal/ima
 import type { ImageDimensions } from '../../utils/terminal/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../utils/terminal/imageStore.js';
 import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/terminal/keyboardShortcuts.js';
-import { logError } from '../../utils/log.js';
+import { logError } from '../../utils/telemetry/log.js';
 import { isOpus1mMergeEnabled, modelDisplayString } from '../../utils/model/model.js';
 import { cyclePermissionMode, getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import { getPlatform } from '../../utils/process/platform.js';

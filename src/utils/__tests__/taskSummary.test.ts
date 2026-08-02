@@ -24,7 +24,7 @@ mock.module('../concurrentSessions.js', () => ({
   },
 }))
 
-mock.module('../debug.js', () => ({
+mock.module('../telemetry/debug.js', () => ({
   logForDebugging: () => {},
 }))
 

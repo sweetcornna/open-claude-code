@@ -1,6 +1,6 @@
 import { homedir } from 'os'
 import { join } from 'path'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { getPlatform, type Platform } from '../process/platform.js'
 
 export type SystemDirectories = {

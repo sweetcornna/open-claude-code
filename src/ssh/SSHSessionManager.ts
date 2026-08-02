@@ -5,8 +5,8 @@ import type {
   StdoutMessage,
 } from '../entrypoints/sdk/controlTypes.js'
 import type { PermissionUpdate } from '../types/permissions.js'
-import { logForDebugging } from '../utils/debug.js'
-import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
 import type { RemoteMessageContent } from '../utils/teleport/api.js'
 
 export interface SSHSessionManagerOptions {

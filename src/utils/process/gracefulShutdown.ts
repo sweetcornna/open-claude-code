@@ -34,13 +34,13 @@ import {
 } from '../../services/analytics/index.js'
 import type { AppState } from '../../state/AppState.js'
 import { runCleanupFunctions } from './cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
-import { logForDiagnosticsNoPII } from '../diagLogs.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { getCurrentSessionTitle, sessionIdExists } from '../sessionStorage.js'
 import { sleep } from './sleep.js'
-import { closeSentry } from '../sentry.js'
-import { profileReport } from '../startupProfiler.js'
+import { closeSentry } from '../telemetry/sentry.js'
+import { profileReport } from '../telemetry/startupProfiler.js'
 
 /**
  * Clean up terminal modes synchronously before process exit.

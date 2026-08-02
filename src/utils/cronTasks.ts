@@ -21,12 +21,12 @@ import {
   removeSessionCronTasks,
 } from '../bootstrap/state.js'
 import { computeNextCronRun, parseCronExpression } from './cron.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { isFsInaccessible } from './errors.js'
 import { getFsImplementation } from './filesystem/fsOperations.js'
 import { safeParseJSON } from './text/json.js'
-import { logError } from './log.js'
-import { jsonStringify } from './slowOperations.js'
+import { logError } from './telemetry/log.js'
+import { jsonStringify } from './telemetry/slowOperations.js'
 
 export type CronTask = {
   id: string

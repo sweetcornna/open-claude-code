@@ -30,7 +30,7 @@ import {
   getCwdState,
   getOriginalCwd,
 } from '../../bootstrap/state.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { expandPath } from '../filesystem/path.js'
 import { getPlatform, type Platform } from '../process/platform.js'
 import { settingsChangeDetector } from '../settings/changeDetector.js'
