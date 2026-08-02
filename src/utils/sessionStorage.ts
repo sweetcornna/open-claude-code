@@ -92,17 +92,77 @@ import { getSettings_DEPRECATED } from './settings/settings.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { ContentReplacementRecord } from './toolResultStorage.js'
 import { validateUuid } from './uuid.js'
+import {
+  cleanMessagesForLogging,
+  extractFirstPrompt,
+  getFirstMeaningfulUserMessageTextContent,
+  isChainParticipant,
+  isLegacyProgressEntry,
+  isTranscriptMessage,
+  removeExtraFields,
+  SKIP_FIRST_PROMPT_PATTERN,
+} from './sessionStorage/entries.js'
+import type { Transcript } from './sessionStorage/entries.js'
+import { appendEntryToFile, readFileTailSync } from './sessionStorage/fileIO.js'
+import {
+  clearAgentTranscriptSubdir,
+  deleteRemoteAgentMetadata,
+  getAgentTranscriptPath,
+  getEntrypoint,
+  getNodeEnv,
+  getProjectDir,
+  getProjectsDir,
+  getTranscriptPath,
+  getTranscriptPathForSession,
+  getUserType,
+  isCustomTitleEnabled,
+  listRemoteAgentMetadata,
+  MAX_TRANSCRIPT_READ_BYTES,
+  readAgentMetadata,
+  readRemoteAgentMetadata,
+  sessionIdExists,
+  setAgentTranscriptSubdir,
+  writeAgentMetadata,
+  writeRemoteAgentMetadata,
+} from './sessionStorage/paths.js'
+
+export {
+  cleanMessagesForLogging,
+  getFirstMeaningfulUserMessageTextContent,
+  isChainParticipant,
+  isEphemeralToolProgress,
+  isLoggableMessage,
+  isTranscriptMessage,
+  removeExtraFields,
+} from './sessionStorage/entries.js'
+export {
+  clearAgentTranscriptSubdir,
+  deleteRemoteAgentMetadata,
+  getAgentTranscriptPath,
+  getNodeEnv,
+  getProjectDir,
+  getProjectsDir,
+  getTranscriptPath,
+  getTranscriptPathForSession,
+  getUserType,
+  isCustomTitleEnabled,
+  listRemoteAgentMetadata,
+  MAX_TRANSCRIPT_READ_BYTES,
+  readAgentMetadata,
+  readRemoteAgentMetadata,
+  sessionIdExists,
+  setAgentTranscriptSubdir,
+  writeAgentMetadata,
+  writeRemoteAgentMetadata,
+} from './sessionStorage/paths.js'
+export type {
+  AgentMetadata,
+  RemoteAgentMetadata,
+} from './sessionStorage/paths.js'
 
 // Cache MACRO.VERSION at module level to work around bun --define bug in async contexts
 // See: https://github.com/oven-sh/bun/issues/26168
 const VERSION = typeof MACRO !== 'undefined' ? MACRO.VERSION : 'unknown'
-
-type Transcript = (
-  | UserMessage
-  | AssistantMessage
-  | AttachmentMessage
-  | SystemMessage
-)[]
 
 // Use getOriginalCwd() at each call site instead of capturing at module load
 // time. getCwd() at import time may run before bootstrap resolves symlinks via
@@ -120,323 +180,6 @@ type Transcript = (
 // 50MB — prevents OOM in the tombstone slow path which reads + rewrites the
 // entire session file. Session files can grow to multiple GB (inc-3930).
 const MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024
-
-const SKIP_FIRST_PROMPT_PATTERN =
-  /^(?:\s*<[a-z][\w-]*[\s>]|\[Request interrupted by user[^\]]*\])/
-
-/**
- * Type guard to check if an entry is a transcript message.
- * Transcript messages include user, assistant, attachment, and system messages.
- * IMPORTANT: This is the single source of truth for what constitutes a transcript message.
- * loadTranscriptFile() uses this to determine which messages to load into the chain.
- *
- * Progress messages are NOT transcript messages. They are ephemeral UI state
- * and must not be persisted to the JSONL or participate in the parentUuid
- * chain. Including them caused chain forks that orphaned real conversation
- * messages on resume (see #14373, #23537).
- */
-export function isTranscriptMessage(entry: Entry): entry is TranscriptMessage {
-  return (
-    entry.type === 'user' ||
-    entry.type === 'assistant' ||
-    entry.type === 'attachment' ||
-    entry.type === 'system'
-  )
-}
-
-/**
- * Entries that participate in the parentUuid chain. Used on the write path
- * (insertMessageChain, useLogMessages) to skip progress when assigning
- * parentUuid. Old transcripts with progress already in the chain are handled
- * by the progressBridge rewrite in loadTranscriptFile.
- */
-export function isChainParticipant(m: Pick<Message, 'type'>): boolean {
-  return m.type !== 'progress'
-}
-
-type LegacyProgressEntry = {
-  type: 'progress'
-  uuid: UUID
-  parentUuid: UUID | null
-}
-
-/**
- * Progress entries in transcripts written before PR #24099. They are not
- * in the Entry type union anymore but still exist on disk with uuid and
- * parentUuid fields. loadTranscriptFile bridges the chain across them.
- */
-function isLegacyProgressEntry(entry: unknown): entry is LegacyProgressEntry {
-  return (
-    typeof entry === 'object' &&
-    entry !== null &&
-    'type' in entry &&
-    entry.type === 'progress' &&
-    'uuid' in entry &&
-    typeof entry.uuid === 'string'
-  )
-}
-
-/**
- * High-frequency tool progress ticks (per-chunk for Bash). These are UI-only:
- * not sent to the API, not rendered after the tool completes. Used by
- * REPL.tsx to replace-in-place instead of appending, and by loadTranscriptFile
- * to skip legacy entries from old transcripts.
- *
- * 'sleep_progress' is never emitted since the Sleep tool was removed — it is
- * kept (and no longer feature-gated) so transcripts recorded before the
- * removal still load cleanly.
- */
-const EPHEMERAL_PROGRESS_TYPES = new Set([
-  'bash_progress',
-  'powershell_progress',
-  'mcp_progress',
-  'sleep_progress',
-])
-export function isEphemeralToolProgress(dataType: unknown): boolean {
-  return typeof dataType === 'string' && EPHEMERAL_PROGRESS_TYPES.has(dataType)
-}
-
-export function getProjectsDir(): string {
-  return join(getClaudeConfigHomeDir(), 'projects')
-}
-
-export function getTranscriptPath(): string {
-  const projectDir = getSessionProjectDir() ?? getProjectDir(getOriginalCwd())
-  return join(projectDir, `${getSessionId()}.jsonl`)
-}
-
-export function getTranscriptPathForSession(sessionId: string): string {
-  // When asking for the CURRENT session's transcript, honor sessionProjectDir
-  // the same way getTranscriptPath() does. Without this, hooks get a
-  // transcript_path computed from originalCwd while the actual file was
-  // written to sessionProjectDir (set by switchActiveSession on resume/branch)
-  // — different directories, so the hook sees MISSING (gh-30217). CC-34
-  // made sessionId + sessionProjectDir atomic precisely to prevent this
-  // kind of drift; this function just wasn't updated to read both.
-  //
-  // For OTHER session IDs we can only guess via originalCwd — we don't
-  // track a sessionId→projectDir map. Callers wanting a specific other
-  // session's path should pass fullPath explicitly (most save* functions
-  // already accept this).
-  if (sessionId === getSessionId()) {
-    return getTranscriptPath()
-  }
-  const projectDir = getProjectDir(getOriginalCwd())
-  return join(projectDir, `${sessionId}.jsonl`)
-}
-
-// 50 MB — session JSONL can grow to multiple GB (inc-3930). Callers that
-// read the raw transcript must bail out above this threshold to avoid OOM.
-export const MAX_TRANSCRIPT_READ_BYTES = 50 * 1024 * 1024
-
-// In-memory map of agentId → subdirectory for grouping related subagent
-// transcripts (e.g. workflow runs write to subagents/workflows/<runId>/).
-// Populated before the agent runs; consulted by getAgentTranscriptPath.
-const agentTranscriptSubdirs = new Map<string, string>()
-
-export function setAgentTranscriptSubdir(
-  agentId: string,
-  subdir: string,
-): void {
-  agentTranscriptSubdirs.set(agentId, subdir)
-}
-
-export function clearAgentTranscriptSubdir(agentId: string): void {
-  agentTranscriptSubdirs.delete(agentId)
-}
-
-export function getAgentTranscriptPath(agentId: AgentId): string {
-  // Same sessionProjectDir consistency as getTranscriptPathForSession —
-  // subagent transcripts live under the session dir, so if the session
-  // transcript is at sessionProjectDir, subagent transcripts are too.
-  const projectDir = getSessionProjectDir() ?? getProjectDir(getOriginalCwd())
-  const sessionId = getSessionId()
-  const subdir = agentTranscriptSubdirs.get(agentId)
-  const base = subdir
-    ? join(projectDir, sessionId, 'subagents', subdir)
-    : join(projectDir, sessionId, 'subagents')
-  return join(base, `agent-${agentId}.jsonl`)
-}
-
-function getAgentMetadataPath(agentId: AgentId): string {
-  return getAgentTranscriptPath(agentId).replace(/\.jsonl$/, '.meta.json')
-}
-
-export type AgentMetadata = {
-  agentType: string
-  /** Worktree path if the agent was spawned with isolation: "worktree" */
-  worktreePath?: string
-  /** Original task description from the AgentTool input. Persisted so a
-   * resumed agent's notification can show the original description instead
-   * of a placeholder. Optional — older metadata files lack this field. */
-  description?: string
-}
-
-/**
- * Persist the agentType used to launch a subagent. Read by resume to
- * route correctly when subagent_type is omitted — without this, resuming
- * a fork silently degrades to general-purpose (4KB system prompt, no
- * inherited history). Sidecar file avoids JSONL schema changes.
- *
- * Also stores the worktreePath when the agent was spawned with worktree
- * isolation, enabling resume to restore the correct cwd.
- */
-export async function writeAgentMetadata(
-  agentId: AgentId,
-  metadata: AgentMetadata,
-): Promise<void> {
-  const path = getAgentMetadataPath(agentId)
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(metadata))
-}
-
-export async function readAgentMetadata(
-  agentId: AgentId,
-): Promise<AgentMetadata | null> {
-  const path = getAgentMetadataPath(agentId)
-  try {
-    const raw = await readFile(path, 'utf-8')
-    return JSON.parse(raw) as AgentMetadata
-  } catch (e) {
-    if (isFsInaccessible(e)) return null
-    throw e
-  }
-}
-
-export type RemoteAgentMetadata = {
-  taskId: string
-  remoteTaskType: string
-  /** CCR session ID — used to fetch live status from the Sessions API on resume. */
-  sessionId: string
-  title: string
-  command: string
-  spawnedAt: number
-  toolUseId?: string
-  isLongRunning?: boolean
-  isUltraplan?: boolean
-  isRemoteReview?: boolean
-  remoteTaskMetadata?: Record<string, unknown>
-}
-
-function getRemoteAgentsDir(): string {
-  // Same sessionProjectDir fallback as getAgentTranscriptPath — the project
-  // dir (containing the .jsonl), not the session dir, so sessionId is joined.
-  const projectDir = getSessionProjectDir() ?? getProjectDir(getOriginalCwd())
-  return join(projectDir, getSessionId(), 'remote-agents')
-}
-
-function getRemoteAgentMetadataPath(taskId: string): string {
-  return join(getRemoteAgentsDir(), `remote-agent-${taskId}.meta.json`)
-}
-
-/**
- * Persist metadata for a remote-agent task so it can be restored on session
- * resume. Per-task sidecar file (sibling dir to subagents/) survives
- * hydrateSessionFromRemote's .jsonl wipe; status is always fetched fresh
- * from CCR on restore — only identity is persisted locally.
- */
-export async function writeRemoteAgentMetadata(
-  taskId: string,
-  metadata: RemoteAgentMetadata,
-): Promise<void> {
-  const path = getRemoteAgentMetadataPath(taskId)
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(metadata))
-}
-
-export async function readRemoteAgentMetadata(
-  taskId: string,
-): Promise<RemoteAgentMetadata | null> {
-  const path = getRemoteAgentMetadataPath(taskId)
-  try {
-    const raw = await readFile(path, 'utf-8')
-    return JSON.parse(raw) as RemoteAgentMetadata
-  } catch (e) {
-    if (isFsInaccessible(e)) return null
-    throw e
-  }
-}
-
-export async function deleteRemoteAgentMetadata(taskId: string): Promise<void> {
-  const path = getRemoteAgentMetadataPath(taskId)
-  try {
-    await unlink(path)
-  } catch (e) {
-    if (isFsInaccessible(e)) return
-    throw e
-  }
-}
-
-/**
- * Scan the remote-agents/ directory for all persisted metadata files.
- * Used by restoreRemoteAgentTasks to reconnect to still-running CCR sessions.
- */
-export async function listRemoteAgentMetadata(): Promise<
-  RemoteAgentMetadata[]
-> {
-  const dir = getRemoteAgentsDir()
-  let entries: Dirent[]
-  try {
-    entries = await readdir(dir, { withFileTypes: true })
-  } catch (e) {
-    if (isFsInaccessible(e)) return []
-    throw e
-  }
-  const results: RemoteAgentMetadata[] = []
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.meta.json')) continue
-    try {
-      const raw = await readFile(join(dir, entry.name), 'utf-8')
-      results.push(JSON.parse(raw) as RemoteAgentMetadata)
-    } catch (e) {
-      // Skip unreadable or corrupt files — a partial write from a crashed
-      // fire-and-forget persist shouldn't take down the whole restore.
-      logForDebugging(
-        `listRemoteAgentMetadata: skipping ${entry.name}: ${String(e)}`,
-      )
-    }
-  }
-  return results
-}
-
-export function sessionIdExists(sessionId: string): boolean {
-  const projectDir = getProjectDir(getOriginalCwd())
-  const sessionFile = join(projectDir, `${sessionId}.jsonl`)
-  const fs = getFsImplementation()
-  try {
-    fs.statSync(sessionFile)
-    return true
-  } catch {
-    return false
-  }
-}
-
-// exported for testing
-export function getNodeEnv(): string {
-  return process.env.NODE_ENV || 'development'
-}
-
-// exported for testing
-export function getUserType(): string {
-  return process.env.USER_TYPE || 'external'
-}
-
-function getEntrypoint(): string | undefined {
-  return process.env.CLAUDE_CODE_ENTRYPOINT
-}
-
-export function isCustomTitleEnabled(): boolean {
-  return true
-}
-
-// Memoized: called 12+ times per turn via hooks.ts createBaseHookInput
-// (PostToolUse path, 5×/turn) + various save* functions. Input is a cwd
-// string; homedir/env/regex are all session-invariant so the result is
-// stable for a given input. Worktree switches just change the key — no
-// cache clear needed.
-export const getProjectDir = memoize((projectDir: string): string => {
-  return join(getProjectsDir(), sanitizePath(projectDir))
-})
 
 let project: Project | null = null
 let cleanupRegistered = false
@@ -1704,104 +1447,6 @@ export async function hydrateFromCCRv2InternalEvents(
   }
 }
 
-function extractFirstPrompt(transcript: TranscriptMessage[]): string {
-  const textContent = getFirstMeaningfulUserMessageTextContent(transcript)
-  if (textContent) {
-    let result = textContent.replace(/\n/g, ' ').trim()
-
-    // Store a reasonably long version for display-time truncation
-    // The actual truncation will be applied at display time based on terminal width
-    if (result.length > 200) {
-      result = result.slice(0, 200).trim() + '…'
-    }
-
-    return result
-  }
-
-  return 'No prompt'
-}
-
-/**
- * Gets the last user message that was processed (i.e., before any non-user message appears).
- * Used to determine if a session has valid user interaction.
- */
-export function getFirstMeaningfulUserMessageTextContent<T extends Message>(
-  transcript: T[],
-): string | undefined {
-  for (const msg of transcript) {
-    if (msg.type !== 'user' || msg.isMeta) continue
-    // Skip compact summary messages - they should not be treated as the first prompt
-    if ('isCompactSummary' in msg && msg.isCompactSummary) continue
-
-    const content = msg.message?.content
-    if (!content) continue
-
-    // Collect all text values. For array content (common in VS Code where
-    // IDE metadata tags come before the user's actual prompt), iterate all
-    // text blocks so we don't miss the real prompt hidden behind
-    // <ide_selection>/<ide_opened_file> blocks.
-    const texts: string[] = []
-    if (typeof content === 'string') {
-      texts.push(content)
-    } else if (Array.isArray(content)) {
-      for (const block of content) {
-        if (block.type === 'text' && block.text) {
-          texts.push(block.text)
-        }
-      }
-    }
-
-    for (const textContent of texts) {
-      if (!textContent) continue
-
-      const commandNameTag = extractTag(textContent, COMMAND_NAME_TAG)
-      if (commandNameTag) {
-        const commandName = commandNameTag.replace(/^\//, '')
-
-        // If it's a built-in command, then it's unlikely to provide
-        // meaningful context (e.g. `/model sonnet`)
-        if (builtInCommandNames().has(commandName)) {
-          continue
-        } else {
-          // Otherwise, for custom commands, then keep it only if it has
-          // arguments (e.g. `/review reticulate splines`)
-          const commandArgs = extractTag(textContent, 'command-args')?.trim()
-          if (!commandArgs) {
-            continue
-          }
-          // Return clean formatted command instead of raw XML
-          return `${commandNameTag} ${commandArgs}`
-        }
-      }
-
-      // Format bash input with ! prefix (as user typed it). Checked before
-      // the generic XML skip so bash-mode sessions get a meaningful title.
-      const bashInput = extractTag(textContent, 'bash-input')
-      if (bashInput) {
-        return `! ${bashInput}`
-      }
-
-      // Skip non-meaningful messages (local command output, hook output,
-      // autonomous tick prompts, task notifications, pure IDE metadata tags)
-      if (SKIP_FIRST_PROMPT_PATTERN.test(textContent)) {
-        continue
-      }
-
-      return textContent
-    }
-  }
-  return undefined
-}
-
-export function removeExtraFields(
-  transcript: TranscriptMessage[],
-): SerializedMessage[] {
-  return transcript.map(m => {
-    const { isSidechain, parentUuid, ...serializedMessage } = m
-    return serializedMessage
-  })
-}
-
 /**
  * Splice the preserved segment back into the chain after compaction.
  *
@@ -2455,54 +2100,6 @@ export async function fetchLogs(limit?: number): Promise<LogOption[]> {
   await trackSessionBranchingAnalytics(logs)
 
   return logs
-}
-
-/**
- * Append an entry to a session file. Creates the parent dir if missing.
- */
-/* eslint-disable custom-rules/no-sync-fs -- sync callers (exit cleanup, materialize) */
-function appendEntryToFile(
-  fullPath: string,
-  entry: Record<string, unknown>,
-): void {
-  const fs = getFsImplementation()
-  const line = jsonStringify(entry) + '\n'
-  try {
-    fs.appendFileSync(fullPath, line, { mode: 0o600 })
-  } catch {
-    fs.mkdirSync(dirname(fullPath), { mode: 0o700 })
-    fs.appendFileSync(fullPath, line, { mode: 0o600 })
-  }
-}
-
-/**
- * Sync tail read for reAppendSessionMetadata's external-writer check.
- * fstat on the already-open fd (no extra path lookup); reads the same
- * LITE_READ_BUF_SIZE window that readLiteMetadata scans. Returns empty
- * string on any error so callers fall through to unconditional behavior.
- */
-function readFileTailSync(fullPath: string): string {
-  let fd: number | undefined
-  try {
-    fd = openSync(fullPath, 'r')
-    const st = fstatSync(fd)
-    const tailOffset = Math.max(0, st.size - LITE_READ_BUF_SIZE)
-    const buf = Buffer.allocUnsafe(
-      Math.min(LITE_READ_BUF_SIZE, st.size - tailOffset),
-    )
-    const bytesRead = readSync(fd, buf, 0, buf.length, tailOffset)
-    return buf.toString('utf8', 0, bytesRead)
-  } catch {
-    return ''
-  } finally {
-    if (fd !== undefined) {
-      try {
-        closeSync(fd)
-      } catch {
-        // closeSync can throw; swallow to preserve return '' contract
-      }
-    }
-  }
 }
 /* eslint-enable custom-rules/no-sync-fs */
 
@@ -4287,124 +3884,6 @@ export async function loadAllSubagentTranscriptsFromDisk(): Promise<{
     )
     .map(d => d.name.slice('agent-'.length, -'.jsonl'.length))
   return loadSubagentTranscripts(agentIds)
-}
-
-// Exported so useLogMessages can sync-compute the last loggable uuid
-// without awaiting recordTranscript's return value (race-free hint tracking).
-export function isLoggableMessage(m: Message): boolean {
-  if (m.type === 'progress') return false
-  // IMPORTANT: We deliberately filter out most attachments for non-ants because
-  // they have sensitive info for training that we don't want exposed to the public.
-  // When enabled, we allow hook_additional_context through since it contains
-  // user-configured hook output that is useful for session context on resume.
-  if (m.type === 'attachment' && getUserType() !== 'ant') {
-    if (
-      m.attachment!.type === 'hook_additional_context' &&
-      isEnvTruthy(process.env.CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT)
-    ) {
-      return true
-    }
-    return false
-  }
-  return true
-}
-
-function collectReplIds(messages: readonly Message[]): Set<string> {
-  const ids = new Set<string>()
-  for (const m of messages) {
-    if (m.type === 'assistant' && Array.isArray(m.message!.content)) {
-      for (const b of m.message!.content as Array<{
-        type: string
-        name: string
-        id: string
-      }>) {
-        if (b.type === 'tool_use' && b.name === REPL_TOOL_NAME) {
-          ids.add(b.id)
-        }
-      }
-    }
-  }
-  return ids
-}
-
-/**
- * For external users, make REPL invisible in the persisted transcript: strip
- * REPL tool_use/tool_result pairs and promote isVirtual messages to real. On
- * --resume the model then sees a coherent native-tool-call history (assistant
- * called Bash, got result, called Read, got result) without the REPL wrapper.
- * Ant transcripts keep the wrapper so /share training data sees REPL usage.
- *
- * replIds is pre-collected from the FULL session array, not the slice being
- * transformed — recordTranscript receives incremental slices where the REPL
- * tool_use (earlier render) and its tool_result (later render, after async
- * execution) land in separate calls. A fresh per-call Set would miss the id
- * and leave an orphaned tool_result on disk.
- */
-function transformMessagesForExternalTranscript(
-  messages: Transcript,
-  replIds: Set<string>,
-): Transcript {
-  return messages.flatMap(m => {
-    if (m.type === 'assistant' && Array.isArray(m.message.content)) {
-      const content = m.message.content
-      const hasRepl = content.some(
-        b => b.type === 'tool_use' && b.name === REPL_TOOL_NAME,
-      )
-      const filtered = hasRepl
-        ? content.filter(
-            b => !(b.type === 'tool_use' && b.name === REPL_TOOL_NAME),
-          )
-        : content
-      if (filtered.length === 0) return []
-      if (m.isVirtual) {
-        const { isVirtual: _omit, ...rest } = m
-        return [{ ...rest, message: { ...m.message, content: filtered } }]
-      }
-      if (filtered !== content) {
-        return [{ ...m, message: { ...m.message, content: filtered } }]
-      }
-      return [m]
-    }
-    if (m.type === 'user' && Array.isArray(m.message.content)) {
-      const content = m.message.content
-      const hasRepl = content.some(
-        b => b.type === 'tool_result' && replIds.has(b.tool_use_id),
-      )
-      const filtered = hasRepl
-        ? content.filter(
-            b => !(b.type === 'tool_result' && replIds.has(b.tool_use_id)),
-          )
-        : content
-      if (filtered.length === 0) return []
-      if (m.isVirtual) {
-        const { isVirtual: _omit, ...rest } = m
-        return [{ ...rest, message: { ...m.message, content: filtered } }]
-      }
-      if (filtered !== content) {
-        return [{ ...m, message: { ...m.message, content: filtered } }]
-      }
-      return [m]
-    }
-    // string-content user, system, attachment
-    if ('isVirtual' in m && m.isVirtual) {
-      const { isVirtual: _omit, ...rest } = m
-      return [rest]
-    }
-    return [m]
-  }) as Transcript
-}
-
-export function cleanMessagesForLogging(
-  messages: Message[],
-  allMessages: readonly Message[] = messages,
-): Transcript {
-  const filtered = messages.filter(isLoggableMessage) as Transcript
-  return getUserType() !== 'ant'
-    ? transformMessagesForExternalTranscript(
-        filtered,
-        collectReplIds(allMessages),
-      )
-    : filtered
 }
 
 /**
