@@ -93,7 +93,7 @@ mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
-mock.module('src/utils/errors.js', () => ({
+mock.module('src/utils/runtime/errors.js', () => ({
   ClaudeError: class extends Error {},
   MalformedCommandError: class extends Error {},
   AbortError: class extends Error {},

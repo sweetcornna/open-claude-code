@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { useCommandQueue } from 'src/hooks/useCommandQueue.js'
 import { useAppState } from 'src/state/AppState.js'
 import { getGlobalConfig } from 'src/utils/config/config.js'
-import { getExampleCommandFromCache } from 'src/utils/exampleCommands.js'
+import { getExampleCommandFromCache } from 'src/utils/runtime/exampleCommands.js'
 import { isQueuedCommandEditable } from 'src/utils/session/messageQueueManager.js'
 
 // Dead code elimination: conditional import for proactive mode

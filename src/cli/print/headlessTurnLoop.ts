@@ -19,7 +19,7 @@ import { EMPTY_USAGE } from '@ant/model-provider'
 import { getSessionId } from 'src/bootstrap/state.js'
 import { TICK_TAG } from 'src/constants/xml.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import { getInMemoryErrors, logError } from 'src/utils/telemetry/log.js'
 import { enqueue, peek } from 'src/utils/session/messageQueueManager.js'
 import {

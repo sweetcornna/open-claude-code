@@ -31,7 +31,7 @@ mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   stopPeriodicGrowthBookRefresh: () => {},
 }))
 
-mock.module('src/utils/searchExtraTools.js', () => ({
+mock.module('src/utils/tools/searchExtraTools.js', () => ({
   isSearchExtraToolsEnabledOptimistic: () => true,
   getAutoSearchExtraToolsCharThreshold: () => 100,
   getSearchExtraToolsMode: () => 'tst' as const,
@@ -56,7 +56,7 @@ mock.module('src/utils/messages.js', () => ({
   INTERRUPT_MESSAGE_FOR_TOOL_USE: '[Request interrupted]',
 }))
 
-mock.module('src/utils/toolErrors.js', () => ({
+mock.module('src/utils/tools/toolErrors.js', () => ({
   formatZodValidationError: (_name: string, error: unknown) =>
     `validation error: ${JSON.stringify(error)}`,
 }))

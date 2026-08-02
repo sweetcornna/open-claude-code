@@ -52,7 +52,7 @@ import { getContextWindowForModel } from './context.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
-import { errorMessage, toError } from '../errors.js'
+import { errorMessage, toError } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import { normalizeMessagesForAPI } from '../messages.js'
 import { getRuntimeMainLoopModel } from '../model/model.js'
@@ -387,7 +387,9 @@ async function countBuiltInToolTokens(
   }
 
   // Check if tool search is enabled
-  const { isSearchExtraToolsEnabled } = await import('../searchExtraTools.js')
+  const { isSearchExtraToolsEnabled } = await import(
+    '../tools/searchExtraTools.js'
+  )
   const { isDeferredTool } = await import(
     '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
   )
@@ -673,7 +675,9 @@ export async function countMcpToolTokens(
 
   // Check if tool search is enabled - if so, MCP tools are deferred
   // isSearchExtraToolsEnabled handles threshold calculation internally for TstAuto mode
-  const { isSearchExtraToolsEnabled } = await import('../searchExtraTools.js')
+  const { isSearchExtraToolsEnabled } = await import(
+    '../tools/searchExtraTools.js'
+  )
   const { isDeferredTool } = await import(
     '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
   )

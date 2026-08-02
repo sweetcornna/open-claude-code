@@ -43,7 +43,7 @@ import {
   getSettingsRootPathForSource,
 } from '../settings/settings.js'
 import { containsVulnerableUncPath } from '../shell/readOnlyCommandValidation.js'
-import { getToolResultsDir } from '../toolResultStorage.js'
+import { getToolResultsDir } from '../tools/toolResultStorage.js'
 import { windowsPathToPosixPath } from '../filesystem/windowsPaths.js'
 import type {
   PermissionDecision,

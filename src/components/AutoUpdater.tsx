@@ -18,7 +18,7 @@ import {
 } from '../utils/update/autoUpdater.js';
 import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config/config.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
-import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
+import { getCurrentInstallationType } from '../utils/runtime/doctorDiagnostic.js';
 import { installOrUpdateOccPackage } from '../utils/update/localInstaller.js';
 import { gt, gte } from '../utils/text/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';

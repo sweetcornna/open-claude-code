@@ -32,7 +32,7 @@ import { collapseReadSearchGroups } from '../utils/session/collapseReadSearch.js
 import { collapseTeammateShutdowns } from '../utils/session/collapseTeammateShutdowns.js';
 import { getGlobalConfig } from '../utils/config/config.js';
 import { isEnvTruthy } from '../utils/config/envUtils.js';
-import { applyGrouping } from '../utils/groupToolUses.js';
+import { applyGrouping } from '../utils/tools/groupToolUses.js';
 import {
   type MessageLookups,
   type MessageLookupsCache,

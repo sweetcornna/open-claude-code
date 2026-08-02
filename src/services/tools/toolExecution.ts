@@ -67,7 +67,7 @@ import {
   getErrnoCode,
   ShellError,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from '../../utils/errors.js'
+} from '../../utils/runtime/errors.js'
 import { executePermissionDeniedHooks } from '../../utils/hooks.js'
 import { logError } from '../../utils/telemetry/log.js'
 import {
@@ -102,16 +102,16 @@ import {
 import {
   formatError,
   formatZodValidationError,
-} from '../../utils/toolErrors.js'
+} from '../../utils/tools/toolErrors.js'
 import {
   processPreMappedToolResultBlock,
   processToolResultBlock,
-} from '../../utils/toolResultStorage.js'
+} from '../../utils/tools/toolResultStorage.js'
 import {
   extractDiscoveredToolNames,
   isSearchExtraToolsEnabledOptimistic,
   isSearchExtraToolsToolAvailable,
-} from '../../utils/searchExtraTools.js'
+} from '../../utils/tools/searchExtraTools.js'
 import {
   McpAuthError,
   McpToolCallError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

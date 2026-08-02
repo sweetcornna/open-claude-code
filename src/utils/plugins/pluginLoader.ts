@@ -66,7 +66,7 @@ import {
   isENOENT,
   isFsInaccessible,
   toError,
-} from '../errors.js'
+} from '../runtime/errors.js'
 import {
   execFileNoThrow,
   execFileNoThrowWithCwd,

@@ -28,7 +28,7 @@ import {
   type PermissionResult,
 } from '../../utils/permissions/PermissionResult.js'
 import { checkRuleBasedPermissions } from '../../utils/permissions/permissions.js'
-import { formatError } from '../../utils/toolErrors.js'
+import { formatError } from '../../utils/tools/toolErrors.js'
 import { isMcpTool } from '../mcp/utils.js'
 import type { McpServerType, MessageUpdateLazy } from './toolExecution.js'
 

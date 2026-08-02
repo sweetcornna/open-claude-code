@@ -11,7 +11,7 @@ import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/Agen
 import { count } from '../utils/collections/array.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from '../utils/telemetry/diagLogs.js'
-import { toError } from '../utils/errors.js'
+import { toError } from '../utils/runtime/errors.js'
 import { logError } from '../utils/telemetry/log.js'
 import { loadPluginAgents } from '../utils/plugins/loadPluginAgents.js'
 import { getPluginCommands } from '../utils/plugins/loadPluginCommands.js'

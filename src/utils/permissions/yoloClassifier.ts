@@ -24,7 +24,7 @@ import type {
 } from '../../types/permissions.js'
 import { isDebugMode, logForDebugging } from '../telemetry/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { extractTextContent } from '../messages.js'
 import { resolveAntModel } from '../model/antModels.js'

@@ -56,7 +56,7 @@ import {
 } from 'src/utils/terminal/imageResizer.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logError } from 'src/utils/telemetry/log.js'
-import { isAutoMemFile } from 'src/utils/memoryFileDetection.js'
+import { isAutoMemFile } from 'src/utils/memory/memoryFileDetection.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import {
   mapNotebookCellsToToolResult,

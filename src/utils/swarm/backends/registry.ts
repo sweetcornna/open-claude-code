@@ -1,6 +1,6 @@
 import { getIsNonInteractiveSession } from '../../../bootstrap/state.js'
 import { logForDebugging } from '../../telemetry/debug.js'
-import { errorMessage } from '../../../utils/errors.js'
+import { errorMessage } from '../../runtime/errors.js'
 import { getPlatform } from '../../process/platform.js'
 import {
   isInITerm2,

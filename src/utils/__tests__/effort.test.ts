@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
 
 // Mock heavy dependencies to avoid import chain issues
-mock.module('src/utils/thinking.js', () => ({
+mock.module('src/utils/model/thinking.js', () => ({
   isUltrathinkEnabled: () => false,
 }))
 mock.module('src/utils/settings/settings.js', () => ({
@@ -28,7 +28,7 @@ const {
   getEffortLevelDescription,
   resolvePickerEffortPersistence,
   EFFORT_LEVELS,
-} = await import('src/utils/effort.js')
+} = await import('src/utils/model/effort.js')
 
 // ─── EFFORT_LEVELS constant ────────────────────────────────────────────
 
@@ -295,32 +295,32 @@ describe('resolvePickerEffortPersistence', () => {
 
 describe('modelSupportsMaxEffort', () => {
   test('returns true for opus-4-7', async () => {
-    const { modelSupportsMaxEffort } = await import('src/utils/effort.js')
+    const { modelSupportsMaxEffort } = await import('src/utils/model/effort.js')
     expect(modelSupportsMaxEffort('claude-opus-4-7-20250918')).toBe(true)
   })
 
   test('returns true for opus-4-6', async () => {
-    const { modelSupportsMaxEffort } = await import('src/utils/effort.js')
+    const { modelSupportsMaxEffort } = await import('src/utils/model/effort.js')
     expect(modelSupportsMaxEffort('claude-opus-4-6-20250514')).toBe(true)
   })
 
   test('returns true for sonnet models', async () => {
-    const { modelSupportsMaxEffort } = await import('src/utils/effort.js')
+    const { modelSupportsMaxEffort } = await import('src/utils/model/effort.js')
     expect(modelSupportsMaxEffort('claude-sonnet-4-6-20250514')).toBe(true)
   })
 
   test('returns true for haiku models', async () => {
-    const { modelSupportsMaxEffort } = await import('src/utils/effort.js')
+    const { modelSupportsMaxEffort } = await import('src/utils/model/effort.js')
     expect(modelSupportsMaxEffort('claude-haiku-4-5-20251001')).toBe(true)
   })
 
   test('returns true for deepseek models', async () => {
-    const { modelSupportsMaxEffort } = await import('src/utils/effort.js')
+    const { modelSupportsMaxEffort } = await import('src/utils/model/effort.js')
     expect(modelSupportsMaxEffort('deepseek-v4-pro')).toBe(true)
   })
 
   test('returns true for unknown models', async () => {
-    const { modelSupportsMaxEffort } = await import('src/utils/effort.js')
+    const { modelSupportsMaxEffort } = await import('src/utils/model/effort.js')
     expect(modelSupportsMaxEffort('some-random-model')).toBe(true)
   })
 })
@@ -329,22 +329,30 @@ describe('modelSupportsMaxEffort', () => {
 
 describe('modelSupportsXhighEffort', () => {
   test('returns true for opus-4-7', async () => {
-    const { modelSupportsXhighEffort } = await import('src/utils/effort.js')
+    const { modelSupportsXhighEffort } = await import(
+      'src/utils/model/effort.js'
+    )
     expect(modelSupportsXhighEffort('claude-opus-4-7-20250918')).toBe(true)
   })
 
   test('returns true for sonnet models', async () => {
-    const { modelSupportsXhighEffort } = await import('src/utils/effort.js')
+    const { modelSupportsXhighEffort } = await import(
+      'src/utils/model/effort.js'
+    )
     expect(modelSupportsXhighEffort('claude-sonnet-4-6-20250514')).toBe(true)
   })
 
   test('returns true for haiku models', async () => {
-    const { modelSupportsXhighEffort } = await import('src/utils/effort.js')
+    const { modelSupportsXhighEffort } = await import(
+      'src/utils/model/effort.js'
+    )
     expect(modelSupportsXhighEffort('claude-haiku-4-5-20251001')).toBe(true)
   })
 
   test('returns true for unknown models', async () => {
-    const { modelSupportsXhighEffort } = await import('src/utils/effort.js')
+    const { modelSupportsXhighEffort } = await import(
+      'src/utils/model/effort.js'
+    )
     expect(modelSupportsXhighEffort('some-random-model')).toBe(true)
   })
 })

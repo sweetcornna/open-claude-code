@@ -3,7 +3,7 @@ import type { Message } from '../../types/message.js'
 import {
   createToolResultReleaseCache,
   releaseToolUseResults,
-} from '../toolResultRelease.js'
+} from '../tools/toolResultRelease.js'
 
 /**
  * The inline `.map()` that lived in query.ts before this helper existed.

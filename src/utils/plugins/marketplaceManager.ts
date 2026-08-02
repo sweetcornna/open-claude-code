@@ -33,7 +33,7 @@ import {
   getErrnoCode,
   isENOENT,
   toError,
-} from '../errors.js'
+} from '../runtime/errors.js'
 import {
   execFileNoThrow,
   execFileNoThrowWithCwd,

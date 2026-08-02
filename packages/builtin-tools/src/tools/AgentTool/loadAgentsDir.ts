@@ -18,7 +18,7 @@ import {
   EFFORT_LEVELS,
   type EffortValue,
   parseEffortValue,
-} from 'src/utils/effort.js'
+} from 'src/utils/model/effort.js'
 import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { parsePositiveIntFromFrontmatter } from 'src/utils/text/frontmatterParser.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'

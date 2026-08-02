@@ -22,7 +22,7 @@ import { setLastSummarizedMessageId } from '../../services/SessionMemory/session
 import type { ToolUseContext } from '../../Tool.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import type { Message } from '../../types/message.js'
-import { hasExactErrorMessage } from '../../utils/errors.js'
+import { hasExactErrorMessage } from '../../utils/runtime/errors.js'
 import { formatTokens } from '../../utils/text/format.js'
 import { executePreCompactHooks } from '../../utils/hooks.js'
 import { logError } from '../../utils/telemetry/log.js'

@@ -48,7 +48,7 @@ import type { AttributionState } from './utils/git/commitAttribution.js'
 import { getGlobalConfig } from './utils/config/config.js'
 import { getCwd } from './utils/filesystem/cwd.js'
 import { isBareMode, isEnvTruthy } from './utils/config/envUtils.js'
-import { getFastModeState } from './utils/fastMode.js'
+import { getFastModeState } from './utils/model/fastMode.js'
 import {
   type FileHistoryState,
   fileHistoryEnabled,
@@ -82,7 +82,7 @@ import { resolveThemeSetting } from './utils/terminal/systemTheme.js'
 import {
   shouldEnableThinkingByDefault,
   type ThinkingConfig,
-} from './utils/thinking.js'
+} from './utils/model/thinking.js'
 
 // Lazy: MessageSelector.tsx pulls React/ink; only needed for message filtering at query time
 /* eslint-disable @typescript-eslint/no-require-imports */

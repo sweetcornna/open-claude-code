@@ -8,7 +8,7 @@ import { Box, Link, Text } from '@anthropic/ink';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import { clearMemoryFileCaches, getMemoryFiles } from '../../utils/session/claudemd.js';
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js';
-import { getErrnoCode } from '../../utils/errors.js';
+import { getErrnoCode } from '../../utils/runtime/errors.js';
 import { logError } from '../../utils/telemetry/log.js';
 import { editFileInEditor } from '../../utils/terminal/promptEditor.js';
 

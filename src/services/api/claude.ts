@@ -62,16 +62,16 @@ import {
   getBedrockExtraBodyParamsBetas,
   getMergedBetas,
   getModelBetas,
-} from '../../utils/betas.js'
+} from '../../utils/model/betas.js'
 import { getOrCreateUserID } from '../../utils/config/config.js'
 import {
   CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/session/context.js'
-import { resolveAppliedEffort } from '../../utils/effort.js'
+import { resolveAppliedEffort } from '../../utils/model/effort.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { captureAPIRequest, logError } from '../../utils/telemetry/log.js'
 import {
   createAssistantAPIErrorMessage,
@@ -163,23 +163,26 @@ import {
   modelSupportsStructuredOutputs,
   shouldIncludeFirstPartyOnlyBetas,
   shouldUseGlobalCacheScope,
-} from 'src/utils/betas.js'
+} from 'src/utils/model/betas.js'
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from 'src/utils/chromeDevtools/common.js'
 import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from 'src/utils/chromeDevtools/prompt.js'
 import { getMaxThinkingTokensForModel } from 'src/utils/session/context.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
-import { type EffortValue, modelSupportsEffort } from 'src/utils/effort.js'
+import {
+  type EffortValue,
+  modelSupportsEffort,
+} from 'src/utils/model/effort.js'
 import {
   isFastModeAvailable,
   isFastModeCooldown,
   isFastModeEnabled,
   isFastModeSupportedByModel,
-} from 'src/utils/fastMode.js'
+} from 'src/utils/model/fastMode.js'
 import { returnValue } from 'src/utils/collections/generators.js'
 import { headlessProfilerCheckpoint } from 'src/utils/telemetry/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcp/mcpInstructionsDelta.js'
-import { calculateUSDCost } from 'src/utils/modelCost.js'
+import { calculateUSDCost } from 'src/utils/model/modelCost.js'
 import {
   endQueryProfile,
   queryCheckpoint,
@@ -188,11 +191,11 @@ import {
   modelSupportsAdaptiveThinking,
   modelSupportsThinking,
   type ThinkingConfig,
-} from 'src/utils/thinking.js'
+} from 'src/utils/model/thinking.js'
 import {
   isDeferredToolsDeltaEnabled,
   isSearchExtraToolsEnabled,
-} from 'src/utils/searchExtraTools.js'
+} from 'src/utils/tools/searchExtraTools.js'
 import { API_MAX_MEDIA_PER_REQUEST } from '../../constants/apiLimits.js'
 import { ADVISOR_BETA_HEADER } from '../../constants/betas.js'
 import {

@@ -5,7 +5,7 @@ import type {
   HookResultMessage,
 } from '../../types/message.js'
 import type { FileHistorySnapshot } from '../../utils/filesystem/fileHistory.js'
-import type { ContentReplacementRecord } from '../../utils/toolResultStorage.js'
+import type { ContentReplacementRecord } from '../../utils/tools/toolResultStorage.js'
 import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js'
 import type {
   MCPServerConnection,
@@ -14,7 +14,7 @@ import type {
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { RemoteSessionConfig } from '../../remote/RemoteSessionManager.js'
 import type { SSHSession } from '../../ssh/createSSHSession.js'
-import type { ThinkingConfig } from '../../utils/thinking.js'
+import type { ThinkingConfig } from '../../utils/model/thinking.js'
 
 export type Props = {
   commands: Command[]

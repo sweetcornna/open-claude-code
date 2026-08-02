@@ -35,7 +35,7 @@ import type {
 } from '../services/mcp/types.js'
 import { GLOB_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GlobTool/prompt.js'
 import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/prompt.js'
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
+import { hasEmbeddedSearchTools } from 'src/utils/tools/embeddedTools.js'
 import { ASK_USER_QUESTION_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/prompt.js'
 import {
   EXPLORE_AGENT,
@@ -50,7 +50,7 @@ import { isEnvTruthy } from '../utils/config/envUtils.js'
 import { isReplModeEnabled } from '@open-claude-code/builtin-tools/tools/REPLTool/replMode.js'
 import { feature } from 'bun:bundle'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
-import { shouldUseGlobalCacheScope } from '../utils/betas.js'
+import { shouldUseGlobalCacheScope } from '../utils/model/betas.js'
 import { isForkSubagentEnabled } from '@open-claude-code/builtin-tools/tools/AgentTool/forkSubagent.js'
 import {
   systemPromptSection,

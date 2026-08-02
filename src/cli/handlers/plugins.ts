@@ -23,7 +23,7 @@ import {
   VALID_UPDATE_SCOPES,
 } from '../../services/plugins/pluginCliCommands.js'
 import { getPluginErrorMessage } from '../../types/plugin.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { clearAllCaches } from '../../utils/plugins/cacheUtils.js'
 import { getInstallCounts } from '../../utils/plugins/installCounts.js'

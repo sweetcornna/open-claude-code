@@ -113,11 +113,11 @@ import { createDumpPromptsFetch } from './services/api/dumpPrompts.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
 import { queryCheckpoint } from './utils/telemetry/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'
-import { applyToolResultBudget } from './utils/toolResultStorage.js'
+import { applyToolResultBudget } from './utils/tools/toolResultStorage.js'
 import {
   createToolResultReleaseCache,
   releaseToolUseResults,
-} from './utils/toolResultRelease.js'
+} from './utils/tools/toolResultRelease.js'
 import { recordContentReplacement } from './utils/sessionStorage.js'
 import { handleStopHooks } from './query/stopHooks.js'
 import { buildQueryConfig } from './query/config.js'

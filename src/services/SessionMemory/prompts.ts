@@ -2,9 +2,9 @@ import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { roughTokenCountEstimation } from '../../services/tokenEstimation.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
-import { getErrnoCode, toError } from '../../utils/errors.js'
+import { getErrnoCode, toError } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
-import { getDisplayedEffortLevel } from '../../utils/effort.js'
+import { getDisplayedEffortLevel } from '../../utils/model/effort.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 
 const MAX_SECTION_LENGTH = 2000

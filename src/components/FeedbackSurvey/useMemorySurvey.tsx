@@ -11,7 +11,7 @@ import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileR
 import type { Message } from '../../types/message.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 import { isEnvTruthy } from '../../utils/config/envUtils.js';
-import { isAutoManagedMemoryFile } from '../../utils/memoryFileDetection.js';
+import { isAutoManagedMemoryFile } from '../../utils/memory/memoryFileDetection.js';
 import { extractTextContent, getLastAssistantMessage } from '../../utils/messages.js';
 import { logOTelEvent } from '../../utils/telemetry/events.js';
 import { submitTranscriptShare } from './submitTranscriptShare.js';

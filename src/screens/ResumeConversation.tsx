@@ -47,8 +47,8 @@ import {
   restoreSessionMetadata,
   type SessionLogResult,
 } from '../utils/sessionStorage.js';
-import type { ThinkingConfig } from '../utils/thinking.js';
-import type { ContentReplacementRecord } from '../utils/toolResultStorage.js';
+import type { ThinkingConfig } from '../utils/model/thinking.js';
+import type { ContentReplacementRecord } from '../utils/tools/toolResultStorage.js';
 import { REPL } from './REPL.js';
 
 function parsePrIdentifier(value: string): number | null {

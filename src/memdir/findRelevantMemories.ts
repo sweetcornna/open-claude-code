@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/telemetry/debug.js'
-import { errorMessage } from '../utils/errors.js'
+import { errorMessage } from '../utils/runtime/errors.js'
 import { getDefaultSonnetModel } from '../utils/model/model.js'
 import { sideQuery } from '../utils/session/sideQuery.js'
 import type { LangfuseSpan } from '../services/langfuse/index.js'

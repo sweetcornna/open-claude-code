@@ -43,7 +43,7 @@ import {
   getFastModeState,
   isFastModeAvailable,
   isFastModeEnabled,
-} from 'src/utils/fastMode.js'
+} from 'src/utils/model/fastMode.js'
 import { AwsAuthStatusManager } from 'src/utils/auth/awsAuthStatusManager.js'
 import {
   fileHistoryCanRestore,
@@ -51,7 +51,7 @@ import {
   fileHistoryGetDiffStats,
   fileHistoryRewind,
 } from 'src/utils/filesystem/fileHistory.js'
-import { errorMessage } from 'src/utils/errors.js'
+import { errorMessage } from 'src/utils/runtime/errors.js'
 import type { ToolPermissionContext } from 'src/Tool.js'
 import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'
 import {

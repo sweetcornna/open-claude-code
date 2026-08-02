@@ -53,8 +53,8 @@ import type {
 } from 'src/utils/filesystem/fileHistory.js'
 import type { DenialTrackingState } from 'src/utils/permissions/denialTracking.js'
 import type { Theme, ThemeName } from 'src/utils/terminal/theme.js'
-import type { ThinkingConfig } from 'src/utils/thinking.js'
-import type { ContentReplacementState } from 'src/utils/toolResultStorage.js'
+import type { ThinkingConfig } from 'src/utils/model/thinking.js'
+import type { ContentReplacementState } from 'src/utils/tools/toolResultStorage.js'
 
 /**
  * Asserts `A` and `B` are the same type, invariantly.

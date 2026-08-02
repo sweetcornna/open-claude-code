@@ -86,7 +86,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { createSystemMessage, createUserMessage } from 'src/utils/messages.js';
 import { ensureModelStringsInitialized } from 'src/utils/model/modelStrings.js';
-import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError } from 'src/utils/errors.js';
+import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError } from 'src/utils/runtime/errors.js';
 import { excludeCommandsByServer, excludeResourcesByServer } from 'src/services/mcp/utils.js';
 import {
   exitWithError,
@@ -99,7 +99,7 @@ import { feature } from 'bun:bundle';
 import { fetchBootstrapData } from 'src/services/api/bootstrap.js';
 import { fetchClaudeAIMcpConfigsIfEligible } from 'src/services/mcp/claudeai.js';
 import { fetchSession, prepareApiRequest } from 'src/utils/teleport/api.js';
-import { filterAllowedSdkBetas } from 'src/utils/betas.js';
+import { filterAllowedSdkBetas } from 'src/utils/model/betas.js';
 import { filterCommandsForRemoteMode, getCommands } from 'src/commands.js';
 import { filterExistingPaths, getKnownPathsForRepo } from 'src/utils/github/githubRepoPathMapping.js';
 import { findGitRoot, getBranch } from 'src/utils/git/git.js';
@@ -119,13 +119,13 @@ import {
 } from 'src/utils/model/model.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
 import { getGlobExclusionsForPluginCache } from 'src/utils/plugins/orphanedPluginFilter.js';
-import { getInitialEffortSetting, parseEffortValue } from 'src/utils/effort.js';
+import { getInitialEffortSetting, parseEffortValue } from 'src/utils/model/effort.js';
 import {
   getInitialFastModeSetting,
   isFastModeEnabled,
   prefetchFastModeStatus,
   resolveFastModeStatusFromCache,
-} from 'src/utils/fastMode.js';
+} from 'src/utils/model/fastMode.js';
 import { getInitialSettings, getSettingsWithErrors } from 'src/utils/settings/settings.js';
 import { getMcpToolsCommandsAndResources, prefetchAllMcpResources } from 'src/services/mcp/client.js';
 import { getModelDeprecationWarning } from 'src/utils/model/deprecation.js';
@@ -197,7 +197,7 @@ import { prefetchPassesEligibility } from 'src/services/api/referral.js';
 import { processSessionStartHooks, processSetupHooks } from 'src/utils/session/sessionStart.js';
 import { profileCheckpoint } from 'src/utils/telemetry/startupProfiler.js';
 import { readFileSync } from 'fs';
-import { refreshExampleCommands } from 'src/utils/exampleCommands.js';
+import { refreshExampleCommands } from 'src/utils/runtime/exampleCommands.js';
 import { refreshRemoteManagedSettings } from 'src/services/remoteManagedSettings/index.js';
 import { registerCleanup } from 'src/utils/process/cleanupRegistry.js';
 import { relative, resolve } from 'path';
@@ -208,7 +208,7 @@ import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { setCwd } from 'src/utils/shell/Shell.js';
 import { setupChromeDevtools, shouldEnableChromeDevtools } from 'src/utils/chromeDevtools/setup.js';
 import { shouldEnablePromptSuggestion } from 'src/services/PromptSuggestion/promptSuggestion.js';
-import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/thinking.js';
+import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/model/thinking.js';
 import { startDeferredPrefetches } from './prefetch.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1125,7 +1125,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   // Apply coordinator mode tool filtering for headless path
   // (mirrors useMergedTools.ts filtering for REPL/interactive path)
   if (feature('COORDINATOR_MODE') && isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)) {
-    const { applyCoordinatorToolFilter } = await import('src/utils/toolPool.js');
+    const { applyCoordinatorToolFilter } = await import('src/utils/tools/toolPool.js');
     tools = applyCoordinatorToolFilter(tools);
   }
 

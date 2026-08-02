@@ -34,7 +34,7 @@ import {
   isEnvDefinedFalsy,
   isEnvTruthy,
 } from '../config/envUtils.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { djb2Hash } from '../filesystem/hash.js'
 import { jsonStringify } from './slowOperations.js'
 import {

@@ -34,7 +34,7 @@ import { logForDiagnosticsNoPII } from './utils/telemetry/diagLogs.js'
 import { env } from './utils/config/env.js'
 import { envDynamic } from './utils/config/envDynamic.js'
 import { isBareMode, isEnvTruthy } from './utils/config/envUtils.js'
-import { errorMessage } from './utils/errors.js'
+import { errorMessage } from './utils/runtime/errors.js'
 import { findCanonicalGitRoot, findGitRoot, getIsGit } from './utils/git/git.js'
 import { initializeFileChangedWatcher } from './utils/hooks/fileChangedWatcher.js'
 import {

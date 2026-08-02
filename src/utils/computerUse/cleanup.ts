@@ -1,7 +1,7 @@
 import type { ToolUseContext } from '../../Tool.js'
 
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { withResolvers } from '../collections/withResolvers.js'
 import { isLockHeldLocally, releaseComputerUseLock } from './computerUseLock.js'
 import { unregisterEscHotkey } from './escHotkey.js'

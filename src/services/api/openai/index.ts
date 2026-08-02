@@ -42,7 +42,7 @@ import {
 } from '../../../Tool.js'
 import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
-import { calculateUSDCost } from '../../../utils/modelCost.js'
+import { calculateUSDCost } from '../../../utils/model/modelCost.js'
 import {
   isOpenAIThinkingEnabled,
   resolveOpenAIMaxTokens,
@@ -71,7 +71,7 @@ import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkType
 import {
   isSearchExtraToolsEnabled,
   isDeferredToolsDeltaEnabled,
-} from '../../../utils/searchExtraTools.js'
+} from '../../../utils/tools/searchExtraTools.js'
 import {
   formatDeferredToolLine,
   isDeferredTool,

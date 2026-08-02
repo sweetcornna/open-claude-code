@@ -16,7 +16,7 @@ import {
   type AgentDefinition,
   getActiveAgentsFromList,
 } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
-import { toError } from '../../utils/errors.js';
+import { toError } from '../../utils/runtime/errors.js';
 import { logError } from '../../utils/telemetry/log.js';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';

@@ -20,8 +20,8 @@ import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState } from '../state/AppState.js';
 import { getPluginErrorMessage } from '../types/plugin.js';
 import { getNpmDistTags, type NpmDistTags } from '../utils/update/autoUpdater.js';
-import { type ContextWarnings, checkContextWarnings } from '../utils/doctorContextWarnings.js';
-import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/doctorDiagnostic.js';
+import { type ContextWarnings, checkContextWarnings } from '../utils/runtime/doctorContextWarnings.js';
+import { type DiagnosticInfo, getDoctorDiagnostic } from '../utils/runtime/doctorDiagnostic.js';
 import { validateBoundedIntEnvVar } from '../utils/config/envValidation.js';
 import { pathExists } from '../utils/filesystem/file.js';
 import {

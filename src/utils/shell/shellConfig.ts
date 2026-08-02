@@ -8,7 +8,7 @@ import { homedir as osHomedir } from 'os'
 import { join } from 'path'
 import { BIN_NAME } from 'src/constants/brand.js'
 import { occConfigPath } from 'src/config/paths.js'
-import { isFsInaccessible } from '../errors.js'
+import { isFsInaccessible } from '../runtime/errors.js'
 
 export const OCC_ALIAS_REGEX = new RegExp(`^\\s*alias\\s+${BIN_NAME}\\s*=`)
 const QUOTED_OCC_ALIAS_REGEX = new RegExp(

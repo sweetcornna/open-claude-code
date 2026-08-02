@@ -7,12 +7,12 @@ import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth/auth.js';
-import { clearBetasCaches } from '../../utils/betas.js';
+import { clearBetasCaches } from '../../utils/model/betas.js';
 import { saveGlobalConfig } from '../../utils/config/config.js';
 import { gracefulShutdownSync } from '../../utils/process/gracefulShutdown.js';
 import { getSecureStorage } from '../../utils/secureStorage/index.js';
 import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
-import { clearToolSchemaCache } from '../../utils/toolSchemaCache.js';
+import { clearToolSchemaCache } from '../../utils/tools/toolSchemaCache.js';
 import { resetUserCache } from '../../utils/auth/user.js';
 
 export async function performLogout({ clearOnboarding = false }): Promise<void> {

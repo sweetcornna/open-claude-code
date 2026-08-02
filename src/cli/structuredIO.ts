@@ -22,7 +22,7 @@ import type { Tool, ToolUseContext } from 'src/Tool.js'
 import { type HookCallback, hookJSONOutputSchema } from 'src/types/hooks.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
-import { AbortError } from 'src/utils/errors.js'
+import { AbortError } from 'src/utils/runtime/errors.js'
 import {
   type Output as PermissionToolOutput,
   permissionPromptToolResultToPermissionDecision,

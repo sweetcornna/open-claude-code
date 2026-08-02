@@ -2,7 +2,7 @@ import type { Command } from '../../commands.js'
 import {
   FAST_MODE_MODEL_DISPLAY,
   isFastModeEnabled,
-} from '../../utils/fastMode.js'
+} from '../../utils/model/fastMode.js'
 import { shouldInferenceConfigCommandBeImmediate } from '../../utils/shell/immediateCommand.js'
 
 const fast = {

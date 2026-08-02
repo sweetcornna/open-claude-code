@@ -14,7 +14,7 @@ import {
 import { generateTaskId } from '../../Task.js'
 import { pwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage, isENOENT } from '../errors.js'
+import { errorMessage, isENOENT } from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../telemetry/log.js'
 import {

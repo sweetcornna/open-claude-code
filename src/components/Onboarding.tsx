@@ -12,7 +12,7 @@ import { normalizeApiKeyForConfig } from '../utils/auth/authPortable.js';
 import { getCustomApiKeyStatus } from '../utils/config/config.js';
 import { env } from '../utils/config/env.js';
 import { isRunningOnHomespace } from '../utils/config/envUtils.js';
-import { PreflightStep } from '../utils/preflightChecks.js';
+import { PreflightStep } from '../utils/runtime/preflightChecks.js';
 import type { ThemeSetting } from '../utils/terminal/theme.js';
 import { ApproveApiKey } from './ApproveApiKey.js';
 import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js';

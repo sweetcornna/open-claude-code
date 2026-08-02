@@ -19,7 +19,7 @@ import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/too
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
-import { isENOENT } from '../errors.js'
+import { isENOENT } from '../runtime/errors.js'
 import { getEnvironmentKind } from '../filePersistence/outputsScanner.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../telemetry/log.js'

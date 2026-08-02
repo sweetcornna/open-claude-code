@@ -9,7 +9,7 @@ import {
 import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
-import { errorMessage, isFsInaccessible } from '../errors.js'
+import { errorMessage, isFsInaccessible } from '../runtime/errors.js'
 import { isProcessRunning } from '../process/genericProcessUtils.js'
 import { getPlatform } from '../process/platform.js'
 import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'

@@ -21,7 +21,11 @@ import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth/auth.j
 import { openBrowser } from '../utils/network/browser.js';
 import { logError } from '../utils/telemetry/log.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
-import { CHINA_LLM_PROVIDERS, type ProviderPreset, resolveChinaProviderBaseURL } from 'src/utils/chinaLlmProviders.js';
+import {
+  CHINA_LLM_PROVIDERS,
+  type ProviderPreset,
+  resolveChinaProviderBaseURL,
+} from 'src/utils/model/chinaLlmProviders.js';
 import { Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';

@@ -2,11 +2,15 @@ import { randomUUID } from 'crypto'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { BashTool } from '@open-claude-code/builtin-tools/tools/BashTool/BashTool.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage, MalformedCommandError, ShellError } from '../errors.js'
+import {
+  errorMessage,
+  MalformedCommandError,
+  ShellError,
+} from '../runtime/errors.js'
 import type { FrontmatterShell } from '../text/frontmatterParser.js'
 import { createAssistantMessage } from '../messages.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
-import { processToolResultBlock } from '../toolResultStorage.js'
+import { processToolResultBlock } from '../tools/toolResultStorage.js'
 
 // Narrow structural slice both BashTool and PowerShellTool satisfy. We can't
 // use the base Tool type: it marks call()'s canUseTool/parentMessage as

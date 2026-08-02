@@ -109,7 +109,7 @@ import {
   writeToMailbox,
 } from '../agents/teammateMailbox.js'
 import { unregisterAgent as unregisterPerfettoAgent } from '../telemetry/perfettoTracing.js'
-import { createContentReplacementState } from '../toolResultStorage.js'
+import { createContentReplacementState } from '../tools/toolResultStorage.js'
 import { TEAM_LEAD_NAME } from './constants.js'
 import {
   getLeaderSetToolPermissionContext,

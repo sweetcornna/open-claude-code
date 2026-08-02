@@ -51,7 +51,7 @@ const getSendMessageTool = () =>
 import { ListMcpResourcesTool } from '@open-claude-code/builtin-tools/tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { ReadMcpResourceTool } from '@open-claude-code/builtin-tools/tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import uniqBy from 'lodash-es/uniqBy.js'
-import { isSearchExtraToolsEnabledOptimistic } from './utils/searchExtraTools.js'
+import { isSearchExtraToolsEnabledOptimistic } from './utils/tools/searchExtraTools.js'
 import { isTodoV2Enabled } from './utils/task/tasks.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import {
@@ -72,7 +72,7 @@ const coordinatorModeModule = feature('COORDINATOR_MODE')
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import type { ToolPermissionContext } from './Tool.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
-import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
+import { hasEmbeddedSearchTools } from './utils/tools/embeddedTools.js'
 import { isEnvTruthy } from './utils/config/envUtils.js'
 import { isPowerShellToolEnabled } from './utils/shell/shellToolUtils.js'
 import { isWorktreeModeEnabled } from './utils/git/worktreeModeEnabled.js'

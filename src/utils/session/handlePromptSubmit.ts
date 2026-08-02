@@ -25,14 +25,14 @@ import { createAbortController } from '../process/abortController.js'
 import type { PastedContent } from '../config/config.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import type { EffortValue } from '../effort.js'
+import type { EffortValue } from '../model/effort.js'
 import type { FileHistoryState } from '../filesystem/fileHistory.js'
 import {
   fileHistoryEnabled,
   fileHistoryMakeSnapshot,
 } from '../filesystem/fileHistory.js'
 import { gracefulShutdownSync } from '../process/gracefulShutdown.js'
-import { toError } from '../errors.js'
+import { toError } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import { enqueue } from './messageQueueManager.js'
 import { resolveSkillModelOverride } from '../model/model.js'

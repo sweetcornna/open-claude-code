@@ -12,7 +12,7 @@ import type {
   ServerCapabilities,
 } from 'vscode-languageserver-protocol'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { subprocessEnv } from '../../utils/process/subprocessEnv.js'
 /**

@@ -14,7 +14,7 @@ import { REPL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/REPLTool/c
 import type { AssistantMessage } from '../../types/message.js'
 import { extractOutputRedirections } from '../bash/commands.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { AbortError, toError } from '../errors.js'
+import { AbortError, toError } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import {
@@ -88,7 +88,7 @@ import {
   buildYoloRejectionMessage,
   DONT_ASK_REJECT_MESSAGE,
 } from '../messages.js'
-import { calculateCostFromTokens } from '../modelCost.js'
+import { calculateCostFromTokens } from '../model/modelCost.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { jsonStringify } from '../telemetry/slowOperations.js'
 import {

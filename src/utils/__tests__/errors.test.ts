@@ -16,7 +16,7 @@ import {
   shortErrorStack,
   isFsInaccessible,
   classifyAxiosError,
-} from '../errors'
+} from '../runtime/errors'
 
 // ─── Error classes ──────────────────────────────────────────────────────
 

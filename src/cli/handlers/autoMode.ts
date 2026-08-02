@@ -4,7 +4,7 @@
  */
 
 import { BIN_NAME, DISPLAY_NAME } from '../../constants/brand.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import {
   getMainLoopModel,
   getSmallFastModel,

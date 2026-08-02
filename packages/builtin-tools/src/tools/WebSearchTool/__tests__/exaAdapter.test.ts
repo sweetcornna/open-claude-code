@@ -18,8 +18,8 @@ const _abortMock = () => ({
   isAbortError: (e: unknown) =>
     e instanceof Error && (e as Error).name === 'AbortError',
 })
-mock.module('src/utils/errors.js', _abortMock)
-mock.module('src/utils/errors', _abortMock)
+mock.module('src/utils/runtime/errors.js', _abortMock)
+mock.module('src/utils/runtime/errors', _abortMock)
 
 describe('ExaSearchAdapter.search', () => {
   const createAdapter = async () => {
@@ -265,7 +265,7 @@ describe('ExaSearchAdapter.search', () => {
     const controller = new AbortController()
     controller.abort()
 
-    const { AbortError } = await import('src/utils/errors')
+    const { AbortError } = await import('src/utils/runtime/errors')
     await expect(
       adapter.search('test', { signal: controller.signal }),
     ).rejects.toThrow(AbortError)

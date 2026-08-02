@@ -23,7 +23,7 @@ import {
 } from '../../utils/auth/auth.js'
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { classifyAxiosError, getErrnoCode } from '../../utils/errors.js'
+import { classifyAxiosError, getErrnoCode } from '../../utils/runtime/errors.js'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import {
   type SettingsJson,

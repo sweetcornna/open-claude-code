@@ -10,7 +10,7 @@ import memoize from 'lodash-es/memoize.js'
 import { getFileExtensionForAnalytics } from '@open-claude-code/tool-runtime/analytics.js'
 import { env, getHostPlatformForAnalytics } from '../../utils/config/env.js'
 import { envDynamic } from '../../utils/config/envDynamic.js'
-import { getModelBetas } from '../../utils/betas.js'
+import { getModelBetas } from '../../utils/model/betas.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import {
   getSessionId,

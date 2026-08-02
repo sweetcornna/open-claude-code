@@ -19,7 +19,7 @@ import {
 } from '../../../utils/messages.js'
 import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
 import type { SystemPrompt } from '../../../utils/session/systemPromptType.js'
-import type { ThinkingConfig } from '../../../utils/thinking.js'
+import type { ThinkingConfig } from '../../../utils/model/thinking.js'
 import type { Options } from '../claude.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
 import {

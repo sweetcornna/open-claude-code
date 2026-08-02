@@ -16,7 +16,7 @@ import {
 } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import type { LocalJSXCommandCall } from '../types/command.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
-import { errorMessage } from '../utils/errors.js';
+import { errorMessage } from '../utils/runtime/errors.js';
 import { logError } from '../utils/telemetry/log.js';
 import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js';
 import { updateTaskState } from '../utils/task/framework.js';

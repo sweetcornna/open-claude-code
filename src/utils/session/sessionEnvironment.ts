@@ -3,7 +3,7 @@ import { join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
-import { errorMessage, getErrnoCode } from '../errors.js'
+import { errorMessage, getErrnoCode } from '../runtime/errors.js'
 import { getPlatform } from '../process/platform.js'
 
 // Cache states:

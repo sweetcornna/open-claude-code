@@ -23,7 +23,7 @@ import {
 } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js'
 import type { LogOption } from '../types/logs.js'
 import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
-import { toError } from '../utils/errors.js'
+import { toError } from '../utils/runtime/errors.js'
 import { execFileNoThrow } from '../utils/process/execFileNoThrow.js'
 import { logError } from '../utils/telemetry/log.js'
 import { extractTextContent } from '../utils/messages.js'

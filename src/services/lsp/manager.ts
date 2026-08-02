@@ -1,6 +1,6 @@
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { isBareMode } from '../../utils/config/envUtils.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
 import {
   createLSPServerManager,

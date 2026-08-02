@@ -1,5 +1,5 @@
 import { type FileHandle, open } from 'fs/promises'
-import { isENOENT } from '../errors.js'
+import { isENOENT } from '../runtime/errors.js'
 
 export const CHUNK_SIZE = 8 * 1024
 export const MAX_SCAN_BYTES = 10 * 1024 * 1024

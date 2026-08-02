@@ -31,9 +31,9 @@ import type { AssistantMessage } from 'src/types/message.js';
 import { parseForSecurity } from 'src/utils/bash/ast.js';
 import { splitCommand_DEPRECATED, splitCommandWithOperators } from 'src/utils/bash/commands.js';
 import { getAttributionTexts } from 'src/utils/git/attribution.js';
-import { extractClaudeCodeHints } from 'src/utils/claudeCodeHints.js';
-import { detectCodeIndexingFromCommand } from 'src/utils/codeIndexing.js';
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
+import { extractClaudeCodeHints } from 'src/utils/runtime/claudeCodeHints.js';
+import { detectCodeIndexingFromCommand } from 'src/utils/runtime/codeIndexing.js';
+import { hasEmbeddedSearchTools } from 'src/utils/tools/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { shouldIncludeGitInstructions } from 'src/utils/git/gitSettings.js';
 import { isENOENT, ShellError } from '@open-claude-code/tool-runtime/errors.js';
@@ -72,7 +72,7 @@ import {
   generatePreview,
   getToolResultPath,
   PREVIEW_SIZE_BYTES,
-} from 'src/utils/toolResultStorage.js';
+} from 'src/utils/tools/toolResultStorage.js';
 import { userFacingName as fileEditUserFacingName } from '../FileEditTool/UI.js';
 import { trackGitOperations } from '../shared/gitOperationTracking.js';
 import {

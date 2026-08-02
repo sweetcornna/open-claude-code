@@ -60,7 +60,7 @@ import {
 import { logForDebugging } from '../telemetry/debug.js'
 import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
-import { getErrnoCode } from '../errors.js'
+import { getErrnoCode } from '../runtime/errors.js'
 import { normalizePathForComparison } from '../filesystem/file.js'
 import { cacheKeys, type FileStateCache } from '../fileStateCache.js'
 import {

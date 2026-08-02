@@ -7,7 +7,7 @@ import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFe
 import { WEB_SEARCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebSearchTool/prompt.js'
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { isUsing3PServices } from 'src/utils/auth/auth.js'
-import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
+import { hasEmbeddedSearchTools } from 'src/utils/tools/embeddedTools.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import type {

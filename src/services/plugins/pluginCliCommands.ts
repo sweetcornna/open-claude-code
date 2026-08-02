@@ -7,7 +7,7 @@
  * For the core operations (without CLI side effects), see pluginOperations.ts
  */
 import figures from 'figures'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import { gracefulShutdown } from '../../utils/process/gracefulShutdown.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { getManagedPluginNames } from '../../utils/plugins/managedPlugins.js'

@@ -61,7 +61,7 @@ import type { AppState } from 'src/state/AppStateStore.js'
 import type { Tools } from 'src/Tool.js'
 import type { Message } from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
-import type { ThinkingConfig } from 'src/utils/thinking.js'
+import type { ThinkingConfig } from 'src/utils/model/thinking.js'
 import type { Stream } from 'src/utils/collections/stream.js'
 import type { ModelInfo, SDKStatus } from 'src/entrypoints/agentSdkTypes.js'
 import type {
@@ -91,10 +91,10 @@ import {
   EFFORT_LEVELS,
   modelSupportsEffort,
   modelSupportsMaxEffort,
-} from 'src/utils/effort.js'
-import { modelSupportsAdaptiveThinking } from 'src/utils/thinking.js'
-import { modelSupportsAutoMode } from 'src/utils/betas.js'
-import { isFastModeSupportedByModel } from 'src/utils/fastMode.js'
+} from 'src/utils/model/effort.js'
+import { modelSupportsAdaptiveThinking } from 'src/utils/model/thinking.js'
+import { modelSupportsAutoMode } from 'src/utils/model/betas.js'
+import { isFastModeSupportedByModel } from 'src/utils/model/fastMode.js'
 import type { DynamicMcpState } from './mcpServers.js'
 
 /** Options bag for `runHeadlessStreaming`. Mutated in place by `initialize`. */

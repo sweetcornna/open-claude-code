@@ -155,7 +155,7 @@ import advisor from './commands/advisor.js'
 import autonomy from './commands/autonomy.js'
 import provider from './commands/provider.js'
 import { logError } from './utils/telemetry/log.js'
-import { toError } from './utils/errors.js'
+import { toError } from './utils/runtime/errors.js'
 import { logForDebugging } from './utils/telemetry/debug.js'
 import {
   getSkillDirCommands,

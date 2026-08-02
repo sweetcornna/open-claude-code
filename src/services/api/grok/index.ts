@@ -29,7 +29,7 @@ import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkType
 import { toolToAPISchema } from '../../../utils/telemetry/api.js'
 import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
-import { calculateUSDCost } from '../../../utils/modelCost.js'
+import { calculateUSDCost } from '../../../utils/model/modelCost.js'
 import { recordLLMObservation } from '../../../services/langfuse/tracing.js'
 import {
   convertMessagesToLangfuse,

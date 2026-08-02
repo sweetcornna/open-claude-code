@@ -7,7 +7,7 @@ import { getMcpConfigByName } from '../../services/mcp/config.js';
 import { useMcpReconnect, useMcpToggleEnabled } from '../../services/mcp/MCPConnectionManager.js';
 import { describeMcpConfigFilePath, filterMcpPromptsByServer } from '../../services/mcp/utils.js';
 import { useAppState } from '../../state/AppState.js';
-import { errorMessage } from '../../utils/errors.js';
+import { errorMessage } from '../../utils/runtime/errors.js';
 import { capitalize } from '../../utils/text/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Select } from '../CustomSelect/index.js';

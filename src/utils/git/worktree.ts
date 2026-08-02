@@ -16,7 +16,7 @@ import { basename, dirname, join } from 'path'
 import { saveCurrentProjectConfig } from '../config/config.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage, getErrnoCode } from '../errors.js'
+import { errorMessage, getErrnoCode } from '../runtime/errors.js'
 import {
   execFileNoThrow,
   execFileNoThrowWithCwd,

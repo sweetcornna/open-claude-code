@@ -15,7 +15,7 @@ import {
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { escapeRegExp } from '@open-claude-code/tool-runtime/stringUtils.js'
-import { isSearchExtraToolsEnabledOptimistic } from 'src/utils/searchExtraTools.js'
+import { isSearchExtraToolsEnabledOptimistic } from 'src/utils/tools/searchExtraTools.js'
 import {
   getPrompt,
   isDeferredTool,

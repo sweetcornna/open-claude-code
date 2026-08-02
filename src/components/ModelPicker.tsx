@@ -12,7 +12,7 @@ import {
   isFastModeAvailable,
   isFastModeCooldown,
   isFastModeEnabled,
-} from 'src/utils/fastMode.js';
+} from 'src/utils/model/fastMode.js';
 import { Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
@@ -25,7 +25,7 @@ import {
   modelSupportsXhighEffort,
   resolvePickerEffortPersistence,
   toPersistableEffort,
-} from '../utils/effort.js';
+} from '../utils/model/effort.js';
 import {
   getDefaultMainLoopModel,
   type ModelSetting,

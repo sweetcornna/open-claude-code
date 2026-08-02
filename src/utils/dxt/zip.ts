@@ -1,6 +1,6 @@
 import { isAbsolute, normalize } from 'path'
 import { logForDebugging } from '../telemetry/debug.js'
-import { isENOENT } from '../errors.js'
+import { isENOENT } from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { containsPathTraversal } from '../filesystem/path.js'
 

@@ -9,14 +9,14 @@ import {
 } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
-import type { EffortLevel } from '../../utils/effort.js';
+import type { EffortLevel } from '../../utils/model/effort.js';
 import { isBilledAsExtraUsage } from '../../utils/telemetry/extraUsage.js';
 import {
   clearFastModeCooldown,
   isFastModeAvailable,
   isFastModeEnabled,
   isFastModeSupportedByModel,
-} from '../../utils/fastMode.js';
+} from '../../utils/model/fastMode.js';
 import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1mAccess.js';
 import {

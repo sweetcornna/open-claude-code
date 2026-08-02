@@ -12,7 +12,7 @@ import {
 import { getProjectRoot } from '../../bootstrap/state.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
-import { isFsInaccessible } from '../errors.js'
+import { isFsInaccessible } from '../runtime/errors.js'
 import { normalizePathForComparison } from '../filesystem/file.js'
 import type { FrontmatterData } from './frontmatterParser.js'
 import { parseFrontmatter } from './frontmatterParser.js'

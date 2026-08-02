@@ -6,7 +6,7 @@
  */
 
 import { E_TOOL_USE_SUMMARY_GENERATION_FAILED } from '../../constants/errorIds.js'
-import { toError } from '../../utils/errors.js'
+import { toError } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { asSystemPrompt } from '../../utils/session/systemPromptType.js'

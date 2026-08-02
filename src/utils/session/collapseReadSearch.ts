@@ -50,7 +50,7 @@ import {
   isAutoManagedMemoryPattern,
   isMemoryDirectory,
   isShellCommandTargetingMemory,
-} from '../memoryFileDetection.js'
+} from '../memory/memoryFileDetection.js'
 
 /**
  * Result of checking if a tool use is a search or read operation.

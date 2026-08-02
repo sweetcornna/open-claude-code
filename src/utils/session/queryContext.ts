@@ -25,7 +25,7 @@ import { asSystemPrompt } from './systemPromptType.js'
 import {
   shouldEnableThinkingByDefault,
   type ThinkingConfig,
-} from '../thinking.js'
+} from '../model/thinking.js'
 
 /**
  * Fetch the three context pieces that form the API cache-key prefix:

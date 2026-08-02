@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'url'
 import type { PublishDiagnosticsParams } from 'vscode-languageserver-protocol'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { toError } from '../../utils/errors.js'
+import { toError } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import type { DiagnosticFile } from '../diagnosticTracking.js'

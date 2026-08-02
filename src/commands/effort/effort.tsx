@@ -14,7 +14,7 @@ import {
   getEffortValueDescription,
   isEffortLevel,
   toPersistableEffort,
-} from '../../utils/effort.js';
+} from '../../utils/model/effort.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];

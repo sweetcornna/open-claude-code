@@ -4,7 +4,7 @@ import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.
 import type { AssistantMessage, Message } from '../../types/message.js'
 import { getGlobalConfig } from '../config/config.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage } from '../errors.js'
+import { errorMessage } from '../runtime/errors.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { logError } from '../telemetry/log.js'
 import { getMainLoopModel, getSmallFastModel } from '../model/model.js'

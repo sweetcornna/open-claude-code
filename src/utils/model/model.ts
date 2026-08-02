@@ -21,7 +21,7 @@ import {
 } from '../session/context.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
-import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
+import { formatModelPricing, getOpus46CostTier } from './modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getAPIProvider, isDirectAnthropicApi } from './providers.js'

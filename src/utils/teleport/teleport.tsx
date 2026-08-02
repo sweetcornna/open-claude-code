@@ -29,7 +29,7 @@ import { getCwd } from '../filesystem/cwd.js';
 import { logForDebugging } from '../telemetry/debug.js';
 import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote } from '../git/detectRepository.js';
 import { isEnvTruthy } from '../config/envUtils.js';
-import { TeleportOperationError, toError } from '../errors.js';
+import { TeleportOperationError, toError } from '../runtime/errors.js';
 import { execFileNoThrow } from '../process/execFileNoThrow.js';
 import { truncateToWidth } from '../text/format.js';
 import { findGitRoot, getDefaultBranch, getIsClean, gitExe } from '../git/git.js';

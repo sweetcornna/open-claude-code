@@ -12,7 +12,7 @@ import {
   getTeamsDir,
   isEnvTruthy,
 } from '../config/envUtils.js'
-import { errorMessage, getErrnoCode } from '../errors.js'
+import { errorMessage, getErrnoCode } from '../runtime/errors.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import * as lockfile from '../filesystem/lockfile.js'
 import { logError } from '../telemetry/log.js'

@@ -22,7 +22,7 @@ import {
   isEnterpriseSubscriber,
 } from '../../utils/auth/auth.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage } from '../../utils/runtime/errors.js'
 import {
   type CooldownReason,
   handleFastModeOverageRejection,
@@ -30,11 +30,11 @@ import {
   isFastModeCooldown,
   isFastModeEnabled,
   triggerFastModeCooldown,
-} from '../../utils/fastMode.js'
+} from '../../utils/model/fastMode.js'
 import { isNonCustomOpusModel } from '../../utils/model/model.js'
 import { disableKeepAlive } from '../../utils/network/proxy.js'
 import { sleep } from '../../utils/process/sleep.js'
-import type { ThinkingConfig } from '../../utils/thinking.js'
+import type { ThinkingConfig } from '../../utils/model/thinking.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

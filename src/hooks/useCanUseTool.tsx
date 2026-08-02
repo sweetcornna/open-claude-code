@@ -23,7 +23,7 @@ import {
   setYoloClassifierApproval,
 } from '../utils/permissions/classifierApprovals.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
-import { AbortError } from '../utils/errors.js';
+import { AbortError } from '../utils/runtime/errors.js';
 import { logError } from '../utils/telemetry/log.js';
 import type { PermissionDecision } from '../utils/permissions/PermissionResult.js';
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js';

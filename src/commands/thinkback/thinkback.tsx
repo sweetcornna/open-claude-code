@@ -10,7 +10,7 @@ import { Spinner } from '../../components/Spinner.js';
 import { Box, Text, instances } from '@anthropic/ink';
 import { enablePluginOp } from '../../services/plugins/pluginOperations.js';
 import { logForDebugging } from '../../utils/telemetry/debug.js';
-import { isENOENT, toError } from '../../utils/errors.js';
+import { isENOENT, toError } from '../../utils/runtime/errors.js';
 import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js';
 import { pathExists } from '../../utils/filesystem/file.js';
 import { logError } from '../../utils/telemetry/log.js';

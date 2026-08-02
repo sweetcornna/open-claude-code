@@ -20,7 +20,7 @@ import { getGlobalConfig } from '../../utils/config/config.js'
 import {
   getEffortEnvOverride,
   modelSupportsEffort,
-} from '../../utils/effort.js'
+} from '../../utils/model/effort.js'
 import { env } from '../../utils/config/env.js'
 import { cacheKeys } from '../../utils/fileStateCache.js'
 import { getWorktreeCount } from '../../utils/git/git.js'

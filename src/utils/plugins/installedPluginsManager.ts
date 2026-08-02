@@ -15,7 +15,7 @@
 
 import { dirname, join } from 'path'
 import { logForDebugging } from '../telemetry/debug.js'
-import { errorMessage, isENOENT, toError } from '../errors.js'
+import { errorMessage, isENOENT, toError } from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { logError } from '../telemetry/log.js'
 import {

@@ -110,7 +110,7 @@ mock.module('src/utils/model/model.js', () => ({
   isNonCustomOpusModel: mock(() => false),
 }))
 
-mock.module('src/utils/effort.js', () => ({
+mock.module('src/utils/model/effort.js', () => ({
   getDisplayedEffortLevel: mockGetDisplayedEffortLevel as (
     _m: string,
     _e: unknown,
@@ -252,7 +252,7 @@ mock.module('src/services/tokenEstimation.js', () => ({
   countTokens: mock(async () => 0),
 }))
 
-mock.module('src/utils/errors.js', () => ({
+mock.module('src/utils/runtime/errors.js', () => ({
   getErrnoCode: mock((e: unknown) => (e as NodeJS.ErrnoException)?.code),
   toError: mock((e: unknown) =>
     e instanceof Error ? e : new Error(String(e)),

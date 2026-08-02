@@ -29,7 +29,7 @@ import {
   detectSessionPatternType,
   isAutoMemFile,
   memoryScopeForPath,
-} from '../memoryFileDetection.js'
+} from '../memory/memoryFileDetection.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const memoryShapeTelemetry = feature('MEMORY_SHAPE_TELEMETRY')

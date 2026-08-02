@@ -6,7 +6,7 @@ import { clearAgentDefinitionsCache } from '@open-claude-code/builtin-tools/tool
 import { clearPromptCache } from '@open-claude-code/builtin-tools/tools/SkillTool/prompt.js'
 import { resetSentSkillNames } from '../attachments.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { getErrnoCode } from '../errors.js'
+import { getErrnoCode } from '../runtime/errors.js'
 import { logError } from '../telemetry/log.js'
 import { loadInstalledPluginsFromDisk } from './installedPluginsManager.js'
 import { clearPluginAgentCache } from './loadPluginAgents.js'

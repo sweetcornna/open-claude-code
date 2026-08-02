@@ -45,14 +45,14 @@ mock.module('src/commands.js', () => ({
 mock.module('src/constants/outputStyles.js', () => ({
   getOutputStyleConfig: async () => null,
 }))
-mock.module('src/utils/embeddedTools.js', () => ({
+mock.module('src/utils/tools/embeddedTools.js', () => ({
   hasEmbeddedSearchTools: () => false,
 }))
 mock.module('src/utils/permissions/filesystem.js', () => ({
   isScratchpadEnabled: () => false,
   getScratchpadDir: () => '/tmp/scratchpad',
 }))
-mock.module('src/utils/betas.js', () => ({
+mock.module('src/utils/model/betas.js', () => ({
   shouldUseGlobalCacheScope: () => false,
 }))
 mock.module('src/utils/auth/undercover.js', () => ({

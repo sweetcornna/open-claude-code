@@ -79,7 +79,7 @@ import {
   isFastModeEnabled,
   getFastModeModel,
   isFastModeSupportedByModel,
-} from '../../utils/fastMode.js';
+} from '../../utils/model/fastMode.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
 import { getPlatform } from '../../utils/process/platform.js';
 

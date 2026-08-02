@@ -16,7 +16,7 @@ import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 
 import { logEvent } from '../../services/analytics/index.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { parseZipModes, unzipFile } from '../dxt/zip.js'
-import { errorMessage, getErrnoCode } from '../errors.js'
+import { errorMessage, getErrnoCode } from '../runtime/errors.js'
 
 type SafeString = AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 
