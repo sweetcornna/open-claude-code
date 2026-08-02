@@ -21,7 +21,7 @@ mock.module('modifiers-napi', () => ({
 const originalPlatform = process.platform
 
 async function loadModule() {
-  return import(`../modifiers.ts?case=${Math.random()}`)
+  return import(`../terminal/modifiers.ts?case=${Math.random()}`)
 }
 
 beforeEach(() => {
