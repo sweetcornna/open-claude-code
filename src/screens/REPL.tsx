@@ -48,7 +48,7 @@ import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
-import { formatTokens, truncateToWidth } from '../utils/format.js';
+import { formatTokens } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
 import {
   claimConsumableQueuedAutonomyCommands,
@@ -204,18 +204,12 @@ import {
 } from '../utils/messages.js';
 import { generateSessionTitle } from '../utils/sessionTitle.js';
 import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
-import { FORK_SUBAGENT_TYPE } from '@open-claude-code/builtin-tools/tools/AgentTool/forkSubagent.js';
 import { escapeXml } from '../utils/xml.js';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { handlePromptSubmit, type PromptInputHelpers } from '../utils/handlePromptSubmit.js';
 import { useQueueProcessor } from '../hooks/useQueueProcessor.js';
 import { queryCheckpoint, logQueryProfileReport } from '../utils/queryProfiler.js';
-import type {
-  Message as MessageType,
-  UserMessage,
-  ProgressMessage,
-  PartialCompactDirection,
-} from '../types/message.js';
+import type { Message as MessageType, UserMessage, PartialCompactDirection } from '../types/message.js';
 import { query } from '../query.js';
 import { mergeClients, useMergedClients } from '../hooks/useMergedClients.js';
 import { getQuerySourceForREPL } from '../utils/promptCategory.js';
@@ -391,7 +385,6 @@ import {
   getAutoRunCommand,
   type AutoRunIssueReason,
 } from '../utils/autoRunIssue.js';
-import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '@open-claude-code/builtin-tools/tools/TungstenTool/TungstenLiveMonitor.js';
 // WebBrowserPanel removed — browser-lite returns results inline via tool_result.
 // For full browser interaction use the Chrome DevTools MCP tools (--chrome).
@@ -422,10 +415,11 @@ import type { ScrollBoxHandle } from '@anthropic/ink';
 import { createAttachmentMessage, getQueuedCommandAttachments } from '../utils/attachments.js';
 import type { Props, Screen } from './repl/types.js';
 import { EMPTY_MCP_CLIENTS, HISTORY_STUB, RECENT_SCROLL_REPIN_WINDOW_MS } from './repl/constants.js';
-import { isForkBoilerplateTextBlock } from './repl/forkBoilerplate.js';
 import { median } from './repl/median.js';
 import { useReplAutomation } from './repl/useReplAutomation.js';
 import { useTranscriptSearch } from './repl/useTranscriptSearch.js';
+import { computeStopHookSpinnerSuffix } from './repl/stopHookSpinner.js';
+import { computeDisplayedAgentMessages } from './repl/displayedAgentMessages.js';
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
@@ -4629,63 +4623,7 @@ export function REPL({
   }, [internal_eventEmitter]);
 
   // Derive stop hook spinner suffix from messages state
-  const stopHookSpinnerSuffix = useMemo(() => {
-    if (!isLoading) return null;
-
-    // Find stop hook progress messages
-    const progressMsgs = messages.filter((m): m is ProgressMessage<HookProgress> => {
-      if (m.type !== 'progress') return false;
-      const data = m.data as Record<string, unknown>;
-      return data.type === 'hook_progress' && (data.hookEvent === 'Stop' || data.hookEvent === 'SubagentStop');
-    });
-    if (progressMsgs.length === 0) return null;
-
-    // Get the most recent stop hook execution
-    const currentToolUseID = progressMsgs.at(-1)?.toolUseID;
-    if (!currentToolUseID) return null;
-
-    // Check if there's already a summary message for this execution (hooks completed)
-    const hasSummaryForCurrentExecution = messages.some(
-      m => m.type === 'system' && m.subtype === 'stop_hook_summary' && m.toolUseID === currentToolUseID,
-    );
-    if (hasSummaryForCurrentExecution) return null;
-
-    const currentHooks = progressMsgs.filter(p => p.toolUseID === currentToolUseID);
-    const total = currentHooks.length;
-
-    // Count completed hooks
-    const completedCount = count(messages, m => {
-      if (m.type !== 'attachment') return false;
-      const attachment = m.attachment!;
-      return (
-        'hookEvent' in attachment &&
-        (attachment.hookEvent === 'Stop' || attachment.hookEvent === 'SubagentStop') &&
-        'toolUseID' in attachment &&
-        attachment.toolUseID === currentToolUseID
-      );
-    });
-
-    // Check if any hook has a custom status message
-    const customMessage = currentHooks.find(p => p.data.statusMessage)?.data.statusMessage;
-
-    if (customMessage) {
-      // Use custom message with progress counter if multiple hooks
-      return total === 1 ? `${customMessage}…` : `${customMessage}… ${completedCount}/${total}`;
-    }
-
-    // Fall back to default behavior
-    const hookType = currentHooks[0]?.data.hookEvent === 'SubagentStop' ? 'subagent stop' : 'stop';
-
-    if (process.env.USER_TYPE === 'ant') {
-      const cmd = currentHooks[completedCount]?.data.command;
-      const label = cmd ? ` '${truncateToWidth(cmd, 40)}'` : '';
-      return total === 1
-        ? `running ${hookType} hook${label}`
-        : `running ${hookType} hook${label}\u2026 ${completedCount}/${total}`;
-    }
-
-    return total === 1 ? `running ${hookType} hook` : `running stop hooks… ${completedCount}/${total}`;
-  }, [messages, isLoading]);
+  const stopHookSpinnerSuffix = useMemo(() => computeStopHookSpinnerSuffix(messages, isLoading), [messages, isLoading]);
 
   // Callback to capture frozen state when entering transcript mode
   const handleEnterTranscript = useCallback(() => {
@@ -4791,66 +4729,10 @@ export function REPL({
   // Fork sidechain encodes the user prompt inside a mixed user message alongside
   // tool_result blocks; surface the prompt as a standalone bubble and strip the
   // boilerplate text from its original carrier while preserving tool_results.
-  const displayedAgentMessages = useMemo(() => {
-    if (!viewedAgentTask) return undefined;
-    const agentMessages = rawAgentMessages ?? [];
-    if (
-      !isLocalAgentTask(viewedAgentTask) ||
-      viewedAgentTask.agentType !== FORK_SUBAGENT_TYPE ||
-      !viewedAgentTask.prompt
-    ) {
-      return agentMessages;
-    }
-    // Single pass: locate boilerplate carrier, check whether the prompt text is
-    // already present elsewhere, and find the fallback insertion point (after
-    // the last parent assistant tool_use).
-    const trimmedPrompt = viewedAgentTask.prompt.trim();
-    let boilerplateIndex = -1;
-    let lastAssistantToolUseIndex = -1;
-    let promptAlreadyRendered = false;
-    for (let i = 0; i < agentMessages.length; i++) {
-      const m = agentMessages[i]!;
-      if (m.type === 'user' && Array.isArray(m.message?.content)) {
-        const hasBoilerplate = m.message.content.some(isForkBoilerplateTextBlock);
-        if (hasBoilerplate) {
-          boilerplateIndex = i;
-        } else if (!promptAlreadyRendered) {
-          const firstText = m.message.content.find(b => b.type === 'text' && typeof b.text === 'string') as
-            | { type: 'text'; text: string }
-            | undefined;
-          if (firstText && firstText.text.trim() === trimmedPrompt) promptAlreadyRendered = true;
-        }
-        continue;
-      }
-      if (m.type === 'assistant' && Array.isArray(m.message?.content)) {
-        if (m.message.content.some(b => b.type === 'tool_use')) lastAssistantToolUseIndex = i;
-      }
-    }
-
-    const stripped =
-      boilerplateIndex === -1
-        ? agentMessages
-        : agentMessages.map((m, i) => {
-            if (i !== boilerplateIndex) return m;
-            if (!Array.isArray(m.message?.content)) return m;
-            return {
-              ...m,
-              message: {
-                ...m.message,
-                content: m.message.content.filter(b => !isForkBoilerplateTextBlock(b)),
-              },
-            };
-          });
-
-    if (promptAlreadyRendered) return stripped;
-
-    const insertAt = boilerplateIndex !== -1 ? boilerplateIndex + 1 : lastAssistantToolUseIndex + 1;
-    const synthetic = createUserMessage({
-      content: viewedAgentTask.prompt,
-      timestamp: new Date(viewedAgentTask.startTime).toISOString(),
-    });
-    return [...stripped.slice(0, insertAt), synthetic, ...stripped.slice(insertAt)];
-  }, [viewedAgentTask, rawAgentMessages]);
+  const displayedAgentMessages = useMemo(
+    () => computeDisplayedAgentMessages(viewedAgentTask, rawAgentMessages),
+    [viewedAgentTask, rawAgentMessages],
+  );
   const displayedMessages = viewedAgentTask
     ? (displayedAgentMessages ?? [])
     : usesSyncMessages
