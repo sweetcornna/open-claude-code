@@ -3,6 +3,7 @@ import type { DeepImmutable } from 'src/types/utils.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { type KeyboardEvent, Box, Text, useTheme } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
+import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { getEmptyToolPermissionContext } from '../../Tool.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
 import { getTools } from '../../tools.js';
@@ -45,6 +46,24 @@ export function InProcessTeammateDetailDialog({
     { context: 'Confirmation' },
   );
 
+  // Returning false leaves the key unconsumed so it keeps propagating, matching
+  // the old raw handler which simply didn't call preventDefault when not running.
+  useKeybindings(
+    {
+      'taskDetail:kill': () => {
+        if (teammate.status !== 'running' || !onKill) return false;
+        onKill();
+      },
+      'taskDetail:foreground': () => {
+        if (teammate.status !== 'running' || !onForeground) return false;
+        onForeground();
+      },
+    },
+    { context: 'TaskDetail' },
+  );
+
+  // space (dismiss) and left (back) stay raw — generic dialog navigation, see
+  // the TaskDetail block in defaultBindings.ts.
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === ' ') {
       e.preventDefault();
@@ -52,14 +71,11 @@ export function InProcessTeammateDetailDialog({
     } else if (e.key === 'left' && onBack) {
       e.preventDefault();
       onBack();
-    } else if (e.key === 'x' && teammate.status === 'running' && onKill) {
-      e.preventDefault();
-      onKill();
-    } else if (e.key === 'f' && teammate.status === 'running' && onForeground) {
-      e.preventDefault();
-      onForeground();
     }
   };
+
+  const killShortcut = useShortcutDisplay('taskDetail:kill', 'TaskDetail', 'x');
+  const foregroundShortcut = useShortcutDisplay('taskDetail:foreground', 'TaskDetail', 'f');
 
   const activity = describeTeammateActivity(teammate);
 
@@ -110,9 +126,11 @@ export function InProcessTeammateDetailDialog({
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
               <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {teammate.status === 'running' && onKill && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {teammate.status === 'running' && onKill && (
+                <KeyboardShortcutHint shortcut={killShortcut} action="stop" />
+              )}
               {teammate.status === 'running' && onForeground && (
-                <KeyboardShortcutHint shortcut="f" action="foreground" />
+                <KeyboardShortcutHint shortcut={foregroundShortcut} action="foreground" />
               )}
             </Byline>
           )

@@ -3,6 +3,7 @@ import type { DeepImmutable } from 'src/types/utils.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { type KeyboardEvent, Box, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
+import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import type { DreamTaskState } from '../../tasks/DreamTask/DreamTask.js';
 import { plural } from '../../utils/stringUtils.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
@@ -19,10 +20,25 @@ const VISIBLE_TURNS = 6;
 
 export function DreamDetailDialog({ task, onDone, onBack, onKill }: Props): React.ReactNode {
   const elapsedTime = useElapsedTime(task.startTime, task.status === 'running', 1000, 0);
+  const killShortcut = useShortcutDisplay('taskDetail:kill', 'TaskDetail', 'x');
 
-  // Dialog handles confirm:no (Esc) → onCancel. Wire confirm:yes (Enter/y) too.
+  // Dialog handles confirm:no (Esc) → onCancel. Wire confirm:yes (Enter) too.
   useKeybindings({ 'confirm:yes': onDone }, { context: 'Confirmation' });
 
+  // Returning false leaves the key unconsumed so it keeps propagating, matching
+  // the old raw handler which simply didn't call preventDefault when not running.
+  useKeybindings(
+    {
+      'taskDetail:kill': () => {
+        if (task.status !== 'running' || !onKill) return false;
+        onKill();
+      },
+    },
+    { context: 'TaskDetail' },
+  );
+
+  // space (close) and left (back) stay raw — generic dialog navigation, see the
+  // TaskDetail block in defaultBindings.ts.
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === ' ') {
       e.preventDefault();
@@ -30,9 +46,6 @@ export function DreamDetailDialog({ task, onDone, onBack, onKill }: Props): Reac
     } else if (e.key === 'left' && onBack) {
       e.preventDefault();
       onBack();
-    } else if (e.key === 'x' && task.status === 'running' && onKill) {
-      e.preventDefault();
-      onKill();
     }
   };
 
@@ -66,7 +79,7 @@ export function DreamDetailDialog({ task, onDone, onBack, onKill }: Props): Reac
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
               <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {task.status === 'running' && onKill && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {task.status === 'running' && onKill && <KeyboardShortcutHint shortcut={killShortcut} action="stop" />}
             </Byline>
           )
         }

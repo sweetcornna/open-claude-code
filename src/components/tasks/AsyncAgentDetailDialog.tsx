@@ -3,6 +3,7 @@ import type { DeepImmutable } from 'src/types/utils.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { type KeyboardEvent, Box, Text, useTheme } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
+import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { getEmptyToolPermissionContext } from '../../Tool.js';
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 import { getTools } from '../../tools.js';
@@ -27,6 +28,7 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
   const tools = useMemo(() => getTools(getEmptyToolPermissionContext()), []);
 
   const elapsedTime = useElapsedTime(agent.startTime, agent.status === 'running', 1000, agent.totalPausedMs ?? 0);
+  const killShortcut = useShortcutDisplay('taskDetail:kill', 'TaskDetail', 'x');
 
   // Restore confirm:yes (Enter/y) dismissal — Dialog handles confirm:no (Esc)
   // internally but does NOT auto-wire confirm:yes.
@@ -37,11 +39,22 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
     { context: 'Confirmation' },
   );
 
-  // Component-specific shortcuts shown in UI hints (x=stop) and
-  // navigation keys (space=dismiss, left=back). These are context-dependent
-  // actions tied to agent state, not standard dialog keybindings.
+  // Returning false leaves the key unconsumed so it keeps propagating, matching
+  // the old raw handler which simply didn't call preventDefault when not running.
+  useKeybindings(
+    {
+      'taskDetail:kill': () => {
+        if (agent.status !== 'running' || !onKillAgent) return false;
+        onKillAgent();
+      },
+    },
+    { context: 'TaskDetail' },
+  );
+
+  // space (dismiss) and left (back) stay raw — generic dialog navigation, see
+  // the TaskDetail block in defaultBindings.ts.
   // Note: Dialog component already handles ESC via confirm:no keybinding;
-  // confirm:yes (Enter/y) is handled by useKeybindings above.
+  // confirm:yes (Enter) is handled by useKeybindings above.
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === ' ') {
       e.preventDefault();
@@ -49,9 +62,6 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
     } else if (e.key === 'left' && onBack) {
       e.preventDefault();
       onBack();
-    } else if (e.key === 'x' && agent.status === 'running' && onKillAgent) {
-      e.preventDefault();
-      onKillAgent();
     }
   };
 
@@ -107,7 +117,9 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
             <Byline>
               {onBack && <KeyboardShortcutHint shortcut="←" action="go back" />}
               <KeyboardShortcutHint shortcut="Esc/Enter/Space" action="close" />
-              {agent.status === 'running' && onKillAgent && <KeyboardShortcutHint shortcut="x" action="stop" />}
+              {agent.status === 'running' && onKillAgent && (
+                <KeyboardShortcutHint shortcut={killShortcut} action="stop" />
+              )}
             </Byline>
           )
         }

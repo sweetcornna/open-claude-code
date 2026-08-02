@@ -356,6 +356,23 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       escape: 'select:cancel',
     },
   },
+  // Background-task detail views (shell / async agent / in-process teammate /
+  // dream / monitor-mcp / workflow). These dialogs already share one hand-rolled
+  // keymap — see the "键位照 MonitorMcpDetailDialog" comment in
+  // BackgroundTasksDialog — so they share one context here too.
+  //
+  // Only the *task* actions live here. `space` (close) and `left` (back) stay on
+  // each dialog's raw onKeyDown: they are generic dialog navigation, and both
+  // collide with defaults that can be simultaneously active behind the dialog
+  // (Chat binds space→voice:pushToTalk, Confirmation binds space→confirm:toggle).
+  // x/f collide with nothing, so moving them here is conflict-free.
+  {
+    context: 'TaskDetail',
+    bindings: {
+      x: 'taskDetail:kill',
+      f: 'taskDetail:foreground',
+    },
+  },
   // Plugin dialog actions (manage, browse, discover plugins)
   // Navigation (select:*) uses the Select context above
   {
