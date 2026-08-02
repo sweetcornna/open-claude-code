@@ -16,7 +16,6 @@ import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js'
 import { type Tools } from 'src/Tool.js'
 import { type AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import type { Message } from 'src/types/message.js'
-import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
   dequeueAllMatching,
   enqueue,
@@ -116,16 +115,10 @@ import {
   getFlagSettingsInline,
   setFlagSettingsInline,
 } from 'src/bootstrap/state.js'
-import { WORKLOAD_CRON } from 'src/utils/workloadContext.js'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
-import {
-  createAutonomyQueuedPromptIfNoActiveSource,
-  markAutonomyRunFailed,
-} from 'src/utils/autonomyRuns.js'
-import { cancelQueuedAutonomyCommands } from 'src/utils/autonomyQueueLifecycle.js'
 import { skillChangeDetector } from '../../utils/skills/skillChangeDetector.js'
 import { getCommands, clearCommandsCache } from '../../commands.js'
 import { isBareMode, isEnvTruthy } from '../../utils/envUtils.js'
@@ -145,9 +138,6 @@ import {
   reregisterChannelHandlerAfterReconnect,
 } from './channels.js'
 import {
-  cronGate,
-  cronJitterConfigModule,
-  cronSchedulerModule,
   proactiveModule,
   receivedMessageUuids,
   trackReceivedMessageUuid,
@@ -171,6 +161,11 @@ import {
 } from './headlessRunState.js'
 import { finalizeHeadlessOutput } from './headlessTeardown.js'
 import { runHeadlessTurn, scheduleProactiveTick } from './headlessTurnLoop.js'
+import { startHeadlessCronScheduler } from './headlessCron.js'
+import {
+  sendControlResponseError,
+  sendControlResponseSuccess,
+} from './headlessControlResponses.js'
 
 export function runHeadlessStreaming(
   structuredIO: StructuredIO,
@@ -414,132 +409,7 @@ export function runHeadlessStreaming(
   // Set up UDS inbox callback so the query loop is kicked off
   // when a message arrives via the UDS socket in headless mode.
 
-  // Cron scheduler: runs scheduled_tasks.json tasks in SDK/-p mode.
-  // Mirrors REPL's useScheduledTasks hook. Fired prompts enqueue + kick
-  // off run() directly — unlike REPL, there's no queue subscriber here
-  // that drains on enqueue while idle. The run() mutex makes this safe
-  // during an active turn: the call no-ops and the post-run recheck at
-  // the end of run() picks up the queued command.
-  if (cronGate.isKairosCronEnabled()) {
-    // Shared dedup-claim → input-close-recheck → onSuccess pipeline for the
-    // three cron entry points (legacy onFire, onFireTask agent, onFireTask
-    // non-agent). Centralizing the cancel-on-late-shutdown contract here keeps
-    // the three branches from drifting on what happens between claim and
-    // dispatch. onSuccess receives the claimed QueuedCommand and decides
-    // whether to enqueue it (normal path) or mark the run failed (agent path).
-    const dispatchHeadlessCronCommand = (params: {
-      basePrompt: string
-      sourceId: string
-      sourceLabel: string
-      logSuffix: string
-      onSuccess: (command: QueuedCommand) => void | Promise<void>
-    }): void => {
-      if (state.inputClosed) return
-      void (async () => {
-        const command = await createAutonomyQueuedPromptIfNoActiveSource({
-          basePrompt: params.basePrompt,
-          trigger: 'scheduled-task',
-          currentDir: cwd(),
-          sourceId: params.sourceId,
-          sourceLabel: params.sourceLabel,
-          workload: WORKLOAD_CRON,
-          shouldCreate: () => !state.inputClosed,
-        })
-        if (!command) return
-        if (state.inputClosed) {
-          await cancelQueuedAutonomyCommands({ commands: [command] })
-          return
-        }
-        await params.onSuccess(command)
-      })().catch(error => {
-        logError(error)
-        logForDebugging(
-          `[ScheduledTasks] failed to enqueue headless task${params.logSuffix}: ${error}`,
-          { level: 'error' },
-        )
-      })
-    }
-
-    const enqueueAndRun = (command: QueuedCommand): void => {
-      enqueue({
-        ...command,
-        uuid: randomUUID(),
-      })
-      void runHeadlessTurn(state)
-    }
-
-    state.cronScheduler = cronSchedulerModule.createCronScheduler({
-      onFire: prompt => {
-        // Legacy KAIROS-style entries: the prompt text is what uniquely
-        // identifies the cron entry, so it doubles as both source id and
-        // source label for dedup.
-        dispatchHeadlessCronCommand({
-          basePrompt: prompt,
-          sourceId: prompt,
-          sourceLabel: prompt,
-          logSuffix: '',
-          onSuccess: enqueueAndRun,
-        })
-      },
-      onFireTask: task => {
-        if (task.agentId) {
-          dispatchHeadlessCronCommand({
-            basePrompt: task.prompt,
-            sourceId: task.id,
-            sourceLabel: task.prompt,
-            logSuffix: ` ${task.id}`,
-            onSuccess: async command => {
-              await markAutonomyRunFailed(
-                command.autonomy!.runId,
-                `No teammate runtime available for scheduled task owner ${task.agentId} in headless mode.`,
-                command.autonomy!.rootDir,
-              )
-            },
-          })
-          return
-        }
-        dispatchHeadlessCronCommand({
-          basePrompt: task.prompt,
-          sourceId: task.id,
-          sourceLabel: task.prompt,
-          logSuffix: ` ${task.id}`,
-          onSuccess: enqueueAndRun,
-        })
-      },
-      isLoading: () => state.running || state.inputClosed,
-      getJitterConfig: cronJitterConfigModule?.getCronJitterConfig,
-      isKilled: () => !cronGate?.isKairosCronEnabled(),
-    })
-    state.cronScheduler.start()
-  }
-
-  const sendControlResponseSuccess = function (
-    message: { request_id: string } | SDKControlRequest,
-    response?: Record<string, unknown>,
-  ) {
-    output.enqueue({
-      type: 'control_response',
-      response: {
-        subtype: 'success',
-        request_id: message.request_id,
-        response: response,
-      },
-    })
-  }
-
-  const sendControlResponseError = function (
-    message: { request_id: string } | SDKControlRequest,
-    errorMessage: string,
-  ) {
-    output.enqueue({
-      type: 'control_response',
-      response: {
-        subtype: 'error',
-        request_id: message.request_id,
-        error: errorMessage,
-      },
-    })
-  }
+  startHeadlessCronScheduler(state)
 
   // Handle unexpected permission responses by looking up the unresolved tool
   // call in the transcript and executing it
@@ -614,7 +484,7 @@ export function runHeadlessStreaming(
           suggestionState.abortController = null
           suggestionState.lastEmitted = null
           suggestionState.pendingSuggestion = null
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
         } else if (req.subtype === 'end_session') {
           logForDebugging(
             `[print.ts] end_session received, reason=${req.reason ?? 'unspecified'}`,
@@ -626,7 +496,7 @@ export function runHeadlessStreaming(
           suggestionState.abortController = null
           suggestionState.lastEmitted = null
           suggestionState.pendingSuggestion = null
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
           break // exits for-await → falls through to inputClosed=true drain below
         } else if (msg.request.subtype === 'initialize') {
           // SDK MCP server names from the initialize message
@@ -709,7 +579,7 @@ export function runHeadlessStreaming(
           notifySessionMetadataChanged({ model })
           injectModelSwitchBreadcrumbs(requestedModel, model)
 
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
         } else if (msg.request.subtype === 'set_max_thinking_tokens') {
           if (msg.request.max_thinking_tokens === null) {
             options.thinkingConfig = undefined
@@ -721,9 +591,9 @@ export function runHeadlessStreaming(
               budgetTokens: msg.request.max_thinking_tokens,
             }
           }
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
         } else if (msg.request.subtype === 'mcp_status') {
-          sendControlResponseSuccess(msg, {
+          sendControlResponseSuccess(state, msg, {
             mcpServers: buildMcpServerStatuses(state),
           })
         } else if (msg.request.subtype === 'get_context_usage') {
@@ -740,9 +610,9 @@ export function runHeadlessStreaming(
                 appendSystemPrompt: options.appendSystemPrompt,
               },
             })
-            sendControlResponseSuccess(msg, { ...data })
+            sendControlResponseSuccess(state, msg, { ...data })
           } catch (error) {
-            sendControlResponseError(msg, errorMessage(error))
+            sendControlResponseError(state, msg, errorMessage(error))
           }
         } else if (msg.request.subtype === 'mcp_message') {
           // Handle MCP notifications from SDK servers
@@ -761,7 +631,7 @@ export function runHeadlessStreaming(
               mcpRequest.message as import('@modelcontextprotocol/client').JSONRPCMessage,
             )
           }
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
         } else if (msg.request.subtype === 'rewind_files') {
           const appState = getAppState()
           const result = await handleRewindFiles(
@@ -771,9 +641,10 @@ export function runHeadlessStreaming(
             msg.request.dry_run ?? false,
           )
           if (result.canRewind || msg.request.dry_run) {
-            sendControlResponseSuccess(msg, result)
+            sendControlResponseSuccess(state, msg, result)
           } else {
             sendControlResponseError(
+              state,
               msg,
               (result.error as string) ?? 'Unexpected error',
             )
@@ -781,7 +652,7 @@ export function runHeadlessStreaming(
         } else if (msg.request.subtype === 'cancel_async_message') {
           const targetUuid = msg.request.message_uuid
           const removed = dequeueAllMatching(cmd => cmd.uuid === targetUuid)
-          sendControlResponseSuccess(msg, {
+          sendControlResponseSuccess(state, msg, {
             cancelled: removed.length > 0,
           })
         } else if (msg.request.subtype === 'seed_read_state') {
@@ -821,7 +692,7 @@ export function runHeadlessStreaming(
           } catch {
             // ENOENT etc — skip seeding but still succeed
           }
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
         } else if (msg.request.subtype === 'mcp_set_servers') {
           const { response, sdkServersChanged } = await applyMcpServerChanges(
             state,
@@ -830,7 +701,7 @@ export function runHeadlessStreaming(
               McpServerConfigForProcessTransport
             >,
           )
-          sendControlResponseSuccess(msg, response)
+          sendControlResponseSuccess(state, msg, response)
 
           // Connect SDK servers AFTER response to avoid deadlock
           if (sdkServersChanged) {
@@ -875,7 +746,7 @@ export function runHeadlessStreaming(
               logError(pluginsR.reason)
             }
 
-            sendControlResponseSuccess(msg, {
+            sendControlResponseSuccess(state, msg, {
               commands: state.currentCommands
                 .filter(cmd => cmd.userInvocable !== false)
                 .map(cmd => ({
@@ -895,7 +766,7 @@ export function runHeadlessStreaming(
               error_count: r.error_count,
             } satisfies SDKControlReloadPluginsResponse)
           } catch (error) {
-            sendControlResponseError(msg, errorMessage(error))
+            sendControlResponseError(state, msg, errorMessage(error))
           }
         } else if (msg.request.subtype === 'mcp_reconnect') {
           const currentAppState = getAppState()
@@ -916,7 +787,11 @@ export function runHeadlessStreaming(
               ?.config ??
             null
           if (!config) {
-            sendControlResponseError(msg, `Server not found: ${serverName}`)
+            sendControlResponseError(
+              state,
+              msg,
+              `Server not found: ${serverName}`,
+            )
           } else {
             const result = await reconnectMcpServerImpl(serverName, config)
             // Update appState.mcp with the new client, tools, commands, and resources
@@ -964,13 +839,13 @@ export function runHeadlessStreaming(
             if (result.client.type === 'connected') {
               registerElicitationHandlers(state, [result.client])
               reregisterChannelHandlerAfterReconnect(result.client)
-              sendControlResponseSuccess(msg)
+              sendControlResponseSuccess(state, msg)
             } else {
               const errorMessage =
                 result.client.type === 'failed'
                   ? (result.client.error ?? 'Connection failed')
                   : `Server status: ${result.client.type}`
-              sendControlResponseError(msg, errorMessage)
+              sendControlResponseError(state, msg, errorMessage)
             }
           }
         } else if (msg.request.subtype === 'mcp_toggle') {
@@ -991,7 +866,11 @@ export function runHeadlessStreaming(
             null
 
           if (!config) {
-            sendControlResponseError(msg, `Server not found: ${serverName}`)
+            sendControlResponseError(
+              state,
+              msg,
+              `Server not found: ${serverName}`,
+            )
           } else if (!enabled) {
             // Disabling: persist + disconnect (matches TUI toggleMcpServer behavior)
             setMcpServerEnabled(serverName, false)
@@ -1022,7 +901,7 @@ export function runHeadlessStreaming(
                 resources: omit(prev.mcp.resources, serverName),
               },
             }))
-            sendControlResponseSuccess(msg)
+            sendControlResponseSuccess(state, msg)
           } else {
             // Enabling: persist + reconnect
             setMcpServerEnabled(serverName, true)
@@ -1056,13 +935,13 @@ export function runHeadlessStreaming(
             if (result.client.type === 'connected') {
               registerElicitationHandlers(state, [result.client])
               reregisterChannelHandlerAfterReconnect(result.client)
-              sendControlResponseSuccess(msg)
+              sendControlResponseSuccess(state, msg)
             } else {
               const errorMessage =
                 result.client.type === 'failed'
                   ? (result.client.error ?? 'Connection failed')
                   : `Server status: ${result.client.type}`
-              sendControlResponseError(msg, errorMessage)
+              sendControlResponseError(state, msg, errorMessage)
             }
           }
         } else if (req.subtype === 'channel_enable') {
@@ -1088,9 +967,14 @@ export function runHeadlessStreaming(
               ?.config ??
             null
           if (!config) {
-            sendControlResponseError(msg, `Server not found: ${serverName}`)
+            sendControlResponseError(
+              state,
+              msg,
+              `Server not found: ${serverName}`,
+            )
           } else if (config.type !== 'sse' && config.type !== 'http') {
             sendControlResponseError(
+              state,
               msg,
               `Server type "${config.type}" does not support OAuth authentication`,
             )
@@ -1128,12 +1012,12 @@ export function runHeadlessStreaming(
               ])
 
               if (authUrl) {
-                sendControlResponseSuccess(msg, {
+                sendControlResponseSuccess(state, msg, {
                   authUrl,
                   requiresUserAction: true,
                 })
               } else {
-                sendControlResponseSuccess(msg, {
+                sendControlResponseSuccess(state, msg, {
                   requiresUserAction: false,
                 })
               }
@@ -1230,7 +1114,7 @@ export function runHeadlessStreaming(
                 })
               void fullFlowPromise
             } catch (error) {
-              sendControlResponseError(msg, errorMessage(error))
+              sendControlResponseError(state, msg, errorMessage(error))
             }
           }
         } else if (req.subtype === 'mcp_oauth_callback_url') {
@@ -1253,6 +1137,7 @@ export function runHeadlessStreaming(
             }
             if (!hasCodeOrError) {
               sendControlResponseError(
+                state,
                 msg,
                 'Invalid callback URL: missing authorization code. Please paste the full redirect URL including the code parameter.',
               )
@@ -1266,9 +1151,10 @@ export function runHeadlessStreaming(
               if (authPromise) {
                 try {
                   await authPromise
-                  sendControlResponseSuccess(msg)
+                  sendControlResponseSuccess(state, msg)
                 } catch (error) {
                   sendControlResponseError(
+                    state,
                     msg,
                     error instanceof Error
                       ? error.message
@@ -1276,11 +1162,12 @@ export function runHeadlessStreaming(
                   )
                 }
               } else {
-                sendControlResponseSuccess(msg)
+                sendControlResponseSuccess(state, msg)
               }
             }
           } else {
             sendControlResponseError(
+              state,
               msg,
               `No active OAuth flow for server: ${serverName}`,
             )
@@ -1374,19 +1261,23 @@ export function runHeadlessStreaming(
                 )
               }),
             ])
-            sendControlResponseSuccess(msg, {
+            sendControlResponseSuccess(state, msg, {
               manualUrl,
               automaticUrl,
             })
           } catch (error) {
-            sendControlResponseError(msg, errorMessage(error))
+            sendControlResponseError(state, msg, errorMessage(error))
           }
         } else if (
           req.subtype === 'claude_oauth_callback' ||
           req.subtype === 'claude_oauth_wait_for_completion'
         ) {
           if (!state.claudeOAuth) {
-            sendControlResponseError(msg, 'No active claude_authenticate flow')
+            sendControlResponseError(
+              state,
+              msg,
+              'No active claude_authenticate flow',
+            )
           } else {
             // Inject the manual code synchronously — must happen in stdin
             // message order so a subsequent claude_authenticate doesn't
@@ -1406,7 +1297,7 @@ export function runHeadlessStreaming(
             void flow.then(
               () => {
                 const accountInfo = getAccountInformation()
-                sendControlResponseSuccess(msg, {
+                sendControlResponseSuccess(state, msg, {
                   account: {
                     email: accountInfo?.email,
                     organization: accountInfo?.organization,
@@ -1418,7 +1309,7 @@ export function runHeadlessStreaming(
                 })
               },
               (error: unknown) =>
-                sendControlResponseError(msg, errorMessage(error)),
+                sendControlResponseError(state, msg, errorMessage(error)),
             )
           }
         } else if (req.subtype === 'mcp_clear_auth') {
@@ -1431,9 +1322,14 @@ export function runHeadlessStreaming(
               ?.config ??
             null
           if (!config) {
-            sendControlResponseError(msg, `Server not found: ${serverName}`)
+            sendControlResponseError(
+              state,
+              msg,
+              `Server not found: ${serverName}`,
+            )
           } else if (config.type !== 'sse' && config.type !== 'http') {
             sendControlResponseError(
+              state,
               msg,
               `Cannot clear auth for server type "${config.type}"`,
             )
@@ -1467,7 +1363,7 @@ export function runHeadlessStreaming(
                     : omit(prev.mcp.resources, serverName),
               },
             }))
-            sendControlResponseSuccess(msg, {})
+            sendControlResponseSuccess(state, msg, {})
           }
         } else if (msg.request.subtype === 'apply_flag_settings') {
           // Snapshot the current model before applying — we need to detect
@@ -1525,7 +1421,7 @@ export function runHeadlessStreaming(
             injectModelSwitchBreadcrumbs(modelArg, newModel)
           }
 
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
         } else if (msg.request.subtype === 'get_settings') {
           const currentAppState = getAppState()
           const model = getMainLoopModel()
@@ -1534,7 +1430,7 @@ export function runHeadlessStreaming(
           const effort = modelSupportsEffort(model)
             ? resolveAppliedEffort(model, currentAppState.effortValue)
             : undefined
-          sendControlResponseSuccess(msg, {
+          sendControlResponseSuccess(state, msg, {
             ...getSettingsWithSources(),
             applied: {
               model,
@@ -1549,9 +1445,9 @@ export function runHeadlessStreaming(
               getAppState,
               setAppState,
             })
-            sendControlResponseSuccess(msg, {})
+            sendControlResponseSuccess(state, msg, {})
           } catch (error) {
-            sendControlResponseError(msg, errorMessage(error))
+            sendControlResponseError(state, msg, errorMessage(error))
           }
         } else if (req.subtype === 'generate_session_title') {
           // Fire-and-forget so the Haiku call does not block the stdin loop
@@ -1577,13 +1473,13 @@ export function runHeadlessStreaming(
                   logError(e)
                 }
               }
-              sendControlResponseSuccess(msg, { title })
+              sendControlResponseSuccess(state, msg, { title })
             } catch (e) {
               // Unreachable in practice — generateSessionTitle wraps its
               // own body and returns null, saveAiGeneratedTitle is wrapped
               // above. Propagate (not swallow) so unexpected failures are
               // visible to the SDK caller (hostComms.ts catches and logs).
-              sendControlResponseError(msg, errorMessage(e))
+              sendControlResponseError(state, msg, errorMessage(e))
             }
           })()
         } else if (req.subtype === 'side_question') {
@@ -1641,9 +1537,11 @@ export function runHeadlessStreaming(
                 question,
                 cacheSafeParams,
               })
-              sendControlResponseSuccess(msg, { response: result.response })
+              sendControlResponseSuccess(state, msg, {
+                response: result.response,
+              })
             } catch (e) {
-              sendControlResponseError(msg, errorMessage(e))
+              sendControlResponseError(state, msg, errorMessage(e))
             }
           })()
         } else if (
@@ -1662,11 +1560,12 @@ export function runHeadlessStreaming(
           } else {
             proactiveModule!.deactivateProactive()
           }
-          sendControlResponseSuccess(msg)
+          sendControlResponseSuccess(state, msg)
         } else {
           // Unknown control request subtype — send an error response so
           // the caller doesn't hang waiting for a reply that never comes.
           sendControlResponseError(
+            state,
             msg,
             `Unsupported control request subtype: ${(msg.request as { subtype: string }).subtype}`,
           )
