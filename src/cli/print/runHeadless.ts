@@ -36,7 +36,7 @@ import {
 } from 'src/services/api/grove.js'
 import { initializeGrowthBook } from 'src/services/analytics/growthbook.js'
 import { gracefulShutdownSync } from 'src/utils/gracefulShutdown.js'
-import { validateUuid } from 'src/utils/uuid.js'
+import { validateUuid } from 'src/utils/collections/uuid.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import { errorMessage } from 'src/utils/errors.js'
 import { registerHookEventHandler } from 'src/utils/hooks/hookEvents.js'

@@ -10,7 +10,7 @@ import {
   getUseCoworkPlugins,
 } from '../../bootstrap/state.js'
 import { getRemoteManagedSettingsSyncFromCache } from '../../services/remoteManagedSettings/syncCacheState.js'
-import { uniq } from '../array.js'
+import { uniq } from '../collections/array.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'

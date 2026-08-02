@@ -50,7 +50,9 @@ mock.module('src/utils/messages.js', () => ({
   }),
   extractTextContent: () => 'agent-text',
 }))
-mock.module('src/utils/uuid.js', () => ({ createAgentId: () => 'agent-1' }))
+mock.module('src/utils/collections/uuid.js', () => ({
+  createAgentId: () => 'agent-1',
+}))
 mock.module('src/services/analytics/index.js', () => ({ logEvent: () => {} }))
 mock.module('src/utils/debug.js', () => ({ logForDebugging: () => {} }))
 

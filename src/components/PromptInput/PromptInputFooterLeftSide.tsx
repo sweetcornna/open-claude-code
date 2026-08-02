@@ -24,7 +24,7 @@ import { BackgroundTaskStatus } from '../tasks/BackgroundTaskStatus.js';
 import { isBackgroundTask } from '../../tasks/types.js';
 import { isPanelAgentTask } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 import { getVisibleAgentTasks } from '../CoordinatorAgentStatus.js';
-import { count } from '../../utils/array.js';
+import { count } from '../../utils/collections/array.js';
 import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { TeamStatus } from '../teams/TeamStatus.js';

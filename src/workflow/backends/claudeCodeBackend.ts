@@ -18,7 +18,7 @@ import {
 import { createUserMessage, extractTextContent } from '../../utils/messages.js'
 import { getTokenCountFromUsage } from '../../utils/tokens.js'
 import { createHash } from 'node:crypto'
-import { createAgentId } from '../../utils/uuid.js'
+import { createAgentId } from '../../utils/collections/uuid.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { runWithCwdOverride } from '../../utils/cwd.js'
 import {

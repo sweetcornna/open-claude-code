@@ -5,7 +5,7 @@ import { logMock } from '../../../tests/mocks/log'
 mock.module('src/utils/log.ts', logMock)
 
 const { memoizeWithTTL, memoizeWithTTLAsync, memoizeWithLRU } = await import(
-  '../memoize'
+  '../collections/memoize'
 )
 
 // ─── memoizeWithTTL ────────────────────────────────────────────────────

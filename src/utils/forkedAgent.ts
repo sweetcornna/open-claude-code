@@ -45,7 +45,7 @@ import {
   type ContentReplacementState,
   cloneContentReplacementState,
 } from './toolResultStorage.js'
-import { createAgentId } from './uuid.js'
+import { createAgentId } from './collections/uuid.js'
 
 /**
  * Parameters that must be identical between the fork and parent API requests

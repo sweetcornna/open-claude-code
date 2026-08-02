@@ -11,7 +11,7 @@ import { Byline, KeyboardShortcutHint } from '@anthropic/ink';
 import { Box, Text, useInput } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { LoadedPlugin } from '../../types/plugin.js';
-import { count } from '../../utils/array.js';
+import { count } from '../../utils/collections/array.js';
 import { shouldSkipPluginAutoupdate } from '../../utils/config.js';
 import { errorMessage } from '../../utils/errors.js';
 import { clearAllCaches } from '../../utils/plugins/cacheUtils.js';

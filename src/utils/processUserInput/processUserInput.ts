@@ -38,7 +38,7 @@ import {
 } from '../attachments.js'
 import type { PastedContent } from '../config.js'
 import type { EffortValue } from '../effort.js'
-import { toArray } from '../generators.js'
+import { toArray } from '../collections/generators.js'
 import {
   executeUserPromptSubmitHooks,
   getUserPromptSubmitHookBlockingMessage,

@@ -18,7 +18,7 @@ import {
   type Output as FileReadToolOutput,
 } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
 import type { Message } from '../../types/message.js'
-import { count } from '../../utils/array.js'
+import { count } from '../../utils/collections/array.js'
 import {
   createCacheSafeParams,
   createSubagentContext,
@@ -37,7 +37,7 @@ import {
   getSessionMemoryDir,
   getSessionMemoryPath,
 } from '../../utils/permissions/filesystem.js'
-import { sequential } from '../../utils/sequential.js'
+import { sequential } from '../../utils/collections/sequential.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTokenUsage, tokenCountWithEstimation } from '../../utils/tokens.js'
 import { logEvent } from '../analytics/index.js'

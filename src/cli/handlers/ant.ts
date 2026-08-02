@@ -201,7 +201,7 @@ export async function completionHandler(
   _program: Command,
 ): Promise<void> {
   const { regenerateCompletionCache } = await import(
-    '../../utils/completionCache.js'
+    '../../utils/collections/completionCache.js'
   )
 
   if (opts.output) {

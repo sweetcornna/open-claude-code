@@ -17,7 +17,7 @@ import { matchWildcardPattern } from 'src/utils/permissions/shellRuleMatching.js
 import { getGlobExclusionsForPluginCache } from 'src/utils/plugins/orphanedPluginFilter.js'
 import { ripGrep } from 'src/utils/ripgrep.js'
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js'
-import { semanticNumber } from 'src/utils/semanticNumber.js'
+import { semanticNumber } from 'src/utils/collections/semanticNumber.js'
 import { plural } from '@open-claude-code/tool-runtime/stringUtils.js'
 import { GREP_TOOL_NAME, getDescription } from './prompt.js'
 import {

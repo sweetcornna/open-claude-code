@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { Stream } from '../stream'
+import { Stream } from '../collections/stream'
 
 describe('Stream', () => {
   test('enqueue then read resolves with the value', async () => {

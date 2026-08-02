@@ -21,7 +21,7 @@ import { z } from 'zod/v4'
 import { type ChannelEntry, getAllowedChannels } from '../../bootstrap/state.js'
 import { CHANNEL_TAG } from '../../constants/xml.js'
 import { getSubscriptionType } from '../../utils/auth.js'
-import { lazySchema } from '../../utils/lazySchema.js'
+import { lazySchema } from '../../utils/collections/lazySchema.js'
 import { parsePluginIdentifier } from '../../utils/plugins/pluginIdentifier.js'
 import { escapeXmlAttr } from '../../utils/xml.js'
 import {

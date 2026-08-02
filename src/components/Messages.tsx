@@ -5,7 +5,7 @@ import type { UUID } from 'crypto';
 import type { RefObject } from 'react';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { every } from 'src/utils/set.js';
+import { every } from 'src/utils/collections/set.js';
 import { getIsRemoteMode } from '../bootstrap/state.js';
 import type { Command } from '../commands.js';
 import { BLACK_CIRCLE } from '../constants/figures.js';

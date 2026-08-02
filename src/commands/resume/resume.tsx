@@ -27,7 +27,7 @@ import {
   loadSameRepoMessageLogs,
   searchSessionsByCustomTitle,
 } from '../../utils/sessionStorage.js';
-import { validateUuid } from '../../utils/uuid.js';
+import { validateUuid } from '../../utils/collections/uuid.js';
 
 type ResumeResult =
   | { resultType: 'sessionNotFound'; arg: string }

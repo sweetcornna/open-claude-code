@@ -3,7 +3,7 @@ import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { getConnectedIdeClient } from '../utils/ide.js'
-import { lazySchema } from '../utils/lazySchema.js'
+import { lazySchema } from '../utils/collections/lazySchema.js'
 
 const LOG_EVENT_METHOD = 'log_event'
 

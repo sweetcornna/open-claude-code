@@ -14,7 +14,7 @@ import {
   type CronJitterConfig,
   DEFAULT_CRON_JITTER_CONFIG,
 } from './cronTasks.js'
-import { lazySchema } from './lazySchema.js'
+import { lazySchema } from './collections/lazySchema.js'
 
 // How often to re-fetch tengu_kairos_cron_config from GrowthBook. Short because
 // this is an incident lever — when we push a config change to shed :00 load,

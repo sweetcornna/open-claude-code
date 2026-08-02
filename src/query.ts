@@ -125,7 +125,7 @@ import {
   getSessionId,
 } from './bootstrap/state.js'
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
-import { count } from './utils/array.js'
+import { count } from './utils/collections/array.js'
 import {
   createTrace,
   endTrace,

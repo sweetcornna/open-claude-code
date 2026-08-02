@@ -16,7 +16,7 @@ import {
   getTerminalPlistPath,
   markTerminalSetupComplete,
 } from '../../utils/appleTerminalBackup.js';
-import { setupShellCompletion } from '../../utils/completionCache.js';
+import { setupShellCompletion } from '../../utils/collections/completionCache.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { env } from '../../utils/env.js';
 import { isFsInaccessible } from '../../utils/errors.js';

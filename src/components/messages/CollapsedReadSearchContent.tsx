@@ -6,7 +6,7 @@ import { Ansi, Box, Text, useTheme } from '@anthropic/ink';
 import { findToolByName, type Tools } from '../../Tool.js';
 import { getReplPrimitiveTools } from '@open-claude-code/builtin-tools/tools/REPLTool/primitiveTools.js';
 import type { CollapsedReadSearchGroup, NormalizedAssistantMessage } from '../../types/message.js';
-import { uniq } from '../../utils/array.js';
+import { uniq } from '../../utils/collections/array.js';
 import { getToolUseIdsFromCollapsedGroup } from '../../utils/collapseReadSearch.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { formatDuration, formatSecondsShort } from '../../utils/format.js';

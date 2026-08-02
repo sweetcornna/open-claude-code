@@ -5,7 +5,7 @@ import {
   subscribeToCommandQueue,
 } from '../utils/messageQueueManager.js'
 import type { QueryGuard } from '../utils/QueryGuard.js'
-import { processQueueIfReady } from '../utils/queueProcessor.js'
+import { processQueueIfReady } from '../utils/collections/queueProcessor.js'
 
 type UseQueueProcessorParams = {
   executeQueuedInput: (commands: QueuedCommand[]) => Promise<void>

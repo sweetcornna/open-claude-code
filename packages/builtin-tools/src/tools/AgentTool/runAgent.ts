@@ -90,7 +90,7 @@ import {
   unregisterAgent as unregisterPerfettoAgent,
 } from 'src/utils/telemetry/perfettoTracing.js'
 import type { ContentReplacementState } from 'src/utils/toolResultStorage.js'
-import { createAgentId } from 'src/utils/uuid.js'
+import { createAgentId } from 'src/utils/collections/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { filterIncompleteToolCalls } from './filterIncompleteToolCalls.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'

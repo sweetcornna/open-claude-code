@@ -12,7 +12,7 @@
 
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import { logForDebugging } from '../../utils/debug.js'
-import { getLastCacheSafeParams } from '../../utils/cacheSafeParamsSlot.js'
+import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js'
 import { runForkedAgent } from '../../utils/forkedAgent.js'
 import {
   createUserMessage,

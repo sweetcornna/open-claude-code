@@ -27,7 +27,7 @@ import {
 import { isLocalShellTask } from '../../tasks/LocalShellTask/guards.js'
 import { asAgentId } from '../../types/ids.js'
 import type { Message } from '../../types/message.js'
-import { saveCacheSafeParams } from '../../utils/cacheSafeParamsSlot.js'
+import { saveCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js'
 import { createEmptyAttributionState } from '../../utils/commitAttribution.js'
 import type { FileStateCache } from '../../utils/fileStateCache.js'
 import {

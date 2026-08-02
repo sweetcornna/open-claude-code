@@ -1,6 +1,6 @@
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
-import { fromArray } from 'src/utils/generators.js'
+import { fromArray } from 'src/utils/collections/generators.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import type {
   PermissionResult,

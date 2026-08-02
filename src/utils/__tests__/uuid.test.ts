@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { validateUuid, createAgentId } from '../uuid'
+import { validateUuid, createAgentId } from '../collections/uuid'
 
 describe('validateUuid', () => {
   test('validates correct UUID', () => {

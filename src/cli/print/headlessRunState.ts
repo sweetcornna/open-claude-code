@@ -62,7 +62,7 @@ import type { Tools } from 'src/Tool.js'
 import type { Message } from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import type { ThinkingConfig } from 'src/utils/thinking.js'
-import type { Stream } from 'src/utils/stream.js'
+import type { Stream } from 'src/utils/collections/stream.js'
 import type { ModelInfo, SDKStatus } from 'src/entrypoints/agentSdkTypes.js'
 import type {
   SDKControlMcpSetServersResponse,

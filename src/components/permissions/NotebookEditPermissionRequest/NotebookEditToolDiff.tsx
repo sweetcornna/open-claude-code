@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Suspense, use, useMemo } from 'react';
 import { Box, NoSelect, Text } from '@anthropic/ink';
 import type { NotebookCell, NotebookCellType, NotebookContent } from '../../../types/notebook.js';
-import { intersperse } from '../../../utils/array.js';
+import { intersperse } from '../../../utils/collections/array.js';
 import { getCwd } from '../../../utils/cwd.js';
 import { getPatchForDisplay } from '../../../utils/diff.js';
 import { getFsImplementation } from '../../../utils/fsOperations.js';

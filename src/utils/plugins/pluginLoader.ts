@@ -71,7 +71,7 @@ import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { pathExists } from '../file.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { gitExe } from '../git.js'
-import { lazySchema } from '../lazySchema.js'
+import { lazySchema } from '../collections/lazySchema.js'
 import { logError } from '../log.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import {

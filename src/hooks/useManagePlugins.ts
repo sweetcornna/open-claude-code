@@ -8,7 +8,7 @@ import {
 import { reinitializeLspServerManager } from '../services/lsp/manager.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import { count } from '../utils/array.js'
+import { count } from '../utils/collections/array.js'
 import { logForDebugging } from '../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { toError } from '../utils/errors.js'

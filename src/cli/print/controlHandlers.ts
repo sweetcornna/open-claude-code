@@ -9,7 +9,7 @@ import {
 import type { AppState } from 'src/state/AppStateStore.js'
 import type { Command } from 'src/commands.js'
 import { formatDescriptionWithSource, getCommandName } from 'src/commands.js'
-import type { Stream } from 'src/utils/stream.js'
+import type { Stream } from 'src/utils/collections/stream.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import type {
   ModelInfo,

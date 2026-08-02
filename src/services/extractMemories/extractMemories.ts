@@ -41,7 +41,7 @@ import type {
   SystemMessage,
 } from '../../types/message.js'
 import { createAbortController } from '../../utils/abortController.js'
-import { count, uniq } from '../../utils/array.js'
+import { count, uniq } from '../../utils/collections/array.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
   createCacheSafeParams,

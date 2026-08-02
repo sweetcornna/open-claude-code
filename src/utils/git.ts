@@ -19,7 +19,7 @@ import {
   resolveGitDir,
 } from './git/gitFilesystem.js'
 import { logError } from './log.js'
-import { memoizeWithLRU } from './memoize.js'
+import { memoizeWithLRU } from './collections/memoize.js'
 import { whichSync } from './which.js'
 
 const GIT_ROOT_NOT_FOUND = Symbol('git-root-not-found')

@@ -58,7 +58,7 @@ import { createUserMessage, normalizeMessages } from 'src/utils/messages.js'
 import type { ModelAlias } from 'src/utils/model/aliases.js'
 import { resolveSkillModelOverride } from 'src/utils/model/model.js'
 import { recordSkillUsage } from 'src/utils/suggestions/skillUsageTracking.js'
-import { createAgentId } from 'src/utils/uuid.js'
+import { createAgentId } from 'src/utils/collections/uuid.js'
 import { runAgent } from '../AgentTool/runAgent.js'
 import {
   getToolUseIDFromParentMessage,

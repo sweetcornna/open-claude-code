@@ -176,7 +176,7 @@ import {
   isFastModeEnabled,
   isFastModeSupportedByModel,
 } from 'src/utils/fastMode.js'
-import { returnValue } from 'src/utils/generators.js'
+import { returnValue } from 'src/utils/collections/generators.js'
 import { headlessProfilerCheckpoint } from 'src/utils/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcpInstructionsDelta.js'
 import { calculateUSDCost } from 'src/utils/modelCost.js'
@@ -197,8 +197,8 @@ import {
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
-import { count } from '../../utils/array.js'
-import { insertBlockAfterToolResults } from '../../utils/contentArray.js'
+import { count } from '../../utils/collections/array.js'
+import { insertBlockAfterToolResults } from '../../utils/collections/contentArray.js'
 import { validateBoundedIntEnvVar } from '../../utils/envValidation.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { getInferenceProfileBackingModel } from '../../utils/model/bedrock.js'

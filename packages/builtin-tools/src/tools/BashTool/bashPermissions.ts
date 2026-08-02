@@ -11,7 +11,7 @@ import type {
   ToolUseContext,
 } from '@open-claude-code/tool-runtime/Tool.js'
 import type { PendingClassifierCheck } from '@open-claude-code/tool-runtime/types/permissions.js'
-import { count } from 'src/utils/array.js'
+import { count } from 'src/utils/collections/array.js'
 import {
   checkSemantics,
   nodeTypeId,

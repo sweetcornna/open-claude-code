@@ -15,7 +15,7 @@ import { getRemoteUrlForDir, resolveGitDir } from './git/gitFilesystem.js'
 import { findGitRoot, gitExe } from './git.js'
 import { logError } from './log.js'
 import { getCanonicalName, type ModelName } from './model/model.js'
-import { sequential } from './sequential.js'
+import { sequential } from './collections/sequential.js'
 
 /**
  * List of repos where internal model names are allowed in trailers.

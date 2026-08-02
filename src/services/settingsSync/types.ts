@@ -7,7 +7,7 @@
 
 import { CONFIG_DIR_BASENAME, PROJECT_DIR_NAME } from 'src/config/paths.js'
 import { z } from 'zod/v4'
-import { lazySchema } from '../../utils/lazySchema.js'
+import { lazySchema } from '../../utils/collections/lazySchema.js'
 
 /**
  * Content portion of user sync data - flat key-value storage.

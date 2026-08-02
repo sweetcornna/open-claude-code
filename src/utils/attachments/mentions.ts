@@ -1,7 +1,7 @@
 import type { ToolUseContext } from '../../Tool.js'
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { expandPath } from '../path.js'
-import { uniq } from '../array.js'
+import { uniq } from '../collections/array.js'
 import { readdir, stat } from 'fs/promises'
 import { getCwd } from 'src/utils/cwd.js'
 import { logError } from '../log.js'

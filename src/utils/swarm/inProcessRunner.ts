@@ -75,7 +75,7 @@ import {
   markAutonomyRunFailed,
   markAutonomyRunRunning,
 } from '../autonomyRuns.js'
-import { count } from '../array.js'
+import { count } from '../collections/array.js'
 import { logForDebugging } from '../debug.js'
 import { cloneFileStateCache } from '../fileStateCache.js'
 import {

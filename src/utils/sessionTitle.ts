@@ -19,7 +19,7 @@ import { queryHaiku } from '../services/api/claude.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from './debug.js'
 import { safeParseJSON } from './json.js'
-import { lazySchema } from './lazySchema.js'
+import { lazySchema } from './collections/lazySchema.js'
 import { extractTextContent } from './messages.js'
 import { asSystemPrompt } from './systemPromptType.js'
 

@@ -49,7 +49,7 @@ import type { QuerySource } from '../constants/querySource.js'
 import { executeAutoDream } from '../services/autoDream/autoDream.js'
 import { executePromptSuggestion } from '../services/PromptSuggestion/promptSuggestion.js'
 import { isBareMode, isEnvDefinedFalsy } from '../utils/envUtils.js'
-import { saveCacheSafeParams } from '../utils/cacheSafeParamsSlot.js'
+import { saveCacheSafeParams } from '../utils/collections/cacheSafeParamsSlot.js'
 import { createCacheSafeParams } from '../utils/forkedAgent.js'
 
 type StopHookResult = {
