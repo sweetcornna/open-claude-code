@@ -51,7 +51,7 @@ import { isFullscreenEnvEnabled } from '../terminal/fullscreen.js';
 import { toArray } from '../collections/generators.js';
 import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
 import { logError } from '../telemetry/log.js';
-import { enqueue, enqueuePendingNotification } from '../messageQueueManager.js';
+import { enqueue, enqueuePendingNotification } from '../session/messageQueueManager.js';
 import {
   createCommandInputMessage,
   createSyntheticUserCaveatMessage,
@@ -74,10 +74,10 @@ import { sleep } from '../process/sleep.js';
 import { recordSkillUsage } from '../suggestions/skillUsageTracking.js';
 import { logOTelEvent, redactIfDisabled } from '../telemetry/events.js';
 import { buildPluginCommandTelemetryFields } from '../telemetry/pluginTelemetry.js';
-import { getAssistantMessageContentLength } from '../tokens.js';
+import { getAssistantMessageContentLength } from '../session/tokens.js';
 import { createAgentId } from '../collections/uuid.js';
 import { finalizeAutonomyRunCompleted, finalizeAutonomyRunFailed } from '../autonomyRuns.js';
-import { getWorkload } from '../workloadContext.js';
+import { getWorkload } from '../session/workloadContext.js';
 import type { ProcessUserInputBaseResult, ProcessUserInputContext } from './processUserInput.js';
 
 type SlashCommandResult = ProcessUserInputBaseResult & {

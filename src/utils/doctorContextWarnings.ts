@@ -1,12 +1,12 @@
 import { roughTokenCountEstimation } from '../services/tokenEstimation.js'
 import type { Tool, ToolPermissionContext } from '../Tool.js'
 import type { AgentDefinitionsResult } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import { countMcpToolTokens } from './analyzeContext.js'
+import { countMcpToolTokens } from './session/analyzeContext.js'
 import {
   getLargeMemoryFiles,
   getMemoryFiles,
   MAX_MEMORY_CHARACTER_COUNT,
-} from './claudemd.js'
+} from './session/claudemd.js'
 import { getMainLoopModel } from './model/model.js'
 import { permissionRuleValueToString } from './permissions/permissionRuleParser.js'
 import { detectUnreachableRules } from './permissions/shadowedRuleDetection.js'

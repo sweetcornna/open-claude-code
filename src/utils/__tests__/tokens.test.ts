@@ -24,7 +24,7 @@ const {
   getCurrentUsage,
   doesMostRecentAssistantMessageExceed200k,
   getAssistantMessageContentLength,
-} = await import('../tokens')
+} = await import('../session/tokens')
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 

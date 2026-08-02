@@ -7,7 +7,7 @@ import { clearSystemPromptSections } from 'src/constants/systemPromptSections.js
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { clearMemoryFileCaches } from 'src/utils/claudemd.js'
+import { clearMemoryFileCaches } from 'src/utils/session/claudemd.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { findCanonicalGitRoot } from 'src/utils/git/git.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'

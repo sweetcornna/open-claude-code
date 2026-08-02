@@ -15,7 +15,7 @@ import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCr
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { isKairosCronEnabled } from '@open-claude-code/builtin-tools/tools/ScheduleCronTool/prompt.js'
 import { is1PApiCustomer } from '../../utils/auth/auth.js'
-import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
+import { countConcurrentSessions } from '../../utils/session/concurrentSessions.js'
 import { getGlobalConfig } from '../../utils/config/config.js'
 import {
   getEffortEnvOverride,

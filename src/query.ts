@@ -28,7 +28,10 @@ import {
 import { ImageSizeError } from './utils/terminal/imageValidation.js'
 import { ImageResizeError } from './utils/terminal/imageResizer.js'
 import { findToolByName, type ToolUseContext } from './Tool.js'
-import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
+import {
+  asSystemPrompt,
+  type SystemPrompt,
+} from './utils/session/systemPromptType.js'
 import type {
   AssistantMessage,
   AttachmentMessage,
@@ -83,7 +86,7 @@ import {
   remove as removeFromQueue,
   getCommandsByMaxPriority,
   isSlashCommand,
-} from './utils/messageQueueManager.js'
+} from './utils/session/messageQueueManager.js'
 import {
   type AutonomyTurnOutcome,
   claimConsumableQueuedAutonomyCommands,
@@ -99,8 +102,8 @@ import {
   doesMostRecentAssistantMessageExceed200k,
   finalContextTokensFromLastResponse,
   tokenCountWithEstimation,
-} from './utils/tokens.js'
-import { ESCALATED_MAX_TOKENS } from './utils/context.js'
+} from './utils/session/tokens.js'
+import { ESCALATED_MAX_TOKENS } from './utils/session/context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './utils/hooks.js'

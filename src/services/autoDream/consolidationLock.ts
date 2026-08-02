@@ -10,7 +10,7 @@ import { getOriginalCwd } from '../../bootstrap/state.js'
 import { getAutoMemPath } from '../../memdir/paths.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { isProcessRunning } from '../../utils/process/genericProcessUtils.js'
-import { listCandidates } from '../../utils/listSessionsImpl.js'
+import { listCandidates } from '../../utils/session/listSessionsImpl.js'
 import { getProjectDir } from '../../utils/sessionStorage.js'
 
 const LOCK_FILE = '.consolidate-lock'

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { normalizeControlMessageKeys } from '../controlMessageCompat'
+import { normalizeControlMessageKeys } from '../session/controlMessageCompat'
 
 describe('normalizeControlMessageKeys', () => {
   // --- basic camelCase to snake_case ---

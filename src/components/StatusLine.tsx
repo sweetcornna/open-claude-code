@@ -31,7 +31,7 @@ import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
 import type { VimMode } from '../types/textInputTypes.js';
 import { checkHasTrustDialogAccepted } from '../utils/config/config.js';
-import { calculateContextPercentages, getContextWindowForModel } from '../utils/context.js';
+import { calculateContextPercentages, getContextWindowForModel } from '../utils/session/context.js';
 import { getCwd } from '../utils/filesystem/cwd.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
 import { isFullscreenEnvEnabled } from '../utils/terminal/fullscreen.js';
@@ -39,7 +39,7 @@ import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js
 import { getLastAssistantMessage } from '../utils/messages.js';
 import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
-import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
+import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/session/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/git/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
 import { computeHitRate, tokenSignature } from '../utils/telemetry/cacheStats.js';

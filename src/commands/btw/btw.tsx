@@ -20,8 +20,8 @@ import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsS
 import type { CacheSafeParams } from '../../utils/forkedAgent.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
-import { runSideQuestion } from '../../utils/sideQuestion.js';
-import { asSystemPrompt } from '../../utils/systemPromptType.js';
+import { runSideQuestion } from '../../utils/session/sideQuestion.js';
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js';
 
 type BtwComponentProps = {
   question: string;

@@ -124,7 +124,7 @@ mock.module('src/utils/task/sdkProgress.js', () => ({
   emitTaskProgress: noop,
 }))
 
-mock.module('src/utils/tokens.js', () => ({
+mock.module('src/utils/session/tokens.js', () => ({
   getTokenCountFromUsage: () => 0,
 }))
 

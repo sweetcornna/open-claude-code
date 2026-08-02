@@ -9,7 +9,7 @@ import { lazySchema } from '../collections/lazySchema.js'
 import { logError } from '../telemetry/log.js'
 import { getMainLoopModel, getSmallFastModel } from '../model/model.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from '../session/sideQuery.js'
 import { jsonStringify } from '../telemetry/slowOperations.js'
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'

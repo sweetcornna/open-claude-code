@@ -37,8 +37,8 @@ import {
 import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { logError } from '../utils/telemetry/log.js'
-import { enqueuePendingNotification } from '../utils/messageQueueManager.js'
-import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
+import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js'
+import { emitTaskTerminatedSdk } from '../utils/session/sdkEventQueue.js'
 import {
   getAgentTranscriptPath,
   recordSidechainTranscript,

@@ -48,11 +48,11 @@ import {
 import { unlink } from 'node:fs/promises'
 import type { Message } from '../../../types/message.js'
 import { sanitizeTitle } from '../utils.js'
-import { listSessionsImpl } from '../../../utils/listSessionsImpl.js'
+import { listSessionsImpl } from '../../../utils/session/listSessionsImpl.js'
 import {
   resolveSessionFilePath,
   canonicalizePath,
-} from '../../../utils/sessionStoragePortable.js'
+} from '../../../utils/session/sessionStoragePortable.js'
 import { getOriginalCwd } from '../../../bootstrap/state.js'
 import type { AcpSession } from './sessionTypes.js'
 
@@ -456,7 +456,7 @@ export interface AcpAgent {
 // ── Module-local helpers used only by the class shell ────────────
 
 import { type UUID } from 'node:crypto'
-import { deserializeMessages } from '../../../utils/conversationRecovery.js'
+import { deserializeMessages } from '../../../utils/session/conversationRecovery.js'
 import { getLastSessionLog } from '../../../utils/sessionStorage.js'
 
 /**

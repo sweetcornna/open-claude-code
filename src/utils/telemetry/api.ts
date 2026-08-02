@@ -57,7 +57,7 @@ import {
 import { getPlatform } from '../process/platform.js'
 import { countFilesRoundedRg } from '../filesystem/ripgrep.js'
 import { jsonStringify } from './slowOperations.js'
-import type { SystemPrompt } from '../systemPromptType.js'
+import type { SystemPrompt } from '../session/systemPromptType.js'
 import { getToolSchemaCache } from '../toolSchemaCache.js'
 import { windowsPathToPosixPath } from '../filesystem/windowsPaths.js'
 import { zodToJsonSchema } from '../text/zodToJsonSchema.js'

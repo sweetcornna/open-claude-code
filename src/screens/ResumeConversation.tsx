@@ -23,11 +23,11 @@ import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/Agen
 import { asSessionId } from '../types/ids.js';
 import type { LogOption } from '../types/logs.js';
 import type { Message } from '../types/message.js';
-import { agenticSessionSearch } from '../utils/agenticSessionSearch.js';
+import { agenticSessionSearch } from '../utils/session/agenticSessionSearch.js';
 import { renameRecordingForSession } from '../utils/terminal/asciicast.js';
-import { updateSessionName } from '../utils/concurrentSessions.js';
-import { loadConversationForResume } from '../utils/conversationRecovery.js';
-import { checkCrossProjectResume } from '../utils/crossProjectResume.js';
+import { updateSessionName } from '../utils/session/concurrentSessions.js';
+import { loadConversationForResume } from '../utils/session/conversationRecovery.js';
+import { checkCrossProjectResume } from '../utils/session/crossProjectResume.js';
 import type { FileHistorySnapshot } from '../utils/filesystem/fileHistory.js';
 import { logError } from '../utils/telemetry/log.js';
 import { createSystemMessage } from '../utils/messages.js';
@@ -35,7 +35,7 @@ import {
   computeStandaloneAgentContext,
   restoreAgentFromSession,
   restoreWorktreeForResume,
-} from '../utils/sessionRestore.js';
+} from '../utils/session/sessionRestore.js';
 import {
   adoptResumedSessionFile,
   enrichLogs,

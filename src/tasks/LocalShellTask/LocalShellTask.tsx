@@ -16,7 +16,7 @@ import type { AgentId } from '../../types/ids.js';
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js';
 import { tailFile } from '../../utils/filesystem/fsOperations.js';
 import { logError } from '../../utils/telemetry/log.js';
-import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
+import { enqueuePendingNotification } from '../../utils/session/messageQueueManager.js';
 import type { ShellCommand } from '../../utils/shell/ShellCommand.js';
 import { evictTaskOutput, getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { registerTask, updateTaskState } from '../../utils/task/framework.js';

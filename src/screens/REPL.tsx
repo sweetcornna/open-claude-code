@@ -9,7 +9,7 @@ import {
   getBudgetContinuationCount,
   getTotalInputTokens,
 } from '../bootstrap/state.js';
-import { parseTokenBudget } from '../utils/tokenBudget.js';
+import { parseTokenBudget } from '../utils/session/tokenBudget.js';
 import { count } from '../utils/collections/array.js';
 import { join } from 'path';
 import { type TabStatusKind, Box, Text, useStdin, useTheme, useTerminalFocus, useTabStatus } from '@anthropic/ink';
@@ -44,7 +44,7 @@ import {
 } from '../bootstrap/state.js';
 import { asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
-import { QueryGuard } from '../utils/QueryGuard.js';
+import { QueryGuard } from '../utils/session/QueryGuard.js';
 import { isEnvTruthy } from '../utils/config/envUtils.js';
 import { formatTokens } from '../utils/text/format.js';
 import { consumeEarlyInput } from '../utils/terminal/earlyInput.js';
@@ -105,9 +105,9 @@ import { useSkillImprovementSurvey } from '../hooks/useSkillImprovementSurvey.js
 import { useMoreRight } from '../moreright/useMoreRight.js';
 import { SpinnerWithVerb, BriefIdleStatus, type SpinnerMode } from '../components/Spinner.js';
 import { getSystemPrompt } from '../constants/prompts.js';
-import { buildEffectiveSystemPrompt } from '../utils/systemPrompt.js';
+import { buildEffectiveSystemPrompt } from '../utils/session/systemPrompt.js';
 import { getSystemContext, getUserContext } from '../context.js';
-import { getMemoryFiles } from '../utils/claudemd.js';
+import { getMemoryFiles } from '../utils/session/claudemd.js';
 import { startBackgroundHousekeeping } from '../utils/backgroundHousekeeping.js';
 import { getTotalCost } from '../cost-tracker.js';
 import { useCostSummary } from '../costHook.js';
@@ -127,7 +127,7 @@ import { useBackgroundTaskNavigation } from '../hooks/useBackgroundTaskNavigatio
 import { useSwarmInitialization } from '../hooks/useSwarmInitialization.js';
 import { useTeammateViewAutoExit } from '../hooks/useTeammateViewAutoExit.js';
 import { errorMessage } from '../utils/errors.js';
-import { isHumanTurn } from '../utils/messagePredicates.js';
+import { isHumanTurn } from '../utils/session/messagePredicates.js';
 import { logError } from '../utils/telemetry/log.js';
 // Dead code elimination: conditional imports
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
@@ -159,7 +159,7 @@ const getCoordinatorUserContext: (
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import useCanUseTool from '../hooks/useCanUseTool.js';
 import type { ToolPermissionContext, Tool } from '../Tool.js';
-import { notifyAutomationStateChanged } from '../utils/sessionState.js';
+import { notifyAutomationStateChanged } from '../utils/session/sessionState.js';
 import {
   applyPermissionUpdate,
   applyPermissionUpdates,
@@ -195,11 +195,11 @@ import {
   createCommandInputMessage,
   formatCommandInputTags,
 } from '../utils/messages.js';
-import { generateSessionTitle } from '../utils/sessionTitle.js';
+import { generateSessionTitle } from '../utils/session/sessionTitle.js';
 import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
 import { escapeXml } from '../utils/text/xml.js';
 import { gracefulShutdownSync } from '../utils/process/gracefulShutdown.js';
-import { handlePromptSubmit, type PromptInputHelpers } from '../utils/handlePromptSubmit.js';
+import { handlePromptSubmit, type PromptInputHelpers } from '../utils/session/handlePromptSubmit.js';
 import { useQueueProcessor } from '../hooks/useQueueProcessor.js';
 import { queryCheckpoint, logQueryProfileReport } from '../utils/telemetry/queryProfiler.js';
 import type { Message as MessageType, UserMessage, PartialCompactDirection } from '../types/message.js';
@@ -237,7 +237,7 @@ import {
   isLoggableMessage,
   getAgentTranscript,
 } from '../utils/sessionStorage.js';
-import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/queryHelpers.js';
+import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/session/queryHelpers.js';
 import { resetMicrocompactState } from '../services/compact/microCompact.js';
 import { runPostCompactCleanup, registerCompactCleanup } from '../services/compact/postCompactCleanup.js';
 import { createContentReplacementState, provisionContentReplacementState } from '../utils/toolResultStorage.js';
@@ -252,7 +252,7 @@ import {
 } from '../utils/filesystem/fileHistory.js';
 import { type AttributionState, incrementPromptCount } from '../utils/git/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
-import { isBgSession, updateSessionActivity } from '../utils/concurrentSessions.js';
+import { isBgSession, updateSessionActivity } from '../utils/session/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
 import { restoreRemoteAgentTasks } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import { BackgroundAgentSelector } from '../components/tasks/BackgroundAgentSelector.js';
@@ -277,7 +277,12 @@ import { useIDEIntegration } from '../hooks/useIDEIntegration.js';
 import exit from '../commands/exit/index.js';
 import { ExitFlow } from '../components/ExitFlow.js';
 import { getCurrentWorktreeSession } from '../utils/git/worktree.js';
-import { popAllEditable, enqueue, type SetAppState, getCommandQueueLength } from '../utils/messageQueueManager.js';
+import {
+  popAllEditable,
+  enqueue,
+  type SetAppState,
+  getCommandQueueLength,
+} from '../utils/session/messageQueueManager.js';
 import { useCommandQueue } from '../hooks/useCommandQueue.js';
 import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
 import { useSessionBackgrounding } from '../hooks/useSessionBackgrounding.js';

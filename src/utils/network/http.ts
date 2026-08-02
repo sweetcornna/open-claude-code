@@ -11,7 +11,7 @@ import {
   isClaudeAISubscriber,
 } from '../auth/auth.js'
 import { getClaudeCodeUserAgent } from './userAgent.js'
-import { getWorkload } from '../workloadContext.js'
+import { getWorkload } from '../session/workloadContext.js'
 
 // WARNING: We rely on `claude-cli` in the user agent for log filtering.
 // Please do NOT change this without making sure that logging also gets updated!

@@ -3,7 +3,7 @@ import type {
   BetaMessage,
   BetaUsage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { SystemPrompt } from '../../../utils/systemPromptType.js'
+import type { SystemPrompt } from '../../../utils/session/systemPromptType.js'
 import type {
   Message,
   StreamEvent,

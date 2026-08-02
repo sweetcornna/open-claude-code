@@ -18,9 +18,9 @@ import {
   markAutonomyRunFailed,
 } from '../utils/autonomyRuns.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
-import { enqueuePendingNotification } from '../utils/messageQueueManager.js'
+import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js'
 import { createScheduledTaskFireMessage } from '../utils/messages.js'
-import { WORKLOAD_CRON } from '../utils/workloadContext.js'
+import { WORKLOAD_CRON } from '../utils/session/workloadContext.js'
 import type { QueuedCommand } from '../types/textInputTypes.js'
 
 type Props = {

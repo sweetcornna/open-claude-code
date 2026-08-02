@@ -7,7 +7,7 @@ import { findToolByName, type Tools } from '../../Tool.js';
 import { getReplPrimitiveTools } from '@open-claude-code/builtin-tools/tools/REPLTool/primitiveTools.js';
 import type { CollapsedReadSearchGroup, NormalizedAssistantMessage } from '../../types/message.js';
 import { uniq } from '../../utils/collections/array.js';
-import { getToolUseIdsFromCollapsedGroup } from '../../utils/collapseReadSearch.js';
+import { getToolUseIdsFromCollapsedGroup } from '../../utils/session/collapseReadSearch.js';
 import { getDisplayPath } from '../../utils/filesystem/file.js';
 import { formatDuration, formatSecondsShort } from '../../utils/text/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';

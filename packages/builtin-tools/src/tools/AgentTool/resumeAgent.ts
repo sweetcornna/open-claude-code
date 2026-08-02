@@ -23,8 +23,8 @@ import {
   getAgentTranscript,
   readAgentMetadata,
 } from 'src/utils/sessionStorage.js'
-import { buildEffectiveSystemPrompt } from 'src/utils/systemPrompt.js'
-import type { SystemPrompt } from 'src/utils/systemPromptType.js'
+import { buildEffectiveSystemPrompt } from 'src/utils/session/systemPrompt.js'
+import type { SystemPrompt } from 'src/utils/session/systemPromptType.js'
 import { getTaskOutputPath } from 'src/utils/task/diskOutput.js'
 import { getParentSessionId } from 'src/utils/teammate.js'
 import { reconstructForSubagentResume } from 'src/utils/toolResultStorage.js'

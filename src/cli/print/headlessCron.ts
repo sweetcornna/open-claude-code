@@ -12,8 +12,8 @@ import { cwd } from 'process'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logError } from 'src/utils/telemetry/log.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
-import { WORKLOAD_CRON } from 'src/utils/workloadContext.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
+import { WORKLOAD_CRON } from 'src/utils/session/workloadContext.js'
 import {
   createAutonomyQueuedPromptIfNoActiveSource,
   markAutonomyRunFailed,

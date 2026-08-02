@@ -9,7 +9,7 @@ import {
   filterInjectedMemoryFiles,
   getClaudeMds,
   getMemoryFiles,
-} from './utils/claudemd.js'
+} from './utils/session/claudemd.js'
 import { logForDiagnosticsNoPII } from './utils/telemetry/diagLogs.js'
 import { isBareMode, isEnvTruthy } from './utils/config/envUtils.js'
 import { execFileNoThrow } from './utils/process/execFileNoThrow.js'

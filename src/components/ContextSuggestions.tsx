@@ -1,7 +1,7 @@
 import figures from 'figures';
 import * as React from 'react';
 import { Box, Text, StatusIcon } from '@anthropic/ink';
-import type { ContextSuggestion } from '../utils/contextSuggestions.js';
+import type { ContextSuggestion } from '../utils/session/contextSuggestions.js';
 import { formatTokens } from '../utils/text/format.js';
 
 type Props = {

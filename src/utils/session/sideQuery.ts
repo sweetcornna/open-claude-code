@@ -55,7 +55,7 @@ import {
   anthropicToolChoiceToGemini,
   normalizeOpenAIUsage,
 } from '@ant/model-provider'
-import type { SystemPrompt } from '../systemPromptType.js'
+import type { SystemPrompt } from './systemPromptType.js'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 
 type MessageParam = Anthropic.MessageParam

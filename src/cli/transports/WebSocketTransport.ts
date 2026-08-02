@@ -14,7 +14,7 @@ import {
 import {
   registerSessionActivityCallback,
   unregisterSessionActivityCallback,
-} from '../../utils/sessionActivity.js'
+} from '../../utils/session/sessionActivity.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import type { Transport } from './Transport.js'
 

@@ -25,7 +25,7 @@ mock.module('src/utils/task/diskOutput.js', () => ({
 
 // Capture enqueuePendingNotification calls for verification
 const enqueuedNotifications: string[] = []
-mock.module('src/utils/messageQueueManager.js', () => ({
+mock.module('src/utils/session/messageQueueManager.js', () => ({
   enqueuePendingNotification: (cmd: any) => {
     enqueuedNotifications.push(cmd.value)
   },
@@ -61,7 +61,7 @@ mock.module('src/utils/task/sdkProgress.js', () => ({
   emitTaskProgress: noop,
 }))
 
-mock.module('src/utils/sdkEventQueue.js', () => ({
+mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: noop,
 }))
 
@@ -87,7 +87,7 @@ mock.module('src/services/analytics/index.js', () => ({
   AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS: undefined,
 }))
 
-mock.module('src/utils/collapseReadSearch.js', () => ({
+mock.module('src/utils/session/collapseReadSearch.js', () => ({
   getSearchExtraToolsOrReadInfo: () => undefined,
 }))
 

@@ -6,7 +6,7 @@ import { MemoryFileSelector } from '../../components/memory/MemoryFileSelector.j
 import { getRelativeMemoryPath } from '../../components/memory/MemoryUpdateNotification.js';
 import { Box, Link, Text } from '@anthropic/ink';
 import type { LocalJSXCommandCall } from '../../types/command.js';
-import { clearMemoryFileCaches, getMemoryFiles } from '../../utils/claudemd.js';
+import { clearMemoryFileCaches, getMemoryFiles } from '../../utils/session/claudemd.js';
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js';
 import { getErrnoCode } from '../../utils/errors.js';
 import { logError } from '../../utils/telemetry/log.js';

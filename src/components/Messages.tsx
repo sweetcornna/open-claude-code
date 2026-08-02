@@ -26,10 +26,10 @@ import type {
   RenderableMessage,
 } from '../types/message.js';
 import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js';
-import { collapseBackgroundBashNotifications } from '../utils/collapseBackgroundBashNotifications.js';
-import { collapseHookSummaries } from '../utils/collapseHookSummaries.js';
-import { collapseReadSearchGroups } from '../utils/collapseReadSearch.js';
-import { collapseTeammateShutdowns } from '../utils/collapseTeammateShutdowns.js';
+import { collapseBackgroundBashNotifications } from '../utils/session/collapseBackgroundBashNotifications.js';
+import { collapseHookSummaries } from '../utils/session/collapseHookSummaries.js';
+import { collapseReadSearchGroups } from '../utils/session/collapseReadSearch.js';
+import { collapseTeammateShutdowns } from '../utils/session/collapseTeammateShutdowns.js';
 import { getGlobalConfig } from '../utils/config/config.js';
 import { isEnvTruthy } from '../utils/config/envUtils.js';
 import { applyGrouping } from '../utils/groupToolUses.js';
@@ -50,7 +50,7 @@ import {
   shouldShowUserMessage,
 } from '../utils/messages.js';
 import { plural } from '../utils/text/stringUtils.js';
-import { renderableSearchText } from '../utils/transcriptSearch.js';
+import { renderableSearchText } from '../utils/session/transcriptSearch.js';
 import { Divider } from '@anthropic/ink';
 import type { UnseenDivider } from './FullscreenLayout.js';
 import { LogoV2 } from './LogoV2/LogoV2.js';

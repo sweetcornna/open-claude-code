@@ -7,7 +7,7 @@ import {
   getAssistantMessageText,
 } from '../utils/messages.js'
 import { getSmallFastModel } from '../utils/model/model.js'
-import { asSystemPrompt } from '../utils/systemPromptType.js'
+import { asSystemPrompt } from '../utils/session/systemPromptType.js'
 import { getResolvedLanguage } from '../utils/text/language.js'
 import { queryModelWithoutStreaming } from './api/claude.js'
 import { createTrace, endTrace, isLangfuseEnabled } from './langfuse/index.js'

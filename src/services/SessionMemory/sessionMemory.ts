@@ -38,8 +38,11 @@ import {
   getSessionMemoryPath,
 } from '../../utils/permissions/filesystem.js'
 import { sequential } from '../../utils/collections/sequential.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
-import { getTokenUsage, tokenCountWithEstimation } from '../../utils/tokens.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
+import {
+  getTokenUsage,
+  tokenCountWithEstimation,
+} from '../../utils/session/tokens.js'
 import { logEvent } from '../analytics/index.js'
 import { isAutoCompactEnabled } from '../compact/autoCompact.js'
 import {

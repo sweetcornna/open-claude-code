@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { collapseHookSummaries } from '../collapseHookSummaries'
+import { collapseHookSummaries } from '../session/collapseHookSummaries'
 
 function makeHookSummary(
   overrides: Partial<{

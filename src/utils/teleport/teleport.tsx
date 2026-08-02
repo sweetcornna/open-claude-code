@@ -24,7 +24,7 @@ import type { Message, SystemMessage } from '../../types/message.js';
 import type { PermissionMode } from '../../types/permissions.js';
 import { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } from '../auth/auth.js';
 import { checkGithubAppInstalled } from '../background/remote/preconditions.js';
-import { deserializeMessages, type TeleportRemoteResponse } from '../conversationRecovery.js';
+import { deserializeMessages, type TeleportRemoteResponse } from '../session/conversationRecovery.js';
 import { getCwd } from '../filesystem/cwd.js';
 import { logForDebugging } from '../telemetry/debug.js';
 import { detectCurrentRepositoryWithHost, parseGitHubRepository, parseGitRemote } from '../git/detectRepository.js';
@@ -40,7 +40,7 @@ import { getMainLoopModel } from '../model/model.js';
 import { isTranscriptMessage } from '../sessionStorage.js';
 import { getSettings_DEPRECATED } from '../settings/settings.js';
 import { jsonStringify } from '../telemetry/slowOperations.js';
-import { asSystemPrompt } from '../systemPromptType.js';
+import { asSystemPrompt } from '../session/systemPromptType.js';
 import {
   fetchSession,
   type GitRepositoryOutcome,

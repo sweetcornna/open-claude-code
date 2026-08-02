@@ -8,7 +8,7 @@ import type { InProcessTeammateTaskState } from 'src/tasks/InProcessTeammateTask
 import { isPanelAgentTask } from 'src/tasks/LocalAgentTask/LocalAgentTask.js';
 import { isBackgroundTask, type TaskState } from 'src/tasks/types.js';
 import type { DeepImmutable } from 'src/types/utils.js';
-import { summarizeRecentActivities } from 'src/utils/collapseReadSearch.js';
+import { summarizeRecentActivities } from 'src/utils/session/collapseReadSearch.js';
 
 /**
  * Returns true if the given task status represents a terminal (finished) state.

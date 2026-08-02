@@ -4,7 +4,7 @@ import {
   resetCommandQueue,
   enqueue,
   enqueuePendingNotification,
-} from '../messageQueueManager.js'
+} from '../session/messageQueueManager.js'
 import {
   hasQueuedCommands,
   processQueueIfReady,

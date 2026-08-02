@@ -9,7 +9,7 @@ import {
   getUserContext,
   setSystemPromptInjection,
 } from '../context'
-import { clearMemoryFileCaches } from '../utils/claudemd'
+import { clearMemoryFileCaches } from '../utils/session/claudemd'
 import {
   cleanupTempDir,
   createTempDir,

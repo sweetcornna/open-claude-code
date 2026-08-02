@@ -4,7 +4,7 @@ import { join } from 'path';
 import React, { Suspense, use, useCallback, useEffect, useMemo, useState } from 'react';
 import { KeybindingWarnings } from 'src/components/KeybindingWarnings.js';
 import { McpParsingWarnings } from 'src/components/mcp/McpParsingWarnings.js';
-import { getModelMaxOutputTokens } from 'src/utils/context.js';
+import { getModelMaxOutputTokens } from 'src/utils/session/context.js';
 import { getClaudeConfigHomeDir } from 'src/utils/config/envUtils.js';
 import type { SettingSource } from 'src/utils/settings/constants.js';
 import { getOriginalCwd } from '../bootstrap/state.js';

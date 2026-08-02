@@ -31,10 +31,10 @@ import { resolveAntModel } from '../model/antModels.js'
 import { getDefaultSonnetModel, getMainLoopModel } from '../model/model.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from '../session/sideQuery.js'
 import type { LangfuseSpan } from '../../services/langfuse/index.js'
 import { jsonStringify } from '../telemetry/slowOperations.js'
-import { tokenCountWithEstimation } from '../tokens.js'
+import { tokenCountWithEstimation } from '../session/tokens.js'
 import {
   getBashPromptAllowDescriptions,
   getBashPromptDenyDescriptions,

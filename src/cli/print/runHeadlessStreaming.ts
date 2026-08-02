@@ -11,13 +11,13 @@ import {
   enqueue,
   subscribeToCommandQueue,
   getCommandsByMaxPriority,
-} from 'src/utils/messageQueueManager.js'
+} from 'src/utils/session/messageQueueManager.js'
 import {
   getSessionState,
   notifySessionMetadataChanged,
   setPermissionModeChangedListener,
-} from 'src/utils/sessionState.js'
-import { type TurnInterruptionState } from 'src/utils/conversationRecovery.js'
+} from 'src/utils/session/sessionState.js'
+import { type TurnInterruptionState } from 'src/utils/session/conversationRecovery.js'
 import type {
   MCPServerConnection,
   McpSdkServerConfig,

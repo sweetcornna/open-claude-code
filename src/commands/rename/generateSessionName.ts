@@ -4,8 +4,8 @@ import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { safeParseJSON } from '../../utils/text/json.js'
 import { extractTextContent } from '../../utils/messages.js'
-import { extractConversationText } from '../../utils/sessionTitle.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { extractConversationText } from '../../utils/session/sessionTitle.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
 
 export async function generateSessionName(
   messages: Message[],

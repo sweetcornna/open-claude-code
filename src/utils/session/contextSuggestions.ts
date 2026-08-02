@@ -2,7 +2,7 @@ import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/t
 import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js'
 import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/prompt.js'
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js'
-import type { ContextData } from '../analyzeContext.js'
+import type { ContextData } from './analyzeContext.js'
 import { getDisplayPath } from '../filesystem/file.js'
 import { formatTokens } from '../text/format.js'
 

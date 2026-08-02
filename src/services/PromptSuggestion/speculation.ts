@@ -32,7 +32,7 @@ import {
 import { formatDuration, formatNumber } from '../../utils/text/format.js'
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import { logError } from '../../utils/telemetry/log.js'
-import type { SetAppState } from '../../utils/messageQueueManager.js'
+import type { SetAppState } from '../../utils/session/messageQueueManager.js'
 import {
   createSystemMessage,
   createUserMessage,
@@ -40,7 +40,7 @@ import {
   INTERRUPT_MESSAGE_FOR_TOOL_USE,
 } from '../../utils/messages.js'
 import { getClaudeTempDir } from '../../utils/permissions/filesystem.js'
-import { extractReadFilesFromMessages } from '../../utils/queryHelpers.js'
+import { extractReadFilesFromMessages } from '../../utils/session/queryHelpers.js'
 import { getTranscriptPath } from '../../utils/sessionStorage.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {

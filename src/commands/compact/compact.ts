@@ -31,7 +31,7 @@ import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.j
 import {
   buildEffectiveSystemPrompt,
   type SystemPrompt,
-} from '../../utils/systemPrompt.js'
+} from '../../utils/session/systemPrompt.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = feature('REACTIVE_COMPACT')

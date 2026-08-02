@@ -17,7 +17,7 @@ mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))
 
-mock.module('../concurrentSessions.js', () => ({
+mock.module('../session/concurrentSessions.js', () => ({
   isBgSession: () => false,
   updateSessionActivity: async (data: any) => {
     _updateCalls.push(data)

@@ -36,7 +36,7 @@ import {
   normalizeMessages,
 } from '../messages.js'
 import { copyPlanForResume } from '../plans.js'
-import { processSessionStartHooks } from '../sessionStart.js'
+import { processSessionStartHooks } from './sessionStart.js'
 import {
   buildConversationChain,
   checkResumeConsistency,
@@ -513,7 +513,7 @@ export async function loadConversationForResume(
       if (feature('BG_SESSIONS')) {
         try {
           const { listAllLiveSessions } = await import(
-            '../concurrentSessions.js'
+            './concurrentSessions.js'
           )
           const live = await listAllLiveSessions()
           skip = new Set(

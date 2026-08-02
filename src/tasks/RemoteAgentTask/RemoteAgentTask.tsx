@@ -24,9 +24,9 @@ import {
 export type { BackgroundRemoteSessionPrecondition };
 import { logForDebugging } from '../../utils/telemetry/debug.js';
 import { logError } from '../../utils/telemetry/log.js';
-import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
+import { enqueuePendingNotification } from '../../utils/session/messageQueueManager.js';
 import { extractTag, extractTextContent } from '../../utils/messages.js';
-import { emitTaskTerminatedSdk } from '../../utils/sdkEventQueue.js';
+import { emitTaskTerminatedSdk } from '../../utils/session/sdkEventQueue.js';
 import {
   deleteRemoteAgentMetadata,
   listRemoteAgentMetadata,

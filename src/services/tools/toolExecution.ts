@@ -85,7 +85,7 @@ import type {
 import {
   startSessionActivity,
   stopSessionActivity,
-} from '../../utils/sessionActivity.js'
+} from '../../utils/session/sessionActivity.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { Stream } from '../../utils/collections/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'

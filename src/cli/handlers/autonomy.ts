@@ -25,7 +25,7 @@ import {
 import {
   enqueuePendingNotification,
   removeByFilter,
-} from '../../utils/messageQueueManager.js'
+} from '../../utils/session/messageQueueManager.js'
 
 export function parseAutonomyLimit(raw?: string | number): number {
   const parsed = typeof raw === 'number' ? raw : Number.parseInt(raw ?? '', 10)

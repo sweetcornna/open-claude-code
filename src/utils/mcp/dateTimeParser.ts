@@ -1,7 +1,7 @@
 import { queryHaiku } from '../../services/api/claude.js'
 import { logError } from '../telemetry/log.js'
 import { extractTextContent } from '../messages.js'
-import { asSystemPrompt } from '../systemPromptType.js'
+import { asSystemPrompt } from '../session/systemPromptType.js'
 
 export type DateTimeParseResult =
   | { success: true; value: string }

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   parseDirectMemberMessage,
   sendDirectMemberMessage,
-} from '../directMemberMessage'
+} from '../session/directMemberMessage'
 
 describe('parseDirectMemberMessage', () => {
   test("parses '@agent-name hello world'", () => {

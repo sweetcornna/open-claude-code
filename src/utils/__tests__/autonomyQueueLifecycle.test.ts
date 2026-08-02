@@ -20,7 +20,7 @@ import {
   getCommandsByMaxPriority,
   remove as removeFromQueue,
   resetCommandQueue,
-} from '../messageQueueManager'
+} from '../session/messageQueueManager'
 
 let tempDir = ''
 let extraTempDirs: string[] = []

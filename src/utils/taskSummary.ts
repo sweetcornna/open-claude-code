@@ -1,5 +1,8 @@
 import { feature } from 'bun:bundle'
-import { isBgSession, updateSessionActivity } from './concurrentSessions.js'
+import {
+  isBgSession,
+  updateSessionActivity,
+} from './session/concurrentSessions.js'
 import { logForDebugging } from './telemetry/debug.js'
 
 /**

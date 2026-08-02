@@ -27,13 +27,13 @@ import type {
 } from '../../types/logs.js'
 import type { Message } from '../../types/message.js'
 import { renameRecordingForSession } from '../terminal/asciicast.js'
-import { clearMemoryFileCaches } from '../claudemd.js'
+import { clearMemoryFileCaches } from './claudemd.js'
 import {
   type AttributionState,
   attributionRestoreStateFromLog,
   restoreAttributionStateFromSnapshots,
 } from '../git/commitAttribution.js'
-import { updateSessionName } from '../concurrentSessions.js'
+import { updateSessionName } from './concurrentSessions.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import type { FileHistorySnapshot } from '../filesystem/fileHistory.js'

@@ -4,7 +4,7 @@ import {
   dequeueAllMatching,
   hasCommandsInQueue,
   peek,
-} from '../messageQueueManager.js'
+} from '../session/messageQueueManager.js'
 
 type ProcessQueueParams = {
   executeInput: (commands: QueuedCommand[]) => Promise<void>

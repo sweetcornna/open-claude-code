@@ -1,6 +1,9 @@
 import { createAbortController } from '../../utils/process/abortController.js'
 import { createUserMessage } from '../../utils/messages.js'
-import { enqueue, getCommandQueue } from '../../utils/messageQueueManager.js'
+import {
+  enqueue,
+  getCommandQueue,
+} from '../../utils/session/messageQueueManager.js'
 import {
   claimConsumableQueuedAutonomyCommands,
   finalizeAutonomyCommandsForTurn,
@@ -10,7 +13,7 @@ import { logError } from '../../utils/telemetry/log.js'
 import { toError } from '../../utils/errors.js'
 import type { QueuedCommand } from '../../types/textInputTypes.js'
 import type { Message as MessageType } from '../../types/message.js'
-import type { QueryGuard } from '../../utils/QueryGuard.js'
+import type { QueryGuard } from '../../utils/session/QueryGuard.js'
 
 /** Everything REPL's `handleIncomingPrompt` closure captured. */
 export type IncomingPromptContext = {

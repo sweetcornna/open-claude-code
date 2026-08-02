@@ -31,7 +31,7 @@ import {
   renderDefaultModelSetting,
   type ModelSetting,
 } from './model.js'
-import { has1mContext } from '../context.js'
+import { has1mContext } from '../session/context.js'
 import { getGlobalConfig } from '../config/config.js'
 import {
   CHATGPT_CODEX_DEFAULT_MODEL,

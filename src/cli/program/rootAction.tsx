@@ -76,7 +76,7 @@ import { cleanupOrphanedPluginVersionsInBackground } from 'src/utils/plugins/cac
 import { clearServerCache } from 'src/services/mcp/client.js';
 import { computeInitialTeamContext } from 'src/utils/swarm/reconnection.js';
 import { count, uniq } from 'src/utils/collections/array.js';
-import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/concurrentSessions.js';
+import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/session/concurrentSessions.js';
 import { createEmptyAttributionState } from 'src/utils/git/commitAttribution.js';
 import { createRemoteSessionConfig } from 'src/remote/RemoteSessionManager.js';
 import { createStore } from 'src/state/store.js';
@@ -183,7 +183,7 @@ import {
   launchTeleportResumeWrapper,
 } from 'src/dialogLaunchers.js';
 import { launchRepl } from 'src/replLauncher.js';
-import { loadConversationForResume } from 'src/utils/conversationRecovery.js';
+import { loadConversationForResume } from 'src/utils/session/conversationRecovery.js';
 import { logContextMetrics } from 'src/utils/telemetry/api.js';
 import { logError } from 'src/utils/telemetry/log.js';
 import { logForDebugging, setHasFormattedOutput } from 'src/utils/telemetry/debug.js';
@@ -194,7 +194,7 @@ import { onChangeAppState } from 'src/state/onChangeAppState.js';
 import { peekForStdinData, writeToStderr } from 'src/utils/process/process.js';
 import { plural } from 'src/utils/text/stringUtils.js';
 import { prefetchPassesEligibility } from 'src/services/api/referral.js';
-import { processSessionStartHooks, processSetupHooks } from 'src/utils/sessionStart.js';
+import { processSessionStartHooks, processSetupHooks } from 'src/utils/session/sessionStart.js';
 import { profileCheckpoint } from 'src/utils/telemetry/startupProfiler.js';
 import { readFileSync } from 'fs';
 import { refreshExampleCommands } from 'src/utils/exampleCommands.js';
@@ -240,7 +240,7 @@ import {
   type FilesApiConfig,
   parseFileSpecs,
 } from 'src/services/api/filesApi.js';
-import { type ProcessedResume, processResumedConversation } from 'src/utils/sessionRestore.js';
+import { type ProcessedResume, processResumedConversation } from 'src/utils/session/sessionRestore.js';
 import { validateUuid } from 'src/utils/collections/uuid.js';
 import type { applyRootOptions } from './rootOptions.js';
 
@@ -2345,7 +2345,8 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   //   - Runtime: uploader checks github.com/anthropics/* remote + gcloud auth.
   //   - Safety: CLAUDE_CODE_DISABLE_SESSION_DATA_UPLOAD=1 bypasses (tests set this).
   // Import is dynamic + async to avoid adding startup latency.
-  const sessionUploaderPromise = process.env.USER_TYPE === 'ant' ? import('src/utils/sessionDataUploader.js') : null;
+  const sessionUploaderPromise =
+    process.env.USER_TYPE === 'ant' ? import('src/utils/session/sessionDataUploader.js') : null;
 
   // Defer session uploader resolution to the onTurnComplete callback to avoid
   // adding a new top-level await in main.tsx (performance-critical path).

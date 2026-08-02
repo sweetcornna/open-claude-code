@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { getDefaultSonnetModel } from '../utils/model/model.js'
-import { sideQuery } from '../utils/sideQuery.js'
+import { sideQuery } from '../utils/session/sideQuery.js'
 import type { LangfuseSpan } from '../services/langfuse/index.js'
 import { jsonParse } from '../utils/telemetry/slowOperations.js'
 import {

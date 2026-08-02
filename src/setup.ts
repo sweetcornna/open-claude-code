@@ -25,7 +25,7 @@ import { asSessionId } from './types/ids.js'
 import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js'
 import { checkAndRestoreTerminalBackup } from './utils/terminal/appleTerminalBackup.js'
 import { prefetchApiKeyFromApiKeyHelperIfSafe } from './utils/auth/auth.js'
-import { clearMemoryFileCaches } from './utils/claudemd.js'
+import { clearMemoryFileCaches } from './utils/session/claudemd.js'
 import {
   getCurrentProjectConfig,
   getGlobalConfig,
@@ -343,7 +343,7 @@ export async function setup(
         )
       })
     }
-    void import('./utils/sessionFileAccessHooks.js').then(m =>
+    void import('./utils/session/sessionFileAccessHooks.js').then(m =>
       m.registerSessionFileAccessHooks(),
     ) // Register session file access analytics hooks
   }

@@ -1,11 +1,11 @@
 import { getSystemPrompt } from '../../constants/prompts.js'
-import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js'
+import { buildEffectiveSystemPrompt } from '../../utils/session/systemPrompt.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import { getQuerySourceForREPL } from '../../utils/text/promptCategory.js'
 import {
   removeByFilter,
   type SetAppState,
-} from '../../utils/messageQueueManager.js'
+} from '../../utils/session/messageQueueManager.js'
 import { startBackgroundSession } from '../../tasks/LocalMainSessionTask.js'
 import {
   createAttachmentMessage,
