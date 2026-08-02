@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import { setLastAPIRequest } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import { clearSystemPromptSections } from '../../constants/systemPromptSections.js'
 import { getUserContext } from '../../context.js'
@@ -61,6 +62,11 @@ export function runPostCompactCleanup(querySource?: QuerySource): void {
     // clear so all compaction paths behave consistently.
     getUserContext.cache.clear?.()
     resetGetMemoryFilesCache('compact')
+    // lastAPIRequest holds the full pre-compact system prompt and every tool
+    // schema. The next main-thread query overwrites it anyway; clearing here
+    // releases it immediately, matching /clear. Only captured for
+    // repl_main_thread sources, so only main-thread compacts may clear it.
+    setLastAPIRequest(null)
   }
   clearSystemPromptSections()
   clearClassifierApprovals()
