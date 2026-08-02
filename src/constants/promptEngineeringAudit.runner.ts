@@ -78,8 +78,11 @@ mock.module('src/utils/permissions/filesystem.js', () => ({
   isScratchpadEnabled: () => false,
   getScratchpadDir: () => '/tmp/scratchpad',
 }))
+// Toggleable so the boundary-position assertion can exercise the
+// global-cache-scope path (boundary marker only appears when it's on).
+let mockGlobalCacheScope = false
 mock.module('src/utils/model/betas.js', () => ({
-  shouldUseGlobalCacheScope: () => false,
+  shouldUseGlobalCacheScope: () => mockGlobalCacheScope,
 }))
 mock.module('src/utils/auth/undercover.js', () => ({
   isUndercover: () => false,
@@ -202,7 +205,11 @@ import {
   prependBullets,
   computeSimpleEnvInfo,
   getScratchpadInstructions,
+  CORE_TOOLS_PROMPT_LEADING_NAMES,
+  CORE_TOOLS_PROMPT_TRAILING_NAMES,
+  SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
 } from './prompts.js'
+import { CORE_TOOLS } from './tools.js'
 import type { Tools } from '../Tool.js'
 
 // --- 辅助 ---
@@ -492,6 +499,94 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
     test('Opus 4.7 frontier model name is correct', async () => {
       const envInfo = await computeSimpleEnvInfo('claude-opus-4-7')
       expect(envInfo).toContain('Claude Opus 4.7')
+    })
+  })
+
+  // =====================================================================
+  // 第六部分: 瘦身反向回归断言
+  // 这个 fork 长期从上游 rebase/借鉴，被删的逐字 few-shot 正是 rebase 时
+  // 最容易被无脑带回的内容 —— 反向断言是唯一的机械防线。每条注明为什么禁。
+  // =====================================================================
+
+  describe('Slimming regressions (deleted content must stay deleted)', () => {
+    test('dead content: Anthropic-internal Slack channel ID', async () => {
+      // 上游死内容：本 fork 无法投递到该内部频道
+      const prompt = await getFullPrompt()
+      expect(prompt).not.toContain('C07VBSHV7EV')
+    })
+
+    test('few-shot: Linguistic signals list', async () => {
+      // few-shot 建档/内联信号清单 — interfaces over examples
+      const prompt = await getFullPrompt()
+      expect(prompt).not.toContain('Linguistic signals')
+      expect(prompt).not.toContain('"write a script"')
+    })
+
+    test('unique ownership: shell-equivalent teaching lives in BashTool only', async () => {
+      // 「Read over cat / Edit over sed」教学唯一归属 BashTool 工具描述，
+      // system prompt 不得再枚举 — 指令唯一归属守卫
+      const prompt = await getFullPrompt()
+      expect(prompt).not.toContain('over cat')
+      expect(prompt).not.toContain('over sed')
+    })
+
+    test('slogan: measure twice cut once', async () => {
+      // 零信息量口号句
+      const prompt = await getFullPrompt()
+      expect(prompt).not.toContain('measure twice')
+    })
+
+    test('counter-instruction: do-not-justify-search tail', async () => {
+      // 与「行动前简述意图」构成对冲的尾句
+      const prompt = await getFullPrompt()
+      expect(prompt).not.toContain("Don't justify why you're searching")
+    })
+  })
+
+  // =====================================================================
+  // 第七部分: 结构断言（替代逐字内容断言）
+  // =====================================================================
+
+  describe('Section structure', () => {
+    test('six static sections present in stable order', async () => {
+      const prompt = await getFullPrompt()
+      const titles = [
+        '# System',
+        '# Doing tasks',
+        '# Executing actions with care',
+        '# Using your tools',
+        '# Communication style',
+      ]
+      let lastIndex = -1
+      for (const title of titles) {
+        const index = prompt.indexOf(title)
+        expect(index).toBeGreaterThan(lastIndex)
+        lastIndex = index
+      }
+    })
+
+    test('dynamic boundary sits after all static sections (global cache scope)', async () => {
+      mockGlobalCacheScope = true
+      try {
+        const sections = await getSystemPrompt(standardTools, 'claude-opus-4-7')
+        const boundaryIndex = sections.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+        expect(boundaryIndex).toBeGreaterThan(-1)
+        const staticPrefix = sections.slice(0, boundaryIndex).join('\n\n')
+        expect(staticPrefix).toContain('# Using your tools')
+        expect(staticPrefix).toContain('# Communication style')
+      } finally {
+        mockGlobalCacheScope = false
+      }
+    })
+
+    test('enumerated core tool names are all CORE_TOOLS members', () => {
+      // 防止 Using your tools 的枚举清单再次与真源漂移
+      for (const name of [
+        ...CORE_TOOLS_PROMPT_LEADING_NAMES,
+        ...CORE_TOOLS_PROMPT_TRAILING_NAMES,
+      ]) {
+        expect(CORE_TOOLS.has(name)).toBe(true)
+      }
     })
   })
 })
