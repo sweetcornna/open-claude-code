@@ -25,12 +25,20 @@ export const TransportSchema = lazySchema(() =>
 )
 export type Transport = z.infer<ReturnType<typeof TransportSchema>>
 
+// Per-server tool-call timeout override (.mcp.json / settings mcpServers),
+// official 2.1.206 parity. Consumed in client.ts callMCPTool — falls back to
+// MCP_TOOL_TIMEOUT env / the (effectively unlimited) default when absent.
+const McpTimeoutFields = {
+  request_timeout_ms: z.number().int().positive().optional(),
+}
+
 export const McpStdioServerConfigSchema = lazySchema(() =>
   z.object({
     type: z.literal('stdio').optional(), // Optional for backwards compatibility
     command: z.string().min(1, 'Command cannot be empty'),
     args: z.array(z.string()).default([]),
     env: z.record(z.string(), z.string()).optional(),
+    ...McpTimeoutFields,
   }),
 )
 
@@ -62,6 +70,7 @@ export const McpSSEServerConfigSchema = lazySchema(() =>
     headers: z.record(z.string(), z.string()).optional(),
     headersHelper: z.string().optional(),
     oauth: McpOAuthConfigSchema().optional(),
+    ...McpTimeoutFields,
   }),
 )
 
@@ -93,6 +102,7 @@ export const McpHTTPServerConfigSchema = lazySchema(() =>
     headers: z.record(z.string(), z.string()).optional(),
     headersHelper: z.string().optional(),
     oauth: McpOAuthConfigSchema().optional(),
+    ...McpTimeoutFields,
   }),
 )
 
@@ -102,6 +112,7 @@ export const McpWebSocketServerConfigSchema = lazySchema(() =>
     url: z.string(),
     headers: z.record(z.string(), z.string()).optional(),
     headersHelper: z.string().optional(),
+    ...McpTimeoutFields,
   }),
 )
 

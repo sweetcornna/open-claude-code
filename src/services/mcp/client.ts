@@ -3162,8 +3162,12 @@ async function callMCPTool({
     )
 
     // Use Promise.race with our own timeout to handle cases where SDK's
-    // internal timeout doesn't work (e.g., SSE stream breaks mid-request)
-    const timeoutMs = getMcpToolTimeoutMs()
+    // internal timeout doesn't work (e.g., SSE stream breaks mid-request).
+    // Per-server request_timeout_ms (.mcp.json) wins over the env/default.
+    const timeoutMs =
+      ('request_timeout_ms' in config
+        ? config.request_timeout_ms
+        : undefined) ?? getMcpToolTimeoutMs()
     let timeoutId: NodeJS.Timeout | undefined
 
     const timeoutPromise = new Promise<never>((_, reject) => {
