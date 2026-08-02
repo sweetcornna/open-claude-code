@@ -1,11 +1,11 @@
-import { mkdir, writeFile } from 'fs/promises'
-import { dirname, join } from 'path'
+import { mkdir } from 'fs/promises'
+import { dirname } from 'path'
 import { getOriginalCwd, switchSession } from '../../bootstrap/state.js'
 import * as sessionIngress from '../../services/api/sessionIngress.js'
 import { asAgentId, asSessionId } from '../../types/ids.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
-import { jsonStringify } from '../slowOperations.js'
+import { writeJsonlFile } from './fileIO.js'
 import {
   getAgentTranscriptPath,
   getProjectDir,
@@ -31,10 +31,9 @@ export async function hydrateRemoteSession(
 
     const sessionFile = getTranscriptPathForSession(sessionId)
 
-    // Replace local logs with remote logs. writeFile truncates, so no
+    // Replace local logs with remote logs. writeJsonlFile truncates, so no
     // unlink is needed; an empty remoteLogs array produces an empty file.
-    const content = remoteLogs.map(e => jsonStringify(e) + '\n').join('')
-    await writeFile(sessionFile, content, { encoding: 'utf8', mode: 0o600 })
+    await writeJsonlFile(sessionFile, remoteLogs)
 
     logForDebugging(`Hydrated ${remoteLogs.length} entries from remote`)
     return remoteLogs.length > 0
@@ -85,8 +84,12 @@ export async function hydrateFromCCRv2InternalEvents(
 
     // Write foreground transcript
     const sessionFile = getTranscriptPathForSession(sessionId)
-    const fgContent = events.map(e => jsonStringify(e.payload) + '\n').join('')
-    await writeFile(sessionFile, fgContent, { encoding: 'utf8', mode: 0o600 })
+    // map to payload references only — no strings are built until the
+    // writer serializes each entry on its way to the fd.
+    await writeJsonlFile(
+      sessionFile,
+      events.map(e => e.payload),
+    )
 
     logForDebugging(
       `Hydrated ${events.length} foreground entries from CCR v2 internal events`,
@@ -116,13 +119,7 @@ export async function hydrateFromCCRv2InternalEvents(
         for (const [agentId, entries] of byAgent) {
           const agentFile = getAgentTranscriptPath(asAgentId(agentId))
           await mkdir(dirname(agentFile), { recursive: true, mode: 0o700 })
-          const agentContent = entries
-            .map(p => jsonStringify(p) + '\n')
-            .join('')
-          await writeFile(agentFile, agentContent, {
-            encoding: 'utf8',
-            mode: 0o600,
-          })
+          await writeJsonlFile(agentFile, entries)
         }
 
         logForDebugging(
