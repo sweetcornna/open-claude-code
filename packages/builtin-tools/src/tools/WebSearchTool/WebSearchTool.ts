@@ -6,6 +6,11 @@ import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { createAdapter } from './adapters/index.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import {
+  countWebSearch,
+  isWebSearchBudgetExhausted,
+  maxWebSearchesPerSession,
+} from './sessionLimit.js'
+import {
   getToolUseSummary,
   renderToolResultMessage,
   renderToolUseMessage,
@@ -163,11 +168,21 @@ export const WebSearchTool = buildTool({
         errorCode: 2,
       }
     }
+    if (isWebSearchBudgetExhausted()) {
+      return {
+        result: false,
+        message:
+          `Error: Web search budget exhausted (${maxWebSearchesPerSession()} searches this session). ` +
+          `Raise with CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION.`,
+        errorCode: 3,
+      }
+    }
     return { result: true }
   },
   async call(input, context, _canUseTool, _parentMessage, onProgress) {
     const startTime = performance.now()
     const { query } = input
+    countWebSearch()
 
     const adapter = createAdapter()
     const adapterResults = await adapter.search(query, {
