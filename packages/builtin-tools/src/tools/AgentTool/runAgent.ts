@@ -51,7 +51,6 @@ import { createAttachmentMessage } from 'src/utils/attachments.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import { getDisplayPath } from 'src/utils/file.js'
 import {
-  cloneFileStateCache,
   createFileStateCacheWithSizeLimit,
   READ_FILE_STATE_CACHE_SIZE,
 } from 'src/utils/fileStateCache.js'
@@ -388,9 +387,21 @@ export async function* runAgent({
     : []
   const initialMessages: Message[] = [...contextMessages, ...promptMessages]
 
+  // A fork child inherits the parent's read state; a plain subagent starts
+  // clean. `createSubagentContext` clones whatever it is handed, and clones
+  // the parent when handed nothing — so leaving this undefined on the fork
+  // path produces exactly one clone.
+  //
+  // Cloning here as well used to produce a second one, and that copy was the
+  // problem: it is a local of this still-running generator frame, so it
+  // outlived the teardown below that clears the context's copy. The parent's
+  // file contents stayed pinned for the rest of the agent's run — measured at
+  // 4.9 MB surviving a parent compaction, independent of how many forks were
+  // outstanding, because clones share `FileState` references
+  // (scripts/bench-fork-file-state-cache.ts). The release was freeing nothing.
   const agentReadFileState =
     forkContextMessages !== undefined
-      ? cloneFileStateCache(toolUseContext.readFileState)
+      ? undefined
       : createFileStateCacheWithSizeLimit(READ_FILE_STATE_CACHE_SIZE)
 
   const [baseUserContext, baseSystemContext] = await Promise.all([
