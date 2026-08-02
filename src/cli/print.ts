@@ -1,22 +1,16 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle'
 import { readFile, stat } from 'fs/promises'
-import { BIN_NAME } from 'src/constants/brand.js'
-import { dirname } from 'path'
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
-import { shouldForceGc } from 'src/cli/headlessGc.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
 import {
   type Command,
   formatDescriptionWithSource,
   getCommandName,
 } from 'src/commands.js'
-import { createStreamlinedTransformer } from 'src/utils/streamlinedTransform.js'
-import { installStreamJsonStdoutGuard } from 'src/utils/streamJsonStdoutGuard.js'
-import type { ToolPermissionContext } from 'src/Tool.js'
 import type { ThinkingConfig } from 'src/utils/thinking.js'
-import { assembleToolPool, filterToolsByDenyRules } from 'src/tools.js'
+import { assembleToolPool } from 'src/tools.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { uniq } from 'src/utils/array.js'
 import { mergeAndFilterTools } from 'src/utils/toolPool.js'
@@ -30,13 +24,9 @@ import {
   logForDiagnosticsNoPII,
   withDiagnosticsTiming,
 } from 'src/utils/diagLogs.js'
-import { toolMatchesName, type Tool, type Tools } from 'src/Tool.js'
-import {
-  type AgentDefinition,
-  isBuiltInAgent,
-  parseAgentsFromJson,
-} from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
-import type { Message, NormalizedUserMessage } from 'src/types/message.js'
+import { toolMatchesName, type Tools } from 'src/Tool.js'
+import { type AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
+import type { Message } from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
   dequeue,
@@ -53,42 +43,19 @@ import {
   notifySessionStateChanged,
   notifySessionMetadataChanged,
   setPermissionModeChangedListener,
-  type RequiresActionDetails,
-  type SessionExternalMetadata,
 } from 'src/utils/sessionState.js'
-import { externalMetadataToAppState } from 'src/state/onChangeAppState.js'
 import { getInMemoryErrors, logError, logMCPDebug } from 'src/utils/log.js'
-import {
-  writeToStdout,
-  registerProcessOutputErrorHandlers,
-} from 'src/utils/process.js'
-import type { Stream } from 'src/utils/stream.js'
 import { EMPTY_USAGE } from '@ant/model-provider'
-import {
-  loadConversationForResume,
-  type TurnInterruptionState,
-} from 'src/utils/conversationRecovery.js'
+import { type TurnInterruptionState } from 'src/utils/conversationRecovery.js'
 import type {
   MCPServerConnection,
   McpSdkServerConfig,
-  ScopedMcpServerConfig,
 } from 'src/services/mcp/types.js'
-import {
-  CHANNEL_MESSAGE_METHOD,
-  ChannelMessageParamsSchema,
-  gateChannelServer,
-  wrapChannelMessage,
-  findChannelEntry,
-} from 'src/services/mcp/channelNotification.js'
 import {
   isChannelAllowlisted,
   isChannelsEnabled,
 } from 'src/services/mcp/channelAllowlist.js'
-import { parsePluginIdentifier } from 'src/utils/plugins/pluginIdentifier.js'
-import { validateUuid } from 'src/utils/uuid.js'
-import { fromArray } from 'src/utils/generators.js'
 import { ask } from 'src/QueryEngine.js'
-import type { PermissionPromptTool } from 'src/utils/queryHelpers.js'
 import {
   createFileStateCacheWithSizeLimit,
   mergeFileStateCaches,
@@ -96,7 +63,6 @@ import {
 } from 'src/utils/fileStateCache.js'
 import { expandPath } from 'src/utils/path.js'
 import { extractReadFilesFromMessages } from 'src/utils/queryHelpers.js'
-import { registerHookEventHandler } from 'src/utils/hooks/hookEvents.js'
 import { executeFilePersistence } from 'src/utils/filePersistence/filePersistence.js'
 import { finalizePendingAsyncHooks } from 'src/utils/hooks/AsyncHookRegistry.js'
 import {
@@ -108,73 +74,32 @@ import { registerCleanup } from 'src/utils/cleanupRegistry.js'
 import { createIdleTimeoutManager } from 'src/utils/idleTimeout.js'
 import type {
   SDKStatus,
-  ModelInfo,
   SDKMessage,
   SDKUserMessage,
-  PermissionResult,
   McpServerConfigForProcessTransport,
   McpServerStatus,
-  RewindFilesResult,
 } from 'src/entrypoints/agentSdkTypes.js'
 import type {
   StdoutMessage,
-  SDKControlInitializeRequest,
-  SDKControlInitializeResponse,
   SDKControlRequest,
-  SDKControlResponse,
   SDKControlMcpSetServersResponse,
   SDKControlReloadPluginsResponse,
 } from 'src/entrypoints/sdk/controlTypes.js'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
-import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'
 import { cwd } from 'process'
-import { getCwd } from 'src/utils/cwd.js'
 import omit from 'lodash-es/omit.js'
 import reject from 'lodash-es/reject.js'
-import { isPolicyAllowed } from 'src/services/policyLimits/index.js'
 import { getRemoteSessionUrl } from 'src/constants/product.js'
 import { resolveAndPrepend } from 'src/cli/inboundAttachments.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import { hasPermissionsToUseTool } from 'src/utils/permissions/permissions.js'
-import { safeParseJSON } from 'src/utils/json.js'
-import {
-  outputSchema as permissionToolOutputSchema,
-  permissionPromptToolResultToPermissionDecision,
-} from 'src/utils/permissions/PermissionPromptToolResultSchema.js'
 import { createAbortController } from 'src/utils/abortController.js'
-import { createCombinedAbortSignal } from 'src/utils/combinedAbortSignal.js'
 import { generateSessionTitle } from 'src/utils/sessionTitle.js'
 import { buildSideQuestionFallbackParams } from 'src/utils/queryContext.js'
 import { runSideQuestion } from 'src/utils/sideQuestion.js'
-import {
-  processSessionStartHooks,
-  processSetupHooks,
-  takeInitialUserMessage,
-} from 'src/utils/sessionStart.js'
-import {
-  DEFAULT_OUTPUT_STYLE_NAME,
-  getAllOutputStyles,
-} from 'src/constants/outputStyles.js'
 import { TEAMMATE_MESSAGE_TAG, TICK_TAG } from 'src/constants/xml.js'
-import {
-  getSettings_DEPRECATED,
-  getSettingsWithSources,
-} from 'src/utils/settings/settings.js'
+import { getSettingsWithSources } from 'src/utils/settings/settings.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
-import { applySettingsChange } from 'src/utils/settings/applySettingsChange.js'
-import {
-  isFastModeAvailable,
-  isFastModeEnabled,
-  isFastModeSupportedByModel,
-  getFastModeState,
-} from 'src/utils/fastMode.js'
-import {
-  isAutoModeGateEnabled,
-  getAutoModeUnavailableNotification,
-  getAutoModeUnavailableReason,
-  isBypassPermissionsModeDisabled,
-  transitionPermissionMode,
-} from 'src/utils/permissions/permissionSetup.js'
+import { isFastModeSupportedByModel } from 'src/utils/fastMode.js'
 import {
   tryGenerateSuggestion,
   logSuggestionOutcome,
@@ -186,40 +111,24 @@ import { getAccountInformation } from 'src/utils/auth.js'
 import { OAuthService } from 'src/services/oauth/index.js'
 import { installOAuthTokens } from 'src/cli/handlers/auth.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
-import type { HookCallbackMatcher } from 'src/types/hooks.js'
 import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
-import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import {
-  registerHookCallbacks,
-  setInitJsonSchema,
   getInitJsonSchema,
   setSdkAgentProgressSummariesEnabled,
 } from 'src/bootstrap/state.js'
 import { createSyntheticOutputTool } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js'
-import { parseSessionIdentifier } from 'src/utils/sessionUrl.js'
 import {
-  hydrateRemoteSession,
-  hydrateFromCCRv2InternalEvents,
-  resetSessionFilePointer,
   doesMessageExistInSession,
-  findUnresolvedToolUse,
   recordAttributionSnapshot,
-  saveAgentSetting,
-  saveMode,
   saveAiGeneratedTitle,
-  restoreSessionMetadata,
 } from 'src/utils/sessionStorage.js'
 import { incrementPromptCount } from 'src/utils/commitAttribution.js'
 import {
   setupSdkMcpClients,
-  connectToServer,
   clearServerCache,
-  fetchToolsForClient,
-  areMcpConfigsEqual,
   reconnectMcpServerImpl,
 } from 'src/services/mcp/client.js'
 import {
-  filterMcpServersByPolicy,
   getMcpConfigByName,
   isMcpServerDisabled,
   setMcpServerEnabled,
@@ -240,10 +149,6 @@ import {
 } from 'src/services/mcp/utils.js'
 import { setupVscodeSdkMcp } from 'src/services/mcp/vscodeSdkMcp.js'
 import { getAllMcpConfigs } from 'src/services/mcp/config.js'
-import {
-  isQualifiedForGrove,
-  checkGroveForNonInteractive,
-} from 'src/services/api/grove.js'
 import {
   toInternalMessages,
   toSDKRateLimitInfo,
@@ -270,37 +175,18 @@ import {
 } from 'src/utils/effort.js'
 import { modelSupportsAdaptiveThinking } from 'src/utils/thinking.js'
 import { modelSupportsAutoMode } from 'src/utils/betas.js'
-import { ensureModelStringsInitialized } from 'src/utils/model/modelStrings.js'
 import {
   getSessionId,
   setMainLoopModelOverride,
-  setMainThreadAgentType,
-  switchSession,
-  isSessionPersistenceDisabled,
   getIsRemoteMode,
   getFlagSettingsInline,
   setFlagSettingsInline,
-  getMainThreadAgentType,
-  getAllowedChannels,
-  setAllowedChannels,
-  type ChannelEntry,
 } from 'src/bootstrap/state.js'
 import { runWithWorkload, WORKLOAD_CRON } from 'src/utils/workloadContext.js'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
-import {
-  fileHistoryRewind,
-  fileHistoryCanRestore,
-  fileHistoryEnabled,
-  fileHistoryGetDiffStats,
-} from 'src/utils/fileHistory.js'
-import {
-  restoreAgentFromSession,
-  restoreSessionStateFromLog,
-} from 'src/utils/sessionRestore.js'
-import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import {
   headlessProfilerStartTurn,
   headlessProfilerCheckpoint,
@@ -310,7 +196,6 @@ import {
   startQueryProfile,
   logQueryProfileReport,
 } from 'src/utils/queryProfiler.js'
-import { asSessionId } from 'src/types/ids.js'
 import {
   createAutonomyQueuedPromptIfNoActiveSource,
   createProactiveAutonomyCommands,
@@ -349,12 +234,9 @@ import { getRunningTasks } from '../utils/task/framework.js'
 import { isBackgroundTask } from '../tasks/types.js'
 import { stopTask } from '../tasks/stopTask.js'
 import { drainSdkEvents } from '../utils/sdkEventQueue.js'
-import { initializeGrowthBook } from '../services/analytics/growthbook.js'
 import { errorMessage, toError } from '../utils/errors.js'
 import { sleep } from '../utils/sleep.js'
-import { isExtractModeActive } from '../memdir/paths.js'
 import { canBatchWith, joinPromptValues } from './print/promptQueue.js'
-import { getCanUseToolFn } from './print/toolPermissions.js'
 import {
   handleInitializeRequest,
   handleRewindFiles,
@@ -366,6 +248,7 @@ import {
 } from './print/channels.js'
 import {
   SHUTDOWN_TEAM_PROMPT,
+  bindRunHeadlessStreaming,
   cronGate,
   cronJitterConfigModule,
   cronSchedulerModule,
@@ -373,23 +256,15 @@ import {
   receivedMessageUuids,
   trackReceivedMessageUuid,
 } from './print/runtime.js'
-import {
-  loadInitialMessages,
-  removeInterruptedMessage,
-} from './print/sessionLoading.js'
-import {
-  getStructuredIO,
-  handleOrphanedPermissionResponse,
-} from './print/structuredIO.js'
+import { removeInterruptedMessage } from './print/sessionLoading.js'
+import { handleOrphanedPermissionResponse } from './print/structuredIO.js'
 import {
   handleMcpSetServers,
-  reconcileMcpServers,
   type DynamicMcpState,
-  type McpSetServersResult,
-  type SdkMcpState,
 } from './print/mcpServers.js'
 
 export { canBatchWith, joinPromptValues } from './print/promptQueue.js'
+export { runHeadless } from './print/runHeadless.js'
 export {
   createCanUseToolWithPermissionPrompt,
   getCanUseToolFn,
@@ -403,540 +278,6 @@ export {
   type McpSetServersResult,
   type SdkMcpState,
 } from './print/mcpServers.js'
-
-export async function runHeadless(
-  inputPrompt: string | AsyncIterable<string>,
-  getAppState: () => AppState,
-  setAppState: (f: (prev: AppState) => AppState) => void,
-  commands: Command[],
-  tools: Tools,
-  sdkMcpConfigs: Record<string, McpSdkServerConfig>,
-  agents: AgentDefinition[],
-  options: {
-    continue: boolean | undefined
-    resume: string | boolean | undefined
-    resumeSessionAt: string | undefined
-    verbose: boolean | undefined
-    outputFormat: string | undefined
-    jsonSchema: Record<string, unknown> | undefined
-    permissionPromptToolName: string | undefined
-    allowedTools: string[] | undefined
-    thinkingConfig: ThinkingConfig | undefined
-    maxTurns: number | undefined
-    maxBudgetUsd: number | undefined
-    taskBudget: { total: number } | undefined
-    systemPrompt: string | undefined
-    appendSystemPrompt: string | undefined
-    userSpecifiedModel: string | undefined
-    fallbackModel: string | undefined
-    teleport: string | true | null | undefined
-    sdkUrl: string | undefined
-    replayUserMessages: boolean | undefined
-    includePartialMessages: boolean | undefined
-    forkSession: boolean | undefined
-    rewindFiles: string | undefined
-    enableAuthStatus: boolean | undefined
-    agent: string | undefined
-    workload: string | undefined
-    setupTrigger?: 'init' | 'maintenance' | undefined
-    sessionStartHooksPromise?: ReturnType<typeof processSessionStartHooks>
-    setSDKStatus?: (status: SDKStatus) => void
-  },
-): Promise<void> {
-  if (
-    process.env.USER_TYPE === 'ant' &&
-    isEnvTruthy(process.env.CLAUDE_CODE_EXIT_AFTER_FIRST_RENDER)
-  ) {
-    process.stderr.write(
-      `\nStartup time: ${Math.round(process.uptime() * 1000)}ms\n`,
-    )
-    // eslint-disable-next-line custom-rules/no-process-exit
-    process.exit(0)
-  }
-
-  // In headless mode there is no React tree, so the useSettingsChange hook
-  // never runs. Subscribe directly so that settings changes (including
-  // managed-settings / policy updates) are fully applied.
-  settingsChangeDetector.subscribe(source => {
-    applySettingsChange(source, setAppState)
-
-    // In headless mode, also sync the denormalized fastMode field from
-    // settings. The TUI manages fastMode via the UI so it skips this.
-    if (isFastModeEnabled()) {
-      setAppState(prev => {
-        const s = prev.settings as Record<string, unknown>
-        const fastMode = s.fastMode === true && !s.fastModePerSessionOptIn
-        return { ...prev, fastMode }
-      })
-    }
-  })
-
-  // Proactive activation is normally handled in main.tsx before getTools().
-  // This fallback covers the case where CLAUDE_CODE_PROACTIVE is set but
-  // main.tsx's check didn't fire (e.g. env was injected by the SDK transport
-  // after argv parsing).
-  if (
-    (feature('PROACTIVE') || feature('KAIROS')) &&
-    proactiveModule &&
-    !proactiveModule.isProactiveActive() &&
-    isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)
-  ) {
-    proactiveModule.activateProactive('command')
-  }
-
-  // Periodically run GC to keep memory usage in check. The incremental GC may
-  // not reclaim enough during peaks (compact, long sessions with many mounted
-  // DOM nodes), so a forced (major) GC takes over once RSS is genuinely high —
-  // rate-limited, because RSS never comes back down. See shouldForceGc and
-  // docs/memory-peak-analysis.md for the thresholds.
-  if (typeof Bun !== 'undefined') {
-    let lastForcedGcAt: number | undefined
-    const gcTimer = setInterval(() => {
-      const rss = process.memoryUsage.rss()
-      const now = Date.now()
-      if (shouldForceGc(rss, now, lastForcedGcAt)) {
-        lastForcedGcAt = now
-        Bun.gc(true)
-      } else {
-        Bun.gc(false)
-      }
-    }, 1000)
-    gcTimer.unref()
-  }
-
-  // Start headless profiler for first turn
-  headlessProfilerStartTurn()
-  headlessProfilerCheckpoint('runHeadless_entry')
-
-  // Check Grove requirements for non-interactive consumer subscribers
-  if (await isQualifiedForGrove()) {
-    await checkGroveForNonInteractive()
-  }
-  headlessProfilerCheckpoint('after_grove_check')
-
-  // Initialize GrowthBook so feature flags take effect in headless mode.
-  // Without this, the disk cache is empty and all flags fall back to defaults.
-  void initializeGrowthBook()
-
-  if (options.resumeSessionAt && !options.resume) {
-    process.stderr.write(`Error: --resume-session-at requires --resume\n`)
-    gracefulShutdownSync(1)
-    return
-  }
-
-  if (options.rewindFiles && !options.resume) {
-    process.stderr.write(`Error: --rewind-files requires --resume\n`)
-    gracefulShutdownSync(1)
-    return
-  }
-
-  if (options.rewindFiles && inputPrompt) {
-    process.stderr.write(
-      `Error: --rewind-files is a standalone operation and cannot be used with a prompt\n`,
-    )
-    gracefulShutdownSync(1)
-    return
-  }
-
-  const structuredIO = getStructuredIO(inputPrompt, options)
-
-  // When emitting NDJSON for SDK clients, any stray write to stdout (debug
-  // prints, dependency console.log, library banners) breaks the client's
-  // line-by-line JSON parser. Install a guard that diverts non-JSON lines to
-  // stderr so the stream stays clean. Must run before the first
-  // structuredIO.write below.
-  if (options.outputFormat === 'stream-json') {
-    installStreamJsonStdoutGuard()
-  }
-
-  // #34044: if user explicitly set sandbox.enabled=true but deps are missing,
-  // isSandboxingEnabled() returns false silently. Surface the reason so users
-  // know their security config isn't being enforced.
-  const sandboxUnavailableReason = SandboxManager.getSandboxUnavailableReason()
-  if (sandboxUnavailableReason) {
-    if (SandboxManager.isSandboxRequired()) {
-      process.stderr.write(
-        `\nError: sandbox required but unavailable: ${sandboxUnavailableReason}\n` +
-          `  sandbox.failIfUnavailable is set — refusing to start without a working sandbox.\n\n`,
-      )
-      gracefulShutdownSync(1)
-      return
-    }
-    process.stderr.write(
-      `\n⚠ Sandbox disabled: ${sandboxUnavailableReason}\n` +
-        `  Commands will run WITHOUT sandboxing. Network and filesystem restrictions will NOT be enforced.\n\n`,
-    )
-  } else if (SandboxManager.isSandboxingEnabled()) {
-    // Initialize sandbox with a callback that forwards network permission
-    // requests to the SDK host via the can_use_tool control_request protocol.
-    // This must happen after structuredIO is created so we can send requests.
-    try {
-      await SandboxManager.initialize(structuredIO.createSandboxAskCallback())
-    } catch (err) {
-      process.stderr.write(`\n❌ Sandbox Error: ${errorMessage(err)}\n`)
-      gracefulShutdownSync(1, 'other')
-      return
-    }
-  }
-
-  if (options.outputFormat === 'stream-json' && options.verbose) {
-    registerHookEventHandler(event => {
-      const message: StdoutMessage = (() => {
-        switch (event.type) {
-          case 'started':
-            return {
-              type: 'system' as const,
-              subtype: 'hook_started' as const,
-              hook_id: event.hookId,
-              hook_name: event.hookName,
-              hook_event: event.hookEvent,
-              uuid: randomUUID(),
-              session_id: getSessionId(),
-            }
-          case 'progress':
-            return {
-              type: 'system' as const,
-              subtype: 'hook_progress' as const,
-              hook_id: event.hookId,
-              hook_name: event.hookName,
-              hook_event: event.hookEvent,
-              stdout: event.stdout,
-              stderr: event.stderr,
-              output: event.output,
-              uuid: randomUUID(),
-              session_id: getSessionId(),
-            }
-          case 'response':
-            return {
-              type: 'system' as const,
-              subtype: 'hook_response' as const,
-              hook_id: event.hookId,
-              hook_name: event.hookName,
-              hook_event: event.hookEvent,
-              output: event.output,
-              stdout: event.stdout,
-              stderr: event.stderr,
-              exit_code: event.exitCode,
-              outcome: event.outcome,
-              uuid: randomUUID(),
-              session_id: getSessionId(),
-            }
-        }
-      })()
-      void structuredIO.write(message)
-    })
-  }
-
-  if (options.setupTrigger) {
-    await processSetupHooks(options.setupTrigger)
-  }
-
-  headlessProfilerCheckpoint('before_loadInitialMessages')
-  const appState = getAppState()
-  const {
-    messages: initialMessages,
-    turnInterruptionState,
-    agentSetting: resumedAgentSetting,
-  } = await loadInitialMessages(setAppState, {
-    continue: options.continue,
-    teleport: options.teleport,
-    resume: options.resume,
-    resumeSessionAt: options.resumeSessionAt,
-    forkSession: options.forkSession,
-    outputFormat: options.outputFormat,
-    sessionStartHooksPromise: options.sessionStartHooksPromise,
-    restoredWorkerState: structuredIO.restoredWorkerState,
-  })
-
-  // SessionStart hooks can emit initialUserMessage — the first user turn for
-  // headless orchestrator sessions where stdin is empty and additionalContext
-  // alone (an attachment, not a turn) would leave the REPL with nothing to
-  // respond to. The hook promise is awaited inside loadInitialMessages, so the
-  // module-level pending value is set by the time we get here.
-  const hookInitialUserMessage = takeInitialUserMessage()
-  if (hookInitialUserMessage) {
-    structuredIO.prependUserMessage(hookInitialUserMessage)
-  }
-
-  // Restore agent setting from the resumed session (if not overridden by current --agent flag
-  // or settings-based agent, which would already have set mainThreadAgentType in main.tsx)
-  if (!options.agent && !getMainThreadAgentType() && resumedAgentSetting) {
-    const { agentDefinition: restoredAgent } = restoreAgentFromSession(
-      resumedAgentSetting,
-      undefined,
-      { activeAgents: agents, allAgents: agents },
-    )
-    if (restoredAgent) {
-      setAppState(prev => ({ ...prev, agent: restoredAgent.agentType }))
-      // Apply the agent's system prompt for non-built-in agents (mirrors main.tsx initial --agent path)
-      if (!options.systemPrompt && !isBuiltInAgent(restoredAgent)) {
-        const agentSystemPrompt = restoredAgent.getSystemPrompt()
-        if (agentSystemPrompt) {
-          options.systemPrompt = agentSystemPrompt
-        }
-      }
-      // Re-persist agent setting so future resumes maintain the agent
-      saveAgentSetting(restoredAgent.agentType)
-    }
-  }
-
-  // gracefulShutdownSync schedules an async shutdown and sets process.exitCode.
-  // If a loadInitialMessages error path triggered it, bail early to avoid
-  // unnecessary work while the process winds down.
-  if (initialMessages.length === 0 && process.exitCode !== undefined) {
-    return
-  }
-
-  // Handle --rewind-files: restore filesystem and exit immediately
-  if (options.rewindFiles) {
-    // File history snapshots are only created for user messages,
-    // so we require the target to be a user message
-    const targetMessage = initialMessages.find(
-      m => m.uuid === options.rewindFiles,
-    )
-
-    if (!targetMessage || targetMessage.type !== 'user') {
-      process.stderr.write(
-        `Error: --rewind-files requires a user message UUID, but ${options.rewindFiles} is not a user message in this session\n`,
-      )
-      gracefulShutdownSync(1)
-      return
-    }
-
-    const currentAppState = getAppState()
-    const result = await handleRewindFiles(
-      options.rewindFiles as UUID,
-      currentAppState,
-      setAppState,
-      false,
-    )
-    if (!result.canRewind) {
-      process.stderr.write(`Error: ${result.error || 'Unexpected error'}\n`)
-      gracefulShutdownSync(1)
-      return
-    }
-
-    // Rewind complete - exit successfully
-    process.stdout.write(
-      `Files rewound to state at message ${options.rewindFiles}\n`,
-    )
-    gracefulShutdownSync(0)
-    return
-  }
-
-  // Check if we need input prompt - skip if we're resuming with a valid session ID/JSONL file or using SDK URL
-  const hasValidResumeSessionId =
-    typeof options.resume === 'string' &&
-    (Boolean(validateUuid(options.resume)) || options.resume.endsWith('.jsonl'))
-  const isUsingSdkUrl = Boolean(options.sdkUrl)
-
-  if (!inputPrompt && !hasValidResumeSessionId && !isUsingSdkUrl) {
-    process.stderr.write(
-      `Error: Input must be provided either through stdin or as a prompt argument when using --print\n`,
-    )
-    gracefulShutdownSync(1)
-    return
-  }
-
-  if (options.outputFormat === 'stream-json' && !options.verbose) {
-    process.stderr.write(
-      'Error: When using --print, --output-format=stream-json requires --verbose\n',
-    )
-    gracefulShutdownSync(1)
-    return
-  }
-
-  // Filter out MCP tools that are in the deny list
-  const allowedMcpTools = filterToolsByDenyRules(
-    appState.mcp.tools,
-    appState.toolPermissionContext,
-  )
-  let filteredTools = [...tools, ...allowedMcpTools]
-
-  // When using SDK URL, always use stdio permission prompting to delegate to the SDK
-  const effectivePermissionPromptToolName = options.sdkUrl
-    ? 'stdio'
-    : options.permissionPromptToolName
-
-  // Callback for when a permission prompt is shown
-  const onPermissionPrompt = (details: RequiresActionDetails) => {
-    if (feature('COMMIT_ATTRIBUTION')) {
-      setAppState(prev => ({
-        ...prev,
-        attribution: {
-          ...prev.attribution,
-          permissionPromptCount: prev.attribution.permissionPromptCount + 1,
-        },
-      }))
-    }
-    notifySessionStateChanged('requires_action', details)
-  }
-
-  const canUseTool = getCanUseToolFn(
-    effectivePermissionPromptToolName,
-    structuredIO,
-    () => getAppState().mcp.tools,
-    onPermissionPrompt,
-  )
-  if (options.permissionPromptToolName) {
-    // Remove the permission prompt tool from the list of available tools.
-    filteredTools = filteredTools.filter(
-      tool => !toolMatchesName(tool, options.permissionPromptToolName!),
-    )
-  }
-
-  // Install errors handlers to gracefully handle broken pipes (e.g., when parent process dies)
-  registerProcessOutputErrorHandlers()
-
-  headlessProfilerCheckpoint('after_loadInitialMessages')
-
-  // Ensure model strings are initialized before generating model options.
-  // For Bedrock users, this waits for the profile fetch to get correct region strings.
-  await ensureModelStringsInitialized()
-  headlessProfilerCheckpoint('after_modelStrings')
-
-  // UDS inbox store registration is deferred until after `run` is defined
-  // so we can pass `run` as the onEnqueue callback (see below).
-
-  // Only `json` + `verbose` needs the full array (jsonStringify(messages) below).
-  // For stream-json (SDK/CCR) and default text output, only the last message is
-  // read for the exit code / final result. Avoid accumulating every message in
-  // memory for the entire session.
-  const needsFullArray = options.outputFormat === 'json' && options.verbose
-  const messages: SDKMessage[] = []
-  let lastMessage: SDKMessage | undefined
-  // Streamlined mode transforms messages when CLAUDE_CODE_STREAMLINED_OUTPUT=true and using stream-json
-  // Build flag gates this out of external builds; env var is the runtime opt-in for ant builds
-  const transformToStreamlined =
-    feature('STREAMLINED_OUTPUT') &&
-    isEnvTruthy(process.env.CLAUDE_CODE_STREAMLINED_OUTPUT) &&
-    options.outputFormat === 'stream-json'
-      ? createStreamlinedTransformer()
-      : null
-
-  headlessProfilerCheckpoint('before_runHeadlessStreaming')
-  for await (const message of runHeadlessStreaming(
-    structuredIO,
-    appState.mcp.clients,
-    [...commands, ...appState.mcp.commands],
-    filteredTools,
-    initialMessages,
-    canUseTool,
-    sdkMcpConfigs,
-    getAppState,
-    setAppState,
-    agents,
-    options,
-    turnInterruptionState,
-  )) {
-    if (transformToStreamlined) {
-      // Streamlined mode: transform messages and stream immediately
-      const transformed = transformToStreamlined(message)
-      if (transformed) {
-        await structuredIO.write(transformed)
-      }
-    } else if (options.outputFormat === 'stream-json' && options.verbose) {
-      await structuredIO.write(message)
-    }
-    // Should not be getting control messages or stream events in non-stream mode.
-    // Also filter out streamlined types since they're only produced by the transformer.
-    // SDK-only system events are excluded so lastMessage stays at the result
-    // (session_state_changed(idle) and any late task_notification drain after
-    // result in the finally block).
-    if (
-      message.type !== 'control_response' &&
-      message.type !== 'control_request' &&
-      message.type !== 'control_cancel_request' &&
-      !(
-        message.type === 'system' &&
-        (message.subtype === 'session_state_changed' ||
-          message.subtype === 'task_notification' ||
-          message.subtype === 'task_started' ||
-          message.subtype === 'task_progress' ||
-          message.subtype === 'post_turn_summary')
-      ) &&
-      message.type !== 'stream_event' &&
-      message.type !== 'keep_alive' &&
-      message.type !== 'streamlined_text' &&
-      message.type !== 'streamlined_tool_use_summary' &&
-      message.type !== 'prompt_suggestion'
-    ) {
-      if (needsFullArray) {
-        messages.push(message)
-      }
-      lastMessage = message
-    }
-  }
-
-  switch (options.outputFormat) {
-    case 'json':
-      if (!lastMessage || lastMessage.type !== 'result') {
-        throw new Error('No messages returned')
-      }
-      if (options.verbose) {
-        writeToStdout(jsonStringify(messages) + '\n')
-        break
-      }
-      writeToStdout(jsonStringify(lastMessage) + '\n')
-      break
-    case 'stream-json':
-      // already logged above
-      break
-    default:
-      if (!lastMessage || lastMessage.type !== 'result') {
-        throw new Error('No messages returned')
-      }
-      switch (lastMessage.subtype) {
-        case 'success':
-          writeToStdout(
-            (lastMessage.result as string).endsWith('\n')
-              ? (lastMessage.result as string)
-              : (lastMessage.result as string) + '\n',
-          )
-          break
-        case 'error_during_execution':
-          writeToStdout(`Execution error`)
-          break
-        case 'error_max_turns':
-          writeToStdout(
-            `Error: Reached max turns (${options.maxTurns}).\nTip: Increase the limit with --max-turns or continue in a new session.`,
-          )
-          break
-        case 'error_max_budget_usd':
-          writeToStdout(
-            `Error: Exceeded USD budget ($${options.maxBudgetUsd}).\nTip: Increase the limit with --max-budget-usd or start a new session to continue.`,
-          )
-          break
-        case 'error_max_structured_output_retries':
-          writeToStdout(
-            `Error: Failed to provide valid structured output after maximum retries.\nTip: Simplify your schema or check if the output format matches the expected structure.`,
-          )
-      }
-  }
-
-  // Log headless latency metrics for the final turn
-  logHeadlessProfilerTurn()
-
-  // Drain any in-flight memory extraction before shutdown. The response is
-  // already flushed above, so this adds no user-visible latency — it just
-  // delays process exit so gracefulShutdownSync's 5s failsafe doesn't kill
-  // the forked agent mid-flight. Gated by isExtractModeActive so the
-  // tengu_slate_thimble flag controls non-interactive extraction end-to-end.
-  if (feature('EXTRACT_MEMORIES') && isExtractModeActive()) {
-    try {
-      const { drainPendingExtraction } = await import(
-        '../services/extractMemories/extractMemories.js'
-      )
-      await drainPendingExtraction()
-    } catch {
-      // Module load failure — non-critical at shutdown
-    }
-  }
-
-  gracefulShutdownSync(
-    lastMessage?.type === 'result' && lastMessage?.is_error ? 1 : 0,
-  )
-}
 
 function runHeadlessStreaming(
   structuredIO: StructuredIO,
@@ -4079,3 +3420,5 @@ function runHeadlessStreaming(
 
   return output
 }
+
+bindRunHeadlessStreaming(runHeadlessStreaming)
