@@ -116,6 +116,8 @@ facade 的形状、注册触发点、各自不同的 fallback 语义已写进 `C
 
 **剩下的 68 个平铺文件是什么**：5 个是当时其他 lane 正在动的避让文件，63 个是给 `attachments/`、`messages/`、`hooks/`、`sessionStorage/` 四个目录用的兼容 shim（它们有 206 条入边）。那四个目录当时被其他 lane 占用，所以只移不改。**后续可以把这 206 条 import 路径 codemod 到新目录，然后删掉这 63 个 shim** —— 这是本项唯一的尾巴。
 
+> **✅ 尾巴已于 2026-08-02 收掉**（`9e970d49` codemod / `6d2f671f` 删 shim / `e28fdfe6` 重基线）。实测入边 208 条（比上面的 206 多出的是 `agent.test.ts` 里两处 `mockModulePreservingExports` 说明符，常规 import 前缀正则抓不到，靠逐字面量兜底扫描补上 —— 后续做同类 codemod 时记得把自定义 mock 包装函数算进说明符来源）。平铺层现余 5 个真实文件；total 环数 2150 → 2038，纯表示性下降。指向平铺路径的文本引用（CLAUDE.md mock 示例、`tests/mocks/` 头注释、若干活代码注释）已一并修正。
+
 ---
 
 ## 3. 执行模型（建议延续）
