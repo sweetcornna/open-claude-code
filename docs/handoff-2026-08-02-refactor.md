@@ -155,7 +155,7 @@ facade 的形状、注册触发点、各自不同的 fallback 语义已写进 `C
 **有用户可见影响**
 - ~~`headlessControlRequests.ts:199` 的 `initialize` 处理器报的是 `state.initialCommands`/`initialAgents` 而非 `currentCommands`/`currentAgents`。若插件在 `initialize` 到达前完成安装，SDK 消费方拿到的是装插件前的命令集。~~ **已修**（`41fadb7e`，2026-08-02）：统一读写 `current*`，`initial*` 字段删除；取证时发现问题比记录的更重 —— 该顺序下 stdin 提供的 agent 也会被 push 进死数组而丢失。回归测试 `headlessControlRequests.initialize.test.ts`。
 - ~~`/compact` 不清 `lastAPIRequest`（完整 system prompt + 全部 tool schema，**对所有用户**留存，且它有真实读者，不像 5.6 删掉的那个）。~~ **已修**（`ce9207a3`，2026-08-02）：集中清在 `runPostCompactCleanup` 主线程分支（四条 compact 路径都汇到这里），subagent compact 不清主线程快照。伴随 total 环数预算 2038 → 2039（runtime 不变，边集判定为表示性 +1，理由见提交信息）。
-- `Config.tsx:1547` 与 `PermissionRuleList.tsx:385` 硬编码了按键排除清单，与绑定表重复，用户重绑后会失效。**不能简单地从 resolver 推导** —— `r` 绑给了 `settings:retry` 却不在排除清单里，推导版会让 `r` 无法进入搜索框，那是行为改动。
+- ~~`Config.tsx:1547` 与 `PermissionRuleList.tsx:385` 硬编码了按键排除清单，与绑定表重复，用户重绑后会失效。**不能简单地从 resolver 推导** —— `r` 绑给了 `settings:retry` 却不在排除清单里，推导版会让 `r` 无法进入搜索框，那是行为改动。~~ **已修**（`d1126d4e`，2026-08-02）：按「本组件实际处理的动作集」推导（`keybindings/searchExclusions.ts`），绕开了上面的 `r` 陷阱（settings:retry 不在 Config 的动作集里，有测试钉住）。取证补充：权限对话框的 `r` 是 RecentDenialsTab 的 raw useInput 视图键（不可重绑，保持硬编码），`m`/`i` 排除项全仓库无消费者（decompile 残留），已随修复移除。
 
 **架构层面**
 - `packages/tool-runtime/src/Tool.ts` 的 `ToolUseContext` 仍然承载 host 的 `AppState`。import 边没了（走 host 绑定），但概念耦合还在。真正的解法是共享类型包。
@@ -163,11 +163,12 @@ facade 的形状、注册触发点、各自不同的 fallback 语义已写进 `C
 - `src/screens/repl/rootAction.tsx` 3340 行、`headlessControlRequests.ts` 664 行仍超尺寸目标，是 verbatim 搬迁的产物，拆它们需要真重构。
 - `messages/attachmentNormalize.ts` 971 行（上一棒记的，仍成立）：`normalizeAttachmentForAPI` 是 869 行的 verbatim `switch`。
 
-**代码卫生**
-- `main.tsx` 头部注释关于 ESM 的说法是错的：它声称三个启动调用「先于所有 import 运行」并与 ~135 ms 的 import 重叠，但 ESM 会 hoist 所有 import 并在任何模块体语句之前求值整张图 —— 那个并行从未发生。修它会改变启动行为，超出拆分范围。
-- `_isBeingDebugged()`、`isForkBoilerplateMessage` 是死代码（`noUnusedLocals` 关着，tsc 不报）。
-- `resume` 的依赖数组是 `[resetLoadingState, setAppState]` 但函数体读了约 15 个其他局部变量 —— **陈旧闭包**，先于本轮存在，拆分时逐字保留了。
-- `lastClassifierRequests` 有写无读；`STATE.invokedSkills` 无上限地留存 skill 文件全文。
+**代码卫生**（本组除 `resume` 外已于 2026-08-02 处理，`ea438f9c`）
+- ~~`main.tsx` 头部注释关于 ESM 的说法是错的~~ **注释已更正**（按实际语义重写，并注明「真并行需从 cli.tsx 动态 import 前触发」仍是未做的行为改动）。
+- ~~`_isBeingDebugged()`、`isForkBoilerplateMessage` 是死代码~~ **已删**（同文件的 `isForkBoilerplateTextBlock` 有真实读者，保留）。
+- `resume` 的依赖数组是 `[resetLoadingState, setAppState]` 但函数体读了约 15 个其他局部变量 —— **陈旧闭包**，先于本轮存在，拆分时逐字保留了。**复核后维持不动**：REPL.tsx:450 与 runResume.ts:59 两处注释已把省略记录为刻意行为，修复会改变回调身份语义（下游 effect 依赖 resume 身份），而 REPL 零运行时测试，风险/验证比不划算。
+- ~~`lastClassifierRequests` 有写无读~~ **整槽已删**：唯一读者 `getAutoModeClassifierTranscript` 零调用方，声称的 `/share` 消费者从未实现——与 5.6 同模式。
+- `STATE.invokedSkills` 留存 skill 文件全文 —— **复核后判定为设计内有界留存，不动**：键是 `agentId:skillName`（重复调用是覆盖不是增长），content 被压缩附件消费者刻意需要（改为按 skillPath 重读磁盘会让附件偏离模型实际看到的内容）。
 
 ### 4.3 上一棒遗留的独立议题
 
