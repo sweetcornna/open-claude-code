@@ -11,7 +11,7 @@ import {
 } from '../bootstrap/state.js';
 import { parseTokenBudget } from '../utils/tokenBudget.js';
 import { count } from '../utils/array.js';
-import { dirname, join } from 'path';
+import { join } from 'path';
 import { type TabStatusKind, Box, Text, useStdin, useTheme, useTerminalFocus, useTabStatus } from '@anthropic/ink';
 import { CostThresholdDialog } from '../components/CostThresholdDialog.js';
 import { IdleReturnDialog } from '../components/IdleReturnDialog.js';
@@ -32,8 +32,6 @@ import {
   getOriginalCwd,
   getProjectRoot,
   getSessionId,
-  switchSession,
-  setCostStateForRestore,
   getTurnHookDurationMs,
   getTurnHookCount,
   resetTurnHookDuration,
@@ -44,7 +42,7 @@ import {
   getTurnClassifierCount,
   resetTurnClassifierDuration,
 } from '../bootstrap/state.js';
-import { asSessionId, asAgentId } from '../types/ids.js';
+import { asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
@@ -115,7 +113,7 @@ import { buildEffectiveSystemPrompt } from '../utils/systemPrompt.js';
 import { getSystemContext, getUserContext } from '../context.js';
 import { getMemoryFiles } from '../utils/claudemd.js';
 import { startBackgroundHousekeeping } from '../utils/backgroundHousekeeping.js';
-import { getTotalCost, saveCurrentSessionCosts, resetCostState, getStoredSessionCosts } from '../cost-tracker.js';
+import { getTotalCost } from '../cost-tracker.js';
 import { useCostSummary } from '../costHook.js';
 import { useFpsMetrics } from '../context/fpsMetrics.js';
 import { useAfterFirstRender } from '../hooks/useAfterFirstRender.js';
@@ -226,8 +224,6 @@ import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js
 import type { MCPServerConnection } from '../services/mcp/types.js';
 import type { ScopedMcpServerConfig } from '../services/mcp/types.js';
 import { randomUUID, type UUID } from 'crypto';
-import { processSessionStartHooks } from '../utils/sessionStart.js';
-import { executeSessionEndHooks, getSessionEndHookTimeoutMs } from '../utils/hooks.js';
 import { type IDESelection, useIdeSelection } from '../hooks/useIdeSelection.js';
 import { getTools, assembleToolPool } from '../tools.js';
 import { resolveAgentTools } from '@open-claude-code/builtin-tools/tools/AgentTool/agentToolUtils.js';
@@ -238,48 +234,30 @@ import type { ContentBlockParam, ContentBlock, ImageBlockParam } from '@anthropi
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
 import type { PastedContent } from '../utils/config.js';
 import type { InternalPermissionMode } from '../types/permissions.js';
-import { copyPlanForFork, copyPlanForResume, getPlanSlug, setPlanSlug } from '../utils/plans.js';
+import { getPlanSlug, setPlanSlug } from '../utils/plans.js';
 import {
-  clearSessionMetadata,
-  resetSessionFilePointer,
-  adoptResumedSessionFile,
   removeTranscriptMessage,
-  restoreSessionMetadata,
   getCurrentSessionTitle,
   isEphemeralToolProgress,
   isLoggableMessage,
-  saveWorktreeState,
   getAgentTranscript,
 } from '../utils/sessionStorage.js';
-import { deserializeMessages } from '../utils/conversationRecovery.js';
 import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/queryHelpers.js';
 import { resetMicrocompactState } from '../services/compact/microCompact.js';
 import { runPostCompactCleanup, registerCompactCleanup } from '../services/compact/postCompactCleanup.js';
-import {
-  createContentReplacementState,
-  provisionContentReplacementState,
-  reconstructContentReplacementState,
-} from '../utils/toolResultStorage.js';
+import { createContentReplacementState, provisionContentReplacementState } from '../utils/toolResultStorage.js';
 import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
 import {
   fileHistoryMakeSnapshot,
   type FileHistoryState,
   fileHistoryRewind,
-  copyFileHistoryForResume,
   fileHistoryEnabled,
   fileHistoryHasAnyChanges,
 } from '../utils/fileHistory.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
-import {
-  computeStandaloneAgentContext,
-  restoreAgentFromSession,
-  restoreSessionStateFromLog,
-  restoreWorktreeForResume,
-  exitRestoredWorktree,
-} from '../utils/sessionRestore.js';
-import { isBgSession, updateSessionName, updateSessionActivity } from '../utils/concurrentSessions.js';
+import { isBgSession, updateSessionActivity } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
 import { restoreRemoteAgentTasks } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import { BackgroundAgentSelector } from '../components/tasks/BackgroundAgentSelector.js';
@@ -420,6 +398,7 @@ import { useReplAutomation } from './repl/useReplAutomation.js';
 import { useTranscriptSearch } from './repl/useTranscriptSearch.js';
 import { computeStopHookSpinnerSuffix } from './repl/stopHookSpinner.js';
 import { computeDisplayedAgentMessages } from './repl/displayedAgentMessages.js';
+import { runResume } from './repl/runResume.js';
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
@@ -451,10 +430,8 @@ export type { Props, Screen };
  * C2  提交管线            3425–3916   onSubmit / onAgentSubmit
  *     onSubmit 单个 460 行，是全文件最大的块。同样是捕获面风险。
  *
- * C3  会话恢复/回滚       1695–1925   resume
- *                         4004–4087   rewindConversationTo / restoreMessageSync
- *     注意这两段**不相邻**，中间隔着大量其他 hook；若要合成一个簇必须
- *     拆成两个 hook 调用分别原位替换，不能合并成一个调用点。
+ * C3  会话回滚            rewindConversationTo / restoreMessageSync
+ *     （resume 已提取，见 A3）
  *
  * C4  工具权限/执行上下文 2264–2578   sandboxAskCallback / setToolPermissionContext
  *                                     / canUseTool / getToolUseContext
@@ -473,6 +450,11 @@ export type { Props, Screen };
  * A1  gated 自动化簇      → repl/useReplAutomation.ts   （commit cb5a1d63）
  *     voice / inbox / mailbox / scheduledTasks / taskListWatcher /
  *     proactive / goalContinuation
+ * A3  resume              → repl/runResume.ts
+ *     220 行 body / 17 个捕获，是剩余块里比值最好的一个。useCallback 与
+ *     [resetLoadingState, setAppState] dep array 原样留在 REPL.tsx，
+ *     context 对象在 callback 体内构造，stale capture 语义完全不变。
+ * A4  两个纯 useMemo body → repl/stopHookSpinner.ts / displayedAgentMessages.ts
  * A2  transcript 搜索簇    → repl/useTranscriptSearch.ts
  *     搜索状态 / 两个 bare-letter useInput（/ n N 与 q [ v）/
  *     useSearchHighlight / 列宽重扫 effect / 进入时重置 effect。
@@ -1730,227 +1712,29 @@ export function REPL({
 
   const resume = useCallback(
     async (sessionId: UUID, log: LogOption, entrypoint: ResumeEntrypoint) => {
-      const resumeStart = performance.now();
-      try {
-        // Deserialize messages to properly clean up the conversation
-        // This filters unresolved tool uses and adds a synthetic assistant message if needed
-        const messages = deserializeMessages(log.messages);
-
-        // Match coordinator/normal mode to the resumed session
-        if (feature('COORDINATOR_MODE')) {
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const coordinatorModule =
-            require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          const warning = coordinatorModule.matchSessionMode(log.mode);
-          if (warning) {
-            // Re-derive agent definitions after mode switch so built-in agents
-            // reflect the new coordinator/normal mode
-            /* eslint-disable @typescript-eslint/no-require-imports */
-            const { getAgentDefinitionsWithOverrides, getActiveAgentsFromList } =
-              require('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js') as typeof import('@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js');
-            /* eslint-enable @typescript-eslint/no-require-imports */
-            getAgentDefinitionsWithOverrides.cache.clear?.();
-            const freshAgentDefs = await getAgentDefinitionsWithOverrides(getOriginalCwd());
-
-            setAppState(prev => ({
-              ...prev,
-              agentDefinitions: {
-                ...freshAgentDefs,
-                allAgents: freshAgentDefs.allAgents,
-                activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
-              },
-            }));
-            messages.push(createSystemMessage(warning, 'warning'));
-          }
-        }
-
-        // Fire SessionEnd hooks for the current session before starting the
-        // resumed one, mirroring the /clear flow in conversation.ts.
-        const sessionEndTimeoutMs = getSessionEndHookTimeoutMs();
-        await executeSessionEndHooks('resume', {
-          getAppState: () => store.getState(),
-          setAppState,
-          signal: AbortSignal.timeout(sessionEndTimeoutMs),
-          timeoutMs: sessionEndTimeoutMs,
-        });
-
-        // Process session start hooks for resume
-        const hookMessages = await processSessionStartHooks('resume', {
-          sessionId,
-          agentType: mainThreadAgentDefinition?.agentType,
-          model: mainLoopModel,
-        });
-
-        // Append hook messages to the conversation
-        messages.push(...hookMessages);
-        // For forks, generate a new plan slug and copy the plan content so the
-        // original and forked sessions don't clobber each other's plan files.
-        // For regular resumes, reuse the original session's plan slug.
-        if (entrypoint === 'fork') {
-          void copyPlanForFork(log, asSessionId(sessionId));
-        } else {
-          void copyPlanForResume(log, asSessionId(sessionId));
-        }
-
-        // Restore file history and attribution state from the resumed conversation
-        restoreSessionStateFromLog(log, setAppState);
-        if (log.fileHistorySnapshots) {
-          void copyFileHistoryForResume(log);
-        }
-
-        // Restore agent setting from the resumed conversation
-        // Always reset to the new session's values (or clear if none),
-        // matching the standaloneAgentContext pattern below
-        const { agentDefinition: restoredAgent } = restoreAgentFromSession(
-          log.agentSetting,
-          initialMainThreadAgentDefinition,
-          agentDefinitions,
-        );
-        setMainThreadAgentDefinition(restoredAgent);
-        setAppState(prev => ({ ...prev, agent: restoredAgent?.agentType }));
-
-        // Restore standalone agent context from the resumed conversation
-        // Always reset to the new session's values (or clear if none)
-        setAppState(prev => ({
-          ...prev,
-          standaloneAgentContext: computeStandaloneAgentContext(log.agentName, log.agentColor),
-        }));
-        void updateSessionName(log.agentName);
-
-        // Restore read file state from the message history
-        restoreReadFileState(messages, log.projectPath ?? getOriginalCwd());
-
-        // Clear any active loading state (no queryId since we're not in a query)
-        resetLoadingState();
-        setAbortController(null);
-
-        setConversationId(sessionId);
-
-        // Get target session's costs BEFORE saving current session
-        // (saveCurrentSessionCosts overwrites the config, so we need to read first)
-        const targetSessionCosts = getStoredSessionCosts(sessionId);
-
-        // Save current session's costs before switching to avoid losing accumulated costs
-        saveCurrentSessionCosts();
-
-        // Reset cost state for clean slate before restoring target session
-        resetCostState();
-
-        // Switch session (id + project dir atomically). fullPath may point to
-        // a different project (cross-worktree, /branch); null derives from
-        // current originalCwd.
-        switchSession(asSessionId(sessionId), log.fullPath ? dirname(log.fullPath) : null);
-        // Rename asciicast recording to match the resumed session ID
-        const { renameRecordingForSession } = await import('../utils/asciicast.js');
-        await renameRecordingForSession();
-        await resetSessionFilePointer();
-
-        // Clear then restore session metadata so it's re-appended on exit via
-        // reAppendSessionMetadata. clearSessionMetadata must be called first:
-        // restoreSessionMetadata only sets-if-truthy, so without the clear,
-        // a session without an agent name would inherit the previous session's
-        // cached name and write it to the wrong transcript on first message.
-        clearSessionMetadata();
-        restoreSessionMetadata(log);
-
-        // Hydrate goal state from the resumed session's transcript
-        if (feature('GOAL') && log.goal) {
-          const { hydrateGoalFromTranscript } =
-            require('../services/goal/goalStorage.js') as typeof import('../services/goal/goalStorage.js');
-          const goalsMap = new Map<UUID, import('../types/logs.js').GoalState>();
-          goalsMap.set(sessionId as UUID, log.goal);
-          hydrateGoalFromTranscript(goalsMap, sessionId as UUID);
-        }
-
-        // Resumed sessions shouldn't re-title from mid-conversation context
-        // (same reasoning as the useRef seed), and the previous session's
-        // Haiku title shouldn't carry over.
-        haikuTitleAttemptedRef.current = true;
-        setHaikuTitle(undefined);
-
-        // Exit any worktree a prior /resume entered, then cd into the one
-        // this session was in. Without the exit, resuming from worktree B
-        // to non-worktree C leaves cwd/currentWorktreeSession stale;
-        // resuming B→C where C is also a worktree fails entirely
-        // (getCurrentWorktreeSession guard blocks the switch).
-        //
-        // Skipped for /branch: forkLog doesn't carry worktreeSession, so
-        // this would kick the user out of a worktree they're still working
-        // in. Same fork skip as processResumedConversation for the adopt —
-        // fork materializes its own file via recordTranscript on REPL mount.
-        if (entrypoint !== 'fork') {
-          exitRestoredWorktree();
-          restoreWorktreeForResume(log.worktreeSession);
-          adoptResumedSessionFile();
-          void restoreRemoteAgentTasks({
-            abortController: new AbortController(),
-            getAppState: () => store.getState(),
-            setAppState,
-          });
-        } else {
-          // Fork: same re-persist as /clear (conversation.ts). The clear
-          // above wiped currentSessionWorktree, forkLog doesn't carry it,
-          // and the process is still in the same worktree.
-          const ws = getCurrentWorktreeSession();
-          if (ws) saveWorktreeState(ws);
-        }
-
-        // Persist the current mode so future resumes know what mode this session was in
-        if (feature('COORDINATOR_MODE')) {
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const { saveMode } = require('../utils/sessionStorage.js');
-          const { isCoordinatorMode } =
-            require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          saveMode(isCoordinatorMode() ? 'coordinator' : 'normal');
-        }
-
-        // Restore target session's costs from the data we read earlier
-        if (targetSessionCosts) {
-          setCostStateForRestore(targetSessionCosts);
-        }
-
-        // Reconstruct replacement state for the resumed session. Runs after
-        // setSessionId so any NEW replacements post-resume write to the
-        // resumed session's tool-results dir. Gated on ref.current: the
-        // initial mount already read the feature flag, so we don't re-read
-        // it here (mid-session flag flips stay unobservable in both
-        // directions).
-        //
-        // Skipped for in-session /branch: the existing ref is already correct
-        // (branch preserves tool_use_ids), so there's no need to reconstruct.
-        // createFork() does write content-replacement entries to the forked
-        // JSONL with the fork's sessionId, so `claude -r {forkId}` also works.
-        if (contentReplacementStateRef.current && entrypoint !== 'fork') {
-          contentReplacementStateRef.current = reconstructContentReplacementState(
-            messages,
-            log.contentReplacements ?? [],
-          );
-        }
-
-        // Reset messages to the provided initial messages
-        // Use a callback to ensure we're not dependent on stale state
-        setMessages(() => messages);
-
-        // Clear any active tool JSX
-        setToolJSX(null);
-
-        // Clear input to ensure no residual state
-        setInputValue('');
-
-        logEvent('tengu_session_resumed', {
-          entrypoint: entrypoint as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          success: true,
-          resume_duration_ms: Math.round(performance.now() - resumeStart),
-        });
-      } catch (error) {
-        logEvent('tengu_session_resumed', {
-          entrypoint: entrypoint as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          success: false,
-        });
-        throw error;
-      }
+      // Body lives in repl/runResume.ts. The context object is built here,
+      // inside the callback, so every field resolves to the same closure
+      // variable the inline body captured — including the ones this dep array
+      // deliberately omits. Stale capture preserved exactly.
+      await runResume(sessionId, log, entrypoint, {
+        agentDefinitions,
+        contentReplacementStateRef,
+        haikuTitleAttemptedRef,
+        initialMainThreadAgentDefinition,
+        mainLoopModel,
+        mainThreadAgentDefinition,
+        resetLoadingState,
+        restoreReadFileState,
+        setAbortController,
+        setAppState,
+        setConversationId,
+        setHaikuTitle,
+        setInputValue,
+        setMainThreadAgentDefinition,
+        setMessages,
+        setToolJSX,
+        store,
+      });
     },
     [resetLoadingState, setAppState],
   );
