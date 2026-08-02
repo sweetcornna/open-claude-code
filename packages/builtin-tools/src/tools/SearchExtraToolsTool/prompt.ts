@@ -29,25 +29,11 @@ const PROMPT_TAIL = ` Returns matching tool names.
 
 Deferred tools CANNOT be called directly. You MUST use this two-step pattern:
 
-Step 1 — Search: Call this tool (SearchExtraTools) to discover the target tool.
-  Input: {"query": "select:CronCreate"}
-  Response: "Found 1 deferred tool(s): CronCreate. Use ExecuteExtraTool with {"tool_name": "<name>", "params": {...}} to invoke."
+Step 1 — Search: Call this tool (SearchExtraTools) to discover the target tool. The response lists the matched deferred tool names.
 
-Step 2 — Execute: Call ExecuteExtraTool to run the discovered tool.
-  Input: {"tool_name": "CronCreate", "params": {"schedule": "*/5 * * * *", "prompt": "check the deploy"}}
-  Response: the actual tool result.
+Step 2 — Execute: Call ExecuteExtraTool with {"tool_name": "<name>", "params": {...}} to run the discovered tool and get the actual result.
 
-## Example: user asks "schedule a cron to check deploy every 5 minutes"
-
-1. SearchExtraTools({"query": "select:CronCreate"})
-   → Response: Found deferred tool CronCreate
-2. ExecuteExtraTool({"tool_name": "CronCreate", "params": {"schedule": "*/5 * * * *", "prompt": "check the deploy"}})
-   → Response: Cron job created successfully
-
-If you don't know the exact tool name, use keyword search first:
-1. SearchExtraTools({"query": "cron schedule"})
-   → Response: Found deferred tool(s): CronCreate
-2. ExecuteExtraTool({"tool_name": "CronCreate", "params": {...}})
+If you don't know the exact tool name, use keyword search first, then execute the best match.
 
 ## Query forms
 - "select:CronCreate" — exact tool name (fastest, preferred when you know the name from <available-deferred-tools>)
