@@ -266,6 +266,7 @@
       "dependencies": {
         "@ant/model-provider": "workspace:*",
         "@langfuse/tracing": "^5.1.0",
+        "lru-cache": "^11.3.5",
         "react": "^19.2.5",
       },
     },
