@@ -185,7 +185,10 @@ describe('occ update isolation', () => {
     // unchanged, only the file that carries the check.
     const bootstrapSource = readSource('bootstrap/state/sessionRuntime.ts')
     const shareSource = readSource('commands/share/index.ts')
-    const replSource = readSource('screens/REPL.tsx')
+    // The transcript v-for-editor handler moved out of REPL.tsx when the
+    // transcript search cluster was extracted; the assertion below is
+    // unchanged, only the file that carries the check.
+    const replSource = readSource('screens/repl/useTranscriptSearch.ts')
     const executorContract = readFileSync(
       resolve(
         sourceRoot,
