@@ -6,7 +6,7 @@ import { BLOCKQUOTE_BAR } from '../../constants/figures.js'
 import { stringWidth, supportsHyperlinks } from '@anthropic/ink'
 import { createHyperlink } from './hyperlink.js'
 import type { CliHighlight } from './cliHighlight.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 
 import { stripPromptXMLTags } from '../messages.js'
 import type { ThemeName } from '../terminal/theme.js'

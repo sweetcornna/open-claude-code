@@ -10,7 +10,7 @@ import {
 } from '../../constants/apiLimits.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { getImageProcessor } from '@open-claude-code/builtin-tools/tools/FileReadTool/imageProcessor.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import {
@@ -18,7 +18,7 @@ import {
   type ImageDimensions,
   maybeResizeAndDownsampleImageBuffer,
 } from './imageResizer.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import {
   CLIPBOARD_TEMP_PREFIX,
   generateTempFilePath,

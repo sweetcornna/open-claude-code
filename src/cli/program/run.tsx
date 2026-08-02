@@ -6,7 +6,7 @@
 // this file.
 import { Command as CommanderCommand } from '@commander-js/extra-typings';
 import { DISPLAY_NAME } from 'src/constants/brand.js';
-import { profileCheckpoint, profileReport } from 'src/utils/startupProfiler.js';
+import { profileCheckpoint, profileReport } from 'src/utils/telemetry/startupProfiler.js';
 import { createSortedHelpConfig } from './helpConfig.js';
 import { registerPreActionHook } from './preAction.js';
 import { rootAction } from './rootAction.js';

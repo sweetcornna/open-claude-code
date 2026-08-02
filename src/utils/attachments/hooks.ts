@@ -2,8 +2,8 @@ import {
   checkForAsyncHookResponses,
   removeDeliveredAsyncHooks,
 } from '../hooks/AsyncHookRegistry.js'
-import { logForDebugging } from '../debug.js'
-import { jsonStringify } from '../slowOperations.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import type { Attachment } from './types.js'
 
 export async function getAsyncHookResponseAttachments(): Promise<Attachment[]> {

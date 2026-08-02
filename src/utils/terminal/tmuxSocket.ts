@@ -26,10 +26,10 @@
 import { BIN_NAME } from 'src/config/paths.js'
 import { posix } from 'path'
 import { registerCleanup } from '../process/cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { toError } from '../errors.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getPlatform } from '../process/platform.js'
 
 // Constants for tmux socket management

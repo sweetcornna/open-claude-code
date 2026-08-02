@@ -47,7 +47,7 @@ import {
   analyzeContext,
   tokenStatsToStatsigMetrics,
 } from '../../utils/contextAnalysis.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { hasExactErrorMessage } from '../../utils/errors.js'
 import { cacheToObject } from '../../utils/fileStateCache.js'
 import {
@@ -58,7 +58,7 @@ import {
   executePostCompactHooks,
   executePreCompactHooks,
 } from '../../utils/hooks.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { MEMORY_TYPE_VALUES } from '../../utils/memory/types.js'
 import {
   createCompactBoundaryMessage,
@@ -81,7 +81,7 @@ import {
   reAppendSessionMetadata,
 } from '../../utils/sessionStorage.js'
 import { sleep } from '../../utils/process/sleep.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'

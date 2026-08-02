@@ -3,7 +3,7 @@ import { Box, Text, useTheme } from '@anthropic/ink';
 import { getTheme, type Theme } from 'src/utils/terminal/theme.js';
 import { env } from 'src/utils/config/env.js';
 import { shouldShowAlwaysAllowOptions } from 'src/utils/permissions/permissionsLoader.js';
-import { logUnaryEvent } from 'src/utils/unaryLogging.js';
+import { logUnaryEvent } from 'src/utils/telemetry/unaryLogging.js';
 import { PermissionDialog } from 'src/components/permissions/PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption } from 'src/components/permissions/PermissionPrompt.js';
 import type { PermissionRequestProps } from 'src/components/permissions/PermissionRequest.js';

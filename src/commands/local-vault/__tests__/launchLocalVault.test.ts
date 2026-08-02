@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { occConfigDir } from 'src/config/paths.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
 const { KeychainUnavailableError } = await import(

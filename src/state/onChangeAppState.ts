@@ -6,7 +6,7 @@ import {
 } from '../utils/auth/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js'
 import { toError } from '../utils/errors.js'
-import { logError } from '../utils/log.js'
+import { logError } from '../utils/telemetry/log.js'
 import { applyConfigEnvironmentVariables } from '../utils/config/managedEnv.js'
 import {
   permissionModeFromString,

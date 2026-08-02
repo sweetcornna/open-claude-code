@@ -11,10 +11,10 @@ import { mock, describe, test, expect } from 'bun:test'
 
 // Must mock before importing anything that pulls in bootstrap/state
 import { logMock } from '../../../../tests/mocks/log.js'
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 import { debugMock } from '../../../../tests/mocks/debug.js'
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 

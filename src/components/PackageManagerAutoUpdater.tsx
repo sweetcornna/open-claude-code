@@ -10,7 +10,7 @@ import {
   shouldSkipVersion,
 } from '../utils/update/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config/config.js';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import { gt, gte } from '../utils/text/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 

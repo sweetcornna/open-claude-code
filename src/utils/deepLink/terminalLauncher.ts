@@ -14,7 +14,7 @@
 import { spawn } from 'child_process'
 import { basename } from 'path'
 import { getGlobalConfig } from '../config/config.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { which } from '../process/which.js'
 

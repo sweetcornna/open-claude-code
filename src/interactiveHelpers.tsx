@@ -39,7 +39,7 @@ import {
 } from './utils/config/config.js';
 import { updateDeepLinkTerminalPreference } from './utils/deepLink/terminalPreference.js';
 import { isEnvTruthy, isRunningOnHomespace } from './utils/config/envUtils.js';
-import { type FpsMetrics, FpsTracker } from './utils/fpsTracker.js';
+import { type FpsMetrics, FpsTracker } from './utils/telemetry/fpsTracker.js';
 import { updateGithubRepoPathMapping } from './utils/githubRepoPathMapping.js';
 import { applyConfigEnvironmentVariables } from './utils/config/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';

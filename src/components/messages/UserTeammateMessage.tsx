@@ -5,7 +5,7 @@ import { TEAMMATE_MESSAGE_TAG } from '../../constants/xml.js';
 import { Ansi, Box, Text, type TextProps } from '@anthropic/ink';
 import { toInkColor } from '../../utils/terminal/ink.js';
 
-import { jsonParse } from '../../utils/slowOperations.js';
+import { jsonParse } from '../../utils/telemetry/slowOperations.js';
 import { isShutdownApproved } from '../../utils/teammateMailbox.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { tryRenderPlanApprovalMessage } from './PlanApprovalMessage.js';

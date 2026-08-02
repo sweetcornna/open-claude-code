@@ -35,12 +35,12 @@ import {
   type ResponsesReasoningEffort,
 } from './responsesAdapter.js'
 import { normalizeMessagesForAPI } from '../../../utils/messages.js'
-import { toolToAPISchema } from '../../../utils/api.js'
+import { toolToAPISchema } from '../../../utils/telemetry/api.js'
 import {
   getEmptyToolPermissionContext,
   toolMatchesName,
 } from '../../../Tool.js'
-import { logForDebugging } from '../../../utils/debug.js'
+import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/modelCost.js'
 import {

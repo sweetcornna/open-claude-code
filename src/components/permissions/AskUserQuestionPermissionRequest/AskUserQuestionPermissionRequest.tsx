@@ -16,7 +16,7 @@ import type { PastedContent } from '../../../utils/config/config.js';
 import type { ImageDimensions } from '../../../utils/terminal/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/terminal/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/terminal/imageStore.js';
-import { logError } from '../../../utils/log.js';
+import { logError } from '../../../utils/telemetry/log.js';
 import { applyMarkdown } from '../../../utils/text/markdown.js';
 import { isPlanModeInterviewPhaseEnabled } from '../../../utils/planModeV2.js';
 import { getPlanFilePath } from '../../../utils/plans.js';

@@ -11,7 +11,7 @@
  */
 
 import { APIUserAbortError } from '@anthropic-ai/sdk'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { getLastCacheSafeParams } from '../../utils/collections/cacheSafeParamsSlot.js'
 import { runForkedAgent } from '../../utils/forkedAgent.js'
 import {

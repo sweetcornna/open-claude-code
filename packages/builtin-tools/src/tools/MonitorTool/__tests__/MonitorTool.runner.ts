@@ -13,8 +13,8 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 type ExecCall = { command: string; shellType: string }
 type SpawnCall = {

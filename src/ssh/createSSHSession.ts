@@ -11,8 +11,8 @@ import type { SSHAuthProxy } from './SSHAuthProxy.js'
 import { probeRemote } from './SSHProbe.js'
 import { deployBinary } from './SSHDeploy.js'
 import { buildCliLaunch } from '../utils/process/cliLaunch.js'
-import { logForDebugging } from '../utils/debug.js'
-import { jsonParse } from '../utils/slowOperations.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
+import { jsonParse } from '../utils/telemetry/slowOperations.js'
 import { randomUUID } from 'crypto'
 
 const INIT_TIMEOUT_MS = 30_000

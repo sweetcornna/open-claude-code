@@ -35,7 +35,7 @@ import {
 } from './commitAttribution.js'
 import { updateSessionName } from './concurrentSessions.js'
 import { getCwd } from './filesystem/cwd.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import type { FileHistorySnapshot } from './filesystem/fileHistory.js'
 import { fileHistoryRestoreStateFromLog } from './filesystem/fileHistory.js'
 import { createSystemMessage } from './messages.js'

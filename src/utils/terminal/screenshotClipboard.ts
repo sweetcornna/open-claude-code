@@ -4,7 +4,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { type AnsiToPngOptions, ansiToPng } from './ansiToPng.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getPlatform } from '../process/platform.js'
 
 /**

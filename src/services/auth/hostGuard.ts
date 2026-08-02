@@ -9,7 +9,7 @@
  * then minimal guard at earliest detection point).
  */
 
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 
 /** The canonical Anthropic API host for workspace (non-subscription) endpoints. */
 const WORKSPACE_API_HOST = 'api.anthropic.com'

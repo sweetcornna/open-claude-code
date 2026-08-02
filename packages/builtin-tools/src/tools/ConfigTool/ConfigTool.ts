@@ -12,7 +12,7 @@ import {
 } from 'src/utils/config/config.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import {
   getInitialSettings,
   updateSettingsForSource,

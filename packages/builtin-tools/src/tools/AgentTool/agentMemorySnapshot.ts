@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { z } from 'zod/v4'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   jsonParse,

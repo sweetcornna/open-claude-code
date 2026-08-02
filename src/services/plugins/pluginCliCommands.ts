@@ -9,7 +9,7 @@
 import figures from 'figures'
 import { errorMessage } from '../../utils/errors.js'
 import { gracefulShutdown } from '../../utils/process/gracefulShutdown.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getManagedPluginNames } from '../../utils/plugins/managedPlugins.js'
 import { parsePluginIdentifier } from '../../utils/plugins/pluginIdentifier.js'
 import type { PluginScope } from '../../utils/plugins/schemas.js'

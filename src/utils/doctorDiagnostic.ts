@@ -36,7 +36,7 @@ import { getRipgrepStatus } from './filesystem/ripgrep.js'
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { CUSTOMIZATION_SURFACES } from './settings/types.js'
-import { jsonParse } from './slowOperations.js'
+import { jsonParse } from './telemetry/slowOperations.js'
 import { which } from './process/which.js'
 
 export type InstallationType =

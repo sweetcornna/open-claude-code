@@ -17,7 +17,7 @@ import {
   markAutonomyRunCancelled,
   markAutonomyRunFailed,
 } from '../utils/autonomyRuns.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import { enqueuePendingNotification } from '../utils/messageQueueManager.js'
 import { createScheduledTaskFireMessage } from '../utils/messages.js'
 import { WORKLOAD_CRON } from '../utils/workloadContext.js'

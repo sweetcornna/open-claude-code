@@ -43,7 +43,7 @@ import {
 } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, dirname, join } from 'path'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { parseZipModes, unzipFile } from '../dxt/zip.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'

@@ -24,7 +24,7 @@ import {
   copyFileHistoryForResume,
   type FileHistorySnapshot,
 } from './filesystem/fileHistory.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 import {
   createAssistantMessage,
   createUserMessage,

@@ -22,7 +22,7 @@ import {
   getClaudeAIOAuthTokens,
 } from '../../utils/auth/auth.js'
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { classifyAxiosError, getErrnoCode } from '../../utils/errors.js'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import {
@@ -30,7 +30,7 @@ import {
   SettingsSchema,
 } from '../../utils/settings/types.js'
 import { sleep } from '../../utils/process/sleep.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import {

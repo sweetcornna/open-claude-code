@@ -12,8 +12,8 @@
 
 import { readFile } from 'fs/promises'
 import { join } from 'path'
-import { logForDebugging } from '../debug.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
 import { loadKnownMarketplacesConfigSafe } from './marketplaceManager.js'
 import {
   type KnownMarketplacesFile,

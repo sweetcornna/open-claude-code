@@ -11,7 +11,7 @@ import { count } from '../utils/collections/array.js';
 import sample from 'lodash-es/sample.js';
 import { formatDuration, formatNumber } from '../utils/text/format.js';
 import type { Theme } from 'src/utils/terminal/theme.js';
-import { activityManager } from '../utils/activityManager.js';
+import { activityManager } from '../utils/telemetry/activityManager.js';
 import { getSpinnerVerbs } from '../constants/spinnerVerbs.js';
 import { MessageResponse } from './MessageResponse.js';
 import { TaskListV2 } from './TaskListV2.js';

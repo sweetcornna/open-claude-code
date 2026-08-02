@@ -7,7 +7,7 @@ import {
 import type { MCPResultType } from '../../services/mcp/client.js'
 import { toError } from '../errors.js'
 import { formatFileSize } from '../text/format.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import {
   ensureToolResultsDir,
   getToolResultsDir,

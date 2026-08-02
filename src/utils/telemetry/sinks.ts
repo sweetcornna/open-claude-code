@@ -1,4 +1,4 @@
-import { initializeErrorLogSink } from '../errorLogSink.js'
+import { initializeErrorLogSink } from './errorLogSink.js'
 import { initializeAnalyticsSink } from '../../services/analytics/sink.js'
 
 /**

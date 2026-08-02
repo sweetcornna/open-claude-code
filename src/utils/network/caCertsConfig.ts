@@ -14,7 +14,7 @@
  */
 
 import { getGlobalConfig } from '../config/config.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { getSettingsForSource } from '../settings/settings.js'
 
 /**

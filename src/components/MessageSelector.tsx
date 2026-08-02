@@ -14,7 +14,7 @@ import {
   fileHistoryEnabled,
   fileHistoryGetDiffStats,
 } from 'src/utils/filesystem/fileHistory.js';
-import { logError } from 'src/utils/log.js';
+import { logError } from 'src/utils/telemetry/log.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text, Divider } from '@anthropic/ink';
 import { useKeybinding, useKeybindings } from '../keybindings/useKeybinding.js';

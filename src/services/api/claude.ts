@@ -56,7 +56,7 @@ import {
   logAPIPrefix,
   splitSysPromptPrefix,
   toolToAPISchema,
-} from '../../utils/api.js'
+} from '../../utils/telemetry/api.js'
 import { getOauthAccountInfo } from '../../utils/auth/auth.js'
 import {
   getBedrockExtraBodyParamsBetas,
@@ -72,7 +72,7 @@ import {
 import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
-import { captureAPIRequest, logError } from '../../utils/log.js'
+import { captureAPIRequest, logError } from '../../utils/telemetry/log.js'
 import {
   createAssistantAPIErrorMessage,
   createUserMessage,
@@ -167,8 +167,8 @@ import {
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from 'src/utils/chromeDevtools/common.js'
 import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from 'src/utils/chromeDevtools/prompt.js'
 import { getMaxThinkingTokensForModel } from 'src/utils/context.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
 import { type EffortValue, modelSupportsEffort } from 'src/utils/effort.js'
 import {
   isFastModeAvailable,
@@ -177,10 +177,13 @@ import {
   isFastModeSupportedByModel,
 } from 'src/utils/fastMode.js'
 import { returnValue } from 'src/utils/collections/generators.js'
-import { headlessProfilerCheckpoint } from 'src/utils/headlessProfiler.js'
+import { headlessProfilerCheckpoint } from 'src/utils/telemetry/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcp/mcpInstructionsDelta.js'
 import { calculateUSDCost } from 'src/utils/modelCost.js'
-import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
+import {
+  endQueryProfile,
+  queryCheckpoint,
+} from 'src/utils/telemetry/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
   modelSupportsThinking,
@@ -210,7 +213,7 @@ import {
   startSessionActivity,
   stopSessionActivity,
 } from '../../utils/sessionActivity.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   isBetaTracingEnabled,
   type LLMRequestNewContext,

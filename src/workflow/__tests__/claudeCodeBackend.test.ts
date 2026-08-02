@@ -54,7 +54,9 @@ mock.module('src/utils/collections/uuid.js', () => ({
   createAgentId: () => 'agent-1',
 }))
 mock.module('src/services/analytics/index.js', () => ({ logEvent: () => {} }))
-mock.module('src/utils/debug.js', () => ({ logForDebugging: () => {} }))
+mock.module('src/utils/telemetry/debug.js', () => ({
+  logForDebugging: () => {},
+}))
 
 // isolation:'worktree' tests: mock worktree trio (to avoid actually running git worktree add).
 // Note mock.module is process-global; worktreeState is defined outside the factory for test reset.

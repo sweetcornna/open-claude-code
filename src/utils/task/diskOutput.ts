@@ -11,7 +11,7 @@ import { join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
 import { getErrnoCode } from '../errors.js'
 import { readFileRange, tailFile } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getProjectTempDir } from '../permissions/filesystem.js'
 
 // SECURITY: O_NOFOLLOW prevents following symlinks when opening task output files.

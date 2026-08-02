@@ -9,7 +9,7 @@ import { classifyGuiEditor, getExternalEditor } from './editor.js'
 import { execSync_DEPRECATED } from '../process/execSyncWrapper.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { toIDEDisplayName } from './ide.js'
-import { writeFileSync_DEPRECATED } from '../slowOperations.js'
+import { writeFileSync_DEPRECATED } from '../telemetry/slowOperations.js'
 import { generateTempFilePath } from '../filesystem/tempfile.js'
 
 // Map of editor command overrides (e.g., to add wait flags)

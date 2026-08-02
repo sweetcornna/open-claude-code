@@ -26,7 +26,7 @@ import {
   permissionRuleSourceDisplayString,
 } from '../../../utils/permissions/permissions.js';
 import type { UnreachableRule } from '../../../utils/permissions/shadowedRuleDetection.js';
-import { jsonStringify } from '../../../utils/slowOperations.js';
+import { jsonStringify } from '../../../utils/telemetry/slowOperations.js';
 import { Pane, Tab, Tabs, useTabHeaderFocus, useTabsWidth } from '@anthropic/ink';
 import { SearchBox } from '../../SearchBox.js';
 import type { Option } from '../../ui/option.js';

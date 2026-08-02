@@ -58,9 +58,9 @@ import {
   cloneFileStateCache,
   type FileStateCache,
 } from './utils/fileStateCache.js'
-import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
+import { headlessProfilerCheckpoint } from './utils/telemetry/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
-import { getInMemoryErrors } from './utils/log.js'
+import { getInMemoryErrors } from './utils/telemetry/log.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
   getMainLoopModel,

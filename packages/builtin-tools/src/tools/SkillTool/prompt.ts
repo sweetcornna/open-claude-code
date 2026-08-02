@@ -12,10 +12,10 @@ import {
   logEvent,
 } from '@open-claude-code/tool-runtime/analytics.js'
 import { count } from 'src/utils/collections/array.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { toError } from '@open-claude-code/tool-runtime/errors.js'
 import { truncate } from 'src/utils/text/format.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 
 // Skill listing gets 1% of the context window (in characters)
 export const SKILL_BUDGET_CONTEXT_PERCENT = 0.01

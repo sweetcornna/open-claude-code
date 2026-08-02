@@ -91,7 +91,7 @@ mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
   updateProgressFromMessage: noop,
 }))
 
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 mock.module('src/utils/errors.js', () => ({
   ClaudeError: class extends Error {},

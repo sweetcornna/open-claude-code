@@ -1,6 +1,6 @@
 import { logEvent } from 'src/services/analytics/index.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js'
-import { logError } from '../utils/log.js'
+import { logError } from '../utils/telemetry/log.js'
 import {
   hasSkipDangerousModePermissionPrompt,
   updateSettingsForSource,

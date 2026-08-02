@@ -10,7 +10,7 @@ import { filterParentToolsForFork } from 'src/utils/agentToolFilter.js'
 import { asAgentId } from 'src/types/ids.js'
 import { runWithAgentContext } from 'src/utils/agentContext.js'
 import { runWithCwdOverride } from 'src/utils/filesystem/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   createUserMessage,
   filterOrphanedThinkingOnlyMessages,

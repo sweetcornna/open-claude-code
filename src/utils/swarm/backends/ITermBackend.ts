@@ -1,5 +1,5 @@
 import type { AgentColorName } from '@open-claude-code/builtin-tools/tools/AgentTool/agentColorManager.js'
-import { logForDebugging } from '../../../utils/debug.js'
+import { logForDebugging } from '../../telemetry/debug.js'
 import { execFileNoThrow } from '../../process/execFileNoThrow.js'
 import { IT2_COMMAND, isInITerm2, isIt2CliAvailable } from './detection.js'
 import { registerITermBackend } from './registry.js'

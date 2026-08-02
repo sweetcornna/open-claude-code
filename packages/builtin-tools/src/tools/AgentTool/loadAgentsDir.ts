@@ -13,7 +13,7 @@ import {
   McpServerConfigSchema,
 } from 'src/services/mcp/types.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   EFFORT_LEVELS,
   type EffortValue,
@@ -22,7 +22,7 @@ import {
 import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { parsePositiveIntFromFrontmatter } from 'src/utils/text/frontmatterParser.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import {
   loadMarkdownFilesForSubdir,
   parseAgentToolsFromFrontmatter,

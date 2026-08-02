@@ -1,4 +1,4 @@
-import { profileCheckpoint } from '../utils/startupProfiler.js'
+import { profileCheckpoint } from '../utils/telemetry/startupProfiler.js'
 import '../bootstrap/state.js'
 import '../utils/config/config.js'
 import type { Attributes, MetricOptions } from '@opentelemetry/api'
@@ -26,9 +26,9 @@ import {
   recordFirstStartTime,
   saveGlobalConfig,
 } from '../utils/config/config.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import { detectCurrentRepository } from '../utils/detectRepository.js'
-import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
+import { logForDiagnosticsNoPII } from '../utils/telemetry/diagLogs.js'
 import { initJetBrainsDetection } from '../utils/config/envDynamic.js'
 import { isEnvTruthy } from '../utils/config/envUtils.js'
 import { ConfigParseError, errorMessage } from '../utils/errors.js'
@@ -51,9 +51,9 @@ import {
 // gRPC exporters (~700KB via @grpc/grpc-js) are further lazy-loaded within instrumentation.ts.
 import { configureGlobalAgents } from '../utils/network/proxy.js'
 import { isBetaTracingEnabled } from '../utils/telemetry/betaSessionTracing.js'
-import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
+import { getTelemetryAttributes } from '../utils/telemetry/telemetryAttributes.js'
 import { setShellIfWindows } from '../utils/filesystem/windowsPaths.js'
-import { initSentry } from '../utils/sentry.js'
+import { initSentry } from '../utils/telemetry/sentry.js'
 import { initUser } from '../utils/auth/user.js'
 import { initLangfuse, shutdownLangfuse } from '../services/langfuse/index.js'
 import { setThemeConfigCallbacks } from '@anthropic/ink'

@@ -4,8 +4,8 @@ import type {
   StdoutMessage,
 } from 'src/entrypoints/sdk/controlTypes.js'
 import { decodeJwtExpiry } from '../../utils/auth/jwt.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { logForDiagnosticsNoPII } from '../../utils/telemetry/diagLogs.js'
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
 import { createAxiosInstance } from '../../utils/network/proxy.js'
 import {

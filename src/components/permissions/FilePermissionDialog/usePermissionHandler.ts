@@ -15,7 +15,7 @@ import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpda
 import {
   type CompletionType,
   logUnaryEvent,
-} from '../../../utils/unaryLogging.js'
+} from '../../../utils/telemetry/unaryLogging.js'
 import type { ToolUseConfirm } from '../PermissionRequest.js'
 import type {
   FileOperationType,

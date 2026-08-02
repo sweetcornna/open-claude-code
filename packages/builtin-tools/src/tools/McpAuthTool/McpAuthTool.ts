@@ -17,7 +17,7 @@ import type {
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logMCPDebug, logMCPError } from 'src/utils/log.js'
+import { logMCPDebug, logMCPError } from 'src/utils/telemetry/log.js'
 import type { PermissionDecision } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 
 const inputSchema = lazySchema(() => z.object({}))

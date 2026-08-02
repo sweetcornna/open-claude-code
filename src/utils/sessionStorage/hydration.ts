@@ -3,9 +3,9 @@ import { dirname, join } from 'path'
 import { getOriginalCwd, switchSession } from '../../bootstrap/state.js'
 import * as sessionIngress from '../../services/api/sessionIngress.js'
 import { asAgentId, asSessionId } from '../../types/ids.js'
-import { logForDebugging } from '../debug.js'
-import { logForDiagnosticsNoPII } from '../diagLogs.js'
-import { jsonStringify } from '../slowOperations.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import {
   getAgentTranscriptPath,
   getProjectDir,

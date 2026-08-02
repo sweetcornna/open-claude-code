@@ -3,7 +3,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs
 import type { PendingClassifierCheck } from '../../../types/permissions.js'
 import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js'
 import { toError } from '../../../utils/errors.js'
-import { logError } from '../../../utils/log.js'
+import { logError } from '../../../utils/telemetry/log.js'
 import type { PermissionDecision } from '../../../utils/permissions/PermissionResult.js'
 import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpdateSchema.js'
 import {

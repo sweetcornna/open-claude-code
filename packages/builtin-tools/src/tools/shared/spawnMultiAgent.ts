@@ -10,7 +10,7 @@ import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { formatAgentId } from 'src/utils/agentId.js'
 import { getGlobalConfig } from 'src/utils/config/config.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { parseUserSpecifiedModel } from 'src/utils/model/model.js'
 import { getTeammateExecutor } from 'src/utils/swarm/backends/registry.js'
 import type {

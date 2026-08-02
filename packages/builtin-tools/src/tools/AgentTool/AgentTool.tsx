@@ -47,7 +47,7 @@ import { runWithAgentContext, type SubagentContext } from 'src/utils/agentContex
 import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
 import { getCwd, runWithCwdOverride } from 'src/utils/filesystem/cwd.js';
 import { getSubscriptionType } from 'src/utils/auth/auth.js';
-import { logForDebugging } from 'src/utils/debug.js';
+import { logForDebugging } from 'src/utils/telemetry/debug.js';
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js';
 import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { AbortError, errorMessage, toError } from '@open-claude-code/tool-runtime/errors.js';

@@ -6,7 +6,7 @@ import { Box, Text } from '@anthropic/ink';
 import type { FileEdit } from '@open-claude-code/builtin-tools/tools/FileEditTool/types.js';
 import { findActualString } from '@open-claude-code/builtin-tools/tools/FileEditTool/utils.js';
 import { adjustHunkLineNumbers, CONTEXT_LINES, getPatchForDisplay } from '../utils/text/diff.js';
-import { logError } from '../utils/log.js';
+import { logError } from '../utils/telemetry/log.js';
 import { CHUNK_SIZE, openForScan, readCapped, scanForContext } from '../utils/filesystem/readEditContext.js';
 import { firstLineOf } from '../utils/text/stringUtils.js';
 import { StructuredDiffList } from './StructuredDiffList.js';

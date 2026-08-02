@@ -46,7 +46,7 @@ mock.module('src/utils/network/http.js', () => ({
   getWebFetchUserAgent: () => 'TestAgent/1.0',
 }))
 
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 mock.module('src/utils/mcp/mcpOutputStorage.js', () => ({
   isBinaryContentType: (contentType: string) =>

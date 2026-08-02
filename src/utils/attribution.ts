@@ -18,9 +18,9 @@ import {
   type AttributionData,
   calculateCommitAttribution,
 } from './commitAttribution.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 import { parseJSONL } from './text/json.js'
-import { logError } from './log.js'
+import { logError } from './telemetry/log.js'
 import { getRealModelName } from './attributionModel.js'
 import { isMemoryFileAccess } from './sessionFileAccessHooks.js'
 import { getTranscriptPath } from './sessionStorage.js'

@@ -9,7 +9,7 @@ import type { LocalJSXCommandCall } from '../../types/command.js';
 import { clearMemoryFileCaches, getMemoryFiles } from '../../utils/claudemd.js';
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js';
 import { getErrnoCode } from '../../utils/errors.js';
-import { logError } from '../../utils/log.js';
+import { logError } from '../../utils/telemetry/log.js';
 import { editFileInEditor } from '../../utils/terminal/promptEditor.js';
 
 function MemoryCommand({

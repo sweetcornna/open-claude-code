@@ -1,7 +1,7 @@
 import memoize from 'lodash-es/memoize.js'
 import { refreshAndGetAwsCredentials } from '../auth/auth.js'
 import { getAWSRegion, isEnvTruthy } from '../config/envUtils.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getAWSClientProxyConfig } from '../network/proxy.js'
 
 export const getBedrockInferenceProfiles = memoize(async function (): Promise<

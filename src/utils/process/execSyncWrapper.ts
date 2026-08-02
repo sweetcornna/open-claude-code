@@ -4,7 +4,7 @@ import {
   type ExecSyncOptionsWithStringEncoding,
   execSync as nodeExecSync,
 } from 'child_process'
-import { slowLogging } from '../slowOperations.js'
+import { slowLogging } from '../telemetry/slowOperations.js'
 
 /**
  * @deprecated Use async alternatives when possible. Sync exec calls block the event loop.

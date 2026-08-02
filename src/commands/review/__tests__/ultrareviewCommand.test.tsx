@@ -28,8 +28,8 @@ afterAll(() => {
 });
 
 // Mock dependency chain before any subject import
-mock.module('src/utils/debug.ts', debugMock);
-mock.module('src/utils/log.ts', logMock);
+mock.module('src/utils/telemetry/debug.ts', debugMock);
+mock.module('src/utils/telemetry/log.ts', logMock);
 mock.module('src/services/analytics/index.js', () => ({
   logEvent: () => {},
 }));

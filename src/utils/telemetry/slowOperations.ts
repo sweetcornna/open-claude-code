@@ -12,7 +12,7 @@ import {
   type SlowOperationsHost,
 } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { addSlowOperation } from '../../bootstrap/state.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from './debug.js'
 
 // Extended WriteFileOptions to include 'flush' which is available in Node.js 20.1.0+
 // but not yet in @types/node

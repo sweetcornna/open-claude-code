@@ -1,7 +1,7 @@
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import { getEmptyToolPermissionContext } from '../Tool.js'
 import type { Message } from '../types/message.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import {
   createUserMessage,
   getAssistantMessageText,

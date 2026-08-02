@@ -3,8 +3,8 @@ import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
 import { mock } from 'bun:test'
 
-mock.module('src/utils/log.ts', logMock)
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 // Mock growthbook to cut analytics dependency
 mock.module('src/services/analytics/growthbook.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,

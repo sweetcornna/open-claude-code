@@ -2,7 +2,7 @@ import { mock, describe, expect, test } from 'bun:test'
 import { logMock } from '../../../tests/mocks/log'
 
 // Mock heavy dependency chain: tokenEstimation.ts → log.ts → bootstrap/state.ts
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 // Mock tokenEstimation to avoid pulling in API provider deps
 mock.module('src/services/tokenEstimation.ts', () => ({

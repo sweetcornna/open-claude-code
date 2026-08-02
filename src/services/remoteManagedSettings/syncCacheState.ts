@@ -27,7 +27,7 @@ import { readFileSync } from '../../utils/filesystem/fileRead.js'
 import { stripBOM } from '../../utils/filesystem/jsonRead.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
-import { jsonParse } from '../../utils/slowOperations.js'
+import { jsonParse } from '../../utils/telemetry/slowOperations.js'
 
 const SETTINGS_FILENAME = 'remote-settings.json'
 

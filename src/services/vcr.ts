@@ -24,7 +24,7 @@ import {
 } from '../utils/config/envUtils.js'
 import { getErrnoCode } from '../utils/errors.js'
 import { normalizeMessagesForAPI } from '../utils/messages.js'
-import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
+import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
 
 function shouldUseVCR(): boolean {
   if (process.env.NODE_ENV === 'test') {

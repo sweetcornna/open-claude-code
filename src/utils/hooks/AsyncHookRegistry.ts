@@ -3,10 +3,10 @@ import type {
   HookEvent,
   SyncHookJSONOutput,
 } from 'src/entrypoints/agentSdkTypes.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import type { ShellCommand } from '../shell/ShellCommand.js'
 import { invalidateSessionEnvCache } from '../sessionEnvironment.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
 import { emitHookResponse, startHookProgressInterval } from './hookEvents.js'
 
 export type PendingAsyncHook = {

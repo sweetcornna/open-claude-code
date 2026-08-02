@@ -9,7 +9,7 @@ import {
   getOauthAccountInfo,
   isConsumerSubscriber,
 } from 'src/utils/auth/auth.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { gracefulShutdown } from 'src/utils/process/gracefulShutdown.js'
 import { isEssentialTrafficOnly } from 'src/utils/auth/privacyLevel.js'
 import { writeToStderr } from 'src/utils/process/process.js'
@@ -20,7 +20,7 @@ import {
   getUserAgent,
   withOAuth401Retry,
 } from '../../utils/network/http.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 
 // Cache expiration: 24 hours

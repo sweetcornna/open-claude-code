@@ -3,11 +3,11 @@ import { basename, dirname, join } from 'path'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import { createBufferedWriter } from '../filesystem/bufferedWriter.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { sanitizePath } from '../filesystem/path.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 
 // Mutable recording state — filePath is updated when session ID changes (e.g., --resume)
 const recordingState: { filePath: string | null; timestamp: number } = {

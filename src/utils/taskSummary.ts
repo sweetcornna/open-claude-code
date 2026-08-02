@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { isBgSession, updateSessionActivity } from './concurrentSessions.js'
-import { logForDebugging } from './debug.js'
+import { logForDebugging } from './telemetry/debug.js'
 
 /**
  * Minimum interval between task summary generations (ms).

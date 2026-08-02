@@ -17,7 +17,7 @@ import type { Message } from '../../types/message.js'
 import { createChildAbortController } from '../../utils/process/abortController.js'
 import { count } from '../../utils/collections/array.js'
 import { getGlobalConfig } from '../../utils/config/config.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
   type FileStateCache,
@@ -31,7 +31,7 @@ import {
 } from '../../utils/forkedAgent.js'
 import { formatDuration, formatNumber } from '../../utils/text/format.js'
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import type { SetAppState } from '../../utils/messageQueueManager.js'
 import {
   createSystemMessage,
@@ -42,7 +42,7 @@ import {
 import { getClaudeTempDir } from '../../utils/permissions/filesystem.js'
 import { extractReadFilesFromMessages } from '../../utils/queryHelpers.js'
 import { getTranscriptPath } from '../../utils/sessionStorage.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

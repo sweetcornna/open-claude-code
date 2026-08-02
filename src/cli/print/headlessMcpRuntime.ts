@@ -22,7 +22,7 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from 'src/services/analytics/index.js'
-import { logMCPDebug } from 'src/utils/log.js'
+import { logMCPDebug } from 'src/utils/telemetry/log.js'
 import { getInitJsonSchema, getSessionId } from 'src/bootstrap/state.js'
 import type {
   McpServerConfigForProcessTransport,
@@ -43,7 +43,7 @@ import { executeNotificationHooks } from 'src/utils/hooks.js'
 import { getMcpPrefix } from 'src/services/mcp/mcpStringUtils.js'
 import { filterToolsByServer } from 'src/services/mcp/utils.js'
 import { setupVscodeSdkMcp } from 'src/services/mcp/vscodeSdkMcp.js'
-import { jsonStringify } from 'src/utils/slowOperations.js'
+import { jsonStringify } from 'src/utils/telemetry/slowOperations.js'
 import { handleMcpSetServers } from './mcpServers.js'
 import type { HeadlessRunState } from './headlessRunState.js'
 

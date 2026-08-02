@@ -33,7 +33,7 @@ import type { VimMode } from '../types/textInputTypes.js';
 import { checkHasTrustDialogAccepted } from '../utils/config/config.js';
 import { calculateContextPercentages, getContextWindowForModel } from '../utils/context.js';
 import { getCwd } from '../utils/filesystem/cwd.js';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import { isFullscreenEnvEnabled } from '../utils/terminal/fullscreen.js';
 import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js';
 import { getLastAssistantMessage } from '../utils/messages.js';
@@ -42,8 +42,12 @@ import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/worktree.js';
 import { isVimModeEnabled } from './PromptInput/utils.js';
-import { computeHitRate, tokenSignature } from '../utils/cacheStats.js';
-import { onResponse as cacheOnResponse, getCacheStatsState, initCacheStatsState } from '../utils/cacheStatsState.js';
+import { computeHitRate, tokenSignature } from '../utils/telemetry/cacheStats.js';
+import {
+  onResponse as cacheOnResponse,
+  getCacheStatsState,
+  initCacheStatsState,
+} from '../utils/telemetry/cacheStatsState.js';
 import { BuiltinStatusLine } from './BuiltinStatusLine.js';
 import { formatTokens } from 'src/utils/text/format.js';
 

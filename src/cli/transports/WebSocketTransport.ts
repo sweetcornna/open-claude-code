@@ -2,9 +2,9 @@ import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import type WsWebSocket from 'ws'
 import { logEvent } from '../../services/analytics/index.js'
 import { CircularBuffer } from '../../utils/collections/CircularBuffer.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { rcLog } from '../../utils/rcDebugLog.js'
-import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { rcLog } from '../../utils/telemetry/rcDebugLog.js'
+import { logForDiagnosticsNoPII } from '../../utils/telemetry/diagLogs.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { getWebSocketTLSOptions } from '../../utils/network/mtls.js'
 import {
@@ -15,7 +15,7 @@ import {
   registerSessionActivityCallback,
   unregisterSessionActivityCallback,
 } from '../../utils/sessionActivity.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import type { Transport } from './Transport.js'
 
 const KEEP_ALIVE_FRAME = '{"type":"keep_alive"}\n'

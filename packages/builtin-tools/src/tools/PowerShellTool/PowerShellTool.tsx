@@ -27,7 +27,7 @@ import { isEnvTruthy } from 'src/utils/config/envUtils.js';
 import { errorMessage as getErrorMessage, ShellError } from '@open-claude-code/tool-runtime/errors.js';
 import { truncate } from 'src/utils/text/format.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
-import { logError } from 'src/utils/log.js';
+import { logError } from 'src/utils/telemetry/log.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { getPlatform } from 'src/utils/process/platform.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';

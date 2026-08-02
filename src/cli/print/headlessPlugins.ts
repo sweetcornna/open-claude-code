@@ -10,9 +10,9 @@
  */
 import { cwd } from 'process'
 import { logEvent } from 'src/services/analytics/index.js'
-import { logError } from 'src/utils/log.js'
-import { logForDebugging } from 'src/utils/debug.js'
-import { withDiagnosticsTiming } from 'src/utils/diagLogs.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { withDiagnosticsTiming } from 'src/utils/telemetry/diagLogs.js'
 import { getCommands } from 'src/commands.js'
 import { getAllMcpConfigs } from 'src/services/mcp/config.js'
 import type { McpServerConfigForProcessTransport } from 'src/entrypoints/agentSdkTypes.js'

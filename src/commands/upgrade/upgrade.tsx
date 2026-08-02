@@ -4,7 +4,7 @@ import { getOauthProfileFromOauthToken } from '../../services/oauth/getOauthProf
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { getClaudeAIOAuthTokens, isClaudeAISubscriber } from '../../utils/auth/auth.js';
 import { openBrowser } from '../../utils/network/browser.js';
-import { logError } from '../../utils/log.js';
+import { logError } from '../../utils/telemetry/log.js';
 import { Login } from '../login/login.js';
 
 export async function call(

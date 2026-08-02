@@ -8,14 +8,14 @@
  * that a future session can show the TTL countdown immediately on startup.
  */
 
-import type { CacheUsage, CacheStatsState } from '../cacheStats.js'
+import type { CacheUsage, CacheStatsState } from './cacheStats.js'
 import {
   computeHitRate,
   tokenSignature,
   getStateFilePath,
   readState,
   writeStateAtomic,
-} from '../cacheStats.js'
+} from './cacheStats.js'
 
 interface MemState {
   signature: string | null

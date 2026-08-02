@@ -11,7 +11,7 @@ import { TICK_TAG } from '../constants/xml.js'
 import { getCwd } from '../utils/filesystem/cwd.js'
 import { cancelQueuedAutonomyCommands } from '../utils/autonomyQueueLifecycle.js'
 import { createProactiveAutonomyCommands } from '../utils/autonomyRuns.js'
-import { logForDebugging } from '../utils/debug.js'
+import { logForDebugging } from '../utils/telemetry/debug.js'
 import {
   isProactiveActive,
   isProactivePaused,

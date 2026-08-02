@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from 'react';
-import type { FpsMetrics } from '../utils/fpsTracker.js';
+import type { FpsMetrics } from '../utils/telemetry/fpsTracker.js';
 
 type FpsMetricsGetter = () => FpsMetrics | undefined;
 

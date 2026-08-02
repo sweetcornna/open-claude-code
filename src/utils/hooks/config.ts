@@ -16,7 +16,7 @@ import type { HookEvent, HookInput } from 'src/entrypoints/agentSdkTypes.js'
 import type { HookCallback, HookCallbackMatcher } from '../../types/hooks.js'
 import { checkHasTrustDialogAccepted } from '../config/config.js'
 import { getCwd } from '../filesystem/cwd.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import {
   getLegacyToolNames,
   normalizeLegacyToolName,

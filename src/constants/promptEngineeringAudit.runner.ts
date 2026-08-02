@@ -90,7 +90,7 @@ mock.module('src/utils/mcp/mcpInstructionsDelta.js', () => ({
 mock.module('src/memdir/memdir.js', () => ({
   loadMemoryPrompt: async () => null,
 }))
-mock.module('src/utils/debug.js', () => ({
+mock.module('src/utils/telemetry/debug.js', () => ({
   logForDebugging: () => {},
 }))
 mock.module('src/services/analytics/growthbook.js', () => ({

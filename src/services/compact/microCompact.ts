@@ -10,10 +10,10 @@ import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/p
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js'
 import { WEB_SEARCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebSearchTool/prompt.js'
 import type { Message } from '../../types/message.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import { SHELL_TOOL_NAMES } from '../../utils/shell/shellToolUtils.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

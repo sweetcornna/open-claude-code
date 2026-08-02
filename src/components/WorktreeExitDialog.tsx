@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { CommandResultDisplay } from 'src/commands.js';
 import { logEvent } from 'src/services/analytics/index.js';
-import { logForDebugging } from 'src/utils/debug.js';
+import { logForDebugging } from 'src/utils/telemetry/debug.js';
 import { Box, Text, Dialog } from '@anthropic/ink';
 import { execFileNoThrow } from '../utils/process/execFileNoThrow.js';
 import { getPlansDirectory } from '../utils/plans.js';

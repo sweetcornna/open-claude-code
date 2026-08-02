@@ -38,8 +38,8 @@ import { refreshActivePlugins } from 'src/utils/plugins/refresh.js'
 import { createModelSwitchBreadcrumbs } from 'src/utils/messages.js'
 import { createAbortController } from 'src/utils/process/abortController.js'
 import { errorMessage } from 'src/utils/errors.js'
-import { logError } from 'src/utils/log.js'
-import { logForDebugging } from 'src/utils/debug.js'
+import { logError } from 'src/utils/telemetry/log.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   dequeueAllMatching,
   hasCommandsInQueue,

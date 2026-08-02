@@ -9,7 +9,7 @@ import {
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { checkForReleaseNotes } from 'src/utils/update/releaseNotes.js'
 import { setCwd } from 'src/utils/shell/Shell.js'
-import { initSinks } from 'src/utils/sinks.js'
+import { initSinks } from 'src/utils/telemetry/sinks.js'
 import {
   getIsNonInteractiveSession,
   getProjectRoot,
@@ -30,7 +30,7 @@ import {
   getCurrentProjectConfig,
   getGlobalConfig,
 } from './utils/config/config.js'
-import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
+import { logForDiagnosticsNoPII } from './utils/telemetry/diagLogs.js'
 import { env } from './utils/config/env.js'
 import { envDynamic } from './utils/config/envDynamic.js'
 import { isBareMode, isEnvTruthy } from './utils/config/envUtils.js'
@@ -43,13 +43,13 @@ import {
 } from './utils/hooks/hooksConfigSnapshot.js'
 import { hasWorktreeCreateHook } from './utils/hooks.js'
 import { checkAndRestoreITerm2Backup } from './utils/terminal/iTermBackup.js'
-import { logError } from './utils/log.js'
+import { logError } from './utils/telemetry/log.js'
 import { getRecentActivity } from './utils/terminal/logoV2Utils.js'
 import { lockCurrentVersion } from './utils/nativeInstaller/index.js'
 import type { PermissionMode } from './utils/permissions/PermissionMode.js'
 import { getPlanSlug } from './utils/plans.js'
 import { saveWorktreeState } from './utils/sessionStorage.js'
-import { profileCheckpoint } from './utils/startupProfiler.js'
+import { profileCheckpoint } from './utils/telemetry/startupProfiler.js'
 import {
   createTmuxSessionForWorktree,
   createWorktreeForSession,

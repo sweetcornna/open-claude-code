@@ -36,11 +36,11 @@ mock.module('../LSPServerInstance.js', () => ({
 }))
 
 // Mock log modules with side effects
-mock.module('../../../utils/log.js', () => ({
+mock.module('../../../utils/telemetry/log.js', () => ({
   logError: mock(() => {}),
 }))
 
-mock.module('../../../utils/debug.js', () => ({
+mock.module('../../../utils/telemetry/debug.js', () => ({
   logForDebugging: mock(() => {}),
 }))
 

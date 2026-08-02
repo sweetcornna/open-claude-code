@@ -39,7 +39,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { occConfigDir } from 'src/config/paths.js'
 import { join } from 'node:path'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { KeychainUnavailableError, tryKeychain } from './keychain.js'
 
 let keychainBackend = tryKeychain

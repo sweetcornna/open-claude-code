@@ -2,7 +2,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { ProvidersFileSchema, type ProviderConfig } from './types.js'
 

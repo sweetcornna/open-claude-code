@@ -58,7 +58,7 @@ import type {
   PluginLoadResult,
   PluginManifest,
 } from '../../types/plugin.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import {
   errorMessage,
@@ -75,7 +75,7 @@ import { pathExists } from '../filesystem/file.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { gitExe } from '../git.js'
 import { lazySchema } from '../collections/lazySchema.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import {
   clearPluginSettingsBase,
@@ -86,7 +86,7 @@ import {
 import type { HooksSettings } from '../settings/types.js'
 import type { HookMatcher } from '../../schemas/hooks.js'
 import { SettingsSchema } from '../settings/types.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
 import { getAddDirEnabledPlugins } from './addDirPluginSettings.js'
 import { verifyAndDemote } from './dependencyResolver.js'
 import { classifyFetchError, logPluginFetch } from './fetchTelemetry.js'

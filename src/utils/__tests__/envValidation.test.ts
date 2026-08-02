@@ -2,7 +2,7 @@ import { mock, describe, expect, test } from 'bun:test'
 import { debugMock } from '../../../tests/mocks/debug'
 
 // Mock debug.ts to cut bootstrap/state dependency chain
-mock.module('src/utils/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const { validateBoundedIntEnvVar } = await import('../config/envValidation')
 

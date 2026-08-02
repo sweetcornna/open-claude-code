@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { logMock } from '../../../../tests/mocks/log.js'
 
 // Must mock log before any import that transitively loads log.ts
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 // bun:bundle must be mocked before imports that use feature()
 mock.module('bun:bundle', () => ({ feature: () => false }))

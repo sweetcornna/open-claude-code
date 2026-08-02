@@ -5,13 +5,13 @@ import { getOrganizationUUID } from 'src/services/oauth/client.js'
 import z from 'zod/v4'
 import { getClaudeAIOAuthTokens } from '../auth/auth.js'
 import { getGlobalConfig } from '../config/config.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { parseGitHubRepository } from '../detectRepository.js'
 import { errorMessage, toError } from '../errors.js'
 import { lazySchema } from '../collections/lazySchema.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { sleep } from '../process/sleep.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 
 // Retry configuration for teleport API requests
 const TELEPORT_RETRY_DELAYS = [2000, 4000, 8000, 16000] // 4 retries with exponential backoff

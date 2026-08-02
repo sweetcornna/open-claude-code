@@ -14,8 +14,8 @@
 
 import memoize from 'lodash-es/memoize.js'
 import type { LoadedPlugin } from '../../types/plugin.js'
-import { logForDebugging } from '../debug.js'
-import { logError } from '../log.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { logError } from '../telemetry/log.js'
 import { getSecureStorage } from '../secureStorage/index.js'
 import {
   getSettings_DEPRECATED,

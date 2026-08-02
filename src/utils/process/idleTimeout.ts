@@ -1,4 +1,4 @@
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
 
 /**

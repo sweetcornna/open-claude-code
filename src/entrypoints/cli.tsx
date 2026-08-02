@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   }
 
   // For all other paths, load the startup profiler
-  const { profileCheckpoint } = await import('../utils/startupProfiler.js');
+  const { profileCheckpoint } = await import('../utils/telemetry/startupProfiler.js');
   profileCheckpoint('cli_entry');
 
   // Fast-path for `occ migrate`. Must run before the normal bootstrap: a user
@@ -190,7 +190,7 @@ async function main(): Promise<void> {
     enableConfigs();
     const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
-    const { initSinks } = await import('../utils/sinks.js');
+    const { initSinks } = await import('../utils/telemetry/sinks.js');
     initSinks();
     const { daemonMain } = await import('../daemon/main.js');
     await daemonMain(args.slice(1));
@@ -242,7 +242,7 @@ async function main(): Promise<void> {
     enableConfigs();
     const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
     setShellIfWindows();
-    const { initSinks } = await import('../utils/sinks.js');
+    const { initSinks } = await import('../utils/telemetry/sinks.js');
     initSinks();
     const { daemonMain } = await import('../daemon/main.js');
     await daemonMain([args[0] === 'ps' ? 'status' : args[0]!, ...args.slice(1)]);

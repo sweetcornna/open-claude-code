@@ -11,7 +11,7 @@ import {
   sortLogs,
   type TranscriptMessage,
 } from '../../types/logs.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { extractTag } from '../messages.js'
 import { sanitizePath } from '../filesystem/path.js'
 import {
@@ -20,7 +20,7 @@ import {
   LITE_READ_BUF_SIZE,
   readHeadAndTail,
 } from '../sessionStoragePortable.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 import { validateUuid } from '../collections/uuid.js'
 import {
   extractFirstPrompt,

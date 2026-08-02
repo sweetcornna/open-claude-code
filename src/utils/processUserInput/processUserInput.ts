@@ -53,7 +53,7 @@ import {
   createSystemMessage,
   createUserMessage,
 } from '../messages.js'
-import { queryCheckpoint } from '../queryProfiler.js'
+import { queryCheckpoint } from '../telemetry/queryProfiler.js'
 import { parseSlashCommand } from '../text/slashCommandParsing.js'
 import {
   hasUltraplanKeyword,

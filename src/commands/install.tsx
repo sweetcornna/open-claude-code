@@ -5,7 +5,7 @@ import type { CommandResultDisplay } from 'src/commands.js';
 import { logEvent } from 'src/services/analytics/index.js';
 import { StatusIcon } from '@anthropic/ink';
 import { Box, wrappedRender as render, Text } from '@anthropic/ink';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import { env } from '../utils/config/env.js';
 import { errorMessage } from '../utils/errors.js';
 import { checkInstall, cleanupShellAliases, installLatest } from '../utils/nativeInstaller/index.js';

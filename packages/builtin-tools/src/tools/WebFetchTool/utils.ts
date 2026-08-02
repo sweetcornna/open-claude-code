@@ -7,7 +7,7 @@ import {
 import { queryHaiku } from 'src/services/api/claude.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import { getWebFetchUserAgent } from 'src/utils/network/http.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import {
   isBinaryContentType,
   persistBinaryContent,

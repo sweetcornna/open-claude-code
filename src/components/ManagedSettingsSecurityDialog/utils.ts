@@ -3,7 +3,7 @@ import {
   SAFE_ENV_VARS,
 } from '../../utils/config/managedEnvConstants.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 
 type DangerousShellSetting = (typeof DANGEROUS_SHELL_SETTINGS)[number]
 

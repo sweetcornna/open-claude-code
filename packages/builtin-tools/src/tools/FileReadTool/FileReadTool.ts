@@ -43,7 +43,7 @@ import {
   getFileModificationTimeAsync,
   suggestPathUnderCwd,
 } from 'src/utils/filesystem/file.js'
-import { logFileOperation } from 'src/utils/fileOperationAnalytics.js'
+import { logFileOperation } from 'src/utils/telemetry/fileOperationAnalytics.js'
 import { formatFileSize } from 'src/utils/text/format.js'
 import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
 import {
@@ -55,7 +55,7 @@ import {
   maybeResizeAndDownsampleImageBuffer,
 } from 'src/utils/terminal/imageResizer.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
-import { logError } from 'src/utils/log.js'
+import { logError } from 'src/utils/telemetry/log.js'
 import { isAutoMemFile } from 'src/utils/memoryFileDetection.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import {

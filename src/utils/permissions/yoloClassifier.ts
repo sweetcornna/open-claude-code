@@ -22,7 +22,7 @@ import type {
   ClassifierUsage,
   YoloClassifierResult,
 } from '../../types/permissions.js'
-import { isDebugMode, logForDebugging } from '../debug.js'
+import { isDebugMode, logForDebugging } from '../telemetry/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
 import { errorMessage } from '../errors.js'
 import { lazySchema } from '../collections/lazySchema.js'
@@ -33,7 +33,7 @@ import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { getAutoModeConfig } from '../settings/settings.js'
 import { sideQuery } from '../sideQuery.js'
 import type { LangfuseSpan } from '../../services/langfuse/index.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import { tokenCountWithEstimation } from '../tokens.js'
 import {
   getBashPromptAllowDescriptions,

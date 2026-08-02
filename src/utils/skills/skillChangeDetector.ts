@@ -17,7 +17,7 @@ import {
 } from '../../skills/loadSkillsDir.js'
 import { resetSentSkillNames } from '../attachments.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { executeConfigChangeHooks, hasBlockingResult } from '../hooks.js'
 import { createSignal } from '../process/signal.js'

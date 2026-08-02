@@ -2,7 +2,7 @@ import * as fs from 'fs/promises'
 import { join } from 'path'
 import { logEvent } from '../../services/analytics/index.js'
 import { CACHE_PATHS } from '../filesystem/cachePaths.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import {
   type FsOperations,
@@ -10,7 +10,7 @@ import {
 } from '../filesystem/fsOperations.js'
 import { cleanupOldImageCaches } from '../terminal/imageStore.js'
 import * as lockfile from '../filesystem/lockfile.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { cleanupOldVersions } from '../nativeInstaller/index.js'
 import { cleanupOldPastes } from '../terminal/pasteStore.js'
 import { getProjectsDir } from '../sessionStorage.js'

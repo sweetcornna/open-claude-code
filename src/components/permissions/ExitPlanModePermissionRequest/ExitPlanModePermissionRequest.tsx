@@ -29,7 +29,7 @@ import { calculateContextPercentages, getContextWindowForModel } from '../../../
 import { getExternalEditor } from '../../../utils/terminal/editor.js';
 import { getDisplayPath } from '../../../utils/filesystem/file.js';
 import { toIDEDisplayName } from '../../../utils/terminal/ide.js';
-import { logError } from '../../../utils/log.js';
+import { logError } from '../../../utils/telemetry/log.js';
 import { enqueuePendingNotification } from '../../../utils/messageQueueManager.js';
 import { createUserMessage } from '../../../utils/messages.js';
 import { getMainLoopModel, getRuntimeMainLoopModel } from '../../../utils/model/model.js';

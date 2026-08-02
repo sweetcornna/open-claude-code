@@ -16,7 +16,7 @@ import { getContentText } from 'src/utils/messages.js';
 import type { Theme } from 'src/utils/terminal/theme.js';
 import { UserImageMessage } from './UserImageMessage.js';
 
-import { jsonParse } from '../../utils/slowOperations.js';
+import { jsonParse } from '../../utils/telemetry/slowOperations.js';
 import { plural } from '../../utils/text/stringUtils.js';
 import { isEnvTruthy } from '../../utils/config/envUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';

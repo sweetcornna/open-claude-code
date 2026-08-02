@@ -22,7 +22,7 @@ import {
   setPendingHint,
 } from '../claudeCodeHints.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config/config.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { isPluginInstalled } from './installedPluginsManager.js'
 import { getPluginById } from './marketplaceManager.js'
 import {

@@ -14,7 +14,7 @@
 // Load the host slow-operations implementation before builtin tool modules.
 // It self-registers with tool-runtime; standalone package use keeps the facade's
 // native JSON fallback instead.
-import './utils/slowOperations.js'
+import './utils/telemetry/slowOperations.js'
 // Load the host MessageResponse implementation before builtin tool modules.
 // It self-registers with tool-runtime; standalone package use keeps the facade's
 // children-only fallback instead.

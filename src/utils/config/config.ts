@@ -18,8 +18,8 @@ import type {
 } from '../../services/oauth/types.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
-import { logForDiagnosticsNoPII } from '../diagLogs.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
 import { getGlobalClaudeFile } from './env.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { ConfigParseError, getErrnoCode } from '../errors.js'
@@ -29,7 +29,7 @@ import { findCanonicalGitRoot } from '../git.js'
 import { safeParseJSON } from '../text/json.js'
 import { stripBOM } from '../filesystem/jsonRead.js'
 import * as lockfile from '../filesystem/lockfile.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import type { MemoryType } from '../memory/types.js'
 import { normalizePathForConfigKey } from '../filesystem/path.js'
 import { getEssentialTrafficOnlyReason } from '../auth/privacyLevel.js'
@@ -38,7 +38,7 @@ import type { ThemeSetting } from '../terminal/theme.js'
 
 import type { ImageDimensions } from '../terminal/imageResizer.js'
 import type { ModelOption } from '../model/modelOptions.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
 
 // Re-entrancy guard: prevents getConfig → logEvent → getGlobalConfig → getConfig
 // infinite recursion when the config file is corrupted. logEvent's sampling check

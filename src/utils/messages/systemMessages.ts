@@ -26,7 +26,7 @@ import type {
   SystemTurnDurationMessage,
   ToolUseSummaryMessage,
 } from '../../types/message.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { formatTokens } from '../text/format.js'
 
 export function createSystemMessage(

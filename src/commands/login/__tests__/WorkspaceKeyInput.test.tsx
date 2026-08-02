@@ -19,8 +19,8 @@ import * as React from 'react';
 import { logMock } from '../../../../tests/mocks/log';
 import { debugMock } from '../../../../tests/mocks/debug';
 
-mock.module('src/utils/log.ts', logMock);
-mock.module('src/utils/debug.ts', debugMock);
+mock.module('src/utils/telemetry/log.ts', logMock);
+mock.module('src/utils/telemetry/debug.ts', debugMock);
 mock.module('bun:bundle', () => ({ feature: () => false }));
 mock.module('src/utils/settings/settings.js', () => ({
   getCachedOrDefaultSettings: () => ({}),

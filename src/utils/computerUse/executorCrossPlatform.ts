@@ -35,7 +35,7 @@ import type {
 } from '@ant/computer-use-mcp'
 
 import { BIN_NAME } from '../../constants/brand.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { sleep } from '../process/sleep.js'
 import { CLI_CU_CAPABILITIES, CLI_HOST_BUNDLE_ID } from './common.js'
 import { validateHwnd } from './win32/shared.js'

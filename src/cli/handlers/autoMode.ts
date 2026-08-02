@@ -18,7 +18,7 @@ import {
 import { getAutoModeConfig } from '../../utils/settings/settings.js'
 import { isPoorModeActive } from '../../commands/poor/poorMode.js'
 import { sideQuery } from '../../utils/sideQuery.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 
 function writeRules(rules: AutoModeRules): void {
   process.stdout.write(jsonStringify(rules, null, 2) + '\n')

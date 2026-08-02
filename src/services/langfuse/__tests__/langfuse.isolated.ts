@@ -67,7 +67,7 @@ mock.module('@langfuse/tracing', () => ({
 }))
 
 // Mock debug logger
-mock.module('src/utils/debug.js', () => ({
+mock.module('src/utils/telemetry/debug.js', () => ({
   logForDebugging: mock(() => {}),
   logAntError: mock(() => {}),
   isDebugToStdErr: () => false,

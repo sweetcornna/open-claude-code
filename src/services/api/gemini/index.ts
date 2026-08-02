@@ -10,8 +10,8 @@ import type {
   SystemAPIErrorMessage,
 } from '../../../types/message.js'
 import { type Tools } from '../../../Tool.js'
-import { toolToAPISchema } from '../../../utils/api.js'
-import { logForDebugging } from '../../../utils/debug.js'
+import { toolToAPISchema } from '../../../utils/telemetry/api.js'
+import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,

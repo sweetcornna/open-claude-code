@@ -9,12 +9,12 @@ mock.module('bun:bundle', () => ({
 }))
 
 // Mock log/debug to avoid bootstrap side effects
-mock.module('src/utils/log.ts', () => ({
+mock.module('src/utils/telemetry/log.ts', () => ({
   logError: () => {},
   logInfo: () => {},
   logWarning: () => {},
 }))
-mock.module('src/utils/debug.ts', () => ({
+mock.module('src/utils/telemetry/debug.ts', () => ({
   logForDebugging: () => {},
   isDebug: () => false,
 }))

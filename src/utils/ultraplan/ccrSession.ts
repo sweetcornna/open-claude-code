@@ -10,7 +10,7 @@ import type {
 } from '@anthropic-ai/sdk/resources'
 import type { SDKMessage } from '../../entrypoints/agentSdkTypes.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/constants.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { sleep } from '../process/sleep.js'
 import { isTransientNetworkError } from '../teleport/api.js'
 import {

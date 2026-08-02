@@ -6,13 +6,13 @@ import { ASK_USER_QUESTION_TOOL_NAME } from '@open-claude-code/builtin-tools/too
 import { REMOTE_TRIGGER_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/RemoteTriggerTool/prompt.js'
 import { getClaudeAIOAuthTokens } from '../../utils/auth/auth.js'
 import { checkRepoForRemoteAccess } from '../../utils/background/remote/preconditions.js'
-import { logForDebugging } from '../../utils/debug.js'
+import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   detectCurrentRepositoryWithHost,
   parseGitRemote,
 } from '../../utils/detectRepository.js'
 import { getRemoteUrl } from '../../utils/git.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   createDefaultCloudEnvironment,
   type EnvironmentResource,

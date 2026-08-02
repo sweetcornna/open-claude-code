@@ -3,7 +3,7 @@ import { join } from 'path'
 import { roughTokenCountEstimation } from '../../services/tokenEstimation.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { getErrnoCode, toError } from '../../utils/errors.js'
-import { logError } from '../../utils/log.js'
+import { logError } from '../../utils/telemetry/log.js'
 import { getDisplayedEffortLevel } from '../../utils/effort.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 

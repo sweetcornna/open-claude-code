@@ -38,7 +38,7 @@ import {
 import { getMaxVersion, shouldSkipVersion } from '../update/autoUpdater.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config/config.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { env } from '../config/env.js'
 import { envDynamic } from '../config/envDynamic.js'
 import { isEnvTruthy } from '../config/envUtils.js'
@@ -46,7 +46,7 @@ import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getShellType } from '../update/localInstaller.js'
 import * as lockfile from '../filesystem/lockfile.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { gt, gte } from '../text/semver.js'
 import {
   filterOccAliases,

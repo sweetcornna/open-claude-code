@@ -31,7 +31,7 @@ import {
   hasAutoModeOptInAnySource,
   transitionPlanAutoMode,
 } from '../../utils/permissions/permissionSetup.js';
-import { logError } from '../../utils/log.js';
+import { logError } from '../../utils/telemetry/log.js';
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -40,7 +40,7 @@ import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
 import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
-import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
+import { isBilledAsExtraUsage } from '../../utils/telemetry/extraUsage.js';
 import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialog.js';
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
 import { Dialog } from '@anthropic/ink';

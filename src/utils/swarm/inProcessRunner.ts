@@ -76,7 +76,7 @@ import {
   markAutonomyRunRunning,
 } from '../autonomyRuns.js'
 import { count } from '../collections/array.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { cloneFileStateCache } from '../fileStateCache.js'
 import {
   SUBAGENT_REJECT_MESSAGE,
@@ -91,7 +91,7 @@ import type { PermissionUpdate } from '../permissions/PermissionUpdateSchema.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
 import { sleep } from '../process/sleep.js'
-import { jsonStringify } from '../slowOperations.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
 import type { TeammateContext } from '../teammateContext.js'

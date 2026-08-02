@@ -4,8 +4,8 @@ import { logMock } from '../../../../tests/mocks/log.js'
 
 // ─── Mocks（仅 mock 有副作用的依赖链）───
 
-mock.module('src/utils/debug.ts', debugMock)
-mock.module('src/utils/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
+mock.module('src/utils/telemetry/log.ts', logMock)
 
 mock.module('src/constants/xml.js', () => ({
   TASK_NOTIFICATION_TAG: 'task_notification',

@@ -22,12 +22,12 @@ import {
   setClassifierApproval,
   setYoloClassifierApproval,
 } from '../utils/classifierApprovals.js';
-import { logForDebugging } from '../utils/debug.js';
+import { logForDebugging } from '../utils/telemetry/debug.js';
 import { AbortError } from '../utils/errors.js';
-import { logError } from '../utils/log.js';
+import { logError } from '../utils/telemetry/log.js';
 import type { PermissionDecision } from '../utils/permissions/PermissionResult.js';
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js';
-import { jsonStringify } from '../utils/slowOperations.js';
+import { jsonStringify } from '../utils/telemetry/slowOperations.js';
 import { handleCoordinatorPermission } from './toolPermission/handlers/coordinatorHandler.js';
 import { handleInteractivePermission } from './toolPermission/handlers/interactiveHandler.js';
 import { handleSwarmWorkerPermission } from './toolPermission/handlers/swarmWorkerHandler.js';

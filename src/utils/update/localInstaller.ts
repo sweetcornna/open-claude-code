@@ -10,8 +10,8 @@ import { type ReleaseChannel, saveGlobalConfig } from '../config/config.js'
 import { getErrnoCode } from '../errors.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { logError } from '../log.js'
-import { jsonStringify } from '../slowOperations.js'
+import { logError } from '../telemetry/log.js'
+import { jsonStringify } from '../telemetry/slowOperations.js'
 
 function getLocalInstallDir(): string {
   return occConfigPath('local')

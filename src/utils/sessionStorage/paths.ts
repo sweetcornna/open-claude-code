@@ -8,7 +8,7 @@ import {
   getSessionProjectDir,
 } from '../../bootstrap/state.js'
 import { type AgentId } from '../../types/ids.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { isFsInaccessible } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'

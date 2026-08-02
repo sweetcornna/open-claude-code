@@ -5,7 +5,7 @@ import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.
 import { env } from '../../utils/config/env.js';
 import { shouldShowAlwaysAllowOptions } from '../../utils/permissions/permissionsLoader.js';
 import { truncateToLines } from '../../utils/text/stringUtils.js';
-import { logUnaryEvent } from '../../utils/unaryLogging.js';
+import { logUnaryEvent } from '../../utils/telemetry/unaryLogging.js';
 import { type UnaryEvent, usePermissionRequestLogging } from './hooks.js';
 import { PermissionDialog } from './PermissionDialog.js';
 import { PermissionPrompt, type PermissionPromptOption, type ToolAnalyticsContext } from './PermissionPrompt.js';

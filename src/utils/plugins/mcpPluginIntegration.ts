@@ -6,10 +6,10 @@ import {
   type ScopedMcpServerConfig,
 } from '../../services/mcp/types.js'
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { errorMessage, isENOENT } from '../errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 import {
   isMcpbSource,
   loadMcpbFile,

@@ -5,7 +5,7 @@
  * server rejects it — never for authorization decisions, which is why not
  * verifying the signature is fine here.
  */
-import { jsonParse } from '../slowOperations.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
 
 /**
  * Decode a JWT's payload segment without verifying the signature.

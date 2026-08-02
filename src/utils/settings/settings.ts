@@ -11,8 +11,8 @@ import {
 } from '../../bootstrap/state.js'
 import { getRemoteManagedSettingsSyncFromCache } from '../../services/remoteManagedSettings/syncCacheState.js'
 import { uniq } from '../collections/array.js'
-import { logForDebugging } from '../debug.js'
-import { logForDiagnosticsNoPII } from '../diagLogs.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
 import { getErrnoCode, isENOENT } from '../errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from '../filesystem/file.js'
@@ -23,10 +23,10 @@ import {
 } from '../filesystem/fsOperations.js'
 import { addFileGlobRuleToGitignore } from '../git/gitignore.js'
 import { safeParseJSON } from '../text/json.js'
-import { logError } from '../log.js'
+import { logError } from '../telemetry/log.js'
 import { getPlatform } from '../process/platform.js'
-import { clone, jsonStringify } from '../slowOperations.js'
-import { profileCheckpoint } from '../startupProfiler.js'
+import { clone, jsonStringify } from '../telemetry/slowOperations.js'
+import { profileCheckpoint } from '../telemetry/startupProfiler.js'
 import {
   type EditableSettingSource,
   getEnabledSettingSources,
