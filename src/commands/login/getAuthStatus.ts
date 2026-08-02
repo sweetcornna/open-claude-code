@@ -12,8 +12,16 @@
  */
 
 import type { SubscriptionType } from '../../services/oauth/types.js'
+import {
+  getMergedProviderEnv,
+  loadProfilesFile,
+} from '../../services/providerProfiles/profiles.js'
 import { getClaudeAIOAuthTokens } from '../../utils/auth/auth.js'
 import { getGlobalConfig } from '../../utils/config/config.js'
+import {
+  getAPIProvider,
+  type APIProvider,
+} from '../../utils/model/providers.js'
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -49,12 +57,30 @@ export interface AuthStatus {
      */
     source: 'env' | 'settings' | null
   }
+  /**
+   * Read-only visibility of which provider requests actually go to. This is
+   * NOT a configuration surface (that stayed with the /login setup forms per
+   * the 2026-05-06 decision) — it exists so the first /login screen answers
+   * "who am I connected to right now". Base URLs are non-secret; key values
+   * are never included.
+   */
+  activeProvider: {
+    provider: APIProvider
+    /** Provider-specific base-URL override, or null when using the default. */
+    baseUrl: string | null
+    /** OpenAI path only: which wire protocol requests use. */
+    wireApi: 'chat' | 'responses' | null
+    /** OpenAI path only: ChatGPT-subscription auth active. */
+    chatgptAuth: boolean
+    /** Active saved provider profile name (/provider save|use), if any. */
+    profile: string | null
+  }
 }
 
-// thirdParty was removed 2026-05-06: fork's existing /login → "Anthropic
-// Compatible Setup" form is the single source of truth for OpenAI-compat
-// configuration. The summary intentionally only shows Anthropic-side planes
-// (subscription / workspace key) which the fork form does not surface.
+// The interactive thirdParty CONFIG surface was removed 2026-05-06: fork's
+// /login → "Anthropic Compatible Setup" form is the single source of truth
+// for OpenAI-compat configuration. `activeProvider` above is read-only
+// status, not a parallel configuration path.
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -149,6 +175,48 @@ export function getAuthStatus(): AuthStatus {
   const prefixValid = rawKey.startsWith(WORKSPACE_KEY_PREFIX)
   const keyPreview = keySet ? maskApiKey(rawKey) : null
 
+  // ---- 3. Active provider plane (read-only status, fail-soft) ----
+  // getAuthStatus() must never throw; this plane touches settings/profile
+  // readers that some test environments stub incompletely, so any failure
+  // degrades to the firstParty default instead of breaking /login.
+  let activeProvider: AuthStatus['activeProvider'] = {
+    provider: 'firstParty',
+    baseUrl: null,
+    wireApi: null,
+    chatgptAuth: false,
+    profile: null,
+  }
+  try {
+    const provider = getAPIProvider()
+    const mergedEnv = getMergedProviderEnv()
+    const baseUrlByProvider: Partial<Record<APIProvider, string | undefined>> =
+      {
+        firstParty: mergedEnv.ANTHROPIC_BASE_URL,
+        openai: mergedEnv.OPENAI_BASE_URL,
+        gemini: mergedEnv.GEMINI_BASE_URL,
+        grok: mergedEnv.GROK_BASE_URL,
+      }
+    const chatgptAuth =
+      provider === 'openai' && mergedEnv.OPENAI_AUTH_MODE === 'chatgpt'
+    let wireApi: 'chat' | 'responses' | null = null
+    if (provider === 'openai') {
+      const explicit = mergedEnv.OPENAI_WIRE_API?.trim().toLowerCase()
+      wireApi =
+        explicit === 'responses' || (explicit !== 'chat' && chatgptAuth)
+          ? 'responses'
+          : 'chat'
+    }
+    activeProvider = {
+      provider,
+      baseUrl: baseUrlByProvider[provider]?.trim() || null,
+      wireApi,
+      chatgptAuth,
+      profile: loadProfilesFile().active ?? null,
+    }
+  } catch {
+    // keep the fail-soft default
+  }
+
   return {
     subscription: {
       active: subscriptionActive,
@@ -161,5 +229,6 @@ export function getAuthStatus(): AuthStatus {
       keyPreview,
       source: keySource,
     },
+    activeProvider,
   }
 }

@@ -14,6 +14,8 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 mock.module('src/utils/settings/settings.js', () => ({
   getCachedOrDefaultSettings: () => ({}),
   getSettings: () => ({}),
+  getInitialSettings: () => ({}),
+  getSettings_DEPRECATED: () => ({}),
 }))
 mock.module('src/utils/config/config.ts', () => ({
   isConfigEnabled: () => true,
@@ -49,6 +51,8 @@ describe('getAuthStatus', () => {
     delete process.env.DEEPSEEK_API_KEY
     delete process.env.CLAUDE_CODE_USE_OPENAI
     delete process.env.OPENAI_BASE_URL
+    delete process.env.OPENAI_WIRE_API
+    delete process.env.OPENAI_AUTH_MODE
   })
 
   afterEach(() => {
@@ -270,6 +274,37 @@ describe('getAuthStatus', () => {
     const { getAuthStatus } = await import('../getAuthStatus.js')
     const status = getAuthStatus()
     expect(status.subscription.plan).toBe('unknown')
+  })
+
+  test('activeProvider reflects env-driven openai selection with base URL and wire protocol', async () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com/v1'
+    process.env.OPENAI_WIRE_API = 'responses'
+    mock.module('src/utils/auth/auth.ts', () => ({
+      getClaudeAIOAuthTokens: () => null,
+      hasAnthropicApiKeyAuth: () => false,
+      isAnthropicAuthEnabled: () => false,
+      getSubscriptionType: () => null,
+    }))
+    const { getAuthStatus } = await import('../getAuthStatus.js')
+    const status = getAuthStatus()
+    expect(status.activeProvider.provider).toBe('openai')
+    expect(status.activeProvider.baseUrl).toBe('https://api.deepseek.com/v1')
+    expect(status.activeProvider.wireApi).toBe('responses')
+    expect(status.activeProvider.chatgptAuth).toBe(false)
+  })
+
+  test('activeProvider defaults to firstParty with no overrides', async () => {
+    mock.module('src/utils/auth/auth.ts', () => ({
+      getClaudeAIOAuthTokens: () => null,
+      hasAnthropicApiKeyAuth: () => false,
+      isAnthropicAuthEnabled: () => false,
+      getSubscriptionType: () => null,
+    }))
+    const { getAuthStatus } = await import('../getAuthStatus.js')
+    const status = getAuthStatus()
+    expect(status.activeProvider.provider).toBe('firstParty')
+    expect(status.activeProvider.wireApi).toBeNull()
   })
 
   test('subscription with subscriptionType=null → plan=null', async () => {

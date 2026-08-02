@@ -101,6 +101,28 @@ function WorkspaceKeyInstructions({
   return null;
 }
 
+function ActiveProviderRow({
+  activeProvider,
+}: {
+  activeProvider: AuthStatus['activeProvider'];
+}): React.ReactNode {
+  const { provider, baseUrl, wireApi, chatgptAuth, profile } = activeProvider;
+  const providerLabel = provider === 'firstParty' ? 'anthropic' : provider;
+  const details: string[] = [];
+  if (baseUrl) details.push(baseUrl);
+  if (chatgptAuth) details.push('ChatGPT subscription');
+  if (wireApi) details.push(`wire: ${wireApi}`);
+  if (profile) details.push(`profile: ${profile}`);
+
+  return (
+    <Box marginTop={0}>
+      <Text>{'  Active provider                  '}</Text>
+      <Text color="claude">{providerLabel}</Text>
+      {details.length > 0 ? <Text dimColor>{`  (${details.join(', ')})`}</Text> : null}
+    </Box>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Root component
 // ---------------------------------------------------------------------------
@@ -110,7 +132,8 @@ function WorkspaceKeyInstructions({
 // existing `<Login>` "Anthropic Compatible Setup" form already configures the
 // same Base URL + API key, and showing two parallel UIs for the same goal
 // confused users. Subscription + Workspace key remain — those are distinct
-// Anthropic-side auth planes the fork form doesn't surface.
+// Anthropic-side auth planes the fork form doesn't surface. The single
+// read-only "Active provider" row below is status, not configuration.
 
 export interface AuthPlaneSummaryProps {
   status: AuthStatus;
@@ -128,6 +151,7 @@ export function AuthPlaneSummary({ status }: AuthPlaneSummaryProps): React.React
         <SubscriptionRow subscription={status.subscription} />
         <WorkspaceKeyRow workspaceKey={status.workspaceKey} />
         <WorkspaceKeyInstructions subscription={status.subscription} workspaceKey={status.workspaceKey} />
+        <ActiveProviderRow activeProvider={status.activeProvider} />
       </Box>
     </Box>
   );
