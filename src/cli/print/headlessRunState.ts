@@ -189,6 +189,11 @@ export type HeadlessRunState = {
   // ---- run-loop control flags --------------------------------------------
   /** `run()` mutex. */
   running: boolean
+  /**
+   * Whether `initialize` has been seen. The first user prompt also flips it —
+   * a prompt implicitly initializes a session that never sent the request.
+   */
+  initialized: boolean
   runPhase: HeadlessRunPhase | undefined
   inputClosed: boolean
   shutdownPromptInjected: boolean
@@ -315,6 +320,7 @@ export function createHeadlessRunState(
     output: input.structuredIO.outbound,
 
     running: false,
+    initialized: false,
     runPhase: undefined,
     inputClosed: false,
     shutdownPromptInjected: false,
