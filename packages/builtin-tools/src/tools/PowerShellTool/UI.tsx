@@ -2,7 +2,7 @@ import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs
 import * as React from 'react';
 import { KeyboardShortcutHint } from '@anthropic/ink';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { OutputLine } from 'src/components/shell/OutputLine.js';
 import { ShellProgressMessage } from 'src/components/shell/ShellProgressMessage.js';
 import { ShellTimeDisplay } from 'src/components/shell/ShellTimeDisplay.js';

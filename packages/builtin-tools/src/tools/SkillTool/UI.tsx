@@ -7,7 +7,7 @@ import type { z } from 'zod/v4';
 import type { Command } from 'src/commands.js';
 import { Byline } from '@anthropic/ink';
 import { Message as MessageComponent } from 'src/components/Message.js';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@open-claude-code/tool-runtime/messageResponse.js';
 import { Box, Text } from '@anthropic/ink';
 import type { Tools } from '@open-claude-code/tool-runtime/Tool.js';
 import type { ProgressMessage } from 'src/types/message.js';
