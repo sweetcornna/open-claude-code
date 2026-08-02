@@ -10,6 +10,7 @@
  */
 export function stateMock() {
   const noop = () => {}
+  let lastAPIRequest: unknown = null
   return {
     // Session identity
     getSessionId: () => 'mock-session-id',
@@ -77,9 +78,14 @@ export function stateMock() {
     getTurnOutputTokens: () => 0,
     getCurrentTurnTokenBudget: () => null,
 
-    // API request state
-    setLastAPIRequest: noop,
-    getLastAPIRequest: () => null,
+    // API request state. Faithful set/get pair (not noop/null): production
+    // code under test clears or retains this slot (postCompactCleanup), and
+    // this mock leaks process-globally into those tests when another file
+    // registers it first — a noop stub would make their assertions vacuous.
+    setLastAPIRequest: (params: unknown) => {
+      lastAPIRequest = params
+    },
+    getLastAPIRequest: () => lastAPIRequest,
 
     // Various getters (add as needed)
     getIsNonInteractiveSession: () => false,
