@@ -76,6 +76,7 @@ const VALID_CONTEXTS: KeybindingContextName[] = [
   'MessageSelector',
   'DiffDialog',
   'ModelPicker',
+  'EffortPanel',
   'Scroll',
   'Select',
   'Plugin',
