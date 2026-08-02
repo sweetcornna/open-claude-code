@@ -15,13 +15,11 @@
  * busts the cached tools block for every session — see the characterization
  * snapshots in tools/__tests__/promptCharacterization.runner.ts.
  */
-import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/constants.js'
 import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/constants.js'
 import { GLOB_TOOL_NAME } from '../GlobTool/constants.js'
 import { GREP_TOOL_NAME } from '../GrepTool/constants.js'
-import { TODO_WRITE_TOOL_NAME } from '../TodoWriteTool/constants.js'
 import { BASH_TOOL_NAME } from './constants.js'
 
 /**
@@ -94,9 +92,7 @@ Use the gh command via the Bash tool for other GitHub-related tasks including wo
 
   return `# Committing changes with git
 
-Only create commits when requested by the user. If unclear, ask first. When the user asks you to create a new git commit, follow these steps carefully:
-
-You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. The numbered steps below indicate which commands should be batched in parallel.
+Only create commits when requested by the user. If unclear, ask first.
 
 Git Safety Protocol:
 - NEVER update the git config
@@ -107,30 +103,9 @@ Git Safety Protocol:
 - When staging files, prefer adding specific files by name rather than using "git add -A" or "git add .", which can accidentally include sensitive files (.env, credentials) or large binaries
 - NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive
 
-1. Run the following bash commands in parallel, each using the ${BASH_TOOL_NAME} tool:
-  - Run a git status command to see all untracked files. IMPORTANT: Never use the -uall flag as it can cause memory issues on large repos.
-  - Run a git diff command to see both staged and unstaged changes that will be committed.
-  - Run a git log command to see recent commit messages, so that you can follow this repository's commit message style.
-2. Analyze all staged changes (both previously staged and newly added) and draft a commit message:
-  - Summarize the nature of the changes (eg. new feature, enhancement to an existing feature, bug fix, refactoring, test, docs, etc.). Ensure the message accurately reflects the changes and their purpose (i.e. "add" means a wholly new feature, "update" means an enhancement to an existing feature, "fix" means a bug fix, etc.).
-  - Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
-  - Draft a concise (1-2 sentences) commit message that focuses on the "why" rather than the "what"
-  - Ensure it accurately reflects the changes and their purpose
-3. Run the following commands in parallel:
-   - Add relevant untracked files to the staging area.
-   - Create the commit with a message${commitAttribution ? ` ending with:\n   ${commitAttribution}` : '.'}
-   - Run git status after the commit completes to verify success.
-   Note: git status depends on the commit completing, so run it sequentially after the commit.
-4. If the commit fails due to pre-commit hook: fix the issue and create a NEW commit
+When committing: review the current state first (git status — never with the -uall flag, it can cause memory issues on large repos — plus git diff and recent git log so the message matches this repository's style), stage the relevant files by name, and write a concise message focused on the "why". Do not commit files that likely contain secrets (.env, credentials.json, etc); warn the user if they explicitly request it. Git commands with the -i flag (git rebase -i, git add -i) are not supported — interactive input is unavailable. Do not push to the remote unless the user explicitly asks.
 
-Important notes:
-- NEVER run additional commands to read or explore code, besides git bash commands
-- NEVER use the ${TODO_WRITE_TOOL_NAME} or ${AGENT_TOOL_NAME} tools
-- DO NOT push to the remote repository unless the user explicitly asks you to do so
-- IMPORTANT: Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported.
-- IMPORTANT: Do not use --no-edit with git rebase commands, as the --no-edit flag is not a valid option for git rebase.
-- If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
-- In order to ensure good formatting, ALWAYS pass the commit message via a HEREDOC, a la this example:
+To ensure good formatting, ALWAYS pass the commit message via a HEREDOC, a la this example:
 <example>
 git commit -m "$(cat <<'EOF'
    Commit message here.${commitAttribution ? `\n\n   ${commitAttribution}` : ''}
@@ -141,20 +116,7 @@ git commit -m "$(cat <<'EOF'
 # Creating pull requests
 Use the gh command via the Bash tool for ALL GitHub-related tasks including working with issues, pull requests, checks, and releases. If given a Github URL use the gh command to get the information needed.
 
-IMPORTANT: When the user asks you to create a pull request, follow these steps carefully:
-
-1. Run the following bash commands in parallel using the ${BASH_TOOL_NAME} tool, in order to understand the current state of the branch since it diverged from the main branch:
-   - Run a git status command to see all untracked files (never use -uall flag)
-   - Run a git diff command to see both staged and unstaged changes that will be committed
-   - Check if the current branch tracks a remote branch and is up to date with the remote, so you know if you need to push to the remote
-   - Run a git log command and \`git diff [base-branch]...HEAD\` to understand the full commit history for the current branch (from the time it diverged from the base branch)
-2. Analyze all changes that will be included in the pull request, making sure to look at all relevant commits (NOT just the latest commit, but ALL commits that will be included in the pull request!!!), and draft a pull request title and summary:
-   - Keep the PR title short (under 70 characters)
-   - Use the description/body for details, not the title
-3. Run the following commands in parallel:
-   - Create new branch if needed
-   - Push to remote with -u flag if needed
-   - Create PR using gh pr create with the format below. Use a HEREDOC to pass the body to ensure correct formatting.
+When the user asks for a pull request: review ALL commits that will be included (git log and \`git diff [base-branch]...HEAD\` — not just the latest commit), create a branch and push with -u if needed, then create the PR with a short title (under 70 characters) and a HEREDOC body:
 <example>
 gh pr create --title "the pr title" --body "$(cat <<'EOF'
 ## Summary
@@ -166,9 +128,7 @@ EOF
 )"
 </example>
 
-Important:
-- DO NOT use the ${TODO_WRITE_TOOL_NAME} or ${AGENT_TOOL_NAME} tools
-- Return the PR URL when you're done, so the user can see it
+Return the PR URL when you're done, so the user can see it.
 
 # Other common operations
 - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`
