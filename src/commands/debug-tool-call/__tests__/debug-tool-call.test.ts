@@ -23,11 +23,19 @@ let claudeDir: string
 mock.module('src/utils/envUtils.js', () => ({
   getClaudeConfigHomeDir: () =>
     process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`,
-  isEnvTruthy: (v: unknown) => Boolean(v),
+  isEnvTruthy: (value: unknown) =>
+    typeof value === 'boolean'
+      ? value
+      : typeof value === 'string' &&
+        ['1', 'true', 'yes', 'on'].includes(value.toLowerCase().trim()),
   getTeamsDir: () =>
     join(process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`, 'teams'),
   hasNodeOption: () => false,
-  isEnvDefinedFalsy: () => false,
+  isEnvDefinedFalsy: (value: unknown) =>
+    typeof value === 'boolean'
+      ? !value
+      : typeof value === 'string' &&
+        ['0', 'false', 'no', 'off'].includes(value.toLowerCase().trim()),
   isBareMode: () => false,
   parseEnvVars: (s: string) => s,
   getAWSRegion: () => 'us-east-1',

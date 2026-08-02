@@ -6,7 +6,7 @@
  * TEST_GLOBAL_CONFIG_FOR_TESTING in-memory, no disk I/O needed).
  * The tryChmod600 step may log an error (non-existent test file) — that is fine.
  */
-import { afterAll, describe, expect, test, mock } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test, mock } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
 
@@ -37,6 +37,7 @@ let _mockGetGlobalConfig: () => unknown = () => ({
 })
 let _mockSaveGlobalConfig: (updater: unknown) => unknown = (_u: unknown) =>
   undefined
+const _originalOccConfigDir = process.env.OCC_CONFIG_DIR
 mock.module('src/utils/config.ts', () => ({
   isConfigEnabled: () => true,
   getGlobalConfig: () =>
@@ -45,19 +46,19 @@ mock.module('src/utils/config.ts', () => ({
     _useMockForConfig ? _mockSaveGlobalConfig(updater) : undefined,
 }))
 
+beforeAll(() => {
+  process.env.OCC_CONFIG_DIR = '/tmp/occ-saveWorkspaceKey-test'
+})
+
 afterAll(() => {
   _useMockForConfig = false
   // Reset closure state so nothing leaks even if a teammate test elsewhere
   // re-flips the flag.
   _mockGetGlobalConfig = () => ({ workspaceApiKey: undefined })
   _mockSaveGlobalConfig = () => undefined
+  if (_originalOccConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+  else process.env.OCC_CONFIG_DIR = _originalOccConfigDir
 })
-// Provide a stable path so tryChmod600 at least knows which file to chmod
-// (it will fail gracefully for a non-existent file and log via logError)
-mock.module('src/utils/env.ts', () => ({
-  getGlobalClaudeFile: () => '/tmp/.claude-saveWorkspaceKey-test.json',
-  getClaudeConfigHomeDir: () => '/tmp/.claude-test',
-}))
 
 describe('saveWorkspaceKey', () => {
   test('saves valid sk-ant-api03-* key successfully', async () => {
