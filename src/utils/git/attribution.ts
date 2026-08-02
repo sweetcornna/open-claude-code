@@ -17,11 +17,11 @@ import type { Entry } from '../../types/logs.js'
 import {
   type AttributionData,
   calculateCommitAttribution,
-} from '../commitAttribution.js'
+} from './commitAttribution.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { parseJSONL } from '../text/json.js'
 import { logError } from '../telemetry/log.js'
-import { getRealModelName } from '../attributionModel.js'
+import { getRealModelName } from './attributionModel.js'
 import { isMemoryFileAccess } from '../sessionFileAccessHooks.js'
 import { getTranscriptPath } from '../sessionStorage.js'
 import { readTranscriptForLoad } from '../sessionStoragePortable.js'

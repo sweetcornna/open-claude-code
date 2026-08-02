@@ -35,7 +35,7 @@ import { isEnvTruthy } from '../config/envUtils.js'
 import { isFsInaccessible } from '../errors.js'
 import type { FileHistorySnapshot } from '../filesystem/fileHistory.js'
 import { formatFileSize } from '../text/format.js'
-import { getBranch } from '../git.js'
+import { getBranch } from '../git/git.js'
 import {
   gracefulShutdownSync,
   isShuttingDown,

@@ -75,7 +75,7 @@ import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
 import { isEnvTruthy } from './utils/config/envUtils.js'
 import { isPowerShellToolEnabled } from './utils/shell/shellToolUtils.js'
-import { isWorktreeModeEnabled } from './utils/worktreeModeEnabled.js'
+import { isWorktreeModeEnabled } from './utils/git/worktreeModeEnabled.js'
 import {
   REPL_TOOL_NAME,
   REPL_ONLY_TOOLS,

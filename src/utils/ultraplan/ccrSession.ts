@@ -16,7 +16,7 @@ import { isTransientNetworkError } from '../teleport/api.js'
 import {
   type PollRemoteSessionResponse,
   pollRemoteSessionEvents,
-} from '../teleport.js'
+} from '../teleport/teleport.js'
 
 const POLL_INTERVAL_MS = 3000
 // pollRemoteSessionEvents doesn't retry. A 30min poll makes ~600 calls;

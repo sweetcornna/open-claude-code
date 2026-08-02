@@ -203,7 +203,7 @@ async function loadInitialMessages(
         processMessagesForTeleportResume,
         teleportResumeCodeSession,
         validateGitState,
-      } = await import('src/utils/teleport.js')
+      } = await import('src/utils/teleport/teleport.js')
       await validateGitState()
       const teleportResult = await teleportResumeCodeSession(options.teleport)
       const { branchError } = await checkOutTeleportedSessionBranch(

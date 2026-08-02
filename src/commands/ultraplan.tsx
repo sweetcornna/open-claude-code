@@ -20,7 +20,7 @@ import { errorMessage } from '../utils/errors.js';
 import { logError } from '../utils/telemetry/log.js';
 import { enqueuePendingNotification } from '../utils/messageQueueManager.js';
 import { updateTaskState } from '../utils/task/framework.js';
-import { archiveRemoteSession, teleportToRemote } from '../utils/teleport.js';
+import { archiveRemoteSession, teleportToRemote } from '../utils/teleport/teleport.js';
 import { pollForApprovedExitPlanMode, UltraplanPollError } from '../utils/ultraplan/ccrSession.js';
 import {
   getPromptText,

@@ -7,7 +7,7 @@ mock.module('bun:bundle', () => ({
 }))
 
 // Mock dependencies to avoid side effects
-mock.module('src/utils/attribution.ts', () => ({
+mock.module('src/utils/git/attribution.ts', () => ({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
   getEnhancedPRAttribution: async () => undefined,
   countUserPromptsInMessages: () => 0,
@@ -208,7 +208,7 @@ describe('commit command getPromptForCommand', () => {
       shouldShowUndercoverAutoNotice: () => false,
     }))
 
-    mock.module('src/utils/attribution.ts', () => ({
+    mock.module('src/utils/git/attribution.ts', () => ({
       getAttributionTexts: () => ({ commit: 'Co-Authored-By: Claude', pr: '' }),
       getEnhancedPRAttribution: async () => undefined,
       countUserPromptsInMessages: () => 0,

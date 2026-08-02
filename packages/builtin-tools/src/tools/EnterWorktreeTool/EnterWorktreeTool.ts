@@ -9,7 +9,7 @@ import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { clearMemoryFileCaches } from 'src/utils/claudemd.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { findCanonicalGitRoot } from 'src/utils/git.js'
+import { findCanonicalGitRoot } from 'src/utils/git/git.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { getPlanSlug, getPlansDirectory } from 'src/utils/plans.js'
 import { setCwd } from 'src/utils/shell/Shell.js'
@@ -18,7 +18,7 @@ import {
   createWorktreeForSession,
   getCurrentWorktreeSession,
   validateWorktreeSlug,
-} from 'src/utils/worktree.js'
+} from 'src/utils/git/worktree.js'
 import { ENTER_WORKTREE_TOOL_NAME } from './constants.js'
 import { getEnterWorktreeToolPrompt } from './prompt.js'
 import { renderToolResultMessage, renderToolUseMessage } from './UI.js'

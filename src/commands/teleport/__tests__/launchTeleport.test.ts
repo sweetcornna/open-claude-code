@@ -18,7 +18,7 @@ const teleportResumeMock = mock(
     Promise.resolve({ log: [], branch: 'main' }),
 )
 
-mock.module('src/utils/teleport.js', () => ({
+mock.module('src/utils/teleport/teleport.js', () => ({
   validateGitState: validateGitStateMock,
   teleportResumeCodeSession: teleportResumeMock,
   processMessagesForTeleportResume: mock(

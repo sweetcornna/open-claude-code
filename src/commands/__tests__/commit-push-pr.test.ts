@@ -5,7 +5,7 @@ mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))
 
-mock.module('src/utils/attribution.ts', () => ({
+mock.module('src/utils/git/attribution.ts', () => ({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
   getEnhancedPRAttribution: async () => undefined,
   countUserPromptsInMessages: () => 0,
@@ -62,7 +62,7 @@ const realNormalizeGitRemoteUrl = (url: string): string | null => {
   return null
 }
 
-mock.module('src/utils/git.ts', () => ({
+mock.module('src/utils/git/git.ts', () => ({
   getDefaultBranch: async () => 'main',
   findGitRoot: (_startPath?: string) => '/fake/root',
   findCanonicalGitRoot: (_startPath?: string) => '/fake/root',
@@ -309,7 +309,7 @@ describe('commit-push-pr getPromptForCommand', () => {
     }))
 
     // Also re-mock attribution to return commit text
-    mock.module('src/utils/attribution.ts', () => ({
+    mock.module('src/utils/git/attribution.ts', () => ({
       getAttributionTexts: () => ({
         commit: 'Attribution text',
         pr: 'PR Attribution',

@@ -25,7 +25,7 @@ import {
   createAgentWorktree,
   hasWorktreeChanges,
   removeAgentWorktree,
-} from '../../utils/worktree.js'
+} from '../../utils/git/worktree.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
 import type { Message } from '../../types/message.js'

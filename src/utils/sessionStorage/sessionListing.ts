@@ -6,7 +6,7 @@ import { logEvent } from 'src/services/analytics/index.js'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { type LogOption, sortLogs } from '../../types/logs.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { getWorktreePaths } from '../getWorktreePaths.js'
+import { getWorktreePaths } from '../git/getWorktreePaths.js'
 import { getProjectDir, getProjectsDir } from './paths.js'
 import { getSessionIdFromLog } from './logAssembly.js'
 import {

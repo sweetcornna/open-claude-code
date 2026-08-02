@@ -35,7 +35,7 @@ import { env } from './utils/config/env.js'
 import { envDynamic } from './utils/config/envDynamic.js'
 import { isBareMode, isEnvTruthy } from './utils/config/envUtils.js'
 import { errorMessage } from './utils/errors.js'
-import { findCanonicalGitRoot, findGitRoot, getIsGit } from './utils/git.js'
+import { findCanonicalGitRoot, findGitRoot, getIsGit } from './utils/git/git.js'
 import { initializeFileChangedWatcher } from './utils/hooks/fileChangedWatcher.js'
 import {
   captureHooksConfigSnapshot,
@@ -55,7 +55,7 @@ import {
   createWorktreeForSession,
   generateTmuxSessionName,
   worktreeBranchName,
-} from './utils/worktree.js'
+} from './utils/git/worktree.js'
 
 export async function setup(
   cwd: string,
@@ -322,7 +322,7 @@ export async function setup(
       // Prime repo classification cache for auto-undercover mode. Default is
       // undercover ON until proven internal; if this resolves to internal, clear
       // the prompt cache so the next turn picks up the OFF state.
-      void import('./utils/commitAttribution.js').then(async m => {
+      void import('./utils/git/commitAttribution.js').then(async m => {
         if (await m.isInternalModelRepo()) {
           const { clearSystemPromptSections } = await import(
             './constants/systemPromptSections.js'
@@ -336,7 +336,7 @@ export async function setup(
       // Defer to next tick so the git subprocess spawn runs after first render
       // rather than during the setup() microtask window.
       setImmediate(() => {
-        void import('./utils/attributionHooks.js').then(
+        void import('./utils/git/attributionHooks.js').then(
           ({ registerAttributionHooks }) => {
             registerAttributionHooks() // Register attribution tracking hooks (ant-only feature)
           },

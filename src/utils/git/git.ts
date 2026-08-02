@@ -502,7 +502,7 @@ export async function getGitState(): Promise<GitRepoState | null> {
 }
 
 export async function getGithubRepo(): Promise<string | null> {
-  const { parseGitRemote } = await import('../detectRepository.js')
+  const { parseGitRemote } = await import('./detectRepository.js')
   const remoteUrl = await getRemoteUrl()
   if (!remoteUrl) {
     logForDebugging('Local GitHub repo: unknown')

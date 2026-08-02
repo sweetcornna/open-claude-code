@@ -6,7 +6,7 @@ import {
 } from 'src/utils/bash/commands.js'
 import { tryParseShellCommand } from 'src/utils/bash/shellQuote.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { isCurrentDirectoryBareGitRepo } from 'src/utils/git.js'
+import { isCurrentDirectoryBareGitRepo } from 'src/utils/git/git.js'
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js'
 import { getPlatform } from 'src/utils/process/platform.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'

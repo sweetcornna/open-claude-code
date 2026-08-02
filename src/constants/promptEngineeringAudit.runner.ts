@@ -32,10 +32,10 @@ mock.module('src/bootstrap/state.js', () => ({
 mock.module('src/utils/filesystem/cwd.js', () => ({
   getCwd: () => '/test/project',
 }))
-mock.module('src/utils/git.js', () => ({
+mock.module('src/utils/git/git.js', () => ({
   getIsGit: async () => true,
 }))
-mock.module('src/utils/worktree.js', () => ({
+mock.module('src/utils/git/worktree.js', () => ({
   getCurrentWorktreeSession: () => null,
 }))
 mock.module('src/constants/common.js', () => ({

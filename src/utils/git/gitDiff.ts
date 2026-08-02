@@ -2,7 +2,7 @@ import type { StructuredPatchHunk } from 'diff'
 import { access, readFile } from 'fs/promises'
 import { dirname, join, relative, sep } from 'path'
 import { getCwd } from '../filesystem/cwd.js'
-import { getCachedRepository } from '../detectRepository.js'
+import { getCachedRepository } from './detectRepository.js'
 import {
   execFileNoThrow,
   execFileNoThrowWithCwd,
@@ -14,7 +14,7 @@ import {
   getGitDir,
   getIsGit,
   gitExe,
-} from '../git.js'
+} from './git.js'
 
 export type GitDiffStats = {
   filesCount: number

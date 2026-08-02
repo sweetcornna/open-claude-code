@@ -19,7 +19,7 @@ import { type FilesApiConfig, uploadFile } from '../../services/api/filesApi.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { execFileNoThrowWithCwd } from '../process/execFileNoThrow.js'
-import { findGitRoot, gitExe } from '../git.js'
+import { findGitRoot, gitExe } from '../git/git.js'
 import { generateTempFilePath } from '../filesystem/tempfile.js'
 
 // Tunable via tengu_ccr_bundle_max_bytes.

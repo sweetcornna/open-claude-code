@@ -2,8 +2,8 @@ import type { Command } from '../commands.js'
 import {
   getAttributionTexts,
   getEnhancedPRAttribution,
-} from '../utils/attribution.js'
-import { getDefaultBranch } from '../utils/git.js'
+} from '../utils/git/attribution.js'
+import { getDefaultBranch } from '../utils/git/git.js'
 import { executeShellCommandsInPrompt } from '../utils/shell/promptShellExecution.js'
 import {
   getUndercoverInstructions,

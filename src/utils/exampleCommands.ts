@@ -7,7 +7,7 @@ import {
 } from './config/config.js'
 import { env } from './config/env.js'
 import { execFileNoThrowWithCwd } from './process/execFileNoThrow.js'
-import { getIsGit, gitExe } from './git.js'
+import { getIsGit, gitExe } from './git/git.js'
 import { logError } from './telemetry/log.js'
 import { getGitEmail } from './auth/user.js'
 

@@ -13,7 +13,7 @@ import type {
   PermissionResult,
 } from '@open-claude-code/tool-runtime/types/permissions.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
-import { isCurrentDirectoryBareGitRepo } from 'src/utils/git.js'
+import { isCurrentDirectoryBareGitRepo } from 'src/utils/git/git.js'
 import type { PermissionRule } from 'src/utils/permissions/PermissionRule.js'
 import type { PermissionUpdate } from 'src/utils/permissions/PermissionUpdateSchema.js'
 import {

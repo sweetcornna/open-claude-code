@@ -1,6 +1,6 @@
 import { getCwd } from '../filesystem/cwd.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { getRemoteUrl } from '../git.js'
+import { getRemoteUrl } from './git.js'
 
 export type ParsedRepository = {
   host: string

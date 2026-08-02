@@ -16,7 +16,7 @@ import { isFsInaccessible } from '../errors.js'
 import { normalizePathForComparison } from '../filesystem/file.js'
 import type { FrontmatterData } from './frontmatterParser.js'
 import { parseFrontmatter } from './frontmatterParser.js'
-import { findCanonicalGitRoot, findGitRoot } from '../git.js'
+import { findCanonicalGitRoot, findGitRoot } from '../git/git.js'
 import { parseToolListFromCLI } from '../permissions/permissionSetup.js'
 import { ripGrep } from '../filesystem/ripgrep.js'
 import {

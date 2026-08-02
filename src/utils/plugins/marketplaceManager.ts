@@ -39,7 +39,7 @@ import {
   execFileNoThrowWithCwd,
 } from '../process/execFileNoThrow.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import { gitExe } from '../git.js'
+import { gitExe } from '../git/git.js'
 import { logError } from '../telemetry/log.js'
 import {
   getInitialSettings,

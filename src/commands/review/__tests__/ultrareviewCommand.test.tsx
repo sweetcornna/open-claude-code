@@ -101,7 +101,7 @@ _ultrareviewAxiosHandle.stubs.isAxiosError = (e: unknown) =>
   typeof e === 'object' && e !== null && (e as { isAxiosError?: boolean }).isAxiosError === true;
 
 // Mock detectCurrentRepositoryWithHost
-mock.module('src/utils/detectRepository.js', () => ({
+mock.module('src/utils/git/detectRepository.js', () => ({
   detectCurrentRepositoryWithHost: async () => ({
     host: 'github.com',
     owner: 'testowner',

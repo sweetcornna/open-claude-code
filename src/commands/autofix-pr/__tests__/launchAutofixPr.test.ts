@@ -24,7 +24,7 @@ const teleportMock = mock(
   (): Promise<TeleportResult> =>
     Promise.resolve({ id: 'session-123', title: 'Autofix PR: acme/myrepo#42' }),
 )
-mock.module('src/utils/teleport.js', () => ({
+mock.module('src/utils/teleport/teleport.js', () => ({
   teleportToRemote: teleportMock,
   // Stubs for other exports — Bun mock-module is process-level, so when
   // run combined with teleport-command tests these would otherwise leak as
@@ -94,7 +94,7 @@ mock.module('src/commands/autofix-pr/prFetch.js', () => ({
 const detectRepoMock = mock(() =>
   Promise.resolve({ host: 'github.com', owner: 'acme', name: 'myrepo' }),
 )
-mock.module('src/utils/detectRepository.js', () => ({
+mock.module('src/utils/git/detectRepository.js', () => ({
   detectCurrentRepositoryWithHost: detectRepoMock,
 }))
 

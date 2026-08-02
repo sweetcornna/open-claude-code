@@ -21,8 +21,8 @@ import {
   type BackgroundRemoteSessionPrecondition,
 } from '../../tasks/RemoteAgentTask/RemoteAgentTask.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
-import { detectCurrentRepositoryWithHost } from '../../utils/detectRepository.js'
-import { teleportToRemote } from '../../utils/teleport.js'
+import { detectCurrentRepositoryWithHost } from '../../utils/git/detectRepository.js'
+import { teleportToRemote } from '../../utils/teleport/teleport.js'
 import { AutofixProgress } from './AutofixProgress.js'
 import { createAutofixTeammate } from './inProcessAgent.js'
 import {

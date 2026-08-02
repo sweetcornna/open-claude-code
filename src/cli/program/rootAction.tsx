@@ -70,14 +70,14 @@ import {
   teleportToRemoteWithErrorHandling,
   validateGitState,
   validateSessionRepository,
-} from 'src/utils/teleport.js';
+} from 'src/utils/teleport/teleport.js';
 import { checkQuotaStatus } from 'src/services/claudeAiLimits.js';
 import { cleanupOrphanedPluginVersionsInBackground } from 'src/utils/plugins/cacheUtils.js';
 import { clearServerCache } from 'src/services/mcp/client.js';
 import { computeInitialTeamContext } from 'src/utils/swarm/reconnection.js';
 import { count, uniq } from 'src/utils/collections/array.js';
 import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/concurrentSessions.js';
-import { createEmptyAttributionState } from 'src/utils/commitAttribution.js';
+import { createEmptyAttributionState } from 'src/utils/git/commitAttribution.js';
 import { createRemoteSessionConfig } from 'src/remote/RemoteSessionManager.js';
 import { createStore } from 'src/state/store.js';
 import {
@@ -101,8 +101,8 @@ import { fetchClaudeAIMcpConfigsIfEligible } from 'src/services/mcp/claudeai.js'
 import { fetchSession, prepareApiRequest } from 'src/utils/teleport/api.js';
 import { filterAllowedSdkBetas } from 'src/utils/betas.js';
 import { filterCommandsForRemoteMode, getCommands } from 'src/commands.js';
-import { filterExistingPaths, getKnownPathsForRepo } from 'src/utils/githubRepoPathMapping.js';
-import { findGitRoot, getBranch } from 'src/utils/git.js';
+import { filterExistingPaths, getKnownPathsForRepo } from 'src/utils/github/githubRepoPathMapping.js';
+import { findGitRoot, getBranch } from 'src/utils/git/git.js';
 import {
   getActiveAgentsFromList,
   getAgentDefinitionsWithOverrides,
@@ -143,9 +143,9 @@ import { getRemoteSessionUrl } from 'src/constants/product.js';
 import { getSessionIngressAuthToken } from 'src/utils/auth/sessionIngressAuth.js';
 import { getSubscriptionType, validateForceLoginOrg } from 'src/utils/auth/auth.js';
 import { getSystemContext, getUserContext } from 'src/context.js';
-import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from 'src/utils/worktree.js';
+import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from 'src/utils/git/worktree.js';
 import { getTools } from 'src/tools.js';
-import { getWorktreePaths } from 'src/utils/getWorktreePaths.js';
+import { getWorktreePaths } from 'src/utils/git/getWorktreePaths.js';
 import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js';
 import {
   hasGrowthBookEnvOverride,
@@ -171,7 +171,7 @@ import { isAgentSwarmsEnabled } from 'src/utils/agentSwarmsEnabled.js';
 import { isBareMode, isEnvTruthy, isInProtectedNamespace } from 'src/utils/config/envUtils.js';
 import { isInBundledMode } from 'src/utils/config/bundledMode.js';
 import { isPolicyAllowed, refreshPolicyLimits, waitForPolicyLimitsToLoad } from 'src/services/policyLimits/index.js';
-import { isWorktreeModeEnabled } from 'src/utils/worktreeModeEnabled.js';
+import { isWorktreeModeEnabled } from 'src/utils/git/worktreeModeEnabled.js';
 import { jsonParse } from 'src/utils/telemetry/slowOperations.js';
 import {
   launchAssistantInstallWizard,

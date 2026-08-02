@@ -279,9 +279,9 @@ async function main(): Promise<void> {
     profileCheckpoint('cli_tmux_worktree_fast_path');
     const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
-    const { isWorktreeModeEnabled } = await import('../utils/worktreeModeEnabled.js');
+    const { isWorktreeModeEnabled } = await import('../utils/git/worktreeModeEnabled.js');
     if (isWorktreeModeEnabled()) {
-      const { execIntoTmuxWorktree } = await import('../utils/worktree.js');
+      const { execIntoTmuxWorktree } = await import('../utils/git/worktree.js');
       const result = await execIntoTmuxWorktree(args);
       if (result.handled) {
         return;

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import type { Command, LocalCommandCall } from '../types/command.js'
-import { detectCurrentRepositoryWithHost } from '../utils/detectRepository.js'
+import { detectCurrentRepositoryWithHost } from '../utils/git/detectRepository.js'
 import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 
 /**

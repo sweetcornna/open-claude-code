@@ -22,7 +22,7 @@ mock.module('../banner.js', () => ({
   readLastFetchTime: async () => undefined,
   buildDeepLinkBanner: () => '',
 }))
-mock.module('../../githubRepoPathMapping.js', () => ({
+mock.module('../../github/githubRepoPathMapping.js', () => ({
   updateGithubRepoPathMapping: async () => {},
   getKnownPathsForRepo: () => [],
   filterExistingPaths: async () => [],
