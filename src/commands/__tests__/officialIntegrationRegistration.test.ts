@@ -1,11 +1,26 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
+import { readdirSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 
 const sourceRoot = resolve(import.meta.dir, '..', '..')
 
 function readSource(relativePath: string): string {
   return readFileSync(resolve(sourceRoot, relativePath), 'utf8')
+}
+
+// REPL.tsx was split into screens/repl/ (S7-4d). A negative assertion that
+// reads only REPL.tsx would still pass if the symbol reappeared in one of the
+// extracted modules, so scan the whole screen.
+function readReplSources(): string {
+  const replDir = resolve(sourceRoot, 'screens', 'repl')
+  const files = readdirSync(replDir, { recursive: true })
+    .map(String)
+    .filter(name => name.endsWith('.ts') || name.endsWith('.tsx'))
+    .sort()
+  return [
+    readSource('screens/REPL.tsx'),
+    ...files.map(name => readFileSync(resolve(replDir, name), 'utf8')),
+  ].join('\n')
 }
 
 describe('official integration registration', () => {
@@ -22,7 +37,7 @@ describe('official integration registration', () => {
   })
 
   test('does not run official marketplace installation during REPL startup', () => {
-    const replSource = readSource('screens/REPL.tsx')
+    const replSource = readReplSources()
     const hookSource = readSource(
       'hooks/useOfficialMarketplaceNotification.tsx',
     )
