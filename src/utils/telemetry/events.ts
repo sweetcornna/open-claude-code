@@ -3,6 +3,7 @@ import { getEventLogger, getPromptId } from 'src/bootstrap/state.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { getTelemetryAttributes } from './telemetryAttributes.js'
+import { truncateContent } from './otelContentLimit.js'
 
 // Monotonically increasing counter for ordering events within a session
 let eventSequence = 0
@@ -60,10 +61,13 @@ export async function logOTelEvent(
     attributes['workspace.host_paths'] = workspaceDir.split('|')
   }
 
-  // Add metadata as attributes - all values are already strings
+  // Add metadata as attributes - all values are already strings. Cap each
+  // value at the OTel content limit (CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH,
+  // default 60KB) — this path previously had NO bound, so a full prompt via
+  // OTEL_LOG_USER_PROMPTS could blow past collector attribute limits.
   for (const [key, value] of Object.entries(metadata)) {
     if (value !== undefined) {
-      attributes[key] = value
+      attributes[key] = truncateContent(value).content
     }
   }
 

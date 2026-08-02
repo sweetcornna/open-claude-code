@@ -67,7 +67,8 @@ export function clearBetaTracingState(): void {
   lastReportedMessageHash.clear()
 }
 
-const MAX_CONTENT_SIZE = 60 * 1024 // 60KB (Honeycomb limit is 64KB, staying safe)
+// Truncation moved to ./otelContentLimit.ts (leaf) so events.ts can share it
+// without a betaSessionTracing ↔ events import cycle.
 
 /**
  * Check if beta detailed tracing is enabled.
@@ -97,24 +98,8 @@ export function isBetaTracingEnabled(): boolean {
   return true
 }
 
-/**
- * Truncate content to fit within Honeycomb limits.
- */
-export function truncateContent(
-  content: string,
-  maxSize: number = MAX_CONTENT_SIZE,
-): { content: string; truncated: boolean } {
-  if (content.length <= maxSize) {
-    return { content, truncated: false }
-  }
-
-  return {
-    content:
-      content.slice(0, maxSize) +
-      '\n\n[TRUNCATED - Content exceeds 60KB limit]',
-    truncated: true,
-  }
-}
+import { truncateContent } from './otelContentLimit.js'
+export { truncateContent }
 
 /**
  * Generate a short hash (first 12 hex chars of SHA-256).
