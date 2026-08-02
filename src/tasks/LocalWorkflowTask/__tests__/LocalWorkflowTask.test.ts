@@ -20,11 +20,11 @@ mock.module('src/constants/xml.js', () => ({
   TASK_TYPE_TAG: 'task_type',
 }))
 
-mock.module('src/utils/messageQueueManager.js', () => ({
+mock.module('src/utils/session/messageQueueManager.js', () => ({
   enqueuePendingNotification: () => {},
 }))
 
-mock.module('src/utils/sdkEventQueue.js', () => ({
+mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: () => {},
 }))
 

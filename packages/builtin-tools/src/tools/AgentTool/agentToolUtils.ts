@@ -58,7 +58,7 @@ import {
 } from 'src/utils/permissions/yoloClassifier.js'
 import { emitTaskProgress as emitTaskProgressEvent } from 'src/utils/task/sdkProgress.js'
 import { isInProcessTeammate } from 'src/utils/teammateContext.js'
-import { getTokenCountFromUsage } from 'src/utils/tokens.js'
+import { getTokenCountFromUsage } from 'src/utils/session/tokens.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import type { AgentDefinition } from './loadAgentsDir.js'

@@ -41,7 +41,7 @@ import {
 import {
   getContextWindowForModel,
   getModelMaxOutputTokens,
-} from './utils/context.js'
+} from './utils/session/context.js'
 import { isFastModeEnabled } from './utils/fastMode.js'
 import { formatDuration, formatNumber } from './utils/text/format.js'
 import type { FpsMetrics } from './utils/telemetry/fpsTracker.js'

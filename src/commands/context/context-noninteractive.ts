@@ -7,7 +7,7 @@ import type { Message } from '../../types/message.js'
 import {
   analyzeContextUsage,
   type ContextData,
-} from '../../utils/analyzeContext.js'
+} from '../../utils/session/analyzeContext.js'
 import { formatTokens } from '../../utils/text/format.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
 import { getSourceDisplayName } from '../../utils/settings/constants.js'

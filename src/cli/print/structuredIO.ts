@@ -10,7 +10,7 @@ import type { SDKControlResponse } from 'src/entrypoints/sdk/controlTypes.js'
 import type { AppState } from 'src/state/AppStateStore.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { findUnresolvedToolUse } from 'src/utils/sessionStorage.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
 
 function getStructuredIO(
   inputPrompt: string | AsyncIterable<string>,

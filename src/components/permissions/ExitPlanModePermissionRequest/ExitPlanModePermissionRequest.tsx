@@ -25,12 +25,12 @@ import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '@open-claude-code/builtin-tools/too
 import type { AllowedPrompt } from '@open-claude-code/builtin-tools/tools/ExitPlanModeTool/ExitPlanModeV2Tool.js';
 import { TEAM_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TeamCreateTool/constants.js';
 import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js';
-import { calculateContextPercentages, getContextWindowForModel } from '../../../utils/context.js';
+import { calculateContextPercentages, getContextWindowForModel } from '../../../utils/session/context.js';
 import { getExternalEditor } from '../../../utils/terminal/editor.js';
 import { getDisplayPath } from '../../../utils/filesystem/file.js';
 import { toIDEDisplayName } from '../../../utils/terminal/ide.js';
 import { logError } from '../../../utils/telemetry/log.js';
-import { enqueuePendingNotification } from '../../../utils/messageQueueManager.js';
+import { enqueuePendingNotification } from '../../../utils/session/messageQueueManager.js';
 import { createUserMessage } from '../../../utils/messages.js';
 import { getMainLoopModel, getRuntimeMainLoopModel } from '../../../utils/model/model.js';
 import {

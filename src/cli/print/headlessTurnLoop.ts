@@ -21,13 +21,13 @@ import { TICK_TAG } from 'src/constants/xml.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { errorMessage } from 'src/utils/errors.js'
 import { getInMemoryErrors, logError } from 'src/utils/telemetry/log.js'
-import { enqueue, peek } from 'src/utils/messageQueueManager.js'
+import { enqueue, peek } from 'src/utils/session/messageQueueManager.js'
 import {
   gracefulShutdownSync,
   isShuttingDown,
 } from 'src/utils/process/gracefulShutdown.js'
-import { notifySessionStateChanged } from 'src/utils/sessionState.js'
-import { drainSdkEvents } from 'src/utils/sdkEventQueue.js'
+import { notifySessionStateChanged } from 'src/utils/session/sessionState.js'
+import { drainSdkEvents } from 'src/utils/session/sdkEventQueue.js'
 import { headlessProfilerCheckpoint } from 'src/utils/telemetry/headlessProfiler.js'
 import { getRunningTasks } from 'src/utils/task/framework.js'
 import { isBackgroundTask } from 'src/tasks/types.js'

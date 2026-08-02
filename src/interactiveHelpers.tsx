@@ -30,7 +30,7 @@ import {
   getExternalClaudeMdIncludes,
   getMemoryFiles,
   shouldShowClaudeMdExternalIncludesWarning,
-} from './utils/claudemd.js';
+} from './utils/session/claudemd.js';
 import {
   checkHasTrustDialogAccepted,
   getCustomApiKeyStatus,

@@ -16,7 +16,7 @@ import { getSessionIngressAuthToken } from '../utils/auth/sessionIngressAuth.js'
 import {
   setSessionMetadataChangedListener,
   setSessionStateChangedListener,
-} from '../utils/sessionState.js'
+} from '../utils/session/sessionState.js'
 import {
   setInternalEventReader,
   setInternalEventWriter,

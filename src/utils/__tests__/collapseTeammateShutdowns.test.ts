@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { collapseTeammateShutdowns } from '../collapseTeammateShutdowns'
+import { collapseTeammateShutdowns } from '../session/collapseTeammateShutdowns'
 
 function makeShutdownMsg(uuid = '1'): any {
   return {

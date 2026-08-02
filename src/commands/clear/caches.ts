@@ -26,11 +26,11 @@ import { clearTrackedMagicDocs } from '../../services/MagicDocs/magicDocs.js'
 import { clearDynamicSkills } from '../../skills/loadSkillsDir.js'
 import { resetSentSkillNames } from '../../utils/attachments.js'
 import { clearCommandPrefixCaches } from '../../utils/bash/commands.js'
-import { resetGetMemoryFilesCache } from '../../utils/claudemd.js'
+import { resetGetMemoryFilesCache } from '../../utils/session/claudemd.js'
 import { clearRepositoryCaches } from '../../utils/git/detectRepository.js'
 import { clearResolveGitDirCache } from '../../utils/git/gitFilesystem.js'
 import { clearStoredImagePaths } from '../../utils/terminal/imageStore.js'
-import { clearSessionEnvVars } from '../../utils/sessionEnvVars.js'
+import { clearSessionEnvVars } from '../../utils/session/sessionEnvVars.js'
 
 /**
  * Clear all session-related caches.

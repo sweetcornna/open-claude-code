@@ -57,7 +57,7 @@ import {
 import { errorMessage } from '../../utils/errors.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { logMCPDebug, logMCPError } from '../../utils/telemetry/log.js'
-import { enqueue } from '../../utils/messageQueueManager.js'
+import { enqueue } from '../../utils/session/messageQueueManager.js'
 import {
   CHANNEL_MESSAGE_METHOD,
   CHANNEL_PERMISSION_METHOD,

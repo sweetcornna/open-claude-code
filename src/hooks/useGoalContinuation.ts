@@ -41,7 +41,7 @@ import {
 import {
   enqueue,
   getCommandQueueSnapshot,
-} from 'src/utils/messageQueueManager.js'
+} from 'src/utils/session/messageQueueManager.js'
 
 function hookLog(msg: string): void {
   logForDebugging(`[goal] hook: ${msg}`)

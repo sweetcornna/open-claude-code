@@ -28,10 +28,10 @@ import type { Message } from '../types/message.js'
 import {
   countToolDefinitionTokens,
   TOOL_TOKEN_COUNT_OVERHEAD,
-} from './analyzeContext.js'
+} from './session/analyzeContext.js'
 import { count } from './collections/array.js'
 import { getMergedBetas } from './betas.js'
-import { getContextWindowForModel } from './context.js'
+import { getContextWindowForModel } from './session/context.js'
 import { logForDebugging } from './telemetry/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './config/envUtils.js'
 import { jsonStringify } from './telemetry/slowOperations.js'

@@ -43,7 +43,7 @@ import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   dequeueAllMatching,
   hasCommandsInQueue,
-} from 'src/utils/messageQueueManager.js'
+} from 'src/utils/session/messageQueueManager.js'
 import { expandPath } from 'src/utils/filesystem/path.js'
 import {
   getDefaultMainLoopModel,
@@ -53,10 +53,10 @@ import {
 import { modelSupportsEffort, resolveAppliedEffort } from 'src/utils/effort.js'
 import { getSettingsWithSources } from 'src/utils/settings/settings.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
-import { notifySessionMetadataChanged } from 'src/utils/sessionState.js'
-import { buildSideQuestionFallbackParams } from 'src/utils/queryContext.js'
-import { runSideQuestion } from 'src/utils/sideQuestion.js'
-import { generateSessionTitle } from 'src/utils/sessionTitle.js'
+import { notifySessionMetadataChanged } from 'src/utils/session/sessionState.js'
+import { buildSideQuestionFallbackParams } from 'src/utils/session/queryContext.js'
+import { runSideQuestion } from 'src/utils/session/sideQuestion.js'
+import { generateSessionTitle } from 'src/utils/session/sessionTitle.js'
 import { getLastCacheSafeParams } from 'src/utils/collections/cacheSafeParamsSlot.js'
 import { saveAiGeneratedTitle } from 'src/utils/sessionStorage.js'
 import {

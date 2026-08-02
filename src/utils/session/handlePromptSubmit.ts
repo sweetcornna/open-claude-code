@@ -34,7 +34,7 @@ import {
 import { gracefulShutdownSync } from '../process/gracefulShutdown.js'
 import { toError } from '../errors.js'
 import { logError } from '../telemetry/log.js'
-import { enqueue } from '../messageQueueManager.js'
+import { enqueue } from './messageQueueManager.js'
 import { resolveSkillModelOverride } from '../model/model.js'
 import {
   claimConsumableQueuedAutonomyCommands,
@@ -42,12 +42,12 @@ import {
 } from '../autonomyQueueLifecycle.js'
 import type { ProcessUserInputContext } from '../processUserInput/processUserInput.js'
 import { processUserInput } from '../processUserInput/processUserInput.js'
-import type { QueryGuard } from '../QueryGuard.js'
+import type { QueryGuard } from './QueryGuard.js'
 import {
   queryCheckpoint,
   startQueryProfile,
 } from '../telemetry/queryProfiler.js'
-import { runWithWorkload } from '../workloadContext.js'
+import { runWithWorkload } from './workloadContext.js'
 
 function exit(): void {
   gracefulShutdownSync(0)

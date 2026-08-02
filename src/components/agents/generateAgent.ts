@@ -22,7 +22,7 @@ import {
 import { getSessionId } from '../../bootstrap/state.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
 import { jsonParse } from '../../utils/telemetry/slowOperations.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
 
 type GeneratedAgent = {
   identifier: string

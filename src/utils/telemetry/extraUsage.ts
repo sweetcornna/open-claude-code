@@ -1,5 +1,5 @@
 import { isClaudeAISubscriber } from '../auth/auth.js'
-import { has1mContext } from '../context.js'
+import { has1mContext } from '../session/context.js'
 
 export function isBilledAsExtraUsage(
   model: string | null,

@@ -40,7 +40,7 @@ export type AutomationStateMetadata = {
 
 import { isEnvTruthy } from '../config/envUtils.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
-import { enqueueSdkEvent } from '../sdkEventQueue.js'
+import { enqueueSdkEvent } from './sdkEventQueue.js'
 
 // CCR external_metadata keys — push in onChangeAppState, restore in
 // externalMetadataToAppState.

@@ -13,8 +13,8 @@ import { setClipboard } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import type { LogOption } from '../../types/logs.js';
-import { agenticSessionSearch } from '../../utils/agenticSessionSearch.js';
-import { checkCrossProjectResume } from '../../utils/crossProjectResume.js';
+import { agenticSessionSearch } from '../../utils/session/agenticSessionSearch.js';
+import { checkCrossProjectResume } from '../../utils/session/crossProjectResume.js';
 import { getWorktreePaths } from '../../utils/git/getWorktreePaths.js';
 import { logError } from '../../utils/telemetry/log.js';
 import {

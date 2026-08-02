@@ -160,7 +160,7 @@ export function containsPathTraversal(path: string): boolean {
 }
 
 // Re-export from the shared zero-dep source.
-export { sanitizePath } from '../sessionStoragePortable.js'
+export { sanitizePath } from '../session/sessionStoragePortable.js'
 
 /**
  * Normalizes a path for use as a JSON config key.

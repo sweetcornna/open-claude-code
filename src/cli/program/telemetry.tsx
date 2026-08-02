@@ -9,7 +9,7 @@ import {
 } from 'src/services/analytics/index.js';
 import { isRunningWithBun } from 'src/utils/config/bundledMode.js';
 import { isAutoUpdaterDisabled } from 'src/utils/config/config.js';
-import { getContextWindowForModel } from 'src/utils/context.js';
+import { getContextWindowForModel } from 'src/utils/session/context.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
 import { hasNodeOption } from 'src/utils/config/envUtils.js';
 import { getIsGit, getWorktreeCount } from 'src/utils/git/git.js';

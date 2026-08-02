@@ -11,7 +11,7 @@ const HEADROOM = 3;
 
 import { logForDebugging } from '../utils/telemetry/debug.js';
 import { sleep } from '../utils/process/sleep.js';
-import { renderableSearchText } from '../utils/transcriptSearch.js';
+import { renderableSearchText } from '../utils/session/transcriptSearch.js';
 import type { RenderableMessage } from '../types/message.js';
 import {
   isNavigableMessage,

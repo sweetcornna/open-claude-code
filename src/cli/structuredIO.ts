@@ -37,7 +37,7 @@ import { writeToStdout } from 'src/utils/process/process.js'
 import { jsonStringify } from 'src/utils/telemetry/slowOperations.js'
 import { z } from 'zod/v4'
 import { notifyCommandLifecycle } from '../utils/commandLifecycle.js'
-import { normalizeControlMessageKeys } from '../utils/controlMessageCompat.js'
+import { normalizeControlMessageKeys } from '../utils/session/controlMessageCompat.js'
 import { executePermissionRequestHooks } from '../utils/hooks.js'
 import {
   applyPermissionUpdates,
@@ -47,7 +47,7 @@ import {
   notifySessionStateChanged,
   type RequiresActionDetails,
   type SessionExternalMetadata,
-} from '../utils/sessionState.js'
+} from '../utils/session/sessionState.js'
 import { jsonParse } from '../utils/telemetry/slowOperations.js'
 import { Stream } from '../utils/collections/stream.js'
 import { ndjsonSafeStringify } from './ndjsonSafeStringify.js'

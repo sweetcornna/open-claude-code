@@ -5,7 +5,7 @@ import {
   getLargeMemoryFiles,
   MAX_MEMORY_CHARACTER_COUNT,
   type MemoryFileInfo,
-} from '../claudemd'
+} from '../session/claudemd'
 
 function mockMemoryFile(
   overrides: Partial<MemoryFileInfo> = {},

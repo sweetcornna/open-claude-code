@@ -36,7 +36,7 @@ import {
   AUTONOMY_DIR,
   resetAutonomyAuthorityForTests,
 } from '../autonomyAuthority'
-import { resetCommandQueue } from '../messageQueueManager'
+import { resetCommandQueue } from '../session/messageQueueManager'
 import {
   cleanupTempDir,
   createTempDir,

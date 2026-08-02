@@ -222,7 +222,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
   test('uses ChatGPT Responses + OAuth, not empty-key Chat Completions', async () => {
     process.env.OPENAI_AUTH_MODE = 'chatgpt'
     delete process.env.OPENAI_API_KEY
-    const { sideQuery } = await import('../sideQuery.js')
+    const { sideQuery } = await import('../session/sideQuery.js')
 
     const result = await sideQuery({
       querySource: 'auto_mode',
@@ -281,7 +281,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
         cache_write_tokens: 250,
       },
     }
-    const { sideQuery } = await import('../sideQuery.js')
+    const { sideQuery } = await import('../session/sideQuery.js')
 
     const result = await sideQuery({
       querySource: 'auto_mode',
@@ -319,7 +319,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
         cache_write_tokens: 250,
       },
     }
-    const { sideQuery } = await import('../sideQuery.js')
+    const { sideQuery } = await import('../session/sideQuery.js')
 
     const result = await sideQuery({
       querySource: 'auto_mode',
@@ -342,7 +342,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
         statusText: 'Unauthorized',
       })) as unknown as typeof fetch
 
-    const { sideQuery } = await import('../sideQuery.js')
+    const { sideQuery } = await import('../session/sideQuery.js')
 
     await expect(
       sideQuery({

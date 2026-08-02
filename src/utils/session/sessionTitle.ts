@@ -21,7 +21,7 @@ import { logForDebugging } from '../telemetry/debug.js'
 import { safeParseJSON } from '../text/json.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { extractTextContent } from '../messages.js'
-import { asSystemPrompt } from '../systemPromptType.js'
+import { asSystemPrompt } from './systemPromptType.js'
 
 const MAX_CONVERSATION_TEXT = 1000
 

@@ -37,7 +37,7 @@ import {
 import { logError } from '../../utils/telemetry/log.js'
 import { clearAllPlanSlugs } from '../../utils/plans.js'
 import { setCwd } from '../../utils/shell/Shell.js'
-import { processSessionStartHooks } from '../../utils/sessionStart.js'
+import { processSessionStartHooks } from '../../utils/session/sessionStart.js'
 import {
   clearSessionMetadata,
   getAgentTranscriptPath,

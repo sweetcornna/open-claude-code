@@ -40,7 +40,7 @@ import {
 import { createDenialTrackingState } from './permissions/denialTracking.js'
 import { parseToolListFromCLI } from './permissions/permissionSetup.js'
 import { recordSidechainTranscript } from './sessionStorage.js'
-import type { SystemPrompt } from './systemPromptType.js'
+import type { SystemPrompt } from './session/systemPromptType.js'
 import {
   type ContentReplacementState,
   cloneContentReplacementState,

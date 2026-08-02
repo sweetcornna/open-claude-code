@@ -4,7 +4,7 @@ import { logForDebugging } from '../telemetry/debug.js'
 import { getLogDisplayTitle, logError } from '../telemetry/log.js'
 import { getSmallFastModel } from '../model/model.js'
 import { isLiteLog, loadFullLog } from '../sessionStorage.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from './sideQuery.js'
 import { jsonParse } from '../telemetry/slowOperations.js'
 
 // Limits for transcript extraction

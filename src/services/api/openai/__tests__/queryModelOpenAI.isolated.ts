@@ -295,7 +295,7 @@ mock.module('../convertTools.js', () => ({
   anthropicToolChoiceToOpenAI: () => undefined,
 }))
 
-mock.module('../../../../utils/context.js', () => ({
+mock.module('../../../../utils/session/context.js', () => ({
   MODEL_CONTEXT_WINDOW_DEFAULT: 200_000,
   COMPACT_MAX_OUTPUT_TOKENS: 20_000,
   CAPPED_DEFAULT_MAX_TOKENS: 8_000,

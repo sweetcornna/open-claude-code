@@ -1,5 +1,5 @@
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import type { PermissionPromptTool } from 'src/utils/queryHelpers.js'
+import type { PermissionPromptTool } from 'src/utils/session/queryHelpers.js'
 import { createCombinedAbortSignal } from 'src/utils/process/combinedAbortSignal.js'
 import { hasPermissionsToUseTool } from 'src/utils/permissions/permissions.js'
 import {
@@ -10,7 +10,7 @@ import { safeParseJSON } from 'src/utils/text/json.js'
 import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js'
 import { toolMatchesName, type Tool } from 'src/Tool.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
-import type { RequiresActionDetails } from 'src/utils/sessionState.js'
+import type { RequiresActionDetails } from 'src/utils/session/sessionState.js'
 
 /**
  * Creates a CanUseToolFn that incorporates a custom permission prompt tool.

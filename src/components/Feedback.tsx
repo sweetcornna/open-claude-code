@@ -31,7 +31,7 @@ import {
   MAX_TRANSCRIPT_READ_BYTES,
 } from '../utils/sessionStorage.js';
 import { jsonStringify } from '../utils/telemetry/slowOperations.js';
-import { asSystemPrompt } from '../utils/systemPromptType.js';
+import { asSystemPrompt } from '../utils/session/systemPromptType.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Byline, Dialog, KeyboardShortcutHint } from '@anthropic/ink';
 import TextInput from './TextInput.js';

@@ -13,7 +13,7 @@ import {
 import { type AppState, useAppState, useAppStateStore, useSetAppState } from 'src/state/AppState.js';
 import type { FooterItem } from 'src/state/AppStateStore.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
-import { isQueuedCommandEditable, popAllEditable } from 'src/utils/messageQueueManager.js';
+import { isQueuedCommandEditable, popAllEditable } from 'src/utils/session/messageQueueManager.js';
 import stripAnsi from 'strip-ansi';
 import { companionReservedColumns } from '../../buddy/CompanionSprite.js';
 import { findBuddyTriggerPositions, useBuddyNotification } from '../../buddy/useBuddyNotification.js';
@@ -63,7 +63,7 @@ import type { AutoUpdaterResult } from '../../utils/update/autoUpdater.js';
 import { Cursor } from '../../utils/terminal/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config/config.js';
 import { logForDebugging } from '../../utils/telemetry/debug.js';
-import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
+import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/session/directMemberMessage.js';
 import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/config/env.js';
 import { errorMessage } from '../../utils/errors.js';
@@ -76,7 +76,7 @@ import {
   isFastModeSupportedByModel,
 } from '../../utils/fastMode.js';
 import { isFullscreenEnvEnabled } from '../../utils/terminal/fullscreen.js';
-import type { PromptInputHelpers } from '../../utils/handlePromptSubmit.js';
+import type { PromptInputHelpers } from '../../utils/session/handlePromptSubmit.js';
 import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/terminal/imagePaste.js';
 import type { ImageDimensions } from '../../utils/terminal/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../utils/terminal/imageStore.js';
@@ -88,7 +88,7 @@ import { getPlatform } from '../../utils/process/platform.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
 import { editPromptInEditor } from '../../utils/terminal/promptEditor.js';
 // hasAutoModeOptIn removed — auto mode is available to all users
-import { findBtwTriggerPositions } from '../../utils/sideQuestion.js';
+import { findBtwTriggerPositions } from '../../utils/session/sideQuestion.js';
 import { findSlashCommandPositions } from '../../utils/suggestions/commandSuggestions.js';
 import {
   findSlackChannelPositions,
@@ -105,7 +105,7 @@ import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/text/textHighlighting.js';
 import type { Theme } from '../../utils/terminal/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
-import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
+import { findTokenBudgetPositions } from '../../utils/session/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 // AutoModeOptInDialog removed — auto mode is available to all users
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';

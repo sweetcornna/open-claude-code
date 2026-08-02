@@ -32,7 +32,7 @@ import {
   handleMessageFromStream,
   type StreamingToolUse,
 } from '../utils/messages.js'
-import { generateSessionTitle } from '../utils/sessionTitle.js'
+import { generateSessionTitle } from '../utils/session/sessionTitle.js'
 import type { RemoteMessageContent } from '../utils/teleport/api.js'
 import { updateSessionTitle } from '../utils/teleport/api.js'
 

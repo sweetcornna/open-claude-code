@@ -20,10 +20,10 @@ import type {
 } from 'src/services/mcp/types.js'
 import type { Message } from 'src/types/message.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import type { TurnInterruptionState } from 'src/utils/conversationRecovery.js'
+import type { TurnInterruptionState } from 'src/utils/session/conversationRecovery.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { shouldForceGc } from 'src/cli/headlessGc.js'
-import { createStreamlinedTransformer } from 'src/utils/streamlinedTransform.js'
+import { createStreamlinedTransformer } from 'src/utils/session/streamlinedTransform.js'
 import { installStreamJsonStdoutGuard } from 'src/utils/process/streamJsonStdoutGuard.js'
 import {
   logHeadlessProfilerTurn,
@@ -45,8 +45,8 @@ import {
   processSessionStartHooks,
   processSetupHooks,
   takeInitialUserMessage,
-} from 'src/utils/sessionStart.js'
-import { restoreAgentFromSession } from 'src/utils/sessionRestore.js'
+} from 'src/utils/session/sessionStart.js'
+import { restoreAgentFromSession } from 'src/utils/session/sessionRestore.js'
 import { saveAgentSetting } from 'src/utils/sessionStorage.js'
 import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { isExtractModeActive } from 'src/memdir/paths.js'
@@ -61,7 +61,7 @@ import { isFastModeEnabled } from 'src/utils/fastMode.js'
 import {
   notifySessionStateChanged,
   type RequiresActionDetails,
-} from 'src/utils/sessionState.js'
+} from 'src/utils/session/sessionState.js'
 import { ensureModelStringsInitialized } from 'src/utils/model/modelStrings.js'
 import { getCanUseToolFn } from './toolPermissions.js'
 import { handleRewindFiles } from './controlHandlers.js'

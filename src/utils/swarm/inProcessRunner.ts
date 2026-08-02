@@ -67,7 +67,7 @@ import { evictTerminalTask } from '../../utils/task/framework.js'
 import {
   tokenCountWithEstimation,
   getTokenCountFromUsage,
-} from '../../utils/tokens.js'
+} from '../session/tokens.js'
 import { createAbortController } from '../process/abortController.js'
 import { type AgentContext, runWithAgentContext } from '../agentContext.js'
 import {
@@ -89,10 +89,10 @@ import {
 } from '../permissions/PermissionUpdate.js'
 import type { PermissionUpdate } from '../permissions/PermissionUpdateSchema.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
-import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
+import { emitTaskTerminatedSdk } from '../session/sdkEventQueue.js'
 import { sleep } from '../process/sleep.js'
 import { jsonStringify } from '../telemetry/slowOperations.js'
-import { asSystemPrompt } from '../systemPromptType.js'
+import { asSystemPrompt } from '../session/systemPromptType.js'
 import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
 import type { TeammateContext } from '../teammateContext.js'
 import { runWithTeammateContext } from '../teammateContext.js'

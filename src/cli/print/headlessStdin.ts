@@ -24,7 +24,7 @@ import { resolveAndPrepend } from 'src/cli/inboundAttachments.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
 import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
 import { toInternalMessages } from 'src/utils/messages/mappers.js'
 import { incrementPromptCount } from 'src/utils/git/commitAttribution.js'
 import {

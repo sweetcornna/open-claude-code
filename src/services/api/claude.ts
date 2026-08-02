@@ -68,7 +68,7 @@ import {
   CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
   getSonnet1mExpTreatmentEnabled,
-} from '../../utils/context.js'
+} from '../../utils/session/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
@@ -92,12 +92,12 @@ import {
 import {
   asSystemPrompt,
   type SystemPrompt,
-} from '../../utils/systemPromptType.js'
+} from '../../utils/session/systemPromptType.js'
 import {
   getBreakCacheMarkerPath,
   getBreakCacheAlwaysPath,
 } from '../../commands/break-cache/index.js'
-import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
+import { tokenCountFromLastAPIResponse } from '../../utils/session/tokens.js'
 import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
 import {
   currentLimits,
@@ -166,7 +166,7 @@ import {
 } from 'src/utils/betas.js'
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from 'src/utils/chromeDevtools/common.js'
 import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from 'src/utils/chromeDevtools/prompt.js'
-import { getMaxThinkingTokensForModel } from 'src/utils/context.js'
+import { getMaxThinkingTokensForModel } from 'src/utils/session/context.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
 import { type EffortValue, modelSupportsEffort } from 'src/utils/effort.js'
@@ -212,7 +212,7 @@ import {
 import {
   startSessionActivity,
   stopSessionActivity,
-} from '../../utils/sessionActivity.js'
+} from '../../utils/session/sessionActivity.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import {
   isBetaTracingEnabled,

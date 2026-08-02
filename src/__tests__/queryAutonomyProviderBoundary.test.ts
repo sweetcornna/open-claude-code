@@ -9,7 +9,7 @@ import {
 import { query } from '../query'
 import { getEmptyToolPermissionContext } from '../Tool'
 import type { AssistantMessage } from '../types/message'
-import { asSystemPrompt } from '../utils/systemPromptType'
+import { asSystemPrompt } from '../utils/session/systemPromptType'
 import {
   createAssistantAPIErrorMessage,
   createUserMessage,
@@ -19,7 +19,7 @@ import {
   enqueue,
   getCommandsByMaxPriority,
   resetCommandQueue,
-} from '../utils/messageQueueManager'
+} from '../utils/session/messageQueueManager'
 import { getAutonomyFlowById, listAutonomyFlows } from '../utils/autonomyFlows'
 import {
   getAutonomyRunById,

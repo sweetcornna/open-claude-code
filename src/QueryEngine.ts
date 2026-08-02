@@ -71,13 +71,13 @@ import {
   type ProcessUserInputContext,
   processUserInput,
 } from './utils/processUserInput/processUserInput.js'
-import { fetchSystemPromptParts } from './utils/queryContext.js'
+import { fetchSystemPromptParts } from './utils/session/queryContext.js'
 import { setCwd } from './utils/shell/Shell.js'
 import {
   flushSessionStorage,
   recordTranscript,
 } from './utils/sessionStorage.js'
-import { asSystemPrompt } from './utils/systemPromptType.js'
+import { asSystemPrompt } from './utils/session/systemPromptType.js'
 import { resolveThemeSetting } from './utils/terminal/systemTheme.js'
 import {
   shouldEnableThinkingByDefault,
@@ -113,7 +113,7 @@ import {
   handleOrphanedPermission,
   isResultSuccessful,
   normalizeMessage,
-} from './utils/queryHelpers.js'
+} from './utils/session/queryHelpers.js'
 
 // Dead code elimination: conditional import for coordinator mode
 /* eslint-disable @typescript-eslint/no-require-imports */

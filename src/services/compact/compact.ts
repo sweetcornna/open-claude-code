@@ -42,11 +42,11 @@ import {
   type Attachment,
 } from '../../utils/attachments.js'
 import { getMemoryPath } from '../../utils/config/config.js'
-import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
+import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/session/context.js'
 import {
   analyzeContext,
   tokenStatsToStatsigMetrics,
-} from '../../utils/contextAnalysis.js'
+} from '../../utils/session/contextAnalysis.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { hasExactErrorMessage } from '../../utils/errors.js'
 import { cacheToObject } from '../../utils/fileStateCache.js'
@@ -74,8 +74,8 @@ import { getPlan, getPlanFilePath } from '../../utils/plans.js'
 import {
   isSessionActivityTrackingActive,
   sendSessionActivitySignal,
-} from '../../utils/sessionActivity.js'
-import { processSessionStartHooks } from '../../utils/sessionStart.js'
+} from '../../utils/session/sessionActivity.js'
+import { processSessionStartHooks } from '../../utils/session/sessionStart.js'
 import {
   getTranscriptPath,
   reAppendSessionMetadata,
@@ -83,13 +83,13 @@ import {
 import { sleep } from '../../utils/process/sleep.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { asSystemPrompt } from '../../utils/session/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
 import {
   getTokenUsage,
   tokenCountFromLastAPIResponse,
   tokenCountWithEstimation,
-} from '../../utils/tokens.js'
+} from '../../utils/session/tokens.js'
 import {
   extractDiscoveredToolNames,
   isSearchExtraToolsEnabled,

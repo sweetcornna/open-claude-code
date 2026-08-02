@@ -18,7 +18,7 @@ import {
   has1mContext,
   is1mContextDisabled,
   modelSupports1M,
-} from '../context.js'
+} from '../session/context.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
 import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'

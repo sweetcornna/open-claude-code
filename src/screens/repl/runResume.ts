@@ -13,8 +13,8 @@ import {
 } from '../../cost-tracker.js'
 import { restoreRemoteAgentTasks } from '../../tasks/RemoteAgentTask/RemoteAgentTask.js'
 import { asSessionId } from '../../types/ids.js'
-import { updateSessionName } from '../../utils/concurrentSessions.js'
-import { deserializeMessages } from '../../utils/conversationRecovery.js'
+import { updateSessionName } from '../../utils/session/concurrentSessions.js'
+import { deserializeMessages } from '../../utils/session/conversationRecovery.js'
 import { copyFileHistoryForResume } from '../../utils/filesystem/fileHistory.js'
 import {
   executeSessionEndHooks,
@@ -28,8 +28,8 @@ import {
   restoreAgentFromSession,
   restoreSessionStateFromLog,
   restoreWorktreeForResume,
-} from '../../utils/sessionRestore.js'
-import { processSessionStartHooks } from '../../utils/sessionStart.js'
+} from '../../utils/session/sessionRestore.js'
+import { processSessionStartHooks } from '../../utils/session/sessionStart.js'
 import {
   adoptResumedSessionFile,
   clearSessionMetadata,
@@ -46,7 +46,7 @@ import type { LogOption } from '../../types/logs.js'
 import type { ResumeEntrypoint } from '../../commands.js'
 import type { Message as MessageType } from '../../types/message.js'
 import type { AppState } from '../../state/AppState.js'
-import type { SetAppState } from '../../utils/messageQueueManager.js'
+import type { SetAppState } from '../../utils/session/messageQueueManager.js'
 import type { useAppStateStore } from '../../state/AppState.js'
 import type { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'

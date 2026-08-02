@@ -9,7 +9,7 @@
 import { randomUUID } from 'crypto'
 import { TEAMMATE_MESSAGE_TAG } from 'src/constants/xml.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
-import { enqueue } from 'src/utils/messageQueueManager.js'
+import { enqueue } from 'src/utils/session/messageQueueManager.js'
 import { sleep } from 'src/utils/process/sleep.js'
 import {
   hasActiveInProcessTeammates,

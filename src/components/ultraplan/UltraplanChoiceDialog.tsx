@@ -13,7 +13,7 @@ import type { Message } from '../../types/message.js';
 import { getSessionId } from '../../bootstrap/state.js';
 import { clearConversation } from '../../commands/clear/conversation.js';
 import { createSystemMessage } from '../../utils/messages.js';
-import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
+import { enqueuePendingNotification } from '../../utils/session/messageQueueManager.js';
 import { updateTaskState } from '../../utils/task/framework.js';
 import { archiveRemoteSession } from '../../utils/teleport/teleport.js';
 import { getCwd } from '../../utils/filesystem/cwd.js';
