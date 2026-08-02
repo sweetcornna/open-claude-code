@@ -194,17 +194,22 @@ export async function handleHeadlessControlRequest(
       }
     }
 
+    // currentCommands/currentAgents, not the construction-time arrays: if the
+    // plugin install finishes before initialize arrives, refreshPluginState
+    // has already replaced both arrays, and reporting (or pushing stdin
+    // agents into) the originals would hand the SDK a pre-plugin command set
+    // and strand the stdin agents in an array nothing reads.
     await handleInitializeRequest(
       msg.request,
       msg.request_id,
       state.initialized,
       state.output,
-      state.initialCommands,
+      state.currentCommands,
       state.modelInfos,
       state.structuredIO,
       !!state.options.enableAuthStatus,
       state.options,
-      state.initialAgents,
+      state.currentAgents,
       state.getAppState,
     )
 
@@ -228,7 +233,7 @@ export async function handleHeadlessControlRequest(
     state.initialized = true
 
     // If the auto-resume logic pre-enqueued a command, drain it now
-    // that initialize has set up systemPrompt, state.initialAgents, hooks, etc.
+    // that initialize has set up systemPrompt, state.currentAgents, hooks, etc.
     if (hasCommandsInQueue()) {
       void runHeadlessTurn(state)
     }
