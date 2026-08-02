@@ -40,9 +40,9 @@ import {
   type PromptRequest,
   type PromptResponse,
 } from '../../types/hooks.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { extractTextContent, getLastAssistantMessage } from '../messages.js'
-import { invalidateSessionEnvCache } from '../sessionEnvironment.js'
+import { invalidateSessionEnvCache } from '../session/sessionEnvironment.js'
 import { getAgentTranscriptPath } from '../sessionStorage.js'
 import { createBaseHookInput, hasHookForEvent } from './config.js'
 import {

@@ -3,7 +3,7 @@ import type { Message } from 'src/types/message.js'
 import { TODO_WRITE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TodoWriteTool/constants.js'
 import { TASK_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskCreateTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskUpdateTool/constants.js'
-import { isTodoV2Enabled, listTasks, getTaskListId } from '../tasks.js'
+import { isTodoV2Enabled, listTasks, getTaskListId } from '../task/tasks.js'
 import { isThinkingMessage } from '../messages.js'
 import {
   generateTaskAttachments,

@@ -9,7 +9,7 @@ import {
   type GoalState,
   type PersistedWorktreeSession,
 } from '../../types/logs.js'
-import { updateSessionName } from '../concurrentSessions.js'
+import { updateSessionName } from '../session/concurrentSessions.js'
 import { appendEntryToFile } from './fileIO.js'
 import { getTranscriptPathForSession } from './paths.js'
 import { getProject, project } from './transcriptWriter.js'

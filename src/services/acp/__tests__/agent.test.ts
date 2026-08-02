@@ -65,7 +65,7 @@ mockModulePreservingExports('../../../Tool.ts', {
   buildTool: mock((def: any) => def),
 })
 
-mockModulePreservingExports('../../../utils/config.ts', {
+mockModulePreservingExports('../../../utils/config/config.ts', {
   enableConfigs: mock(() => {}),
 })
 
@@ -130,9 +130,12 @@ const mockResolveSessionFilePath = mock(async () => ({
   projectPath: '/tmp',
   fileSize: 100,
 }))
-mockModulePreservingExports('../../../utils/sessionStoragePortable.js', {
-  resolveSessionFilePath: mockResolveSessionFilePath,
-})
+mockModulePreservingExports(
+  '../../../utils/session/sessionStoragePortable.js',
+  {
+    resolveSessionFilePath: mockResolveSessionFilePath,
+  },
+)
 
 const mockGetMainLoopModel = mock(() => 'claude-sonnet-4-6')
 

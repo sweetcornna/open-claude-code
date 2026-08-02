@@ -13,7 +13,7 @@ import type {
   PreToolUseHookInput,
 } from 'src/entrypoints/agentSdkTypes.js'
 import type { PromptRequest, PromptResponse } from '../../types/hooks.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { createBaseHookInput, hasHookForEvent } from './config.js'
 import {
   TOOL_HOOK_EXECUTION_TIMEOUT_MS,

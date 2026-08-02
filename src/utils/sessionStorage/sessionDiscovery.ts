@@ -11,17 +11,17 @@ import {
   sortLogs,
   type TranscriptMessage,
 } from '../../types/logs.js'
-import { logForDebugging } from '../debug.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import { extractTag } from '../messages.js'
-import { sanitizePath } from '../path.js'
+import { sanitizePath } from '../filesystem/path.js'
 import {
   extractJsonStringField,
   extractLastJsonStringField,
   LITE_READ_BUF_SIZE,
   readHeadAndTail,
-} from '../sessionStoragePortable.js'
-import { jsonParse } from '../slowOperations.js'
-import { validateUuid } from '../uuid.js'
+} from '../session/sessionStoragePortable.js'
+import { jsonParse } from '../telemetry/slowOperations.js'
+import { validateUuid } from '../collections/uuid.js'
 import {
   extractFirstPrompt,
   removeExtraFields,

@@ -1,5 +1,5 @@
 import type { Message } from 'src/types/message.js'
-import { isHumanTurn } from '../messagePredicates.js'
+import { isHumanTurn } from '../session/messagePredicates.js'
 
 type ToolResultBlock = {
   type: 'tool_result'

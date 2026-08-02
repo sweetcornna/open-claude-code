@@ -7,18 +7,18 @@ import {
   getCurrentTurnTokenBudget,
   getTurnOutputTokens,
 } from '../../bootstrap/state.js'
-import { getContextWindowForModel } from '../context.js'
+import { getContextWindowForModel } from '../session/context.js'
 import {
   tokenCountFromLastAPIResponse,
   tokenCountWithEstimation,
-} from '../tokens.js'
+} from '../session/tokens.js'
 import {
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
 } from '../../services/compact/autoCompact.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { isHumanTurn } from '../messagePredicates.js'
-import { isEnvTruthy } from '../envUtils.js'
+import { isHumanTurn } from '../session/messagePredicates.js'
+import { isEnvTruthy } from '../config/envUtils.js'
 import { feature } from 'bun:bundle'
 import { VERIFY_PLAN_REMINDER_CONFIG } from './config.js'
 import type { Attachment } from './types.js'

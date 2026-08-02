@@ -7,19 +7,19 @@ import {
   isShutdownApproved,
   isStructuredProtocolMessage,
   isIdleNotification,
-} from '../teammateMailbox.js'
+} from '../agents/teammateMailbox.js'
 import {
   getAgentName,
   getAgentId,
   getTeamName,
   isTeamLead,
-} from '../teammate.js'
-import { isInProcessTeammate } from '../teammateContext.js'
+} from '../agents/teammate.js'
+import { isInProcessTeammate } from '../agents/teammateContext.js'
 import { removeTeammateFromTeamFile } from '../swarm/teamHelpers.js'
-import { unassignTeammateTasks } from '../tasks.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
-import { isAgentSwarmsEnabled } from '../agentSwarmsEnabled.js'
-import { logForDebugging } from '../debug.js'
+import { unassignTeammateTasks } from '../task/tasks.js'
+import { getClaudeConfigHomeDir } from '../config/envUtils.js'
+import { isAgentSwarmsEnabled } from '../agents/agentSwarmsEnabled.js'
+import { logForDebugging } from '../telemetry/debug.js'
 import type { Attachment } from './types.js'
 
 /**

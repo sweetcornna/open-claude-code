@@ -1,14 +1,14 @@
 import chokidar, { type FSWatcher } from 'chokidar'
 import { isAbsolute, join } from 'path'
-import { registerCleanup } from '../cleanupRegistry.js'
-import { logForDebugging } from '../debug.js'
-import { errorMessage } from '../errors.js'
+import { registerCleanup } from '../process/cleanupRegistry.js'
+import { logForDebugging } from '../telemetry/debug.js'
+import { errorMessage } from '../runtime/errors.js'
 import {
   executeCwdChangedHooks,
   executeFileChangedHooks,
   type HookOutsideReplResult,
 } from '../hooks.js'
-import { clearCwdEnvFiles } from '../sessionEnvironment.js'
+import { clearCwdEnvFiles } from '../session/sessionEnvironment.js'
 import { getHooksConfigFromSnapshot } from './hooksConfigSnapshot.js'
 
 let watcher: FSWatcher | null = null
