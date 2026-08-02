@@ -7,7 +7,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js';
-import { isRunningWithBun } from 'src/utils/config/bundledMode.js';
 import { isAutoUpdaterDisabled } from 'src/utils/config/config.js';
 import { getContextWindowForModel } from 'src/utils/session/context.js';
 import { getCwd } from 'src/utils/filesystem/cwd.js';
@@ -45,40 +44,6 @@ export function logManagedSettings(): void {
     }
   } catch {
     // Silently ignore errors - this is just for analytics
-  }
-}
-
-// Check if running in debug/inspection mode
-function _isBeingDebugged() {
-  const isBun = isRunningWithBun();
-
-  // Check for inspect flags in process arguments (including all variants)
-  const hasInspectArg = process.execArgv.some(arg => {
-    if (isBun) {
-      // Note: Bun has an issue with single-file executables where application arguments
-      // from process.argv leak into process.execArgv (similar to https://github.com/oven-sh/bun/issues/11673)
-      // This breaks use of --debug mode if we omit this branch
-      // We're fine to skip that check, because Bun doesn't support Node.js legacy --debug or --debug-brk flags
-      return /--inspect(-brk)?/.test(arg);
-    } else {
-      // In Node.js, check for both --inspect and legacy --debug flags
-      return /--inspect(-brk)?|--debug(-brk)?/.test(arg);
-    }
-  });
-
-  // Check if NODE_OPTIONS contains inspect flags
-  const hasInspectEnv = process.env.NODE_OPTIONS && /--inspect(-brk)?|--debug(-brk)?/.test(process.env.NODE_OPTIONS);
-
-  // Check if inspector is available and active (indicates debugging)
-  try {
-    // Dynamic import would be better but is async - use global object instead
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const inspector = (global as any).require('inspector');
-    const hasInspectorUrl = !!inspector.url();
-    return hasInspectorUrl || hasInspectArg || hasInspectEnv;
-  } catch {
-    // Ignore error and fall back to argument detection
-    return hasInspectArg || hasInspectEnv;
   }
 }
 

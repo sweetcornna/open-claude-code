@@ -1,5 +1,4 @@
 import { FORK_BOILERPLATE_TAG } from '../../constants/xml.js'
-import type { Message as MessageType } from '../../types/message.js'
 
 // Boilerplate carrier lives in a mixed user message ([tool_result..., text])
 // that AgentTool/forkSubagent.buildForkedMessages emits as the fork child's
@@ -16,10 +15,4 @@ export function isForkBoilerplateTextBlock(block: {
     typeof block.text === 'string' &&
     block.text.includes(FORK_BOILERPLATE_OPEN_TAG)
   )
-}
-
-export function isForkBoilerplateMessage(message: MessageType): boolean {
-  if (message.type !== 'user' || !Array.isArray(message.message?.content))
-    return false
-  return message.message.content.some(isForkBoilerplateTextBlock)
 }

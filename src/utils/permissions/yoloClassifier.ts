@@ -6,9 +6,7 @@ import { dirname, join } from 'path'
 import { z } from 'zod/v4'
 import {
   getCachedClaudeMdContent,
-  getLastClassifierRequests,
   getSessionId,
-  setLastClassifierRequests,
 } from '../../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
@@ -191,18 +189,6 @@ export function getAutoModeClassifierErrorDumpPath(): string {
     'auto-mode-classifier-errors',
     `${getSessionId()}.txt`,
   )
-}
-
-/**
- * Snapshot of the most recent classifier API request(s), stringified lazily
- * only when /share reads it. Array because the XML path may send two requests
- * (stage1 + stage2). Stored in bootstrap/state.ts to avoid module-scope
- * mutable state.
- */
-export function getAutoModeClassifierTranscript(): string | null {
-  const requests = getLastClassifierRequests()
-  if (requests === null) return null
-  return jsonStringify(requests, null, 2)
 }
 
 /**
@@ -808,7 +794,6 @@ async function classifyYoloActionXml(
       const stage1Block = parseXmlBlock(stage1Text)
 
       void maybeDumpAutoMode(stage1Opts, stage1Raw, stage1Start, 'stage1')
-      setLastClassifierRequests([stage1Opts])
 
       // If stage 1 says allow, return immediately (fast path)
       if (stage1Block === false) {
@@ -899,9 +884,6 @@ async function classifyYoloActionXml(
       : stage2Usage
 
     void maybeDumpAutoMode(stage2Opts, stage2Raw, stage2Start, 'stage2')
-    setLastClassifierRequests(
-      stage1Opts ? [stage1Opts, stage2Opts] : [stage2Opts],
-    )
 
     if (stage2Block === null) {
       logAutoModeOutcome('parse_failure', model, { classifierType })
@@ -1170,7 +1152,6 @@ export async function classifyYoloAction(
     }
     const result = await sideQuery(sideQueryOpts)
     void maybeDumpAutoMode(sideQueryOpts, result, start)
-    setLastClassifierRequests([sideQueryOpts])
     const durationMs = Date.now() - start
     const stage1RequestId = extractRequestId(result)
     const stage1MsgId = result.id
