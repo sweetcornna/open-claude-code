@@ -4,7 +4,7 @@ import type {
   ToolResultBlockParam,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import { readFile, stat } from 'fs/promises'
-import { getOriginalCwd } from 'src/bootstrap/state.js'
+import { getOriginalCwd } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { ToolPermissionContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'

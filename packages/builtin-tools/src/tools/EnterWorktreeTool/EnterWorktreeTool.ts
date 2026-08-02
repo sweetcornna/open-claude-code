@@ -1,5 +1,8 @@
 import { z } from 'zod/v4'
-import { getSessionId, setOriginalCwd } from 'src/bootstrap/state.js'
+import {
+  getSessionId,
+  setOriginalCwd,
+} from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { clearSystemPromptSections } from 'src/constants/systemPromptSections.js'
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'

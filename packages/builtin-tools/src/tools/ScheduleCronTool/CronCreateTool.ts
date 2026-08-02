@@ -1,5 +1,5 @@
 import { z } from 'zod/v4'
-import { setScheduledTasksEnabled } from 'src/bootstrap/state.js'
+import { setScheduledTasksEnabled } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import type { ValidationResult } from '@open-claude-code/tool-runtime/Tool.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
