@@ -13,42 +13,44 @@
  * from `TOOL_DEFAULTS` and the five exported functions. A runtime edge back
  * into the host would re-create the cycle this package exists to break.
  *
- * WAVE C BURN-DOWN — the imports below are `import type` only. They are
- * erased at compile time, so they add no runtime edge and no startup cost,
- * but they are what still keeps tool-runtime from being a true leaf. Each
- * one has to move (or be inverted) before this package can stand alone:
+ * WAVE C2 BURN-DOWN — IN PROGRESS. The `import type` edges back into src/
+ * are erased at compile time, so they add no runtime edge and no startup
+ * cost, but they are what still keeps tool-runtime from being a true leaf.
+ * Each one has to move (or be inverted) before this package can stand alone.
+ *
+ * Already burned down:
+ *
+ *   src/constants/querySource.js  ─┐
+ *   src/entrypoints/agentSdkTypes.js│
+ *   src/types/ids.js               │ re-declared structurally in
+ *   src/types/utils.js             ├─ ./types/hostContracts.js and pinned
+ *   src/utils/permissions/denialTracking.js │ to the host definitions by
+ *   src/utils/thinking.js          │ src/__tests__/toolRuntimeTypeContract
+ *   src/utils/toolResultStorage.js─┘ .test.ts
+ *
+ *   src/types/message.js          → `@ant/model-provider` (leaf package that
+ *   src/utils/systemPromptType.js    already owns these; re-pointing keeps
+ *                                    exact type identity, nothing to drift)
+ *   src/services/langfuse/index.js → `@langfuse/tracing` (third party)
+ *
+ *   src/types/tools.js            → dropped. Only ToolProgressData was ever
+ *                                   used here; the seven per-tool progress
+ *                                   aliases were dead imports.
+ *
+ * Still to burn down:
  *
  *   src/commands.js                        Command
  *   src/components/Spinner.js              SpinnerMode
- *   src/constants/querySource.js           QuerySource
  *   src/context/notifications.js           Notification
- *   src/entrypoints/agentSdkTypes.js       SDKStatus
  *   src/hooks/useCanUseTool.js             CanUseToolFn
- *   src/services/langfuse/index.js         LangfuseSpan
  *   src/services/mcp/types.js              MCPServerConnection, ServerResource
  *   src/state/AppState.js                  AppState
  *   src/types/hooks.js                     HookProgress, PromptRequest,
  *                                          PromptResponse
- *   src/types/ids.js                       AgentId
- *   src/types/message.js                   AssistantMessage,
- *                                          AttachmentMessage, Message,
- *                                          ProgressMessage,
- *                                          SystemLocalCommandMessage,
- *                                          SystemMessage, UserMessage
- *   src/types/tools.js                     AgentToolProgress, BashProgress,
- *                                          MCPProgress, REPLToolProgress,
- *                                          SkillToolProgress,
- *                                          TaskOutputProgress,
- *                                          ToolProgressData, WebSearchProgress
- *   src/types/utils.js                     DeepImmutable
  *   src/utils/commitAttribution.js         AttributionState
  *   src/utils/fileHistory.js               FileHistoryState
  *   src/utils/fileStateCache.js            FileStateCache
- *   src/utils/permissions/denialTracking.js DenialTrackingState
- *   src/utils/systemPromptType.js          SystemPrompt
  *   src/utils/theme.js                     Theme, ThemeName
- *   src/utils/thinking.js                  ThinkingConfig
- *   src/utils/toolResultStorage.js         ContentReplacementState
  *
  * Plus one sibling-package type edge, which is a reverse dependency
  * (builtin-tools already depends on this package) and so belongs on the same
@@ -74,7 +76,7 @@ import type { UUID } from 'crypto'
 import type { z } from 'zod/v4'
 import type { Command } from 'src/commands.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
-import type { ThinkingConfig } from 'src/utils/thinking.js'
+import type { ThinkingConfig } from './types/hostContracts.js'
 
 export type ToolInputJSONSchema = {
   [x: string]: unknown
@@ -101,7 +103,7 @@ import type {
   SystemLocalCommandMessage,
   SystemMessage,
   UserMessage,
-} from 'src/types/message.js'
+} from '@ant/model-provider'
 // Import permission types from centralized location to break import cycles
 // Import PermissionResult from centralized location to break import cycles
 import type {
@@ -109,34 +111,28 @@ import type {
   PermissionMode,
   PermissionResult,
 } from './types/permissions.js'
-// Import tool progress types from centralized location to break import cycles
-import type {
-  AgentToolProgress,
-  BashProgress,
-  MCPProgress,
-  REPLToolProgress,
-  SkillToolProgress,
-  TaskOutputProgress,
-  ToolProgressData,
-  WebSearchProgress,
-} from 'src/types/tools.js'
+// Tool progress payloads. The seven per-tool aliases that used to be imported
+// alongside ToolProgressData (AgentToolProgress, BashProgress, MCPProgress,
+// REPLToolProgress, SkillToolProgress, TaskOutputProgress, WebSearchProgress)
+// were never referenced by this file and have been dropped.
+import type { ToolProgressData } from './types/hostContracts.js'
 import type { FileStateCache } from 'src/utils/fileStateCache.js'
-import type { DenialTrackingState } from 'src/utils/permissions/denialTracking.js'
-import type { SystemPrompt } from 'src/utils/systemPromptType.js'
-import type { ContentReplacementState } from 'src/utils/toolResultStorage.js'
+import type { DenialTrackingState } from './types/hostContracts.js'
+import type { SystemPrompt } from '@ant/model-provider'
+import type { ContentReplacementState } from './types/hostContracts.js'
 
 import type { SpinnerMode } from 'src/components/Spinner.js'
-import type { QuerySource } from 'src/constants/querySource.js'
-import type { SDKStatus } from 'src/entrypoints/agentSdkTypes.js'
+import type { QuerySource } from './types/hostContracts.js'
+import type { SDKStatus } from './types/hostContracts.js'
 import type { AppState } from 'src/state/AppState.js'
-import type { LangfuseSpan } from 'src/services/langfuse/index.js'
+import type { LangfuseSpan } from '@langfuse/tracing'
 import type {
   HookProgress,
   PromptRequest,
   PromptResponse,
 } from 'src/types/hooks.js'
-import type { AgentId } from 'src/types/ids.js'
-import type { DeepImmutable } from 'src/types/utils.js'
+import type { AgentId } from './types/hostContracts.js'
+import type { DeepImmutable } from './types/hostContracts.js'
 import type { AttributionState } from 'src/utils/commitAttribution.js'
 import type { FileHistoryState } from 'src/utils/fileHistory.js'
 import type { Theme, ThemeName } from 'src/utils/theme.js'
