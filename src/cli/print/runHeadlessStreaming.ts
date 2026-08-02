@@ -18,23 +18,19 @@ import { type AgentDefinition } from '@open-claude-code/builtin-tools/tools/Agen
 import type { Message } from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
-  dequeue,
   dequeueAllMatching,
   enqueue,
   hasCommandsInQueue,
-  peek,
   subscribeToCommandQueue,
   getCommandsByMaxPriority,
 } from 'src/utils/messageQueueManager.js'
 import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
 import {
   getSessionState,
-  notifySessionStateChanged,
   notifySessionMetadataChanged,
   setPermissionModeChangedListener,
 } from 'src/utils/sessionState.js'
-import { getInMemoryErrors, logError } from 'src/utils/log.js'
-import { EMPTY_USAGE } from '@ant/model-provider'
+import { logError } from 'src/utils/log.js'
 import { type TurnInterruptionState } from 'src/utils/conversationRecovery.js'
 import type {
   MCPServerConnection,
@@ -42,11 +38,7 @@ import type {
 } from 'src/services/mcp/types.js'
 import { ask } from 'src/QueryEngine.js'
 import { expandPath } from 'src/utils/path.js'
-import {
-  gracefulShutdown,
-  gracefulShutdownSync,
-  isShuttingDown,
-} from 'src/utils/gracefulShutdown.js'
+import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
 import { registerCleanup } from 'src/utils/cleanupRegistry.js'
 import type {
   SDKStatus,
@@ -70,7 +62,6 @@ import { createAbortController } from 'src/utils/abortController.js'
 import { generateSessionTitle } from 'src/utils/sessionTitle.js'
 import { buildSideQuestionFallbackParams } from 'src/utils/queryContext.js'
 import { runSideQuestion } from 'src/utils/sideQuestion.js'
-import { TICK_TAG } from 'src/constants/xml.js'
 import { getSettingsWithSources } from 'src/utils/settings/settings.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
 import { getLastCacheSafeParams } from 'src/utils/cacheSafeParamsSlot.js'
@@ -130,10 +121,8 @@ import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
-import { headlessProfilerCheckpoint } from 'src/utils/headlessProfiler.js'
 import {
   createAutonomyQueuedPromptIfNoActiveSource,
-  createProactiveAutonomyCommands,
   markAutonomyRunFailed,
 } from 'src/utils/autonomyRuns.js'
 import { cancelQueuedAutonomyCommands } from 'src/utils/autonomyQueueLifecycle.js'
@@ -145,9 +134,7 @@ import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
 import { getRunningTasks } from '../../utils/task/framework.js'
 import { isBackgroundTask } from '../../tasks/types.js'
 import { stopTask } from '../../tasks/stopTask.js'
-import { drainSdkEvents } from '../../utils/sdkEventQueue.js'
 import { errorMessage } from '../../utils/errors.js'
-import { sleep } from '../../utils/sleep.js'
 import {
   handleInitializeRequest,
   handleRewindFiles,
@@ -158,7 +145,6 @@ import {
   reregisterChannelHandlerAfterReconnect,
 } from './channels.js'
 import {
-  SHUTDOWN_TEAM_PROMPT,
   cronGate,
   cronJitterConfigModule,
   cronSchedulerModule,
@@ -171,7 +157,6 @@ import { handleOrphanedPermissionResponse } from './structuredIO.js'
 import {
   installPluginsAndApplyMcpInBackground,
   applyPluginMcpDiff,
-  resolveDeferredPluginInstall,
 } from './headlessPlugins.js'
 import {
   applyMcpServerChanges,
@@ -182,15 +167,10 @@ import {
 } from './headlessMcpRuntime.js'
 import {
   createHeadlessRunState,
-  isMainThreadCommand,
   type HeadlessRunState,
 } from './headlessRunState.js'
-import { drainCommandQueue } from './headlessCommandDrain.js'
-import {
-  hasActiveSwarmNeedingShutdown,
-  pollTeamLeadInbox,
-} from './headlessTeammates.js'
 import { finalizeHeadlessOutput } from './headlessTeardown.js'
+import { runHeadlessTurn, scheduleProactiveTick } from './headlessTurnLoop.js'
 
 export function runHeadlessStreaming(
   structuredIO: StructuredIO,
@@ -424,230 +404,12 @@ export function runHeadlessStreaming(
     })
   })
 
-  // Proactive mode: schedule a tick to keep the model looping autonomously.
-  // setTimeout(0) yields to the event loop so pending stdin messages
-  // (interrupts, user messages) are processed before the tick fires.
-  const scheduleProactiveTick =
-    feature('PROACTIVE') || feature('KAIROS')
-      ? () => {
-          setTimeout(() => {
-            if (
-              !proactiveModule?.isProactiveActive() ||
-              proactiveModule.isProactivePaused() ||
-              state.inputClosed
-            ) {
-              return
-            }
-            void (async () => {
-              const commands = await createProactiveAutonomyCommands({
-                basePrompt: `<${TICK_TAG}>${new Date().toLocaleTimeString()}</${TICK_TAG}>`,
-                currentDir: cwd(),
-                shouldCreate: () => !state.inputClosed,
-              })
-              if (state.inputClosed) {
-                await cancelQueuedAutonomyCommands({ commands })
-                return
-              }
-              for (const command of commands) {
-                enqueue({
-                  ...command,
-                  uuid: randomUUID(),
-                })
-              }
-              void run()
-            })().catch(error => {
-              logError(error)
-              logForDebugging(
-                `[Proactive] failed to create headless tick: ${error}`,
-                {
-                  level: 'error',
-                },
-              )
-            })
-          }, 0)
-        }
-      : undefined
-
   // Abort the current operation when a 'now' priority message arrives.
   subscribeToCommandQueue(() => {
     if (state.abortController && getCommandsByMaxPriority('now').length > 0) {
       state.abortController.abort('interrupt')
     }
   })
-
-  const run = async () => {
-    if (state.running) {
-      return
-    }
-
-    state.running = true
-    state.runPhase = undefined
-    notifySessionStateChanged('running')
-    idleTimeout.stop()
-
-    headlessProfilerCheckpoint('run_entry')
-    // TODO(custom-tool-refactor): Should move to the init message, like browser
-
-    await updateSdkMcp(state)
-    headlessProfilerCheckpoint('after_updateSdkMcp')
-
-    await resolveDeferredPluginInstall(state)
-
-    try {
-      let waitingForAgents = false
-
-      // Use a do-while loop to drain commands and then wait for any
-      // background agents that are still running. When agents complete,
-      // their notifications are enqueued and the loop re-drains.
-      do {
-        // Drain SDK events (task_started, task_progress) before command queue
-        // so progress events precede task_notification on the stream.
-        for (const event of drainSdkEvents()) {
-          output.enqueue(event)
-        }
-
-        state.runPhase = 'draining_commands'
-        await drainCommandQueue(state)
-
-        // Check for running background tasks before exiting.
-        // Exclude in_process_teammate — teammates are long-lived by design
-        // (status: 'running' for their whole lifetime, cleaned up by the
-        // shutdown protocol, not by transitioning to 'completed'). Waiting
-        // on them here loops forever (gh-30008). Same exclusion already
-        // exists at useBackgroundTaskNavigation.ts:55 for the same reason;
-        // L1839 above is already narrower (type === 'local_agent') so it
-        // doesn't hit this.
-        waitingForAgents = false
-        {
-          const bgTaskState = getAppState()
-          const hasRunningBg = getRunningTasks(bgTaskState).some(
-            t => isBackgroundTask(t) && t.type !== 'in_process_teammate',
-          )
-          const hasMainThreadQueued = peek(isMainThreadCommand) !== undefined
-          if (hasRunningBg || hasMainThreadQueued) {
-            waitingForAgents = true
-            if (!hasMainThreadQueued) {
-              state.runPhase = 'waiting_for_agents'
-              // No commands ready yet, wait for tasks to complete
-              await sleep(100)
-            }
-            // Loop back to drain any newly queued commands
-          }
-        }
-      } while (waitingForAgents)
-
-      if (state.heldBackResult) {
-        output.enqueue(state.heldBackResult)
-        state.heldBackResult = null
-        if (suggestionState.pendingSuggestion) {
-          output.enqueue(suggestionState.pendingSuggestion)
-          // Now that the suggestion is actually delivered, record it for acceptance tracking
-          if (suggestionState.pendingLastEmittedEntry) {
-            suggestionState.lastEmitted = {
-              ...suggestionState.pendingLastEmittedEntry,
-              emittedAt: Date.now(),
-            }
-            suggestionState.pendingLastEmittedEntry = null
-          }
-          suggestionState.pendingSuggestion = null
-        }
-      }
-    } catch (error) {
-      // Emit error result message before shutting down
-      // Write directly to structuredIO to ensure immediate delivery
-      try {
-        await structuredIO.write({
-          type: 'result',
-          subtype: 'error_during_execution',
-          duration_ms: 0,
-          duration_api_ms: 0,
-          is_error: true,
-          num_turns: 0,
-          stop_reason: null,
-          session_id: getSessionId(),
-          total_cost_usd: 0,
-          usage: EMPTY_USAGE,
-          modelUsage: {},
-          permission_denials: [],
-          uuid: randomUUID(),
-          errors: [
-            errorMessage(error),
-            ...getInMemoryErrors().map(_ => _.error),
-          ],
-        })
-      } catch {
-        // If we can't emit the error result, continue with shutdown anyway
-      }
-      suggestionState.abortController?.abort()
-      gracefulShutdownSync(1)
-      return
-    } finally {
-      state.runPhase = 'finally_flush'
-      // Flush pending internal events before going idle
-      await structuredIO.flushInternalEvents()
-      state.runPhase = 'finally_post_flush'
-      if (!isShuttingDown()) {
-        notifySessionStateChanged('idle')
-        // Drain so the idle session_state_changed SDK event (plus any
-        // terminal task_notification bookends emitted during bg-agent
-        // teardown) reach the output stream before we block on the next
-        // command. The do-while drain above only runs while
-        // waitingForAgents; once we're here the next drain would be the
-        // top of the next run(), which won't come if input is idle.
-        for (const event of drainSdkEvents()) {
-          output.enqueue(event)
-        }
-      }
-      state.running = false
-      // Start idle timer when we finish processing and are waiting for input
-      idleTimeout.start()
-    }
-
-    // Proactive tick: if proactive is active and queue is empty, inject a tick
-    if (
-      (feature('PROACTIVE') || feature('KAIROS')) &&
-      proactiveModule?.isProactiveActive() &&
-      !proactiveModule.isProactivePaused()
-    ) {
-      if (peek(isMainThreadCommand) === undefined && !state.inputClosed) {
-        scheduleProactiveTick!()
-        return
-      }
-    }
-
-    // Re-check the queue after releasing the mutex. A message may have
-    // arrived (and called run()) between the last dequeue() returning
-    // undefined and `running = false` above. In that case the caller
-    // saw `running === true` and returned immediately, leaving the
-    // message stranded in the queue with no one to process it.
-    if (peek(isMainThreadCommand) !== undefined) {
-      void run()
-      return
-    }
-
-    // Check for unread teammate messages and process them
-    if ((await pollTeamLeadInbox(state)) === 'requeued') {
-      void run()
-      return // run() will come back here after processing
-    }
-
-    if (state.inputClosed) {
-      // Check for active swarm that needs shutdown
-      const hasActiveSwarm = await hasActiveSwarmNeedingShutdown(state)
-
-      if (hasActiveSwarm) {
-        // Team members are idle or pane-based - inject prompt to shut down team
-        enqueue({
-          mode: 'prompt',
-          value: SHUTDOWN_TEAM_PROMPT,
-          uuid: randomUUID(),
-        })
-        void run()
-      } else {
-        await finalizeHeadlessOutput(state)
-      }
-    }
-  }
 
   // Set up UDS inbox callback so the query loop is kicked off
   // when a message arrives via the UDS socket in headless mode.
@@ -703,7 +465,7 @@ export function runHeadlessStreaming(
         ...command,
         uuid: randomUUID(),
       })
-      void run()
+      void runHeadlessTurn(state)
     }
 
     state.cronScheduler = cronSchedulerModule.createCronScheduler({
@@ -790,7 +552,7 @@ export function runHeadlessStreaming(
       onEnqueued: () => {
         // The first message of a session might be the orphaned permission
         // check rather than a user prompt, so kick off the loop.
-        void run()
+        void runHeadlessTurn(state)
       },
     })
   })
@@ -919,7 +681,7 @@ export function runHeadlessStreaming(
           // If the auto-resume logic pre-enqueued a command, drain it now
           // that initialize has set up systemPrompt, agents, hooks, etc.
           if (hasCommandsInQueue()) {
-            void run()
+            void runHeadlessTurn(state)
           }
         } else if (msg.request.subtype === 'set_permission_mode') {
           const m = msg.request // for typescript (TODO: use readonly types to avoid this)
@@ -1895,7 +1657,7 @@ export function runHeadlessStreaming(
           if (req.enabled) {
             if (!proactiveModule!.isProactiveActive()) {
               proactiveModule!.activateProactive('command')
-              scheduleProactiveTick!()
+              scheduleProactiveTick!(state)
             }
           } else {
             proactiveModule!.deactivateProactive()
@@ -2010,7 +1772,7 @@ export function runHeadlessStreaming(
           }),
         }))
       }
-      void run()
+      void runHeadlessTurn(state)
     }
     state.inputClosed = true
     state.cronScheduler?.stop()
