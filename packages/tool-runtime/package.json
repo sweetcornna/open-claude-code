@@ -10,6 +10,8 @@
     "./*": "./src/*"
   },
   "dependencies": {
+    "@ant/model-provider": "workspace:*",
+    "@langfuse/tracing": "^5.1.0",
     "react": "^19.2.5"
   }
 }
