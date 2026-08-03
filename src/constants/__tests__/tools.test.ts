@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
+import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.ts'
 import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
 import { mock } from 'bun:test'
@@ -6,27 +7,12 @@ import { mock } from 'bun:test'
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 // Mock growthbook to cut analytics dependency
-mock.module('src/services/analytics/growthbook.js', () => ({
+// growthbook goes through the shared complete-surface mock (missing exports
+// delegate to the real module) — see tests/mocks/growthbook.ts.
+setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
-  getFeatureValue_DEPRECATED: async () => undefined,
-  getFeatureValue_CACHED_WITH_REFRESH: async () => undefined,
-  hasGrowthBookEnvOverride: () => false,
-  getAllGrowthBookFeatures: () => ({}),
-  getGrowthBookConfigOverrides: () => ({}),
-  setGrowthBookConfigOverride: () => {},
-  clearGrowthBookConfigOverrides: () => {},
-  getApiBaseUrlHost: () => undefined,
-  onGrowthBookRefresh: () => {},
-  initializeGrowthBook: async () => {},
-  checkSecurityRestrictionGate: async () => false,
-  checkGate_CACHED_OR_BLOCKING: async () => false,
-  refreshGrowthBookAfterAuthChange: () => {},
-  resetGrowthBook: () => {},
-  refreshGrowthBookFeatures: async () => {},
-  setupPeriodicGrowthBookRefresh: () => {},
-  stopPeriodicGrowthBookRefresh: () => {},
-}))
+})
 
 const { CORE_TOOLS } = await import('../tools.js')
 const { isDeferredTool } = await import(

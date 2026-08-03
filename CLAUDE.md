@@ -113,6 +113,8 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 **核心规则：不要 mock 被测模块的上层业务模块** —— mock 底层（如 axios，用 `tests/mocks/axios.js` 的 `setupAxiosMock`），否则会污染同目录需要测真实模块的回归测试（如 `api.test.ts`）。排查方法：单跑可疑文件→与同目录合跑定位→`console.error` 追执行顺序→核对 specifier 是否解析到同一模块。
 
+**多文件共用模块必须用完整表面 mock**：`envUtils.js` 用 `tests/mocks/envUtils.ts` 的 `setupEnvUtilsMock(overrides)`，`growthbook.js` 用 `tests/mocks/growthbook.ts`，其他模块用 `tests/mocks/sharedModuleMock.ts` 的 `makeSharedModuleMock` 就地包装。**禁止再手写部分表面的 `mock.module`**（只导出自己用到的几个函数）：进程全局 last-write-wins 下，后跑的文件会拿到缺导出（"Export not found"/undefined）或手抄后漂移的旧语义——这曾让 Linux CI 因文件顺序与 macOS 不同而红了一整批（envUtils 的手抄回退还停留在隔离前的 `~/.claude` 语义）。共享 mock 的默认行为是逐导出委托真实实现，套件只覆写真正需要变的函数，`afterAll` 里 `reset()`。
+
 ## Working with This Codebase
 
 - **precheck 必须零错误**；pre-commit hook（husky + lint-staged）会对暂存文件跑 biome。

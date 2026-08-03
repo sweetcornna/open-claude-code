@@ -1,4 +1,5 @@
 import { afterAll, describe, test, expect, mock, beforeEach } from 'bun:test'
+import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.ts'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -15,6 +16,7 @@ import { join } from 'node:path'
 // override (mocked main-loop model, mocked effort level, fixed config dir).
 let useMockForSessionMemory = true
 afterAll(() => {
+  envUtilsMock.reset()
   useMockForSessionMemory = false
 })
 
@@ -162,76 +164,13 @@ const VERTEX_REGION_OVERRIDES_SM: ReadonlyArray<[string, string]> = [
   ['claude-sonnet-4', 'VERTEX_REGION_CLAUDE_4_0_SONNET'],
 ]
 
-// Real getClaudeConfigHomeDir is memoized via lodash, so consumers may call
-// `.cache.clear()` on it. Provide a no-op .cache stub.
-const mockedGetClaudeConfigHomeDirSM: (() => string) & {
-  cache: { clear: () => void; get: (k: unknown) => unknown }
-} = Object.assign(
-  () =>
-    useMockForSessionMemory
-      ? '/mock/home/.claude'
-      : (process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')).normalize(
-          'NFC',
-        ),
-  { cache: { clear: () => {}, get: (_k: unknown) => undefined } },
-)
-
-mock.module('src/utils/config/envUtils.js', () => ({
-  getClaudeConfigHomeDir: mockedGetClaudeConfigHomeDirSM,
-  isEnvTruthy: realIsEnvTruthy,
-  getEnvBool: () => false,
-  getEnvNumber: () => undefined,
-  getVertexRegionForModel: (model: string | undefined) => {
-    if (model) {
-      const match = VERTEX_REGION_OVERRIDES_SM.find(([prefix]) =>
-        model.startsWith(prefix),
-      )
-      if (match) {
-        return process.env[match[1]] || realDefaultVertexRegion()
-      }
-    }
-    return realDefaultVertexRegion()
-  },
-  getTeamsDir: () =>
-    join(
-      useMockForSessionMemory
-        ? '/mock/home/.claude'
-        : (process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')),
-      'teams',
-    ),
-  hasNodeOption: (flag: string) => {
-    const opts = process.env.NODE_OPTIONS
-    return !!opts && opts.split(/\s+/).includes(flag)
-  },
-  isEnvDefinedFalsy: realIsEnvDefinedFalsy,
-  isBareMode: () =>
-    realIsEnvTruthy(process.env.CLAUDE_CODE_SIMPLE) ||
-    process.argv.includes('--bare'),
-  parseEnvVars: (rawEnvArgs: string[] | undefined) => {
-    const parsed: Record<string, string> = {}
-    if (rawEnvArgs) {
-      for (const envStr of rawEnvArgs) {
-        const [key, ...valueParts] = envStr.split('=')
-        if (!key || valueParts.length === 0) {
-          throw new Error(
-            `Invalid environment variable format: ${envStr}, environment variables should be added as: -e KEY1=value1 -e KEY2=value2`,
-          )
-        }
-        parsed[key] = valueParts.join('=')
-      }
-    }
-    return parsed
-  },
-  getAWSRegion: () =>
-    process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-  getDefaultVertexRegion: realDefaultVertexRegion,
-  shouldMaintainProjectWorkingDir: () =>
-    realIsEnvTruthy(process.env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR),
-  isRunningOnHomespace: () =>
-    process.env.USER_TYPE === 'ant' &&
-    realIsEnvTruthy(process.env.COO_RUNNING_ON_HOMESPACE),
-  isInProtectedNamespace: () => false,
-}))
+// envUtils goes through the shared complete-surface mock (delegates to the
+// real module unless overridden) — see tests/mocks/envUtils.ts for why the
+// old hand-rolled partial mocks were an order-dependent CI hazard.
+const envUtilsMock = setupEnvUtilsMock({
+  getClaudeConfigHomeDir: () => '/mock/home/.claude',
+  getTeamsDir: () => '/mock/home/.claude/teams',
+})
 
 mock.module('src/utils/telemetry/log.js', () => ({
   logError: mock(() => {}),
