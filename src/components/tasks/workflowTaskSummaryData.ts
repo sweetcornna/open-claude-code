@@ -31,9 +31,6 @@ export type WorkflowTaskFields = {
   error?: string
 }
 
-/** Pointer to the surface that owns the interactive controls (kill / skip / retry). */
-export const WORKFLOW_PANEL_HINT = 'run /workflows for the full panel'
-
 /** Task statuses map onto run statuses 1:1 except `pending`, which reads as not-yet-progressed. */
 export function runStatusFromTask(status: TaskStatus): RunProgress['status'] {
   return status === 'completed' || status === 'failed' || status === 'killed'

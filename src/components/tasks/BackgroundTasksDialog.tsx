@@ -106,8 +106,6 @@ type ListItem =
 // ~1.3K lines into external builds. Gate with feature() + require so the
 // bundler can dead-code-eliminate the branch.
 /* eslint-disable @typescript-eslint/no-require-imports */
-// WorkflowDetailDialog 已移除：完整的阶段/agent 交互（kill、skip、retry）留在 /workflows
-// 面板；此处只读地汇总运行进度，见 WorkflowTaskSummary。
 const workflowTaskModule = feature('WORKFLOW_SCRIPTS')
   ? (require('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js') as typeof import('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js'))
   : null;
@@ -115,10 +113,9 @@ const killWorkflowTask = workflowTaskModule?.killWorkflowTask ?? null;
 // Relative path so Bun's DCE can statically resolve + eliminate it, matching the
 // monitorMcpModule pattern below. Pulls in the workflow service (and the engine) —
 // must not leak into builds without WORKFLOW_SCRIPTS.
-const WorkflowTaskSummary = feature('WORKFLOW_SCRIPTS')
-  ? (require('./WorkflowTaskSummary.js') as typeof import('./WorkflowTaskSummary.js')).WorkflowTaskSummary
+const WorkflowDetailDialog = feature('WORKFLOW_SCRIPTS')
+  ? (require('./WorkflowDetailDialog.js') as typeof import('./WorkflowDetailDialog.js')).WorkflowDetailDialog
   : null;
-// skipWorkflowAgent / retryWorkflowAgent 仅由 /workflows 面板调用（原详情对话框已移除）。
 // Relative path, not `src/...` path-mapping — Bun's DCE can statically
 // resolve + eliminate `./` requires, but path-mapped strings stay opaque
 // and survive as dead literals in the bundle. Matches tasks.ts pattern.
@@ -444,47 +441,18 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           />
         );
       case 'local_workflow': {
-        // shift+下/Enter 进入的 workflow 详情。原 WorkflowDetailDialog 已移除，完整的
-        // 阶段/agent 交互仍归 /workflows 面板；这里只做只读汇总（阶段 ○/●/✓ + agent 行），
-        // 直接读 ProgressStore，所以不需要把面板那套状态搬过来。
-        // 键位照 MonitorMcpDetailDialog：←/Esc 返回（goBackToList：单任务关闭、多任务回列表），x kill（running）。
-        const onKill =
-          task.status === 'running' && killWorkflowTask ? () => killWorkflowTask(task.id, setAppState) : undefined;
+        // shift+下/Enter 进入的 workflow 详情：与 /workflows 面板同源（ProgressStore）的
+        // 实时视图，phase 行 + 逐 agent 行，↑/↓ 选 agent、x kill agent、K kill workflow。
+        if (!WorkflowDetailDialog) return null;
         return (
-          <Box
+          <WorkflowDetailDialog
+            task={task}
+            onBack={goBackToList}
+            onKillWorkflow={
+              task.status === 'running' && killWorkflowTask ? () => killWorkflowTask(task.id, setAppState) : undefined
+            }
             key={`workflow-${task.id}`}
-            flexDirection="column"
-            tabIndex={0}
-            borderStyle="round"
-            onKeyDown={(e: KeyboardEvent) => {
-              if (e.key === 'left') {
-                e.preventDefault();
-                goBackToList();
-              } else if (e.key === 'x' && onKill) {
-                e.preventDefault();
-                onKill();
-              }
-            }}
-          >
-            <Dialog
-              title={task.workflowName}
-              subtitle={<Text dimColor>{task.description}</Text>}
-              onCancel={goBackToList}
-              inputGuide={() => (
-                <Byline>
-                  <KeyboardShortcutHint shortcut="←" action="go back" />
-                  <KeyboardShortcutHint shortcut="Esc" action="close" />
-                  {onKill && <KeyboardShortcutHint shortcut="x" action="stop" />}
-                </Byline>
-              )}
-            >
-              {WorkflowTaskSummary ? (
-                <WorkflowTaskSummary task={task} />
-              ) : (
-                <Text color="subtle">用 /workflows 查看阶段与 agent 实时进度</Text>
-              )}
-            </Dialog>
-          </Box>
+          />
         );
       }
       case 'monitor_mcp':
