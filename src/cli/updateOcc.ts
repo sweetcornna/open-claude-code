@@ -8,7 +8,7 @@
 import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
 import chalk from 'chalk'
 import { execSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { logForDebugging } from '../utils/telemetry/debug.js'
@@ -19,7 +19,7 @@ import { writeToStdout } from '../utils/process/process.js'
 
 const PACKAGE_NAME = NPM_PACKAGE_NAME
 
-function getCurrentVersion(): string {
+export function getCurrentOccVersion(): string {
   // Read version from the nearest package.json (walks up from dist root)
   try {
     const pkgPath = join(distRoot, '..', 'package.json')
@@ -63,9 +63,34 @@ function isBunInstallation(): boolean {
 }
 
 /**
+ * Strict variant of `isBunInstallation()` for the background auto-updater:
+ * the *running* entrypoint must resolve into bun's global install tree.
+ *
+ * `isBunInstallation()` is deliberately loose (execPath contains "bun", or
+ * the package merely exists in bun's global dir) because `occ update` is
+ * explicit user intent. A background update must never fire from a source
+ * checkout run with `bun run dev` — which also satisfies both loose checks —
+ * so this one only trusts the script path actually living under the tree
+ * that `bun install -g` owns.
+ */
+export function isRunningFromBunGlobalInstall(): boolean {
+  const bunGlobalRoot = join(homedir(), '.bun', 'install', 'global')
+  const invoked = process.argv[1]
+  if (!invoked) {
+    return false
+  }
+  try {
+    // ~/.bun/bin/<bin> is a symlink into the global tree; resolve it.
+    return realpathSync(invoked).startsWith(bunGlobalRoot)
+  } catch {
+    return invoked.startsWith(bunGlobalRoot)
+  }
+}
+
+/**
  * Get the latest version from npm registry.
  */
-async function getLatestVersion(): Promise<string | null> {
+export async function getLatestOccVersion(): Promise<string | null> {
   const result = await execFileNoThrowWithCwd(
     'npm',
     ['view', `${PACKAGE_NAME}@latest`, 'version', '--prefer-online'],
@@ -92,8 +117,47 @@ function gte(a: string, b: string): boolean {
   return true
 }
 
+// Shared by the interactive `occ update` path and the silent background
+// installer so the two can never drift to different package specs.
+const INSTALL_TIMEOUT_MS = 120_000
+
+function latestPackageSpec(): string {
+  return `${PACKAGE_NAME}@latest`
+}
+
+export type OccSilentInstallResult = {
+  ok: boolean
+  /** Combined stdout/stderr on failure; empty string on success. */
+  detail: string
+}
+
+/**
+ * Silent global install used by the background auto-updater
+ * (src/services/autoUpdate/). Same command shape as the interactive path in
+ * `updateOcc()` below — `<pkgManager> install -g <pkg>@latest`, cwd=homedir
+ * so a project-level .npmrc/.bunfig.toml cannot redirect the registry — but
+ * output is captured instead of inherited so a running session is never
+ * disturbed.
+ */
+export async function installOccGloballySilent(
+  pkgManager: 'bun' | 'npm',
+): Promise<OccSilentInstallResult> {
+  const result = await execFileNoThrowWithCwd(
+    pkgManager,
+    ['install', '-g', latestPackageSpec()],
+    { cwd: homedir(), timeout: INSTALL_TIMEOUT_MS },
+  )
+  if (result.code !== 0) {
+    return {
+      ok: false,
+      detail: `exit ${result.code}: ${result.stdout} ${result.stderr}`.trim(),
+    }
+  }
+  return { ok: true, detail: '' }
+}
+
 export async function updateOcc(): Promise<void> {
-  const currentVersion = getCurrentVersion()
+  const currentVersion = getCurrentOccVersion()
   writeToStdout(`Current version: ${currentVersion}\n`)
 
   // Determine package manager
@@ -105,7 +169,7 @@ export async function updateOcc(): Promise<void> {
   writeToStdout('Checking for updates...\n')
 
   // Get latest version
-  const latestVersion = await getLatestVersion()
+  const latestVersion = await getLatestOccVersion()
   if (!latestVersion) {
     process.stderr.write(chalk.red('Failed to check for updates') + '\n')
     process.stderr.write('Unable to fetch latest version from npm registry.\n')
@@ -129,16 +193,16 @@ export async function updateOcc(): Promise<void> {
 
   try {
     if (pkgManager === 'bun') {
-      execSync(`bun install -g ${PACKAGE_NAME}@latest`, {
+      execSync(`bun install -g ${latestPackageSpec()}`, {
         stdio: 'inherit',
         cwd: homedir(),
-        timeout: 120_000,
+        timeout: INSTALL_TIMEOUT_MS,
       })
     } else {
-      execSync(`npm install -g ${PACKAGE_NAME}@latest`, {
+      execSync(`npm install -g ${latestPackageSpec()}`, {
         stdio: 'inherit',
         cwd: homedir(),
-        timeout: 120_000,
+        timeout: INSTALL_TIMEOUT_MS,
       })
     }
 
