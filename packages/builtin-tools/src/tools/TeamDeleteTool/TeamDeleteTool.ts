@@ -1,3 +1,7 @@
+// DRIFT NOTE: Official Claude Code removed the standalone TeamDelete tool in
+// the 2.1.x line. This fork keeps it DELIBERATELY — it pairs with TeamCreate
+// as the shutdown half of the in-process teammate mechanism (see the drift
+// note in TeamCreateTool.ts for the consumer list).
 import { z } from 'zod/v4'
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@open-claude-code/tool-runtime/analytics.js'

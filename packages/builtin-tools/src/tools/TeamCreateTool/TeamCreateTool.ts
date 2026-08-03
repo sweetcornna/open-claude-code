@@ -1,3 +1,10 @@
+// DRIFT NOTE: Official Claude Code removed the standalone TeamCreate tool in
+// the 2.1.x line. This fork keeps it DELIBERATELY — it is the backbone of the
+// in-process teammate mechanism. Consumers (do not delete without migrating
+// them): src/utils/swarm/inProcessRunner.ts (team-essential tool injection),
+// src/coordinator/{coordinatorMode,workerAgent}.ts, src/utils/task/tasks.ts +
+// src/hooks/useTasksV2.ts (leaderTeamName lifecycle), and the tool-inventory
+// snapshot in src/__tests__/tools.inventory.test.ts.
 import { z } from 'zod/v4'
 import { getSessionId } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
