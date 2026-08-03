@@ -73,15 +73,7 @@ import type { ImageDimensions } from '../../../utils/terminal/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/terminal/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/terminal/imageStore.js';
 
-type ResponseValue =
-  | 'yes-bypass-permissions'
-  | 'yes-accept-edits'
-  | 'yes-accept-edits-keep-context'
-  | 'yes-default-keep-context'
-  | 'yes-resume-auto-mode'
-  | 'yes-auto-clear-context'
-  | 'ultraplan'
-  | 'no';
+import { buildPlanApprovalOptions, type ResponseValue } from './planApprovalOptions.js';
 
 /**
  * Build permission updates for plan approval, including prompt-based rules if provided.
@@ -197,6 +189,7 @@ export function ExitPlanModePermissionRequest({
           : null,
         isAutoModeAvailable,
         isBypassPermissionsModeAvailable,
+        transcriptClassifierEnabled: feature('TRANSCRIPT_CLASSIFIER') ? true : false,
         onFeedbackChange: setPlanFeedback,
       }),
     [showClearContext, showUltraplan, usage, mode, isAutoModeAvailable, isBypassPermissionsModeAvailable],
@@ -386,7 +379,10 @@ export function ExitPlanModePermissionRequest({
     // Keep-context options skip this block and go through the normal flow below
     const isResumeAutoOption = feature('TRANSCRIPT_CLASSIFIER') ? value === 'yes-resume-auto-mode' : false;
     const isKeepContextOption =
-      value === 'yes-accept-edits-keep-context' || value === 'yes-default-keep-context' || isResumeAutoOption;
+      value === 'yes-accept-edits-keep-context' ||
+      value === 'yes-bypass-keep-context' ||
+      value === 'yes-default-keep-context' ||
+      isResumeAutoOption;
 
     if (value !== 'no') {
       autoNameSessionFromPlan(currentPlan, setAppState, !isKeepContextOption);
@@ -493,9 +489,13 @@ export function ExitPlanModePermissionRequest({
     // Without this fallback the function would return without resolving the
     // dialog, leaving the query loop blocked and safety state corrupted.
     const keepContextModes: Record<string, PermissionMode> = {
+      // Historic overload kept for the approve hotkey: with bypass available it
+      // still elevates to bypassPermissions (pre-existing behavior). The listed
+      // bypass option uses the explicit value below instead.
       'yes-accept-edits-keep-context': toolPermissionContext.isBypassPermissionsModeAvailable
         ? 'bypassPermissions'
         : 'acceptEdits',
+      'yes-bypass-keep-context': 'bypassPermissions',
       'yes-default-keep-context': 'default',
       ...(feature('TRANSCRIPT_CLASSIFIER') ? { 'yes-resume-auto-mode': 'default' as const } : {}),
     };
@@ -787,86 +787,6 @@ export function ExitPlanModePermissionRequest({
       )}
     </Box>
   );
-}
-
-/** @internal Exported for testing. */
-export function buildPlanApprovalOptions({
-  showClearContext,
-  showUltraplan,
-  usedPercent,
-  isAutoModeAvailable,
-  isBypassPermissionsModeAvailable,
-  onFeedbackChange,
-}: {
-  showClearContext: boolean;
-  showUltraplan: boolean;
-  usedPercent: number | null;
-  isAutoModeAvailable: boolean | undefined;
-  isBypassPermissionsModeAvailable: boolean | undefined;
-  onFeedbackChange: (v: string) => void;
-}): OptionWithDescription<ResponseValue>[] {
-  const options: OptionWithDescription<ResponseValue>[] = [];
-  const usedLabel = usedPercent !== null ? ` (${usedPercent}% used)` : '';
-
-  if (showClearContext) {
-    if (feature('TRANSCRIPT_CLASSIFIER') && isAutoModeAvailable) {
-      options.push({
-        label: `Yes, clear context${usedLabel} and use auto mode`,
-        value: 'yes-auto-clear-context',
-      });
-    } else if (isBypassPermissionsModeAvailable) {
-      options.push({
-        label: `Yes, clear context${usedLabel} and bypass permissions`,
-        value: 'yes-bypass-permissions',
-      });
-    } else {
-      options.push({
-        label: `Yes, clear context${usedLabel} and auto-accept edits`,
-        value: 'yes-accept-edits',
-      });
-    }
-  }
-
-  // Slot 2: keep-context with elevated mode (same priority: auto > bypass > edits).
-  if (feature('TRANSCRIPT_CLASSIFIER') && isAutoModeAvailable) {
-    options.push({
-      label: 'Yes, and use auto mode',
-      value: 'yes-resume-auto-mode',
-    });
-  } else if (isBypassPermissionsModeAvailable) {
-    options.push({
-      label: 'Yes, and bypass permissions',
-      value: 'yes-accept-edits-keep-context',
-    });
-  } else {
-    options.push({
-      label: 'Yes, auto-accept edits',
-      value: 'yes-accept-edits-keep-context',
-    });
-  }
-
-  options.push({
-    label: 'Yes, manually approve edits',
-    value: 'yes-default-keep-context',
-  });
-
-  if (showUltraplan) {
-    options.push({
-      label: 'No, refine with Ultraplan on Claude Code on the web',
-      value: 'ultraplan',
-    });
-  }
-
-  options.push({
-    type: 'input',
-    label: 'No, keep planning',
-    value: 'no',
-    placeholder: 'Tell Claude what to change',
-    description: 'shift+tab to approve with this feedback',
-    onChange: onFeedbackChange,
-  });
-
-  return options;
 }
 
 function getContextUsedPercent(
