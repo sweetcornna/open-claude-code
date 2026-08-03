@@ -2,6 +2,8 @@ import { getRemoteServerUrl, getSessionId } from '../../bootstrap/state.js'
 import { stringWidth } from '@anthropic/ink'
 import type { LogOption } from '../../types/logs.js'
 import { getSubscriptionName, isClaudeAISubscriber } from '../auth/auth.js'
+import { isAntigravityAuthMode } from '../model/antigravityModels.js'
+import { isChatGPTAuthMode } from '../model/chatgptModels.js'
 import { getCwd } from '../filesystem/cwd.js'
 import { getDisplayPath } from '../filesystem/file.js'
 import {
@@ -256,9 +258,17 @@ export function getLogoDisplayData(): {
   const cwd = serverUrl
     ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, '')}`
     : displayPath
+  // OAuth sessions must not read as usage-billed: ChatGPT device-flow auth and
+  // Antigravity Google OAuth are both subscription/quota backed (neither the
+  // Codex nor the Antigravity Cloud Code backend bills per token). Anthropic
+  // Console OAuth stays 'API Usage Billing' — that path genuinely bills usage.
   const billingType = isClaudeAISubscriber()
     ? getSubscriptionName()
-    : 'API Usage Billing'
+    : isChatGPTAuthMode()
+      ? 'ChatGPT Subscription'
+      : isAntigravityAuthMode()
+        ? 'Antigravity Subscription'
+        : 'API Usage Billing'
   const agentName = getInitialSettings().agent
 
   return {
