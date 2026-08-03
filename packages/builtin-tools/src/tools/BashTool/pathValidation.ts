@@ -831,6 +831,74 @@ function parseCommandArguments(cmd: string): string[] {
  * @param compoundCommandHasCd - Whether the full compound command contains a cd
  * @returns PermissionResult - 'passthrough' if not a path command, otherwise validation result
  */
+/**
+ * Per-command flag gates that must hold even when an allow rule matches
+ * (same posture as checkDangerousRemovalPaths — runs inside
+ * checkPathConstraints, i.e. after deny/ask rules but before allow rules):
+ *
+ * - find: -exec/-execdir/-ok/-okdir run arbitrary commands, -delete removes
+ *   files, -fprint/-fls/-fprintf write files — a `Bash(find:*)` allow rule
+ *   must not auto-approve them (official 2.1.113 parity).
+ * - docker/podman: --host/-H/--context/--url/--connection/--identity/--remote
+ *   redirect the client to a different daemon/host, so endpoint-based trust
+ *   in an allow rule no longer applies (official 2.1.214 parity; env-var
+ *   redirection via DOCKER_HOST is already handled in rule matching).
+ * - file: -m/--magic-file load an attacker-supplied magic database and
+ *   -f/--files-from reads target lists from a file — both change what the
+ *   "read-only" command actually touches (official 2.1.214 parity).
+ */
+const DANGEROUS_FLAGS_BY_COMMAND: Record<string, readonly string[]> = {
+  find: [
+    '-exec',
+    '-execdir',
+    '-ok',
+    '-okdir',
+    '-delete',
+    '-fprint',
+    '-fprint0',
+    '-fprintf',
+    '-fls',
+  ],
+  docker: ['--host', '-H', '--context'],
+  podman: ['--url', '--connection', '--identity', '--remote', '--host'],
+  file: ['-m', '--magic-file', '-f', '--files-from'],
+}
+
+function checkDangerousCommandFlags(
+  baseCmd: string,
+  args: string[],
+): PermissionResult {
+  const dangerousFlags = DANGEROUS_FLAGS_BY_COMMAND[baseCmd]
+  if (!dangerousFlags) {
+    return { behavior: 'passthrough', message: 'No flag gate for command' }
+  }
+  for (const arg of args) {
+    for (const flag of dangerousFlags) {
+      // Match `--flag`, `--flag=value`; for short flags also `-Hvalue`-style
+      // is NOT matched (docker requires a separate value for -H), keeping
+      // false positives low.
+      if (arg === flag || arg.startsWith(`${flag}=`)) {
+        return {
+          behavior: 'ask',
+          message: `'${baseCmd} ${flag}' requires explicit approval — this flag ${
+            baseCmd === 'find'
+              ? 'executes commands or writes/deletes files per match'
+              : baseCmd === 'file'
+                ? 'changes which files the command reads'
+                : 'redirects the client to a different daemon/host'
+          }, so allow rules cannot auto-approve it.`,
+          decisionReason: {
+            type: 'other',
+            reason: `Dangerous ${baseCmd} flag ${flag} requires explicit approval`,
+          },
+          suggestions: [],
+        }
+      }
+    }
+  }
+  return { behavior: 'passthrough', message: 'No dangerous flags detected' }
+}
+
 function validateSinglePathCommand(
   cmd: string,
   cwd: string,
@@ -855,7 +923,18 @@ function validateSinglePathCommand(
 
   // Check if this is a path command we need to validate
   const [baseCmd, ...args] = extractedArgs
-  if (!baseCmd || !SUPPORTED_PATH_COMMANDS.includes(baseCmd as PathCommand)) {
+  if (!baseCmd) {
+    return { behavior: 'passthrough', message: 'Empty command' }
+  }
+
+  // Flag gates apply to commands outside SUPPORTED_PATH_COMMANDS too
+  // (find/docker/podman) — check before the path-command filter.
+  const flagResult = checkDangerousCommandFlags(baseCmd, args)
+  if (flagResult.behavior !== 'passthrough') {
+    return flagResult
+  }
+
+  if (!SUPPORTED_PATH_COMMANDS.includes(baseCmd as PathCommand)) {
     return {
       behavior: 'passthrough',
       message: `Command '${baseCmd}' is not a path-restricted command`,
@@ -899,7 +978,17 @@ function validateSinglePathCommandArgv(
     }
   }
   const [baseCmd, ...args] = argv
-  if (!baseCmd || !SUPPORTED_PATH_COMMANDS.includes(baseCmd as PathCommand)) {
+  if (!baseCmd) {
+    return { behavior: 'passthrough', message: 'Empty command' }
+  }
+
+  // Same flag gates as the string path — AST argv is already wrapper-stripped.
+  const flagResult = checkDangerousCommandFlags(baseCmd, args)
+  if (flagResult.behavior !== 'passthrough') {
+    return flagResult
+  }
+
+  if (!SUPPORTED_PATH_COMMANDS.includes(baseCmd as PathCommand)) {
     return {
       behavior: 'passthrough',
       message: `Command '${baseCmd}' is not a path-restricted command`,
