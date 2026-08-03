@@ -92,7 +92,8 @@ export async function initialize(): Promise<void> {
   // Register cleanup to properly dispose during graceful shutdown
   registerCleanup(dispose)
 
-  const { dirs, settingsFiles, dropInDir } = await getWatchTargets()
+  const { dirs, settingsFiles, targetDirs, dropInDir, depth } =
+    await getWatchTargets()
   if (disposed) return // dispose() ran during the await
   if (dirs.length === 0) return
 
@@ -103,7 +104,7 @@ export async function initialize(): Promise<void> {
   watcher = chokidar.watch(dirs, {
     persistent: true,
     ignoreInitial: true,
-    depth: 0, // Only watch immediate children, not subdirectories
+    depth,
     awaitWriteFinish: {
       stabilityThreshold:
         testOverrides?.stabilityThreshold ?? FILE_STABILITY_THRESHOLD_MS,
@@ -116,9 +117,15 @@ export async function initialize(): Promise<void> {
       if (stats && !stats.isFile() && !stats.isDirectory()) return true
       // Ignore .git directories
       if (path.split(platformPath.sep).some(dir => dir === '.git')) return true
-      // Allow directories (chokidar needs them for directory-level watching)
-      // and paths without stats (chokidar's initial check before stat)
-      if (!stats || stats.isDirectory()) return false
+      // Chokidar must traverse only the path segments leading to candidate
+      // settings directories when a parent does not exist at startup.
+      if (!stats) return false
+      if (stats.isDirectory()) {
+        const normalized = platformPath.normalize(path)
+        return ![...targetDirs].some(targetDir =>
+          isSamePathOrAncestor(normalized, targetDir),
+        )
+      }
       // Only watch known settings files, ignore everything else in the directory
       // Note: chokidar normalizes paths to forward slashes on Windows, so we
       // normalize back to native format for comparison
@@ -173,18 +180,19 @@ export function dispose(): Promise<void> {
 export const subscribe = settingsChanged.subscribe
 
 /**
- * Collect settings file paths and their deduplicated parent directories to watch.
- * Returns all potential settings file paths for watched directories, not just those
- * that exist at init time, so that newly-created files are also detected.
+ * Collect every candidate settings path and the existing directories needed
+ * to observe it. Missing parents are represented by their closest existing
+ * ancestor so first-time directory and file creation is detected.
  */
-async function getWatchTargets(): Promise<{
+export async function getWatchTargets(): Promise<{
   dirs: string[]
   settingsFiles: Set<string>
+  targetDirs: Set<string>
   dropInDir: string | null
+  depth: number
 }> {
-  // Map from directory to all potential settings files in that directory
-  const dirToSettingsFiles = new Map<string, Set<string>>()
-  const dirsWithExistingFiles = new Set<string>()
+  const settingsFiles = new Set<string>()
+  const targetDirs = new Set<string>()
 
   for (const source of SETTING_SOURCES) {
     // Skip flagSettings - they're provided via CLI and won't change during the session.
@@ -199,54 +207,57 @@ async function getWatchTargets(): Promise<{
       continue
     }
 
-    const dir = platformPath.dirname(path)
+    const normalizedPath = platformPath.normalize(path)
+    settingsFiles.add(normalizedPath)
+    targetDirs.add(platformPath.dirname(normalizedPath))
+  }
 
-    // Track all potential settings files in each directory
-    if (!dirToSettingsFiles.has(dir)) {
-      dirToSettingsFiles.set(dir, new Set())
+  // Drop-ins accept any immediate .json child, so their directory is a
+  // candidate even when neither it nor the managed settings root exists yet.
+  const dropInDir = platformPath.normalize(getManagedSettingsDropInDir())
+  targetDirs.add(dropInDir)
+
+  const dirs = new Set<string>()
+  let depth = 0
+  for (const targetDir of targetDirs) {
+    const existingAncestor = await findNearestExistingDirectory(targetDir)
+    if (!existingAncestor) continue
+    dirs.add(existingAncestor)
+    const relative = platformPath.relative(existingAncestor, targetDir)
+    if (relative) {
+      depth = Math.max(depth, relative.split(platformPath.sep).length)
     }
-    dirToSettingsFiles.get(dir)!.add(path)
+  }
 
-    // Check if file exists - only watch directories that have at least one existing file
+  return { dirs: [...dirs], settingsFiles, targetDirs, dropInDir, depth }
+}
+
+async function findNearestExistingDirectory(
+  path: string,
+): Promise<string | null> {
+  let candidate = path
+  while (true) {
     try {
-      const stats = await stat(path)
-      if (stats.isFile()) {
-        dirsWithExistingFiles.add(dir)
-      }
+      const stats = await stat(candidate)
+      if (stats.isDirectory()) return candidate
     } catch {
-      // File doesn't exist, that's fine
+      // Missing candidates fall back to their closest existing ancestor.
     }
-  }
 
-  // For watched directories, include ALL potential settings file paths
-  // This ensures files created after init are also detected
-  const settingsFiles = new Set<string>()
-  for (const dir of dirsWithExistingFiles) {
-    const filesInDir = dirToSettingsFiles.get(dir)
-    if (filesInDir) {
-      for (const file of filesInDir) {
-        settingsFiles.add(file)
-      }
-    }
+    const parent = platformPath.dirname(candidate)
+    if (parent === candidate) return null
+    candidate = parent
   }
+}
 
-  // Also watch the managed-settings.d/ drop-in directory for policy fragments.
-  // We add it as a separate watched directory so chokidar's depth:0 watches
-  // its immediate children (the .json files). Any .json file inside it maps
-  // to the 'policySettings' source.
-  let dropInDir: string | null = null
-  const managedDropIn = getManagedSettingsDropInDir()
-  try {
-    const stats = await stat(managedDropIn)
-    if (stats.isDirectory()) {
-      dirsWithExistingFiles.add(managedDropIn)
-      dropInDir = managedDropIn
-    }
-  } catch {
-    // Drop-in directory doesn't exist, that's fine
-  }
-
-  return { dirs: [...dirsWithExistingFiles], settingsFiles, dropInDir }
+function isSamePathOrAncestor(ancestor: string, target: string): boolean {
+  const relative = platformPath.relative(ancestor, target)
+  return (
+    relative === '' ||
+    (relative !== '..' &&
+      !relative.startsWith(`..${platformPath.sep}`) &&
+      !platformPath.isAbsolute(relative))
+  )
 }
 
 function settingSourceToConfigChangeSource(
@@ -384,7 +395,11 @@ function startMdmPoll(): void {
   const initialHkcu = getHkcuSettings()
   lastMdmSnapshot = jsonStringify({
     mdm: initial.settings,
+    mdmErrors: initial.errors,
+    mdmSourceExists: initial.sourceExists,
     hkcu: initialHkcu.settings,
+    hkcuErrors: initialHkcu.errors,
+    hkcuSourceExists: initialHkcu.sourceExists,
   })
 
   mdmPollTimer = setInterval(() => {
@@ -397,7 +412,11 @@ function startMdmPoll(): void {
 
         const currentSnapshot = jsonStringify({
           mdm: current.settings,
+          mdmErrors: current.errors,
+          mdmSourceExists: current.sourceExists,
           hkcu: currentHkcu.settings,
+          hkcuErrors: currentHkcu.errors,
+          hkcuSourceExists: currentHkcu.sourceExists,
         })
 
         if (currentSnapshot !== lastMdmSnapshot) {

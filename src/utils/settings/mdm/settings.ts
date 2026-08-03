@@ -51,8 +51,18 @@ import {
 // Types and cache
 // ---------------------------------------------------------------------------
 
-type MdmResult = { settings: SettingsJson; errors: ValidationError[] }
-const EMPTY_RESULT: MdmResult = Object.freeze({ settings: {}, errors: [] })
+type ParsedMdmSettings = {
+  settings: SettingsJson
+  errors: ValidationError[]
+}
+type MdmResult = ParsedMdmSettings & {
+  sourceExists: boolean
+}
+const EMPTY_RESULT: MdmResult = Object.freeze({
+  settings: {},
+  errors: [],
+  sourceExists: false,
+})
 let mdmCache: MdmResult | null = null
 let hkcuCache: MdmResult | null = null
 let mdmLoadPromise: Promise<void> | null = null
@@ -184,19 +194,35 @@ export async function refreshMdmSettings(): Promise<{
 export function parseCommandOutputAsSettings(
   stdout: string,
   sourcePath: string,
-): { settings: SettingsJson; errors: ValidationError[] } {
+): ParsedMdmSettings {
   const data = safeParseJSON(stdout, false)
   if (!data || typeof data !== 'object') {
-    return { settings: {}, errors: [] }
+    return {
+      settings: {},
+      errors: [
+        {
+          file: sourcePath,
+          path: '',
+          message: 'Invalid or malformed JSON',
+          expected: 'object',
+        },
+      ],
+    }
   }
 
   const ruleWarnings = filterInvalidPermissionRules(data, sourcePath)
   const parseResult = SettingsSchema().safeParse(data)
   if (!parseResult.success) {
     const errors = formatZodError(parseResult.error, sourcePath)
-    return { settings: {}, errors: [...ruleWarnings, ...errors] }
+    return {
+      settings: {},
+      errors: [...ruleWarnings, ...errors],
+    }
   }
-  return { settings: parseResult.data, errors: ruleWarnings }
+  return {
+    settings: parseResult.data,
+    errors: ruleWarnings,
+  }
 }
 
 /**
@@ -226,7 +252,7 @@ export function parseRegQueryStdout(
  * Convert raw subprocess output into parsed MDM and HKCU results,
  * applying the first-source-wins policy.
  */
-function consumeRawReadResult(raw: RawReadResult): {
+export function consumeRawReadResult(raw: RawReadResult): {
   mdm: MdmResult
   hkcu: MdmResult
 } {
@@ -234,22 +260,39 @@ function consumeRawReadResult(raw: RawReadResult): {
   if (raw.plistStdouts && raw.plistStdouts.length > 0) {
     const { stdout, label } = raw.plistStdouts[0]!
     const result = parseCommandOutputAsSettings(stdout, label)
-    if (Object.keys(result.settings).length > 0) {
-      return { mdm: result, hkcu: EMPTY_RESULT }
+    return {
+      mdm: { ...result, sourceExists: true },
+      hkcu: EMPTY_RESULT,
     }
   }
 
   // Windows: HKLM result
-  if (raw.hklmStdout) {
+  if (raw.hklmStdout !== null) {
     const jsonString = parseRegQueryStdout(raw.hklmStdout)
     if (jsonString) {
       const result = parseCommandOutputAsSettings(
         jsonString,
         `Registry: ${WINDOWS_REGISTRY_KEY_PATH_HKLM}\\${WINDOWS_REGISTRY_VALUE_NAME}`,
       )
-      if (Object.keys(result.settings).length > 0) {
-        return { mdm: result, hkcu: EMPTY_RESULT }
+      return {
+        mdm: { ...result, sourceExists: true },
+        hkcu: EMPTY_RESULT,
       }
+    }
+    return {
+      mdm: {
+        settings: {},
+        errors: [
+          {
+            file: `Registry: ${WINDOWS_REGISTRY_KEY_PATH_HKLM}\\${WINDOWS_REGISTRY_VALUE_NAME}`,
+            path: '',
+            message: 'Unable to parse managed registry value',
+            expected: 'REG_SZ or REG_EXPAND_SZ registry value',
+          },
+        ],
+        sourceExists: true,
+      },
+      hkcu: EMPTY_RESULT,
     }
   }
 
@@ -259,14 +302,17 @@ function consumeRawReadResult(raw: RawReadResult): {
   }
 
   // Fall through to HKCU (already read in parallel)
-  if (raw.hkcuStdout) {
+  if (raw.hkcuStdout !== null) {
     const jsonString = parseRegQueryStdout(raw.hkcuStdout)
     if (jsonString) {
       const result = parseCommandOutputAsSettings(
         jsonString,
         `Registry: ${WINDOWS_REGISTRY_KEY_PATH_HKCU}\\${WINDOWS_REGISTRY_VALUE_NAME}`,
       )
-      return { mdm: EMPTY_RESULT, hkcu: result }
+      return {
+        mdm: EMPTY_RESULT,
+        hkcu: { ...result, sourceExists: true },
+      }
     }
   }
 
