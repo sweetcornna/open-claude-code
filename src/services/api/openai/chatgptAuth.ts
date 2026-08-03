@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { occConfigDir, occConfigPath } from 'src/config/paths.js'
+import { sleep } from 'src/utils/process/sleep.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 
 const ISSUER = 'https://auth.openai.com'
@@ -250,9 +251,9 @@ async function pollForAuthorizationCode(
     if (res.status !== 403 && res.status !== 404) {
       throw new Error(`ChatGPT device auth failed (${res.status})`)
     }
-    await new Promise(resolve =>
-      setTimeout(resolve, deviceCode.intervalSeconds * 1000),
-    )
+    await sleep(deviceCode.intervalSeconds * 1000, signal, {
+      abortError: () => new Error('ChatGPT login cancelled'),
+    })
   }
   throw new Error('ChatGPT device auth timed out after 15 minutes')
 }
