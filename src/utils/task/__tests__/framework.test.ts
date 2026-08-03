@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
+import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQueueManager.js'
 
 // ─── Mocks ───
 
@@ -19,9 +20,11 @@ mock.module('src/utils/task/diskOutput.js', () => ({
   initTaskOutputAsSymlink: async () => {},
 }))
 
-mock.module('src/utils/session/messageQueueManager.js', () => ({
+// Complete-surface shared mock: a hand-written one-export mock here erased the
+// module's other 23 exports for every file loaded later in the same process.
+const messageQueueManagerMock = setupMessageQueueManagerMock({
   enqueuePendingNotification: noop,
-}))
+})
 
 // ─── Import after mocks ───
 
@@ -67,6 +70,12 @@ function createSetAppState(initial: AppStateLike = { tasks: {} }): {
 
 afterEach(() => {
   sdkEvents.length = 0
+})
+
+// Hand the queue module back to its real implementation so later files in this
+// process don't inherit our override.
+afterAll(() => {
+  messageQueueManagerMock.reset()
 })
 
 // ─── Tests ───

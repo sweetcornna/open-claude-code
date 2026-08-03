@@ -1,12 +1,23 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
-mock.module('src/utils/settings/settings.js', () => ({
+// Complete-surface shared mock — a partial one here erased the module's other
+// exports for every file loaded later in the same process.
+const settingsMock = setupSettingsMock({
   getSettings_DEPRECATED: () => ({}),
-  updateSettingsForSource: () => {},
-}))
+  updateSettingsForSource: () => ({}) as never,
+})
 
 beforeEach(() => {
   // Clean OpenAI env vars before each test
@@ -126,4 +137,10 @@ describe('buildShellExportBlock', () => {
     expect(block).toContain('$DEEPSEEK_API_KEY')
     delete process.env['DEEPSEEK_API_KEY']
   })
+})
+
+// Hand the settings module back to its real implementation so later files in
+// this process do not inherit these overrides.
+afterAll(() => {
+  settingsMock.reset()
 })

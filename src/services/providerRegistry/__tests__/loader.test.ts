@@ -1,8 +1,17 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { mkdtempSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 // Must mock log before any import that transitively loads log.ts
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -11,10 +20,12 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
 // settings.js must be mocked to cut bootstrap chain
-mock.module('src/utils/settings/settings.js', () => ({
+// Complete-surface shared mock — a partial one here erased the module's other
+// exports for every file loaded later in the same process.
+const settingsMock = setupSettingsMock({
   getSettings_DEPRECATED: () => ({}),
-  updateSettingsForSource: () => {},
-}))
+  updateSettingsForSource: () => ({}) as never,
+})
 
 let tmpDir: string
 
@@ -130,4 +141,10 @@ describe('loadProviders', () => {
     expect(deepseek?.baseUrl).toBe('https://api.deepseek.com/v1')
     expect(deepseek?.compatRule).toBe('deepseek')
   })
+})
+
+// Hand the settings module back to its real implementation so later files in
+// this process do not inherit these overrides.
+afterAll(() => {
+  settingsMock.reset()
 })
