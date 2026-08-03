@@ -55,10 +55,29 @@ export function completeOnboarding(): void {
   }));
 }
 export function showDialog<T = void>(root: Root, renderer: (done: (result: T) => void) => React.ReactNode): Promise<T> {
-  return new Promise<T>(resolve => {
-    const done = (result: T): void => void resolve(result);
+  let completed = false;
+  const never = (): Promise<never> => new Promise(() => {});
+  const shutdownAfterExit = async (): Promise<never> => {
+    if (completed) {
+      return never();
+    }
+    completed = true;
+    await gracefulShutdown(0);
+    return never();
+  };
+  const waitUntilExitPromise = root.waitUntilExit();
+  const donePromise = new Promise<T>(resolve => {
+    const done = (result: T): void => {
+      if (completed) {
+        return;
+      }
+      completed = true;
+      resolve(result);
+    };
     root.render(renderer(done));
   });
+  const exitPromise = waitUntilExitPromise.then(shutdownAfterExit, shutdownAfterExit);
+  return Promise.race([donePromise, exitPromise]);
 }
 
 /**

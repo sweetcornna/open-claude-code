@@ -252,6 +252,11 @@ export const setupGracefulShutdown = memoize(() => {
   onExit(() => {})
 
   process.on('SIGINT', () => {
+    if (shutdownInProgress) {
+      cleanupTerminalModes()
+      printResumeHint()
+      forceExit(0)
+    }
     // In print mode, print.ts registers its own SIGINT handler that aborts
     // the in-flight query and calls gracefulShutdown(0); skip here to
     // avoid racing with it. Only check print mode — other non-interactive
@@ -262,15 +267,57 @@ export const setupGracefulShutdown = memoize(() => {
     }
     logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGINT' })
     void gracefulShutdown(0)
+      .catch(error => {
+        logForDebugging(`Graceful shutdown failed: ${error}`, {
+          level: 'error',
+        })
+        cleanupTerminalModes()
+        printResumeHint()
+        forceExit(0)
+      })
+      // Prevent unhandled rejection: forceExit re-throws in test mode.
+      .catch(() => {})
   })
   process.on('SIGTERM', () => {
+    if (shutdownInProgress) {
+      cleanupTerminalModes()
+      printResumeHint()
+      forceExit(143)
+    }
     logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGTERM' })
-    void gracefulShutdown(143) // Exit code 143 (128 + 15) for SIGTERM
+    // Exit code 143 (128 + 15) for SIGTERM
+    void gracefulShutdown(143)
+      .catch(error => {
+        logForDebugging(`Graceful shutdown failed: ${error}`, {
+          level: 'error',
+        })
+        cleanupTerminalModes()
+        printResumeHint()
+        forceExit(143)
+      })
+      // Prevent unhandled rejection: forceExit re-throws in test mode.
+      .catch(() => {})
   })
   if (process.platform !== 'win32') {
     process.on('SIGHUP', () => {
+      if (shutdownInProgress) {
+        cleanupTerminalModes()
+        printResumeHint()
+        forceExit(129)
+      }
       logForDiagnosticsNoPII('info', 'shutdown_signal', { signal: 'SIGHUP' })
-      void gracefulShutdown(129) // Exit code 129 (128 + 1) for SIGHUP
+      // Exit code 129 (128 + 1) for SIGHUP
+      void gracefulShutdown(129)
+        .catch(error => {
+          logForDebugging(`Graceful shutdown failed: ${error}`, {
+            level: 'error',
+          })
+          cleanupTerminalModes()
+          printResumeHint()
+          forceExit(129)
+        })
+        // Prevent unhandled rejection: forceExit re-throws in test mode.
+        .catch(() => {})
     })
 
     // Detect orphaned process when terminal closes without delivering SIGHUP.
@@ -401,27 +448,47 @@ export async function gracefulShutdown(
   }
   shutdownInProgress = true
 
-  // Resolve the SessionEnd hook budget before arming the failsafe so the
-  // failsafe can scale with it. Without this, a user-configured 10s hook
-  // budget is silently truncated by the 5s failsafe (gh-32712 follow-up).
-  const { executeSessionEndHooks, getSessionEndHookTimeoutMs } = await import(
-    '../hooks.js'
-  )
-  const sessionEndTimeoutMs = getSessionEndHookTimeoutMs()
-
   // Failsafe: guarantee process exits even if cleanup hangs (e.g., MCP connections).
   // Runs cleanupTerminalModes first so a hung cleanup doesn't leave the terminal dirty.
-  // Budget = max(5s, hook budget + 3.5s headroom for cleanup + analytics flush).
-  failsafeTimer = setTimeout(
-    code => {
-      cleanupTerminalModes()
-      printResumeHint()
-      forceExit(code)
-    },
-    Math.max(5000, sessionEndTimeoutMs + 3500),
-    exitCode,
-  )
-  failsafeTimer.unref()
+  // Arm the default budget before any await so a stalled dynamic import cannot
+  // permanently lock shutdownInProgress and swallow every later signal.
+  const armFailsafe = (timeoutMs: number): void => {
+    failsafeTimer = setTimeout(
+      code => {
+        cleanupTerminalModes()
+        printResumeHint()
+        forceExit(code)
+      },
+      timeoutMs,
+      exitCode,
+    )
+    failsafeTimer.unref()
+  }
+  armFailsafe(5000)
+
+  let executeSessionEndHooks:
+    | typeof import('../hooks.js')['executeSessionEndHooks']
+    | undefined
+  let sessionEndTimeoutMs: number | undefined
+  try {
+    const hooks = await import('../hooks.js')
+    const resolvedSessionEndTimeoutMs = hooks.getSessionEndHookTimeoutMs()
+    executeSessionEndHooks = hooks.executeSessionEndHooks
+    sessionEndTimeoutMs = resolvedSessionEndTimeoutMs
+
+    // A larger hook budget needs extra headroom for cleanup and analytics.
+    const hookAwareFailsafeMs = Math.max(
+      5000,
+      resolvedSessionEndTimeoutMs + 3500,
+    )
+    if (hookAwareFailsafeMs > 5000) {
+      clearTimeout(failsafeTimer)
+      armFailsafe(hookAwareFailsafeMs)
+    }
+  } catch {
+    // Hook loading is optional during shutdown. Keep the default failsafe and
+    // continue cleanup without running SessionEnd hooks.
+  }
 
   // Set the exit code that will be used when process naturally exits
   process.exitCode = exitCode
@@ -467,14 +534,16 @@ export async function gracefulShutdown(
   // Execute SessionEnd hooks. Bound both the per-hook default timeout and the
   // overall execution via a single budget (CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS,
   // default 1.5s). hook.timeout in settings is respected up to this cap.
-  try {
-    await executeSessionEndHooks(reason, {
-      ...options,
-      signal: AbortSignal.timeout(sessionEndTimeoutMs),
-      timeoutMs: sessionEndTimeoutMs,
-    })
-  } catch {
-    // Ignore SessionEnd hook exceptions (including AbortError on timeout)
+  if (executeSessionEndHooks && sessionEndTimeoutMs !== undefined) {
+    try {
+      await executeSessionEndHooks(reason, {
+        ...options,
+        signal: AbortSignal.timeout(sessionEndTimeoutMs),
+        timeoutMs: sessionEndTimeoutMs,
+      })
+    } catch {
+      // Ignore SessionEnd hook exceptions (including AbortError on timeout)
+    }
   }
 
   // Log startup perf before analytics shutdown flushes/cancels timers
