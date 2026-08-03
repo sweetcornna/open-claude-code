@@ -91,10 +91,22 @@ export function makeHooks(
           return resultToOutput(entry.result)
         }
       } else {
-        // Divergence: discard subsequent journal entries; everything from here on runs live
+        // Divergence: atomically persist the valid prefix before live suffixes
+        // append, otherwise the next resume diverges at the first old record again.
         ctx.journalInvalidated = true
         ctx.journal = ctx.journal.slice(0, ctx.journalIndex)
-        await ctx.ports.journalStore.truncate(ctx.runId)
+        const store = ctx.ports
+          .journalStore as typeof ctx.ports.journalStore & {
+          rewrite?: (runId: string, entries: JournalEntry[]) => Promise<void>
+        }
+        if (store.rewrite) {
+          await store.rewrite(ctx.runId, ctx.journal)
+        } else {
+          await store.truncate(ctx.runId)
+          for (const prefixEntry of ctx.journal) {
+            await store.append(ctx.runId, prefixEntry)
+          }
+        }
       }
     }
 

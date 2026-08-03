@@ -13,9 +13,11 @@ function mockPorts(
   ports: WorkflowPorts
   events: ProgressEvent[]
   runStatus: Map<string, string>
+  truncated: string[]
 } {
   const events: ProgressEvent[] = []
   const runStatus = new Map<string, string>()
+  const truncated: string[] = []
   const ports: WorkflowPorts = {
     agentRunner: {
       runAgentToResult: async (p: AgentRunParams) =>
@@ -35,7 +37,9 @@ function mockPorts(
     journalStore: {
       read: async () => [],
       append: async () => {},
-      truncate: async () => {},
+      truncate: async runId => {
+        truncated.push(runId)
+      },
     },
     permissionGate: { isAborted: () => false },
     logger: { debug: () => {}, event: () => {} },
@@ -45,7 +49,7 @@ function mockPorts(
       budgetTotal: null,
     }),
   }
-  return { ports, events, runStatus }
+  return { ports, events, runStatus, truncated }
 }
 
 test('call returns launch message and completes in background', async () => {
@@ -132,6 +136,88 @@ test('inline script persists to run directory, returns real scriptPath', async (
     )
     expect(res.data.output).toContain(expectedPath)
     expect(await readFile(expectedPath, 'utf-8')).toBe(`return agent('x')`)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('resume invalidates the journal only when the persisted script hash changes', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-hash-'))
+  try {
+    const { ports, truncated } = mockPorts(
+      dir,
+      new Map([
+        ['first', { kind: 'ok', output: 'first', usage: { outputTokens: 1 } }],
+        [
+          'second',
+          { kind: 'ok', output: 'second', usage: { outputTokens: 1 } },
+        ],
+      ]),
+    )
+    const tool = createWorkflowTool(ports)
+    await tool.call(
+      { script: `return agent('first')` },
+      undefined,
+      undefined,
+      undefined,
+    )
+    const scriptPath = join(dir, '.occ', 'workflow-runs', 'run-x', 'script.js')
+    const hashPath = join(
+      dir,
+      '.occ',
+      'workflow-runs',
+      'run-x',
+      'script.sha256',
+    )
+    expect(await readFile(hashPath, 'utf-8')).toMatch(/^[a-f0-9]{64}\n$/)
+
+    await writeFile(scriptPath, `return agent('second')`, 'utf-8')
+    await tool.call(
+      { scriptPath, resumeFromRunId: 'run-x' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => {
+      setTimeout(resolve, 30)
+    })
+    expect(truncated).toEqual(['run-x'])
+
+    truncated.length = 0
+    await tool.call(
+      { scriptPath, resumeFromRunId: 'run-x' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => {
+      setTimeout(resolve, 30)
+    })
+    expect(truncated).toEqual([])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('resume without prior script hash fails closed and invalidates legacy journal state', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-hash-missing-'))
+  try {
+    const scriptPath = join(dir, 'legacy-workflow.js')
+    await writeFile(scriptPath, 'return 1', 'utf-8')
+    const { ports, truncated } = mockPorts(dir, new Map())
+    const tool = createWorkflowTool(ports)
+
+    await tool.call(
+      { scriptPath, resumeFromRunId: 'run-x' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => {
+      setTimeout(resolve, 30)
+    })
+
+    expect(truncated).toEqual(['run-x'])
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

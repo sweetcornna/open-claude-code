@@ -23,6 +23,7 @@ type CtxOverrides = Partial<{
   signal: AbortSignal
   truncated: string[]
   appended: JournalEntry[]
+  rewritten: Array<{ runId: string; entries: JournalEntry[] }>
   agentAdapterRegistry: AgentAdapterRegistry
   loggerWarn: (msg: string) => void
   // taskRegistrar agent-level abort binding (agent kill bridge).
@@ -74,6 +75,16 @@ function buildCtx(overrides: CtxOverrides = {}): {
       truncate: async (id: string) => {
         overrides.truncated?.push(id)
       },
+      ...(overrides.rewritten
+        ? {
+            rewrite: async (runId: string, entries: JournalEntry[]) => {
+              overrides.rewritten?.push({
+                runId,
+                entries: entries.map(entry => ({ ...entry })),
+              })
+            },
+          }
+        : {}),
     },
     permissionGate: { isAborted: () => false },
     logger: {
@@ -413,6 +424,51 @@ test('agent journal key diverges → invalidate and truncate', async () => {
   expect(out).toBe('live')
   expect(truncated).toContain('r1')
   expect(ctx.journalInvalidated).toBe(true)
+})
+
+test('agent journal divergence rewrites the valid prefix before appending the live suffix', async () => {
+  const rewritten: Array<{ runId: string; entries: JournalEntry[] }> = []
+  const appended: JournalEntry[] = []
+  const firstPrompt = 'cached-first'
+  const firstKey = agentCallKey(firstPrompt, { prompt: firstPrompt })
+  const { hooks } = buildCtx({
+    runner: async params => ({
+      kind: 'ok',
+      output: `live:${params.prompt}`,
+      usage: { outputTokens: 1 },
+    }),
+    journal: [
+      {
+        key: firstKey,
+        seq: 0,
+        result: {
+          kind: 'ok',
+          output: 'cached:first',
+          usage: { outputTokens: 1 },
+        },
+      },
+      {
+        key: 'stale-second',
+        seq: 1,
+        result: {
+          kind: 'ok',
+          output: 'cached:stale',
+          usage: { outputTokens: 1 },
+        },
+      },
+    ],
+    rewritten,
+    appended,
+  })
+
+  expect(await hooks.agent(firstPrompt)).toBe('cached:first')
+  expect(await hooks.agent('changed-second')).toBe('live:changed-second')
+
+  expect(rewritten).toHaveLength(1)
+  expect(rewritten[0]!.runId).toBe('r1')
+  expect(rewritten[0]!.entries.map(entry => entry.key)).toEqual([firstKey])
+  expect(appended).toHaveLength(1)
+  expect(appended[0]!.seq).toBe(1)
 })
 
 test('agent throws when budget exhausted', async () => {

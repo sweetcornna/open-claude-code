@@ -1,8 +1,12 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { agentCallKey, createFileJournalStore } from '../engine/journal.js'
+import {
+  agentCallKey,
+  createFileJournalStore,
+  JournalCorruptionError,
+} from '../engine/journal.js'
 import type { AgentRunParams } from '../types.js'
 
 const base: AgentRunParams = { prompt: 'do something' }
@@ -137,6 +141,144 @@ test('FileJournalStore read for non-existent run → []', async () => {
   try {
     const store = createFileJournalStore(dir)
     expect(await store.read('never-existed')).toEqual([])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('FileJournalStore keeps the valid prefix when the final record is truncated', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-tail-'))
+  const warnings: string[] = []
+  try {
+    const runDir = join(dir, 'r1')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(
+      join(runDir, 'journal.jsonl'),
+      `${JSON.stringify({
+        key: 'k0',
+        seq: 0,
+        result: { kind: 'ok', output: 'saved', usage: { outputTokens: 1 } },
+      })}\n{"key":"partial`,
+      'utf-8',
+    )
+
+    const store = createFileJournalStore(dir, warning => warnings.push(warning))
+    const got = await store.read('r1')
+
+    expect(got.map(entry => entry.key)).toEqual(['k0'])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/truncated final journal record/i)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('FileJournalStore reports corruption in a middle record', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-corrupt-'))
+  try {
+    const runDir = join(dir, 'r1')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(
+      join(runDir, 'journal.jsonl'),
+      `${JSON.stringify({ key: 'k0', seq: 0, result: { kind: 'dead' } })}\nnot-json\n${JSON.stringify({ key: 'k2', seq: 2, result: { kind: 'dead' } })}\n`,
+      'utf-8',
+    )
+
+    const store = createFileJournalStore(dir)
+    await expect(store.read('r1')).rejects.toBeInstanceOf(
+      JournalCorruptionError,
+    )
+    await expect(store.read('r1')).rejects.toThrow(/line 2/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('FileJournalStore reports a complete but structurally invalid final record', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-shape-'))
+  try {
+    const runDir = join(dir, 'r1')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(join(runDir, 'journal.jsonl'), '{"key":1}', 'utf-8')
+
+    const store = createFileJournalStore(dir)
+    await expect(store.read('r1')).rejects.toThrow(
+      /record does not match the journal entry shape/,
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('FileJournalStore does not disguise non-ENOENT read failures as empty history', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-io-'))
+  try {
+    const journalPath = join(dir, 'r1', 'journal.jsonl')
+    await mkdir(journalPath, { recursive: true })
+    const store = createFileJournalStore(dir)
+    await expect(store.read('r1')).rejects.toThrow()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('FileJournalStore rewrite preserves sibling script and atomically replaces the journal prefix', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-rewrite-'))
+  try {
+    const runDir = join(dir, 'r1')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(join(runDir, 'script.js'), 'return 1', 'utf-8')
+    const store = createFileJournalStore(dir)
+    await store.append('r1', {
+      key: 'old-0',
+      seq: 0,
+      result: { kind: 'dead' },
+    })
+    await store.append('r1', {
+      key: 'old-1',
+      seq: 1,
+      result: { kind: 'dead' },
+    })
+
+    const prefix = {
+      key: 'kept-0',
+      seq: 0,
+      result: { kind: 'dead' as const },
+    }
+    await store.rewrite('r1', [prefix])
+    await store.append('r1', {
+      key: 'new-1',
+      seq: 1,
+      result: { kind: 'dead' },
+    })
+
+    expect((await store.read('r1')).map(entry => entry.key)).toEqual([
+      'kept-0',
+      'new-1',
+    ])
+    expect(await readFile(join(runDir, 'script.js'), 'utf-8')).toBe('return 1')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('FileJournalStore deleteRun is the explicit directory-level cleanup operation', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-delete-'))
+  try {
+    const runDir = join(dir, 'r1')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(join(runDir, 'script.js'), 'return 1', 'utf-8')
+    const store = createFileJournalStore(dir)
+    await store.append('r1', {
+      key: 'k0',
+      seq: 0,
+      result: { kind: 'dead' },
+    })
+
+    await store.deleteRun('r1')
+
+    await expect(readFile(join(runDir, 'script.js'), 'utf-8')).rejects.toThrow()
+    expect(await store.read('r1')).toEqual([])
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
