@@ -99,6 +99,16 @@ export async function* queryModelGrok(
       `[Grok] Calling model=${grokModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}`,
     )
 
+    // Opt-in output cap: without it the endpoint's own default applies (the
+    // historical behavior). GROK_MAX_TOKENS wins over the generic key so a
+    // provider profile can carry a per-provider value.
+    const grokMaxTokens = parseInt(
+      process.env.GROK_MAX_TOKENS ??
+        process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ??
+        '',
+      10,
+    )
+
     const stream = await client.chat.completions.create(
       {
         model: grokModel,
@@ -109,6 +119,8 @@ export async function* queryModelGrok(
         }),
         stream: true,
         stream_options: { include_usage: true },
+        ...(Number.isFinite(grokMaxTokens) &&
+          grokMaxTokens > 0 && { max_tokens: grokMaxTokens }),
         ...(options.temperatureOverride !== undefined && {
           temperature: options.temperatureOverride,
         }),

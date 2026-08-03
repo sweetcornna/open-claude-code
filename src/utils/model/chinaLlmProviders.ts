@@ -278,3 +278,20 @@ export function resolveChinaProviderBaseURL(
   }
   return provider.baseURL
 }
+
+/**
+ * Parse a display context-window string ('203K', '1M', '262K') into a token
+ * count. The preset table stores display strings; the login flow uses this to
+ * auto-set CLAUDE_CODE_MAX_CONTEXT_TOKENS so auto-compact triggers at the
+ * model's real window instead of the 200k fallback. Returns undefined for
+ * unparseable values (caller skips the auto-set).
+ */
+export function parseContextWindowTokens(
+  contextWindow: string,
+): number | undefined {
+  const m = contextWindow.trim().match(/^(\d+(?:\.\d+)?)\s*([KM])$/i)
+  if (!m) return undefined
+  const n = parseFloat(m[1]!)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return Math.round(m[2]!.toUpperCase() === 'M' ? n * 1_000_000 : n * 1_000)
+}

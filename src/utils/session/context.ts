@@ -61,14 +61,14 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
 ): number {
-  // Allow override via environment variable (ant-only)
-  // This takes precedence over all other context window resolution, including 1M detection,
-  // so users can cap the effective context window for local decisions (auto-compact, etc.)
-  // while still using a 1M-capable endpoint.
-  if (
-    process.env.USER_TYPE === 'ant' &&
-    process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
-  ) {
+  // Allow override via environment variable.
+  // This takes precedence over all other context window resolution, including 1M detection.
+  // It is the single knob for third-party models whose real window differs from the 200k
+  // fallback (a 128k GLM would otherwise never trigger auto-compact before the endpoint
+  // rejects with prompt-too-long; a 1M DeepSeek would compact 5× too early). Flows through
+  // every downstream consumer: auto-compact thresholds, predictive compact, blocking limit,
+  // statusline ctx:% and /context.
+  if (process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) {
     const override = parseInt(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, 10)
     if (!isNaN(override) && override > 0) {
       return override

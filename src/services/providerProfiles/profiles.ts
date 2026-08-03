@@ -80,6 +80,8 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'ANTHROPIC_DEFAULT_SONNET_MODEL',
     'ANTHROPIC_DEFAULT_OPUS_MODEL',
     'ANTHROPIC_SMALL_FAST_MODEL',
+    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+    'CLAUDE_CODE_1M_CONTEXT_MODELS',
   ],
   openai: [
     'OPENAI_BASE_URL',
@@ -94,6 +96,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'OPENAI_MAX_TOKENS',
     'OPENAI_ORG_ID',
     'OPENAI_PROJECT_ID',
+    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   ],
   gemini: [
     'GEMINI_API_KEY',
@@ -102,12 +105,24 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'GEMINI_DEFAULT_HAIKU_MODEL',
     'GEMINI_DEFAULT_SONNET_MODEL',
     'GEMINI_DEFAULT_OPUS_MODEL',
+    'GEMINI_MAX_TOKENS',
+    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   ],
-  grok: ['GROK_API_KEY', 'XAI_API_KEY', 'GROK_MODEL', 'GROK_BASE_URL'],
+  grok: [
+    'GROK_API_KEY',
+    'XAI_API_KEY',
+    'GROK_MODEL',
+    'GROK_BASE_URL',
+    'GROK_MAX_TOKENS',
+    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+  ],
 }
 
-export const ALL_PROFILE_ENV_KEYS: readonly string[] =
-  Object.values(PROFILE_ENV_KEYS).flat()
+// Deduped union: CLAUDE_CODE_MAX_CONTEXT_TOKENS is managed by every family
+// (context window is provider-independent), so the flat() union repeats it.
+export const ALL_PROFILE_ENV_KEYS: readonly string[] = [
+  ...new Set(Object.values(PROFILE_ENV_KEYS).flat()),
+]
 
 export function profilesFilePath(): string {
   return occConfigPath('provider-profiles.json')
