@@ -1,4 +1,7 @@
 import { spawnSync } from 'child_process'
+import { closeSync, mkdirSync, openSync } from 'fs'
+import { dirname } from 'path'
+import { quote } from '../../../utils/bash/shellQuote.js'
 import { execFileNoThrow } from '../../../utils/process/execFileNoThrow.js'
 import {
   buildCliLaunch,
@@ -27,11 +30,15 @@ export class TmuxEngine implements BgEngine {
         CLAUDE_CODE_SESSION_KIND: 'bg',
         CLAUDE_CODE_SESSION_NAME: opts.sessionName,
         CLAUDE_CODE_SESSION_LOG: opts.logPath,
+        CLAUDE_CODE_SESSION_ENGINE: 'tmux',
         CLAUDE_CODE_TMUX_SESSION: opts.sessionName,
       } as NodeJS.ProcessEnv,
     })
 
     const cmd = quoteCliLaunch(launch)
+
+    mkdirSync(dirname(opts.logPath), { recursive: true })
+    closeSync(openSync(opts.logPath, 'a'))
 
     const result = spawnSync(
       'tmux',
@@ -41,6 +48,28 @@ export class TmuxEngine implements BgEngine {
 
     if (result.status !== 0) {
       throw new Error('Failed to create tmux session.')
+    }
+
+    // tmux panes do not write to the child's stdout file descriptors, so the
+    // advertised log path is only real when the pane output is piped explicitly.
+    const pipeResult = spawnSync(
+      'tmux',
+      [
+        'pipe-pane',
+        '-o',
+        '-t',
+        opts.sessionName,
+        `cat >> ${quote([opts.logPath])}`,
+      ],
+      { stdio: 'inherit', env: launch.env },
+    )
+
+    if (pipeResult.status !== 0) {
+      spawnSync('tmux', ['kill-session', '-t', opts.sessionName], {
+        stdio: 'ignore',
+        env: launch.env,
+      })
+      throw new Error('Failed to capture tmux session output.')
     }
 
     // tmux doesn't directly report the child PID; we return 0.
@@ -61,7 +90,7 @@ export class TmuxEngine implements BgEngine {
     const result = spawnSync(
       'tmux',
       ['attach-session', '-t', session.tmuxSessionName],
-      { stdio: 'inherit' },
+      { stdio: 'inherit', env: process.env },
     )
 
     if (result.status !== 0) {

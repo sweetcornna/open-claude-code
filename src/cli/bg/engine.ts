@@ -22,6 +22,7 @@ export interface SessionEntry {
   agent?: string
   tmuxSessionName?: string
   engine?: 'tmux' | 'detached'
+  processStartMarker?: string
 }
 
 export interface BgStartOptions {

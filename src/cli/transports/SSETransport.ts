@@ -183,6 +183,8 @@ export class SSETransport implements Transport {
 
   // SSE connection state
   private abortController: AbortController | null = null
+  private connectionGeneration = 0
+  private handledErrorGeneration = 0
   private lastSequenceNum = 0
   private seenSequenceNums = new Set<number>()
 
@@ -281,13 +283,15 @@ export class SSETransport implements Transport {
     logForDebugging(`SSETransport: Opening ${sseUrl.href}`)
     logForDiagnosticsNoPII('info', 'cli_sse_connect_opening')
 
-    this.abortController = new AbortController()
+    const generation = ++this.connectionGeneration
+    const abortController = new AbortController()
+    this.abortController = abortController
 
     try {
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       const response = await fetch(sseUrl.href, {
         headers,
-        signal: this.abortController.signal,
+        signal: abortController.signal,
       })
 
       if (!response.ok) {
@@ -306,13 +310,13 @@ export class SSETransport implements Transport {
           return
         }
 
-        this.handleConnectionError()
+        this.handleConnectionError(generation)
         return
       }
 
       if (!response.body) {
         logForDebugging('SSETransport: No response body')
-        this.handleConnectionError()
+        this.handleConnectionError(generation)
         return
       }
 
@@ -329,9 +333,9 @@ export class SSETransport implements Transport {
       this.resetLivenessTimer()
 
       // Read the SSE stream
-      await this.readStream(response.body)
+      await this.readStream(response.body, generation, abortController)
     } catch (error) {
-      if (this.abortController?.signal.aborted) {
+      if (abortController.signal.aborted) {
         // Intentional close
         return
       }
@@ -341,7 +345,7 @@ export class SSETransport implements Transport {
         { level: 'error' },
       )
       logForDiagnosticsNoPII('error', 'cli_sse_connect_error')
-      this.handleConnectionError()
+      this.handleConnectionError(generation)
     }
   }
 
@@ -349,7 +353,11 @@ export class SSETransport implements Transport {
    * Read and process the SSE stream body.
    */
   // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-  private async readStream(body: ReadableStream<Uint8Array>): Promise<void> {
+  private async readStream(
+    body: ReadableStream<Uint8Array>,
+    generation: number,
+    abortController: AbortController,
+  ): Promise<void> {
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -419,7 +427,7 @@ export class SSETransport implements Transport {
         }
       }
     } catch (error) {
-      if (this.abortController?.signal.aborted) return
+      if (abortController.signal.aborted) return
       logForDebugging(
         `SSETransport: Stream read error: ${errorMessage(error)}`,
         { level: 'error' },
@@ -432,7 +440,7 @@ export class SSETransport implements Transport {
     // Stream ended — reconnect unless we're closing
     if (this.state !== 'closing' && this.state !== 'closed') {
       logForDebugging('SSETransport: Stream ended, reconnecting')
-      this.handleConnectionError()
+      this.handleConnectionError(generation)
     }
   }
 
@@ -489,16 +497,23 @@ export class SSETransport implements Transport {
   /**
    * Handle connection errors with exponential backoff and time budget.
    */
-  private handleConnectionError(): void {
+  private handleConnectionError(generation: number): void {
     rcLog(
       `SSE handleConnectionError: state=${this.state}` +
+        ` generation=${generation}` +
         ` lastSeqNum=${this.getLastSequenceNum()}` +
         ` reconnectAttempts=${this.reconnectAttempts}` +
         ` msSinceLastActivity=${this.lastActivityTime > 0 ? Date.now() - this.lastActivityTime : -1}`,
     )
-    this.clearLivenessTimer()
-
     if (this.state === 'closing' || this.state === 'closed') return
+    if (
+      generation !== this.connectionGeneration ||
+      generation === this.handledErrorGeneration
+    ) {
+      return
+    }
+    this.handledErrorGeneration = generation
+    this.clearLivenessTimer()
 
     // Abort any in-flight SSE fetch
     this.abortController?.abort()
@@ -578,8 +593,7 @@ export class SSETransport implements Transport {
       level: 'error',
     })
     logForDiagnosticsNoPII('error', 'cli_sse_liveness_timeout')
-    this.abortController?.abort()
-    this.handleConnectionError()
+    this.handleConnectionError(this.connectionGeneration)
   }
 
   /**

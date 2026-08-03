@@ -4,11 +4,15 @@ import { randomUUID } from 'crypto'
 import { BIN_NAME } from '../constants/brand.js'
 import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { isProcessRunning } from '../utils/process/genericProcessUtils.js'
+import { getPlatform } from '../utils/process/platform.js'
+import { getProcessStartMarker } from '../utils/session/concurrentSessions.js'
 import { jsonParse } from '../utils/telemetry/slowOperations.js'
 import { selectEngine } from './bg/engines/index.js'
 import type { SessionEntry } from './bg/engine.js'
 
 export type { SessionEntry } from './bg/engine.js'
+
+const sessionPidFiles = new WeakMap<SessionEntry, string>()
 
 function getSessionsDir(): string {
   return join(getClaudeConfigHomeDir(), 'sessions')
@@ -27,15 +31,35 @@ export async function listLiveSessions(): Promise<SessionEntry[]> {
   for (const file of files) {
     if (!/^\d+\.json$/.test(file)) continue
     const pid = parseInt(file.slice(0, -5), 10)
+    const pidFile = join(dir, file)
 
     if (!isProcessRunning(pid)) {
-      void unlink(join(dir, file)).catch(() => {})
+      void unlink(pidFile).catch(() => {})
       continue
     }
 
     try {
-      const raw = await readFile(join(dir, file), 'utf-8')
+      const raw = await readFile(pidFile, 'utf-8')
       const entry = jsonParse(raw) as SessionEntry
+
+      // The filename is the registry authority. Trusting a divergent JSON PID
+      // would let a stale or tampered entry redirect signal-sending commands.
+      if (!Number.isSafeInteger(entry.pid) || entry.pid !== pid) {
+        await unlink(pidFile).catch(() => {})
+        continue
+      }
+
+      if (entry.processStartMarker) {
+        const currentMarker = await getProcessStartMarker(pid)
+        if (currentMarker && currentMarker !== entry.processStartMarker) {
+          if (getPlatform() !== 'wsl') {
+            await unlink(pidFile).catch(() => {})
+          }
+          continue
+        }
+      }
+
+      sessionPidFiles.set(entry, pidFile)
       sessions.push(entry)
     } catch {
       // Corrupt file — skip
@@ -245,18 +269,65 @@ export async function killHandler(target: string | undefined): Promise<void> {
     return
   }
 
+  if (!session.processStartMarker) {
+    console.error(
+      `Refusing to kill session ${session.sessionId}: its registry entry predates process identity checks.`,
+    )
+    console.error('Restart the session before using daemon kill.')
+    process.exitCode = 1
+    return
+  }
+
+  const currentMarker = await getProcessStartMarker(session.pid)
+  if (!currentMarker) {
+    console.error(
+      `Refusing to kill session ${session.sessionId}: PID ${session.pid} could not be verified.`,
+    )
+    process.exitCode = 1
+    return
+  }
+  if (currentMarker !== session.processStartMarker) {
+    console.error(
+      `Refusing to kill session ${session.sessionId}: PID ${session.pid} no longer matches the registered process.`,
+    )
+    process.exitCode = 1
+    const pidFile = sessionPidFiles.get(session)
+    if (pidFile) await unlink(pidFile).catch(() => {})
+    return
+  }
+
   console.log(`Killing session ${session.sessionId} (PID: ${session.pid})...`)
 
   try {
     process.kill(session.pid, 'SIGTERM')
   } catch {
     console.log('Session already exited.')
+    const pidFile = sessionPidFiles.get(session)
+    if (pidFile) await unlink(pidFile).catch(() => {})
     return
   }
 
   await new Promise(resolve => setTimeout(resolve, 2000))
 
   if (isProcessRunning(session.pid)) {
+    const markerAfterGrace = await getProcessStartMarker(session.pid)
+    if (!markerAfterGrace) {
+      console.error(
+        `Session ${session.sessionId} is still running, but its process identity could not be verified. Refusing to force-kill it.`,
+      )
+      process.exitCode = 1
+      return
+    }
+    if (markerAfterGrace !== session.processStartMarker) {
+      console.error(
+        `PID ${session.pid} was reused during shutdown. Refusing to force-kill the replacement process.`,
+      )
+      process.exitCode = 1
+      const pidFile = sessionPidFiles.get(session)
+      if (pidFile) await unlink(pidFile).catch(() => {})
+      return
+    }
+
     try {
       process.kill(session.pid, 'SIGKILL')
       console.log('Session force-killed.')
@@ -267,8 +338,8 @@ export async function killHandler(target: string | undefined): Promise<void> {
     console.log('Session stopped.')
   }
 
-  const pidFile = join(getSessionsDir(), `${session.pid}.json`)
-  void unlink(pidFile).catch(() => {})
+  const pidFile = sessionPidFiles.get(session)
+  if (pidFile) await unlink(pidFile).catch(() => {})
 }
 
 /**
