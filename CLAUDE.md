@@ -94,7 +94,9 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 - **OpenAI 双线协议**：`OPENAI_WIRE_API=responses` 切到 Responses API（`<OPENAI_BASE_URL>/responses`，`responsesAdapter.ts`）；默认 `chat`。ChatGPT 订阅认证（`OPENAI_AUTH_MODE=chatgpt`）强制 responses 且走 Codex 专有后端（带指纹头、不发 `max_output_tokens`）。选择逻辑在 `wireProtocol.ts`。
 - 模型映射按家族（haiku/sonnet/opus 子串）映射，见 `packages/@ant/model-provider/.../modelMapping.ts`，与 `src/utils/model/chatgptModels.ts` 的 tier 常量需人工同步。
-- Provider 档案系统：`/provider save|use|list|delete`（`src/services/providerProfiles/`），激活是全形状写入。
+- Provider 档案系统：`/provider save|use|list|delete`（`src/services/providerProfiles/`），激活是全形状写入（`PROFILE_ENV_KEYS` 是各家族可管理键的真源，新增 provider 相关 env 键要同步加进去）。
+- **上下文窗口覆盖**：`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 对所有用户生效（曾是 ant-only，2026-08 解禁），在 `getContextWindowForModel()` 最顶端短路，贯通 autocompact 阈值/预测式 compact/硬阻断/statusline/`/context`。第三方模型探测不到窗口时兜底 200k，**这个键是唯一的纠正手段**——不要再加第二个覆盖入口。`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔子串）按模型选择性追加 `[1m]` 后缀（`apply1mContextOptIn`，挂在 `getMainLoopModel` 出口）。配置真源文档：`docs/features/providers.md`。
+- **首启向导**：`Onboarding.tsx` 步骤为 theme → migrate（`MigrationStep`，检测 `~/.claude` 且未迁移过才出现）→ oauth（`ConsoleOAuthFlow`，含全部 provider 表单）→ security → terminal-setup。ConsoleOAuthFlow 各表单的 Max ctx 字段接受 `128000`/`128k`/`1m`（`parseMaxContextInput`）；china preset 选定模型会按 `parseContextWindowTokens` 自动写上下文键。
 
 ## Testing
 
@@ -120,3 +122,9 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - 生产代码禁止 `as any`（测试 mock 可用）；优先 `as unknown as T` 双重断言或补 interface。
 - `src/*` path alias 有效（tsconfig 映射）。
 - 设计 Web UI 时参考 `.impeccable.md`（Impeccable 设计上下文：品牌色 Claude Orange `#D77757`、Anthropic 式干净排版）。
+
+## 发布（npm / GitHub Release）
+
+- **npm 包名是 `@sweetcornna/open-claude-code`**（无 scope 的 `open-claude-code` 被第三方 0.0.0 占位包抢注，publish 会 403）。包名同时钉在 `package.json`、`src/constants/brand.ts` 的 `NPM_PACKAGE_NAME`（`updateIsolation.test.ts` 断言）、`scripts/install.sh`、README、`docs/auto-updater.md`——改名五处必须同步。bin 名（`occ`/`occ-bun`/`open-claude-code`）与包名无关，不要动。
+- 发布流程：打 `v*` tag 推送 → `publish-npm.yml` 自动跑 typecheck → `tests/integration` → build:vite + check:bundle + 双入口 `--version` 冒烟 → `npm publish --provenance` → GitHub Release。**publish 故意只跑集成测试**：全量单测在 Linux runner 上有既有的顺序性 env 污染失败（~10 个文件，macOS 本地不复现，main 的 ci.yml 同样红），修复前不要把 `bun test` 全量塞回 publish 门禁。
+- 版本号延续 2.8.x 叙事（首个对外发布是 v2.9.0），**不要回退到 1.x**——`occ update` 的 semver 比较会把老用户永远锁在"已是最新"。

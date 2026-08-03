@@ -2,7 +2,7 @@
 
 ## 当前策略
 
-Open Claude Code 通过 npm 包 `open-claude-code` 发布。当前受支持的更新入口是：
+Open Claude Code 通过 npm 包 `@sweetcornna/open-claude-code` 发布（无 scope 的 `open-claude-code` 已被第三方占位包占用）。当前受支持的更新入口是：
 
 ```bash
 occ update
@@ -14,7 +14,7 @@ occ update
 
 | 产品 | 命令 | npm 包 | 用户配置 |
 |---|---|---|---|
-| Open Claude Code | `occ` / `occ-bun` | `open-claude-code` | `~/.occ/`、`~/.occ.json` |
+| Open Claude Code | `occ` / `occ-bun` | `@sweetcornna/open-claude-code` | `~/.occ/`、`~/.occ.json` |
 | Anthropic Claude Code | `claude` | `@anthropic-ai/claude-code` | `~/.claude/`、`~/.claude.json` |
 
 ## 安装与手动更新
@@ -46,7 +46,7 @@ bun install -g @sweetcornna/open-claude-code@latest
 实现位于 `src/cli/updateOcc.ts`，流程如下：
 
 1. 读取当前版本。
-2. 从 npm registry 查询 `open-claude-code@latest`。
+2. 从 npm registry 查询 `@sweetcornna/open-claude-code@latest`。
 3. 如果当前版本已是最新版本，则直接退出。
 4. 检测当前安装是否位于 Bun 的全局安装目录。
 5. Bun 全局安装使用 `bun install -g @sweetcornna/open-claude-code@latest`；其他安装使用 `npm install -g @sweetcornna/open-claude-code@latest`。
