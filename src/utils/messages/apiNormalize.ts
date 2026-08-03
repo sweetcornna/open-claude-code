@@ -40,6 +40,7 @@ import {
 import {
   mergeAssistantMessages,
   mergeUserMessages,
+  mergeUserMessageRun,
   mergeUserMessagesAndToolResults,
   smooshSystemReminderSiblings,
 } from './merge.js'
@@ -621,14 +622,26 @@ export function normalizeMessagesForAPI(
 function mergeAdjacentUserMessages(
   msgs: (UserMessage | AssistantMessage)[],
 ): (UserMessage | AssistantMessage)[] {
+  // Collect each run of consecutive user messages and merge it in ONE pass —
+  // the previous fold (mergeUserMessages per pair) re-copied the accumulated
+  // content every step, O(k²) in blocks for a k-message run (long sessions
+  // hit this on every API request; official 2.1.216 parity).
   const out: (UserMessage | AssistantMessage)[] = []
+  let run: UserMessage[] = []
+  const flush = () => {
+    if (run.length > 0) {
+      out.push(mergeUserMessageRun(run))
+      run = []
+    }
+  }
   for (const m of msgs) {
-    const prev = out.at(-1)
-    if (m.type === 'user' && prev?.type === 'user') {
-      out[out.length - 1] = mergeUserMessages(prev, m) // lvalue — can't use .at()
+    if (m.type === 'user') {
+      run.push(m)
     } else {
+      flush()
       out.push(m)
     }
   }
+  flush()
   return out
 }

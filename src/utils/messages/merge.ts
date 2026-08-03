@@ -141,6 +141,77 @@ export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
 }
 
 /**
+ * Merge a run of consecutive user messages in one pass.
+ *
+ * Byte-identical to left-folding mergeUserMessages over the run (the oracle
+ * test in merge.runEquivalence.test.ts pins this), but O(total blocks)
+ * instead of O(k²): the fold re-copies the accumulated content on every step
+ * (official 2.1.216 fixed the same quadratic growth).
+ *
+ * Fold semantics reproduced:
+ * - After every fold step the accumulated content is hoisted
+ *   ([tool_results..., others...]), so from step 2 onward the seam candidate
+ *   is the last OTHER block (or the last tool_result when others is empty —
+ *   never text, so never glued). Step 1's seam uses the FIRST message's raw
+ *   (un-hoisted) content — accumulators are therefore seeded by running the
+ *   original join+hoist once.
+ * - Text-text seams glue with '\n' on the accumulated side (fresh object,
+ *   inputs never mutated).
+ * - `{...a}` spreading keeps the first message's fields; uuid follows the
+ *   per-step `a.isMeta ? b.uuid : a.uuid` chain, which resolves to the last
+ *   message's uuid when the first is meta, else the first's.
+ */
+export function mergeUserMessageRun(run: UserMessage[]): UserMessage {
+  const first = run[0]
+  if (first === undefined) {
+    throw new Error('mergeUserMessageRun requires a non-empty run')
+  }
+  if (run.length === 1) return first
+
+  // Step 1: original algorithm on the first pair (raw first-message seam)
+  const second = run[1]!
+  const joined = joinTextAtSeam(
+    normalizeUserTextContent(
+      first.message.content as string | ContentBlockParam[],
+    ),
+    normalizeUserTextContent(
+      second.message.content as string | ContentBlockParam[],
+    ),
+  )
+  const toolResults: ContentBlockParam[] = []
+  const others: ContentBlockParam[] = []
+  for (const block of joined) {
+    if (block.type === 'tool_result') toolResults.push(block)
+    else others.push(block)
+  }
+
+  // Steps 2..n: hoisted-invariant incremental appends
+  for (let i = 2; i < run.length; i++) {
+    const blocks = normalizeUserTextContent(
+      run[i]!.message.content as string | ContentBlockParam[],
+    )
+    const seam = others.length > 0 ? others.at(-1) : toolResults.at(-1)
+    if (seam?.type === 'text' && blocks[0]?.type === 'text') {
+      // seam is text ⇒ it lives in `others` (tool_results are never text)
+      others[others.length - 1] = { ...seam, text: seam.text + '\n' }
+    }
+    for (const block of blocks) {
+      if (block.type === 'tool_result') toolResults.push(block)
+      else others.push(block)
+    }
+  }
+
+  return {
+    ...first,
+    uuid: first.isMeta ? run.at(-1)!.uuid : first.uuid,
+    message: {
+      ...first.message,
+      content: [...toolResults, ...others],
+    },
+  }
+}
+
+/**
  * In thecontent[] list on a UserMessage, tool_result blocks much come first
  * to avoid "tool result must follow tool use" API errors.
  */
