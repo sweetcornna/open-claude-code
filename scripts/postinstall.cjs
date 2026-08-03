@@ -15,14 +15,15 @@ const {
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
   chmodSync,
 } = require('fs')
 const { spawnSync } = require('child_process')
+const { createHash } = require('node:crypto')
 const { setDefaultResultOrder } = require('node:dns')
+const { gunzipSync } = require('node:zlib')
 const path = require('path')
 const os = require('os')
 
@@ -37,10 +38,28 @@ try {
 
 const RG_VERSION = '15.0.1'
 const DEFAULT_RELEASE_BASE = `https://github.com/microsoft/ripgrep-prebuilt/releases/download/v${RG_VERSION}`
-const MIRROR_RELEASE_BASE = `https://ghproxy.net/https://github.com/microsoft/ripgrep-prebuilt/releases/download/v${RG_VERSION}`
 const RELEASE_BASE = (
   process.env.RIPGREP_DOWNLOAD_BASE ?? DEFAULT_RELEASE_BASE
 ).replace(/\/$/, '')
+
+// Digests published by microsoft/ripgrep-prebuilt for v15.0.1. A custom
+// download base may change transport, never the authenticated artifact bytes.
+const RG_ARCHIVE_SHA256 = Object.freeze({
+  'ripgrep-v15.0.1-aarch64-apple-darwin.tar.gz':
+    '2fa16464fd8638588a67c7fc172d3c4b57fbdc65dff366e10b0b0e90734628a6',
+  'ripgrep-v15.0.1-x86_64-apple-darwin.tar.gz':
+    '591c693e80bb444ef1907b2a906feb9c77bcafe1cdf509107cc75dcf0e875bd2',
+  'ripgrep-v15.0.1-x86_64-pc-windows-msvc.zip':
+    'bd28761f4918ea8fcb7a95f636b4422a915d55af268d9805be82d8ce0fdfc823',
+  'ripgrep-v15.0.1-aarch64-pc-windows-msvc.zip':
+    'cc36bae403f25c838d25a3c65ba64f38cc00904652e89d6377b5ceaf66df8432',
+  'ripgrep-v15.0.1-x86_64-unknown-linux-musl.tar.gz':
+    '4499958bfd5252df3d9e7504127fd448e4a14fbf2805ef4f14baaa1bcf775188',
+  'ripgrep-v15.0.1-aarch64-unknown-linux-musl.tar.gz':
+    'dd3738a4b6e8df0fb3bc3edc5af352c4c39e0d97ad118a23e5176bdc5d48ba08',
+  'ripgrep-v15.0.1-aarch64-unknown-linux-gnu.tar.gz':
+    '301eaf7e580272acb9e370d7b9f4ed9ba0b0fa8c3479e7282a895bbfe0f1076c',
+})
 
 const scriptDir = path.dirname(__filename)
 const projectRoot = path.resolve(scriptDir, '..')
@@ -201,107 +220,105 @@ async function downloadUrlToBufferWithFallback(url) {
 
 // --- Extract ---
 
-function findZipEntryKey(files, want) {
-  return Object.keys(files).find(k => {
-    const norm = k.replace(/\\/g, '/')
-    return norm === want || norm.endsWith(`/${want}`)
-  })
+function verifyArchiveChecksum(buffer, expectedSha256, assetName) {
+  const actualSha256 = createHash('sha256').update(buffer).digest('hex')
+  if (actualSha256 !== expectedSha256) {
+    throw new Error(
+      `SHA-256 mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}`,
+    )
+  }
+}
+
+function isExpectedArchiveEntry(entryName, expectedBinary) {
+  const normalized = entryName.replace(/\\/g, '/')
+  if (normalized.startsWith('/') || normalized.includes('\0')) return false
+  const segments = normalized
+    .split('/')
+    .filter(segment => segment.length > 0 && segment !== '.')
+  if (segments.length === 0 || segments.includes('..')) return false
+  return segments[segments.length - 1] === expectedBinary
 }
 
 async function extractZip(buffer, binaryPath, extractedBinary) {
-  const binaryDir = path.dirname(binaryPath)
-  // Try fflate first (bundled dep)
-  let fflateError
-  try {
-    const { unzipSync } = require('fflate')
-    const unzipped = unzipSync(new Uint8Array(buffer))
-    const key = findZipEntryKey(unzipped, extractedBinary)
-    if (!key) {
-      throw new Error(`Binary ${extractedBinary} not found in zip`)
-    }
-    writeFileSync(binaryPath, Buffer.from(unzipped[key]))
-    return
-  } catch (e) {
-    fflateError = e
-  }
-
-  // Fallback: PowerShell Expand-Archive or unzip CLI
-  const tmpDir = path.join(binaryDir, '.tmp-download')
-  rmSync(tmpDir, { recursive: true, force: true })
-  mkdirSync(tmpDir, { recursive: true })
-  try {
-    const assetName = `archive.zip`
-    const archivePath = path.join(tmpDir, assetName)
-    writeFileSync(archivePath, buffer)
-
-    let extracted = false
-    if (process.platform === 'win32') {
-      const psCmd = `Expand-Archive -Path '${archivePath.replace(/'/g, "''")}' -DestinationPath '${tmpDir.replace(/'/g, "''")}' -Force`
-      const psResult = spawnSync(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-Command',
-          psCmd,
-        ],
-        { stdio: 'pipe', windowsHide: true },
-      )
-      if (psResult.status === 0) {
-        extracted = true
+  const { unzipSync } = require('fflate')
+  let selectedEntry
+  let duplicateEntry = false
+  const unzipped = unzipSync(new Uint8Array(buffer), {
+    filter(file) {
+      if (!isExpectedArchiveEntry(file.name, extractedBinary)) return false
+      if (selectedEntry !== undefined) {
+        duplicateEntry = true
+        return false
       }
-    }
-
-    if (!extracted) {
-      const result = spawnSync('unzip', ['-o', archivePath, '-d', tmpDir], {
-        stdio: 'pipe',
-      })
-      if (result.status !== 0) {
-        const unzipErr = result.stderr?.toString().trim() || 'command not found'
-        const fflateMsg =
-          fflateError instanceof Error
-            ? fflateError.message
-            : String(fflateError)
-        throw new Error(
-          `zip extraction failed (fflate: ${fflateMsg}; unzip: ${unzipErr})`,
-        )
-      }
-    }
-
-    const srcBinary = path.join(tmpDir, extractedBinary)
-    if (!existsSync(srcBinary)) {
-      throw new Error(`Binary not found at expected path: ${srcBinary}`)
-    }
-    renameSync(srcBinary, binaryPath)
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true })
+      selectedEntry = file.name
+      return true
+    },
+  })
+  if (duplicateEntry) {
+    throw new Error(`Multiple ${extractedBinary} entries found in zip`)
   }
+  if (selectedEntry === undefined || unzipped[selectedEntry] === undefined) {
+    throw new Error(`Binary ${extractedBinary} not found in zip`)
+  }
+  writeFileSync(binaryPath, Buffer.from(unzipped[selectedEntry]))
 }
 
-async function extractTarGz(buffer, binaryPath, extractedBinary, assetName) {
-  const binaryDir = path.dirname(binaryPath)
-  const tmpDir = path.join(binaryDir, '.tmp-download')
-  rmSync(tmpDir, { recursive: true, force: true })
-  mkdirSync(tmpDir, { recursive: true })
-  try {
-    const archivePath = path.join(tmpDir, assetName)
-    writeFileSync(archivePath, buffer)
-    const result = spawnSync('tar', ['xzf', archivePath, '-C', tmpDir], {
-      stdio: 'pipe',
-    })
-    if (result.status !== 0) {
-      throw new Error(`tar extract failed: ${result.stderr?.toString()}`)
-    }
-    const srcBinary = path.join(tmpDir, extractedBinary)
-    if (!existsSync(srcBinary)) {
-      throw new Error(`Binary not found at expected path: ${srcBinary}`)
-    }
-    renameSync(srcBinary, binaryPath)
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true })
+function readTarString(buffer, offset, length) {
+  const field = buffer.subarray(offset, offset + length)
+  const nul = field.indexOf(0)
+  return field.subarray(0, nul === -1 ? field.length : nul).toString('utf-8')
+}
+
+function readTarSize(header) {
+  const raw = readTarString(header, 124, 12).trim()
+  if (!/^[0-7]+$/.test(raw)) {
+    throw new Error(`Invalid tar entry size: ${JSON.stringify(raw)}`)
   }
+  const size = Number.parseInt(raw, 8)
+  if (!Number.isSafeInteger(size)) {
+    throw new Error(`Tar entry size is not a safe integer: ${raw}`)
+  }
+  return size
+}
+
+function extractTarEntry(tarBuffer, extractedBinary) {
+  let offset = 0
+  let selected
+  while (offset + 512 <= tarBuffer.length) {
+    const header = tarBuffer.subarray(offset, offset + 512)
+    if (header.every(byte => byte === 0)) break
+
+    const name = readTarString(header, 0, 100)
+    const prefix = readTarString(header, 345, 155)
+    const entryName = prefix ? `${prefix}/${name}` : name
+    const size = readTarSize(header)
+    const dataStart = offset + 512
+    const dataEnd = dataStart + size
+    if (dataEnd > tarBuffer.length) {
+      throw new Error(`Truncated tar entry: ${entryName}`)
+    }
+
+    const type = header[156]
+    const isRegularFile = type === 0 || type === 48
+    if (isRegularFile && isExpectedArchiveEntry(entryName, extractedBinary)) {
+      if (selected !== undefined) {
+        throw new Error(`Multiple ${extractedBinary} entries found in tar`)
+      }
+      selected = Buffer.from(tarBuffer.subarray(dataStart, dataEnd))
+    }
+
+    offset = dataStart + Math.ceil(size / 512) * 512
+  }
+
+  if (selected === undefined) {
+    throw new Error(`Binary ${extractedBinary} not found in tar`)
+  }
+  return selected
+}
+
+async function extractTarGz(buffer, binaryPath, extractedBinary) {
+  const tarBuffer = gunzipSync(buffer, { maxOutputLength: 64 * 1024 * 1024 })
+  writeFileSync(binaryPath, extractTarEntry(tarBuffer, extractedBinary))
 }
 
 // --- Main ---
@@ -326,37 +343,24 @@ async function downloadAndExtract() {
 
   const extractedBinary = process.platform === 'win32' ? 'rg.exe' : 'rg'
 
-  const mirrors = [RELEASE_BASE]
-  if (RELEASE_BASE === DEFAULT_RELEASE_BASE.replace(/\/$/, '')) {
-    mirrors.push(MIRROR_RELEASE_BASE.replace(/\/$/, ''))
+  const expectedSha256 = RG_ARCHIVE_SHA256[assetName]
+  if (!expectedSha256) {
+    throw new Error(`No pinned SHA-256 for ripgrep asset ${assetName}`)
   }
-
-  let buffer
-  let lastError
-  for (const base of mirrors) {
-    const url = `${base}/${assetName}`
-    try {
-      console.log(`[ripgrep] Trying ${url}`)
-      buffer = await downloadUrlToBufferWithFallback(url)
-      break
-    } catch (e) {
-      console.warn(
-        `[ripgrep] Download from ${base} failed: ${e instanceof Error ? e.message : e}`,
-      )
-      lastError = e
-    }
-  }
-  if (!buffer) {
-    throw lastError
-  }
+  const url = `${RELEASE_BASE}/${assetName}`
+  console.log(`[ripgrep] Trying ${url}`)
+  const buffer = await downloadUrlToBufferWithFallback(url)
+  verifyArchiveChecksum(buffer, expectedSha256, assetName)
 
   try {
-    console.log(`[ripgrep] Downloaded ${Math.round(buffer.length / 1024)} KB`)
+    console.log(
+      `[ripgrep] Downloaded and verified ${Math.round(buffer.length / 1024)} KB`,
+    )
 
     mkdirSync(binaryDir, { recursive: true })
 
     if (ext === 'tar.gz') {
-      await extractTarGz(buffer, binaryPath, extractedBinary, assetName)
+      await extractTarGz(buffer, binaryPath, extractedBinary)
     } else {
       await extractZip(buffer, binaryPath, extractedBinary)
     }
@@ -378,12 +382,25 @@ async function main() {
   await downloadAndExtract()
 }
 
-main().catch(error => {
-  const msg = error instanceof Error ? error.message : String(error)
-  console.error(`[postinstall] ripgrep download failed (non-fatal): ${msg}`)
-  console.error(
-    `[postinstall] You can install ripgrep manually: https://github.com/BurntSushi/ripgrep#installation`,
-  )
-  // Never exit with error code — postinstall must not break install
-  process.exit(0)
-})
+if (require.main === module) {
+  main().catch(error => {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error(`[postinstall] ripgrep download failed (non-fatal): ${msg}`)
+    console.error(
+      `[postinstall] You can install ripgrep manually: https://github.com/BurntSushi/ripgrep#installation`,
+    )
+    // Never exit with error code — postinstall must not break install
+    process.exit(0)
+  })
+}
+
+module.exports = {
+  DEFAULT_RELEASE_BASE,
+  RELEASE_BASE,
+  RG_ARCHIVE_SHA256,
+  extractTarEntry,
+  extractTarGz,
+  extractZip,
+  isExpectedArchiveEntry,
+  verifyArchiveChecksum,
+}

@@ -97,3 +97,32 @@ export const DEFAULT_BUILD_FEATURES = [
   // strict completion/blocked audit. See src/services/goal.
   'GOAL',
 ] as const
+
+/**
+ * Resolve the compiled-in feature set from the defaults plus `FEATURE_<NAME>`
+ * environment overrides.
+ *
+ * The value matters, and used to not: both `scripts/dev.ts` and
+ * `scripts/vite-plugin-feature-flags.ts` previously tested only whether the
+ * variable was *present*, so `FEATURE_PROACTIVE=0` and `FEATURE_PROACTIVE=false`
+ * both switched the feature ON. Because the Vite plugin runs for release
+ * builds, that could ship an experiment the operator had explicitly turned off.
+ *
+ * `1`/`true` enable, `0`/`false`/empty disable — and disabling works on
+ * defaults too, which is the only way to drop a feature from a build without
+ * editing DEFAULT_BUILD_FEATURES.
+ */
+export function resolveBuildFeatures(
+  env: Record<string, string | undefined> = process.env,
+): Set<string> {
+  const features = new Set<string>(DEFAULT_BUILD_FEATURES)
+  for (const [key, rawValue] of Object.entries(env)) {
+    if (!key.startsWith('FEATURE_')) continue
+    const name = key.slice('FEATURE_'.length)
+    if (!name) continue
+    const value = (rawValue ?? '').trim().toLowerCase()
+    if (value === '1' || value === 'true') features.add(name)
+    else features.delete(name)
+  }
+  return features
+}

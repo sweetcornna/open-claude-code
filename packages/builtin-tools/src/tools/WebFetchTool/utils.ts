@@ -119,6 +119,32 @@ const MAX_URL_LENGTH = 2000
 // request or user from overwhelming the system."
 const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024
 
+function responseTooLargeError(bytes?: number): Error {
+  const detail =
+    bytes === undefined
+      ? `response exceeded ${MAX_HTTP_CONTENT_LENGTH} bytes`
+      : `response was ${bytes} bytes (limit ${MAX_HTTP_CONTENT_LENGTH})`
+  const error = new Error(`response_too_large: ${detail}`)
+  error.name = 'WebFetchResponseTooLargeError'
+  return error
+}
+
+function isAxiosContentLengthError(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    typeof error.message === 'string' &&
+    error.message.includes('maxContentLength')
+  )
+}
+
+function checkedContentBytes(content: string): number {
+  const bytes = Buffer.byteLength(content)
+  if (bytes > MAX_HTTP_CONTENT_LENGTH) {
+    throw responseTooLargeError(bytes)
+  }
+  return bytes
+}
+
 // Timeout for the main HTTP fetch request (60 seconds).
 // Prevents hanging indefinitely on slow/unresponsive servers.
 // Overridable via settings.webFetchHttpTimeoutMs (set in /web-tools panel).
@@ -494,17 +520,27 @@ export async function fetchContentWithTavily(
       ? baseUrl
       : `${baseUrl.replace(/\/$/, '')}/extract`
 
-  const response = await axios.post<{ url: string; raw_content: string }>(
-    extractUrl,
-    {
-      urls: [url],
-    },
-    {
-      signal: abortSignal,
-      timeout: getFetchTimeoutMs(),
-      headers: { 'Content-Type': 'application/json' },
-    },
-  )
+  let response: AxiosResponse<{ url: string; raw_content: string }>
+  try {
+    response = await axios.post<{ url: string; raw_content: string }>(
+      extractUrl,
+      {
+        urls: [url],
+      },
+      {
+        signal: abortSignal,
+        timeout: getFetchTimeoutMs(),
+        maxContentLength: MAX_HTTP_CONTENT_LENGTH,
+        // Axios applies maxContentLength to the decompressed stream in its
+        // Node adapter; keeping decompression explicit protects compressed bombs.
+        decompress: true,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+  } catch (error) {
+    if (isAxiosContentLengthError(error)) throw responseTooLargeError()
+    throw error
+  }
 
   if (abortSignal.aborted) {
     throw new AbortError()
@@ -514,6 +550,7 @@ export async function fetchContentWithTavily(
   // If raw_content is a JSON string (extract may return {url:..., raw_content:...}
   // per URL), unwrap it.
   let markdownContent = rawContent
+  let contentBytes = checkedContentBytes(markdownContent)
   if (!markdownContent.trim()) {
     // Try to extract from results array
     const resp = response.data as unknown as {
@@ -522,6 +559,7 @@ export async function fetchContentWithTavily(
     const results = resp.results ?? []
     if (results.length > 0 && results[0].raw_content) {
       markdownContent = results[0].raw_content
+      contentBytes = checkedContentBytes(markdownContent)
     }
   }
 
@@ -530,8 +568,6 @@ export async function fetchContentWithTavily(
       `Tavily Extract returned empty content for ${url}. The page may require authentication or JavaScript rendering.`,
     )
   }
-
-  const contentBytes = Buffer.byteLength(markdownContent)
 
   const entry: CacheEntry = {
     bytes: contentBytes,
