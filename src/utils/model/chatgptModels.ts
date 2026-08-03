@@ -62,18 +62,18 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
     value: 'gpt-5.6-sol',
     label: 'gpt-5.6-sol',
     description:
-      'Frontier model for complex coding, research, and real-world work',
+      'Strongest capability for complex coding, computer use, and research',
   },
   {
     value: 'gpt-5.6-terra',
     label: 'gpt-5.6-terra',
-    description: 'Strong model for everyday coding',
+    description:
+      'Balanced for everyday work, competitive with GPT-5.5 at lower cost',
   },
   {
     value: 'gpt-5.6-luna',
     label: 'gpt-5.6-luna',
-    description:
-      'Small, fast, and cost-efficient model for simpler coding tasks',
+    description: 'Fast and affordable, with the lowest cost',
   },
   {
     value: 'gpt-5.5',
@@ -84,28 +84,29 @@ export const CHATGPT_CODEX_MODEL_OPTIONS: ChatGPTCodexModelOption[] = [
   {
     value: 'gpt-5.4',
     label: 'GPT-5.4',
-    description: 'Strong model for everyday coding',
+    description:
+      'Strong model for everyday coding; retires 2026-08-31, use gpt-5.6-terra',
   },
   {
     value: 'gpt-5.4-mini',
     label: 'GPT-5.4-Mini',
-    description:
-      'Small, fast, and cost-efficient model for simpler coding tasks',
+    description: 'Small, fast model; retires 2026-08-31, use gpt-5.6-luna',
   },
   {
     value: 'gpt-5.3-codex',
     label: 'GPT-5.3-Codex',
-    description: 'Coding-optimized model',
+    description: 'Coding-optimized model; deprecated on ChatGPT sign-in',
   },
   {
     value: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3-Codex-Spark',
-    description: 'Ultra-fast coding model',
+    description: 'Research preview for real-time coding, ChatGPT Pro only',
   },
   {
     value: 'gpt-5.2',
     label: 'GPT-5.2',
-    description: 'Optimized for professional work and long-running agents',
+    description:
+      'Optimized for professional work; deprecated on ChatGPT sign-in',
   },
 ]
 
