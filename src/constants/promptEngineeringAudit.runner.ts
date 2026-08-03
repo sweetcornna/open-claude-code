@@ -13,8 +13,8 @@
  */
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
-import { setupGrowthbookMock } from '../../tests/mocks/growthbook.ts'
-import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.ts'
+import { setupGrowthbookMock } from '../../tests/mocks/growthbook.js'
+import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.js'
 
 // --- MACRO 全局注入 (编译时 define 在测试中不可用) ---
 ;(globalThis as any).MACRO = {

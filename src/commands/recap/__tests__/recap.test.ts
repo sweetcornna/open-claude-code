@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { setupGrowthbookMock } from '../../../../tests/mocks/growthbook.ts'
+import { setupGrowthbookMock } from '../../../../tests/mocks/growthbook.js'
 
 // Mock bun:bundle before any imports that use feature()
 // Note: in the test environment AWAY_SUMMARY compile-time flag is false, so

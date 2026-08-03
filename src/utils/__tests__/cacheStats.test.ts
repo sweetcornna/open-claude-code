@@ -10,7 +10,7 @@ import {
 import * as path from 'node:path'
 import * as os from 'node:os'
 import * as fsp from 'node:fs/promises'
-import { setupEnvUtilsMock } from '../../../tests/mocks/envUtils.ts'
+import { setupEnvUtilsMock } from '../../../tests/mocks/envUtils.js'
 
 // ---------------------------------------------------------------------------
 // envUtils goes through the shared complete-surface mock: every export

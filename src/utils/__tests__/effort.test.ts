@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
-import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.ts'
+import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.js'
 import * as realThinking from 'src/utils/model/thinking.js'
-import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.ts'
+import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.js'
 
 // thinking.js goes through the shared complete-surface pattern: only
 // isUltrathinkEnabled is overridden; every other export delegates to the real
