@@ -67,8 +67,8 @@ export async function installPluginsForHeadless(): Promise<boolean> {
     await getFsImplementation().mkdir(getZipCachePluginsDir())
   }
 
-  // Declared now includes an implicit claude-plugins-official entry when any
-  // enabled plugin references it (see getDeclaredMarketplaces). This routes
+  // Declared includes the implicit claude-plugins-official entry declared
+  // for everyone (see getDeclaredMarketplaces). This routes
   // the official marketplace through the same reconciler path as any other —
   // which composes correctly with CLAUDE_CODE_PLUGIN_SEED_DIR: seed registers
   // it in known_marketplaces.json, reconciler diff sees it as upToDate, no clone.
