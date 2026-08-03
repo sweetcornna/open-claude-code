@@ -26,9 +26,10 @@ import {
   hasWorktreeChanges,
   removeAgentWorktree,
 } from '../../utils/git/worktree.js'
+import { PROMPT_TOO_LONG_ERROR_MESSAGE } from '@ant/model-provider'
 import { logEvent } from '../../services/analytics/index.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
-import type { Message } from '../../types/message.js'
+import type { AssistantMessage, Message } from '../../types/message.js'
 import type { ToolUseContext } from '../../Tool.js'
 import { readHostBundle } from '../hostHandle.js'
 
@@ -349,6 +350,52 @@ export const claudeCodeBackend: AgentAdapter = {
         const info = worktreeInfo
         worktreeInfo = null
         await cleanupWorkflowWorktree(info, agentDef.agentType)
+      }
+    }
+
+    // query() surfaces terminal API errors as an ordinary assistant message
+    // (isApiErrorMessage) and ends the generator instead of throwing — so the
+    // catch above never sees them. Without this check the error text would
+    // masquerade as the agent's answer in non-schema mode ("Prompt is too long"
+    // becomes the return value) and get misclassified as no-structured-output in
+    // schema mode, triggering a doomed identical retry. Context overflow is
+    // deterministic for the identical call (retryable:false); anything else
+    // (overload / stream drop / timeout) is transient — worth the engine's
+    // single backed-off retry.
+    let lastAssistant: AssistantMessage | undefined
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.type === 'assistant') {
+        lastAssistant = messages[i] as AssistantMessage
+        break
+      }
+    }
+    if (lastAssistant?.isApiErrorMessage) {
+      const rawContent = lastAssistant.message.content
+      const errTexts =
+        typeof rawContent === 'string'
+          ? [rawContent]
+          : Array.isArray(rawContent)
+            ? (rawContent as Array<{ type: string; text?: string }>)
+                .filter(b => b.type === 'text' && typeof b.text === 'string')
+                .map(b => b.text as string)
+            : []
+      const detail = (errTexts.join('\n') || 'API error').slice(0, 300)
+      // Same check as errors.ts isPromptTooLongMessage, done locally: importing
+      // errors.ts would drag the auth/model/bootstrap chain into this leaf-ish
+      // backend (and into every test that mocks around it). The constant lives
+      // in @ant/model-provider precisely for consumers like this.
+      const promptTooLong = errTexts.some(t =>
+        t.startsWith(PROMPT_TOO_LONG_ERROR_MESSAGE),
+      )
+      logForDebugging(
+        `workflow sub-agent terminal API error (${agentDef.agentType}): ${detail}`,
+      )
+      logEvent('tengu_workflow_agent', { ok: 0 })
+      return {
+        kind: 'dead',
+        reason: promptTooLong ? 'prompt-too-long' : 'api-error',
+        detail,
+        ...(promptTooLong ? { retryable: false } : {}),
       }
     }
 

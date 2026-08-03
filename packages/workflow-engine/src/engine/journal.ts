@@ -32,9 +32,19 @@ export function createFileJournalStore(runsDir: string): JournalStore {
           .split('\n')
           .filter(line => line.trim().length > 0)
           .map(line => JSON.parse(line) as JournalEntry)
+        // Dedupe by seq keeping the LAST occurrence in file order: when a resume
+        // re-runs a dead entry, hooks appends a superseding record with the same
+        // seq — the fresh result must win over the recorded failure.
+        // Old entries missing seq fall back to their file index (keeps them
+        // distinct and in append order, matching the old all-zero sort behavior).
+        const bySeq = new Map<number, JournalEntry>()
+        entries.forEach((e, i) => {
+          bySeq.set(typeof e.seq === 'number' ? e.seq : i, e)
+        })
         // parallel completion order ≠ call order; re-sort by seq so the key index is stable during resume.
-        // Old entries missing seq are treated as 0 (forward compatibility; worst case degrades to file order).
-        return entries.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+        return [...bySeq.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([, e]) => e)
       } catch {
         return []
       }

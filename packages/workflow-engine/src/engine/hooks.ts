@@ -69,24 +69,33 @@ export function makeHooks(
     const phase =
       (opts.phase as string | undefined) ?? ctx.currentPhase ?? undefined
 
-    // Journal hit -> return cached result directly
+    // Journal hit -> return cached result directly. A dead entry is a recorded
+    // failure, not a result: consume its slot positionally and fall through to a
+    // live re-run — resume exists to retry failures, not to replay them.
+    let replayDeadIdx: number | null = null
     if (!ctx.journalInvalidated && ctx.journalIndex < ctx.journal.length) {
       const entry = ctx.journal[ctx.journalIndex]!
       if (entry.key === key) {
-        ctx.journalIndex++
-        emit({
-          type: 'agent_done',
-          agentId,
-          label,
-          phase,
-          result: entry.result,
-        })
-        return resultToOutput(entry.result)
+        if (entry.result.kind === 'dead') {
+          replayDeadIdx = ctx.journalIndex
+          ctx.journalIndex++
+        } else {
+          ctx.journalIndex++
+          emit({
+            type: 'agent_done',
+            agentId,
+            label,
+            phase,
+            result: entry.result,
+          })
+          return resultToOutput(entry.result)
+        }
+      } else {
+        // Divergence: discard subsequent journal entries; everything from here on runs live
+        ctx.journalInvalidated = true
+        ctx.journal = ctx.journal.slice(0, ctx.journalIndex)
+        await ctx.ports.journalStore.truncate(ctx.runId)
       }
-      // Divergence: discard subsequent journal entries; everything from here on runs live
-      ctx.journalInvalidated = true
-      ctx.journal = ctx.journal.slice(0, ctx.journalIndex)
-      await ctx.ports.journalStore.truncate(ctx.runId)
     }
 
     let release: () => void
@@ -164,25 +173,56 @@ export function makeHooks(
 
       // Auto-retry once on failure: dead (terminal API error after retries) or a non-abort throw
       // both get one retry chance; WorkflowAbortedError (kill) is not retried — it is the user's intent.
+      // Deterministic failures (retryable:false, e.g. prompt-too-long) skip the retry: the identical
+      // call cannot succeed, and re-issuing it only doubles the damage.
+      // The retry waits retryBackoffMs first (abort-aware): the dominant transient failures are
+      // overload/stream drops, and an immediate identical call mostly lands on the same congested endpoint.
       // If retry still fails: dead stays dead; a throw degrades to dead (one agent must not take down the workflow).
       // budget is not double-charged: dead does not call addOutputTokens; retry-ok charges once (at the final ok).
       // dead.reason is passed through to the log: no-structured-output (the agent's final text block did not produce plain-object JSON)
       // is a high-frequency cause of death; logging detail lets you immediately see what the agent last said.
       // detail is wrapped with String() defensively: old journals or third-party adapters may write non-strings (corrupted data),
       // and calling .slice directly would throw a TypeError that pierces the logging path.
+      const backoffBeforeRetry = async (): Promise<void> => {
+        const ms = ctx.retryBackoffMs
+        if (ms > 0 && !ctx.signal.aborted) {
+          await new Promise<void>(resolve => {
+            const onAbort = (): void => {
+              clearTimeout(timer)
+              resolve()
+            }
+            const timer = setTimeout(() => {
+              ctx.signal.removeEventListener('abort', onAbort)
+              resolve()
+            }, ms)
+            ctx.signal.addEventListener('abort', onAbort, { once: true })
+          })
+        }
+        if (ctx.signal.aborted) throw new WorkflowAbortedError()
+      }
+      const deadSummary = (
+        result: AgentRunResult & { kind: 'dead' },
+      ): string => {
+        const detailStr = typeof result.detail === 'string' ? result.detail : ''
+        return (
+          `agent "${label ?? `#${agentId}`}" returned dead` +
+          (result.reason ? ` (${result.reason})` : '') +
+          (detailStr ? `: ${detailStr.slice(0, 150)}` : '')
+        )
+      }
       let result: AgentRunResult
       try {
         result = await invokeBackend()
         if (result.kind === 'dead') {
-          const detailStr =
-            typeof result.detail === 'string' ? result.detail : ''
-          ctx.ports.logger.warn?.(
-            `agent "${label ?? `#${agentId}`}" returned dead` +
-              (result.reason ? ` (${result.reason})` : '') +
-              (detailStr ? `: ${detailStr.slice(0, 150)}` : '') +
-              '; retrying once',
-          )
-          result = await invokeBackend()
+          if (result.retryable === false) {
+            ctx.ports.logger.warn?.(
+              `${deadSummary(result)}; deterministic failure, not retrying`,
+            )
+          } else {
+            ctx.ports.logger.warn?.(`${deadSummary(result)}; retrying once`)
+            await backoffBeforeRetry()
+            result = await invokeBackend()
+          }
         }
       } catch (e) {
         if (e instanceof WorkflowAbortedError) throw e
@@ -191,6 +231,7 @@ export function makeHooks(
           `agent "${label ?? `#${agentId}`}" threw (${eMsg}); retrying once`,
         )
         try {
+          await backoffBeforeRetry()
           result = await invokeBackend()
         } catch (e2) {
           if (e2 instanceof WorkflowAbortedError) throw e2
@@ -208,10 +249,18 @@ export function makeHooks(
       emit({ type: 'agent_done', agentId, label, phase, result })
 
       const entry: JournalEntry = { key, seq: agentId, result }
-      // Key point: push order = completion order (not call order); read() already re-sorts by seq,
-      // so during resume the call order aligns with the journal order and the key index stays stable.
-      ctx.journal.push(entry)
-      ctx.journalIndex++
+      if (replayDeadIdx !== null) {
+        // Re-run of a dead journal entry: replace the slot in place (its index was
+        // already consumed, so pushing would desync positional replay for the
+        // remaining entries). The store append reuses the same seq; read()'s
+        // keep-last dedupe makes the fresh result supersede the recorded failure.
+        ctx.journal[replayDeadIdx] = entry
+      } else {
+        // Key point: push order = completion order (not call order); read() already re-sorts by seq,
+        // so during resume the call order aligns with the journal order and the key index stays stable.
+        ctx.journal.push(entry)
+        ctx.journalIndex++
+      }
       await ctx.ports.journalStore.append(ctx.runId, entry)
       return resultToOutput(result)
     } finally {
@@ -230,6 +279,9 @@ export function makeHooks(
         try {
           return await t()
         } catch (e) {
+          // Abort must propagate: swallowing it to null would let a killed run keep
+          // executing the script with the remaining thunks' nulls (run never ends killed).
+          if (e instanceof WorkflowAbortedError) throw e
           // The "null on error" contract is unchanged, but it should log — otherwise the workflow author cannot locate why an agent failed
           ctx.ports.logger.warn?.(
             `parallel thunk #${i} failed: ${(e as Error).message}`,
@@ -260,6 +312,8 @@ export function makeHooks(
           }
           return prev as R
         } catch (e) {
+          // Abort must propagate (same reasoning as parallel): a killed run has to end killed.
+          if (e instanceof WorkflowAbortedError) throw e
           ctx.ports.logger.warn?.(
             `pipeline item #${index} failed: ${(e as Error).message}`,
           )

@@ -570,6 +570,170 @@ test('workflow() resolves sub-workflows from a host-provided directory', async (
   }
 })
 
+// ---- automatic journal-resume on failure ----
+
+test('auto-retry: agent failure crashes the script → second attempt replays journal and re-runs only the failure → completed', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-autoretry-'))
+  try {
+    // 'a' always succeeds; 'b' dies twice (initial + in-place retry) on the first
+    // attempt, then succeeds. The script explodes on b's null (property access),
+    // triggering the automatic journal-resume: attempt 2 replays 'a' from the
+    // journal (no live call) and re-runs 'b'.
+    let aCalls = 0
+    let bCalls = 0
+    const ports: WorkflowPorts = {
+      agentRunner: {
+        runAgentToResult: async (p: AgentRunParams) => {
+          if (p.prompt === 'a') {
+            aCalls++
+            return {
+              kind: 'ok',
+              output: { value: 'A' },
+              usage: { outputTokens: 1 },
+            }
+          }
+          bCalls++
+          return bCalls <= 2
+            ? { kind: 'dead', reason: 'api-error' }
+            : {
+                kind: 'ok',
+                output: { value: 'B' },
+                usage: { outputTokens: 1 },
+              }
+        },
+      },
+      progressEmitter: { emit: () => {} },
+      taskRegistrar: {
+        register: () => ({ runId: 'r', signal: new AbortController().signal }),
+        complete: () => {},
+        fail: () => {},
+        kill: () => {},
+        pendingAction: () => null,
+      },
+      journalStore: createFileJournalStore(dir),
+      permissionGate: { isAborted: () => false },
+      logger: { debug: () => {}, event: () => {} },
+      hostFactory: () => ({
+        handle: createHostHandle(null),
+        cwd: dir,
+        budgetTotal: null,
+      }),
+    }
+    const result = await runWorkflow({
+      script: `const a = await agent('a')\nconst b = await agent('b')\nreturn a.value + b.value`,
+      runId: 'run-autoretry',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      retryBackoffMs: 0,
+    })
+    expect(result.status).toBe('completed')
+    expect(result.returnValue).toBe('AB')
+    // 'a' ran live exactly once (attempt 2 replayed it from the journal)
+    expect(aCalls).toBe(1)
+    // 'b': attempt 1 = initial + in-place retry (both dead), attempt 2 = fresh run (ok)
+    expect(bCalls).toBe(3)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('auto-retry emits a log event and a single run_done', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-autoretry-ev-'))
+  try {
+    const { ports, events } = portsWithEvents(dir, new Map())
+    const result = await runWorkflow({
+      script: `throw new Error('script exploded')`,
+      runId: 'run-autoretry-ev',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      retryBackoffMs: 0,
+    })
+    expect(result.status).toBe('failed')
+    expect(
+      events.some(
+        e =>
+          e.type === 'log' && /auto-resuming once from journal/.test(e.message),
+      ),
+    ).toBe(true)
+    expect(events.filter(e => e.type === 'run_done')).toHaveLength(1)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('auto-retry disabled via autoRetryOnFailure:false → single attempt', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-autoretry-off-'))
+  try {
+    let calls = 0
+    const ports = portsWith(dir, new Map())
+    const origEmit = ports.progressEmitter.emit
+    const events: ProgressEvent[] = []
+    ports.progressEmitter = {
+      emit: e => {
+        events.push(e)
+        origEmit(e)
+      },
+    }
+    ports.agentRunner = {
+      runAgentToResult: async () => {
+        calls++
+        return { kind: 'dead', reason: 'api-error' }
+      },
+    }
+    const result = await runWorkflow({
+      script: `const r = await agent('x')\nreturn r.value`,
+      runId: 'run-autoretry-off',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      retryBackoffMs: 0,
+      autoRetryOnFailure: false,
+    })
+    expect(result.status).toBe('failed')
+    // initial + in-place retry only; no second attempt
+    expect(calls).toBe(2)
+    expect(events.some(e => e.type === 'log')).toBe(false)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('auto-retry NOT triggered for deterministic failures (WorkflowError / budget)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-autoretry-det-'))
+  try {
+    const { ports, events } = portsWithEvents(
+      dir,
+      new Map([
+        ['a', { kind: 'ok', output: '1', usage: { outputTokens: 5 } }],
+        ['b', { kind: 'ok', output: '2', usage: { outputTokens: 5 } }],
+      ]),
+    )
+    const result = await runWorkflow({
+      script: `await agent('a')\nreturn agent('b')`,
+      runId: 'run-autoretry-det',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: 5,
+      retryBackoffMs: 0,
+    })
+    expect(result.status).toBe('failed')
+    // BudgetExhaustedError → not retry-eligible → no auto-resume log
+    expect(events.some(e => e.type === 'log')).toBe(false)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('workflow() references a non-existent name → failed', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {

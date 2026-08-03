@@ -284,6 +284,70 @@ test('registerAgentAbort/unregisterAgentAbort injection: key=ctx.agentId (number
   expect(unregistered).toEqual([42]) // finally cleanup idempotent
 })
 
+// query() surfaces terminal API errors as an assistant message (isApiErrorMessage) and ends the
+// generator without throwing. The backend must classify them as dead — previously the error text
+// was returned as the agent's "answer" (non-schema) or misclassified as no-structured-output (schema).
+
+test('terminal API error: prompt-too-long → dead retryable:false (deterministic, engine skips retry)', async () => {
+  mock.module(
+    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
+    () => ({
+      runAgent: async function* () {
+        yield {
+          type: 'assistant',
+          isApiErrorMessage: true,
+          message: {
+            content: [{ type: 'text', text: 'Prompt is too long' }],
+          },
+        }
+      },
+    }),
+  )
+  const res = await claudeCodeBackend.run({ prompt: 'huge' }, ctx())
+  expect(res.kind).toBe('dead')
+  if (res.kind === 'dead') {
+    expect(res.reason).toBe('prompt-too-long')
+    expect(res.retryable).toBe(false)
+    expect(res.detail).toMatch(/Prompt is too long/)
+  }
+})
+
+test('terminal API error: other API error → dead reason api-error (transient, engine may retry)', async () => {
+  mock.module(
+    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
+    () => ({
+      runAgent: async function* () {
+        yield {
+          type: 'assistant',
+          isApiErrorMessage: true,
+          message: {
+            content: [{ type: 'text', text: 'API Error: 529 overloaded' }],
+          },
+        }
+      },
+    }),
+  )
+  const res = await claudeCodeBackend.run({ prompt: 'x' }, ctx())
+  expect(res.kind).toBe('dead')
+  if (res.kind === 'dead') {
+    expect(res.reason).toBe('api-error')
+    expect(res.retryable).not.toBe(false)
+    expect(res.detail).toMatch(/529/)
+  }
+  // restore the default runAgent mock for any later run() in this process
+  mock.module(
+    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
+    () => ({
+      runAgent: async function* () {
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'agent-text' }] },
+        }
+      },
+    }),
+  )
+})
+
 test('id and capabilities shape', () => {
   expect(claudeCodeBackend.id).toBe('claude-code')
   expect(claudeCodeBackend.capabilities.structuredOutput).toBe(true)

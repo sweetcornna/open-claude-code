@@ -128,12 +128,14 @@ export function getWorkflowService(): WorkflowService {
  *
  * @param cwdOverride For tests only: inject a temp directory (avoids inline persistence writing to the real project directory).
  * @param runsDirProvider For tests only: inject a tmpdir (Bun ESM module namespace is read-only, cannot monkey-patch getRunsDir).
+ * @param retryBackoffMs For tests only: shrink the engine's in-place agent-retry backoff to keep retry tests instant.
  */
 export function makeService(
   ports: WorkflowPorts,
   store: ProgressStore,
   cwdOverride?: string,
   runsDirProvider: () => string = getRunsDir,
+  retryBackoffMs?: number,
 ): WorkflowService {
   const buildHost = (
     toolUseContext: ToolUseContext,
@@ -248,6 +250,7 @@ export function makeService(
           ? { maxConcurrency: input.maxConcurrency }
           : {}),
         ...(input.resumeFromRunId ? { resume: true } : {}),
+        ...(retryBackoffMs !== undefined ? { retryBackoffMs } : {}),
         workflowDir: OCC_WORKFLOW_DIR,
       })
         .then(result => {

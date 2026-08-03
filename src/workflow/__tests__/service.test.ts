@@ -404,7 +404,8 @@ test('adapter throws → retry still throws → degrade to dead → workflow com
   const { ports, store, calls, adapterCallsRef } = fakePorts({
     adapterThrow: 'adapter boom',
   })
-  const svc = makeService(ports, store)
+  // retryBackoffMs=0: keep the in-place retry instant (production waits AGENT_RETRY_BACKOFF_MS)
+  const svc = makeService(ports, store, undefined, undefined, 0)
   await svc.launch({ script: `return agent('x')` }, stubTUC, stubCanUseTool)
   await settle()
   // retry once → adapter called 2 times
