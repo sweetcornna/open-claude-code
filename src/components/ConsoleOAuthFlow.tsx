@@ -18,6 +18,8 @@ import {
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
 import { clearGrokClientCache } from '../services/api/grok/client.js';
 import { startAntigravityOAuthLogin } from '../services/auth/antigravity/index.js';
+import { fetchOpenAICompatibleModelsWith } from '../services/modelCatalog/fetch.js';
+import type { CatalogModel } from '../services/modelCatalog/types.js';
 import { buildAntigravityAutoConfigEnv } from '../utils/model/antigravityModels.js';
 import { OAuthService } from '../services/oauth/index.js';
 import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth/auth.js';
@@ -41,6 +43,35 @@ type Props = {
   forceLoginMethod?: 'claudeai' | 'console';
 };
 
+type OpenAIWireApi = 'chat' | 'responses';
+type OpenAIEndpointField = 'base_url' | 'api_key' | 'wire_api';
+type OpenAIModelField = 'model' | 'haiku_model' | 'sonnet_model' | 'opus_model' | 'max_context';
+
+type OpenAIEndpointSetupStatus = {
+  state: 'openai_endpoint_setup';
+  phase: 'editing' | 'fetching';
+  baseUrl: string;
+  apiKey: string;
+  wireApi: OpenAIWireApi;
+  activeField: OpenAIEndpointField;
+};
+
+type OpenAIModelSetupBase = {
+  state: 'openai_model_setup';
+  baseUrl: string;
+  apiKey: string;
+  wireApi: OpenAIWireApi;
+  model: string;
+  maxContext: string;
+  haikuModel: string;
+  sonnetModel: string;
+  opusModel: string;
+  activeField: OpenAIModelField;
+};
+
+type OpenAIModelSetupStatus = OpenAIModelSetupBase &
+  ({ entryMode: 'catalog'; models: CatalogModel[] } | { entryMode: 'manual'; fetchError: string });
+
 type OAuthStatus =
   | { state: 'idle' } // Initial state, waiting to select login method
   | { state: 'platform_setup' } // Show platform setup info (Bedrock/Vertex/Foundry)
@@ -55,26 +86,8 @@ type OAuthStatus =
       opusModel: string;
       activeField: 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
     } // Custom platform: configure API endpoint and model names
-  | {
-      state: 'openai_chat_api';
-      baseUrl: string;
-      apiKey: string;
-      model: string;
-      wireApi: string;
-      maxContext: string;
-      haikuModel: string;
-      sonnetModel: string;
-      opusModel: string;
-      activeField:
-        | 'base_url'
-        | 'api_key'
-        | 'model'
-        | 'wire_api'
-        | 'max_context'
-        | 'haiku_model'
-        | 'sonnet_model'
-        | 'opus_model';
-    } // OpenAI Chat Completions / Responses API platform
+  | OpenAIEndpointSetupStatus
+  | OpenAIModelSetupStatus
   | {
       state: 'chatgpt_subscription';
       phase: 'requesting' | 'waiting';
@@ -136,6 +149,11 @@ export function parseMaxContextInput(raw: string): string | undefined | null {
   const viaSuffix = parseContextWindowTokens(trimmed);
   return viaSuffix ? String(viaSuffix) : null;
 }
+
+function normalizeOpenAIWireApi(value: string | undefined): OpenAIWireApi {
+  return value === 'responses' ? 'responses' : 'chat';
+}
+
 export function ConsoleOAuthFlow({
   onDone,
   startingMessage,
@@ -467,6 +485,719 @@ type OAuthStatusMessageProps = {
   setLoginWithClaudeAi: (value: boolean) => void;
 };
 
+const OPENAI_WIRE_API_OPTIONS: Array<{ label: string; value: OpenAIWireApi }> = [
+  {
+    label: 'Chat Completions (default) — the /chat/completions endpoint most servers support',
+    value: 'chat',
+  },
+  {
+    label: 'Responses — the /responses endpoint used by Codex-style OpenAI servers',
+    value: 'responses',
+  },
+];
+
+function formatOpenAIWireApi(value: OpenAIWireApi): string {
+  return OPENAI_WIRE_API_OPTIONS.find(option => option.value === value)?.label ?? value;
+}
+
+type OpenAIEndpointSetupProps = {
+  status: Extract<OAuthStatus, { state: 'openai_endpoint_setup' }>;
+  setOAuthStatus: (status: OAuthStatus) => void;
+};
+
+function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProps): React.ReactNode {
+  const [baseUrl, setBaseUrl] = useState(status.baseUrl);
+  const [apiKey, setApiKey] = useState(status.apiKey);
+  const [wireApi, setWireApi] = useState<OpenAIWireApi>(status.wireApi);
+  const [activeField, setActiveField] = useState<OpenAIEndpointField>(status.activeField);
+  const [inputCursorOffset, setInputCursorOffset] = useState(() =>
+    status.activeField === 'base_url' ? status.baseUrl.length : status.apiKey.length,
+  );
+  const fetchControllerRef = useRef<AbortController | null>(null);
+  const inputColumns = Math.max(20, useTerminalSize().columns - 18);
+
+  const buildEditingStatus = useCallback(
+    (field: OpenAIEndpointField): OpenAIEndpointSetupStatus => ({
+      state: 'openai_endpoint_setup',
+      phase: 'editing',
+      baseUrl,
+      apiKey,
+      wireApi,
+      activeField: field,
+    }),
+    [apiKey, baseUrl, wireApi],
+  );
+
+  const beginModelFetch = useCallback(
+    (selectedWireApi: OpenAIWireApi) => {
+      const trimmedBaseUrl = baseUrl.trim();
+      const trimmedApiKey = apiKey.trim();
+      const retryState: OpenAIEndpointSetupStatus = {
+        state: 'openai_endpoint_setup',
+        phase: 'editing',
+        baseUrl: trimmedBaseUrl,
+        apiKey: trimmedApiKey,
+        wireApi: selectedWireApi,
+        activeField: 'base_url',
+      };
+
+      if (!trimmedBaseUrl) {
+        setOAuthStatus({
+          state: 'error',
+          message: 'Base URL is required. Enter the full server URL, including https:// or http://.',
+          toRetry: retryState,
+        });
+        return;
+      }
+      try {
+        new URL(trimmedBaseUrl);
+      } catch {
+        setOAuthStatus({
+          state: 'error',
+          message: 'Invalid Base URL. Enter the full server URL, including https:// or http://.',
+          toRetry: retryState,
+        });
+        return;
+      }
+      if (!trimmedApiKey) {
+        setOAuthStatus({
+          state: 'error',
+          message: 'API Key is required so the server can authorize the model-list request.',
+          toRetry: { ...retryState, activeField: 'api_key' },
+        });
+        return;
+      }
+
+      setOAuthStatus({
+        state: 'openai_endpoint_setup',
+        phase: 'fetching',
+        baseUrl: trimmedBaseUrl,
+        apiKey: trimmedApiKey,
+        wireApi: selectedWireApi,
+        activeField: 'wire_api',
+      });
+    },
+    [apiKey, baseUrl, setOAuthStatus],
+  );
+
+  useEffect(() => {
+    if (status.phase !== 'fetching') return;
+
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
+    let disposed = false;
+    let failureReason = 'the request failed';
+
+    void fetchOpenAICompatibleModelsWith({
+      baseURL: status.baseUrl,
+      apiKey: status.apiKey,
+      signal: controller.signal,
+      onError: reason => {
+        failureReason = reason;
+      },
+    }).then(models => {
+      if (disposed || controller.signal.aborted) return;
+
+      const common = {
+        state: 'openai_model_setup' as const,
+        baseUrl: status.baseUrl,
+        apiKey: status.apiKey,
+        wireApi: status.wireApi,
+        model: process.env.OPENAI_MODEL ?? '',
+        maxContext: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
+        haikuModel: process.env.OPENAI_DEFAULT_HAIKU_MODEL ?? '',
+        sonnetModel: process.env.OPENAI_DEFAULT_SONNET_MODEL ?? '',
+        opusModel: process.env.OPENAI_DEFAULT_OPUS_MODEL ?? '',
+        activeField: 'model' as const,
+      };
+
+      if (models) {
+        const modelIds = new Set(models.map(model => model.id));
+        setOAuthStatus({
+          ...common,
+          entryMode: 'catalog',
+          models,
+          model: modelIds.has(common.model) ? common.model : '',
+          haikuModel: modelIds.has(common.haikuModel) ? common.haikuModel : '',
+          sonnetModel: modelIds.has(common.sonnetModel) ? common.sonnetModel : '',
+          opusModel: modelIds.has(common.opusModel) ? common.opusModel : '',
+        });
+        return;
+      }
+
+      setOAuthStatus({
+        ...common,
+        entryMode: 'manual',
+        fetchError: failureReason,
+      });
+    });
+
+    return () => {
+      disposed = true;
+      controller.abort();
+      if (fetchControllerRef.current === controller) fetchControllerRef.current = null;
+    };
+  }, [setOAuthStatus, status]);
+
+  useKeybinding(
+    'confirm:no',
+    () => {
+      if (status.phase === 'fetching') {
+        fetchControllerRef.current?.abort();
+        setActiveField('wire_api');
+        setOAuthStatus(buildEditingStatus('wire_api'));
+        return;
+      }
+      setOAuthStatus({ state: 'idle' });
+    },
+    { context: 'Confirmation' },
+  );
+
+  const handleTextSubmit = () => {
+    if (activeField === 'base_url') {
+      setActiveField('api_key');
+      setInputCursorOffset(apiKey.length);
+    } else if (activeField === 'api_key') {
+      setActiveField('wire_api');
+    }
+  };
+
+  const maskedApiKey = apiKey ? apiKey.slice(0, 8) + '\u00b7'.repeat(Math.max(0, apiKey.length - 8)) : '';
+
+  if (status.phase === 'fetching') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text bold>OpenAI Compatible API Setup — Fetch Models</Text>
+        <Box>
+          <Spinner />
+          <Text>Fetching available models from {status.baseUrl}…</Text>
+        </Box>
+        <Text dimColor>Esc cancels the request and returns to endpoint setup.</Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Text bold>OpenAI Compatible API Setup — Step 1 of 2</Text>
+      <Text dimColor>
+        Enter the server connection details first. occ will then request GET /models before any settings are saved.
+      </Text>
+      <Box flexDirection="column" gap={1}>
+        <Box>
+          <Text
+            backgroundColor={activeField === 'base_url' ? 'suggestion' : undefined}
+            color={activeField === 'base_url' ? 'inverseText' : undefined}
+          >
+            {' Base URL '}
+          </Text>
+          <Text> </Text>
+          {activeField === 'base_url' ? (
+            <TextInput
+              value={baseUrl}
+              onChange={setBaseUrl}
+              onSubmit={handleTextSubmit}
+              cursorOffset={inputCursorOffset}
+              onChangeCursorOffset={setInputCursorOffset}
+              columns={inputColumns}
+              focus={true}
+            />
+          ) : (
+            <Text color="success">{baseUrl}</Text>
+          )}
+        </Box>
+        <Box>
+          <Text
+            backgroundColor={activeField === 'api_key' ? 'suggestion' : undefined}
+            color={activeField === 'api_key' ? 'inverseText' : undefined}
+          >
+            {' API Key '}
+          </Text>
+          <Text> </Text>
+          {activeField === 'api_key' ? (
+            <TextInput
+              value={apiKey}
+              onChange={setApiKey}
+              onSubmit={handleTextSubmit}
+              cursorOffset={inputCursorOffset}
+              onChangeCursorOffset={setInputCursorOffset}
+              columns={inputColumns}
+              mask="*"
+              focus={true}
+            />
+          ) : (
+            <Text color="success">{maskedApiKey}</Text>
+          )}
+        </Box>
+        <Box flexDirection="column">
+          <Text
+            backgroundColor={activeField === 'wire_api' ? 'suggestion' : undefined}
+            color={activeField === 'wire_api' ? 'inverseText' : undefined}
+          >
+            {' Wire API protocol '}
+          </Text>
+          {activeField === 'wire_api' ? (
+            <Select
+              options={OPENAI_WIRE_API_OPTIONS}
+              defaultValue={wireApi}
+              defaultFocusValue={wireApi}
+              visibleOptionCount={2}
+              onChange={value => {
+                setWireApi(value);
+                beginModelFetch(value);
+              }}
+              onCancel={() => setOAuthStatus({ state: 'idle' })}
+            />
+          ) : (
+            <Text color="success">{formatOpenAIWireApi(wireApi)}</Text>
+          )}
+        </Box>
+      </Box>
+      <Text dimColor>
+        Base URL is the OpenAI-compatible server root, such as https://api.example.com/v1. API Key authorizes the
+        model-list request.
+      </Text>
+      <Text dimColor>
+        Enter moves to the next field. Select the Wire API protocol to fetch models. Esc returns to login methods.
+      </Text>
+    </Box>
+  );
+}
+
+type OpenAIModelSetupProps = {
+  status: Extract<OAuthStatus, { state: 'openai_model_setup' }>;
+  setOAuthStatus: (status: OAuthStatus) => void;
+  onDone: () => void;
+};
+
+const OPENAI_MODEL_FIELDS: OpenAIModelField[] = ['model', 'haiku_model', 'sonnet_model', 'opus_model', 'max_context'];
+
+function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupProps): React.ReactNode {
+  const [model, setModel] = useState(status.model);
+  const [haikuModel, setHaikuModel] = useState(status.haikuModel);
+  const [sonnetModel, setSonnetModel] = useState(status.sonnetModel);
+  const [opusModel, setOpusModel] = useState(status.opusModel);
+  const [maxContext, setMaxContext] = useState(status.maxContext);
+  const [activeField, setActiveField] = useState<OpenAIModelField>(status.activeField);
+  const [inputCursorOffset, setInputCursorOffset] = useState(() => {
+    const initialValues: Record<OpenAIModelField, string> = {
+      model: status.model,
+      haiku_model: status.haikuModel,
+      sonnet_model: status.sonnetModel,
+      opus_model: status.opusModel,
+      max_context: status.maxContext,
+    };
+    return initialValues[status.activeField].length;
+  });
+  const inputColumns = Math.max(20, useTerminalSize().columns - 24);
+
+  const getValue = (field: OpenAIModelField): string => {
+    switch (field) {
+      case 'model':
+        return model;
+      case 'haiku_model':
+        return haikuModel;
+      case 'sonnet_model':
+        return sonnetModel;
+      case 'opus_model':
+        return opusModel;
+      case 'max_context':
+        return maxContext;
+    }
+  };
+
+  const setValue = (field: OpenAIModelField, value: string): void => {
+    switch (field) {
+      case 'model':
+        setModel(value);
+        return;
+      case 'haiku_model':
+        setHaikuModel(value);
+        return;
+      case 'sonnet_model':
+        setSonnetModel(value);
+        return;
+      case 'opus_model':
+        setOpusModel(value);
+        return;
+      case 'max_context':
+        setMaxContext(value);
+    }
+  };
+
+  const buildRetryStatus = (field: OpenAIModelField): OpenAIModelSetupStatus => {
+    const common: OpenAIModelSetupBase = {
+      state: 'openai_model_setup',
+      baseUrl: status.baseUrl,
+      apiKey: status.apiKey,
+      wireApi: status.wireApi,
+      model,
+      maxContext,
+      haikuModel,
+      sonnetModel,
+      opusModel,
+      activeField: field,
+    };
+    return status.entryMode === 'catalog'
+      ? { ...common, entryMode: 'catalog', models: status.models }
+      : { ...common, entryMode: 'manual', fetchError: status.fetchError };
+  };
+
+  const returnToEndpointSetup = () => {
+    setOAuthStatus({
+      state: 'openai_endpoint_setup',
+      phase: 'editing',
+      baseUrl: status.baseUrl,
+      apiKey: status.apiKey,
+      wireApi: status.wireApi,
+      activeField: 'base_url',
+    });
+  };
+
+  useKeybinding('confirm:no', returnToEndpointSetup, { context: 'Confirmation' });
+
+  const advanceFrom = (field: OpenAIModelField): void => {
+    const index = OPENAI_MODEL_FIELDS.indexOf(field);
+    const next = OPENAI_MODEL_FIELDS[index + 1];
+    if (!next) return;
+    setActiveField(next);
+    setInputCursorOffset(getValue(next).length);
+  };
+
+  const doSave = (): void => {
+    const trimmedModel = model.trim();
+    if (!trimmedModel) {
+      setOAuthStatus({
+        state: 'error',
+        message: 'Default model is required. Choose or enter a model name for OPENAI_MODEL.',
+        toRetry: buildRetryStatus('model'),
+      });
+      return;
+    }
+
+    const maxContextValue = parseMaxContextInput(maxContext);
+    if (maxContextValue === null) {
+      setOAuthStatus({
+        state: 'error',
+        message: 'Invalid maximum context tokens. Enter a token count such as 128000, 128k, or 1m, or leave it empty.',
+        toRetry: buildRetryStatus('max_context'),
+      });
+      return;
+    }
+
+    const env: Record<string, string | undefined> = {
+      OPENAI_AUTH_MODE: undefined,
+      OPENAI_BASE_URL: status.baseUrl,
+      OPENAI_API_KEY: status.apiKey,
+      OPENAI_MODEL: trimmedModel,
+      OPENAI_WIRE_API: status.wireApi,
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: maxContextValue,
+    };
+    if (haikuModel.trim()) env.OPENAI_DEFAULT_HAIKU_MODEL = haikuModel.trim();
+    if (sonnetModel.trim()) env.OPENAI_DEFAULT_SONNET_MODEL = sonnetModel.trim();
+    if (opusModel.trim()) env.OPENAI_DEFAULT_OPUS_MODEL = opusModel.trim();
+
+    const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
+      modelType: 'openai',
+      env: env as unknown as Record<string, string>,
+    };
+    const { error } = updateSettingsForSource('userSettings', settingsUpdate);
+    if (error) {
+      setOAuthStatus({
+        state: 'error',
+        message: 'Failed to save settings. Please try again.',
+        toRetry: buildRetryStatus(activeField),
+      });
+      return;
+    }
+
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    clearOpenAIClientCache();
+    void removeChatGPTAuth().catch(() => {});
+    setOAuthStatus({ state: 'success' });
+    void onDone();
+  };
+
+  const handleTextSubmit = (): void => {
+    if (activeField === 'max_context') {
+      doSave();
+      return;
+    }
+    advanceFrom(activeField);
+  };
+
+  const modelOptions =
+    status.entryMode === 'catalog' ? status.models.map(item => ({ label: item.id, value: item.id })) : [];
+
+  const renderField = (field: OpenAIModelField, label: string, optional = false): React.ReactNode => {
+    const active = activeField === field;
+    const value = getValue(field);
+    const usesSelector = status.entryMode === 'catalog' && field !== 'max_context';
+    const options = optional ? [{ label: '(not set)', value: '' }, ...modelOptions] : modelOptions;
+
+    return (
+      <Box key={field} flexDirection="column">
+        <Box>
+          <Text backgroundColor={active ? 'suggestion' : undefined} color={active ? 'inverseText' : undefined}>
+            {` ${label} `}
+          </Text>
+          {!active && <Text color={value ? 'success' : undefined}>{value || (optional ? '(not set)' : '')}</Text>}
+        </Box>
+        {active && usesSelector && (
+          <Select
+            key={`${field}:${value}`}
+            options={options}
+            defaultValue={value}
+            defaultFocusValue={value || options[0]?.value}
+            visibleOptionCount={9}
+            onChange={selected => {
+              setValue(field, selected);
+              advanceFrom(field);
+            }}
+            onCancel={returnToEndpointSetup}
+          />
+        )}
+        {active && !usesSelector && (
+          <Box marginLeft={2}>
+            <TextInput
+              value={value}
+              onChange={nextValue => setValue(field, nextValue)}
+              onSubmit={handleTextSubmit}
+              cursorOffset={inputCursorOffset}
+              onChangeCursorOffset={setInputCursorOffset}
+              columns={inputColumns}
+              focus={true}
+            />
+          </Box>
+        )}
+      </Box>
+    );
+  };
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Text bold>OpenAI Compatible API Setup — Step 2 of 2</Text>
+      {status.entryMode === 'manual' && (
+        <Text color="warning">
+          Could not fetch model list from the server ({status.fetchError}). Enter model names manually.
+        </Text>
+      )}
+      <Box flexDirection="column" gap={1}>
+        {renderField('model', 'Default model (required)')}
+        {renderField('haiku_model', 'Haiku tier model (optional)', true)}
+        {renderField('sonnet_model', 'Sonnet tier model (optional)', true)}
+        {renderField('opus_model', 'Opus tier model (optional)', true)}
+        {renderField('max_context', 'Max context tokens (context window size, e.g. 128000 or 128k)', true)}
+      </Box>
+      <Text dimColor>
+        The default model handles requests unless a Haiku, Sonnet, or Opus tier override is configured. Maximum context
+        tokens controls when automatic context compaction begins.
+      </Text>
+      <Text dimColor>
+        {status.entryMode === 'catalog'
+          ? 'Use ↑↓ and Enter to choose each model. Enter maximum context tokens to save. Esc returns to Step 1.'
+          : 'Enter moves to the next field. Enter on maximum context tokens saves. Esc returns to Step 1.'}
+      </Text>
+    </Box>
+  );
+}
+
+type ChatGPTSubscriptionSetupProps = {
+  status: Extract<OAuthStatus, { state: 'chatgpt_subscription' }>;
+  setOAuthStatus: (status: OAuthStatus) => void;
+  onDone: () => void;
+};
+
+function ChatGPTSubscriptionSetup({ status, setOAuthStatus, onDone }: ChatGPTSubscriptionSetupProps): React.ReactNode {
+  const startedRef = useRef(false);
+
+  useKeybinding(
+    'confirm:no',
+    () => {
+      setOAuthStatus({ state: 'idle' });
+    },
+    { context: 'Confirmation' },
+  );
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    let cancelled = false;
+    const controller = new AbortController();
+    async function runLogin() {
+      try {
+        const deviceCode = await requestChatGPTDeviceCode();
+        if (cancelled) return;
+        setOAuthStatus({
+          state: 'chatgpt_subscription',
+          phase: 'waiting',
+          deviceCode,
+        });
+        void openBrowser(deviceCode.verificationUrl);
+        await completeChatGPTDeviceLogin(deviceCode, controller.signal);
+        if (cancelled) return;
+        const env: Record<string, string> = {
+          OPENAI_AUTH_MODE: 'chatgpt',
+        };
+        const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
+          modelType: 'openai',
+          env,
+        };
+        const { error } = updateSettingsForSource('userSettings', settingsUpdate);
+        if (error) {
+          throw new Error('Failed to save settings. Please try again.');
+        }
+        for (const [k, v] of Object.entries(env)) process.env[k] = v;
+        // Drop any cached OpenAI client built from prior OpenAI Compatible
+        // env vars; the ChatGPT Subscription path bypasses the SDK client
+        // entirely (uses createChatGPTResponsesStream) but a stale cached
+        // client would still be picked up by sideQuery.
+        clearOpenAIClientCache();
+        setOAuthStatus({ state: 'success' });
+        void onDone();
+      } catch (err) {
+        if (cancelled) return;
+        setOAuthStatus({
+          state: 'error',
+          message: (err as Error).message,
+          toRetry: {
+            state: 'chatgpt_subscription',
+            phase: 'requesting',
+          },
+        });
+      }
+    }
+    void runLogin();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [setOAuthStatus, onDone]);
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Text bold>ChatGPT Account Setup</Text>
+      {status.phase === 'requesting' && (
+        <Box>
+          <Spinner />
+          <Text>Requesting sign-in code…</Text>
+        </Box>
+      )}
+      {status.phase === 'waiting' && status.deviceCode && (
+        <Box flexDirection="column" gap={1}>
+          <Text>Open this link and sign in with your ChatGPT account:</Text>
+          <Link url={status.deviceCode.verificationUrl}>
+            <Text dimColor>{status.deviceCode.verificationUrl}</Text>
+          </Link>
+          <Text>
+            Enter code: <Text bold>{status.deviceCode.userCode}</Text>
+          </Text>
+          <Box>
+            <Spinner />
+            <Text>Waiting for ChatGPT authorization…</Text>
+          </Box>
+        </Box>
+      )}
+      <Text dimColor>Esc to go back. Device codes expire after 15 minutes.</Text>
+    </Box>
+  );
+}
+
+type AntigravityOAuthSetupProps = {
+  status: Extract<OAuthStatus, { state: 'antigravity_oauth' }>;
+  setOAuthStatus: (status: OAuthStatus) => void;
+  onDone: () => void;
+};
+
+function AntigravityOAuthSetup({ status, setOAuthStatus, onDone }: AntigravityOAuthSetupProps): React.ReactNode {
+  const startedRef = useRef(false);
+
+  useKeybinding(
+    'confirm:no',
+    () => {
+      setOAuthStatus({ state: 'idle' });
+    },
+    { context: 'Confirmation' },
+  );
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    let cancelled = false;
+    const controller = new AbortController();
+    async function runLogin() {
+      try {
+        await startAntigravityOAuthLogin({
+          signal: controller.signal,
+          onAuthUrl: url => {
+            if (cancelled) return;
+            setOAuthStatus({ state: 'antigravity_oauth', phase: 'waiting', authUrl: url });
+          },
+        });
+        if (cancelled) return;
+        // Auto-configuration: the login only proves identity, so write the
+        // full provider shape here — otherwise the user lands back at the
+        // prompt with a Gemini token and no model routing.
+        const env = buildAntigravityAutoConfigEnv();
+        const { error } = updateSettingsForSource('userSettings', {
+          modelType: 'gemini',
+          env,
+        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+        if (error) {
+          throw new Error('Failed to save settings. Please try again.');
+        }
+        for (const [k, v] of Object.entries(env)) process.env[k] = v;
+        setOAuthStatus({ state: 'success' });
+        void onDone();
+      } catch (err) {
+        if (cancelled) return;
+        setOAuthStatus({
+          state: 'error',
+          message: (err as Error).message,
+          toRetry: { state: 'antigravity_oauth', phase: 'starting' },
+        });
+      }
+    }
+    void runLogin();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [setOAuthStatus, onDone]);
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Text bold>Antigravity Setup</Text>
+      <Text dimColor>
+        Sign in with the Google account that has Antigravity access. occ then uses Gemini 3 through Antigravity&apos;s
+        backend — no API key, no per-token billing.
+      </Text>
+      {status.phase === 'starting' && (
+        <Box>
+          <Spinner />
+          <Text>Starting local callback server…</Text>
+        </Box>
+      )}
+      {status.phase === 'waiting' && status.authUrl && (
+        <Box flexDirection="column" gap={1}>
+          <Text>A browser window should have opened. If not, open this link:</Text>
+          <Link url={status.authUrl}>
+            <Text dimColor>{status.authUrl}</Text>
+          </Link>
+          <Box>
+            <Spinner />
+            <Text>Waiting for Google authorization…</Text>
+          </Box>
+        </Box>
+      )}
+      <Text dimColor>Esc to go back. First-time accounts may take a few seconds to provision.</Text>
+    </Box>
+  );
+}
+
 function OAuthStatusMessage({
   oauthStatus,
   mode,
@@ -616,15 +1347,11 @@ function OAuthStatusMessage({
                 } else if (value === 'openai_chat_api') {
                   logEvent('tengu_openai_chat_api_selected', {});
                   setOAuthStatus({
-                    state: 'openai_chat_api',
+                    state: 'openai_endpoint_setup',
+                    phase: 'editing',
                     baseUrl: process.env.OPENAI_BASE_URL ?? '',
                     apiKey: process.env.OPENAI_API_KEY ?? '',
-                    model: process.env.OPENAI_MODEL ?? '',
-                    wireApi: process.env.OPENAI_WIRE_API ?? '',
-                    maxContext: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
-                    haikuModel: process.env.OPENAI_DEFAULT_HAIKU_MODEL ?? '',
-                    sonnetModel: process.env.OPENAI_DEFAULT_SONNET_MODEL ?? '',
-                    opusModel: process.env.OPENAI_DEFAULT_OPUS_MODEL ?? '',
+                    wireApi: normalizeOpenAIWireApi(process.env.OPENAI_WIRE_API),
                     activeField: 'base_url',
                   });
                 } else if (value === 'china_providers') {
@@ -902,390 +1629,30 @@ function OAuthStatusMessage({
         <Box flexDirection="column" gap={1}>
           <Text bold>Anthropic Compatible Setup</Text>
           <Box flexDirection="column" gap={1}>
-            {renderRow('base_url', 'Base URL ')}
-            {renderRow('api_key', 'API Key  ', { mask: true })}
-            {renderRow('model', 'Model    ')}
-            {renderRow('max_context', 'Max ctx  ')}
-            {renderRow('haiku_model', 'Haiku    ')}
-            {renderRow('sonnet_model', 'Sonnet   ')}
-            {renderRow('opus_model', 'Opus     ')}
-          </Box>
-          <Text dimColor>Model/Max ctx optional · Max ctx caps the context window (e.g. 128000 or 128k)</Text>
-          <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
-        </Box>
-      );
-    }
-
-    case 'openai_chat_api': {
-      type OpenAIField =
-        | 'base_url'
-        | 'api_key'
-        | 'model'
-        | 'wire_api'
-        | 'max_context'
-        | 'haiku_model'
-        | 'sonnet_model'
-        | 'opus_model';
-      const OPENAI_FIELDS: OpenAIField[] = [
-        'base_url',
-        'api_key',
-        'model',
-        'wire_api',
-        'max_context',
-        'haiku_model',
-        'sonnet_model',
-        'opus_model',
-      ];
-      const op = oauthStatus as {
-        state: 'openai_chat_api';
-        activeField: OpenAIField;
-        baseUrl: string;
-        apiKey: string;
-        model: string;
-        wireApi: string;
-        maxContext: string;
-        haikuModel: string;
-        sonnetModel: string;
-        opusModel: string;
-      };
-      const { activeField, baseUrl, apiKey, model, wireApi, maxContext, haikuModel, sonnetModel, opusModel } = op;
-      const openaiDisplayValues: Record<OpenAIField, string> = {
-        base_url: baseUrl,
-        api_key: apiKey,
-        model,
-        wire_api: wireApi,
-        max_context: maxContext,
-        haiku_model: haikuModel,
-        sonnet_model: sonnetModel,
-        opus_model: opusModel,
-      };
-
-      const [openaiInputValue, setOpenaiInputValue] = useState(() => openaiDisplayValues[activeField]);
-      const [openaiInputCursorOffset, setOpenaiInputCursorOffset] = useState(
-        () => openaiDisplayValues[activeField].length,
-      );
-
-      const buildOpenAIState = useCallback(
-        (field: OpenAIField, value: string, newActive?: OpenAIField) => {
-          const s = {
-            state: 'openai_chat_api' as const,
-            activeField: newActive ?? activeField,
-            baseUrl,
-            apiKey,
-            model,
-            wireApi,
-            maxContext,
-            haikuModel,
-            sonnetModel,
-            opusModel,
-          };
-          switch (field) {
-            case 'base_url':
-              return { ...s, baseUrl: value };
-            case 'api_key':
-              return { ...s, apiKey: value };
-            case 'model':
-              return { ...s, model: value };
-            case 'wire_api':
-              return { ...s, wireApi: value };
-            case 'max_context':
-              return { ...s, maxContext: value };
-            case 'haiku_model':
-              return { ...s, haikuModel: value };
-            case 'sonnet_model':
-              return { ...s, sonnetModel: value };
-            case 'opus_model':
-              return { ...s, opusModel: value };
-          }
-        },
-        [activeField, baseUrl, apiKey, model, wireApi, maxContext, haikuModel, sonnetModel, opusModel],
-      );
-
-      const doOpenAISave = useCallback(() => {
-        const finalVals = { ...openaiDisplayValues, [activeField]: openaiInputValue };
-        const toRetryState = {
-          state: 'openai_chat_api' as const,
-          baseUrl: finalVals.base_url ?? '',
-          apiKey: finalVals.api_key ?? '',
-          model: finalVals.model ?? '',
-          wireApi: finalVals.wire_api ?? '',
-          maxContext: finalVals.max_context ?? '',
-          haikuModel: finalVals.haiku_model ?? '',
-          sonnetModel: finalVals.sonnet_model ?? '',
-          opusModel: finalVals.opus_model ?? '',
-          activeField: 'base_url' as const,
-        };
-        const env: Record<string, string | undefined> = {
-          OPENAI_AUTH_MODE: undefined,
-        };
-
-        // Validate base_url if provided
-        if (finalVals.base_url) {
-          try {
-            new URL(finalVals.base_url);
-          } catch {
-            setOAuthStatus({
-              state: 'error',
-              message: 'Invalid base URL: please enter a full URL including protocol (e.g., https://api.example.com)',
-              toRetry: toRetryState,
-            });
-            return;
-          }
-          env.OPENAI_BASE_URL = finalVals.base_url;
-        }
-
-        // Wire protocol: chat (Chat Completions, default) or responses (Responses API).
-        const wireInput = (finalVals.wire_api ?? '').trim().toLowerCase();
-        if (wireInput && wireInput !== 'chat' && wireInput !== 'responses') {
-          setOAuthStatus({
-            state: 'error',
-            message: "Invalid wire API: enter 'chat' or 'responses', or leave it empty for the default (chat).",
-            toRetry: { ...toRetryState, activeField: 'wire_api' },
-          });
-          return;
-        }
-
-        const maxContextValue = parseMaxContextInput(finalVals.max_context ?? '');
-        if (maxContextValue === null) {
-          setOAuthStatus({
-            state: 'error',
-            message: 'Invalid max context: enter a token count like 128000 (or 128k / 1m), or leave it empty.',
-            toRetry: { ...toRetryState, activeField: 'max_context' },
-          });
-          return;
-        }
-
-        if (finalVals.api_key) env.OPENAI_API_KEY = finalVals.api_key;
-        // Optional keys are written as undefined when cleared so a stale value
-        // from a previous configuration cannot silently survive (undefined
-        // deletes on merge and in the process.env loop below).
-        env.OPENAI_MODEL = finalVals.model || undefined;
-        env.OPENAI_WIRE_API = wireInput || undefined;
-        env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = maxContextValue;
-        if (finalVals.haiku_model) env.OPENAI_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
-        if (finalVals.sonnet_model) env.OPENAI_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
-        if (finalVals.opus_model) env.OPENAI_DEFAULT_OPUS_MODEL = finalVals.opus_model;
-        const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
-          modelType: 'openai',
-          env: env as unknown as Record<string, string>,
-        };
-        const { error } = updateSettingsForSource('userSettings', settingsUpdate);
-        if (error) {
-          setOAuthStatus({
-            state: 'error',
-            message: 'Failed to save settings. Please try again.',
-            toRetry: toRetryState,
-          });
-        } else {
-          for (const [k, v] of Object.entries(env)) {
-            if (v === undefined) {
-              delete process.env[k];
-            } else {
-              process.env[k] = v;
-            }
-          }
-          // Drop any cached OpenAI client so the next request rebuilds it
-          // with the new env vars. Also clear ChatGPT auth file so a prior
-          // ChatGPT Subscription login can't leak into the OpenAI Compatible path.
-          clearOpenAIClientCache();
-          void removeChatGPTAuth().catch(() => {});
-          setOAuthStatus({ state: 'success' });
-          void onDone();
-        }
-      }, [activeField, openaiInputValue, openaiDisplayValues, setOAuthStatus, onDone]);
-
-      const handleOpenAIEnter = useCallback(() => {
-        const idx = OPENAI_FIELDS.indexOf(activeField);
-        if (idx === OPENAI_FIELDS.length - 1) {
-          setOAuthStatus(buildOpenAIState(activeField, openaiInputValue));
-          doOpenAISave();
-        } else {
-          const next = OPENAI_FIELDS[idx + 1]!;
-          setOAuthStatus(buildOpenAIState(activeField, openaiInputValue, next));
-          setOpenaiInputValue(openaiDisplayValues[next] ?? '');
-          setOpenaiInputCursorOffset((openaiDisplayValues[next] ?? '').length);
-        }
-      }, [activeField, openaiInputValue, buildOpenAIState, doOpenAISave, openaiDisplayValues, setOAuthStatus]);
-
-      useKeybinding(
-        'tabs:next',
-        () => {
-          const idx = OPENAI_FIELDS.indexOf(activeField);
-          if (idx < OPENAI_FIELDS.length - 1) {
-            setOAuthStatus(buildOpenAIState(activeField, openaiInputValue, OPENAI_FIELDS[idx + 1]));
-            setOpenaiInputValue(openaiDisplayValues[OPENAI_FIELDS[idx + 1]!] ?? '');
-            setOpenaiInputCursorOffset((openaiDisplayValues[OPENAI_FIELDS[idx + 1]!] ?? '').length);
-          }
-        },
-        { context: 'FormField' },
-      );
-      useKeybinding(
-        'tabs:previous',
-        () => {
-          const idx = OPENAI_FIELDS.indexOf(activeField);
-          if (idx > 0) {
-            setOAuthStatus(buildOpenAIState(activeField, openaiInputValue, OPENAI_FIELDS[idx - 1]));
-            setOpenaiInputValue(openaiDisplayValues[OPENAI_FIELDS[idx - 1]!] ?? '');
-            setOpenaiInputCursorOffset((openaiDisplayValues[OPENAI_FIELDS[idx - 1]!] ?? '').length);
-          }
-        },
-        { context: 'FormField' },
-      );
-      useKeybinding(
-        'confirm:no',
-        () => {
-          setOAuthStatus({ state: 'idle' });
-        },
-        { context: 'Confirmation' },
-      );
-
-      const openaiColumns = useTerminalSize().columns - 20;
-
-      const renderOpenAIRow = (field: OpenAIField, label: string, opts?: { mask?: boolean }) => {
-        const active = activeField === field;
-        const val = openaiDisplayValues[field];
-        return (
-          <Box>
-            <Text backgroundColor={active ? 'suggestion' : undefined} color={active ? 'inverseText' : undefined}>
-              {` ${label} `}
-            </Text>
-            <Text> </Text>
-            {active ? (
-              <TextInput
-                value={openaiInputValue}
-                onChange={setOpenaiInputValue}
-                onSubmit={handleOpenAIEnter}
-                cursorOffset={openaiInputCursorOffset}
-                onChangeCursorOffset={setOpenaiInputCursorOffset}
-                columns={openaiColumns}
-                mask={opts?.mask ? '*' : undefined}
-                focus={true}
-              />
-            ) : val ? (
-              <Text color="success">
-                {opts?.mask ? val.slice(0, 8) + '\u00b7'.repeat(Math.max(0, val.length - 8)) : val}
-              </Text>
-            ) : null}
-          </Box>
-        );
-      };
-
-      return (
-        <Box flexDirection="column" gap={1}>
-          <Text bold>OpenAI Compatible API Setup</Text>
-          <Text dimColor>
-            Configure an OpenAI-compatible endpoint (GPT, GLM, Kimi, DeepSeek, Ollama, vLLM, One API…).
-          </Text>
-          <Box flexDirection="column" gap={1}>
-            {renderOpenAIRow('base_url', 'Base URL ')}
-            {renderOpenAIRow('api_key', 'API Key  ', { mask: true })}
-            {renderOpenAIRow('model', 'Model    ')}
-            {renderOpenAIRow('wire_api', 'Wire API ')}
-            {renderOpenAIRow('max_context', 'Max ctx  ')}
-            {renderOpenAIRow('haiku_model', 'Haiku    ')}
-            {renderOpenAIRow('sonnet_model', 'Sonnet   ')}
-            {renderOpenAIRow('opus_model', 'Opus     ')}
+            {renderRow('base_url', 'Base URL    ')}
+            {renderRow('api_key', 'API Key     ', { mask: true })}
+            {renderRow('model', 'Model       ')}
+            {renderRow('max_context', 'Max context ')}
+            {renderRow('haiku_model', 'Haiku       ')}
+            {renderRow('sonnet_model', 'Sonnet      ')}
+            {renderRow('opus_model', 'Opus        ')}
           </Box>
           <Text dimColor>
-            Model overrides all tiers · Wire API: chat (default) or responses · Max ctx: model context window (e.g.
-            128k) so auto-compact triggers correctly
+            Model and Max context are optional · Max context tokens caps the context window (e.g. 128000 or 128k)
           </Text>
           <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
         </Box>
       );
     }
 
-    case 'chatgpt_subscription': {
-      const status = oauthStatus as {
-        state: 'chatgpt_subscription';
-        phase: 'requesting' | 'waiting';
-        deviceCode?: ChatGPTDeviceCode;
-      };
-      const startedRef = useRef(false);
+    case 'openai_endpoint_setup':
+      return <OpenAIEndpointSetup status={oauthStatus} setOAuthStatus={setOAuthStatus} />;
 
-      useEffect(() => {
-        if (startedRef.current) return;
-        startedRef.current = true;
-        let cancelled = false;
-        const controller = new AbortController();
-        async function runLogin() {
-          try {
-            const deviceCode = await requestChatGPTDeviceCode();
-            if (cancelled) return;
-            setOAuthStatus({
-              state: 'chatgpt_subscription',
-              phase: 'waiting',
-              deviceCode,
-            });
-            void openBrowser(deviceCode.verificationUrl);
-            await completeChatGPTDeviceLogin(deviceCode, controller.signal);
-            if (cancelled) return;
-            const env: Record<string, string> = {
-              OPENAI_AUTH_MODE: 'chatgpt',
-            };
-            const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
-              modelType: 'openai',
-              env,
-            };
-            const { error } = updateSettingsForSource('userSettings', settingsUpdate);
-            if (error) {
-              throw new Error('Failed to save settings. Please try again.');
-            }
-            for (const [k, v] of Object.entries(env)) process.env[k] = v;
-            // Drop any cached OpenAI client built from prior OpenAI Compatible
-            // env vars; the ChatGPT Subscription path bypasses the SDK client
-            // entirely (uses createChatGPTResponsesStream) but a stale cached
-            // client would still be picked up by sideQuery.
-            clearOpenAIClientCache();
-            setOAuthStatus({ state: 'success' });
-            void onDone();
-          } catch (err) {
-            if (cancelled) return;
-            setOAuthStatus({
-              state: 'error',
-              message: (err as Error).message,
-              toRetry: {
-                state: 'chatgpt_subscription',
-                phase: 'requesting',
-              },
-            });
-          }
-        }
-        void runLogin();
-        return () => {
-          cancelled = true;
-          controller.abort();
-        };
-      }, [setOAuthStatus, onDone]);
+    case 'openai_model_setup':
+      return <OpenAIModelSetup status={oauthStatus} setOAuthStatus={setOAuthStatus} onDone={onDone} />;
 
-      return (
-        <Box flexDirection="column" gap={1}>
-          <Text bold>ChatGPT Account Setup</Text>
-          {status.phase === 'requesting' && (
-            <Box>
-              <Spinner />
-              <Text>Requesting sign-in code…</Text>
-            </Box>
-          )}
-          {status.phase === 'waiting' && status.deviceCode && (
-            <Box flexDirection="column" gap={1}>
-              <Text>Open this link and sign in with your ChatGPT account:</Text>
-              <Link url={status.deviceCode.verificationUrl}>
-                <Text dimColor>{status.deviceCode.verificationUrl}</Text>
-              </Link>
-              <Text>
-                Enter code: <Text bold>{status.deviceCode.userCode}</Text>
-              </Text>
-              <Box>
-                <Spinner />
-                <Text>Waiting for ChatGPT authorization…</Text>
-              </Box>
-            </Box>
-          )}
-          <Text dimColor>Esc to go back. Device codes expire after 15 minutes.</Text>
-        </Box>
-      );
-    }
+    case 'chatgpt_subscription':
+      return <ChatGPTSubscriptionSetup status={oauthStatus} setOAuthStatus={setOAuthStatus} onDone={onDone} />;
 
     case 'gemini_api': {
       type GeminiField =
@@ -1508,102 +1875,24 @@ function OAuthStatusMessage({
             v1beta API.
           </Text>
           <Box flexDirection="column" gap={1}>
-            {renderGeminiRow('base_url', 'Base URL ')}
-            {renderGeminiRow('api_key', 'API Key  ', { mask: true })}
-            {renderGeminiRow('model', 'Model    ')}
-            {renderGeminiRow('max_context', 'Max ctx  ')}
-            {renderGeminiRow('haiku_model', 'Haiku    ')}
-            {renderGeminiRow('sonnet_model', 'Sonnet   ')}
-            {renderGeminiRow('opus_model', 'Opus     ')}
+            {renderGeminiRow('base_url', 'Base URL    ')}
+            {renderGeminiRow('api_key', 'API Key     ', { mask: true })}
+            {renderGeminiRow('model', 'Model       ')}
+            {renderGeminiRow('max_context', 'Max context ')}
+            {renderGeminiRow('haiku_model', 'Haiku       ')}
+            {renderGeminiRow('sonnet_model', 'Sonnet      ')}
+            {renderGeminiRow('opus_model', 'Opus        ')}
           </Box>
-          <Text dimColor>Model (e.g. gemini-3-pro) overrides all tiers · Max ctx: context window (e.g. 1m)</Text>
+          <Text dimColor>
+            Model (e.g. gemini-3-pro) overrides all tiers · Max context tokens sets the context window (e.g. 1m)
+          </Text>
           <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
         </Box>
       );
     }
 
-    case 'antigravity_oauth': {
-      const status = oauthStatus as {
-        state: 'antigravity_oauth';
-        phase: 'starting' | 'waiting';
-        authUrl?: string;
-      };
-      const startedRef = useRef(false);
-
-      useEffect(() => {
-        if (startedRef.current) return;
-        startedRef.current = true;
-        let cancelled = false;
-        const controller = new AbortController();
-        async function runLogin() {
-          try {
-            await startAntigravityOAuthLogin({
-              signal: controller.signal,
-              onAuthUrl: url => {
-                if (cancelled) return;
-                setOAuthStatus({ state: 'antigravity_oauth', phase: 'waiting', authUrl: url });
-              },
-            });
-            if (cancelled) return;
-            // Auto-configuration: the login only proves identity, so write the
-            // full provider shape here — otherwise the user lands back at the
-            // prompt with a Gemini token and no model routing.
-            const env = buildAntigravityAutoConfigEnv();
-            const { error } = updateSettingsForSource('userSettings', {
-              modelType: 'gemini',
-              env,
-            } as unknown as Parameters<typeof updateSettingsForSource>[1]);
-            if (error) {
-              throw new Error('Failed to save settings. Please try again.');
-            }
-            for (const [k, v] of Object.entries(env)) process.env[k] = v;
-            setOAuthStatus({ state: 'success' });
-            void onDone();
-          } catch (err) {
-            if (cancelled) return;
-            setOAuthStatus({
-              state: 'error',
-              message: (err as Error).message,
-              toRetry: { state: 'antigravity_oauth', phase: 'starting' },
-            });
-          }
-        }
-        void runLogin();
-        return () => {
-          cancelled = true;
-          controller.abort();
-        };
-      }, [setOAuthStatus, onDone]);
-
-      return (
-        <Box flexDirection="column" gap={1}>
-          <Text bold>Antigravity Setup</Text>
-          <Text dimColor>
-            Sign in with the Google account that has Antigravity access. occ then uses Gemini 3 through
-            Antigravity&apos;s backend — no API key, no per-token billing.
-          </Text>
-          {status.phase === 'starting' && (
-            <Box>
-              <Spinner />
-              <Text>Starting local callback server…</Text>
-            </Box>
-          )}
-          {status.phase === 'waiting' && status.authUrl && (
-            <Box flexDirection="column" gap={1}>
-              <Text>A browser window should have opened. If not, open this link:</Text>
-              <Link url={status.authUrl}>
-                <Text dimColor>{status.authUrl}</Text>
-              </Link>
-              <Box>
-                <Spinner />
-                <Text>Waiting for Google authorization…</Text>
-              </Box>
-            </Box>
-          )}
-          <Text dimColor>Esc to go back. First-time accounts may take a few seconds to provision.</Text>
-        </Box>
-      );
-    }
+    case 'antigravity_oauth':
+      return <AntigravityOAuthSetup status={oauthStatus} setOAuthStatus={setOAuthStatus} onDone={onDone} />;
 
     case 'grok_api': {
       type GrokField = 'base_url' | 'api_key' | 'model' | 'max_context';
@@ -1795,12 +2084,14 @@ function OAuthStatusMessage({
           <Text bold>Grok API Setup</Text>
           <Text dimColor>Configure xAI Grok. Base URL defaults to https://api.x.ai/v1 when left empty.</Text>
           <Box flexDirection="column" gap={1}>
-            {renderGrokRow('base_url', 'Base URL ')}
-            {renderGrokRow('api_key', 'API Key  ', { mask: true })}
-            {renderGrokRow('model', 'Model    ')}
-            {renderGrokRow('max_context', 'Max ctx  ')}
+            {renderGrokRow('base_url', 'Base URL    ')}
+            {renderGrokRow('api_key', 'API Key     ', { mask: true })}
+            {renderGrokRow('model', 'Model       ')}
+            {renderGrokRow('max_context', 'Max context ')}
           </Box>
-          <Text dimColor>Model optional (family mapping applies when empty) · Max ctx: context window (e.g. 256k)</Text>
+          <Text dimColor>
+            Model optional (family mapping applies when empty) · Max context tokens sets the context window (e.g. 256k)
+          </Text>
           <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
         </Box>
       );

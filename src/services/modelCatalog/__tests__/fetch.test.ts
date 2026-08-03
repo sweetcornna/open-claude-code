@@ -5,6 +5,8 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const {
   buildAnthropicAuthHeaders,
+  describeOpenAICompatibleModelsFetchError,
+  fetchOpenAICompatibleModelsWith,
   fetchProviderModels,
   parseAnthropicModelsResponse,
   parseGeminiModelsResponse,
@@ -174,6 +176,101 @@ describe('parseGeminiModelsResponse', () => {
 
   test('returns null for a body that is not a model list', () => {
     expect(parseGeminiModelsResponse({})).toBeNull()
+  })
+})
+
+describe('fetchOpenAICompatibleModelsWith', () => {
+  test('uses explicit unsaved credentials and parses the model list', async () => {
+    process.env.OPENAI_API_KEY = 'stale-env-key'
+    process.env.OPENAI_BASE_URL = 'https://stale.example/v1'
+    const seen: Array<{ authorization: string | null; url: string }> = []
+
+    const models = await fetchOpenAICompatibleModelsWith({
+      baseURL: 'https://gateway.example/v1',
+      apiKey: 'fresh-form-key',
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        seen.push({
+          authorization: new Headers(init?.headers).get('authorization'),
+          url: String(input),
+        })
+        return jsonResponse({
+          object: 'list',
+          data: [
+            { id: 'model-b', object: 'model', created: 200 },
+            { id: 'model-a', object: 'model' },
+          ],
+        })
+      }) as unknown as typeof fetch,
+    })
+
+    expect(models).toEqual([{ id: 'model-b', created: 200 }, { id: 'model-a' }])
+    expect(seen).toEqual([
+      {
+        authorization: 'Bearer fresh-form-key',
+        url: 'https://gateway.example/v1/models',
+      },
+    ])
+  })
+
+  test('returns null and reports authentication failures', async () => {
+    let reason = ''
+    const models = await fetchOpenAICompatibleModelsWith({
+      baseURL: 'https://gateway.example/v1',
+      apiKey: 'bad-key',
+      fetchImpl: (async () =>
+        jsonResponse(
+          { error: { message: 'Unauthorized' } },
+          401,
+        )) as unknown as typeof fetch,
+      onError: value => {
+        reason = value
+      },
+    })
+
+    expect(models).toBeNull()
+    expect(reason).toBe('authentication failed (HTTP 401)')
+  })
+
+  test('returns null when the server provides no selectable models', async () => {
+    let reason = ''
+    const models = await fetchOpenAICompatibleModelsWith({
+      baseURL: 'https://gateway.example/v1',
+      apiKey: 'test-key',
+      fetchImpl: (async () =>
+        jsonResponse({ object: 'list', data: [] })) as unknown as typeof fetch,
+      onError: value => {
+        reason = value
+      },
+    })
+
+    expect(models).toBeNull()
+    expect(reason).toBe('the server returned an empty model list')
+  })
+
+  test('keeps the never-throws contract when the error callback fails', async () => {
+    await expect(
+      fetchOpenAICompatibleModelsWith({
+        baseURL: 'not-a-url',
+        apiKey: 'test-key',
+        onError: () => {
+          throw new Error('callback failure')
+        },
+      }),
+    ).resolves.toBeNull()
+  })
+})
+
+describe('describeOpenAICompatibleModelsFetchError', () => {
+  test('explains a missing models endpoint', () => {
+    expect(describeOpenAICompatibleModelsFetchError({ status: 404 })).toBe(
+      'the /models endpoint was not found (HTTP 404)',
+    )
+  })
+
+  test('falls back to an Error message for network failures', () => {
+    expect(
+      describeOpenAICompatibleModelsFetchError(new Error('Connection refused')),
+    ).toBe('Connection refused')
   })
 })
 
