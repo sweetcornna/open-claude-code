@@ -10,7 +10,12 @@ import { registerBundledSkill } from '../bundledSkills.js'
  * This keeps the skill prompt in sync with the actual types.
  */
 function generateSettingsSchema(): string {
-  const jsonSchema = toJSONSchema(SettingsSchema(), { io: 'input' })
+  // unrepresentable: 'any' 必传——settings schema 的 union 里有 z.undefined()，
+  // zod v4 默认 'throw' 会让整个 skill 在加载时崩掉。
+  const jsonSchema = toJSONSchema(SettingsSchema(), {
+    io: 'input',
+    unrepresentable: 'any',
+  })
   return jsonStringify(jsonSchema, null, 2)
 }
 
@@ -301,7 +306,7 @@ Given an event, matcher, target file, and desired behavior, follow this flow. Ea
 
    **Always clean up** — revert the violation, strip the sentinel prefix — whether the proof passed or failed.
 
-   **If proof fails but pipe-test passed and \`jq -e\` passed**: the settings watcher isn't watching \`${PROJECT_DIR_NAME}/\` — it only watches directories that had a settings file when this session started. The hook is written correctly. Tell the user to open \`/hooks\` once (reloads config) or restart — you can't do this yourself; \`/hooks\` is a user UI menu and opening it ends this turn.
+   **If proof fails but pipe-test passed and \`jq -e\` passed**: the hook is written correctly and the settings watcher just hasn't reloaded it. The watcher does cover files created mid-session (it watches each candidate settings directory, falling back to the nearest existing ancestor), so this is now rare — but if it happens, tell the user to open \`/hooks\` once (reloads config) or restart. You can't do this yourself; \`/hooks\` is a user UI menu and opening it ends this turn.
 
 7. **Handoff.** Tell the user the hook is live (or needs \`/hooks\`/restart per the watcher caveat). Point them at \`/hooks\` to review, edit, or disable it later. The UI only shows "Ran N hooks" if a hook errors or is slow — silent success is invisible by design.
 `
