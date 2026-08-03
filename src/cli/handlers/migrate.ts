@@ -20,12 +20,17 @@ import {
 export type MigrateOptions = {
   dryRun: boolean
   force: boolean
+  /** Leave account-bound config behind (plugins, skills, MCP servers, auth keys). */
+  skipAccountData: boolean
 }
 
 export function parseMigrateArgs(args: string[]): MigrateOptions {
   return {
     dryRun: args.includes('--dry-run'),
     force: args.includes('--force'),
+    skipAccountData:
+      args.includes('--skip-account-data') ||
+      args.includes('--no-account-data'),
   }
 }
 
@@ -49,7 +54,10 @@ export async function runMigrate(
   options: MigrateOptions,
   fs: FsProbe = realFsProbe,
 ): Promise<number> {
-  const plan = planMigrationFromClaude(fs, { force: options.force })
+  const plan = planMigrationFromClaude(fs, {
+    force: options.force,
+    skipAccountData: options.skipAccountData,
+  })
   if (options.force) {
     // describeMigrationPlan() would otherwise report "already migrated" and
     // hide the item list the forced run is about to copy.

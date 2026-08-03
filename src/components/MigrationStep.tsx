@@ -44,17 +44,24 @@ type Phase = { kind: 'ask' } | { kind: 'running' } | { kind: 'done'; result: Mig
 export function MigrationStep({ plan, onDone }: { plan: MigrationPlan; onDone(): void }): React.ReactNode {
   const [phase, setPhase] = useState<Phase>({ kind: 'ask' });
 
-  const runMigration = useCallback(() => {
-    setPhase({ kind: 'running' });
-    void executeMigration(plan)
-      .then(result => setPhase({ kind: 'done', result }))
-      .catch((e: unknown) =>
-        setPhase({
-          kind: 'done',
-          result: { copied: [], mcpServersImported: 0, errors: [(e as Error).message] },
-        }),
-      );
-  }, [plan]);
+  const runMigration = useCallback(
+    (skipAccountData: boolean) => {
+      // Re-plan rather than reusing `plan`: the account-bound exclusions are
+      // decided at plan time, so the prop (built without them) would still
+      // carry plugins, skills and MCP servers.
+      const effectivePlan = skipAccountData ? planMigrationFromClaude(realFsProbe, { skipAccountData: true }) : plan;
+      setPhase({ kind: 'running' });
+      void executeMigration(effectivePlan)
+        .then(result => setPhase({ kind: 'done', result }))
+        .catch((e: unknown) =>
+          setPhase({
+            kind: 'done',
+            result: { copied: [], mcpServersImported: 0, errors: [(e as Error).message] },
+          }),
+        );
+    },
+    [plan],
+  );
 
   useKeybindings(
     {
@@ -113,11 +120,17 @@ export function MigrationStep({ plan, onDone }: { plan: MigrationPlan; onDone():
       <Select
         options={[
           { label: 'Yes, copy my settings and extensions', value: 'migrate' },
+          {
+            label: 'Yes, but skip account data (no plugins, skills or MCP servers)',
+            value: 'migrate-no-account',
+          },
           { label: 'No, start fresh (run `occ migrate` any time later)', value: 'skip' },
         ]}
         onChange={value => {
           if (value === 'migrate') {
-            runMigration();
+            runMigration(false);
+          } else if (value === 'migrate-no-account') {
+            runMigration(true);
           } else {
             onDone();
           }

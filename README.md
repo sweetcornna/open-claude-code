@@ -32,11 +32,14 @@
 ### 从官方版迁移
 
 ```sh
-occ migrate --dry-run   # 先看会拷什么
-occ migrate             # 真的拷
+occ migrate --dry-run              # 先看会拷什么
+occ migrate                        # 真的拷
+occ migrate --skip-account-data    # 换账号用：不带走上一个账号的集成
 ```
 
-会拷贝 settings、skills、agents、commands、output-styles、workflows、plugins、rules 和 MCP server 配置。
+会拷贝 settings、skills、agents、commands、output-styles、workflows、plugins、rules 和 MCP server 配置。首启向导里也有同样的三个选项。
+
+`--skip-account-data` 会额外留下**绑定账号的那部分**：已安装的 plugins 和 skills、MCP server 定义，以及 settings.json 里携带凭据或账号身份的键（`env`、`apiKeyHelper`、`awsAuthRefresh`、`forceLoginMethod`、`enabledPlugins`、`extraKnownMarketplaces`）。主题、权限、agents、commands、workflows、rules 和 CLAUDE.md 照常带走。MCP server 是整条排除而不是抹掉密钥——它们的凭据散在自由形式的 `env`/`headers` 里，只清空会留下一个看着已配置、一用就失败的条目。排除了什么会在迁移前列出来，不会静默丢。
 
 **不会拷贝凭据和会话历史** —— 凭据与官方共用，拷过来等于把要拆掉的耦合又搬回来；装好后跑一次 `/login` 即可。`~/.claude` 全程只读，不写不删不改。
 

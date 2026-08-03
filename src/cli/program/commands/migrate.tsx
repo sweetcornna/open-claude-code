@@ -10,7 +10,11 @@ export function registerMigrateCommand(program: CommanderCommand): void {
     )
     .option('--dry-run', 'Show what would be copied without copying anything')
     .option('--force', 'Run again even if a migration already completed')
-    .action(async (options: { dryRun?: boolean; force?: boolean }) => {
+    .option(
+      '--skip-account-data',
+      'Leave account-bound config behind: installed plugins, skills, MCP servers, and settings keys that carry credentials. Use when moving to a different account — you keep preferences, agents, commands and rules.',
+    )
+    .action(async (options: { dryRun?: boolean; force?: boolean; skipAccountData?: boolean }) => {
       // Normally unreachable — cli.tsx intercepts `migrate` before bootstrap.
       // Kept so the command appears in --help, and as a fallback if the fast
       // path is ever bypassed. Same arrangement as `autonomy`.
@@ -18,6 +22,7 @@ export function registerMigrateCommand(program: CommanderCommand): void {
       const code = await runMigrate({
         dryRun: options.dryRun === true,
         force: options.force === true,
+        skipAccountData: options.skipAccountData === true,
       });
       // Explicit exit: this process holds telemetry/MCP handles and will not
       // terminate on its own.
