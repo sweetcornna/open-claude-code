@@ -1,6 +1,11 @@
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
+import {
+  checkSpawnBudgets,
+  registerSpawn,
+  unregisterSpawn,
+} from './spawnLimits.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
@@ -360,6 +365,14 @@ export async function* runAgent({
   )
 
   const agentId = override?.agentId ? override.agentId : createAgentId()
+
+  // Spawn budgets (official 2.1.212/217/172 parity). Single choke point:
+  // every real agent run — AgentTool spawn, fork, in-process teammate,
+  // resume — flows through here. Depth rides on queryTracking.depth, which
+  // createSubagentContext already increments per nesting level (env vars
+  // cannot carry depth: subagents share process.env with siblings).
+  checkSpawnBudgets(toolUseContext.queryTracking?.depth)
+  registerSpawn(agentId)
 
   // Route this agent's transcript into a grouping subdirectory if requested
   // (e.g. workflow subagents write to subagents/workflows/<runId>/).
@@ -860,6 +873,8 @@ export async function* runAgent({
       agentDefinition.callback()
     }
   } finally {
+    // Release the concurrency slot on every exit path (normal/abort/error)
+    unregisterSpawn(agentId)
     // End Langfuse sub-agent trace (no-op if not configured)
     endTrace(subTrace)
     // Clean up agent-specific MCP servers (runs on normal completion, abort, or error)
