@@ -22,6 +22,10 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 // defaults); registered under the canonical '.js' specifier so all writers
 // hit the same registry entry — see tests/mocks/auth.ts.
 import { authMockWith } from '../../../../tests/mocks/auth.js'
+import { makeSharedModuleMock } from '../../../../tests/mocks/sharedModuleMock.js'
+import * as realClaudeAiLimits from 'src/services/claudeAiLimits.js'
+import * as realCostTracker from 'src/cost-tracker.js'
+import * as realConfig from 'src/utils/config/config.js'
 mock.module(
   'src/utils/auth/auth.js',
   authMockWith({
@@ -30,19 +34,30 @@ mock.module(
   }),
 )
 
-mock.module('src/services/claudeAiLimits.ts', () => ({
-  currentLimits: { isUsingOverage: false },
-}))
+// The three mocks below go through the shared complete-surface pattern
+// (overrides listed, every other export delegates to the real module).
+// Hand-rolled partial surfaces here used to poison later files in the same
+// process: on Linux ordering, local-memory tests died on cost-tracker's
+// missing addToTotalLinesChanged. See tests/mocks/sharedModuleMock.ts.
+makeSharedModuleMock(
+  'src/services/claudeAiLimits.js',
+  realClaudeAiLimits,
+).setup({
+  currentLimits: {
+    isUsingOverage: false,
+  } as typeof realClaudeAiLimits.currentLimits,
+})
 
-mock.module('src/cost-tracker.ts', () => ({
+makeSharedModuleMock('src/cost-tracker.js', realCostTracker).setup({
   formatTotalCost: () => 'Total cost: $0.0012',
-}))
+})
 
-mock.module('src/utils/config/config.ts', () => ({
-  getCurrentProjectConfig: () => ({}),
+makeSharedModuleMock('src/utils/config/config.js', realConfig).setup({
+  getCurrentProjectConfig: () =>
+    ({}) as ReturnType<typeof realConfig.getCurrentProjectConfig>,
   saveCurrentProjectConfig: () => {},
-  getGlobalConfig: () => ({}),
-}))
+  getGlobalConfig: () => ({}) as ReturnType<typeof realConfig.getGlobalConfig>,
+})
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

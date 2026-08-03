@@ -216,12 +216,20 @@ export function isClaudeSettingsPath(filePath: string): boolean {
   // with paths like .cLauDe/Settings.locaL.json
   const normalizedPath = normalizeCaseForComparison(expandedPath)
 
+  // SECURITY: canonicalize separators to '/' on both sides of every
+  // comparison. On Windows `sep` is '\\' but Git Bash/MinGW (and many tools)
+  // hand us POSIX-style paths — a separator mismatch must fail toward
+  // protection, not bypass it. On POSIX the replacement only affects
+  // pathological filenames containing literal backslashes, and only in the
+  // conservative direction (more asking, never less).
+  const slashNormalized = normalizedPath.replace(/\\/g, '/')
+
   // Protect both occ and legacy settings in every project, not only the
   // current one. Legacy project settings remain executable compatibility input.
   if (
     PROJECT_CONFIG_DIR_NAMES.some(projectDir =>
       ['settings.json', 'settings.local.json'].some(fileName =>
-        normalizedPath.endsWith(`${sep}${projectDir}${sep}${fileName}`),
+        slashNormalized.endsWith(`/${projectDir}/${fileName}`),
       ),
     )
   ) {
@@ -230,7 +238,9 @@ export function isClaudeSettingsPath(filePath: string): boolean {
   // Check for current project's settings files (including managed settings and CLI args)
   // Both paths are now absolute and normalized for consistent comparison
   return getSettingsPaths().some(
-    settingsPath => normalizeCaseForComparison(settingsPath) === normalizedPath,
+    settingsPath =>
+      normalizeCaseForComparison(settingsPath).replace(/\\/g, '/') ===
+      slashNormalized,
   )
 }
 
