@@ -40,7 +40,7 @@ describe('occ update isolation', () => {
   test('targets only the open-claude-code package', () => {
     const source = readSource('cli/updateOcc.ts')
 
-    expect(NPM_PACKAGE_NAME).toBe('open-claude-code')
+    expect(NPM_PACKAGE_NAME).toBe('@sweetcornna/open-claude-code')
     expect(source).toContain('const PACKAGE_NAME = NPM_PACKAGE_NAME')
     expect(source).not.toContain('@anthropic-ai/claude-code')
   })

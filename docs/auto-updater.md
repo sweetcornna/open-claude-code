@@ -22,23 +22,23 @@ occ update
 使用 npm 安装或更新：
 
 ```bash
-npm install -g open-claude-code
+npm install -g @sweetcornna/open-claude-code
 occ update
 ```
 
 使用 Bun 安装或更新：
 
 ```bash
-bun install -g open-claude-code
+bun install -g @sweetcornna/open-claude-code
 occ-bun update
 ```
 
 也可以绕过自动检测，直接运行对应包管理器命令：
 
 ```bash
-npm install -g open-claude-code@latest
+npm install -g @sweetcornna/open-claude-code@latest
 # 或
-bun install -g open-claude-code@latest
+bun install -g @sweetcornna/open-claude-code@latest
 ```
 
 ## `occ update` 的执行流程
@@ -49,7 +49,7 @@ bun install -g open-claude-code@latest
 2. 从 npm registry 查询 `open-claude-code@latest`。
 3. 如果当前版本已是最新版本，则直接退出。
 4. 检测当前安装是否位于 Bun 的全局安装目录。
-5. Bun 全局安装使用 `bun install -g open-claude-code@latest`；其他安装使用 `npm install -g open-claude-code@latest`。
+5. Bun 全局安装使用 `bun install -g @sweetcornna/open-claude-code@latest`；其他安装使用 `npm install -g @sweetcornna/open-claude-code@latest`。
 6. 更新失败时打印等价的手动恢复命令。
 
 包名来自 `src/constants/brand.ts` 的 `NPM_PACKAGE_NAME`，不是在更新器中重复维护的字符串。
@@ -97,7 +97,7 @@ bun dist/cli-bun.js --version
 如果 `occ update` 无法访问 npm registry，可直接检查包版本：
 
 ```bash
-npm view open-claude-code@latest version
+npm view @sweetcornna/open-claude-code@latest version
 ```
 
 如果全局安装缺少写权限，修复 npm/Bun 的用户级全局目录配置；不要通过删除 `~/.claude`、卸载官方 Claude Code 或覆盖 `claude` 命令来解决。
