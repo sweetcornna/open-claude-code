@@ -223,8 +223,23 @@ attachment 编排、skill 搜索）和缓存工程（静态/动态边界、`DANG
 | B | 任务二核心（Responses 通用化） | **✅ 2026-08-02 核心完成**（见下） |
 | C | 任务三档案模型 + UI + Codex OAuth 补强 | **✅ 核心完成**（见下） |
 | D | M4.2 sampling + M4.3 收尾 | **✅ sampling 完成**（opt-in） |
-| E | 任务一 1A prompt 审计（小步多提交）+ 1C 低成本红表 | 部分（web search 会话上限已做） |
-| F | 1B teamMemorySync 评估移植 | 最后 |
+| E | 任务一 1A prompt 审计（小步多提交）+ 1C 低成本红表 | **✅ 2026-08-02 大部完成**（见下） |
+| F | 1B teamMemorySync 评估移植 | **✅ 已裁决**：同步核心弃（服务端耦合），secretScanner 已移植接线 |
+
+**任务一实施结果（2026-08-02，详见 ~/.claude/plans/claude-5-ancient-seal.md 与 git log）**：
+- 瘦身轨 C1-C7 全部完成：工具示例段删除、BashTool git 段压缩、护栏 runner 重写
+  （删约 40 个反向断言 + 新增反向回归/结构/清单成员三组锚点，成员断言当场抓到
+  「5 个延迟工具被谎称可直调」真 bug）、system prompt 冗余删除与矛盾统一
+  （core tools 清单唯一化、emoji/colon 共享常量、env 段合并）、CLAUDE.md 470→122 行。
+- 官方补齐 M1-M6：FORCE_HYPERLINK 真 bug、MCP request_timeout_ms、OTel 截断可配
+  + logOTelEvent 真空、LSP LRU、shim 指针注释；M2 刀 A（exec 包装器、/private 路径、
+  find/docker/podman/file 危险 flag 门、B11 保留注释）；M3（subagent 三限额单咽喉点、
+  secretScanner 脱敏落盘、/clear 重置、stop hook 阻断上限、预算拦 spawn）；
+  M4 权限匹配器三层缓存（含失效等价用例）；M5 核心 sandbox.filesystem.disabled；
+  M6 消息合并去二次方（oracle 逐字节等价）。
+- **剩余**：M5 的 B3 其余 sandbox 设置（strictAllowlist、deniedDomains 独立键、
+  credentials）与 B6 hook 事件补全（DirectoryAdded、args exec 形式、updatedToolOutput）；
+  M2 刀 B 与清查第二轮批次（B4/B5/B7/B8/B9）；types/tools.ts 跨包类型迁移（独立事项）。
 
 **里程碑 C 已落地**：`src/services/providerProfiles/`（档案数据层 profiles.ts + 激活编排
 activate.ts：全形状写入、原子写 0600、`/provider save|use|list|delete` 子命令）；
