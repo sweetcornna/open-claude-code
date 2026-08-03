@@ -123,6 +123,29 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
 }
 
 /**
+ * Per-model 1M-context opt-in. CLAUDE_CODE_1M_CONTEXT_MODELS is a
+ * comma-separated list of model names or substrings (case-insensitive); when
+ * the resolved main-loop model matches one, the '[1m]' suffix is appended so
+ * the existing suffix path applies end to end (1M context window + the 1M beta
+ * header), exactly as if the user had picked `sonnet[1m]` by hand. Models that
+ * already carry the suffix are left untouched. Exported for unit tests.
+ */
+export function apply1mContextOptIn(
+  model: ModelName,
+  optInList: string | undefined = process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
+): ModelName {
+  if (!optInList) return model
+  if (/\[1m\]/i.test(model)) return model
+  const lower = model.toLowerCase()
+  const matched = optInList
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+    .some(needle => lower.includes(needle))
+  return matched ? `${model}[1m]` : model
+}
+
+/**
  * Get the main loop model to use for the current session.
  *
  * Model Selection Priority Order:
@@ -137,9 +160,9 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
 export function getMainLoopModel(): ModelName {
   const model = getUserSpecifiedModelSetting()
   if (model !== undefined && model !== null) {
-    return parseUserSpecifiedModel(model)
+    return apply1mContextOptIn(parseUserSpecifiedModel(model))
   }
-  return getDefaultMainLoopModel()
+  return apply1mContextOptIn(getDefaultMainLoopModel())
 }
 
 export function getBestModel(): ModelName {

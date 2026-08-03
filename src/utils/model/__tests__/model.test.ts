@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { firstPartyNameToCanonical } from '../model'
+import { apply1mContextOptIn, firstPartyNameToCanonical } from '../model'
 
 describe('firstPartyNameToCanonical', () => {
   test('maps opus-4-6 full name to canonical', () => {
@@ -87,6 +87,41 @@ describe('firstPartyNameToCanonical', () => {
   test('maps sonnet-4', () => {
     expect(firstPartyNameToCanonical('claude-sonnet-4-20240101')).toBe(
       'claude-sonnet-4',
+    )
+  })
+})
+
+describe('apply1mContextOptIn', () => {
+  test('appends [1m] when the model matches an opt-in entry', () => {
+    expect(apply1mContextOptIn('claude-sonnet-4-6', 'claude-sonnet-4-6')).toBe(
+      'claude-sonnet-4-6[1m]',
+    )
+    expect(apply1mContextOptIn('claude-opus-4-7', 'sonnet, opus')).toBe(
+      'claude-opus-4-7[1m]',
+    )
+  })
+
+  test('matching is case-insensitive and substring-based', () => {
+    expect(apply1mContextOptIn('Claude-Sonnet-4-6', 'SONNET')).toBe(
+      'Claude-Sonnet-4-6[1m]',
+    )
+  })
+
+  test('leaves non-matching and already-suffixed models untouched', () => {
+    expect(apply1mContextOptIn('claude-haiku-4-5', 'sonnet')).toBe(
+      'claude-haiku-4-5',
+    )
+    expect(apply1mContextOptIn('claude-sonnet-4-6[1m]', 'sonnet')).toBe(
+      'claude-sonnet-4-6[1m]',
+    )
+  })
+
+  test('empty or unset opt-in list is a no-op', () => {
+    expect(apply1mContextOptIn('claude-sonnet-4-6', undefined)).toBe(
+      'claude-sonnet-4-6',
+    )
+    expect(apply1mContextOptIn('claude-sonnet-4-6', ' , ')).toBe(
+      'claude-sonnet-4-6',
     )
   })
 })

@@ -98,6 +98,19 @@ export async function* queryModelGemini(
           ...(options.temperatureOverride !== undefined && {
             temperature: options.temperatureOverride,
           }),
+          // Opt-in output cap: without it the endpoint's own default applies
+          // (the historical behavior). GEMINI_MAX_TOKENS wins over the generic key.
+          ...(() => {
+            const cap = parseInt(
+              process.env.GEMINI_MAX_TOKENS ??
+                process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ??
+                '',
+              10,
+            )
+            return Number.isFinite(cap) && cap > 0
+              ? { maxOutputTokens: cap }
+              : {}
+          })(),
           ...(thinkingConfig.type !== 'disabled' && {
             thinkingConfig: {
               includeThoughts: true,
