@@ -93,19 +93,26 @@ bun run build    # 构建
 
 构建采用 code splitting 多文件打包，产物在 `dist/`，Bun 和 Node.js 都能启动。
 
-### 👤 首次配置 `/login`
+### 👤 首次配置（向导 / `/login`）
 
-首次运行后在 REPL 里输入 `/login`，选 **Anthropic Compatible** 就能对接第三方兼容服务（不需要 Anthropic 官方账号）。OpenAI、Gemini、Grok 各有对应栏目。
+第一次运行 `occ` 会自动进入配置向导；之后想换供应商，在 REPL 里输入 `/login` 随时重配。向导里能选：
+
+- **Claude 订阅 / Anthropic Console** —— 浏览器 OAuth 登录，不用填任何东西；
+- **Anthropic 兼容 / OpenAI 兼容 / Gemini / Grok** —— 自己填端点和 key，跑 GPT、GLM、Kimi、DeepSeek、Ollama、vLLM 等任意兼容服务；
+- **国产模型 preset** —— DeepSeek / 智谱 GLM / 千问 / MiMo，选好模型填个 key 就能用，上下文窗口自动配好。
+
+手填表单的字段（除 Base URL / API Key 外都可留空）：
 
 | 字段 | 说明 | 示例 |
 | --- | --- | --- |
 | Base URL | API 服务地址 | `https://api.example.com/v1` |
 | API Key | 认证密钥 | `sk-xxx` |
-| Haiku Model | 快速模型 ID | `claude-haiku-4-5-20251001` |
-| Sonnet Model | 均衡模型 ID | `claude-sonnet-4-6` |
-| Opus Model | 高性能模型 ID | `claude-opus-4-6` |
+| Model | 单一模型名，填了就全程用它 | `glm-4.6` |
+| Wire API | 协议（仅 OpenAI 表单）：`chat`（默认）或 `responses` | `chat` |
+| Max ctx | 模型的最大上下文。填对了，occ 会在快满时自动压缩对话，而不是撞上"prompt is too long" | `128k` / `1m` / `200000` |
+| Haiku / Sonnet / Opus | 按档位分别指定模型（不想区分就只填 Model） | `claude-sonnet-4-6` |
 
-**Tab / Shift+Tab** 切换字段，**Enter** 确认，最后一个字段按 Enter 保存。
+**Tab / Shift+Tab** 切换字段，**Enter** 确认，最后一个字段按 Enter 保存。配置细节（环境变量、按模型开 1M 上下文、`/provider` 档案切换）见 [`docs/features/providers.md`](./docs/features/providers.md)。
 
 ## 主要特性
 
@@ -120,7 +127,7 @@ bun run build    # 构建
 | **Web Search** | 内置网页搜索，支持 Bing / Brave | [文档](./docs/features/web-browser-tool.md) |
 | **Poor Mode** | 穷鬼模式，关掉记忆提取和键入建议，大幅减少并发请求 | `/poor` 开关 |
 | **Channels 频道通知** | MCP 服务器把外部消息推进会话（飞书/Slack/Discord 等） | [文档](./docs/features/channels.md) |
-| **自定义模型供应商** | OpenAI / Anthropic / Gemini / Grok 兼容 | [文档](./docs/features/all-features-guide.md) |
+| **自定义模型供应商** | OpenAI 兼容（GPT/GLM/Kimi/DeepSeek）/ Anthropic 兼容 / Gemini / Grok，可配协议、模型与最大上下文 | [文档](./docs/features/providers.md) |
 | Voice Mode | 语音输入，支持豆包（`/voice doubao`） | [文档](./docs/features/voice-mode.md) |
 | Computer Use | 屏幕截图、键鼠控制 | [文档](./docs/features/computer-use.md) |
 | **Chrome 浏览器工具** | `occ --chrome` 接上 Google `chrome-devtools-mcp`：导航、点击、快照、控制台/网络、性能 trace。改页面的操作都要确认 | [文档](./docs/features/chrome-devtools-mcp.md) |
@@ -176,4 +183,4 @@ bun run build:vite
 
 ## 许可证
 
-本项目仅供学习研究用途。Claude Code 的所有权利归 [Anthropic](https://www.anthropic.com/) 所有。
+本仓库的还原与原创工作以 [MIT License](./LICENSE) 发布，仅供学习研究用途。"Claude"、"Claude Code" 与 "Anthropic" 是 [Anthropic](https://www.anthropic.com/) 的商标；本项目与 Anthropic 无关联、未获其背书。

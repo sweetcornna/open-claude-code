@@ -1,6 +1,8 @@
 # 多模型 / 多协议配置（GPT · GLM · Kimi · DeepSeek · Gemini · Grok）
 
-occ 通过流适配器把第三方 API 转成内部 Anthropic 格式，下游零改动。本文是配置真源；交互式配置入口是**首启向导**或 `/login`。
+occ 不只连 Claude：任何 OpenAI 兼容端点、Gemini 原生 API、Grok、以及自建的 Anthropic 兼容服务都能当主力模型用。实现方式是流适配器——第三方 API 的请求/响应在边界处转成内部 Anthropic 格式，工具调用、流式输出、上下文管理等所有下游逻辑零改动。
+
+**大多数人不需要读完本文**：首次运行 `occ` 的向导（或之后的 `/login`）会引导你选供应商、填 key 和模型，国产模型还有现成 preset。本文是给需要手动调环境变量、写脚本或排查问题的人准备的配置真源。
 
 ## 一、选择 provider
 
