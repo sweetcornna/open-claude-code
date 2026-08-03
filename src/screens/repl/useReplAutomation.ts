@@ -62,6 +62,8 @@ export type ReplAutomationOpts = {
   queryGuard: QueryGuard
   wasAborted: boolean
   addNotification: ReturnType<typeof useNotifications>['addNotification']
+  /** Live terminal focus state — consumed by proactive ticks. */
+  getIsTerminalFocused: () => boolean
 }
 
 /**
@@ -94,6 +96,7 @@ export function useReplAutomation({
   queryGuard,
   wasAborted,
   addNotification,
+  getIsTerminalFocused,
 }: ReplAutomationOpts) {
   // Voice input integration (VOICE_MODE builds only)
   const voiceIntegrationResult = useVoiceIntegration({
@@ -155,6 +158,7 @@ export function useReplAutomation({
     queuedCommandsLength: queuedCommands.length,
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
     isInPlanMode: toolPermissionContext.mode === 'plan',
+    getIsTerminalFocused,
     onQueueTick: (command: QueuedCommand) => enqueue(command),
   })
 

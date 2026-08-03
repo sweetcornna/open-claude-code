@@ -360,7 +360,6 @@ import { TungstenLiveMonitor } from '@open-claude-code/builtin-tools/tools/Tungs
 // For full browser interaction use the Chrome DevTools MCP tools (--chrome).
 import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js';
 import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
-import { CompanionSprite, CompanionFloatingBubble, MIN_COLS_FOR_FULL_SPRITE } from '../buddy/CompanionSprite.js';
 import { DevBar } from '../components/DevBar.js';
 import { UltraplanChoiceDialog } from '../components/ultraplan/UltraplanChoiceDialog.js';
 import { UltraplanLaunchDialog } from '../components/ultraplan/UltraplanLaunchDialog.js';
@@ -1207,17 +1206,9 @@ export function REPL({
       } else {
         onScrollAway(handle);
         if (feature('KAIROS')) maybeLoadOlder(handle);
-        // Dismiss the companion bubble on scroll — it's absolute-positioned
-        // at bottom-right and covers transcript content. Scrolling = user is
-        // trying to read something under it.
-        if (feature('BUDDY')) {
-          setAppState(prev =>
-            prev.companionReaction === undefined ? prev : { ...prev, companionReaction: undefined },
-          );
-        }
       }
     },
-    [onRepin, onScrollAway, maybeLoadOlder, setAppState],
+    [onRepin, onScrollAway, maybeLoadOlder],
   );
   // Deferred SessionStart hook messages — REPL renders immediately and
   // hook messages are injected when they resolve. awaitPendingHooks()
@@ -2731,16 +2722,16 @@ export function REPL({
         getUserContext(),
         getSystemContext(),
       ]);
+      // Cache invariant: userContext is rendered by prependUserContext into
+      // the FIRST user message of every request \u2014 the head of the message
+      // prefix. Nothing per-turn-variable may live here: a `terminalFocus`
+      // key used to be added/removed as the terminal gained/lost focus,
+      // changing the head message's bytes and busting the prompt cache for
+      // the ENTIRE message history on every flip. Focus state now rides on
+      // the proactive tick at the conversation tail (useProactive.ts).
       const userContext = {
         ...baseUserContext,
         ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
-        ...((feature('PROACTIVE') || feature('KAIROS')) &&
-        proactiveModule?.isProactiveActive() &&
-        !terminalFocusRef.current
-          ? {
-              terminalFocus: 'The terminal is unfocused \u2014 the user is not actively watching.',
-            }
-          : {}),
       };
       queryCheckpoint('query_context_loading_end');
 
@@ -2768,20 +2759,6 @@ export function REPL({
         querySource: getQuerySourceForREPL(),
       })) {
         onQueryEvent(event);
-      }
-
-      if (feature('BUDDY') && typeof (globalThis as Record<string, unknown>).fireCompanionObserver === 'function') {
-        const _fireCompanionObserver = (globalThis as Record<string, unknown>).fireCompanionObserver as (
-          msgs: unknown,
-          cb: (r: unknown) => void,
-        ) => void;
-        void _fireCompanionObserver(messagesRef.current, reaction =>
-          setAppState(prev =>
-            prev.companionReaction === (reaction as typeof prev.companionReaction)
-              ? prev
-              : { ...prev, companionReaction: reaction as typeof prev.companionReaction },
-          ),
-        );
       }
 
       queryCheckpoint('query_end');
@@ -4184,6 +4161,7 @@ export function REPL({
     queryGuard,
     wasAborted,
     addNotification,
+    getIsTerminalFocused: () => terminalFocusRef.current,
   });
 
   useEffect(() => {
@@ -4600,18 +4578,6 @@ export function REPL({
       />
     ) : null;
 
-  // Narrow terminals: companion collapses to a one-liner that REPL stacks
-  // on its own row (above input in fullscreen, below in scrollback) instead
-  // of row-beside. Wide terminals keep the row layout with sprite on the right.
-  const companionNarrow = transcriptCols < MIN_COLS_FOR_FULL_SPRITE;
-  // Hide the sprite when PromptInput early-returns BackgroundTasksDialog.
-  // The sprite sits as a row sibling of PromptInput, so the dialog's Pane
-  // divider draws at useTerminalSize() width but only gets terminalWidth -
-  // spriteWidth — divider stops short and dialog text wraps early. Don't
-  // check footerSelection: pill FOCUS (arrow-down to tasks pill) must keep
-  // the sprite visible so arrow-right can navigate to it.
-  const companionVisible = !toolJSX?.shouldHidePromptInput && !focusedInputDialog && !showBashesDialog;
-
   // In fullscreen, ALL local-jsx slash commands float in the modal slot —
   // FullscreenLayout wraps them in an absolute-positioned bottom-anchored
   // pane (▔ divider, ModalContext). Pane/Dialog inside detect the context
@@ -4669,9 +4635,6 @@ export function REPL({
         <FullscreenLayout
           scrollRef={scrollRef}
           overlay={toolPermissionOverlay}
-          bottomFloat={
-            feature('BUDDY') && companionVisible && !companionNarrow ? <CompanionFloatingBubble /> : undefined
-          }
           modal={centeredModal}
           modalScrollRef={modalScrollRef}
           dividerYRef={dividerYRef}
@@ -4757,14 +4720,7 @@ export function REPL({
             </>
           }
           bottom={
-            <Box
-              flexDirection={feature('BUDDY') && companionNarrow ? 'column' : 'row'}
-              width="100%"
-              alignItems={feature('BUDDY') && companionNarrow ? undefined : 'flex-end'}
-            >
-              {feature('BUDDY') && companionNarrow && isFullscreenEnvEnabled() && companionVisible ? (
-                <CompanionSprite />
-              ) : null}
+            <Box flexDirection="row" width="100%" alignItems="flex-end">
               <Box flexDirection="column" flexGrow={1}>
                 {isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
                 {permissionStickyFooter}
@@ -5429,9 +5385,6 @@ export function REPL({
                 )}
                 {process.env.USER_TYPE === 'ant' && <DevBar />}
               </Box>
-              {feature('BUDDY') && !(companionNarrow && isFullscreenEnvEnabled()) && companionVisible ? (
-                <CompanionSprite />
-              ) : null}
             </Box>
           }
         />
