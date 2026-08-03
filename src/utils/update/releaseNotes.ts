@@ -25,14 +25,26 @@ const MAX_RELEASE_NOTES_SHOWN = 5
  * 2. We fetch the changelog in the background and store it in config
  * 3. Next time the user starts Claude, the cached changelog is available immediately
  */
+/**
+ * occ's own changelog, not upstream Claude Code's. Pointing these at
+ * anthropics/claude-code made the in-app "what's new" feed show release notes
+ * for a different product — versions that never shipped here, and none of the
+ * changes that did.
+ *
+ * The `main` branch is the source: `bun run release <version>` writes the new
+ * section to CHANGELOG.md and the release commit lands on main, so the raw URL
+ * is current the moment the tag is pushed.
+ */
 export const CHANGELOG_URL =
-  'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md'
+  'https://github.com/sweetcornna/open-claude-code/blob/main/CHANGELOG.md'
 const RAW_CHANGELOG_URL =
-  'https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md'
+  'https://raw.githubusercontent.com/sweetcornna/open-claude-code/refs/heads/main/CHANGELOG.md'
 
 /**
  * Get the path for the cached changelog file.
- * The changelog is stored at ~/.claude/cache/changelog.md
+ * The changelog is stored under occ's own config dir (`~/.occ/cache/changelog.md`
+ * by default) — getClaudeConfigHomeDir is a forwarder to occConfigDir(), so it
+ * honours OCC_CONFIG_DIR / CLAUDE_CONFIG_DIR and never touches `~/.claude`.
  */
 function getChangelogCachePath(): string {
   return join(getClaudeConfigHomeDir(), 'cache', 'changelog.md')

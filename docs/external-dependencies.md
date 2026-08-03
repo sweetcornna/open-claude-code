@@ -150,9 +150,9 @@ WebSearch 默认聚合多个搜索源。其中 `free` 源（免密钥，默认�
 
 ### 16. GitHub Raw Content
 
-- **端点**: `https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md`
+- **端点**: `https://raw.githubusercontent.com/sweetcornna/open-claude-code/refs/heads/main/CHANGELOG.md`（occ 自己的更新说明；`bun run release` 写入、随发布提交推到 main）
 - **端点**: `https://raw.githubusercontent.com/anthropics/claude-plugins-official/refs/heads/stats/stats/plugin-installs.json`
-- **文件**: `src/utils/releaseNotes.ts`, `src/utils/plugins/installCounts.ts`
+- **文件**: `src/utils/update/releaseNotes.ts`, `src/utils/plugins/installCounts.ts`
 
 ### 17. Chrome UX Report (CrUX)
 
