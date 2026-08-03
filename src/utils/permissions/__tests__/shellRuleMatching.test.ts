@@ -145,3 +145,41 @@ describe('suggestionForPrefix', () => {
     expect((result[0] as any).rules[0]!.ruleContent).toBe('npm:*')
   })
 })
+
+// ─── compiled-pattern / parsed-rule caches (2.1.208 parity) ─────────────
+
+describe('pattern caches preserve decision equivalence', () => {
+  test('repeated matches hit the cache with identical results', () => {
+    // First call compiles, subsequent calls hit the cache — results must
+    // be identical, including the stateless .test() behavior (no 'g' flag).
+    for (let i = 0; i < 3; i++) {
+      expect(matchWildcardPattern('git *', 'git add file.ts')).toBe(true)
+      expect(matchWildcardPattern('git *', 'npm install')).toBe(false)
+      expect(matchWildcardPattern('git \\*', 'git *')).toBe(true)
+    }
+  })
+
+  test('case-insensitive variant is cached under a distinct key', () => {
+    expect(matchWildcardPattern('GIT *', 'git add', false)).toBe(false)
+    expect(matchWildcardPattern('GIT *', 'git add', true)).toBe(true)
+    // Repeat to exercise both cache entries
+    expect(matchWildcardPattern('GIT *', 'git add', false)).toBe(false)
+    expect(matchWildcardPattern('GIT *', 'git add', true)).toBe(true)
+  })
+
+  test('rule-set changes are inherently cache-safe (keys ARE the rule strings)', () => {
+    // Flipping a rule from allow to deny means the CALLER consults a
+    // different rule list — the cache is keyed by rule string, so a changed
+    // rule is a different key and stale entries can never be consulted.
+    expect(parsePermissionRule('git:*')).toEqual({
+      type: 'prefix',
+      prefix: 'git',
+    })
+    expect(parsePermissionRule('git push:*')).toEqual({
+      type: 'prefix',
+      prefix: 'git push',
+    })
+    // Cached instance is shared and stable across calls
+    expect(parsePermissionRule('git:*')).toBe(parsePermissionRule('git:*'))
+  })
+})
