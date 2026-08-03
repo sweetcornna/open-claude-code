@@ -5,12 +5,15 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const {
   buildAnthropicAuthHeaders,
-  describeOpenAICompatibleModelsFetchError,
-  fetchOpenAICompatibleModelsWith,
   fetchProviderModels,
   parseAnthropicModelsResponse,
   parseGeminiModelsResponse,
 } = await import('../fetch.js')
+
+const {
+  describeOpenAICompatibleModelsFetchError,
+  fetchOpenAICompatibleModelsWith,
+} = await import('../fetchExplicit.js')
 
 const { clearOpenAIClientCache } = await import(
   'src/services/api/openai/client.js'
