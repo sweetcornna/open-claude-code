@@ -1,5 +1,5 @@
 import { afterAll, describe, test, expect, mock, beforeEach } from 'bun:test'
-import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.ts'
+import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.js'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 

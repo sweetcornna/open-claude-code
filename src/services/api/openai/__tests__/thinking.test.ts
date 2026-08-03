@@ -7,7 +7,7 @@ import {
   afterEach,
   mock,
 } from 'bun:test'
-import { setupEnvUtilsMock } from '../../../../../tests/mocks/envUtils.ts'
+import { setupEnvUtilsMock } from '../../../../../tests/mocks/envUtils.js'
 import {
   isOpenAIThinkingEnabled,
   buildOpenAIRequestBody,

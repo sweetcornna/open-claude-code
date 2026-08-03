@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.ts'
+import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.js'
 import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
 import { mock } from 'bun:test'

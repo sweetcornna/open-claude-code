@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from 'bun:test'
-import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.ts'
+import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.js'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

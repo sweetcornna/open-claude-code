@@ -8,7 +8,7 @@
  * CI. See tests/mocks/sharedModuleMock.ts for the mechanism that fixes this.
  *
  * Usage:
- *   import { setupGrowthbookMock } from 'tests/mocks/growthbook.ts'
+ *   import { setupGrowthbookMock } from 'tests/mocks/growthbook.js'
  *   setupGrowthbookMock({ getFeatureValue_CACHED_MAY_BE_STALE: () => false })
  */
 
@@ -16,7 +16,7 @@ import * as realGrowthbook from 'src/services/analytics/growthbook.js'
 import {
   makeSharedModuleMock,
   type ModuleOverrides,
-} from './sharedModuleMock.ts'
+} from './sharedModuleMock.js'
 
 export type GrowthbookOverrides = ModuleOverrides<typeof realGrowthbook>
 

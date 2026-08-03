@@ -105,8 +105,7 @@ export function MigrationStep({ plan, onDone }: { plan: MigrationPlan; onDone():
         {describeMigrationPlan(plan)
           .split('\n')
           .map((line, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static text lines, never reordered
-            <Text key={i} dimColor={!line.startsWith('Found')}>
+            <Text key={`${i}-${line.slice(0, 20)}`} dimColor={!line.startsWith('Found')}>
               {line}
             </Text>
           ))}
