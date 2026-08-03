@@ -92,7 +92,10 @@ async function main(): Promise<void> {
   // migrating from Claude Code has no occ configuration yet, so the usual
   // startup would show them the trust dialog and onboarding before the
   // migration could run. Also registered in main.tsx so it appears in --help.
-  if (args[0] === 'migrate') {
+  // `--help` deliberately falls through to commander: this fast path runs the
+  // migration for real, so intercepting a help request would copy files at the
+  // moment the user asked what the command does.
+  if (args[0] === 'migrate' && !args.includes('--help') && !args.includes('-h')) {
     profileCheckpoint('cli_migrate_path');
     const { parseMigrateArgs, runMigrate } = await import('../cli/handlers/migrate.js');
     const code = await runMigrate(parseMigrateArgs(args.slice(1)));

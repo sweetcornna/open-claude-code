@@ -27,7 +27,13 @@
 // rewording a description does not fail the suite but adding, renaming, or
 // dropping a command or flag does.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -484,4 +490,36 @@ describe('occ argument validation', () => {
     },
     ASSERT_TIMEOUT_MS,
   )
+})
+
+/**
+ * `occ migrate` is intercepted by a fast path in cli.tsx that runs the
+ * migration for real, before commander ever sees the args. `--help` must fall
+ * through to commander: a user asking what the command does should not have
+ * files copied into their config dir as a side effect of asking.
+ */
+describe('migrate --help does not perform a migration', () => {
+  test('prints help and leaves the config dir untouched', async () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'occ-migrate-help-'))
+    const legacyDir = mkdtempSync(join(tmpdir(), 'claude-migrate-help-'))
+    // A legacy setup with something migratable, so a real run would be visible.
+    mkdirSync(join(legacyDir, 'agents'), { recursive: true })
+    writeFileSync(join(legacyDir, 'settings.json'), '{"theme":"dark"}')
+
+    try {
+      const result = await runCli(['migrate', '--help'], {
+        OCC_CONFIG_DIR: configDir,
+        CLAUDE_CONFIG_DIR: legacyDir,
+      })
+
+      expect(result.stdout).toContain('--skip-account-data')
+      expect(result.stdout).not.toContain('Would copy')
+      // The marker is what a real run writes; its absence proves nothing ran.
+      expect(existsSync(join(configDir, '.migrated'))).toBe(false)
+      expect(existsSync(join(configDir, 'agents'))).toBe(false)
+    } finally {
+      rmSync(configDir, { force: true, recursive: true })
+      rmSync(legacyDir, { force: true, recursive: true })
+    }
+  })
 })
