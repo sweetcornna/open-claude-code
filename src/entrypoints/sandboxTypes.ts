@@ -15,6 +15,22 @@ export const SandboxNetworkConfigSchema = lazySchema(() =>
   z
     .object({
       allowedDomains: z.array(z.string()).optional(),
+      deniedDomains: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Domains to deny network egress to, independent of ' +
+            'WebFetch(domain:...) deny permission rules (official 2.1.113 ' +
+            'parity — previously only derivable from deny rules). Merged ' +
+            'with rule-derived denials; deny wins over allow.',
+        ),
+      strictAllowlist: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, requests to hosts outside allowedDomains are rejected ' +
+            'outright instead of prompting (official 2.1.219 parity).',
+        ),
       allowManagedDomainsOnly: z
         .boolean()
         .optional()
@@ -118,6 +134,17 @@ export const SandboxSettingsSchema = lazySchema(() =>
       // set enabledPlatforms: ["macos"] to disable sandbox (and auto-allow)
       // on other platforms until they're ready to expand.
       autoAllowBashIfSandboxed: z.boolean().optional(),
+      credentials: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, deny sandboxed commands read access to well-known ' +
+            'credential files (cloud CLI credentials, SSH keys, netrc, ' +
+            'kubeconfig, occ/Claude credential stores). Official 2.1.187 ' +
+            'parity; the env-variable half of the official behavior is not ' +
+            'implementable with the vendored sandbox runtime (no env ' +
+            'filtering surface) and is documented as a known gap.',
+        ),
       allowUnsandboxedCommands: z
         .boolean()
         .optional()

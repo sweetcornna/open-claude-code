@@ -4,7 +4,11 @@
  * settings system, tool integration, and additional features.
  */
 
-import { getProtectedConfigDirectories } from 'src/config/paths.js'
+import {
+  getProtectedConfigDirectories,
+  legacyClaudeConfigDir,
+  occConfigDir,
+} from 'src/config/paths.js'
 import type {
   FsReadRestrictionConfig,
   FsWriteRestrictionConfig,
@@ -210,6 +214,14 @@ export function convertToSandboxRuntimeConfig(
     }
   }
 
+  // Independent deniedDomains settings key (official 2.1.113 parity —
+  // previously only derivable from WebFetch(domain:) deny rules). Denials
+  // merge from ALL sources regardless of allowManagedSandboxDomainsOnly:
+  // that setting narrows what may be ALLOWED, never what is denied.
+  for (const domain of settings.sandbox?.network?.deniedDomains || []) {
+    deniedDomains.push(domain)
+  }
+
   for (const ruleString of permissions.deny || []) {
     const rule = permissionRuleValueFromString(ruleString)
     if (
@@ -241,6 +253,31 @@ export function convertToSandboxRuntimeConfig(
   const workingDirectories =
     cwd === originalCwd ? [originalCwd] : [originalCwd, cwd]
   denyWrite.push(...getProtectedConfigDirectories(workingDirectories))
+
+  // sandbox.credentials (official 2.1.187 parity, filesystem half): deny
+  // sandboxed commands read access to well-known credential stores. Applied
+  // BEFORE the disabled branch so it holds in both isolation modes — like
+  // the protected-config set, credential denial is not part of "filesystem
+  // isolation" that `disabled` waives. The env-variable half of the
+  // official behavior has no surface in the vendored runtime (no env
+  // filtering) — documented gap in sandboxTypes.ts.
+  if (settings.sandbox?.credentials === true) {
+    const home = expandPath('~')
+    denyRead.push(
+      join(home, '.aws'),
+      join(home, '.azure'),
+      join(home, '.config', 'gcloud'),
+      join(home, '.kube'),
+      join(home, '.ssh'),
+      join(home, '.netrc'),
+      join(home, '.npmrc'),
+      join(home, '.docker', 'config.json'),
+      join(home, '.gnupg'),
+      // occ + official Claude Code credential stores
+      join(occConfigDir(), '.credentials.json'),
+      join(legacyClaudeConfigDir(), '.credentials.json'),
+    )
+  }
 
   // sandbox.filesystem.disabled (official 2.1.216 parity): skip filesystem
   // isolation — the whole tree becomes writable and the path-collection
@@ -479,6 +516,14 @@ function isAutoAllowBashIfSandboxedEnabled(): boolean {
 
 function areUnsandboxedCommandsAllowed(): boolean {
   const settings = getSettings_DEPRECATED()
+  // strictAllowlist (official 2.1.219 parity): the vendored runtime has no
+  // interactive domain prompt — a non-allowlisted host simply fails inside
+  // the sandbox, and the "prompt" users see is the model's retry with
+  // dangerouslyDisableSandbox, which asks to run UNSANDBOXED. Strict mode
+  // closes that escape hatch: sandbox denials (network included) are final.
+  if (settings?.sandbox?.network?.strictAllowlist === true) {
+    return false
+  }
   return settings?.sandbox?.allowUnsandboxedCommands ?? true
 }
 
