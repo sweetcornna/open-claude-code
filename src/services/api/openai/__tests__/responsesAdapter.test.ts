@@ -38,6 +38,45 @@ describe('buildResponsesRequest', () => {
     expect(request.reasoning).toEqual({ effort: 'xhigh' })
   })
 
+  test('passes server-side built-in tools through verbatim', () => {
+    // WebSearch's codex source asks for the built-in web_search tool this way;
+    // it carries no `function` descriptor and must not be dropped.
+    const request = buildResponsesRequest({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [{ type: 'web_search' }],
+      toolChoice: undefined,
+    })
+
+    expect(request.tools).toEqual([{ type: 'web_search' }])
+  })
+
+  test('still converts function tools alongside built-ins', () => {
+    const request = buildResponsesRequest({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [
+        { type: 'web_search' },
+        {
+          type: 'function',
+          function: { name: 'lookup', description: 'd', parameters: {} },
+        },
+      ],
+      toolChoice: undefined,
+    })
+
+    expect(request.tools).toEqual([
+      { type: 'web_search' },
+      {
+        type: 'function',
+        name: 'lookup',
+        description: 'd',
+        parameters: {},
+        strict: false,
+      },
+    ])
+  })
+
   test('does not include max_output_tokens unless explicitly passed (ChatGPT route)', () => {
     const request = buildResponsesRequest({
       model: 'gpt-5.5',

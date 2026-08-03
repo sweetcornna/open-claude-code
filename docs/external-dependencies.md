@@ -19,7 +19,7 @@
 | 11 | BigQuery Metrics | `api.anthropic.com/api/claude_code/metrics` | HTTPS | 默认启用 |
 | 12 | MCP Proxy | `mcp-proxy.anthropic.com` | HTTPS+WS | 使用 MCP 工具时 |
 | 13 | MCP Registry | `api.anthropic.com/mcp-registry` | HTTPS | 查询 MCP 服务器时 |
-| 14 | Web Search Pages | `www.bing.com`, `search.brave.com` | HTTPS | WebSearch 工具，可通过 `WEB_SEARCH_ADAPTER=bing|brave` 切换 |
+| 14 | Web Search Pages | `html.duckduckgo.com`, `www.mojeek.com`, `www4.bing.com`, 公共 SearXNG 实例, `www.bing.com`, `search.brave.com` | HTTPS | WebSearch 的 `free` 源默认参与聚合；`bing`/`brave` 需 `WEB_SEARCH_ADAPTER` 显式点名 |
 | 15 | Google Cloud Storage (更新) | `storage.googleapis.com` | HTTPS | 版本检查 |
 | 16 | GitHub Raw (Changelog/Stats) | `raw.githubusercontent.com` | HTTPS | 更新提示 |
 | 17 | Chrome UX Report (CrUX) | `chromeuxreport.googleapis.com` | HTTPS | `--chrome` 下跑性能 trace 时 |
@@ -123,11 +123,18 @@ Anthropic 托管的 MCP 服务器代理。
 
 ### 14. Web Search Pages
 
-WebSearch 工具支持直接抓取 Bing 搜索结果页面，也支持通过 Brave 的 LLM Context API
-获取搜索上下文；可通过 `WEB_SEARCH_ADAPTER=bing|brave` 显式切换后端。
+WebSearch 默认聚合多个搜索源。其中 `free` 源（免密钥，默认参与）直接抓取搜索结果页面；
+`bing`/`brave` 需要 `WEB_SEARCH_ADAPTER` 显式点名才会使用。
 
-- **Bing 端点**: `https://www.bing.com/search?q={query}&setmkt=en-US`
-- **Brave 端点**: `https://api.search.brave.com/res/v1/llm/context?q={query}`
+- **free 源引擎**（并行 + RRF 融合）:
+  - `https://html.duckduckgo.com/html/?q={query}`
+  - `https://www.mojeek.com/search?q={query}`
+  - `https://www4.bing.com/search?q={query}`（www 版会挑战 headless 客户端，www4 不会）
+  - 救援路：公共 SearXNG 实例（仅在上面三个都空/失败时探测）
+- **Bing 端点**（`WEB_SEARCH_ADAPTER=bing`）: `https://www.bing.com/search?q={query}&setmkt=en-US`
+- **Brave 端点**（`WEB_SEARCH_ADAPTER=brave`）: `https://api.search.brave.com/res/v1/llm/context?q={query}`
+- **Gemini grounding 重定向解析**: `https://vertexaisearch.cloud.google.com/grounding-api-redirect/...`
+  （HEAD 请求，解析出发布者真实 URL）
 - **文件**:
   - `packages/builtin-tools/src/tools/WebSearchTool/adapters/bingAdapter.ts`
   - `packages/builtin-tools/src/tools/WebSearchTool/adapters/braveAdapter.ts`
@@ -195,7 +202,6 @@ WebSearch 工具支持直接抓取 Bing 搜索结果页面，也支持通过 Bra
 | `/api/claude_code/settings` | 设置同步 | `src/services/settingsSync/index.ts` |
 | `/api/claude_code/managed_settings` | 企业托管设置 (1h 轮询) | `src/services/remoteManagedSettings/index.ts` |
 | `/api/auth/trusted_devices` | 可信设备注册 | `src/bridge/trustedDevice.ts` |
-| `/api/organizations/{id}/claude_code/buddy_react` | Companion 反应 | `src/buddy/companionReact.ts` |
 | `/mcp-registry/v0/servers` | MCP 服务器注册表 | `src/services/mcp/officialRegistry.ts` |
 | `/v1/files` | 文件上传/下载 | `src/services/api/filesApi.ts` |
 | `/v1/sessions/{id}/events` | 会话历史 | `src/assistant/sessionHistory.ts` |

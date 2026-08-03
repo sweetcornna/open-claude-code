@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -329,6 +330,43 @@ export async function completeChatGPTDeviceLogin(
 
 export function isChatGPTAuthEnabled(): boolean {
   return process.env.OPENAI_AUTH_MODE === 'chatgpt'
+}
+
+/**
+ * Sync existence probe for the same two credential files.
+ *
+ * Used where an async read is not an option — the WebSearch source resolver
+ * runs inside a synchronous factory. "File is there" is the right question
+ * for a default-on decision; anything wrong with its contents surfaces when
+ * the search actually runs.
+ */
+export function hasStoredChatGPTAuthSync(): boolean {
+  return [authFilePath(), codexAuthFilePath()].some(path => existsSync(path))
+}
+
+/**
+ * Whether ChatGPT credentials exist on disk, regardless of whether the main
+ * loop is configured to use them (`OPENAI_AUTH_MODE`).
+ *
+ * WebSearch's `codex` source needs exactly this distinction: a user logged in
+ * to ChatGPT gets OpenAI's search layer as an extra source even when the main
+ * loop is talking to some other provider. Reads only — no refresh, no
+ * network — so the panel and the source resolver can call it freely.
+ */
+export async function hasStoredChatGPTAuth(): Promise<boolean> {
+  for (const path of [authFilePath(), codexAuthFilePath()]) {
+    if (await readStoredAuth(path)) return true
+  }
+  return false
+}
+
+/** Account id of the stored ChatGPT credentials, for status display. */
+export async function getStoredChatGPTAccountId(): Promise<string | undefined> {
+  for (const path of [authFilePath(), codexAuthFilePath()]) {
+    const tokens = await readStoredAuth(path)
+    if (tokens) return tokens.accountId ?? extractAccountId(tokens)
+  }
+  return undefined
 }
 
 export async function removeChatGPTAuth(): Promise<void> {

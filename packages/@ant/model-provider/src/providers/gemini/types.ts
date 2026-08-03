@@ -37,7 +37,14 @@ export type GeminiFunctionDeclaration = {
 }
 
 export type GeminiTool = {
-  functionDeclarations: GeminiFunctionDeclaration[]
+  functionDeclarations?: GeminiFunctionDeclaration[]
+  /**
+   * Google Search grounding — Gemini's server-side search tool. Takes an empty
+   * object; results come back in `GeminiCandidate.groundingMetadata` rather
+   * than as a function call. Mutually exclusive with functionDeclarations in
+   * practice, hence both fields being optional on one type.
+   */
+  googleSearch?: Record<string, never>
 }
 
 export type GeminiFunctionCallingConfig = {
@@ -71,6 +78,31 @@ export type GeminiUsageMetadata = {
   cachedContentTokenCount?: number
 }
 
+/** One retrieved source behind a Google Search grounded answer. */
+export type GeminiGroundingChunk = {
+  web?: {
+    uri?: string
+    title?: string
+    domain?: string
+  }
+}
+
+/** Which answer segment each grounding chunk supports. */
+export type GeminiGroundingSupport = {
+  segment?: {
+    startIndex?: number
+    endIndex?: number
+    text?: string
+  }
+  groundingChunkIndices?: number[]
+}
+
+export type GeminiGroundingMetadata = {
+  webSearchQueries?: string[]
+  groundingChunks?: GeminiGroundingChunk[]
+  groundingSupports?: GeminiGroundingSupport[]
+}
+
 export type GeminiCandidate = {
   content?: {
     role?: string
@@ -78,6 +110,8 @@ export type GeminiCandidate = {
   }
   finishReason?: string
   index?: number
+  /** Present when the request enabled the `googleSearch` grounding tool. */
+  groundingMetadata?: GeminiGroundingMetadata
 }
 
 export type GeminiStreamChunk = {

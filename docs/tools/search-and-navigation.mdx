@@ -146,32 +146,33 @@ AI 的信息获取不局限于本地代码：
 
 ### WebSearch 实现机制
 
-WebSearch 通过适配器模式支持三种搜索后端，由 `packages/builtin-tools/src/tools/WebSearchTool/adapters/` 中的工厂函数 `createAdapter()` 选择：
+WebSearch 默认**并行跑所有已连接的搜索源并合并结果**，由
+`packages/builtin-tools/src/tools/WebSearchTool/adapters/` 的 `createAdapter()` 组装：
 
 ```
-适配器架构:
+聚合架构:
   WebSearchTool.call()
-    → createAdapter() 选择后端
-      ├─ ApiSearchAdapter — Anthropic API 服务端搜索（需官方 API 密钥）
-      ├─ BingSearchAdapter — 直接抓取 Bing 搜索页面解析（无需 API 密钥）
-      └─ BraveSearchAdapter — 调用 Brave LLM Context API 解析（需 Brave API 密钥）
-    → adapter.search(query, options)
-    → 转换为统一 SearchResult[] 格式返回
+    → createAdapter() 组装源
+      ├─ 主路 = 当前 provider 自家的搜索层
+      │    firstParty/Foundry/Vertex(Claude 4.x) → ApiSearchAdapter
+      │    openai → CodexSearchAdapter（Responses API 内建 web_search）
+      │    gemini → GeminiSearchAdapter（googleSearch grounding）
+      │    其他（grok/bedrock…）→ 无主路
+      └─ 增强路 = 其余已连接的源 + free（免密钥多引擎抓取）
+    → AggregateSearchAdapter 并行发起 → URL 归一化去重合并
+    → 统一 SearchResult[] 返回
 ```
 
-#### 适配器选择逻辑
+#### 源的启用与优先级
 
-`adapters/index.ts` 中的工厂函数按以下优先级选择后端：
+- **有凭据即默认开**：Claude / Google / ChatGPT 任一登录，对应源自动加入聚合；
+  `free` 无需账号，默认开。settings 的 `webSearchSources` 只存显式改动，面板是 `/search-setting`。
+- **同一家只发一路**：主路已覆盖的凭据家族不会再作为增强路重复发。
+- **时延纪律**：主路返回后增强路仅有 2s 宽限期；主路空/失败时则完整等待增强路。
+- **显式点名跳过聚合**：`WEB_SEARCH_ADAPTER`（env）> `settings.webSearchAdapter`，
+  取值 `api|codex|gemini|free|bing|brave|exa`；不认识的值静默回落到默认聚合。
 
-| 优先级 | 条件 | 适配器 |
-|--------|------|--------|
-| 1 | 环境变量 `WEB_SEARCH_ADAPTER=api` | `ApiSearchAdapter` |
-| 2 | 环境变量 `WEB_SEARCH_ADAPTER=bing` | `BingSearchAdapter` |
-| 3 | 环境变量 `WEB_SEARCH_ADAPTER=brave` | `BraveSearchAdapter` |
-| 4 | API Base URL 指向 Anthropic 官方 | `ApiSearchAdapter` |
-| 5 | 第三方代理 / 非官方端点 | `BingSearchAdapter` |
-
-适配器是无状态的，同一会话内缓存复用。
+适配器是无状态的，同一组合在会话内缓存复用。
 
 #### ApiSearchAdapter — API 服务端搜索
 

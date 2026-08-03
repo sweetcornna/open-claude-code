@@ -9,7 +9,7 @@ import type { LocalJSXCommandCall, LocalJSXCommandContext } from '../../types/co
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SearchAdapterKey = 'tavily' | 'api' | 'bing' | 'brave' | 'exa';
+type SearchAdapterKey = 'free' | 'api' | 'bing' | 'brave' | 'exa';
 type FetchAdapterKey = 'tavily' | 'http';
 
 interface AdapterMeta {
@@ -20,7 +20,7 @@ interface AdapterMeta {
 }
 
 type SettingsJson = Record<string, unknown> & {
-  webSearchAdapter?: 'api' | 'bing' | 'brave' | 'exa' | 'tavily';
+  webSearchAdapter?: 'api' | 'bing' | 'brave' | 'exa' | 'free';
   webFetchAdapter?: 'tavily' | 'http';
   tavilyEndpointUrl?: string;
   braveApiKey?: string;
@@ -34,7 +34,12 @@ type ViewState = { kind: 'main' } | { kind: 'config'; adapter: AdapterMeta };
 // ── Data ───────────────────────────────────────────────────────────────────
 
 const SEARCH_ADAPTERS: AdapterMeta[] = [
-  { key: 'tavily', label: 'Tavily', description: 'Tavily Search API (default)', hasConfig: true },
+  {
+    key: 'free',
+    label: 'Free',
+    description: 'Keyless multi-engine search — DuckDuckGo + Mojeek + Bing (default)',
+    hasConfig: false,
+  },
   { key: 'api', label: 'Anthropic API', description: 'Anthropic server-side web search', hasConfig: false },
   { key: 'bing', label: 'Bing', description: 'Scrape Bing HTML results', hasConfig: false },
   { key: 'brave', label: 'Brave', description: 'Brave Search API (needs API key)', hasConfig: true },
@@ -477,7 +482,7 @@ function WebToolsPanel({
   const [view, setView] = useState<ViewState>({ kind: 'main' });
 
   const settings = getSettings_DEPRECATED() as unknown as SettingsJson;
-  const currentSearch = settings.webSearchAdapter ?? 'tavily';
+  const currentSearch = settings.webSearchAdapter ?? 'free';
   const currentFetch = settings.webFetchAdapter ?? 'tavily';
 
   const insideModal = useIsInsideModal();

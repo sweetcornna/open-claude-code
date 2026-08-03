@@ -8,6 +8,7 @@ import {
   test,
 } from 'bun:test'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
+import { setupRuntimeErrorsMock } from '../../../../../../tests/mocks/runtimeErrors'
 
 // Each test below calls `mock.module('axios', ...)` per-test. Without an
 // afterAll cleanup, the LAST per-test stub leaks into every test file that
@@ -21,18 +22,12 @@ afterAll(() => {
 // Defensive mock: agent.test.ts mocks config.js which can corrupt Bun's
 // src/* path alias resolution. Provide AbortError directly so the dynamic
 // import in createAdapter() never needs to resolve the alias at runtime.
-const _abortMock = () => ({
-  AbortError: class AbortError extends Error {
-    constructor(message?: string) {
-      super(message)
-      this.name = 'AbortError'
-    }
-  },
-  isAbortError: (e: unknown) =>
-    e instanceof Error && (e as Error).name === 'AbortError',
-})
-mock.module('src/utils/runtime/errors.js', _abortMock)
-mock.module('src/utils/runtime/errors', _abortMock)
+// Complete-surface mock (tests/mocks/runtimeErrors.ts) instead of the old
+// hand-rolled { AbortError, isAbortError } stub: mock.module is process-global,
+// so a partial surface here made `getErrnoCode` vanish for settings.ts and
+// broke this very file's imports. Delegating to the real module also keeps
+// AbortError the SAME class the adapters throw.
+setupRuntimeErrorsMock()
 
 const originalBraveSearchApiKey = process.env.BRAVE_SEARCH_API_KEY
 const originalBraveApiKey = process.env.BRAVE_API_KEY

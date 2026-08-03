@@ -118,20 +118,41 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 - `blockedDomains`：黑名单，匹配的结果被过滤
 - 两者不可同时使用（`validateInput` 校验）
 
-## 四、适配器选择逻辑
+## 四、搜索源与聚合
 
-`createAdapter()` 按以下优先级选择后端，并按选中的后端 key 缓存适配器实例：
+默认不是「选一个后端」，而是**并行跑所有已连接的搜索源，合并成一份结果**。
 
-```typescript
-export function createAdapter(): WebSearchAdapter {
-  // 1. WEB_SEARCH_ADAPTER=api|bing|brave 显式指定
-  // 2. Anthropic 官方 API Base URL → ApiSearchAdapter
-  // 3. 第三方代理 / 非官方端点 → BingSearchAdapter
-}
-```
+### 4.1 四个对称源（`adapters/searchSources.ts`）
 
-显式指定 `WEB_SEARCH_ADAPTER=brave` 时，会改用 Brave LLM Context API 后端，并要求
-`BRAVE_SEARCH_API_KEY` 或 `BRAVE_API_KEY`。
+| 源 | 执行 | 凭据 |
+|---|---|---|
+| `anthropic` | Anthropic server-side `web_search_20250305` | Claude OAuth 或 `ANTHROPIC_API_KEY` |
+| `gemini` | Gemini `generateContent` + `googleSearch` grounding | Google(Antigravity) OAuth 或 `GEMINI_API_KEY` |
+| `codex` | OpenAI Responses API 内建 `web_search` 工具 | ChatGPT OAuth 或 `OPENAI_API_KEY` |
+| `free` | 免密钥多引擎抓取（移植自 sweetcornna/free-search-mcp） | 无 |
+
+**有凭据即默认开**：settings 只存用户的显式改动（`webSearchSources.<id>`），没动过的源跟随凭据。
+面板在 `/search-setting`（勾选、登录、断开）。
+
+### 4.2 聚合规则（`adapters/aggregateAdapter.ts`）
+
+- 当前主循环 provider 对应的那个源是**主路**，结果排在最前；其余启用的源是**增强路**，
+  只补主路没有的 URL。同一家凭据只发一路（主循环是 Gemini 就不再发 gemini 增强路）。
+- 全部并行发起。主路返回后增强路只有一小段宽限期（`ENHANCER_GRACE_MS`，2s），超时即丢弃——
+  慢抓取最多让用户多等 2 秒，不会拖垮整次搜索。
+- 主路失败或为空时，增强路会被**完整等待**（没有可增强的东西时它们就是答案）。
+- 单路失败静默；**所有路都失败**才把错误抛给工具。
+- 去重按归一化 URL（去 fragment、去 utm/gclid 等跟踪参数、去末尾斜杠），总数封顶 `num_results`（默认 8）。
+- Gemini 的 grounding URL 是 `vertexaisearch.cloud.google.com/grounding-api-redirect/…` 重定向壳，
+  先用 HEAD 跟随解析出真实 URL 再参与去重与域名过滤。
+
+### 4.3 显式点名（跳过聚合）
+
+`WEB_SEARCH_ADAPTER` 环境变量 > `settings.webSearchAdapter`，取值
+`api|codex|gemini|free|bing|brave|exa`，命中时**只跑这一个源**。
+不认识的值（例如已删除的 `tavily`）静默回落到默认聚合。
+
+`brave` 需要 `BRAVE_SEARCH_API_KEY` 或 `BRAVE_API_KEY`；`exa` 可配 `exaApiKey`。
 
 ## 五、接口定义
 

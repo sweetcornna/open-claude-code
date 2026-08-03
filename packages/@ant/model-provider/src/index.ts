@@ -48,6 +48,9 @@ export {
   type GeminiInlineData,
   type GeminiUsageMetadata,
   type GeminiCandidate,
+  type GeminiGroundingChunk,
+  type GeminiGroundingMetadata,
+  type GeminiGroundingSupport,
 } from './providers/gemini/types.js'
 
 // Error utilities
