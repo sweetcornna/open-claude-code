@@ -39,6 +39,9 @@ describe('SnapshotUpdateDialog', () => {
       render(node: React.ReactElement) {
         rendered = node;
       },
+      // showDialog races done() against waitUntilExit; these tests never
+      // unmount the fake root, so the exit promise must simply never settle.
+      waitUntilExit: () => new Promise<void>(() => {}),
     } as any;
 
     const resultPromise = launchSnapshotUpdateDialog(root, {
@@ -64,6 +67,7 @@ describe('SnapshotUpdateDialog', () => {
       render(node: React.ReactElement) {
         rendered = node;
       },
+      waitUntilExit: () => new Promise<void>(() => {}),
     } as any;
 
     const resultPromise = launchSnapshotUpdateDialog(root, {
