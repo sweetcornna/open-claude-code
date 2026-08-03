@@ -34,6 +34,15 @@ import {
 import { has1mContext } from '../session/context.js'
 import { getGlobalConfig } from '../config/config.js'
 import {
+  catalogKeyForProvider,
+  getCachedModelCatalog,
+} from '../../services/modelCatalog/cache.js'
+import { mergeCatalogModelOptions } from '../../services/modelCatalog/merge.js'
+import {
+  ANTIGRAVITY_MODEL_OPTIONS,
+  isAntigravityAuthMode,
+} from './antigravityModels.js'
+import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   CHATGPT_CODEX_MODEL_OPTIONS,
   isChatGPTAuthMode,
@@ -553,7 +562,7 @@ function getKnownModelOption(model: string): ModelOption | null {
 }
 
 export function getModelOptions(fastMode = false): ModelOption[] {
-  const options = getModelOptionsBase(fastMode)
+  let options = getModelOptionsBase(fastMode)
 
   // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
   const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
@@ -576,6 +585,31 @@ export function getModelOptions(fastMode = false): ModelOption[] {
       options.push(opt)
     }
   }
+
+  // Antigravity sessions surface the backend's own model ids here — the
+  // model-catalog fetcher below can't discover them (the v1internal backend
+  // has no key-authenticated /models endpoint for the startup refresh to hit).
+  if (isAntigravityAuthMode()) {
+    for (const opt of ANTIGRAVITY_MODEL_OPTIONS) {
+      if (!options.some(existing => existing.value === opt.value)) {
+        options.push({
+          value: opt.value,
+          label: opt.label,
+          description: `${opt.description} · ${opt.contextWindow} context`,
+        })
+      }
+    }
+  }
+
+  // Append whatever the background model-catalog refresh last read from the
+  // active provider's /models endpoint (src/services/modelCatalog/). Built-ins
+  // above keep their exact order and stay first — this only ever adds ids the
+  // hand-maintained table above does not know about yet. Reads a disk cache
+  // only; no network call happens on this path.
+  options = mergeCatalogModelOptions(
+    options,
+    getCachedModelCatalog(catalogKeyForProvider(getAPIProvider())),
+  )
 
   // Add custom model from either the current model value or the initial one
   // if it is not already in the options.
