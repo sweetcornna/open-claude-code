@@ -24,10 +24,16 @@ function contextWithRules(opts: { allow?: string[]; deny?: string[] }): Ctx {
 }
 
 describe('compiled permission-pattern cache (2.1.208 parity)', () => {
-  const target = `${process.cwd()}/src/generated/api.ts`
+  // Absolute rule paths keep the test independent of cwd — other test files
+  // in the same bun process mock cwd/settings modules (process-global
+  // mock.module), and relative rules would resolve against whatever they set.
+  const BASE = '/tmp/occ-compiled-patterns-test'
+  const target = `${BASE}/generated/api.ts`
 
   test('repeated checks on the same context are decision-stable (cache hit)', () => {
-    const ctx = contextWithRules({ allow: ['Edit(src/generated/**)'] })
+    const ctx = contextWithRules({
+      allow: ['Edit(//tmp/occ-compiled-patterns-test/generated/**)'],
+    })
     const first = matchingRuleForInput(target, ctx, 'edit', 'allow')
     const second = matchingRuleForInput(target, ctx, 'edit', 'allow')
     expect(first).not.toBeNull()
@@ -36,13 +42,17 @@ describe('compiled permission-pattern cache (2.1.208 parity)', () => {
   })
 
   test('rule change → new context object → new decision takes effect immediately', () => {
-    const allowCtx = contextWithRules({ allow: ['Edit(src/generated/**)'] })
+    const allowCtx = contextWithRules({
+      allow: ['Edit(//tmp/occ-compiled-patterns-test/generated/**)'],
+    })
     expect(
       matchingRuleForInput(target, allowCtx, 'edit', 'allow'),
     ).not.toBeNull()
 
     // Flip allow → deny the way the app does: a NEW context object.
-    const denyCtx = contextWithRules({ deny: ['Edit(src/generated/**)'] })
+    const denyCtx = contextWithRules({
+      deny: ['Edit(//tmp/occ-compiled-patterns-test/generated/**)'],
+    })
     expect(matchingRuleForInput(target, denyCtx, 'edit', 'deny')).not.toBeNull()
     expect(matchingRuleForInput(target, denyCtx, 'edit', 'allow')).toBeNull()
 
@@ -54,18 +64,13 @@ describe('compiled permission-pattern cache (2.1.208 parity)', () => {
 
   test('behavior kinds are cached under distinct keys on one context', () => {
     const ctx = contextWithRules({
-      allow: ['Edit(src/generated/**)'],
-      deny: ['Edit(secrets/**)'],
+      allow: ['Edit(//tmp/occ-compiled-patterns-test/generated/**)'],
+      deny: ['Edit(//tmp/occ-compiled-patterns-test/secrets/**)'],
     })
     expect(matchingRuleForInput(target, ctx, 'edit', 'allow')).not.toBeNull()
     expect(matchingRuleForInput(target, ctx, 'edit', 'deny')).toBeNull()
     expect(
-      matchingRuleForInput(
-        `${process.cwd()}/secrets/key.pem`,
-        ctx,
-        'edit',
-        'deny',
-      ),
+      matchingRuleForInput(`${BASE}/secrets/key.pem`, ctx, 'edit', 'deny'),
     ).not.toBeNull()
   })
 })
