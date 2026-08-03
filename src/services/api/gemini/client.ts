@@ -1,6 +1,16 @@
 import { parseSSEFrames } from 'src/cli/transports/SSETransport.js'
+import { getValidAntigravityAuth } from 'src/services/auth/antigravity/oauth.js'
 import { errorMessage } from 'src/utils/runtime/errors.js'
+import { isAntigravityAuthMode } from 'src/utils/model/antigravityModels.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import {
+  antigravityHeaders,
+  antigravityStreamUrl,
+  unwrapAntigravityChunk,
+  wrapAntigravityRequest,
+  type AntigravityRequestType,
+} from './antigravityWire.js'
+import { hasGeminiOAuthCredentialsSync } from './oauthToken.js'
 import type {
   GeminiGenerateContentRequest,
   GeminiStreamChunk,
@@ -23,22 +33,107 @@ function getGeminiModelPath(model: string): string {
   return normalized.startsWith('models/') ? normalized : `models/${normalized}`
 }
 
+/**
+ * Where and how one generateContent stream goes out.
+ *
+ * The Antigravity backend differs from the public Gemini API in every field —
+ * URL, auth header, body envelope, and where the payload sits inside a frame —
+ * so the four are resolved together instead of being patched onto each other.
+ * `unwrapChunk` returning null means "skip this frame".
+ */
+type GeminiWireRequest = {
+  url: string
+  headers: Record<string, string>
+  body: unknown
+  unwrapChunk: (raw: unknown) => GeminiStreamChunk | null
+}
+
+async function resolveGeminiWireRequest(params: {
+  model: string
+  body: GeminiGenerateContentRequest
+  accessToken?: string
+  requestType?: AntigravityRequestType
+  useAntigravityWhenAvailable?: boolean
+}): Promise<GeminiWireRequest> {
+  // An explicit accessToken means the caller already picked its endpoint and
+  // credential: honour it verbatim rather than rerouting it through
+  // Antigravity's envelope.
+  //
+  // `useAntigravityWhenAvailable` is for callers that are not the main loop —
+  // WebSearch's Gemini source runs even when the session talks to another
+  // provider, so "am I in Antigravity mode" is the wrong question there;
+  // "is there a Google login" is the right one.
+  const useAntigravity =
+    !params.accessToken &&
+    (isAntigravityAuthMode() ||
+      (params.useAntigravityWhenAvailable === true &&
+        hasGeminiOAuthCredentialsSync()))
+  if (useAntigravity) {
+    const auth = await getValidAntigravityAuth()
+    return {
+      url: antigravityStreamUrl(),
+      headers: antigravityHeaders(auth.accessToken),
+      body: wrapAntigravityRequest({
+        model: params.model,
+        projectId: auth.projectId,
+        body: params.body,
+        ...(params.requestType ? { requestType: params.requestType } : {}),
+      }),
+      unwrapChunk: unwrapAntigravityChunk,
+    }
+  }
+  return {
+    url: `${getGeminiBaseUrl()}/${getGeminiModelPath(params.model)}:streamGenerateContent?alt=sse`,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(params.accessToken
+        ? { Authorization: `Bearer ${params.accessToken}` }
+        : { 'x-goog-api-key': process.env.GEMINI_API_KEY || '' }),
+    },
+    body: params.body,
+    unwrapChunk: raw => raw as GeminiStreamChunk,
+  }
+}
+
 export async function* streamGeminiGenerateContent(params: {
   model: string
   body: GeminiGenerateContentRequest
   signal: AbortSignal
   fetchOverride?: typeof fetch
+  /**
+   * OAuth bearer token. When supplied it REPLACES the `x-goog-api-key` header
+   * — Google rejects a request carrying both. Used by the OAuth-connected
+   * Gemini search source, where there is no GEMINI_API_KEY at all.
+   */
+  accessToken?: string
+  /**
+   * Antigravity request kind. Defaults to 'agent'; WebSearch's Gemini source
+   * sends 'web_search'. Ignored on the public Gemini endpoint, which has no
+   * envelope.
+   */
+  requestType?: AntigravityRequestType
+  /**
+   * Route through Antigravity whenever a Google login exists, even if the main
+   * loop is not in Antigravity mode. For callers that are not the main loop.
+   */
+  useAntigravityWhenAvailable?: boolean
 }): AsyncGenerator<GeminiStreamChunk, void> {
   const fetchImpl = params.fetchOverride ?? fetch
-  const url = `${getGeminiBaseUrl()}/${getGeminiModelPath(params.model)}:streamGenerateContent?alt=sse`
+  const wire = await resolveGeminiWireRequest({
+    model: params.model,
+    body: params.body,
+    ...(params.accessToken ? { accessToken: params.accessToken } : {}),
+    ...(params.requestType ? { requestType: params.requestType } : {}),
+    ...(params.useAntigravityWhenAvailable
+      ? { useAntigravityWhenAvailable: true }
+      : {}),
+  })
+  const { url, unwrapChunk } = wire
 
   const response = await fetchImpl(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': process.env.GEMINI_API_KEY || '',
-    },
-    body: JSON.stringify(params.body),
+    headers: wire.headers,
+    body: JSON.stringify(wire.body),
     signal: params.signal,
     ...getProxyFetchOptions({ forAnthropicAPI: false }),
   })
@@ -69,13 +164,16 @@ export async function* streamGeminiGenerateContent(params: {
 
       for (const frame of frames) {
         if (!frame.data || frame.data === '[DONE]') continue
+        let parsed: unknown
         try {
-          yield JSON.parse(frame.data) as GeminiStreamChunk
+          parsed = JSON.parse(frame.data)
         } catch (error) {
           throw new Error(
             `Failed to parse Gemini SSE payload: ${errorMessage(error)}`,
           )
         }
+        const chunk = unwrapChunk(parsed)
+        if (chunk) yield chunk
       }
     }
 
@@ -83,13 +181,16 @@ export async function* streamGeminiGenerateContent(params: {
     const { frames } = parseSSEFrames(buffer)
     for (const frame of frames) {
       if (!frame.data || frame.data === '[DONE]') continue
+      let parsed: unknown
       try {
-        yield JSON.parse(frame.data) as GeminiStreamChunk
+        parsed = JSON.parse(frame.data)
       } catch (error) {
         throw new Error(
           `Failed to parse trailing Gemini SSE payload: ${errorMessage(error)}`,
         )
       }
+      const chunk = unwrapChunk(parsed)
+      if (chunk) yield chunk
     }
   } finally {
     reader.releaseLock()

@@ -100,6 +100,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
   ],
   gemini: [
     'GEMINI_API_KEY',
+    'GEMINI_AUTH_MODE',
     'GEMINI_BASE_URL',
     'GEMINI_MODEL',
     'GEMINI_DEFAULT_HAIKU_MODEL',

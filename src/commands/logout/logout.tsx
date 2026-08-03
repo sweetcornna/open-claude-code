@@ -6,6 +6,7 @@ import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
+import { removeAntigravityAuth } from '../../services/auth/antigravity/oauth.js';
 import { clearOpenAIClientCache } from '../../services/api/openai/client.js';
 import { clearGrokClientCache } from '../../services/api/grok/client.js';
 import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth/auth.js';
@@ -25,6 +26,8 @@ export async function performLogout({ clearOnboarding = false }): Promise<void> 
   await removeApiKey();
   await removeChatGPTAuth();
   clearChatGPTSettingsAuthMode();
+  await removeAntigravityAuth();
+  clearAntigravitySettingsAuthMode();
   // Third-party API keys in settings.env are configuration, not login state,
   // and survive logout (provider profiles preserve them anyway). But cached
   // SDK clients hold the pre-logout auth — drop them so the next request
@@ -66,6 +69,25 @@ function clearChatGPTSettingsAuthMode(): void {
     ...(userSettings.modelType === 'openai' && !hasOpenAICompatibleConfig ? { modelType: undefined } : {}),
     env: {
       OPENAI_AUTH_MODE: undefined,
+    } as unknown as Record<string, string>,
+  };
+  updateSettingsForSource('userSettings', settingsUpdate);
+}
+
+/**
+ * Mirror of clearChatGPTSettingsAuthMode for Antigravity: drop the auth-mode
+ * switch, and only surrender modelType when no API-key Gemini setup remains to
+ * fall back on — a user with GEMINI_API_KEY configured stays on Gemini.
+ */
+function clearAntigravitySettingsAuthMode(): void {
+  delete process.env.GEMINI_AUTH_MODE;
+  const userSettings = getSettingsForSource('userSettings') ?? {};
+  const env = userSettings.env ?? {};
+  const hasGeminiApiKeyConfig = Boolean(env.GEMINI_API_KEY ?? process.env.GEMINI_API_KEY);
+  const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
+    ...(userSettings.modelType === 'gemini' && !hasGeminiApiKeyConfig ? { modelType: undefined } : {}),
+    env: {
+      GEMINI_AUTH_MODE: undefined,
     } as unknown as Record<string, string>,
   };
   updateSettingsForSource('userSettings', settingsUpdate);
