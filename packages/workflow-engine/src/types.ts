@@ -60,15 +60,25 @@ export type AgentRunResult =
        * - no-structured-output: agent finished but finalize content has no StructuredOutput (neither called tools nor produced JSON in text)
        * - runagent-threw: runAgent threw a non-abort error (API failure / context overflow / runtime error)
        * - worktree-failed: isolation:'worktree' creation failed (fail-closed degradation)
+       * - prompt-too-long: terminal context-overflow API error — deterministic for the identical call (backend sets retryable:false)
+       * - api-error: terminal API error other than context overflow (overload / stream drop / timeout) — transient, retry may succeed
        * - unknown: unclassified (compatible with old backends / third-party adapters)
        */
       reason?:
         | 'no-structured-output'
         | 'runagent-threw'
         | 'worktree-failed'
+        | 'prompt-too-long'
+        | 'api-error'
         | 'unknown'
       /** Detail (error message / text preview) for logs; not shown to end users. */
       detail?: string
+      /**
+       * false = deterministic failure: re-running the identical call cannot succeed
+       * (e.g. prompt exceeds the context window), so hooks skips the in-place retry.
+       * Absent/true = treated as transient.
+       */
+      retryable?: boolean
     }
 
 /** A single record in the journal. seq = agent() call sequence number; read() re-sorts by it to stabilize resume. */

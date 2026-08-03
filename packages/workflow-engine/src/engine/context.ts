@@ -1,3 +1,4 @@
+import { AGENT_RETRY_BACKOFF_MS } from '../constants.js'
 import type { HostHandle, WorkflowPorts } from '../ports.js'
 import type { JournalEntry } from '../types.js'
 import { Budget } from './budget.js'
@@ -29,6 +30,8 @@ export type EngineContext = {
   journalIndex: number
   journalInvalidated: boolean
   currentPhase: string | null
+  /** Pause before the in-place agent retry (0 disables; tests inject 0 to stay fast). */
+  retryBackoffMs: number
 }
 
 export function createSharedResources(
@@ -55,6 +58,8 @@ export function createEngineContext(opts: {
   /** Concurrency slots for a single run; undefined → DEFAULT_MAX_CONCURRENCY. Clamped by clampMaxConcurrency. */
   maxConcurrency?: number
   journal?: JournalEntry[]
+  /** Pause before the in-place agent retry; undefined → AGENT_RETRY_BACKOFF_MS. */
+  retryBackoffMs?: number
 }): EngineContext {
   const resources = createSharedResources(opts.budgetTotal, opts.maxConcurrency)
   return {
@@ -69,5 +74,6 @@ export function createEngineContext(opts: {
     journalIndex: 0,
     journalInvalidated: false,
     currentPhase: null,
+    retryBackoffMs: opts.retryBackoffMs ?? AGENT_RETRY_BACKOFF_MS,
   }
 }

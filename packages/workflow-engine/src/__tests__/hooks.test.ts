@@ -22,6 +22,7 @@ type CtxOverrides = Partial<{
   budgetTotal: number | null
   signal: AbortSignal
   truncated: string[]
+  appended: JournalEntry[]
   agentAdapterRegistry: AgentAdapterRegistry
   loggerWarn: (msg: string) => void
   // taskRegistrar agent-level abort binding (agent kill bridge).
@@ -67,7 +68,9 @@ function buildCtx(overrides: CtxOverrides = {}): {
     },
     journalStore: {
       read: async () => [],
-      append: async () => {},
+      append: async (_id: string, entry: JournalEntry) => {
+        overrides.appended?.push(entry)
+      },
       truncate: async (id: string) => {
         overrides.truncated?.push(id)
       },
@@ -93,6 +96,7 @@ function buildCtx(overrides: CtxOverrides = {}): {
     cwd: '/tmp',
     budgetTotal: overrides.budgetTotal ?? null,
     journal: overrides.journal,
+    retryBackoffMs: 0, // keep retry tests instant
   })
   const noopSub: SubWorkflowRunner = async () => null
   return { ctx, events, hooks: makeHooks(ctx, noopSub) }
@@ -589,6 +593,106 @@ test('agentAdapter ctx injects registerAgentAbort/unregisterAgentAbort (bound to
   capturedCtx!.unregisterAgentAbort!(7)
   expect(registered).toEqual([{ runId: 'r1', agentId: 7, controller: ac }])
   expect(unregistered).toEqual([{ runId: 'r1', agentId: 7 }])
+})
+
+// ---- retry classification and journal resume-retry ----
+
+test('agent dead retryable:false → no in-place retry (deterministic failure, e.g. prompt-too-long)', async () => {
+  let calls = 0
+  const warns: string[] = []
+  const { hooks } = buildCtx({
+    runner: async () => {
+      calls++
+      return {
+        kind: 'dead' as const,
+        reason: 'prompt-too-long' as const,
+        retryable: false,
+      }
+    },
+    loggerWarn: msg => warns.push(msg),
+  })
+  expect(await hooks.agent('p')).toBeNull()
+  expect(calls).toBe(1)
+  expect(warns[0]).toMatch(/not retrying/)
+})
+
+test('agent dead retryable:true → still retried once (explicit transient)', async () => {
+  let calls = 0
+  const { hooks } = buildCtx({
+    runner: async () => {
+      calls++
+      return calls === 1
+        ? {
+            kind: 'dead' as const,
+            reason: 'api-error' as const,
+            retryable: true,
+          }
+        : {
+            kind: 'ok' as const,
+            output: 'recovered',
+            usage: { outputTokens: 1 },
+          }
+    },
+    loggerWarn: () => {},
+  })
+  expect(await hooks.agent('p')).toBe('recovered')
+  expect(calls).toBe(2)
+})
+
+test('journal dead entry → re-runs live instead of replaying the failure; subsequent ok entries still replay', async () => {
+  const keyA = agentCallKey('a', { prompt: 'a' })
+  const keyB = agentCallKey('b', { prompt: 'b' })
+  let calls = 0
+  const appended: JournalEntry[] = []
+  const { hooks, ctx } = buildCtx({
+    runner: async () => {
+      calls++
+      return {
+        kind: 'ok' as const,
+        output: 'fresh',
+        usage: { outputTokens: 1 },
+      }
+    },
+    journal: [
+      { key: keyA, seq: 0, result: { kind: 'dead', reason: 'api-error' } },
+      {
+        key: keyB,
+        seq: 1,
+        result: { kind: 'ok', output: 'cached-b', usage: { outputTokens: 1 } },
+      },
+    ],
+    appended,
+  })
+  // dead entry consumed positionally, live re-run happens
+  expect(await hooks.agent('a')).toBe('fresh')
+  expect(calls).toBe(1)
+  // positional replay of the following ok entry is unaffected (no divergence/truncate)
+  expect(await hooks.agent('b')).toBe('cached-b')
+  expect(calls).toBe(1)
+  expect(ctx.journalInvalidated).toBe(false)
+  // superseding record appended with the original seq (read()'s keep-last dedupe makes it win)
+  expect(appended).toHaveLength(1)
+  expect(appended[0]!.seq).toBe(0)
+  expect(appended[0]!.result.kind).toBe('ok')
+})
+
+test('parallel rethrows WorkflowAbortedError (kill must end the run, not degrade to null)', async () => {
+  const { hooks } = buildCtx()
+  await expect(
+    hooks.parallel([
+      async () => 'a',
+      async () => {
+        throw new WorkflowAbortedError()
+      },
+    ]),
+  ).rejects.toBeInstanceOf(WorkflowAbortedError)
+})
+
+test('pipeline rethrows WorkflowAbortedError', async () => {
+  const { hooks } = buildCtx()
+  await expect(
+    hooks.pipeline([1], () => Promise.reject(new WorkflowAbortedError())),
+  ).rejects.toBeInstanceOf(WorkflowAbortedError)
 })
 
 test('taskRegistrar does not provide registerAgentAbort → adapterCtx also lacks it (hooks do not error)', async () => {

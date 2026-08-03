@@ -68,6 +68,11 @@ const FOREGROUND_529_RETRY_SOURCES = new Set<QuerySource>([
   'agent:custom',
   'agent:default',
   'agent:builtin',
+  // Workflow sub-agents: the user is blocked on the Workflow tool result, same
+  // as Agent-tool subagents above. Without this, a 529 bails instantly, bubbles
+  // up as agent death, and the engine's single retry re-fires into the same
+  // congestion — one backed-off retry here is strictly less amplification.
+  'workflow',
   'compact',
   'hook_agent',
   'hook_prompt',

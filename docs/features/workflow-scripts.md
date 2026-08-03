@@ -62,8 +62,8 @@ WORKFLOW_SCRIPTS 让 Claude Code 用**确定性 JavaScript 脚本**编排多个�
 
 | 位置 | 内容 |
 |------|------|
-| `src/tools.ts:152-153,254` | `createWorkflowToolCore()` 动态加载并注册 `Workflow` 工具（feature-gated） |
-| `src/commands.ts:95-97,392` | `/workflows` 命令（local-jsx，加载 `panelCall.js`） |
+| `packages/builtin-tools/src/registry.ts` | `feature('WORKFLOW_SCRIPTS')` 下 require `src/workflow/wiring.js` 并注册 `Workflow` 工具 |
+| `src/commands.ts`（`workflowsCmd`） | `/workflows` 命令（local-jsx，加载 `panelCall.js`） |
 | `src/skills/bundled/ultracode.ts` + `index.ts` | `/ultracode` 知识 skill（`registerBundledSkill`） |
 
 ## 三、编排原语
@@ -133,7 +133,8 @@ return results.flat().filter(Boolean)
 | `name` | 命名 workflow 名（对应 `.occ/workflows/<name>`） |
 | `scriptPath` | 脚本文件路径 |
 | `args` | 透传给脚本的 `args`（任意 JSON 值） |
-| `resumeFromRunId` | 从既有 runId 重放（已完成 `agent()` 秒回，发散点后现场重跑） |
+| `resumeFromRunId` | 从既有 runId 重放（成功的 `agent()` 秒回缓存；**失败（dead）条目重跑**；发散点后现场重跑） |
+| `maxConcurrency` | per-run 并发覆盖（钳到 `[1, 16]`） |
 
 ## 六、监控面板：`/workflows`
 
@@ -149,18 +150,27 @@ return results.flat().filter(Boolean)
 
 进度按引擎 `agentId` 精确关联 `agent_done`（解决并发 LIFO 竞态）。pending phase 来自 `run_started` 事件携带的 `meta.phases`，store 落地 `declaredPhases`，面板 `mergePhases` 合并。`useSyncExternalStore` 订阅 `WorkflowService`，稳定快照，无变更不重渲染。
 
+### 后台任务界面里的 workflow 详情
+
+`/tasks`（Shift+↓）后台任务列表中选中 workflow 条目进入 `WorkflowDetailDialog`（`src/components/tasks/WorkflowDetailDialog.tsx`）：与面板同源（同一 `ProgressStore`）的实时视图，单列布局 —— 状态头 + phase 行（`○/●/✓` + done/total）+ 逐 agent 行（spinner/`✓`/`✗`/`⊘` + label + `model · tok · tool`，复用面板 `AgentList`）。agent 列表按选中项开滑动窗口（`MAX_VISIBLE_AGENTS=10`，折叠行显示 `… N earlier/more`）。
+
+**键位**：`↑`/`↓` 选 agent · `x` kill 选中 agent（走可配置的 `taskDetail:kill`）· `K` kill 整个 workflow · 两者均有 `y`/`n` 二次确认 · `←` 返回列表 · `Esc` 关闭。数据/按键投影层在 `workflowDetailData.ts`（React-free，可单测）。
+
 ## 七、`/ultracode` skill
 
 `/ultracode`（`src/skills/bundled/ultracode.ts`）注入多 agent workflow 编排工作法：何时用 / 何时不用、编排原语速查、质量模式库（adversarial-verify / judge-panel / loop-until-dry / multi-modal-sweep / completeness-critic）、确定性约束、后端路由、resume/budget、文件与命令。
 
 **纯知识 prompt skill**：零运行时副作用，不改主循环、不切换行为开关。调用即把手册注入上下文。
 
-## 八、resume / journal / budget
+## 八、resume / journal / budget / 错误恢复
 
-- **journal**：每次 run 记录到 `.occ/workflow-runs/<runId>/journal.jsonl`。`resumeFromRunId` 重放 journal，已完成 `agent()` 秒回缓存结果。
+- **journal**：每次 run 记录到 `.occ/workflow-runs/<runId>/journal.jsonl`。`resumeFromRunId` 重放 journal：成功结果秒回缓存；**dead 条目视为「记录的失败」，重放时现场重跑**（断点续传的意义就是重试失败，不是复读失败）。重跑结果以同 `seq` 追加，`read()` 按 seq 去重**保留最后一条**，新结果覆盖旧失败。
+- **agent 原地重试**：dead / 非 abort 抛错重试一次，重试前等 `AGENT_RETRY_BACKOFF_MS`（2s，abort 可打断）；**`retryable:false` 的确定性失败（如 `prompt-too-long`）不重试**——同样的调用重发必然再失败。
+- **run 级自动断点续传**：脚本执行失败（常见于 dead agent 的 `null` 在脚本里炸出 TypeError）时**自动用 journal resume 重试一次**：成功的 agent 全部秒回，只重跑失败的。`WorkflowError`（配置/上限类，确定性）与 `BudgetExhaustedError`（新 context 会重置 spent 导致超支）不触发；`autoRetryOnFailure:false` 可关。
+- **API 错误分类**（`claudeCodeBackend`）：query 层把终局 API 错误包装成 `isApiErrorMessage` 的 assistant 消息（不抛错），backend 显式识别 → `dead`，`reason: 'prompt-too-long'`（`retryable:false`）或 `'api-error'`（瞬态，可重试）。修复前该错误文本会在非 schema 模式被伪装成 agent 的正常输出。529 过载则由 API 层带指数退避重试（`'workflow'` 已加入 `FOREGROUND_529_RETRY_SOURCES`）。
 - **budget**：`budget.total` 为 token 硬顶（默认 `null` = 无限）；`budget.spent()` / `budget.remaining()` 读实时消耗；耗尽后再发 `agent()` 抛错。
 - **并发**：引擎 `Semaphore` 默认许可 3（`DEFAULT_MAX_CONCURRENCY`），可经 Workflow 工具的 `maxConcurrency` 入参 per-run 覆盖（钳到 `[1, MAX_CONCURRENCY_CAP=16]`）。
-- **错误**：脚本语法/meta 错 → `parseScript` 即时返错（不进后台）；agent 抛错 → `kind:'dead'` → `null`，workflow 继续（`parallel`/`pipeline` 容错）；`WorkflowAbortedError` → `killed`。
+- **错误**：脚本语法/meta 错 → `parseScript` 即时返错（不进后台）；agent 抛错 → `kind:'dead'` → `null`，workflow 继续（`parallel`/`pipeline` 容错，但 **`WorkflowAbortedError` 会穿透**——kill 必须终止 run）；`WorkflowAbortedError` → `killed`。
 
 ## 九、文件索引
 
@@ -177,7 +187,9 @@ return results.flat().filter(Boolean)
 | `src/workflow/panel/*.tsx` | `/workflows` 双栏面板 |
 | `src/workflow/namedWorkflowCommands.ts` | `/<name>` 命令发现 |
 | `src/workflow/WorkflowPermissionRequest.tsx` | 启动权限 UI |
+| `src/components/tasks/WorkflowDetailDialog.tsx` | 后台任务界面的 workflow 详情（逐 agent 实时状态 + kill 交互） |
+| `src/components/tasks/workflowDetailData.ts` | 详情对话框的窗口/按键投影层（React-free） |
 | `src/skills/bundled/ultracode.ts` | `/ultracode` 知识 skill |
-| `src/tools.ts:152-153,254` | 工具注册 |
-| `src/commands.ts:95-97,392` | `/workflows` 命令注册 |
+| `packages/builtin-tools/src/registry.ts` | 工具注册（feature-gated require） |
+| `src/commands.ts` | `/workflows` 命令注册 |
 | `packages/workflow-engine/` | 引擎包（hooks / journal / budget / 并发） |

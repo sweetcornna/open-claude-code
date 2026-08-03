@@ -28,5 +28,12 @@ export const MAX_CONCURRENCY_CAP = 16
 /** Total cap on agent() calls within a single workflow lifecycle. */
 export const MAX_TOTAL_AGENTS = 1000
 
+/**
+ * Pause before the single in-place agent retry. The dominant transient failures
+ * (529 overload, stream drop) need breathing room — an immediate identical call
+ * mostly lands on the same congested endpoint and doubles the load.
+ */
+export const AGENT_RETRY_BACKOFF_MS = 2_000
+
 /** Items cap per single parallel()/pipeline() call. */
 export const MAX_ITEMS_PER_CALL = 4096

@@ -102,6 +102,36 @@ test('agentCallKey stable across params field order (canonical sort)', () => {
   expect(a).toBe(b)
 })
 
+test('FileJournalStore read dedupes by seq keeping the last occurrence (resume-retry supersede)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-dedupe-'))
+  try {
+    const store = createFileJournalStore(dir)
+    await store.append('r1', {
+      key: 'k0',
+      seq: 0,
+      result: { kind: 'dead', reason: 'api-error' },
+    })
+    await store.append('r1', {
+      key: 'k1',
+      seq: 1,
+      result: { kind: 'ok', output: 'b', usage: { outputTokens: 1 } },
+    })
+    // resume re-ran the dead entry and appended the fresh result with the same seq
+    await store.append('r1', {
+      key: 'k0',
+      seq: 0,
+      result: { kind: 'ok', output: 'a-retried', usage: { outputTokens: 1 } },
+    })
+    const got = await store.read('r1')
+    expect(got).toHaveLength(2)
+    expect(got.map(e => e.seq)).toEqual([0, 1])
+    expect(got[0]!.result.kind).toBe('ok')
+    expect((got[0]!.result as { output: string }).output).toBe('a-retried')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('FileJournalStore read for non-existent run → []', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-journal-'))
   try {
