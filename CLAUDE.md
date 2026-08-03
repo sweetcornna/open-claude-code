@@ -46,7 +46,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - **Runtime 是 Bun 不是 Node**；构建产物经 `import.meta.require` 后处理后 node 也能跑。
 - **为什么 Vite 必须代码分割**：Bun/JSC 会全量解析单个大 JS 文件的 bytecode 和 JIT，单文件 17MB 产物导致 RSS 暴涨至 ~1GB（Node/V8 懒解析仅需 ~220MB）。代码分割为 600+ 小 chunk 后 `--version` RSS 从 966MB 降至 35MB。**不要把构建"优化"回单文件。**
 - **Vendor 路径解析**：chunk 在 `dist/` 或 `dist/chunks/`，vendor 二进制在 `dist/vendor/`；统一用 `src/utils/distRoot.ts` 的 `distRoot`，不要内联 `import.meta.url` 推算。
-- Defines 集中在 `scripts/defines.ts`（版本号从 package.json 读）；dev 与 build 的默认 feature 列表**同源**（`DEFAULT_BUILD_FEATURES`，34 个），不是「全部启用」。
+- Defines 集中在 `scripts/defines.ts`（版本号从 package.json 读）；dev 与 build 的默认 feature 列表**同源**（`DEFAULT_BUILD_FEATURES`，33 个），不是「全部启用」。
 
 ### Entry / Core Loop
 
@@ -84,7 +84,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 ### Feature Flags
 
 - 统一 `import { feature } from 'bun:bundle'` + `feature('FLAG_NAME')`；**只能直接用在 `if` 或三元条件位置**（Bun 编译器限制），不能赋值变量、不能进箭头函数体、不能作 `&&` 链一部分。不要在 `cli.tsx` 重定义 `feature`。
-- 环境变量 `FEATURE_<NAME>=1` 临时启用；默认列表见 `scripts/defines.ts` 的 `DEFAULT_BUILD_FEATURES`（dev/build 同源，34 个）。
+- 环境变量 `FEATURE_<NAME>=1` 临时启用；默认列表见 `scripts/defines.ts` 的 `DEFAULT_BUILD_FEATURES`（dev/build 同源，33 个）。
 - `MCP_2026`（2026-08-02 起默认编译进）**只管客户端要不要用 `server/discover` 探测** —— serve 双时代、outputSchema 降级、OAuth 加固不受它门控；协商到的「时代」是连接属性（问 `getProtocolEra()`，不要再判标志）。见 `docs/features/mcp-2026.md`。
 - `SKILL_LEARNING` 未编译进默认列表；运行时另由 `SKILL_LEARNING_ENABLED` 控制。
 

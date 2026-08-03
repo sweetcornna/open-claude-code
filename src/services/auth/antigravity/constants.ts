@@ -31,9 +31,7 @@ export function getAntigravityClientSecret(): string {
 
 /** Whether an Antigravity OAuth login can even be attempted. */
 export function hasAntigravityClientCredentials(): boolean {
-  return (
-    getAntigravityClientId() !== '' && getAntigravityClientSecret() !== ''
-  )
+  return getAntigravityClientId() !== '' && getAntigravityClientSecret() !== ''
 }
 
 export const ANTIGRAVITY_MISSING_CREDENTIALS_MESSAGE =
