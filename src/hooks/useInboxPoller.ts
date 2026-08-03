@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { useCallback, useEffect, useRef } from 'react'
 import { useInterval } from 'usehooks-ts'
+import { z } from 'zod/v4'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
 import { TEAMMATE_MESSAGE_TAG } from '../constants/xml.js'
 import { useTerminalNotification } from '@anthropic/ink'
@@ -26,7 +27,7 @@ import {
   toExternalPermissionMode,
 } from '../utils/permissions/PermissionMode.js'
 import { applyPermissionUpdate } from '../utils/permissions/PermissionUpdate.js'
-import { jsonStringify } from '../utils/telemetry/slowOperations.js'
+import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
 import { isInsideTmux } from '../utils/swarm/backends/detection.js'
 import {
   ensureBackendsRegistered,
@@ -37,8 +38,10 @@ import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js'
 import { getLeaderToolUseConfirmQueue } from '../utils/swarm/leaderPermissionBridge.js'
 import { sendPermissionResponseViaMailbox } from '../utils/swarm/permissionSync.js'
 import {
+  readTeamFileAsync,
   removeTeammateFromTeamFile,
   setMemberMode,
+  type TeamFile,
 } from '../utils/swarm/teamHelpers.js'
 import { unassignTeammateTasks } from '../utils/task/tasks.js'
 import {
@@ -60,6 +63,7 @@ import {
   isShutdownRequest,
   isTeamPermissionUpdate,
   markMessagesAsRead,
+  readMailbox,
   readUnreadMessages,
   type TeammateMessage,
   writeToMailbox,
@@ -70,6 +74,156 @@ import {
   processMailboxPermissionResponse,
   processSandboxPermissionResponse,
 } from './useSwarmPermissionPoller.js'
+
+type TeamContext = NonNullable<AppState['teamContext']>
+type TeamMember = TeamFile['members'][number]
+
+type TeamSecurityContext = {
+  teamName: string
+  leadAgentId: string
+  leadName: string
+  members: TeamMember[]
+  activeTeammates: TeamContext['teammates']
+}
+
+const TeamPermissionUpdateSchema = z
+  .object({
+    type: z.literal('team_permission_update'),
+    permissionUpdate: z
+      .object({
+        type: z.literal('addRules'),
+        rules: z.array(
+          z
+            .object({
+              toolName: z.string().min(1),
+              ruleContent: z.string().optional(),
+            })
+            .strict(),
+        ),
+        behavior: z.enum(['allow', 'deny', 'ask']),
+        destination: z.literal('session'),
+      })
+      .strict(),
+    directoryPath: z.string(),
+    toolName: z.string().min(1),
+  })
+  .strict()
+
+type TeamPermissionUpdateMessage = z.infer<typeof TeamPermissionUpdateSchema>
+
+const consumedShutdownRequests = new Set<string>()
+
+function createTeamSecurityContext(
+  teamContext: TeamContext | undefined,
+  teamFile: TeamFile | null,
+): TeamSecurityContext | null {
+  if (
+    !teamContext ||
+    !teamFile ||
+    teamFile.leadAgentId !== teamContext.leadAgentId ||
+    !Array.isArray(teamFile.members)
+  ) {
+    return null
+  }
+
+  const leadMember = teamFile.members.find(
+    member =>
+      member?.agentId === teamFile.leadAgentId &&
+      typeof member.name === 'string',
+  )
+  if (!leadMember) return null
+
+  return {
+    teamName: teamContext.teamName,
+    leadAgentId: leadMember.agentId,
+    leadName: leadMember.name,
+    members: teamFile.members,
+    activeTeammates: teamContext.teammates,
+  }
+}
+
+function isLeaderIdentity(
+  sender: string,
+  security: TeamSecurityContext | null,
+): boolean {
+  return Boolean(
+    security &&
+      (sender === security.leadAgentId || sender === security.leadName),
+  )
+}
+
+function isMessageFromTeamLeader(
+  message: TeammateMessage,
+  security: TeamSecurityContext | null,
+): boolean {
+  return isLeaderIdentity(message.from, security)
+}
+
+function parseTeamPermissionUpdate(
+  text: string,
+): TeamPermissionUpdateMessage | null {
+  try {
+    const result = TeamPermissionUpdateSchema.safeParse(jsonParse(text))
+    return result.success ? result.data : null
+  } catch {
+    return null
+  }
+}
+
+type ValidatedShutdownApproval = {
+  requestId: string
+  teammateId: string
+  teammateName: string
+  paneId?: string
+  backendType?: TeamMember['backendType']
+}
+
+async function validateAndConsumeShutdownApproval(
+  message: TeammateMessage,
+  security: TeamSecurityContext | null,
+  readTargetMailbox: typeof readMailbox = readMailbox,
+  consumed: Set<string> = consumedShutdownRequests,
+): Promise<ValidatedShutdownApproval | null> {
+  const parsed = isShutdownApproved(message.text)
+  if (!parsed || !security || parsed.from !== message.from) return null
+
+  const member = security.members.find(
+    candidate =>
+      candidate.agentId !== security.leadAgentId &&
+      (candidate.name === message.from || candidate.agentId === message.from),
+  )
+  if (!member) return null
+
+  const activeMember = security.activeTeammates[member.agentId]
+  if (!activeMember || activeMember.name !== member.name) return null
+
+  const consumedKey = `${security.teamName}:${parsed.requestId}`
+  if (consumed.has(consumedKey)) return null
+
+  const targetMailbox = await readTargetMailbox(member.name, security.teamName)
+  const hasPendingRequest = targetMailbox.some(candidate => {
+    const request = isShutdownRequest(candidate.text)
+    return (
+      request?.requestId === parsed.requestId &&
+      isMessageFromTeamLeader(candidate, security) &&
+      isLeaderIdentity(request.from, security)
+    )
+  })
+  if (!hasPendingRequest) return null
+
+  consumed.add(consumedKey)
+  return {
+    requestId: parsed.requestId,
+    teammateId: member.agentId,
+    teammateName: member.name,
+    paneId: member.tmuxPaneId || undefined,
+    backendType: member.backendType,
+  }
+}
+
+function isPaneBackendType(value: unknown): value is PaneBackendType {
+  return value === 'tmux' || value === 'iterm2' || value === 'windows-terminal'
+}
 
 /**
  * Get the agent name to poll for messages.
@@ -151,6 +305,14 @@ export function useInboxPoller({
 
     if (unread.length === 0) return
 
+    const teamFile = currentAppState.teamContext
+      ? await readTeamFileAsync(currentAppState.teamContext.teamName)
+      : null
+    const teamSecurity = createTeamSecurityContext(
+      currentAppState.teamContext,
+      teamFile,
+    )
+
     logForDebugging(`[InboxPoller] Found ${unread.length} unread message(s)`)
 
     // Check for plan approval responses and transition out of plan mode if approved
@@ -159,7 +321,7 @@ export function useInboxPoller({
       for (const msg of unread) {
         const approvalResponse = isPlanApprovalResponse(msg.text)
         // Verify the message is from the team lead to prevent teammates from forging approvals
-        if (approvalResponse && msg.from === 'team-lead') {
+        if (approvalResponse && isMessageFromTeamLeader(msg, teamSecurity)) {
           logForDebugging(
             `[InboxPoller] Received plan approval response from team-lead: approved=${approvalResponse.approved}`,
           )
@@ -373,6 +535,13 @@ export function useInboxPoller({
         const parsed = isPermissionResponse(m.text)
         if (!parsed) continue
 
+        if (!isMessageFromTeamLeader(m, teamSecurity)) {
+          logForDebugging(
+            `[InboxPoller] Ignoring permission response from non-leader: ${m.from}`,
+          )
+          continue
+        }
+
         if (hasPermissionCallback(parsed.request_id)) {
           logForDebugging(
             `[InboxPoller] Processing permission response for ${parsed.request_id}: ${parsed.subtype}`,
@@ -472,6 +641,13 @@ export function useInboxPoller({
         const parsed = isSandboxPermissionResponse(m.text)
         if (!parsed) continue
 
+        if (!isMessageFromTeamLeader(m, teamSecurity)) {
+          logForDebugging(
+            `[InboxPoller] Ignoring sandbox permission response from non-leader: ${m.from}`,
+          )
+          continue
+        }
+
         // Check if we have a registered callback for this request
         if (hasSandboxPermissionCallback(parsed.requestId)) {
           logForDebugging(
@@ -501,21 +677,17 @@ export function useInboxPoller({
       )
 
       for (const m of teamPermissionUpdates) {
-        const parsed = isTeamPermissionUpdate(m.text)
-        if (!parsed) {
+        if (!isMessageFromTeamLeader(m, teamSecurity)) {
           logForDebugging(
-            `[InboxPoller] Failed to parse team permission update: ${m.text.substring(0, 100)}`,
+            `[InboxPoller] Ignoring team permission update from non-leader: ${m.from}`,
           )
           continue
         }
 
-        // Validate required nested fields to prevent crashes from malformed messages
-        if (
-          !parsed.permissionUpdate?.rules ||
-          !parsed.permissionUpdate?.behavior
-        ) {
+        const parsed = parseTeamPermissionUpdate(m.text)
+        if (!parsed) {
           logForDebugging(
-            `[InboxPoller] Invalid team permission update: missing permissionUpdate.rules or permissionUpdate.behavior`,
+            `[InboxPoller] Failed to parse team permission update: ${m.text.substring(0, 100)}`,
           )
           continue
         }
@@ -553,10 +725,9 @@ export function useInboxPoller({
       )
 
       for (const m of modeSetRequests) {
-        // Only accept mode changes from team-lead
-        if (m.from !== 'team-lead') {
+        if (!isMessageFromTeamLeader(m, teamSecurity)) {
           logForDebugging(
-            `[InboxPoller] Ignoring mode set request from non-team-lead: ${m.from}`,
+            `[InboxPoller] Ignoring mode set request from non-leader: ${m.from}`,
           )
           continue
         }
@@ -565,6 +736,12 @@ export function useInboxPoller({
         if (!parsed) {
           logForDebugging(
             `[InboxPoller] Failed to parse mode set request: ${m.text.substring(0, 100)}`,
+          )
+          continue
+        }
+        if (!isLeaderIdentity(parsed.from, teamSecurity)) {
+          logForDebugging(
+            `[InboxPoller] Ignoring mode set request with forged body sender: ${parsed.from}`,
           )
           continue
         }
@@ -670,6 +847,17 @@ export function useInboxPoller({
       // Pass through shutdown requests - the UI component will render them nicely
       // and the model will receive instructions via the tool prompt documentation
       for (const m of shutdownRequests) {
+        const parsed = isShutdownRequest(m.text)
+        if (
+          !parsed ||
+          !isMessageFromTeamLeader(m, teamSecurity) ||
+          !isLeaderIdentity(parsed.from, teamSecurity)
+        ) {
+          logForDebugging(
+            `[InboxPoller] Ignoring shutdown request from non-leader: ${m.from}`,
+          )
+          continue
+        }
         regularMessages.push(m)
       }
     }
@@ -684,41 +872,49 @@ export function useInboxPoller({
       )
 
       for (const m of shutdownApprovals) {
-        const parsed = isShutdownApproved(m.text)
-        if (!parsed) continue
+        let approval: ValidatedShutdownApproval | null = null
+        try {
+          approval = await validateAndConsumeShutdownApproval(m, teamSecurity)
+        } catch (error) {
+          logForDebugging(
+            `[InboxPoller] Failed to validate shutdown approval from ${m.from}: ${error}`,
+          )
+        }
+        if (!approval) {
+          logForDebugging(
+            `[InboxPoller] Ignoring unsolicited or forged shutdown approval from ${m.from}`,
+          )
+          continue
+        }
+        const validatedApproval = approval
+        const savedPaneId = validatedApproval.paneId
+        const savedBackendType = validatedApproval.backendType
 
-        // Kill the pane if we have the info (pane-based teammates)
-        if (parsed.paneId && parsed.backendType) {
+        // Pane identity is leader-owned metadata. The approval body is only an
+        // acknowledgement and cannot select a process to terminate.
+        if (savedPaneId && isPaneBackendType(savedBackendType)) {
           void (async () => {
             try {
               // Ensure backend classes are imported (no subprocess probes)
               await ensureBackendsRegistered()
               const insideTmux = await isInsideTmux()
-              const backend = getBackendByType(
-                parsed.backendType as PaneBackendType,
-              )
-              const success = await backend?.killPane(
-                parsed.paneId!,
-                !insideTmux,
-              )
+              const backend = getBackendByType(savedBackendType)
+              const success = await backend?.killPane(savedPaneId, !insideTmux)
               logForDebugging(
-                `[InboxPoller] Killed pane ${parsed.paneId} for ${parsed.from}: ${success}`,
+                `[InboxPoller] Killed pane ${savedPaneId} for ${validatedApproval.teammateName}: ${success}`,
               )
             } catch (error) {
               logForDebugging(
-                `[InboxPoller] Failed to kill pane for ${parsed.from}: ${error}`,
+                `[InboxPoller] Failed to kill pane for ${validatedApproval.teammateName}: ${error}`,
               )
             }
           })()
         }
 
         // Remove the teammate from teamContext.teammates so the count is accurate
-        const teammateToRemove = parsed.from
+        const teammateToRemove = validatedApproval.teammateName
         if (teammateToRemove && currentAppState.teamContext?.teammates) {
-          // Find the teammate ID by name
-          const teammateId = Object.entries(
-            currentAppState.teamContext.teammates,
-          ).find(([, t]) => t.name === teammateToRemove)?.[0]
+          const teammateId = validatedApproval.teammateId
 
           if (teammateId) {
             // Remove from team file (leader owns team file mutations)
@@ -966,4 +1162,11 @@ export function useInboxPoller({
     // Note: poll uses store.getState() (not appState) so it won't re-run on appState changes
     // The ref guard is a safety measure to ensure initial poll only happens once
   }, [enabled, poll, store])
+}
+
+export const _test = {
+  createTeamSecurityContext,
+  isMessageFromTeamLeader,
+  parseTeamPermissionUpdate,
+  validateAndConsumeShutdownApproval,
 }

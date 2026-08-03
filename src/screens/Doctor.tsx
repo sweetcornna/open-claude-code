@@ -71,6 +71,20 @@ function DistTagsDisplay({ promise }: { promise: Promise<NpmDistTags> }): React.
   );
 }
 
+export function sanitizeBrowserUrlForDisplay(browserUrl: string | null): string {
+  if (!browserUrl) return '[invalid URL]';
+  try {
+    const parsed = new URL(browserUrl);
+    if (!parsed.host) return '[invalid URL]';
+    const path = parsed.pathname === '/' ? '' : parsed.pathname;
+    return `${parsed.protocol}//${parsed.host}${path}`;
+  } catch {
+    // Parse failures must not fall back to the original value: malformed
+    // Browserless URLs can still contain credentials.
+    return '[invalid URL]';
+  }
+}
+
 export function Doctor({ onDone }: Props): React.ReactNode {
   const agentDefinitions = useAppState(s => s.agentDefinitions);
   const mcpTools = useAppState(s => s.mcp.tools);
@@ -227,7 +241,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         <Text>
           └ Chrome (--chrome): {diagnostic.chromeStatus.version ?? 'not found'}
           {diagnostic.chromeStatus.mode === 'browser-url'
-            ? ` (attaching to ${diagnostic.chromeStatus.browserUrl})`
+            ? ` (attaching to ${sanitizeBrowserUrlForDisplay(diagnostic.chromeStatus.browserUrl)})`
             : diagnostic.chromeStatus.mode === 'auto-connect'
               ? ' (autoConnect)'
               : ' (will launch its own browser)'}

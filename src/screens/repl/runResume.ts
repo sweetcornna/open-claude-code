@@ -293,7 +293,7 @@ export async function runResume(
     // Persist the current mode so future resumes know what mode this session was in
     if (feature('COORDINATOR_MODE')) {
       /* eslint-disable @typescript-eslint/no-require-imports */
-      const { saveMode } = require('../utils/sessionStorage.js')
+      const { saveMode } = require('../../utils/sessionStorage.js')
       const { isCoordinatorMode } =
         require('../../coordinator/coordinatorMode.js') as typeof import('../../coordinator/coordinatorMode.js')
       /* eslint-enable @typescript-eslint/no-require-imports */

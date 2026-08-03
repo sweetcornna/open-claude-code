@@ -17,6 +17,31 @@ const HIDE_DELAY_MS = 5000
 const DEBOUNCE_MS = 50
 const FALLBACK_POLL_MS = 5000 // Fallback in case fs.watch misses events
 
+type TasksV2StoreDependencies = {
+  watch: (path: string, listener: () => void) => FSWatcher
+  getTaskListId: () => string
+  getTasksDir: (taskListId: string) => string
+  listTasks: (taskListId: string) => Promise<Task[]>
+  onTasksUpdated: (listener: () => void) => () => void
+  resetTaskList: (taskListId: string) => Promise<void>
+  setTimeout: (
+    callback: () => void,
+    delayMs: number,
+  ) => ReturnType<typeof setTimeout>
+  clearTimeout: (timer: ReturnType<typeof setTimeout>) => void
+}
+
+const TASKS_V2_STORE_DEPENDENCIES: TasksV2StoreDependencies = {
+  watch: (path, listener) => watch(path, listener),
+  getTaskListId,
+  getTasksDir,
+  listTasks,
+  onTasksUpdated,
+  resetTaskList,
+  setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimeout: timer => clearTimeout(timer),
+}
+
 /**
  * Singleton store for the TodoV2 task list. Owns the file watcher, timers,
  * and cached task list. Multiple hook instances (REPL, Spinner,
@@ -45,6 +70,11 @@ class TasksV2Store {
   #changed = createSignal()
   #subscriberCount = 0
   #started = false
+  #lifecycleEpoch = 0
+
+  constructor(
+    private readonly dependencies: TasksV2StoreDependencies = TASKS_V2_STORE_DEPENDENCIES,
+  ) {}
 
   /**
    * useSyncExternalStore snapshot. Returns the same Task[] reference between
@@ -63,10 +93,13 @@ class TasksV2Store {
     this.#subscriberCount++
     if (!this.#started) {
       this.#started = true
-      this.#unsubscribeTasksUpdated = onTasksUpdated(this.#debouncedFetch)
+      const epoch = ++this.#lifecycleEpoch
+      this.#unsubscribeTasksUpdated = this.dependencies.onTasksUpdated(() =>
+        this.#scheduleFetch(epoch),
+      )
       // Fire-and-forget: subscribe is called post-commit (not in render),
       // and the store notifies subscribers when the fetch resolves.
-      void this.#fetch()
+      void this.#fetch(epoch)
     }
     let unsubscribed = false
     return () => {
@@ -82,12 +115,21 @@ class TasksV2Store {
     this.#changed.emit()
   }
 
+  #isActive(epoch: number): boolean {
+    return (
+      this.#started &&
+      this.#subscriberCount > 0 &&
+      this.#lifecycleEpoch === epoch
+    )
+  }
+
   /**
    * Point the file watcher at the current tasks directory. Called on start
    * and whenever #fetch detects the task list ID has changed (e.g. when
    * TeamCreateTool sets leaderTeamName mid-session).
    */
-  #rewatch(dir: string): void {
+  #rewatch(dir: string, epoch: number): void {
+    if (!this.#isActive(epoch)) return
     // Retry even on same dir if the previous watch attempt failed (dir
     // didn't exist yet). Once the watcher is established, same-dir is a no-op.
     if (dir === this.#watchedDir && this.#watcher !== null) return
@@ -95,7 +137,9 @@ class TasksV2Store {
     this.#watcher = null
     this.#watchedDir = dir
     try {
-      this.#watcher = watch(dir, this.#debouncedFetch)
+      this.#watcher = this.dependencies.watch(dir, () =>
+        this.#scheduleFetch(epoch),
+      )
       this.#watcher.unref()
     } catch {
       // Directory may not exist yet (ensureTasksDir is called by writers).
@@ -104,20 +148,32 @@ class TasksV2Store {
     }
   }
 
-  #debouncedFetch = (): void => {
-    if (this.#debounceTimer) clearTimeout(this.#debounceTimer)
-    this.#debounceTimer = setTimeout(() => void this.#fetch(), DEBOUNCE_MS)
+  #scheduleFetch(epoch: number): void {
+    if (!this.#isActive(epoch)) return
+    if (this.#debounceTimer) {
+      this.dependencies.clearTimeout(this.#debounceTimer)
+    }
+    this.#debounceTimer = this.dependencies.setTimeout(() => {
+      this.#debounceTimer = null
+      if (!this.#isActive(epoch)) return
+      void this.#fetch(epoch)
+    }, DEBOUNCE_MS)
     this.#debounceTimer.unref()
   }
 
-  #fetch = async (): Promise<void> => {
-    const taskListId = getTaskListId()
+  #fetch = async (epoch: number): Promise<void> => {
+    if (!this.#isActive(epoch)) return
+
+    const taskListId = this.dependencies.getTaskListId()
     // Task list ID can change mid-session (TeamCreateTool sets
     // leaderTeamName) — point the watcher at the current dir.
-    this.#rewatch(getTasksDir(taskListId))
-    const current = (await listTasks(taskListId)).filter(
+    this.#rewatch(this.dependencies.getTasksDir(taskListId), epoch)
+    if (!this.#isActive(epoch)) return
+
+    const current = (await this.dependencies.listTasks(taskListId)).filter(
       t => !t.metadata?._internal,
     )
+    if (!this.#isActive(epoch)) return
     this.#tasks = current
 
     const hasIncomplete = current.some(t => t.status !== 'completed')
@@ -128,8 +184,8 @@ class TasksV2Store {
       this.#clearHideTimer()
     } else if (this.#hideTimer === null && !this.#hidden) {
       // All tasks just became completed — schedule clear
-      this.#hideTimer = setTimeout(
-        this.#onHideTimerFired.bind(this, taskListId),
+      this.#hideTimer = this.dependencies.setTimeout(
+        () => void this.#onHideTimerFired(taskListId, epoch),
         HIDE_DELAY_MS,
       )
       this.#hideTimer.unref()
@@ -142,38 +198,46 @@ class TasksV2Store {
     // the fs.watch watcher and onTasksUpdated callback are sufficient to
     // detect new activity — no need to keep polling and re-rendering.
     if (this.#pollTimer) {
-      clearTimeout(this.#pollTimer)
+      this.dependencies.clearTimeout(this.#pollTimer)
       this.#pollTimer = null
     }
-    if (hasIncomplete) {
-      this.#pollTimer = setTimeout(this.#debouncedFetch, FALLBACK_POLL_MS)
+    if (hasIncomplete && this.#isActive(epoch)) {
+      this.#pollTimer = this.dependencies.setTimeout(
+        () => this.#scheduleFetch(epoch),
+        FALLBACK_POLL_MS,
+      )
       this.#pollTimer.unref()
     }
   }
 
-  #onHideTimerFired(scheduledForTaskListId: string): void {
+  async #onHideTimerFired(
+    scheduledForTaskListId: string,
+    epoch: number,
+  ): Promise<void> {
+    if (!this.#isActive(epoch)) return
     this.#hideTimer = null
     // Bail if the task list ID changed since scheduling (team created/deleted
     // during the 5s window) — don't reset the wrong list.
-    const currentId = getTaskListId()
+    const currentId = this.dependencies.getTaskListId()
     if (currentId !== scheduledForTaskListId) return
     // Verify all tasks are still completed before clearing
-    void listTasks(currentId).then(async tasksToCheck => {
-      const allStillCompleted =
-        tasksToCheck.length > 0 &&
-        tasksToCheck.every(t => t.status === 'completed')
-      if (allStillCompleted) {
-        await resetTaskList(currentId)
-        this.#tasks = []
-        this.#hidden = true
-      }
-      this.#notify()
-    })
+    const tasksToCheck = await this.dependencies.listTasks(currentId)
+    if (!this.#isActive(epoch)) return
+    const allStillCompleted =
+      tasksToCheck.length > 0 &&
+      tasksToCheck.every(t => t.status === 'completed')
+    if (allStillCompleted) {
+      await this.dependencies.resetTaskList(currentId)
+      if (!this.#isActive(epoch)) return
+      this.#tasks = []
+      this.#hidden = true
+    }
+    if (this.#isActive(epoch)) this.#notify()
   }
 
   #clearHideTimer(): void {
     if (this.#hideTimer) {
-      clearTimeout(this.#hideTimer)
+      this.dependencies.clearTimeout(this.#hideTimer)
       this.#hideTimer = null
     }
   }
@@ -184,17 +248,20 @@ class TasksV2Store {
    * subsequent re-subscribe renders the last known state immediately.
    */
   #stop(): void {
+    this.#started = false
+    this.#lifecycleEpoch++
     this.#watcher?.close()
     this.#watcher = null
     this.#watchedDir = null
     this.#unsubscribeTasksUpdated?.()
     this.#unsubscribeTasksUpdated = null
     this.#clearHideTimer()
-    if (this.#debounceTimer) clearTimeout(this.#debounceTimer)
-    if (this.#pollTimer) clearTimeout(this.#pollTimer)
+    if (this.#debounceTimer) {
+      this.dependencies.clearTimeout(this.#debounceTimer)
+    }
+    if (this.#pollTimer) this.dependencies.clearTimeout(this.#pollTimer)
     this.#debounceTimer = null
     this.#pollTimer = null
-    this.#started = false
   }
 }
 
@@ -247,4 +314,15 @@ export function useTasksV2WithCollapseEffect(): Task[] | undefined {
   }, [hidden, setAppState])
 
   return tasks
+}
+
+export const _test = {
+  createStore(
+    dependencies: Partial<TasksV2StoreDependencies> = {},
+  ): TasksV2Store {
+    return new TasksV2Store({
+      ...TASKS_V2_STORE_DEPENDENCIES,
+      ...dependencies,
+    })
+  },
 }

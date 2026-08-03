@@ -24,6 +24,39 @@ type Props = {
   onSubmitTask: (prompt: string) => boolean
 }
 
+type TaskWatcherDependencies = {
+  ensureTasksDir: (taskListId: string) => Promise<void>
+  getTasksDir: (taskListId: string) => string
+  watch: (path: string, listener: () => void) => FSWatcher
+}
+
+const TASK_WATCHER_DEPENDENCIES: TaskWatcherDependencies = {
+  ensureTasksDir,
+  getTasksDir,
+  watch: (path, listener) => watch(path, listener),
+}
+
+async function startTaskWatcher(
+  taskListId: string,
+  listener: () => void,
+  isDisposed: () => boolean,
+  dependencies: TaskWatcherDependencies = TASK_WATCHER_DEPENDENCIES,
+): Promise<FSWatcher | null> {
+  await dependencies.ensureTasksDir(taskListId)
+  if (isDisposed()) return null
+
+  const watcher = dependencies.watch(
+    dependencies.getTasksDir(taskListId),
+    listener,
+  )
+  if (isDisposed()) {
+    watcher.close()
+    return null
+  }
+  watcher.unref()
+  return watcher
+}
+
 /**
  * Hook that watches a task list directory and automatically picks up
  * open, unowned tasks to work on.
@@ -133,10 +166,10 @@ export function useTaskListWatcher({
   useEffect(() => {
     if (!enabled) return
 
-    void ensureTasksDir(taskListId)
     const tasksDir = getTasksDir(taskListId)
 
     let watcher: FSWatcher | null = null
+    let disposed = false
 
     const debouncedCheck = (): void => {
       if (debounceTimerRef.current) {
@@ -150,23 +183,33 @@ export function useTaskListWatcher({
     }
     scheduleCheckRef.current = debouncedCheck
 
-    try {
-      watcher = watch(tasksDir, debouncedCheck)
-      watcher.unref()
-      logForDebugging(`[TaskListWatcher] Watching for tasks in ${tasksDir}`)
-    } catch (error) {
-      // fs.watch throws synchronously on ENOENT — ensureTasksDir should have
-      // created the dir, but handle the race gracefully
-      logForDebugging(`[TaskListWatcher] Failed to watch ${tasksDir}: ${error}`)
-    }
-
-    // Initial check
-    debouncedCheck()
+    void startTaskWatcher(taskListId, debouncedCheck, () => disposed)
+      .then(createdWatcher => {
+        if (disposed) {
+          createdWatcher?.close()
+          return
+        }
+        watcher = createdWatcher
+        if (watcher) {
+          logForDebugging(`[TaskListWatcher] Watching for tasks in ${tasksDir}`)
+        }
+        // Establish the watcher before the initial scan so a task created
+        // during startup is observed either by the scan or by fs.watch.
+        debouncedCheck()
+      })
+      .catch(error => {
+        if (disposed) return
+        logForDebugging(
+          `[TaskListWatcher] Failed to watch ${tasksDir}: ${error}`,
+        )
+        debouncedCheck()
+      })
 
     return () => {
       // This cleanup only fires when taskListId changes or on unmount —
       // never per-turn. That keeps watcher.close() out of the Bun
       // PathWatcherManager deadlock window.
+      disposed = true
       scheduleCheckRef.current = () => {}
       if (watcher) {
         watcher.close()
@@ -218,4 +261,8 @@ function formatTaskAsPrompt(task: Task): string {
   }
 
   return prompt
+}
+
+export const _test = {
+  startTaskWatcher,
 }
