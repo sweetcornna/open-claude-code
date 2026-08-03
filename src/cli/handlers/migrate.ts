@@ -29,7 +29,8 @@ export function parseMigrateArgs(args: string[]): MigrateOptions {
   }
 }
 
-const realFsProbe: FsProbe = {
+/** Real-filesystem probe. Exported so the onboarding migration step can reuse it. */
+export const realFsProbe: FsProbe = {
   exists: path => existsSync(path),
   isDirectory: path => {
     try {
