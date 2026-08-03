@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import figures from 'figures';
 import React, { useEffect } from 'react';
 import { getAdditionalDirectoriesForClaudeMd, setAdditionalDirectoriesForClaudeMd } from '../../bootstrap/state.js';
+import { executeDirectoryAddedHooks } from '../../utils/hooks.js';
 import type { LocalJSXCommandContext } from '../../commands.js';
 import { MessageResponse } from '../../components/MessageResponse.js';
 import { AddWorkspaceDirectory } from '../../components/permissions/rules/AddWorkspaceDirectory.js';
@@ -76,6 +77,10 @@ export async function call(
       setAdditionalDirectoriesForClaudeMd([...currentDirs, path]);
     }
     SandboxManager.refreshConfig();
+
+    // DirectoryAdded hook (official 2.1.219 parity) — fire-and-forget:
+    // env hooks must not block the UI confirmation.
+    void executeDirectoryAddedHooks(path, 'add_dir_command').catch(() => {});
 
     let message: string;
 

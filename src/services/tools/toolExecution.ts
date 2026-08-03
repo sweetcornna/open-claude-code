@@ -1567,9 +1567,11 @@ async function checkPermissionsAndCallTool(
       mcpServerBaseUrl,
     )) {
       if ('updatedMCPToolOutput' in hookResult) {
-        if (isMcpTool(tool)) {
-          toolOutput = hookResult.updatedMCPToolOutput
-        }
+        // No MCP gate: toolHooks emits this wire key for MCP replacements
+        // (updatedMCPToolOutput) AND for the all-tools updatedToolOutput
+        // (official 2.1.121 parity) — it only fires when a hook explicitly
+        // provided a replacement for THIS tool.
+        toolOutput = hookResult.updatedMCPToolOutput
       } else if (isMcpTool(tool)) {
         hookResults.push(hookResult)
         if (hookResult.message.type === 'attachment') {

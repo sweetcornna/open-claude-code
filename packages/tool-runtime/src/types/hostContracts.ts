@@ -258,6 +258,7 @@ export type HookEvent =
   | 'WorktreeRemove'
   | 'InstructionsLoaded'
   | 'CwdChanged'
+  | 'DirectoryAdded'
   | 'FileChanged'
 
 /** Mirrors `src/types/hooks.ts`. */

@@ -256,6 +256,11 @@ export const getHookEventMetadata = memoize(
         description:
           'Input to command is JSON with old_cwd and new_cwd.\nCLAUDE_ENV_FILE is set — write bash exports there to apply env to subsequent BashTool commands.\nHook output can include hookSpecificOutput.watchPaths (array of absolute paths) to register with the FileChanged watcher.\nExit code 0 - command completes successfully\nOther exit codes - show stderr to user only',
       },
+      DirectoryAdded: {
+        summary: 'After a working directory is added mid-session',
+        description:
+          'Input to command is JSON with directory and source (add_dir_command, sdk).\nFires when /add-dir registers a new working directory.\nCLAUDE_ENV_FILE is set — write bash exports there to apply env to subsequent BashTool commands.\nExit code 0 - command completes successfully\nOther exit codes - show stderr to user only',
+      },
       FileChanged: {
         summary: 'When a watched file changes',
         description:
@@ -298,6 +303,7 @@ export function groupHooksByEventAndMatcher(
     WorktreeRemove: {},
     InstructionsLoaded: {},
     CwdChanged: {},
+    DirectoryAdded: {},
     FileChanged: {},
   }
 

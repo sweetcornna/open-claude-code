@@ -32,6 +32,16 @@ function buildHookSchemas() {
   const BashCommandHookSchema = z.object({
     type: z.literal('command').describe('Shell command hook type'),
     command: z.string().describe('Shell command to execute'),
+    args: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Exec-form arguments (official 2.1.139 parity): when present, ' +
+          '`command` is executed directly with these arguments — no shell ' +
+          'parses the command line, so interpolated values (e.g. plugin ' +
+          '${user_config.*}) cannot inject shell syntax. The `shell` field ' +
+          'and CLAUDE_CODE_SHELL_PREFIX are ignored for exec-form hooks.',
+      ),
     if: IfConditionSchema(),
     shell: z
       .enum(SHELL_TYPES)

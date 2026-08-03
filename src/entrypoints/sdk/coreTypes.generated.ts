@@ -343,6 +343,10 @@ export type ElicitationResultHookInput = HookInput
 export type ConfigChangeHookInput = HookInput
 export type InstructionsLoadedHookInput = HookInput
 export type CwdChangedHookInput = HookInput & { cwd: string }
+export type DirectoryAddedHookInput = HookInput & {
+  directory: string
+  source: 'add_dir_command' | 'sdk'
+}
 export type FileChangedHookInput = HookInput & { path: string }
 
 // SDK Message types

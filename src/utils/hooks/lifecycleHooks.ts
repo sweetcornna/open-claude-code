@@ -10,6 +10,7 @@ import type { ToolUseContext } from '../../Tool.js'
 import type {
   ConfigChangeHookInput,
   CwdChangedHookInput,
+  DirectoryAddedHookInput,
   ElicitationHookInput,
   ElicitationResultHookInput,
   ExitReason,
@@ -735,6 +736,28 @@ export function executeCwdChangedHooks(
     old_cwd: oldCwd,
     new_cwd: newCwd,
   }
+  return executeEnvHooks(hookInput, timeoutMs)
+}
+
+/**
+ * DirectoryAdded (official 2.1.219 parity): a working directory was
+ * registered mid-session via /add-dir or the SDK's register_repo_root.
+ */
+export function executeDirectoryAddedHooks(
+  directory: string,
+  source: 'add_dir_command' | 'sdk',
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): Promise<{
+  results: HookOutsideReplResult[]
+  watchPaths: string[]
+  systemMessages: string[]
+}> {
+  const hookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'DirectoryAdded' as const,
+    directory,
+    source,
+  } as unknown as DirectoryAddedHookInput
   return executeEnvHooks(hookInput, timeoutMs)
 }
 

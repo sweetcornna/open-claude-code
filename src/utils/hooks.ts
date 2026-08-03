@@ -35,6 +35,7 @@ export {
 export {
   executeConfigChangeHooks,
   executeCwdChangedHooks,
+  executeDirectoryAddedHooks,
   executeElicitationHooks,
   executeElicitationResultHooks,
   executeFileChangedHooks,
