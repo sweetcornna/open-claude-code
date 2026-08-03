@@ -159,7 +159,7 @@ export function isMouseClicksDisabled(): boolean {
  * enter fullscreen, so features that depend on alt-screen re-rendering
  * should gate on this.
  */
-export function isFullscreenActive(): boolean {
+function isFullscreenActive(): boolean {
   return getIsInteractive() && isFullscreenEnvEnabled()
 }
 
