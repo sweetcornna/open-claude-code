@@ -78,6 +78,20 @@ export const MAX_SKILL_NAME_LENGTH = 64
 
 const SPEC_CONFORMANT_SKILL_NAME_REGEX = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
 
+const MCP_SKILL_FRONTMATTER_FIELDS = [
+  'name',
+  'description',
+  'argument-hint',
+  'arguments',
+  'when_to_use',
+  'version',
+  'disable-model-invocation',
+  'user-invocable',
+  'license',
+  'compatibility',
+  'metadata',
+] as const
+
 /**
  * Whether a skill directory name conforms to the agentskills.io naming rules:
  * lowercase alphanumerics and hyphens, 1..64 characters, no leading or
@@ -140,6 +154,28 @@ async function getFileIdentity(filePath: string): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+function isPathWithinRoot(rootPath: string, candidatePath: string): boolean {
+  const relativePath = relative(rootPath, candidatePath)
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith(`..${pathSep}`) &&
+      relativePath !== '..' &&
+      !isAbsolute(relativePath))
+  )
+}
+
+function restrictMcpSkillFrontmatter(
+  frontmatter: FrontmatterData,
+): FrontmatterData {
+  const restricted: FrontmatterData = {}
+  for (const field of MCP_SKILL_FRONTMATTER_FIELDS) {
+    if (Object.hasOwn(frontmatter, field)) {
+      ;(restricted as Record<string, unknown>)[field] = frontmatter[field]
+    }
+  }
+  return restricted
 }
 
 // Internal type to track skill with its file path for deduplication
@@ -237,6 +273,7 @@ export function parseSkillFrontmatterFields(
   markdownContent: string,
   resolvedName: string,
   descriptionFallbackLabel: 'Skill' | 'Custom command' = 'Skill',
+  loadedFrom?: LoadedFrom,
 ): {
   displayName: string | undefined
   description: string
@@ -258,8 +295,12 @@ export function parseSkillFrontmatterFields(
   compatibility: string | Record<string, unknown> | undefined
   metadata: Record<string, unknown> | undefined
 } {
+  const effectiveFrontmatter =
+    loadedFrom === 'mcp'
+      ? restrictMcpSkillFrontmatter(frontmatter)
+      : frontmatter
   const validatedDescription = coerceDescriptionToString(
-    frontmatter.description,
+    effectiveFrontmatter.description,
     resolvedName,
   )
   const description =
@@ -267,18 +308,18 @@ export function parseSkillFrontmatterFields(
     extractDescriptionFromMarkdown(markdownContent, descriptionFallbackLabel)
 
   const userInvocable =
-    frontmatter['user-invocable'] === undefined
+    effectiveFrontmatter['user-invocable'] === undefined
       ? true
-      : parseBooleanFrontmatter(frontmatter['user-invocable'])
+      : parseBooleanFrontmatter(effectiveFrontmatter['user-invocable'])
 
   const model =
-    frontmatter.model === 'inherit'
+    effectiveFrontmatter.model === 'inherit'
       ? undefined
-      : frontmatter.model
-        ? parseUserSpecifiedModel(frontmatter.model as string)
+      : effectiveFrontmatter.model
+        ? parseUserSpecifiedModel(effectiveFrontmatter.model as string)
         : undefined
 
-  const effortRaw = frontmatter['effort']
+  const effortRaw = effectiveFrontmatter['effort']
   const effort =
     effortRaw !== undefined ? parseEffortValue(effortRaw) : undefined
   if (effortRaw !== undefined && effort === undefined) {
@@ -289,34 +330,37 @@ export function parseSkillFrontmatterFields(
 
   return {
     displayName:
-      frontmatter.name != null ? String(frontmatter.name) : undefined,
+      effectiveFrontmatter.name != null
+        ? String(effectiveFrontmatter.name)
+        : undefined,
     description,
     hasUserSpecifiedDescription: validatedDescription !== null,
     allowedTools: parseSlashCommandToolsFromFrontmatter(
-      frontmatter['allowed-tools'],
+      effectiveFrontmatter['allowed-tools'],
     ),
     argumentHint:
-      frontmatter['argument-hint'] != null
-        ? String(frontmatter['argument-hint'])
+      effectiveFrontmatter['argument-hint'] != null
+        ? String(effectiveFrontmatter['argument-hint'])
         : undefined,
     argumentNames: parseArgumentNames(
-      frontmatter.arguments as string | string[] | undefined,
+      effectiveFrontmatter.arguments as string | string[] | undefined,
     ),
-    whenToUse: frontmatter.when_to_use as string | undefined,
-    version: frontmatter.version as string | undefined,
+    whenToUse: effectiveFrontmatter.when_to_use as string | undefined,
+    version: effectiveFrontmatter.version as string | undefined,
     model,
     disableModelInvocation: parseBooleanFrontmatter(
-      frontmatter['disable-model-invocation'],
+      effectiveFrontmatter['disable-model-invocation'],
     ),
     userInvocable,
-    hooks: parseHooksFromFrontmatter(frontmatter, resolvedName),
-    executionContext: frontmatter.context === 'fork' ? 'fork' : undefined,
-    agent: frontmatter.agent as string | undefined,
+    hooks: parseHooksFromFrontmatter(effectiveFrontmatter, resolvedName),
+    executionContext:
+      effectiveFrontmatter.context === 'fork' ? 'fork' : undefined,
+    agent: effectiveFrontmatter.agent as string | undefined,
     effort,
-    shell: parseShellFrontmatter(frontmatter.shell, resolvedName),
-    license: parseSkillLicense(frontmatter.license),
-    compatibility: parseSkillCompatibility(frontmatter.compatibility),
-    metadata: parseSkillMetadata(frontmatter.metadata),
+    shell: parseShellFrontmatter(effectiveFrontmatter.shell, resolvedName),
+    license: parseSkillLicense(effectiveFrontmatter.license),
+    compatibility: parseSkillCompatibility(effectiveFrontmatter.compatibility),
+    metadata: parseSkillMetadata(effectiveFrontmatter.metadata),
   }
 }
 
@@ -476,8 +520,10 @@ async function loadSkillsFromSkillsDir(
   const fs = getFsImplementation()
 
   let entries
+  let resolvedBasePath: string
   try {
     entries = await fs.readdir(basePath)
+    resolvedBasePath = await realpath(basePath)
   } catch (e: unknown) {
     if (!isFsInaccessible(e)) logError(e)
     return []
@@ -495,9 +541,39 @@ async function loadSkillsFromSkillsDir(
         const skillDirPath = join(basePath, entry.name)
         const skillFilePath = join(skillDirPath, 'SKILL.md')
 
+        let resolvedSkillDirPath: string
+        let resolvedSkillFilePath: string
+        try {
+          ;[resolvedSkillDirPath, resolvedSkillFilePath] = await Promise.all([
+            realpath(skillDirPath),
+            realpath(skillFilePath),
+          ])
+        } catch (e: unknown) {
+          if (!isENOENT(e)) {
+            logForDebugging(
+              `[skills] failed to resolve ${skillFilePath}: ${e}`,
+              { level: 'warn' },
+            )
+          }
+          return null
+        }
+
+        if (
+          !isPathWithinRoot(resolvedBasePath, resolvedSkillDirPath) ||
+          !isPathWithinRoot(resolvedBasePath, resolvedSkillFilePath)
+        ) {
+          logForDebugging(
+            `[skills] refusing skill '${entry.name}' because its resolved path escapes ${basePath}`,
+            { level: 'warn' },
+          )
+          return null
+        }
+
         let content: string
         try {
-          content = await fs.readFile(skillFilePath, { encoding: 'utf-8' })
+          content = await fs.readFile(resolvedSkillFilePath, {
+            encoding: 'utf-8',
+          })
         } catch (e: unknown) {
           // SKILL.md doesn't exist, skip this entry. Log non-ENOENT errors
           // (EACCES/EPERM/EIO) so permission/IO problems are diagnosable.
@@ -535,11 +611,11 @@ async function loadSkillsFromSkillsDir(
             skillName,
             markdownContent,
             source,
-            baseDir: skillDirPath,
+            baseDir: resolvedSkillDirPath,
             loadedFrom: 'skills',
             paths,
           }),
-          filePath: skillFilePath,
+          filePath: resolvedSkillFilePath,
         }
       } catch (error) {
         logError(error)
@@ -861,18 +937,27 @@ export const getSkillDirCommands = memoize(
     }
 
     // Store conditional skills for later activation when matching files are touched
+    const storedConditionalSkills: Command[] = []
     for (const skill of newConditionalSkills) {
+      if (skill.type !== 'prompt') continue
+      if (conditionalSkills.has(skill.name)) {
+        logForDebugging(
+          `[skills] skipping lower-precedence conditional skill '${skill.name}' from ${skill.source}`,
+        )
+        continue
+      }
       conditionalSkills.set(skill.name, skill)
+      storedConditionalSkills.push(skill)
     }
 
-    if (newConditionalSkills.length > 0) {
+    if (storedConditionalSkills.length > 0) {
       logForDebugging(
-        `[skills] ${newConditionalSkills.length} conditional skills stored (activated when matching files are touched)`,
+        `[skills] ${storedConditionalSkills.length} conditional skills stored (activated when matching files are touched)`,
       )
     }
 
     logForDebugging(
-      `Loaded ${deduplicatedSkills.length} unique skills (${unconditionalSkills.length} unconditional, ${newConditionalSkills.length} conditional, managed: ${managedSkills.length}, user: ${userSkills.length}, project: ${projectSkillsNested.flat().length}, additional: ${additionalSkillsNested.flat().length}, legacy commands: ${legacyCommands.length})`,
+      `Loaded ${deduplicatedSkills.length} unique skills (${unconditionalSkills.length} unconditional, ${storedConditionalSkills.length} conditional, managed: ${managedSkills.length}, user: ${userSkills.length}, project: ${projectSkillsNested.flat().length}, additional: ${additionalSkillsNested.flat().length}, legacy commands: ${legacyCommands.length})`,
     )
 
     return unconditionalSkills

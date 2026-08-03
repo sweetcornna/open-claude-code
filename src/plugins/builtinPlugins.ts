@@ -16,6 +16,7 @@
 import type { Command } from '../commands.js'
 import type { BundledSkillDefinition } from '../skills/bundledSkills.js'
 import type { BuiltinPluginDefinition, LoadedPlugin } from '../types/plugin.js'
+import { PluginIdSchema } from '../utils/plugins/schemas.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 
 const BUILTIN_PLUGINS: Map<string, BuiltinPluginDefinition> = new Map()
@@ -32,10 +33,16 @@ export function registerBuiltinPlugin(
 }
 
 /**
- * Check if a plugin ID represents a built-in plugin (ends with @builtin).
+ * Check if a plugin ID represents a registered built-in plugin.
  */
 export function isBuiltinPluginId(pluginId: string): boolean {
-  return pluginId.endsWith(`@${BUILTIN_MARKETPLACE_NAME}`)
+  const parsed = PluginIdSchema().safeParse(pluginId)
+  if (!parsed.success) return false
+
+  const separatorIndex = parsed.data.indexOf('@')
+  const name = parsed.data.slice(0, separatorIndex)
+  const marketplace = parsed.data.slice(separatorIndex + 1)
+  return marketplace === BUILTIN_MARKETPLACE_NAME && BUILTIN_PLUGINS.has(name)
 }
 
 /**
