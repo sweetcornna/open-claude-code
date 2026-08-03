@@ -4,6 +4,14 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createLinkedTransportPair } from '../../services/mcp/InProcessTransport.js'
 import { createMcpServerFactory } from '../mcp.js'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// Glob calls below pass this absolute path explicitly: the ambient cwd flows
+// through bootstrap/state, which another test file may have left mocked to
+// '/mock/cwd' (mock.module is process-global). An absolute path keeps these
+// round trips deterministic regardless of what ran before.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 
 // `createMcpServerFactory` reads `MACRO.VERSION` when the factory runs, so the
 // define only has to exist before the first connection is served.
@@ -70,7 +78,7 @@ describe('createMcpServerFactory', () => {
 
         const called = await client.callTool({
           name: 'Glob',
-          arguments: { pattern: 'package.json' },
+          arguments: { pattern: 'package.json', path: REPO_ROOT },
         })
         expect(called.isError).toBeFalsy()
         const content = called.content as { type: string; text: string }[]
@@ -109,7 +117,7 @@ describe('createMcpServerFactory', () => {
 
         const called = await client.callTool({
           name: 'Glob',
-          arguments: { pattern: 'package.json' },
+          arguments: { pattern: 'package.json', path: REPO_ROOT },
         })
         expect(called.isError).toBeFalsy()
         const content = called.content as { type: string; text: string }[]
