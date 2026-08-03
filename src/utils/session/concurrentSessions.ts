@@ -35,6 +35,80 @@ function getSessionsDir(): string {
 }
 
 /**
+ * Return an OS-derived marker that changes when a PID is reused.
+ * A missing marker must be treated as unverifiable by signal-sending callers.
+ */
+export async function getProcessStartMarker(
+  pid: number,
+): Promise<string | undefined> {
+  if (!Number.isSafeInteger(pid) || pid <= 1) return undefined
+
+  const platform = getPlatform()
+  if (platform === 'linux' || platform === 'wsl') {
+    try {
+      const stat = await readFile(`/proc/${pid}/stat`, 'utf8')
+      const commandEnd = stat.lastIndexOf(')')
+      if (commandEnd !== -1) {
+        // After the command name, index 0 is field 3 (state); field 22 is the
+        // kernel start tick and remains stable for the lifetime of the process.
+        const startTick = stat
+          .slice(commandEnd + 2)
+          .trim()
+          .split(/\s+/)[19]
+        if (startTick && /^\d+$/.test(startTick)) return `proc:${startTick}`
+      }
+    } catch {
+      // Fall through to the platform process query below.
+    }
+  }
+
+  const command =
+    platform === 'windows'
+      ? [
+          'powershell.exe',
+          '-NoProfile',
+          '-Command',
+          `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction SilentlyContinue; if ($p) { $p.CreationDate.ToUniversalTime().ToFileTimeUtc() }`,
+        ]
+      : ['ps', '-o', 'lstart=', '-o', 'command=', '-p', String(pid)]
+
+  try {
+    const child = Bun.spawn(command, {
+      stdout: 'pipe',
+      stderr: 'ignore',
+      env: { ...process.env, LC_ALL: 'C' },
+    })
+    const [stdout, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      child.exited,
+    ])
+    const rawMarker = exitCode === 0 ? stdout.trim() : ''
+    return rawMarker ? `${platform}:${rawMarker}` : undefined
+  } catch {
+    return pid === process.pid
+      ? `epoch:${Math.floor(performance.timeOrigin / 1000)}`
+      : undefined
+  }
+}
+
+export function getBgSessionMetadata(): {
+  name?: string
+  logPath?: string
+  agent?: string
+  engine?: 'tmux' | 'detached'
+  tmuxSessionName?: string
+} {
+  const engine = process.env.CLAUDE_CODE_SESSION_ENGINE
+  return {
+    name: process.env.CLAUDE_CODE_SESSION_NAME,
+    logPath: process.env.CLAUDE_CODE_SESSION_LOG,
+    agent: process.env.CLAUDE_CODE_AGENT,
+    engine: engine === 'tmux' || engine === 'detached' ? engine : undefined,
+    tmuxSessionName: process.env.CLAUDE_CODE_TMUX_SESSION,
+  }
+}
+
+/**
  * Kind override from env. Set by the spawner (`claude --bg`, daemon
  * supervisor) so the child can register without the parent having to
  * write the file for it — cleanup-on-exit wiring then works for free.
@@ -74,6 +148,7 @@ export async function registerSession(): Promise<boolean> {
   const kind: SessionKind = envSessionKind() ?? 'interactive'
   const dir = getSessionsDir()
   const pidFile = join(dir, `${process.pid}.json`)
+  const processStartMarker = await getProcessStartMarker(process.pid)
 
   registerCleanup(async () => {
     try {
@@ -95,13 +170,8 @@ export async function registerSession(): Promise<boolean> {
         startedAt: Date.now(),
         kind,
         entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT,
-        ...(feature('BG_SESSIONS')
-          ? {
-              name: process.env.CLAUDE_CODE_SESSION_NAME,
-              logPath: process.env.CLAUDE_CODE_SESSION_LOG,
-              agent: process.env.CLAUDE_CODE_AGENT,
-            }
-          : {}),
+        processStartMarker,
+        ...(feature('BG_SESSIONS') ? getBgSessionMetadata() : {}),
       }),
     )
     // --resume / /resume mutates getSessionId() via switchSession. Without

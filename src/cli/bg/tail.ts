@@ -21,10 +21,12 @@ import { createInterface } from 'readline'
  */
 export async function tailLog(logPath: string): Promise<void> {
   let position = 0
+  let fileIdentity: string | null = null
 
   // Output existing content
   try {
     const stat = statSync(logPath)
+    fileIdentity = `${stat.dev}:${stat.ino}`
     position = stat.size
     if (position > 0) {
       const stream = createReadStream(logPath, { start: 0, end: position - 1 })
@@ -51,6 +53,13 @@ export async function tailLog(logPath: string): Promise<void> {
     watchFile(logPath, { interval: 300 }, () => {
       try {
         const stat = statSync(logPath)
+        const nextIdentity = `${stat.dev}:${stat.ino}`
+        if (fileIdentity !== null && nextIdentity !== fileIdentity) {
+          position = 0
+        } else if (stat.size < position) {
+          position = 0
+        }
+        fileIdentity = nextIdentity
         if (stat.size <= position) return
 
         const fd = openSync(logPath, 'r')
@@ -63,7 +72,9 @@ export async function tailLog(logPath: string): Promise<void> {
           closeSync(fd)
         }
       } catch {
-        // File may have been deleted or truncated
+        // A delete followed by recreate must resume from the new file's start.
+        position = 0
+        fileIdentity = null
       }
     })
   })
