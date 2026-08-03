@@ -30,8 +30,6 @@ declare function getAntModelOverrideConfig(): {
   [key: string]: unknown
 } | null
 
-// Companion reactions handled by src/buddy/companionReact.ts (direct import)
-
 // Metrics (internal)
 type ApiMetricEntry = {
   ttftMs: number

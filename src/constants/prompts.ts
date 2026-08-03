@@ -64,7 +64,6 @@ import { loadMemoryPrompt } from '../memdir/memdir.js'
 import { isUndercover } from '../utils/auth/undercover.js'
 import { getAntModelOverrideConfig } from '../utils/model/antModels.js'
 import { isMcpInstructionsDeltaEnabled } from '../utils/mcp/mcpInstructionsDelta.js'
-import { getCurrentMode } from 'src/modes/store.js'
 
 // Dead code elimination: conditional imports for feature-gated modules
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -461,12 +460,6 @@ ${NO_COLON_BEFORE_TOOL_CALLS}
 These instructions do not apply to code or tool calls.`
 }
 
-function getModePersonaSection(): string | null {
-  const mode = getCurrentMode()
-  if (!mode.systemPrompt) return null
-  return mode.systemPrompt
-}
-
 export async function getSystemPrompt(
   tools: Tools,
   model: string,
@@ -514,7 +507,6 @@ ${CYBER_RISK_INSTRUCTION}`,
   }
 
   const dynamicSections = [
-    systemPromptSection('mode_persona', () => getModePersonaSection()),
     systemPromptSection('session_guidance', () =>
       getSessionSpecificGuidanceSection(enabledTools, skillToolCommands),
     ),
@@ -601,6 +593,15 @@ function getMcpInstructions(mcpClients: MCPServerConnection[]): string | null {
   if (clientsWithInstructions.length === 0) {
     return null
   }
+
+  // Cache invariant: mcpClients is in connection-COMPLETION order — servers
+  // race at startup, and a mid-session reconnect re-appends the server at the
+  // end of the array (useManageMCPConnections). Identical instruction blocks
+  // in a different order still change the system-prompt bytes, busting the
+  // org-scoped prompt cache (and everything after it) for no semantic reason.
+  // Sort by name so the rendered bytes are independent of connection timing.
+  // The delta path already sorts the same way (mcpInstructionsDelta.ts).
+  clientsWithInstructions.sort((a, b) => a.name.localeCompare(b.name))
 
   const instructionBlocks = clientsWithInstructions
     .map(client => {
@@ -876,7 +877,7 @@ Do not narrate each step, list every file you read, or explain routine actions. 
 
 ## Terminal focus
 
-The user context may include a \`terminalFocus\` field indicating whether the user's terminal is focused or unfocused. Use this to calibrate how autonomous you are:
+A \`<${TICK_TAG}>\` may carry a \`[terminal unfocused]\` marker indicating the user's terminal is unfocused; no marker means it is focused. Use the latest tick to calibrate how autonomous you are:
 - **Unfocused**: The user is away. Lean heavily into autonomous action — make decisions, explore, commit, push. Only pause for genuinely irreversible or high-risk actions.
 - **Focused**: The user is watching. Be more collaborative — surface choices, ask before committing to large changes, and keep your output concise so it's easy to follow in real time.${BRIEF_PROACTIVE_SECTION && getBriefToolModule()?.isBriefEnabled() ? `\n\n${BRIEF_PROACTIVE_SECTION}` : ''}`
 }

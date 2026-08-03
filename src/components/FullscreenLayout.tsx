@@ -43,11 +43,6 @@ type Props = {
   /** Content rendered inside the ScrollBox after messages — user can scroll
    *  up to see context while it's showing (used by PermissionRequest). */
   overlay?: ReactNode;
-  /** Absolute-positioned content anchored at the bottom-right of the
-   *  ScrollBox area, floating over scrollback. Rendered inside the flexGrow
-   *  region (not the bottom slot) so the overflowY:hidden cap doesn't clip
-   *  it. Fullscreen only — used for the companion speech bubble. */
-  bottomFloat?: ReactNode;
   /** Slash-command dialog content. Rendered in an absolute-positioned
    *  bottom-anchored pane (▔ divider, paddingX=2) that paints over the
    *  ScrollBox AND bottom slot. Provides ModalContext so Pane/Dialog inside
@@ -286,7 +281,6 @@ export function FullscreenLayout({
   scrollable,
   bottom,
   overlay,
-  bottomFloat,
   modal,
   modalScrollRef,
   scrollRef,
@@ -384,11 +378,6 @@ export function FullscreenLayout({
               {!hidePill && pillVisible && overlay == null && (
                 <NewMessagesPill count={newMessageCount} onClick={onPillClick} />
               )}
-              {bottomFloat != null && (
-                <Box position="absolute" bottom={0} right={0} opaque>
-                  {bottomFloat}
-                </Box>
-              )}
             </Box>
             <Box flexDirection="column" flexShrink={0} width="100%" maxHeight="50%">
               <SuggestionsOverlay />
@@ -410,7 +399,7 @@ export function FullscreenLayout({
             {/* Bottom-anchored, grows upward to fit content. maxHeight keeps a
                 few rows of transcript peek above the ▔ divider. Short modals
                 (/model) sit small at the bottom with lots of transcript above;
-                tall modals (/buddy Card) grow as needed, clipped by overflow.
+                tall modals (/config) grow as needed, clipped by overflow.
                 Previously fixed-height (top+bottom anchored) — any fixed cap
                 either clipped tall content or left short content floating in
                 a mostly-empty pane.
