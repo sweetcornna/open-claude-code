@@ -39,6 +39,7 @@ function buildHookSchemas() {
         'Exec-form arguments (official 2.1.139 parity): when present, ' +
           '`command` is executed directly with these arguments — no shell ' +
           'parses the command line, so interpolated values (e.g. plugin ' +
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: ${user_config.KEY} is plugin config syntax documentation, not a JS template literal
           '${user_config.*}) cannot inject shell syntax. The `shell` field ' +
           'and CLAUDE_CODE_SHELL_PREFIX are ignored for exec-form hooks.',
       ),

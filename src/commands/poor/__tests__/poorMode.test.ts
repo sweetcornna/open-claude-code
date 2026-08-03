@@ -38,9 +38,12 @@ mock.module('src/utils/settings/settings.js', () => ({
   getAutoModeConfig: () => undefined,
   getUseAutoModeDuringPlan: () => true,
   rawSettingsContainsKey: (key: string) => key in mockSettings,
+  // Must mirror the real `{ error: Error | null }` return: callers destructure
+  // it, and this mock stays installed for later files in the same process.
   updateSettingsForSource: (source: string, patch: Record<string, unknown>) => {
     lastUpdate = { source, patch }
     mockSettings = { ...mockSettings, ...patch }
+    return { error: null }
   },
 }))
 
