@@ -24,6 +24,13 @@ export type ModelCatalogFetchOptions = {
   fetchImpl?: typeof fetch
 }
 
+export type OpenAICompatibleModelsFetchOptions = ModelCatalogFetchOptions & {
+  baseURL: string
+  apiKey: string
+  /** Receives a user-readable reason while the function still returns null. */
+  onError?: (reason: string) => void
+}
+
 /** Anthropic requires an explicit API version on every request. */
 const ANTHROPIC_VERSION = '2023-06-01'
 const PAGE_LIMIT = 200
@@ -195,6 +202,97 @@ async function fetchOpenAICompatibleModels(
       ? { created: model.created }
       : {}),
   }))
+}
+
+/** Convert an OpenAI SDK/network failure into a short, user-readable reason. */
+export function describeOpenAICompatibleModelsFetchError(
+  error: unknown,
+): string {
+  const record = asRecord(error)
+  const status =
+    typeof record?.status === 'number' && Number.isFinite(record.status)
+      ? record.status
+      : undefined
+
+  if (status === 401 || status === 403) {
+    return `authentication failed (HTTP ${status})`
+  }
+  if (status === 404) {
+    return 'the /models endpoint was not found (HTTP 404)'
+  }
+  if (status !== undefined) {
+    return `the server returned HTTP ${status}`
+  }
+
+  if (record?.name === 'AbortError') return 'the request was canceled'
+
+  const message =
+    error instanceof Error ? error.message : asString(record?.message)
+  return message || 'an unknown error occurred'
+}
+
+/**
+ * Fetch an OpenAI-compatible model list with credentials that have not been
+ * saved to process.env yet. Never throws; failures resolve to null.
+ */
+export async function fetchOpenAICompatibleModelsWith({
+  baseURL,
+  apiKey,
+  signal,
+  fetchImpl,
+  onError,
+}: OpenAICompatibleModelsFetchOptions): Promise<CatalogModel[] | null> {
+  const reportFailure = (reason: string): null => {
+    logForDebugging(`[ModelCatalog] OpenAI explicit fetch failed: ${reason}`)
+    try {
+      onError?.(reason)
+    } catch (error) {
+      logForDebugging(
+        `[ModelCatalog] OpenAI explicit error callback failed: ${error}`,
+      )
+    }
+    return null
+  }
+
+  if (!baseURL.trim()) return reportFailure('the base URL is empty')
+  if (!apiKey.trim()) return reportFailure('the API key is empty')
+
+  try {
+    new URL(baseURL)
+  } catch {
+    return reportFailure('the base URL is not a valid URL')
+  }
+
+  try {
+    const { getOpenAIClient } = await import(
+      'src/services/api/openai/client.js'
+    )
+    const client = getOpenAIClient({
+      maxRetries: 0,
+      apiKeyOverride: apiKey,
+      baseURLOverride: baseURL,
+      ...(fetchImpl ? { fetchOverride: fetchImpl } : {}),
+    })
+    const page = await client.models.list({ ...(signal ? { signal } : {}) })
+    const models = page.data.flatMap(model => {
+      if (!model.id) return []
+      return [
+        {
+          id: model.id,
+          ...(typeof model.created === 'number' &&
+          Number.isFinite(model.created)
+            ? { created: model.created }
+            : {}),
+        },
+      ]
+    })
+    if (models.length === 0) {
+      return reportFailure('the server returned an empty model list')
+    }
+    return models
+  } catch (error) {
+    return reportFailure(describeOpenAICompatibleModelsFetchError(error))
+  }
 }
 
 /** Parse a Gemini `GET v1beta/models` body. Null when the shape is wrong. */

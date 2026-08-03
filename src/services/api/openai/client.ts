@@ -40,11 +40,18 @@ export function getOpenAIClient(options?: {
   maxRetries?: number
   fetchOverride?: typeof fetch
   source?: string
+  apiKeyOverride?: string
+  baseURLOverride?: string
 }): OpenAI {
-  if (cachedClient) return cachedClient
+  const hasConnectionOverride =
+    options?.apiKeyOverride !== undefined ||
+    options?.baseURLOverride !== undefined
+  if (cachedClient && !hasConnectionOverride) {
+    return cachedClient
+  }
 
-  const apiKey = process.env.OPENAI_API_KEY || ''
-  const baseURL = process.env.OPENAI_BASE_URL
+  const apiKey = options?.apiKeyOverride ?? process.env.OPENAI_API_KEY ?? ''
+  const baseURL = options?.baseURLOverride ?? process.env.OPENAI_BASE_URL
 
   const baseFetch = options?.fetchOverride ?? (globalThis.fetch as typeof fetch)
   const wrappedFetch = wrapFetchForUsage(baseFetch)
@@ -65,7 +72,7 @@ export function getOpenAIClient(options?: {
     fetch: wrappedFetch,
   })
 
-  if (!options?.fetchOverride) {
+  if (!options?.fetchOverride && !hasConnectionOverride) {
     cachedClient = client
   }
 
