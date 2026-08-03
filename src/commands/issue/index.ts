@@ -5,7 +5,9 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
+import { redactSecrets } from '@open-claude-code/tool-runtime/secretScanner.js'
 import { occConfigPath } from 'src/config/paths.js'
 import { join } from 'node:path'
 import type { Command, LocalCommandResult } from '../../types/command.js'
@@ -20,6 +22,7 @@ import {
 } from '../../bootstrap/state.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import { sanitizePath } from '../../utils/filesystem/path.js'
+import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js'
 
 import * as childProcess from 'node:child_process'
 import { promisify } from 'node:util'
@@ -32,6 +35,40 @@ function execFileAsync(
   opts: { timeout?: number },
 ): Promise<{ stdout: string; stderr: string }> {
   return promisify(childProcess.execFile)(cmd, args, opts)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Context is untrusted session data. High-confidence secret scanning runs
+ * before truncation, then common credential assignments and absolute paths
+ * are removed so previews and uploads share the same safe representation.
+ */
+export function redactIssueContext(text: string): string {
+  let redacted = redactSecrets(text)
+  redacted = redacted.replace(
+    /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|token|secret|password|passwd|cookie)\s*[:=]\s*)(?:bearer\s+)?[^\s,"'}\]]+/gi,
+    '$1[REDACTED]',
+  )
+  redacted = redacted.replace(/\bBearer\s+[^\s,"'}\]]+/gi, 'Bearer [REDACTED]')
+
+  for (const path of [getOriginalCwd(), homedir()]) {
+    if (path) {
+      redacted = redacted.replace(
+        new RegExp(escapeRegExp(path), 'g'),
+        '[REDACTED_PATH]',
+      )
+    }
+  }
+
+  return redacted
+    .replace(
+      /(?<![:/A-Za-z0-9_])\/[^/\s"'`]+(?:\/[^/\s"'`]+)+/g,
+      '[REDACTED_PATH]',
+    )
+    .replace(/\b[A-Za-z]:\\[^\\\s"'`]+(?:\\[^\\\s"'`]+)+/g, '[REDACTED_PATH]')
 }
 
 function execFileSyncFn(
@@ -169,7 +206,7 @@ function getTranscriptSummary(maxTurns = 5): string {
               block.is_error === true &&
               typeof block.content === 'string'
             ) {
-              errors.push(block.content.slice(0, 200))
+              errors.push(redactIssueContext(block.content).slice(0, 200))
             }
           }
         }
@@ -178,12 +215,14 @@ function getTranscriptSummary(maxTurns = 5): string {
           const content = entry.content
           let text = ''
           if (typeof content === 'string') {
-            text = content.slice(0, 200)
+            text = redactIssueContext(content).slice(0, 200)
           } else if (Array.isArray(content)) {
             const firstText = (content as Array<Record<string, unknown>>).find(
               b => b.type === 'text',
             )
-            text = (firstText?.text as string | undefined)?.slice(0, 200) ?? ''
+            text = redactIssueContext(
+              (firstText?.text as string | undefined) ?? '',
+            ).slice(0, 200)
           }
           if (text) summaryParts.push(`[${role}] ${text}`)
         }
@@ -211,14 +250,19 @@ interface IssueOptions {
   title: string
   labels: string[]
   assignees: string[]
+  includeContext: boolean
+  confirmationId: string | null
   valid: boolean
   parseError?: string
 }
 
+const ISSUE_USAGE =
+  '/issue [--label <label>] [--assignee <user>] [--include-context [--confirm <preview-id>]] <title>'
+
 /**
  * Parses /issue args.
  *
- * Format: /issue [--label <label>]* [--assignee <user>]* <title words...>
+ * Format: /issue [--label <label>]* [--assignee <user>]* [--include-context [--confirm <preview-id>]] <title words...>
  *
  * Examples:
  *   /issue Fix login bug
@@ -229,6 +273,8 @@ function parseIssueArgs(args: string): IssueOptions {
   const labels: string[] = []
   const assignees: string[] = []
   const titleParts: string[] = []
+  let includeContext = false
+  let confirmationId: string | null = null
 
   let i = 0
   while (i < parts.length) {
@@ -239,6 +285,8 @@ function parseIssueArgs(args: string): IssueOptions {
           title: '',
           labels: [],
           assignees: [],
+          includeContext: false,
+          confirmationId: null,
           valid: false,
           parseError: `--label requires a value`,
         }
@@ -252,17 +300,39 @@ function parseIssueArgs(args: string): IssueOptions {
           title: '',
           labels: [],
           assignees: [],
+          includeContext: false,
+          confirmationId: null,
           valid: false,
           parseError: `--assignee requires a value`,
         }
       }
       assignees.push(next)
       i += 2
+    } else if (parts[i] === '--include-context') {
+      includeContext = true
+      i++
+    } else if (parts[i] === '--confirm') {
+      const next = parts[i + 1]
+      if (!next || next.startsWith('--')) {
+        return {
+          title: '',
+          labels: [],
+          assignees: [],
+          includeContext: false,
+          confirmationId: null,
+          valid: false,
+          parseError: '--confirm requires the preview ID shown by /issue',
+        }
+      }
+      confirmationId = next
+      i += 2
     } else if (parts[i].startsWith('--')) {
       return {
         title: '',
         labels: [],
         assignees: [],
+        includeContext: false,
+        confirmationId: null,
         valid: false,
         parseError: `Unknown flag: ${parts[i]}`,
       }
@@ -272,19 +342,63 @@ function parseIssueArgs(args: string): IssueOptions {
     }
   }
 
+  if (confirmationId && !includeContext) {
+    return {
+      title: '',
+      labels: [],
+      assignees: [],
+      includeContext: false,
+      confirmationId: null,
+      valid: false,
+      parseError: '--confirm requires --include-context',
+    }
+  }
+
   return {
     title: titleParts.join(' '),
     labels,
     assignees,
+    includeContext,
+    confirmationId,
     valid: true,
   }
+}
+
+export function buildIssueBody(
+  templateBody: string | null,
+  sessionSummary?: string,
+): string {
+  const bodyParts: string[] = []
+  if (sessionSummary !== undefined) {
+    bodyParts.push('## Context from Claude Code session', '', sessionSummary)
+  }
+  if (templateBody) {
+    if (bodyParts.length > 0) bodyParts.push('', '---', '')
+    bodyParts.push(templateBody)
+  }
+  if (bodyParts.length > 0) bodyParts.push('', '---')
+  bodyParts.push('_Created via `/issue` command in Claude Code._')
+  return bodyParts.join('\n')
+}
+
+function getIssuePreviewId(
+  title: string,
+  labels: string[],
+  assignees: string[],
+  repo: string | null,
+  body: string,
+): string {
+  return createHash('sha256')
+    .update(JSON.stringify({ title, labels, assignees, repo, body }))
+    .digest('hex')
+    .slice(0, 12)
 }
 
 const issue: Command = {
   type: 'local',
   name: 'issue',
   description:
-    'Create a GitHub issue via gh CLI. Flags: --label <label>, --assignee <user>',
+    'Create a GitHub issue via gh CLI. Session context is excluded unless --include-context is previewed and confirmed.',
   isHidden: false,
   isEnabled: () => true,
   supportsNonInteractive: true,
@@ -299,14 +413,14 @@ const issue: Command = {
           value: [
             `Error: ${opts.parseError}`,
             '',
-            'Usage: /issue [--label <label>] [--assignee <user>] <title>',
+            `Usage: ${ISSUE_USAGE}`,
             '',
             '  Example: /issue --label bug --assignee alice Fix login when token expires',
           ].join('\n'),
         }
       }
 
-      const { title, labels, assignees } = opts
+      const { title, labels, assignees, includeContext, confirmationId } = opts
 
       const remote = tryDetectGitRemoteUrl()
       const parsed = remote ? parseOwnerRepo(remote) : null
@@ -320,10 +434,11 @@ const issue: Command = {
         return {
           type: 'text',
           value: [
-            'Usage: /issue [--label <label>] [--assignee <user>] <title>',
+            `Usage: ${ISSUE_USAGE}`,
             '',
             `  Example: /issue Fix login bug when token expires`,
             `  Example: /issue --label bug --assignee alice Fix crash on startup`,
+            `  Example: /issue --include-context Fix crash with session context`,
             '',
             parsed
               ? `Repo: ${parsed.owner}/${parsed.repo}`
@@ -332,6 +447,33 @@ const issue: Command = {
             hasGh
               ? '\n`gh` CLI is available — run /issue <title> to create immediately.'
               : '\nInstall `gh` CLI (https://cli.github.com/) for one-command issue creation.',
+          ].join('\n'),
+        }
+      }
+
+      const templateBody = detectIssueTemplate(cwd)
+      const sessionSummary = includeContext
+        ? getTranscriptSummary(5)
+        : undefined
+      const body = buildIssueBody(templateBody, sessionSummary)
+      const repo = parsed ? `${parsed.owner}/${parsed.repo}` : null
+      const previewId = getIssuePreviewId(title, labels, assignees, repo, body)
+
+      if (includeContext && confirmationId !== previewId) {
+        return {
+          type: 'text',
+          value: [
+            '## Issue context preview',
+            '',
+            `Title: ${title}`,
+            parsed ? `Repo:  ${repo}` : 'Repo:  no GitHub remote detected',
+            '',
+            body,
+            '',
+            confirmationId
+              ? 'No issue was created because the preview changed or the confirmation ID was invalid.'
+              : 'No issue was created. Review the redacted preview before uploading this context.',
+            `To confirm this exact preview, re-run the command with \`--confirm ${previewId}\` added.`,
           ].join('\n'),
         }
       }
@@ -346,16 +488,18 @@ const issue: Command = {
         has_labels: String(
           labels.length > 0,
         ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        include_context: String(
+          includeContext,
+        ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
 
       if (!hasGh || !parsed) {
         // Fallback: provide URL-encoded browser link.
         // Browsers silently truncate URLs beyond ~8KB so we cap the body at
         // MAX_URL_BODY characters. When the full body is larger we save a draft
-        // to ~/.claude/issue-drafts/ and tell the user where to find it.
+        // under the isolated occ config root and tell the user where to find it.
         const MAX_URL_BODY = 4096
-        const sessionSummary = getTranscriptSummary()
-        const fullBodyText = `## Context from Claude Code session\n\n${sessionSummary}`
+        const fullBodyText = body
 
         let bodyText = fullBodyText
         let draftPath: string | null = null
@@ -365,26 +509,26 @@ const issue: Command = {
             '\n\n... (truncated, see CLI for full body)'
           try {
             const draftsDir = occConfigPath('issue-drafts')
-            mkdirSync(draftsDir, { recursive: true })
+            mkdirSync(draftsDir, { recursive: true, mode: 0o700 })
             const stamp = new Date().toISOString().replace(/[:.]/g, '-')
             draftPath = join(draftsDir, `issue-${stamp}.md`)
             writeFileSync(
               draftPath,
               `# Issue Draft\n\n**Title:** ${title}\n\n${fullBodyText}`,
-              'utf8',
+              { encoding: 'utf8', flag: 'wx', mode: 0o600 },
             )
           } catch {
             // Non-fatal; proceed without draft
           }
         }
 
-        const body = encodeURIComponent(bodyText)
+        const encodedBody = encodeURIComponent(bodyText)
         const encodedTitle = encodeURIComponent(title)
         const labelQuery = labels
           .map(l => `labels=${encodeURIComponent(l)}`)
           .join('&')
         const url = parsed
-          ? `https://github.com/${parsed.owner}/${parsed.repo}/issues/new?title=${encodedTitle}&body=${body}${labelQuery ? '&' + labelQuery : ''}`
+          ? `https://github.com/${parsed.owner}/${parsed.repo}/issues/new?title=${encodedTitle}&body=${encodedBody}${labelQuery ? '&' + labelQuery : ''}`
           : null
         const lines: string[] = ['## File a GitHub issue', '']
         if (url) {
@@ -434,34 +578,14 @@ const issue: Command = {
         }
       }
 
-      // Detect issue template
-      const templateBody = detectIssueTemplate(cwd)
-
-      // Build rich body: session context + template (if present) + errors
-      const sessionSummary = getTranscriptSummary(5)
-      const bodyParts: string[] = [
-        '## Context from Claude Code session',
-        '',
-        sessionSummary,
-      ]
-      if (templateBody) {
-        bodyParts.push('', '---', '', templateBody)
-      }
-      bodyParts.push(
-        '',
-        '---',
-        '_Created via `/issue` command in Claude Code._',
-      )
-      const body = bodyParts.join('\n')
-
       // Build gh issue create args
       const ghArgs: string[] = [
         'issue',
         'create',
         '--title',
         title,
-        '--body',
-        body,
+        '--body-file',
+        '-',
       ]
       for (const label of labels) {
         ghArgs.push('--label', label)
@@ -472,7 +596,16 @@ const issue: Command = {
       ghArgs.push('--repo', `${parsed.owner}/${parsed.repo}`)
 
       try {
-        const result = await execFileAsync('gh', ghArgs, { timeout: 30000 })
+        const result = await execFileNoThrow('gh', ghArgs, {
+          timeout: 30000,
+          stdin: 'pipe',
+          input: body,
+        })
+        if (result.code !== 0) {
+          throw new Error(
+            result.stderr || result.error || 'gh issue create failed',
+          )
+        }
         const issueUrl = result.stdout.trim()
         logEvent('tengu_issue_created', {
           repo: `${parsed.owner}/${parsed.repo}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

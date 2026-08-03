@@ -14,6 +14,20 @@ import { execFileNoThrow } from '../../utils/process/execFileNoThrow.js'
 import { logError } from '../../utils/telemetry/log.js'
 import type { Workflow } from './types.js'
 
+type ExecFileNoThrow = typeof execFileNoThrow
+
+export function setGitHubSecret(
+  repoName: string,
+  secretName: string,
+  value: string,
+  execute: ExecFileNoThrow = execFileNoThrow,
+) {
+  return execute('gh', ['secret', 'set', secretName, '--repo', repoName], {
+    stdin: 'pipe',
+    input: value,
+  })
+}
+
 async function createWorkflowFile(
   repoName: string,
   branchName: string,
@@ -253,15 +267,11 @@ export async function setupGitHubActions(
     updateProgress()
     // Set the API key as a secret if provided
     if (apiKeyOrOAuthToken) {
-      const setSecretResult = await execFileNoThrow('gh', [
-        'secret',
-        'set',
-        secretName,
-        '--body',
-        apiKeyOrOAuthToken,
-        '--repo',
+      const setSecretResult = await setGitHubSecret(
         repoName,
-      ])
+        secretName,
+        apiKeyOrOAuthToken,
+      )
       if (setSecretResult.code !== 0) {
         logEvent('tengu_setup_github_actions_failed', {
           reason:

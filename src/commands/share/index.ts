@@ -381,27 +381,30 @@ const share: Command = {
       try {
         let url: string
         let method: string
+        let actualVisibility: 'public' | 'private'
 
         if (hasGh) {
           try {
             url = await uploadToGist(tmpFile, opts.isPublic)
             method = 'GitHub Gist'
+            actualVisibility = opts.isPublic ? 'public' : 'private'
           } catch (gistErr: unknown) {
             if (!opts.allowPublicFallback) throw gistErr
             // Gist failed — try 0x0.st fallback
             url = await uploadTo0x0(tmpFile)
             method = '0x0.st (fallback)'
+            actualVisibility = 'public'
           }
         } else {
           // No gh, but --allow-public-fallback was set
           url = await uploadTo0x0(tmpFile)
           method = '0x0.st (fallback)'
+          actualVisibility = 'public'
         }
 
         logEvent('tengu_share_succeeded', {
-          visibility: (opts.isPublic
-            ? 'public'
-            : 'private') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          visibility:
+            actualVisibility as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           method:
             method as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         })
@@ -412,7 +415,7 @@ const share: Command = {
             '',
             `URL:        ${url}`,
             `Session:    ${sessionId}`,
-            `Visibility: ${opts.isPublic ? 'public' : 'secret'}`,
+            `Visibility: ${actualVisibility === 'public' ? 'public' : 'secret'}`,
             `Method:     ${method}`,
             opts.summaryOnly ? 'Content:    summary only (truncated)' : '',
             opts.maskSecrets ? 'Secrets:    masked before upload' : '',
