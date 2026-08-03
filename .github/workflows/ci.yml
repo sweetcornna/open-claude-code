@@ -30,6 +30,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Dev checkouts have no vendored rg (bun skips lifecycle scripts, so
+      # postinstall never downloads it) — the runtime then falls back to the
+      # system binary, which dev machines have but a bare runner doesn't. The
+      # mcp serve round-trip executes the real Glob tool and needs it.
+      - name: Install ripgrep (system fallback for dev checkouts)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+
       - name: Lint and format check
         run: bunx biome ci .
 
