@@ -80,6 +80,11 @@ describe('createMcpServerFactory', () => {
           name: 'Glob',
           arguments: { pattern: 'package.json', path: REPO_ROOT },
         })
+        // Diagnostic on failure: isError=true swallows the tool's error text,
+        // which is the only clue in CI-only failures. Cheap and silent when green.
+        if (called.isError) {
+          console.error('Glob tool error:', JSON.stringify(called.content))
+        }
         expect(called.isError).toBeFalsy()
         const content = called.content as { type: string; text: string }[]
         expect(content[0]?.type).toBe('text')
@@ -119,6 +124,11 @@ describe('createMcpServerFactory', () => {
           name: 'Glob',
           arguments: { pattern: 'package.json', path: REPO_ROOT },
         })
+        // Diagnostic on failure: isError=true swallows the tool's error text,
+        // which is the only clue in CI-only failures. Cheap and silent when green.
+        if (called.isError) {
+          console.error('Glob tool error:', JSON.stringify(called.content))
+        }
         expect(called.isError).toBeFalsy()
         const content = called.content as { type: string; text: string }[]
         expect(content[0]?.type).toBe('text')
