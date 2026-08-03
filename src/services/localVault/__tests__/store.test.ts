@@ -131,6 +131,18 @@ describe('store (AES-256-GCM file fallback)', () => {
     expect(keys.join('')).not.toContain('value-b')
   })
 
+  test('concurrent file-backend sets preserve both secrets', async () => {
+    const { setSecret, getSecret } = await import('../store.js')
+
+    await Promise.all([
+      setSecret('CONCURRENT_A', 'value-a'),
+      setSecret('CONCURRENT_B', 'value-b'),
+    ])
+
+    expect(await getSecret('CONCURRENT_A')).toBe('value-a')
+    expect(await getSecret('CONCURRENT_B')).toBe('value-b')
+  })
+
   test('public operations reject reserved metadata keys', async () => {
     const { setSecret, getSecret, deleteSecret } = await import('../store.js')
     for (const key of ['__index__', '_salt', '_version']) {

@@ -19,6 +19,11 @@ interface SessionIngressError {
   }
 }
 
+export type SessionLogsResult =
+  | { status: 'success'; logs: Entry[] }
+  | { status: 'not-found' }
+  | { status: 'failure' }
+
 // Module-level state
 const lastUuidMap: Map<string, UUID> = new Map()
 
@@ -113,7 +118,8 @@ async function appendSessionLogImpl(
         } else {
           // Server didn't return x-last-uuid (e.g. v1 endpoint). Re-fetch
           // the session to discover the current head of the append chain.
-          const logs = await fetchSessionLogsFromUrl(sessionId, url, headers)
+          const result = await fetchSessionLogsFromUrl(sessionId, url, headers)
+          const logs = result.status === 'success' ? result.logs : null
           const adoptedUuid = findLastUuid(logs)
           if (adoptedUuid) {
             lastUuidMap.set(sessionId, adoptedUuid)
@@ -217,26 +223,26 @@ export async function appendSessionLog(
 export async function getSessionLogs(
   sessionId: string,
   url: string,
-): Promise<Entry[] | null> {
+): Promise<SessionLogsResult> {
   const sessionToken = getSessionIngressAuthToken()
   if (!sessionToken) {
     logForDebugging('No session token available for fetching session logs')
     logForDiagnosticsNoPII('error', 'session_get_fail_no_token')
-    return null
+    return { status: 'failure' }
   }
 
   const headers = { Authorization: `Bearer ${sessionToken}` }
-  const logs = await fetchSessionLogsFromUrl(sessionId, url, headers)
+  const result = await fetchSessionLogsFromUrl(sessionId, url, headers)
 
-  if (logs && logs.length > 0) {
+  if (result.status === 'success' && result.logs.length > 0) {
     // Update our lastUuid to the last entry's UUID
-    const lastEntry = logs.at(-1)
+    const lastEntry = result.logs.at(-1)
     if (lastEntry && 'uuid' in lastEntry && lastEntry.uuid) {
       lastUuidMap.set(sessionId, lastEntry.uuid as UUID)
     }
   }
 
-  return logs
+  return result
 }
 
 /**
@@ -255,7 +261,8 @@ export async function getSessionLogsViaOAuth(
     'x-organization-uuid': orgUUID,
   }
   const result = await fetchSessionLogsFromUrl(sessionId, url, headers)
-  return result
+  if (result.status === 'success') return result.logs
+  return result.status === 'not-found' ? [] : null
 }
 
 /**
@@ -421,7 +428,7 @@ async function fetchSessionLogsFromUrl(
   sessionId: string,
   url: string,
   headers: Record<string, string>,
-): Promise<Entry[] | null> {
+): Promise<SessionLogsResult> {
   try {
     const response = await axios.get(url, {
       headers,
@@ -443,28 +450,26 @@ async function fetchSessionLogsFromUrl(
           ),
         )
         logForDiagnosticsNoPII('error', 'session_get_fail_invalid_response')
-        return null
+        return { status: 'failure' }
       }
 
       const logs = data.loglines as Entry[]
       logForDebugging(
         `Fetched ${logs.length} session logs for session ${sessionId}`,
       )
-      return logs
+      return { status: 'success', logs }
     }
 
     if (response.status === 404) {
       logForDebugging(`No existing logs for session ${sessionId}`)
       logForDiagnosticsNoPII('warn', 'session_get_no_logs_for_session')
-      return []
+      return { status: 'not-found' }
     }
 
     if (response.status === 401) {
       logForDebugging('Auth token expired or invalid')
       logForDiagnosticsNoPII('error', 'session_get_fail_bad_token')
-      throw new Error(
-        'Your session has expired. Please run /login to sign in again.',
-      )
+      return { status: 'failure' }
     }
 
     logForDebugging(
@@ -473,14 +478,14 @@ async function fetchSessionLogsFromUrl(
     logForDiagnosticsNoPII('error', 'session_get_fail_status', {
       status: response.status,
     })
-    return null
+    return { status: 'failure' }
   } catch (error) {
     const axiosError = error as AxiosError<SessionIngressError>
     logError(new Error(`Error fetching session logs: ${axiosError.message}`))
     logForDiagnosticsNoPII('error', 'session_get_fail_status', {
       status: axiosError.status,
     })
-    return null
+    return { status: 'failure' }
   }
 }
 

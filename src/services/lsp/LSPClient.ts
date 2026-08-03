@@ -15,6 +15,73 @@ import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { subprocessEnv } from '../../utils/process/subprocessEnv.js'
+import { withTimeout } from '../../utils/process/sleep.js'
+
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 1000
+const DEFAULT_TERMINATE_GRACE_MS = 250
+
+type LSPClientRuntime = {
+  spawn: typeof spawn
+  createMessageConnection: typeof createMessageConnection
+  shutdownTimeoutMs: number
+  terminateGraceMs: number
+}
+
+function waitForProcessExit(
+  child: ChildProcess,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve(true)
+  }
+
+  return new Promise(resolve => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cleanup = (): void => {
+      child.removeListener('exit', onExit)
+      if (timer !== undefined) clearTimeout(timer)
+    }
+    const onExit = (): void => {
+      cleanup()
+      resolve(true)
+    }
+    const onTimeout = (): void => {
+      cleanup()
+      resolve(false)
+    }
+
+    child.once('exit', onExit)
+    timer = setTimeout(onTimeout, timeoutMs)
+    if (typeof timer === 'object') timer.unref?.()
+  })
+}
+
+async function terminateProcess(
+  child: ChildProcess,
+  serverName: string,
+  graceMs: number,
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return
+
+  try {
+    child.kill('SIGTERM')
+  } catch (error) {
+    logForDebugging(
+      `Process SIGTERM failed for ${serverName}: ${errorMessage(error)}`,
+    )
+  }
+
+  const exited = await waitForProcessExit(child, graceMs)
+  if (exited || child.exitCode !== null || child.signalCode !== null) return
+
+  try {
+    child.kill('SIGKILL')
+  } catch (error) {
+    logForDebugging(
+      `Process SIGKILL failed for ${serverName}: ${errorMessage(error)}`,
+    )
+  }
+}
 /**
  * LSP client interface.
  */
@@ -51,7 +118,19 @@ export type LSPClient = {
 export function createLSPClient(
   serverName: string,
   onCrash?: (error: Error) => void,
+  // Dependency/timing overrides keep lifecycle tests deterministic without
+  // replacing process-global child_process or vscode-jsonrpc modules.
+  runtimeOverrides: Partial<LSPClientRuntime> = {},
 ): LSPClient {
+  const runtime: LSPClientRuntime = {
+    spawn: runtimeOverrides.spawn ?? spawn,
+    createMessageConnection:
+      runtimeOverrides.createMessageConnection ?? createMessageConnection,
+    shutdownTimeoutMs:
+      runtimeOverrides.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    terminateGraceMs:
+      runtimeOverrides.terminateGraceMs ?? DEFAULT_TERMINATE_GRACE_MS,
+  }
   // State variables in closure
   let process: ChildProcess | undefined
   let connection: MessageConnection | undefined
@@ -95,7 +174,7 @@ export function createLSPClient(
     ): Promise<void> {
       try {
         // 1. Spawn LSP server process
-        process = spawn(command, args, {
+        process = runtime.spawn(command, args, {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: { ...subprocessEnv(), ...options?.env },
           cwd: options?.cwd,
@@ -180,7 +259,7 @@ export function createLSPClient(
         // 2. Create JSON-RPC connection
         const reader = new StreamMessageReader(process.stdout)
         const writer = new StreamMessageWriter(process.stdin)
-        connection = createMessageConnection(reader, writer)
+        connection = runtime.createMessageConnection(reader, writer)
 
         // 2.5. Register error/close handlers BEFORE listen() to catch all errors
         // This prevents unhandled promise rejections when the server crashes or closes unexpectedly
@@ -378,9 +457,15 @@ export function createLSPClient(
 
       try {
         if (connection) {
-          // Try to send shutdown request and exit notification
-          await connection.sendRequest('shutdown', {})
-          await connection.sendNotification('exit', {})
+          const activeConnection = connection
+          await withTimeout(
+            (async () => {
+              await activeConnection.sendRequest('shutdown', {})
+              await activeConnection.sendNotification('exit', {})
+            })(),
+            runtime.shutdownTimeoutMs,
+            `LSP server ${serverName} shutdown timed out after ${runtime.shutdownTimeoutMs}ms`,
+          )
         }
       } catch (error) {
         const err = error as Error
@@ -404,9 +489,10 @@ export function createLSPClient(
         }
 
         if (process) {
-          // Remove event listeners to prevent memory leaks
+          const activeProcess = process
+          // Stream listeners can be removed before termination. Keep the
+          // process exit listener until TERM has had a chance to complete.
           process.removeAllListeners('error')
-          process.removeAllListeners('exit')
           if (process.stdin) {
             process.stdin.removeAllListeners('error')
           }
@@ -414,14 +500,12 @@ export function createLSPClient(
             process.stderr.removeAllListeners('data')
           }
 
-          try {
-            process.kill()
-          } catch (error) {
-            // Process might already be dead, which is fine
-            logForDebugging(
-              `Process kill failed for ${serverName} (may already be dead): ${errorMessage(error)}`,
-            )
-          }
+          await terminateProcess(
+            activeProcess,
+            serverName,
+            runtime.terminateGraceMs,
+          )
+          activeProcess.removeAllListeners('exit')
           process = undefined
         }
 

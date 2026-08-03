@@ -3,6 +3,7 @@ import { pathToFileURL } from 'url'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
+import { withTimeout } from '../../utils/process/sleep.js'
 import { getAllLspServers } from './config.js'
 import {
   createLSPServerInstance,
@@ -58,7 +59,9 @@ export type LSPServerManager = {
  * const result = await manager.sendRequest('/path/to/file.ts', 'textDocument/definition', params)
  * await manager.shutdown()
  */
-export function createLSPServerManager(): LSPServerManager {
+export function createLSPServerManager(
+  options: { stopTimeoutMs?: number } = {},
+): LSPServerManager {
   // Private state managed via closures
   const servers: Map<string, LSPServerInstance> = new Map()
   const extensionMap: Map<string, string[]> = new Map()
@@ -68,6 +71,7 @@ export function createLSPServerManager(): LSPServerManager {
   // next compaction — unbounded memory on both sides in long sessions.
   const openedFiles: Map<string, string> = new Map()
   const MAX_OPEN_FILES = 50
+  const stopTimeoutMs = options.stopTimeoutMs ?? 2000
 
   /** Map iteration order is insertion order — delete+set moves to the back. */
   function touchOpenedFile(fileUri: string, serverName: string): void {
@@ -198,7 +202,13 @@ export function createLSPServerManager(): LSPServerManager {
     )
 
     const results = await Promise.allSettled(
-      toStop.map(([, server]) => server.stop()),
+      toStop.map(([name, server]) =>
+        withTimeout(
+          server.stop(),
+          stopTimeoutMs,
+          `LSP server '${name}' stop timed out after ${stopTimeoutMs}ms`,
+        ),
+      ),
     )
 
     servers.clear()

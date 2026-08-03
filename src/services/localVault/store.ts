@@ -39,10 +39,12 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { occConfigDir } from 'src/config/paths.js'
 import { join } from 'node:path'
+import * as lockfile from '../../utils/filesystem/lockfile.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { KeychainUnavailableError, tryKeychain } from './keychain.js'
 
 let keychainBackend = tryKeychain
+let fileMutationTail = Promise.resolve()
 
 /** @internal Test-only backend override. */
 export function _setKeychainBackendForTesting(
@@ -103,6 +105,44 @@ function getVaultFilePath(): string {
 
 function getPassphraseFilePath(): string {
   return join(getClaudeDir(), '.local-vault-passphrase')
+}
+
+async function withFileMutationLock<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = fileMutationTail
+  let releaseInProcess!: () => void
+  fileMutationTail = new Promise<void>(resolve => {
+    releaseInProcess = resolve
+  })
+
+  await previous
+  try {
+    const claudeDir = getClaudeDir()
+    if (!existsSync(claudeDir)) {
+      mkdirSync(claudeDir, { recursive: true })
+    }
+
+    const filePath = getVaultFilePath()
+    const releaseFileLock = await lockfile.lock(filePath, {
+      realpath: false,
+      retries: {
+        retries: 50,
+        factor: 1.2,
+        minTimeout: 10,
+        maxTimeout: 100,
+      },
+    })
+    try {
+      // The read must happen after both locks are held; atomic rename only
+      // protects readers from partial files, not writers from stale snapshots.
+      return await operation()
+    } finally {
+      await releaseFileLock()
+    }
+  } finally {
+    releaseInProcess()
+  }
 }
 
 // ── Passphrase management ─────────────────────────────────────────────────────
@@ -388,17 +428,19 @@ export async function setSecret(key: string, value: string): Promise<void> {
 
   // Fallback: encrypted file
   const passphrase = await getOrCreatePassphrase()
-  const vaultData = await readVaultFile()
-  const salt = await getOrCreateSalt(vaultData)
+  await withFileMutationLock(async () => {
+    const vaultData = await readVaultFile()
+    const salt = await getOrCreateSalt(vaultData)
 
-  // B1: zero the key buffer after use regardless of success/failure
-  const key256 = deriveKey(passphrase, salt)
-  try {
-    vaultData[key] = encrypt(value, key256, key)
-    await writeVaultFile(vaultData)
-  } finally {
-    key256.fill(0)
-  }
+    // B1: zero the key buffer after use regardless of success/failure
+    const key256 = deriveKey(passphrase, salt)
+    try {
+      vaultData[key] = encrypt(value, key256, key)
+      await writeVaultFile(vaultData)
+    } finally {
+      key256.fill(0)
+    }
+  })
 }
 
 export async function getSecret(key: string): Promise<string | null> {
@@ -458,12 +500,14 @@ export async function deleteSecret(key: string): Promise<boolean> {
   }
 
   // Fallback: encrypted file
-  const vaultData = await readVaultFile()
-  if (!(key in vaultData)) return false
-  const updated = { ...vaultData }
-  delete updated[key]
-  await writeVaultFile(updated)
-  return true
+  return withFileMutationLock(async () => {
+    const vaultData = await readVaultFile()
+    if (!(key in vaultData)) return false
+    const updated = { ...vaultData }
+    delete updated[key]
+    await writeVaultFile(updated)
+    return true
+  })
 }
 
 export async function listKeys(): Promise<string[]> {
