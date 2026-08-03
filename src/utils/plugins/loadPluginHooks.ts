@@ -55,6 +55,7 @@ function convertPluginHooksToMatchers(
     WorktreeRemove: [],
     InstructionsLoaded: [],
     CwdChanged: [],
+    DirectoryAdded: [],
     FileChanged: [],
   }
 
@@ -117,6 +118,7 @@ export const loadPluginHooks = memoize(async (): Promise<void> => {
     WorktreeRemove: [],
     InstructionsLoaded: [],
     CwdChanged: [],
+    DirectoryAdded: [],
     FileChanged: [],
   }
 

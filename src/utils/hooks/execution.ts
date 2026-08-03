@@ -209,6 +209,7 @@ export interface HookResult {
   initialUserMessage?: string
   updatedInput?: Record<string, unknown>
   updatedMCPToolOutput?: unknown
+  updatedToolOutput?: unknown
   permissionRequestResult?: PermissionRequestResult
   elicitationResponse?: ElicitationResponse
   watchPaths?: string[]
@@ -229,6 +230,7 @@ export type AggregatedHookResult = {
   initialUserMessage?: string // 会话启动等场景预置的首条用户侧文案，供首轮上下文使用
   updatedInput?: Record<string, unknown> // 钩子改写后的工具入参；可在 allow/ask 时与权限一起产出，也可单独改参
   updatedMCPToolOutput?: unknown // PostToolUse 钩子对 MCP 工具原始输出的替换内容
+  updatedToolOutput?: unknown // PostToolUse 钩子对任意工具输出的替换内容(官方 2.1.121)
   permissionRequestResult?: PermissionRequestResult // PermissionRequest 事件钩子的 allow/deny 及可选改参
   watchPaths?: string[] // SessionStart 等声明的监视路径，供文件变更相关逻辑使用
   elicitationResponse?: ElicitationResponse // Elicitation 钩子的交互/采集结果（MCP elicit 流程）
@@ -385,6 +387,7 @@ export interface TypedSyncHookOutput {
         hookEventName: 'PostToolUse'
         additionalContext?: string
         updatedMCPToolOutput?: unknown
+        updatedToolOutput?: unknown
       }
     | {
         hookEventName: 'PostToolUseFailure'
@@ -589,6 +592,11 @@ function processHookJSONOutput({
         if (json.hookSpecificOutput.updatedMCPToolOutput) {
           result.updatedMCPToolOutput =
             json.hookSpecificOutput.updatedMCPToolOutput
+        }
+        // updatedToolOutput (official 2.1.121 parity): replaces the output
+        // of ANY tool, not just MCP tools
+        if (json.hookSpecificOutput.updatedToolOutput !== undefined) {
+          result.updatedToolOutput = json.hookSpecificOutput.updatedToolOutput
         }
         break
       case 'PostToolUseFailure':
@@ -799,10 +807,41 @@ export async function execCommandHook(
     }
   }
 
+  // Exec form (official 2.1.139 parity): argv goes straight to the OS — no
+  // shell ever parses it, so substituted values cannot inject shell syntax.
+  // Args get the same plugin substitutions as the command string; applying
+  // ${user_config.*} here is safe precisely BECAUSE there is no shell.
+  // Shell-only transforms below (.sh prepend, CLAUDE_CODE_SHELL_PREFIX,
+  // network sandbox wrap — all shell-string mechanisms) do not apply.
+  const isExecForm = 'args' in hook && hook.args !== undefined
+  let finalArgs: string[] | undefined
+  if (isExecForm) {
+    finalArgs = (hook.args as string[]).map(arg => {
+      let value = arg
+      if (pluginRoot) {
+        const rootPath = toHookPath(pluginRoot)
+        value = value.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, () => rootPath)
+        if (pluginId) {
+          const dataPath = toHookPath(getPluginDataDir(pluginId))
+          value = value.replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, () => dataPath)
+        }
+        if (pluginOpts) {
+          value = substituteUserConfigVariables(value, pluginOpts)
+        }
+      }
+      return value
+    })
+  }
+
   // On Windows (bash only), auto-prepend `bash` for .sh scripts so they
   // execute instead of opening in the default file handler. PowerShell
   // runs .ps1 files natively — no prepend needed.
-  if (isWindows && !isPowerShell && command.trim().match(/\.sh(\s|$|")/)) {
+  if (
+    !isExecForm &&
+    isWindows &&
+    !isPowerShell &&
+    command.trim().match(/\.sh(\s|$|")/)
+  ) {
     if (!command.trim().startsWith('bash ')) {
       command = `bash ${command}`
     }
@@ -813,7 +852,7 @@ export async function execCommandHook(
   // PowerShell — see design §8.1. For now PS hooks ignore the prefix;
   // a CLAUDE_CODE_PS_SHELL_PREFIX (or shell-aware prefix) is a follow-up.
   const finalCommand =
-    !isPowerShell && process.env.CLAUDE_CODE_SHELL_PREFIX
+    !isExecForm && !isPowerShell && process.env.CLAUDE_CODE_SHELL_PREFIX
       ? formatShellPrefixCommand(process.env.CLAUDE_CODE_SHELL_PREFIX, command)
       : command
 
@@ -910,7 +949,7 @@ export async function execCommandHook(
   //   - Hooks that genuinely need network (notifications) should use the
   //     `http` hook type, which is not affected by this sandbox
   let sandboxedCommand = finalCommand
-  if (!isPowerShell && SandboxManager.isSandboxingEnabled()) {
+  if (!isExecForm && !isPowerShell && SandboxManager.isSandboxingEnabled()) {
     try {
       sandboxedCommand = await SandboxManager.wrapWithSandbox(
         finalCommand,
@@ -949,7 +988,14 @@ export async function execCommandHook(
   }
 
   let child: ChildProcessWithoutNullStreams
-  if (shellType === 'powershell') {
+  if (isExecForm && finalArgs !== undefined) {
+    // Exec form: direct argv spawn, no shell involved at any layer.
+    child = spawn(command, finalArgs, {
+      env: envVars,
+      cwd: safeCwd,
+      windowsHide: true,
+    }) as ChildProcessWithoutNullStreams
+  } else if (shellType === 'powershell') {
     const pwshPath = await getCachedPowerShellPath()
     if (!pwshPath) {
       throw new Error(
@@ -2208,6 +2254,17 @@ export async function* executeHooks({
       )
       yield {
         updatedMCPToolOutput: result.updatedMCPToolOutput,
+      }
+    }
+
+    // updatedToolOutput (official 2.1.121 parity): output replacement for
+    // ANY tool, not just MCP
+    if (result.updatedToolOutput !== undefined) {
+      logForDebugging(
+        `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) replaced tool output`,
+      )
+      yield {
+        updatedToolOutput: result.updatedToolOutput,
       }
     }
 

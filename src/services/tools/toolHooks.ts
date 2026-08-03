@@ -153,6 +153,15 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
             updatedMCPToolOutput: toolOutput,
           }
         }
+        // updatedToolOutput (official 2.1.121 parity): replaces the output
+        // of ANY tool — the hook author owns shape compatibility, same
+        // contract as the MCP-only variant above.
+        if (result.updatedToolOutput !== undefined) {
+          toolOutput = result.updatedToolOutput as Output
+          yield {
+            updatedMCPToolOutput: toolOutput,
+          }
+        }
       } catch (error) {
         const postToolDurationMs = Date.now() - postToolStartTime
         logEvent('tengu_post_tool_hook_error', {

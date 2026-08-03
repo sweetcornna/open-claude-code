@@ -18,6 +18,7 @@ const EXPECTED_EXPORTS = [
   'createBaseHookInput',
   'executeConfigChangeHooks',
   'executeCwdChangedHooks',
+  'executeDirectoryAddedHooks',
   'executeElicitationHooks',
   'executeElicitationResultHooks',
   'executeFileChangedHooks',
@@ -67,8 +68,8 @@ describe('hooks.ts export surface', () => {
   // Literal count on purpose: asserting against EXPECTED_EXPORTS.length would
   // be a tautology after the toEqual above, and would still pass if the array
   // itself were bulk-edited.
-  test('exports 41 runtime symbols', () => {
-    expect(Object.keys(MODULE)).toHaveLength(41)
+  test('exports 42 runtime symbols', () => {
+    expect(Object.keys(MODULE)).toHaveLength(42)
   })
 
   test('every exported symbol is defined', () => {

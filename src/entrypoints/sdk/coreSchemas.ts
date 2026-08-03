@@ -387,6 +387,7 @@ export const HOOK_EVENTS = [
   'WorktreeRemove',
   'InstructionsLoaded',
   'CwdChanged',
+  'DirectoryAdded',
   'FileChanged',
 ] as const
 
@@ -752,6 +753,18 @@ export const FileChangedHookInputSchema = lazySchema(() =>
   ),
 )
 
+// Fired when a working directory is registered mid-session — /add-dir
+// command or the SDK's register_repo_root (official 2.1.219 parity).
+export const DirectoryAddedHookInputSchema = lazySchema(() =>
+  BaseHookInputSchema().and(
+    z.object({
+      hook_event_name: z.literal('DirectoryAdded'),
+      directory: z.string(),
+      source: z.enum(['add_dir_command', 'sdk']),
+    }),
+  ),
+)
+
 export const EXIT_REASONS = [
   'clear',
   'resume',
@@ -800,6 +813,7 @@ export const HookInputSchema = lazySchema(() =>
     WorktreeCreateHookInputSchema(),
     WorktreeRemoveHookInputSchema(),
     CwdChangedHookInputSchema(),
+    DirectoryAddedHookInputSchema(),
     FileChangedHookInputSchema(),
   ]),
 )
@@ -856,6 +870,8 @@ export const PostToolUseHookSpecificOutputSchema = lazySchema(() =>
     hookEventName: z.literal('PostToolUse'),
     additionalContext: z.string().optional(),
     updatedMCPToolOutput: z.unknown().optional(),
+    // official 2.1.121 parity: replaces the output of ANY tool
+    updatedToolOutput: z.unknown().optional(),
   }),
 )
 

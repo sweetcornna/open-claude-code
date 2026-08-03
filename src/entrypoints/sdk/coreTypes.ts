@@ -49,6 +49,7 @@ export const HOOK_EVENTS = [
   'WorktreeRemove',
   'InstructionsLoaded',
   'CwdChanged',
+  'DirectoryAdded',
   'FileChanged',
 ] as const
 
