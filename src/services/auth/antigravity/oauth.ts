@@ -121,11 +121,13 @@ function tokensFromResponse(
 async function postTokenEndpoint(
   body: URLSearchParams,
   fetchImpl: FetchLike,
+  signal?: AbortSignal,
 ): Promise<GoogleTokenResponse> {
   const response = await fetchImpl(ANTIGRAVITY_TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    ...(signal ? { signal } : {}),
     ...proxyOptions(),
   })
   if (!response.ok) {
@@ -142,6 +144,7 @@ export async function exchangeAntigravityCode(params: {
   redirectUri: string
   fetchImpl?: FetchLike
 }): Promise<AntigravityTokens> {
+  await invalidateAntigravityRefreshes()
   const data = await postTokenEndpoint(
     new URLSearchParams({
       code: params.code,
@@ -152,12 +155,16 @@ export async function exchangeAntigravityCode(params: {
     }),
     params.fetchImpl ?? fetch,
   )
+  // A request could have read the old credential file while the code exchange
+  // was in flight. Invalidate it before the caller persists the new login.
+  await invalidateAntigravityRefreshes()
   return tokensFromResponse(data)
 }
 
 export async function refreshAntigravityTokens(
   tokens: AntigravityTokens,
   fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal,
 ): Promise<AntigravityTokens> {
   const data = await postTokenEndpoint(
     new URLSearchParams({
@@ -167,6 +174,7 @@ export async function refreshAntigravityTokens(
       refresh_token: tokens.refreshToken,
     }),
     fetchImpl,
+    signal,
   )
   return tokensFromResponse(data, tokens)
 }
@@ -334,29 +342,74 @@ export async function discoverAntigravityProject(params: {
   return onboarded
 }
 
-// Concurrent requests must not each mint a refresh: Google invalidates the
-// previous access token, so parallel refreshes race to overwrite the store
-// with tokens the other half of the process no longer holds.
-let inFlightRefresh: Promise<AntigravityTokens> | null = null
+type InFlightRefresh = {
+  generation: number
+  controller: AbortController
+  promise: Promise<AntigravityTokens>
+}
+
+// Refreshes dedupe only for the same credential identity. A global promise
+// lets a newly logged-in account await and receive the previous account's
+// token, while a generation guard prevents pre-logout work from committing.
+const inFlightRefreshes = new Map<string, InFlightRefresh>()
+let credentialGeneration = 0
+
+async function invalidateAntigravityRefreshes(): Promise<void> {
+  credentialGeneration++
+  const stale = [...inFlightRefreshes.values()]
+  for (const refresh of stale) refresh.controller.abort()
+  await Promise.allSettled(stale.map(refresh => refresh.promise))
+}
 
 async function refreshAndPersist(
   tokens: AntigravityTokens,
   fetchImpl: FetchLike,
 ): Promise<AntigravityTokens> {
-  if (!inFlightRefresh) {
-    inFlightRefresh = (async () => {
-      const refreshed = await refreshAntigravityTokens(tokens, fetchImpl)
-      await saveAntigravityTokens(refreshed)
-      return refreshed
-    })().finally(() => {
-      inFlightRefresh = null
-    })
+  const identityKey = tokens.refreshToken
+  const existing = inFlightRefreshes.get(identityKey)
+  if (existing?.generation === credentialGeneration) return existing.promise
+
+  const generation = credentialGeneration
+  const controller = new AbortController()
+  let entry: InFlightRefresh
+  const refresh = (async () => {
+    const refreshed = await refreshAntigravityTokens(
+      tokens,
+      fetchImpl,
+      controller.signal,
+    )
+    const current = await readAntigravityTokens()
+    if (
+      generation !== credentialGeneration ||
+      current?.refreshToken !== identityKey
+    ) {
+      throw new Error('Antigravity credentials changed during token refresh')
+    }
+    await saveAntigravityTokens(refreshed)
+    if (generation !== credentialGeneration) {
+      throw new Error('Antigravity credentials changed during token refresh')
+    }
+    return refreshed
+  })()
+  entry = {
+    generation,
+    controller,
+    promise: refresh.finally(() => {
+      if (inFlightRefreshes.get(identityKey) === entry) {
+        inFlightRefreshes.delete(identityKey)
+      }
+    }),
   }
-  return inFlightRefresh
+  inFlightRefreshes.set(identityKey, entry)
+  return entry.promise
 }
 
 export function _resetAntigravityRefreshStateForTesting(): void {
-  inFlightRefresh = null
+  credentialGeneration++
+  for (const refresh of inFlightRefreshes.values()) {
+    refresh.controller.abort()
+  }
+  inFlightRefreshes.clear()
 }
 
 /**
@@ -422,5 +475,6 @@ export async function hasAntigravityCredentials(): Promise<boolean> {
 }
 
 export async function removeAntigravityAuth(): Promise<void> {
+  await invalidateAntigravityRefreshes()
   await removeAntigravityTokens()
 }

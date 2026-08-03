@@ -33,6 +33,9 @@ const storeMock = setupAntigravityStoreMock({
     saved.push(tokens)
     stored = tokens
   },
+  removeAntigravityTokens: async () => {
+    stored = null
+  },
 })
 afterAll(() => {
   storeMock.reset()
@@ -46,6 +49,7 @@ import {
   getAntigravityAccessToken,
   getValidAntigravityAuth,
   refreshAntigravityTokens,
+  removeAntigravityAuth,
 } from '../oauth.js'
 
 const HOUR_MS = 60 * 60 * 1000
@@ -88,6 +92,45 @@ function stubFetch(
 
 function formOf(call: Call): URLSearchParams {
   return new URLSearchParams(String(call.init.body))
+}
+
+function deferredTokenFetch(): {
+  fetchImpl: typeof fetch
+  started: Promise<void>
+  respond: (json: unknown) => void
+  calls: Call[]
+} {
+  const calls: Call[] = []
+  let markStarted: (() => void) | undefined
+  let resolveResponse: ((response: Response) => void) | undefined
+  const started = new Promise<void>(resolve => {
+    markStarted = resolve
+  })
+  const fetchImpl = (async (url: string | URL, init: RequestInit = {}) => {
+    calls.push({ url: String(url), init })
+    markStarted?.()
+    return await new Promise<Response>((resolve, reject) => {
+      resolveResponse = resolve
+      init.signal?.addEventListener(
+        'abort',
+        () => reject(new Error('refresh aborted')),
+        { once: true },
+      )
+    })
+  }) as unknown as typeof fetch
+  return {
+    fetchImpl,
+    started,
+    calls,
+    respond: json => {
+      resolveResponse?.({
+        ok: true,
+        status: 200,
+        json: async () => json,
+        text: async () => JSON.stringify(json),
+      } as unknown as Response)
+    },
+  }
 }
 
 beforeEach(() => {
@@ -351,6 +394,83 @@ describe('getAntigravityAccessToken', () => {
     ])
     expect(results).toEqual(['access-new', 'access-new'])
     expect(calls).toHaveLength(1)
+  })
+
+  test('does not share or persist a refresh across an account switch', async () => {
+    stored = tokens({ expiresAt: Date.now() - 1 })
+    const oldRefresh = deferredTokenFetch()
+    const oldResult = getAntigravityAccessToken(oldRefresh.fetchImpl)
+    await oldRefresh.started
+
+    stored = tokens({
+      accessToken: 'account-b-old',
+      refreshToken: 'refresh-2',
+      expiresAt: Date.now() - 1,
+      projectId: 'proj-2',
+    })
+    const newRefresh = stubFetch([
+      { json: { access_token: 'account-b-new', expires_in: 3600 } },
+    ])
+    const newResult = getAntigravityAccessToken(newRefresh.fetchImpl)
+    await Promise.resolve()
+    await Promise.resolve()
+    const newAccountCallCount = newRefresh.calls.length
+
+    oldRefresh.respond({ access_token: 'account-a-new', expires_in: 3600 })
+    expect(await Promise.all([oldResult, newResult])).toEqual([
+      null,
+      'account-b-new',
+    ])
+    expect(newAccountCallCount).toBe(1)
+    expect(saved.map(token => token.accessToken)).toEqual(['account-b-new'])
+    expect(stored?.refreshToken).toBe('refresh-2')
+  })
+
+  test('logout invalidates an in-flight refresh before removing credentials', async () => {
+    stored = tokens({ expiresAt: Date.now() - 1 })
+    const pendingRefresh = deferredTokenFetch()
+    const accessResult = getAntigravityAccessToken(pendingRefresh.fetchImpl)
+    await pendingRefresh.started
+
+    await removeAntigravityAuth()
+    pendingRefresh.respond({
+      access_token: 'must-not-persist',
+      expires_in: 3600,
+    })
+
+    expect(await accessResult).toBeNull()
+    expect(saved).toHaveLength(0)
+    expect(stored).toBeNull()
+  })
+
+  test('a new code exchange invalidates refresh work from the previous login', async () => {
+    stored = tokens({ expiresAt: Date.now() - 1 })
+    const pendingRefresh = deferredTokenFetch()
+    const accessResult = getAntigravityAccessToken(pendingRefresh.fetchImpl)
+    await pendingRefresh.started
+
+    const exchangeFetch = stubFetch([
+      {
+        json: {
+          access_token: 'account-b-access',
+          refresh_token: 'refresh-2',
+          expires_in: 3600,
+        },
+      },
+    ])
+    const exchanged = await exchangeAntigravityCode({
+      code: 'account-b-code',
+      redirectUri: 'http://localhost/cb',
+      fetchImpl: exchangeFetch.fetchImpl,
+    })
+    pendingRefresh.respond({
+      access_token: 'must-not-persist',
+      expires_in: 3600,
+    })
+
+    expect(exchanged.refreshToken).toBe('refresh-2')
+    expect(await accessResult).toBeNull()
+    expect(saved).toHaveLength(0)
   })
 })
 

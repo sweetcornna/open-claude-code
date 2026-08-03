@@ -16,6 +16,10 @@ import { distRoot } from '../utils/filesystem/distRoot.js'
 import { execFileNoThrowWithCwd } from '../utils/process/execFileNoThrow.js'
 import { gracefulShutdown } from '../utils/process/gracefulShutdown.js'
 import { writeToStdout } from '../utils/process/process.js'
+// Shared Bun.semver-backed comparison. A hand-rolled numeric compare used to
+// live here and ignored prerelease tags, so `2.11.0-beta.1 >= 2.11.0` was true
+// and prerelease users were permanently pinned at "already up to date".
+import { gte } from '../utils/text/semver.js'
 
 const PACKAGE_NAME = NPM_PACKAGE_NAME
 
@@ -101,20 +105,6 @@ export async function getLatestOccVersion(): Promise<string | null> {
     return null
   }
   return result.stdout.trim()
-}
-
-/**
- * Compare two semver strings. Returns true if a >= b.
- */
-function gte(a: string, b: string): boolean {
-  const parseVer = (v: string) => v.replace(/^\D/, '').split('.').map(Number)
-  const pa = parseVer(a)
-  const pb = parseVer(b)
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true
-    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false
-  }
-  return true
 }
 
 // Shared by the interactive `occ update` path and the silent background

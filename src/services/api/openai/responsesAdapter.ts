@@ -230,27 +230,56 @@ async function* parseSSE(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+
+  const parseFrame = (frame: string): Record<string, unknown> | undefined => {
+    const data = frame
+      .split(/\r?\n/)
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trimStart())
+      .join('\n')
+    if (!data || data === '[DONE]') return undefined
+    const parsed = JSON.parse(data) as unknown
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, unknown>)
+      : undefined
+  }
+
+  const takeFrame = (): string | undefined => {
+    // Match the two wire forms explicitly. A generic "two line endings"
+    // regex can backtrack and misread one CRLF as a CR frame ending followed
+    // by an LF blank line when the pair is split across reads.
+    const boundary = buffer.match(/\r\n\r\n|\n\n/)
+    if (boundary?.index === undefined) return undefined
+    const frame = buffer.slice(0, boundary.index)
+    buffer = buffer.slice(boundary.index + boundary[0].length)
+    return frame
+  }
+
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
-    let splitAt = buffer.indexOf('\n\n')
-    while (splitAt >= 0) {
-      const frame = buffer.slice(0, splitAt)
-      buffer = buffer.slice(splitAt + 2)
-      const data = frame
-        .split(/\r?\n/)
-        .filter(line => line.startsWith('data:'))
-        .map(line => line.slice(5).trimStart())
-        .join('\n')
-      if (data && data !== '[DONE]') {
-        const parsed = JSON.parse(data) as unknown
-        if (parsed && typeof parsed === 'object') {
-          yield parsed as Record<string, unknown>
-        }
-      }
-      splitAt = buffer.indexOf('\n\n')
+    let frame = takeFrame()
+    while (frame !== undefined) {
+      const parsed = parseFrame(frame)
+      if (parsed) yield parsed
+      frame = takeFrame()
     }
+  }
+
+  buffer += decoder.decode()
+  let frame = takeFrame()
+  while (frame !== undefined) {
+    const parsed = parseFrame(frame)
+    if (parsed) yield parsed
+    frame = takeFrame()
+  }
+  // Compatible gateways sometimes close immediately after the final data
+  // field instead of writing another blank line. EOF makes that frame
+  // complete, so dispatch it rather than silently dropping the last event.
+  if (buffer.trim()) {
+    const parsed = parseFrame(buffer)
+    if (parsed) yield parsed
   }
 }
 

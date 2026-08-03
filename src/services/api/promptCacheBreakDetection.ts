@@ -1,7 +1,9 @@
 import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import { createHmac, randomBytes, randomUUID } from 'crypto'
 import { createPatch } from 'diff'
-import { mkdir, writeFile } from 'fs/promises'
+import { rmSync } from 'fs'
+import { chmod, mkdir, mkdtemp, writeFile } from 'fs/promises'
 import { join } from 'path'
 import type { AgentId } from 'src/types/ids.js'
 import type { Message } from 'src/types/message.js'
@@ -16,13 +18,48 @@ import {
   logEvent,
 } from '../analytics/index.js'
 
-function getCacheBreakDiffPath(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-  let suffix = ''
-  for (let i = 0; i < 4; i++) {
-    suffix += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return join(getClaudeTempDir(), `cache-break-${suffix}.diff`)
+const cacheBreakRedactionKey = randomBytes(32)
+let cacheBreakSessionDir: string | null = null
+let cacheBreakCleanupRegistered = false
+
+function cleanupCacheBreakDiffs(): void {
+  if (!cacheBreakSessionDir) return
+  rmSync(cacheBreakSessionDir, { recursive: true, force: true })
+  cacheBreakSessionDir = null
+}
+
+function registerCacheBreakCleanup(): void {
+  if (cacheBreakCleanupRegistered) return
+  cacheBreakCleanupRegistered = true
+  // Diagnostics are useful only for the current debug session; retaining
+  // prompt-derived material after process exit creates an unnecessary secret.
+  process.once('exit', cleanupCacheBreakDiffs)
+}
+
+async function getCacheBreakSessionDir(baseDir: string): Promise<string> {
+  if (cacheBreakSessionDir) return cacheBreakSessionDir
+  await mkdir(baseDir, { recursive: true })
+  const sessionDir = await mkdtemp(join(baseDir, 'cache-break-'))
+  await chmod(sessionDir, 0o700)
+  cacheBreakSessionDir = sessionDir
+  registerCacheBreakCleanup()
+  return sessionDir
+}
+
+function redactDiffContent(content: string): string {
+  // A per-process HMAC preserves equality for a useful structural diff while
+  // preventing short prompt/schema lines from being recovered by hashing a
+  // dictionary against a stable public digest.
+  return content
+    .split('\n')
+    .map(line => {
+      if (!line) return ''
+      const digest = createHmac('sha256', cacheBreakRedactionKey)
+        .update(line)
+        .digest('hex')
+      return `[redacted chars=${line.length} hmac=${digest}]`
+    })
+    .join('\n')
 }
 
 type PreviousState = {
@@ -702,25 +739,40 @@ export function cleanupAgentTracking(agentId: AgentId): void {
 
 export function resetPromptCacheBreakDetection(): void {
   previousStateBySource.clear()
+  cleanupCacheBreakDiffs()
 }
 
 async function writeCacheBreakDiff(
   prevContent: string,
   newContent: string,
+  baseDir: string = getClaudeTempDir(),
 ): Promise<string | undefined> {
   try {
-    const diffPath = getCacheBreakDiffPath()
-    await mkdir(getClaudeTempDir(), { recursive: true })
+    const sessionDir = await getCacheBreakSessionDir(baseDir)
+    const diffPath = join(sessionDir, `${randomUUID()}.diff`)
     const patch = createPatch(
       'prompt-state',
-      prevContent,
-      newContent,
+      redactDiffContent(prevContent),
+      redactDiffContent(newContent),
       'before',
       'after',
     )
-    await writeFile(diffPath, patch)
+    await writeFile(diffPath, patch, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    })
+    await chmod(diffPath, 0o600)
     return diffPath
   } catch {
     return undefined
   }
+}
+
+export async function _writeCacheBreakDiffForTesting(
+  prevContent: string,
+  newContent: string,
+  baseDir: string,
+): Promise<string | undefined> {
+  return writeCacheBreakDiff(prevContent, newContent, baseDir)
 }

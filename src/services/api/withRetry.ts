@@ -413,11 +413,18 @@ export async function* withRetry<T>(
             (retryContext.thinkingConfig.type === 'enabled'
               ? retryContext.thinkingConfig.budgetTokens
               : 0) + 1
-          const adjustedMaxTokens = Math.max(
-            FLOOR_OUTPUT_TOKENS,
-            availableContext,
-            minRequired,
-          )
+          if (minRequired > availableContext) {
+            logError(
+              new Error(
+                `thinking minimum ${minRequired} exceeds available context ${availableContext}`,
+              ),
+            )
+            throw error
+          }
+          // availableContext is already above the output floor and is the
+          // largest value the retry can request without repeating the same
+          // context overflow.
+          const adjustedMaxTokens = availableContext
           retryContext.maxTokensOverride = adjustedMaxTokens
 
           logEvent('tengu_max_tokens_context_overflow_adjustment', {
