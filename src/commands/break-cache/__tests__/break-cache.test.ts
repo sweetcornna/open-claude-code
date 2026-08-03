@@ -1,4 +1,13 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
+import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.ts'
 import {
   existsSync,
   mkdirSync,
@@ -25,28 +34,16 @@ let claudeDir: string
 // Dynamic envUtils mock — reads CLAUDE_CONFIG_DIR from process.env at call
 // time so it stays compatible across the full suite when other test files
 // also drive their own dirs via process.env.
-mock.module('src/utils/config/envUtils.js', () => ({
-  getClaudeConfigHomeDir: () =>
-    process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`,
-  isEnvTruthy: (value: unknown) =>
-    typeof value === 'boolean'
-      ? value
-      : typeof value === 'string' &&
-        ['1', 'true', 'yes', 'on'].includes(value.toLowerCase().trim()),
-  getTeamsDir: () =>
-    join(process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`, 'teams'),
-  hasNodeOption: () => false,
-  isEnvDefinedFalsy: (value: unknown) =>
-    typeof value === 'boolean'
-      ? !value
-      : typeof value === 'string' &&
-        ['0', 'false', 'no', 'off'].includes(value.toLowerCase().trim()),
-  isBareMode: () => false,
-  parseEnvVars: (s: string) => s,
-  getAWSRegion: () => 'us-east-1',
-  getDefaultVertexRegion: () => 'us-central1',
-  shouldMaintainProjectWorkingDir: () => false,
-}))
+// envUtils goes through the shared complete-surface mock (delegates to the
+// real module unless overridden) — see tests/mocks/envUtils.ts for why the
+// old hand-rolled partial mocks were an order-dependent CI hazard.
+// No overrides: these tests drive the config home through
+// process.env.CLAUDE_CONFIG_DIR, which the REAL implementation honors
+// (OCC_CONFIG_DIR > CLAUDE_CONFIG_DIR > ~/.occ).
+const envUtilsMock = setupEnvUtilsMock()
+afterAll(() => {
+  envUtilsMock.reset()
+})
 
 async function invokeBreakCache(
   args: string,

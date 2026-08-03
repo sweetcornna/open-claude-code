@@ -1,33 +1,18 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
+import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.ts'
 import { mock } from 'bun:test'
 import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
-mock.module('src/services/analytics/growthbook.js', () => ({
+// growthbook goes through the shared complete-surface mock (missing exports
+// delegate to the real module) — see tests/mocks/growthbook.ts.
+setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
-  getFeatureValue_DEPRECATED: async () => undefined,
-  getFeatureValue_CACHED_WITH_REFRESH: async () => undefined,
-  hasGrowthBookEnvOverride: () => false,
-  getAllGrowthBookFeatures: () => ({}),
-  getGrowthBookConfigOverrides: () => ({}),
-  setGrowthBookConfigOverride: () => {},
-  clearGrowthBookConfigOverrides: () => {},
-  getApiBaseUrlHost: () => undefined,
-  onGrowthBookRefresh: () => {},
-  initializeGrowthBook: async () => {},
-  checkSecurityRestrictionGate: async () => false,
-  checkGate_CACHED_OR_BLOCKING: async () => false,
-  refreshGrowthBookAfterAuthChange: () => {},
-  resetGrowthBook: () => {},
-  refreshGrowthBookFeatures: async () => {},
-  setupPeriodicGrowthBookRefresh: () => {},
-  stopPeriodicGrowthBookRefresh: () => {},
-  getDynamicConfig_CACHED_MAY_BE_STALE: () => undefined,
-  getDynamicConfig_BLOCKS_ON_INIT: async () => undefined,
-}))
+  getDynamicConfig_CACHED_MAY_BE_STALE: () => undefined as never,
+})
 
 const {
   subscribeToSearchExtraToolsPrefetch,

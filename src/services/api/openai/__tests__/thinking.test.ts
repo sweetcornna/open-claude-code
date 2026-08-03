@@ -1,26 +1,27 @@
-import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
+import {
+  afterAll,
+  describe,
+  expect,
+  test,
+  beforeEach,
+  afterEach,
+  mock,
+} from 'bun:test'
+import { setupEnvUtilsMock } from '../../../../../tests/mocks/envUtils.ts'
 import {
   isOpenAIThinkingEnabled,
   buildOpenAIRequestBody,
 } from '../requestBody.js'
 
-// Re-register envUtils.js with correct isEnvDefinedFalsy and isEnvTruthy to
-// override pollution from other test files (debug-tool-call, issue,
-// break-cache, MagicDocs/prompts, SessionMemory/prompts, cacheStats) that
-// mock this module without exporting isEnvDefinedFalsy.
-mock.module('src/utils/config/envUtils.js', () => ({
-  isEnvTruthy: (v: string | boolean | undefined): boolean => {
-    if (!v) return false
-    if (typeof v === 'boolean') return v
-    return ['1', 'true', 'yes', 'on'].includes(v.toLowerCase().trim())
-  },
-  isEnvDefinedFalsy: (v: string | boolean | undefined): boolean => {
-    if (v === undefined) return false
-    if (typeof v === 'boolean') return !v
-    if (!v) return false
-    return ['0', 'false', 'no', 'off'].includes(v.toLowerCase().trim())
-  },
-}))
+// envUtils goes through the shared complete-surface mock (delegates to the
+// real module unless overridden) — see tests/mocks/envUtils.ts for why the
+// old hand-rolled partial mocks were an order-dependent CI hazard.
+// No overrides: this file only needs REAL env semantics; the setup exists so
+// this writer produces the same complete surface as every other envUtils mocker.
+const envUtilsMock = setupEnvUtilsMock()
+afterAll(() => {
+  envUtilsMock.reset()
+})
 
 describe('isOpenAIThinkingEnabled', () => {
   const originalEnv = {

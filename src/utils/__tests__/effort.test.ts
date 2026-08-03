@@ -1,9 +1,14 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
+import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.ts'
+import * as realThinking from 'src/utils/model/thinking.js'
+import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.ts'
 
-// Mock heavy dependencies to avoid import chain issues
-mock.module('src/utils/model/thinking.js', () => ({
+// thinking.js goes through the shared complete-surface pattern: only
+// isUltrathinkEnabled is overridden; every other export delegates to the real
+// module so later files in the process never see a partial surface.
+makeSharedModuleMock('src/utils/model/thinking.js', realThinking).setup({
   isUltrathinkEnabled: () => false,
-}))
+})
 mock.module('src/utils/settings/settings.js', () => ({
   getInitialSettings: () => ({}),
 }))
@@ -12,10 +17,12 @@ mock.module('src/utils/auth/auth.js', () => ({
   isMaxSubscriber: () => false,
   isTeamSubscriber: () => false,
 }))
-mock.module('src/services/analytics/growthbook.js', () => ({
+// growthbook goes through the shared complete-surface mock (missing exports
+// delegate to the real module) — see tests/mocks/growthbook.ts.
+setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: (_key: string, defaultValue: unknown) =>
     defaultValue ?? {},
-}))
+})
 mock.module('src/utils/model/modelSupportOverrides.js', () => ({
   get3PModelCapabilityOverride: () => undefined,
 }))

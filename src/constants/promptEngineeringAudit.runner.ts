@@ -13,6 +13,8 @@
  */
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
+import { setupGrowthbookMock } from '../../tests/mocks/growthbook.ts'
+import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.ts'
 
 // --- MACRO 全局注入 (编译时 define 在测试中不可用) ---
 ;(globalThis as any).MACRO = {
@@ -53,9 +55,12 @@ mock.module('src/commands/poor/poorMode.js', () => ({
 mock.module('src/utils/config/env.js', () => ({
   env: { platform: 'linux' },
 }))
-mock.module('src/utils/config/envUtils.js', () => ({
+// Shared complete-surface envUtils mock (see tests/mocks/envUtils.ts).
+// isEnvTruthy pinned false: the audit needs deterministic prompts regardless
+// of whatever env flags the host machine happens to have.
+setupEnvUtilsMock({
   isEnvTruthy: () => false,
-}))
+})
 mock.module('src/utils/model/model.js', () => ({
   getCanonicalName: (id: string) => id,
   getMarketingNameForModel: (id: string) => {
@@ -99,9 +104,11 @@ mock.module('src/memdir/memdir.js', () => ({
 mock.module('src/utils/telemetry/debug.js', () => ({
   logForDebugging: () => {},
 }))
-mock.module('src/services/analytics/growthbook.js', () => ({
+// growthbook goes through the shared complete-surface mock (missing exports
+// delegate to the real module) — see tests/mocks/growthbook.ts.
+setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
-}))
+})
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))

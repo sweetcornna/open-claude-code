@@ -1,4 +1,13 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
+import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.ts'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,28 +29,16 @@ let claudeDir: string
 // mock envUtils with static paths — by reading process.env at call time,
 // our mock stays compatible with the full suite where other tests also
 // drive the real CLAUDE_CONFIG_DIR.
-mock.module('src/utils/config/envUtils.js', () => ({
-  getClaudeConfigHomeDir: () =>
-    process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`,
-  isEnvTruthy: (value: unknown) =>
-    typeof value === 'boolean'
-      ? value
-      : typeof value === 'string' &&
-        ['1', 'true', 'yes', 'on'].includes(value.toLowerCase().trim()),
-  getTeamsDir: () =>
-    join(process.env.CLAUDE_CONFIG_DIR ?? `${tmpdir()}/dummy-claude`, 'teams'),
-  hasNodeOption: () => false,
-  isEnvDefinedFalsy: (value: unknown) =>
-    typeof value === 'boolean'
-      ? !value
-      : typeof value === 'string' &&
-        ['0', 'false', 'no', 'off'].includes(value.toLowerCase().trim()),
-  isBareMode: () => false,
-  parseEnvVars: (s: string) => s,
-  getAWSRegion: () => 'us-east-1',
-  getDefaultVertexRegion: () => 'us-central1',
-  shouldMaintainProjectWorkingDir: () => false,
-}))
+// envUtils goes through the shared complete-surface mock (delegates to the
+// real module unless overridden) — see tests/mocks/envUtils.ts for why the
+// old hand-rolled partial mocks were an order-dependent CI hazard.
+// No overrides: these tests drive the config home through
+// process.env.CLAUDE_CONFIG_DIR, which the REAL implementation honors
+// (OCC_CONFIG_DIR > CLAUDE_CONFIG_DIR > ~/.occ).
+const envUtilsMock = setupEnvUtilsMock()
+afterAll(() => {
+  envUtilsMock.reset()
+})
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'dtc-test-'))

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { setupGrowthbookMock } from '../../../../tests/mocks/growthbook.ts'
 
 // Mock bun:bundle before any imports that use feature()
 // Note: in the test environment AWAY_SUMMARY compile-time flag is false, so
@@ -28,10 +29,12 @@ mock.module('src/utils/settings/settings.js', () => ({
 
 // Mock analytics (GrowthBook) — required for isEnabled()
 let gbValue = true
-mock.module('src/services/analytics/growthbook.js', () => ({
+// growthbook goes through the shared complete-surface mock (missing exports
+// delegate to the real module) — see tests/mocks/growthbook.ts.
+setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: (_key: string, defaultVal: unknown) =>
     gbValue ?? defaultVal,
-}))
+})
 
 // Mock the forkedAgent utility used by generateRecap
 let mockRecapResult: {
