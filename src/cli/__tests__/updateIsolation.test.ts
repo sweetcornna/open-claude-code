@@ -95,6 +95,22 @@ describe('occ update isolation', () => {
     expect(localInstallerSource).not.toContain("'claude'")
   })
 
+  test('silent background self-updater reuses only the occ update chain', () => {
+    const serviceSource = readSource(
+      'services/autoUpdate/backgroundOccUpdate.ts',
+    )
+    const updateOccSource = readSource('cli/updateOcc.ts')
+
+    // The background installer must go through cli/updateOcc.ts (pinned above
+    // to target only NPM_PACKAGE_NAME) — never a parallel install path.
+    expect(serviceSource).toContain("import('src/cli/updateOcc.js')")
+    expect(serviceSource).not.toContain('@anthropic-ai/claude-code')
+    expect(serviceSource).not.toContain('nativeInstaller')
+    expect(updateOccSource).toContain(
+      'export async function installOccGloballySilent',
+    )
+  })
+
   test('alias cleanup preserves official Claude Code and custom aliases', () => {
     const managedAlias = `alias ${BIN_NAME}="${occConfigPath('local', BIN_NAME)}"`
     const officialAlias = 'alias claude="/usr/local/bin/claude"'

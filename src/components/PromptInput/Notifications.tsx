@@ -3,6 +3,8 @@ import * as React from 'react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { type Notification, useNotifications } from 'src/context/notifications.js';
 import { logEvent } from 'src/services/analytics/index.js';
+import { setPluginUpdateNotifier } from 'src/services/autoUpdate/pluginUpdateNotifier.js';
+import { setBackgroundUpdateNotifier } from 'src/services/autoUpdate/updateNotifier.js';
 import { useAppState } from 'src/state/AppState.js';
 import { useVoiceState } from '../../context/voice.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
@@ -95,6 +97,39 @@ export function Notifications({
       });
     });
     return () => setEnvHookNotifier(null);
+  }, [addNotification]);
+
+  // Register the background self-updater's notifier (services/autoUpdate).
+  // The service has no React access, so it hands its one-line success notice
+  // through this registry — same pattern as setEnvHookNotifier above. Low
+  // priority + no color renders it dim: informational, never interrupting.
+  useEffect(() => {
+    setBackgroundUpdateNotifier(text => {
+      addNotification({
+        key: 'background-occ-update',
+        text,
+        priority: 'low',
+        timeoutMs: 15000,
+      });
+    });
+    return () => setBackgroundUpdateNotifier(null);
+  }, [addNotification]);
+
+  // Same registry pattern for the background plugin-marketplace updater, but
+  // green (color: 'success'): a completed action the user can act on, not an
+  // ambient hint. Matches usePluginAutoupdateNotification, the startup
+  // autoupdate path's notice, so both read alike.
+  useEffect(() => {
+    setPluginUpdateNotifier(text => {
+      addNotification({
+        key: 'background-plugin-update',
+        text,
+        color: 'success',
+        priority: 'low',
+        timeoutMs: 15000,
+      });
+    });
+    return () => setPluginUpdateNotifier(null);
   }, [addNotification]);
 
   // Check if we should show the IDE selection indicator

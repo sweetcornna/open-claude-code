@@ -68,11 +68,20 @@ bun install -g @sweetcornna/open-claude-code@latest
 
 不要通过手工调用 `src/utils/nativeInstaller/` 下的内部函数安装 occ；这些函数不是稳定的公共接口。
 
-## 后台更新组件
+## 后台静默自动更新
 
-`src/components/AutoUpdaterWrapper.tsx` 中仍保留 JavaScript 包更新与外部包管理器通知组件的路由代码，但当前产品入口没有挂载该组件。它也不再路由到 `NativeAutoUpdater`。
+交互式会话在启动后约 5 分钟自动做一次后台版本检查（每会话至多一次），发现新版本时静默执行全局安装，成功后在 REPL 底部显示一条低调提示（`✓ Updated to vX.Y.Z · Restart to apply`），失败只写调试日志、绝不打断会话。实现是无 React 依赖的服务模块 `src/services/autoUpdate/backgroundOccUpdate.ts`，由 `src/cli/program/rootAction.tsx` 在交互路径（`--print` 提前返回之后）动态 import 并调度；UI 提示通过 `src/services/autoUpdate/updateNotifier.ts` 注册表送入 REPL 通知队列（与 `setEnvHookNotifier` 同模式）。
 
-因此，发布版本的可靠更新契约是显式执行 `occ update`。在 occ 建立自己的签名二进制发布源之前，不应重新接通继承的原生下载器或官方包管理器更新提示。
+以下任一条件成立时完全不跑：
+
+- `globalConfig.autoUpdates === false`（`~/.occ.json`）
+- 环境变量 `DISABLE_AUTOUPDATER` 或 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
+- `NODE_ENV=test/development`
+- 当前运行副本不是全局安装：npm 全局安装（doctorDiagnostic 判定为 `npm-global`）走 `npm install -g`，入口脚本位于 `~/.bun/install/global` 树内走 `bun install -g`；源码 checkout、`npm-local`、Homebrew 等包管理器安装一律跳过
+
+安装命令复用 `occ update` 的链路（`src/cli/updateOcc.ts` 的版本查询与 `installOccGloballySilent`，输出捕获而非透传），并与 `installGlobalPackage()` 共享 `.update.lock` 跨进程锁。
+
+`src/components/AutoUpdaterWrapper.tsx` 中继承的组件式更新路由仍未挂载，也不再路由到 `NativeAutoUpdater`。在 occ 建立自己的签名二进制发布源之前，不应重新接通继承的原生下载器或官方包管理器更新提示；显式 `occ update` 仍然是手动更新入口。
 
 ## 开发版本
 
@@ -116,7 +125,9 @@ claude --version
 | 文件 | 职责 |
 |---|---|
 | `src/constants/brand.ts` | occ 命令名和 npm 包名的唯一真源 |
-| `src/cli/updateOcc.ts` | `occ update` 的版本检查与 npm/Bun 更新流程 |
+| `src/cli/updateOcc.ts` | `occ update` 的版本检查与 npm/Bun 更新流程；导出后台更新复用的检测与静默安装函数 |
+| `src/services/autoUpdate/backgroundOccUpdate.ts` | 后台静默自动更新服务（调度、门禁、安装编排） |
+| `src/services/autoUpdate/updateNotifier.ts` | 更新成功提示进入 REPL 通知队列的注册表 |
 | `src/main.tsx` | 注册 `occ update` 根命令 |
 | `src/components/AutoUpdaterWrapper.tsx` | 未挂载的后台更新路由；不得连接官方原生下载器 |
 | `src/utils/nativeInstaller/` | 继承的非公共原生安装器实现，不是 occ 发布渠道 |

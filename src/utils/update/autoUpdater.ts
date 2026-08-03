@@ -1,7 +1,7 @@
 import { constants as fsConstants } from 'fs'
 import { access, writeFile } from 'fs/promises'
 import { homedir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import {
   BIN_NAME,
   DISPLAY_NAME,
@@ -171,11 +171,17 @@ export function getLockFilePath(): string {
 
 /**
  * Attempts to acquire a lock for auto-updater
+ *
+ * @param lockPath - lock file to take. Defaults to the self-update lock; the
+ *   background plugin updater passes its own path so a slow `npm install -g`
+ *   and a marketplace `git pull` never starve each other (they guard
+ *   different resources and must not share a lock).
  * @returns true if lock was acquired, false if another process holds the lock
  */
-async function acquireLock(): Promise<boolean> {
+async function acquireLock(
+  lockPath: string = getLockFilePath(),
+): Promise<boolean> {
   const fs = getFsImplementation()
-  const lockPath = getLockFilePath()
 
   // Check for existing lock: 1 stat() on the happy path (fresh lock or ENOENT),
   // 2 on stale-lock recovery (re-verify staleness immediately before unlink).
@@ -229,7 +235,7 @@ async function acquireLock(): Promise<boolean> {
         // fs.mkdir from getFsImplementation() is always recursive:true and
         // swallows EEXIST internally, so a dir-creation race cannot reach the
         // catch below — only writeFile's EEXIST (true lock contention) can.
-        await fs.mkdir(getClaudeConfigHomeDir())
+        await fs.mkdir(dirname(lockPath))
         await writeFile(lockPath, `${process.pid}`, {
           encoding: 'utf8',
           flag: 'wx',
@@ -250,10 +256,13 @@ async function acquireLock(): Promise<boolean> {
 
 /**
  * Releases the update lock if it's held by this process
+ *
+ * @param lockPath - must match the path passed to acquireLock().
  */
-async function releaseLock(): Promise<void> {
+async function releaseLock(
+  lockPath: string = getLockFilePath(),
+): Promise<void> {
   const fs = getFsImplementation()
-  const lockPath = getLockFilePath()
   try {
     const lockData = await fs.readFile(lockPath, { encoding: 'utf8' })
     if (lockData === `${process.pid}`) {
@@ -266,6 +275,15 @@ async function releaseLock(): Promise<void> {
     logError(err as Error)
   }
 }
+
+// Exported for the background updaters (src/services/autoUpdate/):
+//  - backgroundOccUpdate installs through the cli/updateOcc.ts chain, but must
+//    share this cross-process lock (default path) so it can never run
+//    concurrently with another session's background update or with
+//    `installGlobalPackage()`.
+//  - backgroundPluginUpdate passes its own lock path (inside the plugins dir)
+//    so two occ instances never git-pull the same marketplace clone at once.
+export { acquireLock as acquireUpdateLock, releaseLock as releaseUpdateLock }
 
 async function getInstallationPrefix(): Promise<string | null> {
   // Run from home directory to avoid reading project-level .npmrc/.bunfig.toml

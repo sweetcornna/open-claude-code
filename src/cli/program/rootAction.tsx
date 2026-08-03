@@ -2156,6 +2156,36 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     return;
   }
 
+  // Interactive sessions only (the --print path returned above): schedule the
+  // silent background self-update — at most one check per session, delayed a
+  // few minutes past startup. The dynamic import keeps the update chain off
+  // the print fast path, and the service gates itself (autoUpdates config,
+  // DISABLE_AUTOUPDATER, global-install detection) and fails silently.
+  void import('src/services/autoUpdate/backgroundOccUpdate.js')
+    .then(mod => mod.maybeScheduleBackgroundOccUpdate())
+    .catch(() => {
+      // Updater wiring must never affect startup.
+    });
+
+  // Same treatment for plugin marketplaces: one silent background pull per
+  // session, delayed 3 minutes (offset from the occ self-update's 5 so the
+  // two jobs never fire together). Self-gating and fail-silent like above.
+  void import('src/services/autoUpdate/backgroundPluginUpdate.js')
+    .then(mod => mod.maybeScheduleBackgroundPluginUpdate())
+    .catch(() => {
+      // Updater wiring must never affect startup.
+    });
+
+  // Refresh the provider model catalog so /model shows whatever the upstream
+  // provider ships, not just the hand-maintained built-in table. One run per
+  // session, a few seconds out, disk-cached for 24h, and silent on every
+  // failure path. Dynamic import for the same reason as the two above.
+  void import('src/services/modelCatalog/refresh.js')
+    .then(mod => mod.maybeScheduleModelCatalogRefresh())
+    .catch(() => {
+      // Model-catalog wiring must never affect startup.
+    });
+
   // Log model config at startup
   logEvent('tengu_startup_manual_model_config', {
     cli_flag: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
