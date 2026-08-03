@@ -101,6 +101,12 @@ node dist/cli-node.js --version
 bun dist/cli-bun.js --version
 ```
 
+## 发布侧（维护者）
+
+用户看到的新版本从哪来：维护者跑 `bun run release <version>`，它同时改齐 `package.json`、`CHANGELOG.md` 并打 `v<version>` tag，push tag 后由 `publish-npm.yml` 发 npm 与 GitHub Release。完整步骤与约束见 [`CONTRIBUTING.md` 的「发布流程」](../CONTRIBUTING.md#11-发布流程)。
+
+occ 启动时显示的「更新说明」来自本仓库 `main` 分支的 `CHANGELOG.md`（`src/utils/update/releaseNotes.ts` 拉取原始文件并缓存到 occ 配置目录下的 `cache/changelog.md`），所以发布提交必须先到 main，用户才看得到对应条目。
+
 ## 故障排查
 
 如果 `occ update` 无法访问 npm registry，可直接检查包版本：
@@ -131,3 +137,5 @@ claude --version
 | `src/main.tsx` | 注册 `occ update` 根命令 |
 | `src/components/AutoUpdaterWrapper.tsx` | 未挂载的后台更新路由；不得连接官方原生下载器 |
 | `src/utils/nativeInstaller/` | 继承的非公共原生安装器实现，不是 occ 发布渠道 |
+| `scripts/release.ts` | `bun run release <version>`：版本源改齐、跑发布门禁、提交打 tag |
+| `src/utils/update/releaseNotes.ts` | 拉取并解析 `CHANGELOG.md`，驱动应用内「更新说明」 |

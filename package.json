@@ -61,6 +61,7 @@
     "postinstall": "node scripts/postinstall.cjs",
     "docs:dev": "npx mintlify dev",
     "typecheck": "tsc --noEmit",
+    "release": "bun run scripts/release.ts",
     "precheck": "bun run typecheck && bun run check:fix && bun run check:prompt-purity && bun test"
   },
   "dependencies": {

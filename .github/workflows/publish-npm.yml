@@ -71,18 +71,27 @@ jobs:
           # maintainer-supplied but still shell-unsafe when spliced into commands.
           VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION#v}$" | head -1)
+          # Prefer the hand-written CHANGELOG.md section, so the Release body is
+          # the same text the in-app "what's new" feed shows. The version is
+          # passed as argv (quoted), never spliced into a command string, and the
+          # extracted notes only ever reach the shell as a quoted variable.
+          NOTES=$(bun run scripts/changelog-section.ts "$VERSION" || true)
 
-          if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log "${PREV_TAG}..${VERSION}" --pretty=format:"- %s (%h)" --no-merges)
-          else
-            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -20)
+          if [ -z "$NOTES" ]; then
+            echo "No CHANGELOG.md section for ${VERSION}; falling back to commit list."
+            PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION#v}$" | head -1)
+
+            if [ -n "$PREV_TAG" ]; then
+              NOTES=$(git log "${PREV_TAG}..${VERSION}" --pretty=format:"- %s (%h)" --no-merges)
+            else
+              NOTES=$(git log --pretty=format:"- %s (%h)" --no-merges -20)
+            fi
           fi
 
           {
-            echo "commits<<EOF"
-            echo "$COMMITS"
-            echo "EOF"
+            echo "commits<<CHANGELOG_EOF"
+            printf '%s\n' "$NOTES"
+            echo "CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release

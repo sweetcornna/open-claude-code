@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           rm -rf coverage && mkdir -p coverage
           shard=0
-          for d in src/* packages/* tests/integration; do
+          for d in src/* packages/* tests/integration scripts; do
             [ -d "$d" ] || continue
             if ! find "$d" \( -name '*.test.ts' -o -name '*.test.tsx' \) -print -quit | grep -q .; then
               continue

@@ -128,5 +128,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 ## 发布（npm / GitHub Release）
 
 - **npm 包名是 `@sweetcornna/open-claude-code`**（无 scope 的 `open-claude-code` 被第三方 0.0.0 占位包抢注，publish 会 403）。包名同时钉在 `package.json`、`src/constants/brand.ts` 的 `NPM_PACKAGE_NAME`（`updateIsolation.test.ts` 断言）、`scripts/install.sh`、README、`docs/auto-updater.md`——改名五处必须同步。bin 名（`occ`/`occ-bun`/`open-claude-code`）与包名无关，不要动。
-- 发布流程：打 `v*` tag 推送 → `publish-npm.yml` 自动跑 typecheck → `tests/integration` → build:vite + check:bundle + 双入口 `--version` 冒烟 → `npm publish --provenance` → GitHub Release。**publish 故意只跑集成测试**：全量单测在 Linux runner 上有既有的顺序性 env 污染失败（~10 个文件，macOS 本地不复现，main 的 ci.yml 同样红），修复前不要把 `bun test` 全量塞回 publish 门禁。
-- 版本号延续 2.8.x 叙事（首个对外发布是 v2.9.0），**不要回退到 1.x**——`occ update` 的 semver 比较会把老用户永远锁在"已是最新"。
+- 发布流程：`bun run release <version>`（`scripts/release.ts`，纯逻辑在 `scripts/releaseCore.ts` 并有单测）改齐 `package.json` + `CHANGELOG.md`、跑门禁、提交并打 tag，**故意停在 push 之前**；`git push origin main --follow-tags` 才触发 `publish-npm.yml`：typecheck → `tests/integration` → build:vite + check:bundle + 双入口 `--version` 冒烟 → `npm publish --provenance` → GitHub Release。步骤与版本源清单见 `CONTRIBUTING.md` §11。
+- **publish 故意只跑集成测试**：全量单测在 Linux runner 上有既有的顺序性 env 污染失败（~10 个文件，macOS 本地不复现，main 的 ci.yml 同样红），修复前不要把 `bun test` 全量塞回 publish 门禁。
+- 版本号延续 2.8.x 叙事（首个对外发布是 v2.9.0），**不要回退到 1.x**，也不要发不递增的版本——`occ update` 的 semver 比较会把老用户永远锁在"已是最新"（release 脚本对此有硬校验）。
+- **`CHANGELOG.md` 是用户可见面**：GitHub Release 正文与应用内「更新说明」都读它（后者由 `src/utils/update/releaseNotes.ts` 从本仓库 main 分支拉原始文件，**不是**上游 anthropics/claude-code）。格式受 `parseChangelog` 约束：`## <semver>` 标题 + 顶层 `- ` 条目，写坏了不报错、只是条目静默消失。release 脚本插入的是 commit subject 草稿，必须人工润色。
