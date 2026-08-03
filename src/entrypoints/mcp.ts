@@ -36,6 +36,28 @@ const MCP_COMMANDS: Command[] = [review]
 // 100 files and 25MB limit should be sufficient for MCP server operations
 const READ_FILE_STATE_CACHE_SIZE = 100
 
+/** Links one MCP request lifetime to the controller consumed by builtin tools. */
+export function createMcpToolAbortController(requestSignal: AbortSignal): {
+  abortController: AbortController
+  dispose: () => void
+} {
+  const abortController = createAbortController()
+  const abortTool = (): void => {
+    abortController.abort(requestSignal.reason)
+  }
+
+  if (requestSignal.aborted) {
+    abortTool()
+  } else {
+    requestSignal.addEventListener('abort', abortTool, { once: true })
+  }
+
+  return {
+    abortController,
+    dispose: () => requestSignal.removeEventListener('abort', abortTool),
+  }
+}
+
 /**
  * The output schema we actually advertise for a tool, or `undefined` when we
  * advertise none.
@@ -123,9 +145,10 @@ export function createMcpServerFactory(
 
     server.setRequestHandler(
       'tools/call',
-      async ({
-        params: { name, arguments: args },
-      }): Promise<CallToolResult> => {
+      async (
+        { params: { name, arguments: args } },
+        ctx,
+      ): Promise<CallToolResult> => {
         const toolPermissionContext = getEmptyToolPermissionContext()
         // TODO: Also re-expose any MCP tools
         const tools = getTools(toolPermissionContext)
@@ -134,34 +157,38 @@ export function createMcpServerFactory(
           throw new Error(`Tool ${name} not found`)
         }
 
-        // Assume MCP servers do not read messages separately from the tool
-        // call arguments.
-        const toolUseContext: ToolUseContext = {
-          abortController: createAbortController(),
-          options: {
-            commands: MCP_COMMANDS,
-            tools,
-            mainLoopModel: getMainLoopModel(),
-            thinkingConfig: { type: 'disabled' },
-            mcpClients: [],
-            mcpResources: {},
-            isNonInteractiveSession: true,
-            debug,
-            verbose,
-            agentDefinitions: { activeAgents: [], allAgents: [] },
-          },
-          getAppState: () => getDefaultAppState(),
-          setAppState: () => {},
-          messages: [],
-          readFileState: readFileStateCache,
-          setInProgressToolUseIDs: () => {},
-          setResponseLength: () => {},
-          updateFileHistoryState: () => {},
-          updateAttributionState: () => {},
-        }
+        const { abortController, dispose } = createMcpToolAbortController(
+          ctx.mcpReq.signal,
+        )
 
-        // TODO: validate input types with zod
         try {
+          // Assume MCP servers do not read messages separately from the tool
+          // call arguments.
+          const toolUseContext: ToolUseContext = {
+            abortController,
+            options: {
+              commands: MCP_COMMANDS,
+              tools,
+              mainLoopModel: getMainLoopModel(),
+              thinkingConfig: { type: 'disabled' },
+              mcpClients: [],
+              mcpResources: {},
+              isNonInteractiveSession: true,
+              debug,
+              verbose,
+              agentDefinitions: { activeAgents: [], allAgents: [] },
+            },
+            getAppState: () => getDefaultAppState(),
+            setAppState: () => {},
+            messages: [],
+            readFileState: readFileStateCache,
+            setInProgressToolUseIDs: () => {},
+            setResponseLength: () => {},
+            updateFileHistoryState: () => {},
+            updateAttributionState: () => {},
+          }
+
+          // TODO: validate input types with zod
           if (!tool.isEnabled()) {
             throw new Error(`Tool ${name} is not enabled`)
           }
@@ -222,6 +249,8 @@ export function createMcpServerFactory(
               },
             ],
           }
+        } finally {
+          dispose()
         }
       },
     )

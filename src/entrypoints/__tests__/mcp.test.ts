@@ -3,7 +3,7 @@ import { Client as LegacyClient } from '@modelcontextprotocol/sdk/client/index.j
 import { serveStdio } from '@modelcontextprotocol/server/stdio'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createLinkedTransportPair } from '../../services/mcp/InProcessTransport.js'
-import { createMcpServerFactory } from '../mcp.js'
+import { createMcpServerFactory, createMcpToolAbortController } from '../mcp.js'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -25,6 +25,28 @@ if (typeof globalThis.MACRO === 'undefined') {
 // Building the tool list resolves the main-loop model and renders 31 tool
 // prompts on the first call, so the round trips run well past the 5s default.
 const ROUND_TRIP_TIMEOUT_MS = 60_000
+
+describe('createMcpToolAbortController', () => {
+  test('propagates active and already-cancelled requests and removes listeners on dispose', () => {
+    const activeRequest = new AbortController()
+    const active = createMcpToolAbortController(activeRequest.signal)
+    activeRequest.abort('client cancelled')
+    expect(active.abortController.signal.aborted).toBe(true)
+    expect(active.abortController.signal.reason).toBe('client cancelled')
+
+    const cancelledRequest = new AbortController()
+    cancelledRequest.abort('already cancelled')
+    const cancelled = createMcpToolAbortController(cancelledRequest.signal)
+    expect(cancelled.abortController.signal.aborted).toBe(true)
+    expect(cancelled.abortController.signal.reason).toBe('already cancelled')
+
+    const completedRequest = new AbortController()
+    const completed = createMcpToolAbortController(completedRequest.signal)
+    completed.dispose()
+    completedRequest.abort('late cancellation')
+    expect(completed.abortController.signal.aborted).toBe(false)
+  })
+})
 
 /**
  * Serve-mode round trip.

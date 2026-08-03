@@ -68,7 +68,6 @@ import {
 } from './oauthIssuer.js'
 import { buildRedirectUri, findAvailablePort } from './oauthPort.js'
 import type { McpHTTPServerConfig, McpSSEServerConfig } from './types.js'
-import { getLoggingSafeMcpBaseUrl } from './utils.js'
 import { performCrossAppAccess, XaaTokenExchangeError } from './xaa.js'
 import {
   acquireIdpIdToken,
@@ -125,34 +124,37 @@ const MAX_LOCK_RETRIES = 5
 type IssuerContext = OAuthClientInformationContext
 
 /**
- * OAuth query parameters that should be redacted from logs.
- * These contain sensitive values that could enable CSRF or session fixation attacks.
+ * MCP URLs are configuration-controlled and may carry credentials in userinfo,
+ * query parameters, or fragments. Logs retain only the routable endpoint.
  */
-const SENSITIVE_OAUTH_PARAMS = [
-  'state',
-  'nonce',
-  'code_challenge',
-  'code_verifier',
-  'code',
-]
-
-/**
- * Redacts sensitive OAuth query parameters from a URL for safe logging.
- * Prevents exposure of state, nonce, code_challenge, code_verifier, and authorization codes.
- */
-function redactSensitiveUrlParams(url: string): string {
+export function sanitizeMcpUrlForLogging(url: string): string | undefined {
   try {
     const parsedUrl = new URL(url)
-    for (const param of SENSITIVE_OAUTH_PARAMS) {
-      if (parsedUrl.searchParams.has(param)) {
-        parsedUrl.searchParams.set(param, '[REDACTED]')
-      }
-    }
+    parsedUrl.username = ''
+    parsedUrl.password = ''
+    parsedUrl.search = ''
+    parsedUrl.hash = ''
     return parsedUrl.toString()
   } catch {
-    // Return as-is if not a valid URL
-    return url
+    return undefined
   }
+}
+
+/** Header values are never needed to diagnose MCP transport construction. */
+export function sanitizeMcpHeadersForLogging(
+  headers: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.keys(headers).map(headerName => [headerName, '[REDACTED]']),
+  )
+}
+
+function getMcpBaseUrlForLogging(config: { url: string }): string | undefined {
+  return sanitizeMcpUrlForLogging(config.url)?.replace(/\/$/, '')
+}
+
+function redactSensitiveUrlParams(url: string): string {
+  return sanitizeMcpUrlForLogging(url) ?? '[INVALID URL]'
 }
 
 /**
@@ -773,10 +775,8 @@ async function performMCPXaaAuth(
     const haveKeys = Object.keys(
       getSecureStorage().read()?.mcpOAuthClientConfig ?? {},
     )
-    const headersForLogging = Object.fromEntries(
-      Object.entries(serverConfig.headers ?? {}).map(([k, v]) =>
-        k.toLowerCase() === 'authorization' ? [k, '[REDACTED]'] : [k, v],
-      ),
+    const headersForLogging = sanitizeMcpHeadersForLogging(
+      serverConfig.headers ?? {},
     )
     logMCPDebug(
       serverName,
@@ -966,9 +966,9 @@ export async function performMCPOAuthFlow(
         'xaa' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       transportType:
         serverConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...(getLoggingSafeMcpBaseUrl(serverConfig)
+      ...(getMcpBaseUrlForLogging(serverConfig)
         ? {
-            mcpServerBaseUrl: getLoggingSafeMcpBaseUrl(
+            mcpServerBaseUrl: getMcpBaseUrlForLogging(
               serverConfig,
             ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           }
@@ -1012,10 +1012,7 @@ export async function performMCPOAuthFlow(
     try {
       resourceMetadataUrl = new URL(cachedResourceMetadataUrl)
     } catch {
-      logMCPDebug(
-        serverName,
-        `Invalid cached resourceMetadataUrl: ${cachedResourceMetadataUrl}`,
-      )
+      logMCPDebug(serverName, `Invalid cached resourceMetadataUrl`)
     }
   }
   const wwwAuthParams: WWWAuthenticateParams = {
@@ -1031,9 +1028,9 @@ export async function performMCPOAuthFlow(
     isOAuthFlow: true,
     transportType:
       serverConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...(getLoggingSafeMcpBaseUrl(serverConfig)
+    ...(getMcpBaseUrlForLogging(serverConfig)
       ? {
-          mcpServerBaseUrl: getLoggingSafeMcpBaseUrl(
+          mcpServerBaseUrl: getMcpBaseUrlForLogging(
             serverConfig,
           ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
@@ -1299,7 +1296,10 @@ export async function performMCPOAuthFlow(
       server.listen(port, '127.0.0.1', async () => {
         try {
           logMCPDebug(serverName, `Starting SDK auth`)
-          logMCPDebug(serverName, `Server URL: ${serverConfig.url}`)
+          logMCPDebug(
+            serverName,
+            `Server URL: ${sanitizeMcpUrlForLogging(serverConfig.url) ?? '[INVALID URL]'}`,
+          )
 
           // First call to start the auth flow - should redirect
           // Pass the scope and resource_metadata from WWW-Authenticate header if available
@@ -1373,9 +1373,9 @@ export async function performMCPOAuthFlow(
           flowAttemptId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         transportType:
           serverConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        ...(getLoggingSafeMcpBaseUrl(serverConfig)
+        ...(getMcpBaseUrlForLogging(serverConfig)
           ? {
-              mcpServerBaseUrl: getLoggingSafeMcpBaseUrl(
+              mcpServerBaseUrl: getMcpBaseUrlForLogging(
                 serverConfig,
               ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             }
@@ -1470,9 +1470,9 @@ export async function performMCPOAuthFlow(
         httpStatus?.toString() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       transportType:
         serverConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...(getLoggingSafeMcpBaseUrl(serverConfig)
+      ...(getMcpBaseUrlForLogging(serverConfig)
         ? {
-            mcpServerBaseUrl: getLoggingSafeMcpBaseUrl(
+            mcpServerBaseUrl: getMcpBaseUrlForLogging(
               serverConfig,
             ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           }
@@ -1597,7 +1597,10 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   get clientMetadataUrl(): string | undefined {
     const override = process.env.MCP_OAUTH_CLIENT_METADATA_URL
     if (override) {
-      logMCPDebug(this.serverName, `Using CIMD URL from env: ${override}`)
+      logMCPDebug(
+        this.serverName,
+        `Using CIMD URL from env: ${sanitizeMcpUrlForLogging(override) ?? '[INVALID URL]'}`,
+      )
       return override
     }
     return MCP_CLIENT_METADATA_URL
@@ -2263,7 +2266,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
     logMCPDebug(
       this.serverName,
-      `Saving discovery state (authServer: ${state.authorizationServerUrl})`,
+      `Saving discovery state (authServer: ${sanitizeMcpUrlForLogging(state.authorizationServerUrl) ?? '[INVALID URL]'})`,
     )
 
     // The metadata's `issuer` is the authentic identifier; `authorizationServerUrl`
@@ -2328,7 +2331,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     if (cached?.authorizationServerUrl) {
       logMCPDebug(
         this.serverName,
-        `Returning cached discovery state (authServer: ${cached.authorizationServerUrl})`,
+        `Returning cached discovery state (authServer: ${sanitizeMcpUrlForLogging(cached.authorizationServerUrl) ?? '[INVALID URL]'})`,
       )
 
       return {
@@ -2346,7 +2349,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     if (metadataUrl) {
       logMCPDebug(
         this.serverName,
-        `Fetching metadata from configured URL: ${metadataUrl}`,
+        `Fetching metadata from configured URL: ${sanitizeMcpUrlForLogging(metadataUrl) ?? '[INVALID URL]'}`,
       )
       try {
         const metadata = await fetchAuthServerMetadata(
@@ -2468,7 +2471,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   ): Promise<OAuthTokens | undefined> {
     const MAX_ATTEMPTS = 3
 
-    const mcpServerBaseUrl = getLoggingSafeMcpBaseUrl(this.serverConfig)
+    const mcpServerBaseUrl = getMcpBaseUrlForLogging(this.serverConfig)
     const emitRefreshEvent = (
       outcome: 'success' | 'failure',
       reason?: MCPRefreshFailureReason,
@@ -2520,7 +2523,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
           } else if (cached?.authorizationServerUrl) {
             logMCPDebug(
               this.serverName,
-              `Re-discovering metadata from persisted auth server URL: ${cached.authorizationServerUrl}`,
+              `Re-discovering metadata from persisted auth server URL: ${sanitizeMcpUrlForLogging(cached.authorizationServerUrl) ?? '[INVALID URL]'}`,
             )
             metadata = await discoverAuthorizationServerMetadata(
               cached.authorizationServerUrl,
