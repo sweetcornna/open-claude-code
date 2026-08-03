@@ -237,9 +237,13 @@ attachment 编排、skill 搜索）和缓存工程（静态/动态边界、`DANG
   secretScanner 脱敏落盘、/clear 重置、stop hook 阻断上限、预算拦 spawn）；
   M4 权限匹配器三层缓存（含失效等价用例）；M5 核心 sandbox.filesystem.disabled；
   M6 消息合并去二次方（oracle 逐字节等价）。
-- **剩余**：M5 的 B3 其余 sandbox 设置（strictAllowlist、deniedDomains 独立键、
-  credentials）与 B6 hook 事件补全（DirectoryAdded、args exec 形式、updatedToolOutput）；
-  M2 刀 B 与清查第二轮批次（B4/B5/B7/B8/B9）；types/tools.ts 跨包类型迁移（独立事项）。
+- **B3/B6 亦已完成（2026-08-02 补）**：strictAllowlist（关 dangerouslyDisableSandbox
+  逃生舱，语义注释见 sandbox-adapter）、deniedDomains 独立键、credentials 知名凭据
+  denyRead（env 半边为 runtime 已知缺口）；DirectoryAdded 事件（三处 HOOK_EVENTS 副本
+  + tool-runtime 契约同步）、hook args exec 形式（免 shell 直 spawn）、PostToolUse
+  updatedToolOutput 全工具输出替换。
+- **计划外后续**（批准计划明确排除，另行立项）：M2 刀 B 与清查第二轮批次
+  （B4/B5/B7/B8/B9）、B10 P1 功能、B12 战略项、types/tools.ts 跨包类型迁移。
 
 **里程碑 C 已落地**：`src/services/providerProfiles/`（档案数据层 profiles.ts + 激活编排
 activate.ts：全形状写入、原子写 0600、`/provider save|use|list|delete` 子命令）；
