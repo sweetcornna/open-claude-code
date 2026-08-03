@@ -1133,7 +1133,12 @@ export const connectToServer = memoize(
       try {
         await Promise.race([connectPromise, timeoutPromise])
         if (stderrOutput) {
-          logMCPError(name, `Server stderr: ${stderrOutput}`)
+          // Debug, not error: under stdio transport stdout is the JSON-RPC
+          // channel, so stderr is the only place a server can log at all.
+          // Well-behaved servers print a startup banner there. We got here
+          // because the connection SUCCEEDED, so filing that banner as an
+          // error made every launch look like it had failures.
+          logMCPDebug(name, `Server stderr: ${stderrOutput}`)
           stderrOutput = '' // Release accumulated string to prevent memory growth
         }
         const elapsed = Date.now() - connectStartTime

@@ -1,4 +1,11 @@
-import { expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,4 +62,59 @@ test('different runId do not interfere (independent subdirectories)', async () =
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+// A repository can ship `<project>/.occ` as a symlink pointing elsewhere.
+// Path joining is lexical, so without resolving symlinks the inline script —
+// attacker-influenced JS — would be written outside the project the user
+// opened. Upstream hit the same bug with `.claude`.
+describe('symlinked config directory cannot redirect writes', () => {
+  test('refuses to write through a config-dir symlink, and writes nothing', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'wf-symlink-'))
+    const project = join(root, 'project')
+    const outside = join(root, 'outside')
+    mkdirSync(project, { recursive: true })
+    mkdirSync(outside, { recursive: true })
+    symlinkSync(outside, join(project, '.occ'))
+
+    try {
+      await expect(
+        persistInlineScript(
+          'console.log(1)',
+          'w1234abcd',
+          project,
+          '.occ/workflow-runs',
+        ),
+      ).rejects.toThrow(/outside the project/)
+      expect(existsSync(join(outside, 'workflow-runs'))).toBe(false)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('a normal project directory still writes', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'wf-normal-'))
+    try {
+      const filePath = await persistInlineScript(
+        'console.log(1)',
+        'w1234abcd',
+        project,
+      )
+      expect(existsSync(filePath)).toBe(true)
+      expect(filePath.startsWith(project)).toBe(true)
+    } finally {
+      rmSync(project, { force: true, recursive: true })
+    }
+  })
+
+  test('rejects a traversing run id before touching the filesystem', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'wf-runid-'))
+    try {
+      await expect(
+        persistInlineScript('x', '../../escape', project),
+      ).rejects.toThrow(/Invalid workflow run id/)
+    } finally {
+      rmSync(project, { force: true, recursive: true })
+    }
+  })
 })

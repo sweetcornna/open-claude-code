@@ -1,4 +1,4 @@
-import { resolve, sep } from 'node:path'
+import { dirname, resolve, sep } from 'node:path'
 
 /**
  * Determine whether target, after resolution, is within base (including equal to base).
@@ -53,4 +53,51 @@ export function assertValidRunId(runId: unknown): string {
     )
   }
   return runId
+}
+
+/**
+ * Resolve `target` through symlinks and confirm it is still inside `root`.
+ *
+ * `containsPath()` is lexical, so it happily approves `<project>/.occ/...` even
+ * when `.occ` is a symlink pointing somewhere else entirely. A repository can
+ * ship such a symlink, and workflow writes (inline scripts, journals) would
+ * then land outside the project the user opened — attacker-chosen JS written to
+ * an attacker-chosen location. Resolve the deepest existing ancestor, because
+ * the leaf usually does not exist yet, and compare real paths.
+ *
+ * Returns the lexically-resolved target so callers can use it directly.
+ */
+export async function assertPathWithinRoot(
+  root: string,
+  target: string,
+  label: string,
+): Promise<string> {
+  const { realpath } = await import('node:fs/promises')
+  const resolvedTarget = resolve(root, target)
+
+  const realOf = async (path: string): Promise<string> => {
+    let candidate = resolve(path)
+    while (true) {
+      try {
+        return await realpath(candidate)
+      } catch {
+        const parent = dirname(candidate)
+        // A path with no existing ancestor cannot escape anywhere.
+        if (parent === candidate) return candidate
+        candidate = parent
+      }
+    }
+  }
+
+  const [realRoot, realTarget] = await Promise.all([
+    realOf(root),
+    realOf(resolvedTarget),
+  ])
+  if (!containsPath(realRoot, realTarget)) {
+    throw new Error(
+      `Refusing to write ${label} outside the project: ${resolvedTarget} resolves to ${realTarget}, which is outside ${realRoot}. ` +
+        `A symlinked config directory is the usual cause.`,
+    )
+  }
+  return resolvedTarget
 }
