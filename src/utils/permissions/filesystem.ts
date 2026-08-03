@@ -965,6 +965,58 @@ function getPatternsByRoot(
   return patternsByRoot
 }
 
+// Compiled per-(context, toolType, behavior) rule matchers (official 2.1.208
+// parity: a single Read/Edit permission check ran the full rule parse +
+// ignore-engine compilation 6-7 times; with hundreds of rules this reached
+// seconds per turn). Invalidation is by CONTEXT OBJECT IDENTITY: permission
+// rule updates always replace toolPermissionContext with a new object
+// (immutable React-state convention, e.g. `{ ...state.toolPermissionContext }`),
+// so a stale compiled entry can never be consulted after a rule change and
+// the WeakMap lets dropped contexts be collected. The compiled `ig` carries
+// no per-query state (Ignore#test is a pure query) and the patterns depend
+// only on the context's rules — never on cwd.
+type CompiledRootPatterns = Array<{
+  root: string | null
+  patternMap: Map<string, PermissionRule>
+  ig: ReturnType<typeof ignore>
+}>
+const compiledPatternsCache = new WeakMap<
+  ToolPermissionContext,
+  Map<string, CompiledRootPatterns>
+>()
+
+function getCompiledPatternsByRoot(
+  toolPermissionContext: ToolPermissionContext,
+  toolType: 'edit' | 'read',
+  behavior: 'allow' | 'deny' | 'ask',
+): CompiledRootPatterns {
+  let byKind = compiledPatternsCache.get(toolPermissionContext)
+  if (!byKind) {
+    byKind = new Map()
+    compiledPatternsCache.set(toolPermissionContext, byKind)
+  }
+  const cacheKey = `${toolType}|${behavior}`
+  const hit = byKind.get(cacheKey)
+  if (hit) return hit
+
+  const patternsByRoot = getPatternsByRoot(
+    toolPermissionContext,
+    toolType,
+    behavior,
+  )
+  const compiled: CompiledRootPatterns = []
+  for (const [root, patternMap] of patternsByRoot.entries()) {
+    // Transform patterns for the ignore library: remove /** suffix — the
+    // library treats 'path' as matching the path itself and everything inside
+    const patterns = Array.from(patternMap.keys()).map(pattern =>
+      pattern.endsWith('/**') ? pattern.slice(0, -3) : pattern,
+    )
+    compiled.push({ root, patternMap, ig: ignore().add(patterns) })
+  }
+  byKind.set(cacheKey, compiled)
+  return compiled
+}
+
 export function matchingRuleForInput(
   path: string,
   toolPermissionContext: ToolPermissionContext,
@@ -978,29 +1030,12 @@ export function matchingRuleForInput(
     fileAbsolutePath = windowsPathToPosixPath(fileAbsolutePath)
   }
 
-  const patternsByRoot = getPatternsByRoot(
+  // Check each root for a matching pattern
+  for (const { root, patternMap, ig } of getCompiledPatternsByRoot(
     toolPermissionContext,
     toolType,
     behavior,
-  )
-
-  // Check each root for a matching pattern
-  for (const [root, patternMap] of patternsByRoot.entries()) {
-    // Transform patterns for the ignore library
-    const patterns = Array.from(patternMap.keys()).map(pattern => {
-      let adjustedPattern = pattern
-
-      // Remove /** suffix - ignore library treats 'path' as matching both
-      // the path itself and everything inside it
-      if (adjustedPattern.endsWith('/**')) {
-        adjustedPattern = adjustedPattern.slice(0, -3)
-      }
-
-      return adjustedPattern
-    })
-
-    const ig = ignore().add(patterns)
-
+  )) {
     // Use cross-platform relative path helper for POSIX-style patterns
     const relativePathStr = relativePath(
       root ?? getCwd(),
