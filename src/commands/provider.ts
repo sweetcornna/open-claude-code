@@ -223,14 +223,17 @@ const call: LocalCommandCall = async (args, _context) => {
     applyConfigEnvironmentVariables()
     return { type: 'text', value: `API provider set to ${arg}.` }
   } else {
-    // Cloud providers: set env vars only, do NOT touch settings.json
+    // Cloud providers are env-only, but a previously persisted `modelType`
+    // must still be cleared: getAPIProvider() reads modelType BEFORE any env
+    // var, so leaving `modelType: 'openai'` in place would keep routing every
+    // request to OpenAI while this command reported a switch to Bedrock.
     delete process.env.CLAUDE_CODE_USE_OPENAI
     delete process.env.OPENAI_API_KEY
     delete process.env.OPENAI_BASE_URL
     delete process.env.CLAUDE_CODE_USE_GEMINI
     delete process.env.CLAUDE_CODE_USE_GROK
+    updateSettingsForSource('userSettings', { modelType: undefined })
     process.env[getEnvVarForProvider(arg)] = '1'
-    // Do not modify settings.json - cloud providers controlled solely by env vars
     applyConfigEnvironmentVariables()
     return {
       type: 'text',

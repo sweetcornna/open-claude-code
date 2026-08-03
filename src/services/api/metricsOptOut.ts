@@ -1,5 +1,11 @@
+import { createHash } from 'crypto'
 import axios from 'axios'
-import { hasProfileScope, isClaudeAISubscriber } from '../../utils/auth/auth.js'
+import {
+  getAnthropicApiKeyWithSource,
+  getOauthAccountInfo,
+  hasProfileScope,
+  isClaudeAISubscriber,
+} from '../../utils/auth/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
@@ -18,6 +24,10 @@ type MetricsStatus = {
   hasError: boolean
 }
 
+type IdentityBoundMetricsCache = NonNullable<
+  ReturnType<typeof getGlobalConfig>['metricsStatusCache']
+>
+
 // In-memory TTL — dedupes calls within a single process
 const CACHE_TTL_MS = 60 * 60 * 1000
 
@@ -25,6 +35,30 @@ const CACHE_TTL_MS = 60 * 60 * 1000
 // we skip the network entirely (no background refresh). This is what collapses
 // N `claude -p` invocations into ~1 API call/day.
 const DISK_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+
+function getMetricsIdentityKey(): string {
+  const account = getOauthAccountInfo()
+  if (account) {
+    return JSON.stringify([
+      account.organizationUuid ?? 'unknown-organization',
+      account.accountUuid,
+      'oauth',
+    ])
+  }
+
+  const { key, source } = getAnthropicApiKeyWithSource()
+  // API-key sessions do not expose account/org UUIDs. A one-way credential
+  // fingerprint supplies the missing identity boundary without persisting the
+  // secret itself or reusing one key's org answer for another key.
+  const credentialId = key
+    ? createHash('sha256').update(key).digest('hex')
+    : 'no-credential'
+  return JSON.stringify(['unknown-organization', credentialId, source])
+}
+
+function getCachedMetricsStatus(): IdentityBoundMetricsCache | undefined {
+  return getGlobalConfig().metricsStatusCache
+}
 
 /**
  * Internal function to call the API and check if metrics are enabled
@@ -50,7 +84,9 @@ async function _fetchMetricsEnabled(): Promise<MetricsEnabledResponse> {
   return response.data
 }
 
-async function _checkMetricsEnabledAPI(): Promise<MetricsStatus> {
+async function _checkMetricsEnabledAPI(
+  _identityKey: string,
+): Promise<MetricsStatus> {
   // Incident kill switch: skip the network call when nonessential traffic is disabled.
   // Returning enabled:false sheds load at the consumer (bigqueryExporter skips
   // export). Matches the non-subscriber early-return shape below.
@@ -85,20 +121,39 @@ const memoizedCheckMetrics = memoizeWithTTLAsync(
   _checkMetricsEnabledAPI,
   CACHE_TTL_MS,
 )
+let activeIdentityKey: string | null = null
+
+function activateMetricsIdentity(identityKey: string): void {
+  if (activeIdentityKey !== null && activeIdentityKey !== identityKey) {
+    // cache.clear() also invalidates in-flight writes in memoizeWithTTLAsync,
+    // so an old account's request cannot populate memory after a switch.
+    memoizedCheckMetrics.cache.clear()
+  }
+  activeIdentityKey = identityKey
+}
 
 /**
  * Fetch (in-memory memoized) and persist to disk on change.
  * Errors are not persisted — a transient failure should not overwrite a
  * known-good disk value.
  */
-async function refreshMetricsStatus(): Promise<MetricsStatus> {
-  const result = await memoizedCheckMetrics()
+async function refreshMetricsStatus(
+  identityKey: string,
+): Promise<MetricsStatus> {
+  const result = await memoizedCheckMetrics(identityKey)
   if (result.hasError) {
     return result
   }
 
-  const cached = getGlobalConfig().metricsStatusCache
-  const unchanged = cached !== undefined && cached.enabled === result.enabled
+  // Auth can change while the request is in flight. Never return or persist an
+  // answer fetched with credentials that are no longer current.
+  if (getMetricsIdentityKey() !== identityKey) {
+    return { enabled: false, hasError: false }
+  }
+
+  const cached = getCachedMetricsStatus()
+  const unchanged =
+    cached?.identityKey === identityKey && cached.enabled === result.enabled
   // Skip write when unchanged AND timestamp still fresh — avoids config churn
   // when concurrent callers race past a stale disk entry and all try to write.
   if (unchanged && Date.now() - cached.timestamp < DISK_CACHE_TTL_MS) {
@@ -110,7 +165,8 @@ async function refreshMetricsStatus(): Promise<MetricsStatus> {
     metricsStatusCache: {
       enabled: result.enabled,
       timestamp: Date.now(),
-    },
+      identityKey,
+    } as IdentityBoundMetricsCache,
   }))
   return result
 }
@@ -135,13 +191,16 @@ export async function checkMetricsEnabled(): Promise<MetricsStatus> {
     return { enabled: false, hasError: false }
   }
 
-  const cached = getGlobalConfig().metricsStatusCache
-  if (cached) {
+  const identityKey = getMetricsIdentityKey()
+  activateMetricsIdentity(identityKey)
+
+  const cached = getCachedMetricsStatus()
+  if (cached?.identityKey === identityKey) {
     if (Date.now() - cached.timestamp > DISK_CACHE_TTL_MS) {
       // saveGlobalConfig's fallback path (config.ts:731) can throw if both
       // locked and fallback writes fail — catch here so fire-and-forget
       // doesn't become an unhandled rejection.
-      void refreshMetricsStatus().catch(logError)
+      void refreshMetricsStatus(identityKey).catch(logError)
     }
     return {
       enabled: cached.enabled,
@@ -150,5 +209,10 @@ export async function checkMetricsEnabled(): Promise<MetricsStatus> {
   }
 
   // First-ever run on this machine: block on the network to populate disk.
-  return refreshMetricsStatus()
+  return refreshMetricsStatus(identityKey)
+}
+
+export function _resetMetricsOptOutCacheForTesting(): void {
+  activeIdentityKey = null
+  memoizedCheckMetrics.cache.clear()
 }

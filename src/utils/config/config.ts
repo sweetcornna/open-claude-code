@@ -542,6 +542,13 @@ export type GlobalConfig = {
   metricsStatusCache?: {
     enabled: boolean
     timestamp: number
+    /**
+     * Org UUID + account UUID + auth mode this answer belongs to. Without it a
+     * machine that switched orgs kept exporting telemetry under the previous
+     * org's opt-in for up to the cache TTL. Absent on caches written before
+     * this field existed — treated as a miss.
+     */
+    identityKey?: string
   }
 
   // Version of the last-applied migration set. When equal to

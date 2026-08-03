@@ -312,6 +312,41 @@ describe('createOpenAIResponsesStream', () => {
     expect('originator' in capturedHeaders).toBe(false)
     expect('OpenAI-Beta' in capturedHeaders).toBe(false)
   })
+
+  test('parses CRLF frames and dispatches the final frame at EOF', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    const bytes = new TextEncoder().encode(
+      'data: {"type":"first","text":"hé"}\r\n\r\n' +
+        'data: {"type":"second","text":"尾"}',
+    )
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        // One-byte chunks cover CRLF and UTF-8 code points split across reads.
+        for (const byte of bytes) controller.enqueue(Uint8Array.of(byte))
+        controller.close()
+      },
+    })
+    const fetchOverride = (async () =>
+      new Response(body, { status: 200 })) as unknown as typeof fetch
+
+    const stream = await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+    const events: Record<string, unknown>[] = []
+    for await (const event of stream) events.push(event)
+
+    expect(events).toEqual([
+      { type: 'first', text: 'hé' },
+      { type: 'second', text: '尾' },
+    ])
+  })
 })
 
 async function collectEvents(
