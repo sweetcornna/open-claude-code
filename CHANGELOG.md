@@ -4,6 +4,11 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.14.0 - 2026-08-03
+
+- **安全：项目里的 `.occ` 符号链接可以把 workflow 的写入重定向到项目外**。路径拼接是词法的，对 `<project>/.occ` 其实是个指向别处的符号链接一无所知——克隆一个带这种链接的仓库，模型生成的 inline workflow 脚本就会被写到仓库作者选定的位置。现在写入前会解析真实路径并确认仍在项目内，正常项目不受影响。（对照官方对 `.claude` 同类问题的修复逐条核查 workflow 模块时发现。）
+- MCP 服务器连接成功后打印到 stderr 的启动横幅不再被记成错误。stdio 传输下 stdout 是 JSON-RPC 通道，stderr 是服务器唯一能打日志的地方，规矩的服务器都会在那里打一行 banner——此前连接明明成功了，日志里却每次都留下一条 error，让每次启动看起来都有一堆失败。
+
 ## 2.13.3 - 2026-08-03
 
 - **Antigravity / Gemini 登录失败时终于说得清哪里出了问题**。此前不论是网络不通、TLS 被拦截还是代理挂了，界面一律只显示 `login failed: fetch failed`——Node 的 fetch 在传输层失败时消息恒为这两个词，真正的原因（`ECONNREFUSED`、`ENOTFOUND`、TLS 握手失败等）放在 `error.cause` 里，而这一层被丢掉了。现在会告诉你是哪一个 Google 主机、卡在哪一步（换取令牌 / 账号查询 / 项目发现）、底层的具体错误码，并提示可以设 `HTTPS_PROXY`。如果你之前登录 Gemini 搜索源失败又不知道原因，升级后重试一次就能看到真正的报错。
