@@ -40,10 +40,10 @@ import {
   realpath,
   rename,
   rm,
-  rmdir,
   stat,
   symlink,
 } from 'fs/promises'
+import { createHash } from 'crypto'
 import memoize from 'lodash-es/memoize.js'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { getInlinePlugins } from '../../bootstrap/state.js'
@@ -351,6 +351,31 @@ export async function copyDir(src: string, dest: string): Promise<void> {
   }
 }
 
+const versionedCacheLocks = new Map<string, Promise<void>>()
+
+async function withVersionedCacheLock<T>(
+  cacheKey: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  const previous = versionedCacheLocks.get(cacheKey) ?? Promise.resolve()
+  let release: (() => void) | undefined
+  const gate = new Promise<void>(resolveGate => {
+    release = resolveGate
+  })
+  const queued = previous.then(() => gate)
+  versionedCacheLocks.set(cacheKey, queued)
+
+  await previous
+  try {
+    return await action()
+  } finally {
+    release?.()
+    if (versionedCacheLocks.get(cacheKey) === queued) {
+      versionedCacheLocks.delete(cacheKey)
+    }
+  }
+}
+
 /**
  * Copy plugin files to versioned cache directory.
  *
@@ -377,95 +402,102 @@ export async function copyPluginToVersionedCache(
   const zipCacheMode = isPluginZipCacheEnabled()
   const cachePath = getVersionedCachePath(pluginId, version)
   const zipPath = getVersionedZipCachePath(pluginId, version)
+  const cacheKey = zipCacheMode ? zipPath : cachePath
 
-  // If cache already exists (directory or ZIP), return it
-  if (zipCacheMode) {
-    if (await pathExists(zipPath)) {
-      logForDebugging(
-        `Plugin ${pluginId} version ${version} already cached at ${zipPath}`,
-      )
-      return zipPath
+  return withVersionedCacheLock(cacheKey, async () => {
+    // Cache checks belong inside the lock: a parallel loader may have
+    // published this exact key while this caller was waiting.
+    if (zipCacheMode) {
+      if (await pathExists(zipPath)) {
+        logForDebugging(
+          `Plugin ${pluginId} version ${version} already cached at ${zipPath}`,
+        )
+        return zipPath
+      }
+    } else if (await pathExists(cachePath)) {
+      const entries = await readdir(cachePath)
+      if (entries.length > 0) {
+        logForDebugging(
+          `Plugin ${pluginId} version ${version} already cached at ${cachePath}`,
+        )
+        return cachePath
+      }
+      await rm(cachePath, { recursive: true, force: true })
     }
-  } else if (await pathExists(cachePath)) {
-    const entries = await readdir(cachePath)
-    if (entries.length > 0) {
+
+    // Seed cache hit — return seed path in place (read-only, no copy).
+    const seedPath = await probeSeedCache(pluginId, version)
+    if (seedPath) {
       logForDebugging(
-        `Plugin ${pluginId} version ${version} already cached at ${cachePath}`,
+        `Using seed cache for ${pluginId}@${version} at ${seedPath}`,
       )
-      return cachePath
+      return seedPath
     }
-    // Directory exists but is empty, remove it so we can recreate with content
-    logForDebugging(
-      `Removing empty cache directory for ${pluginId} at ${cachePath}`,
+
+    await getFsImplementation().mkdir(dirname(cachePath))
+
+    const sourceHash = createHash('sha256')
+      .update(`${pluginId}\0${version}\0${sourcePath}`)
+      .digest('hex')
+      .slice(0, 12)
+    const stagingPath = join(
+      dirname(cachePath),
+      `.tmp-${basename(cachePath)}-${sourceHash}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     )
-    await rmdir(cachePath)
-  }
+    const stagingZipPath = `${stagingPath}.zip`
 
-  // Seed cache hit — return seed path in place (read-only, no copy).
-  // Callers handle both directory and .zip paths; this returns a directory.
-  const seedPath = await probeSeedCache(pluginId, version)
-  if (seedPath) {
-    logForDebugging(
-      `Using seed cache for ${pluginId}@${version} at ${seedPath}`,
-    )
-    return seedPath
-  }
-
-  // Create parent directories
-  await getFsImplementation().mkdir(dirname(cachePath))
-
-  // For local plugins: copy entry.source directory (the single source of truth)
-  // For remote plugins: marketplaceDir is undefined, fall back to copying sourcePath
-  if (entry && typeof entry.source === 'string' && marketplaceDir) {
-    const sourceDir = validatePathWithinBase(marketplaceDir, entry.source)
-
-    logForDebugging(
-      `Copying source directory ${entry.source} for plugin ${pluginId}`,
-    )
     try {
-      await copyDir(sourceDir, cachePath)
-    } catch (e: unknown) {
-      // Only remap ENOENT from the top-level sourceDir itself — nested ENOENTs
-      // from recursive copyDir (broken symlinks, raced deletes) should preserve
-      // their original path in the error.
-      if (isENOENT(e) && getErrnoPath(e) === sourceDir) {
+      // Local entries resolve against their marketplace; remote entries use
+      // the already-downloaded source path. Both publish from private staging.
+      if (entry && typeof entry.source === 'string' && marketplaceDir) {
+        const sourceDir = validatePathWithinBase(marketplaceDir, entry.source)
+
+        logForDebugging(
+          `Copying source directory ${entry.source} for plugin ${pluginId}`,
+        )
+        try {
+          await copyDir(sourceDir, stagingPath)
+        } catch (e: unknown) {
+          if (isENOENT(e) && getErrnoPath(e) === sourceDir) {
+            throw new Error(
+              `Plugin source directory not found: ${sourceDir} (from entry.source: ${entry.source})`,
+            )
+          }
+          throw e
+        }
+      } else {
+        logForDebugging(`Copying plugin ${pluginId} to versioned cache staging`)
+        await copyDir(sourcePath, stagingPath)
+      }
+
+      await rm(join(stagingPath, '.git'), { recursive: true, force: true })
+
+      const cacheEntries = await readdir(stagingPath)
+      if (cacheEntries.length === 0) {
         throw new Error(
-          `Plugin source directory not found: ${sourceDir} (from entry.source: ${entry.source})`,
+          `Failed to copy plugin ${pluginId} to versioned cache: destination is empty after copy`,
         )
       }
-      throw e
+
+      if (zipCacheMode) {
+        await convertDirectoryToZipInPlace(stagingPath, stagingZipPath)
+        await rename(stagingZipPath, zipPath)
+        logForDebugging(
+          `Successfully cached plugin ${pluginId} as ZIP at ${zipPath}`,
+        )
+        return zipPath
+      }
+
+      await rename(stagingPath, cachePath)
+      logForDebugging(`Successfully cached plugin ${pluginId} at ${cachePath}`)
+      return cachePath
+    } finally {
+      await Promise.all([
+        rm(stagingPath, { recursive: true, force: true }),
+        rm(stagingZipPath, { force: true }),
+      ])
     }
-  } else {
-    // Fallback for remote plugins (already downloaded) or plugins without entry.source
-    logForDebugging(
-      `Copying plugin ${pluginId} to versioned cache (fallback to full copy)`,
-    )
-    await copyDir(sourcePath, cachePath)
-  }
-
-  // Remove .git directory from cache if present
-  const gitPath = join(cachePath, '.git')
-  await rm(gitPath, { recursive: true, force: true })
-
-  // Validate that cache has content - if empty, throw so fallback can be used
-  const cacheEntries = await readdir(cachePath)
-  if (cacheEntries.length === 0) {
-    throw new Error(
-      `Failed to copy plugin ${pluginId} to versioned cache: destination is empty after copy`,
-    )
-  }
-
-  // Zip cache mode: convert directory to ZIP and remove the directory
-  if (zipCacheMode) {
-    await convertDirectoryToZipInPlace(cachePath, zipPath)
-    logForDebugging(
-      `Successfully cached plugin ${pluginId} as ZIP at ${zipPath}`,
-    )
-    return zipPath
-  }
-
-  logForDebugging(`Successfully cached plugin ${pluginId} at ${cachePath}`)
-  return cachePath
+  })
 }
 
 /**
@@ -876,9 +908,18 @@ async function installFromLocal(
  */
 export function generateTemporaryCacheNameForPlugin(
   source: PluginSource,
+  pluginId?: string,
 ): string {
   const timestamp = Date.now()
   const random = Math.random().toString(36).substring(2, 8)
+  const sourceHash = createHash('sha256')
+    .update(typeof source === 'string' ? source : jsonStringify(source))
+    .digest('hex')
+    .slice(0, 12)
+  const scopedPluginId = (pluginId ?? 'unscoped').replace(
+    /[^a-zA-Z0-9@._-]/g,
+    '-',
+  )
 
   let prefix: string
 
@@ -906,7 +947,7 @@ export function generateTemporaryCacheNameForPlugin(
     }
   }
 
-  return `temp_${prefix}_${timestamp}_${random}`
+  return `temp_${prefix}_${scopedPluginId}_${sourceHash}_${timestamp}_${random}`
 }
 
 /**
@@ -916,13 +957,17 @@ export async function cachePlugin(
   source: PluginSource,
   options?: {
     manifest?: PluginManifest
+    pluginId?: string
   },
 ): Promise<{ path: string; manifest: PluginManifest; gitCommitSha?: string }> {
   const cachePath = getPluginCachePath()
 
   await getFsImplementation().mkdir(cachePath)
 
-  const tempName = generateTemporaryCacheNameForPlugin(source)
+  const tempName = generateTemporaryCacheNameForPlugin(
+    source,
+    options?.pluginId,
+  )
   const tempPath = join(cachePath, tempName)
 
   let shouldCleanup = false
@@ -1082,20 +1127,10 @@ export async function cachePlugin(
     }
   }
 
-  const finalName = manifest.name.replace(/[^a-zA-Z0-9-_]/g, '-')
-  const finalPath = join(cachePath, finalName)
-
-  if (await pathExists(finalPath)) {
-    logForDebugging(`Removing old cached version at ${finalPath}`)
-    await rm(finalPath, { recursive: true, force: true })
-  }
-
-  await rename(tempPath, finalPath)
-
-  logForDebugging(`Successfully cached plugin ${manifest.name} to ${finalPath}`)
+  logForDebugging(`Successfully staged plugin ${manifest.name} at ${tempPath}`)
 
   return {
-    path: finalPath,
+    path: tempPath,
     manifest,
     ...(gitCommitSha && { gitCommitSha }),
   }
@@ -2332,6 +2367,7 @@ async function loadPluginFromMarketplaceEntry(
           // Download to temp location, then copy to versioned cache
           const cached = await cachePlugin(entry.source, {
             manifest: { name: entry.name },
+            pluginId,
           })
 
           // If the pre-clone version was deterministic (source.sha /

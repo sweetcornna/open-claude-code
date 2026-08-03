@@ -15,7 +15,10 @@ import { dirname, join } from 'path'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { PROJECT_DIR_NAME } from '../../config/paths.js'
 import { BIN_NAME } from '../../constants/brand.js'
-import { isBuiltinPluginId } from '../../plugins/builtinPlugins.js'
+import {
+  BUILTIN_MARKETPLACE_NAME,
+  isBuiltinPluginId,
+} from '../../plugins/builtinPlugins.js'
 import type { LoadedPlugin, PluginManifest } from '../../types/plugin.js'
 import { isENOENT, toError } from '../../utils/runtime/errors.js'
 import { getFsImplementation } from '../../utils/filesystem/fsOperations.js'
@@ -60,9 +63,10 @@ import { deletePluginOptions } from '../../utils/plugins/pluginOptionsStorage.js
 import { isPluginBlockedByPolicy } from '../../utils/plugins/pluginPolicy.js'
 import { getPluginEditableScopes } from '../../utils/plugins/pluginStartupCheck.js'
 import { calculatePluginVersion } from '../../utils/plugins/pluginVersioning.js'
-import type {
-  PluginMarketplaceEntry,
-  PluginScope,
+import {
+  PluginIdSchema,
+  type PluginMarketplaceEntry,
+  type PluginScope,
 } from '../../utils/plugins/schemas.js'
 import {
   getSettingsForSource,
@@ -579,6 +583,27 @@ export async function setPluginEnabledOp(
 ): Promise<PluginOperationResult> {
   const operation = enabled ? 'enable' : 'disable'
 
+  if (plugin.includes('@')) {
+    const parsedPluginId = PluginIdSchema().safeParse(plugin)
+    if (!parsedPluginId.success) {
+      return {
+        success: false,
+        message: `Invalid plugin ID "${plugin}". Expected plugin@marketplace format.`,
+      }
+    }
+
+    const { marketplace } = parsePluginIdentifier(parsedPluginId.data)
+    if (
+      marketplace === BUILTIN_MARKETPLACE_NAME &&
+      !isBuiltinPluginId(parsedPluginId.data)
+    ) {
+      return {
+        success: false,
+        message: `Built-in plugin "${plugin}" is not registered.`,
+      }
+    }
+  }
+
   // Built-in plugins: always use user-scope settings, bypass the normal
   // scope-resolution + installed_plugins lookup (they're not installed).
   if (isBuiltinPluginId(plugin)) {
@@ -925,6 +950,7 @@ async function performPluginUpdate({
     // Remote plugin: download to temp directory first
     const cacheResult = await cachePlugin(entry.source, {
       manifest: { name: entry.name },
+      pluginId,
     })
     sourcePath = cacheResult.path
     shouldCleanupSource = true
