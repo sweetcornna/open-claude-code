@@ -9,32 +9,44 @@
  * ChatGPT Responses + OAuth path used by the main loop.
  *
  * Avoid mocking getAPIProvider (process-global pollution). Select OpenAI via
- * CLAUDE_CODE_USE_OPENAI env. Mock only client + ChatGPT token surface.
+ * CLAUDE_CODE_USE_OPENAI env. Mock only client + ChatGPT token surface, via
+ * shared complete-surface mocks reset in afterAll — the previous hand-rolled
+ * permanent mock.module left a fake client (no .models) poisoning every
+ * later-loaded suite in the process.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
+import { setupAnalyticsMock } from '../../../tests/mocks/analytics.js'
+import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.js'
+import * as realOpenAIClient from 'src/services/api/openai/client.js'
+import * as realChatGPTAuth from 'src/services/api/openai/chatgptAuth.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: () => {},
-  logEventAsync: async () => {},
-  stripProtoFields: <V>(v: V) => v,
-  attachAnalyticsSink: () => {},
-  _resetForTesting: () => {},
-}))
+const analyticsMock = setupAnalyticsMock()
 
 let getOpenAIClientCallCount = 0
 let chatCompletionsCreateCount = 0
 let lastChatCompletionsArgs: Record<string, unknown> | null = null
 let chatCompletionsUsage: Record<string, unknown> = {}
 
-mock.module('src/services/api/openai/client.js', () => ({
+const openAIClientMock = makeSharedModuleMock(
+  'src/services/api/openai/client.js',
+  realOpenAIClient,
+).setup({
   getOpenAIClient: () => {
     getOpenAIClientCallCount++
-    return {
+    const fakeClient = {
       chat: {
         completions: {
           create: async (args: Record<string, unknown>) => {
@@ -66,26 +78,30 @@ mock.module('src/services/api/openai/client.js', () => ({
         },
       },
     }
+    return fakeClient as unknown as ReturnType<
+      typeof realOpenAIClient.getOpenAIClient
+    >
   },
-  clearOpenAIClientCache: () => {},
-}))
+})
 
 // Keep isChatGPTAuthEnabled env-driven (same as production) so other suite
-// files are not forced into ChatGPT mode.
-mock.module('src/services/api/openai/chatgptAuth.js', () => ({
+// files are not forced into ChatGPT mode; unlisted exports delegate to real.
+const chatGPTAuthMock = makeSharedModuleMock(
+  'src/services/api/openai/chatgptAuth.js',
+  realChatGPTAuth,
+).setup({
   isChatGPTAuthEnabled: () => process.env.OPENAI_AUTH_MODE === 'chatgpt',
   getValidChatGPTAuth: async () => ({
     accessToken: 'test-access-token-not-real',
     accountId: 'acct_test',
   }),
-  removeChatGPTAuth: async () => {},
-  requestChatGPTDeviceCode: async () => {
-    throw new Error('not used')
-  },
-  completeChatGPTDeviceLogin: async () => {
-    throw new Error('not used')
-  },
-}))
+})
+
+afterAll(() => {
+  analyticsMock.reset()
+  openAIClientMock.reset()
+  chatGPTAuthMock.reset()
+})
 
 type CapturedFetch = {
   url: string

@@ -42,6 +42,13 @@ export type SharedModuleMock<M extends AnyModule> = {
   }
 }
 
+function isClass(value: unknown): boolean {
+  return (
+    typeof value === 'function' &&
+    /^class[\s{]/.test(Function.prototype.toString.call(value))
+  )
+}
+
 export function makeSharedModuleMock<M extends AnyModule>(
   specifier: string,
   real: M,
@@ -53,6 +60,16 @@ export function makeSharedModuleMock<M extends AnyModule>(
     for (const key of Object.keys(real) as Array<keyof M & string>) {
       const realValue = real[key]
       if (typeof realValue !== 'function') {
+        surface[key] = realValue
+        continue
+      }
+      // Classes are functions too, but wrapping one in a delegating arrow
+      // breaks `new` and `instanceof` (the wrapper has no usable prototype).
+      // Exported error classes are the common case — a suite that mocks
+      // errors.js still needs `e instanceof AbortError` to hold — so classes
+      // are passed through as-is. Overriding a class export is not supported;
+      // no caller has ever needed it.
+      if (isClass(realValue)) {
         surface[key] = realValue
         continue
       }
