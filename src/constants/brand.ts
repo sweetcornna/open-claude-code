@@ -44,7 +44,7 @@ export const DISPLAY_NAME = 'Open Claude Code'
  * `rollback.ts` hardcoded Anthropic's `@anthropic-ai/claude-code`, meaning
  * "rolling back" installed a different product over the user's binary.
  */
-export const NPM_PACKAGE_NAME = 'open-claude-code'
+export const NPM_PACKAGE_NAME = '@sweetcornna/open-claude-code'
 
 /** OS-level deep-link identity owned exclusively by occ. */
 export const DEEP_LINK_PROTOCOL = 'occ-cli'

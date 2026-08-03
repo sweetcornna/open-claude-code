@@ -1,6 +1,7 @@
 {
-  "name": "open-claude-code",
-  "version": "2.8.4",
+  "name": "@sweetcornna/open-claude-code",
+  "version": "2.9.0",
+  "license": "MIT",
   "description": "Reverse-engineered Anthropic Claude Code CLI — interactive AI coding assistant in the terminal",
   "type": "module",
   "author": "open-claude-code",

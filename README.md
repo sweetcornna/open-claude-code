@@ -38,17 +38,27 @@ occ migrate             # 真的拷
 
 ## ⚡ 快速开始（安装版）
 
+一条命令安装（自动选择 bun/npm，装完自检）：
+
 ```sh
-npm i -g open-claude-code
+curl -fsSL https://raw.githubusercontent.com/sweetcornna/open-claude-code/main/scripts/install.sh | bash
+```
+
+或手动：
+
+```sh
+npm i -g @sweetcornna/open-claude-code
 
 occ           # 以 Node.js 启动
 occ-bun       # 以 Bun 启动
 occ update    # 更新到最新版本
 ```
 
+首次运行 `occ` 会进入配置向导：可选从官方 Claude Code（`~/.claude`）迁移既有配置，然后选择 OAuth 登录或 API 配置（Anthropic 兼容 / OpenAI 兼容 / 国产模型 preset / Gemini / Grok），API 模式下可直接填协议（chat/responses）、模型名和模型最大上下文（自动联动 auto-compact 阈值）。详见 `docs/features/providers.md`。
+
 > 2.8 之前的 `ccb` / `ccb-bun` 命令名已移除，沿用旧命令的脚本请改为 `occ` / `occ-bun`。
 
-> **安装/更新失败？** 先 `npm rm -g open-claude-code` 清理，再 `npm i -g open-claude-code@latest`。仍失败则指定版本号。
+> **安装/更新失败？** 先 `npm rm -g @sweetcornna/open-claude-code` 清理，再 `npm i -g @sweetcornna/open-claude-code@latest`。仍失败则指定版本号。
 
 ## ⚡ 快速开始（源码版）
 

@@ -11,7 +11,7 @@ set -euo pipefail
 
 # Single source for the package name — keep in sync with package.json "name"
 # and src/constants/brand.ts NPM_PACKAGE_NAME.
-PKG="${OCC_INSTALL_PACKAGE:-open-claude-code}"
+PKG="${OCC_INSTALL_PACKAGE:-@sweetcornna/open-claude-code}"
 BIN="occ"
 
 info() { printf '\033[36m[occ-install]\033[0m %s\n' "$*"; }
