@@ -3,6 +3,11 @@
 open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
+
+## 2.13.0 - 2026-08-03
+
+- **从官方 Claude Code 迁移时可以不带走账号绑定的数据**：换账号的场景此前只有「全迁」或「不迁」两种选择。凭据和会话历史本来就永不复制，但已安装的 plugins、skills、MCP server 定义，以及 `settings.json` 里的 `env`、`apiKeyHelper`、`awsAuthRefresh`、`forceLoginMethod`、`enabledPlugins`、`extraKnownMarketplaces` 仍然绑定着上一个账号。现在首启向导的迁移步骤多了一个「跳过账号数据」选项，命令行也支持 `occ migrate --skip-account-data`；主题、权限、agents、commands、workflows、rules 和 CLAUDE.md 照常带走。MCP server 是整条排除而不是抹掉密钥——只清空会留下一个看着已配置、一用就失败的条目。排除了什么会在迁移前逐条列出，不会静默丢弃。默认行为不变。
+
 ## 2.12.0 - 2026-08-03
 
 本次是一轮以安全和数据安全为主的集中修复，另有一个能明显改变日常体验的新默认行为。升级后建议看一眼下面前四条——它们会改变你已有的使用方式。
