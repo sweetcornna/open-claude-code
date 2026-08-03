@@ -5,9 +5,13 @@
 [![Last Commit](https://img.shields.io/github/last-commit/sweetcornna/open-claude-code?style=flat-square&color=blue)](https://github.com/sweetcornna/open-claude-code/commits/main)
 [![Bun](https://img.shields.io/badge/runtime-Bun-black?style=flat-square&logo=bun)](https://bun.sh/)
 
-> 一个可以和官方 Claude Code 并存的开源终端 AI 编程助手。
+> Claude Code 社区版 —— 官方 Claude Code 的优化衍生版，可与官方版装在同一台机器上共存。
 
-**open-claude-code**（简称 `occ`）是 Anthropic [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 的完整复原工程。在此基础上补齐了企业版特性，扩展了 Goal、Ultracode 多 Agent 编排、Artifacts、ACP 等能力，并且**与官方 Claude Code 完全隔离** —— 两者可以装在同一台机器上，互不干扰。
+**open-claude-code**（简称 `occ`）是 Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 的**社区版（Community Edition）**：以逆向复原（reverse-engineered restoration）的代码为基座，由社区维护和优化的衍生版本。三件事说清它的定位：
+
+- **它是什么** —— 一份可运行、可构建、可调试的 Claude Code 完整复原实现。在此基础上补齐了企业版特性，并扩展了 Goal 持续驱动、Ultracode 多 Agent 编排、Artifacts、多模型供应商、ACP 等能力。
+- **和官方什么关系** —— 独立的社区项目，与 Anthropic 无关联、未获其背书。跟随官方功能演进，但补什么、裁什么由社区决定。
+- **为什么能共存** —— occ 与官方版做了用户态完全隔离：配置、状态、缓存、凭据各走各的（见下表），两者装在同一台机器上互不干扰，登录也不会互相覆盖 token。
 
 ## 与官方 Claude Code 的隔离
 
@@ -139,10 +143,10 @@ bun run build    # 构建
 功能开关通过 `FEATURE_<FLAG_NAME>=1` 环境变量启用：
 
 ```bash
-FEATURE_BUDDY=1 FEATURE_FORK_SUBAGENT=1 bun run dev
+FEATURE_FORK_SUBAGENT=1 bun run dev
 ```
 
-默认启用的 34 个 flag 见 [`scripts/defines.ts`](./scripts/defines.ts) 的 `DEFAULT_BUILD_FEATURES`；不在表里的需要显式开。各 Feature 的说明见 [`docs/features/`](./docs/features/)。
+默认启用的 33 个 flag 见 [`scripts/defines.ts`](./scripts/defines.ts) 的 `DEFAULT_BUILD_FEATURES`；不在表里的需要显式开。各 Feature 的说明见 [`docs/features/`](./docs/features/)。
 
 ## VS Code 调试
 
@@ -179,7 +183,9 @@ bun run build:vite
 
 ## 致谢
 
+- [claude-code-best/claude-code](https://github.com/claude-code-best/claude-code) — 可运行、可构建、可调试的 Claude Code 还原工程（"原汁原味 Claude Code"）。occ 从该仓库 fork 而来，复原基座与大量企业特性还原工作源自该项目
 - [doubaoime-asr](https://github.com/starccy/doubaoime-asr) — 豆包 ASR 语音识别 SDK，为 Voice Mode 提供无需 Anthropic OAuth 的语音输入方案
+- [free-search-mcp](https://github.com/sweetcornna/free-search-mcp) — 免 API key 的本地优先搜索 MCP server。WebSearch 的 `free` 搜索源移植自它的无密钥引擎池（DuckDuckGo / Mojeek / Bing）、RRF 融合与 SearXNG 救援策略
 
 ## 许可证
 

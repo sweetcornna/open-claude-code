@@ -120,10 +120,10 @@ Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-part
 Enable with `FEATURE_<FLAG_NAME>=1`:
 
 ```bash
-FEATURE_BUDDY=1 FEATURE_FORK_SUBAGENT=1 bun run dev
+FEATURE_FORK_SUBAGENT=1 bun run dev
 ```
 
-The 34 flags on by default are in `DEFAULT_BUILD_FEATURES` in [`scripts/defines.ts`](./scripts/defines.ts); anything else needs the env var. Per-feature notes live in [`docs/features/`](./docs/features/).
+The 33 flags on by default are in `DEFAULT_BUILD_FEATURES` in [`scripts/defines.ts`](./scripts/defines.ts); anything else needs the env var. Per-feature notes live in [`docs/features/`](./docs/features/).
 
 ## Debugging in VS Code
 
@@ -149,6 +149,7 @@ Architecture, the module map, the path/isolation invariants and the testing rule
 ## Acknowledgements
 
 - [doubaoime-asr](https://github.com/starccy/doubaoime-asr) — Doubao ASR SDK, which gives Voice Mode a speech input path that needs no Anthropic OAuth
+- [free-search-mcp](https://github.com/sweetcornna/free-search-mcp) — local-first, no-API-key search MCP server. WebSearch's `free` source is a port of its keyless engine pool (DuckDuckGo / Mojeek / Bing), RRF fusion and SearXNG rescue pass
 
 ## License
 

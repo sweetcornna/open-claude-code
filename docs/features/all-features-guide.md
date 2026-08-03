@@ -6,7 +6,6 @@
 
 ## 目录
 
-1. [Buddy 伴侣系统](#1-buddy-伴侣系统)
 2. [Remote Control 远程控制](#2-remote-control-远程控制)
 3. [定时任务 /triggers](#3-定时任务-triggers)
 4. [Voice Mode 语音模式](#4-voice-mode-语音模式)
@@ -21,25 +20,6 @@
 13. [Proactive 自主模式](#13-proactive-自主模式)
 14. [Fork 子Agent](#14-fork-子agent)
 15. [其他恢复的工具](#15-其他恢复的工具)
-
----
-
-## 1. Buddy 伴侣系统
-
-**PR**: #82 `refactor(buddy): align companion system with official CLI`
-**Feature Flag**: `BUDDY`
-
-### 说明
-Buddy 是一个后台运行的伴侣 AI，在你主对话进行的同时，异步观察会话内容并提供建议。
-
-### 使用
-```bash
-# 启动时自动加载（feature 默认开启）
-bun run dev
-
-# 在对话中，Buddy 会在适当时机自动提供建议
-# 例如当你在调试时，Buddy 可能提示你检查日志
-```
 
 ---
 
@@ -391,7 +371,6 @@ FEATURE_FORK_SUBAGENT=1 bun run dev
 
 | Flag | 默认 | 说明 |
 |------|------|------|
-| `BUDDY` | ✅ dev only | 伴侣系统 |
 | `VOICE_MODE` | ✅ dev+build | 语音模式 |
 | `CHICAGO_MCP` | ✅ dev+build | Computer Use + Chrome |
 | `AGENT_TRIGGERS_REMOTE` | ✅ dev+build | 定时任务 |

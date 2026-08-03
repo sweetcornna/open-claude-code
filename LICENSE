@@ -22,7 +22,8 @@ SOFTWARE.
 
 ---
 
-Note: This repository is an independent, reverse-engineered restoration of the
-Claude Code CLI. This license covers the restoration and original work in this
-repository. "Claude", "Claude Code" and "Anthropic" are trademarks of
-Anthropic, PBC; this project is not affiliated with or endorsed by Anthropic.
+Note: This repository is an independent community edition of the Claude Code
+CLI — a reverse-engineered restoration with community optimizations. This
+license covers the restoration and original work in this repository. "Claude",
+"Claude Code" and "Anthropic" are trademarks of Anthropic, PBC; this project
+is not affiliated with or endorsed by Anthropic.

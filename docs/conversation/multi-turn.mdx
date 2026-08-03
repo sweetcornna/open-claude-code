@@ -109,8 +109,7 @@ I --> J["并行执行：系统提示/用户上下文/系统上下文/自动模�
 J --> K["构建有效系统提示"]
 K --> L["重置各类耗时计时器"]
 L --> M["执行query生成器，流式处理事件"]
-M --> N["若BUDDY开启，触发companion观察者"]
-N --> P["ant用户：收集API指标并插入指标消息"]
+M --> P["ant用户：收集API指标并插入指标消息"]
 P --> Q["重置加载状态，输出性能报告，调用onTurnComplete"]
 Q --> R["结束"]
 D --> R
@@ -270,17 +269,7 @@ for await (const event of query({ messages, systemPrompt, userContext, systemCon
 
 #### 3.7 后处理与指标收集
 
-##### 3.7.1 BUDDY 特性（companion 反应）
-
-```typescript
-if (feature('BUDDY') && typeof fireCompanionObserver === 'function') {
-  fireCompanionObserver(messagesRef.current, reaction => setAppState(prev => ({ ...prev, companionReaction: reaction })));
-}
-```
-
-- 将当前消息列表传递给 companion 观察者，并根据返回的反应更新全局状态。
-
-##### 3.7.2 Ant 内部用户的 API 指标记录
+##### 3.7.1 Ant 内部用户的 API 指标记录
 
 ```typescript
 if (process.env.USER_TYPE === 'ant' && apiMetricsRef.current.length > 0) {
@@ -298,7 +287,7 @@ if (process.env.USER_TYPE === 'ant' && apiMetricsRef.current.length > 0) {
 - 若本轮包含多次请求（例如工具调用循环），计算中位数（P50）后存入指标消息。
 - 同时记录钩子耗时、工具耗时、分类器耗时、本轮总时长、配置写入次数等。
 
-##### 3.7.3 重置与清理
+##### 3.7.2 重置与清理
 
 ```typescript
 resetLoadingState();
