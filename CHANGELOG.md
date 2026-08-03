@@ -3,6 +3,28 @@
 open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
+## 2.12.0 - 2026-08-03
+
+本次是一轮以安全和数据安全为主的集中修复，另有一个能明显改变日常体验的新默认行为。升级后建议看一眼下面前四条——它们会改变你已有的使用方式。
+
+- **插件市场默认可用**：首次启动会自动装上官方的 `claude-plugins-official`，`/plugin` 里能浏览安装的插件从 27 个变成 300+。此前它只在「你已经启用了引用它的插件」时才会安装，等于新装的机器永远等不到。不想要可以 `occ plugin marketplace remove claude-plugins-official`（移除会记住，不会自己装回来），或设 `CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1`。
+- **`/issue` 不再默认上传对话内容**：以前只要带标题，最近 5 轮对话和 3 条工具错误就会未经脱敏、无预览地进 issue 正文——对公开仓库等于当场公开路径、代码和错误里的 token。现在默认只发标题和模板，要带上下文得显式 `--include-context`，它会先给出脱敏预览，再确认才上传。
+- **`/provider` 切到 Bedrock / Vertex / Foundry 后请重新确认**：此前这几个云供应商只写环境变量、不清理已保存的 `modelType`，而后者优先级更高——命令提示切换成功，请求却仍然发往原来的 OpenAI 等供应商，代码和费用流向你以为已经退出的服务。已修复；如果你之前切换过，建议重新执行一次并核对 `/status`。
+- **`FEATURE_<NAME>=0` 现在真的会关闭功能**：以前 dev 和发布构建都只判断环境变量存不存在，写 `=0`、`=false` 反而把功能编了进去。现在 `1`/`true` 开、`0`/`false`/留空关，且能用来关掉默认启用的 flag。
+- 修复 `/update-config`（以及任何走 settings JSON Schema 的路径）一加载就报 “Undefined cannot be represented in JSON Schema” 而中断。
+- 修复远程会话拉取失败时会清空本地对话记录：网络抖动或登录过期都可能让已有 transcript 被截断且不可恢复。现在只有确认成功或远端确实为空才会覆盖本地文件。
+- 安全：MCP 服务器返回的工具描述与提示词此前只过滤控制字符，零宽字符、双向覆盖、Unicode Tag 等可以藏进模型能读、你看不见的指令。现已按完整规则清洗。
+- 安全：MCP 提供的 skill 不再能通过 frontmatter 隐式索要工具权限或注册可执行 hook——你批准的只是「使用这个 skill」。同时限制了单个服务器的 skill 数量与体积，避免恶意服务器拖垮启动。
+- 安全：插件市场保留名（如 `claude-plugins-official`）的来源校验此前用字符串包含判断，`https://evil.example/github.com/anthropics/fake.git` 能冒充官方；且恶意来源在被拒绝之前就已覆盖了本地官方缓存。两处均已修复。
+- 安全：`occ` 安装时下载的 ripgrep 现在校验 SHA-256 才会安装，并移除了失败自动回退第三方镜像的行为。
+- 安全：团队协作中，普通成员伪造的控制消息此前可以往其他成员的会话里注入工具授权规则（如 Bash、Write），现已校验发送方身份。
+- 安全：不再把凭据写进日志与终端——`mcp add --header` 曾原样打印 Authorization 和 API key，MCP 日志只过滤 `Authorization` 而漏掉 Cookie、X-API-Key 及 URL 里的 token，`/doctor` 会原样回显带 token 的浏览器地址。
+- 安全：企业策略边界修复——项目或用户配置不再能扩宽管理员设定的模型白名单（空名单现在真的表示全部禁止），`--setting-sources` 也不再能改变策略的优先级顺序。
+- 修复 `/share` 在 Gist 失败回退到公开图床时，仍向你显示 “Visibility: secret”。
+- 修复预发布版本（如 `2.11.0-beta.1`）用户永远收不到正式版更新——版本比较忽略了预发布标识，`occ update` 一直认为已是最新。
+- 后台会话修复：tmux 模式下 `attach` 找不到会话、`daemon logs` 拿不到日志；日志轮转后 tail 会长时间漏读；陈旧的 PID 记录可能让 `daemon kill` 误伤无关进程（现在无法确认身份时会拒绝发送信号）。
+- 工作流修复：`resumeFromRunId` 未做校验，特制的 run id 可以删除任意目录；journal 中任意一行损坏会导致整段历史被当作不存在、恢复时重跑全部 agent（重复计费）；分歧时不再删掉整个 run 目录和其中的 inline 脚本。
+- 其他稳定性修复：MCP 工具调用现在会响应取消与超时；超大 MCP 输出在计数失败时不再放行；本地密钥库并发写入不再静默丢失；LSP 关闭无响应不再卡住退出；写日志失败不再让 CLI 崩溃。
 
 ## 2.11.0 - 2026-08-03
 
