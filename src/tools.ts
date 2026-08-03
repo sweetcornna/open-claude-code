@@ -24,6 +24,10 @@ import './components/MessageResponse.js'
 // no-op and default-value facade fallbacks instead.
 import './services/analytics/index.js'
 import './services/analytics/growthbook.js'
+// Load the host search-credential probe before builtin tool modules.
+// It self-registers with tool-runtime; standalone package use keeps the
+// facade's "no credentials" fallback, so only account-free search sources run.
+import './services/search/sourceCredentials.js'
 // Load the host bootstrap-state implementation before builtin tool modules.
 // It self-registers with tool-runtime; standalone package use fails fast if a
 // bootstrap-state accessor is called without a host.

@@ -679,12 +679,35 @@ export const SettingsSchema = lazySchema(() =>
           'Skip the WebFetch blocklist check for enterprise environments with restrictive security policies',
         ),
       webSearchAdapter: z
-        .enum(['api', 'bing', 'brave', 'exa', 'tavily'])
+        .enum(['api', 'bing', 'brave', 'codex', 'exa', 'free', 'gemini'])
         .optional()
+        // Unknown values (notably the removed "tavily", which still sits in
+        // settings.json for anyone who picked it) must not null the whole
+        // settings file. .catch drops the field so the factory falls back to
+        // its default aggregation — silently, per the removal contract.
+        .catch(undefined)
         .describe(
-          'Web search backend adapter. "tavily" uses Tavily Search API (default), ' +
-            '"api" uses Anthropic server-side search, "bing" scrapes Bing HTML, ' +
-            '"brave" uses Brave Search API, "exa" uses Exa AI.',
+          'Pin web search to ONE backend instead of aggregating sources. ' +
+            '"api" Anthropic server-side search, "codex" OpenAI Responses web_search, ' +
+            '"gemini" googleSearch grounding, "free" keyless multi-engine search, ' +
+            '"bing" scrapes Bing HTML, "brave" Brave Search API, "exa" Exa AI. ' +
+            'Unset (recommended) runs every connected source in parallel — see /search-setting.',
+        ),
+      webSearchSources: z
+        .object({
+          anthropic: z.boolean().optional(),
+          gemini: z.boolean().optional(),
+          codex: z.boolean().optional(),
+          free: z.boolean().optional(),
+        })
+        .optional()
+        // Same reasoning as webSearchAdapter: a malformed block degrades to
+        // "no explicit choices", never to a rejected settings file.
+        .catch(undefined)
+        .describe(
+          'Per-source on/off switches for aggregated web search (/search-setting). ' +
+            'Stores explicit choices ONLY — an absent source follows its credentials, ' +
+            'so logging in to a provider enables its search layer automatically.',
         ),
       webFetchAdapter: z
         .enum(['tavily', 'http'])
@@ -698,7 +721,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Custom Tavily API endpoint URL. Defaults to https://tavily.claude-code-best.win. ' +
-            'Used by both WebSearch and WebFetch when tavily adapter is selected.',
+            'Used by WebFetch when the tavily fetch adapter is selected.',
         ),
       braveApiKey: z
         .string()

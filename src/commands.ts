@@ -17,7 +17,6 @@ import { context, contextNonInteractive } from './commands/context/index.js'
 import diff from './commands/diff/index.js'
 import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
-import mode from './commands/mode/index.js'
 import help from './commands/help/index.js'
 import ide from './commands/ide/index.js'
 import init from './commands/init.js'
@@ -56,6 +55,7 @@ import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
+import searchSetting from './commands/searchSetting/index.js'
 import webTools from './commands/web-tools/index.js'
 import { feature } from 'bun:bundle'
 // Dead code elimination: conditional imports
@@ -108,11 +108,6 @@ const daemonCmd =
     : null
 const jobCmd = feature('TEMPLATES')
   ? require('./commands/job/index.js').default
-  : null
-const buddy = feature('BUDDY')
-  ? (
-      require('./commands/buddy/index.js') as typeof import('./commands/buddy/index.js')
-    ).default
   : null
 const poor = feature('POOR')
   ? (
@@ -270,7 +265,6 @@ const COMMANDS = memoize((): Command[] => [
   mcp,
   memory,
   mobile,
-  mode,
   model,
   outputStyle,
   remoteEnv,
@@ -300,9 +294,9 @@ const COMMANDS = memoize((): Command[] => [
   usage,
   usageReport,
   vim,
+  searchSetting,
   webTools,
   ...(webCmd ? [webCmd] : []),
-  ...(buddy ? [buddy] : []),
   ...(poor ? [poor] : []),
   ...(goalCmd ? [goalCmd] : []),
   ...(proactive ? [proactive] : []),

@@ -141,7 +141,17 @@ function convertToolsToResponses(tools: unknown[]): ResponsesTool[] {
     const record = tool as Record<string, unknown>
     const fn = record.function as Record<string, unknown> | undefined
     const name = typeof fn?.name === 'string' ? fn.name : undefined
-    if (!name) continue
+    if (!name) {
+      // Server-side built-in tools (`{ type: 'web_search' }`, …) carry no
+      // function descriptor: the Responses API takes them verbatim. Pass them
+      // through instead of dropping them — WebSearch's `codex` adapter asks
+      // for the built-in web_search tool this way, and it must not have to
+      // hand-roll a request body around this converter.
+      if (typeof record.type === 'string' && record.type !== 'function') {
+        result.push({ ...record })
+      }
+      continue
+    }
     result.push({
       type: 'function',
       name,
