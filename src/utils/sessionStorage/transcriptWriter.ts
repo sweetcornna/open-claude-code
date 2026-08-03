@@ -296,11 +296,11 @@ export class Project {
   private internalSubagentEventReader: InternalEventReader | null = null
   private pendingWriteCount: number = 0
   private flushResolvers: Array<() => void> = []
-  // Per-file write queues. Each entry carries a resolve callback so
-  // callers of enqueueWrite can optionally await their specific write.
+  // Per-file write queues. Each entry carries settlement callbacks so callers
+  // can await their write and deterministic failures do not hang forever.
   private writeQueues = new Map<
     string,
-    Array<{ entry: Entry; resolve: () => void }>
+    Array<{ entry: Entry; resolve: () => void; reject: (error: Error) => void }>
   >()
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private activeDrain: Promise<void> | null = null
@@ -364,7 +364,7 @@ export class Project {
   }
 
   private enqueueWrite(filePath: string, entry: Entry): Promise<void> {
-    return new Promise<void>(resolve => {
+    const pending = new Promise<void>((resolve, reject) => {
       let queue = this.writeQueues.get(filePath)
       if (!queue) {
         queue = []
@@ -374,27 +374,50 @@ export class Project {
       if (queue.length >= 1000) {
         const dropped = queue.splice(0, queue.length - 999)
         for (const d of dropped) {
-          d.resolve()
+          const error = new Error(
+            `Transcript write queue overflow for ${filePath}`,
+          )
+          logError(error)
+          d.reject(error)
         }
       }
-      queue.push({ entry, resolve })
+      queue.push({ entry, resolve, reject })
       this.scheduleDrain()
     })
+    // Most production call sites intentionally fire-and-forget. Attach a
+    // handler to the original promise so a deterministic rejected entry does
+    // not become an unhandled rejection; callers that await it still observe
+    // the rejection from the returned promise.
+    void pending.catch(() => {})
+    return pending
   }
 
   private scheduleDrain(): void {
-    if (this.flushTimer) {
+    if (this.flushTimer || this.activeDrain) {
       return
     }
-    this.flushTimer = setTimeout(async () => {
+    this.flushTimer = setTimeout(() => {
       this.flushTimer = null
-      this.activeDrain = this.drainWriteQueue()
-      await this.activeDrain
-      this.activeDrain = null
-      // If more items arrived during drain, schedule again
-      if (this.writeQueues.size > 0) {
-        this.scheduleDrain()
-      }
+      const drain = this.drainWriteQueue()
+      this.activeDrain = drain
+      void drain
+        .catch(error => {
+          logError(
+            new Error(
+              `Failed to drain transcript write queue: ${String(error)}`,
+            ),
+          )
+        })
+        .finally(() => {
+          if (this.activeDrain === drain) {
+            this.activeDrain = null
+          }
+          // Failed batches are requeued before the drain rejects, so every
+          // exit path must arrange another attempt.
+          if (this.writeQueues.size > 0) {
+            this.scheduleDrain()
+          }
+        })
     }, this.FLUSH_INTERVAL_MS)
   }
 
@@ -417,29 +440,55 @@ export class Project {
       const batch = queue.splice(0)
 
       let content = ''
-      const resolvers: Array<() => void> = []
+      let chunkStart = 0
 
-      for (const { entry, resolve } of batch) {
-        const line = jsonStringify(entry) + '\n'
-
-        if (content.length + line.length >= this.MAX_CHUNK_BYTES) {
-          // Flush chunk and resolve its entries before starting a new one
-          await this.appendToFile(filePath, content)
-          for (const r of resolvers) {
-            r()
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i]!
+        const { entry } = item
+        let line: string
+        try {
+          line = jsonStringify(entry) + '\n'
+        } catch (error) {
+          const writeError =
+            error instanceof Error ? error : new Error(String(error))
+          for (const rejected of batch.slice(chunkStart)) {
+            rejected.reject(writeError)
           }
-          resolvers.length = 0
+          throw writeError
+        }
+
+        if (
+          content.length > 0 &&
+          content.length + line.length >= this.MAX_CHUNK_BYTES
+        ) {
+          // Flush chunk and resolve its entries before starting a new one
+          try {
+            await this.appendToFile(filePath, content)
+          } catch (error) {
+            // New writes may have arrived in `queue` while this batch was in
+            // flight. Put the failed suffix in front so disk order is stable.
+            queue.unshift(...batch.slice(chunkStart))
+            throw error
+          }
+          for (const completed of batch.slice(chunkStart, i)) {
+            completed.resolve()
+          }
+          chunkStart = i
           content = ''
         }
 
         content += line
-        resolvers.push(resolve)
       }
 
       if (content.length > 0) {
-        await this.appendToFile(filePath, content)
-        for (const r of resolvers) {
-          r()
+        try {
+          await this.appendToFile(filePath, content)
+        } catch (error) {
+          queue.unshift(...batch.slice(chunkStart))
+          throw error
+        }
+        for (const completed of batch.slice(chunkStart)) {
+          completed.resolve()
         }
       }
     }

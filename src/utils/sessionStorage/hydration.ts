@@ -22,8 +22,13 @@ export async function hydrateRemoteSession(
   const project = getProject()
 
   try {
-    const remoteLogs =
-      (await sessionIngress.getSessionLogs(sessionId, ingressUrl)) || []
+    const result = await sessionIngress.getSessionLogs(sessionId, ingressUrl)
+    if (result.status === 'failure') {
+      logForDebugging('Remote session hydration failed; preserving local logs')
+      logForDiagnosticsNoPII('error', 'hydrate_remote_session_fail')
+      return false
+    }
+    const remoteLogs = result.status === 'success' ? result.logs : []
 
     // Ensure the project directory and session file exist
     const projectDir = getProjectDir(getOriginalCwd())
@@ -42,9 +47,9 @@ export async function hydrateRemoteSession(
     logForDiagnosticsNoPII('error', 'hydrate_remote_session_fail')
     return false
   } finally {
-    // Set remote ingress URL after hydrating the remote session
-    // to ensure we've always synced with the remote session
-    // prior to enabling persistence
+    // Remote writes must not start until the hydration attempt is finished.
+    // A failed fetch keeps the local transcript intact; later appends retain
+    // the existing ingress retry/conflict handling.
     project.setRemoteIngressUrl(ingressUrl)
   }
 }
