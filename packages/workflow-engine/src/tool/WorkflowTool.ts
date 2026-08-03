@@ -1,11 +1,20 @@
-import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { z } from 'zod/v4'
-import { WORKFLOW_DIR_NAME, WORKFLOW_TOOL_NAME } from '../constants.js'
+import {
+  WORKFLOW_DIR_NAME,
+  WORKFLOW_RUNS_DIR,
+  WORKFLOW_TOOL_NAME,
+} from '../constants.js'
 import { resolveNamedWorkflow } from '../engine/namedWorkflows.js'
 import { runWorkflow } from '../engine/runWorkflow.js'
 import { parseScript } from '../engine/script.js'
-import { containsPath, sanitizeWorkflowName } from '../engine/paths.js'
+import {
+  assertValidRunId,
+  containsPath,
+  sanitizeWorkflowName,
+} from '../engine/paths.js'
 import type { WorkflowPorts } from '../ports.js'
 import type { WorkflowRunResult } from '../types.js'
 import { workflowInputSchema, type WorkflowInput } from './schema.js'
@@ -149,6 +158,24 @@ export function createWorkflowTool(
         }
       }
 
+      let scriptChanged = false
+      try {
+        scriptChanged = await persistScriptHash({
+          script,
+          runId,
+          cwd: host.cwd,
+          workflowRunsDir: options.workflowRunsDir ?? WORKFLOW_RUNS_DIR,
+          resume: input.resumeFromRunId !== undefined,
+        })
+      } catch (e) {
+        // A resume without trustworthy hash state must not replay checkpoints
+        // from a script we can no longer prove is identical.
+        scriptChanged = input.resumeFromRunId !== undefined
+        ports.logger.warn?.(
+          `workflow script hash persistence failed: ${(e as Error).message}`,
+        )
+      }
+
       // Detached execution
       void runWorkflow({
         script,
@@ -165,7 +192,7 @@ export function createWorkflowTool(
         ...(input.maxConcurrency !== undefined
           ? { maxConcurrency: input.maxConcurrency }
           : {}),
-        ...(input.resumeFromRunId ? { resume: true } : {}),
+        ...(input.resumeFromRunId ? { resume: true, scriptChanged } : {}),
         ...(options.workflowDir ? { workflowDir: options.workflowDir } : {}),
       })
         .then(result => onFinish(ports, result, runId))
@@ -194,6 +221,34 @@ export function createWorkflowTool(
       }
     },
   }
+}
+
+const SCRIPT_HASH_FILE = 'script.sha256'
+
+async function persistScriptHash(opts: {
+  script: string
+  runId: string
+  cwd: string
+  workflowRunsDir: string
+  resume: boolean
+}): Promise<boolean> {
+  const runId = assertValidRunId(opts.runId)
+  const runDir = join(opts.cwd, opts.workflowRunsDir, runId)
+  const hashPath = join(runDir, SCRIPT_HASH_FILE)
+  const currentHash = createHash('sha256').update(opts.script).digest('hex')
+  let previousHash: string | undefined
+
+  if (opts.resume) {
+    try {
+      previousHash = (await readFile(hashPath, 'utf-8')).trim()
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+
+  await mkdir(runDir, { recursive: true })
+  await writeFile(hashPath, `${currentHash}\n`, 'utf-8')
+  return opts.resume && previousHash !== currentHash
 }
 
 function onFinish(

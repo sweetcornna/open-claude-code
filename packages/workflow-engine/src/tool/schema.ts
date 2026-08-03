@@ -25,6 +25,10 @@ export const workflowInputSchema = z.object({
     ),
   resumeFromRunId: z
     .string()
+    // Becomes a path segment under the runs directory, and deleteRun() removes
+    // that directory recursively — an unvalidated id reaches the filesystem.
+    // Mirrored by assertValidRunId at the store boundary.
+    .regex(/^[A-Za-z0-9_-]{1,128}$/, 'Invalid run id')
     .optional()
     .describe('Resume the specified run, replaying the journal'),
   description: z

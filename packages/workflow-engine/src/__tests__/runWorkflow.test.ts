@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runWorkflow } from '../engine/runWorkflow.js'
@@ -261,6 +261,8 @@ test('scriptChanged=true → truncate journal and run all live', async () => {
       seq: 0,
       result: { kind: 'ok', output: 'cached', usage: { outputTokens: 1 } },
     })
+    const scriptPath = join(dir, 'run-chg', 'script.js')
+    await writeFile(scriptPath, `return agent('compute')`)
     const result = await runWorkflow({
       script: `return agent('compute')`,
       runId: 'run-chg',
@@ -279,6 +281,7 @@ test('scriptChanged=true → truncate journal and run all live', async () => {
     const final = await ports.journalStore.read('run-chg')
     expect(final).toHaveLength(1)
     expect((final[0]!.result as { output: string }).output).toBe('live')
+    expect(await readFile(scriptPath, 'utf-8')).toBe(`return agent('compute')`)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
