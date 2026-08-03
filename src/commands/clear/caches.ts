@@ -143,4 +143,12 @@ export function clearSessionCaches(
   void import('@open-claude-code/builtin-tools/tools/SkillTool/prompt.js').then(
     ({ clearPromptCache }) => clearPromptCache(),
   )
+  // Reset per-session tool budgets (official 2.1.212: /clear resets them).
+  // Spawn reset keeps the running set — background agents survive /clear.
+  void import(
+    '@open-claude-code/builtin-tools/tools/WebSearchTool/sessionLimit.js'
+  ).then(({ resetWebSearchCount }) => resetWebSearchCount())
+  void import(
+    '@open-claude-code/builtin-tools/tools/AgentTool/spawnLimits.js'
+  ).then(({ resetSessionSpawnCount }) => resetSessionSpawnCount())
 }

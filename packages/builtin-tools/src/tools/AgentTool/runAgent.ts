@@ -6,6 +6,7 @@ import {
   registerSpawn,
   unregisterSpawn,
 } from './spawnLimits.js'
+import { isSessionBudgetExhausted } from 'src/cost-tracker.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
@@ -372,6 +373,14 @@ export async function* runAgent({
   // createSubagentContext already increments per nesting level (env vars
   // cannot carry depth: subagents share process.env with siblings).
   checkSpawnBudgets(toolUseContext.queryTracking?.depth)
+  // --max-budget-usd: once the session budget is spent, refuse NEW
+  // subagents — ending the main loop alone leaves background spawning
+  // burning money (2.1.217).
+  if (isSessionBudgetExhausted()) {
+    throw new Error(
+      'Session USD budget (--max-budget-usd) is exhausted — refusing to spawn a new subagent.',
+    )
+  }
   registerSpawn(agentId)
 
   // Route this agent's transcript into a grouping subdirectory if requested
