@@ -121,6 +121,32 @@ export function errorMessage(e: unknown): string {
 }
 
 /**
+ * Message plus the `cause` chain — for network errors surfaced to a user.
+ *
+ * `fetch()` in Node rejects with the bare string "fetch failed" and puts the
+ * only useful part (ECONNREFUSED, ENOTFOUND, a TLS handshake failure, a proxy
+ * error) in `error.cause`. Showing just `.message` therefore tells the user
+ * nothing at all about what went wrong or what to do next.
+ *
+ * Duplicate causes are collapsed so a wrapper that already embedded its
+ * cause's text does not print it twice.
+ */
+export function errorMessageWithCause(e: unknown, maxDepth = 3): string {
+  const parts: string[] = []
+  let current: unknown = e
+  for (let depth = 0; depth <= maxDepth && current; depth++) {
+    const message = errorMessage(current).trim()
+    const code = getErrnoCode(current)
+    const line =
+      code && !message.includes(code) ? `${code}: ${message}` : message
+    if (line && !parts.some(part => part.includes(line))) parts.push(line)
+    current =
+      current instanceof Error && 'cause' in current ? current.cause : undefined
+  }
+  return parts.join(' — ')
+}
+
+/**
  * Extract the errno code (e.g., 'ENOENT', 'EACCES') from a caught error.
  * Returns undefined if the error has no code or is not an ErrnoException.
  * Replaces the `(e as NodeJS.ErrnoException).code` cast pattern.

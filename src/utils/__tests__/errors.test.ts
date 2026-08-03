@@ -10,6 +10,7 @@ import {
   hasExactErrorMessage,
   toError,
   errorMessage,
+  errorMessageWithCause,
   getErrnoCode,
   isENOENT,
   getErrnoPath,
@@ -303,5 +304,46 @@ describe('classifyAxiosError', () => {
 
   test("returns 'other' for null", () => {
     expect(classifyAxiosError(null).kind).toBe('other')
+  })
+})
+
+// Node's fetch rejects with the bare string "fetch failed" and puts the only
+// actionable part (ECONNREFUSED, a TLS failure, a dead proxy) in `cause`.
+// Showing just `.message` is what turned a Google-unreachable login into two
+// useless words on the /search-setting panel.
+describe('errorMessageWithCause', () => {
+  test('appends the cause chain a bare fetch error hides', () => {
+    const cause = Object.assign(
+      new Error('Client network socket disconnected'),
+      { code: 'ECONNRESET' },
+    )
+    const err = new Error('fetch failed', { cause })
+
+    expect(errorMessage(err)).toBe('fetch failed')
+    const full = errorMessageWithCause(err)
+    expect(full).toContain('fetch failed')
+    expect(full).toContain('ECONNRESET')
+    expect(full).toContain('Client network socket disconnected')
+  })
+
+  test('behaves like errorMessage when there is no cause', () => {
+    expect(errorMessageWithCause(new Error('plain'))).toBe('plain')
+    expect(errorMessageWithCause('a string')).toBe('a string')
+  })
+
+  test('does not repeat a cause the wrapper already embedded', () => {
+    const cause = new Error('ENOTFOUND example.com')
+    const err = new Error('Cannot reach example.com: ENOTFOUND example.com', {
+      cause,
+    })
+    const full = errorMessageWithCause(err)
+    expect(full.match(/ENOTFOUND/g)?.length).toBe(1)
+  })
+
+  test('stops at maxDepth instead of following a cause cycle', () => {
+    const a = new Error('a')
+    const b = new Error('b', { cause: a })
+    ;(a as Error & { cause?: unknown }).cause = b
+    expect(() => errorMessageWithCause(b)).not.toThrow()
   })
 })

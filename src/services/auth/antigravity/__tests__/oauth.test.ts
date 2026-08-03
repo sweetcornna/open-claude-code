@@ -504,3 +504,76 @@ describe('getValidAntigravityAuth', () => {
     expect(saved[0]!.projectId).toBe('proj-recovered')
   })
 })
+
+// Every endpoint here is a Google host. When one is unreachable — blocked
+// network, TLS interception, a dead proxy — Node rejects with the bare string
+// "fetch failed", which told the user nothing about which call broke or what
+// to do. The wrapper names the host, the step, and the underlying cause.
+describe('transport failures name the host and keep the cause', () => {
+  function deadFetch(): typeof fetch {
+    return (async () => {
+      throw new Error('fetch failed', {
+        cause: Object.assign(new Error('socket disconnected'), {
+          code: 'ECONNRESET',
+        }),
+      })
+    }) as unknown as typeof fetch
+  }
+
+  test('project discovery reports the host, cause and proxy hint', async () => {
+    const { discoverAntigravityProject } = await import('../oauth.js')
+    let err!: Error
+    try {
+      await discoverAntigravityProject({
+        accessToken: 'x',
+        fetchImpl: deadFetch(),
+      })
+    } catch (e) {
+      err = e as Error
+    }
+
+    expect(err).toBeInstanceOf(Error)
+    expect(err.message).toContain('cloudcode-pa.googleapis.com')
+    expect(err.message).toContain('project discovery')
+    expect(err.message).toContain('ECONNRESET')
+    expect(err.message).toContain('HTTPS_PROXY')
+    // The original error stays reachable for callers that inspect it.
+    expect((err as Error & { cause?: unknown }).cause).toBeDefined()
+  })
+
+  test('token exchange reports the OAuth host rather than "fetch failed"', async () => {
+    const { exchangeAntigravityCode } = await import('../oauth.js')
+    let err!: Error
+    try {
+      await exchangeAntigravityCode({
+        code: 'c',
+        redirectUri: 'http://localhost:1/cb',
+        fetchImpl: deadFetch(),
+      })
+    } catch (e) {
+      err = e as Error
+    }
+
+    expect(err.message).toContain('oauth2.googleapis.com')
+    expect(err.message).not.toBe('fetch failed')
+  })
+
+  test('an abort propagates unchanged instead of becoming a network error', async () => {
+    const { discoverAntigravityProject } = await import('../oauth.js')
+    const abortFetch = (async () => {
+      throw new DOMException('The operation was aborted.', 'AbortError')
+    }) as unknown as typeof fetch
+
+    let err!: Error
+    try {
+      await discoverAntigravityProject({
+        accessToken: 'x',
+        fetchImpl: abortFetch,
+      })
+    } catch (e) {
+      err = e as Error
+    }
+
+    expect(err.message).not.toContain('Cannot reach')
+  })
+})

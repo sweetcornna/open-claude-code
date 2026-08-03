@@ -20,6 +20,10 @@
  */
 
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import {
+  errorMessageWithCause,
+  isAbortError,
+} from 'src/utils/runtime/errors.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   ANTIGRAVITY_API_BASE_DAILY,
@@ -65,6 +69,41 @@ type GoogleTokenResponse = {
 
 function proxyOptions(): RequestInit {
   return getProxyFetchOptions({ forAnthropicAPI: false }) as RequestInit
+}
+
+/**
+ * Run a fetch, turning a transport-level failure into something the user can
+ * act on.
+ *
+ * Every endpoint here is a Google host. When one is unreachable — blocked
+ * network, TLS interception, a proxy that is down — Node rejects with the bare
+ * string "fetch failed" and hides the reason in `error.cause`, so the login
+ * screen used to show exactly two useless words. Name the step and the host,
+ * keep the underlying cause, and point at the proxy knob that fixes it.
+ */
+async function fetchGoogleEndpoint(
+  step: string,
+  url: string,
+  init: RequestInit,
+  fetchImpl: FetchLike,
+): Promise<Response> {
+  try {
+    return await fetchImpl(url, init)
+  } catch (e) {
+    if (isAbortError(e)) throw e
+    const host = (() => {
+      try {
+        return new URL(url).host
+      } catch {
+        return url
+      }
+    })()
+    throw new Error(
+      `Cannot reach ${host} for ${step}: ${errorMessageWithCause(e)}. ` +
+        `Check your network, or set HTTPS_PROXY if this host needs a proxy.`,
+      { cause: e },
+    )
+  }
 }
 
 async function readErrorBody(response: Response): Promise<string> {
@@ -123,13 +162,18 @@ async function postTokenEndpoint(
   fetchImpl: FetchLike,
   signal?: AbortSignal,
 ): Promise<GoogleTokenResponse> {
-  const response = await fetchImpl(ANTIGRAVITY_TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-    ...(signal ? { signal } : {}),
-    ...proxyOptions(),
-  })
+  const response = await fetchGoogleEndpoint(
+    'the OAuth token exchange',
+    ANTIGRAVITY_TOKEN_ENDPOINT,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      ...(signal ? { signal } : {}),
+      ...proxyOptions(),
+    },
+    fetchImpl,
+  )
   if (!response.ok) {
     const detail = await readErrorBody(response)
     throw new Error(
@@ -183,14 +227,19 @@ export async function fetchAntigravityUserEmail(
   accessToken: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<string | undefined> {
-  const response = await fetchImpl(ANTIGRAVITY_USERINFO_ENDPOINT, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'User-Agent': ANTIGRAVITY_USER_AGENT,
+  const response = await fetchGoogleEndpoint(
+    'the account lookup',
+    ANTIGRAVITY_USERINFO_ENDPOINT,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'User-Agent': ANTIGRAVITY_USER_AGENT,
+      },
+      ...proxyOptions(),
     },
-    ...proxyOptions(),
-  })
+    fetchImpl,
+  )
   if (!response.ok) return undefined
   const data = (await response.json().catch(() => null)) as {
     email?: string
@@ -264,19 +313,24 @@ async function onboardAntigravityUser(params: {
   const maxAttempts = 5
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (params.signal?.aborted) throw new Error('Antigravity login cancelled')
-    const response = await params.fetchImpl(url, {
-      method: 'POST',
-      headers: {
-        Accept: '*/*',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${params.accessToken}`,
-        'User-Agent': ANTIGRAVITY_ONBOARD_USER_AGENT,
-        'X-Goog-Api-Client': ANTIGRAVITY_GOOG_API_CLIENT,
+    const response = await fetchGoogleEndpoint(
+      'user onboarding',
+      url,
+      {
+        method: 'POST',
+        headers: {
+          Accept: '*/*',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${params.accessToken}`,
+          'User-Agent': ANTIGRAVITY_ONBOARD_USER_AGENT,
+          'X-Goog-Api-Client': ANTIGRAVITY_GOOG_API_CLIENT,
+        },
+        body,
+        ...(params.signal ? { signal: params.signal } : {}),
+        ...proxyOptions(),
       },
-      body,
-      ...(params.signal ? { signal: params.signal } : {}),
-      ...proxyOptions(),
-    })
+      params.fetchImpl,
+    )
     if (!response.ok) {
       const detail = await readErrorBody(response)
       throw new Error(
@@ -306,18 +360,23 @@ export async function discoverAntigravityProject(params: {
 }): Promise<string> {
   const fetchImpl = params.fetchImpl ?? fetch
   const url = `${ANTIGRAVITY_API_BASE_PROD}/${ANTIGRAVITY_API_VERSION}:loadCodeAssist`
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers: {
-      Accept: '*/*',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${params.accessToken}`,
-      'User-Agent': ANTIGRAVITY_USER_AGENT,
+  const response = await fetchGoogleEndpoint(
+    'project discovery',
+    url,
+    {
+      method: 'POST',
+      headers: {
+        Accept: '*/*',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${params.accessToken}`,
+        'User-Agent': ANTIGRAVITY_USER_AGENT,
+      },
+      body: JSON.stringify({ metadata: { ideType: ANTIGRAVITY_IDE_TYPE } }),
+      ...(params.signal ? { signal: params.signal } : {}),
+      ...proxyOptions(),
     },
-    body: JSON.stringify({ metadata: { ideType: ANTIGRAVITY_IDE_TYPE } }),
-    ...(params.signal ? { signal: params.signal } : {}),
-    ...proxyOptions(),
-  })
+    fetchImpl,
+  )
   if (!response.ok) {
     const detail = await readErrorBody(response)
     throw new Error(
