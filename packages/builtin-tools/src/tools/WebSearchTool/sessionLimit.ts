@@ -27,7 +27,7 @@ export function countWebSearch(): void {
   webSearchesThisSession++
 }
 
-/** Test hook. */
+/** Reset on /clear (official 2.1.212 semantics) and in tests. */
 export function resetWebSearchCount(): void {
   webSearchesThisSession = 0
 }

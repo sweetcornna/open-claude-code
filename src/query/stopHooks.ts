@@ -61,6 +61,26 @@ type StopHookResult = {
   preventContinuation: boolean
 }
 
+// Consecutive Stop-hook blocks per agent (official 2.1.143 parity: a hook
+// that blocks every stop re-runs the model forever — cap it, default 8).
+// Keyed by agentId so a teammate's blocking hook can't starve the main
+// thread's counter and vice versa. Reset whenever a stop goes through clean.
+const consecutiveStopBlocks = new Map<string, number>()
+
+function stopHookBlockCap(): number {
+  const raw = process.env.CLAUDE_CODE_STOP_HOOK_BLOCK_CAP
+  if (raw !== undefined) {
+    const parsed = Number.parseInt(raw, 10)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return 8
+}
+
+/** Test hook. */
+export function resetStopHookBlockCountsForTests(): void {
+  consecutiveStopBlocks.clear()
+}
+
 export async function* handleStopHooks(
   messagesForQuery: Message[],
   assistantMessages: AssistantMessage[],
@@ -336,14 +356,29 @@ export async function* handleStopHooks(
       }
     }
 
+    const blockCountKey = toolUseContext.agentId ?? 'main'
+
     if (preventedContinuation) {
+      consecutiveStopBlocks.delete(blockCountKey)
       return { blockingErrors: [], preventContinuation: true }
     }
 
     // Collect blocking errors from stop hooks
     if (blockingErrors.length > 0) {
+      const count = (consecutiveStopBlocks.get(blockCountKey) ?? 0) + 1
+      consecutiveStopBlocks.set(blockCountKey, count)
+      if (count >= stopHookBlockCap()) {
+        consecutiveStopBlocks.delete(blockCountKey)
+        yield createSystemMessage(
+          `Stop hook blocked ${count} consecutive stops — cap reached ` +
+            `(CLAUDE_CODE_STOP_HOOK_BLOCK_CAP, default 8); ignoring this block.`,
+          'warning',
+        )
+        return { blockingErrors: [], preventContinuation: false }
+      }
       return { blockingErrors, preventContinuation: false }
     }
+    consecutiveStopBlocks.delete(blockCountKey)
 
     // After Stop hooks pass, run TeammateIdle and TaskCompleted hooks if this is a teammate
     if (isTeammate()) {

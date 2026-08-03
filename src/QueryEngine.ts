@@ -29,6 +29,7 @@ import {
   getModelUsage,
   getTotalAPIDuration,
   getTotalCost,
+  setSessionMaxBudgetUsd,
 } from './cost-tracker.js'
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { loadMemoryPrompt } from './memdir/memdir.js'
@@ -221,6 +222,10 @@ export class QueryEngine {
     this.discoveredSkillNames.clear()
     this.permissionDenials = []
     setCwd(cwd)
+    // Publish the budget so spawn guards outside this loop (runAgent) can
+    // refuse new subagents once it is spent — the loop's own check below
+    // only ends the MAIN loop, background spawning must stop too (2.1.217).
+    setSessionMaxBudgetUsd(maxBudgetUsd)
     const persistSession = !isSessionPersistenceDisabled()
     const startTime = Date.now()
 

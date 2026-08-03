@@ -93,6 +93,15 @@ export function unregisterSpawn(agentId: string): void {
   runningAgents.delete(agentId)
 }
 
+/**
+ * /clear resets the cumulative session budget (official semantics) but NOT
+ * the running set — background agents survive /clear and must keep their
+ * concurrency slots until they actually finish.
+ */
+export function resetSessionSpawnCount(): void {
+  spawnedThisSession = 0
+}
+
 /** Test hooks. */
 export function resetSpawnBudgetsForTests(): void {
   spawnedThisSession = 0

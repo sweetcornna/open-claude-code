@@ -47,6 +47,24 @@ import { formatDuration, formatNumber } from './utils/text/format.js'
 import type { FpsMetrics } from './utils/telemetry/fpsTracker.js'
 import { getCanonicalName } from './utils/model/model.js'
 import { calculateUSDCost } from './utils/model/modelCost.js'
+// ── Session USD budget (--max-budget-usd) ──────────────────────────────
+// Registered by QueryEngine so spawn guards outside the headless loop
+// (AgentTool/runAgent) can refuse NEW subagents once the budget is spent —
+// official 2.1.217: reaching the cap must also stop background spawning,
+// not just end the main loop.
+let sessionMaxBudgetUsd: number | undefined
+
+export function setSessionMaxBudgetUsd(value: number | undefined): void {
+  sessionMaxBudgetUsd = value
+}
+
+export function isSessionBudgetExhausted(): boolean {
+  return (
+    sessionMaxBudgetUsd !== undefined &&
+    getTotalCostUSD() >= sessionMaxBudgetUsd
+  )
+}
+
 export {
   getTotalCostUSD as getTotalCost,
   getTotalDuration,
