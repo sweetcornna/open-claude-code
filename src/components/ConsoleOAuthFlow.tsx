@@ -16,6 +16,7 @@ import {
   type ChatGPTDeviceCode,
 } from '../services/api/openai/chatgptAuth.js';
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
+import { clearGrokClientCache } from '../services/api/grok/client.js';
 import { OAuthService } from '../services/oauth/index.js';
 import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth/auth.js';
 import { openBrowser } from '../utils/network/browser.js';
@@ -23,6 +24,7 @@ import { logError } from '../utils/telemetry/log.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import {
   CHINA_LLM_PROVIDERS,
+  parseContextWindowTokens,
   type ProviderPreset,
   resolveChinaProviderBaseURL,
 } from 'src/utils/model/chinaLlmProviders.js';
@@ -44,20 +46,33 @@ type OAuthStatus =
       state: 'custom_platform';
       baseUrl: string;
       apiKey: string;
+      model: string;
+      maxContext: string;
       haikuModel: string;
       sonnetModel: string;
       opusModel: string;
-      activeField: 'base_url' | 'api_key' | 'haiku_model' | 'sonnet_model' | 'opus_model';
+      activeField: 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
     } // Custom platform: configure API endpoint and model names
   | {
       state: 'openai_chat_api';
       baseUrl: string;
       apiKey: string;
+      model: string;
+      wireApi: string;
+      maxContext: string;
       haikuModel: string;
       sonnetModel: string;
       opusModel: string;
-      activeField: 'base_url' | 'api_key' | 'haiku_model' | 'sonnet_model' | 'opus_model';
-    } // OpenAI Chat Completions API platform
+      activeField:
+        | 'base_url'
+        | 'api_key'
+        | 'model'
+        | 'wire_api'
+        | 'max_context'
+        | 'haiku_model'
+        | 'sonnet_model'
+        | 'opus_model';
+    } // OpenAI Chat Completions / Responses API platform
   | {
       state: 'chatgpt_subscription';
       phase: 'requesting' | 'waiting';
@@ -67,11 +82,21 @@ type OAuthStatus =
       state: 'gemini_api';
       baseUrl: string;
       apiKey: string;
+      model: string;
+      maxContext: string;
       haikuModel: string;
       sonnetModel: string;
       opusModel: string;
-      activeField: 'base_url' | 'api_key' | 'haiku_model' | 'sonnet_model' | 'opus_model';
+      activeField: 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
     } // Gemini Generate Content API platform
+  | {
+      state: 'grok_api';
+      baseUrl: string;
+      apiKey: string;
+      model: string;
+      maxContext: string;
+      activeField: 'base_url' | 'api_key' | 'model' | 'max_context';
+    } // xAI Grok API platform
   | { state: 'china_provider_select'; activeIndex: number } // China LLM: pick provider
   | { state: 'china_mode_select'; provider: ProviderPreset; activeIndex: number } // China LLM: pick access mode
   | { state: 'china_model_select'; provider: ProviderPreset; mode: 'api' | 'coding-plan'; activeIndex: number } // China LLM: pick model
@@ -88,6 +113,22 @@ type OAuthStatus =
     };
 
 const PASTE_HERE_MSG = 'Paste code here if prompted > ';
+
+/**
+ * Parse the optional "Max ctx" form field into a CLAUDE_CODE_MAX_CONTEXT_TOKENS
+ * value. Accepts a plain token count ('128000') or a K/M shorthand ('128k',
+ * '1m'). Returns undefined for empty (leave unset), null for invalid input.
+ */
+export function parseMaxContextInput(raw: string): string | undefined | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (/^\d+$/.test(trimmed)) {
+    const n = parseInt(trimmed, 10);
+    return n > 0 ? String(n) : null;
+  }
+  const viaSuffix = parseContextWindowTokens(trimmed);
+  return viaSuffix ? String(viaSuffix) : null;
+}
 export function ConsoleOAuthFlow({
   onDone,
   startingMessage,
@@ -498,6 +539,15 @@ function OAuthStatusMessage({
                 {
                   label: (
                     <Text>
+                      Grok API · <Text dimColor>xAI Grok (api.x.ai)</Text>
+                      {'\n'}
+                    </Text>
+                  ),
+                  value: 'grok_api',
+                },
+                {
+                  label: (
+                    <Text>
                       Claude account with subscription · <Text dimColor>Pro, Max, Team, or Enterprise</Text>
                       {process.env.USER_TYPE === 'ant' && (
                         <Text>
@@ -540,6 +590,8 @@ function OAuthStatusMessage({
                     state: 'custom_platform',
                     baseUrl: process.env.ANTHROPIC_BASE_URL ?? '',
                     apiKey: process.env.ANTHROPIC_AUTH_TOKEN ?? '',
+                    model: process.env.ANTHROPIC_MODEL ?? '',
+                    maxContext: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
                     haikuModel: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? '',
                     sonnetModel: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL ?? '',
                     opusModel: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL ?? '',
@@ -551,6 +603,9 @@ function OAuthStatusMessage({
                     state: 'openai_chat_api',
                     baseUrl: process.env.OPENAI_BASE_URL ?? '',
                     apiKey: process.env.OPENAI_API_KEY ?? '',
+                    model: process.env.OPENAI_MODEL ?? '',
+                    wireApi: process.env.OPENAI_WIRE_API ?? '',
+                    maxContext: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
                     haikuModel: process.env.OPENAI_DEFAULT_HAIKU_MODEL ?? '',
                     sonnetModel: process.env.OPENAI_DEFAULT_SONNET_MODEL ?? '',
                     opusModel: process.env.OPENAI_DEFAULT_OPUS_MODEL ?? '',
@@ -571,9 +626,21 @@ function OAuthStatusMessage({
                     state: 'gemini_api',
                     baseUrl: process.env.GEMINI_BASE_URL ?? '',
                     apiKey: process.env.GEMINI_API_KEY ?? '',
+                    model: process.env.GEMINI_MODEL ?? '',
+                    maxContext: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
                     haikuModel: process.env.GEMINI_DEFAULT_HAIKU_MODEL ?? '',
                     sonnetModel: process.env.GEMINI_DEFAULT_SONNET_MODEL ?? '',
                     opusModel: process.env.GEMINI_DEFAULT_OPUS_MODEL ?? '',
+                    activeField: 'base_url',
+                  });
+                } else if (value === 'grok_api') {
+                  logEvent('tengu_grok_api_selected', {});
+                  setOAuthStatus({
+                    state: 'grok_api',
+                    baseUrl: process.env.GROK_BASE_URL ?? '',
+                    apiKey: process.env.GROK_API_KEY ?? process.env.XAI_API_KEY ?? '',
+                    model: process.env.GROK_MODEL ?? '',
+                    maxContext: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
                     activeField: 'base_url',
                   });
                 } else if (value === 'platform') {
@@ -596,21 +663,33 @@ function OAuthStatusMessage({
       );
 
     case 'custom_platform': {
-      type Field = 'base_url' | 'api_key' | 'haiku_model' | 'sonnet_model' | 'opus_model';
-      const FIELDS: Field[] = ['base_url', 'api_key', 'haiku_model', 'sonnet_model', 'opus_model'];
+      type Field = 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
+      const FIELDS: Field[] = [
+        'base_url',
+        'api_key',
+        'model',
+        'max_context',
+        'haiku_model',
+        'sonnet_model',
+        'opus_model',
+      ];
       const cp = oauthStatus as {
         state: 'custom_platform';
         activeField: Field;
         baseUrl: string;
         apiKey: string;
+        model: string;
+        maxContext: string;
         haikuModel: string;
         sonnetModel: string;
         opusModel: string;
       };
-      const { activeField, baseUrl, apiKey, haikuModel, sonnetModel, opusModel } = cp;
+      const { activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel } = cp;
       const displayValues: Record<Field, string> = {
         base_url: baseUrl,
         api_key: apiKey,
+        model,
+        max_context: maxContext,
         haiku_model: haikuModel,
         sonnet_model: sonnetModel,
         opus_model: opusModel,
@@ -626,6 +705,8 @@ function OAuthStatusMessage({
             activeField: newActive ?? activeField,
             baseUrl,
             apiKey,
+            model,
+            maxContext,
             haikuModel,
             sonnetModel,
             opusModel,
@@ -635,6 +716,10 @@ function OAuthStatusMessage({
               return { ...s, baseUrl: value };
             case 'api_key':
               return { ...s, apiKey: value };
+            case 'model':
+              return { ...s, model: value };
+            case 'max_context':
+              return { ...s, maxContext: value };
             case 'haiku_model':
               return { ...s, haikuModel: value };
             case 'sonnet_model':
@@ -643,7 +728,7 @@ function OAuthStatusMessage({
               return { ...s, opusModel: value };
           }
         },
-        [activeField, baseUrl, apiKey, haikuModel, sonnetModel, opusModel],
+        [activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel],
       );
 
       const _switchTo = useCallback(
@@ -657,6 +742,17 @@ function OAuthStatusMessage({
 
       const doSave = useCallback(() => {
         const finalVals = { ...displayValues, [activeField]: inputValue };
+        const toRetryState = {
+          state: 'custom_platform' as const,
+          baseUrl: finalVals.base_url ?? '',
+          apiKey: finalVals.api_key ?? '',
+          model: finalVals.model ?? '',
+          maxContext: finalVals.max_context ?? '',
+          haikuModel: finalVals.haiku_model ?? '',
+          sonnetModel: finalVals.sonnet_model ?? '',
+          opusModel: finalVals.opus_model ?? '',
+          activeField: 'base_url' as const,
+        };
         const env: Record<string, string> = {};
 
         // Validate base_url if provided
@@ -667,22 +763,26 @@ function OAuthStatusMessage({
             setOAuthStatus({
               state: 'error',
               message: 'Invalid base URL: please enter a full URL including protocol (e.g., https://api.example.com)',
-              toRetry: {
-                state: 'custom_platform',
-                baseUrl: '',
-                apiKey: '',
-                haikuModel: '',
-                sonnetModel: '',
-                opusModel: '',
-                activeField: 'base_url',
-              },
+              toRetry: toRetryState,
             });
             return;
           }
           env.ANTHROPIC_BASE_URL = finalVals.base_url;
         }
 
+        const maxContextValue = parseMaxContextInput(finalVals.max_context ?? '');
+        if (maxContextValue === null) {
+          setOAuthStatus({
+            state: 'error',
+            message: 'Invalid max context: enter a token count like 128000 (or 128k / 1m), or leave it empty.',
+            toRetry: { ...toRetryState, activeField: 'max_context' },
+          });
+          return;
+        }
+
         if (finalVals.api_key) env.ANTHROPIC_AUTH_TOKEN = finalVals.api_key;
+        if (finalVals.model) env.ANTHROPIC_MODEL = finalVals.model;
+        if (maxContextValue) env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = maxContextValue;
         if (finalVals.haiku_model) env.ANTHROPIC_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.ANTHROPIC_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.ANTHROPIC_DEFAULT_OPUS_MODEL = finalVals.opus_model;
@@ -694,15 +794,7 @@ function OAuthStatusMessage({
           setOAuthStatus({
             state: 'error',
             message: 'Failed to save settings. Please try again.',
-            toRetry: {
-              state: 'custom_platform',
-              baseUrl: finalVals.base_url ?? '',
-              apiKey: finalVals.api_key ?? '',
-              haikuModel: finalVals.haiku_model ?? '',
-              sonnetModel: finalVals.sonnet_model ?? '',
-              opusModel: finalVals.opus_model ?? '',
-              activeField: 'base_url',
-            },
+            toRetry: toRetryState,
           });
         } else {
           for (const [k, v] of Object.entries(env)) process.env[k] = v;
@@ -793,31 +885,57 @@ function OAuthStatusMessage({
           <Box flexDirection="column" gap={1}>
             {renderRow('base_url', 'Base URL ')}
             {renderRow('api_key', 'API Key  ', { mask: true })}
+            {renderRow('model', 'Model    ')}
+            {renderRow('max_context', 'Max ctx  ')}
             {renderRow('haiku_model', 'Haiku    ')}
             {renderRow('sonnet_model', 'Sonnet   ')}
             {renderRow('opus_model', 'Opus     ')}
           </Box>
+          <Text dimColor>Model/Max ctx optional · Max ctx caps the context window (e.g. 128000 or 128k)</Text>
           <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
         </Box>
       );
     }
 
     case 'openai_chat_api': {
-      type OpenAIField = 'base_url' | 'api_key' | 'haiku_model' | 'sonnet_model' | 'opus_model';
-      const OPENAI_FIELDS: OpenAIField[] = ['base_url', 'api_key', 'haiku_model', 'sonnet_model', 'opus_model'];
+      type OpenAIField =
+        | 'base_url'
+        | 'api_key'
+        | 'model'
+        | 'wire_api'
+        | 'max_context'
+        | 'haiku_model'
+        | 'sonnet_model'
+        | 'opus_model';
+      const OPENAI_FIELDS: OpenAIField[] = [
+        'base_url',
+        'api_key',
+        'model',
+        'wire_api',
+        'max_context',
+        'haiku_model',
+        'sonnet_model',
+        'opus_model',
+      ];
       const op = oauthStatus as {
         state: 'openai_chat_api';
         activeField: OpenAIField;
         baseUrl: string;
         apiKey: string;
+        model: string;
+        wireApi: string;
+        maxContext: string;
         haikuModel: string;
         sonnetModel: string;
         opusModel: string;
       };
-      const { activeField, baseUrl, apiKey, haikuModel, sonnetModel, opusModel } = op;
+      const { activeField, baseUrl, apiKey, model, wireApi, maxContext, haikuModel, sonnetModel, opusModel } = op;
       const openaiDisplayValues: Record<OpenAIField, string> = {
         base_url: baseUrl,
         api_key: apiKey,
+        model,
+        wire_api: wireApi,
+        max_context: maxContext,
         haiku_model: haikuModel,
         sonnet_model: sonnetModel,
         opus_model: opusModel,
@@ -835,6 +953,9 @@ function OAuthStatusMessage({
             activeField: newActive ?? activeField,
             baseUrl,
             apiKey,
+            model,
+            wireApi,
+            maxContext,
             haikuModel,
             sonnetModel,
             opusModel,
@@ -844,6 +965,12 @@ function OAuthStatusMessage({
               return { ...s, baseUrl: value };
             case 'api_key':
               return { ...s, apiKey: value };
+            case 'model':
+              return { ...s, model: value };
+            case 'wire_api':
+              return { ...s, wireApi: value };
+            case 'max_context':
+              return { ...s, maxContext: value };
             case 'haiku_model':
               return { ...s, haikuModel: value };
             case 'sonnet_model':
@@ -852,11 +979,23 @@ function OAuthStatusMessage({
               return { ...s, opusModel: value };
           }
         },
-        [activeField, baseUrl, apiKey, haikuModel, sonnetModel, opusModel],
+        [activeField, baseUrl, apiKey, model, wireApi, maxContext, haikuModel, sonnetModel, opusModel],
       );
 
       const doOpenAISave = useCallback(() => {
         const finalVals = { ...openaiDisplayValues, [activeField]: openaiInputValue };
+        const toRetryState = {
+          state: 'openai_chat_api' as const,
+          baseUrl: finalVals.base_url ?? '',
+          apiKey: finalVals.api_key ?? '',
+          model: finalVals.model ?? '',
+          wireApi: finalVals.wire_api ?? '',
+          maxContext: finalVals.max_context ?? '',
+          haikuModel: finalVals.haiku_model ?? '',
+          sonnetModel: finalVals.sonnet_model ?? '',
+          opusModel: finalVals.opus_model ?? '',
+          activeField: 'base_url' as const,
+        };
         const env: Record<string, string | undefined> = {
           OPENAI_AUTH_MODE: undefined,
         };
@@ -869,22 +1008,41 @@ function OAuthStatusMessage({
             setOAuthStatus({
               state: 'error',
               message: 'Invalid base URL: please enter a full URL including protocol (e.g., https://api.example.com)',
-              toRetry: {
-                state: 'openai_chat_api',
-                baseUrl: '',
-                apiKey: '',
-                haikuModel: '',
-                sonnetModel: '',
-                opusModel: '',
-                activeField: 'base_url',
-              },
+              toRetry: toRetryState,
             });
             return;
           }
           env.OPENAI_BASE_URL = finalVals.base_url;
         }
 
+        // Wire protocol: chat (Chat Completions, default) or responses (Responses API).
+        const wireInput = (finalVals.wire_api ?? '').trim().toLowerCase();
+        if (wireInput && wireInput !== 'chat' && wireInput !== 'responses') {
+          setOAuthStatus({
+            state: 'error',
+            message: "Invalid wire API: enter 'chat' or 'responses', or leave it empty for the default (chat).",
+            toRetry: { ...toRetryState, activeField: 'wire_api' },
+          });
+          return;
+        }
+
+        const maxContextValue = parseMaxContextInput(finalVals.max_context ?? '');
+        if (maxContextValue === null) {
+          setOAuthStatus({
+            state: 'error',
+            message: 'Invalid max context: enter a token count like 128000 (or 128k / 1m), or leave it empty.',
+            toRetry: { ...toRetryState, activeField: 'max_context' },
+          });
+          return;
+        }
+
         if (finalVals.api_key) env.OPENAI_API_KEY = finalVals.api_key;
+        // Optional keys are written as undefined when cleared so a stale value
+        // from a previous configuration cannot silently survive (undefined
+        // deletes on merge and in the process.env loop below).
+        env.OPENAI_MODEL = finalVals.model || undefined;
+        env.OPENAI_WIRE_API = wireInput || undefined;
+        env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = maxContextValue;
         if (finalVals.haiku_model) env.OPENAI_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.OPENAI_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.OPENAI_DEFAULT_OPUS_MODEL = finalVals.opus_model;
@@ -897,15 +1055,7 @@ function OAuthStatusMessage({
           setOAuthStatus({
             state: 'error',
             message: 'Failed to save settings. Please try again.',
-            toRetry: {
-              state: 'openai_chat_api',
-              baseUrl: finalVals.base_url ?? '',
-              apiKey: finalVals.api_key ?? '',
-              haikuModel: finalVals.haiku_model ?? '',
-              sonnetModel: finalVals.sonnet_model ?? '',
-              opusModel: finalVals.opus_model ?? '',
-              activeField: 'base_url',
-            },
+            toRetry: toRetryState,
           });
         } else {
           for (const [k, v] of Object.entries(env)) {
@@ -1004,14 +1154,23 @@ function OAuthStatusMessage({
       return (
         <Box flexDirection="column" gap={1}>
           <Text bold>OpenAI Compatible API Setup</Text>
-          <Text dimColor>Configure an OpenAI Chat Completions compatible endpoint (e.g. Ollama, DeepSeek, vLLM).</Text>
+          <Text dimColor>
+            Configure an OpenAI-compatible endpoint (GPT, GLM, Kimi, DeepSeek, Ollama, vLLM, One API…).
+          </Text>
           <Box flexDirection="column" gap={1}>
             {renderOpenAIRow('base_url', 'Base URL ')}
             {renderOpenAIRow('api_key', 'API Key  ', { mask: true })}
+            {renderOpenAIRow('model', 'Model    ')}
+            {renderOpenAIRow('wire_api', 'Wire API ')}
+            {renderOpenAIRow('max_context', 'Max ctx  ')}
             {renderOpenAIRow('haiku_model', 'Haiku    ')}
             {renderOpenAIRow('sonnet_model', 'Sonnet   ')}
             {renderOpenAIRow('opus_model', 'Opus     ')}
           </Box>
+          <Text dimColor>
+            Model overrides all tiers · Wire API: chat (default) or responses · Max ctx: model context window (e.g.
+            128k) so auto-compact triggers correctly
+          </Text>
           <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
         </Box>
       );
@@ -1110,21 +1269,40 @@ function OAuthStatusMessage({
     }
 
     case 'gemini_api': {
-      type GeminiField = 'base_url' | 'api_key' | 'haiku_model' | 'sonnet_model' | 'opus_model';
-      const GEMINI_FIELDS: GeminiField[] = ['base_url', 'api_key', 'haiku_model', 'sonnet_model', 'opus_model'];
+      type GeminiField =
+        | 'base_url'
+        | 'api_key'
+        | 'model'
+        | 'max_context'
+        | 'haiku_model'
+        | 'sonnet_model'
+        | 'opus_model';
+      const GEMINI_FIELDS: GeminiField[] = [
+        'base_url',
+        'api_key',
+        'model',
+        'max_context',
+        'haiku_model',
+        'sonnet_model',
+        'opus_model',
+      ];
       const gp = oauthStatus as {
         state: 'gemini_api';
         activeField: GeminiField;
         baseUrl: string;
         apiKey: string;
+        model: string;
+        maxContext: string;
         haikuModel: string;
         sonnetModel: string;
         opusModel: string;
       };
-      const { activeField, baseUrl, apiKey, haikuModel, sonnetModel, opusModel } = gp;
+      const { activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel } = gp;
       const geminiDisplayValues: Record<GeminiField, string> = {
         base_url: baseUrl,
         api_key: apiKey,
+        model,
+        max_context: maxContext,
         haiku_model: haikuModel,
         sonnet_model: sonnetModel,
         opus_model: opusModel,
@@ -1142,6 +1320,8 @@ function OAuthStatusMessage({
             activeField: newActive ?? activeField,
             baseUrl,
             apiKey,
+            model,
+            maxContext,
             haikuModel,
             sonnetModel,
             opusModel,
@@ -1151,6 +1331,10 @@ function OAuthStatusMessage({
               return { ...s, baseUrl: value };
             case 'api_key':
               return { ...s, apiKey: value };
+            case 'model':
+              return { ...s, model: value };
+            case 'max_context':
+              return { ...s, maxContext: value };
             case 'haiku_model':
               return { ...s, haikuModel: value };
             case 'sonnet_model':
@@ -1159,24 +1343,39 @@ function OAuthStatusMessage({
               return { ...s, opusModel: value };
           }
         },
-        [activeField, baseUrl, apiKey, haikuModel, sonnetModel, opusModel],
+        [activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel],
       );
 
       const doGeminiSave = useCallback(() => {
         const finalVals = { ...geminiDisplayValues, [activeField]: geminiInputValue };
-        if (!finalVals.haiku_model || !finalVals.sonnet_model || !finalVals.opus_model) {
+        const toRetryState = {
+          state: 'gemini_api' as const,
+          baseUrl: finalVals.base_url,
+          apiKey: finalVals.api_key,
+          model: finalVals.model,
+          maxContext: finalVals.max_context,
+          haikuModel: finalVals.haiku_model,
+          sonnetModel: finalVals.sonnet_model,
+          opusModel: finalVals.opus_model,
+          activeField,
+        };
+        // Gemini has no built-in family defaults (the mapping throws on a miss),
+        // so either a single Model or all three tier slots must be provided.
+        if (!finalVals.model && (!finalVals.haiku_model || !finalVals.sonnet_model || !finalVals.opus_model)) {
           setOAuthStatus({
             state: 'error',
-            message: 'Gemini setup requires Haiku, Sonnet, and Opus model names.',
-            toRetry: {
-              state: 'gemini_api',
-              baseUrl: finalVals.base_url,
-              apiKey: finalVals.api_key,
-              haikuModel: finalVals.haiku_model,
-              sonnetModel: finalVals.sonnet_model,
-              opusModel: finalVals.opus_model,
-              activeField,
-            },
+            message: 'Gemini setup requires a Model, or all of Haiku, Sonnet, and Opus model names.',
+            toRetry: toRetryState,
+          });
+          return;
+        }
+
+        const maxContextValue = parseMaxContextInput(finalVals.max_context ?? '');
+        if (maxContextValue === null) {
+          setOAuthStatus({
+            state: 'error',
+            message: 'Invalid max context: enter a token count like 128000 (or 128k / 1m), or leave it empty.',
+            toRetry: { ...toRetryState, activeField: 'max_context' },
           });
           return;
         }
@@ -1184,6 +1383,8 @@ function OAuthStatusMessage({
         const env: Record<string, string> = {};
         if (finalVals.base_url) env.GEMINI_BASE_URL = finalVals.base_url;
         if (finalVals.api_key) env.GEMINI_API_KEY = finalVals.api_key;
+        if (finalVals.model) env.GEMINI_MODEL = finalVals.model;
+        if (maxContextValue) env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = maxContextValue;
         if (finalVals.haiku_model) env.GEMINI_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.GEMINI_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.GEMINI_DEFAULT_OPUS_MODEL = finalVals.opus_model;
@@ -1195,15 +1396,7 @@ function OAuthStatusMessage({
           setOAuthStatus({
             state: 'error',
             message: `Failed to save: ${error.message}`,
-            toRetry: {
-              state: 'gemini_api',
-              baseUrl: '',
-              apiKey: '',
-              haikuModel: '',
-              sonnetModel: '',
-              opusModel: '',
-              activeField: 'base_url',
-            },
+            toRetry: toRetryState,
           });
         } else {
           for (const [k, v] of Object.entries(env)) process.env[k] = v;
@@ -1298,10 +1491,214 @@ function OAuthStatusMessage({
           <Box flexDirection="column" gap={1}>
             {renderGeminiRow('base_url', 'Base URL ')}
             {renderGeminiRow('api_key', 'API Key  ', { mask: true })}
+            {renderGeminiRow('model', 'Model    ')}
+            {renderGeminiRow('max_context', 'Max ctx  ')}
             {renderGeminiRow('haiku_model', 'Haiku    ')}
             {renderGeminiRow('sonnet_model', 'Sonnet   ')}
             {renderGeminiRow('opus_model', 'Opus     ')}
           </Box>
+          <Text dimColor>Model (e.g. gemini-3-pro) overrides all tiers · Max ctx: context window (e.g. 1m)</Text>
+          <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
+        </Box>
+      );
+    }
+
+    case 'grok_api': {
+      type GrokField = 'base_url' | 'api_key' | 'model' | 'max_context';
+      const GROK_FIELDS: GrokField[] = ['base_url', 'api_key', 'model', 'max_context'];
+      const gk = oauthStatus as {
+        state: 'grok_api';
+        activeField: GrokField;
+        baseUrl: string;
+        apiKey: string;
+        model: string;
+        maxContext: string;
+      };
+      const { activeField, baseUrl, apiKey, model, maxContext } = gk;
+      const grokDisplayValues: Record<GrokField, string> = {
+        base_url: baseUrl,
+        api_key: apiKey,
+        model,
+        max_context: maxContext,
+      };
+
+      const [grokInputValue, setGrokInputValue] = useState(() => grokDisplayValues[activeField]);
+      const [grokInputCursorOffset, setGrokInputCursorOffset] = useState(() => grokDisplayValues[activeField].length);
+
+      const buildGrokState = useCallback(
+        (field: GrokField, value: string, newActive?: GrokField) => {
+          const s = {
+            state: 'grok_api' as const,
+            activeField: newActive ?? activeField,
+            baseUrl,
+            apiKey,
+            model,
+            maxContext,
+          };
+          switch (field) {
+            case 'base_url':
+              return { ...s, baseUrl: value };
+            case 'api_key':
+              return { ...s, apiKey: value };
+            case 'model':
+              return { ...s, model: value };
+            case 'max_context':
+              return { ...s, maxContext: value };
+          }
+        },
+        [activeField, baseUrl, apiKey, model, maxContext],
+      );
+
+      const doGrokSave = useCallback(() => {
+        const finalVals = { ...grokDisplayValues, [activeField]: grokInputValue };
+        const toRetryState = {
+          state: 'grok_api' as const,
+          baseUrl: finalVals.base_url,
+          apiKey: finalVals.api_key,
+          model: finalVals.model,
+          maxContext: finalVals.max_context,
+          activeField: 'base_url' as const,
+        };
+
+        if (finalVals.base_url) {
+          try {
+            new URL(finalVals.base_url);
+          } catch {
+            setOAuthStatus({
+              state: 'error',
+              message: 'Invalid base URL: please enter a full URL including protocol (default: https://api.x.ai/v1)',
+              toRetry: toRetryState,
+            });
+            return;
+          }
+        }
+
+        const maxContextValue = parseMaxContextInput(finalVals.max_context ?? '');
+        if (maxContextValue === null) {
+          setOAuthStatus({
+            state: 'error',
+            message: 'Invalid max context: enter a token count like 128000 (or 128k / 1m), or leave it empty.',
+            toRetry: { ...toRetryState, activeField: 'max_context' },
+          });
+          return;
+        }
+
+        const env: Record<string, string | undefined> = {};
+        if (finalVals.base_url) env.GROK_BASE_URL = finalVals.base_url;
+        if (finalVals.api_key) env.GROK_API_KEY = finalVals.api_key;
+        env.GROK_MODEL = finalVals.model || undefined;
+        env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = maxContextValue;
+        const { error } = updateSettingsForSource('userSettings', {
+          modelType: 'grok',
+          env: env as unknown as Record<string, string>,
+        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+        if (error) {
+          setOAuthStatus({
+            state: 'error',
+            message: 'Failed to save settings. Please try again.',
+            toRetry: toRetryState,
+          });
+        } else {
+          for (const [k, v] of Object.entries(env)) {
+            if (v === undefined) {
+              delete process.env[k];
+            } else {
+              process.env[k] = v;
+            }
+          }
+          clearGrokClientCache();
+          setOAuthStatus({ state: 'success' });
+          void onDone();
+        }
+      }, [activeField, grokInputValue, grokDisplayValues, setOAuthStatus, onDone]);
+
+      const handleGrokEnter = useCallback(() => {
+        const idx = GROK_FIELDS.indexOf(activeField);
+        if (idx === GROK_FIELDS.length - 1) {
+          setOAuthStatus(buildGrokState(activeField, grokInputValue));
+          doGrokSave();
+        } else {
+          const next = GROK_FIELDS[idx + 1]!;
+          setOAuthStatus(buildGrokState(activeField, grokInputValue, next));
+          setGrokInputValue(grokDisplayValues[next] ?? '');
+          setGrokInputCursorOffset((grokDisplayValues[next] ?? '').length);
+        }
+      }, [activeField, grokInputValue, buildGrokState, doGrokSave, grokDisplayValues, setOAuthStatus]);
+
+      useKeybinding(
+        'tabs:next',
+        () => {
+          const idx = GROK_FIELDS.indexOf(activeField);
+          if (idx < GROK_FIELDS.length - 1) {
+            setOAuthStatus(buildGrokState(activeField, grokInputValue, GROK_FIELDS[idx + 1]));
+            setGrokInputValue(grokDisplayValues[GROK_FIELDS[idx + 1]!] ?? '');
+            setGrokInputCursorOffset((grokDisplayValues[GROK_FIELDS[idx + 1]!] ?? '').length);
+          }
+        },
+        { context: 'FormField' },
+      );
+      useKeybinding(
+        'tabs:previous',
+        () => {
+          const idx = GROK_FIELDS.indexOf(activeField);
+          if (idx > 0) {
+            setOAuthStatus(buildGrokState(activeField, grokInputValue, GROK_FIELDS[idx - 1]));
+            setGrokInputValue(grokDisplayValues[GROK_FIELDS[idx - 1]!] ?? '');
+            setGrokInputCursorOffset((grokDisplayValues[GROK_FIELDS[idx - 1]!] ?? '').length);
+          }
+        },
+        { context: 'FormField' },
+      );
+      useKeybinding(
+        'confirm:no',
+        () => {
+          setOAuthStatus({ state: 'idle' });
+        },
+        { context: 'Confirmation' },
+      );
+
+      const grokColumns = useTerminalSize().columns - 20;
+
+      const renderGrokRow = (field: GrokField, label: string, opts?: { mask?: boolean }) => {
+        const active = activeField === field;
+        const val = grokDisplayValues[field];
+        return (
+          <Box>
+            <Text backgroundColor={active ? 'suggestion' : undefined} color={active ? 'inverseText' : undefined}>
+              {` ${label} `}
+            </Text>
+            <Text> </Text>
+            {active ? (
+              <TextInput
+                value={grokInputValue}
+                onChange={setGrokInputValue}
+                onSubmit={handleGrokEnter}
+                cursorOffset={grokInputCursorOffset}
+                onChangeCursorOffset={setGrokInputCursorOffset}
+                columns={grokColumns}
+                mask={opts?.mask ? '*' : undefined}
+                focus={true}
+              />
+            ) : val ? (
+              <Text color="success">
+                {opts?.mask ? val.slice(0, 8) + '·'.repeat(Math.max(0, val.length - 8)) : val}
+              </Text>
+            ) : null}
+          </Box>
+        );
+      };
+
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Text bold>Grok API Setup</Text>
+          <Text dimColor>Configure xAI Grok. Base URL defaults to https://api.x.ai/v1 when left empty.</Text>
+          <Box flexDirection="column" gap={1}>
+            {renderGrokRow('base_url', 'Base URL ')}
+            {renderGrokRow('api_key', 'API Key  ', { mask: true })}
+            {renderGrokRow('model', 'Model    ')}
+            {renderGrokRow('max_context', 'Max ctx  ')}
+          </Box>
+          <Text dimColor>Model optional (family mapping applies when empty) · Max ctx: context window (e.g. 256k)</Text>
           <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
         </Box>
       );
@@ -1457,6 +1854,12 @@ function OAuthStatusMessage({
           return;
         }
         const baseUrl = resolveChinaProviderBaseURL(provider.id, accessMode);
+        // Auto-derive the context window from the preset table so auto-compact
+        // triggers at the model's real window instead of the 200k fallback.
+        // Custom/unknown models clear the key (undefined deletes on merge) so a
+        // stale limit from a previously selected model cannot linger.
+        const presetModel = provider.models.find(m => m.id === modelId);
+        const presetContextTokens = presetModel ? parseContextWindowTokens(presetModel.contextWindow) : undefined;
         const env: Record<string, string | undefined> = {
           OPENAI_AUTH_MODE: undefined,
           OPENAI_BASE_URL: baseUrl,
@@ -1464,6 +1867,7 @@ function OAuthStatusMessage({
           OPENAI_DEFAULT_SONNET_MODEL: modelId,
           OPENAI_DEFAULT_HAIKU_MODEL: modelId,
           OPENAI_DEFAULT_OPUS_MODEL: modelId,
+          CLAUDE_CODE_MAX_CONTEXT_TOKENS: presetContextTokens ? String(presetContextTokens) : undefined,
         };
         const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
           modelType: 'openai',

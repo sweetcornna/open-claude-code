@@ -18,11 +18,12 @@ import { ApproveApiKey } from './ApproveApiKey.js';
 import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js';
 import { Select } from './CustomSelect/select.js';
 import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
+import { MigrationStep, shouldOfferMigration } from './MigrationStep.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { ThemePicker } from './ThemePicker.js';
 import { OrderedList } from './ui/OrderedList.js';
 
-type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security' | 'terminal-setup';
+type StepId = 'preflight' | 'theme' | 'migrate' | 'oauth' | 'api-key' | 'security' | 'terminal-setup';
 
 interface OnboardingStep {
   id: StepId;
@@ -37,6 +38,9 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [skipOAuth, setSkipOAuth] = useState(false);
   const [oauthEnabled] = useState(() => isAnthropicAuthEnabled());
+  // Snapshotted once on mount: the plan is computed from filesystem probes and
+  // must not change while the wizard is mid-flight (steps array stability).
+  const [migrationPlan] = useState(() => shouldOfferMigration());
   const [theme, setTheme] = useTheme();
 
   useEffect(() => {
@@ -135,6 +139,15 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
 
   const steps: OnboardingStep[] = [];
   steps.push({ id: 'theme', component: themeStep });
+
+  // Offer to migrate an existing ~/.claude setup before auth: a migrated
+  // settings.json may carry provider env that the later steps should see.
+  if (migrationPlan) {
+    steps.push({
+      id: 'migrate',
+      component: <MigrationStep plan={migrationPlan} onDone={goToNextStep} />,
+    });
+  }
 
   if (apiKeyNeedingApproval) {
     steps.push({
