@@ -17,7 +17,11 @@ const cache = new WeakMap<ZodTypeAny, JsonSchema7Type>()
 export function zodToJsonSchema(schema: ZodTypeAny): JsonSchema7Type {
   const hit = cache.get(schema)
   if (hit) return hit
-  const result = toJSONSchema(schema) as JsonSchema7Type
+  // unrepresentable: 'any'：zod v4 默认对 z.undefined()/z.bigint() 等直接 throw，
+  // 这里在每个 API 请求的工具序列化热路径上，宁可降级为空 schema 也不能崩。
+  const result = toJSONSchema(schema, {
+    unrepresentable: 'any',
+  }) as JsonSchema7Type
   cache.set(schema, result)
   return result
 }

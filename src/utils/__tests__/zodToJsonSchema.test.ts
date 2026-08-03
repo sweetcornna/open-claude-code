@@ -70,4 +70,15 @@ describe('zodToJsonSchema', () => {
     const result = zodToJsonSchema(z.boolean())
     expect(result.type).toBe('boolean')
   })
+
+  // 回归：zod v4 默认 unrepresentable:'throw'，含 z.undefined() 的 union 会抛
+  // "Undefined cannot be represented in JSON Schema"。这是 API 请求热路径，必须降级不崩。
+  test('does not throw on schemas containing unrepresentable types', () => {
+    const schema = z.object({
+      flexible: z.union([z.array(z.string()), z.boolean(), z.undefined()]),
+    })
+    const result = zodToJsonSchema(schema)
+    expect(result.type).toBe('object')
+    expect((result.properties as any).flexible).toBeDefined()
+  })
 })
