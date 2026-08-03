@@ -242,6 +242,19 @@ export function convertToSandboxRuntimeConfig(
     cwd === originalCwd ? [originalCwd] : [originalCwd, cwd]
   denyWrite.push(...getProtectedConfigDirectories(workingDirectories))
 
+  // sandbox.filesystem.disabled (official 2.1.216 parity): skip filesystem
+  // isolation — the whole tree becomes writable and the path-collection
+  // below is bypassed — while network egress controls stay fully active.
+  // The always-deny set computed above (settings files, managed drop-in,
+  // protected config directories) is kept: "disabled" must never grant a
+  // sandboxed command a settings-file escape that even the ISOLATED mode
+  // forbids.
+  const filesystemDisabled = settings.sandbox?.filesystem?.disabled === true
+  if (filesystemDisabled) {
+    allowWrite.length = 0
+    allowWrite.push('/')
+  }
+
   // SECURITY: Git's is_git_directory() treats cwd as a bare repo if it has
   // HEAD + objects/ + refs/. An attacker planting these (plus a config with
   // core.fsmonitor) escapes the sandbox when Claude's unsandboxed git runs.
@@ -267,11 +280,16 @@ export function convertToSandboxRuntimeConfig(
     }
   }
 
-  // If we detected a git worktree during initialize(), the main repo path is
-  // cached in worktreeMainRepoPath. Git operations in a worktree need write
-  // access to the main repo's .git directory for index.lock etc.
-  // This is resolved once at init time (worktree status doesn't change mid-session).
+  // In disabled mode the rule-derived path loop below is skipped: '/' is
+  // already writable (allow paths moot) and rule-derived extra DENIES are
+  // intentionally not applied — `disabled` means "no filesystem isolation
+  // beyond the protected config set". The worktree/additionalDirs pushes
+  // still run; they are redundant no-ops next to '/'.
   if (worktreeMainRepoPath && worktreeMainRepoPath !== cwd) {
+    // If we detected a git worktree during initialize(), the main repo path
+    // is cached in worktreeMainRepoPath. Git operations in a worktree need
+    // write access to the main repo's .git directory for index.lock etc.
+    // Resolved once at init (worktree status doesn't change mid-session).
     allowWrite.push(worktreeMainRepoPath)
   }
 
@@ -289,7 +307,7 @@ export function convertToSandboxRuntimeConfig(
   // Iterate through each settings source to resolve paths correctly
   // Path patterns like `/foo` are relative to the settings file directory,
   // so we need to know which source each rule came from
-  for (const source of SETTING_SOURCES) {
+  for (const source of filesystemDisabled ? [] : SETTING_SOURCES) {
     const sourceSettings = getSettingsForSource(source)
 
     // Extract filesystem paths from permission rules

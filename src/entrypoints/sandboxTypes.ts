@@ -47,6 +47,14 @@ export const SandboxNetworkConfigSchema = lazySchema(() =>
 export const SandboxFilesystemConfigSchema = lazySchema(() =>
   z
     .object({
+      disabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, skip filesystem isolation entirely while keeping ' +
+            'network egress controls active (official 2.1.216 parity). ' +
+            'Protected config directories remain enforced.',
+        ),
       allowWrite: z
         .array(z.string())
         .optional()
