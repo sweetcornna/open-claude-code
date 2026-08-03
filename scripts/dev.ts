@@ -6,7 +6,7 @@
  */
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getMacroDefines, DEFAULT_BUILD_FEATURES } from './defines.ts'
+import { getMacroDefines, resolveBuildFeatures } from './defines.ts'
 
 // Resolve project root from this script's location
 const __filename = fileURLToPath(import.meta.url)
@@ -28,16 +28,14 @@ const defineArgs = Object.entries(defines).flatMap(([k, v]) => [
 ])
 
 // Bun --feature flags: enable feature() gates at runtime.
-// Uses the shared DEFAULT_BUILD_FEATURES list from defines.ts.
-
-// Any env var matching FEATURE_<NAME>=1 will also enable that feature.
+// Defaults from DEFAULT_BUILD_FEATURES, overridden per-flag by FEATURE_<NAME>:
+// `1`/`true` enables, `0`/`false`/empty disables. Shared with the Vite plugin
+// so dev and release builds resolve flags identically.
 // e.g. FEATURE_PROACTIVE=1 bun run dev
-const envFeatures = Object.entries(process.env)
-  .filter(([k]) => k.startsWith('FEATURE_'))
-  .map(([k]) => k.replace('FEATURE_', ''))
-
-const allFeatures = [...new Set([...DEFAULT_BUILD_FEATURES, ...envFeatures])]
-const featureArgs = allFeatures.flatMap(name => ['--feature', name])
+const featureArgs = [...resolveBuildFeatures()].flatMap(name => [
+  '--feature',
+  name,
+])
 
 // If BUN_INSPECT is set, pass --inspect-wait to the child process
 const inspectArgs = process.env.BUN_INSPECT

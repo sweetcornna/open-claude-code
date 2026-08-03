@@ -19,6 +19,7 @@ type MockAxiosResponse = {
 
 type MockAxiosError = Error & {
   isAxiosError: true
+  code?: string
   response?: {
     headers: Record<string, unknown>
     status: number
@@ -26,9 +27,19 @@ type MockAxiosError = Error & {
 }
 
 let getMock: (url: string) => Promise<MockAxiosResponse>
+let postMock: (
+  url: string,
+  data: unknown,
+  config: Record<string, unknown>,
+) => Promise<unknown>
 
 const axiosHandle = setupAxiosMock()
 axiosHandle.stubs.get = (url: string) => getMock(url)
+axiosHandle.stubs.post = (
+  url: string,
+  data: unknown,
+  config: Record<string, unknown>,
+) => postMock(url, data, config)
 axiosHandle.stubs.isAxiosError = (error: unknown): boolean =>
   typeof error === 'object' &&
   error !== null &&
@@ -66,6 +77,12 @@ beforeEach(() => {
   getMock = async () => ({
     data: new TextEncoder().encode('hello').buffer,
     headers: { 'content-type': 'text/plain' },
+    status: 200,
+    statusText: 'OK',
+  })
+  postMock = async () => ({
+    data: { raw_content: 'hello from tavily' },
+    headers: {},
     status: 200,
     statusText: 'OK',
   })
@@ -155,5 +172,83 @@ describe('WebFetch response headers', () => {
     }
     expect(result.content).toBe('plain body')
     expect(result.contentType).toBe('text/plain, charset=utf-8')
+  })
+})
+
+describe('Tavily response limits', () => {
+  test('configures Axios to cap the decompressed response body', async () => {
+    let capturedConfig: Record<string, unknown> | undefined
+    postMock = async (_url, _data, config) => {
+      capturedConfig = config
+      return {
+        data: { raw_content: 'bounded' },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }
+    const { clearWebFetchCache, fetchContentWithTavily } = await import(
+      '../utils'
+    )
+    clearWebFetchCache()
+
+    await fetchContentWithTavily(
+      'https://example.com/tavily-limit',
+      new AbortController(),
+    )
+
+    expect(capturedConfig?.maxContentLength).toBe(10 * 1024 * 1024)
+    expect(capturedConfig?.decompress).toBe(true)
+  })
+
+  test('rejects oversized raw_content with response_too_large and does not cache it', async () => {
+    let calls = 0
+    postMock = async () => {
+      calls++
+      return {
+        data: {
+          raw_content: calls === 1 ? 'x'.repeat(10 * 1024 * 1024 + 1) : 'small',
+        },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      }
+    }
+    const { clearWebFetchCache, fetchContentWithTavily } = await import(
+      '../utils'
+    )
+    clearWebFetchCache()
+    const url = 'https://example.com/tavily-oversized'
+
+    await expect(
+      fetchContentWithTavily(url, new AbortController()),
+    ).rejects.toThrow(/response_too_large/)
+    const retry = await fetchContentWithTavily(url, new AbortController())
+
+    expect(calls).toBe(2)
+    expect('type' in retry).toBe(false)
+    if (!('type' in retry)) expect(retry.content).toBe('small')
+  })
+
+  test('normalizes Axios maxContentLength failures to response_too_large', async () => {
+    postMock = async () => {
+      const error = new Error(
+        'maxContentLength size of 10485760 exceeded',
+      ) as MockAxiosError
+      error.isAxiosError = true
+      error.code = 'ERR_BAD_RESPONSE'
+      throw error
+    }
+    const { clearWebFetchCache, fetchContentWithTavily } = await import(
+      '../utils'
+    )
+    clearWebFetchCache()
+
+    await expect(
+      fetchContentWithTavily(
+        'https://example.com/tavily-axios-limit',
+        new AbortController(),
+      ),
+    ).rejects.toThrow(/response_too_large/)
   })
 })
