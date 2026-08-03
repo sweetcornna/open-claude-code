@@ -2,6 +2,7 @@ import { mkdir, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { beforeEach, afterEach, describe, expect, mock, test } from 'bun:test'
+import { stateMockWith } from '../../../tests/mocks/state.js'
 
 import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
@@ -14,16 +15,19 @@ mock.module('bun:bundle', () => ({
 }))
 
 let mockedSessionId = 'test-session-123'
-mock.module('src/bootstrap/state.ts', () => ({
-  getSessionId: () => mockedSessionId,
-  regenerateSessionId: () => {
-    mockedSessionId = `test-session-${Date.now()}`
-  },
-  switchSession: (sessionId: string) => {
-    mockedSessionId = sessionId
-  },
-  getIsNonInteractiveSession: () => false,
-}))
+mock.module(
+  'src/bootstrap/state.js',
+  stateMockWith({
+    getSessionId: () => mockedSessionId,
+    regenerateSessionId: () => {
+      mockedSessionId = `test-session-${Date.now()}`
+    },
+    switchSession: (sessionId: string) => {
+      mockedSessionId = sessionId
+    },
+    getIsNonInteractiveSession: () => false,
+  }),
+)
 // `mock.module` is process-global and replaces the WHOLE module, so this stub
 // has to cover every export other files reach for — `getDefaultAppState()`
 // lazily requires this module and calls `isTeammate()`/`isPlanModeRequired()`.

@@ -13,6 +13,7 @@
  */
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
+import { stateMockWith } from '../../tests/mocks/state.js'
 import { setupGrowthbookMock } from '../../tests/mocks/growthbook.js'
 import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.js'
 
@@ -29,11 +30,14 @@ import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.js'
 
 // --- Mock 链 (阻断副作用) ---
 
-mock.module('src/bootstrap/state.js', () => ({
-  getIsNonInteractiveSession: () => false,
-  sessionId: 'test-session',
-  getCwd: () => '/test/project',
-}))
+mock.module(
+  'src/bootstrap/state.js',
+  stateMockWith({
+    getIsNonInteractiveSession: () => false,
+    sessionId: 'test-session',
+    getCwd: () => '/test/project',
+  }),
+)
 mock.module('src/utils/filesystem/cwd.js', () => ({
   getCwd: () => '/test/project',
 }))

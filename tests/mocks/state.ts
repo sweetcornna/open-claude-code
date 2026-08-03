@@ -1,16 +1,34 @@
 /**
- * Shared partial mock for src/bootstrap/state.ts
+ * Shared COMPLETE mock for src/bootstrap/state.ts
  *
- * Covers the most commonly imported exports plus their transitive callers.
- * Add exports here when new tests need them — never mock exports that don't exist.
+ * The real module is fail-fast (calls throw before bootstrap), so unlike
+ * tests/mocks/envUtils.ts this mock cannot delegate to the real
+ * implementation — instead it guarantees a complete export surface: hand-tuned
+ * safe defaults below, every remaining real export auto-filled, and per-file
+ * overrides on top. Completeness matters because mock.module is process-global
+ * last-write-wins: a hand-rolled PARTIAL state mock in one file used to break
+ * bootstrap/state.test.ts (and everything touching cwd/session identity) in
+ * every file that ran after it — order-dependent, Linux-CI-only.
  *
  * Usage:
- *   import { stateMock } from '../../../tests/mocks/state'
- *   mock.module('src/bootstrap/state.js', stateMock)
+ *   import { stateMockWith } from '../../../tests/mocks/state.js'
+ *   mock.module('src/bootstrap/state.js', stateMockWith({
+ *     getSessionId: () => 'my-suite-session',
+ *   }))
+ *
+ * `stateMock` (no overrides) is kept for existing consumers.
  */
-export function stateMock() {
+
+import * as realState from 'src/bootstrap/state.js'
+
+function baseStateMock() {
   const noop = () => {}
   let lastAPIRequest: unknown = null
+  // Model strings cache. Faithful get/set with null-uninitialized semantics:
+  // modelStrings.ts checks `=== null` to decide whether to initialize; an
+  // auto-filled `() => undefined` would skip init and send undefined into
+  // every downstream model lookup (getModelStrings().sonnet46 crashes).
+  let modelStrings: unknown = null
   return {
     // Session identity
     getSessionId: () => 'mock-session-id',
@@ -56,6 +74,12 @@ export function stateMock() {
     resetTurnClassifierDuration: noop,
     getTurnClassifierCount: () => 0,
 
+    // Model strings cache (see note above)
+    getModelStrings: () => modelStrings,
+    setModelStrings: (ms: unknown) => {
+      modelStrings = ms
+    },
+
     // Stats store
     getStatsStore: () => ({}),
     setStatsStore: noop,
@@ -93,3 +117,25 @@ export function stateMock() {
     addSlowOperation: noop,
   }
 }
+
+/**
+ * Complete-surface factory with per-file overrides. Real exports missing from
+ * the hand-tuned base are auto-filled (functions -> () => undefined, values
+ * copied), so a caller can never install a partial surface by accident.
+ */
+export function stateMockWith(
+  overrides: Record<string, unknown> = {},
+): () => Record<string, unknown> {
+  return () => {
+    const base = baseStateMock() as Record<string, unknown>
+    const full: Record<string, unknown> = { ...base }
+    for (const key of Object.keys(realState)) {
+      if (key in full) continue
+      const realValue = (realState as Record<string, unknown>)[key]
+      full[key] = typeof realValue === 'function' ? () => undefined : realValue
+    }
+    return { ...full, ...overrides }
+  }
+}
+
+export const stateMock = stateMockWith()

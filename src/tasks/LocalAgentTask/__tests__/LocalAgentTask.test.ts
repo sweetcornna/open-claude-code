@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { stateMockWith } from '../../../../tests/mocks/state.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
@@ -31,13 +32,16 @@ mock.module('src/utils/session/messageQueueManager.js', () => ({
   },
 }))
 
-mock.module('src/bootstrap/state.js', () => ({
-  getSdkAgentProgressSummariesEnabled: () => false,
-  getSessionId: () => 'test-session-001',
-  getProjectRoot: () => '/test/project',
-  getIsNonInteractiveSession: () => false,
-  addSlowOperation: noop,
-}))
+mock.module(
+  'src/bootstrap/state.js',
+  stateMockWith({
+    getSdkAgentProgressSummariesEnabled: () => false,
+    getSessionId: () => 'test-session-001',
+    getProjectRoot: () => '/test/project',
+    getIsNonInteractiveSession: () => false,
+    addSlowOperation: noop,
+  }),
+)
 
 mock.module('src/services/PromptSuggestion/speculation.js', () => ({
   abortSpeculation: noop,

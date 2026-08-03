@@ -7,6 +7,7 @@ import {
   mock,
   test,
 } from 'bun:test'
+import { stateMockWith } from '../../../../tests/mocks/state.js'
 import type { LocalJSXCommandCall } from '../../../types/command.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
@@ -108,19 +109,22 @@ mock.module('src/services/analytics/index.js', () => ({
 }))
 
 const noop = () => {}
-mock.module('src/bootstrap/state.js', () => ({
-  getSessionId: () => 'parent-session-id',
-  getParentSessionId: () => undefined,
-  // Additional exports needed by transitive imports (e.g. cwd.ts, sandbox-adapter.ts)
-  getCwdState: () => '/mock/cwd',
-  getOriginalCwd: () => '/mock/cwd',
-  getSessionProjectDir: () => null,
-  getProjectRoot: () => '/mock/project',
-  setCwdState: noop,
-  setOriginalCwd: noop,
-  getIsNonInteractiveSession: () => false,
-  addSlowOperation: noop,
-}))
+mock.module(
+  'src/bootstrap/state.js',
+  stateMockWith({
+    getSessionId: () => 'parent-session-id',
+    getParentSessionId: () => undefined,
+    // Additional exports needed by transitive imports (e.g. cwd.ts, sandbox-adapter.ts)
+    getCwdState: () => '/mock/cwd',
+    getOriginalCwd: () => '/mock/cwd',
+    getSessionProjectDir: () => null,
+    getProjectRoot: () => '/mock/project',
+    setCwdState: noop,
+    setOriginalCwd: noop,
+    getIsNonInteractiveSession: () => false,
+    addSlowOperation: noop,
+  }),
+)
 
 // ── Import SUT after mocks ──
 let callAutofixPr: LocalJSXCommandCall
