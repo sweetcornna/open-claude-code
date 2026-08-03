@@ -84,6 +84,101 @@ type Props = {
   onTurnComplete?: (messages: Message[]) => void | Promise<void>;
 };
 
+type EnrichSessionLogs = (
+  allLogs: LogOption[],
+  startIndex: number,
+  count: number,
+) => Promise<{ logs: LogOption[]; nextIndex: number }>;
+
+type ProgressiveLoad = {
+  generation: number;
+  source: SessionLogResult;
+  promise: Promise<void>;
+};
+
+/** Keeps progressive reads single-flight and rejects results from old sources. */
+export class ProgressiveSessionLogLoader {
+  private generation = 0;
+  private source: SessionLogResult | null = null;
+  private logCount = 0;
+  private inFlight: ProgressiveLoad | null = null;
+
+  beginSourceLoad(): number {
+    this.generation++;
+    this.source = null;
+    this.logCount = 0;
+    this.inFlight = null;
+    return this.generation;
+  }
+
+  commitSource(generation: number, source: SessionLogResult): boolean {
+    if (!this.isCurrentGeneration(generation)) return false;
+    this.source = source;
+    this.logCount = source.logs.length;
+    return true;
+  }
+
+  invalidate(generation: number): void {
+    if (!this.isCurrentGeneration(generation)) return;
+    this.generation++;
+    this.source = null;
+    this.logCount = 0;
+    this.inFlight = null;
+  }
+
+  isCurrentGeneration(generation: number): boolean {
+    return this.generation === generation;
+  }
+
+  loadMore(count: number, enrich: EnrichSessionLogs, append: (logs: LogOption[]) => void): Promise<void> | undefined {
+    const source = this.source;
+    if (!source || source.nextIndex >= source.allStatLogs.length) return;
+
+    const generation = this.generation;
+    if (this.inFlight?.generation === generation && this.inFlight.source === source) {
+      return this.inFlight.promise;
+    }
+
+    let promise: Promise<void>;
+    promise = this.loadMoreFromSource(generation, source, count, enrich, append).finally(() => {
+      if (this.inFlight?.promise === promise) {
+        this.inFlight = null;
+      }
+    });
+    this.inFlight = { generation, source, promise };
+    return promise;
+  }
+
+  private async loadMoreFromSource(
+    generation: number,
+    source: SessionLogResult,
+    count: number,
+    enrich: EnrichSessionLogs,
+    append: (logs: LogOption[]) => void,
+  ): Promise<void> {
+    while (source.nextIndex < source.allStatLogs.length) {
+      const startIndex = source.nextIndex;
+      const result = await enrich(source.allStatLogs, startIndex, count);
+      if (this.generation !== generation || this.source !== source) return;
+
+      source.nextIndex = result.nextIndex;
+      if (result.logs.length > 0) {
+        // enrichLogs returns fresh unshared objects — safe to number in place.
+        const offset = this.logCount;
+        result.logs.forEach((log, i) => {
+          log.value = offset + i;
+        });
+        append(result.logs);
+        this.logCount += result.logs.length;
+        return;
+      }
+
+      // A non-advancing enrichment result must not spin forever.
+      if (result.nextIndex <= startIndex) return;
+    }
+  }
+}
+
 export function ResumeConversation({
   commands,
   worktreePaths,
@@ -120,10 +215,7 @@ export function ResumeConversation({
     mainThreadAgentDefinition?: AgentDefinition;
   } | null>(null);
   const [crossProjectCommand, setCrossProjectCommand] = React.useState<string | null>(null);
-  const sessionLogResultRef = React.useRef<SessionLogResult | null>(null);
-  // Mirror of logs.length so loadMoreLogs can compute value indices outside
-  // the setLogs updater (keeping it pure per React's contract).
-  const logCountRef = React.useRef(0);
+  const progressiveLoader = React.useRef(new ProgressiveSessionLogLoader()).current;
 
   const filteredLogs = React.useMemo(() => {
     let result = logs.filter(l => !l.isSidechain);
@@ -144,60 +236,60 @@ export function ResumeConversation({
   const isResumeWithRenameEnabled = isCustomTitleEnabled();
 
   React.useEffect(() => {
+    const generation = progressiveLoader.beginSourceLoad();
+    setLoading(true);
     loadSameRepoMessageLogsProgressive(worktreePaths)
       .then(result => {
-        sessionLogResultRef.current = result;
-        logCountRef.current = result.logs.length;
+        if (!progressiveLoader.commitSource(generation, result)) return;
         setLogs(result.logs);
-        setLoading(false);
       })
       .catch(error => {
-        logError(error);
-        setLoading(false);
+        if (progressiveLoader.isCurrentGeneration(generation)) {
+          logError(error);
+        }
+      })
+      .finally(() => {
+        if (progressiveLoader.isCurrentGeneration(generation)) {
+          setLoading(false);
+        }
       });
-  }, [worktreePaths]);
+    return () => progressiveLoader.invalidate(generation);
+  }, [worktreePaths, progressiveLoader]);
 
-  const loadMoreLogs = React.useCallback((count: number) => {
-    const ref = sessionLogResultRef.current;
-    if (!ref || ref.nextIndex >= ref.allStatLogs.length) return;
-
-    void enrichLogs(ref.allStatLogs, ref.nextIndex, count).then(result => {
-      ref.nextIndex = result.nextIndex;
-      if (result.logs.length > 0) {
-        // enrichLogs returns fresh unshared objects — safe to mutate in place.
-        // Offset comes from logCountRef so the setLogs updater stays pure.
-        const offset = logCountRef.current;
-        result.logs.forEach((log, i) => {
-          log.value = offset + i;
-        });
-        setLogs(prev => prev.concat(result.logs));
-        logCountRef.current += result.logs.length;
-      } else if (ref.nextIndex < ref.allStatLogs.length) {
-        loadMoreLogs(count);
-      }
-    });
-  }, []);
+  const loadMoreLogs = React.useCallback(
+    (count: number) => {
+      const promise = progressiveLoader.loadMore(count, enrichLogs, newLogs => {
+        setLogs(prev => prev.concat(newLogs));
+      });
+      if (promise) void promise.catch(logError);
+    },
+    [progressiveLoader],
+  );
 
   const loadLogs = React.useCallback(
     (allProjects: boolean) => {
+      const generation = progressiveLoader.beginSourceLoad();
       setLoading(true);
       const promise = allProjects
         ? loadAllProjectsMessageLogsProgressive()
         : loadSameRepoMessageLogsProgressive(worktreePaths);
       promise
         .then(result => {
-          sessionLogResultRef.current = result;
-          logCountRef.current = result.logs.length;
+          if (!progressiveLoader.commitSource(generation, result)) return;
           setLogs(result.logs);
         })
         .catch(error => {
-          logError(error);
+          if (progressiveLoader.isCurrentGeneration(generation)) {
+            logError(error);
+          }
         })
         .finally(() => {
-          setLoading(false);
+          if (progressiveLoader.isCurrentGeneration(generation)) {
+            setLoading(false);
+          }
         });
     },
-    [worktreePaths],
+    [worktreePaths, progressiveLoader],
   );
 
   const handleToggleAllProjects = React.useCallback(() => {

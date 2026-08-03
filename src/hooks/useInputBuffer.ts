@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 import type { PastedContent } from '../utils/config/config.js'
 
 export type BufferEntry = {
@@ -24,12 +24,56 @@ export type UseInputBufferResult = {
   clearBuffer: () => void
 }
 
+type InputBufferState = {
+  buffer: BufferEntry[]
+  currentIndex: number
+}
+
+type InputBufferAction =
+  | { type: 'push'; entry: BufferEntry; maxBufferSize: number }
+  | { type: 'undo' }
+  | { type: 'clear' }
+
+const INITIAL_BUFFER_STATE: InputBufferState = {
+  buffer: [],
+  currentIndex: -1,
+}
+
+function inputBufferReducer(
+  state: InputBufferState,
+  action: InputBufferAction,
+): InputBufferState {
+  if (action.type === 'clear') return INITIAL_BUFFER_STATE
+
+  if (action.type === 'undo') {
+    if (state.currentIndex < 0 || state.buffer.length === 0) return state
+    return {
+      ...state,
+      currentIndex: Math.max(0, state.currentIndex - 1),
+    }
+  }
+
+  const truncatedBuffer =
+    state.currentIndex >= 0
+      ? state.buffer.slice(0, state.currentIndex + 1)
+      : state.buffer
+  const lastEntry = truncatedBuffer[truncatedBuffer.length - 1]
+
+  // Index and snapshots form one state transition; duplicate text must leave
+  // both unchanged or the next undo points at the current text again.
+  if (lastEntry?.text === action.entry.text) return state
+
+  if (action.maxBufferSize <= 0) return INITIAL_BUFFER_STATE
+
+  const buffer = [...truncatedBuffer, action.entry].slice(-action.maxBufferSize)
+  return { buffer, currentIndex: buffer.length - 1 }
+}
+
 export function useInputBuffer({
   maxBufferSize,
   debounceMs,
 }: UseInputBufferProps): UseInputBufferResult {
-  const [buffer, setBuffer] = useState<BufferEntry[]>([])
-  const [currentIndex, setCurrentIndex] = useState(-1)
+  const [state, dispatch] = useReducer(inputBufferReducer, INITIAL_BUFFER_STATE)
   const lastPushTime = useRef<number>(0)
   const pendingPush = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -60,68 +104,48 @@ export function useInputBuffer({
       }
 
       lastPushTime.current = now
-
-      setBuffer(prevBuffer => {
-        // If we're not at the end of the buffer, truncate everything after current position
-        const newBuffer =
-          currentIndex >= 0 ? prevBuffer.slice(0, currentIndex + 1) : prevBuffer
-
-        // Don't add if it's the same as the last entry
-        const lastEntry = newBuffer[newBuffer.length - 1]
-        if (lastEntry && lastEntry.text === text) {
-          return newBuffer
-        }
-
-        // Add new entry
-        const updatedBuffer = [
-          ...newBuffer,
-          { text, cursorOffset, pastedContents, timestamp: now },
-        ]
-
-        // Limit buffer size
-        if (updatedBuffer.length > maxBufferSize) {
-          return updatedBuffer.slice(-maxBufferSize)
-        }
-
-        return updatedBuffer
-      })
-
-      // Update current index to point to the new entry
-      setCurrentIndex(prev => {
-        const newIndex = prev >= 0 ? prev + 1 : buffer.length
-        return Math.min(newIndex, maxBufferSize - 1)
+      dispatch({
+        type: 'push',
+        entry: { text, cursorOffset, pastedContents, timestamp: now },
+        maxBufferSize,
       })
     },
-    [debounceMs, maxBufferSize, currentIndex, buffer.length],
+    [debounceMs, maxBufferSize],
   )
 
   const undo = useCallback((): BufferEntry | undefined => {
-    if (currentIndex < 0 || buffer.length === 0) {
+    if (state.currentIndex < 0 || state.buffer.length === 0) {
       return undefined
     }
 
-    const targetIndex = Math.max(0, currentIndex - 1)
-    const entry = buffer[targetIndex]
+    const targetIndex = Math.max(0, state.currentIndex - 1)
+    const entry = state.buffer[targetIndex]
 
     if (entry) {
-      setCurrentIndex(targetIndex)
+      dispatch({ type: 'undo' })
       return entry
     }
 
     return undefined
-  }, [buffer, currentIndex])
+  }, [state])
 
   const clearBuffer = useCallback(() => {
-    setBuffer([])
-    setCurrentIndex(-1)
+    dispatch({ type: 'clear' })
     lastPushTime.current = 0
     if (pendingPush.current) {
       clearTimeout(pendingPush.current)
       pendingPush.current = null
     }
-  }, [lastPushTime, pendingPush])
+  }, [])
 
-  const canUndo = currentIndex > 0 && buffer.length > 1
+  useEffect(
+    () => () => {
+      if (pendingPush.current) clearTimeout(pendingPush.current)
+    },
+    [],
+  )
+
+  const canUndo = state.currentIndex > 0 && state.buffer.length > 1
 
   return {
     pushToBuffer,
@@ -129,4 +153,9 @@ export function useInputBuffer({
     canUndo,
     clearBuffer,
   }
+}
+
+export const _test = {
+  inputBufferReducer,
+  initialState: INITIAL_BUFFER_STATE,
 }

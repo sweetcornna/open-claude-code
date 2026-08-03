@@ -38,6 +38,10 @@ type Props = {
   onCancel: () => void;
 };
 
+export function getUserMemoryDescription(userMemoryPath: string): string {
+  return `Saved in ${getDisplayPath(userMemoryPath)}`;
+}
+
 export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNode {
   const existingMemoryFiles = use(getMemoryFiles()) as MemoryFileInfo[];
 
@@ -109,7 +113,7 @@ export function MemoryFileSelector({ onSelect, onCancel }: Props): React.ReactNo
     const isGit = projectIsInGitRepo(getOriginalCwd());
 
     if (file.type === 'User' && !file.isNested) {
-      description = 'Saved in ~/.claude/CLAUDE.md';
+      description = getUserMemoryDescription(userMemoryPath);
     } else if (file.type === 'Project' && !file.isNested && file.path === projectMemoryPath) {
       description = `${isGit ? 'Checked in at' : 'Saved in'} ./CLAUDE.md`;
     } else if (file.parent) {

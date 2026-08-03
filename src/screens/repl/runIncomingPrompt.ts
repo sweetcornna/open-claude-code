@@ -62,68 +62,108 @@ export function runIncomingPrompt(
         } satisfies QueuedCommand)
       : input
 
+  // Claiming an autonomy run can touch disk. Reserve before that first await
+  // so local input cannot start a different query while this command is being
+  // moved from queued to running.
+  if (!queryGuard.reserve()) return false
+  const reservationGeneration = queryGuard.generation
+
   void (async () => {
-    const claim = await claimConsumableQueuedAutonomyCommands([queuedCommand])
-    const command = claim.attachmentCommands[0]
-    if (!command) return
-
-    const newAbortController = createAbortController()
-    setAbortController(newAbortController)
-
-    // Create a user message with the formatted content (includes XML wrapper)
-    const userMessage = createUserMessage({
-      content: command.value,
-      isMeta: command.isMeta ? true : undefined,
-      origin: command.origin,
-    })
-
-    let executed = false
     try {
-      executed =
-        (await onQuery(
-          [userMessage],
-          newAbortController,
-          true,
-          [],
-          mainLoopModel,
-        )) !== false
-    } catch (error: unknown) {
+      const claim = await claimConsumableQueuedAutonomyCommands([queuedCommand])
+      const command = claim.attachmentCommands[0]
+      if (!command) return
+
+      const preserveUnexecutedCommand = async (): Promise<void> => {
+        try {
+          if (claim.claimedCommands.length > 0) {
+            await finalizeAutonomyCommandsForTurn({
+              commands: claim.claimedCommands,
+              outcome: { type: 'cancelled' },
+              currentDir: getCwd(),
+              priority: 'later',
+            })
+          } else {
+            enqueue(command)
+          }
+        } catch (finalizeError: unknown) {
+          logError(toError(finalizeError))
+        }
+      }
+
+      // forceEnd increments the generation. Detect that invalidation before
+      // installing an abort controller or calling onQuery, whose concurrent
+      // path would otherwise strip metadata while requeueing ordinary text.
+      if (queryGuard.generation !== reservationGeneration) {
+        await preserveUnexecutedCommand()
+        return
+      }
+
+      const newAbortController = createAbortController()
+      setAbortController(newAbortController)
+
+      // Create a user message with the formatted content (includes XML wrapper)
+      const userMessage = createUserMessage({
+        content: command.value,
+        isMeta: command.isMeta ? true : undefined,
+        origin: command.origin,
+      })
+
+      let executed = false
       try {
-        await finalizeAutonomyCommandsForTurn({
+        executed =
+          (await onQuery(
+            [userMessage],
+            newAbortController,
+            true,
+            [],
+            mainLoopModel,
+          )) !== false
+      } catch (error: unknown) {
+        try {
+          await finalizeAutonomyCommandsForTurn({
+            commands: claim.claimedCommands,
+            outcome: { type: 'failed', error },
+            currentDir: getCwd(),
+            priority: 'later',
+          })
+        } catch (finalizeError: unknown) {
+          logError(toError(finalizeError))
+        }
+        logError(toError(error))
+        return
+      }
+
+      // A forced cancellation can invalidate the reservation before onQuery
+      // starts. Preserve ordinary/meta commands, and close claimed autonomy
+      // runs explicitly so they never remain stuck in `running`.
+      if (!executed) {
+        await preserveUnexecutedCommand()
+        return
+      }
+
+      // Keep this finalize in its own try/catch so a failure here does not
+      // trigger a second finalize as `failed` for the same commands.
+      try {
+        const nextCommands = await finalizeAutonomyCommandsForTurn({
           commands: claim.claimedCommands,
-          outcome: { type: 'failed', error },
+          outcome: { type: 'completed' },
           currentDir: getCwd(),
           priority: 'later',
         })
+        for (const nextCommand of nextCommands) {
+          enqueue(nextCommand)
+        }
       } catch (finalizeError: unknown) {
         logError(toError(finalizeError))
       }
+    } catch (error: unknown) {
       logError(toError(error))
-      return
+    } finally {
+      // onQuery transitions dispatching→running and owns the running→idle
+      // cleanup. This only releases reservations abandoned before that point.
+      queryGuard.cancelReservation()
     }
-
-    // Only finalize as completed when onQuery actually executed the turn
-    // (it returns false from the concurrent-guard path without running).
-    // Keep this finalize in its own try/catch so a failure here does not
-    // trigger a second finalize as `failed` for the same commands.
-    if (!executed) {
-      return
-    }
-    try {
-      const nextCommands = await finalizeAutonomyCommandsForTurn({
-        commands: claim.claimedCommands,
-        outcome: { type: 'completed' },
-        currentDir: getCwd(),
-        priority: 'later',
-      })
-      for (const nextCommand of nextCommands) {
-        enqueue(nextCommand)
-      }
-    } catch (finalizeError: unknown) {
-      logError(toError(finalizeError))
-    }
-  })().catch((error: unknown) => {
-    logError(toError(error))
-  })
+  })()
   return true
 }

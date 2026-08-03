@@ -11,7 +11,10 @@ import {
   isSwarmWorker,
   sendPermissionRequestViaMailbox,
 } from '../../../utils/swarm/permissionSync.js'
-import { registerPermissionCallback } from '../../useSwarmPermissionPoller.js'
+import {
+  registerPermissionCallback,
+  unregisterPermissionCallback,
+} from '../../useSwarmPermissionPoller.js'
 import type { PermissionContext } from '../PermissionContext.js'
 import { createResolveOnce } from '../PermissionContext.js'
 
@@ -21,6 +24,126 @@ type SwarmWorkerPermissionParams = {
   pendingClassifierCheck?: PendingClassifierCheck | undefined
   updatedInput: Record<string, unknown> | undefined
   suggestions: PermissionUpdate[] | undefined
+}
+
+type PermissionRequest = ReturnType<typeof createPermissionRequest>
+
+type SwarmWorkerPermissionDependencies = {
+  registerPermissionCallback: typeof registerPermissionCallback
+  unregisterPermissionCallback: typeof unregisterPermissionCallback
+  sendPermissionRequestViaMailbox: typeof sendPermissionRequestViaMailbox
+}
+
+const SWARM_WORKER_PERMISSION_DEPENDENCIES: SwarmWorkerPermissionDependencies =
+  {
+    registerPermissionCallback,
+    unregisterPermissionCallback,
+    sendPermissionRequestViaMailbox,
+  }
+
+async function waitForLeaderPermissionDecision(
+  params: SwarmWorkerPermissionParams,
+  request: PermissionRequest,
+  dependencies: SwarmWorkerPermissionDependencies = SWARM_WORKER_PERMISSION_DEPENDENCIES,
+): Promise<PermissionDecision | null> {
+  const { ctx, description } = params
+  const signal = ctx.toolUseContext.abortController.signal
+
+  const clearPendingRequest = (): void =>
+    ctx.toolUseContext.setAppState(prev => ({
+      ...prev,
+      pendingWorkerRequest: null,
+    }))
+
+  return new Promise<PermissionDecision | null>((resolve, reject) => {
+    const { resolve: resolveOnce, claim } = createResolveOnce(resolve)
+
+    const cleanup = (): void => {
+      dependencies.unregisterPermissionCallback(request.id)
+      signal.removeEventListener('abort', onAbort)
+      clearPendingRequest()
+    }
+
+    const onAbort = (): void => {
+      if (!claim()) return
+      cleanup()
+      ctx.logCancelled()
+      resolveOnce(ctx.cancelAndAbort(undefined, true))
+    }
+
+    dependencies.registerPermissionCallback({
+      requestId: request.id,
+      toolUseId: ctx.toolUseID,
+      async onAllow(
+        allowedInput: Record<string, unknown> | undefined,
+        permissionUpdates: PermissionUpdate[],
+        feedback?: string,
+        contentBlocks?: ContentBlockParam[],
+      ) {
+        if (!claim()) return
+        cleanup()
+
+        const finalInput =
+          allowedInput && Object.keys(allowedInput).length > 0
+            ? allowedInput
+            : ctx.input
+
+        try {
+          resolveOnce(
+            await ctx.handleUserAllow(
+              finalInput,
+              permissionUpdates,
+              feedback,
+              undefined,
+              contentBlocks,
+            ),
+          )
+        } catch (error) {
+          reject(error)
+        }
+      },
+      onReject(feedback?: string, contentBlocks?: ContentBlockParam[]) {
+        if (!claim()) return
+        cleanup()
+
+        ctx.logDecision({
+          decision: 'reject',
+          source: { type: 'user_reject', hasFeedback: !!feedback },
+        })
+
+        resolveOnce(ctx.cancelAndAbort(feedback, undefined, contentBlocks))
+      },
+    })
+
+    ctx.toolUseContext.setAppState(prev => ({
+      ...prev,
+      pendingWorkerRequest: {
+        toolName: ctx.tool.name,
+        toolUseId: ctx.toolUseID,
+        description,
+      },
+    }))
+
+    signal.addEventListener('abort', onAbort, { once: true })
+    if (signal.aborted) {
+      onAbort()
+      return
+    }
+
+    void dependencies.sendPermissionRequestViaMailbox(request).then(
+      sent => {
+        if (sent || !claim()) return
+        cleanup()
+        resolveOnce(null)
+      },
+      error => {
+        if (!claim()) return
+        cleanup()
+        logError(toError(error))
+        resolveOnce(null)
+      },
+    )
+  })
 }
 
 /**
@@ -58,95 +181,14 @@ async function handleSwarmWorkerPermission(
 
   // Forward permission request to the leader via mailbox
   try {
-    const clearPendingRequest = (): void =>
-      ctx.toolUseContext.setAppState(prev => ({
-        ...prev,
-        pendingWorkerRequest: null,
-      }))
-
-    const decision = await new Promise<PermissionDecision>(resolve => {
-      const { resolve: resolveOnce, claim } = createResolveOnce(resolve)
-
-      // Create the permission request
-      const request = createPermissionRequest({
-        toolName: ctx.tool.name,
-        toolUseId: ctx.toolUseID,
-        input: ctx.input,
-        description,
-        permissionSuggestions: suggestions,
-      })
-
-      // Register callback BEFORE sending the request to avoid race condition
-      // where leader responds before callback is registered
-      registerPermissionCallback({
-        requestId: request.id,
-        toolUseId: ctx.toolUseID,
-        async onAllow(
-          allowedInput: Record<string, unknown> | undefined,
-          permissionUpdates: PermissionUpdate[],
-          feedback?: string,
-          contentBlocks?: ContentBlockParam[],
-        ) {
-          if (!claim()) return // atomic check-and-mark before await
-          clearPendingRequest()
-
-          // Merge the updated input with the original input
-          const finalInput =
-            allowedInput && Object.keys(allowedInput).length > 0
-              ? allowedInput
-              : ctx.input
-
-          resolveOnce(
-            await ctx.handleUserAllow(
-              finalInput,
-              permissionUpdates,
-              feedback,
-              undefined,
-              contentBlocks,
-            ),
-          )
-        },
-        onReject(feedback?: string, contentBlocks?: ContentBlockParam[]) {
-          if (!claim()) return
-          clearPendingRequest()
-
-          ctx.logDecision({
-            decision: 'reject',
-            source: { type: 'user_reject', hasFeedback: !!feedback },
-          })
-
-          resolveOnce(ctx.cancelAndAbort(feedback, undefined, contentBlocks))
-        },
-      })
-
-      // Now that callback is registered, send the request to the leader
-      void sendPermissionRequestViaMailbox(request)
-
-      // Show visual indicator that we're waiting for leader approval
-      ctx.toolUseContext.setAppState(prev => ({
-        ...prev,
-        pendingWorkerRequest: {
-          toolName: ctx.tool.name,
-          toolUseId: ctx.toolUseID,
-          description,
-        },
-      }))
-
-      // If the abort signal fires while waiting for the leader response,
-      // resolve the promise with a cancel decision so it does not hang.
-      ctx.toolUseContext.abortController.signal.addEventListener(
-        'abort',
-        () => {
-          if (!claim()) return
-          clearPendingRequest()
-          ctx.logCancelled()
-          resolveOnce(ctx.cancelAndAbort(undefined, true))
-        },
-        { once: true },
-      )
+    const request = createPermissionRequest({
+      toolName: ctx.tool.name,
+      toolUseId: ctx.toolUseID,
+      input: ctx.input,
+      description,
+      permissionSuggestions: suggestions,
     })
-
-    return decision
+    return await waitForLeaderPermissionDecision(params, request)
   } catch (error) {
     // If swarm permission submission fails, fall back to local handling
     logError(toError(error))
@@ -157,3 +199,7 @@ async function handleSwarmWorkerPermission(
 
 export { handleSwarmWorkerPermission }
 export type { SwarmWorkerPermissionParams }
+
+export const _test = {
+  waitForLeaderPermissionDecision,
+}
