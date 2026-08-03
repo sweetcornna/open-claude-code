@@ -19,6 +19,7 @@
  */
 
 import axios from 'axios'
+import { existsSync } from 'fs'
 import { writeFile } from 'fs/promises'
 import isEqual from 'lodash-es/isEqual.js'
 import memoize from 'lodash-es/memoize.js'
@@ -68,6 +69,8 @@ import {
   isSourceInBlocklist,
 } from './marketplaceHelpers.js'
 import {
+  DEFAULT_MARKETPLACE_NAME,
+  DEFAULT_MARKETPLACE_SOURCE,
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
@@ -113,6 +116,29 @@ function getKnownMarketplacesFile(): string {
  */
 export function getMarketplacesCacheDir(): string {
   return join(getPluginsDirectory(), 'marketplaces')
+}
+
+/**
+ * Tombstone marker for the implicit default marketplace (see the default
+ * declaration in getDeclaredMarketplaces). Written by removeMarketplaceSource
+ * so removal sticks — without it, a user with no other marketplace config
+ * would get the default re-declared and re-installed on next startup.
+ *
+ * Lives in the plugins state dir next to known_marketplaces.json rather than
+ * in global config, for two reasons:
+ *  - cohesion: wiping the plugins dir resets ALL marketplace state including
+ *    the removal record — fresh state, fresh defaults;
+ *  - importing config.ts from here would close a type-import cycle
+ *    (config.ts → modelOptions → … → pluginLoader → marketplaceManager) and
+ *    trip the cycle ratchet.
+ */
+function getDefaultMarketplaceTombstoneFile(): string {
+  return join(getPluginsDirectory(), '.default_marketplace_removed')
+}
+
+/** Whether the user removed the implicit default marketplace. */
+export function isDefaultMarketplaceRemoved(): boolean {
+  return existsSync(getDefaultMarketplaceTombstoneFile())
 }
 
 /**
@@ -185,13 +211,42 @@ export function getDeclaredMarketplaces(): Record<string, DeclaredMarketplace> {
     }
   }
 
+  // Default marketplace: the official Claude Code repo doubles as a plugin
+  // marketplace. Declared as a constant fallback ONLY while the user has no
+  // marketplace configuration of their own — it is never written to settings,
+  // so there is nothing to write back on startup. It stops being declared when:
+  //  - the user removes it (`plugin marketplace remove`): removeMarketplaceSource
+  //    writes the tombstone marker (see isDefaultMarketplaceRemoved), which
+  //    permanently suppresses this fallback;
+  //  - CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL is truthy;
+  //  - enterprise policy blocks the source;
+  //  - any extraKnownMarketplaces entry exists (--add-dir or settings).
+  const addDirExtras = getAddDirExtraMarketplaces()
+  const settingsExtras = getInitialSettings().extraKnownMarketplaces ?? {}
+  if (
+    Object.keys(addDirExtras).length === 0 &&
+    Object.keys(settingsExtras).length === 0 &&
+    !isEnvTruthy(
+      process.env.CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL,
+    ) &&
+    isSourceAllowedByPolicy(DEFAULT_MARKETPLACE_SOURCE) &&
+    !isDefaultMarketplaceRemoved()
+  ) {
+    implicit[DEFAULT_MARKETPLACE_NAME] = {
+      source: DEFAULT_MARKETPLACE_SOURCE,
+      // Presence suffices: if a seed/prior install materialized this name
+      // under any source, leave it alone rather than re-cloning.
+      sourceIsFallback: true,
+    }
+  }
+
   // Lowest precedence: implicit < --add-dir < merged settings.
   // An explicit extraKnownMarketplaces entry for claude-plugins-official
   // in --add-dir or settings wins.
   return {
     ...implicit,
-    ...getAddDirExtraMarketplaces(),
-    ...(getInitialSettings().extraKnownMarketplaces ?? {}),
+    ...addDirExtras,
+    ...settingsExtras,
   } as any
 }
 
@@ -529,22 +584,43 @@ function getPluginGitTimeoutMs(): number {
   return DEFAULT_PLUGIN_GIT_TIMEOUT_MS
 }
 
+/**
+ * Fetch + merge a marketplace clone.
+ *
+ * @param options.timeoutMs - per-git-invocation timeout. Defaults to the
+ *   plugin git timeout (120s). The silent background updater
+ *   (services/autoUpdate/backgroundPluginUpdate.ts) passes a much tighter
+ *   bound: nothing user-visible waits on it, so a hung remote must not keep a
+ *   git child alive for two minutes.
+ * @param options.ffOnly - refuse anything that is not a fast-forward. Also
+ *   background-updater-only: an unattended merge commit (or a `pull` that
+ *   errors out on divergent branches with no reconcile strategy configured) in
+ *   a cache clone is never what the user wants. Interactive refresh paths keep
+ *   the permissive default because they fall back to rm + re-clone on failure.
+ */
 export async function gitPull(
   cwd: string,
   ref?: string,
-  options?: { disableCredentialHelper?: boolean; sparsePaths?: string[] },
+  options?: {
+    disableCredentialHelper?: boolean
+    sparsePaths?: string[]
+    timeoutMs?: number
+    ffOnly?: boolean
+  },
 ): Promise<{ code: number; stderr: string }> {
   logForDebugging(`git pull: cwd=${cwd} ref=${ref ?? 'default'}`)
   const env = { ...process.env, ...GIT_NO_PROMPT_ENV }
   const credentialArgs = options?.disableCredentialHelper
     ? ['-c', 'credential.helper=']
     : []
+  const timeout = options?.timeoutMs ?? getPluginGitTimeoutMs()
+  const ffArgs = options?.ffOnly ? ['--ff-only'] : []
 
   if (ref) {
     const fetchResult = await execFileNoThrowWithCwd(
       gitExe(),
       [...credentialArgs, 'fetch', 'origin', ref],
-      { cwd, timeout: getPluginGitTimeoutMs(), stdin: 'ignore', env },
+      { cwd, timeout, stdin: 'ignore', env },
     )
 
     if (fetchResult.code !== 0) {
@@ -554,7 +630,7 @@ export async function gitPull(
     const checkoutResult = await execFileNoThrowWithCwd(
       gitExe(),
       [...credentialArgs, 'checkout', ref],
-      { cwd, timeout: getPluginGitTimeoutMs(), stdin: 'ignore', env },
+      { cwd, timeout, stdin: 'ignore', env },
     )
 
     if (checkoutResult.code !== 0) {
@@ -563,8 +639,8 @@ export async function gitPull(
 
     const pullResult = await execFileNoThrowWithCwd(
       gitExe(),
-      [...credentialArgs, 'pull', 'origin', ref],
-      { cwd, timeout: getPluginGitTimeoutMs(), stdin: 'ignore', env },
+      [...credentialArgs, 'pull', ...ffArgs, 'origin', ref],
+      { cwd, timeout, stdin: 'ignore', env },
     )
     if (pullResult.code !== 0) {
       return enhanceGitPullErrorMessages(pullResult)
@@ -575,8 +651,8 @@ export async function gitPull(
 
   const result = await execFileNoThrowWithCwd(
     gitExe(),
-    [...credentialArgs, 'pull', 'origin', 'HEAD'],
-    { cwd, timeout: getPluginGitTimeoutMs(), stdin: 'ignore', env },
+    [...credentialArgs, 'pull', ...ffArgs, 'origin', 'HEAD'],
+    { cwd, timeout, stdin: 'ignore', env },
   )
   if (result.code !== 0) {
     return enhanceGitPullErrorMessages(result)
@@ -1961,6 +2037,19 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
   // Remove from config
   delete config[name]
   await saveKnownMarketplacesConfig(config)
+
+  // Tombstone the implicit default marketplace so removal sticks. Without
+  // this, a user with no other marketplace configuration would get it
+  // re-declared by getDeclaredMarketplaces() and re-installed by the
+  // reconciler on next startup. The plugins dir exists — the config file
+  // was just saved into it above.
+  if (name === DEFAULT_MARKETPLACE_NAME) {
+    writeFileSync_DEPRECATED(
+      getDefaultMarketplaceTombstoneFile(),
+      jsonStringify({ removedAt: new Date().toISOString() }, null, 2),
+      { encoding: 'utf-8', flush: true },
+    )
+  }
 
   // Clean up cached files (both directory and JSON formats)
   const fs = getFsImplementation()
