@@ -17,6 +17,8 @@ import {
 } from '../services/api/openai/chatgptAuth.js';
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
 import { clearGrokClientCache } from '../services/api/grok/client.js';
+import { startAntigravityOAuthLogin } from '../services/auth/antigravity/index.js';
+import { buildAntigravityAutoConfigEnv } from '../utils/model/antigravityModels.js';
 import { OAuthService } from '../services/oauth/index.js';
 import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth/auth.js';
 import { openBrowser } from '../utils/network/browser.js';
@@ -89,6 +91,11 @@ type OAuthStatus =
       opusModel: string;
       activeField: 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
     } // Gemini Generate Content API platform
+  | {
+      state: 'antigravity_oauth';
+      phase: 'starting' | 'waiting';
+      authUrl?: string;
+    } // Google Antigravity subscription via Google OAuth loopback flow
   | {
       state: 'grok_api';
       baseUrl: string;
@@ -539,6 +546,15 @@ function OAuthStatusMessage({
                 {
                   label: (
                     <Text>
+                      Antigravity (Google OAuth) · <Text dimColor>Gemini 3 with a Google account, no API key</Text>
+                      {'\n'}
+                    </Text>
+                  ),
+                  value: 'antigravity_oauth',
+                },
+                {
+                  label: (
+                    <Text>
                       Grok API · <Text dimColor>xAI Grok (api.x.ai)</Text>
                       {'\n'}
                     </Text>
@@ -633,6 +649,9 @@ function OAuthStatusMessage({
                     opusModel: process.env.GEMINI_DEFAULT_OPUS_MODEL ?? '',
                     activeField: 'base_url',
                   });
+                } else if (value === 'antigravity_oauth') {
+                  logEvent('tengu_antigravity_oauth_selected', {});
+                  setOAuthStatus({ state: 'antigravity_oauth', phase: 'starting' });
                 } else if (value === 'grok_api') {
                   logEvent('tengu_grok_api_selected', {});
                   setOAuthStatus({
@@ -1499,6 +1518,89 @@ function OAuthStatusMessage({
           </Box>
           <Text dimColor>Model (e.g. gemini-3-pro) overrides all tiers · Max ctx: context window (e.g. 1m)</Text>
           <Text dimColor>↑↓/Tab to switch · Enter on last field to save · Esc to go back</Text>
+        </Box>
+      );
+    }
+
+    case 'antigravity_oauth': {
+      const status = oauthStatus as {
+        state: 'antigravity_oauth';
+        phase: 'starting' | 'waiting';
+        authUrl?: string;
+      };
+      const startedRef = useRef(false);
+
+      useEffect(() => {
+        if (startedRef.current) return;
+        startedRef.current = true;
+        let cancelled = false;
+        const controller = new AbortController();
+        async function runLogin() {
+          try {
+            await startAntigravityOAuthLogin({
+              signal: controller.signal,
+              onAuthUrl: url => {
+                if (cancelled) return;
+                setOAuthStatus({ state: 'antigravity_oauth', phase: 'waiting', authUrl: url });
+              },
+            });
+            if (cancelled) return;
+            // Auto-configuration: the login only proves identity, so write the
+            // full provider shape here — otherwise the user lands back at the
+            // prompt with a Gemini token and no model routing.
+            const env = buildAntigravityAutoConfigEnv();
+            const { error } = updateSettingsForSource('userSettings', {
+              modelType: 'gemini',
+              env,
+            } as unknown as Parameters<typeof updateSettingsForSource>[1]);
+            if (error) {
+              throw new Error('Failed to save settings. Please try again.');
+            }
+            for (const [k, v] of Object.entries(env)) process.env[k] = v;
+            setOAuthStatus({ state: 'success' });
+            void onDone();
+          } catch (err) {
+            if (cancelled) return;
+            setOAuthStatus({
+              state: 'error',
+              message: (err as Error).message,
+              toRetry: { state: 'antigravity_oauth', phase: 'starting' },
+            });
+          }
+        }
+        void runLogin();
+        return () => {
+          cancelled = true;
+          controller.abort();
+        };
+      }, [setOAuthStatus, onDone]);
+
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Text bold>Antigravity Setup</Text>
+          <Text dimColor>
+            Sign in with the Google account that has Antigravity access. occ then uses Gemini 3 through
+            Antigravity&apos;s backend — no API key, no per-token billing.
+          </Text>
+          {status.phase === 'starting' && (
+            <Box>
+              <Spinner />
+              <Text>Starting local callback server…</Text>
+            </Box>
+          )}
+          {status.phase === 'waiting' && status.authUrl && (
+            <Box flexDirection="column" gap={1}>
+              <Text>A browser window should have opened. If not, open this link:</Text>
+              <Link url={status.authUrl}>
+                <Text dimColor>{status.authUrl}</Text>
+              </Link>
+              <Box>
+                <Spinner />
+                <Text>Waiting for Google authorization…</Text>
+              </Box>
+            </Box>
+          )}
+          <Text dimColor>Esc to go back. First-time accounts may take a few seconds to provision.</Text>
         </Box>
       );
     }

@@ -43,6 +43,9 @@ const PROVIDER_MANAGED_ENV_VARS = new Set([
   'CLAUDE_CODE_SKIP_VERTEX_AUTH',
   'CLAUDE_CODE_SKIP_FOUNDRY_AUTH',
   'GEMINI_API_KEY',
+  // Selects the Antigravity OAuth backend over API-key Gemini — routing, so
+  // provider-managed alongside GEMINI_API_KEY.
+  'GEMINI_AUTH_MODE',
   // Model defaults — often set to provider-specific ID formats
   'ANTHROPIC_MODEL',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
@@ -228,6 +231,7 @@ export const SAFE_ENV_VARS = new Set([
   'CLAUDE_CODE_USE_OPENAI',
   'CLAUDE_CODE_USE_VERTEX',
   'GEMINI_API_KEY',
+  'GEMINI_AUTH_MODE',
   'GEMINI_BASE_URL',
   'GEMINI_MODEL',
   'GEMINI_SMALL_FAST_MODEL',

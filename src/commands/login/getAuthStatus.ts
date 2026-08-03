@@ -72,6 +72,8 @@ export interface AuthStatus {
     wireApi: 'chat' | 'responses' | null
     /** OpenAI path only: ChatGPT-subscription auth active. */
     chatgptAuth: boolean
+    /** Gemini path only: Antigravity Google-OAuth auth active. */
+    antigravityAuth: boolean
     /** Active saved provider profile name (/provider save|use), if any. */
     profile: string | null
   }
@@ -184,6 +186,7 @@ export function getAuthStatus(): AuthStatus {
     baseUrl: null,
     wireApi: null,
     chatgptAuth: false,
+    antigravityAuth: false,
     profile: null,
   }
   try {
@@ -198,6 +201,8 @@ export function getAuthStatus(): AuthStatus {
       }
     const chatgptAuth =
       provider === 'openai' && mergedEnv.OPENAI_AUTH_MODE === 'chatgpt'
+    const antigravityAuth =
+      provider === 'gemini' && mergedEnv.GEMINI_AUTH_MODE === 'antigravity'
     let wireApi: 'chat' | 'responses' | null = null
     if (provider === 'openai') {
       const explicit = mergedEnv.OPENAI_WIRE_API?.trim().toLowerCase()
@@ -211,6 +216,7 @@ export function getAuthStatus(): AuthStatus {
       baseUrl: baseUrlByProvider[provider]?.trim() || null,
       wireApi,
       chatgptAuth,
+      antigravityAuth,
       profile: loadProfilesFile().active ?? null,
     }
   } catch {
