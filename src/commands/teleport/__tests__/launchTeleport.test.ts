@@ -3,6 +3,7 @@ import type { LogOption } from '../../../types/logs.js'
 import type { LocalJSXCommandCall } from '../../../types/command.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 
 // ── Mock module-level side effects BEFORE any imports ──
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -48,9 +49,11 @@ const fetchSessionsMock = mock(() =>
     },
   ]),
 )
-mock.module('src/utils/teleport/api.js', () => ({
+// teleport/api via the shared complete-surface mock (missing exports delegate
+// to the real module) — see tests/mocks/teleportApi.ts.
+setupTeleportApiMock({
   fetchCodeSessionsFromSessionsAPI: fetchSessionsMock,
-}))
+} as unknown as import('../../../../tests/mocks/teleportApi.js').TeleportApiOverrides)
 
 // ── Session storage ──
 const mockLog: LogOption = {

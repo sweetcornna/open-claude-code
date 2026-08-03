@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
+import { authMockWith } from '../../../tests/mocks/auth.js'
 import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.js'
 import * as realThinking from 'src/utils/model/thinking.js'
 import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.js'
@@ -12,11 +13,16 @@ makeSharedModuleMock('src/utils/model/thinking.js', realThinking).setup({
 mock.module('src/utils/settings/settings.js', () => ({
   getInitialSettings: () => ({}),
 }))
-mock.module('src/utils/auth/auth.js', () => ({
-  isProSubscriber: () => false,
-  isMaxSubscriber: () => false,
-  isTeamSubscriber: () => false,
-}))
+// auth.js via the shared complete-surface mock (missing exports get safe
+// defaults) — see tests/mocks/auth.ts.
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    isProSubscriber: () => false,
+    isMaxSubscriber: () => false,
+    isTeamSubscriber: () => false,
+  }),
+)
 // growthbook goes through the shared complete-surface mock (missing exports
 // delegate to the real module) — see tests/mocks/growthbook.ts.
 setupGrowthbookMock({

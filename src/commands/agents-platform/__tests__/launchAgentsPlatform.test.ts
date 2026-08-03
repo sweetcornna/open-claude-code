@@ -16,6 +16,7 @@ import {
   mock,
   test,
 } from 'bun:test'
+import { setupCronMock } from '../../../../tests/mocks/cron.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
@@ -64,14 +65,16 @@ mock.module('src/services/auth/hostGuard.ts', () => ({
 }))
 
 // ── cron mock ───────────────────────────────────────────────────────────────
-mock.module('src/utils/task/cron.js', () => ({
+// cron.js via the shared complete-surface pattern: overrides below, every
+// other export delegates to the real module (pure functions, safe to load).
+setupCronMock({
   parseCronExpression: (expr: string) =>
     expr.includes('INVALID')
       ? null
       : { minute: [0], hour: [9], dayOfMonth: [1], month: [1], dayOfWeek: [1] },
   cronToHuman: (expr: string) => `Human(${expr})`,
   computeNextCronRun: () => null,
-}))
+})
 
 // ── Axios mock ──────────────────────────────────────────────────────────────
 const axiosGetMock = mock(async () => ({}))

@@ -2,60 +2,62 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setupSwarmBackendsRegistryMock } from '../../../../tests/mocks/swarmBackendsRegistry.js'
 
 let terminateCalls: string[] = []
 
-mock.module('src/utils/swarm/backends/registry.js', () => {
-  const executor = {
-    type: 'in-process' as const,
-    setContext() {},
-    async isAvailable() {
-      return true
-    },
-    async spawn(config: { name: string; teamName: string; color?: string }) {
-      return {
-        success: true,
-        agentId: `${config.name}@${config.teamName}`,
-        taskId: `task-${config.name}`,
-        backendType: 'in-process',
-        color: config.color,
-        isSplitPane: false,
-      }
-    },
-    async sendMessage() {},
-    async terminate(agentId: string) {
-      terminateCalls.push(agentId)
-      return true
-    },
-    async kill() {
-      return true
-    },
-    async isActive() {
-      return true
-    },
-  }
+// backends/registry via the shared complete-surface mock (missing exports —
+// the register* hooks other swarm test files import — delegate to the real
+// module) — see tests/mocks/swarmBackendsRegistry.ts.
+const executor = {
+  type: 'in-process' as const,
+  setContext() {},
+  async isAvailable() {
+    return true
+  },
+  async spawn(config: { name: string; teamName: string; color?: string }) {
+    return {
+      success: true,
+      agentId: `${config.name}@${config.teamName}`,
+      taskId: `task-${config.name}`,
+      backendType: 'in-process',
+      color: config.color,
+      isSplitPane: false,
+    }
+  },
+  async sendMessage() {},
+  async terminate(agentId: string) {
+    terminateCalls.push(agentId)
+    return true
+  },
+  async kill() {
+    return true
+  },
+  async isActive() {
+    return true
+  },
+}
 
-  return {
-    getTeammateExecutor: async () => executor,
-    getInProcessBackend: () => executor,
-    detectAndGetBackend: async () => ({
-      backend: { type: 'in-process' },
-      isNative: false,
-      needsIt2Setup: false,
-    }),
-    isInProcessEnabled: () => true,
-    markInProcessFallback: () => {},
-    resetBackendDetection: () => {},
-    getCachedBackend: () => null,
-    getCachedDetectionResult: () => null,
-    getResolvedTeammateMode: () => 'in-process',
-    ensureBackendsRegistered: async () => {},
-    getBackendByType: () => ({
-      type: 'tmux',
-      killPane: async () => true,
-    }),
-  }
-})
+setupSwarmBackendsRegistryMock({
+  getTeammateExecutor: async () => executor,
+  getInProcessBackend: () => executor,
+  detectAndGetBackend: async () => ({
+    backend: { type: 'in-process' },
+    isNative: false,
+    needsIt2Setup: false,
+  }),
+  isInProcessEnabled: () => true,
+  markInProcessFallback: () => {},
+  resetBackendDetection: () => {},
+  getCachedBackend: () => null,
+  getCachedDetectionResult: () => null,
+  getResolvedTeammateMode: () => 'in-process',
+  ensureBackendsRegistered: async () => {},
+  getBackendByType: () => ({
+    type: 'tmux',
+    killPane: async () => true,
+  }),
+} as unknown as import('../../../../tests/mocks/swarmBackendsRegistry.js').SwarmBackendsRegistryOverrides)
 
 let tempHome: string
 let previousConfigDir: string | undefined

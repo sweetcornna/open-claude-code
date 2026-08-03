@@ -1,5 +1,7 @@
 import { mock, describe, test, expect, beforeEach } from 'bun:test'
+import * as realSdkTraceBase from '@opentelemetry/sdk-trace-base'
 import { debugMock } from '../../../../tests/mocks/debug'
+import { setupUserMock } from '../../../../tests/mocks/user.js'
 
 // Mock @langfuse/otel before any imports
 const mockForceFlush = mock(() => Promise.resolve())
@@ -14,8 +16,13 @@ mock.module('@langfuse/otel', () => ({
   },
 }))
 
-// Mock @opentelemetry/sdk-trace-base
+// Mock @opentelemetry/sdk-trace-base. Spread-real complete surface (NOT the
+// delegating sharedModuleMock factory: this package exports classes, and a
+// delegating arrow closure would break `new BasicTracerProvider()` for later
+// consumers). Real exports like SamplingDecision stay importable by files
+// that run after this one — mock.module is process-global last-write-wins.
 mock.module('@opentelemetry/sdk-trace-base', () => ({
+  ...realSdkTraceBase,
   BasicTracerProvider: class MockBasicTracerProvider {
     constructor(_opts?: unknown) {}
   },
@@ -78,13 +85,15 @@ mock.module('@langfuse/tracing', () => ({
 // Mock debug logger
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
-// Mock user data — resolveLangfuseUserId uses getCoreUserData().email and .deviceId
-mock.module('src/utils/auth/user.js', () => ({
+// Mock user data — resolveLangfuseUserId uses getCoreUserData().email and
+// .deviceId. Goes through the shared complete-surface mock (missing exports
+// delegate to the real module) — see tests/mocks/user.ts.
+setupUserMock({
   getCoreUserData: mock(() => ({
     email: 'test-device-id',
     deviceId: 'test-device-id',
-  })),
-}))
+  })) as unknown as typeof import('src/utils/auth/user.js').getCoreUserData,
+})
 
 describe('Langfuse integration', () => {
   beforeEach(() => {
