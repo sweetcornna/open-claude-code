@@ -108,7 +108,37 @@ occ 必须能和官方 Claude Code 装在同一台机器上互不干扰。**所�
 
 发现了问题但不在本次范围内？**记录，不要顺手改。** 在 PR 描述里列出来。夹带无关改动的 diff 会拖慢审查，也让回滚变得危险。
 
-## 11. 文档放哪里
+## 11. 发布流程
+
+发版是一条命令加一次 push：
+
+```bash
+bun run release 2.10.0 --dry-run   # 先看它打算做什么
+bun run release 2.10.0             # 改版本、跑门禁、提交、打 tag（不 push）
+git push origin main --follow-tags # 这一步才真正发布
+```
+
+`scripts/release.ts` 会按顺序做：校验版本号 → 校验仓库状态（工作树干净、在 `main`、不落后于 `origin/main`、tag 未占用）→ 跑发布门禁 → 写文件 → `chore(release): v<version>` 提交 + annotated tag。本地领先于 origin 是正常的（那些提交会随 `--follow-tags` 一起 push），落后或分叉才是硬失败。**门禁跑在写盘之前**，所以门禁失败不会留下改了一半的工作树。脚本永远不 push：npm 上的版本发出去就撤不回来，最后那一下必须是人按的。
+
+被这条链路更新的**所有**版本源：
+
+| 源 | 谁写 | 作用 |
+| --- | --- | --- |
+| `package.json` 的 `version` | `bun run release` | 唯一构建真源，`scripts/defines.ts` 由它注入 `MACRO.VERSION`；也是 npm 发布的版本 |
+| `CHANGELOG.md` | `bun run release` 插入草稿，**人工润色** | 同时喂给 GitHub Release 正文和应用内「更新说明」 |
+| git tag `v<version>` | `bun run release` | `publish-npm.yml` 的**唯一**触发条件 |
+| npm 包 | `publish-npm.yml` | `npm publish --provenance` |
+| GitHub Release | `publish-npm.yml` | 正文优先取 `CHANGELOG.md` 对应小节，取不到才回退到 commit 列表 |
+| 应用内「更新说明」 | 用户端从 `main` 拉 `CHANGELOG.md` | `src/utils/update/releaseNotes.ts`，所以发布提交必须在 main 上 |
+
+几条不能绕的约束：
+
+- **版本号只能递增。** `occ update` 用 semver 比较判断"有没有新版"，发一个不大于前一版的版本，等于让所有已安装的客户端**永久**认为自己已是最新——他们不会再收到任何后续更新，只能手工重装。脚本因此把"严格大于 `package.json` 当前版本"作为硬校验，并拒绝 `2.10`、`02.10.0`、`latest` 这类形状（`v2.10.0` 可以，会被规范化成 `2.10.0`）。同理，**不要把版本号退回 1.x**：叙事延续 2.8.x，首个对外发布是 v2.9.0。
+- **CHANGELOG 条目是给用户看的。** 脚本生成的是 commit subject 草稿，不是发布说明 —— 它会明确提示你去润色。改完 `git commit --amend` 再 `git tag -f`，然后才 push。
+- **格式由解析器约束。** `## <semver>` 或 `## <semver> - <日期>` 作版本标题，条目用顶层 `- `；嵌套列表会被 `parseChangelog` 拍平。写坏了不会报错，只是用户在应用内看不到条目。
+- **发布门禁不含全量单测**，这是有意的：`bun test` 在 Linux runner 上有既有的顺序性 env 污染失败（详见 [`CLAUDE.md`](CLAUDE.md) 的发布一节）。脚本跑 `typecheck` + `check:cycles` + `bun test tests/integration` —— 前后两项与 `publish-npm.yml` 的门禁同源，`check:cycles` 是本地补上的（CI 在 `ci.yml` 里跑，publish 不重复）。
+
+## 12. 文档放哪里
 
 | 内容 | 位置 |
 | --- | --- |
