@@ -165,6 +165,9 @@ return results.flat().filter(Boolean)
 ## 八、resume / journal / budget / 错误恢复
 
 - **journal**：每次 run 记录到 `.occ/workflow-runs/<runId>/journal.jsonl`。`resumeFromRunId` 重放 journal：成功结果秒回缓存；**dead 条目视为「记录的失败」，重放时现场重跑**（断点续传的意义就是重试失败，不是复读失败）。重跑结果以同 `seq` 追加，`read()` 按 seq 去重**保留最后一条**，新结果覆盖旧失败。
+- **journal 损坏处理**：逐行解析并保留已验证的有效前缀。只有位于**文件末尾、无结尾换行**的半行（进程被杀留下的）会被忽略并告警；中间行损坏或结构不符抛 `JournalCorruptionError`，不再静默当成"没有历史"——那等于把所有 checkpoint 丢掉重跑一遍，重复计费且重复外部副作用。`ENOENT` 之外的 I/O 错误照常抛出。
+- **journal 分歧与 `script.js`**：agent key 发散时先把有效前缀原子重写回盘再追加新记录，`truncate()` **只清 `journal.jsonl`**，同目录的 inline `script.js` 保留（inline → 编辑 → `scriptPath` resume 这条路才走得通）。整目录清理是独立的 `deleteRun()`。
+- **`resumeFromRunId` 格式约束**：只接受 `^[A-Za-z0-9_-]{1,128}$`，schema 与存储层双重校验。它是拼进 runs 目录的路径片段，而 `deleteRun()` 会递归删除该目录——不校验就等于把"恢复工作流"变成任意目录删除。
 - **agent 原地重试**：dead / 非 abort 抛错重试一次，重试前等 `AGENT_RETRY_BACKOFF_MS`（2s，abort 可打断）；**`retryable:false` 的确定性失败（如 `prompt-too-long`）不重试**——同样的调用重发必然再失败。
 - **run 级自动断点续传**：脚本执行失败（常见于 dead agent 的 `null` 在脚本里炸出 TypeError）时**自动用 journal resume 重试一次**：成功的 agent 全部秒回，只重跑失败的。`WorkflowError`（配置/上限类，确定性）与 `BudgetExhaustedError`（新 context 会重置 spent 导致超支）不触发；`autoRetryOnFailure:false` 可关。
 - **API 错误分类**（`claudeCodeBackend`）：query 层把终局 API 错误包装成 `isApiErrorMessage` 的 assistant 消息（不抛错），backend 显式识别 → `dead`，`reason: 'prompt-too-long'`（`retryable:false`）或 `'api-error'`（瞬态，可重试）。修复前该错误文本会在非 schema 模式被伪装成 agent 的正常输出。529 过载则由 API 层带指数退避重试（`'workflow'` 已加入 `FOREGROUND_529_RETRY_SOURCES`）。

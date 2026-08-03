@@ -124,6 +124,7 @@ bun run build    # 构建
 | --- | --- | --- |
 | **🎯 Goal 持续驱动** | `/goal <objective>` 设定目标后自动跨轮驱动 agent 直至完成；带 token budget、completion/blocked audit 与 `pause`/`resume`/`continue`/`clear` | [`src/commands/goal/`](./src/commands/goal/) |
 | **🧠 Ultracode 多 Agent 编排** | `/ultracode` + `Workflow` 工具跑确定性 JS 脚本（`agent`/`pipeline`/`parallel`/`phase`），`/workflows` 双栏监控面板，支持 journal 重放与并发上限 | [文档](./docs/features/workflow-scripts.md) |
+| **🧩 插件市场** | 首次启动自动装上官方 `claude-plugins-official`（300+ 插件），`/plugin` 浏览安装；保留名只认 `github.com/anthropics/*` 严格来源 | `/plugin` |
 | **📦 Artifacts** | 模型把 HTML/看板/报告上传到公开 URL（7d/30d 自动过期），Cloudflare Worker + R2 可自托管 | [说明](./packages/cloud-artifacts/README.md) |
 | **ACP 协议支持** | 接入 Zed、Cursor 等 IDE，支持会话恢复、Skills、权限桥接 | [文档](./docs/features/acp-zed.md) |
 | **Remote Control** | `occ remote-control` 把会话交给 [Happy](https://github.com/slopus/happy)（手机 / Web / 端到端加密），走的是 occ 自己的 ACP agent；服务端可自托管 | [文档](./docs/features/remote-control-self-hosting.md) |
@@ -140,13 +141,14 @@ bun run build    # 构建
 
 ## Feature Flags
 
-功能开关通过 `FEATURE_<FLAG_NAME>=1` 环境变量启用：
+功能开关通过 `FEATURE_<FLAG_NAME>` 环境变量控制，`1` / `true` 开，`0` / `false` / 留空关：
 
 ```bash
-FEATURE_FORK_SUBAGENT=1 bun run dev
+FEATURE_FORK_SUBAGENT=1 bun run dev    # 开一个默认没编进去的 flag
+FEATURE_GOAL=0 bun run build           # 关掉一个默认开着的 flag
 ```
 
-默认启用的 33 个 flag 见 [`scripts/defines.ts`](./scripts/defines.ts) 的 `DEFAULT_BUILD_FEATURES`；不在表里的需要显式开。各 Feature 的说明见 [`docs/features/`](./docs/features/)。
+默认启用的 33 个 flag 见 [`scripts/defines.ts`](./scripts/defines.ts) 的 `DEFAULT_BUILD_FEATURES`；不在表里的需要显式开。dev 与 build 共用同一套解析逻辑，所以两边行为一致。各 Feature 的说明见 [`docs/features/`](./docs/features/)。
 
 ## VS Code 调试
 

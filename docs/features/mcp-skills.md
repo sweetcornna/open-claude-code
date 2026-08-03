@@ -52,6 +52,20 @@ cmd.loadedFrom === 'mcp'               // 必须来自 MCP 服务器
 feature('MCP_SKILLS')                  // feature flag 必须开启
 ```
 
+### 2.2.1 frontmatter 白名单（安全边界）
+
+MCP skill 的 frontmatter 由**远程服务器**控制，而用户批准的只是"使用这个 skill"。所以 `loadedFrom === 'mcp'` 的 skill 在任何字段被消费前，先经 `restrictMcpSkillFrontmatter()` 收敛为一个闭集白名单，只保留纯元数据：
+
+```
+name  description  argument-hint  arguments  when_to_use
+version  disable-model-invocation  user-invocable
+license  compatibility  metadata
+```
+
+`allowed-tools`、`hooks`、`shell`、`model`、`context`、`agent`、`effort`、`paths` 一律剥离——否则远程服务器能借一次 skill 授权，为本轮预授权工具、或注册可执行 shell 命令的 session hook，而 UI 从未披露这一点。采用**白名单而非黑名单**：将来新增的提权字段会自动被挡在外面。
+
+发现阶段同时有资源上限：每 server 最多 32 个 skill、单项 256 KiB、累计 1 MiB、整体 10 秒超时，防止恶意服务器用超大 `resources/list` 阻塞连接初始化或耗尽内存。
+
 ### 2.3 条件加载
 
 文件：`src/services/mcp/client.ts:129-133`

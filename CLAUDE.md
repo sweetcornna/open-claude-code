@@ -84,7 +84,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 ### Feature Flags
 
 - 统一 `import { feature } from 'bun:bundle'` + `feature('FLAG_NAME')`；**只能直接用在 `if` 或三元条件位置**（Bun 编译器限制），不能赋值变量、不能进箭头函数体、不能作 `&&` 链一部分。不要在 `cli.tsx` 重定义 `feature`。
-- 环境变量 `FEATURE_<NAME>=1` 临时启用；默认列表见 `scripts/defines.ts` 的 `DEFAULT_BUILD_FEATURES`（dev/build 同源，33 个）。
+- 环境变量 `FEATURE_<NAME>` 覆盖单个 flag：`1`/`true` 开，`0`/`false`/空关（**关也对默认列表里的 flag 生效**，这是把某个 feature 从构建里摘掉的唯一办法）。解析集中在 `scripts/defines.ts` 的 `resolveBuildFeatures()`，`dev.ts` 与 Vite 插件共用——早先两边各自只判断变量**是否存在**，`FEATURE_X=0` 反而会把功能编进发布产物。默认列表见同文件的 `DEFAULT_BUILD_FEATURES`（dev/build 同源，33 个）。
 - `MCP_2026`（2026-08-02 起默认编译进）**只管客户端要不要用 `server/discover` 探测** —— serve 双时代、outputSchema 降级、OAuth 加固不受它门控；协商到的「时代」是连接属性（问 `getProtocolEra()`，不要再判标志）。见 `docs/features/mcp-2026.md`。
 - `SKILL_LEARNING` 未编译进默认列表；运行时另由 `SKILL_LEARNING_ENABLED` 控制。
 
