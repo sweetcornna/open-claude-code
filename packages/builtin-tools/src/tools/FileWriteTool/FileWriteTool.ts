@@ -1,5 +1,11 @@
 import { dirname, sep } from 'path'
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
+import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@open-claude-code/tool-runtime/analytics.js'
+import {
+  redactSecrets,
+  scanForSecrets,
+} from '@open-claude-code/tool-runtime/secretScanner.js'
+import { isAutoManagedMemoryFile } from 'src/utils/memory/memoryFileDetection.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { diagnosticTracker } from 'src/services/diagnosticTracking.js'
@@ -86,6 +92,12 @@ const outputSchema = lazySchema(() =>
         'The original file content before the write (null for new files)',
       ),
     gitDiff: gitDiffSchema().optional(),
+    redactionNote: z
+      .string()
+      .optional()
+      .describe(
+        'Present when secrets were redacted from a Claude-managed memory file before writing',
+      ),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -297,12 +309,37 @@ export const FileWriteTool = buildTool({
     const enc = meta?.encoding ?? 'utf8'
     const oldContent = meta?.content ?? null
 
+    // Claude-managed memory persists across sessions and is injected into
+    // future model requests (multi-provider → cross-vendor leak surface).
+    // Redact high-confidence secrets (gitleaks subset) before they land on
+    // disk; a note in the tool result tells the model what happened. Scoped
+    // to auto-managed memory only — user-owned files (CLAUDE.md, code) are
+    // written verbatim.
+    let finalContent = content
+    let redactionNote: string | undefined
+    if (isAutoManagedMemoryFile(fullFilePath)) {
+      const secretMatches = scanForSecrets(content)
+      if (secretMatches.length > 0) {
+        finalContent = redactSecrets(content)
+        const labels = secretMatches.map(m => m.label).join(', ')
+        redactionNote = `Note: ${secretMatches.length} potential secret(s) (${labels}) were redacted before saving — memory files persist across sessions and may be included in future model requests.`
+        // ruleIds only — the scanner never returns matched values
+        logEvent('tengu_memdir_secret_redacted', {
+          ruleIds: secretMatches
+            .map(m => m.ruleId)
+            .join(
+              ',',
+            ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        })
+      }
+    }
+
     // Write is a full content replacement — the model sent explicit line endings
     // in `content` and meant them. Do not rewrite them. Previously we preserved
     // the old file's line endings (or sampled the repo via ripgrep for new
     // files), which silently corrupted e.g. bash scripts with \r on Linux when
     // overwriting a CRLF file or when binaries in cwd poisoned the repo sample.
-    writeTextContent(fullFilePath, content, enc, 'LF')
+    writeTextContent(fullFilePath, finalContent, enc, 'LF')
 
     // Notify LSP servers about file modification (didChange) and save (didSave)
     const lspManager = getLspServerManager()
@@ -310,7 +347,7 @@ export const FileWriteTool = buildTool({
       // Clear previously delivered diagnostics so new ones will be shown
       clearDeliveredDiagnosticsForFile(`file://${fullFilePath}`)
       // didChange: Content has been modified
-      lspManager.changeFile(fullFilePath, content).catch((err: Error) => {
+      lspManager.changeFile(fullFilePath, finalContent).catch((err: Error) => {
         logForDebugging(
           `LSP: Failed to notify server of file change for ${fullFilePath}: ${err.message}`,
         )
@@ -326,11 +363,11 @@ export const FileWriteTool = buildTool({
     }
 
     // Notify VSCode about the file change for diff view
-    notifyVscodeFileUpdated(fullFilePath, oldContent, content)
+    notifyVscodeFileUpdated(fullFilePath, oldContent, finalContent)
 
     // Update read timestamp, to invalidate stale writes
     readFileState.set(fullFilePath, {
-      content,
+      content: finalContent,
       timestamp: getFileModificationTime(fullFilePath),
       offset: undefined,
       limit: undefined,
@@ -363,7 +400,7 @@ export const FileWriteTool = buildTool({
         edits: [
           {
             old_string: oldContent,
-            new_string: content,
+            new_string: finalContent,
             replace_all: false,
           },
         ],
@@ -372,10 +409,11 @@ export const FileWriteTool = buildTool({
       const data = {
         type: 'update' as const,
         filePath: file_path,
-        content,
+        content: finalContent,
         structuredPatch: patch,
         originalFile: oldContent,
         ...(gitDiff && { gitDiff }),
+        ...(redactionNote && { redactionNote }),
       }
       // Track lines added and removed for file updates, right before yielding result
       countLinesChanged(patch)
@@ -395,14 +433,15 @@ export const FileWriteTool = buildTool({
     const data = {
       type: 'create' as const,
       filePath: file_path,
-      content,
+      content: finalContent,
       structuredPatch: [],
       originalFile: null,
       ...(gitDiff && { gitDiff }),
+      ...(redactionNote && { redactionNote }),
     }
 
     // For creation of new files, count all lines as additions, right before yielding the result
-    countLinesChanged([], content)
+    countLinesChanged([], finalContent)
 
     logFileOperation({
       operation: 'write',
@@ -415,19 +454,23 @@ export const FileWriteTool = buildTool({
       data,
     }
   },
-  mapToolResultToToolResultBlockParam({ filePath, type }, toolUseID) {
+  mapToolResultToToolResultBlockParam(
+    { filePath, type, redactionNote },
+    toolUseID,
+  ) {
+    const note = redactionNote ? `\n${redactionNote}` : ''
     switch (type) {
       case 'create':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `File created successfully at: ${filePath}`,
+          content: `File created successfully at: ${filePath}${note}`,
         }
       case 'update':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `The file ${filePath} has been updated successfully.`,
+          content: `The file ${filePath} has been updated successfully.${note}`,
         }
     }
   },

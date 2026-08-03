@@ -76,6 +76,12 @@ const outputSchema = lazySchema(() =>
       .describe('Whether the user modified the proposed changes'),
     replaceAll: z.boolean().describe('Whether all occurrences were replaced'),
     gitDiff: gitDiffSchema().optional(),
+    redactionNote: z
+      .string()
+      .optional()
+      .describe(
+        'Present when secrets were redacted from a Claude-managed memory file before writing',
+      ),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>

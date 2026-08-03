@@ -1,5 +1,11 @@
 import { dirname, isAbsolute, sep } from 'path'
 import { logEvent } from '@open-claude-code/tool-runtime/analytics.js'
+import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@open-claude-code/tool-runtime/analytics.js'
+import {
+  redactSecrets,
+  scanForSecrets,
+} from '@open-claude-code/tool-runtime/secretScanner.js'
+import { isAutoManagedMemoryFile } from 'src/utils/memory/memoryFileDetection.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { diagnosticTracker } from 'src/services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from 'src/services/lsp/LSPDiagnosticRegistry.js'
@@ -468,12 +474,35 @@ export const FileEditTool = buildTool({
     const actualOldString =
       findActualString(originalFileContents, old_string) || old_string
 
+    // Claude-managed memory persists across sessions and is injected into
+    // future model requests — redact high-confidence secrets from the
+    // incoming replacement before the patch is computed so diff, disk, and
+    // result stay consistent. User-owned files are written verbatim.
+    let effectiveNewString = new_string
+    let redactionNote: string | undefined
+    if (isAutoManagedMemoryFile(absoluteFilePath)) {
+      const secretMatches = scanForSecrets(new_string)
+      if (secretMatches.length > 0) {
+        effectiveNewString = redactSecrets(new_string)
+        const labels = secretMatches.map(m => m.label).join(', ')
+        redactionNote = `Note: ${secretMatches.length} potential secret(s) (${labels}) were redacted before saving — memory files persist across sessions and may be included in future model requests.`
+        // ruleIds only — the scanner never returns matched values
+        logEvent('tengu_memdir_secret_redacted', {
+          ruleIds: secretMatches
+            .map(m => m.ruleId)
+            .join(
+              ',',
+            ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        })
+      }
+    }
+
     // 4. Generate patch
     const { patch, updatedFile } = getPatchForEdit({
       filePath: absoluteFilePath,
       fileContents: originalFileContents,
       oldString: actualOldString,
-      newString: new_string,
+      newString: effectiveNewString,
       replaceAll: replace_all,
     })
 
@@ -551,35 +580,37 @@ export const FileEditTool = buildTool({
     const data = {
       filePath: file_path,
       oldString: actualOldString,
-      newString: new_string,
+      newString: effectiveNewString,
       originalFile: originalFileContents,
       structuredPatch: patch,
       userModified: userModified ?? false,
       replaceAll: replace_all,
       ...(gitDiff && { gitDiff }),
+      ...(redactionNote && { redactionNote }),
     }
     return {
       data,
     }
   },
   mapToolResultToToolResultBlockParam(data: FileEditOutput, toolUseID) {
-    const { filePath, userModified, replaceAll } = data
+    const { filePath, userModified, replaceAll, redactionNote } = data
     const modifiedNote = userModified
       ? '.  The user modified your proposed changes before accepting them. '
       : ''
+    const secretNote = redactionNote ? `\n${redactionNote}` : ''
 
     if (replaceAll) {
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.`,
+        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.${secretNote}`,
       }
     }
 
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `The file ${filePath} has been updated successfully${modifiedNote}.`,
+      content: `The file ${filePath} has been updated successfully${modifiedNote}.${secretNote}`,
     }
   },
 } satisfies ToolDef<ReturnType<typeof inputSchema>, FileEditOutput>)
