@@ -18,7 +18,7 @@ import {
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
 import { clearGrokClientCache } from '../services/api/grok/client.js';
 import { startAntigravityOAuthLogin } from '../services/auth/antigravity/index.js';
-import { fetchOpenAICompatibleModelsWith } from '../services/modelCatalog/fetch.js';
+import { fetchOpenAICompatibleModelsWith } from '../services/modelCatalog/fetchExplicit.js';
 import type { CatalogModel } from '../services/modelCatalog/types.js';
 import { buildAntigravityAutoConfigEnv } from '../utils/model/antigravityModels.js';
 import { OAuthService } from '../services/oauth/index.js';
