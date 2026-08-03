@@ -174,6 +174,44 @@ describe('insertChangelogSection', () => {
     )
   })
 
+  // The gap between preamble and first heading used to be swallowed, and the
+  // damage compounded: insert #1 left the heading directly under the preamble
+  // text, insert #2 then glued `## <version>` onto the end of that line. A
+  // heading mid-line is invisible to parseChangelog(), so the section silently
+  // disappeared from the in-app release notes and the GitHub Release body.
+  test('keeps every inserted section readable across consecutive releases', () => {
+    let content = CHANGELOG
+    for (const [version, entry] of [
+      ['2.10.0', '第一次发布'],
+      ['2.11.0', '第二次发布'],
+      ['2.12.0', '第三次发布'],
+    ] as const) {
+      const result = insertChangelogSection(
+        content,
+        version,
+        [entry],
+        '2026-08-03',
+      )
+      expect(result.inserted).toBe(true)
+      content = result.content
+    }
+
+    // No heading may be glued onto the tail of another line.
+    for (const line of content.split('\n')) {
+      const idx = line.indexOf('## ')
+      expect(idx === -1 || idx === 0).toBe(true)
+    }
+
+    // Exactly one blank line separates the preamble from the newest section.
+    expect(content).toContain('不属于任何版本。\n\n## 2.12.0')
+
+    // What the user actually sees: every section parses back out.
+    const parsed = parseChangelog(content)
+    expect(parsed['2.12.0']).toEqual(['第三次发布'])
+    expect(parsed['2.11.0']).toEqual(['第二次发布'])
+    expect(parsed['2.10.0']).toEqual(['第一次发布'])
+  })
+
   test('is idempotent — a second run leaves the file byte-identical', () => {
     const first = insertChangelogSection(
       CHANGELOG,
