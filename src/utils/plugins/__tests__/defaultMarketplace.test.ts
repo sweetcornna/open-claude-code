@@ -36,11 +36,13 @@ const {
 const {
   getDeclaredMarketplaces,
   isDefaultMarketplaceRemoved,
+  isOfficialMarketplaceRemoved,
   removeMarketplaceSource,
 } = await import('../marketplaceManager.js')
 const { diffMarketplaces } = await import('../reconciler.js')
 
 const TOMBSTONE_FILE = '.default_marketplace_removed'
+const OFFICIAL_TOMBSTONE_FILE = '.official_marketplace_removed'
 
 const envNames = [
   'CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL',
@@ -165,6 +167,57 @@ describe('getDeclaredMarketplaces default entry', () => {
   })
 })
 
+describe('getDeclaredMarketplaces official entry', () => {
+  test('declares the official marketplace unconditionally for a fresh install', () => {
+    const declared = getDeclaredMarketplaces()
+    expect(declared[OFFICIAL_MARKETPLACE_NAME]).toEqual({
+      source: { source: 'github', repo: 'anthropics/claude-plugins-official' },
+      sourceIsFallback: true,
+    })
+  })
+
+  test('still declares the official marketplace when the user has their own marketplaces', () => {
+    mockSettings = {
+      extraKnownMarketplaces: {
+        'my-marketplace': {
+          source: { source: 'github', repo: 'me/my-plugins' },
+        },
+      },
+    }
+    expect(getDeclaredMarketplaces()[OFFICIAL_MARKETPLACE_NAME]).toBeDefined()
+  })
+
+  test('respects CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL', () => {
+    process.env.CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL = '1'
+    expect(getDeclaredMarketplaces()[OFFICIAL_MARKETPLACE_NAME]).toBeUndefined()
+  })
+
+  test('an enabled plugin re-declares it even when auto-install is disabled', () => {
+    process.env.CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL = '1'
+    mockSettings = {
+      enabledPlugins: { [`some-plugin@${OFFICIAL_MARKETPLACE_NAME}`]: true },
+    }
+    expect(getDeclaredMarketplaces()[OFFICIAL_MARKETPLACE_NAME]).toBeDefined()
+  })
+
+  test('respects an enterprise policy allowlist that excludes it', () => {
+    mockPolicySettings = {
+      strictKnownMarketplaces: [
+        { source: 'github', repo: 'mycompany/approved-plugins' },
+      ],
+    }
+    expect(getDeclaredMarketplaces()[OFFICIAL_MARKETPLACE_NAME]).toBeUndefined()
+  })
+
+  test('respects the removal tombstone marker', () => {
+    writeFileSync(join(pluginsDir, OFFICIAL_TOMBSTONE_FILE), '{}')
+    expect(isOfficialMarketplaceRemoved()).toBe(true)
+    expect(getDeclaredMarketplaces()[OFFICIAL_MARKETPLACE_NAME]).toBeUndefined()
+    // The two tombstones are independent — default stays declared.
+    expect(getDeclaredMarketplaces()[DEFAULT_MARKETPLACE_NAME]).toBeDefined()
+  })
+})
+
 describe('removeMarketplaceSource tombstone', () => {
   function writeKnownMarketplaces(names: string[]): void {
     const entries: Record<string, unknown> = {}
@@ -192,6 +245,20 @@ describe('removeMarketplaceSource tombstone', () => {
     expect(isDefaultMarketplaceRemoved()).toBe(true)
     // Not re-declared → the reconciler will not write it back on startup.
     expect(getDeclaredMarketplaces()[DEFAULT_MARKETPLACE_NAME]).toBeUndefined()
+  })
+
+  test('removing the official marketplace writes its own tombstone and stops the declaration', async () => {
+    writeKnownMarketplaces([OFFICIAL_MARKETPLACE_NAME])
+    expect(getDeclaredMarketplaces()[OFFICIAL_MARKETPLACE_NAME]).toBeDefined()
+
+    await removeMarketplaceSource(OFFICIAL_MARKETPLACE_NAME)
+
+    expect(existsSync(join(pluginsDir, OFFICIAL_TOMBSTONE_FILE))).toBe(true)
+    expect(isOfficialMarketplaceRemoved()).toBe(true)
+    expect(getDeclaredMarketplaces()[OFFICIAL_MARKETPLACE_NAME]).toBeUndefined()
+    // Default tombstone untouched — the default marketplace stays declared.
+    expect(existsSync(join(pluginsDir, TOMBSTONE_FILE))).toBe(false)
+    expect(getDeclaredMarketplaces()[DEFAULT_MARKETPLACE_NAME]).toBeDefined()
   })
 
   test('removing an unrelated marketplace leaves the tombstone unset', async () => {

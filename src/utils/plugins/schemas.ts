@@ -106,6 +106,51 @@ export function isBlockedOfficialName(name: string): boolean {
  */
 export const OFFICIAL_GITHUB_ORG = 'anthropics'
 
+function isOfficialGitHubRepositoryPath(path: string): boolean {
+  let repositoryPath = path
+  if (repositoryPath.startsWith('/')) repositoryPath = repositoryPath.slice(1)
+  if (repositoryPath.endsWith('/')) repositoryPath = repositoryPath.slice(0, -1)
+
+  const segments = repositoryPath.split('/')
+  if (segments.length !== 2) return false
+
+  const [owner, repositoryWithSuffix] = segments
+  if (owner?.toLowerCase() !== OFFICIAL_GITHUB_ORG) return false
+
+  const repository = repositoryWithSuffix?.replace(/\.git$/i, '') ?? ''
+  return /^[a-z0-9][a-z0-9._-]*$/i.test(repository)
+}
+
+function isOfficialGitHubGitUrl(value: string): boolean {
+  if (value.trim() !== value) return false
+
+  const scpMatch = /^git@github\.com:(.+)$/i.exec(value)
+  if (scpMatch) {
+    return isOfficialGitHubRepositoryPath(scpMatch[1]!)
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return false
+  }
+
+  if (parsed.hostname.toLowerCase() !== 'github.com') return false
+
+  if (parsed.protocol === 'https:') {
+    if (parsed.username || parsed.password) return false
+    if (parsed.port && parsed.port !== '443') return false
+  } else if (parsed.protocol === 'ssh:') {
+    if (parsed.username.toLowerCase() !== 'git' || parsed.password) return false
+    if (parsed.port && parsed.port !== '22') return false
+  } else {
+    return false
+  }
+
+  return isOfficialGitHubRepositoryPath(parsed.pathname)
+}
+
 /**
  * Validate that a marketplace with a reserved name comes from the official source.
  *
@@ -131,7 +176,7 @@ export function validateOfficialNameSource(
   if (source.source === 'github') {
     // Verify the repo is from the official org
     const repo = source.repo || ''
-    if (!repo.toLowerCase().startsWith(`${OFFICIAL_GITHUB_ORG}/`)) {
+    if (!isOfficialGitHubRepositoryPath(repo)) {
       return `The name '${name}' is reserved for official Anthropic marketplaces. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
     }
     return null // Valid: reserved name from official GitHub source
@@ -139,13 +184,7 @@ export function validateOfficialNameSource(
 
   // Check for git URL source type
   if (source.source === 'git' && source.url) {
-    const url = source.url.toLowerCase()
-    // Check for HTTPS URL format: https://github.com/anthropics/...
-    // or SSH format: git@github.com:anthropics/...
-    const isHttpsAnthropics = url.includes('github.com/anthropics/')
-    const isSshAnthropics = url.includes('git@github.com:anthropics/')
-
-    if (isHttpsAnthropics || isSshAnthropics) {
+    if (isOfficialGitHubGitUrl(source.url)) {
       return null // Valid: reserved name from official git URL
     }
 

@@ -142,6 +142,20 @@ export function isDefaultMarketplaceRemoved(): boolean {
 }
 
 /**
+ * Tombstone for the implicit official marketplace (claude-plugins-official) —
+ * same mechanism and storage rationale as the default-marketplace tombstone
+ * above, separate file so removing one doesn't suppress the other.
+ */
+function getOfficialMarketplaceTombstoneFile(): string {
+  return join(getPluginsDirectory(), '.official_marketplace_removed')
+}
+
+/** Whether the user removed the implicit official marketplace. */
+export function isOfficialMarketplaceRemoved(): boolean {
+  return existsSync(getOfficialMarketplaceTombstoneFile())
+}
+
+/**
  * Memoized inner function to get marketplace data.
  * This caches the marketplace in memory after loading from disk or network.
  */
@@ -185,29 +199,53 @@ export type DeclaredMarketplace = {
  * Get declared marketplace intent from merged settings and --add-dir sources.
  * This is what SHOULD exist — used by the reconciler to find gaps.
  *
- * The official marketplace is implicitly declared with `sourceIsFallback: true`
- * when any enabled plugin references it.
+ * The official marketplace (claude-plugins-official) is implicitly declared
+ * with `sourceIsFallback: true` for everyone, so the reconciler auto-installs
+ * it on first startup — upstream parity; that's the auto-install
+ * CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL exists to turn off.
  */
 export function getDeclaredMarketplaces(): Record<string, DeclaredMarketplace> {
   const implicit: Record<string, DeclaredMarketplace> = {}
 
-  // Only the official marketplace can be implicitly declared — it's the one
-  // built-in source we know. Other marketplaces have no default source to inject.
-  // Explicitly-disabled entries (value: false) don't count.
-  const enabledPlugins = {
-    ...getAddDirEnabledPlugins(),
-    ...(getInitialSettings().enabledPlugins ?? {}),
+  // Official marketplace: implicitly declared for everyone. Without this a
+  // fresh install only ever sees the small claude-code-plugins repo market —
+  // the full plugin catalog lives in claude-plugins-official. Suppressed by
+  // the env kill switch, enterprise policy, and the sticky removal tombstone.
+  if (
+    !isEnvTruthy(
+      process.env.CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL,
+    ) &&
+    isSourceAllowedByPolicy(OFFICIAL_MARKETPLACE_SOURCE) &&
+    !isOfficialMarketplaceRemoved()
+  ) {
+    implicit[OFFICIAL_MARKETPLACE_NAME] = {
+      source: OFFICIAL_MARKETPLACE_SOURCE,
+      sourceIsFallback: true,
+    }
   }
-  for (const [pluginId, value] of Object.entries(enabledPlugins)) {
-    if (
-      value &&
-      parsePluginIdentifier(pluginId).marketplace === OFFICIAL_MARKETPLACE_NAME
-    ) {
-      implicit[OFFICIAL_MARKETPLACE_NAME] = {
-        source: OFFICIAL_MARKETPLACE_SOURCE,
-        sourceIsFallback: true,
+
+  // Even when auto-install is suppressed above, an explicitly enabled plugin
+  // referencing the official marketplace re-declares it — the plugin can't
+  // load without its marketplace (pre-existing behavior, deliberately NOT
+  // gated by the env switch). Explicitly-disabled entries (value: false)
+  // don't count.
+  if (!implicit[OFFICIAL_MARKETPLACE_NAME]) {
+    const enabledPlugins = {
+      ...getAddDirEnabledPlugins(),
+      ...(getInitialSettings().enabledPlugins ?? {}),
+    }
+    for (const [pluginId, value] of Object.entries(enabledPlugins)) {
+      if (
+        value &&
+        parsePluginIdentifier(pluginId).marketplace ===
+          OFFICIAL_MARKETPLACE_NAME
+      ) {
+        implicit[OFFICIAL_MARKETPLACE_NAME] = {
+          source: OFFICIAL_MARKETPLACE_SOURCE,
+          sourceIsFallback: true,
+        }
+        break
       }
-      break
     }
   }
 
@@ -1513,6 +1551,18 @@ async function parseFileWithSchema<T>(
 async function loadAndCacheMarketplace(
   source: MarketplaceSource,
   onProgress?: MarketplaceProgressCallback,
+  /**
+   * Checked as soon as the manifest name is known and BEFORE the fetched content
+   * is swapped onto `cacheDir/<name>`. Return an error string to reject.
+   *
+   * The ordering is the whole point: callers used to validate the name/source
+   * pairing after this function returned, by which time the destructive rename
+   * had already overwritten the existing cache. A hostile source declaring
+   * `name: "claude-plugins-official"` therefore replaced the real official
+   * catalog and the rejection left the poisoned directory in place, still
+   * pointed at by known_marketplaces.json.
+   */
+  validateName?: (name: string) => string | null,
 ): Promise<LoadedPluginMarketplace> {
   const fs = getFsImplementation()
   const cacheDir = getMarketplacesCacheDir()
@@ -1785,6 +1835,16 @@ async function loadAndCacheMarketplace(
       )
     }
 
+    // Reject before the rename below. Remote sources (github/git/url) still
+    // have cleanupNeeded === true here, so the catch block deletes the staged
+    // clone and the existing cache directory is never touched. Local and
+    // settings sources already wrote to their final path and cleared the flag —
+    // reserved names are kept away from those by MarketplaceNameSchema.
+    const nameValidationError = validateName?.(marketplace.name)
+    if (nameValidationError) {
+      throw new Error(nameValidationError)
+    }
+
     // Now rename the cache path to use the marketplace's actual name
     const finalCachePath = join(cacheDir, marketplace.name)
     // Defense-in-depth: the schema rejects path separators, .., and . in marketplace.name,
@@ -1921,20 +1981,14 @@ export async function addMarketplaceSource(
     }
   }
 
-  // Load and cache the marketplace to validate it and get its name
+  // Load and cache the marketplace to validate it and get its name. The
+  // reserved-name check runs inside, before the fetched content can replace an
+  // existing cache directory — see the validateName parameter.
   const { marketplace, cachePath } = await loadAndCacheMarketplace(
     resolvedSource,
     onProgress,
+    name => validateOfficialNameSource(name, resolvedSource),
   )
-
-  // Validate that reserved names come from official sources
-  const sourceValidationError = validateOfficialNameSource(
-    marketplace.name,
-    resolvedSource,
-  )
-  if (sourceValidationError) {
-    throw new Error(sourceValidationError)
-  }
 
   // Name collision with different source: overwrite (settings intent wins).
   // Seed-managed entries are admin-controlled and cannot be overwritten.
@@ -2046,6 +2100,14 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
   if (name === DEFAULT_MARKETPLACE_NAME) {
     writeFileSync_DEPRECATED(
       getDefaultMarketplaceTombstoneFile(),
+      jsonStringify({ removedAt: new Date().toISOString() }, null, 2),
+      { encoding: 'utf-8', flush: true },
+    )
+  }
+  // Same stickiness for the implicit official marketplace declaration.
+  if (name === OFFICIAL_MARKETPLACE_NAME) {
+    writeFileSync_DEPRECATED(
+      getOfficialMarketplaceTombstoneFile(),
       jsonStringify({ removedAt: new Date().toISOString() }, null, 2),
       { encoding: 'utf-8', flush: true },
     )
