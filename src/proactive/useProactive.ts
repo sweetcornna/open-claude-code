@@ -29,6 +29,8 @@ type UseProactiveOpts = {
   queuedCommandsLength: number
   hasActiveLocalJsxUI: boolean
   isInPlanMode: boolean
+  /** Live terminal focus state, read at tick-creation time. */
+  getIsTerminalFocused: () => boolean
   onQueueTick: (command: QueuedCommand) => void
 }
 
@@ -78,9 +80,17 @@ export function useProactive(opts: UseProactiveOpts): void {
         }
 
         generating = true
+        // Cache invariant: focus state rides on the per-turn tick (the tail
+        // of the conversation) instead of the head userContext. As a head
+        // userContext key it was added/removed whenever the terminal
+        // gained/lost focus, which rewrote the FIRST user message's bytes and
+        // busted the prompt cache for the entire message history on every
+        // focus flip. A tail marker carries the same information at a
+        // prefix-safe position.
+        const focused = optsRef.current.getIsTerminalFocused()
         void (async () => {
           const commands = await createProactiveAutonomyCommands({
-            basePrompt: `<${TICK_TAG}>${new Date().toLocaleTimeString()}</${TICK_TAG}>`,
+            basePrompt: `<${TICK_TAG}>${new Date().toLocaleTimeString()}${focused ? '' : ' [terminal unfocused]'}</${TICK_TAG}>`,
             currentDir: getCwd(),
             shouldCreate: () => !disposed,
           })

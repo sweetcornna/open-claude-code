@@ -97,7 +97,15 @@ export function getCoordinatorUserContext(
   let content = `Workers spawned via the ${AGENT_TOOL_NAME} tool have access to these tools: ${workerTools}`
 
   if (mcpClients.length > 0) {
-    const serverNames = mcpClients.map(c => c.name).join(', ')
+    // Cache invariant: this string is rendered into the FIRST user message of
+    // every request (prependUserContext). mcpClients is in connection-
+    // completion order — racy across startups and re-appended on reconnect —
+    // so an unsorted join changes the head-message bytes without any semantic
+    // change, busting the prompt cache for the entire message history.
+    const serverNames = mcpClients
+      .map(c => c.name)
+      .sort()
+      .join(', ')
     content += `\n\nWorkers also have access to MCP tools from connected MCP servers: ${serverNames}`
   }
 
