@@ -251,6 +251,8 @@ describe('share command — gh not available paths', () => {
     expect(result.value).toContain('Session shared')
     expect(result.value).toContain('https://0x0.st/abc123')
     expect(result.value).toContain('0x0.st')
+    expect(result.value).toContain('Visibility: public')
+    expect(result.value).not.toContain('Visibility: secret')
   })
 
   test('gh not available + allowPublicFallback + curl returns bad URL → error', async () => {
@@ -322,6 +324,8 @@ describe('share command — gh available paths', () => {
     expect(result.value).toContain('Session shared')
     expect(result.value).toContain('https://0x0.st/def456')
     expect(result.value).toContain('fallback')
+    expect(result.value).toContain('Visibility: public')
+    expect(result.value).not.toContain('Visibility: secret')
   })
 
   test('gh available + gist fails + allowPublicFallback + curl fails → upload error', async () => {

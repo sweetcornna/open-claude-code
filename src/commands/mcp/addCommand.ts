@@ -26,7 +26,10 @@ import {
   isXaaEnabled,
 } from '../../services/mcp/xaaIdpLogin.js'
 import { parseEnvVars } from '../../utils/config/envUtils.js'
-import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
+
+export function writeHeaderNames(headers: Record<string, string>): void {
+  process.stdout.write(`Headers: ${Object.keys(headers).join(', ')}\n`)
+}
 
 /**
  * Registers the `mcp add` subcommand on the given Commander command.
@@ -187,9 +190,7 @@ export function registerMcpAddCommand(mcp: Command): void {
             `Added SSE MCP server ${name} with URL: ${actualCommand} to ${scope} config\n`,
           )
           if (headers) {
-            process.stdout.write(
-              `Headers: ${jsonStringify(headers, null, 2)}\n`,
-            )
+            writeHeaderNames(headers)
           }
         } else if (transport === 'http') {
           if (!actualCommand) {
@@ -233,9 +234,7 @@ export function registerMcpAddCommand(mcp: Command): void {
             `Added HTTP MCP server ${name} with URL: ${actualCommand} to ${scope} config\n`,
           )
           if (headers) {
-            process.stdout.write(
-              `Headers: ${jsonStringify(headers, null, 2)}\n`,
-            )
+            writeHeaderNames(headers)
           }
         } else {
           if (
