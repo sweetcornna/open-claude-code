@@ -46,11 +46,13 @@ export type AgentVisual = { mark: string; color: string }
  * agent status -> visual.
  * - running -> ● warning (UI overrides mark with spinner animation)
  * - done·dead -> ✗ error
+ * - done·skipped -> ⊘ subtle (user skipped; showing ✓ would misread as success)
  * - done·ok -> ✓ success
  */
 export function agentVisual(a: AgentProgress): AgentVisual {
   if (a.status === 'running') return { mark: '●', color: 'warning' }
   if (a.resultKind === 'dead') return { mark: '✗', color: 'error' }
+  if (a.resultKind === 'skipped') return { mark: '⊘', color: 'subtle' }
   return { mark: '✓', color: 'success' }
 }
 

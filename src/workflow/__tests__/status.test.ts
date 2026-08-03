@@ -58,6 +58,11 @@ test('agentVisual: dead → ✗ error', () => {
   expect(agentVisual(a)).toEqual({ mark: '✗', color: 'error' })
 })
 
+test('agentVisual: skipped → ⊘ subtle (not misread as ✓ success)', () => {
+  const a: AgentProgress = { id: 1, status: 'done', resultKind: 'skipped' }
+  expect(agentVisual(a)).toEqual({ mark: '⊘', color: 'subtle' })
+})
+
 test('formatTokenCount: <1000 original value, ≥1000 keeps 1 decimal + k', () => {
   expect(formatTokenCount(undefined)).toBe('0')
   expect(formatTokenCount(0)).toBe('0')
