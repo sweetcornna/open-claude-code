@@ -125,6 +125,23 @@ export function isGpt56FamilyModel(model: string): boolean {
   return normalized === 'gpt-5.6' || normalized.startsWith('gpt-5.6-')
 }
 
+/**
+ * Whether this model id belongs to OpenAI's Codex lineage — ids containing
+ * 'codex' (gpt-5.3-codex, codex-mini-latest) or the GPT-5 generation
+ * (gpt-5, gpt-5.x, gpt-5.x-<variant>).
+ *
+ * These models are Responses-API-first: OpenAI serves them on `/responses`
+ * with first-class reasoning, and Chat Completions support is secondary or
+ * absent. Used by the OpenAI wire-protocol resolution to default such models
+ * to 'responses'. Deliberately does NOT match gpt-4o/gpt-4.1 (Chat
+ * Completions era) or lookalikes such as 'gpt-55'.
+ */
+export function isCodexFamilyModel(model: string): boolean {
+  const normalized = normalizeChatGPTModelId(model)
+  if (normalized.includes('codex')) return true
+  return /^gpt-5(\.\d+)?(-|$)/.test(normalized)
+}
+
 export function isChatGPTCodexReasoningModel(model: string): boolean {
   const normalized = normalizeChatGPTModelId(model)
   return (

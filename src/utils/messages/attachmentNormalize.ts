@@ -22,7 +22,6 @@ import type {
   TextBlockParam,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import { feature } from 'bun:bundle'
-import { companionIntroText } from '../../buddy/prompt.js'
 import { COMMAND_NAME_TAG } from '../../constants/xml.js'
 import { OUTPUT_STYLE_CONFIG } from '../../constants/outputStyles.js'
 import { DiagnosticTrackingService } from '../../services/diagnosticTracking.js'
@@ -469,6 +468,17 @@ Read the team config to discover your teammates' names. Check the task list peri
     case 'plan_mode': {
       return getPlanModeInstructions(attachment)
     }
+    case 'ultracode_mode': {
+      // Mirrors the official harness wording for the ultracode standing opt-in.
+      return [
+        createUserMessage({
+          content: wrapInSystemReminder(
+            'Ultracode is ON for this session — a standing opt-in for multi-agent orchestration. For every substantive task, author and run a Workflow (multi-agent orchestration) by default; the goal is the most exhaustive, correct result you can produce, and token cost is not a constraint. Multi-phase work (understand → design → implement → review) should run as several workflows in sequence, reading each result before the next phase. Lean toward adversarially verifying findings. Work solo only on conversational turns or trivial mechanical edits. The user can turn this off with /effort → ultracode.',
+          ),
+          isMeta: true,
+        }),
+      ]
+    }
     case 'plan_mode_reentry': {
       const content = `## Re-entering Plan Mode
 
@@ -865,14 +875,6 @@ You have exited auto mode. The user may now want to interact more directly. You 
       }
       return wrapMessagesInSystemReminder([
         createUserMessage({ content: parts.join('\n\n'), isMeta: true }),
-      ])
-    }
-    case 'companion_intro': {
-      return wrapMessagesInSystemReminder([
-        createUserMessage({
-          content: companionIntroText(attachment.name, attachment.species),
-          isMeta: true,
-        }),
       ])
     }
     case 'verify_plan_reminder': {

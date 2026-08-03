@@ -15,7 +15,6 @@ import { isAgentSwarmsEnabled } from '../agents/agentSwarmsEnabled.js'
 import { jsonStringify } from '../telemetry/slowOperations.js'
 import { logError } from '../telemetry/log.js'
 import { logAntError } from '../telemetry/debug.js'
-import { getCompanionIntroAttachment } from '../../buddy/prompt.js'
 import type { Attachment } from './types.js'
 import { searchExtraToolsModules, skillSearchModules } from './features.js'
 import {
@@ -33,6 +32,7 @@ import {
   getDateChangeAttachments,
   getPlanModeAttachments,
   getPlanModeExitAttachment,
+  getUltracodeModeAttachments,
   getUltrathinkEffortAttachment,
 } from './modes.js'
 import {
@@ -222,13 +222,6 @@ export async function getAttachments(
         ),
       ),
     ),
-    ...(feature('BUDDY')
-      ? [
-          maybe('companion_intro', () =>
-            Promise.resolve(getCompanionIntroAttachment(messages)),
-          ),
-        ]
-      : []),
     maybe('changed_files', () => getChangedFiles(context)),
     maybe('nested_memory', () => getNestedMemoryAttachments(context)),
     // relevant_memories moved to async prefetch (startRelevantMemoryPrefetch)
@@ -336,6 +329,9 @@ export async function getAttachments(
         ),
         maybe('verify_plan_reminder', async () =>
           getVerifyPlanReminderAttachment(messages, toolUseContext),
+        ),
+        maybe('ultracode_mode', async () =>
+          getUltracodeModeAttachments(messages, toolUseContext),
         ),
       ]
     : []

@@ -132,13 +132,15 @@ export function rotateHue(hex: string, hueShift: number): string {
 }
 
 /**
- * 根据 time 计算当前色相偏移（度，连续旋转）。
+ * 当前色相偏移：恒为 0（涟漪固定紫色，不再随时间变色）。
  *
- * 返回值始终在 [0, 360) 区间，单调递增（模 360）。
- * 周期约 12s 一圈，覆盖完整色环。
+ * 历史上这里做 12s 一圈的连续色相旋转（蓝→青→紫循环），用户反馈变色
+ * 效果杂乱，改为保持 RIPPLE_COLOR_STOPS 的紫色系原色。保留函数与
+ * hueShift 参数管线（rotateHue/intensityToColor 的 0 快路径零开销），
+ * 后续想恢复动色只改这一处。
  */
-export function getHueShiftAtTime(time: number): number {
-  return (time * HUE_ROTATION_DEG_PER_MS) % 360
+export function getHueShiftAtTime(_time: number): number {
+  return 0
 }
 
 /**

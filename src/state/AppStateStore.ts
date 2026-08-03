@@ -77,13 +77,7 @@ export type SpeculationState =
 
 export const IDLE_SPECULATION_STATE: SpeculationState = { status: 'idle' }
 
-export type FooterItem =
-  | 'tasks'
-  | 'tmux'
-  | 'bagel'
-  | 'teams'
-  | 'companion'
-  | 'bg_agent'
+export type FooterItem = 'tasks' | 'tmux' | 'bagel' | 'teams' | 'bg_agent'
 
 export type AppState = DeepImmutable<{
   settings: SettingsJson
@@ -105,8 +99,6 @@ export type AppState = DeepImmutable<{
   coordinatorTaskIndex: number
   viewSelectionMode: 'none' | 'selecting-agent' | 'viewing-agent'
   // Which footer pill is focused (arrow-key navigation below the prompt).
-  // Lives in AppState so pill components rendered outside PromptInput
-  // (CompanionSprite in REPL.tsx) can read their own focused state.
   footerSelection: FooterItem | null
   toolPermissionContext: ToolPermissionContext
   spinnerTip?: string
@@ -142,10 +134,6 @@ export type AppState = DeepImmutable<{
   foregroundedTaskId?: string
   // Task ID of in-process teammate whose transcript is being viewed (undefined = leader's view)
   viewingAgentTaskId?: string
-  // Latest companion reaction from buddy_react API (src/buddy/companionReact.ts)
-  companionReaction?: string
-  // Timestamp of last /buddy pet — CompanionSprite renders hearts while recent
-  companionPetAt?: number
   // TODO (ashwin): see if we can use utility-types DeepReadonly for this
   mcp: {
     clients: MCPServerConnection[]
@@ -420,6 +408,13 @@ export type AppState = DeepImmutable<{
   // Remote-harness side: set via set_permission_mode control_request,
   // pushed to CCR external_metadata.is_ultraplan_mode by onChangeAppState.
   isUltraplanMode?: boolean
+  /**
+   * Ultracode session mode (standing opt-in, toggled from the /effort panel or
+   * `/effort ultracode`): while true, a per-human-turn system-reminder tells the
+   * model to orchestrate substantive tasks as multi-agent workflows by default.
+   * Session-only — deliberately not persisted to settings.
+   */
+  ultracodeMode?: boolean
   // Channel permission callbacks — permission prompts over Telegram/iMessage/etc.
   // Races against local UI + hooks + classifier via claim() in
   // interactiveHandler.ts. Constructed once in useManageMCPConnections.

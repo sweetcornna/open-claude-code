@@ -13,6 +13,7 @@ import type {
 } from '../../../types/message.js'
 import type { AgentId } from '../../../types/ids.js'
 import type { Tools } from '../../../Tool.js'
+import { isChatGPTCodexReasoningModel } from 'src/utils/model/chatgptModels.js'
 import { getSessionId } from '../../../bootstrap/state.js'
 import { getOpenAIClient } from './client.js'
 import {
@@ -90,6 +91,25 @@ function convertToResponsesReasoningEffort(
   if (effortValue === 'max') return 'max'
   if (typeof effortValue === 'number') return 'high'
   return undefined
+}
+
+/**
+ * Chat Completions variant of the reasoning-effort resolution. The chat API's
+ * enum tops out at 'high' (no xhigh/max), so higher tiers clamp down. Callers
+ * gate on reasoning-capable models — strict OpenAI-compatible endpoints reject
+ * the unknown key.
+ */
+export function getChatReasoningEffort(
+  effortValue: unknown,
+): 'low' | 'medium' | 'high' | undefined {
+  const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.toLowerCase()
+  if (envOverride === 'auto' || envOverride === 'unset') return undefined
+  const resolved =
+    convertToResponsesReasoningEffort(envOverride) ??
+    convertToResponsesReasoningEffort(effortValue) ??
+    'medium'
+  if (resolved === 'xhigh' || resolved === 'max') return 'high'
+  return resolved
 }
 
 function getChatGPTResponsesReasoningEffort(
@@ -354,7 +374,7 @@ export async function* queryModelOpenAI(
     )
 
     const useChatGPTResponses = isChatGPTAuthEnabled()
-    const wireProtocol = resolveOpenAIWireProtocol()
+    const wireProtocol = resolveOpenAIWireProtocol(openaiModel)
     // OpenAI's official OAuth and API-key routes share the same prompt-cache
     // contract. Scope the key to the real conversation so resumed turns stay
     // sticky while unrelated sessions do not share a routing bucket. Generic
@@ -423,6 +443,13 @@ export async function* queryModelOpenAI(
                 maxTokens,
                 temperatureOverride: options.temperatureOverride,
                 promptCacheKey,
+                ...(isChatGPTCodexReasoningModel(openaiModel)
+                  ? {
+                      reasoningEffort: getChatReasoningEffort(
+                        options.effortValue,
+                      ),
+                    }
+                  : {}),
               }),
               { signal },
             ),

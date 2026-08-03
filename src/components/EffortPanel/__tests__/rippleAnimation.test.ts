@@ -102,45 +102,10 @@ describe('rotateHue', () => {
 })
 
 describe('getHueShiftAtTime', () => {
-  test('time=0 → 0', () => {
-    expect(getHueShiftAtTime(0)).toBe(0)
-  })
-
-  test('time > 0 → 在 [0, 360) 范围内（连续旋转，非负）', () => {
-    for (const t of [100, 500, 1000, 2000, 5000, 10000, 50000, 100000]) {
-      const shift = getHueShiftAtTime(t)
-      expect(shift).toBeGreaterThanOrEqual(0)
-      expect(shift).toBeLessThan(360)
+  test('恒为 0：涟漪固定紫色，不随时间变色（用户反馈定案）', () => {
+    for (const t of [0, 100, 1000, 5000, 100000]) {
+      expect(getHueShiftAtTime(t)).toBe(0)
     }
-  })
-
-  test('time 推进 → hueShift 单调递增（模 360）', () => {
-    // 在一个周期内（12000ms），hueShift 应单调递增
-    const samples = [0, 1000, 2000, 3000, 4000, 5000, 6000]
-    const shifts = samples.map(getHueShiftAtTime)
-    for (let i = 1; i < shifts.length; i++) {
-      expect(shifts[i]).toBeGreaterThan(shifts[i - 1])
-    }
-  })
-
-  test('周期 12000ms（time=12000 应回到 0，模 360）', () => {
-    // 12000ms * 0.03 = 360，% 360 = 0
-    const shift = getHueShiftAtTime(12000)
-    expect(shift).toBe(0)
-  })
-
-  test('半周期 6000ms → hueShift=180（对面色相）', () => {
-    // 6000ms * 0.03 = 180
-    expect(getHueShiftAtTime(6000)).toBe(180)
-  })
-
-  test('四分之一周期 3000ms → hueShift=90', () => {
-    expect(getHueShiftAtTime(3000)).toBe(90)
-  })
-
-  test('多周期循环：time=24000 等同 time=0', () => {
-    expect(getHueShiftAtTime(24000)).toBe(0)
-    expect(getHueShiftAtTime(36000)).toBe(0)
   })
 })
 

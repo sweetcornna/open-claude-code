@@ -98,24 +98,39 @@ export type ConfirmOutcome =
       message: string
       effortUpdate?: { value: EffortValue | undefined }
     }
-  | { kind: 'ultracode-hint'; message: string }
+  | { kind: 'ultracode-toggle'; enabled: boolean; message: string }
 
 export type ApplyFn = (cursor: PanelPosition) => {
   message: string
   effortUpdate?: { value: EffortValue | undefined }
 }
 
-export const ULTRACODE_HINT =
-  'ultracode is not an effort level. Use /ultracode <context> to start a multi-agent workflow.'
+export const ULTRACODE_ON_MESSAGE =
+  'Ultracode ON for this session — substantive tasks are orchestrated as multi-agent workflows by default. Select ultracode again to turn it off.'
+
+export const ULTRACODE_OFF_MESSAGE =
+  'Ultracode off — back to normal single-agent behavior. /ultracode <context> still starts a one-off workflow.'
 
 export const CANCEL_MESSAGE = 'Effort unchanged.'
 
+/**
+ * Confirming on the ultracode slot toggles the session-wide ultracode mode
+ * (official semantics: a standing opt-in the model is reminded of every turn),
+ * instead of the old behavior of rejecting with a hint. Effort level itself is
+ * untouched — ultracode is orthogonal to the low…max scale.
+ */
 export function computeConfirmOutcome(
   cursor: PanelPosition,
   applyFn: ApplyFn,
+  ultracodeActive: boolean,
 ): ConfirmOutcome {
   if (isUltracode(cursor)) {
-    return { kind: 'ultracode-hint', message: ULTRACODE_HINT }
+    const enabled = !ultracodeActive
+    return {
+      kind: 'ultracode-toggle',
+      enabled,
+      message: enabled ? ULTRACODE_ON_MESSAGE : ULTRACODE_OFF_MESSAGE,
+    }
   }
   const result = applyFn(cursor)
   return {

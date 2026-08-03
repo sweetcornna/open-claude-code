@@ -355,3 +355,39 @@ export function getUltrathinkEffortAttachment(
   logEvent('tengu_ultrathink', {})
   return [{ type: 'ultrathink_effort', level: 'high' }]
 }
+
+/**
+ * Ultracode session mode reminder — once per HUMAN turn while
+ * appState.ultracodeMode is on. Counting human turns (not assistant/tool
+ * rounds) mirrors getPlanModeAttachmentTurnCount: the tool loop re-evaluates
+ * attachments every round, and re-sending mid-turn would only burn tokens.
+ */
+export async function getUltracodeModeAttachments(
+  messages: Message[] | undefined,
+  toolUseContext: ToolUseContext,
+): Promise<Attachment[]> {
+  if (toolUseContext.getAppState().ultracodeMode !== true) {
+    return []
+  }
+  if (messages && messages.length > 0) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i]
+      if (
+        message?.type === 'user' &&
+        !message.isMeta &&
+        !hasToolResultContent(message.message!.content)
+      ) {
+        // A human turn started after the last reminder → send a fresh one.
+        break
+      }
+      if (
+        message?.type === 'attachment' &&
+        message.attachment!.type === 'ultracode_mode'
+      ) {
+        // Already reminded this turn (no human turn in between).
+        return []
+      }
+    }
+  }
+  return [{ type: 'ultracode_mode' }]
+}
