@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
+import { errorMessageWithCause } from '../../utils/runtime/errors.js';
 import { getGeminiOAuthAccessToken, startGeminiOAuthLogin } from '../../services/api/gemini/oauthToken.js';
 import {
   completeChatGPTDeviceLogin,
@@ -223,7 +224,9 @@ function SearchSettingPanel({
           setNotice(`${row.label} connected.`);
         })
         .catch((error: unknown) => {
-          setNotice(`${row.label} login failed: ${error instanceof Error ? error.message : String(error)}`);
+          // errorMessageWithCause, not `.message`: a transport failure rejects
+          // with the bare string "fetch failed" and keeps the reason in `cause`.
+          setNotice(`${row.label} login failed: ${errorMessageWithCause(error)}`);
         })
         .finally(() => setLoginInFlight(undefined));
     },
