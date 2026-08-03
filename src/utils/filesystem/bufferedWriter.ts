@@ -8,12 +8,14 @@ export type BufferedWriter = {
 
 export function createBufferedWriter({
   writeFn,
+  onError,
   flushIntervalMs = 1000,
   maxBufferSize = 100,
   maxBufferBytes = Infinity,
   immediateMode = false,
 }: {
   writeFn: WriteFn
+  onError?: (error: unknown) => void
   flushIntervalMs?: number
   maxBufferSize?: number
   maxBufferBytes?: number
@@ -27,6 +29,22 @@ export function createBufferedWriter({
   // before the setImmediate fires.
   let pendingOverflow: string[] | null = null
 
+  function reportError(error: unknown): void {
+    try {
+      onError?.(error)
+    } catch {
+      // A best-effort writer must not be made fatal by its error reporter.
+    }
+  }
+
+  function writeSafely(content: string): void {
+    try {
+      writeFn(content)
+    } catch (error) {
+      reportError(error)
+    }
+  }
+
   function clearTimer(): void {
     if (flushTimer) {
       clearTimeout(flushTimer)
@@ -36,14 +54,16 @@ export function createBufferedWriter({
 
   function flush(): void {
     if (pendingOverflow) {
-      writeFn(pendingOverflow.join(''))
+      const pending = pendingOverflow
       pendingOverflow = null
+      writeSafely(pending.join(''))
     }
     if (buffer.length === 0) return
-    writeFn(buffer.join(''))
+    const pending = buffer
     buffer = []
     bufferBytes = 0
     clearTimer()
+    writeSafely(pending.join(''))
   }
 
   function scheduleFlush(): void {
@@ -75,7 +95,7 @@ export function createBufferedWriter({
     setImmediate(() => {
       const toWrite = pendingOverflow
       pendingOverflow = null
-      if (toWrite) writeFn(toWrite.join(''))
+      if (toWrite) writeSafely(toWrite.join(''))
     })
   }
 

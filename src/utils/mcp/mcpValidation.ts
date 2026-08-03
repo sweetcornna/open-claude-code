@@ -14,6 +14,8 @@ import { logError } from '../telemetry/log.js'
 export const MCP_TOKEN_COUNT_THRESHOLD_FACTOR = 0.5
 export const IMAGE_TOKEN_ESTIMATE = 1600
 const DEFAULT_MAX_MCP_OUTPUT_TOKENS = 25000
+const FALLBACK_BYTES_PER_TOKEN = 2
+const FALLBACK_CHARS_PER_TOKEN = 1
 
 /**
  * Resolve the MCP output token cap. Precedence:
@@ -76,6 +78,29 @@ export function getContentSizeEstimate(content: MCPToolResult): number {
 
 function getMaxMcpOutputChars(): number {
   return getMaxMcpOutputTokens() * 4
+}
+
+function getConservativeContentSizeEstimate(content: MCPToolResult): number {
+  if (!content) return 0
+
+  const estimateText = (text: string): number =>
+    Math.ceil(
+      new TextEncoder().encode(text).byteLength / FALLBACK_BYTES_PER_TOKEN,
+    )
+
+  if (typeof content === 'string') {
+    return estimateText(content)
+  }
+
+  return content.reduce((total, block) => {
+    if (isTextBlock(block)) {
+      return total + estimateText(block.text)
+    }
+    if (isImageBlock(block)) {
+      return total + IMAGE_TOKEN_ESTIMATE
+    }
+    return total + estimateText(JSON.stringify(block))
+  }, 0)
 }
 
 function getTruncationMessage(): string {
@@ -148,10 +173,18 @@ async function truncateContentBlocks(
   return result
 }
 
-export async function mcpContentNeedsTruncation(
+type TokenCounter = typeof countMessagesTokensWithAPI
+
+type TruncationDecision = {
+  needsTruncation: boolean
+  maxChars?: number
+}
+
+async function getMcpTruncationDecision(
   content: MCPToolResult,
-): Promise<boolean> {
-  if (!content) return false
+  countTokens: TokenCounter,
+): Promise<TruncationDecision> {
+  if (!content) return { needsTruncation: false }
 
   // Use size check as a heuristic to avoid unnecessary token counting API calls
   const contentSizeEstimate = getContentSizeEstimate(content)
@@ -159,7 +192,7 @@ export async function mcpContentNeedsTruncation(
     contentSizeEstimate <=
     getMaxMcpOutputTokens() * MCP_TOKEN_COUNT_THRESHOLD_FACTOR
   ) {
-    return false
+    return { needsTruncation: false }
   }
 
   try {
@@ -168,21 +201,39 @@ export async function mcpContentNeedsTruncation(
         ? [{ role: 'user' as const, content }]
         : [{ role: 'user' as const, content }]
 
-    const tokenCount = await countMessagesTokensWithAPI(messages, [])
-    return !!(tokenCount && tokenCount > getMaxMcpOutputTokens())
+    const tokenCount = await countTokens(messages, [])
+    if (tokenCount !== null) {
+      return {
+        needsTruncation: tokenCount > getMaxMcpOutputTokens(),
+      }
+    }
   } catch (error) {
     logError(error)
-    // Assume no truncation needed on error
-    return false
   }
+
+  // Once exact counting is unavailable, a two-bytes-per-token estimate avoids
+  // passing dense JSON or non-ASCII output through on the optimistic 4-char
+  // heuristic. The tighter character cap ensures the fallback actually trims.
+  return {
+    needsTruncation:
+      getConservativeContentSizeEstimate(content) > getMaxMcpOutputTokens(),
+    maxChars: getMaxMcpOutputTokens() * FALLBACK_CHARS_PER_TOKEN,
+  }
+}
+
+export async function mcpContentNeedsTruncation(
+  content: MCPToolResult,
+  countTokens: TokenCounter = countMessagesTokensWithAPI,
+): Promise<boolean> {
+  return (await getMcpTruncationDecision(content, countTokens)).needsTruncation
 }
 
 export async function truncateMcpContent(
   content: MCPToolResult,
+  maxChars = getMaxMcpOutputChars(),
 ): Promise<MCPToolResult> {
   if (!content) return content
 
-  const maxChars = getMaxMcpOutputChars()
   const truncationMsg = getTruncationMessage()
 
   if (typeof content === 'string') {
@@ -199,10 +250,12 @@ export async function truncateMcpContent(
 
 export async function truncateMcpContentIfNeeded(
   content: MCPToolResult,
+  countTokens: TokenCounter = countMessagesTokensWithAPI,
 ): Promise<MCPToolResult> {
-  if (!(await mcpContentNeedsTruncation(content))) {
+  const decision = await getMcpTruncationDecision(content, countTokens)
+  if (!decision.needsTruncation) {
     return content
   }
 
-  return await truncateMcpContent(content)
+  return await truncateMcpContent(content, decision.maxChars)
 }

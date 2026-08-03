@@ -18,6 +18,7 @@ import { CACHE_PATHS } from '../filesystem/cachePaths.js'
 import { registerCleanup } from '../process/cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
+import { errorMessage, getErrnoCode } from '../runtime/errors.js'
 import { attachErrorLogSink, dateToFilename } from './log.js'
 import { jsonStringify } from './slowOperations.js'
 import { captureException } from './sentry.js'
@@ -46,6 +47,7 @@ type JsonlWriter = {
 
 function createJsonlWriter(options: {
   writeFn: (content: string) => void
+  onError?: (error: unknown) => void
   flushIntervalMs?: number
   maxBufferSize?: number
 }): JsonlWriter {
@@ -61,6 +63,58 @@ function createJsonlWriter(options: {
 
 // Buffered writers for JSONL log files, keyed by path
 const logWriters = new Map<string, JsonlWriter>()
+
+function isSensitiveLogFieldName(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return (
+    normalized.includes('auth') ||
+    normalized.includes('cookie') ||
+    normalized.includes('credential') ||
+    normalized.includes('secret') ||
+    normalized.includes('token') ||
+    normalized.includes('apikey') ||
+    normalized.endsWith('key')
+  )
+}
+
+function sanitizeUrlForLogging(value: string): string {
+  try {
+    const url = new URL(value)
+    url.username = ''
+    url.password = ''
+    url.search = ''
+    url.hash = ''
+    return url.toString()
+  } catch {
+    return '[INVALID URL]'
+  }
+}
+
+function sanitizeLogText(value: string): string {
+  const withoutUrlCredentials = value.replace(
+    /\b(?:https?|wss?):\/\/[^\s"'<>}\]]+/gi,
+    url => sanitizeUrlForLogging(url),
+  )
+
+  const withoutJsonCredentials = withoutUrlCredentials.replace(
+    /("(?:\\.|[^"\\])*")(\s*:\s*)("(?:\\.|[^"\\])*"|[^,{}[\]"\s]+)/g,
+    (match, rawKey: string, separator: string) => {
+      try {
+        const key = JSON.parse(rawKey) as unknown
+        return typeof key === 'string' && isSensitiveLogFieldName(key)
+          ? `${rawKey}${separator}"[REDACTED]"`
+          : match
+      } catch {
+        return match
+      }
+    },
+  )
+
+  return withoutJsonCredentials.replace(
+    /(\b[A-Za-z0-9_-]*(?:auth|cookie|credential|secret|token|api[-_]?key)[A-Za-z0-9_-]*\b\s*=\s*)([^,\s}\]]+)/gi,
+    '$1[REDACTED]',
+  )
+}
 
 /**
  * Flush all buffered log writers. Used for testing.
@@ -83,6 +137,18 @@ export function _clearLogWritersForTesting(): void {
   logWriters.clear()
 }
 
+/** @internal */
+export function _sanitizeLogTextForTesting(value: string): string {
+  return sanitizeLogText(value)
+}
+
+/** @internal */
+export function _writeLogRecordForTesting(path: string, message: object): void {
+  const writer = getLogWriter(path)
+  writer.write(message)
+  writer.flush()
+}
+
 function getLogWriter(path: string): JsonlWriter {
   let writer = logWriters.get(path)
   if (!writer) {
@@ -93,12 +159,19 @@ function getLogWriter(path: string): JsonlWriter {
         try {
           // Happy-path: directory already exists
           getFsImplementation().appendFileSync(path, content)
-        } catch {
-          // If any error occurs, assume it was due to missing directory
+        } catch (error) {
+          if (getErrnoCode(error) !== 'ENOENT') {
+            throw error
+          }
           getFsImplementation().mkdirSync(dir)
-          // Retry appending
           getFsImplementation().appendFileSync(path, content)
         }
+      },
+      onError: error => {
+        logForDebugging(
+          `Failed to write error log: ${sanitizeLogText(errorMessage(error))}`,
+          { level: 'error' },
+        )
       },
       flushIntervalMs: 1000,
       maxBufferSize: 50,
@@ -151,26 +224,27 @@ function extractServerMessage(data: unknown): string | undefined {
  * Implementation for logError - writes error to debug log and file.
  */
 function logErrorImpl(error: Error): void {
-  const errorStr = error.stack || error.message
+  const errorStr = sanitizeLogText(error.stack || error.message)
 
   // Enrich axios errors with request URL, status, and server message for debugging
   let context = ''
   if (axios.isAxiosError(error) && error.config?.url) {
-    const parts = [`url=${error.config.url}`]
+    const parts = [`url=${sanitizeUrlForLogging(error.config.url)}`]
     if (error.response?.status !== undefined) {
       parts.push(`status=${error.response.status}`)
     }
     const serverMessage = extractServerMessage(error.response?.data)
     if (serverMessage) {
-      parts.push(`body=${serverMessage}`)
+      parts.push(`body=${sanitizeLogText(serverMessage)}`)
     }
     context = `[${parts.join(',')}] `
   }
 
-  logForDebugging(`${error.name}: ${context}${errorStr}`, { level: 'error' })
+  const persistedError = sanitizeLogText(`${context}${errorStr}`)
+  logForDebugging(`${error.name}: ${persistedError}`, { level: 'error' })
 
   appendToLog(getErrorsPath(), {
-    error: `${context}${errorStr}`,
+    error: persistedError,
   })
 
   // Also report to Sentry (no-op if not initialized)
@@ -181,12 +255,13 @@ function logErrorImpl(error: Error): void {
  * Implementation for logMCPError - writes MCP error to debug log and file.
  */
 function logMCPErrorImpl(serverName: string, error: unknown): void {
+  const errorStr = sanitizeLogText(
+    error instanceof Error ? error.stack || error.message : String(error),
+  )
   // Not themed, to avoid having to pipe theme all the way down
-  logForDebugging(`MCP server "${serverName}" ${error}`, { level: 'error' })
+  logForDebugging(`MCP server "${serverName}" ${errorStr}`, { level: 'error' })
 
   const logFile = getMCPLogsPath(serverName)
-  const errorStr =
-    error instanceof Error ? error.stack || error.message : String(error)
 
   const errorInfo = {
     error: errorStr,
@@ -202,12 +277,13 @@ function logMCPErrorImpl(serverName: string, error: unknown): void {
  * Implementation for logMCPDebug - writes MCP debug message to log file.
  */
 function logMCPDebugImpl(serverName: string, message: string): void {
-  logForDebugging(`MCP server "${serverName}": ${message}`)
+  const sanitizedMessage = sanitizeLogText(message)
+  logForDebugging(`MCP server "${serverName}": ${sanitizedMessage}`)
 
   const logFile = getMCPLogsPath(serverName)
 
   const debugInfo = {
-    debug: message,
+    debug: sanitizedMessage,
     timestamp: new Date().toISOString(),
     sessionId: getSessionId(),
     cwd: getFsImplementation().cwd(),

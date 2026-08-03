@@ -114,4 +114,38 @@ describe('createBufferedWriter', () => {
     writer.flush()
     expect(written).toEqual(['batch1', 'batch2'])
   })
+
+  test('timer flush reports write failures without throwing from the callback', async () => {
+    const errors: unknown[] = []
+    const writer = createBufferedWriter({
+      writeFn: () => {
+        throw new Error('disk full')
+      },
+      onError: error => errors.push(error),
+      flushIntervalMs: 1,
+    })
+
+    writer.write('timer batch')
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(errors).toHaveLength(1)
+    expect((errors[0] as Error).message).toBe('disk full')
+  })
+
+  test('deferred overflow reports write failures without throwing from setImmediate', async () => {
+    const errors: unknown[] = []
+    const writer = createBufferedWriter({
+      writeFn: () => {
+        throw new Error('permission denied')
+      },
+      onError: error => errors.push(error),
+      maxBufferSize: 1,
+    })
+
+    writer.write('overflow batch')
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(errors).toHaveLength(1)
+    expect((errors[0] as Error).message).toBe('permission denied')
+  })
 })

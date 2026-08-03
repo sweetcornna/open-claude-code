@@ -24,7 +24,6 @@ import {
   UnauthorizedError,
 } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
-import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
@@ -109,7 +108,6 @@ import {
   registerSamplingHandler,
 } from './samplingHandler.js'
 import { normalizeNameForMCP } from './normalization.js'
-import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
 // Package imports — delegate to mcp-client package utilities where applicable
 import {
@@ -134,6 +132,8 @@ import { sleep } from '../../utils/process/sleep.js'
 import {
   ClaudeAuthProvider,
   hasMcpDiscoveryButNoToken,
+  sanitizeMcpHeadersForLogging,
+  sanitizeMcpUrlForLogging,
   wrapFetchWithStepUpDetection,
 } from './auth.js'
 import { createMcpClient, mcpProtocolEra } from './clientFactory.js'
@@ -260,7 +260,7 @@ const shouldUseBuiltinComputerUse = feature('CHICAGO_MCP')
     ).shouldUseBuiltinComputerUse
   : undefined
 
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
+import { mkdir, readFile, rename, unlink, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -301,22 +301,49 @@ async function isMcpAuthCached(serverId: string): Promise<boolean> {
   return Date.now() - entry.timestamp < MCP_AUTH_CACHE_TTL_MS
 }
 
-// Serialize cache writes through a promise chain to prevent concurrent
-// read-modify-write races when multiple servers return 401 in the same batch
+// Serialize every disk mutation so a successful login cannot be followed by
+// an older queued 401 write that recreates the needs-auth cache.
 let writeChain = Promise.resolve()
+let authCacheGeneration = 0
+let authCacheWriteSequence = 0
+
+async function writeMcpAuthCacheAtomically(
+  cache: McpAuthCacheData,
+): Promise<void> {
+  const cachePath = getMcpAuthCachePath()
+  const tempPath = `${cachePath}.${process.pid}.${authCacheWriteSequence++}.tmp`
+  try {
+    await writeFile(tempPath, jsonStringify(cache))
+    await rename(tempPath, cachePath)
+  } finally {
+    await unlink(tempPath).catch(() => {
+      // Atomic rename already removed the temporary path on success.
+    })
+  }
+}
 
 function setMcpAuthCacheEntry(serverId: string): void {
+  const generation = authCacheGeneration
   writeChain = writeChain
     .then(async () => {
-      const cache = await getMcpAuthCache()
+      if (generation !== authCacheGeneration) {
+        return
+      }
+      const cache = { ...(await getMcpAuthCache()) }
+      if (generation !== authCacheGeneration) {
+        return
+      }
       cache[serverId] = { timestamp: Date.now() }
       const cachePath = getMcpAuthCachePath()
       await mkdir(dirname(cachePath), { recursive: true })
-      await writeFile(cachePath, jsonStringify(cache))
+      if (generation !== authCacheGeneration) {
+        return
+      }
+      await writeMcpAuthCacheAtomically(cache)
       // Invalidate the read cache so subsequent reads see the new entry.
-      // Safe because writeChain serializes writes: the next write's
-      // getMcpAuthCache() call will re-read the file with this entry present.
-      authCachePromise = null
+      if (generation === authCacheGeneration) {
+        authCachePromise = null
+      }
     })
     .catch(() => {
       // Best-effort cache write
@@ -324,21 +351,40 @@ function setMcpAuthCacheEntry(serverId: string): void {
 }
 
 export function clearMcpAuthCache(): void {
-  authCachePromise = null
-  void unlink(getMcpAuthCachePath()).catch(() => {
-    // Cache file may not exist
-  })
+  authCacheGeneration++
+  // The in-memory decision changes immediately; disk removal remains ordered
+  // behind any mutation already in progress.
+  authCachePromise = Promise.resolve({})
+  writeChain = writeChain
+    .then(async () => {
+      await unlink(getMcpAuthCachePath()).catch(() => {
+        // Cache file may not exist
+      })
+    })
+    .catch(() => {
+      // Best-effort cache clear
+    })
+}
+
+/** @internal Test-only access to the serialized cache state machine. */
+export const mcpAuthCacheForTesting = {
+  set: setMcpAuthCacheEntry,
+  has: isMcpAuthCached,
+  waitForMutations: async (): Promise<void> => await writeChain,
 }
 
 /**
  * Spread-ready analytics field for the server's base URL. Calls
- * getLoggingSafeMcpBaseUrl once (not twice like the inline ternary it replaces).
+ * Sanitizes the URL once (not twice like the inline ternary it replaces).
  * Typed as AnalyticsMetadata since the URL is query-stripped and safe to log.
  */
 function mcpBaseUrlAnalytics(serverRef: ScopedMcpServerConfig): {
   mcpServerBaseUrl?: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 } {
-  const url = getLoggingSafeMcpBaseUrl(serverRef)
+  const url =
+    'url' in serverRef && typeof serverRef.url === 'string'
+      ? sanitizeMcpUrlForLogging(serverRef.url)?.replace(/\/$/, '')
+      : undefined
   return url
     ? {
         mcpServerBaseUrl:
@@ -691,7 +737,10 @@ export const connectToServer = memoize(
         )
         logMCPDebug(name, `SSE transport initialized, awaiting connection`)
       } else if (serverRef.type === 'sse-ide') {
-        logMCPDebug(name, `Setting up SSE-IDE transport to ${serverRef.url}`)
+        logMCPDebug(
+          name,
+          `Setting up SSE-IDE transport to ${sanitizeMcpUrlForLogging(serverRef.url) ?? '[INVALID URL]'}`,
+        )
         // IDE servers don't need authentication
         // TODO: Use the auth token provided in the lockfile
         const proxyOptions = getProxyFetchOptions()
@@ -750,7 +799,7 @@ export const connectToServer = memoize(
       } else if (serverRef.type === 'ws') {
         logMCPDebug(
           name,
-          `Initializing WebSocket transport to ${serverRef.url}`,
+          `Initializing WebSocket transport to ${sanitizeMcpUrlForLogging(serverRef.url) ?? '[INVALID URL]'}`,
         )
 
         const combinedHeaders = await getMcpServerHeaders(name, serverRef)
@@ -764,15 +813,12 @@ export const connectToServer = memoize(
           ...combinedHeaders,
         }
 
-        // Redact sensitive headers before logging
-        const wsHeadersForLogging = mapValues(wsHeaders, (value, key) =>
-          key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
-        )
+        const wsHeadersForLogging = sanitizeMcpHeadersForLogging(wsHeaders)
 
         logMCPDebug(
           name,
           `WebSocket transport options: ${jsonStringify({
-            url: serverRef.url,
+            url: sanitizeMcpUrlForLogging(serverRef.url) ?? '[INVALID URL]',
             headers: wsHeadersForLogging,
             hasSessionAuth: !!sessionIngressToken,
           })}`,
@@ -797,7 +843,10 @@ export const connectToServer = memoize(
         }
         transport = new WebSocketTransport(wsClient)
       } else if (serverRef.type === 'http') {
-        logMCPDebug(name, `Initializing HTTP transport to ${serverRef.url}`)
+        logMCPDebug(
+          name,
+          `Initializing HTTP transport to ${sanitizeMcpUrlForLogging(serverRef.url) ?? '[INVALID URL]'}`,
+        )
         logMCPDebug(
           name,
           `Node version: ${process.version}, Platform: ${process.platform}`,
@@ -854,19 +903,16 @@ export const connectToServer = memoize(
           },
         }
 
-        // Redact sensitive headers before logging
         const headersForLogging = transportOptions.requestInit?.headers
-          ? mapValues(
+          ? sanitizeMcpHeadersForLogging(
               transportOptions.requestInit.headers as Record<string, string>,
-              (value, key) =>
-                key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
             )
           : undefined
 
         logMCPDebug(
           name,
           `HTTP transport options: ${jsonStringify({
-            url: serverRef.url,
+            url: sanitizeMcpUrlForLogging(serverRef.url) ?? '[INVALID URL]',
             headers: headersForLogging,
             hasAuthProvider: !!authProvider,
             timeoutMs: MCP_REQUEST_TIMEOUT_MS,
@@ -894,7 +940,10 @@ export const connectToServer = memoize(
         const oauthConfig = getOauthConfig()
         const proxyUrl = `${oauthConfig.MCP_PROXY_URL}${oauthConfig.MCP_PROXY_PATH.replace('{server_id}', serverRef.id)}`
 
-        logMCPDebug(name, `Using claude.ai proxy at ${proxyUrl}`)
+        logMCPDebug(
+          name,
+          `Using claude.ai proxy at ${sanitizeMcpUrlForLogging(proxyUrl) ?? '[INVALID URL]'}`,
+        )
 
         // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
         const fetchWithAuth = createClaudeAiProxyFetch(globalThis.fetch)
@@ -1024,7 +1073,10 @@ export const connectToServer = memoize(
 
       // For HTTP transport, try a basic connectivity test first
       if (serverRef.type === 'http') {
-        logMCPDebug(name, `Testing basic HTTP connectivity to ${serverRef.url}`)
+        logMCPDebug(
+          name,
+          `Testing basic HTTP connectivity to ${sanitizeMcpUrlForLogging(serverRef.url) ?? '[INVALID URL]'}`,
+        )
         try {
           const testUrl = new URL(serverRef.url)
           logMCPDebug(
@@ -1040,7 +1092,10 @@ export const connectToServer = memoize(
             logMCPDebug(name, `Using loopback address: ${testUrl.hostname}`)
           }
         } catch (urlError) {
-          logMCPDebug(name, `Failed to parse URL: ${urlError}`)
+          logMCPDebug(
+            name,
+            `Failed to parse MCP server URL: ${errorMessage(urlError)}`,
+          )
         }
       }
 
@@ -1093,7 +1148,7 @@ export const connectToServer = memoize(
           logMCPDebug(
             name,
             `SSE Connection failed after ${elapsed}ms: ${jsonStringify({
-              url: serverRef.url,
+              url: sanitizeMcpUrlForLogging(serverRef.url) ?? '[INVALID URL]',
               error: error.message,
               errorType: error.constructor.name,
               stack: error.stack,
@@ -3168,69 +3223,87 @@ async function callMCPTool({
       ('request_timeout_ms' in config
         ? config.request_timeout_ms
         : undefined) ?? getMcpToolTimeoutMs()
-    let timeoutId: NodeJS.Timeout | undefined
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        (reject, name, tool, timeoutMs) => {
-          reject(
-            new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
-              `MCP server "${name}" tool "${tool}" timed out after ${Math.floor(timeoutMs / 1000)}s`,
-              'MCP tool timeout',
-            ),
-          )
-        },
-        timeoutMs,
-        reject,
-        name,
-        tool,
-        timeoutMs,
-      )
-    })
-
-    const result = await Promise.race([
-      // v2 dropped the result-schema argument — `callTool` always decodes
-      // with the spec `CallToolResult` shape.
-      client.callTool(
-        {
-          name: tool,
-          arguments: args,
-          _meta: meta,
-        },
-        {
-          signal,
-          timeout: timeoutMs,
-          // On the modern era the SDK's multi-round-trip driver reports which
-          // round it is fulfilling through this callback (and only through it),
-          // so the tracker is installed here even when the caller wants no
-          // progress of its own. `mrtrProgressCallback` still returns
-          // `undefined` on a legacy-era connection in that case, because
-          // supplying `onprogress` is what makes the SDK attach a
-          // `_meta.progressToken` to the request.
-          onprogress: mrtrProgressCallback(
-            client,
-            onProgress
-              ? sdkProgress => {
-                  onProgress({
-                    type: 'mcp_progress',
-                    status: 'progress',
-                    serverName: name,
-                    toolName: tool,
-                    progress: sdkProgress.progress,
-                    total: sdkProgress.total,
-                    progressMessage: sdkProgress.message,
-                  })
-                }
-              : undefined,
-          ),
-        },
-      ),
-      timeoutPromise,
-    ]).finally(() => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
+    const result = await (async () => {
+      const callController = createAbortController()
+      const abortFromCaller = (): void => {
+        callController.abort(signal.reason)
       }
-    })
+      if (signal.aborted) {
+        abortFromCaller()
+      } else {
+        signal.addEventListener('abort', abortFromCaller, { once: true })
+      }
+
+      let timeoutId: NodeJS.Timeout | undefined
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
+            (reject, name, tool, timeoutMs, callController) => {
+              const timeoutError =
+                new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
+                  `MCP server "${name}" tool "${tool}" timed out after ${Math.floor(timeoutMs / 1000)}s`,
+                  'MCP tool timeout',
+                )
+              reject(timeoutError)
+              callController.abort(timeoutError)
+            },
+            timeoutMs,
+            reject,
+            name,
+            tool,
+            timeoutMs,
+            callController,
+          )
+        })
+
+        // v2 dropped the result-schema argument — `callTool` always decodes
+        // with the spec `CallToolResult` shape.
+        const callToolPromise = client.callTool(
+          {
+            name: tool,
+            arguments: args,
+            _meta: meta,
+          },
+          {
+            signal: callController.signal,
+            timeout: timeoutMs,
+            // On the modern era the SDK's multi-round-trip driver reports which
+            // round it is fulfilling through this callback (and only through it),
+            // so the tracker is installed here even when the caller wants no
+            // progress of its own. `mrtrProgressCallback` still returns
+            // `undefined` on a legacy-era connection in that case, because
+            // supplying `onprogress` is what makes the SDK attach a
+            // `_meta.progressToken` to the request.
+            onprogress: mrtrProgressCallback(
+              client,
+              onProgress
+                ? sdkProgress => {
+                    onProgress({
+                      type: 'mcp_progress',
+                      status: 'progress',
+                      serverName: name,
+                      toolName: tool,
+                      progress: sdkProgress.progress,
+                      total: sdkProgress.total,
+                      progressMessage: sdkProgress.message,
+                    })
+                  }
+                : undefined,
+            ),
+          },
+        )
+        // The timeout winner returns before the SDK promise settles; retain an
+        // explicit rejection observer while abort tears down the transport work.
+        void callToolPromise.catch(() => {})
+
+        return await Promise.race([callToolPromise, timeoutPromise])
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
+        signal.removeEventListener('abort', abortFromCaller)
+      }
+    })()
 
     if ('isError' in result && result.isError) {
       let errorDetails = 'Unknown error'
