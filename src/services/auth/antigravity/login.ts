@@ -19,8 +19,6 @@ import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   ANTIGRAVITY_CALLBACK_PATH,
   ANTIGRAVITY_CALLBACK_PORT,
-  ANTIGRAVITY_MISSING_CREDENTIALS_MESSAGE,
-  hasAntigravityClientCredentials,
 } from './constants.js'
 import {
   buildAntigravityAuthUrl,
@@ -114,9 +112,6 @@ function abortSignalToRejection(signal: AbortSignal | undefined): {
 export async function startAntigravityOAuthLogin(
   options: AntigravityLoginOptions = {},
 ): Promise<AntigravityLoginResult> {
-  if (!hasAntigravityClientCredentials()) {
-    throw new Error(ANTIGRAVITY_MISSING_CREDENTIALS_MESSAGE)
-  }
   const { listener, port } = await startCallbackListener()
   const abort = abortSignalToRejection(options.signal)
   try {
