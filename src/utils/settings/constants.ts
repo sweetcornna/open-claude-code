@@ -157,13 +157,12 @@ export function parseSettingSourcesFlag(flag: string): SettingSource[] {
  * @returns Array of enabled SettingSource values
  */
 export function getEnabledSettingSources(): SettingSource[] {
-  const allowed = getAllowedSettingSources()
+  const allowed = new Set<SettingSource>(getAllowedSettingSources())
 
-  // Always include policy and flag settings
-  const result = new Set<SettingSource>(allowed)
-  result.add('policySettings')
-  result.add('flagSettings')
-  return Array.from(result)
+  // The CLI flag selects sources; it must not redefine their trust priority.
+  allowed.add('flagSettings')
+  allowed.add('policySettings')
+  return SETTING_SOURCES.filter(source => allowed.has(source))
 }
 
 /**

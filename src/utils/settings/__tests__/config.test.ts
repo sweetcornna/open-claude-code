@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  getAllowedSettingSources,
+  setAllowedSettingSources,
+} from 'src/bootstrap/state'
+import {
   SettingsSchema,
   EnvironmentVariablesSchema,
   PermissionsSchema,
@@ -18,6 +22,7 @@ import {
   getSourceDisplayName,
   getSettingSourceDisplayNameLowercase,
   getSettingSourceDisplayNameCapitalized,
+  getEnabledSettingSources,
   parseSettingSourcesFlag,
 } from '../constants'
 import {
@@ -411,6 +416,21 @@ describe('parseSettingSourcesFlag', () => {
     expect(() => parseSettingSourcesFlag('invalid')).toThrow(
       'Invalid setting source',
     )
+  })
+
+  test('uses the flag as an enable set without changing source priority', () => {
+    const previous = [...getAllowedSettingSources()]
+    try {
+      setAllowedSettingSources(parseSettingSourcesFlag('local,user'))
+      expect(getEnabledSettingSources()).toEqual([
+        'userSettings',
+        'localSettings',
+        'flagSettings',
+        'policySettings',
+      ])
+    } finally {
+      setAllowedSettingSources(previous)
+    }
   })
 })
 

@@ -88,7 +88,7 @@ export function loadManagedFileSettings(): {
   )
   errors.push(...baseErrors)
   if (settings && Object.keys(settings).length > 0) {
-    merged = mergeWith(merged, settings, settingsMergeCustomizer)
+    merged = mergeSettingsWithPolicy(merged, settings)
     found = true
   }
 
@@ -110,7 +110,7 @@ export function loadManagedFileSettings(): {
       )
       errors.push(...fileErrors)
       if (settings && Object.keys(settings).length > 0) {
-        merged = mergeWith(merged, settings, settingsMergeCustomizer)
+        merged = mergeSettingsWithPolicy(merged, settings)
         found = true
       }
     }
@@ -331,7 +331,7 @@ function getSettingsForSourceUncached(
     }
 
     const mdmResult = getMdmSettings()
-    if (Object.keys(mdmResult.settings).length > 0) {
+    if (mdmResult.sourceExists) {
       return mdmResult.settings
     }
 
@@ -373,7 +373,7 @@ function getSettingsForSourceUncached(
 
 /**
  * Get the origin of the highest-priority active policy settings source.
- * Uses "first source wins" — returns the first source that has content.
+ * Uses "first source wins" — returns the first source that exists.
  * Priority: remote > plist/hklm > file (managed-settings.json) > hkcu
  */
 export function getPolicySettingsOrigin():
@@ -391,7 +391,7 @@ export function getPolicySettingsOrigin():
 
   // 2. Admin-only MDM (HKLM / macOS plist)
   const mdmResult = getMdmSettings()
-  if (Object.keys(mdmResult.settings).length > 0) {
+  if (mdmResult.sourceExists) {
     return getPlatform() === 'macos' ? 'plist' : 'hklm'
   }
 
@@ -551,6 +551,27 @@ export function settingsMergeCustomizer(
 }
 
 /**
+ * Merge the winning managed policy over lower-trust settings.
+ * `availableModels` is an authority boundary: a policy value, including an
+ * empty array, replaces lower-priority allowlists instead of widening them.
+ */
+export function mergeSettingsWithPolicy(
+  target: SettingsJson,
+  policy: SettingsJson,
+): SettingsJson {
+  return mergeWith(
+    target,
+    policy,
+    (objValue: unknown, srcValue: unknown, key: string | number | symbol) => {
+      if (key === 'availableModels' && Array.isArray(srcValue)) {
+        return [...srcValue]
+      }
+      return settingsMergeCustomizer(objValue, srcValue)
+    },
+  )
+}
+
+/**
  * Get a list of setting keys from managed settings for logging purposes.
  * For certain nested settings (permissions, sandbox, hooks), expands to show
  * one level of nesting (e.g., "permissions.allow"). For other settings,
@@ -676,8 +697,8 @@ function loadSettingsFromDisk(): SettingsWithErrors {
 
     // Merge settings from each source in priority order with deep merging
     for (const source of getEnabledSettingSources()) {
-      // policySettings: "first source wins" — use the highest-priority source
-      // that has content. Priority: remote > HKLM/plist > managed-settings.json > HKCU
+      // policySettings: "first source wins" — use the highest-priority source.
+      // Priority: remote > HKLM/plist > managed-settings.json > HKCU
       if (source === 'policySettings') {
         let policySettings: SettingsJson | null = null
         const policyErrors: ValidationError[] = []
@@ -699,7 +720,7 @@ function loadSettingsFromDisk(): SettingsWithErrors {
         // 2. Admin-only MDM (HKLM / macOS plist)
         if (!policySettings) {
           const mdmResult = getMdmSettings()
-          if (Object.keys(mdmResult.settings).length > 0) {
+          if (mdmResult.sourceExists) {
             policySettings = mdmResult.settings
           }
           policyErrors.push(...mdmResult.errors)
@@ -725,10 +746,9 @@ function loadSettingsFromDisk(): SettingsWithErrors {
 
         // Merge the winning policy source into the settings chain
         if (policySettings) {
-          mergedSettings = mergeWith(
+          mergedSettings = mergeSettingsWithPolicy(
             mergedSettings,
             policySettings,
-            settingsMergeCustomizer,
           )
         }
         for (const error of policyErrors) {
