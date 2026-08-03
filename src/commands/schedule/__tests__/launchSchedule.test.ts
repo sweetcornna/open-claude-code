@@ -17,9 +17,12 @@ import {
   mock,
   test,
 } from 'bun:test'
+import { authMockWith } from '../../../../tests/mocks/auth.js'
+import { setupCronMock } from '../../../../tests/mocks/cron.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
+import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -31,7 +34,9 @@ mock.module('src/services/analytics/index.js', () => ({
 }))
 
 // ── Cron utility mock ───────────────────────────────────────────────────────
-mock.module('src/utils/task/cron.js', () => ({
+// cron.js via the shared complete-surface pattern: overrides below, every
+// other export delegates to the real module (pure functions, safe to load).
+setupCronMock({
   parseCronExpression: (cron: string) => {
     const fields = cron.trim().split(/\s+/)
     if (fields.length !== 5) return null
@@ -47,7 +52,7 @@ mock.module('src/utils/task/cron.js', () => ({
     }
   },
   cronToHuman: (cron: string) => `human(${cron})`,
-}))
+})
 
 // ── ScheduleView mock ───────────────────────────────────────────────────────
 const scheduleViewMock = mock((_props: unknown) => null)
@@ -56,16 +61,23 @@ mock.module('src/commands/schedule/ScheduleView.js', () => ({
 }))
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
-mock.module('src/utils/auth/auth.js', () => ({
-  getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-schedule' }),
-}))
+// auth.js via the shared complete-surface mock (missing exports get safe
+// defaults) — see tests/mocks/auth.ts.
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-schedule' }),
+  }),
+)
 mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org-uuid-schedule',
 }))
 mock.module('src/constants/oauth.js', () => ({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
 }))
-mock.module('src/utils/teleport/api.js', () => ({
+// teleport/api via the shared complete-surface mock (missing exports delegate
+// to the real module) — see tests/mocks/teleportApi.ts.
+setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({
     Authorization: `Bearer ${token}`,
     'anthropic-version': '2023-06-01',
@@ -77,7 +89,7 @@ mock.module('src/utils/teleport/api.js', () => ({
   prepareWorkspaceApiRequest: async () => ({
     apiKey: 'test-workspace-key',
   }),
-}))
+})
 mock.module('src/services/auth/hostGuard.ts', () => ({
   assertSubscriptionBaseUrl: () => {},
   assertWorkspaceHost: () => {},

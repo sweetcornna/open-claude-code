@@ -19,9 +19,12 @@
  *     verbatim (call doesn't parse them itself)
  */
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { authMockWith } from '../../../../tests/mocks/auth.js';
 import { debugMock } from '../../../../tests/mocks/debug.js';
 import { logMock } from '../../../../tests/mocks/log.js';
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js';
+import { setupDetectRepositoryMock } from '../../../../tests/mocks/detectRepository.js';
+import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js';
 
 afterAll(() => {
   _ultrareviewAxiosHandle.useStubs = false;
@@ -34,12 +37,16 @@ mock.module('src/services/analytics/index.js', () => ({
   logEvent: () => {},
 }));
 
-// Mock auth utilities
-mock.module('src/utils/auth/auth.js', () => ({
-  isClaudeAISubscriber: () => true,
-  isTeamSubscriber: () => false,
-  isEnterpriseSubscriber: () => false,
-}));
+// Mock auth utilities via the shared complete-surface mock (missing exports
+// get safe defaults) — see tests/mocks/auth.ts.
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    isClaudeAISubscriber: () => true,
+    isTeamSubscriber: () => false,
+    isEnterpriseSubscriber: () => false,
+  }),
+);
 
 // Mock checkOverageGate with a mutable gate result so each test can drive
 // the four branches in ultrareviewCommand.call (not-enabled, low-balance,
@@ -69,7 +76,9 @@ mock.module('src/constants/oauth.js', () => ({
 }));
 
 // Mock prepareApiRequest so real fetchUltrareviewPreflight skips auth
-mock.module('src/utils/teleport/api.js', () => ({
+// teleport/api via the shared complete-surface mock (missing exports delegate
+// to the real module) — see tests/mocks/teleportApi.ts.
+setupTeleportApiMock({
   prepareApiRequest: async () => ({
     accessToken: 'test-token',
     orgUUID: 'org-uuid-test',
@@ -79,7 +88,7 @@ mock.module('src/utils/teleport/api.js', () => ({
     'Content-Type': 'application/json',
     'anthropic-version': '2023-06-01',
   }),
-}));
+});
 
 // Mock axios — per-test responses set via mockAxiosPost.mockImplementationOnce
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,14 +109,16 @@ _ultrareviewAxiosHandle.stubs.post = mockAxiosPost;
 _ultrareviewAxiosHandle.stubs.isAxiosError = (e: unknown) =>
   typeof e === 'object' && e !== null && (e as { isAxiosError?: boolean }).isAxiosError === true;
 
-// Mock detectCurrentRepositoryWithHost
-mock.module('src/utils/git/detectRepository.js', () => ({
+// Mock detectCurrentRepositoryWithHost via the shared complete-surface mock
+// (missing exports delegate to the real module) — see
+// tests/mocks/detectRepository.ts.
+setupDetectRepositoryMock({
   detectCurrentRepositoryWithHost: async () => ({
     host: 'github.com',
     owner: 'testowner',
     name: 'testrepo',
   }),
-}));
+});
 
 // UltrareviewOverageDialog — return a simple marker
 mock.module('src/commands/review/UltrareviewOverageDialog.js', () => ({

@@ -7,6 +7,8 @@ import {
   mock,
   test,
 } from 'bun:test'
+import { setupDetectRepositoryMock } from '../../../../tests/mocks/detectRepository.js'
+import { setupRemoteAgentTaskMock } from '../../../../tests/mocks/remoteAgentTask.js'
 import { stateMockWith } from '../../../../tests/mocks/state.js'
 import type { LocalJSXCommandCall } from '../../../types/command.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
@@ -70,7 +72,10 @@ const registerContentExtractorMock = mock<
   (taskType: string, extractor: (log: unknown[]) => string | null) => void
 >(() => {})
 
-mock.module('src/tasks/RemoteAgentTask/RemoteAgentTask.js', () => ({
+// RemoteAgentTask goes through the shared complete-surface mock (missing
+// exports delegate to the real module, and the RemoteAgentTask Task value is
+// forwarded) — see tests/mocks/remoteAgentTask.ts.
+setupRemoteAgentTaskMock({
   checkRemoteAgentEligibility: checkEligibilityMock,
   registerRemoteAgentTask: registerMock,
   registerCompletionHook: registerCompletionHookMock,
@@ -78,7 +83,7 @@ mock.module('src/tasks/RemoteAgentTask/RemoteAgentTask.js', () => ({
   registerContentExtractor: registerContentExtractorMock,
   getRemoteTaskSessionUrl: getSessionUrlMock,
   formatPreconditionError: (e: { type: string }) => e.type,
-}))
+} as unknown as import('../../../../tests/mocks/remoteAgentTask.js').RemoteAgentTaskOverrides)
 
 const fetchPrHeadShaMock = mock<
   (owner: string, repo: string, prNumber: number) => Promise<string | null>
@@ -95,9 +100,11 @@ mock.module('src/commands/autofix-pr/prFetch.js', () => ({
 const detectRepoMock = mock(() =>
   Promise.resolve({ host: 'github.com', owner: 'acme', name: 'myrepo' }),
 )
-mock.module('src/utils/git/detectRepository.js', () => ({
+// detectRepository goes through the shared complete-surface mock (missing
+// exports delegate to the real module) — see tests/mocks/detectRepository.ts.
+setupDetectRepositoryMock({
   detectCurrentRepositoryWithHost: detectRepoMock,
-}))
+})
 
 const logEventMock = mock(() => {})
 mock.module('src/services/analytics/index.js', () => ({

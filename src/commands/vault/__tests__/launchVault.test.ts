@@ -20,6 +20,7 @@ import {
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
+import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -34,14 +35,16 @@ mock.module('src/services/oauth/client.js', () => ({
 mock.module('src/constants/oauth.js', () => ({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
 }))
-mock.module('src/utils/teleport/api.js', () => ({
+// teleport/api via the shared complete-surface mock (missing exports delegate
+// to the real module) — see tests/mocks/teleportApi.ts.
+setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({
     Authorization: `Bearer ${token}`,
   }),
   prepareWorkspaceApiRequest: async () => ({
     apiKey: 'test-workspace-key',
   }),
-}))
+})
 
 // ── Axios mock ──────────────────────────────────────────────────────────────
 const axiosGetMock = mock(async () => ({}))

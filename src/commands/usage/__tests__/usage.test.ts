@@ -18,10 +18,17 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
-mock.module('src/utils/auth/auth.ts', () => ({
-  isClaudeAISubscriber: () => false,
-  getOAuthAccount: () => null,
-}))
+// auth via the shared complete-surface mock (missing exports get safe
+// defaults); registered under the canonical '.js' specifier so all writers
+// hit the same registry entry — see tests/mocks/auth.ts.
+import { authMockWith } from '../../../../tests/mocks/auth.js'
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    isClaudeAISubscriber: () => false,
+    getOAuthAccount: () => null,
+  }),
+)
 
 mock.module('src/services/claudeAiLimits.ts', () => ({
   currentLimits: { isUsingOverage: false },
