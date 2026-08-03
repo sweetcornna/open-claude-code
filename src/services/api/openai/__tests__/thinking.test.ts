@@ -311,3 +311,29 @@ describe('buildOpenAIRequestBody — thinking params', () => {
     expect(body.tool_choice).toBeUndefined()
   })
 })
+
+describe('buildOpenAIRequestBody — reasoning_effort (chat path)', () => {
+  const baseParams = {
+    model: 'gpt-5.2',
+    messages: [],
+    tools: [],
+    toolChoice: undefined,
+    enableThinking: false,
+    maxTokens: 1000,
+  }
+
+  test('passes reasoning_effort through when provided', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      reasoningEffort: 'medium',
+    })
+    expect((body as { reasoning_effort?: string }).reasoning_effort).toBe(
+      'medium',
+    )
+  })
+
+  test('omits the key entirely when not provided (strict endpoints reject unknown keys)', () => {
+    const body = buildOpenAIRequestBody(baseParams)
+    expect('reasoning_effort' in body).toBe(false)
+  })
+})
