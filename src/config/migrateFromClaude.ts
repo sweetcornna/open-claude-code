@@ -22,6 +22,13 @@
  *
  * What DOES come across is the user's authored configuration: settings, the
  * extensions they wrote or installed, and their MCP server definitions.
+ *
+ * Rule 2 covers credential FILES. Configuration can still be account-bound
+ * without being a credential file — MCP `env`/`headers`, `settings.env`,
+ * installed plugins — so `skipAccountData` lets a user migrating onto a
+ * different account take their preferences and authored commands while leaving
+ * the previous account's integrations behind. See ACCOUNT_BOUND_DIRECTORIES
+ * and ACCOUNT_BOUND_SETTINGS_KEYS.
  */
 
 import { join } from 'path'
@@ -58,6 +65,34 @@ export const MIGRATED_FILES = [
 ] as const
 
 /**
+ * Directories skipped when the user opts out of migrating account data.
+ *
+ * These are not credentials themselves, but they are bound to the account that
+ * installed them: plugins come from marketplaces tied to a login and their
+ * per-plugin `user_config` routinely holds API keys, and skills can embed
+ * endpoints and tokens for the services they drive. Someone migrating onto a
+ * different account wants their editor preferences and authored commands, not
+ * the previous account's integrations.
+ */
+export const ACCOUNT_BOUND_DIRECTORIES = ['plugins', 'skills'] as const
+
+/**
+ * `settings.json` keys dropped when the user opts out of migrating account
+ * data. `env` carries API keys outright; the two auth hooks resolve
+ * credentials; `forceLoginMethod` pins the account type; and the plugin keys
+ * point at marketplaces and installs that ACCOUNT_BOUND_DIRECTORIES excludes,
+ * so keeping them would leave dangling references.
+ */
+export const ACCOUNT_BOUND_SETTINGS_KEYS = [
+  'env',
+  'apiKeyHelper',
+  'awsAuthRefresh',
+  'forceLoginMethod',
+  'enabledPlugins',
+  'extraKnownMarketplaces',
+] as const
+
+/**
  * Never copied, even if a future edit adds them to the lists above. Asserted in
  * tests so this stays true.
  */
@@ -91,6 +126,13 @@ export type MigrationPlan = {
   items: MigrationItem[]
   /** Number of MCP servers found in the legacy global config file. */
   mcpServerCount: number
+  /** True when the user chose to leave account-bound configuration behind. */
+  skipAccountData: boolean
+  /**
+   * Names that WOULD have been migrated but were excluded as account-bound.
+   * Surfaced in the plan summary so the exclusion is never silent.
+   */
+  excludedAccountItems: string[]
 }
 
 export type FsProbe = {
@@ -116,10 +158,11 @@ export function isMigrationSuppressed(): boolean {
  */
 export function planMigrationFromClaude(
   fs: FsProbe,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; skipAccountData?: boolean } = {},
 ): MigrationPlan {
   const sourceDir = legacyClaudeConfigDir()
   const targetDir = occConfigDir()
+  const skipAccountData = options.skipAccountData === true
 
   const plan: MigrationPlan = {
     sourceDir,
@@ -128,6 +171,8 @@ export function planMigrationFromClaude(
     alreadyMigrated: fs.exists(join(targetDir, MIGRATION_MARKER)),
     items: [],
     mcpServerCount: 0,
+    skipAccountData,
+    excludedAccountItems: [],
   }
 
   // `force` ignores the marker but NOT the per-item no-clobber checks below,
@@ -145,12 +190,17 @@ export function planMigrationFromClaude(
     return plan
   }
 
+  const accountBound = new Set<string>(ACCOUNT_BOUND_DIRECTORIES)
+
   for (const name of MIGRATED_DIRECTORIES) {
     const from = join(sourceDir, name)
     const to = join(targetDir, name)
-    if (fs.exists(from) && fs.isDirectory(from) && !fs.exists(to)) {
-      plan.items.push({ name, kind: 'dir', from, to })
+    if (!fs.exists(from) || !fs.isDirectory(from) || fs.exists(to)) continue
+    if (skipAccountData && accountBound.has(name)) {
+      plan.excludedAccountItems.push(`${name}/`)
+      continue
     }
+    plan.items.push({ name, kind: 'dir', from, to })
   }
 
   for (const name of MIGRATED_FILES) {
@@ -161,8 +211,42 @@ export function planMigrationFromClaude(
     }
   }
 
-  plan.mcpServerCount = countLegacyMcpServers(fs)
+  const mcpServerCount = countLegacyMcpServers(fs)
+  if (skipAccountData) {
+    // MCP definitions are excluded wholesale rather than stripped: their
+    // credentials live in free-form `env`/`headers`, so a server copied without
+    // them would sit there looking configured and fail on first use.
+    if (mcpServerCount > 0) {
+      plan.excludedAccountItems.push(
+        `${mcpServerCount} MCP server${mcpServerCount === 1 ? '' : 's'}`,
+      )
+    }
+    const settingsKeys = readLegacyAccountSettingsKeys(fs)
+    if (settingsKeys.length > 0) {
+      plan.excludedAccountItems.push(
+        `settings.json: ${settingsKeys.join(', ')}`,
+      )
+    }
+  } else {
+    plan.mcpServerCount = mcpServerCount
+  }
+
   return plan
+}
+
+/**
+ * Which account-bound keys the legacy settings.json actually contains, so the
+ * summary can name them instead of listing every key we would strip.
+ */
+function readLegacyAccountSettingsKeys(fs: FsProbe): string[] {
+  const path = join(legacyClaudeConfigDir(), 'settings.json')
+  if (!fs.exists(path)) return []
+  try {
+    const parsed = JSON.parse(fs.readFile(path)) as Record<string, unknown>
+    return ACCOUNT_BOUND_SETTINGS_KEYS.filter(key => key in parsed)
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -229,6 +313,34 @@ export async function executeMigration(
 
   for (const item of plan.items) {
     try {
+      if (plan.skipAccountData && item.name === 'settings.json') {
+        // Rewritten rather than copied: the file is worth migrating for theme,
+        // permissions and the rest, but ACCOUNT_BOUND_SETTINGS_KEYS must not
+        // ride along. Unparseable input is skipped rather than half-written.
+        const raw = await readFile(item.from, 'utf8')
+        const parsed = JSON.parse(raw) as Record<string, unknown>
+        const stripped: Record<string, unknown> = {}
+        const dropped: string[] = []
+        for (const [key, value] of Object.entries(parsed)) {
+          if (
+            (ACCOUNT_BOUND_SETTINGS_KEYS as readonly string[]).includes(key)
+          ) {
+            dropped.push(key)
+            continue
+          }
+          stripped[key] = value
+        }
+        await writeFile(item.to, `${JSON.stringify(stripped, null, 2)}\n`, {
+          flag: 'wx',
+        })
+        result.copied.push(
+          dropped.length > 0
+            ? `${item.name} (已剥离 ${dropped.join('、')})`
+            : item.name,
+        )
+        continue
+      }
+
       // force:false so an entry created between planning and now is not
       // overwritten — the no-clobber rule holds even under a race.
       await cp(item.from, item.to, {
@@ -244,35 +356,39 @@ export async function executeMigration(
 
   // MCP servers live in the legacy global config file, so they are merged
   // rather than copied. Existing occ entries win: this is an import, not an
-  // overwrite.
-  try {
-    const legacyGlobal = join(legacyClaudeConfigDir(), '..', '.claude.json')
-    const raw = await readFile(legacyGlobal, 'utf8').catch(() => null)
-    if (raw) {
-      const legacy = JSON.parse(raw) as Record<string, unknown>
-      const servers = legacy.mcpServers
-      if (servers && typeof servers === 'object' && !Array.isArray(servers)) {
-        const targetPath = occGlobalConfigFile()
-        const existingRaw = await readFile(targetPath, 'utf8').catch(() => null)
-        const existing = existingRaw
-          ? (JSON.parse(existingRaw) as Record<string, unknown>)
-          : {}
-        const existingServers =
-          existing.mcpServers && typeof existing.mcpServers === 'object'
-            ? (existing.mcpServers as Record<string, unknown>)
+  // overwrite. Skipped entirely when the user opted out of account data —
+  // their env/headers are where MCP credentials live.
+  if (!plan.skipAccountData)
+    try {
+      const legacyGlobal = join(legacyClaudeConfigDir(), '..', '.claude.json')
+      const raw = await readFile(legacyGlobal, 'utf8').catch(() => null)
+      if (raw) {
+        const legacy = JSON.parse(raw) as Record<string, unknown>
+        const servers = legacy.mcpServers
+        if (servers && typeof servers === 'object' && !Array.isArray(servers)) {
+          const targetPath = occGlobalConfigFile()
+          const existingRaw = await readFile(targetPath, 'utf8').catch(
+            () => null,
+          )
+          const existing = existingRaw
+            ? (JSON.parse(existingRaw) as Record<string, unknown>)
             : {}
-        const merged = { ...(servers as Record<string, unknown>) }
-        Object.assign(merged, existingServers)
-        existing.mcpServers = merged
-        await writeFile(targetPath, `${JSON.stringify(existing, null, 2)}\n`)
-        result.mcpServersImported = Object.keys(
-          servers as Record<string, unknown>,
-        ).length
+          const existingServers =
+            existing.mcpServers && typeof existing.mcpServers === 'object'
+              ? (existing.mcpServers as Record<string, unknown>)
+              : {}
+          const merged = { ...(servers as Record<string, unknown>) }
+          Object.assign(merged, existingServers)
+          existing.mcpServers = merged
+          await writeFile(targetPath, `${JSON.stringify(existing, null, 2)}\n`)
+          result.mcpServersImported = Object.keys(
+            servers as Record<string, unknown>,
+          ).length
+        }
       }
+    } catch (error) {
+      result.errors.push(`mcpServers: ${(error as Error).message}`)
     }
-  } catch (error) {
-    result.errors.push(`mcpServers: ${(error as Error).message}`)
-  }
 
   await writeFile(
     join(plan.targetDir, MIGRATION_MARKER),
@@ -291,6 +407,14 @@ export function describeMigrationPlan(plan: MigrationPlan): string {
     return `Already migrated (${join(plan.targetDir, MIGRATION_MARKER)} exists).`
   }
   if (plan.items.length === 0 && plan.mcpServerCount === 0) {
+    if (plan.excludedAccountItems.length > 0) {
+      return [
+        `Everything found at ${plan.sourceDir} is account data, which you chose not to migrate:`,
+        ...plan.excludedAccountItems.map(name => `  ${name}`),
+        '',
+        'Nothing left to copy.',
+      ].join('\n')
+    }
     return `Nothing to migrate from ${plan.sourceDir}.`
   }
 
@@ -308,6 +432,13 @@ export function describeMigrationPlan(plan: MigrationPlan): string {
       `  ${plan.mcpServerCount} MCP server${plan.mcpServerCount === 1 ? '' : 's'}`,
     )
   }
+  if (plan.excludedAccountItems.length > 0) {
+    lines.push('', 'Excluded as account data (your choice):')
+    for (const name of plan.excludedAccountItems) {
+      lines.push(`  ${name}`)
+    }
+  }
+
   lines.push(
     '',
     'Will NOT copy credentials or session history — sign in again with /login.',

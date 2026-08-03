@@ -210,3 +210,87 @@ describe('planMigrationFromClaude with force', () => {
     expect(plan.items.map(i => i.name)).toEqual(['skills'])
   })
 })
+
+// `skipAccountData` is for someone moving onto a DIFFERENT account: credentials
+// were never migrated, but plugins/skills/MCP servers and the auth-bearing
+// settings keys still carry the old account's identity.
+describe('planMigrationFromClaude — skipAccountData', () => {
+  const OCC_DIR = join(homedir(), '.occ-skip-account-test')
+
+  function legacySetup(): FsProbe {
+    const files: Record<string, string> = {
+      [join(CLAUDE_DIR, 'settings.json')]: JSON.stringify({
+        theme: 'dark',
+        env: { ANTHROPIC_API_KEY: 'sk-secret' },
+        apiKeyHelper: '/bin/get-key',
+        enabledPlugins: { 'formatter@some-market': true },
+      }),
+      [join(CLAUDE_DIR, 'CLAUDE.md')]: '# memory',
+      [join(homedir(), '.claude.json')]: JSON.stringify({
+        mcpServers: {
+          internal: { command: 'x', env: { TOKEN: 'secret' } },
+          other: { command: 'y' },
+        },
+      }),
+    }
+    const dirs = [
+      CLAUDE_DIR,
+      ...MIGRATED_DIRECTORIES.map(d => join(CLAUDE_DIR, d)),
+    ]
+    return makeFs(files, dirs)
+  }
+
+  beforeEach(() => {
+    process.env[OCC] = OCC_DIR
+    occConfigDir.cache.clear?.()
+  })
+
+  test('excludes plugins, skills and MCP servers; keeps authored config', () => {
+    const plan = planMigrationFromClaude(legacySetup(), {
+      skipAccountData: true,
+    })
+    const names = plan.items.map(i => i.name)
+
+    expect(names).not.toContain('plugins')
+    expect(names).not.toContain('skills')
+    expect(plan.mcpServerCount).toBe(0)
+
+    // Everything the user authored still comes across.
+    for (const kept of ['agents', 'commands', 'workflows', 'rules']) {
+      expect(names).toContain(kept)
+    }
+    expect(names).toContain('settings.json')
+    expect(names).toContain('CLAUDE.md')
+  })
+
+  test('reports what was excluded instead of dropping it silently', () => {
+    const plan = planMigrationFromClaude(legacySetup(), {
+      skipAccountData: true,
+    })
+    expect(plan.skipAccountData).toBe(true)
+    expect(plan.excludedAccountItems).toContain('plugins/')
+    expect(plan.excludedAccountItems).toContain('skills/')
+    expect(
+      plan.excludedAccountItems.some(s => s.includes('2 MCP servers')),
+    ).toBe(true)
+    expect(
+      plan.excludedAccountItems.some(
+        s => s.includes('env') && s.includes('apiKeyHelper'),
+      ),
+    ).toBe(true)
+
+    const summary = describeMigrationPlan(plan)
+    expect(summary).toContain('Excluded as account data')
+    expect(summary).toContain('plugins/')
+  })
+
+  test('default (opt-in absent) still migrates everything', () => {
+    const plan = planMigrationFromClaude(legacySetup())
+    const names = plan.items.map(i => i.name)
+    expect(names).toContain('plugins')
+    expect(names).toContain('skills')
+    expect(plan.mcpServerCount).toBe(2)
+    expect(plan.skipAccountData).toBe(false)
+    expect(plan.excludedAccountItems).toEqual([])
+  })
+})
