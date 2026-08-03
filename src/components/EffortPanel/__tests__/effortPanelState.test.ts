@@ -3,7 +3,8 @@ import type { EffortValue } from '../../../utils/model/effort.js'
 import {
   CANCEL_MESSAGE,
   type ApplyFn,
-  ULTRACODE_HINT,
+  ULTRACODE_OFF_MESSAGE,
+  ULTRACODE_ON_MESSAGE,
   END_POSITION,
   HOME_POSITION,
   PANEL_POSITIONS,
@@ -114,12 +115,21 @@ describe('computeConfirmOutcome', () => {
     effortUpdate: { value: cursor as unknown as EffortValue },
   })
 
-  test('ultracode → kind=ultracode-hint，含 /ultracode 引导', () => {
-    const out = computeConfirmOutcome('ultracode', mockApply)
-    expect(out.kind).toBe('ultracode-hint')
-    if (out.kind === 'ultracode-hint') {
-      expect(out.message).toBe(ULTRACODE_HINT)
-      expect(out.message).toContain('/ultracode')
+  test('ultracode（当前关闭）→ kind=ultracode-toggle 且 enabled=true', () => {
+    const out = computeConfirmOutcome('ultracode', mockApply, false)
+    expect(out.kind).toBe('ultracode-toggle')
+    if (out.kind === 'ultracode-toggle') {
+      expect(out.enabled).toBe(true)
+      expect(out.message).toBe(ULTRACODE_ON_MESSAGE)
+    }
+  })
+
+  test('ultracode（当前开启）→ 再确认即关闭', () => {
+    const out = computeConfirmOutcome('ultracode', mockApply, true)
+    expect(out.kind).toBe('ultracode-toggle')
+    if (out.kind === 'ultracode-toggle') {
+      expect(out.enabled).toBe(false)
+      expect(out.message).toBe(ULTRACODE_OFF_MESSAGE)
     }
   })
 
@@ -129,12 +139,12 @@ describe('computeConfirmOutcome', () => {
       called = true
       return { message: `applied:${c}` }
     }
-    computeConfirmOutcome('ultracode', spy)
+    computeConfirmOutcome('ultracode', spy, false)
     expect(called).toBe(false)
   })
 
   test('low → kind=apply，message 来自 applyFn，effortUpdate 透传', () => {
-    const out = computeConfirmOutcome('low', mockApply)
+    const out = computeConfirmOutcome('low', mockApply, false)
     expect(out.kind).toBe('apply')
     if (out.kind === 'apply') {
       expect(out.message).toBe('applied:low')
@@ -143,13 +153,13 @@ describe('computeConfirmOutcome', () => {
   })
 
   test('high → apply 路径不调 ultracode 分支', () => {
-    const out = computeConfirmOutcome('high', mockApply)
+    const out = computeConfirmOutcome('high', mockApply, false)
     expect(out.kind).toBe('apply')
   })
 
   test('applyFn 返回无 effortUpdate 时，outcome.effortUpdate 为 undefined', () => {
     const noUpdate: ApplyFn = c => ({ message: `applied:${c}` })
-    const out = computeConfirmOutcome('medium', noUpdate)
+    const out = computeConfirmOutcome('medium', noUpdate, false)
     expect(out.kind).toBe('apply')
     if (out.kind === 'apply') {
       expect(out.effortUpdate).toBeUndefined()
@@ -159,5 +169,6 @@ describe('computeConfirmOutcome', () => {
 
 test('常量字符串', () => {
   expect(CANCEL_MESSAGE).toBe('Effort unchanged.')
-  expect(ULTRACODE_HINT).toContain('/ultracode <context>')
+  expect(ULTRACODE_ON_MESSAGE).toContain('Ultracode ON')
+  expect(ULTRACODE_OFF_MESSAGE).toContain('/ultracode <context>')
 })

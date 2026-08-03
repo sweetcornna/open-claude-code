@@ -13,10 +13,7 @@ import { isEnvTruthy } from '../config/envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 import { resolveAntModel } from '../model/antModels.js'
 import { getAntModelOverrideConfig } from '../model/antModels.js'
-import {
-  isChatGPTAuthMode,
-  isChatGPTCodexReasoningModel,
-} from '../model/chatgptModels.js'
+import { isChatGPTCodexReasoningModel } from '../model/chatgptModels.js'
 
 export type { EffortLevel }
 
@@ -44,11 +41,11 @@ export function modelSupportsEffort(model: string): boolean {
   if (supported3P !== undefined) {
     return supported3P
   }
-  if (
-    getAPIProvider() === 'openai' &&
-    isChatGPTAuthMode() &&
-    isChatGPTCodexReasoningModel(model)
-  ) {
+  // OpenAI reasoning-capable models support effort regardless of auth mode:
+  // the Responses request path sends `reasoning: { effort }` for API-key users
+  // too, so gating on ChatGPT auth made the indicator hide while the parameter
+  // was still being sent (display/wire divergence).
+  if (getAPIProvider() === 'openai' && isChatGPTCodexReasoningModel(model)) {
     return true
   }
   // Supported by a subset of Claude 4 models
@@ -334,11 +331,11 @@ export function getDefaultEffortForModel(
   // the model launch DRI and research. Default effort is a sensitive setting
   // that can greatly affect model quality and bashing.
 
-  if (
-    getAPIProvider() === 'openai' &&
-    isChatGPTAuthMode() &&
-    isChatGPTCodexReasoningModel(model)
-  ) {
+  // Any-auth OpenAI reasoning model: the Responses adapter falls back to
+  // 'medium' when nothing is set (getChatGPTResponsesReasoningEffort), so the
+  // displayed default must be 'medium' too — the display's own 'high' fallback
+  // would show a level the API never receives.
+  if (getAPIProvider() === 'openai' && isChatGPTCodexReasoningModel(model)) {
     return 'medium'
   }
 

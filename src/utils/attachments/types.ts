@@ -317,6 +317,13 @@ export type Attachment =
       planExists: boolean
     }
   | {
+      /**
+       * Ultracode session mode is ON (standing opt-in): re-shown once per human
+       * turn so the model keeps orchestrating substantive tasks as workflows.
+       */
+      type: 'ultracode_mode'
+    }
+  | {
       type: 'plan_mode_reentry'
       planFilePath: string
     }
@@ -451,11 +458,6 @@ export type Attachment =
       addedNames: string[]
       addedBlocks: string[]
       removedNames: string[]
-    }
-  | {
-      type: 'companion_intro'
-      name: string
-      species: string
     }
   | {
       type: 'bagel_console'

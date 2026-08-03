@@ -13,7 +13,7 @@ import {
 } from './effortPanelState.js';
 import { executeEffort } from '../../commands/effort/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
-import { useSetAppState } from '../../state/AppState.js';
+import { useAppState, useSetAppState } from '../../state/AppState.js';
 import { useRippleFrame } from './useRippleFrame.js';
 import {
   TRANSPARENT,
@@ -95,6 +95,7 @@ type Props = {
 
 export function EffortPanel({ appStateEffort, onDone }: Props): React.ReactNode {
   const setAppState = useSetAppState();
+  const ultracodeActive = useAppState(s => s.ultracodeMode) === true;
   const model = useMainLoopModel();
   const { columns } = useTerminalSize();
 
@@ -132,15 +133,17 @@ export function EffortPanel({ appStateEffort, onDone }: Props): React.ReactNode 
   const handleConfirm = React.useCallback(() => {
     if (done) return;
     setDone(true);
-    const outcome = computeConfirmOutcome(cursor, executeEffort);
+    const outcome = computeConfirmOutcome(cursor, executeEffort, ultracodeActive);
     if (outcome.kind === 'apply' && outcome.effortUpdate) {
       setAppState(prev => ({
         ...prev,
         effortValue: outcome.effortUpdate!.value,
       }));
+    } else if (outcome.kind === 'ultracode-toggle') {
+      setAppState(prev => ({ ...prev, ultracodeMode: outcome.enabled }));
     }
     onDone(outcome.message);
-  }, [cursor, done, onDone, setAppState]);
+  }, [cursor, done, onDone, setAppState, ultracodeActive]);
 
   const handleCancel = React.useCallback(() => {
     if (done) return;
