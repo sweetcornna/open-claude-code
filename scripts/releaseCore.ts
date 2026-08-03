@@ -226,7 +226,22 @@ export function insertChangelogSection(
     return { content: `${prefix}\n\n${section}`, inserted: true }
   }
 
-  const before = lines.slice(0, firstHeading).join('\n')
+  // Normalize the gap to exactly one blank line. `join('\n')` never yields a
+  // trailing newline, so concatenating it straight onto the section swallowed
+  // the separator — and the damage compounded: the first insert left the
+  // heading directly under the preamble text, and the next one, finding no
+  // blank line to consume, glued `## <version>` onto the end of that line.
+  // A heading that is not at the start of a line is invisible to
+  // parseChangelog(), so the whole section silently vanished from the in-app
+  // release notes and the GitHub Release body.
+  const beforeLines = lines.slice(0, firstHeading)
+  while (
+    beforeLines.length > 0 &&
+    beforeLines[beforeLines.length - 1]?.trim() === ''
+  ) {
+    beforeLines.pop()
+  }
+  const before = beforeLines.length > 0 ? `${beforeLines.join('\n')}\n\n` : ''
   const after = lines.slice(firstHeading).join('\n')
   return { content: `${before}${section}\n${after}`, inserted: true }
 }
