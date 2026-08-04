@@ -1,0 +1,209 @@
+---
+title: "The privileged Ant environment — features reserved for Anthropic employees"
+description: "A complete record of Claude Code's identity-gating tier: the tools, commands, APIs, and codename system unlocked by USER_TYPE === 'ant', and the differences between internal and external builds."
+keywords: ["Ant privileges", "USER_TYPE", "identity gating", "internal features", "Anthropic employees"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/internals/ant-only-world) · [日本語](/docs/ja/internals/ant-only-world)
+
+{/* Goal of this chapter: document the complete identity-gating tier and everything exclusive to ant builds */}
+
+## What is an Ant?
+
+`USER_TYPE` is a build-time constant injected with the Bun bundler's `--define` option. Anthropic's internal builds set it to `'ant'`; public releases set it to `'external'`:
+
+```typescript
+// Decompiled version (src/types/global.d.ts, line 63)
+// Build-time constants BUILD_TARGET/BUILD_ENV/INTERFACE_TYPE — removed (zero runtime usage)
+```
+
+Build-time constants such as `BUILD_TARGET` have been removed from the decompiled version. `USER_TYPE` is injected through Bun's `--define` option or an environment variable. Bun then performs **constant folding**: every `process.env.USER_TYPE === 'ant'` expression becomes `false` directly in external builds, after which DCE removes the guarded code. The decompiled version retains this code in full.
+
+`USER_TYPE === 'ant'` appears **351+ times** across 163 files in the codebase. `!== 'ant'` appears another 59 times across 38 files, for a total of **410+ references** controlling tools, commands, APIs, UI behavior, and other capabilities.
+
+## Ant-only tools
+
+The following tools are loaded into the tool registry only in internal builds:
+
+| Tool | Code location | Purpose |
+|------|---------|------|
+| **REPLTool** | `packages/builtin-tools/src/tools/REPLTool/` | Advanced REPL mode that wraps Bash, Read, Edit, Glob, Grep, Agent, and other tools in a VM |
+| **SuggestBackgroundPRTool** | `packages/builtin-tools/src/tools/SuggestBackgroundPRTool/` | Suggests creating a PR in the background |
+| **ConfigTool** | `packages/builtin-tools/src/tools/ConfigTool/` | Interactive configuration editor with a Gates tab for overriding GrowthBook flags |
+| **TungstenTool** | `packages/builtin-tools/src/tools/TungstenTool/` | tmux-based terminal-panel tool, stubbed in the decompiled version |
+
+```typescript
+// src/tools.ts, lines 14–24 — conditional imports plus dead-code-elimination marker
+// Dead code elimination: conditional import for ant-only tools
+/* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
+const REPLTool =
+  process.env.USER_TYPE === 'ant'
+    ? require('@open-claude-code/builtin-tools/tools/REPLTool/REPLTool.js').REPLTool
+    : null
+const SuggestBackgroundPRTool =
+  process.env.USER_TYPE === 'ant'
+    ? require('@open-claude-code/builtin-tools/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.js')
+        .SuggestBackgroundPRTool
+    : null
+```
+
+## Ant-only commands
+
+In the decompiled version, `src/commands.ts` (780 lines) **no longer contains** an `INTERNAL_ONLY_COMMANDS` array or centralized `USER_TYPE` / `IS_DEMO` gating. Commands that were formerly ant-only now use two registration mechanisms: feature-gated commands use conditional `require()` calls (`commands.ts:62-134`), while the rest appear directly as ordinary array entries in `COMMANDS()` (`commands.ts:240-363`). Identity gating has moved into each command's own `isEnabled()` method, which `isCommandEnabled()` in `src/types/command.ts:229` invokes. The following list is organized by category; some commands were removed from the decompiled version along with their internal features.
+
+<AccordionGroup>
+  <Accordion title="Debugging">
+    - `breakCache` — clear the cache
+    - `ctx_viz` — visualize context-window usage; removed, with the registered `context` / `contextNonInteractive` commands providing the capability instead
+    - `debugToolCall` — debug tool calls
+    - `env` — display environment variables
+    - `mockLimits` — simulate rate limits; command removed
+    - `resetLimits` — reset rate limits; command removed, although `src/services/rateLimitMessages.ts:340` still suggests `/reset-limits` to ant users
+    - `resetLimitsNonInteractive` — reset rate limits non-interactively; command removed
+  </Accordion>
+  <Accordion title="Experiments">
+    - `goodClaude` — quality-evaluation tool; the command is removed from the decompiled version, but `src/utils/autoRunIssue.tsx:76` still dispatches `/good-claude` in ant builds
+    - `antTrace` — trace analysis; removed
+    - `perfIssue` — performance-issue diagnostics
+  </Accordion>
+  <Accordion title="Workflows">
+    - `commit` — create a commit quickly
+    - `commitPushPr` — commit, push, and create a PR in one operation
+    - `issue` — create a GitHub issue
+    - `autofixPr` — fix problems in a PR automatically
+    - `share` — share a session
+    - `summary` — generate a summary
+    - `subscribePr` — subscribe to a PR; requires the `KAIROS_GITHUB_WEBHOOKS` feature flag
+    - `ultraplan` — enhanced planning; requires the `ULTRAPLAN` feature flag, is conditionally required at `commands.ts:108-110`, and is registered at `commands.ts:337`
+  </Accordion>
+  <Accordion title="Infrastructure">
+    - `bridgeKick` — restart the Bridge connection; still ant-only through `isEnabled: () => process.env.USER_TYPE === 'ant'` at `src/commands/bridge-kick.ts:195`
+    - `teleport` — move to a specified context
+    - `onboarding` — run onboarding
+    - `agentsPlatform` — manage the Agents platform
+    - `version` — display internal version details
+    - `initVerifiers` — initialize verifiers
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+The original internal build also hid these commands in `IS_DEMO` mode. The decompiled `commands.ts` no longer has this gate; `IS_DEMO` is now used only to skip onboarding and hide account or organization information (`src/interactiveHelpers.tsx:142` and `src/utils/status.tsx:275`).
+</Note>
+
+## Beta API headers
+
+Claude Code's API beta headers are distributed across `src/constants/betas.ts`, the primary registry, and other files. They fall into the following visibility categories.
+
+### Public headers (sent by all builds)
+
+| Header | Capability | Additional condition |
+|--------|------|----------|
+| `claude-code-20250219` | Claude Code identifier | Always sent for non-Haiku models; also sent for Haiku in agentic mode |
+| `effort-2025-11-24` | Reasoning-effort control | Injected dynamically |
+| `task-budgets-2026-03-13` | Task budgets | Always injected through `addAgenticBetas()` |
+| `fast-mode-2026-02-01` | Fast mode | Injected dynamically through a sticky-on latch |
+| `advisor-tool-2026-03-01` | Advisor tool | Injected dynamically when the advisor is enabled |
+| `advanced-tool-use-2025-11-20` | Tool search (1P) | Claude API / Foundry |
+| `tool-search-tool-2025-10-19` | Tool search (3P) | Vertex / Bedrock |
+
+### Model-capability headers (sent conditionally)
+
+| Header | Capability | Condition |
+|--------|------|------|
+| `interleaved-thinking-2025-05-14` | Interleaved thinking | The model supports ISP and the feature is not disabled |
+| `context-1m-2025-08-07` | 1M-token context window | The model supports 1M context |
+| `context-management-2025-06-27` | Context management | Claude 4+ or enabled manually by an ant user |
+| `structured-outputs-2025-12-15` | Structured output | Claude 4.5/4.6 plus GrowthBook `tengu_tool_pear` |
+| `web-search-2025-03-05` | Web search | Vertex with Claude 4+, or Foundry |
+| `redact-thinking-2026-02-12` | Thinking summarization and redaction | ISP model, non-interactive mode, and thinking display not forced |
+| `prompt-caching-scope-2026-01-05` | Prompt-cache scope | firstParty/foundry plus global caching |
+
+### Ant-only headers
+
+| Header | Capability | Condition |
+|--------|------|------|
+| **`cli-internal-2026-02-09`** | Internal CLI features | `USER_TYPE === 'ant'` plus the CLI entrypoint |
+| **`token-efficient-tools-2026-03-28`** | Token-efficient tools | `USER_TYPE === 'ant'` plus GrowthBook `tengu_amber_json_tools` |
+
+### Feature-flag-gated headers
+
+| Header | Capability | Condition |
+|--------|------|------|
+| **`afk-mode-2026-01-31`** | AFK mode, which approves automatically while the user is away from the keyboard | `feature('TRANSCRIPT_CLASSIFIER')` |
+
+### Other special headers
+
+| Header | Capability | Source |
+|--------|------|------|
+| `oauth-2025-04-20` | OAuth subscriber identifier | `src/constants/oauth.ts`, for Pro/Max/Team/Enterprise |
+| `environments-2025-11-01` | Bridge environment API | `src/bridge/bridgeApi.ts`, Bridge mode only |
+
+```typescript
+// src/constants/betas.ts — constant definitions
+export const TOKEN_EFFICIENT_TOOLS_BETA_HEADER =
+  'token-efficient-tools-2026-03-28'
+export const CLI_INTERNAL_BETA_HEADER =
+  process.env.USER_TYPE === 'ant' ? 'cli-internal-2026-02-09' : ''
+```
+
+```typescript
+// src/utils/betas.ts, lines 315–321 — actual gating logic for TOKEN_EFFICIENT_TOOLS
+if (
+  process.env.USER_TYPE === 'ant' &&
+  includeFirstPartyOnlyBetas &&
+  tokenEfficientToolsEnabled  // GrowthBook 'tengu_amber_json_tools' flag
+) {
+  betaHeaders.push(TOKEN_EFFICIENT_TOOLS_BETA_HEADER)
+}
+```
+
+The `cli-internal` header means Anthropic's API server also maintains ant-only server-side behavior; the gate does not exist solely in the client. `token-efficient-tools` additionally requires a GrowthBook flag, showing that internal rollout to Ant employees is itself tiered.
+
+## Internal codename system
+
+Anthropic makes extensive use of animal-based names:
+
+| Codename | Identity | Origin |
+|------|------|------|
+| **Tengu** | Claude Code project codename | The `tengu_` prefix on all GrowthBook flags and analytics event names |
+| **Capybara** | Model codename | A name blocked by Undercover Mode in `src/constants/prompts.ts` |
+| **Fennec** | Retired model alias | `src/migrations/migrateFennecToOpus.ts`; the former name was migrated to Opus |
+
+Undercover Mode strictly filters these codenames from commits to public repositories.
+
+## Environment-variable controls
+
+In addition to `USER_TYPE`, the following environment variables control individual capabilities:
+
+<AccordionGroup>
+  <Accordion title="Feature-disable switches">
+    - `CLAUDE_CODE_SIMPLE` — simplified mode; disables advanced features
+    - `CLAUDE_CODE_DISABLE_THINKING` — disable thinking
+    - `DISABLE_INTERLEAVED_THINKING` — disable interleaved thinking
+    - `DISABLE_COMPACT` — disable message compaction
+    - `DISABLE_AUTO_COMPACT` — disable automatic compaction
+    - `CLAUDE_CODE_DISABLE_AUTO_MEMORY` — disable automatic memory
+    - `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` — disable background tasks
+    - `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` — disable experimental beta headers
+    - `USE_API_CONTEXT_MANAGEMENT` — clear context-management tools; requires ant
+  </Accordion>
+  <Accordion title="Feature-enable switches">
+    - `CLAUDE_CODE_VERIFY_PLAN` — enable VerifyPlanExecutionTool
+    - `ENABLE_LSP_TOOL` — enable the LSP language-server tool
+    - `CLAUDE_CODE_UNDERCOVER` — force-enable Undercover Mode
+    - `CLAUDE_CODE_TERMINAL_RECORDING` — enable terminal recording in asciicast format
+    - `CLAUDE_CODE_ABLATION_BASELINE` — enable baseline-control mode
+  </Accordion>
+  <Accordion title="Environment configuration">
+    - `CLAUDE_CODE_REMOTE` — remote-execution mode; increases the heap limit automatically
+    - `CLAUDE_CODE_COORDINATOR_MODE` — enable Coordinator mode
+    - `CLAUDE_INTERNAL_FC_OVERRIDES` — override GrowthBook flags; ant-only
+    - `IS_DEMO` — demo mode; skips onboarding and hides sensitive account information
+    - `CLAUDE_CODE_ENTRYPOINT` — entrypoint type identifier (`cli` | other)
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+`ABLATION_BASELINE` is notable because it disables thinking, compaction, auto-memory, and background tasks together to measure the **causal effect** of these advanced capabilities on model performance. It is a controlled experimental mechanism.
+</Note>

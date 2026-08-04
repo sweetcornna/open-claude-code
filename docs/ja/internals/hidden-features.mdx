@@ -1,0 +1,120 @@
+---
+title: "未公開機能ツアー — 8 つの隠し機能を詳解"
+description: "Claude Code にある 8 つの注目すべき隠し機能を詳解します。常時稼働する AI アシスタントから AI マスコットまで、88 個以上の flags の中でも代表的な未公開機能を明らかにします。"
+keywords: ["隠し機能", "未公開機能", "秘密の機能", "Claude Code のイースターエッグ", "AI アシスタント"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/internals/hidden-features) · [中文](/docs/zh/internals/hidden-features) · **日本語**
+
+{/* この章の目的: 主要な 8 つの隠し機能を 1 つずつ紹介し、その背後にある製品の方向性を分析する */}
+
+## 全体像
+
+88 個以上のビルド時 flags と 500 個以上の実行時 flags から、代表的な未公開機能を 8 つ選びました。これらは Claude Code の現在の技術的な深さを示すだけでなく、Anthropic が描く「AI プログラミングアシスタント」の将来像も浮かび上がらせます。
+
+<AccordionGroup>
+  <Accordion title="KAIROS: 常時稼働する AI アシスタント">
+    **ゲート**: `feature('KAIROS')` + `tengu_kairos`
+
+    KAIROS は Claude Code で最大の隠し機能群です。5 個の独立した flag が、完全な「永続 AI アシスタント」システムを制御します。
+
+    | Flag | 機能 |
+    |------|------|
+    | `KAIROS` | 中核となるアシスタントモード。会話が終わっても AI が「消えない」 |
+    | `KAIROS_BRIEF` | 簡潔な出力モード |
+    | `KAIROS_CHANNELS` | チャンネルベースのメッセージシステム |
+    | `KAIROS_GITHUB_WEBHOOKS` | GitHub PR イベントを購読し、自動的に応答 |
+    | `KAIROS_PUSH_NOTIFICATION` | モバイル端末へ通知をプッシュ |
+
+    `KAIROS_DREAM`（バックグラウンドで「夢を見る」、つまり自律的にメモリを整理する機能）はデフォルト機能へ昇格し、ビルド flag ではゲーティングされなくなりました。実装は `src/services/autoDream/` にあり、スイッチは settings.json の `autoDreamEnabled` です（`/dream` で手動実行することもできます）。
+
+KAIROS のツールセットには、`BriefTool`（構造化されたメッセージ出力）と `SubscribePRTool`（PR の監視）が含まれます。待機 / スケジュールされたウェイクアップは `MonitorTool` の `wait_seconds` モードが担います（初期の専用 `SleepTool` は削除済みです）。`SendUserFileTool` と `PushNotificationTool` は自前の bridge を通してしか配信できなかったため、2026-07 に bridge とともに削除されました。
+
+    **想定される方向性**: 24 時間 365 日稼働し、コードベースを自律的に監視し、イベントに応答し、タスクを管理できる AI チームメンバー。
+  </Accordion>
+
+  <Accordion title="PROACTIVE: 自律行動モード">
+    **ゲート**: `feature('PROACTIVE')`
+
+    標準モードの Claude Code は受動的で、入力を待ってから応答します。PROACTIVE モードはこのパラダイムを覆します。
+
+    - AI は実行することがなければ turn を直接終了する。指定時刻に起動する必要がある場合は、`MonitorTool` の `wait_seconds` でバックグラウンドタイマーを開始する
+    - システムが定期的に `<tick>` プロンプトを送り、AI に能動的に実行すべきことがないか確認させる
+    - AI はユーザー入力がなくても、自ら判断して実行できる
+
+    **想定される方向性**: 「質問応答型アシスタント」から「自律型の同僚」への進化。AI はバックグラウンドで継続的に作業し、ときどきユーザーに方向性の確認を求めます。
+  </Accordion>
+
+  <Accordion title="COORDINATOR_MODE: マルチ Agent の指揮官">
+    **ゲート**: `feature('COORDINATOR_MODE')`
+
+    現在の Claude Code はすでにサブ Agent（`AgentTool`）をサポートしていますが、Coordinator Mode はこれを新たな段階へ引き上げます。
+
+    - 1 つの「指揮官」Agent がタスクを分析し、サブタスクへ分解する
+    - 複数の「ワーカー」Agent がサブタスクを並列実行する
+    - 指揮官が結果を調整し、競合を解決し、出力を統合する
+
+    完全な実装は `src/coordinator/coordinatorMode.ts` にあります。
+
+    **想定される方向性**: 大規模なプログラミングタスクを完全に自動化して並列処理すること。たとえば「認証システム全体をリファクタリングする」というタスクでは、複数の Agent が異なるモジュールを同時に処理できます。
+  </Accordion>
+
+  <Accordion title="BRIDGE_MODE: リモートコントロール（削除済み）">
+    **ゲート**: なし — この flag と `src/bridge/` ディレクトリ全体は 2026-07 に削除されました。
+
+    Bridge Mode はかつて、自前の WebSocket bridge を介して occ をリモート制御する機能でした。この方法は現在、標準プロトコルに置き換えられています。occ が ACP agent（`occ --acp`）を提供し、リモートクライアントは [Happy](https://github.com/slopus/happy) が提供します。`occ remote-control` は両者を接続します。
+
+    **この機能が解決しようとした課題は今も存在します**。UI フロントエンドとバックエンドでの実行を分離し、スマートフォンやエディタから操作しながら、AI は開発マシン上で実行するというものです。ただし、独自のトランスポート層を実装する必要はなくなりました。
+  </Accordion>
+
+  <Accordion title="WEB_BROWSER_TOOL: 組み込みブラウザ">
+    **ゲート**: `feature('WEB_BROWSER_TOOL')`
+
+    現在の Claude Code には簡易的な `WebFetchTool`（Web ページのコンテンツを取得するツール）しかありませんが、コードにはさらに強力なブラウザツールがあります。
+
+    - Bun ベースの WebView 実装
+    - テキストを取得するだけでなく、Web ページをレンダリングして操作できる
+    - Computer Use の `@ant/` パッケージと連携する
+
+    **想定される方向性**: AI が人間のように Web を閲覧し、クリック、フォーム入力、スクリーンショットの取得を行い、Web アプリケーションのテストや情報収集に利用すること。
+  </Accordion>
+
+  <Accordion title="VOICE_MODE: 音声対話">
+    **ゲート**: `feature('VOICE_MODE')`
+
+    コードには音声入力モードの登録箇所があり、中核実装は `audio-capture-napi` パッケージ（復元済み）に依存します。
+
+    - `/voice` コマンドで有効化
+    - 「押している間だけ話す」（hold-to-talk）操作モード
+    - システムレベルのオーディオ API サポートが必要
+
+    **想定される方向性**: キーボードを使わず、AI と直接会話しながらプログラミングすること。
+  </Accordion>
+
+  <Accordion title="Undercover Mode: 身元を伏せたコントリビューション">
+    **ゲート**: `USER_TYPE === 'ant'`（自動的に有効化）
+
+    これは機能ではなく、Anthropic の従業員が公開リポジトリにコードをコントリビュートするときに自動的に有効になる**セキュリティ機構**です。
+
+    - AI による帰属を示すマーカー（`Co-Authored-By` 行）をすべて削除する
+    - commit メッセージでモデルのコードネーム（Capybara、Tengu など）に言及することを禁止する
+    - 社内リポジトリ名、Slack チャンネル、短縮リンクの露出を禁止する
+    - `CLAUDE_CODE_UNDERCOVER=1` で強制的に有効化できるが、強制的に無効化することはできない
+    - リポジトリが社内の許可リスト（約 25 個の非公開リポジトリ）に一致する場合のみ、自動的に無効化される
+
+    **意味**: Anthropic の従業員が日常の開発で実際に Claude Code を使い、公開プロジェクトにもコードをコントリビュートしていることを裏付けます。
+  </Accordion>
+</AccordionGroup>
+
+## これらの機能から分かること
+
+8 つの隠し機能を俯瞰すると、明確な製品ビジョンが浮かび上がります。
+
+1. **受動から能動へ** — PROACTIVE と KAIROS により、AI は指示を待つだけではなくなる
+2. **一時的な存在から永続的な存在へ** — KAIROS の永続モードにより、AI は「常駐するチームメンバー」になる
+3. **単一の感覚からマルチモーダルへ** — VOICE_MODE と WEB_BROWSER_TOOL が対話の次元を広げる
+4. **単独作業から協調作業へ** — COORDINATOR_MODE により複数の AI が並列に協調する
+5. **ローカルから分散環境へ** — ACP（Happy と連携）と SSH_REMOTE がフロントエンドとバックエンドを分離する
+
+Claude Code は「ターミナル内のチャットボット」から、**自律的で永続的、かつマルチモーダルな AI プログラミングの同僚**へと進化しています。

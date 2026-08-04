@@ -1,0 +1,120 @@
+---
+title: "A tour of unreleased capabilities — 8 hidden features in depth"
+description: "An in-depth analysis of 8 notable hidden features in Claude Code, from a persistent AI assistant to an AI mascot, representing the most significant unreleased capabilities among 88+ flags."
+keywords: ["hidden features", "unreleased features", "secret features", "Claude Code Easter eggs", "AI assistant"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/internals/hidden-features) · [日本語](/docs/ja/internals/hidden-features)
+
+{/* Goal of this chapter: present 8 major hidden features individually and analyze the product direction behind them */}
+
+## Overview
+
+This chapter selects 8 representative unreleased capabilities from 88+ build-time flags and 500+ runtime flags. Together, they demonstrate Claude Code's current technical scope and indicate Anthropic's direction for AI coding assistants.
+
+<AccordionGroup>
+  <Accordion title="KAIROS: an always-available AI assistant">
+    **Gates**: `feature('KAIROS')` + `tengu_kairos`
+
+    KAIROS is the largest hidden feature family in Claude Code. 5 independent flags control a complete persistent AI-assistant system:
+
+    | Flag | Capability |
+    |------|------|
+    | `KAIROS` | Core assistant mode: the AI no longer disappears when a conversation ends |
+    | `KAIROS_BRIEF` | Concise output mode |
+    | `KAIROS_CHANNELS` | Channel-based messaging system |
+    | `KAIROS_GITHUB_WEBHOOKS` | Subscribe to GitHub PR events and respond automatically |
+    | `KAIROS_PUSH_NOTIFICATION` | Send notifications to mobile devices |
+
+    `KAIROS_DREAM`, which performs autonomous memory organization in the background, has graduated to a default capability and is no longer gated by a build flag. Its implementation resides in `src/services/autoDream/`; the `autoDreamEnabled` setting in settings.json controls it, and `/dream` triggers it manually.
+
+KAIROS includes `BriefTool` for structured message output and `SubscribePRTool` for monitoring pull requests. `MonitorTool` provides waiting and scheduled wakeups through its `wait_seconds` mode; the earlier dedicated `SleepTool` has been removed. `SendUserFileTool` and `PushNotificationTool` could deliver only through the custom bridge and were deleted with the bridge in 2026-07.
+
+    **Inferred direction**: a 24/7 AI team member that can monitor a codebase, respond to events, and manage tasks autonomously.
+  </Accordion>
+
+  <Accordion title="PROACTIVE: autonomous action mode">
+    **Gate**: `feature('PROACTIVE')`
+
+    In standard mode, Claude Code waits for input and then responds. PROACTIVE mode changes that interaction model:
+
+    - When the model has no work, it ends the turn immediately; when it needs to wake at a specific time, it starts a background timer through the `wait_seconds` mode of `MonitorTool`
+    - The system sends periodic `<tick>` prompts that trigger the model to check for work it should initiate
+    - The model can decide and act without new user input
+
+    **Inferred direction**: a shift from a question-and-answer assistant to an autonomous colleague that works continuously in the background and occasionally requests confirmation of its direction.
+  </Accordion>
+
+  <Accordion title="COORDINATOR_MODE: multi-agent orchestration">
+    **Gate**: `feature('COORDINATOR_MODE')`
+
+    Claude Code already supports subagents through `AgentTool`, but Coordinator Mode extends that model:
+
+    - A coordinator agent analyzes a task and decomposes it into subtasks
+    - Multiple worker agents execute those subtasks in parallel
+    - The coordinator reconciles results, resolves conflicts, and merges output
+
+    The complete implementation resides in `src/coordinator/coordinatorMode.ts`.
+
+    **Inferred direction**: fully automated parallel execution of large programming tasks. For example, several agents could refactor separate modules of an entire authentication system concurrently.
+  </Accordion>
+
+  <Accordion title="BRIDGE_MODE: remote control (removed)">
+    **Gate**: none. The flag and the entire `src/bridge/` directory were deleted in 2026-07.
+
+    Bridge Mode previously allowed remote control of occ through a custom WebSocket bridge. The implementation now uses standard protocols: occ provides an ACP agent through `occ --acp`, [Happy](https://github.com/slopus/happy) provides the remote client, and `occ remote-control` connects the two.
+
+    **The underlying requirement remains valid**: separate the UI frontend from backend execution so that the user can operate from a phone or editor while the AI runs on the development machine. A custom transport layer is no longer required.
+  </Accordion>
+
+  <Accordion title="WEB_BROWSER_TOOL: built-in browser">
+    **Gate**: `feature('WEB_BROWSER_TOOL')`
+
+    The current Claude Code provides only the simplified `WebFetchTool`, which retrieves web content, but the code includes a more capable browser tool:
+
+    - Implements a WebView using Bun
+    - Renders and interacts with web pages rather than only fetching text
+    - Works with the Computer Use packages under `@ant/`
+
+    **Inferred direction**: allow the model to browse as a person would—clicking, filling forms, and taking screenshots—to test web applications or collect information.
+  </Accordion>
+
+  <Accordion title="VOICE_MODE: voice interaction">
+    **Gate**: `feature('VOICE_MODE')`
+
+    The code contains a registration point for voice input mode. Its core implementation depends on the restored `audio-capture-napi` package:
+
+    - Activate it with the `/voice` command
+    - Use a hold-to-talk interaction model
+    - Require support from system-level audio APIs
+
+    **Inferred direction**: enable direct voice-based programming conversations without typing.
+  </Accordion>
+
+  <Accordion title="Undercover Mode: unattributed contributions">
+    **Gate**: `USER_TYPE === 'ant'`, activated automatically
+
+    This is a **safety mechanism**, not a user-facing capability. It activates automatically when Anthropic employees contribute code to public repositories:
+
+    - Removes every AI-attribution marker, including `Co-Authored-By` lines
+    - Prohibits model codenames such as Capybara and Tengu in commit messages
+    - Prevents disclosure of internal repository names, Slack channels, and short links
+    - Can be forced on with `CLAUDE_CODE_UNDERCOVER=1` but cannot be forced off
+    - Deactivates automatically only for repositories matching an internal allowlist of approximately 25 private repositories
+
+    **Significance**: this mechanism confirms that Anthropic employees use Claude Code in routine development and contribute code to public projects.
+  </Accordion>
+</AccordionGroup>
+
+## Architectural implications
+
+Taken together, these 8 hidden features suggest a consistent product direction:
+
+1. **From reactive to proactive** — PROACTIVE and KAIROS move the model beyond waiting for instructions
+2. **From transient to persistent** — KAIROS makes the model a resident team member
+3. **From one modality to several** — VOICE_MODE and WEB_BROWSER_TOOL extend the interaction surface
+4. **From individual execution to coordination** — COORDINATOR_MODE enables several models to collaborate in parallel
+5. **From local to distributed** — ACP with Happy, plus SSH_REMOTE, decouples the frontend from the backend
+
+Claude Code is developing from a terminal chatbot into an **autonomous, persistent, multimodal AI programming colleague**.

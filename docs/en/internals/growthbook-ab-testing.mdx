@@ -1,0 +1,123 @@
+---
+title: "The GrowthBook A/B-testing system — runtime feature delivery"
+description: "How Claude Code implements runtime A/B testing through GrowthBook, including user targeting, the tengu naming convention, and progressive feature-delivery strategy."
+keywords: ["GrowthBook", "A/B testing", "runtime gating", "tengu", "progressive delivery"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/internals/growthbook-ab-testing) · [日本語](/docs/ja/internals/growthbook-ab-testing)
+
+{/* Goal of this chapter: examine the runtime A/B-testing tier in depth, including GrowthBook integration, user targeting, and the tengu naming convention */}
+
+## Why runtime A/B testing is necessary
+
+The build-time `feature()` mechanism is all-or-nothing: either every user receives a feature or no user does. Product delivery requires finer control:
+
+- Roll out a new feature to only 5% of users
+- Vary the experience by subscription type (Free, Pro, or Team)
+- Enable experimental capabilities silently for selected organizations
+- Disable a faulty feature remotely at any time without issuing a release
+
+**GrowthBook** provides this control as a runtime feature-gating and A/B-testing system based on user attributes.
+
+## Integration architecture
+
+The complete GrowthBook implementation resides in `src/services/analytics/growthbook.ts` (1258 lines) and follows this workflow:
+
+<Steps>
+  <Step title="Fetch remote configuration at startup">
+    When the CLI starts, the GrowthBook SDK fetches the current feature configuration and experiment-allocation rules through an API endpoint at `https://api.anthropic.com/`. It uses `remoteEval: true`, so the server computes allocation and the client receives only the result.
+  </Step>
+  <Step title="Compute user attributes">
+    The SDK collects attributes for the current user, including device ID, subscription type, and organization UUID, to determine the user's experiment and variation assignments.
+  </Step>
+  <Step title="Cache results locally">
+    Computed results are cached in the `cachedGrowthBookFeatures` field of `~/.occ.json`. The refresh interval is 20 minutes for Anthropic employees and 6 hours for external users.
+  </Step>
+  <Step title="Query flags in application code">
+    Application code queries feature state through flag names with the `tengu_*` prefix. The GrowthBook SDK returns the variation assigned to the current user.
+  </Step>
+</Steps>
+
+## User-targeting attributes
+
+GrowthBook assigns experiment variations using the following user attributes:
+
+| Attribute | Type | Source | Purpose |
+|------|------|------|------|
+| `id` | string | Session ID | Session-granular assignment |
+| `deviceID` | string | Persistent device identifier | Consistency across sessions |
+| `sessionId` | string | Current session ID | Session-level experiments |
+| `platform` | enum | `process.platform` | Operating-system-specific behavior |
+| `organizationUUID` | string | API authentication information | Organization-level rollout |
+| `accountUUID` | string | API authentication information | Individual-account rollout |
+| `subscriptionType` | string | API authentication information | Different behavior for Free, Pro, and Team |
+| `rateLimitTier` | string | API authentication information | Targeting by rate-limit tier |
+| `email` | string | API authentication information | Precise targeting of individual users |
+| `appVersion` | string | `MACRO.VERSION` | Version-specific rollout |
+| `github` | object | GitHub Actions metadata | Special handling for CI environments |
+
+<Note>
+This targeting system supports highly specific experiments, such as enabling a feature for 10% of Pro subscribers on macOS.
+</Note>
+
+## The `tengu_*` codename convention
+
+Every runtime flag uses the `tengu_` prefix. "Tengu" is the internal project codename for Claude Code. Flag names follow an intentionally opaque **animal, plant, or mineral plus adjective** convention.
+
+<AccordionGroup>
+  <Accordion title="tengu_kairos — Kairos assistant mode">
+    Controls the runtime gate for KAIROS. Even when the build passes `feature('KAIROS')`, this flag must also match before the feature activates. The two gates support staged delivery.
+  </Accordion>
+  <Accordion title="tengu_amber_stoat — Explore Agent A/B test">
+    Controls a behavioral variation of the built-in Explore subagent. "amber stoat" is a randomly generated codename unrelated to the feature, preventing readers from inferring functionality from the flag name.
+  </Accordion>
+  <Accordion title="tengu_auto_background_agents — automatic background agents">
+    Controls whether certain tasks are assigned automatically to background agents rather than blocking the user in the foreground.
+  </Accordion>
+  <Accordion title="tengu_onyx_plover — Auto-Dream background memory">
+    Controls "automatic dreaming," which organizes and consolidates agent memory in the background while idle. "onyx plover" is another opaque codename.
+  </Accordion>
+  <Accordion title="tengu_glacier_2xr — tool-search behavior">
+    Controls a Tool Search behavioral variation, potentially testing a search algorithm or ranking policy.
+  </Accordion>
+  <Accordion title="tengu_birch_trellis — Bash permission policy">
+    Controls a policy variation in BashTool permission decisions, potentially testing more permissive or more restrictive rules.
+  </Accordion>
+  <Accordion title="tengu_scratch — scratchpad capability">
+    Controls an experimental scratchpad that may provide intermediate storage while the model handles a complicated task.
+  </Accordion>
+  <Accordion title="tengu_quartz_lantern — diff computation policy">
+    Controls how diffs are computed during file writes and edits. It may compare the user impact of different diff algorithms.
+  </Accordion>
+</AccordionGroup>
+
+## Ant-only override mechanisms
+
+Anthropic employees can bypass GrowthBook remote evaluation in two ways.
+
+### Environment-variable overrides
+
+```bash
+# Effective only in USER_TYPE=ant builds
+CLAUDE_INTERNAL_FC_OVERRIDES='{"tengu_kairos": true}' occ
+```
+
+The `CLAUDE_INTERNAL_FC_OVERRIDES` environment variable accepts a JSON object that directly overrides any flag value.
+
+### Overrides in the configuration UI
+
+In internal builds, the Gates tab of the `/config` command provides a graphical flag-management interface that can change any GrowthBook flag in real time.
+
+## Experiment tracking
+
+The GrowthBook integration includes complete experiment-exposure tracking:
+
+- Records an experiment-exposure event whenever code queries a flag
+- Reports the event as a protobuf `GrowthbookExperimentEvent`
+- Includes `variation_id` (0 for the control, 1+ for experiment variations) and the `in_experiment` marker
+- Uses the data to analyze a feature's causal effect on user behavior
+
+<Note>
+GrowthBook is replacing Statsig. The code still retains migration compatibility layers such as `checkStatsigFeatureGate_CACHED_MAY_BE_STALE()`.
+</Note>

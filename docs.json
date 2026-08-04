@@ -81,6 +81,19 @@
               "docs/en/safety/auto-mode",
               "docs/en/safety/miit-warning-response"
             ]
+          },
+          {
+            "group": "揭秘：隐藏功能与内部机制",
+            "pages": [
+              "docs/en/internals/three-tier-gating",
+              "docs/en/internals/feature-flags",
+              "docs/en/internals/growthbook-ab-testing",
+              "docs/en/internals/growthbook-adapter",
+              "docs/en/internals/sentry-setup",
+              "docs/en/internals/hidden-features",
+              "docs/en/internals/ant-only-world",
+              "docs/en/internals/session-transcript-persistence"
+            ]
           }
         ]
       },
@@ -300,6 +313,19 @@
               "docs/ja/safety/plan-mode",
               "docs/ja/safety/auto-mode",
               "docs/ja/safety/miit-warning-response"
+            ]
+          },
+          {
+            "group": "揭秘：隐藏功能与内部机制",
+            "pages": [
+              "docs/ja/internals/three-tier-gating",
+              "docs/ja/internals/feature-flags",
+              "docs/ja/internals/growthbook-ab-testing",
+              "docs/ja/internals/growthbook-adapter",
+              "docs/ja/internals/sentry-setup",
+              "docs/ja/internals/hidden-features",
+              "docs/ja/internals/ant-only-world",
+              "docs/ja/internals/session-transcript-persistence"
             ]
           }
         ]

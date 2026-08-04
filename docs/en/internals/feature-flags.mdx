@@ -1,0 +1,119 @@
+---
+title: "88 feature flags — build-time feature gating explained"
+description: "An in-depth analysis of Claude Code's 88+ build-time feature flags and the bun:bundle compile-time gating mechanism, including hidden feature modules removed by the compiler."
+keywords: ["feature flags", "feature switches", "build-time gating", "bun:bundle", "conditional compilation"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/internals/feature-flags) · [日本語](/docs/ja/internals/feature-flags)
+
+{/* Goal of this chapter: systematically document the build-time feature-flag mechanism and classify every flag */}
+
+## What is `feature()`?
+
+Claude Code uses the `bun:bundle` module from the Bun bundler for compile-time feature gating:
+
+```typescript
+// Usage in source code (src/tools.ts and elsewhere)
+import { feature } from 'bun:bundle'
+
+const RemoteTriggerTool = feature('AGENT_TRIGGERS')
+  ? require('@open-claude-code/builtin-tools/tools/RemoteTriggerTool/RemoteTriggerTool.js').RemoteTriggerTool
+  : null
+```
+
+In Anthropic's internal builds, `feature()` is evaluated during packaging. Code for which it returns `true` is retained; code for which it returns `false` is removed entirely through **dead code elimination (DCE)**.
+
+In this decompiled version, `feature` is imported from `bun:bundle` (declared in `src/types/internal-modules.d.ts`) and always returns `false` at runtime:
+
+```typescript
+// src/types/internal-modules.d.ts
+declare module 'bun:bundle' {
+  export function feature(name: string): boolean;
+}
+```
+
+As a result, code behind all 88+ feature flags **never executes at runtime**, but the code itself remains intact and available for inspection.
+
+## Flag taxonomy
+
+<CardGroup cols={2}>
+  <Card title="Agents and automation" icon="robot">
+    **14 flags** — define the boundaries of autonomous AI behavior
+
+    `KAIROS` · `KAIROS_BRIEF` · `KAIROS_CHANNELS` · `KAIROS_GITHUB_WEBHOOKS` · `KAIROS_PUSH_NOTIFICATION` · `PROACTIVE` · `COORDINATOR_MODE` · `FORK_SUBAGENT` · `AGENT_MEMORY_SNAPSHOT` · `AGENT_TRIGGERS` · `AGENT_TRIGGERS_REMOTE` · `VERIFICATION_AGENT` · `BUILTIN_EXPLORE_PLAN_AGENTS` · `MONITOR_TOOL`
+  </Card>
+
+  <Card title="Infrastructure" icon="server">
+    **7 flags** — control execution environments and connection methods
+
+    `DAEMON` · `BG_SESSIONS` · `ACP` · `CCR_REMOTE_SETUP` · `SSH_REMOTE`
+  </Card>
+
+  <Card title="Security and classification" icon="shield-halved">
+    **6 flags** — add intelligence to permission decisions
+
+    `TRANSCRIPT_CLASSIFIER` · `BASH_CLASSIFIER` · `TREE_SITTER_BASH` · `TREE_SITTER_BASH_SHADOW` · `NATIVE_CLIENT_ATTESTATION` · `ABLATION_BASELINE`
+  </Card>
+
+  <Card title="Tools and capabilities" icon="toolbox">
+    **6 flags** — introduce new AI capabilities
+
+    `WEB_BROWSER_TOOL` · `TERMINAL_PANEL` · `WORKFLOW_SCRIPTS` · `VOICE_MODE` · `MCP_RICH_OUTPUT` · `MCP_SKILLS`
+  </Card>
+
+  <Card title="UI and experience" icon="palette">
+    **7 flags** — improve the interface and interaction model
+
+    `MESSAGE_ACTIONS` · `QUICK_SEARCH` · `HISTORY_PICKER` · `AUTO_THEME` · `STREAMLINED_OUTPUT` · `COMPACTION_REMINDERS` · `TEMPLATES`
+  </Card>
+
+  <Card title="Platform and experiments" icon="flask-vial">
+    **10+ flags** — gate experimental and platform-level features
+
+    `DUMP_SYSTEM_PROMPT` · `UPLOAD_USER_SETTINGS` · `DOWNLOAD_USER_SETTINGS` · `EXPERIMENTAL_SKILL_SEARCH` · `ULTRAPLAN` · `ULTRATHINK` · `TORCH` · `LODESTONE` · `PERFETTO_TRACING` · `SLOW_OPERATION_LOGGING` · `HARD_FAIL` · `ALLOW_TEST_VERSIONS`
+  </Card>
+</CardGroup>
+
+## Common patterns in the code
+
+The codebase uses feature flags in three primary patterns.
+
+### Pattern 1: load a tool conditionally
+
+```typescript
+// src/tools.ts — the most common pattern
+const MonitorTool = feature('MONITOR_TOOL')
+  ? require('@open-claude-code/builtin-tools/tools/MonitorTool/MonitorTool.js').MonitorTool
+  : null
+```
+
+When the flag is `false`, DCE removes the `require()` call and the tool does not appear in the available-tool list.
+
+### Pattern 2: register a command conditionally
+
+```typescript
+// src/commands.ts — slash-command registration
+if (feature('VOICE_MODE')) {
+  commands.push({ name: 'voice', description: '...' })
+}
+```
+
+### Pattern 3: enable an API capability conditionally
+
+```typescript
+// src/constants/betas.ts — controls a beta header sent to the API
+export const AFK_MODE_BETA_HEADER = feature('TRANSCRIPT_CLASSIFIER')
+  ? 'afk-mode-2026-01-31'
+  : ''
+```
+
+<Note>
+Because `feature()` is evaluated at build time, code removed by DCE does not increase the final bundle size. In the decompiled version, all of this code remains present, which makes a complete analysis possible.
+</Note>
+
+## Notable findings
+
+- The **KAIROS family** is the largest: 5 related flags control everything from core behavior to push notifications
+- **`ABLATION_BASELINE`** supports scientific control experiments: it disables advanced features such as thinking, compaction, and auto-memory to measure the baseline performance of raw API calls
+- **`ULTRAPLAN`** and **`ULTRATHINK`** suggest reasoning modes more advanced than the current extended-thinking capability
