@@ -144,10 +144,31 @@ git push origin main --follow-tags # 这一步才真正发布
 | --- | --- |
 | 架构、模块地图、约定 | [`CLAUDE.md`](CLAUDE.md)（唯一真源） |
 | 跨工具入口 | `AGENTS.md`（**只放指针**，不要往里抄内容） |
-| 功能说明、集成指南 | `docs/features/`、`docs/` 下按主题分目录 |
+| 功能说明、集成指南 | `docs/zh/features/`、`docs/` 下按主题分目录 |
 | 编号的功能规格与人工验收清单 | `spec/feature_<日期>_<编号>_<名字>/` |
-| 设计文档、实施计划、评审记录 | `docs/superpowers/{specs,plans,reviews}/` |
+| 设计文档、实施计划、评审记录 | `docs/zh/superpowers/{specs,plans,reviews}/` |
 
-`spec/` 与 `docs/superpowers/` 的分工：`spec/` 是**带编号、带人工验收清单**的正式功能规格（`spec-design.md` + `spec-plan-N.md` + `spec-human-verify.md` 一套）；`docs/superpowers/` 是**按日期归档**的设计/计划/评审文档，更轻量、更连续。新功能要走人工验收就进 `spec/`，否则进 `docs/superpowers/`。
+`spec/` 与 `docs/zh/superpowers/` 的分工：`spec/` 是**带编号、带人工验收清单**的正式功能规格（`spec-design.md` + `spec-plan-N.md` + `spec-human-verify.md` 一套）；`docs/zh/superpowers/` 是**按日期归档**的设计/计划/评审文档，更轻量、更连续。新功能要走人工验收就进 `spec/`，否则进 `docs/zh/superpowers/`。
 
 **关于 `.claude/` 与 `.occ/` 双目录**：仓库里两个都有，这是有意的。`.claude/` 放**跨工具生态共享**的资产（skills、agents —— 官方 Claude Code 和其他 AI 工具也读这里），`.occ/` 放 **occ 独有**的运行时产物（workflow-runs 等）。判断标准：别的工具也该看到 → `.claude/`；只有 occ 认识 → `.occ/`。
+
+## 12. 文档多语言（i18n）
+
+`docs.json` 的 `navigation.languages` 声明三棵导航树：
+
+| 语言 | 目录 | 状态 |
+| --- | --- | --- |
+| `en` | `docs/en/**` | 翻译中，**目标默认语言** |
+| `zh` | `docs/zh/**` | 完整（当前默认） |
+| `ja` | `docs/ja/**` | 翻译中 |
+
+**不要手改 `docs.json` 的 navigation，也不要手写切换器**——两者都由 `bun run sync:docs-i18n` 从磁盘状态生成：
+
+- **导航按语言裁剪到实际存在的页面。** Mintlify 对「声明了但文件不存在」的导航项不会跳过，而是发布成一个 404。翻译是一页一页落地的，所以未翻译的页面必须从该语言的树里剪掉，空掉的分组一并去掉。
+- **切换器只链到该页面真实存在的语言。** 同理，链到不存在的翻译等于送用户去 404。只有中文版的页面，切换器就只有一个加粗的 `**中文**`。
+- **默认语言必须 100% 覆盖。** 默认树是所有读者的落地页，有洞就等于把人送进 404。脚本自动选择第一个完整的语言作为默认——英文补齐到 65/65 时会自动接管，无需改配置。
+- 页面集合与分组结构的真源是 `CANONICAL_LANG`（当前 `zh`），其余语言是它的子集。
+- `docs/images/`、`docs/logo/`、`docs/diagrams/`、`docs/favicon.svg` 是**共享资源**，不进语言目录。
+- 未进导航的内部设计文档 / 测试报告只保留中文，放 `docs/zh/` 下即可，不要加进 `docs.json`。
+
+新增或删除翻译页面后跑 `bun run sync:docs-i18n`；`bun run check:docs-i18n` 校验断链、缺切换器、默认语言完整性，并报告覆盖率（`--strict` 额外要求三种语言都补齐）。

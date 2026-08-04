@@ -1,7 +1,11 @@
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions/completions.mjs'
 import { randomUUID } from 'crypto'
-import { normalizeOpenAIUsage } from './openaiUsage.js'
+import {
+  normalizeOpenAIUsage,
+  readOpenAICachedTokens,
+  readOpenAICacheWriteTokens,
+} from './openaiUsage.js'
 
 /**
  * Adapt an OpenAI streaming response into Anthropic BetaRawMessageStreamEvent.
@@ -31,7 +35,8 @@ import { normalizeOpenAIUsage } from './openaiUsage.js'
  *
  * Prompt caching:
  *   OpenAI reports cached tokens in usage.prompt_tokens_details.cached_tokens.
- *   This is mapped to Anthropic's cache_read_input_tokens.
+ *   DeepSeek reports usage.prompt_cache_hit_tokens; some proxies flatten it to
+ *   usage.cached_tokens. All three map to Anthropic's cache_read_input_tokens.
  */
 export async function* adaptOpenAIStreamToAnthropic(
   stream: AsyncIterable<ChatCompletionChunk>,
@@ -79,21 +84,18 @@ export async function* adaptOpenAIStreamToAnthropic(
       rawInputTokens = chunk.usage.prompt_tokens ?? rawInputTokens
       outputTokens = chunk.usage.completion_tokens ?? outputTokens
 
-      const usageRecord = chunk.usage as unknown as Record<string, unknown>
-      const detailsValue = usageRecord.prompt_tokens_details
-      const details =
-        detailsValue && typeof detailsValue === 'object'
-          ? (detailsValue as Record<string, unknown>)
-          : undefined
-      if (typeof details?.cached_tokens === 'number') {
-        rawCacheReadTokens = details.cached_tokens
+      // Endpoints disagree on where the cached-prefix count lives; the field
+      // preference order is centralized in readOpenAICachedTokens. Carried
+      // forward when a chunk omits it — a trailing usage chunk that reports
+      // only totals must not zero an already-seen cache read.
+      const cachedTokens = readOpenAICachedTokens(chunk.usage)
+      if (cachedTokens !== undefined) {
+        rawCacheReadTokens = cachedTokens
       }
-      if (
-        options?.includeCacheWriteTokens &&
-        typeof details?.cache_write_tokens === 'number'
-      ) {
-        rawCacheWriteTokens = details.cache_write_tokens
-      } else if (!options?.includeCacheWriteTokens) {
+      if (options?.includeCacheWriteTokens) {
+        rawCacheWriteTokens =
+          readOpenAICacheWriteTokens(chunk.usage) ?? rawCacheWriteTokens
+      } else {
         rawCacheWriteTokens = 0
       }
 

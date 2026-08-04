@@ -816,6 +816,54 @@ describe('prompt caching support', () => {
     expect(msgDelta.usage.cache_creation_input_tokens).toBe(0)
   })
 
+  test('reads DeepSeek prompt_cache_hit_tokens when cached_tokens is absent', async () => {
+    // DeepSeek's own schema reports the cached prefix at the top level of
+    // usage. Only reading the OpenAI spelling made these turns look like a
+    // 0% hit rate even when the provider served the prefix from cache.
+    const events = await collectEvents([
+      makeChunk({
+        choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: null }],
+      }),
+      makeChunk({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }),
+      makeChunk({
+        choices: [],
+        usage: {
+          prompt_tokens: 30_000,
+          completion_tokens: 100,
+          total_tokens: 30_100,
+          prompt_cache_hit_tokens: 24_000,
+          prompt_cache_miss_tokens: 6_000,
+        } as any,
+      }),
+    ])
+
+    const msgDelta = events.find(e => e.type === 'message_delta') as any
+    expect(msgDelta.usage.cache_read_input_tokens).toBe(24_000)
+    expect(msgDelta.usage.input_tokens).toBe(6_000)
+  })
+
+  test('prefers prompt_tokens_details.cached_tokens over the fallbacks', async () => {
+    const events = await collectEvents([
+      makeChunk({
+        choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: null }],
+      }),
+      makeChunk({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }),
+      makeChunk({
+        choices: [],
+        usage: {
+          prompt_tokens: 1_000,
+          completion_tokens: 10,
+          total_tokens: 1_010,
+          prompt_tokens_details: { cached_tokens: 800 },
+          prompt_cache_hit_tokens: 123,
+        } as any,
+      }),
+    ])
+
+    const msgDelta = events.find(e => e.type === 'message_delta') as any
+    expect(msgDelta.usage.cache_read_input_tokens).toBe(800)
+  })
+
   test('cache_read_input_tokens=0 in message_delta when cached_tokens is absent', async () => {
     // Non-caching requests should still have the field present and zero.
     const events = await collectEvents([

@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { anthropicMessagesToOpenAI } from '../openaiConvertMessages.js'
+import {
+  OPENAI_REASONING_ITEMS_FIELD,
+  anthropicMessagesToOpenAI,
+  readReasoningItems,
+} from '../openaiConvertMessages.js'
 import type { UserMessage, AssistantMessage } from '../../types/message.js'
 
 // Helpers to create internal-format messages
@@ -596,5 +600,101 @@ describe('DeepSeek thinking mode (enableThinking)', () => {
     expect(assistant.content).toBeNull()
     expect(assistant.reasoning_content).toBe('Reasoning only.')
     expect(assistant.tool_calls).toHaveLength(1)
+  })
+})
+
+describe('Responses reasoning item passthrough', () => {
+  function assistantWithReasoning(items: unknown[]): AssistantMessage {
+    return {
+      type: 'assistant',
+      uuid: '00000000-0000-0000-0000-000000000002',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        [OPENAI_REASONING_ITEMS_FIELD]: items,
+      },
+    } as unknown as AssistantMessage
+  }
+
+  const REASONING = [{ id: 'rs_1', encrypted_content: 'ENC', summary: [] }]
+
+  test('Chat Completions bodies never carry the field', () => {
+    // Strict OpenAI-compatible endpoints (GLM/Kimi/DeepSeek) reject unknown
+    // top-level message keys, so the passthrough has to stay opt-in.
+    const result = anthropicMessagesToOpenAI(
+      [assistantWithReasoning(REASONING)],
+      [] as any,
+    )
+    const assistant = result.find(m => m.role === 'assistant') as
+      | Record<string, unknown>
+      | undefined
+    expect(assistant?.[OPENAI_REASONING_ITEMS_FIELD]).toBeUndefined()
+  })
+
+  test('preserveReasoningItems carries the field through verbatim', () => {
+    const result = anthropicMessagesToOpenAI(
+      [assistantWithReasoning(REASONING)],
+      [] as any,
+      { preserveReasoningItems: true },
+    )
+    const assistant = result.find(m => m.role === 'assistant') as
+      | Record<string, unknown>
+      | undefined
+    expect(assistant?.[OPENAI_REASONING_ITEMS_FIELD]).toEqual(REASONING)
+  })
+
+  test('carries reasoning through a turn with no text content', () => {
+    // A tool-only or empty turn still produced reasoning the next request
+    // must replay.
+    const msg = {
+      type: 'assistant',
+      uuid: '00000000-0000-0000-0000-000000000003',
+      message: {
+        role: 'assistant',
+        content: [],
+        [OPENAI_REASONING_ITEMS_FIELD]: REASONING,
+      },
+    } as unknown as AssistantMessage
+    const result = anthropicMessagesToOpenAI([msg], [] as any, {
+      preserveReasoningItems: true,
+    })
+    const assistant = result.find(m => m.role === 'assistant') as
+      | Record<string, unknown>
+      | undefined
+    expect(assistant?.[OPENAI_REASONING_ITEMS_FIELD]).toEqual(REASONING)
+  })
+
+  test('an assistant turn with no reasoning gets no field at all', () => {
+    const result = anthropicMessagesToOpenAI(
+      [makeAssistantMsg('hi')],
+      [] as any,
+      {
+        preserveReasoningItems: true,
+      },
+    )
+    const assistant = result.find(m => m.role === 'assistant') as
+      | Record<string, unknown>
+      | undefined
+    expect(OPENAI_REASONING_ITEMS_FIELD in (assistant ?? {})).toBe(false)
+  })
+})
+
+describe('readReasoningItems', () => {
+  test('returns [] for absent, non-array and malformed payloads', () => {
+    expect(readReasoningItems(undefined)).toEqual([])
+    expect(readReasoningItems({})).toEqual([])
+    expect(
+      readReasoningItems({ [OPENAI_REASONING_ITEMS_FIELD]: 'nope' }),
+    ).toEqual([])
+  })
+
+  test('drops non-object entries from a partially corrupt payload', () => {
+    // Transcript rehydration is the untrusted path here — one bad entry must
+    // not take down the whole turn's reasoning replay.
+    expect(
+      readReasoningItems({
+        [OPENAI_REASONING_ITEMS_FIELD]: [{ id: 'rs_1' }, null, 'x'],
+      }),
+    ).toEqual([{ id: 'rs_1' }])
   })
 })

@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test'
-import { routeWorkflowKey } from '../panel/useWorkflowKeyboard.js'
+import {
+  focusColumnLeftOf,
+  focusColumnRightOf,
+  routeWorkflowKey,
+} from '../panel/useWorkflowKeyboard.js'
 
 test('Tab → nextTab；Shift+Tab → prevTab', () => {
   expect(routeWorkflowKey('', { tab: true })).toBe('nextTab')
@@ -42,4 +46,29 @@ test('←/→ switch focus column; ↑/↓ move within column', () => {
 test('unrelated input → null', () => {
   expect(routeWorkflowKey('z', {})).toBeNull()
   expect(routeWorkflowKey('', {})).toBeNull()
+})
+
+test('Enter → openDetail; f → cycleStatusFilter', () => {
+  expect(routeWorkflowKey('', { return: true })).toBe('openDetail')
+  expect(routeWorkflowKey('f', {})).toBe('cycleStatusFilter')
+})
+
+test('confirm mode swallows the detail/filter keys', () => {
+  // Enter is confirmYes inside a kill dialog — it must never also drill into
+  // an agent, and f must not silently re-filter the list underneath.
+  expect(routeWorkflowKey('', { return: true }, 'confirm')).toBe('confirmYes')
+  expect(routeWorkflowKey('f', {}, 'confirm')).toBeNull()
+})
+
+test('focusColumnLeftOf: steps out one level and stops at phases', () => {
+  // Arrows must never close the panel — that is Esc's job.
+  expect(focusColumnLeftOf('detail')).toBe('agents')
+  expect(focusColumnLeftOf('agents')).toBe('phases')
+  expect(focusColumnLeftOf('phases')).toBe('phases')
+})
+
+test('focusColumnRightOf: steps in one level and stops at detail', () => {
+  expect(focusColumnRightOf('phases')).toBe('agents')
+  expect(focusColumnRightOf('agents')).toBe('detail')
+  expect(focusColumnRightOf('detail')).toBe('detail')
 })

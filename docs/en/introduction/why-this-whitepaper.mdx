@@ -1,0 +1,124 @@
+---
+title: "Why this whitepaper — a reverse-engineering analysis of Claude Code"
+description: "A reverse-engineering analysis of Anthropic's official Claude Code CLI. Built by decompiling the single-file TypeScript bundle and reading runtime behaviour alongside the recovered source structure."
+keywords: ["Claude Code", "reverse engineering", "whitepaper", "decompilation", "TypeScript"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/introduction/why-this-whitepaper) · [日本語](/docs/ja/introduction/why-this-whitepaper)
+
+## What this is
+
+This is a **reverse-engineering analysis** of the **Claude Code CLI** published by Anthropic.
+
+The source has been decompiled from a single-file TypeScript bundle. The core functional modules survived, but the result carries a great many `unknown` / `never` / `{}` type errors. Those do not stop the Bun runtime from executing it, but they do mean this analysis rests on observed runtime behaviour plus the recovered source structure — not on the original source.
+
+**This is not:**
+- Official documentation or a tutorial
+- An API reference
+- A pitch for Claude Code
+
+**This is:**
+- An architectural teardown of a production-grade agentic system
+- The reasoning behind each design decision
+- Reusable engineering patterns: the agentic loop, tool abstraction, context engineering, defence in depth
+
+## The most interesting design decisions found along the way
+
+### 1. The agentic loop heals itself
+
+The core loop in `src/query.ts` is not a plain "send request, receive response". It is a **self-healing state machine**:
+
+- The API returns an error (rate limit, token overflow) → retry or degrade automatically
+- A tool times out → move it to the background and notify
+- The conversation grows too long → compact the history and continue seamlessly
+- The user interrupts → emit a `UserInterruptionMessage` so the model understands what happened
+
+None of this is a stack of `if`/`else`. The model decides what to do next from context — including when something has gone wrong.
+
+### 2. Context is engineered in layers
+
+The model has no real memory. Claude Code manufactures the illusion through careful layering:
+
+| Layer | Mechanism | Lifetime |
+|-------|-----------|----------|
+| **System prompt** | Project structure, git state, CLAUDE.md | Rebuilt every turn |
+| **Conversation history** | Full user / assistant / tool messages | Within the session |
+| **Compaction** | Automatically summarizes an over-long conversation | Replaces the original messages |
+| **Memory files** | Notes persisted across sessions | Permanent, user-controlled |
+| **File history** | Snapshots of file modification timestamps | Within the session |
+
+When `src/context.ts` assembles the system prompt it follows one rule: **stable content first, volatile content last**. That is what lets the API's prompt cache reuse the prefix when nothing at the front has changed.
+
+### 3. Tool permissions run on two independent tracks
+
+`packages/builtin-tools/src/tools/BashTool/shouldUseSandbox.ts` shows a deliberate two-layer security model:
+
+- **Application layer** decides *whether* a command may run (allowlist, denylist, user confirmation)
+- **OS layer** decides *what it can touch* while running (filesystem, network, process isolation)
+
+The two layers make different trust assumptions. The application layer trusts the user's configuration; the OS layer trusts nothing. Even if the model somehow bypassed the application layer — which should not be possible, but defence in depth assumes it is — the OS sandbox still bounds the damage.
+
+### 4. Feature flags gate the whole system
+
+`src/entrypoints/cli.tsx` only imports `feature()` from `bun:bundle`. What actually determines behaviour is `DEFAULT_BUILD_FEATURES` in `scripts/defines.ts` (34 flags in this repository):
+
+```typescript
+import { feature } from 'bun:bundle';  // disabled flags evaluate to false at compile time and get DCE'd
+```
+
+Any `feature('FLAG_NAME')` call whose flag is not in `DEFAULT_BUILD_FEATURES` evaluates to `false` at compile time and is eliminated as dead code. Those flags — `PROACTIVE` and `FORK_SUBAGENT`, for example — are not deleted; they can still be enabled individually with `FEATURE_<NAME>=1`. In official builds the flags are injected at compile time through Bun's `bun:bundle`, so different user cohorts see different features.
+
+This is a **progressive rollout architecture**: one codebase, feature visibility controlled by flags, with no branches to maintain.
+
+### 5. Compaction comes in tiers
+
+`src/services/compact/` implements three strategies:
+
+- **Micro-compact** — truncate a single tool result that came back too large
+- **Auto-compact** — compress the history when the conversation approaches the token ceiling
+- **Reactive compact** — the API returned a token-overflow error, so compact urgently and retry
+
+None of these simply drop old messages. The model summarizes the earlier conversation itself, preserving the meaning, and a `TombstoneMessage` is inserted to mark the boundary.
+
+## Reading path
+
+The recommended order. Each chapter answers one question:
+
+```
+What is Claude Code (you are here)     ← build intuition
+    │
+    ├── Architecture overview          ← five layers + data flow
+    │
+    ├── Safety                         ← trust and control
+    │   ├── Permission model           ← application-layer safety
+    │   ├── Sandbox                    ← OS-layer safety
+    │   └── Plan mode                  ← user-led mode
+    │
+    ├── Conversation engine            ← how the model thinks
+    │   ├── The agentic loop           ← the core loop
+    │   ├── Streaming                  ← real-time transport
+    │   └── Multi-turn                 ← context management
+    │
+    ├── Context engineering            ← memory and budget
+    │   ├── System prompt              ← context assembly
+    │   ├── Token budget               ← budget management
+    │   └── Project memory             ← cross-session persistence
+    │
+    ├── Tools                          ← the model's hands
+    │   ├── What tools are             ← the shared interface
+    │   ├── Shell execution            ← the Bash tool
+    │   └── Search and navigation      ← Glob / Grep
+    │
+    └── Agents and extensibility       ← extending capability
+        ├── Sub-agents                 ← parallel work
+        ├── Custom agents              ← user-defined
+        └── MCP                        ← external tools
+```
+
+## Who this is for
+
+- **Agent developers** who want the architectural patterns of a production agentic system
+- **Security engineers** interested in the trust model of an AI operating on a real environment
+- **Tool builders** working on a comparable coding assistant or CLI
+- **Curious developers** who want to know how an AI coding assistant actually works

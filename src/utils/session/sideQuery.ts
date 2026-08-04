@@ -47,7 +47,7 @@ import {
 import { resolveOpenAIWireProtocol } from '../../services/api/openai/wireProtocol.js'
 import {
   formatOpenAIPromptCacheKey,
-  getOfficialOpenAIPromptCacheKey,
+  getOpenAIPromptCacheKey,
 } from '../../services/api/openai/openaiShared.js'
 import {
   anthropicMessagesToOpenAI,
@@ -58,7 +58,11 @@ import {
   resolveGeminiModel,
   anthropicToolsToGemini,
   anthropicToolChoiceToGemini,
+  normalizeGeminiUsage,
   normalizeOpenAIUsage,
+  readOpenAICachedTokens,
+  readOpenAICacheWriteTokens,
+  type GeminiUsageMetadata,
 } from '@ant/model-provider'
 import type { SystemPrompt } from './systemPromptType.js'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
@@ -606,11 +610,13 @@ async function sideQueryViaResponsesApi(
     ...(route === 'chatgpt'
       ? { promptCacheKey: formatOpenAIPromptCacheKey(getSessionId()) }
       : {
-          // Compatible endpoints must not receive OpenAI-specific fields;
-          // getOfficialOpenAIPromptCacheKey returns undefined for them.
-          promptCacheKey: getOfficialOpenAIPromptCacheKey(
+          // This branch is the generic `/responses` route, where
+          // prompt_cache_key is a standard field — see
+          // shouldSendOpenAIPromptCacheKey for the per-protocol defaults.
+          promptCacheKey: getOpenAIPromptCacheKey(
             process.env.OPENAI_BASE_URL,
             getSessionId(),
+            'responses',
           ),
           maxOutputTokens: Math.max(
             opts.max_tokens ?? 1024,
@@ -755,10 +761,7 @@ async function sideQueryViaOpenAICompatible(
   }
   const promptCacheKey =
     provider === 'openai'
-      ? getOfficialOpenAIPromptCacheKey(
-          process.env.OPENAI_BASE_URL,
-          getSessionId(),
-        )
+      ? getOpenAIPromptCacheKey(process.env.OPENAI_BASE_URL, getSessionId())
       : undefined
   if (promptCacheKey) requestParams.prompt_cache_key = promptCacheKey
   if (temperature !== undefined) requestParams.temperature = temperature
@@ -802,23 +805,18 @@ async function sideQueryViaOpenAICompatible(
   }
 
   const responseUsage = response.usage
-  const usageRecord = responseUsage as unknown as
-    | Record<string, unknown>
-    | undefined
-  const detailsValue = usageRecord?.prompt_tokens_details
-  const details =
-    detailsValue && typeof detailsValue === 'object'
-      ? (detailsValue as Record<string, unknown>)
-      : undefined
+  // Same field-preference order as the streaming adapter (OpenAI spelling,
+  // then DeepSeek's, then the flattened proxy form) — reading only the OpenAI
+  // spelling reported a 0% hit rate on providers that use the others.
   const usage = normalizeOpenAIUsage({
     totalInputTokens: responseUsage?.prompt_tokens ?? 0,
     outputTokens: responseUsage?.completion_tokens ?? 0,
-    cacheReadTokens:
-      typeof details?.cached_tokens === 'number' ? details.cached_tokens : 0,
-    cacheWriteTokens:
-      promptCacheKey && typeof details?.cache_write_tokens === 'number'
-        ? details.cache_write_tokens
-        : 0,
+    cacheReadTokens: readOpenAICachedTokens(responseUsage) ?? 0,
+    // Cache-write tokens are an OpenAI-only field; promptCacheKey is set only
+    // when this request went to OpenAI's own endpoint.
+    cacheWriteTokens: promptCacheKey
+      ? (readOpenAICacheWriteTokens(responseUsage) ?? 0)
+      : 0,
   })
 
   const now = Date.now()
@@ -985,13 +983,13 @@ async function sideQueryViaGemini(
       }
       finishReason?: string
     }>
-    usageMetadata?: {
-      promptTokenCount?: number
-      candidatesTokenCount?: number
-      totalTokenCount?: number
-    }
+    usageMetadata?: GeminiUsageMetadata & { totalTokenCount?: number }
     id?: string
   }
+  // Shared with the streaming adapter: subtracts the cached prefix out of
+  // promptTokenCount (Gemini counts it inside the total) and folds thinking
+  // tokens into the output count.
+  const geminiUsage = normalizeGeminiUsage(geminiResponse.usageMetadata)
 
   // Build content blocks from Gemini response
   const contentBlocks: Array<
@@ -1026,10 +1024,10 @@ async function sideQueryViaGemini(
       opts.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     model:
       geminiModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    inputTokens: geminiResponse.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: geminiResponse.usageMetadata?.candidatesTokenCount ?? 0,
-    cachedInputTokens: 0,
-    uncachedInputTokens: geminiResponse.usageMetadata?.promptTokenCount ?? 0,
+    inputTokens: geminiUsage.input_tokens,
+    outputTokens: geminiUsage.output_tokens,
+    cachedInputTokens: geminiUsage.cache_read_input_tokens,
+    uncachedInputTokens: geminiUsage.cache_creation_input_tokens,
     durationMsIncludingRetries: now - start,
     timeSinceLastApiCallMs:
       lastCompletion !== null ? now - lastCompletion : undefined,
@@ -1051,9 +1049,6 @@ async function sideQueryViaGemini(
     model: geminiModel,
     stop_reason: stopReason as BetaMessage['stop_reason'],
     stop_sequence: null,
-    usage: {
-      input_tokens: geminiResponse.usageMetadata?.promptTokenCount ?? 0,
-      output_tokens: geminiResponse.usageMetadata?.candidatesTokenCount ?? 0,
-    },
+    usage: geminiUsage,
   } as BetaMessage
 }

@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import { createProgressBus, type ProgressBus } from '../progress/bus.js'
 import {
+  OUTPUT_PREVIEW_MAX,
+  buildOutputPreview,
   createProgressStoreFromBus,
   type RunProgress,
 } from '../progress/store.js'
@@ -286,4 +288,115 @@ test('hydrate existing runId → skip (memory first, not overwritten by disk)', 
   const got = store.get('r1')!
   expect(got.workflowName).toBe('live')
   expect(got.status).toBe('running')
+})
+
+// ── data behind the agent detail view ──────────────────────────────────────
+
+test('agent_done persists the dead reason/detail/retryable', () => {
+  // Without these the detail view can only show an unexplained ✗ and the
+  // user has to read the run journal by hand to find the cause.
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0, label: 'a' })
+  bus.emit({
+    type: 'agent_done',
+    runId: 'r1',
+    agentId: 0,
+    result: {
+      kind: 'dead',
+      reason: 'prompt-too-long',
+      detail: 'context window exceeded',
+      retryable: false,
+    },
+  })
+  const a = store.get('r1')!.agents[0]!
+  expect(a.resultKind).toBe('dead')
+  expect(a.failureReason).toBe('prompt-too-long')
+  expect(a.failureDetail).toBe('context window exceeded')
+  expect(a.retryable).toBe(false)
+})
+
+test('agent_done defaults a reason-less dead result to unknown', () => {
+  // Old journals and third-party adapters may omit `reason`.
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+  bus.emit({
+    type: 'agent_done',
+    runId: 'r1',
+    agentId: 0,
+    result: { kind: 'dead' },
+  })
+  expect(store.get('r1')!.agents[0]!.failureReason).toBe('unknown')
+})
+
+test('agent_done keeps a bounded output preview and the output token count', () => {
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+  bus.emit({
+    type: 'agent_done',
+    runId: 'r1',
+    agentId: 0,
+    result: {
+      kind: 'ok',
+      output: { findings: ['a', 'b'] },
+      usage: { outputTokens: 42 },
+    },
+  })
+  const a = store.get('r1')!.agents[0]!
+  expect(a.outputPreview).toBe('{"findings":["a","b"]}')
+  expect(a.outputTokens).toBe(42)
+  expect(a.outputShape).toBe('object')
+})
+
+test('buildOutputPreview truncates so a fan-out run cannot pin every output', () => {
+  const long = 'x'.repeat(OUTPUT_PREVIEW_MAX + 500)
+  const preview = buildOutputPreview(long)
+  expect(preview.length).toBe(OUTPUT_PREVIEW_MAX + 1) // + the … marker
+  expect(preview.endsWith('…')).toBe(true)
+})
+
+test('buildOutputPreview degrades instead of throwing on unserializable output', () => {
+  const cyclic: Record<string, unknown> = {}
+  cyclic.self = cyclic
+  expect(() => buildOutputPreview(cyclic)).not.toThrow()
+})
+
+test('agent timestamps: startedAt on start, endedAt on done', () => {
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+  const started = store.get('r1')!.agents[0]!
+  expect(typeof started.startedAt).toBe('number')
+  expect(started.endedAt).toBeUndefined()
+
+  bus.emit({ type: 'agent_done', runId: 'r1', agentId: 0, result: ok('x') })
+  const done = store.get('r1')!.agents[0]!
+  expect(typeof done.endedAt).toBe('number')
+  expect(done.endedAt!).toBeGreaterThanOrEqual(done.startedAt!)
+})
+
+test('a restarted agent clears the previous run terminal state', () => {
+  // hooks retries re-emit agent_started for the same id; leaving the old ✗
+  // and endedAt behind would show a failed, already-finished row for an
+  // agent that is running again.
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+  bus.emit({
+    type: 'agent_done',
+    runId: 'r1',
+    agentId: 0,
+    result: { kind: 'dead', reason: 'api-error', detail: 'overloaded' },
+  })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+
+  const a = store.get('r1')!.agents[0]!
+  expect(a.status).toBe('running')
+  expect(a.resultKind).toBeUndefined()
+  expect(a.endedAt).toBeUndefined()
+  expect(a.failureReason).toBeUndefined()
+  expect(a.failureDetail).toBeUndefined()
+  expect(a.retryable).toBeUndefined()
 })

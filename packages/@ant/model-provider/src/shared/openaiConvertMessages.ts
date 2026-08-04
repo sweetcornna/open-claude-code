@@ -17,6 +17,59 @@ export interface ConvertMessagesOptions {
   /** When true, preserve thinking blocks as reasoning_content on assistant messages
    *  (required for DeepSeek thinking mode with tool calls). */
   enableThinking?: boolean
+  /**
+   * Carry {@link OPENAI_REASONING_ITEMS_FIELD} through onto the converted
+   * assistant message. Responses-API only — see the field's own doc comment.
+   * Off by default so Chat Completions bodies never grow an unknown key that
+   * strict OpenAI-compatible endpoints would reject.
+   */
+  preserveReasoningItems?: boolean
+}
+
+/**
+ * A reasoning item as the Responses API returned it, kept verbatim so it can
+ * be echoed back on the next turn.
+ */
+export type OpenAIReasoningItem = {
+  id?: string
+  encrypted_content?: string
+  summary?: unknown[]
+}
+
+/**
+ * Field on an AssistantMessage's `message` object holding the reasoning items
+ * the Responses API produced for that turn.
+ *
+ * Reasoning models served over `/responses` with `store: false` keep no
+ * server-side state, so the reasoning items from turn N are gone unless the
+ * client replays them in turn N+1's `input`. Without the replay the model
+ * re-derives its chain of thought from scratch on every follow-up — which
+ * matters most in agentic loops, where a turn is often just a tool call and
+ * the reasoning behind it is the only thing carrying intent forward.
+ *
+ * This is a fidelity fix, not a cache fix. Measured against a live endpoint
+ * (6-turn conversation, replay on vs off, everything else held constant) the
+ * cumulative hit rate was identical at 80.9% either way: OpenAI's prefix
+ * cache matches against the client's own previous *request*, and a client
+ * that consistently omits reasoning still chains cleanly with itself.
+ *
+ * Lives on the message rather than on a content block: block-level metadata
+ * would ride along into a request to a different provider if the user
+ * switches models mid-session, whereas message-level extras are dropped by
+ * every provider's message->param conversion.
+ */
+export const OPENAI_REASONING_ITEMS_FIELD = '_openaiReasoningItems'
+
+/** Read back the reasoning items stashed on an assistant message, if any. */
+export function readReasoningItems(
+  message: Record<string, unknown> | undefined,
+): OpenAIReasoningItem[] {
+  const raw = message?.[OPENAI_REASONING_ITEMS_FIELD]
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (item): item is OpenAIReasoningItem =>
+      typeof item === 'object' && item !== null,
+  )
 }
 
 /**
@@ -32,8 +85,8 @@ export interface ConvertMessagesOptions {
 export function anthropicMessagesToOpenAI(
   messages: (UserMessage | AssistantMessage)[],
   systemPrompt: SystemPrompt,
-  // options retained for API compatibility; thinking blocks are now always preserved
-  _options?: ConvertMessagesOptions,
+  // enableThinking is retained for API compatibility; thinking blocks are now always preserved
+  options?: ConvertMessagesOptions,
 ): ChatCompletionMessageParam[] {
   const result: ChatCompletionMessageParam[] = []
 
@@ -52,7 +105,7 @@ export function anthropicMessagesToOpenAI(
         result.push(...convertInternalUserMessage(msg))
         break
       case 'assistant':
-        result.push(...convertInternalAssistantMessage(msg))
+        result.push(...convertInternalAssistantMessage(msg, options))
         break
       default:
         break
@@ -162,24 +215,37 @@ function convertToolResult(
 
 function convertInternalAssistantMessage(
   msg: AssistantMessage,
+  options?: ConvertMessagesOptions,
 ): ChatCompletionMessageParam[] {
   const content = msg.message.content
+  // Attached to every shape below, including the degenerate ones: a turn whose
+  // text came back empty still produced reasoning that the next request has to
+  // replay, and dropping it there would break the prefix just as thoroughly.
+  const reasoningItems = options?.preserveReasoningItems
+    ? readReasoningItems(msg.message as unknown as Record<string, unknown>)
+    : []
+  const withReasoning = <T extends ChatCompletionAssistantMessageParam>(
+    message: T,
+  ): T =>
+    reasoningItems.length > 0
+      ? { ...message, [OPENAI_REASONING_ITEMS_FIELD]: reasoningItems }
+      : message
 
   if (typeof content === 'string') {
     return [
-      {
+      withReasoning({
         role: 'assistant',
         content,
-      } satisfies ChatCompletionAssistantMessageParam,
+      } satisfies ChatCompletionAssistantMessageParam),
     ]
   }
 
   if (!Array.isArray(content)) {
     return [
-      {
+      withReasoning({
         role: 'assistant',
         content: '',
-      } satisfies ChatCompletionAssistantMessageParam,
+      } satisfies ChatCompletionAssistantMessageParam),
     ]
   }
 
@@ -229,7 +295,7 @@ function convertInternalAssistantMessage(
     }),
   }
 
-  return [result]
+  return [withReasoning(result)]
 }
 
 /**

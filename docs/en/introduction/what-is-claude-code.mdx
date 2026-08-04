@@ -1,0 +1,119 @@
+---
+title: "What is Claude Code — a terminal-native agentic coding system"
+description: "Claude Code is an agentic coding system that runs in your terminal. It reads code, edits files, runs commands, and debugs programs directly in your project directory. This page covers what it is, how it differs architecturally from similar tools, and what happens on a single request."
+keywords: ["Claude Code", "AI coding assistant", "agentic coding", "terminal AI", "CLI AI"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/introduction/what-is-claude-code) · [日本語](/docs/ja/introduction/what-is-claude-code)
+
+## In one sentence
+
+Claude Code is an **agentic coding system that runs in your local terminal**. It is not a chatbot that suggests changes — it reads your code, edits your files, runs your commands, and debugs your programs directly in your project directory, with full shell access.
+
+## What "terminal-native agentic coding system" means
+
+Three words carry the whole positioning:
+
+| Term | What it means |
+|------|---------------|
+| **Terminal-native** | A real CLI application. Not an IDE plugin, not a web UI, not an API wrapper. |
+| **Agentic** | The model decides its own chain of tool calls. It is not a question-and-answer exchange. |
+| **Coding system** | Built for the whole software engineering workflow, not general-purpose Q&A. |
+
+The differences from comparable tools are **architectural**, not a feature checklist:
+
+| Tool | Architecture | Where it runs | How tools execute |
+|------|-------------|---------------|-------------------|
+| **Claude Code** | Terminal-native agentic loop | Local process | Directly via shell |
+| Cursor / Copilot | IDE-integrated autocomplete + chat | Inside the IDE process | LSP / IDE APIs |
+| Aider | CLI chat producing git patches | Local process | Mostly file operations |
+| ChatGPT / Claude.ai | Cloud chat + artifacts | Browser / cloud | Sandboxed container |
+
+The core difference is **full shell access**. Claude Code can do anything you can do in a terminal — which is exactly why it needs a permission model to constrain that capability.
+
+## End to end: what one request actually does
+
+Say you type `bun run dev is throwing a TypeScript error, fix it` into the terminal. Here is the path that request takes:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1. Entry              (cli.tsx → main.tsx)              │
+│    feature() resolved at compile time, MACRO fallback,  │
+│    Commander.js starts                                  │
+├─────────────────────────────────────────────────────────┤
+│ 2. Interaction        (REPL.tsx — React/Ink)            │
+│    PromptInput captures input → UserMessage appended    │
+├─────────────────────────────────────────────────────────┤
+│ 3. Orchestration      (QueryEngine.ts)                  │
+│    Turn lifecycle, token budget, compaction triggers    │
+├─────────────────────────────────────────────────────────┤
+│ 4. Core loop          (query.ts — the agentic loop)     │
+│    Assemble context → call API → consume the stream →   │
+│    parse tool calls → check permissions → run tools →   │
+│    feed results back → call the API again → repeat      │
+├─────────────────────────────────────────────────────────┤
+│ 5. Tool execution     (BashTool.call, FileEditTool…)    │
+│    The real work: read files, run commands, search code │
+├─────────────────────────────────────────────────────────┤
+│ 6. Transport          (claude.ts → Anthropic API)       │
+│    Streaming HTTP; 7 providers incl. Bedrock, Vertex,   │
+│    Foundry                                              │
+└─────────────────────────────────────────────────────────┘
+```
+
+For that specific bug-fix request, a typical agentic loop runs several rounds of tool calls:
+
+| Turn | Model's decision | Tool call | Result |
+|------|------------------|-----------|--------|
+| 1 | Look at the error first | `Bash("bun run dev 2>&1 \| head -30")` | TypeScript error output |
+| 2 | Locate the file | `Read("src/utils/foo.ts")` | Source code |
+| 3 | Find the related type | `Grep("interface Foo", "src/")` | Where the type is defined |
+| 4 | Apply the fix | `FileEdit(old, new)` | File modified |
+| 5 | Verify | `Bash("bun run dev 2>&1 \| head -10")` | Compiles cleanly |
+
+Every step is the model's own decision — which tool to use, what arguments to pass, when to stop. That is what "agentic" means here.
+
+## What it is not
+
+- **Not an IDE plugin.** No graphical interface, no dependency on VS Code or any editor.
+- **Not an API wrapper.** It has its own tool system, permission model, context engineering, and session management.
+- **Not a chatbot.** The output is not prose — it is file edits and executed commands.
+- **Not a blind executor.** Every sensitive operation passes through a permission check and, where required, user confirmation.
+
+## Anatomy of startup
+
+The real entry point is `src/entrypoints/cli.tsx`, which does three things that matter:
+
+```typescript
+// 1. First import: the performance shim (replaces globalThis.performance)
+import '../utils/performanceShim.js';
+
+// 2. feature() comes from bun:bundle — its value is resolved at compile time
+//    by the build or by dev defines
+import { feature } from 'bun:bundle';
+
+// 3. Runtime fallback for the MACRO globals, used when cli.tsx runs directly
+//    without the dev/dist injection
+if (typeof globalThis.MACRO === 'undefined') {
+  globalThis.MACRO = { VERSION: "2.1.888", BUILD_TIME: ..., };
+}
+```
+
+Control then passes to `src/main.tsx`, which:
+
+1. Parses command-line arguments with Commander.js
+2. Initializes authentication, telemetry, and policy limits
+3. Loads the tool list (`getTools()`)
+4. Starts the REPL (`launchRepl()`) or pipe mode (`-p`)
+
+## Why the terminal
+
+The terminal is a choice, not a limitation. It buys capabilities that are hard to get elsewhere:
+
+- **Full shell access.** Any command-line tool is already available; there is no need to write a plugin per capability.
+- **Native to the project.** It works directly in your project directory and understands the file layout and git state.
+- **Composability.** Pipe mode (`echo "..." | occ -p`) drops straight into CI/CD and automation.
+- **Low latency.** No Electron overhead; the React/Ink TUI redraws almost instantly.
+
+The cost is that you have to be comfortable on the command line — which is also why it appeals to developers who want **actual control over their development environment**.
