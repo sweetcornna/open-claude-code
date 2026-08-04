@@ -106,7 +106,7 @@ bun dist/cli-bun.js --version
 
 ## Release Side (Maintainers)
 
-Where user-visible versions come from: a maintainer runs `bun run release <version>`, which updates `package.json` and `CHANGELOG.md` together and creates a `v<version>` tag. After the tag is pushed, `publish-npm.yml` publishes to npm and creates the GitHub Release. See [“Release Process” in `CONTRIBUTING.md`](../CONTRIBUTING.md#11-发布流程) for the complete procedure and constraints.
+Where user-visible versions come from: a maintainer runs `bun run release <version>`, which updates `package.json` and `CHANGELOG.md` together and creates a `v<version>` tag. After the tag is pushed, `publish-npm.yml` publishes to npm and creates the GitHub Release. See [“Release Process” in `CONTRIBUTING.md`](../../CONTRIBUTING.md#11-发布流程) for the complete procedure and constraints.
 
 The “What's New” notice shown when occ starts comes from `CHANGELOG.md` on this repository's `main` branch (`src/utils/update/releaseNotes.ts` fetches the raw file and caches it as `cache/changelog.md` under the occ configuration directory). The release commit must therefore reach main before users can see the corresponding entries.
 
