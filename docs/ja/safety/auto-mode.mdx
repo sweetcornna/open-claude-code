@@ -1,0 +1,266 @@
+---
+title: "Auto Mode — AI 分類器が駆動する自律実行モード"
+description: "Claude Code の auto mode を詳解します。transcript classifier による自動権限判定、2 段階の分類パイプライン、危険な権限を取り除く仕組み、モード切り替えの状態管理、plan mode との連携を扱います。"
+keywords: ["auto mode", "yoloClassifier", "transcript classifier", "権限分類", "自動実行", "2 段階分類"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/safety/auto-mode) · [中文](/docs/zh/safety/auto-mode) · **日本語**
+
+## 概要
+
+Auto mode は Claude Code の権限モードの 1 つであり、AI を**継続的な自律実行**状態にします。機密性のある操作のたびに権限ダイアログを表示してユーザーの承認を待つ従来のモードとは異なり、auto mode は AI 分類器（transcript classifier）を使って各ツール呼び出しの安全性を自動判定し、中断のない実行を実現します。
+
+```
+権限モードの階層:
+
+default  →  auto  →  bypassPermissions
+（個別に確認） （AI 分類器が承認） （すべて許可）
+```
+
+## 中核アーキテクチャ
+
+### 1. AI 分類器（yoloClassifier）
+
+分類器は auto mode の中核であり、`src/utils/permissions/yoloClassifier.ts` にあります。
+
+各ツール呼び出しを分類器が評価し、次の 3 種類のいずれかを裁定します。
+
+| 裁定 | 意味 | 処理 |
+|------|------|---------|
+| **allow** | 操作は安全 | 直ちに実行し、ユーザーには通知しない |
+| **deny** | 操作は危険 | 実行を拒否し、AI に拒否メッセージを返す |
+| **ask** | 判定不能 | 従来の権限ダイアログへフォールバックする |
+
+分類器は単一のコマンドだけではなく、会話コンテキスト全体（transcript）に基づいて判断するため、操作の意図と文脈を理解できます。
+
+### 2. 2 段階の分類パイプライン
+
+分類器は 2 段階の XML 分類（`classifyYoloActionXml`）に対応します。
+
+```
+Stage 1 — "fast"（高速判定）
+├── max_tokens=64、stop_sequences で即座に yes/no を判定
+├── allow の場合 → 直ちに許可（最速の経路）
+└── block の場合 → Stage 2 へ
+
+Stage 2 — "thinking"（詳細な検討）
+├── chain-of-thought による推論
+├── 誤検知（false positives）を減らす
+└── allow / deny / ask を最終決定
+```
+
+2 つの段階は同じ system prompt と user content を共有し、API の prompt caching（1 時間の TTL）で性能を最適化します。
+
+設定でモードを選択できます。
+- `'both'`（デフォルト）— 両方の段階を実行
+- `'fast'` — Stage 1 のみ実行
+- `'thinking'` — Stage 2 のみ実行
+
+### 3. 分類器の結果型
+
+```typescript
+// src/types/permissions.ts
+type YoloClassifierResult = {
+  thinking?: string          // 分類器の推論過程
+  shouldBlock: boolean       // 阻止するか
+  reason: string             // 判断理由
+  unavailable?: boolean      // 分類器を利用できないか
+  transcriptTooLong?: boolean // 会話がコンテキストウィンドウを超えたか
+  model: string              // 使用した分類器モデル
+  stage?: 'fast' | 'thinking' // どの段階で判断したか
+  // ... token 使用量、所要時間などの監視フィールド
+}
+```
+
+## 安全機構
+
+### 危険な権限の除去
+
+auto mode に入ると、システムは `stripDangerousPermissionsForAutoMode()`（`permissionSetup.ts:510`）を呼び出し、分類器を回避できる可能性のある allow 規則をすべて取り除きます。
+
+除去される規則の種類（`dangerousPatterns.ts`）は次のとおりです。
+
+| 規則の種類 | 例 | 除去する理由 |
+|---------|------|---------|
+| **Bash コード実行** | `Bash(python:*)`, `Bash(node:*)` | インタープリターは任意のコードを実行でき、分類器の検査を回避できる |
+| **Shell エントリポイント** | `Bash(bash:*)`, `Bash(sh:*)` | shell への直接アクセスは無制限のアクセスに等しい |
+| **Agent 規則** | `Agent(*)` | Agent のどの allow 規則も、分類器によるサブエージェントの承認を回避する |
+| **PowerShell コード実行** | `PowerShell(node:*)` | Bash と同じ理由 |
+| **権限昇格** | `Bash(sudo:*)`, `Bash(eval:*)` | 任意のコマンドを実行できる |
+
+除去した規則は一時的に `strippedDangerousRules` へ保存し、auto mode の終了時に `restoreDangerousPermissions()` で復元します。
+
+### モデル対応の確認
+
+すべてのモデルが auto mode に対応しているわけではありません。`modelSupportsAutoMode()`（`src/utils/betas.ts`）は、現在のモデルに安全な分類能力があるかを確認します。対応しないモデルは auto mode に入れません。
+
+### Circuit Breaker 機構
+
+`autoModeState.ts` は circuit breaker フラグを保持します。
+
+```typescript
+let autoModeCircuitBroken = false  // リモート設定で制御
+```
+
+リモート設定（GrowthBook の `tengu_auto_mode_config.enabled`）が `'disabled'` の場合、circuit breaker が作動し、auto mode の開始と継続利用を阻止します。これにより Anthropic は緊急時にリモートから停止できます。
+
+## モード切り替えの状態管理
+
+### Auto Mode の開始
+
+`transitionPermissionMode()`（`permissionSetup.ts:597`）がすべてのモード切り替えを処理します。
+
+```
+1. auto mode gate が有効か確認する（isAutoModeGateEnabled）
+2. autoModeActive = true に設定する
+3. stripDangerousPermissionsForAutoMode() を呼び出して危険な規則を取り除く
+4. 会話に Auto Mode のシステムプロンプトを注入する
+```
+
+### Auto Mode の終了
+
+```
+1. autoModeActive = false に設定する
+2. needsAutoModeExitAttachment = true に設定する（終了通知を発動）
+3. restoreDangerousPermissions() を呼び出して、取り除いた規則を復元する
+4. 会話に "Exited Auto Mode" プロンプトを注入する
+```
+
+### 開始経路
+
+Auto mode は次の方法で有効化できます。
+- CLI 引数 `--enable-auto-mode`
+- settings.json の `autoMode` 設定
+- Plan mode はデフォルトで auto mode のセマンティクスを使用する（`useAutoModeDuringPlan`、デフォルトは true）
+- SDK の制御メッセージ
+- REPL で Shift+Tab を使って切り替える
+
+## システムプロンプト
+
+### 開始時（Full Instructions）
+
+会話へ注入される指示（`messages.ts:3481`）は次のとおりです。
+
+> Auto mode is active. The user chose continuous, autonomous execution. You should:
+>
+> 1. **Execute immediately** — 直ちに実装し、妥当な仮定を置く
+> 2. **Minimize interruptions** — 日常的な判断は自ら行い、質問を減らす
+> 3. **Prefer action over planning** — デフォルトでは直接コードを書き、plan mode に入らない
+> 4. **Expect course corrections** — ユーザーはいつでも軌道修正できる
+> 5. **Do not take overly destructive actions** — データ削除や本番システムの変更には引き続き確認が必要
+> 6. **Avoid data exfiltration** — シークレットや内部文書を自発的に共有しない
+
+### 継続実行時（Sparse Instructions）
+
+後続のターンでは短いリマインダーを注入します。
+
+> Auto mode still active. Execute autonomously, minimize interruptions, prefer action over planning.
+
+### 終了時（Exit Instructions）
+
+> You have exited auto mode. Ask clarifying questions when the approach is ambiguous rather than making assumptions.
+
+## Plan Mode との連携
+
+Plan mode はデフォルトで auto mode のセマンティクスを使用します（`getUseAutoModeDuringPlan()`、デフォルトは true）。これは次のことを意味します。
+
+- Plan mode の開始時、auto mode が利用できれば分類器も有効になる
+- `isAutoModeActive()` が信頼できる唯一のシグナルである（`prePlanMode`/`strippedDangerousRules` は信頼できない）
+- plan mode の終了時に auto mode も終了する
+
+## 分類器を利用できない場合のフォールバック戦略
+
+分類器 API を利用できない場合（`unavailable: true` または `transcriptTooLong: true`）は、次のように処理します。
+
+- 直接 allow にはせず、従来の権限ダイアログ（ask）へフォールバックする
+- AI にメッセージを送る: "{model} is temporarily unavailable, so auto mode cannot determine the safety of {toolName} right now."
+- 会話が長すぎる場合などの決定的エラーは再試行せず、直ちにフォールバックする
+
+## 分類器の Prompt テンプレート
+
+分類器の動作は、`src/utils/permissions/yolo-classifier-prompts/` にある 3 つの prompt ファイルで制御されます。これらのファイルはビルド時に `require()` で文字列定数としてインライン化されるため、実行時には変更できません。
+
+### auto_mode_system_prompt.txt
+
+分類器の役割、分類フロー、判断カテゴリを定義する主要なシステムプロンプトです。次の内容が含まれます。
+
+- **分類フロー**: 操作を理解 → ユーザーの意図を確認 → リスクを評価
+- **常に BLOCK**: 外部コードの実行、不可逆な削除、未承認の永続化、セキュリティの弱体化、権限昇格、ネットワークサービス
+- **明示的な意図がない限り BLOCK**: CWD 外への書き込み、システムパッケージ管理、git push、大規模な変更
+- **安全な操作は ALLOW**: ファイルの読み取り、検索、git の読み取り専用コマンド、テスト/lint/ビルド、CWD 内の編集
+- `<permissions_template>` プレースホルダー — 実行時に具体的な権限テンプレート（external または anthropic）へ置換
+- 末尾の `Use the classify_result tool to report your classification.` — XML モードでは `<block>` タグ形式の説明に置換
+
+### permissions_external.txt
+
+外部ユーザー向けの権限テンプレートです。3 つの `<user_*_to_replace>` タグがデフォルト規則（bullet 形式）を囲み、ユーザー定義規則はデフォルト値を**全体として置換**します。
+
+```
+<user_allow_rules_to_replace>
+- デフォルトの allow 規則 1
+- デフォルトの allow 規則 2
+</user_allow_rules_to_replace>
+```
+
+- **allow**: デフォルト規則 9 件（読み取り専用コマンド、バージョン確認、git の読み取り専用操作、テスト/lint/ビルド、パッケージのインストール、CWD 内のファイル操作など）
+- **soft_deny**: デフォルト規則 10 件（外部コードの実行、再帰的削除、shell 設定の変更、権限昇格、ネットワークサービスなど）
+- **environment**: 環境の説明 4 件（ターミナル環境、auto mode のコンテキスト、開発ツールが利用可能、言語/フレームワークを限定しない）
+
+`getDefaultExternalAutoModeRules()` はこのファイルから bullet 項目を抽出し、`occ auto-mode defaults` コマンドの出力に使用します。
+
+### permissions_anthropic.txt
+
+Anthropic 内部向けの権限テンプレートです。デフォルト規則はタグの**外側**にあり、タグ内は空です。ユーザー定義規則は**追加**方式で重ねます。
+
+```
+- デフォルト規則（タグの外側にあり、常に有効）
+<user_allow_rules_to_replace>
+</user_allow_rules_to_replace>
+```
+
+external バージョンに加えて、次の内容を含みます。
+- クラウド CLI の読み取り専用コマンド（aws describe, gcloud describe, kubectl get など）
+- Infrastructure as Code の plan コマンド（terraform plan, pulumi preview など）
+- 対応する deny 規則（クラウドリソースの作成/変更/削除、IaC apply、本番環境へのアクセスなど）
+
+### テンプレート置換フロー
+
+```
+buildYoloSystemPrompt()
+  ├── BASE_PROMPT.replace('<permissions_template>', EXTERNAL/ANTHROPIC_TEMPLATE)
+  ├── .replace(<user_allow_rules_to_replace>, userAllow ?? defaults)
+  ├── .replace(<user_deny_rules_to_replace>, userDeny ?? defaults)
+  └── .replace(<user_environment_to_replace>, userEnvironment ?? defaults)
+```
+
+- 外部テンプレート: ユーザー設定が空でなければ対応するタグの内容を**置換**し、そうでなければデフォルト値を維持する
+- 内部テンプレート: ユーザー設定をデフォルト値の**後に追加**する（末尾のタグ内は空）
+
+## 現在の状態に関する注記
+
+> **注意**: auto mode の完全なコードロジックはコードベースに存在しますが、`feature('TRANSCRIPT_CLASSIFIER')` feature flag に依存します。
+> 現在の逆コンパイル版では `feature()` が常に `false` を返すため、auto mode は利用できません。
+> 有効にするには `feature('TRANSCRIPT_CLASSIFIER')` を `true` へ変更し、GrowthBook の設定ソースに妥当な fallback デフォルト値があることを確認する必要があります。
+
+Prompt テンプレートファイルは**再構築された成果物**です。元のファイルは逆コンパイルの過程で失われたため、コードロジックと `yoloClassifier.ts` の置換パターンに基づいて再作成されています。
+
+## 関連ソースコードの索引
+
+| ファイル | 役割 |
+|------|------|
+| `src/utils/permissions/yoloClassifier.ts` | 分類器の中核実装 |
+| `src/utils/permissions/autoModeState.ts` | Auto mode の状態管理 |
+| `src/utils/permissions/permissionSetup.ts` | モード切り替え、危険な権限の除去 |
+| `src/utils/permissions/dangerousPatterns.ts` | 危険なコマンドパターンの一覧 |
+| `src/utils/permissions/classifierDecision.ts` | 分類器による判断の処理 |
+| `src/utils/permissions/classifierShared.ts` | 分類器の共通ロジック |
+| `src/utils/permissions/bashClassifier.ts` | Bash コマンドの分類規則 |
+| `src/utils/permissions/bypassPermissionsKillswitch.ts` | bypass 権限の circuit breaker |
+| `src/utils/permissions/yolo-classifier-prompts/auto_mode_system_prompt.txt` | 分類器の主要システムプロンプト |
+| `src/utils/permissions/yolo-classifier-prompts/permissions_external.txt` | 外部向け権限テンプレート |
+| `src/utils/permissions/yolo-classifier-prompts/permissions_anthropic.txt` | 内部向け権限テンプレート |
+| `src/cli/handlers/autoMode.ts` | CLI の `auto-mode` サブコマンド処理 |
+| `src/utils/messages.ts` | Auto mode のシステムプロンプト注入 |
+| `src/types/permissions.ts` | 権限の型定義 |
+| `src/utils/betas.ts` | モデルの auto mode 対応確認 |

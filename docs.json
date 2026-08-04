@@ -70,6 +70,17 @@
               "docs/en/extensibility/skills",
               "docs/en/extensibility/custom-agents"
             ]
+          },
+          {
+            "group": "安全与权限",
+            "pages": [
+              "docs/en/safety/why-safety-matters",
+              "docs/en/safety/permission-model",
+              "docs/en/safety/sandbox",
+              "docs/en/safety/plan-mode",
+              "docs/en/safety/auto-mode",
+              "docs/en/safety/miit-warning-response"
+            ]
           }
         ]
       },
@@ -278,6 +289,17 @@
               "docs/ja/extensibility/hooks",
               "docs/ja/extensibility/skills",
               "docs/ja/extensibility/custom-agents"
+            ]
+          },
+          {
+            "group": "安全与权限",
+            "pages": [
+              "docs/ja/safety/why-safety-matters",
+              "docs/ja/safety/permission-model",
+              "docs/ja/safety/sandbox",
+              "docs/ja/safety/plan-mode",
+              "docs/ja/safety/auto-mode",
+              "docs/ja/safety/miit-warning-response"
             ]
           }
         ]

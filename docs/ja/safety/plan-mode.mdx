@@ -1,0 +1,154 @@
+---
+title: "計画モード — Plan Mode で実行前に確認する安全機構"
+description: "ソースコードに基づいて Claude Code の Plan Mode の実装全体を解説します。EnterPlanModeTool/ExitPlanModeV2Tool のツール設計、権限コンテキストの切り替え機構、Prompt-based 権限要求、計画ファイルの永続化、Teammate の承認フローを扱います。"
+keywords: ["Plan Mode", "計画モード", "EnterPlanMode", "ExitPlanMode", "prepareContextForPlanMode", "allowedPrompts"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/safety/plan-mode) · [中文](/docs/zh/safety/plan-mode) · **日本語**
+
+{/* この章の目的: ソースコードに基づいて Plan Mode の完全な実装を明らかにする */}
+
+## 問題となる場面
+
+「このモジュールをリファクタリングして」と頼むと、AI はすぐコードを変更し始めます。しかし、どのように変更するつもりなのかを、まだ把握できていません。半分まで変更したところで方向性が違うと分かっても、すでに手遅れです。
+
+## Plan Mode による解決策
+
+計画モードは会話に「読み取り専用の段階」を加え、2 つのツールでクローズドループを構成します。
+
+<Steps>
+  <Step title="EnterPlanMode — 計画モードに入る">
+    AI はタスクに計画が必要かを自律的に判断し（またはユーザーが開始し）、`EnterPlanModeTool`（`packages/builtin-tools/src/tools/EnterPlanModeTool/EnterPlanModeTool.ts:36`）を呼び出します。このツールには**ユーザーの承認**が必要です（`checkPermissions` は `ask` を返します）。
+  </Step>
+  <Step title="調査段階 — 読み取り専用ツールセット">
+    権限モードは `'plan'` に切り替わり、AI は `isReadOnly()` が true のツール（Read、Grep、Glob、Agent など）だけを使用できます。書き込み操作は自動的に拒否されます。
+  </Step>
+  <Step title="ExitPlanMode — 計画を承認に提出">
+    調査を終えると、AI は `ExitPlanModeV2Tool`（`packages/builtin-tools/src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:147`）を呼び出し、計画ファイルをユーザーのレビューに提出します。ここが 2 番目の**ユーザー承認が必要な**ポイントです。
+  </Step>
+  <Step title="実行を再開 — すべてのツール権限">
+    ユーザーが承認すると、権限モードは開始前の状態に戻り、AI は計画に沿って実行します。
+  </Step>
+</Steps>
+
+## 権限の自動的な縮小と復元
+
+### 開始: `prepareContextForPlanMode()`
+
+`EnterPlanModeTool.call()`（77 行）の中核ロジックは次のとおりです。
+
+```typescript
+// 1. 遷移状態を記録する（以前のモードを保存）
+handlePlanModeTransition(currentMode, 'plan')
+
+// 2. 権限コンテキストを plan モードへ切り替える
+context.setAppState(prev => ({
+  ...prev,
+  toolPermissionContext: applyPermissionUpdate(
+    prepareContextForPlanMode(prev.toolPermissionContext),
+    { type: 'setMode', mode: 'plan', destination: 'session' },
+  ),
+}))
+```
+
+`prepareContextForPlanMode()`（`src/utils/permissions/permissionSetup.ts`）は次の処理を行います。
+- 新しい `ToolPermissionContext` を作り、`mode` を `'plan'` に設定する
+- plan モードでは、ツールの `isReadOnly()` 検査が唯一の許可条件になる
+- ユーザーのデフォルトモードが `'auto'` の場合は、classifier の副作用も有効にする
+
+### 終了: 権限の復元 + Prompt-based 権限
+
+`ExitPlanModeV2Tool` の終了ロジックは、重要な処理を 2 つ行います。
+
+**1. 権限モードを復元**
+
+`handlePlanModeTransition()` と `applyPermissionUpdate()` により、開始前のモードへ復元します。
+
+**2. Prompt-based 権限を注入**
+
+これは Plan Mode で特に巧妙な設計です。AI は、計画内で実行が必要なコマンドのカテゴリを宣言できます。
+
+```typescript
+// ExitPlanModeV2Tool の inputSchema
+allowedPrompts: z.array(z.object({
+  tool: z.enum(['Bash']),
+  prompt: z.string().describe('Semantic description, e.g. "run tests"'),
+})).optional()
+```
+
+AI が計画の提出時に `allowedPrompts: [{ tool: 'Bash', prompt: 'run tests' }]` を宣言すると、ユーザーの承認後、"run tests"に該当する Bash コマンドが自動的に許可され、1 件ずつ確認する必要がなくなります。
+
+## 計画ファイルの永続化
+
+計画の内容はディスク上のファイルへ書き込まれます（パスは `getPlanFilePath()` が決定）。これは、単に「AI が説明してから実行を始める」方式とは本質的に異なります。
+
+1. `ExitPlanModeV2Tool` の `normalizeToolInput` がディスクから計画内容を読み、`input.plan` と `input.planFilePath` へ注入する
+2. ユーザーは計画ファイルを**編集できる**。承認前に AI の計画を修正できる
+3. `planWasEdited` フィールドはユーザーが計画を変更したかを示し、後続の tool_result の表示に影響する
+4. `persistFileSnapshotIfRemote()` がリモート環境でファイルのスナップショットを保存する
+
+## Teammate 環境での計画承認
+
+Agent Swarms（`isAgentSwarmsEnabled()`）モードでは、計画の承認に追加の協調フローがあります。
+
+```typescript
+// Teammate ロールの場合
+if (isTeammate()) {
+  // 計画を Team Leader の mailbox へ送り、承認を待つ
+  const requestId = generateRequestId()
+  writeToMailbox(getTeamName(), {
+    type: 'plan_approval_request',
+    plan, requestId, ...
+  })
+  // awaitingLeaderApproval: true を返す
+  // Team Leader の承認後、mailbox 経由で Teammate に通知する
+}
+```
+
+これは Swarms モードでは、計画を直接ユーザーではなく Team Leader が承認する場合があることを意味します。
+
+## 計画モードを使うべき場面
+
+`EnterPlanModeTool` の Prompt（`packages/builtin-tools/src/tools/EnterPlanModeTool/prompt.ts`）には、2 種類の開始基準が定義されています。外部向けバージョンは積極的で計画を推奨し、内部向けバージョンは抑制的で、本当に曖昧な場合にだけ使用します。
+
+| 場面 | 外部向けバージョン | 内部向けバージョン |
+|------|---------|---------|
+| typo を修正 | スキップ | スキップ |
+| 削除ボタンを追加 | **開始**（複数のファイルに関係） | **スキップ**（手順が明確） |
+| 認証システムをリファクタリング | **開始** | **開始**（影響の大きいリファクタリング） |
+| 「X を始めて」 | — | **スキップ**（すぐ開始） |
+| アーキテクチャ判断（Redis vs インメモリキャッシュ） | **開始** | **開始**（本当に曖昧） |
+
+## 計画モード + タスクシステム
+
+計画モードは通常、タスクシステムと組み合わせて使用します。
+
+1. 計画モード内で、AI が実装手順をタスクリストとして作成する（`TodoWrite`）
+2. ユーザーが計画（タスクリストを含む）を承認する
+3. 計画モードの終了後、AI がタスクリストの各項目を順に実行する
+4. ユーザーはタスクリストで進捗を追跡できる
+
+## ライフサイクル全体
+
+```
+ユーザー: 「このモジュールをリファクタリングして」
+  ↓
+AI が計画が必要と判断 → EnterPlanModeTool を呼び出す
+  ↓ ユーザー承認（Ask ダイアログ）
+handlePlanModeTransition(default, 'plan')  // default を保存
+prepareContextForPlanMode()                // 読み取り専用コンテキストを作成
+  ↓
+AI が Read/Grep/Glob/Agent でコードベースを調査
+  ↓ （読み取り専用ツールを 10 回以上呼び出す場合がある）
+AI が計画を作成 → ExitPlanModeV2Tool({ を呼び出す
+  allowedPrompts: [
+    { tool: 'Bash', prompt: 'run tests' },
+    { tool: 'Bash', prompt: 'install dependencies' }
+  ]
+})
+  ↓ ユーザーが計画を承認（計画ファイルは編集可能）
+権限モードを復元 → prompt-based 権限を注入
+  ↓
+AI がすべてのツールで計画を実行し、"run tests"などのコマンドを自動許可
+```
