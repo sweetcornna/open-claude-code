@@ -4,6 +4,16 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.15.0 - 2026-08-03
+
+- **`/logout` 此前对非 Claude 账号基本不起作用**：第三方 API key、端点地址和模型设置被当成「配置而非登录态」保留下来，`modelType` 也只在没有可回退配置时才清。于是登出之后下一轮请求照旧打同一个端点、用同一把 key——OAuth 和 API key 两种模式都一样。现在登出会清空整个账户面：Claude OAuth token、ChatGPT / Antigravity 凭据文件、secure storage，以及 settings.env 与 `~/.occ.json` 里全部 provider 键（含 `CLAUDE_CODE_OAUTH_TOKEN`），`modelType` 回到未设置。**`/provider save` 存下的档案会保留**，所以 `/provider use <名字>` 可以一键恢复原来的配置——想留住当前端点设置的话，登出前先存一个档案。登录不受影响：它内部清理旧状态时不动 provider 配置。
+- **登录菜单里的「OpenAI Compatible」拆成两条**：**OpenAI Chat Completions**（`/chat/completions`，Ollama / DeepSeek / vLLM / One API 这类）与 **OpenAI Responses API**（`/responses`，Codex 风格服务端、GPT-5 世代）。协议原来是藏在表单里的一个字段，可选项之一叫 Responses——但「兼容」只描述了 chat 那条线。现在选哪条入口就写哪个协议，表单只剩 Base URL 和 API Key，标题会显示实际会打的路径。
+- **选了 Responses 协议，仍有一半请求以 Chat Completions 发给上游**。此前 `OPENAI_WIRE_API=responses` 只移动了主循环，分类器、标题生成、模型校验等全部 side query 照旧走 `/chat/completions`——只支持 `/responses` 的上游会直接拒掉这部分请求，而界面上看会话是配置好的。现在整条链路跟随同一套协议判定。顺带给这条线的输出预算兜了下限：side query 默认只要 1024 token，而在 `/responses` 上推理 token 也吃这个预算，推理模型会把它吃光、返回空内容。
+- **Gemini 官方搜索源对 Google 登录用户从来没成功过**。Antigravity 后端只服务它自己的模型 id（`gemini-3.1-*`），而搜索用的默认模型是公网 API 的 `gemini-2.5-flash`，每次都被回 404。失败的搜索源会被聚合器静默丢弃，所以表面上「有结果」——那些结果其实全来自免费抓取源。现在搜索按实际路由挑模型。
+- **显式点名一个搜索源时（`WEB_SEARCH_ADAPTER` / `settings.webSearchAdapter`），它不知道自己是不是当前 provider**。点名 `gemini` 而会话跑在 OpenAI 上时，适配器会跳过 Google 登录已解锁的 Antigravity 路由、发出空的 API key，直接 403——凭据明明就在磁盘上。`api`（会把 Anthropic 的 web_search 塞进当前 provider 的管线）和 `codex` 有同样的问题。现在点名走与默认聚合完全一致的主路/增强路判定。
+- **`~/.codex/auth.json` 只存了 API key 也被当成 ChatGPT 登录**。官方 Codex CLI 用 API key 认证时就往那里写这种文件——文件在、凭据真、但不是 OAuth 登录。此前只判断文件是否存在，于是 codex 搜索源一律走 OAuth 路线并报「ChatGPT account is not logged in」，而一把可用的 API key 闲着。现在校验真正的 OAuth token 字段，没有登录就回落到 API key。
+- 清理仓库里 44 个一次性过程文档与历史归档（`progress.md`、`DEV-LOG.md`、若干审计与交接记录、已完成功能的规格存档）。仅影响仓库，不影响已安装的版本。
+
 ## 2.14.1 - 2026-08-03
 
 - **修复子代理完全派不出去：一发就报「子任务嵌套达到上限」**。只要当前这一轮已经调用过 3 次工具（读文件、grep、跑命令——日常几乎必然），接下来无论派哪种子代理、哪怕只派一个，都会被拦下并提示嵌套深度超限，而实际上一层嵌套都还没有。原因是深度守卫读错了计数器：它拿的是「本轮对话的 API 往返次数」（每调用一次工具就 +1），而不是「子代理嵌套层数」。Workflow、Skill 以及斜杠命令派生的子代理走的是同一条路径，同样中招。现在按真实嵌套层数计数，默认仍允许 3 层，`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` 照旧可调。
