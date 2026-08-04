@@ -22,7 +22,11 @@ occ 不只连 Claude：任何 OpenAI 兼容端点、Gemini 原生 API、Grok、�
 
 ## 三、协议（wire API）
 
-OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions）或 `responses`（Responses API）。`OPENAI_AUTH_MODE=chatgpt` 强制 responses。`/login` 的 OpenAI 表单里可直接填 Wire API 字段。
+OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions，打 `<base>/chat/completions`）或 `responses`（Responses API，打 `<base>/responses`）。`OPENAI_AUTH_MODE=chatgpt` 强制 responses；Codex 家族模型（id 含 `codex`、GPT-5 世代）在未显式指定时也默认 responses。
+
+**协议在登录菜单里选，不是表单里的一个字段**：`/login` 有两个并列入口 —— **OpenAI Chat Completions** 与 **OpenAI Responses API**，选哪个就把 `OPENAI_WIRE_API` 写成哪个，后续表单只填 Base URL / API Key / 模型。这样命名是因为"OpenAI 兼容"只描述了 chat 那条线，把 responses 塞进同一个表单会让人以为它也是"兼容"模式。
+
+选定的协议对**整条链路**生效：主循环、side query（分类器、标题生成、模型校验等）、WebSearch 的 codex 源共用同一套解析（`resolveOpenAIWireProtocol`）。曾经只有主循环认这个键，side query 一律走 Chat Completions，只支持 `/responses` 的上游会直接拒掉那部分请求。
 
 ## 四、模型名解析
 
@@ -44,7 +48,15 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 `/provider save <name>` 把当前整组 env 快照成档案，`/provider use <name>` 全形状切换（先清全部家族键再写目标，含 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`）。多模型来回切换的推荐方式。
 
-## 七、已知限制
+## 七、登出会清掉什么
+
+`/logout`（与 `occ logout`）重置**整个账户面**，不区分 OAuth 还是 API key：Claude OAuth token、ChatGPT / Antigravity 的 OAuth 凭据文件、secure storage，以及 settings.env 与 `~/.occ.json` 里全部 provider 键（`ALL_PROFILE_ENV_KEYS` + `CLAUDE_CODE_OAUTH_TOKEN`），`modelType` 一并回到未设置；当前进程的 `process.env` 同步删除。
+
+早期版本把第三方 key 当"配置而非登录态"保留，结果是非 Claude 用户登出后下一轮请求照旧打同一个端点、用同一把 key —— 等于没登出。
+
+**保留的**：`/provider save` 存下的档案本身（只清 active 指针），所以 `/provider use <name>` 可以一键恢复；MCP、hooks、主题等与账户无关的设置不受影响。登录（`installOAuthTokens`）内部也会清一次旧状态，但**不**动 provider 配置 —— 登录不该顺手删掉用户的端点设置。
+
+## 八、已知限制
 
 - **thinking 字段**：仅 `deepseek`/`mimo` 模型名自动启用；GLM 等需手动 `OPENAI_ENABLE_THINKING=1`。启用时同时发三种格式字段，**严格校验未知字段的端点（Cerebras/Qwen 直连）可能 400**——此时 `OPENAI_ENABLE_THINKING=0` 关闭。
 - `stream_options: {include_usage: true}` 恒发；个别严格端点会拒。
