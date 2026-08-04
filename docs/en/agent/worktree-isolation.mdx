@@ -1,0 +1,190 @@
+---
+title: "Worktree isolation — file-level isolation with Git worktrees"
+description: "An examination of Claude Code's Git worktree isolation: how sub-agents receive independent workspaces, the worktree creation and removal lifecycle, path naming rules, and safety protections."
+keywords: ["worktree", "git worktree", "file isolation", "multi-agent isolation", "parallel safety"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/agent/worktree-isolation) · [日本語](/docs/ja/agent/worktree-isolation)
+
+{/* Goal of this chapter: explain the worktree creation and removal lifecycle, path naming rules, hook mechanism, and safety protections on exit. */}
+
+## Why file-level isolation is necessary
+
+When multiple agents work in parallel, sharing one working directory creates three kinds of conflict:
+
+1. **Write conflicts**: two agents edit `config.ts` at the same time, and the later write overwrites the earlier one
+2. **State interference**: Agent A's tests depend on some environment state, and Agent B's changes break it
+3. **Indistinguishable changes**: partially completed changes become mixed together, making it impossible to tell which agent produced them
+
+Git worktrees are Git's native solution: they create multiple independent working directories in the same repository, each on its own branch.
+
+## Directory structure and naming rules
+
+Worktree files are stored under `.occ/worktrees/` at the repository root:
+
+```
+<repo-root>/
+├── .occ/
+│   └── worktrees/
+│       ├── fix-auth-bug/          # worktree working directory
+│       │   ├── .git               # link file pointing to the main repository
+│       │   └── src/...            # independent filesystem view
+│       └── add-dark-mode/         # another worktree
+│           └── ...
+├── src/                           # main working directory (unaffected)
+└── .git/                          # main repository
+```
+
+Branches follow the naming rule `worktree/<slug>`. `validateWorktreeSlug()` validates the slug: each `/`-delimited segment may contain only letters, digits, `.`, `_`, and `-`, and the total length must be ≤64 characters. If no slug is specified, the system generates one automatically from the plan slug.
+
+## Creation flow: EnterWorktreeTool
+
+The execution chain for `EnterWorktreeTool` (`packages/builtin-tools/src/tools/EnterWorktreeTool/EnterWorktreeTool.ts`) is:
+
+```
+EnterWorktreeTool.call({ name? })
+  ↓
+1. Check whether the process is already in a worktree (prevent nesting)
+  ↓
+2. Resolve the main repository root (findCanonicalGitRoot)
+   If the current directory is already inside a worktree, chdir to the main repository
+  ↓
+3. Generate a slug (user-supplied or plan slug)
+  ↓
+4. createWorktreeForSession(sessionId, slug)
+   ├── Is there a WorktreeCreate hook?
+   │   └── Run the hook and return the path it specifies (supports non-Git VCSs)
+   └── No hook → native Git path:
+       a. getOrCreateWorktree(repoRoot, slug)
+          ├── Fast recovery: check whether the worktree directory already exists
+          │   └── Read the HEAD SHA from the .git pointer file (no subprocess)
+          └── Create:
+              i.   mkdir .occ/worktrees/ (recursive)
+              ii.  fetch origin/<default-branch> (skip when cached)
+              iii. git worktree add -b worktree/<slug> <path> <base>
+              iv.  performPostCreationSetup() (sparse checkout, etc.)
+  ↓
+5. Update process state:
+   - process.chdir(worktreePath)
+   - setCwd(worktreePath)
+   - setOriginalCwd(worktreePath)
+   - saveWorktreeState(session) → persist to project configuration
+   - clearSystemPromptSections() → recompute cwd information in the system prompt
+   - clearMemoryFileCaches() → reload CLAUDE.md from the worktree
+  ↓
+6. Return worktreePath and worktreeBranch
+```
+
+### Hook-first architecture
+
+`createWorktreeForSession()` first checks `hasWorktreeCreateHook()`. If the user has configured a `WorktreeCreate` hook in settings.json, the system does not invoke Git at all. Instead, it runs the hook command and uses the returned path as the worktree path. This lets non-Git version-control systems such as Pijul and Mercurial integrate through hooks.
+
+### Fast recovery path
+
+`getOrCreateWorktree()` has an important optimization: if the target path already exists, it reads the HEAD SHA directly from the `.git` pointer file using pure file I/O and no subprocess, skipping the entire `fetch` + `worktree add` flow. A `fetch` takes 6–8 seconds in a large repository; this optimization reduces recovery latency to nearly zero.
+
+## Exit flow: ExitWorktreeTool
+
+`ExitWorktreeTool` (`packages/builtin-tools/src/tools/ExitWorktreeTool/ExitWorktreeTool.ts`) supports two exit strategies:
+
+### keep: retain the worktree
+
+```
+keepWorktree()
+  ↓
+1. chdir back to originalCwd
+2. Clear currentWorktreeSession
+3. Update project configuration (activeWorktreeSession = undefined)
+4. Leave the worktree directory and branch on disk
+```
+
+The user can continue working with `cd <worktreePath>` or merge the branch manually later.
+
+### remove: delete the worktree
+
+This path has strict **safety protections**:
+
+```
+validateInput() — first line of defense
+  ↓
+1. Check that this is a session created by EnterWorktree
+   (manually created worktrees are never deleted)
+  ↓
+2. countWorktreeChanges(worktreePath, originalHeadCommit)
+   ├── git status --porcelain → count uncommitted files
+   ├── git rev-list --count <originalHead>..HEAD → count new commits
+   └── return null (when Git fails) → fail closed (refuse deletion)
+  ↓
+3. Are there uncommitted files or new commits?
+   → Refuse and require discard_changes: true for confirmation
+```
+
+```
+call() — actual execution
+  ↓
+1. Count changes again (new changes may appear between validateInput and call)
+2. If there is a tmux session → killTmuxSession()
+3. cleanupWorktree()
+   ├── hook-based → run the WorktreeRemove hook
+   └── git-based → git worktree remove --force + git branch -D
+4. restoreSessionToOriginalCwd()
+   - setCwd(originalCwd)
+   - setOriginalCwd(originalCwd)
+   - restore only if projectRoot is the worktree (prevent accidental activation)
+   - update the hooks configuration snapshot
+   - clear system-prompt and memory caches
+```
+
+### Fail-closed design
+
+`countWorktreeChanges()` returns `null`—meaning "unknown; assume unsafe"—in these cases:
+
+- `git status` or `git rev-list` exits with a nonzero status because of a lock file or corrupt index
+- `originalHeadCommit` is undefined because a hook-based worktree did not establish a baseline commit
+
+When it receives `null`, `validateInput` refuses deletion. Requiring the user to handle the worktree manually is safer than risking lost work.
+
+## Integration with the Agent tool
+
+The Agent tool's (`AgentTool`) `isolation` parameter determines whether a sub-agent runs in a worktree. Note that the Agent tool uses the dedicated `createAgentWorktree()` (`src/utils/worktree.ts`), not `createWorktreeForSession()` for user sessions. The two have important differences:
+
+| Dimension | `createWorktreeForSession` (user session) | `createAgentWorktree` (sub-agent) |
+|------|---------------------------------------|----------------------------------|
+| Caller | EnterWorktreeTool | AgentTool |
+| Session management | Sets `currentWorktreeSession` | Does **not set** `currentWorktreeSession` |
+| Reusing an existing worktree | Reuses it directly | Reuses it and bumps its mtime so periodic cleanup does not delete it by mistake |
+
+When a sub-agent finishes, `cleanupWorktreeIfNeeded()` handles cleanup automatically. It does not use `ExitWorktreeTool`, because agent worktrees have no session state and `ExitWorktreeTool`'s `validateInput` would reject them:
+
+- **Has changes** → retain the worktree and return `worktreePath` so the main agent can merge it later
+- **No changes** → delete it automatically
+- **Hook-based** → always retain it
+
+## Session-state persistence
+
+The `WorktreeSession` object is persisted to disk through `saveCurrentProjectConfig()` and contains:
+
+```typescript
+{
+  originalCwd: string,         // working directory before entering the worktree
+  worktreePath: string,        // absolute worktree path
+  worktreeName: string,        // slug
+  worktreeBranch?: string,     // branch name (for example, worktree/fix-auth)
+  originalBranch?: string,     // branch before entering
+  originalHeadCommit?: string, // HEAD commit before entering (used to count changes)
+  sessionId: string,           // ID of the session that created this worktree
+  tmuxSessionName?: string,    // associated tmux session
+  hookBased?: boolean,         // whether a hook created it
+  creationDurationMs?: number, // creation time (for analytics)
+  usedSparsePaths?: boolean,   // whether sparse checkout was used
+}
+```
+
+This persistence lets session recovery (`--resume`) restore the worktree context correctly. Even after a process restart, `getCurrentWorktreeSession()` reads the state from project configuration.
+
+## Sparse Checkout optimization
+
+For large monorepos, worktrees support the `sparsePaths` configuration, which checks out only selected directories instead of the entire repository. In a repository with 210K files, this reduces worktree creation time from tens of seconds to a few seconds.
+
+The configuration lives at `getInitialSettings().worktree?.sparsePaths` and is applied in `performPostCreationSetup()`.

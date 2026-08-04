@@ -1,0 +1,860 @@
+---
+title: "Sub-agents — permissions, flows, synchronous and asynchronous execution, and forks"
+description: "A source-level examination of Claude Code sub-agents: the AgentTool execution chain, permission modes, synchronous and asynchronous lifecycles, the task notification queue, AgentTool forks, slash command forks, and the boundary of runForkedAgent."
+keywords: ["sub-agent", "AgentTool", "permission modes", "synchronous sub-agent", "asynchronous sub-agent", "forkSubagent", "runForkedAgent"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/agent/sub-agents) · [日本語](/docs/ja/agent/sub-agents)
+
+{/* Goal of this chapter: separate the easily confused sub-agent execution paths and identify their source entry points. */}
+
+## Start by separating four concepts
+
+Four execution paths in Claude Code are commonly grouped under the name "sub-agent":
+
+| Type | Trigger | Uses the Tool protocol | How the result returns | Typical entry point |
+|------|--------|--------------------|--------------|----------|
+| Named sub-agent | The main model calls `Agent(...)` and provides `subagent_type` | Yes, as one `tool_use` | The current turn's `tool_result`, or a `<task-notification>` after background completion | `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` |
+| AgentTool fork | The main model calls `Agent(...)`, omits `subagent_type`, and the fork gate is enabled | Yes, still through the `Agent` tool | Returns `async_launched` first, then returns to the main model through a task notification on completion | `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx`, `packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` |
+| Slash command fork | The user runs a slash command or skill with `context: fork` | No; it is not an `Agent` tool_use emitted by the model | Normal mode returns command output synchronously; assistant mode injects a hidden prompt in the background | `src/utils/processUserInput/processSlashCommand.tsx` |
+| `runForkedAgent()` | An internal runtime service directly forks an execution branch | No; it is an internal API | The caller consumes the result internally | `src/utils/forkedAgent.ts` |
+
+A compact way to remember the distinction:
+
+An `AgentTool` fork provides tool semantics to the model; `runForkedAgent()` is an implementation detail for internal runtime capabilities; a slash command fork is an execution mode for skills and commands.
+
+## Main AgentTool flow
+
+The `Agent` tool visible to the model ultimately enters `AgentTool.call()`. A normal named sub-agent follows this execution chain:
+
+```text
+assistant message
+  -> tool_use: Agent({ prompt, subagent_type?, run_in_background?, ... })
+  -> query.ts: runTools(...)
+  -> toolExecution.ts: await tool.call(...)
+  -> AgentTool.call(...)
+  -> resolve selectedAgent / fork path / permission mode / tool pool
+  -> runAgent(...)
+  -> finalizeAgentTool(...)
+  -> mapToolResultToToolResultBlockParam(...)
+  -> user message with tool_result
+  -> query.ts starts next model turn with that tool_result
+```
+
+Key source entry points:
+
+| Code | Responsibility |
+|------|------|
+| `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` | `Agent` tool definition, routing, and synchronous/asynchronous lifecycle |
+| `packages/builtin-tools/src/tools/AgentTool/runAgent.ts` | Sub-agent query loop, system prompt, MCP, and sidechain transcript |
+| `src/services/tools/toolExecution.ts` | Outer tool executor where `await tool.call(...)` occurs |
+| `src/query.ts` | Main agentic loop, which collects tool results and starts the next model call |
+| `src/tasks/LocalAgentTask/LocalAgentTask.tsx` | Registration, state updates, and completion notifications for background local agent tasks |
+
+## AgentTool input parameters
+
+The `Agent` tool's input schema is defined by `baseInputSchema()` and `fullInputSchema()` in `AgentTool.tsx`. Feature gates may hide some fields from the model-visible schema, but `call()` handles these optional fields through the unified `AgentToolInput` type.
+
+### Basic parameters
+
+| Parameter | Type | Required | Purpose | Affected path |
+|------|------|------|------|----------|
+| `description` | `string` | Yes | A 3–5 word task description for the UI, task list, logs, background notifications, and output summary | Does not participate in the sub-agent's actual prompt reasoning, but affects task presentation and notifications |
+| `prompt` | `string` | Yes | Complete instructions for the sub-agent | Becomes the sub-agent's user message for a normal agent; is embedded in the fork directive on the fork path; becomes the initial remote message on the remote path |
+| `subagent_type` | `string` | No | Selects a named agent type | A value selects a named agent; when omitted, an enabled fork gate selects an AgentTool fork, otherwise the route falls back to `general-purpose` |
+| `model` | `'sonnet' \| 'opus' \| 'haiku'` | No | Model override for this call | Takes precedence over the agent definition's `model` for a normal named agent; ignored in coordinator mode; the fork path inherits the parent model |
+| `run_in_background` | `boolean` | No | Requests background execution | When `true`, uses an asynchronous task; this field is hidden from the schema if background tasks are disabled or the fork gate is enabled |
+
+### Multi-agent and teammate parameters
+
+| Parameter | Type | Required | Purpose | Affected path |
+|------|------|------|------|----------|
+| `name` | `string` | No | Names the spawned agent so `SendMessage({ to: name })` can address it | Triggers teammate spawning when combined with `team_name` or the current team context; a normal background sub-agent also registers `name -> agentId` for later messages |
+| `team_name` | `string` | No | Selects the team to join or use | Combined with `name`, triggers `spawnTeammate()`; when omitted, may inherit `appState.teamContext.teamName` |
+| `mode` | permission mode | No | Permission-mode hint for teammate spawning | The current implementation uses it only for the teammate field `plan_mode_required: spawnMode === 'plan'`; it does not override `permissionMode` for a normal local sub-agent |
+
+`name + team_name` is an independent branch. It does not enter the normal local sub-agent path through `runAgent()`; instead, it calls `spawnTeammate()` and returns `teammate_spawned`. A teammate that supplies `name` to spawn another teammate is rejected because the team roster is flat.
+
+### Isolation and working-directory parameters
+
+| Parameter | Type | Required | Purpose | Affected path |
+|------|------|------|------|----------|
+| `isolation` | `'worktree'`; internal builds also support `'remote'` | No | Overrides the agent definition's isolation mode | `worktree` creates a temporary Git worktree; `remote` delegates to CCR and immediately returns `remote_launched` |
+| `cwd` | `string` | No | Selects the sub-agent's working directory | Exposed only in the `KAIROS` schema; changes the cwd used by file and shell operations through `runWithCwdOverride()` |
+
+The `isolation` call parameter takes precedence over `isolation` in the agent definition. The schema description for `cwd` says not to combine it with `isolation: "worktree"`. If both are present, the implementation gives `cwd` priority as the working directory but may still create a worktree, so callers should treat the parameters as mutually exclusive.
+
+### Parameter visibility and actual behavior
+
+| Parameter | When it may be hidden | Explanation |
+|------|------------------|------|
+| `run_in_background` | `DISABLE_BACKGROUND_TASKS` is active, or `isForkSubagentEnabled()` is true | When the fork gate is enabled, every `AgentTool` spawn is forced to run asynchronously, so the model does not need to choose |
+| `cwd` | Non-`KAIROS` build or mode | The schema omits it, but the implementation type still retains the field |
+| `isolation: "remote"` | Non-internal build | External builds accept only `worktree` |
+| `model` | Coordinator mode or fork path | Coordinator clears the model override; a fork must inherit the parent model to keep the request prefix and behavior consistent |
+
+### Precedence between parameters and the agent definition
+
+| Setting | Call parameter | Agent definition | Final rule |
+|--------|----------|------------------|----------|
+| Agent type | `subagent_type` | Default / active agents | An explicit `subagent_type` wins; when omitted, the fork gate chooses a fork or `general-purpose` |
+| Model | `model` | `selectedAgent.model` | The call parameter wins for a normal named agent; otherwise use the definition, then inherit the parent model |
+| Background execution | `run_in_background` | `selectedAgent.background` | Either value being true makes execution asynchronous; coordinator, assistant, the fork gate, and other conditions can also force asynchronous execution |
+| Isolation | `isolation` | `selectedAgent.isolation` | The call parameter wins |
+| Permission mode | No local override parameter | `selectedAgent.permissionMode` | A normal sub-agent uses the definition's `permissionMode`, defaulting to `acceptEdits`; a fork uses `bubble` |
+| Tool set | No call parameter | `selectedAgent.tools` | A normal sub-agent filters by the definition in `runAgent()`; a fork uses the parent's exact tools |
+
+## Agent Definition fields
+
+`AgentTool` call parameters describe how to spawn this particular invocation. The agent definition determines the agent's default capabilities. Custom agents may come from user or project directories, JSON configuration, plugins, or built-in definitions; their core fields are normalized into `AgentDefinition`.
+
+### Common frontmatter
+
+| Field | Type | Purpose | Runtime effect |
+|------|------|------|------------|
+| `name` | `string` | Agent type name | The model matches it through `subagent_type`; plugin agents may carry a namespace prefix |
+| `description` | `string` | Usage guidance | Appears in the available-agent list and helps the main model choose |
+| `tools` | `string[]` | Allowed tool set | Filtered through `resolveAgentTools()` in `runAgent()`; `['*']` means all available tools |
+| `disallowedTools` | `string[]` | Disallowed tool set | JSON agents support this field to exclude tools from the allowed set |
+| `prompt` | `string` | Main agent system-prompt body | A normal named sub-agent uses it to build its own system prompt |
+| `model` | `string` | Default model | May be overridden by `Agent({ model })`; `inherit` means inherit the parent model |
+| `effort` | effort level or number | Reasoning effort | Passed to the agent runtime configuration |
+| `permissionMode` | permission mode | Default permission mode | Used when assembling the normal sub-agent's tool pool; defaults to `acceptEdits` when omitted |
+| `background` | `boolean` | Whether the agent always runs in the background | When true, execution is asynchronous even without a `run_in_background` call parameter |
+| `isolation` | `'worktree'` / `'remote'` | Default isolation mode | May be overridden by the call parameter `isolation` |
+| `maxTurns` | positive integer | Maximum agentic turns | Passed to `query()` to prevent an unbounded sub-agent loop |
+| `color` | agent color | UI color | Used in grouped UI, the task panel, and teammate presentation |
+| `memory` | `'user' \| 'project' \| 'local'` | Persistent-memory scope | Appends agent memory to the system prompt and reads or writes the directory for that scope |
+
+Example:
+
+```md
+---
+name: code-reviewer
+description: Review a code change and find correctness risks
+tools:
+  - Read
+  - Grep
+  - Glob
+model: sonnet
+permissionMode: acceptEdits
+background: true
+maxTurns: 8
+memory: project
+---
+
+You are a focused code reviewer. Prioritize bugs, regressions, and missing tests.
+```
+
+### MCP, hooks, and skills
+
+| Field | Purpose | Explanation |
+|------|------|------|
+| `requiredMcpServers` | MCP server patterns that must exist before startup | `AgentTool.call()` waits for pending servers for up to about 30 seconds; it reports an error if no tools become available |
+| `mcpServers` | Agent-specific MCP servers | Initialized by `runAgent()` with a lifecycle scoped to this sub-agent |
+| `hooks` | Hooks registered for the agent lifecycle | `runAgent()` registers frontmatter hooks and removes session hooks when the agent stops |
+| `skills` | Skill names to preload | `runAgent()` resolves and injects the corresponding skills; plugin skills support namespace or suffix matching |
+| `initialPrompt` | Content prepended before the first user turn | Can inject fixed additional instructions at startup |
+
+These fields belong to the agent definition, not to `Agent(...)` call parameters. A caller cannot pass `tools`, `hooks`, or `skills` in one `Agent` tool_use to override the agent definition.
+
+### runAgent() extension points
+
+`runAgent()` does more than send a prompt to a model. It installs several agent-level extension points before and after entering the query loop:
+
+| Extension point | Timing | Purpose |
+|--------|------|------|
+| `SubagentStart` hooks | Before the sub-agent query loop starts | Allow a hook to modify or supplement startup context |
+| Frontmatter `hooks` | Registered when the agent session initializes | Apply only within this sub-agent's session and are removed when it ends |
+| Preloaded `skills` | During system-prompt and skill resolution | Inject the selected skills' instructions and resources into agent-visible context |
+| Agent `memory` | While building the system prompt | Read agent memory for the `user`, `project`, or `local` scope and append it to the agent prompt |
+| Sidechain transcript | While the query loop runs | Record an independent sub-agent message chain for recovery, debugging, and continuation through `SendMessage` |
+
+These extension points explain why different agent definitions using the same `runAgent()` can have different tool boundaries, startup behavior, and long-term context.
+
+## Routing rules
+
+`AgentTool.call()` first determines which kind of agent this invocation should run:
+
+```text
+subagent_type is present
+  -> use a named agent
+
+subagent_type is omitted && isForkSubagentEnabled() is true
+  -> use a fork agent
+
+subagent_type is omitted && the fork gate is disabled
+  -> fall back to general-purpose
+```
+
+Named agents come from built-in agents, the user configuration directory, plugin agents, and other definitions. The fork agent is a special built-in agent defined in `forkSubagent.ts`. It is not a normal specialist role; it is a worker that inherits parent context.
+
+## Permission model
+
+Sub-agent permissions have three layers: whether this agent may start, which tools it receives, and how permission requests are handled when those tools run.
+
+### Launch permissions
+
+`AgentTool` is itself a tool call, so it first passes through the normal tool-permission system. `AgentTool.call()` then applies agent-level filtering:
+
+| Check | Explanation |
+|------|------|
+| `filterDeniedAgents()` | Filters forbidden agent types according to permission rules |
+| `requiredMcpServers` | If the agent declares required MCP servers, waits for them to connect and stops on failure or timeout |
+| Teammate restrictions | An in-process teammate cannot spawn another teammate or a background agent |
+| Fork recursion protection | A fork worker cannot fork again |
+
+A named agent denied by a permission rule reports an error directly instead of falling back to another agent. This prevents the model from bypassing a denial in user or project configuration.
+
+### Tool-pool permissions
+
+A normal named sub-agent does not directly inherit the parent agent's current-turn tool-pool restrictions. It reassembles a tool pool with its own permission mode:
+
+```ts
+const workerPermissionContext = {
+  ...appState.toolPermissionContext,
+  mode: selectedAgent.permissionMode ?? 'acceptEdits',
+}
+
+const workerTools = assembleToolPool(
+  workerPermissionContext,
+  appState.mcp.tools,
+)
+```
+
+This has several important implications:
+
+| Dimension | Behavior |
+|------|------|
+| Default permission mode | If the agent definition omits `permissionMode`, the default is `acceptEdits` |
+| Global allow / deny rules | Still come from `appState.toolPermissionContext` |
+| The agent's own `tools` field | Further filters the pool through `resolveAgentTools()` in `runAgent()` |
+| MCP tools | Come from MCP tools already connected in the current AppState; an agent may also declare dedicated MCP servers |
+
+The fork agent is the exception. To keep the prompt-cache prefix identical between parent and child requests, it uses the parent's exact tools:
+
+```text
+useExactTools: true
+availableTools: toolUseContext.options.tools
+```
+
+A fork therefore does not reassemble a tool pool. It inherits the parent tool definitions and uses the `bubble` permission mode to surface permission requests to the parent terminal.
+
+### Permission modes at a glance
+
+| Mode | Meaning in a sub-agent |
+|------|------------------|
+| `acceptEdits` | Default mode. It normally allows reads and safe editing paths, while dangerous operations still pass through the permission system |
+| `default` / other normal modes | Ask or allow according to the main permission-system rules |
+| `bypassPermissions` | Explicitly dangerous mode that should appear only when the user has enabled permission bypass |
+| `bubble` | Fork-specific design: permission requests bubble up to the parent session |
+
+## Synchronous sub-agents
+
+The synchronous sub-agent is the default path: there is no explicit `run_in_background: true`, the agent definition does not set `background: true`, and coordinator mode, assistant mode, the fork gate, or another mechanism has not forced asynchronous execution.
+
+Synchronous waiting happens within the normal tool-call chain. The outer `toolExecution.ts` runs:
+
+```ts
+const result = await tool.call(...)
+```
+
+When the tool is `AgentTool`, `AgentTool.call()` runs the entire sub-agent internally:
+
+```text
+AgentTool.call()
+  -> agentIterator = runAgent(...)[Symbol.asyncIterator]()
+  -> while true:
+       await agentIterator.next()
+       collect assistant / user messages
+       forward progress to the UI / SDK
+       if result.done, break
+  -> finalizeAgentTool(agentMessages, ...)
+  -> return { data: { status: "completed", ...agentResult } }
+```
+
+After it returns, `mapToolResultToToolResultBlockParam()` converts the `completed` result into the current turn's `tool_result`. `query.ts` then appends that tool result to the message list and begins the next model call.
+
+In other words, a synchronous sub-agent does not inject its result through the unified queue. The main model waits on this `Agent` tool call until it receives the final `tool_result`.
+
+### Backgrounding a synchronous sub-agent
+
+A synchronous sub-agent is registered as a foreground task, so it can be moved to the background while it runs. The loop waits simultaneously for the next sub-agent message and a backgrounding signal:
+
+```ts
+const raceResult = await Promise.race([
+  nextMessagePromise.then(result => ({ type: 'message', result })),
+  backgroundPromise,
+])
+```
+
+If the backgrounding signal arrives first, the current foreground iterator is cleaned up and a new background `runAgent(..., isAsync: true)` takes over the remaining work. `AgentTool.call()` stops waiting for the final result and returns `async_launched`; the completion result later travels through the task notification queue.
+
+## Asynchronous sub-agents
+
+Conditions that trigger an asynchronous sub-agent include:
+
+| Condition | Explanation |
+|------|------|
+| `run_in_background: true` | The model explicitly requests background execution |
+| Agent definition `background: true` | This agent always runs in the background |
+| Coordinator mode | Workers are uniformly asynchronous to support orchestration |
+| Fork subagent gate enabled | The current implementation forces every `AgentTool` spawn to use the asynchronous notification model |
+| Assistant / kairos mode | Prevents synchronous subtasks from blocking the input queue |
+| Proactive active | A proactive loop may also force asynchronous execution |
+
+The asynchronous path does not wait for the sub-agent to complete:
+
+```text
+AgentTool.call()
+  -> registerAsyncAgent(...)
+  -> void runAsyncAgentLifecycle(...)
+  -> return { status: "async_launched", agentId, outputFile }
+```
+
+`runAsyncAgentLifecycle()` manages the background lifecycle:
+
+```text
+runAsyncAgentLifecycle()
+  -> for await message of runAgent(...)
+  -> updateAsyncAgentProgress(...)
+  -> finalizeAgentTool(...)
+  -> completeAsyncAgent(...)
+  -> enqueueAgentNotification(...)
+```
+
+An asynchronous agent uses its own `AbortController`. Pressing ESC to cancel the main thread does not automatically terminate background agents; they must be ended explicitly through task stopping, bulk kill, or task-management commands.
+
+## Completion notifications and the unified queue
+
+When a background agent finishes, `enqueueAgentNotification()` creates an XML-shaped `<task-notification>`:
+
+```xml
+<task-notification>
+  <task-id>...</task-id>
+  <tool-use-id>...</tool-use-id>
+  <output-file>...</output-file>
+  <status>completed</status>
+  <summary>Agent "..." completed</summary>
+  <result>...</result>
+  <usage>...</usage>
+</task-notification>
+```
+
+The message enters the unified command queue through `enqueuePendingNotification({ mode: 'task-notification' })`.
+
+### When the queue is consumed
+
+| Scenario | Consumption path |
+|------|----------|
+| REPL / TUI | `useQueueProcessor()` subscribes to the queue and calls `processQueueIfReady()` when the query is idle and no local JSX UI is blocking it |
+| CLI / SDK headless | `drainCommandQueue()` in `print.ts` continuously consumes messages between turns; while background tasks remain active, it keeps waiting for and draining new notifications |
+| Inside a sub-agent | `query.ts` consumes `task-notification` messages carrying the current `agentId`; the main thread consumes only messages where `agentId === undefined` |
+
+A `task-notification` eventually enters the next model context as a user-role message or attachment. The model can then synthesize the result, continue acting, or respond to the user.
+
+### Other messages that use the same queue
+
+The unified queue is not limited to background agents. Common sources include:
+
+| Source | mode | Purpose |
+|------|------|------|
+| User input received before the current turn ends | `prompt` / `bash` | Queue it for the next turn |
+| Background shell / monitor completion or stall warning | `task-notification` | Inform the model about command status |
+| Remote agent / ultraplan / ultrareview completion | `task-notification` | Return remote results to the local model |
+| Scheduled task / cron | `prompt` | Trigger a main-model task on a schedule |
+| Chrome / MCP channel push | `prompt` | Let an external system inject a message proactively |
+| Blocking hook error | `task-notification` | Wake the model to handle a stop-hook error |
+| Orphaned permission response | `orphaned-permission` | Handle a tool-permission response that arrives after its original request |
+
+Queue priority is `now > next > later`. `enqueue()` defaults to `next`, while `enqueuePendingNotification()` defaults to `later`, so system notifications do not overtake user input.
+
+## Continued communication and task control
+
+After a background sub-agent returns `async_launched`, the main model must not pretend it already knows the final answer. It has three ways to continue: send a message, read output, or stop the task.
+
+### SendMessage
+
+`SendMessage` appends a message to an agent that is running or was previously started. It can locate a local background agent through two forms of address:
+
+| Address | Source | Behavior |
+|------|------|------|
+| `name` | Registered in `agentNameRegistry` by `Agent({ name, ... })` | Resolve to an agentId, then send |
+| Raw `agentId` | Returned in an `async_launched` or `completed` tool result | Locate the corresponding task or transcript directly |
+
+A plain-text message must include `summary`, because the UI and permission summary need a short description. `to: "*"` broadcasts to a teammate team; structured messages cannot be broadcast.
+
+`SendMessage` has three behaviors for local background agents:
+
+| Target state | Behavior | Result |
+|----------|------|------|
+| Task remains `running` | Call `queuePendingMessage(agentId, message, ...)` | The message enters the task's `pendingMessages` and is delivered at the sub-agent's next tool-round or loop boundary |
+| Task has stopped but remains in AppState | Call `resumeAgentBackground(...)` | Resume the agent in the background with this message; completion still returns through a notification |
+| Task has been removed from AppState | Still attempt `resumeAgentBackground(...)` | Resume from the sidechain transcript if it still exists; otherwise return a failure |
+
+This means `SendMessage` is not limited to an agent that is currently running. Much later, if the caller still knows the `name` or `agentId` and the corresponding transcript has not been removed, it may resume and continue that agent. Conversely, when both task state and transcript are gone, `SendMessage` cannot reconstruct context from nothing.
+
+Several details are easy to misunderstand:
+
+| Point | Explanation |
+|----|------|
+| A running agent does not interrupt its current tool call immediately | The message first enters `pendingMessages` and waits for a safe agent-loop boundary |
+| A stopped agent becomes a new background run | `resumeAgentBackground()` returns an output file, and the result is later injected through a completion notification |
+| `name` is reliable only while its registration remains available | The name registry is runtime state; a raw `agentId` is more stable for much later recovery |
+
+### TaskOutput
+
+`TaskOutput` is the legacy tool for reading background-task output. The current prompt explicitly recommends using `Read` on the task's returned `output_file` instead. It remains available with these main behaviors:
+
+| Parameter | Behavior |
+|------|------|
+| `task_id` | ID of the background task to read |
+| `block: false` | Read current status and available output without blocking |
+| `block: true` | Wait for task completion; this is the default |
+| `timeout` | Maximum duration for a blocking wait |
+
+When `block: true` waits until completion, `TaskOutput` marks the task as `notified` to prevent a duplicate completion notification. Because this tool is deprecated, new code and model prompts prefer reading `output_file` directly.
+
+### TaskStop
+
+`TaskStop` stops a running background task. It accepts `task_id` and remains compatible with the legacy `shell_id`. Validation is direct: the task must exist and have status `running`, otherwise the tool reports an error.
+
+Stopping calls the unified `stopTask()`, and each task type maps that operation to its own termination logic. For example, a local agent aborts its `AbortController`, a shell task stops the process, and a remote task uses the remote stop path.
+
+## Failure, cancellation, and cleanup
+
+Sub-agent error paths differ mainly between synchronous and asynchronous execution.
+
+### Synchronous path
+
+When a synchronous sub-agent throws `AbortError`, `AgentTool.call()` rethrows it to the outer tool framework, and the main turn follows normal interrupt handling. A non-abort error is logged first. If assistant messages have already been collected, `finalizeAgentTool()` attempts to return a partial result so the main model can see existing progress; if no assistant message exists, the error is rethrown.
+
+The synchronous finally block performs these cleanup steps:
+
+| Cleanup | Purpose |
+|------|------|
+| Clear background-hint UI | Prevent a stale foreground hint |
+| `stopForegroundSummarization()` | Stop the foreground summarization timer |
+| `unregisterAgentForeground()` | Remove the sub-agent from the foreground task registry if it was not backgrounded |
+| SDK task notification | Send a completed, failed, or stopped event to the SDK / VS Code panel |
+| `clearInvokedSkillsForAgent()` | Clear agent-scoped skill state |
+| `clearDumpState()` | Clear dump/transcript debugging state |
+| `cleanupWorktreeIfNeeded()` | Clean up or retain the worktree when the agent was not backgrounded |
+
+### Asynchronous path
+
+`runAsyncAgentLifecycle()` contains errors on the asynchronous path:
+
+| Condition | State update | Notification |
+|------|----------|------|
+| Normal completion | `completeAsyncAgent(...)` | `enqueueAgentNotification(status: completed)` |
+| `AbortError` | `killAsyncAgent(...)` | `enqueueAgentNotification(status: killed)` with a partial result |
+| Other error | `failAsyncAgent(...)` | `enqueueAgentNotification(status: failed)` with the error |
+
+The code updates task status before doing slower additional work such as handoff classification or worktree cleanup. This order matters: `TaskOutput(block=true)` waits for the task to reach a terminal status and must not be blocked by a later classifier or Git cleanup.
+
+Notifications are also deduplicated. `enqueueAgentNotification()` atomically checks and sets `task.notified`; if the task was already notified, it does not enqueue another message.
+
+## AgentTool fork
+
+An AgentTool fork is a special routing path for the `Agent` tool, not a normal named agent.
+
+### Gate
+
+Forking is disabled by default. The build or runtime must enable the `FORK_SUBAGENT` feature. During development, for example, set it explicitly:
+
+```powershell
+$env:FEATURE_FORK_SUBAGENT='1'; bun run dev
+```
+
+Even with the feature enabled, these scenarios force it off:
+
+| Scenario | Reason |
+|------|------|
+| Coordinator mode | Coordinator already has its own delegation model |
+| Non-interactive session | Avoid invisible nested forks in pipe / SDK scenarios |
+
+### Path
+
+```text
+main model
+  -> Agent({ prompt }) with no subagent_type
+  -> AgentTool.call()
+  -> isForkSubagentEnabled()
+  -> selectedAgent = FORK_AGENT
+  -> buildForkedMessages(...)
+  -> runAgent(... useExactTools: true, forkContextMessages: parent messages)
+  -> register task / transcript / notification
+```
+
+The purpose of a fork is to let multiple workers share the parent request's prompt-cache prefix. It:
+
+| Dimension | Fork behavior |
+|------|-----------|
+| System prompt | Uses the parent's already rendered system prompt |
+| Conversation history | Receives the parent's complete `toolUseContext.messages` |
+| Tools | Uses the parent's exact tools without refiltering |
+| Thinking config | Inherits the parent configuration to avoid changing the cache key |
+| Placeholder tool_result | Multiple forks use the same placeholder text; only the final directive differs |
+| Permissions | `permissionMode: 'bubble'` |
+
+This is why the fork and normal-agent paths differ in tool-pool construction, prompt construction, and model inheritance.
+
+### Recursion protection
+
+A fork worker retains the `Agent` tool so its tool-definition bytes remain identical to the parent's, but the code rejects another fork from inside a fork:
+
+| Protection | Explanation |
+|------|------|
+| `querySource === 'agent:builtin:fork'` | Directly detects that execution is already inside a fork worker |
+| `<fork-boilerplate>` scan | Fallback detection that a fork directive already exists in context |
+
+A fork worker should complete the task directly rather than delegate again.
+
+## Slash command fork
+
+A slash command fork is an execution mode for a skill or command. Skill frontmatter controls it:
+
+```md
+---
+name: code-review
+context: fork
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+---
+```
+
+When a skill loads, `frontmatter.context === 'fork'` is parsed into the command's `context: 'fork'`. Running the slash command follows this path:
+
+```text
+user enters /code-review
+  -> processSlashCommand(...)
+  -> command.context === 'fork'
+  -> executeForkedSlashCommand(...)
+  -> prepareForkedCommandContext(...)
+  -> runAgent(...)
+```
+
+In normal interactive mode, `executeForkedSlashCommand()` runs the sub-agent synchronously, displays progress UI, and returns the result to the main conversation as local command output.
+
+In assistant / kairos mode, it is fire-and-forget: when the background runner finishes, it wraps the result in a hidden prompt and places it back in the command queue. This prevents multiple scheduled tasks from serially blocking user input at startup.
+
+## `runForkedAgent()`
+
+`runForkedAgent()` is an executor for internal services. It is not exposed to the model and does not produce an `Agent` tool_result.
+
+Its inputs are runtime objects such as `cacheSafeParams`, `promptMessages`, and `canUseTool`; it runs the query loop directly:
+
+```text
+internal service
+  -> runForkedAgent({ promptMessages, cacheSafeParams, ... })
+  -> createSubagentContext(...)
+  -> query(...)
+  -> return ForkedAgentResult
+```
+
+Common callers:
+
+| Caller | Purpose |
+|--------|------|
+| compact | Conversation compaction |
+| extractMemories / sessionMemory | Memory extraction and maintenance |
+| promptSuggestion / speculation | Prompt suggestions and prediction |
+| sideQuestion | Temporary questions that do not disturb the main context |
+| agentSummary | Background-agent summarization |
+| autoDream | Background memory consolidation |
+
+It and an AgentTool fork both fork execution, but their boundaries are entirely different:
+
+| Dimension | AgentTool fork | `runForkedAgent()` |
+|------|----------------|--------------------|
+| Caller | Model through the `Agent` tool | Runtime service directly |
+| Protocol layer | Uses Tool schema / tool_use / tool_result | Does not use the Tool protocol |
+| Visibility | The main model first sees `async_launched`, then a completion notification | The internal caller handles the result |
+| Primary purpose | Parallel workers with shared prompt cache | Reuse the query loop for internal support tasks |
+
+## Worktree isolation
+
+The `Agent` tool supports `isolation: "worktree"`. When enabled, the sub-agent runs in a temporary Git worktree, which is useful for implementation or experimental tasks.
+
+Lifecycle:
+
+| Stage | Behavior |
+|------|------|
+| Creation | Derive a slug from the agent ID and create an independent worktree |
+| CWD override | `runWithCwdOverride(worktreePath, fn)` makes tools execute inside the worktree |
+| Fork + worktree | Inject an additional path-translation reminder that tells the worker to reread files |
+| Cleanup | Remove the worktree when unchanged; retain it and return its path to the main model when it contains changes |
+
+The code retains a hook-based worktree because it cannot determine VCS changes reliably.
+
+## Result format
+
+`AgentTool.mapToolResultToToolResultBlockParam()` returns different tool results by status:
+
+| Status | Result |
+|------|------|
+| `completed` | Sub-agent output, optionally including `agentId`, worktree information, and usage |
+| `async_launched` | Background agent ID, output-file path, and instructions to wait for completion notification |
+| `teammate_spawned` | Teammate ID, name, and team name |
+| `remote_launched` | Remote task ID, session URL, and output file |
+
+A synchronous sub-agent's `completed` result directly becomes the current `Agent` tool call's `tool_result`. An asynchronous sub-agent's first tool result is `async_launched`; the final output returns to the model through `<task-notification>`.
+
+### Output fields
+
+| Status | Key fields | Explanation |
+|------|----------|------|
+| `completed` | `content`, `agentId`, `totalTokens`, `totalToolUseCount`, `totalDurationMs` | Final result of a synchronous sub-agent; a normal agent includes an `agentId` for continued communication |
+| `async_launched` | `agentId`, `description`, `prompt`, `outputFile`, `canReadOutputFile` | Background agent has started; its final result will arrive later through a notification |
+| `teammate_spawned` | `teammate_id`, `name`, `team_name` | Teammate has started and will collaborate through mailbox / SendMessage |
+| `remote_launched` | `taskId`, `sessionUrl`, `outputFile`, `description` | Remote CCR agent has started and will complete through a remote-task notification |
+
+A one-shot built-in agent may omit the `agentId` / `SendMessage` hint and usage trailer to avoid placing information for impossible follow-up communication into context.
+
+### outputSchema and tool_result
+
+`AgentTool`'s `outputSchema` describes the structured data returned by `call()`. `mapToolResultToToolResultBlockParam()` then maps that data into the `tool_result` text blocks the model actually sees. Read the code in this order:
+
+```text
+AgentTool.call()
+  -> return { data: { status, ...fields } }
+  -> mapToolResultToToolResultBlockParam(data, toolUseID)
+  -> ToolResultBlockParam
+  -> query.ts places tool_result in the next turn's messages
+```
+
+The four result types emphasize these fields:
+
+| status | data fields | Model-visible information |
+|--------|-----------|--------------|
+| `completed` | `content`, `agentId`, usage, optional worktree result | Final sub-agent output; if continued communication is possible, includes a `SendMessage` hint |
+| `async_launched` | `agentId`, `description`, `prompt`, `outputFile`, `canReadOutputFile` | Background execution has started; instructs the model to wait for a notification or read the output file |
+| `teammate_spawned` | `teammate_id`, `name`, `team_name` | Teammate has joined the team; collaboration continues through mailbox / `SendMessage` |
+| `remote_launched` | `taskId`, `sessionUrl`, `outputFile`, `description` | Remote task has started; the local model waits for a remote-task notification |
+
+The `status` field is the primary dispatch axis. The failed, killed, and cleanup logic in later catch / finally blocks does not rewrite an already returned synchronous `tool_result`; on the background path, task state and notification deliver the terminal state to the main model.
+
+## Lifecycle state machine
+
+Viewed as a task, a local sub-agent has this core state machine:
+
+```text
+AgentTool.call()
+  -> resolve route
+  -> create optional worktree
+  -> register foreground or register async task
+  -> runAgent()
+  -> completed / failed / killed
+  -> tool_result or task-notification
+  -> cleanup agent-scoped state
+```
+
+The difference between synchronous and asynchronous execution is not whether they call `runAgent()`, but which component waits for `runAgent()`:
+
+| Path | Who waits | When the main model continues |
+|------|--------|--------------------|
+| Synchronous sub-agent | `AgentTool.call()` itself uses `for await` on the sub-agent message stream | After the sub-agent completes and returns `tool_result` |
+| Automatic backgrounding | The foreground waits first; after timeout, the foreground iterator exits and the background lifecycle takes over | After `AgentTool.call()` returns `async_launched` |
+| Asynchronous sub-agent | `runAsyncAgentLifecycle()` waits in the background | Immediately after the main model receives `async_launched` |
+| Slash command fork in normal interaction | `executeForkedSlashCommand()` waits | After the slash command completes |
+| Slash command fork in assistant / kairos | A fire-and-forget background runner waits | The main input flow continues after startup, and a hidden prompt is injected on completion |
+| `runForkedAgent()` | The internal caller waits | Does not enter the main model's tool_result protocol |
+
+The shortest answer to "how does a synchronous sub-agent wait for completion?" is: the outer tool executor uses `await tool.call()`, while `AgentTool.call()` consumes the `runAgent()` async iterator until it is `done` or throws.
+
+## Comparison of waiting and result injection
+
+Sub-agent results return to the main model through three primary mechanisms:
+
+| Mechanism | Applicable path | Injection carrier | Blocks the current turn |
+|------|----------|----------|-------------------|
+| `tool_result` | Synchronous named sub-agent | Tool result corresponding to the current `Agent` tool_use | Yes |
+| `<task-notification>` | Asynchronous / background local agent, remote task, background shell, and others | Task notification in the unified command queue | No |
+| Hidden prompt / command-queue prompt | Slash command fork in assistant / kairos, scheduled tasks, and others | Prompt-class message in the queue | No |
+
+The important distinction is that background completion does not amend the original `tool_result`. The original `Agent` tool call has already returned `async_launched`; the final result is a new queue message that the model sees and integrates on a later turn.
+
+## Progress, UI, and transcript
+
+A sub-agent has three parallel forms of observable output: progress for the user, the final result for the model, and the transcript used for system recovery.
+
+| Output | Synchronous path | Asynchronous path | Purpose |
+|------|----------|----------|------|
+| Progress UI | `AgentTool.call()` forwards sub-agent messages to the UI / SDK in real time | `runAsyncAgentLifecycle()` updates task progress state | Show the user what the sub-agent is doing |
+| Output file | The synchronous path also writes side output for debugging and recovery | Primary readable output for a background task; `async_launched` returns its path | The main model can inspect it with `Read(outputFile)` |
+| Sidechain transcript | `runAgent()` records an independent message chain | Records the same chain and supports background recovery | `SendMessage`, resume, debugging, and summarization all depend on it |
+| Task state | The foreground task registry records synchronous runtime state | LocalAgentTask records running / completed / failed / killed | Used by the UI, `TaskOutput`, and notification deduplication |
+
+Synchronous progress means "display while running, then return one final tool_result." Asynchronous progress means "update task state while running, then enqueue a task notification." The sidechain transcript is not user-visible output; it is the message log the system uses to reconstruct agent context.
+
+## Typical call examples
+
+### Synchronous named sub-agent
+
+```json
+{
+  "description": "review parser bug",
+  "prompt": "Review the parser changes and identify correctness risks.",
+  "subagent_type": "code-reviewer"
+}
+```
+
+Use this for short tasks or work whose result is required before the main model can continue. The main model waits until the sub-agent returns `completed`.
+
+### Background named sub-agent
+
+```json
+{
+  "description": "run regression suite",
+  "prompt": "Run the regression tests and summarize failures.",
+  "subagent_type": "general-purpose",
+  "run_in_background": true
+}
+```
+
+Use this for long-running work. The main model first receives `async_launched`, including `agentId` and `outputFile`. It can then wait for `<task-notification>` or inspect available output proactively with `Read(outputFile)`.
+
+### Background agent with continued communication
+
+```json
+{
+  "description": "investigate flaky tests",
+  "prompt": "Investigate flaky tests without editing files yet.",
+  "subagent_type": "general-purpose",
+  "name": "flaky-investigator",
+  "run_in_background": true
+}
+```
+
+Follow up with:
+
+```json
+{
+  "to": "flaky-investigator",
+  "message": "Focus on the Windows-only failures and compare the last two runs.",
+  "summary": "focus Windows failures"
+}
+```
+
+After a long delay, prefer the raw `agentId` returned by `async_launched` or `completed`. The `name` registry is runtime state, while the sidechain transcript is more likely to be recoverable through `agentId`.
+
+### Implementation with worktree isolation
+
+```json
+{
+  "description": "prototype parser fix",
+  "prompt": "Implement a candidate fix in isolation and report the changed files.",
+  "subagent_type": "general-purpose",
+  "isolation": "worktree"
+}
+```
+
+Use this when a sub-agent should modify code without contaminating the main working tree. After receiving the result, the main model must decide whether to merge, review, or discard the worktree based on its path.
+
+### AgentTool fork
+
+```json
+{
+  "description": "scan auth paths",
+  "prompt": "Analyze the auth flow and report likely race conditions."
+}
+```
+
+This is a fork only when the fork gate is enabled and `subagent_type` is omitted. The fork worker inherits parent context and exact tools. Its purpose is parallel analysis and prompt-cache reuse, not a stable long-lived specialist role.
+
+### Slash command fork
+
+```md
+---
+name: audit-auth
+context: fork
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+---
+
+Audit the authentication flow and return only correctness risks.
+```
+
+Result flow:
+
+```text
+user enters /audit-auth
+  -> processSlashCommand()
+  -> executeForkedSlashCommand()
+  -> runAgent()
+  -> normal interaction: command output returns directly to the conversation
+  -> assistant / kairos: hidden prompt is queued on completion and consumed by the next model turn
+```
+
+## Troubleshooting checklist
+
+| Symptom | Check first |
+|------|----------|
+| The model cannot see a background result | Whether the task enqueued a notification; whether the queue drains in the current mode; whether `TaskOutput(block=true)` already marked `task.notified` |
+| `SendMessage` cannot find the target | Whether `name` remains in the registry; whether raw `agentId` can be used; whether the sidechain transcript still exists |
+| A sub-agent lacks a tool | Whether the agent definition's `tools` filtered it out; whether the MCP server is connected; whether the fork path used exact tools |
+| Sub-agent permissions differ from expectations | For a normal agent, inspect `permissionMode`; a teammate's `mode` is not a normal sub-agent permission override; for a fork, inspect `bubble` |
+| Forking does not trigger | Whether the `FORK_SUBAGENT` feature is enabled; whether the session is coordinator or non-interactive; whether `subagent_type` was supplied |
+| A slash command does not fork | Whether skill frontmatter contains `context: fork`; whether the loaded command.context is `fork` |
+| A worktree is not cleaned up | Whether it has uncommitted changes; whether it is hook-based; whether a background task retained cleanup until after notification processing |
+| `TaskOutput(block=true)` waits indefinitely | Whether the task actually reached a terminal status; on the async path, verify that the state update occurs before classifier / cleanup work |
+
+## Choosing a path
+
+| Requirement | Recommended path |
+|------|----------|
+| Specialist role, bounded context, and an explicit tool set | Named sub-agent |
+| Long task that must not block the main model | Asynchronous sub-agent |
+| Multiple workers sharing complete parent context while maximizing prompt-cache reuse | AgentTool fork |
+| Isolated execution for a slash command / skill | Slash command fork |
+| Lightweight forked reasoning for an internal runtime service | `runForkedAgent()` |
+| Isolated file changes | `isolation: "worktree"` |
+
+## Common misconceptions
+
+| Misconception | Correct understanding |
+|------|----------|
+| `mode` can override normal sub-agent permissions | `mode` affects only plan mode for teammate spawning; normal sub-agent permissions come from the agent definition's `permissionMode` |
+| `SendMessage` can target only a running agent | It queues while running and attempts background recovery from the transcript when the task is stopped or evicted |
+| Background-agent completion directly changes the current tool_result | Background completion uses the `<task-notification>` queue and reaches the model on a later turn |
+| Forking is enabled by default | Forking is disabled by default, requires the `FORK_SUBAGENT` feature, and is disabled in coordinator / non-interactive sessions |
+| A fork is the internal `runForkedAgent()` | An AgentTool fork uses the Tool protocol; `runForkedAgent()` is an internal runtime API |
+| `cwd` and `isolation: "worktree"` can be combined freely | The schema describes them as mutually exclusive; the implementation gives `cwd` precedence for the working directory, so callers should not mix them |
+| `TaskOutput` is the preferred way to read background output | Current prompts recommend `Read(output_file)`; `TaskOutput` remains for compatibility and blocking waits |
+
+## Source-reading paths
+
+To verify behavior from source, start at different entry points according to the question:
+
+| Question | Reading order |
+|------|----------|
+| Why an `Agent(...)` parameter has a given effect | `AgentTool.tsx` schema -> parameter destructuring in `AgentTool.call()` -> routing rules |
+| Why a normal sub-agent waits synchronously | `await tool.call()` in `toolExecution.ts` -> synchronous branch of `AgentTool.call()` -> `runAgent()` |
+| Why background completion notifies the main model | `registerAsyncAgent()` -> `runAsyncAgentLifecycle()` -> `enqueueAgentNotification()` -> queue processor |
+| Why `SendMessage` can recover an old agent | Address resolution in `SendMessageTool.ts` -> `queuePendingMessage()` / `resumeAgentBackground()` -> sidechain transcript |
+| Why a fork is not a normal agent | `isForkSubagentEnabled()` -> `FORK_AGENT` -> `buildForkedMessages()` -> `useExactTools` |
+| Why a slash command fork does not use the Tool protocol | Skill-load frontmatter -> `processSlashCommand()` -> `executeForkedSlashCommand()` |
+| Why an internal fork has no tool result | `runForkedAgent()` -> `query()` -> caller consumes `ForkedAgentResult` |
+
+## Maintenance notes
+
+When changing sub-agent behavior, check these locations together:
+
+| File | Why it matters |
+|------|------------|
+| `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` | Routing, permissions, synchronous/asynchronous execution, and result mapping converge here |
+| `packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` | AgentTool fork gate, FORK_AGENT, and message construction |
+| `packages/builtin-tools/src/tools/AgentTool/runAgent.ts` | The sub-agent's actual runtime loop |
+| `src/tasks/LocalAgentTask/LocalAgentTask.tsx` | Background-agent state and notifications |
+| `src/utils/messageQueueManager.ts` | Unified command queue |
+| `src/utils/queueProcessor.ts` | REPL queue-consumption rules |
+| `src/cli/print.ts` | Headless / SDK queue consumption and background waiting |
+| `src/utils/processUserInput/processSlashCommand.tsx` | Slash command fork |
+| `src/utils/forkedAgent.ts` | Internal `runForkedAgent()` |
+| `src/skills/loadSkillsDir.ts` | Parsing `context: fork` in skill frontmatter |
