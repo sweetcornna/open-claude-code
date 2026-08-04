@@ -1,0 +1,224 @@
+---
+title: "The Skills system — prompts as capabilities"
+description: "A detailed analysis of Claude Code's complete Skills implementation: disk loading, Frontmatter parsing, budget-aware description truncation, dual execution modes (inline/fork), permission allowlists, conditional activation, dynamic discovery, and remote Skill loading."
+keywords: ["Skills", "SkillTool", "Skill loading", "Frontmatter", "whenToUse", "allowedTools", "fork execution", "dynamic discovery"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/extensibility/skills) · [日本語](/docs/ja/extensibility/skills)
+
+{/* Goal of this chapter: explain the complete Skill path from file to execution */}
+
+## Tool vs. Skill: the essential difference
+
+| | Tool | Skill |
+|---|---|---|
+| Granularity | One atomic operation, such as reading a file or running a command | A complete workflow, such as reviewing code or creating a PR |
+| Trigger | Selected autonomously by the AI | Invoked by the user as `/skill-name` or matched automatically by the AI through `SkillTool` |
+| Essence | TypeScript execution logic | Declarative packaging of a **Prompt + permission configuration** |
+| Registration | `src/tools.ts` → `getTools()` | `src/commands.ts` → `getCommands()` |
+| Executor | Each Tool's `call()` method | `SkillTool.call()` → two branches (inline / fork) |
+
+The central insight behind Skills is that **Prompt quality, not code logic, is the key to an involved task**. A code-review Skill does not need a review engine. It needs to tell the AI what to review, in what order, and in what format to report the result. A Skill packages that experience as reusable Markdown.
+
+## Five Skill sources and their loading paths
+
+### 1. Built-in Commands
+
+The memoized `COMMANDS` array at `src/commands.ts:299` hard-codes more than 70 commands, including `/commit`, `/review`, and `/compact`. These commands are TypeScript modules rather than Markdown, but they implement the same `Command` interface from `src/types/command.ts`.
+
+### 2. Bundled Skills (packaged at build time)
+
+Modules register these Skills during initialization through `registerBundledSkill()` (`src/skills/bundledSkills.ts:53`). Key properties:
+
+- **Lazy file extraction**: If a Skill declares `files` (reference files), the system extracts them to a temporary directory (`getBundledSkillExtractDir()`) only on first invocation. `safeWriteFile` at line 186 uses `O_NOFOLLOW | O_EXCL` to prevent symlink attacks.
+- **Closure-level memoization**: Concurrent calls share one extraction promise, preventing write races.
+- The source is marked as `source: 'bundled'`, giving it **non-truncatable** status in the Prompt budget.
+
+### 3. Skills on disk (`.occ/skills/`)
+
+`loadSkillsFromSkillsDir()` (`src/skills/loadSkillsDir.ts:407`) implements the most important loading path:
+
+```
+Managed policy: $MANAGED_DIR/.occ/skills/     (policySettings)
+User-global:   ~/.occ/skills/                 (userSettings)
+Project-level: .occ/skills/                   (projectSettings, walk upward to home)
+Extra dirs:    .occ/skills/ under paths specified by --add-dir
+```
+
+**Loading protocol**: The loader recognizes only the `skill-name/SKILL.md` directory form; it no longer supports standalone `.md` files. The loading flow is:
+
+1. Scan the directory with `readdir` → keep only entries where `isDirectory()` or `isSymbolicLink()` is true
+2. Look for `SKILL.md` in each child directory; skip the directory if the file is absent
+3. Parse the YAML header with `parseFrontmatter()` and extract fields such as `whenToUse`, `allowedTools`, and `context`
+4. Parse all 16 frontmatter fields consistently through `parseSkillFrontmatterFields()` at line 185
+5. Construct a `Command` object through `createSkillCommand()` at line 270
+
+**Deduplication**: `getFileIdentity` at line 118 resolves symlinks through `realpath()` to obtain a canonical path. This prevents duplicate loading through symlinks or overlapping parent directories.
+
+### 4. MCP Skills (dynamic discovery)
+
+`registerMCPSkillBuilders()` registers builders, and `mcpSkillBuilders.ts` converts prompts from an MCP Server into `Command` objects. Their source is marked as `loadedFrom: 'mcp'`.
+
+**Security boundary**: Prompt content from MCP Skills **cannot execute inline shell commands**. The `loadedFrom !== 'mcp'` guard at `loadSkillsDir.ts:374` enforces this because remote content is untrusted.
+
+### 5. Legacy Commands (`/commands/` directory)
+
+`loadSkillsFromCommandsDir()` at line 566 loads the legacy format for backward compatibility. It accepts both `SKILL.md` directories and standalone `.md` files.
+
+## Complete Frontmatter field set
+
+A complete `SKILL.md` frontmatter block, parsed by `parseSkillFrontmatterFields` at line 185:
+
+```yaml
+---
+name: code-review                    # Display name (overrides the directory name)
+description: Systematic code review  # Description (or extracted from the first Markdown paragraph)
+when_to_use: "The user asks to review code or find bugs" # Basis for automatic AI matching
+allowed-tools:                       # Tool allowlist
+  - Read
+  - Grep
+  - Glob
+argument-hint: "<file-or-directory>" # Argument hint
+arguments: [path]                    # Declarative argument names (used for $ARGUMENTS substitution)
+model: opus                          # Model override
+effort: high                         # Effort level
+context: fork                        # Execution mode: inline (default) | fork
+agent: code-reviewer                 # Agent definition file to use
+user-invocable: true                 # Whether the user can invoke it with /
+disable-model-invocation: false      # Prevent autonomous AI invocation
+version: "1.0"                       # Version
+paths:                               # File-path patterns for conditional activation
+  - "src/**/*.ts"
+hooks:                               # Hook configuration
+  PreToolUse:
+    - command: ["echo", "checking"]
+shell: ["bash"]                      # Shell execution environment
+---
+```
+
+The parser extracts 16 fields. At execution time, `allowedTools`, `model`, and `effort` dynamically modify `toolPermissionContext`.
+
+## Two execution paths: Inline vs. Fork
+
+In its `call()` method, SkillTool (`packages/builtin-tools/src/tools/SkillTool/SkillTool.ts:332`) branches according to `command.context`.
+
+### Inline mode (default)
+
+The Skill's Prompt content is injected as a **UserMessage**, and execution continues in the main conversation:
+
+1. `processPromptSlashCommand()` performs argument substitution (`$ARGUMENTS`) and shell-command expansion (`` !`...` ``)
+2. `${CLAUDE_SKILL_DIR}` is replaced with the absolute path to the Skill directory
+3. `${CLAUDE_SESSION_ID}` is replaced with the current session ID
+4. The method returns `newMessages` (injected into the conversation) + `contextModifier` (which modifies the permission context)
+
+The `contextModifier` at line 776 performs three operations:
+- **Tool allowlist injection**: Merge `allowedTools` into `alwaysAllowRules.command`
+- **Model switching**: `resolveSkillModelOverride()` applies the model override while preserving the `[1m]` suffix to avoid truncating the context window to 200K
+- **Effort override**: Modify `effortValue`
+
+### Fork mode (`context: fork`)
+
+The Skill executes in an **independent sub-agent** through `executeForkedSkill` at line 122:
+
+1. `prepareForkedCommandContext()` constructs an isolated Agent definition and Prompt
+2. `runAgent()` starts a sub-agent loop with an independent token budget
+3. An `onProgress` callback reports tool-use progress
+4. `extractResultText()` extracts the result, after which all sub-agent messages are released by setting `agentMessages.length = 0`
+5. `clearInvokedSkillsForAgent()` performs final state cleanup
+
+Fork mode suits work that requires strong isolation, such as a long-running review, because it does not pollute the main conversation's context.
+
+## Permission model: the Safe Properties allowlist
+
+`checkPermissions()` at line 433 implements a five-layer permission check:
+
+```
+1. Match Deny rules (supports exact matches and prefix:* wildcards)
+   ↓ no match
+2. Automatically allow a remote canonical Skill (EXPERIMENTAL_SKILL_SEARCH + USER_TYPE === 'ant')
+   ↓ no match
+3. Match Allow rules
+   ↓ no match
+4. Check the Safe Properties allowlist (skillHasOnlySafeProperties, line 911)
+   ↓ contains an unsafe property
+5. Ask the user for confirmation (suggest exact-match and prefix-match rules)
+```
+
+**Safe Properties** (`SAFE_SKILL_PROPERTIES` at line 876) is an allowlist of 30 property names covering every safe property in the `PromptCommand` and `CommandBase` types. Any **meaningful property value** that is not in the allowlist—excluding `undefined`, `null`, empty arrays, and empty objects—triggers a permission request. This is a **positive-security** design: any property added in the future requires permission by default.
+
+## Prompt budget: truncation at 1% of the context window
+
+The Skill list has a strict character budget when injected into the System Prompt (`prompt.ts`):
+
+- **Budget calculation**: `contextWindowTokens × 4 chars/token × 1%` (about 8000 characters)
+- **Per-entry limit**: `MAX_LISTING_DESC_CHARS = 250` characters; longer descriptions are truncated with `…`
+- **Bundled Skills cannot be truncated**: Their full descriptions always remain; when the budget is insufficient, only non-bundled Skills are truncated
+- **Degradation strategy**:
+  1. Try full descriptions → over budget?
+  2. Keep bundled descriptions in full and divide the remaining budget evenly among non-bundled descriptions → less than 20 characters per description?
+  3. Keep only the names of non-bundled Skills
+
+`formatCommandsWithinBudget()` (`prompt.ts:70`) implements this three-level degradation.
+
+## Dynamic discovery and conditional activation
+
+### Dynamic discovery by file path
+
+`discoverSkillDirsForPaths()` (`loadSkillsDir.ts:861`) runs during file operations:
+
+1. Starting from the operated file's path, **walk upward** to CWD without including CWD itself
+2. Look for a `.occ/skills/` directory at each level
+3. Deduplicate with `realpath` and use `git check-ignore` to filter gitignored directories
+4. Sort by path depth with **deeper paths first**, giving a Skill closer to the file higher priority
+
+### Conditional activation (paths frontmatter)
+
+A Skill with `paths` patterns is not immediately available when loaded. Instead, it is stored in the `conditionalSkills` Map. When an operated file path matches one of the Skill's paths patterns, using the `ignore` library's gitignore-style matching, the Skill is **activated** by moving it from `conditionalSkills` to `dynamicSkills`.
+
+Therefore, a testing Skill configured to activate only for `*.test.ts` remains completely invisible until the AI reads or edits a test file.
+
+## Usage-frequency ranking
+
+`recordSkillUsage()` (`skillUsageTracking.ts`) computes a Skill's ranking score with exponential decay:
+
+```
+score = usageCount × max(0.5^(daysSinceUse / 7), 0.1)
+```
+
+- **Seven-day half-life**: Usage from one week ago receives half the weight
+- **0.1 floor**: Prevents an old but frequently used Skill from sinking completely
+- **60-second debounce**: Multiple invocations of the same Skill within one minute count once, reducing file I/O
+
+Ranking data is persisted in the global configuration's `skillUsage` field.
+
+## Remote Skill loading (Experimental)
+
+The `EXPERIMENTAL_SKILL_SEARCH` feature flag enables loading remote Skills in `_canonical_<slug>` form from AKI/GCS/S3:
+
+1. In `validateInput()`, `stripCanonicalPrefix()` intercepts canonical names
+2. `executeRemoteSkill()` at line 970 loads SKILL.md from a remote URL
+3. Supported URL schemes include `gs://`, `https://`, and `s3://`
+4. After stripping frontmatter and substituting `${CLAUDE_SKILL_DIR}`, the content is injected directly
+5. `addInvokedSkill()` registers it in compaction-retained state so it can still be restored after compaction
+6. A remote Skill does not pass through `processPromptSlashCommand`: it has no `!command` substitution or `$ARGUMENTS` expansion
+
+## Complete lifecycle summary
+
+```
+SKILL.md on disk
+  ↓ parseFrontmatter()
+  ↓ parseSkillFrontmatterFields() → 16 fields
+  ↓ createSkillCommand() → Command object
+  ↓ deduplicate (realpath + seenFileIds)
+  ↓ conditional Skill → conditionalSkills Map (wait for path-match activation)
+  ↓ getSkillDirCommands() memoized cache
+  ↓ getAllCommands() merges local + MCP
+  ↓ formatCommandsWithinBudget() → inject the truncated Skill list into the System Prompt
+  ↓ AI selects a matching Skill
+  ↓ SkillTool.validateInput() → validate the name + check existence
+  ↓ SkillTool.checkPermissions() → five-layer permission check
+  ↓ SkillTool.call() → inline or fork execution
+  ↓ contextModifier() → inject allowedTools + model + effort
+  ↓ recordSkillUsage() → update usage-frequency ranking
+```

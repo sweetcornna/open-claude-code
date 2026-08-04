@@ -1,0 +1,355 @@
+---
+title: "MCP 設定 — 複数ソースの統合、scope、ポリシー制御"
+description: "Claude Code の MCP 設定について、ソースの階層、統合の優先順位、トランスポート種別、企業ポリシーによる制御、プラグイン統合、予約名の仕組みを詳しく説明します。"
+keywords: ["MCP", "設定", "settings.json", ".mcp.json", "企業ポリシー", "プラグイン"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/extensibility/mcp-configuration) · [中文](/docs/zh/extensibility/mcp-configuration) · **日本語**
+
+## 設定ソースと scope
+
+Claude Code の MCP 設定は複数のソースから読み込まれ、各ソースに `scope` が対応します。設定は優先度に従って統合され、同名の設定は優先度の高いソースが低いソースを上書きします。
+
+### ソース一覧
+
+| ソース | Scope | ファイル/インターフェース | 説明 |
+|--------|-------|---------------------------|------|
+| 企業管理 | `enterprise` | システム管理パスの `managed-mcp.json` | **排他モード**: 存在する場合はほかのすべてのソースを無視 |
+| ローカルプロジェクト | `local` | `<project>/.occ/settings.local.json` | プロジェクト単位の非公開設定（VCS へコミットしない） |
+| プロジェクト設定 | `project` | `<project>/.mcp.json` | プロジェクト単位の共有設定（VCS へコミット可能） |
+| ユーザー全体 | `user` | `~/.occ/settings.json` | ユーザー単位の設定。すべてのプロジェクトで共有 |
+| プラグイン | `dynamic` | プラグイン manifest 内の `.mcp.json` / `.mcpb` | プラグインが提供する MCP サーバー |
+| claude.ai | `claudeai` | API から取得 | claude.ai の Web 側で設定された connector |
+| 内蔵動的 | `dynamic` | コードから登録 | Computer Use / Chrome などの内蔵サーバー |
+| IDE SDK | `sdk` | IDE から受け取る | VS Code / JetBrains 組み込みモード |
+
+### 統合の優先順位（低い順）
+
+```
+claude.ai connector       ← 最低優先度
+    ↓ 重複排除
+プラグインサーバー
+    ↓ 重複排除
+ユーザー全体設定
+    ↓
+プロジェクト設定（.mcp.json） ← ユーザーの承認が必要
+    ↓
+ローカルプロジェクト設定
+    ↓
+動的設定（内蔵 MCP）       ← 最高優先度
+```
+
+統合は `Object.assign({}, dedupedPluginServers, userServers, approvedProjectServers, localServers)` で実装されます。後に現れる同名キーが前のキーを上書きします。
+
+## 企業管理モード
+
+`managed-mcp.json` ファイルが存在すると、**排他モード**に入ります。
+
+```typescript
+// config.ts:1084
+if (doesEnterpriseMcpConfigExist()) {
+  // 企業設定だけを返し、user/project/plugin/claude.ai のすべての設定を無視する
+  return { servers: filtered, errors: [] }
+}
+```
+
+特性:
+- パスはシステム管理によって決まる（`getManagedFilePath()` + `managed-mcp.json`）
+- user、project、plugin、claude.ai のすべての設定を上書きする
+- ポリシーフィルタ（allowlist/denylist）は引き続き適用する
+- CLI から新しいサーバーを追加できない（`addMcpConfig` が拒否する）
+
+## トランスポート種別と設定 Schema
+
+### stdio（既定）
+
+子プロセスを起動し、stdin/stdout を介して JSON-RPC で通信します。
+
+```json
+{
+  "my-server": {
+    "command": "npx",
+    "args": ["-y", "@my-org/mcp-server"],
+    "env": { "API_KEY": "..." }
+  }
+}
+```
+
+`type` フィールドは省略できます（既定値は `stdio`）。環境変数は `env` から子プロセスへ渡され、現在のプロセス環境と統合されます。
+
+**Windows での注意**: `npx` を使う場合は `cmd /c npx` でラップする必要があります。そうしなければエラーになります。
+
+### SSE（Server-Sent Events）
+
+HTTP SSE でリモート MCP サーバーへ接続します。
+
+```json
+{
+  "my-remote": {
+    "type": "sse",
+    "url": "https://mcp.example.com/sse",
+    "headers": { "Authorization": "Bearer ..." },
+    "oauth": {
+      "clientId": "...",
+      "authServerMetadataUrl": "https://auth.example.com/.well-known/oauth-authorization-server"
+    }
+  }
+}
+```
+
+OAuth 認証フローをサポートします。認証に失敗すると `needs-auth` 状態になり、15 分 TTL のキャッシュによって同じプロンプトが繰り返されるのを防ぎます。
+
+### HTTP（Streamable HTTP）
+
+HTTP ストリーミングトランスポートです。
+
+```json
+{
+  "my-http": {
+    "type": "http",
+    "url": "https://mcp.example.com/mcp",
+    "headers": { "X-API-Key": "..." }
+  }
+}
+```
+
+SSE と同じ OAuth 設定をサポートします。
+
+### WebSocket
+
+```json
+{
+  "my-ws": {
+    "type": "ws",
+    "url": "wss://mcp.example.com/ws"
+  }
+}
+```
+
+### IDE 専用種別（内部）
+
+`sse-ide` と `ws-ide` は IDE 拡張専用の種別であり、ユーザーが直接設定するものではありません。
+
+- `sse-ide`: lockfile token で認証
+- `ws-ide`: `X-Claude-Code-Ide-Authorization` header で認証
+
+### SDK 種別（内部）
+
+`type: "sdk"` は IDE 組み込みモードから渡され、予約名チェックと企業管理の排他制限を受けません。
+
+### claude.ai プロキシ種別（内部）
+
+`type: "claudeai-proxy"` は claude.ai の Web 側で設定された connector が使います。OAuth bearer token で認証し、401 リトライをサポートします。
+
+## 設定操作
+
+### MCP サーバーを追加する
+
+CLI コマンド `occ mcp add` または API の `addMcpConfig()` を使います。
+
+```bash
+# ユーザー設定へ追加する
+occ mcp add my-server -s user -- npx @my-org/mcp-server
+
+# プロジェクト設定へ追加する
+occ mcp add my-server -s project -- npx @my-org/mcp-server
+
+# HTTP 種別を追加する
+occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
+```
+
+追加時の検証フロー:
+
+1. **名前の検証**: 英字、数字、ハイフン、アンダースコアだけを許可
+2. **予約名の確認**: `chrome-devtools` は予約済み。`computer-use` は `computerUse.backend` が `builtin`（既定）の場合に限り予約済み
+3. **企業管理の確認**: 企業モードでは追加を拒否
+4. **Schema 検証**: Zod で設定形式を検証
+5. **ポリシー確認**: denylist による拒否、allowlist による検証
+
+### MCP サーバーを削除する
+
+```bash
+occ mcp remove my-server -s user
+```
+
+### MCP サーバーを一覧表示する
+
+```bash
+occ mcp list
+```
+
+## プロジェクト設定の承認
+
+`.mcp.json` 内のプロジェクト設定は、ユーザーが明示的に承認するまで有効になりません。
+
+```typescript
+// config.ts:1166
+const approvedProjectServers: Record<string, ScopedMcpServerConfig> = {}
+for (const [name, config] of Object.entries(projectServers)) {
+  if (getProjectMcpServerStatus(name) === 'approved') {
+    approvedProjectServers[name] = config
+  }
+}
+```
+
+プロジェクトを初めて開いたとき、Claude Code は `.mcp.json` 内の各サーバーについて承認を求めます。承認状態はローカル設定に永続化されます。
+
+## プラグイン MCP の統合
+
+プラグインは manifest 内の `.mcp.json` または `.mcpb` ファイルで MCP サーバーを宣言します。
+
+```typescript
+// プラグイン MCP の読み込みフロー
+const pluginResult = await loadAllPluginsCacheOnly()
+const pluginServerResults = await Promise.all(
+  pluginResult.enabled.map(plugin => getPluginMcpServers(plugin, mcpErrors))
+)
+```
+
+### プラグインの名前空間
+
+プラグイン MCP サーバーの名前は `plugin:<pluginName>:<serverName>` 形式なので、手動設定した名前とは衝突しません。
+
+### 重複排除
+
+プラグインサーバーは内容署名で重複を排除します（`dedupPluginMcpServers`）。
+
+- **stdio**: 署名 = `stdio:` + JSON.stringify([command, ...args])
+- **URL**: 署名 = `url:` + 元の URL（CCR proxy URL を unwrap）
+- **sdk**: 署名は null。重複排除しない
+
+重複排除の規則:
+1. 手動設定をプラグイン設定より優先する
+2. 先に読み込まれたプラグインを後から読み込まれたものより優先する
+3. 抑止されたプラグインサーバーは `/plugin` UI に通知を表示する
+
+### claude.ai connector の重複排除
+
+claude.ai connector は同じ内容署名の仕組みで重複を排除します（`dedupClaudeAiMcpServers`）。
+- 有効な手動設定だけが重複排除に参加する（無効な手動設定が connector を抑止してはならない）
+- connector 名の形式は `claude.ai <DisplayName>`
+
+## ポリシー制御
+
+### Allowlist / Denylist
+
+企業ポリシーは allowlist と denylist で利用可能な MCP サーバーを制御します。
+
+```typescript
+// config.ts:1243 - 最終ポリシーフィルタ
+for (const [name, serverConfig] of Object.entries(configs)) {
+  if (!isMcpServerAllowedByPolicy(name, serverConfig)) {
+    continue  // ポリシーで禁止されたサーバーを飛ばす
+  }
+  filtered[name] = serverConfig
+}
+```
+
+ポリシーチェックの対象:
+- サーバー名の一致
+- stdio の command + args の一致
+- URL の URL パターン一致（ワイルドカード対応）
+
+### プラグイン限定モード
+
+`isRestrictedToPluginOnly('mcp')` が有効な場合、プラグインが提供する MCP サーバーだけを許可します。ユーザー設定とプロジェクト設定は無視されます。
+
+## 環境変数の展開
+
+MCP 設定内の環境変数は `$VAR` と `${VAR}` の構文で展開できます。
+
+```json
+{
+  "my-server": {
+    "command": "npx",
+    "args": ["@my-org/mcp-server"],
+    "env": {
+      "API_KEY": "$MY_API_KEY",
+      "DB_URL": "${DATABASE_URL}"
+    }
+  }
+}
+```
+
+展開時に変数が見つからなければ警告を生成しますが、設定の読み込みは中断しません。
+
+## 内蔵 MCP の動的登録
+
+内蔵 MCP サーバーは `main.tsx` の起動処理で設定へ動的に注入されます。
+
+### Computer Use MCP
+
+```typescript
+// src/utils/computerUse/setup.ts
+export function setupComputerUseMCP(): {
+  mcpConfig: Record<string, ScopedMcpServerConfig>
+  allowedTools: string[]
+} {
+  return {
+    mcpConfig: {
+      "computer-use": {
+        type: "stdio",
+        command: process.execPath,
+        args: ["--computer-use-mcp"],
+        scope: "dynamic",
+      }
+    },
+    allowedTools: ["mcp__computer-use__screenshot", ...]
+  }
+}
+```
+
+有効化条件:
+- Feature flag `CHICAGO_MCP` が有効
+- `getPlatform() !== "unknown"`（macOS/Windows/Linux）
+- 非対話セッションではない
+- GrowthBook gate `getChicagoEnabled()` が true を返す
+
+### Chrome DevTools MCP
+
+```typescript
+// Computer Use と同様に main.tsx で登録する
+const { mcpConfig, allowedTools, systemPrompt } = setupChromeDevtools()
+dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
+```
+
+Computer Use とは異なり、これはプロセス内 server ではありません。`mcpConfig` は通常の
+stdio 設定であり、`node <chrome-devtools-mcp エントリ>` を spawn します。`allowedTools` に含まれるのは 9 個の
+読み取り専用ツールだけで、それ以外はすべて権限確認へ進みます。
+
+有効化条件:
+- `--chrome` 引数、`CLAUDE_CODE_ENABLE_CFC` 環境変数、または `chromeDevtoolsDefaultEnabled` 設定
+- 非対話セッションではない（明示的に `--chrome` を指定した場合を除く）
+
+詳しくは `docs/zh/features/chrome-devtools-mcp.md` を参照してください。
+
+### VSCode SDK MCP
+
+IDE 組み込みモードは初期化メッセージで `type:'sdk'` の設定を渡し、`setupVscodeSdkMcp()` が双方向通知を設定します。
+
+## 予約名
+
+次の MCP サーバー名は予約済みであり、ユーザーは同名のサーバーを手動設定できません。
+
+| 名前 | 用途 | 確認条件 |
+|------|------|----------|
+| `chrome-devtools` | Chrome ブラウザ制御 | 常に確認 |
+| `computer-use` | デスクトップ自動化 | `CHICAGO_MCP` feature flag が有効な場合に確認 |
+| `claude-vscode` | VSCode IDE 統合 | SDK から渡されるため、名前チェックを通らない |
+
+予約名は 2 か所で確認されます。
+1. `addMcpConfig()`（`config.ts:636-648`）— 実行時に拒否
+2. `main.tsx` の起動時チェック（`main.tsx:2351-2368`）— 起動時に終了
+
+## 主要ソースファイル
+
+| ファイル | 責務 |
+|----------|------|
+| `src/services/mcp/config.ts` | 設定管理の中核: 統合、重複排除、ポリシー、追加/削除 |
+| `src/services/mcp/types.ts` | Zod Schema 定義、型宣言 |
+| `src/services/mcp/client.ts` | 接続管理、トランスポート層の選択 |
+| `src/utils/plugins/mcpPluginIntegration.ts` | プラグイン MCP 設定の読み込み |
+| `src/utils/computerUse/setup.ts` | Computer Use の動的登録 |
+| `src/utils/chromeDevtools/common.ts` | Chrome DevTools MCP の予約名、ツール一覧、読み取り専用 allowlist |
+| `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK の双方向通知 |

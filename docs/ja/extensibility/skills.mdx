@@ -1,0 +1,224 @@
+---
+title: "Skills — Prompt を能力にするアーキテクチャ"
+description: "Claude Code の Skills システムを詳解します。ディスクからの読み込み、Frontmatter の解析、予算を考慮した説明の切り詰め、2 つの実行モード（inline/fork）、権限 allowlist、条件付き有効化、動的発見、リモート Skill の読み込みまで、Skill のライフサイクル全体を扱います。"
+keywords: ["Skills", "SkillTool", "Skill の読み込み", "Frontmatter", "whenToUse", "allowedTools", "fork 実行", "動的発見"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/extensibility/skills) · [中文](/docs/zh/extensibility/skills) · **日本語**
+
+{/* この章の目的: Skill システムがファイルから実行に至るまでの全経路を示す */}
+
+## Tool と Skill の本質的な違い
+
+| | Tool | Skill |
+|---|---|---|
+| 粒度 | 1 つの原子的な操作（ファイルを読む、コマンドを実行する） | 完結したワークフロー（コードレビュー、PR 作成） |
+| 起動方法 | AI が自律的に選択 | ユーザーが `/skill-name` を実行、または AI が `SkillTool` で自動照合 |
+| 本質 | TypeScript の実行ロジック | **Prompt + 権限設定**を宣言的にまとめたもの |
+| 登録位置 | `src/tools.ts` → `getTools()` | `src/commands.ts` → `getCommands()` |
+| 実行器 | 各 Tool の `call()` メソッド | `SkillTool.call()` → 2 つの分岐（inline / fork） |
+
+Skill の中核となる洞察は、**複雑なタスクで重要なのはコードロジックではなく Prompt の品質である**という点です。コードレビュー Skill にレビューエンジンは要りません。AI に「何をレビューし、どの順序で進め、どの形式で出力するか」を伝えればよいのです。Skill はこの種の「経験」を再利用可能な Markdown としてまとめます。
+
+## Skill の 5 つのソースと読み込み経路
+
+### 1. 内蔵コマンド（Built-in Commands）
+
+`src/commands.ts:299` の `COMMANDS` memoize 配列にハードコードされ、70 以上のコマンド（`/commit`、`/review`、`/compact` など）を含みます。Markdown ではなく TypeScript モジュールですが、同じ `Command` インターフェース（`src/types/command.ts`）を実装します。
+
+### 2. Bundled Skills（コンパイル時に同梱）
+
+モジュール初期化時に `registerBundledSkill()`（`src/skills/bundledSkills.ts:53`）で登録します。主な特性:
+
+- **ファイルの遅延展開**: Skill が `files`（参照ファイル）を宣言している場合、初回呼び出し時にだけ一時ディレクトリ（`getBundledSkillExtractDir()`）へ展開する。`O_NOFOLLOW | O_EXCL` を使い、シンボリックリンク攻撃を防ぐ（`safeWriteFile`、186 行）
+- **クロージャ単位の memoize**: 同時呼び出しは同じ extraction promise を共有し、競合する書き込みを避ける
+- ソースは `source: 'bundled'` として記録され、Prompt 予算では**切り詰められない**特権を持つ
+
+### 3. ディスク上の Skills（`.occ/skills/`）
+
+`loadSkillsFromSkillsDir()`（`src/skills/loadSkillsDir.ts:407`）が読み込みます。これは最も重要な読み込み経路です。
+
+```
+管理ポリシー: $MANAGED_DIR/.occ/skills/     (policySettings)
+ユーザー全体: ~/.occ/skills/                 (userSettings)
+プロジェクト: .occ/skills/                   (projectSettings, home まで上向きに探索)
+追加ディレクトリ: --add-dir で指定したパス配下の .occ/skills/
+```
+
+**読み込みプロトコル**: `skill-name/SKILL.md` というディレクトリ形式だけを認識し、単一の `.md` ファイルはサポートしません。読み込みの流れ:
+
+1. `readdir` でディレクトリを走査し、`isDirectory()` または `isSymbolicLink()` のエントリだけを残す
+2. 各サブディレクトリで `SKILL.md` を探し、見つからなければ飛ばす
+3. `parseFrontmatter()` で YAML ヘッダーを解析し、`whenToUse`、`allowedTools`、`context` などのフィールドを取り出す
+4. `parseSkillFrontmatterFields()`（185 行）で 16 個の frontmatter フィールドを一括解析する
+5. `createSkillCommand()`（270 行）で `Command` オブジェクトを構築する
+
+**重複排除**: `realpath()` でシンボリックリンクを解決して正規パスを得ます（`getFileIdentity`、118 行）。シンボリックリンクや重複する親ディレクトリによって同じ Skill が複数回読み込まれるのを防ぎます。
+
+### 4. MCP Skills（動的発見）
+
+`registerMCPSkillBuilders()` で builder を登録し、`mcpSkillBuilders.ts` が MCP Server の prompt を `Command` オブジェクトへ変換します。`loadedFrom: 'mcp'` として記録されます。
+
+**セキュリティ境界**: MCP Skills の Prompt は**インライン shell コマンドを実行できません**。リモートの内容は信頼できないため、`loadSkillsDir.ts:374` の `loadedFrom !== 'mcp'` guard が禁止します。
+
+### 5. Legacy Commands（`/commands/` ディレクトリ）
+
+後方互換のための旧形式で、`loadSkillsFromCommandsDir()`（566 行）が読み込みます。`SKILL.md` ディレクトリ形式と単一の `.md` ファイル形式の両方をサポートします。
+
+## Frontmatter フィールド一覧
+
+`SKILL.md` の完全な frontmatter（`parseSkillFrontmatterFields`、185 行）:
+
+```yaml
+---
+name: code-review                    # 表示名（ディレクトリ名を上書き）
+description: 体系的なコードレビュー # 説明（または Markdown の最初の段落から抽出）
+when_to_use: "ユーザーがコードレビューや bug の発見を求めたとき" # AI の自動照合に使う
+allowed-tools:                       # ツールの allowlist
+  - Read
+  - Grep
+  - Glob
+argument-hint: "<file-or-directory>" # 引数のヒント
+arguments: [path]                    # 宣言的な引数名（$ARGUMENTS の置換に使う）
+model: opus                          # モデルの上書き
+effort: high                         # effort レベル
+context: fork                        # 実行モード: inline（既定）| fork
+agent: code-reviewer                 # Agent 定義ファイルを指定
+user-invocable: true                 # ユーザーが /呼び出しできるか
+disable-model-invocation: false      # AI による自律呼び出しを禁止
+version: "1.0"                       # バージョン
+paths:                               # 条件付き有効化のファイルパスパターン
+  - "src/**/*.ts"
+hooks:                               # Hook 設定
+  PreToolUse:
+    - command: ["echo", "checking"]
+shell: ["bash"]                      # Shell 実行環境
+---
+```
+
+解析後は 16 個のフィールドが抽出されます。そのうち `allowedTools`、`model`、`effort` は実行時に `toolPermissionContext` を動的に変更します。
+
+## 2 つの実行経路: Inline と Fork
+
+SkillTool（`packages/builtin-tools/src/tools/SkillTool/SkillTool.ts:332`）は `call()` 内で `command.context` に基づいて分岐します。
+
+### Inline モード（既定）
+
+Skill の Prompt は **UserMessage** として注入され、そのままメインの会話フローで実行を続けます。
+
+1. `processPromptSlashCommand()` が引数の置換（`$ARGUMENTS`）と shell コマンドの展開（`` !`...` ``）を処理する
+2. `${CLAUDE_SKILL_DIR}` を Skill のディレクトリの絶対パスへ置き換える
+3. `${CLAUDE_SESSION_ID}` を現在のセッション ID へ置き換える
+4. `newMessages`（会話フローへ注入）+ `contextModifier`（権限コンテキストを変更）を返す
+
+`contextModifier`（776 行）が行う 3 つの処理:
+- **ツール allowlist の注入**: `allowedTools` を `alwaysAllowRules.command` へ統合する
+- **モデル切り替え**: `resolveSkillModelOverride()` がモデル上書きを処理し、200K ウィンドウで切り詰められないよう `[1m]` 接尾辞を保持する
+- **effort レベルの上書き**: `effortValue` を変更する
+
+### Fork モード（`context: fork`）
+
+Skill は**独立したサブ Agent** で実行されます（`executeForkedSkill`、122 行）。
+
+1. `prepareForkedCommandContext()` で分離された Agent 定義と Prompt を構築する
+2. `runAgent()` でサブ Agent ループを起動する。独立した token 予算を持つ
+3. `onProgress` コールバックでツール使用の進捗を報告する
+4. `extractResultText()` で結果を抽出し、抽出後はサブ Agent のすべてのメッセージを解放する（`agentMessages.length = 0`）
+5. 最後に `clearInvokedSkillsForAgent()` で状態を削除する
+
+Fork モードは、長時間のレビュータスクなど強い分離が必要な場面に適しています。メイン会話のコンテキストを汚しません。
+
+## 権限モデル: Safe Properties allowlist
+
+`checkPermissions()`（433 行）は 5 段階の権限チェックを実装します。
+
+```
+1. Deny 規則の照合（完全一致と prefix:* ワイルドカードに対応）
+   ↓ 一致しない
+2. リモート canonical Skill を自動許可（EXPERIMENTAL_SKILL_SEARCH + USER_TYPE === 'ant'）
+   ↓ 一致しない
+3. Allow 規則の照合
+   ↓ 一致しない
+4. Safe Properties allowlist の確認（skillHasOnlySafeProperties、911 行）
+   ↓ 安全でないプロパティがある
+5. ユーザーへ確認する（完全一致と接頭辞一致の 2 つの推奨規則を添える）
+```
+
+**Safe Properties**（`SAFE_SKILL_PROPERTIES`、876 行）は 30 個のプロパティ名からなる allowlist です。`PromptCommand` と `CommandBase` の 2 型に含まれる安全なプロパティをすべてカバーします。allowlist にない**意味のあるプロパティ値**（`undefined`、`null`、空配列、空オブジェクトを除く）は、すべて権限リクエストを発生させます。これは**肯定的セキュリティモデル**です。将来追加されるプロパティは既定で権限を必要とします。
+
+## Prompt 予算: コンテキストウィンドウの 1% に収める切り詰め戦略
+
+Skill 一覧を System Prompt へ注入するときは、厳密な文字数予算があります（`prompt.ts`）。
+
+- **予算計算**: `contextWindowTokens × 4 chars/token × 1%`（約 8000 文字）
+- **1 件あたりの上限**: `MAX_LISTING_DESC_CHARS = 250` 文字（超過分は `…` に切り詰める）
+- **Bundled Skills は切り詰めない**: 常に完全な説明を保持し、予算が足りない場合は bundled 以外だけを切り詰める
+- **フォールバック戦略**:
+  1. 完全な説明を試す → 予算超過か
+  2. Bundled は完全なまま残し、bundled 以外で残りの予算を均等配分 → 1 件あたりの説明が 20 文字未満か
+  3. bundled 以外は名前だけを残す
+
+`formatCommandsWithinBudget()`（`prompt.ts:70`）がこの 3 段階のフォールバックを実装します。
+
+## 動的発見と条件付き有効化
+
+### ファイルパスに基づく動的発見
+
+`discoverSkillDirsForPaths()`（`loadSkillsDir.ts:861`）はファイル操作時に起動します。
+
+1. 操作対象のファイルパスから CWD まで**上向きに探索**する（CWD 自体は含まない）
+2. 各階層で `.occ/skills/` ディレクトリを探す
+3. `realpath` で重複を排除し、`git check-ignore` で gitignored ディレクトリを除外する
+4. パスの深さ順に並べる（**深いものを優先**）。ファイルに近い Skill ほど優先度が高い
+
+### 条件付き有効化（paths frontmatter）
+
+`paths` パターンを持つ Skill は、読み込み時にすぐ利用可能にはなりません。`conditionalSkills` Map に格納されます。操作対象のファイルパスが Skill の paths パターンに一致したとき（`ignore` ライブラリによる gitignore 形式の照合）、初めてその Skill が**有効化**され、`conditionalSkills` から `dynamicSkills` へ移ります。
+
+つまり、`*.test.ts` に対してだけ有効になるテスト Skill は通常はまったく見えず、AI がテストファイルを読み書きしたときだけ現れます。
+
+## 使用頻度による順位付け
+
+`recordSkillUsage()`（`skillUsageTracking.ts`）は指数減衰アルゴリズムで Skill の順位スコアを計算します。
+
+```
+score = usageCount × max(0.5^(daysSinceUse / 7), 0.1)
+```
+
+- **半減期 7 日**: 1 週間前の使用は重みが半分になる
+- **下限 0.1**: 古くても頻繁に使われた Skill が完全に最下位へ沈むのを防ぐ
+- **60 秒の debounce**: 同じ Skill を 1 分以内に複数回呼び出しても 1 回として数え、ファイル I/O を減らす
+
+順位データはグローバル設定の `skillUsage` フィールドへ永続化されます。
+
+## リモート Skill の読み込み（Experimental）
+
+`EXPERIMENTAL_SKILL_SEARCH` feature flag で制御され、リモート（AKI/GCS/S3）から `_canonical_<slug>` 形式の Skill を読み込めます。
+
+1. `validateInput()` 内の `stripCanonicalPrefix()` が canonical 名を捕捉する
+2. `executeRemoteSkill()`（970 行）がリモート URL から SKILL.md を読み込む
+3. `gs://`、`https://`、`s3://` などの URL プロトコルをサポートする
+4. 内容から frontmatter を除去し、`${CLAUDE_SKILL_DIR}` を置き換えてから直接注入する
+5. `addInvokedSkill()` で compaction の保持状態へ登録し、圧縮後も復元できるようにする
+6. リモート Skill は `processPromptSlashCommand` を通らないため、`!command` の置換も `$ARGUMENTS` の展開もない
+
+## ライフサイクル全体
+
+```
+ディスク上の SKILL.md
+  ↓ parseFrontmatter()
+  ↓ parseSkillFrontmatterFields() → 16 個のフィールド
+  ↓ createSkillCommand() → Command オブジェクト
+  ↓ 重複排除（realpath + seenFileIds）
+  ↓ 条件付き Skill → conditionalSkills Map（パス一致による有効化を待つ）
+  ↓ getSkillDirCommands() memoize キャッシュ
+  ↓ getAllCommands() が local + MCP を統合
+  ↓ formatCommandsWithinBudget() → 切り詰めた Skill 一覧を System Prompt へ注入
+  ↓ AI が一致する Skill を選択
+  ↓ SkillTool.validateInput() → 名前の検証 + 存在確認
+  ↓ SkillTool.checkPermissions() → 5 段階の権限チェック
+  ↓ SkillTool.call() → inline または fork で実行
+  ↓ contextModifier() → allowedTools + model + effort を注入
+  ↓ recordSkillUsage() → 使用頻度の順位を更新
+```
