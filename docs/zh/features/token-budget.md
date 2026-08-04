@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/token-budget) · **中文** · [日本語](/docs/ja/features/token-budget)
 
 # TOKEN_BUDGET — Token 预算自动持续模式
 

@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/tree-sitter-bash) · **中文** · [日本語](/docs/ja/features/tree-sitter-bash)
 
 # TREE_SITTER_BASH — Bash AST 解析
 
@@ -117,7 +117,7 @@ checkSemantics(commands)
 |------|------|
 | `extractQuoteContext()` | 识别单引号、双引号、ANSI-C 字符串、heredoc |
 | `extractCompoundStructure()` | 检测管道、子 shell、命令组 |
-| `hasActualOperatorNodes()` | 区分真实 `;`/`&&`/`||` 与转义形式 |
+| `hasActualOperatorNodes()` | 区分真实 `;`/`&&`/`\|\|` 与转义形式 |
 | `extractDangerousPatterns()` | 检测命令替换、参数展开、heredocs |
 | `analyzeCommand()` | 单次遍历提取 |
 

@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/proactive) · **中文** · [日本語](/docs/ja/features/proactive)
 
 # PROACTIVE — 主动模式
 

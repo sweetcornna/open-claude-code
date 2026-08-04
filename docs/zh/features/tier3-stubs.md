@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/tier3-stubs) · **中文** · [日本語](/docs/ja/features/tier3-stubs)
 
 # Tier 3 — 纯 Stub / N/A 低优先级 Feature 概览
 
