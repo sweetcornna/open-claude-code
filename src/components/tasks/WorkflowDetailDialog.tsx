@@ -6,6 +6,7 @@ import type { Theme } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import type { LocalWorkflowTaskState } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js';
+import { AgentDetail } from '../../workflow/panel/AgentDetail.js';
 import { AgentList } from '../../workflow/panel/AgentList.js';
 import type { RunProgress } from '../../workflow/progress/store.js';
 import { peekWorkflowService } from '../../workflow/service.js';
@@ -55,6 +56,8 @@ export function WorkflowDetailDialog({ task, onBack, onKillWorkflow }: Props): R
 
   const [selectedAgent, setSelectedAgent] = useState(0);
   const [confirmKill, setConfirmKill] = useState<ConfirmKill | null>(null);
+  /** Whether the dialog is drilled into the selected agent's status view. */
+  const [showAgentDetail, setShowAgentDetail] = useState(false);
 
   const elapsedTime = useElapsedTime(task.startTime, task.status === 'running', 1000, 0, task.endTime);
   const killShortcut = useShortcutDisplay('taskDetail:kill', 'TaskDetail', 'x');
@@ -67,6 +70,9 @@ export function WorkflowDetailDialog({ task, onBack, onKillWorkflow }: Props): R
   const phases = workflowPhaseRows(run);
 
   const selectedRow = agents[clamped];
+  // The store can drop the row out from under an open detail view (run killed,
+  // agents cleared) — fall back to the list rather than an empty pane.
+  const agentDetailOpen = showAgentDetail && selectedRow !== undefined;
   const canKillAgent =
     run?.status === 'running' && selectedRow !== undefined && selectedRow.status === 'running' && service !== null;
 
@@ -108,11 +114,17 @@ export function WorkflowDetailDialog({ task, onBack, onKillWorkflow }: Props): R
       case 'moveDown':
         setSelectedAgent(clampAgentIndex(clamped + 1, agents.length));
         break;
+      case 'openAgent':
+        if (selectedRow) setShowAgentDetail(true);
+        break;
       case 'killWorkflow':
         if (onKillWorkflow) setConfirmKill({ kind: 'workflow' });
         break;
       case 'back':
-        onBack();
+        // ← steps out of the agent view first; only from the list does it
+        // leave the dialog. Esc always closes outright.
+        if (agentDetailOpen) setShowAgentDetail(false);
+        else onBack();
         break;
       case 'confirmYes':
         if (confirmKill) executeConfirmed(confirmKill);
@@ -136,9 +148,10 @@ export function WorkflowDetailDialog({ task, onBack, onKillWorkflow }: Props): R
         isCancelActive={confirmKill === null}
         inputGuide={() => (
           <Byline>
-            <KeyboardShortcutHint shortcut="←" action="go back" />
+            <KeyboardShortcutHint shortcut="←" action={agentDetailOpen ? 'back to list' : 'go back'} />
             <KeyboardShortcutHint shortcut="Esc" action="close" />
             {agents.length > 1 && <KeyboardShortcutHint shortcut="↑/↓" action="select agent" />}
+            {!agentDetailOpen && agents.length > 0 && <KeyboardShortcutHint shortcut="↵" action="agent detail" />}
             {canKillAgent && <KeyboardShortcutHint shortcut={killShortcut} action="stop agent" />}
             {onKillWorkflow && <KeyboardShortcutHint shortcut="K" action="stop workflow" />}
           </Byline>
@@ -166,12 +179,18 @@ export function WorkflowDetailDialog({ task, onBack, onKillWorkflow }: Props): R
             <Text color="subtle"> {workflowFallbackLine(task)}</Text>
           )}
 
-          {agents.length > 0 && (
+          {agentDetailOpen && selectedRow ? (
             <Box flexDirection="column" marginTop={1}>
-              {hiddenAbove > 0 && <Text color="subtle"> … {hiddenAbove} earlier</Text>}
-              <AgentList agents={visible} selectedIndex={selectedInWindow} focused={confirmKill === null} />
-              {hiddenBelow > 0 && <Text color="subtle"> … {hiddenBelow} more</Text>}
+              <AgentDetail agent={selectedRow} />
             </Box>
+          ) : (
+            agents.length > 0 && (
+              <Box flexDirection="column" marginTop={1}>
+                {hiddenAbove > 0 && <Text color="subtle"> … {hiddenAbove} earlier</Text>}
+                <AgentList agents={visible} selectedIndex={selectedInWindow} focused={confirmKill === null} />
+                {hiddenBelow > 0 && <Text color="subtle"> … {hiddenBelow} more</Text>}
+              </Box>
+            )
           )}
 
           {task.error ? <Text color="error">{task.error}</Text> : null}

@@ -142,9 +142,12 @@ return results.flat().filter(Boolean)
 
 - **顶部 tabs**：每个 run 一个 tab（状态圆点 + workflow 名 + `#runId短码`）；同名脚本多次跑会多个 tab。
 - **左 phase 侧栏**：`All` + 合并 meta 声明的 phase（未启动 `○` pending 灰）与实际 phase（`●` running / `✓` done）；选中即决定右栏筛选。
-- **右 agent 列表**：按选中 phase 过滤；状态色 + 行尾文字（`running` / `object` / `text` / `dead`）。
+- **右 agent 列表**：按选中 phase 过滤，再按状态筛选（`f` 循环 all → running → done → failed，非 all 时标题追加 `· <filter> only`）；每行 = 状态色标记 + label（28 字宽，`#N` 后缀保留）+ `model · Nk tok` + 右对齐时长列。模型名已短化（`us.anthropic.claude-sonnet-5-20260101` → `sonnet-5`），**逐行工具调用数已移入 agent 详情**——列宽留给 label 更有用。
+- **右 agent 详情**：在 agent 列表上按 `↵` 或 `→` 进入，右栏整块替换为选中 agent 的状态视图：status / phase / model / elapsed / context tok / output tok / tool calls，失败时额外给出**失败原因**（引擎的 `no-structured-output`、`prompt-too-long`、`api-error` … 译成人话）、`retryable:false` 的「确定性失败，重跑同样的调用不会成功」提示与引擎 detail，成功时给出返回值预览（对象/文本，store 侧截断至 400 字符）。详情里 `↑`/`↓` 直接换到上/下一个 agent，无需退回列表。
 
-**键位**：`Tab`/`Shift+Tab` 切 run · `←`/`→` 切左右焦点列（phases ↔ agents）· `↑`/`↓` 列内移动 · `r` resume · `x` kill · `n` 新建提示 · `q`/`Esc` 退出。
+**键位**：`Tab`/`Shift+Tab` 切 run · `←`/`→` 在 phases → agents → agent 详情之间进出 · `↵` 打开选中 agent 的详情 · `↑`/`↓` 区域内移动 · `f` 切状态筛选 · `r` resume · `x` kill 选中 agent · `K` kill 整个 workflow · `n` 新建提示 · `q`/`Esc` 退出。
+
+> `←` **只退一级**（详情 → 列表 → phase 侧栏）并停在 phase 侧栏，永远不关面板；关面板是 `Esc`/`q` 的职责。`f` 切筛选会把选中项重置到第 0 行——存活的行是另一批，沿用旧下标等于把 `x` 悄悄对准了别的 agent。
 
 **视觉**：无内框，左右一条竖线分隔；聚焦列标题橙粗；选中/光标行铺橙底（`backgroundColor`），文字色不变。
 
@@ -154,7 +157,9 @@ return results.flat().filter(Boolean)
 
 `/tasks`（Shift+↓）后台任务列表中选中 workflow 条目进入 `WorkflowDetailDialog`（`src/components/tasks/WorkflowDetailDialog.tsx`）：与面板同源（同一 `ProgressStore`）的实时视图，单列布局 —— 状态头 + phase 行（`○/●/✓` + done/total）+ 逐 agent 行（spinner/`✓`/`✗`/`⊘` + label + `model · tok · tool`，复用面板 `AgentList`）。agent 列表按选中项开滑动窗口（`MAX_VISIBLE_AGENTS=10`，折叠行显示 `… N earlier/more`）。
 
-**键位**：`↑`/`↓` 选 agent · `x` kill 选中 agent（走可配置的 `taskDetail:kill`）· `K` kill 整个 workflow · 两者均有 `y`/`n` 二次确认 · `←` 返回列表 · `Esc` 关闭。数据/按键投影层在 `workflowDetailData.ts`（React-free，可单测）。
+按 `↵`/`→` 同样可以钻进选中 agent 的详情（复用 `/workflows` 面板的 `AgentDetail`）——两个界面渲染的是同一个 run，导航手势不能互相打架。
+
+**键位**：`↑`/`↓` 选 agent · `↵`/`→` 进 agent 详情 · `x` kill 选中 agent（走可配置的 `taskDetail:kill`）· `K` kill 整个 workflow · 两者均有 `y`/`n` 二次确认 · `←` 退一级（详情 → 列表 → 关对话框）· `Esc` 直接关闭。数据/按键投影层在 `workflowDetailData.ts`（React-free，可单测）。
 
 ## 七、`/ultracode` skill
 

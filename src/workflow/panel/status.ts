@@ -63,13 +63,43 @@ export function formatTokenCount(n: number | undefined): string {
 }
 
 /**
- * right-side stats text for an agent row: `model · Nk tok · N tool`.
- * Omits the prefix when there is no model; token/tool refresh in real time via agent_progress while running.
+ * Strip the vendor prefix and trailing date stamp from a model id so the
+ * agent row spends its width on the label instead of on
+ * `us.anthropic.claude-sonnet-5-20260101`. Unrecognized ids pass through.
+ */
+export function shortModelName(model: string): string {
+  let s = model.trim()
+  // Bedrock/Vertex region + vendor prefixes, e.g. `us.anthropic.claude-…`.
+  s = s.replace(/^[a-z]{2,3}\.anthropic\./, '')
+  s = s.replace(/^anthropic\./, '')
+  s = s.replace(/^claude-/, '')
+  // Trailing release stamp: `-20251001`, and the `[1m]` context suffix.
+  s = s.replace(/-\d{8}(?=$|\[)/, '')
+  return s || model
+}
+
+/**
+ * right-side stats text for an agent row: `model · Nk tok`.
+ *
+ * The per-row tool count moved into the agent detail view: at list width it
+ * pushed the label column down to a stub, and the number is only actionable
+ * once you are already looking at one agent.
  */
 export function agentMetaText(a: AgentProgress): string {
   const parts: string[] = []
-  if (a.model) parts.push(a.model)
+  if (a.model) parts.push(shortModelName(a.model))
   parts.push(`${formatTokenCount(a.tokenCount)} tok`)
-  parts.push(`${a.toolCount ?? 0} tool`)
   return parts.join(' · ')
+}
+
+/**
+ * Human label for an agent's terminal state, used by the detail view header.
+ * Running agents report as `running`; `done` splits by resultKind so a dead
+ * or skipped agent is never described as a success.
+ */
+export function agentStatusText(a: AgentProgress): string {
+  if (a.status === 'running') return 'running'
+  if (a.resultKind === 'dead') return 'failed'
+  if (a.resultKind === 'skipped') return 'skipped'
+  return 'done'
 }
