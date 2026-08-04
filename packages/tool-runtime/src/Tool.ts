@@ -149,6 +149,15 @@ type ServerResource = Resource & { server: string }
 
 export type QueryChainTracking = {
   chainId: string
+  /**
+   * API round-trips within THIS query chain — query() bumps it once per loop
+   * iteration (a tool round-trip), so a single main-loop turn routinely reaches
+   * double digits. Analytics only (`queryDepth`).
+   *
+   * NOT a subagent nesting depth — use ToolUseContext.agentDepth for that.
+   * Wiring the spawn-depth guard to this field made every subagent spawn fail
+   * after the 3rd tool call of any turn.
+   */
   depth: number
 }
 
@@ -311,6 +320,12 @@ export type ToolUseContext = {
   setConversationId?: (id: UUID) => void
   agentId?: AgentId // Only set for subagents; use getSessionId() for session ID. Hooks use this to distinguish subagent calls.
   agentType?: string // Subagent type name. For the main thread's --agent type, hooks fall back to getMainThreadAgentType().
+  /** Subagent nesting level: undefined/0 on the main thread, +1 per level
+   * (createSubagentContext is the only writer). Carried on the context because
+   * an env var cannot express it — subagents run in-process and share
+   * process.env with their siblings. Read by checkSpawnBudgets; deliberately
+   * distinct from queryTracking.depth, which counts API round-trips. */
+  agentDepth?: number
   /** When true, canUseTool must always be called even when hooks auto-approve.
    *  Used by speculation for overlay file path rewriting. */
   requireCanUseTool?: boolean
