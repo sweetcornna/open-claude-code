@@ -44,7 +44,7 @@ type Props = {
 };
 
 type OpenAIWireApi = 'chat' | 'responses';
-type OpenAIEndpointField = 'base_url' | 'api_key' | 'wire_api';
+type OpenAIEndpointField = 'base_url' | 'api_key';
 type OpenAIModelField = 'model' | 'haiku_model' | 'sonnet_model' | 'opus_model' | 'max_context';
 
 type OpenAIEndpointSetupStatus = {
@@ -148,10 +148,6 @@ export function parseMaxContextInput(raw: string): string | undefined | null {
   }
   const viaSuffix = parseContextWindowTokens(trimmed);
   return viaSuffix ? String(viaSuffix) : null;
-}
-
-function normalizeOpenAIWireApi(value: string | undefined): OpenAIWireApi {
-  return value === 'responses' ? 'responses' : 'chat';
 }
 
 export function ConsoleOAuthFlow({
@@ -485,20 +481,22 @@ type OAuthStatusMessageProps = {
   setLoginWithClaudeAi: (value: boolean) => void;
 };
 
-const OPENAI_WIRE_API_OPTIONS: Array<{ label: string; value: OpenAIWireApi }> = [
-  {
-    label: 'Chat Completions (default) — the /chat/completions endpoint most servers support',
-    value: 'chat',
-  },
-  {
-    label: 'Responses — the /responses endpoint used by Codex-style OpenAI servers',
-    value: 'responses',
-  },
-];
+/**
+ * The two OpenAI wire protocols are separate entries in the login menu, not a
+ * field inside one "OpenAI Compatible" form: they hit different endpoints
+ * (/chat/completions vs /responses) and suit different servers, so the choice
+ * belongs where the user picks what they are connecting to. The setup form
+ * only carries the protocol the menu already settled.
+ */
+const OPENAI_WIRE_API_TITLES: Record<OpenAIWireApi, string> = {
+  chat: 'OpenAI Chat Completions Setup',
+  responses: 'OpenAI Responses API Setup',
+};
 
-function formatOpenAIWireApi(value: OpenAIWireApi): string {
-  return OPENAI_WIRE_API_OPTIONS.find(option => option.value === value)?.label ?? value;
-}
+const OPENAI_WIRE_API_ENDPOINTS: Record<OpenAIWireApi, string> = {
+  chat: 'POST <base URL>/chat/completions',
+  responses: 'POST <base URL>/responses',
+};
 
 type OpenAIEndpointSetupProps = {
   status: Extract<OAuthStatus, { state: 'openai_endpoint_setup' }>;
@@ -508,7 +506,7 @@ type OpenAIEndpointSetupProps = {
 function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProps): React.ReactNode {
   const [baseUrl, setBaseUrl] = useState(status.baseUrl);
   const [apiKey, setApiKey] = useState(status.apiKey);
-  const [wireApi, setWireApi] = useState<OpenAIWireApi>(status.wireApi);
+  const wireApi = status.wireApi;
   const [activeField, setActiveField] = useState<OpenAIEndpointField>(status.activeField);
   const [inputCursorOffset, setInputCursorOffset] = useState(() =>
     status.activeField === 'base_url' ? status.baseUrl.length : status.apiKey.length,
@@ -528,57 +526,54 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
     [apiKey, baseUrl, wireApi],
   );
 
-  const beginModelFetch = useCallback(
-    (selectedWireApi: OpenAIWireApi) => {
-      const trimmedBaseUrl = baseUrl.trim();
-      const trimmedApiKey = apiKey.trim();
-      const retryState: OpenAIEndpointSetupStatus = {
-        state: 'openai_endpoint_setup',
-        phase: 'editing',
-        baseUrl: trimmedBaseUrl,
-        apiKey: trimmedApiKey,
-        wireApi: selectedWireApi,
-        activeField: 'base_url',
-      };
+  const beginModelFetch = useCallback(() => {
+    const trimmedBaseUrl = baseUrl.trim();
+    const trimmedApiKey = apiKey.trim();
+    const retryState: OpenAIEndpointSetupStatus = {
+      state: 'openai_endpoint_setup',
+      phase: 'editing',
+      baseUrl: trimmedBaseUrl,
+      apiKey: trimmedApiKey,
+      wireApi,
+      activeField: 'base_url',
+    };
 
-      if (!trimmedBaseUrl) {
-        setOAuthStatus({
-          state: 'error',
-          message: 'Base URL is required. Enter the full server URL, including https:// or http://.',
-          toRetry: retryState,
-        });
-        return;
-      }
-      try {
-        new URL(trimmedBaseUrl);
-      } catch {
-        setOAuthStatus({
-          state: 'error',
-          message: 'Invalid Base URL. Enter the full server URL, including https:// or http://.',
-          toRetry: retryState,
-        });
-        return;
-      }
-      if (!trimmedApiKey) {
-        setOAuthStatus({
-          state: 'error',
-          message: 'API Key is required so the server can authorize the model-list request.',
-          toRetry: { ...retryState, activeField: 'api_key' },
-        });
-        return;
-      }
-
+    if (!trimmedBaseUrl) {
       setOAuthStatus({
-        state: 'openai_endpoint_setup',
-        phase: 'fetching',
-        baseUrl: trimmedBaseUrl,
-        apiKey: trimmedApiKey,
-        wireApi: selectedWireApi,
-        activeField: 'wire_api',
+        state: 'error',
+        message: 'Base URL is required. Enter the full server URL, including https:// or http://.',
+        toRetry: retryState,
       });
-    },
-    [apiKey, baseUrl, setOAuthStatus],
-  );
+      return;
+    }
+    try {
+      new URL(trimmedBaseUrl);
+    } catch {
+      setOAuthStatus({
+        state: 'error',
+        message: 'Invalid Base URL. Enter the full server URL, including https:// or http://.',
+        toRetry: retryState,
+      });
+      return;
+    }
+    if (!trimmedApiKey) {
+      setOAuthStatus({
+        state: 'error',
+        message: 'API Key is required so the server can authorize the model-list request.',
+        toRetry: { ...retryState, activeField: 'api_key' },
+      });
+      return;
+    }
+
+    setOAuthStatus({
+      state: 'openai_endpoint_setup',
+      phase: 'fetching',
+      baseUrl: trimmedBaseUrl,
+      apiKey: trimmedApiKey,
+      wireApi,
+      activeField: 'api_key',
+    });
+  }, [apiKey, baseUrl, setOAuthStatus, wireApi]);
 
   useEffect(() => {
     if (status.phase !== 'fetching') return;
@@ -644,8 +639,8 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
     () => {
       if (status.phase === 'fetching') {
         fetchControllerRef.current?.abort();
-        setActiveField('wire_api');
-        setOAuthStatus(buildEditingStatus('wire_api'));
+        setActiveField('api_key');
+        setOAuthStatus(buildEditingStatus('api_key'));
         return;
       }
       setOAuthStatus({ state: 'idle' });
@@ -657,9 +652,9 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
     if (activeField === 'base_url') {
       setActiveField('api_key');
       setInputCursorOffset(apiKey.length);
-    } else if (activeField === 'api_key') {
-      setActiveField('wire_api');
+      return;
     }
+    beginModelFetch();
   };
 
   const maskedApiKey = apiKey ? apiKey.slice(0, 8) + '\u00b7'.repeat(Math.max(0, apiKey.length - 8)) : '';
@@ -667,7 +662,7 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
   if (status.phase === 'fetching') {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text bold>OpenAI Compatible API Setup — Fetch Models</Text>
+        <Text bold>{OPENAI_WIRE_API_TITLES[wireApi]} — Fetch Models</Text>
         <Box>
           <Spinner />
           <Text>Fetching available models from {status.baseUrl}…</Text>
@@ -679,9 +674,10 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
 
   return (
     <Box flexDirection="column" gap={1}>
-      <Text bold>OpenAI Compatible API Setup — Step 1 of 2</Text>
+      <Text bold>{OPENAI_WIRE_API_TITLES[wireApi]} — Step 1 of 2</Text>
       <Text dimColor>
-        Enter the server connection details first. occ will then request GET /models before any settings are saved.
+        Requests will use {OPENAI_WIRE_API_ENDPOINTS[wireApi]}. Enter the server connection details first. occ will then
+        request GET /models before any settings are saved.
       </Text>
       <Box flexDirection="column" gap={1}>
         <Box>
@@ -729,36 +725,12 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
             <Text color="success">{maskedApiKey}</Text>
           )}
         </Box>
-        <Box flexDirection="column">
-          <Text
-            backgroundColor={activeField === 'wire_api' ? 'suggestion' : undefined}
-            color={activeField === 'wire_api' ? 'inverseText' : undefined}
-          >
-            {' Wire API protocol '}
-          </Text>
-          {activeField === 'wire_api' ? (
-            <Select
-              options={OPENAI_WIRE_API_OPTIONS}
-              defaultValue={wireApi}
-              defaultFocusValue={wireApi}
-              visibleOptionCount={2}
-              onChange={value => {
-                setWireApi(value);
-                beginModelFetch(value);
-              }}
-              onCancel={() => setOAuthStatus({ state: 'idle' })}
-            />
-          ) : (
-            <Text color="success">{formatOpenAIWireApi(wireApi)}</Text>
-          )}
-        </Box>
       </Box>
       <Text dimColor>
-        Base URL is the OpenAI-compatible server root, such as https://api.example.com/v1. API Key authorizes the
-        model-list request.
+        Base URL is the server root, such as https://api.example.com/v1. API Key authorizes the model-list request.
       </Text>
       <Text dimColor>
-        Enter moves to the next field. Select the Wire API protocol to fetch models. Esc returns to login methods.
+        Enter moves to the next field. Enter on API Key fetches models. Esc returns to login methods.
       </Text>
     </Box>
   );
@@ -979,7 +951,7 @@ function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupPr
 
   return (
     <Box flexDirection="column" gap={1}>
-      <Text bold>OpenAI Compatible API Setup — Step 2 of 2</Text>
+      <Text bold>{OPENAI_WIRE_API_TITLES[status.wireApi]} — Step 2 of 2</Text>
       {status.entryMode === 'manual' && (
         <Text color="warning">
           Could not fetch model list from the server ({status.fetchError}). Enter model names manually.
@@ -1241,11 +1213,21 @@ function OAuthStatusMessage({
                 {
                   label: (
                     <Text>
-                      OpenAI Compatible · <Text dimColor>Ollama, DeepSeek, vLLM, One API, etc.</Text>
+                      OpenAI Chat Completions ·{' '}
+                      <Text dimColor>/chat/completions — Ollama, DeepSeek, vLLM, One API</Text>
                       {'\n'}
                     </Text>
                   ),
                   value: 'openai_chat_api',
+                },
+                {
+                  label: (
+                    <Text>
+                      OpenAI Responses API · <Text dimColor>/responses — Codex-style servers, GPT-5 generation</Text>
+                      {'\n'}
+                    </Text>
+                  ),
+                  value: 'openai_responses_api',
                 },
                 {
                   label: (
@@ -1344,14 +1326,18 @@ function OAuthStatusMessage({
                     opusModel: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL ?? '',
                     activeField: 'base_url',
                   });
-                } else if (value === 'openai_chat_api') {
-                  logEvent('tengu_openai_chat_api_selected', {});
+                } else if (value === 'openai_chat_api' || value === 'openai_responses_api') {
+                  const wireApi: OpenAIWireApi = value === 'openai_responses_api' ? 'responses' : 'chat';
+                  logEvent(
+                    wireApi === 'responses' ? 'tengu_openai_responses_api_selected' : 'tengu_openai_chat_api_selected',
+                    {},
+                  );
                   setOAuthStatus({
                     state: 'openai_endpoint_setup',
                     phase: 'editing',
                     baseUrl: process.env.OPENAI_BASE_URL ?? '',
                     apiKey: process.env.OPENAI_API_KEY ?? '',
-                    wireApi: normalizeOpenAIWireApi(process.env.OPENAI_WIRE_API),
+                    wireApi,
                     activeField: 'base_url',
                   });
                 } else if (value === 'china_providers') {
