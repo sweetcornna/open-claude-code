@@ -1,0 +1,202 @@
+---
+title: "エージェントループ — モデルが自分で回す仕組み"
+description: "Claude Code の query() 非同期ジェネレータループを詳解します。ストリーミング API 呼び出し、ツールの並列実行、コンテキスト圧縮、エラー回復、そしてすべての終了条件を src/query.ts に沿って追います。"
+keywords: ["エージェントループ", "query loop", "tool_use", "状態機械", "auto-compact", "ストリーミング", "リカバリ"]
+sourceRef: "3ec5675 (2026-04-08)"
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/conversation/the-loop) · [中文](/docs/zh/conversation/the-loop) · **日本語**
+
+{/* この章の目的: src/query.ts からエージェントループの状態機械全体を示す */}
+
+## エージェントループとは
+
+通常のチャットボットは、聞かれたことに答えます。Claude Code は違います。目的を伝えると、結果を返すまでに十数回の操作を実行することがあります。
+
+その仕組みが**エージェントループ**で、`src/query.ts` の `queryLoop()` 非同期ジェネレータに実装されています。`while (true)` ループであり、1 回の反復が「思考 → 行動 → 観察」の 1 サイクルにあたります。
+
+<Frame caption="エージェントループ">
+  <img src="/docs/images/agentic-loop.png" alt="エージェントループの図" />
+</Frame>
+
+## 1 回の反復の構造
+
+`queryLoop()` の `while (true)` ループは、毎回 4 つの段階を通ります。
+
+### 段階 1: コンテキストの前処理
+
+API 呼び出しの前に、3 つの圧縮ステップが順に走ります。
+
+```
+messagesForQuery（生のメッセージ）
+  ↓ applyToolResultBudget()    — ツール結果を maxResultSizeChars まで切り詰める
+  ↓ microcompact()             — 古いツール結果を要約する
+  ↓ autocompact()              — 閾値を超えていれば完全な圧縮
+messagesForQuery（処理後）→ API へ送信
+```
+
+各ステップの出力が次の入力になる直列パイプラインです。microcompact が先に古いツール結果を整理し、autocompact はすでに削減されたメッセージ集合に対して、完全な要約がまだ必要かを判断します。
+
+### 段階 2: ストリーミング API 呼び出し
+
+`deps.callModel()` が（`src/query.ts` の `attemptWithFallback` ループ内で）ストリーミングリクエストを発行し、AsyncGenerator を返します。ストリームが開いている間:
+
+- **AssistantMessage** は `assistantMessages[]` に蓄積される
+- **tool_use ブロック**は `toolUseBlocks[]` に取り出され、`needsFollowUp` が `true` になる
+- **StreamingToolExecutor** はストリームの終了を待たずにツールの並列実行を始める
+- 回復可能なエラー（prompt-too-long、max-output-tokens）は表に出さず**保留**され、まず回復が試みられる
+
+ストリーミングのコールバック内で重要な保護が 2 つあります。
+
+- `backfillObservableInput()` は tool_use ブロックに観測可能なフィールド（展開後のファイルパスなど）を補いますが、実際にフィールドを追加したときだけメッセージを複製します。無条件に複製するとバイト列が変わり、プロンプトキャッシュが壊れます。
+- フォールバック検出: `streamingFallbackOccured` の場合、それまでに集めたメッセージを tombstone として印を付けて破棄し、リクエストを再試行します。
+
+### 段階 3: ツールの実行
+
+`needsFollowUp` が true のときループは終了せず、ツールを実行します。
+
+```typescript
+// 2 つの実行器（排他）
+const toolUpdates = streamingToolExecutor
+  ? streamingToolExecutor.getRemainingResults()  // ストリーミング: 完了分 + 待機分
+  : runTools(toolUseBlocks, assistantMessages, canUseTool, toolUseContext)
+```
+
+結果は `normalizeMessagesForAPI()` を通り、既存のメッセージと統合されて**次の反復**の入力になります。
+
+### 段階 4: 終了か継続か
+
+各反復の最後に、ループは `return` するか `continue` します。
+
+## 終了条件
+
+発火しうる順に並べると次のとおりです。
+
+| 理由 | 位置 | 仕組み |
+|------|------|--------|
+| **blocking_limit** | 686 行 | autocompact モード外でトークン数が上限を超過 → PTL エラーメッセージを生成 → return |
+| **image_error** | 1021 行 | `ImageSizeError` / `ImageResizeError` → 即 return |
+| **model_error** | 1040 行 | `callModel()` が回復不能な例外を投げた → エラーメッセージを生成 → return |
+| **aborted_streaming** | 1095 行 | ストリーミング中に `abortController.signal.aborted` → 未完了の tool_use に合成 tool_result を生成 → return |
+| **prompt_too_long** | 1219 / 1226 行 | reactive compaction でも回復できない 413 → 保留していたエラーを解放 → return |
+| **completed** | 1308 行 | API エラー（レート制限、認証失敗など）で継続不能 → return |
+| **stop_hook_prevented** | 1323 行 | stop hook が `preventContinuation: true` を返した → return |
+| **completed** | 1401 行 | 通常経路: tool_use が出なかった → `needsFollowUp = false` → stop hook を通過 → return |
+| **aborted_tools** | 1559 行 | ツール実行中に `abortController.signal.aborted` → return |
+| **hook_stopped** | 1564 行 | 実行中に hook が `shouldPreventContinuation` を返した → return |
+| **max_turns** | 1755 行 | ターン数が `maxTurns` を超えた → return |
+
+## 継続の経路
+
+ループは「tool_use があれば続ける」だけではありません。複数の回復経路を持ちます。
+
+### 1. 通常のツールループ（`next_turn`）
+
+`needsFollowUp = true` → ツール実行 → 新しいメッセージを `messagesForQuery` に追加 → state を作り直す → `continue`。
+
+### 2. max_output_tokens からの回復（`max_output_tokens_escalate` / `max_output_tokens_recovery`）
+
+モデルの出力が切り詰められた場合（`apiError === 'max_output_tokens'`）、回復は 2 段階です。
+
+- **引き上げ。** 最初の切り詰めでは `maxOutputTokens` を既定値から `ESCALATED_MAX_TOKENS`（64K）へ引き上げ、meta メッセージを挟まずに静かに再試行します。
+- **回復。** 引き上げても再び切り詰められた場合は「Output token limit hit. Resume directly…」という回復メッセージを注入し、`MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3` 回まで再試行します。使い切ると保留していたエラーが解放されます。
+
+### 3. Prompt-too-long からの回復（`reactive_compact_retry`）
+
+413 は即時の圧縮を引き起こし、要約に対して再試行されます。`hasAttemptedReactiveCompact` フラグが無限ループを防ぎます。再試行でも回復できなければ、保留していたエラーを解放してそのターンを終えます。
+
+### 4. Stop hook による差し戻し（`stop_hook_blocking`）
+
+stop hook はブロッキングエラーを注入してモデルに考え直させることができます。そのエラーを含む新しいメッセージが追加され、`stopHookActive` が立ち、次の反復に入ります。
+
+### 5. トークン予算による継続（`token_budget_continuation`）
+
+`TOKEN_BUDGET` feature が有効な場合、予算内でも閾値を超えたトークン消費があれば、締めくくりを促す nudge メッセージを注入して継続します。
+
+## モデルのフォールバック
+
+主モデルが利用できないとき（`FallbackTriggeredError`、`src/query.ts` の `attemptWithFallback` ループの catch 節）:
+
+1. 収集済みの `assistantMessages` を破棄し、未処理の tool_use ブロックには合成 tool_result「Model fallback triggered」を与える
+2. thinking signature ブロックを除去する（`stripSignatureBlocks`）— signature は特定のモデルに紐づくため、別のモデルへ再生すると 400 になる
+3. `fallbackModel` に切り替え、`toolUseContext.options.mainLoopModel` を更新する
+4. システムメッセージ「Switched to {fallback} due to high demand for {original}」を出す
+5. ストリーミングリクエストを再発行する
+
+## 状態機械
+
+反復をまたぐ状態は `src/query.ts` の `State` 型で受け渡されます。
+
+```typescript
+// src/query.ts — State 型
+type State = {
+  messages: Message[]                         // 現在の会話
+  toolUseContext: ToolUseContext              // 権限を含むツールコンテキスト
+  autoCompactTracking: AutoCompactTrackingState | undefined
+  maxOutputTokensRecoveryCount: number        // 切り詰め回復のカウンタ
+  hasAttemptedReactiveCompact: boolean        // 即時圧縮を試したか
+  maxOutputTokensOverride: number | undefined // 出力上限の上書き
+  pendingToolUseSummary: Promise<...> | undefined
+  stopHookActive: boolean | undefined
+  turnCount: number
+  transition: Continue | undefined            // 前の反復が継続した理由
+}
+```
+
+`continue` のたびに新しい `State` を作り、その場での書き換えはしません。`transition` はループが**なぜ**継続したかを記録します。これにより後続の反復が特定の回復経路を認識し、そこでループし続けるのを避けられます。
+
+## トークン予算（実験的）
+
+`TOKEN_BUDGET` feature が有効な場合、ループ終了の直前、`!needsFollowUp` 分岐の中で予算チェックが走ります。
+
+- **continuation** — 予算内だが閾値超え → 締めくくりを促す nudge を注入
+- **diminishing_returns** — 収穫逓減を検知 → 早期終了
+- 予算データは `createBudgetTracker()` に由来し、反復をまたいで累積する
+
+## なぜ「一度計画してまとめて実行」ではないのか
+
+<Note>
+理由はソースに表れています。
+</Note>
+
+- **各ステップが実際の情報を生む。** `runTools()` が返す `toolResults` は API に予測できないもの — コマンド出力、ファイルの中身、エラーメッセージです。
+- **コンテキスト管理が動的。** 圧縮は毎反復の前に、その時点のトークン数に対して評価し直されます（ツール結果の予算 → microcompact → autocompact）。
+- **エラーはその場で回復する。** ツールの失敗はやり直しを意味しません。stop hook がブロッキングエラーを注入してモデルに方針を修正させられます。
+- **ユーザーが主導権を持つ。** `abortController.signal` はループの複数箇所（1059、1095、1529 行）で確認されるため、ESC で綺麗に中断できます。
+- **コストに上限がある。** トークン予算は各終了の直前に確認され、無駄なループを止めます。
+
+## 一連の実行例
+
+> ユーザー:「プロジェクト内の未使用 import をすべて見つけて削除して」
+
+```
+反復 1: 思考 → 行動
+  前処理: applyToolResultBudget → microcompact → autocompact
+    → コンテキストが短く、圧縮不要
+  API 呼び出し: tool_use(Glob, "**/*.ts") を返す
+  ツール実行:   42 個のファイルパス
+  → needsFollowUp = true
+  → transition: { reason: 'next_turn' }, continue
+
+反復 2: 思考 → 行動
+  前処理: 42 件の結果はまだ予算内
+  API 呼び出し: tool_use(Grep, "import.*from") を返す
+  ツール実行:   15 ファイルに 120 件の import
+  → needsFollowUp = true
+  → transition: { reason: 'next_turn' }, continue
+
+反復 3: 思考 → 行動
+  前処理: 120 件の grep 結果が microcompact を発動 → 要約化
+  API 呼び出し: tool_use(FileEdit, …) を 3 件返す
+  ツール実行:   未使用 import を 5 件削除
+  → needsFollowUp = true
+  → transition: { reason: 'next_turn' }, continue
+
+反復 4: まとめ
+  API 呼び出し: 平文「3 ファイルから未使用 import を 5 件削除しました」
+  → needsFollowUp = false
+  → stop hook を通過
+  → トークン予算チェックを通過（有効な場合）
+  → return { reason: 'completed' }
+```

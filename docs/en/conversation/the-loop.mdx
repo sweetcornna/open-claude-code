@@ -1,0 +1,202 @@
+---
+title: "The agentic loop — how the model drives itself"
+description: "A close reading of Claude Code's query() async generator loop: the streaming API call, parallel tool execution, context compaction, error recovery, and every termination condition, traced through src/query.ts."
+keywords: ["agentic loop", "query loop", "tool_use", "state machine", "auto-compact", "streaming", "recovery"]
+sourceRef: "3ec5675 (2026-04-08)"
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/conversation/the-loop) · [日本語](/docs/ja/conversation/the-loop)
+
+{/* Goal of this chapter: lay out the complete state machine of the agentic loop, from src/query.ts */}
+
+## What the agentic loop is
+
+A conventional chatbot answers the question you asked. Claude Code does something else: you state a goal, and it may run a dozen operations before it gives you a result.
+
+The mechanism behind that is the **agentic loop**, implemented in the `queryLoop()` async generator in `src/query.ts`. It is a `while (true)` loop, and each iteration is one think → act → observe cycle.
+
+<Frame caption="The agentic loop">
+  <img src="/docs/images/agentic-loop.png" alt="Agentic loop diagram" />
+</Frame>
+
+## The shape of one iteration
+
+Every pass through the `while (true)` loop in `queryLoop()` goes through four stages.
+
+### Stage 1: context preprocessing
+
+Before the API is called, three compaction steps run in order:
+
+```
+messagesForQuery (raw messages)
+  ↓ applyToolResultBudget()    — truncate tool results to maxResultSizeChars
+  ↓ microcompact()             — summarize older tool results
+  ↓ autocompact()              — full compaction, if past the threshold
+messagesForQuery (processed) → sent to the API
+```
+
+Each step feeds the next, forming a serial pipeline. Microcompact clears out older tool results first, and autocompact then decides — against the already-reduced message set — whether a full summary is still needed.
+
+### Stage 2: the streaming API call
+
+`deps.callModel()` issues the streaming request (inside the `attemptWithFallback` loop in `src/query.ts`) and returns an AsyncGenerator. While the stream is open:
+
+- **AssistantMessages** accumulate into `assistantMessages[]`
+- **tool_use blocks** are extracted into `toolUseBlocks[]`, and `needsFollowUp` is set to `true`
+- **StreamingToolExecutor** starts running tools in parallel without waiting for the stream to close
+- Recoverable errors (prompt-too-long, max-output-tokens) are **withheld** rather than surfaced, so recovery can be attempted first
+
+Two guards matter inside the streaming callbacks:
+
+- `backfillObservableInput()` fills in observable fields on tool_use blocks (expanded file paths, for example), but only clones the message when it actually added a field — cloning unconditionally would change the bytes and break the prompt cache.
+- Fallback detection: if `streamingFallbackOccured`, the messages collected so far are marked as a tombstone, cleared, and the request is retried.
+
+### Stage 3: tool execution
+
+When `needsFollowUp` is true the loop does not terminate; it runs the tools instead:
+
+```typescript
+// Two executors, mutually exclusive
+const toolUpdates = streamingToolExecutor
+  ? streamingToolExecutor.getRemainingResults()  // streaming: finished + pending
+  : runTools(toolUseBlocks, assistantMessages, canUseTool, toolUseContext)
+```
+
+Results pass through `normalizeMessagesForAPI()`, merge with the existing messages, and become the input to the **next iteration**.
+
+### Stage 4: stop or continue
+
+At the end of each iteration the loop either `return`s or `continue`s.
+
+## Termination conditions
+
+There are several exits, in roughly the order they can fire:
+
+| Reason | Location | Mechanism |
+|--------|----------|-----------|
+| **blocking_limit** | line 686 | Token count exceeds the hard limit outside autocompact mode → emit a PTL error message → return |
+| **image_error** | line 1021 | `ImageSizeError` / `ImageResizeError` → return immediately |
+| **model_error** | line 1040 | `callModel()` threw something unrecoverable → emit an error message → return |
+| **aborted_streaming** | line 1095 | `abortController.signal.aborted` during streaming → synthesize tool_results for unfinished tool_use blocks → return |
+| **prompt_too_long** | lines 1219 / 1226 | A 413 that reactive compaction could not recover from → release the withheld error → return |
+| **completed** | line 1308 | An API error (rate limit, auth failure) makes continuing impossible → return |
+| **stop_hook_prevented** | line 1323 | A stop hook returned `preventContinuation: true` → return |
+| **completed** | line 1401 | The normal path: no tool_use was emitted → `needsFollowUp = false` → stop hooks pass → return |
+| **aborted_tools** | line 1559 | `abortController.signal.aborted` during tool execution → return |
+| **hook_stopped** | line 1564 | A hook returned `shouldPreventContinuation` mid-execution → return |
+| **max_turns** | line 1755 | The turn counter passed `maxTurns` → return |
+
+## Continuation paths
+
+The loop is more than "keep going if there was a tool_use". It has several recovery paths.
+
+### 1. The ordinary tool loop (`next_turn`)
+
+`needsFollowUp = true` → run tools → append new messages to `messagesForQuery` → rebuild state → `continue`.
+
+### 2. max_output_tokens recovery (`max_output_tokens_escalate` / `max_output_tokens_recovery`)
+
+When the model's output is truncated (`apiError === 'max_output_tokens'`), recovery happens in two stages:
+
+- **Escalate.** On the first truncation, raise `maxOutputTokens` from the default to `ESCALATED_MAX_TOKENS` (64K) and retry silently, with no meta message injected.
+- **Recover.** If it truncates again after escalation, inject a recovery message — "Output token limit hit. Resume directly…" — and retry up to `MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3` times. Once recovery is exhausted, the withheld error is released.
+
+### 3. Prompt-too-long recovery (`reactive_compact_retry`)
+
+A 413 triggers an immediate compaction, and the request is retried against the summary. The `hasAttemptedReactiveCompact` flag prevents an infinite loop; if the retry still fails, the withheld error is released and the turn ends.
+
+### 4. Stop-hook blocking retry (`stop_hook_blocking`)
+
+A stop hook can inject a blocking error to force the model to reconsider. The new messages — including that error — are appended, `stopHookActive` is set, and the loop iterates again.
+
+### 5. Token-budget continuation (`token_budget_continuation`)
+
+With the `TOKEN_BUDGET` feature enabled, if token consumption crosses a threshold without exceeding the budget, a nudge message is injected to make the model wrap up, and the loop continues.
+
+## Model fallback
+
+When the primary model is unavailable (`FallbackTriggeredError`, caught inside the `attemptWithFallback` loop in `src/query.ts`):
+
+1. The collected `assistantMessages` are cleared, and outstanding tool_use blocks receive a synthetic tool_result: "Model fallback triggered".
+2. Thinking-signature blocks are stripped (`stripSignatureBlocks`) — signatures are bound to a specific model, and replaying one against another returns a 400.
+3. `fallbackModel` takes over, and `toolUseContext.options.mainLoopModel` is updated.
+4. A system message is emitted: "Switched to {fallback} due to high demand for {original}".
+5. The streaming request is reissued.
+
+## The state machine
+
+State crosses iteration boundaries through the `State` type in `src/query.ts`:
+
+```typescript
+// src/query.ts — the State type
+type State = {
+  messages: Message[]                         // the current conversation
+  toolUseContext: ToolUseContext              // tool context, including permissions
+  autoCompactTracking: AutoCompactTrackingState | undefined
+  maxOutputTokensRecoveryCount: number        // truncation recovery counter
+  hasAttemptedReactiveCompact: boolean        // reactive compaction already tried?
+  maxOutputTokensOverride: number | undefined // output ceiling override
+  pendingToolUseSummary: Promise<...> | undefined
+  stopHookActive: boolean | undefined
+  turnCount: number
+  transition: Continue | undefined            // why the last iteration continued
+}
+```
+
+Every `continue` builds a fresh `State` rather than mutating in place. The `transition` field records *why* the loop continued, which is what lets a later iteration recognize a specific recovery path and avoid looping on it.
+
+## Token budget (experimental)
+
+With the `TOKEN_BUDGET` feature enabled, the budget check runs inside the `!needsFollowUp` branch before the loop terminates:
+
+- **continuation** — under budget but past the threshold → inject a nudge so the model wraps up
+- **diminishing_returns** — returns have flattened out → stop early
+- Budget data comes from `createBudgetTracker()` and accumulates across iterations
+
+## Why step-by-step rather than plan-then-execute
+
+<Note>
+The source makes the reasoning explicit:
+</Note>
+
+- **Every step yields real information.** The `toolResults` from `runTools()` are things the API could not have predicted: command output, file contents, error text.
+- **Context management is dynamic.** Compaction is re-evaluated before every iteration (tool-result budget → microcompact → autocompact) against the current token count.
+- **Errors recover in place.** A failed tool does not mean starting over — a stop hook can inject a blocking error and let the model correct course.
+- **The user stays in control.** `abortController.signal` is checked at several points in the loop (lines 1059, 1095, 1529), so pressing ESC interrupts cleanly.
+- **Cost is bounded.** The token budget is checked before each termination, which is what stops the model from looping unproductively.
+
+## A worked example
+
+> User: "Find all the unused imports in this project and delete them."
+
+```
+Iteration 1: think → act
+  Preprocessing: applyToolResultBudget → microcompact → autocompact
+    → context is short, nothing to compact
+  API call:  returns tool_use(Glob, "**/*.ts")
+  Tools:     42 file paths
+  → needsFollowUp = true
+  → transition: { reason: 'next_turn' }, continue
+
+Iteration 2: think → act
+  Preprocessing: 42 results still within budget
+  API call:  returns tool_use(Grep, "import.*from")
+  Tools:     120 imports across 15 files
+  → needsFollowUp = true
+  → transition: { reason: 'next_turn' }, continue
+
+Iteration 3: think → act
+  Preprocessing: 120 grep results trip microcompact → summarized
+  API call:  returns 3 × tool_use(FileEdit, …)
+  Tools:     5 unused imports removed
+  → needsFollowUp = true
+  → transition: { reason: 'next_turn' }, continue
+
+Iteration 4: wrap up
+  API call:  plain text — "Removed 5 unused imports across 3 files"
+  → needsFollowUp = false
+  → stop hooks pass
+  → token budget check passes (if enabled)
+  → return { reason: 'completed' }
+```

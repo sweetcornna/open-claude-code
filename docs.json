@@ -25,6 +25,14 @@
                 ]
               }
             ]
+          },
+          {
+            "group": "对话是如何运转的",
+            "pages": [
+              "docs/en/conversation/the-loop",
+              "docs/en/conversation/streaming",
+              "docs/en/conversation/multi-turn"
+            ]
           }
         ]
       },
@@ -188,6 +196,14 @@
                   "docs/ja/introduction/architecture-overview"
                 ]
               }
+            ]
+          },
+          {
+            "group": "对话是如何运转的",
+            "pages": [
+              "docs/ja/conversation/the-loop",
+              "docs/ja/conversation/streaming",
+              "docs/ja/conversation/multi-turn"
             ]
           }
         ]
