@@ -11,14 +11,13 @@ import type {
   AssistantMessage,
   UserMessage,
 } from '../../../types/message.js'
-import type { AgentId } from '../../../types/ids.js'
 import type { Tools } from '../../../Tool.js'
 import { isChatGPTCodexReasoningModel } from 'src/utils/model/chatgptModels.js'
 import { getSessionId } from '../../../bootstrap/state.js'
 import { getOpenAIClient } from './client.js'
 import {
   formatOpenAIPromptCacheKey,
-  getOfficialOpenAIPromptCacheKey,
+  getOpenAIPromptCacheKey,
   updateOpenAIUsage,
 } from './openaiShared.js'
 import {
@@ -27,6 +26,8 @@ import {
   adaptOpenAIStreamToAnthropic,
   anthropicToolsToOpenAI,
   anthropicToolChoiceToOpenAI,
+  OPENAI_REASONING_ITEMS_FIELD,
+  type OpenAIReasoningItem,
 } from '@ant/model-provider'
 import { isChatGPTAuthEnabled } from './chatgptAuth.js'
 import { resolveOpenAIWireProtocol } from './wireProtocol.js'
@@ -62,13 +63,12 @@ export {
   resolveOpenAIMaxTokens,
   buildOpenAIRequestBody,
 }
+import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
 import { getModelMaxOutputTokens } from '../../../utils/session/context.js'
 import type { Options } from '../claude.js'
-import { randomUUID } from 'crypto'
 import {
   createAssistantAPIErrorMessage,
   createUserMessage,
-  normalizeContentFromAPI,
 } from '../../../utils/messages.js'
 import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
 import {
@@ -163,74 +163,20 @@ function isOpenAIConvertibleMessage(
   return msg.type === 'assistant' || msg.type === 'user'
 }
 
+const OPENAI_MAX_TOKENS_ENV_HINT =
+  'OPENAI_MAX_TOKENS or CLAUDE_CODE_MAX_OUTPUT_TOKENS'
+
 /**
- * Assemble the final AssistantMessage (and optional max_tokens error) from
- * accumulated stream state. Extracted to avoid duplication between the
- * `message_stop` handler and the post-loop safety fallback.
+ * Stash this turn's reasoning items on the assistant message so the next
+ * request can replay them. Returns undefined when there is nothing to carry,
+ * keeping the field off messages from non-reasoning routes entirely.
  */
-function assembleFinalAssistantOutputs(params: {
-  partialMessage: BetaMessage | null
-  contentBlocks: Record<number, Record<string, unknown>>
-  tools: Tools
-  agentId: string | undefined
-  usage: {
-    input_tokens: number
-    output_tokens: number
-    cache_creation_input_tokens: number
-    cache_read_input_tokens: number
-  }
-  stopReason: string | null
-  maxTokens: number
-}): (AssistantMessage | SystemAPIErrorMessage)[] {
-  const {
-    partialMessage,
-    contentBlocks,
-    tools,
-    agentId,
-    usage,
-    stopReason,
-    maxTokens,
-  } = params
-  const outputs: (AssistantMessage | SystemAPIErrorMessage)[] = []
-
-  const allBlocks = Object.keys(contentBlocks)
-    .sort((a, b) => Number(a) - Number(b))
-    .map(k => contentBlocks[Number(k)])
-    .filter(Boolean)
-
-  if (allBlocks.length > 0 && partialMessage) {
-    outputs.push({
-      message: {
-        ...partialMessage,
-        content: normalizeContentFromAPI(
-          allBlocks as unknown as BetaMessage['content'],
-          tools,
-          agentId as AgentId | undefined,
-        ),
-        usage,
-        stop_reason: stopReason,
-        stop_sequence: null,
-      } as AssistantMessage['message'],
-      requestId: undefined,
-      type: 'assistant',
-      uuid: randomUUID(),
-      timestamp: new Date().toISOString(),
-    } as AssistantMessage)
-  }
-
-  if (stopReason === 'max_tokens') {
-    outputs.push(
-      createAssistantAPIErrorMessage({
-        content:
-          `Output truncated: response exceeded the ${maxTokens} token limit. ` +
-          `Set OPENAI_MAX_TOKENS or CLAUDE_CODE_MAX_OUTPUT_TOKENS to override.`,
-        apiError: 'max_output_tokens',
-        error: 'max_output_tokens',
-      }),
-    )
-  }
-
-  return outputs
+function reasoningMetadata(
+  items: OpenAIReasoningItem[],
+): Record<string, unknown> | undefined {
+  return items.length > 0
+    ? { [OPENAI_REASONING_ITEMS_FIELD]: items }
+    : undefined
 }
 
 /**
@@ -325,10 +271,18 @@ export async function* queryModelOpenAI(
       deferredToolNames,
       useSearchExtraTools,
     )
+    // Resolved before the message conversion because the Responses wire
+    // protocol needs the previous turns' reasoning items carried through —
+    // Chat Completions must not see that field.
+    const useChatGPTResponses = isChatGPTAuthEnabled()
+    const wireProtocol = resolveOpenAIWireProtocol(openaiModel)
     const openaiMessages = anthropicMessagesToOpenAI(
       messagesWithDeferredToolList,
       systemPrompt,
-      { enableThinking },
+      {
+        enableThinking,
+        preserveReasoningItems: wireProtocol === 'responses',
+      },
     )
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
@@ -373,8 +327,6 @@ export async function* queryModelOpenAI(
       options.maxOutputTokensOverride,
     )
 
-    const useChatGPTResponses = isChatGPTAuthEnabled()
-    const wireProtocol = resolveOpenAIWireProtocol(openaiModel)
     // OpenAI's official OAuth and API-key routes share the same prompt-cache
     // contract. Scope the key to the real conversation so resumed turns stay
     // sticky while unrelated sessions do not share a routing bucket. Generic
@@ -383,12 +335,25 @@ export async function* queryModelOpenAI(
     const sessionPromptCacheKey = formatOpenAIPromptCacheKey(sessionId)
     const promptCacheKey = useChatGPTResponses
       ? sessionPromptCacheKey
-      : getOfficialOpenAIPromptCacheKey(process.env.OPENAI_BASE_URL, sessionId)
-    const useOfficialOpenAICache = promptCacheKey !== undefined
+      : getOpenAIPromptCacheKey(
+          process.env.OPENAI_BASE_URL,
+          sessionId,
+          wireProtocol,
+        )
+    // A key is only ever set for endpoints that speak OpenAI's cache
+    // contract, which is the same condition under which cache_write_tokens
+    // can appear in usage.
+    const reportsCacheWrites = promptCacheKey !== undefined
 
     logForDebugging(
       `[OpenAI] Calling model=${openaiModel}, wire=${wireProtocol}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}${promptCacheKey ? `, prompt_cache_key=${promptCacheKey}` : ''}`,
     )
+
+    // Reasoning items produced by this response, in output order. Stamped onto
+    // the assembled assistant message so the next turn can replay them —
+    // `store: false` means the server keeps no copy, and a request that omits
+    // them no longer matches the cached prefix.
+    const reasoningItems: OpenAIReasoningItem[] = []
 
     // 11. Call OpenAI API with streaming. The Responses wire protocol serves
     // two routes — ChatGPT subscription auth (Codex backend, ChatGPT headers,
@@ -427,6 +392,7 @@ export async function* queryModelOpenAI(
                     options.fetchOverride as unknown as typeof fetch,
                 }),
             openaiModel,
+            { onReasoningItem: item => reasoningItems.push(item) },
           )
         : adaptOpenAIStreamToAnthropic(
             await getOpenAIClient({
@@ -454,7 +420,7 @@ export async function* queryModelOpenAI(
               { signal },
             ),
             openaiModel,
-            { includeCacheWriteTokens: useOfficialOpenAICache },
+            { includeCacheWriteTokens: reportsCacheWrites },
           )
 
     // 12. Convert OpenAI stream to Anthropic events, then process into
@@ -549,6 +515,8 @@ export async function* queryModelOpenAI(
               usage,
               stopReason,
               maxTokens,
+              maxTokensEnvHint: OPENAI_MAX_TOKENS_ENV_HINT,
+              providerMetadata: reasoningMetadata(reasoningItems),
             })) {
               if (output.type === 'assistant') {
                 collectedMessages.push(output)
@@ -612,6 +580,8 @@ export async function* queryModelOpenAI(
         usage,
         stopReason,
         maxTokens,
+        maxTokensEnvHint: OPENAI_MAX_TOKENS_ENV_HINT,
+        providerMetadata: reasoningMetadata(reasoningItems),
       })) {
         yield output
       }

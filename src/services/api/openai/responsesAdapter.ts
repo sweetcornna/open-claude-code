@@ -1,10 +1,18 @@
 import { randomUUID } from 'crypto'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import { normalizeOpenAIUsage, type AnthropicUsage } from '@ant/model-provider'
+import {
+  normalizeOpenAIUsage,
+  readReasoningItems,
+  type AnthropicUsage,
+  type OpenAIReasoningItem,
+} from '@ant/model-provider'
 import { getValidChatGPTAuth } from './chatgptAuth.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
+
+/** `include` value that makes reasoning items replayable under `store: false`. */
+export const REASONING_ENCRYPTED_CONTENT_INCLUDE = 'reasoning.encrypted_content'
 export type ResponsesReasoningEffort =
   | 'low'
   | 'medium'
@@ -21,6 +29,13 @@ type ResponsesRequest = {
   tools?: ResponsesTool[]
   tool_choice?: unknown
   reasoning?: { effort: ResponsesReasoningEffort }
+  /**
+   * Opt-in response fields. `reasoning.encrypted_content` is what makes the
+   * reasoning items replayable under `store: false`: without asking for it
+   * the server returns reasoning items with no payload, so there is nothing
+   * to carry the chain of thought into the next turn.
+   */
+  include?: string[]
   parallel_tool_calls?: boolean
   /**
    * Generic `/responses` endpoints only. The ChatGPT Codex backend rejects
@@ -95,9 +110,31 @@ function convertMessagesToResponsesInput(messages: unknown[]): {
     }
 
     if (role === 'assistant') {
+      // Reasoning items lead the turn — the order the Responses API emitted
+      // them in. Replaying them is what carries the model's chain of thought
+      // across turns under `store: false`; see OPENAI_REASONING_ITEMS_FIELD
+      // for why this is a fidelity fix rather than a cache fix.
+      for (const item of readReasoningItems(record)) {
+        input.push({
+          type: 'reasoning',
+          ...(item.id !== undefined ? { id: item.id } : {}),
+          ...(item.encrypted_content !== undefined
+            ? { encrypted_content: item.encrypted_content }
+            : {}),
+          summary: Array.isArray(item.summary) ? item.summary : [],
+        })
+      }
       const text = textFromContent(record.content)
       if (text) {
-        input.push({ role: 'assistant', content: text })
+        // Replayed as an `output_text` message item — the exact shape the API
+        // emitted it in. The bare `{role, content: string}` form is accepted
+        // too but normalizes to `input_text`, i.e. it tells the model its own
+        // previous answer was user input.
+        input.push({
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text }],
+        })
       }
       const toolCalls = record.tool_calls
       if (Array.isArray(toolCalls)) {
@@ -208,7 +245,10 @@ export function buildResponsesRequest(params: {
       ? { tool_choice: convertToolChoiceToResponses(params.toolChoice) }
       : {}),
     ...(params.reasoningEffort
-      ? { reasoning: { effort: params.reasoningEffort } }
+      ? {
+          reasoning: { effort: params.reasoningEffort },
+          include: [REASONING_ENCRYPTED_CONTENT_INCLUDE],
+        }
       : {}),
     parallel_tool_calls: true,
     ...(params.maxOutputTokens !== undefined
@@ -328,9 +368,40 @@ function mapStopReason(response: Record<string, unknown> | undefined): string {
   return 'end_turn'
 }
 
+/**
+ * Pull the replayable parts out of a `reasoning` output item. Returns null
+ * when there is nothing worth replaying — an item with neither an id nor
+ * encrypted content carries no recoverable reasoning, so echoing it back
+ * would only add a token the model cannot use.
+ */
+export function extractReasoningItem(
+  item: Record<string, unknown> | undefined,
+): OpenAIReasoningItem | null {
+  if (item?.type !== 'reasoning') return null
+  const id = typeof item.id === 'string' ? item.id : undefined
+  const encrypted =
+    typeof item.encrypted_content === 'string'
+      ? item.encrypted_content
+      : undefined
+  if (id === undefined && encrypted === undefined) return null
+  return {
+    ...(id !== undefined ? { id } : {}),
+    ...(encrypted !== undefined ? { encrypted_content: encrypted } : {}),
+    summary: Array.isArray(item.summary) ? item.summary : [],
+  }
+}
+
 export async function* adaptResponsesStreamToAnthropic(
   stream: AsyncIterable<Record<string, unknown>>,
   model: string,
+  options?: {
+    /**
+     * Called for each reasoning item the response produced, in output order.
+     * The caller stashes them on the assistant message so the next turn can
+     * replay the model's chain of thought.
+     */
+    onReasoningItem?: (item: OpenAIReasoningItem) => void
+  },
 ): AsyncGenerator<BetaRawMessageStreamEvent, void> {
   const messageId = `msg_${randomUUID().replace(/-/g, '').slice(0, 24)}`
   const toolBlocks = new Map<
@@ -482,6 +553,9 @@ export async function* adaptResponsesStreamToAnthropic(
     }
 
     if (type === 'response.output_item.done') {
+      const doneItem = event.item as Record<string, unknown> | undefined
+      const reasoning = extractReasoningItem(doneItem)
+      if (reasoning) options?.onReasoningItem?.(reasoning)
       const outputIndex =
         typeof event.output_index === 'number' ? event.output_index : -1
       const block = toolBlocks.get(outputIndex)

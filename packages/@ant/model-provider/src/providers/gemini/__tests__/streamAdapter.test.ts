@@ -177,4 +177,102 @@ describe('adaptGeminiStreamToAnthropic', () => {
     const messageDelta = events.find(event => event.type === 'message_delta')
     expect(messageDelta.usage.output_tokens).toBe(7)
   })
+
+  test('subtracts cached tokens from input_tokens', async () => {
+    // Gemini counts the cached prefix inside promptTokenCount. Anthropic's
+    // fields are disjoint, so leaving it in would double-count the prefix and
+    // cap the reported hit rate at 50%.
+    const events = await collectEvents([
+      {
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Hello' }],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 30_000,
+          cachedContentTokenCount: 20_000,
+          candidatesTokenCount: 5,
+        },
+      },
+    ])
+
+    const messageDelta = events.find(event => event.type === 'message_delta')
+    expect(messageDelta.usage.input_tokens).toBe(10_000)
+    expect(messageDelta.usage.cache_read_input_tokens).toBe(20_000)
+    expect(messageDelta.usage.cache_creation_input_tokens).toBe(0)
+
+    const { input_tokens, cache_read_input_tokens } = messageDelta.usage
+    const hitRate =
+      cache_read_input_tokens / (input_tokens + cache_read_input_tokens)
+    expect(hitRate).toBeCloseTo(2 / 3, 5)
+  })
+
+  test('clamps cached tokens that exceed the reported prompt total', async () => {
+    const events = await collectEvents([
+      {
+        candidates: [
+          { content: { parts: [{ text: 'Hi' }] }, finishReason: 'STOP' },
+        ],
+        usageMetadata: {
+          promptTokenCount: 100,
+          cachedContentTokenCount: 500,
+          candidatesTokenCount: 1,
+        },
+      },
+    ])
+
+    const messageDelta = events.find(event => event.type === 'message_delta')
+    expect(messageDelta.usage.input_tokens).toBe(0)
+    expect(messageDelta.usage.cache_read_input_tokens).toBe(100)
+  })
+
+  test('a later chunk without usageMetadata does not zero the cache read', async () => {
+    // Gemini repeats usageMetadata on most chunks but not reliably all of
+    // them; recomputing from a bare chunk would erase an observed cache hit.
+    const events = await collectEvents([
+      {
+        candidates: [{ content: { parts: [{ text: 'Hi' }] } }],
+        usageMetadata: {
+          promptTokenCount: 30_000,
+          cachedContentTokenCount: 20_000,
+          candidatesTokenCount: 2,
+        },
+      },
+      {
+        candidates: [
+          { content: { parts: [{ text: '!' }] }, finishReason: 'STOP' },
+        ],
+      },
+    ])
+
+    const messageDelta = events.find(event => event.type === 'message_delta')
+    expect(messageDelta.usage.cache_read_input_tokens).toBe(20_000)
+    expect(messageDelta.usage.input_tokens).toBe(10_000)
+  })
+
+  test('a trailing chunk reporting only totals keeps the earlier cache read', async () => {
+    const events = await collectEvents([
+      {
+        candidates: [{ content: { parts: [{ text: 'Hi' }] } }],
+        usageMetadata: {
+          promptTokenCount: 30_000,
+          cachedContentTokenCount: 20_000,
+        },
+      },
+      {
+        candidates: [
+          { content: { parts: [{ text: '!' }] }, finishReason: 'STOP' },
+        ],
+        usageMetadata: { promptTokenCount: 30_000, candidatesTokenCount: 9 },
+      },
+    ])
+
+    const messageDelta = events.find(event => event.type === 'message_delta')
+    expect(messageDelta.usage.cache_read_input_tokens).toBe(20_000)
+    expect(messageDelta.usage.output_tokens).toBe(9)
+  })
 })

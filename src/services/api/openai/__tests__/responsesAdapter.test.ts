@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
+  REASONING_ENCRYPTED_CONTENT_INCLUDE,
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
   createOpenAIResponsesStream,
+  extractReasoningItem,
   extractUsage,
   resolveResponsesEndpoint,
 } from '../responsesAdapter.js'
+import { OPENAI_REASONING_ITEMS_FIELD } from '@ant/model-provider'
 import { formatOpenAIPromptCacheKey } from '../openaiShared.js'
 import { calculateCacheHitRate } from '../../../../utils/telemetry/cacheWarning.js'
 
@@ -404,5 +407,260 @@ describe('adaptResponsesStreamToAnthropic event coverage', () => {
     expect((textDelta?.delta as Record<string, unknown>)?.text).toBe(
       'I cannot help with that.',
     )
+  })
+})
+
+// ── reasoning replay: the Codex/`store:false` fidelity contract ────────────
+//
+// Reasoning models served over /responses with `store: false` keep no
+// server-side state, so turn N's reasoning is gone unless turn N+1 replays
+// it. Measured cache-neutral against a live endpoint (see
+// OPENAI_REASONING_ITEMS_FIELD); what it buys is the model keeping its chain
+// of thought across tool-call turns instead of re-deriving it each time.
+
+describe('Responses reasoning replay', () => {
+  const cacheKey = formatOpenAIPromptCacheKey('codex-session')
+
+  function requestWithMessages(messages: unknown[]) {
+    return buildResponsesRequest({
+      model: 'gpt-5.5-codex',
+      messages,
+      tools: [],
+      toolChoice: undefined,
+      reasoningEffort: 'medium',
+      promptCacheKey: cacheKey,
+    })
+  }
+
+  test('asks for encrypted reasoning content whenever reasoning is requested', () => {
+    // Without this include the server returns reasoning items with no
+    // payload, so there is nothing to replay at all.
+    const request = requestWithMessages([{ role: 'user', content: 'hi' }])
+    expect(request.include).toEqual([REASONING_ENCRYPTED_CONTENT_INCLUDE])
+  })
+
+  test('omits include when no reasoning is requested', () => {
+    const request = buildResponsesRequest({
+      model: 'gpt-4.1',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      toolChoice: undefined,
+      promptCacheKey: cacheKey,
+    })
+    expect('include' in request).toBe(false)
+  })
+
+  test('replays reasoning items ahead of the turn they belong to', () => {
+    const request = requestWithMessages([
+      { role: 'user', content: 'first' },
+      {
+        role: 'assistant',
+        content: 'working on it',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'Bash', arguments: '{}' },
+          },
+        ],
+        [OPENAI_REASONING_ITEMS_FIELD]: [
+          { id: 'rs_1', encrypted_content: 'ENC', summary: [] },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call_1', content: 'done' },
+    ])
+
+    expect(request.input.map(item => item.type ?? item.role)).toEqual([
+      'user',
+      'reasoning',
+      'message',
+      'function_call',
+      'function_call_output',
+    ])
+    expect(request.input[1]).toEqual({
+      type: 'reasoning',
+      id: 'rs_1',
+      encrypted_content: 'ENC',
+      summary: [],
+    })
+  })
+
+  test('replays reasoning for a turn that produced only tool calls', () => {
+    // A tool-only turn is exactly where the reasoning matters most: it is the
+    // only record of why the model made that call.
+    const request = requestWithMessages([
+      { role: 'user', content: 'go' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'Bash', arguments: '{}' },
+          },
+        ],
+        [OPENAI_REASONING_ITEMS_FIELD]: [{ id: 'rs_1', summary: [] }],
+      },
+    ])
+
+    expect(request.input.map(item => item.type ?? item.role)).toEqual([
+      'user',
+      'reasoning',
+      'function_call',
+    ])
+  })
+
+  test('assistant text replays as an output_text message item', () => {
+    // The bare {role, content} form normalizes to input_text — it would tell
+    // the model its own previous answer was user input.
+    const request = requestWithMessages([
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: 'a' },
+    ])
+
+    expect(request.input[1]).toEqual({
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'output_text', text: 'a' }],
+    })
+  })
+
+  test('messages without reasoning items are unchanged', () => {
+    const request = requestWithMessages([
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: 'a' },
+    ])
+    expect(request.input.some(item => item.type === 'reasoning')).toBe(false)
+  })
+
+  test('a turn carrying several reasoning items replays them in order', () => {
+    const request = requestWithMessages([
+      {
+        role: 'assistant',
+        content: 'x',
+        [OPENAI_REASONING_ITEMS_FIELD]: [
+          { id: 'rs_1', summary: [] },
+          { id: 'rs_2', summary: [] },
+        ],
+      },
+    ])
+    expect(
+      request.input
+        .filter(item => item.type === 'reasoning')
+        .map(item => item.id),
+    ).toEqual(['rs_1', 'rs_2'])
+  })
+})
+
+describe('extractReasoningItem', () => {
+  test('keeps the id, encrypted content and summary verbatim', () => {
+    expect(
+      extractReasoningItem({
+        type: 'reasoning',
+        id: 'rs_1',
+        encrypted_content: 'ENC',
+        summary: [{ type: 'summary_text', text: 'why' }],
+      }),
+    ).toEqual({
+      id: 'rs_1',
+      encrypted_content: 'ENC',
+      summary: [{ type: 'summary_text', text: 'why' }],
+    })
+  })
+
+  test('ignores non-reasoning items', () => {
+    expect(extractReasoningItem({ type: 'function_call', id: 'x' })).toBeNull()
+    expect(extractReasoningItem(undefined)).toBeNull()
+  })
+
+  test('drops a hollow item carrying no recoverable reasoning', () => {
+    // Neither an id nor encrypted content: echoing it back adds a token the
+    // model cannot use.
+    expect(extractReasoningItem({ type: 'reasoning', summary: [] })).toBeNull()
+  })
+
+  test('defaults a missing summary to an empty array', () => {
+    expect(extractReasoningItem({ type: 'reasoning', id: 'rs_1' })).toEqual({
+      id: 'rs_1',
+      summary: [],
+    })
+  })
+})
+
+describe('adaptResponsesStreamToAnthropic reasoning capture', () => {
+  async function collectReasoning(events: Record<string, unknown>[]) {
+    const captured: unknown[] = []
+    const stream = (async function* () {
+      for (const event of events) yield event
+    })()
+    for await (const _ of adaptResponsesStreamToAnthropic(stream, 'gpt-5.5', {
+      onReasoningItem: item => captured.push(item),
+    })) {
+      // drain
+    }
+    return captured
+  }
+
+  test('captures reasoning items from output_item.done', async () => {
+    const captured = await collectReasoning([
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'ENC' },
+      },
+      { type: 'response.output_text.delta', delta: 'hi' },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(captured).toEqual([
+      { id: 'rs_1', encrypted_content: 'ENC', summary: [] },
+    ])
+  })
+
+  test('captures multiple reasoning items in output order', async () => {
+    const captured = await collectReasoning([
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: { type: 'reasoning', id: 'rs_1' },
+      },
+      {
+        type: 'response.output_item.done',
+        output_index: 2,
+        item: { type: 'reasoning', id: 'rs_2' },
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(captured.map(item => (item as { id: string }).id)).toEqual([
+      'rs_1',
+      'rs_2',
+    ])
+  })
+
+  test('still closes tool blocks when the same event carries no reasoning', async () => {
+    // output_item.done does double duty; the reasoning hook must not swallow it.
+    const events: Record<string, unknown>[] = []
+    const stream = (async function* () {
+      yield {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { type: 'function_call', call_id: 'call_1', name: 'Bash' },
+      }
+      yield {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: { type: 'function_call', call_id: 'call_1' },
+      }
+      yield { type: 'response.completed', response: { status: 'completed' } }
+    })()
+    for await (const event of adaptResponsesStreamToAnthropic(
+      stream,
+      'gpt-5.5',
+    )) {
+      events.push(event as unknown as Record<string, unknown>)
+    }
+    expect(events.some(e => e.type === 'content_block_stop')).toBe(true)
   })
 })

@@ -1,6 +1,11 @@
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID } from 'crypto'
-import type { GeminiPart, GeminiStreamChunk } from './types.js'
+import { normalizeGeminiUsage } from './usage.js'
+import type {
+  GeminiPart,
+  GeminiStreamChunk,
+  GeminiUsageMetadata,
+} from './types.js'
 
 export async function* adaptGeminiStreamToAnthropic(
   stream: AsyncIterable<GeminiStreamChunk>,
@@ -14,17 +19,29 @@ export async function* adaptGeminiStreamToAnthropic(
     null
   let sawToolUse = false
   let finishReason: string | undefined
-  let inputTokens = 0
-  let outputTokens = 0
-  let cachedReadTokens = 0
+  // Token accounting (including the promptTokenCount/cachedContentTokenCount
+  // overlap correction) lives in normalizeGeminiUsage — shared with the
+  // non-streaming side-query path so the two cannot drift.
+  //
+  // Fields are carried forward across chunks rather than read fresh each time:
+  // Gemini repeats usageMetadata on most chunks but not reliably on all, and
+  // a chunk that omits cachedContentTokenCount must not zero the cache read.
+  let rawUsage: GeminiUsageMetadata = {}
+  let usageTotals = normalizeGeminiUsage(undefined)
 
   for await (const chunk of stream) {
     const usage = chunk.usageMetadata
     if (usage) {
-      inputTokens = usage.promptTokenCount ?? inputTokens
-      outputTokens =
-        (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0)
-      cachedReadTokens = usage.cachedContentTokenCount ?? cachedReadTokens
+      rawUsage = {
+        promptTokenCount: usage.promptTokenCount ?? rawUsage.promptTokenCount,
+        candidatesTokenCount:
+          usage.candidatesTokenCount ?? rawUsage.candidatesTokenCount,
+        thoughtsTokenCount:
+          usage.thoughtsTokenCount ?? rawUsage.thoughtsTokenCount,
+        cachedContentTokenCount:
+          usage.cachedContentTokenCount ?? rawUsage.cachedContentTokenCount,
+      }
+      usageTotals = normalizeGeminiUsage(rawUsage)
     }
 
     if (!started) {
@@ -39,12 +56,7 @@ export async function* adaptGeminiStreamToAnthropic(
           model,
           stop_reason: null,
           stop_sequence: null,
-          usage: {
-            input_tokens: inputTokens,
-            output_tokens: 0,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: cachedReadTokens,
-          },
+          usage: { ...usageTotals, output_tokens: 0 },
         },
       } as unknown as BetaRawMessageStreamEvent
     }
@@ -205,12 +217,7 @@ export async function* adaptGeminiStreamToAnthropic(
         stop_reason: mapGeminiFinishReason(finishReason, sawToolUse),
         stop_sequence: null,
       },
-      usage: {
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: cachedReadTokens,
-      },
+      usage: usageTotals,
     } as BetaRawMessageStreamEvent
 
     yield {
