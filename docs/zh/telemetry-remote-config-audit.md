@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/telemetry-remote-config-audit) · **中文** · [日本語](/docs/ja/telemetry-remote-config-audit)
+**中文**
 
 # 遥测与远程配置下发系统审计（除 Sentry 外）
 

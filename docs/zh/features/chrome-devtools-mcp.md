@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/chrome-devtools-mcp) · **中文** · [日本語](/docs/ja/features/chrome-devtools-mcp)
+**中文**
 
 # Chrome 浏览器工具（chrome-devtools-mcp）
 

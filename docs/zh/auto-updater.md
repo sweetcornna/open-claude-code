@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/auto-updater) · **中文** · [日本語](/docs/ja/auto-updater)
+**中文**
 
 # 自动更新
 

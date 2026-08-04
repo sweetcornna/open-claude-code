@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/langfuse-monitoring) · **中文** · [日本語](/docs/ja/features/langfuse-monitoring)
+**中文**
 
 # Langfuse 监控集成
 

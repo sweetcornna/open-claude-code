@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/computer-use) · **中文** · [日本語](/docs/ja/features/computer-use)
+**中文**
 
 # Computer Use
 

@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/tree-sitter-bash) · **中文** · [日本語](/docs/ja/features/tree-sitter-bash)
+**中文**
 
 # TREE_SITTER_BASH — Bash AST 解析
 

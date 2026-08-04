@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/bash-classifier) · **中文** · [日本語](/docs/ja/features/bash-classifier)
+**中文**
 
 # BASH_CLASSIFIER — Bash 命令分类器
 

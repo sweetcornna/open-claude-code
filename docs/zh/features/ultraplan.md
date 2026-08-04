@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/ultraplan) · **中文** · [日本語](/docs/ja/features/ultraplan)
+**中文**
 
 # ULTRAPLAN — 增强规划
 

@@ -12,13 +12,12 @@
     "languages": [
       {
         "language": "en",
-        "default": true,
         "groups": [
           {
-            "group": "Getting started",
+            "group": "开始",
             "pages": [
               {
-                "group": "Introduction",
+                "group": "介绍",
                 "pages": [
                   "docs/en/introduction/what-is-claude-code",
                   "docs/en/introduction/why-this-whitepaper",
@@ -26,139 +25,12 @@
                 ]
               }
             ]
-          },
-          {
-            "group": "How a conversation runs",
-            "pages": [
-              "docs/en/conversation/the-loop",
-              "docs/en/conversation/streaming",
-              "docs/en/conversation/multi-turn"
-            ]
-          },
-          {
-            "group": "Tools",
-            "pages": [
-              "docs/en/tools/what-are-tools",
-              "docs/en/tools/file-operations",
-              "docs/en/tools/shell-execution",
-              "docs/en/tools/search-and-navigation",
-              "docs/en/tools/task-management"
-            ]
-          },
-          {
-            "group": "Context engineering",
-            "pages": [
-              "docs/en/context/system-prompt",
-              "docs/en/context/project-memory",
-              "docs/en/context/compaction",
-              "docs/en/context/token-budget"
-            ]
-          },
-          {
-            "group": "Multi-agent",
-            "pages": [
-              "docs/en/agent/sub-agents",
-              "docs/en/agent/worktree-isolation",
-              "docs/en/agent/coordinator-and-swarm"
-            ]
-          },
-          {
-            "group": "Extensibility",
-            "pages": [
-              "docs/en/extensibility/mcp-protocol",
-              "docs/en/extensibility/mcp-configuration",
-              "docs/en/extensibility/hooks",
-              "docs/en/extensibility/skills",
-              "docs/en/extensibility/custom-agents"
-            ]
-          },
-          {
-            "group": "Safety and permissions",
-            "pages": [
-              "docs/en/safety/why-safety-matters",
-              "docs/en/safety/permission-model",
-              "docs/en/safety/sandbox",
-              "docs/en/safety/plan-mode",
-              "docs/en/safety/auto-mode",
-              "docs/en/safety/miit-warning-response"
-            ]
-          },
-          {
-            "group": "Internals",
-            "pages": [
-              "docs/en/internals/three-tier-gating",
-              "docs/en/internals/feature-flags",
-              "docs/en/internals/growthbook-ab-testing",
-              "docs/en/internals/growthbook-adapter",
-              "docs/en/internals/sentry-setup",
-              "docs/en/internals/hidden-features",
-              "docs/en/internals/ant-only-world",
-              "docs/en/internals/session-transcript-persistence",
-              "docs/en/features/debug-mode"
-            ]
-          },
-          {
-            "group": "Feature reference",
-            "pages": [
-              {
-                "group": "Agents and collaboration",
-                "pages": [
-                  "docs/en/features/coordinator-mode",
-                  "docs/en/features/fork-subagent",
-                  "docs/en/features/daemon"
-                ]
-              },
-              {
-                "group": "Operating modes",
-                "pages": [
-                  "docs/en/features/kairos",
-                  "docs/en/features/channels",
-                  "docs/en/features/voice-mode",
-                  "docs/en/features/remote-control-self-hosting",
-                  "docs/en/features/proactive",
-                  "docs/en/features/ultraplan"
-                ]
-              },
-              {
-                "group": "Tool enhancements",
-                "pages": [
-                  "docs/en/features/mcp-skills",
-                  "docs/en/features/mcp-2026",
-                  "docs/en/features/tree-sitter-bash",
-                  "docs/en/features/bash-classifier",
-                  "docs/en/features/web-browser-tool",
-                  "docs/en/features/web-search-tool",
-                  "docs/en/features/experimental-skill-search",
-                  "docs/en/features/langfuse-monitoring",
-                  "docs/en/features/computer-use",
-                  "docs/en/features/chrome-devtools-mcp"
-                ]
-              },
-              {
-                "group": "Context and automation",
-                "pages": [
-                  "docs/en/features/token-budget",
-                  "docs/en/features/workflow-scripts",
-                  "docs/en/features/auto-dream"
-                ]
-              },
-              "docs/en/features/tier3-stubs"
-            ]
-          },
-          {
-            "group": "Infrastructure and dependencies",
-            "pages": [
-              "docs/en/auto-updater",
-              "docs/en/lsp-integration",
-              "docs/en/external-dependencies",
-              "docs/en/telemetry-remote-config-audit"
-            ]
           }
         ]
       },
       {
         "language": "zh",
-        "default": false,
+        "default": true,
         "groups": [
           {
             "group": "开始",
@@ -304,146 +176,18 @@
       },
       {
         "language": "ja",
-        "default": false,
         "groups": [
           {
-            "group": "はじめに",
+            "group": "开始",
             "pages": [
               {
-                "group": "イントロダクション",
+                "group": "介绍",
                 "pages": [
                   "docs/ja/introduction/what-is-claude-code",
                   "docs/ja/introduction/why-this-whitepaper",
                   "docs/ja/introduction/architecture-overview"
                 ]
               }
-            ]
-          },
-          {
-            "group": "対話の仕組み",
-            "pages": [
-              "docs/ja/conversation/the-loop",
-              "docs/ja/conversation/streaming",
-              "docs/ja/conversation/multi-turn"
-            ]
-          },
-          {
-            "group": "ツール",
-            "pages": [
-              "docs/ja/tools/what-are-tools",
-              "docs/ja/tools/file-operations",
-              "docs/ja/tools/shell-execution",
-              "docs/ja/tools/search-and-navigation",
-              "docs/ja/tools/task-management"
-            ]
-          },
-          {
-            "group": "コンテキストエンジニアリング",
-            "pages": [
-              "docs/ja/context/system-prompt",
-              "docs/ja/context/project-memory",
-              "docs/ja/context/compaction",
-              "docs/ja/context/token-budget"
-            ]
-          },
-          {
-            "group": "マルチエージェント",
-            "pages": [
-              "docs/ja/agent/sub-agents",
-              "docs/ja/agent/worktree-isolation",
-              "docs/ja/agent/coordinator-and-swarm"
-            ]
-          },
-          {
-            "group": "拡張性",
-            "pages": [
-              "docs/ja/extensibility/mcp-protocol",
-              "docs/ja/extensibility/mcp-configuration",
-              "docs/ja/extensibility/hooks",
-              "docs/ja/extensibility/skills",
-              "docs/ja/extensibility/custom-agents"
-            ]
-          },
-          {
-            "group": "安全性と権限",
-            "pages": [
-              "docs/ja/safety/why-safety-matters",
-              "docs/ja/safety/permission-model",
-              "docs/ja/safety/sandbox",
-              "docs/ja/safety/plan-mode",
-              "docs/ja/safety/auto-mode",
-              "docs/ja/safety/miit-warning-response"
-            ]
-          },
-          {
-            "group": "内部構造",
-            "pages": [
-              "docs/ja/internals/three-tier-gating",
-              "docs/ja/internals/feature-flags",
-              "docs/ja/internals/growthbook-ab-testing",
-              "docs/ja/internals/growthbook-adapter",
-              "docs/ja/internals/sentry-setup",
-              "docs/ja/internals/hidden-features",
-              "docs/ja/internals/ant-only-world",
-              "docs/ja/internals/session-transcript-persistence",
-              "docs/ja/features/debug-mode"
-            ]
-          },
-          {
-            "group": "機能リファレンス",
-            "pages": [
-              {
-                "group": "エージェントと協調",
-                "pages": [
-                  "docs/ja/features/coordinator-mode",
-                  "docs/ja/features/fork-subagent",
-                  "docs/ja/features/daemon"
-                ]
-              },
-              {
-                "group": "動作モード",
-                "pages": [
-                  "docs/ja/features/kairos",
-                  "docs/ja/features/channels",
-                  "docs/ja/features/voice-mode",
-                  "docs/ja/features/remote-control-self-hosting",
-                  "docs/ja/features/proactive",
-                  "docs/ja/features/ultraplan"
-                ]
-              },
-              {
-                "group": "ツール拡張",
-                "pages": [
-                  "docs/ja/features/mcp-skills",
-                  "docs/ja/features/mcp-2026",
-                  "docs/ja/features/tree-sitter-bash",
-                  "docs/ja/features/bash-classifier",
-                  "docs/ja/features/web-browser-tool",
-                  "docs/ja/features/web-search-tool",
-                  "docs/ja/features/experimental-skill-search",
-                  "docs/ja/features/langfuse-monitoring",
-                  "docs/ja/features/computer-use",
-                  "docs/ja/features/chrome-devtools-mcp"
-                ]
-              },
-              {
-                "group": "コンテキストと自動化",
-                "pages": [
-                  "docs/ja/features/token-budget",
-                  "docs/ja/features/workflow-scripts",
-                  "docs/ja/features/auto-dream"
-                ]
-              },
-              "docs/ja/features/tier3-stubs"
-            ]
-          },
-          {
-            "group": "インフラと依存関係",
-            "pages": [
-              "docs/ja/auto-updater",
-              "docs/ja/lsp-integration",
-              "docs/ja/external-dependencies",
-              "docs/ja/telemetry-remote-config-audit"
             ]
           }
         ]

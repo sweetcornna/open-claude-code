@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/mcp-skills) · **中文** · [日本語](/docs/ja/features/mcp-skills)
+**中文**
 
 # MCP_SKILLS — MCP 技能发现
 
