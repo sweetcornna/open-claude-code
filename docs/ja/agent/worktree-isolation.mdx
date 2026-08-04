@@ -1,0 +1,190 @@
+---
+title: "Worktree 分離 — Git Worktree によるファイル単位の分離"
+description: "Claude Code の git worktree 分離メカニズムを解説します。サブエージェントが独立した作業領域を得る仕組みから、worktree の作成・破棄ライフサイクル、パスの命名規則、安全策まで。"
+keywords: ["Worktree", "git worktree", "ファイル分離", "マルチエージェント分離", "並列実行の安全性"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/agent/worktree-isolation) · [中文](/docs/zh/agent/worktree-isolation) · **日本語**
+
+{/* この章の目的: worktree の作成・破棄ライフサイクル、パスの命名規則、hook の仕組み、終了時の安全策を明らかにする */}
+
+## ファイル単位の分離が必要な理由
+
+複数のエージェントが同じ作業ディレクトリで並列に動くと、3 種類の競合が発生します。
+
+1. **書き込みの競合**: 2 つのエージェントが同時に `config.ts` を編集し、後から書いた内容が先の変更を上書きする
+2. **状態の干渉**: エージェント A のテストが依存する環境状態を、エージェント B の変更が壊す
+3. **変更の混在**: 作業途中の変更が混ざり、どのエージェントによる変更か判別できない
+
+Git worktree は Git ネイティブの解決策です。同じリポジトリ内に複数の独立した作業ディレクトリを作り、それぞれを別のブランチに置きます。
+
+## ディレクトリ構造と命名規則
+
+Worktree のファイルは、リポジトリルート以下の `.occ/worktrees/` にまとめて置かれます。
+
+```
+<repo-root>/
+├── .occ/
+│   └── worktrees/
+│       ├── fix-auth-bug/          # worktree の作業ディレクトリ
+│       │   ├── .git               # メインリポジトリを指すリンクファイル
+│       │   └── src/...            # 独立したファイルシステムビュー
+│       └── add-dark-mode/         # 別の worktree
+│           └── ...
+├── src/                           # メインの作業ディレクトリ（影響を受けない）
+└── .git/                          # メインリポジトリ
+```
+
+ブランチ名は `worktree/<slug>` です。slug は `validateWorktreeSlug()` で検証され、`/` で区切られた各セグメントには英字、数字、`.`、`_`、`-` のみを使用でき、全体の長さは 64 文字以下です。指定がなければ plan slug から自動生成されます。
+
+## 作成フロー: EnterWorktreeTool
+
+`EnterWorktreeTool`（`packages/builtin-tools/src/tools/EnterWorktreeTool/EnterWorktreeTool.ts`）の実行経路は次のとおりです。
+
+```
+EnterWorktreeTool.call({ name? })
+  ↓
+1. すでに worktree 内にいるか確認する（ネストを防止）
+  ↓
+2. メインリポジトリのルートを解決する（findCanonicalGitRoot）
+   現在すでに worktree 内なら、メインリポジトリへ chdir する
+  ↓
+3. slug を生成する（ユーザー指定または plan slug）
+  ↓
+4. createWorktreeForSession(sessionId, slug)
+   ├── WorktreeCreate hook があるか？
+   │   └── hook を実行し、hook が指定したパスを返す（Git 以外の VCS に対応）
+   └── hook なし → Git ネイティブの経路:
+       a. getOrCreateWorktree(repoRoot, slug)
+          ├── 高速復元: worktree ディレクトリがすでに存在するか確認する
+          │   └── .git ポインタファイルから HEAD SHA を読む（サブプロセスなし）
+          └── 新規作成:
+              i.   mkdir .occ/worktrees/（recursive）
+              ii.  fetch origin/<default-branch>（キャッシュがあれば省略）
+              iii. git worktree add -b worktree/<slug> <path> <base>
+              iv.  performPostCreationSetup()（sparse checkout など）
+  ↓
+5. プロセス状態を更新する:
+   - process.chdir(worktreePath)
+   - setCwd(worktreePath)
+   - setOriginalCwd(worktreePath)
+   - saveWorktreeState(session) → プロジェクト設定へ永続化
+   - clearSystemPromptSections() → system prompt 内の cwd 情報を再計算
+   - clearMemoryFileCaches() → worktree 内の CLAUDE.md を再読み込み
+  ↓
+6. worktreePath と worktreeBranch を返す
+```
+
+### Hook 優先のアーキテクチャ
+
+`createWorktreeForSession()` は最初に `hasWorktreeCreateHook()` を確認します。settings.json に `WorktreeCreate` hook が設定されていれば、システムは Git をまったく呼び出さず、hook コマンドを実行して、その戻り値を worktree パスとして使います。これにより、Pijul や Mercurial など Git 以外のバージョン管理システムも hook 経由で接続できます。
+
+### 高速復元経路
+
+`getOrCreateWorktree()` には重要な最適化があります。対象パスがすでに存在する場合、`.git` ポインタファイルから HEAD SHA を直接取得し、`fetch` と `worktree add` の全工程を省略します。ファイル I/O だけで処理し、サブプロセスを起動しません。大規模リポジトリでは `fetch` に 6〜8 秒かかりますが、この最適化により復元時の遅延はほぼ 0 になります。
+
+## 終了フロー: ExitWorktreeTool
+
+`ExitWorktreeTool`（`packages/builtin-tools/src/tools/ExitWorktreeTool/ExitWorktreeTool.ts`）は 2 つの終了方針に対応します。
+
+### keep: worktree を残す
+
+```
+keepWorktree()
+  ↓
+1. originalCwd へ chdir する
+2. currentWorktreeSession を消去する
+3. プロジェクト設定を更新する（activeWorktreeSession = undefined）
+4. worktree ディレクトリとブランチはディスク上に残す
+```
+
+ユーザーは `cd <worktreePath>` で作業を続けるか、後で手動でマージできます。
+
+### remove: worktree を削除する
+
+厳格な**安全策**があります。
+
+```
+validateInput() — 第 1 の防御線
+  ↓
+1. EnterWorktree が作成したセッション内にいるか確認する
+   （手動で作成した worktree は削除しない）
+  ↓
+2. countWorktreeChanges(worktreePath, originalHeadCommit)
+   ├── git status --porcelain → 未コミットのファイル数を数える
+   ├── git rev-list --count <originalHead>..HEAD → 新しいコミット数を数える
+   └── null を返す（Git が失敗した場合）→ fail-closed（削除を拒否）
+  ↓
+3. 未コミットのファイルまたは新しいコミットがあるか？
+   → 拒否し、discard_changes: true による確認を要求する
+```
+
+```
+call() — 実処理
+  ↓
+1. 変更を再度数える（validateInput と call の間に変更が加わる可能性がある）
+2. tmux session があれば → killTmuxSession()
+3. cleanupWorktree()
+   ├── hook-based → WorktreeRemove hook を実行する
+   └── git-based → git worktree remove --force + git branch -D
+4. restoreSessionToOriginalCwd()
+   - setCwd(originalCwd)
+   - setOriginalCwd(originalCwd)
+   - projectRoot が worktree の場合にだけ復元する（誤作動を防止）
+   - hooks config snapshot を更新する
+   - system prompt と memory のキャッシュを消去する
+```
+
+### fail-closed 設計
+
+`countWorktreeChanges()` は次の場合に `null` を返します。これは「不明なので安全でないと仮定する」という意味です。
+
+- `git status` または `git rev-list` がゼロ以外で終了した場合（ロックファイル、破損したインデックス）
+- `originalHeadCommit` が未定義の場合（hook-based worktree では基準 commit が設定されない）
+
+`null` が返ると `validateInput` は削除を拒否します。作業を失う危険を冒すより、ユーザーによる手動処理を優先します。
+
+## Agent ツールとの連携
+
+Agent ツール（`AgentTool`）の `isolation` 引数は、サブエージェントを worktree 内で動かすかどうかを決めます。Agent ツールはユーザーセッション用の `createWorktreeForSession()` ではなく、**専用の** `createAgentWorktree()`（`src/utils/worktree.ts`）を使う点に注意してください。両者には重要な違いがあります。
+
+| 観点 | `createWorktreeForSession`（ユーザーセッション） | `createAgentWorktree`（サブエージェント） |
+|------|-----------------------------------------------|------------------------------------------|
+| 呼び出し元 | EnterWorktreeTool | AgentTool |
+| Session 管理 | `currentWorktreeSession` を設定する | `currentWorktreeSession` を**設定しない** |
+| 既存 worktree の復元 | そのまま再利用する | 再利用し、mtime を更新する（定期クリーンアップによる誤削除を防止） |
+
+サブエージェント終了時の処理は `cleanupWorktreeIfNeeded()` が自動で行います。Agent worktree にはセッション状態がなく、`ExitWorktreeTool` の `validateInput` に拒否されるため、`ExitWorktreeTool` は使いません。
+
+- **変更あり** → worktree を残し、メインエージェントが後でマージできるように `worktreePath` を返す
+- **変更なし** → 自動的に削除する
+- **Hook-based** → 常に残す
+
+## Session 状態の永続化
+
+`WorktreeSession` オブジェクトは `saveCurrentProjectConfig()` によりディスクへ永続化され、次の情報を持ちます。
+
+```typescript
+{
+  originalCwd: string,         // worktree に入る前の作業ディレクトリ
+  worktreePath: string,        // worktree の絶対パス
+  worktreeName: string,        // slug
+  worktreeBranch?: string,     // ブランチ名（例: worktree/fix-auth）
+  originalBranch?: string,     // 入る前のブランチ
+  originalHeadCommit?: string, // 入る前の HEAD commit（変更数の算出に使用）
+  sessionId: string,           // この worktree を作成したセッション ID
+  tmuxSessionName?: string,    // 関連する tmux session
+  hookBased?: boolean,         // hook により作成されたか
+  creationDurationMs?: number, // 作成時間（分析用）
+  usedSparsePaths?: boolean,   // sparse checkout を使用したか
+}
+```
+
+これにより、セッション復元（`--resume`）時に worktree のコンテキストを正しく戻せます。プロセスが再起動しても、`getCurrentWorktreeSession()` はプロジェクト設定から状態を読みます。
+
+## Sparse Checkout による最適化
+
+大規模な monorepo 向けに、worktree は `sparsePaths` 設定に対応しています。リポジトリ全体ではなく、指定したディレクトリだけを checkout します。210K ファイルのリポジトリでは、worktree の作成時間を数十秒から数秒へ短縮します。
+
+設定は `getInitialSettings().worktree?.sparsePaths` にあり、`performPostCreationSetup()` で適用されます。

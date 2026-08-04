@@ -1,0 +1,860 @@
+---
+title: "サブエージェントの仕組み — 権限、フロー、同期・非同期、Fork"
+description: "Claude Code のサブエージェントをソースコードから解説します。AgentTool の実行経路、権限モード、同期・非同期のライフサイクル、タスク通知キュー、AgentTool fork、slash command fork、runForkedAgent の境界。"
+keywords: ["サブエージェント", "AgentTool", "権限モード", "同期サブエージェント", "非同期サブエージェント", "forkSubagent", "runForkedAgent"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/agent/sub-agents) · [中文](/docs/zh/agent/sub-agents) · **日本語**
+
+{/* この章の目的: 混同しやすいサブエージェントの実行経路を分けて説明し、ソースコードの入口を示す */}
+
+## 最初に区別すべき 4 つの概念
+
+Claude Code でまとめて「サブエージェント」と呼ばれがちなものには、実際には 4 種類の実行経路があります。
+
+| 種類 | 誰が起動するか | Tool プロトコルを通るか | 結果の戻り方 | 代表的な入口 |
+|------|----------------|--------------------------|--------------|----------------|
+| 名前付きサブエージェント | メインモデルが `Agent(...)` を呼び、`subagent_type` を指定する | はい。1 回の `tool_use` | 現在の turn の `tool_result`、またはバックグラウンド完了後の `<task-notification>` | `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` |
+| AgentTool fork | メインモデルが `Agent(...)` を呼び、`subagent_type` を省略し、fork gate が有効 | はい。引き続き `Agent` ツール | まず `async_launched` を返し、完了後にタスク通知でメインモデルへ戻る | `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx`、`packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` |
+| Slash command fork | ユーザーが `context: fork` の slash command / skill を実行する | いいえ。モデルが発行する `Agent` tool_use ではない | 通常モードではコマンド出力を同期的に返す。assistant モードではバックグラウンドから hidden prompt を再注入する | `src/utils/processUserInput/processSlashCommand.tsx` |
+| `runForkedAgent()` | ランタイム内部サービスが実行分岐を直接作る | いいえ。内部 API | 呼び出し元が内部で結果を消費する | `src/utils/forkedAgent.ts` |
+
+一文で覚えるなら、次のとおりです。
+
+`AgentTool` fork はモデルが使うツールのセマンティクス、`runForkedAgent()` はランタイム内部機能向けの実装詳細、slash command fork は skill / command の実行モードです。
+
+## AgentTool のメインフロー
+
+モデルから見える `Agent` ツールは、最終的に `AgentTool.call()` へ入ります。通常の名前付きサブエージェントは次の経路で実行されます。
+
+```text
+assistant message
+  -> tool_use: Agent({ prompt, subagent_type?, run_in_background?, ... })
+  -> query.ts: runTools(...)
+  -> toolExecution.ts: await tool.call(...)
+  -> AgentTool.call(...)
+  -> resolve selectedAgent / fork path / permission mode / tool pool
+  -> runAgent(...)
+  -> finalizeAgentTool(...)
+  -> mapToolResultToToolResultBlockParam(...)
+  -> user message with tool_result
+  -> query.ts starts next model turn with that tool_result
+```
+
+主要なソースコードの入口は次のとおりです。
+
+| コード | 役割 |
+|--------|------|
+| `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` | `Agent` ツールの定義、ルーティング、同期・非同期のライフサイクル |
+| `packages/builtin-tools/src/tools/AgentTool/runAgent.ts` | サブエージェントの query loop、system prompt、MCP、sidechain transcript |
+| `src/services/tools/toolExecution.ts` | 外側のツール実行器。`await tool.call(...)` を行う場所 |
+| `src/query.ts` | メインの agentic loop。tool results を集めて次のモデル呼び出しへ進む |
+| `src/tasks/LocalAgentTask/LocalAgentTask.tsx` | バックグラウンドのローカル Agent task の登録、状態更新、完了通知 |
+
+## AgentTool の入力引数
+
+`Agent` ツールの入力 schema は、`AgentTool.tsx` の `baseInputSchema()` と `fullInputSchema()` で定義されます。一部のフィールドは feature gate によってモデルから見える schema から隠れますが、`call()` の実装は統一された `AgentToolInput` 型として、これらの省略可能なフィールドを扱います。
+
+### 基本引数
+
+| 引数 | 型 | 必須 | 役割 | 影響する経路 |
+|------|----|------|------|--------------|
+| `description` | `string` | はい | UI、タスクリスト、ログ、バックグラウンド通知、出力の要約に使う 3〜5 語の短いタスク説明 | サブエージェントの実際の prompt 推論には加わらないが、task の表示と通知に影響する |
+| `prompt` | `string` | はい | サブエージェントが実行するタスクの完全な説明 | 通常の agent ではサブエージェントの user message になる。fork path では fork directive に埋め込まれる。remote path ではリモートの初期メッセージになる |
+| `subagent_type` | `string` | いいえ | 名前付き agent の種類を指定する | 値があれば名前付き agent。省略時は fork gate が有効なら AgentTool fork、無効なら `general-purpose` へフォールバックする |
+| `model` | `'sonnet' \| 'opus' \| 'haiku'` | いいえ | この呼び出しに限ったモデルの上書き | 通常の名前付き agent では agent definition の `model` より優先する。coordinator mode では無視する。fork path は親モデルを継承する |
+| `run_in_background` | `boolean` | いいえ | バックグラウンド実行を要求する | `true` なら非同期 task になる。バックグラウンドタスクが無効な場合や fork gate が有効な場合、このフィールドは schema から隠れる |
+
+### マルチエージェント / Teammate 引数
+
+| 引数 | 型 | 必須 | 役割 | 影響する経路 |
+|------|----|------|------|--------------|
+| `name` | `string` | いいえ | spawned agent に名前を付け、`SendMessage({ to: name })` で指定できるようにする | `team_name` または現在の team context と併用すると teammate spawn を起動する。通常のバックグラウンドサブエージェントでも、後からメッセージを送れるよう `name -> agentId` を登録する |
+| `team_name` | `string` | いいえ | 参加または使用する team を指定する | `name` と併用すると `spawnTeammate()` を起動する。省略時は現在の `appState.teamContext.teamName` を継承できる |
+| `mode` | permission mode | いいえ | teammate spawn に対する権限モードの指示 | 現在の実装では teammate の `plan_mode_required: spawnMode === 'plan'` にのみ使う。通常のローカルサブエージェントに対する `permissionMode` の上書きではない |
+
+`name + team_name` は独立した分岐です。通常の `runAgent()` によるローカルサブエージェント経路には入らず、`spawnTeammate()` を呼び出して `teammate_spawned` を返します。teammate 内から `name` を付けてさらに teammate を spawn しようとすると拒否されます。team roster がフラットな構造だからです。
+
+### 分離と作業ディレクトリの引数
+
+| 引数 | 型 | 必須 | 役割 | 影響する経路 |
+|------|----|------|------|--------------|
+| `isolation` | `'worktree'`。内部ビルドでは `'remote'` にも対応 | いいえ | agent definition の分離モードを上書きする | `worktree` は一時的な git worktree を作る。`remote` は CCR に委譲し、直ちに `remote_launched` を返す |
+| `cwd` | `string` | いいえ | サブエージェントの実行ディレクトリを指定する | `KAIROS` schema でのみ公開される。`runWithCwdOverride()` によりファイル操作と shell 操作の cwd を変更する |
+
+`isolation` 引数は agent definition の `isolation` より優先されます。`cwd` の schema 文言は `isolation: "worktree"` と同時に使わないよう求めています。実装上、両方が指定されると `cwd` が実行ディレクトリとして優先されますが、worktree が作成される可能性は残ります。そのため、呼び出し側は相互排他的な引数として扱うべきです。
+
+### 引数の可視性と実際の効果
+
+| 引数 | 見えなくなる場合 | 説明 |
+|------|------------------|------|
+| `run_in_background` | `DISABLE_BACKGROUND_TASKS` が有効、または `isForkSubagentEnabled()` が true | fork gate が有効なときはすべての `AgentTool` spawn が強制的に非同期になるため、モデルに選ばせる必要がない |
+| `cwd` | `KAIROS` 以外のビルド / モード | schema から omit されるが、実装型にはこのフィールドが残る |
+| `isolation: "remote"` | 内部ビルド以外 | 外部ビルドが受け付けるのは `worktree` だけ |
+| `model` | coordinator mode または fork path | coordinator は model override を消去する。fork はリクエストの prefix と動作を揃えるため親モデルを継承する必要がある |
+
+### 引数と agent definition の優先順位
+
+| 設定項目 | 呼び出し引数 | agent definition | 最終規則 |
+|----------|--------------|------------------|----------|
+| agent の種類 | `subagent_type` | デフォルト / active agents | 明示した `subagent_type` が優先する。省略時は fork gate により fork または `general-purpose` が決まる |
+| モデル | `model` | `selectedAgent.model` | 通常の名前付き agent では呼び出し引数が優先する。引数がなければ定義を使い、定義もなければ親モデルを継承する |
+| バックグラウンド実行 | `run_in_background` | `selectedAgent.background` | どちらかが true なら非同期になる。coordinator、assistant、fork gate などによる強制非同期条件もある |
+| 分離 | `isolation` | `selectedAgent.isolation` | 呼び出し引数が優先する |
+| 権限モード | ローカル上書き引数なし | `selectedAgent.permissionMode` | 通常のサブエージェントは definition の `permissionMode` を使い、デフォルトは `acceptEdits`。fork は `bubble` を使う |
+| ツール集合 | 呼び出し引数なし | `selectedAgent.tools` | 通常のサブエージェントは `runAgent()` 内で definition に従って絞り込む。fork は親の exact tools を使う |
+
+## Agent Definition のフィールド
+
+`AgentTool` の呼び出し引数は「今回どのように spawn するか」だけを記述します。agent のデフォルト能力を実際に決めるのは agent definition です。カスタム agent はユーザー / プロジェクトディレクトリ、JSON 設定、プラグイン、組み込み定義から取得でき、主要フィールドは最終的に `AgentDefinition` へ正規化されます。
+
+### よく使う frontmatter
+
+| フィールド | 型 | 役割 | ランタイムへの影響 |
+|------------|----|------|--------------------|
+| `name` | `string` | agent の種類名 | モデルは `subagent_type` で照合する。プラグイン agent には namespace prefix が付く場合がある |
+| `description` | `string` | 利用場面の説明 | 利用可能な agent 一覧に入り、メインモデルによる選択を助ける |
+| `tools` | `string[]` | 許可するツール集合 | `runAgent()` 内で `resolveAgentTools()` により絞り込む。`['*']` は全ツールを利用可能にする |
+| `disallowedTools` | `string[]` | 禁止するツール集合 | JSON agent が対応するフィールド。許可集合から除外するために使う |
+| `prompt` | `string` | agent system prompt の本文 | 通常の名前付きサブエージェントはこれを使って独自の system prompt を作る |
+| `model` | `string` | デフォルトモデル | `Agent({ model })` で上書きできる。`inherit` は親モデルの継承を表す |
+| `effort` | effort level または number | 推論の effort level | agent の実行設定へ渡す |
+| `permissionMode` | permission mode | デフォルトの権限モード | 通常のサブエージェントのツールプールを組み立てるときに使う。省略時は `acceptEdits` |
+| `background` | `boolean` | 常にバックグラウンドで実行するか | true の場合、呼び出し引数に `run_in_background` がなくても非同期になる |
+| `isolation` | `'worktree'` / `'remote'` | デフォルトの分離モード | 呼び出し引数 `isolation` で上書きできる |
+| `maxTurns` | positive integer | agentic turns の最大数 | `query()` へ渡し、サブエージェントの無限ループを防ぐ |
+| `color` | agent color | UI の色 | grouped UI、タスクパネル、teammate 表示に使う |
+| `memory` | `'user' \| 'project' \| 'local'` | 永続メモリのスコープ | system prompt に agent memory を追加し、scope に応じたディレクトリで読み書きする |
+
+例:
+
+```md
+---
+name: code-reviewer
+description: Review a code change and find correctness risks
+tools:
+  - Read
+  - Grep
+  - Glob
+model: sonnet
+permissionMode: acceptEdits
+background: true
+maxTurns: 8
+memory: project
+---
+
+You are a focused code reviewer. Prioritize bugs, regressions, and missing tests.
+```
+
+### MCP、Hooks、Skills
+
+| フィールド | 役割 | 説明 |
+|------------|------|------|
+| `requiredMcpServers` | 起動前に必須となる MCP server のパターン | `AgentTool.call()` は pending server を最大約 30 秒待つ。利用可能なツールがなければエラーになる |
+| `mcpServers` | agent 専用の MCP server | `runAgent()` が初期化し、そのサブエージェントと同じライフサイクルを持つ |
+| `hooks` | agent のライフサイクル中に登録する hooks | `runAgent()` は frontmatter hooks を登録する。agent 停止時に session hooks を消去する |
+| `skills` | 事前読み込みする skill 名 | `runAgent()` が解決して対応する skill を注入する。プラグイン skill は namespace または suffix の照合に対応する |
+| `initialPrompt` | 最初の user turn より前に置く内容 | 起動時に追加の指示を固定注入するために使える |
+
+これらは agent definition のフィールドであり、`Agent(...)` の呼び出し引数ではありません。呼び出し側が 1 回の `Agent` tool_use に `tools`、`hooks`、`skills` を一時的に渡して agent 定義を上書きすることはできません。
+
+### runAgent() の拡張点
+
+`runAgent()` は prompt をモデルへ渡すだけではありません。query loop の前後で agent 単位の拡張点を取り付けます。
+
+| 拡張点 | タイミング | 役割 |
+|--------|------------|------|
+| `SubagentStart` hooks | サブエージェントの query loop 起動前 | hook による起動コンテキストの変更や補足を許可する |
+| frontmatter `hooks` | agent session の初期化時に登録 | このサブエージェントの session 内でだけ有効になり、終了後に消去される |
+| preload `skills` | system prompt / skill の解決段階 | 指定した skill の説明とリソースを agent から見えるコンテキストへ注入する |
+| agent `memory` | system prompt の構築時 | `user` / `project` / `local` scope に応じて agent memory を読み、agent prompt へ追加する |
+| sidechain transcript | query loop の実行中 | サブエージェント独自のメッセージ列を記録し、復元、デバッグ、`SendMessage` による継続に使う |
+
+これらの拡張点により、同じ `runAgent()` を使っていても、agent definition ごとにツール境界、起動動作、長期コンテキストが異なります。
+
+## ルーティング規則
+
+`AgentTool.call()` は、まず今回どの種類の agent を動かすかを決めます。
+
+```text
+subagent_type に値がある
+  -> 名前付き agent を使う
+
+subagent_type を省略 && isForkSubagentEnabled() が true
+  -> fork agent を使う
+
+subagent_type を省略 && fork gate が無効
+  -> general-purpose へフォールバックする
+```
+
+名前付き agent は、組み込み agent、ユーザー設定ディレクトリ、プラグイン agent などの定義から取得します。fork agent は `forkSubagent.ts` に定義された特別な組み込み agent です。通常の専門ロールではなく、「親コンテキストを継承する worker」です。
+
+## 権限モデル
+
+サブエージェントの権限は 3 層に分けて考える必要があります。その agent を起動できるか、その agent がどのツールを持つか、ツール実行時の権限要求をどう扱うかです。
+
+### 起動権限
+
+`AgentTool` 自体がツール呼び出しなので、まず通常のツール権限システムを通ります。その後、`AgentTool.call()` は agent 単位のフィルタリングも行います。
+
+| チェック | 説明 |
+|----------|------|
+| `filterDeniedAgents()` | 権限規則に基づき、禁止された agent の種類を除外する |
+| `requiredMcpServers` | agent が必須 MCP server を宣言していれば接続を待ち、失敗またはタイムアウトで停止する |
+| teammate の制限 | in-process teammate はさらに teammate を spawn できず、バックグラウンド agent も spawn できない |
+| fork の再帰防止 | fork worker 内では再度 fork できない |
+
+権限規則で deny された名前付き agent は、別の agent へフォールバックせず直接エラーになります。これにより、モデルがユーザーまたは設定の拒否規則を迂回することを防ぎます。
+
+### ツールプールの権限
+
+通常の名前付きサブエージェントは、親 agent の現在の turn におけるツールプール制限をそのまま継承しません。自身の権限モードを使ってツールプールを組み直します。
+
+```ts
+const workerPermissionContext = {
+  ...appState.toolPermissionContext,
+  mode: selectedAgent.permissionMode ?? 'acceptEdits',
+}
+
+const workerTools = assembleToolPool(
+  workerPermissionContext,
+  appState.mcp.tools,
+)
+```
+
+これにはいくつか重要な意味があります。
+
+| 観点 | 動作 |
+|------|------|
+| デフォルトの権限モード | agent 定義に `permissionMode` がなければ、デフォルトで `acceptEdits` を使う |
+| グローバル allow / deny 規則 | 引き続き `appState.toolPermissionContext` から取得する |
+| agent 自身の `tools` フィールド | `runAgent()` 内で `resolveAgentTools()` によりさらに絞り込む |
+| MCP ツール | 現在の AppState ですでに接続された MCP ツールから取得する。agent は専用の MCP server も宣言できる |
+
+fork agent は例外です。親子リクエストの prompt cache prefix を一致させるため、親の exact tools を使います。
+
+```text
+useExactTools: true
+availableTools: toolUseContext.options.tools
+```
+
+したがって fork の権限戦略は「ツールプールを組み直す」ことではなく、「親のツール定義を継承し、`bubble` 権限モードで権限要求を親ターミナルへ上げる」ことです。
+
+### 権限モード早見表
+
+| モード | サブエージェント内での意味 |
+|--------|----------------------------|
+| `acceptEdits` | デフォルトモード。通常は安全な経路での読み取りと編集を許可し、危険な操作は引き続き権限システムを通す |
+| `default` / その他の通常モード | メインの権限システム規則に従って確認または許可する |
+| `bypassPermissions` | 明示的に危険なモード。ユーザーが権限スキップを有効にした場合だけ現れるべきもの |
+| `bubble` | fork 用の考え方。権限要求を親セッションへバブルアップして処理する |
+
+## 同期サブエージェント
+
+同期サブエージェントはデフォルトの経路です。`run_in_background: true` が明示されず、agent 定義にも `background: true` がなく、coordinator / assistant mode / fork gate などによって強制的に非同期化されていない場合に使われます。
+
+同期的な待機は通常のツール呼び出し連鎖で行われます。外側の `toolExecution.ts` は次を実行します。
+
+```ts
+const result = await tool.call(...)
+```
+
+このツールが `AgentTool` なら、`AgentTool.call()` は内部でサブエージェント全体を実行します。
+
+```text
+AgentTool.call()
+  -> agentIterator = runAgent(...)[Symbol.asyncIterator]()
+  -> while true:
+       await agentIterator.next()
+       assistant / user メッセージを収集する
+       progress を UI / SDK へ転送する
+       result.done なら抜ける
+  -> finalizeAgentTool(agentMessages, ...)
+  -> return { data: { status: "completed", ...agentResult } }
+```
+
+戻った後、`mapToolResultToToolResultBlockParam()` が `completed` の結果を現在の turn の `tool_result` に変換します。続いて `query.ts` がこの tool result をメッセージ一覧へ入れ、次のモデル呼び出しに進みます。
+
+つまり、同期サブエージェントは統一キュー経由で結果を再注入しません。メインモデルはこの `Agent` tool call 上で待機し、最終的な `tool_result` を受け取ってから続行します。
+
+### 同期サブエージェントのバックグラウンド化
+
+同期サブエージェントは foreground task として登録されるため、実行途中でバックグラウンド化できます。ループでは、次のサブエージェントメッセージとバックグラウンド化シグナルを同時に待ちます。
+
+```ts
+const raceResult = await Promise.race([
+  nextMessagePromise.then(result => ({ type: 'message', result })),
+  backgroundPromise,
+])
+```
+
+バックグラウンド化シグナルが先に届くと、現在の foreground iterator をクリーンアップし、新しいバックグラウンド `runAgent(..., isAsync: true)` が残りの処理を引き継ぎます。この時点で `AgentTool.call()` は最終結果を待たずに `async_launched` を返し、それ以降の完了結果はタスク通知キューを通ります。
+
+## 非同期サブエージェント
+
+非同期サブエージェントを起動する条件は次のとおりです。
+
+| 条件 | 説明 |
+|------|------|
+| `run_in_background: true` | モデルが明示的にバックグラウンド実行を要求する |
+| agent 定義の `background: true` | その agent は常にバックグラウンドで実行される |
+| coordinator mode | 編成しやすいよう worker をすべて非同期にする |
+| fork subagent gate が有効 | 現在の実装ではすべての `AgentTool` spawn に非同期通知モデルを強制する |
+| assistant / kairos mode | 同期サブタスクによる入力キューのブロックを避ける |
+| proactive active | proactive loop でも強制的に非同期化する場合がある |
+
+非同期経路はサブエージェントの完了を待ちません。
+
+```text
+AgentTool.call()
+  -> registerAsyncAgent(...)
+  -> void runAsyncAgentLifecycle(...)
+  -> return { status: "async_launched", agentId, outputFile }
+```
+
+バックグラウンドのライフサイクルは `runAsyncAgentLifecycle()` で完了します。
+
+```text
+runAsyncAgentLifecycle()
+  -> for await message of runAgent(...)
+  -> updateAsyncAgentProgress(...)
+  -> finalizeAgentTool(...)
+  -> completeAsyncAgent(...)
+  -> enqueueAgentNotification(...)
+```
+
+非同期 Agent は独立した `AbortController` を使います。通常の ESC でメインスレッドをキャンセルしても、バックグラウンド Agent は自動的には終了しません。タスク停止、bulk kill、または task 管理コマンドで明示的に終了する必要があります。
+
+## 完了通知と統一キュー
+
+バックグラウンド Agent が完了すると、`enqueueAgentNotification()` は XML 形式の `<task-notification>` を生成します。
+
+```xml
+<task-notification>
+  <task-id>...</task-id>
+  <tool-use-id>...</tool-use-id>
+  <output-file>...</output-file>
+  <status>completed</status>
+  <summary>Agent "..." completed</summary>
+  <result>...</result>
+  <usage>...</usage>
+</task-notification>
+```
+
+このメッセージは `enqueuePendingNotification({ mode: 'task-notification' })` によって統一 command queue へ入ります。
+
+### キューが消費されるタイミング
+
+| 場面 | 消費方法 |
+|------|----------|
+| REPL / TUI | `useQueueProcessor()` がキューを購読する。query がアイドル状態で、ローカルの JSX UI によるブロックがなければ `processQueueIfReady()` を呼ぶ |
+| CLI / SDK headless | `print.ts` の `drainCommandQueue()` が turn 間で継続的に消費する。バックグラウンドタスクがまだ動いていれば、待機を続けながら新しい通知を drain する |
+| サブエージェント内部 | `query.ts` は現在の `agentId` を持つ `task-notification` を消費する。メインスレッドは `agentId === undefined` のメッセージだけを消費する |
+
+`task-notification` は最終的に user-role message または attachment として次のモデルコンテキストへ入ります。これによりモデルはバックグラウンドの結果を確認し、統合、追加処理、ユーザーへの応答のいずれを行うか決められます。
+
+### 同じキューを使うその他のメッセージ
+
+統一キューはバックグラウンド Agent 専用ではありません。代表的な発生元は次のとおりです。
+
+| 発生元 | mode | 用途 |
+|--------|------|------|
+| 現在の turn が終わる前にユーザーが続けて入力した内容 | `prompt` / `bash` | 次の turn の処理へキューイングする |
+| バックグラウンド shell / monitor の完了または停止の通知 | `task-notification` | コマンド状態をモデルへ知らせる |
+| remote agent / ultraplan / ultrareview の完了 | `task-notification` | リモートの結果をローカルモデルへ渡す |
+| scheduled task / cron | `prompt` | メインモデルのタスクを定期実行する |
+| Chrome / MCP channel からの push | `prompt` | 外部システムからメッセージを能動的に注入する |
+| hook のブロックエラー | `task-notification` | モデルを起こして stop hook エラーを処理させる |
+| orphaned permission response | `orphaned-permission` | ツール権限への応答が元の要求より遅れて到着した場合を処理する |
+
+キューの優先順位は `now > next > later` です。`enqueue()` のデフォルトは `next`、`enqueuePendingNotification()` のデフォルトは `later` です。これによりシステム通知がユーザー入力より先に処理されるのを防ぎます。
+
+## 継続通信とタスク制御
+
+バックグラウンドサブエージェントが `async_launched` を返した後、メインモデルは最終回答をすでに知っているように振る舞うべきではありません。その後に取れる操作は、メッセージ送信、出力の読み取り、タスク停止の 3 種類です。
+
+### SendMessage
+
+`SendMessage` は、実行中または過去に起動した agent へメッセージを追加します。ローカルのバックグラウンド agent は 2 種類のアドレスで特定できます。
+
+| アドレス | 由来 | 動作 |
+|----------|------|------|
+| `name` | `Agent({ name, ... })` により `agentNameRegistry` へ登録される | agentId へ解決してから送信する |
+| raw `agentId` | `async_launched` または `completed` の tool result で返される | 対応する task または transcript を直接特定する |
+
+plain text message を送るときは `summary` が必須です。UI と権限の要約に短い説明が必要だからです。`to: "*"` は teammate team への broadcast を表します。structured message は broadcast できません。
+
+ローカルのバックグラウンド agent に対する `SendMessage` の動作は 3 種類あります。
+
+| 対象の状態 | 動作 | 結果 |
+|------------|------|------|
+| task がまだ `running` | `queuePendingMessage(agentId, message, ...)` を呼ぶ | メッセージはその task の `pendingMessages` に入り、サブエージェントの次の tool round / loop 境界で配信される |
+| task は停止したが AppState に残っている | `resumeAgentBackground(...)` を呼ぶ | このメッセージで agent をバックグラウンド復帰させ、完了後も通知で結果を返す |
+| task が AppState から削除済み | 引き続き `resumeAgentBackground(...)` を試す | sidechain transcript が残っていればそこから復元し、なければ失敗を返す |
+
+つまり `SendMessage` は agent の実行中だけ使えるものではありません。長い時間が経っても、呼び出し側が `name` または `agentId` を知っており、対応する transcript が消去されていなければ、その agent を復元して継続できる可能性があります。反対に、task 状態も transcript も失われていれば、`SendMessage` がコンテキストを何もない状態から再構築することはできません。
+
+誤解しやすい点は次のとおりです。
+
+| 点 | 説明 |
+|----|------|
+| running agent は現在のツール呼び出しを即座には中断しない | メッセージはまず `pendingMessages` に入り、agent loop が安全な境界へ到達してから処理される |
+| stopped agent は新しいバックグラウンド実行になる | `resumeAgentBackground()` が output file を返し、その後は完了通知で再注入する |
+| `name` は登録が残っている間だけ確実 | name registry はランタイム状態である。時間を置いた復元では raw `agentId` の方が安定する |
+
+### TaskOutput
+
+`TaskOutput` はバックグラウンドタスクの出力を読む旧式のツールです。現在の prompt は、タスクが返す `output_file` を `Read` で読む方法を明示的に推奨しています。このツールも引き続き利用でき、主な動作は次のとおりです。
+
+| 引数 | 動作 |
+|------|------|
+| `task_id` | 読み取るバックグラウンドタスクの id |
+| `block: false` | 現在の状態と既存の出力を非ブロッキングで読む |
+| `block: true` | タスク完了を待つ。デフォルトの動作 |
+| `timeout` | ブロッキング待機の最大時間 |
+
+`block: true` でタスク完了まで待つと、`TaskOutput` は task を `notified` としてマークし、完了通知の重複送信を防ぎます。このツールはすでに deprecated であるため、新しいコードとモデルへの指示は `output_file` を直接読む方法を推奨します。
+
+### TaskStop
+
+`TaskStop` は実行中のバックグラウンドタスクを停止します。`task_id` を受け取り、旧式の `shell_id` にも対応します。検証規則は単純です。タスクが存在し、状態が `running` でなければエラーになります。
+
+停止時は統一された `stopTask()` を呼び、task の種類ごとにそれぞれの kill ロジックへマッピングします。たとえばローカル agent は自身の `AbortController` を abort し、shell task はプロセスを停止し、remote task は remote 側の停止経路を通ります。
+
+## 失敗、キャンセル、クリーンアップ
+
+サブエージェントの例外経路は、主に同期と非同期に分けて考えます。
+
+### 同期経路
+
+同期サブエージェントが `AbortError` をスローした場合、`AgentTool.call()` はそれを外側のツールフレームワークへ再スローし、メイン turn は通常の中断処理へ入ります。abort 以外のエラーは先に記録されます。assistant メッセージをすでに収集していれば、可能な限り `finalizeAgentTool()` で部分結果を返し、メインモデルが進捗を確認できるようにします。assistant メッセージがまったくなければエラーを再スローします。
+
+同期処理の finally では次のクリーンアップを行います。
+
+| クリーンアップ | 役割 |
+|----------------|------|
+| background hint UI を消去 | foreground のヒントが残るのを防ぐ |
+| `stopForegroundSummarization()` | foreground の要約タイマーを止める |
+| `unregisterAgentForeground()` | サブエージェントがバックグラウンド化されなかった場合、foreground task レジストリから外す |
+| SDK task notification | SDK / VS Code パネルへ完了、失敗、stopped のイベントを送る |
+| `clearInvokedSkillsForAgent()` | agent scope の skill 状態を消去する |
+| `clearDumpState()` | dump/transcript のデバッグ状態を消去する |
+| `cleanupWorktreeIfNeeded()` | バックグラウンド化されなかった場合、worktree を消去または保持する |
+
+### 非同期経路
+
+非同期経路の例外は `runAsyncAgentLifecycle()` が処理します。
+
+| 状況 | 状態更新 | 通知 |
+|------|----------|------|
+| 正常完了 | `completeAsyncAgent(...)` | `enqueueAgentNotification(status: completed)` |
+| `AbortError` | `killAsyncAgent(...)` | `enqueueAgentNotification(status: killed)`。partial result を含む |
+| その他のエラー | `failAsyncAgent(...)` | `enqueueAgentNotification(status: failed)`。error を含む |
+
+コードは最初に task 状態を更新し、その後で handoff classifier や worktree cleanup など時間のかかる可能性がある追加処理を行います。この順序は重要です。`TaskOutput(block=true)` は task が terminal status へ入るのを待つため、後続の classifier や Git のクリーンアップに阻まれてはいけません。
+
+通知には重複防止もあります。`enqueueAgentNotification()` はまず `task.notified` を原子的に確認して設定します。すでに通知済みなら、再度キューへ入れません。
+
+## AgentTool fork
+
+AgentTool fork は `Agent` ツールの特殊なルーティングであり、通常の名前付き agent ではありません。
+
+### Gate
+
+fork はデフォルトで無効です。開発時に明示的に設定する場合など、ビルドまたは実行時に `FORK_SUBAGENT` feature を有効にする必要があります。
+
+```powershell
+$env:FEATURE_FORK_SUBAGENT='1'; bun run dev
+```
+
+feature を有効にしても、次の場合は強制的に無効になります。
+
+| 場面 | 理由 |
+|------|------|
+| coordinator mode | coordinator には独自の委譲モデルがある |
+| non-interactive session | pipe / SDK の場面で不可視の fork がネストするのを避ける |
+
+### 経路
+
+```text
+メインモデル
+  -> Agent({ prompt })。subagent_type なし
+  -> AgentTool.call()
+  -> isForkSubagentEnabled()
+  -> selectedAgent = FORK_AGENT
+  -> buildForkedMessages(...)
+  -> runAgent(... useExactTools: true, forkContextMessages: parent messages)
+  -> task / transcript / notification を登録する
+```
+
+fork の目的は、複数の worker が親リクエストの prompt cache prefix を共有することです。動作は次のとおりです。
+
+| 観点 | fork の動作 |
+|------|-------------|
+| system prompt | 親ですでに描画済みの system prompt を使う |
+| 会話履歴 | 親の完全な `toolUseContext.messages` を渡す |
+| tools | 親の exact tools を使い、再度絞り込まない |
+| thinking config | cache key の変化を避けるため親の設定を継承する |
+| placeholder tool_result | 複数の fork は同じ placeholder text を使い、最後の directive だけが異なる |
+| 権限 | `permissionMode: 'bubble'` |
+
+このため fork path と通常の agent path は、tool pool、prompt 構築、モデル継承のすべてが異なります。
+
+### 再帰防止
+
+fork worker が `Agent` ツールを残すのは、ツール定義のバイト列を親と一致させるためです。ただし、コードは fork 内での再 fork を拒否します。
+
+| 保護 | 説明 |
+|------|------|
+| `querySource === 'agent:builtin:fork'` | 現在すでに fork worker 内にいることを直接識別する |
+| `<fork-boilerplate>` の走査 | fork 指示がコンテキスト内にすでに存在することを予備的に識別する |
+
+fork worker はさらに委譲せず、自身でタスクを完了すべきです。
+
+## Slash command fork
+
+slash command fork は skill / command の実行モードです。skill の frontmatter で制御します。
+
+```md
+---
+name: code-review
+context: fork
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+---
+```
+
+skill の読み込み時、`frontmatter.context === 'fork'` は command の `context: 'fork'` として解釈されます。slash command の実行経路は次のとおりです。
+
+```text
+ユーザーが /code-review を入力する
+  -> processSlashCommand(...)
+  -> command.context === 'fork'
+  -> executeForkedSlashCommand(...)
+  -> prepareForkedCommandContext(...)
+  -> runAgent(...)
+```
+
+通常の対話モードでは、`executeForkedSlashCommand()` がサブエージェントを同期的に最後まで実行し、progress UI を表示して、結果をローカルコマンド出力としてメインの会話へ返します。
+
+assistant / kairos モードでは fire-and-forget になります。バックグラウンド runner の完了後、結果を hidden prompt としてラップし、command queue へ戻します。これにより、複数の scheduled task が起動時にユーザー入力を直列でブロックしません。
+
+## `runForkedAgent()`
+
+`runForkedAgent()` は内部サービス向けの実行器です。モデルには公開されず、`Agent` tool_result も生成しません。
+
+入力は `cacheSafeParams`、`promptMessages`、`canUseTool` などのランタイムオブジェクトで、query loop を直接実行します。
+
+```text
+内部サービス
+  -> runForkedAgent({ promptMessages, cacheSafeParams, ... })
+  -> createSubagentContext(...)
+  -> query(...)
+  -> ForkedAgentResult を返す
+```
+
+代表的な呼び出し元は次のとおりです。
+
+| 呼び出し元 | 用途 |
+|------------|------|
+| compact | 会話の圧縮 |
+| extractMemories / sessionMemory | メモリの抽出と保守 |
+| promptSuggestion / speculation | prompt の提案と予測 |
+| sideQuestion | メインコンテキストを乱さない一時的な質疑 |
+| agentSummary | バックグラウンド agent の要約 |
+| autoDream | バックグラウンドでのメモリ統合 |
+
+AgentTool fork とは「実行を分岐する」という共通点がありますが、境界はまったく異なります。
+
+| 観点 | AgentTool fork | `runForkedAgent()` |
+|------|----------------|--------------------|
+| 呼び出し元 | モデルが `Agent` ツールを通して呼び出す | ランタイムサービスが直接呼び出す |
+| プロトコル層 | Tool schema / tool_use / tool_result を通る | Tool プロトコルを通らない |
+| 可視性 | メインモデルは先に `async_launched` を見て、完了後に通知を見る | 内部の呼び出し元が結果を処理する |
+| 主な目的 | 並列 worker と prompt cache の共有 | 内部の補助タスクで query loop を再利用する |
+
+## Worktree 分離
+
+`Agent` ツールは `isolation: "worktree"` に対応します。有効にするとサブエージェントは一時的な git worktree で動き、実装や実験のタスクに適します。
+
+ライフサイクルは次のとおりです。
+
+| 段階 | 動作 |
+|------|------|
+| 作成 | agent id から slug を導出し、独立した worktree を作る |
+| CWD 上書き | `runWithCwdOverride(worktreePath, fn)` により、ツールを worktree 内で実行させる |
+| fork + worktree | パス変換の指示を追加注入し、worker にファイルの再読み込みを促す |
+| クリーンアップ | 変更がなければ worktree を削除し、変更があれば残してパスをメインモデルへ返す |
+
+worktree が hook-based の場合、VCS の変更を確実に判定できないため、コードは worktree を残します。
+
+## 結果形式
+
+`AgentTool.mapToolResultToToolResultBlockParam()` は状態に応じて異なる tool result を返します。
+
+| 状態 | 結果 |
+|------|------|
+| `completed` | サブエージェントの出力内容。`agentId`、worktree 情報、usage を含む場合がある |
+| `async_launched` | バックグラウンド agent id、output file のパス、完了通知を待つ旨の説明 |
+| `teammate_spawned` | teammate id、name、team name |
+| `remote_launched` | remote task id、session URL、output file |
+
+同期サブエージェントの `completed` 結果は、現在の `Agent` tool call の `tool_result` に直接なります。非同期サブエージェントの最初の tool result は `async_launched` で、最終出力は `<task-notification>` を通してモデルへ戻ります。
+
+### 出力フィールド
+
+| 状態 | 主要フィールド | 説明 |
+|------|----------------|------|
+| `completed` | `content`、`agentId`、`totalTokens`、`totalToolUseCount`、`totalDurationMs` | 同期サブエージェントの最終結果。通常の agent では継続通信に使える `agentId` を含む |
+| `async_launched` | `agentId`、`description`、`prompt`、`outputFile`、`canReadOutputFile` | バックグラウンド agent が起動済み。最終結果は後から通知で届く |
+| `teammate_spawned` | `teammate_id`、`name`、`team_name` | teammate が起動済み。以後は mailbox / SendMessage で協調する |
+| `remote_launched` | `taskId`、`sessionUrl`、`outputFile`、`description` | remote CCR agent が起動済み。完了後は remote task 通知を通る |
+
+使い捨ての組み込み agent は `agentId` / `SendMessage` hint と usage trailer を省略できます。今後の通信に使わない情報をコンテキストへ入れないためです。
+
+### outputSchema と tool_result
+
+`AgentTool` の `outputSchema` が記述するのは `call()` の返す構造化 data です。`mapToolResultToToolResultBlockParam()` がさらにその data を、モデルが実際に見る `tool_result` のテキストブロックへ写します。コードを読むときは次の順序で追えます。
+
+```text
+AgentTool.call()
+  -> return { data: { status, ...fields } }
+  -> mapToolResultToToolResultBlockParam(data, toolUseID)
+  -> ToolResultBlockParam
+  -> query.ts が tool_result を次の turn のメッセージへ入れる
+```
+
+4 種類の結果で重要なフィールドは次のとおりです。
+
+| status | data フィールド | モデルから見える情報 |
+|--------|-----------------|----------------------|
+| `completed` | `content`、`agentId`、usage、任意の worktree result | サブエージェントの最終出力。継続通信できる場合は `SendMessage` が利用可能であることを示す |
+| `async_launched` | `agentId`、`description`、`prompt`、`outputFile`、`canReadOutputFile` | バックグラウンドで起動済み。通知を待つか output file を読むよう示す |
+| `teammate_spawned` | `teammate_id`、`name`、`team_name` | teammate が team に参加済み。以後は mailbox / `SendMessage` で協調する |
+| `remote_launched` | `taskId`、`sessionUrl`、`outputFile`、`description` | remote task が起動済み。ローカルモデルは remote task notification を待つ |
+
+ここでは `status` が結果を振り分ける軸です。後続の catch / finally にある failed、killed、cleanup のロジックが、返却済みの同期 `tool_result` を書き換えることはありません。バックグラウンド経路では task state と notification を通して、最終状態が再びメインモデルへ渡されます。
+
+## ライフサイクルの状態機械
+
+ローカルサブエージェントを task として見ると、中核の状態は次のように理解できます。
+
+```text
+AgentTool.call()
+  -> route を解決する
+  -> 任意の worktree を作成する
+  -> foreground または async task を登録する
+  -> runAgent()
+  -> completed / failed / killed
+  -> tool_result または task-notification
+  -> agent scope の状態をクリーンアップする
+```
+
+同期と非同期の違いは `runAgent()` を呼ぶかどうかではなく、誰が `runAgent()` を待つかです。
+
+| 経路 | 待機する主体 | メインモデルが続行するタイミング |
+|------|--------------|----------------------------------|
+| 同期サブエージェント | `AgentTool.call()` 自身がサブエージェントのメッセージストリームを `for await` する | サブエージェントが完了して `tool_result` を返した後 |
+| 自動バックグラウンド化 | 最初は foreground が待つ。タイムアウト後に foreground iterator が終了し、background lifecycle が引き継ぐ | `AgentTool.call()` が `async_launched` を返した後 |
+| 非同期サブエージェント | `runAsyncAgentLifecycle()` がバックグラウンドで待つ | メインモデルは `async_launched` を受け取ると直ちに続行する |
+| slash command fork の通常対話 | `executeForkedSlashCommand()` が待つ | slash command の完了後 |
+| slash command fork の assistant / kairos | fire-and-forget のバックグラウンド runner が待つ | 起動後もメインの入力フローは続き、完了後に hidden prompt を再注入する |
+| `runForkedAgent()` | 内部の呼び出し元自身が待つ | メインモデルの tool_result プロトコルには入らない |
+
+したがって、「同期サブエージェントはどう完了を待つか」への最短の答えは、外側のツール実行器が `await tool.call()` し、`AgentTool.call()` の内部で `runAgent()` の async iterator を iterator の `done` または例外まで継続的に消費する、となります。
+
+## 待機と再注入方式の比較
+
+サブエージェントの結果がメインモデルへ戻る仕組みには、主に 3 種類あります。
+
+| 仕組み | 適用経路 | 再注入の媒体 | 現在の turn をブロックするか |
+|--------|----------|--------------|-------------------------------|
+| `tool_result` | 同期の名前付きサブエージェント | 現在の `Agent` tool_use に対応する tool result | はい |
+| `<task-notification>` | 非同期 / バックグラウンドのローカル Agent、remote task、バックグラウンド shell など | 統一 command queue 内の task notification | いいえ |
+| hidden prompt / command queue prompt | assistant / kairos の slash command fork、scheduled task など | queue 内の prompt 系メッセージ | いいえ |
+
+ここで混同しやすいのは、バックグラウンドサブエージェントの完了後に元の `tool_result` が「追記」されるわけではない点です。元の `Agent` tool call はすでに `async_launched` を返しています。最終結果は新しいキューメッセージになり、次の turn でモデルが確認して統合方法を決めます。
+
+## Progress、UI、Transcript
+
+サブエージェントには、ユーザー向けの progress、モデル向けの最終結果、システムの復元に使う transcript という、並列する 3 種類の「観測可能な出力」があります。
+
+| 出力 | 同期経路 | 非同期経路 | 用途 |
+|------|----------|------------|------|
+| progress UI | `AgentTool.call()` がサブエージェントのメッセージを消費しながら UI / SDK へリアルタイム転送する | `runAsyncAgentLifecycle()` が task の progress state を更新する | サブエージェントが何をしているかユーザーへ示す |
+| output file | 同期経路も side output へ書き、デバッグと復元に使えるようにする | バックグラウンド task の主要な読み取り可能出力。`async_launched` がパスを返す | メインモデルが `Read(outputFile)` で確認できる |
+| sidechain transcript | `runAgent()` が独立したメッセージ列を記録する | 同様に記録し、バックグラウンド復元にも使う | `SendMessage`、resume、debug、summary はすべてこれに依存する |
+| task state | foreground task レジストリが同期実行の状態を記録する | LocalAgentTask が running / completed / failed / killed を記録する | UI、`TaskOutput`、通知の重複防止が参照する |
+
+同期 progress は「実行しながら表示し、最後に一度だけ tool_result を返す」ものです。非同期 progress は「実行しながら task state を書き、最後に task notification をキューへ入れる」ものです。sidechain transcript はユーザーから見える出力とは異なり、システムが agent コンテキストを再構築するためのメッセージログです。
+
+## 代表的な呼び出し例
+
+### 同期の名前付きサブエージェント
+
+```json
+{
+  "description": "review parser bug",
+  "prompt": "Review the parser changes and identify correctness risks.",
+  "subagent_type": "code-reviewer"
+}
+```
+
+短いタスクや、すぐに結果を得ないと続行できないタスクに適します。メインモデルはサブエージェントが `completed` を出すまで待ちます。
+
+### バックグラウンドの名前付きサブエージェント
+
+```json
+{
+  "description": "run regression suite",
+  "prompt": "Run the regression tests and summarize failures.",
+  "subagent_type": "general-purpose",
+  "run_in_background": true
+}
+```
+
+長いタスクに適します。メインモデルは先に `agentId` と `outputFile` を含む `async_launched` を受け取ります。その後は `<task-notification>` を待つことも、`Read(outputFile)` で既存の結果を能動的に確認することもできます。
+
+### 継続通信できるバックグラウンド Agent
+
+```json
+{
+  "description": "investigate flaky tests",
+  "prompt": "Investigate flaky tests without editing files yet.",
+  "subagent_type": "general-purpose",
+  "name": "flaky-investigator",
+  "run_in_background": true
+}
+```
+
+後から次を使えます。
+
+```json
+{
+  "to": "flaky-investigator",
+  "message": "Focus on the Windows-only failures and compare the last two runs.",
+  "summary": "focus Windows failures"
+}
+```
+
+長い時間が経っている場合は、`async_launched` または `completed` が返した raw `agentId` を優先してください。`name` registry はランタイム状態ですが、sidechain transcript は `agentId` から復元できる可能性が高いためです。
+
+### Worktree 分離による実装
+
+```json
+{
+  "description": "prototype parser fix",
+  "prompt": "Implement a candidate fix in isolation and report the changed files.",
+  "subagent_type": "general-purpose",
+  "isolation": "worktree"
+}
+```
+
+サブエージェントにコードを変更させながらメインの作業領域を汚さない用途に適します。結果を受け取ったメインモデルは、worktree path に基づいてマージ、再確認、破棄のいずれを行うか決める必要があります。
+
+### AgentTool fork
+
+```json
+{
+  "description": "scan auth paths",
+  "prompt": "Analyze the auth flow and report likely race conditions."
+}
+```
+
+fork gate が有効で、かつ `subagent_type` を省略した場合だけ fork になります。fork worker は親コンテキストと exact tools を継承します。目的は並列分析と prompt cache の再利用であり、長期的に安定した専門ロールとして記述する用途には向きません。
+
+### Slash command fork
+
+```md
+---
+name: audit-auth
+context: fork
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+---
+
+Audit the authentication flow and return only correctness risks.
+```
+
+結果の流れ:
+
+```text
+ユーザーが /audit-auth を入力する
+  -> processSlashCommand()
+  -> executeForkedSlashCommand()
+  -> runAgent()
+  -> 通常の対話: コマンド出力を会話へ直接返す
+  -> assistant / kairos: 完了後に hidden prompt をキューへ入れ、次の turn でモデルが消費する
+```
+
+## トラブルシューティングのチェックリスト
+
+| 現象 | 最初に確認すること |
+|------|--------------------|
+| モデルからバックグラウンド結果が見えない | task が notification を enqueue 済みか。現在のモードでキューが drain されているか。`task.notified` が `TaskOutput(block=true)` により先に設定されていないか |
+| `SendMessage` が対象を見つけられない | `name` がまだ registry にあるか。raw `agentId` を使えるか。sidechain transcript が残っているか |
+| サブエージェントに特定のツールがない | agent definition の `tools` で除外されていないか。MCP server が接続済みか。fork path が exact tools を使っているか |
+| サブエージェントの権限が想定と異なる | 通常の agent は `permissionMode` を確認する。teammate の `mode` は通常のサブエージェントの権限上書きではない。fork は `bubble` を確認する |
+| fork が起動しない | `FORK_SUBAGENT` feature が有効か。coordinator または non-interactive 内ではないか。`subagent_type` を渡していないか |
+| slash command が fork しない | skill frontmatter に `context: fork` があるか。読み込み後の command.context が `fork` か |
+| worktree がクリーンアップされない | 未コミットの変更があるか。hook-based worktree か。バックグラウンド task が通知後の処理まで cleanup を保留しているか |
+| `TaskOutput(block=true)` が待ち続ける | task が本当に terminal status へ入ったか。async path の場合、classifier / cleanup より前に状態更新されているか |
+
+## どの経路を選ぶか
+
+| 要件 | 推奨経路 |
+|------|----------|
+| 専門ロール、限定されたコンテキスト、明確なツール集合が必要 | 名前付きサブエージェント |
+| メインモデルをブロックせず長いタスクを動かしたい | 非同期サブエージェント |
+| 複数の worker で完全な親コンテキストを共有し、prompt cache を最大限利用したい | AgentTool fork |
+| slash command / skill を分離して実行したい | slash command fork |
+| ランタイム内部で軽量な分岐推論が必要 | `runForkedAgent()` |
+| ファイル変更を分離したい | `isolation: "worktree"` |
+
+## よくある誤解
+
+| 誤解 | 正しい理解 |
+|------|------------|
+| `mode` で通常のサブエージェントの権限を上書きできる | `mode` が影響するのは teammate spawn の plan モードだけ。通常のサブエージェントの権限は agent definition の `permissionMode` から得る |
+| `SendMessage` は running agent にしか送れない | running ならキューへ入り、stopped / evicted なら transcript からバックグラウンド復元を試す |
+| バックグラウンド agent の完了時に現在の tool_result が直接変わる | バックグラウンド完了は `<task-notification>` キューを通り、次の turn でモデルが確認する |
+| fork はデフォルトで有効 | fork はデフォルトで無効。`FORK_SUBAGENT` feature が必要で、coordinator / non-interactive では無効になる |
+| fork は内部の `runForkedAgent()` である | AgentTool fork は Tool プロトコルを通る。`runForkedAgent()` は内部ランタイム API |
+| `cwd` と `isolation: "worktree"` は自由に併用できる | schema 文言は相互排他を求める。実装では `cwd` が実行ディレクトリを優先して上書きするため、呼び出し側は併用を避けるべき |
+| バックグラウンド出力は `TaskOutput` で読むべき | 現在の指示は `Read(output_file)` を優先する。`TaskOutput` は互換性とブロッキング待機のために残る |
+
+## ソースコードを読む順序
+
+動作をソースコードから検証する場合、問題の種類に応じて入口を変えると追いやすくなります。
+
+| 問題 | 読む順序 |
+|------|----------|
+| `Agent(...)` の引数がなぜそのように作用するか | `AgentTool.tsx` の schema -> `AgentTool.call()` の引数分割代入 -> ルーティング規則 |
+| 通常のサブエージェントが同期的に待つ理由 | `toolExecution.ts` の `await tool.call()` -> `AgentTool.call()` の同期分岐 -> `runAgent()` |
+| バックグラウンド完了がメインモデルへ通知される理由 | `registerAsyncAgent()` -> `runAsyncAgentLifecycle()` -> `enqueueAgentNotification()` -> queue processor |
+| `SendMessage` が古い agent を復元できる理由 | `SendMessageTool.ts` のアドレス解決 -> `queuePendingMessage()` / `resumeAgentBackground()` -> sidechain transcript |
+| fork が通常の agent ではない理由 | `isForkSubagentEnabled()` -> `FORK_AGENT` -> `buildForkedMessages()` -> `useExactTools` |
+| slash command fork が Tool プロトコルを通らない理由 | skill load frontmatter -> `processSlashCommand()` -> `executeForkedSlashCommand()` |
+| 内部 fork に tool result がない理由 | `runForkedAgent()` -> `query()` -> 呼び出し元が `ForkedAgentResult` を消費する |
+
+## 保守時の注意
+
+サブエージェントの動作を更新するときは、次の場所を優先的にまとめて確認してください。
+
+| ファイル | 重要な理由 |
+|----------|------------|
+| `packages/builtin-tools/src/tools/AgentTool/AgentTool.tsx` | ルーティング、権限、同期・非同期、結果マッピングがここへ集約される |
+| `packages/builtin-tools/src/tools/AgentTool/forkSubagent.ts` | AgentTool fork の gate、FORK_AGENT、メッセージ構築 |
+| `packages/builtin-tools/src/tools/AgentTool/runAgent.ts` | サブエージェントの実際の実行ループ |
+| `src/tasks/LocalAgentTask/LocalAgentTask.tsx` | バックグラウンド Agent の状態と通知 |
+| `src/utils/messageQueueManager.ts` | 統一 command queue |
+| `src/utils/queueProcessor.ts` | REPL のキュー消費規則 |
+| `src/cli/print.ts` | headless / SDK のキュー消費とバックグラウンド待機 |
+| `src/utils/processUserInput/processSlashCommand.tsx` | slash command fork |
+| `src/utils/forkedAgent.ts` | 内部の `runForkedAgent()` |
+| `src/skills/loadSkillsDir.ts` | skill frontmatter の `context: fork` の解釈 |
