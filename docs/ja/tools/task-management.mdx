@@ -1,0 +1,212 @@
+---
+title: "タスク管理 — TodoWrite と Tasks の二系統"
+description: "Claude Code は 2 つのタスクシステムを持ちます。メモリ上の V1 TodoWrite と、ファイルシステム上の V2 Tasks。どちらが使われるか、依存関係のモデル、エージェント間の取り合い、そして検証を促す仕組みを解説します。"
+keywords: ["タスク管理", "TodoWrite", "タスクキュー", "依存関係", "マルチエージェント"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/tools/task-management) · [中文](/docs/zh/tools/task-management) · **日本語**
+
+{/* この章の目的: V1（メモリ上の TodoWrite）と V2（ファイルシステム上の Task*）の二系統、依存関係、取り合い、検証の促しを示す */}
+
+## 実行モードで選ばれる 2 つのシステム
+
+タスク管理は 1 つではなく、並存する 2 つの実装を実行モードで切り替えます。
+
+| | V1: TodoWrite | V2: TaskCreate / TaskUpdate / TaskList / TaskGet |
+|---|--------------|--------------------------------------------------|
+| **使われる条件** | 非対話（pipe/SDK）、または `isTodoV2Enabled()` が `false` | 対話的な REPL（既定）、または `CLAUDE_CODE_ENABLE_TASKS=1` |
+| **保存先** | メモリ上の `AppState.todos[sessionId]`（Zustand ストア） | ファイルシステムの `~/.occ/tasks/<taskListId>/<id>.json` |
+| **データモデル** | `{content, status, activeForm}` — 平坦な 3 要素 | `{id, subject, description, activeForm, owner, status, blocks[], blockedBy[], metadata}` — 完全な実体 |
+| **永続性** | プロセス終了で消える | プロセスをまたいで残り、複数エージェントの同時アクセスに対応 |
+| **並行制御** | 不要（1 セッション 1 書き手） | ファイルロック、高水位マーク、TOCTOU 対策 |
+
+切り替えは `isTodoV2Enabled()`（`src/utils/tasks.ts:133`）にあります。対話セッションは既定で V2、SDK / pipe モードは V1 に戻ります。両者は排他で、`TodoWriteTool.isEnabled` は `!isTodoV2Enabled()`、`TaskCreateTool.isEnabled` は `isTodoV2Enabled()` を返します。
+
+## V1: TodoWrite
+
+TodoWrite は**全体の置き換え**です。呼び出しのたびに `todos[]` 全体を渡し、前の状態を丸ごと上書きします。
+
+```typescript
+// packages/builtin-tools/src/tools/TodoWriteTool/TodoWriteTool.ts — call() の中核
+async call({ todos }, context) {
+  const todoKey = context.agentId ?? getSessionId()
+  const oldTodos = appState.todos[todoKey] ?? []
+  const allDone = todos.every(_ => _.status === 'completed')
+  const newTodos = allDone ? [] : todos  // 全部完了なら一覧を空にする
+  // … AppState へ書き込む
+}
+```
+
+### 一覧の消去と、検証を促す仕組み
+
+細かい点がひとつ。すべてが `completed` になったとき、`newTodos` は完了項目の一覧ではなく空配列になります。終わった作業が視覚的なノイズとして残らないようにするためです。
+
+V1 にはもうひとつ、**検証の促し**があります。メインのエージェントが 3 件以上を完了させ、そのどれも検証の工程でなかった場合、tool result に検証用のサブエージェントを立てるよう促す文言が付きます。
+
+```typescript
+// 条件: メインスレッド + 全件完了 + 3 件以上 + 検証タスクが無い
+if (allDone && todos.length >= 3 && !todos.some(t => /verif/i.test(t.content))) {
+  verificationNudgeNeeded = true
+}
+// tool_result に追記される文:
+// "NOTE: You just closed out 3+ tasks and none was a verification step…"
+```
+
+エージェントが自己申告で「完了」と宣言してしまうことへの防御です。硬い制約ではなく、構造による促しになっています。
+
+## V2: ファイルシステムに永続化するタスク
+
+### データモデル
+
+各タスクは `~/.occ/tasks/<taskListId>/<id>.json` に置かれた独立の JSON ファイルです。
+
+```typescript
+// src/utils/tasks.ts — TaskSchema
+{
+  id: string,           // 自動採番の整数（1, 2, 3…）
+  subject: string,      // 命令形の見出し（"Fix auth bug"）
+  description: string,
+  activeForm?: string,  // 進行形（"Fixing auth bug"）。スピナー用
+  owner?: string,       // 取得したエージェントの ID または名前
+  status: "pending" | "in_progress" | "completed",
+  blocks: string[],     // このタスクがブロックしているタスク ID
+  blockedBy: string[],  // このタスクをブロックしているタスク ID
+  metadata?: Record<string, unknown>
+}
+```
+
+### タスクリスト ID の解決
+
+`getTaskListId()` は 5 段階の優先順位で所属を決めます。
+
+1. 環境変数 `CLAUDE_CODE_TASK_LIST_ID`（明示的な上書き）
+2. プロセス内 teammate コンテキストの teamName（リーダーの一覧を共有する）
+3. 環境変数 `CLAUDE_CODE_TEAM_NAME`（プロセス単位の teammate）
+4. リーダーが `setLeaderTeamName()` で設定した teamName
+5. `getSessionId()`（単独セッションのフォールバック）
+
+チームモードでは、これによりすべての teammate が自動的に 1 つのタスクリストを共有します。追加の調整は要りません。
+
+### ID の採番と高水位マーク
+
+タスク ID は単純な連番ですが、並行実行では保護が必要です。
+
+```typescript
+// src/utils/tasks.ts — createTask() の簡略版
+async function createTask(taskListId, taskData) {
+  release = await lockfile.lock(lockPath, LOCK_OPTIONS)  // 排他ロック
+  const highestId = await findHighestTaskId(taskListId)
+  const id = String(highestId + 1)
+  await writeFile(path, JSON.stringify({ id, ...taskData }))
+  return id
+}
+```
+
+ロックは指数バックオフで最大 30 回再試行します（合計およそ 2.6 秒）。10 以上の同時エージェントを想定した設定です。
+
+`.highwatermark` ファイルにより、削除後に ID が再利用されることはありません。タスク #5 を消しても、次に作られるのは #6 です。
+
+## 依存関係: blocks と blockedBy
+
+依存関係は 2 つのフィールドによる双方向の構造です。
+
+- `taskA.blocks = ["3"]` は「A が終わるまでタスク 3 は始められない」
+- `task3.blockedBy = ["A"]` は「タスク 3 は A を待つ」
+
+`blockTask()` が両側を保守します。
+
+```typescript
+// src/utils/tasks.ts — blockTask()
+// A が B をブロックする → A.blocks に B を、B.blockedBy に A を加える
+if (!fromTask.blocks.includes(toTaskId)) {
+  await updateTask(taskListId, fromTaskId, { blocks: [...fromTask.blocks, toTaskId] })
+}
+if (!toTask.blockedBy.includes(fromTaskId)) {
+  await updateTask(taskListId, toTaskId, { blockedBy: [...toTask.blockedBy, fromTaskId] })
+}
+```
+
+タスクを削除すると、そのタスクへの参照はすべて掃除されます。`deleteTask()` が全タスクを走査し、`blocks` と `blockedBy` から該当 ID を取り除きます。
+
+## タスクの取得（claim）
+
+`claimTask()` が V2 の並行制御プリミティブで、ロックの粒度が 2 段階あります。
+
+**タスク単位のロック（既定）。** 対象ファイルだけをロックします。単一エージェントならこれで十分です。
+
+```
+getTask → owner を確認 → status を確認 → blockedBy を確認 → owner を書く
+```
+
+**リスト単位のロック + ビジー判定。** `checkAgentBusy: true` のとき、タスクリストのディレクトリ全体をロックし（`.lock` ファイル）、次を原子的に行います。
+
+```
+listTasks → status を確認 → 依存を確認 → そのエージェントが
+未完了のタスクをすでに持っていないか確認 → owner を書く
+```
+
+取得の失敗理由は 5 つです。
+
+| `reason` | 意味 |
+|----------|------|
+| `task_not_found` | その ID のタスクが無い |
+| `already_claimed` | 他のエージェントが保持している |
+| `already_resolved` | すでに completed |
+| `blocked` | `blockedBy` に未完了のものがある |
+| `agent_busy` | そのエージェントがすでに未完了タスクを持っている（`checkAgentBusy` のときのみ） |
+
+## チームでのタスクのライフサイクル
+
+swarm モードでは次のように進みます。
+
+```
+リーダーがチームを作る
+  ↓
+リーダーが TaskCreate でタスクを作る（status=pending, owner=undefined）
+  ↓
+リーダーが TaskUpdate で依存を張る（addBlocks / addBlockedBy）
+  ↓
+teammate が TaskList を呼ぶ → 取得可能なタスクを見つける
+  ↓
+teammate が TaskUpdate(taskId, {status: "in_progress"}) を呼ぶ
+         → owner が自動で teammate 名になる
+         → リーダーは mailbox 経由で task_assignment 通知を受け取る
+  ↓
+teammate が終える → TaskUpdate(taskId, {status: "completed"})
+         → tool result に "Call TaskList to find your next available task" が出る
+         → このタスクに依存していたものが自動で解除される
+  ↓
+teammate が異常終了 → unassignTeammateTasks()
+         → 未完了タスクは pending / owner=undefined に戻る
+         → リーダーが通知を受けて割り当て直す
+```
+
+### hook との連携
+
+TaskCreate と TaskUpdate はいずれも hook を実行します。
+
+- **作成時** — `executeTaskCreatedHooks`。ブロッキングエラーが返るとタスクは即座に削除されます。
+- **完了時** — `executeTaskCompletedHooks`。hook が完了への遷移を拒否できます。
+
+これにより、CI や承認フローといった外部システムがタスクの状態機械に参加できます。
+
+## activeForm
+
+各タスクは 2 つの文言を持ちます。
+
+- `subject` — 命令形。タスク一覧に出る（"Fix auth bug"）
+- `activeForm` — 進行形。スピナーに出る（"Fixing auth bug…"）
+
+`activeForm` が無いときスピナーは `subject` を使います。小さく見えますが、待っている間の表示を「これからやること」ではなく「いま起きていること」にするための設計です。
+
+## Plan モードとの関係
+
+Plan モードとタスクシステムは補完的ですが独立しています。
+
+1. Plan モードはツールを読み取り専用に絞り、行動の前に理解させる
+2. モデルは Plan モードのまま TaskCreate でタスク一覧を作る
+3. ユーザーが承認し、Plan モードを抜ける
+4. モデルは `blockedBy` のトポロジカル順に進め、TaskUpdate で進捗を記録する
+
+`shouldDefer: true` により、これらの呼び出しでは権限確認が出ません。タスク管理はタスクリストの外に副作用を持たないため、常に自動承認されます。

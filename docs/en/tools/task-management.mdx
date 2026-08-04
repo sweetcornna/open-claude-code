@@ -1,0 +1,212 @@
+---
+title: "Task management — the TodoWrite and Tasks dual track"
+description: "Claude Code runs two task systems: V1 TodoWrite in memory and V2 Tasks on the filesystem. This covers when each applies, the dependency model, claim contention across agents, and the verification nudge."
+keywords: ["task management", "TodoWrite", "task queue", "dependencies", "multi-agent"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/tools/task-management) · [日本語](/docs/ja/tools/task-management)
+
+{/* Goal of this chapter: the V1 (in-memory TodoWrite) and V2 (filesystem Task*) tracks, plus dependencies, claim contention, and the verification nudge */}
+
+## Two systems, selected by mode
+
+Task management is not one system but two, running side by side and chosen by execution mode:
+
+| | V1: TodoWrite | V2: TaskCreate / TaskUpdate / TaskList / TaskGet |
+|---|--------------|--------------------------------------------------|
+| **When it applies** | Non-interactive (pipe/SDK), or `isTodoV2Enabled()` returns `false` | Interactive REPL (the default), or `CLAUDE_CODE_ENABLE_TASKS=1` |
+| **Storage** | In memory: `AppState.todos[sessionId]` (a Zustand store) | Filesystem: `~/.occ/tasks/<taskListId>/<id>.json` |
+| **Data model** | `{content, status, activeForm}` — a flat triple | `{id, subject, description, activeForm, owner, status, blocks[], blockedBy[], metadata}` — a full entity |
+| **Persistence** | Lost when the process exits | Survives across processes, supports concurrent agents |
+| **Concurrency** | None needed (one session, one writer) | File locks, a high-water mark, TOCTOU protection |
+
+The switch lives in `isTodoV2Enabled()` (`src/utils/tasks.ts:133`): interactive sessions default to V2, while SDK and pipe modes fall back to V1. The two are mutually exclusive — `TodoWriteTool.isEnabled` returns `!isTodoV2Enabled()` and `TaskCreateTool.isEnabled` returns `isTodoV2Enabled()`.
+
+## V1: TodoWrite
+
+TodoWrite is a **full replacement**: every call passes the complete `todos[]` array and overwrites the previous state entirely.
+
+```typescript
+// packages/builtin-tools/src/tools/TodoWriteTool/TodoWriteTool.ts — the core of call()
+async call({ todos }, context) {
+  const todoKey = context.agentId ?? getSessionId()
+  const oldTodos = appState.todos[todoKey] ?? []
+  const allDone = todos.every(_ => _.status === 'completed')
+  const newTodos = allDone ? [] : todos  // everything done → clear the list
+  // … write to AppState
+}
+```
+
+### Clearing, and the verification nudge
+
+One subtlety: when every task is `completed`, `newTodos` becomes an empty array rather than a list of completed items. That keeps finished work from lingering as visual noise.
+
+V1 also carries a **verification nudge**. When the main agent closes out three or more tasks and none of them was a verification step, the tool result gains a prompt encouraging it to spawn a verification sub-agent:
+
+```typescript
+// conditions: main thread + all complete + ≥3 items + no verification task
+if (allDone && todos.length >= 3 && !todos.some(t => /verif/i.test(t.content))) {
+  verificationNudgeNeeded = true
+}
+// appended to the tool_result:
+// "NOTE: You just closed out 3+ tasks and none was a verification step…"
+```
+
+This is a defence against an agent declaring victory on its own say-so — structural encouragement rather than a hard constraint.
+
+## V2: filesystem-backed tasks
+
+### The data model
+
+Each task is its own JSON file under `~/.occ/tasks/<taskListId>/<id>.json`:
+
+```typescript
+// src/utils/tasks.ts — TaskSchema
+{
+  id: string,           // auto-incrementing integer (1, 2, 3…)
+  subject: string,      // imperative title ("Fix auth bug")
+  description: string,
+  activeForm?: string,  // progressive form ("Fixing auth bug"), used by the spinner
+  owner?: string,       // the agent ID or name that claimed it
+  status: "pending" | "in_progress" | "completed",
+  blocks: string[],     // task IDs this one blocks
+  blockedBy: string[],  // task IDs blocking this one
+  metadata?: Record<string, unknown>
+}
+```
+
+### Resolving the task list ID
+
+`getTaskListId()` resolves ownership through five levels of precedence:
+
+1. The `CLAUDE_CODE_TASK_LIST_ID` environment variable (explicit override)
+2. The teamName from an in-process teammate context (sharing the leader's list)
+3. The `CLAUDE_CODE_TEAM_NAME` environment variable (process-level teammate)
+4. The teamName a leader set through `setLeaderTeamName()`
+5. `getSessionId()` — the fallback for a standalone session
+
+In team mode, this means every teammate shares one task list automatically, with no extra coordination.
+
+### ID allocation and the high-water mark
+
+Task IDs are plain incrementing integers, which needs protection under concurrency:
+
+```typescript
+// src/utils/tasks.ts — createTask(), simplified
+async function createTask(taskListId, taskData) {
+  release = await lockfile.lock(lockPath, LOCK_OPTIONS)  // exclusive lock
+  const highestId = await findHighestTaskId(taskListId)
+  const id = String(highestId + 1)
+  await writeFile(path, JSON.stringify({ id, ...taskData }))
+  return id
+}
+```
+
+The lock retries with exponential backoff up to 30 times — roughly 2.6 seconds in total — which is sized for a swarm of 10+ concurrent agents.
+
+A `.highwatermark` file ensures IDs are never reused after a deletion: delete task #5 and the next new task is still #6.
+
+## Dependencies: blocks and blockedBy
+
+Dependencies are a doubly-linked structure across two fields:
+
+- `taskA.blocks = ["3"]` means "task 3 cannot start until A is done"
+- `task3.blockedBy = ["A"]` means "task 3 waits for A"
+
+`blockTask()` maintains both ends:
+
+```typescript
+// src/utils/tasks.ts — blockTask()
+// A blocks B → add B to A.blocks, and add A to B.blockedBy
+if (!fromTask.blocks.includes(toTaskId)) {
+  await updateTask(taskListId, fromTaskId, { blocks: [...fromTask.blocks, toTaskId] })
+}
+if (!toTask.blockedBy.includes(fromTaskId)) {
+  await updateTask(taskListId, toTaskId, { blockedBy: [...toTask.blockedBy, fromTaskId] })
+}
+```
+
+Deleting a task cleans up every reference to it — `deleteTask()` walks all tasks and removes the ID from their `blocks` and `blockedBy`.
+
+## Claiming a task
+
+`claimTask()` is V2's concurrency primitive, with two lock granularities.
+
+**Task-level lock (default).** Locks only the target file, which suffices for a single agent:
+
+```
+getTask → check owner → check status → check blockedBy → write owner
+```
+
+**List-level lock with a busy check.** With `checkAgentBusy: true`, the whole task list directory is locked (a `.lock` file) so the following happens atomically:
+
+```
+listTasks → check status → check dependencies → check whether this agent already
+owns an unfinished task → write owner
+```
+
+A claim can fail for five reasons:
+
+| `reason` | Meaning |
+|----------|---------|
+| `task_not_found` | No task with that ID |
+| `already_claimed` | Another agent holds it |
+| `already_resolved` | Already marked completed |
+| `blocked` | Something in `blockedBy` is unfinished |
+| `agent_busy` | This agent already owns an unfinished task (only in `checkAgentBusy` mode) |
+
+## The task lifecycle in a team
+
+In swarm mode:
+
+```
+Leader creates the team
+  ↓
+Leader creates tasks with TaskCreate (status=pending, owner=undefined)
+  ↓
+Leader wires dependencies with TaskUpdate (addBlocks / addBlockedBy)
+  ↓
+Teammate calls TaskList → finds a claimable task
+  ↓
+Teammate calls TaskUpdate(taskId, {status: "in_progress"})
+         → owner is set to the teammate's name automatically
+         → the leader receives a task_assignment notification via its mailbox
+  ↓
+Teammate finishes → TaskUpdate(taskId, {status: "completed"})
+         → the tool result says "Call TaskList to find your next available task"
+         → tasks that depended on this one unblock automatically
+  ↓
+Teammate exits unexpectedly → unassignTeammateTasks()
+         → unfinished tasks reset to pending with owner=undefined
+         → the leader is notified and reassigns
+```
+
+### Hook integration
+
+TaskCreate and TaskUpdate both run hooks:
+
+- **On creation** — `executeTaskCreatedHooks`. A blocking error deletes the task immediately.
+- **On completion** — `executeTaskCompletedHooks`. A hook can refuse to let a task be marked done.
+
+This is how an external system — CI, an approval flow — participates in the task state machine.
+
+## activeForm
+
+Each task carries two pieces of copy:
+
+- `subject` — imperative, shown in the task list ("Fix auth bug")
+- `activeForm` — progressive, shown by the spinner ("Fixing auth bug…")
+
+When `activeForm` is absent the spinner falls back to `subject`. Small as it looks, this is what makes the waiting state say *what is happening* rather than *what is planned*.
+
+## How plan mode fits
+
+Plan mode and the task system are complementary but independent:
+
+1. Plan mode restricts the tool set to read-only operations, forcing understanding before action
+2. The model builds a task list with TaskCreate while still in plan mode
+3. The user approves, and plan mode exits
+4. The model works through the tasks in `blockedBy` topological order, marking progress with TaskUpdate
+
+The `shouldDefer: true` property keeps these calls from raising permission prompts — task management is always auto-approved, because it has no side effects outside the task list.

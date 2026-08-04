@@ -33,6 +33,16 @@
               "docs/en/conversation/streaming",
               "docs/en/conversation/multi-turn"
             ]
+          },
+          {
+            "group": "工具：AI 的双手",
+            "pages": [
+              "docs/en/tools/what-are-tools",
+              "docs/en/tools/file-operations",
+              "docs/en/tools/shell-execution",
+              "docs/en/tools/search-and-navigation",
+              "docs/en/tools/task-management"
+            ]
           }
         ]
       },
@@ -204,6 +214,16 @@
               "docs/ja/conversation/the-loop",
               "docs/ja/conversation/streaming",
               "docs/ja/conversation/multi-turn"
+            ]
+          },
+          {
+            "group": "工具：AI 的双手",
+            "pages": [
+              "docs/ja/tools/what-are-tools",
+              "docs/ja/tools/file-operations",
+              "docs/ja/tools/shell-execution",
+              "docs/ja/tools/search-and-navigation",
+              "docs/ja/tools/task-management"
             ]
           }
         ]

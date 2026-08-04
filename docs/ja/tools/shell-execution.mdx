@@ -1,0 +1,171 @@
+---
+title: "シェル実行 — BashTool の設計"
+description: "BashTool をソースレベルで解説します。読み取り専用コマンドの判定、AST によるセキュリティ解析、自動バックグラウンド化、出力の切り詰め、そして生のシェルと並んで専用ツールが存在する理由。"
+keywords: ["Bash ツール", "コマンド実行", "シェル実行", "安全なコマンド", "AI によるコマンド実行"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/tools/shell-execution) · [中文](/docs/zh/tools/shell-execution) · **日本語**
+
+{/* この章の目的: BashTool の安全設計、実行経路、その背後の判断を示す */}
+
+## 実行の経路
+
+モデルの判断から実際のプロセス生成まで:
+
+```
+モデルが tool_use を出す: { command: "npm test" }
+  ↓
+BashTool.validateInput()         ← 基本的な入力検証
+  ↓
+BashTool.checkPermissions()      ← 権限チェック（安全性の章を参照）
+  ├── isReadOnly()? → 自動で許可
+  ├── bashToolHasPermission()    ← AST 解析 + 意味的検査 + 規則照合
+  └── 一致なし → ユーザーに確認
+  ↓
+BashTool.call() → runShellCommand()
+  ↓
+shouldUseSandbox(input)          ← サンドボックスで包むか
+  ↓
+Shell.exec(command, { shouldUseSandbox, shouldAutoBackground })
+  ↓
+spawn(wrapped_command)           ← プロセス生成
+```
+
+## 読み取り専用コマンドの判定
+
+`isReadOnly()`（`packages/builtin-tools/src/tools/BashTool/BashTool.tsx:655`）が、そのコマンドを読み取り専用とみなすかを決めます。
+
+```typescript
+isReadOnly(input) {
+  const compoundCommandHasCd = commandHasAnyCd(input.command)
+  const result = checkReadOnlyConstraints(input, compoundCommandHasCd)
+  return result.behavior === 'allow'
+}
+```
+
+判定は 4 つのコマンド集合に基づきます（`BashTool.tsx:120-166`）。
+
+| 集合 | コマンド | 性質 |
+|------|---------|------|
+| `BASH_SEARCH_COMMANDS` | find, grep, rg, ag, ack, locate, which, whereis | 検索 |
+| `BASH_READ_COMMANDS` | cat, head, tail, wc, stat, file, jq, awk, sort, uniq… | 読み取り・解析 |
+| `BASH_LIST_COMMANDS` | ls, tree, du | 一覧 |
+| `BASH_SEMANTIC_NEUTRAL_COMMANDS` | echo, printf, true, false, : | 意味的に中立 |
+
+`ls dir && echo "---" && ls dir2` のような複合コマンドは分割して各区間を検査します。**中立でない区間がすべて上記のいずれかに属する**場合にのみ、全体が読み取り専用と扱われます。
+
+```typescript
+// BashTool.tsx — 簡略化
+for (const part of partsWithOperators) {
+  if (BASH_SEMANTIC_NEUTRAL_COMMANDS.has(baseCommand)) continue  // 中立な区間は飛ばす
+  if (!isPartSearch && !isPartRead && !isPartList) {
+    return { isSearch: false, isRead: false, isList: false }  // 1 区間でも外れれば全体が失格
+  }
+}
+```
+
+## tree-sitter による AST 解析
+
+`preparePermissionMatcher()`（`BashTool.tsx:663`）は、権限評価の前に `parseForSecurity()` でコマンド構造を解析します。
+
+```typescript
+async preparePermissionMatcher({ command }) {
+  const parsed = await parseForSecurity(command)
+  if (parsed.kind !== 'simple') {
+    return () => true  // 解析失敗 → fail safe。すべての hook を発火させる
+  }
+  // VAR=val の接頭辞を外してサブコマンドを取り出す
+  const subcommands = parsed.commands.map(c => c.argv.join(' '))
+  return pattern => {
+    return subcommands.some(cmd => matchWildcardPattern(pattern, cmd))
+  }
+}
+```
+
+安全上の要点はこうです。`ls && git push` は `["ls", "git push"]` に分解されるため、前半が読み取り専用だからといって `git push` が権限チェックをすり抜けることはありません。解析に失敗した場合は「安全でない」と仮定し、すべてのセキュリティ hook を発火させます。
+
+## タイムアウト
+
+```
+ユーザー指定の timeout → そのまま使う
+  ↓ 指定なし
+getDefaultTimeoutMs()
+  ├── 既定の上限: 120,000 ms（2 分）
+  └── 最大の上限: 600,000 ms（10 分。明示指定時）
+```
+
+タイムアウトしても直接プロセスを殺しません。`ShellCommand`（`src/utils/ShellCommand.ts:144`）が `onTimeout` コールバックを呼び、終了させるかバックグラウンド化するかは呼び出し側が決めます。
+
+## 自動バックグラウンド化
+
+長時間動くコマンドは、エージェントループを止めずにバックグラウンドへ移せます。
+
+```typescript
+// BashTool.tsx:1158
+const shouldAutoBackground = !isBackgroundTasksDisabled
+  && isAutobackgroundingAllowed(command)
+```
+
+全体の流れ:
+
+```
+コマンド開始
+  ↓ 進捗ポーリング
+15 秒以内に終わらない（ASSISTANT_BLOCKING_BUDGET_MS）
+  ↓
+isAutobackgroundingAllowed(command) を確認
+  ↓ 許可
+前景タスクを背景タスクへ変換（backgroundExistingForegroundTask）
+  ↓
+shellCommand.onTimeout → spawnBackgroundTask()
+  ↓
+taskId をモデルへ返す。モデルは別の作業を続けられる
+  ↓
+背景タスクは完了時に通知機構で結果を報告する
+```
+
+メインのエージェントには 15 秒のブロッキング予算があります。それを超えると自動でバックグラウンドへ回ります。`npm install` がループ全体を数分止めてしまうのを防ぐ仕組みです。
+
+## 出力の切り詰め
+
+大量のログがコンテキスト窓を埋めないよう、長い出力は切り詰められます。
+
+| 切り詰めの場所 | どこ | 挙動 |
+|---------------|------|------|
+| `maxResultSizeChars` | ツール単位、通常 10 万文字 | メッセージ化の前に切り詰める |
+| 進捗ポーリング | `onProgress` コールバック | 進捗表示は末尾の数行のみ |
+| `totalBytes` の印 | `isIncomplete` フラグ | 出力が切れたことをモデルに伝える |
+
+末尾を黙って落とすわけではありません。`isIncomplete` によってモデルは出力が不完全だと分かり、より絞ったコマンドで取り直すか判断できます。
+
+## シェルがあるのに専用ツールがある理由
+
+Claude Code はファイル読み取りやコード検索に専用ツール（Read、Grep、Glob）を用意し、モデルに `cat` や `grep` を叩かせません。これは UX の話だけでなく、アーキテクチャ上の判断です。
+
+| 観点 | 専用ツール | Bash コマンド |
+|------|-----------|--------------|
+| **権限の粒度** | `Read` は読み取り専用 → 自動で許可 | `Bash: cat file` はコマンド全体の承認が要る。`cat` は読み取り集合にあるが経路が別 |
+| **構造化された出力** | 構造化データを返し、UI が差分や強調を描ける | 平文のみで、描画上の手がかりがない |
+| **性能** | ファイルキャッシュ、ページング、トークン予算管理 | 毎回新しいプロセス。キャッシュなし |
+| **並行性** | `isConcurrencySafe()` が `true` → 並列実行できる | 副作用がありうるので直列実行 |
+| **監査のしやすさ** | ツール名が権限ルールと厳密に一致する | AST 解析を経てから照合する必要がある |
+
+`isConcurrencySafe()`（`BashTool.tsx:652`）は見落とされがちですが重要です。ループ内で並列実行してよいのは読み取り専用コマンドだけで、副作用のあるものは直列化されます。これが競合状態を防いでいます。
+
+## 進捗のストリーミング
+
+Bash の実行はストリーミングで、`onProgress` が出力を 1 行ずつ流します。
+
+```
+runShellCommand()
+  ├── Shell.exec() が子プロセスを起動
+  ├── 毎秒、出力ファイルをポーリング
+  ├── onProgress(lastLines, allLines, totalLines, totalBytes, isIncomplete)
+  │   ├── lastProgressOutput / fullOutput を更新
+  │   └── resolveProgress() → ジェネレータを起こして yield させる
+  ├── yield { type: 'progress', output, fullOutput, elapsedTimeSeconds }
+  └── return { code, stdout, interrupted, … }
+```
+
+UI 側は `useToolCallProgress` フックでこれを描画します。`resolveProgress()` のシグナルにより、ジェネレータは新しいデータが来たときだけ yield し、ビジーウェイトを避けられます。

@@ -1,0 +1,208 @@
+---
+title: "ツールシステム — モデルが「言う」から「する」へ変わる仕組み"
+description: "Claude Code の Tool 抽象を詳解します。型定義、登録、tool_use から結果までの呼び出し連鎖、そして 50 以上の内蔵ツールが 1 つのインターフェースを共有できる描画システム。"
+keywords: ["ツールシステム", "Tool 抽象", "AI ツール", "function calling", "buildTool", "getTools"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/tools/what-are-tools) · [中文](/docs/zh/tools/what-are-tools) · **日本語**
+
+{/* この章の目的: src/Tool.ts と src/tools.ts からツールシステムの全体像を示す */}
+
+## なぜモデルにツールが必要か
+
+言語モデルができるのは 1 つだけです。**入力テキストから出力テキストを作る**こと。
+
+ファイルを読むことも、コマンドを実行することも、コードを検索することもできません。意図を行動に変えるには橋渡しが要ります。それが**ツール**です。
+
+ツールはモデルの手です。モデルが「このファイルを読みたい」と言えばツールシステムが実際に読み、「このコマンドを実行したい」と言えば実際に実行します。
+
+## Tool 型: 35 フィールドの共通インターフェース
+
+すべてのツールは `src/Tool.ts:368` の `Tool<Input, Output, Progress>` を実装します。クラスではなく 35 以上のフィールドを持つ**構造的型**であり、このインターフェースを満たすオブジェクトはすべてツールです。
+
+### 中核の 4 要素
+
+| フィールド | 型 | 役割 |
+|-----------|----|------|
+| `name` | `string` | 一意の識別子（`Read`、`Bash`、`Agent`） |
+| `description()` | `(input) => Promise<string>` | 引数によって変わる**動的な**説明（`Execute skill: ${skill}`） |
+| `inputSchema` | `z.ZodType` | 引数の型と検証規則を定義する Zod スキーマ |
+| `call()` | `(args, context, canUseTool, parentMessage, onProgress?) => Promise<ToolResult<Output>>` | 実装本体 |
+
+### 登録と発見
+
+| フィールド | 役割 |
+|-----------|------|
+| `aliases` | 別名。改名後の後方互換のため |
+| `searchHint` | ToolSearch のキーワード照合用の 3〜10 語（NotebookEdit なら `"jupyter"`） |
+| `shouldDefer` | 事前ではなく ToolSearch 経由で遅延読み込みする |
+| `alwaysLoad` | 遅延させない。SkillTool は 1 ターン目から見えている必要がある |
+| `isEnabled()` | 実行時のゲート（PowerShellTool はプラットフォームを確認する） |
+
+### 安全性と権限
+
+| フィールド | 役割 |
+|-----------|------|
+| `validateInput()` | 権限チェックの前段の引数検証。`ValidationResult` を返す |
+| `checkPermissions()` | 検証の後の権限チェック。`PermissionResult` を返す |
+| `isReadOnly()` | 読み取りのみか。権限モードに影響する |
+| `isDestructive()` | 不可逆な操作か（削除、上書き、送信） |
+| `isConcurrencySafe()` | 同じ入力を並列実行してよいか |
+| `preparePermissionMatcher()` | hook の `if` 条件で使うパターンマッチャを用意する |
+| `interruptBehavior()` | 中断時の挙動: `'cancel'` か `'block'` |
+
+### 出力と描画
+
+| フィールド | 役割 |
+|-----------|------|
+| `maxResultSizeChars` | 結果サイズの上限。超えた分はディスクへ退避する（例: `100_000`） |
+| `mapToolResultToToolResultBlockParam()` | Output を API の `ToolResultBlockParam` へ写す |
+| `renderToolResultMessage()` | 結果をターミナルへ描く React コンポーネント |
+| `renderToolUseMessage()` | 実行中の呼び出しを描く React コンポーネント |
+| `backfillObservableInput()` | プロンプトキャッシュを壊さずに観測可能フィールドを補う |
+
+### コンテキストとプロンプト
+
+| フィールド | 役割 |
+|-----------|------|
+| `prompt()` | システムプロンプトへ注入される、このツールの使い方 |
+| `outputSchema` | 出力の Zod スキーマ。型安全な結果処理のため |
+| `getPath()` | 関係するファイルパスを取り出す。権限照合と表示に使う |
+
+## 登録: `getTools()` の組み立て
+
+登録の中心は `getAllBaseTools()`（`src/tools.ts:195`）です。
+
+```
+常に利用可能:
+  AgentTool, BashTool, FileReadTool, FileEditTool, FileWriteTool,
+  NotebookEditTool, WebFetchTool, WebSearchTool, TodoWriteTool,
+  AskUserQuestionTool, SkillTool, EnterPlanModeTool, ExitPlanModeV2Tool,
+  TaskOutputTool, BriefTool, ListMcpResourcesTool, ReadMcpResourceTool
+
+条件付き（実行時に判定）:
+  ← hasEmbeddedSearchTools()  ? []        : [GlobTool, GrepTool]
+  ← isTodoV2Enabled()         ? V2 Tasks  : []
+  ← isWorktreeModeEnabled()   ? Worktree  : []
+  ← isAgentSwarmsEnabled()    ? Teams     : []
+  ← isToolSearchEnabled()     ? ToolSearch: []
+  ← isPowerShellToolEnabled() ? PowerShell: []
+
+feature flag 配下:
+  ← feature('COORDINATOR_MODE') ? [coordinatorMode のツール群]
+  ← feature('KAIROS')           ? [SendUserFileTool, PushNotificationTool, …]
+  ← feature('WEB_BROWSER_TOOL') ? [WebBrowserTool]
+
+社内限定:
+  ← process.env.USER_TYPE === 'ant' ? [REPLTool, ConfigTool, TungstenTool]
+```
+
+`getTools()`（274 行）はその上に権限フィルタを掛けます。
+
+```typescript
+export const getTools = (permissionContext): Tools => {
+  const base = getAllBaseTools()
+  // blanket deny 規則に当たったツールを外す
+  return filterToolsByDenyRules(base, permissionContext)
+}
+```
+
+**この一覧はグローバルにキャッシュせず、API 呼び出しごとに組み直します。** `isEnabled()` の結果が実行時状態で変わりうるためです。
+
+## `buildTool()` ファクトリ
+
+ほとんどのツールは型安全なコンストラクタ `buildTool()`（`src/Tool.ts:789`）で作られます。
+
+```typescript
+export const BashTool: Tool<...> = buildTool({
+  name: 'Bash',
+  inputSchema: lazySchema(() => z.object({command: z.string(), ...})),
+  // …その他のフィールド
+}) satisfies ToolDef<Input, Output, Progress>
+```
+
+`satisfies ToolDef` によりコンパイル時に型検査が効き、`lazySchema` は Zod スキーマの解決を遅らせて循環 import を避けます。
+
+## 呼び出しの全経路
+
+モデルが `tool_use` を出してから結果が返るまで:
+
+```
+1. API が tool_use ブロックを返す（name + input）
+   ↓
+2. StreamingToolExecutor.addTool() / runTools()
+   ↓
+3. findToolByName() がツールを解決する
+   ↓
+4. validateInput() — 引数の検証
+   ↓ 失敗 → エラーの tool_result を返す
+5. canUseTool() — 権限 UI（Ask モードではここで確認が出る）
+   ↓ 拒否 → 拒否の tool_result を返す
+6. checkPermissions() — 規則の照合
+   ↓
+7. call() — 実際の処理
+   ↓ onProgress() が UI をリアルタイム更新
+8. ToolResult<Output> を返す
+   ↓
+9. mapToolResultToToolResultBlockParam() — API 形式へ変換
+   ↓
+10. 会話へ追加 → 次の反復へ
+```
+
+## ツール結果の予算管理
+
+各ツールは `maxResultSizeChars` で出力の上限を宣言します。
+
+- **BashTool** — `30_000`（コマンド出力）
+- **SkillTool** — `100_000`（skill の実行結果）
+- **FileReadTool** — `Infinity`。ファイル内容をこの方式で退避すると Read → ファイル → Read の循環になるため
+
+上限を超えた分は `applyToolResultBudget()`（`src/utils/toolResultStorage.ts`）がディスクへ書き出し、モデルにはプレビューとファイルパスだけが渡ります。
+
+## MCP ツール
+
+MCP サーバーが提供するツールは、出自を `mcpInfo` に持ちます。
+
+```typescript
+mcpInfo?: { serverName: string; toolName: string }
+```
+
+MCP ツールは Zod ではなく生の JSON Schema（`inputJSONSchema`）を使います。スキーマが通信経由で届くためです。`filterToolsByDenyRules()` は `mcp__server` という接頭辞を理解し、これがサーバー単位の一括拒否を可能にしています。
+
+## 50 以上の内蔵ツール
+
+<CardGroup cols={3}>
+  <Card title="ファイル" icon="file">
+    Read / Write / Edit / Glob / Grep / NotebookEdit
+  </Card>
+  <Card title="コマンド" icon="terminal">
+    Bash / PowerShell
+  </Card>
+  <Card title="対話" icon="comments">
+    Agent / SendMessage / AskUserQuestion
+  </Card>
+  <Card title="タスク追跡" icon="list-check">
+    TaskCreate / TaskUpdate / TaskList / TaskGet / TaskOutput / TaskStop
+  </Card>
+  <Card title="Web" icon="globe">
+    WebFetch / WebSearch / WebBrowser
+  </Card>
+  <Card title="計画とバージョン管理" icon="map">
+    EnterPlanMode / ExitPlanMode / Worktree / TodoWrite / ToolSearch
+  </Card>
+</CardGroup>
+
+## 描画
+
+ツールは実行するだけでなく、見せることもします。それぞれが独自の React 描画を定義します。
+
+- **FileEdit** — `renderToolResultMessage` が構文強調付きの差分を表示する
+- **Bash** — `onProgress` によるコマンド出力のライブ表示と進捗表示
+- **Grep** — 一致箇所を強調し、ファイルパスと行番号をリンクにする
+- **Agent** — サブエージェントの進捗バーと状態
+- **SkillTool** — skill の実行進捗
+
+`isSearchOrReadCommand()` はそのツールが検索・読み取り操作であることを宣言でき、UI が折りたたみ表示に切り替わります。大量の結果で画面が埋まるのを防ぐためです。
+
+`getActivityDescription()` はスピナーの表示文言を提供します。素のツール名ではなく「Reading src/foo.ts」「Running bun test」のような説明になります。
