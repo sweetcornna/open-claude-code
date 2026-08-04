@@ -1,0 +1,178 @@
+---
+title: "ストリーミング — 生成しながら表示する仕組み"
+description: "Claude Code のストリーミング応答を解説します。SSE のイベント型、それをメッセージへ組み立てる状態機械、stall 検出とアイドルタイムアウト、そして 7 種の provider を 1 つの抽象へ揃える方法。"
+keywords: ["ストリーミング", "SSE", "リアルタイム出力", "API streaming"]
+sourceRef: "3ec5675 (2026-04-08)"
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/conversation/streaming) · [中文](/docs/zh/conversation/streaming) · **日本語**
+
+## なぜストリーミングなのか
+
+応答の生成に 30 秒かかるとします。30 秒待たせてから一気に表示するのは、体験として良くありません。
+
+ストリーミングは**モデルが作業する様子を見せます**。
+
+- 文字が書かれるそばから現れるので、方向が合っているか早い段階で判断できる
+- ツール呼び出しの引数が、生成途中から見える
+- 長い処理が「固まった」ように見えない
+
+## `BetaRawMessageStreamEvent` のイベント型
+
+ストリーミング API は `BetaRawMessageStreamEvent` の列を返します。段階ごとに型が対応します（`src/services/api/claude.ts`）。
+
+```
+message_start           ← メッセージ開始。model と usage の初期値を含む
+  ├── content_block_start   ← ブロック開始（text / tool_use / thinking）
+  │   ├── content_block_delta  ← 増分データ（text_delta / input_json_delta / thinking_delta）
+  │   ├── content_block_delta  ← …と続く
+  │   └── content_block_stop   ← ブロック終了。AssistantMessage を yield
+  ├── content_block_start   ← 次のブロック…
+  │   └── …
+  └── message_delta       ← stop_reason と最終 usage
+message_stop            ← メッセージ終了
+```
+
+### イベントの状態機械
+
+`queryModelWithStreaming()`（`src/services/api/claude.ts`）のイベントループは `switch (part.type)` による状態機械です。
+
+| イベント | 処理 | 状態変化 |
+|---------|------|---------|
+| `message_start` | `partialMessage` を初期化し、TTFT（最初のトークンまでの時間）を記録 | `usage` 初期化 |
+| `content_block_start` | `part.index` の位置に該当型のブロックを作る | `contentBlocks[index]` 初期化 |
+| `content_block_delta` | サブタイプごとに増分を追加 | text / thinking / input が累積 |
+| `content_block_stop` | 完全な `AssistantMessage` を構築して yield | `newMessages` に追加 |
+| `message_delta` | stop_reason と最終 usage を更新 | 最後のメッセージへ書き戻し |
+| `message_stop` | 何もしない（終端マーカー） | — |
+
+### ブロック型と対応する delta
+
+`content_block_start` の `content_block.type` が、以降の delta の扱いを決めます。
+
+| ブロック型 | delta 型 | 累積のしかた |
+|-----------|---------|-------------|
+| `text` | `text_delta` | `text += delta.text` |
+| `thinking` | `thinking_delta` + `signature_delta` | `thinking += delta.thinking`、`signature = delta.signature` |
+| `tool_use` | `input_json_delta` | `input += delta.partial_json`（JSON 文字列の連結） |
+| `server_tool_use` | `input_json_delta` | tool_use と同じ |
+| `connector_text` | `connector_text_delta` | コネクタ用テキスト。feature flag で制御 |
+
+ひとつ重要な点があります。`content_block_start` の時点ですべてのテキストフィールドを空文字列に初期化し、増加は `content_block_delta` からのみ行います。SDK は同じテキストを開始イベントと最初の delta の両方で送ることがあり、開始イベントから初期化すると二重になるためです。
+
+## テキストと tool_use ブロックは交互に現れる
+
+1 回の応答が複数のブロックを含み、交互に並ぶことがあります。
+
+```
+content_block_start (text, index=0)     "そのバグを直します。"
+content_block_delta  (text_delta)       "まず…"
+content_block_stop  (index=0)
+content_block_start (tool_use, index=1) { name: "Read", input: "…" }
+content_block_delta  (input_json_delta) '{"file_p' → 'ath":' → '"src/foo.ts"}'
+content_block_stop  (index=1)
+content_block_start (text, index=2)     "問題が見えました…"
+content_block_stop  (index=2)
+```
+
+`content_block_stop` ごとに `yield` が起き、完全な AssistantMessage が消費側へ渡ります。つまり 1 回の応答から**複数の** `AssistantMessage` が生まれ、テキストとツール呼び出しが交互に出てきます。
+
+`stop_reason` は `message_delta` まで確定しません（`end_turn`、`tool_use`、`max_tokens` などになりえます）。そのため最後のメッセージの `stop_reason` は**書き戻し**になります。
+
+```typescript
+// claude.ts — stop_reason の書き戻し。オブジェクト置換ではなくプロパティを
+// 直接書き換えるのは、transcript の書き込みキューが message.message の参照を
+// 保持しているため。
+const lastMsg = newMessages.at(-1)
+if (lastMsg) {
+  lastMsg.message.usage = usage
+  lastMsg.message.stop_reason = stopReason
+}
+```
+
+## ストリーム中のエラー処理
+
+### 接続が切れた場合
+
+ストリーミングは SSE の上に乗っています。接続断の検出は 2 系統、さらにフォールバックが 1 つあります。
+
+1. **受動的な stall 検出。** 次のイベントが届いた時点で、前回からの間隔を測ります。`STALL_THRESHOLD_MS = 30_000` を超えていれば stall として計上し、テレメトリに記録します。これは受動的で、チャンクが最終的に届いたときにしか発火せず、ストリーム自体を止めることはありません。
+2. **能動的なアイドル監視。** `setTimeout` で 90 秒の上限を強制します（`STREAM_IDLE_TIMEOUT_MS`。`CLAUDE_STREAM_IDLE_TIMEOUT_MS` で上書き可能）。その間に何も届かなければストリームを中断し、エラーがリトライ経路へ入ります。
+3. **非ストリーミングへのフォールバック。** 最後の手段として `didFallBackToNonStreaming` を立て、`executeNonStreamingRequest()` が応答全体を一括取得します。
+
+```typescript
+// claude.ts — 受動的な stall 検出
+const STALL_THRESHOLD_MS = 30_000  // 30 秒イベントが無ければ stall とみなす
+let totalStallTime = 0
+let stallCount = 0
+
+// claude.ts — 能動的なアイドルタイムアウト
+const STREAM_IDLE_TIMEOUT_MS =
+  parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
+```
+
+### レート制限
+
+レート制限のエラーは `withRetry` ラッパーを通り、指数バックオフで再試行されます。リトライ判定はエラー種別（429 か 5xx か）、リトライ回数の上限、バックオフ間隔を考慮します。
+
+### トークン超過
+
+トークン超過は 2 種類あり、扱いが異なります。
+
+| 状況 | stop_reason | 処理 |
+|------|------------|------|
+| **出力超過** | `max_tokens` | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` を勧めるエラーを生成 |
+| **コンテキスト窓超過** | `model_context_window_exceeded` | 履歴を圧縮して再試行 |
+
+```typescript
+// claude.ts — stop_reason の処理
+if (stopReason === 'max_tokens') {
+  yield createAssistantAPIErrorMessage({ error: 'max_output_tokens', … })
+}
+if (stopReason === 'model_context_window_exceeded') {
+  // max_output_tokens の回復経路を再利用する
+  yield createAssistantAPIErrorMessage({ error: 'max_output_tokens', … })
+}
+```
+
+## ツール実行のストリーミング
+
+Bash の実行もストリーミングです。`onProgress` が出力を 1 行ずつ流します。
+
+```
+BashTool.call() → runShellCommand() → AsyncGenerator
+  ├── 毎秒出力ファイルをポーリング → onProgress(lastLines, allLines, …)
+  ├── yield { type: 'progress', output, fullOutput, elapsedTimeSeconds }
+  └── return { code, stdout, interrupted, … }
+```
+
+UI 側は `useToolCallProgress` フックでこれをそのまま描画し、コマンドの終了を待ちません。長時間動くコマンドは自動でバックグラウンドへ回すこともできます（`shouldAutoBackground`）。
+
+## provider ごとの差異の吸収
+
+| Provider | ストリーミング方式 | 備考 |
+|----------|------------------|------|
+| **firstParty**（Anthropic 直接） | ネイティブ SSE | 最も低遅延、TTFT が最速 |
+| **AWS Bedrock** | AWS SDK のストリーミング | 追加の beta ヘッダと独自の認証が必要 |
+| **Google Vertex** | gRPC → イベント列 | `getMergedBetas()` で吸収 |
+| **foundry** | Anthropic 互換 API | 社内デプロイ |
+| **openai** | OpenAI ストリーミングアダプタ | 内部の Anthropic 形式へ変換 |
+| **gemini** | Gemini ストリーミングアダプタ | 内部の Anthropic 形式へ変換 |
+| **grok** (xAI) | Grok ストリーミングアダプタ | 内部の Anthropic 形式へ変換 |
+
+すべての provider は `Stream<BetaRawMessageStreamEvent>` という 1 つの抽象の背後に揃えられます。そのため上位（QueryEngine、REPL）はどの provider を使っているかを気にする必要がありません。
+
+### provider の選択
+
+`src/utils/model/providers.ts` の `getAPIProvider()` が設定から決定します。
+
+```typescript
+// api_provider 設定による選択:
+// "anthropic" → 直接
+// "bedrock"   → AWS SDK
+// "vertex"    → Google SDK
+// サードパーティの base URL → 自動判定
+```
+
+provider ごとに認証方式、beta ヘッダ、リクエストボディの形、エラーコードの対応付けが異なりますが、その差はすべて `claude.ts` の `queryStream()` の中で吸収されます。

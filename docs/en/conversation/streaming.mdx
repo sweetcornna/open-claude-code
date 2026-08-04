@@ -1,0 +1,178 @@
+---
+title: "Streaming — how the output appears as it is written"
+description: "How Claude Code streams responses: the SSE event types, the state machine that assembles them into messages, stall detection and idle timeouts, and how seven providers are normalized behind one abstraction."
+keywords: ["streaming", "SSE", "real-time output", "API streaming"]
+sourceRef: "3ec5675 (2026-04-08)"
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/conversation/streaming) · [日本語](/docs/ja/conversation/streaming)
+
+## Why stream at all
+
+Suppose a response takes 30 seconds to generate. Waiting the full 30 seconds and then printing it all at once is a poor experience.
+
+Streaming lets the user **watch the model work**:
+
+- Text appears as it is written, so you can tell early whether the direction is right
+- Tool-call arguments are visible while they are still being generated
+- A long task never looks like a hang
+
+## The `BetaRawMessageStreamEvent` types
+
+The streaming API returns a sequence of `BetaRawMessageStreamEvent`, one type per phase (`src/services/api/claude.ts`):
+
+```
+message_start           ← message begins; carries model and initial usage
+  ├── content_block_start   ← a block starts (text / tool_use / thinking)
+  │   ├── content_block_delta  ← incremental data (text_delta / input_json_delta / thinking_delta)
+  │   ├── content_block_delta  ← … and so on
+  │   └── content_block_stop   ← block ends; an AssistantMessage is yielded
+  ├── content_block_start   ← the next block…
+  │   └── …
+  └── message_delta       ← stop_reason and final usage
+message_stop            ← message ends
+```
+
+### The event state machine
+
+The event loop in `queryModelWithStreaming()` (`src/services/api/claude.ts`) is a state machine over `switch (part.type)`:
+
+| Event | What it does | State change |
+|-------|--------------|--------------|
+| `message_start` | Initializes `partialMessage`, records TTFT (time to first token) | `usage` initialized |
+| `content_block_start` | Creates a block of the right type at `part.index` | `contentBlocks[index]` initialized |
+| `content_block_delta` | Appends incremental data by subtype | text / thinking / input accumulate |
+| `content_block_stop` | Builds a complete `AssistantMessage` and yields it | message pushed to `newMessages` |
+| `message_delta` | Updates stop_reason and final usage | written back to the last message |
+| `message_stop` | Nothing (end-of-stream marker) | — |
+
+### Block types and their deltas
+
+The `content_block.type` in `content_block_start` determines how subsequent deltas are handled:
+
+| Block type | Delta type | Accumulation |
+|-----------|-----------|--------------|
+| `text` | `text_delta` | `text += delta.text` |
+| `thinking` | `thinking_delta` + `signature_delta` | `thinking += delta.thinking`, `signature = delta.signature` |
+| `tool_use` | `input_json_delta` | `input += delta.partial_json` (JSON string concatenation) |
+| `server_tool_use` | `input_json_delta` | Same as tool_use |
+| `connector_text` | `connector_text_delta` | Connector text, behind a feature flag |
+
+One detail matters: at `content_block_start` every text field is initialized to the empty string and only ever grows through `content_block_delta`. The SDK sometimes sends the same text in both the start event and the first delta, and initializing from the start event would duplicate it.
+
+## Text and tool_use blocks interleave
+
+A single response can contain several blocks, alternating:
+
+```
+content_block_start (text, index=0)     "Let me fix that bug."
+content_block_delta  (text_delta)       "First…"
+content_block_stop  (index=0)
+content_block_start (tool_use, index=1) { name: "Read", input: "…" }
+content_block_delta  (input_json_delta) '{"file_p' → 'ath":' → '"src/foo.ts"}'
+content_block_stop  (index=1)
+content_block_start (text, index=2)     "I can see the problem…"
+content_block_stop  (index=2)
+```
+
+Each `content_block_stop` triggers a `yield`, pushing a complete AssistantMessage to the consumer. So one model response produces **several** `AssistantMessage` records — text and tool calls alternating.
+
+`stop_reason` is not known until `message_delta` (it may be `end_turn`, `tool_use`, `max_tokens`, and so on), so the last message's `stop_reason` is **written back**:
+
+```typescript
+// claude.ts — stop_reason write-back. Direct property mutation, not object
+// replacement, because the transcript write queue holds a reference to
+// message.message.
+const lastMsg = newMessages.at(-1)
+if (lastMsg) {
+  lastMsg.message.usage = usage
+  lastMsg.message.stop_reason = stopReason
+}
+```
+
+## Error handling during a stream
+
+### The connection drops
+
+Streaming rides on SSE. Two mechanisms detect a dead connection, and a third is the fallback:
+
+1. **Passive stall detection.** When the next event arrives, the gap since the previous one is measured. Anything over `STALL_THRESHOLD_MS = 30_000` is recorded as a stall, counted, and logged to telemetry. This is passive — it only fires when a chunk eventually arrives, and never interrupts the stream itself.
+2. **Active idle watchdog.** A `setTimeout` enforces a hard 90-second ceiling (`STREAM_IDLE_TIMEOUT_MS`, overridable via `CLAUDE_STREAM_IDLE_TIMEOUT_MS`). If nothing arrives in that window the stream is aborted and an error enters the retry path.
+3. **Non-streaming fallback.** As a last resort, `didFallBackToNonStreaming` is set and `executeNonStreamingRequest()` fetches the whole response in one shot.
+
+```typescript
+// claude.ts — passive stall detection
+const STALL_THRESHOLD_MS = 30_000  // 30s with no event counts as a stall
+let totalStallTime = 0
+let stallCount = 0
+
+// claude.ts — active idle timeout
+const STREAM_IDLE_TIMEOUT_MS =
+  parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
+```
+
+### Rate limits
+
+Rate-limit errors go through the `withRetry` wrapper for exponential backoff. The retry logic accounts for the error class (429 versus a 5xx), a retry ceiling, and the backoff interval.
+
+### Token limits
+
+The two token-limit cases are handled differently:
+
+| Case | stop_reason | Handling |
+|------|------------|----------|
+| **Output exceeded** | `max_tokens` | Emit an error suggesting `CLAUDE_CODE_MAX_OUTPUT_TOKENS` |
+| **Context window exceeded** | `model_context_window_exceeded` | Compact the history and retry |
+
+```typescript
+// claude.ts — stop_reason handling
+if (stopReason === 'max_tokens') {
+  yield createAssistantAPIErrorMessage({ error: 'max_output_tokens', … })
+}
+if (stopReason === 'model_context_window_exceeded') {
+  // reuses the max_output_tokens recovery path
+  yield createAssistantAPIErrorMessage({ error: 'max_output_tokens', … })
+}
+```
+
+## Streaming feedback from tools
+
+Bash execution streams too — `onProgress` pushes output line by line:
+
+```
+BashTool.call() → runShellCommand() → AsyncGenerator
+  ├── polls the output file each second → onProgress(lastLines, allLines, …)
+  ├── yield { type: 'progress', output, fullOutput, elapsedTimeSeconds }
+  └── return { code, stdout, interrupted, … }
+```
+
+The UI renders that live through the `useToolCallProgress` hook rather than waiting for the command to finish. Long-running commands can also move to the background automatically (`shouldAutoBackground`).
+
+## Provider adaptation
+
+| Provider | Streaming protocol | Notes |
+|----------|-------------------|-------|
+| **firstParty** (Anthropic direct) | Native SSE | Lowest latency, fastest TTFT |
+| **AWS Bedrock** | AWS SDK streaming | Needs extra beta headers and its own auth |
+| **Google Vertex** | gRPC → event stream | Adapted via `getMergedBetas()` |
+| **foundry** | Anthropic-compatible API | Internal deployment |
+| **openai** | OpenAI streaming adapter | Converted to the internal Anthropic format |
+| **gemini** | Gemini streaming adapter | Converted to the internal Anthropic format |
+| **grok** (xAI) | Grok streaming adapter | Converted to the internal Anthropic format |
+
+Every provider is normalized behind one `Stream<BetaRawMessageStreamEvent>` abstraction, so nothing upstream — QueryEngine, the REPL — needs to know which provider is in use.
+
+### Choosing a provider
+
+`getAPIProvider()` in `src/utils/model/providers.ts` decides from configuration:
+
+```typescript
+// Selected by the api_provider setting:
+// "anthropic" → direct
+// "bedrock"   → AWS SDK
+// "vertex"    → Google SDK
+// third-party base URL → auto-detected
+```
+
+Each provider differs in authentication, beta headers, request-body shape, and error-code mapping — but all of that is absorbed inside `queryStream()` in `claude.ts`.
