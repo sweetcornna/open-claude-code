@@ -105,20 +105,36 @@ function createSourceAdapter(
   }
 }
 
+/**
+ * Build the adapter the user named outright.
+ *
+ * The provider sources take the SAME primary/extra distinction as mode 2 —
+ * naming a source does not make it the session's provider. Constructing them
+ * bare here was a real break: `WEB_SEARCH_ADAPTER=gemini` on an OpenAI session
+ * built a Gemini adapter that had never been told it was an extra source, so it
+ * skipped the Antigravity route a Google login had made available and sent an
+ * empty `x-goog-api-key` — 403 "unregistered callers", with credentials sitting
+ * right there on disk.
+ */
 function createExplicitAdapter(key: SearchAdapterKey): WebSearchAdapter {
+  const primaryId = primarySourceId()
   switch (key) {
     case 'api':
-      return new ApiSearchAdapter()
+      return primaryId === 'anthropic'
+        ? new ApiSearchAdapter()
+        : new AnthropicDirectSearchAdapter()
     case 'bing':
       return new BingSearchAdapter()
     case 'brave':
       return new BraveSearchAdapter()
     case 'codex':
-      return new CodexSearchAdapter()
+      return new CodexSearchAdapter(
+        primaryId === 'codex' ? {} : { forceChatGPTAuth: true },
+      )
     case 'exa':
       return new ExaSearchAdapter()
     case 'gemini':
-      return new GeminiSearchAdapter()
+      return new GeminiSearchAdapter({ asExtraSource: primaryId !== 'gemini' })
     case 'free':
       return new FreeSearchAdapter()
   }

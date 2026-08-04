@@ -210,6 +210,21 @@ describe('CodexSearchAdapter.search', () => {
     ])
   })
 
+  test('forceChatGPTAuth falls back to the API key when no ChatGPT login exists', async () => {
+    // The extra-source lane sets forceChatGPTAuth, but hasCodexSearchCredentials
+    // counts an OPENAI_API_KEY alone as connected. Forcing OAuth unconditionally
+    // would make that lane throw on every search instead of using the key it has.
+    const adapter = new CodexSearchAdapter({
+      forceChatGPTAuth: true,
+      fetchOverride: fetchStub([SEARCH_CALL_EVENT, COMPLETED_EVENT]),
+    })
+
+    await adapter.search('rrf', {})
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0].url).toBe('https://api.openai.test/v1/responses')
+  })
+
   test('surfaces an API failure so the source can be retired', async () => {
     const failing = (async () =>
       new Response('{"error":{"message":"Unsupported tool: web_search"}}', {

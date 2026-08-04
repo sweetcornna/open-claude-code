@@ -48,6 +48,37 @@ type GeminiWireRequest = {
   unwrapChunk: (raw: unknown) => GeminiStreamChunk | null
 }
 
+/**
+ * Whether a call with these options will go out over Antigravity rather than
+ * the public Gemini endpoint.
+ *
+ * Exported because the choice is not merely transport: the two backends serve
+ * DIFFERENT MODEL CATALOGUES. Antigravity knows `gemini-3.1-flash-lite` and
+ * friends and answers anything else with a bare 404 "Requested entity was not
+ * found", so a caller picking a default model has to know which one it is
+ * talking to. Callers must not re-derive this condition by hand.
+ *
+ * An explicit accessToken means the caller already picked its endpoint and
+ * credential: honour it verbatim rather than rerouting it through Antigravity's
+ * envelope.
+ *
+ * `useAntigravityWhenAvailable` is for callers that are not the main loop —
+ * WebSearch's Gemini source runs even when the session talks to another
+ * provider, so "am I in Antigravity mode" is the wrong question there; "is
+ * there a Google login" is the right one.
+ */
+export function usesAntigravityRoute(params: {
+  accessToken?: string
+  useAntigravityWhenAvailable?: boolean
+}): boolean {
+  return (
+    !params.accessToken &&
+    (isAntigravityAuthMode() ||
+      (params.useAntigravityWhenAvailable === true &&
+        hasGeminiOAuthCredentialsSync()))
+  )
+}
+
 async function resolveGeminiWireRequest(params: {
   model: string
   body: GeminiGenerateContentRequest
@@ -55,20 +86,7 @@ async function resolveGeminiWireRequest(params: {
   requestType?: AntigravityRequestType
   useAntigravityWhenAvailable?: boolean
 }): Promise<GeminiWireRequest> {
-  // An explicit accessToken means the caller already picked its endpoint and
-  // credential: honour it verbatim rather than rerouting it through
-  // Antigravity's envelope.
-  //
-  // `useAntigravityWhenAvailable` is for callers that are not the main loop —
-  // WebSearch's Gemini source runs even when the session talks to another
-  // provider, so "am I in Antigravity mode" is the wrong question there;
-  // "is there a Google login" is the right one.
-  const useAntigravity =
-    !params.accessToken &&
-    (isAntigravityAuthMode() ||
-      (params.useAntigravityWhenAvailable === true &&
-        hasGeminiOAuthCredentialsSync()))
-  if (useAntigravity) {
+  if (usesAntigravityRoute(params)) {
     const auth = await getValidAntigravityAuth()
     return {
       url: antigravityStreamUrl(),

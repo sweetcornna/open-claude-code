@@ -16,7 +16,10 @@
  * closest thing Gemini returns to a result summary.
  *
  * Auth/transport is reused wholesale from src/services/api/gemini/client.ts
- * (GEMINI_API_KEY, GEMINI_BASE_URL, proxy options, SSE framing).
+ * (GEMINI_API_KEY, GEMINI_BASE_URL, proxy options, SSE framing) — including
+ * its two routes: the public endpoint and the Antigravity backend a Google
+ * login unlocks. The model, however, is this module's call, and the two
+ * backends do NOT serve the same catalogue: see resolveGeminiSearchModel.
  */
 
 import type {
@@ -26,7 +29,14 @@ import type {
 } from '@ant/model-provider'
 import { resolveGeminiModel } from '@ant/model-provider'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
-import { streamGeminiGenerateContent } from 'src/services/api/gemini/client.js'
+import {
+  streamGeminiGenerateContent,
+  usesAntigravityRoute,
+} from 'src/services/api/gemini/client.js'
+import {
+  ANTIGRAVITY_FLASH_LITE_MODEL,
+  findAntigravityModelOption,
+} from 'src/utils/model/antigravityModels.js'
 import { getMainLoopModel } from 'src/utils/model/model.js'
 import { filterResultsByDomains } from './domainFilter.js'
 import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
@@ -51,12 +61,31 @@ const GOOGLE_SEARCH_TOOL = { googleSearch: {} } as const
  */
 const DEFAULT_SEARCH_MODEL = 'gemini-2.5-flash'
 
-function resolveSearchModel(): string {
+/** Cheapest tier the Antigravity backend serves — a grounded search only has
+ * to call the tool. */
+const ANTIGRAVITY_SEARCH_MODEL = ANTIGRAVITY_FLASH_LITE_MODEL
+
+/**
+ * The two backends serve different model catalogues, and Antigravity rejects
+ * anything outside its own with a bare 404 "Requested entity was not found".
+ * `gemini-2.5-flash` is a public-endpoint id, so it 404s there — which is what
+ * a Google-logged-in user on another provider used to get from this source,
+ * every single time, silenced by the aggregator.
+ */
+export function resolveGeminiSearchModel(useAntigravity: boolean): string {
+  let mapped: string | undefined
   try {
-    return resolveGeminiModel(getMainLoopModel())
+    mapped = resolveGeminiModel(getMainLoopModel())
   } catch {
-    return DEFAULT_SEARCH_MODEL
+    // No Gemini model configured at all — expected when the session is on
+    // another provider entirely.
   }
+  if (!useAntigravity) return mapped ?? DEFAULT_SEARCH_MODEL
+  // GEMINI_MODEL may still hold a public-endpoint id from an earlier API-key
+  // setup; only an id this backend actually serves may be forwarded.
+  return mapped && findAntigravityModelOption(mapped)
+    ? mapped
+    : ANTIGRAVITY_SEARCH_MODEL
 }
 
 function snippetsByChunkIndex(
@@ -245,8 +274,11 @@ export class GeminiSearchAdapter implements WebSearchAdapter {
     const collected = new Map<string, SearchResult>()
     const seenQueries = new Set<string>()
 
+    const useAntigravity = usesAntigravityRoute({
+      useAntigravityWhenAvailable: this.asExtraSource,
+    })
     const stream = streamGeminiGenerateContent({
-      model: resolveSearchModel(),
+      model: resolveGeminiSearchModel(useAntigravity),
       body,
       signal: abortController.signal,
       fetchOverride: this.fetchOverride,

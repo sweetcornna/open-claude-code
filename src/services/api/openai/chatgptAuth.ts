@@ -1,4 +1,4 @@
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -334,15 +334,33 @@ export function isChatGPTAuthEnabled(): boolean {
 }
 
 /**
- * Sync existence probe for the same two credential files.
+ * Sync probe for the same two credential files — the async version's rules,
+ * without the await.
  *
- * Used where an async read is not an option — the WebSearch source resolver
- * runs inside a synchronous factory. "File is there" is the right question
- * for a default-on decision; anything wrong with its contents surfaces when
- * the search actually runs.
+ * Used where an async read is not an option: the WebSearch source resolver runs
+ * inside a synchronous factory.
+ *
+ * It reads the file rather than just stat-ing it, because `~/.codex/auth.json`
+ * has two shapes. The official Codex CLI writes `{"OPENAI_API_KEY": "..."}`
+ * there when you authenticate with a key instead of a ChatGPT account — a file
+ * that exists, carries a real credential, and is NOT a ChatGPT login. Treating
+ * its presence as one made every caller take the OAuth route and fail with
+ * "ChatGPT account is not logged in", while a perfectly good API key sat
+ * unused. The three OAuth token fields are the only honest signal.
  */
 export function hasStoredChatGPTAuthSync(): boolean {
-  return [authFilePath(), codexAuthFilePath()].some(path => existsSync(path))
+  return [authFilePath(), codexAuthFilePath()].some(path => {
+    if (!existsSync(path)) return false
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8')) as StoredAuthFile
+      const tokens = parsed.tokens
+      return Boolean(
+        tokens?.id_token && tokens.access_token && tokens.refresh_token,
+      )
+    } catch {
+      return false
+    }
+  })
 }
 
 /**
