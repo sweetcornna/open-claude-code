@@ -1,0 +1,119 @@
+---
+title: "88 個の Feature Flags — ビルド時機能ゲーティングの全貌"
+description: "Claude Code にある 88 個以上のビルド時 feature flags を詳解します。bun:bundle のコンパイル時ゲーティング機構と、コンパイラによって削除される隠し機能モジュールを明らかにします。"
+keywords: ["feature flags", "機能フラグ", "ビルド時ゲーティング", "bun:bundle", "条件付きコンパイル"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/internals/feature-flags) · [中文](/docs/zh/internals/feature-flags) · **日本語**
+
+{/* この章の目的: ビルド時 feature flag システムの仕組みと、すべての flag の分類を包括的に整理する */}
+
+## feature() とは
+
+Claude Code は Bun バンドラの `bun:bundle` モジュールを使い、ビルド時に機能をゲーティングします。
+
+```typescript
+// ソースコードでの使用例（src/tools.ts など）
+import { feature } from 'bun:bundle'
+
+const RemoteTriggerTool = feature('AGENT_TRIGGERS')
+  ? require('@open-claude-code/builtin-tools/tools/RemoteTriggerTool/RemoteTriggerTool.js').RemoteTriggerTool
+  : null
+```
+
+Anthropic の社内ビルドでは、`feature()` はバンドル時に評価されます。`true` を返すコードは保持され、`false` を返すコードは **Dead Code Elimination (DCE)** によって完全に削除されます。
+
+この逆コンパイル版では、`feature` を `bun:bundle` からインポートし（宣言は `src/types/internal-modules.d.ts`）、実行時には常に `false` を返します。
+
+```typescript
+// src/types/internal-modules.d.ts
+declare module 'bun:bundle' {
+  export function feature(name: string): boolean;
+}
+```
+
+つまり、88 個以上あるすべての feature flag 配下のコードは**実行時には決して実行されません**。ただしコード自体は完全に残っているため、読んで分析できます。
+
+## Flags の分類一覧
+
+<CardGroup cols={2}>
+  <Card title="Agent / 自動化" icon="robot">
+    **14 個の flags** — AI の自律性の境界を制御
+
+    `KAIROS` · `KAIROS_BRIEF` · `KAIROS_CHANNELS` · `KAIROS_GITHUB_WEBHOOKS` · `KAIROS_PUSH_NOTIFICATION` · `PROACTIVE` · `COORDINATOR_MODE` · `FORK_SUBAGENT` · `AGENT_MEMORY_SNAPSHOT` · `AGENT_TRIGGERS` · `AGENT_TRIGGERS_REMOTE` · `VERIFICATION_AGENT` · `BUILTIN_EXPLORE_PLAN_AGENTS` · `MONITOR_TOOL`
+  </Card>
+
+  <Card title="インフラストラクチャ" icon="server">
+    **7 個の flags** — 実行環境と接続方法を制御
+
+    `DAEMON` · `BG_SESSIONS` · `ACP` · `CCR_REMOTE_SETUP` · `SSH_REMOTE`
+  </Card>
+
+  <Card title="セキュリティ / 分類" icon="shield-halved">
+    **6 個の flags** — 権限判定のインテリジェンスを強化
+
+    `TRANSCRIPT_CLASSIFIER` · `BASH_CLASSIFIER` · `TREE_SITTER_BASH` · `TREE_SITTER_BASH_SHADOW` · `NATIVE_CLIENT_ATTESTATION` · `ABLATION_BASELINE`
+  </Card>
+
+  <Card title="ツール / 機能" icon="toolbox">
+    **6 個の flags** — AI の新機能
+
+    `WEB_BROWSER_TOOL` · `TERMINAL_PANEL` · `WORKFLOW_SCRIPTS` · `VOICE_MODE` · `MCP_RICH_OUTPUT` · `MCP_SKILLS`
+  </Card>
+
+  <Card title="UI / 体験" icon="palette">
+    **7 個の flags** — インターフェースと操作性を改善
+
+    `MESSAGE_ACTIONS` · `QUICK_SEARCH` · `HISTORY_PICKER` · `AUTO_THEME` · `STREAMLINED_OUTPUT` · `COMPACTION_REMINDERS` · `TEMPLATES`
+  </Card>
+
+  <Card title="プラットフォーム / 実験" icon="flask-vial">
+    **10 個以上の flags** — 実験的機能とプラットフォームレベルの機能
+
+    `DUMP_SYSTEM_PROMPT` · `UPLOAD_USER_SETTINGS` · `DOWNLOAD_USER_SETTINGS` · `EXPERIMENTAL_SKILL_SEARCH` · `ULTRAPLAN` · `ULTRATHINK` · `TORCH` · `LODESTONE` · `PERFETTO_TRACING` · `SLOW_OPERATION_LOGGING` · `HARD_FAIL` · `ALLOW_TEST_VERSIONS`
+  </Card>
+</CardGroup>
+
+## コードで使われる典型的なパターン
+
+Feature flags は、主に 3 つのパターンでコード内に使われます。
+
+### パターン 1: ツールの条件付き読み込み
+
+```typescript
+// src/tools.ts — 最も一般的なパターン
+const MonitorTool = feature('MONITOR_TOOL')
+  ? require('@open-claude-code/builtin-tools/tools/MonitorTool/MonitorTool.js').MonitorTool
+  : null
+```
+
+flag が `false` の場合、`require()` 呼び出しは DCE によって削除され、ツールは利用可能なツール一覧に現れません。
+
+### パターン 2: コマンドの条件付き登録
+
+```typescript
+// src/commands.ts — スラッシュコマンドを登録
+if (feature('VOICE_MODE')) {
+  commands.push({ name: 'voice', description: '...' })
+}
+```
+
+### パターン 3: API 機能の条件付き有効化
+
+```typescript
+// src/constants/betas.ts — API に送信する beta header を制御
+export const AFK_MODE_BETA_HEADER = feature('TRANSCRIPT_CLASSIFIER')
+  ? 'afk-mode-2026-01-31'
+  : ''
+```
+
+<Note>
+`feature()` はビルド時に評価されるため、DCE で削除されたコードが最終バンドルのサイズを増やすことはありません。ただし逆コンパイル版では、これらのコードがすべて保持されています。だからこそ、全体を分析できます。
+</Note>
+
+## 興味深い発見
+
+- **KAIROS ファミリー**が最大です。5 個の関連 flag が、中核機能からプッシュ通知まであらゆる要素を制御します
+- **ABLATION_BASELINE** は「科学的な対照実験」のためのものです。thinking、compaction、auto-memory などの高度な機能を無効にし、素の API 呼び出しのベースライン性能を測定します
+- **ULTRAPLAN** と **ULTRATHINK** は、現在の extended thinking より高度な推論モードの存在を示唆しています

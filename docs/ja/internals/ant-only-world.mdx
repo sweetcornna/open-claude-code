@@ -1,0 +1,209 @@
+---
+title: "Ant の特権世界 — Anthropic 従業員専用機能"
+description: "Claude Code の ID ゲーティング層を網羅的に記録します。USER_TYPE === 'ant' で解放される専用ツール、コマンド、API、コードネーム体系を通じて、社内ビルドと外部ビルドの違いを明らかにします。"
+keywords: ["Ant の特権", "USER_TYPE", "ID ゲーティング", "社内機能", "Anthropic 従業員"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/internals/ant-only-world) · [中文](/docs/zh/internals/ant-only-world) · **日本語**
+
+{/* この章の目的: ID ゲーティング層を網羅的に記録し、ant ビルドだけが利用できるすべての要素を明らかにする */}
+
+## Ant とは
+
+`USER_TYPE` は、Bun バンドラの `--define` で注入されるビルド時定数です。Anthropic の社内ビルドでは `'ant'`、一般公開版では `'external'` に設定されます。
+
+```typescript
+// 逆コンパイル版（src/types/global.d.ts の 63 行目）
+// Build-time constants BUILD_TARGET/BUILD_ENV/INTERFACE_TYPE — removed (zero runtime usage)
+```
+
+`BUILD_TARGET` などのビルド時定数は、逆コンパイル版から削除されています。`USER_TYPE` は Bun の `--define` または環境変数で注入され、Bun が**定数畳み込み**を行います。そのため、外部ビルドではすべての `process.env.USER_TYPE === 'ant'` が直接 `false` になり、後続のコードは DCE によって削除されます。ただし逆コンパイル版では、これらのコードが完全に保持されています。
+
+`USER_TYPE === 'ant'` はコードベース内に **351 か所以上**（163 ファイル）、`!== 'ant'` はさらに 59 か所（38 ファイル）あります。合計で **410 か所以上の参照**があり、ツール、コマンド、API、UI など、あらゆる要素を制御しています。
+
+## Ant 限定ツール
+
+次のツールは、社内ビルドでのみツールレジストリへ読み込まれます。
+
+| ツール | コードの場所 | 用途 |
+|------|---------|------|
+| **REPLTool** | `packages/builtin-tools/src/tools/REPLTool/` | 高度な REPL モード。VM 内で Bash/Read/Edit/Glob/Grep/Agent などのツールをラップする |
+| **SuggestBackgroundPRTool** | `packages/builtin-tools/src/tools/SuggestBackgroundPRTool/` | バックグラウンドでの PR 作成を提案する |
+| **ConfigTool** | `packages/builtin-tools/src/tools/ConfigTool/` | 対話型の設定エディタ。GrowthBook flags を上書きする Gates タブを含む |
+| **TungstenTool** | `packages/builtin-tools/src/tools/TungstenTool/` | tmux ベースのターミナルパネルツール（逆コンパイル版では stub 化済み） |
+
+```typescript
+// src/tools.ts の 14〜24 行目 — 条件付き import + Dead Code Elimination マーカー
+// Dead code elimination: conditional import for ant-only tools
+/* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
+const REPLTool =
+  process.env.USER_TYPE === 'ant'
+    ? require('@open-claude-code/builtin-tools/tools/REPLTool/REPLTool.js').REPLTool
+    : null
+const SuggestBackgroundPRTool =
+  process.env.USER_TYPE === 'ant'
+    ? require('@open-claude-code/builtin-tools/tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.js')
+        .SuggestBackgroundPRTool
+    : null
+```
+
+## Ant 限定コマンド
+
+逆コンパイル版の `src/commands.ts`（780 行）には、**もはや** `INTERNAL_ONLY_COMMANDS` 配列も、集中的な `USER_TYPE` / `IS_DEMO` ゲーティングも存在しません。従来 ant 限定だったスラッシュコマンドは、現在 2 つの方法で登録されます。feature flag で保護されるものは条件付き `require()` を使い（`commands.ts:62-134`）、それ以外は通常の配列要素として `COMMANDS()` に直接列挙されます（`commands.ts:240-363`）。ID ゲーティングは各コマンドの `isEnabled()` へ移され、`src/types/command.ts:229` の `isCommandEnabled()` から呼び出されます。以下の一覧はカテゴリ別に整理していますが、一部のコマンドは逆コンパイル版から社内機能とともに削除されています。
+
+<AccordionGroup>
+  <Accordion title="デバッグ">
+    - `breakCache` — キャッシュをクリア
+    - `ctx_viz` — コンテキストウィンドウの使用状況を可視化（削除済み。登録済みの `context` / `contextNonInteractive` が機能を引き継ぐ）
+    - `debugToolCall` — ツール呼び出しをデバッグ
+    - `env` — 環境変数を表示
+    - `mockLimits` — レート制限をシミュレート（コマンドは削除済み）
+    - `resetLimits` — レート制限をリセット（コマンドは削除済み。`src/services/rateLimitMessages.ts:340` では引き続き ant ユーザーに `/reset-limits` を案内する）
+    - `resetLimitsNonInteractive` — レート制限をリセット（非対話）（コマンドは削除済み）
+  </Accordion>
+  <Accordion title="実験">
+    - `goodClaude` — 品質評価ツール（逆コンパイル版ではコマンドを削除済みだが、`src/utils/autoRunIssue.tsx:76` は ant ビルドで引き続き `/good-claude` をディスパッチする）
+    - `antTrace` — トレース分析（削除済み）
+    - `perfIssue` — パフォーマンス問題の診断
+  </Accordion>
+  <Accordion title="ワークフロー">
+    - `commit` — すばやくコミット
+    - `commitPushPr` — コミット、プッシュ、PR 作成を一括実行
+    - `issue` — GitHub Issue を作成
+    - `autofixPr` — PR の問題を自動修正
+    - `share` — セッションを共有
+    - `summary` — 要約を生成
+    - `subscribePr` — PR を購読（`KAIROS_GITHUB_WEBHOOKS` feature flag が必要）
+    - `ultraplan` — 高度なプランニング（`ULTRAPLAN` feature flag が必要。`commands.ts:108-110` で条件付き require、`commands.ts:337` で登録）
+  </Accordion>
+  <Accordion title="インフラストラクチャ">
+    - `bridgeKick` — Bridge 接続を再起動（引き続き ant 限定。`src/commands/bridge-kick.ts:195` の `isEnabled: () => process.env.USER_TYPE === 'ant'`）
+    - `teleport` — 指定したコンテキストへテレポート
+    - `onboarding` — オンボーディング
+    - `agentsPlatform` — Agents プラットフォームの管理
+    - `version` — 社内向けバージョンの詳細
+    - `initVerifiers` — verifier を初期化
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+元の社内ビルドでは、これらのコマンドは `IS_DEMO` モードでも非表示になりました。逆コンパイル版の `commands.ts` にはこのゲートがなく、現在の `IS_DEMO` はオンボーディングのスキップとアカウント / 組織情報の非表示にのみ使われます（`src/interactiveHelpers.tsx:142`、`src/utils/status.tsx:275`）。
+</Note>
+
+## Beta API Headers
+
+Claude Code が API に送信する beta headers は、`src/constants/betas.ts`（メインレジストリ）とその他のファイルに分散しており、可視性に基づいて次のカテゴリに分類できます。
+
+### 公開 Headers（すべてのビルドで送信）
+
+| Header | 機能 | 追加条件 |
+|--------|------|----------|
+| `claude-code-20250219` | Claude Code の識別 | Haiku 以外では常に送信。Haiku でも agentic モードでは送信 |
+| `effort-2025-11-24` | 推論強度の制御 | 動的に注入 |
+| `task-budgets-2026-03-13` | タスク予算 | 常に `addAgenticBetas()` で注入 |
+| `fast-mode-2026-02-01` | 高速モード | sticky-on latch で動的に注入 |
+| `advisor-tool-2026-03-01` | アドバイザーツール | advisor の有効時に動的に注入 |
+| `advanced-tool-use-2025-11-20` | ツール検索（1P） | Claude API / Foundry |
+| `tool-search-tool-2025-10-19` | ツール検索（3P） | Vertex / Bedrock |
+
+### モデル機能関連（条件付きで送信）
+
+| Header | 機能 | 条件 |
+|--------|------|------|
+| `interleaved-thinking-2025-05-14` | インターリーブ思考モード | モデルが ISP をサポートし、無効化されていない |
+| `context-1m-2025-08-07` | 1M コンテキストウィンドウ | モデルが 1M context をサポート |
+| `context-management-2025-06-27` | コンテキスト管理 | Claude 4+、または ant が手動で有効化 |
+| `structured-outputs-2025-12-15` | 構造化出力 | Claude 4.5/4.6 + GrowthBook `tengu_tool_pear` |
+| `web-search-2025-03-05` | Web 検索 | Vertex (Claude 4+) / Foundry |
+| `redact-thinking-2026-02-12` | 思考の要約 / マスキング | ISP モデル + 非対話 + 思考表示を強制していない |
+| `prompt-caching-scope-2026-01-05` | プロンプトキャッシュのスコープ | firstParty/foundry + グローバルキャッシュ |
+
+### Ant 限定 Headers
+
+| Header | 機能 | 条件 |
+|--------|------|------|
+| **`cli-internal-2026-02-09`** | 社内 CLI 機能 | `USER_TYPE === 'ant'` + CLI エントリポイント |
+| **`token-efficient-tools-2026-03-28`** | Token 効率の高いツール | `USER_TYPE === 'ant'` + GrowthBook `tengu_amber_json_tools` |
+
+### Feature Flag によるゲーティング
+
+| Header | 機能 | 条件 |
+|--------|------|------|
+| **`afk-mode-2026-01-31`** | AFK モード（離席時の自動承認） | `feature('TRANSCRIPT_CLASSIFIER')` |
+
+### その他の特殊な Headers
+
+| Header | 機能 | 取得元 |
+|--------|------|------|
+| `oauth-2025-04-20` | OAuth サブスクライバーの識別 | `src/constants/oauth.ts`、Pro/Max/Team/Enterprise |
+| `environments-2025-11-01` | Bridge 環境 API | `src/bridge/bridgeApi.ts`、Bridge モードのみ |
+
+```typescript
+// src/constants/betas.ts — 定数定義
+export const TOKEN_EFFICIENT_TOOLS_BETA_HEADER =
+  'token-efficient-tools-2026-03-28'
+export const CLI_INTERNAL_BETA_HEADER =
+  process.env.USER_TYPE === 'ant' ? 'cli-internal-2026-02-09' : ''
+```
+
+```typescript
+// src/utils/betas.ts の 315〜321 行目 — TOKEN_EFFICIENT_TOOLS の実際のゲーティングロジック
+if (
+  process.env.USER_TYPE === 'ant' &&
+  includeFirstPartyOnlyBetas &&
+  tokenEfficientToolsEnabled  // GrowthBook の 'tengu_amber_json_tools' flag
+) {
+  betaHeaders.push(TOKEN_EFFICIENT_TOOLS_BETA_HEADER)
+}
+```
+
+`cli-internal` header は、Anthropic の API サーバー側にも ant 限定の一連の挙動が存在することを意味します。これはクライアント側だけのゲーティングではありません。`token-efficient-tools` にはさらに GrowthBook flag の有効化が必要であり、Ant 従業員の社内環境にも段階的なロールアウトがあることを示しています。
+
+## 社内コードネーム体系
+
+Anthropic には、動物を使う強い命名文化があります。
+
+| コードネーム | 対象 | 出典 |
+|------|------|------|
+| **Tengu**（天狗） | Claude Code のプロジェクトコードネーム | すべての GrowthBook flags の `tengu_` 接頭辞、分析イベント名 |
+| **Capybara**（カピバラ） | モデルのコードネーム | `src/constants/prompts.ts` で Undercover Mode により除外される名前 |
+| **Fennec**（フェネック） | 廃止されたモデルの別名 | `src/migrations/migrateFennecToOpus.ts`。以前の名前から Opus へ移行済み |
+
+これらのコードネームは、公開リポジトリの commit から Undercover Mode によって厳密に除外されます。
+
+## 環境変数スイッチ
+
+`USER_TYPE` のほかにも、各機能を細かく制御する一連の環境変数があります。
+
+<AccordionGroup>
+  <Accordion title="機能を無効化するスイッチ">
+    - `CLAUDE_CODE_SIMPLE` — 簡易モード（高度な機能を無効化）
+    - `CLAUDE_CODE_DISABLE_THINKING` — thinking を無効化
+    - `DISABLE_INTERLEAVED_THINKING` — インターリーブ思考を無効化
+    - `DISABLE_COMPACT` — メッセージの compaction を無効化
+    - `DISABLE_AUTO_COMPACT` — 自動 compaction を無効化
+    - `CLAUDE_CODE_DISABLE_AUTO_MEMORY` — 自動メモリを無効化
+    - `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` — バックグラウンドタスクを無効化
+    - `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` — 実験的な beta headers を無効化
+    - `USE_API_CONTEXT_MANAGEMENT` — コンテキスト管理ツールによるクリア（ant が必要）
+  </Accordion>
+  <Accordion title="機能を有効化するスイッチ">
+    - `CLAUDE_CODE_VERIFY_PLAN` — VerifyPlanExecutionTool を有効化
+    - `ENABLE_LSP_TOOL` — LSP 言語サーバーツールを有効化
+    - `CLAUDE_CODE_UNDERCOVER` — Undercover Mode を強制的に有効化
+    - `CLAUDE_CODE_TERMINAL_RECORDING` — ターミナル録画（asciicast）を有効化
+    - `CLAUDE_CODE_ABLATION_BASELINE` — ベースライン対照モードを有効化
+  </Accordion>
+  <Accordion title="環境設定">
+    - `CLAUDE_CODE_REMOTE` — リモート実行モード（ヒープメモリの上限を自動的に引き上げる）
+    - `CLAUDE_CODE_COORDINATOR_MODE` — Coordinator モードを有効化
+    - `CLAUDE_INTERNAL_FC_OVERRIDES` — GrowthBook flag のオーバーライド（ant 限定）
+    - `IS_DEMO` — デモモード（オンボーディングをスキップし、機密性の高いアカウント情報を非表示にする）
+    - `CLAUDE_CODE_ENTRYPOINT` — エントリポイント種別の識別子（`cli` | その他）
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+`ABLATION_BASELINE` は特に興味深い機能です。thinking、compaction、auto-memory、background tasks を同時に無効化し、これらの高度な機能が AI のパフォーマンスに与える**因果的な影響**を測定します。これは本格的な「科学的対照実験」のためのツールです。
+</Note>

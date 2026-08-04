@@ -1,0 +1,123 @@
+---
+title: "GrowthBook A/B テストシステム — 実行時の機能リリース"
+description: "Claude Code が GrowthBook で実行時の A/B テストを実現する仕組みを明らかにします。ユーザーターゲティング、tengu の命名文化、段階的な機能リリース戦略を解説します。"
+keywords: ["GrowthBook", "A/B テスト", "実行時ゲーティング", "tengu", "段階的リリース"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/internals/growthbook-ab-testing) · [中文](/docs/zh/internals/growthbook-ab-testing) · **日本語**
+
+{/* この章の目的: 実行時 A/B テスト層を掘り下げ、GrowthBook の統合アーキテクチャ、ユーザーターゲティング、tengu の命名文化を解説する */}
+
+## 実行時の A/B テストが必要な理由
+
+ビルド時の `feature()` は「すべてか、何もないか」という仕組みです。すべてのユーザーが利用できるか、誰も利用できないかのどちらかです。しかし、製品チームにはより細かな制御が必要です。
+
+- 新機能をユーザーの 5% だけに段階的にリリースする
+- サブスクリプション種別（Free / Pro / Team）ごとに異なる体験を提供する
+- 特定の組織に対して実験的機能を通知せず有効にする
+- 問題のある機能を、新しいバージョンをリリースせずにいつでもリモートで無効化する
+
+そこで使われるのが **GrowthBook** です。これは実行時にユーザー属性に基づいて機能をゲーティングし、A/B テストを行うシステムです。
+
+## 統合アーキテクチャ
+
+GrowthBook の完全な実装は `src/services/analytics/growthbook.ts`（1258 行）にあり、次のように動作します。
+
+<Steps>
+  <Step title="起動時にリモート設定を取得">
+    CLI の起動時に、GrowthBook SDK は `https://api.anthropic.com/` の API エンドポイントから現在の機能設定と実験の割り当てルールを取得します。`remoteEval: true` モードを使うため、割り当てはサーバー側で計算され、クライアントは結果だけを受け取ります。
+  </Step>
+  <Step title="ユーザー属性を計算">
+    SDK は現在のユーザー属性（デバイス ID、サブスクリプション種別、組織 UUID など）を収集し、各実験でそのユーザーをどのグループに割り当てるかを決定します。
+  </Step>
+  <Step title="ローカルにキャッシュ">
+    計算結果は `~/.occ.json` の `cachedGrowthBookFeatures` フィールドにキャッシュされます。更新間隔は、Anthropic の従業員が 20 分、外部ユーザーが 6 時間です。
+  </Step>
+  <Step title="コードから flag を照会">
+    ビジネスロジックは `tengu_*` 接頭辞を持つ flag 名で機能の状態を照会し、GrowthBook SDK は現在のユーザーに割り当てられた値を返します。
+  </Step>
+</Steps>
+
+## ユーザーのターゲティング属性
+
+GrowthBook は次のユーザー属性に基づいて実験グループを決定します。
+
+| 属性 | 型 | 取得元 | 用途 |
+|------|------|------|------|
+| `id` | string | セッション ID | セッション単位の割り当て |
+| `deviceID` | string | 永続化されたデバイス識別子 | セッションをまたぐ一貫性 |
+| `sessionId` | string | 現在のセッション ID | セッションレベルの実験 |
+| `platform` | enum | `process.platform` | OS ごとの差別化 |
+| `organizationUUID` | string | API 認証情報 | 組織単位の段階的リリース |
+| `accountUUID` | string | API 認証情報 | 個人アカウント単位の段階的リリース |
+| `subscriptionType` | string | API 認証情報 | Free / Pro / Team ごとの差別化 |
+| `rateLimitTier` | string | API 認証情報 | レート制限階層ごとの差別化 |
+| `email` | string | API 認証情報 | 特定ユーザーへの厳密なターゲティング |
+| `appVersion` | string | `MACRO.VERSION` | バージョン単位の段階的リリース |
+| `github` | object | GitHub Actions メタデータ | CI 環境の特別処理 |
+
+<Note>
+このターゲティングシステムにより、Anthropic は極めて細かな実験を実施できます。たとえば、「Mac を使う Pro サブスクリプションユーザーの 10% だけに新機能を有効化する」といった設定が可能です。
+</Note>
+
+## コードネーム文化: tengu_* の世界
+
+すべての実行時 flag には `tengu_` という接頭辞が付きます。「Tengu」（天狗）は Claude Code の社内プロジェクトコードネームです。flag 名には、**動物 / 植物 / 鉱物 + 形容詞**という命名規則を採用し、意図的に意味を不透明にしています。
+
+<AccordionGroup>
+  <Accordion title="tengu_kairos — Kairos アシスタントモード">
+    KAIROS 機能の実行時スイッチを制御します。ビルド時に `feature('KAIROS')` を通過しても、この flag が対象にならなければ有効化されません。二重ゲーティングにより、新機能を段階的にリリースできます。
+  </Accordion>
+  <Accordion title="tengu_amber_stoat — Explore Agent の A/B テスト">
+    組み込みの Explore サブ Agent の挙動バリエーションを制御します。「amber stoat」（琥珀色のオコジョ）はランダムに生成されたコードネームで、機能の内容とは関係ありません。flag 名から機能を推測されないようにするためです。
+  </Accordion>
+  <Accordion title="tengu_auto_background_agents — バックグラウンド Agent の自動化">
+    一部のタスクをフォアグラウンドでユーザーを待たせるのではなく、バックグラウンド Agent に自動で割り当てるかどうかを制御します。
+  </Accordion>
+  <Accordion title="tengu_onyx_plover — Auto-Dream のバックグラウンドメモリ">
+    「自動的に夢を見る」機能を制御します。これはアイドル時に Agent のメモリをバックグラウンドで整理し、統合する機能です。「onyx plover」（オニキス色のチドリ）も、意味を持たないコードネームです。
+  </Accordion>
+  <Accordion title="tengu_glacier_2xr — ツール検索の挙動">
+    Tool Search の挙動バリエーションを制御します。検索アルゴリズムやランキング戦略の A/B テストである可能性があります。
+  </Accordion>
+  <Accordion title="tengu_birch_trellis — Bash の権限戦略">
+    BashTool の権限判定戦略のバリエーションを制御します。より緩い、またはより厳しい権限規則をテストしている可能性があります。
+  </Accordion>
+  <Accordion title="tengu_scratch — スクラッチパッド機能">
+    実験的な「スクラッチパッド」機能を制御します。AI が複雑なタスクを処理するときに中間作業領域を使えるようにする機能かもしれません。
+  </Accordion>
+  <Accordion title="tengu_quartz_lantern — Diff の計算戦略">
+    ファイルの書き込みや編集時に diff を計算する方法を制御します。異なる diff アルゴリズムがユーザー体験に与える影響を A/B テストしている可能性があります。
+  </Accordion>
+</AccordionGroup>
+
+## Ant 限定のオーバーライド機構
+
+Anthropic の従業員は、GrowthBook のリモート評価を 2 つの方法で迂回できます。
+
+### 環境変数によるオーバーライド
+
+```bash
+# USER_TYPE=ant のビルドでのみ有効
+CLAUDE_INTERNAL_FC_OVERRIDES='{"tengu_kairos": true}' occ
+```
+
+`CLAUDE_INTERNAL_FC_OVERRIDES` 環境変数で JSON オブジェクトを渡し、任意の flag 値を直接上書きします。
+
+### Config 画面によるオーバーライド
+
+社内ビルドでは、`/config` コマンドの Gates タブに flag を管理するグラフィカルインターフェースがあり、任意の GrowthBook flag をリアルタイムで切り替えられます。
+
+## 実験のトラッキング
+
+GrowthBook には、実験へのエクスポージャーを追跡する完全な仕組みが統合されています。
+
+- flag を照会するたびに、実験へのエクスポージャーイベントを記録する
+- protobuf 形式の `GrowthbookExperimentEvent` で報告する
+- `variation_id`（0=対照群、1+=実験群）と `in_experiment` フラグを含む
+- 機能がユーザー行動に与える因果的な影響の分析にデータを使う
+
+<Note>
+GrowthBook は Statsig から移行中です。コードには `checkStatsigFeatureGate_CACHED_MAY_BE_STALE()` のような移行互換レイヤーがまだ残っています。
+</Note>

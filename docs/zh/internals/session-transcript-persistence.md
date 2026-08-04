@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/internals/session-transcript-persistence) · **中文** · [日本語](/docs/ja/internals/session-transcript-persistence)
 
 # JSONL Transcript 会话持久化与恢复机制
 

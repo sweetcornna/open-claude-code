@@ -1,0 +1,109 @@
+---
+title: "カスタム Sentry エラー報告の設定"
+description: "環境変数を使ってセルフホスト版または Cloud 版の Sentry に接続し、CLI 実行時のエラーを捕捉して報告します。未設定の場合は完全に無効です。"
+keywords: ["sentry", "エラー報告", "モニタリング", "DSN", "セルフホスト"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/internals/sentry-setup) · [中文](/docs/zh/internals/sentry-setup) · **日本語**
+
+## 概要
+
+Claude Code は、実行時の例外を Sentry で捕捉し、指定した Sentry インスタンスへ報告できます。
+
+- **`SENTRY_DSN` を設定した場合**: Sentry SDK を自動的に初期化し、未処理の例外と重大なエラーを捕捉する
+- **未設定の場合**: Sentry のすべての呼び出しが no-op となり、オーバーヘッドはゼロ
+
+## 環境変数
+
+| 変数 | 必須 | 説明 |
+|---|---|---|
+| `SENTRY_DSN` | はい | Sentry プロジェクトの DSN。例: `https://xxx@o123456.ingest.sentry.io/789` |
+
+必要な変数はこれだけです。設定すると有効になります。
+
+## 使用方法
+
+### セルフホスト版 Sentry
+
+```bash
+SENTRY_DSN=https://public_key@your-sentry.example.com/123 \
+bun run dev
+```
+
+### Sentry Cloud (SaaS)
+
+```bash
+SENTRY_DSN=https://public_key@o123456.ingest.sentry.io/789 \
+bun run dev
+```
+
+### Sentry を使わない場合（デフォルトの動作）
+
+```bash
+bun run dev
+# SENTRY_DSN は未設定で、すべての sentry 関数は no-op
+```
+
+## Sentry サーバー側の設定
+
+### 手順
+
+1. **Sentry インスタンスをデプロイする**（Docker によるセルフホスト、または [sentry.io](https://sentry.io) Cloud）
+2. **Project を作成し**、**Node.js** プラットフォームを選択する
+3. プロジェクトの **DSN** を取得する（Settings → Projects → Client Keys → DSN）
+4. DSN を `SENTRY_DSN` 環境変数に設定する
+
+## 機能の詳細
+
+### エラーの捕捉
+
+- **自動捕捉**: `SentryErrorBoundary` が主要な React コンポーネントをラップし、レンダリングエラーを捕捉する
+- **手動報告**: `errorLogSink` はエラーログの書き込み時に、Sentry へも同期的に報告する
+- **正常終了**: プロセスの終了時に `closeSentry()` を呼び、イベントがすべて送信されるようにする（タイムアウトは 2s）
+
+### セキュリティフィルタリング
+
+`beforeSend` フックは、次の機密性の高い header を自動的に取り除きます。
+
+- `authorization`
+- `x-api-key`
+- `cookie`
+- `set-cookie`
+
+### 無視するエラーの種類
+
+次のエラーパターンは無視され、報告されません。
+
+| エラー | 理由 |
+|---|---|
+| `ECONNREFUSED` / `ECONNRESET` / `ENOTFOUND` / `ETIMEDOUT` | ネットワークに到達できず、対処不能 |
+| `AbortError` / `The user aborted a request` | ユーザーによる明示的なキャンセル |
+| `CancelError` | 対話的なキャンセルシグナル |
+
+### その他の設定
+
+- **サンプリング率**: `sampleRate: 1.0`（すべてのエラーイベントを捕捉）
+- **Breadcrumb の上限**: `maxBreadcrumbs: 20`（payload のサイズを制御）
+- **パフォーマンストランザクション**: 無効（`beforeSendTransaction` が `null` を返す）。エラーのみを報告
+
+## API
+
+| 関数 | 説明 |
+|---|---|
+| `initSentry()` | SDK を初期化する。`src/entrypoints/init.ts` から自動的に呼び出される |
+| `captureException(error, context?)` | 例外を手動で報告する。追加のコンテキストを指定可能 |
+| `setTag(key, value)` | Sentry パネルでのグループ化とフィルタリングに使うタグを設定する |
+| `setUser({ id, email, username })` | エラーの帰属に使うユーザーコンテキストを設定する |
+| `closeSentry(timeoutMs?)` | キューをフラッシュしてクライアントを閉じる。プロセス終了時に呼び出される |
+| `isSentryInitialized()` | 初期化済みかどうかを確認する |
+
+## 実装ファイル
+
+| ファイル | 説明 |
+|---|---|
+| `src/utils/sentry.ts` | SDK の中核となる初期化とラッパー |
+| `src/components/SentryErrorBoundary.ts` | React Error Boundary コンポーネント |
+| `src/utils/errorLogSink.ts` | `captureException` を統合したエラーログ sink |
+| `src/utils/gracefulShutdown.ts` | 正常終了時に `closeSentry()` を呼び出す |
+| `src/entrypoints/init.ts` | 起動時に `initSentry()` を呼び出す |

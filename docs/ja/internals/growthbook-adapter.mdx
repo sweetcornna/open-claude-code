@@ -1,0 +1,172 @@
+---
+title: "GrowthBook アダプタ — カスタム Feature Flag サーバーへの接続"
+description: "環境変数でカスタム GrowthBook サーバーに接続し、feature flag をリモート制御します。未設定の場合は、コードで指定されたデフォルト値へ自動的にフォールバックします。"
+keywords: ["growthbook", "feature flags", "リモート設定", "アダプタ", "環境変数"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/internals/growthbook-adapter) · [中文](/docs/zh/internals/growthbook-adapter) · **日本語**
+
+## 概要
+
+Claude Code の GrowthBook システムは、環境変数によるカスタム GrowthBook サーバーへの接続と、feature flag のリモート制御をサポートしています。
+
+- **設定がある場合**: GrowthBook インスタンスに接続し、feature 値を取得してキャッシュする
+- **設定がない場合**: すべての feature 読み取りでコード内のデフォルト値を直接返し、ネットワークリクエストは一切発生しない
+
+## 環境変数
+
+| 変数 | 必須 | 説明 |
+|---|---|---|
+| `CLAUDE_GB_ADAPTER_URL` | はい | GrowthBook API のアドレス。例: `https://gb.example.com/` |
+| `CLAUDE_GB_ADAPTER_KEY` | はい | GrowthBook SDK Client Key。例: `sdk-xxxxx` |
+
+両方の変数を設定した場合にアダプタモードが有効になります。それ以外の場合は GrowthBook を完全にスキップします。
+
+## 使用方法
+
+### 基本的な使い方
+
+```bash
+CLAUDE_GB_ADAPTER_URL=https://gb.example.com/ \
+CLAUDE_GB_ADAPTER_KEY=sdk-abc123 \
+bun run dev
+```
+
+### GrowthBook を使わない場合（デフォルトの動作）
+
+```bash
+bun run dev
+# すべての getFeatureValue_CACHED_MAY_BE_STALE("xxx", defaultValue) は defaultValue を直接返す
+```
+
+## GrowthBook サーバー側の設定
+
+### 手順
+
+1. **GrowthBook サーバーをデプロイする**（Docker によるセルフホスト、または Cloud 版）
+2. **Environment を作成する**（例: `production`）
+3. **SDK Connection を作成し**、SDK Key（`CLAUDE_GB_ADAPTER_KEY`）を取得する
+4. **必要な Feature を追加する**。key と型は以下の一覧を参照
+
+### 中核原則
+
+- **feature を 1 つも設定しなくても正常に動作します**。コード内のすべての呼び出しでデフォルト値を指定しているためです
+- リモートで制御したい feature だけを作成し、それ以外にはコードのデフォルト値を使います
+- GrowthBook に feature を設定すると、その値がコード内のデフォルト値を上書きします
+
+## Feature Key の一覧
+
+### 使用頻度が高いもの
+
+| Feature Key | 型 | コードのデフォルト値 | 用途 |
+|---|---|---|---|
+| `tengu_hive_evidence` | boolean | `false` | タスクのエビデンスシステム |
+| `tengu_quartz_lantern` | boolean | `false` | ファイルの書き込み / 編集保護 |
+| `tengu_auto_background_agents` | boolean | `false` | バックグラウンド Agent の自動化 |
+| `tengu_agent_list_attach` | boolean | `false` | Agent 一覧の添付 |
+| `tengu_amber_stoat` | boolean | `true` | 組み込み Agents |
+| `tengu_slim_subagent_claudemd` | boolean | `true` | サブ Agent の CLAUDE.md |
+| `tengu_attribution_header` | boolean | `true` | API 帰属 Header |
+| `tengu_cobalt_harbor` | boolean | `false` | Bridge モード |
+| `tengu_ccr_bridge` | boolean | `false` | CCR Bridge |
+| `tengu_cicada_nap_ms` | number | `0` | バックグラウンド更新のスロットリング（ミリ秒） |
+| `tengu_miraculo_the_bard` | boolean | `false` | 起動時のウェルカムメッセージ |
+
+### Agent / ツール制御
+
+| Feature Key | 型 | コードのデフォルト値 | 用途 |
+|---|---|---|---|
+| `tengu_surreal_dali` | boolean | `false` | リモートトリガーツール |
+| `tengu_glacier_2xr` | boolean | `false` | ツール検索の強化 |
+| `tengu_plum_vx3` | boolean | `false` | Web Search で Haiku を使用 |
+| `tengu_destructive_command_warning` | boolean | `false` | 危険なコマンドの警告 |
+| `tengu_birch_trellis` | boolean | `true` | Bash の権限制御 |
+| `tengu_harbor_permissions` | boolean | `false` | Harbor 権限モード |
+
+### Bridge / リモート接続
+
+| Feature Key | 型 | コードのデフォルト値 | 用途 |
+|---|---|---|---|
+| `tengu_bridge_repl_v2` | boolean | `false` | Bridge REPL v2 |
+| `tengu_copper_bridge` | boolean | `false` | Copper Bridge |
+| `tengu_ccr_mirror` | boolean | `false` | CCR Mirror |
+
+### メモリ / コンテキスト
+
+| Feature Key | 型 | コードのデフォルト値 | 用途 |
+|---|---|---|---|
+| `tengu_coral_fern` | boolean | `false` | メモリディレクトリ機能 |
+| `tengu_passport_quail` | boolean | `false` | メモリパスの設定 |
+| `tengu_slate_thimble` | boolean | `false` | Slate Thimble |
+| `tengu_herring_clock` | boolean | `false` | インデックスをスキップ |
+| `tengu_session_memory` | boolean | `false` | セッションメモリ |
+| `tengu_pebble_leaf_prune` | boolean | `false` | メモリの枝刈り |
+
+### UI / 体験
+
+| Feature Key | 型 | コードのデフォルト値 | 用途 |
+|---|---|---|---|
+| `tengu_terminal_sidebar` | boolean | `false` | ターミナルサイドバー |
+| `tengu_terminal_panel` | boolean | `false` | ターミナルパネル |
+| `tengu_willow_mode` | boolean | `false` | Willow モード |
+| `tengu_collage_kaleidoscope` | boolean | `false` | UI エフェクト |
+| `tengu_chrome_auto_enable` | boolean | `false` | Chrome の自動有効化 |
+| `tengu_immediate_model_command` | boolean | `false` | モデルの即時切り替え |
+| `tengu_remote_backend` | boolean | `false` | リモートバックエンド |
+
+### 設定オブジェクト（動的設定）
+
+| Feature Key | 型 | コードのデフォルト値 | 用途 |
+|---|---|---|---|
+| `tengu_file_read_limits` | object | `null` | ファイル読み取り制限の設定 |
+| `tengu_cobalt_raccoon` | object | `null` | Cobalt の設定 |
+| `tengu_cobalt_lantern` | object | `null` | Lantern の設定 |
+| `tengu_desktop_upsell` | object | `null` | デスクトップ版への誘導 |
+| `tengu_marble_sandcastle` | object | `null` | Marble の設定 |
+| `tengu_marble_fox` | object | `null` | Marble Fox の設定 |
+| `tengu_ultraplan_model` | string | `null` | Ultraplan のモデル名 |
+
+### Gate（真偽値ゲート）
+
+| Gate Key | コードのデフォルト値 | 用途 |
+|---|---|---|
+| `tengu_chair_sermon` | `false` | 機能ゲーティング |
+| `tengu_scratch` | `false` | Scratch 機能 |
+| `tengu_thinkback` | `false` | Thinkback 機能 |
+| `tengu_tool_pear` | `false` | Tool Pear 機能 |
+
+## 値を解決する優先順位
+
+各 feature の値は次の順序で解決され、最初に一致した値が返されます。
+
+```
+1. CLAUDE_INTERNAL_FC_OVERRIDES 環境変数（JSON オブジェクトによるオーバーライド）
+   ↓ 一致なし
+2. growthBookOverrides 設定（~/.occ.json、ant ビルドのみ）
+   ↓ 一致なし
+3. メモリキャッシュ（remoteEvalFeatureValues、このプロセスがサーバーから取得）
+   ↓ 一致なし
+4. ディスクキャッシュ（~/.occ.json の cachedGrowthBookFeatures）
+   ↓ 一致なし
+5. コード内の defaultValue 引数
+```
+
+## キャッシュと更新の仕組み
+
+| 仕組み | 説明 |
+|---|---|
+| **ディスクキャッシュ** | `~/.occ.json` の `cachedGrowthBookFeatures` フィールド。プロセスをまたいで永続化 |
+| **定期更新** | 6 時間ごとにサーバーから最新値を自動取得（`setInterval` + `unref`） |
+| **初期化タイムアウト** | 初回接続は 5 秒でタイムアウトし、その後はディスクキャッシュまたはデフォルト値を使用 |
+| **Auth の変更** | ログイン / ログアウト時にクライアントを自動的に破棄して再作成 |
+
+## 実装の詳細
+
+2 ファイルの計 3 か所を変更しています。
+
+1. **`src/constants/keys.ts`** — `getGrowthBookClientKey()` は `CLAUDE_GB_ADAPTER_KEY` を優先的に読み取る
+2. **`src/services/analytics/growthbook.ts`** — アダプタモードでは `isGrowthBookEnabled()` を直接有効化する
+3. **`src/services/analytics/growthbook.ts`** — base URL には `CLAUDE_GB_ADAPTER_URL` を優先的に使用する
+
+130 個以上ある呼び出し元ファイルを変更する必要はありません。
