@@ -49,8 +49,10 @@ import {
  * and sets up the local auth state.
  */
 export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
-  // Clear old state before saving new credentials
-  await performLogout({ clearOnboarding: false })
+  // Clear old state before saving new credentials. Provider configuration is
+  // deliberately left alone here — this is a login, and wiping the user's
+  // endpoint/model setup as a side effect of it would be a surprise.
+  await performLogout({ clearOnboarding: false, resetProviderConfig: false })
 
   // Reuse pre-fetched profile if available, otherwise fetch fresh
   const profile =

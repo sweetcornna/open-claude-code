@@ -9,6 +9,7 @@ import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { removeAntigravityAuth } from '../../services/auth/antigravity/oauth.js';
 import { clearOpenAIClientCache } from '../../services/api/openai/client.js';
 import { clearGrokClientCache } from '../../services/api/grok/client.js';
+import { resetProviderConfiguration } from './resetProviderConfig.js';
 import { getClaudeAIOAuthTokens, removeApiKey } from '../../utils/auth/auth.js';
 import { clearBetasCaches } from '../../utils/model/betas.js';
 import { saveGlobalConfig } from '../../utils/config/config.js';
@@ -18,20 +19,34 @@ import { getSettingsForSource, updateSettingsForSource } from '../../utils/setti
 import { clearToolSchemaCache } from '../../utils/tools/toolSchemaCache.js';
 import { resetUserCache } from '../../utils/auth/user.js';
 
-export async function performLogout({ clearOnboarding = false }): Promise<void> {
+export async function performLogout({
+  clearOnboarding = false,
+  /**
+   * Wipe provider configuration too (default). `installOAuthTokens` passes
+   * false: there, logout only clears *stale* state ahead of a fresh login, and
+   * dropping the user's endpoint config as a side effect of logging in would be
+   * a surprise.
+   */
+  resetProviderConfig = true,
+}: {
+  clearOnboarding?: boolean;
+  resetProviderConfig?: boolean;
+}): Promise<void> {
   // Flush telemetry BEFORE clearing credentials to prevent org data leakage
   const { flushTelemetry } = await import('../../utils/telemetry/instrumentation.js');
   await flushTelemetry();
 
   await removeApiKey();
   await removeChatGPTAuth();
-  clearChatGPTSettingsAuthMode();
   await removeAntigravityAuth();
-  clearAntigravitySettingsAuthMode();
-  // Third-party API keys in settings.env are configuration, not login state,
-  // and survive logout (provider profiles preserve them anyway). But cached
-  // SDK clients hold the pre-logout auth — drop them so the next request
-  // rebuilds from current env.
+  if (resetProviderConfig) {
+    resetProviderConfiguration();
+  } else {
+    clearChatGPTSettingsAuthMode();
+    clearAntigravitySettingsAuthMode();
+  }
+  // Cached SDK clients hold the pre-logout auth — drop them so the next
+  // request rebuilds from current env.
   clearOpenAIClientCache();
   clearGrokClientCache();
 
