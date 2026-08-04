@@ -66,6 +66,7 @@ export function windowAgents(
 export type WorkflowDetailKeyAction =
   | 'moveUp'
   | 'moveDown'
+  | 'openAgent'
   | 'killWorkflow'
   | 'back'
   | 'confirmYes'
@@ -81,6 +82,11 @@ export type WorkflowDetailKeyAction =
  * Capital K = kill the whole workflow, matching the /workflows panel (Shift
  * hints at the heavier operation).
  *
+ * Enter/→ drill into the selected agent and ← steps back out one level, the
+ * same gesture as the /workflows panel — the two surfaces render the same
+ * run, so their navigation must not disagree. `back` stays on ← only:
+ * closing the dialog is Esc's job.
+ *
  * In confirm mode only y/n/Enter/Esc respond; everything else returns null so
  * a stray navigation key can't move the selection under an open confirmation.
  */
@@ -95,6 +101,7 @@ export function routeWorkflowDetailKey(
   }
   if (key === 'up') return 'moveUp'
   if (key === 'down') return 'moveDown'
+  if (key === 'return' || key === 'right') return 'openAgent'
   if (key === 'K') return 'killWorkflow'
   if (key === 'left') return 'back'
   return null

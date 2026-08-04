@@ -2,11 +2,19 @@ import React from 'react';
 import { Box, Text, useAnimationFrame } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { AgentProgress } from '../progress/store.js';
+import { agentElapsedMs, formatDuration } from './selectors.js';
 import { agentMetaText, agentVisual } from './status.js';
 
 const SPINNER_FRAMES = ['·', '✢', '✱', '✶', '✻', '✽'];
 const FRAME_MS = 120;
-const LABEL_MAX = 18;
+/**
+ * Label budget. Widened from 18 once the per-row tool count moved into the
+ * detail view: agent labels carry the meaning (`verify:src/foo.ts#3`) and at
+ * 18 chars every row in a fan-out phase truncated to the same prefix.
+ */
+const LABEL_MAX = 28;
+/** Width of the time column, sized for the widest formatDuration output (`12h34m`). */
+const TIME_COL = 6;
 
 /**
  * Truncate the label to at most max characters. Preserves the trailing `#number` suffix (the audit workflow
@@ -35,18 +43,24 @@ export function AgentList({
   agents,
   selectedIndex,
   focused,
+  emptyText,
 }: {
   agents: AgentProgress[];
   selectedIndex: number;
   focused: boolean;
+  /** Override for the empty state — a status filter emptying the list is not the same as an empty phase. */
+  emptyText?: string;
 }): React.ReactNode {
   // Subscribe once to the animation frame at the top level: all running agents share the same frame (synchronized animation, avoids a per-row hook).
   const [ref, time] = useAnimationFrame(FRAME_MS);
   const frame = SPINNER_FRAMES[Math.floor(time / FRAME_MS) % SPINNER_FRAMES.length];
 
   if (agents.length === 0) {
-    return <Text color="subtle">(no agents in this phase)</Text>;
+    return <Text color="subtle">{emptyText ?? '(no agents in this phase)'}</Text>;
   }
+  // One clock read per render, so every row's live duration ticks together
+  // rather than drifting apart across the map.
+  const now = Date.now();
   return (
     <Box ref={ref} flexDirection="column">
       {agents.map((a, i) => {
@@ -56,13 +70,19 @@ export function AgentList({
         const running = a.status === 'running';
         const mark = running ? frame : v.mark;
         const label = truncateLabel(a.label ?? `agent-${a.id}`, LABEL_MAX);
+        const elapsed = agentElapsedMs(a, now);
         return (
           <Box key={a.id} backgroundColor={highlighted ? 'selectionBg' : undefined} justifyContent="space-between">
             <Box>
               <Text color={v.color as keyof Theme}>{mark}</Text>
               <Text> {label}</Text>
             </Box>
-            <Text color="subtle">{agentMetaText(a)}</Text>
+            <Box>
+              <Text color="subtle">{agentMetaText(a)}</Text>
+              <Box width={TIME_COL} justifyContent="flex-end">
+                <Text color="subtle">{elapsed === null ? '–' : formatDuration(elapsed)}</Text>
+              </Box>
+            </Box>
           </Box>
         );
       })}

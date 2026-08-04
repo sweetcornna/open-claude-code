@@ -91,6 +91,62 @@ export function filterAgentsByPhase(
 }
 
 /**
+ * Agent-list status filter (cycled with `f`). `failed` covers dead agents
+ * only — a skipped agent is neither a failure nor a success, so it shows up
+ * under `all` and nowhere else.
+ */
+export type AgentStatusFilter = 'all' | 'running' | 'done' | 'failed'
+
+/** Cycle order for `f`. Wraps back to 'all'. */
+export const AGENT_STATUS_FILTERS: readonly AgentStatusFilter[] = [
+  'all',
+  'running',
+  'done',
+  'failed',
+]
+
+export function nextAgentStatusFilter(
+  current: AgentStatusFilter,
+): AgentStatusFilter {
+  const i = AGENT_STATUS_FILTERS.indexOf(current)
+  return AGENT_STATUS_FILTERS[(i + 1) % AGENT_STATUS_FILTERS.length]!
+}
+
+/**
+ * Filter agents by run status. Applied after {@link filterAgentsByPhase} so
+ * the phase sidebar's counts stay whole-phase totals while the list narrows.
+ */
+export function filterAgentsByStatus(
+  agents: AgentProgress[],
+  filter: AgentStatusFilter,
+): AgentProgress[] {
+  switch (filter) {
+    case 'running':
+      return agents.filter(a => a.status === 'running')
+    case 'done':
+      return agents.filter(a => a.status === 'done' && a.resultKind !== 'dead')
+    case 'failed':
+      return agents.filter(a => a.resultKind === 'dead')
+    default:
+      return agents
+  }
+}
+
+/**
+ * Elapsed milliseconds for an agent: settled span once done, live span while
+ * running. Returns null when the agent predates timestamp capture (runs
+ * persisted before startedAt existed) so the UI can render a placeholder
+ * instead of a bogus multi-decade duration measured from epoch 0.
+ */
+export function agentElapsedMs(
+  a: Pick<AgentProgress, 'startedAt' | 'endedAt'>,
+  now: number,
+): number | null {
+  if (a.startedAt === undefined) return null
+  return Math.max(0, (a.endedAt ?? now) - a.startedAt)
+}
+
+/**
  * Keep only runs still in flight. The /workflows panel defaults to this view: opening the panel
  * no longer floods the tab row with months of persisted historical runs (which overflowed the
  * terminal width and produced garbled overlapping text). Terminal runs (completed/failed/killed)
