@@ -454,6 +454,11 @@ export function createSubagentContext(
       chainId: randomUUID(),
       depth: (parentContext.queryTracking?.depth ?? -1) + 1,
     },
+    // Subagent nesting level — one increment per level, and the ONLY writer of
+    // this field. Unlike queryTracking.depth above (which query() also bumps on
+    // every tool round-trip), this counts nesting alone, which is what
+    // checkSpawnBudgets needs.
+    agentDepth: (parentContext.agentDepth ?? 0) + 1,
     fileReadingLimits: parentContext.fileReadingLimits,
     userModified: parentContext.userModified,
     criticalSystemReminder_EXPERIMENTAL:

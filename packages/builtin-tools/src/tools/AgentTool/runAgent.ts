@@ -369,10 +369,12 @@ export async function* runAgent({
 
   // Spawn budgets (official 2.1.212/217/172 parity). Single choke point:
   // every real agent run — AgentTool spawn, fork, in-process teammate,
-  // resume — flows through here. Depth rides on queryTracking.depth, which
-  // createSubagentContext already increments per nesting level (env vars
-  // cannot carry depth: subagents share process.env with siblings).
-  checkSpawnBudgets(toolUseContext.queryTracking?.depth)
+  // resume — flows through here. Depth is the SPAWNER's agentDepth (undefined
+  // on the main thread); createSubagentContext increments it once per nesting
+  // level below. Must not be queryTracking.depth — query() bumps that on every
+  // tool round-trip, so reading it here blocked every spawn from the 3rd tool
+  // call of a turn onward.
+  checkSpawnBudgets(toolUseContext.agentDepth)
   // --max-budget-usd: once the session budget is spent, refuse NEW
   // subagents — ending the main loop alone leaves background spawning
   // burning money (2.1.217).
