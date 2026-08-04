@@ -42,7 +42,9 @@ import {
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
   createChatGPTResponsesStream,
+  createOpenAIResponsesStream,
 } from '../../services/api/openai/responsesAdapter.js'
+import { resolveOpenAIWireProtocol } from '../../services/api/openai/wireProtocol.js'
 import {
   formatOpenAIPromptCacheKey,
   getOfficialOpenAIPromptCacheKey,
@@ -561,13 +563,32 @@ async function collectAnthropicStreamToBetaMessage(
 }
 
 /**
- * ChatGPT OAuth side query via the Codex Responses API.
+ * Floor for `max_output_tokens` on the API-key Responses route.
  *
- * Must not use getOpenAIClient() — that path only reads OPENAI_API_KEY and
- * yields 401 under OPENAI_AUTH_MODE=chatgpt (no API key configured).
+ * Side queries ask for 1024 tokens by default, which is right for Chat
+ * Completions but not for `/responses`: there the budget also has to cover
+ * reasoning tokens, and a reasoning model can burn the whole 1024 before
+ * emitting a single visible token — the caller then sees an empty classifier
+ * answer rather than an error. The ChatGPT/Codex route sends no cap at all
+ * (that backend rejects the field), so this only applies to API-key endpoints.
  */
-async function sideQueryViaChatGPTResponses(
+const RESPONSES_SIDE_QUERY_MIN_OUTPUT_TOKENS = 4096
+
+/**
+ * Side query over the Responses API — both routes it serves:
+ *
+ *   'chatgpt' — ChatGPT subscription OAuth against the Codex backend. Must not
+ *     use getOpenAIClient(): that path only reads OPENAI_API_KEY and yields 401
+ *     under OPENAI_AUTH_MODE=chatgpt (no API key configured).
+ *   'apikey'  — any endpoint speaking `/responses` with an API key, selected by
+ *     OPENAI_WIRE_API=responses or a Codex-family model id. Without this,
+ *     picking the Responses protocol only moved the main loop: every side query
+ *     still went out as Chat Completions, which a Responses-only upstream
+ *     rejects outright.
+ */
+async function sideQueryViaResponsesApi(
   opts: SideQueryOptions,
+  route: 'chatgpt' | 'apikey',
   openaiModel: string,
   openaiMessages: Array<{
     role: 'system' | 'user' | 'assistant'
@@ -582,13 +603,27 @@ async function sideQueryViaChatGPTResponses(
     messages: openaiMessages,
     tools: openaiTools ?? [],
     toolChoice: openaiToolChoice,
-    promptCacheKey: formatOpenAIPromptCacheKey(getSessionId()),
+    ...(route === 'chatgpt'
+      ? { promptCacheKey: formatOpenAIPromptCacheKey(getSessionId()) }
+      : {
+          // Compatible endpoints must not receive OpenAI-specific fields;
+          // getOfficialOpenAIPromptCacheKey returns undefined for them.
+          promptCacheKey: getOfficialOpenAIPromptCacheKey(
+            process.env.OPENAI_BASE_URL,
+            getSessionId(),
+          ),
+          maxOutputTokens: Math.max(
+            opts.max_tokens ?? 1024,
+            RESPONSES_SIDE_QUERY_MIN_OUTPUT_TOKENS,
+          ),
+        }),
   })
 
-  const rawStream = await createChatGPTResponsesStream({
-    request,
-    signal: opts.signal ?? new AbortController().signal,
-  })
+  const signal = opts.signal ?? new AbortController().signal
+  const rawStream =
+    route === 'chatgpt'
+      ? await createChatGPTResponsesStream({ request, signal })
+      : await createOpenAIResponsesStream({ request, signal })
   const adapted = adaptResponsesStreamToAnthropic(rawStream, openaiModel)
   const betaMessage = await collectAnthropicStreamToBetaMessage(
     adapted,
@@ -625,9 +660,9 @@ async function sideQueryViaChatGPTResponses(
  * non-streaming request, and wraps the response back into a BetaMessage
  * shape so callers remain provider-agnostic.
  *
- * When OPENAI_AUTH_MODE=chatgpt, OpenAI side queries use the ChatGPT OAuth
- * Responses API path (same auth/transport as the main loop) instead of the
- * API-key Chat Completions client.
+ * OpenAI side queries follow the same wire-protocol resolution as the main
+ * loop, so a session on `/responses` never silently drops back to
+ * `/chat/completions` for its classifiers (see sideQueryViaResponsesApi).
  *
  * Supports tools and tool_choice for structured output (e.g. yoloClassifier,
  * permissionExplainer).
@@ -677,15 +712,31 @@ async function sideQueryViaOpenAICompatible(
     ? anthropicToolChoiceToOpenAI(tool_choice)
     : undefined
 
-  // ChatGPT subscription auth: use Responses API + OAuth, never empty API key.
-  if (provider === 'openai' && isChatGPTAuthEnabled()) {
-    return sideQueryViaChatGPTResponses(
-      opts,
-      openaiModel,
-      openaiMessages,
-      openaiTools,
-      openaiToolChoice,
-    )
+  // Wire protocol follows the main loop (openai/wireProtocol.ts): ChatGPT
+  // subscription auth is Responses-over-OAuth, an explicit
+  // OPENAI_WIRE_API=responses or a Codex-family model is Responses-over-API-key,
+  // everything else is Chat Completions. Grok is Chat Completions only.
+  if (provider === 'openai') {
+    if (isChatGPTAuthEnabled()) {
+      return sideQueryViaResponsesApi(
+        opts,
+        'chatgpt',
+        openaiModel,
+        openaiMessages,
+        openaiTools,
+        openaiToolChoice,
+      )
+    }
+    if (resolveOpenAIWireProtocol(openaiModel) === 'responses') {
+      return sideQueryViaResponsesApi(
+        opts,
+        'apikey',
+        openaiModel,
+        openaiMessages,
+        openaiTools,
+        openaiToolChoice,
+      )
+    }
   }
 
   // API-key / OpenAI-compatible / Grok: Chat Completions
