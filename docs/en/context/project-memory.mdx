@@ -1,0 +1,228 @@
+---
+title: "Project memory — file-based memory across conversations"
+description: "Claude Code's memory system: plain-file persistence, the MEMORY.md index, the closed four-type taxonomy, Sonnet-based recall, and how memory integrates with compaction."
+keywords: ["project memory", "MEMORY.md", "AI memory", "cross-conversation", "automatic memory", "memdir"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/context/project-memory) · [日本語](/docs/ja/context/project-memory)
+
+{/* Goal of this chapter: the storage layout, recall mechanism and injection path of the memory system */}
+
+## Storage
+
+Source: `src/memdir/paths.ts`, `src/memdir/memdir.ts`
+
+The memory system is **plain files**. No database, no vector store — Markdown files and a directory structure.
+
+### Layout
+
+```
+~/.occ/projects/<sanitized-git-root>/memory/
+├── MEMORY.md                    ← the index, loaded every conversation
+├── user_role.md                 ← a user memory
+├── feedback_testing.md          ← a feedback memory
+├── project_mobile_release.md    ← a project memory
+├── reference_linear_ingest.md   ← a reference memory
+└── logs/                        ← KAIROS mode: daily logs
+    └── 2026/
+        └── 04/
+            └── 2026-04-01.md
+```
+
+`getAutoMemPath()` resolves the location in order:
+
+1. The `CLAUDE_COWORK_MEMORY_PATH_OVERRIDE` environment variable (a full-path override from the Cowork SDK)
+2. The `autoMemoryDirectory` setting — but only from `policySettings`, `localSettings`, or `userSettings`. `projectSettings` is **deliberately excluded**, so a malicious repository cannot point the memory directory at `~/.ssh`.
+3. Default: `<memoryBase>/projects/<sanitized-git-root>/memory/`
+
+Every worktree of the same Git repository shares one memory directory, resolved through `findCanonicalGitRoot()`. The `CLAUDE.md` and `CLAUDE.local.md` filenames in the project root and its ancestors are unchanged; `.claude/CLAUDE.md` and `.claude/rules/*.md` are loaded as read-only compatibility sources and never written by occ.
+
+### The MEMORY.md index
+
+`MEMORY.md` is the entry point, loaded into context in full on every conversation:
+
+```typescript
+// memdir.ts:34-38
+export const ENTRYPOINT_NAME = 'MEMORY.md'
+export const MAX_ENTRYPOINT_LINES = 200
+export const MAX_ENTRYPOINT_BYTES = 25_000
+```
+
+There are **two ceilings**: 200 lines AND 25 KB. Exceeding either triggers `truncateEntrypointContent()`, which truncates and appends a warning. The reasoning: 200 lines covers the p97 index, but some entries are unusually long — one observed index reached 197 KB in 200 lines — and the byte ceiling catches that case.
+
+Entry format:
+
+```markdown
+- [Title](file.md) — one-line hook
+```
+
+One line each, under about 150 characters. `MEMORY.md` has no frontmatter of its own — it is a list of links, not memory content.
+
+## The four-type taxonomy
+
+Source: `src/memdir/memoryTypes.ts`
+
+Memory is constrained to a **closed set of four types**, each with its own `<when_to_save>`, `<how_to_use>` and `<body_structure>` specification:
+
+| Type | What it holds | Typical trigger |
+|------|--------------|-----------------|
+| **user** | Role, preferences, technical background | "I'm a data scientist", "I've written Go for ten years" |
+| **feedback** | Corrections and confirmations about how the assistant should work | "Don't mock the database", "One PR is better" |
+| **project** | Project context not derivable from the code | "Merge freeze starts Thursday", "The auth rewrite is a compliance requirement" |
+| **reference** | Pointers to external systems | "Pipeline bugs live in the Linear INGEST project" |
+
+The governing constraint: **store only what cannot be derived from the current project state**. Code architecture, file paths, and git history are all available on demand and need no memory.
+
+### Feedback captures both directions
+
+The `when_to_save` instruction for `feedback` is emphatic:
+
+> Record from failure AND success: if you only save corrections, you will avoid past mistakes but drift away from approaches the user has already validated, and may grow overly cautious.
+
+So the assistant saves not only when told "don't do that" but also when told "yes, exactly that". The second is harder to notice and equally important — it is what stops behaviour drifting over time.
+
+### Frontmatter for a memory
+
+```markdown
+---
+name: {{memory name}}
+description: {{one-line description — used later to judge relevance}}
+type: {{user, feedback, project, reference}}
+---
+
+{{memory content — feedback and project types should include **Why:** and **How to apply:** lines}}
+```
+
+The `description` field carries weight: it is not a human-facing summary but the text the recall system matches against.
+
+## Recall
+
+Source: `src/memdir/findRelevantMemories.ts`, `src/memdir/memoryScan.ts`
+
+Not every memory belongs in every conversation. A lightweight **Sonnet side query** selects the relevant ones.
+
+```
+user message → findRelevantMemories(query, memoryDir)
+  ├── scanMemoryFiles()          — read the frontmatter of every memory file
+  ├── selectRelevantMemories()   — Sonnet picks ≤5 from that manifest
+  └── returns [{path, mtimeMs}, …]
+```
+
+`selectRelevantMemories()` runs through `sideQuery()`, an independent lightweight API call:
+
+```typescript
+// findRelevantMemories.ts:98-121
+const result = await sideQuery({
+  model: getDefaultSonnetModel(),  // Sonnet does the filtering, not the main model
+  system: SELECT_MEMORIES_SYSTEM_PROMPT,
+  messages: [{
+    role: 'user',
+    content: `Query: ${query}\n\nAvailable memories:\n${manifest}${toolsSection}`
+  }],
+  max_tokens: 256,
+  output_format: { type: 'json_schema', schema: { … } },
+})
+```
+
+### Filtering out noise from recent tools
+
+When the assistant is already using a tool, recalling that tool's usage documentation is noise — the working context is already in the conversation. The `recentTools` parameter lets recall skip those:
+
+```typescript
+// findRelevantMemories.ts:92-95
+const toolsSection = recentTools.length > 0
+  ? `\n\nRecently used tools: ${recentTools.join(', ')}`
+  : ''
+```
+
+The system prompt is explicit: if a list of recently used tools is provided, do not select usage references or API documentation for those tools. **Do still select** warnings, pitfalls, and known issues about them — that is exactly the information that matters while using them.
+
+### Avoiding repeats
+
+The `alreadySurfaced` parameter filters out paths shown in earlier turns, so Sonnet's five slots go to new candidates rather than re-surfacing the same file.
+
+## How memory reaches the system prompt
+
+Source: `src/memdir/memdir.ts` → `src/context.ts`
+
+`loadMemoryPrompt()` is the injection point, called once per session and cached through `systemPromptSection('memory', …)`:
+
+```typescript
+// memdir.ts
+export async function loadMemoryPrompt(): Promise<string | null> {
+  // precedence: KAIROS log mode → plain automatic memory
+  if (feature('KAIROS') && autoEnabled && getKairosActive()) {
+    return buildAssistantDailyLogPrompt(skipIndex)
+  }
+  if (autoEnabled) {
+    return buildMemoryLines('auto memory', autoDir, …).join('\n')
+  }
+  return null
+}
+```
+
+The `TEAMMEM` combined mode and its remote team-memory sync have been removed from the current source; team memory directories are no longer loaded or merged.
+
+Timing: the memory prompt is assembled as one section of the system prompt when `getSystemContext()` runs in `context.ts`. The contents of `MEMORY.md` are injected as a **user context message** rather than into the system prompt, which lets the prompt cache share the prefix.
+
+## KAIROS mode: daily logs
+
+Source: `src/memdir/memdir.ts` (`buildAssistantDailyLogPrompt`)
+
+Long-running assistant sessions use a different strategy:
+
+- **Standard mode** — the assistant maintains `MEMORY.md` as a live index alongside individual memory files
+- **KAIROS mode** — the assistant only appends to a dated log (`logs/YYYY/MM/YYYY-MM-DD.md`) and never reorganizes
+
+```typescript
+// a path pattern, not a literal path — the prompt is cached
+const logPathPattern = join(memoryDir, 'logs', 'YYYY', 'MM', 'YYYY-MM-DD.md')
+```
+
+A separate nightly `/dream` skill distils those logs into topic files and an updated `MEMORY.md`.
+
+## Guarding against stale memory
+
+Source: `src/memdir/memoryTypes.ts` (`TRUSTING_RECALL_SECTION`)
+
+Memories go out of date. The prompt carries a dedicated section, "Before recommending from memory":
+
+```
+A memory that names a specific function, file, or flag is a claim
+that it existed *when the memory was written*. It may have been
+renamed, removed, or never merged. Before recommending it:
+
+- If the memory names a file path: check the file exists.
+- If the memory names a function or flag: grep for it.
+```
+
+The heading itself was A/B tested: "Before recommending from memory" (action-oriented) outperformed "Trusting what you recall" (abstract) 3/3 versus 0/3.
+
+### What "ignore memory" has to mean
+
+```
+If the user says to *ignore* or *not use* memory:
+proceed as if MEMORY.md were empty.
+Do not apply remembered facts, cite, compare against,
+or mention memory content.
+```
+
+This addresses a common failure: the user says "ignore what you remember about X", and the assistant correctly reads the code but still adds "unlike the Y in my memory". That is not ignoring — it is acknowledging and then overriding.
+
+## Session memory and compaction
+
+Source: `src/services/compact/sessionMemoryCompact.ts`
+
+Memory is integrated with context compaction. When both the `tengu_session_memory` and `tengu_sm_compact` flags are on, compaction prefers session memory over a conventional summary:
+
+```typescript
+// sessionMemoryCompact.ts:57-61
+const DEFAULT_SM_COMPACT_CONFIG = {
+  minTokens: 10_000,           // keep at least 10K tokens after compaction
+  minTextBlockMessages: 5,     // keep at least 5 text messages
+  maxTokens: 40_000,           // keep at most 40K tokens
+}
+```
+
+SM-compact makes no compaction API call at all — there is no summarization model in the loop. It uses the existing session memory as the summary, which is faster, cheaper, and loses nothing.

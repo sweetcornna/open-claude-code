@@ -1,0 +1,271 @@
+---
+title: "Compaction — 3 つの戦略と境界マーカー"
+description: "Claude Code のコンテキスト圧縮。セッションメモリによる圧縮、従来の API 要約、micro-compaction の 3 層に加え、CompactBoundary メッセージ、ツール対の保全、prompt-too-long 時の緊急経路を解説します。"
+keywords: ["コンテキスト圧縮", "compaction", "トークン管理", "会話の圧縮", "コンテキスト窓", "MicroCompact"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/context/compaction) · [中文](/docs/zh/context/compaction) · **日本語**
+
+{/* この章の目的: 3 つの戦略、境界の仕組み、それを支配する定数を解剖する */}
+
+## 圧縮が起きるとき
+
+圧縮は単一の操作ではなく、段階的な 3 つの戦略です。それぞれ発火条件と重さが違います。
+
+| 戦略 | 発火条件 | 実装 | API 呼び出し |
+|------|---------|------|:----------:|
+| **MicroCompact** | 単一のツール出力が大きくなりすぎた | `microCompact.ts` | なし |
+| **Session Memory Compact** | 自動 compaction の発火（feature flag 配下） | `sessionMemoryCompact.ts` | なし |
+| **従来の API 要約** | 手動 `/compact`、または SM が使えないときの代替 | `compact.ts` | あり |
+
+### 優先順位の連鎖
+
+ソース: `src/commands/compact/compact.ts`
+
+`/compact` の実行時や自動 compaction の発火時、次の順に試します。
+
+```typescript
+// compact.ts:55-99 — 簡略化
+if (!customInstructions) {
+  const sessionMemoryResult = await trySessionMemoryCompaction(messages, …)
+  if (sessionMemoryResult) return sessionMemoryResult      // 第一候補: SM
+}
+
+if (reactiveCompact?.isReactiveOnlyMode()) {
+  return await compactViaReactive(messages, …)             // 第二候補: reactive
+}
+
+// 代替: 従来の API 要約
+const microcompactResult = await microcompactMessages(messages, context)
+const messagesForCompact = microcompactResult.messages
+// → モデルを呼んで要約を作る
+```
+
+SM 圧縮はカスタム指示（`/compact 認証モジュールに絞って`）に対応していません。指示があるときは従来経路へ直行します。
+
+## 第 1 層: MicroCompact
+
+ソース: `src/services/compact/microCompact.ts`
+
+MicroCompact は会話を圧縮しません。ホワイトリストに基づき、**古いツール出力の中身を消します**。
+
+```typescript
+// src/services/compact/microCompact.ts:41-50
+const COMPACTABLE_TOOLS = new Set([
+  FILE_READ_TOOL_NAME,    // 'Read'
+  ...SHELL_TOOL_NAMES,    // 'Bash'
+  GREP_TOOL_NAME,         // 'Grep'
+  GLOB_TOOL_NAME,         // 'Glob'
+  WEB_SEARCH_TOOL_NAME,   // 'WebSearch'
+  WEB_FETCH_TOOL_NAME,    // 'WebFetch'
+  FILE_EDIT_TOOL_NAME,    // 'Edit'
+  FILE_WRITE_TOOL_NAME,   // 'Write'
+])
+```
+
+時間窓を過ぎたツール出力は `[Old tool result content cleared]` に置き換わります。切り詰めではありません。元の内容は JSONL の transcript に残り、API へ送られなくなるだけです。
+
+MicroCompact には**時間減衰**もあります（`timeBasedMCConfig.ts`）。古い出力ほど消されやすく、直近のものは残ります。
+
+### 画像と文書
+
+```typescript
+const IMAGE_MAX_TOKEN_SIZE = 2000
+```
+
+推定 2000 トークンを超える画像ブロックも消されます。PDF の document ブロックも同様です。
+
+## 第 2 層: セッションメモリによる圧縮
+
+ソース: `src/services/compact/sessionMemoryCompact.ts`
+
+`tengu_session_memory` と `tengu_sm_compact` の両方が有効なとき、セッションメモリが圧縮の手段になります。**要約モデルは呼びません。** すでに抽出済みのセッションメモリがそのまま要約になります。
+
+### 残す窓の計算
+
+```typescript
+// sessionMemoryCompact.ts:324-397
+export function calculateMessagesToKeepIndex(messages, lastSummarizedIndex) {
+  const config = getSessionMemoryCompactConfig()
+  // 既定: minTokens=10K, minTextBlockMessages=5, maxTokens=40K
+
+  let startIndex = lastSummarizedIndex + 1
+  // lastSummarizedIndex から遡り、2 つの下限を満たすか上限に当たるまで進む
+  for (let i = startIndex - 1; i >= floor; i--) {
+    totalTokens += estimateMessageTokens([msg])
+    if (hasTextBlocks(msg)) textBlockMessageCount++
+    startIndex = i
+    if (totalTokens >= config.maxTokens) break
+    if (totalTokens >= config.minTokens && textBlockMessageCount >= config.minTextBlockMessages) break
+  }
+  return adjustIndexToPreserveAPIInvariants(messages, startIndex)
+}
+```
+
+残る窓は 3 つの条件を満たします。
+
+- 最低 10,000 トークン（文脈の深さを保つ）
+- テキストを含むメッセージが最低 5 件（会話の連続性を保つ）
+- 最大 40,000 トークン（すぐ次の圧縮を誘発しない）
+
+### ツール対の保全
+
+`adjustIndexToPreserveAPIInvariants()` は最適化ではなく、**正しさの保証**です。
+
+API はすべての `tool_result` に対応する `tool_use` を要求し、その逆も同じです。ちょうど `tool_result` の位置で履歴を切ると API エラーになります。
+
+```typescript
+// sessionMemoryCompact.ts:232-314
+// 手順 1: 残す tool_result が参照する tool_use を後方へ探す
+// 手順 2: 残す assistant メッセージと message.id を共有する thinking ブロックを後方へ探す
+// どちらの場合も startIndex をさらに前へ動かす
+```
+
+ストリーミングは 1 つの assistant メッセージを複数の保存レコードに分けます（thinking や tool_use はそれぞれ固有の uuid を持ちつつ `message.id` を共有します）。この事情が境界条件を複雑にしています。
+
+## 第 3 層: 従来の API 要約
+
+ソース: `src/services/compact/compact.ts`
+
+SM 圧縮が使えないときは、モデルに要約させます。
+
+### 前処理
+
+要約器へ渡す前にメッセージを整えます。
+
+```typescript
+// compact.ts:147-202
+const stripped = stripImagesFromMessages(messages)     // 画像 → [image] の印
+const stripped2 = stripReinjectedAttachments(stripped) // 後で再注入する添付を落とす
+```
+
+画像を `[image]` に置き換えるのは、要約の呼び出し自体が prompt-too-long にならないようにするためです。
+
+### 圧縮後の再注入
+
+圧縮後、要約の上に重要な文脈を**再注入**します。
+
+```typescript
+// compact.ts:126-134
+export const POST_COMPACT_TOKEN_BUDGET = 50_000          // 総予算
+export const POST_COMPACT_MAX_FILES_TO_RESTORE = 5       // 最大 5 ファイル
+export const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000    // 1 ファイル 5K
+export const POST_COMPACT_MAX_TOKENS_PER_SKILL = 5_000   // 1 skill 5K
+export const POST_COMPACT_SKILLS_TOKEN_BUDGET = 25_000   // skill 合計 25K
+```
+
+この 50K の予算が賄うもの:
+
+1. 直近で読んだファイルの内容（最大 5 ファイル、各 5K トークンに切り詰め）
+2. すでに有効化された skill の指示（各 5K、合計 25K）
+3. CLAUDE.md の内容
+4. MCP ツールの発見結果
+
+## CompactBoundary
+
+ソース: `src/utils/messages.ts`（`createCompactBoundaryMessage`）
+
+圧縮のたびに `SystemCompactBoundaryMessage` がメッセージ列へ挿入されます。
+
+```typescript
+type SystemCompactBoundaryMessage = {
+  type: 'system'
+  message: {
+    type: 'compact_boundary'
+    compactMetadata: {
+      compactType: 'auto' | 'manual' | 'micro'
+      preCompactTokenCount: number
+      lastUserMessageUuid: string
+      preCompactDiscoveredTools?: string[]
+    }
+  }
+}
+```
+
+以降の処理は**最後の境界より後**のメッセージだけを対象にします。
+
+```typescript
+// messages.ts
+export function getMessagesAfterCompactBoundary(messages: Message[]): Message[] {
+  const lastBoundary = messages.findLastIndex(m => isCompactBoundaryMessage(m))
+  return lastBoundary >= 0 ? messages.slice(lastBoundary + 1) : messages
+}
+```
+
+### preservedSegment の注釈
+
+境界には、圧縮されずに残されたメッセージも記録されます。
+
+```typescript
+// compact.ts — annotateBoundaryWithPreservedSegment
+boundaryMarker.compactMetadata.preservedSegment = {
+  summaryMessageUuid: string
+  preservedMessageUuids: string[]
+}
+```
+
+セッション再開時、これによりローダーがメッセージの連なりを正しく組み直し、すでに残したものを二重に圧縮せずに済みます。
+
+### micro-compaction の境界
+
+micro-compaction は `compact_boundary` とは別の境界型を使います。
+
+```typescript
+// src/utils/messages.ts:4599-4614
+type SystemMicrocompactBoundaryMessage = {
+  type: 'system'
+  subtype: 'microcompact_boundary'
+  content: 'Context microcompacted'
+  compactMetadata: {
+    trigger: 'auto'                  // micro-compaction は常に自動
+    preTokens: number
+    tokensSaved: number
+    compactedToolIds: string[]       // どのツール結果が消されたか
+    clearedAttachmentUUIDs: string[]
+  }
+}
+```
+
+`compact_boundary` との違い:
+
+- **メッセージは残る。** micro-compaction はツール出力を消すだけで、メッセージ自体は削除しません。
+- **追跡できる。** `compactedToolIds` にどの結果を消したかが残ります。
+- **軽い。** 要約も API 呼び出しもありません。
+
+## prompt-too-long の緊急経路
+
+圧縮しても上限を超えたままの場合（`PROMPT_TOO_LONG` エラー）、緊急経路が動きます。
+
+1. **Reactive compaction** — `reactiveCompactOnPromptTooLong()` がより強い圧縮を試みる
+2. **切り詰めて再試行** — それも失敗すれば `truncateHeadForPTLRetry()` が最古のメッセージを直接削る
+3. 諦めてエラーを返す
+
+Reactive compaction は逆コンパイル版では stub です（`isReactiveOnlyMode() → false`）。社内の実験的機能であることを示しています。
+
+## compaction 前後の hook
+
+前後でカスタム hook を実行できます。
+
+- **Pre-compact**（`executePreCompactHooks`）— 先に走り、残すべき内容に印を付けられる
+- **Post-compact**（`executePostCompactHooks`）— 後に走り、重要な情報が残ったかを検証できる
+- **Session start**（`processSessionStartHooks('compact')`）— SM 圧縮はこれで CLAUDE.md などの文脈を復元する
+
+hook の結果は `HookResultMessage` として圧縮結果に添付され、ユーザー定義のロジックが尊重されたことが見える形になります。
+
+## Snip compaction（実験的）
+
+ソース: `src/services/compact/snipCompact.ts`（stub）
+
+もうひとつの実験的な戦略で、逆コンパイル版では中身が空です。型シグネチャから形は読み取れます。
+
+```typescript
+snipCompactIfNeeded(messages, options?: { force?: boolean }) → {
+  messages: Message[]
+  executed: boolean
+  tokensFreed: number
+  boundaryMessage?: Message
+}
+```
+
+会話全体ではなく、**メッセージ単位のより細かい刈り込み**のようです。`shouldNudgeForSnips()` と `SNIP_NUDGE_TEXT` の存在から、ユーザーに実行を促す形も想定されていたと分かります。

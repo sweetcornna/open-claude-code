@@ -1,0 +1,357 @@
+---
+title: "System prompt — assembly, blocking, and cache control"
+description: "How the system prompt is built in Claude Code: the string[] pipeline, the static/dynamic boundary, the three caching modes, TTL selection, and how git state and CLAUDE.md are injected separately."
+keywords: ["system prompt", "prompt cache", "cache_control", "CLAUDE.md", "context injection"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/context/system-prompt) · [日本語](/docs/ja/context/system-prompt)
+
+## From an array to an API call
+
+The system prompt is not a fixed block of text. It is a **`string[]`** — the branded `SystemPrompt` type in `src/utils/systemPromptType.ts:8` — assembled, split into blocks, and tagged for caching before it reaches the API.
+
+### A three-stage pipeline
+
+```
+getSystemPrompt()            →  string[]         (assemble the content)
+  ↓
+buildEffectiveSystemPrompt() →  SystemPrompt     (pick the precedence path)
+  ↓
+buildSystemPromptBlocks()    →  TextBlockParam[] (split into blocks + cache_control)
+```
+
+1. **`getSystemPrompt()`** (`src/constants/prompts.ts:444`) collects the static and dynamic sections and inserts the `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` marker
+2. **`buildEffectiveSystemPrompt()`** (`src/utils/systemPrompt.ts:41`) chooses among Override > Coordinator > Agent > Custom > Default
+3. **`buildSystemPromptBlocks()`** (`src/services/api/claude.ts:3279`) calls `splitSysPromptPrefix()` to split it and attaches `cache_control` to each block
+
+## The branded type
+
+```typescript
+// packages/@ant/model-provider/src/types/systemPrompt.ts:4
+export type SystemPrompt = readonly string[] & {
+  readonly __brand: 'SystemPrompt'
+}
+export function asSystemPrompt(value: readonly string[]): SystemPrompt {
+  return value as SystemPrompt  // zero-cost assertion
+}
+```
+
+The brand prevents an ordinary `string[]` from being passed into an API call by accident — only an explicit `asSystemPrompt()` produces the type.
+
+## What `getSystemPrompt()` assembles
+
+`src/constants/prompts.ts:444` is the factory, returning an ordered array:
+
+| Region | Content | Caching |
+|--------|---------|---------|
+| **Static** | Intro, system rules, doing tasks, actions, using tools, tone and style, output efficiency | Cacheable across organizations (`scope: 'global'`) |
+| **BOUNDARY** | `SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'` | A marker, never sent to the API; it exists only to split static from dynamic so global caching is possible |
+| **Dynamic** | Session guidance, memory, model override, env info, language, output style, MCP instructions, scratchpad, FRC, summarize tool results, token budget, brief | Differs per session (`scope: 'org'`, or uncached) |
+
+> **What the boundary does.** It divides the prompt into an unchanging static region and a region that varies by user and session. The static region is identical for everyone and can take `scope: 'global'` caching across organizations; the dynamic region can only be `scope: 'org'` or uncached. The marker itself is a sentinel string, removed before the request is sent — the model never sees it.
+
+### The dynamic section registry
+
+Dynamic sections register through `systemPromptSection()` or `DANGEROUS_uncachedSystemPromptSection()`, both defined in `src/constants/systemPromptSections.ts`:
+
+```typescript
+// Cached: computed once, recomputed only after /clear or /compact
+systemPromptSection('memory', () => loadMemoryPrompt())
+
+// Dangerous: recomputed every turn, which breaks the prompt cache
+DANGEROUS_uncachedSystemPromptSection(
+  'mcp_instructions',
+  () => isMcpInstructionsDeltaEnabled() ? null : getMcpInstructionsSection(mcpClients),
+  'MCP servers connect/disconnect between turns'  // a reason is mandatory
+)
+```
+
+`resolveSystemPromptSections()` resolves every section each turn, preferring the cached value from `getSystemPromptSectionCache()` for anything with `cacheBreak: false`. Only genuinely volatile content, such as MCP instructions, uses the dangerous variant.
+
+### The `CLAUDE_CODE_SIMPLE` fast path
+
+With `CLAUDE_CODE_SIMPLE` set, the whole prompt collapses to a single line:
+
+```typescript
+`You are Claude Code, Anthropic's official CLI for Claude.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`
+```
+
+Section registration, cache blocking, and dynamic assembly are all skipped. It exists for tests that need minimal token consumption.
+
+## Five levels of precedence
+
+`src/utils/systemPrompt.ts:41` decides which prompt is actually used:
+
+| Precedence | Condition | Behaviour |
+|-----------|-----------|-----------|
+| **0. Override** | `overrideSystemPrompt` is non-empty | Complete replacement; returns `[override]` |
+| **1. Coordinator** | The `COORDINATOR_MODE` feature plus its environment variable | Uses the coordinator prompt |
+| **2. Agent** | `mainThreadAgentDefinition` is present | In proactive mode it appends to the default; otherwise it replaces it |
+| **3. Custom** | `--system-prompt` was passed | Replaces the default |
+| **4. Default** | Nothing special | The full output of `getSystemPrompt()` |
+
+`appendSystemPrompt` is always added at the end, except under Override.
+
+## Providers
+
+Claude Code supports several API providers, in two groups:
+
+| Group | Provider | Environment variable | Notes |
+|-------|----------|---------------------|-------|
+| **1P (first party)** | `firstParty` | default | Anthropic's API, direct |
+| **3P** | `bedrock` | `CLAUDE_CODE_USE_BEDROCK=1` | AWS Bedrock |
+| **3P** | `vertex` | `CLAUDE_CODE_USE_VERTEX=1` | Google Vertex AI |
+| **3P** | `openai` | `CLAUDE_CODE_USE_OPENAI=1` | OpenAI compatibility layer (Ollama, DeepSeek, vLLM) |
+| **3P** | `gemini` | `CLAUDE_CODE_USE_GEMINI=1` | Google Gemini |
+| **3P** | `grok` | `CLAUDE_CODE_USE_GROK=1` | xAI Grok |
+
+The provider determines:
+
+- **Which beta headers are available** — some betas are 1P only
+- **The caching strategy** — `scope: 'global'` is 1P only
+- **How tokens are counted** — Bedrock has its own countTokens endpoint; OpenAI and Gemini fall back to estimation
+
+```typescript
+// src/utils/model/providers.ts:5-13
+export type APIProvider =
+  | 'firstParty'    // 1P — Anthropic direct
+  | 'bedrock'       // 3P — AWS Bedrock
+  | 'vertex'        // 3P — Google Vertex
+  | 'foundry'       // 3P — Anthropic Foundry
+  | 'openai'        // 3P — OpenAI compatibility layer
+  | 'gemini'        // 3P — Google Gemini
+  | 'grok'          // 3P — xAI Grok
+```
+
+## Caching: blocks, markers, and hits
+
+This is the most intricate part of the design.
+
+### The basics
+
+Anthropic's prompt cache reuses an identical system prompt prefix across requests and bills cache hits at a fraction of the full input price. The cache key is a Blake2b hash of the content, so any character change invalidates it.
+
+### `splitSysPromptPrefix()` and its three modes
+
+`src/utils/api.ts:321` is the core of the caching strategy.
+
+**Mode 1 — MCP tools present (`skipGlobalCacheForSystemPrompt=true`)**
+
+```
+[attribution header]    → cacheScope: null    (uncached)
+[system prompt prefix]  → cacheScope: 'org'
+[everything else]       → cacheScope: 'org'
+```
+
+The MCP tool list can change mid-session as servers connect and disconnect, which undermines cross-organization caching, so it degrades to organization scope.
+
+**Mode 2 — global cache with a boundary (1P only)**
+
+```
+[attribution header]    → cacheScope: null    (uncached)
+[system prompt prefix]  → cacheScope: null    (uncached)
+[static content]        → cacheScope: 'global' (shared across organizations)
+[dynamic content]       → cacheScope: null    (uncached)
+```
+
+This is the most efficient mode. Everything before `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` — the intro, rules, tone and style — is identical for every user and can be cached globally.
+
+> **When the boundary is inserted:**
+
+```typescript
+// src/utils/betas.ts:226-229
+export function shouldUseGlobalCacheScope(): boolean {
+  return (
+    getAPIProvider() === 'firstParty' &&
+    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
+  )
+}
+```
+
+```typescript
+// src/constants/prompts.ts:574
+...(shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []),
+```
+
+Which means:
+
+- **3P users (Bedrock, Vertex, OpenAI, Gemini)** never get a boundary and always run mode 3
+- **1P users with experimental betas disabled** (`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`) get no boundary either
+- **1P users by default** get the boundary and mode 2
+
+**Mode 3 — default (3P providers, or no boundary)**
+
+```
+[attribution header]    → cacheScope: null    (uncached)
+[system prompt prefix]  → cacheScope: 'org'
+[everything else]       → cacheScope: 'org'
+```
+
+### `getCacheControl()` and TTL
+
+`src/services/api/claude.ts:348` produces the `cache_control` object:
+
+```typescript
+{
+  type: 'ephemeral',
+  ttl?: '1h',         // only for eligible query sources
+  scope?: 'global',   // only the static region
+}
+```
+
+`should1hCacheTTL()` decides the one-hour TTL:
+
+- **Bedrock users** — enabled through `ENABLE_PROMPT_CACHING_1H_BEDROCK`
+- **Explicit override** — `CLAUDE_CODE_PROMPT_CACHING_1H=1` opts an otherwise ineligible user (a bring-your-own API key, for instance) into the 1h TTL; `=0` forces 5m. **Both directions take precedence over the eligibility and allowlist checks below** — `=0` is the only way to switch off the 2× write surcharge on a metered key.
+- **Eligibility** — internal users, or Claude subscribers not in overage (1h writes cost subscribers nothing extra)
+- **Allowlist** — the `querySource` must match GrowthBook's `allowlist` array, which supports trailing wildcards such as `"repl_main_thread*"`. **When GrowthBook serves no config**, this falls back to `PROMPT_CACHE_1H_DEFAULT_ALLOWLIST` (`src/services/api/promptCacheTTL.ts`: main thread, compact, sdk, sub-agents). An explicitly served empty array still means "off for everyone", so the remote kill switch keeps working.
+  - This previously fell back to `[]`, which made the 1h TTL dead code outside Anthropic's own deployment: **every pause longer than five minutes rewrote the entire 20–50K-token prefix**. Short-lived forked sources (`speculation`, `session_memory`, `prompt_suggestion`) are deliberately absent from the default list — they run 1–3 turns, so a 1h write is paid for and never read back.
+- **Session stability** — the eligibility decision is latched in bootstrap state, so a mid-session GrowthBook change cannot produce inconsistent TTLs within one session
+
+### Where session-specific guidance must go
+
+`getSessionSpecificGuidanceSection()` (`src/constants/prompts.ts:354`) must sit **after** `SYSTEM_PROMPT_DYNAMIC_BOUNDARY`, because it contains:
+
+- The session's `enabledTools` set
+- The runtime result of `isForkSubagentEnabled()`
+- The result of `getIsNonInteractiveSession()`
+
+Putting those runtime bits in the static region would produce 2^N Blake2b prefix variants (N being the number of runtime conditions) and destroy the hit rate entirely. The source comment is explicit:
+
+> Each conditional here is a runtime bit that would otherwise multiply the Blake2b prefix hash variants (2^N). See PR #24490, #24171 for the same bug class.
+
+## Injecting context
+
+The system prompt array carries no runtime context — no git state, no CLAUDE.md. Those arrive through two separate pipelines.
+
+### System context (`src/context.ts:116`)
+
+```typescript
+export const getSystemContext = memoize(async () => {
+  return {
+    gitStatus,           // branch, status, recent commits (truncated at MAX_STATUS_CHARS=2000)
+    cacheBreaker,        // internal-user cache breaker
+  }
+})
+```
+
+- Memoized with `lodash.memoize`, so it is **computed once per session**
+- The git snapshot runs five `git` commands in parallel (branch, defaultBranch, status, log, userName)
+- Status beyond 2000 characters is truncated with a note suggesting BashTool for more
+- A change to `systemPromptInjection` clears every context cache via `getUserContext.cache.clear?.()`
+
+### User context (`src/context.ts:155`)
+
+```typescript
+export const getUserContext = memoize(async () => {
+  return {
+    claudeMd,            // merged CLAUDE.md content
+    currentDate,         // "Today's date is YYYY-MM-DD."
+  }
+})
+```
+
+- CLAUDE.md is disabled by `CLAUDE_CODE_DISABLE_CLAUDE_MDS`, or by `--bare` unless a directory was named explicitly with `--add-dir`
+- `--bare` means "skip what I did not ask for", not "ignore everything"
+
+### Where each is injected
+
+In `src/query.ts:449`:
+
+```typescript
+// system context is appended to the system prompt
+const fullSystemPrompt = asSystemPrompt(
+  appendSystemContext(systemPrompt, systemContext)  // simple concatenation
+)
+```
+
+User context goes in through `prependUserContext()` (`src/utils/api.ts:449`) as the first user message, wrapped in a `<system-reminder>` tag ahead of all conversation messages.
+
+## The attribution header
+
+The first block of every request's system prompt is the attribution header (`src/constants/system.ts:30`):
+
+- **`cc_version`** — the Claude Code version plus a fingerprint
+- **`cc_entrypoint`** — which entry point is running (REPL, SDK, pipe, …)
+- **`cch=00000`** — when NATIVE_CLIENT_ATTESTATION is enabled, Bun's native HTTP layer replaces the zeros with a computed hash before sending, and the server verifies it to confirm the request came from a genuine Claude Code client
+
+The header is always `cacheScope: null` — it varies by version and fingerprint, so caching it would be pointless.
+
+## CLAUDE.md
+
+One of the more elegant pieces of the design: drop a `CLAUDE.md` in the project root and the model understands your project.
+
+- **Overview** — what the project does, what it is built on
+- **Conventions** — code style, naming, branching
+- **Commands** — how to build, test, deploy
+- **Gotchas** — known pitfalls, unusual configuration
+
+Multiple levels are discovered and merged automatically:
+
+```
+~/.occ/CLAUDE.md                    ← user-global (personal preferences)
+  └── /project/CLAUDE.md            ← project root (shared with the team)
+        └── /project/src/CLAUDE.md  ← subdirectory (module-specific)
+```
+
+`getClaudeMds()` and `getMemoryFiles()` in `src/utils/claudemd.ts` walk up from the working directory and merge every match.
+
+## Why `string[]` and not a single `string`
+
+Modelling the prompt as an array exists for **cache blocking**:
+
+1. Anthropic's prompt cache operates on **content blocks**
+2. Splitting the prompt lets unchanging parts (intro, rules) get their own cache hits
+3. As one `string`, a single character change — a date rolling over — would invalidate the entire prompt's cache
+4. The `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` marker lets `splitSysPromptPrefix()` mark exactly the static region as `scope: 'global'`, leaving the dynamic region uncached or at `scope: 'org'`
+
+This is the central token-cost optimization: a typical system prompt runs 20K+ tokens, and cache blocking saves 30–50% of input token cost.
+
+## The OpenAI and Gemini compatibility layers
+
+### OpenAI
+
+Enabled with `CLAUDE_CODE_USE_OPENAI=1`, supporting any endpoint speaking the OpenAI Chat Completions protocol (Ollama, DeepSeek, vLLM).
+
+It is a **stream adapter**:
+
+1. Convert the Anthropic-shaped request to OpenAI's shape
+2. Call the compatible endpoint
+3. Convert the SSE stream back into `BetaRawMessageStreamEvent`
+4. Nothing downstream is aware any of this happened
+
+```
+src/services/api/openai/
+├── client.ts           # client configuration
+├── convertMessages.ts  # message conversion (Anthropic → OpenAI)
+├── convertTools.ts     # tool definition conversion
+├── streamAdapter.ts    # SSE adaptation (OpenAI → Anthropic)
+├── modelMapping.ts     # model name mapping
+└── index.ts            # queryModelOpenAI()
+```
+
+Key environment variables: `CLAUDE_CODE_USE_OPENAI=1`, `OPENAI_API_KEY`, `OPENAI_BASE_URL` (default `https://api.openai.com/v1`), `OPENAI_MODEL`.
+
+### Gemini
+
+Enabled with `CLAUDE_CODE_USE_GEMINI=1`.
+
+```
+src/services/api/gemini/
+├── client.ts           # client configuration
+├── convertMessages.ts  # message conversion
+├── convertTools.ts     # tool definition conversion
+├── streamAdapter.ts    # stream adaptation
+├── modelMapping.ts     # model name mapping
+├── types.ts            # type definitions
+└── index.ts            # entry point
+```
+
+Key environment variables: `CLAUDE_CODE_USE_GEMINI=1`, `GEMINI_API_KEY`, `GEMINI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta`), `GEMINI_MODEL`, and the per-tier `GEMINI_DEFAULT_SONNET_MODEL` / `GEMINI_DEFAULT_OPUS_MODEL`.
+
+### Limitations of the compatibility layers
+
+- **No exact token counting** — the system falls back to estimation, which shifts when auto-compaction fires
+- **No global cache** — only `scope: 'org'`
+- **Some betas unavailable** — anything depending on Anthropic-specific beta headers

@@ -1,0 +1,228 @@
+---
+title: "プロジェクトメモリ — 会話をまたぐファイルベースの記憶"
+description: "Claude Code のメモリシステム。プレーンファイルによる永続化、MEMORY.md 索引、閉じた 4 分類、Sonnet による想起、そして compaction との統合。"
+keywords: ["プロジェクトメモリ", "MEMORY.md", "AI の記憶", "会話をまたぐ", "自動メモリ", "memdir"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/context/project-memory) · [中文](/docs/zh/context/project-memory) · **日本語**
+
+{/* この章の目的: メモリシステムの保存構造、想起の仕組み、注入経路を解剖する */}
+
+## 保存
+
+ソース: `src/memdir/paths.ts`、`src/memdir/memdir.ts`
+
+メモリシステムは**プレーンファイル**です。データベースもベクトルストアもなく、Markdown ファイルとディレクトリ構造だけです。
+
+### 配置
+
+```
+~/.occ/projects/<sanitized-git-root>/memory/
+├── MEMORY.md                    ← 索引。毎回の会話で読み込まれる
+├── user_role.md                 ← user メモリ
+├── feedback_testing.md          ← feedback メモリ
+├── project_mobile_release.md    ← project メモリ
+├── reference_linear_ingest.md   ← reference メモリ
+└── logs/                        ← KAIROS モード: 日次ログ
+    └── 2026/
+        └── 04/
+            └── 2026-04-01.md
+```
+
+`getAutoMemPath()` は次の順で場所を決めます。
+
+1. 環境変数 `CLAUDE_COWORK_MEMORY_PATH_OVERRIDE`（Cowork SDK によるフルパス上書き）
+2. `autoMemoryDirectory` 設定。ただし `policySettings` / `localSettings` / `userSettings` のみ。`projectSettings` は**意図的に除外**されています。悪意あるリポジトリがメモリの保存先を `~/.ssh` に向けられないようにするためです。
+3. 既定: `<memoryBase>/projects/<sanitized-git-root>/memory/`
+
+同じ Git リポジトリのすべての worktree は 1 つのメモリディレクトリを共有します（`findCanonicalGitRoot()` が本当の `.git` の根を見つけます）。プロジェクト根とその祖先にある `CLAUDE.md` / `CLAUDE.local.md` というファイル名は変わりません。`.claude/CLAUDE.md` と `.claude/rules/*.md` は読み取り専用の互換ソースとして読み込まれ、occ が書き込むことはありません。
+
+### MEMORY.md 索引
+
+`MEMORY.md` は入口の索引で、毎回の会話でそのままコンテキストへ読み込まれます。
+
+```typescript
+// memdir.ts:34-38
+export const ENTRYPOINT_NAME = 'MEMORY.md'
+export const MAX_ENTRYPOINT_LINES = 200
+export const MAX_ENTRYPOINT_BYTES = 25_000
+```
+
+上限は**二重**です。200 行 かつ 25 KB。どちらかを超えると `truncateEntrypointContent()` が切り詰めて警告を付けます。理由はこうです。200 行で p97 の索引は収まりますが、極端に長いエントリを持つ索引もあり（200 行で 197 KB という観測例があります）、バイト数の上限がそれを捕まえます。
+
+エントリの形式:
+
+```markdown
+- [Title](file.md) — one-line hook
+```
+
+1 件 1 行、およそ 150 文字以内。`MEMORY.md` 自体に frontmatter はありません。リンクの一覧であって、記憶の内容ではないからです。
+
+## 4 つの分類
+
+ソース: `src/memdir/memoryTypes.ts`
+
+記憶は**閉じた 4 分類**に制約されます。それぞれに `<when_to_save>`、`<how_to_use>`、`<body_structure>` の仕様があります。
+
+| 種別 | 保持するもの | よくあるきっかけ |
+|------|------------|-----------------|
+| **user** | 役割、好み、技術的背景 | 「私はデータサイエンティストです」「Go を 10 年書いています」 |
+| **feedback** | 進め方についての訂正と承認 | 「データベースをモックしないで」「PR は 1 本にまとめて」 |
+| **project** | コードから導けないプロジェクトの文脈 | 「木曜からマージ凍結」「認証の書き直しはコンプライアンス要件」 |
+| **reference** | 外部システムへの指し示し | 「pipeline のバグは Linear の INGEST プロジェクトにある」 |
+
+守るべき制約はひとつ。**現在のプロジェクト状態から導けないものだけを保存する。** コードの構造、ファイルパス、git の履歴はいつでも取得できるので、記憶に置く必要はありません。
+
+### feedback は両方向を捉える
+
+`feedback` の `when_to_save` は強く言い切っています。
+
+> Record from failure AND success: if you only save corrections, you will avoid past mistakes but drift away from approaches the user has already validated, and may grow overly cautious.
+
+つまり「そうしないで」と言われたときだけでなく、「そう、それでいい」と言われたときも保存します。後者は気づきにくく、同じくらい重要です。時間とともに振る舞いがずれていくのを止めるのは、こちらだからです。
+
+### 各メモリの frontmatter
+
+```markdown
+---
+name: {{memory name}}
+description: {{one-line description — 後で関連性を判断するために使う}}
+type: {{user, feedback, project, reference}}
+---
+
+{{memory content — feedback と project では **Why:** と **How to apply:** の行を推奨}}
+```
+
+`description` は重みを持ちます。人が読む要約ではなく、想起の仕組みが照合するテキストだからです。
+
+## 想起
+
+ソース: `src/memdir/findRelevantMemories.ts`、`src/memdir/memoryScan.ts`
+
+すべての記憶がすべての会話に必要なわけではありません。軽量な **Sonnet のサイドクエリ**が関連するものを選びます。
+
+```
+ユーザーのメッセージ → findRelevantMemories(query, memoryDir)
+  ├── scanMemoryFiles()          — すべてのメモリファイルの frontmatter を読む
+  ├── selectRelevantMemories()   — Sonnet がその一覧から 5 件以下を選ぶ
+  └── [{path, mtimeMs}, …] を返す
+```
+
+`selectRelevantMemories()` は独立した軽量 API 呼び出しである `sideQuery()` を通ります。
+
+```typescript
+// findRelevantMemories.ts:98-121
+const result = await sideQuery({
+  model: getDefaultSonnetModel(),  // 主モデルではなく Sonnet が選別する
+  system: SELECT_MEMORIES_SYSTEM_PROMPT,
+  messages: [{
+    role: 'user',
+    content: `Query: ${query}\n\nAvailable memories:\n${manifest}${toolsSection}`
+  }],
+  max_tokens: 256,
+  output_format: { type: 'json_schema', schema: { … } },
+})
+```
+
+### 直近のツールに関する雑音を除く
+
+あるツールをすでに使っている最中に、そのツールの使い方の資料を思い出すのは雑音です。作業の文脈はすでに会話の中にあります。`recentTools` はそれを飛ばすための引数です。
+
+```typescript
+// findRelevantMemories.ts:92-95
+const toolsSection = recentTools.length > 0
+  ? `\n\nRecently used tools: ${recentTools.join(', ')}`
+  : ''
+```
+
+システムプロンプトは明示的です。直近で使ったツールの一覧が与えられている場合、そのツールの使用リファレンスや API ドキュメントは選ばない。ただし、それらのツールに関する警告・落とし穴・既知の問題は**選ぶこと**。使用中にこそ最も重要な情報だからです。
+
+### 繰り返しを避ける
+
+`alreadySurfaced` は前のターンで提示済みのパスを除外します。Sonnet の 5 枠を、同じファイルの再提示ではなく新しい候補に使うためです。
+
+## メモリがシステムプロンプトへ届くまで
+
+ソース: `src/memdir/memdir.ts` → `src/context.ts`
+
+`loadMemoryPrompt()` が注入点で、セッションに 1 度だけ呼ばれ、`systemPromptSection('memory', …)` でキャッシュされます。
+
+```typescript
+// memdir.ts
+export async function loadMemoryPrompt(): Promise<string | null> {
+  // 優先順位: KAIROS のログモード → 通常の自動メモリ
+  if (feature('KAIROS') && autoEnabled && getKairosActive()) {
+    return buildAssistantDailyLogPrompt(skipIndex)
+  }
+  if (autoEnabled) {
+    return buildMemoryLines('auto memory', autoDir, …).join('\n')
+  }
+  return null
+}
+```
+
+`TEAMMEM` の複合モードとリモートのチームメモリ同期は現在のソースから削除されています。チームメモリのディレクトリを読み込んだり統合したりすることはありません。
+
+タイミング: `context.ts` の `getSystemContext()` が動くとき、メモリのプロンプトがシステムプロンプトの 1 セクションとして組み込まれます。`MEMORY.md` の内容はシステムプロンプトではなく **user コンテキストメッセージ**として注入されます。プロンプトキャッシュが前置部分を共有できるようにするためです。
+
+## KAIROS モード: 日次ログ
+
+ソース: `src/memdir/memdir.ts`（`buildAssistantDailyLogPrompt`）
+
+長時間動くアシスタントのセッションは別の方式を使います。
+
+- **標準モード** — `MEMORY.md` を生きた索引として保守し、個別のメモリファイルを併用する
+- **KAIROS モード** — 日付付きログ（`logs/YYYY/MM/YYYY-MM-DD.md`）へ追記するだけで、再編成はしない
+
+```typescript
+// リテラルのパスではなくパターン。プロンプトがキャッシュされるため
+const logPathPattern = join(memoryDir, 'logs', 'YYYY', 'MM', 'YYYY-MM-DD.md')
+```
+
+夜間に走る別の `/dream` skill が、それらのログをトピック別ファイルと更新済みの `MEMORY.md` へ蒸留します。
+
+## 古くなった記憶への備え
+
+ソース: `src/memdir/memoryTypes.ts`（`TRUSTING_RECALL_SECTION`）
+
+記憶は古くなります。プロンプトには専用のセクション「Before recommending from memory」があります。
+
+```
+A memory that names a specific function, file, or flag is a claim
+that it existed *when the memory was written*. It may have been
+renamed, removed, or never merged. Before recommending it:
+
+- If the memory names a file path: check the file exists.
+- If the memory names a function or flag: grep for it.
+```
+
+この見出し自体が A/B テストを経ています。行動を促す "Before recommending from memory" が、抽象的な "Trusting what you recall" に 3/3 対 0/3 で勝ちました。
+
+### 「メモリを無視して」が意味すべきこと
+
+```
+If the user says to *ignore* or *not use* memory:
+proceed as if MEMORY.md were empty.
+Do not apply remembered facts, cite, compare against,
+or mention memory content.
+```
+
+よくある失敗への対処です。ユーザーが「X についての記憶は無視して」と言い、アシスタントはコードを正しく読んだうえで「記憶にある Y とは違いますが」と付け加えてしまう。それは無視ではなく、認めたうえで上書きしているだけです。
+
+## セッションメモリと compaction
+
+ソース: `src/services/compact/sessionMemoryCompact.ts`
+
+メモリはコンテキストの compaction と統合されています。`tengu_session_memory` と `tengu_sm_compact` の両フラグが有効なとき、compaction は通常の要約よりセッションメモリを優先します。
+
+```typescript
+// sessionMemoryCompact.ts:57-61
+const DEFAULT_SM_COMPACT_CONFIG = {
+  minTokens: 10_000,           // compaction 後に最低 10K トークンは残す
+  minTextBlockMessages: 5,     // テキストメッセージを最低 5 件は残す
+  maxTokens: 40_000,           // 最大でも 40K トークン
+}
+```
+
+SM-compact は compaction の API 呼び出しを一切行いません。要約モデルが介在せず、既存のセッションメモリをそのまま要約として使います。速く、安く、失うものがありません。

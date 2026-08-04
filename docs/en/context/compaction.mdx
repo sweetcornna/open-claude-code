@@ -1,0 +1,271 @@
+---
+title: "Compaction — three strategies and the boundary marker"
+description: "How Claude Code compacts context: session-memory compaction, conventional API summarization, and micro-compaction, plus the CompactBoundary message, tool-pair preservation, and the prompt-too-long fallback."
+keywords: ["context compaction", "compaction", "token management", "conversation compression", "context window", "MicroCompact"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/context/compaction) · [日本語](/docs/ja/context/compaction)
+
+{/* Goal of this chapter: the three strategies, the boundary mechanism, and the constants that govern them */}
+
+## When compaction happens
+
+Compaction is not one operation but three escalating strategies, each with its own trigger and severity:
+
+| Strategy | Trigger | Implementation | API call? |
+|----------|---------|---------------|:---------:|
+| **MicroCompact** | One tool output grew too large | `microCompact.ts` | No |
+| **Session Memory Compact** | Auto-compaction fires (behind a feature flag) | `sessionMemoryCompact.ts` | No |
+| **Conventional API summary** | Manual `/compact`, or the fallback when SM is unavailable | `compact.ts` | Yes |
+
+### The precedence chain
+
+Source: `src/commands/compact/compact.ts`
+
+When `/compact` runs or auto-compaction fires, the command tries strategies in order:
+
+```typescript
+// compact.ts:55-99 — simplified
+if (!customInstructions) {
+  const sessionMemoryResult = await trySessionMemoryCompaction(messages, …)
+  if (sessionMemoryResult) return sessionMemoryResult      // first choice: SM
+}
+
+if (reactiveCompact?.isReactiveOnlyMode()) {
+  return await compactViaReactive(messages, …)             // second: reactive
+}
+
+// fallback: conventional API summary
+const microcompactResult = await microcompactMessages(messages, context)
+const messagesForCompact = microcompactResult.messages
+// → call the model to produce a summary
+```
+
+Note that SM compaction does not support custom instructions (`/compact focus on the auth module`); when instructions are present, the conventional path is used directly.
+
+## Layer one: MicroCompact
+
+Source: `src/services/compact/microCompact.ts`
+
+MicroCompact does not compact the conversation. It **clears the content of older tool outputs**, from a whitelist:
+
+```typescript
+// src/services/compact/microCompact.ts:41-50
+const COMPACTABLE_TOOLS = new Set([
+  FILE_READ_TOOL_NAME,    // 'Read'
+  ...SHELL_TOOL_NAMES,    // 'Bash'
+  GREP_TOOL_NAME,         // 'Grep'
+  GLOB_TOOL_NAME,         // 'Glob'
+  WEB_SEARCH_TOOL_NAME,   // 'WebSearch'
+  WEB_FETCH_TOOL_NAME,    // 'WebFetch'
+  FILE_EDIT_TOOL_NAME,    // 'Edit'
+  FILE_WRITE_TOOL_NAME,   // 'Write'
+])
+```
+
+Tool output past the time window is replaced with `[Old tool result content cleared]`. This is not truncation — the original content remains in the JSONL transcript and simply stops being sent to the API.
+
+MicroCompact also applies **time decay** (`timeBasedMCConfig.ts`): the older an output, the more readily it is cleared, and recent results are preserved.
+
+### Images and documents
+
+```typescript
+const IMAGE_MAX_TOKEN_SIZE = 2000
+```
+
+An image block whose estimate exceeds 2000 tokens is cleared too, as is a PDF document block.
+
+## Layer two: session memory compaction
+
+Source: `src/services/compact/sessionMemoryCompact.ts`
+
+With both `tengu_session_memory` and `tengu_sm_compact` enabled, session memory becomes the compaction strategy — **no summarization model is called**. The already-extracted session memory serves as the summary.
+
+### Computing the retention window
+
+```typescript
+// sessionMemoryCompact.ts:324-397
+export function calculateMessagesToKeepIndex(messages, lastSummarizedIndex) {
+  const config = getSessionMemoryCompactConfig()
+  // defaults: minTokens=10K, minTextBlockMessages=5, maxTokens=40K
+
+  let startIndex = lastSummarizedIndex + 1
+  // walk backwards from lastSummarizedIndex until both floors are met or the ceiling is hit
+  for (let i = startIndex - 1; i >= floor; i--) {
+    totalTokens += estimateMessageTokens([msg])
+    if (hasTextBlocks(msg)) textBlockMessageCount++
+    startIndex = i
+    if (totalTokens >= config.maxTokens) break
+    if (totalTokens >= config.minTokens && textBlockMessageCount >= config.minTextBlockMessages) break
+  }
+  return adjustIndexToPreserveAPIInvariants(messages, startIndex)
+}
+```
+
+The retained window satisfies three constraints:
+
+- At least 10,000 tokens, so there is context depth
+- At least 5 messages containing text, so the conversation stays coherent
+- At most 40,000 tokens, so the result does not immediately trip the next compaction
+
+### Preserving tool pairs
+
+`adjustIndexToPreserveAPIInvariants()` is a **correctness guarantee**, not an optimization.
+
+The API requires every `tool_result` to have a matching `tool_use` and vice versa. Cutting the history exactly at a `tool_result` message produces an API error.
+
+```typescript
+// sessionMemoryCompact.ts:232-314
+// Step 1: scan backwards for the tool_use referenced by any retained tool_result
+// Step 2: scan backwards for thinking blocks sharing message.id with a retained assistant message
+// Either case moves startIndex further back
+```
+
+Streaming splits one assistant message into several stored records — thinking, tool_use and so on each get their own uuid while sharing a `message.id` — which is what makes these edge cases intricate.
+
+## Layer three: conventional API summarization
+
+Source: `src/services/compact/compact.ts`
+
+When SM compaction is unavailable, the model is asked to summarize.
+
+### Preprocessing
+
+Messages are prepared before being sent to the summarizer:
+
+```typescript
+// compact.ts:147-202
+const stripped = stripImagesFromMessages(messages)     // images → an [image] marker
+const stripped2 = stripReinjectedAttachments(stripped) // drop attachments that will be re-injected
+```
+
+Replacing images with `[image]` is what stops the summarization call from hitting prompt-too-long itself.
+
+### Re-injection afterwards
+
+After compaction, key context is **re-injected** on top of the summary:
+
+```typescript
+// compact.ts:126-134
+export const POST_COMPACT_TOKEN_BUDGET = 50_000          // total budget
+export const POST_COMPACT_MAX_FILES_TO_RESTORE = 5       // at most 5 files
+export const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000    // 5K per file
+export const POST_COMPACT_MAX_TOKENS_PER_SKILL = 5_000   // 5K per skill
+export const POST_COMPACT_SKILLS_TOKEN_BUDGET = 25_000   // 25K for skills in total
+```
+
+That 50K budget covers:
+
+1. Recently read file contents (up to 5 files, each truncated to 5K tokens)
+2. Instructions for skills already activated (5K each, 25K total)
+3. CLAUDE.md content
+4. MCP tool discovery results
+
+## CompactBoundary
+
+Source: `src/utils/messages.ts` (`createCompactBoundaryMessage`)
+
+Each compaction inserts a `SystemCompactBoundaryMessage` into the stream:
+
+```typescript
+type SystemCompactBoundaryMessage = {
+  type: 'system'
+  message: {
+    type: 'compact_boundary'
+    compactMetadata: {
+      compactType: 'auto' | 'manual' | 'micro'
+      preCompactTokenCount: number
+      lastUserMessageUuid: string
+      preCompactDiscoveredTools?: string[]
+    }
+  }
+}
+```
+
+Everything downstream operates only on messages **after the last boundary**:
+
+```typescript
+// messages.ts
+export function getMessagesAfterCompactBoundary(messages: Message[]): Message[] {
+  const lastBoundary = messages.findLastIndex(m => isCompactBoundaryMessage(m))
+  return lastBoundary >= 0 ? messages.slice(lastBoundary + 1) : messages
+}
+```
+
+### The preserved-segment annotation
+
+The boundary also records which messages were retained rather than compacted:
+
+```typescript
+// compact.ts — annotateBoundaryWithPreservedSegment
+boundaryMarker.compactMetadata.preservedSegment = {
+  summaryMessageUuid: string
+  preservedMessageUuids: string[]
+}
+```
+
+On session resume, this lets the loader rebuild the message chain correctly and avoid re-compacting what was already preserved.
+
+### The micro-compaction boundary
+
+Micro-compaction uses its own boundary type, distinct from `compact_boundary`:
+
+```typescript
+// src/utils/messages.ts:4599-4614
+type SystemMicrocompactBoundaryMessage = {
+  type: 'system'
+  subtype: 'microcompact_boundary'
+  content: 'Context microcompacted'
+  compactMetadata: {
+    trigger: 'auto'                  // micro-compaction is only ever automatic
+    preTokens: number
+    tokensSaved: number
+    compactedToolIds: string[]       // which tool results were cleared
+    clearedAttachmentUUIDs: string[]
+  }
+}
+```
+
+The differences from `compact_boundary`:
+
+- **Messages survive.** Micro-compaction only clears tool output; it never deletes a message.
+- **It is traceable.** `compactedToolIds` records exactly which results were cleared.
+- **It is cheap.** No summary, no API call.
+
+## Prompt-too-long fallback
+
+If the context is still over the limit after compaction (a `PROMPT_TOO_LONG` error), an emergency path runs:
+
+1. **Reactive compaction** — `reactiveCompactOnPromptTooLong()` attempts something more aggressive
+2. **Truncate and retry** — if that fails too, `truncateHeadForPTLRetry()` removes the oldest messages outright
+3. Give up and report the error
+
+Reactive compaction is a stub in the decompiled build (`isReactiveOnlyMode() → false`), which suggests it is an internal experiment.
+
+## Hooks around compaction
+
+Custom hooks run on either side:
+
+- **Pre-compact** (`executePreCompactHooks`) — runs first, and can mark content that must be preserved
+- **Post-compact** (`executePostCompactHooks`) — runs after, and can verify that critical information survived
+- **Session start** (`processSessionStartHooks('compact')`) — SM compaction uses this to restore CLAUDE.md and similar context
+
+Hook results are attached to the compaction output as a `HookResultMessage`, so user-defined logic is visibly honoured.
+
+## Snip compaction (experimental)
+
+Source: `src/services/compact/snipCompact.ts` (stub)
+
+Snip compaction is another experimental strategy, empty in the decompiled build. Its type signature suggests the shape:
+
+```typescript
+snipCompactIfNeeded(messages, options?: { force?: boolean }) → {
+  messages: Message[]
+  executed: boolean
+  tokensFreed: number
+  boundaryMessage?: Message
+}
+```
+
+It appears to be **finer-grained trimming at the message level** — further compressing individual messages rather than the conversation as a whole. `shouldNudgeForSnips()` and `SNIP_NUDGE_TEXT` imply it may prompt the user to trigger it.
