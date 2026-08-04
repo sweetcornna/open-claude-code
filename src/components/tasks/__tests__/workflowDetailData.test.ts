@@ -94,3 +94,16 @@ test('routeWorkflowDetailKey confirm mode: only y/n/Enter/Esc respond, navigatio
   expect(routeWorkflowDetailKey('K', 'confirm')).toBeNull()
   expect(routeWorkflowDetailKey('left', 'confirm')).toBeNull()
 })
+
+test('routeWorkflowDetailKey: Enter/→ drill into the selected agent', () => {
+  // Same gesture as the /workflows panel — both surfaces render the same run,
+  // so their navigation must not disagree.
+  expect(routeWorkflowDetailKey('return', 'normal')).toBe('openAgent')
+  expect(routeWorkflowDetailKey('right', 'normal')).toBe('openAgent')
+})
+
+test('routeWorkflowDetailKey: confirm mode still swallows →, and Enter confirms', () => {
+  // Enter must not both confirm a kill and open an agent.
+  expect(routeWorkflowDetailKey('return', 'confirm')).toBe('confirmYes')
+  expect(routeWorkflowDetailKey('right', 'confirm')).toBeNull()
+})

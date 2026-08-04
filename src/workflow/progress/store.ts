@@ -1,6 +1,37 @@
 import type { ProgressEvent } from '@open-claude-code/workflow-engine'
 import type { ProgressBus } from './bus.js'
 
+/**
+ * Max characters of an agent's return value kept for the detail view. The
+ * store is persisted to state.json and held for the whole session, so a
+ * fan-out run must not pin every agent's full output in memory — a preview is
+ * enough to tell "returned the findings array" from "returned an empty
+ * string", which is what the detail view is for.
+ */
+export const OUTPUT_PREVIEW_MAX = 400
+
+/**
+ * Serialize an agent's return value into a bounded preview string.
+ * Objects go through JSON so the shape is visible; unserializable values
+ * (cycles, BigInt) degrade to their String() form rather than throwing.
+ */
+export function buildOutputPreview(
+  output: string | object,
+  max: number = OUTPUT_PREVIEW_MAX,
+): string {
+  let text: string
+  if (typeof output === 'string') {
+    text = output
+  } else {
+    try {
+      text = JSON.stringify(output) ?? String(output)
+    } catch {
+      text = String(output)
+    }
+  }
+  return text.length <= max ? text : `${text.slice(0, max)}…`
+}
+
 export type AgentProgress = {
   /** Unique id stamped by the engine, precisely correlates started/done (fixes the old LIFO race condition). */
   id: number
@@ -16,6 +47,24 @@ export type AgentProgress = {
   tokenCount?: number
   /** Cumulative tool-call count (live via agent_progress / final value settled by agent_done). */
   toolCount?: number
+  /** agent_started wall-clock (ms). Drives the list's time column and the detail view's duration. */
+  startedAt?: number
+  /** agent_done wall-clock (ms). Absent while running — the UI measures against Date.now() instead. */
+  endedAt?: number
+  /** done·ok only: bounded preview of the return value (see {@link buildOutputPreview}). */
+  outputPreview?: string
+  /** done·ok only: tokens the agent generated (result.usage.outputTokens). */
+  outputTokens?: number
+  /**
+   * done·dead only: cause-of-death classification from the engine. Surfaced in
+   * the detail view — without it a failed agent is an unexplained ✗ and the
+   * user has to go read the journal to find out why.
+   */
+  failureReason?: string
+  /** done·dead only: engine-supplied detail (error message / text preview). */
+  failureDetail?: string
+  /** done·dead only: false = deterministic failure, re-running cannot succeed. */
+  retryable?: boolean
 }
 
 export type RunProgress = {
@@ -114,6 +163,7 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
             label: event.label,
             phase: event.phase,
             status: 'running',
+            startedAt: p.updatedAt,
           }
           p.agents.push(a)
           p.agentCount = p.agents.length
@@ -121,6 +171,14 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
           a.status = 'running'
           a.label = event.label
           a.phase = event.phase
+          a.startedAt = p.updatedAt
+          // A retry restarts the clock: clear the previous run's terminal
+          // fields so the row doesn't show a stale ✗/duration while running.
+          a.endedAt = undefined
+          a.resultKind = undefined
+          a.failureReason = undefined
+          a.failureDetail = undefined
+          a.retryable = undefined
         }
         break
       }
@@ -141,34 +199,29 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
             label: event.label,
             phase: event.phase,
             status: 'done',
-            ...(event.result.kind === 'ok'
-              ? {
-                  outputShape:
-                    typeof event.result.output === 'object' &&
-                    event.result.output !== null
-                      ? ('object' as const)
-                      : ('text' as const),
-                  tokenCount: event.result.tokenCount,
-                  toolCount: event.result.toolCount,
-                  model: event.result.model,
-                }
-              : {}),
+            endedAt: p.updatedAt,
           }
           p.agents.push(a)
           p.agentCount = p.agents.length
-        } else {
-          a.status = 'done'
-          a.resultKind = event.result.kind
-          if (event.result.kind === 'ok') {
-            a.outputShape =
-              typeof event.result.output === 'object' &&
-              event.result.output !== null
-                ? 'object'
-                : 'text'
-            a.tokenCount = event.result.tokenCount
-            a.toolCount = event.result.toolCount
-            a.model = event.result.model
-          }
+        }
+        a.status = 'done'
+        a.resultKind = event.result.kind
+        a.endedAt = p.updatedAt
+        if (event.result.kind === 'ok') {
+          a.outputShape =
+            typeof event.result.output === 'object' &&
+            event.result.output !== null
+              ? 'object'
+              : 'text'
+          a.outputPreview = buildOutputPreview(event.result.output)
+          a.outputTokens = event.result.usage?.outputTokens
+          a.tokenCount = event.result.tokenCount
+          a.toolCount = event.result.toolCount
+          a.model = event.result.model
+        } else if (event.result.kind === 'dead') {
+          a.failureReason = event.result.reason ?? 'unknown'
+          a.failureDetail = event.result.detail
+          a.retryable = event.result.retryable
         }
         break
       }

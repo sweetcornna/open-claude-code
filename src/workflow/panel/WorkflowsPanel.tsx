@@ -4,12 +4,27 @@ import type { Theme } from '@anthropic/ink';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import { getWorkflowService } from '../service.js';
 import type { RunProgress } from '../progress/store.js';
+import { AgentDetail } from './AgentDetail.js';
 import { AgentList } from './AgentList.js';
 import { PhaseSidebar } from './PhaseSidebar.js';
 import { TabsBar } from './TabsBar.js';
 import { RUN_STATUS_COLOR, RUN_STATUS_TEXT } from './status.js';
-import { type FocusColumn, type WorkflowKeyboardHandlers, useWorkflowKeyboard } from './useWorkflowKeyboard.js';
-import { ALL_PHASE, filterActiveRuns, filterAgentsByPhase, formatDuration, mergePhases } from './selectors.js';
+import {
+  type FocusColumn,
+  type WorkflowKeyboardHandlers,
+  focusColumnLeftOf,
+  useWorkflowKeyboard,
+} from './useWorkflowKeyboard.js';
+import {
+  ALL_PHASE,
+  type AgentStatusFilter,
+  filterActiveRuns,
+  filterAgentsByPhase,
+  filterAgentsByStatus,
+  formatDuration,
+  mergePhases,
+  nextAgentStatusFilter,
+} from './selectors.js';
 
 /**
  * Clamp the selected index to a valid range (empty list -> 0; out of range -> last position; negative/NaN -> 0).
@@ -42,11 +57,14 @@ export function isRunTerminatedTransition(
 }
 
 /**
- * /workflows main panel: three-region focus model (top tab + left phase sidebar + right agent list).
+ * /workflows main panel: run tabs on top, phase sidebar on the left, and a
+ * right pane that is either the agent list or the selected agent's detail view.
  *
  * - useSyncExternalStore subscribes to WorkflowService (the store returns stable snapshots, no re-render without change).
- * - Focus state: activeRunId / focusColumn('phases'|'agents') / selectedPhaseIndex(0=All) / selectedAgentIndex.
- * - Keybindings: Tab switch run · Left/Right switch focus column · Up/Down move within column · x kill · r resume · q/Esc quit.
+ * - Focus state: activeRunId / focusColumn('phases'|'agents'|'detail') / selectedPhaseIndex(0=All) / selectedAgentIndex / statusFilter.
+ * - Keybindings: Tab switch run · ←/→ step between regions · ↵ open agent detail · ↑/↓ move ·
+ *   f cycle status filter · x kill agent · K kill workflow · r resume · q/Esc quit.
+ * - ← only ever steps out one region and stops at the phase sidebar; closing the panel is Esc/q's job.
  */
 export function WorkflowsPanel({
   onDone,
@@ -70,6 +88,7 @@ export function WorkflowsPanel({
   const [focusColumn, setFocusColumn] = useState<FocusColumn>('phases');
   const [selectedPhaseIndex, setSelectedPhaseIndex] = useState(0);
   const [selectedAgentIndex, setSelectedAgentIndex] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>('all');
   // kill secondary confirmation. null = no dialog; 'workflow' = kill the whole run; 'agent' = kill the currently selected agent.
   // When non-null the keyboard enters confirm mode (only y/Enter/n/Esc/q respond).
   const [confirmKill, setConfirmKill] = useState<null | 'agent' | 'workflow'>(null);
@@ -116,8 +135,14 @@ export function WorkflowsPanel({
   // Selected phase title (0 = All = undefined)
   const selectedPhaseTitle = clampedPhase === 0 ? undefined : phases[clampedPhase - 1]?.title;
 
-  const visibleAgents = focused ? filterAgentsByPhase(focused.agents, selectedPhaseTitle) : [];
+  const phaseAgents = focused ? filterAgentsByPhase(focused.agents, selectedPhaseTitle) : [];
+  const visibleAgents = filterAgentsByStatus(phaseAgents, statusFilter);
   const clampedAgent = clampSelected(selectedAgentIndex, visibleAgents.length);
+  const selectedAgent = visibleAgents[clampedAgent];
+  // The detail view has nothing to render once its agent leaves the filtered
+  // list (filter change, phase switch, a killed run clearing agents). Fall
+  // back to the list rather than rendering an empty pane.
+  const effectiveFocus: FocusColumn = focusColumn === 'detail' && selectedAgent === undefined ? 'agents' : focusColumn;
 
   const switchTab = (runId: string): void => {
     setActiveRunId(runId);
@@ -142,23 +167,40 @@ export function WorkflowsPanel({
   const handlers: WorkflowKeyboardHandlers = {
     nextTab,
     prevTab,
-    focusLeft: () => setFocusColumn('phases'),
-    focusRight: () => setFocusColumn('agents'),
+    focusLeft: () => setFocusColumn(focusColumnLeftOf(effectiveFocus)),
+    focusRight: () => {
+      if (effectiveFocus === 'phases') setFocusColumn('agents');
+      // Rightward from the list drills into the selected agent — but only
+      // when there is one, so an empty list can't strand focus in a blank pane.
+      else if (selectedAgent !== undefined) setFocusColumn('detail');
+    },
+    openDetail: () => {
+      if (selectedAgent !== undefined) setFocusColumn('detail');
+    },
+    cycleStatusFilter: () => {
+      setStatusFilter(nextAgentStatusFilter(statusFilter));
+      // The surviving rows are a different set; keeping the old index would
+      // silently retarget the selection (and therefore x) at another agent.
+      setSelectedAgentIndex(0);
+    },
+    // In the detail view ↑/↓ keep moving the agent selection, so the pane
+    // steps through agents in place instead of forcing a trip back to the list.
     moveUp: () => {
-      if (focusColumn === 'phases') setSelectedPhaseIndex(s => clampSelected(s - 1, phaseRowCount));
+      if (effectiveFocus === 'phases') setSelectedPhaseIndex(s => clampSelected(s - 1, phaseRowCount));
       else setSelectedAgentIndex(s => clampSelected(s - 1, visibleAgents.length));
     },
     moveDown: () => {
-      if (focusColumn === 'phases') setSelectedPhaseIndex(s => clampSelected(s + 1, phaseRowCount));
+      if (effectiveFocus === 'phases') setSelectedPhaseIndex(s => clampSelected(s + 1, phaseRowCount));
       else setSelectedAgentIndex(s => clampSelected(s + 1, visibleAgents.length));
     },
     killAgent: () => {
-      // Only pop the agent confirmation when the agents column is focused (pressing x in the phases column has no target, no-op).
-      // The selected agent is decided by visibleAgents[clampedAgent]; saved into confirmKill and then
-      // actually executed by confirmYes - to avoid mis-killing caused by visibleAgents changing between two renders.
-      if (focusColumn !== 'agents' || !focused) return;
-      const agent = visibleAgents[clampedAgent];
-      if (!agent) return;
+      // Only pop the agent confirmation when an agent is actually selected
+      // (pressing x in the phases column has no target, no-op). The detail
+      // view counts: it is showing exactly the agent x would kill.
+      // The selected agent is saved into confirmKill and then actually executed by confirmYes -
+      // to avoid mis-killing caused by visibleAgents changing between two renders.
+      if (effectiveFocus === 'phases' || !focused) return;
+      if (selectedAgent === undefined) return;
       setConfirmKill('agent');
     },
     killWorkflow: () => {
@@ -196,8 +238,7 @@ export function WorkflowsPanel({
         onDone();
         return;
       } else if (confirmKill === 'agent' && focused) {
-        const agent = visibleAgents[clampedAgent];
-        if (agent) svc.killAgent(focused.runId, agent.id);
+        if (selectedAgent) svc.killAgent(focused.runId, selectedAgent.id);
       }
       setConfirmKill(null);
     },
@@ -238,30 +279,49 @@ export function WorkflowsPanel({
 
       <Box flexDirection="row" marginTop={1}>
         <Box width="25%" flexDirection="column">
-          <Text color={focusColumn === 'phases' ? 'claude' : 'subtle'} bold>
+          <Text color={effectiveFocus === 'phases' ? 'claude' : 'subtle'} bold>
             Phases
           </Text>
           <PhaseSidebar
             phases={phases}
             agents={focused?.agents ?? []}
             selectedIndex={clampedPhase}
-            focused={focusColumn === 'phases'}
+            focused={effectiveFocus === 'phases'}
           />
         </Box>
         <Text color="subtle">│</Text>
-        <Box flexGrow={1} flexDirection="column">
-          <Text color={focusColumn === 'agents' ? 'claude' : 'subtle'} bold>
-            {phaseHeader} · {visibleAgents.length} agents
-          </Text>
-          <AgentList agents={visibleAgents} selectedIndex={clampedAgent} focused={focusColumn === 'agents'} />
-        </Box>
+        {effectiveFocus === 'detail' && selectedAgent ? (
+          <Box flexGrow={1} flexDirection="column">
+            <Text color="claude" bold>
+              Agent {clampedAgent + 1}/{visibleAgents.length}
+            </Text>
+            <AgentDetail agent={selectedAgent} />
+          </Box>
+        ) : (
+          <Box flexGrow={1} flexDirection="column">
+            <Text color={effectiveFocus === 'agents' ? 'claude' : 'subtle'} bold>
+              {phaseHeader} · {visibleAgents.length} agents
+              {statusFilter === 'all' ? null : <Text color="warning"> · {statusFilter} only</Text>}
+            </Text>
+            <AgentList
+              agents={visibleAgents}
+              selectedIndex={clampedAgent}
+              focused={effectiveFocus === 'agents'}
+              emptyText={
+                statusFilter === 'all' ? undefined : `(no ${statusFilter} agents — press f to change the filter)`
+              }
+            />
+          </Box>
+        )}
       </Box>
 
       <Box marginTop={1}>
         <Text color="subtle">
           {confirmKill !== null
             ? 'Confirm: y kill · n/Esc cancel'
-            : 'Tab switch run · ←/→ focus · ↑/↓ move · x kill agent · K kill workflow · r resume · q quit'}
+            : effectiveFocus === 'detail'
+              ? '↑/↓ prev/next agent · ← back to list · x kill agent · K kill workflow · r resume · q quit'
+              : 'Tab switch run · ←/→ focus · ↵ agent detail · ↑/↓ move · f filter · x kill agent · K kill workflow · q quit'}
         </Text>
       </Box>
 
@@ -270,7 +330,7 @@ export function WorkflowsPanel({
           title={
             confirmKill === 'workflow'
               ? `Kill workflow "${focused?.workflowName ?? ''}"?`
-              : `Kill agent "${visibleAgents[clampedAgent]?.label ?? ''}"?`
+              : `Kill agent "${selectedAgent?.label ?? ''}"?`
           }
           subtitle={
             confirmKill === 'workflow'

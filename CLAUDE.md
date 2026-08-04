@@ -85,7 +85,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 - 统一 `import { feature } from 'bun:bundle'` + `feature('FLAG_NAME')`；**只能直接用在 `if` 或三元条件位置**（Bun 编译器限制），不能赋值变量、不能进箭头函数体、不能作 `&&` 链一部分。不要在 `cli.tsx` 重定义 `feature`。
 - 环境变量 `FEATURE_<NAME>` 覆盖单个 flag：`1`/`true` 开，`0`/`false`/空关（**关也对默认列表里的 flag 生效**，这是把某个 feature 从构建里摘掉的唯一办法）。解析集中在 `scripts/defines.ts` 的 `resolveBuildFeatures()`，`dev.ts` 与 Vite 插件共用——早先两边各自只判断变量**是否存在**，`FEATURE_X=0` 反而会把功能编进发布产物。默认列表见同文件的 `DEFAULT_BUILD_FEATURES`（dev/build 同源，33 个）。
-- `MCP_2026`（2026-08-02 起默认编译进）**只管客户端要不要用 `server/discover` 探测** —— serve 双时代、outputSchema 降级、OAuth 加固不受它门控；协商到的「时代」是连接属性（问 `getProtocolEra()`，不要再判标志）。见 `docs/features/mcp-2026.md`。
+- `MCP_2026`（2026-08-02 起默认编译进）**只管客户端要不要用 `server/discover` 探测** —— serve 双时代、outputSchema 降级、OAuth 加固不受它门控；协商到的「时代」是连接属性（问 `getProtocolEra()`，不要再判标志）。见 `docs/zh/features/mcp-2026.md`。
 - `SKILL_LEARNING` 未编译进默认列表；运行时另由 `SKILL_LEARNING_ENABLED` 控制。
 
 ### Multi-API 兼容层
@@ -95,7 +95,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - **OpenAI 双线协议**：`OPENAI_WIRE_API=responses` 切到 Responses API（`<OPENAI_BASE_URL>/responses`，`responsesAdapter.ts`）；默认 `chat`。ChatGPT 订阅认证（`OPENAI_AUTH_MODE=chatgpt`）强制 responses 且走 Codex 专有后端（带指纹头、不发 `max_output_tokens`）。选择逻辑在 `wireProtocol.ts`。
 - 模型映射按家族（haiku/sonnet/opus 子串）映射，见 `packages/@ant/model-provider/.../modelMapping.ts`，与 `src/utils/model/chatgptModels.ts` 的 tier 常量需人工同步。
 - Provider 档案系统：`/provider save|use|list|delete`（`src/services/providerProfiles/`），激活是全形状写入（`PROFILE_ENV_KEYS` 是各家族可管理键的真源，新增 provider 相关 env 键要同步加进去）。
-- **上下文窗口覆盖**：`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 对所有用户生效（曾是 ant-only，2026-08 解禁），在 `getContextWindowForModel()` 最顶端短路，贯通 autocompact 阈值/预测式 compact/硬阻断/statusline/`/context`。第三方模型探测不到窗口时兜底 200k，**这个键是唯一的纠正手段**——不要再加第二个覆盖入口。`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔子串）按模型选择性追加 `[1m]` 后缀（`apply1mContextOptIn`，挂在 `getMainLoopModel` 出口）。配置真源文档：`docs/features/providers.md`。
+- **上下文窗口覆盖**：`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 对所有用户生效（曾是 ant-only，2026-08 解禁），在 `getContextWindowForModel()` 最顶端短路，贯通 autocompact 阈值/预测式 compact/硬阻断/statusline/`/context`。第三方模型探测不到窗口时兜底 200k，**这个键是唯一的纠正手段**——不要再加第二个覆盖入口。`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔子串）按模型选择性追加 `[1m]` 后缀（`apply1mContextOptIn`，挂在 `getMainLoopModel` 出口）。配置真源文档：`docs/zh/features/providers.md`。
 - **首启向导**：`Onboarding.tsx` 步骤为 theme → migrate（`MigrationStep`，检测 `~/.claude` 且未迁移过才出现）→ oauth（`ConsoleOAuthFlow`，含全部 provider 表单）→ security → terminal-setup。ConsoleOAuthFlow 各表单的 Max ctx 字段接受 `128000`/`128k`/`1m`（`parseMaxContextInput`）；china preset 选定模型会按 `parseContextWindowTokens` 自动写上下文键。
 
 ## Testing
@@ -127,7 +127,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 ## 发布（npm / GitHub Release）
 
-- **npm 包名是 `@sweetcornna/open-claude-code`**（无 scope 的 `open-claude-code` 被第三方 0.0.0 占位包抢注，publish 会 403）。包名同时钉在 `package.json`、`src/constants/brand.ts` 的 `NPM_PACKAGE_NAME`（`updateIsolation.test.ts` 断言）、`scripts/install.sh`、README、`docs/auto-updater.md`——改名五处必须同步。bin 名（`occ`/`occ-bun`/`open-claude-code`）与包名无关，不要动。
+- **npm 包名是 `@sweetcornna/open-claude-code`**（无 scope 的 `open-claude-code` 被第三方 0.0.0 占位包抢注，publish 会 403）。包名同时钉在 `package.json`、`src/constants/brand.ts` 的 `NPM_PACKAGE_NAME`（`updateIsolation.test.ts` 断言）、`scripts/install.sh`、README、`docs/zh/auto-updater.md`——改名五处必须同步。bin 名（`occ`/`occ-bun`/`open-claude-code`）与包名无关，不要动。
 - 发布流程：`bun run release <version>`（`scripts/release.ts`，纯逻辑在 `scripts/releaseCore.ts` 并有单测）改齐 `package.json` + `CHANGELOG.md`、跑门禁、提交并打 tag，**故意停在 push 之前**；`git push origin main --follow-tags` 才触发 `publish-npm.yml`：typecheck → `tests/integration` → build:vite + check:bundle + 双入口 `--version` 冒烟 → `npm publish --provenance` → GitHub Release。步骤与版本源清单见 `CONTRIBUTING.md` §11。
 - **publish 故意只跑集成测试**：全量单测在 Linux runner 上有既有的顺序性 env 污染失败（~10 个文件，macOS 本地不复现，main 的 ci.yml 同样红），修复前不要把 `bun test` 全量塞回 publish 门禁。
 - 版本号延续 2.8.x 叙事（首个对外发布是 v2.9.0），**不要回退到 1.x**，也不要发不递增的版本——`occ update` 的 semver 比较会把老用户永远锁在"已是最新"（release 脚本对此有硬校验）。

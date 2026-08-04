@@ -9,145 +9,187 @@
   },
   "favicon": "/docs/favicon.svg",
   "navigation": {
-    "groups": [
+    "languages": [
       {
-        "group": "开始",
-        "pages": [
+        "language": "en",
+        "groups": [
           {
-            "group": "介绍",
+            "group": "开始",
             "pages": [
-              "docs/introduction/what-is-claude-code",
-              "docs/introduction/why-this-whitepaper",
-              "docs/introduction/architecture-overview"
+              {
+                "group": "介绍",
+                "pages": [
+                  "docs/en/introduction/what-is-claude-code",
+                  "docs/en/introduction/why-this-whitepaper",
+                  "docs/en/introduction/architecture-overview"
+                ]
+              }
             ]
           }
         ]
       },
       {
-        "group": "对话是如何运转的",
-        "pages": [
-          "docs/conversation/the-loop",
-          "docs/conversation/streaming",
-          "docs/conversation/multi-turn"
-        ]
-      },
-      {
-        "group": "工具：AI 的双手",
-        "pages": [
-          "docs/tools/what-are-tools",
-          "docs/tools/file-operations",
-          "docs/tools/shell-execution",
-          "docs/tools/search-and-navigation",
-          "docs/tools/task-management"
-        ]
-      },
-      {
-        "group": "上下文工程",
-        "pages": [
-          "docs/context/system-prompt",
-          "docs/context/project-memory",
-          "docs/context/compaction",
-          "docs/context/token-budget"
-        ]
-      },
-      {
-        "group": "多 Agent 协作",
-        "pages": [
-          "docs/agent/sub-agents",
-          "docs/agent/worktree-isolation",
-          "docs/agent/coordinator-and-swarm"
-        ]
-      },
-      {
-        "group": "可扩展性",
-        "pages": [
-          "docs/extensibility/mcp-protocol",
-          "docs/extensibility/mcp-configuration",
-          "docs/extensibility/hooks",
-          "docs/extensibility/skills",
-          "docs/extensibility/custom-agents"
-        ]
-      },
-      {
-        "group": "安全与权限",
-        "pages": [
-          "docs/safety/why-safety-matters",
-          "docs/safety/permission-model",
-          "docs/safety/sandbox",
-          "docs/safety/plan-mode",
-          "docs/safety/auto-mode",
-          "docs/safety/miit-warning-response"
-        ]
-      },
-      {
-        "group": "揭秘：隐藏功能与内部机制",
-        "pages": [
-          "docs/internals/three-tier-gating",
-          "docs/internals/feature-flags",
-          "docs/internals/growthbook-ab-testing",
-          "docs/internals/growthbook-adapter",
-          "docs/internals/sentry-setup",
-          "docs/internals/hidden-features",
-          "docs/internals/ant-only-world",
-          "docs/internals/session-transcript-persistence",
-          "docs/features/debug-mode"
-        ]
-      },
-      {
-        "group": "隐藏功能详解",
-        "pages": [
+        "language": "zh",
+        "default": true,
+        "groups": [
           {
-            "group": "Agent 与协作",
+            "group": "开始",
             "pages": [
-              "docs/features/coordinator-mode",
-              "docs/features/fork-subagent",
-              "docs/features/daemon"
+              {
+                "group": "介绍",
+                "pages": [
+                  "docs/zh/introduction/what-is-claude-code",
+                  "docs/zh/introduction/why-this-whitepaper",
+                  "docs/zh/introduction/architecture-overview"
+                ]
+              }
             ]
           },
           {
-            "group": "运行模式",
+            "group": "对话是如何运转的",
             "pages": [
-              "docs/features/kairos",
-              "docs/features/channels",
-              "docs/features/voice-mode",
-              "docs/features/remote-control-self-hosting",
-              "docs/features/proactive",
-              "docs/features/ultraplan"
+              "docs/zh/conversation/the-loop",
+              "docs/zh/conversation/streaming",
+              "docs/zh/conversation/multi-turn"
             ]
           },
           {
-            "group": "工具增强",
+            "group": "工具：AI 的双手",
             "pages": [
-              "docs/features/mcp-skills",
-              "docs/features/mcp-2026",
-              "docs/features/tree-sitter-bash",
-              "docs/features/bash-classifier",
-              "docs/features/web-browser-tool",
-              "docs/features/web-search-tool",
-              "docs/features/experimental-skill-search",
-              "docs/features/langfuse-monitoring",
-              "docs/features/computer-use",
-              "docs/features/chrome-devtools-mcp"
+              "docs/zh/tools/what-are-tools",
+              "docs/zh/tools/file-operations",
+              "docs/zh/tools/shell-execution",
+              "docs/zh/tools/search-and-navigation",
+              "docs/zh/tools/task-management"
             ]
           },
           {
-            "group": "上下文与自动化",
+            "group": "上下文工程",
             "pages": [
-              "docs/features/token-budget",
-              "docs/features/workflow-scripts",
-              "docs/features/auto-dream"
+              "docs/zh/context/system-prompt",
+              "docs/zh/context/project-memory",
+              "docs/zh/context/compaction",
+              "docs/zh/context/token-budget"
             ]
           },
-          "docs/features/tier3-stubs"
+          {
+            "group": "多 Agent 协作",
+            "pages": [
+              "docs/zh/agent/sub-agents",
+              "docs/zh/agent/worktree-isolation",
+              "docs/zh/agent/coordinator-and-swarm"
+            ]
+          },
+          {
+            "group": "可扩展性",
+            "pages": [
+              "docs/zh/extensibility/mcp-protocol",
+              "docs/zh/extensibility/mcp-configuration",
+              "docs/zh/extensibility/hooks",
+              "docs/zh/extensibility/skills",
+              "docs/zh/extensibility/custom-agents"
+            ]
+          },
+          {
+            "group": "安全与权限",
+            "pages": [
+              "docs/zh/safety/why-safety-matters",
+              "docs/zh/safety/permission-model",
+              "docs/zh/safety/sandbox",
+              "docs/zh/safety/plan-mode",
+              "docs/zh/safety/auto-mode",
+              "docs/zh/safety/miit-warning-response"
+            ]
+          },
+          {
+            "group": "揭秘：隐藏功能与内部机制",
+            "pages": [
+              "docs/zh/internals/three-tier-gating",
+              "docs/zh/internals/feature-flags",
+              "docs/zh/internals/growthbook-ab-testing",
+              "docs/zh/internals/growthbook-adapter",
+              "docs/zh/internals/sentry-setup",
+              "docs/zh/internals/hidden-features",
+              "docs/zh/internals/ant-only-world",
+              "docs/zh/internals/session-transcript-persistence",
+              "docs/zh/features/debug-mode"
+            ]
+          },
+          {
+            "group": "隐藏功能详解",
+            "pages": [
+              {
+                "group": "Agent 与协作",
+                "pages": [
+                  "docs/zh/features/coordinator-mode",
+                  "docs/zh/features/fork-subagent",
+                  "docs/zh/features/daemon"
+                ]
+              },
+              {
+                "group": "运行模式",
+                "pages": [
+                  "docs/zh/features/kairos",
+                  "docs/zh/features/channels",
+                  "docs/zh/features/voice-mode",
+                  "docs/zh/features/remote-control-self-hosting",
+                  "docs/zh/features/proactive",
+                  "docs/zh/features/ultraplan"
+                ]
+              },
+              {
+                "group": "工具增强",
+                "pages": [
+                  "docs/zh/features/mcp-skills",
+                  "docs/zh/features/mcp-2026",
+                  "docs/zh/features/tree-sitter-bash",
+                  "docs/zh/features/bash-classifier",
+                  "docs/zh/features/web-browser-tool",
+                  "docs/zh/features/web-search-tool",
+                  "docs/zh/features/experimental-skill-search",
+                  "docs/zh/features/langfuse-monitoring",
+                  "docs/zh/features/computer-use",
+                  "docs/zh/features/chrome-devtools-mcp"
+                ]
+              },
+              {
+                "group": "上下文与自动化",
+                "pages": [
+                  "docs/zh/features/token-budget",
+                  "docs/zh/features/workflow-scripts",
+                  "docs/zh/features/auto-dream"
+                ]
+              },
+              "docs/zh/features/tier3-stubs"
+            ]
+          },
+          {
+            "group": "基础设施与依赖",
+            "pages": [
+              "docs/zh/auto-updater",
+              "docs/zh/lsp-integration",
+              "docs/zh/external-dependencies",
+              "docs/zh/telemetry-remote-config-audit"
+            ]
+          }
         ]
       },
       {
-        "group": "基础设施与依赖",
-        "pages": [
-          "docs/auto-updater",
-          "docs/lsp-integration",
-          "docs/external-dependencies",
-          "docs/telemetry-remote-config-audit"
+        "language": "ja",
+        "groups": [
+          {
+            "group": "开始",
+            "pages": [
+              {
+                "group": "介绍",
+                "pages": [
+                  "docs/ja/introduction/what-is-claude-code",
+                  "docs/ja/introduction/why-this-whitepaper",
+                  "docs/ja/introduction/architecture-overview"
+                ]
+              }
+            ]
+          }
         ]
       }
     ]

@@ -53,15 +53,65 @@ export function formatOpenAIPromptCacheKey(sessionId: string): string {
   return `${BIN_NAME}:${sessionId}`
 }
 
+// Env truthiness is re-implemented here rather than imported from
+// utils/config/envUtils: this module is deliberately dependency-free so the
+// pure request-body unit tests can load it without a session runtime. Keep
+// the accepted spellings in sync with isEnvTruthy/isEnvDefinedFalsy.
+const TRUTHY = new Set(['1', 'true', 'yes', 'on'])
+const FALSY = new Set(['0', 'false', 'no', 'off'])
+
+function envFlag(raw: string | undefined): boolean | undefined {
+  if (raw === undefined) return undefined
+  const value = raw.toLowerCase().trim()
+  if (TRUTHY.has(value)) return true
+  if (FALSY.has(value)) return false
+  return undefined
+}
+
 /**
- * Return a session-sticky cache key only for OpenAI's official API endpoint.
- * Compatible providers must not receive OpenAI-specific request parameters.
+ * Whether this request may carry OpenAI's `prompt_cache_key`.
+ *
+ * Measured against a live OpenAI-compatible gateway (5 turns, ~4K-token
+ * stable prefix, everything else held constant): omitting the key dropped the
+ * cumulative hit rate from **75.8% to 18.3%** — per-turn 95/0/0/0/0. Without
+ * a sticky routing key each turn is free to land on a different
+ * cache-bearing node, so only the very first follow-up hits. This is the
+ * single largest lever on the OpenAI side, well ahead of anything about
+ * request-body shape.
+ *
+ * Defaults:
+ * - `/responses` → always sent. Serving that endpoint means implementing
+ *   OpenAI's Responses schema, where `prompt_cache_key` is a documented
+ *   standard field.
+ * - Chat Completions → OpenAI's own endpoint only. The "OpenAI-compatible"
+ *   chat ecosystem (GLM / Kimi / DeepSeek / Cerebras direct) is where strict
+ *   servers reject unknown top-level keys with a 400, and that ecosystem does
+ *   not serve `/responses` at all.
+ *
+ * `OPENAI_PROMPT_CACHE_KEY=1` forces it on — use it for OpenAI behind a chat
+ * gateway (LiteLLM, one-api, new-api, OpenRouter). `=0` forces it off for a
+ * gateway that passes unknown keys through to an upstream that rejects them.
  */
-export function getOfficialOpenAIPromptCacheKey(
+export function shouldSendOpenAIPromptCacheKey(
+  baseURL: string | undefined,
+  wireProtocol?: 'chat' | 'responses',
+): boolean {
+  const forced = envFlag(process.env.OPENAI_PROMPT_CACHE_KEY)
+  if (forced !== undefined) return forced
+  if (wireProtocol === 'responses') return true
+  return isOfficialOpenAIBaseURL(baseURL)
+}
+
+/**
+ * Session-sticky cache key for endpoints that accept it, or undefined when
+ * the key must be withheld. See {@link shouldSendOpenAIPromptCacheKey}.
+ */
+export function getOpenAIPromptCacheKey(
   baseURL: string | undefined,
   sessionId: string,
+  wireProtocol?: 'chat' | 'responses',
 ): string | undefined {
-  return isOfficialOpenAIBaseURL(baseURL)
+  return shouldSendOpenAIPromptCacheKey(baseURL, wireProtocol)
     ? formatOpenAIPromptCacheKey(sessionId)
     : undefined
 }

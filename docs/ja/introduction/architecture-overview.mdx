@@ -1,0 +1,121 @@
+---
+title: "アーキテクチャ全体像 — Claude Code の 5 層構造"
+description: "対話層からトランスポート層まで、Claude Code の 5 層アーキテクチャを解説します。src/main.tsx、src/QueryEngine.ts、src/query.ts、src/tools.ts、src/services/api/claude.ts をたどったデータフロー分析です。"
+keywords: ["Claude Code アーキテクチャ", "5 層構造", "QueryEngine", "エージェントループ", "データフロー"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/introduction/architecture-overview) · [中文](/docs/zh/introduction/architecture-overview) · **日本語**
+
+{/* この章の目的: 1 枚の図で全体像を示し、以降の章の座標系をつくる */}
+
+## 5 つの層
+
+Claude Code は上から下へ 5 つの層に分かれ、それぞれ責務と境界が明確です。
+
+<Frame caption="Claude Code の 5 層アーキテクチャ">
+  <img src="/docs/images/architecture-layers.png" alt="Claude Code 5 層アーキテクチャ図" />
+</Frame>
+
+| 層 | 責務 | エントリポイント | キーワード |
+|----|------|----------------|-----------|
+| **対話層** | ターミナル UI、ユーザー入力、メッセージ表示 | `src/screens/REPL.tsx` | React/Ink、PromptInput |
+| **オーケストレーション層** | マルチターン対話、セッション永続化、コスト追跡 | `src/QueryEngine.ts` | QueryEngine、transcript |
+| **コアループ層** | 1 ターン: リクエスト送信 → 応答受信 → ツール実行 → 繰り返し | `src/query.ts` | エージェントループ、State |
+| **ツール層** | モデルの「手」— ファイルの読み書き、コマンド実行 | `src/tools.ts` → `src/Tool.ts` | Tool インターフェース、MCP |
+| **トランスポート層** | Claude API とのストリーミング通信 | `src/services/api/claude.ts` | ストリーミング、provider |
+
+## 主要なデータフローをソースで追う
+
+<Frame caption="コアデータフロー">
+  <img src="/docs/images/data-flow.png" alt="Claude Code のコアデータフロー" />
+</Frame>
+
+システム全体は 1 本のデータフローに集約できます。各ステップと対応するソースパスは次のとおりです。
+
+### 1. ユーザー入力 → REPL
+
+`src/screens/REPL.tsx` は React/Ink で構築されたターミナル UI です。入力は `processUserInput()`（`src/utils/processUserInput/processUserInput.ts`）を通り、スラッシュコマンド、ファイル添付、画像などを処理します。
+
+### 2. QueryEngine によるオーケストレーション
+
+`src/QueryEngine.ts` は REPL と `query()` の間に位置し、次を管理します。
+
+- **セッション状態** — メッセージ配列、ツール権限コンテキスト（`ToolPermissionContext`）、ファイル履歴スナップショット
+- **コスト追跡** — `accumulateUsage()` / `getTotalCost()` によるトークン使用量の集計
+- **Transcript の永続化** — `recordTranscript()` が会話をディスクへ直列化する。`--resume` はこれに依存する
+- **ファイル履歴** — `fileHistoryMakeSnapshot()` が変更前にスナップショットを作る。undo はこれに依存する
+
+中心となるメソッドは `queryEngine.query()` で、`QueryParams` を構築して非同期ジェネレータ `query()` を呼び出します。
+
+### 3. エージェントループ（`src/query.ts`）
+
+`query()` は `AsyncGenerator` です。`while (true)` ループの各反復は 4 つのことを行います。
+
+```
+① コンテキスト前処理パイプライン:
+   applyToolResultBudget → microcompact → autocompact
+
+② ストリーミング API 呼び出し:
+   deps.callModel() → AsyncGenerator<StreamEvent | Message>
+   assistantMessages[] と toolUseBlocks[] を収集
+
+③ ツール実行:
+   StreamingToolExecutor（並列）または runTools（直列）
+   → toolResults[]
+
+④ 継続か終了か:
+   needsFollowUp ? continue : return { reason }
+```
+
+状態機械の全体は `State` 型（`src/query.ts:207`）で反復間を受け渡され、`messages`、`autoCompactTracking`、`maxOutputTokensRecoveryCount` を含む 10 個のフィールドを保持します。
+
+### 4. ツール層（`src/tools.ts` → `src/Tool.ts`）
+
+`getAllBaseTools()`（`src/tools.ts:195`）が 50 以上のツール一覧を組み立て、`filterToolsByDenyRules()` による権限フィルタを通してから API へ渡します。
+
+各ツールは `Tool<Input, Output, Progress>` インターフェース（`src/Tool.ts:368`）を実装し、呼び出しの連鎖は次のとおりです。
+
+```
+validateInput() → canUseTool()（UI 層）→ checkPermissions() → call() → ToolResult
+```
+
+### 5. トランスポート層（`src/services/api/claude.ts`）
+
+API クライアントは 7 種の provider に対応します。
+
+- **Anthropic 直接（firstParty）** — 既定
+- **AWS Bedrock** — `ANTHROPIC_BEDROCK_BASE_URL`
+- **Google Vertex** — `ANTHROPIC_VERTEX_PROJECT_ID`
+- **Foundry** — `ANTHROPIC_CODE_USE_FOUNDRY`
+- **OpenAI** — 互換レイヤ
+- **Gemini** — 互換レイヤ
+- **Grok (xAI)** — 互換レイヤ
+
+`deps.callModel()` がストリーミングリクエストを発行し、`BetaRawMessageStreamEvent` のイベント列を返します。プロンプトキャッシュ（`cache_control`）、thinking ブロック、マルチターンのツール利用に対応しています。
+
+## 4 つの設計原則
+
+<AccordionGroup>
+  <Accordion title="ストリーミング優先">
+    API 通信はすべてストリーミングです。`deps.callModel()` が AsyncGenerator を返すため、モデルが 1 文字ずつ回答を書き出す様子が見えます。StreamingToolExecutor はストリームが開いている間に並列でツールの実行を始め、終了を待ちません。モデルのフォールバック時には、それまでに収集した assistantMessages を tombstone として印を付けて破棄し、ストリーミングリクエスト全体を再試行します。
+  </Accordion>
+  <Accordion title="ツールは能力">
+    各ツールは `buildTool()` ファクトリで生成される構造化された `Tool<Input, Output, Progress>` です。`getTools()` はグローバルにキャッシュせず API 呼び出しごとに実行されます。`isEnabled()` が実行時状態によって変わりうるためです。MCP ツールは `mcpInfo` フィールドで出自を示し、これによりサーバー単位の一括拒否が可能になります。
+  </Accordion>
+  <Accordion title="権限が境界">
+    すべてのツール呼び出しは `validateInput()` と `checkPermissions()` の両方を通ります。権限ルールは session / project / user / managed / default の 5 つの源から統合され、ツール名、コマンドパターン、パス接頭辞などで照合できます。Plan モードは `prepareContextForPlanMode()` で読み取り専用に切り替え、終了時に元の状態へ戻します。
+  </Accordion>
+  <Accordion title="コンテキストが記憶">
+    システムプロンプトは `fetchSystemPromptParts()` が CLAUDE.md、git の状態、日付、MCP サーバー一覧から動的に組み立てます。Auto-compact は各反復の前にトークン閾値を評価し、超過していれば圧縮します。生成された要約は `buildPostCompactMessages()` により元のメッセージを置き換え、`taskBudgetRemaining` は圧縮の境界をまたいで累積します。
+  </Accordion>
+</AccordionGroup>
+
+## エントリポイントと起動
+
+| エントリ | ファイル | 説明 |
+|---------|---------|------|
+| CLI 起動 | `src/entrypoints/cli.tsx` | `bun:bundle` から `feature()` を import（値はビルドまたは dev defines によりコンパイル時に解決）し、MACRO グローバル変数の実行時フォールバックを提供する（`cli.tsx:11-21`） |
+| コマンド定義 | `src/main.tsx` | Commander.js が引数を解析し、認証 / analytics / policy を初期化する |
+| 一度きりの初期化 | `src/entrypoints/init.ts` | テレメトリ設定、信頼ダイアログ |
+| パイプモード | `src/main.tsx` の `-p` フラグ | `echo "say hello" \| bun run dev -p` |

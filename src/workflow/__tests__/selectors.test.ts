@@ -1,11 +1,15 @@
 import { expect, test } from 'bun:test'
 import type { AgentProgress, RunProgress } from '../progress/store.js'
 import {
+  AGENT_STATUS_FILTERS,
   ALL_PHASE,
+  agentElapsedMs,
   capTabsForDisplay,
   filterActiveRuns,
+  filterAgentsByStatus,
   mergePhases,
   filterAgentsByPhase,
+  nextAgentStatusFilter,
   tabLabel,
 } from '../panel/selectors.js'
 
@@ -205,4 +209,67 @@ test('capTabsForDisplay: maxTabs=0 -> all folded into overflow (degenerate but d
   const capped = capTabsForDisplay(runs, 0)
   expect(capped.runs).toEqual([])
   expect(capped.overflow).toBe(1)
+})
+
+// ── agent status filter (`f`) ───────────────────────────────────────────────
+
+const FILTER_AGENTS: AgentProgress[] = [
+  { id: 1, status: 'running' },
+  { id: 2, status: 'done', resultKind: 'ok' },
+  { id: 3, status: 'done', resultKind: 'dead' },
+  { id: 4, status: 'done', resultKind: 'skipped' },
+]
+
+test('filterAgentsByStatus: all → every agent, order preserved', () => {
+  expect(filterAgentsByStatus(FILTER_AGENTS, 'all')).toEqual(FILTER_AGENTS)
+})
+
+test('filterAgentsByStatus: done excludes dead agents', () => {
+  // A dead agent reached `status: done` too — filtering on the raw field
+  // would file every failure under "done" and hide it from the failed view.
+  expect(filterAgentsByStatus(FILTER_AGENTS, 'done').map(a => a.id)).toEqual([
+    2, 4,
+  ])
+})
+
+test('filterAgentsByStatus: failed is dead-only', () => {
+  expect(filterAgentsByStatus(FILTER_AGENTS, 'failed').map(a => a.id)).toEqual([
+    3,
+  ])
+})
+
+test('filterAgentsByStatus: running is live agents only', () => {
+  expect(filterAgentsByStatus(FILTER_AGENTS, 'running').map(a => a.id)).toEqual(
+    [1],
+  )
+})
+
+test('nextAgentStatusFilter: cycles through every filter and wraps', () => {
+  let f = AGENT_STATUS_FILTERS[0]!
+  const seen = [f]
+  for (let i = 0; i < AGENT_STATUS_FILTERS.length - 1; i++) {
+    f = nextAgentStatusFilter(f)
+    seen.push(f)
+  }
+  expect(seen).toEqual([...AGENT_STATUS_FILTERS])
+  expect(nextAgentStatusFilter(f)).toBe(AGENT_STATUS_FILTERS[0]!)
+})
+
+// ── agent duration ─────────────────────────────────────────────────────────
+
+test('agentElapsedMs: settled span once done, live span while running', () => {
+  expect(agentElapsedMs({ startedAt: 1_000, endedAt: 4_500 }, 9_999)).toBe(
+    3_500,
+  )
+  expect(agentElapsedMs({ startedAt: 1_000 }, 4_000)).toBe(3_000)
+})
+
+test('agentElapsedMs: null when the agent predates timestamp capture', () => {
+  // Runs persisted before startedAt existed would otherwise measure from
+  // epoch 0 and render a ~57-year duration.
+  expect(agentElapsedMs({}, 9_999)).toBeNull()
+})
+
+test('agentElapsedMs: never negative when clocks disagree', () => {
+  expect(agentElapsedMs({ startedAt: 5_000 }, 1_000)).toBe(0)
 })
