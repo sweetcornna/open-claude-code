@@ -195,9 +195,12 @@ export function shouldUseGlobalCacheScope(): boolean {
 }
 ```
 
-1 小时 TTL 的判定逻辑（`should1hCacheTTL()`，第 383 行）：
+1 小时 TTL 的判定逻辑（`should1hCacheTTL()`）：
 - **Bedrock 用户**：通过环境变量 `ENABLE_PROMPT_CACHING_1H_BEDROCK` 启用
-- **1P 用户**：通过 GrowthBook 配置的 `allowlist` 数组匹配 `querySource`，支持前缀通配符（如 `"repl_main_thread*"`）
+- **显式覆盖**：`CLAUDE_CODE_PROMPT_CACHING_1H=1` 让不符合资格的用户（如自带 API key）也用 1h TTL，`=0` 则强制退回 5m。**两个方向都优先于下面的资格与 allowlist 判定**——`=0` 是给按量计费 key 关掉 1h 写入 2 倍加价的唯一开关。
+- **资格**：ant 用户，或未超额的 Claude 订阅用户（订阅用户的 1h 写入不额外计费）
+- **allowlist**：`querySource` 需匹配 GrowthBook 配置的 `allowlist` 数组，支持前缀通配符（如 `"repl_main_thread*"`）。GrowthBook **不下发该配置时**回退到 `PROMPT_CACHE_1H_DEFAULT_ALLOWLIST`（`src/services/api/promptCacheTTL.ts`：主线程 / compact / sdk / 子 agent）；显式下发空数组仍表示「全员关闭」，远端 kill switch 照常生效。
+  - 早先此处回退到 `[]`，等于 1h TTL 对所有非 Anthropic 内部部署都是死代码：**每次超过 5 分钟的停顿都会整体重写 ~20–50K token 的前缀**。短命 fork 源（`speculation`、`session_memory`、`prompt_suggestion` 等）刻意不在默认表内——它们只跑 1–3 轮，1h 写入付了钱也读不回来。
 - **会话级锁定**：资格判定结果在 bootstrap state 中缓存，防止 GrowthBook 配置中途变化导致同一会话内 TTL 不一致
 
 ### 缓存破坏：Session-Specific Guidance 的放置

@@ -1,8 +1,8 @@
 import type {
   BetaToolUnion,
   BetaMessage,
+  BetaUsage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import { randomUUID } from 'crypto'
 import type {
   AssistantMessage,
   Message,
@@ -14,9 +14,12 @@ import { toolToAPISchema } from '../../../utils/telemetry/api.js'
 import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import {
   createAssistantAPIErrorMessage,
-  normalizeContentFromAPI,
   normalizeMessagesForAPI,
 } from '../../../utils/messages.js'
+import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import { updateOpenAIUsage } from '../openai/openaiShared.js'
+import { addToTotalSessionCost } from '../../../cost-tracker.js'
+import { calculateUSDCost } from '../../../utils/model/modelCost.js'
 import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
 import type { SystemPrompt } from '../../../utils/session/systemPromptType.js'
 import type { ThinkingConfig } from '../../../utils/model/thinking.js'
@@ -36,6 +39,9 @@ import {
   anthropicToolChoiceToGemini,
   GEMINI_THOUGHT_SIGNATURE_FIELD,
 } from '@ant/model-provider'
+
+const GEMINI_MAX_TOKENS_ENV_HINT =
+  'GEMINI_MAX_TOKENS or CLAUDE_CODE_MAX_OUTPUT_TOKENS'
 
 export async function* queryModelGemini(
   messages: Message[],
@@ -81,6 +87,19 @@ export async function* queryModelGemini(
     const geminiTools = anthropicToolsToGemini(standardTools)
     const toolChoice = anthropicToolChoiceToGemini(options.toolChoice)
 
+    // Opt-in output cap: without it the endpoint's own default applies
+    // (the historical behavior). GEMINI_MAX_TOKENS wins over the generic key.
+    const geminiMaxTokensRaw = parseInt(
+      process.env.GEMINI_MAX_TOKENS ??
+        process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ??
+        '',
+      10,
+    )
+    const geminiMaxTokens =
+      Number.isFinite(geminiMaxTokensRaw) && geminiMaxTokensRaw > 0
+        ? geminiMaxTokensRaw
+        : undefined
+
     const stream = streamGeminiGenerateContent({
       model: geminiModel,
       signal,
@@ -98,19 +117,9 @@ export async function* queryModelGemini(
           ...(options.temperatureOverride !== undefined && {
             temperature: options.temperatureOverride,
           }),
-          // Opt-in output cap: without it the endpoint's own default applies
-          // (the historical behavior). GEMINI_MAX_TOKENS wins over the generic key.
-          ...(() => {
-            const cap = parseInt(
-              process.env.GEMINI_MAX_TOKENS ??
-                process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ??
-                '',
-              10,
-            )
-            return Number.isFinite(cap) && cap > 0
-              ? { maxOutputTokens: cap }
-              : {}
-          })(),
+          ...(geminiMaxTokens !== undefined
+            ? { maxOutputTokens: geminiMaxTokens }
+            : {}),
           ...(thinkingConfig.type !== 'disabled' && {
             thinkingConfig: {
               includeThoughts: true,
@@ -131,6 +140,13 @@ export async function* queryModelGemini(
     const contentBlocks: Record<number, Record<string, unknown>> = {}
     const collectedMessages: AssistantMessage[] = []
     let partialMessage: BetaMessage | null = null
+    let usage = {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    }
+    let stopReason: string | null = null
     let ttftMs = 0
     const start = Date.now()
 
@@ -139,6 +155,14 @@ export async function* queryModelGemini(
         case 'message_start':
           partialMessage = event.message
           ttftMs = Date.now() - start
+          if (event.message.usage) {
+            usage = updateOpenAIUsage(
+              usage,
+              event.message.usage as unknown as Parameters<
+                typeof updateOpenAIUsage
+              >[1],
+            )
+          }
           break
         case 'content_block_start': {
           const idx = event.index
@@ -178,31 +202,59 @@ export async function* queryModelGemini(
           break
         }
         case 'content_block_stop': {
-          const idx = event.index
-          const block = contentBlocks[idx]
-          if (!block || !partialMessage) break
-
-          const message: AssistantMessage = {
-            message: {
-              ...partialMessage,
-              content: normalizeContentFromAPI(
-                [block] as unknown as BetaMessage['content'],
-                tools,
-                options.agentId,
-              ),
-            } as AssistantMessage['message'],
-            requestId: undefined,
-            type: 'assistant',
-            uuid: randomUUID(),
-            timestamp: new Date().toISOString(),
-          }
-          collectedMessages.push(message)
-          yield message
+          // Block accumulation is complete; assembly happens at message_stop.
+          // Gemini only reports final token counts (including
+          // cachedContentTokenCount) on the trailing chunks, so a message
+          // built here would persist a zeroed cache read.
           break
         }
-        case 'message_delta':
-        case 'message_stop':
+        case 'message_delta': {
+          if (event.usage) {
+            usage = updateOpenAIUsage(
+              usage,
+              event.usage as unknown as Parameters<typeof updateOpenAIUsage>[1],
+            )
+          }
+          if (event.delta.stop_reason != null) {
+            stopReason = event.delta.stop_reason
+          }
           break
+        }
+        case 'message_stop': {
+          if (partialMessage) {
+            for (const output of assembleFinalAssistantOutputs({
+              partialMessage,
+              contentBlocks,
+              tools,
+              agentId: options.agentId,
+              usage,
+              stopReason,
+              ...(geminiMaxTokens !== undefined
+                ? { maxTokens: geminiMaxTokens }
+                : {}),
+              maxTokensEnvHint: GEMINI_MAX_TOKENS_ENV_HINT,
+            })) {
+              if (output.type === 'assistant') {
+                collectedMessages.push(output)
+              }
+              yield output
+            }
+            // Reset so the post-loop safety fallback does not double-yield.
+            partialMessage = null
+          }
+          if (usage.input_tokens + usage.output_tokens > 0) {
+            const costUSD = calculateUSDCost(
+              geminiModel,
+              usage as unknown as BetaUsage,
+            )
+            addToTotalSessionCost(
+              costUSD,
+              usage as unknown as BetaUsage,
+              options.model,
+            )
+          }
+          break
+        }
       }
 
       yield {
@@ -219,8 +271,10 @@ export async function* queryModelGemini(
       input: convertMessagesToLangfuse(messagesForAPI, systemPrompt),
       output: convertOutputToLangfuse(collectedMessages),
       usage: {
-        input_tokens: 0,
-        output_tokens: 0,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
       },
       startTime: new Date(start),
       endTime: new Date(),
@@ -236,6 +290,25 @@ export async function* queryModelGemini(
             }
           : undefined,
     })
+
+    // Safety: if the stream ended without message_stop, assemble what we have
+    // so the turn still carries usage instead of vanishing.
+    if (partialMessage) {
+      for (const output of assembleFinalAssistantOutputs({
+        partialMessage,
+        contentBlocks,
+        tools,
+        agentId: options.agentId,
+        usage,
+        stopReason,
+        ...(geminiMaxTokens !== undefined
+          ? { maxTokens: geminiMaxTokens }
+          : {}),
+        maxTokensEnvHint: GEMINI_MAX_TOKENS_ENV_HINT,
+      })) {
+        yield output
+      }
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Gemini] Error: ${errorMessage}`, { level: 'error' })

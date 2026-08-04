@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import {
-  getOfficialOpenAIPromptCacheKey,
+  getOpenAIPromptCacheKey,
   isOfficialOpenAIBaseURL,
+  shouldSendOpenAIPromptCacheKey,
 } from '../openaiShared.js'
 
 describe('isOfficialOpenAIBaseURL', () => {
@@ -29,22 +30,106 @@ describe('isOfficialOpenAIBaseURL', () => {
   })
 })
 
-describe('getOfficialOpenAIPromptCacheKey', () => {
+describe('getOpenAIPromptCacheKey', () => {
   test('returns a session key for the SDK default and official endpoint', () => {
-    expect(getOfficialOpenAIPromptCacheKey(undefined, 'session-1')).toBe(
+    expect(getOpenAIPromptCacheKey(undefined, 'session-1')).toBe(
       'occ:session-1',
     )
     expect(
-      getOfficialOpenAIPromptCacheKey('https://api.openai.com/v1', 'session-2'),
+      getOpenAIPromptCacheKey('https://api.openai.com/v1', 'session-2'),
     ).toBe('occ:session-2')
   })
 
   test('returns undefined for compatible endpoints', () => {
     expect(
-      getOfficialOpenAIPromptCacheKey(
-        'https://api.deepseek.com/v1',
-        'session-1',
-      ),
+      getOpenAIPromptCacheKey('https://api.deepseek.com/v1', 'session-1'),
     ).toBeUndefined()
+  })
+})
+
+describe('shouldSendOpenAIPromptCacheKey', () => {
+  afterEach(() => {
+    delete process.env.OPENAI_PROMPT_CACHE_KEY
+  })
+
+  test('Chat Completions defaults to official OpenAI endpoints only', () => {
+    // The OpenAI-compatible *chat* ecosystem (GLM/Kimi/DeepSeek/Cerebras) is
+    // where strict servers 400 on unknown top-level keys.
+    expect(shouldSendOpenAIPromptCacheKey(undefined, 'chat')).toBe(true)
+    expect(
+      shouldSendOpenAIPromptCacheKey('https://api.deepseek.com/v1', 'chat'),
+    ).toBe(false)
+    // No protocol given behaves like chat.
+    expect(shouldSendOpenAIPromptCacheKey('https://api.deepseek.com/v1')).toBe(
+      false,
+    )
+  })
+
+  test('the Responses protocol always gets a key, on any base URL', () => {
+    // Measured against a live gateway (5 turns, identical prefix): omitting
+    // the key dropped the cumulative hit rate from 75.8% to 18.3%, per-turn
+    // 95/0/0/0/0. Serving /responses means implementing OpenAI's Responses
+    // schema, where prompt_cache_key is a documented standard field.
+    expect(
+      shouldSendOpenAIPromptCacheKey(
+        'https://gateway.internal/v1',
+        'responses',
+      ),
+    ).toBe(true)
+    expect(
+      getOpenAIPromptCacheKey(
+        'https://gateway.internal/v1',
+        'sess',
+        'responses',
+      ),
+    ).toBe('occ:sess')
+  })
+
+  test('OPENAI_PROMPT_CACHE_KEY=1 opts a gateway in', () => {
+    // The common "OpenAI behind LiteLLM/one-api/OpenRouter" setup: the gateway
+    // forwards the key, and without it a multi-turn session is free to land on
+    // a different cache node each turn.
+    process.env.OPENAI_PROMPT_CACHE_KEY = '1'
+    expect(shouldSendOpenAIPromptCacheKey('https://gateway.internal/v1')).toBe(
+      true,
+    )
+    expect(getOpenAIPromptCacheKey('https://gateway.internal/v1', 'sess')).toBe(
+      'occ:sess',
+    )
+  })
+
+  test('OPENAI_PROMPT_CACHE_KEY=0 forces it off, including on /responses', () => {
+    // Escape hatch for a gateway that passes unknown keys through to an
+    // upstream that rejects them.
+    process.env.OPENAI_PROMPT_CACHE_KEY = '0'
+    expect(shouldSendOpenAIPromptCacheKey(undefined)).toBe(false)
+    expect(
+      shouldSendOpenAIPromptCacheKey(
+        'https://gateway.internal/v1',
+        'responses',
+      ),
+    ).toBe(false)
+    expect(getOpenAIPromptCacheKey(undefined, 'sess')).toBeUndefined()
+  })
+
+  test('an unparseable value falls back to the base-URL decision', () => {
+    process.env.OPENAI_PROMPT_CACHE_KEY = 'maybe'
+    expect(shouldSendOpenAIPromptCacheKey(undefined)).toBe(true)
+    expect(shouldSendOpenAIPromptCacheKey('https://api.deepseek.com/v1')).toBe(
+      false,
+    )
+  })
+
+  test('accepts the same spellings as isEnvTruthy/isEnvDefinedFalsy', () => {
+    for (const value of ['1', 'true', 'YES', ' on ']) {
+      process.env.OPENAI_PROMPT_CACHE_KEY = value
+      expect(shouldSendOpenAIPromptCacheKey('https://compat.example/v1')).toBe(
+        true,
+      )
+    }
+    for (const value of ['0', 'false', 'NO', ' off ']) {
+      process.env.OPENAI_PROMPT_CACHE_KEY = value
+      expect(shouldSendOpenAIPromptCacheKey(undefined)).toBe(false)
+    }
   })
 })

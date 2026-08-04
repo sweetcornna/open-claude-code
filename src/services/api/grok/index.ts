@@ -37,11 +37,11 @@ import {
   convertToolsToLangfuse,
 } from '../../../services/langfuse/convert.js'
 import type { Options } from '../claude.js'
-import { randomUUID } from 'crypto'
-import {
-  createAssistantAPIErrorMessage,
-  normalizeContentFromAPI,
-} from '../../../utils/messages.js'
+import { createAssistantAPIErrorMessage } from '../../../utils/messages.js'
+import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+
+const GROK_MAX_TOKENS_ENV_HINT =
+  'GROK_MAX_TOKENS or CLAUDE_CODE_MAX_OUTPUT_TOKENS'
 
 /**
  * Grok (xAI) query path. Grok uses an OpenAI-compatible API, so we reuse
@@ -149,6 +149,7 @@ export async function* queryModelGrok(
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
     }
+    let stopReason: string | null = null
     let ttftMs = 0
     const start = Date.now()
 
@@ -200,26 +201,9 @@ export async function* queryModelGrok(
           break
         }
         case 'content_block_stop': {
-          const idx = event.index
-          const block = contentBlocks[idx]
-          if (!block || !partialMessage) break
-
-          const m: AssistantMessage = {
-            message: {
-              ...partialMessage,
-              content: normalizeContentFromAPI(
-                [block] as unknown as BetaMessage['content'],
-                tools,
-                options.agentId,
-              ),
-            } as AssistantMessage['message'],
-            requestId: undefined,
-            type: 'assistant',
-            uuid: randomUUID(),
-            timestamp: new Date().toISOString(),
-          }
-          collectedMessages.push(m)
-          yield m
+          // Block accumulation is complete; assembly happens at message_stop
+          // so the persisted message carries the trailing usage chunk (xAI
+          // reports prompt_tokens_details.cached_tokens only there).
           break
         }
         case 'message_delta': {
@@ -230,25 +214,46 @@ export async function* queryModelGrok(
               deltaUsage as unknown as Parameters<typeof updateOpenAIUsage>[1],
             )
           }
+          if (event.delta.stop_reason != null) {
+            stopReason = event.delta.stop_reason
+          }
           break
         }
-        case 'message_stop':
+        case 'message_stop': {
+          if (partialMessage) {
+            for (const output of assembleFinalAssistantOutputs({
+              partialMessage,
+              contentBlocks,
+              tools,
+              agentId: options.agentId,
+              usage,
+              stopReason,
+              ...(Number.isFinite(grokMaxTokens) && grokMaxTokens > 0
+                ? { maxTokens: grokMaxTokens }
+                : {}),
+              maxTokensEnvHint: GROK_MAX_TOKENS_ENV_HINT,
+            })) {
+              if (output.type === 'assistant') {
+                collectedMessages.push(output)
+              }
+              yield output
+            }
+            // Reset so the post-loop safety fallback does not double-yield.
+            partialMessage = null
+          }
+          if (usage.input_tokens + usage.output_tokens > 0) {
+            const costUSD = calculateUSDCost(
+              grokModel,
+              usage as unknown as BetaUsage,
+            )
+            addToTotalSessionCost(
+              costUSD,
+              usage as unknown as BetaUsage,
+              options.model,
+            )
+          }
           break
-      }
-
-      if (
-        event.type === 'message_stop' &&
-        usage.input_tokens + usage.output_tokens > 0
-      ) {
-        const costUSD = calculateUSDCost(
-          grokModel,
-          usage as unknown as BetaUsage,
-        )
-        addToTotalSessionCost(
-          costUSD,
-          usage as unknown as BetaUsage,
-          options.model,
-        )
+        }
       }
 
       yield {
@@ -275,6 +280,25 @@ export async function* queryModelGrok(
       completionStartTime: ttftMs > 0 ? new Date(start + ttftMs) : undefined,
       tools: convertToolsToLangfuse(toolSchemas as unknown[]),
     })
+
+    // Safety: if the stream ended without message_stop, assemble what we have
+    // so the turn still carries usage instead of vanishing.
+    if (partialMessage) {
+      for (const output of assembleFinalAssistantOutputs({
+        partialMessage,
+        contentBlocks,
+        tools,
+        agentId: options.agentId,
+        usage,
+        stopReason,
+        ...(Number.isFinite(grokMaxTokens) && grokMaxTokens > 0
+          ? { maxTokens: grokMaxTokens }
+          : {}),
+        maxTokensEnvHint: GROK_MAX_TOKENS_ENV_HINT,
+      })) {
+        yield output
+      }
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Grok] Error: ${errorMessage}`, { level: 'error' })

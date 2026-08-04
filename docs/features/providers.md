@@ -44,6 +44,47 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 **按模型开启 1M 后缀**：`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔模型名/子串，大小写不敏感）。主循环模型解析后命中即自动追加 `[1m]` 后缀，等价于手选 `sonnet[1m]`——走完整的后缀链路（1M 窗口 **+ 1M beta 头**），适用于支持 1M 上下文的 Anthropic 系模型；已带后缀的模型不重复追加。第三方模型只需要窗口数值时，用 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 即可，无需该开关。
 
+## 五点五、Prompt 缓存（各家的命中率从哪来）
+
+各 provider 的缓存都是**前缀命中**：请求的前缀与上一轮完全一致才算命中。所以任何让前缀发生位移或改写的东西（工具表变动、system prompt 动态段变化、把上一轮的响应换个形状发回去）都会把整轮打成 miss。
+
+| Provider | 机制 | occ 的处理 |
+| --- | --- | --- |
+| Anthropic | 显式 `cache_control` 断点 | system 块 + 单个消息断点；TTL 见 [system-prompt.mdx](../context/system-prompt.mdx) 的 `should1hCacheTTL` 一节（含 `CLAUDE_CODE_PROMPT_CACHING_1H`） |
+| OpenAI Chat Completions | 自动前缀缓存 + `prompt_cache_key` 粘性路由 | 会话级稳定 key `occ:<sessionId>`，默认只发官方端点 |
+| OpenAI Responses / Codex | 同上 + reasoning 回放 | key 恒发；reasoning 见下 |
+| Gemini | 隐式缓存 | `promptTokenCount` 含缓存前缀，统计时须扣除（`normalizeGeminiUsage`） |
+| Grok (xAI) | 自动前缀缓存 | 无需额外参数 |
+
+### 实测：什么真的影响命中率
+
+对一个 OpenAI 兼容网关跑的对照实验（`gpt-5.3-codex-spark`，5 轮，~4K token 稳定前缀，每次只改一个变量）：
+
+| 场景 | 累计命中率 | 逐轮 |
+| --- | --- | --- |
+| 发 `prompt_cache_key` | **75.8%** | 0 / 93 / 94 / 96 / 91 |
+| 不发 `prompt_cache_key` | **18.3%** | 95 / 0 / 0 / 0 / 0 |
+| 每轮改动一个 tool description | **0.0%** | 0 / 0 / 0 / 0 / 0 |
+| 每轮改动 system prompt 尾部 | 88.5% | 92 / 90 / 89 / 87 / 85 |
+
+两条结论：
+
+1. **粘性路由键是最大的杠杆。** 没有 `prompt_cache_key`，只有第一次追问命中，之后每轮都落到不同的缓存节点。这就是"缓存率特别低"的典型形态。
+2. **工具表变动是唯一的一票否决。** 改一个 tool description 就是全表 miss —— 工具数组排在最前面。occ 因此刻意不把延迟加载的工具放进请求（见 `queryModelOpenAI` 里的 filter 注释），MCP 中途连接也走 delta attachment 而不是重算 system prompt。system prompt 尾部漂移反而没那么致命。
+
+**`OPENAI_PROMPT_CACHE_KEY`**：默认规则按协议分开——
+
+- `/responses`：**总是发**。能提供这个端点就意味着实现了 Responses schema，`prompt_cache_key` 是其中的标准字段。
+- Chat Completions：只发给官方 `api.openai.com`。会 400 拒收未知顶层字段的严格端点（GLM / Kimi / DeepSeek / Cerebras 直连）都在 chat 这条线上，而它们并不提供 `/responses`。
+
+把 OpenAI 挂在 chat 网关后面（LiteLLM / one-api / new-api / OpenRouter）时用 `OPENAI_PROMPT_CACHE_KEY=1` 强制开启；`=0` 强制关闭，用于会把未知键透传给上游、而上游拒收的网关。
+
+**Responses / Codex 的 reasoning 回放**：推理模型走 `/responses` 且 `store: false` 时服务端不留状态，第 N 轮的 reasoning item 不回放就彻底丢失。occ 的做法是请求带 `include: ["reasoning.encrypted_content"]`，从 `response.output_item.done` 抓取后按 `_openaiReasoningItems` 挂在该轮 assistant 消息上（消息级而非内容块级——中途切模型时消息级附加字段会被丢弃，块级会跟着发给别的 provider），下一轮在该 assistant 轮最前面按原顺序回放；assistant 文本按 `{type:'message', content:[{type:'output_text'}]}` 回放而不是裸 `{role, content}`（后者归一成 `input_text`，等于告诉模型它自己上一轮的回答是用户输入）。
+
+**这是保真修复，不是缓存修复**：同样的对照实验（6 轮，开/关回放）两边命中率都是 80.9%——OpenAI 的前缀缓存是拿客户端**自己上一次的请求**去匹配的，一个始终不回放的客户端也能和自己接上。回放买到的是模型在工具调用轮之间不用重新推导意图。
+
+这条链路只在 `OPENAI_WIRE_API=responses` 时启用，Chat Completions 的消息体不会出现这个字段（严格端点会拒未知键）。
+
 ## 六、Provider 档案
 
 `/provider save <name>` 把当前整组 env 快照成档案，`/provider use <name>` 全形状切换（先清全部家族键再写目标，含 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`）。多模型来回切换的推荐方式。
@@ -60,4 +101,5 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 - **thinking 字段**：仅 `deepseek`/`mimo` 模型名自动启用；GLM 等需手动 `OPENAI_ENABLE_THINKING=1`。启用时同时发三种格式字段，**严格校验未知字段的端点（Cerebras/Qwen 直连）可能 400**——此时 `OPENAI_ENABLE_THINKING=0` 关闭。
 - `stream_options: {include_usage: true}` 恒发；个别严格端点会拒。
-- prompt cache 键只发给官方 api.openai.com（第三方隔离）。
+- Chat Completions 的 prompt cache 键默认只发给官方 api.openai.com（第三方隔离），网关场景用 `OPENAI_PROMPT_CACHE_KEY=1` 放行；`/responses` 恒发。见 §五点五。
+- Gemini 只走隐式缓存，occ 不创建显式 `cachedContent`；Gemini 也不单独上报缓存写入量，所以 Gemini 的 `cache_creation_input_tokens` 恒为 0。

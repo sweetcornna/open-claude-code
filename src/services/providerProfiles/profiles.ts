@@ -82,6 +82,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'ANTHROPIC_SMALL_FAST_MODEL',
     'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
     'CLAUDE_CODE_1M_CONTEXT_MODELS',
+    'CLAUDE_CODE_PROMPT_CACHING_1H',
   ],
   openai: [
     'OPENAI_BASE_URL',
@@ -96,6 +97,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'OPENAI_MAX_TOKENS',
     'OPENAI_ORG_ID',
     'OPENAI_PROJECT_ID',
+    'OPENAI_PROMPT_CACHE_KEY',
     'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   ],
   gemini: [

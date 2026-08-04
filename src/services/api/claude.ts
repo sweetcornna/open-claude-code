@@ -70,7 +70,11 @@ import {
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/session/context.js'
 import { resolveAppliedEffort } from '../../utils/model/effort.js'
-import { isEnvTruthy } from '../../utils/config/envUtils.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/config/envUtils.js'
+import {
+  matches1hCacheAllowlist,
+  resolve1hCacheAllowlist,
+} from './promptCacheTTL.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
 import { captureAPIRequest, logError } from '../../utils/telemetry/log.js'
 import {
@@ -377,8 +381,9 @@ export function getCacheControl({
  * Determines if 1h TTL should be used for prompt caching.
  *
  * Only applied when:
- * 1. User is eligible (ant or subscriber within rate limits)
- * 2. The query source matches a pattern in the GrowthBook allowlist
+ * 1. User is eligible (ant or subscriber within rate limits), unless
+ *    CLAUDE_CODE_PROMPT_CACHING_1H forces the decision
+ * 2. The query source matches a pattern in the allowlist
  *
  * GrowthBook config shape: { allowlist: string[] }
  * Patterns support trailing '*' for prefix matching.
@@ -386,6 +391,9 @@ export function getCacheControl({
  * - { allowlist: ["repl_main_thread*", "sdk"] } — main thread + SDK only
  * - { allowlist: ["repl_main_thread*", "sdk", "agent:*"] } — also subagents
  * - { allowlist: ["*"] } — all sources
+ *
+ * Allowlist resolution (including the no-config fallback that used to leave
+ * 1h TTL unreachable) lives in promptCacheTTL.ts.
  *
  * The allowlist is cached in STATE for session stability — prevents mixed
  * TTLs when GrowthBook's disk cache updates mid-request.
@@ -400,6 +408,12 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
     return true
   }
 
+  // Explicit override wins over both gates. `=0` is the only way to force 5m
+  // TTL back for an eligible user (e.g. a metered API key where the 2x write
+  // surcharge is not worth it); `=1` opts a non-subscriber in.
+  if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_PROMPT_CACHING_1H)) return false
+  const forced1h = isEnvTruthy(process.env.CLAUDE_CODE_PROMPT_CACHING_1H)
+
   // Latch eligibility in bootstrap state for session stability — prevents
   // mid-session overage flips from changing the cache_control TTL, which
   // would bust the server-side prompt cache (~20K tokens per flip).
@@ -410,7 +424,7 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
       (isClaudeAISubscriber() && !currentLimits.isUsingOverage)
     setPromptCache1hEligible(userEligible)
   }
-  if (!userEligible) return false
+  if (!userEligible && !forced1h) return false
 
   // Cache allowlist in bootstrap state for session stability — prevents mixed
   // TTLs when GrowthBook's disk cache updates mid-request
@@ -419,18 +433,11 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
     const config = getFeatureValue_CACHED_MAY_BE_STALE<{
       allowlist?: string[]
     }>('tengu_prompt_cache_1h_config', {})
-    allowlist = config.allowlist ?? []
+    allowlist = [...resolve1hCacheAllowlist(config)]
     setPromptCache1hAllowlist(allowlist)
   }
 
-  return (
-    querySource !== undefined &&
-    allowlist.some(pattern =>
-      pattern.endsWith('*')
-        ? querySource.startsWith(pattern.slice(0, -1))
-        : querySource === pattern,
-    )
-  )
+  return matches1hCacheAllowlist(querySource, allowlist)
 }
 
 /**
