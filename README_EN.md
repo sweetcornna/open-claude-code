@@ -100,20 +100,20 @@ Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-part
 | Feature | Description | Docs |
 | --- | --- | --- |
 | **Goal-driven execution** | `/goal <objective>` drives the agent across turns until done, with a token budget, completion/blocked audit and `pause`/`resume`/`continue`/`clear` | [`src/commands/goal/`](./src/commands/goal/) |
-| **Ultracode multi-agent orchestration** | `/ultracode` plus the `Workflow` tool runs deterministic JS scripts (`agent`/`pipeline`/`parallel`/`phase`); `/workflows` gives a live panel, with journal replay and a concurrency cap | [docs](./docs/features/workflow-scripts.md) |
+| **Ultracode multi-agent orchestration** | `/ultracode` plus the `Workflow` tool runs deterministic JS scripts (`agent`/`pipeline`/`parallel`/`phase`); `/workflows` gives a live panel, with journal replay and a concurrency cap | [docs](./docs/zh/features/workflow-scripts.md) |
 | **Artifacts** | The model uploads HTML/dashboards/reports to a public URL (7d/30d expiry). Cloudflare Worker + R2, self-hostable | [docs](./packages/cloud-artifacts/README.md) |
-| **ACP protocol** | Connect Zed, Cursor and other IDEs, with session resume, Skills and permission bridging | [docs](./docs/features/acp-zed.md) |
-| **Remote Control** | `occ remote-control` hands the session to [Happy](https://github.com/slopus/happy) (phone / web / end-to-end encrypted) over occ's own ACP agent; the server is self-hostable | [docs](./docs/features/remote-control-self-hosting.md) |
-| **Langfuse monitoring** | Inspect every agent loop in detail, export to a dataset in one click | [docs](./docs/features/langfuse-monitoring.md) |
-| **Web search** | Built-in search via Bing / Brave | [docs](./docs/features/web-browser-tool.md) |
+| **ACP protocol** | Connect Zed, Cursor and other IDEs, with session resume, Skills and permission bridging | [docs](./docs/zh/features/acp-zed.md) |
+| **Remote Control** | `occ remote-control` hands the session to [Happy](https://github.com/slopus/happy) (phone / web / end-to-end encrypted) over occ's own ACP agent; the server is self-hostable | [docs](./docs/zh/features/remote-control-self-hosting.md) |
+| **Langfuse monitoring** | Inspect every agent loop in detail, export to a dataset in one click | [docs](./docs/zh/features/langfuse-monitoring.md) |
+| **Web search** | Built-in search via Bing / Brave | [docs](./docs/zh/features/web-browser-tool.md) |
 | **Poor mode** | Disables memory extraction and typing suggestions to cut concurrent requests | `/poor` |
-| **Channels** | MCP servers push external messages into the session (Feishu/Slack/Discord…) | [docs](./docs/features/channels.md) |
-| **Custom providers** | OpenAI / Anthropic / Gemini / Grok compatible | [docs](./docs/features/all-features-guide.md) |
-| Voice mode | Voice input, including Doubao (`/voice doubao`) | [docs](./docs/features/voice-mode.md) |
-| Computer Use | Screenshots, keyboard and mouse control | [docs](./docs/features/computer-use.md) |
-| **Chrome browser tools** | `occ --chrome` attaches Google's `chrome-devtools-mcp`: navigate, click, snapshot, console/network, performance traces. Anything that changes the page asks first | [docs](./docs/features/chrome-devtools-mcp.md) |
-| Chrome Use (third-party) | A separate option: the `hangwin/mcp-chrome` extension | [docs](./docs/features/chrome-use-mcp.md) |
-| `/dream` | Automatic memory consolidation | [docs](./docs/features/auto-dream.md) |
+| **Channels** | MCP servers push external messages into the session (Feishu/Slack/Discord…) | [docs](./docs/zh/features/channels.md) |
+| **Custom providers** | OpenAI / Anthropic / Gemini / Grok compatible | [docs](./docs/zh/features/all-features-guide.md) |
+| Voice mode | Voice input, including Doubao (`/voice doubao`) | [docs](./docs/zh/features/voice-mode.md) |
+| Computer Use | Screenshots, keyboard and mouse control | [docs](./docs/zh/features/computer-use.md) |
+| **Chrome browser tools** | `occ --chrome` attaches Google's `chrome-devtools-mcp`: navigate, click, snapshot, console/network, performance traces. Anything that changes the page asks first | [docs](./docs/zh/features/chrome-devtools-mcp.md) |
+| Chrome Use (third-party) | A separate option: the `hangwin/mcp-chrome` extension | [docs](./docs/zh/features/chrome-use-mcp.md) |
+| `/dream` | Automatic memory consolidation | [docs](./docs/zh/features/auto-dream.md) |
 
 ## Feature flags
 
@@ -123,7 +123,7 @@ Enable with `FEATURE_<FLAG_NAME>=1`:
 FEATURE_FORK_SUBAGENT=1 bun run dev
 ```
 
-The 33 flags on by default are in `DEFAULT_BUILD_FEATURES` in [`scripts/defines.ts`](./scripts/defines.ts); anything else needs the env var. Per-feature notes live in [`docs/features/`](./docs/features/).
+The 33 flags on by default are in `DEFAULT_BUILD_FEATURES` in [`scripts/defines.ts`](./scripts/defines.ts); anything else needs the env var. Per-feature notes live in [`docs/zh/features/`](./docs/zh/features/).
 
 ## Debugging in VS Code
 

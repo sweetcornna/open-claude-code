@@ -61,7 +61,7 @@ occ-bun       # 以 Bun 启动
 occ update    # 更新到最新版本
 ```
 
-首次运行 `occ` 会进入配置向导：可选从官方 Claude Code（`~/.claude`）迁移既有配置，然后选择 OAuth 登录或 API 配置（Anthropic 兼容 / OpenAI 兼容 / 国产模型 preset / Gemini / Grok），API 模式下可直接填协议（chat/responses）、模型名和模型最大上下文（自动联动 auto-compact 阈值）。详见 `docs/features/providers.md`。
+首次运行 `occ` 会进入配置向导：可选从官方 Claude Code（`~/.claude`）迁移既有配置，然后选择 OAuth 登录或 API 配置（Anthropic 兼容 / OpenAI 兼容 / 国产模型 preset / Gemini / Grok），API 模式下可直接填协议（chat/responses）、模型名和模型最大上下文（自动联动 auto-compact 阈值）。详见 `docs/zh/features/providers.md`。
 
 > 2.8 之前的 `ccb` / `ccb-bun` 命令名已移除，沿用旧命令的脚本请改为 `occ` / `occ-bun`。
 
@@ -119,28 +119,28 @@ bun run build    # 构建
 | Max ctx | 模型的最大上下文。填对了，occ 会在快满时自动压缩对话，而不是撞上"prompt is too long" | `128k` / `1m` / `200000` |
 | Haiku / Sonnet / Opus | 按档位分别指定模型（不想区分就只填 Model） | `claude-sonnet-4-6` |
 
-**Tab / Shift+Tab** 切换字段，**Enter** 确认，最后一个字段按 Enter 保存。配置细节（环境变量、按模型开 1M 上下文、`/provider` 档案切换）见 [`docs/features/providers.md`](./docs/features/providers.md)。
+**Tab / Shift+Tab** 切换字段，**Enter** 确认，最后一个字段按 Enter 保存。配置细节（环境变量、按模型开 1M 上下文、`/provider` 档案切换）见 [`docs/zh/features/providers.md`](./docs/zh/features/providers.md)。
 
 ## 主要特性
 
 | 特性 | 说明 | 文档 |
 | --- | --- | --- |
 | **🎯 Goal 持续驱动** | `/goal <objective>` 设定目标后自动跨轮驱动 agent 直至完成；带 token budget、completion/blocked audit 与 `pause`/`resume`/`continue`/`clear` | [`src/commands/goal/`](./src/commands/goal/) |
-| **🧠 Ultracode 多 Agent 编排** | `/ultracode` + `Workflow` 工具跑确定性 JS 脚本（`agent`/`pipeline`/`parallel`/`phase`），`/workflows` 双栏监控面板，支持 journal 重放与并发上限 | [文档](./docs/features/workflow-scripts.md) |
+| **🧠 Ultracode 多 Agent 编排** | `/ultracode` + `Workflow` 工具跑确定性 JS 脚本（`agent`/`pipeline`/`parallel`/`phase`），`/workflows` 双栏监控面板，支持 journal 重放与并发上限 | [文档](./docs/zh/features/workflow-scripts.md) |
 | **🧩 插件市场** | 首次启动自动装上官方 `claude-plugins-official`（300+ 插件），`/plugin` 浏览安装；保留名只认 `github.com/anthropics/*` 严格来源 | `/plugin` |
 | **📦 Artifacts** | 模型把 HTML/看板/报告上传到公开 URL（7d/30d 自动过期），Cloudflare Worker + R2 可自托管 | [说明](./packages/cloud-artifacts/README.md) |
-| **ACP 协议支持** | 接入 Zed、Cursor 等 IDE，支持会话恢复、Skills、权限桥接 | [文档](./docs/features/acp-zed.md) |
-| **Remote Control** | `occ remote-control` 把会话交给 [Happy](https://github.com/slopus/happy)（手机 / Web / 端到端加密），走的是 occ 自己的 ACP agent；服务端可自托管 | [文档](./docs/features/remote-control-self-hosting.md) |
-| **Langfuse 监控** | 每次 agent loop 的细节都能看到，可一键转为数据集 | [文档](./docs/features/langfuse-monitoring.md) |
-| **Web Search** | 内置网页搜索，支持 Bing / Brave | [文档](./docs/features/web-browser-tool.md) |
+| **ACP 协议支持** | 接入 Zed、Cursor 等 IDE，支持会话恢复、Skills、权限桥接 | [文档](./docs/zh/features/acp-zed.md) |
+| **Remote Control** | `occ remote-control` 把会话交给 [Happy](https://github.com/slopus/happy)（手机 / Web / 端到端加密），走的是 occ 自己的 ACP agent；服务端可自托管 | [文档](./docs/zh/features/remote-control-self-hosting.md) |
+| **Langfuse 监控** | 每次 agent loop 的细节都能看到，可一键转为数据集 | [文档](./docs/zh/features/langfuse-monitoring.md) |
+| **Web Search** | 内置网页搜索，支持 Bing / Brave | [文档](./docs/zh/features/web-browser-tool.md) |
 | **Poor Mode** | 穷鬼模式，关掉记忆提取和键入建议，大幅减少并发请求 | `/poor` 开关 |
-| **Channels 频道通知** | MCP 服务器把外部消息推进会话（飞书/Slack/Discord 等） | [文档](./docs/features/channels.md) |
-| **自定义模型供应商** | OpenAI 兼容（GPT/GLM/Kimi/DeepSeek）/ Anthropic 兼容 / Gemini / Grok，可配协议、模型与最大上下文 | [文档](./docs/features/providers.md) |
-| Voice Mode | 语音输入，支持豆包（`/voice doubao`） | [文档](./docs/features/voice-mode.md) |
-| Computer Use | 屏幕截图、键鼠控制 | [文档](./docs/features/computer-use.md) |
-| **Chrome 浏览器工具** | `occ --chrome` 接上 Google `chrome-devtools-mcp`：导航、点击、快照、控制台/网络、性能 trace。改页面的操作都要确认 | [文档](./docs/features/chrome-devtools-mcp.md) |
-| Chrome Use（第三方） | 另一套方案：`hangwin/mcp-chrome` 扩展 | [文档](./docs/features/chrome-use-mcp.md) |
-| /dream 记忆整理 | 自动整理和优化记忆文件 | [文档](./docs/features/auto-dream.md) |
+| **Channels 频道通知** | MCP 服务器把外部消息推进会话（飞书/Slack/Discord 等） | [文档](./docs/zh/features/channels.md) |
+| **自定义模型供应商** | OpenAI 兼容（GPT/GLM/Kimi/DeepSeek）/ Anthropic 兼容 / Gemini / Grok，可配协议、模型与最大上下文 | [文档](./docs/zh/features/providers.md) |
+| Voice Mode | 语音输入，支持豆包（`/voice doubao`） | [文档](./docs/zh/features/voice-mode.md) |
+| Computer Use | 屏幕截图、键鼠控制 | [文档](./docs/zh/features/computer-use.md) |
+| **Chrome 浏览器工具** | `occ --chrome` 接上 Google `chrome-devtools-mcp`：导航、点击、快照、控制台/网络、性能 trace。改页面的操作都要确认 | [文档](./docs/zh/features/chrome-devtools-mcp.md) |
+| Chrome Use（第三方） | 另一套方案：`hangwin/mcp-chrome` 扩展 | [文档](./docs/zh/features/chrome-use-mcp.md) |
+| /dream 记忆整理 | 自动整理和优化记忆文件 | [文档](./docs/zh/features/auto-dream.md) |
 
 ## Feature Flags
 
@@ -151,7 +151,7 @@ FEATURE_FORK_SUBAGENT=1 bun run dev    # 开一个默认没编进去的 flag
 FEATURE_GOAL=0 bun run build           # 关掉一个默认开着的 flag
 ```
 
-默认启用的 33 个 flag 见 [`scripts/defines.ts`](./scripts/defines.ts) 的 `DEFAULT_BUILD_FEATURES`；不在表里的需要显式开。dev 与 build 共用同一套解析逻辑，所以两边行为一致。各 Feature 的说明见 [`docs/features/`](./docs/features/)。
+默认启用的 33 个 flag 见 [`scripts/defines.ts`](./scripts/defines.ts) 的 `DEFAULT_BUILD_FEATURES`；不在表里的需要显式开。dev 与 build 共用同一套解析逻辑，所以两边行为一致。各 Feature 的说明见 [`docs/zh/features/`](./docs/zh/features/)。
 
 ## VS Code 调试
 
