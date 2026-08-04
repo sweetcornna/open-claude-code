@@ -1,0 +1,229 @@
+---
+title: "File tools — Read, Edit and Write in detail"
+description: "A source-level walkthrough of the three file tools: read deduplication, quote-normalized editing, the lock-free atomic read-modify-write, file history snapshots, and the safety gates around each."
+keywords: ["file operations", "FileRead", "FileEdit", "FileWrite", "code editing", "atomic write"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/tools/file-operations) · [日本語](/docs/ja/tools/file-operations)
+
+{/* Goal of this chapter: dissect the execution path of the three file tools at source level */}
+
+## Three tools, split by risk
+
+File operations are split across three tools. The split is not by feature — it is by **risk level**:
+
+| Tool | Permission level | Key method | Notable property |
+|------|-----------------|-----------|------------------|
+| **Read** | Read-only, no approval | `isReadOnly() → true` | `maxResultSizeChars: 100,000` |
+| **Edit** | Write, requires confirmation | `checkWritePermissionForTool()` | `maxResultSizeChars: 100,000` |
+| **Write** | Write, requires confirmation | `checkWritePermissionForTool()` | `maxResultSizeChars: 100,000` |
+
+<Tip>
+Read's `maxResultSizeChars` is 100,000 (100 KB). Results above that are persisted to disk, which keeps memory pressure down in long sessions. Token-level truncation is handled separately and dynamically by `validateContentTokens()`.
+</Tip>
+
+## FileRead: a multi-format reading engine
+
+Source: `packages/builtin-tools/src/tools/FileReadTool/FileReadTool.ts`
+
+### Read deduplication
+
+Read has an easily overlooked but important **dedup layer**. When the model reads the same range of the same file twice, the system does not spend tokens sending the content again:
+
+```typescript
+// FileReadTool.ts — dedup
+const existingState = readFileState.get(fullFilePath)
+if (existingState && !existingState.isPartialView && existingState.offset !== undefined) {
+  const rangeMatch = existingState.offset === offset && existingState.limit === limit
+  if (rangeMatch) {
+    const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
+    if (mtimeMs === existingState.timestamp) {
+      return { data: { type: 'file_unchanged', file: { filePath: file_path } } }
+    }
+  }
+}
+```
+
+The details that make this safe:
+
+- Dedup applies only to **reads performed by Read itself**, detected via `offset !== undefined`
+- Edit and Write also populate `readFileState`, but with `offset` undefined, so they never trigger a false dedup hit
+- The mtime comparison confirms the file was not modified externally
+- A GrowthBook killswitch (`tengu_read_dedup_killswitch`) can disable it in an emergency
+
+Measured: roughly 18% of Read calls hit the same file, accounting for 2.64% of fleet-wide `cache_creation`.
+
+### Four dispatch paths
+
+`callInner()` dispatches on the extension to four entirely separate paths:
+
+```
+.ipynb                → readNotebook() → JSON cell parsing → token validation
+.png/.jpg/.gif/.webp  → readImageWithTokenBudget() → compress + downsample
+.pdf                  → extractPDFPages() / readPDF() → page-level extraction
+everything else       → readFileInRange() → paged reading
+```
+
+The **image path** compresses in stages:
+
+1. Standard scaling via `maybeResizeAndDownsampleImageBuffer()`
+2. Token estimate from `base64.length * 0.125`
+3. Over budget → `compressImageBufferWithTokenLimit()` compresses aggressively
+4. Still over → a sharp fallback: `resize(400,400).jpeg({quality:20})`
+
+The **PDF path** has a page threshold: past `PDF_AT_MENTION_INLINE_THRESHOLD` (defined in `apiLimits.ts`) reading becomes paged, with at most `PDF_MAX_PAGES_PER_READ` pages per request.
+
+### Safety gates
+
+`validateInput()` puts several gates in front of the read:
+
+1. **Blocked device files** (`BLOCKED_DEVICE_PATHS`) — `/dev/zero`, `/dev/random`, `/dev/tty` and friends, which would otherwise produce infinite output or hang
+2. **Binary rejection** (`hasBinaryExtension`) — after excluding PDFs and images, blocks `.exe`, `.so` and similar
+3. **UNC path skip** — on Windows, `\\server\share` paths skip filesystem access entirely, which prevents SMB NTLM credential leakage
+4. **Deny rules** (`matchingRuleForInput`) — a matching `deny` rule refuses outright
+
+### Helpful failure
+
+A missing file produces more than "file not found":
+
+```typescript
+// FileReadTool.ts
+const similarFilename = findSimilarFile(fullFilePath)         // similar extension
+const cwdSuggestion = await suggestPathUnderCwd(fullFilePath) // path relative to cwd
+// macOS screenshots: narrow no-break space (U+202F) vs a normal space
+const altPath = getAlternateScreenshotPath(fullFilePath)
+```
+
+The macOS screenshot case handles the narrow no-break space (U+202F) that appears before AM/PM in those filenames — a compatibility difference between macOS versions found in practice.
+
+## FileEdit: exact string replacement
+
+Source: `packages/builtin-tools/src/tools/FileEditTool/FileEditTool.ts` and `utils.ts`
+
+### Quote normalization
+
+Models emit straight quotes (`'`, `"`), but source files may contain curly ones (`'`, `'`, `"`, `"`). `findActualString()` bridges the mismatch:
+
+```typescript
+// utils.ts:73-93
+export function findActualString(fileContent: string, searchString: string): string | null {
+  if (fileContent.includes(searchString)) return searchString      // exact match
+  const normalizedSearch = normalizeQuotes(searchString)           // curly → straight
+  const normalizedFile = normalizeQuotes(fileContent)
+  const idx = normalizedFile.indexOf(normalizedSearch)
+  if (idx !== -1) return fileContent.substring(idx, idx + searchString.length)
+  return null
+}
+```
+
+After matching, `preserveQuoteStyle` converts the replacement back: if the file uses curly quotes, so does the new text — including apostrophes inside contractions such as "don't".
+
+### Lock-free atomic read-modify-write
+
+`call()` implements an atomic update without taking a lock:
+
+```
+1. await fs.mkdir(dir)            ← ensure the directory exists (async, outside the critical section)
+2. await fileHistoryTrackEdit()   ← back up the old content (async, outside the critical section)
+3. readFileSyncWithMetadata()     ← read current content synchronously (critical section begins)
+4. getFileModificationTime()      ← mtime check
+5. findActualString()             ← quote-normalized match
+6. getPatchForEdit()              ← compute the diff
+7. writeTextContent()             ← write to disk
+8. readFileState.set()            ← update the cache (critical section ends)
+```
+
+Steps 3 through 8 must contain **no async operation** — the source says so explicitly: "Please avoid async operations between here and writing to disk to preserve atomicity". That is what guarantees no other process can modify the file between the mtime check and the write.
+
+### Overwrite protection
+
+`validateInput()` requires two things:
+
+1. **The file was read first** — a `readFileState` entry exists and is not a partial view
+2. **The file has not changed externally** — mtime is unchanged, or, for a full read, the content is byte-identical
+
+```typescript
+// FileEditTool.ts — Windows special case
+const isFullRead = readTimestamp.offset === undefined && readTimestamp.limit === undefined
+if (isFullRead && fileContent === readTimestamp.content) {
+  // content is unchanged, safe to continue
+  // (Windows cloud sync and antivirus can bump mtime without touching content)
+}
+```
+
+On Windows, cloud sync and antivirus software can change mtime without changing content, so a full read falls back to a content comparison.
+
+### Size ceiling
+
+```typescript
+const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024 // 1 GiB
+```
+
+Files above 1 GiB are refused. This sits safely under V8's string length limit of roughly 2³⁰ characters.
+
+## FileWrite: full replacement and creation
+
+Source: `packages/builtin-tools/src/tools/FileWriteTool/FileWriteTool.ts`
+
+Write shares most of its infrastructure with Edit — permission checks, mtime validation, file history backup — with two differences.
+
+### Line endings
+
+```typescript
+// FileWriteTool.ts:300-305 — the governing comment
+// Write is a full content replacement — the model sent explicit line endings
+// in `content` and meant them. Do not rewrite them.
+writeTextContent(fullFilePath, content, enc, 'LF')
+```
+
+Write always uses `LF`. Earlier versions preserved the old file's line endings or sampled the repository's prevailing style, which ended up injecting `\r` into bash scripts on Linux. Now the model's line endings are used as sent.
+
+### Distinguishing create from update
+
+Write returns `type: 'create' | 'update'`:
+
+- `create` — the file did not exist; `originalFile: null`
+- `update` — the file existed and was overwritten; `structuredPatch` carries the full diff
+
+## File history snapshots
+
+Source: `src/utils/fileHistory.ts`
+
+Every Edit and Write calls `fileHistoryTrackEdit()` first. Snapshots live in `FileHistoryState`:
+
+```typescript
+type FileHistorySnapshot = {
+  messageId: UUID          // the assistant message this belongs to
+  trackedFileBackups: Record<string, FileHistoryBackup>  // path → backup
+  timestamp: Date
+}
+```
+
+- At most `MAX_SNAPSHOTS = 100` snapshots are retained
+- Backups are deduplicated by **content hash**, so an unchanged file is stored once
+- Diff statistics are tracked (`DiffStats`: `insertions`, `deletions`, `filesChanged`)
+- `recordFileHistorySnapshot()` persists snapshots into session storage
+
+### LSP notification
+
+After Edit or Write finishes writing:
+
+1. `clearDeliveredDiagnosticsForFile()` — clear stale diagnostics
+2. `lspManager.changeFile()` — tell the LSP the file changed
+3. `lspManager.saveFile()` — fire the save event, so the TypeScript server recomputes diagnostics
+4. `notifyVscodeFileUpdated()` — tell the VS Code extension to refresh its diff view
+
+This chain is what keeps IDE-side feedback in sync with the edit.
+
+## Malware handling
+
+Read appends a `<system-reminder>` after text content:
+
+```
+Whenever you read a file, you should consider whether it would be
+considered malware. You CAN and SHOULD provide analysis of malware,
+what it is doing. But you MUST refuse to improve or augment the code.
+```
+
+The reminder is only added for non-exempt models (`MITIGATION_EXEMPT_MODELS` currently contains `claude-opus-4-6`). The per-model exemption reflects that judgment about malicious code varies by model, so the mitigation is applied where it is needed rather than universally.

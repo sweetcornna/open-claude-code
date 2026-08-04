@@ -1,0 +1,229 @@
+---
+title: "ファイル操作ツール — Read / Edit / Write の詳細"
+description: "3 つのファイルツールをソースレベルで追います。読み取りの重複排除、引用符を正規化した編集、ロックなしの原子的な read-modify-write、ファイル履歴スナップショット、そして各段の安全弁。"
+keywords: ["ファイル操作", "FileRead", "FileEdit", "FileWrite", "コード編集", "原子的書き込み"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/tools/file-operations) · [中文](/docs/zh/tools/file-operations) · **日本語**
+
+{/* この章の目的: 3 つのファイルツールの実行経路をソースレベルで解剖する */}
+
+## リスクで分けた 3 つのツール
+
+ファイル操作は 3 つのツールに分かれています。機能による分割ではなく、**リスクの段階**による分割です。
+
+| ツール | 権限レベル | 主要メソッド | 主な属性 |
+|--------|-----------|-------------|---------|
+| **Read** | 読み取りのみ、承認不要 | `isReadOnly() → true` | `maxResultSizeChars: 100,000` |
+| **Edit** | 書き込み、確認が必要 | `checkWritePermissionForTool()` | `maxResultSizeChars: 100,000` |
+| **Write** | 書き込み、確認が必要 | `checkWritePermissionForTool()` | `maxResultSizeChars: 100,000` |
+
+<Tip>
+Read の `maxResultSizeChars` は 100,000（100 KB）です。これを超える結果はディスクへ退避され、長いセッションでのメモリ負荷を抑えます。トークン単位の切り詰めは別に `validateContentTokens()` が動的に行います。
+</Tip>
+
+## FileRead: 複数形式に対応する読み取りエンジン
+
+ソース: `packages/builtin-tools/src/tools/FileReadTool/FileReadTool.ts`
+
+### 読み取りの重複排除
+
+Read には見落とされがちですが重要な**重複排除層**があります。モデルが同じファイルの同じ範囲を 2 回読んだとき、同じ内容を再送してトークンを浪費することはありません。
+
+```typescript
+// FileReadTool.ts — 重複排除
+const existingState = readFileState.get(fullFilePath)
+if (existingState && !existingState.isPartialView && existingState.offset !== undefined) {
+  const rangeMatch = existingState.offset === offset && existingState.limit === limit
+  if (rangeMatch) {
+    const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
+    if (mtimeMs === existingState.timestamp) {
+      return { data: { type: 'file_unchanged', file: { filePath: file_path } } }
+    }
+  }
+}
+```
+
+安全に成り立たせている要点:
+
+- 重複排除は **Read 自身による読み取り**にだけ効きます（`offset !== undefined` で判定）
+- Edit と Write も `readFileState` を更新しますが `offset` は undefined なので、誤って重複排除に当たることはありません
+- mtime の比較で、外部から変更されていないことを確認します
+- 緊急時には GrowthBook の killswitch（`tengu_read_dedup_killswitch`）で無効化できます
+
+実測では Read 呼び出しの約 18% が同一ファイルへの衝突で、全体の `cache_creation` の 2.64% を占めていました。
+
+### 4 つの処理経路
+
+`callInner()` は拡張子を見て、まったく別の 4 経路へ振り分けます。
+
+```
+.ipynb                → readNotebook() → JSON セル解析 → トークン検証
+.png/.jpg/.gif/.webp  → readImageWithTokenBudget() → 圧縮 + ダウンサンプル
+.pdf                  → extractPDFPages() / readPDF() → ページ単位の抽出
+それ以外              → readFileInRange() → ページング読み取り
+```
+
+**画像経路**は段階的に圧縮します。
+
+1. `maybeResizeAndDownsampleImageBuffer()` による標準的な縮小
+2. `base64.length * 0.125` によるトークン数の見積もり
+3. 予算超過なら `compressImageBufferWithTokenLimit()` で強めに圧縮
+4. それでも超過するなら sharp で最終手段: `resize(400,400).jpeg({quality:20})`
+
+**PDF 経路**にはページ数の閾値があります。`PDF_AT_MENTION_INLINE_THRESHOLD`（`apiLimits.ts` で定義）を超えるとページング読み取りになり、1 リクエストあたり最大 `PDF_MAX_PAGES_PER_READ` ページです。
+
+### 安全弁
+
+`validateInput()` が読み取りの前にいくつもの門を置きます。
+
+1. **デバイスファイルの遮断**（`BLOCKED_DEVICE_PATHS`）— `/dev/zero`、`/dev/random`、`/dev/tty` など。無限出力やハングを防ぐ
+2. **バイナリの拒否**（`hasBinaryExtension`）— PDF と画像を除外したうえで、`.exe` や `.so` などを止める
+3. **UNC パスのスキップ** — Windows の `\\server\share` はファイルシステム操作自体を行わない。SMB NTLM の資格情報漏洩を防ぐため
+4. **拒否ルール**（`matchingRuleForInput`）— `deny` に一致すればその場で拒否
+
+### 失敗時に手がかりを返す
+
+ファイルが無いとき、単なる「file not found」では終わりません。
+
+```typescript
+// FileReadTool.ts
+const similarFilename = findSimilarFile(fullFilePath)         // 似た拡張子
+const cwdSuggestion = await suggestPathUnderCwd(fullFilePath) // cwd 相対のパス候補
+// macOS のスクリーンショット: 狭い改行なし空白 (U+202F) と通常の空白
+const altPath = getAlternateScreenshotPath(fullFilePath)
+```
+
+macOS のスクリーンショット名では AM/PM の直前に狭い改行なし空白（U+202F）が入ります。macOS のバージョン間で挙動が違い、実運用で見つかった互換性の問題です。
+
+## FileEdit: 厳密な文字列置換
+
+ソース: `packages/builtin-tools/src/tools/FileEditTool/FileEditTool.ts` と `utils.ts`
+
+### 引用符の正規化
+
+モデルが出せるのは直線的な引用符（`'`、`"`）ですが、ソースには曲線の引用符（`'`、`'`、`"`、`"`）が含まれることがあります。`findActualString()` がこのズレを埋めます。
+
+```typescript
+// utils.ts:73-93
+export function findActualString(fileContent: string, searchString: string): string | null {
+  if (fileContent.includes(searchString)) return searchString      // 完全一致
+  const normalizedSearch = normalizeQuotes(searchString)           // 曲線 → 直線
+  const normalizedFile = normalizeQuotes(fileContent)
+  const idx = normalizedFile.indexOf(normalizedSearch)
+  if (idx !== -1) return fileContent.substring(idx, idx + searchString.length)
+  return null
+}
+```
+
+一致後は `preserveQuoteStyle` が逆方向の変換を行います。ファイルが曲線の引用符を使っていれば、置換後の文字列も曲線に揃えます。"don't" のような短縮形のアポストロフィも含みます。
+
+### ロックを取らない原子的な read-modify-write
+
+`call()` はロックなしで原子的な更新を実装します。
+
+```
+1. await fs.mkdir(dir)            ← ディレクトリを用意（非同期、クリティカルセクションの外）
+2. await fileHistoryTrackEdit()   ← 旧内容をバックアップ（非同期、クリティカルセクションの外）
+3. readFileSyncWithMetadata()     ← 現在の内容を同期読み取り（クリティカルセクション開始）
+4. getFileModificationTime()      ← mtime の検査
+5. findActualString()             ← 引用符を正規化して照合
+6. getPatchForEdit()              ← 差分を計算
+7. writeTextContent()             ← ディスクへ書き込み
+8. readFileState.set()            ← キャッシュ更新（クリティカルセクション終了）
+```
+
+3 から 8 の間には**非同期処理を一切置いてはいけません**。ソースにも明記されています。"Please avoid async operations between here and writing to disk to preserve atomicity"。これが、mtime の検査と実際の書き込みの間に他のプロセスが割り込めないことを保証します。
+
+### 上書きの防止
+
+`validateInput()` は 2 つを要求します。
+
+1. **先に読んでいること** — `readFileState` にエントリがあり、部分ビューでないこと
+2. **外部から変更されていないこと** — mtime が変わっていない、または全体読み取りの場合は内容が完全に一致すること
+
+```typescript
+// FileEditTool.ts — Windows の特例
+const isFullRead = readTimestamp.offset === undefined && readTimestamp.limit === undefined
+if (isFullRead && fileContent === readTimestamp.content) {
+  // 内容は変わっていないので続行してよい
+  //（Windows のクラウド同期やウイルス対策は内容を変えずに mtime を動かす）
+}
+```
+
+Windows ではクラウド同期やウイルス対策ソフトが内容を変えずに mtime を更新することがあるため、全体読み取りのときは内容の比較を保険にしています。
+
+### サイズの上限
+
+```typescript
+const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024 // 1 GiB
+```
+
+1 GiB を超えるファイルは編集を拒否します。V8 の文字列長の上限（約 2³⁰ 文字）に対して安全側の境界です。
+
+## FileWrite: 全体の置き換えと新規作成
+
+ソース: `packages/builtin-tools/src/tools/FileWriteTool/FileWriteTool.ts`
+
+Write は Edit と基盤の大半を共有します（権限チェック、mtime 検査、ファイル履歴のバックアップ）。違いは 2 点です。
+
+### 改行コード
+
+```typescript
+// FileWriteTool.ts:300-305 — 方針を定めたコメント
+// Write is a full content replacement — the model sent explicit line endings
+// in `content` and meant them. Do not rewrite them.
+writeTextContent(fullFilePath, content, enc, 'LF')
+```
+
+Write は常に `LF` を使います。初期の版は旧ファイルの改行コードを保ったり、リポジトリの傾向を見て合わせたりしていましたが、その結果 Linux 上の bash スクリプトに `\r` が混入しました。現在はモデルが送ったとおりの改行を使います。
+
+### create と update の区別
+
+Write は `type: 'create' | 'update'` を返します。
+
+- `create` — ファイルが存在しなかった。`originalFile: null`
+- `update` — 既存ファイルを上書きした。`structuredPatch` に完全な差分が入る
+
+## ファイル履歴のスナップショット
+
+ソース: `src/utils/fileHistory.ts`
+
+Edit と Write は書き込み前に必ず `fileHistoryTrackEdit()` を呼びます。スナップショットは `FileHistoryState` に置かれます。
+
+```typescript
+type FileHistorySnapshot = {
+  messageId: UUID          // 対応する assistant メッセージ
+  trackedFileBackups: Record<string, FileHistoryBackup>  // パス → バックアップ
+  timestamp: Date
+}
+```
+
+- スナップショットは最大 `MAX_SNAPSHOTS = 100` 件まで保持される
+- バックアップは**内容ハッシュ**で重複排除され、変更のないファイルは 1 度だけ保存される
+- 差分統計を追跡する（`DiffStats`: `insertions`、`deletions`、`filesChanged`）
+- `recordFileHistorySnapshot()` がセッションストレージへ永続化する
+
+### LSP への通知
+
+Edit / Write の書き込み後:
+
+1. `clearDeliveredDiagnosticsForFile()` — 古い診断を消す
+2. `lspManager.changeFile()` — ファイルが変わったことを LSP に伝える
+3. `lspManager.saveFile()` — 保存イベントを発火し、TypeScript server に診断を再計算させる
+4. `notifyVscodeFileUpdated()` — VS Code 拡張に差分ビューの更新を伝える
+
+この連鎖が、編集と IDE 側の表示を同期させています。
+
+## マルウェアの扱い
+
+Read はテキスト内容の後ろに `<system-reminder>` を付けます。
+
+```
+Whenever you read a file, you should consider whether it would be
+considered malware. You CAN and SHOULD provide analysis of malware,
+what it is doing. But you MUST refuse to improve or augment the code.
+```
+
+この注意書きは免除対象でないモデルにのみ付きます（`MITIGATION_EXEMPT_MODELS` には現在 `claude-opus-4-6` が入っています）。モデルごとの免除は、悪意あるコードに対する判断力がモデルによって異なることを反映したもので、必要なところにだけ適用する設計です。

@@ -1,0 +1,281 @@
+---
+title: "検索とナビゲーション — 大規模コードベースで目的地を見つける"
+description: "Claude Code の検索の仕組み。ファイル名を探す Glob、内容を探す Grep（いずれも内蔵 ripgrep 上）、50 以上のツールから適切な 1 つを見つける ToolSearch、そしてリポジトリ外を扱う WebSearch / WebFetch のパイプライン。"
+keywords: ["コード検索", "Glob", "Grep", "ripgrep", "ファイル検索"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/tools/search-and-navigation) · [中文](/docs/zh/tools/search-and-navigation) · **日本語**
+
+## 検索の 2 つの軸
+
+| 軸 | ツール | 実装 | 使う場面 |
+|----|-------|------|---------|
+| **名前でファイルを探す** | Glob | ripgrep `--files` + glob フィルタ | 「テストファイルを全部」「config で始まるファイル」 |
+| **内容でコードを探す** | Grep | ripgrep の正規表現検索 | 「この関数はどこで定義されているか」「この API を誰が呼んでいるか」 |
+
+どちらも同じ ripgrep エンジンを、引数を変えて使います。
+
+## ripgrep の同梱方法
+
+Claude Code はシステムの ripgrep に依存しません。`src/utils/ripgrep.ts` が 3 段階で解決します。
+
+```
+第 1 段: システムの ripgrep（USE_BUILTIN_RIPGREP=false）
+  → PATH 上の rg バイナリ
+  → セキュリティ上の注意: フルパスではなく 'rg' という名前だけで起動する。PATH 乗っ取りを避けるため
+
+第 2 段: 埋め込み（bundled/native ビルド）
+  → process.execPath 自身を argv0='rg' で起動
+  → Bun が rg を静的リンクし、argv0 で振り分ける
+
+第 3 段: vendor ディレクトリ（npm ビルド）
+  → vendor/ripgrep/{arch}-{platform}/rg
+  → macOS ではさらに codesign 署名と quarantine 属性の除去が必要
+```
+
+プラットフォームごとの配置:
+
+```
+vendor/ripgrep/
+  ├── x86_64-darwin/rg      # macOS Intel
+  ├── arm64-darwin/rg       # macOS Apple Silicon
+  ├── x86_64-linux/rg       # Linux Intel
+  ├── arm64-linux/rg        # Linux ARM
+  └── x86_64-win32/rg.exe   # Windows
+```
+
+### macOS のコード署名
+
+vendor 方式では Gatekeeper を通すために ad-hoc 署名が必要です（`codesignRipgrepIfNecessary()`）。
+
+```typescript
+// 初回使用時:
+// 1. すでに有効な署名があるか
+codesign -vv -d <rg-path>
+// 2. linker 署名だけなら署名し直す
+codesign --sign - --force --preserve-metadata=entitlements,requirements,flags,runtime <rg-path>
+// 3. quarantine 属性を外す
+xattr -d com.apple.quarantine <rg-path>
+```
+
+## 結果の設計判断
+
+### head_limit とトークン予算
+
+大きなプロジェクトでは一致が数十万件になりえます。既定の上限 250 件は恣意的な数字ではなく、**トークン予算**から来ています。
+
+- 一致 1 行はおよそ 50〜100 トークン
+- 250 件で約 12,500〜25,000 トークン
+- 200K のコンテキスト窓の 6〜12% 程度
+- これを超えると推論の質が落ちる
+
+Grep の `head_limit` でモデルが調整できます。小さなプロジェクトならもっと大きくして構いません。
+
+### 更新時刻でのソート
+
+Glob は**最近更新されたファイルを先頭**に並べます。ファイルシステム既定の順序ではなく、意図的な設計です。
+
+```
+前提: 最近更新されたファイルほど、いま関係している可能性が高い
+効果: 眠っている過去のファイルではなく、生きているコードから見える
+```
+
+`packages/builtin-tools/src/tools/GlobTool/` では、ripgrep の出力をモデルへ渡す前に mtime で並べ替えます。
+
+### ripgrep のエラー回復
+
+`src/utils/ripgrep.ts` に専用の回復経路があります。
+
+| エラー | 対応 |
+|--------|------|
+| **EAGAIN**（資源不足） | `-j 1` の単一スレッドで再試行 |
+| **タイムアウト**（既定 20 秒、WSL では 60 秒） | 途中までの結果を返し、切れている可能性のある最終行は捨てる |
+| **バッファ超過** | 20 MB で打ち切り、集まった分を返す |
+| **SIGTERM が効かない** | 5 秒後に SIGKILL へ引き上げる |
+
+## ToolSearch: 50 以上のツールから選ぶ
+
+MCP サーバー由来を含めて 50 を超えるツールがあると、モデルはどれを使うべきか分からなくなります。その発見機構が **ToolSearch**（`packages/builtin-tools/src/tools/ToolSearchTool/`）です。
+
+### スコアリング
+
+`searchToolsWithKeywords()` が重み付きのキーワード検索を行います。
+
+```
+入力: query = "database connection"
+     ↓
+1. 完全一致: 名前が完全に一致するツールがあるか（高速経路）
+2. MCP 接頭辞一致: "mcp__postgres" → postgres 系のツールすべて
+3. キーワード分割: ["database", "connection"]
+4. ツール名の解析:
+   - MCP ツール: "mcp__server__action" → ["server", "action"]
+   - 通常ツール: "FileEditTool"        → ["file", "edit", "tool"]
+5. 重み付きスコア:
+   - 名前の完全一致: 10 点（MCP は 12 点）
+   - 名前の部分一致:  5 点（MCP は 6 点）
+   - searchHint 一致: 4 点
+   - 説明の一致:      2 点
+6. 必須語のフィルタ: "+database" は必須指定
+7. スコア順に並べ、上位 N 件を返す
+```
+
+### `select:` による直接指定
+
+既知のツールは `select:ToolName` で直接指定できます。検索より速く、カンマ区切りの一括指定（`select:A,B,C`）にも対応します。
+
+### 遅延ツール
+
+すべてのツールが常駐しているわけではありません。MCP ツールや使用頻度の低いものは `isDeferredTool` として印を付けられ、ToolSearch が選んだときにだけ読み込まれます。ツールの説明文はトークンを多く使うため、呼び出しごとのコストを抑える効果があります。
+
+### キャッシュ
+
+ツール説明の取得はメモ化され、遅延ツールの集合が変わったときだけ無効化されます。
+
+```typescript
+// 並べ替えて連結したツール名をキャッシュキーにする
+function getDeferredToolsCacheKey(deferredTools: Tools): string {
+  return deferredTools.map(t => t.name).sort().join(',')
+}
+```
+
+## Web 検索と取得
+
+モデルの情報源はローカルのコードに限りません。
+
+- **WebSearch**（`packages/builtin-tools/src/tools/WebSearchTool/`）はインターネットを検索する
+- **WebFetch**（`packages/builtin-tools/src/tools/WebFetchTool/`）は特定の URL を取得して Markdown に変換する
+
+これにより、ドキュメントを読み、Stack Overflow を検索し、GitHub の issue を確認できます。人間の開発者と同じ働き方です。
+
+### WebSearch の仕組み
+
+WebSearch は**接続済みのすべてのソースを並列に走らせ、結果を統合**します。組み立ては `packages/builtin-tools/src/tools/WebSearchTool/adapters/` の `createAdapter()` が行います。
+
+```
+統合の構成:
+  WebSearchTool.call()
+    → createAdapter() がソースを組む
+      ├─ 主経路 = 現在の provider 自身の検索層
+      │    firstParty/Foundry/Vertex（Claude 4.x）→ ApiSearchAdapter
+      │    openai → CodexSearchAdapter（Responses API 内蔵の web_search）
+      │    gemini → GeminiSearchAdapter（googleSearch grounding）
+      │    その他（grok/bedrock…）→ 主経路なし
+      └─ 補助経路 = 残りの接続済みソース + free（鍵不要の複数エンジン取得）
+    → AggregateSearchAdapter が並列に発火 → URL を正規化して重複排除・統合
+    → 単一の SearchResult[] を返す
+```
+
+**有効化と優先順位:**
+
+- **資格情報があれば有効。** Claude / Google / ChatGPT のいずれかにログインすると対応ソースが自動で加わります。`free` はアカウント不要で既定で有効です。settings の `webSearchSources` は明示的な変更のみを記録し、パネルは `/search-setting` です。
+- **同じ系統は 1 経路のみ。** 主経路がすでに扱っている資格情報系統は、補助経路として重ねて送りません。
+- **遅延の規律。** 主経路が返った後、補助経路には 2 秒の猶予しかありません。主経路が空または失敗した場合は補助経路を最後まで待ちます。
+- **名指しは統合を飛ばす。** `WEB_SEARCH_ADAPTER`（環境変数）が `settings.webSearchAdapter` より優先されます。値は `api|codex|gemini|free|bing|brave|exa`。認識できない値は黙って統合へ戻ります。
+
+アダプタはステートレスで、同じ組み合わせはセッション内で再利用されます。
+
+#### ApiSearchAdapter — サーバー側の検索
+
+Anthropic API の `web_search_20250305` server tool に委譲します。
+
+```
+ApiSearchAdapter.search(query, options)
+  → queryModelWithStreaming() が独立した API 呼び出しを行う
+    → extraToolSchemas: [BetaWebSearchTool20250305] を添える
+    → サーバー側が検索を実行し、イベントを流し返す
+      → server_tool_use / web_search_tool_result / text が交互に届く
+  → extractSearchResults() が content ブロックから SearchResult[] を取り出す
+```
+
+| 項目 | 実装 |
+|------|------|
+| **モデル選択** | `tengu_plum_vx3` フラグが Haiku（tool_choice を強制）か主モデルかを決める |
+| **検索回数の上限** | 1 回の呼び出しで最大 8 検索（`max_uses: 8`） |
+| **ドメインフィルタ** | `allowedDomains` / `blockedDomains` |
+| **進捗** | `input_json_delta` を解析してクエリを取り出し、`onProgress` を随時呼ぶ |
+
+#### BingSearchAdapter — Bing の検索結果ページを解析する
+
+Bing の HTML を取得し、正規表現で結果を取り出します。API キーは不要です。
+
+```
+BingSearchAdapter.search(query, options)
+  → axios.get(bing.com/search?q=…)  — ブラウザ相当のヘッダでボット判定を回避
+  → extractBingResults(html)
+    → <li class="b_algo"> のブロックに一致させる
+    → <h2><a> からタイトルと URL を取る
+    → resolveBingUrl() が Bing のリダイレクトを解く
+    → extractSnippet() が 3 つの候補を順に試す
+  → クライアント側のドメインフィルタ（allowedDomains / blockedDomains）
+  → SearchResult[]
+```
+
+**ボット判定。** Bing はブラウザ以外の UA には JS 描画前提の空ページを返します。そのためアダプタは Edge のヘッダ一式（`Sec-Ch-Ua`、`Sec-Fetch-*` など）を送って実際の HTML を得ます。`setmkt=en-US` で市場を固定し、IP による地域判定でドイツ語やシンガポール向けの結果が返るのを防ぎます。
+
+**URL の復号。** Bing は結果の URL をリダイレクトで包みます（`bing.com/ck/a?…&u=a1aHR0cHM6Ly9…`）。`resolveBingUrl()` が `u` パラメータを base64 復号して実体を取り出します。接頭辞 `a1` は https、`a0` は http です。
+
+**要約の抽出**（`extractSnippet()`）は次の順に試します。
+
+1. `<p class="b_lineclamp…">` — 行数制限付きの要約段落
+2. `<div class="b_caption">` 内の `<p>` — 通常の要約
+3. `<div class="b_caption">` の直下テキスト — 最後の手段
+
+| 項目 | 実装 |
+|------|------|
+| **タイムアウト** | 30 秒（`FETCH_TIMEOUT_MS`） |
+| **ドメインフィルタ** | `allowedDomains` / `blockedDomains`。サブドメインも対象 |
+| **進捗** | query_update と search_results_received を通知 |
+| **中止** | 外部の AbortSignal が axios へ伝播する |
+
+### WebSearchTool のインターフェース
+
+`WebSearchTool`（`packages/builtin-tools/src/tools/WebSearchTool/WebSearchTool.ts`）はメインループから見えるツール定義で、すべての provider で利用できます（`isEnabled()` は常に true）。アダプタが返す `SearchResult[]` を内部形式へ変換し、`mapToolResultToToolResultBlockParam` が Markdown リンク付きのテキストに整形したうえで、回答に出典を含めるよう促す REMINDER を添えます。
+
+### WebFetch の仕組み
+
+WebFetch は HTTP クライアントと内容処理パイプラインの組み合わせです。
+
+```
+WebFetchTool.call({ url, prompt })
+  → getURLMarkdownContent(url)
+    → validateURL() — 2000 文字以内、認証情報を含まない、公開ドメイン
+    → URL_CACHE の参照（TTL 15 分の LRU、上限 50 MB）
+    → checkDomainBlocklist() — api.anthropic.com/api/web/domain_info で事前確認
+    → getWithPermittedRedirects() — リダイレクトを自前で扱う axios 呼び出し
+      → HTML → Turndown が Markdown へ変換（遅延生成のシングルトン、約 1.4 MB）
+      → HTML 以外 → 生テキスト
+      → バイナリ（PDF など）→ persistBinaryContent() がディスクへ保存
+  → applyPromptToMarkdown()
+    → 10 万文字へ切り詰め
+    → queryHaiku() が小さなモデルで prompt の求める情報を抽出
+  → 処理結果を返す
+```
+
+保護は多層です。
+
+| 層 | 仕組み | 備考 |
+|----|--------|------|
+| **ドメインの事前確認** | `checkDomainBlocklist()` | `api.anthropic.com/api/web/domain_info?domain=…` を呼ぶ。5 分キャッシュ |
+| **リダイレクト制御** | `isPermittedRedirect()` | 同一ホスト（±www）のみ許可。クロスオリジンは再呼び出しを促すメッセージを返す |
+| **リダイレクト深度** | `MAX_REDIRECTS = 10` | 無限ループを防ぐ |
+| **内容サイズ** | `MAX_HTTP_CONTENT_LENGTH = 10 MB` | 1 応答あたりの上限 |
+| **タイムアウト** | `FETCH_TIMEOUT_MS = 60s` | 本体のリクエスト。ドメイン確認は 10 秒 |
+| **URL 検証** | `validateURL()` | 長さ、スキーム、埋め込み認証情報、公開ドメイン |
+| **egress 検出** | `X-Proxy-Error: blocked-by-allowlist` | 企業プロキシによる遮断を検出する |
+
+**事前承認ドメイン**（`packages/builtin-tools/src/tools/WebFetchTool/preapproved.ts`）には、MDN、Python docs、React docs、AWS docs など主要な技術ドキュメントサイト約 90 件が並びます。手動の許可なしに取得でき、エントリはホスト名のみかパス接頭辞付きで、参照は O(1) です。
+
+事前承認ドメインの場合、内容が 10 万文字未満の Markdown なら Haiku による要約を飛ばして原文を返します。技術ドキュメントはすでに構造が整っているためです。
+
+権限面では、WebFetch がホスト名から `domain:xxx` 規則を導き、ユーザーの allow/deny/ask 規則と照合します。特定ドメインを恒久的に許可・拒否できます。
+
+### ripgrep のストリーミング
+
+QuickOpen のような対話的な用途では、ripgrep もストリーミングします（`ripGrepStream()`）。
+
+```
+rg --files → チャンクが届く → 行に分割 → onLines(lines) コールバック
+```
+
+ripgrep の完了を待つ必要はありません。ディレクトリツリーを走査している最中から、最初の結果が表示されます。呼び出し側は AbortSignal で早期に打ち切れます（十分な件数が集まった時点など）。

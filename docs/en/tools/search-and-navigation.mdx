@@ -1,0 +1,281 @@
+---
+title: "Search and navigation — finding things in a large codebase"
+description: "How Claude Code searches: Glob for filenames, Grep for content, both on an embedded ripgrep; ToolSearch for finding the right tool among 50+; and the WebSearch/WebFetch pipeline for everything outside the repository."
+keywords: ["code search", "Glob", "Grep", "ripgrep", "file search"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/tools/search-and-navigation) · [日本語](/docs/ja/tools/search-and-navigation)
+
+## Two axes of search
+
+| Axis | Tool | Implementation | When it applies |
+|------|------|---------------|-----------------|
+| **Find files by name** | Glob | ripgrep `--files` plus glob filtering | "Find all the test files", "files starting with config" |
+| **Find code by content** | Grep | ripgrep regex search | "Where is this function defined", "who calls this API" |
+
+Both run on the same ripgrep engine with different arguments.
+
+## How ripgrep is embedded
+
+Claude Code does not depend on a system ripgrep. `src/utils/ripgrep.ts` implements a three-tier resolution:
+
+```
+Tier 1: system ripgrep (USE_BUILTIN_RIPGREP=false)
+  → the rg binary on PATH
+  → security note: invoked by bare name 'rg', never a full path, to avoid PATH hijacking
+
+Tier 2: embedded (bundled/native build)
+  → process.execPath itself, with argv0='rg'
+  → Bun statically links rg into the binary and dispatches on argv0
+
+Tier 3: vendor directory (npm build)
+  → vendor/ripgrep/{arch}-{platform}/rg
+  → macOS additionally needs a codesign signature and the quarantine xattr removed
+```
+
+Platform layout:
+
+```
+vendor/ripgrep/
+  ├── x86_64-darwin/rg      # macOS Intel
+  ├── arm64-darwin/rg       # macOS Apple Silicon
+  ├── x86_64-linux/rg       # Linux Intel
+  ├── arm64-linux/rg        # Linux ARM
+  └── x86_64-win32/rg.exe   # Windows
+```
+
+### macOS code signing
+
+In vendor mode the binary needs an ad-hoc signature to pass Gatekeeper (`codesignRipgrepIfNecessary()`):
+
+```typescript
+// on first use:
+// 1. is it already validly signed?
+codesign -vv -d <rg-path>
+// 2. if it is only linker-signed, re-sign it
+codesign --sign - --force --preserve-metadata=entitlements,requirements,flags,runtime <rg-path>
+// 3. drop the quarantine attribute
+xattr -d com.apple.quarantine <rg-path>
+```
+
+## Design decisions in the results
+
+### head_limit and the token budget
+
+A large project can produce hundreds of thousands of matches. The default caps results at 250 — chosen against a **token budget**, not arbitrarily:
+
+- A match line costs roughly 50–100 tokens
+- 250 matches ≈ 12,500–25,000 tokens
+- That is about 6–12% of a 200K context window
+- Past that share, reasoning quality degrades
+
+Grep's `head_limit` lets the model adjust — a small project can afford a larger value.
+
+### Sorted by modification time
+
+Glob puts **recently modified files first**. That is not the filesystem's ordering; it is deliberate:
+
+```
+Assumption: recently modified files are the ones most likely to matter now
+Effect:     the model sees live code first, not dormant history
+```
+
+In `packages/builtin-tools/src/tools/GlobTool/`, ripgrep's output is sorted by mtime before it reaches the model.
+
+### ripgrep error recovery
+
+`src/utils/ripgrep.ts` has a dedicated recovery chain:
+
+| Error | Handling |
+|-------|----------|
+| **EAGAIN** (resource exhaustion) | Retry single-threaded with `-j 1` |
+| **Timeout** (20s default, 60s on WSL) | Return partial results, discarding a possibly-truncated last line |
+| **Buffer overflow** | Truncate at 20 MB and return what was collected |
+| **SIGTERM ignored** | Escalate to SIGKILL after 5 seconds |
+
+## ToolSearch: finding the right tool among 50+
+
+Once more than 50 tools are available — including everything MCP servers contribute — the model may not know which to reach for. **ToolSearch** (`packages/builtin-tools/src/tools/ToolSearchTool/`) is the discovery mechanism.
+
+### The scoring algorithm
+
+`searchToolsWithKeywords()` implements weighted keyword search:
+
+```
+input: query = "database connection"
+     ↓
+1. Exact match: is there a tool whose name matches exactly? (fast path)
+2. MCP prefix match: "mcp__postgres" → every postgres tool
+3. Split into keywords: ["database", "connection"]
+4. Parse tool names:
+   - MCP tools:     "mcp__server__action" → ["server", "action"]
+   - regular tools: "FileEditTool"        → ["file", "edit", "tool"]
+5. Weighted scoring:
+   - exact name match:   10 points (MCP: 12)
+   - partial name match:  5 points (MCP: 6)
+   - searchHint match:    4 points
+   - description match:   2 points
+6. Required-term filtering: a "+database" prefix means it must be present
+7. Sort by score, return the top N
+```
+
+### `select:` for direct selection
+
+The model can also name a known tool directly with `select:ToolName`. This is faster than searching and supports comma-separated batches (`select:A,B,C`).
+
+### Deferred tools
+
+Not every tool stays resident. MCP tools and infrequently used ones are marked `isDeferredTool` and only load once ToolSearch selects them. This keeps the per-call token cost down, since tool descriptions are expensive.
+
+### Caching
+
+Tool description lookup is memoized, and the cache is only cleared when the deferred tool set changes:
+
+```typescript
+// sorted, joined tool names form the cache key
+function getDeferredToolsCacheKey(deferredTools: Tools): string {
+  return deferredTools.map(t => t.name).sort().join(',')
+}
+```
+
+## Web search and fetching
+
+The model's sources are not limited to local code:
+
+- **WebSearch** (`packages/builtin-tools/src/tools/WebSearchTool/`) searches the internet
+- **WebFetch** (`packages/builtin-tools/src/tools/WebFetchTool/`) retrieves a specific URL and converts it to Markdown
+
+Together these let the model consult documentation, search Stack Overflow, and read GitHub issues — the same way a human developer works.
+
+### How WebSearch works
+
+WebSearch **runs every connected source in parallel and merges the results**, assembled by `createAdapter()` in `packages/builtin-tools/src/tools/WebSearchTool/adapters/`:
+
+```
+Aggregation:
+  WebSearchTool.call()
+    → createAdapter() assembles the sources
+      ├─ primary = the current provider's own search layer
+      │    firstParty/Foundry/Vertex (Claude 4.x) → ApiSearchAdapter
+      │    openai → CodexSearchAdapter (web_search built into the Responses API)
+      │    gemini → GeminiSearchAdapter (googleSearch grounding)
+      │    others (grok/bedrock…) → no primary
+      └─ supplementary = the remaining connected sources + free (key-less multi-engine scraping)
+    → AggregateSearchAdapter fires them in parallel → URL-normalized dedupe and merge
+    → one SearchResult[] returned
+```
+
+**Enabling and precedence:**
+
+- **Credentials imply enabled.** Signing in to Claude, Google, or ChatGPT adds the matching source automatically; `free` needs no account and is on by default. `webSearchSources` in settings records only explicit changes, and `/search-setting` is the panel.
+- **One route per family.** A credential family already covered by the primary route is not sent again as a supplementary one.
+- **Latency discipline.** Once the primary returns, supplementary sources get a 2-second grace period. If the primary is empty or fails, they are awaited in full.
+- **Naming a source skips aggregation.** `WEB_SEARCH_ADAPTER` (env) takes precedence over `settings.webSearchAdapter`; accepted values are `api|codex|gemini|free|bing|brave|exa`. An unrecognized value silently falls back to aggregation.
+
+Adapters are stateless, and the same combination is cached and reused within a session.
+
+#### ApiSearchAdapter — server-side search
+
+Delegates the query to the Anthropic API's `web_search_20250305` server tool:
+
+```
+ApiSearchAdapter.search(query, options)
+  → queryModelWithStreaming() makes a separate API call
+    → carrying extraToolSchemas: [BetaWebSearchTool20250305]
+    → the server runs the search and streams events back
+      → server_tool_use / web_search_tool_result / text, interleaved
+  → extractSearchResults() pulls SearchResult[] out of the content blocks
+```
+
+| Aspect | Implementation |
+|--------|---------------|
+| **Model choice** | The `tengu_plum_vx3` flag selects Haiku (with a forced tool_choice) or the main model |
+| **Search cap** | At most 8 searches per call (`max_uses: 8`) |
+| **Domain filtering** | `allowedDomains` / `blockedDomains` |
+| **Progress** | Streams `input_json_delta` to extract the query and calls `onProgress` live |
+
+#### BingSearchAdapter — parsing the Bing results page
+
+Fetches Bing's HTML and extracts results with regular expressions, requiring no API key:
+
+```
+BingSearchAdapter.search(query, options)
+  → axios.get(bing.com/search?q=…)  — browser-grade headers to get past bot detection
+  → extractBingResults(html)
+    → match <li class="b_algo"> blocks
+    → pull the <h2><a> title and URL
+    → resolveBingUrl() decodes Bing's redirect wrapper
+    → extractSnippet() tries three sources in order
+  → client-side domain filtering (allowedDomains / blockedDomains)
+  → SearchResult[]
+```
+
+**Bot detection.** Bing returns an empty, JS-rendered page to non-browser user agents. The adapter sends a complete set of Edge headers (`Sec-Ch-Ua`, `Sec-Fetch-*`, and the rest) to get real HTML. `setmkt=en-US` pins the market so Bing does not geo-target by IP and return, say, German or Singaporean results.
+
+**URL decoding.** Bing wraps result URLs in a redirect (`bing.com/ck/a?…&u=a1aHR0cHM6Ly9…`). `resolveBingUrl()` base64-decodes the real target out of the `u` parameter, where an `a1` prefix means https and `a0` means http.
+
+**Snippet extraction** (`extractSnippet()`) tries three sources in order:
+
+1. `<p class="b_lineclamp…">` — the line-clamped summary paragraph
+2. A `<p>` inside `<div class="b_caption">` — the ordinary summary
+3. The direct text of `<div class="b_caption">` — the fallback
+
+| Aspect | Implementation |
+|--------|---------------|
+| **Timeout** | 30 seconds (`FETCH_TIMEOUT_MS`) |
+| **Domain filtering** | `allowedDomains` / `blockedDomains`, including subdomains |
+| **Progress** | Emits query_update and search_results_received callbacks |
+| **Cancellation** | An external AbortSignal propagates into the axios request |
+
+### The WebSearchTool interface
+
+`WebSearchTool` (`packages/builtin-tools/src/tools/WebSearchTool/WebSearchTool.ts`) is the tool definition the main loop sees, available on every provider (`isEnabled()` always returns true). It converts the adapters' `SearchResult[]` into the internal output shape; `mapToolResultToToolResultBlockParam` formats results as text with Markdown links and appends a REMINDER instructing the model to include sources in its reply.
+
+### How WebFetch works
+
+WebFetch is a complete HTTP client plus a content pipeline:
+
+```
+WebFetchTool.call({ url, prompt })
+  → getURLMarkdownContent(url)
+    → validateURL() — ≤2000 chars, no embedded credentials, public domain
+    → URL_CACHE lookup (15-minute TTL LRU, 50 MB ceiling)
+    → checkDomainBlocklist() — preflight against api.anthropic.com/api/web/domain_info
+    → getWithPermittedRedirects() — axios with custom redirect handling
+      → HTML → Turndown converts to Markdown (lazily loaded singleton, ~1.4 MB)
+      → non-HTML → raw text
+      → binary (PDF and similar) → persistBinaryContent() writes it to disk
+  → applyPromptToMarkdown()
+    → truncate to 100K characters
+    → queryHaiku() extracts what the prompt asked for, using a small model
+  → return the processed result
+```
+
+Protection is layered:
+
+| Layer | Mechanism | Notes |
+|-------|-----------|-------|
+| **Domain preflight** | `checkDomainBlocklist()` | Calls `api.anthropic.com/api/web/domain_info?domain=…`, cached 5 minutes |
+| **Redirect control** | `isPermittedRedirect()` | Only same-host (±www) redirects; a cross-origin redirect returns a message asking the model to call again |
+| **Redirect depth** | `MAX_REDIRECTS = 10` | Prevents an infinite redirect loop |
+| **Content size** | `MAX_HTTP_CONTENT_LENGTH = 10 MB` | Per-response ceiling |
+| **Timeout** | `FETCH_TIMEOUT_MS = 60s` | Main request; the domain preflight uses 10s |
+| **URL validation** | `validateURL()` | Length, scheme, embedded credentials, public domain |
+| **Egress detection** | `X-Proxy-Error: blocked-by-allowlist` | Detects a corporate proxy blocking the request |
+
+**Pre-approved domains** (`packages/builtin-tools/src/tools/WebFetchTool/preapproved.ts`) list roughly 90 mainstream technical documentation sites — MDN, Python docs, React docs, AWS docs — that need no manual authorization. Entries are either hostname-only or path-prefixed, and lookup is O(1).
+
+For a pre-approved domain, WebFetch skips the Haiku summarization step when the content is Markdown under 100K characters and returns the original, since technical documentation is already well structured.
+
+For permissions, WebFetch derives a `domain:xxx` rule from the hostname and matches it against the user's allow/deny/ask rules, so a specific domain can be permanently allowed or refused.
+
+### Streaming ripgrep
+
+For interactive uses such as QuickOpen, ripgrep also streams (`ripGrepStream()`):
+
+```
+rg --files → chunks arrive → split into lines → onLines(lines) callback
+```
+
+There is no wait for ripgrep to finish: the first results render while it is still walking the directory tree. The caller can stop early through an AbortSignal — once enough results have arrived, for instance.
