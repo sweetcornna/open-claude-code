@@ -1,0 +1,256 @@
+---
+title: "Hooks ライフサイクルフック — 実行エンジンとインターセプトプロトコル"
+description: "Claude Code の Hooks システムをソースコードから解説します。27 種類の Hook イベント、6 種類の Hook、同期/非同期実行プロトコル、JSON 出力 schema、if 条件の照合、Hook によるコンテキスト注入とツール呼び出しの遮断を扱います。"
+keywords: ["Hooks", "ライフサイクルフック", "インターセプタ", "PreToolUse", "Hook プロトコル"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/extensibility/hooks) · [中文](/docs/zh/extensibility/hooks) · **日本語**
+
+{/* この章の目的: Hook の実行エンジン、照合機構、返り値プロトコル、ライフサイクル管理をソースコードから示す */}
+
+## 27 種類の Hook イベント
+
+Claude Code は 27 種類の Hook イベント（`HOOK_EVENTS` 配列、`src/entrypoints/sdk/coreTypes.ts`）を定義し、Agent のライフサイクル全体をカバーしています。
+
+| フェーズ | イベント | 発火タイミング | 照合フィールド |
+|----------|----------|----------------|----------------|
+| **セッション** | `SessionStart` | セッション開始 | `source` |
+| | `SessionEnd` | セッション終了 | `reason` |
+| | `Setup` | 初期化完了 | `trigger` |
+| **ユーザー操作** | `UserPromptSubmit` | ユーザーがメッセージを送信 | — |
+| | `Stop` | Agent が応答を停止 | — |
+| | `StopFailure` | Agent の停止に失敗 | `error` |
+| **ツール実行** | `PreToolUse` | ツール呼び出し前 | `tool_name` |
+| | `PostToolUse` | ツール呼び出し後（成功） | `tool_name` |
+| | `PostToolUseFailure` | ツール呼び出し後（失敗） | `tool_name` |
+| **権限** | `PermissionRequest` | 権限リクエスト | `tool_name` |
+| | `PermissionDenied` | 権限が拒否された | `tool_name` |
+| **サブ Agent** | `SubagentStart` | サブ Agent 開始 | `agent_type` |
+| | `SubagentStop` | サブ Agent 停止 | `agent_type` |
+| **圧縮** | `PreCompact` | コンテキスト圧縮前 | `trigger` |
+| | `PostCompact` | コンテキスト圧縮後 | `trigger` |
+| **協調** | `TeammateIdle` | Teammate がアイドル状態 | — |
+| | `TaskCreated` | タスク作成 | — |
+| | `TaskCompleted` | タスク完了 | — |
+| **MCP** | `Elicitation` | MCP サーバーがユーザー入力を要求 | `mcp_server_name` |
+| | `ElicitationResult` | Elicitation の結果を返す | `mcp_server_name` |
+| **通知** | `Notification` | システム通知イベント | `notification_type` |
+| **環境** | `ConfigChange` | 設定変更 | `source` |
+| | `CwdChanged` | 作業ディレクトリ変更 | — |
+| | `FileChanged` | ファイル変更 | `file_path` |
+| | `InstructionsLoaded` | 指示を読み込んだ | `load_reason` |
+| | `WorktreeCreate` / `WorktreeRemove` | Worktree 操作 | — |
+
+## 6 種類の Hook
+
+Hooks 設定は 6 種類の実行方式をサポートし、型定義は 3 ファイルに分かれています。
+
+- **永続化可能な型**（`command`、`prompt`、`agent`、`http`）— Zod schema は `src/schemas/hooks.ts` にあり、`z.discriminatedUnion('type', [...])` で宣言される
+- **callback 型** — TypeScript インターフェースは `src/types/hooks.ts` にあり、SDK が登録する内部 JS 関数に使われる
+- **function 型** — `src/utils/hooks/sessionHooks.ts` で定義され、実行時に動的登録する関数 Hook に使われる
+
+| 型 | 実行方式 | 用途 |
+|----|----------|------|
+| `command` | Shell コマンド（bash/PowerShell） | 汎用スクリプト、CI チェック |
+| `prompt` | AI コンテキストへ注入 | コーディング規約の注意喚起 |
+| `agent` | サブ Agent を起動して実行 | 複雑な分析タスク |
+| `http` | HTTP リクエスト | リモートサービス、Webhook |
+| `callback` | 内部 JS 関数 | システム内蔵 Hook |
+| `function` | 実行時に登録する関数 Hook | Agent/Skill 内部で利用 |
+
+## 実行エンジン: execCommandHook
+
+`execCommandHook()`（`src/utils/hooks.ts` の `execCommandHook` 関数）は、command Hook の実行中核です。
+
+```
+execCommandHook(hook, hookEvent, hookName, jsonInput, signal)
+  ├── Shell の選択: hook.shell ?? DEFAULT_HOOK_SHELL
+  │   ├── bash: spawn(cmd, [], { shell: gitBashPath | true })
+  │   └── powershell: spawn(pwsh, ['-NoProfile', '-NonInteractive', '-Command', cmd])
+  ├── 変数の置換
+  │   ├── ${CLAUDE_PLUGIN_ROOT} → pluginRoot のパス
+  │   ├── ${CLAUDE_PLUGIN_DATA} → plugin データディレクトリ
+  │   └── ${user_config.X} → ユーザー設定値
+  ├── 環境変数の注入
+  │   ├── CLAUDE_PROJECT_DIR
+  │   ├── CLAUDE_ENV_FILE（SessionStart/Setup/CwdChanged/FileChanged）
+  │   └── CLAUDE_PLUGIN_OPTION_*（plugin options）
+  ├── stdin へ書き込む: jsonInput + '\n'
+  ├── タイムアウト: hook.timeout * 1000 ?? 600000ms（10 分）
+  └── 非同期の検出: stdout の先頭行が {"async":true} か確認する
+```
+
+### 非同期 Hook の検出プロトコル
+
+Hook プロセスの stdout の先頭行が `{"async":true}` なら、システムはそれをバックグラウンドタスクへ変換します（`isAsyncHookJSONOutput` で検出し、`executeInBackground` を呼び出す）。
+
+```typescript
+const firstLine = firstLineOf(stdout).trim()
+if (isAsyncHookJSONOutput(parsed)) {
+  executeInBackground({
+    processId: `async_hook_${child.pid}`,
+    asyncResponse: parsed,
+    ...
+  })
+}
+```
+
+バックグラウンド Hook は `registerPendingAsyncHook()` によって `AsyncHookRegistry` へ登録され、完了すると `enqueuePendingNotification()` でメインスレッドへ通知します。
+
+### asyncRewake: Hook によるモデルの再起動
+
+`asyncRewake` モードの Hook は `AsyncHookRegistry` を迂回します。Hook の終了コードが 2 の場合、`enqueuePendingNotification()` が `task-notification` としてメッセージを注入します。アイドル中のモデルは `useQueueProcessor` を介して再起動し、処理中なら `queued_command` の添付として注入されます。
+
+## Hook 出力の JSON Schema
+
+同期 Hook の出力は厳密な Zod schema に従います（`src/types/hooks.ts` の `syncHookResponseSchema`、`src/schemas/hooks.ts` の `hookJSONOutputSchema`）。
+
+```json
+{
+  "continue": false,                    // 実行を継続するか
+  "suppressOutput": true,               // stdout を隠す
+  "stopReason": "セキュリティチェックに失敗", // continue=false の理由
+  "decision": "approve" | "block",      // 全体に対する決定
+  "reason": "理由の説明",                 // 決定理由
+  "systemMessage": "警告内容",            // コンテキストへ注入するシステムメッセージ
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow" | "deny" | "ask",
+    "permissionDecisionReason": "セキュリティ規則に一致",
+    "updatedInput": { ... },            // 変更後のツール入力
+    "additionalContext": "追加コンテキスト" // 会話へ注入する
+  }
+}
+```
+
+### イベント別の hookSpecificOutput
+
+| イベント | 固有フィールド | 役割 |
+|----------|----------------|------|
+| `PreToolUse` | `permissionDecision`, `permissionDecisionReason`, `updatedInput`, `additionalContext` | ツール入力を遮断/変更 |
+| `PostToolUse` | `additionalContext`, `updatedMCPToolOutput` | MCP ツール出力を変更 |
+| `PostToolUseFailure` | `additionalContext` | 失敗後にコンテキストを注入 |
+| `UserPromptSubmit` | `additionalContext` | 追加コンテキストを注入 |
+| `SessionStart` | `additionalContext`, `initialUserMessage`, `watchPaths` | 初期メッセージとファイル監視を設定 |
+| `PermissionRequest` | `decision`（`allow`/`deny` のサブフィールドを含む） | 権限リクエストに対する Hook の決定 |
+| `PermissionDenied` | `retry` | リトライするかを指示 |
+| `SubagentStart` | `additionalContext` | サブ Agent の開始時にコンテキストを注入 |
+| `Elicitation` | `action`, `content` | ユーザー入力ダイアログを制御 |
+| `ElicitationResult` | `action`, `content` | Elicitation の結果を処理 |
+| `Notification` | `additionalContext` | 通知イベントのコンテキストを注入 |
+| `Setup` | `additionalContext` | 初期化時にコンテキストを注入 |
+| `CwdChanged` | `watchPaths` | ディレクトリ変更後に監視パスを更新 |
+| `FileChanged` | `watchPaths` | ファイル変更後に監視パスを更新 |
+| `WorktreeCreate` | `worktreePath` | Worktree 作成通知 |
+
+## Hook の照合機構: getMatchingHooks
+
+`getMatchingHooks()`（`src/utils/hooks.ts` の `getMatchingHooks` 関数）は、すべてのソースから一致する Hook を探します。
+
+### 複数ソースの統合
+
+```
+getHooksConfig()
+  ├── getHooksConfigFromSnapshot()    ← settings.json 内の Hook（user/project/local）
+  ├── getRegisteredHooks()            ← SDK が登録した callback Hook
+  ├── getSessionHooks()               ← Agent/Skill が事前登録した session Hook
+  └── getSessionFunctionHooks()       ← 実行時の function Hook
+```
+
+### 照合規則
+
+`matcher` フィールドは 3 種類のパターンをサポートします（`src/utils/hooks.ts` の `matchesPattern()` 関数）。
+
+```
+"Write"              → 完全一致
+"Write|Edit"         → パイプ区切りの複数値に一致
+"^Bash(git.*)"       → 正規表現に一致
+"*" または ""       → ワイルドカード（すべてに一致）
+```
+
+### if 条件によるフィルタ
+
+Hook には `if` 条件を指定でき、特定の入力に対してだけ発火させられます。`prepareIfConditionMatcher()`（`src/utils/hooks.ts` の `prepareIfConditionMatcher` 関数）が matcher を事前コンパイルします。
+
+```json
+{
+  "hooks": [{
+    "command": "check-git-branch.sh",
+    "if": "Bash(git push*)"
+  }]
+}
+```
+
+`if` 条件は `permissionRuleValueFromString` で解析し、権限規則と同じ構文（ツール名 + 引数パターン）をサポートします。Bash ツールではさらに tree-sitter を使い、AST 単位でコマンドを解析します。
+
+### Hook の重複排除
+
+同じ Hook コマンドが異なる設定階層（user/project/local）で重複することがあります。システムは 4 要素の複合キー `${pluginRoot}\0${shell}\0${command}\0${ifCondition}`（`hookDedupKey()` 関数で構築）を使って Map 上で重複を排除し、**最後に統合された階層**を残します。
+
+## ワークスペースの信頼チェック
+
+**すべての Hook はワークスペースの信頼を必要とします**（`src/utils/hooks.ts` の `shouldSkipHookDueToTrust()` 関数）。これは多層防御です。悪意あるリポジトリの `.occ/settings.json` が、信頼されていない状態で任意のコマンドを実行するのを防ぎます。
+
+```typescript
+// 対話モードでは、すべての Hook に信頼が必要
+const hasTrust = checkHasTrustDialogAccepted()
+return !hasTrust
+```
+
+SDK の非対話モードでは暗黙に信頼されます（`getIsNonInteractiveSession()` が true の場合はチェックを省略）。
+
+## 4 つの Hook 能力とソースコードの対応
+
+### 1. 操作を遮断する（PreToolUse）
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny"
+  }
+}
+```
+
+`processHookJSONOutput()` は `permissionDecision` を `result.permissionBehavior = 'deny'` へ変換し、`blockingError` を設定してツールの実行を止めます。
+
+### 2. 挙動を変更する（updatedInput / updatedMCPToolOutput）
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "updatedInput": { "command": "npm test -- --bail" }
+  }
+}
+```
+
+`updatedInput` は元のツール入力を置き換えます。`updatedMCPToolOutput`（PostToolUse イベント）は MCP ツールの返り値を置き換えます。機密データのフィルタなどに利用できます。
+
+### 3. コンテキストを注入する（additionalContext / systemMessage）
+
+- `additionalContext` → `createAttachmentMessage({ type: 'hook_additional_context' })` でユーザーメッセージとして注入
+- `systemMessage` → システム警告として注入し、ユーザーへ直接表示
+
+### 4. フローを制御する（continue / stopReason）
+
+```json
+{ "continue": false, "stopReason": "ビルドに失敗したため実行を停止" }
+```
+
+`continue: false` は `preventContinuation = true` を設定し、Agent が後続処理を続けるのを止めます。
+
+## Session Hook のライフサイクル
+
+Agent と Skill のフロントマター Hook は `registerFrontmatterHooks()` で登録され（呼び出し位置: `packages/builtin-tools/src/tools/AgentTool/runAgent.ts`、定義位置: `src/utils/hooks/registerFrontmatterHooks.ts`）、agent の session ID に紐づきます。Agent の終了時には `clearSessionHooks()`（定義位置: `src/utils/hooks/sessionHooks.ts`）で削除します。
+
+```typescript
+// runAgent.ts — agent のフロントマター Hook を登録する
+registerFrontmatterHooks(rootSetAppState, agentId, agentDefinition.hooks, ...)
+
+// runAgent.ts — finally ブロックで削除する
+clearSessionHooks(rootSetAppState, agentId)
+```
+
+これにより、Agent A の Hook が Agent B の実行へ漏れません。

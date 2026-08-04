@@ -1,0 +1,214 @@
+---
+title: "カスタム Agent — Markdown から実行時までの全経路"
+description: "Claude Code のカスタム Agent がたどる全経路を解説します。Agent 定義の Markdown データモデル、3 種類の読み込みソース、ツールのフィルタ戦略、AgentTool との連携機構を扱います。"
+keywords: ["カスタム Agent", "Agent 定義", "Markdown Agent", "Agent 設定", "ロールのカスタマイズ"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/extensibility/custom-agents) · [中文](/docs/zh/extensibility/custom-agents) · **日本語**
+
+{/* この章の目的: Agent 定義の完全なデータモデル、読み込みと発見の機構、ツールのフィルタ、AgentTool との連携を示す */}
+
+## Agent 定義の 3 つのソース
+
+Claude Code の Agent はユーザー定義だけではありません。システムには 3 種類のソースがあり、優先度順に統合されます。
+
+| ソース | 場所 | 優先度 |
+|--------|------|--------|
+| **Built-in** | `packages/builtin-tools/src/tools/AgentTool/built-in/` にハードコード | 最低（上書き可能） |
+| **Plugin** | プラグインシステムから登録 | 中 |
+| **User/Project/Policy** | `.occ/agents/*.md` または settings.json | 最高 |
+
+`getActiveAgentsFromList()` が統合を担います。`agentType` で重複を排除し、後の定義が前の定義を上書きします。つまり、`.occ/agents/` に `Explore.md` を置けば、内蔵の Explore Agent を完全に置き換えられます。
+
+## Markdown Agent ファイルの完全な形式
+
+```markdown
+---
+# === 必須フィールド ===
+name: "reviewer"                    # Agent の識別子（agentType）
+description: "コードレビューの専門家。読み取り専用で分析する"
+
+# === ツール制御 ===
+tools: "Read,Glob,Grep,Bash"        # 許可するツールの一覧（カンマ区切り）
+disallowedTools: "Write,Edit"       # 明示的に禁止するツール
+
+# === モデル設定 ===
+model: "haiku"                      # モデルを指定（または "inherit" でメインスレッドを継承）
+effort: "high"                      # 推論 effort: low/medium/high または整数
+
+# === 挙動の制御 ===
+maxTurns: 10                        # agentic loop の最大ターン数
+permissionMode: "plan"              # 権限モード: plan/bypassPermissions など
+background: true                    # 常にバックグラウンドタスクとして実行
+initialPrompt: "/search TODO"       # 最初のユーザーメッセージの接頭辞（スラッシュコマンド対応）
+
+# === 分離と永続化 ===
+isolation: "worktree"               # 独立した git worktree で実行
+memory: "project"                   # 永続メモリの scope: user/project/local
+
+# === MCP サーバー ===
+mcpServers:
+  - "slack"                         # 設定済みの MCP サーバーを参照
+  - database:                       # インライン定義
+      command: "npx"
+      args: ["mcp-db"]
+
+# === Hooks ===
+hooks:
+  PreToolUse:
+    - command: "audit-log.sh"
+      timeout: 5000
+
+# === Skills ===
+skills: "code-review,security-review"  # 事前読み込みする skills（カンマ区切り）
+
+# === 表示 ===
+color: "blue"                       # ターミナル上で Agent を識別する色
+---
+
+あなたはコードレビューの専門家です。あなたの責務は...
+
+（本文 = system prompt）
+```
+
+### フィールド解析の詳細
+
+- **`tools`**: `parseAgentToolsFromFrontmatter()` で解析する。カンマ区切りの文字列と配列をサポート
+- **`model: "inherit"`**: メインスレッドのモデルを使う（大文字小文字を区別し、小文字の "inherit" だけが有効）
+- **`memory`**: 有効にすると `tools` に含まれていなくても `Write`/`Edit`/`Read` を自動注入し、system prompt の末尾へ memory の指示を追加する
+- **`isolation: "remote"`**: Anthropic 内部だけで利用可能（`USER_TYPE === 'ant'`）。外部ビルドは `worktree` だけをサポート
+- **`background`**: `true` にすると Agent は常にバックグラウンドで動作し、メインスレッドは結果を待たない
+
+## 読み込みと発見の機構
+
+`getAgentDefinitionsWithOverrides()`（`memoize` でキャッシュ）が発見フロー全体を実行します。
+
+```
+1. Markdown ファイルを読み込む
+   ├── loadMarkdownFilesForSubdir('agents', cwd)
+   │   ├── ~/.occ/agents/*.md  （ユーザー単位、source = 'userSettings'）
+   │   ├── .occ/agents/*.md    （プロジェクト単位、source = 'projectSettings'）
+   │   └── managed/policy sources （ポリシー単位、source = 'policySettings'）
+   │
+   └── 各 .md ファイル:
+       ├── YAML frontmatter を解析
+       ├── 本文を system prompt として使う
+       ├── 必須フィールド（name、description）を検証
+       ├── frontmatter のない .md ファイルは黙って飛ばす（参照文書の可能性がある）
+       └── 解析失敗 → failedFiles へ記録し、ほかの Agent は止めない
+
+2. Plugin Agents を並列に読み込む
+   └── loadPluginAgents() → memoized
+
+3. Memory Snapshots を初期化する（AGENT_MEMORY_SNAPSHOT が有効な場合）
+   └── initializeAgentMemorySnapshots()
+
+4. Built-in + Plugin + Custom を統合する
+   └── getActiveAgentsFromList() → agentType で重複を排除し、後の定義が前を上書き
+
+5. 色を割り当てる
+   └── setAgentColor(agentType, color) → ターミナル UI で Agent を見分ける
+```
+
+## ツールフィルタの実装
+
+Agent を派生させるとき、`AgentTool` は定義内の `tools` / `disallowedTools` に基づいて利用可能なツール一覧を絞り込みます。
+
+```
+すべてのツール
+  ↓ disallowedTools を除外
+  ↓ tools の allowlist で絞り込む（指定されている場合）
+利用可能なツール
+```
+
+- **`tools` を指定しない**: Agent はすべてのツールを使える（既定では制限なし）
+- **`tools` を指定する**: 一覧に含まれるツールだけを使える
+- **`disallowedTools`**: `tools` を指定していなくても、該当するツールを禁止する
+- **自動注入**: `memory` が有効なら `Write`/`Edit`/`Read` を自動追加する
+
+内蔵 Explore Agent の例:
+
+```typescript
+// packages/builtin-tools/src/tools/AgentTool/built-in/exploreAgent.ts
+disallowedTools: [
+  'Agent',           // Agent をネストして呼び出せない
+  'ExitPlanMode',    // plan mode は不要
+  'FileEdit',        // 読み取り専用
+  'FileWrite',       // 読み取り専用
+  'NotebookEdit',    // 読み取り専用
+]
+```
+
+## System Prompt の注入方法
+
+Agent の system prompt は `getSystemPrompt()` クロージャで遅延生成されます。
+
+```typescript
+// Markdown Agent
+getSystemPrompt: () => {
+  if (isAutoMemoryEnabled() && memory) {
+    return systemPrompt + '\n\n' + loadAgentMemoryPrompt(agentType, memory)
+  }
+  return systemPrompt
+}
+```
+
+これは次を意味します。
+1. **Markdown 本文 = 完全な system prompt**。既定の prompt への追記ではなく、置き換え
+2. **Memory の指示**は memory が有効な場合に末尾へ自動追加
+3. **クロージャによる遅延計算**。ファイルを読み込んだ後に memory の状態が変わる可能性がある
+
+Built-in Agent の `getSystemPrompt` は `toolUseContext` 引数を受け取り、実行時の状態（組み込み検索ツールを使っているかなど）に応じて prompt の内容を動的に調整できます。
+
+## AgentTool との連携
+
+メイン Agent がサブ Agent を派生させるときの流れ:
+
+```
+AgentTool.call({ subagent_type: "reviewer", ... })
+  ↓
+1. agentDefinitions.activeAgents から agentType === "reviewer" を探す
+  ↓
+2. requiredMcpServers を確認する（Agent が特定の MCP サーバーを要求する場合）
+  ↓
+3. ツール一覧を絞り込む（tools / disallowedTools）
+  ↓
+4. モデルを解決する:
+   - "inherit" → メインスレッドのモデルを使う
+   - 具体的なモデル名 → そのまま使う
+   - 未指定 → メインスレッドのモデルを使う
+  ↓
+5. 権限モードを解決する（permissionMode）
+  ↓
+6. 分離環境を構築する（isolation === "worktree" の場合）
+  ↓
+7. system prompt を注入する（getSystemPrompt()）
+  ↓
+8. initialPrompt を注入する（定義されている場合）
+  ↓
+9. サブ Agent ループを開始する（forkSubagent / runAgent）
+```
+
+## 内蔵 Agent の一覧
+
+| Agent | agentType | 役割 | ツール制限 | モデル |
+|-------|-----------|------|--------------|--------|
+| **General Purpose** | `general-purpose` | 既定のサブ Agent | すべてのツール | メインスレッドのモデル |
+| **Explore** | `Explore` | コード検索の専門家 | 読み取り専用（Write/Edit なし） | haiku（外部） |
+| **Plan** | `Plan` | 計画の専門家 | 読み取り専用 + ExitPlanMode | inherit |
+| **Verification** | `verification` | 結果の検証 | feature flag で制御 | — |
+| **Code Guide** | `claude-code-guide` | Claude Code の利用ガイド | 読み取り専用 | — |
+| **Statusline Setup** | `statusline-setup` | ターミナルのステータスバー設定 | 制限あり | — |
+
+SDK エントリ（`sdk-ts`/`sdk-py`/`sdk-cli`）は Code Guide Agent を読み込みません。環境変数 `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` を使えば内蔵 Agent を完全に無効化し、SDK ユーザーへ空の状態を提供できます。
+
+## Agent Memory: 永続化される Agent の状態
+
+`memory` フィールドを有効にすると、Agent はセッションをまたぐ永続メモリを得ます。
+
+- **`local`**: 現在のプロジェクトと現在のユーザーに対して有効
+- **`project`**: 現在のプロジェクトの全ユーザーで共有
+- **`user`**: すべてのプロジェクトで共有
+
+Memory は `loadAgentMemoryPrompt()` で system prompt の末尾へ注入され、メモリを読み書きするための指示を含みます。Agent Memory Snapshot 機構は `user` scope のメモリをプロジェクト間で同期します。

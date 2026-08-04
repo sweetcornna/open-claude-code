@@ -1,0 +1,355 @@
+---
+title: "MCP configuration — multi-source merging, scopes, and policy controls"
+description: "A detailed account of Claude Code's MCP configuration sources, merge precedence, transport types, enterprise policy controls, plugin integration, and reserved-name mechanism."
+keywords: ["MCP", "configuration", "settings.json", ".mcp.json", "enterprise policy", "plugins"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/extensibility/mcp-configuration) · [日本語](/docs/ja/extensibility/mcp-configuration)
+
+## Configuration sources and scopes
+
+Claude Code reads MCP configuration from multiple sources, each with a corresponding `scope`. It merges configurations by priority, with same-name entries from higher-priority sources overriding those from lower-priority sources.
+
+### Source list
+
+| Source | Scope | File/API | Description |
+|--------|-------|----------|-------------|
+| Enterprise-managed | `enterprise` | `managed-mcp.json` at a system-managed path | **Exclusive mode**: ignore every other source when present |
+| Local project | `local` | `<project>/.occ/settings.local.json` | Private project-level configuration (not committed to VCS) |
+| Project configuration | `project` | `<project>/.mcp.json` | Shared project-level configuration (may be committed to VCS) |
+| User-global | `user` | `~/.occ/settings.json` | User-level configuration shared across all projects |
+| Plugin | `dynamic` | `.mcp.json` / `.mcpb` in the plugin manifest | MCP servers provided by plugins |
+| claude.ai | `claudeai` | Retrieved through the API | Connectors configured in the claude.ai web application |
+| Built-in dynamic | `dynamic` | Registered in code | Built-in servers such as Computer Use / Chrome |
+| IDE SDK | `sdk` | Supplied by the IDE | Embedded VS Code / JetBrains mode |
+
+### Merge precedence, from lowest to highest
+
+```
+claude.ai connectors        ← lowest priority
+    ↓ deduplicate
+Plugin servers
+    ↓ deduplicate
+User-global configuration
+    ↓
+Project configuration (.mcp.json)    ← requires user approval
+    ↓
+Local project configuration
+    ↓
+Dynamic configuration (built-in MCP) ← highest priority
+```
+
+The merge uses `Object.assign({}, dedupedPluginServers, userServers, approvedProjectServers, localServers)`, so a same-name key that appears later overrides an earlier one.
+
+## Enterprise-managed mode
+
+When a `managed-mcp.json` file exists, MCP configuration enters **exclusive mode**:
+
+```typescript
+// config.ts:1084
+if (doesEnterpriseMcpConfigExist()) {
+  // Return only enterprise configuration; ignore all user/project/plugin/claude.ai configuration
+  return { servers: filtered, errors: [] }
+}
+```
+
+Properties:
+- System management determines the path (`getManagedFilePath()` + `managed-mcp.json`)
+- Overrides all user-level, project-level, plugin, and claude.ai configuration
+- Still applies policy filtering through the allowlist and denylist
+- Prevents the CLI from adding new servers (`addMcpConfig` rejects the request)
+
+## Transport types and configuration Schema
+
+### stdio (default)
+
+Starts a child process and communicates over stdin/stdout using JSON-RPC.
+
+```json
+{
+  "my-server": {
+    "command": "npx",
+    "args": ["-y", "@my-org/mcp-server"],
+    "env": { "API_KEY": "..." }
+  }
+}
+```
+
+The `type` field may be omitted; it defaults to `stdio`. Values in `env` are passed to the child process and merged with the current process environment.
+
+**Windows note**: `npx` must be wrapped as `cmd /c npx`, or startup fails.
+
+### SSE (Server-Sent Events)
+
+Connects to a remote MCP server over HTTP SSE.
+
+```json
+{
+  "my-remote": {
+    "type": "sse",
+    "url": "https://mcp.example.com/sse",
+    "headers": { "Authorization": "Bearer ..." },
+    "oauth": {
+      "clientId": "...",
+      "authServerMetadataUrl": "https://auth.example.com/.well-known/oauth-authorization-server"
+    }
+  }
+}
+```
+
+Supports the OAuth authentication flow. An authentication failure enters the `needs-auth` state; a 15-minute TTL cache prevents repeated prompts.
+
+### HTTP (Streamable HTTP)
+
+Uses HTTP streaming.
+
+```json
+{
+  "my-http": {
+    "type": "http",
+    "url": "https://mcp.example.com/mcp",
+    "headers": { "X-API-Key": "..." }
+  }
+}
+```
+
+Supports the same OAuth configuration as SSE.
+
+### WebSocket
+
+```json
+{
+  "my-ws": {
+    "type": "ws",
+    "url": "wss://mcp.example.com/ws"
+  }
+}
+```
+
+### IDE-only types (internal)
+
+`sse-ide` and `ws-ide` are reserved for IDE extensions and cannot be configured directly by users.
+
+- `sse-ide`: Authenticates with a lockfile token
+- `ws-ide`: Authenticates with the `X-Claude-Code-Ide-Authorization` header
+
+### SDK type (internal)
+
+Embedded IDE mode supplies `type: "sdk"`. This type bypasses reserved-name checks and the exclusive enterprise-control restriction.
+
+### claude.ai proxy type (internal)
+
+Connectors configured in the claude.ai web application use `type: "claudeai-proxy"`. They authenticate with an OAuth bearer token and support retries after a 401 response.
+
+## Configuration operations
+
+### Add an MCP server
+
+Use the `occ mcp add` CLI command or call `addMcpConfig()`:
+
+```bash
+# Add to user configuration
+occ mcp add my-server -s user -- npx @my-org/mcp-server
+
+# Add to project configuration
+occ mcp add my-server -s project -- npx @my-org/mcp-server
+
+# Add an HTTP server
+occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
+```
+
+The addition path performs these validations:
+
+1. **Name validation**: Allow only letters, numbers, hyphens, and underscores
+2. **Reserved-name check**: `chrome-devtools` is reserved; `computer-use` is reserved only when `computerUse.backend` is `builtin` (the default)
+3. **Enterprise-control check**: Reject additions in enterprise-managed mode
+4. **Schema validation**: Validate the configuration shape with Zod
+5. **Policy check**: Reject denylisted entries and validate the allowlist
+
+### Remove an MCP server
+
+```bash
+occ mcp remove my-server -s user
+```
+
+### List MCP servers
+
+```bash
+occ mcp list
+```
+
+## Project configuration approval
+
+Project configuration in `.mcp.json` does not take effect until the user explicitly approves it:
+
+```typescript
+// config.ts:1166
+const approvedProjectServers: Record<string, ScopedMcpServerConfig> = {}
+for (const [name, config] of Object.entries(projectServers)) {
+  if (getProjectMcpServerStatus(name) === 'approved') {
+    approvedProjectServers[name] = config
+  }
+}
+```
+
+When a project is opened for the first time, Claude Code asks the user to approve each server in `.mcp.json`. It persists approval state in local configuration.
+
+## Plugin MCP integration
+
+Plugins declare MCP servers through `.mcp.json` or `.mcpb` files in their manifests:
+
+```typescript
+// Plugin MCP loading flow
+const pluginResult = await loadAllPluginsCacheOnly()
+const pluginServerResults = await Promise.all(
+  pluginResult.enabled.map(plugin => getPluginMcpServers(plugin, mcpErrors))
+)
+```
+
+### Plugin namespace
+
+Plugin MCP server names use the form `plugin:<pluginName>:<serverName>`, which avoids collisions with manually configured names.
+
+### Deduplication
+
+Plugin servers are deduplicated by content signature (`dedupPluginMcpServers`):
+
+- **stdio**: signature = `stdio:` + JSON.stringify([command, ...args])
+- **URL-based**: signature = `url:` + original URL (after unwrapping a CCR proxy URL)
+- **sdk**: signature is null, so it is not deduplicated
+
+Deduplication rules:
+1. Manual configuration takes precedence over plugin configuration
+2. A plugin loaded earlier takes precedence over one loaded later
+3. The `/plugin` UI displays a notice for a suppressed plugin server
+
+### claude.ai connector deduplication
+
+claude.ai connectors use the same content-signature mechanism (`dedupClaudeAiMcpServers`):
+- Only enabled manual configurations participate in deduplication; a disabled manual configuration must not suppress a connector
+- Connector names use the form `claude.ai <DisplayName>`
+
+## Policy controls
+
+### Allowlist / Denylist
+
+Enterprise policy controls available MCP servers through an allowlist and denylist:
+
+```typescript
+// config.ts:1243 - final policy filtering
+for (const [name, serverConfig] of Object.entries(configs)) {
+  if (!isMcpServerAllowedByPolicy(name, serverConfig)) {
+    continue  // Skip servers forbidden by policy
+  }
+  filtered[name] = serverConfig
+}
+```
+
+Policy checks consider:
+- Server-name matching
+- command + args matching for stdio servers
+- URL-pattern matching for URL-based servers, with wildcard support
+
+### Plugin-only mode
+
+When `isRestrictedToPluginOnly('mcp')` is enabled, only MCP servers supplied by plugins are allowed; user-level and project-level configuration is ignored.
+
+## Environment-variable expansion
+
+Environment variables in MCP configuration support `$VAR` and `${VAR}` expansion:
+
+```json
+{
+  "my-server": {
+    "command": "npx",
+    "args": ["@my-org/mcp-server"],
+    "env": {
+      "API_KEY": "$MY_API_KEY",
+      "DB_URL": "${DATABASE_URL}"
+    }
+  }
+}
+```
+
+A missing variable produces a warning but does not prevent the configuration from loading.
+
+## Dynamic registration of built-in MCP servers
+
+Built-in MCP servers inject configuration dynamically during the `main.tsx` startup flow.
+
+### Computer Use MCP
+
+```typescript
+// src/utils/computerUse/setup.ts
+export function setupComputerUseMCP(): {
+  mcpConfig: Record<string, ScopedMcpServerConfig>
+  allowedTools: string[]
+} {
+  return {
+    mcpConfig: {
+      "computer-use": {
+        type: "stdio",
+        command: process.execPath,
+        args: ["--computer-use-mcp"],
+        scope: "dynamic",
+      }
+    },
+    allowedTools: ["mcp__computer-use__screenshot", ...]
+  }
+}
+```
+
+Enablement conditions:
+- Feature flag `CHICAGO_MCP` is enabled
+- `getPlatform() !== "unknown"` (macOS/Windows/Linux)
+- The session is interactive
+- GrowthBook gate `getChicagoEnabled()` returns true
+
+### Chrome DevTools MCP
+
+```typescript
+// Registered in main.tsx, similarly to Computer Use
+const { mcpConfig, allowedTools, systemPrompt } = setupChromeDevtools()
+dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
+```
+
+Unlike Computer Use, this server does **not** run in-process: `mcpConfig` is an ordinary
+stdio configuration that spawns `node <chrome-devtools-mcp entry point>`. `allowedTools`
+contains only nine read-only tools; every other tool still requires permission confirmation.
+
+Enablement conditions:
+- The `--chrome` argument, `CLAUDE_CODE_ENABLE_CFC` environment variable, or `chromeDevtoolsDefaultEnabled` configuration
+- An interactive session, unless `--chrome` was provided explicitly
+
+See `docs/zh/features/chrome-devtools-mcp.md` for details.
+
+### VSCode SDK MCP
+
+Embedded IDE mode passes a `type:'sdk'` configuration in its initialization message. `setupVscodeSdkMcp()` then establishes bidirectional notifications.
+
+## Reserved names
+
+Users cannot manually configure MCP servers with these reserved names:
+
+| Name | Purpose | Check condition |
+|------|---------|-----------------|
+| `chrome-devtools` | Chrome browser control | Always checked |
+| `computer-use` | Desktop automation | Checked when the `CHICAGO_MCP` feature flag is enabled |
+| `claude-vscode` | VSCode IDE integration | Supplied by the SDK; bypasses the name check |
+
+Reserved-name checks occur in two places:
+1. `addMcpConfig()` (`config.ts:636-648`) — rejects at runtime
+2. The `main.tsx` startup check (`main.tsx:2351-2368`) — exits during startup
+
+## Key source files
+
+| File | Responsibility |
+|------|----------------|
+| `src/services/mcp/config.ts` | Core configuration management: merging, deduplication, policy, addition/removal |
+| `src/services/mcp/types.ts` | Zod Schema definitions and type declarations |
+| `src/services/mcp/client.ts` | Connection management and transport selection |
+| `src/utils/plugins/mcpPluginIntegration.ts` | Plugin MCP configuration loading |
+| `src/utils/computerUse/setup.ts` | Computer Use dynamic registration |
+| `src/utils/chromeDevtools/common.ts` | Chrome DevTools MCP reserved name, tool inventory, and read-only allowlist |
+| `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK bidirectional notifications |

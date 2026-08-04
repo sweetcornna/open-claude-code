@@ -1,0 +1,399 @@
+---
+title: "MCP プロトコル — 接続管理、ツール発見、実行経路"
+description: "Claude Code の MCP 統合をソースコードから解説します。内蔵 MCP と外部 MCP の違い、7 種類のトランスポート実装、connectToServer の memoize キャッシュ、ツール発見の LRU 戦略、認証ステートマシン、MCP ツールが権限チェックへ入るまでの経路を扱います。"
+keywords: ["MCP", "Model Context Protocol", "ツール拡張", "MCP クライアント", "ツール発見", "内蔵 MCP", "外部 MCP"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/extensibility/mcp-protocol) · [中文](/docs/zh/extensibility/mcp-protocol) · **日本語**
+
+{/* この章の目的: MCP クライアントの 2 つの実行モード（内蔵/外部）、接続管理、ツール発見プロトコル、実行経路をソースコードから示す */}
+
+## アーキテクチャの全体像: 設定から利用可能なツールまで
+
+```
+設定層（複数ソースを統合）
+  ├── ~/.occ.json: ユーザー単位の mcpServers + projects[<project>] のローカル上書き         ← 外部
+  ├── .mcp.json: プロジェクト単位の MCP 設定                                               ← 外部
+  ├── プラグイン manifest (.mcp.json / .mcpb)                                               ← 外部（プラグイン）
+  ├── claude.ai connectors                                                                  ← 外部（リモート）
+  ├── enterprise managed-mcp.json                                                           ← 外部（企業管理）
+  ├── setupComputerUseMCP() / setupChromeDevtools()                                         ← 内蔵（動的登録）
+  └── SDK から受け取る (type:'sdk')                                                         ← 内蔵（IDE 組み込み）
+  ↓
+getAllMcpConfigs()                    ← enterprise の排他設定、または user/project/local + plugin + claude.ai の統合
+  ↓
+useManageMCPConnections()             ← React Hook が接続のライフサイクルを管理
+  ↓
+connectToServer(name, config)         ← memoize キャッシュ（lodash memoize）
+  ├── 判定: 内蔵 MCP → InProcessTransport（同一プロセス）
+  ├── 判定: 外部 stdio → StdioClientTransport（子プロセス）
+  ├── 判定: リモート SSE/HTTP/WS → ネットワークトランスポート
+  └── MCPServerConnection を返す      ← { connected | failed | needs-auth | pending | disabled }
+  ↓
+fetchToolsForClient(client)           ← LRU(20) キャッシュ
+  ├── client.request({ method: 'tools/list' })
+  └── 各ツールを MCPTool としてラップ  ← 共通 Tool インターフェース
+  ↓
+assembleToolPool()                    ← 内蔵ツール + MCP ツールを統合
+  ↓
+ツール名の形式: mcp__<serverName>__<toolName>  ← buildMcpToolName()
+```
+
+## 2 つの MCP モード: 内蔵と外部
+
+Claude Code の MCP 実装は、**内蔵 MCP サーバー**と**外部 MCP サーバー**を区別します。どちらも同じクライアントプロトコルとツール発見機構を使いますが、接続方式、ライフサイクル管理、設定ソースはまったく異なります。
+
+### 内蔵 MCP サーバー
+
+内蔵 MCP サーバーは occ 自身が提供するため、ユーザーによる手動設定は不要です。起動時に `dynamic` scope の設定として自動登録されます。
+
+| サーバー | 名前 | パッケージパス | Feature Flag | 有効化方法 |
+|----------|------|----------------|--------------|------------|
+| Computer Use | `computer-use` | `@ant/computer-use-mcp` | `CHICAGO_MCP` | GrowthBook gate + macOS + interactive |
+| Chrome DevTools | `chrome-devtools` | `chrome-devtools-mcp`（npm 依存） | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `chromeDevtoolsDefaultEnabled` |
+| VSCode SDK | `claude-vscode` | — | — | IDE 組み込みモード (type:`sdk`) |
+
+「内蔵」は「同一プロセス」と同義ではありません。Computer Use は `InProcessTransport` を使いますが、Chrome DevTools は通常の stdio 子プロセス（Google の `chrome-devtools-mcp`）です。occ が設定を自動注入するという点だけが内蔵です。
+
+#### InProcessTransport: オーバーヘッドのない同一プロセス通信
+
+内蔵サーバーは `InProcessTransport`（`src/services/mcp/InProcessTransport.ts`）で動作し、**子プロセスを起動しません**。
+
+```typescript
+// linked transport のペアを作成する。メッセージは両端の間で直接受け渡される
+const [clientTransport, serverTransport] = createLinkedTransportPair()
+
+// server 側を serverTransport へ接続する
+inProcessServer = createComputerUseMcpServerForCli()
+await inProcessServer.connect(serverTransport)
+
+// client 側は clientTransport を使う（外部 MCP の Client と同じインターフェース）
+transport = clientTransport
+```
+
+`InProcessTransport` の中核設計:
+- `send()` は `queueMicrotask()` でメッセージを非同期に相手側へ配送し、同期的なリクエスト/レスポンスによるスタック深度の問題を避ける
+- `close()` は双方向を閉じ、どちらか一方を閉じると両端の `onclose` コールバックが発火する
+- ネットワークオーバーヘッド、IPC シリアライズ、プロセス起動時間がない
+
+#### 動的登録の流れ
+
+内蔵サーバーは `main.tsx` の起動処理で登録され、`dynamicMcpConfig` へ注入されます。
+
+```typescript
+// main.tsx: Computer Use MCP の動的登録
+if (feature("CHICAGO_MCP") && getPlatform() !== "unknown" && !getIsNonInteractiveSession()) {
+  const { getChicagoEnabled } = await import("src/utils/computerUse/gates.js")
+  if (getChicagoEnabled()) {
+    const { setupComputerUseMCP } = await import("src/utils/computerUse/setup.js")
+    const { mcpConfig, allowedTools } = setupComputerUseMCP()
+    dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
+    allowedTools.push(...cuTools)
+  }
+}
+```
+
+`setupComputerUseMCP()` が返す設定（`src/utils/computerUse/setup.ts`）:
+
+```typescript
+{
+  "computer-use": {
+    type: "stdio",           // 種別は stdio（ただし client.ts が捕捉して InProcessTransport にする）
+    command: process.execPath,
+    args: ["--computer-use-mcp"],
+    scope: "dynamic",        // 動的 scope。永続化しない
+  }
+}
+```
+
+#### 接続時の捕捉
+
+`connectToServer()` は `client.ts:906-944` で、サーバー名に基づいて内蔵サーバーを捕捉します。
+
+```typescript
+// Computer Use MCP — 約 325MB の子プロセスを避けるため process 内で動かす
+if (feature('CHICAGO_MCP') && isComputerUseMCPServer(name)) {
+  const { createComputerUseMcpServerForCli } = await import('../../utils/computerUse/mcpServer.js')
+  const { createLinkedTransportPair } = await import('./InProcessTransport.js')
+  inProcessServer = await createComputerUseMcpServerForCli()
+  const [clientTransport, serverTransport] = createLinkedTransportPair()
+  await inProcessServer.connect(serverTransport)
+  transport = clientTransport
+}
+```
+
+#### 予約名の保護
+
+内蔵サーバーの名前は予約されており、ユーザーは同名の設定を手動で追加できません（`config.ts:636-648`）。
+
+```typescript
+// MCP 設定の追加時に予約名を確認する
+if (isChromeDevtoolsMCPServer(name)) {
+  throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+}
+if (feature('CHICAGO_MCP') && isComputerUseMCPServer(name)) {
+  throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+}
+```
+
+起動時にも全体チェックがあります（`main.tsx:2351-2368`）。ユーザー設定に予約名が含まれている場合、`type:'sdk'` でなければ直ちに `process.exit(1)` します。
+
+#### VSCode SDK MCP
+
+VSCode SDK MCP は特殊な内蔵モードです。IDE（VS Code、JetBrains など）は Claude Code を組み込み方式で起動し、`type:'sdk'` の MCP 設定を渡します。この種の設定には次の性質があります。
+- 予約名チェックを通らない（IDE は任意の名前を使用できる）
+- enterprise MCP の排他制御対象にならない
+- VSCode SDK transport で接続する
+- 双方向通知（`file_updated`、`experiment_gates` など）をサポートする
+
+```typescript
+// src/services/mcp/vscodeSdkMcp.ts
+export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
+  const client = sdkClients.find(client => client.name === 'claude-vscode')
+  if (client && client.type === 'connected') {
+    // log_event 通知ハンドラを登録する
+    client.client.setNotificationHandler(LogEventNotificationSchema(), ...)
+    // 実験ゲートを VSCode へ送信する
+    client.client.notification({ method: 'experiment_gates', params: { gates } })
+  }
+}
+```
+
+### 外部 MCP サーバー
+
+外部 MCP サーバーはユーザーが設定ファイルで宣言し、子プロセスまたはネットワーク接続として動作します。
+
+#### 設定ソース
+
+| ソース | Scope | ファイルの場所 | 優先度 |
+|--------|-------|----------------|--------|
+| プロジェクト設定 | `project` | `<project>/.mcp.json` | 最高（同名を上書き） |
+| ローカル設定 | `local` | `~/.occ.json` の `projects[<project>]` エントリ | 高 |
+| ユーザー設定 | `user` | `~/.occ.json` | 中 |
+| プラグイン | `dynamic` | プラグイン manifest 内の `.mcp.json` | 中 |
+| claude.ai | `claudeai` | API から取得 | 低 |
+| 企業管理 | `enterprise` | システム管理パスの `managed-mcp.json` | 排他（存在すればすべてを上書き） |
+
+#### 設定例
+
+```json
+// ~/.occ.json / .mcp.json 内の MCP 設定
+{
+  "mcpServers": {
+    // stdio — 子プロセスを起動する
+    "my-database": {
+      "command": "npx",
+      "args": ["@my-org/db-mcp-server"],
+      "env": { "DB_URL": "postgres://..." }
+    },
+
+    // HTTP ストリーム — リモートサーバー
+    "remote-api": {
+      "type": "http",
+      "url": "https://api.example.com/mcp"
+    },
+
+    // SSE — Server-Sent Events
+    "realtime-feed": {
+      "type": "sse",
+      "url": "https://feed.example.com/sse"
+    },
+
+    // WebSocket
+    "ws-service": {
+      "type": "ws",
+      "url": "wss://ws.example.com/mcp"
+    }
+  }
+}
+```
+
+#### 設定の統合と重複排除
+
+`getAllMcpConfigs()`（`config.ts`）は複数ソースの設定を優先度順に統合します。
+
+1. 企業管理設定が存在する場合は**それだけを返す**（ほかのすべてのソースを無視）
+2. それ以外は user → project → local → plugin → claude.ai の順で統合
+3. プラグイン設定と手動設定の重複を排除する。`getMcpServerSignature()` が command/args/url に基づく内容署名を生成し、同じ内容の手動設定があるプラグイン設定を抑止する
+4. `addScopeToServers()` が各設定項目へソースの scope を付与する
+
+## 7 種類のトランスポート実装
+
+`connectToServer()`（`client.ts:596-1643`）は `config.type` に基づいて各 Transport 実装へ振り分けます。
+
+| トランスポート種別 | Transport クラス | 用途 | 認証方式 |
+|--------------------|------------------|------|----------|
+| `stdio`（既定） | `StdioClientTransport` | 外部のローカル子プロセス | なし |
+| `sse` | `SSEClientTransport` | リモート SSE サービス | `ClaudeAuthProvider` + OAuth |
+| `http` | `StreamableHTTPClientTransport` | HTTP ストリーム | `ClaudeAuthProvider` + OAuth |
+| `sse-ide` | `SSEClientTransport` | IDE 統合 | lockfile token |
+| `ws-ide` | `WebSocketTransport` | IDE WebSocket | `X-Claude-Code-Ide-Authorization` |
+| `ws` | `WebSocketTransport` | WebSocket サービス | session ingress token |
+| `claudeai-proxy` | `StreamableHTTPClientTransport` | claude.ai プロキシ | OAuth bearer + 401 リトライ |
+| InProcess（内蔵） | `InProcessTransport` | Computer Use | なし（同一プロセス） |
+
+### stdio トランスポートのプロセス管理
+
+stdio の MCP サーバーは子プロセスとして動作します。cleanup では**シグナルを段階的に強める方式**を採用します（`client.ts:1431-1564`）。
+
+```
+SIGINT (100ms) → SIGTERM (400ms) → SIGKILL
+```
+
+cleanup 全体の上限は 600ms です。MCP サーバーの終了待ちによって CLI の終了が止まることを防ぎます。
+
+### リモートトランスポートの認証ステートマシン
+
+SSE/HTTP は `ClaudeAuthProvider` で OAuth 認証フローを実装します。認証に失敗すると `needs-auth` 状態になり、15 分 TTL のキャッシュファイル（`~/.occ/mcp-needs-auth-cache.json`）へ書き込みます。同じ認証プロンプトが繰り返し表示されるのを防ぐためです。
+
+```
+接続試行 → 401 Unauthorized
+  ↓
+handleRemoteAuthFailure()
+  ├── logEvent('tengu_mcp_server_needs_auth')
+  ├── setMcpAuthCacheEntry(name)         ← 15min TTL キャッシュへ書き込む
+  └── return { type: 'needs-auth' }      ← UI に認証プロンプトを表示する
+```
+
+## 接続キャッシュと再接続
+
+`connectToServer` は lodash `memoize` で接続オブジェクトをキャッシュします。キャッシュキーは `${name}-${JSON.stringify(config)}` です。
+
+### キャッシュを無効化する契機
+
+接続が閉じたとき（`client.onclose`）、関連するすべてのキャッシュを消去します（`client.ts:1376-1404`）。
+
+```typescript
+client.onclose = () => {
+  const key = getServerCacheKey(name, serverRef)
+  fetchToolsForClient.cache.delete(name)      // ツールキャッシュ
+  fetchResourcesForClient.cache.delete(name)  // リソースキャッシュ
+  fetchCommandsForClient.cache.delete(name)   // コマンドキャッシュ
+  connectToServer.cache.delete(key)           // 接続キャッシュ
+}
+```
+
+### 接続劣化の検出
+
+リモートトランスポートには**連続エラーカウンタ**があります（`client.ts:1229`）。
+
+```typescript
+let consecutiveConnectionErrors = 0
+const MAX_ERRORS_BEFORE_RECONNECT = 3
+```
+
+終端エラー（ECONNRESET、ETIMEDOUT、EPIPE など）が 3 回連続すると、transport を明示的に閉じて再接続を起動します。HTTP トランスポートでは session の失効（404 + JSON-RPC code -32001）も検出します。
+
+### リクエスト単位のタイムアウト保護
+
+各 HTTP リクエストは共有の `AbortSignal.timeout()` ではなく、独立した `setTimeout`（`wrapFetchWithTimeout`、`client.ts:493`）を使います。Bun は AbortSignal.timeout の GC が遅延するためです。リクエストが数ミリ秒で完了しても、リクエストごとに約 2.4KB のネイティブメモリが 60s 経過するまで回収されません。
+
+```typescript
+const controller = new AbortController()
+const timer = setTimeout(c => c.abort(...), MCP_REQUEST_TIMEOUT_MS, controller)
+timer.unref?.()  // プロセスの終了を妨げない
+```
+
+## ツール発見: MCP から Tool インターフェースへ
+
+`fetchToolsForClient()`（`client.ts:1744-2000`）は `memoizeWithLRU` キャッシュ（上限 100）を使い、MCP ツールを Claude Code 共通の Tool インターフェースへ変換します。
+
+```typescript
+const fullyQualifiedName = buildMcpToolName(client.name, tool.name)
+// 結果: "mcp__my-database__query"
+```
+
+### 内蔵 MCP のツール発見
+
+内蔵 MCP サーバーは InProcessTransport を使いますが、ツール発見の経路は外部サーバーと完全に同じです。
+
+- **Computer Use**: `createComputerUseMcpServerForCli()` が `src/utils/computerUse/mcpServer.ts` で MCP Server オブジェクトを構築し、`ListToolsRequestSchema` handler を登録する。ツール説明にはプラットフォーム固有のインストール済みアプリ一覧が含まれる（列挙のタイムアウトは 1s）
+- **VSCode SDK**: IDE 側がツール一覧を提供し、SDK transport で渡す
+
+### ツール説明の切り詰め
+
+MCP ツールの説明は 2048 文字が上限です（`MAX_MCP_DESCRIPTION_LENGTH`）。OpenAPI から生成された MCP サーバーでは、15〜60KB の説明文が観測されています。
+
+### ツール能力の注釈
+
+各 MCP ツールは `tool.annotations` に基づいて自動的に注釈付けされます。
+
+| 注釈 | 対応先 | 意味 |
+|------|--------|------|
+| `readOnlyHint` | `isReadOnly()` + `isConcurrencySafe()` | 読み取り専用、並列実行可能 |
+| `destructiveHint` | `isDestructive()` | 破壊的な操作 |
+| `openWorldHint` | `isOpenWorld()` | オープンワールド（列挙不能） |
+| `title` | `userFacingName()` | 表示名 |
+
+### MCP ツールの権限チェック
+
+MCP ツールは既定で `{ behavior: 'passthrough' }` を返します（`client.ts:1816-1834`）。つまり、常に権限確認フローへ入ります。権限規則は `mcp__` 接頭辞を含むツール名と完全一致で照合されます。
+
+内蔵 MCP サーバーのツールは `allowedTools` リストで自動許可されます。起動時に `main.tsx` で追加され、通常の権限プロンプトを迂回します。たとえば Computer Use の `request_access` はセッション単位の承認を自ら処理します。
+
+## MCP ツールの実行経路
+
+```
+AI が tool_use を生成: { name: "mcp__my-db__query", input: { sql: "..." } }
+  ↓
+MCPTool.call()                               ← client.ts:1835
+  ├── ensureConnectedClient()                ← 接続が有効であることを保証する（再接続）
+  ├── callMCPToolWithUrlElicitationRetry()   ← Elicitation のリトライ付き
+  │   ├── client.request({ method: 'tools/call' })
+  │   ├── 画像結果を処理する（resize + persist）
+  │   └── 内容を切り詰める（mcpContentNeedsTruncation）
+  ├── McpSessionExpiredError → 1 回リトライ
+  └── { data: content, mcpMeta } を返す
+```
+
+### Session 失効時の自動リトライ
+
+HTTP トランスポートの MCP session は失効することがあります。`McpSessionExpiredError` を検出すると自動的に 1 回リトライします（`client.ts:1862`）。`ensureConnectedClient()` がすでにキャッシュを消去し、新しい接続を確立しているためです。
+
+### 内容の切り詰めと永続化
+
+大きな MCP ツール出力は `truncateMcpContentIfNeeded` で切り詰めます。バイナリ内容（画像）は `persistBinaryContent` でファイルへ書き込み、そのパスを返します。画像は自動的に resize されます（`maybeResizeAndDownsampleImageBuffer`）。
+
+## MCP 接続の並行数制御
+
+```typescript
+// ローカルサーバーの同時接続数
+getMcpServerConnectionBatchSize()    // 既定値 3
+
+// リモートサーバーの同時接続数
+getRemoteMcpServerConnectionBatchSize()  // 既定値 20
+```
+
+ローカル MCP サーバー（stdio）は重量のある子プロセスなので、同時接続数の既定値は 3 です。リモートサーバーは軽量な HTTP リクエストのため、20 接続まで許可します。
+
+## 内蔵 MCP と外部 MCP の比較
+
+| 観点 | 内蔵 MCP | 外部 MCP |
+|------|----------|----------|
+| **Transport** | `InProcessTransport`（Computer Use）または stdio（Chrome DevTools） | stdio / SSE / HTTP / WebSocket |
+| **設定ソース** | `setupComputerUseMCP()` / `setupChromeDevtools()` などによる動的登録 | `~/.occ.json` / `.mcp.json` / プラグイン / claude.ai |
+| **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
+| **プロセスモデル** | 同一プロセス、オーバーヘッドなし | 子プロセス（stdio）またはネットワーク接続 |
+| **名前の保護** | 予約名。ユーザーは同名を追加できない | 自由に命名可能（英数字 + `-_`） |
+| **ライフサイクル** | CLI とともに起動・停止 | 接続キャッシュ + 必要に応じて再接続 |
+| **権限** | `allowedTools` で自動許可（Chrome DevTools は 9 個の読み取り専用ツールだけを許可し、それ以外は通常どおり確認） | `passthrough` で権限確認へ入る |
+| **Feature Flag** | `CHICAGO_MCP`（Computer Use）など | なし（常に利用可能） |
+| **ツール発見** | 外部と同じ（MCP プロトコル） | 標準 MCP `tools/list` |
+| **cleanup** | `inProcessServer.close()` | シグナル昇格 SIGINT→SIGTERM→SIGKILL |
+
+## 主要ソースファイル
+
+| ファイル | 責務 |
+|----------|------|
+| `src/services/mcp/client.ts` | 中核クライアント: connectToServer、fetchToolsForClient、MCPTool.call |
+| `src/services/mcp/config.ts` | 設定管理: getAllMcpConfigs、addMcpConfig、removeMcpConfig |
+| `src/services/mcp/types.ts` | 型定義: 設定 Schema、接続状態の型 |
+| `src/services/mcp/InProcessTransport.ts` | 内蔵 MCP のトランスポート層: linked transport pair |
+| `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK MCP: 双方向通知、実験ゲート |
+| `src/services/mcp/useManageMCPConnections.ts` | React Hook: 接続ライフサイクル、再接続 |
+| `src/utils/computerUse/mcpServer.ts` | Computer Use MCP Server の構築 |
+| `src/utils/computerUse/setup.ts` | Computer Use の動的登録 |
+| `src/utils/chromeDevtools/setup.ts` | Chrome DevTools MCP の動的登録（エントリ解決 + 接続引数 + allowedTools） |
+| `src/tools/MCPTool/MCPTool.ts` | MCP ツールのラッパー: 共通 Tool インターフェース |
+| `src/entrypoints/mcp.ts` | MCP server エントリ（Claude Code が MCP server として動作） |

@@ -1,0 +1,399 @@
+---
+title: "The MCP protocol — connection management, tool discovery, and execution"
+description: "A source-level analysis of Claude Code's MCP integration: built-in and external MCP servers, seven transport implementations, connectToServer's memoized cache, the LRU tool-discovery policy, the authentication state machine, and how MCP tools enter the permission-checking path."
+keywords: ["MCP", "Model Context Protocol", "tool extensibility", "MCP client", "tool discovery", "built-in MCP", "external MCP"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/extensibility/mcp-protocol) · [日本語](/docs/ja/extensibility/mcp-protocol)
+
+{/* Goal of this chapter: explain the MCP client's two operating modes (built-in and external), connection management, tool-discovery protocol, and execution path from the source */}
+
+## Architecture overview: from configuration to available tools
+
+```
+Configuration layer (merges multiple sources)
+  ├── ~/.occ.json: user-level mcpServers + projects[<project>] local overrides           ← external
+  ├── .mcp.json: project-level MCP configuration                                        ← external
+  ├── plugin manifest (.mcp.json / .mcpb)                                                ← external (plugin)
+  ├── claude.ai connectors                                                               ← external (remote)
+  ├── enterprise managed-mcp.json                                                        ← external (enterprise-managed)
+  ├── setupComputerUseMCP() / setupChromeDevtools()                                      ← built-in (dynamically registered)
+  └── passed by SDK (type:'sdk')                                                         ← built-in (embedded IDE)
+  ↓
+getAllMcpConfigs()                    ← exclusive enterprise configuration or merged user/project/local + plugin + claude.ai
+  ↓
+useManageMCPConnections()             ← React Hook manages the connection lifecycle
+  ↓
+connectToServer(name, config)         ← memoized cache (lodash memoize)
+  ├── built-in MCP → InProcessTransport (same process)
+  ├── external stdio → StdioClientTransport (child process)
+  ├── remote SSE/HTTP/WS → network transport
+  └── returns MCPServerConnection     ← { connected | failed | needs-auth | pending | disabled }
+  ↓
+fetchToolsForClient(client)           ← LRU(20) cache
+  ├── client.request({ method: 'tools/list' })
+  └── wraps each tool as MCPTool      ← unified Tool interface
+  ↓
+assembleToolPool()                    ← merges built-in tools + MCP tools
+  ↓
+Tool name format: mcp__<serverName>__<toolName>  ← buildMcpToolName()
+```
+
+## Two MCP modes: built-in vs. external
+
+Claude Code distinguishes between **built-in MCP servers** and **external MCP servers**. Both use the same client protocol and tool-discovery mechanism, but their connection methods, lifecycle management, and configuration sources differ completely.
+
+### Built-in MCP servers
+
+occ provides built-in MCP servers itself; users do not configure them manually. At startup, occ automatically registers their configurations under the `dynamic` scope.
+
+| Server | Name | Package path | Feature Flag | Enablement |
+|--------|------|--------------|--------------|------------|
+| Computer Use | `computer-use` | `@ant/computer-use-mcp` | `CHICAGO_MCP` | GrowthBook gate + macOS + interactive |
+| Chrome DevTools | `chrome-devtools` | `chrome-devtools-mcp` (npm dependency) | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `chromeDevtoolsDefaultEnabled` |
+| VSCode SDK | `claude-vscode` | — | — | Embedded IDE mode (type:`sdk`) |
+
+“Built-in” does not necessarily mean “in-process.” Computer Use uses `InProcessTransport`, while Chrome DevTools runs as a standard stdio child process (Google's `chrome-devtools-mcp`); occ merely injects its configuration automatically.
+
+#### InProcessTransport: zero-overhead, in-process communication
+
+Built-in servers run through `InProcessTransport` (`src/services/mcp/InProcessTransport.ts`) and **do not start a child process**:
+
+```typescript
+// Create a pair of linked transports — messages pass directly between the endpoints
+const [clientTransport, serverTransport] = createLinkedTransportPair()
+
+// Connect the server endpoint to serverTransport
+inProcessServer = createComputerUseMcpServerForCli()
+await inProcessServer.connect(serverTransport)
+
+// The client endpoint uses clientTransport (the same Client interface as an external MCP server)
+transport = clientTransport
+```
+
+The core design of `InProcessTransport`:
+- `send()` uses `queueMicrotask()` to deliver messages asynchronously to the peer, avoiding stack-depth problems from synchronous request/response handling
+- `close()` closes both directions; closing either endpoint invokes both endpoints' `onclose` callbacks
+- No network overhead, IPC serialization, or process startup time
+
+#### Dynamic registration flow
+
+Built-in servers register during the `main.tsx` startup flow by adding entries to `dynamicMcpConfig`:
+
+```typescript
+// main.tsx: dynamically register the Computer Use MCP server
+if (feature("CHICAGO_MCP") && getPlatform() !== "unknown" && !getIsNonInteractiveSession()) {
+  const { getChicagoEnabled } = await import("src/utils/computerUse/gates.js")
+  if (getChicagoEnabled()) {
+    const { setupComputerUseMCP } = await import("src/utils/computerUse/setup.js")
+    const { mcpConfig, allowedTools } = setupComputerUseMCP()
+    dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
+    allowedTools.push(...cuTools)
+  }
+}
+```
+
+The configuration returned by `setupComputerUseMCP()` (`src/utils/computerUse/setup.ts`):
+
+```typescript
+{
+  "computer-use": {
+    type: "stdio",           // Marked as stdio, but client.ts intercepts it and uses InProcessTransport
+    command: process.execPath,
+    args: ["--computer-use-mcp"],
+    scope: "dynamic",        // Dynamic scope; not persisted
+  }
+}
+```
+
+#### Connection-time interception
+
+`connectToServer()` intercepts built-in servers by name in `client.ts:906-944`:
+
+```typescript
+// Computer Use MCP — run in-process to avoid a ~325MB child process
+if (feature('CHICAGO_MCP') && isComputerUseMCPServer(name)) {
+  const { createComputerUseMcpServerForCli } = await import('../../utils/computerUse/mcpServer.js')
+  const { createLinkedTransportPair } = await import('./InProcessTransport.js')
+  inProcessServer = await createComputerUseMcpServerForCli()
+  const [clientTransport, serverTransport] = createLinkedTransportPair()
+  await inProcessServer.connect(serverTransport)
+  transport = clientTransport
+}
+```
+
+#### Reserved-name protection
+
+Built-in server names are reserved, so users cannot manually add configurations with the same names (`config.ts:636-648`):
+
+```typescript
+// Check reserved names when adding an MCP configuration
+if (isChromeDevtoolsMCPServer(name)) {
+  throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+}
+if (feature('CHICAGO_MCP') && isComputerUseMCPServer(name)) {
+  throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+}
+```
+
+A global startup check also runs in `main.tsx:2351-2368`. If user configuration contains a reserved name whose type is not `type:'sdk'`, the process calls `process.exit(1)` immediately.
+
+#### VSCode SDK MCP
+
+The VSCode SDK MCP is a special built-in mode. An IDE such as VS Code or JetBrains launches Claude Code in embedded mode and passes it an MCP configuration with `type:'sdk'`. These configurations:
+- Bypass reserved-name checks, allowing the IDE to use any name
+- Are not subject to exclusive enterprise MCP control
+- Connect through the VSCode SDK transport
+- Support bidirectional notifications such as `file_updated` and `experiment_gates`
+
+```typescript
+// src/services/mcp/vscodeSdkMcp.ts
+export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
+  const client = sdkClients.find(client => client.name === 'claude-vscode')
+  if (client && client.type === 'connected') {
+    // Register the log_event notification handler
+    client.client.setNotificationHandler(LogEventNotificationSchema(), ...)
+    // Send experiment gates to VSCode
+    client.client.notification({ method: 'experiment_gates', params: { gates } })
+  }
+}
+```
+
+### External MCP servers
+
+Users declare external MCP servers in configuration files. They run as child processes or connect over the network.
+
+#### Configuration sources
+
+| Source | Scope | File location | Priority |
+|--------|-------|---------------|----------|
+| Project configuration | `project` | `<project>/.mcp.json` | Highest (same-name entry overrides) |
+| Local configuration | `local` | `projects[<project>]` entry in `~/.occ.json` | High |
+| User configuration | `user` | `~/.occ.json` | Medium |
+| Plugin | `dynamic` | `.mcp.json` in the plugin manifest | Medium |
+| claude.ai | `claudeai` | Retrieved through the API | Low |
+| Enterprise-managed | `enterprise` | `managed-mcp.json` at the system-managed path | Exclusive (overrides everything when present) |
+
+#### Configuration example
+
+```json
+// MCP configuration in ~/.occ.json / .mcp.json
+{
+  "mcpServers": {
+    // stdio — starts a child process
+    "my-database": {
+      "command": "npx",
+      "args": ["@my-org/db-mcp-server"],
+      "env": { "DB_URL": "postgres://..." }
+    },
+
+    // HTTP streaming — remote server
+    "remote-api": {
+      "type": "http",
+      "url": "https://api.example.com/mcp"
+    },
+
+    // SSE — Server-Sent Events
+    "realtime-feed": {
+      "type": "sse",
+      "url": "https://feed.example.com/sse"
+    },
+
+    // WebSocket
+    "ws-service": {
+      "type": "ws",
+      "url": "wss://ws.example.com/mcp"
+    }
+  }
+}
+```
+
+#### Configuration merging and deduplication
+
+`getAllMcpConfigs()` (`config.ts`) merges configurations from multiple sources by priority:
+
+1. If enterprise-managed configuration exists, return it **exclusively** and ignore every other source
+2. Otherwise merge user → project → local → plugin → claude.ai
+3. Deduplicate plugin and manual configurations: `getMcpServerSignature()` produces a content signature from command/args/url, and a same-name manual configuration suppresses the plugin configuration
+4. `addScopeToServers()` annotates each configuration entry with its source scope
+
+## Seven transport implementations
+
+`connectToServer()` (`client.ts:596-1643`) dispatches to different Transport implementations according to `config.type`:
+
+| Transport type | Transport class | Use case | Authentication |
+|----------------|-----------------|----------|----------------|
+| `stdio` (default) | `StdioClientTransport` | External local child process | None |
+| `sse` | `SSEClientTransport` | Remote SSE service | `ClaudeAuthProvider` + OAuth |
+| `http` | `StreamableHTTPClientTransport` | HTTP streaming | `ClaudeAuthProvider` + OAuth |
+| `sse-ide` | `SSEClientTransport` | IDE integration | lockfile token |
+| `ws-ide` | `WebSocketTransport` | IDE WebSocket | `X-Claude-Code-Ide-Authorization` |
+| `ws` | `WebSocketTransport` | WebSocket service | session ingress token |
+| `claudeai-proxy` | `StreamableHTTPClientTransport` | claude.ai proxy | OAuth bearer + 401 retry |
+| InProcess (built-in) | `InProcessTransport` | Computer Use | None (same process) |
+
+### Process management for stdio transport
+
+A stdio MCP server runs as a child process. During cleanup, `client.ts:1431-1564` applies a **signal-escalation strategy**:
+
+```
+SIGINT (100ms) → SIGTERM (400ms) → SIGKILL
+```
+
+Cleanup has an overall 600ms limit so an MCP server that fails to shut down cannot block CLI exit.
+
+### Authentication state machine for remote transports
+
+SSE and HTTP transports use `ClaudeAuthProvider` for the OAuth authentication flow. When authentication fails, the connection enters the `needs-auth` state and writes a cache file with a 15-minute TTL (`~/.occ/mcp-needs-auth-cache.json`) to avoid repeatedly showing authentication prompts.
+
+```
+Connection attempt → 401 Unauthorized
+  ↓
+handleRemoteAuthFailure()
+  ├── logEvent('tengu_mcp_server_needs_auth')
+  ├── setMcpAuthCacheEntry(name)         ← write to the 15min TTL cache
+  └── return { type: 'needs-auth' }      ← UI displays an authentication prompt
+```
+
+## Connection caching and reconnection
+
+`connectToServer` uses lodash `memoize` to cache connection objects. Its cache key is `${name}-${JSON.stringify(config)}`.
+
+### Cache invalidation triggers
+
+When a connection closes (`client.onclose`), all related caches are cleared (`client.ts:1376-1404`):
+
+```typescript
+client.onclose = () => {
+  const key = getServerCacheKey(name, serverRef)
+  fetchToolsForClient.cache.delete(name)      // Tool cache
+  fetchResourcesForClient.cache.delete(name)  // Resource cache
+  fetchCommandsForClient.cache.delete(name)   // Command cache
+  connectToServer.cache.delete(key)           // Connection cache
+}
+```
+
+### Connection degradation detection
+
+Remote transports maintain a **consecutive error counter** (`client.ts:1229`):
+
+```typescript
+let consecutiveConnectionErrors = 0
+const MAX_ERRORS_BEFORE_RECONNECT = 3
+```
+
+After three consecutive terminal errors such as ECONNRESET, ETIMEDOUT, or EPIPE, the client actively closes the transport to trigger reconnection. For HTTP transport, it also detects an expired session (404 + JSON-RPC code -32001).
+
+### Per-request timeout protection
+
+Each HTTP request uses its own `setTimeout` (`wrapFetchWithTimeout`, `client.ts:493`) rather than sharing `AbortSignal.timeout()`. Bun collects AbortSignal.timeout lazily: each request retains about 2.4KB of native memory for 60s even if the request completes in milliseconds.
+
+```typescript
+const controller = new AbortController()
+const timer = setTimeout(c => c.abort(...), MCP_REQUEST_TIMEOUT_MS, controller)
+timer.unref?.()  // Do not prevent the process from exiting
+```
+
+## Tool discovery: from MCP to the Tool interface
+
+`fetchToolsForClient()` (`client.ts:1744-2000`) uses a `memoizeWithLRU` cache with a limit of 100 and converts MCP tools to Claude Code's unified Tool interface:
+
+```typescript
+const fullyQualifiedName = buildMcpToolName(client.name, tool.name)
+// Result: "mcp__my-database__query"
+```
+
+### Tool discovery for built-in MCP servers
+
+Although built-in MCP servers use InProcessTransport, they follow exactly the same tool-discovery path as external servers:
+
+- **Computer Use**: `createComputerUseMcpServerForCli()` constructs the MCP Server object in `src/utils/computerUse/mcpServer.ts` and registers a `ListToolsRequestSchema` handler. Tool descriptions include a platform-specific list of installed applications, enumerated with a 1s timeout.
+- **VSCode SDK**: The IDE supplies the tool list and transmits it through the SDK transport.
+
+### Tool-description truncation
+
+MCP tool descriptions have a 2048-character limit (`MAX_MCP_DESCRIPTION_LENGTH`). MCP servers generated from OpenAPI have been observed to provide descriptions of 15–60KB.
+
+### Tool capability annotations
+
+Each MCP tool derives capabilities from `tool.annotations`:
+
+| Annotation | Maps to | Meaning |
+|------------|---------|---------|
+| `readOnlyHint` | `isReadOnly()` + `isConcurrencySafe()` | Read-only and safe to run concurrently |
+| `destructiveHint` | `isDestructive()` | Destructive operation |
+| `openWorldHint` | `isOpenWorld()` | Open world (not enumerable) |
+| `title` | `userFacingName()` | Display name |
+
+### Permission checks for MCP tools
+
+By default, MCP tools return `{ behavior: 'passthrough' }` (`client.ts:1816-1834`), so they always enter the permission-confirmation path. Permission rules match the exact tool name with its `mcp__` prefix.
+
+Tools from built-in MCP servers receive automatic authorization through the `allowedTools` list, which `main.tsx` adds at startup, bypassing ordinary permission prompts. For example, the Computer Use `request_access` tool handles session-level approval itself.
+
+## MCP tool execution path
+
+```
+AI generates tool_use: { name: "mcp__my-db__query", input: { sql: "..." } }
+  ↓
+MCPTool.call()                               ← client.ts:1835
+  ├── ensureConnectedClient()                ← ensure the connection is valid (reconnect if needed)
+  ├── callMCPToolWithUrlElicitationRetry()   ← retry with Elicitation support
+  │   ├── client.request({ method: 'tools/call' })
+  │   ├── process image results (resize + persist)
+  │   └── truncate content (mcpContentNeedsTruncation)
+  ├── McpSessionExpiredError → retry once
+  └── return { data: content, mcpMeta }
+```
+
+### Automatic retry after session expiration
+
+An MCP session over HTTP can expire. After detecting `McpSessionExpiredError`, the system retries once (`client.ts:1862`) because `ensureConnectedClient()` has already cleared the cache and established a new connection.
+
+### Content truncation and persistence
+
+Large MCP tool output is truncated through `truncateMcpContentIfNeeded`. Binary content such as images is written to a file through `persistBinaryContent`, and the tool returns the file path. Images are resized automatically with `maybeResizeAndDownsampleImageBuffer`.
+
+## Concurrency control for MCP connections
+
+```typescript
+// Concurrent connections to local servers
+getMcpServerConnectionBatchSize()    // Default: 3
+
+// Concurrent connections to remote servers
+getRemoteMcpServerConnectionBatchSize()  // Default: 20
+```
+
+Local MCP servers using stdio are heavyweight child processes, so the default concurrency limit is three connections. Remote servers use lightweight HTTP requests and allow 20 concurrent connections.
+
+## Built-in vs. external MCP summary
+
+| Dimension | Built-in MCP | External MCP |
+|-----------|--------------|--------------|
+| **Transport** | `InProcessTransport` (Computer Use) or stdio (Chrome DevTools) | stdio / SSE / HTTP / WebSocket |
+| **Configuration source** | Dynamic registration through `setupComputerUseMCP()` / `setupChromeDevtools()`, etc. | `~/.occ.json` / `.mcp.json` / plugins / claude.ai |
+| **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
+| **Process model** | Same process, zero overhead | Child process (stdio) or network connection |
+| **Name protection** | Reserved names; users cannot add same-name entries | User-defined names (alphanumeric + `-_`) |
+| **Lifecycle** | Starts and stops with the CLI | Connection cache + on-demand reconnection |
+| **Permissions** | Automatic authorization through `allowedTools` (Chrome DevTools allows only nine read-only tools; all others still require confirmation) | `passthrough` enters permission confirmation |
+| **Feature Flag** | `CHICAGO_MCP` (Computer Use), etc. | None (always available) |
+| **Tool discovery** | Same as external servers (MCP protocol) | Standard MCP `tools/list` |
+| **Cleanup** | `inProcessServer.close()` | Signal escalation: SIGINT→SIGTERM→SIGKILL |
+
+## Key source files
+
+| File | Responsibility |
+|------|----------------|
+| `src/services/mcp/client.ts` | Core client: connectToServer, fetchToolsForClient, MCPTool.call |
+| `src/services/mcp/config.ts` | Configuration management: getAllMcpConfigs, addMcpConfig, removeMcpConfig |
+| `src/services/mcp/types.ts` | Type definitions: configuration Schema and connection-state types |
+| `src/services/mcp/InProcessTransport.ts` | Built-in MCP transport: linked transport pair |
+| `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK MCP: bidirectional notifications and experiment gates |
+| `src/services/mcp/useManageMCPConnections.ts` | React Hook: connection lifecycle and reconnection |
+| `src/utils/computerUse/mcpServer.ts` | Computer Use MCP Server construction |
+| `src/utils/computerUse/setup.ts` | Computer Use dynamic registration |
+| `src/utils/chromeDevtools/setup.ts` | Chrome DevTools MCP dynamic registration (entry-point resolution + connection arguments + allowedTools) |
+| `src/tools/MCPTool/MCPTool.ts` | MCP tool wrapper: unified Tool interface |
+| `src/entrypoints/mcp.ts` | MCP server entry point (Claude Code acting as an MCP server) |

@@ -60,6 +60,16 @@
               "docs/en/agent/worktree-isolation",
               "docs/en/agent/coordinator-and-swarm"
             ]
+          },
+          {
+            "group": "可扩展性",
+            "pages": [
+              "docs/en/extensibility/mcp-protocol",
+              "docs/en/extensibility/mcp-configuration",
+              "docs/en/extensibility/hooks",
+              "docs/en/extensibility/skills",
+              "docs/en/extensibility/custom-agents"
+            ]
           }
         ]
       },
@@ -258,6 +268,16 @@
               "docs/ja/agent/sub-agents",
               "docs/ja/agent/worktree-isolation",
               "docs/ja/agent/coordinator-and-swarm"
+            ]
+          },
+          {
+            "group": "可扩展性",
+            "pages": [
+              "docs/ja/extensibility/mcp-protocol",
+              "docs/ja/extensibility/mcp-configuration",
+              "docs/ja/extensibility/hooks",
+              "docs/ja/extensibility/skills",
+              "docs/ja/extensibility/custom-agents"
             ]
           }
         ]
