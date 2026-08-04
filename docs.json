@@ -12,6 +12,7 @@
     "languages": [
       {
         "language": "en",
+        "default": true,
         "groups": [
           {
             "group": "开始",
@@ -143,12 +144,20 @@
               },
               "docs/en/features/tier3-stubs"
             ]
+          },
+          {
+            "group": "基础设施与依赖",
+            "pages": [
+              "docs/en/auto-updater",
+              "docs/en/lsp-integration",
+              "docs/en/external-dependencies",
+              "docs/en/telemetry-remote-config-audit"
+            ]
           }
         ]
       },
       {
         "language": "zh",
-        "default": true,
         "groups": [
           {
             "group": "开始",
@@ -424,6 +433,15 @@
                 ]
               },
               "docs/ja/features/tier3-stubs"
+            ]
+          },
+          {
+            "group": "基础设施与依赖",
+            "pages": [
+              "docs/ja/auto-updater",
+              "docs/ja/lsp-integration",
+              "docs/ja/external-dependencies",
+              "docs/ja/telemetry-remote-config-audit"
             ]
           }
         ]

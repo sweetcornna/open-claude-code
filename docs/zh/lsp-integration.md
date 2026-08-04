@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/lsp-integration) · **中文** · [日本語](/docs/ja/lsp-integration)
 
 # LSP Integration
 
