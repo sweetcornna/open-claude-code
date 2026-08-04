@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/voice-mode) · **中文** · [日本語](/docs/ja/features/voice-mode)
+**中文**
 
 # VOICE_MODE — 语音输入
 

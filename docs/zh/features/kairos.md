@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/kairos) · **中文** · [日本語](/docs/ja/features/kairos)
+**中文**
 
 # KAIROS — 常驻助手模式
 

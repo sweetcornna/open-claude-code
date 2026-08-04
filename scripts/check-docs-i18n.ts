@@ -75,12 +75,29 @@ function main(): number {
     return 1
   }
 
-  // The default language defines the canonical page set; the others are
-  // measured against it so a missing translation is a coverage number rather
-  // than an invisible hole.
-  const canonical = collectPages(defaults[0]!.groups).map(p =>
-    p.replace(`docs/${defaults[0]!.language}/`, ''),
+  // The canonical tree is the largest one: translation lands page by page, so
+  // the other trees are subsets of it. Coverage is measured against it so a
+  // missing translation reads as a number rather than an invisible hole.
+  const canonicalTree = languages.reduce((widest, lang) =>
+    collectPages(lang.groups).length > collectPages(widest.groups).length
+      ? lang
+      : widest,
   )
+  const canonical = collectPages(canonicalTree.groups).map(p =>
+    p.replace(`docs/${canonicalTree.language}/`, ''),
+  )
+
+  // The default language is every reader's landing tree, so it is the one
+  // language that may not have holes.
+  const defaultCoverage = collectPages(defaults[0]!.groups).length
+  if (defaultCoverage < canonical.length) {
+    console.error(
+      `[docs-i18n] FAIL default language '${defaults[0]!.language}' covers ` +
+        `${defaultCoverage}/${canonical.length} pages. The default is the ` +
+        `landing tree for every reader and must be complete.`,
+    )
+    return 1
+  }
 
   let missing = 0
   let noSwitcher = 0
@@ -103,10 +120,10 @@ function main(): number {
     }
 
     const present = pages.length - absent.length
-    const pct = pages.length ? (present / pages.length) * 100 : 0
+    const pct = canonical.length ? (present / canonical.length) * 100 : 0
     report.push(
       `  ${lang.language}${lang.default ? ' (default)' : '       '}  ` +
-        `${String(present).padStart(3)}/${pages.length} pages  ${pct.toFixed(0).padStart(3)}%` +
+        `${String(present).padStart(3)}/${canonical.length} pages  ${pct.toFixed(0).padStart(3)}%` +
         (unmarked.length ? `  ${unmarked.length} missing switcher` : ''),
     )
     missing += absent.length
@@ -120,8 +137,9 @@ function main(): number {
     }
   }
 
-  // A page set that diverges between languages means the trees describe
-  // different documentation, which the switcher links cannot express.
+  // A language may lag behind (translation lands page by page), but it must
+  // never declare a page the canonical tree does not have — that would be a
+  // page with no source of truth and no way to reach it from the switcher.
   for (const lang of languages) {
     const rel = collectPages(lang.groups).map(p =>
       p.replace(`docs/${lang.language}/`, ''),
@@ -130,7 +148,7 @@ function main(): number {
     if (extra.length) {
       console.error(
         `[docs-i18n] FAIL ${lang.language} declares pages absent from the ` +
-          `default tree: ${extra.join(', ')}`,
+          `canonical tree: ${extra.join(', ')}`,
       )
       return 1
     }
@@ -145,13 +163,31 @@ function main(): number {
     )
     return 1
   }
+  // Navigation is pruned to existing pages by sync-docs-i18n, so anything
+  // declared-but-absent means the two have drifted apart.
   if (missing > 0) {
-    const verb = strict ? 'FAIL' : 'PENDING'
     console.error(
-      `\n[docs-i18n] ${verb} ${missing} declared page(s) do not exist on disk.`,
+      `\n[docs-i18n] FAIL ${missing} declared page(s) do not exist on disk. ` +
+        `Run \`bun run sync:docs-i18n\`.`,
     )
-    if (strict) return 1
-    console.error('[docs-i18n] translation in progress; run --strict to gate.')
+    return 1
+  }
+  if (strict) {
+    const incomplete = languages.filter(
+      lang => collectPages(lang.groups).length < canonical.length,
+    )
+    if (incomplete.length) {
+      console.error(
+        `\n[docs-i18n] FAIL --strict: ` +
+          incomplete
+            .map(
+              l =>
+                `${l.language} ${collectPages(l.groups).length}/${canonical.length}`,
+            )
+            .join(', '),
+      )
+      return 1
+    }
   }
   return 0
 }

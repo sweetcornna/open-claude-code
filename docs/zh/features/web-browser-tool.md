@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/web-browser-tool) · **中文** · [日本語](/docs/ja/features/web-browser-tool)
+**中文**
 
 # WEB_BROWSER_TOOL — 浏览器工具
 

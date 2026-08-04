@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-[English](/docs/en/features/remote-control-self-hosting) · **中文** · [日本語](/docs/ja/features/remote-control-self-hosting)
+**中文**
 
 # Remote Control（基于 Happy over ACP）
 
