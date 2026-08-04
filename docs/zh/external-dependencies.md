@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/external-dependencies) · **中文** · [日本語](/docs/ja/external-dependencies)
 
 # Claude Code 远程服务器依赖
 
