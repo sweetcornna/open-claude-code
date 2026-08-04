@@ -64,6 +64,15 @@ function scenario(options: {
   resetAdapterCache()
 }
 
+/**
+ * Read a `private readonly` construction flag. Which route an adapter takes is
+ * decided at construction and only observable over the network otherwise —
+ * this keeps the factory's contract testable without standing up a server.
+ */
+function privateField(adapter: unknown, field: string): unknown {
+  return (adapter as unknown as Record<string, unknown>)[field]
+}
+
 function laneName(lane: unknown): string {
   const adapter =
     lane instanceof SourceHealthAdapter ? lane.inner : (lane as object)
@@ -125,6 +134,41 @@ describe('createAdapter — explicit selection', () => {
       resetAdapterCache()
       expect(createAdapter().constructor.name).toBe(expected)
     }
+  })
+
+  test('an explicitly named provider source still knows it is off-provider', () => {
+    // Regression: naming a source does not make it the session's provider.
+    // Built bare, the Gemini adapter skipped the Antigravity route a Google
+    // login had made available and sent an empty x-goog-api-key — 403.
+    scenario({ provider: 'openai', credentials: ['codex', 'gemini'] })
+    process.env.WEB_SEARCH_ADAPTER = 'gemini'
+
+    expect(privateField(createAdapter(), 'asExtraSource')).toBe(true)
+  })
+
+  test('an explicitly named source that IS the provider leads normally', () => {
+    scenario({ provider: 'gemini', credentials: ['gemini'] })
+    process.env.WEB_SEARCH_ADAPTER = 'gemini'
+
+    expect(privateField(createAdapter(), 'asExtraSource')).toBe(false)
+  })
+
+  test('explicit "api" off-provider uses the standalone Anthropic call', () => {
+    // ApiSearchAdapter rides the session query pipeline, which would route an
+    // Anthropic web_search tool at whatever provider the main loop is using.
+    scenario({ provider: 'openai', credentials: ['anthropic'] })
+    process.env.WEB_SEARCH_ADAPTER = 'api'
+
+    expect(createAdapter().constructor.name).toBe(
+      'AnthropicDirectSearchAdapter',
+    )
+  })
+
+  test('explicit "codex" off-provider prefers the connected ChatGPT account', () => {
+    scenario({ provider: 'gemini', credentials: ['codex', 'gemini'] })
+    process.env.WEB_SEARCH_ADAPTER = 'codex'
+
+    expect(privateField(createAdapter(), 'forceChatGPTAuth')).toBe(true)
   })
 
   test('env beats settings', () => {

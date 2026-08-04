@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { GeminiStreamChunk } from '@ant/model-provider'
+import { findAntigravityModelOption } from 'src/utils/model/antigravityModels.js'
 import {
   extractGeminiSearchResults,
   GeminiSearchAdapter,
   isGroundingRedirectUrl,
+  resolveGeminiSearchModel,
 } from '../adapters/geminiAdapter'
 import type { SearchProgress } from '../adapters/types'
 
@@ -80,6 +82,50 @@ describe('isGroundingRedirectUrl', () => {
     expect(isGroundingRedirectUrl(REDIRECT_A)).toBe(true)
     expect(isGroundingRedirectUrl('https://elastic.co/guide')).toBe(false)
     expect(isGroundingRedirectUrl('not a url')).toBe(false)
+  })
+})
+
+describe('resolveGeminiSearchModel', () => {
+  const savedModel = process.env.GEMINI_MODEL
+  const savedAnthropicModel = process.env.ANTHROPIC_MODEL
+
+  beforeEach(() => {
+    delete process.env.GEMINI_MODEL
+    // Pin the model so getMainLoopModel() never walks into the auth stack.
+    process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-5-20250929'
+  })
+
+  afterEach(() => {
+    if (savedModel === undefined) delete process.env.GEMINI_MODEL
+    else process.env.GEMINI_MODEL = savedModel
+    if (savedAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL
+    else process.env.ANTHROPIC_MODEL = savedAnthropicModel
+  })
+
+  test('the Antigravity default is a model that backend actually serves', () => {
+    // Regression: the public-endpoint default (gemini-2.5-flash) went to the
+    // Antigravity backend and came back 404 "Requested entity was not found"
+    // on every search, silenced by the aggregator.
+    const model = resolveGeminiSearchModel(true)
+    expect(findAntigravityModelOption(model)).toBeDefined()
+  })
+
+  test('the public endpoint keeps its own default', () => {
+    expect(resolveGeminiSearchModel(false)).toBe('gemini-2.5-flash')
+  })
+
+  test('a public-endpoint GEMINI_MODEL is not forwarded to Antigravity', () => {
+    // Left over from an earlier API-key setup — valid there, a 404 here.
+    process.env.GEMINI_MODEL = 'gemini-2.5-flash'
+    expect(
+      findAntigravityModelOption(resolveGeminiSearchModel(true)),
+    ).toBeDefined()
+    expect(resolveGeminiSearchModel(false)).toBe('gemini-2.5-flash')
+  })
+
+  test('an Antigravity GEMINI_MODEL is forwarded as-is', () => {
+    process.env.GEMINI_MODEL = 'gemini-3.1-pro-low'
+    expect(resolveGeminiSearchModel(true)).toBe('gemini-3.1-pro-low')
   })
 })
 

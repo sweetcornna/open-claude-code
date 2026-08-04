@@ -22,7 +22,10 @@
 
 import { resolveOpenAIModel } from '@ant/model-provider'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
-import { isChatGPTAuthEnabled } from 'src/services/api/openai/chatgptAuth.js'
+import {
+  hasStoredChatGPTAuthSync,
+  isChatGPTAuthEnabled,
+} from 'src/services/api/openai/chatgptAuth.js'
 import { resolveOpenAIMaxTokens } from 'src/services/api/openai/requestBody.js'
 import {
   buildResponsesRequest,
@@ -177,9 +180,14 @@ export function extractCodexSearchResults(
 
 export interface CodexSearchAdapterOptions {
   /**
-   * Force the ChatGPT/Codex OAuth route regardless of `OPENAI_AUTH_MODE`.
+   * Prefer the ChatGPT/Codex OAuth route regardless of `OPENAI_AUTH_MODE`.
    * Set for the "Codex (ChatGPT OAuth)" extra source, where the account is
    * connected but the main loop may be talking to a different provider.
+   *
+   * Preference, not a hard switch: `hasCodexSearchCredentials()` counts an
+   * OPENAI_API_KEY alone as "connected", so an unconditional force would leave
+   * that user with a source the panel calls on and a lane that can only throw.
+   * No ChatGPT login on disk → fall back to the API-key `/responses` route.
    */
   forceChatGPTAuth?: boolean
   /** Test seam: drive the stream without a network. */
@@ -211,7 +219,9 @@ export class CodexSearchAdapter implements WebSearchAdapter {
       })
     }
 
-    const useChatGPTAuth = this.forceChatGPTAuth || isChatGPTAuthEnabled()
+    const useChatGPTAuth =
+      isChatGPTAuthEnabled() ||
+      (this.forceChatGPTAuth && hasStoredChatGPTAuthSync())
     const request = buildResponsesRequest({
       model: resolveOpenAIModel(getMainLoopModel()),
       messages: [

@@ -146,11 +146,26 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 - Gemini 的 grounding URL 是 `vertexaisearch.cloud.google.com/grounding-api-redirect/…` 重定向壳，
   先用 HEAD 跟随解析出真实 URL 再参与去重与域名过滤。
 
+**主路 / 增强路不只是排序，它决定了请求怎么发**，三个源各有一套：
+
+| 源 | 主路 | 增强路 |
+| --- | --- | --- |
+| `anthropic` | 走会话自己的 query 管线（`ApiSearchAdapter`） | 独立的 Messages 调用（`AnthropicDirectSearchAdapter`）——管线会把请求路由到当前 provider，增强路不能用它 |
+| `gemini` | 按 `GEMINI_AUTH_MODE` 决定公网端点还是 Antigravity | 只要有 Google 登录就走 Antigravity |
+| `codex` | 按 `OPENAI_AUTH_MODE` 决定 API key 还是 ChatGPT OAuth | 优先用已连接的 ChatGPT 账号，没有登录才回落 API key |
+
+**Gemini 的模型必须跟着路由走**：Antigravity 后端只服务它自己的模型 id（`gemini-3.1-pro-low` /
+`gemini-3.1-flash-lite` / `gemini-pro-agent`），公网 id 一律回 404 `Requested entity was not found`。
+搜索 lane 因此按路由挑默认模型（Antigravity 用 flash-lite，公网用 `gemini-2.5-flash`），
+且**不会**把一个公网 `GEMINI_MODEL` 原样转发到 Antigravity。
+
 ### 4.3 显式点名（跳过聚合）
 
 `WEB_SEARCH_ADAPTER` 环境变量 > `settings.webSearchAdapter`，取值
 `api|codex|gemini|free|bing|brave|exa`，命中时**只跑这一个源**。
 不认识的值（例如已删除的 `tavily`）静默回落到默认聚合。
+
+点名一个源**不会**让它变成会话的 provider——`api`/`gemini`/`codex` 仍按 4.2 的表判定主路还是增强路。
 
 `brave` 需要 `BRAVE_SEARCH_API_KEY` 或 `BRAVE_API_KEY`；`exa` 可配 `exaApiKey`。
 
