@@ -1,0 +1,399 @@
+---
+title: "MCP 协议 - 连接管理、工具发现与执行链路"
+description: "从源码角度解析 Claude Code 的 MCP 集成：内置 MCP 与外部 MCP 的区别、7 种传输层实现、connectToServer 的 memoize 缓存、工具发现的 LRU 策略、认证状态机、以及 MCP 工具如何进入权限检查链路。"
+keywords: ["MCP", "Model Context Protocol", "工具扩展", "MCP 客户端", "工具发现", "内置 MCP", "外部 MCP"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/extensibility/mcp-protocol) · **中文** · [日本語](/docs/ja/extensibility/mcp-protocol)
+
+{/* 本章目标：从源码角度揭示 MCP 客户端的两种运行模式（内置/外部）、连接管理、工具发现协议和执行链路 */}
+
+## 架构总览：从配置到可用工具
+
+```
+配置层（多来源合并）
+  ├── ~/.occ.json: 用户级 mcpServers + projects[<project>] 本地覆盖                   ← 外部
+  ├── .mcp.json: 项目级 MCP 配置                                                      ← 外部
+  ├── 插件 manifest (.mcp.json / .mcpb)                                               ← 外部（插件）
+  ├── claude.ai connectors                                                            ← 外部（远程）
+  ├── enterprise managed-mcp.json                                                     ← 外部（企业管控）
+  ├── setupComputerUseMCP() / setupChromeDevtools()                                   ← 内置（动态注册）
+  └── SDK 传入 (type:'sdk')                                                           ← 内置（IDE 嵌入）
+  ↓
+getAllMcpConfigs()                    ← enterprise 独占 或 合并 user/project/local + plugin + claude.ai
+  ↓
+useManageMCPConnections()             ← React Hook 管理连接生命周期
+  ↓
+connectToServer(name, config)         ← memoize 缓存（lodash memoize）
+  ├── 判断：内置 MCP → InProcessTransport（同进程）
+  ├── 判断：外部 stdio → StdioClientTransport（子进程）
+  ├── 判断：远程 SSE/HTTP/WS → 网络传输
+  └── 返回 MCPServerConnection        ← { connected | failed | needs-auth | pending | disabled }
+  ↓
+fetchToolsForClient(client)           ← LRU(20) 缓存
+  ├── client.request({ method: 'tools/list' })
+  └── 每个工具包装为 MCPTool            ← 统一 Tool 接口
+  ↓
+assembleToolPool()                    ← 合并内置工具 + MCP 工具
+  ↓
+工具名格式: mcp__<serverName>__<toolName>  ← buildMcpToolName()
+```
+
+## 两种 MCP 模式：内置 vs 外部
+
+Claude Code 的 MCP 实现区分 **内置 MCP 服务器** 和 **外部 MCP 服务器**。两者使用相同的客户端协议和工具发现机制，但在连接方式、生命周期管理和配置来源上完全不同。
+
+### 内置 MCP 服务器
+
+内置 MCP 服务器由 occ 自身提供，无需用户手动配置。它们在启动时自动注册为 `dynamic` scope 的配置。
+
+| 服务器 | 名称 | 包路径 | Feature Flag | 启用方式 |
+|--------|------|--------|-------------|---------|
+| Computer Use | `computer-use` | `@ant/computer-use-mcp` | `CHICAGO_MCP` | GrowthBook gate + macOS + interactive |
+| Chrome DevTools | `chrome-devtools` | `chrome-devtools-mcp`（npm 依赖） | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `chromeDevtoolsDefaultEnabled` |
+| VSCode SDK | `claude-vscode` | — | — | IDE 嵌入模式 (type:`sdk`) |
+
+注意「内置」不等于「同进程」：Computer Use 走 `InProcessTransport`，而 Chrome DevTools 是普通的 stdio 子进程（Google 的 `chrome-devtools-mcp`），只是配置由 occ 自动注入。
+
+#### InProcessTransport：零开销同进程通信
+
+内置服务器通过 `InProcessTransport`（`src/services/mcp/InProcessTransport.ts`）运行，**不启动子进程**：
+
+```typescript
+// 创建一对 linked transport —— 消息在两端之间直接传递
+const [clientTransport, serverTransport] = createLinkedTransportPair()
+
+// server 端连接到 serverTransport
+inProcessServer = createComputerUseMcpServerForCli()
+await inProcessServer.connect(serverTransport)
+
+// client 端使用 clientTransport（与外部 MCP 的 Client 相同接口）
+transport = clientTransport
+```
+
+`InProcessTransport` 的核心设计：
+- `send()` 通过 `queueMicrotask()` 异步投递消息到对端，避免同步请求/响应的栈深度问题
+- `close()` 双向关闭，任一端关闭都会触发两端的 `onclose` 回调
+- 无网络开销、无 IPC 序列化、无进程启动时间
+
+#### 动态注册流程
+
+内置服务器在 `main.tsx` 的启动流程中注册，注入 `dynamicMcpConfig`：
+
+```typescript
+// main.tsx: Computer Use MCP 动态注册
+if (feature("CHICAGO_MCP") && getPlatform() !== "unknown" && !getIsNonInteractiveSession()) {
+  const { getChicagoEnabled } = await import("src/utils/computerUse/gates.js")
+  if (getChicagoEnabled()) {
+    const { setupComputerUseMCP } = await import("src/utils/computerUse/setup.js")
+    const { mcpConfig, allowedTools } = setupComputerUseMCP()
+    dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
+    allowedTools.push(...cuTools)
+  }
+}
+```
+
+`setupComputerUseMCP()` 返回的配置（`src/utils/computerUse/setup.ts`）：
+
+```typescript
+{
+  "computer-use": {
+    type: "stdio",           // 类型标记为 stdio（但 client.ts 会拦截为 InProcessTransport）
+    command: process.execPath,
+    args: ["--computer-use-mcp"],
+    scope: "dynamic",        // 动态作用域，不持久化
+  }
+}
+```
+
+#### 连接时拦截
+
+`connectToServer()` 在 `client.ts:906-944` 中根据服务器名拦截内置服务器：
+
+```typescript
+// Computer Use MCP — 在 process 内运行，避免 ~325MB 子进程
+if (feature('CHICAGO_MCP') && isComputerUseMCPServer(name)) {
+  const { createComputerUseMcpServerForCli } = await import('../../utils/computerUse/mcpServer.js')
+  const { createLinkedTransportPair } = await import('./InProcessTransport.js')
+  inProcessServer = await createComputerUseMcpServerForCli()
+  const [clientTransport, serverTransport] = createLinkedTransportPair()
+  await inProcessServer.connect(serverTransport)
+  transport = clientTransport
+}
+```
+
+#### 保留名称保护
+
+内置服务器的名称被保留，用户无法手动添加同名配置（`config.ts:636-648`）：
+
+```typescript
+// 添加 MCP 配置时检查保留名
+if (isChromeDevtoolsMCPServer(name)) {
+  throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+}
+if (feature('CHICAGO_MCP') && isComputerUseMCPServer(name)) {
+  throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
+}
+```
+
+启动时也有全局检查（`main.tsx:2351-2368`）：如果用户配置中包含保留名（非 `type:'sdk'`），直接 `process.exit(1)`。
+
+#### VSCode SDK MCP
+
+VSCode SDK MCP 是特殊的内置模式。IDE（如 VS Code、JetBrains）通过嵌入方式启动 Claude Code，并传入 `type:'sdk'` 的 MCP 配置。这类配置：
+- 不经过保留名称检查（IDE 可以使用任意名称）
+- 不参与 enterprise MCP 的排他控制
+- 通过 VSCode SDK transport 连接
+- 支持双向通知（如 `file_updated`、`experiment_gates`）
+
+```typescript
+// src/services/mcp/vscodeSdkMcp.ts
+export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
+  const client = sdkClients.find(client => client.name === 'claude-vscode')
+  if (client && client.type === 'connected') {
+    // 注册 log_event 通知处理器
+    client.client.setNotificationHandler(LogEventNotificationSchema(), ...)
+    // 发送实验门控到 VSCode
+    client.client.notification({ method: 'experiment_gates', params: { gates } })
+  }
+}
+```
+
+### 外部 MCP 服务器
+
+外部 MCP 服务器由用户在配置文件中声明，通过子进程或网络连接运行。
+
+#### 配置来源
+
+| 来源 | Scope | 文件位置 | 优先级 |
+|------|-------|---------|--------|
+| 项目配置 | `project` | `<project>/.mcp.json` | 最高（同名覆盖） |
+| 本地配置 | `local` | `~/.occ.json` 的 `projects[<project>]` 条目 | 高 |
+| 用户配置 | `user` | `~/.occ.json` | 中 |
+| 插件 | `dynamic` | 插件 manifest 中 `.mcp.json` | 中 |
+| claude.ai | `claudeai` | 通过 API 获取 | 低 |
+| 企业管控 | `enterprise` | 系统管理路径 `managed-mcp.json` | 排他（存在时覆盖全部） |
+
+#### 配置示例
+
+```json
+// ~/.occ.json / .mcp.json 中的 MCP 配置
+{
+  "mcpServers": {
+    // stdio 类型 — 启动子进程
+    "my-database": {
+      "command": "npx",
+      "args": ["@my-org/db-mcp-server"],
+      "env": { "DB_URL": "postgres://..." }
+    },
+
+    // HTTP 流类型 — 远程服务器
+    "remote-api": {
+      "type": "http",
+      "url": "https://api.example.com/mcp"
+    },
+
+    // SSE 类型 — Server-Sent Events
+    "realtime-feed": {
+      "type": "sse",
+      "url": "https://feed.example.com/sse"
+    },
+
+    // WebSocket 类型
+    "ws-service": {
+      "type": "ws",
+      "url": "wss://ws.example.com/mcp"
+    }
+  }
+}
+```
+
+#### 配置合并与去重
+
+`getAllMcpConfigs()`（`config.ts`）按优先级合并多个来源的配置：
+
+1. 企业管控配置存在时，**独占返回**（忽略所有其他来源）
+2. 否则合并：user → project → local → plugin → claude.ai
+3. 插件与手动配置去重：通过 `getMcpServerSignature()` 生成内容签名（基于 command/args/url），插件配置被同名手动配置抑制
+4. `addScopeToServers()` 为每个配置项标注来源 scope
+
+## 7 种传输层实现
+
+`connectToServer()`（`client.ts:596-1643`）根据 `config.type` 分发到不同的 Transport 实现：
+
+| 传输类型 | Transport 类 | 适用场景 | 认证方式 |
+|----------|-------------|---------|---------|
+| `stdio`（默认） | `StdioClientTransport` | 外部本地子进程 | 无 |
+| `sse` | `SSEClientTransport` | 远程 SSE 服务 | `ClaudeAuthProvider` + OAuth |
+| `http` | `StreamableHTTPClientTransport` | HTTP 流 | `ClaudeAuthProvider` + OAuth |
+| `sse-ide` | `SSEClientTransport` | IDE 集成 | lockfile token |
+| `ws-ide` | `WebSocketTransport` | IDE WebSocket | `X-Claude-Code-Ide-Authorization` |
+| `ws` | `WebSocketTransport` | WebSocket 服务 | session ingress token |
+| `claudeai-proxy` | `StreamableHTTPClientTransport` | claude.ai 代理 | OAuth bearer + 401 重试 |
+| InProcess（内置） | `InProcessTransport` | Computer Use | 无（同进程） |
+
+### stdio 传输的进程管理
+
+stdio 类型的 MCP 服务器作为子进程运行，cleanup 时采用 **信号升级策略**（`client.ts:1431-1564`）：
+
+```
+SIGINT (100ms) → SIGTERM (400ms) → SIGKILL
+```
+
+总清理时间上限 600ms，防止 MCP 服务器关闭阻塞 CLI 退出。
+
+### 远程传输的认证状态机
+
+SSE/HTTP 类型使用 `ClaudeAuthProvider` 实现 OAuth 认证流程。认证失败时进入 `needs-auth` 状态，并写入 15 分钟 TTL 的缓存文件（`~/.occ/mcp-needs-auth-cache.json`），避免重复弹出认证提示。
+
+```
+连接尝试 → 401 Unauthorized
+  ↓
+handleRemoteAuthFailure()
+  ├── logEvent('tengu_mcp_server_needs_auth')
+  ├── setMcpAuthCacheEntry(name)         ← 写入 15min TTL 缓存
+  └── return { type: 'needs-auth' }      ← UI 显示认证提示
+```
+
+## 连接缓存与重连机制
+
+`connectToServer` 使用 lodash `memoize` 缓存连接对象，缓存 key 为 `${name}-${JSON.stringify(config)}`。
+
+### 缓存失效触发
+
+当连接关闭时（`client.onclose`），清除所有相关缓存（`client.ts:1376-1404`）：
+
+```typescript
+client.onclose = () => {
+  const key = getServerCacheKey(name, serverRef)
+  fetchToolsForClient.cache.delete(name)      // 工具缓存
+  fetchResourcesForClient.cache.delete(name)  // 资源缓存
+  fetchCommandsForClient.cache.delete(name)   // 命令缓存
+  connectToServer.cache.delete(key)           // 连接缓存
+}
+```
+
+### 连接降级检测
+
+远程传输有 **连续错误计数器**（`client.ts:1229`）：
+
+```typescript
+let consecutiveConnectionErrors = 0
+const MAX_ERRORS_BEFORE_RECONNECT = 3
+```
+
+遇到终端错误（ECONNRESET、ETIMEDOUT、EPIPE 等）连续 3 次后，主动关闭 transport 触发重连。对于 HTTP 传输，还检测 session 过期（404 + JSON-RPC code -32001）。
+
+### 请求级超时保护
+
+每个 HTTP 请求使用独立的 `setTimeout` 超时（`wrapFetchWithTimeout`，`client.ts:493`），而非共享 `AbortSignal.timeout()`。原因是 Bun 对 AbortSignal.timeout 的 GC 是惰性的——每个请求约 2.4KB 原生内存，即使请求毫秒级完成也要等 60s 才回收。
+
+```typescript
+const controller = new AbortController()
+const timer = setTimeout(c => c.abort(...), MCP_REQUEST_TIMEOUT_MS, controller)
+timer.unref?.()  // 不阻止进程退出
+```
+
+## 工具发现：从 MCP 到 Tool 接口
+
+`fetchToolsForClient()`（`client.ts:1744-2000`）使用 `memoizeWithLRU` 缓存（上限 100），将 MCP 工具转换为 Claude Code 的统一 Tool 接口：
+
+```typescript
+const fullyQualifiedName = buildMcpToolName(client.name, tool.name)
+// 结果: "mcp__my-database__query"
+```
+
+### 内置 MCP 的工具发现
+
+内置 MCP 服务器虽然使用 InProcessTransport，但工具发现流程与外部服务器完全一致：
+
+- **Computer Use**：`createComputerUseMcpServerForCli()` 在 `src/utils/computerUse/mcpServer.ts` 中构建 MCP Server 对象，注册 `ListToolsRequestSchema` handler。工具描述包含平台特定的已安装应用列表（1s 超时枚举）。
+- **VSCode SDK**：由 IDE 端提供工具列表，通过 SDK transport 传递。
+
+### 工具描述截断
+
+MCP 工具描述上限 2048 字符（`MAX_MCP_DESCRIPTION_LENGTH`）。OpenAPI 生成的 MCP 服务器曾观察到 15-60KB 的描述文档。
+
+### 工具能力标注
+
+每个 MCP 工具根据 `tool.annotations` 自动标注：
+
+| 注解 | 映射到 | 含义 |
+|------|--------|------|
+| `readOnlyHint` | `isReadOnly()` + `isConcurrencySafe()` | 只读，可并行 |
+| `destructiveHint` | `isDestructive()` | 破坏性操作 |
+| `openWorldHint` | `isOpenWorld()` | 开放世界（不可枚举） |
+| `title` | `userFacingName()` | 显示名称 |
+
+### MCP 工具的权限检查
+
+MCP 工具默认返回 `{ behavior: 'passthrough' }`（`client.ts:1816-1834`），意味着它们始终进入权限确认流程。工具名使用 `mcp__` 前缀精确匹配权限规则。
+
+内置 MCP 服务器的工具通过 `allowedTools` 列表自动授权——在 `main.tsx` 启动时加入，绕过普通权限提示。例如 Computer Use 工具的 `request_access` 自行处理会话级审批。
+
+## MCP 工具的执行链路
+
+```
+AI 生成 tool_use: { name: "mcp__my-db__query", input: { sql: "..." } }
+  ↓
+MCPTool.call()                               ← client.ts:1835
+  ├── ensureConnectedClient()                ← 确保连接有效（重连）
+  ├── callMCPToolWithUrlElicitationRetry()   ← 带 Elicitation 重试
+  │   ├── client.request({ method: 'tools/call' })
+  │   ├── 处理图片结果（resize + persist）
+  │   └── 内容截断（mcpContentNeedsTruncation）
+  ├── McpSessionExpiredError → 重试一次
+  └── 返回 { data: content, mcpMeta }
+```
+
+### Session 过期自动重试
+
+HTTP 传输的 MCP session 可能过期。检测到 `McpSessionExpiredError` 后自动重试一次（`client.ts:1862`），因为 `ensureConnectedClient()` 已经清除了缓存并建立了新连接。
+
+### 内容截断与持久化
+
+大型 MCP 工具输出通过 `truncateMcpContentIfNeeded` 截断，二进制内容（图片）通过 `persistBinaryContent` 写入文件并返回文件路径。图片自动 resize（`maybeResizeAndDownsampleImageBuffer`）。
+
+## MCP 连接的并发控制
+
+```typescript
+// 本地服务器并发连接数
+getMcpServerConnectionBatchSize()    // 默认 3
+
+// 远程服务器并发连接数
+getRemoteMcpServerConnectionBatchSize()  // 默认 20
+```
+
+本地 MCP 服务器（stdio）是重量级的子进程，默认限制 3 个并发连接。远程服务器是轻量级 HTTP 请求，允许 20 个并发。
+
+## 内置 vs 外部 MCP 对比总结
+
+| 维度 | 内置 MCP | 外部 MCP |
+|------|---------|---------|
+| **Transport** | `InProcessTransport`（Computer Use）或 stdio（Chrome DevTools） | stdio / SSE / HTTP / WebSocket |
+| **配置来源** | `setupComputerUseMCP()` / `setupChromeDevtools()` 等动态注册 | `~/.occ.json` / `.mcp.json` / 插件 / claude.ai |
+| **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
+| **进程模型** | 同进程，零开销 | 子进程（stdio）或网络连接 |
+| **名称保护** | 保留名，用户不可添加同名 | 自由命名（字母数字 + `-_`） |
+| **生命周期** | 随 CLI 启停 | 连接缓存 + 按需重连 |
+| **权限** | `allowedTools` 自动授权（Chrome DevTools 只放行 9 个只读工具，其余照常确认） | `passthrough` 进入权限确认 |
+| **Feature Flag** | `CHICAGO_MCP`（Computer Use）等 | 无（始终可用） |
+| **工具发现** | 与外部相同（MCP 协议） | 标准 MCP `tools/list` |
+| **清理** | `inProcessServer.close()` | 信号升级策略 SIGINT→SIGTERM→SIGKILL |
+
+## 关键源文件索引
+
+| 文件 | 职责 |
+|------|------|
+| `src/services/mcp/client.ts` | 核心客户端：connectToServer、fetchToolsForClient、MCPTool.call |
+| `src/services/mcp/config.ts` | 配置管理：getAllMcpConfigs、addMcpConfig、removeMcpConfig |
+| `src/services/mcp/types.ts` | 类型定义：配置 Schema、连接状态类型 |
+| `src/services/mcp/InProcessTransport.ts` | 内置 MCP 传输层：linked transport pair |
+| `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK MCP：双向通知、实验门控 |
+| `src/services/mcp/useManageMCPConnections.ts` | React Hook：连接生命周期、重连 |
+| `src/utils/computerUse/mcpServer.ts` | Computer Use MCP Server 构建 |
+| `src/utils/computerUse/setup.ts` | Computer Use 动态注册 |
+| `src/utils/chromeDevtools/setup.ts` | Chrome DevTools MCP 动态注册（解析入口 + 连接参数 + allowedTools） |
+| `src/tools/MCPTool/MCPTool.ts` | MCP 工具包装：统一 Tool 接口 |
+| `src/entrypoints/mcp.ts` | MCP server 入口（Claude Code 作为 MCP server） |
