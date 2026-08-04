@@ -106,7 +106,7 @@ bun dist/cli-bun.js --version
 
 ## リリース側（メンテナー）
 
-ユーザーに見える新しいバージョンは、メンテナーが `bun run release <version>` を実行することで作られます。このコマンドは `package.json` と `CHANGELOG.md` を同時に更新し、`v<version>` tag を作成します。tag を push すると `publish-npm.yml` が npm パッケージと GitHub Release を公開します。手順と制約の全体は [`CONTRIBUTING.md` の「リリースフロー」](../CONTRIBUTING.md#11-发布流程)を参照してください。
+ユーザーに見える新しいバージョンは、メンテナーが `bun run release <version>` を実行することで作られます。このコマンドは `package.json` と `CHANGELOG.md` を同時に更新し、`v<version>` tag を作成します。tag を push すると `publish-npm.yml` が npm パッケージと GitHub Release を公開します。手順と制約の全体は [`CONTRIBUTING.md` の「リリースフロー」](../../CONTRIBUTING.md#11-发布流程)を参照してください。
 
 occ の起動時に表示する「更新情報」は、このリポジトリの `main` ブランチにある `CHANGELOG.md` から取得します（`src/utils/update/releaseNotes.ts` が raw ファイルを取得し、occ の設定ディレクトリ配下の `cache/changelog.md` にキャッシュします）。したがって、ユーザーが対応する項目を参照できるようにするには、リリースコミットを先に main へ反映する必要があります。
 

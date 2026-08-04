@@ -106,7 +106,7 @@ bun dist/cli-bun.js --version
 
 ## 发布侧（维护者）
 
-用户看到的新版本从哪来：维护者跑 `bun run release <version>`，它同时改齐 `package.json`、`CHANGELOG.md` 并打 `v<version>` tag，push tag 后由 `publish-npm.yml` 发 npm 与 GitHub Release。完整步骤与约束见 [`CONTRIBUTING.md` 的「发布流程」](../CONTRIBUTING.md#11-发布流程)。
+用户看到的新版本从哪来：维护者跑 `bun run release <version>`，它同时改齐 `package.json`、`CHANGELOG.md` 并打 `v<version>` tag，push tag 后由 `publish-npm.yml` 发 npm 与 GitHub Release。完整步骤与约束见 [`CONTRIBUTING.md` 的「发布流程」](../../CONTRIBUTING.md#11-发布流程)。
 
 occ 启动时显示的「更新说明」来自本仓库 `main` 分支的 `CHANGELOG.md`（`src/utils/update/releaseNotes.ts` 拉取原始文件并缓存到 occ 配置目录下的 `cache/changelog.md`），所以发布提交必须先到 main，用户才看得到对应条目。
 
