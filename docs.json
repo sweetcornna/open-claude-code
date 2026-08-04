@@ -43,6 +43,15 @@
               "docs/en/tools/search-and-navigation",
               "docs/en/tools/task-management"
             ]
+          },
+          {
+            "group": "上下文工程",
+            "pages": [
+              "docs/en/context/system-prompt",
+              "docs/en/context/project-memory",
+              "docs/en/context/compaction",
+              "docs/en/context/token-budget"
+            ]
           }
         ]
       },
@@ -224,6 +233,15 @@
               "docs/ja/tools/shell-execution",
               "docs/ja/tools/search-and-navigation",
               "docs/ja/tools/task-management"
+            ]
+          },
+          {
+            "group": "上下文工程",
+            "pages": [
+              "docs/ja/context/system-prompt",
+              "docs/ja/context/project-memory",
+              "docs/ja/context/compaction",
+              "docs/ja/context/token-budget"
             ]
           }
         ]

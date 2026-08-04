@@ -1,0 +1,195 @@
+---
+title: "トークン予算 — コンテキスト窓は実際に何へ使われるか"
+description: "Claude Code のトークン予算管理。200K の窓が何に消えるのか、概算と厳密な計数、自動 compaction の閾値、micro-compaction、そして出力スロットの最適化。"
+keywords: ["トークン予算", "コンテキスト窓", "トークン計数", "切り詰め", "キャッシュ最適化"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/context/token-budget) · [中文](/docs/zh/context/token-budget) · **日本語**
+
+{/* この章の目的: 予算の計算、切り詰め、キャッシュ最適化、自動 compaction を通しで示す */}
+
+## 200K がそのまま使えるわけではない
+
+既定のコンテキスト窓は 200K トークン（`MODEL_CONTEXT_WINDOW_DEFAULT = 200_000`）ですが、会話に使える領域はもっと小さくなります。
+
+```
+コンテキスト窓（200K）
+├── システムプロンプト   （約 15〜25K。キャッシュ後は安い）
+├── ツール定義           （約 10〜20K。MCP ツールを含む）
+├── ユーザーコンテキスト （CLAUDE.md、git status など）
+├── 出力用の確保         （maxOutputTokens）
+│   ├── 上限:           64K
+│   ├── 実際の既定:      8K（スロット確保の最適化）
+│   └── 切り詰め時:      64K で自動的に 1 回リトライ
+└── 残り:                会話履歴。ターンごとに増える
+```
+
+`getContextWindowForModel()`（`src/utils/context.ts:51`）は 5 段階の優先順位で窓の大きさを決めます。
+
+1. 環境変数 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`
+2. モデル名の `[1m]` 接尾辞 → 1M トークン
+3. `getModelCapability(model).max_input_tokens`
+4. 対応モデル（claude-sonnet-4、opus-4-6）での 1M beta ヘッダ
+5. フォールバック: 200K
+
+**実効コンテキスト** = 窓 − min(maxOutputTokens, 20K)。compaction の要約自体にも出力の余地が要るためです。
+
+## トークンの数え方: 概算と厳密
+
+計数には 2 つの方式があります。
+
+### 概算（ミリ秒）
+
+```typescript
+// src/services/tokenEstimation.ts
+function roughTokenCountEstimation(content: string, bytesPerToken = 4): number {
+  return Math.round(content.length / bytesPerToken)
+}
+```
+
+内容の種類ごとに扱いが違います。
+
+- **JSON/JSONL** — `bytesPerToken = 2`。`{`、`:`、`,` が密で、各 1〜2 トークンしか消費しないため
+- **画像・文書** — 一律 2000 トークン。2000×2000px の上限に基づく保守的な見積もり
+- **thinking ブロック** — 実テキスト長 / 4
+- **tool_use** — `name + JSON.stringify(input)` を直列化して / 4
+
+### 厳密（API 呼び出し）
+
+Anthropic の `beta.messages.countTokens` を使います。provider ごとに経路が異なります。
+
+| Provider | 方法 |
+|----------|------|
+| Anthropic 直接 | `anthropic.beta.messages.countTokens()` |
+| AWS Bedrock | `@aws-sdk/client-bedrock-runtime` の `CountTokensCommand` |
+| Google Vertex | Anthropic SDK + beta フィルタ |
+| フォールバック（Bedrock 非対応時） | Haiku に `max_tokens=1` で投げ、`usage.input_tokens` を読む |
+
+厳密な計数は判断点で使います（compaction 前後の比較、警告の判定）。概算はホットパスで使います（毎反復の `shouldAutoCompact` 判定など）。
+
+### サードパーティ provider の差
+
+厳密な計数に対応していない provider もあります。
+
+| Provider | 方法 | 注意 |
+|----------|------|------|
+| **Anthropic 直接** | `anthropic.beta.messages.countTokens()` | 標準 API。最も正確 |
+| **AWS Bedrock** | `CountTokensCommand` | 279 KB の AWS SDK を動的読み込みする必要がある |
+| **Google Vertex** | Anthropic SDK + beta フィルタ | 特定の beta ヘッダが要る |
+| **OpenAI 互換レイヤ** | なし | **概算に戻る** |
+| **Gemini 互換レイヤ** | なし | **概算に戻る** |
+| **Bedrock 非対応時** | Haiku へ `max_tokens=1` | `usage.input_tokens` を読む |
+
+OpenAI と Gemini の互換レイヤには**厳密な計数がありません**。そのため概算になります。影響するのは次の点です。
+
+- **自動 compaction の発火時点** — 少しずれることがある
+- **compaction 前後の比較** — 測定値ではなく推定値になる
+- **警告・エラーの閾値判定** — 推定値に対して評価される
+
+ソース: `src/services/tokenEstimation.ts`
+
+## 自動 compaction の閾値
+
+`src/services/compact/autoCompact.ts` に定義があります。
+
+| 定数 | 値 | 意味 |
+|------|----|------|
+| `AUTOCOMPACT_BUFFER_TOKENS` | 13,000 | 窓からこれを引いた点が発火点 |
+| `WARNING_THRESHOLD_BUFFER_TOKENS` | 20,000 | 発火点 + 20K で警告を出す |
+| `ERROR_THRESHOLD_BUFFER_TOKENS` | 20,000 | 発火点 + 20K でエラーを出す |
+| `MANUAL_COMPACT_BUFFER_TOKENS` | 3,000 | 手動 `/compact` の遮断上限 |
+| `MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES` | 3 | 3 回連続で失敗したら試行を止める |
+
+200K の窓の場合:
+
+- **約 167K** — 警告が点滅し、compaction を勧める
+- **約 180K** — 自動 compaction が発火（200K − 出力確保 20K = 実効 180K、さらに 13K のバッファを引く）
+- **約 197K** — 遮断線。新しいメッセージが拒否される
+
+`shouldAutoCompact()` には複数の脱出条件があります。
+
+- 送信元が `compact` または `session_memory` のクエリでは決して発火しない（再帰的なデッドロックを防ぐ）
+- 環境変数 `DISABLE_COMPACT` / `DISABLE_AUTO_COMPACT`
+- ユーザー設定の `autoCompactEnabled = false`
+- Context Collapse モードが有効なとき（そちらが自分でコンテキストを管理する）
+- Reactive Compact 実験モード（能動的な compaction を抑制する）
+- 連続失敗のサーキットブレーカー
+
+## Micro-compaction
+
+全体の compaction の前に、まず **micro-compaction** を試します。古いツール結果だけを絞る処理です。
+
+```
+圧縮可能なツール（COMPACTABLE_TOOLS）:
+FileRead, Bash, Grep, Glob, WebSearch, WebFetch, FileEdit, FileWrite
+```
+
+方針は時間ベースです。
+
+- 閾値より古いツール結果（`timeBasedMCConfig` が制御）を短いプレースホルダに置き換える
+- 画像・文書の結果は `[image]` / `[document]` というテキストになる
+- 置き換えるたびにトークンが空き、全体の compaction を先送りできることがある
+
+ツール側にも `maxResultSizeChars`（通常 10 万文字）という硬い上限があり、メッセージ化の前に適用されます。
+
+## 全体の compaction
+
+```
+autoCompactIfNeeded() / compactConversation()
+  ↓
+1. PreCompact hook を実行する（外部から独自の指示を差し込める）
+  ↓
+2. まず Session Memory による圧縮を試す（より軽量）
+  ↓
+3. 失敗したら → 全体の compaction
+   a. 画像と文書をメッセージから外す（[image] / [document] へ）
+   b. skill_discovery / skill_listing の添付を外す（後で再注入する）
+   c. 要約リクエストを fork したエージェント経由で送り、メインスレッドの
+      プロンプトキャッシュを再利用する
+   d. 要約リクエスト自体が prompt-too-long になったら
+      truncateHeadForPTLRetry() が最古の API ターンから削り、最大 3 回再試行する
+   ↓
+4. コンテキストを組み直す:
+   - compactBoundaryMarker（compaction の種類、直前のトークン数などを記録）
+   - 要約メッセージ（画面に出ない user メッセージ）
+   - 直近 5 ファイルの読み直し（POST_COMPACT_TOKEN_BUDGET = 50K）
+   - plan ファイルの添付（あれば）
+   - plan モードの指示（plan モード中なら）
+   - すでに呼ばれた skill の内容（各 5K 以下、合計 25K 以下）
+   - deferred tools / agent 一覧 / MCP 指示の差分再注入
+   - SessionStart hook の再実行
+   - PostCompact hook の実行
+  ↓
+5. キャッシュの基準値を更新し、cache break と誤認されないようにする
+```
+
+### プロンプトキャッシュの共有
+
+compaction の API 呼び出しは、セッション中で最も高価な操作のひとつです。`runForkedAgent` を通すことでメインスレッドのキャッシュ前置部分（システムプロンプト、ツール、コンテキストメッセージ）を再利用でき、キャッシュ命中率は 2% からほぼ 100% になりました。この最適化だけで、全体の `cache_creation` トークンの約 0.76% が削減されています。
+
+## 出力スロットの最適化
+
+見落とされがちな最適化があります。**maxOutputTokens は動的に調整されます。**
+
+```typescript
+// src/services/api/claude.ts — getMaxOutputTokensForModel()
+const defaultTokens = isMaxTokensCapEnabled()
+  ? Math.min(maxOutputTokens.default, 8_000)  // 既定を 8K へ下げる
+  : maxOutputTokens.default                     // 元の 32K/64K
+```
+
+理由はこうです。API は `max_tokens` を基準にスロット単位で推論容量を確保します。実測の p99 出力は 4,911 トークンでしかなく、32K という既定値は必要量の 8〜16 倍のスロットを無駄にしていました。8K にすると切り詰められるのは 1% 未満で、その分は 64K での自動リトライが受け止めます。
+
+トークン予算への影響は間接的です。スロットに余裕ができれば待ち行列が減り、結果としてタイムアウトと再試行が減ります。
+
+## 部分的な compaction
+
+全体の compaction のほかに、メッセージ履歴の任意の位置を選び、片側だけを圧縮できます。
+
+- **`up_to`** — 選んだメッセージより前を圧縮し、直近の会話を残す
+- **`from`** — 選んだメッセージより後を圧縮し、初期の会話を残す
+
+`from` は前置部分が変わらないためプロンプトキャッシュを保てます。`up_to` は要約が残す内容の前に入るため、キャッシュを壊します。
+
+prompt-too-long のリトライ方針はどちらも同じで、最古の API ターンから削っていき、要約対象のメッセージ群を最低 1 組は必ず残します。

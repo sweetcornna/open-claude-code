@@ -1,0 +1,196 @@
+---
+title: "Token budget — how the context window is actually spent"
+description: "How Claude Code budgets tokens: what the 200K window is really spent on, approximate versus exact counting, the auto-compaction thresholds, micro-compaction, and the output slot optimization."
+keywords: ["token budget", "context window", "token counting", "truncation", "cache optimization"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/context/token-budget) · [日本語](/docs/ja/context/token-budget)
+
+{/* Goal of this chapter: budget computation, truncation, cache optimization and auto-compaction, end to end */}
+
+## 200K is not what you get to use
+
+The default context window is 200K tokens (`MODEL_CONTEXT_WINDOW_DEFAULT = 200_000`), but the space actually available for conversation is much smaller:
+
+```
+Context window (200K)
+├── System prompt        (~15–25K, cheap once cached)
+├── Tool definitions     (~10–20K, including MCP tools)
+├── User context         (CLAUDE.md, git status, …)
+├── Output reservation   (maxOutputTokens)
+│   ├── ceiling:         64K
+│   ├── actual default:  8K (slot-reservation optimization)
+│   └── on truncation:   one automatic 64K retry
+└── What remains:        conversation history, growing every turn
+```
+
+`getContextWindowForModel()` (`src/utils/context.ts:51`) resolves the window through five levels of precedence:
+
+1. The `CLAUDE_CODE_MAX_CONTEXT_TOKENS` environment variable
+2. A `[1m]` suffix on the model name → 1M tokens
+3. `getModelCapability(model).max_input_tokens`
+4. The 1M beta header on a supporting model (claude-sonnet-4, opus-4-6)
+5. Fallback: 200K
+
+**Effective context** = window − min(maxOutputTokens, 20K), because the compaction summary itself needs output room.
+
+## Counting tokens: approximate versus exact
+
+There are two counting strategies.
+
+### Approximate, in milliseconds
+
+```typescript
+// src/services/tokenEstimation.ts
+function roughTokenCountEstimation(content: string, bytesPerToken = 4): number {
+  return Math.round(content.length / bytesPerToken)
+}
+```
+
+Content types are handled differently:
+
+- **JSON/JSONL** — `bytesPerToken = 2`, because the dense `{`, `:`, `,` punctuation costs only 1–2 tokens each
+- **Images and documents** — a flat 2000 tokens, a conservative estimate based on the 2000×2000px ceiling
+- **Thinking blocks** — actual text length / 4
+- **tool_use** — `name + JSON.stringify(input)` serialized, then / 4
+
+### Exact, through an API call
+
+Uses Anthropic's `beta.messages.countTokens` endpoint, with a different path per provider:
+
+| Provider | Method |
+|----------|--------|
+| Anthropic direct | `anthropic.beta.messages.countTokens()` |
+| AWS Bedrock | `CountTokensCommand` from `@aws-sdk/client-bedrock-runtime` |
+| Google Vertex | Anthropic SDK with beta filtering |
+| Fallback (Bedrock without support) | Send a `max_tokens=1` request to Haiku and read `usage.input_tokens` |
+
+Exact counting is used at decision points — comparing before and after compaction, evaluating warnings. Approximation is used on the hot path, such as the `shouldAutoCompact` check that runs every iteration.
+
+### Third-party providers count differently
+
+Not every provider supports exact counting:
+
+| Provider | Method | Caveat |
+|----------|--------|--------|
+| **Anthropic direct** | `anthropic.beta.messages.countTokens()` | Standard API, most accurate |
+| **AWS Bedrock** | `CountTokensCommand` | Requires dynamically loading 279 KB of AWS SDK |
+| **Google Vertex** | Anthropic SDK with beta filtering | Needs specific beta headers |
+| **OpenAI compatibility layer** | None | **Falls back to approximation** |
+| **Gemini compatibility layer** | None | **Falls back to approximation** |
+| **Bedrock without support** | `max_tokens=1` request to Haiku | Reads `usage.input_tokens` |
+
+The OpenAI and Gemini layers have **no exact token counting**, so the system approximates. That affects:
+
+- **When auto-compaction fires** — the trigger point can drift slightly
+- **Before/after comparisons** — estimates rather than measurements
+- **Warning and error thresholds** — evaluated against estimates
+
+Source: `src/services/tokenEstimation.ts`
+
+## Auto-compaction thresholds
+
+Defined in `src/services/compact/autoCompact.ts`:
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `AUTOCOMPACT_BUFFER_TOKENS` | 13,000 | Window minus this is the trigger point |
+| `WARNING_THRESHOLD_BUFFER_TOKENS` | 20,000 | Warning shown at trigger + 20K |
+| `ERROR_THRESHOLD_BUFFER_TOKENS` | 20,000 | Error shown at trigger + 20K |
+| `MANUAL_COMPACT_BUFFER_TOKENS` | 3,000 | Blocking ceiling for a manual `/compact` |
+| `MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES` | 3 | Stop trying after three consecutive failures |
+
+For a 200K window:
+
+- **~167K** — the warning starts flashing, suggesting compaction
+- **~180K** — auto-compaction fires (200K − 20K output reservation = 180K effective, minus the 13K buffer)
+- **~197K** — the blocking limit; new messages are refused
+
+`shouldAutoCompact()` has several escape conditions:
+
+- Queries whose source is `compact` or `session_memory` never trigger it (this is what prevents a recursive deadlock)
+- The `DISABLE_COMPACT` / `DISABLE_AUTO_COMPACT` environment variables
+- `autoCompactEnabled = false` in user configuration
+- Context Collapse mode being active, since it manages context itself
+- Reactive Compact experiment mode, which suppresses proactive compaction
+- The consecutive-failure circuit breaker
+
+## Micro-compaction
+
+Before a full compaction, the system tries **micro-compaction** — squeezing only older tool results:
+
+```
+Compactable tools (COMPACTABLE_TOOLS):
+FileRead, Bash, Grep, Glob, WebSearch, WebFetch, FileEdit, FileWrite
+```
+
+The policy is time-based:
+
+- Tool results older than a threshold (controlled by `timeBasedMCConfig`) are replaced with a short placeholder
+- Image and document results become `[image]` / `[document]` text
+- Each replacement frees tokens and may defer full compaction entirely
+
+Tools also carry a hard `maxResultSizeChars` ceiling (typically 100K), applied before the result ever becomes a message.
+
+## Full compaction
+
+```
+autoCompactIfNeeded() / compactConversation()
+  ↓
+1. Run PreCompact hooks (external instructions can be injected here)
+  ↓
+2. Try Session Memory compaction first — lighter weight
+  ↓
+3. If that fails → full compaction
+   a. Strip images and documents from messages ([image] / [document])
+   b. Strip skill_discovery / skill_listing attachments (re-injected afterwards)
+   c. Send the summarization request through a forked agent, reusing the main
+      thread's prompt cache
+   d. If the summarization request itself hits prompt-too-long →
+      truncateHeadForPTLRetry() deletes from the oldest API turn forward,
+      retrying up to 3 times
+   ↓
+4. Rebuild the context:
+   - compactBoundaryMarker (records the compaction type, prior token count, …)
+   - the summary message (an invisible user message)
+   - re-reads of the 5 most recent files (POST_COMPACT_TOKEN_BUDGET = 50K)
+   - plan file attachments, if any
+   - plan mode instructions, if in plan mode
+   - content of skills already invoked (≤5K each, ≤25K total)
+   - incremental re-injection of deferred tools / agent listing / MCP instructions
+   - SessionStart hooks re-run
+   - PostCompact hooks run
+  ↓
+5. Update the cache baseline so this is not misread as a cache break
+```
+
+### Prompt cache sharing
+
+The compaction call is one of the most expensive operations in a session. Running it through `runForkedAgent` reuses the main thread's cached prefix — system prompt, tools, context messages — which took the cache hit rate from 2% to nearly 100%. That optimization alone saved roughly 0.76% of fleet-wide `cache_creation` tokens.
+
+## The output slot optimization
+
+An easy-to-miss optimization: **maxOutputTokens is adjusted dynamically**.
+
+```typescript
+// src/services/api/claude.ts — getMaxOutputTokensForModel()
+const defaultTokens = isMaxTokensCapEnabled()
+  ? Math.min(maxOutputTokens.default, 8_000)  // default lowered to 8K
+  : maxOutputTokens.default                     // original 32K/64K
+```
+
+Why: the API reserves inference capacity by slot, sized from `max_tokens`. Measured p99 output is only 4,911 tokens, so a 32K default wasted 8–16× the slot capacity actually needed. At 8K, under 1% of requests truncate — and those get an automatic clean retry at 64K.
+
+The effect on the token budget is indirect: more slot capacity means less queueing, which means fewer timeouts and retries.
+
+## Partial compaction
+
+Beyond full compaction, a position in the message history can be selected and only one side compacted:
+
+- **`up_to`** — compact everything before the selected message, keeping recent conversation
+- **`from`** — compact everything after it, keeping the earlier conversation
+
+`from` preserves the prompt cache, since the prefix is unchanged. `up_to` breaks it, because the summary is inserted ahead of the retained content.
+
+Both directions share the same prompt-too-long retry strategy: delete from the oldest API turn forward, always keeping at least one group of messages to summarize.
