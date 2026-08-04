@@ -1,0 +1,230 @@
+---
+title: "MIIT warns of a Claude Code backdoor — migrate to Open Claude Code in 5 minutes"
+description: "China's MIIT NVDB warns that official Claude Code versions 2.1.91–2.1.196 contain a backdoor. Open Claude Code replaces Analytics, GrowthBook, and Sentry with empty implementations, does not enable telemetry by default, and provides auditable source code. This guide describes a non-destructive side-by-side migration: install occ, migrate user configuration, and sign in again while preserving the official Claude Code environment independently."
+keywords: ["MIIT", "NVDB", "security backdoor", "telemetry", "reverse engineering", "migration guide"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/safety/miit-warning-response) · [日本語](/docs/ja/safety/miit-warning-response)
+
+# Claude Code has a security issue — migrate to Open Claude Code in 5 minutes
+
+## Warning: official Claude Code releases have a security issue
+
+> Open Claude Code project: [github.com/sweetcornna/open-claude-code](https://github.com/sweetcornna/open-claude-code)
+
+In July 2026, China's MIIT NVDB issued a warning: official Claude Code versions from `2.1.91` (2026-04-02) through `2.1.196` (2026-06-29) contained covert monitoring that read the system time zone and proxy address to determine whether an environment was associated with China, then steganographically embedded markers in requests to report sensitive information such as region and identity. Claude Code itself has high-level privileges including file access and command execution, potentially exposing core enterprise code, secrets, and internal network architecture. Alibaba added it to its high-risk list on July 3 and disabled it completely beginning July 10; Tencent, Meituan, JD.com, and other companies have also been restricting calls to external AI models.
+
+The vendor subsequently released fixed versions, but the product remains a closed-source black box whose network behavior and data flows users cannot inspect directly. Open Claude Code is a reverse-engineered and decompiled reconstruction of the official Claude Code CLI. It retains auditable TypeScript source code, replaces telemetry components with empty implementations, and supports self-hosting of critical infrastructure.
+
+For the complete telemetry channels, file paths, endpoints, and activation conditions, see the [Telemetry and remote-configuration delivery audit](../telemetry-remote-config-audit).
+
+## Open Claude Code does not enable telemetry by default
+
+### 1. Telemetry components are replaced with empty implementations
+
+Open Claude Code replaces three categories of telemetry components with empty implementations. See the Stubbed/Deleted Modules table in the repository's `CLAUDE.md`:
+
+| Component | Official behavior | Open Claude Code |
+| --- | --- | --- |
+| Analytics (Datadog + 1P BigQuery) | Batches and reports `tengu_*` events in production | Empty implementation; does not report |
+| GrowthBook remote configuration | Fetches on startup and refreshes every 6h | Empty implementation; does not fetch |
+| Sentry error tracking | Reports exception stack traces | Empty implementation; does not report |
+
+Open Claude Code therefore does not send data to endpoints such as `us5.datadoghq.com` and `api.datadoghq.com` through these telemetry components. The associated code paths retain their interface shapes, but actual network reporting has been removed.
+
+Other channels—OpenTelemetry, Beta Session Tracing, Remote Managed Settings, and related mechanisms—remain present but require explicit configuration:
+
+| Mechanism | Official default | Open Claude Code |
+| --- | --- | --- |
+| OpenTelemetry | Requires `CLAUDE_CODE_ENABLE_TELEMETRY=1` | Same; disabled by default |
+| Beta Session Tracing | Controlled by a GrowthBook gate | Corresponding feature disabled by default |
+| Remote Managed Settings | API key users may fetch settings | Does not fetch without a configured enterprise endpoint |
+| Settings Sync | Controlled by a feature gate | Disabled by default |
+
+### 2. You can audit the source code directly
+
+Official Claude Code is an obfuscated single-file artifact. Open Claude Code retains the complete TypeScript source, so users can inspect network requests and telemetry calls directly:
+
+```bash
+# Locate every request to the Anthropic API
+grep -rn "api.anthropic.com" src/ packages/
+
+# Locate every telemetry event
+grep -rn "logEvent\|trackDatadogEvent\|logEventTo1P" src/
+
+# Locate every remote-configuration fetch
+grep -rn "growthbook\|remoteManagedSettings\|settingsSync" src/
+```
+
+The [Telemetry and remote-configuration delivery audit](../telemetry-remote-config-audit) provides a complete audit record that can be verified item by item against the source.
+
+### 3. Critical infrastructure can be self-hosted
+
+| Component | Self-hosting option | Documentation |
+| --- | --- | --- |
+| Feature flag platform | Self-hosted GrowthBook instance | [GrowthBook adapter](../internals/growthbook-adapter) |
+| Error tracking | Self-hosted Sentry instance | [Sentry configuration](../internals/sentry-setup) |
+| Remote Control | Self-hosted Happy server (`HAPPY_SERVER_URL`); occ operates only as the ACP agent | [Remote Control](/docs/zh/features/remote-control-self-hosting) |
+| HTML Artifact hosting | Cloudflare Worker + R2 | [Cloud Artifacts](https://github.com/sweetcornna/open-claude-code/blob/main/packages/cloud-artifacts/README.md) |
+| API endpoint | Any Anthropic API-compatible service | Configure with the `/login` command |
+
+### 4. Privacy environment variables provide an additional safeguard
+
+```bash
+# Disable all nonessential network traffic, including automatic updates and release notes
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 occ
+
+# Use a third-party provider instead of connecting directly to Anthropic
+CLAUDE_CODE_USE_OPENAI=1 occ        # OpenAI-compatible protocol
+CLAUDE_CODE_USE_GEMINI=1 occ        # Gemini
+CLAUDE_CODE_USE_GROK=1 occ          # Grok
+CLAUDE_CODE_USE_BEDROCK=1 occ       # AWS Bedrock
+```
+
+`src/utils/privacyLevel.ts` is the central control point and defines three levels: `default < no-telemetry < essential-traffic`.
+
+## Migrating to Open Claude Code does not require sacrificing core functionality
+
+Open Claude Code retains the permission system, sandbox, Plan Mode, Auto Mode, MCP, Skills, Hooks, Computer Use, Chrome Use, Voice Mode, and built-in tools. It also adds a set of community features:
+
+| Feature | Description |
+| --- | --- |
+| Goal-driven continuation | `/goal <objective>` establishes a goal that advances across turns, with token budgets, completion/blocking audits, and `pause`, `resume`, `continue`, and `clear` |
+| Artifacts | Upload HTML, dashboards, and reports to public URLs, with automatic 7/30-day expiration and self-hosting support |
+| Dynamic Workflow | `/ultracode` + the `Workflow` tool run deterministic JavaScript orchestration with journal replay, token budgets, and concurrency limits |
+| ACP | Connect to Zed and other ACP clients, with session resumption, Skills, and a permission bridge |
+| Remote Control | A self-hosted Docker remote interface for viewing and controlling sessions from other devices |
+| Langfuse | Record the agent loop, model calls, and tool executions and convert them into datasets |
+| Channels | MCP servers inject messages from Feishu, Slack, Discord, and other external systems into a session |
+| Web Search | Built-in web search with Bing and Brave support |
+| Poor Mode | Disable memory extraction and prompt suggestions to reduce concurrent requests |
+| `/dream` | Organize and optimize memory files |
+| Custom model providers | Support Anthropic-, OpenAI-, Gemini-, and Grok-compatible endpoints |
+
+See the [complete feature guide](/docs/zh/features/all-features-guide) for the full list.
+
+## Non-destructive migration to Open Claude Code
+
+Open Claude Code uses independent command and configuration namespaces:
+
+| Open Claude Code | Official Claude Code |
+| --- | --- |
+| `occ` / `occ-bun` | `claude` |
+| `~/.occ/` | `~/.claude/` |
+| `~/.occ.json` | `~/.claude.json` |
+| Per-project `.occ/` | Per-project `.claude/` |
+
+Both can be installed on the same machine. During migration, do not delete or modify `~/.claude`, and do not replace the `claude` command with `occ`. These constraints preserve actual environment isolation.
+
+### Step 1: Check the official version
+
+```bash
+claude --version
+# Versions from 2.1.91 through 2.1.196 are within the range covered by the warning
+```
+
+### Step 2: Install Open Claude Code
+
+#### Option A: Install globally with npm
+
+```bash
+npm i -g @sweetcornna/open-claude-code
+
+occ --version      # Verify the Node.js entry point
+occ-bun --version  # Verify the Bun entry point
+occ update         # Install subsequent updates
+```
+
+As part of the rename described in this guide, the `ccb` / `ccb-bun` command names from the ccb period have been retired completely. Only `occ` / `occ-bun` are now provided.
+
+#### Option B: Build from source
+
+```bash
+git clone https://github.com/sweetcornna/open-claude-code.git
+cd open-claude-code
+
+# Requires Bun >= 1.3.11
+bun install
+bun run build:vite
+
+node dist/cli-node.js --version
+bun dist/cli-bun.js --version
+
+# Optional: install globally from the current source directory
+bun install -g .
+occ --version
+```
+
+### Step 3: Migrate existing configuration
+
+Preview the migration first, then run it:
+
+```bash
+occ migrate --dry-run
+occ migrate
+```
+
+The migration copies user-authored or installed configuration:
+
+- `settings.json`
+- `skills/`, `agents/`, and `commands/`
+- `output-styles/`, `workflows/`, `plugins/`, and `rules/`
+- MCP server definitions from the legacy global configuration
+
+It does not copy credentials, session history, caches, logs, or IDE lockfiles. Migration is idempotent, does not overwrite files that already exist under `~/.occ`, and treats `~/.claude` as read-only throughout.
+
+### Step 4: Sign in again or configure an API endpoint
+
+Credentials are not migrated. After starting `occ` for the first time, enter `/login` in the REPL and select the required provider:
+
+| Option | Use case |
+| --- | --- |
+| Anthropic Compatible | A third-party Anthropic API-compatible service |
+| OpenAI | OpenAI-protocol endpoints such as Ollama, DeepSeek, and vLLM |
+| Gemini | Google Gemini |
+| Grok | xAI Grok |
+
+Enter the provider's Base URL, API Key, and model ID. See the [project README](https://github.com/sweetcornna/open-claude-code#readme) for quick-start instructions and field descriptions.
+
+### Step 5: Address the affected official installation
+
+At this point, occ can run independently. If the official Claude Code installation remains within the affected version range, upgrade or uninstall it according to your enterprise security policy. This step does not affect the `occ` installation or the configuration under `~/.occ`.
+
+```bash
+# Official version installed through npm
+npm rm -g @anthropic-ai/claude-code
+
+# Official version installed through Homebrew (macOS)
+brew uninstall claude-code
+```
+
+If you need to continue using the official release, install a fixed version and keep the `claude` and `occ` commands independent.
+
+### Step 6: Verify isolation and runtime status
+
+```bash
+# The two commands do not overwrite each other
+occ --version
+command -v occ
+
+# occ writes configuration to an independent directory
+ls -la ~/.occ
+
+# Start Open Claude Code
+occ
+```
+
+In another terminal, you can inspect network connections as needed:
+
+```bash
+sudo lsof -i -n -P | grep -E "occ|claude"
+```
+
+Connections to the applicable API are expected when using Anthropic or a third-party API. Verify that there are no unexpected Datadog telemetry connections and confirm the API domain actually in use.
+
+## This is an open-source project: audits and contributions are welcome
+
+The complete source is available at [sweetcornna/open-claude-code](https://github.com/sweetcornna/open-claude-code). Issues, pull requests, migration experience, and security-audit results are welcome.
+
+> The more users and auditors participate, the more continuously the project's safety boundary can be verified.

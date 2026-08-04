@@ -1,0 +1,266 @@
+---
+title: "Auto Mode — autonomous execution driven by an AI classifier"
+description: "Claude Code's auto mode in depth: automatic permission decisions through a transcript classifier, a two-stage classification pipeline, dangerous-permission stripping, mode-transition state management, and coordination with plan mode."
+keywords: ["auto mode", "yoloClassifier", "transcript classifier", "permission classification", "autonomous execution", "two-stage classification"]
+---
+
+<!-- lang-switcher -->
+**English** · [中文](/docs/zh/safety/auto-mode) · [日本語](/docs/ja/safety/auto-mode)
+
+## Overview
+
+Auto mode is a Claude Code permission mode that puts the AI into a state of **continuous autonomous execution**. Unlike traditional modes, which display a permission dialog and wait for user approval for each sensitive operation, auto mode uses an AI classifier—the transcript classifier—to determine automatically whether each tool call is safe, enabling uninterrupted execution.
+
+```
+Permission-mode hierarchy:
+
+default  →  auto  →  bypassPermissions
+(per-item confirmation)  (AI classifier approval)  (allow everything)
+```
+
+## Core architecture
+
+### 1. AI classifier (`yoloClassifier`)
+
+The classifier is the core of auto mode and resides in `src/utils/permissions/yoloClassifier.ts`.
+
+It evaluates every tool call and returns one of three decisions:
+
+| Decision | Meaning | Handling |
+|------|------|---------|
+| **allow** | The operation is safe | Execute immediately without notifying the user |
+| **deny** | The operation is dangerous | Reject execution and return a denial message to the AI |
+| **ask** | Safety is uncertain | Fall back to the traditional permission dialog |
+
+The classifier bases its decision on the complete conversation context—the transcript—not just an individual command. This lets it understand the operation's intent and context.
+
+### 2. Two-stage classification pipeline
+
+The classifier supports two-stage XML classification (`classifyYoloActionXml`):
+
+```
+Stage 1 — "fast" (rapid decision)
+├── max_tokens=64; stop_sequences trigger an immediate yes/no
+├── allow → proceed immediately (fastest path)
+└── block → continue to Stage 2
+
+Stage 2 — "thinking" (deeper analysis)
+├── chain-of-thought reasoning
+├── reduces false positives
+└── final allow / deny / ask decision
+```
+
+Both stages share the same system prompt and user content and use API prompt caching with a one-hour TTL to improve performance.
+
+The mode is configurable:
+- `'both'` (default)—run both stages
+- `'fast'`—run only Stage 1
+- `'thinking'`—run only Stage 2
+
+### 3. Classifier result type
+
+```typescript
+// src/types/permissions.ts
+type YoloClassifierResult = {
+  thinking?: string          // Classifier reasoning
+  shouldBlock: boolean       // Whether to block
+  reason: string             // Decision rationale
+  unavailable?: boolean      // Whether the classifier is unavailable
+  transcriptTooLong?: boolean // Whether the conversation exceeds the context window
+  model: string              // Classifier model used
+  stage?: 'fast' | 'thinking' // Stage that made the decision
+  // ... token-usage, latency, and other monitoring fields
+}
+```
+
+## Safety mechanisms
+
+### Dangerous-permission stripping
+
+When entering auto mode, the system calls `stripDangerousPermissionsForAutoMode()` (`permissionSetup.ts:510`) and removes every allow rule that could bypass the classifier.
+
+The stripped rule types are defined in `dangerousPatterns.ts`:
+
+| Rule type | Example | Reason for stripping |
+|---------|------|---------|
+| **Bash code execution** | `Bash(python:*)`, `Bash(node:*)` | Interpreters can execute arbitrary code and bypass classifier review |
+| **Shell entry points** | `Bash(bash:*)`, `Bash(sh:*)` | Direct shell access is equivalent to unrestricted access |
+| **Agent rules** | `Agent(*)` | Any Agent allow rule lets a sub-agent bypass classifier approval |
+| **PowerShell code execution** | `PowerShell(node:*)` | Same reasoning as Bash |
+| **Privilege escalation** | `Bash(sudo:*)`, `Bash(eval:*)` | Can execute arbitrary commands |
+
+The system temporarily stores the stripped rules in `strippedDangerousRules` and restores them through `restoreDangerousPermissions()` when auto mode ends.
+
+### Model-support detection
+
+Not every model supports auto mode. `modelSupportsAutoMode()` (`src/utils/betas.ts`) checks whether the current model has the required safety-classification capability. Unsupported models cannot enter auto mode.
+
+### Circuit breaker
+
+`autoModeState.ts` maintains a circuit-breaker flag:
+
+```typescript
+let autoModeCircuitBroken = false  // Controlled by remote configuration
+```
+
+When the remote configuration, GrowthBook `tengu_auto_mode_config.enabled`, is set to `'disabled'`, the circuit breaker trips and prevents both entry into and continued use of auto mode. This gives Anthropic a remote emergency shutdown mechanism.
+
+## Mode-transition state management
+
+### Entering Auto Mode
+
+`transitionPermissionMode()` (`permissionSetup.ts:597`) handles all mode transitions:
+
+```
+1. Check whether the auto mode gate is enabled (isAutoModeGateEnabled)
+2. Set autoModeActive = true
+3. Call stripDangerousPermissionsForAutoMode() to strip dangerous rules
+4. Inject the Auto Mode system prompt into the conversation
+```
+
+### Exiting Auto Mode
+
+```
+1. Set autoModeActive = false
+2. Set needsAutoModeExitAttachment = true (triggers the exit notice)
+3. Call restoreDangerousPermissions() to restore stripped rules
+4. Inject the "Exited Auto Mode" notice into the conversation
+```
+
+### Activation paths
+
+Auto mode can be activated through:
+- the `--enable-auto-mode` CLI argument
+- the `autoMode` setting in settings.json
+- plan mode's default use of auto mode semantics (`useAutoModeDuringPlan`, true by default)
+- SDK control messages
+- Shift+Tab in the REPL
+
+## System prompts
+
+### On entry (Full Instructions)
+
+The instructions injected into the conversation (`messages.ts:3481`) are:
+
+> Auto mode is active. The user chose continuous, autonomous execution. You should:
+>
+> 1. **Execute immediately** — implement directly and make reasonable assumptions
+> 2. **Minimize interruptions** — make routine decisions independently and ask fewer questions
+> 3. **Prefer action over planning** — code directly by default rather than entering plan mode
+> 4. **Expect course corrections** — the user can correct the course at any time
+> 5. **Do not take overly destructive actions** — deleting data or modifying production systems still requires confirmation
+> 6. **Avoid data exfiltration** — do not proactively share secrets or internal documents
+
+### During continued execution (Sparse Instructions)
+
+Subsequent turns receive a short reminder:
+
+> Auto mode still active. Execute autonomously, minimize interruptions, prefer action over planning.
+
+### On exit (Exit Instructions)
+
+> You have exited auto mode. Ask clarifying questions when the approach is ambiguous rather than making assumptions.
+
+## Coordination with Plan Mode
+
+Plan mode uses auto mode semantics by default (`getUseAutoModeDuringPlan()`, true by default). This means:
+
+- entering plan mode also activates the classifier if auto mode is available
+- `isAutoModeActive()` is the authoritative signal; `prePlanMode` and `strippedDangerousRules` are not reliable
+- leaving plan mode also exits auto mode
+
+## Fallback when the classifier is unavailable
+
+When the classifier API is unavailable (`unavailable: true` or `transcriptTooLong: true`):
+
+- it does not return allow directly; it falls back to the traditional permission dialog (`ask`)
+- it sends the AI this message: "{model} is temporarily unavailable, so auto mode cannot determine the safety of {toolName} right now."
+- it does not retry deterministic errors such as an overlong conversation; it falls back immediately
+
+## Classifier prompt templates
+
+Three prompt files under `src/utils/permissions/yolo-classifier-prompts/` control classifier behavior. At build time, `require()` inlines these files as string constants; they cannot be modified at runtime.
+
+### auto_mode_system_prompt.txt
+
+The primary system prompt defines the classifier's role, classification flow, and decision categories. It contains:
+
+- **Classification flow**: understand the operation → check user intent → assess risk
+- **Always BLOCK**: external code execution, irreversible deletion, unauthorized persistence, weakened security, privilege escalation, and network services
+- **BLOCK unless intent is explicit**: writes outside the CWD, system package management, git push, and large-scale changes
+- **Safe ALLOW operations**: reading files, searching, read-only git commands, tests/lint/builds, and edits inside the CWD
+- the `<permissions_template>` placeholder, replaced at runtime with the applicable permission template (`external` or `anthropic`)
+- the final instruction, `Use the classify_result tool to report your classification.`, which XML mode replaces with instructions for the `<block>` tag format
+
+### permissions_external.txt
+
+This is the permission template for external users. Three `<user_*_to_replace>` tags contain default rules in bullet format. User-defined rules **replace the entire default value**:
+
+```
+<user_allow_rules_to_replace>
+- Default allow rule 1
+- Default allow rule 2
+</user_allow_rules_to_replace>
+```
+
+- **allow**: 9 default rules covering read-only commands, version checks, read-only git, tests/lint/builds, package installation, file operations inside the CWD, and related operations
+- **soft_deny**: 10 default rules covering external code execution, recursive deletion, shell-configuration changes, privilege escalation, network services, and related operations
+- **environment**: 4 environment descriptions covering the terminal environment, auto mode context, development-tool availability, and unrestricted languages/frameworks
+
+`getDefaultExternalAutoModeRules()` extracts the bullet items from this file for output by the `occ auto-mode defaults` command.
+
+### permissions_anthropic.txt
+
+This is Anthropic's internal permission template. Default rules appear **outside** the tags, the tags are empty, and user-defined rules are **appended**:
+
+```
+- Default rule (outside the tags and always active)
+<user_allow_rules_to_replace>
+</user_allow_rules_to_replace>
+```
+
+Compared with the external version, it also includes:
+- read-only cloud CLI commands such as aws describe, gcloud describe, and kubectl get
+- infrastructure-as-code plan commands such as terraform plan and pulumi preview
+- corresponding deny rules for creating, modifying, or deleting cloud resources; applying IaC changes; accessing production environments; and related operations
+
+### Template-replacement flow
+
+```
+buildYoloSystemPrompt()
+  ├── BASE_PROMPT.replace('<permissions_template>', EXTERNAL/ANTHROPIC_TEMPLATE)
+  ├── .replace(<user_allow_rules_to_replace>, userAllow ?? defaults)
+  ├── .replace(<user_deny_rules_to_replace>, userDeny ?? defaults)
+  └── .replace(<user_environment_to_replace>, userEnvironment ?? defaults)
+```
+
+- External template: when a user setting is non-empty, it **replaces** the content of the corresponding tag; otherwise, the default remains
+- Internal template: user settings are **appended** after the defaults because the tags are empty and placed at the end
+
+## Current status
+
+> **Note**: the complete auto mode logic exists in the codebase, but it depends on the `feature('TRANSCRIPT_CLASSIFIER')` feature flag.
+> In the current decompiled version, `feature()` always returns `false`, so auto mode is unavailable.
+> Enabling it requires changing `feature('TRANSCRIPT_CLASSIFIER')` to `true` and ensuring the GrowthBook configuration source has a suitable fallback default.
+
+The prompt template files are **reconstructed artifacts**. The original files were lost during decompilation and were recreated from the code logic and replacement patterns in `yoloClassifier.ts`.
+
+## Related source index
+
+| File | Responsibility |
+|------|------|
+| `src/utils/permissions/yoloClassifier.ts` | Core classifier implementation |
+| `src/utils/permissions/autoModeState.ts` | Auto mode state management |
+| `src/utils/permissions/permissionSetup.ts` | Mode transitions and dangerous-permission stripping |
+| `src/utils/permissions/dangerousPatterns.ts` | List of dangerous command patterns |
+| `src/utils/permissions/classifierDecision.ts` | Classifier-decision handling |
+| `src/utils/permissions/classifierShared.ts` | Shared classifier logic |
+| `src/utils/permissions/bashClassifier.ts` | Bash command-classification rules |
+| `src/utils/permissions/bypassPermissionsKillswitch.ts` | Bypass-permission circuit breaker |
+| `src/utils/permissions/yolo-classifier-prompts/auto_mode_system_prompt.txt` | Primary classifier system prompt |
+| `src/utils/permissions/yolo-classifier-prompts/permissions_external.txt` | External permission template |
+| `src/utils/permissions/yolo-classifier-prompts/permissions_anthropic.txt` | Internal permission template |
+| `src/cli/handlers/autoMode.ts` | CLI `auto-mode` subcommand handler |
+| `src/utils/messages.ts` | Auto mode system-prompt injection |
+| `src/types/permissions.ts` | Permission type definitions |
+| `src/utils/betas.ts` | Detection of model support for auto mode |

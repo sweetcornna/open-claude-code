@@ -1,0 +1,180 @@
+---
+title: "権限モデル — Allow/Ask/Deny の 3 段階権限システム"
+description: "Claude Code の 3 段階権限モデルを詳解します。src/utils/permissions/permissions.ts に基づく規則照合エンジン、5 層の規則ソースと優先順位、ツール名・コマンド・パスの 3 次元照合、Denial Tracking による無限ループ防止、権限モードの切り替え機構を扱います。"
+keywords: ["権限モデル", "Allow Ask Deny", "PermissionRule", "checkPermissions", "Denial Tracking", "権限規則"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/safety/permission-model) · [中文](/docs/zh/safety/permission-model) · **日本語**
+
+{/* この章の目的: ソースコードから権限システムの完全な実装を明らかにする */}
+
+## 3 種類の権限動作
+
+ツールを呼び出すたびに、システムは次の 3 種類のいずれかを裁定します。
+
+| 動作 | 意味 | 戻り値の型 | 典型的な場面 |
+|------|------|---------|---------|
+| **Allow** | ユーザーに通知せず自動的に許可する | `{ behavior: 'allow', updatedInput, decisionReason }` | Read でプロジェクト内のファイルを読む |
+| **Ask** | 確認ダイアログを表示する | `{ behavior: 'ask', message, suggestions, metadata }` | Bash で未知のコマンドを実行する |
+| **Deny** | 直ちに拒否する | `{ behavior: 'deny', message, decisionReason }` | 禁止されたコマンドを実行しようとする |
+
+これらの動作は `PermissionResult` 型（`src/utils/permissions/PermissionResult.ts`）で定義されています。
+
+## 権限規則のソース
+
+規則は 8 つのソースから集約されます（`PERMISSION_RULE_SOURCES`、`permissions.ts:109`）。優先順位は低いものから高いものの順で、後のソースが前のソースを上書きします。
+
+```
+1. userSettings   — ~/.occ/settings.json（プロジェクト共通）
+2. projectSettings — .occ/settings.json（チームで共有）
+3. localSettings  — .occ/settings.local.json（gitignored、個人用の上書き）
+4. flagSettings   — --settings コマンドライン引数
+5. policySettings — 企業管理者が配布するポリシー（ユーザーは上書き不可）
+6. cliArg         — コマンドラインの --allow/--deny 引数
+7. command        — Skill ツールの allowedTools allowlist
+8. session        — 現在の会話でユーザーが手動承認（"Always allow"）
+```
+
+各ソースは `alwaysAllowRules[source]`、`alwaysAskRules[source]`、`alwaysDenyRules[source]` の 3 配列を保持します。
+
+規則のデータ構造は `PermissionRule` です。
+```typescript
+{
+  source: PermissionRuleSource      // どのレイヤーから来たか
+  ruleBehavior: 'allow' | 'ask' | 'deny'
+  ruleValue: {
+    toolName: string                // 例: "Bash"、"mcp__server1"
+    ruleContent?: string            // 例: "git *"、"src/**"
+  }
+}
+```
+
+## 規則照合エンジン
+
+### 3 次元の照合
+
+`permissions.ts` は 3 種類の照合軸を実装しています。
+
+**1. ツール名の照合**（`toolMatchesRule()`、238 行）
+
+`ruleContent` のない規則だけがツール全体に一致します。
+```typescript
+// 厳密一致
+rule "Bash" → BashTool に一致
+rule "mcp__server1" → その MCP Server の全ツールに一致（server 単位）
+rule "mcp__server1__*" → ワイルドカード一致（同上）
+```
+
+MCP ツールは `getToolNameForPermissionCheck()` で照合名を取得し、接頭辞付き（`mcp__server__tool`）と接頭辞なしのモードに対応します。
+
+**2. コマンドパターンの照合**（BashTool の `checkPermissions()`）
+
+BashTool は `preparePermissionMatcher()`（`Tool.ts:520`）でコマンドパターンを解析します。
+```json
+{"tool": "Bash", "ruleContent": "git *"}  → "git commit -m 'fix'" に一致
+```
+
+コマンドは AST で解析され（`readOnlyValidation.ts` は tree-sitter bash を使用）、最初のサブコマンドを抽出して照合します。
+
+**3. パスの照合**（ファイルツールの `checkPermissions()`）
+
+Read/Edit/Write ツールは `getPath()` でファイルパスを抽出し、`ruleContent` 内の glob パターンと照合します。
+```json
+{"tool": "Edit", "ruleContent": "src/**"}  → "src/utils/foo.ts" に一致
+```
+
+### 権限検査の全フロー
+
+各ツール呼び出しの権限検査（`canUseTool()` → `checkPermissions()`）は次の手順を通ります。
+
+```
+1a. Blanket deny の検査
+    getDenyRuleForTool() → ツール名が deny 規則に完全一致するか？
+    ↓ 一致 → deny（getTools() の段階でツール一覧から除外）
+
+1b. Blanket allow の検査
+    toolAlwaysAllowedRule() → ツール名が allow 規則に完全一致するか？
+    ↓ 一致 → allow
+
+2. ツール自身の checkPermissions()
+    ツールごとのロジック:
+    - BashTool: readOnlyValidation → サンドボックス判定 → AST 解析 → パターン照合
+    - FileEditTool: パス allowlist の検査
+    - SkillTool: safe properties allowlist + 厳密一致 / 接頭辞一致
+    ↓ PermissionResult を返す
+
+3. Hook システム
+    executePermissionRequestHooks() → PreToolUse hook で上書き可能
+    ↓ hook が deny を返す → deny
+    ↓ hook が ask を返す → ask へ昇格
+
+4. Ask 規則の検査
+    getAskRules() → 一致 → ask
+
+5. デフォルト動作
+    現在の permissionMode によってデフォルト動作を決定
+    - 'default': ほとんどのツールは ask
+    - 'plan': 書き込み操作は deny、読み取り操作は allow
+    - 'bypass': すべて allow
+```
+
+## 権限モード
+
+| モード | `PermissionMode` の値 | 用途 | 動作 |
+|------|---------------------|---------|------|
+| **Default** | `'default'` | 通常の利用 | 機密性のある操作を個別に確認 |
+| **Plan Mode** | `'plan'` | 調査段階 | 読み取りのみで書き込み不可（`isReadOnly()` の検査） |
+| **Accept Edits** | `'acceptEdits'` | 高速な反復 | ワークスペース内のファイル編集は自動許可し、その他の操作は引き続き確認 |
+| **Don't Ask** | `'dontAsk'` | 中断を減らす | 可能な限り自動で判断し、確認ダイアログを減らす |
+| **Auto** | `'auto'` | AI を信頼 | transcript classifier で自動判断（`TRANSCRIPT_CLASSIFIER` feature flag が必要） |
+| **Bypass** | `'bypassPermissions'` | 完全に信頼 | すべての操作を自動許可（明示的な `--dangerously-skip-permissions` が必要） |
+
+Plan Mode への切り替えは `EnterPlanModeTool.call()` が開始します。
+```typescript
+// EnterPlanModeTool.ts:88
+context.setAppState(prev => ({
+  ...prev,
+  toolPermissionContext: applyPermissionUpdate(
+    prepareContextForPlanMode(prev.toolPermissionContext),
+    { type: 'setMode', mode: 'plan', destination: 'session' },
+  ),
+}))
+```
+
+終了時は `ExitPlanModeV2Tool` が以前のモードを復元します。
+
+## Denial Tracking: 無限ループの防止
+
+`src/utils/permissions/denialTracking.ts` は拒否の追跡機構を実装しています。
+
+```typescript
+const DENIAL_LIMITS = {
+  maxConsecutive: 3,        // 同じツールを連続して拒否する上限
+  maxTotal: 20,             // 拒否総数の上限
+}
+```
+
+AI による同種の操作が上限まで連続して拒否されると、次の処理が行われます。
+1. `recordDenial()` が拒否を記録し、カウントを増やす
+2. `shouldFallbackToPrompting()` が連続拒否を検出し、true を返す
+3. システムが AI にメッセージを注入する: "Your previous tool call was rejected..."
+4. AI に戦略の変更を強制し、「拒否された同じ操作を繰り返し要求する」無限ループを避ける
+
+操作が成功すると `recordSuccess()` がカウントをリセットします。
+
+## 実行時における規則の更新
+
+権限規則は実行時に動的に更新できます（`applyPermissionUpdate()`、`PermissionUpdate.ts`）。
+
+```typescript
+type PermissionUpdate =
+  | { type: 'addRules', destination, rules, behavior }
+  | { type: 'replaceRules', destination, rules, behavior }
+  | { type: 'removeRules', destination, rules, behavior }
+  | { type: 'setMode', destination, mode }
+  | { type: 'addDirectories', destination, directories }
+  | { type: 'removeDirectories', destination, directories }
+```
+
+ユーザーが Ask ダイアログで "Always allow" を選ぶと、システムは `persistPermissionUpdates()` を呼び出して対応するレイヤーの settings ファイル（project/user/managed）へ規則を書き込み、メモリ上の `toolPermissionContext` も同時に更新します。

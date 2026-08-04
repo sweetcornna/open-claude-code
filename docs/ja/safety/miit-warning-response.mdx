@@ -1,0 +1,230 @@
+---
+title: "中国工業情報化部が Claude Code のバックドアを警告 — 5 分で Open Claude Code へ移行"
+description: "中国工業情報化部の NVDB は、公式 Claude Code のバージョン 2.1.91〜2.1.196 にバックドアが存在すると警告しました。Open Claude Code は Analytics、GrowthBook、Sentry を空実装へ置き換え、テレメトリをデフォルトで無効にし、ソースコードを監査可能にしています。この記事では、occ のインストール、ユーザー設定の移行、再ログインを行いながら、公式 Claude Code の独立した環境も維持する、非破壊的な共存移行手順を示します。"
+keywords: ["中国工業情報化部", "NVDB", "セキュリティバックドア", "テレメトリ", "リバースエンジニアリング", "移行ガイド"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/safety/miit-warning-response) · [中文](/docs/zh/safety/miit-warning-response) · **日本語**
+
+# Claude Code のセキュリティ問題 — 5 分で Open Claude Code へ移行
+
+## 警告: 公式版 Claude Code のセキュリティ問題
+
+> Open Claude Code プロジェクト: [github.com/sweetcornna/open-claude-code](https://github.com/sweetcornna/open-claude-code)
+
+2026 年 7 月、中国工業情報化部の NVDB は、公式 Claude Code のバージョン `2.1.91`（2026-04-02）から `2.1.196`（2026-06-29）に、秘匿された監視機能が組み込まれていると警告しました。システムのタイムゾーンとプロキシアドレスを読み取り、中国との関連を判断し、要求内のステガノグラフィックなマーカーを通じて、地域や識別子などの機密情報を送り返すというものです。Claude Code 自体がファイルの読み書きやコマンド実行などの強い権限を持つため、企業の中核コード、シークレット、内部ネットワーク構成に影響する可能性があります。Alibaba は 7 月 3 日に高リスク一覧へ追加し、7 月 10 日から全面的に無効化しました。Tencent、Meituan、JD.com なども外部 AI モデルの呼び出しを縮小しています。
+
+公式はその後に修正版を公開しましたが、製品は引き続きクローズドソースのブラックボックスであり、ユーザーはネットワーク動作とデータフローを直接確認できません。Open Claude Code は、公式 Claude Code CLI をリバースエンジニアリングし、逆コンパイルから復元したものです。監査可能な TypeScript ソースコードを維持し、テレメトリコンポーネントを空実装へ置き換え、主要なインフラストラクチャのセルフホストにも対応します。
+
+テレメトリ経路、ファイルパス、エンドポイント、発動条件の全体については、[テレメトリとリモート設定配布システムの監査](../telemetry-remote-config-audit)を参照してください。
+
+## Open Claude Code はデフォルトでテレメトリを有効にしない
+
+### 1. テレメトリコンポーネントを空実装へ置き換え済み
+
+Open Claude Code は、3 種類のテレメトリコンポーネントを空実装へ置き換えています（empty implementations。リポジトリの `CLAUDE.md` にある Stubbed/Deleted Modules 表を参照）。
+
+| コンポーネント | 公式版の動作 | Open Claude Code |
+| --- | --- | --- |
+| Analytics（Datadog + 1P BigQuery） | 本番環境で `tengu_*` 系イベントをバッチ送信 | 空実装、送信しない |
+| GrowthBook リモート設定 | 起動時に取得し、6h ごとに更新 | 空実装、取得しない |
+| Sentry エラー追跡 | 例外の stack trace を送信 | 空実装、送信しない |
+
+このため、Open Claude Code はこれらのテレメトリコンポーネントを介して `us5.datadoghq.com`、`api.datadoghq.com` などのエンドポイントへデータを送信しません。関連するコード経路はインターフェースの形を維持していますが、実際のネットワーク送信は削除されています。
+
+その他の経路（OpenTelemetry、Beta Session Tracing、Remote Managed Settings など）は残っていますが、明示的に設定した場合にのみ有効になります。
+
+| 仕組み | 公式版のデフォルト | Open Claude Code |
+| --- | --- | --- |
+| OpenTelemetry | `CLAUDE_CODE_ENABLE_TELEMETRY=1` が必要 | 同左、デフォルトでは無効 |
+| Beta Session Tracing | GrowthBook gate で制御 | 対応する feature はデフォルトで無効 |
+| Remote Managed Settings | API key ユーザーでは取得する場合がある | 企業エンドポイント未設定時は取得しない |
+| Settings Sync | feature gate で制御 | デフォルトで無効 |
+
+### 2. ソースコードを自分で監査できる
+
+公式 Claude Code は難読化された単一ファイルの成果物です。Open Claude Code は完全な TypeScript ソースコードを保持しているため、ネットワーク要求とテレメトリ呼び出しを直接確認できます。
+
+```bash
+# Anthropic API に対するすべての要求を検索
+grep -rn "api.anthropic.com" src/ packages/
+
+# すべてのテレメトリイベントを検索
+grep -rn "logEvent\|trackDatadogEvent\|logEventTo1P" src/
+
+# リモート設定のすべての取得処理を検索
+grep -rn "growthbook\|remoteManagedSettings\|settingsSync" src/
+```
+
+完全な監査記録については、[テレメトリとリモート設定配布システムの監査](../telemetry-remote-config-audit)を参照してください。ソースコード上で項目ごとに検証できます。
+
+### 3. 主要なインフラストラクチャをセルフホストできる
+
+| コンポーネント | セルフホスト方法 | ドキュメント |
+| --- | --- | --- |
+| Feature Flag プラットフォーム | 独自の GrowthBook インスタンス | [GrowthBook アダプター](../internals/growthbook-adapter) |
+| エラー追跡 | 独自の Sentry インスタンス | [Sentry の設定](../internals/sentry-setup) |
+| リモートコントロール | Happy サーバーをセルフホスト（`HAPPY_SERVER_URL`）。occ は ACP agent としてのみ動作 | [Remote Control](/docs/zh/features/remote-control-self-hosting) |
+| HTML Artifact のホスティング | Cloudflare Worker + R2 | [Cloud Artifacts](https://github.com/sweetcornna/open-claude-code/blob/main/packages/cloud-artifacts/README.md) |
+| API エンドポイント | 任意の Anthropic API 互換サービス | `/login` コマンドで設定 |
+
+### 4. プライバシー環境変数を追加の防御として利用できる
+
+```bash
+# 必須でないすべてのネットワーク通信を無効化（自動更新、release notes などを含む）
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 occ
+
+# サードパーティ provider を使用し、Anthropic への直接接続を避ける
+CLAUDE_CODE_USE_OPENAI=1 occ        # OpenAI 互換プロトコル
+CLAUDE_CODE_USE_GEMINI=1 occ        # Gemini
+CLAUDE_CODE_USE_GROK=1 occ          # Grok
+CLAUDE_CODE_USE_BEDROCK=1 occ       # AWS Bedrock
+```
+
+`src/utils/privacyLevel.ts` は一元化された制御ポイントであり、`default < no-telemetry < essential-traffic` の 3 レベルを定義します。
+
+## Open Claude Code へ移行しても中核機能を犠牲にする必要はない
+
+Open Claude Code は権限システム、サンドボックス、Plan Mode、Auto Mode、MCP、Skills、Hooks、Computer Use、Chrome Use、Voice Mode、内蔵ツールを維持し、さらにコミュニティ機能を追加しています。
+
+| 機能 | 説明 |
+| --- | --- |
+| Goal による継続駆動 | `/goal <objective>` で目標を設定し、ターンをまたいで進行する。token budget、完了/阻害の監査、`pause`、`resume`、`continue`、`clear` に対応 |
+| Artifacts | HTML、カンバン、レポートを公開 URL へアップロードする。7/30 日後の自動失効とセルフホストに対応 |
+| Dynamic Workflow | `/ultracode` + `Workflow` ツールで決定的な JS オーケストレーションを実行する。journal の replay、token budget、並列数上限に対応 |
+| ACP | Zed など ACP 対応クライアントと接続する。セッション復元、Skills、権限ブリッジに対応 |
+| Remote Control | Docker でリモート UI をセルフホストし、別のデバイスからセッションを表示・操作できる |
+| Langfuse | agent loop、モデル呼び出し、ツール実行を記録し、データセットへ変換できる |
+| Channels | MCP server が Feishu、Slack、Discord などの外部メッセージをセッションへ取り込む |
+| Web Search | Bing と Brave に対応する内蔵 Web 検索 |
+| Poor Mode | メモリ抽出とプロンプト候補を無効にし、並列要求を減らす |
+| `/dream` | メモリファイルを整理・最適化する |
+| カスタムモデル provider | Anthropic、OpenAI、Gemini、Grok などの互換エンドポイントに対応 |
+
+完全な一覧は[全機能ガイド](/docs/zh/features/all-features-guide)を参照してください。
+
+## Open Claude Code への非破壊的な移行
+
+Open Claude Code は独立したコマンドと設定の名前空間を使います。
+
+| Open Claude Code | 公式 Claude Code |
+| --- | --- |
+| `occ` / `occ-bun` | `claude` |
+| `~/.occ/` | `~/.claude/` |
+| `~/.occ.json` | `~/.claude.json` |
+| プロジェクト内の `.occ/` | プロジェクト内の `.claude/` |
+
+両方を同じマシンへインストールできます。移行中に `~/.claude` を削除または変更せず、`claude` コマンドを `occ` で上書きしないでください。これにより、実際の環境分離を維持できます。
+
+### 手順 1: 公式版のバージョンを確認
+
+```bash
+claude --version
+# バージョンが 2.1.91 ~ 2.1.196 の範囲内なら、警告の対象
+```
+
+### 手順 2: Open Claude Code をインストール
+
+#### 方法 A: npm でグローバルインストール
+
+```bash
+npm i -g @sweetcornna/open-claude-code
+
+occ --version      # Node.js エントリポイントを確認
+occ-bun --version  # Bun エントリポイントを確認
+occ update         # 今後の更新
+```
+
+この記事で説明する改名作業の一環として、ccb 時代の `ccb` / `ccb-bun` コマンド名は完全に廃止され、現在は `occ` / `occ-bun` だけを提供します。
+
+#### 方法 B: ソースコードからビルド
+
+```bash
+git clone https://github.com/sweetcornna/open-claude-code.git
+cd open-claude-code
+
+# Bun >= 1.3.11 が必要
+bun install
+bun run build:vite
+
+node dist/cli-node.js --version
+bun dist/cli-bun.js --version
+
+# 任意: 現在のソースディレクトリからグローバルインストール
+bun install -g .
+occ --version
+```
+
+### 手順 3: 既存設定を移行
+
+最初にプレビューし、その後に移行を実行します。
+
+```bash
+occ migrate --dry-run
+occ migrate
+```
+
+ユーザーが作成またはインストールした次の設定をコピーします。
+
+- `settings.json`
+- `skills/`、`agents/`、`commands/`
+- `output-styles/`、`workflows/`、`plugins/`、`rules/`
+- 以前のグローバル設定にある MCP server 定義
+
+認証情報、セッション履歴、キャッシュ、ログ、IDE lockfile はコピーしません。移行は冪等であり、`~/.occ` にすでに存在するファイルを上書きせず、`~/.claude` は全工程で読み取り専用です。
+
+### 手順 4: 再ログインまたは API エンドポイントを設定
+
+認証情報は移行されません。初めて `occ` を実行した後、REPL で `/login` と入力し、必要な provider を選択します。
+
+| 選択肢 | 用途 |
+| --- | --- |
+| Anthropic Compatible | サードパーティの Anthropic API 互換サービス |
+| OpenAI | Ollama、DeepSeek、vLLM などの OpenAI プロトコル対応エンドポイント |
+| Gemini | Google Gemini |
+| Grok | xAI Grok |
+
+provider に応じて Base URL、API Key、モデル ID を入力します。クイックスタートと各フィールドの説明は[プロジェクトの README](https://github.com/sweetcornna/open-claude-code#readme)を参照してください。
+
+### 手順 5: 影響を受ける公式版のインストールを処理
+
+occ はすでに独立して使用できます。警告の対象範囲にある公式 Claude Code は、組織のセキュリティポリシーに従ってアップグレードまたはアンインストールしてください。この操作は `occ` のインストールと `~/.occ` の設定に影響しません。
+
+```bash
+# npm でインストールした公式版
+npm rm -g @anthropic-ai/claude-code
+
+# Homebrew でインストールした公式版（macOS）
+brew uninstall claude-code
+```
+
+公式版を引き続き使用する場合は修正版をインストールし、`claude` と `occ` の 2 つのコマンドを互いに独立したまま維持してください。
+
+### 手順 6: 分離と実行状態を確認
+
+```bash
+# 2 つのコマンドが互いを上書きしていないことを確認
+occ --version
+command -v occ
+
+# occ の設定が独立したディレクトリへ書き込まれることを確認
+ls -la ~/.occ
+
+# Open Claude Code を起動
+occ
+```
+
+別のターミナルで、必要に応じてネットワーク接続を観察できます。
+
+```bash
+sudo lsof -i -n -P | grep -E "occ|claude"
+```
+
+Anthropic またはサードパーティ API を使用すると、その API への接続が現れるのは正常です。意図しない Datadog のテレメトリ接続がないことを確認し、実際に使用している API ドメインを照合することが重要です。
+
+## オープンソースプロジェクトへの監査と貢献
+
+すべてのソースコードは [sweetcornna/open-claude-code](https://github.com/sweetcornna/open-claude-code) にあります。issue、PR、移行経験、セキュリティ監査結果の投稿を歓迎します。
+
+> ユーザーと監査担当者が増えるほど、プロジェクトの安全境界を継続的に検証しやすくなります。
