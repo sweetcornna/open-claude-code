@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/experimental-skill-search) · **中文** · [日本語](/docs/ja/features/experimental-skill-search)
 
 # EXPERIMENTAL_SKILL_SEARCH — 技能语义搜索
 

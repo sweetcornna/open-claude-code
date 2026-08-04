@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/voice-mode) · **中文** · [日本語](/docs/ja/features/voice-mode)
 
 # VOICE_MODE — 语音输入
 
@@ -68,7 +68,7 @@ isVoiceAvailable() = isVoiceGrowthBookEnabled()
 | `src/services/doubaoSTT.ts` | 豆包 ASR 适配器（AsyncGenerator → VoiceStreamConnection） |
 | `src/commands/voice/voice.ts` | `/voice` 命令实现，处理后端选择和持久化 |
 | `src/hooks/useVoiceEnabled.ts` | 语音启用状态 hook，根据 provider 决定是否跳过 OAuth |
-| `src/utils/settings/types.ts` | `voiceProvider: 'anthropic' | 'doubao'` 设置类型定义 |
+| `src/utils/settings/types.ts` | `voiceProvider: 'anthropic' \| 'doubao'` 设置类型定义 |
 
 ### 3.3 数据流
 

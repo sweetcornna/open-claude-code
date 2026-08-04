@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/chrome-devtools-mcp) · **中文** · [日本語](/docs/ja/features/chrome-devtools-mcp)
 
 # Chrome 浏览器工具（chrome-devtools-mcp）
 
@@ -138,4 +138,4 @@ occ 不会替用户向第三方发送使用统计。
 ## 9. 相关文档
 
 - 上游仓库与工具参考：https://github.com/ChromeDevTools/chrome-devtools-mcp
-- `docs/features/chrome-use-mcp.md` 讲的是**另一个东西** —— 第三方 `hangwin/mcp-chrome`（默认注册但默认禁用的 `mcp-chrome` HTTP server，端口 12306），与本文无关。
+- `docs/zh/features/chrome-use-mcp.md` 讲的是**另一个东西** —— 第三方 `hangwin/mcp-chrome`（默认注册但默认禁用的 `mcp-chrome` HTTP server，端口 12306），与本文无关。

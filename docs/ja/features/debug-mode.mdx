@@ -1,0 +1,53 @@
+---
+title: "デバッグモード"
+description: "VS Code の attach モードで CLI ランタイムをデバッグし、ブレークポイント、ステップ実行、変数の確認に対応します。"
+keywords: ["debug", "デバッグ", "VS Code", "inspect", "ブレークポイント"]
+---
+
+<!-- lang-switcher -->
+[English](/docs/en/features/debug-mode) · [中文](/docs/zh/features/debug-mode) · **日本語**
+
+## 概要
+
+TUI (REPL) モードには実際のターミナルが必要なため、VS Code の launch 構成から直接起動してデバッグすることはできません。**attach モード**を使って、実行中の Bun プロセスに接続します。
+
+## 手順
+
+### 1. ターミナルで inspect サービスを起動
+
+```bash
+bun run dev:inspect
+```
+
+`ws://localhost:8888/xxxxxxxx` のようなアドレスが出力されます。
+
+### 2. VS Code でデバッガーをアタッチ
+
+1. `src/` ファイル内にブレークポイントを設定する
+2. F5 → **"Attach to Bun (TUI debug)"** を選択する
+
+> **注意**: `dev:inspect` と `launch.json` に記載された WebSocket アドレスは起動するたびに変わるため、両方を同期して更新する必要があります。
+
+## 仕組み
+
+`dev:inspect` スクリプトが実際に実行するのは `scripts/dev-debug.ts` です。
+
+```typescript
+// scripts/dev-debug.ts
+process.env.BUN_INSPECT = "localhost:8888/<token>"
+await import("./dev")
+```
+
+`BUN_INSPECT` 環境変数を設定して Chrome DevTools Protocol 互換の inspect サービスを起動し、その後 dev モードのエントリーポイントをインポートします。VS Code の `bun` 拡張機能は、出力されたアドレスに WebSocket で接続して attach を実現します。
+
+## JetBrains IDE
+
+理論上、JetBrains 製 IDE（WebStorm / IntelliJ など）も Bun inspect サービスへの attach（Run → Attach to Process）をサポートしていますが、まだ実際には検証されていません。検証に成功した場合は、ぜひドキュメントを補足してください。
+
+## 関連ファイル
+
+| ファイル | 説明 |
+|---|---|
+| `package.json` → `dev:inspect` | inspect サービスを起動する npm script |
+| `.vscode/launch.json` | VS Code の attach デバッグ設定 |
+| `scripts/dev.ts` | dev モードのエントリーポイント。MACRO defines を注入する |

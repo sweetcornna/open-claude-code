@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/workflow-scripts) · **中文** · [日本語](/docs/ja/features/workflow-scripts)
 
 # WORKFLOW_SCRIPTS — 确定性多 agent 工作流编排
 

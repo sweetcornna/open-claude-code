@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/coordinator-mode) · **中文** · [日本語](/docs/ja/features/coordinator-mode)
 
 # COORDINATOR_MODE — 多 Agent 编排
 

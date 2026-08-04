@@ -1,5 +1,5 @@
 <!-- lang-switcher -->
-**中文**
+[English](/docs/en/features/daemon) · **中文** · [日本語](/docs/ja/features/daemon)
 
 # DAEMON — 后台守护进程
 

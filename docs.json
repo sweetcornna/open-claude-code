@@ -92,7 +92,56 @@
               "docs/en/internals/sentry-setup",
               "docs/en/internals/hidden-features",
               "docs/en/internals/ant-only-world",
-              "docs/en/internals/session-transcript-persistence"
+              "docs/en/internals/session-transcript-persistence",
+              "docs/en/features/debug-mode"
+            ]
+          },
+          {
+            "group": "隐藏功能详解",
+            "pages": [
+              {
+                "group": "Agent 与协作",
+                "pages": [
+                  "docs/en/features/coordinator-mode",
+                  "docs/en/features/fork-subagent",
+                  "docs/en/features/daemon"
+                ]
+              },
+              {
+                "group": "运行模式",
+                "pages": [
+                  "docs/en/features/kairos",
+                  "docs/en/features/channels",
+                  "docs/en/features/voice-mode",
+                  "docs/en/features/remote-control-self-hosting",
+                  "docs/en/features/proactive",
+                  "docs/en/features/ultraplan"
+                ]
+              },
+              {
+                "group": "工具增强",
+                "pages": [
+                  "docs/en/features/mcp-skills",
+                  "docs/en/features/mcp-2026",
+                  "docs/en/features/tree-sitter-bash",
+                  "docs/en/features/bash-classifier",
+                  "docs/en/features/web-browser-tool",
+                  "docs/en/features/web-search-tool",
+                  "docs/en/features/experimental-skill-search",
+                  "docs/en/features/langfuse-monitoring",
+                  "docs/en/features/computer-use",
+                  "docs/en/features/chrome-devtools-mcp"
+                ]
+              },
+              {
+                "group": "上下文与自动化",
+                "pages": [
+                  "docs/en/features/token-budget",
+                  "docs/en/features/workflow-scripts",
+                  "docs/en/features/auto-dream"
+                ]
+              },
+              "docs/en/features/tier3-stubs"
             ]
           }
         ]
@@ -325,7 +374,56 @@
               "docs/ja/internals/sentry-setup",
               "docs/ja/internals/hidden-features",
               "docs/ja/internals/ant-only-world",
-              "docs/ja/internals/session-transcript-persistence"
+              "docs/ja/internals/session-transcript-persistence",
+              "docs/ja/features/debug-mode"
+            ]
+          },
+          {
+            "group": "隐藏功能详解",
+            "pages": [
+              {
+                "group": "Agent 与协作",
+                "pages": [
+                  "docs/ja/features/coordinator-mode",
+                  "docs/ja/features/fork-subagent",
+                  "docs/ja/features/daemon"
+                ]
+              },
+              {
+                "group": "运行模式",
+                "pages": [
+                  "docs/ja/features/kairos",
+                  "docs/ja/features/channels",
+                  "docs/ja/features/voice-mode",
+                  "docs/ja/features/remote-control-self-hosting",
+                  "docs/ja/features/proactive",
+                  "docs/ja/features/ultraplan"
+                ]
+              },
+              {
+                "group": "工具增强",
+                "pages": [
+                  "docs/ja/features/mcp-skills",
+                  "docs/ja/features/mcp-2026",
+                  "docs/ja/features/tree-sitter-bash",
+                  "docs/ja/features/bash-classifier",
+                  "docs/ja/features/web-browser-tool",
+                  "docs/ja/features/web-search-tool",
+                  "docs/ja/features/experimental-skill-search",
+                  "docs/ja/features/langfuse-monitoring",
+                  "docs/ja/features/computer-use",
+                  "docs/ja/features/chrome-devtools-mcp"
+                ]
+              },
+              {
+                "group": "上下文与自动化",
+                "pages": [
+                  "docs/ja/features/token-budget",
+                  "docs/ja/features/workflow-scripts",
+                  "docs/ja/features/auto-dream"
+                ]
+              },
+              "docs/ja/features/tier3-stubs"
             ]
           }
         ]
