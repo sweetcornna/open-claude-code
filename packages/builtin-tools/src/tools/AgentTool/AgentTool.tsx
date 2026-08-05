@@ -11,6 +11,10 @@ import {
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from 'src/constants/prompts.js';
 import { isCoordinatorMode } from 'src/coordinator/coordinatorMode.js';
 import { startAgentSummarization } from 'src/services/AgentSummary/agentSummary.js';
+import {
+  isBackgroundAgentSummarizationEnabled,
+  isForegroundAgentSummarizationEnabled,
+} from 'src/services/AgentSummary/enabled.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -922,7 +926,13 @@ export const AgentTool = buildTool({
             toolUseContext,
             rootSetAppState,
             agentIdForCleanup: asyncAgentId,
-            enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
+            // Background agents summarize by default in an interactive TUI —
+            // the recap is what the background-agent surfaces render. The
+            // coordinator/fork opt-ins are passed through so they keep working
+            // in non-interactive sessions. OCC_AGENT_SUMMARIES=0 disables all
+            // of it (see isBackgroundAgentSummarizationEnabled for the cost
+            // model).
+            enableSummarization: isBackgroundAgentSummarizationEnabled(isCoordinator || isForkSubagentEnabled()),
             getWorktreeResult: cleanupWorktreeIfNeeded,
           }),
         ),
@@ -1030,8 +1040,11 @@ export const AgentTool = buildTool({
               ...runAgentParams.override,
               agentId: syncAgentId,
             },
+            // FOREGROUND summarization stays SDK-opt-in — deliberately NOT
+            // widened to interactive TUI sessions like the two background
+            // gates. Rationale lives with the predicate.
             onCacheSafeParams:
-              summaryTaskId && getSdkAgentProgressSummariesEnabled()
+              summaryTaskId && isForegroundAgentSummarizationEnabled()
                 ? (params: CacheSafeParams) => {
                     const { stop } = startAgentSummarization(summaryTaskId, syncAgentId, params, rootSetAppState);
                     stopForegroundSummarization = stop;
@@ -1123,7 +1136,11 @@ export const AgentTool = buildTool({
                           agentId: asAgentId(backgroundedTaskId),
                           abortController: task.abortController,
                         },
-                        onCacheSafeParams: getSdkAgentProgressSummariesEnabled()
+                        // The agent has just become a background task, so it
+                        // now has a row in the background surfaces to show a
+                        // recap in — start summarizing on the same terms as an
+                        // async-from-start agent. Stopped in the finally below.
+                        onCacheSafeParams: isBackgroundAgentSummarizationEnabled()
                           ? (params: CacheSafeParams) => {
                               const { stop } = startAgentSummarization(
                                 backgroundedTaskId,
@@ -1194,6 +1211,7 @@ export const AgentTool = buildTool({
                           durationMs: agentResult.totalDurationMs,
                         },
                         toolUseId: toolUseContext.toolUseId,
+                        agentId: toolUseContext.agentId,
                         ...worktreeResult,
                       });
                     } catch (error) {
@@ -1219,6 +1237,7 @@ export const AgentTool = buildTool({
                           status: 'killed',
                           setAppState: rootSetAppState,
                           toolUseId: toolUseContext.toolUseId,
+                          agentId: toolUseContext.agentId,
                           finalMessage: partialResult,
                           ...worktreeResult,
                         });
@@ -1234,6 +1253,7 @@ export const AgentTool = buildTool({
                         error: errMsg,
                         setAppState: rootSetAppState,
                         toolUseId: toolUseContext.toolUseId,
+                        agentId: toolUseContext.agentId,
                         ...worktreeResult,
                       });
                     } finally {

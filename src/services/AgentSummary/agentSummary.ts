@@ -29,6 +29,29 @@ import {
 
 const SUMMARY_INTERVAL_MS = 30_000
 
+/**
+ * Global ceiling on in-flight summary forks, across every agent in the process.
+ *
+ * Each background agent owns an independent 30s timer with no shared schedule,
+ * so N agents can fire N forks in the same instant and compete with the user's
+ * own turn for the account rate limit — the recap is a nice-to-have and must
+ * never do that.
+ *
+ * Trade-off (chosen for being ~10 lines instead of a real scheduler): an agent
+ * that finds the gate closed SKIPS this tick rather than queueing, so its recap
+ * can be up to 2x SUMMARY_INTERVAL_MS stale while many agents are running.
+ * That self-corrects: the timer is re-armed on completion, so an agent that
+ * skipped re-arms ~30s from now while agents that actually ran re-arm 30s after
+ * their fork finished — the population de-phases instead of resonating.
+ */
+const MAX_CONCURRENT_SUMMARY_FORKS = 2
+let activeSummaryForks = 0
+
+/** Test-only: the counter is module-global, so suites must be able to zero it. */
+export function _resetSummaryConcurrencyForTest(): void {
+  activeSummaryForks = 0
+}
+
 export type AgentSummaryDependencies = Partial<{
   clearTimeout: typeof clearTimeout
   getAgentTranscript: typeof getAgentTranscript
@@ -106,6 +129,16 @@ export function startAgentSummarization(
         return
       }
 
+      // Concurrency gate, checked AFTER the cheap skip checks so a tick that
+      // was going to no-op anyway doesn't burn a slot. Skipping here falls
+      // through to the finally, which re-arms the next tick.
+      if (activeSummaryForks >= MAX_CONCURRENT_SUMMARY_FORKS) {
+        logForDebuggingImpl(
+          `[AgentSummary] Skipping summary for ${taskId}: ${activeSummaryForks} summary forks already in flight`,
+        )
+        return
+      }
+
       // Build fork params with current messages
       const forkParams: CacheSafeParams = {
         ...baseParams,
@@ -135,17 +168,30 @@ export function startAgentSummarization(
       // ContentReplacementState is cloned by default in createSubagentContext
       // from forkParams.toolUseContext (the subagent's LIVE state captured at
       // onCacheSafeParams time). No explicit override needed.
-      const result = await runForkedAgentImpl({
-        promptMessages: [
-          createSummaryPromptMessage(buildSummaryPrompt(previousSummary)),
-        ],
-        cacheSafeParams: forkParams,
-        canUseTool,
-        querySource: 'agent_summary',
-        forkLabel: 'agent_summary',
-        overrides: { abortController: summaryAbortController },
-        skipTranscript: true,
-      })
+      activeSummaryForks++
+      let result: Awaited<ReturnType<typeof runForkedAgentImpl>>
+      try {
+        result = await runForkedAgentImpl({
+          promptMessages: [
+            createSummaryPromptMessage(buildSummaryPrompt(previousSummary)),
+          ],
+          cacheSafeParams: forkParams,
+          canUseTool,
+          querySource: 'agent_summary',
+          forkLabel: 'agent_summary',
+          overrides: { abortController: summaryAbortController },
+          skipTranscript: true,
+          // No cache WRITE: selectSummaryContextMessages builds the window as a
+          // reverse suffix (summaryContext.ts:149 walks backwards from the end),
+          // so every tick starts at a different message and next tick can never
+          // read this entry back. Writing it costs 1.25x on those input tokens
+          // for a block nothing will hit. Cache READS are unaffected — the
+          // stable system+tools prefix still hits the agent's own entries.
+          skipCacheWrite: true,
+        })
+      } finally {
+        activeSummaryForks--
+      }
 
       if (stopped) return
 
