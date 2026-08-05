@@ -7,19 +7,19 @@ import {
   type OpenAIReasoningItem,
 } from '@ant/model-provider'
 import { getValidChatGPTAuth } from './chatgptAuth.js'
+import type { ResponsesReasoningEffort } from './reasoning.js'
+import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import {
+  createOpenAIResponseError,
+  OpenAIRequestError,
+  retryOpenAIRequest,
+} from './retry.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
 
 /** `include` value that makes reasoning items replayable under `store: false`. */
 export const REASONING_ENCRYPTED_CONTENT_INCLUDE = 'reasoning.encrypted_content'
-export type ResponsesReasoningEffort =
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max'
-
 type ResponsesRequest = {
   model: string
   stream: true
@@ -29,6 +29,7 @@ type ResponsesRequest = {
   tools?: ResponsesTool[]
   tool_choice?: unknown
   reasoning?: { effort: ResponsesReasoningEffort }
+  text?: { verbosity: 'low' | 'medium' | 'high' }
   /**
    * Opt-in response fields. `reasoning.encrypted_content` is what makes the
    * reasoning items replayable under `store: false`: without asking for it
@@ -221,6 +222,7 @@ export function buildResponsesRequest(params: {
   tools: unknown[]
   toolChoice: unknown
   reasoningEffort?: ResponsesReasoningEffort
+  verbosity?: 'low' | 'medium' | 'high'
   /**
    * ChatGPT OAuth route: always set (session-scoped). Generic route: set only
    * for OpenAI's official endpoint — compatible providers must not receive
@@ -250,6 +252,7 @@ export function buildResponsesRequest(params: {
           include: [REASONING_ENCRYPTED_CONTENT_INCLUDE],
         }
       : {}),
+    ...(params.verbosity ? { text: { verbosity: params.verbosity } } : {}),
     parallel_tool_calls: true,
     ...(params.maxOutputTokens !== undefined
       ? { max_output_tokens: params.maxOutputTokens }
@@ -264,12 +267,23 @@ export function buildResponsesRequest(params: {
 
 async function* parseSSE(
   response: Response,
+  options: {
+    signal: AbortSignal
+    abort: (reason: Error) => void
+    idleTimeoutMs: number
+    label: string
+  },
 ): AsyncGenerator<Record<string, unknown>, void> {
   if (!response.body)
-    throw new Error('Responses API stream did not include a body')
+    throw new OpenAIRequestError(
+      `${options.label} stream did not include a body`,
+      { retryable: true },
+    )
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let scanIndex = 0
+  let hasYieldedEvent = false
 
   const parseFrame = (frame: string): Record<string, unknown> | undefined => {
     const data = frame
@@ -278,48 +292,117 @@ async function* parseSSE(
       .map(line => line.slice(5).trimStart())
       .join('\n')
     if (!data || data === '[DONE]') return undefined
-    const parsed = JSON.parse(data) as unknown
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(data) as unknown
+    } catch (cause) {
+      throw new OpenAIRequestError(
+        `${options.label} stream returned invalid SSE JSON`,
+        { retryable: false, cause },
+      )
+    }
     return parsed && typeof parsed === 'object'
       ? (parsed as Record<string, unknown>)
       : undefined
   }
 
   const takeFrame = (): string | undefined => {
-    // Match the two wire forms explicitly. A generic "two line endings"
-    // regex can backtrack and misread one CRLF as a CR frame ending followed
-    // by an LF blank line when the pair is split across reads.
-    const boundary = buffer.match(/\r\n\r\n|\n\n/)
-    if (boundary?.index === undefined) return undefined
-    const frame = buffer.slice(0, boundary.index)
-    buffer = buffer.slice(boundary.index + boundary[0].length)
-    return frame
+    for (let i = scanIndex; i < buffer.length - 1; i++) {
+      const isLFBoundary = buffer[i] === '\n' && buffer[i + 1] === '\n'
+      const isCRLFBoundary =
+        buffer[i] === '\r' && buffer.slice(i, i + 4) === '\r\n\r\n'
+      if (!isLFBoundary && !isCRLFBoundary) continue
+      const boundaryLength = isCRLFBoundary ? 4 : 2
+      const frame = buffer.slice(0, i)
+      buffer = buffer.slice(i + boundaryLength)
+      scanIndex = 0
+      return frame
+    }
+    scanIndex = Math.max(0, buffer.length - 3)
+    return undefined
   }
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
+  type ReadResult = Awaited<ReturnType<typeof reader.read>>
+  const read = (): Promise<ReadResult> =>
+    new Promise((resolve, reject) => {
+      let settled = false
+      const cleanup = () => {
+        clearTimeout(timer)
+        options.signal.removeEventListener('abort', onAbort)
+      }
+      const resolveOnce = (value: ReadResult) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        resolve(value)
+      }
+      const rejectOnce = (error: unknown) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        reject(error)
+      }
+      const onAbort = () =>
+        rejectOnce(
+          options.signal.reason instanceof Error
+            ? options.signal.reason
+            : new DOMException('The operation was aborted', 'AbortError'),
+        )
+      const timer = setTimeout(() => {
+        const error = new OpenAIRequestError(
+          `${options.label} stream idle timeout after ${options.idleTimeoutMs}ms`,
+          { retryable: !hasYieldedEvent },
+        )
+        rejectOnce(error)
+        options.abort(error)
+        void reader.cancel(error).catch(() => {})
+      }, options.idleTimeoutMs)
+      options.signal.addEventListener('abort', onAbort, { once: true })
+      if (options.signal.aborted) {
+        onAbort()
+        return
+      }
+      void reader.read().then(resolveOnce, rejectOnce)
+    })
+
+  try {
+    while (true) {
+      const { done, value } = await read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let frame = takeFrame()
+      while (frame !== undefined) {
+        const parsed = parseFrame(frame)
+        if (parsed) {
+          hasYieldedEvent = true
+          yield parsed
+        }
+        frame = takeFrame()
+      }
+    }
+
+    buffer += decoder.decode()
     let frame = takeFrame()
     while (frame !== undefined) {
       const parsed = parseFrame(frame)
-      if (parsed) yield parsed
+      if (parsed) {
+        hasYieldedEvent = true
+        yield parsed
+      }
       frame = takeFrame()
     }
-  }
-
-  buffer += decoder.decode()
-  let frame = takeFrame()
-  while (frame !== undefined) {
-    const parsed = parseFrame(frame)
-    if (parsed) yield parsed
-    frame = takeFrame()
-  }
-  // Compatible gateways sometimes close immediately after the final data
-  // field instead of writing another blank line. EOF makes that frame
-  // complete, so dispatch it rather than silently dropping the last event.
-  if (buffer.trim()) {
-    const parsed = parseFrame(buffer)
-    if (parsed) yield parsed
+    // Compatible gateways sometimes close immediately after the final data
+    // field instead of writing another blank line. EOF makes that frame
+    // complete, so dispatch it rather than silently dropping the last event.
+    if (buffer.trim()) {
+      const parsed = parseFrame(buffer)
+      if (parsed) {
+        hasYieldedEvent = true
+        yield parsed
+      }
+    }
+  } finally {
+    reader.releaseLock()
   }
 }
 
@@ -616,19 +699,65 @@ async function fetchResponsesStream(params: {
   label: string
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const fetchFn = params.fetchOverride ?? (globalThis.fetch as typeof fetch)
-  const response = await fetchFn(params.url, {
-    method: 'POST',
-    headers: params.headers,
-    body: JSON.stringify(params.request),
-    signal: params.signal,
-  })
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(
-      `${params.label} request failed (${response.status})${text ? `: ${text.slice(0, 500)}` : ''}`,
-    )
+  const idleTimeoutMs =
+    Number.parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS ?? '', 10) ||
+    90_000
+  const body = JSON.stringify(params.request)
+
+  const prepared = await retryOpenAIRequest(
+    async () => {
+      const controller = new AbortController()
+      const forwardAbort = () => controller.abort(params.signal.reason)
+      if (params.signal.aborted) forwardAbort()
+      else params.signal.addEventListener('abort', forwardAbort, { once: true })
+      const cleanup = () =>
+        params.signal.removeEventListener('abort', forwardAbort)
+
+      try {
+        const response = await fetchFn(params.url, {
+          method: 'POST',
+          headers: params.headers,
+          body,
+          signal: controller.signal,
+          ...getProxyFetchOptions({ forAnthropicAPI: false }),
+        })
+        if (!response.ok) {
+          throw await createOpenAIResponseError(response, params.label)
+        }
+        const stream = parseSSE(response, {
+          signal: controller.signal,
+          abort: reason => controller.abort(reason),
+          idleTimeoutMs,
+          label: params.label,
+        })
+        const iterator = stream[Symbol.asyncIterator]()
+        const first = await iterator.next()
+        return { controller, cleanup, first, iterator }
+      } catch (error) {
+        cleanup()
+        if (!controller.signal.aborted) controller.abort(error)
+        throw error
+      }
+    },
+    { signal: params.signal },
+  )
+
+  return {
+    async *[Symbol.asyncIterator]() {
+      try {
+        if (!prepared.first.done) yield prepared.first.value
+        while (true) {
+          const next = await prepared.iterator.next()
+          if (next.done) break
+          yield next.value
+        }
+      } finally {
+        prepared.cleanup()
+        if (!prepared.controller.signal.aborted) prepared.controller.abort()
+        await prepared.iterator.return?.()
+      }
+    },
   }
-  return parseSSE(response)
 }
 
 export async function createChatGPTResponsesStream(params: {
