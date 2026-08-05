@@ -63,9 +63,18 @@ const mockSearchTools = mock(
 )
 const mockGetToolIndex = mock(async (_tools: unknown) => [])
 
+// Full surface: mock.module is process-global (last-write-wins), so a partial
+// mock makes any later-loading file that imports getToolInputJSONSchema see it
+// as undefined. Delegates to the real implementation — these tests exercise
+// search behavior, not schema conversion.
+const { getToolInputJSONSchema: realGetToolInputJSONSchema } = await import(
+  'src/services/searchExtraTools/toolIndex.js'
+)
+
 mock.module('src/services/searchExtraTools/toolIndex.js', () => ({
   getToolIndex: mockGetToolIndex,
   searchTools: mockSearchTools,
+  getToolInputJSONSchema: realGetToolInputJSONSchema,
 }))
 
 // Mock analytics
@@ -231,5 +240,167 @@ describe('SearchExtraToolsTool search enhancements', () => {
     )
 
     expect(blockParam.content).toContain('No matching deferred tools found')
+  })
+})
+
+/**
+ * Deferred tools never appear in the API tools array, so this tool_result text
+ * is the model's only view of their parameters — and ExecuteExtraTool then
+ * validates `params` against the same schema, rejecting missing required
+ * fields and unknown keys alike. Dropping the schema here forces the model to
+ * guess, which is what produced the reported DiscoverSkills (`query` instead
+ * of `description`) and Monitor (`task_id`) failures.
+ */
+describe('SearchExtraTools delivers parameter schemas to the model', () => {
+  // Reset before setting an implementation. Earlier tests in this file queue
+  // mockReturnValueOnce values they never consume, and a queued Once wins over
+  // mockImplementation — so without the reset these tests would read another
+  // test's leftover return value.
+  function stubSearch(results: MockSearchExtraToolsResult[]): void {
+    mockGetToolIndex.mockReset()
+    mockSearchTools.mockReset()
+    mockGetToolIndex.mockImplementation(async () => [])
+    mockSearchTools.mockImplementation(() => results)
+  }
+
+  const zodTool = async (name: string) => {
+    const { z } = await import('zod/v4')
+    return {
+      ...makeDeferredTool(name, `${name} does things`),
+      inputSchema: z.strictObject({
+        description: z.string(),
+        limit: z.number().optional(),
+      }),
+    }
+  }
+
+  test('select: returns the schema for the selected tool', async () => {
+    const tool = await zodTool('DiscoverSkills')
+    const result: { data: { schemas?: Record<string, unknown> } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: 'select:DiscoverSkills', max_results: 5 },
+      makeContext([tool]),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    const schema = result.data.schemas?.DiscoverSkills as {
+      properties: Record<string, unknown>
+      required: string[]
+    }
+    expect(schema).toBeDefined()
+    expect(Object.keys(schema.properties).sort()).toEqual([
+      'description',
+      'limit',
+    ])
+    expect(schema.required).toEqual(['description'])
+  })
+
+  test('discover: returns the schema (it used to build the text then drop it)', async () => {
+    const tool = await zodTool('Monitor')
+    stubSearch([
+      {
+        name: 'Monitor',
+        description: 'Watch a log',
+        searchHint: undefined,
+        score: 0.9,
+        isMcp: false,
+        isDeferred: true,
+        inputSchema: undefined,
+      },
+    ])
+
+    const result: { data: { schemas?: Record<string, unknown> } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: 'discover:watch a log file', max_results: 5 },
+      makeContext([tool]),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    expect(result.data.schemas?.Monitor).toBeDefined()
+  })
+
+  test('keyword search returns the schema', async () => {
+    const tool = await zodTool('Monitor')
+    stubSearch([
+      {
+        name: 'Monitor',
+        description: 'Watch a log',
+        searchHint: undefined,
+        score: 0.9,
+        isMcp: false,
+        isDeferred: true,
+        inputSchema: undefined,
+      },
+    ])
+
+    const result: { data: { schemas?: Record<string, unknown> } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: 'monitor log', max_results: 5 },
+      makeContext([tool]),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    expect(result.data.schemas?.Monitor).toBeDefined()
+  })
+
+  test('the schema reaches the wire text, with required fields named', () => {
+    const blockParam = SearchExtraToolsTool.mapToolResultToToolResultBlockParam(
+      {
+        matches: ['DiscoverSkills'],
+        query: 'select:DiscoverSkills',
+        total_deferred_tools: 1,
+        schemas: {
+          DiscoverSkills: {
+            type: 'object',
+            properties: { description: { type: 'string' } },
+            required: ['description'],
+            additionalProperties: false,
+          },
+        },
+      },
+      'tool-use-123',
+    )
+
+    const text = blockParam.content as string
+    expect(text).toContain('DiscoverSkills')
+    expect(text).toContain('description')
+    expect(text).toContain('required')
+    // additionalProperties:false is what turns an extra key into a hard
+    // failure, so the model has to see it.
+    expect(text).toContain('additionalProperties')
+  })
+
+  test('no schema section when there is nothing to report', () => {
+    const blockParam = SearchExtraToolsTool.mapToolResultToToolResultBlockParam(
+      { matches: ['TestTool'], query: 'test', total_deferred_tools: 1 },
+      'tool-use-123',
+    )
+
+    expect(blockParam.content as string).not.toContain('Parameter schemas')
+  })
+
+  test('already-loaded core tools get no schema (already in the tools array)', async () => {
+    const tool = await zodTool('Read')
+    const result: {
+      data: { schemas?: Record<string, unknown>; already_loaded?: string[] }
+    } = await (SearchExtraToolsTool as any).call(
+      { query: 'select:Read', max_results: 5 },
+      makeContext([tool]),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    expect(result.data.already_loaded).toEqual(['Read'])
+    expect(result.data.schemas).toBeUndefined()
   })
 })

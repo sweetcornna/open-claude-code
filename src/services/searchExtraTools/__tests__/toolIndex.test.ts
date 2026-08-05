@@ -32,6 +32,7 @@ const {
   buildToolIndex,
   searchTools,
   getToolIndex,
+  getToolInputJSONSchema,
   clearToolIndexCache,
 } = await import('../toolIndex.js')
 
@@ -204,5 +205,90 @@ describe('getToolIndex caching', () => {
     clearToolIndexCache()
     const second = await getToolIndex(tools)
     expect(first).not.toBe(second) // Different reference = rebuilt
+  })
+})
+
+/**
+ * Deferred tools are filtered out of the API tools array, so the schema
+ * carried here is the model's ONLY view of their parameters before it calls
+ * ExecuteExtraTool — which validates against the same schema and rejects both
+ * missing required fields and unknown keys. When this returns undefined the
+ * model must guess field names, and the call fails deterministically. That was
+ * the cause of the reported DiscoverSkills / Monitor parameter errors.
+ */
+describe('getToolInputJSONSchema', () => {
+  test('passes through inputJSONSchema (MCP tools)', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string' } } }
+    expect(getToolInputJSONSchema({ inputJSONSchema: schema })).toBe(schema)
+  })
+
+  test('converts a zod inputSchema (built-in deferred tools)', async () => {
+    const { z } = await import('zod/v4')
+    const result = getToolInputJSONSchema({
+      inputSchema: z.strictObject({
+        description: z.string(),
+        limit: z.number().optional(),
+      }),
+    }) as {
+      properties?: Record<string, unknown>
+      required?: string[]
+      additionalProperties?: boolean
+    }
+
+    // The model needs all three facts to build a valid call: which fields
+    // exist, which are mandatory, and that extras are rejected.
+    expect(Object.keys(result.properties ?? {}).sort()).toEqual([
+      'description',
+      'limit',
+    ])
+    expect(result.required).toEqual(['description'])
+    expect(result.additionalProperties).toBe(false)
+  })
+
+  test('returns undefined when the tool declares no schema', () => {
+    expect(getToolInputJSONSchema({})).toBeUndefined()
+  })
+
+  test('a broken schema degrades to undefined instead of throwing', () => {
+    const exploding = {
+      get inputSchema() {
+        throw new Error('boom')
+      },
+    }
+    // Discovery of every other tool must survive one bad schema.
+    expect(() => getToolInputJSONSchema(exploding)).toThrow()
+    expect(
+      getToolInputJSONSchema({
+        inputSchema: {
+          /* not a zod schema */
+        },
+      }),
+    ).toBeUndefined()
+  })
+})
+
+describe('buildToolIndex carries parameter schemas', () => {
+  beforeEach(() => clearToolIndexCache())
+
+  test('indexes a zod schema, not just inputJSONSchema', async () => {
+    const { z } = await import('zod/v4')
+    const tools = [
+      makeMockTool({
+        name: 'Monitor',
+        prompt: async () => 'Watch a log file.',
+        inputSchema: z.strictObject({ command: z.string() }),
+      }),
+    ] as unknown as import('../../../Tool.js').Tool[]
+
+    const index = await buildToolIndex(tools)
+    expect(index).toHaveLength(1)
+    // Pre-fix this was undefined for every built-in deferred tool.
+    expect(index[0]!.inputSchema).toBeDefined()
+    expect(
+      Object.keys(
+        (index[0]!.inputSchema as { properties: Record<string, unknown> })
+          .properties,
+      ),
+    ).toEqual(['command'])
   })
 })

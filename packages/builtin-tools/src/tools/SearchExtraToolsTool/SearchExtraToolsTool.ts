@@ -23,6 +23,7 @@ import {
 } from './prompt.js'
 import {
   getToolIndex,
+  getToolInputJSONSchema,
   searchTools,
 } from 'src/services/searchExtraTools/toolIndex.js'
 import type { SearchExtraToolsResult } from 'src/services/searchExtraTools/toolIndex.js'
@@ -58,6 +59,15 @@ export const outputSchema = lazySchema(() =>
     pending_mcp_servers: z.array(z.string()).optional(),
     /** Matches that are already loaded (core tools) and can be called directly. */
     already_loaded: z.array(z.string()).optional(),
+    /**
+     * Parameter schema per matched deferred tool, keyed by tool name.
+     *
+     * Load-bearing, not diagnostic: deferred tools are absent from the API
+     * tools array, so this is the model's only view of their parameters
+     * before it calls ExecuteExtraTool — which validates strictly. Without it
+     * the model guesses field names and the call fails deterministically.
+     */
+    schemas: z.record(z.string(), z.unknown()).optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -123,6 +133,29 @@ export function clearSearchExtraToolsDescriptionCache(): void {
 }
 
 /**
+ * Collect parameter schemas for the matched tools.
+ *
+ * Only deferred matches need one: already-loaded core tools are in the API
+ * tools array with their schema attached, so repeating it here would just
+ * burn tokens.
+ */
+function collectSchemas(
+  matches: string[],
+  tools: Tools,
+  alreadyLoaded: string[] = [],
+): Record<string, unknown> | undefined {
+  const schemas: Record<string, unknown> = {}
+  for (const name of matches) {
+    if (alreadyLoaded.includes(name)) continue
+    const tool = findToolByName(tools, name)
+    if (!tool) continue
+    const schema = getToolInputJSONSchema(tool)
+    if (schema) schemas[name] = schema
+  }
+  return Object.keys(schemas).length > 0 ? schemas : undefined
+}
+
+/**
  * Build the search result output structure.
  */
 function buildSearchResult(
@@ -131,6 +164,7 @@ function buildSearchResult(
   totalDeferredTools: number,
   pendingMcpServers?: string[],
   alreadyLoaded?: string[],
+  schemas?: Record<string, unknown>,
 ): { data: Output } {
   return {
     data: {
@@ -143,6 +177,7 @@ function buildSearchResult(
       ...(alreadyLoaded && alreadyLoaded.length > 0
         ? { already_loaded: alreadyLoaded }
         : {}),
+      ...(schemas ? { schemas } : {}),
     },
   }
 }
@@ -435,6 +470,7 @@ export const SearchExtraToolsTool = buildTool({
         deferredTools.length,
         undefined,
         alreadyLoaded.length > 0 ? alreadyLoaded : undefined,
+        collectSchemas(found, tools, alreadyLoaded),
       )
     }
 
@@ -446,25 +482,19 @@ export const SearchExtraToolsTool = buildTool({
       const discoverQuery = discoverMatch[1]!.trim()
       const index = await getToolIndex(deferredTools)
       const tfIdfResults = searchTools(discoverQuery, index, max_results)
-      const textResults = tfIdfResults.map(r => {
-        let line = `**${r.name}** (score: ${r.score.toFixed(2)})\n${r.description}`
-        if (r.inputSchema) {
-          line += `\nSchema: ${JSON.stringify(r.inputSchema)}`
-        }
-        return line
-      })
-      const text =
-        textResults.length > 0
-          ? `Found ${textResults.length} tools:\n${textResults.join('\n\n')}`
-          : 'No matching deferred tools found'
-      logSearchOutcome(
-        tfIdfResults.map(r => r.name),
-        'keyword',
-      )
+      const names = tfIdfResults.map(r => r.name)
+      logSearchOutcome(names, 'keyword')
+      // Schemas ride on the result object rather than a locally-formatted
+      // string: mapToolResultToToolResultBlockParam owns the wire text, and
+      // the string this branch used to build was computed and then dropped —
+      // so "discover:" advertised schemas it never actually delivered.
       return buildSearchResult(
-        tfIdfResults.map(r => r.name),
+        names,
         query,
         deferredTools.length,
+        undefined,
+        undefined,
+        collectSchemas(names, tools),
       )
     }
 
@@ -526,6 +556,7 @@ export const SearchExtraToolsTool = buildTool({
       deferredTools.length,
       undefined,
       alreadyLoaded.length > 0 ? alreadyLoaded : undefined,
+      collectSchemas(matches, tools, alreadyLoaded),
     )
   },
   renderToolUseMessage(input: Partial<{ query: string; max_results: number }>) {
@@ -589,6 +620,24 @@ export const SearchExtraToolsTool = buildTool({
         `Found ${deferredNames.length} deferred tool(s): ${deferredNames.join(', ')}.` +
           `\nUse ExecuteExtraTool with {"tool_name": "<name>", "params": {...}} to invoke any of these deferred tools.`,
       )
+
+      // Emit each tool's parameter schema. These tools are not in the API
+      // tools array, so this text is the model's only source for their
+      // parameters — and ExecuteExtraTool validates `params` against the
+      // exact same schema (rejecting missing required fields AND unknown
+      // keys). Omitting it forces the model to guess and guarantees the
+      // validation errors this block exists to prevent.
+      const schemas = content.schemas
+      if (schemas) {
+        const schemaLines = deferredNames
+          .filter(name => schemas[name] !== undefined)
+          .map(name => `${name}: ${JSON.stringify(schemas[name])}`)
+        if (schemaLines.length > 0) {
+          parts.push(
+            `Parameter schemas — pass exactly these fields as ExecuteExtraTool's \`params\`. Required fields are mandatory; do not add fields that are not listed.\n${schemaLines.join('\n')}`,
+          )
+        }
+      }
     }
 
     const text = parts.join('\n')

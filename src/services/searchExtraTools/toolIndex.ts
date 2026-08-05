@@ -7,6 +7,7 @@ import {
   cosineSimilarity,
 } from '../skillSearch/localSearch.js'
 import { isDeferredTool } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+import { zodToJsonSchema } from '../../utils/text/zodToJsonSchema.js'
 
 export interface ToolIndexEntry {
   name: string
@@ -77,6 +78,41 @@ export function parseToolName(name: string): {
   }
 }
 
+/**
+ * JSON Schema for a tool's parameters, or undefined if it declares none.
+ *
+ * Deferred tools are NOT in the API tools array (claude.ts filters them out),
+ * so this is the ONLY channel through which the model ever learns their
+ * parameters — SearchExtraTools renders it into the tool_result text.
+ *
+ * Only MCP tools carry `inputJSONSchema`; built-in deferred tools declare a
+ * zod `inputSchema`. Reading just the former left every built-in's schema
+ * undefined, so the model had to guess parameter names from the tool name
+ * while ExecuteExtraTool validated against the real zod schema (and
+ * `strictObject` rejects unknown keys too). That is the source of the
+ * reproducible failures — DiscoverSkills missing `description` / passing
+ * `query`, Monitor passing `task_id`: not model error, an interface that
+ * never handed over the contract.
+ */
+export function getToolInputJSONSchema(tool: {
+  inputJSONSchema?: object
+  inputSchema?: unknown
+}): object | undefined {
+  if (tool.inputJSONSchema) {
+    return tool.inputJSONSchema
+  }
+  if (!tool.inputSchema) {
+    return undefined
+  }
+  try {
+    return zodToJsonSchema(tool.inputSchema as never)
+  } catch {
+    // Never let one unrepresentable schema break discovery — the tool stays
+    // findable, just without parameter detail.
+    return undefined
+  }
+}
+
 export async function buildToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
   const deferredTools = tools.filter(t => isDeferredTool(t))
 
@@ -116,10 +152,7 @@ export async function buildToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
       { tokens: descTokens, weight: TOOL_FIELD_WEIGHT.description },
     ])
 
-    let inputSchema: object | undefined
-    if (tool.inputJSONSchema) {
-      inputSchema = tool.inputJSONSchema
-    }
+    const inputSchema = getToolInputJSONSchema(tool)
 
     entries.push({
       name: tool.name,
