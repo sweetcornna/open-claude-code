@@ -9,7 +9,7 @@ import { plural } from 'src/utils/text/stringUtils.js';
 import { DIAMOND_FILLED, DIAMOND_OPEN } from '../../constants/figures.js';
 import { RemoteSessionProgress } from './RemoteSessionProgress.js';
 import { ShellProgress, TaskStatusText } from './ShellProgress.js';
-import { describeTeammateActivity } from './taskStatusUtils.js';
+import { describeTeammateActivity, getAgentRowDescription } from './taskStatusUtils.js';
 
 type Props = {
   task: DeepImmutable<BackgroundTaskState>;
@@ -49,7 +49,7 @@ export function BackgroundTask({ task, maxActivityWidth }: Props): React.ReactNo
     case 'local_agent':
       return (
         <Text>
-          {truncate(task.description, activityLimit, true)}{' '}
+          {truncate(getAgentRowDescription(task), activityLimit, true)}{' '}
           <TaskStatusText
             status={task.status}
             label={task.status === 'completed' ? 'done' : undefined}

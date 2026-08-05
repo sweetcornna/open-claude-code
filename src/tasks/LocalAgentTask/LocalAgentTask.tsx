@@ -20,7 +20,7 @@ import { findToolByName } from '../../Tool.js';
 import type { AgentToolResult } from '@open-claude-code/builtin-tools/tools/AgentTool/agentToolUtils.js';
 import type { AgentDefinition } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/SyntheticOutputTool/SyntheticOutputTool.js';
-import { asAgentId } from '../../types/ids.js';
+import { type AgentId, asAgentId } from '../../types/ids.js';
 import type { Message } from '../../types/message.js';
 import { createAbortController, createChildAbortController } from '../../utils/process/abortController.js';
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js';
@@ -238,6 +238,16 @@ export function drainPendingMessages(
 
 /**
  * Enqueue an agent notification to the message queue.
+ *
+ * Priority is 'next' (not the enqueuePendingNotification default of 'later')
+ * so the notification is drained by the mid-turn sweep in query.ts — the
+ * parent loop learns the agent finished at the very next tool-round boundary
+ * instead of waiting for the whole turn to end. Mirrors LocalShellTask.
+ *
+ * `agentId` scopes the notification to the loop that spawned the agent:
+ * undefined for the main thread, the parent subagent's id for nested agents.
+ * Without it a nested agent's completion would be drained by the main thread
+ * (which never awaited it) and never reach its actual parent.
  */
 export function enqueueAgentNotification({
   taskId,
@@ -250,6 +260,7 @@ export function enqueueAgentNotification({
   toolUseId,
   worktreePath,
   worktreeBranch,
+  agentId,
 }: {
   taskId: string;
   description: string;
@@ -265,6 +276,8 @@ export function enqueueAgentNotification({
   toolUseId?: string;
   worktreePath?: string;
   worktreeBranch?: string;
+  /** Loop that owns this notification (the *parent* of the finished agent). */
+  agentId?: AgentId;
 }): void {
   // Atomically check and set notified flag to prevent duplicate notifications.
   // If the task was already marked as notified (e.g., by TaskStopTool), skip
@@ -314,7 +327,12 @@ export function enqueueAgentNotification({
 <${SUMMARY_TAG}>${summary}</${SUMMARY_TAG}>${resultSection}${usageSection}${worktreeSection}
 </${TASK_NOTIFICATION_TAG}>`;
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' });
+  enqueuePendingNotification({
+    value: message,
+    mode: 'task-notification',
+    priority: 'next',
+    agentId,
+  });
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   dequeueAllMatching,
   enqueue,
   enqueuePendingNotification,
+  getCommandsByMaxPriority,
   hasCommandsInQueue,
   isSlashCommand,
   peek,
@@ -75,6 +76,48 @@ describe('messageQueueManager.enqueuePendingNotification', () => {
     expect(cmd).toBeDefined()
     expect(cmd!.priority).toBe('later')
     expect(cmd!.mode).toBe('task-notification')
+  })
+
+  // query.ts drains mid-turn with getCommandsByMaxPriority('next'). Task
+  // completions that keep the 'later' default are invisible to that sweep and
+  // only land after the whole turn ends — which is why agent/workflow/remote
+  // notifications now pass priority: 'next' explicitly.
+  test('an explicit next priority is visible to the mid-turn drain', () => {
+    enqueuePendingNotification({
+      value: 'default-later',
+      mode: 'task-notification',
+    } as any)
+    enqueuePendingNotification({
+      value: 'agent-done',
+      mode: 'task-notification',
+      priority: 'next',
+    } as any)
+
+    const drained = getCommandsByMaxPriority('next')
+    expect(drained.map(c => c.value)).toEqual(['agent-done'])
+  })
+
+  test('subagent notifications are addressable via agentId', () => {
+    enqueuePendingNotification({
+      value: 'for-subagent',
+      mode: 'task-notification',
+      priority: 'next',
+      agentId: 'agent-7',
+    } as any)
+    enqueuePendingNotification({
+      value: 'for-main',
+      mode: 'task-notification',
+      priority: 'next',
+    } as any)
+
+    const drained = getCommandsByMaxPriority('next')
+    // Main thread drains only agentId === undefined (query.ts:1890).
+    expect(
+      drained.filter(c => c.agentId === undefined).map(c => c.value),
+    ).toEqual(['for-main'])
+    expect(
+      drained.filter(c => c.agentId === 'agent-7').map(c => c.value),
+    ).toEqual(['for-subagent'])
   })
 })
 

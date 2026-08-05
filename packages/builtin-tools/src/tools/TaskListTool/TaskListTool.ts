@@ -2,6 +2,7 @@ import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
+  filterTasksForAgent,
   getTaskListId,
   isTodoV2Enabled,
   listTasks,
@@ -62,12 +63,16 @@ export const TaskListTool = buildTool({
   renderToolUseMessage() {
     return null
   },
-  async call() {
+  async call(_input, context) {
     const taskListId = getTaskListId()
 
-    const allTasks = (await listTasks(taskListId)).filter(
-      t => !t.metadata?._internal,
-    )
+    // filterTasksForAgent keeps untagged tasks (so a subagent still sees the
+    // parent's list) plus the caller's own; other agents' bookkeeping is
+    // dropped. The main thread passes undefined and therefore sees none of it.
+    const allTasks = filterTasksForAgent(
+      await listTasks(taskListId),
+      context?.agentId,
+    ).filter(t => !t.metadata?._internal)
 
     // Build a set of resolved task IDs for filtering
     const resolvedTaskIds = new Set(

@@ -1,8 +1,19 @@
 import { mkdir, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { beforeEach, afterEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { stateMockWith } from '../../../tests/mocks/state.js'
+import { setupTeammateMock } from '../../../tests/mocks/teammate.js'
+import { setupTeammateContextMock } from '../../../tests/mocks/teammateContext.js'
 
 import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
@@ -28,18 +39,31 @@ mock.module(
     getIsNonInteractiveSession: () => false,
   }),
 )
-// `mock.module` is process-global and replaces the WHOLE module, so this stub
-// has to cover every export other files reach for — `getDefaultAppState()`
-// lazily requires this module and calls `isTeammate()`/`isPlanModeRequired()`.
-// Omitting them only fails when suite ordering puts this file first.
-mock.module('src/utils/agents/teammate.ts', () => ({
-  getTeamName: () => undefined,
-  isTeammate: () => false,
-  isPlanModeRequired: () => false,
-}))
-mock.module('src/utils/agents/teammateContext.ts', () => ({
-  getTeammateContext: () => undefined,
-}))
+// Complete-surface shared mocks. These were hand-written partial mocks (3 and
+// 1 exports); `mock.module` is process-global and last-write-wins, so they both
+// erased the rest of each module for every later file AND pinned
+// getTeamName/getTeammateContext to undefined — stubbing out the real
+// implementations that src/utils/task/__tests__/agentScopedTasks.test.ts drives
+// through setDynamicTeamContext/runWithTeammateContext. Overrides are installed
+// in beforeAll and dropped in afterAll so they only apply to THIS file's tests.
+const teammateMock = setupTeammateMock()
+const teammateContextMock = setupTeammateContextMock()
+
+beforeAll(() => {
+  // This suite must look like a standalone (non-team) session: getDefaultAppState()
+  // lazily requires teammate.js and calls isTeammate()/isPlanModeRequired().
+  teammateMock.set({
+    getTeamName: () => undefined,
+    isTeammate: () => false,
+    isPlanModeRequired: () => false,
+  })
+  teammateContextMock.set({ getTeammateContext: () => undefined })
+})
+
+afterAll(() => {
+  teammateMock.reset()
+  teammateContextMock.reset()
+})
 import {
   createTask,
   getTask,

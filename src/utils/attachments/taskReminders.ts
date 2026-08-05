@@ -3,7 +3,12 @@ import type { Message } from 'src/types/message.js'
 import { TODO_WRITE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TodoWriteTool/constants.js'
 import { TASK_CREATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskCreateTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/TaskUpdateTool/constants.js'
-import { isTodoV2Enabled, listTasks, getTaskListId } from '../task/tasks.js'
+import {
+  filterTasksForAgent,
+  isTodoV2Enabled,
+  listTasks,
+  getTaskListId,
+} from '../task/tasks.js'
 import { isThinkingMessage } from '../messages.js'
 import {
   generateTaskAttachments,
@@ -232,7 +237,13 @@ export async function getTaskReminderAttachments(
     turnsSinceLastTaskManagement >= TODO_REMINDER_CONFIG.TURNS_SINCE_WRITE &&
     turnsSinceLastReminder >= TODO_REMINDER_CONFIG.TURNS_BETWEEN_REMINDERS
   ) {
-    const tasks = await listTasks(getTaskListId())
+    // Scope to the calling loop: the main thread's reminder must not nag about
+    // tasks a subagent created for itself, and vice versa. Untagged tasks stay
+    // visible to everyone (see filterTasksForAgent).
+    const tasks = filterTasksForAgent(
+      await listTasks(getTaskListId()),
+      toolUseContext.agentId,
+    )
     return [
       {
         type: 'task_reminder',

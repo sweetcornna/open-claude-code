@@ -262,7 +262,13 @@ function enqueueMainSessionNotification(
 <${SUMMARY_TAG}>${summary}</${SUMMARY_TAG}>
 </${TASK_NOTIFICATION_TAG}>`
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' })
+  // Priority 'next' so query.ts's mid-turn drain injects the outcome at the
+  // next tool-round boundary, like every other task type's completion.
+  enqueuePendingNotification({
+    value: message,
+    mode: 'task-notification',
+    priority: 'next',
+  })
 }
 
 /**

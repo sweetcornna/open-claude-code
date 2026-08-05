@@ -1,36 +1,78 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { stateMockWith } from '../../../../tests/mocks/state.js'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQueueManager.js'
+import { setupSessionStorageMock } from '../../../../tests/mocks/sessionStorage.js'
+import { setupTaskDiskOutputMock } from '../../../../tests/mocks/taskDiskOutput.js'
 
 // ─── Mocks ───
+//
+// The four shared mocks below are complete-surface. They used to be
+// hand-written partial ones (4 / 4 / 1 / 6 exports); because Bun's mock.module
+// is process-global and last-write-wins, those erased ~60 / 12 / 23 other
+// exports for every file loaded later in the same process — co-running this
+// file with src/components/tasks/*.test.tsx died on
+// "Export named 'getTranscriptPathForSession' not found".
+//
+// Timing follows the documented pattern: setup() installs the all-real
+// delegating surface at module load, overrides are installed in beforeAll and
+// dropped in afterAll, so they apply to THIS file's tests and no one else's.
+// Delegation resolves at call time, so importing the module under test before
+// beforeAll runs is safe.
 
 const noop = () => {}
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('src/utils/telemetry/log.ts', logMock)
 
-mock.module('src/utils/sessionStorage.js', () => ({
-  getAgentTranscriptPath: (id: string) => `/tmp/transcripts/${id}.jsonl`,
-  recordSidechainTranscript: async () => {},
-  recordQueueOperation: noop,
-  writeAgentMetadata: async () => {},
-}))
-
-mock.module('src/utils/task/diskOutput.js', () => ({
-  evictTaskOutput: noop,
-  getTaskOutputPath: (id: string) => `/tmp/output/${id}`,
-  initTaskOutputAsSymlink: async () => {},
-  getTaskOutputDelta: async () => null,
-}))
+const sessionStorageMock = setupSessionStorageMock()
+const diskOutputMock = setupTaskDiskOutputMock()
+const messageQueueManagerMock = setupMessageQueueManagerMock()
+// The real analytics module is an inert no-op shell, so no overrides needed —
+// this exists purely to stop a hand-rolled partial surface from drifting.
+const analyticsMock = setupAnalyticsMock()
 
 // Capture enqueuePendingNotification calls for verification
 const enqueuedNotifications: string[] = []
-mock.module('src/utils/session/messageQueueManager.js', () => ({
-  enqueuePendingNotification: (cmd: any) => {
-    enqueuedNotifications.push(cmd.value)
-  },
-}))
+const enqueuedCommands: any[] = []
+
+beforeAll(() => {
+  sessionStorageMock.set({
+    getAgentTranscriptPath: (id: string) => `/tmp/transcripts/${id}.jsonl`,
+    recordSidechainTranscript: async () => {},
+    recordQueueOperation: async () => {},
+    writeAgentMetadata: async () => {},
+  })
+  diskOutputMock.set({
+    evictTaskOutput: async () => {},
+    getTaskOutputPath: (id: string) => `/tmp/output/${id}`,
+    initTaskOutputAsSymlink: async () => '',
+    getTaskOutputDelta: async () => ({ content: '', newOffset: 0 }),
+  })
+  messageQueueManagerMock.set({
+    enqueuePendingNotification: (cmd: any) => {
+      enqueuedNotifications.push(cmd.value)
+      enqueuedCommands.push(cmd)
+    },
+  })
+})
+
+afterAll(() => {
+  sessionStorageMock.reset()
+  diskOutputMock.reset()
+  messageQueueManagerMock.reset()
+  analyticsMock.reset()
+})
 
 mock.module(
   'src/bootstrap/state.js',
@@ -69,27 +111,11 @@ mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: noop,
 }))
 
-mock.module('src/constants/xml.js', () => ({
-  TASK_NOTIFICATION_TAG: 'task_notification',
-  TASK_ID_TAG: 'task_id',
-  TOOL_USE_ID_TAG: 'tool_use_id',
-  OUTPUT_FILE_TAG: 'output_file',
-  STATUS_TAG: 'status',
-  SUMMARY_TAG: 'summary',
-  WORKTREE_TAG: 'worktree',
-  WORKTREE_PATH_TAG: 'worktree_path',
-  WORKTREE_BRANCH_TAG: 'worktree_branch',
-  TASK_TYPE_TAG: 'task_type',
-}))
-
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: noop,
-  logEventAsync: async () => {},
-  stripProtoFields: (v: any) => v,
-  attachAnalyticsSink: noop,
-  _resetForTesting: noop,
-  AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS: undefined,
-}))
+// src/constants/xml.js is deliberately NOT mocked. It is a pure data module
+// (CLAUDE.md: don't mock those), its old 10-key partial surface broke every
+// later import of the other tags in the same process, and its snake_case stubs
+// didn't even match the real kebab-case wire format — so the assertions below
+// were pinning a shape production never emits.
 
 mock.module('src/utils/session/collapseReadSearch.js', () => ({
   getSearchExtraToolsOrReadInfo: () => undefined,
@@ -107,6 +133,7 @@ const {
   enqueueAgentNotification,
   registerAsyncAgent,
   updateAgentProgress,
+  updateAgentSummary,
   isLocalAgentTask,
 } = await import('../LocalAgentTask.js')
 
@@ -165,6 +192,7 @@ function makeAssistantMessage(usage: any, content: any[] = []): any {
 
 afterEach(() => {
   enqueuedNotifications.length = 0
+  enqueuedCommands.length = 0
 })
 
 // ─── Tests ───
@@ -374,9 +402,9 @@ describe('enqueueAgentNotification', () => {
     })
 
     expect(enqueuedNotifications).toHaveLength(1)
-    expect(enqueuedNotifications[0]).toContain('<task_notification>')
+    expect(enqueuedNotifications[0]).toContain('<task-notification>')
     expect(enqueuedNotifications[0]).toContain(
-      '<task_id>test-agent-001</task_id>',
+      '<task-id>test-agent-001</task-id>',
     )
     expect(enqueuedNotifications[0]).toContain('<status>completed</status>')
     expect(enqueuedNotifications[0]).toContain(
@@ -462,6 +490,46 @@ describe('enqueueAgentNotification', () => {
 
     expect(enqueuedNotifications).toHaveLength(0)
   })
+
+  // The queue's default for notifications is 'later', which query.ts's
+  // mid-turn drain (getCommandsByMaxPriority('next')) filters out — the
+  // completion would then sit until the whole turn ended.
+  test('enqueues at next priority so the mid-turn drain can pick it up', () => {
+    const { setAppState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ notified: false }) },
+    })
+
+    enqueueAgentNotification({
+      taskId: 'test-agent-001',
+      description: 'test',
+      status: 'completed',
+      setAppState: setAppState as any,
+    })
+
+    expect(enqueuedCommands).toHaveLength(1)
+    expect(enqueuedCommands[0].priority).toBe('next')
+    expect(enqueuedCommands[0].mode).toBe('task-notification')
+    // Main-thread agents carry no agentId, so the main loop's
+    // `cmd.agentId === undefined` filter matches them.
+    expect(enqueuedCommands[0].agentId).toBeUndefined()
+  })
+
+  test('stamps the parent agentId so nested subagents drain their own notifications', () => {
+    const { setAppState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ notified: false }) },
+    })
+
+    enqueueAgentNotification({
+      taskId: 'test-agent-001',
+      description: 'test',
+      status: 'completed',
+      setAppState: setAppState as any,
+      agentId: 'parent-agent-42' as any,
+    })
+
+    expect(enqueuedCommands).toHaveLength(1)
+    expect(enqueuedCommands[0].agentId).toBe('parent-agent-42')
+  })
 })
 
 describe('isLocalAgentTask', () => {
@@ -476,6 +544,51 @@ describe('isLocalAgentTask', () => {
   test('returns false for null/undefined', () => {
     expect(isLocalAgentTask(null)).toBe(false)
     expect(isLocalAgentTask(undefined)).toBe(false)
+  })
+})
+
+describe('updateAgentSummary', () => {
+  // Supply side of the recap chain: startAgentSummarization → this →
+  // task.progress.summary → useBackgroundAgentTasks → getAgentRowDescription.
+  // The AppState write must NOT be gated on the SDK flag (the state mock at the
+  // top of this file has getSdkAgentProgressSummariesEnabled → false); only the
+  // emitTaskProgress SDK event is, so TUI sessions get the recap while SDK
+  // consumers who never opted in stay unaffected.
+  test('stores the recap on the running task even with SDK summaries off', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'test-agent-001': makeRunningTask({
+          progress: { toolUseCount: 2, tokenCount: 300 },
+        }),
+      },
+    })
+
+    updateAgentSummary(
+      'test-agent-001',
+      'Verifying runtime sampler',
+      setAppState as any,
+    )
+
+    const task = getState().tasks['test-agent-001']
+    expect(task.progress.summary).toBe('Verifying runtime sampler')
+    // Counters must survive — the row renders elapsed/tokens next to the recap.
+    expect(task.progress.toolUseCount).toBe(2)
+    expect(task.progress.tokenCount).toBe(300)
+  })
+
+  test('no-op once the agent reached a terminal state', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'test-agent-001': makeRunningTask({
+          status: 'completed',
+          progress: { toolUseCount: 1, tokenCount: 10 },
+        }),
+      },
+    })
+
+    updateAgentSummary('test-agent-001', 'late summary', setAppState as any)
+
+    expect(getState().tasks['test-agent-001'].progress.summary).toBeUndefined()
   })
 })
 

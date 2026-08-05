@@ -283,7 +283,9 @@ function enqueueRemoteNotification(
 <${SUMMARY_TAG}>Remote task "${title}" ${statusText}</${SUMMARY_TAG}>
 </${TASK_NOTIFICATION_TAG}>`;
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' });
+  // Priority 'next' so query.ts's mid-turn drain injects the outcome at the
+  // next tool-round boundary instead of after the whole turn ends.
+  enqueuePendingNotification({ value: message, mode: 'task-notification', priority: 'next' });
 }
 
 /**
@@ -318,7 +320,9 @@ The remote agent produced the following structured outcome. Summarize the key ch
 
 ${richContent}`;
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' });
+  // Priority 'next' so query.ts's mid-turn drain injects the outcome at the
+  // next tool-round boundary instead of after the whole turn ends.
+  enqueuePendingNotification({ value: message, mode: 'task-notification', priority: 'next' });
 }
 
 /**
@@ -380,7 +384,9 @@ export function enqueueUltraplanFailureNotification(
 </${TASK_NOTIFICATION_TAG}>
 The remote Ultraplan session did not produce a plan (${reason}). Inspect the session at ${sessionUrl} and tell the user to retry locally with plan mode.`;
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' });
+  // Priority 'next' so query.ts's mid-turn drain injects the outcome at the
+  // next tool-round boundary instead of after the whole turn ends.
+  enqueuePendingNotification({ value: message, mode: 'task-notification', priority: 'next' });
 }
 
 /**
@@ -512,7 +518,9 @@ The remote review produced the following findings:
 
 ${reviewContent}`;
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' });
+  // Priority 'next' so query.ts's mid-turn drain injects the outcome at the
+  // next tool-round boundary instead of after the whole turn ends.
+  enqueuePendingNotification({ value: message, mode: 'task-notification', priority: 'next' });
 }
 
 /**
@@ -529,7 +537,9 @@ function enqueueRemoteReviewFailureNotification(taskId: string, reason: string, 
 </${TASK_NOTIFICATION_TAG}>
 Remote review did not produce output (${reason}). Tell the user to retry /ultrareview, or use /review for a local review instead.`;
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' });
+  // Priority 'next' so query.ts's mid-turn drain injects the outcome at the
+  // next tool-round boundary instead of after the whole turn ends.
+  enqueuePendingNotification({ value: message, mode: 'task-notification', priority: 'next' });
 }
 
 /**

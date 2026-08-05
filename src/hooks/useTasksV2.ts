@@ -4,8 +4,10 @@ import { useAppState, useSetAppState } from '../state/AppState.js'
 import { createSignal } from '../utils/process/signal.js'
 import type { Task } from '../utils/task/tasks.js'
 import {
+  filterTasksForAgent,
   getTaskListId,
   getTasksDir,
+  isAgentScopedTask,
   isTodoV2Enabled,
   listTasks,
   onTasksUpdated,
@@ -170,9 +172,14 @@ class TasksV2Store {
     this.#rewatch(this.dependencies.getTasksDir(taskListId), epoch)
     if (!this.#isActive(epoch)) return
 
-    const current = (await this.dependencies.listTasks(taskListId)).filter(
-      t => !t.metadata?._internal,
-    )
+    // This store backs the *main session's* task UI (REPL, Spinner, footer),
+    // so it only ever shows untagged tasks: a subagent's private breakdown
+    // must not appear in the user's todo list. Team lists are never tagged,
+    // so teammate coordination is unaffected.
+    const current = filterTasksForAgent(
+      await this.dependencies.listTasks(taskListId),
+      undefined,
+    ).filter(t => !t.metadata?._internal)
     if (!this.#isActive(epoch)) return
     this.#tasks = current
 
@@ -220,15 +227,31 @@ class TasksV2Store {
     // during the 5s window) — don't reset the wrong list.
     const currentId = this.dependencies.getTaskListId()
     if (currentId !== scheduledForTaskListId) return
-    // Verify all tasks are still completed before clearing
-    const tasksToCheck = await this.dependencies.listTasks(currentId)
+    // Verify all tasks are still completed before clearing.
+    //
+    // Two things this recheck must NOT do with subagent-tagged tasks:
+    //   a) count them — a subagent's in-progress task would make
+    //      allStillCompleted permanently false, so the user's finished todo
+    //      panel would never disappear;
+    //   b) survive them — resetTaskList() unlinks every *.json in the
+    //      directory, including the ones a live subagent is still writing.
+    // So: judge on the visible (untagged) tasks only, and skip the destructive
+    // reset entirely while any tagged task exists. Hiding the panel is the
+    // user-visible half and still happens; the disk cleanup just waits for the
+    // subagents to go away. This is the conservative branch on purpose —
+    // selectively unlinking files out from under a running agent is worse than
+    // leaving a few completed rows on disk.
+    const allTasks = await this.dependencies.listTasks(currentId)
     if (!this.#isActive(epoch)) return
+    const tasksToCheck = filterTasksForAgent(allTasks, undefined)
     const allStillCompleted =
       tasksToCheck.length > 0 &&
       tasksToCheck.every(t => t.status === 'completed')
     if (allStillCompleted) {
-      await this.dependencies.resetTaskList(currentId)
-      if (!this.#isActive(epoch)) return
+      if (!allTasks.some(isAgentScopedTask)) {
+        await this.dependencies.resetTaskList(currentId)
+        if (!this.#isActive(epoch)) return
+      }
       this.#tasks = []
       this.#hidden = true
     }

@@ -1866,10 +1866,13 @@ async function* queryLoop(
     // Get queued commands snapshot before processing attachments.
     // These will be sent as attachments so Claude can respond to them in the current turn.
     //
-    // Drain pending notifications at 'next' priority. LocalShellTask
-    // completions are already 'next' (when MONITOR_TOOL is on) and drain
-    // here mid-turn. Other task types (agent/workflow/framework) default to
-    // 'later' and are left for the end-of-turn queue processor.
+    // Drain pending notifications at 'next' priority. Every task type that
+    // reports a terminal outcome now enqueues at 'next' explicitly — shell
+    // (MONITOR_TOOL), local agent, remote agent, workflow, framework — so
+    // completions land here, at the next tool-round boundary, rather than
+    // waiting for the end-of-turn queue processor. Anything still on
+    // enqueuePendingNotification's 'later' default is intentionally deferred
+    // and is filtered out below.
     //
     // Slash commands are excluded from mid-turn drain — they must go through
     // processSlashCommand after the turn ends (via useQueueProcessor), not be
