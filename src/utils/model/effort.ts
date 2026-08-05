@@ -13,7 +13,10 @@ import { isEnvTruthy } from '../config/envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 import { resolveAntModel } from '../model/antModels.js'
 import { getAntModelOverrideConfig } from '../model/antModels.js'
-import { isChatGPTCodexReasoningModel } from '../model/chatgptModels.js'
+import {
+  CHATGPT_CODEX_DEFAULT_MODEL,
+  isChatGPTCodexReasoningModel,
+} from '../model/chatgptModels.js'
 
 export type { EffortLevel }
 
@@ -331,12 +334,14 @@ export function getDefaultEffortForModel(
   // the model launch DRI and research. Default effort is a sensitive setting
   // that can greatly affect model quality and bashing.
 
-  // Any-auth OpenAI reasoning model: the Responses adapter falls back to
-  // 'medium' when nothing is set (getChatGPTResponsesReasoningEffort), so the
-  // displayed default must be 'medium' too — the display's own 'high' fallback
-  // would show a level the API never receives.
+  // Any-auth OpenAI reasoning model: keep the displayed default aligned with
+  // the value selected by the OpenAI wire adapter.
   if (getAPIProvider() === 'openai' && isChatGPTCodexReasoningModel(model)) {
-    return 'medium'
+    const normalized = model.toLowerCase().replace(/\[1m\]$/i, '')
+    return normalized === CHATGPT_CODEX_DEFAULT_MODEL ||
+      normalized.startsWith(`${CHATGPT_CODEX_DEFAULT_MODEL}-`)
+      ? 'low'
+      : 'medium'
   }
 
   // Default effort on Opus 4.6 to medium for Pro.

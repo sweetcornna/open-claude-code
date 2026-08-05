@@ -2,8 +2,80 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import {
   getOpenAIPromptCacheKey,
   isOfficialOpenAIBaseURL,
+  resolveOpenAIVerbosity,
   shouldSendOpenAIPromptCacheKey,
 } from '../openaiShared.js'
+
+describe('resolveOpenAIVerbosity', () => {
+  afterEach(() => {
+    delete process.env.OPENAI_VERBOSITY
+  })
+
+  test('defaults eligible official and ChatGPT GPT routes to low', () => {
+    expect(
+      resolveOpenAIVerbosity('gpt-5.6-sol', {
+        baseURL: undefined,
+        isChatGPTAuth: false,
+      }),
+    ).toBe('low')
+    expect(
+      resolveOpenAIVerbosity('gpt-5.6-terra', {
+        baseURL: 'https://compatible.example/v1',
+        isChatGPTAuth: true,
+      }),
+    ).toBe('low')
+  })
+
+  test('honors low, medium, and high overrides on eligible routes', () => {
+    for (const value of ['low', 'medium', 'high'] as const) {
+      process.env.OPENAI_VERBOSITY = value
+      expect(
+        resolveOpenAIVerbosity('gpt-5.6-sol', {
+          baseURL: 'https://api.openai.com/v1',
+          isChatGPTAuth: false,
+        }),
+      ).toBe(value)
+    }
+  })
+
+  test('off, zero, and false omit the field', () => {
+    for (const value of ['off', '0', 'false']) {
+      process.env.OPENAI_VERBOSITY = value
+      expect(
+        resolveOpenAIVerbosity('gpt-5.6-sol', {
+          baseURL: undefined,
+          isChatGPTAuth: false,
+        }),
+      ).toBeUndefined()
+    }
+  })
+
+  test('never sends verbosity to compatible endpoints or non-GPT models', () => {
+    process.env.OPENAI_VERBOSITY = 'high'
+    expect(
+      resolveOpenAIVerbosity('gpt-5.6-sol', {
+        baseURL: 'https://compatible.example/v1',
+        isChatGPTAuth: false,
+      }),
+    ).toBe('high')
+    expect(
+      resolveOpenAIVerbosity('deepseek-reasoner', {
+        baseURL: undefined,
+        isChatGPTAuth: false,
+      }),
+    ).toBeUndefined()
+  })
+
+  test('omits verbosity for compatible endpoints without an override', () => {
+    delete process.env.OPENAI_VERBOSITY
+    expect(
+      resolveOpenAIVerbosity('gpt-5.6-sol', {
+        baseURL: 'https://compatible.example/v1',
+        isChatGPTAuth: false,
+      }),
+    ).toBeUndefined()
+  })
+})
 
 describe('isOfficialOpenAIBaseURL', () => {
   test('treats the SDK default endpoint as official OpenAI', () => {

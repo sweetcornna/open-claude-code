@@ -45,6 +45,7 @@ import {
   createOpenAIResponsesStream,
 } from '../../services/api/openai/responsesAdapter.js'
 import { resolveOpenAIWireProtocol } from '../../services/api/openai/wireProtocol.js'
+import { isGptFamilyModel } from '../model/chatgptModels.js'
 import {
   formatOpenAIPromptCacheKey,
   getOpenAIPromptCacheKey,
@@ -607,6 +608,7 @@ async function sideQueryViaResponsesApi(
     messages: openaiMessages,
     tools: openaiTools ?? [],
     toolChoice: openaiToolChoice,
+    ...(isGptFamilyModel(openaiModel) ? { reasoningEffort: 'low' } : {}),
     ...(route === 'chatgpt'
       ? { promptCacheKey: formatOpenAIPromptCacheKey(getSessionId()) }
       : {

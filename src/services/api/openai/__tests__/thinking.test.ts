@@ -337,3 +337,53 @@ describe('buildOpenAIRequestBody — reasoning_effort (chat path)', () => {
     expect('reasoning_effort' in body).toBe(false)
   })
 })
+
+describe('buildOpenAIRequestBody — GPT-5 token field compatibility', () => {
+  const baseParams = {
+    messages: [],
+    tools: [],
+    toolChoice: undefined,
+    enableThinking: false,
+    maxTokens: 2048,
+  }
+
+  test('uses max_completion_tokens for GPT-5 on official OpenAI', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      model: 'gpt-5.6-sol',
+      baseURL: 'https://api.openai.com/v1',
+    })
+    expect(body.max_completion_tokens).toBe(2048)
+    expect('max_tokens' in body).toBe(false)
+  })
+
+  test('keeps max_tokens for gpt-4o on official OpenAI', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      model: 'gpt-4o',
+      baseURL: 'https://api.openai.com/v1',
+    })
+    expect(body.max_tokens).toBe(2048)
+    expect('max_completion_tokens' in body).toBe(false)
+  })
+
+  test('keeps max_tokens for GPT-5 on compatible endpoints', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      model: 'gpt-5.6-sol',
+      baseURL: 'https://compatible.example/v1',
+    })
+    expect(body.max_tokens).toBe(2048)
+    expect('max_completion_tokens' in body).toBe(false)
+  })
+
+  test('keeps max_tokens for other compatible models', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      model: 'deepseek-chat',
+      baseURL: 'https://api.deepseek.com/v1',
+    })
+    expect(body.max_tokens).toBe(2048)
+    expect('max_completion_tokens' in body).toBe(false)
+  })
+})
