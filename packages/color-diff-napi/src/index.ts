@@ -36,11 +36,21 @@ function hljsApi(): HLJSApi {
   return cachedHljs!
 }
 
-// Use Bun.stringWidth when available, otherwise fall back to simple .length
-const stringWidth: (str: string) => number =
-  typeof Bun !== 'undefined' && typeof Bun.stringWidth === 'function'
-    ? Bun.stringWidth
-    : (str: string) => str.length
+// Terminal display width. Delegated to Ink's implementation rather than
+// re-derived here: this module wraps and pads diff lines to a column budget
+// that Ink then lays out, so the two MUST agree on every character or the
+// background fill over/undershoots the terminal edge.
+//
+// The previous local fallback was `str.length` whenever `Bun` was absent —
+// which is the DEFAULT runtime (bin.occ is dist/cli-node.js, Node shebang;
+// only occ-bun runs Bun). Under Node every CJK/emoji char counted as 1
+// instead of 2, so `wrapText`'s pad-to-width produced lines wider than the
+// terminal: the removed-line red bar spilled past the right edge and the
+// added-line green bar came up short. Ink's stringWidth uses Bun.stringWidth
+// when present and a correct east-asian-width/grapheme implementation
+// otherwise, so both runtimes now measure identically.
+import { stringWidth } from '@anthropic/ink/core/stringWidth.js'
+import { getGraphemeSegmenter } from '@anthropic/ink/core/utils/grapheme.js'
 
 function logError(error: unknown): void {
   console.error(error instanceof Error ? error.message : String(error))
@@ -681,8 +691,23 @@ function removeNewlines(h: Highlight): void {
   )
 }
 
-function charWidth(ch: string): number {
-  return stringWidth(ch)
+/**
+ * Split into grapheme clusters, not codepoints.
+ *
+ * A cluster is the unit the terminal allocates cells for, and its width is
+ * NOT the sum of its codepoints' widths. `❤️` is U+2764 (width 1) + U+FE0F
+ * (width 0) yet renders in 2 cells; ZWJ sequences like `👨‍💻` are five
+ * codepoints in 2 cells. Measuring per codepoint therefore under-counts, and
+ * `wrapText` packs more onto the line than fits — the pad-to-width then
+ * produces a line wider than the budget. It also splits clusters mid-sequence,
+ * which orphans a variation selector or ZWJ onto the next line.
+ */
+function graphemes(text: string): string[] {
+  const out: string[] = []
+  for (const { segment } of getGraphemeSegmenter().segment(text)) {
+    out.push(segment)
+  }
+  return out
 }
 
 function wrapText(h: Highlight, width: number, theme: Theme): void {
@@ -701,19 +726,20 @@ function wrapText(h: Highlight, width: number, theme: Theme): void {
         const remaining = width - curW
         let bytePos = 0
         let accW = 0
-        // iterate by codepoint
-        for (const ch of text) {
-          const cw = charWidth(ch)
+        // Iterate by grapheme cluster — see graphemes() for why not codepoint.
+        const clusters = graphemes(text)
+        for (const ch of clusters) {
+          const cw = stringWidth(ch)
           if (accW + cw > remaining) break
           accW += cw
           bytePos += ch.length
         }
         if (bytePos === 0) {
           if (curW === 0) {
-            // Fresh line and first char still doesn't fit — force one codepoint
-            // to guarantee forward progress (overflows, but prevents infinite loop)
-            const firstCp = text.codePointAt(0)!
-            bytePos = firstCp > 0xffff ? 2 : 1
+            // Fresh line and first cluster still doesn't fit — force one whole
+            // cluster to guarantee forward progress (overflows by at most one
+            // cell, but never splits a cluster or loops forever).
+            bytePos = clusters[0]?.length ?? text.length
           } else {
             // Line has content and next char doesn't fit — finish this line,
             // re-queue the whole block for a fresh line
