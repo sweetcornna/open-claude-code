@@ -43,14 +43,55 @@ export const PHASE_COLOR: Record<PhaseStatus, string> = {
 export type AgentVisual = { mark: string; color: string }
 
 /**
+ * The exact failureReason values run_done stamps on agents it reaps (store.ts).
+ *
+ * An explicit set rather than a `run-` prefix test: the engine's own vocabulary already
+ * contains `runagent-threw`, one character away from matching, and a real crash quietly
+ * reclassified as "the user stopped it" is the worst possible direction for this bug to
+ * fail in. Adding a reap reason to the store means adding it here.
+ */
+const RUN_REAPED_REASONS = new Set(['run-killed', 'run-failed', 'run-ended'])
+
+/**
+ * True for an agent the store reaped because the *run* reached a terminal state while
+ * the agent was still going.
+ *
+ * It is stored as resultKind 'dead' — no result was ever produced — but it did not die
+ * on its own merits, so it must not be reported as a failure: the common case is the
+ * user pressing K, and being told their own kill "failed" is both wrong and alarming.
+ */
+export function isRunReaped(a: AgentProgress): boolean {
+  return (
+    a.resultKind === 'dead' &&
+    a.failureReason !== undefined &&
+    RUN_REAPED_REASONS.has(a.failureReason)
+  )
+}
+
+/**
+ * True while the engine is parked in a retry backoff for this agent.
+ *
+ * The store never clears `retryingSince` — the engine only announces the *start* of a
+ * backoff (agent_retry), never its end — so "still waiting" has to be derived from the
+ * wall clock. Shared by the list row's ↻ marker and the detail pane's status copy so
+ * the two can never disagree about whether anything is happening.
+ */
+export function isRetryBackoffActive(a: AgentProgress, now: number): boolean {
+  if (a.status !== 'running' || a.retryingSince === undefined) return false
+  return now < a.retryingSince + (a.retryDelayMs ?? 0)
+}
+
+/**
  * agent status -> visual.
  * - running -> ● warning (UI overrides mark with spinner animation)
+ * - done·dead reaped with the run -> ⊘ subtle (see isRunReaped)
  * - done·dead -> ✗ error
  * - done·skipped -> ⊘ subtle (user skipped; showing ✓ would misread as success)
  * - done·ok -> ✓ success
  */
 export function agentVisual(a: AgentProgress): AgentVisual {
   if (a.status === 'running') return { mark: '●', color: 'warning' }
+  if (isRunReaped(a)) return { mark: '⊘', color: 'subtle' }
   if (a.resultKind === 'dead') return { mark: '✗', color: 'error' }
   if (a.resultKind === 'skipped') return { mark: '⊘', color: 'subtle' }
   return { mark: '✓', color: 'success' }
@@ -99,6 +140,7 @@ export function agentMetaText(a: AgentProgress): string {
  */
 export function agentStatusText(a: AgentProgress): string {
   if (a.status === 'running') return 'running'
+  if (isRunReaped(a)) return 'stopped'
   if (a.resultKind === 'dead') return 'failed'
   if (a.resultKind === 'skipped') return 'skipped'
   return 'done'

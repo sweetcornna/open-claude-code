@@ -46,8 +46,12 @@ export function MonitorMcpDetailDialog({ task, onBack, onKill }: Props): React.R
     }
   };
 
+  // autoFocus + no border, for the same two reasons as WorkflowDetailDialog:
+  // ink only dispatches keys to the focused node (so ← would never arrive), and
+  // the inner Dialog's Pane draws a terminal-wide Divider that overflows when
+  // wrapped in a bordered box.
   return (
-    <Box flexDirection="column" tabIndex={0} borderStyle="round" onKeyDown={handleKeyDown}>
+    <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
       <Dialog
         title="MCP Monitor"
         subtitle={

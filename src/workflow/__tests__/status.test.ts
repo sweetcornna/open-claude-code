@@ -8,6 +8,8 @@ import {
   PHASE_COLOR,
   agentVisual,
   agentStatusText,
+  isRetryBackoffActive,
+  isRunReaped,
   formatTokenCount,
   agentMetaText,
   shortModelName,
@@ -63,6 +65,94 @@ test('agentVisual: dead → ✗ error', () => {
 test('agentVisual: skipped → ⊘ subtle (not misread as ✓ success)', () => {
   const a: AgentProgress = { id: 1, status: 'done', resultKind: 'skipped' }
   expect(agentVisual(a)).toEqual({ mark: '⊘', color: 'subtle' })
+})
+
+// run_done reaps agents that were still running by stamping resultKind 'dead' with a
+// `run-*` reason. Rendering those as ✗ error told a user who had just pressed K that
+// their own kill had failed.
+test('agentVisual: reaped with the run → ⊘ subtle, not a red ✗', () => {
+  for (const reason of ['run-killed', 'run-failed', 'run-ended']) {
+    const a: AgentProgress = {
+      id: 1,
+      status: 'done',
+      resultKind: 'dead',
+      failureReason: reason,
+    }
+    expect(agentVisual(a)).toEqual({ mark: '⊘', color: 'subtle' })
+    expect(agentStatusText(a)).toBe('stopped')
+    expect(isRunReaped(a)).toBe(true)
+  }
+})
+
+test('isRunReaped: a genuine engine failure is still a failure', () => {
+  const dead: AgentProgress = {
+    id: 1,
+    status: 'done',
+    resultKind: 'dead',
+    failureReason: 'prompt-too-long',
+  }
+  expect(isRunReaped(dead)).toBe(false)
+  expect(agentVisual(dead)).toEqual({ mark: '✗', color: 'error' })
+  expect(agentStatusText(dead)).toBe('failed')
+  // Reaped-ness only counts on a dead row — a reap reason can never reach an ok
+  // result, but the guard keeps the predicate honest if it ever does.
+  expect(
+    isRunReaped({
+      id: 1,
+      status: 'done',
+      resultKind: 'ok',
+      failureReason: 'run-killed',
+    }),
+  ).toBe(false)
+  expect(isRunReaped({ id: 1, status: 'running' })).toBe(false)
+})
+
+// The reason this is an explicit set and not a `startsWith('run-')` test: the engine's
+// own vocabulary contains 'runagent-threw', which is a real crash. A prefix check that
+// drifts one character quietly relabels crashes as "the user stopped it" — the one
+// direction this must never fail in.
+test('isRunReaped: engine reasons that merely start like a reap reason are not reaped', () => {
+  for (const reason of ['runagent-threw', 'run', 'runner-died', 'run-']) {
+    const a: AgentProgress = {
+      id: 1,
+      status: 'done',
+      resultKind: 'dead',
+      failureReason: reason,
+    }
+    expect(isRunReaped(a)).toBe(false)
+    expect(agentVisual(a)).toEqual({ mark: '✗', color: 'error' })
+    expect(agentStatusText(a)).toBe('failed')
+  }
+})
+
+// The store announces the start of a backoff (agent_retry) and never its end, so the
+// UI has to decide "still waiting" from the clock. Both the list's ↻ marker and the
+// detail pane's copy read this, so they cannot disagree.
+test('isRetryBackoffActive: true only inside retryingSince + retryDelayMs', () => {
+  const retrying: AgentProgress = {
+    id: 1,
+    status: 'running',
+    retryCount: 2,
+    retryingSince: 10_000,
+    retryDelayMs: 5_000,
+  }
+  expect(isRetryBackoffActive(retrying, 10_000)).toBe(true)
+  expect(isRetryBackoffActive(retrying, 14_999)).toBe(true)
+  // Exactly at the end the backoff is over, not still pending.
+  expect(isRetryBackoffActive(retrying, 15_000)).toBe(false)
+  expect(isRetryBackoffActive(retrying, 99_000)).toBe(false)
+  // A zero / missing delay means the engine retried immediately.
+  expect(isRetryBackoffActive({ ...retrying, retryDelayMs: 0 }, 10_000)).toBe(
+    false,
+  )
+  expect(
+    isRetryBackoffActive({ ...retrying, retryDelayMs: undefined }, 10_000),
+  ).toBe(false)
+  // agent_done leaves retryingSince in place; a finished agent is never waiting.
+  expect(isRetryBackoffActive({ ...retrying, status: 'done' }, 12_000)).toBe(
+    false,
+  )
+  expect(isRetryBackoffActive({ id: 2, status: 'running' }, 12_000)).toBe(false)
 })
 
 test('formatTokenCount: <1000 original value, ≥1000 keeps 1 decimal + k', () => {

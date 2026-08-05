@@ -38,6 +38,21 @@ test('truncateLabel: short label as-is; with #number suffix keep suffix and trun
   expect(truncateLabel('a-very-long-label-no-suffix', 18)).toBe('a-very-long-label-');
 });
 
+// The budget is display columns, not code units. Every case above is ASCII, where
+// the two are the same number — so none of them can tell the two implementations
+// apart. A CJK label counted by `.length` gets twice its budget, overflows its
+// column, and wraps the row (which the selection highlight then paints twice).
+test('truncateLabel: CJK labels are budgeted by display width, not string length', () => {
+  // 9 chars, 18 columns: `.length` would call this a fit for a budget of 12.
+  expect(truncateLabel('中文工作流名称测试', 12)).toBe('中文工作流名');
+  // Already at budget → untouched.
+  expect(truncateLabel('中文工作流名', 12)).toBe('中文工作流名');
+  // `#n` suffix survives, and `…` (one column) is accounted for.
+  expect(truncateLabel('中文工作流名称测试#7', 12)).toBe('中文工作…#7');
+  // Mixed-width label: the ASCII tail is what gets dropped.
+  expect(truncateLabel('中文abcdefgh', 8)).toBe('中文abcd');
+});
+
 // STATUS_DOT covers four states, all visible dot characters.
 test('STATUS_DOT covers running/completed/failed/killed and is non-empty character', () => {
   const statuses = ['running', 'completed', 'failed', 'killed'] as const;
