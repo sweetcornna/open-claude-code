@@ -4,6 +4,12 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.19.0 - 2026-08-05
+
+- **模型档位从三档扩到四档，新增 `fable`；`sonnet` / `opus` 升到 Claude 5 世代**。`/model` 里现在是 haiku < sonnet < opus < fable：`fable` 解析到 `claude-fable-5`（$10 / $50 每 Mtok），定位在 opus 之上，面向最难的推理与长跨度 agent 任务；`sonnet` → `claude-sonnet-5`、`opus` → `claude-opus-5`，Opus 4.7 作为「上一代」选项继续留在 picker 里。四个档位都支持 `[1m]` 后缀，effort、adaptive thinking、1M 上下文的能力判定与定价、成本统计一并跟上。第三方 provider 侧新增 `ANTHROPIC_` / `OPENAI_` / `GEMINI_` / `GROK_DEFAULT_FABLE_MODEL` 四个键（`/provider` 档案与托管 env 白名单同步），未配置时回落到该 provider 的主模型键；子代理配置里的 `model:` 也认 `fable`。**`best` 仍然解析到 `opus` 而不是 `fable`** —— 跟过去会把所有用 `best` 的既有会话静默换到贵一倍的档位。另外 Opus 5 的 fast mode 是 $10 / $50，与 Opus 4.6 fast mode 的 $30 / $150 分开计价，不会再按后者估算花费。
+- **终端残影：增量渲染路径已经被随机化回归测试证明是干净的，但问题还没结案**。2.17.0 修掉四类叠印/残影之后仍有偶发反馈，因此给差量引擎补了一套种子化的多帧模糊测试：随机帧「链」跑真实渲染管线进终端模型，每帧之后逐格比对内容。残影几乎都是跨帧继承型 —— 某一帧漏刷一格，引擎认定它已经正确，之后再也不会回访，旧字符一直活到全量重绘；只比较两帧的用例看不见这类问题，第三帧才定型。400 链 × 5 帧 + 100 链 × 20 帧全部通过，覆盖 CJK、ZWJ emoji、需要宽度补偿的 emoji 以及行尾放不下的宽字符。**这一条不是修复**：结论是非滚动、无样式的增量路径没有问题，成因收敛到滚动（内容高于视口）、带背景样式的单元格、blit 快路径、absolute 浮层与 resize 这几条路上，排查继续。
+- **README 默认语言改为英文，并新增日文版**。`README.md` 现在是英文，中文移到 `README.zh.md`，另有新的 `README.ja.md`，三份互相挂语言切换行 —— 此前 GitHub 首页是中文，而且中文 README 里连一个指向英文版的链接都没有。文档站的 `docs.json` 里英文 locale 标着「默认」，导航分组名却全是中文（「开始」「工具：AI 的双手」……），日文 locale 同样显示中文；两边的分组名现在都译过来了，页面路径本来就分别指向各自语言的目录，只有标签是错的。三份 README 的模型表与 `docs/zh/features/providers.md` 也同步了新的四档位（含别名 → 模型 → 定位 → 定价对照表）。
+
 ## 2.18.0 - 2026-08-05
 
 - **接 GPT 模型不再莫名进计划模式、狂发审查子代理**。为 Claude 设计的提示词里「优先进入计划模式」「尽量主动派子代理」「完成前必须验证」这类措辞会被 GPT 当成硬性命令逐字执行：随手一个小任务也要先计划、每完成一步就派子代理复查、进度被严重拖慢。现在 provider 为 openai 且解析后模型是 GPT 家族（`gpt-*` / 含 `codex`；`/model opus` 这类别名按映射后判定）时，system prompt 末尾追加一段 Codex CLI 风格的执行纪律（简单任务不做计划、禁单步计划、不派子代理自审、验证一次与风险成比例、编辑后不重读文件、压缩最终回复、并行读文件），EnterPlanMode / Agent 工具描述与计划模式指令同步换成克制版。Anthropic 会话与 openai 层跑非 GPT 模型（DeepSeek / GLM 等）逐字节不变。
