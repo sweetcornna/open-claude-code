@@ -24,9 +24,13 @@ test('Semaphore limits concurrency, permit transfer does not leak', async () => 
   expect(peak).toBe(2) // never exceeds permits
 })
 
-test('maxConcurrency returns DEFAULT_MAX_CONCURRENCY (=3)', () => {
+test('maxConcurrency returns DEFAULT_MAX_CONCURRENCY (=6)', () => {
   expect(maxConcurrency()).toBe(DEFAULT_MAX_CONCURRENCY)
-  expect(maxConcurrency()).toBe(3)
+  // Pinned literally: the default is quoted verbatim in the Workflow tool prompt,
+  // the schema describe, the ultracode skill, and the docs — a silent bump here
+  // would leave the model instructed to ask the user before using the real default.
+  expect(maxConcurrency()).toBe(6)
+  expect(DEFAULT_MAX_CONCURRENCY).toBeLessThanOrEqual(MAX_CONCURRENCY_CAP)
 })
 
 test('clampMaxConcurrency: undefined/NaN→DEFAULT; <1→1; >CAP→CAP; normal value kept', () => {
@@ -42,6 +46,24 @@ test('clampMaxConcurrency: undefined/NaN→DEFAULT; <1→1; >CAP→CAP; normal v
   expect(clampMaxConcurrency(MAX_CONCURRENCY_CAP)).toBe(MAX_CONCURRENCY_CAP)
   // decimal truncation (Semaphore already does Math.max(1, Math.floor); clampMaxConcurrency explicitly truncs)
   expect(clampMaxConcurrency(2.9)).toBe(2)
+})
+
+test('clampMaxConcurrency boundaries around the default and the cap', () => {
+  // The host may now feed OCC_WORKFLOW_MAX_CONCURRENCY straight in, so out-of-range
+  // values arrive here rather than being pre-validated by the tool schema (1..16).
+  expect(clampMaxConcurrency(DEFAULT_MAX_CONCURRENCY)).toBe(
+    DEFAULT_MAX_CONCURRENCY,
+  )
+  expect(clampMaxConcurrency(MAX_CONCURRENCY_CAP - 1)).toBe(
+    MAX_CONCURRENCY_CAP - 1,
+  )
+  expect(clampMaxConcurrency(MAX_CONCURRENCY_CAP + 1)).toBe(MAX_CONCURRENCY_CAP)
+  expect(clampMaxConcurrency(0.4)).toBe(1) // truncates to 0, then floored to 1
+  expect(clampMaxConcurrency(-0.5)).toBe(1)
+  expect(clampMaxConcurrency(Number.POSITIVE_INFINITY)).toBe(
+    MAX_CONCURRENCY_CAP,
+  )
+  expect(clampMaxConcurrency(Number.NEGATIVE_INFINITY)).toBe(1)
 })
 
 test('Semaphore(0) has at least 1 permit, acquire does not block', async () => {

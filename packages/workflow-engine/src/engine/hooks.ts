@@ -1,4 +1,8 @@
-import { MAX_ITEMS_PER_CALL, MAX_TOTAL_AGENTS } from '../constants.js'
+import {
+  AGENT_MAX_RETRIES_BY_REASON,
+  MAX_ITEMS_PER_CALL,
+  MAX_TOTAL_AGENTS,
+} from '../constants.js'
 import type {
   AgentProgressUpdate,
   AgentRunParams,
@@ -9,6 +13,7 @@ import type {
 import type { EngineContext } from './context.js'
 import { WorkflowAbortedError, WorkflowError } from './errors.js'
 import { agentCallKey } from './journal.js'
+import { retryDelayMs } from './retryBackoff.js'
 import type { WorkflowHooks } from './script.js'
 
 /** Sub-workflow executor for the workflow() hook (injected by runWorkflow to avoid circular dependencies). */
@@ -37,6 +42,17 @@ type HookProgressInit =
       phase?: string
       tokenCount: number
       toolCount: number
+    }
+  | {
+      type: 'agent_retry'
+      agentId: number
+      label?: string
+      phase?: string
+      attempt: number
+      limit: number
+      reason: string
+      detail?: string
+      delayMs: number
     }
   | { type: 'log'; message: string }
 
@@ -183,20 +199,32 @@ export function makeHooks(
           ? adapter.run(params, adapterCtx!)
           : ctx.ports.agentRunner.runAgentToResult(params, ctx.host)
 
-      // Auto-retry once on failure: dead (terminal API error after retries) or a non-abort throw
-      // both get one retry chance; WorkflowAbortedError (kill) is not retried — it is the user's intent.
-      // Deterministic failures (retryable:false, e.g. prompt-too-long) skip the retry: the identical
-      // call cannot succeed, and re-issuing it only doubles the damage.
-      // The retry waits retryBackoffMs first (abort-aware): the dominant transient failures are
-      // overload/stream drops, and an immediate identical call mostly lands on the same congested endpoint.
-      // If retry still fails: dead stays dead; a throw degrades to dead (one agent must not take down the workflow).
-      // budget is not double-charged: dead does not call addOutputTokens; retry-ok charges once (at the final ok).
+      // Auto-retry on failure: dead (terminal API error the transport already gave up on) and
+      // non-abort throws both get up to ctx.agentMaxRetries in-place retries; WorkflowAbortedError
+      // (kill) is never retried — it is the user's intent.
+      // Deterministic failures (retryable:false, e.g. prompt-too-long) skip retrying entirely: the
+      // identical call cannot succeed, and re-issuing it only doubles the damage. Per-cause budgets
+      // (AGENT_MAX_RETRIES_BY_REASON) shrink the count where a retry means re-running a whole agent
+      // that already spent its tokens.
+      // Each retry waits an exponentially growing, jittered, abort-aware backoff: the dominant
+      // transient failures are overload/stream drops, and an immediate identical call mostly lands
+      // on the same congested endpoint — worse, a whole parallel() batch retries in lockstep.
+      // Every retry emits agent_retry, NOT a second agent_started: the agent is still this run's
+      // agent #N and its elapsed clock must keep running across the whole retry chain. Re-emitting
+      // agent_started would reset startedAt in the store, so an agent 14s into its third attempt
+      // would render as "just started" — worse than the silent version it was meant to fix.
+      // agent_started stays reserved for a genuinely new attempt of agent #N (the workflow-level
+      // journal resume, which builds a fresh context and reuses ids from 0).
+      // If the last attempt still fails: dead stays dead; a throw degrades to dead (one agent must
+      // not take down the workflow).
+      // Journal/budget invariants across retries: nothing that feeds agentCallKey (prompt/params) is
+      // touched, so resume replay stays positionally identical; budget is charged once at the final
+      // ok (dead never calls addOutputTokens) and the journal gets exactly one append, for the final result.
       // dead.reason is passed through to the log: no-structured-output (the agent's final text block did not produce plain-object JSON)
       // is a high-frequency cause of death; logging detail lets you immediately see what the agent last said.
-      // detail is wrapped with String() defensively: old journals or third-party adapters may write non-strings (corrupted data),
+      // detail is type-checked defensively: old journals or third-party adapters may write non-strings (corrupted data),
       // and calling .slice directly would throw a TypeError that pierces the logging path.
-      const backoffBeforeRetry = async (): Promise<void> => {
-        const ms = ctx.retryBackoffMs
+      const backoffBeforeRetry = async (ms: number): Promise<void> => {
         if (ms > 0 && !ctx.signal.aborted) {
           await new Promise<void>(resolve => {
             const onAbort = (): void => {
@@ -212,48 +240,96 @@ export function makeHooks(
         }
         if (ctx.signal.aborted) throw new WorkflowAbortedError()
       }
-      const deadSummary = (
-        result: AgentRunResult & { kind: 'dead' },
-      ): string => {
-        const detailStr = typeof result.detail === 'string' ? result.detail : ''
+      const agentName = label ?? `#${agentId}`
+      const deadSummary = (dead: AgentRunResult & { kind: 'dead' }): string => {
+        const detailStr = typeof dead.detail === 'string' ? dead.detail : ''
         return (
-          `agent "${label ?? `#${agentId}`}" returned dead` +
-          (result.reason ? ` (${result.reason})` : '') +
+          'returned dead' +
+          (dead.reason ? ` (${dead.reason})` : '') +
           (detailStr ? `: ${detailStr.slice(0, 150)}` : '')
         )
       }
+      const retryBudgetFor = (
+        dead: AgentRunResult & { kind: 'dead' },
+      ): number =>
+        Math.min(
+          ctx.agentMaxRetries,
+          (dead.reason
+            ? AGENT_MAX_RETRIES_BY_REASON[dead.reason]
+            : undefined) ?? ctx.agentMaxRetries,
+        )
+
       let result: AgentRunResult
-      try {
-        result = await invokeBackend()
-        if (result.kind === 'dead') {
+      let retries = 0
+      for (;;) {
+        // Why the failure/limit/reason locals instead of retrying inside each branch: the dead
+        // path and the throw path share one "announce -> wait -> re-invoke" tail, and duplicating
+        // that tail is how the previous version ended up emitting different things on the two paths.
+        let failure: string
+        let limit: number
+        let reason: string
+        let detail: string | undefined
+        try {
+          result = await invokeBackend()
+          if (result.kind !== 'dead') break
           if (result.retryable === false) {
             ctx.ports.logger.warn?.(
-              `${deadSummary(result)}; deterministic failure, not retrying`,
+              `agent "${agentName}" ${deadSummary(result)}; deterministic failure, not retrying`,
             )
-          } else {
-            ctx.ports.logger.warn?.(`${deadSummary(result)}; retrying once`)
-            await backoffBeforeRetry()
-            result = await invokeBackend()
+            break
           }
+          limit = retryBudgetFor(result)
+          if (retries >= limit) {
+            ctx.ports.logger.warn?.(
+              `agent "${agentName}" ${deadSummary(result)}; no retries left (${retries}/${limit})`,
+            )
+            break
+          }
+          failure = deadSummary(result)
+          reason = result.reason ?? 'unknown'
+          detail =
+            typeof result.detail === 'string'
+              ? result.detail.slice(0, 150)
+              : undefined
+        } catch (e) {
+          if (e instanceof WorkflowAbortedError) throw e
+          // An abort that surfaced as some other error (adapter swallowed the class, fetch
+          // rejected with its own AbortError) must not burn retries against a killed run.
+          if (ctx.signal.aborted) throw new WorkflowAbortedError()
+          const eMsg = e instanceof Error ? e.message : String(e)
+          limit = ctx.agentMaxRetries
+          if (retries >= limit) {
+            // Out of retries and still throwing: degrade to dead so the workflow keeps going
+            // (hooks.agent returns null) instead of letting the throw escape into the script.
+            ctx.ports.logger.warn?.(
+              `agent "${agentName}" threw (${eMsg}); no retries left (${retries}/${limit})`,
+            )
+            result = { kind: 'dead', reason: 'runagent-threw', detail: eMsg }
+            break
+          }
+          failure = `threw (${eMsg})`
+          reason = 'threw'
+          detail = eMsg.slice(0, 150)
         }
-      } catch (e) {
-        if (e instanceof WorkflowAbortedError) throw e
-        const eMsg = e instanceof Error ? e.message : String(e)
+        retries++
+        const delayMs = retryDelayMs(ctx.retryBackoffMs, retries)
         ctx.ports.logger.warn?.(
-          `agent "${label ?? `#${agentId}`}" threw (${eMsg}); retrying once`,
+          `agent "${agentName}" retrying (${retries}/${limit}) after ${failure}`,
         )
-        try {
-          await backoffBeforeRetry()
-          result = await invokeBackend()
-        } catch (e2) {
-          if (e2 instanceof WorkflowAbortedError) throw e2
-          // Retry still threw: degrade to dead (keep the workflow going; hooks.agent returns null)
-          result = {
-            kind: 'dead',
-            reason: 'runagent-threw',
-            detail: e2 instanceof Error ? e2.message : String(e2),
-          }
-        }
+        // Announced before the wait, so a consumer can show "retry 2/3, backing off"
+        // for the seconds the engine is deliberately idle rather than a frozen row.
+        emit({
+          type: 'agent_retry',
+          agentId,
+          label,
+          phase,
+          attempt: retries,
+          limit,
+          reason,
+          ...(detail ? { detail } : {}),
+          delayMs,
+        })
+        await backoffBeforeRetry(delayMs)
       }
       if (result.kind === 'ok') {
         ctx.resources.budget.addOutputTokens(result.usage.outputTokens)

@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runWorkflow } from '../engine/runWorkflow.js'
+import { AGENT_MAX_RETRIES } from '../constants.js'
 import { agentCallKey, createFileJournalStore } from '../engine/journal.js'
 import { createHostHandle, type WorkflowPorts } from '../ports.js'
 import type { AgentRunParams, AgentRunResult, ProgressEvent } from '../types.js'
@@ -578,10 +579,10 @@ test('workflow() resolves sub-workflows from a host-provided directory', async (
 test('auto-retry: agent failure crashes the script → second attempt replays journal and re-runs only the failure → completed', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-autoretry-'))
   try {
-    // 'a' always succeeds; 'b' dies twice (initial + in-place retry) on the first
-    // attempt, then succeeds. The script explodes on b's null (property access),
-    // triggering the automatic journal-resume: attempt 2 replays 'a' from the
-    // journal (no live call) and re-runs 'b'.
+    // 'a' always succeeds; 'b' dies through the whole in-place retry budget (initial +
+    // AGENT_MAX_RETRIES) on the first attempt, then succeeds. The script explodes on b's
+    // null (property access), triggering the automatic journal-resume: attempt 2 replays
+    // 'a' from the journal (no live call) and re-runs 'b'.
     let aCalls = 0
     let bCalls = 0
     const ports: WorkflowPorts = {
@@ -596,7 +597,7 @@ test('auto-retry: agent failure crashes the script → second attempt replays jo
             }
           }
           bCalls++
-          return bCalls <= 2
+          return bCalls <= 1 + AGENT_MAX_RETRIES
             ? { kind: 'dead', reason: 'api-error' }
             : {
                 kind: 'ok',
@@ -636,8 +637,9 @@ test('auto-retry: agent failure crashes the script → second attempt replays jo
     expect(result.returnValue).toBe('AB')
     // 'a' ran live exactly once (attempt 2 replayed it from the journal)
     expect(aCalls).toBe(1)
-    // 'b': attempt 1 = initial + in-place retry (both dead), attempt 2 = fresh run (ok)
-    expect(bCalls).toBe(3)
+    // 'b': attempt 1 = initial + AGENT_MAX_RETRIES in-place retries (all dead),
+    // attempt 2 = fresh run (ok)
+    expect(bCalls).toBe(1 + AGENT_MAX_RETRIES + 1)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -701,9 +703,16 @@ test('auto-retry disabled via autoRetryOnFailure:false → single attempt', asyn
       autoRetryOnFailure: false,
     })
     expect(result.status).toBe('failed')
-    // initial + in-place retry only; no second attempt
-    expect(calls).toBe(2)
-    expect(events.some(e => e.type === 'log')).toBe(false)
+    // initial + the in-place retry budget only; no second script attempt
+    expect(calls).toBe(1 + AGENT_MAX_RETRIES)
+    // in-place retries do log (that is how the panel shows them), but the workflow-level
+    // journal resume must not have happened
+    expect(
+      events.some(
+        e =>
+          e.type === 'log' && /auto-resuming once from journal/.test(e.message),
+      ),
+    ).toBe(false)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

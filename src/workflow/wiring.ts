@@ -9,6 +9,7 @@ import {
   getWorkflowService,
   OCC_WORKFLOW_DIR,
   OCC_WORKFLOW_RUNS_DIR,
+  workflowDefaultMaxConcurrency,
 } from './service.js'
 
 /**
@@ -27,9 +28,16 @@ function buildWorkflowTool(): Tool {
   const descriptor = (): WorkflowToolDescriptor => {
     if (!cachedDescriptor) {
       const { ports } = getWorkflowService()
+      const envConcurrency = workflowDefaultMaxConcurrency()
       cachedDescriptor = createWorkflowTool(ports, {
         workflowDir: OCC_WORKFLOW_DIR,
         workflowRunsDir: OCC_WORKFLOW_RUNS_DIR,
+        // Resolved here rather than inside the engine (which reads no process.env).
+        // Read once with the rest of the descriptor: this whole object is built lazily
+        // on first tool use, long after startup, so the env is settled by then.
+        ...(envConcurrency !== undefined
+          ? { defaultMaxConcurrency: envConcurrency }
+          : {}),
       })
     }
     return cachedDescriptor

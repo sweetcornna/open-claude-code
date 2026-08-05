@@ -35,8 +35,10 @@ export type RunWorkflowOptions = {
    * a transient API failure mid-run doesn't cost the whole workflow. false disables.
    */
   autoRetryOnFailure?: boolean
-  /** Pause before the in-place agent retry; undefined → AGENT_RETRY_BACKOFF_MS. Tests inject 0. */
+  /** Base pause before an in-place agent retry; undefined → AGENT_RETRY_BACKOFF_MS. Tests inject 0. */
   retryBackoffMs?: number
+  /** In-place retries per agent() call; undefined → AGENT_MAX_RETRIES. */
+  agentMaxRetries?: number
 }
 
 export async function runWorkflow(
@@ -98,6 +100,9 @@ export async function runWorkflow(
       journal: attemptJournal,
       ...(opts.retryBackoffMs !== undefined
         ? { retryBackoffMs: opts.retryBackoffMs }
+        : {}),
+      ...(opts.agentMaxRetries !== undefined
+        ? { agentMaxRetries: opts.agentMaxRetries }
         : {}),
     })
     if (invalidated) ctx.journalInvalidated = true

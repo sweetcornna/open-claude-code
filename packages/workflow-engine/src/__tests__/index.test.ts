@@ -50,7 +50,16 @@ test('engine constant values are stable', () => {
   expect(wf.MAX_TOTAL_AGENTS).toBe(1000)
   expect(wf.MAX_ITEMS_PER_CALL).toBe(4096)
   expect(wf.MAX_CONCURRENCY_CAP).toBe(16)
-  expect(wf.DEFAULT_MAX_CONCURRENCY).toBe(3)
+  expect(wf.DEFAULT_MAX_CONCURRENCY).toBe(6)
+  expect(wf.AGENT_MAX_RETRIES).toBe(3)
+  expect(wf.AGENT_RETRY_BACKOFF_MS).toBe(2_000)
+  // Retries multiply with the API transport's own retry budget; a per-cause override
+  // exists so an expensive death (a full agent run that produced no JSON) does not get
+  // the same allowance as a cheap one.
+  expect(wf.AGENT_MAX_RETRIES_BY_REASON['no-structured-output']).toBe(1)
+  // worktree-failed only gets here when the backend judged it transient (git lock
+  // contention); one backoff either clears the lock or proves someone is holding it.
+  expect(wf.AGENT_MAX_RETRIES_BY_REASON['worktree-failed']).toBe(1)
   expect(wf.WORKFLOW_SCRIPT_EXTENSIONS).toEqual(['.ts', '.js', '.mjs'])
 })
 

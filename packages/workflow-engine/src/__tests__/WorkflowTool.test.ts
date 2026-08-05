@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createWorkflowTool } from '../tool/WorkflowTool.js'
+import { DEFAULT_MAX_CONCURRENCY, MAX_CONCURRENCY_CAP } from '../constants.js'
 import { createHostHandle, type WorkflowPorts } from '../ports.js'
 import type { AgentRunParams, AgentRunResult, ProgressEvent } from '../types.js'
 
@@ -363,15 +364,63 @@ test('metadata methods: description/prompt/renderToolUseMessage', async () => {
   )
 })
 
-test('prompt includes default concurrency 3 + AskUserQuestion guidance', async () => {
+test('prompt states the real default concurrency + AskUserQuestion guidance', async () => {
   const { ports } = mockPorts('/tmp', new Map())
   const tool = createWorkflowTool(ports)
   const p = await tool.prompt()
   expect(p).toContain('.occ/workflows/')
   expect(p).not.toContain('.claude/workflows/')
-  expect(p).toMatch(/default is 3/i)
+  // Interpolated from the constant: the model is told to ask the user before using any
+  // non-default value, so a prompt quoting a stale default makes it interrupt for the
+  // very value it should have used silently.
+  expect(p).toContain(`default is ${DEFAULT_MAX_CONCURRENCY}`)
+  expect(p).toContain(`hard ceiling ${MAX_CONCURRENCY_CAP}`)
   expect(p).toMatch(/maxConcurrency/i)
   expect(p).toMatch(/AskUserQuestion/i)
+})
+
+test('defaultMaxConcurrency fills an omitted maxConcurrency; an explicit input still wins', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-mc-'))
+  try {
+    // Peak observed overlap is the only externally visible proof of the permit count.
+    const peakFor = async (
+      input: { script: string; maxConcurrency?: number },
+      defaultMaxConcurrency: number,
+    ): Promise<number> => {
+      const { ports, runStatus } = mockPorts(dir, new Map())
+      let active = 0
+      let peak = 0
+      ports.agentRunner = {
+        runAgentToResult: async () => {
+          active++
+          peak = Math.max(peak, active)
+          await new Promise(r => {
+            setTimeout(r, 10)
+          })
+          active--
+          return { kind: 'ok', output: 'x', usage: { outputTokens: 1 } }
+        },
+      }
+      const tool = createWorkflowTool(ports, { defaultMaxConcurrency })
+      await tool.call(input, undefined, undefined, undefined)
+      // the run is detached; wait for the registrar to see it finish
+      for (let i = 0; i < 100 && runStatus.size === 0; i++) {
+        await new Promise(r => {
+          setTimeout(r, 10)
+        })
+      }
+      return peak
+    }
+
+    const fanOut = `return parallel([() => agent('a'), () => agent('b'), () => agent('c'), () => agent('d')])`
+    // omitted → the host default takes effect (would be DEFAULT_MAX_CONCURRENCY without it)
+    expect(await peakFor({ script: fanOut }, 1)).toBe(1)
+    // explicit input beats the host default in both directions
+    expect(await peakFor({ script: fanOut, maxConcurrency: 4 }, 1)).toBe(4)
+    expect(await peakFor({ script: fanOut, maxConcurrency: 1 }, 4)).toBe(1)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
 
 test('name does not exist → returns error (does not enter background)', async () => {

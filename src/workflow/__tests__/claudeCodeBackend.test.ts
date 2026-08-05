@@ -64,6 +64,8 @@ mock.module('src/utils/telemetry/debug.js', () => ({
 // and avoids polluting other tests in the same process that depend on pwd/getCwd.
 const worktreeState = {
   shouldThrow: false,
+  /** Message createAgentWorktree throws with; drives the retryable classification. */
+  throwMessage: 'wt boom',
   hasChanges: false,
   created: [] as string[],
   removed: [] as string[],
@@ -71,7 +73,7 @@ const worktreeState = {
 }
 mock.module('src/utils/git/worktree.js', () => ({
   createAgentWorktree: async (slug: string) => {
-    if (worktreeState.shouldThrow) throw new Error('wt boom')
+    if (worktreeState.shouldThrow) throw new Error(worktreeState.throwMessage)
     worktreeState.created.push(slug)
     return {
       worktreePath: '/fake/wt',
@@ -91,12 +93,17 @@ mock.module('src/utils/git/worktree.js', () => ({
   },
 }))
 
-import { WorkflowAbortedError } from '@open-claude-code/workflow-engine'
+import {
+  AGENT_MAX_RETRIES,
+  AGENT_MAX_RETRIES_BY_REASON,
+  WorkflowAbortedError,
+} from '@open-claude-code/workflow-engine'
 import {
   claudeCodeBackend,
   resolveAgentDefinition,
   mapWorkflowModel,
   extractStructuredOutput,
+  isGitLockContention,
   WORKFLOW_AGENT,
 } from '../backends/claudeCodeBackend.js'
 import { makeHostHandle } from '../hostHandle.js'
@@ -173,14 +180,71 @@ test('isolation:worktree has changes → keep worktree (no remove)', async () =>
   expect(worktreeState.changesCalls).toBe(1)
 })
 
-test('isolation:worktree creation fails → fail-closed returns dead (does not silently degrade to shared cwd)', async () => {
+test('isolation:worktree creation fails → fail-closed dead, marked retryable:false', async () => {
   worktreeState.shouldThrow = true
+  worktreeState.throwMessage = 'wt boom'
   const res = await claudeCodeBackend.run(
     { prompt: 'do', isolation: 'worktree' },
     ctx(),
   )
   expect(res.kind).toBe('dead')
+  if (res.kind !== 'dead') throw new Error('unreachable')
+  expect(res.reason).toBe('worktree-failed')
+  // The causes are environmental and deterministic for an identical call (not a git repo,
+  // no disk, branch taken). Without retryable:false the engine would burn its whole retry
+  // budget re-running git plumbing before the agent has even started.
+  expect(res.retryable).toBe(false)
+  expect(res.detail).toContain('wt boom')
   worktreeState.shouldThrow = false
+  worktreeState.throwMessage = 'wt boom'
+})
+
+test('isolation:worktree failing on git lock contention stays retryable (transient collision)', async () => {
+  // Concurrent agents entering isolation race to fetch/create the same base ref with no
+  // mutex in between; the loser dies on git's lock file. Raising the default concurrency
+  // made this MORE likely, so marking it deterministic would be a net regression.
+  for (const message of [
+    "fatal: Unable to create '/repo/.git/index.lock': File exists.",
+    "error: cannot lock ref 'refs/heads/wf': is at ... but expected ...",
+    'fatal: Unable to create /repo/.git/refs/remotes/origin/main.lock',
+  ]) {
+    worktreeState.shouldThrow = true
+    worktreeState.throwMessage = message
+    const res = await claudeCodeBackend.run(
+      { prompt: 'do', isolation: 'worktree' },
+      ctx(),
+    )
+    expect(res.kind).toBe('dead')
+    if (res.kind !== 'dead') throw new Error('unreachable')
+    expect(res.reason).toBe('worktree-failed')
+    // absent (not false) → the engine's transient path, capped at 1 retry by
+    // AGENT_MAX_RETRIES_BY_REASON['worktree-failed']
+    expect(res.retryable).toBeUndefined()
+  }
+  worktreeState.shouldThrow = false
+  worktreeState.throwMessage = 'wt boom'
+})
+
+test('isGitLockContention matches git lock signatures only', () => {
+  expect(
+    isGitLockContention("Unable to create '/r/.git/index.lock': File exists"),
+  ).toBe(true)
+  expect(isGitLockContention("cannot lock ref 'refs/heads/x'")).toBe(true)
+  expect(isGitLockContention('UNABLE TO CREATE /r/foo.LOCK')).toBe(true) // case-insensitive
+  // deterministic environment failures must not slip into the retryable bucket
+  expect(isGitLockContention('not a git repository')).toBe(false)
+  expect(isGitLockContention('No space left on device')).toBe(false)
+  expect(isGitLockContention("branch 'wf_x' already exists")).toBe(false)
+  expect(isGitLockContention('wt boom')).toBe(false)
+})
+
+test('the engine caps a retryable worktree-failed at one retry', () => {
+  // Pins the pairing between the backend's classification and the engine budget: a lock
+  // collision clears within one backoff or not at all, so it must not get the generic 3.
+  expect(AGENT_MAX_RETRIES_BY_REASON['worktree-failed']).toBe(1)
+  expect(AGENT_MAX_RETRIES_BY_REASON['worktree-failed']).toBeLessThan(
+    AGENT_MAX_RETRIES,
+  )
 })
 
 test('no isolation → no worktree created', async () => {

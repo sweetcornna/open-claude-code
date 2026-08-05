@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { AGENT_MAX_RETRIES, DEFAULT_MAX_CONCURRENCY } from '../constants.js'
 import { createBufferingEmitter } from '../progress/events.js'
 import {
   createEngineContext,
@@ -41,10 +42,13 @@ test('createSharedResources initializes budget and counts', () => {
 })
 
 test('createSharedResources: maxConcurrency controls semaphore permits', async () => {
-  // default permits = DEFAULT_MAX_CONCURRENCY = 3: after 4 acquires the 4th is pending
+  // default permits = DEFAULT_MAX_CONCURRENCY: the (default+1)-th acquire is pending.
+  // Derived from the constant rather than hardcoded — this test is about the wiring,
+  // not about the number (index.test.ts pins the number).
   const r1 = createSharedResources(null)
   const releases1: Array<() => void> = []
-  for (let i = 0; i < 3; i++) releases1.push(await r1.semaphore.acquire())
+  for (let i = 0; i < DEFAULT_MAX_CONCURRENCY; i++)
+    releases1.push(await r1.semaphore.acquire())
   let fourthResolved = false
   const pending = r1.semaphore.acquire().then(r => {
     fourthResolved = true
@@ -54,7 +58,7 @@ test('createSharedResources: maxConcurrency controls semaphore permits', async (
     setTimeout(res, 5)
   })
   expect(fourthResolved).toBe(false)
-  releases1[0]!() // release one, the fourth should be woken up
+  releases1[0]!() // release one, the extra waiter should be woken up
   releases1.push(await pending)
   for (const rel of releases1) rel()
 
@@ -124,6 +128,29 @@ test('createEngineContext copies journal and resets cursor', () => {
   expect(ctx.journal).toHaveLength(1)
   expect(ctx.journalIndex).toBe(0)
   expect(ctx.journalInvalidated).toBe(false)
+})
+
+test('createEngineContext: retry knobs default to constants and accept injection', () => {
+  const base = {
+    ports: mockPorts(),
+    host: createHostHandle(null),
+    signal: new AbortController().signal,
+    runId: 'r-retry',
+    workflowName: 'w',
+    cwd: '/tmp',
+    budgetTotal: null,
+  }
+  const defaults = createEngineContext(base)
+  expect(defaults.agentMaxRetries).toBe(AGENT_MAX_RETRIES)
+  // Tests inject 0 on both knobs to keep retry suites instant; 0 retries must be
+  // honored as "no retry" rather than falling back to the default.
+  const injected = createEngineContext({
+    ...base,
+    retryBackoffMs: 0,
+    agentMaxRetries: 0,
+  })
+  expect(injected.retryBackoffMs).toBe(0)
+  expect(injected.agentMaxRetries).toBe(0)
 })
 
 test('createBufferingEmitter collects events', () => {

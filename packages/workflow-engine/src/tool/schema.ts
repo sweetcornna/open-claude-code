@@ -1,5 +1,9 @@
 import { z } from 'zod/v4'
-import { WORKFLOW_DIR_NAME } from '../constants.js'
+import {
+  DEFAULT_MAX_CONCURRENCY,
+  MAX_CONCURRENCY_CAP,
+  WORKFLOW_DIR_NAME,
+} from '../constants.js'
 
 /** Workflow tool input schema. args is any JSON value (object/array/string/etc.). */
 export const workflowInputSchema = z.object({
@@ -40,10 +44,13 @@ export const workflowInputSchema = z.object({
     .number()
     .int()
     .min(1)
-    .max(16)
+    .max(MAX_CONCURRENCY_CAP)
     .optional()
     .describe(
-      'Concurrency cap for agent(). Defaults to 3 (max 16). When the workflow contains heavy parallel/pipeline fan-out, you may confirm the desired concurrency with the user via AskUserQuestion before launching.',
+      // The schema is a module-level singleton, so it cannot see a host override of the
+      // default (OCC_WORKFLOW_MAX_CONCURRENCY); it states the compiled-in value and defers
+      // to the tool prompt, which is built per descriptor and quotes the effective one.
+      `Concurrency cap for agent(). Omit to use the effective default (${DEFAULT_MAX_CONCURRENCY} unless the host overrides it — the tool description states the value in force); max ${MAX_CONCURRENCY_CAP}. When the workflow contains heavy parallel/pipeline fan-out, you may confirm the desired concurrency with the user via AskUserQuestion before launching.`,
     ),
 })
 

@@ -7,6 +7,10 @@ export type ProgressBus = {
 }
 
 export function createProgressBus(): ProgressBus {
+  // Set iteration is insertion-ordered, and that ordering is load-bearing: the run-state
+  // persistence listener relies on having been registered after the store, so that by the
+  // time it runs the store has already reduced the same event (see attachRunStatePersistence).
+  // Any replacement must keep delivering in subscription order.
   const listeners = new Set<(event: ProgressEvent) => void>()
   return {
     emit(event) {
