@@ -57,14 +57,27 @@ export function useRegisterOverlay(id: string, enabled = true): void {
     };
   }, [id, enabled, setAppState]);
 
-  // On overlay close, force the next render to full-damage diff instead
-  // of blit. A tall overlay (e.g. FuzzyPicker with a 20-line preview)
-  // shrinks the Ink-managed region on unmount; the blit fast path can
-  // copy stale cells from the overlay's previous frame into rows the
-  // shorter layout no longer reaches, leaving a ghost title/divider.
-  // useLayoutEffect so cleanup runs synchronously before the microtask-
-  // deferred onRender (scheduleRender queues a microtask from
-  // resetAfterCommit; passive-effect cleanup would land after it).
+  useInvalidatePrevFrameOnUnmount(enabled);
+}
+
+/**
+ * Force the next render to a full-damage diff when this component unmounts.
+ *
+ * A tall panel (e.g. FuzzyPicker with a 20-line preview, or the /config
+ * pane) shrinks the Ink-managed region on unmount; the blit fast path can
+ * copy stale cells from the panel's previous frame into rows the shorter
+ * layout no longer reaches, leaving a ghost title/divider. useLayoutEffect
+ * so cleanup runs synchronously before the microtask-deferred onRender
+ * (scheduleRender queues a microtask from resetAfterCommit; passive-effect
+ * cleanup would land after it).
+ *
+ * useRegisterOverlay already does this for overlays that need Escape
+ * coordination. Panels that handle their own Escape call this hook
+ * directly instead: registering them as overlays would also suppress
+ * request cancellation and TextInput focus, which is a behavior change,
+ * not a rendering fix.
+ */
+export function useInvalidatePrevFrameOnUnmount(enabled = true): void {
   useLayoutEffect(() => {
     if (!enabled) return;
     return () => instances.get(process.stdout)?.invalidatePrevFrame();

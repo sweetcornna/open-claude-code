@@ -14,6 +14,7 @@ import {
   charInCellAt,
   diffEach,
   type Hyperlink,
+  isCellEmpty,
   isEmptyCellAt,
   type Screen,
   type StylePool,
@@ -338,14 +339,36 @@ export class LogUpdate {
 
       // Skip spacers during rendering because the terminal will automatically
       // advance 2 columns when we write the wide character itself.
-      // SpacerTail: Second cell of a wide character
-      // SpacerHead: Marks line-end position where wide char wraps to next line
-      if (
-        added &&
-        (added.width === CellWidth.SpacerTail ||
-          added.width === CellWidth.SpacerHead)
-      ) {
+      //
+      // SpacerTail: second cell of a wide character. The head at x-1 is part
+      //   of the same diff and painting it covers this column too.
+      //
+      // SpacerHead: line-end placeholder for a wide character that did NOT
+      //   fit. output.ts drops that grapheme outright — it is not re-flowed
+      //   onto the next line, so the placeholder is all that survives of it.
+      //   There is no head to advance over this column, so *nothing*
+      //   repaints it — skipping unconditionally leaves whatever the
+      //   previous frame drew here on screen until a full repaint. That is
+      //   the stray
+      //   characters trailing down the right edge after a CJK/emoji line
+      //   changes width. Clear it with a space instead whenever the previous
+      //   frame had something visible there. setCellAt (screen.ts) carries
+      //   the mirror-image patch for orphaned SpacerTails — same bug class,
+      //   other half of the wide-char pair.
+      //
+      // Writing the last column leaves the terminal in pending-wrap state;
+      // moveCursorTo and the cursor restore below both resolve it with CR.
+      // Legacy conhost (which wraps eagerly) never reaches this path: it
+      // renders one column narrower and full-repaints on a timer.
+      let clearSpacerHead = false
+      if (added && added.width === CellWidth.SpacerTail) {
         return
+      }
+      if (added && added.width === CellWidth.SpacerHead) {
+        if (!removed || isCellEmpty(prev.screen, removed)) {
+          return
+        }
+        clearSpacerHead = true
       }
 
       if (
@@ -375,7 +398,7 @@ export class LogUpdate {
 
       moveCursorTo(screen, x, y)
 
-      if (added) {
+      if (added && !clearSpacerHead) {
         const targetHyperlink = added.hyperlink
         currentHyperlink = transitionHyperlink(
           screen.diff,
@@ -387,8 +410,8 @@ export class LogUpdate {
           currentStyleId = added.styleId
         }
       } else if (removed) {
-        // Cell was removed - clear it with a space
-        // (This handles shrinking content)
+        // Cell was removed (shrinking content) or replaced by a SpacerHead
+        // that paints nothing — clear it with a space.
         // Reset any active styles/hyperlinks first to avoid leaking into cleared cells
         const styleIdToReset = currentStyleId
         const hyperlinkToReset = currentHyperlink
@@ -669,14 +692,19 @@ function writeCellWithStyleStr(
   const px = screen.cursor.x
   const vw = screen.viewportWidth
 
-  // Don't write wide chars that would cross the viewport edge.
-  // Single-codepoint chars (CJK) at vw-2 are safe; multi-codepoint
-  // graphemes (flags, ZWJ emoji) need stricter threshold.
-  if (cellWidth === 2 && px < vw) {
-    const threshold = cell.char.length > 2 ? vw : vw + 1
-    if (px + 2 >= threshold) {
-      return false
-    }
+  // Don't write wide chars that would cross the viewport edge — the terminal
+  // would wrap them onto the next line and desync the cursor model.
+  //
+  // The test must be the cell's DISPLAY width, matching the rule output.ts
+  // uses when it decides to emit a SpacerHead instead of a Wide cell
+  // (`offsetX + 2 > screenWidth`): a wide cell fits iff px + 2 <= vw. The
+  // old test keyed off `cell.char.length` — codepoint count, not display
+  // width — and so refused to draw multi-codepoint graphemes (flags, ZWJ
+  // emoji) one column early. output.ts had already stored those as
+  // Wide + SpacerTail, and the diff loop skips SpacerTail, so BOTH columns
+  // went unpainted and the previous frame's characters survived there.
+  if (cellWidth === 2 && px < vw && px + 2 > vw) {
+    return false
   }
 
   const diff = screen.diff
