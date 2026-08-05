@@ -275,6 +275,7 @@ import {
   withRetry,
   withTransientNetworkRetry,
 } from './withRetry.js'
+import { isUserAbort } from './userAbort.js'
 
 // Define a type that represents valid JSON values
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray
@@ -2902,7 +2903,9 @@ async function* queryModel(
           previousRequestId,
         })
 
-        if (error instanceof APIUserAbortError) {
+        // See the sibling check below for why this is isUserAbort and not a
+        // bare `instanceof APIUserAbortError`.
+        if (isUserAbort(error, signal)) {
           releaseStreamResources()
           return
         }
@@ -2964,9 +2967,13 @@ async function* queryModel(
         previousRequestId,
       })
 
-      // Don't yield an assistant error message for user aborts
-      // The interruption message is handled in query.ts
-      if (error instanceof APIUserAbortError) {
+      // Don't yield an assistant error message for user aborts — query.ts
+      // renders the interruption. Checked via isUserAbort rather than
+      // `instanceof APIUserAbortError` alone: an interrupt can surface as a
+      // bare DOMException from undici, or wrapped by an intermediate layer, in
+      // which case the instanceof check misses and the user gets a red
+      // "API Error: ...aborted" for having pressed Esc.
+      if (isUserAbort(error, signal)) {
         releaseStreamResources()
         return
       }

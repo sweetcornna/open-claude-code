@@ -71,6 +71,7 @@ export {
   buildOpenAIRequestBody,
 }
 import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import { isUserAbort } from '../userAbort.js'
 import { getModelMaxOutputTokens } from '../../../utils/session/context.js'
 import type { Options } from '../claude.js'
 import {
@@ -563,6 +564,12 @@ export async function* queryModelOpenAI(
       }
     }
   } catch (error) {
+    // A user interrupt is not a failure — return silently and let query.ts
+    // render the interrupt, matching the first-party path. See isUserAbort.
+    if (isUserAbort(error, signal)) {
+      logForDebugging('[OpenAI] Request aborted by user')
+      return
+    }
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[OpenAI] Error: ${errorMessage}`, { level: 'error' })
     yield createAssistantAPIErrorMessage({

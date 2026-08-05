@@ -1214,6 +1214,21 @@ function getMessageText(item: QueryModelOutput): string {
  * "Did the model already say something the caller acted on?" Once true the
  * wrapper stops retrying forever: re-running `queryModel` after a partial
  * stream re-emits the same `tool_use` block and the tool runs twice (inc-4258).
+ *
+ * The bar is *observable side effects*, not "any bytes arrived". Two delta
+ * kinds are deliberately excluded:
+ *
+ *   - `thinking` / `signature`: thinking is not replayed to the user as an
+ *     answer and starts no tool, so a stream that died after only thinking has
+ *     produced nothing to duplicate. Counting it meant a connection dropping
+ *     during the (often long) thinking phase burned the whole turn on a single
+ *     `Error: terminated` with zero retries — the reported symptom. Discarding
+ *     that thinking and re-asking costs tokens; ending the turn costs the user
+ *     the turn.
+ *
+ * `text` and `partial_json` still count: text is already on screen (a retry
+ * would visibly restate it) and `partial_json` means a tool_use block is
+ * materializing, which is exactly the double-execution case above.
  */
 function isModelContentOutput(item: QueryModelOutput): boolean {
   if (item.type === 'assistant') {
@@ -1227,9 +1242,7 @@ function isModelContentOutput(item: QueryModelOutput): boolean {
     return false
   }
   const delta = (event.delta ?? {}) as Record<string, unknown>
-  return Boolean(
-    delta.text || delta.thinking || delta.partial_json || delta.signature,
-  )
+  return Boolean(delta.text || delta.partial_json)
 }
 
 export interface TransientNetworkRetryOptions {

@@ -39,6 +39,7 @@ import {
 import type { Options } from '../claude.js'
 import { createAssistantAPIErrorMessage } from '../../../utils/messages.js'
 import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import { isUserAbort } from '../userAbort.js'
 
 const GROK_MAX_TOKENS_ENV_HINT =
   'GROK_MAX_TOKENS or CLAUDE_CODE_MAX_OUTPUT_TOKENS'
@@ -300,6 +301,11 @@ export async function* queryModelGrok(
       }
     }
   } catch (error) {
+    // A user interrupt is not a failure — see isUserAbort.
+    if (isUserAbort(error, signal)) {
+      logForDebugging('[Grok] Request aborted by user')
+      return
+    }
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Grok] Error: ${errorMessage}`, { level: 'error' })
     yield createAssistantAPIErrorMessage({

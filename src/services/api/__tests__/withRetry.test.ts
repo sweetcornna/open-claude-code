@@ -643,3 +643,134 @@ describe('withTransientNetworkRetry', () => {
     expect(items).toHaveLength(1)
   })
 })
+
+/**
+ * A stream that dies during the thinking phase has produced nothing the caller
+ * acted on — no text on screen, no tool started — so it must be retried. It
+ * wasn't: `thinking`/`signature` deltas counted as "content emitted", which is
+ * the guard against re-running a tool_use (inc-4258). A drop during a long
+ * thinking phase therefore ended the whole turn on a single `Error: terminated`
+ * with zero retries, which is the reported symptom.
+ */
+describe('withTransientNetworkRetry retries after thinking-only output', () => {
+  function thinkingDelta(thinking: string): StreamItem {
+    return {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        delta: { type: 'thinking_delta', thinking },
+      },
+    }
+  }
+
+  function signatureDelta(signature: string): StreamItem {
+    return {
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        delta: { type: 'signature_delta', signature },
+      },
+    }
+  }
+
+  for (const [label, partial] of [
+    ['thinking', thinkingDelta('reasoning...')],
+    ['signature', signatureDelta('sig')],
+  ] as Array<[string, StreamItem]>) {
+    test(`retries when the stream dies after ${label} only`, async () => {
+      let attempts = 0
+      const items = await collect(
+        withTransientNetworkRetry(
+          async function* () {
+            attempts++
+            if (attempts === 1) {
+              yield partial
+              yield apiErrorMessage('API Error: terminated')
+              return
+            }
+            yield textDelta('recovered')
+            yield assistantMessage('recovered')
+          },
+          { maxRetries: 2 },
+        ),
+      )
+
+      expect(attempts).toBe(2)
+      expect(items.filter(i => i.isApiErrorMessage)).toHaveLength(0)
+      expect(items.at(-1)).toMatchObject({ type: 'assistant' })
+    }, 15_000)
+  }
+
+  test('still refuses to retry after a tool_use block started (inc-4258)', async () => {
+    // The double-execution guard must survive the change above: partial_json
+    // means a tool_use is materializing, and re-running would run it twice.
+    let attempts = 0
+    const items = await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          yield {
+            type: 'stream_event',
+            event: {
+              type: 'content_block_delta',
+              delta: { type: 'input_json_delta', partial_json: '{"a":1}' },
+            },
+          } as StreamItem
+          yield apiErrorMessage('API Error: terminated')
+        },
+        { maxRetries: 5 },
+      ),
+    )
+
+    expect(attempts).toBe(1)
+    expect(items.at(-1)).toMatchObject({ isApiErrorMessage: true })
+  })
+
+  test('still refuses to retry after text reached the user', async () => {
+    let attempts = 0
+    await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          yield textDelta('visible answer')
+          yield apiErrorMessage('API Error: terminated')
+        },
+        { maxRetries: 5 },
+      ),
+    )
+    expect(attempts).toBe(1)
+  })
+
+  test('thinking then text then death does not retry', async () => {
+    // Text after thinking still pins the turn — the ordering must not matter.
+    let attempts = 0
+    await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          yield thinkingDelta('reasoning')
+          yield textDelta('visible')
+          yield apiErrorMessage('API Error: terminated')
+        },
+        { maxRetries: 5 },
+      ),
+    )
+    expect(attempts).toBe(1)
+  })
+
+  test('a user abort is never retried', async () => {
+    // Retrying a cancellation would resurrect a turn the user killed.
+    let attempts = 0
+    const items = await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          yield apiErrorMessage('API Error: Request was aborted.')
+        },
+        { maxRetries: 5 },
+      ),
+    )
+    expect(attempts).toBe(1)
+    expect(items).toHaveLength(1)
+  })
+})

@@ -17,6 +17,7 @@ import {
   normalizeMessagesForAPI,
 } from '../../../utils/messages.js'
 import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import { isUserAbort } from '../userAbort.js'
 import { updateOpenAIUsage } from '../openai/openaiShared.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/model/modelCost.js'
@@ -310,6 +311,11 @@ export async function* queryModelGemini(
       }
     }
   } catch (error) {
+    // A user interrupt is not a failure — see isUserAbort.
+    if (isUserAbort(error, signal)) {
+      logForDebugging('[Gemini] Request aborted by user')
+      return
+    }
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Gemini] Error: ${errorMessage}`, { level: 'error' })
     yield createAssistantAPIErrorMessage({
