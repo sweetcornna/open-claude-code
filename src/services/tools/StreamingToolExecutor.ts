@@ -213,10 +213,15 @@ export class StreamingToolExecutor {
         sourceToolAssistantUUID: assistantMessage.uuid,
       })
     }
+    // Say what to do next. This tool never ran and nothing about it failed —
+    // without the second sentence the model reads a bare "Cancelled" as a
+    // verdict on this call and moves on, losing work it should just redo.
     const desc = this.erroredToolDescription
-    const msg = desc
-      ? `Cancelled: parallel tool call ${desc} errored`
-      : 'Cancelled: parallel tool call errored'
+    const msg =
+      (desc
+        ? `Cancelled: not run because a directory-changing command in the same batch, ${desc}, failed.`
+        : 'Cancelled: not run because a directory-changing command in the same batch failed.') +
+      ' The working directory may not be what this command expected. Re-run it once the earlier failure is resolved.'
     return createUserMessage({
       content: [
         {
@@ -264,6 +269,64 @@ export class StreamingToolExecutor {
       return definition.interruptBehavior()
     } catch {
       return 'block'
+    }
+  }
+
+  /**
+   * Should a failure in `tool` cancel its not-yet-finished siblings?
+   *
+   * Only when the failure plausibly invalidates them. The one real coupling
+   * between Bash calls in a batch is the working directory, which persists
+   * across commands (`Shell.setCwd`) while shell state does not. So a failing
+   * `cd /some/dir && …` leaves later commands running somewhere they didn't
+   * expect, and cancelling them is right.
+   *
+   * Every other Bash failure is independent. Cancelling on those was actively
+   * destructive: the batch is dispatched in order, so the FIRST command's exit
+   * status decided the fate of the rest, and they were cancelled *before
+   * starting* — a `gh release view` on a missing tag would wipe out three
+   * unrelated `ssh` diagnostics that had nothing to do with it. The user saw
+   * "Cancelled: parallel tool call Bash(...) errored" on every sibling and no
+   * result for any of them; the model then had to re-issue the whole batch.
+   *
+   * A non-zero exit is also not even reliably an error for read-only probes:
+   * `grep` with no match, `test`, and `diff` all exit non-zero by design.
+   *
+   * Note the cascade never protected the concurrent case anyway — batches run
+   * in parallel precisely when every member is read-only (`isConcurrencySafe`),
+   * and read-only commands cannot invalidate each other.
+   */
+  private shouldCancelSiblingsOnError(tool: TrackedTool): boolean {
+    if (tool.block.name !== BASH_TOOL_NAME) {
+      return false
+    }
+    const command = (tool.block.input as { command?: unknown } | undefined)
+      ?.command
+    if (typeof command !== 'string' || command.length === 0) {
+      return false
+    }
+    try {
+      // Reused rather than reimplemented: the check is security-sensitive — it
+      // strips safe wrappers (`nohup`, `timeout -k 5`) and env-var prefixes
+      // before looking for cd/pushd/popd, so a local regex would miss
+      // `nohup cd /x && …`.
+      //
+      // Lazy require with a hand-written signature, not a static import and not
+      // `typeof import(...)`: bashPermissions imports BashTool, so either form
+      // adds an import cycle, and check:cycles counts type-only edges too. The
+      // signature is pinned by the co-located test, which calls through this
+      // path with real commands — if the real one changes shape, that fails.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { commandHasAnyCd } =
+        require('@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js') as {
+          commandHasAnyCd: (command: string) => boolean
+        }
+      // Conservative on parse failure: an unparseable command might contain a
+      // cd, so treat it as one rather than letting siblings run in a directory
+      // we can't reason about.
+      return commandHasAnyCd(command)
+    } catch {
+      return true
     }
   }
 
@@ -380,10 +443,7 @@ export class StreamingToolExecutor {
 
         if (isErrorResult) {
           thisToolErrored = true
-          // Only Bash errors cancel siblings. Bash commands often have implicit
-          // dependency chains (e.g. mkdir fails → subsequent commands pointless).
-          // Read/WebFetch/etc are independent — one failure shouldn't nuke the rest.
-          if (tool.block.name === BASH_TOOL_NAME) {
+          if (this.shouldCancelSiblingsOnError(tool)) {
             this.hasErrored = true
             this.erroredToolDescription = this.getToolDescription(tool)
             this.siblingAbortController.abort('sibling_error')
