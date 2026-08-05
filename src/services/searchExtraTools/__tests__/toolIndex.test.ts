@@ -250,13 +250,26 @@ describe('getToolInputJSONSchema', () => {
   })
 
   test('a broken schema degrades to undefined instead of throwing', () => {
-    const exploding = {
+    // Discovery of every other tool must survive one bad schema, so NOTHING
+    // in here may propagate — including the property read itself. Built-in
+    // tools expose `inputSchema` as a lazy getter, and this is the first path
+    // that forces every deferred tool's getter, so a throwing getter is the
+    // realistic shape of "one bad tool".
+    const explodingGetter = {
       get inputSchema() {
         throw new Error('boom')
       },
     }
-    // Discovery of every other tool must survive one bad schema.
-    expect(() => getToolInputJSONSchema(exploding)).toThrow()
+    expect(getToolInputJSONSchema(explodingGetter)).toBeUndefined()
+
+    const explodingMcpGetter = {
+      get inputJSONSchema(): object {
+        throw new Error('boom')
+      },
+    }
+    expect(getToolInputJSONSchema(explodingMcpGetter)).toBeUndefined()
+
+    // A value that isn't a zod schema at all fails inside the conversion.
     expect(
       getToolInputJSONSchema({
         inputSchema: {

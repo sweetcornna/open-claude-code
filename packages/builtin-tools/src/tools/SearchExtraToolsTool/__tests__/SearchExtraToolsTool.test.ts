@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test'
 import { mock } from 'bun:test'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
+import { makeSharedModuleMock } from '../../../../../../tests/mocks/sharedModuleMock'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -63,19 +64,23 @@ const mockSearchTools = mock(
 )
 const mockGetToolIndex = mock(async (_tools: unknown) => [])
 
-// Full surface: mock.module is process-global (last-write-wins), so a partial
-// mock makes any later-loading file that imports getToolInputJSONSchema see it
-// as undefined. Delegates to the real implementation — these tests exercise
-// search behavior, not schema conversion.
-const { getToolInputJSONSchema: realGetToolInputJSONSchema } = await import(
-  'src/services/searchExtraTools/toolIndex.js'
-)
+// Complete-surface mock, per CLAUDE.md: mock.module is process-global and
+// last-write-wins, so a hand-rolled partial surface makes every export this
+// file happens not to list (parseToolName, buildToolIndex,
+// clearToolIndexCache, getToolInputJSONSchema) resolve to undefined for any
+// test file that loads later in the same process — and file order differs
+// between macOS and Linux, so it only breaks on CI. Every export delegates to
+// the real implementation; only the two search entry points are overridden,
+// which is all these tests actually stub.
+const realToolIndex = await import('src/services/searchExtraTools/toolIndex.js')
 
-mock.module('src/services/searchExtraTools/toolIndex.js', () => ({
+makeSharedModuleMock(
+  'src/services/searchExtraTools/toolIndex.js',
+  realToolIndex,
+).setup({
   getToolIndex: mockGetToolIndex,
   searchTools: mockSearchTools,
-  getToolInputJSONSchema: realGetToolInputJSONSchema,
-}))
+})
 
 // Mock analytics
 mock.module('@open-claude-code/tool-runtime/analytics.js', () => ({

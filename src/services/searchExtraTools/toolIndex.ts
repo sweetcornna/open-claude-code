@@ -98,13 +98,20 @@ export function getToolInputJSONSchema(tool: {
   inputJSONSchema?: object
   inputSchema?: unknown
 }): object | undefined {
-  if (tool.inputJSONSchema) {
-    return tool.inputJSONSchema
-  }
-  if (!tool.inputSchema) {
-    return undefined
-  }
+  // The whole body is guarded, not just the conversion. Built-in tools expose
+  // `inputSchema` as a lazy getter (`get inputSchema() { return inputSchema() }`
+  // over lazySchema), and this is the first path that forces every deferred
+  // tool's getter during indexing — so the property READ can throw too, not
+  // only zodToJsonSchema. Leaving the reads outside the try meant one bad tool
+  // took down discovery for every tool in the batch, which is the opposite of
+  // what this function promises.
   try {
+    if (tool.inputJSONSchema) {
+      return tool.inputJSONSchema
+    }
+    if (!tool.inputSchema) {
+      return undefined
+    }
     return zodToJsonSchema(tool.inputSchema as never)
   } catch {
     // Never let one unrepresentable schema break discovery — the tool stays
