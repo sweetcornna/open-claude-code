@@ -4,6 +4,18 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.17.0 - 2026-08-04
+
+- **一次网络波动不再杀掉任务或 agent**。`fetch failed` / `terminated` / 网关的 `Upstream request failed` 此前一次都不重试直接中断：重试框架只认 `APIError` 实例，裸的传输层错误被瞬间判死；流中途断开更是完全在重试范围之外；OpenAI / Gemini / Grok 三方路径连重试层都没接。现在这类瞬时错误统一进入最高 10 次的指数退避（`CLAUDE_CODE_MAX_RETRIES` 单一旋钮），覆盖主循环、Agent 子代理与 workflow agent 的全部 provider；流已经产出内容时不重试（避免同一个工具被执行两次）；TLS 握手失败仍然秒败并给出可操作提示，不会盲烧三分钟。重试倒计时在界面上可见。
+- **workflow 引擎与查看器大修**。默认并发 3→6（`OCC_WORKFLOW_MAX_CONCURRENCY` 可覆盖）；agent 失败重试从固定 2 秒一次改为最多 3 次指数退避，面板实时显示 `↻ n/3` 与失败原因，不再出现「token 计 0、几秒就死」的观感；git worktree 锁争用可自愈；kill 掉的 run 不再残留永远转圈的 agent，用户主动停止显示为中性的 ⊘ stopped 而非红色 failed。从任务管理器进入 workflow 详情后按键全部失效的问题（根节点漏了 `autoFocus`）、顶部多余横条（双重画框）、选中行高亮断成两段并逐帧跳变（行布局 + 合成器背景残留双根因）全部修复。
+- **终端渲染乱码修复**。长会话切换界面或 compacting 时的叠印、右侧散落的单个字符、残留高亮块，定位到差量渲染器的四个具体缺陷：CJK/emoji 行尾占位格被跳过且无人清除、视口边缘宽字素按码位数误判、背景移除后子树从上一帧缓存把旧高亮拷回来、absolute 浮层部分相交时旧像素回拷。全部修复，并为此前零测试覆盖的差量引擎建立了带终端模型与 SGR 属性断言的回归测试基建。
+- **`occ migrate` 支持迁移账号数据**。首启向导选项 1 现在完整迁移官方 Claude Code 的 OAuth 登录、API key 与 API 端点配置（读官方 keychain 不会触发系统弹窗；occ 已有登录时绝不覆盖；迁移后向导自动跳过登录步骤，并提示两个 CLI 共用 refresh token 的轮换风险），plugins / skills / MCP 两种模式都迁移。默认模式剥离一切密钥但保留 `*_BASE_URL` 等端点配置——此前会连端点一起丢；mTLS 的 cert/key 文件路径不再被误剥。新增 `--with-credentials` 支持事后补迁凭据，只回填缺失键、绝不覆盖已改的值。`~/.claude` 全程只读、会话历史永不复制的底线不变。
+- **后台 agent 的完成通知即时送达**。此前所有 agent 完成通知要等主 agent 完全停下来才一股脑注入；现在 agent 一完成就排队，主 agent 当前这轮工具调用一结束立即插入。
+- **后台 agent 实时 recap**。任务栏现在显示每个后台 agent 正在做什么：逐轮的工具活动（如 Reading src/foo.ts）加上每 30 秒一次的 AI 生成动作摘要（如 Verifying runtime sampler），完成后回落为任务描述。`OCC_AGENT_SUMMARIES=0` 可整体关闭；摘要 fork 有全局并发上限并跳过缓存写入以控制成本。
+- **任务栏状态圆点改为语义色**：运行中灰、完成绿、失败红、手动停止黄——此前颜色编码的是「是否选中」，错误态根本没有颜色。
+- **子 agent 的任务列表不再混入主 agent**。子 agent 用任务工具建的条目此前直接写进主会话任务目录，17 条任务里混着一堆子 agent 的内部条目；现在按 agent 打标隔离（模型伪造标签会被剥除），主界面、提醒与自动隐藏逻辑全部过滤，teammate 共享任务列表的协作行为保持不变。
+- **粘贴不再卡死**。用错误快捷键粘贴图片后一直显示 Pasting text… 且回车失效的问题，根因是图片解析失败的 Promise 从不复位状态，外加 bracketed paste 状态机在缺失结束符时永久锁死键盘等共六处漏洞。全部修复：解析失败降级为文本粘贴、粘贴看门狗自动解锁、Esc 可随时取消（取消后迟到的图片不会再被注入）、剪贴板子进程加 3 秒超时。
+
 ## 2.16.0 - 2026-08-03
 
 - **通过网关用 OpenAI 时，prompt 缓存基本没生效**。`prompt_cache_key` 此前只发给官方 `api.openai.com`，而把 OpenAI 挂在 LiteLLM / one-api / new-api / OpenRouter 后面是很常见的部署——没有这个粘性路由键，多轮会话每一轮都可能落到不同的缓存节点上。对一个真实网关实测（5 轮、约 4K token 的稳定前缀、其余变量全部固定）：**发键 75.8% 命中，不发键 18.3%**，逐轮看是「95 / 0 / 0 / 0 / 0」——只有第一次追问命中，之后全落空。现在按协议分开取默认值：`/responses` 恒发（提供这个端点就意味着实现了 Responses schema，这是其中的标准字段）；Chat Completions 仍只发官方端点，因为会拒收未知顶层字段的严格端点（GLM / Kimi / DeepSeek / Cerebras 直连）都在 chat 这条线上。`OPENAI_PROMPT_CACHE_KEY=1` 强制开启（chat 网关场景用它），`=0` 强制关闭。
