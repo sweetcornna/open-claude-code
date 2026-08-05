@@ -59,6 +59,7 @@ import type { CacheSafeParams } from 'src/utils/agents/forkedAgent.js';
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js';
 import { createUserMessage, extractTextContent, isSyntheticMessage, normalizeMessages } from 'src/utils/messages.js';
 import { getAgentModel } from 'src/utils/model/agent.js';
+import { isGptTuningActive } from 'src/utils/model/gptTuning.js';
 import { permissionModeSchema } from 'src/utils/permissions/PermissionMode.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { filterDeniedAgents, getDenyRuleForAgent } from 'src/utils/permissions/permissions.js';
@@ -327,6 +328,9 @@ export const AgentTool = buildTool({
     // agent loads.
     const listViaAttachment = shouldInjectAgentListInMessages();
     const inProcessTeammate = isInProcessTeammate();
+    // GPT-family models execute the concurrency/proactive notes as standing
+    // orders and fan out review subagents unprompted.
+    const gptTuned = isGptTuningActive();
 
     return renderAgentPrompt({
       agentLines: listViaAttachment ? null : effectiveAgents.map(formatAgentLine),
@@ -335,7 +339,8 @@ export const AgentTool = buildTool({
       // Coordinator mode returns before either is read; don't pay for the
       // embedded-tools probe or the auth round-trip in that path.
       embeddedSearchTools: isCoordinator ? false : hasEmbeddedSearchTools(),
-      includeConcurrencyNote: !isCoordinator && !listViaAttachment && getSubscriptionType() !== 'pro',
+      includeConcurrencyNote: !isCoordinator && !listViaAttachment && !gptTuned && getSubscriptionType() !== 'pro',
+      suppressProactiveGuidance: gptTuned,
       backgroundAgentsAvailable: !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS) && !inProcessTeammate,
       antUser: process.env.USER_TYPE === 'ant',
       inProcessTeammate,
