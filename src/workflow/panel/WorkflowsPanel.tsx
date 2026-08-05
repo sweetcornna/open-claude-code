@@ -301,7 +301,12 @@ export function WorkflowsPanel({
           <Box flexGrow={1} flexDirection="column">
             <Text color={effectiveFocus === 'agents' ? 'claude' : 'subtle'} bold>
               {phaseHeader} · {visibleAgents.length} agents
-              {statusFilter === 'all' ? null : <Text color="warning"> · {statusFilter} only</Text>}
+              {/* The failed bucket is `resultKind === 'dead'`, which also catches agents the
+                  run reaped on its way down (⊘ stopped). Narrowing the predicate would hide
+                  them from every filter, so the header names both instead. */}
+              {statusFilter === 'all' ? null : (
+                <Text color="warning"> · {statusFilter === 'failed' ? 'failed/stopped' : statusFilter} only</Text>
+              )}
             </Text>
             <AgentList
               agents={visibleAgents}
@@ -325,23 +330,30 @@ export function WorkflowsPanel({
         </Text>
       </Box>
 
+      {/* hideBorder: Dialog otherwise wraps itself in a Pane whose Divider spans the
+          whole terminal. Inside this bordered, padded panel that divider overflows and
+          wraps, printing a stray half-line and pushing the panel's own border out of
+          alignment. The panel border is the single frame — see Pane's own doc comment. */}
       {confirmKill !== null ? (
-        <Dialog
-          title={
-            confirmKill === 'workflow'
-              ? `Kill workflow "${focused?.workflowName ?? ''}"?`
-              : `Kill agent "${selectedAgent?.label ?? ''}"?`
-          }
-          subtitle={
-            confirmKill === 'workflow'
-              ? 'All in-flight agents will be aborted. Resume will replay from journal.'
-              : 'Only this agent aborts; other agents in the workflow keep running.'
-          }
-          onCancel={() => setConfirmKill(null)}
-          color="warning"
-        >
-          <Text color="subtle">Press y to confirm, or n/Esc to cancel.</Text>
-        </Dialog>
+        <Box marginTop={1} flexDirection="column">
+          <Dialog
+            title={
+              confirmKill === 'workflow'
+                ? `Kill workflow "${focused?.workflowName ?? ''}"?`
+                : `Kill agent "${selectedAgent?.label ?? ''}"?`
+            }
+            subtitle={
+              confirmKill === 'workflow'
+                ? 'All in-flight agents will be aborted. Resume will replay from journal.'
+                : 'Only this agent aborts; other agents in the workflow keep running.'
+            }
+            onCancel={() => setConfirmKill(null)}
+            color="warning"
+            hideBorder
+          >
+            <Text color="subtle">Press y to confirm, or n/Esc to cancel.</Text>
+          </Dialog>
+        </Box>
       ) : null}
     </Box>
   );

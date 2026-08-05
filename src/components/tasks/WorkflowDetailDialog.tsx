@@ -135,8 +135,19 @@ export function WorkflowDetailDialog({ task, onBack, onKillWorkflow }: Props): R
     }
   };
 
+  // autoFocus is load-bearing, not decoration: ink dispatches keys to
+  // focusManager.activeElement (falling back to the root node) and only bubbles
+  // upward. Arriving here from the task list unmounts the list, leaving
+  // activeElement null — without autoFocus every key routed through onKeyDown
+  // (←/↑/↓/↵/K/y/n) is dead on arrival and only the globally-registered
+  // bindings (x, Esc) still respond. Every sibling *DetailDialog does the same.
+  //
+  // No borderStyle here either: the inner Dialog renders a Pane whose Divider is
+  // terminal-wide by design. Nesting that inside a bordered, padded box made the
+  // divider overflow and wrap, which is what drew the stray line above the title
+  // and knocked the border out of alignment. The Pane is the single frame.
   return (
-    <Box flexDirection="column" tabIndex={0} borderStyle="round" onKeyDown={handleKeyDown}>
+    <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
       <Dialog
         title={task.workflowName}
         subtitle={

@@ -3,15 +3,31 @@ import { Box, Text, useAnimationFrame } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { AgentProgress } from '../progress/store.js';
 import { agentElapsedMs, formatDuration } from './selectors.js';
-import { agentStatusText, agentVisual, formatTokenCount, shortModelName } from './status.js';
+import {
+  agentStatusText,
+  agentVisual,
+  formatTokenCount,
+  isRetryBackoffActive,
+  isRunReaped,
+  shortModelName,
+} from './status.js';
 
-/** Human copy for the engine's cause-of-death classification. */
+/**
+ * Human copy for the engine's cause-of-death classification.
+ *
+ * The `run-*` keys are not engine verdicts: the store stamps them on agents that were
+ * still running when the run ended, so without an entry here the pane rendered the raw
+ * internal identifier — and labelled a user-requested kill a failure.
+ */
 const FAILURE_REASON_TEXT: Record<string, string> = {
   'no-structured-output': 'finished without producing StructuredOutput',
   'runagent-threw': 'the agent run threw',
   'worktree-failed': 'git worktree creation failed',
   'prompt-too-long': 'prompt exceeded the context window',
   'api-error': 'terminal API error',
+  'run-killed': 'stopped when the workflow was killed',
+  'run-failed': 'stopped when the workflow failed',
+  'run-ended': 'still running when the workflow ended',
   unknown: 'unclassified failure',
 };
 
@@ -22,11 +38,24 @@ const FAILURE_REASON_TEXT: Record<string, string> = {
  */
 const PREVIEW_RENDER_MAX = 240;
 
+/** Width of the label column; the continuation row indents by the same amount. */
+const LABEL_COL = 10;
+
+/**
+ * `2/3` for a bounded retry chain, plain `2` when the engine reported no limit.
+ * retryCount is the attempt agent_retry announced, so it is already the number of the
+ * attempt about to start — not the count of attempts finished.
+ */
+function retryAttemptLabel(agent: AgentProgress): string {
+  const attempt = agent.retryCount ?? 1;
+  return agent.retryLimit === undefined ? `${attempt}` : `${attempt}/${agent.retryLimit}`;
+}
+
 /** One `label   value` row. Labels share a fixed width so values line up. */
 function Field({ label, children }: { label: string; children: React.ReactNode }): React.ReactNode {
   return (
     <Box>
-      <Box width={10}>
+      <Box width={LABEL_COL}>
         <Text color="subtle">{label}</Text>
       </Box>
       {children}
@@ -48,7 +77,15 @@ export function AgentDetail({ agent }: { agent: AgentProgress }): React.ReactNod
   // Shared 1s clock so a running agent's duration ticks in place.
   const [clockRef] = useAnimationFrame(1000);
   const visual = agentVisual(agent);
-  const elapsed = agentElapsedMs(agent, Date.now());
+  // One clock read for both the duration and the backoff window, so the pane can't
+  // claim the engine is still waiting on a line it already stopped counting for.
+  const now = Date.now();
+  const elapsed = agentElapsedMs(agent, now);
+  const backingOff = isRetryBackoffActive(agent, now);
+  // Reaped-with-the-run is still resultKind 'dead', but it gets the same neutral
+  // treatment as the ⊘ mark and the "stopped" status word rather than a red
+  // Failure block the user would read as "my kill broke something".
+  const reaped = isRunReaped(agent);
   const failed = agent.resultKind === 'dead';
 
   return (
@@ -79,6 +116,27 @@ export function AgentDetail({ agent }: { agent: AgentProgress }): React.ReactNod
             <Text>{formatTokenCount(agent.outputTokens)} tok</Text>
           </Field>
         ) : null}
+        {/* The list row can only show a retry while the backoff is running — a two-to-eight
+            second window. Everywhere else, an agent that survived three retries looked
+            identical to one that sailed through, and lastFailureDetail had no reader at
+            all. This is where the retry history lives once the agent is moving again. */}
+        {agent.retryCount !== undefined ? (
+          <Field label="retries">
+            <Text>
+              {agent.retryCount}
+              {agent.retryLimit === undefined ? '' : `/${agent.retryLimit}`}
+              {agent.lastFailureReason ? <Text color="subtle"> ({agent.lastFailureReason})</Text> : null}
+            </Text>
+          </Field>
+        ) : null}
+        {agent.retryCount !== undefined && agent.lastFailureDetail ? (
+          <Box>
+            <Box width={LABEL_COL} />
+            <Text color="subtle" wrap="truncate-end">
+              {agent.lastFailureDetail.slice(0, PREVIEW_RENDER_MAX)}
+            </Text>
+          </Box>
+        ) : null}
         <Field label="tools">
           <Text>{agent.toolCount ?? 0} calls</Text>
         </Field>
@@ -86,10 +144,12 @@ export function AgentDetail({ agent }: { agent: AgentProgress }): React.ReactNod
 
       {failed ? (
         <Box marginTop={1} flexDirection="column">
-          <Text color="error" bold>
-            Failure
+          <Text color={reaped ? 'subtle' : 'error'} bold>
+            {reaped ? 'Stopped' : 'Failure'}
           </Text>
-          <Text color="error">{FAILURE_REASON_TEXT[agent.failureReason ?? 'unknown'] ?? agent.failureReason}</Text>
+          <Text color={reaped ? 'subtle' : 'error'}>
+            {FAILURE_REASON_TEXT[agent.failureReason ?? 'unknown'] ?? agent.failureReason}
+          </Text>
           {agent.retryable === false ? (
             <Text color="subtle">Deterministic — re-running the identical call cannot succeed.</Text>
           ) : null}
@@ -114,7 +174,15 @@ export function AgentDetail({ agent }: { agent: AgentProgress }): React.ReactNod
 
       {agent.status === 'running' ? (
         <Box marginTop={1}>
-          <Text color="subtle">Still running — token and tool counts update live.</Text>
+          {/* During a backoff nothing is moving, so promising live counts is a lie —
+              and the frozen numbers are exactly what made a retrying agent look hung. */}
+          <Text color="subtle">
+            {backingOff
+              ? `Waiting to retry — attempt ${retryAttemptLabel(agent)} starts after a ${formatDuration(
+                  agent.retryDelayMs ?? 0,
+                )} backoff.`
+              : 'Still running — token and tool counts update live.'}
+          </Text>
         </Box>
       ) : null}
     </Box>

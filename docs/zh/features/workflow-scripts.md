@@ -82,7 +82,7 @@ workflow 脚本内可用的钩子（语义详见引擎包 `engine/hooks.ts`）�
 | `log(msg)` | 进度日志（面板展示，无状态变更） |
 | `workflow(name \| { scriptPath }, args?)` | 嵌套一层子 workflow（仅允许一层） |
 
-**硬限**：单次 `parallel`/`pipeline` ≤ `MAX_ITEMS_PER_CALL`（4096）；单 workflow 总 agent ≤ `MAX_TOTAL_AGENTS`（1000）；并发 cap 默认 = `DEFAULT_MAX_CONCURRENCY`（3），可经 Workflow 工具的 `maxConcurrency` 入参覆盖，绝对上限 `MAX_CONCURRENCY_CAP`（16）。
+**硬限**：单次 `parallel`/`pipeline` ≤ `MAX_ITEMS_PER_CALL`（4096）；单 workflow 总 agent ≤ `MAX_TOTAL_AGENTS`（1000）；并发 cap 默认 = `DEFAULT_MAX_CONCURRENCY`（6），可经 Workflow 工具的 `maxConcurrency` 入参覆盖，绝对上限 `MAX_CONCURRENCY_CAP`（16）。
 
 ## 四、编写 workflow
 
@@ -137,7 +137,7 @@ return results.flat().filter(Boolean)
 | `scriptPath` | 脚本文件路径 |
 | `args` | 透传给脚本的 `args`（任意 JSON 值） |
 | `resumeFromRunId` | 从既有 runId 重放（成功的 `agent()` 秒回缓存；**失败（dead）条目重跑**；发散点后现场重跑） |
-| `maxConcurrency` | per-run 并发覆盖（钳到 `[1, 16]`） |
+| `maxConcurrency` | per-run 并发覆盖（钳到 `[1, 16]`）；省略时用 `OCC_WORKFLOW_MAX_CONCURRENCY`，再省略才是引擎默认 6 |
 
 ## 六、监控面板：`/workflows`
 
@@ -145,8 +145,12 @@ return results.flat().filter(Boolean)
 
 - **顶部 tabs**：每个 run 一个 tab（状态圆点 + workflow 名 + `#runId短码`）；同名脚本多次跑会多个 tab。
 - **左 phase 侧栏**：`All` + 合并 meta 声明的 phase（未启动 `○` pending 灰）与实际 phase（`●` running / `✓` done）；选中即决定右栏筛选。
-- **右 agent 列表**：按选中 phase 过滤，再按状态筛选（`f` 循环 all → running → done → failed，非 all 时标题追加 `· <filter> only`）；每行 = 状态色标记 + label（28 字宽，`#N` 后缀保留）+ `model · Nk tok` + 右对齐时长列。模型名已短化（`us.anthropic.claude-sonnet-5-20260101` → `sonnet-5`），**逐行工具调用数已移入 agent 详情**——列宽留给 label 更有用。
-- **右 agent 详情**：在 agent 列表上按 `↵` 或 `→` 进入，右栏整块替换为选中 agent 的状态视图：status / phase / model / elapsed / context tok / output tok / tool calls，失败时额外给出**失败原因**（引擎的 `no-structured-output`、`prompt-too-long`、`api-error` … 译成人话）、`retryable:false` 的「确定性失败，重跑同样的调用不会成功」提示与引擎 detail，成功时给出返回值预览（对象/文本，store 侧截断至 400 字符）。详情里 `↑`/`↓` 直接换到上/下一个 agent，无需退回列表。
+- **右 agent 列表**：按选中 phase 过滤，再按状态筛选（`f` 循环 all → running → done → failed，非 all 时标题追加 `· <filter> only`）；每行 = 状态色标记 + label（28 **列显示宽**，`#N` 后缀保留）+ `model · Nk tok` + 右对齐时长列。模型名已短化（`us.anthropic.claude-sonnet-5-20260101` → `sonnet-5`），**逐行工具调用数已移入 agent 详情**——列宽留给 label 更有用。
+  - **标记语义**：`●`（spinner）running · `✓` done·ok · `✗` done·dead（引擎判定的失败）· `⊘` skipped（用户跳过）· `⊘` **stopped**。最后一种是 run 自己走到终态时仍在跑、被 `run_done` 收割的 agent（`run-killed` / `run-failed` / `run-ended`）：它们没产出结果，但也不是自己失败的，渲染成红 `✗ failed` 等于告诉刚按下 `K` 的用户「你的 kill 失败了」。
+  - **重试态**：引擎处于退避（backoff）期间，行首 spinner 冻结为 `↻`，右侧 `model · Nk tok` 换成 `↻ n/m <reason>`（第 n 次尝试 / 上限 m，原因截断到 14 列）。退避窗口按 `retryingSince + retryDelayMs` 对墙钟判定——store 只上报退避的**开始**，从不上报结束。退避一结束即恢复常规显示；完整重试历史见 agent 详情的 `retries` 字段。
+  - **筛选口径**：`failed` 桶取 `resultKind === 'dead'`，因此**也包含** `⊘ stopped` 的被收割 agent（收窄谓词会让它们从所有筛选里消失），标题相应写作 `· failed/stopped only`。
+  - **行宽不变式**：每行恒为一行。两列都声明 `truncate-end`，窄终端下先让 label、再让 meta 让位，绝不折行——一旦折行，选中行的高亮底色会把两行都刷上，看起来像断成两截。phase 侧栏同理。
+- **右 agent 详情**：在 agent 列表上按 `↵` 或 `→` 进入，右栏整块替换为选中 agent 的状态视图：status / phase / model / elapsed / context tok / output tok / tool calls / **retries**（`2/3 (api-error)`，仅在发生过重试时出现；`lastFailureDetail` 有值时另起一行附上）。失败时额外给出**失败原因**（引擎的 `no-structured-output`、`prompt-too-long`、`api-error` … 译成人话）、`retryable:false` 的「确定性失败，重跑同样的调用不会成功」提示与引擎 detail；被 run 收割的 agent 走中性的 **`Stopped`** 块而非红色 `Failure`，文案直说是随 workflow 停止的。退避期间底部提示从「计数实时更新」换成「等待重试 —— 第 n/m 次尝试将在 Xs 退避后开始」，因为退避时计数是冻结的。成功时给出返回值预览（对象/文本，store 侧截断至 400 字符）。详情里 `↑`/`↓` 直接换到上/下一个 agent，无需退回列表。
 
 **键位**：`Tab`/`Shift+Tab` 切 run · `←`/`→` 在 phases → agents → agent 详情之间进出 · `↵` 打开选中 agent 的详情 · `↑`/`↓` 区域内移动 · `f` 切状态筛选 · `r` resume · `x` kill 选中 agent · `K` kill 整个 workflow · `n` 新建提示 · `q`/`Esc` 退出。
 
@@ -158,7 +162,9 @@ return results.flat().filter(Boolean)
 
 ### 后台任务界面里的 workflow 详情
 
-`/tasks`（Shift+↓）后台任务列表中选中 workflow 条目进入 `WorkflowDetailDialog`（`src/components/tasks/WorkflowDetailDialog.tsx`）：与面板同源（同一 `ProgressStore`）的实时视图，单列布局 —— 状态头 + phase 行（`○/●/✓` + done/total）+ 逐 agent 行（spinner/`✓`/`✗`/`⊘` + label + `model · tok · tool`，复用面板 `AgentList`）。agent 列表按选中项开滑动窗口（`MAX_VISIBLE_AGENTS=10`，折叠行显示 `… N earlier/more`）。
+`/tasks`（Shift+↓）后台任务列表中选中 workflow 条目进入 `WorkflowDetailDialog`（`src/components/tasks/WorkflowDetailDialog.tsx`）：与面板同源（同一 `ProgressStore`）的实时视图，单列布局 —— 状态头 + phase 行（`○/●/✓` + done/total）+ 逐 agent 行（复用面板 `AgentList`，标记与重试态语义与 §六 完全一致：`model · Nk tok`，退避期间为 `↻ n/m reason`；逐行工具调用数在详情里）。agent 列表按选中项开滑动窗口（`MAX_VISIBLE_AGENTS=10`，折叠行显示 `… N earlier/more`）。
+
+对话框自身**不画边框**：内层 `Dialog` 渲染的 `Pane` 顶线就是唯一的框。外面再套一层 `borderStyle` 会让占满终端宽的分隔线在「边框 + padding」的盒子里溢出折行，顶部多出一截断头横线并把边框顶歪。根 `Box` 必须带 `autoFocus` —— ink 只向 `focusManager.activeElement`（回退到根节点）派发按键并向上冒泡，从任务列表进来时列表已卸载、activeElement 为 `null`，少了它整套 `onKeyDown` 键位（`←`/`↑`/`↓`/`↵`/`K`/`y`/`n`）会全部失灵，只剩全局注册的 `x` 与 `Esc` 还有反应。
 
 按 `↵`/`→` 同样可以钻进选中 agent 的详情（复用 `/workflows` 面板的 `AgentDetail`）——两个界面渲染的是同一个 run，导航手势不能互相打架。
 
@@ -176,11 +182,15 @@ return results.flat().filter(Boolean)
 - **journal 损坏处理**：逐行解析并保留已验证的有效前缀。只有位于**文件末尾、无结尾换行**的半行（进程被杀留下的）会被忽略并告警；中间行损坏或结构不符抛 `JournalCorruptionError`，不再静默当成"没有历史"——那等于把所有 checkpoint 丢掉重跑一遍，重复计费且重复外部副作用。`ENOENT` 之外的 I/O 错误照常抛出。
 - **journal 分歧与 `script.js`**：agent key 发散时先把有效前缀原子重写回盘再追加新记录，`truncate()` **只清 `journal.jsonl`**，同目录的 inline `script.js` 保留（inline → 编辑 → `scriptPath` resume 这条路才走得通）。整目录清理是独立的 `deleteRun()`。
 - **`resumeFromRunId` 格式约束**：只接受 `^[A-Za-z0-9_-]{1,128}$`，schema 与存储层双重校验。它是拼进 runs 目录的路径片段，而 `deleteRun()` 会递归删除该目录——不校验就等于把"恢复工作流"变成任意目录删除。
-- **agent 原地重试**：dead / 非 abort 抛错重试一次，重试前等 `AGENT_RETRY_BACKOFF_MS`（2s，abort 可打断）；**`retryable:false` 的确定性失败（如 `prompt-too-long`）不重试**——同样的调用重发必然再失败。
+- **agent 原地重试**：dead / 非 abort 抛错最多重试 `AGENT_MAX_RETRIES`（3）次，退避为 `AGENT_RETRY_BACKOFF_MS`（2s）× 2^(次数-1) + 至多 25% 抖动（`retryDelayMs()`，abort 可打断；抖动是为了让整批 `parallel` 别在同一时刻齐步重打同一个过载端点）。**`retryable:false` 的确定性失败不重试**：`prompt-too-long`（上下文放不下）；`worktree-failed` 的**多数**情况（不是 git 仓库、磁盘满、分支名被占——重发必然再失败）。唯一的例外是 **git 锁争用**（`index.lock': File exists` / `cannot lock ref`）：并发 agent 同时进入 isolation 会去 fetch/创建同一个 base ref，中间没有任何互斥，抢输的那个就死在锁上——**并发从 3 提到 6 反而放大了这个碰撞**，所以它必须保持可重试（`isGitLockContention()` 按 detail 判定）。`AGENT_MAX_RETRIES_BY_REASON` 可按死因收窄预算：`no-structured-output` 给 1 次（重试单位是一次**已经烧完 token 的完整 agent 跑**，连错两次基本是 schema/prompt 的问题而非手气）；`worktree-failed` 也给 1 次（锁要么一次退避就让开，要么就是有人长期占着，再试两次只是重跑 git 管道）。
+- **重试的可观测性**：每次重试 emit 一条 **`agent_retry` 事件**（`{agentId, attempt, limit, reason, detail, delayMs}`），**不是**第二条 `agent_started`——后者会把 store 里的 `startedAt` 清零，让一个已经重试了 14s 的 agent 显示成「刚开始」，比没有提示更糟。store 收到 `agent_retry` 后保留 `startedAt`（耗时持续累计），只更新 `retryCount`/`retryLimit`/`lastFailureReason`/`retryingSince`/`retryDelayMs` 供面板展示。`agent_started` 的「重启分支」只留给 run 级 journal resume（新 context 的 agentId 从 0 重新发号）。进度事件是瞬态的、**不进 journal**，因此不影响 resume。
+- **为什么引擎侧只有 3 次**：API 传输层对瞬态网络错误另有指数退避重试，两层预算是**相乘**的。引擎侧再设两位数会把一个卡住的端点变成几十分钟「看着还活着但毫无进展」的 workflow。引擎这 3 次兜的是传输层看不见的失败：被包装成普通消息的终局错误、adapter 自己抛的错。
 - **run 级自动断点续传**：脚本执行失败（常见于 dead agent 的 `null` 在脚本里炸出 TypeError）时**自动用 journal resume 重试一次**：成功的 agent 全部秒回，只重跑失败的。`WorkflowError`（配置/上限类，确定性）与 `BudgetExhaustedError`（新 context 会重置 spent 导致超支）不触发；`autoRetryOnFailure:false` 可关。
 - **API 错误分类**（`claudeCodeBackend`）：query 层把终局 API 错误包装成 `isApiErrorMessage` 的 assistant 消息（不抛错），backend 显式识别 → `dead`，`reason: 'prompt-too-long'`（`retryable:false`）或 `'api-error'`（瞬态，可重试）。修复前该错误文本会在非 schema 模式被伪装成 agent 的正常输出。529 过载则由 API 层带指数退避重试（`'workflow'` 已加入 `FOREGROUND_529_RETRY_SOURCES`）。
 - **budget**：`budget.total` 为 token 硬顶（默认 `null` = 无限）；`budget.spent()` / `budget.remaining()` 读实时消耗；耗尽后再发 `agent()` 抛错。
-- **并发**：引擎 `Semaphore` 默认许可 3（`DEFAULT_MAX_CONCURRENCY`），可经 Workflow 工具的 `maxConcurrency` 入参 per-run 覆盖（钳到 `[1, MAX_CONCURRENCY_CAP=16]`）。
+- **并发**：引擎 `Semaphore` 默认许可 6（`DEFAULT_MAX_CONCURRENCY`，2026-08 由 3 提升——3 会让典型 fan-out（8~20 项的 `parallel`）大半时间排在信号量后面，而真正的天花板在上游：Agent 工具自己的并发 spawn 预算 20 与 provider 限流）。优先级：`maxConcurrency` 入参 > `OCC_WORKFLOW_MAX_CONCURRENCY`（host 侧读取，引擎包保持零 `process.env` 依赖）> 默认值，最终都经 `clampMaxConcurrency` 钳到 `[1, MAX_CONCURRENCY_CAP=16]`。工具 prompt 里报的是**生效后**的默认值（`buildWorkflowToolPrompt` 按 descriptor 现算），schema describe 因为是模块级单例只能报编译进去的常量。
+- **重试会花 spawn 预算**：每次引擎重试都是一次真正的 subagent spawn，与 Agent 工具共用宿主的 session 累计预算（`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`，默认 200）与并发上限（默认 20）。一个反复失败的 fan-out 最多能花掉 4 倍于其 agent 数的配额。
+- **run 结束时的清扫**：`run_done` 到达时 store 把仍处于 `running` 的 agent 一次性收成终态（`resultKind:'dead'`、`failureReason:'run-killed'`/`'run-failed'`/`'run-ended'`）。被 kill 的 run 会在 agent 跑到一半（甚至正卡在重试退避里）就拆掉引擎，那些 agent 永远等不到自己的 `agent_done`，不扫就会在面板上无限转圈、计时器一直涨。
 - **错误**：脚本语法/meta 错 → `parseScript` 即时返错（不进后台）；agent 抛错 → `kind:'dead'` → `null`，workflow 继续（`parallel`/`pipeline` 容错，但 **`WorkflowAbortedError` 会穿透**——kill 必须终止 run）；`WorkflowAbortedError` → `killed`。
 
 ## 九、文件索引

@@ -47,16 +47,28 @@ export function PhaseSidebar({
         const mark = running ? frame : row.status ? PHASE_MARK[row.status] : ' ';
         const color = (row.status ? PHASE_COLOR[row.status] : 'subtle') as keyof Theme;
         return (
-          <Box key={row.title} backgroundColor={highlighted ? 'selectionBg' : undefined} justifyContent="space-between">
-            <Box>
-              <Text color={selected ? 'claude' : undefined}>{highlighted ? '>' : ' '}</Text>
-              <Text> </Text>
-              <Text color={color}>{mark}</Text>
-              <Text> {row.title}</Text>
+          <Box
+            key={row.title}
+            width="100%"
+            backgroundColor={highlighted ? 'selectionBg' : undefined}
+            justifyContent="space-between"
+          >
+            {/* One line per row, always: the sidebar is 25% of the terminal, so a long
+                (or CJK, i.e. double-width) phase title used to wrap and the selection
+                background painted both lines. The title yields first; the counter only
+                truncates once the sidebar is narrower than the counter itself. Both need
+                truncate-end — the default wrap is what put the row on two lines. */}
+            <Box flexShrink={1}>
+              <Text wrap="truncate-end">
+                <Text color={selected ? 'claude' : undefined}>{highlighted ? '>' : ' '}</Text>{' '}
+                <Text color={color}>{mark}</Text> {row.title}
+              </Text>
             </Box>
-            <Text color="subtle">
-              {row.done}/{row.total}
-            </Text>
+            <Box flexShrink={0} marginLeft={1}>
+              <Text color="subtle" wrap="truncate-end">
+                {row.done}/{row.total}
+              </Text>
+            </Box>
           </Box>
         );
       })}

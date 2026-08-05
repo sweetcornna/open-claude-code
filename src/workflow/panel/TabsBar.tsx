@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from '@anthropic/ink';
+import { Box, Text, stringWidth } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
 import type { RunProgress } from '../progress/store.js';
 import { RUN_STATUS_COLOR, STATUS_DOT } from './status.js';
@@ -37,7 +37,10 @@ export function TabsBar({ runs, activeRunId }: { runs: RunProgress[]; activeRunI
       {visible.map(r => {
         const active = r.runId === activeRunId;
         const label = truncateLabel(tabLabel(r.workflowName, r.runId), TAB_LABEL_MAX);
-        const underline = '═'.repeat(label.length + 2);
+        // Display columns, not code units: `.length` under-counts CJK (and the `…`
+        // that truncateLabel inserts), so the underline stopped short of the label
+        // it is supposed to sit under.  +2 covers the status dot and its space.
+        const underline = '═'.repeat(stringWidth(label) + 2);
         return (
           <Box key={r.runId} flexDirection="column" marginRight={2}>
             <Box>
@@ -47,14 +50,20 @@ export function TabsBar({ runs, activeRunId }: { runs: RunProgress[]; activeRunI
                 {label}
               </Text>
             </Box>
-            <Text color={active ? 'claude' : undefined}>{active ? underline : ''}</Text>
+            {/* Underline row, active tab only. (Rendering `<Text>{''}</Text>` for the
+                inactive ones was equivalent — ink gives an empty Text zero rows — but
+                saying so with `null` keeps it from reading like a height placeholder.) */}
+            {active ? <Text color="claude">{underline}</Text> : null}
           </Box>
         );
       })}
       {overflow > 0 ? (
         <Box flexDirection="column" marginRight={2}>
+          {/* No second row here: this column used to carry a `<Text> </Text>` spacer,
+              and a Text holding a *space* is one row tall — so whenever runs overflowed,
+              the tab bar grew a blank line under it. The row Box stretches the columns
+              to equal height on its own. */}
           <Text color="subtle">+{overflow}</Text>
-          <Text> </Text>
         </Box>
       ) : null}
     </Box>
