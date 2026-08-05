@@ -70,6 +70,53 @@ export function getTaskStatusColor(
 }
 
 /**
+ * Semantic color for the status dot in the background-agent selector.
+ *
+ * Deliberately NOT `getTaskStatusColor`: that one maps "running" to the
+ * `background` token, which is cyan in every shipped theme — it reads as an
+ * accent, not as a neutral. The selector's dot encodes *status only* (the
+ * selection affordance is the pointer + bold), so running must be a quiet
+ * gray and the terminal states must be the usual green/red/amber.
+ */
+export function getAgentStatusDotColor(status: TaskStatus): 'inactive' | 'success' | 'error' | 'warning' {
+  switch (status) {
+    case 'completed':
+      return 'success';
+    case 'failed':
+      return 'error';
+    case 'killed':
+      return 'warning';
+    default:
+      // running / pending — in flight, stay neutral
+      return 'inactive';
+  }
+}
+
+/**
+ * What a local agent is doing *right now*, falling back to what it was asked
+ * to do. Shared by every surface that renders a local_agent row
+ * (BackgroundAgentSelector, BackgroundTask pill, BackgroundTasksDialog).
+ *
+ * `progress.summary` is the periodic AI summary (only populated when agent
+ * summarization is enabled — off in the plain TUI). `lastActivity` is refreshed
+ * on every assistant message by updateProgressFromMessage, so it is the live
+ * signal in normal sessions. `description` is the spawn-time string.
+ *
+ * Once the agent reaches a terminal state the live activity is deliberately
+ * dropped: a finished row reading "Reading src/foo.ts" is a snapshot of the
+ * last thing it did and reads like it is still running. The task it was given
+ * is the useful label for a finished agent.
+ */
+export function getAgentRowDescription(task: {
+  status: TaskStatus;
+  description: string;
+  progress?: { summary?: string; lastActivity?: { activityDescription?: string } };
+}): string {
+  if (isTerminalStatus(task.status)) return task.description;
+  return task.progress?.summary ?? task.progress?.lastActivity?.activityDescription ?? task.description;
+}
+
+/**
  * Derives a human-readable activity string for an in-process teammate,
  * accounting for shutdown/approval/idle states and falling back through
  * recent-activity summary → last activity description → 'working'.

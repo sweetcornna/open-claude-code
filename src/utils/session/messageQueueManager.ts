@@ -138,6 +138,15 @@ export function enqueue(command: QueuedCommand): void {
  * Add a task notification to the queue.
  * Convenience wrapper that defaults priority to 'later' so user input
  * is never starved by system messages.
+ *
+ * Task *completion* notifications (agent / shell / workflow / remote) override
+ * this and pass 'next' explicitly, because only 'next' is visible to query.ts's
+ * mid-turn drain — on 'later' a finished background agent stays silent until
+ * the whole turn ends. The deliberate consequence is that those notifications
+ * now sit at the same priority as queued user input and are ordered FIFO
+ * against it, so a notification enqueued before a queued prompt is processed
+ * first. That one-turn delay is the accepted cost of same-turn delivery; keep
+ * 'later' for anything that is not a terminal outcome.
  */
 export function enqueuePendingNotification(command: QueuedCommand): void {
   commandQueue.push({ ...command, priority: command.priority ?? 'later' })

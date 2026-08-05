@@ -286,7 +286,16 @@ function enqueueTaskNotification(attachment: TaskAttachment): void {
 <${SUMMARY_TAG}>Task "${attachment.description}" ${statusText}</${SUMMARY_TAG}>
 </${TASK_NOTIFICATION_TAG}>`
 
-  enqueuePendingNotification({ value: message, mode: 'task-notification' })
+  // Priority 'next' so the mid-turn drain in query.ts picks this up at the
+  // next tool-round boundary (matches LocalShellTask / LocalAgentTask).
+  // NOTE: generateTaskAttachments currently never pushes to `attachments`
+  // (each task type owns its own completion notification), so this path is
+  // dormant — kept consistent so a future revival behaves like the others.
+  enqueuePendingNotification({
+    value: message,
+    mode: 'task-notification',
+    priority: 'next',
+  })
 }
 
 /**

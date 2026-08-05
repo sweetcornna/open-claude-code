@@ -33,9 +33,19 @@ const TERMINAL_STATUSES: ReadonlySet<RunProgress['status']> = new Set([
   'killed',
 ])
 
-/** Default notifier: uses the host message queue's task-notification mode. */
+/**
+ * Default notifier: uses the host message queue's task-notification mode.
+ *
+ * Priority 'next' so the mid-turn drain in query.ts picks it up at the next
+ * tool-round boundary instead of leaving it for the end-of-turn queue
+ * processor. Same rationale as LocalShellTask / LocalAgentTask.
+ */
 const defaultNotifier: WorkflowNotifier = message => {
-  enqueuePendingNotification({ value: message, mode: 'task-notification' })
+  enqueuePendingNotification({
+    value: message,
+    mode: 'task-notification',
+    priority: 'next',
+  })
 }
 
 export function installWorkflowNotifications(

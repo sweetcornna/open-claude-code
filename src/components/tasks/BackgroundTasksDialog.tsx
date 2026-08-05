@@ -36,6 +36,7 @@ import { DreamDetailDialog } from './DreamDetailDialog.js';
 import { InProcessTeammateDetailDialog } from './InProcessTeammateDetailDialog.js';
 import { RemoteSessionDetailDialog } from './RemoteSessionDetailDialog.js';
 import { ShellDetailDialog } from './ShellDetailDialog.js';
+import { getAgentRowDescription } from './taskStatusUtils.js';
 
 type ViewState = { mode: 'list' } | { mode: 'detail'; itemId: string };
 
@@ -714,7 +715,7 @@ function toListItem(task: BackgroundTaskState): ListItem {
       return {
         id: task.id,
         type: 'local_agent',
-        label: task.description,
+        label: getAgentRowDescription(task),
         status: task.status,
         task,
       };

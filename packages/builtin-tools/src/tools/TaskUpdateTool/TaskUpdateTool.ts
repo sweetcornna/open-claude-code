@@ -15,6 +15,7 @@ import {
   getTaskListId,
   isTodoV2Enabled,
   listTasks,
+  stripAgentTag,
   type TaskStatus,
   TaskStatusSchema,
   updateTask,
@@ -199,7 +200,13 @@ export const TaskUpdateTool = buildTool({
     }
     if (metadata !== undefined) {
       const merged = { ...(existingTask.metadata ?? {}) }
-      for (const [key, value] of Object.entries(metadata)) {
+      // `_agentId` is host-owned (written only by TaskCreate from
+      // context.agentId). Ignore it in both directions here: setting it would
+      // let the model hide a main-thread task from the user, and deleting it
+      // would let a subagent push its private bookkeeping into that same UI.
+      for (const [key, value] of Object.entries(
+        stripAgentTag(metadata) ?? {},
+      )) {
         if (value === null) {
           delete merged[key]
         } else {

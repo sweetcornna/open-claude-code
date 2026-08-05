@@ -217,6 +217,93 @@ export function getTaskListId(): string {
 }
 
 /**
+ * Metadata key recording which subagent owns a task.
+ *
+ * V2 tasks live in a per-task-list *directory*, and getTaskListId() has no
+ * agent dimension — so a synchronous subagent (which is handed the full
+ * TaskCreate/TaskUpdate/TaskList/TaskGet set by filterToolsForAgent) writes
+ * straight into the parent session's list, and its private breakdown shows up
+ * in the user's todo UI. V1 TodoWrite never had this problem because it keys
+ * on `context.agentId ?? sessionId`.
+ *
+ * Rather than take the tools away (subagents legitimately use them to organize
+ * themselves), tasks are *tagged* on create and *filtered* on the way out.
+ *
+ * The leading underscore follows the `_internal` convention and is load-bearing:
+ * TaskCreate's `metadata` is a model-controlled `z.record`, so an unprefixed
+ * `agentId` key would let the model hide a main-thread task from the user
+ * forever just by passing it. Writers MUST strip a model-supplied value of this
+ * key before merging (see TaskCreateTool).
+ */
+export const TASK_AGENT_ID_METADATA_KEY = '_agentId'
+
+/**
+ * True when the resolved task list is shared with other agents by design
+ * (team coordination) instead of being this session's private list.
+ *
+ * Teams are the whole point of a shared list — TeamCreate/teammates coordinate
+ * through it (see IN_PROCESS_TEAMMATE_ALLOWED_TOOLS). Tagging there would hide
+ * teammates' tasks from the leader, so tagging is suppressed entirely.
+ */
+function isSharedTaskList(): boolean {
+  return getTaskListId() !== getSessionId()
+}
+
+/**
+ * The agent tag to stamp onto a task being created, or undefined when the task
+ * must stay untagged (main thread, or any shared/team task list).
+ *
+ * KNOWN COST of the shared-list rule: while a team is active (TeamCreate,
+ * `CLAUDE_CODE_TEAM_NAME`, or an explicit `CLAUDE_CODE_TASK_LIST_ID`), nothing
+ * is tagged, so a plain subagent's private breakdown is once again visible in
+ * the shared list. That is deliberate — mis-tagging inside a team would hide a
+ * teammate's real work, which is strictly worse than showing extra rows. The
+ * same gap means `useTaskListWatcher` ("tasks mode", which only ever runs
+ * against an explicit task list id) can still claim and execute a subagent's
+ * private task; it is unchanged by this filter and unchanged from before.
+ */
+export function getTaskAgentTag(
+  agentId: string | undefined,
+): string | undefined {
+  if (!agentId) return undefined
+  if (isSharedTaskList()) return undefined
+  return agentId
+}
+
+/**
+ * Drop tasks owned by *other* agents. Untagged tasks are always visible, so
+ * a subagent still sees (and can update) the main thread's list; the main
+ * thread — which passes `undefined` — never sees subagent bookkeeping.
+ */
+export function filterTasksForAgent<
+  T extends { metadata?: Record<string, unknown> },
+>(tasks: T[], agentId: string | undefined): T[] {
+  return tasks.filter(task => {
+    const owner = task.metadata?.[TASK_AGENT_ID_METADATA_KEY]
+    return typeof owner !== 'string' || owner === agentId
+  })
+}
+
+/** True when this task belongs to a subagent (i.e. carries a valid tag). */
+export function isAgentScopedTask(task: {
+  metadata?: Record<string, unknown>
+}): boolean {
+  return typeof task.metadata?.[TASK_AGENT_ID_METADATA_KEY] === 'string'
+}
+
+/**
+ * Strip a model-supplied `_agentId` from a metadata bag. The key is owned by
+ * the host: only TaskCreate may write it, and only from `context.agentId`.
+ */
+export function stripAgentTag(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!metadata || !(TASK_AGENT_ID_METADATA_KEY in metadata)) return metadata
+  const { [TASK_AGENT_ID_METADATA_KEY]: _forged, ...rest } = metadata
+  return rest
+}
+
+/**
  * Sanitizes a string for safe use in file paths.
  * Removes path traversal characters and other potentially dangerous characters.
  * Only allows alphanumeric characters, hyphens, and underscores.

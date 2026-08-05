@@ -1,20 +1,28 @@
 import { Box, Text } from '@anthropic/ink';
+import figures from 'figures';
 import { useBackgroundAgentTasks } from '../../hooks/useBackgroundAgentTasks.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { useAppState } from '../../state/AppState.js';
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 import { formatTokens } from '../../utils/text/format.js';
+import { getAgentRowDescription, getAgentStatusDotColor } from './taskStatusUtils.js';
 
-function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boolean }) {
+/** Status dot. Always filled — the glyph carries status via color, not shape. */
+const STATUS_DOT = '●';
+
+const SELECTED_PREFIX = `${figures.pointer} `;
+const UNSELECTED_PREFIX = '  ';
+
+export function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boolean }): React.ReactNode {
   const elapsed = useElapsedTime(task.startTime, task.status === 'running');
   const tokens = task.progress?.tokenCount ?? 0;
-  const isRunning = task.status === 'running';
   return (
     <Box flexDirection="row" width="100%" justifyContent="space-between">
       <Box flexDirection="row" flexShrink={1}>
-        <Text color={isRunning ? 'success' : undefined}>{selected ? '● ' : '○ '}</Text>
+        <Text bold={selected}>{selected ? SELECTED_PREFIX : UNSELECTED_PREFIX}</Text>
+        <Text color={getAgentStatusDotColor(task.status)}>{STATUS_DOT} </Text>
         <Text bold={selected} wrap="truncate-end">
-          {task.agentType} <Text dimColor>{task.description}</Text>
+          {task.agentType} <Text dimColor>{getAgentRowDescription(task)}</Text>
         </Text>
       </Box>
       <Box flexShrink={0}>
@@ -52,7 +60,11 @@ export function BackgroundAgentSelector(): React.ReactNode {
   return (
     <Box flexDirection="column" width="100%">
       <Box flexDirection="row" width="100%" justifyContent="space-between">
-        <Text bold={mainHighlighted}>{mainHighlighted ? '● ' : '○ '}main</Text>
+        {/* Main row stays neutral — it has no agent status to report. */}
+        <Text bold={mainHighlighted}>
+          {mainHighlighted ? SELECTED_PREFIX : UNSELECTED_PREFIX}
+          {STATUS_DOT} main
+        </Text>
         <Text dimColor>{getHint(pillFocused, viewedTask)}</Text>
       </Box>
       {tasks.map(task => (

@@ -8,8 +8,11 @@ import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import {
   createTask,
   deleteTask,
+  getTaskAgentTag,
   getTaskListId,
   isTodoV2Enabled,
+  stripAgentTag,
+  TASK_AGENT_ID_METADATA_KEY,
 } from 'src/utils/task/tasks.js'
 import { getAgentName, getTeamName } from 'src/utils/agents/teammate.js'
 import { TASK_CREATE_TOOL_NAME } from './constants.js'
@@ -78,7 +81,23 @@ export const TaskCreateTool = buildTool({
     return null
   },
   async call({ subject, description, activeForm, metadata }, context) {
-    const taskId = await createTask(getTaskListId(), {
+    const taskListId = getTaskListId()
+
+    // Tag tasks a subagent creates for itself so the main session's todo UI,
+    // reminders and TaskList don't absorb the subagent's private breakdown.
+    // Returns undefined on the main thread and on shared/team task lists,
+    // where the list is meant to be common ground.
+    //
+    // `metadata` is a model-controlled z.record, so the incoming bag is
+    // stripped of `_agentId` first: without that, a model could hide any
+    // main-thread task from the user permanently by forging the key.
+    const agentTag = getTaskAgentTag(context.agentId)
+    const hostOwnedMetadata = stripAgentTag(metadata)
+    const taskMetadata = agentTag
+      ? { ...hostOwnedMetadata, [TASK_AGENT_ID_METADATA_KEY]: agentTag }
+      : hostOwnedMetadata
+
+    const taskId = await createTask(taskListId, {
       subject,
       description,
       activeForm,
@@ -86,7 +105,7 @@ export const TaskCreateTool = buildTool({
       owner: undefined,
       blocks: [],
       blockedBy: [],
-      metadata,
+      metadata: taskMetadata,
     })
 
     const blockingErrors: string[] = []
@@ -108,7 +127,7 @@ export const TaskCreateTool = buildTool({
     }
 
     if (blockingErrors.length > 0) {
-      await deleteTask(getTaskListId(), taskId)
+      await deleteTask(taskListId, taskId)
       throw new Error(blockingErrors.join('\n'))
     }
 

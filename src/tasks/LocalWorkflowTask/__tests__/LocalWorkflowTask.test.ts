@@ -1,39 +1,45 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQueueManager.js'
+import { setupTaskDiskOutputMock } from '../../../../tests/mocks/taskDiskOutput.js'
 
 // ─── Mocks（仅 mock 有副作用的依赖链）───
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('src/utils/telemetry/log.ts', logMock)
 
-mock.module('src/constants/xml.js', () => ({
-  TASK_NOTIFICATION_TAG: 'task_notification',
-  TASK_ID_TAG: 'task_id',
-  TOOL_USE_ID_TAG: 'tool_use_id',
-  OUTPUT_FILE_TAG: 'output_file',
-  STATUS_TAG: 'status',
-  SUMMARY_TAG: 'summary',
-  WORKTREE_TAG: 'worktree',
-  WORKTREE_PATH_TAG: 'worktree_path',
-  WORKTREE_BRANCH_TAG: 'worktree_branch',
-  TASK_TYPE_TAG: 'task_type',
-}))
+// src/constants/xml.js is deliberately NOT mocked: it is a pure data module
+// (CLAUDE.md), and the old 10-key partial surface broke every later import of
+// the module's other tags in the same process — mock.module is process-global
+// and last-write-wins, so a co-running suite hit
+// "Export named 'COMMAND_ARGS_TAG' not found".
 
-mock.module('src/utils/session/messageQueueManager.js', () => ({
-  enqueuePendingNotification: () => {},
-}))
+// Shared complete-surface mocks: setup() at module load installs the all-real
+// delegating surface, overrides live only for this file's tests (beforeAll →
+// afterAll). Delegation resolves at call time, so the module under test can be
+// imported before beforeAll runs.
+const messageQueueManagerMock = setupMessageQueueManagerMock()
+const diskOutputMock = setupTaskDiskOutputMock()
 
 mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: () => {},
 }))
 
-mock.module('src/utils/task/diskOutput.js', () => ({
-  getTaskOutputDelta: async () => null,
-  getTaskOutputPath: (id: string) => `/tmp/${id}`,
-  evictTaskOutput: () => {},
-  initTaskOutputAsSymlink: async () => {},
-}))
+beforeAll(() => {
+  messageQueueManagerMock.set({ enqueuePendingNotification: () => {} })
+  diskOutputMock.set({
+    getTaskOutputDelta: async () => ({ content: '', newOffset: 0 }),
+    getTaskOutputPath: (id: string) => `/tmp/${id}`,
+    evictTaskOutput: async () => {},
+    initTaskOutputAsSymlink: async () => '',
+  })
+})
+
+afterAll(() => {
+  messageQueueManagerMock.reset()
+  diskOutputMock.reset()
+})
 
 // ─── Import after mocks ───
 
