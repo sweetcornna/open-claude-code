@@ -85,6 +85,24 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 这条链路只在 `OPENAI_WIRE_API=responses` 时启用，Chat Completions 的消息体不会出现这个字段（严格端点会拒未知键）。
 
+## 五点六、GPT 调优（仅 openai provider + GPT 家族模型生效）
+
+接 GPT 模型时（`modelType:'openai'` 且解析后的模型 id 以 `gpt-` 开头或含 `codex`；Claude 别名如 `/model opus` 会先经模型映射再判定），occ 参照 OpenAI Codex CLI 做三层收敛。**Anthropic 路径与 openai 层跑非 GPT 模型（DeepSeek/GLM 等）完全不受影响。**
+
+**行为提示词**：system prompt 末尾追加一段 GPT 执行纪律 overlay（少计划、不自审、不派审查子代理、压缩最终回复）；`EnterPlanMode`/`Agent` 工具描述与 plan mode 指令切换到克制版文案——针对 GPT 把"鼓励计划/鼓励子代理"条款当硬性命令执行的问题。
+
+**请求参数默认值**（用户显式设置永远优先）：
+
+- reasoning effort：未设置时 `gpt-5.6-sol` 默认 `low`（对齐 codex："Sol is highly capable at lower reasoning efforts"），其余 GPT 模型默认 `medium`。用 `CLAUDE_CODE_EFFORT_LEVEL` 或 `/model` 的 effort 档覆盖。
+- `text.verbosity`：responses 线对 GPT 模型默认发 `low`（ChatGPT OAuth 路由与官方 baseURL；第三方网关默认不发）。`OPENAI_VERBOSITY=low|medium|high` 强制指定并对任意端点放行，`=off` 强制不发。
+- 内部分类器（side query）对 GPT 模型显式用 `low` effort，不再落到服务端默认 medium。
+
+**网络层**（responses 线此前是裸 fetch，无超时无重试）：
+
+- 建流重试：指数退避（200ms 起步、2 倍增长、±10% 抖动、尊重 `Retry-After`），对网络错误/5xx/408/带 `Retry-After` 的 429 重试，默认 4 次，`OPENAI_REQUEST_MAX_RETRIES` 覆盖。
+- 空闲看门狗：复用 `CLAUDE_STREAM_IDLE_TIMEOUT_MS`（默认 90s），首事件前 stall 自动重试整个请求。
+- responses 线接入代理配置（`HTTPS_PROXY` 等此前在 Bun 下对这条线不生效）；chat 线 SDK 客户端默认重试 0 → 2。
+
 ## 六、Provider 档案
 
 `/provider save <name>` 把当前整组 env 快照成档案，`/provider use <name>` 全形状切换（先清全部家族键再写目标，含 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`）。多模型来回切换的推荐方式。

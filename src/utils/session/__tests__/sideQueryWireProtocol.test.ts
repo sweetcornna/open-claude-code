@@ -6,8 +6,8 @@
  * Chat Completions, so a Responses-only upstream rejected them — the session
  * looked configured for `/responses` while half its traffic was not.
  *
- * The check is end-to-end over a real local HTTP server: what matters is the
- * PATH the request lands on, which no amount of function-level mocking proves.
+ * The check captures the real fetch boundary: what matters is the URL path and
+ * request body produced after the complete side-query routing stack runs.
  */
 
 import {
@@ -41,8 +41,8 @@ const CHAT_COMPLETION_JSON = JSON.stringify({
 })
 
 const hits: string[] = []
-let server: ReturnType<typeof Bun.serve> | undefined
 let requestBodies: Array<Record<string, unknown>> = []
+let originalFetch: typeof globalThis.fetch
 
 const savedEnv: Record<string, string | undefined> = {}
 const ENV_KEYS = [
@@ -56,27 +56,32 @@ const ENV_KEYS = [
 
 beforeAll(() => {
   for (const key of ENV_KEYS) savedEnv[key] = process.env[key]
-
-  server = Bun.serve({
-    port: 0,
-    async fetch(request) {
-      const url = new URL(request.url)
-      hits.push(url.pathname)
-      requestBodies.push((await request.json()) as Record<string, unknown>)
-      if (url.pathname.endsWith('/responses')) {
-        return new Response(RESPONSES_SSE, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        })
-      }
-      return new Response(CHAT_COMPLETION_JSON, {
-        headers: { 'Content-Type': 'application/json' },
+  originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    hits.push(url.pathname)
+    const body =
+      input instanceof Request
+        ? await input.clone().text()
+        : typeof init?.body === 'string'
+          ? init.body
+          : ''
+    requestBodies.push(
+      body ? (JSON.parse(body) as Record<string, unknown>) : {},
+    )
+    if (url.pathname.endsWith('/responses')) {
+      return new Response(RESPONSES_SSE, {
+        headers: { 'Content-Type': 'text/event-stream' },
       })
-    },
-  })
+    }
+    return new Response(CHAT_COMPLETION_JSON, {
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as unknown as typeof fetch
 
   process.env.CLAUDE_CODE_USE_OPENAI = '1'
   process.env.OPENAI_API_KEY = 'sk-test'
-  process.env.OPENAI_BASE_URL = `http://127.0.0.1:${server.port}/v1`
+  process.env.OPENAI_BASE_URL = 'http://openai.test/v1'
   process.env.OPENAI_MODEL = 'test-model'
   delete process.env.OPENAI_AUTH_MODE
 })
@@ -86,8 +91,12 @@ afterEach(() => {
   requestBodies = []
 })
 
-afterAll(() => {
-  server?.stop(true)
+afterAll(async () => {
+  globalThis.fetch = originalFetch
+  const { clearOpenAIClientCache } = await import(
+    '../../../services/api/openai/client.js'
+  )
+  clearOpenAIClientCache()
   for (const key of ENV_KEYS) {
     const value = savedEnv[key]
     if (value === undefined) delete process.env[key]
@@ -117,6 +126,17 @@ describe('sideQuery wire protocol', () => {
     await runSideQuery()
     // max_tokens: 16 would be entirely consumed by reasoning tokens.
     expect(requestBodies[0]?.max_output_tokens).toBe(4096)
+  })
+
+  test('GPT-family responses side queries explicitly use low reasoning', async () => {
+    process.env.OPENAI_WIRE_API = 'responses'
+    process.env.OPENAI_MODEL = 'gpt-5.6-sol'
+    try {
+      await runSideQuery()
+      expect(requestBodies[0]?.reasoning).toEqual({ effort: 'low' })
+    } finally {
+      process.env.OPENAI_MODEL = 'test-model'
+    }
   })
 
   test('OPENAI_WIRE_API=chat keeps side queries on Chat Completions', async () => {

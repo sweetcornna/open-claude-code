@@ -8,6 +8,8 @@ import {
   isEnvTruthy,
   isEnvDefinedFalsy,
 } from '../../../utils/config/envUtils.js'
+import { isCodexFamilyModel } from '../../../utils/model/chatgptModels.js'
+import { isOfficialOpenAIBaseURL } from './openaiShared.js'
 
 /**
  * Detect whether thinking mode should be enabled for this model.
@@ -77,6 +79,7 @@ export function buildOpenAIRequestBody(params: {
   toolChoice: any
   enableThinking: boolean
   maxTokens: number
+  baseURL?: string
   temperatureOverride?: number
   /** Session-scoped routing key for official OpenAI requests. */
   promptCacheKey?: string
@@ -93,6 +96,7 @@ export function buildOpenAIRequestBody(params: {
   /** OpenAI prompt-cache routing key (not always in SDK types yet). */
   prompt_cache_key?: string
   reasoning_effort?: string
+  max_completion_tokens?: number
 } {
   const {
     model,
@@ -101,14 +105,19 @@ export function buildOpenAIRequestBody(params: {
     toolChoice,
     enableThinking,
     maxTokens,
+    baseURL,
     temperatureOverride,
     promptCacheKey,
     reasoningEffort,
   } = params
+  const useMaxCompletionTokens =
+    isOfficialOpenAIBaseURL(baseURL) && isCodexFamilyModel(model)
   return {
     model,
     messages,
-    max_tokens: maxTokens,
+    ...(useMaxCompletionTokens
+      ? { max_completion_tokens: maxTokens }
+      : { max_tokens: maxTokens }),
     ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
     ...(tools.length > 0 && {
       tools,

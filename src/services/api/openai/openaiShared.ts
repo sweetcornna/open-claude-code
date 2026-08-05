@@ -8,11 +8,32 @@
  * Keep this module free of bootstrap/state imports so pure request-body unit
  * tests and isolated mocks do not need a full session runtime.
  *
- * `src/constants/brand.ts` is the one permitted import: it is a leaf module of
- * plain string constants with no imports of its own, so it pulls in no runtime.
+ * Keep imports limited to leaf modules so request-body unit tests do not pull
+ * in the session runtime.
  */
 
 import { BIN_NAME } from 'src/constants/brand.js'
+import { isGptFamilyModel } from 'src/utils/model/chatgptModels.js'
+
+export type OpenAIVerbosity = 'low' | 'medium' | 'high'
+
+export function resolveOpenAIVerbosity(
+  model: string,
+  opts: { baseURL?: string; isChatGPTAuth: boolean },
+): OpenAIVerbosity | undefined {
+  if (!isGptFamilyModel(model)) return undefined
+
+  const override = process.env.OPENAI_VERBOSITY?.toLowerCase().trim()
+  if (override === 'off' || override === '0' || override === 'false') {
+    return undefined
+  }
+  if (override === 'low' || override === 'medium' || override === 'high') {
+    return override
+  }
+  return opts.isChatGPTAuth || isOfficialOpenAIBaseURL(opts.baseURL)
+    ? 'low'
+    : undefined
+}
 
 /**
  * Whether a configured base URL resolves directly to OpenAI's official API.
