@@ -33,6 +33,17 @@ type SupportedPlatform = 'darwin' | 'linux' | 'win32'
 
 // Threshold in characters for when to consider text a "large paste"
 export const PASTE_THRESHOLD = 800
+
+/**
+ * Wall-clock cap on every clipboard subprocess (osascript / xclip / wl-paste /
+ * powershell). Without it a macOS TCC permission prompt — or an X server that
+ * never answers — leaves the child hanging forever, and with it the promise
+ * that owns the "Pasting text…" indicator. `reject: false` turns a timeout
+ * into a non-zero exit code, which every call site already treats as "no
+ * clipboard image".
+ */
+const CLIPBOARD_COMMAND_TIMEOUT_MS = 3000
+
 function getClipboardCommands() {
   const platform = process.platform as SupportedPlatform
 
@@ -131,6 +142,15 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
   // path below. Throws if the native module is unavailable, in which case
   // the catch block falls through to osascript. A `null` return from the
   // native call is authoritative (clipboard has no image).
+  //
+  // CAVEAT: `readClipboard()` is a SYNCHRONOUS native call, so neither
+  // usePasteHandler's withTimeout race nor its paste watchdog can interrupt
+  // it — both need the event loop back to fire their timers. If it ever
+  // blocks (NSPasteboard contention, a huge image), the UI blocks with it and
+  // nothing rescues the prompt. Currently dormant: NATIVE_CLIPBOARD_IMAGE is
+  // not in DEFAULT_BUILD_FEATURES, so production takes the osascript path
+  // below, which IS covered by both timeouts. Anyone enabling the flag needs
+  // to bound this call (worker thread or a native-side deadline) first.
   if (
     feature('NATIVE_CLIPBOARD_IMAGE') &&
     process.platform === 'darwin' &&
@@ -197,6 +217,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     const checkResult = await execa(commands.checkImage, {
       shell: true,
       reject: false,
+      timeout: CLIPBOARD_COMMAND_TIMEOUT_MS,
     })
     if (checkResult.exitCode !== 0) {
       return null
@@ -206,6 +227,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     const saveResult = await execa(commands.saveImage, {
       shell: true,
       reject: false,
+      timeout: CLIPBOARD_COMMAND_TIMEOUT_MS,
     })
     if (saveResult.exitCode !== 0) {
       return null
@@ -246,7 +268,11 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
   } finally {
     // The same generated path is used by save, read, and cleanup on every path.
     try {
-      await execa(commands.deleteFile, { shell: true, reject: false })
+      await execa(commands.deleteFile, {
+        shell: true,
+        reject: false,
+        timeout: CLIPBOARD_COMMAND_TIMEOUT_MS,
+      })
     } catch {
       // Ignore cleanup errors.
     }
@@ -261,6 +287,7 @@ export async function getImagePathFromClipboard(): Promise<string | null> {
     const result = await execa(commands.getPath, {
       shell: true,
       reject: false,
+      timeout: CLIPBOARD_COMMAND_TIMEOUT_MS,
     })
     if (result.exitCode !== 0 || !result.stdout) {
       return null
@@ -397,32 +424,48 @@ export async function tryReadImageFromPath(
     return null
   }
 
-  // BMP is not supported by the API — convert to PNG via Sharp.
-  if (
-    imageBuffer.length >= 2 &&
-    imageBuffer[0] === 0x42 &&
-    imageBuffer[1] === 0x4d
-  ) {
-    const sharp = await getImageProcessor()
-    imageBuffer = await sharp(imageBuffer).png().toBuffer()
-  }
+  // Decode/resize lives inside a try: Sharp throws on corrupt input and
+  // maybeResizeAndDownsampleImageBuffer throws ImageResizeError for 0-byte
+  // files, images that can't be squeezed under the 5MB API limit, and
+  // over-dimension images. These used to reject out of the function; the
+  // paste handler's Promise.all then rejected and the prompt was stuck
+  // showing "Pasting text…" with Enter swallowed. Returning null instead
+  // keeps one bad image from taking down a whole multi-image paste — the
+  // caller degrades that path to a plain text paste.
+  try {
+    // BMP is not supported by the API — convert to PNG via Sharp.
+    if (
+      imageBuffer.length >= 2 &&
+      imageBuffer[0] === 0x42 &&
+      imageBuffer[1] === 0x4d
+    ) {
+      const sharp = await getImageProcessor()
+      imageBuffer = await sharp(imageBuffer).png().toBuffer()
+    }
 
-  // Resize if needed to stay under 5MB API limit
-  // Extract extension from path for format hint
-  const ext = extname(imagePath).slice(1).toLowerCase() || 'png'
-  const resized = await maybeResizeAndDownsampleImageBuffer(
-    imageBuffer,
-    imageBuffer.length,
-    ext,
-  )
-  const base64Image = resized.buffer.toString('base64')
+    // Resize if needed to stay under 5MB API limit
+    // Extract extension from path for format hint
+    const ext = extname(imagePath).slice(1).toLowerCase() || 'png'
+    const resized = await maybeResizeAndDownsampleImageBuffer(
+      imageBuffer,
+      imageBuffer.length,
+      ext,
+    )
+    const base64Image = resized.buffer.toString('base64')
 
-  // Detect format from the actual file contents using magic bytes
-  const mediaType = detectImageFormatFromBase64(base64Image)
-  return {
-    path: imagePath,
-    base64: base64Image,
-    mediaType,
-    dimensions: resized.dimensions,
+    // Detect format from the actual file contents using magic bytes
+    const mediaType = detectImageFormatFromBase64(base64Image)
+    return {
+      path: imagePath,
+      base64: base64Image,
+      mediaType,
+      dimensions: resized.dimensions,
+    }
+  } catch (e) {
+    logForDebugging(`Failed to process pasted image: ${imagePath}`, {
+      level: 'warn',
+    })
+    logError(e as Error)
+    return null
   }
 }

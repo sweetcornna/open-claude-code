@@ -233,12 +233,10 @@ export type BaseInputState = {
   /** Character offset in the full text where the viewport ends (text.length when no windowing). */
   viewportCharEnd: number
 
-  // For paste handling
+  // For paste handling. The raw chunk buffer used to be mirrored here too;
+  // it was never read by anyone and usePasteHandler now keeps it in a ref
+  // (see the chunksRef comment there), so only the flag remains.
   isPasting?: boolean
-  pasteState?: {
-    chunks: string[]
-    timeoutId: ReturnType<typeof setTimeout> | null
-  }
 }
 
 /**

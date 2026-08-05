@@ -233,12 +233,20 @@ export function parseMultipleKeypresses(
         inPaste = true
         pasteBuffer = ''
       } else if (token.value === PASTE_END) {
-        // Always emit a paste key, even for empty pastes. This allows
-        // downstream handlers to detect empty pastes (e.g., for clipboard
-        // image handling on macOS). The paste content may be empty string.
-        keys.push(createPasteKey(pasteBuffer))
-        inPaste = false
-        pasteBuffer = ''
+        // Inside a paste, always emit a paste key even when the buffer is
+        // empty: downstream reads that as "the terminal opened and closed a
+        // paste with no text", which on macOS means a Cmd+V image and triggers
+        // the clipboard check.
+        //
+        // A STRAY end marker — no matching ESC[200~, because the open was lost
+        // or the terminal double-sent the close — is dropped instead. Emitting
+        // an empty paste key for it kicked off that same clipboard probe (a
+        // ~1.5s osascript round trip) for a key the user never pressed.
+        if (inPaste) {
+          keys.push(createPasteKey(pasteBuffer))
+          inPaste = false
+          pasteBuffer = ''
+        }
       } else if (inPaste) {
         // Sequences inside paste are treated as literal text
         pasteBuffer += token.value
@@ -282,8 +290,15 @@ export function parseMultipleKeypresses(
     }
   }
 
-  // If flushing and still in paste mode, emit what we have
-  if (isFlush && inPaste && pasteBuffer) {
+  // If flushing and still in paste mode, emit what we have — including an
+  // EMPTY buffer. Requiring a non-empty buffer here left `inPaste` latched
+  // forever whenever the closing ESC[201~ never arrived (mis-keyed image
+  // paste, terminal that opens a bracket and then errors out, an odd number
+  // of bare ESC[200~ inside pasted content). Once latched, every subsequent
+  // keystroke is swallowed into pasteBuffer and the keyboard goes dead.
+  // An empty paste key is meaningful downstream anyway: on macOS it triggers
+  // the clipboard-image check.
+  if (isFlush && inPaste) {
     keys.push(createPasteKey(pasteBuffer))
     inPaste = false
     pasteBuffer = ''
