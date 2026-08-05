@@ -172,11 +172,13 @@ The migration copies user-authored or installed configuration:
 - `output-styles/`, `workflows/`, `plugins/`, and `rules/`
 - MCP server definitions from the legacy global configuration
 
-It does not copy credentials, session history, caches, logs, or IDE lockfiles. Migration is idempotent, does not overwrite files that already exist under `~/.occ`, and treats `~/.claude` as read-only throughout.
+The command above **leaves credentials behind by default**: the OAuth token, the API key, the secrets in `settings.env` and the MCP `env`/`headers` are all stripped, while routing config such as `*_BASE_URL`, `*_MODEL` and `CLAUDE_CODE_MAX_CONTEXT_TOKENS` still comes across. Use `occ migrate --with-credentials` to bring the login too — at the cost of both CLIs sharing one refresh token, so whichever refreshes first makes the other sign in again.
+
+Session history, caches, logs and IDE lockfiles are never copied. Migration is idempotent, does not overwrite files that already exist under `~/.occ`, and treats `~/.claude` as read-only throughout.
 
 ### Step 4: Sign in again or configure an API endpoint
 
-Credentials are not migrated. After starting `occ` for the first time, enter `/login` in the REPL and select the required provider:
+Unless you passed `--with-credentials`, credentials are not migrated. After starting `occ` for the first time, enter `/login` in the REPL and select the required provider:
 
 | Option | Use case |
 | --- | --- |

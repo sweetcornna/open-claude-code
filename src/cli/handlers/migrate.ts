@@ -14,23 +14,35 @@ import {
   describeMigrationPlan,
   executeMigration,
   type FsProbe,
+  planHasWork,
   planMigrationFromClaude,
 } from '../../config/migrateFromClaude.js'
 
 export type MigrateOptions = {
   dryRun: boolean
   force: boolean
-  /** Leave account-bound config behind (plugins, skills, MCP servers, auth keys). */
-  skipAccountData: boolean
+  /**
+   * Bring the OAuth token / API key across too. Off by default: copying a
+   * login is the one part of a migration that changes what the OTHER CLI
+   * experiences (both ends share a rotating refresh token), so it is opt-in.
+   */
+  withCredentials: boolean
 }
 
 export function parseMigrateArgs(args: string[]): MigrateOptions {
   return {
     dryRun: args.includes('--dry-run'),
     force: args.includes('--force'),
-    skipAccountData:
-      args.includes('--skip-account-data') ||
-      args.includes('--no-account-data'),
+    // `--skip-account-data` / `--no-account-data` are the pre-2.9 spellings.
+    // They used to exclude plugins, skills and MCP servers wholesale; those now
+    // migrate in both modes with their secrets stripped, so the flags survive
+    // only as an explicit way to ask for the (already default) credential-free
+    // mode, and they lose to nothing because they cannot be combined with
+    // --with-credentials.
+    withCredentials:
+      args.includes('--with-credentials') &&
+      !args.includes('--skip-account-data') &&
+      !args.includes('--no-account-data'),
   }
 }
 
@@ -56,27 +68,31 @@ export async function runMigrate(
 ): Promise<number> {
   const plan = planMigrationFromClaude(fs, {
     force: options.force,
-    skipAccountData: options.skipAccountData,
+    migrateCredentials: options.withCredentials,
   })
-  if (options.force) {
-    // describeMigrationPlan() would otherwise report "already migrated" and
-    // hide the item list the forced run is about to copy.
-    plan.alreadyMigrated = false
-  }
 
   console.log(describeMigrationPlan(plan))
 
   if (options.dryRun) return 0
-  if (plan.items.length === 0 && plan.mcpServerCount === 0) return 0
+  if (!planHasWork(plan)) return 0
 
   const result = await executeMigration(plan)
-  console.log(
-    `\nCopied: ${result.copied.join(', ') || 'nothing'}${
-      result.mcpServersImported > 0
-        ? `\nImported ${result.mcpServersImported} MCP server(s)`
-        : ''
-    }`,
-  )
+  // Suppressed on a credentials-only top-up, where "Copied: nothing" would
+  // read as a failure rather than as "there were no files left to copy".
+  if (result.copied.length > 0 || result.mcpServersImported > 0) {
+    console.log(
+      `\nCopied: ${result.copied.join(', ') || 'nothing'}${
+        result.mcpServersImported > 0
+          ? `\nImported ${result.mcpServersImported} MCP server(s)`
+          : ''
+      }`,
+    )
+  } else {
+    console.log('')
+  }
+  for (const note of result.notes) {
+    console.log(`  ${note}`)
+  }
   for (const error of result.errors) {
     console.error(`  failed: ${error}`)
   }

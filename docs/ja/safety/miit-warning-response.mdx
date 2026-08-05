@@ -172,11 +172,13 @@ occ migrate
 - `output-styles/`、`workflows/`、`plugins/`、`rules/`
 - 以前のグローバル設定にある MCP server 定義
 
-認証情報、セッション履歴、キャッシュ、ログ、IDE lockfile はコピーしません。移行は冪等であり、`~/.occ` にすでに存在するファイルを上書きせず、`~/.claude` は全工程で読み取り専用です。
+上記のコマンドは**既定で認証情報を持ち出しません**。OAuth token、API key、`settings.env` 内の秘密情報、MCP server の `env`/`headers` は取り除かれますが、`*_BASE_URL`、`*_MODEL`、`CLAUDE_CODE_MAX_CONTEXT_TOKENS` といったルーティング設定はそのまま移行されます。ログインごと移したい場合は `occ migrate --with-credentials` を使います。ただし両方の CLI が同じ refresh token を共有するため、先に更新した側がもう一方をログアウトさせます。
+
+セッション履歴、キャッシュ、ログ、IDE lockfile は決してコピーされません。移行は冪等であり、`~/.occ` にすでに存在するファイルを上書きせず、`~/.claude` は全工程で読み取り専用です。
 
 ### 手順 4: 再ログインまたは API エンドポイントを設定
 
-認証情報は移行されません。初めて `occ` を実行した後、REPL で `/login` と入力し、必要な provider を選択します。
+`--with-credentials` を指定しない限り、認証情報は移行されません。初めて `occ` を実行した後、REPL で `/login` と入力し、必要な provider を選択します。
 
 | 選択肢 | 用途 |
 | --- | --- |

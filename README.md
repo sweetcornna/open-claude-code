@@ -33,15 +33,19 @@
 
 ```sh
 occ migrate --dry-run              # 先看会拷什么
-occ migrate                        # 真的拷
-occ migrate --skip-account-data    # 换账号用：不带走上一个账号的集成
+occ migrate                        # 真的拷（默认剥离密钥）
+occ migrate --with-credentials     # 连登录一起拷，装好即用
 ```
 
-会拷贝 settings、skills、agents、commands、output-styles、workflows、plugins、rules 和 MCP server 配置。首启向导里也有同样的三个选项。
+两种模式拷的**东西一样**：settings、skills、agents、commands、output-styles、workflows、plugins、rules 和 MCP server 定义。区别只在**密钥要不要跟着走**。首启向导里是同样的三个选项。
 
-`--skip-account-data` 会额外留下**绑定账号的那部分**：已安装的 plugins 和 skills、MCP server 定义，以及 settings.json 里携带凭据或账号身份的键（`env`、`apiKeyHelper`、`awsAuthRefresh`、`forceLoginMethod`、`enabledPlugins`、`extraKnownMarketplaces`）。主题、权限、agents、commands、workflows、rules 和 CLAUDE.md 照常带走。MCP server 是整条排除而不是抹掉密钥——它们的凭据散在自由形式的 `env`/`headers` 里，只清空会留下一个看着已配置、一用就失败的条目。排除了什么会在迁移前列出来，不会静默丢。
+- **默认（不带凭据）**：剥离 OAuth token、API key、`settings.env` 里的密钥类变量、MCP server 的 `env`/`headers`，以及 `apiKeyHelper` / `awsAuthRefresh` / `awsCredentialExport` / `gcpAuthRefresh` / `otelHeadersHelper` 这些「跑个命令换出凭据」的键。**路由配置照常带走**：`*_BASE_URL`、`*_MODEL`、`CLAUDE_CODE_MAX_CONTEXT_TOKENS`、`CLAUDE_CODE_USE_*`、`*_AUTH_MODE`，以及 `CLAUDE_CODE_CLIENT_CERT` / `CLAUDE_CODE_CLIENT_KEY` 这类**证书路径**（路径不是密钥，成对保留，只剥 `..._PASSPHRASE`）。你只需要把 key 重新填一遍。剥了哪些键会在迁移前逐条列出来，不会静默丢。
+- **`--with-credentials`**：OAuth token、legacy API key 和 `~/.claude.json` 里的账号键（`primaryApiKey`、`oauthAccount`、`customApiKeyResponses`、`workspaceApiKey`）一并带走，不用再 `/login`。**注意**：refresh token 由服务端轮换，两边 CLI 拿的是同一个，谁先刷新另一边就得重新登录——建议日常固定主用一边。
+- 先选了默认模式、之后又想要凭据，直接补跑 `occ migrate --with-credentials` 即可：除了登录本身，它还会把上一次被剥掉的 `settings.json` 密钥补回去（**只补缺失的键**，你在 occ 侧已经改过的值一律不动）。`.migrated` 标记记录了已迁移的类别，不会把你挡在外面。
+- `--skip-account-data` / `--no-account-data` 是旧版拼写，现在等价于默认模式。
+- 有两处 occ 无从判断、因此**原样带走并在报告里点名**：`settings.json` 的 `pluginConfigs`，以及 `plugins/` 目录里的文件。插件声明为 `sensitive` 的字段本来就存在 secure storage、默认模式压根不碰；但这条约定由各插件自己的 manifest 保证，所以残留由你过目。
 
-**不会拷贝凭据和会话历史** —— 凭据与官方共用，拷过来等于把要拆掉的耦合又搬回来；装好后跑一次 `/login` 即可。`~/.claude` 全程只读，不写不删不改。
+**会话历史永不拷贝**。凭据是单向、no-clobber 的：occ 这边已经有登录就保留 occ 的，官方 keychain 条目从头到尾不改。`~/.claude` 全程只读，不写不删不改。
 
 ## ⚡ 快速开始（安装版）
 

@@ -172,11 +172,13 @@ occ migrate
 - `output-styles/`、`workflows/`、`plugins/`、`rules/`
 - 旧全局配置中的 MCP server 定义
 
-不会复制凭据、会话历史、缓存、日志和 IDE 锁文件。迁移是幂等的，不覆盖 `~/.occ` 中已经存在的文件，并且对 `~/.claude` 全程只读。
+上面这条命令**默认不带凭据**：OAuth token、API key、`settings.env` 里的密钥、MCP server 的 `env`/`headers` 都会被剥离，但 `*_BASE_URL`、`*_MODEL`、`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 这类端点/路由配置照常带走。想连登录一起带过来就用 `occ migrate --with-credentials`——代价是两边 CLI 共用同一个 refresh token，谁先刷新另一边就要重新登录。
+
+会话历史、缓存、日志和 IDE 锁文件永远不会复制。迁移是幂等的，不覆盖 `~/.occ` 中已经存在的文件，并且对 `~/.claude` 全程只读。
 
 ### 步骤 4：重新登录或配置 API 端点
 
-凭据不会迁移。首次运行 `occ` 后，在 REPL 输入 `/login`，选择需要的供应商：
+除非用了 `--with-credentials`，否则凭据不会迁移。首次运行 `occ` 后，在 REPL 输入 `/login`，选择需要的供应商：
 
 | 选项 | 适用场景 |
 | --- | --- |

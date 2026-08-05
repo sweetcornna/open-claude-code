@@ -18,7 +18,8 @@ import { ApproveApiKey } from './ApproveApiKey.js';
 import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js';
 import { Select } from './CustomSelect/select.js';
 import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
-import { MigrationStep, shouldOfferMigration } from './MigrationStep.js';
+import { MigrationStep, shouldOfferMigration, shouldSkipOAuthAfterMigration } from './MigrationStep.js';
+import type { MigrationResult } from '../config/migrateFromClaude.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { ThemePicker } from './ThemePicker.js';
 import { OrderedList } from './ui/OrderedList.js';
@@ -137,6 +138,20 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     goToNextStep();
   }
 
+  /**
+   * A migration that brought credentials across leaves occ logged in, so the
+   * OAuth step must be skipped exactly like an approved API key does. Without
+   * this the wizard walked the user straight into /login after copying their
+   * token — and a migrated `forceLoginMethod` makes ConsoleOAuthFlow start the
+   * round trip on mount, overwriting what was just migrated.
+   */
+  function handleMigrationDone(result: MigrationResult | null) {
+    if (shouldSkipOAuthAfterMigration(result)) {
+      setSkipOAuth(true);
+    }
+    goToNextStep();
+  }
+
   const steps: OnboardingStep[] = [];
   steps.push({ id: 'theme', component: themeStep });
 
@@ -145,7 +160,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
   if (migrationPlan) {
     steps.push({
       id: 'migrate',
-      component: <MigrationStep plan={migrationPlan} onDone={goToNextStep} />,
+      component: <MigrationStep plan={migrationPlan} onDone={handleMigrationDone} />,
     });
   }
 
