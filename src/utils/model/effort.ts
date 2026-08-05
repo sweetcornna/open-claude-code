@@ -53,6 +53,9 @@ export function modelSupportsEffort(model: string): boolean {
   }
   // Supported by a subset of Claude 4 models
   if (
+    m.includes('fable-5') ||
+    m.includes('opus-5') ||
+    m.includes('sonnet-5') ||
     m.includes('opus-4-7') ||
     m.includes('opus-4-6') ||
     m.includes('sonnet-4-6') ||

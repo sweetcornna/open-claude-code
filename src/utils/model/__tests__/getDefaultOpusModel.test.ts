@@ -61,23 +61,23 @@ describe('getDefaultOpusModel', () => {
     resetProviderState()
   })
 
-  test('returns Opus 4.7 for firstParty', () => {
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.firstParty)
+  test('returns Opus 5 for firstParty', () => {
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus5.firstParty)
   })
 
-  test('returns Opus 4.7 for bedrock (3P no longer lags)', () => {
+  test('returns Opus 5 for bedrock (3P no longer lags)', () => {
     process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.bedrock)
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus5.bedrock)
   })
 
-  test('returns Opus 4.7 for vertex (3P no longer lags)', () => {
+  test('returns Opus 5 for vertex (3P no longer lags)', () => {
     process.env.CLAUDE_CODE_USE_VERTEX = '1'
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.vertex)
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus5.vertex)
   })
 
-  test('returns Opus 4.7 for foundry (3P no longer lags)', () => {
+  test('returns Opus 5 for foundry (3P no longer lags)', () => {
     process.env.CLAUDE_CODE_USE_FOUNDRY = '1'
-    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus47.foundry)
+    expect(getDefaultOpusModel()).toBe(ALL_MODEL_CONFIGS.opus5.foundry)
   })
 
   test('honors ANTHROPIC_DEFAULT_OPUS_MODEL env override (any provider)', () => {
@@ -97,7 +97,7 @@ describe('getDefaultOpusModel', () => {
  * Gap #3 addition — "Opus 4.6" must appear as an explicit opt-in option in
  * the /model picker across all non-ANT user tiers. The option's value MUST
  * be the canonical 4.6 model string, NOT the 'opus' alias (which would
- * resolve via getDefaultOpusModel back to 4.7 on firstParty, silently
+ * resolve via getDefaultOpusModel back to Opus 5 on firstParty, silently
  * defeating the user's explicit choice).
  */
 describe('getOpus46Option', () => {
