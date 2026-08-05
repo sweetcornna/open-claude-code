@@ -50,6 +50,11 @@ const { getClaudeTempDir } = await import('src/utils/permissions/filesystem.js')
  */
 const PROMPT_ENV_KEYS = [
   'ANTHROPIC_MODEL',
+  // The GPT tuning gate (restrained AgentTool copy) keys off the resolved
+  // provider. The isolated config dir hides a settings-based `modelType`, but
+  // a developer shell exporting these would still flip it.
+  'CLAUDE_CODE_USE_OPENAI',
+  'OPENAI_MODEL',
   'CLAUDE_CODE_AGENT_LIST_IN_MESSAGES',
   'CLAUDE_CODE_COORDINATOR_MODE',
   'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS',

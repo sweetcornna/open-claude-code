@@ -1,4 +1,5 @@
 import { isPlanModeInterviewPhaseEnabled } from 'src/utils/agents/planModeV2.js'
+import { isGptTuningActive } from 'src/utils/model/gptTuning.js'
 import { ASK_USER_QUESTION_TOOL_NAME } from '../AskUserQuestionTool/prompt.js'
 
 const WHAT_HAPPENS_SECTION = `## What Happens in Plan Mode
@@ -86,7 +87,10 @@ ${whatHappens}## Important Notes
 }
 
 export function getEnterPlanModeToolPrompt(): string {
-  return process.env.USER_TYPE === 'ant'
+  // GPT-family models execute the external copy's "prefer planning" clauses
+  // literally and enter plan mode for trivial tasks, so they get the same
+  // restrained copy as ant users.
+  return process.env.USER_TYPE === 'ant' || isGptTuningActive()
     ? getEnterPlanModeToolPromptAnt()
     : getEnterPlanModeToolPromptExternal()
 }

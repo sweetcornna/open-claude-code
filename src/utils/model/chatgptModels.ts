@@ -143,6 +143,19 @@ export function isCodexFamilyModel(model: string): boolean {
   return /^gpt-5(\.\d+)?(-|$)/.test(normalized)
 }
 
+/**
+ * Whether this model id is a GPT-family model in the broad sense — any
+ * `gpt-*` id or Codex lineage id. This is the gate for GPT-specific tuning
+ * (behavior prompt overlay, codex-aligned request defaults); it deliberately
+ * spans generations (gpt-4o included) because the tuning targets the model
+ * family's behavior, not a wire protocol. Non-GPT models served through the
+ * OpenAI-compatible layer (deepseek, mimo, ...) must NOT match.
+ */
+export function isGptFamilyModel(model: string): boolean {
+  const normalized = normalizeChatGPTModelId(model)
+  return normalized.startsWith('gpt-') || normalized.includes('codex')
+}
+
 export function isChatGPTCodexReasoningModel(model: string): boolean {
   const normalized = normalizeChatGPTModelId(model)
   return (

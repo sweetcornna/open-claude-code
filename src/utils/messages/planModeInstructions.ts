@@ -14,6 +14,7 @@ import { GLOB_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GlobTool/p
 import { GREP_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/GrepTool/prompt.js'
 import type { UserMessage } from '../../types/message.js'
 import { getCurrentProjectConfig } from '../config/config.js'
+import { isGptTuningActive } from '../model/gptTuning.js'
 import { hasEmbeddedSearchTools } from '../tools/embeddedTools.js'
 import {
   getPewterLedgerVariant,
@@ -111,6 +112,34 @@ function getPlanModeV2Instructions(attachment: {
 
   const agentCount = getPlanModeV2AgentCount()
   const exploreAgentCount = getPlanModeV2ExploreAgentCount()
+  // GPT-family models treat the default "always launch agents" wording as a
+  // hard requirement and fan out subagents for trivially scoped work.
+  const gptTuned = isGptTuningActive()
+  const phase1Exploration = gptTuned
+    ? `2. **Use at most 1 ${EXPLORE_AGENT.agentType} agent, and only when the scope is genuinely unclear.**
+   - When you can already name the relevant files, read them yourself with ${FILE_READ_TOOL_NAME} and ${GREP_TOOL_NAME} — do not delegate.
+   - Launch a single ${EXPLORE_AGENT.agentType} agent only when you cannot identify the relevant files or the search spans unfamiliar parts of the codebase.
+   - Exploration is finished once you can name the files the change will touch. Move on to Phase 2 at that point.`
+    : `2. **Launch up to ${exploreAgentCount} ${EXPLORE_AGENT.agentType} agents IN PARALLEL** (single message, multiple tool calls) to efficiently explore the codebase.
+   - For tasks with well-known file targets, 1 agent may suffice. In most cases, prefer launching 2-3 agents with complementary search focuses to maximize coverage.
+   - Use multiple agents when: the scope is uncertain, multiple areas of the codebase are involved, or you need to understand existing patterns before planning.
+   - Quality over quantity - ${exploreAgentCount} agents maximum. Do NOT skip exploration — always use at least 1 Explore agent in Phase 1.
+   - When using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigates testing patterns`
+  const phase2Design = gptTuned
+    ? `Design the implementation yourself based on the user's intent and your exploration results from Phase 1.
+
+You can launch up to ${agentCount} ${PLAN_AGENT.agentType} agent(s) in parallel.
+
+**Guidelines:**
+- **Default**: Do the design yourself — launch a ${PLAN_AGENT.agentType} agent only for genuinely complex tasks where several materially different approaches need to be weighed
+- **Skip agents**: For everything else, including multi-file changes whose approach is already clear`
+    : `Launch ${PLAN_AGENT.agentType} agent(s) to design the implementation based on the user's intent and your exploration results from Phase 1.
+
+You can launch up to ${agentCount} agent(s) in parallel.
+
+**Guidelines:**
+- **Default**: Launch at least 1 Plan agent for most tasks - it helps validate your understanding and consider alternatives
+- **Skip agents**: Only for truly trivial tasks (typo fixes, single-line changes, simple renames)`
   const planFileInfo = attachment.planExists
     ? `A plan file already exists at ${attachment.planFilePath}. You MUST use ${FileReadTool.name} to read it first before making any changes. Make incremental edits using the ${FileEditTool.name} tool — do NOT overwrite the entire file unless the user explicitly asks for a complete rewrite.`
     : `No plan file exists yet. You should create your plan at ${attachment.planFilePath} using the ${FileWriteTool.name} tool.`
@@ -128,22 +157,12 @@ Goal: Gain a comprehensive understanding of the user's request by reading throug
 
 1. Focus on understanding the user's request and the code associated with their request. Actively search for existing functions, utilities, and patterns that can be reused — avoid proposing new code when suitable implementations already exist.
 
-2. **Launch up to ${exploreAgentCount} ${EXPLORE_AGENT.agentType} agents IN PARALLEL** (single message, multiple tool calls) to efficiently explore the codebase.
-   - For tasks with well-known file targets, 1 agent may suffice. In most cases, prefer launching 2-3 agents with complementary search focuses to maximize coverage.
-   - Use multiple agents when: the scope is uncertain, multiple areas of the codebase are involved, or you need to understand existing patterns before planning.
-   - Quality over quantity - ${exploreAgentCount} agents maximum. Do NOT skip exploration — always use at least 1 Explore agent in Phase 1.
-   - When using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigates testing patterns
+${phase1Exploration}
 
 ### Phase 2: Design
 Goal: Design an implementation approach.
 
-Launch ${PLAN_AGENT.agentType} agent(s) to design the implementation based on the user's intent and your exploration results from Phase 1.
-
-You can launch up to ${agentCount} agent(s) in parallel.
-
-**Guidelines:**
-- **Default**: Launch at least 1 Plan agent for most tasks - it helps validate your understanding and consider alternatives
-- **Skip agents**: Only for truly trivial tasks (typo fixes, single-line changes, simple renames)
+${phase2Design}
 ${
   agentCount > 1
     ? `- **Multiple agents**: Use up to ${agentCount} agents for complex tasks that benefit from different perspectives
