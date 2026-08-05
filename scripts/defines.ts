@@ -62,6 +62,10 @@ export const DEFAULT_BUILD_FEATURES = [
   'COORDINATOR_MODE', // 多 worker 编排模式（AgentSummary 泄露已在 52b61c2c 修复）
   'BG_SESSIONS', // 后台会话管理（ps/logs/attach/kill）
   'TEMPLATES', // 模板任务（new/list/reply 子命令）
+  // auto 主题：跟随终端明暗自动切换。判定依据是终端**背景色**（OSC 11 轮询），
+  // 不是 OS 外观设置 —— 浅色系统里的深色终端仍应解析为 dark。终端不应答 OSC 11
+  // 时轮询自动停止，只留 $COLORFGBG 的初始猜测。
+  'AUTO_THEME',
   // API content block types
   'CONNECTOR_TEXT', // Connector 文本块类型，扩展 API 内容格式
   // Attribution tracking
