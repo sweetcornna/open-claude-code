@@ -4,6 +4,13 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.18.0 - 2026-08-05
+
+- **接 GPT 模型不再莫名进计划模式、狂发审查子代理**。为 Claude 设计的提示词里「优先进入计划模式」「尽量主动派子代理」「完成前必须验证」这类措辞会被 GPT 当成硬性命令逐字执行：随手一个小任务也要先计划、每完成一步就派子代理复查、进度被严重拖慢。现在 provider 为 openai 且解析后模型是 GPT 家族（`gpt-*` / 含 `codex`；`/model opus` 这类别名按映射后判定）时，system prompt 末尾追加一段 Codex CLI 风格的执行纪律（简单任务不做计划、禁单步计划、不派子代理自审、验证一次与风险成比例、编辑后不重读文件、压缩最终回复、并行读文件），EnterPlanMode / Agent 工具描述与计划模式指令同步换成克制版。Anthropic 会话与 openai 层跑非 GPT 模型（DeepSeek / GLM 等）逐字节不变。
+- **GPT 请求参数对齐 Codex CLI 默认，缓解过度思考**。未设置 effort 时 `gpt-5.6-sol` 默认档从 medium 降到 low（Codex 自家的默认值，其模型说明明确写 Sol 低档已足够强；`CLAUDE_CODE_EFFORT_LEVEL` 或 settings 显式设置始终优先）；responses 线对 GPT 模型默认发 `text.verbosity: low` 收敛回答篇幅（ChatGPT 登录与官方端点默认发；第三方网关用 `OPENAI_VERBOSITY=low|medium|high` 显式开启，`=off` 强制不发）；内部分类器 side query 显式用 low 档，不再落到服务端默认 medium 白白变慢；chat 线打官方端点时改发 `max_completion_tokens`（GPT-5 世代拒收 `max_tokens`），兼容端点维持原样。
+- **OpenAI responses 线补上了整个网络容错层**。这条线此前是裸 fetch：无超时、无重试，上游 hang 住只能 Ctrl-C，Bun 下连 `HTTPS_PROXY` 都不生效——「GPT 请求慢 / 卡死」的主要来源。现在建流阶段有指数退避重试（200ms 起步、2 倍增长、±10% 抖动、尊重 `Retry-After`；对网络错误 / 5xx / 408 / 带 Retry-After 的 429 重试，默认 4 次，`OPENAI_REQUEST_MAX_RETRIES` 可调）；SSE 读取加空闲看门狗（复用 `CLAUDE_STREAM_IDLE_TIMEOUT_MS`，默认 90 秒，首包前 stall 自动整请求重试）；代理 / mTLS / 自定义 CA 配置接入；SSE 解析消除长响应下的 O(n²) 字符串搬运。chat 线 SDK 客户端默认重试 0 → 2，并修复单例缓存键忽略重试配置导致的实例串用；ChatGPT token 刷新加 30 秒超时。
+- **后台自动更新改为每 5 分钟周期检查（occ 本体与插件）**。此前每会话只在启动后查一次，长会话会一直停在启动时的版本。现在 occ 启动 5 分钟首查、插件 3 分钟首查（错开网络峰值），之后各自每 5 分钟一轮：occ 有新版就静默全局安装并低调提示重启生效；插件对 git 类 marketplace 做 `git pull`，仓库真有移动才重新物化缓存，提示 `/reload-plugins` 即可生效。会话期间再发新版会继续装上，同版本不重装。多开窗口不会成倍打 npm registry：检查时间戳跨实例共享，别的实例刚查过本轮就跳过。`OCC_UPDATE_CHECK_INTERVAL_MS` 调间隔（默认 5 分钟、下限 1 分钟），`DISABLE_AUTOUPDATER=1` 或 `~/.occ.json` 的 `"autoUpdates": false` 全关。
+
 ## 2.17.0 - 2026-08-04
 
 - **一次网络波动不再杀掉任务或 agent**。`fetch failed` / `terminated` / 网关的 `Upstream request failed` 此前一次都不重试直接中断：重试框架只认 `APIError` 实例，裸的传输层错误被瞬间判死；流中途断开更是完全在重试范围之外；OpenAI / Gemini / Grok 三方路径连重试层都没接。现在这类瞬时错误统一进入最高 10 次的指数退避（`CLAUDE_CODE_MAX_RETRIES` 单一旋钮），覆盖主循环、Agent 子代理与 workflow agent 的全部 provider；流已经产出内容时不重试（避免同一个工具被执行两次）；TLS 握手失败仍然秒败并给出可操作提示，不会盲烧三分钟。重试倒计时在界面上可见。
