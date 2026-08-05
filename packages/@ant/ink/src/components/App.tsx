@@ -164,7 +164,17 @@ export default class App extends PureComponent<Props, State> {
   incompleteEscapeTimer: NodeJS.Timeout | null = null;
   // Timeout durations for incomplete sequences (ms)
   readonly NORMAL_TIMEOUT = 50; // Short timeout for regular esc sequences
-  readonly PASTE_TIMEOUT = 500; // Longer timeout for paste operations
+  // Longer timeout for paste operations. This one only became reachable once
+  // flushIncomplete stopped gating on `incomplete` (a bracketed paste has no
+  // incomplete bytes), so it is now load-bearing: flushing too eagerly splits
+  // a slow legitimate paste in two, and a tail chunk that is a lone \r would
+  // then submit the prompt mid-paste. 1500ms is well past the stdin gaps seen
+  // on slow links while still bounding the "keyboard is dead" window.
+  readonly PASTE_TIMEOUT = 1500;
+  // pasteBuffer length observed when the current flush timer was armed. If the
+  // buffer has grown by the time the timer fires, bytes are still trickling in
+  // and the paste gets renewed rather than cut short.
+  pasteBufferLengthAtArm = -1;
 
   // Terminal query/response dispatch. Responses arrive on stdin (parsed
   // out by parse-keypress) and are routed to pending promise resolvers.
@@ -383,8 +393,13 @@ export default class App extends PureComponent<Props, State> {
     // Clear the timer reference
     this.incompleteEscapeTimer = null;
 
-    // Only proceed if we have incomplete sequences
-    if (!this.keyParseState.incomplete) return;
+    // Only proceed if we have something to flush: an incomplete escape
+    // sequence, OR a bracketed paste still waiting for its ESC[201~ (which may
+    // never come). The paste case has no incomplete tokenizer bytes at all —
+    // every byte received so far was a complete token — so gating on
+    // `incomplete` alone made PASTE_TIMEOUT dead code and left the parser
+    // latched in IN_PASTE, swallowing every subsequent keystroke.
+    if (!this.keyParseState.incomplete && this.keyParseState.mode !== 'IN_PASTE') return;
 
     // Fullscreen: if stdin has data waiting, it's almost certainly the
     // continuation of the buffered sequence (e.g. `[<64;74;16M` after a
@@ -395,13 +410,32 @@ export default class App extends PureComponent<Props, State> {
     // drain stdin next and clear this timer. Prevents both the spurious
     // Escape key and the lost scroll event.
     if (this.props.stdin.readableLength > 0) {
-      this.incompleteEscapeTimer = setTimeout(this.flushIncomplete, this.NORMAL_TIMEOUT);
+      this.armFlushTimer();
+      return;
+    }
+
+    // Still growing? Then this is a slow paste, not an abandoned one. Cutting
+    // it here would split the paste in two, and a tail chunk that happens to
+    // be a lone \r would submit the prompt with half the content.
+    if (this.keyParseState.mode === 'IN_PASTE' && this.keyParseState.pasteBuffer.length > this.pasteBufferLengthAtArm) {
+      this.armFlushTimer();
       return;
     }
 
     // Process incomplete as a flush operation (input=null)
     // This reuses all existing parsing logic
     this.processInput(null);
+  };
+
+  // Arm (or re-arm) the flush timer, recording how much paste content had been
+  // seen at that moment so flushIncomplete can tell "abandoned" from "slow".
+  armFlushTimer = (): void => {
+    if (this.incompleteEscapeTimer) {
+      clearTimeout(this.incompleteEscapeTimer);
+    }
+    const inPaste = this.keyParseState.mode === 'IN_PASTE';
+    this.pasteBufferLengthAtArm = inPaste ? this.keyParseState.pasteBuffer.length : -1;
+    this.incompleteEscapeTimer = setTimeout(this.flushIncomplete, inPaste ? this.PASTE_TIMEOUT : this.NORMAL_TIMEOUT);
   };
 
   // Process input through the parser and handle the results
@@ -419,16 +453,12 @@ export default class App extends PureComponent<Props, State> {
       reconciler.discreteUpdates(processKeysInBatch, this, keys, undefined, undefined);
     }
 
-    // If we have incomplete escape sequences, set a timer to flush them
-    if (this.keyParseState.incomplete) {
-      // Cancel any existing timer first
-      if (this.incompleteEscapeTimer) {
-        clearTimeout(this.incompleteEscapeTimer);
-      }
-      this.incompleteEscapeTimer = setTimeout(
-        this.flushIncomplete,
-        this.keyParseState.mode === 'IN_PASTE' ? this.PASTE_TIMEOUT : this.NORMAL_TIMEOUT,
-      );
+    // If we have incomplete escape sequences — or an unterminated bracketed
+    // paste — set a timer to flush them. IN_PASTE must arm the timer even with
+    // an empty tokenizer buffer, otherwise a paste whose ESC[201~ never
+    // arrives latches the parser and eats every later keystroke.
+    if (this.keyParseState.incomplete || this.keyParseState.mode === 'IN_PASTE') {
+      this.armFlushTimer();
     }
   };
 

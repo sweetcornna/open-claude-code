@@ -60,6 +60,12 @@ export function BaseTextInput({
     if (onIsPastingChange) {
       onIsPastingChange(isPasting);
     }
+    // Unmounting (or losing focus) mid-paste must not leave the parent stuck
+    // believing a paste is still in flight — the parent renders the
+    // "Pasting text…" hint off this flag and never hears from us again.
+    return () => {
+      onIsPastingChange?.(false);
+    };
   }, [isPasting, onIsPastingChange]);
 
   const { showPlaceholder, renderedPlaceholder } = renderPlaceholder({
