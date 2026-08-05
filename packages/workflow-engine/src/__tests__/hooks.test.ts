@@ -4,6 +4,7 @@ import { createEngineContext } from '../engine/context.js'
 import { maxConcurrency, Semaphore } from '../engine/concurrency.js'
 import { agentCallKey } from '../engine/journal.js'
 import { makeHooks, type SubWorkflowRunner } from '../engine/hooks.js'
+import { AGENT_MAX_RETRIES, AGENT_MAX_RETRIES_BY_REASON } from '../constants.js'
 import { WorkflowError, WorkflowAbortedError } from '../engine/errors.js'
 import { createBufferingEmitter } from '../progress/events.js'
 import { createHostHandle, type WorkflowPorts } from '../ports.js'
@@ -26,6 +27,10 @@ type CtxOverrides = Partial<{
   rewritten: Array<{ runId: string; entries: JournalEntry[] }>
   agentAdapterRegistry: AgentAdapterRegistry
   loggerWarn: (msg: string) => void
+  /** In-place retries per agent() call; undefined → engine default (AGENT_MAX_RETRIES). */
+  agentMaxRetries: number
+  /** Base retry backoff; defaults to 0 here so retry suites do not actually wait. */
+  retryBackoffMs: number
   // taskRegistrar agent-level abort binding (agent kill bridge).
   // When provided, buildCtx injects it into ports.taskRegistrar; hooks.agent pushes the closure into adapterCtx.
   registerAgentAbort: (
@@ -107,7 +112,10 @@ function buildCtx(overrides: CtxOverrides = {}): {
     cwd: '/tmp',
     budgetTotal: overrides.budgetTotal ?? null,
     journal: overrides.journal,
-    retryBackoffMs: 0, // keep retry tests instant
+    retryBackoffMs: overrides.retryBackoffMs ?? 0, // keep retry tests instant
+    ...(overrides.agentMaxRetries !== undefined
+      ? { agentMaxRetries: overrides.agentMaxRetries }
+      : {}),
   })
   const noopSub: SubWorkflowRunner = async () => null
   return { ctx, events, hooks: makeHooks(ctx, noopSub) }
@@ -158,17 +166,24 @@ test('agent dead → retry once succeeds → ok', async () => {
   expect(calls).toBe(2)
 })
 
-test('agent dead → retry still dead → final null (dead stays dead)', async () => {
+test('agent dead → every retry dead → final null (dead stays dead)', async () => {
   let calls = 0
+  const warns: string[] = []
   const { hooks } = buildCtx({
     runner: async () => {
       calls++
       return { kind: 'dead' as const }
     },
-    loggerWarn: () => {},
+    loggerWarn: msg => warns.push(msg),
   })
   expect(await hooks.agent('p')).toBeNull()
-  expect(calls).toBe(2)
+  // first attempt + AGENT_MAX_RETRIES
+  expect(calls).toBe(1 + AGENT_MAX_RETRIES)
+  expect(warns.at(-1)).toMatch(
+    new RegExp(
+      `no retries left \\(${AGENT_MAX_RETRIES}/${AGENT_MAX_RETRIES}\\)`,
+    ),
+  )
 })
 
 test('agent non-abort throw → retry once succeeds → ok', async () => {
@@ -189,7 +204,7 @@ test('agent non-abort throw → retry once succeeds → ok', async () => {
   expect(calls).toBe(2)
 })
 
-test('agent non-abort throw → retry still throws → degrade to dead (returns null, does not break workflow)', async () => {
+test('agent non-abort throw → every retry throws → degrade to dead (returns null, does not break workflow)', async () => {
   let calls = 0
   const { hooks } = buildCtx({
     runner: async () => {
@@ -199,7 +214,7 @@ test('agent non-abort throw → retry still throws → degrade to dead (returns 
     loggerWarn: () => {},
   })
   expect(await hooks.agent('p')).toBeNull()
-  expect(calls).toBe(2)
+  expect(calls).toBe(1 + AGENT_MAX_RETRIES)
 })
 
 test('agent throw WorkflowAbortedError → no retry, rethrow directly (kill does not allow retry)', async () => {
@@ -730,6 +745,246 @@ test('journal dead entry → re-runs live instead of replaying the failure; subs
   expect(appended).toHaveLength(1)
   expect(appended[0]!.seq).toBe(0)
   expect(appended[0]!.result.kind).toBe('ok')
+})
+
+// ---- retry loop: budget, observability, and the journal/budget invariants ----
+
+test('agent dead → recovers on the last allowed retry (1 + AGENT_MAX_RETRIES attempts)', async () => {
+  let calls = 0
+  const { hooks } = buildCtx({
+    runner: async () => {
+      calls++
+      return calls <= AGENT_MAX_RETRIES
+        ? { kind: 'dead' as const, reason: 'api-error' as const }
+        : {
+            kind: 'ok' as const,
+            output: 'recovered',
+            usage: { outputTokens: 7 },
+          }
+    },
+    loggerWarn: () => {},
+  })
+  expect(await hooks.agent('p')).toBe('recovered')
+  expect(calls).toBe(1 + AGENT_MAX_RETRIES)
+})
+
+test('agentMaxRetries:0 disables the in-place retry entirely', async () => {
+  let calls = 0
+  const { hooks } = buildCtx({
+    agentMaxRetries: 0,
+    runner: async () => {
+      calls++
+      return { kind: 'dead' as const, reason: 'api-error' as const }
+    },
+    loggerWarn: () => {},
+  })
+  expect(await hooks.agent('p')).toBeNull()
+  expect(calls).toBe(1)
+})
+
+test('no-structured-output gets the reduced per-cause retry budget, not AGENT_MAX_RETRIES', async () => {
+  // Its retry unit is a whole agent run that already spent its tokens, so it is capped
+  // below the generic budget (AGENT_MAX_RETRIES_BY_REASON).
+  let calls = 0
+  const { hooks } = buildCtx({
+    runner: async () => {
+      calls++
+      return { kind: 'dead' as const, reason: 'no-structured-output' as const }
+    },
+    loggerWarn: () => {},
+  })
+  expect(await hooks.agent('p')).toBeNull()
+  expect(calls).toBe(1 + AGENT_MAX_RETRIES_BY_REASON['no-structured-output']!)
+  expect(calls).toBeLessThan(1 + AGENT_MAX_RETRIES)
+})
+
+test('in-place retry emits agent_retry, never a second agent_started', async () => {
+  // A repeated agent_started makes store.ts restart the row and reset startedAt, so an
+  // agent 14s into its third attempt renders as "just started" — worse than silence.
+  // agent_retry keeps the row alive and records the attempt instead.
+  let calls = 0
+  const { hooks, events } = buildCtx({
+    runner: async () => {
+      calls++
+      return calls <= 2
+        ? { kind: 'dead' as const, reason: 'api-error' as const }
+        : { kind: 'ok' as const, output: 'ok-3', usage: { outputTokens: 2 } }
+    },
+    loggerWarn: () => {},
+  })
+  expect(await hooks.agent('p', { label: 'worker' })).toBe('ok-3')
+
+  expect(events.map(e => e.type)).toEqual([
+    'agent_started',
+    'agent_retry',
+    'agent_retry',
+    'agent_done',
+  ])
+  const retries = events.filter(e => e.type === 'agent_retry')
+  expect(retries.map(e => (e.type === 'agent_retry' ? e.attempt : -1))).toEqual(
+    [1, 2],
+  )
+  for (const e of retries) {
+    if (e.type !== 'agent_retry') continue
+    expect(e.agentId).toBe(0) // same row as the single agent_started
+    expect(e.label).toBe('worker')
+    expect(e.limit).toBe(AGENT_MAX_RETRIES)
+    expect(e.reason).toBe('api-error')
+    expect(e.runId).toBe('r1')
+  }
+})
+
+test('a throw-triggered retry reports reason "threw" with the message as detail', async () => {
+  let calls = 0
+  const { hooks, events } = buildCtx({
+    runner: async () => {
+      calls++
+      if (calls === 1) throw new Error('socket hang up')
+      return { kind: 'ok' as const, output: 'ok', usage: { outputTokens: 1 } }
+    },
+    loggerWarn: () => {},
+  })
+  await hooks.agent('p')
+  const retry = events.find(e => e.type === 'agent_retry')
+  expect(retry).toBeDefined()
+  if (retry?.type !== 'agent_retry') throw new Error('unreachable')
+  expect(retry.reason).toBe('threw')
+  expect(retry.detail).toContain('socket hang up')
+})
+
+test('agent_retry carries the delay the engine is about to wait (panel can show the backoff)', async () => {
+  let calls = 0
+  const { hooks, events } = buildCtx({
+    retryBackoffMs: 100,
+    runner: async () => {
+      calls++
+      return calls === 1
+        ? { kind: 'dead' as const, reason: 'api-error' as const }
+        : { kind: 'ok' as const, output: 'ok', usage: { outputTokens: 1 } }
+    },
+    loggerWarn: () => {},
+  })
+  await hooks.agent('p')
+  const retry = events.find(e => e.type === 'agent_retry')
+  if (retry?.type !== 'agent_retry') throw new Error('unreachable')
+  // retry #1 → base * 2^0, plus at most the jitter ratio
+  expect(retry.delayMs).toBeGreaterThanOrEqual(100)
+  expect(retry.delayMs).toBeLessThanOrEqual(125)
+})
+
+test('a transient worktree-failed is retried once, not three times', async () => {
+  // The backend marks git lock contention retryable (a sibling agent held the index/ref
+  // lock) and everything else on that path retryable:false. The transient case still gets
+  // the narrow per-cause budget: a lock clears within one backoff or not at all.
+  let calls = 0
+  const { hooks } = buildCtx({
+    runner: async () => {
+      calls++
+      return { kind: 'dead' as const, reason: 'worktree-failed' as const }
+    },
+    loggerWarn: () => {},
+  })
+  expect(await hooks.agent('p')).toBeNull()
+  expect(calls).toBe(1 + AGENT_MAX_RETRIES_BY_REASON['worktree-failed']!)
+  expect(calls).toBe(2)
+})
+
+test('retryable:false emits no agent_retry at all', async () => {
+  const { hooks, events } = buildCtx({
+    runner: async () => ({
+      kind: 'dead' as const,
+      reason: 'worktree-failed' as const,
+      retryable: false,
+    }),
+    loggerWarn: () => {},
+  })
+  await hooks.agent('p')
+  expect(events.some(e => e.type === 'agent_retry')).toBe(false)
+  expect(events.filter(e => e.type === 'agent_started')).toHaveLength(1)
+})
+
+test('retry does not double-charge budget nor append intermediate journal entries', async () => {
+  const appended: JournalEntry[] = []
+  let calls = 0
+  const { hooks, ctx, events } = buildCtx({
+    appended,
+    runner: async () => {
+      calls++
+      return calls <= 2
+        ? { kind: 'dead' as const, reason: 'api-error' as const }
+        : { kind: 'ok' as const, output: 'final', usage: { outputTokens: 11 } }
+    },
+    loggerWarn: () => {},
+  })
+  expect(await hooks.agent('p')).toBe('final')
+  // one journal record, holding the final result only — a mid-retry append would make the
+  // next resume replay a failure that never was the outcome
+  expect(appended).toHaveLength(1)
+  expect(appended[0]!.result.kind).toBe('ok')
+  expect(ctx.journal).toHaveLength(1)
+  // dead never charges; the surviving ok charges exactly once
+  expect(ctx.resources.budget.spent()).toBe(11)
+  expect(events.filter(e => e.type === 'agent_done')).toHaveLength(1)
+})
+
+test('retries reuse the identical params, so the journal key is unchanged (resume stays aligned)', async () => {
+  const appended: JournalEntry[] = []
+  const seen: AgentRunParams[] = []
+  let calls = 0
+  const { hooks } = buildCtx({
+    appended,
+    runner: async params => {
+      seen.push(params)
+      calls++
+      return calls === 1
+        ? { kind: 'dead' as const, reason: 'api-error' as const }
+        : { kind: 'ok' as const, output: 'v', usage: { outputTokens: 1 } }
+    },
+    loggerWarn: () => {},
+  })
+  await hooks.agent('p', { label: 'L', model: 'haiku' })
+  expect(seen).toHaveLength(2)
+  expect(seen[1]).toEqual(seen[0]!)
+  // key must equal the one a fresh replay computes for the same call
+  expect(appended[0]!.key).toBe(
+    agentCallKey('p', { prompt: 'p', label: 'L', model: 'haiku' }),
+  )
+})
+
+test('abort during the retry backoff stops the loop with WorkflowAbortedError (no further attempt)', async () => {
+  const ac = new AbortController()
+  let calls = 0
+  const { hooks } = buildCtx({
+    signal: ac.signal,
+    retryBackoffMs: 5_000, // long enough that only the abort can end the wait
+    runner: async () => {
+      calls++
+      setTimeout(() => ac.abort(), 5)
+      return { kind: 'dead' as const, reason: 'api-error' as const }
+    },
+    loggerWarn: () => {},
+  })
+  const started = Date.now()
+  await expect(hooks.agent('p')).rejects.toBeInstanceOf(WorkflowAbortedError)
+  // the wait is abort-aware: it must not sit out the full backoff
+  expect(Date.now() - started).toBeLessThan(2_000)
+  expect(calls).toBe(1)
+})
+
+test('an already-aborted signal is not retried even when the failure looks transient', async () => {
+  const ac = new AbortController()
+  let calls = 0
+  const { hooks } = buildCtx({
+    signal: ac.signal,
+    runner: async () => {
+      calls++
+      ac.abort()
+      throw new Error('socket closed')
+    },
+    loggerWarn: () => {},
+  })
+  await expect(hooks.agent('p')).rejects.toBeInstanceOf(WorkflowAbortedError)
+  expect(calls).toBe(1)
 })
 
 test('parallel rethrows WorkflowAbortedError (kill must end the run, not degrade to null)', async () => {

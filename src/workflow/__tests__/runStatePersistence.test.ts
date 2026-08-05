@@ -175,3 +175,48 @@ test('attachRunStatePersistence returns unsubscribe; after calling it no more di
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('the persisted snapshot has no mid-flight agents (store sweeps before persistence reads)', async () => {
+  // Locks the subscription order getWorkflowService() relies on: store first, persistence
+  // second, bus delivering in subscription order. If someone swaps them, state.json keeps a
+  // killed run whose agents are frozen 'running' — the panel rehydrates spinners that can
+  // never finish, and nothing else fails loudly enough to point at the cause.
+  const dir = await mkdtemp(join(tmpdir(), 'wf-persist-'))
+  try {
+    const bus = createProgressBus()
+    const store = createProgressStoreFromBus(bus) // subscribes first
+    attachRunStatePersistence(bus, store, () => dir) // …then persistence
+
+    bus.emit({
+      type: 'run_started',
+      runId: 'rK',
+      workflowName: 'w',
+      meta: null,
+    })
+    bus.emit({ type: 'agent_started', runId: 'rK', agentId: 0, label: 'stuck' })
+    bus.emit({
+      type: 'agent_retry',
+      runId: 'rK',
+      agentId: 0,
+      attempt: 1,
+      limit: 3,
+      reason: 'api-error',
+      delayMs: 4_000,
+    })
+    // killed while agent 0 sits in its retry backoff — it never emits agent_done
+    bus.emit({ type: 'run_done', runId: 'rK', status: 'killed' })
+
+    await new Promise(r => setTimeout(r, 50))
+
+    const got = await readRunState(dir, 'rK')
+    expect(got).not.toBeNull()
+    expect(got!.status).toBe('killed')
+    const agent = got!.agents[0]!
+    expect(agent.status).toBe('done')
+    expect(agent.resultKind).toBe('dead')
+    expect(agent.failureReason).toBe('run-killed')
+    expect(typeof agent.endedAt).toBe('number')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})

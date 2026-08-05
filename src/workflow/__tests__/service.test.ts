@@ -8,7 +8,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
-import { makeService, __resetWorkflowServiceForTests } from '../service.js'
+import {
+  makeService,
+  workflowDefaultMaxConcurrency,
+  __resetWorkflowServiceForTests,
+} from '../service.js'
 import { createProgressBus } from '../progress/bus.js'
 import {
   createProgressStoreFromBus,
@@ -19,6 +23,7 @@ import type {
   ProgressEvent,
   WorkflowPorts,
 } from '@open-claude-code/workflow-engine'
+import { AGENT_MAX_RETRIES } from '@open-claude-code/workflow-engine'
 
 // Construct FAKE ports: registry.run returns a fixed AgentRunResult, taskRegistrar has bindings,
 // journalStore is an in-memory empty impl. progressEmitter.emit → bus.emit (store subscribes to bus at construction).
@@ -396,11 +401,12 @@ test('script run throws → service routes to taskRegistrar.fail, with error tex
   expect(fail?.kind === 'fail' && fail.error).toMatch(/script boom/)
 })
 
-test('adapter throws → retry still throws → degrade to dead → workflow completed (not fail)', async () => {
+test('adapter throws → retries exhausted → degrade to dead → workflow completed (not fail)', async () => {
   __resetWorkflowServiceForTests()
-  // new semantics: agent non-abort throw → retry once → still throws → degrade to dead (agent returns null),
-  // workflow continues and completes. Retry tolerates transient failures (429/network), but a permanently
-  // broken agent does not break through the entire workflow (consistent with parallel/pipeline null-on-error contract).
+  // semantics: agent non-abort throw → retried up to AGENT_MAX_RETRIES → still throws → degrade to
+  // dead (agent returns null), workflow continues and completes. Retries tolerate transient failures
+  // (429/network), but a permanently broken agent does not break through the entire workflow
+  // (consistent with parallel/pipeline null-on-error contract).
   const { ports, store, calls, adapterCallsRef } = fakePorts({
     adapterThrow: 'adapter boom',
   })
@@ -408,8 +414,8 @@ test('adapter throws → retry still throws → degrade to dead → workflow com
   const svc = makeService(ports, store, undefined, undefined, 0)
   await svc.launch({ script: `return agent('x')` }, stubTUC, stubCanUseTool)
   await settle()
-  // retry once → adapter called 2 times
-  expect(adapterCallsRef.value).toBe(2)
+  // first attempt + AGENT_MAX_RETRIES in-place retries
+  expect(adapterCallsRef.value).toBe(1 + AGENT_MAX_RETRIES)
   // workflow normal completed, not failed
   const complete = calls.find(c => c.kind === 'complete')
   expect(complete).toBeDefined()
@@ -627,5 +633,94 @@ test('getRunAsync memory miss + disk miss → undefined', async () => {
     expect(got).toBeUndefined()
   } finally {
     await rm(dir, { recursive: true, force: true })
+  }
+})
+
+// ---- OCC_WORKFLOW_MAX_CONCURRENCY (host-side default; the engine package reads no env) ----
+
+test('service.launch applies OCC_WORKFLOW_MAX_CONCURRENCY, and an explicit input still wins', async () => {
+  // wiring.ts covers the Workflow-tool path; launch() is the panel / slash-command path and
+  // had no coverage — a missing `?? workflowDefaultMaxConcurrency()` there would leave half
+  // the product on the engine default with every test still green.
+  const original = process.env.OCC_WORKFLOW_MAX_CONCURRENCY
+  const peakFor = async (
+    maxConcurrency: number | undefined,
+  ): Promise<number> => {
+    __resetWorkflowServiceForTests()
+    const { ports, store } = fakePorts()
+    let active = 0
+    let peak = 0
+    ports.agentAdapterRegistry = {
+      resolve: () => ({
+        id: 'claude-code',
+        capabilities: { structuredOutput: true },
+        run: async (): Promise<AgentRunResult> => {
+          active++
+          peak = Math.max(peak, active)
+          await new Promise(r => {
+            setTimeout(r, 15)
+          })
+          active--
+          return { kind: 'ok', output: 'x', usage: { outputTokens: 1 } }
+        },
+      }),
+    } as unknown as typeof ports.agentAdapterRegistry
+    const svc = makeService(ports, store)
+    await svc.launch(
+      {
+        script: `return parallel([() => agent('a'), () => agent('b'), () => agent('c'), () => agent('d')])`,
+        ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
+      },
+      stubTUC,
+      stubCanUseTool,
+    )
+    for (let i = 0; i < 100 && active >= 0; i++) {
+      await settle()
+      if (store.list()[0]?.status !== 'running') break
+    }
+    return peak
+  }
+
+  try {
+    process.env.OCC_WORKFLOW_MAX_CONCURRENCY = '1'
+    expect(await peakFor(undefined)).toBe(1)
+    // explicit input beats the env
+    expect(await peakFor(4)).toBe(4)
+
+    delete process.env.OCC_WORKFLOW_MAX_CONCURRENCY
+    // env gone → engine default (>1), proving the value above really came from the env
+    expect(await peakFor(undefined)).toBeGreaterThan(1)
+  } finally {
+    if (original === undefined) delete process.env.OCC_WORKFLOW_MAX_CONCURRENCY
+    else process.env.OCC_WORKFLOW_MAX_CONCURRENCY = original
+  }
+})
+
+test('workflowDefaultMaxConcurrency parses the env override, ignoring garbage', () => {
+  const original = process.env.OCC_WORKFLOW_MAX_CONCURRENCY
+  const set = (v: string | undefined): void => {
+    if (v === undefined) delete process.env.OCC_WORKFLOW_MAX_CONCURRENCY
+    else process.env.OCC_WORKFLOW_MAX_CONCURRENCY = v
+  }
+  try {
+    // unset → undefined, i.e. the engine's DEFAULT_MAX_CONCURRENCY stays in charge
+    set(undefined)
+    expect(workflowDefaultMaxConcurrency()).toBeUndefined()
+
+    set('9')
+    expect(workflowDefaultMaxConcurrency()).toBe(9)
+
+    // above the cap is still returned here; clampMaxConcurrency applies MAX_CONCURRENCY_CAP
+    // at the engine boundary, so there is exactly one place that owns the ceiling.
+    set('999')
+    expect(workflowDefaultMaxConcurrency()).toBe(999)
+
+    // garbage / non-positive must not silently serialize or disable the semaphore
+    for (const bad of ['', 'abc', '0', '-4', 'NaN']) {
+      set(bad)
+      expect(workflowDefaultMaxConcurrency()).toBeUndefined()
+    }
+  } finally {
+    set(original)
   }
 })

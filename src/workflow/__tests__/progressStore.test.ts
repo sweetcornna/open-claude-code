@@ -378,9 +378,10 @@ test('agent timestamps: startedAt on start, endedAt on done', () => {
 })
 
 test('a restarted agent clears the previous run terminal state', () => {
-  // hooks retries re-emit agent_started for the same id; leaving the old ✗
-  // and endedAt behind would show a failed, already-finished row for an
-  // agent that is running again.
+  // The run-level journal resume builds a fresh context that hands out agent ids from 0
+  // again, so the same id can legitimately start over; leaving the old ✗ and endedAt
+  // behind would show a failed, already-finished row for an agent that is running again.
+  // (In-place engine retries do NOT reach this branch — they emit agent_retry.)
   const { bus, store } = newStore()
   bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
   bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
@@ -399,4 +400,167 @@ test('a restarted agent clears the previous run terminal state', () => {
   expect(a.failureReason).toBeUndefined()
   expect(a.failureDetail).toBeUndefined()
   expect(a.retryable).toBeUndefined()
+})
+
+// ---- agent_retry (in-place engine retry; must not restart the row) ----
+
+test('agent_retry records the attempt without touching startedAt', async () => {
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0, label: 'w1' })
+  const startedAt = store.get('r1')!.agents[0]!.startedAt
+  // let the clock move so a reset would be detectable
+  await new Promise(r => {
+    setTimeout(r, 5)
+  })
+
+  bus.emit({
+    type: 'agent_retry',
+    runId: 'r1',
+    agentId: 0,
+    label: 'w1',
+    attempt: 1,
+    limit: 3,
+    reason: 'api-error',
+    detail: 'overloaded',
+    delayMs: 2_000,
+  })
+
+  const a = store.get('r1')!.agents[0]!
+  // the elapsed clock spans the whole retry chain: startedAt must survive
+  expect(a.startedAt).toBe(startedAt)
+  expect(a.status).toBe('running')
+  expect(a.endedAt).toBeUndefined()
+  expect(a.retryCount).toBe(1)
+  expect(a.retryLimit).toBe(3)
+  expect(a.lastFailureReason).toBe('api-error')
+  expect(a.lastFailureDetail).toBe('overloaded')
+  expect(a.retryDelayMs).toBe(2_000)
+  expect(typeof a.retryingSince).toBe('number')
+  // an in-place retry never adds a second row
+  expect(store.get('r1')!.agents).toHaveLength(1)
+  expect(store.get('r1')!.agentCount).toBe(1)
+})
+
+test('successive agent_retry events overwrite the attempt counter, and success keeps the history', () => {
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+  for (const attempt of [1, 2]) {
+    bus.emit({
+      type: 'agent_retry',
+      runId: 'r1',
+      agentId: 0,
+      attempt,
+      limit: 3,
+      reason: 'api-error',
+      delayMs: 100 * attempt,
+    })
+  }
+  bus.emit({ type: 'agent_done', runId: 'r1', agentId: 0, result: ok('done') })
+
+  const a = store.get('r1')!.agents[0]!
+  expect(a.retryCount).toBe(2)
+  expect(a.status).toBe('done')
+  expect(a.resultKind).toBe('ok')
+  // lastFailureReason describes an attempt the agent survived — it is NOT a terminal failure
+  expect(a.lastFailureReason).toBe('api-error')
+  expect(a.failureReason).toBeUndefined()
+})
+
+test('agent_retry for an unknown agentId is ignored (no phantom row)', () => {
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({
+    type: 'agent_retry',
+    runId: 'r1',
+    agentId: 42,
+    attempt: 1,
+    limit: 3,
+    reason: 'api-error',
+    delayMs: 1,
+  })
+  expect(store.get('r1')!.agents).toHaveLength(0)
+})
+
+// ---- run_done sweeps abandoned agents (P3.7) ----
+
+test('run_done killed forces still-running agents to a terminal state', () => {
+  // A killed run tears the engine down mid-agent (possibly parked in a retry backoff),
+  // so those agents never emit agent_done. Left alone they spin forever in the panel
+  // with an elapsed timer that keeps climbing after the run itself went terminal.
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({
+    type: 'agent_started',
+    runId: 'r1',
+    agentId: 0,
+    label: 'finished',
+  })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 1, label: 'running' })
+  bus.emit({
+    type: 'agent_retry',
+    runId: 'r1',
+    agentId: 1,
+    attempt: 1,
+    limit: 3,
+    reason: 'api-error',
+    delayMs: 4_000,
+  })
+  bus.emit({ type: 'agent_done', runId: 'r1', agentId: 0, result: ok('out') })
+  bus.emit({ type: 'run_done', runId: 'r1', status: 'killed' })
+
+  const [finished, abandoned] = store.get('r1')!.agents
+  // the completed agent keeps its own result
+  expect(finished!.status).toBe('done')
+  expect(finished!.resultKind).toBe('ok')
+  // the abandoned one is reaped as a failure, not left running
+  expect(abandoned!.status).toBe('done')
+  expect(abandoned!.resultKind).toBe('dead')
+  expect(abandoned!.failureReason).toBe('run-killed')
+  expect(typeof abandoned!.endedAt).toBe('number')
+  // the "backing off" hint is cleared so nothing renders a pending retry
+  expect(abandoned!.retryingSince).toBeUndefined()
+  expect(abandoned!.retryDelayMs).toBeUndefined()
+  // the retry history stays visible for post-mortem
+  expect(abandoned!.retryCount).toBe(1)
+})
+
+test('run_done failed/completed also reap leftovers, tagged by how the run ended', () => {
+  for (const [status, reason] of [
+    ['failed', 'run-failed'],
+    ['completed', 'run-ended'],
+  ] as const) {
+    const { bus, store } = newStore()
+    bus.emit({
+      type: 'run_started',
+      runId: 'r1',
+      workflowName: 'w',
+      meta: null,
+    })
+    bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+    bus.emit({ type: 'run_done', runId: 'r1', status })
+    const a = store.get('r1')!.agents[0]!
+    expect(a.status).toBe('done')
+    expect(a.failureReason).toBe(reason)
+  }
+})
+
+test('run_done does not rewrite agents that already reached a terminal state', () => {
+  const { bus, store } = newStore()
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0 })
+  bus.emit({
+    type: 'agent_done',
+    runId: 'r1',
+    agentId: 0,
+    result: { kind: 'dead', reason: 'prompt-too-long', retryable: false },
+  })
+  const endedAt = store.get('r1')!.agents[0]!.endedAt
+  bus.emit({ type: 'run_done', runId: 'r1', status: 'killed' })
+
+  const a = store.get('r1')!.agents[0]!
+  expect(a.failureReason).toBe('prompt-too-long')
+  expect(a.retryable).toBe(false)
+  expect(a.endedAt).toBe(endedAt)
 })

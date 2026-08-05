@@ -65,6 +65,27 @@ export type AgentProgress = {
   failureDetail?: string
   /** done·dead only: false = deterministic failure, re-running cannot succeed. */
   retryable?: boolean
+  /**
+   * In-place retries the engine has started for this agent (from agent_retry).
+   * Present while still running: the row is "attempt retryCount+1", and startedAt
+   * deliberately still points at the FIRST attempt so the elapsed column shows the
+   * true cost of the whole retry chain (backoff included).
+   */
+  retryCount?: number
+  /** Retries the engine will allow for the failure that triggered the latest retry. */
+  retryLimit?: number
+  /**
+   * Why the latest retry happened (engine dead reason, or 'threw'). Kept separate from
+   * failureReason: this one describes an attempt the agent already survived, while
+   * failureReason describes the terminal result. An agent can end ok with this set.
+   */
+  lastFailureReason?: string
+  /** Bounded detail of the failure that triggered the latest retry. */
+  lastFailureDetail?: string
+  /** Wall clock of the latest agent_retry; with delayMs it tells the UI a backoff is in progress. */
+  retryingSince?: number
+  /** Backoff the engine waits before the retry attempt actually starts. */
+  retryDelayMs?: number
 }
 
 export type RunProgress = {
@@ -172,13 +193,37 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
           a.label = event.label
           a.phase = event.phase
           a.startedAt = p.updatedAt
-          // A retry restarts the clock: clear the previous run's terminal
-          // fields so the row doesn't show a stale ✗/duration while running.
+          // A genuinely fresh attempt at this agent id — the workflow-level journal
+          // resume builds a new context and hands out ids from 0 again. Restart the
+          // clock and clear the previous attempt's terminal fields so the row does not
+          // show a stale ✗/duration while running. In-place engine retries do NOT come
+          // through here (they emit agent_retry precisely so startedAt survives).
           a.endedAt = undefined
           a.resultKind = undefined
           a.failureReason = undefined
           a.failureDetail = undefined
           a.retryable = undefined
+          a.retryCount = undefined
+          a.retryLimit = undefined
+          a.lastFailureReason = undefined
+          a.lastFailureDetail = undefined
+          a.retryingSince = undefined
+          a.retryDelayMs = undefined
+        }
+        break
+      }
+      case 'agent_retry': {
+        // Deliberately does not touch startedAt/endedAt: the agent never left 'running',
+        // and its elapsed time spans every attempt plus the backoff between them.
+        const ar = p.agents.find(x => x.id === event.agentId)
+        if (ar) {
+          ar.status = 'running'
+          ar.retryCount = event.attempt
+          ar.retryLimit = event.limit
+          ar.lastFailureReason = event.reason
+          ar.lastFailureDetail = event.detail
+          ar.retryingSince = p.updatedAt
+          ar.retryDelayMs = event.delayMs
         }
         break
       }
@@ -225,11 +270,27 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
         }
         break
       }
-      case 'run_done':
+      case 'run_done': {
         p.status = event.status
         if (event.returnValue !== undefined) p.returnValue = event.returnValue
         if (event.error !== undefined) p.error = event.error
+        // The run is over, so nothing can still be running. A killed run tears down the
+        // engine mid-agent (and an agent parked in a retry backoff is torn down without
+        // ever emitting agent_done), leaving rows spinning forever with an elapsed timer
+        // that keeps climbing after the run's own status went terminal. Reap them here:
+        // 'dead' is the honest classification (no result was ever produced) and keeps the
+        // panel's failed-bucket / ✗ rendering working without teaching it a new kind.
+        for (const a of p.agents) {
+          if (a.status !== 'running') continue
+          a.status = 'done'
+          a.endedAt = p.updatedAt
+          a.resultKind = 'dead'
+          a.failureReason = `run-${event.status === 'completed' ? 'ended' : event.status}`
+          a.retryingSince = undefined
+          a.retryDelayMs = undefined
+        }
         break
+      }
     }
     notify()
   }

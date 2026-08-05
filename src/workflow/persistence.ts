@@ -195,6 +195,15 @@ export function attachRunStatePersistence(
 ): () => void {
   return bus.subscribe(event => {
     if (event.type !== 'run_done') return
+    // ORDER DEPENDENCY — do not move this subscription above the store's.
+    // ProgressBus delivers to subscribers in subscription order, and getWorkflowService()
+    // (service.ts) builds the store first, then calls attachRunStatePersistence. That is what
+    // makes store.get() below return an already-terminal snapshot: the store's run_done branch
+    // has both stamped the run status AND swept the agents that were still 'running' (a killed
+    // run tears the engine down mid-agent, so those never emit agent_done) into a terminal
+    // state. Subscribing earlier would silently persist state.json with a terminal run whose
+    // agents are frozen mid-flight — the panel then rehydrates spinners that can never finish,
+    // and nothing fails loudly enough to point back here.
     const run = store.get(event.runId)
     if (!run) return
     const dir = runsDirProvider()

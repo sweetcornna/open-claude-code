@@ -2,6 +2,10 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import type { PromptCommand } from '../../../types/command.js'
 import { clearBundledSkills, getBundledSkills } from '../../bundledSkills.js'
+import {
+  DEFAULT_MAX_CONCURRENCY,
+  MAX_CONCURRENCY_CAP,
+} from '@open-claude-code/workflow-engine'
 import { registerUltracodeSkill } from '../ultracode.js'
 
 // Command is a union; source/getPromptForCommand only exist on the prompt
@@ -63,6 +67,29 @@ describe('registerUltracodeSkill', () => {
     expect(text).toContain('Quality patterns')
     expect(text).toContain('resumeFromRunId')
     expect(text).toContain('4096')
+  })
+
+  test('concurrency guidance quotes the engine constant, not a hardcoded number', async () => {
+    // The playbook tells the model to interrupt the user via AskUserQuestion for any
+    // non-default concurrency. If this text drifts from DEFAULT_MAX_CONCURRENCY, the model
+    // asks permission for the value it should have used silently (and recommends a value
+    // the engine will not actually apply).
+    clearBundledSkills()
+    registerUltracodeSkill()
+    const ultracode = getBundledSkills().find(s => s.name === 'ultracode')!
+    const blocks = await asPrompt(ultracode).getPromptForCommand(
+      '',
+      {} as never,
+    )
+    const text = (blocks[0] as { type: 'text'; text: string }).text
+    const d = String(DEFAULT_MAX_CONCURRENCY)
+    expect(text).toContain(`capped at ${d} by default`)
+    expect(text).toContain(`with ${d} marked "(Recommended)"`)
+    expect(text).toContain(`${d} is the recommended default`)
+    expect(text).toContain(`1–${MAX_CONCURRENCY_CAP}`)
+    // the "user already said a number" example must not collide with the default,
+    // or it stops illustrating the exception it is there to illustrate
+    expect(text).not.toContain(`("use ${d}"`)
   })
 
   test('appends user-provided args to the prompt when given', async () => {

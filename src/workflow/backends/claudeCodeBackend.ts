@@ -149,6 +149,23 @@ function tryParseObject(candidate: string): unknown | null {
   }
 }
 
+/**
+ * git's index/ref lock signatures. Matched against the worktree-creation error text to tell a
+ * transient collision (another agent holds the lock right now) apart from the deterministic
+ * environment failures that share reason:'worktree-failed'.
+ *
+ * Matching on message text is unavoidable: git reports every one of these as exit code 128 with
+ * no distinguishing code, and the three alternatives cover what git actually prints —
+ * `Unable to create '<path>/index.lock': File exists`, `cannot lock ref 'refs/...'`, and the
+ * `Unable to create ... .lock` form used by ref updates. Exported for direct unit coverage;
+ * a false positive here costs one extra backoff, a false negative costs a lost agent.
+ */
+export function isGitLockContention(detail: string): boolean {
+  return /\.lock': File exists|cannot lock ref|Unable to create .*\.lock/i.test(
+    detail,
+  )
+}
+
 type WorkflowWorktreeInfo = Awaited<ReturnType<typeof createAgentWorktree>>
 
 /**
@@ -230,7 +247,25 @@ export const claudeCodeBackend: AgentAdapter = {
         logForDebugging(
           `workflow worktree creation failed (${agentDef.agentType}): ${detail}`,
         )
-        return { kind: 'dead', reason: 'worktree-failed', detail }
+        // Mostly retryable:false — the causes are environmental and deterministic for an
+        // identical call (not a git repo, detached HEAD, no disk, branch name taken).
+        // Retrying re-runs git plumbing that failed for a reason that has not changed,
+        // and the agent has not even started, so a retry chain is pure latency before the
+        // null the script is going to see anyway.
+        //
+        // The exception is git's own lock contention, which is the one genuinely transient
+        // failure here: several agents entering isolation at once race to fetch/create the
+        // same ref (worktree.ts's fetch + rev-parse path) with no mutex anywhere in between,
+        // and the loser dies on `.lock': File exists`. Raising the default concurrency made
+        // that collision more likely, not less, so this must stay retryable — one backoff is
+        // normally enough for the holder to release, hence the budget of 1 in
+        // AGENT_MAX_RETRIES_BY_REASON rather than the generic three.
+        return {
+          kind: 'dead',
+          reason: 'worktree-failed',
+          detail,
+          ...(isGitLockContention(detail) ? {} : { retryable: false }),
+        }
       }
     }
     // runWithCwdOverride makes tools such as Bash/Read inside the agent see the worktree path
@@ -358,10 +393,17 @@ export const claudeCodeBackend: AgentAdapter = {
     // catch above never sees them. Without this check the error text would
     // masquerade as the agent's answer in non-schema mode ("Prompt is too long"
     // becomes the return value) and get misclassified as no-structured-output in
-    // schema mode, triggering a doomed identical retry. Context overflow is
+    // schema mode, triggering doomed identical retries. Context overflow is
     // deterministic for the identical call (retryable:false); anything else
     // (overload / stream drop / timeout) is transient — worth the engine's
-    // single backed-off retry.
+    // backed-off retries (AGENT_MAX_RETRIES, on top of whatever the API transport
+    // already retried before surfacing this as a terminal error).
+    //
+    // Reason granularity is the engine's retry budget knob: AGENT_MAX_RETRIES_BY_REASON
+    // keys off exactly these strings, so splitting a reason here changes how many times
+    // that failure is re-run. 'api-error' stays one bucket deliberately — the terminal
+    // message text is not a reliable discriminator between overload and a stream drop,
+    // and both want the same treatment.
     let lastAssistant: AssistantMessage | undefined
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i]?.type === 'assistant') {

@@ -43,6 +43,22 @@ import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type { ToolUseContext } from '../Tool.js'
 
 /**
+ * Session-wide override of the engine's DEFAULT_MAX_CONCURRENCY, for users whose rate limits
+ * (or patience) differ from the default. Read here rather than in the engine package, which is
+ * deliberately free of process.env so it stays testable and embeddable.
+ *
+ * Only fills the default: an explicit maxConcurrency on the call always wins, and the engine's
+ * clampMaxConcurrency still applies MAX_CONCURRENCY_CAP. Garbage or a non-positive value falls
+ * back to the engine default (same posture as spawnLimits.ts).
+ */
+export function workflowDefaultMaxConcurrency(): number | undefined {
+  const raw = process.env.OCC_WORKFLOW_MAX_CONCURRENCY
+  if (raw === undefined) return undefined
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+/**
  * WorkflowService: the single entry shared by the tool (U7) and panel (U9).
  *
  * - `ports`: shared WorkflowPorts; tool descriptors are passed through to the engine.
@@ -106,7 +122,10 @@ export function getWorkflowService(): WorkflowService {
   const ports = createWorkflowPorts({ bus, store })
   const service = makeService(ports, store)
   // Subscribe to run_done to write the terminal snapshot to disk (shared entry for completed/failed/killed; shutdown-kill also routes here).
-  // The store registers to the bus before this subscription, so when the listener runs store.get(runId) is already terminal.
+  // ORDER MATTERS: the store subscribed to the bus above, and the bus dispatches in subscription
+  // order, so by the time this listener runs store.get(runId) is already terminal — including the
+  // store's sweep of agents left 'running' by a killed run. Swapping these two lines persists
+  // mid-flight agents into state.json (see the note in attachRunStatePersistence).
   attachRunStatePersistence(bus, store)
   // Install the state-change notification bridge (commit 0768d4dc promised "auto-notify on completion" but the old implementation left it unfulfilled)
   installWorkflowNotifications(service)
@@ -235,6 +254,9 @@ export function makeService(
         }
       }
 
+      const launchConcurrency =
+        input.maxConcurrency ?? workflowDefaultMaxConcurrency()
+
       // detached: do not await, let the caller get runId immediately; on completion route to the registrar.
       void runWorkflow({
         script,
@@ -246,8 +268,10 @@ export function makeService(
         signal,
         cwd: host.cwd,
         budgetTotal: host.budgetTotal,
-        ...(input.maxConcurrency !== undefined
-          ? { maxConcurrency: input.maxConcurrency }
+        // Explicit input wins; otherwise OCC_WORKFLOW_MAX_CONCURRENCY, otherwise the
+        // engine's DEFAULT_MAX_CONCURRENCY. Same precedence as the Workflow tool path.
+        ...(launchConcurrency !== undefined
+          ? { maxConcurrency: launchConcurrency }
           : {}),
         ...(input.resumeFromRunId ? { resume: true } : {}),
         ...(retryBackoffMs !== undefined ? { retryBackoffMs } : {}),

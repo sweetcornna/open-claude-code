@@ -123,6 +123,30 @@ export type ProgressEvent =
       tokenCount: number
       toolCount: number
     }
+  /**
+   * A failed agent() call is about to be retried in place. Distinct from a second
+   * agent_started on purpose: the agent never stopped being this run's agent #N, so
+   * the consumer must keep the original startedAt (the elapsed clock spans the whole
+   * retry chain, backoff included) and only record that a retry is happening.
+   * Transient/UI-only — never journaled, so it cannot affect resume.
+   */
+  | {
+      type: 'agent_retry'
+      runId: string
+      agentId: number
+      label?: string
+      phase?: string
+      /** 1-based number of the retry that is about to be scheduled. */
+      attempt: number
+      /** Retries allowed for this failure (per-cause budget, so it can differ per attempt). */
+      limit: number
+      /** Cause of the failure that triggered this retry (dead reason, or 'threw'). */
+      reason: string
+      /** Bounded detail for display (error message / dead detail preview). */
+      detail?: string
+      /** Backoff in ms the engine will wait before the retry actually starts. */
+      delayMs: number
+    }
   | { type: 'log'; runId: string; message: string }
   | {
       type: 'run_done'
