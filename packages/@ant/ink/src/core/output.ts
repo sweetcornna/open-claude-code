@@ -131,6 +131,58 @@ function minDefined(
   return Math.min(a, b)
 }
 
+// Scratch buffer for coveredSpans(). The blit loop consumes the result
+// before asking for the next row, so a single shared array keeps the
+// absolute-clear path allocation-free in the common one-overlay case.
+const coveredScratch: number[] = []
+
+/**
+ * The x-spans of `row` that fall inside one of the clear rects, clamped to
+ * [startX, maxX) and returned as flat [from, to, from, to, …] pairs sorted
+ * by start. undefined means the row is untouched — blit it whole.
+ *
+ * The result array is reused between calls; copy it if you need to keep it.
+ */
+function coveredSpans(
+  clears: Rectangle[],
+  row: number,
+  startX: number,
+  maxX: number,
+): number[] | undefined {
+  coveredScratch.length = 0
+  for (const r of clears) {
+    if (row < r.y || row >= r.y + r.height) continue
+    const from = Math.max(startX, r.x)
+    const to = Math.min(maxX, r.x + r.width)
+    if (from >= to) continue
+    coveredScratch.push(from, to)
+  }
+  if (coveredScratch.length === 0) return undefined
+  if (coveredScratch.length === 2) return coveredScratch
+  // 2+ overlays on one row: sort by start and merge, since the consumer
+  // walks the spans left to right and would otherwise blit into a gap it
+  // has already passed.
+  const spans: Array<[number, number]> = []
+  for (let i = 0; i < coveredScratch.length; i += 2) {
+    spans.push([coveredScratch[i]!, coveredScratch[i + 1]!])
+  }
+  spans.sort((a, b) => a[0] - b[0])
+  coveredScratch.length = 0
+  let [from, to] = spans[0]!
+  for (let i = 1; i < spans.length; i++) {
+    const [nextFrom, nextTo] = spans[i]!
+    if (nextFrom <= to) {
+      if (nextTo > to) to = nextTo
+    } else {
+      coveredScratch.push(from, to)
+      from = nextFrom
+      to = nextTo
+    }
+  }
+  coveredScratch.push(from, to)
+  return coveredScratch
+}
+
 type UnclipOperation = {
   type: 'unclip'
 }
@@ -360,7 +412,7 @@ export default class Output {
             clip?.x2 ?? Infinity,
           )
           if (startX >= maxX || startY >= maxY) continue
-          // Skip rows covered by an absolute-positioned node's clear.
+          // Skip the parts covered by an absolute-positioned node's clear.
           // Absolute nodes overlay normal-flow siblings, so prevScreen in
           // that region holds the absolute node's stale paint — blitting
           // it back would ghost. See absoluteClears collection above.
@@ -369,21 +421,39 @@ export default class Output {
             blitCells += (maxY - startY) * (maxX - startX)
             continue
           }
+          // Subtract per row rather than skipping whole rows. A parent Box
+          // or ScrollBox blits full-width rows while a modal/pill covers
+          // only the middle columns, so "is this row entirely inside the
+          // clear" is false almost every time and the old code blitted the
+          // overlay's pixels straight back. Rows the clear doesn't touch
+          // are still batched into one blitRegion call so the common case
+          // keeps its contiguous-memory fast path.
           let rowStart = startY
           for (let row = startY; row <= maxY; row++) {
-            const excluded =
-              row < maxY &&
-              absoluteClears.some(
-                r =>
-                  row >= r.y &&
-                  row < r.y + r.height &&
-                  startX >= r.x &&
-                  maxX <= r.x + r.width,
-              )
-            if (excluded || row === maxY) {
+            const covered =
+              row < maxY
+                ? coveredSpans(absoluteClears, row, startX, maxX)
+                : undefined
+            if (covered !== undefined || row === maxY) {
               if (row > rowStart) {
                 blitRegion(screen, src, startX, rowStart, maxX, row)
                 blitCells += (row - rowStart) * (maxX - startX)
+              }
+              if (covered !== undefined) {
+                // Blit the gaps between (and around) the covered spans.
+                let cursor = startX
+                for (let i = 0; i < covered.length; i += 2) {
+                  const from = covered[i]!
+                  if (from > cursor) {
+                    blitRegion(screen, src, cursor, row, from, row + 1)
+                    blitCells += from - cursor
+                  }
+                  cursor = Math.max(cursor, covered[i + 1]!)
+                }
+                if (cursor < maxX) {
+                  blitRegion(screen, src, cursor, row, maxX, row + 1)
+                  blitCells += maxX - cursor
+                }
               }
               rowStart = row + 1
             }

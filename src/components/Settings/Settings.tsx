@@ -5,6 +5,7 @@ import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { useIsInsideModal, useModalOrTerminalSize } from '../../context/modalContext.js';
+import { useInvalidatePrevFrameOnUnmount } from '../../context/overlayContext.js';
 import { Pane, Tab, Tabs } from '@anthropic/ink';
 import { Status, buildDiagnostics } from './Status.js';
 import { Config } from './Config.js';
@@ -18,6 +19,11 @@ type Props = {
 };
 
 export function Settings({ onClose, context, defaultTab }: Props): React.ReactNode {
+  // The pane is up to 30 rows tall and owns its own Escape handling, so it
+  // never registers as an overlay — but closing it still shrinks the
+  // rendered region far enough that blitting the previous frame can leave
+  // ghost rows behind. See the hook for why registration isn't used here.
+  useInvalidatePrevFrameOnUnmount();
   const [selectedTab, setSelectedTab] = useState<string>(defaultTab);
   const [tabsHidden, setTabsHidden] = useState(false);
   // True while Config's own Esc handler is active (search mode with content

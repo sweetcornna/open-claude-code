@@ -5,6 +5,7 @@ import figures from 'figures';
 import React, { Suspense, use, useCallback, useEffect, useMemo, useState } from 'react';
 import stripAnsi from 'strip-ansi';
 import type { CommandResultDisplay } from '../commands.js';
+import { useInvalidatePrevFrameOnUnmount } from '../context/overlayContext.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- raw j/k/arrow stats navigation
 import {
@@ -82,6 +83,9 @@ function createAllTimeStatsPromise(): Promise<StatsResult> {
 }
 
 export function Stats({ onClose }: Props): React.ReactNode {
+  // Tall pane (heatmap + tables). Closing it shrinks the rendered region by
+  // more rows than the blit fast path can be trusted with — see the hook.
+  useInvalidatePrevFrameOnUnmount();
   // Always load all-time stats first (for heatmap)
   const allTimePromise = useMemo(() => createAllTimeStatsPromise(), []);
 

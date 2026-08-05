@@ -444,8 +444,24 @@ function renderNodeToOutput(
       y = 0
     }
 
+    // The background this node paints with: its own if it declares one,
+    // otherwise whatever the enclosing Box passed down. Recorded in the
+    // node cache so the blit check below can notice it changed.
+    const effectiveBackgroundColor =
+      node.style.backgroundColor ?? inheritedBackgroundColor
+
     // Check if we can skip this subtree (clean node with unchanged layout).
     // Blit cells from previous screen instead of re-rendering.
+    //
+    // The background comparison is load-bearing and not redundant with the
+    // dirty flag: markDirty walks toward the root only, so a Box losing its
+    // backgroundColor (selection moving off a row) marks the Box dirty and
+    // leaves every descendant clean with identical layout. Their cells in
+    // prevScreen still carry the highlight, and blitting them back paints
+    // the highlight onto exactly the columns the children occupy while the
+    // gaps between them come out clean — the selection breaking into
+    // islands. Mismatch costs one non-blit frame for that subtree; the
+    // cache is rewritten with the new background at the end of it.
     const cached = nodeCache.get(node)
     if (
       !node.dirty &&
@@ -456,6 +472,7 @@ function renderNodeToOutput(
       cached.y === y &&
       cached.width === width &&
       cached.height === height &&
+      cached.bg === effectiveBackgroundColor &&
       prevScreen
     ) {
       const fx = Math.floor(x)
@@ -528,7 +545,14 @@ function renderNodeToOutput(
     // y+1, not y). HelpV2's third shortcuts column hits this — skipping
     // unconditionally drops "ctrl + z to suspend" from /help output.
     if (height === 0 && siblingSharesY(node, yogaNode)) {
-      nodeCache.set(node, { x, y, width, height, top: yogaTop })
+      nodeCache.set(node, {
+        x,
+        y,
+        width,
+        height,
+        top: yogaTop,
+        bg: effectiveBackgroundColor,
+      })
       node.dirty = false
       return
     }
@@ -1144,6 +1168,10 @@ function renderNodeToOutput(
             y: contentY,
             width: contentYoga.getComputedWidth(),
             height: contentYoga.getComputedHeight(),
+            // Same background bookkeeping as the general path — the scroll
+            // content node is cached here instead of at the bottom of
+            // renderNodeToOutput.
+            bg: boxBackgroundColor,
           })
           content.dirty = false
         }
@@ -1212,7 +1240,14 @@ function renderNodeToOutput(
     }
 
     // Cache layout bounds for dirty tracking
-    const rect = { x, y, width, height, top: yogaTop }
+    const rect = {
+      x,
+      y,
+      width,
+      height,
+      top: yogaTop,
+      bg: effectiveBackgroundColor,
+    }
     nodeCache.set(node, rect)
     if (node.style.position === 'absolute') {
       absoluteRectsCur.push(rect)
@@ -1260,15 +1295,30 @@ function renderChildren(
 ): void {
   let seenDirtyChild = false
   let seenDirtyClipped = false
+  // Rects an absolute-positioned child is vacating this frame. Any sibling
+  // overlapping one of them has to repaint rather than blit — see below.
+  const vacated = prevScreen
+    ? vacatedAbsoluteRects(node, offsetX, offsetY)
+    : undefined
   for (const childNode of node.childNodes) {
     const childElem = childNode as DOMElement
     // Capture dirty before rendering — renderNodeToOutput clears the flag
     const wasDirty = childElem.dirty
     const isAbsolute = childElem.style.position === 'absolute'
+    // prevScreen holds the overlay's pixels inside the rect it is leaving.
+    // Blitting them back writes them into this frame's screen, where they
+    // are indistinguishable from intended content — output.ts's clear only
+    // marks damage, and the diff then sees no reason to remove them. So
+    // this subtree redraws for one frame instead.
+    const overlapsVacated =
+      vacated !== undefined && !isAbsolute && intersectsAny(childElem, vacated)
     renderNodeToOutput(childElem, output, {
       offsetX,
       offsetY,
-      prevScreen: hasRemovedChild || seenDirtyChild ? undefined : prevScreen,
+      prevScreen:
+        hasRemovedChild || seenDirtyChild || overlapsVacated
+          ? undefined
+          : prevScreen,
       // Short-circuits on seenDirtyClipped (false in the common case) so
       // the opaque/bg reads don't happen per-child per-frame.
       skipSelfBlit:
@@ -1286,6 +1336,73 @@ function renderChildren(
       }
     }
   }
+}
+
+/**
+ * Old rects of absolute-positioned children whose geometry changes this
+ * frame (moved, resized, or squeezed away). Those rects are cleared during
+ * this render, but the clear is damage-only — anything blitted into them
+ * from prevScreen survives as if it were current content.
+ *
+ * Returns undefined when there is nothing to guard against, which is the
+ * overwhelmingly common case: the scan only reads a style property per
+ * child, and only containers that actually own an absolute child pay for
+ * the yoga reads.
+ */
+function vacatedAbsoluteRects(
+  node: DOMElement,
+  offsetX: number,
+  offsetY: number,
+): Rectangle[] | undefined {
+  let rects: Rectangle[] | undefined
+  for (const childNode of node.childNodes) {
+    const child = childNode as DOMElement
+    if (child.style.position !== 'absolute') continue
+    const cached = nodeCache.get(child)
+    const yoga = child.yogaNode
+    if (!cached || !yoga) continue
+    // Same coordinate math as the render path, including the clamp that
+    // pins overlays extending above the viewport to row 0.
+    const x = offsetX + yoga.getComputedLeft()
+    const y = Math.max(0, offsetY + yoga.getComputedTop())
+    const width = yoga.getComputedWidth()
+    const height = yoga.getComputedHeight()
+    const hidden = yoga.getDisplay() === LayoutDisplay.None
+    if (
+      !hidden &&
+      cached.x === x &&
+      cached.y === y &&
+      cached.width === width &&
+      cached.height === height
+    ) {
+      continue
+    }
+    rects ??= []
+    rects.push({
+      x: Math.floor(cached.x),
+      y: Math.floor(cached.y),
+      width: Math.floor(cached.width),
+      height: Math.floor(cached.height),
+    })
+  }
+  return rects
+}
+
+/** Does the node's cached (about to be blitted) rect touch any of these? */
+function intersectsAny(node: DOMElement, rects: Rectangle[]): boolean {
+  const cached = nodeCache.get(node)
+  if (!cached) return false
+  for (const r of rects) {
+    if (
+      cached.x < r.x + r.width &&
+      cached.x + cached.width > r.x &&
+      cached.y < r.y + r.height &&
+      cached.y + cached.height > r.y
+    ) {
+      return true
+    }
+  }
+  return false
 }
 
 function clipsBothAxes(node: DOMElement): boolean {
