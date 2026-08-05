@@ -30,13 +30,20 @@ This is the main difference from other forks. Before isolation, the fork shared 
 ### Migrating from official Claude Code
 
 ```sh
-occ migrate --dry-run   # show what would be copied
-occ migrate             # do it
+occ migrate --dry-run          # show what would be copied
+occ migrate                    # do it (secrets stripped)
+occ migrate --with-credentials # bring your login across too
 ```
 
-Copies settings, skills, agents, commands, output-styles, workflows, plugins, rules and MCP server definitions.
+Both modes copy the **same things**: settings, skills, agents, commands, output-styles, workflows, plugins, rules and MCP server definitions. They differ only in whether secrets ride along. The first-run wizard offers the same three choices.
 
-**Credentials and session history are never copied.** Credentials are shared with the official CLI, so copying them would reintroduce exactly the coupling being removed — run `/login` once instead. `~/.claude` is read-only throughout: nothing is written, moved or deleted there.
+- **Default (no credentials):** strips the OAuth token, the API key, the secret half of `settings.env`, MCP `env`/`headers`, and the `apiKeyHelper` / `awsAuthRefresh` / `awsCredentialExport` / `gcpAuthRefresh` / `otelHeadersHelper` hooks that resolve credentials by running a command. **Routing config is kept**: `*_BASE_URL`, `*_MODEL`, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_USE_*`, `*_AUTH_MODE` and certificate *paths* such as `CLAUDE_CODE_CLIENT_CERT` / `CLAUDE_CODE_CLIENT_KEY` (a path is not a secret, and the mTLS pair is useless split — only `..._PASSPHRASE` is stripped). Everything stripped is listed by name before anything is written.
+- **`--with-credentials`:** also copies the OAuth token, the legacy API key and the account keys in `~/.claude.json` (`primaryApiKey`, `oauthAccount`, `customApiKeyResponses`, `workspaceApiKey`), so occ works without a fresh `/login`. **Caveat:** the server rotates the OAuth refresh token and both CLIs now hold the same one, so whichever refreshes first invalidates the other — pick one for day-to-day use.
+- Changed your mind after the default run? `occ migrate --with-credentials` tops up the login *and* restores the `settings.json` secrets the first run stripped — filling only what is missing, never overwriting a value you have since changed on the occ side. The `.migrated` marker records which categories ran, so it will not lock you out.
+- `--skip-account-data` / `--no-account-data` are the pre-2.9 spellings and now mean the default mode.
+- Two places are copied verbatim and **named in the report** because nothing here can classify them: `settings.json`'s `pluginConfigs`, and the files inside `plugins/`. Fields a plugin declares `sensitive` live in secure storage, which this mode never touches — but that split is enforced by each plugin's own manifest, so the residue is yours to review.
+
+**Session history is never copied.** The credential copy is one-way and no-clobber: an existing occ login always wins, and the official keychain entry is never modified. `~/.claude` is read-only throughout: nothing is written, moved or deleted there.
 
 ## Quick start (published package)
 

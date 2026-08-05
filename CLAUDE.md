@@ -33,7 +33,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - **`~/.claude/ide` 锁文件目录** —— `getIdeLockfilesPaths()` **同时**搜两个根。这些锁文件是 IDE 插件写的、我们只读，只搜 occ 自己的根 = 静默断掉 IDE 集成。
 - **系统提示词、User-Agent `claude-code/<ver>`、OTel `service.name`** —— 见 `src/constants/brand.ts` 顶部注释的"明确不改"清单。
 
-**迁移**：`occ migrate` 把用户既有配置从 `~/.claude` 拷进来。`~/.claude` **只读**，凭据和会话历史**永不复制**。见 `src/config/migrateFromClaude.ts` 顶部的四条规则。
+**迁移**：`occ migrate` 把用户既有配置从 `~/.claude` 拷进来。`~/.claude` 全程**只读**；会话历史**永不复制**；凭据**只在用户显式选择时**复制（`--with-credentials` / 首启向导选项 1），且是单向 no-clobber（occ 已有登录就保留 occ 的），官方 keychain 条目永不改写。默认模式剥离一切密钥但保留端点类 env（`*_BASE_URL`、`*_MODEL`、`CLAUDE_CODE_MAX_CONTEXT_TOKENS`），plugins/skills/MCP 定义两种模式都迁。见 `src/config/migrateFromClaude.ts` 顶部的四条规则 + `migrateCredentials.ts`。
 
 ## Commands
 
