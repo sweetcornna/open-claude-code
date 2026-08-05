@@ -1,6 +1,6 @@
 import { coerce, gte } from 'semver'
 import type { Writable } from 'stream'
-import { getClearTerminalSequence } from './clearTerminal.js'
+import { getRepaintSequence } from './clearTerminal.js'
 import type { Diff } from './frame.js'
 import { cursorMove, cursorTo, eraseLines } from './termio/csi.js'
 import { BSU, ESU, HIDE_CURSOR, SHOW_CURSOR } from './termio/dec.js'
@@ -220,7 +220,10 @@ export function writeDiffToTerminal(
         }
         break
       case 'clearTerminal':
-        buffer += getClearTerminalSequence()
+        // A repaint, NOT a user-requested clear — every producer of this patch
+        // is renderer self-healing (resize / offscreen / legacy conhost). Must
+        // not discard scrollback; see getRepaintSequence.
+        buffer += getRepaintSequence()
         break
       case 'cursorHide':
         buffer += HIDE_CURSOR

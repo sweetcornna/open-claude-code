@@ -55,6 +55,11 @@ function isModernWindowsTerminal(): boolean {
 /**
  * Returns the ANSI escape sequence to clear the terminal including scrollback.
  * Automatically detects terminal capabilities.
+ *
+ * DESTRUCTIVE: `CSI 3J` discards the terminal's scrollback buffer — everything
+ * the user scrolled back to read is gone, and it cannot be recovered. Use this
+ * ONLY for an explicit user-initiated clear. For internal repaints use
+ * {@link getRepaintSequence}.
  */
 export function getClearTerminalSequence(): string {
   if (process.platform === 'win32') {
@@ -66,6 +71,29 @@ export function getClearTerminalSequence(): string {
     }
   }
   return ERASE_SCREEN + ERASE_SCROLLBACK + CURSOR_HOME
+}
+
+/**
+ * Sequence for a self-healing full repaint: erase the visible screen and home
+ * the cursor, leaving scrollback intact.
+ *
+ * Every full reset the renderer emits (resize, offscreen-row change, legacy
+ * conhost self-heal) is an internal redraw the user did not ask for. Those
+ * previously reused getClearTerminalSequence(), so each one also fired
+ * `CSI 3J` and destroyed the scrollback buffer — the user's whole session
+ * history vanished and the viewport snapped to the top, mid-session, with no
+ * action on their part. That is the "右键回到终端顶部" report: something
+ * provokes a repaint (a context menu stealing focus, a terminal reporting a
+ * spurious size change) and the repaint takes the history with it.
+ *
+ * A repaint only needs the visible screen cleared: the diff that follows
+ * rewrites every visible cell, and scrollback is not ours to discard.
+ */
+export function getRepaintSequence(): string {
+  if (process.platform === 'win32' && !isModernWindowsTerminal()) {
+    return ERASE_SCREEN + CURSOR_HOME_WINDOWS
+  }
+  return ERASE_SCREEN + CURSOR_HOME
 }
 
 /**
