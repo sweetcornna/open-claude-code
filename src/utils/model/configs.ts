@@ -126,6 +126,41 @@ export const CLAUDE_SONNET_4_6_CONFIG = {
   grok: 'claude-sonnet-4-6',
 } as const satisfies ModelConfig
 
+export const CLAUDE_OPUS_5_CONFIG = {
+  firstParty: 'claude-opus-5',
+  bedrock: 'us.anthropic.claude-opus-5-v1',
+  vertex: 'claude-opus-5',
+  foundry: 'claude-opus-5',
+  openai: 'claude-opus-5',
+  gemini: 'claude-opus-5',
+  grok: 'claude-opus-5',
+} as const satisfies ModelConfig
+
+export const CLAUDE_SONNET_5_CONFIG = {
+  firstParty: 'claude-sonnet-5',
+  bedrock: 'us.anthropic.claude-sonnet-5-v1',
+  vertex: 'claude-sonnet-5',
+  foundry: 'claude-sonnet-5',
+  openai: 'claude-sonnet-5',
+  gemini: 'claude-sonnet-5',
+  grok: 'claude-sonnet-5',
+} as const satisfies ModelConfig
+
+// Fable 5 — the top capability tier, above Opus. The first-party ID is the
+// canonical one; the Bedrock string follows the same `us.anthropic.<id>-v1`
+// shape as the other 4.6+ entries, but on Bedrock it is only a fallback —
+// getBedrockModelStrings() searches the user's real inference profiles for the
+// firstParty needle and wins whenever it finds a match.
+export const CLAUDE_FABLE_5_CONFIG = {
+  firstParty: 'claude-fable-5',
+  bedrock: 'us.anthropic.claude-fable-5-v1',
+  vertex: 'claude-fable-5',
+  foundry: 'claude-fable-5',
+  openai: 'claude-fable-5',
+  gemini: 'claude-fable-5',
+  grok: 'claude-fable-5',
+} as const satisfies ModelConfig
+
 // @[MODEL LAUNCH]: Register the new config here.
 export const ALL_MODEL_CONFIGS = {
   haiku35: CLAUDE_3_5_HAIKU_CONFIG,
@@ -140,6 +175,9 @@ export const ALL_MODEL_CONFIGS = {
   opus45: CLAUDE_OPUS_4_5_CONFIG,
   opus46: CLAUDE_OPUS_4_6_CONFIG,
   opus47: CLAUDE_OPUS_4_7_CONFIG,
+  opus5: CLAUDE_OPUS_5_CONFIG,
+  sonnet5: CLAUDE_SONNET_5_CONFIG,
+  fable5: CLAUDE_FABLE_5_CONFIG,
 } as const satisfies Record<string, ModelConfig>
 
 export type ModelKey = keyof typeof ALL_MODEL_CONFIGS

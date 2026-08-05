@@ -8,14 +8,23 @@
  * package is a leaf and cannot import them, so keep the two in sync when the
  * frontier generation changes.
  */
-const DEFAULT_MODEL_BY_FAMILY: Record<'haiku' | 'sonnet' | 'opus', string> = {
+const DEFAULT_MODEL_BY_FAMILY: Record<
+  'haiku' | 'sonnet' | 'opus' | 'fable',
+  string
+> = {
+  // Fable is the tier above Opus; OpenAI has no distinct higher tier, so it
+  // maps to the same frontier model unless OPENAI_DEFAULT_FABLE_MODEL is set.
+  fable: 'gpt-5.6-sol',
   opus: 'gpt-5.6-sol',
   sonnet: 'gpt-5.6-terra',
   haiku: 'gpt-5.6-luna',
 }
 
-function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
+function getModelFamily(
+  model: string,
+): 'haiku' | 'sonnet' | 'opus' | 'fable' | null {
   if (/haiku/i.test(model)) return 'haiku'
+  if (/fable/i.test(model)) return 'fable'
   if (/opus/i.test(model)) return 'opus'
   if (/sonnet/i.test(model)) return 'sonnet'
   return null

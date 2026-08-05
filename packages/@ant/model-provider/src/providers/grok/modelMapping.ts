@@ -12,6 +12,9 @@ const DEFAULT_MODEL_MAP: Record<string, string> = {
   'claude-opus-4-1-20250805': 'grok-4.20-reasoning',
   'claude-opus-4-5-20251101': 'grok-4.20-reasoning',
   'claude-opus-4-6': 'grok-4.20-reasoning',
+  'claude-opus-5': 'grok-4.20-reasoning',
+  'claude-sonnet-5': 'grok-3-mini-fast',
+  'claude-fable-5': 'grok-4.20-reasoning',
   'claude-haiku-4-5-20251001': 'grok-3-mini-fast',
   'claude-3-5-haiku-20241022': 'grok-3-mini-fast',
   'claude-3-7-sonnet-20250219': 'grok-3-mini-fast',
@@ -19,13 +22,19 @@ const DEFAULT_MODEL_MAP: Record<string, string> = {
 }
 
 const DEFAULT_FAMILY_MAP: Record<string, string> = {
+  // Grok has no tier above its reasoning model, so Fable shares it unless
+  // GROK_DEFAULT_FABLE_MODEL / GROK_MODEL_MAP overrides.
+  fable: 'grok-4.20-reasoning',
   opus: 'grok-4.20-reasoning',
   sonnet: 'grok-3-mini-fast',
   haiku: 'grok-3-mini-fast',
 }
 
-function getModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | null {
+function getModelFamily(
+  model: string,
+): 'haiku' | 'sonnet' | 'opus' | 'fable' | null {
   if (/haiku/i.test(model)) return 'haiku'
+  if (/fable/i.test(model)) return 'fable'
   if (/opus/i.test(model)) return 'opus'
   if (/sonnet/i.test(model)) return 'sonnet'
   return null

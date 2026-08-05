@@ -95,7 +95,7 @@ export function getAgentModel(
 }
 
 /**
- * Check if a bare family alias (opus/sonnet/haiku) matches the parent model's
+ * Check if a bare family alias (fable/opus/sonnet/haiku) matches the parent model's
  * tier. When it does, the subagent inherits the parent's exact model string
  * instead of resolving the alias to a provider default.
  *
@@ -116,6 +116,8 @@ function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
       return canonical.includes('sonnet')
     case 'haiku':
       return canonical.includes('haiku')
+    case 'fable':
+      return canonical.includes('fable')
     default:
       return false
   }
@@ -142,6 +144,11 @@ export function getAgentModelOptions(): AgentModelOption[] {
       value: 'opus',
       label: 'Opus',
       description: 'Most capable for complex reasoning tasks',
+    },
+    {
+      value: 'fable',
+      label: 'Fable',
+      description: 'Highest capability tier - for the hardest agent work',
     },
     {
       value: 'haiku',
