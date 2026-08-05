@@ -7,12 +7,13 @@
  * src/cli/__tests__/updateIsolation.test.ts stays authoritative: this chain
  * must never touch the official CLI's package, paths, or commands.
  *
- * Timeline: rootAction schedules at most one check per session on an unref'd
- * timer, delayed a few minutes past startup so it never competes with launch.
- * The check reuses the `occ update` chain (npm view → compare → `npm|bun
- * install -g` with captured output). Success surfaces as one low-key REPL
- * notification via updateNotifier; every failure path is logForDebugging-only
- * and never interrupts the session.
+ * Timeline: rootAction installs one recursive, unref'd timer loop per session,
+ * delayed a few minutes past startup so it never competes with launch. Each
+ * run completes before the next is scheduled. The check reuses the `occ
+ * update` chain (npm view → compare → `npm|bun install -g` with captured
+ * output). Success surfaces as one low-key REPL notification via
+ * updateNotifier; every failure path is logForDebugging-only and never
+ * interrupts the session.
  *
  * Hard gates — all must pass, re-checked when the timer fires:
  *  - NODE_ENV is not test/development
@@ -26,9 +27,13 @@ import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import type { InstallationType } from 'src/utils/runtime/doctorDiagnostic.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { gt } from 'src/utils/text/semver.js'
+import * as updateInterval from './backgroundUpdateInterval.js'
 import { emitBackgroundUpdateNotification } from './updateNotifier.js'
 
 const BACKGROUND_UPDATE_DELAY_MS = 5 * 60 * 1000
+const CHECK_THROTTLE_RATIO = 0.9
+
+type ClaimCheck = (checkedAt: number, minElapsedMs: number) => boolean
 
 export type BackgroundOccUpdateDeps = {
   env: NodeJS.ProcessEnv
@@ -45,10 +50,13 @@ export type BackgroundOccUpdateDeps = {
   acquireLock: () => Promise<boolean>
   releaseLock: () => Promise<void>
   notify: (text: string) => void
+  now: () => number
+  claimUpdateCheck: ClaimCheck
 }
 
 export type BackgroundOccUpdateOutcome =
   | { status: 'skipped'; reason: string }
+  | { status: 'throttled' }
   | { status: 'up-to-date'; version: string }
   | { status: 'check-failed' }
   | { status: 'locked' }
@@ -82,6 +90,24 @@ async function loadDefaultDeps(): Promise<BackgroundOccUpdateDeps> {
     acquireLock: autoUpdater.acquireUpdateLock,
     releaseLock: autoUpdater.releaseUpdateLock,
     notify: emitBackgroundUpdateNotification,
+    now: Date.now,
+    claimUpdateCheck: (checkedAt, minimumElapsedMs) => {
+      let claimed = false
+      config.saveGlobalConfig(current => {
+        const previous = current.lastBackgroundUpdateCheckAt
+        const isRecent =
+          previous !== undefined && checkedAt - previous < minimumElapsedMs
+        if (isRecent) {
+          return current
+        }
+        claimed = true
+        return {
+          ...current,
+          lastBackgroundUpdateCheckAt: checkedAt,
+        }
+      })
+      return claimed
+    },
   }
 }
 
@@ -120,6 +146,15 @@ function updateSuccessText(version: string): string {
   return `✓ Updated to v${version} · Restart to apply`
 }
 
+let lastInstalledVersion: string | undefined
+
+function getComparisonVersion(currentVersion: string): string {
+  if (lastInstalledVersion && gt(lastInstalledVersion, currentVersion)) {
+    return lastInstalledVersion
+  }
+  return currentVersion
+}
+
 /**
  * One full check-and-install pass. Never throws; every failure downgrades to
  * a logForDebugging line and a status for tests.
@@ -136,7 +171,13 @@ export async function runBackgroundOccUpdateOnce(
       return { status: 'skipped', reason: eligibility.skip }
     }
 
-    const currentVersion = d.getCurrentVersion()
+    const intervalMs = updateInterval.resolveBackgroundUpdateIntervalMs(d.env)
+    if (!d.claimUpdateCheck(d.now(), intervalMs * CHECK_THROTTLE_RATIO)) {
+      logForDebugging('backgroundOccUpdate: throttled')
+      return { status: 'throttled' }
+    }
+
+    const currentVersion = getComparisonVersion(d.getCurrentVersion())
     const latestVersion = await d.getLatestVersion()
     if (!latestVersion) {
       logForDebugging('backgroundOccUpdate: version check failed')
@@ -166,6 +207,7 @@ export async function runBackgroundOccUpdateOnce(
       await d.releaseLock()
     }
 
+    lastInstalledVersion = latestVersion
     d.notify(updateSuccessText(latestVersion))
     logForDebugging(`backgroundOccUpdate: updated to ${latestVersion}`)
     return { status: 'updated', version: latestVersion }
@@ -177,16 +219,22 @@ export async function runBackgroundOccUpdateOnce(
 
 let scheduledThisSession = false
 
+type BackgroundOccScheduleFn = (
+  callback: () => Promise<void>,
+  delayMs: number,
+) => { unref: () => void }
+
 /**
- * Schedule the once-per-session background check. Called from rootAction on
- * the interactive path only. Cheap env guards run here so no timer is created
- * at all in the common disabled cases; the full gate (config + installation
- * type) runs again when the timer fires. Returns whether a run was scheduled.
+ * Install the once-per-session background loop. Called from rootAction on the
+ * interactive path only. Cheap env guards run here so no timer is created at
+ * all in the common disabled cases; the full gate (config + installation
+ * type) runs again on every pass. Returns whether the loop was installed.
  */
 export function maybeScheduleBackgroundOccUpdate(options?: {
   env?: NodeJS.ProcessEnv
   delayMs?: number
-  run?: () => Promise<unknown>
+  run?: () => Promise<BackgroundOccUpdateOutcome>
+  scheduleFn?: BackgroundOccScheduleFn
 }): boolean {
   if (scheduledThisSession) {
     return false
@@ -200,19 +248,35 @@ export function maybeScheduleBackgroundOccUpdate(options?: {
   }
   scheduledThisSession = true
   const run = options?.run ?? (() => runBackgroundOccUpdateOnce())
-  const timer = setTimeout(() => {
-    void run().catch(error => {
-      // runBackgroundOccUpdateOnce never throws; this guards test overrides
-      // and future edits so the updater can never surface an unhandled
-      // rejection into the session.
-      logForDebugging(`backgroundOccUpdate: scheduled run failed: ${error}`)
-    })
-  }, options?.delayMs ?? BACKGROUND_UPDATE_DELAY_MS)
-  // Never keep the process alive just for an update check.
-  timer.unref()
+  const intervalMs = updateInterval.resolveBackgroundUpdateIntervalMs(env)
+  const scheduleFn: BackgroundOccScheduleFn =
+    options?.scheduleFn ??
+    ((callback, delayMs) =>
+      setTimeout(() => {
+        void callback()
+      }, delayMs))
+  const scheduleNext = (delayMs: number): void => {
+    const timer = scheduleFn(async () => {
+      try {
+        const outcome = await run()
+        if (outcome.status === 'skipped') {
+          return
+        }
+      } catch (error) {
+        // The production runner never throws; keep overrides and future
+        // edits from surfacing an unhandled rejection into the session.
+        logForDebugging(`backgroundOccUpdate: scheduled run failed: ${error}`)
+      }
+      scheduleNext(intervalMs)
+    }, delayMs)
+    // Never keep the process alive just for an update check.
+    timer.unref()
+  }
+  scheduleNext(options?.delayMs ?? BACKGROUND_UPDATE_DELAY_MS)
   return true
 }
 
 export function resetBackgroundOccUpdateForTests(): void {
   scheduledThisSession = false
+  lastInstalledVersion = undefined
 }

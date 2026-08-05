@@ -1,11 +1,12 @@
 /**
  * Silent background update for installed plugin marketplaces.
  *
- * Same shape as backgroundOccUpdate.ts: a plain imperative service scheduled
- * once per interactive session on an unref'd timer, gated hard on the same
- * autoupdate semantics, with every failure path logForDebugging-only. The
- * delay is 3 minutes — deliberately offset from the occ self-update's 5 so
- * the two background jobs never contend for network/CPU at the same moment.
+ * Same shape as backgroundOccUpdate.ts: a plain imperative service with one
+ * recursive, unref'd timer loop per interactive session, gated hard on the
+ * same autoupdate semantics, with every failure path logForDebugging-only.
+ * The first delay is 3 minutes — deliberately offset from the occ
+ * self-update's 5 so the two background jobs never contend for network/CPU at
+ * the same moment.
  *
  * Relationship to the startup autoupdate path
  * (utils/plugins/pluginAutoupdate.ts, fired from backgroundHousekeeping):
@@ -59,11 +60,15 @@
  */
 import { isEnvTruthy } from 'src/utils/config/envUtils.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import * as updateInterval from './backgroundUpdateInterval.js'
 import { emitPluginUpdateNotification } from './pluginUpdateNotifier.js'
 
 const BACKGROUND_PLUGIN_UPDATE_DELAY_MS = 3 * 60 * 1000
+const CHECK_THROTTLE_RATIO = 0.9
 const PER_MARKETPLACE_GIT_TIMEOUT_MS = 30 * 1000
 const MAX_NAMES_IN_NOTIFICATION = 3
+
+type ClaimCheck = (checkedAt: number, minElapsedMs: number) => boolean
 
 export type MarketplaceGitTarget = {
   name: string
@@ -107,10 +112,13 @@ export type BackgroundPluginUpdateDeps = {
   acquireLock: () => Promise<boolean>
   releaseLock: () => Promise<void>
   notify: (text: string) => void
+  now: () => number
+  claimUpdateCheck: ClaimCheck
 }
 
 export type BackgroundPluginUpdateOutcome =
   | { status: 'skipped'; reason: string }
+  | { status: 'throttled' }
   | { status: 'no-marketplaces' }
   | { status: 'locked' }
   | { status: 'up-to-date'; checked: number }
@@ -234,6 +242,24 @@ async function loadDefaultDeps(): Promise<BackgroundPluginUpdateDeps> {
     acquireLock: () => autoUpdater.acquireUpdateLock(lockPath),
     releaseLock: () => autoUpdater.releaseUpdateLock(lockPath),
     notify: emitPluginUpdateNotification,
+    now: Date.now,
+    claimUpdateCheck: (checkedAt, minimumElapsedMs) => {
+      let claimed = false
+      config.saveGlobalConfig(current => {
+        const previous = current.lastBackgroundPluginUpdateCheckAt
+        const isRecent =
+          previous !== undefined && checkedAt - previous < minimumElapsedMs
+        if (isRecent) {
+          return current
+        }
+        claimed = true
+        return {
+          ...current,
+          lastBackgroundPluginUpdateCheckAt: checkedAt,
+        }
+      })
+      return claimed
+    },
   }
 }
 
@@ -344,6 +370,12 @@ export async function runBackgroundPluginUpdateOnce(
       return { status: 'skipped', reason: skip }
     }
 
+    const intervalMs = updateInterval.resolveBackgroundUpdateIntervalMs(d.env)
+    if (!d.claimUpdateCheck(d.now(), intervalMs * CHECK_THROTTLE_RATIO)) {
+      logForDebugging('backgroundPluginUpdate: throttled')
+      return { status: 'throttled' }
+    }
+
     const targets = await d.listGitMarketplaces()
     if (targets.length === 0) {
       logForDebugging('backgroundPluginUpdate: no git-backed marketplaces')
@@ -414,16 +446,22 @@ export async function runBackgroundPluginUpdateOnce(
 
 let scheduledThisSession = false
 
+type BackgroundPluginScheduleFn = (
+  callback: () => Promise<void>,
+  delayMs: number,
+) => { unref: () => void }
+
 /**
- * Schedule the once-per-session background check. Called from rootAction on
- * the interactive path only. Cheap env guards run here so no timer is created
- * at all in the common disabled cases; the full gate (config + privacy) runs
- * again when the timer fires. Returns whether a run was scheduled.
+ * Install the once-per-session background loop. Called from rootAction on the
+ * interactive path only. Cheap env guards run here so no timer is created at
+ * all in the common disabled cases; the full gate (config + privacy) runs
+ * again on every pass. Returns whether the loop was installed.
  */
 export function maybeScheduleBackgroundPluginUpdate(options?: {
   env?: NodeJS.ProcessEnv
   delayMs?: number
-  run?: () => Promise<unknown>
+  run?: () => Promise<BackgroundPluginUpdateOutcome>
+  scheduleFn?: BackgroundPluginScheduleFn
 }): boolean {
   if (scheduledThisSession) {
     return false
@@ -437,16 +475,33 @@ export function maybeScheduleBackgroundPluginUpdate(options?: {
   }
   scheduledThisSession = true
   const run = options?.run ?? (() => runBackgroundPluginUpdateOnce())
-  const timer = setTimeout(() => {
-    void run().catch(error => {
-      // runBackgroundPluginUpdateOnce never throws; this guards test
-      // overrides and future edits so the updater can never surface an
-      // unhandled rejection into the session.
-      logForDebugging(`backgroundPluginUpdate: scheduled run failed: ${error}`)
-    })
-  }, options?.delayMs ?? BACKGROUND_PLUGIN_UPDATE_DELAY_MS)
-  // Never keep the process alive just for a plugin update check.
-  timer.unref()
+  const intervalMs = updateInterval.resolveBackgroundUpdateIntervalMs(env)
+  const scheduleFn: BackgroundPluginScheduleFn =
+    options?.scheduleFn ??
+    ((callback, delayMs) =>
+      setTimeout(() => {
+        void callback()
+      }, delayMs))
+  const scheduleNext = (delayMs: number): void => {
+    const timer = scheduleFn(async () => {
+      try {
+        const outcome = await run()
+        if (outcome.status === 'skipped') {
+          return
+        }
+      } catch (error) {
+        // The production runner never throws; keep overrides and future
+        // edits from surfacing an unhandled rejection into the session.
+        logForDebugging(
+          `backgroundPluginUpdate: scheduled run failed: ${error}`,
+        )
+      }
+      scheduleNext(intervalMs)
+    }, delayMs)
+    // Never keep the process alive just for a plugin update check.
+    timer.unref()
+  }
+  scheduleNext(options?.delayMs ?? BACKGROUND_PLUGIN_UPDATE_DELAY_MS)
   return true
 }
 

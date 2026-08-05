@@ -44,6 +44,10 @@ type Calls = {
   notified: string[]
   lockAcquired: number
   lockReleased: number
+  checkClaims: Array<{
+    checkedAt: number
+    minimumElapsedMs: number
+  }>
 }
 
 /**
@@ -76,6 +80,7 @@ function makeDeps(
     notified: [],
     lockAcquired: 0,
     lockReleased: 0,
+    checkClaims: [],
   }
 
   const deps: Deps = {
@@ -120,9 +125,45 @@ function makeDeps(
     notify: text => {
       calls.notified.push(text)
     },
+    now: () => 1_000_000,
+    claimUpdateCheck: (checkedAt, minimumElapsedMs) => {
+      calls.checkClaims.push({ checkedAt, minimumElapsedMs })
+      return true
+    },
     ...overrides,
   }
   return { deps, calls }
+}
+
+type Outcome =
+  import('../backgroundPluginUpdate.js').BackgroundPluginUpdateOutcome
+
+type ScheduledTask = {
+  callback: () => Promise<void>
+  delayMs: number
+  unrefed: boolean
+}
+
+function makeScheduler(): {
+  tasks: ScheduledTask[]
+  scheduleFn: (
+    callback: () => Promise<void>,
+    delayMs: number,
+  ) => { unref: () => void }
+} {
+  const tasks: ScheduledTask[] = []
+  return {
+    tasks,
+    scheduleFn: (callback, delayMs) => {
+      const task = { callback, delayMs, unrefed: false }
+      tasks.push(task)
+      return {
+        unref: () => {
+          task.unrefed = true
+        },
+      }
+    },
+  }
 }
 
 describe('runBackgroundPluginUpdateOnce — gating', () => {
@@ -190,6 +231,9 @@ describe('runBackgroundPluginUpdateOnce — gating', () => {
 
     expect(outcome.status).toBe('up-to-date')
     expect(calls.listed).toBe(1)
+    expect(calls.checkClaims).toEqual([
+      { checkedAt: 1_000_000, minimumElapsedMs: 270_000 },
+    ])
   })
 
   test('no git-backed marketplaces: returns early without taking the lock', async () => {
@@ -199,6 +243,21 @@ describe('runBackgroundPluginUpdateOnce — gating', () => {
     expect(outcome).toEqual({ status: 'no-marketplaces' })
     expect(calls.lockAcquired).toBe(0)
     expect(calls.notified).toEqual([])
+  })
+
+  test('throttles a recent persisted check before listing marketplaces', async () => {
+    const now = 1_000_000
+    const persisted = now - 60_000
+    const { deps, calls } = makeDeps({
+      now: () => now,
+      claimUpdateCheck: (checkedAt, minimumElapsedMs) =>
+        checkedAt - persisted >= minimumElapsedMs,
+    })
+    const outcome = await updater.runBackgroundPluginUpdateOnce(deps)
+
+    expect(outcome).toEqual({ status: 'throttled' })
+    expect(calls.listed).toBe(0)
+    expect(calls.lockAcquired).toBe(0)
   })
 })
 
@@ -398,43 +457,89 @@ describe('runBackgroundPluginUpdateOnce — cross-process lock', () => {
 describe('maybeScheduleBackgroundPluginUpdate', () => {
   const prodEnv = { NODE_ENV: 'production' } as NodeJS.ProcessEnv
 
-  test('schedules at most once per session and runs the check', async () => {
+  test('installs one loop and schedules again only after a run finishes', async () => {
+    const scheduler = makeScheduler()
+    const ignoredScheduler = makeScheduler()
     let runs = 0
-    let resolveRan: () => void
-    const ran = new Promise<void>(resolve => {
-      resolveRan = resolve
+    let finishRun!: (outcome: Outcome) => void
+    const runResult = new Promise<Outcome>(resolve => {
+      finishRun = resolve
     })
 
     const first = updater.maybeScheduleBackgroundPluginUpdate({
-      env: prodEnv,
-      delayMs: 1,
+      env: {
+        ...prodEnv,
+        OCC_UPDATE_CHECK_INTERVAL_MS: '120000',
+      },
       run: async () => {
         runs++
-        resolveRan()
+        return runResult
       },
+      scheduleFn: scheduler.scheduleFn,
     })
     const second = updater.maybeScheduleBackgroundPluginUpdate({
       env: prodEnv,
-      delayMs: 1,
-      run: async () => {
-        runs++
-      },
+      run: async () => ({ status: 'error' }),
+      scheduleFn: ignoredScheduler.scheduleFn,
     })
 
     expect(first).toBe(true)
     expect(second).toBe(false)
-    await ran
+    expect(ignoredScheduler.tasks).toHaveLength(0)
+    expect(scheduler.tasks).toHaveLength(1)
+    expect(scheduler.tasks[0]?.delayMs).toBe(3 * 60 * 1000)
+    expect(scheduler.tasks[0]?.unrefed).toBe(true)
+
+    const firing = scheduler.tasks[0]!.callback()
     expect(runs).toBe(1)
+    expect(scheduler.tasks).toHaveLength(1)
+
+    finishRun({
+      status: 'updated',
+      marketplaces: ['acme'],
+      plugins: ['tool@acme'],
+    })
+    await firing
+    expect(scheduler.tasks).toHaveLength(2)
+    expect(scheduler.tasks[1]?.delayMs).toBe(120_000)
+    expect(scheduler.tasks[1]?.unrefed).toBe(true)
+  })
+
+  test('stops the loop after a permanent skipped outcome', async () => {
+    const scheduler = makeScheduler()
+    updater.maybeScheduleBackgroundPluginUpdate({
+      env: prodEnv,
+      run: async () => ({ status: 'skipped', reason: 'disabled' }),
+      scheduleFn: scheduler.scheduleFn,
+    })
+
+    await scheduler.tasks[0]!.callback()
+    expect(scheduler.tasks).toHaveLength(1)
+  })
+
+  test.each([
+    { status: 'locked' } as Outcome,
+    { status: 'throttled' } as Outcome,
+    { status: 'error' } as Outcome,
+  ])('continues the loop after $status', async outcome => {
+    const scheduler = makeScheduler()
+    updater.maybeScheduleBackgroundPluginUpdate({
+      env: prodEnv,
+      run: async () => outcome,
+      scheduleFn: scheduler.scheduleFn,
+    })
+
+    await scheduler.tasks[0]!.callback()
+    expect(scheduler.tasks).toHaveLength(2)
   })
 
   test('does not schedule under NODE_ENV=test or with DISABLE_AUTOUPDATER', () => {
+    const scheduler = makeScheduler()
     expect(
       updater.maybeScheduleBackgroundPluginUpdate({
         env: { NODE_ENV: 'test' } as NodeJS.ProcessEnv,
-        delayMs: 1,
-        run: async () => {
-          throw new Error('must not run')
-        },
+        run: async () => ({ status: 'error' }),
+        scheduleFn: scheduler.scheduleFn,
       }),
     ).toBe(false)
 
@@ -444,51 +549,35 @@ describe('maybeScheduleBackgroundPluginUpdate', () => {
           NODE_ENV: 'production',
           DISABLE_AUTOUPDATER: 'true',
         } as unknown as NodeJS.ProcessEnv,
-        delayMs: 1,
-        run: async () => {
-          throw new Error('must not run')
-        },
+        run: async () => ({ status: 'error' }),
+        scheduleFn: scheduler.scheduleFn,
       }),
     ).toBe(false)
+    expect(scheduler.tasks).toHaveLength(0)
 
     // Neither refusal consumed the per-session slot.
     expect(
       updater.maybeScheduleBackgroundPluginUpdate({
         env: prodEnv,
-        delayMs: 60_000,
-        run: async () => {},
+        run: async () => ({ status: 'up-to-date', checked: 1 }),
+        scheduleFn: scheduler.scheduleFn,
       }),
     ).toBe(true)
+    expect(scheduler.tasks).toHaveLength(1)
   })
 
   test('a rejecting run is swallowed (logged, not unhandled)', async () => {
-    let resolveRan: () => void
-    const ran = new Promise<void>(resolve => {
-      resolveRan = resolve
-    })
+    const scheduler = makeScheduler()
     updater.maybeScheduleBackgroundPluginUpdate({
       env: prodEnv,
-      delayMs: 1,
       run: async () => {
-        // Resolve on a microtask after the rejection propagates through the
-        // .catch in the scheduler; an unhandled rejection would fail the run.
-        queueMicrotask(() => queueMicrotask(resolveRan))
         throw new Error('boom')
       },
+      scheduleFn: scheduler.scheduleFn,
     })
-    await ran
-  })
 
-  test('the scheduled timer never keeps the process alive', () => {
-    // unref'd: an un-unref'd 3-minute timer would hang every `occ` exit.
-    const scheduled = updater.maybeScheduleBackgroundPluginUpdate({
-      env: prodEnv,
-      delayMs: 60_000,
-      run: async () => {},
-    })
-    expect(scheduled).toBe(true)
-    // If the timer were referenced, bun's test runner would stall here at the
-    // end of the file rather than exiting promptly.
+    await scheduler.tasks[0]!.callback()
+    expect(scheduler.tasks).toHaveLength(2)
   })
 })
 

@@ -73,7 +73,11 @@ bun install -g @sweetcornna/open-claude-code@latest
 
 ## 后台静默自动更新
 
-交互式会话在启动后约 5 分钟自动做一次后台版本检查（每会话至多一次），发现新版本时静默执行全局安装，成功后在 REPL 底部显示一条低调提示（`✓ Updated to vX.Y.Z · Restart to apply`），失败只写调试日志、绝不打断会话。实现是无 React 依赖的服务模块 `src/services/autoUpdate/backgroundOccUpdate.ts`，由 `src/cli/program/rootAction.tsx` 在交互路径（`--print` 提前返回之后）动态 import 并调度；UI 提示通过 `src/services/autoUpdate/updateNotifier.ts` 注册表送入 REPL 通知队列（与 `setEnvHookNotifier` 同模式）。
+交互式会话在启动 5 分钟后做第一次后台版本检查，此后**每 5 分钟周期检查一次**，直到会话结束。发现新版本时静默执行全局安装，成功后在 REPL 底部显示一条低调提示（`✓ Updated to vX.Y.Z · Restart to apply`），失败只写调试日志、绝不打断会话。
+
+周期语义的两个推论：会话期间上游若再发一个新版本，下一轮检查会继续装上并再提示一次（长会话不会停在启动那一刻的版本上）；同一个版本不会被重复安装，已经装过的版本在后续轮次里直接跳过。
+
+实现是无 React 依赖的服务模块 `src/services/autoUpdate/backgroundOccUpdate.ts`，由 `src/cli/program/rootAction.tsx` 在交互路径（`--print` 提前返回之后）动态 import 并调度；UI 提示通过 `src/services/autoUpdate/updateNotifier.ts` 注册表送入 REPL 通知队列（与 `setEnvHookNotifier` 同模式）。
 
 以下任一条件成立时完全不跑：
 
@@ -85,6 +89,35 @@ bun install -g @sweetcornna/open-claude-code@latest
 安装命令复用 `occ update` 的链路（`src/cli/updateOcc.ts` 的版本查询与 `installOccGloballySilent`，输出捕获而非透传），并与 `installGlobalPackage()` 共享 `.update.lock` 跨进程锁。
 
 `src/components/AutoUpdaterWrapper.tsx` 中继承的组件式更新路由仍未挂载，也不再路由到 `NativeAutoUpdater`。在 occ 建立自己的签名二进制发布源之前，不应重新接通继承的原生下载器或官方包管理器更新提示；显式 `occ update` 仍然是手动更新入口。
+
+## 插件后台自动更新
+
+已安装的插件 marketplace 走同一套周期调度，但起始时间与 occ 自更新**错开**：交互式会话启动 3 分钟后做第一次检查，此后同样每 5 分钟一轮。错开是为了避免两条链在同一时刻一起打网络。
+
+每一轮的动作：
+
+1. 遍历已安装的 marketplace，只处理 git / github 类型的源；本地路径类 marketplace 不做任何网络操作。
+2. 对每个源执行 `git pull`。
+3. 只有 `git pull` 让仓库**真正发生移动**时，才重新物化对应的插件缓存；HEAD 没变的源不产生任何写入。
+4. 有插件被更新时，在 REPL 底部提示，并说明需要运行 `/reload-plugins` 才能让新版本在当前会话生效（与 occ 自更新提示「重启生效」不同，插件不需要重启进程）。
+
+关闭开关与 occ 自更新共用：`~/.occ.json` 的 `"autoUpdates": false`、环境变量 `DISABLE_AUTOUPDATER` 或 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 任一生效，两条链都不跑。
+
+跨进程锁是 `<plugins>/.plugin-update.lock`（插件根目录默认 `~/.occ/plugins`，可由 `OCC_PLUGIN_CACHE_DIR` 覆盖），与 occ 自更新的 `~/.occ/.update.lock` 是两把互相独立的锁，两条链不会互相阻塞。
+
+实现是 `src/services/autoUpdate/backgroundPluginUpdate.ts`，提示经 `src/services/autoUpdate/pluginUpdateNotifier.ts` 注册表进入 REPL 通知队列。
+
+## 检查间隔与跨实例节流
+
+两条链的周期长度由同一个环境变量控制：
+
+| 配置项 | 位置 | 默认值 | 说明 |
+|---|---|---|---|
+| `OCC_UPDATE_CHECK_INTERVAL_MS` | 环境变量 | `300000`（5 分钟） | 覆盖 occ 自更新与插件更新的周期检查间隔（两条链共用同一个值）。下限 `60000`（1 分钟）；非法值回落到默认值 |
+| `lastBackgroundUpdateCheckAt` | `~/.occ.json` | — | occ 自更新上一次后台检查的时间戳，内部字段 |
+| `lastBackgroundPluginUpdateCheckAt` | `~/.occ.json` | — | 插件上一次后台检查的时间戳，内部字段 |
+
+两个时间戳是内部状态，不需要也不建议手工编辑。它们解决的是**跨会话、多开实例**的重复检查问题：occ 常被同时开好几个窗口，如果每个实例各按自己的 5 分钟节奏打点，npm registry 和 git 远端承受的请求量会按实例数翻倍。因此每轮检查前先读对应的时间戳，若距上次检查还不到一个间隔（说明另一个实例刚查过），本实例这一轮直接跳过，不发请求。
 
 ## 开发版本
 
@@ -135,8 +168,10 @@ claude --version
 |---|---|
 | `src/constants/brand.ts` | occ 命令名和 npm 包名的唯一真源 |
 | `src/cli/updateOcc.ts` | `occ update` 的版本检查与 npm/Bun 更新流程；导出后台更新复用的检测与静默安装函数 |
-| `src/services/autoUpdate/backgroundOccUpdate.ts` | 后台静默自动更新服务（调度、门禁、安装编排） |
+| `src/services/autoUpdate/backgroundOccUpdate.ts` | occ 后台静默自动更新服务（周期调度、门禁、安装编排） |
 | `src/services/autoUpdate/updateNotifier.ts` | 更新成功提示进入 REPL 通知队列的注册表 |
+| `src/services/autoUpdate/backgroundPluginUpdate.ts` | 插件 marketplace 的后台周期更新服务（`git pull` + 缓存重新物化） |
+| `src/services/autoUpdate/pluginUpdateNotifier.ts` | 插件更新提示进入 REPL 通知队列的注册表 |
 | `src/main.tsx` | 注册 `occ update` 根命令 |
 | `src/components/AutoUpdaterWrapper.tsx` | 未挂载的后台更新路由；不得连接官方原生下载器 |
 | `src/utils/nativeInstaller/` | 继承的非公共原生安装器实现，不是 occ 发布渠道 |

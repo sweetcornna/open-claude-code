@@ -182,6 +182,8 @@ export type GlobalConfig = {
   numStartups: number
   installMethod?: InstallMethod
   autoUpdates?: boolean
+  lastBackgroundUpdateCheckAt?: number
+  lastBackgroundPluginUpdateCheckAt?: number
   // Flag to distinguish protection-based disabling from user preference
   autoUpdatesProtectedForNative?: boolean
   // Session count when Doctor was last shown

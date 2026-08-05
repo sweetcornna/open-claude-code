@@ -73,7 +73,11 @@ occ のインストールを目的として `src/utils/nativeInstaller/` 配下�
 
 ## バックグラウンドでのサイレント自動更新
 
-対話セッションは起動から約 5 分後にバックグラウンドで一度だけバージョンを確認します（セッションごとに最大 1 回）。新しいバージョンを検出すると、グローバルインストールをサイレントに実行します。成功時は REPL の下部に控えめな通知（`✓ Updated to vX.Y.Z · Restart to apply`）を表示し、失敗時はデバッグログだけに記録してセッションを中断しません。実装は React に依存しないサービスモジュール `src/services/autoUpdate/backgroundOccUpdate.ts` です。`src/cli/program/rootAction.tsx` が対話パス（`--print` による早期 return の後）で動的に import し、スケジュールします。UI 通知は `src/services/autoUpdate/updateNotifier.ts` のレジストリを通じて REPL の通知キューに渡されます（`setEnvHookNotifier` と同じパターン）。
+対話セッションは起動から 5 分後に最初のバックグラウンドバージョン確認を行い、その後はセッションが終わるまで**5 分ごとに定期的に**確認します。新しいバージョンを検出すると、グローバルインストールをサイレントに実行します。成功時は REPL の下部に控えめな通知（`✓ Updated to vX.Y.Z · Restart to apply`）を表示し、失敗時はデバッグログだけに記録してセッションを中断しません。
+
+定期実行になったことによる帰結が 2 つあります。セッション中にさらに新しいバージョンが公開された場合は、次の確認でそれもインストールし、通知を再度表示します（長時間のセッションが起動時点のバージョンに固定されることはありません）。また、同じバージョンを二重にインストールすることはなく、インストール済みのバージョンは以降の周回ではスキップします。
+
+実装は React に依存しないサービスモジュール `src/services/autoUpdate/backgroundOccUpdate.ts` です。`src/cli/program/rootAction.tsx` が対話パス（`--print` による早期 return の後）で動的に import し、スケジュールします。UI 通知は `src/services/autoUpdate/updateNotifier.ts` のレジストリを通じて REPL の通知キューに渡されます（`setEnvHookNotifier` と同じパターン）。
 
 次のいずれかに該当する場合はまったく実行しません。
 
@@ -85,6 +89,35 @@ occ のインストールを目的として `src/utils/nativeInstaller/` 配下�
 インストールコマンドは `occ update` の処理系（`src/cli/updateOcc.ts` のバージョン照会と `installOccGloballySilent`）を再利用し、出力はそのまま渡さずキャプチャします。また、`installGlobalPackage()` と同じ `.update.lock` のプロセス間ロックを共有します。
 
 `src/components/AutoUpdaterWrapper.tsx` から継承したコンポーネントベースの更新ルートは依然としてマウントされておらず、`NativeAutoUpdater` にもルーティングされません。occ が独自の署名付きバイナリ配布元を構築するまでは、継承したネイティブダウンローダーや公式パッケージマネージャー向けの更新通知を再接続すべきではありません。明示的な `occ update` は引き続き手動更新のエントリポイントです。
+
+## プラグインのバックグラウンド自動更新
+
+インストール済みのプラグイン marketplace も同じ定期スケジュールに乗りますが、開始時刻は occ 本体の自動更新と**ずらして**あります。対話セッションの起動から 3 分後に最初の確認を行い、その後は同じく 5 分ごとに 1 周します。ずらしているのは、2 つの系統が同時にネットワークへアクセスするのを避けるためです。
+
+1 周ごとの動作は次のとおりです。
+
+1. インストール済みの marketplace を走査し、git / github 種別のソースだけを処理する。ローカルパス種別の marketplace ではネットワーク操作を一切行わない。
+2. 各ソースに対して `git pull` を実行する。
+3. `git pull` によってリポジトリが**実際に移動した場合にのみ**、対応するプラグインキャッシュを再度マテリアライズする。HEAD が変化しなかったソースでは書き込みは一切発生しない。
+4. プラグインが更新された場合は REPL の下部に通知を表示し、新しいバージョンを現在のセッションで有効にするには `/reload-plugins` の実行が必要であることを伝える（occ 本体の更新通知とは異なり、プロセスの再起動は不要）。
+
+無効化スイッチは occ 本体の自動更新と共通です。`~/.occ.json` の `"autoUpdates": false`、環境変数 `DISABLE_AUTOUPDATER`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` のいずれかが有効なら、両方の系統とも実行されません。
+
+プロセス間ロックは `<plugins>/.plugin-update.lock` です（プラグインのルートディレクトリは既定で `~/.occ/plugins`、`OCC_PLUGIN_CACHE_DIR` で上書き可能）。occ 本体の自動更新が使う `~/.occ/.update.lock` とは独立した別のロックであり、2 つの系統が互いをブロックすることはありません。
+
+実装は `src/services/autoUpdate/backgroundPluginUpdate.ts` で、通知は `src/services/autoUpdate/pluginUpdateNotifier.ts` のレジストリを通じて REPL の通知キューに渡されます。
+
+## 確認間隔とインスタンス間のスロットリング
+
+2 つの系統の周期は同一の環境変数で制御します。
+
+| 設定項目 | 場所 | 既定値 | 説明 |
+|---|---|---|---|
+| `OCC_UPDATE_CHECK_INTERVAL_MS` | 環境変数 | `300000`（5 分） | occ 本体の自動更新とプラグイン更新の定期確認間隔を上書きする（2 つの系統で同じ値を共有）。下限は `60000`（1 分）。不正な値は既定値にフォールバックする |
+| `lastBackgroundUpdateCheckAt` | `~/.occ.json` | — | occ 本体の前回のバックグラウンド確認のタイムスタンプ。内部フィールド |
+| `lastBackgroundPluginUpdateCheckAt` | `~/.occ.json` | — | プラグインの前回のバックグラウンド確認のタイムスタンプ。内部フィールド |
+
+2 つのタイムスタンプは内部状態であり、手動で編集する必要はなく、推奨もしません。これらが解決するのは**セッションをまたぐ場合と、複数インスタンスを同時に開いている場合**の重複確認です。occ は複数のウィンドウで同時に開かれることが多く、各インスタンスがそれぞれ 5 分間隔で確認すると、npm registry や git リモートへのリクエスト量がインスタンス数に比例して増えてしまいます。そこで各周回の確認前に対応するタイムスタンプを読み、前回の確認から 1 間隔が経過していない場合（別のインスタンスが直前に確認したことを意味します）、そのインスタンスはその周回をスキップし、リクエストを発行しません。
 
 ## 開発版
 
@@ -135,8 +168,10 @@ claude --version
 |---|---|
 | `src/constants/brand.ts` | occ のコマンド名と npm パッケージ名の唯一の真源 |
 | `src/cli/updateOcc.ts` | `occ update` のバージョン確認と npm/Bun 更新フロー。バックグラウンド更新が再利用する検出関数とサイレントインストール関数を export する |
-| `src/services/autoUpdate/backgroundOccUpdate.ts` | バックグラウンドでのサイレント自動更新サービス（スケジュール、ゲート、インストールのオーケストレーション） |
+| `src/services/autoUpdate/backgroundOccUpdate.ts` | occ 本体のバックグラウンドサイレント自動更新サービス（定期スケジュール、ゲート、インストールのオーケストレーション） |
 | `src/services/autoUpdate/updateNotifier.ts` | 更新成功通知を REPL の通知キューへ渡すレジストリ |
+| `src/services/autoUpdate/backgroundPluginUpdate.ts` | プラグイン marketplace のバックグラウンド定期更新サービス（`git pull` とキャッシュの再マテリアライズ） |
+| `src/services/autoUpdate/pluginUpdateNotifier.ts` | プラグイン更新通知を REPL の通知キューへ渡すレジストリ |
 | `src/main.tsx` | ルートコマンド `occ update` を登録する |
 | `src/components/AutoUpdaterWrapper.tsx` | マウントされていないバックグラウンド更新ルート。公式ネイティブダウンローダーへ接続してはならない |
 | `src/utils/nativeInstaller/` | 継承した非公開のネイティブインストーラー実装。occ の配布チャネルではない |

@@ -73,7 +73,11 @@ Do not install occ by calling internal functions under `src/utils/nativeInstalle
 
 ## Silent Background Automatic Updates
 
-Approximately five minutes after an interactive session starts, occ performs one background version check (at most once per session). If it finds a new version, it silently performs a global installation. On success, the REPL displays a subdued notice at the bottom (`✓ Updated to vX.Y.Z · Restart to apply`). On failure, it writes only to the debug log and never interrupts the session. The implementation is the React-independent service module `src/services/autoUpdate/backgroundOccUpdate.ts`. `src/cli/program/rootAction.tsx` dynamically imports and schedules it on the interactive path (after the early return for `--print`). The UI notice enters the REPL notification queue through the registry in `src/services/autoUpdate/updateNotifier.ts` (the same pattern as `setEnvHookNotifier`).
+Five minutes after an interactive session starts, occ performs its first background version check, and **repeats the check every five minutes** for the rest of the session. If it finds a new version, it silently performs a global installation. On success, the REPL displays a subdued notice at the bottom (`✓ Updated to vX.Y.Z · Restart to apply`). On failure, it writes only to the debug log and never interrupts the session.
+
+Two consequences of the periodic behavior: if another new version ships while the session is still open, the next check installs it and posts the notice again (a long-running session no longer stays pinned to whatever version was current at startup); and the same version is never installed twice — an already-installed version is skipped on later rounds.
+
+The implementation is the React-independent service module `src/services/autoUpdate/backgroundOccUpdate.ts`. `src/cli/program/rootAction.tsx` dynamically imports and schedules it on the interactive path (after the early return for `--print`). The UI notice enters the REPL notification queue through the registry in `src/services/autoUpdate/updateNotifier.ts` (the same pattern as `setEnvHookNotifier`).
 
 The check does not run when any of the following conditions applies:
 
@@ -85,6 +89,35 @@ The check does not run when any of the following conditions applies:
 The installation command reuses the `occ update` path (the version query and `installOccGloballySilent` from `src/cli/updateOcc.ts`, with output captured rather than passed through) and shares the cross-process `.update.lock` with `installGlobalPackage()`.
 
 The inherited component-based update route in `src/components/AutoUpdaterWrapper.tsx` remains unmounted and no longer routes to `NativeAutoUpdater`. Do not reconnect the inherited native downloader or the official package-manager update prompt until occ has its own signed binary distribution source. Explicit `occ update` remains the manual update entry point.
+
+## Background Plugin Updates
+
+Installed plugin marketplaces use the same periodic scheduling, but their start time is **staggered** relative to the occ self-update: the first check runs three minutes after an interactive session starts, and every five minutes thereafter. The stagger keeps the two chains from hitting the network at the same moment.
+
+Each round does the following:
+
+1. Walk the installed marketplaces and process only git and github sources; local-path marketplaces perform no network operations.
+2. Run `git pull` on each source.
+3. Rematerialize the corresponding plugin cache **only when `git pull` actually moved the repository**; a source whose HEAD did not change produces no writes at all.
+4. When plugins were updated, post a notice at the bottom of the REPL stating that `/reload-plugins` is required for the new versions to take effect in the current session (unlike the occ self-update notice, this does not require restarting the process).
+
+The off switches are shared with the occ self-update: `"autoUpdates": false` in `~/.occ.json`, or the `DISABLE_AUTOUPDATER` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` environment variable — any one of them stops both chains.
+
+The cross-process lock is `<plugins>/.plugin-update.lock` (the plugin root defaults to `~/.occ/plugins` and can be overridden with `OCC_PLUGIN_CACHE_DIR`). It is independent of the occ self-update's `~/.occ/.update.lock`, so the two chains never block each other.
+
+The implementation is `src/services/autoUpdate/backgroundPluginUpdate.ts`; notices reach the REPL notification queue through the registry in `src/services/autoUpdate/pluginUpdateNotifier.ts`.
+
+## Check Interval and Cross-Instance Throttling
+
+A single environment variable controls the period for both chains:
+
+| Setting | Location | Default | Description |
+|---|---|---|---|
+| `OCC_UPDATE_CHECK_INTERVAL_MS` | Environment variable | `300000` (5 minutes) | Overrides the periodic check interval for both the occ self-update and plugin updates (both chains share one value). Lower bound `60000` (1 minute); an invalid value falls back to the default |
+| `lastBackgroundUpdateCheckAt` | `~/.occ.json` | — | Timestamp of the last background occ update check; internal field |
+| `lastBackgroundPluginUpdateCheckAt` | `~/.occ.json` | — | Timestamp of the last background plugin update check; internal field |
+
+Both timestamps are internal state; editing them by hand is neither necessary nor recommended. They exist to solve duplicate checking **across sessions and across concurrently open instances**: occ is often open in several windows at once, and if every instance kept its own five-minute beat, the request volume against the npm registry and the git remotes would multiply by the number of instances. So each round reads the corresponding timestamp first, and if less than one interval has elapsed since the last check (meaning another instance just ran one), this instance skips the round without issuing any request.
 
 ## Development Versions
 
@@ -135,8 +168,10 @@ If the official Claude Code is not installed, the absence of the second command 
 |---|---|
 | `src/constants/brand.ts` | Single source of truth for the occ command name and npm package name |
 | `src/cli/updateOcc.ts` | Version check and npm/Bun update flow for `occ update`; exports the detection and silent-installation functions reused by background updates |
-| `src/services/autoUpdate/backgroundOccUpdate.ts` | Silent background automatic-update service (scheduling, gates, and installation orchestration) |
+| `src/services/autoUpdate/backgroundOccUpdate.ts` | Silent background automatic-update service for occ (periodic scheduling, gates, and installation orchestration) |
 | `src/services/autoUpdate/updateNotifier.ts` | Registry that delivers successful-update notices to the REPL notification queue |
+| `src/services/autoUpdate/backgroundPluginUpdate.ts` | Periodic background update service for plugin marketplaces (`git pull` plus cache rematerialization) |
+| `src/services/autoUpdate/pluginUpdateNotifier.ts` | Registry that delivers plugin-update notices to the REPL notification queue |
 | `src/main.tsx` | Registers the root `occ update` command |
 | `src/components/AutoUpdaterWrapper.tsx` | Unmounted background update route; must not connect to the official native downloader |
 | `src/utils/nativeInstaller/` | Inherited, non-public native installer implementation; not an occ distribution channel |
