@@ -5,79 +5,65 @@
 [![Last Commit](https://img.shields.io/github/last-commit/sweetcornna/open-claude-code?style=flat-square&color=blue)](https://github.com/sweetcornna/open-claude-code/commits/main)
 [![Bun](https://img.shields.io/badge/runtime-Bun-black?style=flat-square&logo=bun)](https://bun.sh/)
 
-> Claude Code 社区版 —— 官方 Claude Code 的优化衍生版，可与官方版装在同一台机器上共存。
+> An open-source terminal AI coding assistant that coexists with official Claude Code.
 
-**open-claude-code**（简称 `occ`）是 Anthropic 官方 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 的**社区版（Community Edition）**：以逆向复原（reverse-engineered restoration）的代码为基座，由社区维护和优化的衍生版本。三件事说清它的定位：
+**English** · [简体中文](./README.zh.md) · [日本語](./README.ja.md)
 
-- **它是什么** —— 一份可运行、可构建、可调试的 Claude Code 完整复原实现。在此基础上补齐了企业版特性，并扩展了 Goal 持续驱动、Ultracode 多 Agent 编排、Artifacts、多模型供应商、ACP 等能力。
-- **和官方什么关系** —— 独立的社区项目，与 Anthropic 无关联、未获其背书。跟随官方功能演进，但补什么、裁什么由社区决定。
-- **为什么能共存** —— occ 与官方版做了用户态完全隔离：配置、状态、缓存、凭据各走各的（见下表），两者装在同一台机器上互不干扰，登录也不会互相覆盖 token。
+**open-claude-code** (`occ`) is a full restoration of Anthropic's [Claude Code](https://docs.anthropic.com/en/docs/claude-code), extended with Goal-driven execution, multi-agent orchestration, Artifacts and ACP support — and **fully isolated from official Claude Code**, so both can be installed on the same machine without interfering.
 
-## 与官方 Claude Code 的隔离
+## Isolation from official Claude Code
 
-这是 occ 和其它 fork 最大的区别。隔离之前，fork 与官方共用 `~/.claude`、`~/.claude.json`、缓存树，**以及同一条 macOS keychain 记录** —— 任一边登录都会覆盖对方的 OAuth token。现在各走各的：
+This is the main difference from other forks. Before isolation, the fork shared `~/.claude`, `~/.claude.json`, the cache tree — **and the same macOS keychain entry**, so signing in to either CLI overwrote the other's OAuth token. Now they are separate:
 
-| | open-claude-code | 官方 Claude Code |
+| | open-claude-code | Official Claude Code |
 | --- | --- | --- |
-| 用户配置 | `~/.occ/` | `~/.claude/` |
-| 全局状态 | `~/.occ.json` | `~/.claude.json` |
-| 项目内资产 | `.occ/` | `.claude/` |
-| 缓存 | `~/.cache/occ-nodejs/` | `~/.cache/claude-cli-nodejs/` |
-| 凭据（macOS） | `Open Claude Code-credentials-<hash>` | `Claude Code-credentials` |
-| 企业策略 | `/etc/occ`、`win.open-claude-code.occ` | `/etc/claude-code`、`com.anthropic.claudecode` |
-| 环境变量 | `OCC_CONFIG_DIR` | `CLAUDE_CONFIG_DIR`（occ 仍兼容读取） |
+| User config | `~/.occ/` | `~/.claude/` |
+| Global state | `~/.occ.json` | `~/.claude.json` |
+| Project assets | `.occ/` | `.claude/` |
+| Cache | `~/.cache/occ-nodejs/` | `~/.cache/claude-cli-nodejs/` |
+| Credentials (macOS) | `Open Claude Code-credentials-<hash>` | `Claude Code-credentials` |
+| Enterprise policy | `/etc/occ`, `win.open-claude-code.occ` | `/etc/claude-code`, `com.anthropic.claudecode` |
+| Env override | `OCC_CONFIG_DIR` | `CLAUDE_CONFIG_DIR` (still honoured) |
 
-**故意共享的部分**：`CLAUDE.md` / `CLAUDE.local.md` / `AGENTS.md` 记忆文件名不改（是跨工具生态约定，改名会让所有既有仓库丢上下文）；子进程仍然收到 `CLAUDECODE=1`（大量用户 hook 脚本靠它判断环境），同时额外收到 `OCC=1`；IDE 锁文件两个目录都会搜（插件是 Anthropic 的，写在 `~/.claude/ide`）。
+**Deliberately shared:** the `CLAUDE.md` / `CLAUDE.local.md` / `AGENTS.md` memory filenames are unchanged, because they are a cross-tool convention and renaming them would lose context in every existing repository. Child processes still receive `CLAUDECODE=1` (many user hook scripts gate on it) plus `OCC=1`. IDE lockfiles are searched in both roots, since the marketplace extension is Anthropic's and writes to `~/.claude/ide`.
 
-### 从官方版迁移
-
-```sh
-occ migrate --dry-run              # 先看会拷什么
-occ migrate                        # 真的拷（默认剥离密钥）
-occ migrate --with-credentials     # 连登录一起拷，装好即用
-```
-
-两种模式拷的**东西一样**：settings、skills、agents、commands、output-styles、workflows、plugins、rules 和 MCP server 定义。区别只在**密钥要不要跟着走**。首启向导里是同样的三个选项。
-
-- **默认（不带凭据）**：剥离 OAuth token、API key、`settings.env` 里的密钥类变量、MCP server 的 `env`/`headers`，以及 `apiKeyHelper` / `awsAuthRefresh` / `awsCredentialExport` / `gcpAuthRefresh` / `otelHeadersHelper` 这些「跑个命令换出凭据」的键。**路由配置照常带走**：`*_BASE_URL`、`*_MODEL`、`CLAUDE_CODE_MAX_CONTEXT_TOKENS`、`CLAUDE_CODE_USE_*`、`*_AUTH_MODE`，以及 `CLAUDE_CODE_CLIENT_CERT` / `CLAUDE_CODE_CLIENT_KEY` 这类**证书路径**（路径不是密钥，成对保留，只剥 `..._PASSPHRASE`）。你只需要把 key 重新填一遍。剥了哪些键会在迁移前逐条列出来，不会静默丢。
-- **`--with-credentials`**：OAuth token、legacy API key 和 `~/.claude.json` 里的账号键（`primaryApiKey`、`oauthAccount`、`customApiKeyResponses`、`workspaceApiKey`）一并带走，不用再 `/login`。**注意**：refresh token 由服务端轮换，两边 CLI 拿的是同一个，谁先刷新另一边就得重新登录——建议日常固定主用一边。
-- 先选了默认模式、之后又想要凭据，直接补跑 `occ migrate --with-credentials` 即可：除了登录本身，它还会把上一次被剥掉的 `settings.json` 密钥补回去（**只补缺失的键**，你在 occ 侧已经改过的值一律不动）。`.migrated` 标记记录了已迁移的类别，不会把你挡在外面。
-- `--skip-account-data` / `--no-account-data` 是旧版拼写，现在等价于默认模式。
-- 有两处 occ 无从判断、因此**原样带走并在报告里点名**：`settings.json` 的 `pluginConfigs`，以及 `plugins/` 目录里的文件。插件声明为 `sensitive` 的字段本来就存在 secure storage、默认模式压根不碰；但这条约定由各插件自己的 manifest 保证，所以残留由你过目。
-
-**会话历史永不拷贝**。凭据是单向、no-clobber 的：occ 这边已经有登录就保留 occ 的，官方 keychain 条目从头到尾不改。`~/.claude` 全程只读，不写不删不改。
-
-## ⚡ 快速开始（安装版）
-
-一条命令安装（自动选择 bun/npm，装完自检）：
+### Migrating from official Claude Code
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sweetcornna/open-claude-code/main/scripts/install.sh | bash
+occ migrate --dry-run          # show what would be copied
+occ migrate                    # do it (secrets stripped)
+occ migrate --with-credentials # bring your login across too
 ```
 
-或手动：
+Both modes copy the **same things**: settings, skills, agents, commands, output-styles, workflows, plugins, rules and MCP server definitions. They differ only in whether secrets ride along. The first-run wizard offers the same three choices.
+
+- **Default (no credentials):** strips the OAuth token, the API key, the secret half of `settings.env`, MCP `env`/`headers`, and the `apiKeyHelper` / `awsAuthRefresh` / `awsCredentialExport` / `gcpAuthRefresh` / `otelHeadersHelper` hooks that resolve credentials by running a command. **Routing config is kept**: `*_BASE_URL`, `*_MODEL`, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_USE_*`, `*_AUTH_MODE` and certificate *paths* such as `CLAUDE_CODE_CLIENT_CERT` / `CLAUDE_CODE_CLIENT_KEY` (a path is not a secret, and the mTLS pair is useless split — only `..._PASSPHRASE` is stripped). Everything stripped is listed by name before anything is written.
+- **`--with-credentials`:** also copies the OAuth token, the legacy API key and the account keys in `~/.claude.json` (`primaryApiKey`, `oauthAccount`, `customApiKeyResponses`, `workspaceApiKey`), so occ works without a fresh `/login`. **Caveat:** the server rotates the OAuth refresh token and both CLIs now hold the same one, so whichever refreshes first invalidates the other — pick one for day-to-day use.
+- Changed your mind after the default run? `occ migrate --with-credentials` tops up the login *and* restores the `settings.json` secrets the first run stripped — filling only what is missing, never overwriting a value you have since changed on the occ side. The `.migrated` marker records which categories ran, so it will not lock you out.
+- `--skip-account-data` / `--no-account-data` are the pre-2.9 spellings and now mean the default mode.
+- Two places are copied verbatim and **named in the report** because nothing here can classify them: `settings.json`'s `pluginConfigs`, and the files inside `plugins/`. Fields a plugin declares `sensitive` live in secure storage, which this mode never touches — but that split is enforced by each plugin's own manifest, so the residue is yours to review.
+
+**Session history is never copied.** The credential copy is one-way and no-clobber: an existing occ login always wins, and the official keychain entry is never modified. `~/.claude` is read-only throughout: nothing is written, moved or deleted there.
+
+## Quick start (published package)
 
 ```sh
-npm i -g @sweetcornna/open-claude-code
+npm i -g open-claude-code
 
-occ           # 以 Node.js 启动
-occ-bun       # 以 Bun 启动
-occ update    # 更新到最新版本
+occ           # run on Node.js
+occ-bun       # run on Bun
+occ update    # update to the latest version
 ```
 
-首次运行 `occ` 会进入配置向导：可选从官方 Claude Code（`~/.claude`）迁移既有配置，然后选择 OAuth 登录或 API 配置（Anthropic 兼容 / OpenAI 兼容 / 国产模型 preset / Gemini / Grok），API 模式下可直接填协议（chat/responses）、模型名和模型最大上下文（自动联动 auto-compact 阈值）。详见 `docs/zh/features/providers.md`。
+> The pre-2.8 `ccb` / `ccb-bun` names have been removed — scripts still calling them must switch to `occ` / `occ-bun`.
 
-> 2.8 之前的 `ccb` / `ccb-bun` 命令名已移除，沿用旧命令的脚本请改为 `occ` / `occ-bun`。
+## Quick start (from source)
 
-> **安装/更新失败？** 先 `npm rm -g @sweetcornna/open-claude-code` 清理，再 `npm i -g @sweetcornna/open-claude-code@latest`。仍失败则指定版本号。
+### Requirements
 
-## ⚡ 快速开始（源码版）
+Use the latest Bun — older versions cause a lot of strange bugs.
 
-### ⚙️ 环境要求
-
-一定要最新版本的 bun，不然会遇到一堆奇怪的 BUG。
-
-- 📦 [Bun](https://bun.sh/) >= 1.3.11
+- [Bun](https://bun.sh/) >= 1.3.11
 
 ```bash
 # Linux / macOS
@@ -86,116 +72,93 @@ curl -fsSL https://bun.sh/install | bash
 # Windows (PowerShell)
 powershell -c "irm bun.sh/install.ps1 | iex"
 
-# 已装过的话
+# Already installed
 bun upgrade
 ```
 
-安装脚本会把 `~/.bun/bin` 写进 shell 配置。重开终端或 `source ~/.zshrc` / `source ~/.bashrc` 后，用 `bun --version` 验证。
-
-### 📥 安装与运行
+### Install and run
 
 ```bash
 cd /path/to/open-claude-code
 bun install
 
-bun run dev      # 开发模式
-bun run build    # 构建
+bun run dev      # development mode
+bun run build    # build
 ```
 
-构建采用 code splitting 多文件打包，产物在 `dist/`，Bun 和 Node.js 都能启动。
+The build uses code splitting; output lands in `dist/` and runs under both Bun and Node.js.
 
-### 👤 首次配置（向导 / `/login`）
+### First-time `/login`
 
-第一次运行 `occ` 会自动进入配置向导；之后想换供应商，在 REPL 里输入 `/login` 随时重配。向导里能选：
+Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-party compatible service — no Anthropic account required. OpenAI, Gemini and Grok have their own sections.
 
-- **Claude 订阅 / Anthropic Console** —— 浏览器 OAuth 登录，不用填任何东西；
-- **Anthropic 兼容 / OpenAI 兼容 / Gemini / Grok** —— 自己填端点和 key，跑 GPT、GLM、Kimi、DeepSeek、Ollama、vLLM 等任意兼容服务；
-- **国产模型 preset** —— DeepSeek / 智谱 GLM / 千问 / MiMo，选好模型填个 key 就能用，上下文窗口自动配好。
-
-手填表单的字段（除 Base URL / API Key 外都可留空）：
-
-| 字段 | 说明 | 示例 |
+| Field | Description | Example |
 | --- | --- | --- |
-| Base URL | API 服务地址 | `https://api.example.com/v1` |
-| API Key | 认证密钥 | `sk-xxx` |
-| Model | 单一模型名，填了就全程用它 | `glm-4.6` |
-| Wire API | 协议（仅 OpenAI 表单）：`chat`（默认）或 `responses` | `chat` |
-| Max ctx | 模型的最大上下文。填对了，occ 会在快满时自动压缩对话，而不是撞上"prompt is too long" | `128k` / `1m` / `200000` |
-| Haiku / Sonnet / Opus | 按档位分别指定模型（不想区分就只填 Model） | `claude-sonnet-4-6` |
+| Base URL | API endpoint | `https://api.example.com/v1` |
+| API Key | Auth key | `sk-xxx` |
+| Haiku Model | Fast model ID | `claude-haiku-4-5-20251001` |
+| Sonnet Model | Balanced model ID | `claude-sonnet-5` |
+| Opus Model | High-capability model ID | `claude-opus-5` |
+| Fable Model | Top-tier model ID | `claude-fable-5` |
 
-**Tab / Shift+Tab** 切换字段，**Enter** 确认，最后一个字段按 Enter 保存。配置细节（环境变量、按模型开 1M 上下文、`/provider` 档案切换）见 [`docs/zh/features/providers.md`](./docs/zh/features/providers.md)。
+**Tab / Shift+Tab** moves between fields, **Enter** confirms; Enter on the last field saves.
 
-## 主要特性
+## Features
 
-| 特性 | 说明 | 文档 |
+| Feature | Description | Docs |
 | --- | --- | --- |
-| **🎯 Goal 持续驱动** | `/goal <objective>` 设定目标后自动跨轮驱动 agent 直至完成；带 token budget、completion/blocked audit 与 `pause`/`resume`/`continue`/`clear` | [`src/commands/goal/`](./src/commands/goal/) |
-| **🧠 Ultracode 多 Agent 编排** | `/ultracode` + `Workflow` 工具跑确定性 JS 脚本（`agent`/`pipeline`/`parallel`/`phase`），`/workflows` 双栏监控面板，支持 journal 重放与并发上限 | [文档](./docs/zh/features/workflow-scripts.md) |
-| **🧩 插件市场** | 首次启动自动装上官方 `claude-plugins-official`（300+ 插件），`/plugin` 浏览安装；保留名只认 `github.com/anthropics/*` 严格来源 | `/plugin` |
-| **📦 Artifacts** | 模型把 HTML/看板/报告上传到公开 URL（7d/30d 自动过期），Cloudflare Worker + R2 可自托管 | [说明](./packages/cloud-artifacts/README.md) |
-| **ACP 协议支持** | 接入 Zed、Cursor 等 IDE，支持会话恢复、Skills、权限桥接 | [文档](./docs/zh/features/acp-zed.md) |
-| **Remote Control** | `occ remote-control` 把会话交给 [Happy](https://github.com/slopus/happy)（手机 / Web / 端到端加密），走的是 occ 自己的 ACP agent；服务端可自托管 | [文档](./docs/zh/features/remote-control-self-hosting.md) |
-| **Langfuse 监控** | 每次 agent loop 的细节都能看到，可一键转为数据集 | [文档](./docs/zh/features/langfuse-monitoring.md) |
-| **Web Search** | 内置网页搜索，支持 Bing / Brave | [文档](./docs/zh/features/web-browser-tool.md) |
-| **Poor Mode** | 穷鬼模式，关掉记忆提取和键入建议，大幅减少并发请求 | `/poor` 开关 |
-| **Channels 频道通知** | MCP 服务器把外部消息推进会话（飞书/Slack/Discord 等） | [文档](./docs/zh/features/channels.md) |
-| **自定义模型供应商** | OpenAI 兼容（GPT/GLM/Kimi/DeepSeek）/ Anthropic 兼容 / Gemini / Grok，可配协议、模型与最大上下文 | [文档](./docs/zh/features/providers.md) |
-| Voice Mode | 语音输入，支持豆包（`/voice doubao`） | [文档](./docs/zh/features/voice-mode.md) |
-| Computer Use | 屏幕截图、键鼠控制 | [文档](./docs/zh/features/computer-use.md) |
-| **Chrome 浏览器工具** | `occ --chrome` 接上 Google `chrome-devtools-mcp`：导航、点击、快照、控制台/网络、性能 trace。改页面的操作都要确认 | [文档](./docs/zh/features/chrome-devtools-mcp.md) |
-| Chrome Use（第三方） | 另一套方案：`hangwin/mcp-chrome` 扩展 | [文档](./docs/zh/features/chrome-use-mcp.md) |
-| /dream 记忆整理 | 自动整理和优化记忆文件 | [文档](./docs/zh/features/auto-dream.md) |
+| **Goal-driven execution** | `/goal <objective>` drives the agent across turns until done, with a token budget, completion/blocked audit and `pause`/`resume`/`continue`/`clear` | [`src/commands/goal/`](./src/commands/goal/) |
+| **Ultracode multi-agent orchestration** | `/ultracode` plus the `Workflow` tool runs deterministic JS scripts (`agent`/`pipeline`/`parallel`/`phase`); `/workflows` gives a live panel, with journal replay and a concurrency cap | [docs](./docs/zh/features/workflow-scripts.md) |
+| **Artifacts** | The model uploads HTML/dashboards/reports to a public URL (7d/30d expiry). Cloudflare Worker + R2, self-hostable | [docs](./packages/cloud-artifacts/README.md) |
+| **ACP protocol** | Connect Zed, Cursor and other IDEs, with session resume, Skills and permission bridging | [docs](./docs/zh/features/acp-zed.md) |
+| **Remote Control** | `occ remote-control` hands the session to [Happy](https://github.com/slopus/happy) (phone / web / end-to-end encrypted) over occ's own ACP agent; the server is self-hostable | [docs](./docs/zh/features/remote-control-self-hosting.md) |
+| **Langfuse monitoring** | Inspect every agent loop in detail, export to a dataset in one click | [docs](./docs/zh/features/langfuse-monitoring.md) |
+| **Web search** | Built-in search via Bing / Brave | [docs](./docs/zh/features/web-browser-tool.md) |
+| **Poor mode** | Disables memory extraction and typing suggestions to cut concurrent requests | `/poor` |
+| **Channels** | MCP servers push external messages into the session (Feishu/Slack/Discord…) | [docs](./docs/zh/features/channels.md) |
+| **Custom providers** | OpenAI / Anthropic / Gemini / Grok compatible | [docs](./docs/zh/features/all-features-guide.md) |
+| Voice mode | Voice input, including Doubao (`/voice doubao`) | [docs](./docs/zh/features/voice-mode.md) |
+| Computer Use | Screenshots, keyboard and mouse control | [docs](./docs/zh/features/computer-use.md) |
+| **Chrome browser tools** | `occ --chrome` attaches Google's `chrome-devtools-mcp`: navigate, click, snapshot, console/network, performance traces. Anything that changes the page asks first | [docs](./docs/zh/features/chrome-devtools-mcp.md) |
+| Chrome Use (third-party) | A separate option: the `hangwin/mcp-chrome` extension | [docs](./docs/zh/features/chrome-use-mcp.md) |
+| `/dream` | Automatic memory consolidation | [docs](./docs/zh/features/auto-dream.md) |
 
-## Feature Flags
+## Feature flags
 
-功能开关通过 `FEATURE_<FLAG_NAME>` 环境变量控制，`1` / `true` 开，`0` / `false` / 留空关：
+Enable with `FEATURE_<FLAG_NAME>=1`:
 
 ```bash
-FEATURE_FORK_SUBAGENT=1 bun run dev    # 开一个默认没编进去的 flag
-FEATURE_GOAL=0 bun run build           # 关掉一个默认开着的 flag
+FEATURE_FORK_SUBAGENT=1 bun run dev
 ```
 
-默认启用的 33 个 flag 见 [`scripts/defines.ts`](./scripts/defines.ts) 的 `DEFAULT_BUILD_FEATURES`；不在表里的需要显式开。dev 与 build 共用同一套解析逻辑，所以两边行为一致。各 Feature 的说明见 [`docs/zh/features/`](./docs/zh/features/)。
+The 33 flags on by default are in `DEFAULT_BUILD_FEATURES` in [`scripts/defines.ts`](./scripts/defines.ts); anything else needs the env var. Per-feature notes live in [`docs/zh/features/`](./docs/zh/features/).
 
-## VS Code 调试
+## Debugging in VS Code
 
-TUI (REPL) 模式需要真实终端，用 **attach 模式**：
+TUI (REPL) mode needs a real terminal, so use **attach mode**:
 
 ```bash
-bun run dev:inspect     # 输出 ws://localhost:8888/xxxx
+bun run dev:inspect     # prints ws://localhost:8888/xxxx
 ```
 
-然后在 `src/` 里打断点，F5 选择 **"Attach to Bun (TUI debug)"**。
+Set breakpoints under `src/`, then F5 → **"Attach to Bun (TUI debug)"**.
 
-## Teach Me 学习项目
-
-内置 teach-me skill，通过问答式引导理解项目的任何模块（改编自 [sigma skill](https://github.com/sanyuan0704/sanyuan-skills)）：
+## Development
 
 ```bash
-/teach-me Claude Code 架构
-/teach-me React Ink 终端渲染 --level beginner
-/teach-me Tool 系统 --resume
-```
-
-会诊断你的水平、把主题拆成 5-15 个原子概念按依赖推进、用苏格拉底式提问引导，并支持 `--resume` 断点续学。
-
-## 开发
-
-```bash
-bun run precheck      # typecheck + lint fix + test，任务完成后必须零错误通过
+bun run precheck      # typecheck + lint fix + test — must pass with zero errors
 bun run typecheck
 bun run test
 bun run build:vite
 ```
 
-架构说明、模块地图、路径与隔离不变式、测试规范都在 [`CLAUDE.md`](./CLAUDE.md) —— **改任何路径相关代码前先读它**。
+Architecture, the module map, the path/isolation invariants and the testing rules are in [`CLAUDE.md`](./CLAUDE.md) — **read it before touching any path-related code**.
 
-## 致谢
+## Acknowledgements
 
-- [claude-code-best/claude-code](https://github.com/claude-code-best/claude-code) — 可运行、可构建、可调试的 Claude Code 还原工程（"原汁原味 Claude Code"）。occ 从该仓库 fork 而来，复原基座与大量企业特性还原工作源自该项目
-- [doubaoime-asr](https://github.com/starccy/doubaoime-asr) — 豆包 ASR 语音识别 SDK，为 Voice Mode 提供无需 Anthropic OAuth 的语音输入方案
-- [free-search-mcp](https://github.com/sweetcornna/free-search-mcp) — 免 API key 的本地优先搜索 MCP server。WebSearch 的 `free` 搜索源移植自它的无密钥引擎池（DuckDuckGo / Mojeek / Bing）、RRF 融合与 SearXNG 救援策略
+- [doubaoime-asr](https://github.com/starccy/doubaoime-asr) — Doubao ASR SDK, which gives Voice Mode a speech input path that needs no Anthropic OAuth
+- [free-search-mcp](https://github.com/sweetcornna/free-search-mcp) — local-first, no-API-key search MCP server. WebSearch's `free` source is a port of its keyless engine pool (DuckDuckGo / Mojeek / Bing), RRF fusion and SearXNG rescue pass
 
-## 许可证
+## License
 
-本仓库的还原与原创工作以 [MIT License](./LICENSE) 发布，仅供学习研究用途。"Claude"、"Claude Code" 与 "Anthropic" 是 [Anthropic](https://www.anthropic.com/) 的商标；本项目与 Anthropic 无关联、未获其背书。
+This project is for study and research purposes only. All rights to Claude Code belong to [Anthropic](https://www.anthropic.com/).
