@@ -12,7 +12,14 @@ import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
  * OPENAI_PROJECT_ID: Optional. Project ID.
  */
 
-let cachedClient: OpenAI | null = null
+let cachedClient:
+  | {
+      apiKey: string
+      baseURL: string | undefined
+      maxRetries: number
+      client: OpenAI
+    }
+  | undefined
 
 /**
  * Wrap a fetch so that every response's rate-limit headers are fed into the
@@ -46,12 +53,18 @@ export function getOpenAIClient(options?: {
   const hasConnectionOverride =
     options?.apiKeyOverride !== undefined ||
     options?.baseURLOverride !== undefined
-  if (cachedClient && !hasConnectionOverride) {
-    return cachedClient
-  }
-
   const apiKey = options?.apiKeyOverride ?? process.env.OPENAI_API_KEY ?? ''
   const baseURL = options?.baseURLOverride ?? process.env.OPENAI_BASE_URL
+  const maxRetries = options?.maxRetries ?? 0
+  if (
+    cachedClient &&
+    !hasConnectionOverride &&
+    cachedClient.apiKey === apiKey &&
+    cachedClient.baseURL === baseURL &&
+    cachedClient.maxRetries === maxRetries
+  ) {
+    return cachedClient.client
+  }
 
   const baseFetch = options?.fetchOverride ?? (globalThis.fetch as typeof fetch)
   const wrappedFetch = wrapFetchForUsage(baseFetch)
@@ -59,7 +72,7 @@ export function getOpenAIClient(options?: {
   const client = new OpenAI({
     apiKey,
     ...(baseURL && { baseURL }),
-    maxRetries: options?.maxRetries ?? 0,
+    maxRetries,
     timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,
     ...(process.env.OPENAI_ORG_ID && {
@@ -73,7 +86,7 @@ export function getOpenAIClient(options?: {
   })
 
   if (!options?.fetchOverride && !hasConnectionOverride) {
-    cachedClient = client
+    cachedClient = { apiKey, baseURL, maxRetries, client }
   }
 
   return client
@@ -81,5 +94,5 @@ export function getOpenAIClient(options?: {
 
 /** Clear the cached client (useful when env vars change). */
 export function clearOpenAIClientCache(): void {
-  cachedClient = null
+  cachedClient = undefined
 }

@@ -41,6 +41,29 @@ describe('buildResponsesRequest', () => {
     expect(request.reasoning).toEqual({ effort: 'xhigh' })
   })
 
+  test('includes text verbosity when provided', () => {
+    const request = buildResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [],
+      toolChoice: undefined,
+      verbosity: 'low',
+    })
+
+    expect(request.text).toEqual({ verbosity: 'low' })
+  })
+
+  test('omits text when verbosity is not provided', () => {
+    const request = buildResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [],
+      toolChoice: undefined,
+    }) as Record<string, unknown>
+
+    expect('text' in request).toBe(false)
+  })
+
   test('passes server-side built-in tools through verbatim', () => {
     // WebSearch's codex source asks for the built-in web_search tool this way;
     // it carries no `function` descriptor and must not be dropped.
@@ -263,6 +286,8 @@ describe('createOpenAIResponsesStream', () => {
   const savedEnv = {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    OPENAI_REQUEST_MAX_RETRIES: process.env.OPENAI_REQUEST_MAX_RETRIES,
+    CLAUDE_STREAM_IDLE_TIMEOUT_MS: process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS,
   }
 
   afterEach(() => {
@@ -349,6 +374,78 @@ describe('createOpenAIResponsesStream', () => {
       { type: 'first', text: 'hé' },
       { type: 'second', text: '尾' },
     ])
+  })
+
+  test('retries when the stream stalls before its first event', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+    process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      if (calls === 1) {
+        return new Response(new ReadableStream<Uint8Array>())
+      }
+      return new Response('data: {"type":"ready"}\n\ndata: [DONE]\n\n')
+    }) as unknown as typeof fetch
+
+    const stream = await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.6-sol',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+    const events: Record<string, unknown>[] = []
+    for await (const event of stream) events.push(event)
+
+    expect(calls).toBe(2)
+    expect(events).toEqual([{ type: 'ready' }])
+  })
+
+  test('throws without retry when the stream stalls after yielding', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+    process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
+    let calls = 0
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode('data: {"type":"first"}\n\n'),
+        )
+      },
+    })
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(body)
+    }) as unknown as typeof fetch
+
+    const stream = await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.6-sol',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+    const events: Record<string, unknown>[] = []
+    let caught: unknown
+    try {
+      for await (const event of stream) events.push(event)
+    } catch (error) {
+      caught = error
+    }
+
+    expect(events).toEqual([{ type: 'first' }])
+    expect(calls).toBe(1)
+    expect((caught as Error).message).toBe(
+      'Responses API stream idle timeout after 30ms',
+    )
   })
 })
 

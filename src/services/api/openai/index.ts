@@ -13,13 +13,17 @@ import type {
 } from '../../../types/message.js'
 import type { Tools } from '../../../Tool.js'
 import { isChatGPTCodexReasoningModel } from 'src/utils/model/chatgptModels.js'
+import { isGptTuningActiveForModel } from 'src/utils/model/gptTuning.js'
+import { asSystemPrompt } from 'src/utils/session/systemPromptType.js'
 import { getSessionId } from '../../../bootstrap/state.js'
 import { getOpenAIClient } from './client.js'
 import {
   formatOpenAIPromptCacheKey,
   getOpenAIPromptCacheKey,
+  resolveOpenAIVerbosity,
   updateOpenAIUsage,
 } from './openaiShared.js'
+import { getGptBehaviorPromptSection } from './gptBehaviorPrompt.js'
 import {
   anthropicMessagesToOpenAI,
   resolveOpenAIModel,
@@ -36,8 +40,11 @@ import {
   buildResponsesRequest,
   createChatGPTResponsesStream,
   createOpenAIResponsesStream,
-  type ResponsesReasoningEffort,
 } from './responsesAdapter.js'
+import {
+  getChatReasoningEffort,
+  getResponsesReasoningEffort,
+} from './reasoning.js'
 import { normalizeMessagesForAPI } from '../../../utils/messages.js'
 import { toolToAPISchema } from '../../../utils/telemetry/api.js'
 import {
@@ -80,49 +87,6 @@ import {
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
-
-function convertToResponsesReasoningEffort(
-  effortValue: unknown,
-): ResponsesReasoningEffort | undefined {
-  if (effortValue === 'low') return 'low'
-  if (effortValue === 'medium') return 'medium'
-  if (effortValue === 'high') return 'high'
-  if (effortValue === 'xhigh') return 'xhigh'
-  if (effortValue === 'max') return 'max'
-  if (typeof effortValue === 'number') return 'high'
-  return undefined
-}
-
-/**
- * Chat Completions variant of the reasoning-effort resolution. The chat API's
- * enum tops out at 'high' (no xhigh/max), so higher tiers clamp down. Callers
- * gate on reasoning-capable models — strict OpenAI-compatible endpoints reject
- * the unknown key.
- */
-export function getChatReasoningEffort(
-  effortValue: unknown,
-): 'low' | 'medium' | 'high' | undefined {
-  const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.toLowerCase()
-  if (envOverride === 'auto' || envOverride === 'unset') return undefined
-  const resolved =
-    convertToResponsesReasoningEffort(envOverride) ??
-    convertToResponsesReasoningEffort(effortValue) ??
-    'medium'
-  if (resolved === 'xhigh' || resolved === 'max') return 'high'
-  return resolved
-}
-
-function getChatGPTResponsesReasoningEffort(
-  effortValue: unknown,
-): ResponsesReasoningEffort | undefined {
-  const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.toLowerCase()
-  if (envOverride === 'auto' || envOverride === 'unset') return undefined
-  return (
-    convertToResponsesReasoningEffort(envOverride) ??
-    convertToResponsesReasoningEffort(effortValue) ??
-    'medium'
-  )
-}
 
 /**
  * Mirrors the Anthropic request path's deferred-tool announcement for OpenAI.
@@ -276,9 +240,12 @@ export async function* queryModelOpenAI(
     // Chat Completions must not see that field.
     const useChatGPTResponses = isChatGPTAuthEnabled()
     const wireProtocol = resolveOpenAIWireProtocol(openaiModel)
+    const effectiveSystemPrompt = isGptTuningActiveForModel(openaiModel)
+      ? asSystemPrompt([...systemPrompt, getGptBehaviorPromptSection()])
+      : systemPrompt
     const openaiMessages = anthropicMessagesToOpenAI(
       messagesWithDeferredToolList,
-      systemPrompt,
+      effectiveSystemPrompt,
       {
         enableThinking,
         preserveReasoningItems: wireProtocol === 'responses',
@@ -286,9 +253,14 @@ export async function* queryModelOpenAI(
     )
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
-    const reasoningEffort = getChatGPTResponsesReasoningEffort(
+    const reasoningEffort = getResponsesReasoningEffort(
+      openaiModel,
       options.effortValue,
     )
+    const verbosity = resolveOpenAIVerbosity(openaiModel, {
+      baseURL: process.env.OPENAI_BASE_URL,
+      isChatGPTAuth: useChatGPTResponses,
+    })
 
     // 9. Log tool filtering details
     if (useSearchExtraTools) {
@@ -371,6 +343,7 @@ export async function* queryModelOpenAI(
                     tools: openaiTools,
                     toolChoice: openaiToolChoice,
                     reasoningEffort,
+                    verbosity,
                     promptCacheKey: sessionPromptCacheKey,
                   }),
                   signal,
@@ -384,6 +357,7 @@ export async function* queryModelOpenAI(
                     tools: openaiTools,
                     toolChoice: openaiToolChoice,
                     reasoningEffort,
+                    verbosity,
                     promptCacheKey,
                     maxOutputTokens: maxTokens,
                   }),
@@ -396,7 +370,7 @@ export async function* queryModelOpenAI(
           )
         : adaptOpenAIStreamToAnthropic(
             await getOpenAIClient({
-              maxRetries: 0,
+              maxRetries: 2,
               fetchOverride: options.fetchOverride as unknown as typeof fetch,
               source: options.querySource,
             }).chat.completions.create(
@@ -407,11 +381,13 @@ export async function* queryModelOpenAI(
                 toolChoice: openaiToolChoice,
                 enableThinking,
                 maxTokens,
+                baseURL: process.env.OPENAI_BASE_URL,
                 temperatureOverride: options.temperatureOverride,
                 promptCacheKey,
                 ...(isChatGPTCodexReasoningModel(openaiModel)
                   ? {
                       reasoningEffort: getChatReasoningEffort(
+                        openaiModel,
                         options.effortValue,
                       ),
                     }

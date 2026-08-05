@@ -55,4 +55,35 @@ describe('ChatGPT device authorization polling', () => {
     expect(Date.now() - abortStartedAt).toBeLessThan(250)
     expect(fetchCalls).toBe(1)
   }, 2_000)
+
+  test('uses a timeout signal for the token exchange request', async () => {
+    let fetchCalls = 0
+    let tokenSignal: AbortSignal | null | undefined
+    globalThis.fetch = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      fetchCalls++
+      if (fetchCalls === 1) {
+        return Response.json({
+          authorization_code: 'authorization-code',
+          code_verifier: 'code-verifier',
+        })
+      }
+      tokenSignal = init?.signal
+      return new Response('token failure', { status: 500 })
+    }) as unknown as typeof fetch
+
+    await expect(
+      completeChatGPTDeviceLogin({
+        verificationUrl: 'https://auth.openai.com/codex/device',
+        userCode: 'TEST-CODE',
+        deviceAuthId: 'device-auth-id',
+        intervalSeconds: 1,
+      }),
+    ).rejects.toThrow('ChatGPT token request failed (500)')
+
+    expect(fetchCalls).toBe(2)
+    expect(tokenSignal).toBeInstanceOf(AbortSignal)
+  })
 })

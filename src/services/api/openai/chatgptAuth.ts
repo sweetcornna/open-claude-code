@@ -184,6 +184,7 @@ async function postForm<T>(url: string, body: URLSearchParams): Promise<T> {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
+    signal: AbortSignal.timeout(30_000),
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
