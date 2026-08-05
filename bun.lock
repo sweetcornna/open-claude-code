@@ -232,6 +232,7 @@
       "name": "color-diff-napi",
       "version": "1.0.0",
       "dependencies": {
+        "@anthropic/ink": "workspace:*",
         "highlight.js": "latest",
       },
     },

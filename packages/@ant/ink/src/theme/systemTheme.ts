@@ -48,8 +48,28 @@ export function getSystemThemeName(): SystemTheme {
   return cachedSystemTheme
 }
 
+/**
+ * Host-side mirror. The business layer keeps its OWN copy of this module
+ * (src/utils/terminal/systemTheme.ts) with its own module-level cache, and
+ * host callers resolve 'auto' through that copy — `LogoV2`, `Stats`,
+ * `FastIcon`, `QueryEngine` all call the host `resolveThemeSetting()`.
+ *
+ * Updating only this cache therefore desyncs the two: Ink would render light
+ * while the logo and stats stayed on the dark seed, i.e. a visibly mixed
+ * palette. Registered once at startup (see setThemeConfigCallbacks wiring in
+ * src/entrypoints/init.ts) so there is a single write path for both caches.
+ */
+let mirrorToHost: ((theme: SystemTheme) => void) | undefined
+
+export function setSystemThemeMirror(
+  fn: ((theme: SystemTheme) => void) | undefined,
+): void {
+  mirrorToHost = fn
+}
+
 export function setCachedSystemTheme(theme: SystemTheme): void {
   cachedSystemTheme = theme
+  mirrorToHost?.(theme)
 }
 
 /** Test seam — lets a suite start from a known-empty cache. */

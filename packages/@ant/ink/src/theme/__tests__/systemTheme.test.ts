@@ -3,6 +3,7 @@ import {
   getSystemThemeName,
   resetCachedSystemThemeForTesting,
   setCachedSystemTheme,
+  setSystemThemeMirror,
   themeFromOscColor,
 } from '../systemTheme.js'
 
@@ -105,5 +106,31 @@ describe('setCachedSystemTheme', () => {
     expect(getSystemThemeName()).toBe('dark')
     setCachedSystemTheme('light')
     expect(getSystemThemeName()).toBe('light')
+  })
+
+  /**
+   * The host vendors its own copy of this module with its own module-level
+   * cache, and host callers (LogoV2, Stats, FastIcon, QueryEngine) resolve
+   * 'auto' through THAT copy. Without the mirror, Ink switches to light while
+   * those stay on the dark seed — a visibly mixed palette.
+   */
+  test('mirrors every update to the host cache', () => {
+    const seen: string[] = []
+    setSystemThemeMirror(t => void seen.push(t))
+    try {
+      setCachedSystemTheme('light')
+      setCachedSystemTheme('dark')
+      expect(seen).toEqual(['light', 'dark'])
+    } finally {
+      setSystemThemeMirror(undefined)
+    }
+  })
+
+  test('unregistering the mirror stops the notifications', () => {
+    const seen: string[] = []
+    setSystemThemeMirror(t => void seen.push(t))
+    setSystemThemeMirror(undefined)
+    setCachedSystemTheme('light')
+    expect(seen).toEqual([])
   })
 })

@@ -56,7 +56,8 @@ import { setShellIfWindows } from '../utils/filesystem/windowsPaths.js'
 import { initSentry } from '../utils/telemetry/sentry.js'
 import { initUser } from '../utils/auth/user.js'
 import { initLangfuse, shutdownLangfuse } from '../services/langfuse/index.js'
-import { setThemeConfigCallbacks } from '@anthropic/ink'
+import { setSystemThemeMirror, setThemeConfigCallbacks } from '@anthropic/ink'
+import { setCachedSystemTheme } from '../utils/terminal/systemTheme.js'
 
 // initialize1PEventLogging is dynamically imported to defer OpenTelemetry sdk-logs/resources
 
@@ -77,6 +78,12 @@ export const init = memoize(async (): Promise<void> => {
       saveTheme: setting =>
         saveGlobalConfig(current => ({ ...current, theme: setting })),
     })
+    // The host keeps its own copy of systemTheme.ts (vendored for package
+    // independence) with its own module-level cache, and host callers resolve
+    // 'auto' through it — LogoV2, Stats, FastIcon, QueryEngine. Mirror Ink's
+    // OSC 11 observations into it, or those render with the stale startup seed
+    // while Ink switches, producing a visibly mixed palette.
+    setSystemThemeMirror(setCachedSystemTheme)
     logForDiagnosticsNoPII('info', 'init_configs_enabled', {
       duration_ms: Date.now() - configsStart,
     })

@@ -231,6 +231,8 @@ export {
   useTheme,
   useThemeSetting,
 } from './theme/ThemeProvider.js'
+export { setSystemThemeMirror } from './theme/systemTheme.js'
+export type { SystemTheme } from './theme/systemTheme.js'
 export { default as Box } from './theme/ThemedBox.js'
 export type { Props as BoxProps } from './theme/ThemedBox.js'
 export { default as Text, TextHoverColorContext } from './theme/ThemedText.js'
