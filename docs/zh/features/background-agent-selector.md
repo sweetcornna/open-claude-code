@@ -14,7 +14,7 @@ Background Agent Selector 是渲染在 PromptInput 下方的常驻状态条，�
 
 - **统一入口**：AgentTool fork 路径（不指定 `subagent_type`）、Task 派生的 subagent、所有 `run_in_background: true` 的 agent 都在同一栏显示
 - **就地切换**：prompt 为空时按 ↓ 溢出进入底部 selector，↑↓ 选中某行，Enter 即切主视图
-- **实时状态**：每行显示 agent 类型 + 描述 + 运行时长 + 已消耗 token；running 时圆点为绿色
+- **实时状态**：每行显示 agent 类型 + 当前动作（recap，见 §七）+ 运行时长 + 已消耗 token；圆点颜色编码**状态**（运行中灰、完成绿、失败红、被停止黄）
 - **Keep-alive 视图**：agent 完成后在 `evictAfter` grace 窗口内保留一段时间，用户可回看
 - **零界面侵入**：tasks 数为 0 时 selector 完全不渲染，不占屏幕高度
 - **与旧 Dialog 共存**：Shift+↓ 打开的 `BackgroundTasksDialog` 原有行为保留，selector 只作为展示 + 快捷切换
@@ -29,11 +29,13 @@ Background Agent Selector 是渲染在 PromptInput 下方的常驻状态条，�
   claude-code | Opus 4.7 (1M context) | ctx:4%
   ▶▶ bypass permissions on (shift+tab to cycle)
 
-  ○ main                                    ↑/↓ to select · Enter to view
-  ● Explore  Research src/hooks              23s · ↓ 10.9k tokens
-  ○ Explore  Research src/components         22s · ↓  9.5k tokens
-  ○ Explore  Research src/utils              21s · ↓ 13.6k tokens
+    ● main                                  ↑/↓ to select · Enter to view
+  ❯ ● Explore  Verifying runtime sampler     23s · ↓ 10.9k tokens
+    ● Explore  Reading src/components        22s · ↓  9.5k tokens
+    ● Explore  Research src/utils            21s · ↓ 13.6k tokens
 ```
+
+选中行由 `❯` 指针 + 加粗表示；圆点一律实心，**只用颜色表达状态**。描述列显示的是 agent 当前在做什么（recap / 工具活动），不是派生时写死的任务描述 —— 见 §七。
 
 ### 键盘路由
 
@@ -48,8 +50,18 @@ Background Agent Selector 是渲染在 PromptInput 下方的常驻状态条，�
 
 ### 视觉规则
 
-- `● main` / `● <agent>`：当前被**查看**（viewingAgentTaskId 指向）或被**光标聚焦**（pill focused 时以光标为准）的一行
-- running 状态的 agent：圆点渲染为 `success` 色（绿色），与 `BackgroundTasksDialog` 状态语义对齐
+- **选中态**：`❯ ` 指针前缀 + 该行加粗。指向当前被**查看**（`viewingAgentTaskId`）或被**光标聚焦**（pill focused 时以光标为准）的一行
+- **圆点**：一律实心 `●`，颜色**只编码任务状态**，与选中与否无关（`getAgentStatusDotColor`）：
+
+  | 状态 | 颜色 token | 观感 |
+  |---|---|---|
+  | running / pending | `inactive` | 灰 |
+  | completed | `success` | 绿 |
+  | failed | `error` | 红 |
+  | killed | `warning` | 黄 |
+
+  这里刻意**不复用** `getTaskStatusColor`：那个函数把 running 映射到 `background` token，而该 token 在所有内置主题里都是青色，读起来像强调色而不是中性色。
+- `main` 行保持中性色 —— 它没有 agent 状态可报告
 - 右上角 hint 随状态变化：
   - pill 聚焦：`↑/↓ to select · Enter to view`
   - 已选中 running agent：`shift+↓ to manage · x to stop`
@@ -210,6 +222,9 @@ user([tool_result..., text("<fork-boilerplate>...Your directive: <prompt>")])
 |------|------|
 | `src/hooks/useBackgroundAgentTasks.ts` | 数据过滤 hook（backgrounded local_agent + evictAfter 过滤 + startTime 排序） |
 | `src/components/tasks/BackgroundAgentSelector.tsx` | 底部 selector UI，纯展示 |
+| `src/components/tasks/taskStatusUtils.tsx` | `getAgentRowDescription`（recap 优先级 + 终态回落）与 `getAgentStatusDotColor`（状态色），三处 agent 行共用 |
+| `src/services/AgentSummary/enabled.ts` | recap 开关：`OCC_AGENT_SUMMARIES` 硬开关 + 前台/后台判定 |
+| `src/services/AgentSummary/agentSummary.ts` | 30s 周期 fork 摘要、并发上限、`skipCacheWrite` |
 | `src/components/PromptInput/PromptInput.tsx` | 新增 `'bg_agent'` footer pill + 对应的 `footer:up/down/openSelected` 分支 |
 | `src/state/AppStateStore.ts` | `FooterItem` 加 `'bg_agent'`；新增 `selectedBgAgentIndex` 字段 |
 | `src/main.tsx` | `getDefaultAppState` 同步初始化 `selectedBgAgentIndex: -1` |
@@ -218,7 +233,59 @@ user([tool_result..., text("<fork-boilerplate>...Your directive: <prompt>")])
 | `src/components/messages/UserTextMessage.tsx` | 识别 `<fork-boilerplate>`，交给 fork 专用 renderer 处理 |
 | `src/components/messages/UserForkBoilerplateMessage.tsx` | 将 fork boilerplate text 折叠为纯用户 prompt；作为 transcript 中原位渲染的兼容路径 |
 
-## 七、已知限制
+## 七、Recap —— 描述列显示什么
+
+描述列不是派生时写死的 `description`，而是"这个 agent 现在在干什么"。取值优先级由 `getAgentRowDescription`（`src/components/tasks/taskStatusUtils.tsx`）统一决定，`BackgroundAgentSelector`、底部 `BackgroundTask` pill、`BackgroundTasksDialog` 三处共用：
+
+| 优先级 | 来源 | 例子 |
+|---|---|---|
+| 1 | `progress.summary` —— AI 生成的 recap | `Verifying runtime sampler` |
+| 2 | `progress.lastActivity.activityDescription` —— 每条 assistant 消息更新的工具活动 | `Reading src/foo.ts` |
+| 3 | `description` —— 派生时的任务描述 | `Research src/utils` |
+
+**终态例外**：agent 进入 `completed` / `failed` / `killed` 后一律回落到 `description`。已结束的行显示"Reading src/foo.ts"是最后一次动作的快照，读起来像还在跑。
+
+### Recap 是怎么生成的
+
+`startAgentSummarization`（`src/services/AgentSummary/agentSummary.ts`）每 30s fork 一次该 agent 的会话，做一次**无工具**推理，产出 3-5 词的现在进行时短语，写入 `task.progress.summary`。
+
+它只对**后台 agent** 启用：
+
+- ✅ `run_in_background: true` 起跑的 agent
+- ✅ 前台 agent 被转入后台之后（从那一刻开始计时，所以转后台后约 30s 才出现第一条 recap）
+- ❌ 前台同步 agent —— 它们 `isBackgrounded === false`，被 `useBackgroundAgentTasks` / `isBackgroundTask()` 过滤掉，压根没有行可以显示 recap；而且 spinner 已经在显示实时工具活动
+
+判定逻辑集中在 `src/services/AgentSummary/enabled.ts`（`isBackgroundAgentSummarizationEnabled` / `isForegroundAgentSummarizationEnabled`），`AgentTool` 的派生路径与 `resumeAgent` 的续跑路径共用同一个入口。
+
+### 关闭开关：`OCC_AGENT_SUMMARIES`
+
+recap 每个 agent 每 30s 要真实调用一次 API。默认开启；要关掉：
+
+```bash
+OCC_AGENT_SUMMARIES=0 occ
+```
+
+| 值 | 效果 |
+|---|---|
+| `0` / `false` / `no` / `off`（大小写不敏感、允许首尾空格） | **关闭** |
+| 未设置 | 开启（默认） |
+| **空串 `OCC_AGENT_SUMMARIES=`** | **开启** —— 空串不算"关"，视同未设置 |
+| 其他任意值（`1` / `true` / `on` / 乱填） | 开启 |
+
+> ⚠️ **空串语义与 `FEATURE_*` 相反**。构建期的 `FEATURE_<NAME>=` 把空串当作"关"（见 `scripts/defines.ts` 的 `resolveBuildFeatures()`），而这里走的是 `isEnvDefinedFalsy()`，只有显式的 falsy 字面量才算关。这样 shell 里误写 `OCC_AGENT_SUMMARIES=` 不会静默吞掉功能。该语义有测试钉住（`src/services/AgentSummary/__tests__/enabled.test.ts`）。
+
+关闭是**硬开关**，优先级高于一切 opt-in：coordinator 模式、fork subagent、SDK 的 `setSdkAgentProgressSummariesEnabled` 控制请求都会被它压过。理由是这个变量由启动进程的人设置，"关了还在计费"才是更意外的行为。
+
+关闭后描述列自动退回工具活动（上表第 2 档），并不会变回静态描述。
+
+### 成本
+
+- **命中缓存的只有稳定前缀**（system prompt + tools）。messages 段是倒序后缀窗口，每 tick 起点都在滑动，属于全新输入 —— 长时间运行的 agent 最坏一次要付 `MAX_SUMMARY_CONTEXT_CHARS`（约 50k token）的全价输入。别把它当"几乎免费"。
+- fork 传 `skipCacheWrite: true`：那段窗口下一 tick 读不回来，写缓存只是白付 1.25x 溢价。
+- 全局并发上限 `MAX_CONCURRENT_SUMMARY_FORKS = 2`：N 个后台 agent 各有独立 30s timer，没有这个上限时同一瞬间可能打出 N 个请求，和用户自己的对话抢 rate limit。取舍是超出上限的 agent **跳过本 tick**（不排队），所以并发高时单个 agent 的 recap 最多可能陈旧 60s；由于 timer 是在完成时重排的，agent 群体会自然错峰而不是共振。
+- poor mode 期间、transcript 未变化、消息少于 3 条时都会跳过。
+
+## 八、已知限制
 
 - `Date.now()` 在 `useBackgroundAgentTasks` 的 useMemo 里冻结于 `[tasks]` 触发时：若长时间没有新 task 变更事件，某个 terminal agent 的 grace 期过期后不会立即从 selector 消失，要等下一次 tasks 变化才刷新。在典型使用（主对话一直在产生消息）下感知不到，暂不额外加 interval。
 - Selector 当前不处理 Shell Task / Workflow / Monitor MCP 等类型——这些仍走 `BackgroundTasksDialog`（Shift+↓）管理。

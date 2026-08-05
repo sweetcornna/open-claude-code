@@ -1,7 +1,7 @@
 import { promises as fsp } from 'fs'
-import { getSdkAgentProgressSummariesEnabled } from '@open-claude-code/tool-runtime/bootstrapState.js'
 import { getSystemPrompt } from 'src/constants/prompts.js'
 import { isCoordinatorMode } from 'src/coordinator/coordinatorMode.js'
+import { isBackgroundAgentSummarizationEnabled } from 'src/services/AgentSummary/enabled.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { registerAsyncAgent } from 'src/tasks/LocalAgentTask/LocalAgentTask.js'
@@ -248,10 +248,13 @@ export async function resumeAgentBackground({
         toolUseContext,
         rootSetAppState,
         agentIdForCleanup: agentId,
-        enableSummarization:
-          isCoordinatorMode() ||
-          isForkSubagentEnabled() ||
-          getSdkAgentProgressSummariesEnabled(),
+        // MUST stay identical to the AgentTool spawn path — this is the second
+        // caller of runAsyncAgentLifecycle. Inlining the old expression here
+        // made OCC_AGENT_SUMMARIES=0 a no-op on resume, and stopped the recap
+        // updating for a background agent continued via SendMessage.
+        enableSummarization: isBackgroundAgentSummarizationEnabled(
+          isCoordinatorMode() || isForkSubagentEnabled(),
+        ),
         getWorktreeResult: async () =>
           resumedWorktreePath ? { worktreePath: resumedWorktreePath } : {},
       }),
