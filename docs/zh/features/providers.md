@@ -12,11 +12,11 @@ occ 不只连 Claude：任何 OpenAI 兼容端点、Gemini 原生 API、Grok、�
 
 | Provider | 启用 | Key | Base URL | 模型 | 输出上限 |
 |---|---|---|---|---|---|
-| OpenAI 兼容（GPT/GLM/Kimi/DeepSeek/Ollama/vLLM/One API…） | `modelType:'openai'` 或 `CLAUDE_CODE_USE_OPENAI=1` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` | `OPENAI_MODEL`（最高优先级，透传）或 `OPENAI_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` 三档 | `OPENAI_MAX_TOKENS` |
+| OpenAI 兼容（GPT/GLM/Kimi/DeepSeek/Ollama/vLLM/One API…） | `modelType:'openai'` 或 `CLAUDE_CODE_USE_OPENAI=1` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` | `OPENAI_MODEL`（最高优先级，透传）或 `OPENAI_DEFAULT_{HAIKU,SONNET,OPUS,FABLE}_MODEL` 四档 | `OPENAI_MAX_TOKENS` |
 | ChatGPT 订阅 | 同上 + `OPENAI_AUTH_MODE=chatgpt` | 设备码 OAuth | Codex 专有后端 | tier 常量（sol/terra/luna） | 不发（Codex 不收） |
-| Gemini 原生 | `modelType:'gemini'` 或 `CLAUDE_CODE_USE_GEMINI=1` | `GEMINI_API_KEY` | `GEMINI_BASE_URL`（默认官方） | `GEMINI_MODEL` 或三档（**必须配一种**，无内置默认） | `GEMINI_MAX_TOKENS`（或通用 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`，opt-in） |
+| Gemini 原生 | `modelType:'gemini'` 或 `CLAUDE_CODE_USE_GEMINI=1` | `GEMINI_API_KEY` | `GEMINI_BASE_URL`（默认官方） | `GEMINI_MODEL` 或四档（**必须配一种**，无内置默认） | `GEMINI_MAX_TOKENS`（或通用 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`，opt-in） |
 | Grok | `modelType:'grok'` 或 `CLAUDE_CODE_USE_GROK=1` | `GROK_API_KEY`/`XAI_API_KEY` | `GROK_BASE_URL`（默认 api.x.ai/v1） | `GROK_MODEL` 或映射表 | `GROK_MAX_TOKENS`（同上，opt-in） |
-| Anthropic 兼容端点 | `modelType:'anthropic'` + baseURL | `ANTHROPIC_AUTH_TOKEN` | `ANTHROPIC_BASE_URL` | `ANTHROPIC_MODEL` 或三档 | （Anthropic 路径原生管理） |
+| Anthropic 兼容端点 | `modelType:'anthropic'` + baseURL | `ANTHROPIC_AUTH_TOKEN` | `ANTHROPIC_BASE_URL` | `ANTHROPIC_MODEL` 或四档 | （Anthropic 路径原生管理） |
 
 国产模型（DeepSeek / 智谱 GLM / 千问 / MiMo）走 OpenAI 兼容矩阵；`/login → China LLM Providers` 有内置 preset（baseURL、模型表、Coding Plan 专用端点），选择后自动写入以上键**并按 preset 的上下文窗口自动写 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`**。
 
@@ -30,8 +30,23 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 ## 四、模型名解析
 
-- 任意模型名（`glm-4.6`、`kimi-k2`、`deepseek-v4-pro`、`gpt-5.2`、`gemini-3-pro`）**都可透传**：设 `OPENAI_MODEL` 等单一模型键最直接；或设 `ANTHROPIC_MODEL`/`settings.model`（不含 haiku/sonnet/opus 子串的名字原样透传）。
+- 任意模型名（`glm-4.6`、`kimi-k2`、`deepseek-v4-pro`、`gpt-5.2`、`gemini-3-pro`）**都可透传**：设 `OPENAI_MODEL` 等单一模型键最直接；或设 `ANTHROPIC_MODEL`/`settings.model`（不含 haiku/sonnet/opus/fable 子串的名字原样透传）。
 - 含家族子串的名字按 `{PROVIDER}_DEFAULT_{FAMILY}_MODEL` → 内置家族表映射（映射逻辑在 `packages/@ant/model-provider/.../modelMapping.ts`）。
+
+### 档位（family alias）
+
+`/model` 与 `--model` 接受四个档位别名，从高到低：
+
+| 别名 | 一方 API 解析到 | 定位 | 一方定价（每 Mtok） |
+| --- | --- | --- | --- |
+| `fable` | `claude-fable-5` | 能力最高档，面向最难的推理与长跨度 agent 任务 | $10 / $50 |
+| `opus` | `claude-opus-5` | 复杂工作的主力 | $5 / $25 |
+| `sonnet` | `claude-sonnet-5` | 日常任务默认档 | $3 / $15 |
+| `haiku` | `claude-haiku-4-5` | 最快、最省，简单任务 | $1 / $5 |
+
+四个别名都支持 `[1m]` 后缀（如 `fable[1m]`、`opus[1m]`）走 1M 上下文链路。`best` 仍解析到 `opus` 档——它没有跟随 `fable`，避免把既有用户静默换到贵一倍的档位。
+
+`fable` 档没有 ChatGPT/Codex 对应层：OpenAI 用户通过 `OPENAI_DEFAULT_FABLE_MODEL`（或统一的 `ANTHROPIC_DEFAULT_FABLE_MODEL`）自行指定，未配置时回落到该 provider 的主模型键。
 
 ## 五、最大上下文（关键）
 

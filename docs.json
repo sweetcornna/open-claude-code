@@ -15,10 +15,10 @@
         "default": true,
         "groups": [
           {
-            "group": "开始",
+            "group": "Getting started",
             "pages": [
               {
-                "group": "介绍",
+                "group": "Introduction",
                 "pages": [
                   "docs/en/introduction/what-is-claude-code",
                   "docs/en/introduction/why-this-whitepaper",
@@ -28,7 +28,7 @@
             ]
           },
           {
-            "group": "对话是如何运转的",
+            "group": "How the conversation works",
             "pages": [
               "docs/en/conversation/the-loop",
               "docs/en/conversation/streaming",
@@ -36,7 +36,7 @@
             ]
           },
           {
-            "group": "工具：AI 的双手",
+            "group": "Tools: the AI's hands",
             "pages": [
               "docs/en/tools/what-are-tools",
               "docs/en/tools/file-operations",
@@ -46,7 +46,7 @@
             ]
           },
           {
-            "group": "上下文工程",
+            "group": "Context engineering",
             "pages": [
               "docs/en/context/system-prompt",
               "docs/en/context/project-memory",
@@ -55,7 +55,7 @@
             ]
           },
           {
-            "group": "多 Agent 协作",
+            "group": "Multi-agent collaboration",
             "pages": [
               "docs/en/agent/sub-agents",
               "docs/en/agent/worktree-isolation",
@@ -63,7 +63,7 @@
             ]
           },
           {
-            "group": "可扩展性",
+            "group": "Extensibility",
             "pages": [
               "docs/en/extensibility/mcp-protocol",
               "docs/en/extensibility/mcp-configuration",
@@ -73,7 +73,7 @@
             ]
           },
           {
-            "group": "安全与权限",
+            "group": "Security and permissions",
             "pages": [
               "docs/en/safety/why-safety-matters",
               "docs/en/safety/permission-model",
@@ -84,7 +84,7 @@
             ]
           },
           {
-            "group": "揭秘：隐藏功能与内部机制",
+            "group": "Under the hood: hidden features and internals",
             "pages": [
               "docs/en/internals/three-tier-gating",
               "docs/en/internals/feature-flags",
@@ -98,10 +98,10 @@
             ]
           },
           {
-            "group": "隐藏功能详解",
+            "group": "Hidden features in depth",
             "pages": [
               {
-                "group": "Agent 与协作",
+                "group": "Agents and collaboration",
                 "pages": [
                   "docs/en/features/coordinator-mode",
                   "docs/en/features/fork-subagent",
@@ -109,7 +109,7 @@
                 ]
               },
               {
-                "group": "运行模式",
+                "group": "Run modes",
                 "pages": [
                   "docs/en/features/kairos",
                   "docs/en/features/channels",
@@ -120,7 +120,7 @@
                 ]
               },
               {
-                "group": "工具增强",
+                "group": "Tool enhancements",
                 "pages": [
                   "docs/en/features/mcp-skills",
                   "docs/en/features/mcp-2026",
@@ -135,7 +135,7 @@
                 ]
               },
               {
-                "group": "上下文与自动化",
+                "group": "Context and automation",
                 "pages": [
                   "docs/en/features/token-budget",
                   "docs/en/features/workflow-scripts",
@@ -146,7 +146,7 @@
             ]
           },
           {
-            "group": "基础设施与依赖",
+            "group": "Infrastructure and dependencies",
             "pages": [
               "docs/en/auto-updater",
               "docs/en/lsp-integration",
@@ -305,10 +305,10 @@
         "language": "ja",
         "groups": [
           {
-            "group": "开始",
+            "group": "はじめに",
             "pages": [
               {
-                "group": "介绍",
+                "group": "概要",
                 "pages": [
                   "docs/ja/introduction/what-is-claude-code",
                   "docs/ja/introduction/why-this-whitepaper",
@@ -318,7 +318,7 @@
             ]
           },
           {
-            "group": "对话是如何运转的",
+            "group": "会話の仕組み",
             "pages": [
               "docs/ja/conversation/the-loop",
               "docs/ja/conversation/streaming",
@@ -326,7 +326,7 @@
             ]
           },
           {
-            "group": "工具：AI 的双手",
+            "group": "ツール：AI の手",
             "pages": [
               "docs/ja/tools/what-are-tools",
               "docs/ja/tools/file-operations",
@@ -336,7 +336,7 @@
             ]
           },
           {
-            "group": "上下文工程",
+            "group": "コンテキストエンジニアリング",
             "pages": [
               "docs/ja/context/system-prompt",
               "docs/ja/context/project-memory",
@@ -345,7 +345,7 @@
             ]
           },
           {
-            "group": "多 Agent 协作",
+            "group": "マルチエージェント協調",
             "pages": [
               "docs/ja/agent/sub-agents",
               "docs/ja/agent/worktree-isolation",
@@ -353,7 +353,7 @@
             ]
           },
           {
-            "group": "可扩展性",
+            "group": "拡張性",
             "pages": [
               "docs/ja/extensibility/mcp-protocol",
               "docs/ja/extensibility/mcp-configuration",
@@ -363,7 +363,7 @@
             ]
           },
           {
-            "group": "安全与权限",
+            "group": "セキュリティと権限",
             "pages": [
               "docs/ja/safety/why-safety-matters",
               "docs/ja/safety/permission-model",
@@ -374,7 +374,7 @@
             ]
           },
           {
-            "group": "揭秘：隐藏功能与内部机制",
+            "group": "内部解剖：隠し機能と内部機構",
             "pages": [
               "docs/ja/internals/three-tier-gating",
               "docs/ja/internals/feature-flags",
@@ -388,10 +388,10 @@
             ]
           },
           {
-            "group": "隐藏功能详解",
+            "group": "隠し機能の詳細",
             "pages": [
               {
-                "group": "Agent 与协作",
+                "group": "エージェントと協調",
                 "pages": [
                   "docs/ja/features/coordinator-mode",
                   "docs/ja/features/fork-subagent",
@@ -399,7 +399,7 @@
                 ]
               },
               {
-                "group": "运行模式",
+                "group": "実行モード",
                 "pages": [
                   "docs/ja/features/kairos",
                   "docs/ja/features/channels",
@@ -410,7 +410,7 @@
                 ]
               },
               {
-                "group": "工具增强",
+                "group": "ツール強化",
                 "pages": [
                   "docs/ja/features/mcp-skills",
                   "docs/ja/features/mcp-2026",
@@ -425,7 +425,7 @@
                 ]
               },
               {
-                "group": "上下文与自动化",
+                "group": "コンテキストと自動化",
                 "pages": [
                   "docs/ja/features/token-budget",
                   "docs/ja/features/workflow-scripts",
@@ -436,7 +436,7 @@
             ]
           },
           {
-            "group": "基础设施与依赖",
+            "group": "インフラと依存関係",
             "pages": [
               "docs/ja/auto-updater",
               "docs/ja/lsp-integration",
