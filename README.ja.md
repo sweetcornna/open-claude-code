@@ -48,12 +48,17 @@ occ migrate --with-credentials # ログイン情報も引き継ぐ
 ## クイックスタート（公開パッケージ）
 
 ```sh
-npm i -g open-claude-code
+npm i -g @sweetcornna/open-claude-code
 
 occ           # Node.js で実行
 occ-bun       # Bun で実行
 occ update    # 最新版に更新
 ```
+
+> **スコープは必須です。** npm 上のスコープなし `open-claude-code` は本プロジェクトではなく、
+> 第三者が取得した `0.0.0` のプレースホルダです。`bin` を持たないため
+> `npm i -g open-claude-code` は成功したように見えて（`added 1 package`）、
+> `occ` コマンドは一切インストールされません。
 
 > 2.8 より前の `ccb` / `ccb-bun` という名前は削除されました。まだ使っているスクリプトは `occ` / `occ-bun` に移行してください。
 

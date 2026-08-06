@@ -45,6 +45,31 @@ describe('occ update isolation', () => {
     expect(source).not.toContain('@anthropic-ai/claude-code')
   })
 
+  // README is one of the five places the package name is pinned (see CLAUDE.md) and was the only
+  // one with no guard. It drifted to the unscoped `open-claude-code`, which on npm is a squatted
+  // 0.0.0 stub with no `bin`: `npm i -g` prints "added 1 package" and installs no `occ` at all, so
+  // the one-line quick start silently produced a broken install that looked like a success.
+  // All three translations are checked because the drift hit en and ja while zh was already fixed —
+  // whichever file a reader lands on is the one that has to work.
+  test.each([
+    'README.md',
+    'README.zh.md',
+    'README.ja.md',
+  ])('%s quick start installs the scoped package that actually ships occ', file => {
+    const readme = readFileSync(resolve(sourceRoot, '..', file), 'utf8')
+    const installLines = readme
+      .split('\n')
+      .filter(line => /^\s*(npm|bun|pnpm|yarn)\s.*-g\s/.test(line))
+    expect(installLines.length).toBeGreaterThan(0)
+    for (const line of installLines) {
+      expect(line).toContain(NPM_PACKAGE_NAME)
+      // Catches the exact drift: remove the correct scoped spelling, and any bare
+      // `open-claude-code` still left on the line is an unscoped install target.
+      const withoutScoped = line.split(NPM_PACKAGE_NAME).join('')
+      expect(withoutScoped).not.toContain('open-claude-code')
+    }
+  })
+
   test('does not expose the inherited native installer command', () => {
     const source = readProgramSources()
 

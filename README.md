@@ -48,12 +48,16 @@ Both modes copy the **same things**: settings, skills, agents, commands, output-
 ## Quick start (published package)
 
 ```sh
-npm i -g open-claude-code
+npm i -g @sweetcornna/open-claude-code
 
 occ           # run on Node.js
 occ-bun       # run on Bun
 occ update    # update to the latest version
 ```
+
+> **The scope is required.** The unscoped `open-claude-code` name on npm is a squatted `0.0.0`
+> placeholder that is not this project: it has no `bin`, so `npm i -g open-claude-code` appears to
+> succeed (`added 1 package`) and leaves you with no `occ` command at all.
 
 > The pre-2.8 `ccb` / `ccb-bun` names have been removed — scripts still calling them must switch to `occ` / `occ-bun`.
 
