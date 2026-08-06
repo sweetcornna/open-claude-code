@@ -139,7 +139,7 @@ describe('runBackgroundOccUpdateOnce', () => {
     expect(calls.lockAcquired).toBe(1)
     expect(calls.lockReleased).toBe(1)
     expect(calls.checkClaims).toEqual([
-      { checkedAt: 1_000_000, minimumElapsedMs: 270_000 },
+      { checkedAt: 1_000_000, minimumElapsedMs: 1_620_000 },
     ])
   })
 
@@ -174,6 +174,8 @@ describe('runBackgroundOccUpdateOnce', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       reason: 'autoUpdates disabled in global config',
+      // Reversible: the user can flip this back on with /config mid-session.
+      permanent: false,
     })
     expect(calls.latestChecks).toBe(0)
   })
@@ -194,6 +196,7 @@ describe('runBackgroundOccUpdateOnce', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       reason: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set',
+      permanent: false,
     })
     expect(calls.latestChecks).toBe(0)
   })
@@ -225,6 +228,8 @@ describe('runBackgroundOccUpdateOnce', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       reason: `not a global install (${installType})`,
+      // How occ was installed cannot change while it is running.
+      permanent: true,
     })
     expect(calls.installed).toEqual([])
     expect(calls.notified).toEqual([])
@@ -358,7 +363,7 @@ describe('maybeScheduleBackgroundOccUpdate', () => {
     expect(second).toBe(false)
     expect(ignoredScheduler.tasks).toHaveLength(0)
     expect(scheduler.tasks).toHaveLength(1)
-    expect(scheduler.tasks[0]?.delayMs).toBe(5 * 60 * 1000)
+    expect(scheduler.tasks[0]?.delayMs).toBe(60 * 1000)
     expect(scheduler.tasks[0]?.unrefed).toBe(true)
 
     const firing = scheduler.tasks[0]!.callback()
@@ -372,16 +377,88 @@ describe('maybeScheduleBackgroundOccUpdate', () => {
     expect(scheduler.tasks[1]?.unrefed).toBe(true)
   })
 
+  test('aborting the controller cancels the spawns and stops the loop', async () => {
+    // The timers are unref'd, but a spawned `npm install -g` child is not:
+    // without a cancel path, Ctrl+C mid-update waited out gracefulShutdown's
+    // failsafe and then hard-exited, orphaning the installer.
+    const controller = new AbortController()
+    const scheduler = makeScheduler()
+    const seenSignals: AbortSignal[] = []
+    updater.maybeScheduleBackgroundOccUpdate({
+      env: prodEnv,
+      abortController: controller,
+      run: async signal => {
+        seenSignals.push(signal)
+        return { status: 'up-to-date', version: '1.0.0' }
+      },
+      scheduleFn: scheduler.scheduleFn,
+    })
+
+    await scheduler.tasks[0]!.callback()
+    expect(seenSignals).toHaveLength(1)
+    expect(seenSignals[0]).toBe(controller.signal)
+    expect(scheduler.tasks).toHaveLength(2)
+
+    // A tick that fires after shutdown started must not begin new work.
+    controller.abort()
+    await scheduler.tasks[1]!.callback()
+    expect(seenSignals).toHaveLength(1)
+    expect(scheduler.tasks).toHaveLength(2)
+  })
+
+  test('the runner hands its signal to the version check and the installer', async () => {
+    const controller = new AbortController()
+    const seen: Array<AbortSignal | undefined> = []
+    const { deps } = makeDeps({
+      getLatestVersion: async signal => {
+        seen.push(signal)
+        return '1.1.0'
+      },
+      installLatest: async (_pkgManager, signal) => {
+        seen.push(signal)
+        return { ok: true, detail: '' }
+      },
+    })
+
+    await updater.runBackgroundOccUpdateOnce(deps, controller.signal)
+
+    expect(seen).toEqual([controller.signal, controller.signal])
+  })
+
   test('stops the loop after a permanent skipped outcome', async () => {
     const scheduler = makeScheduler()
     updater.maybeScheduleBackgroundOccUpdate({
       env: prodEnv,
-      run: async () => ({ status: 'skipped', reason: 'disabled' }),
+      run: async () => ({
+        status: 'skipped',
+        reason: 'not a global install (npm-local)',
+        permanent: true,
+      }),
       scheduleFn: scheduler.scheduleFn,
     })
 
     await scheduler.tasks[0]!.callback()
     expect(scheduler.tasks).toHaveLength(1)
+  })
+
+  test('keeps looping after a reversible skip so re-enabling takes effect live', async () => {
+    // `/config` can turn autoUpdates back on mid-session. Retiring the loop on
+    // that skip meant the setting silently did nothing until the next launch.
+    const scheduler = makeScheduler()
+    updater.maybeScheduleBackgroundOccUpdate({
+      env: prodEnv,
+      run: async () => ({
+        status: 'skipped',
+        reason: 'autoUpdates disabled in global config',
+        permanent: false,
+      }),
+      scheduleFn: scheduler.scheduleFn,
+    })
+
+    await scheduler.tasks[0]!.callback()
+    expect(scheduler.tasks).toHaveLength(2)
+    // Back on the normal interval, not the short first-check delay.
+    expect(scheduler.tasks[1]?.delayMs).toBe(1_800_000)
   })
 
   test.each([
@@ -449,12 +526,12 @@ describe('maybeScheduleBackgroundOccUpdate', () => {
 
 describe('resolveBackgroundUpdateIntervalMs', () => {
   test('uses the default for missing or invalid values', () => {
-    expect(intervalMod.resolveBackgroundUpdateIntervalMs({})).toBe(300_000)
+    expect(intervalMod.resolveBackgroundUpdateIntervalMs({})).toBe(1_800_000)
     expect(
       intervalMod.resolveBackgroundUpdateIntervalMs({
         OCC_UPDATE_CHECK_INTERVAL_MS: 'not-a-number',
       }),
-    ).toBe(300_000)
+    ).toBe(1_800_000)
   })
 
   test('clamps low values and accepts a valid override', () => {

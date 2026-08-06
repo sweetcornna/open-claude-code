@@ -644,6 +644,12 @@ export async function gitPull(
     sparsePaths?: string[]
     timeoutMs?: number
     ffOnly?: boolean
+    /**
+     * Cancels the git children. The background marketplace sweep passes a
+     * shutdown signal so Ctrl+C is not blocked waiting out `timeoutMs` on a
+     * fetch from an unreachable remote.
+     */
+    abortSignal?: AbortSignal
   },
 ): Promise<{ code: number; stderr: string }> {
   logForDebugging(`git pull: cwd=${cwd} ref=${ref ?? 'default'}`)
@@ -653,12 +659,13 @@ export async function gitPull(
     : []
   const timeout = options?.timeoutMs ?? getPluginGitTimeoutMs()
   const ffArgs = options?.ffOnly ? ['--ff-only'] : []
+  const abortSignal = options?.abortSignal
 
   if (ref) {
     const fetchResult = await execFileNoThrowWithCwd(
       gitExe(),
       [...credentialArgs, 'fetch', 'origin', ref],
-      { cwd, timeout, stdin: 'ignore', env },
+      { cwd, timeout, stdin: 'ignore', env, abortSignal },
     )
 
     if (fetchResult.code !== 0) {
@@ -668,7 +675,7 @@ export async function gitPull(
     const checkoutResult = await execFileNoThrowWithCwd(
       gitExe(),
       [...credentialArgs, 'checkout', ref],
-      { cwd, timeout, stdin: 'ignore', env },
+      { cwd, timeout, stdin: 'ignore', env, abortSignal },
     )
 
     if (checkoutResult.code !== 0) {
@@ -678,7 +685,7 @@ export async function gitPull(
     const pullResult = await execFileNoThrowWithCwd(
       gitExe(),
       [...credentialArgs, 'pull', ...ffArgs, 'origin', ref],
-      { cwd, timeout, stdin: 'ignore', env },
+      { cwd, timeout, stdin: 'ignore', env, abortSignal },
     )
     if (pullResult.code !== 0) {
       return enhanceGitPullErrorMessages(pullResult)
@@ -690,7 +697,7 @@ export async function gitPull(
   const result = await execFileNoThrowWithCwd(
     gitExe(),
     [...credentialArgs, 'pull', ...ffArgs, 'origin', 'HEAD'],
-    { cwd, timeout, stdin: 'ignore', env },
+    { cwd, timeout, stdin: 'ignore', env, abortSignal },
   )
   if (result.code !== 0) {
     return enhanceGitPullErrorMessages(result)

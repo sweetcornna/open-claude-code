@@ -13,6 +13,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { distRoot } from '../utils/filesystem/distRoot.js'
+import { createCombinedAbortSignal } from '../utils/process/combinedAbortSignal.js'
 import { execFileNoThrowWithCwd } from '../utils/process/execFileNoThrow.js'
 import { gracefulShutdown } from '../utils/process/gracefulShutdown.js'
 import { writeToStdout } from '../utils/process/process.js'
@@ -93,18 +94,30 @@ export function isRunningFromBunGlobalInstall(): boolean {
 
 /**
  * Get the latest version from npm registry.
+ *
+ * `signal` lets the caller cancel the spawn — the background updater passes a
+ * shutdown signal so Ctrl+C is not held hostage by an in-flight `npm view`.
  */
-export async function getLatestOccVersion(): Promise<string | null> {
-  const result = await execFileNoThrowWithCwd(
-    'npm',
-    ['view', `${PACKAGE_NAME}@latest`, 'version', '--prefer-online'],
-    { abortSignal: AbortSignal.timeout(10_000), cwd: homedir() },
-  )
-  if (result.code !== 0) {
-    logForDebugging(`npm view failed: ${result.stderr}`)
-    return null
+export async function getLatestOccVersion(
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const { signal: combined, cleanup } = createCombinedAbortSignal(signal, {
+    timeoutMs: 10_000,
+  })
+  try {
+    const result = await execFileNoThrowWithCwd(
+      'npm',
+      ['view', `${PACKAGE_NAME}@latest`, 'version', '--prefer-online'],
+      { abortSignal: combined, cwd: homedir() },
+    )
+    if (result.code !== 0) {
+      logForDebugging(`npm view failed: ${result.stderr}`)
+      return null
+    }
+    return result.stdout.trim()
+  } finally {
+    cleanup()
   }
-  return result.stdout.trim()
 }
 
 // Shared by the interactive `occ update` path and the silent background
@@ -131,11 +144,12 @@ export type OccSilentInstallResult = {
  */
 export async function installOccGloballySilent(
   pkgManager: 'bun' | 'npm',
+  signal?: AbortSignal,
 ): Promise<OccSilentInstallResult> {
   const result = await execFileNoThrowWithCwd(
     pkgManager,
     ['install', '-g', latestPackageSpec()],
-    { cwd: homedir(), timeout: INSTALL_TIMEOUT_MS },
+    { cwd: homedir(), timeout: INSTALL_TIMEOUT_MS, abortSignal: signal },
   )
   if (result.code !== 0) {
     return {

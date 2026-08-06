@@ -73,7 +73,7 @@ Do not install occ by calling internal functions under `src/utils/nativeInstalle
 
 ## Silent Background Automatic Updates
 
-Five minutes after an interactive session starts, occ performs its first background version check, and **repeats the check every five minutes** for the rest of the session. If it finds a new version, it silently performs a global installation. On success, the REPL displays a subdued notice at the bottom (`✓ Updated to vX.Y.Z · Restart to apply`). On failure, it writes only to the debug log and never interrupts the session.
+One minute after an interactive session starts, occ performs its first background version check, and **repeats the check every 30 minutes** for the rest of the session. The first check is deliberately early — a session started right after a release should not wait out a full interval to find it — but not immediate: startup is the busiest moment in the process, and an `npm view` there competes with everything the user is actually waiting for. If it finds a new version, it silently performs a global installation. On success, the REPL displays a subdued notice at the bottom (`✓ Updated to vX.Y.Z · Restart to apply`). On failure, it writes only to the debug log and never interrupts the session.
 
 Two consequences of the periodic behavior: if another new version ships while the session is still open, the next check installs it and posts the notice again (a long-running session no longer stays pinned to whatever version was current at startup); and the same version is never installed twice — an already-installed version is skipped on later rounds.
 
@@ -88,11 +88,15 @@ The check does not run when any of the following conditions applies:
 
 The installation command reuses the `occ update` path (the version query and `installOccGloballySilent` from `src/cli/updateOcc.ts`, with output captured rather than passed through) and shares the cross-process `.update.lock` with `installGlobalPackage()`.
 
-The inherited component-based update route in `src/components/AutoUpdaterWrapper.tsx` remains unmounted and no longer routes to `NativeAutoUpdater`. Do not reconnect the inherited native downloader or the official package-manager update prompt until occ has its own signed binary distribution source. Explicit `occ update` remains the manual update entry point.
+**Two kinds of skip.** Conditions that cannot change inside this process (`NODE_ENV`, installation type) retire the loop outright; conditions the user can flip back mid-session (the `autoUpdates` config, the two environment variables above) keep it ticking. Previously every skip was final, so turning auto-updates back on with `/config` did nothing until the next launch. The reversible gates therefore run before the installation-type check, which may spawn `npm config get prefix` — keeping the loop alive on those skips has to stay cheap.
+
+**Cancellable on exit.** The timers are `unref()`'d and never hold the process open, but the children they spawn do. `npm install -g` (120s cap) and `npm view` (10s) are bound to a session abort signal registered with `gracefulShutdown`, so Ctrl+C cancels the in-flight child and lets the event loop drain. Without it the process waited out the 5s shutdown failsafe and then hard-exited, orphaning the installer mid-write.
+
+The inherited component-based update route (`AutoUpdaterWrapper` / `AutoUpdater` / `PackageManagerAutoUpdater` / `NativeAutoUpdater`) was deleted along with the service rewrite described here — nothing had rendered it for a while. Do not reconnect the inherited native downloader or the official package-manager update prompt until occ has its own signed binary distribution source. Explicit `occ update` remains the manual update entry point.
 
 ## Background Plugin Updates
 
-Installed plugin marketplaces use the same periodic scheduling, but their start time is **staggered** relative to the occ self-update: the first check runs three minutes after an interactive session starts, and every five minutes thereafter. The stagger keeps the two chains from hitting the network at the same moment.
+Installed plugin marketplaces use the same periodic scheduling, but their start time is **staggered** relative to the occ self-update: the first check runs three minutes after an interactive session starts, and every 30 minutes thereafter. The stagger keeps the two chains from hitting the network at the same moment, and since both run on the same interval it holds for the life of the session.
 
 Each round does the following:
 
@@ -113,7 +117,7 @@ A single environment variable controls the period for both chains:
 
 | Setting | Location | Default | Description |
 |---|---|---|---|
-| `OCC_UPDATE_CHECK_INTERVAL_MS` | Environment variable | `300000` (5 minutes) | Overrides the periodic check interval for both the occ self-update and plugin updates (both chains share one value). Lower bound `60000` (1 minute); an invalid value falls back to the default |
+| `OCC_UPDATE_CHECK_INTERVAL_MS` | Environment variable | `1800000` (30 minutes) | Overrides the periodic check interval for both the occ self-update and plugin updates (both chains share one value). Lower bound `60000` (1 minute); an invalid value falls back to the default |
 | `lastBackgroundUpdateCheckAt` | `~/.occ.json` | — | Timestamp of the last background occ update check; internal field |
 | `lastBackgroundPluginUpdateCheckAt` | `~/.occ.json` | — | Timestamp of the last background plugin update check; internal field |
 
@@ -173,7 +177,7 @@ If the official Claude Code is not installed, the absence of the second command 
 | `src/services/autoUpdate/backgroundPluginUpdate.ts` | Periodic background update service for plugin marketplaces (`git pull` plus cache rematerialization) |
 | `src/services/autoUpdate/pluginUpdateNotifier.ts` | Registry that delivers plugin-update notices to the REPL notification queue |
 | `src/main.tsx` | Registers the root `occ update` command |
-| `src/components/AutoUpdaterWrapper.tsx` | Unmounted background update route; must not connect to the official native downloader |
+| `src/services/autoUpdate/backgroundOccUpdate.ts` | Background self-update loop; must not connect to the official native downloader or package name |
 | `src/utils/nativeInstaller/` | Inherited, non-public native installer implementation; not an occ distribution channel |
 | `scripts/release.ts` | `bun run release <version>`: synchronizes version sources, runs release gates, commits, and creates the tag |
 | `src/utils/update/releaseNotes.ts` | Fetches and parses `CHANGELOG.md` to drive the in-app “What's New” notice |

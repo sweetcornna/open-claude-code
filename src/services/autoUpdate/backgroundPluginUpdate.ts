@@ -5,8 +5,9 @@
  * recursive, unref'd timer loop per interactive session, gated hard on the
  * same autoupdate semantics, with every failure path logForDebugging-only.
  * The first delay is 3 minutes — deliberately offset from the occ
- * self-update's 5 so the two background jobs never contend for network/CPU at
- * the same moment.
+ * self-update's 1 so the two background jobs never contend for network/CPU at
+ * the same moment. Both then run on the same interval, so the offset holds for
+ * the life of the session.
  *
  * Relationship to the startup autoupdate path
  * (utils/plugins/pluginAutoupdate.ts, fired from backgroundHousekeeping):
@@ -59,6 +60,7 @@
  *  - globalConfig.autoUpdates !== false
  */
 import { isEnvTruthy } from 'src/utils/config/envUtils.js'
+import { registerCleanup } from 'src/utils/process/cleanupRegistry.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import * as updateInterval from './backgroundUpdateInterval.js'
 import { emitPluginUpdateNotification } from './pluginUpdateNotifier.js'
@@ -96,9 +98,13 @@ export type BackgroundPluginUpdateDeps = {
   isGitRepo: (dir: string) => boolean
   /** Resolved HEAD sha, or null when it cannot be read. Must never throw. */
   readHeadSha: (dir: string) => Promise<string | null>
-  /** Fetch + fast-forward the clone. Must never throw. */
+  /**
+   * Fetch + fast-forward the clone. Must never throw. `signal` cancels the git
+   * child when the session is shutting down.
+   */
   pull: (
     target: MarketplaceGitTarget,
+    signal?: AbortSignal,
   ) => Promise<{ ok: boolean; detail: string }>
   /**
    * Re-materialize installed plugins from the given (lowercased) marketplace
@@ -117,7 +123,8 @@ export type BackgroundPluginUpdateDeps = {
 }
 
 export type BackgroundPluginUpdateOutcome =
-  | { status: 'skipped'; reason: string }
+  /** See resolveSkipReason — `permanent` decides whether the loop retires. */
+  | { status: 'skipped'; reason: string; permanent: boolean }
   | { status: 'throttled' }
   | { status: 'no-marketplaces' }
   | { status: 'locked' }
@@ -220,7 +227,7 @@ async function loadDefaultDeps(): Promise<BackgroundPluginUpdateDeps> {
       )
       return result.code === 0 ? result.stdout.trim() : null
     },
-    pull: async target => {
+    pull: async (target, signal) => {
       const result = await marketplaceManager.gitPull(
         target.installLocation,
         target.ref,
@@ -229,6 +236,7 @@ async function loadDefaultDeps(): Promise<BackgroundPluginUpdateDeps> {
           sparsePaths: target.sparsePaths,
           timeoutMs: PER_MARKETPLACE_GIT_TIMEOUT_MS,
           ffOnly: true,
+          abortSignal: signal,
         },
       )
       return { ok: result.code === 0, detail: result.stderr }
@@ -263,20 +271,30 @@ async function loadDefaultDeps(): Promise<BackgroundPluginUpdateDeps> {
   }
 }
 
-function resolveSkipReason(deps: BackgroundPluginUpdateDeps): string | null {
+type PluginSkip = { reason: string; permanent: boolean }
+
+/**
+ * `permanent` marks a skip this process can never resolve, so the loop can
+ * retire instead of ticking forever. Everything except NODE_ENV here is a
+ * setting the user can flip mid-session, and treating those as final meant
+ * re-enabling auto-updates did nothing until the next launch.
+ */
+function resolveSkipReason(
+  deps: BackgroundPluginUpdateDeps,
+): PluginSkip | null {
   const nodeEnv = deps.env.NODE_ENV
   if (nodeEnv === 'test' || nodeEnv === 'development') {
-    return `NODE_ENV=${nodeEnv}`
+    return { reason: `NODE_ENV=${nodeEnv}`, permanent: true }
   }
   if (isEnvTruthy(deps.env.DISABLE_AUTOUPDATER)) {
-    return 'DISABLE_AUTOUPDATER is set'
+    return { reason: 'DISABLE_AUTOUPDATER is set', permanent: false }
   }
   const essentialOnly = deps.getEssentialTrafficOnlyReason()
   if (essentialOnly) {
-    return `${essentialOnly} is set`
+    return { reason: `${essentialOnly} is set`, permanent: false }
   }
   if (deps.getAutoUpdatesConfig() === false) {
-    return 'autoUpdates disabled in global config'
+    return { reason: 'autoUpdates disabled in global config', permanent: false }
   }
   return null
 }
@@ -289,6 +307,7 @@ function resolveSkipReason(deps: BackgroundPluginUpdateDeps): string | null {
 async function pullMarketplace(
   deps: BackgroundPluginUpdateDeps,
   target: MarketplaceGitTarget,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   try {
     if (!deps.isGitRepo(target.installLocation)) {
@@ -304,7 +323,7 @@ async function pullMarketplace(
       return false
     }
 
-    const pull = await deps.pull(target)
+    const pull = await deps.pull(target, signal)
     if (!pull.ok) {
       logForDebugging(
         `backgroundPluginUpdate: ${target.name} pull failed: ${pull.detail}`,
@@ -360,14 +379,19 @@ function updateSuccessText(marketplaces: string[], plugins: string[]): string {
  */
 export async function runBackgroundPluginUpdateOnce(
   deps?: BackgroundPluginUpdateDeps,
+  signal?: AbortSignal,
 ): Promise<BackgroundPluginUpdateOutcome> {
   try {
     const d = deps ?? (await loadDefaultDeps())
 
     const skip = resolveSkipReason(d)
     if (skip) {
-      logForDebugging(`backgroundPluginUpdate: skipped (${skip})`)
-      return { status: 'skipped', reason: skip }
+      logForDebugging(`backgroundPluginUpdate: skipped (${skip.reason})`)
+      return {
+        status: 'skipped',
+        reason: skip.reason,
+        permanent: skip.permanent,
+      }
     }
 
     const intervalMs = updateInterval.resolveBackgroundUpdateIntervalMs(d.env)
@@ -393,7 +417,13 @@ export async function runBackgroundPluginUpdateOnce(
       // per-marketplace 30s timeout stays a real bound on each unit of work.
       const changed: string[] = []
       for (const target of targets) {
-        if (await pullMarketplace(d, target)) {
+        // Stop between marketplaces once shutdown starts — the in-flight git
+        // child is cancelled by the signal, and the queue behind it must not
+        // start a new one.
+        if (signal?.aborted) {
+          break
+        }
+        if (await pullMarketplace(d, target, signal)) {
           changed.push(target.name)
           logForDebugging(`backgroundPluginUpdate: ${target.name} updated`)
         }
@@ -452,6 +482,19 @@ type BackgroundPluginScheduleFn = (
 ) => { unref: () => void }
 
 /**
+ * Abort the in-flight sweep when the session shuts down. The timers are
+ * unref'd and never hold the process open, but a spawned `git fetch` against
+ * an unreachable remote does — for up to the 30s per-marketplace timeout, once
+ * per marketplace. Cancelling lets Ctrl+C drain the loop instead of waiting on
+ * gracefulShutdown's failsafe.
+ */
+function registerShutdownAbort(controller: AbortController): void {
+  registerCleanup(async () => {
+    controller.abort()
+  })
+}
+
+/**
  * Install the once-per-session background loop. Called from rootAction on the
  * interactive path only. Cheap env guards run here so no timer is created at
  * all in the common disabled cases; the full gate (config + privacy) runs
@@ -460,8 +503,10 @@ type BackgroundPluginScheduleFn = (
 export function maybeScheduleBackgroundPluginUpdate(options?: {
   env?: NodeJS.ProcessEnv
   delayMs?: number
-  run?: () => Promise<BackgroundPluginUpdateOutcome>
+  run?: (signal: AbortSignal) => Promise<BackgroundPluginUpdateOutcome>
   scheduleFn?: BackgroundPluginScheduleFn
+  /** Injected by tests; production registers one tied to graceful shutdown. */
+  abortController?: AbortController
 }): boolean {
   if (scheduledThisSession) {
     return false
@@ -474,7 +519,13 @@ export function maybeScheduleBackgroundPluginUpdate(options?: {
     return false
   }
   scheduledThisSession = true
-  const run = options?.run ?? (() => runBackgroundPluginUpdateOnce())
+  const controller = options?.abortController ?? new AbortController()
+  if (!options?.abortController) {
+    registerShutdownAbort(controller)
+  }
+  const run =
+    options?.run ??
+    ((signal: AbortSignal) => runBackgroundPluginUpdateOnce(undefined, signal))
   const intervalMs = updateInterval.resolveBackgroundUpdateIntervalMs(env)
   const scheduleFn: BackgroundPluginScheduleFn =
     options?.scheduleFn ??
@@ -484,9 +535,17 @@ export function maybeScheduleBackgroundPluginUpdate(options?: {
       }, delayMs))
   const scheduleNext = (delayMs: number): void => {
     const timer = scheduleFn(async () => {
+      if (controller.signal.aborted) {
+        return
+      }
       try {
-        const outcome = await run()
-        if (outcome.status === 'skipped') {
+        const outcome = await run(controller.signal)
+        // Only a skip this process can never resolve retires the loop; a
+        // reversible one keeps ticking so re-enabling takes effect live.
+        if (outcome.status === 'skipped' && outcome.permanent) {
+          logForDebugging(
+            `backgroundPluginUpdate: loop retired (${outcome.reason})`,
+          )
           return
         }
       } catch (error) {

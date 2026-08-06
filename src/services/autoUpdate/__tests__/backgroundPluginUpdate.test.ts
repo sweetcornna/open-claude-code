@@ -179,6 +179,8 @@ describe('runBackgroundPluginUpdateOnce — gating', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       reason: `NODE_ENV=${nodeEnv}`,
+      // Cannot change while the process runs — this one retires the loop.
+      permanent: true,
     })
     expect(calls.listed).toBe(0)
     expect(calls.pulled).toEqual([])
@@ -196,6 +198,7 @@ describe('runBackgroundPluginUpdateOnce — gating', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       reason: 'DISABLE_AUTOUPDATER is set',
+      permanent: false,
     })
     expect(calls.listed).toBe(0)
   })
@@ -210,6 +213,7 @@ describe('runBackgroundPluginUpdateOnce — gating', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       reason: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set',
+      permanent: false,
     })
     expect(calls.listed).toBe(0)
   })
@@ -221,6 +225,7 @@ describe('runBackgroundPluginUpdateOnce — gating', () => {
     expect(outcome).toEqual({
       status: 'skipped',
       reason: 'autoUpdates disabled in global config',
+      permanent: false,
     })
     expect(calls.listed).toBe(0)
   })
@@ -232,7 +237,7 @@ describe('runBackgroundPluginUpdateOnce — gating', () => {
     expect(outcome.status).toBe('up-to-date')
     expect(calls.listed).toBe(1)
     expect(calls.checkClaims).toEqual([
-      { checkedAt: 1_000_000, minimumElapsedMs: 270_000 },
+      { checkedAt: 1_000_000, minimumElapsedMs: 1_620_000 },
     ])
   })
 
@@ -505,16 +510,87 @@ describe('maybeScheduleBackgroundPluginUpdate', () => {
     expect(scheduler.tasks[1]?.unrefed).toBe(true)
   })
 
+  test('aborting the controller cancels the sweep and stops the loop', async () => {
+    const controller = new AbortController()
+    const scheduler = makeScheduler()
+    const seenSignals: AbortSignal[] = []
+    updater.maybeScheduleBackgroundPluginUpdate({
+      env: prodEnv,
+      abortController: controller,
+      run: async signal => {
+        seenSignals.push(signal)
+        return { status: 'up-to-date', checked: 1 }
+      },
+      scheduleFn: scheduler.scheduleFn,
+    })
+
+    await scheduler.tasks[0]!.callback()
+    expect(seenSignals[0]).toBe(controller.signal)
+
+    controller.abort()
+    await scheduler.tasks[1]!.callback()
+    expect(seenSignals).toHaveLength(1)
+    expect(scheduler.tasks).toHaveLength(2)
+  })
+
+  test('an aborted signal stops the sweep between marketplaces', async () => {
+    // A git fetch against an unreachable remote burns the 30s timeout per
+    // marketplace; once shutdown starts, the queue behind the cancelled child
+    // must not start another one.
+    const controller = new AbortController()
+    const pulled: string[] = []
+    const { deps } = makeDeps(
+      {
+        pull: async target => {
+          pulled.push(target.name)
+          controller.abort()
+          return { ok: true, detail: '' }
+        },
+      },
+      {
+        targets: [
+          { name: 'one', installLocation: '/cache/one' },
+          { name: 'two', installLocation: '/cache/two' },
+        ],
+      },
+    )
+
+    await updater.runBackgroundPluginUpdateOnce(deps, controller.signal)
+
+    expect(pulled).toEqual(['one'])
+  })
+
   test('stops the loop after a permanent skipped outcome', async () => {
     const scheduler = makeScheduler()
     updater.maybeScheduleBackgroundPluginUpdate({
       env: prodEnv,
-      run: async () => ({ status: 'skipped', reason: 'disabled' }),
+      run: async () => ({
+        status: 'skipped',
+        reason: 'NODE_ENV=test',
+        permanent: true,
+      }),
       scheduleFn: scheduler.scheduleFn,
     })
 
     await scheduler.tasks[0]!.callback()
     expect(scheduler.tasks).toHaveLength(1)
+  })
+
+  test('keeps looping after a reversible skip so re-enabling takes effect live', async () => {
+    const scheduler = makeScheduler()
+    updater.maybeScheduleBackgroundPluginUpdate({
+      env: prodEnv,
+      run: async () => ({
+        status: 'skipped',
+        reason: 'autoUpdates disabled in global config',
+        permanent: false,
+      }),
+      scheduleFn: scheduler.scheduleFn,
+    })
+
+    await scheduler.tasks[0]!.callback()
+    expect(scheduler.tasks).toHaveLength(2)
+    expect(scheduler.tasks[1]?.delayMs).toBe(1_800_000)
   })
 
   test.each([
