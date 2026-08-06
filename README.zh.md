@@ -169,18 +169,6 @@ bun run dev:inspect     # 输出 ws://localhost:8888/xxxx
 
 然后在 `src/` 里打断点，F5 选择 **"Attach to Bun (TUI debug)"**。
 
-## Teach Me 学习项目
-
-内置 teach-me skill，通过问答式引导理解项目的任何模块（改编自 [sigma skill](https://github.com/sanyuan0704/sanyuan-skills)）：
-
-```bash
-/teach-me Claude Code 架构
-/teach-me React Ink 终端渲染 --level beginner
-/teach-me Tool 系统 --resume
-```
-
-会诊断你的水平、把主题拆成 5-15 个原子概念按依赖推进、用苏格拉底式提问引导，并支持 `--resume` 断点续学。
-
 ## 开发
 
 ```bash
