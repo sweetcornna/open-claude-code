@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 
-// Hook to handle the transition to red when tokens stop flowing.
+// Hook to handle the color transition when tokens stop flowing.
 // Driven by the parent's animation clock time instead of independent intervals,
 // so it slows down when the terminal is blurred.
 export function useStalledAnimation(
@@ -11,6 +11,12 @@ export function useStalledAnimation(
 ): {
   isStalled: boolean
   stalledIntensity: number
+  /**
+   * False when nothing has arrived from upstream at all — no tokens, no tools,
+   * for the whole wait. That is a dead request (unreachable or silent gateway),
+   * not a slow one, and the spinner colours the two differently.
+   */
+  hasReceivedData: boolean
 } {
   const lastTokenTime = useRef(time)
   const lastResponseLength = useRef(currentResponseLength)
@@ -71,5 +77,9 @@ export function useStalledAnimation(
     ? intensity
     : stalledIntensityRef.current
 
-  return { isStalled, stalledIntensity: effectiveIntensity }
+  return {
+    isStalled,
+    stalledIntensity: effectiveIntensity,
+    hasReceivedData: currentResponseLength > 0 || hasActiveTools,
+  }
 }

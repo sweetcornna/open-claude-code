@@ -257,7 +257,7 @@ function SpinnerWithVerbInner({
 
   // When leader is idle but teammates are running (and we're viewing the leader),
   // show a static dim idle display instead of the animated spinner — otherwise
-  // useStalledAnimation detects no new tokens after 3s and turns the spinner red.
+  // useStalledAnimation detects no new tokens after 3s and drains the spinner's color.
   if (leaderIsIdle && hasRunningTeammates && !foregroundedTeammate) {
     return (
       <Box flexDirection="column" width="100%" alignItems="flex-start">

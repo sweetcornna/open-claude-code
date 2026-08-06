@@ -67,6 +67,39 @@ export function hueToRgb(hue: number): RGBColorType {
   }
 }
 
+/**
+ * Colour for a stalled spinner at `intensity` (0 = just started stalling,
+ * 1 = fully stalled).
+ *
+ * Two different situations wear two different colours:
+ *
+ * - `hasReceivedData` — tokens (or tool activity) arrived and then went quiet.
+ *   The request is alive and slow, so the target is the theme's `warning`.
+ *   Red here announces a failure that has not happened.
+ * - otherwise — nothing has come back at all for the whole wait: an unreachable
+ *   endpoint or a gateway that accepted the request and returned nothing. That
+ *   is a dead request, and `error` is the honest colour for it.
+ *
+ * Both ends are read from the theme, which keeps the colour-blind variants
+ * correct — their "attention" colour is orange, not yellow.
+ *
+ * Returns an `rgb(...)` string when both ends are numeric; ANSI themes have no
+ * components to interpolate, so they get a theme key and a single switchover.
+ */
+export function getStalledColor(
+  baseColor: string | undefined,
+  targetColor: string | undefined,
+  intensity: number,
+): RGBColorString | null {
+  const baseRGB = baseColor ? parseRGB(baseColor) : null
+  const targetRGB = targetColor ? parseRGB(targetColor) : null
+  if (!baseRGB || !targetRGB) {
+    // ANSI themes carry names, not components — nothing to interpolate.
+    return null
+  }
+  return toRGBColor(interpolateColor(baseRGB, targetRGB, intensity))
+}
+
 const RGB_CACHE = new Map<string, RGBColorType | null>()
 
 export function parseRGB(colorStr: string): RGBColorType | null {

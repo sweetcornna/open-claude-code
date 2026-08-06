@@ -3,7 +3,7 @@ import { Text, stringWidth, useTheme } from '@anthropic/ink';
 import { getGraphemeSegmenter } from '../../utils/text/intl.js';
 import { getTheme, type Theme } from '../../utils/terminal/theme.js';
 import type { SpinnerMode } from './types.js';
-import { interpolateColor, parseRGB, toRGBColor } from './utils.js';
+import { getStalledColor, interpolateColor, parseRGB, toRGBColor } from './utils.js';
 
 type Props = {
   message: string;
@@ -13,9 +13,9 @@ type Props = {
   flashOpacity: number;
   shimmerColor: keyof Theme;
   stalledIntensity?: number;
+  /** See getStalledColor — picks the warning vs. error stall colour. */
+  hasReceivedData?: boolean;
 };
-
-const ERROR_RED = { r: 171, g: 43, b: 63 };
 
 export function GlimmerMessage({
   message,
@@ -25,6 +25,7 @@ export function GlimmerMessage({
   flashOpacity,
   shimmerColor,
   stalledIntensity = 0,
+  hasReceivedData = true,
 }: Props): React.ReactNode {
   const [themeName] = useTheme();
   const theme = getTheme(themeName);
@@ -42,24 +43,12 @@ export function GlimmerMessage({
 
   if (!message) return null;
 
-  // When stalled, show text that smoothly transitions to red
+  // When stalled, drain the text toward warning (slow) or error (silent)
   if (stalledIntensity > 0) {
-    const baseColorStr = theme[messageColor];
-    const baseRGB = baseColorStr ? parseRGB(baseColorStr) : null;
-
-    if (baseRGB) {
-      const interpolated = interpolateColor(baseRGB, ERROR_RED, stalledIntensity);
-      const color = toRGBColor(interpolated);
-      return (
-        <>
-          <Text color={color}>{message}</Text>
-          <Text color={color}> </Text>
-        </>
-      );
-    }
-
-    // Fallback for ANSI themes: use messageColor until fully stalled, then error
-    const color = stalledIntensity > 0.5 ? 'error' : messageColor;
+    const targetKey: keyof Theme = hasReceivedData ? 'warning' : 'error';
+    const color =
+      getStalledColor(theme[messageColor], theme[targetKey], stalledIntensity) ??
+      (stalledIntensity > 0.5 ? targetKey : messageColor);
     return (
       <>
         <Text color={color}>{message}</Text>
