@@ -1,19 +1,25 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/entrypoints/cli.tsx"],
-  "project": ["src/**/*.{ts,tsx}"],
-  "ignore": ["src/types/**", "src/**/*.d.ts"],
   "ignoreDependencies": [
     "@ant/*",
     "react-compiler-runtime",
-    "@anthropic-ai/mcpb",
-    "@anthropic-ai/sandbox-runtime"
+    "chrome-devtools-mcp",
+    "undici"
   ],
-  "ignoreBinaries": ["bun"],
   "workspaces": {
+    ".": {
+      "entry": [
+        "src/entrypoints/cli.tsx",
+        "build.ts",
+        "vite.config.ts",
+        "scripts/**/*.{ts,mjs,cjs}",
+        "src/**/*.runner.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignore": ["src/types/**"]
+    },
     "packages/*": {
-      "entry": ["src/index.ts"],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.{ts,tsx}"]
     },
     "packages/@ant/*": {
       "ignore": ["**"]
