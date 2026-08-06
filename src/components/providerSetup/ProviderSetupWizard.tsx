@@ -474,7 +474,13 @@ function ModelStep({
     const active = activeField === field;
     const value = getValue(field);
     const usesSelector = status.entryMode === 'catalog' && field !== 'max_context';
-    const options = optional ? [{ label: '(not set)', value: '' }, ...modelOptions] : modelOptions;
+    // A value the catalog does not list is still offered, so reopening the
+    // setting on a stale cache cannot silently clear a tier the user configured on purpose.
+    const configuredButUnlisted =
+      value && !modelOptions.some(option => option.value === value) ? [{ label: value, value }] : [];
+    const options = optional
+      ? [{ label: '(not set)', value: '' }, ...modelOptions, ...configuredButUnlisted]
+      : [...modelOptions, ...configuredButUnlisted];
 
     return (
       <Box key={field} flexDirection="column">
