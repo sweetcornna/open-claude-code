@@ -601,7 +601,7 @@ When NOT to use the Agent tool:
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do
-- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
+- Delegate only work that is genuinely independent and large enough to be worth a separate context: a wide multi-file investigation, or tracks that do not depend on each other's results. Do not delegate what you can finish yourself in a handful of tool calls, and do not use an agent to verify or double-check your own work. If one agent can do the job, use one rather than several. When you do have independent tracks, launch them in a single message with multiple tool uses so they run concurrently
 - When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
 - You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
 - **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.
@@ -648,7 +648,7 @@ When NOT to use the Agent tool:
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do
-- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
+- Delegate only work that is genuinely independent and large enough to be worth a separate context: a wide multi-file investigation, or tracks that do not depend on each other's results. Do not delegate what you can finish yourself in a handful of tool calls, and do not use an agent to verify or double-check your own work. If one agent can do the job, use one rather than several. When you do have independent tracks, launch them in a single message with multiple tool uses so they run concurrently
 - When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
 - To continue a previously spawned agent, use SendMessage with the agent's ID or name as the \`to\` field. The agent resumes with its full context preserved. Each Agent invocation starts fresh — provide a complete task description.
 - The agent's outputs should generally be trusted
@@ -691,7 +691,7 @@ When NOT to use the Agent tool:
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do
-- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
+- Delegate only work that is genuinely independent and large enough to be worth a separate context: a wide multi-file investigation, or tracks that do not depend on each other's results. Do not delegate what you can finish yourself in a handful of tool calls, and do not use an agent to verify or double-check your own work. If one agent can do the job, use one rather than several. When you do have independent tracks, launch them in a single message with multiple tool uses so they run concurrently
 - When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
 - You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
 - **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.

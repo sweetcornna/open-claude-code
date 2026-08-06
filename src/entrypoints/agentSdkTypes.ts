@@ -57,6 +57,15 @@ import type {
 // 与 settings / hooks schema 共用的钩子事件与 SessionEnd 退出原因字面量表
 import { EXIT_REASONS, HOOK_EVENTS } from './sdk/coreSchemas.js'
 
+// Re-exported as values, not just as the basis for the `typeof` types below.
+// Several modules (registerSkillHooks, sessionHooks, schemas/hooks, …) import
+// HOOK_EVENTS from here as a value; until now this file only imported it, so
+// those imports were resolving to a hand-written `agentSdkTypes.js` sitting
+// next to this one, which duplicated the arrays as literals. Two copies of the
+// same list, one of them invisible to anyone reading the TypeScript. The
+// authoritative list lives in coreSchemas; this just forwards it.
+export { EXIT_REASONS, HOOK_EVENTS }
+
 export type {
   ListSessionsOptions,
   GetSessionInfoOptions,

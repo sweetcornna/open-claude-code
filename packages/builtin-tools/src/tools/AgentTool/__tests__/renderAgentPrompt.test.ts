@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { type AgentPromptParams, renderAgentPrompt } from '../prompt.js'
 
-const CONCURRENCY_NOTE = 'Launch multiple agents concurrently whenever possible'
+const CONCURRENCY_NOTE = 'Delegate only work that is genuinely independent'
 const PROACTIVE_NOTE = 'it should be used proactively'
 const PARALLEL_NOTE = 'you MUST send a single message with multiple'
 

@@ -43,9 +43,10 @@ export interface AgentPromptParams {
    */
   embeddedSearchTools: boolean
   /**
-   * The "launch multiple agents concurrently" note. Only rendered for the
-   * inline list — when listing via attachment the note lives in the attachment
-   * message, conditioned on subscription there.
+   * The delegation-threshold note (when to spawn an agent at all, and when to
+   * run several concurrently). Only rendered for the inline list — when listing
+   * via attachment the note lives in the attachment message, conditioned on
+   * subscription there.
    */
   includeConcurrencyNote: boolean
   /**
@@ -135,9 +136,19 @@ When NOT to use the ${AGENT_TOOL_NAME} tool:
 - Other tasks that are not related to the agent descriptions above
 `
 
+  // A delegation threshold, not an invitation. This used to read "Launch
+  // multiple agents concurrently whenever possible, to maximize performance",
+  // which current models execute as a standing order: they fan out for work
+  // they could finish in a couple of tool calls, and spawn several agents where
+  // one would do. Anthropic's Opus 5 prompting guidance names this tendency
+  // explicitly and prescribes giving the criteria for delegating instead.
+  //
+  // The parallel mechanic is kept — it is a fact about the harness the model
+  // cannot infer — but it is now conditioned on the work actually being
+  // independent.
   const concurrencyNote = p.includeConcurrencyNote
     ? `
-- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses`
+- Delegate only work that is genuinely independent and large enough to be worth a separate context: a wide multi-file investigation, or tracks that do not depend on each other's results. Do not delegate what you can finish yourself in a handful of tool calls, and do not use an agent to verify or double-check your own work. If one agent can do the job, use one rather than several. When you do have independent tracks, launch them in a single message with multiple tool uses so they run concurrently`
     : ''
 
   const proactiveGuidance = p.suppressProactiveGuidance
