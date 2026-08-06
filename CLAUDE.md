@@ -120,6 +120,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 ## Working with This Codebase
 
+- 改 system prompt、工具定义、CLAUDE.md 或 skill 前，先读 `dev-standards` skill —— 那里是这些取舍的依据（源自 Anthropic 对 Claude 5 代模型的官方指导），本文件不重复。
 - **precheck 必须零错误**；pre-commit hook（husky + lint-staged）会对暂存文件跑 biome。
 - **循环依赖棘轮 `bun run check:cycles` 双向严格**（超预算与**低于**预算都 fail）。处理方式见 `CONTRIBUTING.md` §9。工作流规范（提交/PR/文档放哪/`.claude/` 与 `.occ/` 双目录政策）也在 CONTRIBUTING。
 - **Biome**：42 条规则因 decompiled 代码关闭；`.tsx` 120 列 + 强制分号，其他 80 列。tsc 要求声明属性但 biome 报 `noUnusedPrivateClassMembers` 时，用 `// biome-ignore lint/correctness/noUnusedPrivateClassMembers: <原因>`。
