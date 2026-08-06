@@ -19,7 +19,12 @@ import {
 } from 'src/services/modelCatalog/fetchExplicit.js'
 import type { CatalogModel } from 'src/services/modelCatalog/types.js'
 
-export type ProviderSetupKind = 'openai' | 'anthropic' | 'gemini' | 'grok'
+export type ProviderSetupKind =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'grok'
+  | 'china'
 
 export type OpenAIWireApi = 'chat' | 'responses'
 
@@ -49,6 +54,8 @@ export type ProviderSetupValues = {
 export type ProviderSetupContext = {
   /** OpenAI only: which wire protocol the session will speak. */
   wireApi?: OpenAIWireApi
+  /** China presets only: the provider's display name, for the heading. */
+  providerLabel?: string
 }
 
 type ModelsFetchArgs = {
@@ -73,6 +80,22 @@ export type ProviderSetupSpec = {
   defaultBaseUrl: string
   /** OpenAI has always required an explicit base URL; the others default. */
   baseUrlRequired: boolean
+  /**
+   * Whether step 1 exists. China presets pick the endpoint from a table and
+   * collect the key on their own screen, so they enter at step 2 — and Esc
+   * there has to go back to that screen, not to an endpoint form they never saw.
+   */
+  hasEndpointStep: boolean
+  /**
+   * What the "Default model" field means for this provider.
+   *
+   * `omitted` is not cosmetic: it also stops the primary model key from being
+   * written. For the China presets that key is OPENAI_MODEL, which overrides
+   * every family alias *and* every explicit `/model <id>` — setting it pins the
+   * session to one model, which is what configuring a whole provider is meant
+   * to avoid.
+   */
+  defaultModelField: 'required' | 'optional' | 'omitted'
   /**
    * When false, an empty API key skips the catalog request and drops straight
    * to manual entry instead of erroring. Keyless local gateways (vLLM behind an
@@ -139,6 +162,8 @@ export const PROVIDER_SETUP_SPECS: Record<
       `Requests will use ${OPENAI_WIRE_API_ENDPOINTS[wireApi ?? 'chat']}.`,
     defaultBaseUrl: 'https://api.openai.com/v1',
     baseUrlRequired: true,
+    hasEndpointStep: true,
+    defaultModelField: 'required',
     apiKeyRequired: true,
     fetchModels: fetchOpenAICompatibleModelsWith,
     env: {
@@ -181,6 +206,8 @@ export const PROVIDER_SETUP_SPECS: Record<
       'Requests will use POST <base URL>/v1/messages. Base URL may be left empty to use api.anthropic.com.',
     defaultBaseUrl: 'https://api.anthropic.com',
     baseUrlRequired: false,
+    hasEndpointStep: true,
+    defaultModelField: 'optional',
     apiKeyRequired: false,
     fetchModels: fetchAnthropicCompatibleModelsWith,
     env: {
@@ -200,6 +227,8 @@ export const PROVIDER_SETUP_SPECS: Record<
       "Configure a Gemini Generate Content compatible endpoint. Base URL may be left empty to use Google's v1beta API.",
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     baseUrlRequired: false,
+    hasEndpointStep: true,
+    defaultModelField: 'optional',
     apiKeyRequired: false,
     fetchModels: fetchGeminiModelsWith,
     env: {
@@ -227,6 +256,47 @@ export const PROVIDER_SETUP_SPECS: Record<
     },
   },
 
+  /**
+   * The China presets (DeepSeek / GLM / Qwen / MiMo). They are OpenAI-compatible,
+   * so they write the same env keys — but the endpoint comes from a table rather
+   * than a form, and the model list is the curated preset rather than the
+   * endpoint's /models answer, so the flow joins at step 2 with the catalog
+   * already in hand and the tier defaults prefilled.
+   */
+  china: {
+    modelType: 'openai',
+    title: ({ providerLabel }) =>
+      `${providerLabel ?? 'China LLM Provider'} — Models`,
+    endpointHint: () => '',
+    defaultBaseUrl: '',
+    baseUrlRequired: false,
+    hasEndpointStep: false,
+    // See the field docs: writing OPENAI_MODEL would defeat `/model <id>`.
+    defaultModelField: 'omitted',
+    apiKeyRequired: false,
+    fetchModels: async () => null,
+    env: {
+      baseUrl: 'OPENAI_BASE_URL',
+      apiKey: 'OPENAI_API_KEY',
+      model: 'OPENAI_MODEL',
+      tiers: tierEnv('OPENAI'),
+    },
+    tiers: TIER_FIELDS,
+    validate: noValidation,
+    extraEnv: () => ({
+      // An API key means this is no longer a ChatGPT-subscription session.
+      OPENAI_AUTH_MODE: undefined,
+    }),
+    afterSave: () => {
+      void import('src/services/api/openai/client.js').then(m =>
+        m.clearOpenAIClientCache(),
+      )
+      void import('src/services/api/openai/chatgptAuth.js').then(m =>
+        m.removeChatGPTAuth().catch(() => {}),
+      )
+    },
+  },
+
   grok: {
     modelType: 'grok',
     title: () => 'xAI Grok API Setup',
@@ -234,6 +304,8 @@ export const PROVIDER_SETUP_SPECS: Record<
       'Requests will use the xAI OpenAI-compatible API. Base URL may be left empty to use api.x.ai/v1.',
     defaultBaseUrl: 'https://api.x.ai/v1',
     baseUrlRequired: false,
+    hasEndpointStep: true,
+    defaultModelField: 'optional',
     apiKeyRequired: false,
     // xAI's API is OpenAI-compatible, /models included.
     fetchModels: fetchOpenAICompatibleModelsWith,

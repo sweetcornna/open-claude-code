@@ -323,10 +323,16 @@ function ModelStep({
   status,
   setStatus,
   onError,
+  onCancel,
   onSaved,
 }: ProviderSetupWizardProps & { status: ProviderModelSetupStatus }): React.ReactNode {
   const spec = PROVIDER_SETUP_SPECS[status.kind];
-  const fields: ProviderModelField[] = ['model', ...spec.tiers, 'max_context'];
+  const showsDefaultModel = spec.defaultModelField !== 'omitted';
+  const fields: ProviderModelField[] = [
+    ...(showsDefaultModel ? (['model'] as const) : []),
+    ...spec.tiers,
+    'max_context',
+  ];
 
   const [values, setValues] = useState<ProviderSetupValues>(() => ({
     model: status.model,
@@ -355,6 +361,7 @@ function ModelStep({
         baseUrl: status.baseUrl,
         apiKey: status.apiKey,
         ...(status.wireApi ? { wireApi: status.wireApi } : {}),
+        ...(status.providerLabel ? { providerLabel: status.providerLabel } : {}),
         model: values.model,
         maxContext: values.maxContext,
         haikuModel: values.haiku_model,
@@ -371,6 +378,12 @@ function ModelStep({
   );
 
   const returnToEndpoint = useCallback(() => {
+    // No step 1 for the China presets — they arrive here from their own
+    // provider/key screens, so "back" is the host's business, not ours.
+    if (!spec.hasEndpointStep) {
+      onCancel();
+      return;
+    }
     setStatus({
       state: 'provider_endpoint_setup',
       kind: status.kind,
@@ -380,7 +393,7 @@ function ModelStep({
       ...(status.wireApi ? { wireApi: status.wireApi } : {}),
       activeField: 'base_url',
     });
-  }, [setStatus, status]);
+  }, [onCancel, setStatus, spec, status]);
 
   useKeybinding('confirm:no', returnToEndpoint, { context: 'Confirmation' });
 
@@ -422,7 +435,9 @@ function ModelStep({
     // session to today's endpoint instead of following the provider's own.
     if (status.baseUrl.trim()) env[spec.env.baseUrl] = status.baseUrl.trim();
     if (status.apiKey.trim()) env[spec.env.apiKey] = status.apiKey.trim();
-    env[spec.env.model] = values.model.trim() || undefined;
+    // `omitted` still assigns undefined — that deletes any value a previous
+    // login left behind, which is the point (see defaultModelField's docs).
+    env[spec.env.model] = showsDefaultModel ? values.model.trim() || undefined : undefined;
     for (const tier of spec.tiers) {
       env[spec.env.tiers[tier]] = values[tier].trim() || undefined;
     }
@@ -500,29 +515,36 @@ function ModelStep({
     );
   };
 
-  const modelRequired = spec.validate({ ...values, model: '' }) !== null;
+  const modelRequired = spec.defaultModelField === 'required';
 
   return (
     <Box flexDirection="column" gap={1}>
-      <Text bold>{spec.title(status)} — Step 2 of 2</Text>
+      <Text bold>
+        {spec.title(status)}
+        {spec.hasEndpointStep ? ' — Step 2 of 2' : ''}
+      </Text>
       {status.entryMode === 'manual' && (
         <Text color="warning">
           Could not fetch the model list from the server ({status.fetchError}). Enter model names manually.
         </Text>
       )}
       <Box flexDirection="column" gap={1}>
-        {renderField('model', modelRequired ? 'Default model (required)' : 'Default model (optional)', !modelRequired)}
-        {spec.tiers.map(tier => renderField(tier, `${TIER_LABELS[tier]} tier model (optional)`, true))}
+        {showsDefaultModel &&
+          renderField('model', modelRequired ? 'Default model (required)' : 'Default model (optional)', !modelRequired)}
+        {spec.tiers.map(tier => renderField(tier, `${TIER_LABELS[tier]} tier model`, true))}
         {renderField('max_context', 'Max context tokens (context window size, e.g. 128000 or 128k)', true)}
       </Box>
       <Text dimColor>
-        The default model handles requests unless a tier override is configured. Maximum context tokens controls when
-        automatic context compaction begins.
+        {showsDefaultModel
+          ? 'The default model handles requests unless a tier override is configured. '
+          : 'Each tier is what /model haiku · sonnet · opus · fable resolves to; any other model stays reachable by its own id. '}
+        Maximum context tokens controls when automatic context compaction begins — leave it empty to use each
+        model&apos;s own window.
       </Text>
       <Text dimColor>
         {status.entryMode === 'catalog'
-          ? 'Use ↑↓ and Enter to choose each model. Enter on maximum context tokens saves. Esc returns to Step 1.'
-          : 'Enter moves to the next field. Enter on maximum context tokens saves. Esc returns to Step 1.'}
+          ? `Use ↑↓ and Enter to choose each model. Enter on maximum context tokens saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`
+          : `Enter moves to the next field. Enter on maximum context tokens saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`}
       </Text>
     </Box>
   );

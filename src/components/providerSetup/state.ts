@@ -29,6 +29,8 @@ type ProviderModelSetupBase = {
   baseUrl: string
   apiKey: string
   wireApi?: OpenAIWireApi
+  /** China presets only: shown in the heading, since the endpoint has no form. */
+  providerLabel?: string
   model: string
   maxContext: string
   haikuModel: string

@@ -11,7 +11,6 @@ import { getSSLErrorHint } from '@ant/model-provider';
 import { sendNotification } from '../services/notifier.js';
 import {
   completeChatGPTDeviceLogin,
-  removeChatGPTAuth,
   requestChatGPTDeviceCode,
   type ChatGPTDeviceCode,
 } from '../services/api/openai/chatgptAuth.js';
@@ -38,7 +37,7 @@ import { logError } from '../utils/telemetry/log.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import {
   CHINA_LLM_PROVIDERS,
-  chinaProviderTierEnv,
+  findChinaProviderByBaseURL,
   type ProviderPreset,
   resolveChinaProviderBaseURL,
 } from 'src/utils/model/chinaLlmProviders.js';
@@ -88,6 +87,22 @@ type OAuthStatus =
     };
 
 const PASTE_HERE_MSG = 'Paste code here if prompted > ';
+
+/**
+ * Recover which China preset (and billing mode) a model step belongs to.
+ *
+ * Derived from the base URL the step already carries rather than stored
+ * alongside it — one fewer field that can disagree with the endpoint actually
+ * being configured.
+ */
+function chinaPresetForStatus(status: { baseUrl: string }): ProviderPreset | undefined {
+  return findChinaProviderByBaseURL(status.baseUrl);
+}
+
+function chinaModeForStatus(status: { baseUrl: string }): 'api' | 'coding-plan' {
+  const preset = chinaPresetForStatus(status);
+  return preset?.codingPlan?.baseURL === status.baseUrl ? 'coding-plan' : 'api';
+}
 
 export function ConsoleOAuthFlow({
   onDone,
@@ -836,7 +851,20 @@ function OAuthStatusMessage({
           status={oauthStatus}
           setStatus={setOAuthStatus}
           onError={(message, retry) => setOAuthStatus({ state: 'error', message, toRetry: retry })}
-          onCancel={() => setOAuthStatus({ state: 'idle' })}
+          onCancel={() =>
+            // The China presets enter at the model step, so "back" there means
+            // the key screen they came from — not the login menu.
+            setOAuthStatus(
+              oauthStatus.kind === 'china' && chinaPresetForStatus(oauthStatus)
+                ? {
+                    state: 'china_apikey',
+                    provider: chinaPresetForStatus(oauthStatus)!,
+                    mode: chinaModeForStatus(oauthStatus),
+                    apiKey: '',
+                  }
+                : { state: 'idle' },
+            )
+          }
           onSaved={() => {
             setOAuthStatus({ state: 'success' });
             void onDone();
@@ -931,55 +959,34 @@ function OAuthStatusMessage({
       const [chinaKeyError, setChinaKeyError] = useState<string | null>(null);
       const chinaKeyColumns = useTerminalSize().columns - 12;
 
-      const doChinaSave = useCallback(() => {
+      // Hands off to the shared model step instead of saving here. The key is
+      // still unwritten at this point — nothing is persisted until that step is
+      // submitted, same contract as every other provider.
+      const doChinaContinue = useCallback(() => {
         if (!chinaKeyValue.trim()) {
           setChinaKeyError('Please enter an API key');
           return;
         }
-        const baseUrl = resolveChinaProviderBaseURL(provider.id, accessMode);
-        const env: Record<string, string | undefined> = {
-          OPENAI_AUTH_MODE: undefined,
-          OPENAI_BASE_URL: baseUrl,
-          OPENAI_API_KEY: chinaKeyValue.trim(),
-          // One key, the whole catalog. OPENAI_MODEL is deliberately cleared:
-          // it overrides every family alias AND every explicit `/model <id>`,
-          // so setting it would pin the session to a single model — which is
-          // exactly what this flow used to do.
-          OPENAI_MODEL: undefined,
-          ...chinaProviderTierEnv(provider),
-          // Cleared for the same reason: a single global window cannot describe
-          // a catalog that mixes them. getContextWindowForModel() now looks the
-          // real window up per model from the preset table.
-          CLAUDE_CODE_MAX_CONTEXT_TOKENS: undefined,
-        };
-        const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
-          modelType: 'openai',
-          env: env as unknown as Record<string, string>,
-        };
-        const { error } = updateSettingsForSource('userSettings', settingsUpdate);
-        if (error) {
-          setOAuthStatus({
-            state: 'error',
-            message: 'Failed to save settings. Please try again.',
-            toRetry: { state: 'china_apikey', provider, mode: accessMode, apiKey: chinaKeyValue },
-          });
-        } else {
-          for (const [k, v] of Object.entries(env)) {
-            if (v === undefined) {
-              delete process.env[k];
-            } else {
-              process.env[k] = v;
-            }
-          }
-          // Drop any cached OpenAI client and ChatGPT auth so the new
-          // provider/credentials take effect on the next request.
-          clearOpenAIClientCache();
-          void removeChatGPTAuth().catch(() => {});
-          logEvent('tengu_china_login_success', {});
-          setOAuthStatus({ state: 'success' });
-          void onDone();
-        }
-      }, [chinaKeyValue, provider, accessMode, onDone, setOAuthStatus]);
+        logEvent('tengu_china_login_success', {});
+        setOAuthStatus({
+          state: 'provider_model_setup',
+          kind: 'china',
+          baseUrl: resolveChinaProviderBaseURL(provider.id, accessMode),
+          apiKey: chinaKeyValue.trim(),
+          providerLabel: provider.label,
+          // The preset table, not the endpoint's /models answer: it is here
+          // immediately and the tier defaults below are expressed in its ids.
+          entryMode: 'catalog',
+          models: provider.models.map(m => ({ id: m.id, displayName: m.label })),
+          model: '',
+          maxContext: '',
+          haikuModel: provider.tiers.haiku,
+          sonnetModel: provider.tiers.sonnet,
+          opusModel: provider.tiers.opus,
+          fableModel: provider.tiers.fable,
+          activeField: 'haiku_model',
+        });
+      }, [chinaKeyValue, provider, accessMode, setOAuthStatus]);
 
       useKeybinding(
         'confirm:no',
@@ -1015,7 +1022,7 @@ function OAuthStatusMessage({
                 setChinaKeyValue(v);
                 setChinaKeyError(null);
               }}
-              onSubmit={doChinaSave}
+              onSubmit={doChinaContinue}
               cursorOffset={chinaKeyCursor}
               onChangeCursorOffset={setChinaKeyCursor}
               columns={chinaKeyColumns}
@@ -1024,20 +1031,11 @@ function OAuthStatusMessage({
             />
           </Box>
           {chinaKeyError ? <Text color="error">{chinaKeyError}</Text> : null}
-          <Box flexDirection="column" gap={0}>
-            <Text dimColor>This key enables every {provider.label} model — switch any time with /model:</Text>
-            {provider.models.map(m => {
-              const tier = (['haiku', 'sonnet', 'opus', 'fable'] as const).find(t => provider.tiers[t] === m.id);
-              return (
-                <Text key={m.id} dimColor>
-                  {'  '}
-                  {m.id} <Text>({m.contextWindow})</Text>
-                  {tier ? ` · default for /model ${tier}` : ''}
-                </Text>
-              );
-            })}
-          </Box>
-          <Text dimColor>Enter to confirm · Esc to go back</Text>
+          <Text dimColor>
+            This key enables every {provider.label} model. Next you can pick which one each tier resolves to — the
+            defaults are already filled in.
+          </Text>
+          <Text dimColor>Enter to continue · Esc to go back</Text>
         </Box>
       );
     }

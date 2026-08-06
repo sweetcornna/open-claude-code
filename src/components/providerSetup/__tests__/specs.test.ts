@@ -169,3 +169,46 @@ describe('save-time extras', () => {
     }
   })
 })
+
+describe('the China preset spec', () => {
+  test('never writes OPENAI_MODEL — that key would defeat /model <id>', () => {
+    // The whole point of configuring a China provider is that one key makes the
+    // catalog switchable. OPENAI_MODEL outranks both the family aliases and an
+    // explicit `/model <id>`, so it must stay unset; `omitted` is what stops the
+    // wizard from writing it.
+    expect(specs.PROVIDER_SETUP_SPECS.china.defaultModelField).toBe('omitted')
+    expect(specs.PROVIDER_SETUP_SPECS.china.env.model).toBe('OPENAI_MODEL')
+  })
+
+  test('joins at the model step — the endpoint comes from a table, not a form', () => {
+    expect(specs.PROVIDER_SETUP_SPECS.china.hasEndpointStep).toBe(false)
+    for (const kind of ['openai', 'anthropic', 'gemini', 'grok'] as const) {
+      expect(specs.PROVIDER_SETUP_SPECS[kind].hasEndpointStep).toBe(true)
+    }
+  })
+
+  test('writes the OpenAI-compatible keys, since that is the wire it speaks', () => {
+    const spec = specs.PROVIDER_SETUP_SPECS.china
+    expect(spec.modelType).toBe('openai')
+    expect(spec.env.baseUrl).toBe('OPENAI_BASE_URL')
+    expect(spec.env.apiKey).toBe('OPENAI_API_KEY')
+    expect(spec.env.tiers.fable_model).toBe('OPENAI_DEFAULT_FABLE_MODEL')
+  })
+
+  test('clears ChatGPT auth mode, like the OpenAI spec', () => {
+    expect(specs.PROVIDER_SETUP_SPECS.china.extraEnv?.({})).toEqual({
+      OPENAI_AUTH_MODE: undefined,
+    })
+  })
+
+  test('all four tiers are offered and nothing is mandatory', () => {
+    const spec = specs.PROVIDER_SETUP_SPECS.china
+    expect([...spec.tiers]).toEqual([
+      'haiku_model',
+      'sonnet_model',
+      'opus_model',
+      'fable_model',
+    ])
+    expect(spec.validate(values())).toBeNull()
+  })
+})
