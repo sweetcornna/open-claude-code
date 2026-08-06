@@ -263,6 +263,24 @@ function getUserSnapshotContent(configFile: string): string {
 }
 
 /**
+ * Did the shell actually expand `$PATH`, or hand the variable name back?
+ *
+ * `cmd.exe` echoes `$PATH` verbatim and exits 0, so a shell that never
+ * performed POSIX expansion is indistinguishable from a successful read by
+ * exit code alone. Everything downstream trusts this value: the snapshot
+ * writes `export PATH=<value>` and every Bash command sources it, so
+ * accepting the literal set PATH to five characters and made every
+ * non-builtin command "not found".
+ */
+export function looksLikeExpandedPath(stdout: string): boolean {
+  const value = stdout.trim()
+  if (!value || value === '$PATH') return false
+  // An unexpanded variable reference anywhere means this shell does not do
+  // POSIX expansion; a real PATH never contains one.
+  return !value.includes('$PATH')
+}
+
+/**
  * Generates Claude Code specific snapshot content
  * This content is always included regardless of user configuration
  */
@@ -270,15 +288,33 @@ async function getClaudeCodeSnapshotContent(): Promise<string> {
   // Get the appropriate PATH based on platform
   let pathValue = process.env.PATH
   if (getPlatform() === 'windows') {
-    // On Windows with git-bash, read the Cygwin PATH
-    const cygwinResult = await execa('echo $PATH', {
-      shell: true,
-      reject: false,
-    })
-    if (cygwinResult.exitCode === 0 && cygwinResult.stdout) {
-      pathValue = cygwinResult.stdout.trim()
+    // Read PATH the way Git Bash sees it (POSIX form, /c/... entries).
+    //
+    // This used to run `execa('echo $PATH', { shell: true })`. On Windows
+    // execa's shell is ComSpec — cmd.exe — not Git Bash, so it printed the
+    // literal string `$PATH` and exited 0. Invoke the bash binary explicitly
+    // with argv instead of routing through whatever shell the platform picks.
+    // Read the path from the environment rather than importing the discovery
+    // helper: `setShellIfWindows()` publishes both of these at startup, and
+    // going through windowsPaths.ts from here closes an import cycle.
+    // Post-discovery these only ever hold a real Git Bash — the System32 WSL
+    // launcher is filtered out by isPosixShellPath.
+    const gitBashPath =
+      process.env.CLAUDE_CODE_GIT_BASH_PATH ||
+      (process.env.SHELL?.includes('bash') ? process.env.SHELL : undefined)
+    if (gitBashPath) {
+      const result = await execa(gitBashPath, ['-c', 'printf %s "$PATH"'], {
+        reject: false,
+      })
+      if (result.exitCode === 0 && looksLikeExpandedPath(result.stdout)) {
+        pathValue = result.stdout.trim()
+      } else {
+        logForDebugging(
+          `Shell snapshot: could not read the Git Bash PATH; falling back to process.env.PATH`,
+        )
+      }
     }
-    // Fall back to process.env.PATH if we can't get Cygwin PATH
+    // Fall back to process.env.PATH when there is no Git Bash at all.
   }
 
   const rgIntegration = createRipgrepShellIntegration()
