@@ -38,6 +38,8 @@ const TOUCHED = [
   'OPENAI_DEFAULT_OPUS_MODEL',
   'OPENAI_DEFAULT_FABLE_MODEL',
   'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+  'GROK_BASE_URL',
+  'GROK_DEFAULT_SONNET_MODEL',
 ] as const
 
 afterEach(() => {
@@ -122,9 +124,24 @@ describe('buildModelStepFromEnvironment', () => {
     ).toBe('haiku_model')
   })
 
-  test('an endpoint with no cached catalog falls back to manual entry', () => {
-    // Not an error state — the background catalog refresh may simply not have
-    // run yet for this endpoint.
+  test('no cached catalog and no built-in table falls back to manual entry', () => {
+    // Grok has no built-in table, and the background catalog refresh may simply
+    // not have run yet for this endpoint. Not an error state.
+    process.env.CLAUDE_CODE_USE_GROK = '1'
+    const step = fromEnv.buildModelStepFromEnvironment({
+      CLAUDE_CODE_USE_GROK: '1',
+      GROK_BASE_URL: 'https://gw.nowhere.example/v1',
+      GROK_DEFAULT_SONNET_MODEL: 'some-model',
+    } as NodeJS.ProcessEnv)
+
+    expect(step?.entryMode).toBe('manual')
+    // The configured value survives the fallback.
+    expect(step?.sonnetModel).toBe('some-model')
+  })
+
+  test("no cached catalog still offers occ's own table where one exists", () => {
+    // Reopening the setting must not degrade to a blank text box just because
+    // the background refresh has not visited this endpoint yet.
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
     const step = fromEnv.buildModelStepFromEnvironment({
       CLAUDE_CODE_USE_OPENAI: '1',
@@ -132,8 +149,8 @@ describe('buildModelStepFromEnvironment', () => {
       OPENAI_DEFAULT_SONNET_MODEL: 'some-model',
     } as NodeJS.ProcessEnv)
 
-    expect(step?.entryMode).toBe('manual')
-    // The configured value survives the fallback.
+    expect(step?.entryMode).toBe('catalog')
+    // And the configured value is offered even though the table lacks it.
     expect(step?.sonnetModel).toBe('some-model')
   })
 })

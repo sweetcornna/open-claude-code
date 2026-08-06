@@ -74,7 +74,13 @@ function catalogFor(
   // The catalog is keyed by the provider name the fetcher uses, which calls the
   // Anthropic-compatible path 'firstParty'.
   const providerKey = kind === 'anthropic' ? 'firstParty' : kind
-  return getCachedModelCatalog(buildCatalogKey(providerKey, baseURL))
+  const cached = getCachedModelCatalog(buildCatalogKey(providerKey, baseURL))
+  const preset = spec.presetModels?.() ?? []
+  if (!cached) return preset.length > 0 ? preset : null
+  return [
+    ...cached,
+    ...preset.filter(extra => !cached.some(model => model.id === extra.id)),
+  ]
 }
 
 /**
@@ -112,6 +118,8 @@ export function buildModelStepFromEnvironment(
   }
 
   if (!models || models.length === 0) {
+    // Only reachable for a provider occ has no built-in table for (Gemini,
+    // Grok) whose background catalog refresh has not run yet.
     return {
       ...base,
       entryMode: 'manual',

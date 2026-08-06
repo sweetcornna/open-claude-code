@@ -9,7 +9,11 @@ occ 不只连 Claude：任何 OpenAI 兼容端点、Gemini 原生 API、Grok、�
 OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一个向导**（`src/components/providerSetup/`，各家差异全部收在 `specs.ts` 的表里）：
 
 1. **Step 1 —— 连接信息**。只填 Base URL 和 API Key。这一步不写任何设置，填完按 Enter 只做一件事：拿刚输入的凭据去问端点 `GET /models`。
-2. **Step 2 —— 选模型**。端点答上来了，默认模型和四个档位就都是选择器，从它**实际提供**的模型里挑；答不上来（URL 写错、没有 key、网关不实现 `/models`）就退回手填，并把失败原因显示出来，比如 `fetch failed (connect ECONNREFUSED 127.0.0.1:9)` —— 端点能用但没有模型列表，从来不该挡住配置。
+2. **Step 2 —— 选模型**。端点答上来了，默认模型和四个档位就都是选择器，从它**实际提供**的模型里挑。答不上来（URL 写错、没有 key、网关不实现 `/models`）时分两种：**occ 自己有该 provider 的模型表**就用那张表继续给选择器，并在顶部说明这是 occ 的猜测、失败原因是什么；**没有表**才退回手填，并显示 `fetch failed (connect ECONNREFUSED 127.0.0.1:9)` 这样的原因 —— 端点能用但没有模型列表，从来不该挡住配置。
+
+内置表**只覆盖 occ 本来就在维护的两家**：Anthropic 兼容用 Claude 全系 id（`ALL_MODEL_CONFIGS`），OpenAI 用 GPT 列表（`CHATGPT_CODEX_MODEL_OPTIONS`）。Gemini 和 Grok **故意没有** —— 给它们现编一张第三方 model id 表意味着长期手工维护一份会过时的清单，而那正是 `/models` 探测要解决的问题。端点答上来时两者会合并（端点的排前面），所以服务器漏报某个 occ 认识的模型也仍然可选。
+
+**`/models` 随时重开这套设置**。改一个档位不必重走 `/login` 把端点和 key 再敲一遍：端点、key、四个档位当前值都从 env 读回来，只改模型再写回去。候选表来自后台 catalog 刷新缓存的 `/models` 结果（外加上面那两张内置表），所以是瞬时且离线的。与新登录不同，**候选表里没有的已配置值不会被丢弃** —— 用户是故意配的，缓存可能只是旧了。纯一方登录的会话里这个命令不出现：它的档位走内置 Claude 表，没有 `*_DEFAULT_*_MODEL` 可指。
 
 几条容易踩的规则：
 
@@ -34,7 +38,9 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 
 国产模型（DeepSeek / 智谱 GLM / 千问 / MiMo）走 OpenAI 兼容矩阵；`/login → China LLM Providers` 有内置 preset（baseURL、模型表、Coding Plan 专用端点）。
 
-**一个 key 配的是整个供应商，不是一个模型。** 流程是「选供应商 →（有 Coding Plan 的再选计费方式）→ 填 API Key」，没有选模型这一步：填完之后该供应商的**所有**模型都能用，`/model` 里直接列出来（带官方标签、价格、上下文窗口），随时切换。四个档位别名按 preset 的 `tiers` 映射到该供应商的对应模型（例如 DeepSeek：`haiku`→`deepseek-v4-flash`，`sonnet`/`opus`/`fable`→`deepseek-v4-pro`）。
+**一个 key 配的是整个供应商，不是一个模型。** 流程是「选供应商 →（有 Coding Plan 的再选计费方式）→ 填 API Key → 选各档位模型」：填完 key 之后该供应商的**所有**模型都能用，`/model` 里直接列出来（带官方标签、价格、上下文窗口），随时切换。
+
+最后那一步走的是上面那个共用向导的 Step 2：四个档位各是一个选择器，选项就是该供应商的模型表，**默认值预填 preset 的 `tiers` 映射**（例如 DeepSeek：`haiku`→`deepseek-v4-flash`，`sonnet`/`opus`/`fable`→`deepseek-v4-pro`）—— 一路回车即接受默认，想改哪个改哪个，之后也能用 `/models` 再改。这里**没有「默认模型」字段**，因为那个字段写的是 `OPENAI_MODEL`，见下。
 
 两个键**故意不写**：
 

@@ -52,9 +52,10 @@ function endpointStatus(): import('../state.js').ProviderEndpointSetupStatus {
 
 describe('buildModelStep', () => {
   test('a failed fetch lands in manual entry, carrying the reason', () => {
+    // Grok: no built-in table, so there is nothing to fall back to.
     const step = wizard.buildModelStep(
-      endpointStatus(),
-      specs.PROVIDER_SETUP_SPECS.openai,
+      { ...endpointStatus(), kind: 'grok' },
+      specs.PROVIDER_SETUP_SPECS.grok,
       null,
       'the /models endpoint was not found (HTTP 404)',
     )
@@ -71,18 +72,52 @@ describe('buildModelStep', () => {
   })
 
   test('manual entry keeps every remembered value — there is nothing to check it against', () => {
-    process.env.OPENAI_MODEL = 'retired-model'
-    process.env.OPENAI_DEFAULT_OPUS_MODEL = 'also-retired'
+    process.env.GROK_MODEL = 'retired-model'
+    process.env.GROK_DEFAULT_OPUS_MODEL = 'also-retired'
 
     const step = wizard.buildModelStep(
-      endpointStatus(),
-      specs.PROVIDER_SETUP_SPECS.openai,
+      { ...endpointStatus(), kind: 'grok' },
+      specs.PROVIDER_SETUP_SPECS.grok,
       null,
       'the request failed',
     )
 
     expect(step.model).toBe('retired-model')
     expect(step.opusModel).toBe('also-retired')
+    delete process.env.GROK_MODEL
+    delete process.env.GROK_DEFAULT_OPUS_MODEL
+  })
+
+  test("a failed fetch falls back to occ's own table where one exists", () => {
+    // Better than a blank text box: the endpoint may be fine and simply not
+    // implement /models. The note tells the user these are occ's guesses.
+    const step = wizard.buildModelStep(
+      endpointStatus(),
+      specs.PROVIDER_SETUP_SPECS.openai,
+      null,
+      'the /models endpoint was not found (HTTP 404)',
+    )
+
+    expect(step.entryMode).toBe('catalog')
+    if (step.entryMode !== 'catalog') return
+    expect(step.models.length).toBeGreaterThan(0)
+    expect(step.catalogNote).toContain('HTTP 404')
+  })
+
+  test("the endpoint's answer is merged with occ's table, endpoint first", () => {
+    const step = wizard.buildModelStep(
+      endpointStatus(),
+      specs.PROVIDER_SETUP_SPECS.openai,
+      [{ id: 'house-blend-1' }],
+      '',
+    )
+
+    expect(step.entryMode).toBe('catalog')
+    if (step.entryMode !== 'catalog') return
+    expect(step.models[0]?.id).toBe('house-blend-1')
+    expect(step.models.map(m => m.id)).toContain('gpt-5.6-sol')
+    // A merged fallback is not a failure — no note.
+    expect(step.catalogNote).toBeUndefined()
   })
 
   test('catalog entry seeds the current configuration as the selection', () => {

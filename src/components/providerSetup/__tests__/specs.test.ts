@@ -212,3 +212,38 @@ describe('the China preset spec', () => {
     expect(spec.validate(values())).toBeNull()
   })
 })
+
+describe('built-in model tables', () => {
+  test('only the providers occ maintains a table for have one', () => {
+    // Gemini and Grok are deliberately absent: inventing third-party model ids
+    // here means hand-maintaining a list that goes stale, which is the problem
+    // endpoint discovery exists to avoid.
+    expect(specs.PROVIDER_SETUP_SPECS.openai.presetModels).toBeDefined()
+    expect(specs.PROVIDER_SETUP_SPECS.anthropic.presetModels).toBeDefined()
+    expect(specs.PROVIDER_SETUP_SPECS.gemini.presetModels).toBeUndefined()
+    expect(specs.PROVIDER_SETUP_SPECS.grok.presetModels).toBeUndefined()
+    // The China presets carry their catalog on the status instead.
+    expect(specs.PROVIDER_SETUP_SPECS.china.presetModels).toBeUndefined()
+  })
+
+  test('the Anthropic table is Claude ids, the OpenAI one is GPT ids', () => {
+    const anthropic =
+      specs.PROVIDER_SETUP_SPECS.anthropic.presetModels?.() ?? []
+    expect(anthropic.length).toBeGreaterThan(0)
+    expect(anthropic.every(m => m.id.startsWith('claude-'))).toBe(true)
+    expect(anthropic.map(m => m.id)).toContain('claude-opus-5')
+
+    const openai = specs.PROVIDER_SETUP_SPECS.openai.presetModels?.() ?? []
+    expect(openai.length).toBeGreaterThan(0)
+    expect(openai.every(m => m.id.startsWith('gpt-'))).toBe(true)
+  })
+
+  test('every entry is a usable option — an empty id would render a blank row', () => {
+    for (const kind of ['openai', 'anthropic'] as const) {
+      for (const model of specs.PROVIDER_SETUP_SPECS[kind].presetModels?.() ??
+        []) {
+        expect(model.id.length).toBeGreaterThan(0)
+      }
+    }
+  })
+})

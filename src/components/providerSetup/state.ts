@@ -47,7 +47,16 @@ type ProviderModelSetupBase = {
  */
 export type ProviderModelSetupStatus = ProviderModelSetupBase &
   (
-    | { entryMode: 'catalog'; models: CatalogModel[] }
+    | {
+        entryMode: 'catalog'
+        models: CatalogModel[]
+        /**
+         * Set when the list did not come from the endpoint — occ's built-in
+         * table stood in. The user needs to know the options are a guess at
+         * what this server serves, not its own answer.
+         */
+        catalogNote?: string
+      }
     | { entryMode: 'manual'; fetchError: string }
   )
 

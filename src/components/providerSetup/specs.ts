@@ -18,6 +18,8 @@ import {
   fetchOpenAICompatibleModelsWith,
 } from 'src/services/modelCatalog/fetchExplicit.js'
 import type { CatalogModel } from 'src/services/modelCatalog/types.js'
+import { ALL_MODEL_CONFIGS } from 'src/utils/model/configs.js'
+import { CHATGPT_CODEX_MODEL_OPTIONS } from 'src/utils/model/chatgptModels.js'
 
 export type ProviderSetupKind =
   | 'openai'
@@ -104,6 +106,17 @@ export type ProviderSetupSpec = {
    */
   apiKeyRequired: boolean
   fetchModels: (args: ModelsFetchArgs) => Promise<CatalogModel[] | null>
+  /**
+   * Models occ already knows this provider by name, merged into whatever
+   * `/models` returns and used on its own when that request fails.
+   *
+   * Only where a maintained table already exists: the Claude configs for the
+   * Anthropic-compatible path, the GPT list for OpenAI. Gemini and Grok are
+   * deliberately absent — inventing third-party model ids here means hand-
+   * maintaining a list that goes stale, which is the problem `/models` exists
+   * to avoid. Those two keep endpoint discovery plus manual entry.
+   */
+  presetModels?: () => CatalogModel[]
   /** Env var names this provider writes. */
   env: {
     baseUrl: string
@@ -166,6 +179,11 @@ export const PROVIDER_SETUP_SPECS: Record<
     defaultModelField: 'required',
     apiKeyRequired: true,
     fetchModels: fetchOpenAICompatibleModelsWith,
+    presetModels: () =>
+      CHATGPT_CODEX_MODEL_OPTIONS.map(option => ({
+        id: option.value,
+        displayName: option.label,
+      })),
     env: {
       baseUrl: 'OPENAI_BASE_URL',
       apiKey: 'OPENAI_API_KEY',
@@ -210,6 +228,12 @@ export const PROVIDER_SETUP_SPECS: Record<
     defaultModelField: 'optional',
     apiKeyRequired: false,
     fetchModels: fetchAnthropicCompatibleModelsWith,
+    // An Anthropic-compatible endpoint serves Claude model names, and the
+    // canonical ids are already a maintained table in this repo.
+    presetModels: () =>
+      Object.values(ALL_MODEL_CONFIGS).map(config => ({
+        id: config.firstParty,
+      })),
     env: {
       baseUrl: 'ANTHROPIC_BASE_URL',
       apiKey: 'ANTHROPIC_AUTH_TOKEN',

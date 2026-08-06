@@ -300,15 +300,28 @@ export function buildModelStep(
     activeField: 'model' as const,
   };
 
+  // occ's own table for this provider, where one exists. Merged with the
+  // endpoint's answer so a server that omits a model occ knows about still
+  // offers it, and used alone when the request failed.
+  const preset = spec.presetModels?.() ?? [];
   if (!models) {
-    return { ...base, entryMode: 'manual', fetchError: failureReason };
+    if (preset.length === 0) {
+      return { ...base, entryMode: 'manual', fetchError: failureReason };
+    }
+    return {
+      ...base,
+      entryMode: 'catalog',
+      models: preset,
+      catalogNote: `Could not fetch the model list from the server (${failureReason}). Showing the models occ knows for this provider — pick one or press Esc to fix the endpoint.`,
+    };
   }
-  const ids = new Set(models.map(model => model.id));
+  const merged = [...models, ...preset.filter(extra => !models.some(model => model.id === extra.id))];
+  const ids = new Set(merged.map(model => model.id));
   const keep = (value: string): string => (ids.has(value) ? value : '');
   return {
     ...base,
     entryMode: 'catalog',
-    models,
+    models: merged,
     model: keep(base.model),
     haikuModel: keep(base.haikuModel),
     sonnetModel: keep(base.sonnetModel),
@@ -534,6 +547,7 @@ function ModelStep({
           Could not fetch the model list from the server ({status.fetchError}). Enter model names manually.
         </Text>
       )}
+      {status.entryMode === 'catalog' && status.catalogNote ? <Text color="warning">{status.catalogNote}</Text> : null}
       <Box flexDirection="column" gap={1}>
         {showsDefaultModel &&
           renderField('model', modelRequired ? 'Default model (required)' : 'Default model (optional)', !modelRequired)}
