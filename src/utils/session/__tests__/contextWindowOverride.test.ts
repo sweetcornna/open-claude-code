@@ -9,6 +9,9 @@ import { getContextWindowForModel } from '../context.js'
 const ENV_KEYS = [
   'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   'CLAUDE_CODE_DISABLE_1M_CONTEXT',
+  'CLAUDE_CODE_USE_OPENAI',
+  'OPENAI_DEFAULT_SONNET_MODEL',
+  'OPENAI_DEFAULT_HAIKU_MODEL',
   'USER_TYPE',
 ] as const
 const saved: Record<string, string | undefined> = {}
@@ -95,3 +98,37 @@ test('a non-DeepSeek model on an unrelated endpoint is untouched', () => {
   delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
   expect(getContextWindowForModel('kimi-k2')).toBe(200_000)
 })
+
+test('a DeepSeek session driven by a family alias still gets 1M', () => {
+  // The regression this pins: a default session's main-loop model is the alias
+  // `sonnet`, and the DeepSeek id only appears after OPENAI_DEFAULT_SONNET_MODEL
+  // is applied inside the adapter. Testing the alias against the DeepSeek
+  // predicate said "no" for exactly the sessions that needed it, so the window
+  // silently stayed at the 200k third-party fallback.
+  delete process.env.USER_TYPE
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro'
+  process.env.OPENAI_DEFAULT_HAIKU_MODEL = 'deepseek-v4-flash'
+  expect(getContextWindowForModel('sonnet')).toBe(1_000_000)
+  expect(getContextWindowForModel('haiku')).toBe(1_000_000)
+})
+
+test('an alias that resolves to a non-DeepSeek model is left alone', () => {
+  // The alias resolution must not hand 1M to every OpenAI-compatible session.
+  delete process.env.USER_TYPE
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  process.env.OPENAI_DEFAULT_SONNET_MODEL = 'glm-4.7'
+  expect(getContextWindowForModel('sonnet')).toBe(200_000)
+})
+
+// The mirror case — a first-party session must ignore leftover OPENAI_DEFAULT_*
+// keys — is NOT asserted here on purpose. getAPIProvider() reads the real
+// settings.json through getInitialSettings(), so on a machine configured for an
+// OpenAI-compatible provider the assertion measures the developer's config
+// rather than the code, and mocking settings/settings.js process-globally is
+// what CLAUDE.md forbids. The provider gate lives in resolveModelForDeepSeekGate
+// and was verified by hand against an isolated OCC_CONFIG_DIR.

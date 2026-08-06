@@ -11,7 +11,8 @@ import { getAPIProvider } from '../model/providers.js'
 import { get3PModelCapabilityOverride } from '../model/modelSupportOverrides.js'
 import {
   isDeepSeekBaseURL,
-  isDeepSeekFamilyModel,
+  isDeepSeekModelOrAlias,
+  resolveModelForDeepSeekGate,
 } from '../model/deepseekFamily.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
@@ -39,7 +40,14 @@ export const EFFORT_LEVELS = [
 export type EffortValue = EffortLevel | number
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
-export function modelSupportsEffort(model: string): boolean {
+export function modelSupportsEffort(modelOrAlias: string): boolean {
+  // A default 3P session's main-loop model is a family alias ('sonnet'), and
+  // the concrete id only appears after OPENAI_DEFAULT_SONNET_MODEL is applied
+  // inside the adapter. Testing the alias hit the haiku/sonnet/opus exclusion
+  // below and reported "no effort support" for every default session on an
+  // OpenAI-compatible provider — the effort indicator then hid itself while the
+  // adapter was still sending the parameter.
+  const model = resolveModelForDeepSeekGate(modelOrAlias)
   const m = model.toLowerCase()
   if (isEnvTruthy(process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT)) {
     return true
@@ -380,7 +388,7 @@ export function getDefaultEffortForModel(
   if (
     getAPIProvider() === 'openai' &&
     modelSupportsEffort(model) &&
-    (isDeepSeekFamilyModel(model) ||
+    (isDeepSeekModelOrAlias(model) ||
       isDeepSeekBaseURL(process.env.OPENAI_BASE_URL))
   ) {
     return 'max'
