@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
   REASONING_ENCRYPTED_CONTENT_INCLUDE,
+  _resetReasoningSummarySupportForTesting,
   adaptResponsesStreamToAnthropic,
   buildResponsesRequest,
   createOpenAIResponsesStream,
@@ -25,7 +26,7 @@ describe('buildResponsesRequest', () => {
       promptCacheKey,
     })
 
-    expect(request.reasoning).toEqual({ effort: 'max' })
+    expect(request.reasoning).toEqual({ effort: 'max', summary: 'auto' })
   })
 
   test('includes reasoning effort for ChatGPT Responses requests', () => {
@@ -38,7 +39,7 @@ describe('buildResponsesRequest', () => {
       promptCacheKey,
     })
 
-    expect(request.reasoning).toEqual({ effort: 'xhigh' })
+    expect(request.reasoning).toEqual({ effort: 'xhigh', summary: 'auto' })
   })
 
   test('includes text verbosity when provided', () => {
@@ -173,6 +174,144 @@ describe('buildResponsesRequest', () => {
 
     expect(turn1.prompt_cache_key).toBe(turn2.prompt_cache_key)
     expect(turn1.prompt_cache_key).toBe('occ:same-session')
+  })
+})
+
+describe('reasoning summaries (thinking visibility)', () => {
+  const saved = process.env.OPENAI_REASONING_SUMMARY
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env.OPENAI_REASONING_SUMMARY
+    else process.env.OPENAI_REASONING_SUMMARY = saved
+    _resetReasoningSummarySupportForTesting()
+  })
+
+  test('opts in by default — without it the stream carries no reasoning text', () => {
+    delete process.env.OPENAI_REASONING_SUMMARY
+    const request = buildResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      toolChoice: undefined,
+      reasoningEffort: 'high',
+    })
+    expect(request.reasoning).toEqual({ effort: 'high', summary: 'auto' })
+  })
+
+  test('honours an explicit detail level', () => {
+    process.env.OPENAI_REASONING_SUMMARY = 'detailed'
+    const request = buildResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      toolChoice: undefined,
+      reasoningEffort: 'high',
+    })
+    expect(request.reasoning).toEqual({ effort: 'high', summary: 'detailed' })
+  })
+
+  test('OPENAI_REASONING_SUMMARY=off suppresses the field', () => {
+    process.env.OPENAI_REASONING_SUMMARY = 'off'
+    const request = buildResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      toolChoice: undefined,
+      reasoningEffort: 'high',
+    })
+    expect(request.reasoning).toEqual({ effort: 'high' })
+  })
+
+  test('never asks for a summary when no reasoning effort is set', () => {
+    delete process.env.OPENAI_REASONING_SUMMARY
+    const request = buildResponsesRequest({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      toolChoice: undefined,
+    })
+    expect(request.reasoning).toBeUndefined()
+  })
+
+  test('an endpoint that rejects summary degrades instead of failing the turn', async () => {
+    delete process.env.OPENAI_REASONING_SUMMARY
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+    const bodies: string[] = []
+    const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
+      bodies.push(String(init?.body ?? ''))
+      if (bodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "Unknown parameter: 'reasoning.summary'." },
+          }),
+          { status: 400 },
+        )
+      }
+      return new Response('data: [DONE]\n\n', { status: 200 })
+    }) as unknown as typeof fetch
+
+    await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.6-sol',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+        reasoningEffort: 'high',
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+
+    expect(bodies).toHaveLength(2)
+    expect(JSON.parse(bodies[0]!).reasoning).toEqual({
+      effort: 'high',
+      summary: 'auto',
+    })
+    // Retried without the field, and the rest of the body is untouched.
+    expect(JSON.parse(bodies[1]!).reasoning).toEqual({ effort: 'high' })
+    expect(JSON.parse(bodies[1]!).model).toBe('gpt-5.6-sol')
+
+    // Latched: later requests in the session stop paying the failed probe.
+    const next = buildResponsesRequest({
+      model: 'gpt-5.6-sol',
+      messages: [{ role: 'user', content: 'hi again' }],
+      tools: [],
+      toolChoice: undefined,
+      reasoningEffort: 'high',
+    })
+    expect(next.reasoning).toEqual({ effort: 'high' })
+  })
+
+  test('an unrelated 400 still fails the turn', async () => {
+    delete process.env.OPENAI_REASONING_SUMMARY
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(
+        JSON.stringify({ error: { message: 'Unknown parameter: tools[0].' } }),
+        { status: 400 },
+      )
+    }) as unknown as typeof fetch
+
+    await expect(
+      createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+          reasoningEffort: 'high',
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+      }),
+    ).rejects.toThrow()
+    expect(calls).toBe(1)
   })
 })
 

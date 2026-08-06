@@ -609,6 +609,10 @@ async function sideQueryViaResponsesApi(
     tools: openaiTools ?? [],
     toolChoice: openaiToolChoice,
     ...(isGptFamilyModel(openaiModel) ? { reasoningEffort: 'low' } : {}),
+    // No UI renders a side query's thinking, and the summary would spend part
+    // of an output budget that reasoning tokens already strain (see the
+    // max_output_tokens floor below).
+    reasoningSummary: 'off',
     ...(route === 'chatgpt'
       ? { promptCacheKey: formatOpenAIPromptCacheKey(getSessionId()) }
       : {

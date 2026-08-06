@@ -7,8 +7,16 @@ import {
   type OpenAIReasoningItem,
 } from '@ant/model-provider'
 import { getValidChatGPTAuth } from './chatgptAuth.js'
-import type { ResponsesReasoningEffort } from './reasoning.js'
+import type {
+  ResponsesReasoningEffort,
+  ResponsesReasoningSummary,
+} from './reasoning.js'
+import {
+  getResponsesReasoningSummary,
+  isResponsesReasoningSummaryDisabled,
+} from './reasoning.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   createOpenAIResponseError,
   OpenAIRequestError,
@@ -28,7 +36,15 @@ type ResponsesRequest = {
   instructions?: string
   tools?: ResponsesTool[]
   tool_choice?: unknown
-  reasoning?: { effort: ResponsesReasoningEffort }
+  reasoning?: {
+    effort: ResponsesReasoningEffort
+    /**
+     * Opt-in for reasoning summaries. Omitted entirely, the stream carries no
+     * reasoning text — which is what made GPT turns look idle while the model
+     * was thinking. See getResponsesReasoningSummary.
+     */
+    summary?: ResponsesReasoningSummary
+  }
   text?: { verbosity: 'low' | 'medium' | 'high' }
   /**
    * Opt-in response fields. `reasoning.encrypted_content` is what makes the
@@ -231,11 +247,25 @@ export function buildResponsesRequest(params: {
   promptCacheKey?: string
   /** Generic `/responses` endpoints only — the ChatGPT backend rejects it. */
   maxOutputTokens?: number
+  /**
+   * Reasoning-summary detail, or `'off'` to skip the opt-in. Defaults to the
+   * user's `OPENAI_REASONING_SUMMARY` setting. Internal side queries pass
+   * `'off'`: nothing renders their thinking, and the summary would eat into an
+   * output budget that reasoning tokens already strain.
+   */
+  reasoningSummary?: ResponsesReasoningSummary | 'off'
 }): ResponsesRequest {
   const { input, instructions } = convertMessagesToResponsesInput(
     params.messages,
   )
   const tools = convertToolsToResponses(params.tools)
+  const reasoningSummary =
+    params.reasoningSummary === 'off'
+      ? undefined
+      : (params.reasoningSummary ??
+        (reasoningSummarySupported() && !isResponsesReasoningSummaryDisabled()
+          ? getResponsesReasoningSummary()
+          : undefined))
   return {
     model: params.model,
     stream: true,
@@ -248,7 +278,14 @@ export function buildResponsesRequest(params: {
       : {}),
     ...(params.reasoningEffort
       ? {
-          reasoning: { effort: params.reasoningEffort },
+          reasoning: {
+            effort: params.reasoningEffort,
+            // Asking for a summary is the only way the stream carries any
+            // reasoning text; a request without it reports nothing while the
+            // model thinks. Suppressed once an endpoint has rejected the
+            // field (unverified org, strict gateway) — see fetchResponsesStream.
+            ...(reasoningSummary ? { summary: reasoningSummary } : {}),
+          },
           include: [REASONING_ENCRYPTED_CONTENT_INCLUDE],
         }
       : {}),
@@ -689,6 +726,52 @@ export async function* adaptResponsesStreamToAnthropic(
   }
 }
 
+/**
+ * Set once an endpoint has rejected `reasoning.summary`, so the rest of the
+ * session stops paying a failed round-trip per turn to re-learn it.
+ *
+ * Not all `/responses` implementations accept the field: OpenAI requires
+ * organization verification for summarizers on its newest reasoning models,
+ * and third-party gateways vary. Losing the thinking display is a far better
+ * outcome than failing the turn, so a rejection degrades instead of throwing.
+ */
+let reasoningSummaryRejected = false
+
+function reasoningSummarySupported(): boolean {
+  return !reasoningSummaryRejected
+}
+
+/** Test-only: undo the process-wide latch between cases. */
+export function _resetReasoningSummarySupportForTesting(): void {
+  reasoningSummaryRejected = false
+}
+
+/**
+ * Whether a failed request looks like the endpoint objecting to
+ * `reasoning.summary` specifically, rather than to anything else in the body.
+ */
+function isReasoningSummaryRejection(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  if (!message.includes('summary')) return false
+  return (
+    message.includes('unknown parameter') ||
+    message.includes('unsupported parameter') ||
+    message.includes('unsupported value') ||
+    message.includes('invalid_request') ||
+    message.includes('must be verified') ||
+    message.includes('organization must be verified') ||
+    message.includes('not supported')
+  )
+}
+
+/** Strip `reasoning.summary`, leaving the rest of the request untouched. */
+function withoutReasoningSummary(request: ResponsesRequest): ResponsesRequest {
+  if (!request.reasoning?.summary) return request
+  const { summary: _dropped, ...reasoning } = request.reasoning
+  return { ...request, reasoning }
+}
+
 async function fetchResponsesStream(params: {
   url: string
   headers: Record<string, string>
@@ -702,45 +785,69 @@ async function fetchResponsesStream(params: {
   const idleTimeoutMs =
     Number.parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS ?? '', 10) ||
     90_000
-  const body = JSON.stringify(params.request)
+  // Read at attempt time, not captured once: the summary-rejection path below
+  // reassigns it and re-runs the ladder with a smaller body.
+  let request = params.request
 
-  const prepared = await retryOpenAIRequest(
-    async () => {
-      const controller = new AbortController()
-      const forwardAbort = () => controller.abort(params.signal.reason)
-      if (params.signal.aborted) forwardAbort()
-      else params.signal.addEventListener('abort', forwardAbort, { once: true })
-      const cleanup = () =>
-        params.signal.removeEventListener('abort', forwardAbort)
+  const attempt = async () => {
+    const body = JSON.stringify(request)
+    const controller = new AbortController()
+    const forwardAbort = () => controller.abort(params.signal.reason)
+    if (params.signal.aborted) forwardAbort()
+    else params.signal.addEventListener('abort', forwardAbort, { once: true })
+    const cleanup = () =>
+      params.signal.removeEventListener('abort', forwardAbort)
 
-      try {
-        const response = await fetchFn(params.url, {
-          method: 'POST',
-          headers: params.headers,
-          body,
-          signal: controller.signal,
-          ...getProxyFetchOptions({ forAnthropicAPI: false }),
-        })
-        if (!response.ok) {
-          throw await createOpenAIResponseError(response, params.label)
-        }
-        const stream = parseSSE(response, {
-          signal: controller.signal,
-          abort: reason => controller.abort(reason),
-          idleTimeoutMs,
-          label: params.label,
-        })
-        const iterator = stream[Symbol.asyncIterator]()
-        const first = await iterator.next()
-        return { controller, cleanup, first, iterator }
-      } catch (error) {
-        cleanup()
-        if (!controller.signal.aborted) controller.abort(error)
-        throw error
+    try {
+      const response = await fetchFn(params.url, {
+        method: 'POST',
+        headers: params.headers,
+        body,
+        signal: controller.signal,
+        ...getProxyFetchOptions({ forAnthropicAPI: false }),
+      })
+      if (!response.ok) {
+        throw await createOpenAIResponseError(response, params.label)
       }
-    },
-    { signal: params.signal },
-  )
+      const stream = parseSSE(response, {
+        signal: controller.signal,
+        abort: reason => controller.abort(reason),
+        idleTimeoutMs,
+        label: params.label,
+      })
+      const iterator = stream[Symbol.asyncIterator]()
+      const first = await iterator.next()
+      return { controller, cleanup, first, iterator }
+    } catch (error) {
+      cleanup()
+      if (!controller.signal.aborted) controller.abort(error)
+      throw error
+    }
+  }
+
+  const runLadder = () => retryOpenAIRequest(attempt, { signal: params.signal })
+
+  let prepared: Awaited<ReturnType<typeof runLadder>>
+  try {
+    prepared = await runLadder()
+  } catch (error) {
+    // A 400 is not retryable, so the ladder above has already given up. If the
+    // endpoint objected to `reasoning.summary` in particular, drop it and try
+    // once more: losing the thinking display beats losing the turn.
+    if (
+      !request.reasoning?.summary ||
+      !isReasoningSummaryRejection(error) ||
+      params.signal.aborted
+    ) {
+      throw error
+    }
+    reasoningSummaryRejected = true
+    logForDebugging(
+      `[OpenAI] ${params.label} rejected reasoning.summary; retrying without it and suppressing it for the rest of the session. Set OPENAI_REASONING_SUMMARY=off to skip this probe.`,
+    )
+    request = withoutReasoningSummary(request)
+    prepared = await runLadder()
+  }
 
   return {
     async *[Symbol.asyncIterator]() {
