@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import { readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 
 const sourceRoot = resolve(import.meta.dir, '..', '..')
 
 function readSource(relativePath: string): string {
   return readFileSync(resolve(sourceRoot, relativePath), 'utf8')
+}
+
+function sourceExists(relativePath: string): boolean {
+  return existsSync(resolve(sourceRoot, relativePath))
 }
 
 // REPL.tsx was split into screens/repl/ (S7-4d). A negative assertion that
@@ -38,13 +42,17 @@ describe('official integration registration', () => {
 
   test('does not run official marketplace installation during REPL startup', () => {
     const replSource = readReplSources()
-    const hookSource = readSource(
-      'hooks/useOfficialMarketplaceNotification.tsx',
-    )
 
     expect(replSource).not.toContain('useOfficialMarketplaceNotification')
-    expect(hookSource).not.toContain('checkAndInstallOfficialMarketplace')
-    expect(hookSource).not.toContain('officialMarketplaceStartupCheck')
+    // The hook and its startup check are gone entirely, which is a stronger
+    // guarantee than asserting their contents. Pin the absence so a
+    // reintroduction has to be deliberate.
+    expect(sourceExists('hooks/useOfficialMarketplaceNotification.tsx')).toBe(
+      false,
+    )
+    expect(
+      sourceExists('utils/plugins/officialMarketplaceStartupCheck.ts'),
+    ).toBe(false)
   })
 
   test('does not register the Anthropic Slack diagnostic skill', () => {

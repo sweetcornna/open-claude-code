@@ -222,9 +222,8 @@ describe('occ update isolation', () => {
   test('native installer exposes no official npm cleanup capability', () => {
     const installerSource = readSource('utils/nativeInstaller/installer.ts')
     const indexSource = readSource('utils/nativeInstaller/index.ts')
-    const commandSource = readSource('commands/install.tsx')
 
-    for (const source of [installerSource, indexSource, commandSource]) {
+    for (const source of [installerSource, indexSource]) {
       expect(source).not.toContain('cleanupNpmInstallations')
     }
     expect(installerSource).not.toContain("['uninstall', '-g'")

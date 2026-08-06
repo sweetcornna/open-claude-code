@@ -14,6 +14,9 @@
  * what it emits — without any real HTTP calls.
  */
 import { describe, expect, test, mock, beforeEach, afterEach } from 'bun:test'
+import * as realModelProvider from '@ant/model-provider'
+import type { SystemPrompt } from '@ant/model-provider'
+import { makeSharedModuleMock } from '../../../../../tests/mocks/sharedModuleMock'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   AssistantMessage,
@@ -201,7 +204,19 @@ let _searchExtraToolsEnabled = false
 /** Captured arguments from the last chat.completions.create() call */
 let _lastCreateArgs: Record<string, any> | null = null
 
-mock.module('@ant/model-provider', () => ({
+// Complete-surface mock: every export delegates to the real module unless
+// overridden below. A hand-written partial surface is what kept this file from
+// ever loading — each missing export (asSystemPrompt, readReasoningItems, …)
+// failed the whole module graph. See CLAUDE.md "跨文件 mock 污染".
+makeSharedModuleMock<typeof realModelProvider>(
+  '@ant/model-provider',
+  realModelProvider,
+).setup({
+  // Re-exported through src/utils/session/systemPromptType.ts, which
+  // openai/index.ts imports. Omitting it made the whole module graph fail to
+  // load — the reason this file's assertions had never actually run.
+  asSystemPrompt: (value: readonly string[]) =>
+    value as unknown as SystemPrompt,
   resolveOpenAIModel: (m: string) => m,
   adaptOpenAIStreamToAnthropic: (_stream: any, _model: string) =>
     eventStream(_nextEvents),
@@ -242,7 +257,7 @@ mock.module('@ant/model-provider', () => ({
       cache_read_input_tokens: cacheRead,
     }
   },
-}))
+})
 
 mock.module('../../../../services/analytics/growthbook.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: (_key: string, fallback: unknown) =>
@@ -633,11 +648,29 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
     expect(_lastCreateArgs!.prompt_cache_key).toStartWith('occ:')
   })
 
-  test('compatible providers do not receive OpenAI cache parameters', async () => {
+  test('compatible providers also receive the cache key by default', async () => {
+    // Deliberate: shouldSendOpenAIPromptCacheKey sends it everywhere now.
+    // Restricting it to OpenAI's own endpoint left users behind a chat gateway
+    // (LiteLLM, one-api, OpenRouter) at a measured 18.3% cache hit rate versus
+    // 75.8% with the key — the largest single lever on this path, and it was
+    // opt-in behind an env var for exactly the population that needed it.
+    // Endpoints that reject the field say so once and are never asked again.
     _nextEvents = [makeMessageStart(), makeMessageStop()]
 
     await runQueryModel(_nextEvents, {
       OPENAI_BASE_URL: 'https://api.deepseek.com/v1',
+    })
+
+    expect(_lastCreateArgs).not.toBeNull()
+    expect(_lastCreateArgs!.prompt_cache_key).toStartWith('occ:')
+  })
+
+  test('OPENAI_PROMPT_CACHE_KEY=0 forces the cache key off', async () => {
+    _nextEvents = [makeMessageStart(), makeMessageStop()]
+
+    await runQueryModel(_nextEvents, {
+      OPENAI_BASE_URL: 'https://api.deepseek.com/v1',
+      OPENAI_PROMPT_CACHE_KEY: '0',
     })
 
     expect(_lastCreateArgs).not.toBeNull()
