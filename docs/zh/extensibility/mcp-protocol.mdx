@@ -51,10 +51,10 @@ Claude Code 的 MCP 实现区分 **内置 MCP 服务器** 和 **外部 MCP 服�
 | 服务器 | 名称 | 包路径 | Feature Flag | 启用方式 |
 |--------|------|--------|-------------|---------|
 | Computer Use | `computer-use` | `@ant/computer-use-mcp` | `CHICAGO_MCP` | GrowthBook gate + macOS + interactive |
-| Chrome DevTools | `chrome-devtools` | `chrome-devtools-mcp`（npm 依赖） | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `chromeDevtoolsDefaultEnabled` |
+| Browser | `browser-use` | `browser-use`（uvx） | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `browserToolDefaultEnabled` |
 | VSCode SDK | `claude-vscode` | — | — | IDE 嵌入模式 (type:`sdk`) |
 
-注意「内置」不等于「同进程」：Computer Use 走 `InProcessTransport`，而 Chrome DevTools 是普通的 stdio 子进程（Google 的 `chrome-devtools-mcp`），只是配置由 occ 自动注入。
+注意「内置」不等于「同进程」：Computer Use 走 `InProcessTransport`，而浏览器工具是普通的 stdio 子进程（`browser-use`，经 uvx 启动），只是配置由 occ 自动注入。
 
 #### InProcessTransport：零开销同进程通信
 
@@ -371,13 +371,13 @@ getRemoteMcpServerConnectionBatchSize()  // 默认 20
 
 | 维度 | 内置 MCP | 外部 MCP |
 |------|---------|---------|
-| **Transport** | `InProcessTransport`（Computer Use）或 stdio（Chrome DevTools） | stdio / SSE / HTTP / WebSocket |
+| **Transport** | `InProcessTransport`（Computer Use）或 stdio（ブラウザツール） | stdio / SSE / HTTP / WebSocket |
 | **配置来源** | `setupComputerUseMCP()` / `setupChromeDevtools()` 等动态注册 | `~/.occ.json` / `.mcp.json` / 插件 / claude.ai |
 | **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
 | **进程模型** | 同进程，零开销 | 子进程（stdio）或网络连接 |
 | **名称保护** | 保留名，用户不可添加同名 | 自由命名（字母数字 + `-_`） |
 | **生命周期** | 随 CLI 启停 | 连接缓存 + 按需重连 |
-| **权限** | `allowedTools` 自动授权（Chrome DevTools 只放行 9 个只读工具，其余照常确认） | `passthrough` 进入权限确认 |
+| **权限** | `allowedTools` 自动授权（浏览器工具只放行 4 个纯观察类工具，其余照常确认） | `passthrough` 进入权限确认 |
 | **Feature Flag** | `CHICAGO_MCP`（Computer Use）等 | 无（始终可用） |
 | **工具发现** | 与外部相同（MCP 协议） | 标准 MCP `tools/list` |
 | **清理** | `inProcessServer.close()` | 信号升级策略 SIGINT→SIGTERM→SIGKILL |
@@ -394,6 +394,6 @@ getRemoteMcpServerConnectionBatchSize()  // 默认 20
 | `src/services/mcp/useManageMCPConnections.ts` | React Hook：连接生命周期、重连 |
 | `src/utils/computerUse/mcpServer.ts` | Computer Use MCP Server 构建 |
 | `src/utils/computerUse/setup.ts` | Computer Use 动态注册 |
-| `src/utils/chromeDevtools/setup.ts` | Chrome DevTools MCP 动态注册（解析入口 + 连接参数 + allowedTools） |
+| `src/utils/browserUse/setup.ts` | Browser MCP 动态注册（解析入口 + 连接参数 + allowedTools） |
 | `src/tools/MCPTool/MCPTool.ts` | MCP 工具包装：统一 Tool 接口 |
 | `src/entrypoints/mcp.ts` | MCP server 入口（Claude Code 作为 MCP server） |

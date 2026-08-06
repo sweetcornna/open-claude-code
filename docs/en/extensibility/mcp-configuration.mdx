@@ -162,7 +162,7 @@ occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 The addition path performs these validations:
 
 1. **Name validation**: Allow only letters, numbers, hyphens, and underscores
-2. **Reserved-name check**: `chrome-devtools` is reserved; `computer-use` is reserved only when `computerUse.backend` is `builtin` (the default)
+2. **Reserved-name check**: `browser-use` is reserved; `computer-use` is reserved only when `computerUse.backend` is `builtin` (the default)
 3. **Enterprise-control check**: Reject additions in enterprise-managed mode
 4. **Schema validation**: Validate the configuration shape with Zod
 5. **Policy check**: Reject denylisted entries and validate the allowlist
@@ -306,7 +306,7 @@ Enablement conditions:
 - The session is interactive
 - GrowthBook gate `getChicagoEnabled()` returns true
 
-### Chrome DevTools MCP
+### Browser MCP (browser-use)
 
 ```typescript
 // Registered in main.tsx, similarly to Computer Use
@@ -315,14 +315,14 @@ dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
 ```
 
 Unlike Computer Use, this server does **not** run in-process: `mcpConfig` is an ordinary
-stdio configuration that spawns `node <chrome-devtools-mcp entry point>`. `allowedTools`
-contains only nine read-only tools; every other tool still requires permission confirmation.
+stdio configuration that spawns `uvx --from browser-use[cli] browser-use --mcp`. `allowedTools`
+contains only four observational tools; every other tool still requires permission confirmation.
 
 Enablement conditions:
-- The `--chrome` argument, `CLAUDE_CODE_ENABLE_CFC` environment variable, or `chromeDevtoolsDefaultEnabled` configuration
+- The `--chrome` argument, `CLAUDE_CODE_ENABLE_CFC` environment variable, or `browserToolDefaultEnabled` configuration
 - An interactive session, unless `--chrome` was provided explicitly
 
-See `docs/zh/features/chrome-devtools-mcp.md` for details.
+See `docs/zh/features/browser-use.md` for details.
 
 ### VSCode SDK MCP
 
@@ -334,7 +334,7 @@ Users cannot manually configure MCP servers with these reserved names:
 
 | Name | Purpose | Check condition |
 |------|---------|-----------------|
-| `chrome-devtools` | Chrome browser control | Always checked |
+| `browser-use` | Chrome browser control | Always checked |
 | `computer-use` | Desktop automation | Checked when the `CHICAGO_MCP` feature flag is enabled |
 | `claude-vscode` | VSCode IDE integration | Supplied by the SDK; bypasses the name check |
 
@@ -351,5 +351,5 @@ Reserved-name checks occur in two places:
 | `src/services/mcp/client.ts` | Connection management and transport selection |
 | `src/utils/plugins/mcpPluginIntegration.ts` | Plugin MCP configuration loading |
 | `src/utils/computerUse/setup.ts` | Computer Use dynamic registration |
-| `src/utils/chromeDevtools/common.ts` | Chrome DevTools MCP reserved name, tool inventory, and read-only allowlist |
+| `src/utils/browserUse/common.ts` | Browser MCP reserved name, tool inventory, and read-only allowlist |
 | `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK bidirectional notifications |

@@ -96,7 +96,7 @@ occ auth login
 **Feature Flag**: 无（`--chrome` 直接开启）
 
 ### 说明
-通过 Google 官方的 `chrome-devtools-mcp`（stdio MCP server）控制浏览器：导航、点击、填表、快照、截图、控制台/网络读取、性能 trace 与 Lighthouse。默认用 `--autoConnect` 附着到用户已经开着的 Chrome（需 144+），WSL/远程用 `OCC_CHROME_BROWSER_URL` 指向带 `--remote-debugging-port` 的 Chrome。
+通过 `browser-use`（stdio MCP server，经 uvx 启动）控制浏览器：读取页面状态、抽取内容、导航、点击、输入、滚动、标签与会话管理，以及把整个任务交给自主浏览 agent。需要本机装有 uv 与 Chrome/Chromium。
 
 旧的 Chrome 扩展 + native host 方案已删除 —— 它只认官方 Claude Code 的 host 身份，在 occ 里始终 fail-closed。
 
@@ -113,9 +113,9 @@ occ --chrome
 REPL 里 `/chrome` 看状态，`occ doctor` 看 Chrome 版本与连接模式。
 
 ### AI 可用工具
-工具全名为 `mcp__chrome-devtools__*`，默认 29 个。只读的 9 个（`take_snapshot` / `take_screenshot` / `list_pages` / 控制台与网络读取等）免确认；其余会改变浏览器状态的（`click` / `type_text` / `navigate_page` / `evaluate_script` / `upload_file` …）一律走权限确认。
+工具全名为 `mcp__browser-use__*`，默认 29 个。只读的 9 个（`take_snapshot` / `take_screenshot` / `list_pages` / 控制台与网络读取等）免确认；其余会改变浏览器状态的（`click` / `type_text` / `navigate_page` / `evaluate_script` / `upload_file` …）一律走权限确认。
 
-详见 `docs/features/chrome-devtools-mcp.md`。
+详见 `docs/features/browser-use.md`。
 
 ---
 

@@ -51,10 +51,10 @@ Claude Code の MCP 実装は、**内蔵 MCP サーバー**と**外部 MCP サ�
 | サーバー | 名前 | パッケージパス | Feature Flag | 有効化方法 |
 |----------|------|----------------|--------------|------------|
 | Computer Use | `computer-use` | `@ant/computer-use-mcp` | `CHICAGO_MCP` | GrowthBook gate + macOS + interactive |
-| Chrome DevTools | `chrome-devtools` | `chrome-devtools-mcp`（npm 依存） | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `chromeDevtoolsDefaultEnabled` |
+| Browser | `browser-use` | `browser-use`（uvx） | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `browserToolDefaultEnabled` |
 | VSCode SDK | `claude-vscode` | — | — | IDE 組み込みモード (type:`sdk`) |
 
-「内蔵」は「同一プロセス」と同義ではありません。Computer Use は `InProcessTransport` を使いますが、Chrome DevTools は通常の stdio 子プロセス（Google の `chrome-devtools-mcp`）です。occ が設定を自動注入するという点だけが内蔵です。
+「内蔵」は「同一プロセス」と同義ではありません。Computer Use は `InProcessTransport` を使いますが、ブラウザツールは通常の stdio 子プロセス（uvx 経由の `browser-use`）です。occ が設定を自動注入するという点だけが内蔵です。
 
 #### InProcessTransport: オーバーヘッドのない同一プロセス通信
 
@@ -371,13 +371,13 @@ getRemoteMcpServerConnectionBatchSize()  // 既定値 20
 
 | 観点 | 内蔵 MCP | 外部 MCP |
 |------|----------|----------|
-| **Transport** | `InProcessTransport`（Computer Use）または stdio（Chrome DevTools） | stdio / SSE / HTTP / WebSocket |
+| **Transport** | `InProcessTransport`（Computer Use）または stdio（ブラウザツール） | stdio / SSE / HTTP / WebSocket |
 | **設定ソース** | `setupComputerUseMCP()` / `setupChromeDevtools()` などによる動的登録 | `~/.occ.json` / `.mcp.json` / プラグイン / claude.ai |
 | **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
 | **プロセスモデル** | 同一プロセス、オーバーヘッドなし | 子プロセス（stdio）またはネットワーク接続 |
 | **名前の保護** | 予約名。ユーザーは同名を追加できない | 自由に命名可能（英数字 + `-_`） |
 | **ライフサイクル** | CLI とともに起動・停止 | 接続キャッシュ + 必要に応じて再接続 |
-| **権限** | `allowedTools` で自動許可（Chrome DevTools は 9 個の読み取り専用ツールだけを許可し、それ以外は通常どおり確認） | `passthrough` で権限確認へ入る |
+| **権限** | `allowedTools` で自動許可（ブラウザツールは 4 個の観察系ツールだけを許可し、それ以外は通常どおり確認） | `passthrough` で権限確認へ入る |
 | **Feature Flag** | `CHICAGO_MCP`（Computer Use）など | なし（常に利用可能） |
 | **ツール発見** | 外部と同じ（MCP プロトコル） | 標準 MCP `tools/list` |
 | **cleanup** | `inProcessServer.close()` | シグナル昇格 SIGINT→SIGTERM→SIGKILL |
@@ -394,6 +394,6 @@ getRemoteMcpServerConnectionBatchSize()  // 既定値 20
 | `src/services/mcp/useManageMCPConnections.ts` | React Hook: 接続ライフサイクル、再接続 |
 | `src/utils/computerUse/mcpServer.ts` | Computer Use MCP Server の構築 |
 | `src/utils/computerUse/setup.ts` | Computer Use の動的登録 |
-| `src/utils/chromeDevtools/setup.ts` | Chrome DevTools MCP の動的登録（エントリ解決 + 接続引数 + allowedTools） |
+| `src/utils/browserUse/setup.ts` | ブラウザ MCP の動的登録（uvx 検出 + 認証情報 + allowedTools） |
 | `src/tools/MCPTool/MCPTool.ts` | MCP ツールのラッパー: 共通 Tool インターフェース |
 | `src/entrypoints/mcp.ts` | MCP server エントリ（Claude Code が MCP server として動作） |

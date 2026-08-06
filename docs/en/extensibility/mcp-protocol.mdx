@@ -51,10 +51,10 @@ occ provides built-in MCP servers itself; users do not configure them manually. 
 | Server | Name | Package path | Feature Flag | Enablement |
 |--------|------|--------------|--------------|------------|
 | Computer Use | `computer-use` | `@ant/computer-use-mcp` | `CHICAGO_MCP` | GrowthBook gate + macOS + interactive |
-| Chrome DevTools | `chrome-devtools` | `chrome-devtools-mcp` (npm dependency) | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `chromeDevtoolsDefaultEnabled` |
+| Browser | `browser-use` | `browser-use` (via uvx) | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `browserToolDefaultEnabled` |
 | VSCode SDK | `claude-vscode` | — | — | Embedded IDE mode (type:`sdk`) |
 
-“Built-in” does not necessarily mean “in-process.” Computer Use uses `InProcessTransport`, while Chrome DevTools runs as a standard stdio child process (Google's `chrome-devtools-mcp`); occ merely injects its configuration automatically.
+“Built-in” does not necessarily mean “in-process.” Computer Use uses `InProcessTransport`, while Chrome DevTools runs as a standard stdio child process (Google's `browser-use`); occ merely injects its configuration automatically.
 
 #### InProcessTransport: zero-overhead, in-process communication
 
@@ -371,7 +371,7 @@ Local MCP servers using stdio are heavyweight child processes, so the default co
 
 | Dimension | Built-in MCP | External MCP |
 |-----------|--------------|--------------|
-| **Transport** | `InProcessTransport` (Computer Use) or stdio (Chrome DevTools) | stdio / SSE / HTTP / WebSocket |
+| **Transport** | `InProcessTransport` (Computer Use) or stdio (browser tools) | stdio / SSE / HTTP / WebSocket |
 | **Configuration source** | Dynamic registration through `setupComputerUseMCP()` / `setupChromeDevtools()`, etc. | `~/.occ.json` / `.mcp.json` / plugins / claude.ai |
 | **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
 | **Process model** | Same process, zero overhead | Child process (stdio) or network connection |
@@ -394,6 +394,6 @@ Local MCP servers using stdio are heavyweight child processes, so the default co
 | `src/services/mcp/useManageMCPConnections.ts` | React Hook: connection lifecycle and reconnection |
 | `src/utils/computerUse/mcpServer.ts` | Computer Use MCP Server construction |
 | `src/utils/computerUse/setup.ts` | Computer Use dynamic registration |
-| `src/utils/chromeDevtools/setup.ts` | Chrome DevTools MCP dynamic registration (entry-point resolution + connection arguments + allowedTools) |
+| `src/utils/browserUse/setup.ts` | Browser MCP dynamic registration (entry-point resolution + connection arguments + allowedTools) |
 | `src/tools/MCPTool/MCPTool.ts` | MCP tool wrapper: unified Tool interface |
 | `src/entrypoints/mcp.ts` | MCP server entry point (Claude Code acting as an MCP server) |
