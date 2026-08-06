@@ -4,6 +4,10 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.26.0 - 2026-08-05
+
+- **DeepSeek 会话默认跑 `max` effort，上下文按 1M 算**。两项都只在 DeepSeek 门控内生效，其他 OpenAI 兼容端点（GLM / Kimi / 千问 / MiMo / 本地 vLLM）请求体逐字节不变。**effort**：DeepSeek 的梯子只有三级（`low`/`high`/`max`），不传参时是 `high`，occ 早先也就跟着跑 `high`。改成 `max` 的理由是从默认到顶只差一步，而不是五档命名暗示的那种长爬升 —— 而「高强度 agent 场景」正是这个工具的全部工作量。只有地板抬高了：`/effort` 和 `CLAUDE_CODE_EFFORT_LEVEL` 仍然优先，想跑便宜档说一声就有；thinking 关闭时照旧不发这个字段，这也顺带让新默认不会落到不认它的旧 checkpoint 上。**上下文**：DeepSeek V4 是 1M 上下文族，而第三方模型探测不到窗口时的兜底是 200k —— 差 5 倍，直接后果是会话在还剩八成窗口时就开始 auto-compact。现在模型名含 `deepseek` 即按 1M 计，贯通 auto-compact 阈值、硬阻断线、statusline 的 `ctx:%` 和 `/context`。这一项**只按模型名判定、不看 baseURL**（和请求路径的门控不同）：窗口解析对所有 provider 都会跑，残留一个指向 DeepSeek 的 `OPENAI_BASE_URL` 不该把 1M 窗口发给 Anthropic 会话。网关把模型改名到认不出来时会落回 200k，`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 就是为这种情况准备的纠正入口；部署实际提供的窗口更小时用 `CLAUDE_CODE_DISABLE_1M_CONTEXT` 退回默认。
+
 ## 2.25.0 - 2026-08-05
 
 - **国产模型：一个 API Key 配的是整个供应商，不再是一个模型**。原来的流程是「选供应商 → 选计费方式 → **选一个模型** → 填 Key」，保存时把选中的那个模型同时写进 haiku/sonnet/opus 三个档位键。也就是说一把 Key 只换来一个模型：三个档位指向同一个 id，想换成同一家的另一个模型得重新走一遍 `/login`。现在**没有选模型这一步** —— 填完 Key，该供应商的所有模型立刻都能用，`/model` 里直接列出完整模型表（带官方标签、价格、上下文窗口），随时切换。四个档位别名按 preset 映射到各自对应的模型：DeepSeek 的 `haiku` 是 V4 Flash，`sonnet`/`opus`/`fable` 是 V4 Pro；GLM 的 `haiku` 是 4.7-Flash、`sonnet` 是 4.7、`opus`/`fable` 是 5.1；千问和 MiMo 同理。有两个键是**刻意不写**的，也是老行为的成因所在：`OPENAI_MODEL` 的优先级压过四个档位别名**和** `/model <具体 id>`，写了它切模型就是无效操作；`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 是单个全局值，描述不了一份混着不同窗口的模型表（GLM 的 203K 和 205K 就挨在一起），现在改为按模型从 preset 表查真实窗口，排在环境变量覆盖**之下** —— 那个键仍然是唯一的用户纠正入口。
