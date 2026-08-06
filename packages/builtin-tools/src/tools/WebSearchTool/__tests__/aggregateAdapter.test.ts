@@ -38,7 +38,7 @@ const ENHANCER_HITS: SearchResult[] = [
 ]
 
 describe('mergeSearchLanes', () => {
-  test('keeps lane order and drops URLs a earlier lane already had', () => {
+  test('gives lane 0 rank 1 and drops URLs an earlier lane already had', () => {
     const merged = mergeSearchLanes([PRIMARY_HITS, ENHANCER_HITS], 8)
 
     expect(merged.map(r => r.url)).toEqual([
@@ -46,6 +46,45 @@ describe('mergeSearchLanes', () => {
       'https://shared.example/page',
       'https://b.example/two',
     ])
+  })
+
+  test('interleaves lanes instead of draining them in order', () => {
+    const merged = mergeSearchLanes(
+      [
+        [
+          { title: 'p1', url: 'https://p.example/1' },
+          { title: 'p2', url: 'https://p.example/2' },
+        ],
+        [
+          { title: 'q1', url: 'https://q.example/1' },
+          { title: 'q2', url: 'https://q.example/2' },
+        ],
+      ],
+      4,
+    )
+
+    expect(merged.map(r => r.url)).toEqual([
+      'https://p.example/1',
+      'https://q.example/1',
+      'https://p.example/2',
+      'https://q.example/2',
+    ])
+  })
+
+  test('a verbose lane cannot starve a later one out of the budget', () => {
+    // The shape that made WebSearch return irrelevant hits: a grounding lane
+    // with plenty of low-value results ahead of the SERP lane holding the
+    // actual answer. That answer must still make the cut.
+    const grounding = Array.from({ length: 8 }, (_, i) => ({
+      title: 'github.com',
+      url: `https://github.com/owner/repo/issues/${i}`,
+    }))
+    const serp = [{ title: 'The answer', url: 'https://docs.example/answer' }]
+
+    const merged = mergeSearchLanes([grounding, serp], 8)
+
+    expect(merged.map(r => r.url)).toContain('https://docs.example/answer')
+    expect(merged[1]?.url).toBe('https://docs.example/answer')
   })
 
   test('normalizes the URL it hands back', () => {
@@ -59,6 +98,27 @@ describe('mergeSearchLanes', () => {
 
   test('honours the result limit', () => {
     expect(mergeSearchLanes([PRIMARY_HITS, ENHANCER_HITS], 2)).toHaveLength(2)
+  })
+
+  test('drains the remaining lanes once the others are exhausted', () => {
+    const merged = mergeSearchLanes(
+      [
+        [{ title: 'only', url: 'https://short.example/1' }],
+        [
+          { title: 'a', url: 'https://long.example/1' },
+          { title: 'b', url: 'https://long.example/2' },
+          { title: 'c', url: 'https://long.example/3' },
+        ],
+      ],
+      8,
+    )
+
+    expect(merged.map(r => r.url)).toEqual([
+      'https://short.example/1',
+      'https://long.example/1',
+      'https://long.example/2',
+      'https://long.example/3',
+    ])
   })
 })
 
@@ -78,7 +138,7 @@ describe('AggregateSearchAdapter', () => {
     ])
   })
 
-  test('merges several enhancer lanes in order', async () => {
+  test('interleaves several enhancer lanes behind the primary', async () => {
     const adapter = new AggregateSearchAdapter({
       primary: lane(PRIMARY_HITS),
       enhancers: [
@@ -91,8 +151,8 @@ describe('AggregateSearchAdapter', () => {
 
     expect(results.map(r => r.url)).toEqual([
       'https://a.example/one',
-      'https://shared.example/page',
       'https://g.example/1',
+      'https://shared.example/page',
       'https://b.example/two',
     ])
   })

@@ -11,7 +11,8 @@
  * server-side web search at all, so unlike the main loop (see
  * openai/wireProtocol.ts) there is nothing to negotiate here.
  *
- * Auth routes, both reused from src/services/api/openai/:
+ * Auth routes, both reused from src/services/api/openai/ and picked by
+ * `shouldUseChatGPTAuth` (which also covers the third-party-endpoint case):
  *   - ChatGPT subscription (`OPENAI_AUTH_MODE=chatgpt`) → the Codex backend
  *     via createChatGPTResponsesStream. That backend REJECTS
  *     `max_output_tokens`, so this adapter simply does not pass the field to
@@ -26,12 +27,17 @@ import {
   hasStoredChatGPTAuthSync,
   isChatGPTAuthEnabled,
 } from 'src/services/api/openai/chatgptAuth.js'
+import { isOfficialOpenAIBaseURL } from 'src/services/api/openai/openaiShared.js'
 import { resolveOpenAIMaxTokens } from 'src/services/api/openai/requestBody.js'
 import {
   buildResponsesRequest,
   createChatGPTResponsesStream,
   createOpenAIResponsesStream,
 } from 'src/services/api/openai/responsesAdapter.js'
+import {
+  CHATGPT_CODEX_FAST_MODEL,
+  isChatGPTCodexReasoningModel,
+} from 'src/utils/model/chatgptModels.js'
 import { getMainLoopModel } from 'src/utils/model/model.js'
 import { filterResultsByDomains } from './domainFilter.js'
 import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
@@ -178,6 +184,58 @@ export function extractCodexSearchResults(
   return [...collected.values()]
 }
 
+/**
+ * Which of the two auth routes this search takes.
+ *
+ * The API-key route sends the request to `<OPENAI_BASE_URL>/responses`, and
+ * only OpenAI runs the built-in `web_search` tool there. So a stored ChatGPT
+ * login also wins whenever the configured base URL is NOT OpenAI's, whether or
+ * not this adapter is the extra source: that login is the reason the `codex`
+ * source counts as connected at all (hasCodexSearchCredentials), and routing
+ * the lane somewhere it cannot work makes that credential a lie.
+ *
+ * The bug this closes was silent, which is why it outlived the base-URL guard
+ * added to the credential probe. Session on DeepSeek + a ChatGPT login on disk:
+ * the login switched the source on, the source became the session's PRIMARY
+ * search lane, and the lane was then built to follow OPENAI_BASE_URL to
+ * api.deepseek.com. That endpoint implements the Responses API and genuinely
+ * runs a search, but reports neither `url_citation` annotations nor
+ * `action.sources`, so every query returned zero results and no error — while
+ * the ChatGPT credential that could have served it sat unused.
+ *
+ * Official-endpoint users are unaffected: with an OpenAI base URL the extra
+ * clause is false and the route is exactly what it was.
+ */
+export function shouldUseChatGPTAuth(forceChatGPTAuth: boolean): boolean {
+  if (isChatGPTAuthEnabled()) return true
+  if (!hasStoredChatGPTAuthSync()) return false
+  return (
+    forceChatGPTAuth || !isOfficialOpenAIBaseURL(process.env.OPENAI_BASE_URL)
+  )
+}
+
+/**
+ * Model for the search turn.
+ *
+ * The two backends do NOT serve the same catalogue, exactly as with Gemini's
+ * two routes (see resolveGeminiSearchModel). The Codex backend serves its own
+ * models only and rejects anything else outright — "The 'deepseek-v4-flash'
+ * model is not supported when using Codex with a ChatGPT account", HTTP 400,
+ * which the aggregator then silences into yet another empty lane. The
+ * main-loop model is the right answer only on the API-key route, where the
+ * endpoint is whatever OPENAI_BASE_URL points at.
+ *
+ * A search turn only has to call the tool and emit citations, so the cheap tier
+ * is the sane default when the session's model is not one this backend knows.
+ */
+export function resolveCodexSearchModel(useChatGPTAuth: boolean): string {
+  const mapped = resolveOpenAIModel(getMainLoopModel())
+  if (!useChatGPTAuth) return mapped
+  return isChatGPTCodexReasoningModel(mapped)
+    ? mapped
+    : CHATGPT_CODEX_FAST_MODEL
+}
+
 export interface CodexSearchAdapterOptions {
   /**
    * Prefer the ChatGPT/Codex OAuth route regardless of `OPENAI_AUTH_MODE`.
@@ -188,6 +246,10 @@ export interface CodexSearchAdapterOptions {
    * OPENAI_API_KEY alone as "connected", so an unconditional force would leave
    * that user with a source the panel calls on and a lane that can only throw.
    * No ChatGPT login on disk → fall back to the API-key `/responses` route.
+   *
+   * Leaving it false no longer means "always take the API-key route" — see
+   * `shouldUseChatGPTAuth`, which also prefers a stored login when the
+   * configured base URL is not OpenAI's.
    */
   forceChatGPTAuth?: boolean
   /** Test seam: drive the stream without a network. */
@@ -219,11 +281,9 @@ export class CodexSearchAdapter implements WebSearchAdapter {
       })
     }
 
-    const useChatGPTAuth =
-      isChatGPTAuthEnabled() ||
-      (this.forceChatGPTAuth && hasStoredChatGPTAuthSync())
+    const useChatGPTAuth = shouldUseChatGPTAuth(this.forceChatGPTAuth)
     const request = buildResponsesRequest({
-      model: resolveOpenAIModel(getMainLoopModel()),
+      model: resolveCodexSearchModel(useChatGPTAuth),
       messages: [
         { role: 'system', content: SEARCH_SYSTEM_PROMPT },
         {

@@ -55,10 +55,54 @@ describe('extractGeminiSearchResults', () => {
         snippet: 'RRF fuses rankings.',
       },
       {
+        // The one sentence citing this source was already spoken for by
+        // REDIRECT_A, and it does not describe this page — no snippet beats a
+        // borrowed one.
         title: 'learn.microsoft.com',
         url: REDIRECT_B,
-        snippet: 'RRF fuses rankings.',
+        snippet: undefined,
       },
+    ])
+  })
+
+  test('never repeats one answer segment across several sources', () => {
+    const results = extractGeminiSearchResults([GROUNDED_CHUNK])
+    const snippets = results
+      .map(result => result.snippet)
+      .filter((snippet): snippet is string => Boolean(snippet))
+
+    expect(new Set(snippets).size).toBe(snippets.length)
+  })
+
+  test('gives each source its own segment when the answer supplies enough', () => {
+    const results = extractGeminiSearchResults([
+      {
+        candidates: [
+          {
+            groundingMetadata: {
+              groundingChunks: [
+                { web: { uri: REDIRECT_A, title: 'a' } },
+                { web: { uri: REDIRECT_B, title: 'b' } },
+              ],
+              groundingSupports: [
+                {
+                  segment: { text: 'First claim.' },
+                  groundingChunkIndices: [0, 1],
+                },
+                {
+                  segment: { text: 'Second claim.' },
+                  groundingChunkIndices: [1],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ])
+
+    expect(results.map(result => result.snippet)).toEqual([
+      'First claim.',
+      'Second claim.',
     ])
   })
 

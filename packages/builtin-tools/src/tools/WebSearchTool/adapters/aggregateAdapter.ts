@@ -5,8 +5,9 @@
  * layer (Anthropic `api`, OpenAI `codex`, Gemini grounding) *plus* every
  * enabled extra source (keyless `free`, and any OAuth-connected provider
  * search) in parallel, then returns one merged list. The extra sources are
- * enhancements, not fallbacks: the official lane is authoritative and ordered
- * first, and the others contribute the pages it missed.
+ * enhancements, not fallbacks: the official lane is authoritative and takes
+ * rank 1, and the others contribute the pages it missed. Past rank 1 the lanes
+ * interleave rather than draining in order — see mergeSearchLanes for why.
  *
  * Latency discipline — a scraping lane can be much slower than a provider API:
  *   - All lanes start at the same instant.
@@ -81,10 +82,25 @@ async function withGrace(
 }
 
 /**
- * Merge lanes in priority order: the first lane to contribute a URL owns its
- * position, later lanes only append pages nobody had yet. Dedup is by the
- * stack-wide normalized URL, so campaign parameters and trailing slashes do
- * not smuggle the same page in twice.
+ * Interleave the lanes round-robin, in priority order within each round: lane 0
+ * still owns rank 1, but every lane places its next-best hit before any lane
+ * places its second. Dedup is by the stack-wide normalized URL, so campaign
+ * parameters and trailing slashes do not smuggle the same page in twice.
+ *
+ * Round-robin rather than "drain lane 0, then lane 1, …" because the lanes do
+ * not return the same KIND of thing, and the priority order is a panel order
+ * (searchSources.ts) rather than a quality ranking. A provider grounding lane
+ * returns the sources its model happened to cite while composing an answer —
+ * domain-shaped titles, few hits, and whatever the answer wandered through;
+ * the free lane returns an actually ranked SERP. Draining in order let a
+ * grounding lane spend the whole `limit` and truncate the SERP lane away
+ * entirely, which is how a search for "Zod v4 strictObject usage" returned six
+ * GitHub issue threads and never `zod.dev/api?id=zstrictobject` — that page was
+ * rank 1 of the lane that got cut.
+ *
+ * Interleaving keeps the "official lane is authoritative and ordered first"
+ * contract (its top hit is still the overall top hit) while making it
+ * impossible for any one lane to starve the others.
  */
 export function mergeSearchLanes(
   lanes: SearchResult[][],
@@ -92,14 +108,25 @@ export function mergeSearchLanes(
 ): SearchResult[] {
   const merged: SearchResult[] = []
   const seen = new Set<string>()
+  const cursors = lanes.map(() => 0)
 
-  for (const lane of lanes) {
-    for (const result of lane) {
-      if (!result?.url) continue
-      const key = normalizeUrlForDedup(result.url)
-      if (!key || seen.has(key)) continue
-      seen.add(key)
-      merged.push({ ...result, url: key })
+  let placedThisRound = true
+  while (merged.length < limit && placedThisRound) {
+    placedThisRound = false
+    for (const [laneIndex, lane] of lanes.entries()) {
+      // Take this lane's next result that nobody has claimed yet, skipping
+      // over the ones an earlier lane already placed.
+      while ((cursors[laneIndex] as number) < lane.length) {
+        const result = lane[cursors[laneIndex] as number]
+        cursors[laneIndex] = (cursors[laneIndex] as number) + 1
+        if (!result?.url) continue
+        const key = normalizeUrlForDedup(result.url)
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        merged.push({ ...result, url: key })
+        placedThisRound = true
+        break
+      }
       if (merged.length >= limit) return merged
     }
   }

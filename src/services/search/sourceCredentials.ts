@@ -94,9 +94,16 @@ export function hasGeminiSearchCredentials(): boolean {
  *
  * The base-URL check is deliberately strict (see `isOfficialOpenAIBaseURL`):
  * a gateway that genuinely proxies OpenAI's web_search is indistinguishable
- * from one that does not, so the conservative answer is "off", and
- * `webSearchSources.codex = true` in settings is the escape hatch for users who
- * know their proxy passes it through.
+ * from one that does not, so the conservative answer is "off". There is no
+ * settings escape hatch — `isSourceEnabled` treats an explicit `true` as "use
+ * this when it works", never as a capability override — so the remedy is to log
+ * in with ChatGPT (which the first branch then honours) or point the endpoint at
+ * OpenAI.
+ *
+ * The ChatGPT branch is a promise the lane has to keep: `CodexSearchAdapter`
+ * routes to the Codex backend whenever the base URL is not OpenAI's, precisely
+ * so the login counted here is the login the search uses. Loosening either side
+ * alone re-opens the silent-empty-results hole above.
  */
 export function hasCodexSearchCredentials(): boolean {
   // A ChatGPT/Codex login authenticates against OpenAI's own backend by

@@ -28,9 +28,18 @@ const chatGPTAuthMock = makeSharedModuleMock(
 afterAll(() => chatGPTAuthMock.reset())
 
 // Imported after the mock is installed so the adapter binds the stubbed probes.
-const { CodexSearchAdapter, extractCodexSearchResults } = await import(
-  '../adapters/codexAdapter'
-)
+const {
+  CodexSearchAdapter,
+  extractCodexSearchResults,
+  resolveCodexSearchModel,
+  shouldUseChatGPTAuth,
+} = await import('../adapters/codexAdapter')
+
+/** The file-wide default the rest of the suite relies on: no ChatGPT login. */
+const NO_CHATGPT_LOGIN = {
+  hasStoredChatGPTAuthSync: () => false,
+  isChatGPTAuthEnabled: () => false,
+}
 
 // Canned Responses API events. Shapes taken from the three places the API
 // reports citations: the streamed annotation, the web_search_call item, and
@@ -88,6 +97,95 @@ const COMPLETED_EVENT = {
 function sseBody(events: unknown[]): string {
   return `${events.map(event => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\n`
 }
+
+describe('shouldUseChatGPTAuth', () => {
+  const originalBaseURL = process.env.OPENAI_BASE_URL
+
+  afterEach(() => {
+    if (originalBaseURL === undefined) delete process.env.OPENAI_BASE_URL
+    else process.env.OPENAI_BASE_URL = originalBaseURL
+    chatGPTAuthMock.set(NO_CHATGPT_LOGIN)
+  })
+
+  test('takes the Codex backend when OPENAI_AUTH_MODE says so', () => {
+    chatGPTAuthMock.set({
+      hasStoredChatGPTAuthSync: () => false,
+      isChatGPTAuthEnabled: () => true,
+    })
+
+    expect(shouldUseChatGPTAuth(false)).toBe(true)
+  })
+
+  test('stays on the API-key route without a stored login', () => {
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com'
+
+    expect(shouldUseChatGPTAuth(false)).toBe(false)
+    expect(shouldUseChatGPTAuth(true)).toBe(false)
+  })
+
+  test('prefers a stored login over a third-party endpoint', () => {
+    // The regression: this lane used to follow OPENAI_BASE_URL to an endpoint
+    // that runs the search but reports no citations, so it returned zero
+    // results and no error — while the login that switched the source on in
+    // the first place sat unused.
+    chatGPTAuthMock.set({
+      hasStoredChatGPTAuthSync: () => true,
+      isChatGPTAuthEnabled: () => false,
+    })
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com'
+
+    expect(shouldUseChatGPTAuth(false)).toBe(true)
+  })
+
+  test('leaves the official endpoint on the API-key route', () => {
+    chatGPTAuthMock.set({
+      hasStoredChatGPTAuthSync: () => true,
+      isChatGPTAuthEnabled: () => false,
+    })
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+
+    expect(shouldUseChatGPTAuth(false)).toBe(false)
+    // …unless this adapter is the extra source, which asks for it outright.
+    expect(shouldUseChatGPTAuth(true)).toBe(true)
+  })
+})
+
+describe('resolveCodexSearchModel', () => {
+  const originalModel = process.env.OPENAI_MODEL
+  const originalAnthropicModel = process.env.ANTHROPIC_MODEL
+
+  beforeEach(() => {
+    // Pin the model so getMainLoopModel() never walks into the auth stack.
+    process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-5-20250929'
+  })
+
+  afterEach(() => {
+    if (originalModel === undefined) delete process.env.OPENAI_MODEL
+    else process.env.OPENAI_MODEL = originalModel
+    if (originalAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL
+    else process.env.ANTHROPIC_MODEL = originalAnthropicModel
+  })
+
+  test('swaps a model the Codex backend does not serve for the cheap tier', () => {
+    // That backend answers a foreign model id with a bare 400, which the
+    // aggregator silences — so the lane must never forward one.
+    process.env.OPENAI_MODEL = 'deepseek-v4-flash'
+
+    expect(resolveCodexSearchModel(true)).toBe('gpt-5.6-luna')
+  })
+
+  test('keeps a model the Codex backend does serve', () => {
+    process.env.OPENAI_MODEL = 'gpt-5.6-sol'
+
+    expect(resolveCodexSearchModel(true)).toBe('gpt-5.6-sol')
+  })
+
+  test('forwards the session model untouched on the API-key route', () => {
+    process.env.OPENAI_MODEL = 'deepseek-v4-flash'
+
+    expect(resolveCodexSearchModel(false)).toBe('deepseek-v4-flash')
+  })
+})
 
 describe('extractCodexSearchResults', () => {
   test('collects citations from annotations, search calls and the final response', () => {

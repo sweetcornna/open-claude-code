@@ -88,17 +88,34 @@ export function resolveGeminiSearchModel(useAntigravity: boolean): string {
     : ANTIGRAVITY_SEARCH_MODEL
 }
 
+/**
+ * Snippet per grounding chunk, drawn from the answer segments that cite it.
+ *
+ * A segment is claimed by at most ONE chunk. Grounding routinely backs a single
+ * sentence with three or four sources, and handing that sentence to every one
+ * of them produced result lists where four different URLs carried the identical
+ * snippet: no signal for choosing between them, and a description that is not
+ * actually of the page in three cases out of four. A chunk whose every citing
+ * segment is already spoken for gets no snippet instead of a borrowed one —
+ * absent beats wrong, and the title and URL still identify the page.
+ *
+ * Segments are visited in answer order and each is offered to the first chunk
+ * still lacking a snippet, so coverage stays as wide as honest attribution
+ * allows.
+ */
 function snippetsByChunkIndex(
   metadata: GeminiGroundingMetadata,
 ): Map<number, string> {
   const snippets = new Map<number, string>()
+  const claimed = new Set<string>()
   for (const support of metadata.groundingSupports ?? []) {
     const text = support.segment?.text?.trim()
-    if (!text) continue
+    if (!text || claimed.has(text)) continue
     for (const index of support.groundingChunkIndices ?? []) {
-      // First support wins: it is the earliest, most on-topic mention of the
-      // source in the answer.
-      if (!snippets.has(index)) snippets.set(index, text)
+      if (snippets.has(index)) continue
+      snippets.set(index, text)
+      claimed.add(text)
+      break
     }
   }
   return snippets
