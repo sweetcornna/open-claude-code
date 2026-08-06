@@ -4,6 +4,10 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.26.1 - 2026-08-05
+
+- **修复 2.26.0 的两项 DeepSeek 默认值对默认会话一项都没生效**。上一版加的 `max` effort 和 1M 上下文，只有手动用 `/model` 选了具体模型 id 的会话才吃得到。原因是主循环模型通常是**家族别名** —— 没显式选过模型时它就是 `sonnet`，而 `deepseek-v4-pro` 要等适配器把 `OPENAI_DEFAULT_SONNET_MODEL` 应用之后才出现。拿别名去问「这是不是 DeepSeek」永远得到否，于是恰好对最需要它的那批会话全部失效。同一处还牵出第二个症状：判断模型是否支持 effort 的函数拿到别名后会走进 haiku/sonnet/opus 的排除分支，对**任何** OpenAI 兼容 provider 的默认会话都报「不支持 effort」，于是状态栏的 effort 指示器干脆隐藏。两处现在都先解析别名再判断。需要说明的是，真正发出去的请求那半边从 2.26.0 起就是对的（适配器用的一直是解析后的模型名，`reasoning_effort: max` 确实在发）—— 坏掉的是状态栏显示，以及上下文窗口：窗口停在 200k 会让会话在还剩八成空间时就开始 auto-compact，那一项是实打实的影响。
+
 ## 2.26.0 - 2026-08-05
 
 - **DeepSeek 会话默认跑 `max` effort，上下文按 1M 算**。两项都只在 DeepSeek 门控内生效，其他 OpenAI 兼容端点（GLM / Kimi / 千问 / MiMo / 本地 vLLM）请求体逐字节不变。**effort**：DeepSeek 的梯子只有三级（`low`/`high`/`max`），不传参时是 `high`，occ 早先也就跟着跑 `high`。改成 `max` 的理由是从默认到顶只差一步，而不是五档命名暗示的那种长爬升 —— 而「高强度 agent 场景」正是这个工具的全部工作量。只有地板抬高了：`/effort` 和 `CLAUDE_CODE_EFFORT_LEVEL` 仍然优先，想跑便宜档说一声就有；thinking 关闭时照旧不发这个字段，这也顺带让新默认不会落到不认它的旧 checkpoint 上。**上下文**：DeepSeek V4 是 1M 上下文族，而第三方模型探测不到窗口时的兜底是 200k —— 差 5 倍，直接后果是会话在还剩八成窗口时就开始 auto-compact。现在模型名含 `deepseek` 即按 1M 计，贯通 auto-compact 阈值、硬阻断线、statusline 的 `ctx:%` 和 `/context`。这一项**只按模型名判定、不看 baseURL**（和请求路径的门控不同）：窗口解析对所有 provider 都会跑，残留一个指向 DeepSeek 的 `OPENAI_BASE_URL` 不该把 1M 窗口发给 Anthropic 会话。网关把模型改名到认不出来时会落回 200k，`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 就是为这种情况准备的纠正入口；部署实际提供的窗口更小时用 `CLAUDE_CODE_DISABLE_1M_CONTEXT` 退回默认。
