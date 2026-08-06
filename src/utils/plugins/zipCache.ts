@@ -49,6 +49,8 @@ import { isEnvTruthy } from '../config/envUtils.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
 import { expandTilde } from '../permissions/pathValidation.js'
 import type { MarketplaceSource } from './schemas.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
+import { avoidReservedName } from '../filesystem/reservedNames.js'
 
 /**
  * Check if the plugin zip cache mode is enabled.
@@ -149,7 +151,7 @@ export async function cleanupSessionPluginCache(): Promise<void> {
     return
   }
   try {
-    await rm(sessionPluginCachePath, { recursive: true, force: true })
+    await rm(sessionPluginCachePath, RM_RECURSIVE)
     logForDebugging(
       `Cleaned up session plugin cache at ${sessionPluginCachePath}`,
     )
@@ -375,7 +377,7 @@ export async function convertDirectoryToZipInPlace(
 ): Promise<void> {
   const zipData = await createZipFromDirectory(dirPath)
   await atomicWriteToZipCache(zipPath, zipData)
-  await rm(dirPath, { recursive: true, force: true })
+  await rm(dirPath, RM_RECURSIVE)
 }
 
 /**
@@ -385,7 +387,9 @@ export async function convertDirectoryToZipInPlace(
 export function getMarketplaceJsonRelativePath(
   marketplaceName: string,
 ): string {
-  const sanitized = marketplaceName.replace(/[^a-zA-Z0-9\-_]/g, '-')
+  const sanitized = avoidReservedName(
+    marketplaceName.replace(/[^a-zA-Z0-9\-_]/g, '-'),
+  )
   return join('marketplaces', `${sanitized}.json`)
 }
 

@@ -1,4 +1,5 @@
 import { readdir, readFile, unlink } from 'fs/promises'
+import treeKill from 'tree-kill'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { BIN_NAME } from '../constants/brand.js'
@@ -9,6 +10,23 @@ import { getProcessStartMarker } from '../utils/session/concurrentSessions.js'
 import { jsonParse } from '../utils/telemetry/slowOperations.js'
 import { selectEngine } from './bg/engines/index.js'
 import type { SessionEntry } from './bg/engine.js'
+
+/**
+ * Terminate a background session and everything it spawned.
+ *
+ * On Windows the whole SIGTERM-then-SIGKILL ladder is a formality — both map to
+ * TerminateProcess, so the session never runs its cleanup registry or saves its
+ * transcript. What can be fixed is the orphaning: without a process group,
+ * `process.kill` leaves the session's children (MCP servers, shells) running
+ * forever. tree-kill uses `taskkill /T` to walk the tree.
+ */
+function killProcessTree(pid: number, signal: NodeJS.Signals): void {
+  if (process.platform === 'win32') {
+    treeKill(pid, signal)
+    return
+  }
+  process.kill(pid, signal)
+}
 
 export type { SessionEntry } from './bg/engine.js'
 
@@ -299,7 +317,12 @@ export async function killHandler(target: string | undefined): Promise<void> {
   console.log(`Killing session ${session.sessionId} (PID: ${session.pid})...`)
 
   try {
-    process.kill(session.pid, 'SIGTERM')
+    // Windows has no process groups: process.kill reaches only the session
+    // process itself, orphaning whatever it spawned. tree-kill shells out to
+    // `taskkill /T` there. It is also unconditionally forceful — but SIGTERM on
+    // Windows is already TerminateProcess, so no graceful shutdown is being
+    // given up; see the note before the SIGKILL escalation below.
+    killProcessTree(session.pid, 'SIGTERM')
   } catch {
     console.log('Session already exited.')
     const pidFile = sessionPidFiles.get(session)
@@ -329,7 +352,7 @@ export async function killHandler(target: string | undefined): Promise<void> {
     }
 
     try {
-      process.kill(session.pid, 'SIGKILL')
+      killProcessTree(session.pid, 'SIGKILL')
       console.log('Session force-killed.')
     } catch {
       console.log('Session exited during grace period.')

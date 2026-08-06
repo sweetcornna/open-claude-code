@@ -17,6 +17,7 @@ import { logEvent } from '../../services/analytics/index.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { parseZipModes, unzipFile } from '../dxt/zip.js'
 import { errorMessage, getErrnoCode } from '../runtime/errors.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 type SafeString = AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 
@@ -118,7 +119,7 @@ export async function fetchOfficialMarketplaceFromGcs(
     const modes = parseZipModes(zipBuf)
 
     const staging = `${installLocation}.staging`
-    await rm(staging, { recursive: true, force: true })
+    await rm(staging, RM_RECURSIVE)
     await mkdir(staging, { recursive: true })
     for (const [arcPath, data] of Object.entries(files)) {
       if (!arcPath.startsWith(ARC_PREFIX)) continue
@@ -140,7 +141,7 @@ export async function fetchOfficialMarketplaceFromGcs(
     // Atomic swap: rm old, rename staging. Brief window where installLocation
     // doesn't exist — acceptable for a background refresh (caller retries next
     // startup if it crashes here).
-    await rm(installLocation, { recursive: true, force: true })
+    await rm(installLocation, RM_RECURSIVE)
     await rename(staging, installLocation)
 
     outcome = 'updated'

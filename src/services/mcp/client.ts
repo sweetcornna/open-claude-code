@@ -24,6 +24,7 @@ import {
   UnauthorizedError,
 } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
+import treeKill from 'tree-kill'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
@@ -158,6 +159,28 @@ import type {
  * This error should be caught at the tool execution layer to update
  * the client's status to 'needs-auth'.
  */
+
+/**
+ * Signal an MCP server process, taking its children with it on Windows.
+ *
+ * Windows has no process groups, so `process.kill` reaches only the direct
+ * child. MCP servers are almost always wrapped — `npx <pkg>`, or a `.cmd` shim
+ * that spawns node — so the wrapper died and the real server was orphaned,
+ * accumulating one stray process per connection for the life of the desktop
+ * session. tree-kill shells out to `taskkill /T` there, which walks the tree.
+ *
+ * POSIX keeps `process.kill`: the graceful SIGINT → SIGTERM → SIGKILL ladder
+ * below depends on the exact signal being delivered, and tree-kill's Windows
+ * path is unconditionally forceful.
+ */
+function killMcpProcess(pid: number, signal: NodeJS.Signals): void {
+  if (process.platform === 'win32') {
+    treeKill(pid, signal)
+    return
+  }
+  process.kill(pid, signal)
+}
+
 export class McpAuthError extends Error {
   serverName: string
   constructor(serverName: string, message: string) {
@@ -1503,7 +1526,7 @@ export const connectToServer = memoize(
 
               // First try SIGINT (like Ctrl+C)
               try {
-                process.kill(childPid, 'SIGINT')
+                killMcpProcess(childPid, 'SIGINT')
               } catch (error) {
                 logMCPDebug(name, `Error sending SIGINT: ${error}`)
                 return
@@ -1558,7 +1581,7 @@ export const connectToServer = memoize(
                         'SIGINT failed, sending SIGTERM to MCP server process',
                       )
                       try {
-                        process.kill(childPid, 'SIGTERM')
+                        killMcpProcess(childPid, 'SIGTERM')
                       } catch (termError) {
                         logMCPDebug(name, `Error sending SIGTERM: ${termError}`)
                         resolved = true
@@ -1589,7 +1612,7 @@ export const connectToServer = memoize(
                           'SIGTERM failed, sending SIGKILL to MCP server process',
                         )
                         try {
-                          process.kill(childPid, 'SIGKILL')
+                          killMcpProcess(childPid, 'SIGKILL')
                         } catch (killError) {
                           logMCPDebug(
                             name,

@@ -50,10 +50,11 @@ function authFilePath(): string {
 }
 
 function codexAuthFilePath(): string {
-  return join(
-    process.env.CODEX_HOME ?? join(process.env.HOME ?? '', '.codex'),
-    'auth.json',
-  )
+  // homedir(), not process.env.HOME: Windows does not set HOME, so the old
+  // `?? ''` fallback produced the *relative* path `.codex/auth.json` and read
+  // and wrote credentials inside whatever project directory occ happened to be
+  // launched from.
+  return join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'auth.json')
 }
 
 function asString(value: unknown): string | undefined {

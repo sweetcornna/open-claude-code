@@ -3,13 +3,14 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BIN_NAME } from 'src/config/paths.js'
+import { RM_RECURSIVE } from '../../utils/filesystem/rmOptions.js'
 
 const copyTempDirs = new Set<string>()
 let cleanupRegistered = false
 
 export function cleanupCopyTempDirs(): void {
   for (const dir of copyTempDirs) {
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(dir, RM_RECURSIVE)
   }
   copyTempDirs.clear()
 }
@@ -40,7 +41,7 @@ export async function writeToPrivateTempFile(
     return filePath
   } catch (error) {
     copyTempDirs.delete(copyDir)
-    await rm(copyDir, { recursive: true, force: true })
+    await rm(copyDir, RM_RECURSIVE)
     throw error
   }
 }

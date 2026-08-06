@@ -25,12 +25,26 @@ type ShellInfo = {
   shellFlag: string
 }
 
+/**
+ * Does `shell` end in this basename, on either platform's separator?
+ *
+ * `endsWith('/bash.exe')` never matched: the `.exe` suffix was clearly added
+ * for Windows, but `setShellIfWindows()` sets SHELL to a backslash path
+ * (`C:\\Program Files\\Git\\bin\\bash.exe`). detectShell() therefore
+ * returned null on every Windows machine and shell completion silently never
+ * installed.
+ */
+function shellIs(shell: string, name: string): boolean {
+  const base = shell.split(/[/\\]/).pop() ?? ''
+  return base === name || base === `${name}.exe`
+}
+
 function detectShell(): ShellInfo | null {
   const shell = process.env.SHELL || ''
   const home = homedir()
   const configDir = occConfigDir()
 
-  if (shell.endsWith('/zsh') || shell.endsWith('/zsh.exe')) {
+  if (shellIs(shell, 'zsh')) {
     const cacheFile = join(configDir, 'completion.zsh')
     return {
       name: 'zsh',
@@ -40,7 +54,7 @@ function detectShell(): ShellInfo | null {
       shellFlag: 'zsh',
     }
   }
-  if (shell.endsWith('/bash') || shell.endsWith('/bash.exe')) {
+  if (shellIs(shell, 'bash')) {
     const cacheFile = join(configDir, 'completion.bash')
     return {
       name: 'bash',
@@ -50,7 +64,7 @@ function detectShell(): ShellInfo | null {
       shellFlag: 'bash',
     }
   }
-  if (shell.endsWith('/fish') || shell.endsWith('/fish.exe')) {
+  if (shellIs(shell, 'fish')) {
     const xdg = process.env.XDG_CONFIG_HOME || join(home, '.config')
     const cacheFile = join(configDir, 'completion.fish')
     return {

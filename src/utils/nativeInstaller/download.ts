@@ -24,6 +24,7 @@ import {
   writeFileSync_DEPRECATED,
 } from '../telemetry/slowOperations.js'
 import { getBinaryName, getPlatform } from './installer.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases'
@@ -158,7 +159,7 @@ export async function downloadVersionFromArtifactory(
   const fs = getFsImplementation()
 
   // If we get here, we own the lock and can delete a partial download
-  await fs.rm(stagingPath, { recursive: true, force: true })
+  await fs.rm(stagingPath, RM_RECURSIVE)
 
   // Get the platform-specific package name
   const platform = getPlatform()
@@ -394,7 +395,7 @@ export async function downloadVersionFromBinaryRepo(
   const fs = getFsImplementation()
 
   // If we get here, we own the lock and can delete a partial download
-  await fs.rm(stagingPath, { recursive: true, force: true })
+  await fs.rm(stagingPath, RM_RECURSIVE)
 
   // Get platform
   const platform = getPlatform()

@@ -116,6 +116,9 @@ function makeAltScreenParkPatch(terminalRows: number) {
   });
 }
 
+// Platforms with Unix-style process suspension (SIGSTOP/SIGCONT).
+const SUPPORTS_SUSPEND = process.platform !== 'win32';
+
 export type Logger = {
   debug(message: string, options?: { level?: string }): void;
   error(error: Error | unknown): void;
@@ -303,11 +306,18 @@ export default class Ink {
 
     if (options.stdout.isTTY) {
       options.stdout.on('resize', this.handleResize);
-      process.on('SIGCONT', this.handleResume);
+      // SIGCONT is Unix-only — Windows has no process suspension, so the
+      // signal never fires there. Matches the SUPPORTS_SUSPEND gate that
+      // App.tsx already applies to the Ctrl+Z half of the same feature.
+      if (SUPPORTS_SUSPEND) {
+        process.on('SIGCONT', this.handleResume);
+      }
 
       this.unsubscribeTTYHandlers = () => {
         options.stdout.off('resize', this.handleResize);
-        process.off('SIGCONT', this.handleResume);
+        if (SUPPORTS_SUSPEND) {
+          process.off('SIGCONT', this.handleResume);
+        }
       };
     }
 

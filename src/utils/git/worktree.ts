@@ -122,7 +122,17 @@ async function symlinkDirectories(
     const destPath = join(worktreePath, dir)
 
     try {
-      await symlink(sourcePath, destPath, 'dir')
+      // 'junction' on Windows, not 'dir': a directory symlink there needs
+      // SeCreateSymbolicLinkPrivilege (Developer Mode or an elevated shell), so
+      // this failed for most users and the setting silently did nothing while
+      // the worktree duplicated node_modules. An NTFS junction is the native
+      // equivalent for directories and needs no elevation. Copying instead
+      // would defeat the entire point of the setting.
+      await symlink(
+        sourcePath,
+        destPath,
+        process.platform === 'win32' ? 'junction' : 'dir',
+      )
       logForDebugging(
         `Symlinked ${dir} from main repository to worktree to avoid disk bloat`,
       )

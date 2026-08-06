@@ -5,6 +5,7 @@ import type { PastedContent } from '../config/config.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 const IMAGE_STORE_DIR = 'image-cache'
 const MAX_STORED_IMAGE_PATHS = 200
@@ -146,7 +147,7 @@ export async function cleanupOldImageCaches(): Promise<void> {
 
       const sessionPath = join(baseDir, sessionDir.name)
       try {
-        await fsImpl.rm(sessionPath, { recursive: true, force: true })
+        await fsImpl.rm(sessionPath, RM_RECURSIVE)
         logForDebugging(`Cleaned up old image cache: ${sessionPath}`)
       } catch {
         // Ignore errors for individual directories

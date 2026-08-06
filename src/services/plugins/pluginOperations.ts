@@ -73,6 +73,7 @@ import {
   updateSettingsForSource,
 } from '../../utils/settings/settings.js'
 import { plural } from '../../utils/text/stringUtils.js'
+import { RM_RECURSIVE } from '../../utils/filesystem/rmOptions.js'
 
 /** Valid installable scopes (excludes 'managed' which can only be installed from managed-settings.json) */
 export const VALID_INSTALLABLE_SCOPES = ['user', 'project', 'local'] as const
@@ -1110,7 +1111,7 @@ async function performPluginUpdate({
       shouldCleanupSource &&
       sourcePath !== getVersionedCachePath(pluginId, newVersion)
     ) {
-      await fs.rm(sourcePath, { recursive: true, force: true })
+      await fs.rm(sourcePath, RM_RECURSIVE)
     }
   }
 }

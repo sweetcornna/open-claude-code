@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { spawnSync } from 'child_process'
+import { findGitBashPathOrNull } from '../utils/filesystem/windowsPaths.js'
 import { findGitRoot } from '../utils/git/git.js'
 
 /**
@@ -49,9 +50,26 @@ export async function up(): Promise<void> {
   console.log(upSection)
   console.log()
 
-  const result = spawnSync('bash', ['-c', upSection], {
+  // A bare 'bash' on Windows resolves to C:\\Windows\\System32\\bash.exe — the
+  // WSL launcher, not a shell — which would run CLAUDE.md's setup commands
+  // inside a Linux distro in a window of its own. Use the same Git Bash the
+  // Bash tool and hook runner resolve to; without one there is no POSIX shell
+  // to run this section in, so say so instead of guessing.
+  const bashPath =
+    process.platform === 'win32' ? findGitBashPathOrNull() : 'bash'
+  if (!bashPath) {
+    console.error(
+      'This section needs a POSIX shell. Install Git for Windows ' +
+        '(https://git-scm.com/downloads/win), or set CLAUDE_CODE_GIT_BASH_PATH ' +
+        'to your bash.exe.',
+    )
+    return
+  }
+
+  const result = spawnSync(bashPath, ['-c', upSection], {
     cwd,
     stdio: 'inherit',
+    windowsHide: true,
   })
 
   if (result.status !== 0) {

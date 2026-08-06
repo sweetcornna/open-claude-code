@@ -15,6 +15,8 @@ import { getTasksDir, notifyTasksUpdated } from '../task/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../agents/teammate.js'
 import { type BackendType, isPaneBackend } from './backends/types.js'
 import { TEAM_LEAD_NAME } from './constants.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
+import { avoidReservedName } from '../filesystem/reservedNames.js'
 
 export const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -98,7 +100,7 @@ export type Output = SpawnTeamOutput
  * Replaces all non-alphanumeric characters with hyphens and lowercases.
  */
 export function sanitizeName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
+  return avoidReservedName(name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase())
 }
 
 /**
@@ -539,7 +541,7 @@ async function destroyWorktree(worktreePath: string): Promise<void> {
 
   // Fallback: manually remove the directory
   try {
-    await rm(worktreePath, { recursive: true, force: true })
+    await rm(worktreePath, RM_RECURSIVE)
     logForDebugging(
       `[TeammateTool] Removed worktree directory manually: ${worktreePath}`,
     )
@@ -660,7 +662,7 @@ export async function cleanupTeamDirectories(teamName: string): Promise<void> {
   // Clean up team directory (~/.claude/teams/{team-name}/)
   const teamDir = getTeamDir(teamName)
   try {
-    await rm(teamDir, { recursive: true, force: true })
+    await rm(teamDir, RM_RECURSIVE)
     logForDebugging(`[TeammateTool] Cleaned up team directory: ${teamDir}`)
   } catch (error) {
     logForDebugging(
@@ -672,7 +674,7 @@ export async function cleanupTeamDirectories(teamName: string): Promise<void> {
   // The leader and teammates all store tasks under the sanitized team name.
   const tasksDir = getTasksDir(sanitizedName)
   try {
-    await rm(tasksDir, { recursive: true, force: true })
+    await rm(tasksDir, RM_RECURSIVE)
     logForDebugging(`[TeammateTool] Cleaned up tasks directory: ${tasksDir}`)
     notifyTasksUpdated()
   } catch (error) {

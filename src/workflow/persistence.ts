@@ -12,6 +12,7 @@ import { getProjectRoot } from '../bootstrap/state.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import type { ProgressBus } from './progress/bus.js'
 import type { ProgressStore, RunProgress } from './progress/store.js'
+import { RM_RECURSIVE } from '../utils/filesystem/rmOptions.js'
 
 /** Current schema version of state.json; introduces a migration chain on upgrade. */
 const SCHEMA_VERSION = 1
@@ -160,7 +161,7 @@ export async function cleanupOldRuns(
   let removed = 0
   for (const v of victims) {
     try {
-      await rm(join(runsDir, v.name), { recursive: true, force: true })
+      await rm(join(runsDir, v.name), RM_RECURSIVE)
       removed++
     } catch (e) {
       logForDebugging(

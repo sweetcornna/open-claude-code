@@ -35,7 +35,8 @@ function getPromptContent(
   // Use provided PR attribution or fall back to default
   const effectivePrAttribution = prAttribution ?? defaultPrAttribution
   const safeUser = process.env.SAFEUSER || ''
-  const username = process.env.USER || ''
+  // USERNAME is the Windows spelling; USER is unset there.
+  const username = process.env.USER || process.env.USERNAME || ''
 
   let prefix = ''
   let changelogSection = `

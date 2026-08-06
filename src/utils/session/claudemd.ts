@@ -584,8 +584,11 @@ function resolveExcludePatterns(patterns: string[]): string[] {
 
   for (const normalized of expanded) {
     // Only resolve absolute patterns — glob-only patterns like "**/*.md" don't have
-    // a filesystem prefix to resolve
-    if (!normalized.startsWith('/')) {
+    // a filesystem prefix to resolve.
+    // isAbsolute, not startsWith('/'): the line above already flipped
+    // backslashes to '/', but a Windows absolute path is still `C:/...`, so
+    // every absolute exclude pattern skipped symlink resolution there.
+    if (!isAbsolute(normalized)) {
       continue
     }
 

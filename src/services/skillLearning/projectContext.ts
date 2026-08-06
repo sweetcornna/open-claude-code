@@ -251,6 +251,7 @@ function writeJson(path: string, value: unknown): void {
 function git(args: string[], cwd: string): string | null {
   try {
     const output = execFileSync('git', ['-C', cwd, ...args], {
+      windowsHide: true,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     })

@@ -107,7 +107,7 @@ function runGhPrView(
         '--json',
         'headRefOid,state,statusCheckRollup',
       ],
-      { stdio: ['ignore', 'pipe', 'pipe'] },
+      { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
     )
     const stdoutChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []

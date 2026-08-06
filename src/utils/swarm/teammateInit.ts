@@ -5,6 +5,7 @@
  * Registers a Stop hook to notify the team leader when the teammate becomes idle.
  */
 
+import { isAbsolute } from 'path'
 import type { AppState } from '../../state/AppState.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { addFunctionHook } from '../hooks/sessionHooks.js'
@@ -48,9 +49,12 @@ export function initializeTeammateHooks(
     )
 
     for (const allowedPath of teamFile.teamAllowedPaths) {
-      // For absolute paths (starting with /), prepend one / to create //path/** pattern
-      // For relative paths, just use path/**
-      const ruleContent = allowedPath.path.startsWith('/')
+      // For absolute paths, prepend one / to create //path/** pattern.
+      // For relative paths, just use path/**.
+      // isAbsolute, not startsWith('/'): a Windows absolute path is `C:\\...`,
+      // so the rule came out as `C:\\foo/**` instead of `/C:\\foo/**` and
+      // matched nothing.
+      const ruleContent = isAbsolute(allowedPath.path)
         ? `/${allowedPath.path}/**`
         : `${allowedPath.path}/**`
 

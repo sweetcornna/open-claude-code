@@ -11,6 +11,7 @@ import { basename, dirname, join } from 'node:path'
 import { clearSkillIndexCache } from '../skillSearch/localSearch.js'
 import type { LearnedSkillDraft } from './types.js'
 import { writeLearnedSkill } from './skillGenerator.js'
+import { RM_RECURSIVE } from '../../utils/filesystem/rmOptions.js'
 
 export type ExistingSkill = {
   name: string
@@ -335,7 +336,7 @@ export async function deleteSkill(
     `${JSON.stringify({ deletedSkill: skill.name, oldPath: skill.path, content }, null, 2)}\n`,
     'utf8',
   )
-  await rm(skillDir, { recursive: true, force: true })
+  await rm(skillDir, RM_RECURSIVE)
   clearSkillIndexCache()
   return { deletedPath: skill.path, manifestPath, tombstonePath }
 }

@@ -57,6 +57,7 @@ import {
   convertDirectoryToZipInPlace,
   isPluginZipCacheEnabled,
 } from './zipCache.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 /**
  * Plugin installation metadata for installed_plugins.json
@@ -172,7 +173,7 @@ export async function cacheAndRegisterPlugin(
     await getFsImplementation().mkdir(dirname(versionedPath))
 
     // Remove existing versioned path if present (force: no-op if missing)
-    await rm(versionedPath, { recursive: true, force: true })
+    await rm(versionedPath, RM_RECURSIVE)
 
     // Check if versionedPath is a subdirectory of cacheResult.path
     // This happens when marketplace name equals plugin name (e.g., "exa-mcp-server@exa-mcp-server")

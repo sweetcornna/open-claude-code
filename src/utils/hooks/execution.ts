@@ -76,6 +76,7 @@ import {
   startHookSpan,
 } from '../telemetry/sessionTracing.js'
 import { isEnvTruthy } from '../config/envUtils.js'
+import { needsShellToLaunch } from '../process/packageManager.js'
 import {
   findGitBashPathOrNull,
   windowsPathToPosixPath,
@@ -989,11 +990,15 @@ export async function execCommandHook(
 
   let child: ChildProcessWithoutNullStreams
   if (isExecForm && finalArgs !== undefined) {
-    // Exec form: direct argv spawn, no shell involved at any layer.
+    // Exec form: direct argv spawn, no shell involved at any layer — except
+    // on Windows for a .cmd/.bat command, which CreateProcess cannot execute
+    // at all (see needsShellToLaunch). Without this an exec-form hook pointing
+    // at any npm-installed bin failed with ENOENT.
     child = spawn(command, finalArgs, {
       env: envVars,
       cwd: safeCwd,
       windowsHide: true,
+      shell: needsShellToLaunch(command),
     }) as ChildProcessWithoutNullStreams
   } else if (shellType === 'powershell') {
     const pwshPath = await getCachedPowerShellPath()

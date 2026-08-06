@@ -21,6 +21,7 @@ import {
 } from '../settings/settings.js'
 import { TOOL_RESULTS_SUBDIR } from '../tools/toolResultStorage.js'
 import { cleanupStaleAgentWorktrees } from '../git/worktree.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 const DEFAULT_CLEANUP_PERIOD_DAYS = 30
 
@@ -329,10 +330,7 @@ export async function cleanupOldFileHistoryBackups(): Promise<CleanupResult> {
         try {
           const stats = await fsImpl.stat(fileHistorySessionDir)
           if (stats.mtime < cutoffDate) {
-            await fsImpl.rm(fileHistorySessionDir, {
-              recursive: true,
-              force: true,
-            })
+            await fsImpl.rm(fileHistorySessionDir, RM_RECURSIVE)
             result.messages++
           }
         } catch {
@@ -373,7 +371,7 @@ export async function cleanupOldSessionEnvDirs(): Promise<CleanupResult> {
       try {
         const stats = await fsImpl.stat(sessionEnvDir)
         if (stats.mtime < cutoffDate) {
-          await fsImpl.rm(sessionEnvDir, { recursive: true, force: true })
+          await fsImpl.rm(sessionEnvDir, RM_RECURSIVE)
           result.messages++
         }
       } catch {

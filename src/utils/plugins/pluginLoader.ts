@@ -123,6 +123,8 @@ import {
   getSessionPluginCachePath,
   isPluginZipCacheEnabled,
 } from './zipCache.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
+import { avoidReservedName } from '../filesystem/reservedNames.js'
 
 /**
  * Get the path where plugin cache is stored
@@ -252,7 +254,9 @@ export async function probeSeedCacheAnyVersion(
  */
 export function getLegacyCachePath(pluginName: string): string {
   const cachePath = getPluginCachePath()
-  return join(cachePath, pluginName.replace(/[^a-zA-Z0-9\-_]/g, '-'))
+  return avoidReservedName(
+    join(cachePath, pluginName.replace(/[^a-zA-Z0-9\-_]/g, '-')),
+  )
 }
 
 /**
@@ -456,7 +460,7 @@ export async function copyPluginToVersionedCache(
         )
         return cachePath
       }
-      await rm(cachePath, { recursive: true, force: true })
+      await rm(cachePath, RM_RECURSIVE)
     }
 
     // Seed cache hit — return seed path in place (read-only, no copy).
@@ -504,7 +508,7 @@ export async function copyPluginToVersionedCache(
         await copyDir(sourcePath, stagingPath)
       }
 
-      await rm(join(stagingPath, '.git'), { recursive: true, force: true })
+      await rm(join(stagingPath, '.git'), RM_RECURSIVE)
 
       const cacheEntries = await readdir(stagingPath)
       if (cacheEntries.length === 0) {
@@ -527,7 +531,7 @@ export async function copyPluginToVersionedCache(
       return cachePath
     } finally {
       await Promise.all([
-        rm(stagingPath, { recursive: true, force: true }),
+        rm(stagingPath, RM_RECURSIVE),
         rm(stagingZipPath, { force: true }),
       ])
     }
@@ -916,7 +920,7 @@ export async function installFromGitSubdir(
     )
     return resolvedSha
   } finally {
-    await rm(cloneDir, { recursive: true, force: true })
+    await rm(cloneDir, RM_RECURSIVE)
   }
 }
 
@@ -934,7 +938,7 @@ async function installFromLocal(
   await copyDir(sourcePath, targetPath)
 
   const gitPath = join(targetPath, '.git')
-  await rm(gitPath, { recursive: true, force: true })
+  await rm(gitPath, RM_RECURSIVE)
 }
 
 /**
@@ -1049,7 +1053,7 @@ export async function cachePlugin(
     if (shouldCleanup && (await pathExists(tempPath))) {
       logForDebugging(`Cleaning up failed installation at ${tempPath}`)
       try {
-        await rm(tempPath, { recursive: true, force: true })
+        await rm(tempPath, RM_RECURSIVE)
       } catch (cleanupError) {
         logForDebugging(`Failed to clean up installation: ${cleanupError}`, {
           level: 'error',
@@ -2436,7 +2440,7 @@ async function loadPluginFromMarketplaceEntry(
 
           // Clean up temp path
           if (cached.path !== pluginPath) {
-            await rm(cached.path, { recursive: true, force: true })
+            await rm(cached.path, RM_RECURSIVE)
           }
         }
       }

@@ -19,6 +19,7 @@ import { clearPluginOutputStyleCache } from './loadPluginOutputStyles.js'
 import { clearPluginCache, getPluginCachePath } from './pluginLoader.js'
 import { clearPluginOptionsCache } from './pluginOptionsStorage.js'
 import { isPluginZipCacheEnabled } from './zipCache.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 const ORPHANED_AT_FILENAME = '.orphaned_at'
 const CLEANUP_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -167,7 +168,7 @@ async function processOrphanedPluginVersion(
 
   if (now - orphanedAt > CLEANUP_AGE_MS) {
     try {
-      await rm(versionPath, { recursive: true, force: true })
+      await rm(versionPath, RM_RECURSIVE)
     } catch (error) {
       logForDebugging(
         `Failed to delete orphaned version: ${versionPath}: ${error}`,
@@ -179,7 +180,7 @@ async function processOrphanedPluginVersion(
 async function removeIfEmpty(dirPath: string): Promise<void> {
   if ((await readSubdirs(dirPath)).length === 0) {
     try {
-      await rm(dirPath, { recursive: true, force: true })
+      await rm(dirPath, RM_RECURSIVE)
     } catch (error) {
       logForDebugging(`Failed to remove empty dir: ${dirPath}: ${error}`)
     }

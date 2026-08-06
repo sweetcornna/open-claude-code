@@ -93,6 +93,7 @@ import {
   PluginMarketplaceSchema,
   validateOfficialNameSource,
 } from './schemas.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 /**
  * Result of loading and caching a marketplace
@@ -1293,7 +1294,7 @@ async function cacheMarketplaceFromGit(
     // attempt starts fresh. Best-effort: if this fails, the stale dir will be
     // auto-detected and removed at the top of the next call.
     try {
-      await fs.rm(cachePath, { recursive: true, force: true })
+      await fs.rm(cachePath, RM_RECURSIVE)
     } catch {
       // ignore
     }
@@ -1642,7 +1643,7 @@ async function loadAndCacheMarketplace(
             )
 
             // Clean up failed SSH attempt if it created anything
-            await fs.rm(temporaryCachePath, { recursive: true, force: true })
+            await fs.rm(temporaryCachePath, RM_RECURSIVE)
 
             // Try HTTPS
             try {
@@ -1701,7 +1702,7 @@ async function loadAndCacheMarketplace(
             )
 
             // Clean up failed HTTPS attempt if it created anything
-            await fs.rm(temporaryCachePath, { recursive: true, force: true })
+            await fs.rm(temporaryCachePath, RM_RECURSIVE)
 
             // Try SSH
             try {
@@ -1880,7 +1881,7 @@ async function loadAndCacheMarketplace(
             { level: 'warn' },
           )
         }
-        await fs.rm(finalCachePath, { recursive: true, force: true })
+        await fs.rm(finalCachePath, RM_RECURSIVE)
         // Rename temp cache to final name
         await fs.rename(temporaryCachePath, finalCachePath)
         temporaryCachePath = finalCachePath
@@ -1902,7 +1903,7 @@ async function loadAndCacheMarketplace(
       !isLocalMarketplaceSource(source)
     ) {
       try {
-        await fs.rm(temporaryCachePath!, { recursive: true, force: true })
+        await fs.rm(temporaryCachePath!, RM_RECURSIVE)
       } catch (cleanupError) {
         logForDebugging(
           `Warning: Failed to clean up temporary marketplace cache at ${temporaryCachePath}: ${errorMessage(cleanupError)}`,
@@ -2039,7 +2040,7 @@ export async function addMarketplaceSource(
         resolvedOld.startsWith(cacheDir + sep)
       ) {
         const fs = getFsImplementation()
-        await fs.rm(oldEntry.installLocation, { recursive: true, force: true })
+        await fs.rm(oldEntry.installLocation, RM_RECURSIVE)
       } else {
         logForDebugging(
           `Skipping cleanup of old installLocation (${oldEntry.installLocation}) — ` +
@@ -2124,7 +2125,7 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
   const fs = getFsImplementation()
   const cacheDir = getMarketplacesCacheDir()
   const cachePath = join(cacheDir, name)
-  await fs.rm(cachePath, { recursive: true, force: true })
+  await fs.rm(cachePath, RM_RECURSIVE)
   const jsonCachePath = join(cacheDir, `${name}.json`)
   await fs.rm(jsonCachePath, { force: true })
 

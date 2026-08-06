@@ -54,6 +54,8 @@ import {
   settingSourceToScope,
 } from './pluginIdentifier.js'
 import { getPluginCachePath, getVersionedCachePath } from './pluginLoader.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
+import { avoidReservedName } from '../filesystem/reservedNames.js'
 
 // Migration state to prevent running migration multiple times per session
 let migrationCompleted = false
@@ -232,7 +234,7 @@ function cleanupLegacyCache(v2Data: InstalledPluginsFileV2): void {
       // Check if it's referenced by any installation
       if (!referencedPaths.has(entryPath)) {
         // Not referenced - safe to delete
-        fs.rmSync(entryPath, { recursive: true, force: true })
+        fs.rmSync(entryPath, RM_RECURSIVE)
         logForDebugging(`Cleaned up legacy cache directory: ${entry}`)
       }
     }
@@ -966,7 +968,7 @@ export function deletePluginCache(installPath: string): void {
   const fs = getFsImplementation()
 
   try {
-    fs.rmSync(installPath, { recursive: true, force: true })
+    fs.rmSync(installPath, RM_RECURSIVE)
     logForDebugging(`Deleted plugin cache at ${installPath}`)
 
     // Clean up empty parent plugin directory (cache/{marketplace}/{plugin})
@@ -1196,7 +1198,9 @@ export async function migrateFromEnabledPlugins(): Promise<void> {
           gitCommitSha = await getGitCommitSha(installPath)
         } else {
           const cachePath = getPluginCachePath()
-          const sanitizedName = pluginName.replace(/[^a-zA-Z0-9-_]/g, '-')
+          const sanitizedName = avoidReservedName(
+            pluginName.replace(/[^a-zA-Z0-9-_]/g, '-'),
+          )
           const pluginCachePath = join(cachePath, sanitizedName)
 
           // Read the cache directory directly — readdir is the first real

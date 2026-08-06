@@ -13,6 +13,8 @@ import { logForDebugging } from '../telemetry/debug.js'
 import { errorMessage, isFsInaccessible } from '../runtime/errors.js'
 import { formatFileSize } from '../text/format.js'
 import { expandTilde } from '../permissions/pathValidation.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
+import { avoidReservedName } from '../filesystem/reservedNames.js'
 
 /**
  * Get the full path to the plugins directory.
@@ -60,7 +62,7 @@ export function getPluginSeedDirs(): string[] {
 
 function sanitizePluginId(pluginId: string): string {
   // Same character class as the install-cache sanitizer (pluginLoader.ts)
-  return pluginId.replace(/[^a-zA-Z0-9\-_]/g, '-')
+  return avoidReservedName(pluginId.replace(/[^a-zA-Z0-9\-_]/g, '-'))
 }
 
 /** Pure path — no mkdir. For display (e.g. uninstall dialog). */
@@ -137,7 +139,7 @@ export async function getPluginDataDirSize(
 export async function deletePluginDataDir(pluginId: string): Promise<void> {
   const dir = pluginDataDirPath(pluginId)
   try {
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, RM_RECURSIVE)
   } catch (e) {
     logForDebugging(
       `Failed to delete plugin data dir ${dir}: ${errorMessage(e)}`,

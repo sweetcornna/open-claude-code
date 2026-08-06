@@ -26,6 +26,7 @@ import {
 
 import * as childProcess from 'node:child_process'
 import { promisify } from 'node:util'
+import { RM_RECURSIVE } from '../../utils/filesystem/rmOptions.js'
 
 /**
  * Sanitizes an error message before surfacing it to the user:
@@ -50,7 +51,10 @@ function execFileAsync(
   args: string[],
   opts: { timeout?: number },
 ): Promise<{ stdout: string; stderr: string }> {
-  return promisify(childProcess.execFile)(cmd, args, opts)
+  return promisify(childProcess.execFile)(cmd, args, {
+    windowsHide: true,
+    ...opts,
+  })
 }
 
 // Patterns to mask in shared content (API keys, tokens, passwords, secrets)
@@ -371,7 +375,7 @@ const share: Command = {
         writeFileSync(tmpFile, uploadContent, 'utf8')
       } catch (writeErr: unknown) {
         // Defensive: tmpfile write failed after mkdtempSync succeeded (TOCTOU)
-        rmSync(tmpDir, { recursive: true, force: true })
+        rmSync(tmpDir, RM_RECURSIVE)
         const msg = sanitizeErrorMessage(
           writeErr instanceof Error ? writeErr.message : String(writeErr),
         )
@@ -445,7 +449,7 @@ const share: Command = {
           ].join('\n'),
         }
       } finally {
-        rmSync(tmpDir, { recursive: true, force: true })
+        rmSync(tmpDir, RM_RECURSIVE)
       }
     },
   }),

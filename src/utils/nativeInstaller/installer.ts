@@ -75,6 +75,7 @@ import {
   readLockContent,
   withLock,
 } from './pidLock.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 export const VERSION_RETENTION_COUNT = 2
 
@@ -364,7 +365,7 @@ async function installVersionFromPackage(
     await atomicMoveToInstallPath(stagedBinaryPath, installPath)
 
     // Clean up staging directory
-    await rm(stagingPath, { recursive: true, force: true })
+    await rm(stagingPath, RM_RECURSIVE)
 
     logEvent('tengu_native_install_package_success', {})
   } catch (error) {
@@ -408,7 +409,7 @@ async function installVersionFromBinary(
     await atomicMoveToInstallPath(stagedBinaryPath, installPath)
 
     // Clean up staging directory
-    await rm(stagingPath, { recursive: true, force: true })
+    await rm(stagingPath, RM_RECURSIVE)
 
     logEvent('tengu_native_install_binary_success', {})
   } catch (error) {
@@ -1220,7 +1221,7 @@ export async function cleanupOldVersions(): Promise<void> {
         // deletion.
         const stats = await stat(stagingPath)
         if (stats.mtime.getTime() < oneHourAgo) {
-          await rm(stagingPath, { recursive: true, force: true })
+          await rm(stagingPath, RM_RECURSIVE)
           stagingCleanedCount++
           logForDebugging(`Cleaned up old staging directory: ${entry}`)
         }

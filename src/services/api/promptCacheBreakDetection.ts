@@ -17,6 +17,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
+import { RM_RECURSIVE } from '../../utils/filesystem/rmOptions.js'
 
 const cacheBreakRedactionKey = randomBytes(32)
 let cacheBreakSessionDir: string | null = null
@@ -24,7 +25,7 @@ let cacheBreakCleanupRegistered = false
 
 function cleanupCacheBreakDiffs(): void {
   if (!cacheBreakSessionDir) return
-  rmSync(cacheBreakSessionDir, { recursive: true, force: true })
+  rmSync(cacheBreakSessionDir, RM_RECURSIVE)
   cacheBreakSessionDir = null
 }
 

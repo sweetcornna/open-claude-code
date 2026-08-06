@@ -38,6 +38,7 @@ import { jsonParse, jsonStringify } from '../utils/telemetry/slowOperations.js'
 import { countCharInString } from '../utils/text/stringUtils.js'
 import { asSystemPrompt } from '../utils/session/systemPromptType.js'
 import { escapeXmlAttr as escapeHtml } from '../utils/text/xml.js'
+import { RM_RECURSIVE } from '../utils/filesystem/rmOptions.js'
 
 // Model for facet extraction and summarization (Opus - best quality)
 function getAnalysisModel(): string {
@@ -177,7 +178,7 @@ const collectFromRemoteHost: (
           )
         } finally {
           try {
-            await rm(tempDir, { recursive: true, force: true })
+            await rm(tempDir, RM_RECURSIVE)
           } catch {
             // Ignore cleanup errors
           }

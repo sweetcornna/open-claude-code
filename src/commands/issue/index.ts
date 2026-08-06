@@ -76,11 +76,12 @@ function execFileSyncFn(
   args: string[],
   opts?: { stdio?: unknown; timeout?: number },
 ): Buffer {
-  return childProcess.execFileSync(
-    cmd,
-    args,
-    opts as Parameters<typeof childProcess.execFileSync>[2],
-  ) as Buffer
+  return childProcess.execFileSync(cmd, args, {
+    // No console flash over the TUI on Windows; child_process defaults this
+    // to false, unlike execa.
+    windowsHide: true,
+    ...(opts as Parameters<typeof childProcess.execFileSync>[2]),
+  }) as Buffer
 }
 
 function tryDetectGitRemoteUrl(): string | null {

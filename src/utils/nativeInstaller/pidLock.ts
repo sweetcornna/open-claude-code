@@ -23,6 +23,7 @@ import {
   jsonStringify,
   writeFileSync_DEPRECATED,
 } from '../telemetry/slowOperations.js'
+import { RM_RECURSIVE } from '../filesystem/rmOptions.js'
 
 /**
  * Check if PID-based version locking is enabled.
@@ -444,7 +445,7 @@ export function cleanupStaleLocks(locksDir: string): number {
         if (stats.isDirectory()) {
           // Legacy proper-lockfile directory lock - always remove when PID-based
           // locking is enabled since these are from a different locking mechanism
-          fs.rmSync(lockFilePath, { recursive: true, force: true })
+          fs.rmSync(lockFilePath, RM_RECURSIVE)
           cleanedCount++
           logForDebugging(`Cleaned up legacy directory lock: ${lockEntry}`)
         } else if (!isLockActive(lockFilePath)) {
