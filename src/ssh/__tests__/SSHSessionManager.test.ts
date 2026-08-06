@@ -5,13 +5,13 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 import { SSHSessionManagerImpl } from '../SSHSessionManager'
 import type { SSHSessionManagerOptions } from '../SSHSessionManager'
-import type { Subprocess } from 'bun'
+import type { StreamingProcess } from '../../utils/process/spawnPortable.js'
 
-function createMockSubprocess(options?: {
+function createMockStreamingProcess(options?: {
   exitCode?: number | null
   stdoutLines?: string[]
 }): {
-  proc: Subprocess
+  proc: StreamingProcess
   writeToStdout: (data: string) => void
   simulateExit: (code?: number) => void
 } {
@@ -60,7 +60,7 @@ function createMockSubprocess(options?: {
     signalCode: null,
     ref: () => {},
     unref: () => {},
-  } as unknown as Subprocess
+  } as unknown as StreamingProcess
 
   return {
     proc,
@@ -127,7 +127,7 @@ function createMockOptions(
 
 describe('SSHSessionManagerImpl', () => {
   test('connect() sets connected state and calls onConnected', () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -138,7 +138,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('connect() is idempotent', () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -149,7 +149,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('disconnect() sets disconnected state and kills process', () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -161,7 +161,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('disconnect() is idempotent', () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -178,7 +178,7 @@ describe('SSHSessionManagerImpl', () => {
       message: { role: 'assistant', content: 'hello' },
     })
 
-    const { proc, writeToStdout, simulateExit } = createMockSubprocess()
+    const { proc, writeToStdout, simulateExit } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -204,7 +204,7 @@ describe('SSHSessionManagerImpl', () => {
       'streamlined_tool_use_summary',
     ]
 
-    const { proc, writeToStdout, simulateExit } = createMockSubprocess()
+    const { proc, writeToStdout, simulateExit } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -236,7 +236,7 @@ describe('SSHSessionManagerImpl', () => {
       },
     })
 
-    const { proc, writeToStdout, simulateExit } = createMockSubprocess()
+    const { proc, writeToStdout, simulateExit } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -252,7 +252,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('sendMessage writes NDJSON to stdin', async () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -263,7 +263,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('sendInterrupt writes interrupt control request', () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -275,7 +275,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('respondToPermissionRequest sends allow response', () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -287,7 +287,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('respondToPermissionRequest sends deny response', () => {
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -299,7 +299,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('process exit without reconnect calls onDisconnected', async () => {
-    const { proc, simulateExit } = createMockSubprocess()
+    const { proc, simulateExit } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -314,11 +314,11 @@ describe('SSHSessionManagerImpl', () => {
 
   test('user disconnect does not trigger reconnect', async () => {
     let reconnectCalled = false
-    const { proc } = createMockSubprocess()
+    const { proc } = createMockStreamingProcess()
     const opts = createMockOptions({
       reconnect: async () => {
         reconnectCalled = true
-        return createMockSubprocess().proc
+        return createMockStreamingProcess().proc
       },
       maxReconnectAttempts: 3,
     })
@@ -334,7 +334,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('invalid JSON lines are silently skipped', async () => {
-    const { proc, writeToStdout, simulateExit } = createMockSubprocess()
+    const { proc, writeToStdout, simulateExit } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -354,7 +354,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('non-StdoutMessage objects are skipped', async () => {
-    const { proc, writeToStdout, simulateExit } = createMockSubprocess()
+    const { proc, writeToStdout, simulateExit } = createMockStreamingProcess()
     const opts = createMockOptions()
     const manager = new SSHSessionManagerImpl(proc, opts)
 
@@ -371,8 +371,8 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('process exit with reconnect factory attempts reconnection', async () => {
-    const { proc: proc1, simulateExit } = createMockSubprocess()
-    const { proc: proc2 } = createMockSubprocess()
+    const { proc: proc1, simulateExit } = createMockStreamingProcess()
+    const { proc: proc2 } = createMockStreamingProcess()
 
     const opts = createMockOptions({
       reconnect: mock(async () => proc2),
@@ -391,7 +391,7 @@ describe('SSHSessionManagerImpl', () => {
   })
 
   test('reconnect failure exhausts attempts then disconnects', async () => {
-    const { proc, simulateExit } = createMockSubprocess()
+    const { proc, simulateExit } = createMockStreamingProcess()
 
     const opts = createMockOptions({
       reconnect: mock(async () => {

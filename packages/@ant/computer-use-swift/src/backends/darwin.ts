@@ -32,46 +32,35 @@ export type {
   ResolvePrepareCaptureResult,
   WindowDisplayInfo,
 } from '../types.js'
+import { runCapture, runCaptureSync } from '../spawnCompat.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function jxaSync(script: string): string {
-  const result = Bun.spawnSync({
-    cmd: ['osascript', '-l', 'JavaScript', '-e', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  const result = runCaptureSync(['osascript', '-l', 'JavaScript', '-e', script])
+  return result.stdout.trim()
 }
 
 function osascriptSync(script: string): string {
-  const result = Bun.spawnSync({
-    cmd: ['osascript', '-e', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  const result = runCaptureSync(['osascript', '-e', script])
+  return result.stdout.trim()
 }
 
 async function osascript(script: string): Promise<string> {
-  const proc = Bun.spawn(['osascript', '-e', script], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const text = await new Response(proc.stdout).text()
-  await proc.exited
+  const { stdout: text } = await runCapture(['osascript', '-e', script])
   return text.trim()
 }
 
 async function jxa(script: string): Promise<string> {
-  const proc = Bun.spawn(['osascript', '-l', 'JavaScript', '-e', script], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const text = await new Response(proc.stdout).text()
-  await proc.exited
+  const { stdout: text } = await runCapture([
+    'osascript',
+    '-l',
+    'JavaScript',
+    '-e',
+    script,
+  ])
   return text.trim()
 }
 
@@ -196,16 +185,11 @@ export const apps: AppsAPI = {
         const expanded = dir.startsWith('~')
           ? join(process.env.HOME ?? '~', dir.slice(1))
           : dir
-        const proc = Bun.spawn(
-          [
-            'bash',
-            '-c',
-            `for f in "${expanded}"/*.app; do [ -d "$f" ] || continue; bid=$(mdls -name kMDItemCFBundleIdentifier "$f" 2>/dev/null | sed 's/.*= "//;s/"//'); name=$(basename "$f" .app); echo "$f|$name|$bid"; done`,
-          ],
-          { stdout: 'pipe', stderr: 'pipe' },
-        )
-        const text = await new Response(proc.stdout).text()
-        await proc.exited
+        const { stdout: text } = await runCapture([
+          'bash',
+          '-c',
+          `for f in "${expanded}"/*.app; do [ -d "$f" ] || continue; bid=$(mdls -name kMDItemCFBundleIdentifier "$f" 2>/dev/null | sed 's/.*= "//;s/"//'); name=$(basename "$f" .app); echo "$f|$name|$bid"; done`,
+        ])
         for (const line of text.split('\n').filter(Boolean)) {
           const [path, displayName, bundleId] = line.split('|', 3)
           if (path && displayName && bundleId && bundleId !== '(null)') {
@@ -271,11 +255,7 @@ async function captureScreenToBase64(
   args: string[],
 ): Promise<{ base64: string; width: number; height: number }> {
   const tmpFile = join(tmpdir(), `cu-screenshot-${Date.now()}.png`)
-  const proc = Bun.spawn(['screencapture', ...args, tmpFile], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  await proc.exited
+  const proc = await runCapture(['screencapture', ...args, tmpFile])
   try {
     const buf = readFileSync(tmpFile)
     const base64 = buf.toString('base64')

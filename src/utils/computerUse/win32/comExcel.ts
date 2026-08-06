@@ -4,6 +4,8 @@
  * Each operation opens and closes Excel to avoid orphaned processes.
  */
 
+import { psResult } from './shared.js'
+
 export interface CellInfo {
   row: number
   col: number
@@ -22,17 +24,13 @@ export interface ExcelInfo {
   sheetNames: string[]
 }
 
+// Was a local Bun.spawnSync copy — undefined on the default Node runtime.
 function ps(script: string): string {
-  const result = Bun.spawnSync({
-    cmd: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const stderr = new TextDecoder().decode(result.stderr).trim()
-  if (result.exitCode !== 0 && stderr) {
+  const { stdout, stderr, exitCode } = psResult(script)
+  if (exitCode !== 0 && stderr) {
     throw new Error(`PowerShell error: ${stderr}`)
   }
-  return new TextDecoder().decode(result.stdout).trim()
+  return stdout
 }
 
 function escPath(p: string): string {

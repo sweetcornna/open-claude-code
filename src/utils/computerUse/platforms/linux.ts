@@ -23,30 +23,31 @@ import type {
   InstalledApp,
   FrontmostAppInfo,
 } from './types.js'
+import {
+  captureProcess,
+  captureProcessSync,
+} from '../../process/spawnPortable.js'
 
 // ---------------------------------------------------------------------------
 // Shell helpers
 // ---------------------------------------------------------------------------
 
+// These three used Bun.spawnSync/Bun.spawn directly. `bin.occ` is
+// dist/cli-node.js with a Node shebang — Node is the default runtime, only
+// occ-bun runs Bun — so every one of them threw ReferenceError and took the
+// whole Linux Computer Use backend down with it.
+
 function run(cmd: string[]): string {
-  const result = Bun.spawnSync({ cmd, stdout: 'pipe', stderr: 'pipe' })
-  return new TextDecoder().decode(result.stdout).trim()
+  return captureProcessSync(cmd).stdout.trim()
 }
 
 async function runAsync(cmd: string[]): Promise<string> {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' })
-  const out = await new Response(proc.stdout).text()
-  await proc.exited
-  return out.trim()
+  const { stdout } = await captureProcess(cmd)
+  return stdout.trim()
 }
 
 function commandExists(name: string): boolean {
-  const result = Bun.spawnSync({
-    cmd: ['which', name],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return result.exitCode === 0
+  return captureProcessSync(['which', name]).exitCode === 0
 }
 
 // ---------------------------------------------------------------------------

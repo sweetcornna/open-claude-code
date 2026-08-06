@@ -10,6 +10,11 @@
 
 import * as path from 'path'
 import type { Writable } from 'stream'
+import {
+  captureProcessSync,
+  spawnStreaming,
+  type StreamingProcess,
+} from '../../process/spawnPortable.js'
 
 interface BridgeRequest {
   id: number
@@ -23,7 +28,7 @@ interface BridgeResponse {
   error?: string
 }
 
-let bridgeProc: ReturnType<typeof Bun.spawn> | null = null
+let bridgeProc: StreamingProcess | null = null
 let requestId = 0
 const pendingRequests = new Map<
   number,
@@ -41,10 +46,7 @@ export function ensureBridge(): boolean {
   if (bridgeProc) return true
   try {
     const scriptPath = path.join(__dirname, 'bridge.py')
-    bridgeProc = Bun.spawn(['python', '-u', scriptPath], {
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'ignore',
+    bridgeProc = spawnStreaming(['python', '-u', scriptPath], {
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
     })
 
@@ -159,15 +161,12 @@ export function callSync<T = unknown>(
   try {
     const scriptPath = path.join(__dirname, 'bridge.py')
     const req = JSON.stringify({ id: 1, method, params })
-    const result = Bun.spawnSync({
-      cmd: ['python', '-u', scriptPath],
-      stdin: Buffer.from(req + '\n'),
-      stdout: 'pipe',
-      stderr: 'pipe',
+    const { stdout } = captureProcessSync(['python', '-u', scriptPath], {
+      input: `${req}\n`,
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-      timeout: timeoutMs,
+      timeoutMs,
     })
-    const out = new TextDecoder().decode(result.stdout).trim()
+    const out = stdout.trim()
     if (!out) return null
     const resp: BridgeResponse = JSON.parse(out)
     if (resp.error) throw new Error(resp.error)
@@ -183,13 +182,7 @@ export function callSync<T = unknown>(
 export function stopBridge(): void {
   if (bridgeProc) {
     try {
-      const stdin = bridgeProc.stdin
-      if (stdin) {
-        const writable = stdin as unknown as Writable
-        if (typeof writable.end === 'function') {
-          writable.end()
-        }
-      }
+      bridgeProc.stdin?.end()
       bridgeProc.kill()
     } catch {}
     bridgeProc = null

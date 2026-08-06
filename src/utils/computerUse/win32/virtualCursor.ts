@@ -16,6 +16,10 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { validateHwnd, getTmpDir } from './shared.js'
+import {
+  spawnStreaming,
+  type StreamingProcess,
+} from '../../process/spawnPortable.js'
 
 const CURSOR_SIZE = 20
 const CURSOR_COLOR_R = 255
@@ -23,7 +27,7 @@ const CURSOR_COLOR_G = 50
 const CURSOR_COLOR_B = 50
 const CURSOR_OPACITY = 0.9
 
-let cursorProc: ReturnType<typeof Bun.spawn> | null = null
+let cursorProc: StreamingProcess | null = null
 let cursorStopFile: string | null = null
 let cursorScriptFile: string | null = null
 
@@ -198,17 +202,14 @@ export function showVirtualCursor(hwnd: string): boolean {
     const script = buildCursorScript(hwnd, stopFile)
     fs.writeFileSync(scriptFile, script, 'utf-8')
 
-    cursorProc = Bun.spawn(
-      [
-        'powershell',
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        scriptFile,
-      ],
-      { stdout: 'ignore', stderr: 'ignore' },
-    )
+    cursorProc = spawnStreaming([
+      'powershell',
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      scriptFile,
+    ])
     cursorStopFile = stopFile
     cursorScriptFile = scriptFile
     return true

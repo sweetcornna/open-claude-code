@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { BIN_NAME } from 'src/config/paths.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { captureProcess } from '../utils/process/spawnPortable.js'
 
 const SSH_TIMEOUT_MS = 60_000
 export const REMOTE_BIN_DIR = '~/.local/bin'
@@ -21,22 +22,18 @@ async function runSshCommand(
   command: string,
   timeoutMs = SSH_TIMEOUT_MS,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(['ssh', '-o', 'ConnectTimeout=10', host, command], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-
-  const timer = setTimeout(() => proc.kill(), timeoutMs)
-
-  try {
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ])
-    const exitCode = await proc.exited
-    return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode }
-  } finally {
-    clearTimeout(timer)
+  const { stdout, stderr, exitCode, timedOut } = await captureProcess(
+    ['ssh', '-o', 'ConnectTimeout=10', host, command],
+    { timeoutMs },
+  )
+  return {
+    stdout: stdout.trim(),
+    stderr: timedOut
+      ? `${stderr.trim()}\nssh timed out after ${timeoutMs / 1000}s`.trim()
+      : stderr.trim(),
+    // A killed or failed-to-spawn child has no exit code; report it as a
+    // failure rather than letting `exitCode !== 0` checks see null.
+    exitCode: exitCode ?? 1,
   }
 }
 
@@ -77,14 +74,10 @@ export async function deployBinary(options: DeployOptions): Promise<string> {
 
   onProgress?.('Uploading binary...')
   const remotePath = `${REMOTE_BIN_DIR}/${REMOTE_CLI_FILE}`
-  const scpProc = Bun.spawn(
+  const { stderr: scpStderr, exitCode: scpExit } = await captureProcess(
     ['scp', '-o', 'ConnectTimeout=10', localBinary, `${host}:${remotePath}`],
-    { stdout: 'pipe', stderr: 'pipe' },
+    { timeoutMs: SSH_TIMEOUT_MS },
   )
-  const scpTimer = setTimeout(() => scpProc.kill(), SSH_TIMEOUT_MS)
-  const scpStderr = await new Response(scpProc.stderr).text()
-  const scpExit = await scpProc.exited
-  clearTimeout(scpTimer)
 
   if (scpExit !== 0) {
     throw new Error(`SCP upload failed (exit ${scpExit}): ${scpStderr.trim()}`)

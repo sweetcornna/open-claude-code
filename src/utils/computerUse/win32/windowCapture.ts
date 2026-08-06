@@ -3,6 +3,8 @@
  * Captures windows even when occluded or minimized.
  */
 
+import { ps } from './shared.js'
+
 interface CaptureResult {
   base64: string
   width: number
@@ -100,12 +102,7 @@ function parseCaptureOutput(raw: string): CaptureResult | null {
 }
 
 function runPs(script: string): string {
-  const result = Bun.spawnSync({
-    cmd: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  return ps(script)
 }
 
 /**

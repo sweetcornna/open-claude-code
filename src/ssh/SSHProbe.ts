@@ -1,5 +1,6 @@
 import { BIN_NAME } from 'src/config/paths.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { captureProcess } from '../utils/process/spawnPortable.js'
 
 const PROBE_TIMEOUT_MS = 15_000
 
@@ -30,7 +31,12 @@ export async function probeRemote(
 ): Promise<ProbeResult> {
   onProgress?.('Probing remote host…')
 
-  const proc = Bun.spawn(
+  const {
+    stdout,
+    stderr,
+    exitCode: result,
+    timedOut,
+  } = await captureProcess(
     [
       'ssh',
       '-o',
@@ -40,26 +46,14 @@ export async function probeRemote(
       host,
       buildRemoteProbeCommand(),
     ],
-    { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+    { timeoutMs: PROBE_TIMEOUT_MS },
   )
 
-  const result = await Promise.race([
-    proc.exited,
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () =>
-          reject(
-            new SSHProbeError(
-              `SSH probe timed out after ${PROBE_TIMEOUT_MS / 1000}s`,
-            ),
-          ),
-        PROBE_TIMEOUT_MS,
-      ),
-    ),
-  ])
-
-  const stdout = await new Response(proc.stdout).text()
-  const stderr = await new Response(proc.stderr).text()
+  if (timedOut) {
+    throw new SSHProbeError(
+      `SSH probe timed out after ${PROBE_TIMEOUT_MS / 1000}s`,
+    )
+  }
 
   if (result !== 0) {
     const detail = stderr.trim() || `exit code ${result}`

@@ -6,24 +6,18 @@
  */
 
 import type { FrontmostAppInfo, InputBackend } from '../types.js'
+import { runCapture, runCaptureSync } from '../spawnCompat.js'
 
 // ---------------------------------------------------------------------------
 // Shell helper — run a command and return trimmed stdout
 // ---------------------------------------------------------------------------
 
 function run(cmd: string[]): string {
-  const result = Bun.spawnSync({
-    cmd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  return runCaptureSync(cmd).stdout.trim()
 }
 
 async function runAsync(cmd: string[]): Promise<string> {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' })
-  const out = await new Response(proc.stdout).text()
-  await proc.exited
+  const { stdout: out } = await runCapture(cmd)
   return out.trim()
 }
 

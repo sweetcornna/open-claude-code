@@ -40,6 +40,7 @@ import { sleep } from '../process/sleep.js'
 import { CLI_CU_CAPABILITIES, CLI_HOST_BUNDLE_ID } from './common.js'
 import { validateHwnd } from './win32/shared.js'
 import { loadPlatform } from './platforms/index.js'
+import { captureProcess, captureProcessSync } from '../process/spawnPortable.js'
 
 // ---------------------------------------------------------------------------
 // Helpers for HWND-bound mode
@@ -77,13 +78,12 @@ function getNonClientOffset(): { dx: number; dy: number } {
 
     validateHwnd(hwnd)
 
-    const result = Bun.spawnSync({
-      cmd: [
-        'powershell',
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `
+    const result = captureProcessSync([
+      'powershell',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -105,11 +105,8 @@ $pt.X = 0; $pt.Y = 0
 [NcCalc]::ClientToScreen($h, [ref]$pt) | Out-Null
 "$($pt.X - $wr.L),$($pt.Y - $wr.T)"
 `,
-      ],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const out = new TextDecoder().decode(result.stdout).trim()
+    ])
+    const out = result.stdout.trim()
     const [dxStr, dyStr] = out.split(',')
     const dx = Number(dxStr) || 0
     const dy = Number(dyStr) || 0
@@ -319,40 +316,37 @@ export function createCrossPlatformExecutor(_opts: {
 
     async readClipboard(): Promise<string> {
       if (process.platform === 'win32') {
-        const result = Bun.spawnSync({
-          cmd: ['powershell', '-NoProfile', '-Command', 'Get-Clipboard'],
-          stdout: 'pipe',
-        })
-        return new TextDecoder().decode(result.stdout).trim()
+        return captureProcessSync([
+          'powershell',
+          '-NoProfile',
+          '-Command',
+          'Get-Clipboard',
+        ]).stdout.trim()
       }
       // Linux
-      const result = Bun.spawnSync({
-        cmd: ['xclip', '-selection', 'clipboard', '-o'],
-        stdout: 'pipe',
-      })
-      return new TextDecoder().decode(result.stdout).trim()
+      return captureProcessSync([
+        'xclip',
+        '-selection',
+        'clipboard',
+        '-o',
+      ]).stdout.trim()
     },
 
     async writeClipboard(text: string): Promise<void> {
       if (process.platform === 'win32') {
         const escaped = text.replace(/'/g, "''")
-        Bun.spawnSync({
-          cmd: [
-            'powershell',
-            '-NoProfile',
-            '-Command',
-            `Set-Clipboard -Value '${escaped}'`,
-          ],
-        })
+        captureProcessSync([
+          'powershell',
+          '-NoProfile',
+          '-Command',
+          `Set-Clipboard -Value '${escaped}'`,
+        ])
         return
       }
       // Linux
-      const proc = Bun.spawn(['xclip', '-selection', 'clipboard'], {
-        stdin: 'pipe',
+      await captureProcess(['xclip', '-selection', 'clipboard'], {
+        input: text,
       })
-      proc.stdin.write(text)
-      proc.stdin.end()
-      await proc.exited
     },
 
     // ── Mouse ────────────────────────────────────────────────────────────
@@ -402,21 +396,19 @@ export function createCrossPlatformExecutor(_opts: {
       }
       // Unbound: SendInput with MOUSEEVENTF_LEFTDOWN
       if (process.platform === 'win32') {
-        Bun.spawnSync({
-          cmd: [
-            'powershell',
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `Add-Type -Language CSharp @'
+        captureProcessSync([
+          'powershell',
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `Add-Type -Language CSharp @'
 using System; using System.Runtime.InteropServices;
 public class MDown { [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx; public int dy; public int mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
 [StructLayout(LayoutKind.Explicit)] public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(4)] public MOUSEINPUT mi; }
 [DllImport("user32.dll",SetLastError=true)] public static extern uint SendInput(uint n, INPUT[] i, int cb); }
 '@
 $i = New-Object MDown+INPUT; $i.type=0; $i.mi.dwFlags=0x0002; [MDown]::SendInput(1, @($i), [Runtime.InteropServices.Marshal]::SizeOf($i)) | Out-Null`,
-          ],
-        })
+        ])
         return
       }
     },
@@ -436,21 +428,19 @@ $i = New-Object MDown+INPUT; $i.type=0; $i.mi.dwFlags=0x0002; [MDown]::SendInput
       }
       // Unbound: SendInput with MOUSEEVENTF_LEFTUP
       if (process.platform === 'win32') {
-        Bun.spawnSync({
-          cmd: [
-            'powershell',
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `Add-Type -Language CSharp @'
+        captureProcessSync([
+          'powershell',
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `Add-Type -Language CSharp @'
 using System; using System.Runtime.InteropServices;
 public class MUp { [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx; public int dy; public int mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
 [StructLayout(LayoutKind.Explicit)] public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(4)] public MOUSEINPUT mi; }
 [DllImport("user32.dll",SetLastError=true)] public static extern uint SendInput(uint n, INPUT[] i, int cb); }
 '@
 $i = New-Object MUp+INPUT; $i.type=0; $i.mi.dwFlags=0x0004; [MUp]::SendInput(1, @($i), [Runtime.InteropServices.Marshal]::SizeOf($i)) | Out-Null`,
-          ],
-        })
+        ])
         return
       }
     },
@@ -604,15 +594,11 @@ $i = New-Object MUp+INPUT; $i.type=0; $i.mi.dwFlags=0x0004; [MUp]::SendInput(1, 
         const escapedCwd = cwd.replace(/'/g, "''")
 
         // Start-Process powershell opens a NEW visible PowerShell window
-        Bun.spawnSync({
-          cmd: [
-            'powershell',
-            '-Command',
-            `Start-Process powershell -ArgumentList '-NoExit','-Command','cd ''${escapedCwd}''; ${cmd}'`,
-          ],
-          stdout: 'ignore',
-          stderr: 'ignore',
-        })
+        captureProcessSync([
+          'powershell',
+          '-Command',
+          `Start-Process powershell -ArgumentList '-NoExit','-Command','cd ''${escapedCwd}''; ${cmd}'`,
+        ])
 
         // Poll for new terminal window (up to 5s)
         let newHwnd: string | null = null

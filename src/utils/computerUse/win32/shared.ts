@@ -43,6 +43,23 @@ export function ps(script: string): string {
   return runPowerShell(script).stdout
 }
 
+/** Full result for callers that need stderr or the exit code. */
+export function psResult(script: string): {
+  stdout: string
+  stderr: string
+  exitCode: number | null
+} {
+  const result = spawnSync('powershell', [...PS_ARGS, script], {
+    encoding: 'utf8',
+    windowsHide: true,
+  })
+  return {
+    stdout: (result.stdout ?? '').trim(),
+    stderr: (result.stderr ?? '').trim(),
+    exitCode: result.status,
+  }
+}
+
 /** Run a PowerShell script synchronously, return null on failure. */
 export function runPs(script: string): string | null {
   try {

@@ -20,33 +20,23 @@ import type {
   SwiftBackend,
   WindowDisplayInfo,
 } from '../types.js'
+import { runCapture, runCaptureSync } from '../spawnCompat.js'
 
 // ---------------------------------------------------------------------------
 // Shell helpers
 // ---------------------------------------------------------------------------
 
 function run(cmd: string[]): string {
-  const result = Bun.spawnSync({
-    cmd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  return runCaptureSync(cmd).stdout.trim()
 }
 
 async function runAsync(cmd: string[]): Promise<string> {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' })
-  const out = await new Response(proc.stdout).text()
-  await proc.exited
+  const { stdout: out } = await runCapture(cmd)
   return out.trim()
 }
 
 function commandExists(name: string): boolean {
-  const result = Bun.spawnSync({
-    cmd: ['which', name],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const result = runCaptureSync(['which', name])
   return result.exitCode === 0
 }
 

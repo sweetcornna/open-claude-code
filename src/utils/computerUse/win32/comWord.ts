@@ -1,8 +1,10 @@
 /**
  * Word COM automation module for Windows.
  * Uses PowerShell to drive Word.Application COM object — fully headless (Visible=false).
- * Each function builds a PowerShell script, runs it via Bun.spawnSync, and parses JSON output.
+ * Each function builds a PowerShell script, runs it via shared.ts::ps, and parses JSON output.
  */
+
+import { ps } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,13 +42,11 @@ export interface AppendTextOptions {
 // PowerShell runner
 // ---------------------------------------------------------------------------
 
+// Was a local Bun.spawnSync copy; Bun is undefined on the default (Node)
+// runtime, so every call threw ReferenceError. shared.ts::ps runs the same
+// command through child_process.
 function runPs(script: string): string {
-  const result = Bun.spawnSync({
-    cmd: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  return ps(script)
 }
 
 function parseJsonOutput<T>(raw: string, fallback: T): T {

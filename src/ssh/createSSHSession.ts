@@ -1,5 +1,9 @@
 import { BIN_NAME } from 'src/config/paths.js'
-import type { Subprocess } from 'bun'
+import {
+  captureProcess,
+  spawnStreaming,
+  type StreamingProcess,
+} from '../utils/process/spawnPortable.js'
 import { SSHSessionManagerImpl } from './SSHSessionManager.js'
 import type {
   SSHSessionManager,
@@ -20,7 +24,7 @@ const STDERR_TAIL_LINES = 20
 
 export interface SSHSession {
   remoteCwd: string
-  proc: Subprocess
+  proc: StreamingProcess
   proxy: SSHAuthProxy
   createManager(options: SSHSessionManagerOptions): SSHSessionManager
   getStderrTail(): string
@@ -59,16 +63,11 @@ export async function createSSHSession(
     logForDebugging(`[SSH] custom remoteBin: ${remoteBin}`)
     // Quick SSH to get remote home directory for default CWD
     try {
-      const pwdProc = Bun.spawn(
+      const { stdout } = await captureProcess(
         ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', host, 'pwd'],
-        {
-          stdin: 'ignore',
-          stdout: 'pipe',
-          stderr: 'ignore',
-        },
+        { timeoutMs: 10_000 },
       )
-      await pwdProc.exited
-      const pwd = (await new Response(pwdProc.stdout).text()).trim()
+      const pwd = stdout.trim()
       if (pwd.startsWith('/')) defaultCwd = pwd
     } catch {
       /* use fallback */
@@ -157,13 +156,9 @@ export async function createSSHSession(
   onProgress?.('Starting remote session…')
   logForDebugging(`[SSH] spawning: ${sshArgs.join(' ')}`)
 
-  let proc: Subprocess
+  let proc: StreamingProcess
   try {
-    proc = Bun.spawn(sshArgs, {
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
+    proc = spawnStreaming(sshArgs)
   } catch (err) {
     proxy.stop()
     throw new SSHSessionError(
@@ -206,7 +201,7 @@ export async function createSSHSession(
 
   let currentProc = proc
 
-  const reconnect = async (): Promise<Subprocess> => {
+  const reconnect = async (): Promise<StreamingProcess> => {
     logForDebugging('[SSH] reconnect: re-spawning SSH process with --continue')
     const reconnectArgs = [...sshArgs]
     const cmdIdx = reconnectArgs.length - 1
@@ -218,12 +213,7 @@ export async function createSSHSession(
       )
     }
 
-    const newProc = Bun.spawn(reconnectArgs, {
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-
+    const newProc = spawnStreaming(reconnectArgs)
     const newStderrChunks: string[] = []
     collectStderr(newProc, newStderrChunks)
 
@@ -279,12 +269,9 @@ export async function createLocalSSHSession(config: {
 
   const spec = buildCliLaunch(cliArgs)
 
-  let proc: Subprocess
+  let proc: StreamingProcess
   try {
-    proc = Bun.spawn([spec.execPath, ...spec.args], {
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
+    proc = spawnStreaming([spec.execPath, ...spec.args], {
       env: { ...spec.env, ...authEnv },
     })
   } catch (err) {
@@ -312,7 +299,7 @@ export async function createLocalSSHSession(config: {
 
   let currentProc = proc
 
-  const reconnect = async (): Promise<Subprocess> => {
+  const reconnect = async (): Promise<StreamingProcess> => {
     logForDebugging('[SSH] local reconnect: re-spawning CLI with --continue')
     const reconnectCliArgs = [...cliArgs]
     if (!reconnectCliArgs.includes('--continue')) {
@@ -320,12 +307,10 @@ export async function createLocalSSHSession(config: {
     }
 
     const reconnectSpec = buildCliLaunch(reconnectCliArgs)
-    const newProc = Bun.spawn([reconnectSpec.execPath, ...reconnectSpec.args], {
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...reconnectSpec.env, ...authEnv },
-    })
+    const newProc = spawnStreaming(
+      [reconnectSpec.execPath, ...reconnectSpec.args],
+      { env: { ...reconnectSpec.env, ...authEnv } },
+    )
 
     const newStderrChunks: string[] = []
     collectStderr(newProc, newStderrChunks)
@@ -357,7 +342,7 @@ export async function createLocalSSHSession(config: {
 }
 
 async function waitForInit(
-  proc: Subprocess,
+  proc: StreamingProcess,
   fallbackCwd?: string,
 ): Promise<string> {
   const stdout = proc.stdout
@@ -427,7 +412,7 @@ async function waitForInit(
   )
 }
 
-function collectStderr(proc: Subprocess, chunks: string[]): void {
+function collectStderr(proc: StreamingProcess, chunks: string[]): void {
   const stderr = proc.stderr
   if (!stderr) return
 

@@ -9,6 +9,7 @@ import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
 import { createCliExecutor } from './executor.js'
 import { getChicagoEnabled, getChicagoSubGates } from './gates.js'
 import { requireComputerUseSwift } from './swiftLoader.js'
+import { captureProcessSync } from '../process/spawnPortable.js'
 
 class DebugLogger implements Logger {
   silly(message: string, detail?: LoggerDetail): void {
@@ -35,16 +36,13 @@ class DebugLogger implements Logger {
 /** Probe accessibility by asking System Events for a process list. */
 function checkAccessibilityJXA(): boolean {
   try {
-    const result = Bun.spawnSync({
-      cmd: [
+    return (
+      captureProcessSync([
         'osascript',
         '-e',
         'tell application "System Events" to get name of every process whose background only is false',
-      ],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    return result.exitCode === 0
+      ]).exitCode === 0
+    )
   } catch {
     return false
   }
@@ -53,12 +51,10 @@ function checkAccessibilityJXA(): boolean {
 /** Probe screen recording by attempting a 1x1 screencapture. */
 function checkScreenRecordingJXA(): boolean {
   try {
-    const result = Bun.spawnSync({
-      cmd: ['screencapture', '-x', '-R', '0,0,1,1', '/dev/null'],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    return result.exitCode === 0
+    return (
+      captureProcessSync(['screencapture', '-x', '-R', '0,0,1,1', '/dev/null'])
+        .exitCode === 0
+    )
   } catch {
     return false
   }

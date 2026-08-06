@@ -3,6 +3,8 @@
  * Returns visible windows with their HWND, PID, and title.
  */
 
+import { ps } from './shared.js'
+
 export interface WindowInfo {
   hwnd: string
   pid: number
@@ -58,18 +60,7 @@ public class WinEnum {
  * Returns HWND, PID, and window title for each.
  */
 export function listWindows(): WindowInfo[] {
-  const result = Bun.spawnSync({
-    cmd: [
-      'powershell',
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      ENUM_WINDOWS_PS,
-    ],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const raw = new TextDecoder().decode(result.stdout).trim()
+  const raw = ps(ENUM_WINDOWS_PS)
   if (!raw) return []
 
   return raw

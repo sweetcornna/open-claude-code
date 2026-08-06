@@ -8,27 +8,31 @@
  */
 
 import type { FrontmostAppInfo, InputBackend } from '../types.js'
+import { runCapture, runCaptureSync } from '../spawnCompat.js'
 
 // ---------------------------------------------------------------------------
 // PowerShell helper — run a script and return trimmed stdout
 // ---------------------------------------------------------------------------
 
 function ps(script: string): string {
-  const result = Bun.spawnSync({
-    cmd: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  const result = runCaptureSync([
+    'powershell',
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    script,
+  ])
+  return result.stdout.trim()
 }
 
 async function psAsync(script: string): Promise<string> {
-  const proc = Bun.spawn(
-    ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-    { stdout: 'pipe', stderr: 'pipe' },
-  )
-  const out = await new Response(proc.stdout).text()
-  await proc.exited
+  const { stdout: out } = await runCapture([
+    'powershell',
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    script,
+  ])
   return out.trim()
 }
 

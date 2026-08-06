@@ -3,6 +3,7 @@ import { readFileSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharpModule from 'sharp'
+import { spawnSync } from 'node:child_process'
 
 export const sharp = sharpModule
 
@@ -20,20 +21,44 @@ interface NativeModule {
   } | null
 }
 
+/**
+ * Run a command and capture stdout, on either runtime.
+ *
+ * These call sites used `Bun.spawnSync` directly. The published CLI's default
+ * bin is `dist/cli-node.js` with a Node shebang — only `occ-bun` runs Bun — so
+ * `Bun` was undefined and each of these threw `ReferenceError` inside a `catch`
+ * that turned it into a silent "no clipboard image". This package cannot import
+ * from `src/`, hence the local copy.
+ */
+function runCapture(cmd: string[]): {
+  stdout: string
+  exitCode: number | null
+} {
+  if (typeof Bun !== 'undefined' && typeof Bun.spawnSync === 'function') {
+    const result = Bun.spawnSync({ cmd, stdout: 'pipe', stderr: 'pipe' })
+    return {
+      stdout: new TextDecoder().decode(result.stdout),
+      exitCode: result.exitCode,
+    }
+  }
+  const [file, ...args] = cmd
+  const result = spawnSync(file!, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  })
+  return { stdout: result.stdout ?? '', exitCode: result.status }
+}
+
 function createDarwinNativeModule(): NativeModule {
   return {
     hasClipboardImage(): boolean {
       try {
-        const result = Bun.spawnSync({
-          cmd: [
-            'osascript',
-            '-e',
-            'try\nthe clipboard as «class PNGf»\nreturn "yes"\non error\nreturn "no"\nend try',
-          ],
-          stdout: 'pipe',
-          stderr: 'pipe',
-        })
-        const output = result.stdout.toString().trim()
+        const result = runCapture([
+          'osascript',
+          '-e',
+          'try\nthe clipboard as «class PNGf»\nreturn "yes"\non error\nreturn "no"\nend try',
+        ])
+        const output = result.stdout.trim()
         return output === 'yes'
       } catch {
         return false
@@ -52,11 +77,7 @@ write png_data to fp
 close access fp
 return "${tmpPath}"
 `
-        const result = Bun.spawnSync({
-          cmd: ['osascript', '-e', script],
-          stdout: 'pipe',
-          stderr: 'pipe',
-        })
+        const result = runCapture(['osascript', '-e', script])
 
         if (result.exitCode !== 0) {
           return null

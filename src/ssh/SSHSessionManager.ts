@@ -1,4 +1,4 @@
-import type { Subprocess } from 'bun'
+import type { StreamingProcess } from '../utils/process/spawnPortable.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type {
   SDKControlPermissionRequest,
@@ -19,7 +19,7 @@ export interface SSHSessionManagerOptions {
   onReconnecting: (attempt: number, max: number) => void
   onDisconnected: () => void
   onError: (error: Error) => void
-  reconnect?: () => Promise<Subprocess>
+  reconnect?: () => Promise<StreamingProcess>
   maxReconnectAttempts?: number
 }
 
@@ -57,7 +57,7 @@ const MAX_RECONNECT_DELAY_MS = 15_000
 const DEFAULT_MAX_RECONNECT_ATTEMPTS = 3
 
 export class SSHSessionManagerImpl implements SSHSessionManager {
-  private proc: Subprocess
+  private proc: StreamingProcess
   private options: SSHSessionManagerOptions
   private connected = false
   private disconnected = false
@@ -67,7 +67,7 @@ export class SSHSessionManagerImpl implements SSHSessionManager {
   private userInitiatedDisconnect = false
   private reconnecting = false
 
-  constructor(proc: Subprocess, options: SSHSessionManagerOptions) {
+  constructor(proc: StreamingProcess, options: SSHSessionManagerOptions) {
     this.proc = proc
     this.options = options
     this.maxReconnectAttempts =
