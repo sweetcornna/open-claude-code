@@ -2502,41 +2502,30 @@ export function REPL({
               proactiveModule?.setContextBlocked(false);
             }
           }
-          // Auto-pause active /goal when the turn failed due to connectivity.
-          // Continuing immediately after network failures usually burns turns
-          // without progress and can rapidly hit max-turn guards.
-          if (
-            feature('GOAL') &&
-            newMessage.type === 'assistant' &&
-            'isApiErrorMessage' in newMessage &&
-            newMessage.isApiErrorMessage
-          ) {
-            const assistantText =
-              getContentText((newMessage.message?.content ?? '') as string | ContentBlockParam[]) ?? '';
-            const lowerText = assistantText.toLowerCase();
-            const isConnectivityFailure =
-              lowerText.includes('connection error') ||
-              lowerText.includes('fetch failed') ||
-              lowerText.includes('network error') ||
-              lowerText.includes('enotfound') ||
-              lowerText.includes('econnreset') ||
-              lowerText.includes('etimedout');
-
-            if (isConnectivityFailure) {
-              const { getGoal, pauseGoal } =
-                require('../services/goal/goalState.js') as typeof import('../services/goal/goalState.js');
-              const { persistCurrentGoal } =
-                require('../services/goal/goalStorage.js') as typeof import('../services/goal/goalStorage.js');
-              const currentGoal = getGoal();
-              if (currentGoal?.status === 'active') {
-                pauseGoal();
-                persistCurrentGoal();
-                addNotification({
-                  key: 'goal-auto-paused-connectivity-error',
-                  text: 'Detected connection error. Active goal was auto-paused. Run /goal resume after network recovers.',
-                  priority: 'immediate',
-                });
-              }
+          // Fold the turn's outcome into an active /goal. Failures are triaged
+          // rather than treated alike: a transient network error is retried
+          // with backoff (and only pauses the goal on the third in a row),
+          // while a success clears the streak and revives a goal an outage
+          // had auto-paused. See services/goal/goalTurnOutcome.ts.
+          if (feature('GOAL') && newMessage.type === 'assistant') {
+            const { recordGoalApiFailure, recordGoalApiSuccess, formatGoalOutcomeNotice } =
+              require('../services/goal/goalTurnOutcome.js') as typeof import('../services/goal/goalTurnOutcome.js');
+            const isApiError = 'isApiErrorMessage' in newMessage && newMessage.isApiErrorMessage;
+            let notice: ReturnType<typeof recordGoalApiFailure> = null;
+            if (isApiError) {
+              const assistantText =
+                getContentText((newMessage.message?.content ?? '') as string | ContentBlockParam[]) ?? '';
+              notice = recordGoalApiFailure(assistantText, newMessage.error);
+            } else {
+              notice = recordGoalApiSuccess();
+            }
+            const noticeText = formatGoalOutcomeNotice(notice);
+            if (noticeText && notice) {
+              addNotification({
+                key: `goal-outcome-${notice.kind}`,
+                text: noticeText,
+                priority: 'immediate',
+              });
             }
           }
         },

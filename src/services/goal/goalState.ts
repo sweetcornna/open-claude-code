@@ -5,14 +5,42 @@
  * Uses Map<string, GoalState> keyed by sessionId so concurrent
  * sub-sessions (agents, worktrees) don't leak into each other.
  */
-import type { GoalState, GoalStatus } from '../../types/logs.js'
+import type {
+  GoalPauseReason,
+  GoalState,
+  GoalStatus,
+} from '../../types/logs.js'
 import { getSessionId } from '../../bootstrap/state.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { setGoalPresent } from './goalPresence.js'
 
 export const BLOCKED_CONSECUTIVE_THRESHOLD = 3
 export const MAX_GOAL_TURNS = 150
 
+/**
+ * Consecutive transient API failures tolerated before the continuation loop
+ * gives up and pauses. Mirrors BLOCKED_CONSECUTIVE_THRESHOLD: one bad turn is
+ * noise, three in a row is a real outage.
+ *
+ * Before this existed, a single `fetch failed` paused the goal outright and
+ * nothing ever resumed it — a goal set at 09:05 sat paused for the next five
+ * hours of the session while the user kept working by hand.
+ */
+export const TRANSIENT_ERROR_PAUSE_THRESHOLD = 3
+
+/**
+ * Backoff before re-enqueuing a continuation turn, indexed by how many
+ * consecutive failures precede it. The API layer already runs its own retry
+ * ladder inside a turn; this spaces out whole turns so a dead network doesn't
+ * burn the turn budget in a tight loop.
+ */
+const RETRY_BACKOFF_MS = [10_000, 30_000] as const
+
 const goals = new Map<string, GoalState>()
+
+function syncPresence(): void {
+  setGoalPresent(goals.size > 0)
+}
 
 function goalLog(
   tag: string,
@@ -52,8 +80,11 @@ export function setGoal(
     createdAt: now,
     updatedAt: now,
     turnsExecuted: 0,
+    consecutiveErrors: 0,
+    pauseReason: null,
   }
   goals.set(id, state)
+  syncPresence()
   goalLog('SET', `objective="${objective.slice(0, 80)}"`, {
     tokenBudget: state.tokenBudget,
   })
@@ -67,11 +98,21 @@ export function getGoal(sessionId?: string): GoalState | null {
 export function clearGoal(sessionId?: string): boolean {
   const had = goals.has(resolveSessionId(sessionId))
   const result = goals.delete(resolveSessionId(sessionId))
+  syncPresence()
   if (had) goalLog('CLEAR', 'goal removed')
   return result
 }
 
-export function pauseGoal(sessionId?: string): GoalState | null {
+/**
+ * Halt auto-continuation. `reason` records who stopped it: a `'user'` pause
+ * (`/goal pause`, Ctrl+C) is permanent until the user says otherwise, while a
+ * `'transient-error'` pause is undone automatically by the next successful
+ * turn — see {@link recordGoalTurnSuccess}.
+ */
+export function pauseGoal(
+  sessionId?: string,
+  reason: Exclude<GoalPauseReason, null> = 'user',
+): GoalState | null {
   const id = resolveSessionId(sessionId)
   const goal = goals.get(id)
   if (!goal || goal.status !== 'active') return null
@@ -79,10 +120,12 @@ export function pauseGoal(sessionId?: string): GoalState | null {
   goal.accumulatedActiveMs += now - goal.startTime
   goal.pausedAt = now
   goal.status = 'paused'
+  goal.pauseReason = reason
   goal.updatedAt = now
   goalLog(
     'PAUSE',
     `paused after ${Math.round(goal.accumulatedActiveMs / 1000)}s active`,
+    { reason },
   )
   return goal
 }
@@ -98,11 +141,88 @@ export function resumeGoal(sessionId?: string): GoalState | null {
   goal.startTime = now
   goal.pausedAt = null
   goal.status = 'active'
+  goal.pauseReason = null
   goal.updatedAt = now
   goalLog('RESUME', 'goal resumed, blockedAttempts reset')
   goal.blockedAttempts = 0
   goal.lastBlockReason = null
+  goal.consecutiveErrors = 0
   return goal
+}
+
+/**
+ * Record that a continuation turn died on a transient API failure (network
+ * reset, `fetch failed`, 5xx). Keeps the goal `active` for the first
+ * {@link TRANSIENT_ERROR_PAUSE_THRESHOLD} - 1 failures so the loop can retry
+ * with backoff, then pauses with `pauseReason: 'transient-error'`.
+ *
+ * Returns the outcome, or `null` when there is no active goal to charge the
+ * failure to.
+ */
+export function recordTransientFailure(
+  sessionId?: string,
+): { consecutiveErrors: number; paused: boolean } | null {
+  const goal = goals.get(resolveSessionId(sessionId))
+  if (!goal || goal.status !== 'active') return null
+  goal.consecutiveErrors += 1
+  goal.updatedAt = Date.now()
+  if (goal.consecutiveErrors >= TRANSIENT_ERROR_PAUSE_THRESHOLD) {
+    pauseGoal(sessionId, 'transient-error')
+    goalLog(
+      'TRANSIENT_PAUSE',
+      `paused after ${goal.consecutiveErrors} consecutive API failures`,
+    )
+    return { consecutiveErrors: goal.consecutiveErrors, paused: true }
+  }
+  goalLog(
+    'TRANSIENT_FAILURE',
+    `attempt ${goal.consecutiveErrors}/${TRANSIENT_ERROR_PAUSE_THRESHOLD}, will retry with backoff`,
+  )
+  return { consecutiveErrors: goal.consecutiveErrors, paused: false }
+}
+
+/**
+ * Record that a turn reached the model successfully. Clears the transient
+ * failure streak and — the point of the pauseReason bookkeeping — lifts an
+ * automatic pause so a recovered network resumes the goal on its own. A pause
+ * the *user* asked for is never undone here.
+ *
+ * Returns `'resumed'` when this call revived a paused goal, so the caller can
+ * tell the user what happened.
+ */
+export function recordGoalTurnSuccess(
+  sessionId?: string,
+): 'resumed' | 'cleared' | null {
+  const goal = goals.get(resolveSessionId(sessionId))
+  if (!goal) return null
+
+  if (goal.status === 'paused' && goal.pauseReason === 'transient-error') {
+    goal.consecutiveErrors = 0
+    resumeGoal(sessionId)
+    goalLog('AUTO_RESUME', 'connectivity recovered, goal resumed')
+    return 'resumed'
+  }
+
+  if (goal.status === 'usage_limited') {
+    resumeFromUsageLimit(sessionId)
+    return 'resumed'
+  }
+
+  if (goal.consecutiveErrors === 0) return null
+  goal.consecutiveErrors = 0
+  goal.updatedAt = Date.now()
+  goalLog('TRANSIENT_RECOVERED', 'failure streak cleared')
+  return 'cleared'
+}
+
+/**
+ * How long the continuation loop should wait before the next turn. Zero on a
+ * healthy goal; a widening backoff while a failure streak is in progress.
+ */
+export function getContinuationDelayMs(goal: GoalState): number {
+  if (goal.consecutiveErrors <= 0) return 0
+  const idx = Math.min(goal.consecutiveErrors - 1, RETRY_BACKOFF_MS.length - 1)
+  return RETRY_BACKOFF_MS[idx] ?? 0
 }
 
 /**
@@ -132,8 +252,10 @@ export function continueGoalFromMaxTurns(sessionId?: string): GoalState | null {
   goal.status = 'active'
   goal.startTime = now
   goal.pausedAt = null
+  goal.pauseReason = null
   goal.blockedAttempts = 0
   goal.lastBlockReason = null
+  goal.consecutiveErrors = 0
   goal.updatedAt = now
   goalLog(
     'CONTINUE',
@@ -186,12 +308,41 @@ export function updateGoalTokens(
   return goal
 }
 
+/**
+ * Provider said no on quota (429 / usage limit). Distinct from a transient
+ * failure: retrying sooner cannot help, so this stops the loop immediately
+ * rather than spending two more turns proving the point.
+ */
 export function markUsageLimited(sessionId?: string): GoalState | null {
   const id = resolveSessionId(sessionId)
   const goal = goals.get(id)
   if (!goal || goal.status !== 'active') return null
+  const now = Date.now()
+  if (goal.pausedAt === null) {
+    goal.accumulatedActiveMs += now - goal.startTime
+    goal.pausedAt = now
+  }
   goal.status = 'usage_limited'
-  goal.updatedAt = Date.now()
+  goal.updatedAt = now
+  goalLog('USAGE_LIMITED', 'provider rate/usage limit hit, loop stopped')
+  return goal
+}
+
+/**
+ * Lift a `usage_limited` stop once the provider starts answering again.
+ * Separate from {@link resumeGoal}, which only accepts `paused`.
+ */
+export function resumeFromUsageLimit(sessionId?: string): GoalState | null {
+  const goal = goals.get(resolveSessionId(sessionId))
+  if (!goal || goal.status !== 'usage_limited') return null
+  const now = Date.now()
+  goal.status = 'active'
+  goal.startTime = now
+  goal.pausedAt = null
+  goal.pauseReason = null
+  goal.consecutiveErrors = 0
+  goal.updatedAt = now
+  goalLog('USAGE_RECOVERED', 'usage limit cleared, goal resumed')
   return goal
 }
 
@@ -252,17 +403,27 @@ export function getActiveElapsedMs(goal: GoalState): number {
 /** Test-only: wipe the in-memory map without touching disk. */
 export function _clearAllGoalsForTesting(): void {
   goals.clear()
+  syncPresence()
 }
 
 /**
  * Test/internal: hydrate the in-memory map from persisted state.
  * Called by goalStorage on session resume.
+ *
+ * Transcripts written before `consecutiveErrors` / `pauseReason` existed have
+ * neither field, and the declared type claims both. Normalise on the way in so
+ * every reader downstream can treat them as present.
  */
 export function _setGoalFromPersistedState(
   state: GoalState,
   sessionId?: string,
 ): void {
-  goals.set(resolveSessionId(sessionId), state)
+  goals.set(resolveSessionId(sessionId), {
+    ...state,
+    consecutiveErrors: state.consecutiveErrors ?? 0,
+    pauseReason: state.pauseReason ?? null,
+  })
+  syncPresence()
 }
 
 /** Format the elapsed time as "Xm Ys" / "Ys" for UI display. */

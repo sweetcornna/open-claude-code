@@ -18,6 +18,7 @@ const { CORE_TOOLS } = await import('../tools.js')
 const { isDeferredTool } = await import(
   '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 )
+const { setGoalPresent } = await import('../../services/goal/goalPresence.js')
 
 type MockTool = {
   name: string
@@ -134,5 +135,25 @@ describe('isDeferredTool', () => {
     // A tool in CORE_TOOLS with alwaysLoad: false should still not be deferred
     const tool = makeTool({ name: 'Read', alwaysLoad: true })
     expect(isDeferredTool(tool as never)).toBe(false)
+  })
+
+  test('GoalTool is deferred with no goal, loaded once one exists', () => {
+    const tool = makeTool({ name: 'GoalTool' })
+    // The presence flag is process-global (bun's module registry is shared
+    // across test files), so pin both ends explicitly rather than assuming
+    // whatever a previously-run file left behind.
+    setGoalPresent(false)
+    expect(isDeferredTool(tool as never)).toBe(true)
+
+    // Every <goal-steering> turn tells the model to "use the GoalTool to mark
+    // it complete" — behind a SearchExtraTools round-trip that instruction
+    // names a tool the model cannot see, so the goal never reaches a terminal
+    // state and the loop runs to the turn cap instead of finishing.
+    setGoalPresent(true)
+    try {
+      expect(isDeferredTool(tool as never)).toBe(false)
+    } finally {
+      setGoalPresent(false)
+    }
   })
 })

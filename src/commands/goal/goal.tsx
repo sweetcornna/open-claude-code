@@ -27,6 +27,7 @@ import {
   incrementGoalTurns,
   MAX_GOAL_TURNS,
   pauseGoal,
+  resumeFromUsageLimit,
   resumeGoal,
   setGoal,
 } from 'src/services/goal/goalState.js';
@@ -66,6 +67,19 @@ function formatGoalStatus(): string {
     lines.push(
       `Hint: Max continuation turns reached (${MAX_GOAL_TURNS}). Run \`/goal continue\` to reset and continue.`,
     );
+  }
+
+  // Distinguish "you stopped this" from "the network stopped this" — the
+  // latter un-pauses itself, and users who can't tell them apart assume the
+  // goal was abandoned and start driving the session by hand.
+  if (goal.status === 'paused' && goal.pauseReason === 'transient-error') {
+    lines.push('Hint: Auto-paused after repeated connection errors. It resumes on its own once a turn succeeds.');
+  } else if (goal.status === 'paused' && goal.pauseReason === 'fatal-error') {
+    lines.push('Hint: Paused on a non-retryable API error (auth/billing). Fix the credentials, then `/goal resume`.');
+  } else if (goal.status === 'usage_limited') {
+    lines.push('Hint: Stopped on a provider usage limit. It resumes on its own once a turn succeeds.');
+  } else if (goal.consecutiveErrors > 0) {
+    lines.push(`Hint: ${goal.consecutiveErrors} consecutive connection error(s); the next turn is on backoff.`);
   }
 
   return lines.join('\n');
@@ -125,7 +139,9 @@ export async function call(
       );
       return null;
     }
-    const g = resumeGoal();
+    // `usage_limited` is a stop, not a pause, so resumeGoal() rejects it —
+    // but from the user's side "/goal resume" must revive either one.
+    const g = current?.status === 'usage_limited' ? resumeFromUsageLimit() : resumeGoal();
     if (g) persistCurrentGoal();
     onDone(g ? 'Goal resumed.' : 'No paused goal to resume.', {
       display: 'system',

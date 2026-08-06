@@ -5,7 +5,7 @@
  * effect chain pulls in log.ts so we mock that to keep the suite fast
  * and side-effect free.
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { logMock } from '../../../../tests/mocks/log.js'
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -34,6 +34,13 @@ import {
 const SESSION = 'test-session-id'
 
 beforeEach(() => {
+  _clearAllGoalsForTesting()
+})
+
+// The goal map drives a process-global presence flag that isDeferredTool reads;
+// leaving a goal behind would make GoalTool non-deferred for every test file
+// that runs after this one.
+afterAll(() => {
   _clearAllGoalsForTesting()
 })
 

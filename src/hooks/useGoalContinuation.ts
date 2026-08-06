@@ -20,15 +20,20 @@
  * This ensures commands like `/goal pause` are never starved by
  * auto-continuation.
  *
- * The hook is intentionally simple: a single useEffect that fires
- * when `isLoading` flips to false. No timers, no intervals — the
- * idle→enqueue→process→query→idle cycle is self-sustaining.
+ * The idle→enqueue→process→query→idle cycle is self-sustaining, so the
+ * steady state needs no timers. The one exception is a transient-failure
+ * streak: `getContinuationDelayMs` returns a backoff and the next turn is
+ * scheduled rather than enqueued immediately, so a dead network can't spin
+ * the turn counter. That timer re-validates the goal when it fires — the
+ * user may have paused or cleared it in the meantime.
  */
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 
+import type { GoalState } from 'src/types/logs.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   markGoalMaxTurnsReached,
+  getContinuationDelayMs,
   getGoal,
   incrementGoalTurns,
   MAX_GOAL_TURNS,
@@ -54,9 +59,16 @@ export type UseGoalContinuationOpts = {
   hasActiveLocalJsxUI: boolean
   isInPlanMode: boolean
   isQueryActiveNow?: () => boolean
-  onMaxTurnsReached?: () => void
+  /**
+   * `maxTurns` is handed to the callbacks rather than imported by the caller:
+   * useReplAutomation only reaches this module through a `feature('GOAL')`
+   * conditional require so non-GOAL builds drop it entirely, and a top-level
+   * import of the constant would defeat that.
+   */
+  onMaxTurnsReached?: (payload: { maxTurns: number }) => void
   onContinuationEnqueued?: (payload: {
     turn: number
+    maxTurns: number
     objective: string
   }) => void
 }
@@ -70,10 +82,24 @@ export function useGoalContinuation(opts: UseGoalContinuationOpts): void {
   const enqueuedRef = useRef(false)
   // Fire budget_limit prompt exactly once per budget transition.
   const budgetLimitFiredRef = useRef(false)
+  // Pending backoff timer for a retry after transient API failures. Held so
+  // the next turn (or unmount) can cancel it — an orphaned timer would enqueue
+  // a continuation into a session that has since moved on.
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function cancelPendingRetry(): void {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+  }
+
+  useEffect(() => cancelPendingRetry, [])
 
   useLayoutEffect(() => {
     if (opts.isLoading) {
       enqueuedRef.current = false
+      cancelPendingRetry()
       return
     }
 
@@ -91,8 +117,8 @@ export function useGoalContinuation(opts: UseGoalContinuationOpts): void {
       return
     }
 
-    // Already enqueued for this idle window
-    if (enqueuedRef.current) return
+    // Already enqueued for this idle window, or a backoff retry is pending
+    if (enqueuedRef.current || retryTimerRef.current !== null) return
 
     // User messages always take priority over auto-continuation.
     // If the user typed something (e.g. `/goal pause`) while a turn was
@@ -151,7 +177,7 @@ export function useGoalContinuation(opts: UseGoalContinuationOpts): void {
       const marked = markGoalMaxTurnsReached()
       if (marked) {
         persistCurrentGoal()
-        opts.onMaxTurnsReached?.()
+        opts.onMaxTurnsReached?.({ maxTurns: MAX_GOAL_TURNS })
       }
       logForDebugging(
         `[goal] hook: MAX_GOAL_TURNS (${MAX_GOAL_TURNS}) reached, stopping`,
@@ -159,29 +185,58 @@ export function useGoalContinuation(opts: UseGoalContinuationOpts): void {
       return
     }
 
-    // All conditions met — enqueue a continuation turn
-    enqueuedRef.current = true
+    // All conditions met — enqueue a continuation turn.
+    // A failure streak spaces turns out instead of hammering a dead endpoint;
+    // the state is re-validated when the timer fires because the user may have
+    // paused or cleared the goal while it was pending.
+    const delayMs = getContinuationDelayMs(goal)
+    if (delayMs > 0) {
+      hookLog(
+        `retry backoff ${delayMs}ms after ${goal.consecutiveErrors} consecutive failures`,
+      )
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null
+        const live = getGoal()
+        if (!live || live.status !== 'active') {
+          hookLog('retry cancelled: goal no longer active')
+          return
+        }
+        if (optsRef.current.isQueryActiveNow?.()) {
+          hookLog('retry cancelled: query already active')
+          return
+        }
+        fireContinuation(live)
+      }, delayMs)
+      return
+    }
 
-    const turns = incrementGoalTurns()
-    persistCurrentGoal()
+    fireContinuation(goal)
 
-    const prompt = buildContinuationPrompt(goal)
-    logForDebugging(
-      `[goal] hook: enqueuing turn ${turns} for "${goal.objective.slice(0, 60)}"`,
-    )
+    function fireContinuation(target: GoalState): void {
+      enqueuedRef.current = true
 
-    enqueue({
-      value: prompt,
-      mode: 'prompt',
-      priority: 'now',
-      isMeta: true,
-      origin: 'goal-continuation',
-      skipSlashCommands: true,
-    })
-    opts.onContinuationEnqueued?.({
-      turn: turns,
-      objective: goal.objective,
-    })
+      const turns = incrementGoalTurns()
+      persistCurrentGoal()
+
+      const prompt = buildContinuationPrompt(target)
+      logForDebugging(
+        `[goal] hook: enqueuing turn ${turns} for "${target.objective.slice(0, 60)}"`,
+      )
+
+      enqueue({
+        value: prompt,
+        mode: 'prompt',
+        priority: 'now',
+        isMeta: true,
+        origin: 'goal-continuation',
+        skipSlashCommands: true,
+      })
+      optsRef.current.onContinuationEnqueued?.({
+        turn: turns,
+        maxTurns: MAX_GOAL_TURNS,
+        objective: target.objective,
+      })
+    }
   }, [
     opts.isLoading,
     opts.wasAborted,

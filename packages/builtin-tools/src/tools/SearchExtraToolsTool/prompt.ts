@@ -1,6 +1,8 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { CORE_TOOLS } from 'src/constants/tools.js'
+import { isGoalPresent } from 'src/services/goal/goalPresence.js'
+import { GOAL_TOOL_NAME } from '../GoalTool/constants.js'
 
 export { SEARCH_EXTRA_TOOLS_TOOL_NAME } from './constants.js'
 
@@ -58,6 +60,15 @@ export function isDeferredTool(tool: Tool): boolean {
 
   // Core tools are always loaded — never deferred
   if (CORE_TOOLS.has(tool.name)) return false
+
+  // GoalTool is deferred only while no goal exists. Once one is set, every
+  // <goal-steering> turn instructs the model to "use the GoalTool to mark it
+  // complete" — leaving it behind a SearchExtraTools round-trip means the
+  // model is told to call a tool it cannot see, so the goal can never reach a
+  // terminal state and the loop runs to the turn cap instead of finishing.
+  // Deliberately dynamic rather than a CORE_TOOLS entry: sessions without a
+  // goal (the overwhelming majority) shouldn't pay for the schema.
+  if (tool.name === GOAL_TOOL_NAME) return !isGoalPresent()
 
   // Everything else (non-core built-in + all MCP tools) is deferred
   return true

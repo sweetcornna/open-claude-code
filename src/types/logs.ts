@@ -159,6 +159,14 @@ export type GoalStatus =
   | 'complete'
 
 /**
+ * Why a goal left `active`. Distinguishes a deliberate user stop from an
+ * automatic one so the runtime knows which pauses it is allowed to undo:
+ * only `transient-error` pauses auto-resume once a turn succeeds again.
+ * `null` while the goal is active.
+ */
+export type GoalPauseReason = 'user' | 'transient-error' | 'fatal-error' | null
+
+/**
  * Per-session goal state. Persisted to the JSONL transcript as a `goal`
  * entry on every mutation; last-wins on read.
  *
@@ -170,6 +178,12 @@ export type GoalStatus =
  *
  * `blockedAttempts` + `lastBlockReason` implement CODEX's "blocked
  * only after 3 consecutive same-reason attempts" audit rule.
+ *
+ * `consecutiveErrors` + `pauseReason` implement the same 3-strike shape for
+ * transient API failures: a single network blip must not end a long-running
+ * goal, so the loop retries with backoff and only pauses once the failure
+ * repeats. Both fields are normalised on hydration — transcripts written
+ * before they existed replay as `0` / `null`.
  */
 export type GoalState = {
   objective: string
@@ -184,6 +198,8 @@ export type GoalState = {
   createdAt: number
   updatedAt: number
   turnsExecuted: number
+  consecutiveErrors: number
+  pauseReason: GoalPauseReason
 }
 
 /**

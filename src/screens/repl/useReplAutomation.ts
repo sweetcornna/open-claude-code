@@ -171,8 +171,8 @@ export function useReplAutomation({
     hasActiveLocalJsxUI: isShowingLocalJSXCommand,
     isInPlanMode: toolPermissionContext.mode === 'plan',
     isQueryActiveNow: queryGuard.getSnapshot,
-    onContinuationEnqueued: ({ turn, objective }) => {
-      const visibleGoalTurnInput = `Goal auto-continue (${turn}/1): continue advancing "${objective}".`
+    onContinuationEnqueued: ({ turn, maxTurns, objective }) => {
+      const visibleGoalTurnInput = `Goal auto-continue (${turn}/${maxTurns}): continue advancing "${objective}".`
       setMessages(oldMessages => [
         ...oldMessages,
         createUserMessage({
@@ -181,10 +181,10 @@ export function useReplAutomation({
         }),
       ])
     },
-    onMaxTurnsReached: () => {
+    onMaxTurnsReached: ({ maxTurns }) => {
       addNotification({
         key: 'goal-max-turns-reached',
-        text: 'Goal reached max continuation turns (1). Run /goal continue to reset turn counter and continue.',
+        text: `Goal reached max continuation turns (${maxTurns}). Run /goal continue to reset turn counter and continue.`,
         priority: 'immediate',
       })
     },
