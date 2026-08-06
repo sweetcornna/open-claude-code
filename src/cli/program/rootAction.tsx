@@ -2156,6 +2156,16 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     return;
   }
 
+  // Announce this session so a *different* session's deferred update never
+  // replaces the install tree while this one is still lazily importing chunks
+  // out of it. Registered even when auto-updates are off for this session —
+  // the point is to be visible to the sessions that do update.
+  void import('src/services/autoUpdate/liveSessions.js')
+    .then(mod => mod.registerLiveSession())
+    .catch(() => {
+      // Updater wiring must never affect startup.
+    });
+
   // Interactive sessions only (the --print path returned above): schedule the
   // silent background self-update — at most one check per session, delayed a
   // few minutes past startup. The dynamic import keeps the update chain off

@@ -10,9 +10,11 @@
  * Timeline: rootAction installs one recursive, unref'd timer loop per session,
  * first firing a minute past startup and every 30 minutes after. Each run
  * completes before the next is scheduled. The check reuses the `occ update`
- * chain (npm view → compare → `npm|bun install -g` with captured output).
- * Success surfaces as one low-key REPL notification via updateNotifier; every
- * failure path is logForDebugging-only and never interrupts the session.
+ * chain up to the comparison (npm view → compare) and then stops: the install
+ * itself is queued for after the session exits, see deferredOccInstall.ts for
+ * why installing in place wedges the running REPL. A queued update surfaces as
+ * one low-key REPL notification via updateNotifier; every failure path is
+ * logForDebugging-only and never interrupts the session.
  *
  * Hard gates — all must pass, re-checked when the timer fires:
  *  - NODE_ENV is not test/development
@@ -28,6 +30,10 @@ import type { InstallationType } from 'src/utils/runtime/doctorDiagnostic.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { gt } from 'src/utils/text/semver.js'
 import * as updateInterval from './backgroundUpdateInterval.js'
+import {
+  armDeferredOccInstall,
+  type DeferredOccInstall,
+} from './deferredOccInstall.js'
 import { emitBackgroundUpdateNotification } from './updateNotifier.js'
 
 /**
@@ -51,13 +57,10 @@ export type BackgroundOccUpdateDeps = {
   getCurrentVersion: () => string
   /** `signal` cancels the spawned `npm view` when the session is shutting down. */
   getLatestVersion: (signal?: AbortSignal) => Promise<string | null>
-  /** `signal` cancels the spawned installer when the session is shutting down. */
-  installLatest: (
-    pkgManager: 'bun' | 'npm',
-    signal?: AbortSignal,
-  ) => Promise<{ ok: boolean; detail: string }>
+  /** Queue the install for after this session exits. */
+  armInstall: (install: DeferredOccInstall) => void
+  packageSpec: () => string
   acquireLock: () => Promise<boolean>
-  releaseLock: () => Promise<void>
   notify: (text: string) => void
   now: () => number
   claimUpdateCheck: ClaimCheck
@@ -75,9 +78,8 @@ export type BackgroundOccUpdateOutcome =
   | { status: 'throttled' }
   | { status: 'up-to-date'; version: string }
   | { status: 'check-failed' }
-  | { status: 'locked' }
-  | { status: 'install-failed' }
-  | { status: 'updated'; version: string }
+  /** Newer version found and handed to deferredOccInstall for exit time. */
+  | { status: 'queued'; version: string }
   | { status: 'error' }
 
 /**
@@ -102,9 +104,9 @@ async function loadDefaultDeps(): Promise<BackgroundOccUpdateDeps> {
     isBunGlobalInstall: updateOcc.isRunningFromBunGlobalInstall,
     getCurrentVersion: updateOcc.getCurrentOccVersion,
     getLatestVersion: updateOcc.getLatestOccVersion,
-    installLatest: updateOcc.installOccGloballySilent,
+    armInstall: armDeferredOccInstall,
+    packageSpec: updateOcc.latestPackageSpec,
     acquireLock: autoUpdater.acquireUpdateLock,
-    releaseLock: autoUpdater.releaseUpdateLock,
     notify: emitBackgroundUpdateNotification,
     now: Date.now,
     claimUpdateCheck: (checkedAt, minimumElapsedMs) => {
@@ -165,21 +167,26 @@ async function resolveEligibility(
   return { skip: `not a global install (${installationType})`, permanent: true }
 }
 
-function updateSuccessText(version: string): string {
-  return `✓ Updated to v${version} · Restart to apply`
+function updateQueuedText(version: string): string {
+  return `✓ Update v${version} ready · installs on exit`
 }
 
-let lastInstalledVersion: string | undefined
+let lastQueuedVersion: string | undefined
 
+/**
+ * Compare against the newest version already queued, not just the running one.
+ * Without this, every subsequent 30-minute pass would re-queue and re-notify
+ * the same release for the rest of the session.
+ */
 function getComparisonVersion(currentVersion: string): string {
-  if (lastInstalledVersion && gt(lastInstalledVersion, currentVersion)) {
-    return lastInstalledVersion
+  if (lastQueuedVersion && gt(lastQueuedVersion, currentVersion)) {
+    return lastQueuedVersion
   }
   return currentVersion
 }
 
 /**
- * One full check-and-install pass. Never throws; every failure downgrades to
+ * One full check-and-queue pass. Never throws; every failure downgrades to
  * a logForDebugging line and a status for tests.
  */
 export async function runBackgroundOccUpdateOnce(
@@ -218,27 +225,21 @@ export async function runBackgroundOccUpdateOnce(
       return { status: 'up-to-date', version: currentVersion }
     }
 
-    if (!(await d.acquireLock())) {
-      logForDebugging('backgroundOccUpdate: another update is in progress')
-      return { status: 'locked' }
-    }
-    try {
-      logForDebugging(
-        `backgroundOccUpdate: installing ${latestVersion} via ${eligibility.pkgManager} (current ${currentVersion})`,
-      )
-      const result = await d.installLatest(eligibility.pkgManager, signal)
-      if (!result.ok) {
-        logForDebugging(`backgroundOccUpdate: install failed: ${result.detail}`)
-        return { status: 'install-failed' }
-      }
-    } finally {
-      await d.releaseLock()
-    }
-
-    lastInstalledVersion = latestVersion
-    d.notify(updateSuccessText(latestVersion))
-    logForDebugging(`backgroundOccUpdate: updated to ${latestVersion}`)
-    return { status: 'updated', version: latestVersion }
+    // Queue only — installing now would delete the chunks this very session
+    // still needs (deferredOccInstall.ts). Nothing is lost: a running process
+    // could never have adopted the new version anyway.
+    d.armInstall({
+      pkgManager: eligibility.pkgManager,
+      spec: d.packageSpec(),
+      version: latestVersion,
+      acquireLock: d.acquireLock,
+    })
+    lastQueuedVersion = latestVersion
+    d.notify(updateQueuedText(latestVersion))
+    logForDebugging(
+      `backgroundOccUpdate: queued ${latestVersion} via ${eligibility.pkgManager} for exit (current ${currentVersion})`,
+    )
+    return { status: 'queued', version: latestVersion }
   } catch (error) {
     logForDebugging(`backgroundOccUpdate: ${error}`)
     return { status: 'error' }
@@ -253,13 +254,14 @@ type BackgroundOccScheduleFn = (
 ) => { unref: () => void }
 
 /**
- * Abort the in-flight update when the session shuts down.
+ * Abort the in-flight check when the session shuts down.
  *
  * The timers are unref'd, so they never hold the process open — but a spawned
- * `npm view` (10s) or `npm install -g` (120s) child does. Without this, Ctrl+C
- * during a background update sat until gracefulShutdown's 5s failsafe fired
- * and then hard-exited, orphaning the installer mid-write. Cancelling the
- * child instead lets the event loop drain and exit on its own.
+ * `npm view` (10s) child does. Without this, Ctrl+C during a background check
+ * sat until gracefulShutdown's 5s failsafe fired and then hard-exited.
+ * Cancelling the child instead lets the event loop drain and exit on its own.
+ * (The installer itself is no longer spawned here at all — see
+ * deferredOccInstall.ts.)
  */
 function registerShutdownAbort(controller: AbortController): void {
   registerCleanup(async () => {
@@ -338,5 +340,5 @@ export function maybeScheduleBackgroundOccUpdate(options?: {
 
 export function resetBackgroundOccUpdateForTests(): void {
   scheduledThisSession = false
-  lastInstalledVersion = undefined
+  lastQueuedVersion = undefined
 }

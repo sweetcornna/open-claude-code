@@ -120,44 +120,16 @@ export async function getLatestOccVersion(
   }
 }
 
-// Shared by the interactive `occ update` path and the silent background
-// installer so the two can never drift to different package specs.
 const INSTALL_TIMEOUT_MS = 120_000
 
-function latestPackageSpec(): string {
-  return `${PACKAGE_NAME}@latest`
-}
-
-export type OccSilentInstallResult = {
-  ok: boolean
-  /** Combined stdout/stderr on failure; empty string on success. */
-  detail: string
-}
-
 /**
- * Silent global install used by the background auto-updater
- * (src/services/autoUpdate/). Same command shape as the interactive path in
- * `updateOcc()` below — `<pkgManager> install -g <pkg>@latest`, cwd=homedir
- * so a project-level .npmrc/.bunfig.toml cannot redirect the registry — but
- * output is captured instead of inherited so a running session is never
- * disturbed.
+ * Shared by the interactive `occ update` path below and the deferred background
+ * installer (src/services/autoUpdate/deferredOccInstall.ts) so the two can
+ * never drift to different package specs. Both resolve to NPM_PACKAGE_NAME and
+ * nothing else — src/cli/__tests__/updateIsolation.test.ts pins that.
  */
-export async function installOccGloballySilent(
-  pkgManager: 'bun' | 'npm',
-  signal?: AbortSignal,
-): Promise<OccSilentInstallResult> {
-  const result = await execFileNoThrowWithCwd(
-    pkgManager,
-    ['install', '-g', latestPackageSpec()],
-    { cwd: homedir(), timeout: INSTALL_TIMEOUT_MS, abortSignal: signal },
-  )
-  if (result.code !== 0) {
-    return {
-      ok: false,
-      detail: `exit ${result.code}: ${result.stdout} ${result.stderr}`.trim(),
-    }
-  }
-  return { ok: true, detail: '' }
+export function latestPackageSpec(): string {
+  return `${PACKAGE_NAME}@latest`
 }
 
 export async function updateOcc(): Promise<void> {

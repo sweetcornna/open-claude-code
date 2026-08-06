@@ -73,9 +73,15 @@ bun install -g @sweetcornna/open-claude-code@latest
 
 ## 后台静默自动更新
 
-交互式会话在启动 **1 分钟**后做第一次后台版本检查，此后**每 30 分钟周期检查一次**，直到会话结束。首查刻意靠前：紧跟在一次发布之后启动的会话不该等满一个周期才发现；但也不为零，启动是进程最忙的时刻，一次 `npm view` 会和用户真正在等的东西抢资源。发现新版本时静默执行全局安装，成功后在 REPL 底部显示一条低调提示（`✓ Updated to vX.Y.Z · Restart to apply`），失败只写调试日志、绝不打断会话。
+交互式会话在启动 **1 分钟**后做第一次后台版本检查，此后**每 30 分钟周期检查一次**，直到会话结束。首查刻意靠前：紧跟在一次发布之后启动的会话不该等满一个周期才发现；但也不为零，启动是进程最忙的时刻，一次 `npm view` 会和用户真正在等的东西抢资源。发现新版本时**只排队、不安装**，在 REPL 底部显示一条低调提示（`✓ Update vX.Y.Z ready · installs on exit`），真正的 `install -g` 在**会话退出之后**由一个 detached 子进程执行。失败只写调试日志、绝不打断会话。
 
-周期语义的两个推论：会话期间上游若再发一个新版本，下一轮检查会继续装上并再提示一次（长会话不会停在启动那一刻的版本上）；同一个版本不会被重复安装，已经装过的版本在后续轮次里直接跳过。
+**为什么必须推迟到退出后。** occ 的产物被切成约 600 个内容哈希命名的 chunk（这是把 `--version` 的 RSS 从 966MB 压到 35MB 的原因，见 CLAUDE.md「不要把构建优化回单文件」），会话在整个生命周期里持续 `import()` 这些 chunk。而 `npm|bun install -g` 会**删掉**它替换的那个包目录，相邻两个版本之间大约**半数 chunk 的文件名会变**（实测 2.21.0 → 2.22.0：595 个 chunk 里 299 个消失）。于是原地安装等于把正在运行的会话剩余一半的代码从磁盘上抹掉：之后任何一次惰性 import 都抛 `ERR_MODULE_NOT_FOUND`，症状不是崩溃而是**卡死** —— REPL 不再响应，Ctrl+C 也走不到退出路径。官方 Claude Code 敢原地替换是因为它是单文件产物、启动时就整体读完了；occ 不能。
+
+推迟不损失任何东西：老实现装完也只能提示「Restart to apply」，运行中的进程本来就无法采用新版本。
+
+**多开时由最后退出的那个会话安装。** 每个交互式会话启动时在 `~/.occ/live-sessions/<pid>` 登记自己的 dist 根目录，退出时清掉。排队的安装在 flush 时先看有没有**别的**活会话跑在同一棵安装树上——有就继续推迟（否则受害的换成那个会话），没有才 spawn。pid 已经消失的登记条目顺手清理，所以崩溃的会话不会永久挡住更新；如果所有会话都被强杀、谁都没装成，下一个会话的检查会重新排队。dist 根目录不同的会话（比如 `bun run dev` 的源码 checkout）不计入，替换全局安装伤不到它。
+
+周期语义的两个推论：会话期间上游若再发一个新版本，下一轮检查会把排队的版本换成更新的那个并再提示一次（长会话不会停在启动那一刻的版本上）；同一个版本不会被重复排队，已经排过的版本在后续轮次里直接跳过。
 
 实现是无 React 依赖的服务模块 `src/services/autoUpdate/backgroundOccUpdate.ts`，由 `src/cli/program/rootAction.tsx` 在交互路径（`--print` 提前返回之后）动态 import 并调度；UI 提示通过 `src/services/autoUpdate/updateNotifier.ts` 注册表送入 REPL 通知队列（与 `setEnvHookNotifier` 同模式）。
 
@@ -86,11 +92,13 @@ bun install -g @sweetcornna/open-claude-code@latest
 - `NODE_ENV=test/development`
 - 当前运行副本不是全局安装：npm 全局安装（doctorDiagnostic 判定为 `npm-global`）走 `npm install -g`，入口脚本位于 `~/.bun/install/global` 树内走 `bun install -g`；源码 checkout、`npm-local`、Homebrew 等包管理器安装一律跳过
 
-安装命令复用 `occ update` 的链路（`src/cli/updateOcc.ts` 的版本查询与 `installOccGloballySilent`，输出捕获而非透传），并与 `installGlobalPackage()` 共享 `.update.lock` 跨进程锁。
+版本查询复用 `occ update` 的链路（`src/cli/updateOcc.ts` 的 `getLatestOccVersion` 与 `latestPackageSpec`，包名规格两条路径同源）。跨进程锁 `.update.lock` 挪到了 flush 时刻获取：子进程会活过我们，所以这把锁**故意不释放**，靠它 5 分钟的过期窗口充当安装窗口，同一瞬间退出的两个会话不会都 spawn 出安装器。
 
 **跳过分两种。** 本进程内无法再变的条件（`NODE_ENV`、安装方式）会让循环直接退休，不再排下一轮；可以被用户中途改回来的条件（`autoUpdates` 配置、上面那两个环境变量）则继续按周期空转 —— 早先所有跳过都终结循环，于是会话中途用 `/config` 把自动更新打开根本不生效，必须重启。为此可逆的那几道门排在安装方式判定之前，那一步可能 spawn `npm config get prefix`，让循环活着的前提是这次检查必须足够便宜。
 
-**退出时可中止。** 定时器是 `unref()` 的、从不吊住进程，但它 spawn 的子进程会。`npm install -g`（120 秒上限）、`npm view`（10 秒）都绑定了会话中止信号（经 `registerCleanup` 挂在 `gracefulShutdown` 上），Ctrl+C 会取消在飞的子进程让事件循环自然排空；否则要等满 5 秒 failsafe 再硬退，还会把安装孤儿在半路。
+**退出时可中止。** 定时器是 `unref()` 的、从不吊住进程，但它 spawn 的子进程会。现在这条循环唯一 spawn 的子进程是 `npm view`（10 秒上限），它绑定了会话中止信号（经 `registerCleanup` 挂在 `gracefulShutdown` 上），Ctrl+C 会取消在飞的子进程让事件循环自然排空；否则要等满 5 秒 failsafe 再硬退。安装器本身已不在会话内 spawn。
+
+**安装树被换掉时的兜底。** occ 自己的后台更新不再原地替换，但另一个终端里手工跑 `occ update` 或直接 `npm install -g` 仍然会。`gracefulShutdown` 的 `uncaughtException` / `unhandledRejection` 处理器会识别这一种失败——错误码 `ERR_MODULE_NOT_FOUND`（Bun 下是 `ResolveMessage`）**且**路径落在 `<distRoot>/chunks` 内——然后打印一行说明并干净退出，而不是留下一个卡死、Ctrl+C 也没反应的界面。只认 chunk 路径是为了不误伤插件、MCP server 那些正常的解析失败；源码 checkout 根本没有 `dist/chunks`，所以开发时不会触发。
 
 继承自官方的组件式更新路由（`AutoUpdaterWrapper` / `AutoUpdater` / `PackageManagerAutoUpdater` / `NativeAutoUpdater`）已随本节所述的服务化改造删除 —— 它们早已没有任何地方渲染。在 occ 建立自己的签名二进制发布源之前，不应重新接通继承的原生下载器或官方包管理器更新提示；显式 `occ update` 仍然是手动更新入口。
 
@@ -171,9 +179,11 @@ claude --version
 | 文件 | 职责 |
 |---|---|
 | `src/constants/brand.ts` | occ 命令名和 npm 包名的唯一真源 |
-| `src/cli/updateOcc.ts` | `occ update` 的版本检查与 npm/Bun 更新流程；导出后台更新复用的检测与静默安装函数 |
-| `src/services/autoUpdate/backgroundOccUpdate.ts` | occ 后台静默自动更新服务（周期调度、门禁、安装编排） |
-| `src/services/autoUpdate/updateNotifier.ts` | 更新成功提示进入 REPL 通知队列的注册表 |
+| `src/cli/updateOcc.ts` | `occ update` 的版本检查与 npm/Bun 更新流程；导出后台更新复用的检测、包名规格与静默安装函数 |
+| `src/services/autoUpdate/backgroundOccUpdate.ts` | occ 后台静默自动更新服务（周期调度、门禁、版本比较与排队） |
+| `src/services/autoUpdate/deferredOccInstall.ts` | 排队的安装在会话退出后由 detached 子进程执行；两道守卫（活会话、更新锁）都在这里 |
+| `src/services/autoUpdate/liveSessions.ts` | `~/.occ/live-sessions/<pid>` 活会话登记表，按 dist 根目录判定谁会被原地替换伤到 |
+| `src/services/autoUpdate/updateNotifier.ts` | 更新提示进入 REPL 通知队列的注册表 |
 | `src/services/autoUpdate/backgroundPluginUpdate.ts` | 插件 marketplace 的后台周期更新服务（`git pull` + 缓存重新物化） |
 | `src/services/autoUpdate/pluginUpdateNotifier.ts` | 插件更新提示进入 REPL 通知队列的注册表 |
 | `src/main.tsx` | 注册 `occ update` 根命令 |

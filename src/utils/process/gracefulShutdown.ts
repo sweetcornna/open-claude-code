@@ -1,6 +1,7 @@
 import { BIN_NAME } from 'src/constants/brand.js'
 import chalk from 'chalk'
 import { writeSync } from 'fs'
+import { join } from 'path'
 import memoize from 'lodash-es/memoize.js'
 import { onExit } from 'signal-exit'
 import type { ExitReason } from 'src/entrypoints/agentSdkTypes.js'
@@ -34,6 +35,7 @@ import {
 } from '../../services/analytics/index.js'
 import type { AppState } from '../../state/AppState.js'
 import { runCleanupFunctions } from './cleanupRegistry.js'
+import { distRoot } from '../filesystem/distRoot.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { logForDiagnosticsNoPII } from '../telemetry/diagLogs.js'
 import { isEnvTruthy } from '../config/envUtils.js'
@@ -230,6 +232,47 @@ function forceExit(exitCode: number): never {
 }
 
 /**
+ * Recognize the one failure mode a running occ process cannot survive: its own
+ * installed files being replaced underneath it.
+ *
+ * occ ships ~600 content-hashed chunks that are `import()`ed lazily for the
+ * whole life of a session, and roughly half of those filenames change between
+ * any two releases. Once `npm|bun install -g` swaps the tree, every remaining
+ * lazy import resolves to a file that no longer exists. The visible symptom is
+ * not a crash but a wedge: the REPL stops responding and Ctrl+C never reaches
+ * the exit path.
+ *
+ * occ's own background updater no longer installs in place (see
+ * src/services/autoUpdate/deferredOccInstall.ts), but a manual `occ update` or
+ * a package manager run from another terminal still can. Turning the wedge into
+ * a one-line explanation and a clean exit is the difference between "occ
+ * froze" and "restart occ".
+ */
+export function isInstallTreeReplacedError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+  const code = (error as NodeJS.ErrnoException).code
+  // Node reports ERR_MODULE_NOT_FOUND; Bun throws a ResolveMessage.
+  if (code !== 'ERR_MODULE_NOT_FOUND' && error.name !== 'ResolveMessage') {
+    return false
+  }
+  // Only a vanished *chunk* means the tree moved. A dev checkout has no
+  // dist/chunks at all, so this can't misfire outside a real install.
+  return error.message.includes(join(distRoot, 'chunks'))
+}
+
+function handleInstallTreeReplaced(): void {
+  logForDiagnosticsNoPII('error', 'install_tree_replaced', {})
+  void gracefulShutdown(1, 'other', {
+    finalMessage: `${BIN_NAME}: the installed files were replaced while this session was running (a newer version finished installing). Restart ${BIN_NAME} to continue.`,
+  }).catch(() => {
+    cleanupTerminalModes()
+    forceExit(1)
+  })
+}
+
+/**
  * Set up global signal handlers for graceful shutdown
  */
 export const setupGracefulShutdown = memoize(() => {
@@ -344,6 +387,10 @@ export const setupGracefulShutdown = memoize(() => {
   // Log uncaught exceptions for container observability and analytics
   // Error names (e.g., "TypeError") are not sensitive - safe to log
   process.on('uncaughtException', error => {
+    if (isInstallTreeReplacedError(error)) {
+      handleInstallTreeReplaced()
+      return
+    }
     logForDiagnosticsNoPII('error', 'uncaught_exception', {
       error_name: error.name,
       error_message: error.message.slice(0, 2000),
@@ -356,6 +403,10 @@ export const setupGracefulShutdown = memoize(() => {
 
   // Log unhandled promise rejections for container observability and analytics
   process.on('unhandledRejection', reason => {
+    if (isInstallTreeReplacedError(reason)) {
+      handleInstallTreeReplaced()
+      return
+    }
     const errorName =
       reason instanceof Error
         ? reason.name

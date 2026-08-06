@@ -106,16 +106,25 @@ describe('occ update isolation', () => {
     const serviceSource = readSource(
       'services/autoUpdate/backgroundOccUpdate.ts',
     )
+    const deferredSource = readSource(
+      'services/autoUpdate/deferredOccInstall.ts',
+    )
     const updateOccSource = readSource('cli/updateOcc.ts')
 
-    // The background installer must go through cli/updateOcc.ts (pinned above
-    // to target only NPM_PACKAGE_NAME) — never a parallel install path.
+    // The background check must go through cli/updateOcc.ts (pinned above to
+    // target only NPM_PACKAGE_NAME) — never a parallel install path.
     expect(serviceSource).toContain("import('src/cli/updateOcc.js')")
     expect(serviceSource).not.toContain('@anthropic-ai/claude-code')
     expect(serviceSource).not.toContain('nativeInstaller')
-    expect(updateOccSource).toContain(
-      'export async function installOccGloballySilent',
-    )
+    expect(updateOccSource).toContain('export function latestPackageSpec')
+
+    // The install itself now happens after the session exits, in a detached
+    // child spawned here. It must never name a package of its own: the spec is
+    // handed down from latestPackageSpec() via the queued install.
+    expect(deferredSource).toContain('install.spec')
+    expect(deferredSource).not.toContain('@anthropic-ai/claude-code')
+    expect(deferredSource).not.toContain('nativeInstaller')
+    expect(deferredSource).not.toContain("'claude'")
   })
 
   test('alias cleanup preserves official Claude Code and custom aliases', () => {
