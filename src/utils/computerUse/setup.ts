@@ -10,7 +10,7 @@ import { getChicagoCoordinateMode } from './gates.js'
 
 /**
  * Build the dynamic MCP config + allowed tool names. Mirror of
- * `setupChromeDevtools`. The `mcp__computer-use__*` tools are added to
+ * `setupBrowserUse`. The `mcp__computer-use__*` tools are added to
  * `allowedTools` so they bypass the normal permission prompt — the package's
  * `request_access` handles approval for the whole session.
  *

@@ -168,8 +168,8 @@ import {
   shouldIncludeFirstPartyOnlyBetas,
   shouldUseGlobalCacheScope,
 } from 'src/utils/model/betas.js'
-import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from 'src/utils/chromeDevtools/common.js'
-import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from 'src/utils/chromeDevtools/prompt.js'
+import { BROWSER_USE_MCP_SERVER_NAME } from 'src/utils/browserUse/common.js'
+import { BROWSER_USE_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from 'src/utils/browserUse/prompt.js'
 import { getMaxThinkingTokensForModel } from 'src/utils/session/context.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
@@ -1465,7 +1465,7 @@ async function* queryModel(
   // (attachments.ts) instead of here. This per-request sys-prompt append
   // busts the prompt cache when chrome connects late.
   const hasChromeTools = filteredTools.some(t =>
-    isToolFromMcpServer(t.name, CHROME_DEVTOOLS_MCP_SERVER_NAME),
+    isToolFromMcpServer(t.name, BROWSER_USE_MCP_SERVER_NAME),
   )
   const injectChromeHere =
     useSearchExtraTools && hasChromeTools && !isMcpInstructionsDeltaEnabled()
@@ -1481,7 +1481,7 @@ async function* queryModel(
       ...systemPrompt,
       ...(advisorModel ? [ADVISOR_TOOL_INSTRUCTIONS] : []),
       ...(injectChromeHere
-        ? [CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS]
+        ? [BROWSER_USE_SEARCH_EXTRA_TOOLS_INSTRUCTIONS]
         : []),
     ].filter(Boolean),
   )

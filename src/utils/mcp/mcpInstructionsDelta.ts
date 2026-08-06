@@ -18,7 +18,7 @@ export type McpInstructionsDelta = {
 /**
  * Client-authored instruction block to announce when a server connects,
  * in addition to (or instead of) the server's own `InitializeResult.instructions`.
- * Lets first-party servers (e.g., chrome-devtools) carry client-side
+ * Lets first-party servers (e.g., browser-use) carry client-side
  * context the server itself doesn't know about.
  */
 export type ClientSideInstruction = {

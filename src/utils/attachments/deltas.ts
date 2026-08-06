@@ -12,8 +12,8 @@ import {
   isMcpInstructionsDeltaEnabled,
   type ClientSideInstruction,
 } from '../mcp/mcpInstructionsDelta.js'
-import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from '../chromeDevtools/common.js'
-import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from '../chromeDevtools/prompt.js'
+import { BROWSER_USE_MCP_SERVER_NAME } from '../browserUse/common.js'
+import { BROWSER_USE_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from '../browserUse/prompt.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import { filterAgentsByMcpRequirements } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { AGENT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js'
@@ -149,8 +149,8 @@ export function getMcpInstructionsDeltaAttachment(
     isSearchExtraToolsToolAvailable(tools)
   ) {
     clientSide.push({
-      serverName: CHROME_DEVTOOLS_MCP_SERVER_NAME,
-      block: CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS,
+      serverName: BROWSER_USE_MCP_SERVER_NAME,
+      block: BROWSER_USE_SEARCH_EXTRA_TOOLS_INSTRUCTIONS,
     })
   }
 

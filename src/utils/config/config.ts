@@ -480,7 +480,10 @@ export type GlobalConfig = {
   officialMarketplaceAutoInstallNextRetryTime?: number // Earliest time to retry again
 
   // Chrome DevTools MCP settings
-  chromeDevtoolsDefaultEnabled?: boolean // Attach the Chrome DevTools MCP server without passing --chrome
+  /** Attach the browser MCP server without passing --chrome. */
+  browserToolDefaultEnabled?: boolean
+  /** @deprecated Superseded by browserToolDefaultEnabled; still read so existing configs keep working. */
+  chromeDevtoolsDefaultEnabled?: boolean
 
   // LSP plugin recommendation preferences
   lspRecommendationDisabled?: boolean // Disable all LSP plugin recommendations
@@ -634,6 +637,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'inputNeededNotifEnabled',
   'agentPushNotifEnabled',
   'respectGitignore',
+  'browserToolDefaultEnabled',
   'chromeDevtoolsDefaultEnabled',
   'lspRecommendationDisabled',
   'lspRecommendationNeverPlugins',

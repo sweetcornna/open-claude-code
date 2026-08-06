@@ -118,7 +118,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Browser control is `--chrome`, which attaches Google's chrome-devtools-mcp
+  // Browser control is `--chrome`, which attaches the browser-use MCP server
   // as an ordinary stdio server. There is no occ-hosted browser entrypoint to
   // fast-path to any more.
   if (feature('CHICAGO_MCP') && process.argv[2] === '--computer-use-mcp') {

@@ -21,7 +21,7 @@ import type { ToolInputJSONSchema } from 'src/Tool.js';
 import type { ValidationError } from 'src/utils/settings/validation.js';
 import uniqBy from 'lodash-es/uniqBy.js';
 import { BIN_NAME, DISPLAY_NAME } from 'src/constants/brand.js';
-import { CHROME_DEVTOOLS_MCP_SERVER_NAME, isChromeDevtoolsMCPServer } from 'src/utils/chromeDevtools/common.js';
+import { BROWSER_USE_MCP_SERVER_NAME, isBrowserUseMCPServer } from 'src/utils/browserUse/common.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID } from 'src/utils/task/tasks.js';
 import { _pendingAssistantChat, _pendingSSH } from './pendingState.js';
 import { addToHistory } from 'src/history.js';
@@ -206,7 +206,8 @@ import { safeParseJSON } from 'src/utils/text/json.js';
 import { seedEarlyInput } from 'src/utils/terminal/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { setCwd } from 'src/utils/shell/Shell.js';
-import { setupChromeDevtools, shouldEnableChromeDevtools } from 'src/utils/chromeDevtools/setup.js';
+import { browserUseAuthEnv } from 'src/utils/browserUse/auth.js';
+import { isBrowserUseAvailable, setupBrowserUse, shouldEnableBrowserTool } from 'src/utils/browserUse/setup.js';
 import { shouldEnablePromptSuggestion } from 'src/services/PromptSuggestion/promptSuggestion.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/model/thinking.js';
 import { startDeferredPrefetches } from './prefetch.js';
@@ -742,8 +743,8 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         .map(([name]) => name);
 
       let reservedNameError: string | null = null;
-      if (nonSdkConfigNames.some(isChromeDevtoolsMCPServer)) {
-        reservedNameError = `Invalid MCP configuration: "${CHROME_DEVTOOLS_MCP_SERVER_NAME}" is a reserved MCP name.`;
+      if (nonSdkConfigNames.some(isBrowserUseMCPServer)) {
+        reservedNameError = `Invalid MCP configuration: "${BROWSER_USE_MCP_SERVER_NAME}" is a reserved MCP name.`;
       } else if (feature('CHICAGO_MCP')) {
         const { isComputerUseMCPServer, COMPUTER_USE_MCP_SERVER_NAME } = await import(
           'src/utils/computerUse/common.js'
@@ -788,43 +789,52 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     }
   }
 
-  // Attach Google's chrome-devtools-mcp server when --chrome is active.
-  // Unlike the extension stack this replaced, it has no account gate: it is
-  // a local stdio subprocess with no Anthropic-side identity at all.
+  // Attach the browser-use MCP server when --chrome is active. It is a local
+  // stdio subprocess with no Anthropic-side identity, so there is no account
+  // gate; it does make its own model calls, hence the credential pass-through.
   const chromeOpts = options as { chrome?: boolean };
   // Store the explicit CLI flag so teammates can inherit it
   setChromeFlagOverride(chromeOpts.chrome);
-  const enableChromeDevtools = shouldEnableChromeDevtools(chromeOpts.chrome);
+  const enableBrowserTool = shouldEnableBrowserTool(chromeOpts.chrome);
 
-  if (enableChromeDevtools) {
+  if (enableBrowserTool) {
     const platform = getPlatform();
+    if (!isBrowserUseAvailable()) {
+      // Fail here rather than letting the MCP layer report a bare spawn error:
+      // the fix is a one-line install and the user cannot guess it from ENOENT.
+      console.error(
+        'Error: browser tools need `uvx`, which was not found on PATH.\n' +
+          'Install uv (https://docs.astral.sh/uv/getting-started/installation/), then re-run with --chrome.',
+      );
+      process.exit(1);
+    }
     try {
-      logEvent('tengu_chrome_devtools_setup', {
+      logEvent('tengu_browser_tool_setup', {
         platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
 
       const {
-        mcpConfig: chromeMcpConfig,
-        allowedTools: chromeMcpTools,
-        systemPrompt: chromeSystemPrompt,
-      } = setupChromeDevtools();
+        mcpConfig: browserMcpConfig,
+        allowedTools: browserMcpTools,
+        systemPrompt: browserSystemPrompt,
+      } = setupBrowserUse(browserUseAuthEnv());
       dynamicMcpConfig = {
         ...dynamicMcpConfig,
-        ...chromeMcpConfig,
+        ...browserMcpConfig,
       };
-      allowedTools.push(...chromeMcpTools);
-      if (chromeSystemPrompt) {
-        appendSystemPrompt = appendSystemPrompt ? `${chromeSystemPrompt}\n\n${appendSystemPrompt}` : chromeSystemPrompt;
+      allowedTools.push(...browserMcpTools);
+      if (browserSystemPrompt) {
+        appendSystemPrompt = appendSystemPrompt
+          ? `${browserSystemPrompt}\n\n${appendSystemPrompt}`
+          : browserSystemPrompt;
       }
     } catch (error) {
-      logEvent('tengu_chrome_devtools_setup_failed', {
+      logEvent('tengu_browser_tool_setup_failed', {
         platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
-      logForDebugging(`[chrome-devtools] Error: ${error}`);
+      logForDebugging(`[browser-use] Error: ${error}`);
       logError(error);
-      console.error(
-        `Error: ${error instanceof Error ? error.message : 'Failed to start the Chrome DevTools MCP server.'}`,
-      );
+      console.error(`Error: ${error instanceof Error ? error.message : 'Failed to start the browser-use MCP server.'}`);
       process.exit(1);
     }
   }

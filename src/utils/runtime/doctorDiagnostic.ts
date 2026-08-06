@@ -31,7 +31,7 @@ import {
   getPackageManager,
 } from '../nativeInstaller/packageManagers.js'
 import { getPlatform } from '../process/platform.js'
-import { detectChrome } from '../chromeDevtools/chromeVersion.js'
+import { detectChrome } from '../browserUse/chromeVersion.js'
 import { getRipgrepStatus } from '../filesystem/ripgrep.js'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from '../settings/managedPath.js'
@@ -72,10 +72,8 @@ export type DiagnosticInfo = {
    */
   chromeStatus: {
     version: string | null
-    supportsAutoConnect: boolean
     /** 'browser-url' when OCC_CHROME_BROWSER_URL points somewhere. */
-    mode: 'auto-connect' | 'browser-url' | 'launch'
-    browserUrl: string | null
+    executablePath: string | null
     note: string | null
   }
 }
@@ -443,17 +441,11 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     note: ripgrepStatusRaw.note ?? null,
   }
 
-  // Chrome availability for `--chrome` (chrome-devtools-mcp)
+  // Browser availability for `--chrome` (browser-use drives a real browser)
   const chrome = await detectChrome()
   const chromeStatus = {
     version: chrome.version,
-    supportsAutoConnect: chrome.supportsAutoConnect,
-    mode: chrome.browserUrl
-      ? ('browser-url' as const)
-      : chrome.supportsAutoConnect
-        ? ('auto-connect' as const)
-        : ('launch' as const),
-    browserUrl: chrome.browserUrl,
+    executablePath: chrome.executablePath,
     note: chrome.note,
   }
 
