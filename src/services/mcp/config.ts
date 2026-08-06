@@ -41,6 +41,7 @@ import {
   logEvent,
 } from '../analytics/index.js'
 import { fetchClaudeAIMcpConfigsIfEligible } from './claudeai.js'
+import { createSettingsAwareEnvLookup } from '../../utils/config/managedEnv.js'
 import { expandEnvVarsInString } from './envExpansion.js'
 import {
   type ConfigScope,
@@ -558,9 +559,12 @@ function expandEnvVars(config: McpServerConfig): {
   missingVars: string[]
 } {
   const missingVars: string[] = []
+  // Settings-aware so a config parsed before the trust dialog expands to the
+  // same values as one parsed after it — see createSettingsAwareEnvLookup().
+  const lookup = createSettingsAwareEnvLookup()
 
   function expandString(str: string): string {
-    const { expanded, missingVars: vars } = expandEnvVarsInString(str)
+    const { expanded, missingVars: vars } = expandEnvVarsInString(str, lookup)
     missingVars.push(...vars)
     return expanded
   }

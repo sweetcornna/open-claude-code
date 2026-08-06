@@ -178,6 +178,50 @@ export function applySafeConfigEnvironmentVariables(): void {
 }
 
 /**
+ * The exact env map applyConfigEnvironmentVariables() assigns onto process.env:
+ * ~/.claude.json's env first, then the fully-merged settings env (user +
+ * project + local + flag + policy), each through the same strip filters.
+ *
+ * Exported for callers that must resolve a variable BEFORE trust is
+ * established, and need the value the process will actually end up with rather
+ * than the value process.env happens to hold right now. MCP `${VAR}`
+ * interpolation is the motivating case — see createSettingsAwareEnvLookup().
+ */
+export function getEffectiveSettingsEnv(): Record<string, string> {
+  return {
+    ...filterSettingsEnv(getGlobalConfig().env),
+    ...filterSettingsEnv(getSettings_DEPRECATED()?.env),
+  }
+}
+
+/**
+ * Resolver for `${VAR}` interpolation in MCP / LSP server configs.
+ *
+ * Those configs are parsed during startup — rootAction kicks the read off
+ * ~500 lines before showSetupScreens() — but the servers they describe only
+ * ever spawn after trust, which is also when applyConfigEnvironmentVariables()
+ * puts project-scoped settings.env into process.env. Resolving against
+ * process.env alone therefore froze `${FRED_API_KEY}` as a literal in the
+ * snapshot that got spawned, while the post-trust re-read (the
+ * useManageMCPConnections effect) expanded it properly — two different configs
+ * for one server, so connectToServer's config-keyed memoize missed and left
+ * two live child processes per server, the broken one answering tool calls.
+ *
+ * Reading settings here does not widen the trust boundary: nothing is executed
+ * at parse time, and the post-trust path already interpolated these same
+ * values. It only makes the result independent of *when* the parse ran.
+ *
+ * Settings win over the ambient process.env, mirroring the Object.assign
+ * direction in applyConfigEnvironmentVariables().
+ */
+export function createSettingsAwareEnvLookup(): (
+  name: string,
+) => string | undefined {
+  const settingsEnv = getEffectiveSettingsEnv()
+  return name => settingsEnv[name] ?? process.env[name]
+}
+
+/**
  * Apply environment variables from settings to process.env.
  * This applies ALL environment variables (except provider-routing vars when
  * CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST is set — see filterSettingsEnv) and
@@ -185,9 +229,7 @@ export function applySafeConfigEnvironmentVariables(): void {
  * dangerous environment variables such as LD_PRELOAD, PATH, etc.
  */
 export function applyConfigEnvironmentVariables(): void {
-  Object.assign(process.env, filterSettingsEnv(getGlobalConfig().env))
-
-  Object.assign(process.env, filterSettingsEnv(getSettings_DEPRECATED()?.env))
+  Object.assign(process.env, getEffectiveSettingsEnv())
 
   // Clear caches so agents are rebuilt with the new env vars
   clearCACertsCache()

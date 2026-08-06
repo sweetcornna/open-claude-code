@@ -145,4 +145,52 @@ describe('expandEnvVarsInString', () => {
     expect(result.expanded).toBe('$TEST_A')
     expect(result.missingVars).toEqual([])
   })
+
+  // MCP/LSP config parsers pass createSettingsAwareEnvLookup() so that a
+  // config parsed before the trust dialog expands to the same values as one
+  // parsed after it — process.env alone is not the source of truth there.
+  describe('injected lookup', () => {
+    test('resolves through the lookup instead of process.env', () => {
+      delete process.env.TEST_A
+      const result = expandEnvVarsInString(envExpr('TEST_A'), name =>
+        name === 'TEST_A' ? 'from-lookup' : undefined,
+      )
+      expect(result.expanded).toBe('from-lookup')
+      expect(result.missingVars).toEqual([])
+    })
+
+    test('lookup takes precedence over a set process.env var', () => {
+      process.env.TEST_A = 'from-process'
+      const result = expandEnvVarsInString(
+        envExpr('TEST_A'),
+        () => 'from-lookup',
+      )
+      expect(result.expanded).toBe('from-lookup')
+    })
+
+    test('lookup miss still falls through to the default value', () => {
+      const result = expandEnvVarsInString(
+        envExpr('TEST_A:-fallback'),
+        () => undefined,
+      )
+      expect(result.expanded).toBe('fallback')
+      expect(result.missingVars).toEqual([])
+    })
+
+    test('lookup miss with no default is reported as missing', () => {
+      process.env.TEST_A = 'from-process'
+      const result = expandEnvVarsInString(envExpr('TEST_A'), () => undefined)
+      expect(result.expanded).toBe(envExpr('TEST_A'))
+      expect(result.missingVars).toEqual(['TEST_A'])
+    })
+
+    test('an empty string from the lookup is a hit, not a miss', () => {
+      const result = expandEnvVarsInString(
+        envExpr('TEST_A:-fallback'),
+        () => '',
+      )
+      expect(result.expanded).toBe('')
+      expect(result.missingVars).toEqual([])
+    })
+  })
 })

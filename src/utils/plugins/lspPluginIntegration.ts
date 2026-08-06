@@ -6,6 +6,7 @@ import type {
   ScopedLspServerConfig,
 } from '../../services/lsp/types.js'
 import { expandEnvVarsInString } from '../../services/mcp/envExpansion.js'
+import { createSettingsAwareEnvLookup } from '../config/managedEnv.js'
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { isENOENT, toError } from '../runtime/errors.js'
@@ -233,6 +234,7 @@ export function resolvePluginLspEnvironment(
   _errors?: PluginError[],
 ): LspServerConfig {
   const allMissingVars: string[] = []
+  const envLookup = createSettingsAwareEnvLookup()
 
   const resolveValue = (value: string): string => {
     // First substitute plugin-specific variables
@@ -244,7 +246,7 @@ export function resolvePluginLspEnvironment(
     }
 
     // Finally expand general environment variables
-    const { expanded, missingVars } = expandEnvVarsInString(resolved)
+    const { expanded, missingVars } = expandEnvVarsInString(resolved, envLookup)
     allMissingVars.push(...missingVars)
 
     return expanded
