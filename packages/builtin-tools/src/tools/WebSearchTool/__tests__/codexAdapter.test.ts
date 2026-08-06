@@ -1,9 +1,36 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
-  CodexSearchAdapter,
-  extractCodexSearchResults,
-} from '../adapters/codexAdapter'
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
+
+// The suite drives the API-key `/responses` route, so the two ChatGPT-auth
+// probes must answer "no ChatGPT login" — otherwise the adapter routes to the
+// Codex backend and the assertions fail on whichever dev machine happens to be
+// logged into ChatGPT. Complete-surface shared mock, never a hand-rolled
+// `mock.module`: Bun's registry is process-global and last-write-wins, and the
+// search-source suites mock this same module.
+import * as realChatGPTAuth from 'src/services/api/openai/chatgptAuth.js'
+import { makeSharedModuleMock } from '../../../../../../tests/mocks/sharedModuleMock.js'
 import type { SearchProgress } from '../adapters/types'
+
+const chatGPTAuthMock = makeSharedModuleMock(
+  'src/services/api/openai/chatgptAuth.js',
+  realChatGPTAuth,
+).setup({
+  hasStoredChatGPTAuthSync: () => false,
+  isChatGPTAuthEnabled: () => false,
+})
+
+afterAll(() => chatGPTAuthMock.reset())
+
+// Imported after the mock is installed so the adapter binds the stubbed probes.
+const { CodexSearchAdapter, extractCodexSearchResults } = await import(
+  '../adapters/codexAdapter'
+)
 
 // Canned Responses API events. Shapes taken from the three places the API
 // reports citations: the streamed annotation, the web_search_call item, and
