@@ -22,6 +22,26 @@ export type CodingPlanTier = {
   description: string
 }
 
+/**
+ * Which of the provider's models backs each family alias.
+ *
+ * One API key makes the provider's whole catalog usable, so these are only the
+ * defaults behind `/model sonnet` and friends — `/model <id>` still reaches any
+ * model in `models` (and any id the provider serves but this table has not
+ * caught up with, since unrecognized names pass through untouched).
+ *
+ * `fable` matters more than it looks: unset, getDefaultFableModel() falls back
+ * to an Anthropic model name, which a Chinese endpoint would simply reject.
+ * Ids may repeat — most of these providers ship one flagship and one fast model,
+ * not four tiers.
+ */
+export type ProviderTierModels = {
+  haiku: string
+  sonnet: string
+  opus: string
+  fable: string
+}
+
 export type ProviderPreset = {
   id: string
   label: string
@@ -32,6 +52,7 @@ export type ProviderPreset = {
   modelsPage: string
   freeTier: string
   keyFormat: string
+  tiers: ProviderTierModels
   codingPlan?: {
     baseURL: string
     keyFormat: string
@@ -52,6 +73,12 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     modelsPage: 'https://api-docs.deepseek.com/zh-cn/',
     freeTier: '5M tokens on signup (30 days), min top-up ¥10',
     keyFormat: 'sk-...',
+    tiers: {
+      haiku: 'deepseek-v4-flash',
+      sonnet: 'deepseek-v4-pro',
+      opus: 'deepseek-v4-pro',
+      fable: 'deepseek-v4-pro',
+    },
     models: [
       {
         id: 'deepseek-v4-pro',
@@ -80,6 +107,12 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     apiKeyPage: 'https://open.bigmodel.cn/user/apiKeys',
     modelsPage: 'https://docs.bigmodel.cn/cn/guide/start/model-overview',
     freeTier: 'GLM-4.7-Flash / GLM-Z1-Flash free forever',
+    tiers: {
+      haiku: 'glm-4.7-flash',
+      sonnet: 'glm-4.7',
+      opus: 'glm-5.1',
+      fable: 'glm-5.1',
+    },
     keyFormat: '{id}.{secret}',
     codingPlan: {
       baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
@@ -147,6 +180,12 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     modelsPage:
       'https://help.aliyun.com/zh/model-studio/getting-started/models',
     freeTier: '90-day free tier for all models after activation',
+    tiers: {
+      haiku: 'qwen3.5-flash',
+      sonnet: 'qwen3.5-plus',
+      opus: 'qwen3-max',
+      fable: 'qwen3-max',
+    },
     keyFormat: 'sk-...',
     codingPlan: {
       baseURL: 'https://coding.dashscope.aliyuncs.com/v1',
@@ -198,6 +237,12 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     apiKeyPage: 'https://platform.xiaomimimo.com/api-keys',
     modelsPage: 'https://platform.xiaomimimo.com/models',
     freeTier: 'Credits for new users, mimo-v2-flash low cost',
+    tiers: {
+      haiku: 'mimo-v2-flash',
+      sonnet: 'mimo-v2.5-pro',
+      opus: 'mimo-v2.5-pro',
+      fable: 'mimo-v2.5-pro',
+    },
     keyFormat: 'sk-...',
     codingPlan: {
       baseURL: 'https://token-plan-cn.xiaomimimo.com/v1',
@@ -294,4 +339,72 @@ export function parseContextWindowTokens(
   const n = parseFloat(m[1]!)
   if (!Number.isFinite(n) || n <= 0) return undefined
   return Math.round(m[2]!.toUpperCase() === 'M' ? n * 1_000_000 : n * 1_000)
+}
+
+/** Strip a trailing slash so `…/v4` and `…/v4/` compare equal. */
+function normalizeBaseURL(baseURL: string): string {
+  return baseURL.trim().replace(/\/+$/, '').toLowerCase()
+}
+
+/**
+ * Which preset (if any) the session is currently pointed at.
+ *
+ * Keyed on the base URL rather than a saved marker so it stays correct when the
+ * user edits `OPENAI_BASE_URL` by hand or switches providers with `/provider` —
+ * there is no state to fall out of sync. Coding-plan endpoints resolve to the
+ * same preset as the pay-as-you-go one: same catalog, different billing.
+ */
+export function findChinaProviderByBaseURL(
+  baseURL: string | undefined,
+): ProviderPreset | undefined {
+  if (!baseURL?.trim()) return undefined
+  const target = normalizeBaseURL(baseURL)
+  return CHINA_LLM_PROVIDERS.find(
+    provider =>
+      normalizeBaseURL(provider.baseURL) === target ||
+      (provider.codingPlan !== undefined &&
+        normalizeBaseURL(provider.codingPlan.baseURL) === target),
+  )
+}
+
+/**
+ * The real context window for a preset model, in tokens.
+ *
+ * One API key exposes the provider's whole catalog, and those catalogs mix
+ * windows (GLM ships 203K models next to 205K ones). A single
+ * CLAUDE_CODE_MAX_CONTEXT_TOKENS cannot describe that, so the window is looked
+ * up per model instead — see getContextWindowForModel, where this sits below
+ * the env override and above the 200k fallback.
+ */
+export function getChinaProviderContextWindow(
+  modelId: string,
+): number | undefined {
+  const trimmed = modelId.trim().toLowerCase()
+  if (!trimmed) return undefined
+  for (const provider of CHINA_LLM_PROVIDERS) {
+    for (const model of provider.models) {
+      if (model.id.toLowerCase() === trimmed) {
+        return parseContextWindowTokens(model.contextWindow)
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * The `OPENAI_DEFAULT_{TIER}_MODEL` values for a preset, ready to merge into
+ * the env written at login. Deliberately does NOT include `OPENAI_MODEL`: that
+ * key overrides every family alias *and* every explicit `/model <id>`, which
+ * would pin the session to one model and undo the point of configuring the
+ * provider as a whole.
+ */
+export function chinaProviderTierEnv(
+  preset: ProviderPreset,
+): Record<string, string> {
+  return {
+    OPENAI_DEFAULT_HAIKU_MODEL: preset.tiers.haiku,
+    OPENAI_DEFAULT_SONNET_MODEL: preset.tiers.sonnet,
+    OPENAI_DEFAULT_OPUS_MODEL: preset.tiers.opus,
+    OPENAI_DEFAULT_FABLE_MODEL: preset.tiers.fable,
+  }
 }

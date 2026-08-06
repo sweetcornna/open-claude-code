@@ -40,6 +40,7 @@ import {
   getCachedModelCatalog,
 } from '../../services/modelCatalog/cache.js'
 import { mergeCatalogModelOptions } from '../../services/modelCatalog/merge.js'
+import { findChinaProviderByBaseURL } from './chinaLlmProviders.js'
 import {
   ANTIGRAVITY_MODEL_OPTIONS,
   isAntigravityAuthMode,
@@ -703,6 +704,27 @@ export function getModelOptions(fastMode = false): ModelOption[] {
           description: `${opt.description} · ${opt.contextWindow} context`,
         })
       }
+    }
+  }
+
+  // A configured China-preset endpoint offers its whole catalog: one API key,
+  // every model. These come from the curated table rather than the endpoint's
+  // /models answer, so they carry labels, pricing and context windows, and they
+  // are here the moment login finishes — the background catalog refresh below
+  // only lands later, and would list bare ids.
+  const chinaPreset = findChinaProviderByBaseURL(process.env.OPENAI_BASE_URL)
+  if (chinaPreset && getAPIProvider() === 'openai') {
+    for (const model of chinaPreset.models) {
+      if (options.some(existing => existing.value === model.id)) continue
+      const price =
+        model.inputPricePerMTok === 0 && model.outputPricePerMTok === 0
+          ? 'Free'
+          : `¥${model.inputPricePerMTok}/¥${model.outputPricePerMTok} per Mtok`
+      options.push({
+        value: model.id,
+        label: model.label,
+        description: `${price} · ${model.contextWindow} context`,
+      })
     }
   }
 

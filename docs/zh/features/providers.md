@@ -32,7 +32,14 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 | Grok | `modelType:'grok'` 或 `CLAUDE_CODE_USE_GROK=1` | `GROK_API_KEY`/`XAI_API_KEY` | `GROK_BASE_URL`（默认 api.x.ai/v1） | `GROK_MODEL` 或映射表 | `GROK_MAX_TOKENS`（同上，opt-in） |
 | Anthropic 兼容端点 | `modelType:'anthropic'` + baseURL | `ANTHROPIC_AUTH_TOKEN` | `ANTHROPIC_BASE_URL` | `ANTHROPIC_MODEL` 或四档 | （Anthropic 路径原生管理） |
 
-国产模型（DeepSeek / 智谱 GLM / 千问 / MiMo）走 OpenAI 兼容矩阵；`/login → China LLM Providers` 有内置 preset（baseURL、模型表、Coding Plan 专用端点），选择后自动写入以上键**并按 preset 的上下文窗口自动写 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`**。
+国产模型（DeepSeek / 智谱 GLM / 千问 / MiMo）走 OpenAI 兼容矩阵；`/login → China LLM Providers` 有内置 preset（baseURL、模型表、Coding Plan 专用端点）。
+
+**一个 key 配的是整个供应商，不是一个模型。** 流程是「选供应商 →（有 Coding Plan 的再选计费方式）→ 填 API Key」，没有选模型这一步：填完之后该供应商的**所有**模型都能用，`/model` 里直接列出来（带官方标签、价格、上下文窗口），随时切换。四个档位别名按 preset 的 `tiers` 映射到该供应商的对应模型（例如 DeepSeek：`haiku`→`deepseek-v4-flash`，`sonnet`/`opus`/`fable`→`deepseek-v4-pro`）。
+
+两个键**故意不写**：
+
+- **`OPENAI_MODEL`** —— 它的优先级高于一切，不只压过四个档位别名，连 `/model <具体 id>` 也会被它顶掉（见 `resolveOpenAIModel`）。写了它就等于把会话锁死在一个模型上，正是这次要去掉的行为。
+- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** —— 一个全局值描述不了一份混着不同窗口的模型表（GLM 的 203K 和 205K 就挨在一起）。改为 `getContextWindowForModel()` 按模型从 preset 表里查真实窗口；它排在环境变量覆盖**之下**，所以那个键仍然是唯一的用户纠正入口。
 
 ## 三、协议（wire API）
 
@@ -71,7 +78,7 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 - auto-compact 阈值（窗口 − 20k 输出预留 − 13k 缓冲）与预测式 compact —— 即"靠近阈值触发 compact"
 - 硬阻断线、statusline 的 `ctx:%`、`/context` 显示
 
-配置面：首启向导 / `/login` 各表单的 **Max ctx** 字段（接受 `128000` / `128k` / `1m`）、china preset 自动写入、`/provider` 档案随家族切换、或直接设环境变量。
+配置面：首启向导 / `/login` 各表单的 **Max ctx** 字段（接受 `128000` / `128k` / `1m`）、`/provider` 档案随家族切换、或直接设环境变量。china preset **不再**写这个键 —— 它的模型窗口按模型查表（见上一节）。
 
 **按模型开启 1M 后缀**：`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔模型名/子串，大小写不敏感）。主循环模型解析后命中即自动追加 `[1m]` 后缀，等价于手选 `sonnet[1m]`——走完整的后缀链路（1M 窗口 **+ 1M beta 头**），适用于支持 1M 上下文的 Anthropic 系模型；已带后缀的模型不重复追加。第三方模型只需要窗口数值时，用 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 即可，无需该开关。
 

@@ -8,6 +8,7 @@ import {
   CHATGPT_CODEX_MAX_OUTPUT_TOKENS,
   getChatGPTModelContextWindow,
 } from '../model/chatgptModels.js'
+import { getChinaProviderContextWindow } from '../model/chinaLlmProviders.js'
 import { getModelCapability } from '../model/modelCapabilities.js'
 
 // Model context window size (200k tokens for all models right now)
@@ -81,6 +82,17 @@ export function getContextWindowForModel(
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000
+  }
+
+  // China-preset models, looked up per model rather than pinned globally.
+  // One API key exposes the provider's whole catalog and those catalogs mix
+  // windows, so the login flow no longer writes CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  // for them — without this the 200k fallback would compact a 1M DeepSeek five
+  // times too early. This is detection, not a second override: the env var
+  // above still wins.
+  const chinaPresetWindow = getChinaProviderContextWindow(model)
+  if (chinaPresetWindow !== undefined) {
+    return chinaPresetWindow
   }
 
   // GPT-5.6 family: OAuth/Codex ≈ 272k; API key path ≈ 1.05M (model card).
