@@ -90,6 +90,7 @@ export function registerTask(task: TaskState, setAppState: SetAppState): void {
             ...task,
             retain: existing.retain,
             startTime: existing.startTime,
+            startTimeMono: existing.startTimeMono,
             messages: existing.messages,
             diskLoaded: existing.diskLoaded,
             pendingMessages: existing.pendingMessages,

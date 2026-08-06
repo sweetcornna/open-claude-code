@@ -27,7 +27,17 @@ export function AsyncAgentDetailDialog({ agent, onDone, onKillAgent, onBack }: P
   // Get tools for rendering activity messages
   const tools = useMemo(() => getTools(getEmptyToolPermissionContext()), []);
 
-  const elapsedTime = useElapsedTime(agent.startTime, agent.status === 'running', 1000, agent.totalPausedMs ?? 0);
+  // endTime freezes the reading once the agent stops; without it a finished
+  // agent's timer keeps climbing for as long as the panel's grace period holds
+  // the row around.
+  const elapsedTime = useElapsedTime(
+    agent.startTime,
+    agent.status === 'running',
+    1000,
+    agent.totalPausedMs ?? 0,
+    agent.endTime,
+    agent.startTimeMono,
+  );
   const killShortcut = useShortcutDisplay('taskDetail:kill', 'TaskDetail', 'x');
 
   // Restore confirm:yes (Enter/y) dismissal — Dialog handles confirm:no (Esc)

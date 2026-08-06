@@ -49,6 +49,14 @@ export type TaskStateBase = {
   description: string
   toolUseId?: string
   startTime: number
+  /**
+   * `performance.now()` captured alongside `startTime`, for measuring how long
+   * the task has been running. `startTime` stays the wall clock because the UI
+   * sorts and reports with it, but a wall clock can step backwards and turn a
+   * live task's elapsed time negative. Only valid within the process that
+   * created the task, hence optional — tasks restored from disk have none.
+   */
+  startTimeMono?: number
   endTime?: number
   totalPausedMs?: number
   outputFile: string
@@ -118,6 +126,7 @@ export function createTaskStateBase(
     description,
     toolUseId,
     startTime: Date.now(),
+    startTimeMono: performance.now(),
     outputFile: getTaskOutputPath(id),
     outputOffset: 0,
     notified: false,

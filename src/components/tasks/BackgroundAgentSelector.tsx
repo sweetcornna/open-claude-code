@@ -14,7 +14,7 @@ const SELECTED_PREFIX = `${figures.pointer} `;
 const UNSELECTED_PREFIX = '  ';
 
 export function AgentRow({ task, selected }: { task: LocalAgentTaskState; selected: boolean }): React.ReactNode {
-  const elapsed = useElapsedTime(task.startTime, task.status === 'running');
+  const elapsed = useElapsedTime(task.startTime, task.status === 'running', 1000, 0, undefined, task.startTimeMono);
   const tokens = task.progress?.tokenCount ?? 0;
   return (
     <Box flexDirection="row" width="100%" justifyContent="space-between">
