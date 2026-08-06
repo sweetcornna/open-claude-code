@@ -355,6 +355,63 @@ describe('thinking support (reasoning_content)', () => {
     expect(thinkingDeltas[1].delta.thinking).toBe(' step by step.')
   })
 
+  test('reasoning arriving after text opens a new block instead of writing into the old one', async () => {
+    // DeepSeek thinking mode reasons between steps, so text→reasoning→text is
+    // a real ordering. The thinking block used to open while the text block
+    // stayed marked open, and the trailing text was then emitted at the
+    // thinking block's index — the answer landed inside the chain of thought.
+    const events = await collectEvents([
+      makeChunk({
+        choices: [
+          { index: 0, delta: { content: 'first half' }, finish_reason: null },
+        ],
+      }),
+      makeChunk({
+        choices: [
+          {
+            index: 0,
+            delta: { reasoning_content: 'reconsidering' },
+            finish_reason: null,
+          },
+        ],
+      }),
+      makeChunk({
+        choices: [
+          { index: 0, delta: { content: 'second half' }, finish_reason: null },
+        ],
+      }),
+      makeChunk({
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      }),
+    ])
+
+    const starts = events.filter(e => e.type === 'content_block_start') as any[]
+    expect(starts.map(e => e.content_block.type)).toEqual([
+      'text',
+      'thinking',
+      'text',
+    ])
+
+    // Each text fragment must land on a text block, never on the thinking one.
+    const thinkingIndex = starts[1].index
+    const textDeltas = events.filter(
+      e => e.type === 'content_block_delta' && e.delta.type === 'text_delta',
+    ) as any[]
+    expect(textDeltas.map(e => e.delta.text)).toEqual([
+      'first half',
+      'second half',
+    ])
+    for (const d of textDeltas) {
+      expect(d.index).not.toBe(thinkingIndex)
+    }
+
+    // And every block that opened must close exactly once.
+    const stops = events.filter(e => e.type === 'content_block_stop') as any[]
+    expect(stops.map(e => e.index).sort()).toEqual(
+      starts.map(e => e.index).sort(),
+    )
+  })
+
   test('converts reasoning then content (DeepSeek-style)', async () => {
     const events = await collectEvents([
       makeChunk({

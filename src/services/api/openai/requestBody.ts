@@ -8,7 +8,15 @@ import {
   isEnvTruthy,
   isEnvDefinedFalsy,
 } from '../../../utils/config/envUtils.js'
+import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import { isCodexFamilyModel } from '../../../utils/model/chatgptModels.js'
+import {
+  buildDeepSeekThinkingFields,
+  capDeepSeekTools,
+  isDeepSeekTuningActiveForModel,
+  resolveDeepSeekReasoningEffort,
+  resolveDeepSeekTemperature,
+} from '../../../utils/model/deepseekTuning.js'
 import { isOfficialOpenAIBaseURL } from './openaiShared.js'
 
 /**
@@ -89,7 +97,17 @@ export function buildOpenAIRequestBody(params: {
    * endpoints (GLM/Kimi/DeepSeek chat) reject unknown top-level keys.
    */
   reasoningEffort?: string
-}): ChatCompletionCreateParamsStreaming & {
+  /**
+   * occ's raw effort level for this request ('low'|'medium'|'high'|'xhigh'|
+   * 'max', or an ant-only number). Used by the DeepSeek path, which has its
+   * own three-rung `reasoning_effort` ladder and previously received nothing
+   * at all — the `/model` effort picker was purely cosmetic there.
+   */
+  effortValue?: unknown
+  // `reasoning_effort` is omitted from the SDK params before being re-declared:
+  // intersecting with the SDK's own union would narrow it back to OpenAI's
+  // rungs, and DeepSeek's ladder includes `max`, which OpenAI has no name for.
+}): Omit<ChatCompletionCreateParamsStreaming, 'reasoning_effort'> & {
   thinking?: { type: string }
   enable_thinking?: boolean
   chat_template_kwargs?: { thinking: boolean; enable_thinking: boolean }
@@ -109,9 +127,50 @@ export function buildOpenAIRequestBody(params: {
     temperatureOverride,
     promptCacheKey,
     reasoningEffort,
+    effortValue,
   } = params
   const useMaxCompletionTokens =
     isOfficialOpenAIBaseURL(baseURL) && isCodexFamilyModel(model)
+
+  // Everything DeepSeek-specific hangs off this one predicate; when it is
+  // false the body below is byte-identical to what it has always been.
+  const isDeepSeek = isDeepSeekTuningActiveForModel(model, baseURL)
+
+  // DeepSeek rejects a request carrying more than 128 functions outright.
+  const { tools: effectiveTools, dropped: droppedTools } = isDeepSeek
+    ? capDeepSeekTools(tools)
+    : { tools, dropped: 0 }
+  if (droppedTools > 0) {
+    logForDebugging(
+      `[DeepSeek] tool list capped at ${effectiveTools.length}; dropped ${droppedTools} trailing tool(s) over the 128-function API limit`,
+    )
+  }
+
+  // DeepSeek's own parameter guide puts coding/math at temperature 0.0, and
+  // its unset default is 1.0 ("data analysis"). Left alone, every request from
+  // this coding agent samples far hotter than DeepSeek recommends for the job.
+  const deepseekTemperature = isDeepSeek
+    ? resolveDeepSeekTemperature({
+        enableThinking,
+        explicitOverride: temperatureOverride,
+      })
+    : undefined
+
+  // DeepSeek's `thinking` field defaults to `enabled`, so switching thinking
+  // off has to be stated explicitly — omitting the field (what the shared path
+  // below does) left OPENAI_ENABLE_THINKING=0 a no-op against the official API.
+  const deepseekThinking = isDeepSeek
+    ? buildDeepSeekThinkingFields({ enableThinking, baseURL })
+    : undefined
+
+  // `reasoning_effort` was only ever sent for OpenAI reasoning models, so every
+  // DeepSeek request ran at DeepSeek's default `high` no matter what `/model`
+  // or CLAUDE_CODE_EFFORT_LEVEL said. Meaningless when thinking is off.
+  const effectiveReasoningEffort =
+    (isDeepSeek && enableThinking
+      ? resolveDeepSeekReasoningEffort(effortValue)
+      : undefined) ?? reasoningEffort
+
   return {
     model,
     messages,
@@ -119,28 +178,40 @@ export function buildOpenAIRequestBody(params: {
       ? { max_completion_tokens: maxTokens }
       : { max_tokens: maxTokens }),
     ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
-    ...(tools.length > 0 && {
-      tools,
+    ...(effectiveTools.length > 0 && {
+      tools: effectiveTools,
       ...(toolChoice && { tool_choice: toolChoice }),
     }),
     stream: true,
     stream_options: { include_usage: true },
-    ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
-    // Enable chain-of-thought output for DeepSeek and MiMo models.
-    // When active, temperature/top_p/presence_penalty/frequency_penalty are ignored.
-    ...(enableThinking && {
-      // Official DeepSeek API format
-      thinking: { type: 'enabled' },
-      // Self-hosted DeepSeek-V3.2 format
-      enable_thinking: true,
-      // Both DeepSeek self-hosted and MiMo formats in chat_template_kwargs
-      chat_template_kwargs: { thinking: true, enable_thinking: true },
+    ...(effectiveReasoningEffort && {
+      reasoning_effort: effectiveReasoningEffort,
     }),
+    // DeepSeek states its own switches (both directions, and only the
+    // documented field on the official endpoint); everything else keeps the
+    // enable-only, send-all-three-dialects shape.
+    ...(deepseekThinking ??
+      // Enable chain-of-thought output for MiMo and other thinking-capable
+      // compatible endpoints. When active,
+      // temperature/top_p/presence_penalty/frequency_penalty are ignored.
+      (enableThinking && {
+        // Official DeepSeek API format
+        thinking: { type: 'enabled' },
+        // Self-hosted DeepSeek-V3.2 format
+        enable_thinking: true,
+        // Both DeepSeek self-hosted and MiMo formats in chat_template_kwargs
+        chat_template_kwargs: { thinking: true, enable_thinking: true },
+      })),
     // Only send temperature when thinking mode is off (DeepSeek ignores it anyway,
-    // but other providers may respect it)
+    // but other providers may respect it). On DeepSeek the resolved value also
+    // supplies the documented coding default when no caller override exists.
     ...(!enableThinking &&
-      temperatureOverride !== undefined && {
-        temperature: temperatureOverride,
-      }),
+      (isDeepSeek
+        ? deepseekTemperature !== undefined && {
+            temperature: deepseekTemperature,
+          }
+        : temperatureOverride !== undefined && {
+            temperature: temperatureOverride,
+          })),
   }
 }

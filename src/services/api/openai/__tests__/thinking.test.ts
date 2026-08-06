@@ -246,9 +246,25 @@ describe('buildOpenAIRequestBody — thinking params', () => {
     expect(body.chat_template_kwargs!.thinking).toBe(true)
   })
 
-  test('does NOT include thinking params when disabled', () => {
+  test('states thinking:disabled explicitly for DeepSeek when turned off', () => {
+    // DeepSeek's `thinking` field defaults to `enabled`, so omitting it left
+    // OPENAI_ENABLE_THINKING=0 a no-op against the official API.
     const body = buildOpenAIRequestBody({
       ...baseParams,
+      enableThinking: false,
+    })
+    expect(body.thinking).toEqual({ type: 'disabled' })
+    expect(body.enable_thinking).toBe(false)
+    expect(body.chat_template_kwargs).toEqual({
+      thinking: false,
+      enable_thinking: false,
+    })
+  })
+
+  test('does NOT include thinking params when disabled on non-DeepSeek models', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      model: 'mimo-7b',
       enableThinking: false,
     })
     expect(body.thinking).toBeUndefined()
@@ -283,9 +299,20 @@ describe('buildOpenAIRequestBody — thinking params', () => {
     expect(body.temperature).toBeUndefined()
   })
 
-  test('excludes temperature when thinking is off and no override', () => {
+  test('applies the documented DeepSeek coding temperature when thinking is off', () => {
+    // DeepSeek's unset default is 1.0, which its parameter guide assigns to
+    // data analysis; coding/math is 0.0. baseParams targets deepseek-reasoner.
     const body = buildOpenAIRequestBody({
       ...baseParams,
+      enableThinking: false,
+    })
+    expect(body.temperature).toBe(0)
+  })
+
+  test('leaves non-DeepSeek models without a temperature when no override is set', () => {
+    const body = buildOpenAIRequestBody({
+      ...baseParams,
+      model: 'glm-4.7',
       enableThinking: false,
     })
     expect(body.temperature).toBeUndefined()

@@ -14,8 +14,12 @@ import type { AssistantMessage, UserMessage } from '../types/message.js'
 import type { SystemPrompt } from '../types/systemPrompt.js'
 
 export interface ConvertMessagesOptions {
-  /** When true, preserve thinking blocks as reasoning_content on assistant messages
-   *  (required for DeepSeek thinking mode with tool calls). */
+  /**
+   * DeepSeek thinking mode is active for this request. Thinking blocks are
+   * preserved either way; this additionally backfills `reasoning_content: ''`
+   * on assistant turns that carry tool_calls but no reasoning, which DeepSeek
+   * rejects with a 400 if the field is missing.
+   */
   enableThinking?: boolean
   /**
    * Carry {@link OPENAI_REASONING_ITEMS_FIELD} through onto the converted
@@ -85,7 +89,9 @@ export function readReasoningItems(
 export function anthropicMessagesToOpenAI(
   messages: (UserMessage | AssistantMessage)[],
   systemPrompt: SystemPrompt,
-  // enableThinking is retained for API compatibility; thinking blocks are now always preserved
+  // Thinking blocks are preserved unconditionally; enableThinking additionally
+  // backfills `reasoning_content: ''` on tool-calling turns that have none, which
+  // DeepSeek's thinking mode requires — see convertInternalAssistantMessage.
   options?: ConvertMessagesOptions,
 ): ChatCompletionMessageParam[] {
   const result: ChatCompletionMessageParam[] = []
@@ -286,6 +292,28 @@ function convertInternalAssistantMessage(
     // Skip redacted_thinking, server_tool_use, etc.
   }
 
+  // DeepSeek thinking mode requires `reasoning_content` on every assistant
+  // turn that carries tool_calls — "the intermediate assistant's
+  // reasoning_content must participate in the context concatenation and must
+  // be passed back to the API in all subsequent user interaction turns"
+  // (https://api-docs.deepseek.com/guides/thinking_mode/). Omitting it earns a
+  // 400: "reasoning_content ... must be passed back to the API".
+  //
+  // Preserving the blocks we have is not enough on its own. A tool-calling
+  // assistant turn can reach here with no thinking block at all — history
+  // rewritten by compaction, a turn recorded before thinking was switched on,
+  // or a message synthesised locally — and then the field silently disappears
+  // from the replay. Emitting the empty string closes that hole; it is the
+  // same fix the wider ecosystem converged on (langchain #37174, opencode
+  // #24190, goose #9200, anything-llm #5683).
+  //
+  // Gated on enableThinking, which is only ever true for DeepSeek/MiMo or an
+  // explicit OPENAI_ENABLE_THINKING opt-in, so no other endpoint sees the key.
+  const needsEmptyReasoning =
+    options?.enableThinking === true &&
+    toolCalls.length > 0 &&
+    reasoningParts.length === 0
+
   const result: ChatCompletionAssistantMessageParam = {
     role: 'assistant',
     content: textParts.length > 0 ? textParts.join('\n') : null,
@@ -293,6 +321,7 @@ function convertInternalAssistantMessage(
     ...(reasoningParts.length > 0 && {
       reasoning_content: reasoningParts.join('\n'),
     }),
+    ...(needsEmptyReasoning && { reasoning_content: '' }),
   }
 
   return [withReasoning(result)]

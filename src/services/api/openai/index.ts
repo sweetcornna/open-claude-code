@@ -12,6 +12,7 @@ import type {
   UserMessage,
 } from '../../../types/message.js'
 import type { Tools } from '../../../Tool.js'
+import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
 import { isChatGPTCodexReasoningModel } from 'src/utils/model/chatgptModels.js'
 import { isGptTuningActiveForModel } from 'src/utils/model/gptTuning.js'
 import { asSystemPrompt } from 'src/utils/session/systemPromptType.js'
@@ -385,6 +386,9 @@ export async function* queryModelOpenAI(
                 baseURL: process.env.OPENAI_BASE_URL,
                 temperatureOverride: options.temperatureOverride,
                 promptCacheKey,
+                // DeepSeek runs its own reasoning_effort ladder off this;
+                // buildOpenAIRequestBody ignores it for every other model.
+                effortValue: options.effortValue,
                 ...(isChatGPTCodexReasoningModel(openaiModel)
                   ? {
                       reasoningEffort: getChatReasoningEffort(
@@ -393,7 +397,11 @@ export async function* queryModelOpenAI(
                       ),
                     }
                   : {}),
-              }),
+                // The SDK types `reasoning_effort` as OpenAI's own union, which
+                // has no `max` rung; DeepSeek's ladder does. The body is passed
+                // through to HTTP verbatim, so the wider value is correct on the
+                // wire even though the client types can't express it.
+              }) as unknown as ChatCompletionCreateParamsStreaming,
               { signal },
             ),
             openaiModel,

@@ -140,6 +140,26 @@ export async function* adaptOpenAIStreamToAnthropic(
     const reasoningContent = (delta as any).reasoning_content
     if (reasoningContent != null) {
       if (!thinkingBlockOpen) {
+        // Close an open text block first, mirroring what the text and
+        // tool_call handlers below already do for each other.
+        //
+        // DeepSeek thinking mode reasons *between* steps ("multiple turns of
+        // reasoning and tool calls" — api-docs.deepseek.com/guides/thinking_mode),
+        // so reasoning genuinely arrives after text has started. Without this,
+        // currentContentIndex advanced to the new thinking block while
+        // textBlockOpen stayed true, and the next delta.content emitted a
+        // text_delta at the thinking block's index — the visible answer was
+        // appended into the model's chain of thought, and the text block was
+        // left open until the end-of-stream safety sweep.
+        if (textBlockOpen) {
+          yield {
+            type: 'content_block_stop',
+            index: currentContentIndex,
+          } as BetaRawMessageStreamEvent
+          openBlockIndices.delete(currentContentIndex)
+          textBlockOpen = false
+        }
+
         currentContentIndex++
         thinkingBlockOpen = true
         openBlockIndices.add(currentContentIndex)

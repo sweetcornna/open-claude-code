@@ -324,6 +324,84 @@ describe('DeepSeek thinking mode (enableThinking)', () => {
     expect(assistant.reasoning_content).toBe('internal thoughts...')
   })
 
+  test('backfills reasoning_content:"" on a tool-calling turn that has none', () => {
+    // The ecosystem-wide DeepSeek 400: a replayed assistant turn carrying
+    // tool_calls but no reasoning_content is rejected with "reasoning_content
+    // ... must be passed back to the API". Turns can legitimately arrive here
+    // without a thinking block (history rewritten by compaction, recorded
+    // before thinking was switched on, or synthesised locally).
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg('what is the weather?'),
+        makeAssistantMsg([
+          {
+            type: 'tool_use' as const,
+            id: 'toolu_002',
+            name: 'get_weather',
+            input: { location: 'Hangzhou' },
+          },
+        ]),
+      ],
+      [] as any,
+      { enableThinking: true },
+    )
+
+    const assistant = result.find(m => m.role === 'assistant') as any
+    expect(assistant.tool_calls).toHaveLength(1)
+    expect(assistant.reasoning_content).toBe('')
+  })
+
+  test('does not backfill for endpoints that are not in thinking mode', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeAssistantMsg([
+          {
+            type: 'tool_use' as const,
+            id: 'toolu_003',
+            name: 'get_weather',
+            input: {},
+          },
+        ]),
+      ],
+      [] as any,
+    )
+
+    const assistant = result[0] as any
+    expect('reasoning_content' in assistant).toBe(false)
+  })
+
+  test('does not backfill a text-only turn — only tool_calls need the field', () => {
+    const result = anthropicMessagesToOpenAI(
+      [makeAssistantMsg([{ type: 'text', text: 'plain answer' }])],
+      [] as any,
+      { enableThinking: true },
+    )
+
+    const assistant = result[0] as any
+    expect('reasoning_content' in assistant).toBe(false)
+  })
+
+  test('a real thinking block still wins over the backfill', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeAssistantMsg([
+          { type: 'thinking' as const, thinking: 'real reasoning' },
+          {
+            type: 'tool_use' as const,
+            id: 'toolu_004',
+            name: 'get_weather',
+            input: {},
+          },
+        ]),
+      ],
+      [] as any,
+      { enableThinking: true },
+    )
+
+    const assistant = result[0] as any
+    expect(assistant.reasoning_content).toBe('real reasoning')
+  })
+
   test('preserves reasoning_content with tool_calls in same turn', () => {
     const result = anthropicMessagesToOpenAI(
       [

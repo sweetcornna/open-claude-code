@@ -59,7 +59,10 @@ export function modelSupportsEffort(model: string): boolean {
     m.includes('opus-4-7') ||
     m.includes('opus-4-6') ||
     m.includes('sonnet-4-6') ||
-    m.includes('deepseek-v4-pro')
+    m.includes('deepseek-v4-pro') ||
+    // v4-flash is the DeepSeek model that actually honours all three
+    // reasoning_effort rungs (v4-pro coerces `low` to `high` server-side).
+    m.includes('deepseek-v4-flash')
   ) {
     return true
   }
