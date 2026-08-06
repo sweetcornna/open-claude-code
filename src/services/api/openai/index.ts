@@ -12,7 +12,10 @@ import type {
   UserMessage,
 } from '../../../types/message.js'
 import type { Tools } from '../../../Tool.js'
-import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
+import type {
+  ChatCompletionChunk,
+  ChatCompletionCreateParamsStreaming,
+} from 'openai/resources/chat/completions/completions.mjs'
 import { isChatGPTCodexReasoningModel } from 'src/utils/model/chatgptModels.js'
 import { isGptTuningActiveForModel } from 'src/utils/model/gptTuning.js'
 import { asSystemPrompt } from 'src/utils/session/systemPromptType.js'
@@ -21,6 +24,9 @@ import { getOpenAIClient } from './client.js'
 import {
   formatOpenAIPromptCacheKey,
   getOpenAIPromptCacheKey,
+  isOfficialOpenAIBaseURL,
+  isPromptCacheKeyRejection,
+  markPromptCacheKeyRejected,
   resolveOpenAIVerbosity,
   updateOpenAIUsage,
 } from './openaiShared.js'
@@ -121,6 +127,58 @@ function prependDeferredToolListIfNeeded(
     }),
     ...messages,
   ]
+}
+
+/**
+ * Issue the chat-completions request, retrying once without
+ * `prompt_cache_key` if the endpoint rejects that field.
+ *
+ * The key is the single largest cache lever on the OpenAI side (75.8% vs
+ * 18.3% cumulative hit rate in the measurement quoted on
+ * shouldSendOpenAIPromptCacheKey), so it is now sent by default rather than
+ * only to OpenAI's own endpoint. Strict OpenAI-compatible servers that reject
+ * unknown top-level keys pay one failed request per session and are then
+ * suppressed for the rest of the process; servers that merely ignore the field
+ * pay nothing.
+ */
+async function createChatStreamWithCacheKeyFallback(params: {
+  buildBody: (
+    promptCacheKey: string | undefined,
+  ) => ChatCompletionCreateParamsStreaming
+  promptCacheKey: string | undefined
+  fetchOverride: typeof fetch | undefined
+  querySource: Options['querySource']
+  signal: AbortSignal
+  // The SDK's overload resolution widens to `ChatCompletion | Stream<...>`
+  // once the body is passed through a callback. `stream: true` is fixed by
+  // buildOpenAIRequestBody, so narrow to what the adapter consumes.
+}): Promise<AsyncIterable<ChatCompletionChunk>> {
+  const client = getOpenAIClient({
+    maxRetries: 2,
+    fetchOverride: params.fetchOverride,
+    source: params.querySource,
+  })
+  const create = (cacheKey: string | undefined) =>
+    client.chat.completions.create(params.buildBody(cacheKey), {
+      signal: params.signal,
+    }) as unknown as Promise<AsyncIterable<ChatCompletionChunk>>
+
+  if (params.promptCacheKey === undefined) {
+    return create(undefined)
+  }
+
+  try {
+    return await create(params.promptCacheKey)
+  } catch (error) {
+    if (params.signal.aborted || !isPromptCacheKeyRejection(error)) {
+      throw error
+    }
+    markPromptCacheKeyRejected()
+    logForDebugging(
+      '[OpenAI] endpoint rejected prompt_cache_key; retrying without it and suppressing it for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.',
+    )
+    return create(undefined)
+  }
 }
 
 function isOpenAIConvertibleMessage(
@@ -314,10 +372,15 @@ export async function* queryModelOpenAI(
           sessionId,
           wireProtocol,
         )
-    // A key is only ever set for endpoints that speak OpenAI's cache
-    // contract, which is the same condition under which cache_write_tokens
-    // can appear in usage.
-    const reportsCacheWrites = promptCacheKey !== undefined
+    // `cache_write_tokens` is OpenAI's own usage field; nothing else in the
+    // compatible ecosystem reports it, and attributing zero writes there is
+    // correct. Deliberately NOT derived from `promptCacheKey`: the key is now
+    // sent optimistically to every endpoint (see shouldSendOpenAIPromptCacheKey),
+    // so "we sent a key" no longer implies "this endpoint speaks OpenAI's cache
+    // contract".
+    const reportsCacheWrites =
+      useChatGPTResponses ||
+      isOfficialOpenAIBaseURL(process.env.OPENAI_BASE_URL)
 
     logForDebugging(
       `[OpenAI] Calling model=${openaiModel}, wire=${wireProtocol}, messages=${openaiMessages.length}, tools=${openaiTools.length}, thinking=${enableThinking}${promptCacheKey ? `, prompt_cache_key=${promptCacheKey}` : ''}`,
@@ -371,39 +434,39 @@ export async function* queryModelOpenAI(
             { onReasoningItem: item => reasoningItems.push(item) },
           )
         : adaptOpenAIStreamToAnthropic(
-            await getOpenAIClient({
-              maxRetries: 2,
+            await createChatStreamWithCacheKeyFallback({
+              buildBody: cacheKey =>
+                buildOpenAIRequestBody({
+                  model: openaiModel,
+                  messages: openaiMessages,
+                  tools: openaiTools,
+                  toolChoice: openaiToolChoice,
+                  enableThinking,
+                  maxTokens,
+                  baseURL: process.env.OPENAI_BASE_URL,
+                  temperatureOverride: options.temperatureOverride,
+                  promptCacheKey: cacheKey,
+                  // DeepSeek runs its own reasoning_effort ladder off this;
+                  // buildOpenAIRequestBody ignores it for every other model.
+                  effortValue: options.effortValue,
+                  ...(isChatGPTCodexReasoningModel(openaiModel)
+                    ? {
+                        reasoningEffort: getChatReasoningEffort(
+                          openaiModel,
+                          options.effortValue,
+                        ),
+                      }
+                    : {}),
+                  // The SDK types `reasoning_effort` as OpenAI's own union, which
+                  // has no `max` rung; DeepSeek's ladder does. The body is passed
+                  // through to HTTP verbatim, so the wider value is correct on the
+                  // wire even though the client types can't express it.
+                }) as unknown as ChatCompletionCreateParamsStreaming,
+              promptCacheKey,
               fetchOverride: options.fetchOverride as unknown as typeof fetch,
-              source: options.querySource,
-            }).chat.completions.create(
-              buildOpenAIRequestBody({
-                model: openaiModel,
-                messages: openaiMessages,
-                tools: openaiTools,
-                toolChoice: openaiToolChoice,
-                enableThinking,
-                maxTokens,
-                baseURL: process.env.OPENAI_BASE_URL,
-                temperatureOverride: options.temperatureOverride,
-                promptCacheKey,
-                // DeepSeek runs its own reasoning_effort ladder off this;
-                // buildOpenAIRequestBody ignores it for every other model.
-                effortValue: options.effortValue,
-                ...(isChatGPTCodexReasoningModel(openaiModel)
-                  ? {
-                      reasoningEffort: getChatReasoningEffort(
-                        openaiModel,
-                        options.effortValue,
-                      ),
-                    }
-                  : {}),
-                // The SDK types `reasoning_effort` as OpenAI's own union, which
-                // has no `max` rung; DeepSeek's ladder does. The body is passed
-                // through to HTTP verbatim, so the wider value is correct on the
-                // wire even though the client types can't express it.
-              }) as unknown as ChatCompletionCreateParamsStreaming,
-              { signal },
-            ),
+              querySource: options.querySource,
+              signal,
+            }),
             openaiModel,
             { includeCacheWriteTokens: reportsCacheWrites },
           )

@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
+  _resetPromptCacheKeySupportForTesting,
   getOpenAIPromptCacheKey,
   isOfficialOpenAIBaseURL,
+  isPromptCacheKeyRejection,
+  markPromptCacheKeyRejected,
   resolveOpenAIVerbosity,
   shouldSendOpenAIPromptCacheKey,
 } from '../openaiShared.js'
@@ -112,10 +115,24 @@ describe('getOpenAIPromptCacheKey', () => {
     ).toBe('occ:session-2')
   })
 
-  test('returns undefined for compatible endpoints', () => {
+  test('compatible endpoints get a key too, until one rejects it', () => {
     expect(
       getOpenAIPromptCacheKey('https://api.deepseek.com/v1', 'session-1'),
-    ).toBeUndefined()
+    ).toBe('occ:session-1')
+
+    markPromptCacheKeyRejected()
+    try {
+      expect(
+        getOpenAIPromptCacheKey('https://api.deepseek.com/v1', 'session-1'),
+      ).toBeUndefined()
+      // OpenAI's own endpoint documents the field — one strict gateway must
+      // not switch it off there.
+      expect(
+        getOpenAIPromptCacheKey('https://api.openai.com/v1', 'session-1'),
+      ).toBe('occ:session-1')
+    } finally {
+      _resetPromptCacheKeySupportForTesting()
+    }
   })
 })
 
@@ -124,17 +141,63 @@ describe('shouldSendOpenAIPromptCacheKey', () => {
     delete process.env.OPENAI_PROMPT_CACHE_KEY
   })
 
-  test('Chat Completions defaults to official OpenAI endpoints only', () => {
-    // The OpenAI-compatible *chat* ecosystem (GLM/Kimi/DeepSeek/Cerebras) is
-    // where strict servers 400 on unknown top-level keys.
+  test('Chat Completions sends the key by default, on any base URL', () => {
+    // It used to be official-OpenAI-only, which left the single largest cache
+    // lever opt-in for the population that needs it most: OpenAI behind a chat
+    // gateway. Endpoints that cannot take the field say so, once.
     expect(shouldSendOpenAIPromptCacheKey(undefined, 'chat')).toBe(true)
     expect(
       shouldSendOpenAIPromptCacheKey('https://api.deepseek.com/v1', 'chat'),
-    ).toBe(false)
+    ).toBe(true)
     // No protocol given behaves like chat.
     expect(shouldSendOpenAIPromptCacheKey('https://api.deepseek.com/v1')).toBe(
-      false,
+      true,
     )
+  })
+
+  test('a rejection suppresses the key for compatible endpoints only', () => {
+    markPromptCacheKeyRejected()
+    try {
+      expect(
+        shouldSendOpenAIPromptCacheKey('https://gateway.internal/v1', 'chat'),
+      ).toBe(false)
+      expect(
+        shouldSendOpenAIPromptCacheKey('https://api.openai.com/v1', 'chat'),
+      ).toBe(true)
+      // /responses implements the field by definition — a chat-line rejection
+      // says nothing about it.
+      expect(
+        shouldSendOpenAIPromptCacheKey(
+          'https://gateway.internal/v1',
+          'responses',
+        ),
+      ).toBe(true)
+      // The explicit override still wins over the latch.
+      process.env.OPENAI_PROMPT_CACHE_KEY = '1'
+      expect(
+        shouldSendOpenAIPromptCacheKey('https://gateway.internal/v1', 'chat'),
+      ).toBe(true)
+    } finally {
+      _resetPromptCacheKeySupportForTesting()
+    }
+  })
+
+  test('classifies only genuine prompt_cache_key rejections', () => {
+    expect(
+      isPromptCacheKeyRejection(
+        new Error("400 Unknown parameter: 'prompt_cache_key'."),
+      ),
+    ).toBe(true)
+    expect(
+      isPromptCacheKeyRejection(
+        new Error('Extra inputs are not permitted: prompt_cache_key'),
+      ),
+    ).toBe(true)
+    // An unrelated 400 must still fail the turn.
+    expect(
+      isPromptCacheKeyRejection(new Error("400 Unknown parameter: 'tools'.")),
+    ).toBe(false)
+    expect(isPromptCacheKeyRejection(new Error('rate limited'))).toBe(false)
   })
 
   test('the Responses protocol always gets a key, on any base URL', () => {
@@ -184,11 +247,11 @@ describe('shouldSendOpenAIPromptCacheKey', () => {
     expect(getOpenAIPromptCacheKey(undefined, 'sess')).toBeUndefined()
   })
 
-  test('an unparseable value falls back to the base-URL decision', () => {
+  test('an unparseable value falls back to the default decision', () => {
     process.env.OPENAI_PROMPT_CACHE_KEY = 'maybe'
     expect(shouldSendOpenAIPromptCacheKey(undefined)).toBe(true)
     expect(shouldSendOpenAIPromptCacheKey('https://api.deepseek.com/v1')).toBe(
-      false,
+      true,
     )
   })
 

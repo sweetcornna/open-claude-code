@@ -100,18 +100,23 @@ function envFlag(raw: string | undefined): boolean | undefined {
  * single largest lever on the OpenAI side, well ahead of anything about
  * request-body shape.
  *
- * Defaults:
- * - `/responses` → always sent. Serving that endpoint means implementing
- *   OpenAI's Responses schema, where `prompt_cache_key` is a documented
- *   standard field.
- * - Chat Completions → OpenAI's own endpoint only. The "OpenAI-compatible"
- *   chat ecosystem (GLM / Kimi / DeepSeek / Cerebras direct) is where strict
- *   servers reject unknown top-level keys with a 400, and that ecosystem does
- *   not serve `/responses` at all.
+ * Sent by default everywhere, because the endpoints that cannot take it say
+ * so and are then never asked again (see {@link markPromptCacheKeyRejected}).
+ * The previous default — OpenAI's own endpoint only on the chat line — meant
+ * the single largest cache lever was opt-in behind an env var for exactly the
+ * population that needs it most: OpenAI behind a chat gateway (LiteLLM,
+ * one-api, new-api, OpenRouter). Those users silently ran at the 18.3% number
+ * above unless they happened to read the docs.
  *
- * `OPENAI_PROMPT_CACHE_KEY=1` forces it on — use it for OpenAI behind a chat
- * gateway (LiteLLM, one-api, new-api, OpenRouter). `=0` forces it off for a
- * gateway that passes unknown keys through to an upstream that rejects them.
+ * The trade for endpoints that reject unknown top-level keys (Cerebras and
+ * Qwen direct, historically) is one failed request per session, after which
+ * the key is suppressed for the rest of the process. Endpoints that merely
+ * ignore the field — the common case across the OpenAI-compatible ecosystem —
+ * pay nothing.
+ *
+ * `OPENAI_PROMPT_CACHE_KEY=0` forces it off outright, for a gateway that
+ * neither accepts the key nor returns a recognisable rejection; `=1` forces it
+ * on even after a rejection.
  */
 export function shouldSendOpenAIPromptCacheKey(
   baseURL: string | undefined,
@@ -120,7 +125,47 @@ export function shouldSendOpenAIPromptCacheKey(
   const forced = envFlag(process.env.OPENAI_PROMPT_CACHE_KEY)
   if (forced !== undefined) return forced
   if (wireProtocol === 'responses') return true
-  return isOfficialOpenAIBaseURL(baseURL)
+  return !promptCacheKeyRejected || isOfficialOpenAIBaseURL(baseURL)
+}
+
+/**
+ * Latched once an endpoint has rejected `prompt_cache_key`, so the rest of the
+ * session stops paying a failed round trip per turn to re-learn it. Never set
+ * for OpenAI's own endpoint, which documents the field.
+ */
+let promptCacheKeyRejected = false
+
+/**
+ * Whether a failed chat request looks like the endpoint objecting to
+ * `prompt_cache_key` in particular, rather than to anything else in the body.
+ */
+export function isPromptCacheKeyRejection(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : ''
+  const lower = message.toLowerCase()
+  if (!lower.includes('prompt_cache_key')) return false
+  return (
+    lower.includes('unknown') ||
+    lower.includes('unsupported') ||
+    lower.includes('unrecognized') ||
+    lower.includes('not supported') ||
+    lower.includes('extra') ||
+    lower.includes('invalid')
+  )
+}
+
+/** Suppress the key for the remainder of the process. */
+export function markPromptCacheKeyRejected(): void {
+  promptCacheKeyRejected = true
+}
+
+/** Test-only: undo the process-wide latch between cases. */
+export function _resetPromptCacheKeySupportForTesting(): void {
+  promptCacheKeyRejected = false
 }
 
 /**

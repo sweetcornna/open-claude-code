@@ -49,6 +49,7 @@ import { isGptFamilyModel } from '../model/chatgptModels.js'
 import {
   formatOpenAIPromptCacheKey,
   getOpenAIPromptCacheKey,
+  isOfficialOpenAIBaseURL,
 } from '../../services/api/openai/openaiShared.js'
 import {
   anthropicMessagesToOpenAI,
@@ -818,9 +819,11 @@ async function sideQueryViaOpenAICompatible(
     totalInputTokens: responseUsage?.prompt_tokens ?? 0,
     outputTokens: responseUsage?.completion_tokens ?? 0,
     cacheReadTokens: readOpenAICachedTokens(responseUsage) ?? 0,
-    // Cache-write tokens are an OpenAI-only field; promptCacheKey is set only
-    // when this request went to OpenAI's own endpoint.
-    cacheWriteTokens: promptCacheKey
+    // Cache-write tokens are an OpenAI-only usage field. Gated on the endpoint,
+    // not on promptCacheKey: the key is now sent optimistically everywhere
+    // (see shouldSendOpenAIPromptCacheKey), so its presence no longer implies
+    // this request went to OpenAI's own endpoint.
+    cacheWriteTokens: isOfficialOpenAIBaseURL(process.env.OPENAI_BASE_URL)
       ? (readOpenAICacheWriteTokens(responseUsage) ?? 0)
       : 0,
   })

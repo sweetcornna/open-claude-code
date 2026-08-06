@@ -323,7 +323,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
     expect(result.usage.cache_creation_input_tokens).toBe(250)
   })
 
-  test('compatible API key mode omits official cache fields', async () => {
+  test('compatible API key mode attributes no cache writes', async () => {
     delete process.env.OPENAI_AUTH_MODE
     process.env.OPENAI_BASE_URL = 'https://api.deepseek.com/v1'
     process.env.OPENAI_API_KEY = 'sk-test-not-real'
@@ -344,7 +344,12 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
     })
 
     expect(lastChatCompletionsArgs).not.toBeNull()
-    expect('prompt_cache_key' in lastChatCompletionsArgs!).toBe(false)
+    // The routing key is now sent optimistically everywhere — it is the single
+    // largest cache lever and endpoints that reject it are latched off after
+    // one failure. Cache-*write* attribution, however, stays gated on the
+    // endpoint: cache_write_tokens is an OpenAI-only usage field, and a
+    // compatible endpoint echoing it must not be believed.
+    expect('prompt_cache_key' in lastChatCompletionsArgs!).toBe(true)
     expect(result.usage.input_tokens).toBe(400)
     expect(result.usage.cache_read_input_tokens).toBe(600)
     expect(result.usage.cache_creation_input_tokens).toBe(0)

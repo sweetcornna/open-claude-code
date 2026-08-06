@@ -66,10 +66,12 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 | Provider | 机制 | occ 的处理 |
 | --- | --- | --- |
 | Anthropic | 显式 `cache_control` 断点 | system 块 + 单个消息断点；TTL 见 [system-prompt.mdx](../context/system-prompt.mdx) 的 `should1hCacheTTL` 一节（含 `CLAUDE_CODE_PROMPT_CACHING_1H`） |
-| OpenAI Chat Completions | 自动前缀缓存 + `prompt_cache_key` 粘性路由 | 会话级稳定 key `occ:<sessionId>`，默认只发官方端点 |
+| OpenAI Chat Completions | 自动前缀缓存 + `prompt_cache_key` 粘性路由 | 会话级稳定 key `occ:<sessionId>`，**默认对所有端点发送**，被拒即降级 |
 | OpenAI Responses / Codex | 同上 + reasoning 回放 | key 恒发；reasoning 见下 |
 | Gemini | 隐式缓存 | `promptTokenCount` 含缓存前缀，统计时须扣除（`normalizeGeminiUsage`） |
 | Grok (xAI) | 自动前缀缓存 | 无需额外参数 |
+| DeepSeek | 自动硬盘前缀缓存 | 无需额外参数；命中量按 `prompt_cache_hit_tokens` 上报 |
+| GLM / Kimi 等兼容端点 | 自动前缀缓存 | 无需额外参数；命中量按 `prompt_tokens_details.cached_tokens` 或扁平化的 `cached_tokens` 上报 |
 
 ### 实测：什么真的影响命中率
 
@@ -87,12 +89,13 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 1. **粘性路由键是最大的杠杆。** 没有 `prompt_cache_key`，只有第一次追问命中，之后每轮都落到不同的缓存节点。这就是"缓存率特别低"的典型形态。
 2. **工具表变动是唯一的一票否决。** 改一个 tool description 就是全表 miss —— 工具数组排在最前面。occ 因此刻意不把延迟加载的工具放进请求（见 `queryModelOpenAI` 里的 filter 注释），MCP 中途连接也走 delta attachment 而不是重算 system prompt。system prompt 尾部漂移反而没那么致命。
 
-**`OPENAI_PROMPT_CACHE_KEY`**：默认规则按协议分开——
+**`OPENAI_PROMPT_CACHE_KEY`**：**默认对所有端点都发**（两条协议线一致）。
 
-- `/responses`：**总是发**。能提供这个端点就意味着实现了 Responses schema，`prompt_cache_key` 是其中的标准字段。
-- Chat Completions：只发给官方 `api.openai.com`。会 400 拒收未知顶层字段的严格端点（GLM / Kimi / DeepSeek / Cerebras 直连）都在 chat 这条线上，而它们并不提供 `/responses`。
+早先的规则是 chat 线只发给官方 `api.openai.com`，理由是严格端点会 400 拒收未知顶层字段。代价是：**最大的那根杠杆对最需要它的人群默认关着** —— 把 OpenAI 挂在 chat 网关后面（LiteLLM / one-api / new-api / OpenRouter）的用户，除非正好读到这段文档，否则一直跑在上表 18.3% 那一行。
 
-把 OpenAI 挂在 chat 网关后面（LiteLLM / one-api / new-api / OpenRouter）时用 `OPENAI_PROMPT_CACHE_KEY=1` 强制开启；`=0` 强制关闭，用于会把未知键透传给上游、而上游拒收的网关。
+现在改成乐观发送 + 被拒即降级：端点若以「未知字段 / 不支持 / 不允许额外输入」之类的措辞拒收 `prompt_cache_key`，occ 去掉该字段重发一次，并在**本进程内**不再发给非官方端点（官方端点文档化了这个字段，不受一次网关拒收影响）。真会拒的端点每会话付一次失败请求；只是忽略未知键的端点（兼容生态里的绝大多数）什么都不付。`OPENAI_PROMPT_CACHE_KEY=0` 彻底关闭（用于既不接受、也不给出可识别拒绝信息的网关），`=1` 即使被拒过也强制发。
+
+**注意**：`cache_creation_input_tokens` 的归属**不再**跟着「有没有发 key」走。`cache_write_tokens` 是 OpenAI 独有的 usage 字段，现在按端点判定 —— 兼容端点即使回显了这个字段也不采信，仍记 0。
 
 **Responses / Codex 的 reasoning 回放**：推理模型走 `/responses` 且 `store: false` 时服务端不留状态，第 N 轮的 reasoning item 不回放就彻底丢失。occ 的做法是请求带 `include: ["reasoning.encrypted_content"]`，从 `response.output_item.done` 抓取后按 `_openaiReasoningItems` 挂在该轮 assistant 消息上（消息级而非内容块级——中途切模型时消息级附加字段会被丢弃，块级会跟着发给别的 provider），下一轮在该 assistant 轮最前面按原顺序回放；assistant 文本按 `{type:'message', content:[{type:'output_text'}]}` 回放而不是裸 `{role, content}`（后者归一成 `input_text`，等于告诉模型它自己上一轮的回答是用户输入）。
 
