@@ -300,8 +300,21 @@ describe('createAdapter — default aggregation', () => {
     expect(lanes(createAdapter())).toEqual(['ApiSearchAdapter'])
   })
 
-  test('an explicit on switch beats missing credentials', () => {
+  test('an explicit on switch does NOT summon a lane with no credentials', () => {
+    // The switch records a preference, not a capability. A codex lane with no
+    // OpenAI credentials behind it can only fail or come back silently empty,
+    // and an empty result set reaches the model as "the web has no answer".
     scenario({ provider: 'grok', sources: { codex: true } })
+
+    expect(lanes(createAdapter())).toEqual(['FreeSearchAdapter'])
+  })
+
+  test('an explicit on switch keeps a lane whose credentials are present', () => {
+    scenario({
+      provider: 'grok',
+      credentials: ['codex'],
+      sources: { codex: true },
+    })
 
     expect(lanes(createAdapter())).toEqual([
       'CodexSearchAdapter',

@@ -29,7 +29,7 @@ import {
   hasStoredChatGPTAuth,
   requestChatGPTDeviceCode,
 } from '../../services/api/openai/chatgptAuth.js';
-import { hasAnthropicSearchCredentials } from '../../services/search/sourceCredentials.js';
+import { hasAnthropicSearchCredentials, hasCodexSearchCredentials } from '../../services/search/sourceCredentials.js';
 import type { LocalJSXCommandCall, LocalJSXCommandContext } from '../../types/command.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../../utils/settings/settings.js';
 import {
@@ -87,7 +87,12 @@ async function readConnection(id: SearchSourceId): Promise<{ connected: boolean;
     case 'codex': {
       const oauth = await hasStoredChatGPTAuth();
       return {
-        connected: oauth || Boolean(process.env.OPENAI_API_KEY),
+        // Deliberately the shared probe rather than a second `OPENAI_API_KEY`
+        // check: an API key only means "OpenAI's web_search is reachable" when
+        // OPENAI_BASE_URL actually points at OpenAI. Re-deriving it here is how
+        // this panel came to report "✓ connected" for a DeepSeek key, which is
+        // what led users to tick a source that can only return zero results.
+        connected: oauth || hasCodexSearchCredentials(),
         ...(oauth ? { account: await getStoredChatGPTAccountId() } : {}),
       };
     }
@@ -102,6 +107,33 @@ function writeOverride(id: SearchSourceId, enabled: boolean): void {
   updateSettingsForSource('userSettings', {
     webSearchSources: next,
   } as unknown as SettingsJson);
+}
+
+/**
+ * What the user would have to do to make a disconnected source usable.
+ *
+ * Spelled out per source because "not connected" is not actionable on its own —
+ * `codex` in particular is most often dark not because nothing is configured,
+ * but because OPENAI_BASE_URL points at an OpenAI-COMPATIBLE endpoint whose
+ * vendor does not run OpenAI's server-side web_search. That reads as "but I set
+ * an API key" unless the message names the real condition.
+ */
+function remedyFor(row: SourceRow): string {
+  switch (row.id) {
+    case 'codex':
+      return (
+        `${row.label} needs OpenAI's own backend: press enter to log in with a ` +
+        `ChatGPT account, or point OPENAI_BASE_URL at api.openai.com with an ` +
+        `OpenAI key. A key for an OpenAI-compatible endpoint does not serve ` +
+        `OpenAI's web_search.`
+      );
+    case 'gemini':
+      return `${row.label} is not connected — press enter to log in with Google, or set GEMINI_API_KEY.`;
+    case 'anthropic':
+      return `${row.label} is not connected — log in with /login, or set ANTHROPIC_API_KEY.`;
+    case 'free':
+      return `${row.label} needs no account.`;
+  }
 }
 
 function checkbox(row: SourceRow): string {
@@ -188,6 +220,14 @@ function SearchSettingPanel({
   const toggleSource = useCallback((row: SourceRow) => {
     if (!row.available) {
       setNotice(`${row.label} is unavailable for this account.`);
+      return;
+    }
+    // Ticking a disconnected source is refused rather than recorded: the
+    // override cannot manufacture the capability (see isSourceEnabled), so
+    // writing it would leave the box ticked and the lane still dark. Say what
+    // would actually fix it instead.
+    if (!row.enabled && row.connection !== 'connected') {
+      setNotice(remedyFor(row));
       return;
     }
     writeOverride(row.id, !row.enabled);

@@ -75,11 +75,29 @@ describe('isSourceEnabled', () => {
     expect(isSourceEnabled('free')).toBe(true)
   })
 
-  test('an explicit choice wins in both directions', () => {
+  test('an explicit "off" wins over held credentials', () => {
     withCredentials(['anthropic'])
-    withSourceSettings({ anthropic: false, gemini: true })
+    withSourceSettings({ anthropic: false })
 
     expect(isSourceEnabled('anthropic')).toBe(false)
+  })
+
+  test('an explicit "on" cannot manufacture missing credentials', () => {
+    // Ticking a source records "use it when it works", not "fire a lane at a
+    // backend that cannot serve the search". Forcing one on produced a primary
+    // lane that returned zero results with no error — worse than an absent
+    // source, because the model reads the empty list as "the web has no
+    // answer". The fix is to acquire the capability, not to insist on the flag.
+    withCredentials([])
+    withSourceSettings({ gemini: true })
+
+    expect(isSourceEnabled('gemini')).toBe(false)
+  })
+
+  test('an explicit "on" is a no-op when the credentials are there anyway', () => {
+    withCredentials(['gemini'])
+    withSourceSettings({ gemini: true })
+
     expect(isSourceEnabled('gemini')).toBe(true)
   })
 

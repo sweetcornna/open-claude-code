@@ -19,6 +19,7 @@ import {
 } from '@open-claude-code/tool-runtime/searchCredentials.js'
 import { hasGeminiOAuthCredentialsSync } from 'src/services/api/gemini/oauthToken.js'
 import { hasStoredChatGPTAuthSync } from 'src/services/api/openai/chatgptAuth.js'
+import { isOfficialOpenAIBaseURL } from 'src/services/api/openai/openaiShared.js'
 
 /**
  * The two Anthropic auth probes, loaded on first use.
@@ -74,11 +75,37 @@ export function hasGeminiSearchCredentials(): boolean {
 }
 
 /**
- * ChatGPT OAuth or an OpenAI API key. The key alone is enough: the Responses
- * API serves the built-in web_search tool on the API-key route too.
+ * ChatGPT OAuth, or an OpenAI API key that will actually reach OpenAI.
+ *
+ * The `codex` source is not "some OpenAI-compatible endpoint" — it is OpenAI's
+ * server-side `web_search` tool, and only OpenAI runs it. An API key alone used
+ * to be treated as proof of that, which is wrong in the configuration occ is
+ * built for: `OPENAI_BASE_URL` pointed at a third-party OpenAI-compatible
+ * endpoint is the norm here, and `OPENAI_API_KEY` then holds THAT vendor's key.
+ *
+ * The failure this produced was silent rather than loud, which is why it
+ * survived. Pointed at DeepSeek, the lane is chosen as the session's PRIMARY
+ * source, the request is accepted (DeepSeek does implement the Responses API),
+ * and the search genuinely runs — the response carries `web_search_call` items.
+ * But DeepSeek reports neither `url_citation` annotations nor `action.sources`,
+ * the only two places results are read from, so the lane returns zero results
+ * on every query while reporting no error at all. The model then sees an empty
+ * web and says so.
+ *
+ * The base-URL check is deliberately strict (see `isOfficialOpenAIBaseURL`):
+ * a gateway that genuinely proxies OpenAI's web_search is indistinguishable
+ * from one that does not, so the conservative answer is "off", and
+ * `webSearchSources.codex = true` in settings is the escape hatch for users who
+ * know their proxy passes it through.
  */
 export function hasCodexSearchCredentials(): boolean {
-  return hasStoredChatGPTAuthSync() || Boolean(process.env.OPENAI_API_KEY)
+  // A ChatGPT/Codex login authenticates against OpenAI's own backend by
+  // construction, whatever OPENAI_BASE_URL happens to say.
+  if (hasStoredChatGPTAuthSync()) return true
+  return (
+    Boolean(process.env.OPENAI_API_KEY) &&
+    isOfficialOpenAIBaseURL(process.env.OPENAI_BASE_URL)
+  )
 }
 
 export function hasSearchCredentials(family: SearchCredentialFamily): boolean {

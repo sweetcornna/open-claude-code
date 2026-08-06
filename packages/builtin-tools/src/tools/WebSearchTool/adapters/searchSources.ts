@@ -59,11 +59,30 @@ export function hasSourceCredentials(id: SearchSourceId): boolean {
 }
 
 /**
- * Switched on = explicit user choice when there is one, otherwise "we hold
- * credentials for it".
+ * Switched on = we hold usable credentials, unless the user explicitly said
+ * otherwise.
+ *
+ * The override is one-directional on purpose: an explicit "off" always wins,
+ * an explicit "on" cannot manufacture a capability the account does not have.
+ * Ticking a source only records that you want it *when it works*; it is not a
+ * request to fire a lane at a backend that cannot serve the search.
+ *
+ * That asymmetry exists because the symmetric version had a real failure mode.
+ * A user on an OpenAI-compatible endpoint (DeepSeek et al) saw `codex` reported
+ * as connected — the panel counted any `OPENAI_API_KEY` — ticked it, and got it
+ * promoted to the session's PRIMARY search lane. The endpoint accepted the
+ * request and even ran a search, but reported results in neither of the two
+ * shapes occ reads, so every query came back empty with no error anywhere. A
+ * forced-on source that can only return nothing is worse than an absent one:
+ * the model reads the empty list as "the web has no answer".
+ *
+ * The remedy is to acquire the capability, not to insist on the flag — log in
+ * with the provider's OAuth, or point the endpoint at one that serves the
+ * search. `/search-setting` says so when a tick is refused.
  */
 export function isSourceEnabled(id: SearchSourceId): boolean {
-  return readSourceOverrides()[id] ?? hasSourceCredentials(id)
+  if (readSourceOverrides()[id] === false) return false
+  return hasSourceCredentials(id)
 }
 
 const unavailableSources = new Set<SearchSourceId>()
