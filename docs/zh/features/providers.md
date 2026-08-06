@@ -4,6 +4,20 @@ occ 不只连 Claude：任何 OpenAI 兼容端点、Gemini 原生 API、Grok、�
 
 **大多数人不需要读完本文**：首次运行 `occ` 的向导（或之后的 `/login`）会引导你选供应商、填 key 和模型，国产模型还有现成 preset。本文是给需要手动调环境变量、写脚本或排查问题的人准备的配置真源。
 
+## 〇、登录表单：四家共用的两步流
+
+OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一个向导**（`src/components/providerSetup/`，各家差异全部收在 `specs.ts` 的表里）：
+
+1. **Step 1 —— 连接信息**。只填 Base URL 和 API Key。这一步不写任何设置，填完按 Enter 只做一件事：拿刚输入的凭据去问端点 `GET /models`。
+2. **Step 2 —— 选模型**。端点答上来了，默认模型和四个档位就都是选择器，从它**实际提供**的模型里挑；答不上来（URL 写错、没有 key、网关不实现 `/models`）就退回手填，并把失败原因显示出来，比如 `fetch failed (connect ECONNREFUSED 127.0.0.1:9)` —— 端点能用但没有模型列表，从来不该挡住配置。
+
+几条容易踩的规则：
+
+- **Base URL 留空不等于写默认值**。留空时探测请求会发往该 provider 的默认端点，但保存时**不写** `*_BASE_URL` —— 写进去等于把会话钉死在今天这个地址，以后 provider 改默认就跟不上了。只有 OpenAI 强制要求填（它没有可回落的官方默认语义）。
+- **API Key 留空只有 OpenAI 会拦**。其余三家会跳过探测直接进手填，理由是无鉴权的本地网关（比如套了 Anthropic 兼容壳的 vLLM）在这套向导之前就能配，不该被新流程拒之门外。
+- **端点换了以后，记不住的旧模型会被丢掉**。Step 2 会用现有环境变量预填选中项，但在选择器模式下，端点已经不提供的模型名会被清空——留着它只会让你保存一个这台服务器答不了的配置。
+- 校验按家不同：OpenAI 必须选默认模型（OpenAI 兼容端点没有家族默认可回落）；Gemini 要么填默认模型、要么把 haiku/sonnet/opus 三档填全（它的映射表打不中就抛错）；Anthropic 兼容与 Grok 都可以全空，靠内置家族默认。
+
 ## 一、选择 provider
 
 优先级：`settings.modelType`（`/login` 或向导写入）> `CLAUDE_CODE_USE_{BEDROCK,VERTEX,FOUNDRY,OPENAI,GEMINI,GROK}` 环境变量 > 默认 Anthropic 一方 API。判定入口 `src/utils/model/providers.ts`。
@@ -24,7 +38,7 @@ occ 不只连 Claude：任何 OpenAI 兼容端点、Gemini 原生 API、Grok、�
 
 OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions，打 `<base>/chat/completions`）或 `responses`（Responses API，打 `<base>/responses`）。`OPENAI_AUTH_MODE=chatgpt` 强制 responses；Codex 家族模型（id 含 `codex`、GPT-5 世代）在未显式指定时也默认 responses。
 
-**协议在登录菜单里选，不是表单里的一个字段**：`/login` 有两个并列入口 —— **OpenAI Chat Completions** 与 **OpenAI Responses API**，选哪个就把 `OPENAI_WIRE_API` 写成哪个，后续表单只填 Base URL / API Key / 模型。这样命名是因为"OpenAI 兼容"只描述了 chat 那条线，把 responses 塞进同一个表单会让人以为它也是"兼容"模式。
+**协议在登录菜单里选，不是表单里的一个字段**：`/login` 有两个并列入口 —— **OpenAI Chat Completions** 与 **OpenAI Responses API**，选哪个就把 `OPENAI_WIRE_API` 写成哪个，后续走的是与其他 provider 相同的两步流（见上一节）。这样命名是因为"OpenAI 兼容"只描述了 chat 那条线，把 responses 塞进同一个表单会让人以为它也是"兼容"模式。
 
 选定的协议对**整条链路**生效：主循环、side query（分类器、标题生成、模型校验等）、WebSearch 的 codex 源共用同一套解析（`resolveOpenAIWireProtocol`）。曾经只有主循环认这个键，side query 一律走 Chat Completions，只支持 `/responses` 的上游会直接拒掉那部分请求。
 
@@ -48,7 +62,7 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 `fable` 档没有 ChatGPT/Codex 对应层：OpenAI 用户通过 `OPENAI_DEFAULT_FABLE_MODEL`（或统一的 `ANTHROPIC_DEFAULT_FABLE_MODEL`）自行指定，未配置时回落到该 provider 的主模型键。
 
-四个档位都可以在首启向导 / `/login` 的表单里直接填（OpenAI 表单的 **Fable tier model (optional)**，Anthropic 兼容与 Gemini 表单的 **Fable** 行），排在 Opus 之后 —— fable 是最高档。留空即按上面的回落链走，不必先退出去改环境变量。Gemini 的「Model 或三个档位全填」校验不含 fable：它未配置时回落到主模型键，强制填会打断既有配置。
+四个档位在首启向导 / `/login` 的 Step 2 里都有对应字段（`Fable tier model (optional)` 排在 Opus 之后 —— fable 是最高档），四家 provider 一致。端点提供了模型列表时它们是选择器，否则是手填框。留空即按上面的回落链走，不必先退出去改环境变量。Gemini 的「Model 或三个档位全填」校验不含 fable：它未配置时回落到主模型键，强制填会打断既有配置。
 
 ## 五、最大上下文（关键）
 
