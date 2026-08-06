@@ -4,6 +4,13 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.29.2 - 2026-08-06
+
+- **WebSearch 稳定返回不相关内容，根因是聚合结果被单条通道垄断、真正相关的那条被整段截掉**。合并多路结果时按严格优先级把通道逐个排干，而那个"优先级"其实是 `SEARCH_SOURCE_IDS` 的**面板展示顺序**（`free` 恒定排最后），不是质量排序。于是只要 grounding 类通道在线，它就能把 8 条预算全部占满，返回真正排序过 SERP 的免费通道一条都进不来。实测 `Zod v4 strictObject usage`：单独跑免费通道，rank 1 就是 `zod.dev/api?id=zstrictobject`（官方 API 文档正文）；跑聚合，前六条全是 grounding 给的 GitHub issue 讨论帖，那个文档页一条没有。**这也是为什么它看起来像"搜索质量差"而不是"哪里坏了"** —— 每条结果单看都是真实网页，只是没一条回答问题。现在改为**轮转交错**：通道 0 仍然占 rank 1（"官方源权威"的约定不变），但每个通道放完下一条才轮到别人放第二条，任何通道都无法饿死其它通道。同一查询修复后 rank 2 就是那个文档页。
+- **Gemini 通道的摘要张冠李戴**。grounding 返回的是模型作答时引用的来源，一句话经常同时挂着三四个来源，而摘要是按"引用了这句话的 chunk 全都拿这句话"分配的 —— 于是四个不同 URL 带着**完全相同**的摘要：既没有任何区分度可供挑选，对其中三个还是**根本不属于该页面**的描述。现在一段答案文本至多被一个来源认领，认领不到的来源宁可没有摘要 —— 缺摘要好过错摘要，标题和 URL 仍然能标识页面。
+- **codex 主通道此前是死的：点亮它的凭据不是它实际使用的凭据**。机器上存在 ChatGPT 登录时，codex 源被判定为"已连接"（2.29.0 加的 base-URL 收紧对这条分支不生效，它在更上面短路），但主通道是以 `forceChatGPTAuth: false` 构造的，于是顺着 `OPENAI_BASE_URL` 打到第三方兼容端点——那里能接受请求、也真的跑了搜索，却不返回 `url_citation` / `action.sources`，所以**每次 0 条且全程不报错**，正是 2.29.0 修的那类静默空结果换了个入口复现。现在的规则是：端点不是 OpenAI 官方时，存在 ChatGPT 登录就走 Codex 后端 —— 让"算数的那把凭据"和"实际用的那把凭据"是同一把。修好路由后暴露了第二层问题：它把主循环模型（例如 `deepseek-v4-flash`）原样发给 Codex 后端，被 400 拒收（`... is not supported when using Codex with a ChatGPT account`），而聚合层会静默吞掉这个错误 —— 等于把"静默 0 条"换成了另一种"静默 0 条"。因此补上 `resolveCodexSearchModel`：走 Codex 后端时，该后端不认识的模型 id 一律换成便宜档（搜索轮只需要调用工具、吐引用），与既有 `resolveGeminiSearchModel` 处理 Antigravity 同一问题的做法一致。**走官方 OpenAI 端点的用户行为完全不变。**
+- 上述三条对 Anthropic 会话同样生效的只有第一条（结果交错）；后两条只影响 Gemini / codex 通道。
+
 ## 2.29.1 - 2026-08-06
 
 - **修复 `.mcp.json` 里的 `${VAR}` 被原样传给 MCP server，项目级 `settings.local.json` 的 env 形同虚设**。表现是需要密钥的 server 全线失效（FRED 直接回 400 `api_key is not a 32 character alpha-numeric lower-case string`，SEC 的列表通道正常、正文通道返 NO_DATA），而不依赖密钥的 server 一切正常 —— 于是很容易误判成"某个源坏了"或"设置没写对"。**根因是展开时机早于 env 落地，不是读不到设置**：occ 在启动阶段就把 MCP 配置读进来了（那段代码的注释写着"safe - just reads files, no execution"，就执行而言确实安全，但它同时把 `${VAR}` 也一并定死了），而项目级 settings 的 env 要等信任对话框跑完才进 `process.env` —— 启动期只应用一份安全白名单，用户自定义的密钥键不在其中。真正让这件事变得诡异的是**它同时留下了正确的那一份**：信任之后界面会重新读一次配置，这次展开是对的，但两份 config 的 JSON 不同，而 MCP 连接的缓存正是按 `名字 + config JSON` 做键 —— 于是**每个 server 有两个活着的子进程，一个 env 正确、一个是字面量，接管工具调用的偏偏是坏的那个**。`ps eww` 能同时看到这两份。`-p` 模式只走早期快照那一条，所以是稳定失败。修法是让展开结果与展开时机无关（解析器改为同时查 settings.env，顺序与信任后 `process.env` 的最终状态一致），而不是去挪启动顺序：解析期本来就不执行任何东西，信任后的那条路径也早就插值了同样的值，所以信任边界没有放宽 —— 顺带让两个缓存键收敛，每个 server 回到单进程。插件贡献的 MCP / LSP server 走同一处修复。
