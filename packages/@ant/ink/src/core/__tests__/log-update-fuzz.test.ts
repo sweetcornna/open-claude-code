@@ -292,14 +292,49 @@ function randomLine(rand: () => number): string {
   return line
 }
 
+/**
+ * A contiguous row band to reuse from the previous frame. Bounded by both the
+ * new frame's height and the previous screen's, since a blit past either end
+ * is not something the reconciler can produce.
+ */
+function pickBlitBand(
+  rand: () => number,
+  newHeight: number,
+  prevHeight: number,
+): { top: number; bottom: number } | undefined {
+  const limit = Math.min(newHeight, prevHeight)
+  if (limit <= 0) return undefined
+  const top = Math.floor(rand() * limit)
+  const bottom = top + 1 + Math.floor(rand() * (limit - top))
+  return { top, bottom }
+}
+
 function randomFrameLines(rand: () => number): string[] {
   const height = Math.floor(rand() * (MAX_CONTENT_HEIGHT + 1))
   return Array.from({ length: height }, () => randomLine(rand))
 }
 
+/**
+ * How the frame's Screen is allocated.
+ *
+ * `fresh` gives every frame its own buffer. `recycled` mirrors production:
+ * createRenderer keeps ONE Output and paints each frame into the screen from
+ * two renders ago (`backFrame`), reset in place by `output.reset()`. That
+ * recycling is the part the original chain deliberately skipped, and it is
+ * where residue can hide that a fresh buffer cannot show — resetScreen zeroes
+ * the cells but damage is rebuilt from scratch, so any region the new frame
+ * neither writes nor clears is never compared against what is physically on
+ * screen.
+ */
+type BufferMode = 'fresh' | 'recycled' | 'blit'
+
 /** Run one seeded chain of frames; returns a description of the first
  *  divergence, or null when every frame rendered exactly. */
-function runChain(seed: number, frameCount: number): string | null {
+function runChain(
+  seed: number,
+  frameCount: number,
+  bufferMode: BufferMode = 'fresh',
+): string | null {
   const rand = makeRandom(seed)
   const pools = makePools()
   const log = new LogUpdate({ isTTY: true, stylePool: pools.stylePool })
@@ -313,13 +348,67 @@ function runChain(seed: number, frameCount: number): string | null {
     pools.hyperlinkPool,
   )
   const history: string[][] = []
+  // Two screens alternating, exactly like frontFrame/backFrame. Sized to the
+  // viewport so a shorter frame reuses a buffer that still holds taller
+  // content — the case that needs damage to reach outside the new content.
+  const recycled: Screen[] = [
+    createScreen(
+      WIDTH,
+      VIEWPORT_HEIGHT,
+      pools.stylePool,
+      pools.charPool,
+      pools.hyperlinkPool,
+    ),
+    createScreen(
+      WIDTH,
+      VIEWPORT_HEIGHT,
+      pools.stylePool,
+      pools.charPool,
+      pools.hyperlinkPool,
+    ),
+  ]
+  let sharedOutput: Output | undefined
 
   for (let i = 0; i < frameCount; i++) {
     const lines = randomFrameLines(rand)
     history.push(lines)
-    // Each frame gets its own buffer — production double-buffers, and the
-    // diff needs both screens intact.
-    const screen = buildScreen(pools, lines)
+    let screen: Screen
+    if (bufferMode === 'fresh') {
+      screen = buildScreen(pools, lines)
+    } else {
+      const target = recycled[i % 2]!
+      if (sharedOutput) {
+        sharedOutput.reset(WIDTH, lines.length, target)
+      } else {
+        sharedOutput = new Output({
+          width: WIDTH,
+          height: lines.length,
+          stylePool: pools.stylePool,
+          screen: target,
+        })
+      }
+      // A "clean subtree": the reconciler skips repainting it and blits last
+      // frame's pixels forward instead of writing them. Rows inside the band
+      // therefore come from prevFrame's screen, rows outside are written.
+      const blitBand =
+        bufferMode === 'blit' && lines.length > 0 && prevFrame.screen.height > 0
+          ? pickBlitBand(rand, lines.length, prevFrame.screen.height)
+          : undefined
+      for (const [y, line] of lines.entries()) {
+        if (blitBand && y >= blitBand.top && y < blitBand.bottom) continue
+        sharedOutput.write(0, y, line)
+      }
+      if (blitBand) {
+        sharedOutput.blit(
+          prevFrame.screen,
+          0,
+          blitBand.top,
+          WIDTH,
+          blitBand.bottom - blitBand.top,
+        )
+      }
+      screen = sharedOutput.get()
+    }
     const frame = frameOf(screen)
     terminal.apply(log.render(prevFrame, frame))
     prevFrame = frame
@@ -360,6 +449,63 @@ describe('LogUpdate diff fuzz', () => {
     const failures: string[] = []
     for (let seed = 1001; seed <= 1100; seed++) {
       const failure = runChain(seed, 20)
+      if (failure) {
+        failures.push(failure)
+        if (failures.length >= 3) break
+      }
+    }
+    expect(failures.join('\n\n---\n\n')).toBe('')
+  })
+
+  // Same chains, but through production's recycled buffers. resetScreen zeroes
+  // the cells it hands back, yet damage starts empty every frame — so a region
+  // the new frame neither writes nor clears is never diffed against what the
+  // terminal is actually showing. That is the shape of a stray-character bug,
+  // and the fresh-buffer chains above cannot reach it.
+  test('recycled buffers stay in sync (production double-buffering)', () => {
+    const failures: string[] = []
+    for (let seed = 1; seed <= 400; seed++) {
+      const failure = runChain(seed, 5, 'recycled')
+      if (failure) {
+        failures.push(failure)
+        if (failures.length >= 3) break
+      }
+    }
+    expect(failures.join('\n\n---\n\n')).toBe('')
+  })
+
+  test('long recycled chains stay in sync', () => {
+    const failures: string[] = []
+    for (let seed = 2001; seed <= 2100; seed++) {
+      const failure = runChain(seed, 20, 'recycled')
+      if (failure) {
+        failures.push(failure)
+        if (failures.length >= 3) break
+      }
+    }
+    expect(failures.join('\n\n---\n\n')).toBe('')
+  })
+
+  // Adds the clean-subtree fast path: rows the reconciler considers unchanged
+  // are blitted forward from the previous screen instead of repainted. Named
+  // as an open suspect when the first fuzz pass cleared the plain incremental
+  // path — a blit copies cells without proving the terminal ever showed them.
+  test('blitted (clean-subtree) rows stay in sync', () => {
+    const failures: string[] = []
+    for (let seed = 1; seed <= 400; seed++) {
+      const failure = runChain(seed, 5, 'blit')
+      if (failure) {
+        failures.push(failure)
+        if (failures.length >= 3) break
+      }
+    }
+    expect(failures.join('\n\n---\n\n')).toBe('')
+  })
+
+  test('long blit chains stay in sync', () => {
+    const failures: string[] = []
+    for (let seed = 3001; seed <= 3100; seed++) {
+      const failure = runChain(seed, 20, 'blit')
       if (failure) {
         failures.push(failure)
         if (failures.length >= 3) break
