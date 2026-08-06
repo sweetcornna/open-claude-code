@@ -64,6 +64,31 @@ export function mapWorkflowModel(
 }
 
 /**
+ * A brace-balanced `{...}` candidate that JSON.parse rejected.
+ *
+ * Kept so the schema-mode failure path can say *why* the answer was discarded. Without it the
+ * dead-reason preview is just the first 200 chars of the agent's text, which for a malformed answer
+ * is the opening of a JSON object and therefore looks perfectly healthy — the failure reads as
+ * "the agent never emitted JSON" when in fact it emitted almost-valid JSON.
+ */
+export type MalformedJsonCandidate = {
+  /** Where the candidate starts in the text block (the fence, for a fenced candidate). */
+  offset: number
+  /** JSON.parse's message, verbatim. */
+  error: string
+  /** Text around the offending token, or the candidate's head when the engine reports no position. */
+  excerpt: string
+}
+
+/** Result of scanning one agent answer for its schema-mode JSON object. */
+export type StructuredOutputScan = {
+  /** The extracted plain object, or null when nothing usable was found. */
+  value: unknown | null
+  /** First balanced-but-unparseable candidate seen, when no object could be extracted. */
+  malformed?: MalformedJsonCandidate
+}
+
+/**
  * Extract the JSON object produced under schema mode from the agent's final message; returns null on failure. Exported for unit test coverage.
  *
  * Robustness strategy (in priority order, returns the first that successfully parses):
@@ -83,32 +108,87 @@ export function mapWorkflowModel(
 export function extractStructuredOutput(
   content: Array<{ type: string; text?: string }>,
 ): unknown | null {
+  return scanStructuredOutput(content).value
+}
+
+/** As extractStructuredOutput, but also reports why extraction failed. Exported for unit test coverage. */
+export function scanStructuredOutput(
+  content: Array<{ type: string; text?: string }>,
+): StructuredOutputScan {
+  let malformed: MalformedJsonCandidate | undefined
   for (const block of content) {
     if (block.type !== 'text' || !block.text) continue
     const found = findFirstJsonObject(block.text)
-    if (found !== null) return found
+    if (found.value !== null) return found
+    malformed ??= found.malformed
   }
-  return null
+  return malformed ? { value: null, malformed } : { value: null }
 }
 
-/** Find the first JSON fragment in text that can be parsed as a plain object. */
-function findFirstJsonObject(text: string): unknown | null {
+/**
+ * Find the first JSON fragment in text that can be parsed as a plain object.
+ *
+ * A candidate that balances but fails to parse is skipped **whole** (`i = end`), never descended
+ * into. This is the difference between an honest failure and silent data corruption: every `{`
+ * inside a rejected object is one of its own nested values, so resuming the scan at `i + 1` walks
+ * into the wreck and returns a *fragment of the agent's answer* as if it were the answer.
+ *
+ * That is not hypothetical. A research agent emitted `{"market":…,"fields":{…},"search_audit":{…}}`
+ * containing an unescaped `"` inside a prose string; JSON.parse rejected the whole object, the scan
+ * descended, and the *value of `fields`* came back as a fully-formed `kind:'ok'` result. The audit
+ * fields the workflow relied on were simply gone — no error, no retry, wrong data downstream.
+ * Returning null instead lets the engine retry the run (AGENT_MAX_RETRIES_BY_REASON).
+ *
+ * An *unbalanced* `{` still falls through to `i + 1`: it is normally prose noise ("use { like this")
+ * rather than a truncated object, and skipping the rest of the text on account of it would throw
+ * away answers that parse fine.
+ */
+function findFirstJsonObject(text: string): StructuredOutputScan {
+  let malformed: MalformedJsonCandidate | undefined
   // 1. fenced code blocks - priority (agents naturally tend to add them; strip the fence and parse the whole block)
   for (const m of text.matchAll(
     /```[\t ]*[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n?```/g,
   )) {
-    const parsed = tryParseObject(m[1] ?? '')
-    if (parsed !== null) return parsed
+    const candidate = m[1] ?? ''
+    const parsed = tryParseObject(candidate)
+    if (parsed.value !== null) return { value: parsed.value }
+    malformed ??= describeMalformed(candidate, m.index ?? 0, parsed.error)
   }
   // 2. bare text: scan each '{', find a balanced pair and try parse
   for (let i = 0; i < text.length; i++) {
     if (text[i] !== '{') continue
     const end = findBalancedObjectEnd(text, i)
     if (end < 0) continue
-    const parsed = tryParseObject(text.slice(i, end + 1))
-    if (parsed !== null) return parsed
+    const candidate = text.slice(i, end + 1)
+    const parsed = tryParseObject(candidate)
+    if (parsed.value !== null) return { value: parsed.value }
+    malformed ??= describeMalformed(candidate, i, parsed.error)
+    i = end // skip the failed candidate whole — see the doc comment above
   }
-  return null
+  return malformed ? { value: null, malformed } : { value: null }
+}
+
+/**
+ * Build the diagnostic for a rejected candidate, centred on the token JSON.parse choked on.
+ *
+ * The two engines report differently and neither leaves the reader stranded:
+ * V8 (the `occ` bin runs on node) says `... in JSON at position 179`, which centres the excerpt on
+ * the real syntax error; JSC (`bun run dev`) omits the position but names the token instead
+ * (`Unrecognized token '扩'`), so `error` carries the signal and the excerpt falls back to the head.
+ */
+export function describeMalformed(
+  candidate: string,
+  offset: number,
+  error: string | undefined,
+): MalformedJsonCandidate | undefined {
+  if (error === undefined) return undefined // not JSON-shaped at all; not worth reporting
+  const at = /at position (\d+)/.exec(error)
+  const pos = at?.[1] ? Number(at[1]) : 0
+  return {
+    offset,
+    error,
+    excerpt: candidate.slice(Math.max(0, pos - 60), pos + 60),
+  }
 }
 
 /**
@@ -137,15 +217,27 @@ function findBalancedObjectEnd(text: string, start: number): number {
   return -1
 }
 
-/** try parse the candidate; only returns a plain object, others (array/number/null) return null. */
-function tryParseObject(candidate: string): unknown | null {
+/**
+ * try parse the candidate; only returns a plain object, others (array/number/null) return null.
+ *
+ * `error` is set only for a JSON-shaped candidate that JSON.parse rejected — that is the case worth
+ * reporting back to the user. A candidate that is not brace-delimited at all is ordinary prose and
+ * leaves `error` unset.
+ */
+function tryParseObject(candidate: string): {
+  value: unknown | null
+  error?: string
+} {
   const trimmed = candidate.trim()
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return { value: null }
   try {
     const v = JSON.parse(trimmed)
-    return typeof v === 'object' && v !== null && !Array.isArray(v) ? v : null
-  } catch {
-    return null
+    return {
+      value:
+        typeof v === 'object' && v !== null && !Array.isArray(v) ? v : null,
+    }
+  } catch (e) {
+    return { value: null, error: (e as Error).message }
   }
 }
 
@@ -317,6 +409,11 @@ export const claudeCodeBackend: AgentAdapter = {
           'CRITICAL RULES:',
           '- The JSON object must be the LAST text block in your response. Do not write any prose after it.',
           '- Emit the JSON as plain text (markdown code fences optional).',
+          // Observed failure mode, not a hypothetical: agents writing prose-heavy string values
+          // (especially CJK, where the typographic quotes “ ” sit next to ASCII ones on the keyboard)
+          // drop a bare `"` mid-sentence. That invalidates the entire object, and the whole run is
+          // discarded and retried — so it is worth one line of prompt to prevent.
+          '- The JSON must be STRICTLY valid: inside string values, escape every double quote as \\" and every newline as \\n. One unescaped quote invalidates the whole answer and your work is discarded.',
           '- Do NOT call any "StructuredOutput" or "SyntheticOutput" tool — it is not available in this environment.',
           '- Your turn must end with the JSON object. Anything after it (prose, tool calls) will be ignored or cause your answer to be discarded.',
         ].join('\n')
@@ -458,27 +555,30 @@ export const claudeCodeBackend: AgentAdapter = {
     logEvent('tengu_workflow_agent', { ok: 1, outputTokens })
 
     if (params.schema) {
-      const structured = extractStructuredOutput(finalized.content)
-      if (structured === null) {
+      const scan = scanStructuredOutput(finalized.content)
+      if (scan.value === null) {
         // The agent finished all tool calls but no plain-object JSON was found in the final text block.
         // Typical scenarios: forgot to emit JSON after a long tool chain, unbalanced JSON nesting, parse failure.
         // Put a preview of the last text into detail so the hooks retry log and the panel can immediately see what the agent actually said.
-        const preview = extractTextContent(finalized.content, '\n').slice(
-          0,
-          200,
-        )
+        //
+        // When the answer *was* JSON-shaped but syntactically invalid, lead with the parse error and
+        // the offending token instead: the preview alone would show a healthy-looking `{"market": …`
+        // and send the reader hunting for a missing answer that is actually right there, malformed.
+        const preview = scan.malformed
+          ? `invalid JSON (${scan.malformed.error}) near: ${scan.malformed.excerpt}`
+          : extractTextContent(finalized.content, '\n').slice(0, 200)
         logForDebugging(
           `workflow sub-agent produced no JSON object (${agentDef.agentType}); preview: ${preview}`,
         )
         return {
           kind: 'dead',
           reason: 'no-structured-output',
-          detail: preview,
+          detail: preview.slice(0, 300),
         }
       }
       return {
         kind: 'ok',
-        output: structured as object,
+        output: scan.value as object,
         usage: { outputTokens },
         model: resolvedModel,
         toolCount: finalToolCount,

@@ -102,8 +102,10 @@ import {
   claudeCodeBackend,
   resolveAgentDefinition,
   mapWorkflowModel,
+  describeMalformed,
   extractStructuredOutput,
   isGitLockContention,
+  scanStructuredOutput,
   WORKFLOW_AGENT,
 } from '../backends/claudeCodeBackend.js'
 import { makeHostHandle } from '../hostHandle.js'
@@ -527,4 +529,66 @@ test('extractStructuredOutput: broken JSON returns null (does not throw)', () =>
   expect(
     extractStructuredOutput([{ type: 'text', text: '{"a":1,}' }]), // trailing comma — no syntax repair
   ).toBeNull()
+})
+
+test('extractStructuredOutput: a rejected object is never mined for its nested values', () => {
+  // Regression, from a real research run. The agent emitted a well-formed top-level object whose
+  // prose contained one unescaped `"` (`属"扩张中的尾部收缩"`). The object balances, so the scan
+  // reached it — but JSON.parse rejects it. Resuming the scan one char later used to walk INTO the
+  // wreck and return the value of `fields` as a complete `kind:'ok'` answer: `search_audit` and the
+  // other top-level keys silently vanished and the workflow consumed the fragment as real data.
+  const text = [
+    '{',
+    '  "market": "US",',
+    '  "md_section": "结论:属"扩张中的尾部收缩",非系统性风险。",',
+    '  "fields": {"credit_cycle": {"stage": "扩张"}},',
+    '  "search_audit": {"legs": 2}',
+    '}',
+  ].join('\n')
+  expect(extractStructuredOutput([{ type: 'text', text }])).toBeNull()
+})
+
+test('scanStructuredOutput: reports the parse error rather than silently returning null', () => {
+  const scan = scanStructuredOutput([
+    { type: 'text', text: '{"market": "US", "note": "he said "hi" loudly"}' },
+  ])
+  expect(scan.value).toBeNull()
+  // Without this the caller only knows "no JSON found", which for a malformed answer is actively
+  // misleading — the JSON is right there. Both engines name the fault; only V8 gives a position.
+  expect(scan.malformed?.error).toMatch(/JSON/i)
+  expect(scan.malformed?.excerpt.length).toBeGreaterThan(0)
+})
+
+test('describeMalformed: excerpt centres on the position V8 reports, not the head', () => {
+  // Fed a synthetic V8 message on purpose: the suite runs on bun/JSC, which omits the position, so
+  // asserting through a live JSON.parse would silently test nothing on this runtime while the
+  // shipped bin (node/V8) takes the branch that matters.
+  const candidate = `{"pad": "${'x'.repeat(400)}", "note": "he said "BOOM" loudly"}`
+  const pos = candidate.indexOf('BOOM')
+  const d = describeMalformed(
+    candidate,
+    0,
+    `Expected ',' or '}' after property value in JSON at position ${pos}`,
+  )
+  expect(d?.excerpt).toContain('BOOM')
+  expect(d?.excerpt).not.toContain('"pad"') // the healthy head is exactly what must be cropped out
+})
+
+test('describeMalformed: prose that is not JSON-shaped is not reported as malformed', () => {
+  expect(describeMalformed('just narration', 0, undefined)).toBeUndefined()
+})
+
+test('scanStructuredOutput: no JSON at all reports no malformed candidate', () => {
+  const scan = scanStructuredOutput([{ type: 'text', text: 'just narration' }])
+  expect(scan.value).toBeNull()
+  expect(scan.malformed).toBeUndefined()
+})
+
+test('scanStructuredOutput: a valid object still wins over an earlier rejected one', () => {
+  // Skipping a failed candidate whole must not stop the scan: a later, valid top-level object
+  // is still the answer.
+  const scan = scanStructuredOutput([
+    { type: 'text', text: '{"a":1,}\n{"real":true}' },
+  ])
+  expect(scan.value).toEqual({ real: true })
 })
