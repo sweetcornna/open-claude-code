@@ -15,11 +15,13 @@ afterAll(() => {
 const {
   FreeSearchAdapter,
   SEARX_INSTANCES,
+  appendBelow,
   mergeByReciprocalRank,
   parseBingHtml,
   parseDuckDuckGoHtml,
   parseMojeekHtml,
   parseSearxHtml,
+  resolveSearxInstances,
   unwrapDuckDuckGoUrl,
 } = await import('../adapters/freeAdapter')
 
@@ -447,5 +449,235 @@ describe('FreeSearchAdapter.search', () => {
     await expect(new FreeSearchAdapter().search('rrf', {})).rejects.toThrow(
       AbortError,
     )
+  })
+})
+
+// ── Gate detection ─────────────────────────────────────────────────────────
+
+/** DuckDuckGo's real 202 anomaly page: zero rows, and no literal "captcha". */
+const DDG_ANOMALY_HTML =
+  '<div class="anomaly-modal__mask"><p>Select all squares containing a duck</p></div>'
+
+/** Bing's CAPTCHA shell, which keeps a normal-looking <title>. */
+const BING_CAPTCHA_HTML =
+  '<title>rrf - Search</title><div class="captcha_header">Verification required</div>'
+
+describe('FreeSearchAdapter gate handling', () => {
+  test('treats a walled engine as failed rather than as an empty result set', async () => {
+    // Only DDG is walled; the other two answer normally. Without gate
+    // detection this run looks perfectly healthy and DDG's absence is
+    // invisible.
+    routeByHost({
+      'html.duckduckgo.com': DDG_ANOMALY_HTML,
+      'www.mojeek.com': MOJEEK_HTML,
+      'www4.bing.com': BING_HTML,
+    })
+
+    const results = await new FreeSearchAdapter().search('rrf', {})
+
+    expect(results.map(r => r.url)).toContain('https://mojeek.example.org/only')
+    expect(results.map(r => r.url)).not.toContain('https://example.com/ddg')
+  })
+
+  test('surfaces the gate reason when every engine is walled and nothing recovers', async () => {
+    routeByHost({
+      'html.duckduckgo.com': DDG_ANOMALY_HTML,
+      'www.mojeek.com': BING_CAPTCHA_HTML,
+      'www4.bing.com': BING_CAPTCHA_HTML,
+    })
+
+    // A silent `[]` here would reach the model as "the web has no answer".
+    await expect(new FreeSearchAdapter().search('rrf', {})).rejects.toThrow(
+      /gated/,
+    )
+  })
+
+  test('prefers the gate error over a transport error from another lane', async () => {
+    routeByHost({
+      'html.duckduckgo.com': new Error('socket hang up'),
+      'www.mojeek.com': BING_CAPTCHA_HTML,
+      'www4.bing.com': new Error('socket hang up'),
+    })
+
+    await expect(new FreeSearchAdapter().search('rrf', {})).rejects.toThrow(
+      /mojeek was captcha-gated/,
+    )
+  })
+})
+
+// ── Backstop tier (keyless JSON APIs) ──────────────────────────────────────
+
+const WIKIPEDIA_BODY = JSON.stringify({
+  query: { search: [{ title: 'Reciprocal rank fusion', snippet: 'A method' }] },
+})
+const HN_BODY = JSON.stringify({
+  hits: [
+    { objectID: '9', title: 'RRF explained', url: 'https://hn.example/rrf' },
+  ],
+})
+const SE_BODY = JSON.stringify({
+  items: [
+    {
+      title: 'How does RRF work?',
+      link: 'https://stackoverflow.com/questions/9',
+      tags: ['search'],
+      score: 4,
+      answer_count: 1,
+    },
+  ],
+})
+
+const API_TIER_OK = {
+  'en.wikipedia.org': WIKIPEDIA_BODY,
+  'hn.algolia.com': HN_BODY,
+  'api.stackexchange.com': SE_BODY,
+}
+
+const API_HOSTS = Object.keys(API_TIER_OK)
+
+describe('FreeSearchAdapter keyless API backstop', () => {
+  test('does not touch the API tier when the SERP tier is healthy', async () => {
+    routeByHost({ ...ALL_ENGINES_OK, ...API_TIER_OK })
+
+    await new FreeSearchAdapter().search('rrf', {})
+
+    // The quotas here are small (Stack Exchange 300/day, GitHub 10/min); the
+    // happy path must never spend them.
+    for (const host of API_HOSTS) {
+      expect(requestedUrls.some(u => u.includes(host))).toBe(false)
+    }
+  })
+
+  test('answers from the API tier when every SERP engine is walled', async () => {
+    routeByHost({
+      'html.duckduckgo.com': DDG_ANOMALY_HTML,
+      'www.mojeek.com': BING_CAPTCHA_HTML,
+      'www4.bing.com': BING_CAPTCHA_HTML,
+      ...API_TIER_OK,
+    })
+
+    const results = await new FreeSearchAdapter().search('rrf', {})
+
+    expect(results.length).toBeGreaterThan(0)
+    expect(results.map(r => r.url)).toContain(
+      'https://en.wikipedia.org/wiki/Reciprocal_rank_fusion',
+    )
+  })
+
+  test('appends below the web results instead of displacing them', async () => {
+    // DDG alone answers with two hits — sparse, and the run is unhealthy
+    // because the other two engines returned nothing, so the backstop runs.
+    routeByHost({ 'html.duckduckgo.com': DDG_HTML, ...API_TIER_OK })
+
+    const results = await new FreeSearchAdapter().search('rrf', {})
+
+    // DDG is the only lane answering, so its own ranking is the web order.
+    expect(results.slice(0, 2).map(r => r.url)).toEqual([
+      'https://example.com/ddg',
+      SHARED_URL,
+    ])
+    expect(results.slice(2).map(r => r.url)).toContain(
+      'https://en.wikipedia.org/wiki/Reciprocal_rank_fusion',
+    )
+  })
+
+  test('routes narrow engines by query, keeping them off unrelated searches', async () => {
+    routeByHost({ ...API_TIER_OK })
+
+    await new FreeSearchAdapter().search('weather in tokyo', {})
+    expect(requestedUrls.some(u => u.includes('api.github.com'))).toBe(false)
+
+    requestedUrls = []
+    await new FreeSearchAdapter().search('rust cli library', {})
+    expect(requestedUrls.some(u => u.includes('api.github.com'))).toBe(true)
+  })
+
+  test('still honours numResults across the tier boundary', async () => {
+    routeByHost({ 'html.duckduckgo.com': DDG_HTML, ...API_TIER_OK })
+
+    const results = await new FreeSearchAdapter().search('rrf', {
+      numResults: 3,
+    })
+
+    expect(results).toHaveLength(3)
+  })
+
+  test('applies domain filtering to backstop results too', async () => {
+    routeByHost({
+      'html.duckduckgo.com': DDG_ANOMALY_HTML,
+      'www.mojeek.com': BING_CAPTCHA_HTML,
+      'www4.bing.com': BING_CAPTCHA_HTML,
+      ...API_TIER_OK,
+    })
+
+    const results = await new FreeSearchAdapter().search('rrf', {
+      blockedDomains: ['en.wikipedia.org'],
+    })
+
+    expect(results.map(r => r.url)).not.toContain(
+      'https://en.wikipedia.org/wiki/Reciprocal_rank_fusion',
+    )
+  })
+})
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+describe('appendBelow', () => {
+  const hit = (url: string): { title: string; url: string } => ({
+    title: url,
+    url,
+  })
+
+  test('keeps every primary result ahead of the extras', () => {
+    expect(
+      appendBelow(
+        [hit('https://a.example')],
+        [hit('https://b.example')],
+        8,
+      ).map(r => r.url),
+    ).toEqual(['https://a.example', 'https://b.example'])
+  })
+
+  test('drops extras that duplicate a primary URL after normalization', () => {
+    expect(
+      appendBelow(
+        [hit('https://a.example/p')],
+        [hit('https://a.example/p/?utm_source=x'), hit('https://b.example')],
+        8,
+      ).map(r => r.url),
+    ).toEqual(['https://a.example/p', 'https://b.example'])
+  })
+
+  test('never exceeds the limit, and never truncates the primary list', () => {
+    const primary = [hit('https://a.example'), hit('https://b.example')]
+    expect(appendBelow(primary, [hit('https://c.example')], 2)).toHaveLength(2)
+    expect(appendBelow(primary, [hit('https://c.example')], 1)).toHaveLength(2)
+  })
+})
+
+describe('resolveSearxInstances', () => {
+  const original = process.env.OCC_SEARX_INSTANCES
+
+  afterAll(() => {
+    if (original === undefined) delete process.env.OCC_SEARX_INSTANCES
+    else process.env.OCC_SEARX_INSTANCES = original
+  })
+
+  test('falls back to the built-in shortlist', () => {
+    delete process.env.OCC_SEARX_INSTANCES
+    expect(resolveSearxInstances()).toEqual(SEARX_INSTANCES)
+  })
+
+  test('accepts comma- and space-separated pins', () => {
+    process.env.OCC_SEARX_INSTANCES = 'https://a.example, https://b.example'
+    expect(resolveSearxInstances()).toEqual([
+      'https://a.example',
+      'https://b.example',
+    ])
+  })
+
+  test('ignores a blank value', () => {
+    process.env.OCC_SEARX_INSTANCES = '   '
+    expect(resolveSearxInstances()).toEqual(SEARX_INSTANCES)
   })
 })
