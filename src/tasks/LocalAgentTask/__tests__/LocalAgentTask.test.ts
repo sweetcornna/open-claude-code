@@ -9,6 +9,7 @@ import {
 } from 'bun:test'
 import { stateMockWith } from '../../../../tests/mocks/state.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+import { setupCleanupRegistryMock } from '../../../../tests/mocks/cleanupRegistry.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQueueManager.js'
@@ -71,6 +72,7 @@ afterAll(() => {
   sessionStorageMock.reset()
   diskOutputMock.reset()
   messageQueueManagerMock.reset()
+  cleanupRegistryMock.reset()
   analyticsMock.reset()
 })
 
@@ -89,10 +91,13 @@ mock.module('src/services/PromptSuggestion/speculation.js', () => ({
   abortSpeculation: noop,
 }))
 
-const cleanupFns: (() => void)[] = []
-mock.module('src/utils/process/cleanupRegistry.js', () => ({
+// Complete-surface, like the four above. The hand-written partial version of
+// this one erased `runCleanupFunctions` for every file loaded afterwards.
+// Cleanups are dropped on the floor here so this file's tasks don't leave
+// entries in the process-global registry for later suites to run.
+const cleanupRegistryMock = setupCleanupRegistryMock({
   registerCleanup: () => noop,
-}))
+})
 
 mock.module('src/utils/process/abortController.js', () => ({
   createAbortController: () => new AbortController(),
