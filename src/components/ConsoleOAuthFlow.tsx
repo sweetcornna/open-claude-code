@@ -16,6 +16,7 @@ import {
 } from '../services/api/openai/chatgptAuth.js';
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
 import { startAntigravityOAuthLogin } from '../services/auth/antigravity/index.js';
+import { backFromScreen } from './providerSetup/backNavigation.js';
 import { ProviderSetupWizard } from './providerSetup/ProviderSetupWizard.js';
 import { parseMaxContextInput } from './providerSetup/maxContext.js';
 import { PROVIDER_SETUP_SPECS, type ProviderSetupKind } from './providerSetup/specs.js';
@@ -52,6 +53,24 @@ type Props = {
   forceLoginMethod?: 'claudeai' | 'console';
 };
 
+const PASTE_HERE_MSG = 'Paste code here if prompted > ';
+
+type OAuthStatusSetter = React.Dispatch<React.SetStateAction<OAuthStatus>>;
+
+/**
+ * Back-navigation guarded on the live screen. See backNavigation.ts for why the
+ * guard exists; returning `false` lets a stale handler decline the keypress
+ * rather than swallow it.
+ */
+function backFrom(
+  statusRef: React.RefObject<OAuthStatus>,
+  setOAuthStatus: OAuthStatusSetter,
+  from: OAuthStatus['state'],
+  to: OAuthStatus,
+): void | false {
+  return backFromScreen(statusRef, setOAuthStatus, from, to);
+}
+
 type OAuthStatus =
   | { state: 'idle' } // Initial state, waiting to select login method
   | { state: 'platform_setup' } // Show platform setup info (Bedrock/Vertex/Foundry)
@@ -85,8 +104,6 @@ type OAuthStatus =
       message: string;
       toRetry?: OAuthStatus;
     };
-
-const PASTE_HERE_MSG = 'Paste code here if prompted > ';
 
 /**
  * Recover which China preset (and billing mode) a model step belongs to.
@@ -131,6 +148,10 @@ export function ConsoleOAuthFlow({
     }
     return { state: 'idle' };
   });
+
+  // Read by backFrom() so a stale key handler can tell it is stale.
+  const statusRef = React.useRef<OAuthStatus>(oauthStatus);
+  statusRef.current = oauthStatus;
 
   const [pastedCode, setPastedCode] = useState('');
   const [cursorOffset, setCursorOffset] = useState(0);
@@ -410,6 +431,7 @@ export function ConsoleOAuthFlow({
           textInputColumns={textInputColumns}
           handleSubmitCode={handleSubmitCode}
           setOAuthStatus={setOAuthStatus}
+          statusRef={statusRef}
           setLoginWithClaudeAi={setLoginWithClaudeAi}
           onDone={onDone}
         />
@@ -431,7 +453,9 @@ type OAuthStatusMessageProps = {
   setCursorOffset: (offset: number) => void;
   textInputColumns: number;
   handleSubmitCode: (value: string, url: string) => void;
-  setOAuthStatus: (status: OAuthStatus) => void;
+  setOAuthStatus: OAuthStatusSetter;
+  /** Live status, so stale handlers can tell they are stale. See backFrom. */
+  statusRef: React.RefObject<OAuthStatus>;
   setLoginWithClaudeAi: (value: boolean) => void;
 };
 
@@ -444,7 +468,7 @@ type OAuthStatusMessageProps = {
  */
 type ChatGPTSubscriptionSetupProps = {
   status: Extract<OAuthStatus, { state: 'chatgpt_subscription' }>;
-  setOAuthStatus: (status: OAuthStatus) => void;
+  setOAuthStatus: OAuthStatusSetter;
   onDone: () => void;
 };
 
@@ -545,7 +569,7 @@ function ChatGPTSubscriptionSetup({ status, setOAuthStatus, onDone }: ChatGPTSub
 
 type AntigravityOAuthSetupProps = {
   status: Extract<OAuthStatus, { state: 'antigravity_oauth' }>;
-  setOAuthStatus: (status: OAuthStatus) => void;
+  setOAuthStatus: OAuthStatusSetter;
   onDone: () => void;
 };
 
@@ -648,6 +672,7 @@ function OAuthStatusMessage({
   textInputColumns,
   handleSubmitCode,
   setOAuthStatus,
+  statusRef,
   setLoginWithClaudeAi,
   onDone,
 }: OAuthStatusMessageProps): React.ReactNode {
@@ -851,20 +876,24 @@ function OAuthStatusMessage({
           status={oauthStatus}
           setStatus={setOAuthStatus}
           onError={(message, retry) => setOAuthStatus({ state: 'error', message, toRetry: retry })}
-          onCancel={() =>
+          onCancel={() => {
             // The China presets enter at the model step, so "back" there means
             // the key screen they came from — not the login menu.
-            setOAuthStatus(
-              oauthStatus.kind === 'china' && chinaPresetForStatus(oauthStatus)
+            const preset = oauthStatus.kind === 'china' ? chinaPresetForStatus(oauthStatus) : undefined;
+            return backFrom(
+              statusRef,
+              setOAuthStatus,
+              oauthStatus.state,
+              preset
                 ? {
                     state: 'china_apikey',
-                    provider: chinaPresetForStatus(oauthStatus)!,
+                    provider: preset,
                     mode: chinaModeForStatus(oauthStatus),
                     apiKey: '',
                   }
                 : { state: 'idle' },
-            )
-          }
+            );
+          }}
           onSaved={() => {
             setOAuthStatus({ state: 'success' });
             void onDone();
@@ -991,7 +1020,10 @@ function OAuthStatusMessage({
       useKeybinding(
         'confirm:no',
         () => {
-          setOAuthStatus(
+          return backFrom(
+            statusRef,
+            setOAuthStatus,
+            'china_apikey',
             provider.codingPlan
               ? { state: 'china_mode_select', provider, activeIndex: 0 }
               : { state: 'china_provider_select', activeIndex: 0 },

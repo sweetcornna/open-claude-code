@@ -47,8 +47,12 @@ export type ProviderSetupWizardProps = {
   setStatus: (status: ProviderSetupStatus) => void;
   /** Surface a validation/save failure, with the state to come back to. */
   onError: (message: string, retry: ProviderSetupStatus) => void;
-  /** Esc out of step 1 — back to the login method menu. */
-  onCancel: () => void;
+  /**
+   * Esc out of the wizard — back to whatever came before it. May return `false`
+   * to decline the keypress (see backFrom in ConsoleOAuthFlow); the wizard
+   * forwards that so the event reaches the handler that is actually current.
+   */
+  onCancel: () => void | false;
   /** Settings written; the flow is finished. */
   onSaved: () => void;
 };
@@ -390,12 +394,11 @@ function ModelStep({
     [status, values],
   );
 
-  const returnToEndpoint = useCallback(() => {
+  const returnToEndpoint = useCallback((): void | false => {
     // No step 1 for the China presets — they arrive here from their own
     // provider/key screens, so "back" is the host's business, not ours.
     if (!spec.hasEndpointStep) {
-      onCancel();
-      return;
+      return onCancel();
     }
     setStatus({
       state: 'provider_endpoint_setup',
@@ -408,6 +411,18 @@ function ModelStep({
     });
   }, [onCancel, setStatus, spec, status]);
 
+  // ↑/↓ belong to whichever widget the active field renders.
+  //
+  // The FormField context binds them to tabs:previous/next, so registering it
+  // alongside a focused Select meant arrows moved to the next FIELD instead of
+  // the next OPTION — the picker could not be driven at all. Tab keeps working
+  // on text fields, where nothing else wants those keys.
+  const activeFieldIsSelector = status.entryMode === 'catalog' && activeField !== 'max_context';
+
+  // Esc stays here unconditionally: the Select's own onCancel prop does not
+  // fire in this layout, so disabling this left Esc dead on every picker field.
+  // Double-navigation is handled at the other end instead — ConsoleOAuthFlow's
+  // backFrom() ignores a back step whose screen is no longer current.
   useKeybinding('confirm:no', returnToEndpoint, { context: 'Confirmation' });
 
   const step = useCallback(
@@ -421,8 +436,14 @@ function ModelStep({
     [activeField, fields, values],
   );
 
-  useKeybinding('tabs:next', () => step(1), { context: 'FormField' });
-  useKeybinding('tabs:previous', () => step(-1), { context: 'FormField' });
+  useKeybinding('tabs:next', () => step(1), {
+    context: 'FormField',
+    isActive: !activeFieldIsSelector,
+  });
+  useKeybinding('tabs:previous', () => step(-1), {
+    context: 'FormField',
+    isActive: !activeFieldIsSelector,
+  });
 
   const doSave = (): void => {
     const invalid = spec.validate(values);
@@ -564,7 +585,7 @@ function ModelStep({
       <Text dimColor>
         {status.entryMode === 'catalog'
           ? `Use ↑↓ and Enter to choose each model. Enter on maximum context tokens saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`
-          : `Enter moves to the next field. Enter on maximum context tokens saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`}
+          : `Enter or Tab moves to the next field. Enter on maximum context tokens saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`}
       </Text>
     </Box>
   );
