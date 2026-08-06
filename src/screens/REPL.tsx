@@ -170,7 +170,6 @@ import { stripDangerousPermissionsForAutoMode } from '../utils/permissions/permi
 import { getScratchpadDir, isScratchpadEnabled } from '../utils/permissions/filesystem.js';
 import { WEB_FETCH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/WebFetchTool/prompt.js';
 import { clearSpeculativeChecks } from '@open-claude-code/builtin-tools/tools/BashTool/bashPermissions.js';
-import type { AutoUpdaterResult } from '../utils/update/autoUpdater.js';
 import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config/config.js';
 import { hasConsoleBillingAccess } from '../utils/auth/billing.js';
 import {
@@ -882,20 +881,6 @@ export function REPL({
   // True when user is actively typing — defers interrupt dialogs so keystrokes
   // don't accidentally dismiss or answer a permission prompt the user hasn't read yet.
   const [isPromptInputActive, setIsPromptInputActive] = React.useState(false);
-
-  const [autoUpdaterResult, setAutoUpdaterResult] = useState<AutoUpdaterResult | null>(null);
-
-  useEffect(() => {
-    if (autoUpdaterResult?.notifications) {
-      autoUpdaterResult.notifications.forEach(notification => {
-        addNotification({
-          key: 'auto-updater-notification',
-          text: notification,
-          priority: 'low',
-        });
-      });
-    }
-  }, [autoUpdaterResult, addNotification]);
 
   // tmux + fullscreen + `mouse off`: one-time hint that wheel won't scroll.
   // We no longer mutate tmux's session-scoped mouse option (it poisoned
@@ -5204,8 +5189,6 @@ export function REPL({
                       onExit={handleExit}
                       verbose={verbose}
                       messages={messages}
-                      onAutoUpdaterResult={setAutoUpdaterResult}
-                      autoUpdaterResult={autoUpdaterResult}
                       input={inputValue}
                       onInputChange={setInputValue}
                       mode={inputMode}

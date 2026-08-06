@@ -53,18 +53,27 @@ describe('occ update isolation', () => {
   })
 
   test('does not route background updates to official native channels', () => {
-    const wrapperSource = readSource('components/AutoUpdaterWrapper.tsx')
-    const doctorSource = readSource('screens/Doctor.tsx')
-    const packageManagerSource = readSource(
-      'components/PackageManagerAutoUpdater.tsx',
+    // This used to inspect the React auto-updater components. They were
+    // deleted once the live path moved to services/autoUpdate — nothing had
+    // rendered them for a while. The occ half of the invariant is covered by
+    // "silent background self-updater reuses only the occ update chain"
+    // below; what remains uncovered is the plugin loop and Doctor.
+    const pluginServiceSource = readSource(
+      'services/autoUpdate/backgroundPluginUpdate.ts',
     )
+    const doctorSource = readSource('screens/Doctor.tsx')
 
-    expect(wrapperSource).not.toContain("from './NativeAutoUpdater.js'")
-    expect(wrapperSource).not.toContain('<NativeAutoUpdater')
+    for (const officialChannel of [
+      '@anthropic-ai/claude-code',
+      'Anthropic.ClaudeCode',
+      'getLatestVersionFromGcs',
+      'nativeInstaller',
+    ]) {
+      expect(pluginServiceSource, officialChannel).not.toContain(
+        officialChannel,
+      )
+    }
     expect(doctorSource).not.toContain('getGcsDistTags')
-    expect(packageManagerSource).not.toContain('getLatestVersionFromGcs')
-    expect(packageManagerSource).not.toContain('Anthropic.ClaudeCode')
-    expect(packageManagerSource).toContain('{BIN_NAME} update')
   })
 
   test('doctor never diagnoses or removes the official installation', () => {
@@ -84,12 +93,10 @@ describe('occ update isolation', () => {
   test('background npm updates target only the occ package', () => {
     const updaterSource = readSource('utils/update/autoUpdater.ts')
     const localInstallerSource = readSource('utils/update/localInstaller.ts')
-    const autoUpdaterComponent = readSource('components/AutoUpdater.tsx')
 
     expect(updaterSource).toContain('NPM_PACKAGE_NAME')
     expect(localInstallerSource).toContain('NPM_PACKAGE_NAME')
     expect(localInstallerSource).toMatch(/node_modules\/\.bin\/\$\{BIN_NAME\}/)
-    expect(autoUpdaterComponent).not.toContain('removeInstalledSymlink')
     expect(updaterSource).not.toContain('@anthropic-ai/claude-code')
     expect(localInstallerSource).not.toContain('@anthropic-ai/claude-code')
     expect(localInstallerSource).not.toContain("'claude'")
