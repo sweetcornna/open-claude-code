@@ -291,6 +291,40 @@ export async function resolvePluginPath(
 }
 
 /**
+ * Reproduce a symlink in the destination tree, materializing its target when
+ * the platform will not create links.
+ *
+ * Windows refuses `symlink()` without Developer Mode or an elevated shell, and
+ * an EPERM here aborted the entire copy — a single symlinked file anywhere
+ * inside a plugin package made that plugin impossible to install. A copy is not
+ * a symlink, but for a read-only plugin cache every reader behaves the same.
+ * `resolvedTarget` is absent only for a broken link, which has nothing to
+ * materialize; skip it rather than fail the install over a dangling entry.
+ */
+async function symlinkOrMaterialize(
+  linkPath: string,
+  destPath: string,
+  resolvedTarget?: string,
+): Promise<void> {
+  try {
+    await symlink(linkPath, destPath)
+    return
+  } catch (error) {
+    if (process.platform !== 'win32') throw error
+    logForDebugging(
+      `Cannot create symlink at ${destPath} on Windows; materializing target instead`,
+    )
+    if (!resolvedTarget) return
+  }
+
+  if ((await stat(resolvedTarget)).isDirectory()) {
+    await copyDir(resolvedTarget, destPath)
+  } else {
+    await copyFile(resolvedTarget, destPath)
+  }
+}
+
+/**
  * Recursively copy a directory.
  * Exported for testing purposes.
  */
@@ -317,7 +351,7 @@ export async function copyDir(src: string, dest: string): Promise<void> {
         resolvedTarget = await realpath(srcPath)
       } catch {
         // Broken symlink - copy the raw link target as-is
-        await symlink(linkTarget, destPath)
+        await symlinkOrMaterialize(linkTarget, destPath)
         continue
       }
 
@@ -342,10 +376,10 @@ export async function copyDir(src: string, dest: string): Promise<void> {
         const targetRelativeToSrc = relative(resolvedSrc, resolvedTarget)
         const destTargetPath = join(dest, targetRelativeToSrc)
         const relativeLinkPath = relative(dirname(destPath), destTargetPath)
-        await symlink(relativeLinkPath, destPath)
+        await symlinkOrMaterialize(relativeLinkPath, destPath, resolvedTarget)
       } else {
         // Target is outside source tree - use absolute resolved path
-        await symlink(resolvedTarget, destPath)
+        await symlinkOrMaterialize(resolvedTarget, destPath, resolvedTarget)
       }
     }
   }

@@ -3,6 +3,7 @@ import {
   windowsPathToPosixPath,
   posixPathToWindowsPath,
   findGitBashPathOrNullWithDeps,
+  isPosixShellPath,
   type GitBashDiscoveryDeps,
 } from '../filesystem/windowsPaths'
 
@@ -321,5 +322,54 @@ describe('findGitBashPathOrNullWithDeps', () => {
     }
     const result = findGitBashPathOrNullWithDeps(deps)
     expect(result).toBe(expectedBash)
+  })
+
+  test('skips the WSL launcher and keeps scanning for a real Git Bash', () => {
+    // With the WSL optional feature enabled, `where.exe bash` lists
+    // C:\Windows\System32\bash.exe FIRST. Returning it handed the Bash tool
+    // and the hook runner a WSL launcher, which opens a console window of its
+    // own instead of running the command.
+    const wslLauncher = 'C:\\Windows\\System32\\bash.exe'
+    const gitBash = 'C:\\Program Files\\Git\\bin\\bash.exe'
+    const deps = makeDeps({
+      exists: [wslLauncher, gitBash],
+      bashInPath: `${wslLauncher}\r\n${gitBash}`,
+    })
+    expect(findGitBashPathOrNullWithDeps(deps)).toBe(gitBash)
+  })
+
+  test('never returns the WSL launcher when it is the only bash in PATH', () => {
+    const wslLauncher = 'C:\\Windows\\System32\\bash.exe'
+    const deps = makeDeps({
+      exists: [wslLauncher],
+      bashInPath: wslLauncher,
+    })
+    // Better to report "no Git Bash" — which prints install instructions —
+    // than to hand back something that cannot run a POSIX command line.
+    expect(findGitBashPathOrNullWithDeps(deps)).toBeNull()
+  })
+})
+
+// ─── isPosixShellPath ──────────────────────────────────────────────────
+
+describe('isPosixShellPath', () => {
+  test.each([
+    'C:\\Windows\\System32\\bash.exe',
+    'C:\\WINDOWS\\system32\\bash.exe',
+    'C:\\Windows\\SysWOW64\\bash.exe',
+    'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe',
+  ])('rejects the Windows shim at %s', shim => {
+    expect(isPosixShellPath(shim)).toBe(false)
+  })
+
+  test.each([
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+    'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+    'D:\\software\\Git\\usr\\bin\\bash.exe',
+    'C:\\msys64\\usr\\bin\\bash.exe',
+    '/bin/bash',
+    '/usr/local/bin/zsh',
+  ])('accepts the real shell at %s', shell => {
+    expect(isPosixShellPath(shell)).toBe(true)
   })
 })

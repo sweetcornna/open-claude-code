@@ -1,13 +1,15 @@
 import { constants as fsConstants } from 'fs'
 import {
+  appendFile,
   type FileHandle,
+  link,
   mkdir,
   open,
   stat,
   symlink,
   unlink,
 } from 'fs/promises'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
 import { getErrnoCode } from '../runtime/errors.js'
 import { readFileRange, tailFile } from '../filesystem/fsOperations.js'
@@ -421,8 +423,23 @@ export function initTaskOutput(taskId: string): Promise<string> {
 }
 
 /**
- * Initialize output file as a symlink to another file (e.g., agent transcript).
- * Tries to create the symlink first; if a file already exists, removes it and retries.
+ * Link the output file to another file (e.g. an agent transcript) so both names
+ * name the same bytes: the task writes its transcript, and readers — the model
+ * following `outputFilePath`, task-completion deltas — see it through the task
+ * output path.
+ *
+ * On Windows, `symlink()` needs SeCreateSymbolicLinkPrivilege: without
+ * Developer Mode or an elevated shell it fails (EPERM/UNKNOWN) for every task,
+ * and the old fallback left behind an empty regular file that nothing ever
+ * wrote to — so partial agent output simply did not exist there, and each task
+ * also pushed a spurious entry into the error log.
+ *
+ * A hard link is the native answer: NTFS needs no privilege for one, and it
+ * gives exactly the two-names-one-file semantics wanted here. It cannot dangle,
+ * though, and this runs before the task has written anything — hence the empty
+ * create first, which is safe because transcripts are only ever appended to.
+ * Hard links cannot cross volumes, so the plain-file fallback stays for FAT32
+ * and for a transcript directory redirected to another drive.
  */
 export function initTaskOutputAsSymlink(
   taskId: string,
@@ -437,13 +454,22 @@ export function initTaskOutputAsSymlink(
         try {
           await symlink(targetPath, outputPath)
         } catch {
-          await unlink(outputPath)
-          await symlink(targetPath, outputPath)
+          await unlink(outputPath).catch(() => {})
+          try {
+            await symlink(targetPath, outputPath)
+          } catch (symlinkError) {
+            if (process.platform !== 'win32') throw symlinkError
+            await mkdir(dirname(targetPath), { recursive: true })
+            await appendFile(targetPath, '')
+            await link(targetPath, outputPath)
+          }
         }
 
         return outputPath
       } catch (error) {
-        logError(error)
+        // Expected on Windows volumes that cannot hard-link; the caller still
+        // gets a usable (if unlinked) output path from initTaskOutput.
+        if (process.platform !== 'win32') logError(error)
         return initTaskOutput(taskId)
       }
     })(),

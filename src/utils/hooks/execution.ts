@@ -77,7 +77,7 @@ import {
 } from '../telemetry/sessionTracing.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import {
-  findGitBashPath,
+  findGitBashPathOrNull,
   windowsPathToPosixPath,
 } from '../filesystem/windowsPaths.js'
 import { registerPendingAsyncHook } from './AsyncHookRegistry.js'
@@ -1013,7 +1013,22 @@ export async function execCommandHook(
   } else {
     // On Windows, use Git Bash explicitly (cmd.exe can't run bash syntax).
     // On other platforms, shell: true uses /bin/sh.
-    const shell = isWindows ? findGitBashPath() : true
+    //
+    // Throw rather than exit: findGitBashPath()'s process.exit(1) would take
+    // the whole CLI down mid-hook. Failing one hook with a message the user can
+    // act on — the same shape as the PowerShell branch above — is the right
+    // blast radius, and the caller renders it as a hook error.
+    const gitBashPath = isWindows ? findGitBashPathOrNull() : null
+    if (isWindows && !gitBashPath) {
+      throw new Error(
+        `Hook "${hook.command}" needs a POSIX shell, but no Git Bash was found. ` +
+          `Install Git for Windows (https://git-scm.com/downloads/win), or set ` +
+          `CLAUDE_CODE_GIT_BASH_PATH to your bash.exe. Note that ` +
+          `C:\\Windows\\System32\\bash.exe is the WSL launcher, not a usable shell here. ` +
+          `Alternatively add "shell": "powershell" to this hook.`,
+      )
+    }
+    const shell = gitBashPath ?? true
     child = spawn(sandboxedCommand, [], {
       env: envVars,
       cwd: safeCwd,

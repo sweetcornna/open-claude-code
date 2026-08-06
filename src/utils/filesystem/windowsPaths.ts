@@ -14,13 +14,28 @@ import { getPlatform } from '../process/platform.js'
  * COMSPEC is left unchanged for system process execution.
  */
 export function setShellIfWindows(): void {
-  if (getPlatform() === 'windows') {
-    const gitBashPath = findGitBashPath()
-    process.env.SHELL = gitBashPath
-    // Propagate to child processes so they skip filesystem probing
-    process.env.CLAUDE_CODE_GIT_BASH_PATH = gitBashPath
-    logForDebugging(`Using bash path: "${gitBashPath}"`)
+  if (getPlatform() !== 'windows') {
+    return
   }
+  // Deliberately the non-exiting variant. Discovery used to accept
+  // `C:\Windows\System32\bash.exe` (see isPosixShellPath), so a Windows box
+  // with WSL enabled and no Git Bash always "found" a shell and started.
+  // Now that the WSL launcher is rejected, keeping the hard exit here would
+  // turn that same box into a CLI that refuses to boot — including for users
+  // who only ever touch the PowerShell tool. Start without SHELL instead; the
+  // bash-only paths (Bash tool, bash hooks) still fail loudly with install
+  // instructions, and PowerShell keeps working.
+  const gitBashPath = findGitBashPathOrNull()
+  if (!gitBashPath) {
+    logForDebugging(
+      'No Git Bash found on Windows; leaving SHELL unset (PowerShell remains available)',
+    )
+    return
+  }
+  process.env.SHELL = gitBashPath
+  // Propagate to child processes so they skip filesystem probing
+  process.env.CLAUDE_CODE_GIT_BASH_PATH = gitBashPath
+  logForDebugging(`Using bash path: "${gitBashPath}"`)
 }
 
 /**
@@ -56,6 +71,40 @@ const DEFAULT_DEPS: GitBashDiscoveryDeps = {
   cwdFn: getCwd,
   userProfile: process.env.USERPROFILE,
   envOverride: undefined,
+}
+
+/**
+ * Directories whose `bash.exe` is not a POSIX shell, keyed by lowercased
+ * directory name.
+ *
+ * `C:\Windows\System32\bash.exe` ships with the "Windows Subsystem for Linux"
+ * optional feature and is a *launcher*, not a shell: running it enters a WSL
+ * distro in a console window of its own (or opens the Store when no distro is
+ * installed). `where.exe bash` reports it on any machine with WSL enabled, and
+ * it sorts ahead of a real Git Bash — so discovery handed the Bash tool and the
+ * hook runner the WSL launcher, and every command opened a WSL terminal over
+ * the TUI. On Windows the model is told to prefer PowerShell and fall back to
+ * Bash, which is why users saw this as "a WSL window pops up on every error".
+ *
+ * `WindowsApps` holds Microsoft Store App Execution Aliases — zero-length
+ * reparse points that launch something other than what they are named.
+ *
+ * `SysWOW64` is the 32-bit view of the same System32 launcher.
+ */
+const NON_POSIX_SHELL_DIRS = new Set(['system32', 'syswow64', 'windowsapps'])
+
+/**
+ * True unless `candidate` is one of the Windows shims above.
+ *
+ * A pure path test with no platform check: POSIX shells live in `bin`,
+ * `usr/bin` and the like, so this is a no-op off Windows and stays hermetic
+ * for tests running on any host.
+ */
+export function isPosixShellPath(candidate: string): boolean {
+  const dir = pathWin32
+    .basename(pathWin32.dirname(pathWin32.resolve(candidate)))
+    .toLowerCase()
+  return !NON_POSIX_SHELL_DIRS.has(dir)
 }
 
 /**
@@ -99,6 +148,7 @@ function searchDefaultBashLocations(
 function findExecutableWithDeps(
   executable: string,
   deps: GitBashDiscoveryDeps,
+  accept: (candidatePath: string) => boolean = () => true,
 ): string | null {
   // For git, check common installation locations first
   if (executable === 'git') {
@@ -157,6 +207,16 @@ function findExecutableWithDeps(
         continue
       }
 
+      // Keep scanning rather than bailing out: on a machine with both WSL and
+      // Git for Windows, `where.exe bash` lists the System32 launcher first and
+      // the real Git Bash after it.
+      if (!accept(candidatePath)) {
+        logForDebugging(
+          `Skipping ${candidatePath}: not a POSIX shell (Windows launcher/alias shim)`,
+        )
+        continue
+      }
+
       // Return the first valid path that's not in the current directory
       return candidatePath
     }
@@ -189,7 +249,7 @@ export function findGitBashPathOrNullWithDeps(
   //    method for non-default install locations (e.g. D:\software\Git\)
   //    where bash sits at <root>/usr/bin/bash.exe rather than the
   //    conventional <root>/bin/bash.exe.
-  const fromPath = findExecutableWithDeps('bash', deps)
+  const fromPath = findExecutableWithDeps('bash', deps, isPosixShellPath)
   if (fromPath && deps.checkExists(fromPath)) {
     return fromPath
   }

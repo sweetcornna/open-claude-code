@@ -126,7 +126,10 @@ export function getGitCommitSha(dirPath: string): Promise<string | null> {
  */
 export function getVersionFromPath(installPath: string): string | null {
   // Versioned paths have format: .../plugins/cache/marketplace/plugin/version/
-  const parts = installPath.split('/').filter(Boolean)
+  // Split on either separator: install paths come from `join()`, so on Windows
+  // every segment boundary is a backslash and a '/'-only split yielded a single
+  // element — no 'cache' segment, so every plugin looked unversioned.
+  const parts = installPath.split(/[/\\]/).filter(Boolean)
 
   // Find 'cache' index to determine depth
   const cacheIndex = parts.findIndex(

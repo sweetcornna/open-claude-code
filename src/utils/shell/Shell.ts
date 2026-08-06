@@ -40,7 +40,10 @@ import { getCachedPowerShellPath } from '../shell/powershellDetection.js'
 import { createPowerShellProvider } from '../shell/powershellProvider.js'
 import type { ShellProvider, ShellType } from '../shell/shellProvider.js'
 import { subprocessEnv } from '../process/subprocessEnv.js'
-import { posixPathToWindowsPath } from '../filesystem/windowsPaths.js'
+import {
+  isPosixShellPath,
+  posixPathToWindowsPath,
+} from '../filesystem/windowsPaths.js'
 
 const DEFAULT_TIMEOUT = 30 * 60 * 1000 // 30 minutes
 
@@ -77,7 +80,8 @@ export async function findSuitableShell(): Promise<string> {
   if (shellOverride) {
     // Validate it's a supported shell type
     const isSupported =
-      shellOverride.includes('bash') || shellOverride.includes('zsh')
+      (shellOverride.includes('bash') || shellOverride.includes('zsh')) &&
+      isPosixShellPath(shellOverride)
     if (isSupported && isExecutable(shellOverride)) {
       logForDebugging(`Using shell override: ${shellOverride}`)
       return shellOverride
@@ -93,11 +97,22 @@ export async function findSuitableShell(): Promise<string> {
   const env_shell = process.env.SHELL
   // Only consider SHELL if it's bash or zsh
   const isEnvShellSupported =
-    env_shell && (env_shell.includes('bash') || env_shell.includes('zsh'))
+    env_shell &&
+    (env_shell.includes('bash') || env_shell.includes('zsh')) &&
+    isPosixShellPath(env_shell)
   const preferBash = env_shell?.includes('bash')
 
   // Try to locate shells using which (uses Bun.which when available)
-  const [zshPath, bashPath] = await Promise.all([which('zsh'), which('bash')])
+  const [zshPath, rawBashPath] = await Promise.all([
+    which('zsh'),
+    which('bash'),
+  ])
+
+  // `which('bash')` on native Windows finds C:\Windows\System32\bash.exe — the
+  // WSL launcher, not a POSIX shell. Spawning it opens a WSL console window
+  // instead of running the command. See isPosixShellPath.
+  const bashPath =
+    rawBashPath && isPosixShellPath(rawBashPath) ? rawBashPath : null
 
   // Populate shell paths from which results and fallback locations
   const shellPaths = ['/bin', '/usr/bin', '/usr/local/bin', '/opt/homebrew/bin']

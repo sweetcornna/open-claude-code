@@ -34,5 +34,10 @@ export function execSync_DEPRECATED(
   options?: ExecSyncOptions,
 ): Buffer | string {
   using _ = slowLogging`execSync: ${command.slice(0, 100)}`
-  return nodeExecSync(command, options)
+  // `windowsHide` defaults to FALSE in child_process (unlike execa, which
+  // defaults it true). execSync always goes through `cmd.exe /d /s /c`, so on
+  // Windows every unhidden call flashes a console window over the TUI. Every
+  // hand-rolled spawn site in this repo already passes `windowsHide: true`;
+  // default it here so callers cannot forget. Explicit options still win.
+  return nodeExecSync(command, { windowsHide: true, ...options })
 }

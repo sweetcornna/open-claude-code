@@ -58,6 +58,20 @@ function isSkillFile(filePath: string): boolean {
 }
 
 /**
+ * Colon-joined namespace for `dir` relative to `baseDir` (`a/b` → `a:b`).
+ *
+ * Both separators are accepted because these paths come from `join()`/`dirname()`,
+ * so on Windows every boundary is a backslash. Splitting on '/' alone left the
+ * whole tail as one segment and the leading-separator strip missed it too, so a
+ * namespaced plugin command came out as `plugin:\sub\dir:name` — a name no
+ * lookup would ever match.
+ */
+function toNamespace(dir: string, baseDir: string): string {
+  if (!dir.startsWith(baseDir)) return ''
+  return dir.slice(baseDir.length).split(/[/\\]/).filter(Boolean).join(':')
+}
+
+/**
  * Get command name from file path, handling both regular files and skills
  */
 function getCommandNameFromFile(
@@ -74,10 +88,7 @@ function getCommandNameFromFile(
     const commandBaseName = basename(skillDirectory)
 
     // Build namespace from parent of skill directory
-    const relativePath = parentOfSkillDir.startsWith(baseDir)
-      ? parentOfSkillDir.slice(baseDir.length).replace(/^\//, '')
-      : ''
-    const namespace = relativePath ? relativePath.split('/').join(':') : ''
+    const namespace = toNamespace(parentOfSkillDir, baseDir)
 
     return namespace
       ? `${pluginName}:${namespace}:${commandBaseName}`
@@ -88,10 +99,7 @@ function getCommandNameFromFile(
     const commandBaseName = basename(filePath).replace(/\.md$/, '')
 
     // Build namespace from file directory
-    const relativePath = fileDirectory.startsWith(baseDir)
-      ? fileDirectory.slice(baseDir.length).replace(/^\//, '')
-      : ''
-    const namespace = relativePath ? relativePath.split('/').join(':') : ''
+    const namespace = toNamespace(fileDirectory, baseDir)
 
     return namespace
       ? `${pluginName}:${namespace}:${commandBaseName}`
