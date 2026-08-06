@@ -4,6 +4,12 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.23.0 - 2026-08-05
+
+- **自动更新装完之后会话卡死、Ctrl+C 也退不出去，这次找到了真正的原因**。2.22.0 按「子进程吊住退出」修过一次，方向错了 —— 那条链修好之后问题照旧。真正的成因在产物形态上：occ 的 dist 是 **595 个内容哈希命名的 chunk**，会话在整个生命周期里持续惰性 `import()` 它们（这个代码分割是把 `--version` 的 RSS 从 966MB 压到 35MB 的前提，不是可选优化）。而 `npm|bun install -g` 会**删掉**它替换的那个包目录，相邻两个版本之间**大约半数 chunk 的文件名会变** —— 实测 2.21.0 → 2.22.0 是 595 个里消失 299 个。于是「后台装好新版本」这一步，等于把正在运行的那个会话剩余一半的代码从磁盘上抹掉：此后任何一次惰性 import 都抛 `ERR_MODULE_NOT_FOUND`，而症状不是崩溃、是**卡死** —— 界面不再响应，Ctrl+C 走不到退出路径，只能另开终端杀进程。官方 Claude Code 敢原地替换自己，是因为它是单文件产物、启动时就整体读完了；occ 不能。**现在后台更新只查版本、只排队，真正的 `install -g` 在会话退出之后由一个 detached 子进程完成**，提示文案相应变为 `✓ Update vX.Y.Z ready · installs on exit`。这不损失任何东西：老实现装完也只能提示「Restart to apply」，运行中的进程本来就无法采用新版本。**多开会话由最后退出的那个负责安装** —— 每个会话在 `~/.occ/live-sessions/<pid>` 登记自己的安装树，排队的安装在动手前先确认没有别的活会话跑在同一棵树上，否则受害的只是换成另一个会话；pid 已消失的登记条目顺手清理，崩溃的会话不会永久挡住更新。最后加了一道兜底：手工 `occ update` 或另一个终端里直接 `npm install -g` 仍然会原地替换，这种情况现在会打印一行说明并干净退出，而不是留下一个按什么都没反应的界面。
+- **首启向导和 `/login` 的表单里可以直接配 `fable` 档模型了**。四档模型（haiku / sonnet / opus / fable）在 2.19.0 就已经打通，但表单里只有前三档的输入框，想给 fable 指定第三方模型只能退出 occ 去改环境变量。现在 OpenAI（`Fable tier model (optional)`）、Anthropic 兼容与 Gemini（`Fable` 行）三个表单都补上了对应字段，位置排在 Opus 之后 —— fable 是最高档。留空按原有回落链走（provider 专属键 → `ANTHROPIC_DEFAULT_FABLE_MODEL` → 该 provider 的主模型键），Gemini 那条「填 Model 或三个档位全填」的校验不含 fable，既有配置不受影响。
+- **移除内置的 teach-me skill**，连同它在仓库根的学习记录目录。
+
 ## 2.22.0 - 2026-08-05
 
 - **OpenAI 兼容端点的缓存命中率：把最大的那根杠杆默认打开**。粘性路由键 `prompt_cache_key` 是 OpenAI 侧影响最大的一项 —— 实测发与不发是 **75.8% 对 18.3%** 的累计命中率差（不发时只有第一次追问命中，之后每轮都落到不同的缓存节点）。但此前 Chat Completions 这条线只把它发给官方 `api.openai.com`，理由是严格端点会 400 拒收未知顶层字段。代价是：**最需要它的人群默认关着** —— 把 OpenAI 挂在 LiteLLM / one-api / new-api / OpenRouter 后面的用户，除非正好读到文档去设 `OPENAI_PROMPT_CACHE_KEY=1`，否则一直跑在 18.3% 那条线上。现在改为乐观发送、被拒即降级：端点若以"未知字段 / 不支持 / 不允许额外输入"之类措辞拒收，occ 去掉该字段重发一次并在本次会话内不再发给非官方端点。真会拒的端点每会话付一次失败请求，只是忽略未知键的端点（兼容生态里的绝大多数）什么都不付。`OPENAI_PROMPT_CACHE_KEY=0` 彻底关闭，`=1` 即使被拒过也强制发。附带修正一处会算错的账：`cache_creation_input_tokens` 的归属此前跟着"有没有发 key"走，而 `cache_write_tokens` 是 OpenAI 独有的 usage 字段，现在改为按端点判定 —— 兼容端点即使回显这个字段也不采信。
