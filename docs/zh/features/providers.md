@@ -162,12 +162,17 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 | occ | DeepSeek | 说明 |
 | --- | --- | --- |
 | low | `low` | |
-| medium | `high` | DeepSeek 自己的默认值；不发 = `high`，所以默认档必须映射到这里，否则等于悄悄改掉所有存量用户的行为 |
+| medium | `high` | 三档梯子的中间那档 |
 | high | `high` | |
 | xhigh | `max` | high 与 max 之间没有别的档 |
 | max | `max` | 官方对高强度 agent 场景的推荐值 |
+| **未设置** | **`max`** | 见下 |
 
-thinking 关闭时不发（此时它不控制任何东西）。数值型 effort（ant-only）与未设置都落回 DeepSeek 自己的默认。`deepseek-v4-pro` 目前只认 `high`/`max`，`low` 由服务端强制抬到 `high`，所以不用按模型再收窄；`deepseek-v4-flash` 是真正认全三档的，已一并加进 `modelSupportsEffort` 的允许列表。
+**默认档是 `max`**。DeepSeek 自己不传参时是 `high`，occ 早先也就跟着跑 `high`。改成 `max` 的理由是梯子只有三级：从默认到顶只差一步，而不是五档命名暗示的那种长爬升；而「高强度 agent 场景」正是这个工具的全部工作量。只有地板抬高了 —— `/effort` 和 `CLAUDE_CODE_EFFORT_LEVEL` 仍然优先，想跑便宜档说一声就有。
+
+thinking 关闭时不发（此时它不控制任何东西，这也顺带让 `max` 默认不会落到不认这个字段的旧 checkpoint 上）。`deepseek-v4-pro` 目前只认 `high`/`max`，`low` 由服务端强制抬到 `high`，所以不用按模型再收窄；`deepseek-v4-flash` 是真正认全三档的，已一并加进 `modelSupportsEffort` 的允许列表。
+
+**上下文窗口按 1M 算**。DeepSeek V4 是 1M 上下文族，而第三方模型探测不到窗口时的兜底是 200k —— 差 5 倍，直接后果是会话在还剩八成窗口时就开始 auto-compact。现在模型名含 `deepseek` 即按 1M 计（`getContextWindowForModel` 里，排在 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 覆盖**之下**）。这一项**只按模型名判定、不看 baseURL**：`getContextWindowForModel` 对所有 provider 都会跑，残留的 `OPENAI_BASE_URL` 不该把 1M 窗口发给 Anthropic 会话。网关把模型改名到认不出来时会落回 200k，`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 就是为这种情况准备的纠正入口；部署实际提供的窗口更小时也可以用 `CLAUDE_CODE_DISABLE_1M_CONTEXT` 退回默认。
 
 **流式 thinking 块修复**：thinking 模式下 DeepSeek 会在多步之间穿插推理（官方原话是"multiple turns of reasoning and tool calls"），也就是 text → reasoning → text 是真实顺序。此前开 thinking 块时不关已开的 text 块，`currentContentIndex` 前移而 `textBlockOpen` 仍为 true，后续 `text_delta` 就打进了 thinking 块的 index —— **可见回答被追加进思维链里**，text 块还要拖到流末尾的兜底清理才关。已按 text/tool 处理器的既有约定补齐互关。
 

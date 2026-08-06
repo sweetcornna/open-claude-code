@@ -6,7 +6,11 @@ import { getContextWindowForModel } from '../context.js'
 // Assertions that would fall through to capability lookup use a '[1m]' model,
 // which also short-circuits before the heavy path.
 
-const ENV_KEYS = ['CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'USER_TYPE'] as const
+const ENV_KEYS = [
+  'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+  'CLAUDE_CODE_DISABLE_1M_CONTEXT',
+  'USER_TYPE',
+] as const
 const saved: Record<string, string | undefined> = {}
 for (const k of ENV_KEYS) saved[k] = process.env[k]
 
@@ -60,4 +64,34 @@ test('the env override still wins over the preset lookup', () => {
   delete process.env.USER_TYPE
   process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '64000'
   expect(getContextWindowForModel('deepseek-v4-pro')).toBe(64_000)
+})
+
+test('DeepSeek models get their 1M window, whatever the id looks like', () => {
+  // The 200k third-party fallback would auto-compact a DeepSeek session five
+  // times earlier than it needs to.
+  delete process.env.USER_TYPE
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+  expect(getContextWindowForModel('deepseek-v4-pro')).toBe(1_000_000)
+  expect(getContextWindowForModel('deepseek-chat')).toBe(1_000_000)
+  // Self-hosted HuggingFace-style ids count too.
+  expect(getContextWindowForModel('deepseek-ai/DeepSeek-V4-Pro')).toBe(
+    1_000_000,
+  )
+})
+
+test('CLAUDE_CODE_DISABLE_1M_CONTEXT walks DeepSeek back to the default window', () => {
+  // The opt-out for a deployment that actually serves something smaller.
+  delete process.env.USER_TYPE
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT = '1'
+  expect(getContextWindowForModel('deepseek-v4-pro')).toBe(200_000)
+})
+
+test('a non-DeepSeek model on an unrelated endpoint is untouched', () => {
+  // The DeepSeek branch must not widen anyone else's window.
+  delete process.env.USER_TYPE
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+  expect(getContextWindowForModel('kimi-k2')).toBe(200_000)
 })

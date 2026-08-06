@@ -9,6 +9,7 @@ import {
   getChatGPTModelContextWindow,
 } from '../model/chatgptModels.js'
 import { getChinaProviderContextWindow } from '../model/chinaLlmProviders.js'
+import { getDeepSeekContextWindow } from '../model/deepseekFamily.js'
 import { getModelCapability } from '../model/modelCapabilities.js'
 
 // Model context window size (200k tokens for all models right now)
@@ -82,6 +83,15 @@ export function getContextWindowForModel(
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000
+  }
+
+  // DeepSeek V4 is a 1M-context family; the 200k third-party fallback would
+  // compact five times too early. Placed above the preset lookup so
+  // CLAUDE_CODE_DISABLE_1M_CONTEXT is honoured here too — that flag is the
+  // opt-out for a deployment actually serving a smaller window.
+  const deepseekWindow = getDeepSeekContextWindow(model)
+  if (deepseekWindow !== undefined) {
+    return is1mContextDisabled() ? MODEL_CONTEXT_WINDOW_DEFAULT : deepseekWindow
   }
 
   // China-preset models, looked up per model rather than pinned globally.

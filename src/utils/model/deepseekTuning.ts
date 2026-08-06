@@ -1,6 +1,22 @@
 import { resolveOpenAIModel } from '@ant/model-provider'
+import {
+  DEEPSEEK_CONTEXT_WINDOW,
+  getDeepSeekContextWindow,
+  isDeepSeekBaseURL,
+  isDeepSeekFamilyModel,
+} from './deepseekFamily.js'
 import { getMainLoopModel } from './model.js'
 import { getAPIProvider } from './providers.js'
+
+// The dependency-free half of the gate. Re-exported so this module stays the
+// single import site for DeepSeek behavior (CLAUDE.md), while session/context
+// and effort can reach the predicates without dragging model.js in behind them.
+export {
+  DEEPSEEK_CONTEXT_WINDOW,
+  getDeepSeekContextWindow,
+  isDeepSeekBaseURL,
+  isDeepSeekFamilyModel,
+}
 
 /**
  * Single gate for all DeepSeek-specific tuning, mirroring gptTuning.ts.
@@ -29,36 +45,6 @@ export const DEEPSEEK_CODING_TEMPERATURE = 0
  * https://api-docs.deepseek.com/api/create-chat-completion/
  */
 export const DEEPSEEK_MAX_TOOLS = 128
-
-/**
- * Host of the official DeepSeek endpoint. Matched as a secondary signal so a
- * deployment that renames the model (`default`, `coder`, a proxy alias) still
- * gets the right request shape — pointing at api.deepseek.com *is* requesting
- * a DeepSeek model.
- */
-const DEEPSEEK_API_HOST = 'api.deepseek.com'
-
-/**
- * Whether a model id belongs to the DeepSeek family. Covers the hosted ids
- * (`deepseek-chat`, `deepseek-reasoner`, `deepseek-v4-pro`, `deepseek-v4-flash`)
- * and the HuggingFace-style ids self-hosted deployments use
- * (`deepseek-ai/DeepSeek-V4-Pro`).
- */
-export function isDeepSeekFamilyModel(model: string): boolean {
-  return model.toLowerCase().includes('deepseek')
-}
-
-/** Whether a base URL points at the official DeepSeek API. */
-export function isDeepSeekBaseURL(baseURL: string | undefined): boolean {
-  if (!baseURL) return false
-  try {
-    return new URL(baseURL).hostname.toLowerCase().endsWith(DEEPSEEK_API_HOST)
-  } catch {
-    // Not a parseable URL — fall back to a substring check rather than
-    // throwing inside request construction.
-    return baseURL.toLowerCase().includes(DEEPSEEK_API_HOST)
-  }
-}
 
 /**
  * The gate for callsites inside the OpenAI adapter, which already know the
@@ -116,29 +102,40 @@ export function resolveDeepSeekTemperature(params: {
 }
 
 /**
- * DeepSeek's `reasoning_effort` ladder is three rungs — `low`, `high`, `max` —
- * and its unset default is `high`. occ has five, so they collapse:
+ * DeepSeek's `reasoning_effort` ladder is three rungs — `low`, `high`, `max`.
+ * occ has five, so they collapse:
  *
  * | occ     | DeepSeek | why |
  * | ------- | -------- | --- |
  * | low     | low      | the cheap rung, as intended |
- * | medium  | high     | DeepSeek's own default; keeps today's behaviour at occ's default effort |
+ * | medium  | high     | the middle of a three-rung ladder |
  * | high    | high     | same rung |
  * | xhigh   | max      | nothing between high and max to land on |
  * | max     | max      | DeepSeek's recommendation for demanding agent work |
- *
- * `medium → high` rather than `low` is deliberate: sending nothing (what occ
- * did before) already meant `high`, so mapping the default rung anywhere else
- * would silently change every existing user's behaviour.
+ * | (unset) | max      | see below |
  *
  * `deepseek-v4-pro` currently accepts only `high`/`max` and coerces `low`
  * server-side, so no per-model narrowing is needed here.
  */
 export type DeepSeekReasoningEffort = 'low' | 'high' | 'max'
 
+/**
+ * What a session that never touched `/effort` runs at.
+ *
+ * DeepSeek's own unset default is `high`, and this used to send nothing and
+ * inherit it. `max` is the rung DeepSeek recommends for demanding agent work,
+ * and an agent driving a codebase is that workload — on a three-rung ladder
+ * the difference between the default and the top is one step, not the long
+ * climb the five-rung naming suggests.
+ *
+ * Only the floor moves: `/effort` and CLAUDE_CODE_EFFORT_LEVEL still win, so
+ * anyone who wants the cheaper rungs says so and gets them.
+ */
+export const DEEPSEEK_DEFAULT_REASONING_EFFORT: DeepSeekReasoningEffort = 'max'
+
 export function resolveDeepSeekReasoningEffort(
   effortValue: unknown,
-): DeepSeekReasoningEffort | undefined {
+): DeepSeekReasoningEffort {
   switch (effortValue) {
     case 'low':
       return 'low'
@@ -149,9 +146,8 @@ export function resolveDeepSeekReasoningEffort(
     case 'max':
       return 'max'
     default:
-      // Numeric ant-only efforts and unset both fall through to DeepSeek's
-      // own default rather than inventing a rung.
-      return undefined
+      // Unset, and the ant-only numeric efforts that have no rung here.
+      return DEEPSEEK_DEFAULT_REASONING_EFFORT
   }
 }
 

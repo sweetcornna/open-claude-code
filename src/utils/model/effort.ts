@@ -9,6 +9,10 @@ import {
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
 import { getAPIProvider } from '../model/providers.js'
 import { get3PModelCapabilityOverride } from '../model/modelSupportOverrides.js'
+import {
+  isDeepSeekBaseURL,
+  isDeepSeekFamilyModel,
+} from '../model/deepseekFamily.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 import { resolveAntModel } from '../model/antModels.js'
@@ -365,6 +369,21 @@ export function getDefaultEffortForModel(
     ) {
       return 'high'
     }
+  }
+
+  // DeepSeek: default to its top rung rather than its unset default of `high`.
+  // The ladder is only three rungs (low/high/max) and `max` is what DeepSeek
+  // recommends for demanding agent work — which is the whole workload here.
+  // Gated on modelSupportsEffort so `reasoning_effort` is never introduced for
+  // a checkpoint that ignores it; `/effort` and CLAUDE_CODE_EFFORT_LEVEL still
+  // take precedence, this only moves the floor.
+  if (
+    getAPIProvider() === 'openai' &&
+    modelSupportsEffort(model) &&
+    (isDeepSeekFamilyModel(model) ||
+      isDeepSeekBaseURL(process.env.OPENAI_BASE_URL))
+  ) {
+    return 'max'
   }
 
   // When ultrathink feature is on, default effort to medium (ultrathink bumps to high)

@@ -165,7 +165,10 @@ export function buildOpenAIRequestBody(params: {
 
   // `reasoning_effort` was only ever sent for OpenAI reasoning models, so every
   // DeepSeek request ran at DeepSeek's default `high` no matter what `/model`
-  // or CLAUDE_CODE_EFFORT_LEVEL said. Meaningless when thinking is off.
+  // or CLAUDE_CODE_EFFORT_LEVEL said. Meaningless when thinking is off — which
+  // is also what keeps the `max` default off checkpoints that ignore the field.
+  // The resolver always returns a rung now, so the OpenAI-side value below is
+  // never consulted for DeepSeek (it is not an OpenAI reasoning model).
   const effectiveReasoningEffort =
     (isDeepSeek && enableThinking
       ? resolveDeepSeekReasoningEffort(effortValue)

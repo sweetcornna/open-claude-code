@@ -152,18 +152,19 @@ describe('capDeepSeekTools', () => {
 describe('resolveDeepSeekReasoningEffort', () => {
   test("collapses occ's five rungs onto DeepSeek's three", () => {
     expect(resolveDeepSeekReasoningEffort('low')).toBe('low')
-    // medium → high, not low: sending nothing already meant `high`, so any
-    // other mapping would silently change behaviour at occ's default effort.
     expect(resolveDeepSeekReasoningEffort('medium')).toBe('high')
     expect(resolveDeepSeekReasoningEffort('high')).toBe('high')
     expect(resolveDeepSeekReasoningEffort('xhigh')).toBe('max')
     expect(resolveDeepSeekReasoningEffort('max')).toBe('max')
   })
 
-  test('falls through to the provider default rather than inventing a rung', () => {
-    expect(resolveDeepSeekReasoningEffort(undefined)).toBeUndefined()
-    expect(resolveDeepSeekReasoningEffort(64)).toBeUndefined()
-    expect(resolveDeepSeekReasoningEffort('minimal')).toBeUndefined()
+  test("an untouched session runs at max, not DeepSeek's unset default of high", () => {
+    // Only the floor moves — every explicit rung above still round-trips, so
+    // anyone who wants the cheaper ones asks for them and gets them.
+    expect(resolveDeepSeekReasoningEffort(undefined)).toBe('max')
+    expect(resolveDeepSeekReasoningEffort(64)).toBe('max')
+    expect(resolveDeepSeekReasoningEffort('minimal')).toBe('max')
+    expect(resolveDeepSeekReasoningEffort('low')).toBe('low')
   })
 })
 
