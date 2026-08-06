@@ -48,6 +48,8 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 `fable` 档没有 ChatGPT/Codex 对应层：OpenAI 用户通过 `OPENAI_DEFAULT_FABLE_MODEL`（或统一的 `ANTHROPIC_DEFAULT_FABLE_MODEL`）自行指定，未配置时回落到该 provider 的主模型键。
 
+四个档位都可以在首启向导 / `/login` 的表单里直接填（OpenAI 表单的 **Fable tier model (optional)**，Anthropic 兼容与 Gemini 表单的 **Fable** 行），排在 Opus 之后 —— fable 是最高档。留空即按上面的回落链走，不必先退出去改环境变量。Gemini 的「Model 或三个档位全填」校验不含 fable：它未配置时回落到主模型键，强制填会打断既有配置。
+
 ## 五、最大上下文（关键）
 
 **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** 是模型上下文窗口的用户覆盖，优先于一切自动探测。非 Anthropic 模型探测不到真实窗口时按 200k 兜底——128k 的模型会在 auto-compact 触发前就被端点以 prompt-too-long 拒掉，1M 的模型会浪费 80% 窗口并过早 compact。设置它之后**全链路生效**：

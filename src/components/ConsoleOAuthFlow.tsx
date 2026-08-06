@@ -45,7 +45,7 @@ type Props = {
 
 type OpenAIWireApi = 'chat' | 'responses';
 type OpenAIEndpointField = 'base_url' | 'api_key';
-type OpenAIModelField = 'model' | 'haiku_model' | 'sonnet_model' | 'opus_model' | 'max_context';
+type OpenAIModelField = 'model' | 'haiku_model' | 'sonnet_model' | 'opus_model' | 'fable_model' | 'max_context';
 
 type OpenAIEndpointSetupStatus = {
   state: 'openai_endpoint_setup';
@@ -66,6 +66,7 @@ type OpenAIModelSetupBase = {
   haikuModel: string;
   sonnetModel: string;
   opusModel: string;
+  fableModel: string;
   activeField: OpenAIModelField;
 };
 
@@ -84,7 +85,16 @@ type OAuthStatus =
       haikuModel: string;
       sonnetModel: string;
       opusModel: string;
-      activeField: 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
+      fableModel: string;
+      activeField:
+        | 'base_url'
+        | 'api_key'
+        | 'model'
+        | 'max_context'
+        | 'haiku_model'
+        | 'sonnet_model'
+        | 'opus_model'
+        | 'fable_model';
     } // Custom platform: configure API endpoint and model names
   | OpenAIEndpointSetupStatus
   | OpenAIModelSetupStatus
@@ -102,7 +112,16 @@ type OAuthStatus =
       haikuModel: string;
       sonnetModel: string;
       opusModel: string;
-      activeField: 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
+      fableModel: string;
+      activeField:
+        | 'base_url'
+        | 'api_key'
+        | 'model'
+        | 'max_context'
+        | 'haiku_model'
+        | 'sonnet_model'
+        | 'opus_model'
+        | 'fable_model';
     } // Gemini Generate Content API platform
   | {
       state: 'antigravity_oauth';
@@ -603,6 +622,7 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
         haikuModel: process.env.OPENAI_DEFAULT_HAIKU_MODEL ?? '',
         sonnetModel: process.env.OPENAI_DEFAULT_SONNET_MODEL ?? '',
         opusModel: process.env.OPENAI_DEFAULT_OPUS_MODEL ?? '',
+        fableModel: process.env.OPENAI_DEFAULT_FABLE_MODEL ?? '',
         activeField: 'model' as const,
       };
 
@@ -616,6 +636,7 @@ function OpenAIEndpointSetup({ status, setOAuthStatus }: OpenAIEndpointSetupProp
           haikuModel: modelIds.has(common.haikuModel) ? common.haikuModel : '',
           sonnetModel: modelIds.has(common.sonnetModel) ? common.sonnetModel : '',
           opusModel: modelIds.has(common.opusModel) ? common.opusModel : '',
+          fableModel: modelIds.has(common.fableModel) ? common.fableModel : '',
         });
         return;
       }
@@ -742,13 +763,21 @@ type OpenAIModelSetupProps = {
   onDone: () => void;
 };
 
-const OPENAI_MODEL_FIELDS: OpenAIModelField[] = ['model', 'haiku_model', 'sonnet_model', 'opus_model', 'max_context'];
+const OPENAI_MODEL_FIELDS: OpenAIModelField[] = [
+  'model',
+  'haiku_model',
+  'sonnet_model',
+  'opus_model',
+  'fable_model',
+  'max_context',
+];
 
 function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupProps): React.ReactNode {
   const [model, setModel] = useState(status.model);
   const [haikuModel, setHaikuModel] = useState(status.haikuModel);
   const [sonnetModel, setSonnetModel] = useState(status.sonnetModel);
   const [opusModel, setOpusModel] = useState(status.opusModel);
+  const [fableModel, setFableModel] = useState(status.fableModel);
   const [maxContext, setMaxContext] = useState(status.maxContext);
   const [activeField, setActiveField] = useState<OpenAIModelField>(status.activeField);
   const [inputCursorOffset, setInputCursorOffset] = useState(() => {
@@ -757,6 +786,7 @@ function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupPr
       haiku_model: status.haikuModel,
       sonnet_model: status.sonnetModel,
       opus_model: status.opusModel,
+      fable_model: status.fableModel,
       max_context: status.maxContext,
     };
     return initialValues[status.activeField].length;
@@ -773,6 +803,8 @@ function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupPr
         return sonnetModel;
       case 'opus_model':
         return opusModel;
+      case 'fable_model':
+        return fableModel;
       case 'max_context':
         return maxContext;
     }
@@ -792,6 +824,9 @@ function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupPr
       case 'opus_model':
         setOpusModel(value);
         return;
+      case 'fable_model':
+        setFableModel(value);
+        return;
       case 'max_context':
         setMaxContext(value);
     }
@@ -808,6 +843,7 @@ function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupPr
       haikuModel,
       sonnetModel,
       opusModel,
+      fableModel,
       activeField: field,
     };
     return status.entryMode === 'catalog'
@@ -868,6 +904,7 @@ function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupPr
     if (haikuModel.trim()) env.OPENAI_DEFAULT_HAIKU_MODEL = haikuModel.trim();
     if (sonnetModel.trim()) env.OPENAI_DEFAULT_SONNET_MODEL = sonnetModel.trim();
     if (opusModel.trim()) env.OPENAI_DEFAULT_OPUS_MODEL = opusModel.trim();
+    if (fableModel.trim()) env.OPENAI_DEFAULT_FABLE_MODEL = fableModel.trim();
 
     const settingsUpdate: Parameters<typeof updateSettingsForSource>[1] = {
       modelType: 'openai',
@@ -962,11 +999,12 @@ function OpenAIModelSetup({ status, setOAuthStatus, onDone }: OpenAIModelSetupPr
         {renderField('haiku_model', 'Haiku tier model (optional)', true)}
         {renderField('sonnet_model', 'Sonnet tier model (optional)', true)}
         {renderField('opus_model', 'Opus tier model (optional)', true)}
+        {renderField('fable_model', 'Fable tier model (optional)', true)}
         {renderField('max_context', 'Max context tokens (context window size, e.g. 128000 or 128k)', true)}
       </Box>
       <Text dimColor>
-        The default model handles requests unless a Haiku, Sonnet, or Opus tier override is configured. Maximum context
-        tokens controls when automatic context compaction begins.
+        The default model handles requests unless a Haiku, Sonnet, Opus, or Fable tier override is configured. Maximum
+        context tokens controls when automatic context compaction begins.
       </Text>
       <Text dimColor>
         {status.entryMode === 'catalog'
@@ -1324,6 +1362,7 @@ function OAuthStatusMessage({
                     haikuModel: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? '',
                     sonnetModel: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL ?? '',
                     opusModel: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL ?? '',
+                    fableModel: process.env.ANTHROPIC_DEFAULT_FABLE_MODEL ?? '',
                     activeField: 'base_url',
                   });
                 } else if (value === 'openai_chat_api' || value === 'openai_responses_api') {
@@ -1360,6 +1399,7 @@ function OAuthStatusMessage({
                     haikuModel: process.env.GEMINI_DEFAULT_HAIKU_MODEL ?? '',
                     sonnetModel: process.env.GEMINI_DEFAULT_SONNET_MODEL ?? '',
                     opusModel: process.env.GEMINI_DEFAULT_OPUS_MODEL ?? '',
+                    fableModel: process.env.GEMINI_DEFAULT_FABLE_MODEL ?? '',
                     activeField: 'base_url',
                   });
                 } else if (value === 'antigravity_oauth') {
@@ -1395,7 +1435,15 @@ function OAuthStatusMessage({
       );
 
     case 'custom_platform': {
-      type Field = 'base_url' | 'api_key' | 'model' | 'max_context' | 'haiku_model' | 'sonnet_model' | 'opus_model';
+      type Field =
+        | 'base_url'
+        | 'api_key'
+        | 'model'
+        | 'max_context'
+        | 'haiku_model'
+        | 'sonnet_model'
+        | 'opus_model'
+        | 'fable_model';
       const FIELDS: Field[] = [
         'base_url',
         'api_key',
@@ -1404,6 +1452,7 @@ function OAuthStatusMessage({
         'haiku_model',
         'sonnet_model',
         'opus_model',
+        'fable_model',
       ];
       const cp = oauthStatus as {
         state: 'custom_platform';
@@ -1415,8 +1464,9 @@ function OAuthStatusMessage({
         haikuModel: string;
         sonnetModel: string;
         opusModel: string;
+        fableModel: string;
       };
-      const { activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel } = cp;
+      const { activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel, fableModel } = cp;
       const displayValues: Record<Field, string> = {
         base_url: baseUrl,
         api_key: apiKey,
@@ -1425,6 +1475,7 @@ function OAuthStatusMessage({
         haiku_model: haikuModel,
         sonnet_model: sonnetModel,
         opus_model: opusModel,
+        fable_model: fableModel,
       };
 
       const [inputValue, setInputValue] = useState(() => displayValues[activeField]);
@@ -1442,6 +1493,7 @@ function OAuthStatusMessage({
             haikuModel,
             sonnetModel,
             opusModel,
+            fableModel,
           };
           switch (field) {
             case 'base_url':
@@ -1458,9 +1510,11 @@ function OAuthStatusMessage({
               return { ...s, sonnetModel: value };
             case 'opus_model':
               return { ...s, opusModel: value };
+            case 'fable_model':
+              return { ...s, fableModel: value };
           }
         },
-        [activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel],
+        [activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel, fableModel],
       );
 
       const _switchTo = useCallback(
@@ -1483,6 +1537,7 @@ function OAuthStatusMessage({
           haikuModel: finalVals.haiku_model ?? '',
           sonnetModel: finalVals.sonnet_model ?? '',
           opusModel: finalVals.opus_model ?? '',
+          fableModel: finalVals.fable_model ?? '',
           activeField: 'base_url' as const,
         };
         const env: Record<string, string> = {};
@@ -1518,6 +1573,7 @@ function OAuthStatusMessage({
         if (finalVals.haiku_model) env.ANTHROPIC_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.ANTHROPIC_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.ANTHROPIC_DEFAULT_OPUS_MODEL = finalVals.opus_model;
+        if (finalVals.fable_model) env.ANTHROPIC_DEFAULT_FABLE_MODEL = finalVals.fable_model;
         const { error } = updateSettingsForSource('userSettings', {
           modelType: 'anthropic',
           env,
@@ -1622,6 +1678,7 @@ function OAuthStatusMessage({
             {renderRow('haiku_model', 'Haiku       ')}
             {renderRow('sonnet_model', 'Sonnet      ')}
             {renderRow('opus_model', 'Opus        ')}
+            {renderRow('fable_model', 'Fable       ')}
           </Box>
           <Text dimColor>
             Model and Max context are optional · Max context tokens caps the context window (e.g. 128000 or 128k)
@@ -1648,7 +1705,8 @@ function OAuthStatusMessage({
         | 'max_context'
         | 'haiku_model'
         | 'sonnet_model'
-        | 'opus_model';
+        | 'opus_model'
+        | 'fable_model';
       const GEMINI_FIELDS: GeminiField[] = [
         'base_url',
         'api_key',
@@ -1657,6 +1715,7 @@ function OAuthStatusMessage({
         'haiku_model',
         'sonnet_model',
         'opus_model',
+        'fable_model',
       ];
       const gp = oauthStatus as {
         state: 'gemini_api';
@@ -1668,8 +1727,9 @@ function OAuthStatusMessage({
         haikuModel: string;
         sonnetModel: string;
         opusModel: string;
+        fableModel: string;
       };
-      const { activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel } = gp;
+      const { activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel, fableModel } = gp;
       const geminiDisplayValues: Record<GeminiField, string> = {
         base_url: baseUrl,
         api_key: apiKey,
@@ -1678,6 +1738,7 @@ function OAuthStatusMessage({
         haiku_model: haikuModel,
         sonnet_model: sonnetModel,
         opus_model: opusModel,
+        fable_model: fableModel,
       };
 
       const [geminiInputValue, setGeminiInputValue] = useState(() => geminiDisplayValues[activeField]);
@@ -1697,6 +1758,7 @@ function OAuthStatusMessage({
             haikuModel,
             sonnetModel,
             opusModel,
+            fableModel,
           };
           switch (field) {
             case 'base_url':
@@ -1713,9 +1775,11 @@ function OAuthStatusMessage({
               return { ...s, sonnetModel: value };
             case 'opus_model':
               return { ...s, opusModel: value };
+            case 'fable_model':
+              return { ...s, fableModel: value };
           }
         },
-        [activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel],
+        [activeField, baseUrl, apiKey, model, maxContext, haikuModel, sonnetModel, opusModel, fableModel],
       );
 
       const doGeminiSave = useCallback(() => {
@@ -1729,6 +1793,7 @@ function OAuthStatusMessage({
           haikuModel: finalVals.haiku_model,
           sonnetModel: finalVals.sonnet_model,
           opusModel: finalVals.opus_model,
+          fableModel: finalVals.fable_model,
           activeField,
         };
         // Gemini has no built-in family defaults (the mapping throws on a miss),
@@ -1760,6 +1825,7 @@ function OAuthStatusMessage({
         if (finalVals.haiku_model) env.GEMINI_DEFAULT_HAIKU_MODEL = finalVals.haiku_model;
         if (finalVals.sonnet_model) env.GEMINI_DEFAULT_SONNET_MODEL = finalVals.sonnet_model;
         if (finalVals.opus_model) env.GEMINI_DEFAULT_OPUS_MODEL = finalVals.opus_model;
+        if (finalVals.fable_model) env.GEMINI_DEFAULT_FABLE_MODEL = finalVals.fable_model;
         const { error } = updateSettingsForSource('userSettings', {
           modelType: 'gemini',
           env,
@@ -1868,6 +1934,7 @@ function OAuthStatusMessage({
             {renderGeminiRow('haiku_model', 'Haiku       ')}
             {renderGeminiRow('sonnet_model', 'Sonnet      ')}
             {renderGeminiRow('opus_model', 'Opus        ')}
+            {renderGeminiRow('fable_model', 'Fable       ')}
           </Box>
           <Text dimColor>
             Model (e.g. gemini-3-pro) overrides all tiers · Max context tokens sets the context window (e.g. 1m)
