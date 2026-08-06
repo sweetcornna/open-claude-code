@@ -377,7 +377,7 @@ getRemoteMcpServerConnectionBatchSize()  // 既定値 20
 | **プロセスモデル** | 同一プロセス、オーバーヘッドなし | 子プロセス（stdio）またはネットワーク接続 |
 | **名前の保護** | 予約名。ユーザーは同名を追加できない | 自由に命名可能（英数字 + `-_`） |
 | **ライフサイクル** | CLI とともに起動・停止 | 接続キャッシュ + 必要に応じて再接続 |
-| **権限** | `allowedTools` で自動許可（ブラウザツールは 4 個の観察系ツールだけを許可し、それ以外は通常どおり確認） | `passthrough` で権限確認へ入る |
+| **権限** | `allowedTools` で自動許可（ブラウザツールは 6 個の観察系ツールだけを許可し、それ以外は通常どおり確認） | `passthrough` で権限確認へ入る |
 | **Feature Flag** | `CHICAGO_MCP`（Computer Use）など | なし（常に利用可能） |
 | **ツール発見** | 外部と同じ（MCP プロトコル） | 標準 MCP `tools/list` |
 | **cleanup** | `inProcessServer.close()` | シグナル昇格 SIGINT→SIGTERM→SIGKILL |

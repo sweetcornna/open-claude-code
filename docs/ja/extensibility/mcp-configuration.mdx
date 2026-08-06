@@ -315,7 +315,7 @@ dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
 ```
 
 Computer Use とは異なり、これはプロセス内 server ではありません。`mcpConfig` は通常の
-stdio 設定であり、`uvx --from browser-use[cli] browser-use --mcp` を spawn します。`allowedTools` に含まれるのは 4 個の
+stdio 設定であり、`uvx --from browser-use[cli] python -m browser_use.mcp.server` を spawn します。`allowedTools` に含まれるのは 4 個の
 読み取り専用ツールだけで、それ以外はすべて権限確認へ進みます。
 
 有効化条件:

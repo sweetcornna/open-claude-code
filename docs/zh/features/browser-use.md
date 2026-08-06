@@ -51,7 +51,7 @@ browser-use 要跑自己的模型调用（自主 agent 与内容抽取路径）�
 
 只有四个**纯观察类**工具预授权、不弹权限提示：
 
-`browser_get_state`、`browser_extract_content`、`browser_list_tabs`、`browser_list_sessions`
+`browser_get_state`、`browser_extract_content`、`browser_get_html`、`browser_screenshot`、`browser_list_tabs`、`browser_list_sessions`
 
 其余全部走正常 MCP 权限流程 —— 包括 `retry_with_browser_use_agent`，它会自主连续操作很多步，所以尤其需要你点头。
 

@@ -13,7 +13,11 @@ import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'
 import { getGlobalConfig } from '../config/config.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
-import { BROWSER_USE_UVX_SPEC, isBrowserUseAvailable } from './provision.js'
+import {
+  BROWSER_USE_MCP_MODULE,
+  BROWSER_USE_UVX_SPEC,
+  isBrowserUseAvailable,
+} from './provision.js'
 export { isBrowserUseAvailable }
 
 import {
@@ -71,7 +75,17 @@ export function setupBrowserUse(authEnv: Record<string, string> = {}): {
       [BROWSER_USE_MCP_SERVER_NAME]: {
         type: 'stdio' as const,
         command: 'uvx',
-        args: ['--from', BROWSER_USE_UVX_SPEC, 'browser-use', '--mcp'],
+        // `python -m browser_use.mcp.server`, not `browser-use --mcp`: the
+        // documented `--mcp` flag does not exist in browser-use 0.13.7 — its
+        // CLI only has --version/--doctor/auth/skill. Verified by running a
+        // real MCP initialize handshake against this module.
+        args: [
+          '--from',
+          BROWSER_USE_UVX_SPEC,
+          'python',
+          '-m',
+          BROWSER_USE_MCP_MODULE,
+        ],
         scope: 'dynamic' as const,
         // browser-use makes its own model calls, so it needs credentials of its
         // own. See browserUseAuthEnv: an API key already in the environment is

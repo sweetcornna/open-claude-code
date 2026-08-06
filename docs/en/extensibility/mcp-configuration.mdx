@@ -315,8 +315,8 @@ dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
 ```
 
 Unlike Computer Use, this server does **not** run in-process: `mcpConfig` is an ordinary
-stdio configuration that spawns `uvx --from browser-use[cli] browser-use --mcp`. `allowedTools`
-contains only four observational tools; every other tool still requires permission confirmation.
+stdio configuration that spawns `uvx --from browser-use[cli] python -m browser_use.mcp.server`. `allowedTools`
+contains only six observational tools; every other tool still requires permission confirmation.
 
 Enablement conditions:
 - The `--chrome` argument, `CLAUDE_CODE_ENABLE_CFC` environment variable, or `browserToolDefaultEnabled` configuration

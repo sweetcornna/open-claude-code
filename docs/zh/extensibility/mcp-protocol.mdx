@@ -377,7 +377,7 @@ getRemoteMcpServerConnectionBatchSize()  // 默认 20
 | **进程模型** | 同进程，零开销 | 子进程（stdio）或网络连接 |
 | **名称保护** | 保留名，用户不可添加同名 | 自由命名（字母数字 + `-_`） |
 | **生命周期** | 随 CLI 启停 | 连接缓存 + 按需重连 |
-| **权限** | `allowedTools` 自动授权（浏览器工具只放行 4 个纯观察类工具，其余照常确认） | `passthrough` 进入权限确认 |
+| **权限** | `allowedTools` 自动授权（浏览器工具只放行 6 个纯观察类工具，其余照常确认） | `passthrough` 进入权限确认 |
 | **Feature Flag** | `CHICAGO_MCP`（Computer Use）等 | 无（始终可用） |
 | **工具发现** | 与外部相同（MCP 协议） | 标准 MCP `tools/list` |
 | **清理** | `inProcessServer.close()` | 信号升级策略 SIGINT→SIGTERM→SIGKILL |

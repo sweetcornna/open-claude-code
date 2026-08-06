@@ -16,28 +16,32 @@ export const BROWSER_USE_TOOL_PREFIX = `mcp__${BROWSER_USE_MCP_SERVER_NAME}__`
 export const BROWSER_BACKEND_ENV = 'OCC_BROWSER_BACKEND'
 
 /**
- * Tools `browser-use --mcp` exposes.
+ * Tools the browser-use MCP server exposes.
  *
- * Recorded here so the read-only subset below can be checked against something
- * — an allowlist entry naming a tool the server does not have is silently
- * inert, which is the kind of mistake that only shows up as an unexpected
- * permission prompt months later.
+ * Taken from a live `tools/list` against browser-use 0.13.7, not from the
+ * documentation — the docs were stale on the launch command too. Recorded here
+ * so the read-only subset below can be checked against something: an allowlist
+ * entry naming a tool the server does not have is silently inert, which is the
+ * kind of mistake that only shows up as an unexpected permission prompt months
+ * later.
  */
 export const BROWSER_USE_TOOLS: readonly string[] = [
   'browser_navigate',
   'browser_click',
   'browser_type',
   'browser_get_state',
+  'browser_extract_content',
+  'browser_get_html',
+  'browser_screenshot',
   'browser_scroll',
   'browser_go_back',
   'browser_list_tabs',
   'browser_switch_tab',
   'browser_close_tab',
-  'browser_extract_content',
+  'retry_with_browser_use_agent',
   'browser_list_sessions',
   'browser_close_session',
   'browser_close_all',
-  'retry_with_browser_use_agent',
 ]
 
 /**
@@ -53,6 +57,8 @@ export const BROWSER_USE_TOOLS: readonly string[] = [
 export const BROWSER_USE_READ_ONLY_TOOLS: readonly string[] = [
   'browser_get_state',
   'browser_extract_content',
+  'browser_get_html',
+  'browser_screenshot',
   'browser_list_tabs',
   'browser_list_sessions',
 ]

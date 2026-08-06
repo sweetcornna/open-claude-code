@@ -51,7 +51,7 @@ browser-use は自前のモデル呼び出しを行う（自律 agent と抽出�
 
 権限プロンプトをスキップする**観察系**ツールは 4 つだけです。
 
-`browser_get_state`、`browser_extract_content`、`browser_list_tabs`、`browser_list_sessions`
+`browser_get_state`、`browser_extract_content`、`browser_get_html`、`browser_screenshot`、`browser_list_tabs`、`browser_list_sessions`
 
 それ以外はすべて通常の MCP 権限フローを通ります —— 多数のステップを自律的に実行する `retry_with_browser_use_agent` は特にです。
 

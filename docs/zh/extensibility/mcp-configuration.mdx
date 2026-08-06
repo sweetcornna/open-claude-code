@@ -315,8 +315,8 @@ dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
 ```
 
 与 Computer Use 不同的是，它**不是**进程内 server：`mcpConfig` 是一条普通的
-stdio 配置，spawn `uvx --from browser-use[cli] browser-use --mcp`。`allowedTools`
-只含 4 个纯观察类工具，其余一律走权限确认。
+stdio 配置，spawn `uvx --from browser-use[cli] python -m browser_use.mcp.server`。`allowedTools`
+只含 6 个纯观察类工具，其余一律走权限确认。
 
 启用条件：
 - `--chrome` 参数、`CLAUDE_CODE_ENABLE_CFC` 环境变量，或 `browserToolDefaultEnabled` 配置

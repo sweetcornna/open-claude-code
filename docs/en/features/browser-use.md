@@ -51,7 +51,7 @@ Non-interactive sessions (SDK, CI, `-p`) default to off unless `--chrome` was pa
 
 Only four **observational** tools are pre-approved and skip the permission prompt:
 
-`browser_get_state`, `browser_extract_content`, `browser_list_tabs`, `browser_list_sessions`
+`browser_get_state`, `browser_extract_content`, `browser_get_html`, `browser_screenshot`, `browser_list_tabs`, `browser_list_sessions`
 
 Everything else goes through the normal MCP permission flow — including `retry_with_browser_use_agent`, which acts on its own for many steps and so needs your approval most of all.
 
