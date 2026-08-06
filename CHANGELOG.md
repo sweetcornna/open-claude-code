@@ -4,6 +4,11 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.29.1 - 2026-08-06
+
+- **修复 `.mcp.json` 里的 `${VAR}` 被原样传给 MCP server，项目级 `settings.local.json` 的 env 形同虚设**。表现是需要密钥的 server 全线失效（FRED 直接回 400 `api_key is not a 32 character alpha-numeric lower-case string`，SEC 的列表通道正常、正文通道返 NO_DATA），而不依赖密钥的 server 一切正常 —— 于是很容易误判成"某个源坏了"或"设置没写对"。**根因是展开时机早于 env 落地，不是读不到设置**：occ 在启动阶段就把 MCP 配置读进来了（那段代码的注释写着"safe - just reads files, no execution"，就执行而言确实安全，但它同时把 `${VAR}` 也一并定死了），而项目级 settings 的 env 要等信任对话框跑完才进 `process.env` —— 启动期只应用一份安全白名单，用户自定义的密钥键不在其中。真正让这件事变得诡异的是**它同时留下了正确的那一份**：信任之后界面会重新读一次配置，这次展开是对的，但两份 config 的 JSON 不同，而 MCP 连接的缓存正是按 `名字 + config JSON` 做键 —— 于是**每个 server 有两个活着的子进程，一个 env 正确、一个是字面量，接管工具调用的偏偏是坏的那个**。`ps eww` 能同时看到这两份。`-p` 模式只走早期快照那一条，所以是稳定失败。修法是让展开结果与展开时机无关（解析器改为同时查 settings.env，顺序与信任后 `process.env` 的最终状态一致），而不是去挪启动顺序：解析期本来就不执行任何东西，信任后的那条路径也早就插值了同样的值，所以信任边界没有放宽 —— 顺带让两个缓存键收敛，每个 server 回到单进程。插件贡献的 MCP / LSP server 走同一处修复。
+- 修掉一个只在登录过 ChatGPT 的机器上才会红的搜索测试（它要测 API-key 路由，却去读了真实凭据的落盘状态）。不影响运行时行为。
+
 ## 2.29.0 - 2026-08-06
 
 - **端点不具备 OpenAI 官方搜索能力时，不再拿它去跑搜索**。occ 此前把「`OPENAI_API_KEY` 有值」当成「OpenAI 服务端 `web_search` 可用」，但在 occ 最常见的那种配置里，`OPENAI_BASE_URL` 指向的是第三方 OpenAI 兼容端点，那把 key 属于**该厂商**而不是 OpenAI。**失败形态是静默的，所以它一直没被发现**：以 DeepSeek 为例，provider 是 `openai`，于是 codex 被选为会话的**主搜索通道**；请求被正常接受（DeepSeek 确实实现了 Responses API），搜索也**真的执行了** —— 响应里能看到 `web_search_call` 条目。但 DeepSeek 既不返回 `url_citation` 注解、也不返回 `action.sources`，而这是 occ 仅有的两个结果提取点。于是主通道每一次查询都返回 0 条、全程不报任何错，模型把空列表读成「网上没有这个答案」。现在的判定是：**ChatGPT/Codex OAuth 登录直接算数**（那条路按构造就打到 OpenAI 自己的后端，`OPENAI_BASE_URL` 写什么都无关）；**只有 API key 时，还要求端点确实是 OpenAI**（复用既有的 `isOfficialOpenAIBaseURL`，它本来就是为「不要把 OpenAI 专属参数发给兼容端点」而写的）。判定刻意从严：一个真的把 web_search 透传出去的网关，和一个不透传的网关，从外部无法区分。
