@@ -38,6 +38,7 @@ import { openBrowser } from '../../utils/network/browser.js'
 import { getClaudeConfigHomeDir } from '../../utils/config/envUtils.js'
 import {
   errorMessage,
+  errorMessageWithCause,
   getErrnoCode,
   toError,
 } from '../../utils/runtime/errors.js'
@@ -1080,7 +1081,7 @@ export async function performMCPOAuthFlow(
     } catch (error) {
       logMCPDebug(
         serverName,
-        `Failed to fetch OAuth metadata: ${errorMessage(error)}`,
+        `Failed to fetch OAuth metadata: ${errorMessageWithCause(error)}`,
       )
     }
 
@@ -1319,7 +1320,14 @@ export async function performMCPOAuthFlow(
         } catch (error) {
           logMCPDebug(serverName, `SDK auth error: ${error}`)
           cleanup()
-          rejectOnce(new Error(`SDK auth failed: ${errorMessage(error)}`))
+          // errorMessageWithCause, not `.message`: every step here is a fetch
+          // against the authorization server, and Node's fetch rejects with the
+          // bare string "fetch failed" while putting the only actionable part
+          // (ECONNREFUSED, ENOTFOUND, a TLS or proxy failure) in `cause`.
+          // "SDK auth failed: fetch failed" tells the user nothing at all.
+          rejectOnce(
+            new Error(`SDK auth failed: ${errorMessageWithCause(error)}`),
+          )
         }
       })
 
@@ -2367,7 +2375,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       } catch (error) {
         logMCPDebug(
           this.serverName,
-          `Failed to fetch from configured metadata URL: ${errorMessage(error)}`,
+          `Failed to fetch from configured metadata URL: ${errorMessageWithCause(error)}`,
         )
       }
     }

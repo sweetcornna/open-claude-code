@@ -353,16 +353,29 @@ export function AttachmentMessage({ attachment, addMargin, verbose, isTranscript
       if (attachment.hookEvent === 'Stop' || attachment.hookEvent === 'SubagentStop') {
         return null;
       }
-      // Full hook output is logged to debug log via hookEvents.ts
-      return <Line color="error">{attachment.hookName} hook error</Line>;
+      // hookName is just the event (`UserPromptSubmit`, `PostToolUse:Edit`), so
+      // the bare line identifies neither which of several configured hooks
+      // failed nor why. Both are already on the attachment — show them, the way
+      // the blocking branch above does. Sending users to `--debug` for the
+      // stderr of a hook that already ran is a dead end: the run is over.
+      return (
+        <>
+          <Line color="error">{attachment.hookName} hook error</Line>
+          {renderHookFailureDetail(attachment.command, attachment.stderr)}
+        </>
+      );
     }
     case 'hook_error_during_execution':
       // Stop hooks are rendered as a summary in SystemStopHookSummaryMessage
       if (attachment.hookEvent === 'Stop' || attachment.hookEvent === 'SubagentStop') {
         return null;
       }
-      // Full hook output is logged to debug log via hookEvents.ts
-      return <Line>{attachment.hookName} hook warning</Line>;
+      return (
+        <>
+          <Line>{attachment.hookName} hook warning</Line>
+          {renderHookFailureDetail(attachment.command, attachment.content)}
+        </>
+      );
     case 'hook_success':
       // Full hook output is logged to debug log via hookEvents.ts
       return null;
@@ -483,6 +496,39 @@ function TeammateTaskStatus({ attachment }: { attachment: TaskStatusAttachment }
     </Box>
   );
 }
+/** Lines of hook stderr shown inline before we stop and defer to the debug log. */
+const HOOK_FAILURE_STDERR_LINES = 5;
+
+/**
+ * The command that failed plus its stderr, for a hook error the user cannot
+ * otherwise attribute. Plugin-provided hooks are the common case: a machine
+ * missing an interpreter the plugin needs fails every prompt, and the event
+ * name alone gives the user nothing to act on.
+ */
+function renderHookFailureDetail(command: string | undefined, stderr: string | undefined): React.ReactNode {
+  const lines = (stderr ?? '')
+    .trim()
+    .split('\n')
+    .filter(line => line.trim().length > 0);
+  const shown = lines.slice(0, HOOK_FAILURE_STDERR_LINES);
+  const hidden = lines.length - shown.length;
+  return (
+    <>
+      {command ? <Line color="error">{command}</Line> : null}
+      {shown.map((line, i) => (
+        <Line key={`${i}:${line}`} color="error">
+          {line}
+        </Line>
+      ))}
+      {hidden > 0 ? (
+        <Line color="error">
+          … +{hidden} more {plural(hidden, 'line')} (see the debug log for full output)
+        </Line>
+      ) : null}
+    </>
+  );
+}
+
 // We allow setting dimColor to false here to help work around the dim-bold bug.
 // https://github.com/chalk/chalk/issues/290
 function Line({
