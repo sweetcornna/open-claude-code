@@ -1,4 +1,3 @@
-import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
 /**
  * `claude rollback [target]` — roll back to a previous Claude Code version.
  *
@@ -9,6 +8,12 @@ import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
  *   --dry-run   Show what would be installed without installing
  *   --safe      Roll back to the server-pinned safe version
  */
+import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
+import {
+  isSafeVersionSpec,
+  packageManagerSpawnOptions,
+} from 'src/utils/process/packageManager.js'
+
 export async function rollback(
   target?: string,
   options?: { list?: boolean; dryRun?: boolean; safe?: boolean },
@@ -60,12 +65,23 @@ export async function rollback(
     return
   }
 
+  // The spec is interpolated into a command line that cmd.exe parses on
+  // Windows, so reject anything that is not a plain version or dist-tag before
+  // it gets there.
+  if (!isSafeVersionSpec(target)) {
+    console.error(
+      `Invalid version "${target}". Expected a version or dist-tag, e.g. 2.29.4 or latest.`,
+    )
+    return
+  }
+
   // Version rollback via npm/bun
   const { spawnSync } = await import('child_process')
   const result = spawnSync(
     'npm',
     ['install', '-g', `${NPM_PACKAGE_NAME}@${target}`],
-    { stdio: 'inherit' },
+    // shell on Windows: npm is a .cmd shim there and cannot be spawned directly.
+    { stdio: 'inherit', ...packageManagerSpawnOptions() },
   )
 
   if (result.status !== 0) {

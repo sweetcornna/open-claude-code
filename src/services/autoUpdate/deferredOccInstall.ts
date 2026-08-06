@@ -24,6 +24,7 @@
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { registerCleanup } from 'src/utils/process/cleanupRegistry.js'
+import { packageManagerSpawnOptions } from 'src/utils/process/packageManager.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { hasOtherLiveSessions } from './liveSessions.js'
 
@@ -55,10 +56,14 @@ function spawnDetachedInstaller(install: DeferredOccInstall): void {
   // Detached + unref'd + stdio ignored is what lets this outlive
   // process.exit(). cwd=homedir so a project-level .npmrc/.bunfig.toml cannot
   // redirect the registry, matching the interactive `occ update` path.
+  // shell on Windows: npm/bun are .cmd shims there, so a direct spawn fails
+  // with ENOENT — and with stdio ignored that failure was completely silent,
+  // which is why the deferred update never landed on Windows.
   const child = spawn(install.pkgManager, ['install', '-g', install.spec], {
     cwd: homedir(),
     detached: true,
     stdio: 'ignore',
+    ...packageManagerSpawnOptions(),
   })
   child.unref()
 }

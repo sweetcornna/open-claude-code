@@ -12,6 +12,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { logForDebugging } from '../utils/telemetry/debug.js'
+import { whichSync } from '../utils/process/which.js'
 import { distRoot } from '../utils/filesystem/distRoot.js'
 import { createCombinedAbortSignal } from '../utils/process/combinedAbortSignal.js'
 import { execFileNoThrowWithCwd } from '../utils/process/execFileNoThrow.js'
@@ -39,12 +40,11 @@ export function getCurrentOccVersion(): string {
 }
 
 function isCommandAvailable(cmd: string): boolean {
-  try {
-    execSync(`which ${cmd} 2>/dev/null`, { stdio: 'pipe' })
-    return true
-  } catch {
-    return false
-  }
+  // `which` does not exist on Windows and `2>/dev/null` is not cmd.exe syntax,
+  // so the old shell-out always threw there and reported every command as
+  // missing — which sent the whole update path down the wrong branch.
+  // whichSync uses where.exe on Windows and Bun.which when available.
+  return whichSync(cmd) !== null
 }
 
 /**

@@ -2,6 +2,10 @@
  * Shared utilities for win32 Computer Use modules.
  * Single source of truth — no more duplication across files.
  */
+import { execFile, spawnSync } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 /** Validate HWND is a pure numeric string — prevents PowerShell/Python injection. */
 export function validateHwnd(hwnd: string): string {
@@ -11,26 +15,39 @@ export function validateHwnd(hwnd: string): string {
   return hwnd
 }
 
+const PS_ARGS = ['-NoProfile', '-NonInteractive', '-Command']
+
+/**
+ * These used to call `Bun.spawnSync` / `Bun.spawn`. `bin.occ` is
+ * `dist/cli-node.js` with a Node shebang — Node is the default runtime, and
+ * only `occ-bun` runs Bun — so `Bun` was undefined and every one of these threw
+ * `ReferenceError` on the platform they exist to serve. `ps()` had no try/catch
+ * at all, so it took the caller down with it.
+ *
+ * child_process works under both runtimes. `windowsHide` keeps the PowerShell
+ * console from flashing over the TUI.
+ */
+function runPowerShell(script: string): {
+  stdout: string
+  status: number | null
+} {
+  const result = spawnSync('powershell', [...PS_ARGS, script], {
+    encoding: 'utf8',
+    windowsHide: true,
+  })
+  return { stdout: (result.stdout ?? '').trim(), status: result.status }
+}
+
 /** Run a PowerShell script synchronously, return stdout trimmed. */
 export function ps(script: string): string {
-  const result = Bun.spawnSync({
-    cmd: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return new TextDecoder().decode(result.stdout).trim()
+  return runPowerShell(script).stdout
 }
 
 /** Run a PowerShell script synchronously, return null on failure. */
 export function runPs(script: string): string | null {
   try {
-    const result = Bun.spawnSync({
-      cmd: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    if (result.exitCode !== 0) return null
-    return new TextDecoder().decode(result.stdout).trim()
+    const { stdout, status } = runPowerShell(script)
+    return status === 0 ? stdout : null
   } catch {
     return null
   }
@@ -38,13 +55,10 @@ export function runPs(script: string): string | null {
 
 /** Run a PowerShell script asynchronously. */
 export async function psAsync(script: string): Promise<string> {
-  const proc = Bun.spawn(
-    ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-    { stdout: 'pipe', stderr: 'pipe' },
-  )
-  const out = await new Response(proc.stdout).text()
-  await proc.exited
-  return out.trim()
+  const { stdout } = await execFileAsync('powershell', [...PS_ARGS, script], {
+    windowsHide: true,
+  })
+  return stdout.trim()
 }
 
 /** Get the system temp directory. */

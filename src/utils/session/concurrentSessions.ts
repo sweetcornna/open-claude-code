@@ -38,6 +38,50 @@ function getSessionsDir(): string {
  * Return an OS-derived marker that changes when a PID is reused.
  * A missing marker must be treated as unverifiable by signal-sending callers.
  */
+/**
+ * Run a command and capture stdout, on either runtime.
+ *
+ * This used to be a bare `Bun.spawn`. `bin.occ` is `dist/cli-node.js` with a
+ * Node shebang, so Bun is undefined on the default runtime and the call threw
+ * `ReferenceError` — swallowed by the caller's catch, which returned undefined,
+ * which `occ bg kill` reads as "PID could not be verified" and refuses to act.
+ * Linux survived on the `/proc` fast path above; Windows had no fallback, so
+ * the kill path was simply dead there.
+ *
+ * Bun stays the preferred branch (same shape as `which.ts`): it avoids the
+ * child_process module entirely, which keeps this off the process-global
+ * `mock.module` registry that test files install for unrelated suites.
+ */
+async function captureCommand(
+  command: string[],
+): Promise<{ stdout: string; exitCode: number | null }> {
+  const env = { ...process.env, LC_ALL: 'C' }
+  if (typeof Bun !== 'undefined' && typeof Bun.spawn === 'function') {
+    const child = Bun.spawn(command, {
+      stdout: 'pipe',
+      stderr: 'ignore',
+      env,
+    })
+    const [stdout, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      child.exited,
+    ])
+    return { stdout, exitCode }
+  }
+  const { execFile } = await import('child_process')
+  const [file, ...args] = command
+  return new Promise(resolve => {
+    execFile(
+      file!,
+      args,
+      { env, windowsHide: true, encoding: 'utf8' },
+      (error, stdout) => {
+        resolve({ stdout: stdout ?? '', exitCode: error ? 1 : 0 })
+      },
+    )
+  })
+}
+
 export async function getProcessStartMarker(
   pid: number,
 ): Promise<string | undefined> {
@@ -73,15 +117,7 @@ export async function getProcessStartMarker(
       : ['ps', '-o', 'lstart=', '-o', 'command=', '-p', String(pid)]
 
   try {
-    const child = Bun.spawn(command, {
-      stdout: 'pipe',
-      stderr: 'ignore',
-      env: { ...process.env, LC_ALL: 'C' },
-    })
-    const [stdout, exitCode] = await Promise.all([
-      new Response(child.stdout).text(),
-      child.exited,
-    ])
+    const { stdout, exitCode } = await captureCommand(command)
     const rawMarker = exitCode === 0 ? stdout.trim() : ''
     return rawMarker ? `${platform}:${rawMarker}` : undefined
   } catch {

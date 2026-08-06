@@ -12,6 +12,7 @@ import type {
   ServerCapabilities,
 } from 'vscode-languageserver-protocol'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
+import { needsShellToLaunch } from '../../utils/process/packageManager.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { subprocessEnv } from '../../utils/process/subprocessEnv.js'
@@ -180,6 +181,14 @@ export function createLSPClient(
           cwd: options?.cwd,
           // Prevent visible console window on Windows (no-op on other platforms)
           windowsHide: true,
+          // npm installs language servers as .cmd shims on Windows
+          // (typescript-language-server.cmd, pyright-langserver.cmd).
+          // CreateProcess cannot execute a batch file, and since
+          // CVE-2024-27980 Node refuses to try — so every npm-installed server
+          // failed to start there. Routing through a shell is the documented
+          // way to run one; scoped to the shim case so POSIX and native
+          // executables keep their exact argv.
+          shell: needsShellToLaunch(command),
         })
 
         if (!process.stdout || !process.stdin) {
