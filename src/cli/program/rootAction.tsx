@@ -206,7 +206,7 @@ import { safeParseJSON } from 'src/utils/text/json.js';
 import { seedEarlyInput } from 'src/utils/terminal/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { setCwd } from 'src/utils/shell/Shell.js';
-import { browserUseAuthEnv } from 'src/utils/browserUse/auth.js';
+import { browserUseAuthEnv, hasBrowserUseModelConfig } from 'src/utils/browserUse/auth.js';
 import { isBrowserUseAvailable, setupBrowserUse, shouldEnableBrowserTool } from 'src/utils/browserUse/setup.js';
 import { shouldEnablePromptSuggestion } from 'src/services/PromptSuggestion/promptSuggestion.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/model/thinking.js';
@@ -818,6 +818,15 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         allowedTools: browserMcpTools,
         systemPrompt: browserSystemPrompt,
       } = setupBrowserUse(browserUseAuthEnv());
+      if (!hasBrowserUseModelConfig()) {
+        // browser-use runs its own model calls. Saying so now beats an
+        // authentication error on the user's first browser action, which
+        // points at nothing they did.
+        console.error(
+          'Warning: browser tools are on, but occ has no model credentials to pass to browser-use.\n' +
+            'Sign in with `occ /login`, or set ANTHROPIC_API_KEY / OPENAI_API_KEY.',
+        );
+      }
       dynamicMcpConfig = {
         ...dynamicMcpConfig,
         ...browserMcpConfig,

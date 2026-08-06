@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { type OptionWithDescription, Select } from '../../components/CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
@@ -9,11 +9,16 @@ import type { ChromeDetection } from '../../utils/browserUse/chromeVersion.js';
 import { detectChrome } from '../../utils/browserUse/chromeVersion.js';
 import { BROWSER_USE_MCP_SERVER_NAME } from '../../utils/browserUse/common.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
+import {
+  type BrowserUseReadiness,
+  checkBrowserUseReadiness,
+  warmBrowserUse,
+} from '../../utils/browserUse/provision.js';
 
 const CHROME_DOWNLOAD_URL = 'https://www.google.com/chrome/';
 const BROWSER_USE_URL = 'https://github.com/browser-use/browser-use';
 
-type MenuAction = 'install-chrome' | 'toggle-default' | 'learn-more';
+type MenuAction = 'install-chrome' | 'toggle-default' | 'learn-more' | 'install-deps';
 
 type Props = {
   onDone: (result?: string) => void;
@@ -28,6 +33,14 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
   const client = mcpClients.find(c => c.name === BROWSER_USE_MCP_SERVER_NAME);
   const isConnected = client?.type === 'connected';
 
+  // browser-use is provisioned outside npm, so its readiness is a separate
+  // question from whether the server happens to be attached right now.
+  const [readiness, setReadiness] = useState<BrowserUseReadiness | null>(null);
+  const [installing, setInstalling] = useState(false);
+  useEffect(() => {
+    void checkBrowserUseReadiness().then(setReadiness);
+  }, []);
+
   function handleAction(action: MenuAction): void {
     switch (action) {
       case 'install-chrome':
@@ -36,6 +49,14 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
       case 'learn-more':
         void openBrowser(BROWSER_USE_URL);
         break;
+      case 'install-deps': {
+        setInstalling(true);
+        void warmBrowserUse().then(async () => {
+          setReadiness(await checkBrowserUseReadiness());
+          setInstalling(false);
+        });
+        break;
+      }
       case 'toggle-default': {
         const newValue = !enabledByDefault;
         saveGlobalConfig(current => ({
@@ -49,6 +70,15 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
   }
 
   const options: OptionWithDescription<MenuAction>[] = [];
+  if (readiness && !readiness.packageReady) {
+    options.push({
+      label: installing ? 'Installing browser-use…' : 'Install browser-use now',
+      value: 'install-deps',
+      description: readiness.hasUvx
+        ? 'Fetch it ahead of time so the first browser action is not a long download.'
+        : 'Requires uv — see the note below.',
+    });
+  }
   if (!chrome.version) {
     options.push({ label: 'Install Google Chrome', value: 'install-chrome' });
   }
@@ -70,12 +100,23 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
             Status: {isConnected ? <Text color="success">Connected</Text> : <Text color="inactive">Not connected</Text>}
           </Text>
           <Text>
+            browser-use:{' '}
+            {readiness === null ? (
+              <Text dimColor>checking…</Text>
+            ) : readiness.packageReady ? (
+              <Text color="success">ready</Text>
+            ) : (
+              <Text color="warning">not installed</Text>
+            )}
+          </Text>
+          <Text>
             Browser:{' '}
             {chrome.version ? <Text color="success">{chrome.version}</Text> : <Text color="warning">not detected</Text>}
           </Text>
         </Box>
 
         {chrome.note && <Text color="warning">{chrome.note}</Text>}
+        {readiness?.note && <Text color="warning">{readiness.note}</Text>}
 
         <Select options={options} onChange={handleAction} hideIndexes />
 

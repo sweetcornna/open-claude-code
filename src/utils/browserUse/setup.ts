@@ -13,7 +13,9 @@ import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'
 import { getGlobalConfig } from '../config/config.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
-import { whichSync } from '../process/which.js'
+import { BROWSER_USE_UVX_SPEC, isBrowserUseAvailable } from './provision.js'
+export { isBrowserUseAvailable }
+
 import {
   BROWSER_USE_MCP_SERVER_NAME,
   BROWSER_USE_READ_ONLY_TOOLS,
@@ -53,21 +55,6 @@ export function shouldEnableBrowserTool(browserFlag?: boolean): boolean {
     config.chromeDevtoolsDefaultEnabled ??
     false
   )
-}
-
-/** Package spec `uvx` resolves; `[cli]` is what carries the `--mcp` entry. */
-const BROWSER_USE_UVX_SPEC = 'browser-use[cli]'
-
-/**
- * Can browser-use actually be launched on this machine?
- *
- * `uvx` is the only hard requirement occ can check cheaply. The Python package
- * itself is fetched on first run, and Chrome/Chromium has to be installed — but
- * neither is knowable without paying for a network round-trip or a browser
- * probe, so those failures surface as MCP connection errors instead.
- */
-export function isBrowserUseAvailable(): boolean {
-  return whichSync('uvx') !== null
 }
 
 /**
