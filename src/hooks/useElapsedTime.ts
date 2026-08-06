@@ -1,13 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { formatDuration } from '../utils/text/format.js'
-import { logForDebugging } from '../utils/telemetry/debug.js'
-
-/** One warning per process — this is polled at 1Hz per visible task. */
-let warnedAboutPausedOverflow = false
-
-export function resetPausedOverflowWarningForTesting(): void {
-  warnedAboutPausedOverflow = false
-}
 
 /**
  * How long a task has been running.
@@ -45,14 +37,10 @@ export function computeElapsedMs(
   if (net > 0) {
     return net
   }
-  if (!warnedAboutPausedOverflow) {
-    warnedAboutPausedOverflow = true
-    logForDebugging(
-      `Elapsed time: pausedMs (${pausedMs}ms) >= total elapsed (${total}ms); ` +
-        `ignoring it. A paused-time counter is over-accumulating.`,
-      { level: 'warn' },
-    )
-  }
+  // Deliberately silent: this runs at 1Hz per visible task, and reaching the
+  // debug logger from here closes an import cycle. The unadjusted span is the
+  // honest answer; a paused counter that outgrew the span is a bug in whoever
+  // accumulates it, not something this hook can report usefully.
   return total
 }
 

@@ -1,15 +1,5 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
-import { debugMock } from '../../../tests/mocks/debug'
-
-mock.module('src/utils/telemetry/debug.ts', debugMock)
-
-const { computeElapsedMs, resetPausedOverflowWarningForTesting } = await import(
-  '../useElapsedTime.js'
-)
-
-beforeEach(() => {
-  resetPausedOverflowWarningForTesting()
-})
+import { describe, expect, test } from 'bun:test'
+import { computeElapsedMs } from '../useElapsedTime.js'
 
 describe('computeElapsedMs', () => {
   test('subtracts paused time from the wall-clock span', () => {
