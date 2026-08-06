@@ -111,12 +111,39 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 - reasoning effort：未设置时 `gpt-5.6-sol` 默认 `low`（对齐 codex："Sol is highly capable at lower reasoning efforts"），其余 GPT 模型默认 `medium`。用 `CLAUDE_CODE_EFFORT_LEVEL` 或 `/model` 的 effort 档覆盖。
 - `text.verbosity`：responses 线对 GPT 模型默认发 `low`（ChatGPT OAuth 路由与官方 baseURL；第三方网关默认不发）。`OPENAI_VERBOSITY=low|medium|high` 强制指定并对任意端点放行，`=off` 强制不发。
 - 内部分类器（side query）对 GPT 模型显式用 `low` effort，不再落到服务端默认 medium。
+- `reasoning.summary` 默认发 `auto`。**不发这个字段，流里就一个推理事件都没有** —— 官方原话是"This output will not be included unless you explicitly opt in to including reasoning summaries"。occ 此前只发 `reasoning:{effort}`，于是 GPT 整个思考阶段既没有 thinking 块、spinner 也进不了 `thinking` 状态，看起来就是在发呆。`OPENAI_REASONING_SUMMARY=auto|concise|detailed` 指定详细度，`=off`（或 `0`/`false`/`none`）关闭。端点若拒收这个字段（组织未完成 verification、第三方网关不认），会**自动去掉该字段重发一次并在本次会话内不再尝试** —— 丢掉思考显示远好过丢掉这一轮。side query 恒不发（没有 UI 展示它的思考，而且会挤占本就紧张的输出预算）。
 
 **网络层**（responses 线此前是裸 fetch，无超时无重试）：
 
 - 建流重试：指数退避（200ms 起步、2 倍增长、±10% 抖动、尊重 `Retry-After`），对网络错误/5xx/408/带 `Retry-After` 的 429 重试，默认 4 次，`OPENAI_REQUEST_MAX_RETRIES` 覆盖。
 - 空闲看门狗：复用 `CLAUDE_STREAM_IDLE_TIMEOUT_MS`（默认 90s），首事件前 stall 自动重试整个请求。
 - responses 线接入代理配置（`HTTPS_PROXY` 等此前在 Bun 下对这条线不生效）；chat 线 SDK 客户端默认重试 0 → 2。
+
+## 五点七、DeepSeek 调优（仅请求 DeepSeek 模型时生效）
+
+门控在 `src/utils/model/deepseekTuning.ts`，与 GPT 调优同构：**模型 id 含 `deepseek`**（覆盖 `deepseek-chat` / `deepseek-reasoner` / `deepseek-v4-pro` / `deepseek-v4-flash`，以及自建部署的 `deepseek-ai/DeepSeek-V4-Pro`）**或 baseURL 指向 `api.deepseek.com`**（网关把模型改名成 `default`/`coder` 时仍能命中）。两个条件都不满足时，请求体与改造前**逐字节相同** —— GLM / Kimi / Qwen / MiMo / 本地 vLLM 不受任何影响。
+
+**temperature = 0**：DeepSeek 未显式传参时默认 `1.0`，而官方参数指南把 `1.0` 归给"数据分析"、把**代码与数学归给 `0.0`**。occ 是编码 agent，所以未指定时补 `0.0`。调用方显式传的 temperature 永远优先；`DEEPSEEK_TEMPERATURE=<0..2>` 可单独退出这一项而保留其余调优（越界/非数字值忽略）。**thinking 模式下不发** —— 官方明确 thinking 模式不支持 `temperature`/`top_p`/`presence_penalty`/`frequency_penalty`。
+
+**工具数上限 128**：DeepSeek 的 function 数量硬上限是 128，超出直接拒收（挂几个 MCP server 就能顶到）。超限时截断尾部并打 debug 日志 —— 工具表是 core 优先排的，砍尾巴丢掉的是 MCP 工具而不是 Read/Edit/Bash。
+
+**`reasoning_content` 回传补齐**：thinking 模式下，带 `tool_calls` 的 assistant 轮**必须**把 `reasoning_content` 原样回传，否则 DeepSeek 返回 400（`reasoning_content ... must be passed back to the API`）。仅"保留已有 thinking 块"不够：被 compact 改写过的历史、thinking 开关打开之前记录的轮次、本地合成的消息都会走到没有 thinking 块的分支。现在这类轮次补 `reasoning_content: ''`。整个生态（langchain #37174、opencode #24190、goose #9200、anything-llm #5683）收敛到的也是这个修法。该补齐挂在 `enableThinking` 上，只有 DeepSeek/MiMo 或显式 `OPENAI_ENABLE_THINKING=1` 才会带上这个字段。不带 `tool_calls` 的轮次官方明说会忽略这个字段，所以不补。
+
+**thinking 开关要说出口**：DeepSeek 的 `thinking` 字段**默认 `enabled`**。此前 occ 只在开启时发 `thinking:{type:'enabled'}`、关闭时什么都不发 —— 于是 `OPENAI_ENABLE_THINKING=0` 对官方端点根本没生效。现在两个方向都显式发。另外 baseURL 是 `api.deepseek.com` 时只发官方文档里的 `thinking` 字段，自建部署（模型名命中但 URL 不是官方）才附带 `enable_thinking` / `chat_template_kwargs` 这两种 chat-template 写法。
+
+**`reasoning_effort` 接上 `/model` 的 effort 档**：DeepSeek 支持 `low`/`high`/`max`（默认 `high`），而 occ 此前只对 OpenAI 推理模型发这个字段 —— DeepSeek 的 effort 选择器是纯装饰，实际永远跑默认 `high`。现在按下表折叠：
+
+| occ | DeepSeek | 说明 |
+| --- | --- | --- |
+| low | `low` | |
+| medium | `high` | DeepSeek 自己的默认值；不发 = `high`，所以默认档必须映射到这里，否则等于悄悄改掉所有存量用户的行为 |
+| high | `high` | |
+| xhigh | `max` | high 与 max 之间没有别的档 |
+| max | `max` | 官方对高强度 agent 场景的推荐值 |
+
+thinking 关闭时不发（此时它不控制任何东西）。数值型 effort（ant-only）与未设置都落回 DeepSeek 自己的默认。`deepseek-v4-pro` 目前只认 `high`/`max`，`low` 由服务端强制抬到 `high`，所以不用按模型再收窄；`deepseek-v4-flash` 是真正认全三档的，已一并加进 `modelSupportsEffort` 的允许列表。
+
+**流式 thinking 块修复**：thinking 模式下 DeepSeek 会在多步之间穿插推理（官方原话是"multiple turns of reasoning and tool calls"），也就是 text → reasoning → text 是真实顺序。此前开 thinking 块时不关已开的 text 块，`currentContentIndex` 前移而 `textBlockOpen` 仍为 true，后续 `text_delta` 就打进了 thinking 块的 index —— **可见回答被追加进思维链里**，text 块还要拖到流末尾的兜底清理才关。已按 text/tool 处理器的既有约定补齐互关。
 
 ## 六、Provider 档案
 
