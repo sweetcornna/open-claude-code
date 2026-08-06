@@ -2,8 +2,17 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { existsSync } from 'fs'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { stateMock } from '../../../../tests/mocks/state'
+import { makeSharedModuleMock } from '../../../../tests/mocks/sharedModuleMock'
+import * as realWhich from '../../process/which.js'
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
+
+// Complete-surface mock so the process-global registry stays safe for other
+// files; every export delegates to the real lookup unless overridden here.
+const whichMock = makeSharedModuleMock<typeof realWhich>(
+  'src/utils/process/which.ts',
+  realWhich,
+).setup()
 
 let globalConfig: Record<string, unknown> = {}
 mock.module('src/utils/config/config.ts', () => ({
@@ -55,6 +64,7 @@ afterEach(() => {
     if (savedEnv[key] === undefined) delete process.env[key]
     else process.env[key] = savedEnv[key]
   }
+  whichMock.reset()
 })
 
 describe('shouldEnableChromeDevtools', () => {
@@ -123,6 +133,26 @@ describe('resolveChromeDevtoolsCommand', () => {
     expect(args).toHaveLength(1)
     expect(args[0]).toContain('chrome-devtools-mcp')
     expect(existsSync(args[0] as string)).toBe(true)
+  })
+
+  test('falls back to the running binary when node is absent from PATH', () => {
+    // `occ-bun` is the only entry a Bun-only machine can launch (`occ` itself
+    // is `#!/usr/bin/env node`), and those machines have no `node`. Naming it
+    // regardless made `--chrome` die with `spawn node ENOENT` there.
+    whichMock.set({ whichSync: () => null })
+    const { command, resolved } = resolveChromeDevtoolsCommand()
+    expect(resolved).toBe(true)
+    expect(command).toBe(process.execPath)
+    expect(existsSync(command)).toBe(true)
+  })
+
+  test('prefers the node on PATH when there is one', () => {
+    whichMock.set({ whichSync: () => '/opt/custom/bin/node' })
+    // The Node build never looks: the interpreter already running IS node, and
+    // it is version-matched to the install.
+    expect(resolveChromeDevtoolsCommand().command).toBe(
+      process.versions.bun ? '/opt/custom/bin/node' : process.execPath,
+    )
   })
 })
 

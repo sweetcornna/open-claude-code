@@ -19,6 +19,7 @@ import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
 import { getGlobalConfig } from '../config/config.js'
 import { logForDebugging } from '../telemetry/debug.js'
+import { whichSync } from '../process/which.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
 import {
   CHROME_AUTOCONNECT_ENV,
@@ -66,14 +67,44 @@ export function shouldEnableChromeDevtools(chromeFlag?: boolean): boolean {
 }
 
 /**
+ * Interpreter for the resolved entry point.
+ *
+ * Under the shipped Node build, reuse the exact interpreter already running —
+ * guaranteed present and version-matched. Under Bun (`occ-bun`), prefer `node`
+ * by name: chrome-devtools-mcp pulls in puppeteer and is only tested on Node.
+ *
+ * But `occ-bun` is the entry point a Bun-only machine has to use — `occ` itself
+ * is `#!/usr/bin/env node` — and `scripts/install.sh` installs with bun in
+ * preference to npm, checking for Node only on the npm path. So "running under
+ * Bun" does not imply Node exists, and naming it unconditionally turned
+ * `--chrome` into `spawn node ENOENT` on exactly the machines that had no other
+ * way to launch occ. Probe first, and fall back to the Bun binary already
+ * running: an untested-but-working interpreter beats a server that cannot start.
+ */
+function resolveInterpreter(): string {
+  if (!process.versions.bun) {
+    return process.execPath
+  }
+  const node = whichSync('node')
+  if (node) {
+    return node
+  }
+  logForDebugging(
+    `[chrome-devtools] No node on PATH; running the server under ${process.execPath} instead`,
+  )
+  return process.execPath
+}
+
+/**
  * Locate the server entry point.
  *
  * `chrome-devtools-mcp` is a runtime dependency, so in a normal install it
  * sits in `node_modules` next to the shipped `dist/`. `createRequire` walks up
  * from this module the same way Node would, which also covers hoisted and
  * nested layouts. If that fails — a partial install, a bundle copied without
- * its dependencies — fall back to `npx`, which costs a download on first run
- * but keeps the feature working instead of erroring out.
+ * its dependencies — fall back to a package runner, which costs a download on
+ * first run but keeps the feature working instead of erroring out. `npx` is
+ * itself part of a Node install, so the Bun-only case needs `bunx` here too.
  */
 export function resolveChromeDevtoolsCommand(): {
   command: string
@@ -84,19 +115,20 @@ export function resolveChromeDevtoolsCommand(): {
     const entry = createRequire(import.meta.url).resolve(
       CHROME_DEVTOOLS_BIN_SUBPATH,
     )
-    // Under Bun, `process.execPath` is the bun binary; chrome-devtools-mcp
-    // pulls in puppeteer and is only tested on Node, so ask for node by name.
-    // Under the shipped Node build, reuse the exact interpreter already
-    // running — it is guaranteed present and version-matched.
-    const command = process.versions.bun ? 'node' : process.execPath
-    return { command, args: [entry], resolved: true }
+    return { command: resolveInterpreter(), args: [entry], resolved: true }
   } catch (error) {
+    // `-y` is npx's "don't prompt before installing"; bunx installs without
+    // prompting and has no such flag, so passing it would reach the server as
+    // an unknown argument.
+    const useBunx = !whichSync('npx') && !!whichSync('bunx')
     logForDebugging(
-      `[chrome-devtools] Could not resolve ${CHROME_DEVTOOLS_BIN_SUBPATH}, falling back to npx: ${error}`,
+      `[chrome-devtools] Could not resolve ${CHROME_DEVTOOLS_BIN_SUBPATH}, falling back to ${useBunx ? 'bunx' : 'npx'}: ${error}`,
     )
     return {
-      command: 'npx',
-      args: ['-y', CHROME_DEVTOOLS_NPX_SPEC],
+      command: useBunx ? 'bunx' : 'npx',
+      args: useBunx
+        ? [CHROME_DEVTOOLS_NPX_SPEC]
+        : ['-y', CHROME_DEVTOOLS_NPX_SPEC],
       resolved: false,
     }
   }
