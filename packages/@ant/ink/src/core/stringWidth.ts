@@ -17,7 +17,13 @@ const EMOJI_REGEX = emojiRegex()
  * which correctly treats ambiguous-width characters as narrow (width 1) as
  * recommended by the Unicode standard for Western contexts.
  */
-function stringWidthJavaScript(str: string): number {
+/**
+ * Exported for tests only. Under `bun test` the runtime picks the Bun
+ * implementation below, so the fallback that ships to every Node user would
+ * otherwise never be exercised — which is how it drifted a column wide on ~70
+ * symbols without a single test failing.
+ */
+export function stringWidthJavaScript(str: string): number {
   if (typeof str !== 'string' || str.length === 0) {
     return 0
   }
@@ -69,7 +75,7 @@ function stringWidthJavaScript(str: string): number {
   for (const { segment: grapheme } of getGraphemeSegmenter().segment(str)) {
     // Check for emoji first (most emoji sequences are width 2)
     EMOJI_REGEX.lastIndex = 0
-    if (EMOJI_REGEX.test(grapheme)) {
+    if (EMOJI_REGEX.test(grapheme) && !isLoneCodePoint(grapheme)) {
       width += getEmojiWidth(grapheme)
       continue
     }
@@ -124,6 +130,29 @@ function getEmojiWidth(grapheme: string): number {
   }
 
   return 2
+}
+
+/**
+ * True when `grapheme` is a single code point with nothing attached — no
+ * variation selector, joiner, skin-tone modifier or keycap.
+ *
+ * emoji-regex matches plenty of these (U+26A0 ⚠, U+2714 ✔, U+2733 ✳, U+2611 ☑
+ * — about 70 of them in U+2600–U+27BF), but they carry Emoji_Presentation=No:
+ * without a following U+FE0F a terminal renders them text-style, one column
+ * wide. Charging 2 made the virtual screen advance a column further than the
+ * terminal actually did, and since the renderer emits only RELATIVE cursor
+ * moves, that one-column error is permanent for the rest of the frame — text
+ * shifts left, a row overflows into an autowrap, and the row model desyncs.
+ *
+ * Deferring to eastAsianWidth is right for genuine emoji too: U+1F600 is
+ * EAW=Wide and still measures 2. It also removes a silent divergence between
+ * the two builds, because Bun.stringWidth already reports 1 here — and Node,
+ * which uses this fallback, is the default runtime.
+ */
+function isLoneCodePoint(grapheme: string): boolean {
+  const first = grapheme.codePointAt(0)
+  if (first === undefined) return false
+  return grapheme.length === (first > 0xffff ? 2 : 1)
 }
 
 function isZeroWidth(codePoint: number): boolean {

@@ -1189,7 +1189,16 @@ function renderNodeToOutput(
           const borderRight = yogaNode.getComputedBorder(LayoutEdge.Right)
           const borderTop = yogaNode.getComputedBorder(LayoutEdge.Top)
           const borderBottom = yogaNode.getComputedBorder(LayoutEdge.Bottom)
-          const innerWidth = Math.floor(width) - borderLeft - borderRight
+          // Clamp to the screen the same way the text path does (see the
+          // getMaxWidth call above). getComputedWidth() reflects Yoga's AtMost
+          // pass and is documented to come back WIDER than the parent — the
+          // text path already accounts for that, and this one did not, so a
+          // backgroundColor box painted a band all the way to the right edge
+          // while its text stopped at the real boundary.
+          const innerWidth = Math.min(
+            Math.floor(width) - borderLeft - borderRight,
+            output.width - x - borderLeft,
+          )
           const innerHeight = Math.floor(height) - borderTop - borderBottom
           if (innerWidth > 0 && innerHeight > 0) {
             const spaces = ' '.repeat(innerWidth)
