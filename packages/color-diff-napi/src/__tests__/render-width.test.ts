@@ -85,6 +85,11 @@ const CASES: Array<{ name: string; old: string; next: string }> = [
     old: '  x = 1\n  s = "plain ascii before"\n  y = 2\n',
     next: '  x = 1\n  s = "plain ascii after, somewhat longer"\n  y = 2\n',
   },
+  {
+    name: 'tab-indented (Go/Makefile style)',
+    old: 'func main() {\n\tx := 1\n\ty := 2\n}\n',
+    next: 'func main() {\n\tx := 1\n\t\tnested := "deeper"\n\ty := 2\n}\n',
+  },
 ]
 
 describe('ColorDiff.render pads changed lines to exactly `width`', () => {
@@ -99,6 +104,41 @@ describe('ColorDiff.render pads changed lines to exactly `width`', () => {
       })
     }
   }
+
+  // Tabs need their own assertion: the width checks above measure with
+  // stringWidth, which reports 0 for a tab, so a tab that survives into the
+  // output is invisible to them. Ink does NOT report 0 — it expands tabs to the
+  // next 8-column stop when writing cells, while ink-raw-ansi accepts the width
+  // declared here without re-measuring. A surviving tab therefore draws up to 7
+  // columns past the budget, overflows the terminal, and costs the renderer a
+  // row it never accounted for.
+  test('emits no tabs, so drawn width matches measured width', () => {
+    const old = 'func main() {\n\tx := 1\n}\n'
+    const next =
+      'func main() {\n\tx := 1\n\t\ty := "\ttab inside a string"\n}\n'
+    for (const width of WIDTH_CASES) {
+      const patch = structuredPatch(
+        'a.go',
+        'a.go',
+        old,
+        next,
+        undefined,
+        undefined,
+        { context: 1 },
+      )
+      for (const hunk of patch.hunks) {
+        const lines = new ColorDiff(hunk, null, 'a.go', null).render(
+          'dark',
+          width,
+          false,
+        )
+        expect(lines).not.toBeNull()
+        for (const line of lines!) {
+          expect(line).not.toContain('\t')
+        }
+      }
+    }
+  })
 
   // A wide char straddling the wrap boundary is where an off-by-one width
   // shows up first, so sweep every width across one wide-char period.

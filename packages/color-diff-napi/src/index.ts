@@ -710,7 +710,50 @@ function graphemes(text: string): string[] {
   return out
 }
 
+/** Ink expands tabs to this stop when it writes to the screen (output.ts). */
+const TAB_WIDTH = 8
+
+/**
+ * Replace tabs with the spaces the terminal will actually draw.
+ *
+ * `stringWidth('\t')` is 0, so a tab costs this module's layout model nothing —
+ * it wraps and pads as if the character were not there. Ink disagrees twice
+ * over: it expands tabs to the next 8-column stop when writing cells, and
+ * `ink-raw-ansi` takes the width declared here on trust without re-measuring
+ * (dom.ts says so explicitly: "the producer already wrapped to the target
+ * width"). A tab-indented diff therefore rendered up to 7 columns wider per tab
+ * than the grid it was wrapped into. Overflowing the terminal makes it
+ * auto-wrap, and the renderer — which only ever emits relative cursor moves —
+ * loses a row it never accounted for, for the rest of the frame.
+ *
+ * Expanding here keeps the one contract `ink-raw-ansi` depends on: what this
+ * module measures is what the terminal draws.
+ */
+function expandTabs(line: Block[]): Block[] {
+  if (!line.some(([, text]) => text.includes('\t'))) return line
+  const expanded: Block[] = []
+  let column = 0
+  for (const [style, text] of line) {
+    let out = ''
+    for (const char of text) {
+      if (char === '\t') {
+        const spaces = TAB_WIDTH - (column % TAB_WIDTH)
+        out += ' '.repeat(spaces)
+        column += spaces
+      } else {
+        out += char
+        column += stringWidth(char)
+      }
+    }
+    expanded.push([style, out])
+  }
+  return expanded
+}
+
 function wrapText(h: Highlight, width: number, theme: Theme): void {
+  // Before anything measures: tab stops depend on absolute column, so this has
+  // to happen while the line is still whole.
+  h.lines = h.lines.map(expandTabs)
   const newLines: Block[][] = []
   for (const line of h.lines) {
     const queue: Block[] = line.slice()
