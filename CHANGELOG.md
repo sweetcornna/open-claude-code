@@ -4,6 +4,12 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.32.1 - 2026-08-07
+
+- **修复：用第三方 provider 时，界面把模型显示成 Claude 系列的名字。** 状态栏、`/model` 的确认消息、模型列表都可能出现「Fable 5 (1M context)」这类名字，而实际跑的是 DeepSeek / GLM / Qwen 的模型。原因是 occ 内部给这几家 provider 映射的是与 Anthropic 相同的模型 id 字符串，于是没有配置模型的档位会解析出一个字面量 `claude-fable-5` —— DeepSeek 会静默换成自己的模型，其他家则直接报错。**这个名字还会写进系统提示词**（「你是名为 Fable 5 的模型」），所以模型自己也被告知了错误的身份。
+- **修复：`/model` 会把 Anthropic 的模型 id 当成可选项列给第三方用户。** 现在第三方会话只列出四个档位（haiku / sonnet / opus / fable）加上 provider 自己的目录；没有配置模型的档位会直接写明「no model configured」，而不是伪装成一个能用的 Claude 模型。
+- Bedrock、Vertex、Foundry **不受影响**：它们跑的确实是 Claude，模型名和选项列表保持原样。
+
 ## 2.32.0 - 2026-08-07
 
 2.31.0 的分层模型设置对第三方 provider 基本是失效的，这一版把它修好并搬进 `/model`。DeepSeek 用户受影响最大。
