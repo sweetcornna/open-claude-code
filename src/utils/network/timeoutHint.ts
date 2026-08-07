@@ -25,9 +25,7 @@
  */
 
 /** Env var that plausibly governs the error, or null when none does. */
-export type TimeoutHintEnvVar =
-  | 'API_TIMEOUT_MS'
-  | 'CLAUDE_STREAM_IDLE_TIMEOUT_MS'
+type TimeoutHintEnvVar = 'API_TIMEOUT_MS' | 'CLAUDE_STREAM_IDLE_TIMEOUT_MS'
 
 /** claude.ts's own idle watchdog — governed by its own variable. */
 const IDLE_WATCHDOG_PATTERN =
