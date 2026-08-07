@@ -45,16 +45,24 @@ const CHANGELOG = join(PROJECT_ROOT, 'CHANGELOG.md')
 const RELEASE_BRANCH = 'main'
 
 /**
- * Deliberately not the full unit suite: `bun test` has pre-existing
- * order-dependent env pollution failures on Linux, which is exactly why
- * publish-npm.yml gates on the integration suite instead. typecheck and the
- * integration tests mirror that workflow; check:cycles is the local stand-in
- * for the ratchet step ci.yml runs (publish does not repeat it).
+ * Mirrors what publish-npm.yml will run, so a release that would fail the
+ * workflow fails here first — before the tag exists.
+ *
+ * The suite runs SHARDED (scripts/test-shards.sh), matching the workflow
+ * rather than the plain `bun test` that precheck uses. Sharding per directory
+ * is what makes the suite deterministic on a Linux runner; running it
+ * unsharded here would gate on a different execution mode than the one that
+ * actually decides whether publish succeeds.
+ *
+ * This used to stop at `bun test tests/integration` because the full suite had
+ * order-dependent failures on Linux. That cause is gone — the mock-hygiene
+ * backlog is at zero and the ratchet guards it.
  */
 const GATES: ReadonlyArray<{ label: string; argv: string[] }> = [
   { label: 'typecheck', argv: ['bun', 'run', 'typecheck'] },
   { label: 'cycle ratchet', argv: ['bun', 'run', 'check:cycles'] },
-  { label: 'integration tests', argv: ['bun', 'test', 'tests/integration'] },
+  { label: 'mock hygiene ratchet', argv: ['bun', 'run', 'check:mock-hygiene'] },
+  { label: 'full test suite (sharded)', argv: ['./scripts/test-shards.sh'] },
 ]
 
 function log(message: string): void {

@@ -182,7 +182,8 @@ git push origin main --follow-tags # 这一步才真正发布
 
 **多语言**：`CHANGELOG.md` 是规范源，也是工具链唯一解析的那份（`parseChangelog` → 应用内「更新说明」、GitHub Release 正文）。`CHANGELOG.en.md` 与 `CHANGELOG.ja.md` 是它的译本，随发布一起更新，格式保持一致但**不参与**工具链。译本缺失不会阻塞发布，但补上之前不要发下一个版本 —— 语种一旦落后就再也追不回来。
 - **格式由解析器约束。** `## <semver>` 或 `## <semver> - <日期>` 作版本标题，条目用顶层 `- `；嵌套列表会被 `parseChangelog` 拍平。写坏了不会报错，只是用户在应用内看不到条目。
-- **发布门禁不含全量单测**，这是有意的：`bun test` 在 Linux runner 上有既有的顺序性 env 污染失败（详见 [`CLAUDE.md`](CLAUDE.md) 的发布一节）。脚本跑 `typecheck` + `check:cycles` + `bun test tests/integration` —— 前后两项与 `publish-npm.yml` 的门禁同源，`check:cycles` 是本地补上的（CI 在 `ci.yml` 里跑，publish 不重复）。
+- **发布门禁包含全量单测**（2026-08-07 起）。脚本跑 `typecheck` + `check:cycles` + `check:mock-hygiene` + `./scripts/test-shards.sh`，与 `publish-npm.yml` 同源，所以本地失败 = 工作流也会失败，而且是在打 tag 之前就失败。
+  用的是**分片脚本而不是 `bun test`**：按目录分片是这套测试在 Linux 上能确定性通过的原因（见 [`CLAUDE.md`](CLAUDE.md) 发布一节与脚本头部注释）。`precheck` 仍用不分片的 `bun test`，那是给开发回路的快路径，不是门禁。
 
 ## 12. 文档放哪里
 

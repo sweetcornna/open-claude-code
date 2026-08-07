@@ -39,14 +39,26 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      - name: Run release-surface tests
-        # The full unit suite is CI's job and is currently order-dependent on
-        # Linux (pre-existing Bun mock/env pollution — ~10 files fail under the
-        # runner's file ordering; tracked separately). The release gates on the
-        # contract tests that pin the published surface: cli-golden (command/flag
-        # table via the real CLI) and headless-ndjson (wire format), plus the
-        # typecheck/build/check:bundle/boot-smoke steps around this one.
-        run: bun test tests/integration
+      # Ratchets first: they are seconds, and mock hygiene is the thing that
+      # keeps the suite below deterministic on a Linux runner.
+      - name: Check ratchets
+        run: |
+          bun run check:prompt-purity
+          bun run check:mock-hygiene
+
+      - name: Run full test suite (sharded per directory)
+        # Was `bun test tests/integration` only, because the full suite used to
+        # fail on Linux under the runner's file ordering. That cause is gone:
+        # the mock-hygiene backlog is at zero and ci.yml has been green for 11
+        # consecutive runs on the same sharded loop this step now calls.
+        #
+        # It calls the SHARDED loop, not a plain `bun test`. Sharding is what
+        # made the suite deterministic here; an unsharded run is a different
+        # execution mode that has never been proven on a Linux runner, and a
+        # publish gate that can fail for an unproven reason blocks releases.
+        # tests/integration is one of the shards, so the release-surface
+        # contracts (cli-golden, headless-ndjson) are still covered.
+        run: ./scripts/test-shards.sh
 
       # Build once here so the artifact can be smoke-tested BEFORE npm publish
       # re-builds it via prepublishOnly. check:bundle catches broken chunk links
