@@ -117,9 +117,8 @@ mock.module('@open-claude-code/builtin-tools/tools/AgentTool/UI.js', () => ({
   userFacingNameBackgroundColor: () => 'gray',
 }))
 
-mock.module('../../session/messageQueueManager', createMessageQueueManagerMock)
 mock.module(
-  '../../session/messageQueueManager.js',
+  'src/utils/session/messageQueueManager.js',
   createMessageQueueManagerMock,
 )
 

@@ -62,7 +62,7 @@
 
 import { Glob } from 'bun'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 
 const PROJECT_ROOT = join(import.meta.dir, '..')
 const BUDGET_FILE = join(PROJECT_ROOT, 'scripts', 'mock-hygiene-budget.json')
@@ -341,11 +341,32 @@ function findExtensionCollisions(files: Set<string>): Map<string, Set<string>> {
     )) {
       const specifier = match[1]
       if (specifier === undefined || !isInternalSpecifier(specifier)) continue
+      // Three spellings, one registry entry: `x.ts`, `x.js` and bare `x` all
+      // resolve to the same module — the bare form was verified the same way
+      // as the extension pair (register `./target`, import `./target.ts`,
+      // get the mock). So "no extension" is a variant like any other.
+      //
+      // Relative specifiers are resolved against the mocking file so
+      // `../../session/messageQueueManager` and the alias form
+      // `src/utils/session/messageQueueManager.js` compare as one module —
+      // otherwise the most common way to spell the same target twice slips
+      // straight through.
+      //
+      // Known gap: `src/foo` and `src/foo/index.ts` also resolve alike but
+      // normalise differently here. Not worth modelling — it needs the
+      // resolver, and the extension case is the one that actually occurred.
       const parsed = /^(.*)\.(ts|tsx|js|jsx)$/.exec(specifier)
-      if (!parsed?.[1] || !parsed[2]) continue
-      const seen = byModule.get(parsed[1]) ?? new Set<string>()
-      seen.add(parsed[2])
-      byModule.set(parsed[1], seen)
+      const bare = parsed?.[1] ?? specifier
+      const module = bare.startsWith('.')
+        ? relative(
+            PROJECT_ROOT,
+            resolve(dirname(join(PROJECT_ROOT, file)), bare),
+          ).replaceAll('\\', '/')
+        : bare
+      const extension = parsed?.[2] ?? '(none)'
+      const seen = byModule.get(module) ?? new Set<string>()
+      seen.add(extension)
+      byModule.set(module, seen)
     }
   }
   return new Map([...byModule].filter(([, exts]) => exts.size > 1))
