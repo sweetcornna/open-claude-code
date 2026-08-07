@@ -1,5 +1,6 @@
 import {
   isDeepSeekTuningActiveForModel,
+  resolveDeepSeekReasoningEffort,
   resolveDeepSeekTemperature,
 } from '../../utils/model/deepseekTuning.js'
 import type {
@@ -460,6 +461,28 @@ function configureEffortParams(
   model: string,
 ): void {
   if (!modelSupportsEffort(model) || 'effort' in outputConfig) {
+    return
+  }
+
+  // DeepSeek reaches this path through its Anthropic-compatible endpoint, and
+  // its ladder is three rungs (low/high/max) where occ's is five. The endpoint
+  // accepts `medium`/`xhigh` without complaint — measured 2026-08-07, no error
+  // and no measurable change — which is the bad case, not the good one: an
+  // undefined rung silently falls back to DeepSeek's own default while the
+  // status line goes on claiming the level the user picked. Folding here makes
+  // /effort mean the same thing on both DeepSeek wires; the chat wire has
+  // collapsed onto the same table since the tuning gate was introduced.
+  const isDeepSeek = isDeepSeekTuningActiveForModel(
+    model,
+    process.env.ANTHROPIC_BASE_URL,
+  )
+  if (isDeepSeek) {
+    outputConfig.effort = resolveDeepSeekReasoningEffort(effortValue) as
+      | 'high'
+      | 'medium'
+      | 'low'
+      | 'max'
+    betas.push(EFFORT_BETA_HEADER)
     return
   }
 

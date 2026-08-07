@@ -61,7 +61,7 @@ describe('buildTierSettings on a first setup', () => {
     expect(patch.haiku?.contextTokens).toBe(200_000)
     expect(patch.opus?.contextTokens).toBe(1_000_000)
     expect(patch.fable?.contextTokens).toBe(1_000_000)
-    expect(patch.sonnet?.effort).toBe('high')
+    expect(patch.sonnet?.effort).toBe('xhigh')
   })
 
   test('an explicit value is applied to every tier', () => {

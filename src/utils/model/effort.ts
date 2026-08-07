@@ -64,6 +64,35 @@ export function modelSupportsEffort(modelOrAlias: string): boolean {
   if (getAPIProvider() === 'openai' && isChatGPTCodexReasoningModel(model)) {
     return true
   }
+  // Every DeepSeek checkpoint runs the three-rung reasoning_effort ladder, so
+  // the gate is the family, not a list of checkpoints. Naming only
+  // `deepseek-v4-pro`/`-flash` missed the two ids DeepSeek's own docs tell
+  // people to configure — `deepseek-chat` and `deepseek-reasoner` — and those
+  // sessions fell through to the third-party `false` below. The wire kept
+  // sending a rung anyway (resolveDeepSeekReasoningEffort defaults to `max`),
+  // so /effort and the status line went dark while the request was still being
+  // steered: the display/wire divergence this function warns about twice above.
+  // Base URL as a second signal, for a deployment that renames the checkpoint.
+  if (
+    isDeepSeekModelOrAlias(model) ||
+    isDeepSeekBaseURL(process.env.OPENAI_BASE_URL) ||
+    isDeepSeekBaseURL(process.env.ANTHROPIC_BASE_URL)
+  ) {
+    return true
+  }
+  // Gemini steers through the thinking budget, Grok through its own two-rung
+  // ladder — see services/api/{gemini,grok}/reasoning.ts. Both used to answer
+  // `false` here through the third-party fallback below, which hid the control
+  // for the one reason that was actually true at the time: nothing was mapped.
+  // Now that something is, the answer has to change with it, or /effort stays
+  // greyed out over a lane that would honour it.
+  //
+  // Grok is model-scoped because the grok-4 reasoning models REJECT
+  // `reasoning_effort`; offering a control there would advertise a preference
+  // the request cannot carry.
+  if (m.startsWith('gemini') || m.includes('grok-3-mini')) {
+    return true
+  }
   // Supported by a subset of Claude 4 models
   if (
     m.includes('fable-5') ||
@@ -71,11 +100,7 @@ export function modelSupportsEffort(modelOrAlias: string): boolean {
     m.includes('sonnet-5') ||
     m.includes('opus-4-7') ||
     m.includes('opus-4-6') ||
-    m.includes('sonnet-4-6') ||
-    m.includes('deepseek-v4-pro') ||
-    // v4-flash is the DeepSeek model that actually honours all three
-    // reasoning_effort rungs (v4-pro coerces `low` to `high` server-side).
-    m.includes('deepseek-v4-flash')
+    m.includes('sonnet-4-6')
   ) {
     return true
   }

@@ -37,6 +37,8 @@ import {
   convertToolsToLangfuse,
 } from '../../../services/langfuse/convert.js'
 import type { Options } from '../claude.js'
+import { resolveAppliedEffort } from '../../../utils/model/effort.js'
+import { resolveGrokReasoningEffort } from './reasoning.js'
 import { createAssistantAPIErrorMessage } from '../../../utils/messages.js'
 import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
 import { isUserAbort } from '../userAbort.js'
@@ -110,6 +112,11 @@ export async function* queryModelGrok(
       10,
     )
 
+    const grokReasoningEffort = resolveGrokReasoningEffort(
+      grokModel,
+      resolveAppliedEffort(options.model, options.effortValue),
+    )
+
     const stream = await client.chat.completions.create(
       {
         model: grokModel,
@@ -125,6 +132,10 @@ export async function* queryModelGrok(
         ...(options.temperatureOverride !== undefined && {
           temperature: options.temperatureOverride,
         }),
+        // Only the grok-3-mini family takes this; the grok-4 reasoning models
+        // reject it, so the resolver returns undefined for them and the body is
+        // byte-identical to what it has always been.
+        ...(grokReasoningEffort && { reasoning_effort: grokReasoningEffort }),
       } as ChatCompletionCreateParamsStreaming,
       {
         signal,

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
   isDeepSeekTuningActiveForModel,
+  resolveDeepSeekReasoningEffort,
   resolveDeepSeekTemperature,
 } from '../../../utils/model/deepseekTuning.js'
+import { modelSupportsEffort } from '../../../utils/model/effort.js'
 
 /**
  * DeepSeek now reaches occ through its Anthropic-compatible endpoint
@@ -82,5 +84,38 @@ describe('temperature rule', () => {
   test('DEEPSEEK_TEMPERATURE opts out per-session', () => {
     process.env.DEEPSEEK_TEMPERATURE = '0.3'
     expect(resolveDeepSeekTemperature({ enableThinking: false })).toBe(0.3)
+  })
+})
+
+describe('effort rung on the Anthropic path', () => {
+  test('every DeepSeek checkpoint is effort-capable, not just v4-*', () => {
+    // `deepseek-chat` and `deepseek-reasoner` are the ids DeepSeek's own docs
+    // tell people to configure. Naming only the v4 checkpoints made those
+    // sessions report "no effort support" while the wire kept sending a rung —
+    // /effort and the status line went dark over a steered request.
+    for (const model of [
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+    ]) {
+      expect(modelSupportsEffort(model)).toBe(true)
+    }
+  })
+
+  test('the five rungs collapse onto DeepSeek three, both wires alike', () => {
+    // Measured 2026-08-07 against api.deepseek.com/anthropic: all five values
+    // are ACCEPTED with no error and no measurable change. That is the bad
+    // case — an undefined rung silently falls back to DeepSeek's own default
+    // while the status line claims the level the user picked.
+    expect(resolveDeepSeekReasoningEffort('low')).toBe('low')
+    expect(resolveDeepSeekReasoningEffort('medium')).toBe('high')
+    expect(resolveDeepSeekReasoningEffort('high')).toBe('high')
+    expect(resolveDeepSeekReasoningEffort('xhigh')).toBe('max')
+    expect(resolveDeepSeekReasoningEffort('max')).toBe('max')
+  })
+
+  test('an unset effort still reaches the top rung', () => {
+    expect(resolveDeepSeekReasoningEffort(undefined)).toBe('max')
   })
 })

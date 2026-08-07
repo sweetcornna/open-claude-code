@@ -12,11 +12,14 @@
 | --- | --- | --- |
 | DeepSeek | `max` | 1M |
 | GPT | `xhigh` | 272k |
-| Claude opus / fable | `high` | 1M |
-| Claude sonnet / haiku | `high` | 200k |
+| Claude opus / fable | `xhigh` | 1M |
+| Claude sonnet / haiku | `xhigh` | 200k |
+| Gemini / Grok | `high` | 200k |
 | 其他（GLM / Qwen / Kimi / 本地 vLLM …） | `xhigh` | 200k |
 
 Claude 的 sonnet 和 haiku **只降窗口、不降 effort**。那条例外针对的是能力（这两档没有 1M 档位），不是偏好（该想多少还想多少）。
+
+Gemini 和 Grok 取 `high`，因为它们是唯二**没有五档词汇**、要靠 occ 映射到别的参数上的家族（分别是思考预算和两档梯子）。`high` 被这两个映射定义为**恒等档**——发出去的东西和 occ 开始介入之前完全一样——所以打开映射不会悄悄把存量会话重新调过一遍。见「effort 怎么落到各家协议上」。
 
 两道硬约束由调用方施加，不在默认表里：
 
@@ -36,6 +39,27 @@ env 留在最上面是有意的：`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 被定义为�
 `CLAUDE_CODE_EFFORT_LEVEL` 同理，会话内的 `/effort` 也仍然压过分层配置。
 
 **档位映射本身以用户手配的为准**，对所有 provider 一致：`OPENAI_DEFAULT_<TIER>_MODEL` / `ANTHROPIC_DEFAULT_<TIER>_MODEL` 等显式配置压过任何内置映射，包括 DeepSeek Anthropic 线自带的 `claude-opus*` → v4-pro / `claude-sonnet*`·`claude-haiku*` → v4-flash。
+
+## effort 怎么落到各家协议上
+
+occ 的五档（`low`/`medium`/`high`/`xhigh`/`max`）只有 Anthropic 一家原生认。其余每家都要映射，且**映射表是各自 provider 目录下的唯一权威**：
+
+| provider | 字段 | 映射 |
+| --- | --- | --- |
+| Anthropic（含 Bedrock / Vertex / Foundry） | `output_config.effort` | 原样发；五档就是它的词汇 |
+| DeepSeek（**两条线都是**） | chat 线 `reasoning_effort` / Anthropic 线 `output_config.effort` | 折成三档：low→low，medium·high→high，xhigh·max→max，未设→max |
+| OpenAI responses | `reasoning.effort` | 原样发（该线认 xhigh/max） |
+| OpenAI chat | `reasoning_effort` | xhigh·max 夹到 high；只对 reasoning 模型发 |
+| Gemini | `generationConfig.thinkingConfig.thinkingBudget` | 按倍率缩放：0.25 / 0.5 / **1（恒等）** / 1.5 / 2，下限 128 token |
+| Grok | `reasoning_effort` | 折成两档：low→low，其余→high；**只对 `grok-3-mini` 系发** |
+
+三个容易踩的点：
+
+- **DeepSeek 的 Anthropic 线也要折。** 实测（2026-08-07）该端点对五个值全部返回 200、不报错、也测不出差异 —— 这是坏消息不是好消息：它没定义的档位会静默回落到自己的默认，而状态栏还在显示用户选的那一档。折叠让 `/effort` 在 DeepSeek 两条线上含义一致。
+- **Gemini 没有 effort 词汇**，唯一的旋钮就是思考预算，所以是缩放而不是加字段 —— 请求形状不变，不可能把本来能用的端点打成 400。`high` 是恒等档且是该家族的出厂默认，所以用户没动过 `/effort` 的会话发出去的字节和以前一模一样。
+- **Grok-4 系拒收 `reasoning_effort`**，所以那几个模型 `modelSupportsEffort()` 返回 false、界面上根本不给选。这不是漏做，是那个参数在那个模型上不存在。
+
+`modelSupportsEffort()` 是显示与发送的**同一个**判据。两者分叉过一次（DeepSeek `deepseek-chat` 判为不支持而 chat 线照发 `max`），结果是界面装作没有这个旋钮、请求却一直被它操纵。改任何一边都要同时改另一边。
 
 ## 档位从模型 id 反查
 

@@ -50,7 +50,7 @@ afterEach(() => {
 
 describe('per-tier overrides', () => {
   test('fall back to the provider default when unset', () => {
-    expect(getTierEffort('claude-opus-5')).toBe('high')
+    expect(getTierEffort('claude-opus-5')).toBe('xhigh')
     expect(getTierContextTokens('claude-sonnet-5')).toBe(200_000)
     expect(getTierEffort('deepseek-v4-pro')).toBe('max')
   })
@@ -63,7 +63,7 @@ describe('per-tier overrides', () => {
     expect(getTierEffort('claude-opus-5')).toBe('low')
     expect(getTierContextTokens('claude-opus-5')).toBe(128_000)
     // A different tier is untouched.
-    expect(getTierEffort('claude-sonnet-5')).toBe('high')
+    expect(getTierEffort('claude-sonnet-5')).toBe('xhigh')
     expect(getTierContextTokens('claude-sonnet-5')).toBe(200_000)
   })
 
@@ -137,7 +137,7 @@ describe('per-tier overrides', () => {
       modelSettings: { fable: { contextTokens: 500_000 } },
     } as SettingsJson
     expect(getResolvedTierSettings('claude-fable-5')).toEqual({
-      effort: 'high',
+      effort: 'xhigh',
       contextTokens: 500_000,
     })
   })

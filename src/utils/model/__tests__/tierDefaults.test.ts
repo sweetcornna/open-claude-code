@@ -48,9 +48,21 @@ describe('getTierDefaults', () => {
     }
   })
 
-  test('Claude sonnet and haiku keep 200k but still think at high', () => {
+  test('Claude sonnet and haiku keep 200k but think as hard as opus', () => {
     // The exception is about window capability, not about effort preference.
     for (const model of ['claude-sonnet-5', 'claude-haiku-4-5']) {
+      expect(getTierDefaults(model)).toEqual({
+        effort: 'xhigh',
+        contextTokens: CONTEXT_200K,
+      })
+    }
+  })
+
+  test('Gemini and Grok default to the rung their mapping treats as identity', () => {
+    // `high` is what services/api/{gemini,grok}/reasoning.ts define as "send
+    // what the provider would have done anyway", so turning the mapping on does
+    // not silently re-tune every existing session.
+    for (const model of ['gemini-3.1-pro', 'grok-3-mini-fast']) {
       expect(getTierDefaults(model)).toEqual({
         effort: 'high',
         contextTokens: CONTEXT_200K,

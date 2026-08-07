@@ -18,6 +18,8 @@ import {
 } from '../../../utils/messages.js'
 import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
 import { isUserAbort } from '../userAbort.js'
+import { resolveAppliedEffort } from '../../../utils/model/effort.js'
+import { applyGeminiEffortToThinkingBudget } from './reasoning.js'
 import { updateOpenAIUsage } from '../openai/openaiShared.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/model/modelCost.js'
@@ -125,7 +127,13 @@ export async function* queryModelGemini(
             thinkingConfig: {
               includeThoughts: true,
               ...(thinkingConfig.type === 'enabled' && {
-                thinkingBudget: thinkingConfig.budgetTokens,
+                // Gemini has no effort vocabulary; the budget IS the knob, so
+                // the ladder scales it. `high` is the identity and the family
+                // default, so an untouched session sends what it always did.
+                thinkingBudget: applyGeminiEffortToThinkingBudget(
+                  thinkingConfig.budgetTokens,
+                  resolveAppliedEffort(options.model, options.effortValue),
+                ),
               }),
             },
           }),

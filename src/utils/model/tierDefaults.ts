@@ -8,16 +8,25 @@
  * and neither knew that a sensible default depends on which provider is behind
  * the alias.
  *
- * | family            | effort | context |
- * | ----------------- | ------ | ------- |
- * | DeepSeek          | max    | 1M      |
- * | GPT               | xhigh  | 272k    |
- * | Claude opus/fable | high   | 1M      |
- * | Claude sonnet/haiku | high | 200k    |
- * | anything else     | xhigh  | 200k    |
+ * | family              | effort | context |
+ * | ------------------- | ------ | ------- |
+ * | DeepSeek            | max    | 1M      |
+ * | GPT                 | xhigh  | 272k    |
+ * | Gemini / Grok       | high   | 200k    |
+ * | Claude opus/fable   | xhigh  | 1M      |
+ * | Claude sonnet/haiku | xhigh  | 200k    |
+ * | anything else       | xhigh  | 200k    |
  *
- * Claude sonnet and haiku keep `high` — the exception is about the window,
- * which is a capability, not about how hard to think, which is a preference.
+ * Claude sonnet and haiku take the same effort as opus — the tier difference is
+ * about the window, which is a capability, not about how hard to think, which
+ * is a preference.
+ *
+ * Gemini and Grok are the two families whose effort knob occ maps onto a
+ * provider parameter with no five-rung vocabulary of its own (a thinking budget
+ * and a two-rung ladder respectively). `high` is the rung those mappings define
+ * as the identity — the value that reproduces what the provider did before occ
+ * started steering it — so an existing session is byte-identical until its user
+ * picks something else.
  *
  * Two hard limits are applied by the callers, not here:
  *   - effort is only ever SENT when `modelSupportsEffort(model)` is true, so a
@@ -38,7 +47,13 @@ import type { ModelTier } from './modelTier.js'
 export type TierEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 /** Provider families that get their own defaults. */
-export type ProviderFamily = 'deepseek' | 'gpt' | 'claude' | 'other'
+export type ProviderFamily =
+  | 'deepseek'
+  | 'gpt'
+  | 'claude'
+  | 'gemini'
+  | 'grok'
+  | 'other'
 
 export const CONTEXT_200K = 200_000
 export const CONTEXT_272K = 272_000
@@ -60,6 +75,8 @@ export function getProviderFamily(model: string): ProviderFamily {
   const lower = model.toLowerCase()
   if (lower.includes('deepseek')) return 'deepseek'
   if (lower.startsWith('gpt-') || lower.includes('codex')) return 'gpt'
+  if (lower.startsWith('gemini')) return 'gemini'
+  if (lower.startsWith('grok')) return 'grok'
   if (
     lower.includes('claude') ||
     lower.includes('opus') ||
@@ -86,6 +103,9 @@ export function getTierDefaults(
       return { effort: 'max', contextTokens: CONTEXT_1M }
     case 'gpt':
       return { effort: 'xhigh', contextTokens: CONTEXT_272K }
+    case 'gemini':
+    case 'grok':
+      return { effort: 'high', contextTokens: CONTEXT_200K }
     case 'claude': {
       // The tier argument wins when the caller knows which alias was asked
       // for; otherwise sniff the id. Sonnet and Haiku do not get the 1M
@@ -93,7 +113,7 @@ export function getTierDefaults(
       const resolved = tier ?? sniffClaudeTier(model)
       const wide = resolved === 'opus' || resolved === 'fable'
       return {
-        effort: 'high',
+        effort: 'xhigh',
         contextTokens: wide ? CONTEXT_1M : CONTEXT_200K,
       }
     }
