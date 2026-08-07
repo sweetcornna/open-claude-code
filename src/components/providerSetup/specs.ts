@@ -51,6 +51,8 @@ export const TIER_LABELS: Record<TierField, string> = {
 export type ProviderSetupValues = {
   model: string
   maxContext: string
+  /** One of EFFORT_LEVELS, or '' for "each model's family default". */
+  effort: string
 } & Record<TierField, string>
 
 export type ProviderSetupContext = {

@@ -41,6 +41,10 @@ import {
   TIER_STATUS_KEYS,
 } from './state.js';
 import { parseMaxContextInput } from './maxContext.js';
+import { buildTierSettings, prefillTierFields } from './tierPersistence.js';
+import { EFFORT_LEVELS } from 'src/utils/model/effort.js';
+import type { TierEffort } from 'src/utils/model/tierDefaults.js';
+import { getSettingsForSource } from 'src/utils/settings/settings.js';
 
 export type ProviderSetupWizardProps = {
   status: ProviderSetupStatus;
@@ -296,7 +300,7 @@ export function buildModelStep(
     apiKey: status.apiKey,
     ...(status.wireApi ? { wireApi: status.wireApi } : {}),
     model: process.env[spec.env.model] ?? '',
-    maxContext: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
+    ...prefillTierFields(getSettingsForSource('userSettings')?.modelSettings),
     haikuModel: process.env[spec.env.tiers.haiku_model] ?? '',
     sonnetModel: process.env[spec.env.tiers.sonnet_model] ?? '',
     opusModel: process.env[spec.env.tiers.opus_model] ?? '',
@@ -349,6 +353,7 @@ function ModelStep({
     ...(showsDefaultModel ? (['model'] as const) : []),
     ...spec.tiers,
     'max_context',
+    'effort',
   ];
 
   const [values, setValues] = useState<ProviderSetupValues>(() => ({
@@ -358,16 +363,22 @@ function ModelStep({
     opus_model: status.opusModel,
     fable_model: status.fableModel,
     maxContext: status.maxContext,
+    effort: status.effort,
   }));
   const [activeField, setActiveField] = useState<ProviderModelField>(status.activeField);
   const [cursorOffset, setCursorOffset] = useState(() => valueOf(status, status.activeField).length);
   const inputColumns = Math.max(20, useTerminalSize().columns - 24);
 
-  const getValue = (field: ProviderModelField): string => (field === 'max_context' ? values.maxContext : values[field]);
+  const getValue = (field: ProviderModelField): string =>
+    field === 'max_context' ? values.maxContext : field === 'effort' ? values.effort : values[field];
 
   const setValue = (field: ProviderModelField, value: string): void =>
     setValues(previous =>
-      field === 'max_context' ? { ...previous, maxContext: value } : { ...previous, [field]: value },
+      field === 'max_context'
+        ? { ...previous, maxContext: value }
+        : field === 'effort'
+          ? { ...previous, effort: value }
+          : { ...previous, [field]: value },
     );
 
   const retryStatus = useCallback(
@@ -381,6 +392,7 @@ function ModelStep({
         ...(status.providerLabel ? { providerLabel: status.providerLabel } : {}),
         model: values.model,
         maxContext: values.maxContext,
+        effort: values.effort,
         haikuModel: values.haiku_model,
         sonnetModel: values.sonnet_model,
         opusModel: values.opus_model,
@@ -417,7 +429,7 @@ function ModelStep({
   // alongside a focused Select meant arrows moved to the next FIELD instead of
   // the next OPTION — the picker could not be driven at all. Tab keeps working
   // on text fields, where nothing else wants those keys.
-  const activeFieldIsSelector = status.entryMode === 'catalog' && activeField !== 'max_context';
+  const activeFieldIsSelector = usesSelector(status.entryMode, activeField);
 
   // Esc stays here unconditionally: the Select's own onCancel prop does not
   // fire in this layout, so disabling this left Esc dead on every picker field.
@@ -461,9 +473,17 @@ function ModelStep({
       return;
     }
 
+    // The max-context answer goes to settings.modelSettings, not to
+    // CLAUDE_CODE_MAX_CONTEXT_TOKENS. That key sits ABOVE the per-tier layer on
+    // purpose — it is the last-resort correction for a window nobody can detect
+    // — so a value written there at login would silently outrank everything the
+    // user later sets in /model. Any value an older occ left behind is deleted
+    // here for the same reason: leaving it would make the setting they just
+    // chose invisible. One-way, and the field carries the old value forward
+    // (see prefillTierFields), so nothing is lost.
     const env: Record<string, string | undefined> = {
       ...(spec.extraEnv?.(status) ?? {}),
-      CLAUDE_CODE_MAX_CONTEXT_TOKENS: maxContextValue,
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: undefined,
     };
     // An empty Base URL stays empty: writing the provider default would pin the
     // session to today's endpoint instead of following the provider's own.
@@ -476,9 +496,28 @@ function ModelStep({
       env[spec.env.tiers[tier]] = values[tier].trim() || undefined;
     }
 
+    const existingTierSettings = getSettingsForSource('userSettings')?.modelSettings;
+    const modelSettings = buildTierSettings({
+      tierModels: {
+        haiku_model: values.haiku_model,
+        sonnet_model: values.sonnet_model,
+        opus_model: values.opus_model,
+        fable_model: values.fable_model,
+      },
+      defaultModel: showsDefaultModel ? values.model : '',
+      contextTokens: maxContextValue === undefined ? undefined : Number(maxContextValue),
+      effort: (values.effort || undefined) as TierEffort | undefined,
+      existing: existingTierSettings,
+    });
+
     const { error } = updateSettingsForSource('userSettings', {
       modelType: spec.modelType,
       env: env as unknown as Record<string, string>,
+      ...(Object.keys(modelSettings).length > 0 ? { modelSettings } : {}),
+      // The flat effortLevel seeds AppState, which outranks the per-tier layer.
+      // Written together they would produce the worst outcome: a value chosen
+      // here that changes nothing. Same one-way migration /model-settings does.
+      ...(values.effort ? { effortLevel: undefined } : {}),
     } as unknown as Parameters<typeof updateSettingsForSource>[1]);
     if (error) {
       onError('Failed to save settings. Please try again.', retryStatus(activeField));
@@ -507,14 +546,19 @@ function ModelStep({
   const renderField = (field: ProviderModelField, label: string, optional: boolean): React.ReactNode => {
     const active = activeField === field;
     const value = getValue(field);
-    const usesSelector = status.entryMode === 'catalog' && field !== 'max_context';
-    // A value the catalog does not list is still offered, so reopening the
-    // setting on a stale cache cannot silently clear a tier the user configured on purpose.
+    const isSelector = usesSelector(status.entryMode, field);
+    // Effort is a fixed five-rung ladder, so it is a picker whether or not the
+    // endpoint answered /models — nothing about it comes from the catalog.
     const configuredButUnlisted =
-      value && !modelOptions.some(option => option.value === value) ? [{ label: value, value }] : [];
-    const options = optional
-      ? [{ label: '(not set)', value: '' }, ...modelOptions, ...configuredButUnlisted]
-      : [...modelOptions, ...configuredButUnlisted];
+      field !== 'effort' && value && !modelOptions.some(option => option.value === value)
+        ? [{ label: value, value }]
+        : [];
+    const options =
+      field === 'effort'
+        ? EFFORT_OPTIONS
+        : optional
+          ? [{ label: '(not set)', value: '' }, ...modelOptions, ...configuredButUnlisted]
+          : [...modelOptions, ...configuredButUnlisted];
 
     return (
       <Box key={field} flexDirection="column">
@@ -522,9 +566,13 @@ function ModelStep({
           <Text backgroundColor={active ? 'suggestion' : undefined} color={active ? 'inverseText' : undefined}>
             {` ${label} `}
           </Text>
-          {!active && <Text color={value ? 'success' : undefined}>{value || (optional ? '(not set)' : '')}</Text>}
+          {!active && (
+            <Text color={value ? 'success' : undefined}>
+              {value || (field === 'effort' ? '(model default)' : optional ? '(not set)' : '')}
+            </Text>
+          )}
         </Box>
-        {active && usesSelector && (
+        {active && isSelector && (
           <Select
             key={`${field}:${value}`}
             options={options}
@@ -533,12 +581,16 @@ function ModelStep({
             visibleOptionCount={9}
             onChange={selected => {
               setValue(field, selected);
+              if (field === 'effort') {
+                doSave();
+                return;
+              }
               step(1);
             }}
             onCancel={returnToEndpoint}
           />
         )}
-        {active && !usesSelector && (
+        {active && !isSelector && (
           <Box marginLeft={2}>
             <TextInput
               value={value}
@@ -574,18 +626,20 @@ function ModelStep({
           renderField('model', modelRequired ? 'Default model (required)' : 'Default model (optional)', !modelRequired)}
         {spec.tiers.map(tier => renderField(tier, `${TIER_LABELS[tier]} tier model`, true))}
         {renderField('max_context', 'Max context tokens (context window size, e.g. 128000 or 128k)', true)}
+        {renderField('effort', 'Thinking effort', true)}
       </Box>
       <Text dimColor>
         {showsDefaultModel
           ? 'The default model handles requests unless a tier override is configured. '
           : 'Each tier is what /model haiku · sonnet · opus · fable resolves to; any other model stays reachable by its own id. '}
-        Maximum context tokens controls when automatic context compaction begins — leave it empty to use each
-        model&apos;s own window.
+        Maximum context tokens controls when automatic context compaction begins. Both it and thinking effort are saved
+        per tier — leave them empty to store each model&apos;s own family default, and adjust either later from /model
+        or /model-settings.
       </Text>
       <Text dimColor>
         {status.entryMode === 'catalog'
-          ? `Use ↑↓ and Enter to choose each model. Enter on maximum context tokens saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`
-          : `Enter or Tab moves to the next field. Enter on maximum context tokens saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`}
+          ? `Use ↑↓ and Enter to choose each model. Enter on thinking effort saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`
+          : `Enter or Tab moves to the next field. Enter on thinking effort saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`}
       </Text>
     </Box>
   );
@@ -594,5 +648,24 @@ function ModelStep({
 function valueOf(status: ProviderModelSetupStatus, field: ProviderModelField): string {
   if (field === 'model') return status.model;
   if (field === 'max_context') return status.maxContext;
+  if (field === 'effort') return status.effort;
   return status[TIER_STATUS_KEYS[field as TierField]];
 }
+
+/**
+ * Which fields are driven by a Select rather than a text input.
+ *
+ * Model fields depend on the catalog request having succeeded; effort never
+ * does — its options are occ's own five rungs — and max context is free text
+ * by nature.
+ */
+function usesSelector(entryMode: ProviderModelSetupStatus['entryMode'], field: ProviderModelField): boolean {
+  if (field === 'effort') return true;
+  if (field === 'max_context') return false;
+  return entryMode === 'catalog';
+}
+
+const EFFORT_OPTIONS: { label: string; value: string }[] = [
+  { label: '(model default)', value: '' },
+  ...EFFORT_LEVELS.map(level => ({ label: level, value: level })),
+];

@@ -1008,7 +1008,12 @@ function OAuthStatusMessage({
           entryMode: 'catalog',
           models: provider.models.map(m => ({ id: m.id, displayName: m.label })),
           model: '',
+          // Both empty: the model step turns that into each tier's own family
+          // default and persists it per tier, which is the right answer here —
+          // one preset can mix windows across its catalog, so a single value
+          // typed once would be wrong for at least one tier.
           maxContext: '',
+          effort: '',
           haikuModel: provider.tiers.haiku,
           sonnetModel: provider.tiers.sonnet,
           opusModel: provider.tiers.opus,

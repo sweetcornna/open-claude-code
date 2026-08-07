@@ -9,7 +9,7 @@ import type { OpenAIWireApi, ProviderSetupKind, TierField } from './specs.js'
 
 export type EndpointField = 'base_url' | 'api_key'
 
-export type ProviderModelField = 'model' | TierField | 'max_context'
+export type ProviderModelField = 'model' | TierField | 'max_context' | 'effort'
 
 export type ProviderEndpointSetupStatus = {
   state: 'provider_endpoint_setup'
@@ -33,6 +33,8 @@ type ProviderModelSetupBase = {
   providerLabel?: string
   model: string
   maxContext: string
+  /** One of EFFORT_LEVELS, or '' for "each model's family default". */
+  effort: string
   haikuModel: string
   sonnetModel: string
   opusModel: string

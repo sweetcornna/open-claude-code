@@ -50,6 +50,8 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 ## 三、协议（wire API）
 
 > **DeepSeek 是例外**：检测到 `OPENAI_BASE_URL` 指向 `api.deepseek.com` 时，occ 自动改走它的 **Anthropic 兼容端点**（`/anthropic`），因为那是它三条协议里唯一同时提供原生 thinking 块、零格式转换和**服务端 web 搜索**的一条。配置文件一字不改，存量配置继续有效。显式设置 `OPENAI_WIRE_API=chat|responses` 会覆盖这个选择，`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` 则完全关闭它。详见 `src/utils/model/deepseekWire.ts`。
+>
+> 代价是 `getAPIProvider()` 对这类会话返回 `firstParty` —— 那是**协议**的答案。「这是不是 Anthropic 自家的模型目录」是**另一个问题**，问 `isThirdPartyModelCatalog()`（`providers.ts`）。仓库里约四十处把两者写成了同一个表达式，于是 DeepSeek 用户的 `/model` 列出 Opus 5 并标着 `$5/$25 per Mtok`。判断准则：**改造前 DeepSeek 会话是 `provider === 'openai'`，这条线路不得打开任何当时是关着的 Anthropic 专属行为** —— 有意的例外只有协议本身、原生 thinking、prompt 缓存和服务端搜索适配器，都是对真实端点实测过的。定价文案、`/model` 列表、Anthropic 专属 beta 头、legacy 模型迁移、Fast mode、bootstrap 拉取一律问 catalog。
 
 OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions，打 `<base>/chat/completions`）或 `responses`（Responses API，打 `<base>/responses`）。`OPENAI_AUTH_MODE=chatgpt` 强制 responses；Codex 家族模型（id 含 `codex`、GPT-5 世代）在未显式指定时也默认 responses。
 
@@ -86,7 +88,9 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 - auto-compact 阈值（窗口 − 20k 输出预留 − 13k 缓冲）与预测式 compact —— 即"靠近阈值触发 compact"
 - 硬阻断线、statusline 的 `ctx:%`、`/context` 显示
 
-配置面：首启向导 / `/login` 各表单的 **Max ctx** 字段（接受 `128000` / `128k` / `1m`）、`/provider` 档案随家族切换、或直接设环境变量。china preset **不再**写这个键 —— 它的模型窗口按模型查表（见上一节）。
+配置面：`/provider` 档案随家族切换，或直接设环境变量。china preset 不写这个键 —— 它的模型窗口按模型查表（见上一节）。
+
+**首启向导 / `/login` Step 2 的 Max ctx 与 Thinking effort 字段不再写这个键**，改为落进 `settings.modelSettings` 的**分层配置**（见 `docs/zh/features/model-settings.md`）。原因就是上面这条优先级：env 是「探测不到时的最终纠正手段」，写在登录里等于让一个开场值静默压过用户此后在 `/model` 里的每一次调整。保存时会顺带删掉旧版留下的该键（字段会把旧值带过去，不丢）。两个字段留空时写入**各档位自己的家族默认值** —— 于是登录结束后 `/model-settings` 显示的是四个已配置档位，而不是四行含义会随 occ 默认表变化的 `(defaults)`。重跑向导（`/models` 或第二次 `/login`）时留空则**什么都不动**，不会把你在 `/model` 里分档调好的值压平。
 
 **按模型开启 1M 后缀**：`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔模型名/子串，大小写不敏感）。主循环模型解析后命中即自动追加 `[1m]` 后缀，等价于手选 `sonnet[1m]`——走完整的后缀链路（1M 窗口 **+ 1M beta 头**），适用于支持 1M 上下文的 Anthropic 系模型；已带后缀的模型不重复追加。第三方模型只需要窗口数值时，用 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 即可，无需该开关。
 

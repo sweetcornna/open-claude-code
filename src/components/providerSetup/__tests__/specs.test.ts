@@ -32,6 +32,7 @@ function values(overrides: Partial<Values> = {}): Values {
     opus_model: '',
     fable_model: '',
     maxContext: '',
+    effort: '',
     ...overrides,
   }
 }

@@ -6,7 +6,9 @@
  * repeating that — the credentials are already configured, and re-typing an API
  * key to edit an unrelated field is the kind of friction that stops people from
  * touching the setting at all. Everything here is read back out of the same env
- * keys the wizard writes, so there is no second source of truth.
+ * keys the wizard writes, so there is no second source of truth. The two
+ * non-env fields — max context and thinking effort — come back from
+ * `settings.modelSettings`, where the wizard now persists them per tier.
  */
 
 import {
@@ -16,8 +18,10 @@ import {
 import type { CatalogModel } from 'src/services/modelCatalog/types.js'
 import { findChinaProviderByBaseURL } from 'src/utils/model/chinaLlmProviders.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { getSettingsForSource } from 'src/utils/settings/settings.js'
 import { PROVIDER_SETUP_SPECS, type ProviderSetupKind } from './specs.js'
 import type { ProviderModelSetupStatus } from './state.js'
+import { prefillTierFields } from './tierPersistence.js'
 
 /**
  * Which spec describes the session's current provider, or undefined when there
@@ -106,7 +110,10 @@ export function buildModelStepFromEnvironment(
     apiKey: env[spec.env.apiKey] ?? '',
     ...(preset ? { providerLabel: preset.label } : {}),
     model: env[spec.env.model] ?? '',
-    maxContext: env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '',
+    ...prefillTierFields(
+      getSettingsForSource('userSettings')?.modelSettings,
+      env,
+    ),
     haikuModel: env[spec.env.tiers.haiku_model] ?? '',
     sonnetModel: env[spec.env.tiers.sonnet_model] ?? '',
     opusModel: env[spec.env.tiers.opus_model] ?? '',
