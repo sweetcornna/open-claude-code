@@ -1,11 +1,7 @@
 import { logEvent } from '../services/analytics/index.js'
+import { PANEL_GRACE_MS } from '../utils/task/framework.js'
 import { isTerminalTaskStatus } from '../Task.js'
 import type { LocalAgentTaskState } from '../tasks/LocalAgentTask/LocalAgentTask.js'
-
-// Inlined from framework.ts — importing creates a cycle through
-// BackgroundTasksDialog. Keep in sync with PANEL_GRACE_MS there.
-const PANEL_GRACE_MS = 30_000
-
 import type { AppState } from './AppState.js'
 
 // Inline type check instead of importing isLocalAgentTask — breaks the
@@ -121,8 +117,18 @@ export function stopOrDismissAgent(
     const task = prev.tasks[taskId]
     if (!isLocalAgent(task)) return prev
     if (task.status === 'running') {
-      task.abortController?.abort()
-      return prev
+      // A running task is aborted and left for its loop to transition. But if
+      // there is no controller, or it is already aborted, no loop is listening
+      // — pressing x again would be a no-op forever. That was the second half
+      // of the phantom-agent report ("won't go away"): the row was `running`
+      // with an aborted controller and an exited loop. Fall through to the
+      // dismiss path so the user always has a way out, even if some future
+      // leak reintroduces an orphan.
+      const controller = task.abortController
+      if (controller && !controller.signal.aborted) {
+        controller.abort()
+        return prev
+      }
     }
     if (task.evictAfter === 0) return prev
     const viewingThis = prev.viewingAgentTaskId === taskId

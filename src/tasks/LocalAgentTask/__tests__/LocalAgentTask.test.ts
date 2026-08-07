@@ -140,6 +140,7 @@ const {
   updateAgentProgress,
   updateAgentSummary,
   isLocalAgentTask,
+  unregisterAgentForeground,
 } = await import('../LocalAgentTask.js')
 
 // ─── Helpers ───
@@ -641,5 +642,84 @@ describe('updateAgentProgress', () => {
 
     const task = getState().tasks['test-agent-001']
     expect(task.progress.toolUseCount).toBeUndefined()
+  })
+})
+
+describe('unregisterAgentForeground', () => {
+  // Regression: the phantom subagent. The guard here used to be
+  // `task.isBackgrounded`, but the auto-background timer (120s) and Ctrl+B both
+  // write that flag into AppState *before* resolving the background signal. If
+  // the agent's next message had already settled, Promise.race still yielded
+  // 'message', the loop broke, and this ran with the flag set and no
+  // continuation behind it — leaving a `running` task that never got
+  // `notified: true` and was therefore immune to every eviction path in
+  // utils/task/framework.ts.
+
+  test('removes a plain foreground task', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ isBackgrounded: false }) },
+    })
+
+    unregisterAgentForeground('test-agent-001', setAppState as any)
+
+    expect(getState().tasks['test-agent-001']).toBeUndefined()
+  })
+
+  test('removes a task flagged isBackgrounded when the loop did NOT hand off', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ isBackgrounded: true }) },
+    })
+
+    // wasBackgrounded === false: the race resolved as 'message', so nothing
+    // else owns this task.
+    unregisterAgentForeground('test-agent-001', setAppState as any, {
+      handedOffToBackground: false,
+    })
+
+    expect(getState().tasks['test-agent-001']).toBeUndefined()
+  })
+
+  test('leaves the task alone when the loop DID hand off to the background', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: { 'test-agent-001': makeRunningTask({ isBackgrounded: true }) },
+    })
+
+    unregisterAgentForeground('test-agent-001', setAppState as any, {
+      handedOffToBackground: true,
+    })
+
+    // The background continuation owns it and will transition it later.
+    expect(getState().tasks['test-agent-001']).toBeDefined()
+    expect(getState().tasks['test-agent-001'].status).toBe('running')
+  })
+
+  test('runs unregisterCleanup exactly once, outside the state updater', () => {
+    let calls = 0
+    const { setAppState } = createSetAppState({
+      tasks: {
+        'test-agent-001': makeRunningTask({
+          isBackgrounded: true,
+          unregisterCleanup: () => calls++,
+        }),
+      },
+    })
+
+    unregisterAgentForeground('test-agent-001', setAppState as any, {
+      handedOffToBackground: false,
+    })
+
+    expect(calls).toBe(1)
+  })
+
+  test('is a no-op for a task that is not a local agent', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        other: { type: 'local_shell', id: 'other', status: 'running' } as any,
+      },
+    })
+
+    unregisterAgentForeground('other', setAppState as any)
+
+    expect(getState().tasks.other).toBeDefined()
   })
 })

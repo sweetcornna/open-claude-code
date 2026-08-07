@@ -1290,7 +1290,15 @@ export const AgentTool = buildTool({
 
               // Process the message from the race result
               if (raceResult.type !== 'message') {
-                // This shouldn't happen - background case handled above
+                // Reachable when the background signal resolved but the
+                // AppState read above did not show `isBackgrounded` (stale
+                // read, or the task was already evicted). `backgroundPromise`
+                // is settled by then, so every later Promise.race resolves to
+                // 'background' immediately and this `continue` spins: iterator
+                // results get pulled and discarded in a tight loop. Drop the
+                // settled promise out of the race so the next iteration awaits
+                // the message stream again.
+                backgroundPromise = undefined;
                 continue;
               }
               const { result } = raceResult;
@@ -1407,9 +1415,18 @@ export const AgentTool = buildTool({
             // closure owns a separate stop function (stopBackgroundedSummarization).
             stopForegroundSummarization?.();
 
+            // Cancel the auto-background timer FIRST. It used to run ~35 lines
+            // below, after unregisterAgentForeground — so a timer firing in
+            // that window flipped `isBackgrounded` on a task the loop had
+            // already finished with, and the unregister then skipped it,
+            // leaving a phantom `running` agent in the panel.
+            cancelAutoBackground?.();
+
             // Unregister foreground task if agent completed without being backgrounded
             if (foregroundTaskId) {
-              unregisterAgentForeground(foregroundTaskId, rootSetAppState);
+              unregisterAgentForeground(foregroundTaskId, rootSetAppState, {
+                handedOffToBackground: wasBackgrounded,
+              });
               // Notify SDK consumers (e.g. VS Code subagent panel) that this
               // foreground agent is done. Goes through drainSdkEvents() — does
               // NOT trigger the print.ts XML task_notification parser or the LLM loop.
@@ -1440,9 +1457,6 @@ export const AgentTool = buildTool({
             if (!wasBackgrounded) {
               clearDumpState(syncAgentId);
             }
-
-            // Cancel auto-background timer if agent completed before it fired
-            cancelAutoBackground?.();
 
             // Clean up worktree if applicable (in finally to handle abort/error paths)
             // Skip if backgrounded — the background continuation is still running in it

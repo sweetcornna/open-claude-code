@@ -733,16 +733,43 @@ export function backgroundAgentTask(taskId: string, getAppState: () => AppState,
 /**
  * Unregister a foreground agent task when the agent completes without being backgrounded.
  */
-export function unregisterAgentForeground(taskId: string, setAppState: SetAppState): void {
+export function unregisterAgentForeground(
+  taskId: string,
+  setAppState: SetAppState,
+  options?: {
+    /**
+     * True only when the agent loop actually handed the task to the background
+     * continuation, i.e. AgentTool's `wasBackgrounded`. Then that closure owns
+     * the task and this must not touch it.
+     */
+    handedOffToBackground?: boolean;
+  },
+): void {
   // Clean up the background signal resolver
   backgroundSignalResolvers.delete(taskId);
 
+  const handedOff = options?.handedOffToBackground === true;
   let cleanupFn: (() => void) | undefined;
 
   setAppState(prev => {
     const task = prev.tasks[taskId];
-    // Only remove if it's a foreground task (not backgrounded)
-    if (!isLocalAgentTask(task) || task.isBackgrounded) {
+    if (!isLocalAgentTask(task)) {
+      return prev;
+    }
+    // `isBackgrounded` alone used to be the guard here, and that is what
+    // produced phantom agents: the auto-background timer (120s) and Ctrl+B
+    // both write the flag into AppState *before* resolving the background
+    // signal. If `nextMessagePromise` had already settled — the common case
+    // when the agent is just finishing — Promise.race still yields 'message',
+    // the loop breaks, and this ran with the flag set but no continuation
+    // behind it. The task then stayed `running` forever, never got
+    // `notified: true`, and was therefore immune to all three eviction paths
+    // in utils/task/framework.ts, which every one require it. The row sat in
+    // the panel and `x` was a no-op because stopOrDismissAgent only aborts a
+    // running task and waits for a loop that had already exited.
+    //
+    // The caller knows which it was, so trust that instead of the flag.
+    if (handedOff) {
       return prev;
     }
 
