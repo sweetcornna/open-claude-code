@@ -1,6 +1,16 @@
-import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { authMockWith } from '../../../tests/mocks/auth.js'
 import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.js'
+import { setupSettingsMock } from '../../../tests/mocks/settings.js'
 import * as realThinking from 'src/utils/model/thinking.js'
 import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.js'
 
@@ -10,9 +20,12 @@ import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.js'
 makeSharedModuleMock('src/utils/model/thinking.js', realThinking).setup({
   isUltrathinkEnabled: () => false,
 })
-mock.module('src/utils/settings/settings.js', () => ({
-  getInitialSettings: () => ({}),
-}))
+// settings.js likewise goes through the shared complete-surface mock, scoped
+// to this suite — a bare `{ getInitialSettings }` surface would leave every
+// other settings export undefined for later files in the shard.
+const settingsMock = setupSettingsMock()
+beforeAll(() => settingsMock.set({ getInitialSettings: () => ({}) }))
+afterAll(() => settingsMock.reset())
 // auth.js via the shared complete-surface mock (missing exports get safe
 // defaults) — see tests/mocks/auth.ts.
 mock.module(

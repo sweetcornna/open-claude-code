@@ -1,21 +1,26 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
-// Spread the real settings module and override only the source reader —
-// the adapter touches a wide export surface and enumerating stubs is a
-// whack-a-mole; per-source rules must be empty for hermeticity (the
-// disabled branch skips them, the enabled-control case must not see the
-// developer's real settings files).
-const realSettings = await import('../../settings/settings.js')
-mock.module('src/utils/settings/settings.js', () => ({
-  ...realSettings,
-  getSettingsForSource: () => ({}),
-  getSettingsFilePathForSource: () => undefined,
-}))
+
+// Per-source rules must be empty for hermeticity (the disabled branch skips
+// them; the enabled-control case must not see the developer's real settings
+// files). Overrides are scoped to this suite rather than installed for the
+// life of the process — mock.module is process-global, and a permanent
+// getSettingsFilePathForSource() === undefined poisons every later file in
+// the src/utils shard. See tests/mocks/settings.ts.
+const settingsMock = setupSettingsMock()
+beforeAll(() =>
+  settingsMock.set({
+    getSettingsForSource: () => ({}),
+    getSettingsFilePathForSource: () => undefined,
+  }),
+)
+afterAll(() => settingsMock.reset())
 
 const { convertToSandboxRuntimeConfig } = await import('../sandbox-adapter.js')
 const { occConfigDir } = await import('src/config/paths.js')

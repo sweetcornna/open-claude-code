@@ -1,19 +1,40 @@
 /**
  * Windows default shell: PowerShell tool on by default; ! routing prefers it.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
+import * as realPlatform from 'src/utils/process/platform.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+import { makeSharedModuleMock } from '../../../../tests/mocks/sharedModuleMock.js'
 
 const settingsState: { defaultShell?: 'bash' | 'powershell' } = {}
 
-mock.module('src/utils/settings/settings.js', () => ({
-  getInitialSettings: () => ({ ...settingsState }),
-}))
+// Shared complete-surface mock, scoped to this suite. A bare
+// `{ getInitialSettings }` surface would blank out every other settings export
+// for the rest of the process — mock.module is global and last-write-wins.
+const settingsMock = setupSettingsMock()
+beforeAll(() =>
+  settingsMock.set({ getInitialSettings: () => ({ ...settingsState }) }),
+)
+afterAll(() => settingsMock.reset())
 
-// Force windows platform for these unit tests regardless of host OS.
-mock.module('src/utils/process/platform.js', () => ({
-  getPlatform: () => 'windows' as const,
-  SUPPORTED_PLATFORMS: ['macos', 'wsl'],
-}))
+// Force windows platform for these unit tests regardless of host OS — again
+// scoped, and again complete-surface. Left installed for the process this
+// would (a) blank out getWslVersion/getLinuxDistroInfo/detectVcs and (b) make
+// every later file in the src/utils shard believe it is running on Windows.
+const platformMock = makeSharedModuleMock(
+  'src/utils/process/platform.js',
+  realPlatform,
+).setup()
+beforeAll(() => platformMock.set({ getPlatform: () => 'windows' as const }))
+afterAll(() => platformMock.reset())
 
 import { isPowerShellToolEnabled } from '../shellToolUtils.js'
 import { resolveDefaultShell } from '../resolveDefaultShell.js'

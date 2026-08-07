@@ -1,18 +1,27 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
-// Same real-module-spread pattern as filesystemDisabled.test.ts — keep the
-// per-source rule reader hermetic without enumerating the export surface.
-const realSettings = await import('../../settings/settings.js')
-mock.module('src/utils/settings/settings.js', () => ({
-  ...realSettings,
+
+// The adapter must not read the developer's real settings files, so the
+// per-source readers are stubbed out. Scope matters as much as surface here:
+// mock.module is process-global, so leaving these overrides installed makes
+// every later file in the src/utils shard see getSettingsFilePathForSource()
+// === undefined. That is exactly how this file used to break
+// settings/__tests__/changeDetector.test.ts on Linux (different file order
+// than macOS, so only CI saw it). setup() installs an all-real surface at
+// load; the overrides live only for this suite.
+const settingsMock = setupSettingsMock()
+const HERMETIC_SOURCES = {
   getSettingsForSource: () => ({}),
   getSettingsFilePathForSource: () => undefined,
-}))
+}
+beforeAll(() => settingsMock.set(HERMETIC_SOURCES))
+afterAll(() => settingsMock.reset())
 
 const { convertToSandboxRuntimeConfig } = await import('../sandbox-adapter.js')
 const { occConfigDir } = await import('src/config/paths.js')
@@ -70,28 +79,29 @@ describe('sandbox.network.strictAllowlist (2.1.219 parity)', () => {
     // Enforcement lives in areUnsandboxedCommandsAllowed (private) — observe
     // it through SandboxManager, the surface shouldUseSandbox consults.
     const { SandboxManager } = await import('../sandbox-adapter.js')
-    const withStrict = { ...realSettings }
-    mock.module('src/utils/settings/settings.js', () => ({
-      ...withStrict,
-      getSettingsForSource: () => ({}),
-      getSettingsFilePathForSource: () => undefined,
+
+    // set() has whole-map semantics, so the hermetic readers must be carried
+    // along; the trailing set() restores the suite-wide baseline for any test
+    // that runs after this one.
+    settingsMock.set({
+      ...HERMETIC_SOURCES,
       getSettings_DEPRECATED: () => ({
         sandbox: {
           network: { strictAllowlist: true },
           allowUnsandboxedCommands: true,
         },
       }),
-    }))
+    })
     expect(SandboxManager.areUnsandboxedCommandsAllowed()).toBe(false)
 
-    mock.module('src/utils/settings/settings.js', () => ({
-      ...withStrict,
-      getSettingsForSource: () => ({}),
-      getSettingsFilePathForSource: () => undefined,
+    settingsMock.set({
+      ...HERMETIC_SOURCES,
       getSettings_DEPRECATED: () => ({
         sandbox: { allowUnsandboxedCommands: true },
       }),
-    }))
+    })
     expect(SandboxManager.areUnsandboxedCommandsAllowed()).toBe(true)
+
+    settingsMock.set(HERMETIC_SOURCES)
   })
 })

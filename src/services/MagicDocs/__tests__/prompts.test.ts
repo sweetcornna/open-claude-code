@@ -1,5 +1,11 @@
 import { afterAll, describe, test, expect, mock, beforeEach } from 'bun:test'
 import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.js'
+import {
+  type FsOperations,
+  NodeFsOperations,
+  setFsImplementation,
+  setOriginalFsImplementation,
+} from 'src/utils/filesystem/fsOperations.js'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -192,57 +198,34 @@ const mockReadFile = mock(
   },
 )
 
-// IMPORTANT: this file used to mock fsOperations wholesale (readdir → [],
-// exists → false, …), which silently broke sibling tests that walk
-// .claude/skills (skill prefetch, skillLearning smoke). After this suite
-// finishes (useMockForMagicDocs flips to false), construct a minimal real
-// fs adapter inline using node:fs/promises so cross-file consumers see real
-// disk state — without pre-importing the heavy fsOperations module (its
-// transitive deps stall bun:test). Avoid require()ing the real module
-// inside the factory: that re-enters the same mock and infinite-loops.
-import { promises as nodeFs, existsSync as nodeExistsSync } from 'node:fs'
-
-const realFsAdapter = {
-  cwd: () => process.cwd(),
-  existsSync: (p: string) => nodeExistsSync(p),
-  stat: (p: string) => nodeFs.stat(p),
-  lstat: (p: string) => nodeFs.lstat(p),
-  readdir: (p: string) => nodeFs.readdir(p, { withFileTypes: true }),
-  unlink: (p: string) => nodeFs.unlink(p),
-  rmdir: (p: string) => nodeFs.rmdir(p),
-  rm: (p: string, options?: { recursive?: boolean; force?: boolean }) =>
-    nodeFs.rm(p, options),
-  mkdir: (p: string, options?: { recursive?: boolean }) =>
-    nodeFs.mkdir(p, options),
-  readFile: (
-    p: string,
-    options?: BufferEncoding | { encoding?: BufferEncoding },
-  ) => {
-    const encoding =
-      typeof options === 'string' ? options : (options?.encoding ?? undefined)
-    return nodeFs.readFile(p, encoding)
-  },
-  writeFile: (p: string, data: string | Uint8Array) =>
-    nodeFs.writeFile(p, data),
-  rename: (oldPath: string, newPath: string) => nodeFs.rename(oldPath, newPath),
-  open: (p: string, flags: string | number) => nodeFs.open(p, flags),
-  realpath: (p: string) => nodeFs.realpath(p),
+// The filesystem override goes through fsOperations' OWN setter rather than
+// mock.module. That matters twice over.
+//
+// This file first mocked fsOperations wholesale (readdir → [], exists → false,
+// …), which silently broke sibling tests that walk .claude/skills. The next
+// attempt hand-rolled a "real" adapter to install once this suite finished —
+// but a hand-rolled adapter is a partial surface by construction, and it was
+// missing the *Sync methods. Anything loaded later in the src/services shard
+// that reached getFsImplementation().mkdirSync() got a TypeError:
+// updateSettingsForSource swallowed it and returned an error, so
+// plugins/__tests__/pluginOperations.builtinSecurity.test.ts failed with
+// success:false. That was the CI failure on v2.29.4, and macOS never saw it
+// because Bun's file order differs from Linux.
+//
+// setFsImplementation/setOriginalFsImplementation avoid the whole class: the
+// base is the real NodeFsOperations, so no method can be missing, and the
+// restore is the module's own reset rather than a replica.
+// Only readFile is overridden: it is the one operation this suite controls
+// (loadMagicDocsPrompt reads the template through it). The previous surface
+// also stubbed writeFile/exists/mkdir/readdir/stat/unlink — writeFile and
+// exists are not even on FsOperations, which the blanket `as unknown` cast
+// hid. Everything else stays real.
+const magicDocsFs: FsOperations = {
+  ...NodeFsOperations,
+  readFile: mockReadFile as unknown as FsOperations['readFile'],
 }
-
-mock.module('src/utils/filesystem/fsOperations.js', () => ({
-  getFsImplementation: () =>
-    useMockForMagicDocs
-      ? ({
-          readFile: mockReadFile,
-          writeFile: mock(async () => {}),
-          exists: mock(async () => false),
-          mkdir: mock(async () => {}),
-          readdir: mock(async () => []),
-          stat: mock(async () => ({})),
-          unlink: mock(async () => {}),
-        } as unknown)
-      : (realFsAdapter as unknown),
-}))
+setFsImplementation(magicDocsFs)
+afterAll(() => setOriginalFsImplementation())
 
 // ── Import module under test (after all mock.module calls) ──────────────────
 import { buildMagicDocsUpdatePrompt } from '../prompts.js'
