@@ -4,6 +4,18 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.32.0 - 2026-08-07
+
+2.31.0 的分层模型设置对第三方 provider 基本是失效的，这一版把它修好并搬进 `/model`。DeepSeek 用户受影响最大。
+
+- **修复：DeepSeek 会话的 `/model` 列出的全是 Claude 模型**，还标着 Anthropic 的 `$5/$25 per Mtok` —— 而你的 key 只能打到 api.deepseek.com。2.31.0 让 DeepSeek 改走 Anthropic 兼容接口，代码里问「用哪套协议」和问「这是不是 Anthropic 自家的模型目录」用的是同一个判断，于是后者跟着答错了。现在 `/model` 列出的是你自己配的档位模型，加上 DeepSeek 的完整目录。
+- **修复：分层模型设置对第三方模型一直是摆设。** 设置以档位为键，请求里流的却是解析后的模型 id；`deepseek-v4-pro`、`glm-5.2`、`gpt-5.6-sol` 这类名字里不带 opus/sonnet 字样，档位就查不出来，于是你在 `/model-settings` 里写的每个值都被**静默丢弃**。现在会反查你配的 `*_DEFAULT_<档位>_MODEL` 映射。**如果你之前设过分层配置却觉得没生效，是这个原因，现在会生效了。**
+- **修复：给非 Claude 模型设 1M 上下文会被砍回 200k。** 1M 需要 Anthropic 的 beta 头，这是 Anthropic 模型的限制，此前却套用到了所有 provider 上 —— 结果是「1M 模型不叫 Claude」的每一家（DeepSeek V4、GLM 等）都设不了真实窗口。
+- **`/model` 里可以直接按档位调思考强度和最大上下文了。** 高亮任意一行：`←/→` 调该档位的思考强度，`Space` 循环该档位的最大上下文（默认 → 128k → 200k → 272k → 512k → 1M）。调过的档位全部保存，不只是最后按 Enter 的那一行。`Space` 从前是「1M 开/关」二元开关，现在是同一件事的完整梯子。
+- **登录时选的最大上下文和思考强度会持久化了**，按档位存进 `settings.modelSettings`。此前最大上下文被写成 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` —— 那个环境变量的优先级在分层配置**之上**，等于让登录时的一个开场值静默压过你此后在 `/model` 里的每一次调整；保存时会顺手清掉它。首启向导也新增了「思考强度」字段。留空 = 存入各档位自己的默认值；重跑向导时留空 = 什么都不动，不会把你分档调好的值压平。
+- 修复一批同源问题：Anthropic 专属的 beta 头发给了 DeepSeek；Fast mode 对第三方 provider 显示为可用；`/login` 把 DeepSeek 显示成 `anthropic`；Claude.ai 订阅用户切到第三方 provider 后仍看到订阅模型表；Grok 的档位模型配置写了从来不读。
+- 内部：publish 门禁加回全量单测（分片），CI、发布脚本三处共用同一个脚本。
+
 ## 2.31.1 - 2026-08-07
 
 - **修复 DeepSeek 用户的 `CLAUDE_CODE_DISABLE_THINKING` 一直无效**。DeepSeek 把「请求里没有 `thinking` 字段」当作**启用**，而 occ 关闭 thinking 时恰恰就是不发该字段 —— 于是你关了，模型照样思考。现在会显式发送关闭指令。走 DeepSeek 的 Anthropic 端点时生效。
