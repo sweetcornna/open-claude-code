@@ -1,7 +1,10 @@
 import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
-import { has1mContext } from '../utils/session/context.js';
+import { has1mContext, modelSupports1M, supportsContextWindow } from '../utils/session/context.js';
+import { getModelTier, type ModelTier } from '../utils/model/modelTier.js';
+import { formatContextTokens, getTierContextTokens, getTierOverride } from '../utils/model/tierSettings.js';
+import { writeTierSettings } from '../commands/model-settings/state.js';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -59,6 +62,21 @@ export type Props = {
 
 const NO_PREFERENCE = '__NO_PREFERENCE__';
 
+/**
+ * Windows offered by the max-context cycler, smallest first. `null` is "use
+ * the built-in default for this tier" and always leads.
+ *
+ * These are the windows real endpoints actually advertise — 128k is the
+ * commodity OpenAI-compatible size, 272k is GPT-5's, 200k is Claude's and 1M
+ * is what Claude's opt-in and DeepSeek V4 serve. A value already saved for the
+ * focused tier is spliced in if it is not one of these, so a number typed into
+ * `/model-settings` is never silently lost by cycling past it.
+ */
+const CONTEXT_LADDER = [128_000, 200_000, 272_000, 512_000, 1_000_000] as const;
+
+/** Sentinel key for rows whose model belongs to no tier — see effortKeyForOption. */
+const UNTIERED = '*';
+
 export function ModelPicker({
   initial,
   sessionModel,
@@ -78,32 +96,20 @@ export function ModelPicker({
 
   const isFastMode = useAppState(s => (isFastModeEnabled() ? s.fastMode : false));
 
-  const [marked1MValues, setMarked1MValues] = useState<Set<string>>(
-    () => new Set(has1mContext(initialValue) ? [initialValue.replace(/\[1m\]/i, '')] : []),
-  );
-
-  const handleToggle1M = useCallback(() => {
-    if (!focusedValue || focusedValue === NO_PREFERENCE) return;
-    // Key on the base value so lookups in handleSelect / is1MMarked match the
-    // initializer — predefined 1M options arrive with a `[1m]` suffix in
-    // `focusedValue`, which would diverge from the base-value key set.
-    const baseKey = focusedValue.replace(/\[1m\]/i, '');
-    setMarked1MValues(prev => {
-      const next = new Set(prev);
-      if (next.has(baseKey)) {
-        next.delete(baseKey);
-      } else {
-        next.add(baseKey);
-      }
-      return next;
-    });
-  }, [focusedValue]);
+  // Max context, chosen per tier. `null` means "back to the tier default",
+  // which is a different thing from "not touched" (absent) — the first has to
+  // clear an existing override, the second must leave it alone.
+  const [contextByTier, setContextByTier] = useState<Map<string, number | null>>(() => new Map());
 
   const [hasToggledEffort, setHasToggledEffort] = useState(false);
   const effortValue = useAppState(s => s.effortValue);
   const [effort, setEffort] = useState<EffortLevel | undefined>(
     effortValue !== undefined ? convertEffortValueToLevel(effortValue) : undefined,
   );
+  // Effort is per tier for the same reason max context is: one global level
+  // cannot say "opus thinks hard, haiku stays cheap". Rows whose model belongs
+  // to no tier share the UNTIERED key and still write the flat effortLevel.
+  const [effortByTier, setEffortByTier] = useState<Map<string, EffortLevel>>(() => new Map());
 
   // Memoize all derived values to prevent re-renders
   const modelOptions = useMemo(() => getModelOptions(isFastMode ?? false), [isFastMode]);
@@ -142,10 +148,20 @@ export function ModelPicker({
 
   const focusedModelName = selectOptions.find(opt => opt.value === focusedValue)?.label;
   const focusedModel = resolveOptionModel(focusedValue);
-  const is1MMarked =
-    focusedValue !== undefined &&
-    focusedValue !== NO_PREFERENCE &&
-    marked1MValues.has(focusedValue.replace(/\[1m\]/i, ''));
+  const focusedTier = tierForOption(focusedValue);
+  const focusedContextKey = focusedTier ?? UNTIERED;
+  // The window this row would run with: an in-picker choice, else whatever the
+  // tier already resolves to (saved override, else provider-family default).
+  const pickedContext = contextByTier.get(focusedContextKey);
+  const savedContext = focusedModel ? getTierContextTokens(focusedModel) : undefined;
+  const focusedContextTokens = pickedContext ?? savedContext;
+  const focusedContextIsDefault =
+    pickedContext === null || (pickedContext === undefined && !hasSavedContextOverride(focusedTier));
+  // Both env knobs outrank everything the picker writes, so a session that has
+  // one set would otherwise show the user changing a value that cannot take
+  // effect. Say so rather than letting them find out later.
+  const contextEnvOverride = process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS || undefined;
+  const effortEnvOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL || undefined;
   const focusedSupportsEffort = focusedModel ? modelSupportsEffort(focusedModel) : false;
   const focusedSupportsXhigh = focusedModel ? modelSupportsXhighEffort(focusedModel) : false;
   const focusedSupportsMax = focusedModel ? modelSupportsMaxEffort(focusedModel) : false;
@@ -164,30 +180,57 @@ export function ModelPicker({
   const handleFocus = useCallback(
     (value: string) => {
       setFocusedValue(value);
-      if (!hasToggledEffort && effortValue === undefined) {
+      // Effort is per tier, so moving to a row belonging to a different tier
+      // must show that tier's value — either what was chosen here already, or
+      // its resolved setting. Carrying the previous row's level over was how a
+      // single ← press on Opus silently re-labelled Haiku too.
+      const key = tierForOption(value) ?? UNTIERED;
+      const picked = effortByTier.get(key);
+      if (picked !== undefined) {
+        setEffort(picked);
+      } else if (!hasToggledEffort && effortValue === undefined) {
+        setEffort(getDefaultEffortLevelForOption(value));
+      } else if (key !== UNTIERED) {
         setEffort(getDefaultEffortLevelForOption(value));
       }
     },
-    [hasToggledEffort, effortValue],
+    [hasToggledEffort, effortValue, effortByTier],
   );
 
   // Effort level cycling keybindings
   const handleCycleEffort = useCallback(
     (direction: 'left' | 'right') => {
       if (!focusedSupportsEffort) return;
-      setEffort(prev =>
-        cycleEffortLevel(prev ?? focusedDefaultEffort, direction, focusedSupportsXhigh, focusedSupportsMax),
+      const next = cycleEffortLevel(
+        effort ?? focusedDefaultEffort,
+        direction,
+        focusedSupportsXhigh,
+        focusedSupportsMax,
       );
+      setEffort(next);
+      setEffortByTier(prev => new Map(prev).set(focusedContextKey, next));
       setHasToggledEffort(true);
     },
-    [focusedSupportsEffort, focusedSupportsXhigh, focusedSupportsMax, focusedDefaultEffort],
+    [effort, focusedSupportsEffort, focusedSupportsXhigh, focusedSupportsMax, focusedDefaultEffort, focusedContextKey],
   );
+
+  const handleCycleMaxContext = useCallback(() => {
+    if (!focusedModel) return;
+    setContextByTier(prev => {
+      const next = new Map(prev);
+      next.set(focusedContextKey, nextContextChoice(focusedModel, prev.get(focusedContextKey), focusedTier));
+      return next;
+    });
+  }, [focusedModel, focusedTier, focusedContextKey]);
 
   useKeybindings(
     {
       'modelPicker:decreaseEffort': () => handleCycleEffort('left'),
       'modelPicker:increaseEffort': () => handleCycleEffort('right'),
-      'modelPicker:toggle1M': () => handleToggle1M(),
+      'modelPicker:cycleMaxContext': () => handleCycleMaxContext(),
+      // Retained so a keybindings.json that still names the old 1M toggle keeps
+      // working — max context is what that key always did, one rung at a time.
+      'modelPicker:toggle1M': () => handleCycleMaxContext(),
     },
     { context: 'ModelPicker' },
   );
@@ -196,23 +239,62 @@ export function ModelPicker({
     logEvent('tengu_model_command_menu_effort', {
       effort: effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
+    const selectedTier = tierForOption(value);
+    const selectedKey = selectedTier ?? UNTIERED;
+    const pickedEffort = effortByTier.get(selectedKey);
+    const pickedContext = contextByTier.get(selectedKey);
+
     if (!skipSettingsWrite) {
-      // Prior comes from userSettings on disk — NOT merged settings (which
-      // includes project/policy layers that must not leak into the user's
-      // global ~/.claude/settings.json), and NOT AppState.effortValue (which
-      // includes session-ephemeral sources like --effort CLI flag).
-      // See resolvePickerEffortPersistence JSDoc.
-      const effortLevel = resolvePickerEffortPersistence(
-        effort,
-        getDefaultEffortLevelForOption(value),
-        getSettingsForSource('userSettings')?.effortLevel,
-        hasToggledEffort,
-      );
-      const persistable = toPersistableEffort(effortLevel);
-      if (persistable !== undefined) {
-        updateSettingsForSource('userSettings', { effortLevel: persistable });
+      // EVERY tier touched in this session of the picker is saved, not just the
+      // row that was finally chosen. Arrowing through the list adjusting each
+      // tier and then pressing Enter once is the natural way to use this, and
+      // discarding all but the last would silently throw that work away.
+      // Per-tier is the real home for both axes, so the flat effortLevel goes:
+      // writeTierSettings clears it when an effort is written, because it seeds
+      // AppState, which outranks the per-tier layer. AppState.effortValue is
+      // cleared for the same reason — undefined is what lets
+      // getDefaultEffortForModel resolve the tier setting.
+      const touched = new Set([...effortByTier.keys(), ...contextByTier.keys()]);
+      let wroteEffort = false;
+      for (const key of touched) {
+        if (key === UNTIERED) continue;
+        const tier = key as ModelTier;
+        const tierEffort = effortByTier.get(key);
+        const tierContext = contextByTier.get(key);
+        const patch: { effort?: EffortLevel; contextTokens?: number } = {};
+        if (tierEffort !== undefined) patch.effort = tierEffort;
+        if (tierContext != null) patch.contextTokens = tierContext;
+        if (patch.effort !== undefined || patch.contextTokens !== undefined) {
+          writeTierSettings(tier, patch);
+        }
+        if (tierContext === null) clearTierContext(tier);
+        wroteEffort ||= tierEffort !== undefined;
       }
-      setAppState(prev => ({ ...prev, effortValue: effortLevel }));
+      if (wroteEffort) {
+        setAppState(prev => ({ ...prev, effortValue: undefined }));
+      }
+
+      if (!selectedTier) {
+        // No tier to key on (a bare custom model id). Fall back to the flat
+        // effortLevel, which is all this row can be described by.
+        //
+        // Prior comes from userSettings on disk — NOT merged settings (which
+        // includes project/policy layers that must not leak into the user's
+        // global ~/.claude/settings.json), and NOT AppState.effortValue (which
+        // includes session-ephemeral sources like --effort CLI flag).
+        // See resolvePickerEffortPersistence JSDoc.
+        const effortLevel = resolvePickerEffortPersistence(
+          effort,
+          getDefaultEffortLevelForOption(value),
+          getSettingsForSource('userSettings')?.effortLevel,
+          hasToggledEffort,
+        );
+        const persistable = toPersistableEffort(effortLevel);
+        if (persistable !== undefined) {
+          updateSettingsForSource('userSettings', { effortLevel: persistable });
+        }
+        setAppState(prev => ({ ...prev, effortValue: effortLevel }));
+      }
     }
 
     const selectedModel = resolveOptionModel(value);
@@ -221,12 +303,19 @@ export function ModelPicker({
       onSelect(null, selectedEffort);
       return;
     }
-    // Apply or strip [1m] suffix based on user toggle. marked1MValues is keyed
-    // on the base value (see initializer + handleToggle1M), so look up with the
-    // base form — not `value`, which may carry a `[1m]` suffix from predefined
-    // 1M options and would never match.
+    // The `[1m]` suffix is downstream of the max-context choice, not a separate
+    // switch: it is what makes betas.ts send context-1m-2025-08-07, so it goes
+    // on exactly when the chosen window needs Anthropic's wide-context opt-in.
+    // Third-party ids never take it — modelSupports1M is false for them and
+    // their window comes from the setting alone.
     const baseValue = value.replace(/\[1m\]/i, '');
-    const wants1M = marked1MValues.has(baseValue);
+    const chosenTokens = pickedContext ?? (selectedModel ? getTierContextTokens(selectedModel) : undefined);
+    const wants1M =
+      chosenTokens !== undefined &&
+      chosenTokens !== null &&
+      chosenTokens >= 1_000_000 &&
+      !!selectedModel &&
+      modelSupports1M(selectedModel);
     const finalValue = wants1M ? `${baseValue}[1m]` : baseValue;
     onSelect(finalValue, selectedEffort);
   }
@@ -240,8 +329,13 @@ export function ModelPicker({
           </Text>
           <Text dimColor>
             {headerText ??
-              'Choose a model for this and future sessions. Use ← → to adjust effort, Space to toggle 1M context.'}
+              'Choose a model for this and future sessions. Use ← → to adjust effort, Space to change max context.'}
           </Text>
+          {focusedTier && (
+            <Text dimColor>
+              Effort and max context are saved per tier — this pair belongs to <Text bold>{focusedTier}</Text>.
+            </Text>
+          )}
           {sessionModel && (
             <Text dimColor>
               Currently using {modelDisplayString(sessionModel)} for this session (set by plan mode). Selecting a model
@@ -281,16 +375,26 @@ export function ModelPicker({
               {focusedModelName ? ` for ${focusedModelName}` : ''}
             </Text>
           )}
-          {is1MMarked ? (
+          {focusedContextTokens !== undefined && focusedContextTokens !== null ? (
             <Text dimColor>
-              <EffortLevelIndicator effort={'high'} /> 1M context on
-              <Text color="subtle"> · Space to toggle</Text>
+              <EffortLevelIndicator effort={'high'} /> {formatContextTokens(focusedContextTokens)} max context
+              {focusedContextIsDefault ? ' (default)' : ''}
+              <Text color="subtle"> · Space to change</Text>
             </Text>
           ) : (
             <Text color="subtle">
-              <EffortLevelIndicator effort={undefined} /> 1M context off
+              <EffortLevelIndicator effort={undefined} /> Max context not configurable
               {focusedModelName ? ` for ${focusedModelName}` : ''}
-              <Text color="subtle"> · Space to toggle</Text>
+            </Text>
+          )}
+          {contextEnvOverride !== undefined && (
+            <Text color="subtle">
+              CLAUDE_CODE_MAX_CONTEXT_TOKENS={contextEnvOverride} overrides this — unset it for the setting to apply.
+            </Text>
+          )}
+          {effortEnvOverride !== undefined && (
+            <Text color="subtle">
+              CLAUDE_CODE_EFFORT_LEVEL={effortEnvOverride} overrides this — unset it for the setting to apply.
             </Text>
           )}
         </Box>
@@ -338,6 +442,62 @@ export function ModelPicker({
 function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined;
   return value === NO_PREFERENCE ? getDefaultMainLoopModel() : parseUserSpecifiedModel(value);
+}
+
+/**
+ * Which tier's settings the highlighted row edits.
+ *
+ * Rows for a tier carry the alias as their value ('opus', 'sonnet[1m]'), so
+ * that answer is exact. Everything else — the Default row, a bare model id
+ * pulled from the provider's catalog — goes through the resolved model, which
+ * getModelTier can still place by name or by the user's own tier pins.
+ */
+function tierForOption(value?: string): ModelTier | undefined {
+  if (!value) return undefined;
+  const model = resolveOptionModel(value);
+  return model ? getModelTier(model) : undefined;
+}
+
+function hasSavedContextOverride(tier: ModelTier | undefined): boolean {
+  return tier !== undefined && getTierOverride(tier)?.contextTokens !== undefined;
+}
+
+/** Drop just this tier's contextTokens, leaving any effort override in place. */
+function clearTierContext(tier: ModelTier): void {
+  const current = getSettingsForSource('userSettings')?.modelSettings ?? {};
+  const existing = { ...(current[tier] ?? {}) };
+  delete existing.contextTokens;
+  updateSettingsForSource('userSettings', {
+    modelSettings: { ...current, [tier]: Object.keys(existing).length > 0 ? existing : undefined },
+  });
+}
+
+/**
+ * Next rung of the max-context cycler: default → each supported window in
+ * ascending order → back to default.
+ *
+ * `undefined` (untouched) starts from whatever the tier resolves to now, so
+ * the first press moves off the current value rather than jumping to the
+ * bottom of the ladder.
+ */
+function nextContextChoice(
+  model: string,
+  current: number | null | undefined,
+  tier: ModelTier | undefined,
+): number | null {
+  const saved = hasSavedContextOverride(tier) ? getTierContextTokens(model) : undefined;
+  const rungs = [...new Set([...CONTEXT_LADDER, ...(saved !== undefined ? [saved] : [])])]
+    .filter(tokens => supportsContextWindow(model, tokens))
+    .sort((a, b) => a - b);
+  if (rungs.length === 0) return null;
+
+  const currentTokens = current === undefined ? saved : current;
+  if (currentTokens === null || currentTokens === undefined) return rungs[0]!;
+  const index = rungs.indexOf(currentTokens);
+  if (index === -1) return rungs[0]!;
+  // Past the top rung is "back to the tier default", which is how an override
+  // gets cleared without a second key.
+  return index === rungs.length - 1 ? null : rungs[index + 1]!;
 }
 
 function EffortLevelIndicator({ effort }: { effort?: EffortLevel }): React.ReactNode {

@@ -1,8 +1,8 @@
 import type * as React from 'react';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { MODEL_TIERS, type ModelTier } from '../../utils/model/modelTier.js';
+import { getModelTier, MODEL_TIERS, type ModelTier } from '../../utils/model/modelTier.js';
 import { getTierDefaults } from '../../utils/model/tierDefaults.js';
-import { getTierOverride } from '../../utils/model/tierSettings.js';
+import { formatContextTokens, getTierOverride } from '../../utils/model/tierSettings.js';
 import { getMainLoopModel } from '../../utils/model/model.js';
 import { parseUserSpecifiedModel } from '../../utils/model/model.js';
 import { parseArgs, resetTierSettings, usage, writeTierSettings } from './state.js';
@@ -12,6 +12,7 @@ const COMMON_HELP_ARGS = ['help', '--help', '-h', '?'];
 /** Human-readable summary of what each tier resolves to right now. */
 function describeAll(): string {
   const lines = ['Per-tier model settings (env still wins over these):', ''];
+  const models = new Map<string, ModelTier[]>();
   for (const tier of MODEL_TIERS) {
     const model = safeResolve(tier);
     const defaults = getTierDefaults(model, tier);
@@ -24,11 +25,49 @@ function describeAll(): string {
     ].filter(Boolean);
     const suffix = marks.length > 0 ? `  (${marks.join(', ')})` : '  (defaults)';
     lines.push(
-      `  ${tier.padEnd(7)} ${model.padEnd(24)} effort=${effort.padEnd(6)} context=${formatTokens(tokens)}${suffix}`,
+      `  ${tier.padEnd(7)} ${model.padEnd(24)} effort=${effort.padEnd(6)} context=${formatContextTokens(tokens)}${suffix}`,
     );
+    models.set(model, [...(models.get(model) ?? []), tier]);
   }
-  lines.push('', usage());
+  lines.push(...shadowWarnings(), ...ambiguityWarnings(models), '', usage());
   return lines.join('\n');
+}
+
+/**
+ * Both env knobs outrank everything written here, and the flat `effortLevel`
+ * seeds AppState, which also outranks it. Saying nothing would leave the user
+ * setting a value and watching nothing happen — the exact failure this command
+ * exists to fix.
+ */
+function shadowWarnings(): string[] {
+  const warnings: string[] = [];
+  const contextEnv = process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+  if (contextEnv) {
+    warnings.push(`  ! CLAUDE_CODE_MAX_CONTEXT_TOKENS=${contextEnv} overrides every context value above.`);
+  }
+  const effortEnv = process.env.CLAUDE_CODE_EFFORT_LEVEL;
+  if (effortEnv) {
+    warnings.push(`  ! CLAUDE_CODE_EFFORT_LEVEL=${effortEnv} overrides every effort value above.`);
+  }
+  return warnings.length > 0 ? ['', ...warnings] : [];
+}
+
+/**
+ * Several tiers pinned to one model id is a normal third-party setup, and once
+ * the alias is resolved nothing in the request says which one asked. Reads
+ * prefer whichever of them is configured, then the most capable — worth
+ * stating, because configuring two of them differently cannot work.
+ */
+function ambiguityWarnings(models: Map<string, ModelTier[]>): string[] {
+  const shared = [...models.entries()].filter(([, tiers]) => tiers.length > 1);
+  if (shared.length === 0) return [];
+  return [
+    '',
+    ...shared.map(
+      ([model, tiers]) =>
+        `  ! ${tiers.join(', ')} all resolve to ${model}; the configured tier wins, then ${getModelTier(model) ?? tiers[0]}.`,
+    ),
+  ];
 }
 
 /**
@@ -42,12 +81,6 @@ function safeResolve(tier: ModelTier): string {
   } catch {
     return tier;
   }
-}
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${tokens / 1_000_000}M`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
-  return String(tokens);
 }
 
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
@@ -102,7 +135,7 @@ function summarize(tier: ModelTier): string {
   const override = getTierOverride(tier);
   const effort = override?.effort ?? defaults.effort;
   const tokens = override?.contextTokens ?? defaults.contextTokens;
-  return `effort=${effort} context=${formatTokens(tokens)}`;
+  return `effort=${effort} context=${formatContextTokens(tokens)}`;
 }
 
 // Referenced so the current main-loop model is resolvable from this module for
