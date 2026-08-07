@@ -22,7 +22,7 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 mock.module(
-  'src/bootstrap/state.js',
+  'src/bootstrap/state.ts',
   stateMockWith({
     getSessionId: () => 'session-tag-integration',
     getIsNonInteractiveSession: () => false,

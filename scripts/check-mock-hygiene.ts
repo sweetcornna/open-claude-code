@@ -276,7 +276,7 @@ function printHint(): void {
   console.error('  Route the mock through tests/mocks/ instead:')
   console.error('')
   console.error(
-    "    import { setupSettingsMock } from 'tests/mocks/settings.js'",
+    "    import { setupSettingsMock } from '../../../tests/mocks/settings.js'",
   )
   console.error(
     '    const settingsMock = setupSettingsMock()   // all-real surface',
@@ -299,9 +299,70 @@ function printHint(): void {
   console.error('  See scripts/check-mock-hygiene.ts for why this matters.')
 }
 
+/**
+ * The same module mocked under two extensions.
+ *
+ * `mock.module('x.js', …)` and `mock.module('x.ts', …)` land on the SAME
+ * registry entry — verified, not assumed: registering under `.js` and then
+ * importing `./target.ts` returns the mock. So two files that each install a
+ * different partial surface, one writing `.js` and one writing `.ts`, are in
+ * a last-write-wins fight while *reading* as though they touch different
+ * modules. That is the hardest form of this bug to spot in review, and no
+ * amount of per-file inspection reveals it.
+ *
+ * Zero tolerance, no budget: the whole repo was already consistent after the
+ * seven `.js` stragglers were normalised, and a collision is never the right
+ * thing to introduce. Real files are all `.ts`, which is also what CLAUDE.md
+ * prescribes.
+ */
+function findExtensionCollisions(files: Set<string>): Map<string, Set<string>> {
+  const byModule = new Map<string, Set<string>>()
+  for (const file of files) {
+    const source = readFileSync(join(PROJECT_ROOT, file), 'utf8')
+    for (const match of source.matchAll(
+      /\bmock\.module\(\s*['"]([^'"]+)['"]/g,
+    )) {
+      const specifier = match[1]
+      if (specifier === undefined || !isInternalSpecifier(specifier)) continue
+      const parsed = /^(.*)\.(ts|tsx|js|jsx)$/.exec(specifier)
+      if (!parsed?.[1] || !parsed[2]) continue
+      const seen = byModule.get(parsed[1]) ?? new Set<string>()
+      seen.add(parsed[2])
+      byModule.set(parsed[1], seen)
+    }
+  }
+  return new Map([...byModule].filter(([, exts]) => exts.size > 1))
+}
+
 function main(): void {
   const update = process.argv.includes('--update')
   const { offenders, total, unscoped, shims } = scan()
+
+  const allTestFiles = new Set<string>()
+  for (const pattern of TEST_GLOBS) {
+    for (const file of new Glob(pattern).scanSync(PROJECT_ROOT)) {
+      allTestFiles.add(file)
+    }
+  }
+  const collisions = findExtensionCollisions(allTestFiles)
+  if (collisions.size > 0) {
+    console.error(
+      `✗ mock hygiene: ${collisions.size} module(s) mocked under two extensions.`,
+    )
+    console.error('')
+    console.error(
+      "  `mock.module('x.js', …)` and `mock.module('x.ts', …)` share ONE registry",
+    )
+    console.error(
+      '  entry, so these are competing surfaces for the same module — they just',
+    )
+    console.error('  do not look like it. Use the .ts form everywhere.')
+    console.error('')
+    for (const [module, exts] of collisions) {
+      console.error(`  ${module}  →  ${[...exts].sort().join(', ')}`)
+    }
+    process.exit(1)
+  }
 
   if (update) {
     writeBudget(offenders)

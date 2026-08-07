@@ -27,7 +27,7 @@
  *
  * Usage:
  *   import { stateMockWith } from '../../../tests/mocks/state.js'
- *   mock.module('src/bootstrap/state.js', stateMockWith({
+ *   mock.module('src/bootstrap/state.ts', stateMockWith({
  *     getSessionId: () => 'my-suite-session',
  *   }))
  *

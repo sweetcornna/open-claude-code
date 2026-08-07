@@ -27,7 +27,7 @@ mock.module('bun:bundle', () => ({
 
 let mockedSessionId = 'test-session-123'
 mock.module(
-  'src/bootstrap/state.js',
+  'src/bootstrap/state.ts',
   stateMockWith({
     getSessionId: () => mockedSessionId,
     regenerateSessionId: () => {

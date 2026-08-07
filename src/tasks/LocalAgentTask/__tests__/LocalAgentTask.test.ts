@@ -77,7 +77,7 @@ afterAll(() => {
 })
 
 mock.module(
-  'src/bootstrap/state.js',
+  'src/bootstrap/state.ts',
   stateMockWith({
     getSdkAgentProgressSummariesEnabled: () => false,
     getSessionId: () => 'test-session-001',

@@ -42,7 +42,7 @@ beforeAll(() =>
   toolsMock.set({ assembleToolPool: () => ({ tools: [] }) as never }),
 )
 afterAll(() => toolsMock.reset())
-mock.module('src/utils/messages.js', () => ({
+mock.module('src/utils/messages.ts', () => ({
   // Return a shape that satisfies UserMessage consumers process-wide.
   // Bun's mock.module is process-global (last-write-wins), so an incomplete
   // mock here corrupts every later test that imports the real createUserMessage
@@ -63,7 +63,7 @@ mock.module('src/utils/messages.js', () => ({
 mock.module('src/utils/collections/uuid.js', () => ({
   createAgentId: () => 'agent-1',
 }))
-mock.module('src/utils/telemetry/debug.js', () => ({
+mock.module('src/utils/telemetry/debug.ts', () => ({
   logForDebugging: () => {},
 }))
 

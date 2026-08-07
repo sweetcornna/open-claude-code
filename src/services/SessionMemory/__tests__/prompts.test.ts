@@ -172,7 +172,7 @@ const envUtilsMock = setupEnvUtilsMock({
   getTeamsDir: () => '/mock/home/.claude/teams',
 })
 
-mock.module('src/utils/telemetry/log.js', () => ({
+mock.module('src/utils/telemetry/log.ts', () => ({
   logError: mock(() => {}),
   getLogDisplayTitle: mock(() => ''),
   dateToFilename: mock((d: Date) => d.toISOString()),
@@ -186,7 +186,7 @@ mock.module('src/utils/telemetry/log.js', () => ({
   _resetErrorLogForTesting: mock(() => {}),
 }))
 
-mock.module('src/services/tokenEstimation.js', () => ({
+mock.module('src/services/tokenEstimation.ts', () => ({
   roughTokenCountEstimation: mock((s: string) => Math.ceil(s.length / 4)),
   countTokens: mock(async () => 0),
 }))

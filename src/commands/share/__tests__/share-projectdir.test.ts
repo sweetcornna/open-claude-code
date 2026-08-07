@@ -93,7 +93,7 @@ let _mockProjectDir: string | null = null
 let _mockLastAPIRequest: unknown = null
 
 mock.module(
-  'src/bootstrap/state.js',
+  'src/bootstrap/state.ts',
   stateMockWith({
     getSessionId: () => 'test-session-pd',
     getSessionProjectDir: () => _mockProjectDir,

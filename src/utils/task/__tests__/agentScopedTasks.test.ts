@@ -18,7 +18,7 @@ import { stateMockWith } from '../../../../tests/mocks/state.js'
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module(
-  'src/bootstrap/state.js',
+  'src/bootstrap/state.ts',
   stateMockWith({
     getSessionId: () => 'session-abc',
   }),

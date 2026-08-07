@@ -31,7 +31,7 @@ import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.js'
 // --- Mock 链 (阻断副作用) ---
 
 mock.module(
-  'src/bootstrap/state.js',
+  'src/bootstrap/state.ts',
   stateMockWith({
     getIsNonInteractiveSession: () => false,
     sessionId: 'test-session',
@@ -41,7 +41,7 @@ mock.module(
 mock.module('src/utils/filesystem/cwd.js', () => ({
   getCwd: () => '/test/project',
 }))
-mock.module('src/utils/git/git.js', () => ({
+mock.module('src/utils/git/git.ts', () => ({
   getIsGit: async () => true,
 }))
 mock.module('src/utils/git/worktree.js', () => ({
@@ -109,7 +109,7 @@ mock.module('src/utils/mcp/mcpInstructionsDelta.js', () => ({
 mock.module('src/memdir/memdir.js', () => ({
   loadMemoryPrompt: async () => null,
 }))
-mock.module('src/utils/telemetry/debug.js', () => ({
+mock.module('src/utils/telemetry/debug.ts', () => ({
   logForDebugging: () => {},
 }))
 // growthbook goes through the shared complete-surface mock (missing exports

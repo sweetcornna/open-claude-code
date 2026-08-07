@@ -56,7 +56,7 @@ mock.module('src/constants/tools.js', () => ({
 }))
 
 // Mock messages module
-mock.module('src/utils/messages.js', () => ({
+mock.module('src/utils/messages.ts', () => ({
   createUserMessage: ({ content }: { content: string }) => ({
     type: 'user' as const,
     content,

@@ -114,7 +114,7 @@ const analyticsMock = setupAnalyticsMock({ logEvent: logEventMock })
 afterAll(() => analyticsMock.reset())
 const noop = () => {}
 mock.module(
-  'src/bootstrap/state.js',
+  'src/bootstrap/state.ts',
   stateMockWith({
     getSessionId: () => 'parent-session-id',
     getParentSessionId: () => undefined,
