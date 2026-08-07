@@ -122,6 +122,8 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 **Bun 的测试文件顺序由文件系统决定** —— 不是字母序，也**不是命令行参数顺序**（实测：显式传 `d c b a` 与传 `b d a c`，加载顺序完全一致）。所以这类问题在 macOS 上既无法复现也无法用参数强制，只能靠静态检查或真在 Linux 上跑。CI 从 v2.11.0 到 v2.30.0 连续 55 次全红就是这么攒出来的。
 
+**mock 再导出 barrel 会穿透到底层包模块 —— 而且只在 Linux 上。** `src/Tool.ts` 是 `@open-claude-code/tool-runtime/Tool.js` 的纯再导出层；`mock.module('src/Tool.js', …)` 在 Linux 上**同时**替换了那个 package 模块，macOS 上不会。`agentToolUtils.test.ts` 因此把 `findToolByName` 变成 `() => {}` 喂给了整个 `packages/builtin-tools` 分片。**这类跨平台差异不要靠本地实验证伪**（macOS 上做同样的 preload 会得到"没影响"的相反结论），要么直接删 mock，要么在 CI 上打诊断拿真实数据。
+
 **`bun run check:mock-hygiene` 守着这条规则**（也在 precheck 和 CI 里），查两类：仓库内模块的内联 `mock.module('src/…', () => ({ … }))`（必须走 `tests/mocks/` helper；`bun:bundle`/`axios`/`node:*` 豁免），以及顶层 `setup({…})` 却全文件没有 `.reset()`。存量按文件棘轮在 `scripts/mock-hygiene-budget.json`，双向严格（转换掉一处要 `--update` 提交更低基线）。
 
 ## Working with This Codebase
