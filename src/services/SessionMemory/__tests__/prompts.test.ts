@@ -191,13 +191,6 @@ mock.module('src/services/tokenEstimation.js', () => ({
   countTokens: mock(async () => 0),
 }))
 
-mock.module('src/utils/runtime/errors.js', () => ({
-  getErrnoCode: mock((e: unknown) => (e as NodeJS.ErrnoException)?.code),
-  toError: mock((e: unknown) =>
-    e instanceof Error ? e : new Error(String(e)),
-  ),
-}))
-
 // Mock fs/promises so loadSessionMemoryPrompt() and loadSessionMemoryTemplate()
 // return our controlled templates. Once afterAll flips
 // useMockForSessionMemory off, readFile delegates to the real impl so

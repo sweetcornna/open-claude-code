@@ -105,26 +105,6 @@ mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
-mock.module('src/utils/runtime/errors.js', () => ({
-  ClaudeError: class extends Error {},
-  MalformedCommandError: class extends Error {},
-  AbortError: class extends Error {},
-  ConfigParseError: class extends Error {},
-  ShellError: class extends Error {},
-  TeleportOperationError: class extends Error {},
-  TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS: class extends Error {},
-  isAbortError: () => false,
-  hasExactErrorMessage: () => false,
-  toError: (e: any) => (e instanceof Error ? e : new Error(String(e))),
-  errorMessage: (e: any) => String(e),
-  getErrnoCode: () => undefined,
-  isENOENT: () => false,
-  getErrnoPath: () => undefined,
-  shortErrorStack: () => '',
-  isFsInaccessible: () => false,
-  classifyAxiosError: () => ({ category: 'unknown' }),
-}))
-
 mock.module('src/utils/agents/forkedAgent.js', () => ({}))
 
 mock.module('src/utils/permissions/yoloClassifier.js', () => ({

@@ -118,6 +118,43 @@ const RESET_RE = /\.reset\(\s*\)/
 // scope analysis, and a ratchet that cries wolf gets muted. The inline-surface
 // rule above is the exact one; this is the cheap net under it.
 
+/**
+ * Mocking a re-export shim.
+ *
+ * Several `src/` modules exist only to forward a workspace package —
+ * `src/Tool.ts` over `@open-claude-code/tool-runtime/Tool.js`,
+ * `src/utils/runtime/errors.ts` over `.../errors.js`, and so on. On Linux (but
+ * NOT on macOS) `mock.module('src/Tool.js', …)` replaces the underlying
+ * package module too, so the stub reaches every consumer that imports the
+ * package path directly.
+ *
+ * That cost two CI rounds each time it fired:
+ *   findToolByName: () => {}   → SearchExtraToolsTool's select: found nothing
+ *   AbortError: class …        → AggregateSearchAdapter swallowed the abort
+ *
+ * Both were invisible locally — the same preload on macOS shows no effect at
+ * all — so this rule is static rather than something a test could catch. Mock
+ * the package specifier directly, or (usually better) don't mock these at all:
+ * shims forward pure, dependency-free code.
+ */
+// `export … from '@open-claude-code/…'` only — a plain `import` from a package
+// is ordinary consumption and carries no penetration hazard. It is re-export
+// forwarding, where the shim's exports ARE the package's bindings, that makes
+// mocking one replace the other.
+const SHIM_MARKER_RE = /\bexport\s[^;]*?from\s+'@open-claude-code\//
+
+function findReExportShims(): Set<string> {
+  const shims = new Set<string>()
+  for (const file of new Glob('src/**/*.ts').scanSync(PROJECT_ROOT)) {
+    const source = readFileSync(join(PROJECT_ROOT, file), 'utf8')
+    if (!SHIM_MARKER_RE.test(source)) continue
+    // Normalised to the extensionless module path so both `src/Tool.js` and
+    // `src/Tool.ts` spellings of the mock specifier match.
+    shims.add(file.replaceAll('\\', '/').replace(/\.tsx?$/, ''))
+  }
+  return shims
+}
+
 interface Offender {
   /** Path relative to the project root, so it is copy-pasteable. */
   file: string
@@ -125,9 +162,20 @@ interface Offender {
   specifiers: string[]
   /** Shared-helper overrides installed at load with no `reset()` anywhere. */
   unscoped: number
+  /** `mock.module` specifiers that resolve to a re-export shim. */
+  shims: string[]
 }
 
-function scan(): { offenders: Offender[]; total: number; unscoped: number } {
+/** Every `mock.module('<spec>', …)` call, helper-based factories included. */
+const ANY_MOCK_RE = /\bmock\.module\(\s*['"]([^'"]+)['"]/g
+
+function scan(): {
+  offenders: Offender[]
+  total: number
+  unscoped: number
+  shims: number
+} {
+  const shimModules = findReExportShims()
   const files = new Set<string>()
   for (const pattern of TEST_GLOBS) {
     for (const file of new Glob(pattern).scanSync(PROJECT_ROOT)) {
@@ -138,6 +186,7 @@ function scan(): { offenders: Offender[]; total: number; unscoped: number } {
   const offenders: Offender[] = []
   let total = 0
   let unscopedTotal = 0
+  let shimTotal = 0
 
   for (const file of [...files].sort()) {
     const source = readFileSync(join(PROJECT_ROOT, file), 'utf8')
@@ -148,27 +197,46 @@ function scan(): { offenders: Offender[]; total: number; unscoped: number } {
       if (!isInternalSpecifier(specifier)) continue
       specifiers.push(specifier)
     }
+    const shims: string[] = []
+    for (const match of source.matchAll(ANY_MOCK_RE)) {
+      const specifier = match[1]
+      if (specifier === undefined) continue
+      if (shimModules.has(specifier.replace(/\.(ts|tsx|js|jsx)$/, ''))) {
+        shims.push(specifier)
+      }
+    }
     const unscoped = RESET_RE.test(source)
       ? 0
       : [...source.matchAll(UNSCOPED_SETUP_RE)].length
-    if (specifiers.length > 0 || unscoped > 0) {
+    if (specifiers.length > 0 || unscoped > 0 || shims.length > 0) {
       // Path separators are normalised so the budget file is identical on
       // Windows checkouts.
-      offenders.push({ file: file.replaceAll('\\', '/'), specifiers, unscoped })
+      offenders.push({
+        file: file.replaceAll('\\', '/'),
+        specifiers,
+        unscoped,
+        shims,
+      })
       total += specifiers.length
       unscopedTotal += unscoped
+      shimTotal += shims.length
     }
   }
 
-  return { offenders, total, unscoped: unscopedTotal }
+  return {
+    offenders,
+    total,
+    unscoped: unscopedTotal,
+    shims: shimTotal,
+  }
 }
 
 /**
- * Per file: `[inline mock.module surfaces, unreset shared-helper overrides]`.
- * A pair rather than one number so converting an inline surface into a
- * still-unreset helper call cannot pass silently.
+ * Per file: `[inline mock.module surfaces, unreset shared-helper overrides,
+ * re-export-shim mocks]`. A tuple rather than one number so converting a
+ * violation of one kind into another cannot pass silently.
  */
-type Budget = Record<string, [number, number]>
+type Budget = Record<string, [number, number, number]>
 
 function readBudget(): Budget {
   try {
@@ -181,7 +249,11 @@ function readBudget(): Budget {
 function writeBudget(offenders: Offender[]): void {
   const budget: Budget = {}
   for (const offender of offenders) {
-    budget[offender.file] = [offender.specifiers.length, offender.unscoped]
+    budget[offender.file] = [
+      offender.specifiers.length,
+      offender.unscoped,
+      offender.shims.length,
+    ]
   }
   writeFileSync(BUDGET_FILE, `${JSON.stringify(budget, null, 2)}\n`)
 }
@@ -216,40 +288,77 @@ function printHint(): void {
 
 function main(): void {
   const update = process.argv.includes('--update')
-  const { offenders, total, unscoped } = scan()
+  const { offenders, total, unscoped, shims } = scan()
 
   if (update) {
     writeBudget(offenders)
     console.log(
-      `Updated ${BUDGET_FILE.replace(`${PROJECT_ROOT}/`, '')}: ${total} inline surface(s) + ${unscoped} unreset override(s) across ${offenders.length} file(s).`,
+      `Updated ${BUDGET_FILE.replace(`${PROJECT_ROOT}/`, '')}: ${total} inline surface(s) + ${unscoped} unreset override(s) + ${shims} shim mock(s) across ${offenders.length} file(s).`,
     )
     return
   }
 
   const budget = readBudget()
   const current = new Map(
-    offenders.map(o => [o.file, [o.specifiers.length, o.unscoped] as const]),
+    offenders.map(
+      o => [o.file, [o.specifiers.length, o.unscoped, o.shims.length]] as const,
+    ),
   )
 
   const addedInline: Offender[] = []
   const addedUnscoped: Offender[] = []
+  const addedShims: Offender[] = []
   for (const offender of offenders) {
-    const [inlineAllowed, unscopedAllowed] = budget[offender.file] ?? [0, 0]
+    const [inlineAllowed, unscopedAllowed, shimAllowed] = budget[
+      offender.file
+    ] ?? [0, 0, 0]
     if (offender.specifiers.length > inlineAllowed) addedInline.push(offender)
     if (offender.unscoped > unscopedAllowed) addedUnscoped.push(offender)
+    if (offender.shims.length > shimAllowed) addedShims.push(offender)
   }
 
   const removed: string[] = []
-  for (const [file, [inlineAllowed, unscopedAllowed]] of Object.entries(
-    budget,
-  )) {
-    const [inlineNow, unscopedNow] = current.get(file) ?? [0, 0]
+  for (const [
+    file,
+    [inlineAllowed, unscopedAllowed, shimAllowed],
+  ] of Object.entries(budget)) {
+    const [inlineNow, unscopedNow, shimNow] = current.get(file) ?? [0, 0, 0]
     if (inlineNow < inlineAllowed) {
       removed.push(`${file}  inline ${inlineAllowed} → ${inlineNow}`)
     }
     if (unscopedNow < unscopedAllowed) {
       removed.push(`${file}  unreset ${unscopedAllowed} → ${unscopedNow}`)
     }
+    if (shimNow < (shimAllowed ?? 0)) {
+      removed.push(`${file}  shim ${shimAllowed} → ${shimNow}`)
+    }
+  }
+
+  if (addedShims.length > 0) {
+    console.error(
+      `✗ mock hygiene: ${addedShims.length} file(s) mock a re-export shim.`,
+    )
+    console.error('')
+    console.error(
+      '  On Linux — but not macOS — mocking a src/ barrel replaces the workspace',
+    )
+    console.error(
+      '  package module it forwards, so the stub reaches every consumer that',
+    )
+    console.error(
+      '  imports the package path directly. Mock the package specifier instead,',
+    )
+    console.error(
+      '  or drop the mock: shims forward pure, dependency-free code.',
+    )
+    console.error('')
+    for (const offender of addedShims.slice(0, SAMPLE_SIZE)) {
+      console.error(`  ${offender.file}`)
+      for (const specifier of offender.shims) {
+        console.error(`      mock.module('${specifier}', …)`)
+      }
+    }
+    process.exit(1)
   }
 
   if (addedInline.length > 0) {
@@ -323,7 +432,7 @@ function main(): void {
   }
 
   console.log(
-    `✓ mock hygiene: ${total} legacy inline surface(s) + ${unscoped} unreset override(s) across ${offenders.length} file(s), none added.`,
+    `✓ mock hygiene: ${total} inline + ${unscoped} unreset + ${shims} shim mock(s) across ${offenders.length} file(s), none added.`,
   )
 }
 
