@@ -11,6 +11,7 @@ import { logMock } from '../../../../../../tests/mocks/log'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
 import { setupSettingsMock } from '../../../../../../tests/mocks/settings.js'
 import { setupHttpMock } from '../../../../../../tests/mocks/http.js'
+import { setupToolRuntimeAnalyticsMock } from '../../../../../../tests/mocks/toolRuntimeAnalytics.js'
 
 type MockAxiosResponse = {
   data: ArrayBuffer
@@ -47,9 +48,10 @@ axiosHandle.stubs.isAxiosError = (error: unknown): boolean =>
   error !== null &&
   (error as { isAxiosError?: unknown }).isAxiosError === true
 
-mock.module('@open-claude-code/tool-runtime/analytics.js', () => ({
+const toolRuntimeAnalyticsMock = setupToolRuntimeAnalyticsMock({
   logEvent: () => {},
-}))
+})
+afterAll(() => toolRuntimeAnalyticsMock.reset())
 
 mock.module('src/services/api/claude.js', () => ({
   queryHaiku: async () => ({ message: { content: [] } }),

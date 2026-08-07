@@ -3,7 +3,7 @@
     2, 0, 0
   ],
   "packages/builtin-tools/src/tools/AgentTool/__tests__/agentToolUtils.test.ts": [
-    10, 0, 0
+    4, 0, 0
   ],
   "packages/builtin-tools/src/tools/PowerShellTool/__tests__/gitSafety.test.ts": [
     2, 0, 0
@@ -15,13 +15,13 @@
     3, 0, 0
   ],
   "packages/builtin-tools/src/tools/SearchExtraToolsTool/__tests__/SearchExtraToolsTool.test.ts": [
-    4, 0, 0
+    3, 0, 0
   ],
   "packages/builtin-tools/src/tools/VaultHttpFetchTool/__tests__/VaultHttpFetchTool.test.ts": [
     1, 0, 0
   ],
   "packages/builtin-tools/src/tools/WebFetchTool/__tests__/headers.test.ts": [
-    3, 0, 0
+    2, 0, 0
   ],
   "src/commands/__tests__/commit-push-pr.test.ts": [1, 0, 0],
   "src/commands/autofix-pr/__tests__/launchAutofixPr.test.ts": [2, 0, 0],
@@ -43,7 +43,7 @@
   "src/services/lsp/__tests__/closeAllFiles.test.ts": [4, 0, 0],
   "src/services/mcp/__tests__/channelAllowlist.test.ts": [1, 0, 0],
   "src/services/skillSearch/__tests__/intentNormalize.test.ts": [1, 0, 0],
-  "src/tasks/LocalAgentTask/__tests__/LocalAgentTask.test.ts": [5, 0, 0],
+  "src/tasks/LocalAgentTask/__tests__/LocalAgentTask.test.ts": [4, 0, 0],
   "src/tasks/LocalWorkflowTask/__tests__/LocalWorkflowTask.test.ts": [1, 0, 0],
   "src/utils/__tests__/autonomyPersistence.test.ts": [1, 0, 0],
   "src/utils/__tests__/effort.test.ts": [1, 0, 0],

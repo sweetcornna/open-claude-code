@@ -1,6 +1,11 @@
 import * as realToolConstants from 'src/constants/tools.js'
-import { mock, describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../../../tests/mocks/debug'
+import { setupAgentSummaryMock } from '../../../../../../tests/mocks/agentSummary.js'
+import { setupDumpPromptsMock } from '../../../../../../tests/mocks/dumpPrompts.js'
+import { setupYoloClassifierMock } from '../../../../../../tests/mocks/yoloClassifier.js'
+import { setupSdkProgressMock } from '../../../../../../tests/mocks/sdkProgress.js'
+import { setupToolRuntimeAnalyticsMock } from '../../../../../../tests/mocks/toolRuntimeAnalytics.js'
 
 // ─── Mocks for agentToolUtils.ts dependencies ───
 // Only mock modules that are truly unavailable or cause side effects.
@@ -34,22 +39,23 @@ mock.module('src/constants/tools.js', () => ({
   IN_PROCESS_TEAMMATE_ALLOWED_TOOLS: new Set(),
 }))
 
-mock.module('src/services/AgentSummary/agentSummary.js', () => ({
-  startAgentSummarization: noop,
-}))
+const agentSummaryMock = setupAgentSummaryMock({
+  startAgentSummarization: () => ({ stop: () => {} }),
+})
+afterAll(() => agentSummaryMock.reset())
 
-mock.module('@open-claude-code/tool-runtime/analytics.js', () => ({
+// Only logEvent is a real export here; the hand-rolled surface this replaced
+// also listed attachAnalyticsSink, _resetForTesting and a TYPE name used as a
+// value — none of which exist on tool-runtime/analytics.
+const toolRuntimeAnalyticsMock = setupToolRuntimeAnalyticsMock({
   logEvent: noop,
-  logEventAsync: async () => {},
-  stripProtoFields: (v: any) => v,
-  attachAnalyticsSink: noop,
-  _resetForTesting: noop,
-  AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS: undefined,
-}))
+})
+afterAll(() => toolRuntimeAnalyticsMock.reset())
 
-mock.module('src/services/api/dumpPrompts.js', () => ({
+const dumpPromptsMock = setupDumpPromptsMock({
   clearDumpState: noop,
-}))
+})
+afterAll(() => dumpPromptsMock.reset())
 
 // messages.ts is complex - provide stubs for all named exports
 mock.module('src/utils/messages.ts', () => ({
@@ -105,16 +111,16 @@ mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
-mock.module('src/utils/agents/forkedAgent.js', () => ({}))
-
-mock.module('src/utils/permissions/yoloClassifier.js', () => ({
+const yoloClassifierMock = setupYoloClassifierMock({
   buildTranscriptForClassifier: () => '',
-  classifyYoloAction: () => null,
-}))
+  classifyYoloAction: async () => ({}),
+})
+afterAll(() => yoloClassifierMock.reset())
 
-mock.module('src/utils/task/sdkProgress.js', () => ({
+const sdkProgressMock = setupSdkProgressMock({
   emitTaskProgress: noop,
-}))
+})
+afterAll(() => sdkProgressMock.reset())
 
 // Break circular dep
 mock.module('src/tools/AgentTool/AgentTool.tsx', () => ({

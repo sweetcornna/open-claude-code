@@ -5,6 +5,7 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 import { makeSharedModuleMock } from '../../../../../../tests/mocks/sharedModuleMock'
 
 import * as realToolConstants from 'src/constants/tools.js'
+import { setupToolRuntimeAnalyticsMock } from '../../../../../../tests/mocks/toolRuntimeAnalytics.js'
 mock.module('src/constants/tools.js', () => ({
   ...realToolConstants,
   CORE_TOOLS: new Set(['Read', 'Edit', 'SearchExtraTools', 'ExecuteExtraTool']),
@@ -84,9 +85,10 @@ const sharedMock = makeSharedModuleMock(
 })
 
 // Mock analytics
-mock.module('@open-claude-code/tool-runtime/analytics.js', () => ({
+const toolRuntimeAnalyticsMock = setupToolRuntimeAnalyticsMock({
   logEvent: () => {},
-}))
+})
+afterAll(() => toolRuntimeAnalyticsMock.reset())
 
 const { SearchExtraToolsTool } = await import('../SearchExtraToolsTool.js')
 

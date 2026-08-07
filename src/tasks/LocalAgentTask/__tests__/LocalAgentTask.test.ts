@@ -15,6 +15,7 @@ import { logMock } from '../../../../tests/mocks/log.js'
 import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQueueManager.js'
 import { setupSessionStorageMock } from '../../../../tests/mocks/sessionStorage.js'
 import { setupTaskDiskOutputMock } from '../../../../tests/mocks/taskDiskOutput.js'
+import { setupSdkProgressMock } from '../../../../tests/mocks/sdkProgress.js'
 
 // ─── Mocks ───
 //
@@ -108,9 +109,10 @@ mock.module('src/utils/process/abortController.js', () => ({
   },
 }))
 
-mock.module('src/utils/task/sdkProgress.js', () => ({
+const sdkProgressMock = setupSdkProgressMock({
   emitTaskProgress: noop,
-}))
+})
+afterAll(() => sdkProgressMock.reset())
 
 mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: noop,
