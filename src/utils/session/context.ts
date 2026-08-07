@@ -69,6 +69,29 @@ export function modelSupports1M(model: string): boolean {
   )
 }
 
+/**
+ * Whether an explicitly configured window would actually be honoured for a
+ * model — i.e. whether `/model-settings <tier> context <n>` and the `/model`
+ * picker should offer it at all.
+ *
+ * Anything below 1M always is. At or above it, Anthropic only serves the wide
+ * window behind the `[1m]` opt-in that produces the beta header, and widening
+ * the local accounting without it would stop auto-compact from ever firing and
+ * turn a compaction into a hard prompt-too-long at the real 200k limit.
+ *
+ * That gate is a fact about Anthropic's models, not about the number, so it
+ * does not apply to anyone else's: a third-party id has no beta header to
+ * forget, and the user pointing at that endpoint knows its window better than
+ * a capability table that has never heard of the checkpoint. Clamping them was
+ * how "set the max context for this tier" silently did nothing on every
+ * provider whose 1M model is not called Claude.
+ */
+export function supportsContextWindow(model: string, tokens: number): boolean {
+  if (tokens < CONTEXT_1M_THRESHOLD) return true
+  if (has1mContext(model) || modelSupports1M(model)) return true
+  return !getCanonicalName(model).toLowerCase().includes('claude')
+}
+
 export function getContextWindowForModel(
   model: string,
   betas?: string[],
@@ -96,17 +119,11 @@ export function getContextWindowForModel(
   // the /v1/models capability lookup, all of which know more than a default
   // does. It is applied at the bottom instead, in place of the flat 200k.
   const explicitTierTokens = getExplicitTierContextTokens(model)
-  if (explicitTierTokens !== undefined) {
-    // Clamped by capability: widening the local accounting to 1M on a model
-    // that cannot do it would stop auto-compact from ever firing and turn a
-    // compaction into a hard prompt-too-long at the real limit.
-    if (
-      explicitTierTokens < CONTEXT_1M_THRESHOLD ||
-      has1mContext(model) ||
-      modelSupports1M(model)
-    ) {
-      return explicitTierTokens
-    }
+  if (
+    explicitTierTokens !== undefined &&
+    supportsContextWindow(model, explicitTierTokens)
+  ) {
+    return explicitTierTokens
   }
 
   if (has1mContext(model)) {

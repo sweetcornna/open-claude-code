@@ -21,14 +21,78 @@ export const MODEL_TIERS = ['haiku', 'sonnet', 'opus', 'fable'] as const
 export type ModelTier = (typeof MODEL_TIERS)[number]
 
 /**
- * The tier a model id maps to, or undefined when it names none of them.
+ * Env prefixes that can carry per-tier model pins, and the order they are
+ * searched in. Every provider-setup spec writes one of these
+ * (`specs.ts`, `tierEnv(...)`), and the DeepSeek Anthropic wire mirrors the
+ * OPENAI_* set onto the ANTHROPIC_* set.
+ */
+const TIER_ENV_PREFIXES = ['ANTHROPIC', 'OPENAI', 'GEMINI', 'GROK'] as const
+
+/**
+ * Descending capability, which is the tie-break when several tiers are pinned
+ * to the SAME model id — see getModelTiers.
+ */
+const TIER_RESOLUTION_ORDER = ['fable', 'opus', 'sonnet', 'haiku'] as const
+
+/** `deepseek-v4-pro[1m]` and `deepseek-v4-pro` are the same pin. */
+function normalizeModelId(model: string): string {
+  return model
+    .trim()
+    .replace(/\[1m\]$/i, '')
+    .trim()
+    .toLowerCase()
+}
+
+/**
+ * Every tier a model id could have come from, most capable first.
  *
- * Undefined is the common case for third-party ids (`deepseek-v4-pro`,
- * `glm-5.2`, `gpt-5.6-sol`), which is why per-tier configuration is keyed off
- * the *alias the user asked for* wherever that is known, and only falls back
- * to sniffing the concrete id.
+ * A Claude id names its own tier, so that path returns exactly one answer.
+ * Third-party ids (`deepseek-v4-pro`, `glm-5.2`, `gpt-5.6-sol`) name none, and
+ * that used to be the end of it: `getModelTier` returned undefined, so
+ * `getTierOverride` returned undefined, so every value written by
+ * `/model-settings` was silently ignored for exactly the sessions the feature
+ * exists for. The pins the user configured (`OPENAI_DEFAULT_OPUS_MODEL=…`) are
+ * the missing link — they say which alias resolves to which id, so they can be
+ * read backwards.
+ *
+ * The reverse direction can be many-to-one: pinning all four aliases to one
+ * checkpoint is a normal DeepSeek setup. The model is then literally the same
+ * one whichever alias asked for it, so nothing about the request can
+ * distinguish them; the list is returned most-capable-first and callers that
+ * need a single answer say how they break the tie.
+ */
+export function getModelTiers(model: string): ModelTier[] {
+  const named = sniffTierFromName(model)
+  if (named) return [named]
+
+  const id = normalizeModelId(model)
+  if (!id) return []
+  const matches: ModelTier[] = []
+  for (const tier of TIER_RESOLUTION_ORDER) {
+    for (const prefix of TIER_ENV_PREFIXES) {
+      const pinned =
+        process.env[`${prefix}_DEFAULT_${tier.toUpperCase()}_MODEL`]
+      if (pinned && normalizeModelId(pinned) === id) {
+        matches.push(tier)
+        break
+      }
+    }
+  }
+  return matches
+}
+
+/**
+ * The tier a model id maps to, or undefined when nothing names or pins it.
+ *
+ * Single-answer form of getModelTiers: the most capable candidate. Callers
+ * that can do better — `getTierOverride` prefers whichever candidate the user
+ * actually configured — should.
  */
 export function getModelTier(model: string): ModelTier | undefined {
+  return getModelTiers(model)[0]
+}
+
+function sniffTierFromName(model: string): ModelTier | undefined {
   if (/haiku/i.test(model)) return 'haiku'
   if (/fable/i.test(model)) return 'fable'
   if (/opus/i.test(model)) return 'opus'

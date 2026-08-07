@@ -31,12 +31,20 @@ beforeAll(() =>
 )
 afterAll(() => settingsMock.reset())
 
-const { getContextWindowForModel } = await import('../context.js')
+const { getContextWindowForModel, supportsContextWindow } = await import(
+  '../context.js'
+)
+
+const TIER_ENV = [
+  'OPENAI_DEFAULT_OPUS_MODEL',
+  'OPENAI_DEFAULT_SONNET_MODEL',
+] as const
 
 afterEach(() => {
   userSettings = {}
   delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
   delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+  for (const key of TIER_ENV) delete process.env[key]
 })
 
 describe('per-tier context window', () => {
@@ -74,6 +82,28 @@ describe('per-tier context window', () => {
     } as SettingsJson
 
     expect(getContextWindowForModel('claude-haiku-4-5')).toBe(200_000)
+  })
+
+  test('a third-party 1M is honoured — the [1m] gate is an Anthropic fact', () => {
+    // No beta header exists to forget on someone else's endpoint, and the user
+    // pointing at it knows its window better than a capability table that has
+    // never heard of the checkpoint. Clamping these to 200k is how "set the max
+    // context for this tier" did nothing on every provider whose 1M model is
+    // not called Claude.
+    process.env.OPENAI_DEFAULT_OPUS_MODEL = 'glm-5.2'
+    userSettings = {
+      modelSettings: { opus: { contextTokens: 1_000_000 } },
+    } as SettingsJson
+
+    expect(getContextWindowForModel('glm-5.2')).toBe(1_000_000)
+  })
+
+  test('supportsContextWindow states the rule the picker offers rungs from', () => {
+    expect(supportsContextWindow('claude-haiku-4-5', 200_000)).toBe(true)
+    expect(supportsContextWindow('claude-haiku-4-5', 1_000_000)).toBe(false)
+    expect(supportsContextWindow('claude-opus-5', 1_000_000)).toBe(true)
+    expect(supportsContextWindow('claude-haiku-4-5[1m]', 1_000_000)).toBe(true)
+    expect(supportsContextWindow('deepseek-v4-pro', 1_000_000)).toBe(true)
   })
 
   test('the family default needs the [1m] opt-in before it reports 1M', () => {
