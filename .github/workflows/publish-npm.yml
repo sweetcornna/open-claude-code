@@ -36,6 +36,21 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Must stay in lockstep with ci.yml's identical step. A dev checkout has
+      # no vendored rg (bun skips lifecycle scripts, so postinstall never
+      # downloads it) and the runtime falls back to the system binary — which
+      # dev machines have and a bare runner does not. The mcp serve round-trip
+      # in src/entrypoints executes the real Glob tool, so without this the
+      # test step below fails with `posix_spawn vendor/ripgrep/x64-linux/rg`.
+      #
+      # Moving the full suite into this workflow copied the test loop but not
+      # this prerequisite, so the first release to run it was the first to hit
+      # the failure. Adding a step to ci.yml that the suite needs means adding
+      # it here too.
+      - name: Install ripgrep (system fallback for dev checkouts)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+
       - name: Type check
         run: bun run typecheck
 
