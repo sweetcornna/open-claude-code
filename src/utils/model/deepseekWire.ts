@@ -1,0 +1,139 @@
+/**
+ * Routing DeepSeek through its Anthropic-compatible endpoint.
+ *
+ * DeepSeek serves three protocols and they are not equivalent:
+ *
+ *   /chat/completions   OpenAI-compatible. What occ used by default, because
+ *                       DeepSeek is configured through the OPENAI_* keys.
+ *                       Has NO built-in web search. Thinking has to be coaxed
+ *                       out with `chat_template_kwargs`, and every message is
+ *                       converted Anthropic → OpenAI → Anthropic.
+ *   /responses          OpenAI Responses API. Has the built-in `web_search`
+ *                       tool, but still needs the conversion layer.
+ *   /anthropic          Anthropic Messages API. Verified 2026-08-07 to support
+ *                       tool_use, native `thinking` blocks, prompt caching,
+ *                       `server_tool_use` + `web_search_tool_result` (DeepSeek
+ *                       runs the search server-side), and to accept
+ *                       `output_config.effort` without complaint.
+ *
+ * The third is strictly better here: it is occ's own wire format, so nothing
+ * is lost in translation, and `ApiSearchAdapter` — which declares
+ * `web_search_20250305` — starts returning real results with sources instead
+ * of falling back to keyless SERP scraping. (`hasCodexSearchCredentials()`
+ * requires an `api.openai.com` base URL, so a DeepSeek key never qualified for
+ * the `codex` search lane; those users were on `FreeSearchAdapter`, the worst
+ * tier available, while holding a free server-side search they could not
+ * reach.)
+ *
+ * Detection is by base URL only, and the user's settings file is never
+ * rewritten — existing configs keep working untouched.
+ *
+ * Order of preference, matching the documented behaviour:
+ *   message (this module, default) > responses (OPENAI_WIRE_API=responses)
+ *                                  > chat (OPENAI_WIRE_API=chat)
+ *
+ * Escape hatch: `CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` forces the old path.
+ *
+ * Zero imports beyond the dependency-free predicate module, because
+ * getAPIProvider() consults this and is on every hot path.
+ */
+
+import { isDeepSeekBaseURL } from './deepseekHost.js'
+
+/** Path DeepSeek serves the Anthropic Messages API on. */
+const ANTHROPIC_SUFFIX = '/anthropic'
+
+/** Set to `0`/`false` to keep DeepSeek on the OpenAI-compatible wire. */
+const OPT_OUT_ENV = 'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE'
+
+function isOptedOut(): boolean {
+  const raw = process.env[OPT_OUT_ENV]?.trim().toLowerCase()
+  return raw === '0' || raw === 'false'
+}
+
+/**
+ * Whether an explicit wire choice should win.
+ *
+ * `OPENAI_WIRE_API` is the user saying "talk to this endpoint with that
+ * protocol". Honour it rather than silently redirecting to a third one.
+ */
+function hasExplicitWireChoice(): boolean {
+  const raw = process.env.OPENAI_WIRE_API?.trim().toLowerCase()
+  return raw === 'chat' || raw === 'responses'
+}
+
+/**
+ * True when the session is configured for DeepSeek through the OPENAI_* keys
+ * and nothing has asked for a different protocol.
+ */
+export function isDeepSeekAnthropicWireActive(): boolean {
+  if (isOptedOut()) return false
+  if (hasExplicitWireChoice()) return false
+  // A key is required: without one the Anthropic client would send no auth and
+  // the failure would be a confusing 401 rather than the existing behaviour.
+  if (!process.env.OPENAI_API_KEY?.trim()) return false
+  // Never redirect a session that already points ANTHROPIC_BASE_URL at some
+  // OTHER host — that user configured the Anthropic side deliberately. A value
+  // pointing at DeepSeek is either their own choice or this module's own
+  // earlier write, and must not flip the answer to false (applyDeepSeek…()
+  // sets that key, so a naive "is it set?" check would make this function
+  // stop agreeing with itself after the first call).
+  const anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim()
+  if (anthropicBase && !isDeepSeekBaseURL(anthropicBase)) return false
+  return isDeepSeekBaseURL(process.env.OPENAI_BASE_URL)
+}
+
+/**
+ * The Anthropic Messages base URL derived from `OPENAI_BASE_URL`, or undefined
+ * when this routing is not active.
+ *
+ * Derived rather than hard-coded so a gateway or regional mirror of DeepSeek
+ * that `isDeepSeekBaseURL` recognises keeps working.
+ */
+export function getDeepSeekAnthropicBaseURL(): string | undefined {
+  if (!isDeepSeekAnthropicWireActive()) return undefined
+  const base = process.env.OPENAI_BASE_URL?.trim()
+  if (!base) return undefined
+  const trimmed = base.replace(/\/+$/, '')
+  return trimmed.endsWith(ANTHROPIC_SUFFIX)
+    ? trimmed
+    : `${trimmed}${ANTHROPIC_SUFFIX}`
+}
+
+/** The four tier env keys, paired OpenAI → Anthropic. */
+const TIER_ENV_PAIRS = [
+  ['OPENAI_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
+  ['OPENAI_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+  ['OPENAI_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+  ['OPENAI_DEFAULT_FABLE_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL'],
+] as const
+
+/**
+ * Mirror the DeepSeek OPENAI_* configuration onto the ANTHROPIC_* keys the
+ * first-party client reads. In-memory only — `settings.json` is not touched.
+ *
+ * Tier models are copied because the user's explicit choice must outrank
+ * DeepSeek's own alias mapping (`claude-opus*` → v4-pro, `claude-sonnet*` /
+ * `claude-haiku*` → v4-flash). Nothing already set on the Anthropic side is
+ * overwritten.
+ *
+ * Idempotent; safe to call more than once.
+ */
+export function applyDeepSeekAnthropicWire(): void {
+  const baseURL = getDeepSeekAnthropicBaseURL()
+  if (!baseURL) return
+
+  process.env.ANTHROPIC_BASE_URL = baseURL
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    process.env.ANTHROPIC_API_KEY = process.env.OPENAI_API_KEY
+  }
+  for (const [from, to] of TIER_ENV_PAIRS) {
+    const value = process.env[from]?.trim()
+    if (value && !process.env[to]?.trim()) process.env[to] = value
+  }
+  // OPENAI_MODEL pins one model for every alias; carry that intent across.
+  const pinned = process.env.OPENAI_MODEL?.trim()
+  if (pinned && !process.env.ANTHROPIC_MODEL?.trim()) {
+    process.env.ANTHROPIC_MODEL = pinned
+  }
+}

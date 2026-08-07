@@ -1,4 +1,5 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
+import { isDeepSeekAnthropicWireActive } from './deepseekWire.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { SettingsJson } from '../settings/types.js'
 import { isEnvTruthy } from '../config/envUtils.js'
@@ -15,6 +16,15 @@ export type APIProvider =
 export function getAPIProvider(
   settings: Pick<SettingsJson, 'modelType'> = getInitialSettings(),
 ): APIProvider {
+  // DeepSeek is configured through the OPENAI_* keys, but its
+  // Anthropic-compatible endpoint is a strictly better fit: occ's own wire
+  // format (no lossy round-trip), native thinking blocks, and a server-side
+  // web_search that the first-party search adapter already knows how to ask
+  // for. Checked before modelType because that key says 'openai' for exactly
+  // these users — see deepseekWire.ts for the full rationale and the
+  // CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0 escape hatch.
+  if (isDeepSeekAnthropicWireActive()) return 'firstParty'
+
   const modelType = settings.modelType
   if (modelType === 'openai') return 'openai'
   if (modelType === 'gemini') return 'gemini'

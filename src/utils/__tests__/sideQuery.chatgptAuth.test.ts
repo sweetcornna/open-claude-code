@@ -325,7 +325,11 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
 
   test('compatible API key mode attributes no cache writes', async () => {
     delete process.env.OPENAI_AUTH_MODE
-    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com/v1'
+    // A generic OpenAI-compatible endpoint. This used to name DeepSeek, but
+    // DeepSeek is now routed to its Anthropic-compatible line (deepseekWire.ts)
+    // and would never reach the chat-completions client this test mocks. The
+    // subject here is compatible-mode cache attribution, not DeepSeek.
+    process.env.OPENAI_BASE_URL = 'https://api.example-compatible.test/v1'
     process.env.OPENAI_API_KEY = 'sk-test-not-real'
     chatCompletionsUsage = {
       prompt_tokens: 1000,
@@ -339,7 +343,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
 
     const result = await sideQuery({
       querySource: 'auto_mode',
-      model: 'deepseek-chat',
+      model: 'compatible-chat',
       messages: [{ role: 'user', content: 'hi' }],
     })
 

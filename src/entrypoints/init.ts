@@ -1,4 +1,5 @@
 import { profileCheckpoint } from '../utils/telemetry/startupProfiler.js'
+import { applyDeepSeekAnthropicWire } from '../utils/model/deepseekWire.js'
 import '../bootstrap/state.js'
 import '../utils/config/config.js'
 import type { Attributes, MetricOptions } from '@opentelemetry/api'
@@ -93,6 +94,13 @@ export const init = memoize(async (): Promise<void> => {
     // Full environment variables are applied after trust is established
     const envVarsStart = Date.now()
     applySafeConfigEnvironmentVariables()
+
+    // Mirror a DeepSeek OPENAI_* setup onto the ANTHROPIC_* keys so the
+    // first-party client talks to DeepSeek's Anthropic-compatible endpoint.
+    // Must run after settings env is applied (that is where OPENAI_BASE_URL
+    // comes from for most users) and before anything builds an API client.
+    // In-memory only; settings.json is untouched. See deepseekWire.ts.
+    applyDeepSeekAnthropicWire()
 
     // Apply NODE_EXTRA_CA_CERTS from settings.json to process.env early,
     // before any TLS connections. Bun caches the TLS cert store at boot
