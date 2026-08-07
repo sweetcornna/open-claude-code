@@ -6,6 +6,22 @@ This is a translation of [`CHANGELOG.md`](CHANGELOG.md), which is the canonical
 source and the only one the tooling parses. Keep the structure identical:
 `## <semver> - <date>` headings, top-level `- ` entries, newest first.
 
+## 2.30.0 - 2026-08-06
+
+A batch of real Windows failures, plus a rendering problem that affected every platform.
+
+- **Every error opened a WSL window on Windows, and every hook failed.** One cause behind both: occ was treating `C:\Windows\System32\bash.exe` as a shell, and that is the WSL launcher. The Bash tool and the hook runner share that lookup, which is why the two symptoms arrived together. It now skips past it to find a real Git Bash.
+- **Every Bash tool command reported "command not found" on Windows.** The PATH occ wrote into the shell environment was the literal five characters `$PATH`, because it ran a POSIX-only command through cmd.exe.
+- **Automatic updates had never once worked on Windows, and failed silently.** `occ update`, `occ rollback` and LSP language servers could not launch npm-installed programs — on Windows those are `.cmd` wrappers that need a different launch path. The background updater also discarded its own failures, so there was no sign anything was wrong.
+- **`occ bg kill` always refused to run on Windows**, reporting that it could not verify the process. The same underlying problem made Computer Use crash on its first call there.
+- Fixed terminal display corruption: background colour bleeding sideways, text clipped on the left, and large blank gaps between lines. Three separate causes, two of which also affected macOS and Linux. If you have seen this, it should be gone.
+- **A background agent's timer stayed at 0s** while the token counter beside it climbed. It was measuring duration with a clock that can step backwards, which Windows does routinely after resuming from sleep.
+- **Hook failures now tell you which hook failed and why.** Previously you got a single line — "UserPromptSubmit hook error" — even when the hook itself had printed a full explanation.
+- MCP server authentication failures no longer say just `fetch failed`; you get the actual reason (connection refused, DNS failure, certificate problem, proxy error).
+- The waiting animation now fades to amber when a response is merely slow, and turns red only when nothing has come back at all. Both used to look like failure.
+- Also fixed on Windows: shell completion never installed, ChatGPT credentials were written into the current project instead of your home directory, worktree directory links silently did nothing, plugin install and uninstall failed at random while antivirus held files open, and MCP server processes accumulated instead of exiting.
+- Fixed SSH and Computer Use, which were broken on **every** platform — including "paste image from clipboard" on macOS.
+
 ## 2.29.4 - 2026-08-06
 
 - **The one-line install command in the README installed someone else's empty package, and left you without an `occ` command.** The English and Japanese READMEs told you to run `npm i -g open-claude-code` — but that unscoped name belongs to a third-party `0.0.0` placeholder on npm with no `bin` and no files. npm prints `added 1 package` and exits successfully without creating a `bin/` directory, so "install succeeded" and "command not found" were both true at once. The correct package name is `@sweetcornna/open-claude-code`.

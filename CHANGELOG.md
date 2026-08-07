@@ -4,6 +4,22 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.30.0 - 2026-08-06
+
+Windows 上的一批实际故障，加上一个所有平台都存在的渲染问题。
+
+- **Windows 上每次报错都弹出 WSL 窗口，而且所有 hook 都失败。** 根因是同一处：occ 把 `C:\Windows\System32\bash.exe` 当成了 shell，那其实是 WSL 启动器。Bash 工具和 hook 都走这条查找逻辑，所以两个症状一起出现。现在会跳过它，去找真正的 Git Bash。
+- **Windows 上 Bash 工具的所有命令都提示 command not found。** occ 写进 shell 环境的 PATH 是字面量 `$PATH` 五个字符，因为它用 cmd.exe 去执行了一段只有 POSIX shell 才懂的命令。
+- **Windows 上自动更新从未成功过，而且完全静默。** `occ update`、`occ rollback` 和 LSP 语言服务器都无法启动 npm 安装的程序——Windows 上它们是 `.cmd` 包装脚本，需要另一种启动方式。自动更新的失败还被完全丢弃，所以没有任何迹象。
+- **Windows 上 `occ bg kill` 始终拒绝执行**，提示无法验证进程身份。同一处问题也让 Computer Use 在 Windows 上第一次调用就崩溃。
+- 修复终端界面错位：背景色块横向溢出、文字左侧被截断、行间出现大片空白。三个原因叠加，其中两个在 macOS 和 Linux 上同样存在。如果你见过这种花屏，这次应该好了。
+- **后台 agent 的计时一直显示 0s**，而旁边的 token 计数在正常增长。原因是用会被系统回拨的时钟去测时长——Windows 休眠恢复后回拨很常见。
+- **hook 失败时现在会告诉你是哪个 hook、为什么失败。** 之前只显示一行「UserPromptSubmit hook error」，即使 hook 自己输出了完整的排查说明也看不到。
+- MCP 服务器认证失败时不再只说 `fetch failed`，会给出实际原因（连接被拒绝、域名解析失败、证书问题、代理错误）。
+- 等待响应时的动画：只是慢会渐变成黄色，上游完全没有返回数据才变红。此前两种情况都是红色。
+- Windows 上还修了：shell 补全从未安装成功、ChatGPT 凭据被写到当前项目目录而非用户目录、worktree 的目录链接静默失效、插件安装/卸载在杀毒软件占用文件时随机失败、MCP 服务器进程残留累积。
+- 修复 SSH 与 Computer Use：这两块在**所有平台**上都无法使用，macOS 上「粘贴剪贴板图片」同样受影响。
+
 ## 2.29.4 - 2026-08-06
 
 - **README 的一行式安装指令装的是别人的空壳包,照着做完机器上不会有 `occ` 命令**。英文与日文 README 的「快速开始」写的是无 scope 的 `npm i -g open-claude-code` —— 而那个名字在 npm 上是第三方抢注的 `0.0.0` 占位包:没有 `bin`、没有任何文件。装它时 npm 打印 `added 1 package` 就成功返回,**连 `bin/` 目录都不会创建**,于是"安装成功"和"命令不存在"同时成立。**这是最难自查的一类失败**:没有报错、没有权限问题、`npm ls -g` 里还确实躺着一个叫 `open-claude-code` 的包,唯一的线索是它的版本号是 `0.0.0`。正确的包名是 `@sweetcornna/open-claude-code`(无 scope 的那个名字被抢注,所以本项目发不了,只能带 scope)。
