@@ -159,12 +159,14 @@ There is also a Domain Blocklist query:
 
 ### 17. Chrome UX Report (CrUX)
 
+The `chrome-devtools-mcp` subprocess sends this request; occ itself does not.
 
 - **Endpoint**: `https://chromeuxreport.googleapis.com`
 - **Activation**: Only when `--chrome` is enabled **and** the model calls `performance_start_trace` / `performance_analyze_insight`. URLs in the trace are sent to Google in exchange for real-user performance data.
 - **Disable**: Add `--no-performance-crux` to the server
-- **File**: `src/utils/browserUse/setup.ts` (constructs the server arguments)
+- **File**: `src/utils/chromeDevtools/setup.ts` (constructs the server arguments)
 
+> occ disables `chrome-devtools-mcp` usage-statistics reporting and update checks by default (`--no-usage-statistics` + `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` / `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`), so they are not included in this table.
 
 ### 18. CCR Upstream Proxy
 

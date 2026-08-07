@@ -211,7 +211,7 @@ export async function runInputActionGates(
           `visible in screenshots only, no clicks or typing.` +
           (isBrowser
             ? ' Use the Chrome DevTools MCP for browser interaction (tools ' +
-              'named `mcp__browser-use__*`; load via SearchExtraTools if ' +
+              'named `mcp__chrome-devtools__*`; load via SearchExtraTools if ' +
               'deferred).'
             : ' No interaction is permitted; ask the user to take any ' +
               'actions in this app themselves.') +

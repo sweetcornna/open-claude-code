@@ -162,7 +162,7 @@ occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 追加時の検証フロー:
 
 1. **名前の検証**: 英字、数字、ハイフン、アンダースコアだけを許可
-2. **予約名の確認**: `browser-use` は予約済み。`computer-use` は `computerUse.backend` が `builtin`（既定）の場合に限り予約済み
+2. **予約名の確認**: `chrome-devtools` は予約済み。`computer-use` は `computerUse.backend` が `builtin`（既定）の場合に限り予約済み
 3. **企業管理の確認**: 企業モードでは追加を拒否
 4. **Schema 検証**: Zod で設定形式を検証
 5. **ポリシー確認**: denylist による拒否、allowlist による検証
@@ -306,7 +306,7 @@ export function setupComputerUseMCP(): {
 - 非対話セッションではない
 - GrowthBook gate `getChicagoEnabled()` が true を返す
 
-### Browser MCP (browser-use)
+### Chrome DevTools MCP
 
 ```typescript
 // Computer Use と同様に main.tsx で登録する
@@ -315,14 +315,14 @@ dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
 ```
 
 Computer Use とは異なり、これはプロセス内 server ではありません。`mcpConfig` は通常の
-stdio 設定であり、`uvx --from browser-use[cli] python -m browser_use.mcp.server` を spawn します。`allowedTools` に含まれるのは 4 個の
+stdio 設定であり、`node <chrome-devtools-mcp エントリ>` を spawn します。`allowedTools` に含まれるのは 9 個の
 読み取り専用ツールだけで、それ以外はすべて権限確認へ進みます。
 
 有効化条件:
-- `--chrome` 引数、`CLAUDE_CODE_ENABLE_CFC` 環境変数、または `browserToolDefaultEnabled` 設定
+- `--chrome` 引数、`CLAUDE_CODE_ENABLE_CFC` 環境変数、または `chromeDevtoolsDefaultEnabled` 設定
 - 非対話セッションではない（明示的に `--chrome` を指定した場合を除く）
 
-詳しくは `docs/zh/features/browser-use.md` を参照してください。
+詳しくは `docs/zh/features/chrome-devtools-mcp.md` を参照してください。
 
 ### VSCode SDK MCP
 
@@ -334,7 +334,7 @@ IDE 組み込みモードは初期化メッセージで `type:'sdk'` の設定�
 
 | 名前 | 用途 | 確認条件 |
 |------|------|----------|
-| `browser-use` | Chrome ブラウザ制御 | 常に確認 |
+| `chrome-devtools` | Chrome ブラウザ制御 | 常に確認 |
 | `computer-use` | デスクトップ自動化 | `CHICAGO_MCP` feature flag が有効な場合に確認 |
 | `claude-vscode` | VSCode IDE 統合 | SDK から渡されるため、名前チェックを通らない |
 
@@ -351,5 +351,5 @@ IDE 組み込みモードは初期化メッセージで `type:'sdk'` の設定�
 | `src/services/mcp/client.ts` | 接続管理、トランスポート層の選択 |
 | `src/utils/plugins/mcpPluginIntegration.ts` | プラグイン MCP 設定の読み込み |
 | `src/utils/computerUse/setup.ts` | Computer Use の動的登録 |
-| `src/utils/browserUse/common.ts` | ブラウザ MCP の予約名、ツール一覧、観察系 allowlist |
+| `src/utils/chromeDevtools/common.ts` | Chrome DevTools MCP の予約名、ツール一覧、読み取り専用 allowlist |
 | `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK の双方向通知 |

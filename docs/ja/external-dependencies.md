@@ -159,12 +159,14 @@ WebSearch はデフォルトで複数の検索ソースを集約します。`fre
 
 ### 17. Chrome UX Report (CrUX)
 
+リクエストを送るのは `chrome-devtools-mcp` 子プロセスであり、occ 自体ではありません。
 
 - **エンドポイント**: `https://chromeuxreport.googleapis.com`
 - **有効化**: `--chrome` が有効で、**かつ**モデルが `performance_start_trace` / `performance_analyze_insight` を呼び出した場合だけ。trace 内の URL は、実ユーザーのパフォーマンスデータを取得するため Google へ送信される
 - **無効化**: server に `--no-performance-crux` を追加する
-- **ファイル**: `src/utils/browserUse/setup.ts`（server 引数を構築する）
+- **ファイル**: `src/utils/chromeDevtools/setup.ts`（server 引数を構築する）
 
+> `chrome-devtools-mcp` の利用統計送信と更新確認は occ がデフォルトで無効にしています（`--no-usage-statistics` + `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` / `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`）。そのため、この表には含めません。
 
 ### 18. CCR Upstream Proxy
 

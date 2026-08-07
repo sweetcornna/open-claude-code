@@ -239,8 +239,12 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         </Text>
         {diagnostic.ripgrepStatus.note && <Text color="warning">└ Note: {diagnostic.ripgrepStatus.note}</Text>}
         <Text>
-          └ Browser (--chrome): {diagnostic.chromeStatus.version ?? 'no Chrome/Chromium'} ·{' '}
-          {diagnostic.chromeStatus.browserUseReady ? 'browser-use ready' : 'browser-use not installed'}
+          └ Chrome (--chrome): {diagnostic.chromeStatus.version ?? 'not found'}
+          {diagnostic.chromeStatus.mode === 'browser-url'
+            ? ` (attaching to ${sanitizeBrowserUrlForDisplay(diagnostic.chromeStatus.browserUrl)})`
+            : diagnostic.chromeStatus.mode === 'auto-connect'
+              ? ' (autoConnect)'
+              : ' (will launch its own browser)'}
         </Text>
         {diagnostic.chromeStatus.note && <Text color="warning">└ Note: {diagnostic.chromeStatus.note}</Text>}
 

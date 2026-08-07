@@ -43,56 +43,8 @@ else
   fail "neither bun nor npm found. Install bun (curl -fsSL https://bun.sh/install | bash) or Node.js 20+ first, then re-run."
 fi
 
-# Browser tools (`--chrome`) run through browser-use, a Python tool launched with
-# uvx. It is not an npm dependency, so it has to be provisioned separately.
-# Skipped entirely with OCC_INSTALL_SKIP_BROWSER=1, and never fatal: occ works
-# fine without browser tools, and failing the whole install over an optional
-# feature would be the wrong trade.
-provision_browser_tools() {
-  if [ "${OCC_INSTALL_SKIP_BROWSER:-0}" = "1" ]; then
-    return 0
-  fi
-
-  if ! command -v uvx >/dev/null 2>&1; then
-    info "installing uv (needed by browser tools)…"
-    # Download and run as two steps rather than `curl … | sh`. In a pipeline the
-    # exit status is the *last* command's, so a failed download still reports
-    # success once an empty script runs cleanly — and the user gets "re-open
-    # your shell" instead of the real problem. `set -o pipefail` at the top of
-    # this file happens to cover it, but correctness here should not depend on
-    # a setting twenty lines away that someone could reasonably move.
-    local uv_installer
-    uv_installer=$(mktemp)
-    if ! curl -LsSf https://astral.sh/uv/install.sh -o "${uv_installer}" ||
-      ! sh "${uv_installer}" >/dev/null 2>&1; then
-      rm -f "${uv_installer}"
-      info "could not install uv — browser tools (\`--chrome\`) will be unavailable."
-      info "install it yourself later: https://docs.astral.sh/uv/getting-started/installation/"
-      return 0
-    fi
-    rm -f "${uv_installer}"
-    # uv installs to ~/.local/bin, which is usually not on PATH in this shell yet.
-    export PATH="${HOME}/.local/bin:${PATH}"
-  fi
-
-  if ! command -v uvx >/dev/null 2>&1; then
-    info "uv installed but \`uvx\` is not on PATH — re-open your shell, then run \`${BIN} chrome\`."
-    return 0
-  fi
-
-  # Fetch the package now so the first browser action is not a multi-minute
-  # download in the middle of a task.
-  info "fetching browser-use…"
-  if uvx --from 'browser-use[cli]' python -c 'import browser_use.mcp.server' >/dev/null 2>&1; then
-    info "browser tools ready. Chrome or Chromium must also be installed."
-  else
-    info "could not fetch browser-use — \`${BIN} chrome\` will retry later."
-  fi
-}
-
 if command -v "${BIN}" >/dev/null 2>&1; then
   info "installed: $(${BIN} --version)"
-  provision_browser_tools
   info "run \`${BIN}\` in a project directory to get started — the first run walks you through migration, login, and model setup."
 else
   # Installed but the bin dir isn't on PATH — tell the user where it went.

@@ -159,12 +159,14 @@ WebSearch 默认聚合多个搜索源。其中 `free` 源（免密钥，默认�
 
 ### 17. Chrome UX Report (CrUX)
 
+由 `chrome-devtools-mcp` 子进程发起，不是 occ 自己发的。
 
 - **端点**: `https://chromeuxreport.googleapis.com`
 - **激活**: 仅在 `--chrome` 启用 **且** 模型调用 `performance_start_trace` / `performance_analyze_insight` 时。trace 里的 URL 会被发给 Google 以换取真实用户性能数据。
 - **关闭**: 给 server 加 `--no-performance-crux`
-- **文件**: `src/utils/browserUse/setup.ts`（构造 server 参数）
+- **文件**: `src/utils/chromeDevtools/setup.ts`（构造 server 参数）
 
+> `chrome-devtools-mcp` 的使用统计上报和更新检查已被 occ 默认关闭（`--no-usage-statistics` + `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` / `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`），不在此表内。
 
 ### 18. CCR Upstream Proxy
 

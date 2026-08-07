@@ -1,24 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { type OptionWithDescription, Select } from '../../components/CustomSelect/select.js';
 import { Dialog } from '@anthropic/ink';
 import { Box, Text } from '@anthropic/ink';
 import { BIN_NAME } from '../../constants/brand.js';
 import { useAppState } from '../../state/AppState.js';
 import { openBrowser } from '../../utils/network/browser.js';
-import type { ChromeDetection } from '../../utils/browserUse/chromeVersion.js';
-import { detectChrome } from '../../utils/browserUse/chromeVersion.js';
-import { BROWSER_USE_MCP_SERVER_NAME } from '../../utils/browserUse/common.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
+import type { ChromeDetection } from '../../utils/chromeDevtools/chromeVersion.js';
+import { detectChrome } from '../../utils/chromeDevtools/chromeVersion.js';
 import {
-  type BrowserUseReadiness,
-  checkBrowserUseReadiness,
-  warmBrowserUse,
-} from '../../utils/browserUse/provision.js';
+  CHROME_AUTOCONNECT_MIN_MAJOR,
+  CHROME_BROWSER_URL_ENV,
+  CHROME_DEVTOOLS_MCP_SERVER_NAME,
+} from '../../utils/chromeDevtools/common.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 
 const CHROME_DOWNLOAD_URL = 'https://www.google.com/chrome/';
-const BROWSER_USE_URL = 'https://github.com/browser-use/browser-use';
+const CHROME_DEVTOOLS_MCP_URL = 'https://github.com/ChromeDevTools/chrome-devtools-mcp';
 
-type MenuAction = 'install-chrome' | 'toggle-default' | 'learn-more' | 'install-deps';
+type MenuAction = 'install-chrome' | 'toggle-default' | 'learn-more';
 
 type Props = {
   onDone: (result?: string) => void;
@@ -26,20 +25,15 @@ type Props = {
   configEnabled: boolean | undefined;
 };
 
-function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactNode {
+function ChromeDevtoolsMenu({ onDone, chrome, configEnabled }: Props): React.ReactNode {
   const mcpClients = useAppState(s => s.mcp.clients);
   const [enabledByDefault, setEnabledByDefault] = useState(configEnabled ?? false);
 
-  const client = mcpClients.find(c => c.name === BROWSER_USE_MCP_SERVER_NAME);
+  const client = mcpClients.find(c => c.name === CHROME_DEVTOOLS_MCP_SERVER_NAME);
   const isConnected = client?.type === 'connected';
 
-  // browser-use is provisioned outside npm, so its readiness is a separate
-  // question from whether the server happens to be attached right now.
-  const [readiness, setReadiness] = useState<BrowserUseReadiness | null>(null);
-  const [installing, setInstalling] = useState(false);
-  useEffect(() => {
-    void checkBrowserUseReadiness().then(setReadiness);
-  }, []);
+  // Same three-way split doctor reports, so the two surfaces never disagree.
+  const mode = chrome.browserUrl ? 'browser-url' : chrome.supportsAutoConnect ? 'auto-connect' : 'launch';
 
   function handleAction(action: MenuAction): void {
     switch (action) {
@@ -47,21 +41,13 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
         void openBrowser(CHROME_DOWNLOAD_URL);
         break;
       case 'learn-more':
-        void openBrowser(BROWSER_USE_URL);
+        void openBrowser(CHROME_DEVTOOLS_MCP_URL);
         break;
-      case 'install-deps': {
-        setInstalling(true);
-        void warmBrowserUse().then(async () => {
-          setReadiness(await checkBrowserUseReadiness());
-          setInstalling(false);
-        });
-        break;
-      }
       case 'toggle-default': {
         const newValue = !enabledByDefault;
         saveGlobalConfig(current => ({
           ...current,
-          browserToolDefaultEnabled: newValue,
+          chromeDevtoolsDefaultEnabled: newValue,
         }));
         setEnabledByDefault(newValue);
         break;
@@ -70,29 +56,21 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
   }
 
   const options: OptionWithDescription<MenuAction>[] = [];
-  if (readiness && !readiness.packageReady) {
-    options.push({
-      label: installing ? 'Installing browser-use…' : 'Install browser-use now',
-      value: 'install-deps',
-      description: readiness.hasUvx
-        ? 'Fetch it ahead of time so the first browser action is not a long download.'
-        : 'Requires uv — see the note below.',
-    });
-  }
-  if (!chrome.version) {
+  if (!chrome.version && !chrome.browserUrl) {
     options.push({ label: 'Install Google Chrome', value: 'install-chrome' });
   }
   options.push(
     { label: `Enabled by default: ${enabledByDefault ? 'Yes' : 'No'}`, value: 'toggle-default' },
-    { label: 'Open the browser-use docs', value: 'learn-more' },
+    { label: 'Open the chrome-devtools-mcp docs', value: 'learn-more' },
   );
 
   return (
-    <Dialog title="Browser tools" onCancel={() => onDone()} color="chromeYellow">
+    <Dialog title="Chrome browser tools" onCancel={() => onDone()} color="chromeYellow">
       <Box flexDirection="column" gap={1}>
         <Text>
-          Browser control runs through the browser-use MCP server. It can read page state, extract content, navigate,
-          click and type, and manage tabs — or hand a whole task to an autonomous browsing agent.
+          Browser control runs through Google&apos;s chrome-devtools-mcp server. It can navigate pages, click and type,
+          capture snapshots and screenshots, and read console output, network requests, performance traces, and
+          Lighthouse audits.
         </Text>
 
         <Box flexDirection="column">
@@ -100,23 +78,26 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
             Status: {isConnected ? <Text color="success">Connected</Text> : <Text color="inactive">Not connected</Text>}
           </Text>
           <Text>
-            browser-use:{' '}
-            {readiness === null ? (
-              <Text dimColor>checking…</Text>
-            ) : readiness.packageReady ? (
-              <Text color="success">ready</Text>
+            Chrome:{' '}
+            {chrome.version ? (
+              <Text color={chrome.supportsAutoConnect ? 'success' : 'warning'}>{chrome.version}</Text>
             ) : (
-              <Text color="warning">not installed</Text>
+              <Text color="warning">not detected</Text>
             )}
           </Text>
           <Text>
-            Browser:{' '}
-            {chrome.version ? <Text color="success">{chrome.version}</Text> : <Text color="warning">not detected</Text>}
+            Connection:{' '}
+            {mode === 'browser-url' ? (
+              <Text color="success">{chrome.browserUrl}</Text>
+            ) : mode === 'auto-connect' ? (
+              <Text color="success">attach to your running Chrome (autoConnect)</Text>
+            ) : (
+              <Text color="warning">launch a separate browser (no logins)</Text>
+            )}
           </Text>
         </Box>
 
         {chrome.note && <Text color="warning">{chrome.note}</Text>}
-        {readiness?.note && <Text color="warning">{readiness.note}</Text>}
 
         <Select options={options} onChange={handleAction} hideIndexes />
 
@@ -133,8 +114,9 @@ function BrowserToolMenu({ onDone, chrome, configEnabled }: Props): React.ReactN
         </Text>
 
         <Text dimColor>
-          browser-use is a Python tool launched through uvx, and it needs Chrome or Chromium installed. Install uv from
-          docs.astral.sh/uv if --chrome reports it missing.
+          autoConnect needs Chrome {CHROME_AUTOCONNECT_MIN_MAJOR}+ with remote debugging enabled via
+          chrome://inspect/#remote-debugging. On WSL or a remote host, start Chrome with --remote-debugging-port=9222
+          and set {CHROME_BROWSER_URL_ENV}.
         </Text>
       </Box>
     </Dialog>
@@ -145,5 +127,5 @@ export const call = async function (onDone: (result?: string) => void): Promise<
   const chrome = await detectChrome();
   const config = getGlobalConfig();
 
-  return <BrowserToolMenu onDone={onDone} chrome={chrome} configEnabled={config.chromeDevtoolsDefaultEnabled} />;
+  return <ChromeDevtoolsMenu onDone={onDone} chrome={chrome} configEnabled={config.chromeDevtoolsDefaultEnabled} />;
 };

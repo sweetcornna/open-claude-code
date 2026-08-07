@@ -31,8 +31,7 @@ import {
   getPackageManager,
 } from '../nativeInstaller/packageManagers.js'
 import { getPlatform } from '../process/platform.js'
-import { detectChrome } from '../browserUse/chromeVersion.js'
-import { checkBrowserUseReadiness } from '../browserUse/provision.js'
+import { detectChrome } from '../chromeDevtools/chromeVersion.js'
 import { getRipgrepStatus } from '../filesystem/ripgrep.js'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from '../settings/managedPath.js'
@@ -73,9 +72,10 @@ export type DiagnosticInfo = {
    */
   chromeStatus: {
     version: string | null
+    supportsAutoConnect: boolean
     /** 'browser-url' when OCC_CHROME_BROWSER_URL points somewhere. */
-    executablePath: string | null
-    browserUseReady: boolean
+    mode: 'auto-connect' | 'browser-url' | 'launch'
+    browserUrl: string | null
     note: string | null
   }
 }
@@ -443,16 +443,18 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     note: ripgrepStatusRaw.note ?? null,
   }
 
-  // Browser availability for `--chrome` (browser-use drives a real browser).
-  // Readiness is a separate question: browser-use is a Python tool provisioned
-  // outside npm, so a machine can have Chrome and still not be able to run it.
+  // Chrome availability for `--chrome` (chrome-devtools-mcp)
   const chrome = await detectChrome()
-  const browserUse = await checkBrowserUseReadiness()
   const chromeStatus = {
     version: chrome.version,
-    executablePath: chrome.executablePath,
-    browserUseReady: browserUse.packageReady,
-    note: chrome.note ?? browserUse.note,
+    supportsAutoConnect: chrome.supportsAutoConnect,
+    mode: chrome.browserUrl
+      ? ('browser-url' as const)
+      : chrome.supportsAutoConnect
+        ? ('auto-connect' as const)
+        : ('launch' as const),
+    browserUrl: chrome.browserUrl,
+    note: chrome.note,
   }
 
   // Get package manager info if running from package manager

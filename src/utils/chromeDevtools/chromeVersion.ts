@@ -10,7 +10,10 @@
 import { readdirSync } from 'fs'
 import { join } from 'path'
 import memoize from 'lodash-es/memoize.js'
-
+import {
+  CHROME_AUTOCONNECT_MIN_MAJOR,
+  CHROME_BROWSER_URL_ENV,
+} from './common.js'
 import { execFileNoThrow } from '../process/execFileNoThrow.js'
 import { getPlatform } from '../process/platform.js'
 import { which } from '../process/which.js'
@@ -22,6 +25,10 @@ export type ChromeDetection = {
   major: number | null
   /** Path the version was read from. */
   executablePath: string | null
+  /** Whether `--autoConnect` can attach to this Chrome. */
+  supportsAutoConnect: boolean
+  /** Value of the browser-url override, when set. */
+  browserUrl: string | null
   /** True when running under WSL, where Chrome usually lives on the host. */
   isWsl: boolean
   /** One line of guidance, or null when nothing needs saying. */
@@ -114,16 +121,23 @@ async function findChrome(): Promise<{
 }
 
 function buildNote(detection: Omit<ChromeDetection, 'note'>): string | null {
+  if (detection.browserUrl) {
+    return `Connecting to ${detection.browserUrl} (${CHROME_BROWSER_URL_ENV}); the local Chrome version is not used.`
+  }
   if (detection.isWsl) {
-    return `WSL detected. A browser on the Windows side is not reachable from here — install Chrome or Chromium inside the WSL distro.`
+    return `WSL detected. Chrome on the Windows side is not reachable from here — start it with --remote-debugging-port=9222 and set ${CHROME_BROWSER_URL_ENV}=http://127.0.0.1:9222`
   }
   if (detection.major === null) {
-    return `No Chrome or Chromium found. browser-use drives a real browser, so install one before using --chrome.`
+    return `Chrome not found. Install Google Chrome, or set ${CHROME_BROWSER_URL_ENV} to attach to a browser elsewhere.`
+  }
+  if (!detection.supportsAutoConnect) {
+    return `Chrome ${detection.version} is below ${CHROME_AUTOCONNECT_MIN_MAJOR}, so --autoConnect cannot attach to it. A separate browser with an empty profile will be launched instead (no logins).`
   }
   return null
 }
 
 async function detect(): Promise<ChromeDetection> {
+  const browserUrl = process.env[CHROME_BROWSER_URL_ENV]?.trim() || null
   const isWsl = getPlatform() === 'wsl'
   const found = await findChrome().catch(() => null)
   const parsed = found ? parseInt(found.version, 10) : Number.NaN
@@ -133,6 +147,9 @@ async function detect(): Promise<ChromeDetection> {
     version: found?.version ?? null,
     major,
     executablePath: found?.executablePath ?? null,
+    supportsAutoConnect:
+      major !== null && major >= CHROME_AUTOCONNECT_MIN_MAJOR,
+    browserUrl,
     isWsl,
   }
 

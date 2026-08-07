@@ -982,18 +982,18 @@ export function Config({
         ]
       : []),
     {
-      id: 'browserToolDefaultEnabled',
-      label: 'Browser tools enabled by default',
-      value: globalConfig.browserToolDefaultEnabled ?? globalConfig.chromeDevtoolsDefaultEnabled ?? false,
+      id: 'chromeDevtoolsDefaultEnabled',
+      label: 'Chrome browser tools enabled by default',
+      value: globalConfig.chromeDevtoolsDefaultEnabled ?? false,
       type: 'boolean' as const,
       onChange(enabled: boolean) {
         saveGlobalConfig(current => ({
           ...current,
-          browserToolDefaultEnabled: enabled,
+          chromeDevtoolsDefaultEnabled: enabled,
         }));
         setGlobalConfig({
           ...getGlobalConfig(),
-          browserToolDefaultEnabled: enabled,
+          chromeDevtoolsDefaultEnabled: enabled,
         });
         logEvent('tengu_chrome_devtools_setting_changed', {
           enabled,
