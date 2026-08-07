@@ -45,6 +45,7 @@ import {
 } from './aws.js'
 import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
 import { clearBetasCaches } from '../model/betas.js'
+import { isDeepSeekMirroredApiKey } from '../model/deepseekWire.js'
 import {
   type AccountInfo,
   checkHasTrustDialogAccepted,
@@ -228,6 +229,42 @@ export function hasAnthropicApiKeyAuth(): boolean {
   return key !== null && source !== 'none'
 }
 
+/**
+ * Whether an `ANTHROPIC_API_KEY` in the environment is one occ put there.
+ *
+ * The approval list (`customApiKeyResponses.approved`) exists for keys occ
+ * DISCOVERED in the user's shell — "you didn't tell us to use this, should
+ * we?". A key occ configured itself was never discovered: the user typed it
+ * into `/login`, and there is no prompt they could have answered for it.
+ * Interactively that distinction is load-bearing, because `--print` skips the
+ * approval check entirely (see preferThirdPartyAuthentication above) — so a
+ * setup that works headlessly reports "Not logged in · Please run /login" in
+ * the REPL, which is a maddening way to find out.
+ *
+ * Two sources count, and they cover every provider that can produce one:
+ *   - occ's own settings env, written by the Anthropic-compatible provider
+ *     setup (`/login` → Anthropic-compatible, any gateway or proxy).
+ *   - the in-memory DeepSeek mirror, which never touches settings at all.
+ *
+ * Bedrock, Vertex and Foundry authenticate through their own credential
+ * chains and never reach this function; OpenAI, Gemini and Grok carry their
+ * own `*_API_KEY` and likewise do not.
+ *
+ * Read from `userSettings` and the global config rather than the merged
+ * settings — those are the two trusted, user-owned sources the provider setup
+ * writes to. Merged settings would let a project-scoped `.claude/settings.json`
+ * nominate a key as pre-approved, which is precisely the discovery case the
+ * approval list is for. (Deliberately not `getEffectiveSettingsEnv()`, which
+ * would say the same thing but closes an import cycle from here.)
+ */
+export function isOccConfiguredAnthropicApiKey(apiKey: string): boolean {
+  if (isDeepSeekMirroredApiKey(apiKey)) return true
+  const fromUserSettings =
+    getSettingsForSource('userSettings')?.env?.ANTHROPIC_API_KEY
+  if (fromUserSettings === apiKey) return true
+  return getGlobalConfig().env?.ANTHROPIC_API_KEY === apiKey
+}
+
 export function getAnthropicApiKeyWithSource(
   opts: { skipRetrievingKeyFromApiKeyHelper?: boolean } = {},
 ): {
@@ -300,6 +337,15 @@ export function getAnthropicApiKeyWithSource(
       source: 'none',
     }
   }
+  // A key occ configured itself is not a key "found in the environment", so
+  // the approval list below has nothing to say about it and never will.
+  // Must sit above that check: falling through lands on the keychain, which
+  // holds no Anthropic key for these users, and the session reports
+  // "Not logged in · Please run /login".
+  if (apiKeyEnv && isOccConfiguredAnthropicApiKey(apiKeyEnv)) {
+    return { key: apiKeyEnv, source: 'ANTHROPIC_API_KEY' }
+  }
+
   // Check for ANTHROPIC_API_KEY before checking the apiKeyHelper or /login-managed key
   if (
     apiKeyEnv &&

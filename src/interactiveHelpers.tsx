@@ -26,6 +26,7 @@ import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { ThemeProvider } from '@anthropic/ink';
 import { normalizeApiKeyForConfig } from './utils/auth/authPortable.js';
+import { isOccConfiguredAnthropicApiKey } from './utils/auth/auth.js';
 import {
   getExternalClaudeMdIncludes,
   getMemoryFiles,
@@ -266,7 +267,17 @@ export async function showSetupScreens(
   // Check for custom API key
   // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child
   // processes but ignored by Claude Code itself (see auth.ts).
-  if (process.env.ANTHROPIC_API_KEY && !isRunningOnHomespace()) {
+  // A key occ configured itself is not "detected in your environment" — there
+  // is nothing for the user to approve, and asking is worse than useless: the
+  // dialog defaults to "No (recommended)", so the normal answer rejects the
+  // provider key they just finished setting up and the session reports
+  // "Not logged in · Please run /login". --print never shows this dialog,
+  // which is why the failure looks like it only happens in the REPL.
+  if (
+    process.env.ANTHROPIC_API_KEY &&
+    !isRunningOnHomespace() &&
+    !isOccConfiguredAnthropicApiKey(process.env.ANTHROPIC_API_KEY)
+  ) {
     const customApiKeyTruncated = normalizeApiKeyForConfig(process.env.ANTHROPIC_API_KEY);
     const keyStatus = getCustomApiKeyStatus(customApiKeyTruncated);
     if (keyStatus === 'new') {

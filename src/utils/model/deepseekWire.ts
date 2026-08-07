@@ -124,6 +124,24 @@ const TIER_ENV_PAIRS = [
 let mirroredKeys = new Map<string, string>()
 
 /**
+ * Whether `ANTHROPIC_API_KEY` currently holds a value this module wrote.
+ *
+ * The interactive auth path only accepts an `ANTHROPIC_API_KEY` out of the
+ * environment when the user has explicitly approved that key (the "use the API
+ * key found in your environment?" list). A mirrored key is not "found in the
+ * environment" — the user typed it into `/login` two screens earlier and it was
+ * copied here by this module, so there is nothing to approve and no prompt they
+ * could ever have answered. Without this the interactive session falls past the
+ * approval check to the keychain, finds no Anthropic key, and reports
+ * "Not logged in · Please run /login" — while `--print` works, because print
+ * mode takes an earlier branch that skips approval entirely.
+ */
+export function isDeepSeekMirroredApiKey(value: string | undefined): boolean {
+  if (!value) return false
+  return mirroredKeys.get('ANTHROPIC_API_KEY') === value
+}
+
+/**
  * Mirror the DeepSeek OPENAI_* configuration onto the ANTHROPIC_* keys the
  * first-party client reads. In-memory only — `settings.json` is not touched.
  *

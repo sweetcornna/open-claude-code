@@ -7,7 +7,7 @@ import { setupTerminal, shouldOfferTerminalSetup } from '../commands/terminalSet
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Link, Newline, Text, useTheme } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
-import { isAnthropicAuthEnabled } from '../utils/auth/auth.js';
+import { isAnthropicAuthEnabled, isOccConfiguredAnthropicApiKey } from '../utils/auth/auth.js';
 import { normalizeApiKeyForConfig } from '../utils/auth/authPortable.js';
 import { getCustomApiKeyStatus } from '../utils/config/config.js';
 import { env } from '../utils/config/env.js';
@@ -122,7 +122,13 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     // Add API key step if needed
     // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child
     // processes but ignored by Claude Code itself (see auth.ts).
-    if (!process.env.ANTHROPIC_API_KEY || isRunningOnHomespace()) {
+    // Same exclusion as interactiveHelpers: a key occ configured itself was
+    // never "detected", so there is nothing to approve.
+    if (
+      !process.env.ANTHROPIC_API_KEY ||
+      isRunningOnHomespace() ||
+      isOccConfiguredAnthropicApiKey(process.env.ANTHROPIC_API_KEY)
+    ) {
       return '';
     }
     const customApiKeyTruncated = normalizeApiKeyForConfig(process.env.ANTHROPIC_API_KEY);

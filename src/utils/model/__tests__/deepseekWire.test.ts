@@ -3,6 +3,7 @@ import {
   applyDeepSeekAnthropicWire,
   getDeepSeekAnthropicBaseURL,
   isDeepSeekAnthropicWireActive,
+  isDeepSeekMirroredApiKey,
 } from '../deepseekWire.js'
 
 /**
@@ -228,6 +229,42 @@ describe('following configuration that changes mid-session', () => {
     // DeepSeek with a key the user just stopped using.
     expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
     expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
+  })
+
+  test('a mirrored key is recognisable as occ-configured', () => {
+    // The interactive auth path only accepts an ANTHROPIC_API_KEY from the
+    // environment when the user approved it. A mirrored key was never
+    // "found in the environment" — occ copied it from the provider key the
+    // user typed into /login — so there is no prompt they could have answered,
+    // and the approval dialog defaults to "No (recommended)". Answering the
+    // default rejects the key they just configured and the REPL reports
+    // "Not logged in · Please run /login" while --print keeps working.
+    deepseekEnv()
+    applyDeepSeekAnthropicWire()
+
+    expect(isDeepSeekMirroredApiKey(process.env.ANTHROPIC_API_KEY)).toBe(true)
+    expect(isDeepSeekMirroredApiKey('sk-something-else')).toBe(false)
+    expect(isDeepSeekMirroredApiKey(undefined)).toBe(false)
+  })
+
+  test('a key occ did not write is not reported as mirrored', () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-user-owned'
+    deepseekEnv()
+    applyDeepSeekAnthropicWire()
+    // The mirror leaves a user-owned key alone, so it must not vouch for it
+    // either — that key still belongs in the approval flow.
+    expect(isDeepSeekMirroredApiKey('sk-ant-user-owned')).toBe(false)
+  })
+
+  test('releasing the mirror withdraws the vouch', () => {
+    deepseekEnv()
+    applyDeepSeekAnthropicWire()
+    const mirrored = process.env.ANTHROPIC_API_KEY
+
+    delete process.env.OPENAI_BASE_URL
+    applyDeepSeekAnthropicWire()
+
+    expect(isDeepSeekMirroredApiKey(mirrored)).toBe(false)
   })
 
   test('a key the user set themselves is never claimed or removed', () => {
