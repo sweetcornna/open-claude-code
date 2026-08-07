@@ -14,12 +14,31 @@
  *
  * Only the log/debug leaves are mock.module'd (shared mocks, per CLAUDE.md).
  */
-import { afterEach, beforeAll, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
+
+// These tests drive the provider choice through env vars, but
+// getAPIProvider() consults settings.modelType FIRST and only falls through to
+// the env when it is unset. Left unpinned, getInitialSettings() reads the
+// developer's real ~/.occ/settings.json — so on any machine configured for
+// OpenAI ('modelType': 'openai') every env-driven case here returned 'openai'
+// and the suite failed locally while passing on CI, which has no settings file.
+const settingsMock = setupSettingsMock()
+beforeAll(() => settingsMock.set({ getInitialSettings: () => ({}) }))
+afterAll(() => settingsMock.reset())
 
 let fromEnv: typeof import('../fromEnvironment.js')
 
