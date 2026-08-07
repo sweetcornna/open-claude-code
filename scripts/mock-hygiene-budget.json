@@ -37,17 +37,14 @@
   "src/components/FeedbackSurvey/__tests__/useFrustrationDetection.test.tsx": [
     3, 0, 0
   ],
-  "src/constants/promptEngineeringAudit.runner.ts": [33, 0, 0],
   "src/services/MagicDocs/__tests__/prompts.test.ts": [2, 0, 0],
   "src/services/SessionMemory/__tests__/prompts.test.ts": [4, 0, 0],
   "src/services/acp/__tests__/permissions.test.ts": [2, 0, 0],
   "src/services/api/grok/__tests__/client.test.ts": [1, 0, 0],
-  "src/services/api/openai/__tests__/queryModelOpenAI.runner.ts": [17, 0, 0],
   "src/services/auth/__tests__/hostGuard.test.ts": [1, 0, 0],
   "src/services/goal/__tests__/goalTurnOutcome.test.ts": [1, 0, 0],
   "src/services/lsp/__tests__/closeAllFiles.test.ts": [4, 0, 0],
   "src/services/mcp/__tests__/channelAllowlist.test.ts": [1, 0, 0],
-  "src/services/searchExtraTools/__tests__/prefetch.runner.ts": [2, 0, 0],
   "src/services/skillSearch/__tests__/intentNormalize.test.ts": [1, 0, 0],
   "src/tasks/LocalAgentTask/__tests__/LocalAgentTask.test.ts": [5, 0, 0],
   "src/tasks/LocalWorkflowTask/__tests__/LocalWorkflowTask.test.ts": [1, 0, 0],

@@ -70,10 +70,27 @@ const BUDGET_FILE = join(PROJECT_ROOT, 'scripts', 'mock-hygiene-budget.json')
 /** How many offending files to print when the ratchet trips. */
 const SAMPLE_SIZE = 12
 
+/**
+ * `*.runner.ts` is deliberately absent.
+ *
+ * Every rule in this file is about ONE process shared by MANY files. A runner
+ * is neither: its companion `.test.ts` spawns it with
+ * `Bun.spawn(['bun', 'test', <runner>])`, so it gets a process containing
+ * exactly itself — which is the entire reason runners exist.
+ *
+ * And a shard can never pull one in by accident: Bun's default discovery only
+ * matches `*.test.*` / `*_test.*` / `*.spec.*`, so `bun test src/constants`
+ * does not load `src/constants/promptEngineeringAudit.runner.ts`. Verified
+ * with a scratch directory holding `a.runner.ts` + `b.test.ts` — `bun test .`
+ * ran one file.
+ *
+ * Scanning them anyway put 53 inline surfaces in the ratchet that cannot
+ * poison anything, and pressured whoever cleared them into converting mocks
+ * that were already correct.
+ */
 const TEST_GLOBS = [
   'src/**/*.test.ts',
   'src/**/*.test.tsx',
-  'src/**/*.runner.ts',
   'packages/**/*.test.ts',
   'packages/**/*.test.tsx',
   'tests/**/*.test.ts',
