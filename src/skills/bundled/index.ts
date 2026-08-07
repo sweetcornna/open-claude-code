@@ -57,10 +57,4 @@ export function initBundledSkills(): void {
   // Registered unconditionally; its own isEnabled() hides it unless the
   // Chrome DevTools MCP server is attached to this session.
   registerChromeDevtoolsSkill()
-  if (feature('RUN_SKILL_GENERATOR')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { registerRunSkillGeneratorSkill } = require('./runSkillGenerator.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    registerRunSkillGeneratorSkill()
-  }
 }

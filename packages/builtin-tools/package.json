@@ -8,11 +8,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./registry.js": "./src/registry.ts",
-    "./tools/*": "./src/tools/*",
-    "./utils": "./src/utils.ts"
+    "./tools/*": "./src/tools/*"
   },
   "dependencies": {
-    "@open-claude-code/agent-tools": "workspace:*",
     "@open-claude-code/tool-runtime": "workspace:*",
     "marked": "^17.0.6"
   }

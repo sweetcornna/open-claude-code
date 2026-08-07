@@ -40,15 +40,6 @@ declare module 'bidi-js' {
   export default { getEmbeddingLevels, getReorderSegments, getVisualOrder }
 }
 
-declare module 'asciichart' {
-  function plot(
-    series: number[] | number[][],
-    config?: Record<string, unknown>,
-  ): string
-  export { plot }
-  export default { plot }
-}
-
 declare module '@napi-rs/keyring' {
   export class Entry {
     constructor(service: string, account: string)

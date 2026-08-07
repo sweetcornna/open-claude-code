@@ -4,14 +4,33 @@
     "@ant/*",
     "react-compiler-runtime",
     "chrome-devtools-mcp",
-    "undici"
+    "undici",
+    "@napi-rs/keyring",
+    "auto-bind",
+    "bidi-js",
+    "cli-boxes",
+    "emoji-regex",
+    "get-east-asian-width",
+    "indent-string",
+    "react-reconciler",
+    "supports-hyperlinks",
+    "type-fest",
+    "wrap-ansi"
   ],
+  "ignoreBinaries": [
+    "mintlify",
+    "gh",
+    "security",
+    "ps",
+    "tasklist",
+    "findstr",
+    "ip"
+  ],
+  "ignoreUnresolved": ["\\.md$"],
   "workspaces": {
     ".": {
       "entry": [
         "src/entrypoints/cli.tsx",
-        "build.ts",
-        "vite.config.ts",
         "scripts/**/*.{ts,mjs,cjs}",
         "src/**/*.runner.ts"
       ],
@@ -20,6 +39,10 @@
     },
     "packages/*": {
       "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/workflow-engine": {
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["bun-types"]
     },
     "packages/@ant/*": {
       "ignore": ["**"]
