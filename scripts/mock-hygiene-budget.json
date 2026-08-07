@@ -3,7 +3,7 @@
     2, 0
   ],
   "packages/builtin-tools/src/tools/AgentTool/__tests__/agentToolUtils.test.ts": [
-    18, 0
+    17, 0
   ],
   "packages/builtin-tools/src/tools/PowerShellTool/__tests__/gitSafety.test.ts": [
     2, 0

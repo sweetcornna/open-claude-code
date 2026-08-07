@@ -4,6 +4,16 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 
 // ─── Mocks for agentToolUtils.ts dependencies ───
 // Only mock modules that are truly unavailable or cause side effects.
+//
+// Do NOT stub src/Tool.js here. It is a pure re-export barrel over
+// @open-claude-code/tool-runtime/Tool.js, and on Linux a mock.module on the
+// barrel replaces the underlying package module too — a stubbed
+// `findToolByName: () => {}` / `toolMatchesName: () => false` then applies to
+// every later file in the packages/builtin-tools shard. That is what made
+// SearchExtraToolsTool's select: path find nothing (matches: [], and so no
+// already_loaded and no schemas) on CI while passing on macOS, where the same
+// mock demonstrably does NOT reach the package module. Local experiments lie
+// about this one; the real functions are trivial and pure, so just use them.
 // Do NOT mock common/shared modules (zod/v4, bootstrap/state, etc.) to avoid
 // corrupting the module cache for other test files in the same Bun process.
 
@@ -39,11 +49,6 @@ mock.module('@open-claude-code/tool-runtime/analytics.js', () => ({
 
 mock.module('src/services/api/dumpPrompts.js', () => ({
   clearDumpState: noop,
-}))
-
-mock.module('src/Tool.js', () => ({
-  toolMatchesName: () => false,
-  findToolByName: noop,
 }))
 
 // messages.ts is complex - provide stubs for all named exports

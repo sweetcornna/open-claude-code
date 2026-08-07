@@ -296,27 +296,6 @@ describe('SearchExtraTools delivers parameter schemas to the model', () => {
       properties: Record<string, unknown>
       required: string[]
     }
-    if (!schema) {
-      const rt = await import('@open-claude-code/tool-runtime/Tool.js')
-      const shim = await import('src/Tool.js')
-      const t = tool as unknown as { name: string; aliases?: string[] }
-      console.error('[DIAG] result.data=' + JSON.stringify(result.data))
-      console.error('[DIAG] tool.name=' + JSON.stringify(t.name))
-      console.error(
-        '[DIAG] rt.findToolByName=' + String(rt.findToolByName).slice(0, 100),
-      )
-      console.error(
-        '[DIAG] rt.findToolByName([tool])=' +
-          String(rt.findToolByName([tool] as never, 'DiscoverSkills')?.name),
-      )
-      console.error(
-        '[DIAG] rt.toolMatchesName=' + String(rt.toolMatchesName).slice(0, 100),
-      )
-      console.error(
-        '[DIAG] shim.findToolByName=' +
-          String(shim.findToolByName).slice(0, 100),
-      )
-    }
     expect(schema).toBeDefined()
     expect(Object.keys(schema.properties).sort()).toEqual([
       'description',
