@@ -14,18 +14,21 @@
  * and instead verify the component's behaviour through pure validation logic tests
  * plus a direct JSX snapshot check against a minimal stub render.
  */
-import { describe, expect, test, mock } from 'bun:test';
+import { afterAll, describe, expect, mock, test } from 'bun:test';
 import * as React from 'react';
 import { logMock } from '../../../../tests/mocks/log';
 import { debugMock } from '../../../../tests/mocks/debug';
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js';
 
 mock.module('src/utils/telemetry/log.ts', logMock);
 mock.module('src/utils/telemetry/debug.ts', debugMock);
 mock.module('bun:bundle', () => ({ feature: () => false }));
-mock.module('src/utils/settings/settings.js', () => ({
+const settingsMock = setupSettingsMock({
   getCachedOrDefaultSettings: () => ({}),
   getSettings: () => ({}),
-}));
+});
+afterAll(() => settingsMock.reset());
+
 mock.module('src/utils/config/config.ts', () => ({
   isConfigEnabled: () => true,
   getGlobalConfig: () => ({ workspaceApiKey: undefined }),

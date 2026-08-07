@@ -1,11 +1,12 @@
-import { describe, test, expect, beforeEach } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import { mock } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
+import { setupGrowthbookMock } from '../../../../tests/mocks/growthbook.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
-mock.module('src/services/analytics/growthbook.js', () => ({
+const growthbookMock = setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
   getFeatureValue_DEPRECATED: async () => undefined,
@@ -25,7 +26,8 @@ mock.module('src/services/analytics/growthbook.js', () => ({
   refreshGrowthBookFeatures: async () => {},
   setupPeriodicGrowthBookRefresh: () => {},
   stopPeriodicGrowthBookRefresh: () => {},
-}))
+})
+afterAll(() => growthbookMock.reset())
 
 const {
   parseToolName,

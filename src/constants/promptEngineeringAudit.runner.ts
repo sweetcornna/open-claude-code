@@ -50,9 +50,11 @@ mock.module('src/utils/git/worktree.js', () => ({
 mock.module('src/constants/common.js', () => ({
   getSessionStartDate: () => '2026-04-22',
 }))
-mock.module('src/utils/settings/settings.js', () => ({
+const settingsMock = setupSettingsMock({
   getInitialSettings: () => ({ language: undefined }),
-}))
+})
+afterAll(() => settingsMock.reset())
+
 mock.module('src/commands/poor/poorMode.js', () => ({
   isPoorModeActive: () => false,
 }))
@@ -222,6 +224,7 @@ import {
 } from './prompts.js'
 import { CORE_TOOLS } from './tools.js'
 import type { Tools } from '../Tool.js'
+import { setupSettingsMock } from '../../tests/mocks/settings.js'
 
 // --- 辅助 ---
 

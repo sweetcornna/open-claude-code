@@ -1,8 +1,10 @@
-import { mock, describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, mock, test } from 'bun:test'
+import { setupGrowthbookMock } from '../../../../tests/mocks/growthbook.js'
 
-mock.module('src/services/analytics/growthbook.js', () => ({
+const growthbookMock = setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
-}))
+})
+afterAll(() => growthbookMock.reset())
 
 const {
   filterPermissionRelayClients,

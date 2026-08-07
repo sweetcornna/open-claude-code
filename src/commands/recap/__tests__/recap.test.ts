@@ -8,6 +8,7 @@ import {
   test,
 } from 'bun:test'
 import { setupGrowthbookMock } from '../../../../tests/mocks/growthbook.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 // Mock bun:bundle before any imports that use feature()
 // Note: in the test environment AWAY_SUMMARY compile-time flag is false, so
@@ -29,11 +30,12 @@ mock.module('src/utils/telemetry/debug.ts', () => ({
 }))
 
 // Mock settings to avoid filesystem side effects
-mock.module('src/utils/settings/settings.js', () => ({
+const settingsMock = setupSettingsMock({
   getCachedSettings: () => ({}),
   getSettings: async () => ({}),
   updateSettings: async () => {},
-}))
+})
+afterAll(() => settingsMock.reset())
 
 // Mock analytics (GrowthBook) — required for isEnabled()
 let gbValue = true

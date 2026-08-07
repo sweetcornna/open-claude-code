@@ -7,13 +7,14 @@
  */
 import { afterAll, describe, expect, test, beforeEach, mock } from 'bun:test'
 import * as settingsModule from '../../../utils/settings/settings.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 // ── Mocks must be declared before the module under test is imported ──────────
 
 let mockSettings: Record<string, unknown> = {}
 let lastUpdate: { source: string; patch: Record<string, unknown> } | null = null
 
-mock.module('src/utils/settings/settings.js', () => ({
+const settingsMock = setupSettingsMock({
   loadManagedFileSettings: () => ({ settings: null, errors: [] }),
   getManagedFileSettingsPresence: () => ({
     hasBase: false,
@@ -45,7 +46,8 @@ mock.module('src/utils/settings/settings.js', () => ({
     mockSettings = { ...mockSettings, ...patch }
     return { error: null }
   },
-}))
+})
+afterAll(() => settingsMock.reset())
 
 afterAll(() => {
   mock.restore()

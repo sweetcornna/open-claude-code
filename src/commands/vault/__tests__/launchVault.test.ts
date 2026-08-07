@@ -21,14 +21,19 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
+import { authMockWith } from '../../../../tests/mocks/auth.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
-mock.module('src/utils/auth/auth.js', () => ({
-  getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token' }),
-}))
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token' }),
+  }),
+)
+
 mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org-uuid-test',
 }))

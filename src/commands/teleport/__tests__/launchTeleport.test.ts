@@ -13,6 +13,7 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+import { setupSessionStorageMock } from '../../../../tests/mocks/sessionStorage.js'
 
 // ── Mock module-level side effects BEFORE any imports ──
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -76,9 +77,10 @@ const mockLog: LogOption = {
   isSidechain: false,
 }
 const getLastSessionLogMock = mock(() => Promise.resolve(mockLog))
-mock.module('src/utils/sessionStorage.js', () => ({
+const sessionStorageMock = setupSessionStorageMock({
   getLastSessionLog: getLastSessionLogMock,
-}))
+})
+afterAll(() => sessionStorageMock.reset())
 
 // ── Analytics ──
 const logEventMock = mock(() => {})

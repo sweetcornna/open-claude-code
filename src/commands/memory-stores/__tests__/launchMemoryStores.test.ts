@@ -20,6 +20,8 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+import { authMockWith } from '../../../../tests/mocks/auth.js'
+import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 
 const analyticsMock = setupAnalyticsMock()
 afterAll(() => analyticsMock.reset())
@@ -32,10 +34,13 @@ const realAnalytics = await import('src/services/analytics/index.js')
 const logEventMock = mock(() => {})
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
 const realAuth = await import('src/utils/auth/auth.js')
-mock.module('src/utils/auth/auth.js', () => ({
-  ...realAuth,
-  getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-ms' }),
-}))
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-ms' }),
+  }),
+)
+
 mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org-uuid-ms',
 }))
@@ -46,8 +51,7 @@ mock.module('src/constants/oauth.js', () => ({
 // prepareApiRequest, axiosGetWithRetry, type guards, schemas)
 // remains available to transitive importers.
 const realTeleportApi = await import('src/utils/teleport/api.js')
-mock.module('src/utils/teleport/api.js', () => ({
-  ...realTeleportApi,
+const teleportApiMock = setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({ Authorization: `Bearer ${token}` }),
   prepareApiRequest: async () => ({
     apiKey: 'test-workspace-key',
@@ -55,7 +59,9 @@ mock.module('src/utils/teleport/api.js', () => ({
   prepareWorkspaceApiRequest: async () => ({
     apiKey: 'test-workspace-key',
   }),
-}))
+})
+afterAll(() => teleportApiMock.reset())
+
 mock.module('src/services/auth/hostGuard.ts', () => ({
   assertSubscriptionBaseUrl: () => {},
   assertWorkspaceHost: () => {},

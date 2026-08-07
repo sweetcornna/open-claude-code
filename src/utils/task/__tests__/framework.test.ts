@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQueueManager.js'
+import { setupTaskDiskOutputMock } from '../../../../tests/mocks/taskDiskOutput.js'
 
 // ─── Mocks ───
 
@@ -13,12 +14,13 @@ mock.module('src/utils/session/sdkEventQueue.js', () => ({
   enqueueSdkEvent: (event: any) => sdkEvents.push(event),
 }))
 
-mock.module('src/utils/task/diskOutput.js', () => ({
+const diskOutputMock = setupTaskDiskOutputMock({
   getTaskOutputPath: (id: string) => `/tmp/output/${id}`,
   getTaskOutputDelta: async () => null,
   evictTaskOutput: noop,
   initTaskOutputAsSymlink: async () => {},
-}))
+})
+afterAll(() => diskOutputMock.reset())
 
 // Complete-surface shared mock: a hand-written one-export mock here erased the
 // module's other 23 exports for every file loaded later in the same process.

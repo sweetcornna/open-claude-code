@@ -3,24 +3,35 @@
  * Covers subscription set/unset, workspace API key prefix variants, and third-party provider env vars.
  * All tests are pure (no network calls) — only process.env + mocked OAuth file reads.
  */
-import { describe, expect, test, mock, beforeEach, afterEach } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 // auth goes through the shared complete-surface mock (missing exports get
 // safe defaults); registered under the canonical '.js' specifier — see
 // tests/mocks/auth.ts.
 import { authMockWith } from '../../../../tests/mocks/auth.js'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 // Mock side-effect modules before importing subject
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
-mock.module('src/utils/settings/settings.js', () => ({
+const settingsMock = setupSettingsMock({
   getCachedOrDefaultSettings: () => ({}),
   getSettings: () => ({}),
   getInitialSettings: () => ({}),
   getSettings_DEPRECATED: () => ({}),
-}))
+})
+afterAll(() => settingsMock.reset())
+
 mock.module('src/utils/config/config.ts', () => ({
   isConfigEnabled: () => true,
   getGlobalConfig: () => ({

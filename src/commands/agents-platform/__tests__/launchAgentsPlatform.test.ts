@@ -21,6 +21,8 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+import { authMockWith } from '../../../../tests/mocks/auth.js'
+import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -36,10 +38,13 @@ const analyticsMock = setupAnalyticsMock({ logEvent: logEventMock })
 afterAll(() => analyticsMock.reset())
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
 const realAuth = await import('src/utils/auth/auth.js')
-mock.module('src/utils/auth/auth.js', () => ({
-  ...realAuth,
-  getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-ap' }),
-}))
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-ap' }),
+  }),
+)
+
 mock.module('src/services/oauth/client.js', () => ({
   getOrganizationUUID: async () => 'org-uuid-ap',
 }))
@@ -47,8 +52,7 @@ mock.module('src/constants/oauth.js', () => ({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
 }))
 const realTeleportApi = await import('src/utils/teleport/api.js')
-mock.module('src/utils/teleport/api.js', () => ({
-  ...realTeleportApi,
+const teleportApiMock = setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({ Authorization: `Bearer ${token}` }),
   prepareWorkspaceApiRequest: async () => ({
     apiKey: 'test-workspace-key-ap',
@@ -56,7 +60,9 @@ mock.module('src/utils/teleport/api.js', () => ({
   prepareApiRequest: async () => ({
     apiKey: 'test-api-key-ap',
   }),
-}))
+})
+afterAll(() => teleportApiMock.reset())
+
 mock.module('src/services/auth/hostGuard.ts', () => ({
   assertSubscriptionBaseUrl: () => {},
   assertWorkspaceHost: () => {},

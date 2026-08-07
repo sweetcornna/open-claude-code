@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test, mock } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 
 // Mock side-effect modules first
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -18,11 +19,11 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 // downstream test file in the same process (mock.module is global).
 // We override the two keys this suite uses; the rest delegates to real impls.
 const _realSettings = await import('src/utils/settings/settings.js')
-mock.module('src/utils/settings/settings.js', () => ({
-  ..._realSettings,
+const settingsMock = setupSettingsMock({
   getCachedOrDefaultSettings: () => ({}),
   getSettings: () => ({}),
-}))
+})
+afterAll(() => settingsMock.reset())
 
 // Mock src/utils/config.ts with closure-driven impls and a flag-gated noop
 // fallback. Other test files (e.g. processSlashCommand.test.ts) run in the

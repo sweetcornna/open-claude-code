@@ -9,6 +9,7 @@ import {
 } from 'bun:test'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
+import { setupSettingsMock } from '../../../../../../tests/mocks/settings.js'
 
 type MockAxiosResponse = {
   data: ArrayBuffer
@@ -68,10 +69,11 @@ mock.module('src/utils/mcp/mcpOutputStorage.js', () => ({
   }),
 }))
 
-mock.module('src/utils/settings/settings.js', () => ({
+const settingsMock = setupSettingsMock({
   getInitialSettings: () => ({}),
   getSettings_DEPRECATED: () => ({ skipWebFetchPreflight: true }),
-}))
+})
+afterAll(() => settingsMock.reset())
 
 beforeEach(() => {
   getMock = async () => ({
