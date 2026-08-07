@@ -1,10 +1,25 @@
-import { afterEach, expect, test } from 'bun:test'
-import { getContextWindowForModel } from '../context.js'
+import { afterAll, afterEach, beforeAll, expect, test } from 'bun:test'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+import type { SettingsJson } from '../../settings/types.js'
 
-// Only the CLAUDE_CODE_MAX_CONTEXT_TOKENS fast path is exercised here: it
-// returns before any config/settings/provider access, so no mocks are needed.
-// Assertions that would fall through to capability lookup use a '[1m]' model,
-// which also short-circuits before the heavy path.
+// Mostly the CLAUDE_CODE_MAX_CONTEXT_TOKENS fast path, which returns before any
+// config/settings/provider access. The alias cases below do go deeper, and the
+// per-tier arm they now reach reads userSettings — on a machine with
+// `modelSettings.sonnet.contextTokens` configured, `getContextWindowForModel
+// ('sonnet')` returns that instead of the value under test. The source is
+// therefore pinned to empty through the shared complete-surface helper (the
+// same one tierContextWindow.test.ts uses); a hand-written partial mock is what
+// CLAUDE.md forbids, not this.
+const settingsMock = setupSettingsMock()
+beforeAll(() =>
+  settingsMock.set({
+    getSettingsForSource: () => ({}) as SettingsJson,
+    getInitialSettings: () => ({}) as SettingsJson,
+  }),
+)
+afterAll(() => settingsMock.reset())
+
+const { getContextWindowForModel } = await import('../context.js')
 
 const ENV_KEYS = [
   'CLAUDE_CODE_MAX_CONTEXT_TOKENS',

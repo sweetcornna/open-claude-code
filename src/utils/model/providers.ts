@@ -73,6 +73,37 @@ export function isThirdPartyModelCatalog(): boolean {
 }
 
 /**
+ * Whether an id like `claude-opus-5` denotes Anthropic's Opus 5 in this
+ * session.
+ *
+ * Three questions get confused around here. Keep them apart:
+ *
+ *   getAPIProvider()           — which wire format and client
+ *   isThirdPartyModelCatalog() — whose catalog and whose rate card
+ *   servesAnthropicModels()    — whether Claude model ids mean what they say
+ *
+ * Bedrock, Vertex and Foundry answer "third party" to the second question —
+ * separate billing, different beta support — but YES to this one: they serve
+ * real Claude checkpoints, so `us.anthropic.claude-opus-5-v1` is Opus 5 and
+ * naming it that is correct.
+ *
+ * OpenAI-compatible endpoints, Gemini, Grok and the DeepSeek Anthropic wire
+ * answer no, and this is not hypothetical: ALL_MODEL_CONFIGS maps every tier
+ * onto the SAME `claude-*` strings for those providers, so a tier the user has
+ * not configured resolves to a literal `claude-fable-5`. DeepSeek silently
+ * remaps that to its own checkpoint; everyone else 404s. Calling it "Fable 5"
+ * then tells the user — and, through the system prompt, the model itself —
+ * that Anthropic's Fable is answering when it is not.
+ */
+export function servesAnthropicModels(): boolean {
+  const provider = getAPIProvider()
+  if (provider === 'openai' || provider === 'gemini' || provider === 'grok') {
+    return false
+  }
+  return !isDeepSeekAnthropicWireActive()
+}
+
+/**
  * Check if ANTHROPIC_BASE_URL is a first-party Anthropic API URL.
  * Returns true if not set (default API) or points to api.anthropic.com
  * (or api-staging.anthropic.com for ant users).

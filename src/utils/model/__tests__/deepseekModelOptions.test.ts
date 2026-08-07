@@ -5,8 +5,16 @@ import {
   setSessionSettingsCache,
 } from 'src/utils/settings/settingsCache.js'
 import { applyDeepSeekAnthropicWire } from '../deepseekWire.js'
+import {
+  getMarketingNameForModel,
+  getPublicModelDisplayName,
+  renderDefaultModelSetting,
+} from '../model.js'
 import { getModelOptions } from '../modelOptions.js'
-import { isThirdPartyModelCatalog } from '../providers.js'
+import {
+  isThirdPartyModelCatalog,
+  servesAnthropicModels,
+} from '../providers.js'
 
 /**
  * A DeepSeek session must be offered DeepSeek models.
@@ -129,6 +137,45 @@ describe('/model options for a DeepSeek session', () => {
     expect(values).toContain('deepseek-v4-flash')
   })
 
+  test('an unconfigured tier is never offered as an Anthropic model id', () => {
+    // ALL_MODEL_CONFIGS maps every tier onto the same `claude-*` string for
+    // openai/gemini/grok, so a tier with nothing pinned used to resolve to a
+    // literal `claude-fable-5` and appear as a selectable row labelled "Fable".
+    // DeepSeek silently remaps that to its own checkpoint; every other
+    // OpenAI-compatible endpoint 404s on it.
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com'
+    process.env.OPENAI_API_KEY = 'sk-test'
+    applyDeepSeekAnthropicWire()
+    const options = getModelOptions()
+
+    expect(
+      options.some(
+        o => typeof o.value === 'string' && o.value.includes('claude-'),
+      ),
+    ).toBe(false)
+    expect(
+      options.some(
+        o => o.label.includes('Fable 5') || o.label.includes('Opus 5'),
+      ),
+    ).toBe(false)
+    // The tiers are still listed — by alias, so the row and its per-tier
+    // settings agree — and say plainly that nothing is configured.
+    const fable = options.find(o => o.value === 'fable')
+    expect(fable?.label).toBe('Fable')
+    expect(fable?.description).toContain('no model configured')
+  })
+
+  test('display names never claim an Anthropic model this session cannot serve', () => {
+    deepseekSession()
+
+    expect(servesAnthropicModels()).toBe(false)
+    expect(getPublicModelDisplayName('claude-fable-5[1m]')).toBeNull()
+    // Also reaches the system prompt ("You are powered by the model named …"),
+    // so a wrong answer here misinforms the model about its own identity.
+    expect(getMarketingNameForModel('claude-fable-5')).toBeUndefined()
+    expect(renderDefaultModelSetting('fable')).toBe('deepseek-v4-pro')
+  })
+
   test('a first-party session still gets Anthropic’s list', () => {
     // A key of some kind is required before the auth layer will answer at all;
     // an API key keeps this on the PAYG branch without touching the keychain.
@@ -137,5 +184,25 @@ describe('/model options for a DeepSeek session', () => {
 
     expect(options.some(o => o.label.startsWith('Opus'))).toBe(true)
     expect(options.some(o => o.description.includes('per Mtok'))).toBe(true)
+    // Anthropic's own models keep their marketing names, everywhere.
+    expect(servesAnthropicModels()).toBe(true)
+    expect(getMarketingNameForModel('claude-fable-5')).toBe('Fable 5')
+    expect(getPublicModelDisplayName('claude-opus-5')).toBe('Opus 5')
+  })
+
+  test('Bedrock keeps Anthropic’s list and names — it serves real Claude', () => {
+    // isThirdPartyModelCatalog() is true there (separate billing, different
+    // beta support) but the checkpoints ARE Anthropic's, so calling
+    // us.anthropic.claude-opus-5-v1 "Opus 5" is correct and must not regress.
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
+    process.env.CLAUDE_CODE_USE_BEDROCK = '1'
+    try {
+      expect(isThirdPartyModelCatalog()).toBe(true)
+      expect(servesAnthropicModels()).toBe(true)
+      expect(getModelOptions().some(o => o.label.startsWith('Opus'))).toBe(true)
+      expect(getMarketingNameForModel('claude-opus-5')).toBe('Opus 5')
+    } finally {
+      delete process.env.CLAUDE_CODE_USE_BEDROCK
+    }
   })
 })

@@ -1,5 +1,29 @@
-import { describe, expect, test } from 'bun:test'
-import { apply1mContextOptIn, firstPartyNameToCanonical } from '../model'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+import type { SettingsJson } from '../../settings/types.js'
+
+/**
+ * `apply1mContextOptIn` consults the per-tier configuration (that layer is the
+ * second source of the `[1m]` suffix), which reads userSettings. Without a
+ * mocked source these assertions measure the developer's own settings.json:
+ * anyone whose sonnet tier is configured at 1M gets `[1m]` appended and the
+ * "no-op" cases below fail — locally only, since a CI runner has no such file.
+ * Green on CI and red on a configured machine is the worst polarity there is,
+ * so the source is pinned to empty here. Same reasoning as
+ * utils/session/__tests__/tierContextWindow.test.ts.
+ */
+const settingsMock = setupSettingsMock()
+beforeAll(() =>
+  settingsMock.set({
+    getSettingsForSource: () => ({}) as SettingsJson,
+    getInitialSettings: () => ({}) as SettingsJson,
+  }),
+)
+afterAll(() => settingsMock.reset())
+
+const { apply1mContextOptIn, firstPartyNameToCanonical } = await import(
+  '../model.js'
+)
 
 describe('firstPartyNameToCanonical', () => {
   test('maps opus-4-6 full name to canonical', () => {

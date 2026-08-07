@@ -10,20 +10,44 @@
  *
  * Only the log/debug leaves are mock.module'd (shared mocks, per CLAUDE.md).
  */
-import { afterEach, beforeAll, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+import type { SettingsJson } from '../../../utils/settings/types.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
+
+/**
+ * The step-2 prefill reads settings.modelSettings for max context and effort.
+ * Without a pinned source these assertions measure the developer's own
+ * settings.json — a configured per-tier window outranks the legacy env key the
+ * test is exercising, so it fails locally and passes on a bare CI runner.
+ */
+const settingsMock = setupSettingsMock()
 
 let wizard: typeof import('../ProviderSetupWizard.js')
 let specs: typeof import('../specs.js')
 
 beforeAll(async () => {
+  settingsMock.set({
+    getSettingsForSource: () => ({}) as SettingsJson,
+    getInitialSettings: () => ({}) as SettingsJson,
+  })
   wizard = await import('../ProviderSetupWizard.js')
   specs = await import('../specs.js')
 })
+
+afterAll(() => settingsMock.reset())
 
 const TOUCHED_ENV = [
   'OPENAI_MODEL',

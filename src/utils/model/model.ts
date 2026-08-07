@@ -29,6 +29,7 @@ import {
   getAPIProvider,
   isDirectAnthropicApi,
   isThirdPartyModelCatalog,
+  servesAnthropicModels,
 } from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
@@ -105,6 +106,18 @@ export function getSmallFastModel(): ModelName {
   }
   // Anthropic-specific or fallback
   return process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
+}
+
+/**
+ * Whether a model id names one of Anthropic's models, by the id alone.
+ *
+ * Says nothing about whether the session can reach it — that is
+ * `servesAnthropicModels()`. The pair is what distinguishes "Bedrock is
+ * serving Claude" from "this OpenAI-compatible endpoint was handed a
+ * `claude-*` string it has never heard of".
+ */
+export function isAnthropicModelId(model: ModelName): boolean {
+  return getCanonicalName(model).toLowerCase().includes('claude')
 }
 
 export function isNonCustomOpusModel(model: ModelName): boolean {
@@ -534,6 +547,13 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  * if the model is not recognized as a public model.
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
+  // The table below is keyed on getModelStrings(), and ALL_MODEL_CONFIGS gives
+  // openai/gemini/grok the same `claude-*` strings as firstParty — so without
+  // this guard every entry matches on a provider that serves none of them, and
+  // a DeepSeek session renders "Fable 5 (1M context)".
+  if (!servesAnthropicModels()) {
+    return null
+  }
   switch (model) {
     case getModelStrings().fable5:
       return 'Fable 5'
@@ -776,6 +796,12 @@ export function modelDisplayString(model: ModelSetting): string {
 export function getMarketingNameForModel(modelId: string): string | undefined {
   if (getAPIProvider() === 'foundry') {
     // deployment ID is user-defined in Foundry, so it may have no relation to the actual model
+    return undefined
+  }
+  // Same reason as getPublicModelDisplayName, but this one also reaches the
+  // system prompt ("You are powered by the model named …"), so getting it wrong
+  // misinforms the model about which model it is, not just the user.
+  if (!servesAnthropicModels()) {
     return undefined
   }
 

@@ -16,7 +16,11 @@ import {
 } from './modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
-import { getAPIProvider, isThirdPartyModelCatalog } from './providers.js'
+import {
+  getAPIProvider,
+  isThirdPartyModelCatalog,
+  servesAnthropicModels,
+} from './providers.js'
 import { isDeepSeekAnthropicWireActive } from './deepseekWire.js'
 import { type ModelTier } from './modelTier.js'
 import { capitalize } from '../text/stringUtils.js'
@@ -24,6 +28,8 @@ import { isModelAllowed } from './modelAllowlist.js'
 import {
   getCanonicalName,
   getClaudeAiUserDefaultModelDescription,
+  isAnthropicModelId,
+  parseUserSpecifiedModel,
   getDefaultSonnetModel,
   getDefaultOpusModel,
   getDefaultHaikuModel,
@@ -126,26 +132,61 @@ function tierEnv(
 }
 
 /**
- * The picker row for a tier the user pinned to their own model id.
+ * The concrete model a tier resolves to on a provider that is not Anthropic's,
+ * or undefined when nothing real stands behind it.
+ *
+ * `getDefault<Tier>Model()` ends its fallback chain at Anthropic's own id, so
+ * an unconfigured tier on an OpenAI-compatible endpoint resolves to a literal
+ * `claude-sonnet-5`. That string is not a model this endpoint serves; it is the
+ * end of a chain that ran out of options. Reporting it as the tier's model is
+ * how `/model` came to offer "Fable" to a DeepSeek user.
+ */
+function resolveThirdPartyTierModel(tier: ModelTier): string | undefined {
+  const configured = tierEnv(tier.toUpperCase() as Uppercase<ModelTier>, '')
+  if (configured) return configured
+  let resolved: string
+  try {
+    // Gemini's resolver throws when the provider is not fully configured.
+    resolved = parseUserSpecifiedModel(tier)
+  } catch {
+    return undefined
+  }
+  if (!resolved || resolved === tier) return undefined
+  return servesAnthropicModels() || !isAnthropicModelId(resolved)
+    ? resolved
+    : undefined
+}
+
+/**
+ * The picker row for one tier on a third-party catalog.
  *
  * One function rather than the four copy-pasted ones this replaces: they
  * differed only in the tier word, and every provider added to the codebase had
  * to be threaded through all four (Grok never was).
  *
- * The row's value is the tier ALIAS, not the concrete id — that is what makes
- * `/model` and the per-tier settings in `settings.modelSettings` agree about
- * which knob the highlighted row belongs to.
+ * The row's value is always the tier ALIAS, never a concrete id. That is what
+ * makes `/model` and `settings.modelSettings` agree about which knob a
+ * highlighted row belongs to — and it is what stops the picker from handing
+ * out `claude-fable-5` as a selectable option on an endpoint that does not
+ * serve it.
  */
-function getCustomTierOption(tier: ModelTier): ModelOption | undefined {
-  if (!isThirdPartyModelCatalog()) return undefined
+function getTierOption(tier: ModelTier): ModelOption {
   const upper = tier.toUpperCase() as Uppercase<ModelTier>
-  const model = tierEnv(upper, '')
-  if (!model) return undefined
-
   const label = capitalize(tier)
-  const is1m = has1mContext(model)
+  const model = resolveThirdPartyTierModel(tier)
   const nameEnv = tierEnv(upper, '_NAME')
   const descEnv = tierEnv(upper, '_DESCRIPTION')
+
+  if (!model) {
+    return {
+      value: tier,
+      label: nameEnv ?? label,
+      description: descEnv ?? `${label} tier · no model configured (/models)`,
+      descriptionForModel: `${label} tier — no model is configured for this provider`,
+    }
+  }
+
+  const is1m = has1mContext(model)
   return {
     value: tier,
     label: nameEnv ?? model,
@@ -464,43 +505,65 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     return payg1POptions
   }
 
-  // PAYG 3P: Default (Sonnet 5) + Sonnet (3P custom) or Sonnet 5/1M + Opus (3P custom) or Opus 5 1M/Opus 4.7 1M + Fable + Haiku
-  const payg3pOptions = [getDefaultOptionForUser(fastMode)]
+  // A third-party catalog that is still Anthropic's models — Bedrock, Vertex,
+  // Foundry. Naming a checkpoint "Opus 5" is correct there, so this list is
+  // unchanged: Default (Sonnet 5) + Sonnet (custom) or Sonnet 5/1M + Opus
+  // (custom) or Opus 5 1M/Opus 4.7 1M + Fable + Haiku.
+  if (servesAnthropicModels()) {
+    const hostedOptions = [getDefaultOptionForUser(fastMode)]
 
-  const customSonnet = getCustomTierOption('sonnet')
-  if (customSonnet !== undefined) {
-    payg3pOptions.push(customSonnet)
-  } else {
-    // Explicit Sonnet entry so 3P users can pin it rather than ride "Default"
-    payg3pOptions.push(getSonnet5Option())
-    if (checkSonnet1mAccess()) {
-      payg3pOptions.push(getSonnet5_1MOption())
+    const customSonnet = tierEnv('SONNET', '')
+      ? getTierOption('sonnet')
+      : undefined
+    if (customSonnet !== undefined) {
+      hostedOptions.push(customSonnet)
+    } else {
+      // Explicit Sonnet entry so 3P users can pin it rather than ride "Default"
+      hostedOptions.push(getSonnet5Option())
+      if (checkSonnet1mAccess()) {
+        hostedOptions.push(getSonnet5_1MOption())
+      }
     }
+
+    const customOpus = tierEnv('OPUS', '') ? getTierOption('opus') : undefined
+    if (customOpus !== undefined) {
+      hostedOptions.push(customOpus)
+    } else {
+      // Add Opus 5 1M + Opus 4.7 1M (no redundant non-1M entries)
+      hostedOptions.push(getOpus5_1MOption(fastMode))
+      hostedOptions.push(getOpus47_1MOption(fastMode))
+    }
+    const customFable = tierEnv('FABLE', '')
+      ? getTierOption('fable')
+      : undefined
+    if (customFable !== undefined) {
+      hostedOptions.push(customFable)
+    } else {
+      hostedOptions.push(getFable5Option())
+      hostedOptions.push(getFable5_1MOption())
+    }
+
+    const customHaiku = tierEnv('HAIKU', '')
+      ? getTierOption('haiku')
+      : undefined
+    hostedOptions.push(customHaiku ?? getHaikuOption())
+    return hostedOptions
   }
 
-  const customOpus = getCustomTierOption('opus')
-  if (customOpus !== undefined) {
-    payg3pOptions.push(customOpus)
-  } else {
-    // Add Opus 5 1M + Opus 4.7 1M (no redundant non-1M entries)
-    payg3pOptions.push(getOpus5_1MOption(fastMode))
-    payg3pOptions.push(getOpus47_1MOption(fastMode))
-  }
-  const customFable = getCustomTierOption('fable')
-  if (customFable !== undefined) {
-    payg3pOptions.push(customFable)
-  } else {
-    payg3pOptions.push(getFable5Option())
-    payg3pOptions.push(getFable5_1MOption())
-  }
-
-  const customHaiku = getCustomTierOption('haiku')
-  if (customHaiku !== undefined) {
-    payg3pOptions.push(customHaiku)
-  } else {
-    payg3pOptions.push(getHaikuOption())
-  }
-  return payg3pOptions
+  // Everyone else — OpenAI-compatible, Gemini, Grok, the DeepSeek Anthropic
+  // wire. Four tier rows, each valued by its ALIAS. No Anthropic model id is
+  // offered as a choice here: occ maps every tier onto the same `claude-*`
+  // strings for these providers, so those rows were a menu of ids the endpoint
+  // either 404s on or silently substitutes, under a label naming a model that
+  // is not the one that would answer. Whatever the provider's own catalog adds
+  // is appended below by getModelOptions().
+  return [
+    getDefaultOptionForUser(fastMode),
+    getTierOption('sonnet'),
+    getTierOption('opus'),
+    getTierOption('fable'),
+    getTierOption('haiku'),
+  ]
 }
 
 // @[MODEL LAUNCH]: Add the new model ID to the appropriate family pattern below
