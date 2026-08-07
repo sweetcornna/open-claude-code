@@ -5,34 +5,31 @@ import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.js'
 // Note: mock specifier must resolve to the same module that impl actually imports (bun mock.module
 // matches by resolved module). impl uses '@open-claude-code/builtin-tools/...' and 'src/*' alias
 // path imports, so the same specifier is used here.
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-  () => ({
-    runAgent: async function* () {
-      yield {
-        type: 'assistant',
-        message: { content: [{ type: 'text', text: 'agent-text' }] },
-      }
-    },
+const runAgentMock = setupRunAgentMock({
+  runAgent: async function* () {
+    yield {
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'agent-text' }] },
+    }
+  },
+} as unknown as RunAgentOverrides)
+afterAll(() => runAgentMock.reset())
+
+const agentToolUtilsMock = setupAgentToolUtilsMock({
+  finalizeAgentTool: () => ({
+    content: [{ type: 'text', text: 'agent-text' }],
+    usage: { output_tokens: 42 },
+    totalTokens: 42,
+    totalToolUseCount: 3,
   }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AgentTool/agentToolUtils.js',
-  () => ({
-    finalizeAgentTool: () => ({
-      content: [{ type: 'text', text: 'agent-text' }],
-      usage: { output_tokens: 42 },
-      totalTokens: 42,
-      totalToolUseCount: 3,
-    }),
-  }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js',
-  () => ({
-    isBuiltInAgent: () => true,
-  }),
-)
+} as unknown as AgentToolUtilsOverrides)
+afterAll(() => agentToolUtilsMock.reset())
+
+const loadAgentsDirMock = setupLoadAgentsDirMock({
+  isBuiltInAgent: () => true,
+})
+afterAll(() => loadAgentsDirMock.reset())
+
 // src/tools.ts is a re-export barrel over @open-claude-code/builtin-tools, and
 // on Linux mocking a barrel replaces the package module too — a one-export
 // literal here would blank out the other twelve for every later file in the
@@ -60,9 +57,11 @@ mock.module('src/utils/messages.ts', () => ({
   }),
   extractTextContent: () => 'agent-text',
 }))
-mock.module('src/utils/collections/uuid.js', () => ({
+const uuidMock = setupUuidMock({
   createAgentId: () => 'agent-1',
-}))
+})
+afterAll(() => uuidMock.reset())
+
 mock.module('src/utils/telemetry/debug.ts', () => ({
   logForDebugging: () => {},
 }))
@@ -80,7 +79,7 @@ const worktreeState = {
   removed: [] as string[],
   changesCalls: 0,
 }
-mock.module('src/utils/git/worktree.js', () => ({
+const worktreeMock = setupWorktreeMock({
   createAgentWorktree: async (slug: string) => {
     if (worktreeState.shouldThrow) throw new Error(worktreeState.throwMessage)
     worktreeState.created.push(slug)
@@ -100,7 +99,8 @@ mock.module('src/utils/git/worktree.js', () => ({
     worktreeState.removed.push(path)
     return true
   },
-}))
+})
+afterAll(() => worktreeMock.reset())
 
 import {
   AGENT_MAX_RETRIES,
@@ -119,6 +119,17 @@ import {
 } from '../backends/claudeCodeBackend.js'
 import { makeHostHandle } from '../hostHandle.js'
 import { setupAnalyticsMock } from '../../../tests/mocks/analytics.js'
+import { setupUuidMock } from '../../../tests/mocks/uuid.js'
+import { setupWorktreeMock } from '../../../tests/mocks/worktree.js'
+import {
+  setupRunAgentMock,
+  type RunAgentOverrides,
+} from '../../../tests/mocks/runAgent.js'
+import {
+  setupAgentToolUtilsMock,
+  type AgentToolUtilsOverrides,
+} from '../../../tests/mocks/agentToolUtils.js'
+import { setupLoadAgentsDirMock } from '../../../tests/mocks/loadAgentsDir.js'
 
 const analyticsMock = setupAnalyticsMock()
 afterAll(() => analyticsMock.reset())
@@ -271,15 +282,12 @@ test('no isolation → no worktree created', async () => {
 
 test('runAgent throws → dead', async () => {
   // override mock so runAgent throws (last-write-wins)
-  mock.module(
-    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-    () => ({
-      // biome-ignore lint/correctness/useYield: intentionally throws to test dead branch (no yield)
-      runAgent: async function* () {
-        throw new Error('boom')
-      },
-    }),
-  )
+  runAgentMock.set({
+    // biome-ignore lint/correctness/useYield: intentionally throws to test dead branch (no yield)
+    runAgent: async function* () {
+      throw new Error('boom')
+    },
+  } as unknown as RunAgentOverrides)
   const res = await claudeCodeBackend.run({ prompt: 'fail' }, ctx())
   expect(res.kind).toBe('dead')
 })
@@ -291,20 +299,17 @@ test('runAgent throws → dead', async () => {
 test('ctx.signal pre-abort → backend bridge: override.abortController.signal.aborted=true', async () => {
   // use capturedOverride to expose the agentAbort created by backend (the override.abortController received by mock)
   let capturedController: AbortController | undefined
-  mock.module(
-    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-    () => ({
-      runAgent: async function* (opts: {
-        override?: { abortController?: AbortController }
-      }) {
-        capturedController = opts.override?.abortController
-        yield {
-          type: 'assistant',
-          message: { content: [{ type: 'text', text: 'x' }] },
-        }
-      },
-    }),
-  )
+  runAgentMock.set({
+    runAgent: async function* (opts: {
+      override?: { abortController?: AbortController }
+    }) {
+      capturedController = opts.override?.abortController
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'x' }] },
+      }
+    },
+  } as unknown as RunAgentOverrides)
   const parentAbort = new AbortController()
   parentAbort.abort()
   // mock does not throw → backend takes the normal return path; but the bridge `if (ctx.signal.aborted) agentAbort.abort()`
@@ -317,17 +322,14 @@ test('ctx.signal pre-abort → backend bridge: override.abortController.signal.a
 })
 
 test('runAgent throws AbortError → backend throws WorkflowAbortedError (not swallowed as dead)', async () => {
-  mock.module(
-    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-    () => ({
-      // biome-ignore lint/correctness/useYield: intentionally throws AbortError to test recognition branch
-      runAgent: async function* () {
-        const e = new Error('aborted by parent')
-        e.name = 'AbortError'
-        throw e
-      },
-    }),
-  )
+  runAgentMock.set({
+    // biome-ignore lint/correctness/useYield: intentionally throws AbortError to test recognition branch
+    runAgent: async function* () {
+      const e = new Error('aborted by parent')
+      e.name = 'AbortError'
+      throw e
+    },
+  } as unknown as RunAgentOverrides)
   await expect(
     claudeCodeBackend.run({ prompt: 'abort' }, ctx()),
   ).rejects.toBeInstanceOf(WorkflowAbortedError)
@@ -335,17 +337,14 @@ test('runAgent throws AbortError → backend throws WorkflowAbortedError (not sw
 
 test('registerAgentAbort/unregisterAgentAbort injection: key=ctx.agentId (number), controller from bridge', async () => {
   // restore default mock (previous test changed it to throw AbortError)
-  mock.module(
-    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-    () => ({
-      runAgent: async function* () {
-        yield {
-          type: 'assistant',
-          message: { content: [{ type: 'text', text: 'agent-text' }] },
-        }
-      },
-    }),
-  )
+  runAgentMock.set({
+    runAgent: async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'agent-text' }] },
+      }
+    },
+  } as unknown as RunAgentOverrides)
   const registered: Array<{ id: number; controller: AbortController }> = []
   const unregistered: number[] = []
   await claudeCodeBackend.run(
@@ -368,20 +367,17 @@ test('registerAgentAbort/unregisterAgentAbort injection: key=ctx.agentId (number
 // was returned as the agent's "answer" (non-schema) or misclassified as no-structured-output (schema).
 
 test('terminal API error: prompt-too-long → dead retryable:false (deterministic, engine skips retry)', async () => {
-  mock.module(
-    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-    () => ({
-      runAgent: async function* () {
-        yield {
-          type: 'assistant',
-          isApiErrorMessage: true,
-          message: {
-            content: [{ type: 'text', text: 'Prompt is too long' }],
-          },
-        }
-      },
-    }),
-  )
+  runAgentMock.set({
+    runAgent: async function* () {
+      yield {
+        type: 'assistant',
+        isApiErrorMessage: true,
+        message: {
+          content: [{ type: 'text', text: 'Prompt is too long' }],
+        },
+      }
+    },
+  } as unknown as RunAgentOverrides)
   const res = await claudeCodeBackend.run({ prompt: 'huge' }, ctx())
   expect(res.kind).toBe('dead')
   if (res.kind === 'dead') {
@@ -392,20 +388,17 @@ test('terminal API error: prompt-too-long → dead retryable:false (deterministi
 })
 
 test('terminal API error: other API error → dead reason api-error (transient, engine may retry)', async () => {
-  mock.module(
-    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-    () => ({
-      runAgent: async function* () {
-        yield {
-          type: 'assistant',
-          isApiErrorMessage: true,
-          message: {
-            content: [{ type: 'text', text: 'API Error: 529 overloaded' }],
-          },
-        }
-      },
-    }),
-  )
+  runAgentMock.set({
+    runAgent: async function* () {
+      yield {
+        type: 'assistant',
+        isApiErrorMessage: true,
+        message: {
+          content: [{ type: 'text', text: 'API Error: 529 overloaded' }],
+        },
+      }
+    },
+  } as unknown as RunAgentOverrides)
   const res = await claudeCodeBackend.run({ prompt: 'x' }, ctx())
   expect(res.kind).toBe('dead')
   if (res.kind === 'dead') {
@@ -414,17 +407,14 @@ test('terminal API error: other API error → dead reason api-error (transient, 
     expect(res.detail).toMatch(/529/)
   }
   // restore the default runAgent mock for any later run() in this process
-  mock.module(
-    '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js',
-    () => ({
-      runAgent: async function* () {
-        yield {
-          type: 'assistant',
-          message: { content: [{ type: 'text', text: 'agent-text' }] },
-        }
-      },
-    }),
-  )
+  runAgentMock.set({
+    runAgent: async function* () {
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'agent-text' }] },
+      }
+    },
+  } as unknown as RunAgentOverrides)
 })
 
 test('id and capabilities shape', () => {
