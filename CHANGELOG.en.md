@@ -6,6 +6,12 @@ This is a translation of [`CHANGELOG.md`](CHANGELOG.md), which is the canonical
 source and the only one the tooling parses. Keep the structure identical:
 `## <semver> - <date>` headings, top-level `- ` entries, newest first.
 
+## 2.31.1 - 2026-08-07
+
+- **Fixed `CLAUDE_CODE_DISABLE_THINKING` never working for DeepSeek users.** DeepSeek treats an *absent* `thinking` field as enabled, and turning thinking off was exactly the case where occ omitted the field — so the model kept thinking after you disabled it. The off state is now sent explicitly. Applies to DeepSeek's Anthropic endpoint.
+- **DeepSeek now defaults `temperature` to `0`** when none is set (previously the endpoint's implicit `1.0`). DeepSeek's own parameter guide specifies `0.0` for code and math, which is occ's entire workload. Sent only when thinking is off; `DEEPSEEK_TEMPERATURE` still opts out.
+- Internal: the test-mock hygiene ratchet is now at zero (241 → 0). Along the way this fixed a batch of test stubs whose shapes did not match the real signatures, several of which made a mocked module return wrong results to later test files in the same process. No runtime behaviour change.
+
 ## 2.31.0 - 2026-08-07
 
 Per-tier thinking effort and context window; DeepSeek moves to a better-suited API and gains free web search; two long-reported UI problems fixed.

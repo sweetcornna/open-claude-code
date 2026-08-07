@@ -4,6 +4,12 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.31.1 - 2026-08-07
+
+- **修复 DeepSeek 用户的 `CLAUDE_CODE_DISABLE_THINKING` 一直无效**。DeepSeek 把「请求里没有 `thinking` 字段」当作**启用**，而 occ 关闭 thinking 时恰恰就是不发该字段 —— 于是你关了，模型照样思考。现在会显式发送关闭指令。走 DeepSeek 的 Anthropic 端点时生效。
+- **DeepSeek 未指定 temperature 时补 `0`**（此前是该端点的隐式默认 `1.0`）。DeepSeek 官方参数指南把代码与数学场景定为 `0.0`，而这正是 occ 的全部工作负载。仅在 thinking 关闭时发送；`DEEPSEEK_TEMPERATURE` 仍可单项退出。
+- 内部：测试 mock 卫生棘轮清零（241 → 0）。过程中修掉一批测试桩与真实签名不符的问题，其中若干会让被 mock 的模块对同一进程内的后续测试文件返回错误结果。不影响运行时行为。
+
 ## 2.31.0 - 2026-08-07
 
 按模型档位分别配置思考强度和上下文窗口；DeepSeek 换用更合适的接口，顺带拿到免费的联网搜索；修掉两个一直有人反馈的界面问题。
