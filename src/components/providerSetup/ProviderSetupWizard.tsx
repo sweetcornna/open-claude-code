@@ -41,6 +41,7 @@ import {
   TIER_STATUS_KEYS,
 } from './state.js';
 import { parseMaxContextInput } from './maxContext.js';
+import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js';
 import { buildTierSettings, prefillTierFields } from './tierPersistence.js';
 import { EFFORT_LEVELS } from 'src/utils/model/effort.js';
 import type { TierEffort } from 'src/utils/model/tierDefaults.js';
@@ -528,12 +529,22 @@ function ModelStep({
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    // This writes provider env straight to the process, bypassing managedEnv,
+    // so the DeepSeek mirror has to be re-run here by hand. Without it a
+    // first-time login leaves the session claiming the Anthropic wire
+    // (getAPIProvider() flips as soon as the keys land) without applying it —
+    // requests go to api.anthropic.com unauthenticated and come back
+    // "Not logged in · Please run /login".
+    applyDeepSeekAnthropicWire();
     spec.afterSave?.();
     onSaved();
   };
 
   const handleSubmit = (): void => {
-    if (activeField === 'max_context') {
+    // Save on the LAST field, whichever that is. Naming max_context here meant
+    // that adding the effort field after it left the new field unreachable:
+    // Enter still saved from the field before it.
+    if (fields.indexOf(activeField) === fields.length - 1) {
       doSave();
       return;
     }

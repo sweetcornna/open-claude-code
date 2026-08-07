@@ -175,3 +175,69 @@ describe('applyDeepSeekAnthropicWire', () => {
     )
   })
 })
+
+/**
+ * The mirror runs at startup, but the configuration it mirrors can arrive
+ * later — a first `/login` writes the DeepSeek keys into a process that booted
+ * without them. `getAPIProvider()` flips to 'firstParty' the instant those keys
+ * land, so a mirror that does not run again leaves the session claiming the
+ * routing without applying it: requests go to api.anthropic.com with no
+ * credential and come back "Not logged in · Please run /login", while the tier
+ * aliases resolve to a literal `claude-sonnet-5`.
+ */
+describe('following configuration that changes mid-session', () => {
+  test('a first login applies the routing that startup could not', () => {
+    // Boot with nothing configured: no key, so the mirror is a no-op.
+    applyDeepSeekAnthropicWire()
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
+
+    // /login writes the provider env, then re-applies.
+    deepseekEnv()
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-flash'
+    applyDeepSeekAnthropicWire()
+
+    expect(process.env.ANTHROPIC_BASE_URL).toBe(
+      'https://api.deepseek.com/anthropic',
+    )
+    expect(process.env.ANTHROPIC_API_KEY).toBe('sk-test')
+    expect(process.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('deepseek-v4-flash')
+  })
+
+  test('a changed tier model replaces the previous mirror', () => {
+    deepseekEnv()
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-flash'
+    applyDeepSeekAnthropicWire()
+
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro'
+    applyDeepSeekAnthropicWire()
+
+    // Fill-the-blanks would have kept v4-flash here forever.
+    expect(process.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('deepseek-v4-pro')
+  })
+
+  test('switching provider away releases the mirror', () => {
+    deepseekEnv()
+    applyDeepSeekAnthropicWire()
+    expect(process.env.ANTHROPIC_BASE_URL).toBeDefined()
+
+    delete process.env.OPENAI_BASE_URL
+    delete process.env.OPENAI_API_KEY
+    applyDeepSeekAnthropicWire()
+
+    // Leaving them behind would keep pointing the first-party client at
+    // DeepSeek with a key the user just stopped using.
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
+  })
+
+  test('a key the user set themselves is never claimed or removed', () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-user-owned'
+    deepseekEnv()
+    applyDeepSeekAnthropicWire()
+    expect(process.env.ANTHROPIC_API_KEY).toBe('sk-ant-user-owned')
+
+    delete process.env.OPENAI_BASE_URL
+    applyDeepSeekAnthropicWire()
+    expect(process.env.ANTHROPIC_API_KEY).toBe('sk-ant-user-owned')
+  })
+})

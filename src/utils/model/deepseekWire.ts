@@ -80,6 +80,10 @@ export function isDeepSeekAnthropicWireActive(): boolean {
   // stop agreeing with itself after the first call).
   const anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim()
   if (anthropicBase && !isDeepSeekBaseURL(anthropicBase)) return false
+  // Not just "a key exists": the key has to be the one this routing would send.
+  // A stale ANTHROPIC_API_KEY left by an earlier provider is not authorisation
+  // for DeepSeek, and claiming the wire is active on the strength of it is how
+  // a session ends up posting to the wrong endpoint with the wrong credential.
   return isDeepSeekBaseURL(process.env.OPENAI_BASE_URL)
 }
 
@@ -109,31 +113,74 @@ const TIER_ENV_PAIRS = [
 ] as const
 
 /**
+ * Keys this module wrote on the last apply, so the next one can refresh them.
+ *
+ * Without this the mirror could only ever fill blanks, which is wrong twice
+ * over: it cannot follow a configuration that changes mid-session, and it
+ * cannot tell its own earlier write apart from a value the user set. Only keys
+ * listed here are ever overwritten or removed — a user's own ANTHROPIC_API_KEY
+ * is never claimed, so it is never touched.
+ */
+let mirroredKeys = new Map<string, string>()
+
+/**
  * Mirror the DeepSeek OPENAI_* configuration onto the ANTHROPIC_* keys the
  * first-party client reads. In-memory only — `settings.json` is not touched.
  *
  * Tier models are copied because the user's explicit choice must outrank
  * DeepSeek's own alias mapping (`claude-opus*` → v4-pro, `claude-sonnet*` /
- * `claude-haiku*` → v4-flash). Nothing already set on the Anthropic side is
- * overwritten.
+ * `claude-haiku*` → v4-flash).
  *
- * Idempotent; safe to call more than once.
+ * MUST be re-run whenever provider configuration changes, not only at startup.
+ * `getAPIProvider()` flips to 'firstParty' the instant `isDeepSeekAnthropicWire
+ * Active()` starts returning true — which happens as soon as `/login` writes
+ * OPENAI_BASE_URL and OPENAI_API_KEY into process.env. If the mirror does not
+ * run again at that moment, the session claims the routing without applying it:
+ * ANTHROPIC_BASE_URL is unset so requests go to api.anthropic.com,
+ * ANTHROPIC_API_KEY is unset so they come back 401 "Not logged in", and
+ * `getDefaultSonnetModel()` finds no ANTHROPIC_DEFAULT_SONNET_MODEL so it falls
+ * through to the literal `claude-sonnet-5`. One missing call, all three
+ * symptoms. It is hooked into managedEnv.ts's two apply functions, which every
+ * settings-env path funnels through, plus the two components that write
+ * provider env to process.env directly.
+ *
+ * Idempotent, and safe to call at any time.
  */
 export function applyDeepSeekAnthropicWire(): void {
+  // Release the previous claim FIRST. Besides letting a changed configuration
+  // through, this removes the self-reference that isDeepSeekAnthropicWire
+  // Active() otherwise has to reason around: by the time it reads
+  // ANTHROPIC_BASE_URL below, anything still there belongs to the user.
+  //
+  // Only release a key that still holds the exact value written last time.
+  // Anything else means something authoritative overwrote it in between —
+  // settings.env being re-applied, an explicit export — and dropping that would
+  // turn this from "undo my own write" into "discard the user's".
+  for (const [key, written] of mirroredKeys) {
+    if (process.env[key] === written) delete process.env[key]
+  }
+  mirroredKeys = new Map()
+
   const baseURL = getDeepSeekAnthropicBaseURL()
   if (!baseURL) return
 
-  process.env.ANTHROPIC_BASE_URL = baseURL
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    process.env.ANTHROPIC_API_KEY = process.env.OPENAI_API_KEY
+  const claim = (key: string, value: string): void => {
+    process.env[key] = value
+    mirroredKeys.set(key, value)
+  }
+
+  claim('ANTHROPIC_BASE_URL', baseURL)
+  const apiKey = process.env.OPENAI_API_KEY?.trim()
+  if (apiKey && !process.env.ANTHROPIC_API_KEY?.trim()) {
+    claim('ANTHROPIC_API_KEY', apiKey)
   }
   for (const [from, to] of TIER_ENV_PAIRS) {
     const value = process.env[from]?.trim()
-    if (value && !process.env[to]?.trim()) process.env[to] = value
+    if (value && !process.env[to]?.trim()) claim(to, value)
   }
   // OPENAI_MODEL pins one model for every alias; carry that intent across.
   const pinned = process.env.OPENAI_MODEL?.trim()
   if (pinned && !process.env.ANTHROPIC_MODEL?.trim()) {
-    process.env.ANTHROPIC_MODEL = pinned
+    claim('ANTHROPIC_MODEL', pinned)
   }
 }

@@ -31,6 +31,7 @@ import type {
 // been its public entry point since it was introduced.
 export { parseMaxContextInput };
 import { buildAntigravityAutoConfigEnv } from '../utils/model/antigravityModels.js';
+import { applyDeepSeekAnthropicWire } from '../utils/model/deepseekWire.js';
 import { OAuthService } from '../services/oauth/index.js';
 import { getOauthAccountInfo, validateForceLoginOrg } from '../utils/auth/auth.js';
 import { openBrowser } from '../utils/network/browser.js';
@@ -512,6 +513,10 @@ function ChatGPTSubscriptionSetup({ status, setOAuthStatus, onDone }: ChatGPTSub
           throw new Error('Failed to save settings. Please try again.');
         }
         for (const [k, v] of Object.entries(env)) process.env[k] = v;
+        // Switching provider mid-session must also tear down a DeepSeek mirror
+        // left by a previous configuration; the apply releases its own claim
+        // before deciding again, so this is the teardown too.
+        applyDeepSeekAnthropicWire();
         // Drop any cached OpenAI client built from prior OpenAI Compatible
         // env vars; the ChatGPT Subscription path bypasses the SDK client
         // entirely (uses createChatGPTResponsesStream) but a stale cached
@@ -611,6 +616,10 @@ function AntigravityOAuthSetup({ status, setOAuthStatus, onDone }: AntigravityOA
           throw new Error('Failed to save settings. Please try again.');
         }
         for (const [k, v] of Object.entries(env)) process.env[k] = v;
+        // Switching provider mid-session must also tear down a DeepSeek mirror
+        // left by a previous configuration; the apply releases its own claim
+        // before deciding again, so this is the teardown too.
+        applyDeepSeekAnthropicWire();
         setOAuthStatus({ state: 'success' });
         void onDone();
       } catch (err) {

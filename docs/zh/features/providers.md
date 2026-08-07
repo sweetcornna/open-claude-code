@@ -51,6 +51,8 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 
 > **DeepSeek 是例外**：检测到 `OPENAI_BASE_URL` 指向 `api.deepseek.com` 时，occ 自动改走它的 **Anthropic 兼容端点**（`/anthropic`），因为那是它三条协议里唯一同时提供原生 thinking 块、零格式转换和**服务端 web 搜索**的一条。配置文件一字不改，存量配置继续有效。显式设置 `OPENAI_WIRE_API=chat|responses` 会覆盖这个选择，`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` 则完全关闭它。详见 `src/utils/model/deepseekWire.ts`。
 >
+> 镜像**跟着配置走**，不是只在启动时跑一次：首次 `/login` 是在进程启动之后才写入 DeepSeek 的键，而 `getAPIProvider()` 在那一刻就翻成 `firstParty`。所以 `managedEnv` 的两个 apply 函数、以及两个直接写 `process.env` 的登录组件都会重跑它；换 provider 时它也会把自己上次写的键收回去。镜像只回收「当前值仍等于自己写入值」的键 —— 否则那是别人的值。
+>
 > 代价是 `getAPIProvider()` 对这类会话返回 `firstParty` —— 那是**协议**的答案。这里其实有三个问题，务必分开：`getAPIProvider()` 答协议；`isThirdPartyModelCatalog()` 答「谁的目录、谁的价目表」；`servesAnthropicModels()` 答「`claude-opus-5` 这个 id 是不是真指 Anthropic 的 Opus 5」。Bedrock/Vertex/Foundry 对第二个答「第三方」（独立计费），对第三个答「是」—— 它们跑的确实是 Claude，叫「Opus 5」没错。openai/gemini/grok 与 DeepSeek 线对第三个答否：`ALL_MODEL_CONFIGS` 给这几家映射的是同一批 `claude-*` 字符串，没配的档位会解析出字面量 `claude-fable-5`，DeepSeek 静默换成自家 checkpoint、其他家 404；显示成「Fable 5」等于对用户**和 system prompt** 撒谎。「这是不是 Anthropic 自家的模型目录」则问 `isThirdPartyModelCatalog()`。仓库里约四十处把两者写成了同一个表达式，于是 DeepSeek 用户的 `/model` 列出 Opus 5 并标着 `$5/$25 per Mtok`。判断准则：**改造前 DeepSeek 会话是 `provider === 'openai'`，这条线路不得打开任何当时是关着的 Anthropic 专属行为** —— 有意的例外只有协议本身、原生 thinking、prompt 缓存和服务端搜索适配器，都是对真实端点实测过的。定价文案、`/model` 列表、Anthropic 专属 beta 头、legacy 模型迁移、Fast mode、bootstrap 拉取一律问 catalog。
 
 OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions，打 `<base>/chat/completions`）或 `responses`（Responses API，打 `<base>/responses`）。`OPENAI_AUTH_MODE=chatgpt` 强制 responses；Codex 家族模型（id 含 `codex`、GPT-5 世代）在未显式指定时也默认 responses。
