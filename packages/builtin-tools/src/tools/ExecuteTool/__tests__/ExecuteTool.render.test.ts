@@ -2,64 +2,23 @@ import { describe, expect, test, mock } from 'bun:test'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 
-// Same mock setup as ExecuteTool.runner.ts — ExecuteTool's import chain
-// (growthbook, searchExtraTools, messages) loads real modules with side
-// effects otherwise. mock.module is process-global; identical setup in
-// sibling test files in this directory is safe (last-write-wins, same stubs).
+// Only log/debug are stubbed, and both come from tests/mocks (complete
+// surfaces). This file used to also stub featureGate, searchExtraTools,
+// constants/tools, toolErrors and messages inline — five hand-written partial
+// surfaces, none of which any assertion here depends on. Because mock.module
+// is process-global and Bun runs a whole shard in one process, the messages
+// one (2 of 106 exports) made every later file in packages/builtin-tools that
+// imports createAssistantAPIErrorMessage die with "Export named ... not
+// found". That was the packages/builtin-tools failure on CI — a shard that had
+// never actually run before, because the loop used to abort at the first red
+// one. The featureGate stub was also written against a module that now exports
+// three names, listing twenty and missing the one that exists
+// (registerFeatureGateHost).
+//
+// Real modules load fine here; the stubs were cargo. Do not reintroduce them —
+// `bun run check:mock-hygiene` ratchets this file at zero.
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
-
-mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
-  getFeatureValue_CACHED_MAY_BE_STALE: () => false,
-  checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
-  getFeatureValue_DEPRECATED: async () => undefined,
-  getFeatureValue_CACHED_WITH_REFRESH: async () => undefined,
-  hasGrowthBookEnvOverride: () => false,
-  getAllGrowthBookFeatures: () => ({}),
-  getGrowthBookConfigOverrides: () => ({}),
-  setGrowthBookConfigOverride: () => {},
-  clearGrowthBookConfigOverrides: () => {},
-  getApiBaseUrlHost: () => undefined,
-  onGrowthBookRefresh: () => {},
-  initializeGrowthBook: async () => {},
-  checkSecurityRestrictionGate: async () => false,
-  checkGate_CACHED_OR_BLOCKING: async () => false,
-  refreshGrowthBookAfterAuthChange: () => {},
-  resetGrowthBook: () => {},
-  refreshGrowthBookFeatures: async () => {},
-  setupPeriodicGrowthBookRefresh: () => {},
-  stopPeriodicGrowthBookRefresh: () => {},
-}))
-
-mock.module('src/utils/tools/searchExtraTools.js', () => ({
-  isSearchExtraToolsEnabledOptimistic: () => true,
-  getAutoSearchExtraToolsCharThreshold: () => 100,
-  getSearchExtraToolsMode: () => 'tst' as const,
-  isSearchExtraToolsToolAvailable: () => true,
-  isSearchExtraToolsEnabled: async () => true,
-  isToolReferenceBlock: () => false,
-  extractDiscoveredToolNames: () => new Set<string>(),
-  isDeferredToolsDeltaEnabled: () => false,
-  getDeferredToolsDelta: () => null,
-}))
-
-mock.module('src/constants/tools.js', () => ({
-  CORE_TOOLS: new Set(['ExecuteExtraTool', 'SearchExtraTools']),
-}))
-
-mock.module('src/utils/messages.js', () => ({
-  createUserMessage: ({ content }: { content: string }) => ({
-    type: 'user' as const,
-    content,
-    uuid: 'test-uuid',
-  }),
-  INTERRUPT_MESSAGE_FOR_TOOL_USE: '[Request interrupted]',
-}))
-
-mock.module('src/utils/tools/toolErrors.js', () => ({
-  formatZodValidationError: (_name: string, error: unknown) =>
-    `validation error: ${JSON.stringify(error)}`,
-}))
 
 const { ExecuteTool } = await import('../ExecuteTool.js')
 
