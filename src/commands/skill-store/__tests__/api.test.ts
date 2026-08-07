@@ -44,7 +44,7 @@ const prepareWorkspaceApiRequestMock = mock(async () => ({
 
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
-setupTeleportApiMock({
+const teleportApiMock = setupTeleportApiMock({
   prepareWorkspaceApiRequest: prepareWorkspaceApiRequestMock,
 })
 
@@ -401,4 +401,12 @@ describe('invariant: x-api-key present, no Authorization, no x-organization-uuid
     const calls = axiosGetMock.mock.calls as unknown as [string, unknown][]
     expect(calls[0]?.[0]).toContain('api.anthropic.com')
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  teleportApiMock.reset()
 })

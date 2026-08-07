@@ -78,7 +78,7 @@ mock.module('src/constants/oauth.js', () => ({
 // Mock prepareApiRequest so real fetchUltrareviewPreflight skips auth
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
-setupTeleportApiMock({
+const teleportApiMock = setupTeleportApiMock({
   prepareApiRequest: async () => ({
     accessToken: 'test-token',
     orgUUID: 'org-uuid-test',
@@ -112,7 +112,7 @@ _ultrareviewAxiosHandle.stubs.isAxiosError = (e: unknown) =>
 // Mock detectCurrentRepositoryWithHost via the shared complete-surface mock
 // (missing exports delegate to the real module) — see
 // tests/mocks/detectRepository.ts.
-setupDetectRepositoryMock({
+const detectRepositoryMock = setupDetectRepositoryMock({
   detectCurrentRepositoryWithHost: async () => ({
     host: 'github.com',
     owner: 'testowner',
@@ -247,4 +247,13 @@ describe('ultrareviewCommand.call: gate branches', () => {
     // is responsible for PR-number detection. So we only assert pass-through.
     expect(_capturedLaunchArgs).toEqual(['42']);
   });
+});
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  teleportApiMock.reset();
+  detectRepositoryMock.reset();
 });

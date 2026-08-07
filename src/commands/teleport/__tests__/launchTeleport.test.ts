@@ -1,4 +1,12 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import type { LogOption } from '../../../types/logs.js'
 import type { LocalJSXCommandCall } from '../../../types/command.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
@@ -51,7 +59,7 @@ const fetchSessionsMock = mock(() =>
 )
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
-setupTeleportApiMock({
+const teleportApiMock = setupTeleportApiMock({
   fetchCodeSessionsFromSessionsAPI: fetchSessionsMock,
 } as unknown as import('../../../../tests/mocks/teleportApi.js').TeleportApiOverrides)
 
@@ -393,4 +401,12 @@ describe('callTeleport', () => {
     const firstArg = onDone.mock.calls[0]?.[0] as string | undefined
     expect(firstArg).toMatch(/local log was not found/)
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  teleportApiMock.reset()
 })

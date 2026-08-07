@@ -37,7 +37,7 @@ mock.module('src/constants/oauth.js', () => ({
 }))
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
-setupTeleportApiMock({
+const teleportApiMock = setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({
     Authorization: `Bearer ${token}`,
   }),
@@ -342,4 +342,12 @@ describe('callVault invalid subcommand', () => {
     )
     expect(onDoneMsg).toMatch(/usage/i)
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  teleportApiMock.reset()
 })

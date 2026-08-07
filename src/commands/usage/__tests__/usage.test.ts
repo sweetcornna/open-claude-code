@@ -7,7 +7,7 @@
  *   - cost/stats index files emit commands with matching name
  */
 
-import { mock, describe, test, expect } from 'bun:test'
+import { afterAll, describe, expect, mock, test } from 'bun:test'
 
 // Must mock before importing anything that pulls in bootstrap/state
 import { logMock } from '../../../../tests/mocks/log.js'
@@ -39,7 +39,7 @@ mock.module(
 // Hand-rolled partial surfaces here used to poison later files in the same
 // process: on Linux ordering, local-memory tests died on cost-tracker's
 // missing addToTotalLinesChanged. See tests/mocks/sharedModuleMock.ts.
-makeSharedModuleMock(
+const sharedMock = makeSharedModuleMock(
   'src/services/claudeAiLimits.js',
   realClaudeAiLimits,
 ).setup({
@@ -139,4 +139,12 @@ describe('usage command — stats index is no longer standalone', () => {
       cmd.name === 'usage' || (cmd.aliases?.includes('stats') ?? false)
     expect(isUnifiedOrAliased).toBe(true)
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  sharedMock.reset()
 })

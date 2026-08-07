@@ -36,7 +36,7 @@ mock.module('src/services/analytics/index.js', () => ({
 // ── Cron utility mock ───────────────────────────────────────────────────────
 // cron.js via the shared complete-surface pattern: overrides below, every
 // other export delegates to the real module (pure functions, safe to load).
-setupCronMock({
+const cronMock = setupCronMock({
   parseCronExpression: (cron: string) => {
     const fields = cron.trim().split(/\s+/)
     if (fields.length !== 5) return null
@@ -77,7 +77,7 @@ mock.module('src/constants/oauth.js', () => ({
 }))
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
-setupTeleportApiMock({
+const teleportApiMock = setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({
     Authorization: `Bearer ${token}`,
     'anthropic-version': '2023-06-01',
@@ -378,4 +378,13 @@ describe('callSchedule: enable / disable', () => {
     const [msg] = (onDone.mock.calls as unknown as [string, unknown][])[0] ?? []
     expect(msg).toMatch(/failed to disable/i)
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  cronMock.reset()
+  teleportApiMock.reset()
 })

@@ -67,7 +67,7 @@ mock.module('src/services/auth/hostGuard.ts', () => ({
 // ── cron mock ───────────────────────────────────────────────────────────────
 // cron.js via the shared complete-surface pattern: overrides below, every
 // other export delegates to the real module (pure functions, safe to load).
-setupCronMock({
+const cronMock = setupCronMock({
   parseCronExpression: (expr: string) =>
     expr.includes('INVALID')
       ? null
@@ -359,4 +359,12 @@ describe('callAgentsPlatform', () => {
       expect.anything(),
     )
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  cronMock.reset()
 })

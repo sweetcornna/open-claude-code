@@ -1,4 +1,5 @@
 import {
+  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
@@ -75,7 +76,7 @@ const registerContentExtractorMock = mock<
 // RemoteAgentTask goes through the shared complete-surface mock (missing
 // exports delegate to the real module, and the RemoteAgentTask Task value is
 // forwarded) — see tests/mocks/remoteAgentTask.ts.
-setupRemoteAgentTaskMock({
+const remoteAgentTaskMock = setupRemoteAgentTaskMock({
   checkRemoteAgentEligibility: checkEligibilityMock,
   registerRemoteAgentTask: registerMock,
   registerCompletionHook: registerCompletionHookMock,
@@ -102,7 +103,7 @@ const detectRepoMock = mock(() =>
 )
 // detectRepository goes through the shared complete-surface mock (missing
 // exports delegate to the real module) — see tests/mocks/detectRepository.ts.
-setupDetectRepositoryMock({
+const detectRepositoryMock = setupDetectRepositoryMock({
   detectCurrentRepositoryWithHost: detectRepoMock,
 })
 
@@ -739,4 +740,13 @@ describe('autofix-pr/index.ts load()', () => {
     expect(loaded.call).toBeDefined()
     expect(typeof loaded.call).toBe('function')
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  remoteAgentTaskMock.reset()
+  detectRepositoryMock.reset()
 })

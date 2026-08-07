@@ -12,7 +12,7 @@
  * 只能通过最终输出间接验证。
  */
 
-import { describe, test, expect, mock, beforeEach } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { stateMockWith } from '../../tests/mocks/state.js'
 import { setupGrowthbookMock } from '../../tests/mocks/growthbook.js'
 import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.js'
@@ -62,7 +62,7 @@ mock.module('src/utils/config/env.js', () => ({
 // Shared complete-surface envUtils mock (see tests/mocks/envUtils.ts).
 // isEnvTruthy pinned false: the audit needs deterministic prompts regardless
 // of whatever env flags the host machine happens to have.
-setupEnvUtilsMock({
+const envUtilsMock = setupEnvUtilsMock({
   isEnvTruthy: () => false,
 })
 mock.module('src/utils/model/model.js', () => ({
@@ -110,7 +110,7 @@ mock.module('src/utils/telemetry/debug.js', () => ({
 }))
 // growthbook goes through the shared complete-surface mock (missing exports
 // delegate to the real module) — see tests/mocks/growthbook.ts.
-setupGrowthbookMock({
+const growthbookMock = setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
 })
 mock.module('bun:bundle', () => ({
@@ -600,4 +600,13 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
       }
     })
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  envUtilsMock.reset()
+  growthbookMock.reset()
 })

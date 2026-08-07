@@ -4,7 +4,15 @@
  * as a constant fallback for users with no marketplace configuration, and
  * removal is made sticky via a tombstone marker in the plugins state dir.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -22,7 +30,10 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 // module so later files never see a partial surface.
 let mockSettings: SettingsJson = {}
 let mockPolicySettings: SettingsJson | null = null
-makeSharedModuleMock('src/utils/settings/settings.js', realSettings).setup({
+const settingsMock = makeSharedModuleMock(
+  'src/utils/settings/settings.js',
+  realSettings,
+).setup({
   getInitialSettings: () => mockSettings,
   getSettingsForSource: source =>
     source === 'policySettings' ? mockPolicySettings : null,
@@ -270,4 +281,11 @@ describe('removeMarketplaceSource tombstone', () => {
     expect(isDefaultMarketplaceRemoved()).toBe(false)
     expect(getDeclaredMarketplaces()[DEFAULT_MARKETPLACE_NAME]).toBeDefined()
   })
+})
+
+// Overrides are installed at load (officialMarketplace.js is imported below and
+// reads settings during evaluation), so scope them by resetting at the end
+// rather than moving them into beforeAll. mock.module is process-global.
+afterAll(() => {
+  settingsMock.reset()
 })

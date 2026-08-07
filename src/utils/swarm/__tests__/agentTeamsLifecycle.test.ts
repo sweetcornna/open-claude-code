@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -38,7 +46,7 @@ const executor = {
   },
 }
 
-setupSwarmBackendsRegistryMock({
+const swarmBackendsRegistryMock = setupSwarmBackendsRegistryMock({
   getTeammateExecutor: async () => executor,
   getInProcessBackend: () => executor,
   detectAndGetBackend: async () => ({
@@ -288,4 +296,12 @@ describe('Agent Teams lifecycle', () => {
 
     expect(result.data.success).toBe(true)
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  swarmBackendsRegistryMock.reset()
 })

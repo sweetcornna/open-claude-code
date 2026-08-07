@@ -13,7 +13,15 @@
  * feed pre-built Anthropic events directly into queryModelOpenAI and inspect
  * what it emits — without any real HTTP calls.
  */
-import { describe, expect, test, mock, beforeEach, afterEach } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import * as realModelProvider from '@ant/model-provider'
 import type { SystemPrompt } from '@ant/model-provider'
 import { makeSharedModuleMock } from '../../../../../tests/mocks/sharedModuleMock'
@@ -208,7 +216,7 @@ let _lastCreateArgs: Record<string, any> | null = null
 // overridden below. A hand-written partial surface is what kept this file from
 // ever loading — each missing export (asSystemPrompt, readReasoningItems, …)
 // failed the whole module graph. See CLAUDE.md "跨文件 mock 污染".
-makeSharedModuleMock<typeof realModelProvider>(
+const sharedMock = makeSharedModuleMock<typeof realModelProvider>(
   '@ant/model-provider',
   realModelProvider,
 ).setup({
@@ -732,4 +740,12 @@ describe('queryModelOpenAI — deferred MCP tool visibility', () => {
       _searchExtraToolsEnabled = false
     }
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  sharedMock.reset()
 })

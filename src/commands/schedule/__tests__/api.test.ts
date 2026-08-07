@@ -47,7 +47,7 @@ mock.module('src/constants/oauth.js', () => ({
 }))
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
-setupTeleportApiMock({
+const teleportApiMock = setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({
     Authorization: `Bearer ${token}`,
     'anthropic-version': '2023-06-01',
@@ -369,4 +369,12 @@ describe('429 rate-limit: not retried (non-5xx)', () => {
     // Must NOT have retried — 429 is not a 5xx
     expect(axiosGetMock).toHaveBeenCalledTimes(1)
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  teleportApiMock.reset()
 })

@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import { setupGrowthbookMock } from '../../../tests/mocks/growthbook.js'
 import { logMock } from '../../../tests/mocks/log'
 import { debugMock } from '../../../tests/mocks/debug'
@@ -9,7 +9,7 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 // Mock growthbook to cut analytics dependency
 // growthbook goes through the shared complete-surface mock (missing exports
 // delegate to the real module) — see tests/mocks/growthbook.ts.
-setupGrowthbookMock({
+const growthbookMock = setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: () => false,
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
 })
@@ -156,4 +156,12 @@ describe('isDeferredTool', () => {
       setGoalPresent(false)
     }
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  growthbookMock.reset()
 })

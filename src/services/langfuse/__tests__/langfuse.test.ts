@@ -1,4 +1,4 @@
-import { mock, describe, test, expect, beforeEach } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import * as realSdkTraceBase from '@opentelemetry/sdk-trace-base'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { setupUserMock } from '../../../../tests/mocks/user.js'
@@ -88,7 +88,7 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 // Mock user data — resolveLangfuseUserId uses getCoreUserData().email and
 // .deviceId. Goes through the shared complete-surface mock (missing exports
 // delegate to the real module) — see tests/mocks/user.ts.
-setupUserMock({
+const userMock = setupUserMock({
   getCoreUserData: mock(() => ({
     email: 'test-device-id',
     deviceId: 'test-device-id',
@@ -1125,4 +1125,12 @@ describe('Langfuse integration', () => {
       ).not.toThrow()
     })
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  userMock.reset()
 })

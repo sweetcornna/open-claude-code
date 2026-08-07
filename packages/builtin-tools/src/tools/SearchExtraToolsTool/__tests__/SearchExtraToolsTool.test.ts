@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test'
+import { afterAll, describe, expect, test } from 'bun:test'
 import { mock } from 'bun:test'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
@@ -75,7 +75,7 @@ const mockGetToolIndex = mock(async (_tools: unknown) => [])
 // which is all these tests actually stub.
 const realToolIndex = await import('src/services/searchExtraTools/toolIndex.js')
 
-makeSharedModuleMock(
+const sharedMock = makeSharedModuleMock(
   'src/services/searchExtraTools/toolIndex.js',
   realToolIndex,
 ).setup({
@@ -409,4 +409,12 @@ describe('SearchExtraTools delivers parameter schemas to the model', () => {
     expect(result.data.already_loaded).toEqual(['Read'])
     expect(result.data.schemas).toBeUndefined()
   })
+})
+
+// Overrides are installed at load (the module under test is imported below and
+// needs them active), so scope them by resetting at the end instead of moving
+// them into beforeAll. Without this they stay installed for every later file
+// in the shard — mock.module is process-global.
+afterAll(() => {
+  sharedMock.reset()
 })
