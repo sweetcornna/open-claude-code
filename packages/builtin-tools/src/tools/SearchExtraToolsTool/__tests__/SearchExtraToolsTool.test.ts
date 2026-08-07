@@ -297,27 +297,24 @@ describe('SearchExtraTools delivers parameter schemas to the model', () => {
       required: string[]
     }
     if (!schema) {
-      const { CORE_TOOLS } = await import('src/constants/tools.js')
-      const { zodToJsonSchema } = await import(
-        'src/utils/text/zodToJsonSchema.js'
-      )
-      let direct = 'n/a'
-      try {
-        direct = JSON.stringify(zodToJsonSchema(tool.inputSchema as never))
-      } catch (e) {
-        direct = 'THREW: ' + String(e)
-      }
+      const rt = await import('@open-claude-code/tool-runtime/Tool.js')
+      const shim = await import('src/Tool.js')
+      const t = tool as unknown as { name: string; aliases?: string[] }
       console.error('[DIAG] result.data=' + JSON.stringify(result.data))
+      console.error('[DIAG] tool.name=' + JSON.stringify(t.name))
       console.error(
-        '[DIAG] CORE_TOOLS.size=' +
-          (CORE_TOOLS?.size ?? 'undefined') +
-          ' hasRead=' +
-          (CORE_TOOLS?.has?.('Read') ?? 'n/a'),
+        '[DIAG] rt.findToolByName=' + String(rt.findToolByName).slice(0, 100),
       )
-      console.error('[DIAG] zodToJsonSchema(tool.inputSchema)=' + direct)
       console.error(
-        '[DIAG] typeof tool.inputSchema=' +
-          typeof (tool as { inputSchema?: unknown }).inputSchema,
+        '[DIAG] rt.findToolByName([tool])=' +
+          String(rt.findToolByName([tool] as never, 'DiscoverSkills')?.name),
+      )
+      console.error(
+        '[DIAG] rt.toolMatchesName=' + String(rt.toolMatchesName).slice(0, 100),
+      )
+      console.error(
+        '[DIAG] shim.findToolByName=' +
+          String(shim.findToolByName).slice(0, 100),
       )
     }
     expect(schema).toBeDefined()
