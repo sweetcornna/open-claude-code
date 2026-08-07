@@ -1,3 +1,7 @@
+import {
+  isDeepSeekTuningActiveForModel,
+  resolveDeepSeekTemperature,
+} from '../../utils/model/deepseekTuning.js'
 import type {
   BetaContentBlock,
   BetaContentBlockParam,
@@ -1724,6 +1728,15 @@ async function* queryModel(
       !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
     let thinking: BetaMessageStreamParams['thinking'] | undefined
 
+    // DeepSeek keeps its own tuning on this path. It is reached through the
+    // Anthropic-compatible endpoint (see deepseekWire.ts), so the gate has to
+    // consider the base URL too: that endpoint also answers to `claude-*`
+    // names, which it maps to v4-pro / v4-flash server-side.
+    const isDeepSeek = isDeepSeekTuningActiveForModel(
+      options.model,
+      process.env.ANTHROPIC_BASE_URL,
+    )
+
     // IMPORTANT: Do not change the adaptive-vs-budget thinking selection below
     // without notifying the model launch DRI and research. This is a sensitive
     // setting that can greatly affect model quality and bashing.
@@ -1753,6 +1766,16 @@ async function* queryModel(
           type: 'enabled',
         } satisfies BetaMessageStreamParams['thinking']
       }
+    }
+
+    // DeepSeek treats an ABSENT `thinking` field as "enabled", so omitting it
+    // is not the same as turning it off — a user who set
+    // CLAUDE_CODE_DISABLE_THINKING still got thinking blocks back. Verified
+    // 2026-08-07 against api.deepseek.com/anthropic: no field →
+    // ['thinking','text'], `{type:'disabled'}` → ['text']. Send the off state
+    // explicitly, the same way the OpenAI chat path already does.
+    if (isDeepSeek && !hasThinking) {
+      thinking = { type: 'disabled' } as BetaMessageStreamParams['thinking']
     }
 
     // Get API context management strategies if enabled
@@ -1817,8 +1840,19 @@ async function* queryModel(
 
     // Only send temperature when thinking is disabled — the API requires
     // temperature: 1 when thinking is enabled, which is already the default.
+    //
+    // DeepSeek's implicit default is 1.0, but its own parameter guide puts
+    // code and maths at 0.0 — which is this whole workload. Same rule the
+    // OpenAI chat path already applied; DEEPSEEK_TEMPERATURE still opts out,
+    // and an explicit temperatureOverride still wins.
+    const deepSeekTemperature = isDeepSeek
+      ? resolveDeepSeekTemperature({
+          enableThinking: hasThinking,
+          explicitOverride: options.temperatureOverride,
+        })
+      : undefined
     const temperature = !hasThinking
-      ? (options.temperatureOverride ?? 1)
+      ? (options.temperatureOverride ?? deepSeekTemperature ?? 1)
       : undefined
 
     // Filter out any empty-string beta headers before sending.
