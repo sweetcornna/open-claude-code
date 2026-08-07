@@ -7,26 +7,16 @@
  * trivially mocked at test time. We test maybeGenerateTaskSummary (which
  * is called unconditionally) and the rate-limit behavior indirectly.
  */
-import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import { describe, expect, test, mock } from 'bun:test'
+import { debugMock } from '../../../tests/mocks/debug.js'
 
 // ─── mocks ──────────────────────────────────────────────────────────────────
-
-let _updateCalls: any[] = []
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))
 
-mock.module('../session/concurrentSessions.js', () => ({
-  isBgSession: () => false,
-  updateSessionActivity: async (data: any) => {
-    _updateCalls.push(data)
-  },
-}))
-
-mock.module('src/utils/telemetry/debug.ts', () => ({
-  logForDebugging: () => {},
-}))
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // ─── import after mocks ─────────────────────────────────────────────────────
 
@@ -35,10 +25,6 @@ const { shouldGenerateTaskSummary, maybeGenerateTaskSummary } = await import(
 )
 
 // ─── tests ──────────────────────────────────────────────────────────────────
-
-beforeEach(() => {
-  _updateCalls = []
-})
 
 describe('shouldGenerateTaskSummary', () => {
   test('returns false when feature is disabled', () => {

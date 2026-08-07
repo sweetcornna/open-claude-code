@@ -42,15 +42,22 @@
  * exempt: they have no repo module to delegate to, and a stale surface there
  * cannot desynchronise from source that lives in this tree.
  *
- * Inline factories that predate the rule are ratcheted per file against
- * scripts/mock-hygiene-budget.json rather than fixed in one sweep — converting
- * ~180 call sites at once would be a far riskier diff than the bug it prevents.
- * The ratchet is two-sided, same contract as check-cycles.ts and
- * check-prompt-purity.ts:
+ * The backlog this started with — 241 inline surfaces across 64 files — is
+ * gone, so scripts/mock-hygiene-budget.json is now empty and every rule here
+ * is effectively a hard zero. The two-sided ratchet machinery stays (same
+ * contract as check-cycles.ts and check-prompt-purity.ts) because it is what
+ * keeps the count from creeping back:
  *
  *   count > budget  new inline surface — route it through tests/mocks/.
  *   count < budget  one was converted — rerun with --update and commit the
  *                   lower baseline so it cannot silently come back.
+ *
+ * Worth knowing before adding a mock: roughly a third of that backlog turned
+ * out to be mocks that should not have existed at all — pure constant modules,
+ * pure predicates, empty `() => ({})` surfaces that blanked a module for the
+ * whole shard, and in two cases a specifier pointing at a path that does not
+ * exist. Deleting beats converting. Try `bun test <that dir>` without the mock
+ * before writing one.
  *
  * Pure text scanning, no module loading, so it runs in milliseconds and is safe
  * inside precheck.
@@ -97,12 +104,23 @@ const TEST_GLOBS = [
 ]
 
 /**
- * `mock.module('<spec>', () => ({` — the inline object-literal factory. A
- * helper-based call (`mock.module('x', logMock)`) does not match, which is the
- * whole point.
+ * An inline factory written out at the call site, in either form:
+ *
+ *   mock.module('<spec>', () => ({ … }))     arrow returning an object literal
+ *   mock.module('<spec>', () => { … })       block body that builds and returns
+ *
+ * A helper-based call (`mock.module('x', logMock)`) does not match, which is
+ * the whole point.
+ *
+ * The block-body arm was added after one slipped past the first version:
+ * RemoteTriggerTool.test.ts did `require()` the real module and spread it — a
+ * COMPLETE surface, so no missing exports — but then pinned `getOauthConfig`
+ * with no `reset()`, leaving the override installed for every later file in
+ * the shard. Complete-but-stuck is the second failure mode this ratchet
+ * exists for, and writing the factory as a block hid it from the count.
  */
 const INLINE_MOCK_RE =
-  /\bmock\.module\(\s*['"]([^'"]+)['"]\s*,\s*\(\s*\)\s*=>\s*\(\s*\{/g
+  /\bmock\.module\(\s*['"]([^'"]+)['"]\s*,\s*\(\s*\)\s*=>\s*[({]/g
 
 /**
  * Specifiers that resolve to a module in this repository. Everything else
@@ -126,14 +144,29 @@ function isInternalSpecifier(specifier: string): boolean {
  * as an inline surface even though the surface itself is complete. `setup()`
  * with no argument is fine: it installs the all-real delegating surface.
  */
-const UNSCOPED_SETUP_RE = /(?:setup[A-Za-z]*Mock\(\s*\{|\.setup\(\s*\{)/g
-const RESET_RE = /\.reset\(\s*\)/
+// Matched per binding: `const settingsMock = setupSettingsMock({ … })` needs a
+// `settingsMock.reset()` of its own. The first version tested for ANY
+// `.reset()` in the file and zeroed the whole count, which is exactly the hole
+// that let framework.test.ts through — it reset one of its two helpers and
+// scored 0, while the other one's `enqueuePendingNotification: noop` stayed
+// installed for the rest of the process.
+const NAMED_SETUP_RE =
+  /\bconst\s+(\w+)\s*=\s*(?:setup[A-Za-z]*Mock|makeSharedModuleMock\([^)]*\)\s*\.setup)\(\s*\{/g
 
-// Known limitation: a single `.reset()` anywhere in the file clears the whole
-// file's unscoped count, so a file that resets one of three mocks scores zero.
-// Deliberately biased toward under-reporting — this is text matching, not
-// scope analysis, and a ratchet that cries wolf gets muted. The inline-surface
-// rule above is the exact one; this is the cheap net under it.
+// A `setup({ … })` whose result is not bound to anything can never be reset.
+const ANON_SETUP_RE =
+  /(?<!=\s*)(?:^|[;\n]\s*)(?:setup[A-Za-z]*Mock|\.setup)\(\s*\{/gm
+
+function countUnscoped(source: string): number {
+  let unscoped = 0
+  for (const match of source.matchAll(NAMED_SETUP_RE)) {
+    const variable = match[1]
+    if (variable === undefined) continue
+    if (!new RegExp(`\\b${variable}\\.reset\\(\\s*\\)`).test(source)) unscoped++
+  }
+  for (const _ of source.matchAll(ANON_SETUP_RE)) unscoped++
+  return unscoped
+}
 
 /**
  * Mocking a re-export shim.
@@ -235,9 +268,7 @@ function scan(): {
         shims.push(specifier)
       }
     }
-    const unscoped = RESET_RE.test(source)
-      ? 0
-      : [...source.matchAll(UNSCOPED_SETUP_RE)].length
+    const unscoped = countUnscoped(source)
     if (specifiers.length > 0 || unscoped > 0 || shims.length > 0) {
       // Path separators are normalised so the budget file is identical on
       // Windows checkouts.

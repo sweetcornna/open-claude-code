@@ -1,5 +1,8 @@
 import { afterAll, describe, test, expect, mock, beforeEach } from 'bun:test'
+import { setupEffortMock } from '../../../../tests/mocks/effort.js'
 import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.js'
+import { setupModelMock } from '../../../../tests/mocks/model.js'
+import type { EffortLevel } from 'src/utils/model/effort.js'
 import {
   type FsOperations,
   NodeFsOperations,
@@ -11,184 +14,34 @@ import { join } from 'node:path'
 
 // ── Mock infrastructure ─────────────────────────────────────────────────────
 // All mock.module calls must precede the import of the module under test.
-// mock.module is process-global; mocks here must cover all exported names used
-// transitively so sibling test files are not broken by an incomplete mock.
-//
-// To prevent cross-file pollution (providers.test.ts, model.test.ts, skill
-// prefetch / skillLearning smoke), keep the mock factory inline (don't
-// pre-import real modules — that triggers heavy transitive deps and hangs
-// some test combinations). The flag below switches off the suite-specific
-// override after this file's tests finish.
-let useMockForMagicDocs = true
-afterAll(() => {
-  envUtilsMock.reset()
-  useMockForMagicDocs = false
+// mock.module is process-global, so every mock here goes through a shared
+// complete-surface helper in tests/mocks/: non-overridden exports delegate to
+// the real module, and afterAll drops this suite's overrides for the rest of
+// the process. This file previously hand-rolled model.js and effort.js (~28
+// and ~20 entries) with re-implemented copies of getDefaultOpusModel and
+// firstPartyNameToCanonical, gated behind a sentinel flag so sibling suites
+// would still see approximately-real behaviour. The helpers make that
+// machinery unnecessary — see tests/mocks/sharedModuleMock.ts.
+const mockGetMainLoopModel = mock(() => 'claude-opus-4-7')
+const mockGetDisplayedEffortLevel = mock((): EffortLevel => 'high')
+
+const modelMock = setupModelMock({
+  getMainLoopModel: mockGetMainLoopModel,
 })
 
-// Inline a minimum env-driven default-model resolver so other test files
-// (getDefaultOpusModel.test.ts) which assert env-var precedence still work
-// even after our flag is off. The real getDefaultOpusModel reads provider
-// env vars; we mirror that minimal logic here. Keep aligned with
-// src/utils/model/model.ts's getDefaultOpusModel().
-function resolveDefaultOpusModelForTests(): string {
-  // Highest priority: provider-specific env override.
-  if (process.env.CLAUDE_CODE_USE_OPENAI === '1') {
-    if (process.env.OPENAI_DEFAULT_OPUS_MODEL)
-      return process.env.OPENAI_DEFAULT_OPUS_MODEL
-  }
-  if (process.env.CLAUDE_CODE_USE_GEMINI === '1') {
-    if (process.env.GEMINI_DEFAULT_OPUS_MODEL)
-      return process.env.GEMINI_DEFAULT_OPUS_MODEL
-  }
-  // Cross-provider override.
-  if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL)
-    return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
-  // Provider-specific Opus 4.7 IDs (must match
-  // src/utils/model/configs.ts CLAUDE_OPUS_4_7_CONFIG).
-  if (process.env.CLAUDE_CODE_USE_BEDROCK === '1')
-    return 'us.anthropic.claude-opus-4-7-v1'
-  if (process.env.CLAUDE_CODE_USE_VERTEX === '1') return 'claude-opus-4-7'
-  if (process.env.CLAUDE_CODE_USE_FOUNDRY === '1') return 'claude-opus-4-7'
-  return 'claude-opus-4-7'
-}
+const effortMock = setupEffortMock({
+  getDisplayedEffortLevel: mockGetDisplayedEffortLevel,
+})
 
-const mockGetMainLoopModel = mock(() => 'claude-opus-4-7')
-const mockGetDisplayedEffortLevel = mock((): string => 'high')
-
-const realIsEnvTruthy = (v: string | boolean | undefined): boolean => {
-  if (!v) return false
-  if (typeof v === 'boolean') return v
-  return ['1', 'true', 'yes', 'on'].includes(v.toLowerCase().trim())
-}
-
-// Inline the real firstPartyNameToCanonical logic so its semantics survive
-// even after this suite's mock wins the registration race. Pre-importing
-// model.ts hangs the test process due to heavy transitive deps, so we
-// duplicate just this one pure function. Keep in sync with
-// src/utils/model/model.ts.
-function realFirstPartyNameToCanonical(name: string): string {
-  name = name.toLowerCase()
-  if (name.includes('claude-opus-4-7')) return 'claude-opus-4-7'
-  if (name.includes('claude-opus-4-6')) return 'claude-opus-4-6'
-  if (name.includes('claude-opus-4-5')) return 'claude-opus-4-5'
-  if (name.includes('claude-opus-4-1')) return 'claude-opus-4-1'
-  if (name.includes('claude-opus-4')) return 'claude-opus-4'
-  if (name.includes('claude-sonnet-4-6')) return 'claude-sonnet-4-6'
-  if (name.includes('claude-sonnet-4-5')) return 'claude-sonnet-4-5'
-  if (name.includes('claude-sonnet-4')) return 'claude-sonnet-4'
-  if (name.includes('claude-haiku-4-5')) return 'claude-haiku-4-5'
-  if (name.includes('claude-3-7-sonnet')) return 'claude-3-7-sonnet'
-  if (name.includes('claude-3-5-sonnet')) return 'claude-3-5-sonnet'
-  if (name.includes('claude-3-5-haiku')) return 'claude-3-5-haiku'
-  if (name.includes('claude-3-opus')) return 'claude-3-opus'
-  if (name.includes('claude-3-sonnet')) return 'claude-3-sonnet'
-  if (name.includes('claude-3-haiku')) return 'claude-3-haiku'
-  const m = name.match(/(claude-(\d+-\d+-)?\w+)/)
-  if (m && m[1]) return m[1]
-  return name
-}
-
-mock.module('src/utils/model/model.js', () => ({
-  getMainLoopModel: mockGetMainLoopModel,
-  getSmallFastModel: mock(() => 'claude-haiku'),
-  getUserSpecifiedModelSetting: mock(() => undefined),
-  getBestModel: mock(() => 'claude-opus-4-7'),
-  // Read env at call time so getDefaultOpusModel.test.ts (running in the same
-  // process) sees env-driven semantics. While useMockForMagicDocs is true
-  // (during this suite) we still want a stable default; otherwise we mirror
-  // the real env-precedence logic.
-  getDefaultOpusModel: mock(() =>
-    useMockForMagicDocs ? 'claude-opus-4-7' : resolveDefaultOpusModelForTests(),
-  ),
-  getDefaultSonnetModel: mock(() => 'claude-sonnet-4-6'),
-  getDefaultHaikuModel: mock(() => 'claude-haiku-3-5'),
-  getRuntimeMainLoopModel: mock(() => 'claude-opus-4-7'),
-  getDefaultMainLoopModelSetting: mock(() => 'claude-opus-4-7'),
-  getDefaultMainLoopModel: mock(() => 'claude-opus-4-7'),
-  // Real semantics inlined for firstPartyNameToCanonical so model.test.ts
-  // (which only checks pure-function input/output) passes without needing
-  // the heavy real-module load.
-  firstPartyNameToCanonical: mock((n: string) =>
-    realFirstPartyNameToCanonical(n),
-  ),
-  getCanonicalName: mock((n: string) => n),
-  getClaudeAiUserDefaultModelDescription: mock(() => ''),
-  renderDefaultModelSetting: mock(() => ''),
-  getOpusPricingSuffix: mock(() => ''),
-  isOpus1mMergeEnabled: mock(() => false),
-  renderModelSetting: mock((s: string) => s),
-  getPublicModelDisplayName: mock(() => null),
-  renderModelName: mock((n: string) => n),
-  getPublicModelName: mock((n: string) => n),
-  parseUserSpecifiedModel: mock((m: string) => m),
-  resolveSkillModelOverride: mock(() => undefined),
-  isLegacyModelRemapEnabled: mock(() => false),
-  modelDisplayString: mock(() => ''),
-  getMarketingNameForModel: mock(() => undefined),
-  normalizeModelStringForAPI: mock((m: string) => m),
-  isNonCustomOpusModel: mock(() => false),
-}))
-
-mock.module('src/utils/model/effort.js', () => ({
-  getDisplayedEffortLevel: mockGetDisplayedEffortLevel as (
-    _m: string,
-    _e: unknown,
-  ) => string,
-  getEffortEnvOverride: mock(() => undefined),
-  resolveAppliedEffort: mock(() => 'high'),
-  getInitialEffortSetting: mock(() => undefined),
-  parseEffortValue: mock(() => undefined),
-  toPersistableEffort: mock(() => undefined),
-  modelSupportsEffort: mock(() => true),
-  modelSupportsMaxEffort: mock(() => true),
-  modelSupportsXhighEffort: mock(() => false),
-  isEffortLevel: mock(() => true),
-  getEffortSuffix: mock(() => ''),
-  convertEffortValueToLevel: mock(() => 'high'),
-  getDefaultEffortForModel: mock(() => undefined),
-  getEffortLevelDescription: mock(() => ''),
-  getEffortValueDescription: mock(() => ''),
-  getOpusDefaultEffortConfig: mock(() => ({
-    enabled: true,
-    dialogTitle: '',
-    dialogDescription: '',
-  })),
-  resolvePickerEffortPersistence: mock(() => undefined),
-  isValidNumericEffort: mock(() => false),
-  EFFORT_LEVELS: ['low', 'medium', 'high', 'xhigh', 'max'],
-}))
-
-// Use REAL semantics for non-overridden envUtils exports — this mock is
-// process-global, so envUtils.test.ts and other consumers running in the
-// same process must see correct behavior for hasNodeOption, isBareMode,
-// parseEnvVars, getVertexRegionForModel, etc. Only getClaudeConfigHomeDir
-// is overridden to '/mock/home/.claude' while this suite runs.
-const realIsEnvDefinedFalsy = (v: string | boolean | undefined): boolean => {
-  if (v === undefined) return false
-  if (typeof v === 'boolean') return !v
-  if (!v) return false
-  return ['0', 'false', 'no', 'off'].includes(v.toLowerCase().trim())
-}
-const realDefaultVertexRegion = (): string =>
-  process.env.CLOUD_ML_REGION || 'us-east5'
-const VERTEX_REGION_OVERRIDES: ReadonlyArray<[string, string]> = [
-  ['claude-haiku-4-5', 'VERTEX_REGION_CLAUDE_HAIKU_4_5'],
-  ['claude-3-5-haiku', 'VERTEX_REGION_CLAUDE_3_5_HAIKU'],
-  ['claude-3-5-sonnet', 'VERTEX_REGION_CLAUDE_3_5_SONNET'],
-  ['claude-3-7-sonnet', 'VERTEX_REGION_CLAUDE_3_7_SONNET'],
-  ['claude-opus-4-1', 'VERTEX_REGION_CLAUDE_4_1_OPUS'],
-  ['claude-opus-4', 'VERTEX_REGION_CLAUDE_4_0_OPUS'],
-  ['claude-sonnet-4-6', 'VERTEX_REGION_CLAUDE_4_6_SONNET'],
-  ['claude-sonnet-4-5', 'VERTEX_REGION_CLAUDE_4_5_SONNET'],
-  ['claude-sonnet-4', 'VERTEX_REGION_CLAUDE_4_0_SONNET'],
-]
-
-// envUtils goes through the shared complete-surface mock (delegates to the
-// real module unless overridden) — see tests/mocks/envUtils.ts for why the
-// old hand-rolled partial mocks were an order-dependent CI hazard.
 const envUtilsMock = setupEnvUtilsMock({
   getClaudeConfigHomeDir: () => '/mock/home/.claude',
   getTeamsDir: () => '/mock/home/.claude/teams',
+})
+
+afterAll(() => {
+  effortMock.reset()
+  modelMock.reset()
+  envUtilsMock.reset()
 })
 
 // Mock the file system so loadMagicDocsPrompt() returns our controlled template

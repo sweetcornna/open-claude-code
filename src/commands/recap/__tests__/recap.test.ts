@@ -9,6 +9,9 @@ import {
 } from 'bun:test'
 import { setupGrowthbookMock } from '../../../../tests/mocks/growthbook.js'
 import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+import { setupGenerateRecapMock } from '../../../../tests/mocks/generateRecap.js'
+import { logMock } from '../../../../tests/mocks/log.js'
+import { debugMock } from '../../../../tests/mocks/debug.js'
 
 // Mock bun:bundle before any imports that use feature()
 // Note: in the test environment AWAY_SUMMARY compile-time flag is false, so
@@ -19,15 +22,8 @@ mock.module('bun:bundle', () => ({
 }))
 
 // Mock log/debug to avoid bootstrap side effects
-mock.module('src/utils/telemetry/log.ts', () => ({
-  logError: () => {},
-  logInfo: () => {},
-  logWarning: () => {},
-}))
-mock.module('src/utils/telemetry/debug.ts', () => ({
-  logForDebugging: () => {},
-  isDebug: () => false,
-}))
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // Mock settings to avoid filesystem side effects
 const settingsMock = setupSettingsMock({})
@@ -48,9 +44,9 @@ let mockRecapResult: {
   text?: string
 } = { kind: 'ok', text: 'Working on fixing the auth bug. Next: run tests.' }
 
-mock.module('src/commands/recap/generateRecap.js', () => ({
+const generateRecapMock = setupGenerateRecapMock({
   generateRecap: async (_signal: AbortSignal) => mockRecapResult,
-}))
+})
 
 let recapCmd: any
 let callFn:
@@ -172,12 +168,15 @@ describe('recap command call()', () => {
 
   test('passes abortController signal to generateRecap', async () => {
     let capturedSignal: AbortSignal | undefined
-    mock.module('src/commands/recap/generateRecap.js', () => ({
+    // Nested site: `set` on the module-level handle rather than a second
+    // setup()/afterAll pair — the shared mock's override state is a module
+    // singleton, so a nested afterAll would clear it for later suites too.
+    generateRecapMock.set({
       generateRecap: async (signal: AbortSignal) => {
         capturedSignal = signal
-        return { kind: 'ok', text: 'Done.' }
+        return { kind: 'ok' as const, text: 'Done.' }
       },
-    }))
+    })
     const fresh = await import('../index.js')
     const loaded = await fresh.default.load()
     await loaded.call('', fakeContext)
@@ -191,4 +190,5 @@ describe('recap command call()', () => {
 // in the shard — mock.module is process-global.
 afterAll(() => {
   growthbookMock.reset()
+  generateRecapMock.reset()
 })

@@ -9,13 +9,14 @@ import {
   test,
 } from 'bun:test'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
+import { setupLocalVaultStoreMock } from '../../../../../../tests/mocks/localVaultStore.js'
 
-// After this suite finishes, switch our getSecret override off so localVault's
-// own store.test.ts (running in the same process) sees the real impl. Also
-// flip the axios stub flag off so the spread mock falls through to real axios
-// for any test file that runs after this one.
+// After this suite finishes, drop our getSecret override so localVault's own
+// store.test.ts (running in the same process) sees the real impl. Also flip
+// the axios stub flag off so the spread mock falls through to real axios for
+// any test file that runs after this one.
 afterAll(() => {
-  useMockForGetSecret = false
+  localVaultStoreMock.reset()
   getSecretShouldThrow = false
   axiosHandle.useStubs = false
 })
@@ -48,24 +49,18 @@ axiosHandle.stubs.request = mockAxiosRequest
 
 let mockedSecret: string | null = 'XSECRETXX'
 let getSecretShouldThrow = false
-// Sentinel: when true our tests use the per-test override; when false we
-// delegate getSecret to the real impl so other test files (localVault's own
-// store.test.ts) see real round-trip behavior.
-let useMockForGetSecret = true
-// Pre-import real store BEFORE mock.module is called so we keep references
-// to real setSecret / deleteSecret / listKeys / maskSecret / error classes
-// for delegation.
-const realStore = await import('src/services/localVault/store.js')
-mock.module('src/services/localVault/store.js', () => ({
-  ...realStore,
-  getSecret: async (key: string) => {
+// Only getSecret is overridden; setSecret / deleteSecret / listKeys /
+// maskSecret and the error classes stay real, and `reset()` in afterAll puts
+// getSecret back too, so localVault's own store.test.ts sees real round-trip
+// behaviour no matter which file loads first in the shard.
+const localVaultStoreMock = setupLocalVaultStoreMock({
+  getSecret: async () => {
     if (getSecretShouldThrow) {
       throw new Error('vault unlock failed (mocked)')
     }
-    if (useMockForGetSecret) return mockedSecret
-    return realStore.getSecret(key)
+    return mockedSecret
   },
-}))
+})
 
 // MACRO is a Bun build-time define injected at compile time. In bun:test
 // it doesn't exist, so any code path that references it crashes. Inject a

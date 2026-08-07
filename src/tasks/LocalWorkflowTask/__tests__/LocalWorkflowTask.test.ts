@@ -9,6 +9,11 @@ import { setupTaskDiskOutputMock } from '../../../../tests/mocks/taskDiskOutput.
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('src/utils/telemetry/log.ts', logMock)
 
+// src/utils/session/sdkEventQueue.js is deliberately NOT mocked either: the
+// real enqueueSdkEvent returns early outside non-interactive sessions, so the
+// old `() => {}` stub changed nothing here while erasing drainSdkEvents and
+// emitTaskTerminatedSdk for every file loaded afterwards in the shard.
+//
 // src/constants/xml.js is deliberately NOT mocked: it is a pure data module
 // (CLAUDE.md), and the old 10-key partial surface broke every later import of
 // the module's other tags in the same process — mock.module is process-global
@@ -21,10 +26,6 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 // imported before beforeAll runs.
 const messageQueueManagerMock = setupMessageQueueManagerMock()
 const diskOutputMock = setupTaskDiskOutputMock()
-
-mock.module('src/utils/session/sdkEventQueue.js', () => ({
-  enqueueSdkEvent: () => {},
-}))
 
 beforeAll(() => {
   messageQueueManagerMock.set({ enqueuePendingNotification: () => {} })

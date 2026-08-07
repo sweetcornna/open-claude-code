@@ -16,6 +16,7 @@ import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQue
 import { setupSessionStorageMock } from '../../../../tests/mocks/sessionStorage.js'
 import { setupTaskDiskOutputMock } from '../../../../tests/mocks/taskDiskOutput.js'
 import { setupSdkProgressMock } from '../../../../tests/mocks/sdkProgress.js'
+import { setupSpeculationMock } from '../../../../tests/mocks/speculation.js'
 
 // ─── Mocks ───
 //
@@ -77,6 +78,12 @@ afterAll(() => {
   analyticsMock.reset()
 })
 
+// speculation via the shared complete-surface mock — abortSpeculation is the
+// only export this file needs neutralised (the fake app state here has no
+// `speculation` slice), and the rest keep delegating to the real module.
+const speculationMock = setupSpeculationMock({ abortSpeculation: noop })
+afterAll(() => speculationMock.reset())
+
 mock.module(
   'src/bootstrap/state.ts',
   stateMockWith({
@@ -88,10 +95,6 @@ mock.module(
   }),
 )
 
-mock.module('src/services/PromptSuggestion/speculation.js', () => ({
-  abortSpeculation: noop,
-}))
-
 // Complete-surface, like the four above. The hand-written partial version of
 // this one erased `runCleanupFunctions` for every file loaded afterwards.
 // Cleanups are dropped on the floor here so this file's tasks don't leave
@@ -100,33 +103,27 @@ const cleanupRegistryMock = setupCleanupRegistryMock({
   registerCleanup: () => noop,
 })
 
-mock.module('src/utils/process/abortController.js', () => ({
-  createAbortController: () => new AbortController(),
-  createChildAbortController: (parent: AbortController) => {
-    const ac = new AbortController()
-    parent.signal.addEventListener('abort', () => ac.abort())
-    return ac
-  },
-}))
-
 const sdkProgressMock = setupSdkProgressMock({
   emitTaskProgress: noop,
 })
 afterAll(() => sdkProgressMock.reset())
-
-mock.module('src/utils/session/sdkEventQueue.js', () => ({
-  enqueueSdkEvent: noop,
-}))
 
 // src/constants/xml.js is deliberately NOT mocked. It is a pure data module
 // (CLAUDE.md: don't mock those), its old 10-key partial surface broke every
 // later import of the other tags in the same process, and its snake_case stubs
 // didn't even match the real kebab-case wire format — so the assertions below
 // were pinning a shape production never emits.
-
-mock.module('src/utils/session/collapseReadSearch.js', () => ({
-  getSearchExtraToolsOrReadInfo: () => undefined,
-}))
+//
+// Three more mocks were dropped for the same reason (suite stays green without
+// them, and each was a partial surface installed process-wide):
+//   abortController.js  — pure, no I/O; the stub even re-implemented
+//                         createChildAbortController without the WeakRef the
+//                         real one uses to avoid retaining abandoned children.
+//   sdkEventQueue.js    — real enqueueSdkEvent already returns early outside
+//                         non-interactive sessions, so the no-op added nothing
+//                         while erasing drainSdkEvents/emitTaskTerminatedSdk.
+//   collapseReadSearch.js — pure message analysis; the stub pinned one of its
+//                         nine exports and erased the rest.
 
 // ─── Import after mocks ───
 

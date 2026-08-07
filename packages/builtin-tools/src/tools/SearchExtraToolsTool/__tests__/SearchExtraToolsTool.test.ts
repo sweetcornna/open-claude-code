@@ -4,48 +4,9 @@ import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 import { makeSharedModuleMock } from '../../../../../../tests/mocks/sharedModuleMock'
 
-import * as realToolConstants from 'src/constants/tools.js'
 import { setupToolRuntimeAnalyticsMock } from '../../../../../../tests/mocks/toolRuntimeAnalytics.js'
-mock.module('src/constants/tools.js', () => ({
-  ...realToolConstants,
-  CORE_TOOLS: new Set(['Read', 'Edit', 'SearchExtraTools', 'ExecuteExtraTool']),
-}))
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
-
-mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
-  getFeatureValue_CACHED_MAY_BE_STALE: () => false,
-  checkStatsigFeatureGate_CACHED_MAY_BE_STALE: () => false,
-  getFeatureValue_DEPRECATED: async () => undefined,
-  getFeatureValue_CACHED_WITH_REFRESH: async () => undefined,
-  hasGrowthBookEnvOverride: () => false,
-  getAllGrowthBookFeatures: () => ({}),
-  getGrowthBookConfigOverrides: () => ({}),
-  setGrowthBookConfigOverride: () => {},
-  clearGrowthBookConfigOverrides: () => {},
-  getApiBaseUrlHost: () => undefined,
-  onGrowthBookRefresh: () => {},
-  initializeGrowthBook: async () => {},
-  checkSecurityRestrictionGate: async () => false,
-  checkGate_CACHED_OR_BLOCKING: async () => false,
-  refreshGrowthBookAfterAuthChange: () => {},
-  resetGrowthBook: () => {},
-  refreshGrowthBookFeatures: async () => {},
-  setupPeriodicGrowthBookRefresh: () => {},
-  stopPeriodicGrowthBookRefresh: () => {},
-}))
-
-mock.module('src/utils/tools/searchExtraTools.js', () => ({
-  isSearchExtraToolsEnabledOptimistic: () => true,
-  getAutoSearchExtraToolsCharThreshold: () => 100,
-  getSearchExtraToolsMode: () => 'tst' as const,
-  isSearchExtraToolsToolAvailable: async () => true,
-  isSearchExtraToolsEnabled: async () => true,
-  isToolReferenceBlock: () => false,
-  extractDiscoveredToolNames: () => new Set(),
-  isDeferredToolsDeltaEnabled: () => false,
-  getDeferredToolsDelta: () => null,
-}))
 
 // Mock toolIndex module
 type MockSearchExtraToolsResult = {

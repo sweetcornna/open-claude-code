@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
+import { setupApiClaudeMock } from '../../../../tests/mocks/apiClaude.js'
 
 // Must mock queryHaiku before importing the module under test so the ESM
 // import binding picks up the stub.
@@ -7,17 +15,21 @@ let haikuResponder: (userPrompt: string) => Promise<unknown> = async () => ({
   message: { content: [{ type: 'text', text: 'optimize code performance' }] },
 })
 
-mock.module('../../api/claude.js', () => ({
-  queryHaiku: mock(
-    async (args: { systemPrompt: unknown; userPrompt: string }) => {
-      haikuCalls.push({
-        systemPrompt: args.systemPrompt,
-        userPrompt: args.userPrompt,
-      })
-      return haikuResponder(args.userPrompt)
-    },
-  ),
-}))
+type HaikuResult = Awaited<
+  ReturnType<typeof import('../../api/claude.js').queryHaiku>
+>
+
+const apiClaudeMock = setupApiClaudeMock({
+  queryHaiku: async args => {
+    haikuCalls.push({
+      systemPrompt: args.systemPrompt,
+      userPrompt: args.userPrompt,
+    })
+    return (await haikuResponder(args.userPrompt)) as HaikuResult
+  },
+})
+
+afterAll(() => apiClaudeMock.reset())
 
 import {
   clearIntentNormalizeCache,

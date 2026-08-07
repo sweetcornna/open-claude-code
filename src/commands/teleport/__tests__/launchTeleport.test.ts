@@ -9,9 +9,11 @@ import {
 } from 'bun:test'
 import type { LogOption } from '../../../types/logs.js'
 import type { LocalJSXCommandCall } from '../../../types/command.js'
+import type { TeleportProgressCallback } from '../../../utils/teleport/teleport.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
+import { setupTeleportMock } from '../../../../tests/mocks/teleport.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
 import { setupSessionStorageMock } from '../../../../tests/mocks/sessionStorage.js'
 
@@ -25,11 +27,15 @@ mock.module('bun:bundle', () => ({
 // ── Teleport utilities ──
 const validateGitStateMock = mock(() => Promise.resolve())
 const teleportResumeMock = mock(
-  (_id: string, _onProgress?: (stage: string) => void) =>
+  (_id: string, _onProgress?: TeleportProgressCallback) =>
     Promise.resolve({ log: [], branch: 'main' }),
 )
 
-mock.module('src/utils/teleport/teleport.js', () => ({
+// teleport.tsx via the shared complete-surface mock (missing exports delegate
+// to the real module) — see tests/mocks/teleport.ts. The autofix-pr suite mocks
+// the same specifier with a conflicting teleportToRemote; the afterAll reset
+// below is what keeps the two independent.
+const teleportModuleMock = setupTeleportMock({
   validateGitState: validateGitStateMock,
   teleportResumeCodeSession: teleportResumeMock,
   processMessagesForTeleportResume: mock(
@@ -38,15 +44,23 @@ mock.module('src/utils/teleport/teleport.js', () => ({
   checkOutTeleportedSessionBranch: mock(() =>
     Promise.resolve({ branchName: 'main', branchError: null }),
   ),
-  validateSessionRepository: mock(() => Promise.resolve({ status: 'match' })),
+  validateSessionRepository: mock(() =>
+    Promise.resolve({ status: 'match' as const }),
+  ),
   teleportToRemoteWithErrorHandling: mock(() => Promise.resolve(null)),
   teleportFromSessionsAPI: mock(() =>
     Promise.resolve({ log: [], branch: 'main' }),
   ),
-  pollRemoteSessionEvents: mock(() => Promise.resolve([])),
+  // The real export resolves an object, not an array — the previous stub
+  // (`Promise.resolve([])`) would have made `response.newEvents` undefined for
+  // any consumer that reached it while this surface was installed.
+  pollRemoteSessionEvents: mock(() =>
+    Promise.resolve({ newEvents: [], lastEventId: null }),
+  ),
   teleportToRemote: mock(() => Promise.resolve(null)),
   archiveRemoteSession: mock(() => Promise.resolve()),
-}))
+})
+afterAll(() => teleportModuleMock.reset())
 
 // ── Sessions API mock ──
 const fetchSessionsMock = mock(() =>
@@ -123,7 +137,7 @@ beforeEach(() => {
   // Restore default happy-path implementations
   validateGitStateMock.mockImplementation(() => Promise.resolve())
   teleportResumeMock.mockImplementation(
-    (_id: string, _onProgress?: (stage: string) => void) =>
+    (_id: string, _onProgress?: TeleportProgressCallback) =>
       Promise.resolve({ log: [], branch: 'main' }),
   )
   getLastSessionLogMock.mockImplementation(() => Promise.resolve(mockLog))
@@ -275,8 +289,10 @@ describe('callTeleport', () => {
 
   test('progress callback is invoked during teleportResumeCodeSession (line 225)', async () => {
     teleportResumeMock.mockImplementationOnce(
-      (_id: string, onProgress?: (stage: string) => void) => {
-        onProgress?.('fetching_session')
+      (_id: string, onProgress?: TeleportProgressCallback) => {
+        // 'fetching_session' was not one of the five TeleportProgressStep
+        // values — typing the stub against the real callback surfaced it.
+        onProgress?.('fetching_logs')
         return Promise.resolve({ log: [], branch: 'main' })
       },
     )

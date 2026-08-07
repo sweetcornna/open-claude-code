@@ -1,5 +1,15 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { MACOS_DEEP_LINK_BUNDLE_ID } from 'src/constants/brand.js'
+import { setupParseDeepLinkMock } from '../../../../tests/mocks/parseDeepLink.js'
+import { setupTerminalLauncherMock } from '../../../../tests/mocks/terminalLauncher.js'
 
 const mockParseDeepLink = mock((uri: string) => {
   if (uri === null || uri === undefined || uri === 'bad-uri') {
@@ -9,26 +19,20 @@ const mockParseDeepLink = mock((uri: string) => {
 })
 const mockLaunchInTerminal = mock(async () => true)
 
-mock.module('../parseDeepLink.js', () => ({
+// Both go through the shared complete-surface mocks: the spies stay (the tests
+// assert on them), but every other export keeps delegating to the real module.
+// A bare `{ parseDeepLink }` surface used to erase the module's re-exported
+// DEEP_LINK_PROTOCOL, which is what registerProtocol.ts imports.
+const parseDeepLinkMock = setupParseDeepLinkMock({
   parseDeepLink: mockParseDeepLink,
-}))
-mock.module('../registerProtocol.js', () => ({
-  MACOS_BUNDLE_ID: MACOS_DEEP_LINK_BUNDLE_ID,
-}))
-mock.module('../terminalLauncher.js', () => ({
+})
+const terminalLauncherMock = setupTerminalLauncherMock({
   launchInTerminal: mockLaunchInTerminal,
-}))
-mock.module('../banner.js', () => ({
-  readLastFetchTime: async () => undefined,
-  buildDeepLinkBanner: () => '',
-}))
-mock.module('../../github/githubRepoPathMapping.js', () => ({
-  updateGithubRepoPathMapping: async () => {},
-  getKnownPathsForRepo: () => [],
-  filterExistingPaths: async () => [],
-  validateRepoAtPath: async () => false,
-  removePathFromRepo: () => {},
-}))
+})
+afterAll(() => {
+  parseDeepLinkMock.reset()
+  terminalLauncherMock.reset()
+})
 
 const { handleDeepLinkUri, handleUrlSchemeLaunch } = await import(
   '../protocolHandler.js'

@@ -38,14 +38,11 @@ mock.module(
 )
 // growthbook goes through the shared complete-surface mock (missing exports
 // delegate to the real module) — see tests/mocks/growthbook.ts.
-setupGrowthbookMock({
+const growthbookMock = setupGrowthbookMock({
   getFeatureValue_CACHED_MAY_BE_STALE: (_key: string, defaultValue: unknown) =>
     defaultValue ?? {},
 })
-mock.module('src/utils/model/modelSupportOverrides.js', () => ({
-  get3PModelCapabilityOverride: () => undefined,
-}))
-
+afterAll(() => growthbookMock.reset())
 const {
   isEffortLevel,
   parseEffortValue,

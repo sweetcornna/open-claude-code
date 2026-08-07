@@ -77,12 +77,6 @@ const hostGuardMock = setupHostGuardMock({
 })
 afterAll(() => hostGuardMock.reset())
 
-// ── MemoryStoresView mock ───────────────────────────────────────────────────
-const memoryStoresViewMock = mock((_props: unknown) => null)
-mock.module('src/commands/memory-stores/MemoryStoresView.js', () => ({
-  MemoryStoresView: memoryStoresViewMock,
-}))
-
 // ── Axios mock ──────────────────────────────────────────────────────────────
 const axiosGetMock = mock(async () => ({}))
 const axiosPostMock = mock(async () => ({}))
@@ -130,7 +124,6 @@ beforeEach(() => {
   axiosPatchMock.mockClear()
   axiosDeleteMock.mockClear()
   logEventMock.mockClear()
-  memoryStoresViewMock.mockClear()
 })
 
 // ── invalid args ──────────────────────────────────────────────────────────────

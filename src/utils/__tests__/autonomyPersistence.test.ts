@@ -1,15 +1,8 @@
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanupTempDir, createTempDir } from '../../../tests/mocks/file-system'
-
-// Mock the lockfile module so tests don't need real file locks
-mock.module('../filesystem/lockfile.js', () => ({
-  lock: async (_file: string, _options?: unknown) => {
-    return async () => {}
-  },
-}))
 
 let tempDir = ''
 

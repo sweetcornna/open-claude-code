@@ -11,6 +11,7 @@ import type { Command } from '../../commands.js'
 import { setupUndercoverMock } from '../../../tests/mocks/undercover.js'
 import { setupPromptShellExecutionMock } from '../../../tests/mocks/promptShellExecution.js'
 import { setupGitAttributionMock } from '../../../tests/mocks/gitAttribution.js'
+import { setupGitMock } from '../../../tests/mocks/git.js'
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
@@ -35,83 +36,13 @@ const shellPromptMock = setupPromptShellExecutionMock({
 })
 afterAll(() => shellPromptMock.reset())
 
-// IMPORTANT: mock.module is process-global. findGitRoot/findCanonicalGitRoot
-// are SYNC in the real impl (returning string | null) — using async stubs
-// here pollutes downstream callers (e.g. jobs/templates.ts) that consume the
-// return value as a string. Match the real signatures (sync, string | null)
-// so other test files in the same process keep working.
-//
-// Pure functions (normalizeGitRemoteUrl) are inlined with real semantics so
-// git.test.ts and other consumers of this mock don't see null returns when
-// the test runs in the full suite.
-const isLocalHostForMock = (host: string): boolean => {
-  const lower = host.toLowerCase().split(':')[0] ?? ''
-  return lower === 'localhost' || lower === '127.0.0.1' || lower === '::1'
-}
-const realNormalizeGitRemoteUrl = (url: string): string | null => {
-  const trimmed = url.trim()
-  if (!trimmed) return null
-
-  const sshMatch = trimmed.match(/^git@([^:]+):(.+?)(?:\.git)?$/)
-  if (sshMatch && sshMatch[1] && sshMatch[2]) {
-    return `${sshMatch[1]}/${sshMatch[2]}`.toLowerCase()
-  }
-
-  const urlMatch = trimmed.match(
-    /^(?:https?|ssh):\/\/(?:[^@]+@)?([^/]+)\/(.+?)(?:\.git)?$/,
-  )
-  if (urlMatch && urlMatch[1] && urlMatch[2]) {
-    const host = urlMatch[1]
-    const p = urlMatch[2]
-    if (isLocalHostForMock(host) && p.startsWith('git/')) {
-      const proxyPath = p.slice(4)
-      const segments = proxyPath.split('/')
-      if (segments.length >= 3 && segments[0]!.includes('.')) {
-        return proxyPath.toLowerCase()
-      }
-      return `github.com/${proxyPath}`.toLowerCase()
-    }
-    return `${host}/${p}`.toLowerCase()
-  }
-  return null
-}
-
-mock.module('src/utils/git/git.ts', () => ({
+// The suite asserts the generated prompt names the default branch. Everything
+// else in git.js delegates to the real module, so pure helpers keep their real
+// semantics for whatever file Bun loads next in this shard.
+const gitMock = setupGitMock({
   getDefaultBranch: async () => 'main',
-  findGitRoot: (_startPath?: string) => '/fake/root',
-  findCanonicalGitRoot: (_startPath?: string) => '/fake/root',
-  gitExe: () => 'git',
-  getIsGit: async () => true,
-  getGitDir: async () => null,
-  isAtGitRoot: async () => true,
-  dirIsInGitRepo: async () => true,
-  getHead: async () => 'abc123',
-  getBranch: async () => 'main',
-  // The following exports are referenced by markdownConfigLoader (and other
-  // transitive consumers) — provide minimal stubs so the mock surface covers
-  // every real export and downstream callers don't see undefined.
-  getRemoteUrl: async () => null,
-  normalizeGitRemoteUrl: realNormalizeGitRemoteUrl,
-  getRepoRemoteHash: async () => null,
-  getIsHeadOnRemote: async () => false,
-  hasUnpushedCommits: async () => false,
-  getIsClean: async () => true,
-  getChangedFiles: async () => [] as string[],
-  getFileStatus: async () => ({
-    added: [],
-    modified: [],
-    deleted: [],
-    renamed: [],
-    untracked: [],
-  }),
-  getWorktreeCount: async () => 1,
-  stashToCleanState: async () => false,
-  getGitState: async () => null,
-  getGithubRepo: async () => null,
-  findRemoteBase: async () => null,
-  preserveGitStateForIssue: async () => null,
-  isCurrentDirectoryBareGitRepo: () => false,
-}))
+})
+afterAll(() => gitMock.reset())
 
 let commitPushPr: Command
 let originalUserType: string | undefined

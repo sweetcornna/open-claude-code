@@ -1,25 +1,36 @@
-import { describe, expect, test, mock } from 'bun:test'
+import { afterAll, describe, expect, test, mock } from 'bun:test'
+import { debugMock } from '../../../../tests/mocks/debug.js'
+import { logMock } from '../../../../tests/mocks/log.js'
+import { setupLspConfigMock } from '../../../../tests/mocks/lspConfig.js'
+import { setupLspServerInstanceMock } from '../../../../tests/mocks/lspServerInstance.js'
 import { createLSPServerManager } from '../LSPServerManager.js'
+import type { LSPServerInstance } from '../LSPServerInstance.js'
+import type { ScopedLspServerConfig } from '../types.js'
 
-// Mock config loading to avoid real filesystem/LSP server access
-mock.module('../config.js', () => ({
+// Mock config loading to avoid real filesystem/LSP server access.
+// `command` is a single string, not an array — the whole surface used to be
+// hand-rolled, so nothing ever typechecked this against ScopedLspServerConfig.
+const testServerConfig: ScopedLspServerConfig = {
+  command: 'test-lsp',
+  transport: 'stdio',
+  extensionToLanguage: {
+    '.ts': 'typescript',
+    '.js': 'javascript',
+  },
+  scope: 'dynamic',
+  source: 'test-plugin',
+}
+
+const lspConfigMock = setupLspConfigMock({
   getAllLspServers: async () => ({
-    servers: {
-      'test-server': {
-        command: ['test-lsp'],
-        extensionToLanguage: {
-          '.ts': 'typescript',
-          '.js': 'javascript',
-        },
-      },
-    },
+    servers: { 'test-server': testServerConfig },
   }),
-}))
+})
 
 // Mock LSPServerInstance to avoid spawning real processes
 const sendNotificationMock = mock(() => Promise.resolve())
-mock.module('../LSPServerInstance.js', () => ({
-  createLSPServerInstance: (name: string, config: any) => ({
+const lspServerInstanceMock = setupLspServerInstanceMock({
+  createLSPServerInstance: (name, config): Partial<LSPServerInstance> => ({
     name,
     config,
     state: 'running',
@@ -29,20 +40,20 @@ mock.module('../LSPServerInstance.js', () => ({
     stop: mock(async () => {
       /* no-op */
     }),
-    sendRequest: mock(async () => undefined),
+    sendRequest: async <T>(): Promise<T> => undefined as unknown as T,
     sendNotification: sendNotificationMock,
     onRequest: mock(() => {}),
   }),
-}))
+})
+
+afterAll(() => {
+  lspServerInstanceMock.reset()
+  lspConfigMock.reset()
+})
 
 // Mock log modules with side effects
-mock.module('src/utils/telemetry/log.ts', () => ({
-  logError: mock(() => {}),
-}))
-
-mock.module('src/utils/telemetry/debug.ts', () => ({
-  logForDebugging: mock(() => {}),
-}))
+mock.module('src/utils/telemetry/log.ts', logMock)
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 describe('LSPServerManager closeAllFiles', () => {
   test('closeAllFiles is a no-op when no files are open', async () => {

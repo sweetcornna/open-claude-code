@@ -133,7 +133,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 **同一模块被两种扩展名 mock = 同一个 registry key 上的静默争夺。** 实测：用 `mock.module('x.js', …)` 注册，再 `import './x.ts'`，拿到的是那个 mock —— 两种拼写落在**同一条**记录上。所以两个文件各写各的部分表面、一个用 `.js` 一个用 `.ts`，读代码时像在动不同模块，实际是 last-write-wins 打架。这是这类 bug 里最难在 review 中看出来的形态，逐文件检查永远看不见。仓库统一用 **`.ts`**（真实文件都是 `.ts`），`check:mock-hygiene` 对此**零容忍、不设棘轮**。
 
-**`bun run check:mock-hygiene` 守着这条规则**（也在 precheck 和 CI 里），查两类：仓库内模块的内联 `mock.module('src/…', () => ({ … }))`（必须走 `tests/mocks/` helper；`bun:bundle`/`axios`/`node:*` 豁免），以及顶层 `setup({…})` 却全文件没有 `.reset()`。存量按文件棘轮在 `scripts/mock-hygiene-budget.json`，双向严格（转换掉一处要 `--update` 提交更低基线）。
+**`bun run check:mock-hygiene` 守着这条规则**（也在 precheck 和 CI 里），查两类：仓库内模块的内联 `mock.module('src/…', () => ({ … }))`（必须走 `tests/mocks/` helper；`bun:bundle`/`axios`/`node:*` 豁免），以及顶层 `setup({…})` 却全文件没有 `.reset()`。存量已清零（241 → 0），预算文件现在是空的，四条规则实际都是硬零；双向棘轮机制保留，防止回潮。**加 mock 前先想想能不能不加** —— 那 241 处里约三分之一根本不该存在（纯常量模块、纯谓词、把整个模块抹平的 `() => ({})` 空表面，还有两处 specifier 指向的路径根本不存在）。先试 `bun test <该目录>` 不带 mock 跑一遍，再决定。
 
 ## Working with This Codebase
 

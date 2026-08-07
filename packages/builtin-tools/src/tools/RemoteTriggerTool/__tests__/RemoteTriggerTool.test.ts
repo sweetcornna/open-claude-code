@@ -11,6 +11,8 @@ import {
 import { authMock } from '../../../../../../tests/mocks/auth'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
 import { setupOauthClientMock } from '../../../../../../tests/mocks/oauthClient.js'
+import { setupRemoteTriggerAuditMock } from '../../../../../../tests/mocks/remoteTriggerAudit.js'
+import { setupConstantsOauthMock } from '../../../../../../tests/mocks/constantsOauth.js'
 
 let requestStatus = 200
 const auditRecords: Record<string, unknown>[] = []
@@ -35,30 +37,21 @@ const oauthClientMock = setupOauthClientMock({
 })
 afterAll(() => oauthClientMock.reset())
 
-mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
-  getFeatureValue_CACHED_MAY_BE_STALE: () => true,
-}))
-
-mock.module('src/services/policyLimits/index.js', () => ({
-  isPolicyAllowed: () => true,
-}))
-
 // Narrow mock for the side-effectful entries in `src/constants/oauth.js`.
 // Pure data exports (ALL_OAUTH_SCOPES, CLAUDE_AI_*_SCOPE, etc.) come from
 // the real module and are not mocked, per the test policy that constants
 // modules without side effects should not be replaced wholesale.
-mock.module('src/constants/oauth.js', () => {
-  const actual = require('../../../../../../src/constants/oauth.js')
-  return {
-    ...actual,
-    fileSuffixForOauthConfig: () => '',
-    getOauthConfig: () => ({ BASE_API_URL: 'https://example.test' }),
-    MCP_CLIENT_METADATA_URL: 'https://example.test/oauth/metadata',
-  }
+const constantsOauthMock = setupConstantsOauthMock({
+  fileSuffixForOauthConfig: () => '',
+  getOauthConfig: () => ({ BASE_API_URL: 'https://example.test' }),
 })
+afterAll(() => constantsOauthMock.reset())
 
-mock.module('src/utils/agents/remoteTriggerAudit.js', () => ({
-  appendRemoteTriggerAuditRecord: async (record: Record<string, unknown>) => {
+// Recording stub, not a no-op: the suite asserts on both the returned
+// `auditId` and the record contents. Kept as an override on the complete
+// surface so the module's other exports stay real for later files.
+const remoteTriggerAuditMock = setupRemoteTriggerAuditMock({
+  appendRemoteTriggerAuditRecord: async record => {
     const fullRecord = {
       auditId: `audit-${auditRecords.length + 1}`,
       createdAt: Date.now(),
@@ -67,7 +60,8 @@ mock.module('src/utils/agents/remoteTriggerAudit.js', () => ({
     auditRecords.push(fullRecord)
     return fullRecord
   },
-}))
+})
+afterAll(() => remoteTriggerAuditMock.reset())
 
 beforeEach(() => {
   requestStatus = 200

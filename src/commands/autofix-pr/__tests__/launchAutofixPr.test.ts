@@ -15,6 +15,8 @@ import type { LocalJSXCommandCall } from '../../../types/command.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+import { setupTeleportMock } from '../../../../tests/mocks/teleport.js'
+import { setupAutofixPrFetchMock } from '../../../../tests/mocks/autofixPrFetch.js'
 
 // ── Mock module-level side effects before any imports ──
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -29,26 +31,13 @@ const teleportMock = mock(
   (): Promise<TeleportResult> =>
     Promise.resolve({ id: 'session-123', title: 'Autofix PR: acme/myrepo#42' }),
 )
-mock.module('src/utils/teleport/teleport.js', () => ({
-  teleportToRemote: teleportMock,
-  // Stubs for other exports — Bun mock-module is process-level, so when
-  // run combined with teleport-command tests these would otherwise leak as
-  // undefined and crash. Keep here in sync with utils/teleport.tsx exports
-  // that any other test in this process might import transitively.
-  teleportResumeCodeSession: mock(() =>
-    Promise.resolve({ branch: null, messages: [], error: null }),
-  ),
-  validateGitState: mock(() => Promise.resolve()),
-  validateSessionRepository: mock(() => Promise.resolve({ ok: true })),
-  checkOutTeleportedSessionBranch: mock(() =>
-    Promise.resolve({ branchName: 'main', branchError: null }),
-  ),
-  processMessagesForTeleportResume: mock((m: unknown[]) => m),
-  teleportFromSessionsAPI: mock(() =>
-    Promise.resolve({ branch: null, messages: [], error: null }),
-  ),
-  teleportToRemoteWithErrorHandling: mock(() => Promise.resolve(null)),
-}))
+// teleport.tsx via the shared complete-surface mock — see tests/mocks/teleport.ts.
+// The teleport command suite mocks the same specifier with a conflicting
+// teleportToRemote; the reset in afterAll is what keeps the two independent
+// (Bun loads and runs one test file at a time, so a load-time override is
+// scoped to this file as long as it is dropped again afterwards).
+const teleportModuleMock = setupTeleportMock({ teleportToRemote: teleportMock })
+afterAll(() => teleportModuleMock.reset())
 
 const registerMock = mock(() => ({
   taskId: 'framework-task-id',
@@ -91,13 +80,27 @@ const fetchPrHeadShaMock = mock<
   (owner: string, repo: string, prNumber: number) => Promise<string | null>
 >(() => Promise.resolve('sha-baseline-abc123'))
 
-// Mock prFetch.ts (gh CLI spawn layer) — keeping the pure decision matrix
-// in prOutcomeCheck.ts unmocked so its tests are unaffected by this file's
-// process-global mock.module pollution.
-mock.module('src/commands/autofix-pr/prFetch.js', () => ({
+type OutcomeProbeResult =
+  | { completed: true; summary: string }
+  | { completed: false }
+const checkPrAutofixOutcomeMock = mock(
+  (_input?: unknown): Promise<OutcomeProbeResult> =>
+    Promise.resolve({ completed: false }),
+)
+
+// prFetch.ts (the gh CLI spawn layer) via the shared complete-surface mock —
+// see tests/mocks/autofixPrFetch.ts. The pure decision matrix in
+// prOutcomeCheck.ts stays unmocked so its own tests are unaffected.
+//
+// Suites reach the stubs through the module-level mock variables rather than
+// `await import('../prFetch.js')`: the delegating surface wraps every export,
+// so the binding a consumer imports is the wrapper, not the bun mock, and
+// `.mockImplementationOnce` does not live on it.
+const prFetchMock = setupAutofixPrFetchMock({
   fetchPrHeadSha: fetchPrHeadShaMock,
-  checkPrAutofixOutcome: mock(() => Promise.resolve({ completed: false })),
-}))
+  checkPrAutofixOutcome: checkPrAutofixOutcomeMock,
+})
+afterAll(() => prFetchMock.reset())
 
 const detectRepoMock = mock(() =>
   Promise.resolve({ host: 'github.com', owner: 'acme', name: 'myrepo' }),
@@ -553,9 +556,8 @@ describe('callAutofixPr · Phase 2 completionChecker arrow body', () => {
   })
 
   test('returns null when checkPrAutofixOutcome reports not completed', async () => {
-    const { checkPrAutofixOutcome } = await import('../prFetch.js')
-    ;(checkPrAutofixOutcome as ReturnType<typeof mock>).mockImplementationOnce(
-      () => Promise.resolve({ completed: false }),
+    checkPrAutofixOutcomeMock.mockImplementationOnce(() =>
+      Promise.resolve({ completed: false }),
     )
     const checker = getChecker()
     // Distinct PR number to dodge the in-process throttle map carried over
@@ -569,13 +571,11 @@ describe('callAutofixPr · Phase 2 completionChecker arrow body', () => {
   })
 
   test('returns the summary string when checkPrAutofixOutcome reports completed', async () => {
-    const { checkPrAutofixOutcome } = await import('../prFetch.js')
-    ;(checkPrAutofixOutcome as ReturnType<typeof mock>).mockImplementationOnce(
-      () =>
-        Promise.resolve({
-          completed: true,
-          summary: 'acme/myrepo#1002 merged. Autofix monitoring complete.',
-        }),
+    checkPrAutofixOutcomeMock.mockImplementationOnce(() =>
+      Promise.resolve({
+        completed: true,
+        summary: 'acme/myrepo#1002 merged. Autofix monitoring complete.',
+      }),
     )
     const checker = getChecker()
     const result = await checker({
@@ -587,8 +587,7 @@ describe('callAutofixPr · Phase 2 completionChecker arrow body', () => {
   })
 
   test('passes initialHeadSha through to checkPrAutofixOutcome', async () => {
-    const { checkPrAutofixOutcome } = await import('../prFetch.js')
-    const checkMock = checkPrAutofixOutcome as ReturnType<typeof mock>
+    const checkMock = checkPrAutofixOutcomeMock
     checkMock.mockClear()
     checkMock.mockImplementationOnce(() =>
       Promise.resolve({ completed: false }),
@@ -609,8 +608,7 @@ describe('callAutofixPr · Phase 2 completionChecker arrow body', () => {
   })
 
   test('throttles back-to-back calls for the same PR within CHECK_INTERVAL_MS', async () => {
-    const { checkPrAutofixOutcome } = await import('../prFetch.js')
-    const checkMock = checkPrAutofixOutcome as ReturnType<typeof mock>
+    const checkMock = checkPrAutofixOutcomeMock
     checkMock.mockClear()
     checkMock.mockImplementation(() => Promise.resolve({ completed: false }))
     const checker = getChecker()
@@ -625,8 +623,7 @@ describe('callAutofixPr · Phase 2 completionChecker arrow body', () => {
   })
 
   test('completionHook with metadata clears the throttle entry (re-launch can re-check immediately)', async () => {
-    const { checkPrAutofixOutcome } = await import('../prFetch.js')
-    const checkMock = checkPrAutofixOutcome as ReturnType<typeof mock>
+    const checkMock = checkPrAutofixOutcomeMock
     checkMock.mockClear()
     checkMock.mockImplementation(() => Promise.resolve({ completed: false }))
     const checker = getChecker()

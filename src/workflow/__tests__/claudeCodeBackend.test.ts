@@ -39,32 +39,20 @@ beforeAll(() =>
   toolsMock.set({ assembleToolPool: () => ({ tools: [] }) as never }),
 )
 afterAll(() => toolsMock.reset())
-mock.module('src/utils/messages.ts', () => ({
-  // Return a shape that satisfies UserMessage consumers process-wide.
-  // Bun's mock.module is process-global (last-write-wins), so an incomplete
-  // mock here corrupts every later test that imports the real createUserMessage
-  // (e.g. bridgeMessaging.test.ts's `type !== 'user'` early-exit, or
-  // processSlashCommand.test.ts's `message.content` access). Mirror the real
-  // shape from src/utils/messages.ts: type + message envelope + passthrough.
-  createUserMessage: (
-    o: {
-      content: string
-    } & Record<string, unknown>,
-  ) => ({
-    type: 'user' as const,
-    message: { role: 'user', content: o.content },
-    ...o,
-  }),
+// The hand-rolled version of this mirrored the real createUserMessage shape by
+// hand, with a comment explaining that an incomplete surface here corrupts every
+// later file importing the real one. The shared helper removes the need to
+// mirror anything: unlisted exports delegate to the real module.
+const messagesMock = setupMessagesMock({
   extractTextContent: () => 'agent-text',
-}))
+})
+afterAll(() => messagesMock.reset())
 const uuidMock = setupUuidMock({
   createAgentId: () => 'agent-1',
 })
 afterAll(() => uuidMock.reset())
 
-mock.module('src/utils/telemetry/debug.ts', () => ({
-  logForDebugging: () => {},
-}))
+mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 // isolation:'worktree' tests: mock worktree trio (to avoid actually running git worktree add).
 // Note mock.module is process-global; worktreeState is defined outside the factory for test reset.
@@ -130,6 +118,8 @@ import {
   type AgentToolUtilsOverrides,
 } from '../../../tests/mocks/agentToolUtils.js'
 import { setupLoadAgentsDirMock } from '../../../tests/mocks/loadAgentsDir.js'
+import { setupMessagesMock } from '../../../tests/mocks/messages.js'
+import { debugMock } from '../../../tests/mocks/debug.js'
 
 const analyticsMock = setupAnalyticsMock()
 afterAll(() => analyticsMock.reset())

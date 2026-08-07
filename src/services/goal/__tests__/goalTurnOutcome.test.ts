@@ -11,13 +11,6 @@ import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log.js'
 mock.module('src/utils/telemetry/log.ts', logMock)
 
-// goalStorage writes to the transcript; the state machine is what's under test.
-mock.module('src/services/goal/goalStorage.ts', () => ({
-  persistCurrentGoal: () => {},
-  persistGoalClear: () => {},
-  hydrateGoalFromTranscript: () => null,
-}))
-
 import {
   _clearAllGoalsForTesting,
   getContinuationDelayMs,

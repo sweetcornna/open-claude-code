@@ -1,18 +1,34 @@
-import { describe, test, expect, mock } from 'bun:test'
+import { afterAll, beforeAll, describe, test, expect } from 'bun:test'
+import { setupConfigMock } from '../../../tests/mocks/config.js'
+import { setupIntlMock } from '../../../tests/mocks/intl.js'
+import type { PreferredLanguage } from 'src/utils/text/language.js'
 
-// Mock dependencies before importing the module under test
-let mockPreferredLanguage: string | undefined
+// Mock dependencies before importing the module under test.
+// `PreferredLanguage` rather than `string`: GlobalConfig.preferredLanguage is a
+// literal union, and a widened stub silently claims getGlobalConfig can return
+// values the real config never holds.
+let mockPreferredLanguage: PreferredLanguage | undefined
 let mockSystemLocale: string | undefined
 
-mock.module('src/utils/config/config.js', () => ({
-  getGlobalConfig: () => ({
-    preferredLanguage: mockPreferredLanguage,
-  }),
-}))
+// Both go through the shared complete-surface mocks: a bare
+// `{ getGlobalConfig }` / `{ getSystemLocaleLanguage }` surface would leave
+// every other export of those modules undefined for the rest of the shard.
+const configMock = setupConfigMock()
+const intlMock = setupIntlMock()
 
-mock.module('src/utils/text/intl.js', () => ({
-  getSystemLocaleLanguage: () => mockSystemLocale,
-}))
+beforeAll(() => {
+  configMock.set({
+    getGlobalConfig: () => ({
+      preferredLanguage: mockPreferredLanguage,
+    }),
+  })
+  intlMock.set({ getSystemLocaleLanguage: () => mockSystemLocale })
+})
+
+afterAll(() => {
+  configMock.reset()
+  intlMock.reset()
+})
 
 const { getResolvedLanguage, getLanguageDisplayName } = await import(
   'src/utils/text/language.js'

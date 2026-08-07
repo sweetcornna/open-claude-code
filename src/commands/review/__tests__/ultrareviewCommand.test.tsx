@@ -29,6 +29,7 @@ import { logMock } from '../../../../tests/mocks/log.js';
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js';
 import { setupDetectRepositoryMock } from '../../../../tests/mocks/detectRepository.js';
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js';
+import { setupReviewRemoteMock } from '../../../../tests/mocks/reviewRemote.js';
 
 afterAll(() => {
   _ultrareviewAxiosHandle.useStubs = false;
@@ -61,14 +62,16 @@ type GateResult =
 let _gateResult: GateResult = { kind: 'proceed', billingNote: '' };
 let _launchResult: Array<{ type: 'text'; text: string }> | null = [{ type: 'text', text: 'Launched successfully.' }];
 const _capturedLaunchArgs: string[] = [];
-mock.module('src/commands/review/reviewRemote.js', () => ({
+// reviewRemote via the shared complete-surface mock (missing exports delegate
+// to the real module) — see tests/mocks/reviewRemote.ts.
+const reviewRemoteMock = setupReviewRemoteMock({
   checkOverageGate: async () => _gateResult,
   confirmOverage: () => {},
   launchRemoteReview: async (args: string) => {
     _capturedLaunchArgs.push(args);
     return _launchResult;
   },
-}));
+});
 
 // Mock OAuth config so real fetchUltrareviewPreflight can run
 const oauthConstMock = setupConstantsOauthMock({
@@ -120,11 +123,6 @@ const detectRepositoryMock = setupDetectRepositoryMock({
     name: 'testrepo',
   }),
 });
-
-// UltrareviewOverageDialog — return a simple marker
-mock.module('src/commands/review/UltrareviewOverageDialog.js', () => ({
-  UltrareviewOverageDialog: () => ({ type: 'UltrareviewOverageDialog' }),
-}));
 
 import { call } from '../ultrareviewCommand.js';
 import { setupConstantsOauthMock } from '../../../../tests/mocks/constantsOauth.js';
@@ -258,4 +256,5 @@ describe('ultrareviewCommand.call: gate branches', () => {
 afterAll(() => {
   teleportApiMock.reset();
   detectRepositoryMock.reset();
+  reviewRemoteMock.reset();
 });

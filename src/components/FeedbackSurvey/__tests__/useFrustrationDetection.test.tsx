@@ -1,29 +1,34 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
 import * as React from 'react';
 import { renderToString } from '../../../utils/terminal/staticRender.js';
 import type { Message } from '../../../types/message.js';
+import { setupConfigMock } from '../../../../tests/mocks/config.js';
+import type { GlobalConfig } from '../../../utils/config/config.js';
+import { setupPolicyLimitsMock } from '../../../../tests/mocks/policyLimits.js';
+import { setupSubmitTranscriptShareMock } from '../../../../tests/mocks/submitTranscriptShare.js';
 
 let transcriptShareDismissed = false;
 let productFeedbackAllowed = true;
 const mockSubmitTranscriptShare = mock(async () => ({ success: true }));
 
-mock.module('../../../utils/config/config.js', () => ({
+const configMock = setupConfigMock({
   getGlobalConfig: () => ({ transcriptShareDismissed }),
-  saveGlobalConfig: (
-    updater: (current: { transcriptShareDismissed?: boolean }) => {
-      transcriptShareDismissed?: boolean;
-    },
-  ) => {
-    const next = updater({ transcriptShareDismissed });
+  saveGlobalConfig: (updater: (current: GlobalConfig) => GlobalConfig) => {
+    const next = updater({ transcriptShareDismissed } as GlobalConfig);
     transcriptShareDismissed = next.transcriptShareDismissed ?? false;
   },
-}));
-mock.module('../../../services/policyLimits/index.js', () => ({
+});
+afterAll(() => configMock.reset());
+
+const policyLimitsMock = setupPolicyLimitsMock({
   isPolicyAllowed: () => productFeedbackAllowed,
-}));
-mock.module('../submitTranscriptShare.js', () => ({
+});
+afterAll(() => policyLimitsMock.reset());
+
+const submitTranscriptShareMock = setupSubmitTranscriptShareMock({
   submitTranscriptShare: mockSubmitTranscriptShare,
-}));
+});
+afterAll(() => submitTranscriptShareMock.reset());
 
 const { useFrustrationDetection } = await import('../useFrustrationDetection.js');
 

@@ -1,4 +1,3 @@
-import * as realToolConstants from 'src/constants/tools.js'
 import { afterAll, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 import { setupAgentSummaryMock } from '../../../../../../tests/mocks/agentSummary.js'
@@ -26,19 +25,6 @@ const noop = () => {}
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
-// Spread the real module: CORE_TOOLS and COORDINATOR_MODE_ALLOWED_TOOLS are
-// not overridden here, and leaving them out made CORE_TOOLS `undefined` for
-// every later file in the packages/builtin-tools shard — SearchExtraToolsTool's
-// isDeferred() reads it at call time. constants/tools.ts is a pure leaf (the
-// prompt-purity ratchet enforces that), so importing it costs nothing.
-mock.module('src/constants/tools.js', () => ({
-  ...realToolConstants,
-  ALL_AGENT_DISALLOWED_TOOLS: new Set(),
-  ASYNC_AGENT_ALLOWED_TOOLS: new Set(),
-  CUSTOM_AGENT_DISALLOWED_TOOLS: new Set(),
-  IN_PROCESS_TEAMMATE_ALLOWED_TOOLS: new Set(),
-}))
-
 const agentSummaryMock = setupAgentSummaryMock({
   startAgentSummarization: () => ({ stop: () => {} }),
 })
@@ -57,58 +43,6 @@ const dumpPromptsMock = setupDumpPromptsMock({
 })
 afterAll(() => dumpPromptsMock.reset())
 
-// messages.ts is complex - provide stubs for all named exports
-mock.module('src/utils/messages.ts', () => ({
-  extractTextContent: (content: any[]) =>
-    content
-      ?.filter?.((b: any) => b.type === 'text')
-      ?.map?.((b: any) => b.text)
-      ?.join('') ?? '',
-  getLastAssistantMessage: () => null,
-  SYNTHETIC_MESSAGES: new Set(),
-  INTERRUPT_MESSAGE: '',
-  INTERRUPT_MESSAGE_FOR_TOOL_USE: '',
-  CANCEL_MESSAGE: '',
-  REJECT_MESSAGE: '',
-  REJECT_MESSAGE_WITH_REASON_PREFIX: '',
-  SUBAGENT_REJECT_MESSAGE: '',
-  SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX: '',
-  PLAN_REJECTION_PREFIX: '',
-  DENIAL_WORKAROUND_GUIDANCE: '',
-  NO_RESPONSE_REQUESTED: '',
-  SYNTHETIC_TOOL_RESULT_PLACEHOLDER: '',
-  SYNTHETIC_MODEL: '',
-  AUTO_REJECT_MESSAGE: noop,
-  DONT_ASK_REJECT_MESSAGE: noop,
-  withMemoryCorrectionHint: (s: string) => s,
-  deriveShortMessageId: () => '',
-  isClassifierDenial: () => false,
-  buildYoloRejectionMessage: () => '',
-  buildClassifierUnavailableMessage: () => '',
-  isEmptyMessageText: () => true,
-  createAssistantMessage: noop,
-  createAssistantAPIErrorMessage: noop,
-  createUserMessage: noop,
-  prepareUserContent: noop,
-  createUserInterruptionMessage: noop,
-  createSyntheticUserCaveatMessage: noop,
-  formatCommandInputTags: noop,
-}))
-
-mock.module('src/tasks/LocalAgentTask/LocalAgentTask.js', () => ({
-  completeAgentTask: noop,
-  createActivityDescriptionResolver: () => ({}),
-  createProgressTracker: () => ({}),
-  enqueueAgentNotification: noop,
-  failAgentTask: noop,
-  getProgressUpdate: () => ({ tokenCount: 0, toolUseCount: 0 }),
-  getTokenCountFromTracker: () => 0,
-  isLocalAgentTask: () => false,
-  killAsyncAgent: noop,
-  updateAgentProgress: noop,
-  updateProgressFromMessage: noop,
-}))
-
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const yoloClassifierMock = setupYoloClassifierMock({
@@ -121,14 +55,6 @@ const sdkProgressMock = setupSdkProgressMock({
   emitTaskProgress: noop,
 })
 afterAll(() => sdkProgressMock.reset())
-
-// Break circular dep
-mock.module('src/tools/AgentTool/AgentTool.tsx', () => ({
-  AgentTool: {},
-  inputSchema: {},
-  outputSchema: {},
-  default: {},
-}))
 
 const { countToolUses, getLastToolUseName } = await import('../agentToolUtils')
 

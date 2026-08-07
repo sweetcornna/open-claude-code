@@ -7,7 +7,9 @@
  * overrides it. See tests/mocks/sharedModuleMock.ts.
  */
 
-import * as realMessages from 'src/utils/messages.ts'
+// 注意：import 用 .js（TS 的模块解析要求），mock.module 的 specifier 用 .ts
+// —— 后者是运行时字符串，且要与全仓其他站点的拼写一致（两者解析到同一个 key）。
+import * as realMessages from 'src/utils/messages.js'
 import {
   makeSharedModuleMock,
   type ModuleOverrides,

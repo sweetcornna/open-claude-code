@@ -53,25 +53,12 @@ const toolRuntimeAnalyticsMock = setupToolRuntimeAnalyticsMock({
 })
 afterAll(() => toolRuntimeAnalyticsMock.reset())
 
-mock.module('src/services/api/claude.js', () => ({
-  queryHaiku: async () => ({ message: { content: [] } }),
-}))
-
 const httpMock = setupHttpMock({
   getWebFetchUserAgent: () => 'TestAgent/1.0',
 })
 afterAll(() => httpMock.reset())
 
 mock.module('src/utils/telemetry/log.ts', logMock)
-
-mock.module('src/utils/mcp/mcpOutputStorage.js', () => ({
-  isBinaryContentType: (contentType: string) =>
-    !contentType.toLowerCase().startsWith('text/'),
-  persistBinaryContent: async () => ({
-    filepath: '/tmp/webfetch-test.bin',
-    size: 0,
-  }),
-}))
 
 const settingsMock = setupSettingsMock({
   getInitialSettings: () => ({}),

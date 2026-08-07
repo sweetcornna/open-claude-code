@@ -4,18 +4,6 @@ import { logMock } from '../../../tests/mocks/log'
 // Mock heavy dependency chain: tokenEstimation.ts → log.ts → bootstrap/state.ts
 mock.module('src/utils/telemetry/log.ts', logMock)
 
-// Mock tokenEstimation to avoid pulling in API provider deps
-mock.module('src/services/tokenEstimation.ts', () => ({
-  roughTokenCountEstimation: (text: string) => Math.ceil(text.length / 4),
-  roughTokenCountEstimationForMessages: (msgs: any[]) => msgs.length * 100,
-  roughTokenCountEstimationForMessage: () => 100,
-  roughTokenCountEstimationForFileType: () => 100,
-  bytesPerTokenForFileType: () => 4,
-  countTokensWithAPI: async () => 0,
-  countMessagesTokensWithAPI: async () => 0,
-  countTokensViaHaikuFallback: async () => 0,
-}))
-
 const {
   getTokenCountFromUsage,
   getTokenUsage,

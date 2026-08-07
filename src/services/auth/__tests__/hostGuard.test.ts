@@ -7,8 +7,11 @@
  *   - assertNoAnthropicEnvForOpenAI: logs warning (does not throw) when both env vars set
  *
  * NOTE: This file imports hostGuard functions LAZILY (in beforeAll) so that the
- * module is resolved after any mock.module calls. Do NOT mock hostGuard.js in
- * other test files — it would replace the real module in the process-level cache.
+ * module is resolved after any mock.module calls. Other suites that need the
+ * guards stubbed must go through tests/mocks/hostGuard.js and reset in afterAll:
+ * that surface delegates to the real module once the overrides are dropped, so
+ * these assertions still exercise the real implementation no matter which file
+ * Bun happens to load first.
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from 'bun:test'
@@ -18,57 +21,6 @@ import { logMock } from '../../../../tests/mocks/log.js'
 // Side-effect module mocks must come first
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
-
-// Re-register hostGuard to override pollution from other test files.
-// schedule/__tests__/api.test.ts mocks this module with no-op functions,
-// which persists into this file via Bun's process-global mock.module.
-const WORKSPACE_API_HOST = 'api.anthropic.com'
-
-mock.module('src/services/auth/hostGuard.ts', () => ({
-  assertWorkspaceHost(url: string): void {
-    let hostname: string
-    try {
-      hostname = new URL(url).hostname
-    } catch {
-      throw new Error(
-        `assertWorkspaceHost: invalid URL "${url}". Workspace API key requests must target ${WORKSPACE_API_HOST}.`,
-      )
-    }
-    if (hostname !== WORKSPACE_API_HOST) {
-      throw new Error(
-        `assertWorkspaceHost: refusing to send workspace API key to non-Anthropic host "${hostname}". ` +
-          `Workspace API key requests must target ${WORKSPACE_API_HOST}. ` +
-          `If you are using a custom base URL, workspace endpoints are only available on the Anthropic API.`,
-      )
-    }
-  },
-  assertSubscriptionBaseUrl(url: string): void {
-    let hostname: string
-    try {
-      hostname = new URL(url).hostname
-    } catch {
-      throw new Error(
-        `assertSubscriptionBaseUrl: invalid URL "${url}". Subscription OAuth requests must target ${WORKSPACE_API_HOST}.`,
-      )
-    }
-    if (hostname !== WORKSPACE_API_HOST) {
-      throw new Error(
-        `assertSubscriptionBaseUrl: refusing subscription OAuth request to non-Anthropic host "${hostname}". ` +
-          `Subscription OAuth requests must target ${WORKSPACE_API_HOST}.`,
-      )
-    }
-  },
-  assertNoAnthropicEnvForOpenAI(): void {
-    const hasOpenAIMode =
-      process.env['CLAUDE_CODE_USE_OPENAI'] === '1' ||
-      Boolean(process.env['OPENAI_API_KEY'])
-    const hasAnthropicKey = Boolean(process.env['ANTHROPIC_API_KEY'])
-    if (hasOpenAIMode && hasAnthropicKey) {
-      // Uses logError which is mocked — just no-op here since the test
-      // only verifies the function doesn't throw.
-    }
-  },
-}))
 
 let assertWorkspaceHost: typeof import('../hostGuard.js').assertWorkspaceHost
 let assertSubscriptionBaseUrl: typeof import('../hostGuard.js').assertSubscriptionBaseUrl

@@ -8,8 +8,12 @@ import {
   test,
 } from 'bun:test'
 import type { AgentSideConnection } from '@agentclientprotocol/sdk'
+import { setupAcpBridgeMock } from '../../../../tests/mocks/acpBridge.js'
+import { setupPermissionsMock } from '../../../../tests/mocks/permissions.js'
 import type { Tool as ToolType, ToolUseContext } from '../../../Tool.js'
 import type { AssistantMessage } from '../../../types/message.js'
+import type { PermissionDecision } from '../../../utils/permissions/PermissionResult.js'
+import type { ToolInfo } from '../bridge/types.js'
 
 const askDecision = {
   behavior: 'ask',
@@ -17,41 +21,30 @@ const askDecision = {
   decisionReason: { type: 'mode', mode: 'default' },
 } as const
 
-const hasPermissionsMock = mock(async (): Promise<unknown> => askDecision)
-const toolInfoMock = mock(() => ({
-  title: 'Bash',
-  kind: 'execute',
-  content: [],
-  locations: [],
-}))
+const hasPermissionsMock = mock(
+  async (): Promise<PermissionDecision> => askDecision,
+)
+const toolInfoMock = mock(
+  (): ToolInfo => ({
+    title: 'Bash',
+    kind: 'execute',
+    content: [],
+    locations: [],
+  }),
+)
 
-const permissionsModuleSnapshot = {
-  ...(require('../../../utils/permissions/permissions.ts') as Record<
-    string,
-    unknown
-  >),
-}
-const bridgeModuleSnapshot = {
-  ...(require('../bridge.ts') as Record<string, unknown>),
-}
-
-afterAll(() => {
-  mock.module('../bridge.js', () => bridgeModuleSnapshot)
-  mock.module(
-    '../../../utils/permissions/permissions.js',
-    () => permissionsModuleSnapshot,
-  )
+const permissionsMock = setupPermissionsMock({
+  hasPermissionsToUseTool: hasPermissionsMock,
 })
 
-mock.module('../../../utils/permissions/permissions.js', () => ({
-  ...permissionsModuleSnapshot,
-  hasPermissionsToUseTool: hasPermissionsMock,
-}))
-
-mock.module('../bridge.js', () => ({
-  ...bridgeModuleSnapshot,
+const bridgeMock = setupAcpBridgeMock({
   toolInfoFromToolUse: toolInfoMock,
-}))
+})
+
+afterAll(() => {
+  bridgeMock.reset()
+  permissionsMock.reset()
+})
 
 const { createAcpCanUseTool } = await import('../permissions.js')
 

@@ -57,12 +57,6 @@ const cronMock = setupCronMock({
   cronToHuman: (cron: string) => `human(${cron})`,
 })
 
-// ── ScheduleView mock ───────────────────────────────────────────────────────
-const scheduleViewMock = mock((_props: unknown) => null)
-mock.module('src/commands/schedule/ScheduleView.js', () => ({
-  ScheduleView: scheduleViewMock,
-}))
-
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
 // auth.js via the shared complete-surface mock (missing exports get safe
 // defaults) — see tests/mocks/auth.ts.
@@ -145,7 +139,6 @@ beforeEach(() => {
   axiosGetMock.mockClear()
   axiosPostMock.mockClear()
   axiosDeleteMock.mockClear()
-  scheduleViewMock.mockClear()
 })
 
 describe('callSchedule: invalid args', () => {

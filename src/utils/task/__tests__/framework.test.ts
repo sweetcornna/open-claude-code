@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { setupMessageQueueManagerMock } from '../../../../tests/mocks/messageQueueManager.js'
+import { setupSdkEventQueueMock } from '../../../../tests/mocks/sdkEventQueue.js'
 import { setupTaskDiskOutputMock } from '../../../../tests/mocks/taskDiskOutput.js'
 
 // ─── Mocks ───
@@ -9,10 +10,17 @@ const noop = () => {}
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
+// Complete-surface shared mock: the real enqueueSdkEvent drops events outside
+// non-interactive sessions, so the capture override stays — but drainSdkEvents
+// and emitTaskTerminatedSdk now keep delegating to the real module instead of
+// vanishing for every file loaded later in the shard.
 const sdkEvents: any[] = []
-mock.module('src/utils/session/sdkEventQueue.js', () => ({
-  enqueueSdkEvent: (event: any) => sdkEvents.push(event),
-}))
+const sdkEventQueueMock = setupSdkEventQueueMock({
+  enqueueSdkEvent: (event: any) => {
+    sdkEvents.push(event)
+  },
+})
+afterAll(() => sdkEventQueueMock.reset())
 
 const diskOutputMock = setupTaskDiskOutputMock({
   getTaskOutputPath: (id: string) => `/tmp/output/${id}`,
@@ -27,6 +35,7 @@ afterAll(() => diskOutputMock.reset())
 const messageQueueManagerMock = setupMessageQueueManagerMock({
   enqueuePendingNotification: noop,
 })
+afterAll(() => messageQueueManagerMock.reset())
 
 // ─── Import after mocks ───
 

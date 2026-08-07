@@ -3,6 +3,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'b
 import * as React from 'react';
 import { logMock } from '../../../../tests/mocks/log';
 import { debugMock } from '../../../../tests/mocks/debug';
+import { setupConfigMock } from '../../../../tests/mocks/config.js';
+import type { GlobalConfig, ProjectConfig } from '../../../utils/config/config.js';
+import type { ThemeSetting } from '../../../utils/terminal/theme.js';
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
@@ -22,21 +25,22 @@ afterAll(() => analyticsMock.reset());
 // In-memory config used by the global/project config helpers so the
 // command's persistence path is exercised without touching disk.
 const fakeGlobalConfig: {
-  theme?: string;
+  theme?: ThemeSetting;
   hasCompletedOnboarding?: boolean;
   lastOnboardingVersion?: string;
 } = {};
 const fakeProjectConfig: { hasTrustDialogAccepted?: boolean } = {};
 
-mock.module('src/utils/config/config.js', () => ({
+const configMock = setupConfigMock({
   getGlobalConfig: () => ({ ...fakeGlobalConfig }),
-  saveGlobalConfig: (updater: (cur: typeof fakeGlobalConfig) => typeof fakeGlobalConfig) => {
-    Object.assign(fakeGlobalConfig, updater({ ...fakeGlobalConfig }));
+  saveGlobalConfig: (updater: (cur: GlobalConfig) => GlobalConfig) => {
+    Object.assign(fakeGlobalConfig, updater({ ...fakeGlobalConfig } as GlobalConfig));
   },
-  saveCurrentProjectConfig: (updater: (cur: typeof fakeProjectConfig) => typeof fakeProjectConfig) => {
-    Object.assign(fakeProjectConfig, updater({ ...fakeProjectConfig }));
+  saveCurrentProjectConfig: (updater: (cur: ProjectConfig) => ProjectConfig) => {
+    Object.assign(fakeProjectConfig, updater({ ...fakeProjectConfig } as ProjectConfig));
   },
-}));
+});
+afterAll(() => configMock.reset());
 
 import { callOnboarding, parseSubcommand, type OnboardingSubcommand } from '../launchOnboarding.js';
 import onboardingCommand from '../index.js';

@@ -112,21 +112,6 @@ const runAgentMock = setupRunAgentMock({
 } as unknown as RunAgentOverrides)
 afterAll(() => runAgentMock.reset())
 
-mock.module('@open-claude-code/builtin-tools/tools/AgentTool/UI.js', () => ({
-  AgentPromptDisplay: () => null,
-  AgentResponseDisplay: () => null,
-  extractLastToolInfo: () => null,
-  renderGroupedAgentToolUse: () => null,
-  renderToolResultMessage: () => null,
-  renderToolUseErrorMessage: () => null,
-  renderToolUseMessage: () => null,
-  renderToolUseProgressMessage: () => null,
-  renderToolUseRejectedMessage: () => null,
-  renderToolUseTag: () => null,
-  userFacingName: () => 'Agent',
-  userFacingNameBackgroundColor: () => 'gray',
-}))
-
 mock.module(
   'src/utils/session/messageQueueManager.js',
   createMessageQueueManagerMock,
