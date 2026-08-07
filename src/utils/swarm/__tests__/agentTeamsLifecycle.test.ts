@@ -61,6 +61,7 @@ setupSwarmBackendsRegistryMock({
 
 let tempHome: string
 let previousConfigDir: string | undefined
+let previousOccConfigDir: string | undefined
 let previousAnthropicApiKey: string | undefined
 let state: any
 
@@ -83,12 +84,16 @@ function writeTeamConfig(teamName: string, config: unknown): void {
 beforeEach(() => {
   terminateCalls = []
   previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+  previousOccConfigDir = process.env.OCC_CONFIG_DIR
   previousAnthropicApiKey = process.env.ANTHROPIC_API_KEY
   tempHome = join(
     tmpdir(),
     `agent-teams-lifecycle-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   )
+  // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+  // both at the temp home or a set OCC_CONFIG_DIR leaks in from the environment.
   process.env.CLAUDE_CONFIG_DIR = tempHome
+  process.env.OCC_CONFIG_DIR = tempHome
   process.env.ANTHROPIC_API_KEY = 'test-key'
   state = {
     teamContext: undefined,
@@ -112,6 +117,11 @@ afterEach(() => {
     delete process.env.CLAUDE_CONFIG_DIR
   } else {
     process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+  }
+  if (previousOccConfigDir === undefined) {
+    delete process.env.OCC_CONFIG_DIR
+  } else {
+    process.env.OCC_CONFIG_DIR = previousOccConfigDir
   }
   if (previousAnthropicApiKey === undefined) {
     delete process.env.ANTHROPIC_API_KEY

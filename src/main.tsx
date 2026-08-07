@@ -30,6 +30,7 @@ startKeychainPrefetch();
 
 import { feature } from 'bun:bundle';
 import { stopCapturingEarlyInput } from './utils/terminal/earlyInput.js';
+import { stopTerminalPolls } from '@anthropic/ink/utils/terminalPollRegistry.js';
 import { initializeWarningHandler } from './utils/telemetry/warningHandler.js';
 
 import { SHOW_CURSOR } from '@anthropic/ink';
@@ -73,6 +74,20 @@ export async function main() {
     if (process.argv.includes('-p') || process.argv.includes('--print')) {
       return;
     }
+    // This handler is only a bootstrap fallback. It is registered before
+    // init.ts calls setupGracefulShutdown(), so it covers the early-startup
+    // window and the paths that bail out before full init (e.g. --handle-uri).
+    // Once the real handler exists it does the terminal reset, resume hint and
+    // cleanup hooks properly — exiting synchronously here would preempt all of
+    // that, which is how a real SIGINT used to skip cleanupTerminalModes()
+    // entirely and leave escape sequences in the shell.
+    if (process.listenerCount('SIGINT') > 1) {
+      return;
+    }
+    // Nothing else will clean up, so at least stop the background terminal
+    // polls before exiting — otherwise an in-flight OSC 11 / DA1 reply is
+    // inherited by the shell and printed at its next prompt.
+    stopTerminalPolls();
     process.exit(0);
   });
   profileCheckpoint('main_warning_handler_initialized');

@@ -11,14 +11,19 @@ import {
 
 let tempHome: string
 let previousConfigDir: string | undefined
+let previousOccConfigDir: string | undefined
 
 beforeEach(() => {
   previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+  previousOccConfigDir = process.env.OCC_CONFIG_DIR
   tempHome = join(
     tmpdir(),
     `spawn-in-process-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   )
+  // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+  // both at the temp home or a set OCC_CONFIG_DIR leaks in from the environment.
   process.env.CLAUDE_CONFIG_DIR = tempHome
+  process.env.OCC_CONFIG_DIR = tempHome
 })
 
 afterEach(() => {
@@ -26,6 +31,11 @@ afterEach(() => {
     delete process.env.CLAUDE_CONFIG_DIR
   } else {
     process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+  }
+  if (previousOccConfigDir === undefined) {
+    delete process.env.OCC_CONFIG_DIR
+  } else {
+    process.env.OCC_CONFIG_DIR = previousOccConfigDir
   }
   rmSync(tempHome, { recursive: true, force: true })
 })

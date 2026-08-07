@@ -27,6 +27,7 @@ import {
   supportsTabStatus,
   wrapForMultiplexer,
 } from '@anthropic/ink'
+import { stopTerminalPolls } from '@anthropic/ink/utils/terminalPollRegistry.js'
 import { shutdownDatadog } from '../../services/analytics/datadog.js'
 import { shutdown1PEventLogging } from '../../services/analytics/firstPartyEventLogger.js'
 import {
@@ -57,6 +58,16 @@ import { profileReport } from '../telemetry/startupProfiler.js'
  */
 /* eslint-disable custom-rules/no-sync-fs -- must be sync to flush before process.exit */
 function cleanupTerminalModes(): void {
+  // Stop background terminal polls FIRST, before anything below drains stdin
+  // or drops raw mode. systemThemeWatcher re-queries OSC 11 every 3s and its
+  // only other stop hook is a React effect cleanup that this path never runs
+  // (unmount() below is gated on the alt screen). Shutdown then awaits several
+  // seconds of cleanup hooks, so at least one more query used to go out after
+  // stdin was already cooked — and its reply sat in the tty queue until the
+  // shell inherited it, printing `^[]11;rgb:…` and `^[[?62;22;52c` at the next
+  // prompt. Called before the isTTY guard so non-TTY runs stop polling too.
+  stopTerminalPolls()
+
   if (!process.stdout.isTTY) {
     return
   }

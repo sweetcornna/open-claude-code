@@ -13,14 +13,23 @@ import { tmpdir } from 'os'
 
 const tempBase = mkdtempSync(join(tmpdir(), 'jobs-state-test-'))
 
+const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+const previousOccConfigDir = process.env.OCC_CONFIG_DIR
+
 beforeEach(() => {
   // Each test gets a fresh config dir
   const tempHome = mkdtempSync(join(tempBase, 'home-'))
+  // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+  // both at the temp home or a set OCC_CONFIG_DIR leaks in from the environment.
   process.env.CLAUDE_CONFIG_DIR = tempHome
+  process.env.OCC_CONFIG_DIR = tempHome
 })
 
 afterAll(() => {
-  delete process.env.CLAUDE_CONFIG_DIR
+  if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+  else process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+  if (previousOccConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+  else process.env.OCC_CONFIG_DIR = previousOccConfigDir
   try {
     rmSync(tempBase, { recursive: true, force: true })
   } catch {

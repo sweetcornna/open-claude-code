@@ -56,7 +56,10 @@ beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'break-cache-test-'))
   claudeDir = join(tmpDir, '.claude')
   mkdirSync(claudeDir, { recursive: true })
+  // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+  // both at the temp dir or a set OCC_CONFIG_DIR leaks in from the environment.
   process.env.CLAUDE_CONFIG_DIR = claudeDir
+  process.env.OCC_CONFIG_DIR = claudeDir
 })
 
 afterEach(() => {
@@ -70,6 +73,7 @@ afterEach(() => {
   }
   rmSync(tmpDir, { recursive: true, force: true })
   delete process.env.CLAUDE_CONFIG_DIR
+  delete process.env.OCC_CONFIG_DIR
 })
 
 describe('break-cache command', () => {

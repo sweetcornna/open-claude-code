@@ -27,9 +27,12 @@ beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'tui-test-'))
   claudeDir = join(tmpDir, '.claude')
   mkdirSync(claudeDir, { recursive: true })
+  // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+  // both at the temp dir or a set OCC_CONFIG_DIR leaks in from the environment.
   process.env.CLAUDE_CONFIG_DIR = claudeDir
+  process.env.OCC_CONFIG_DIR = claudeDir
   // getClaudeConfigHomeDir is `memoize(...)` — clear its cache so this
-  // suite's CLAUDE_CONFIG_DIR overrides any value cached by an earlier
+  // suite's config dir overrides any value cached by an earlier
   // test file in the same process.
   getClaudeConfigHomeDir.cache?.clear?.()
   // Save env vars we may mutate
@@ -40,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true })
   delete process.env.CLAUDE_CONFIG_DIR
+  delete process.env.OCC_CONFIG_DIR
   // Restore env vars
   if (origEnv.CLAUDE_CODE_NO_FLICKER === undefined) {
     delete process.env.CLAUDE_CODE_NO_FLICKER

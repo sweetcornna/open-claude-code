@@ -25,6 +25,7 @@ import {
 
 let tempHome = ''
 let previousConfigDir: string | undefined
+let previousOccConfigDir: string | undefined
 
 function message(
   text: string,
@@ -188,8 +189,12 @@ describe('compactMailboxMessages', () => {
 describe('teammate mailbox retention', () => {
   beforeEach(() => {
     previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+    previousOccConfigDir = process.env.OCC_CONFIG_DIR
     tempHome = mkdtempSync(join(tmpdir(), 'teammate-mailbox-'))
+    // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+    // both at the temp home or a set OCC_CONFIG_DIR leaks in from the environment.
     process.env.CLAUDE_CONFIG_DIR = tempHome
+    process.env.OCC_CONFIG_DIR = tempHome
   })
 
   afterEach(async () => {
@@ -197,6 +202,11 @@ describe('teammate mailbox retention', () => {
       delete process.env.CLAUDE_CONFIG_DIR
     } else {
       process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+    }
+    if (previousOccConfigDir === undefined) {
+      delete process.env.OCC_CONFIG_DIR
+    } else {
+      process.env.OCC_CONFIG_DIR = previousOccConfigDir
     }
     await rm(tempHome, { recursive: true, force: true })
     tempHome = ''

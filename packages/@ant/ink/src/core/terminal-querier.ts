@@ -148,6 +148,11 @@ export class TerminalQuerier {
   send<T extends TerminalResponse>(
     query: TerminalQuery<T>,
   ): Promise<T | undefined> {
+    // Nothing can answer a query on a pipe or a file, and the request bytes
+    // would be written into whatever is consuming stdout. Resolve as
+    // "unsupported" — the same answer a terminal that ignores the query gives.
+    // cleanupTerminalModes() and Ink.unmount() already guard writes this way.
+    if (!this.isWritableTty()) return Promise.resolve(undefined)
     return new Promise(resolve => {
       this.queue.push({
         kind: 'query',
@@ -156,6 +161,17 @@ export class TerminalQuerier {
       })
       this.stdout.write(query.request)
     })
+  }
+
+  /**
+   * Whether it is meaningful to write a query at all.
+   *
+   * `isTTY` is absent on the fake stdout used in tests and on plain streams;
+   * treat only an explicit `false` as "not a terminal" so test doubles keep
+   * exercising the real queue.
+   */
+  private isWritableTty(): boolean {
+    return (this.stdout as { isTTY?: boolean }).isTTY !== false
   }
 
   /**
@@ -168,6 +184,9 @@ export class TerminalQuerier {
    * Safe to call with no pending queries — still waits for a round-trip.
    */
   flush(): Promise<void> {
+    // Same reasoning as send(): without a terminal there is no DA1 reply to
+    // wait for, and writing the sentinel would leak `\x1b[c` into the output.
+    if (!this.isWritableTty()) return Promise.resolve()
     return new Promise(resolve => {
       this.queue.push({ kind: 'sentinel', resolve })
       this.stdout.write(SENTINEL)

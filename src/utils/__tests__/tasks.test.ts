@@ -83,16 +83,20 @@ import {
   type Task,
 } from '../task/tasks'
 
-// Use a temp dir as CLAUDE_CONFIG_DIR for isolation
+// Use a temp dir as the config dir for isolation
 let configDir: string
 const ORIGINAL_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR
+const ORIGINAL_OCC_CONFIG_DIR = process.env.OCC_CONFIG_DIR
 
 beforeEach(async () => {
   configDir = join(
     tmpdir(),
     `claude-test-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   )
+  // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+  // both at the temp dir or a set OCC_CONFIG_DIR leaks in from the environment.
   process.env.CLAUDE_CONFIG_DIR = configDir
+  process.env.OCC_CONFIG_DIR = configDir
   // Reset memoize cache by changing env
   const { getClaudeConfigHomeDir } = await import('src/utils/config/envUtils')
   getClaudeConfigHomeDir.cache.clear?.()
@@ -103,6 +107,11 @@ afterEach(async () => {
     process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CONFIG_DIR
   } else {
     delete process.env.CLAUDE_CONFIG_DIR
+  }
+  if (ORIGINAL_OCC_CONFIG_DIR !== undefined) {
+    process.env.OCC_CONFIG_DIR = ORIGINAL_OCC_CONFIG_DIR
+  } else {
+    delete process.env.OCC_CONFIG_DIR
   }
   const { getClaudeConfigHomeDir } = await import('src/utils/config/envUtils')
   getClaudeConfigHomeDir.cache.clear?.()

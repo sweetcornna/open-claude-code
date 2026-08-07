@@ -19,12 +19,16 @@ beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'perf-test-'))
   claudeDir = join(tmpDir, '.claude')
   mkdirSync(claudeDir, { recursive: true })
+  // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+  // both at the temp dir or a set OCC_CONFIG_DIR leaks in from the environment.
   process.env.CLAUDE_CONFIG_DIR = claudeDir
+  process.env.OCC_CONFIG_DIR = claudeDir
 })
 
 afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true })
   delete process.env.CLAUDE_CONFIG_DIR
+  delete process.env.OCC_CONFIG_DIR
 })
 
 describe('perf-issue command', () => {
@@ -561,8 +565,9 @@ describe('perf-issue command', () => {
     const filePath = join(tmpDir, 'not-a-dir')
     const { writeFileSync: wfs } = await import('node:fs')
     wfs(filePath, 'block', 'utf8')
-    // Override CLAUDE_CONFIG_DIR to point to a file so mkdirSync inside call() fails
+    // Override the config dir to point to a file so mkdirSync inside call() fails
     process.env.CLAUDE_CONFIG_DIR = filePath
+    process.env.OCC_CONFIG_DIR = filePath
 
     const mod = await import('../index.js')
     const loaded = await (
@@ -577,8 +582,9 @@ describe('perf-issue command', () => {
     ).load()
     const result = await loaded.call('', {} as never)
 
-    // Restore CLAUDE_CONFIG_DIR so subsequent tests are not affected
+    // Restore the config dir so subsequent tests are not affected
     process.env.CLAUDE_CONFIG_DIR = claudeDir
+    process.env.OCC_CONFIG_DIR = claudeDir
 
     if (result.type === 'text' && result.value.includes('Failed')) {
       // Must not contain the raw home directory path

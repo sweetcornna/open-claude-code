@@ -1,4 +1,5 @@
 import autoBind from 'auto-bind';
+import { stopTerminalPolls } from '../../utils/terminalPollRegistry.js';
 import { closeSync, constants as fsConstants, openSync, readSync, writeSync } from 'fs';
 import noop from 'lodash-es/noop.js';
 import throttle from 'lodash-es/throttle.js';
@@ -1622,6 +1623,13 @@ export default class Ink {
     // only render last frame of non-static output
     const diff = this.log.renderPreviousOutput_DEPRECATED(this.frontFrame);
     writeDiffToTerminal(this.terminal, optimize(diff));
+
+    // Stop background terminal polls before any of the teardown below drains
+    // stdin or drops raw mode. A poll that fires after that point writes a
+    // query nobody can read the answer to, and the reply is inherited by the
+    // shell. gracefulShutdown does this too, but this path is also reached
+    // directly (signal-exit, waitUntilExit) without going through it.
+    stopTerminalPolls();
 
     // Clean up terminal modes synchronously before process exit.
     // React's componentWillUnmount won't run in time when process.exit() is called,

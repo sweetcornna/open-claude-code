@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./core/stringWidth.js": "./src/core/stringWidth.ts",
-    "./core/utils/grapheme.js": "./src/core/utils/grapheme.ts"
+    "./core/utils/grapheme.js": "./src/core/utils/grapheme.ts",
+    "./utils/terminalPollRegistry.js": "./utils/terminalPollRegistry.ts"
   },
   "dependencies": {
     "auto-bind": "^5.0.1",

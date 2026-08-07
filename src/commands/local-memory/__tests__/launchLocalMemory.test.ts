@@ -16,7 +16,10 @@ describe('callLocalMemory', () => {
 
   beforeEach(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'lm-launch-test-'))
+    // occConfigDir() honours OCC_CONFIG_DIR before CLAUDE_CONFIG_DIR, so point
+    // both at the temp dir or a set OCC_CONFIG_DIR leaks in from the environment.
     process.env['CLAUDE_CONFIG_DIR'] = tmpDir
+    process.env['OCC_CONFIG_DIR'] = tmpDir
     messages.length = 0
     const mod = await import('../launchLocalMemory.js')
     callLocalMemory = mod.callLocalMemory
@@ -25,6 +28,7 @@ describe('callLocalMemory', () => {
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
     delete process.env['CLAUDE_CONFIG_DIR']
+    delete process.env['OCC_CONFIG_DIR']
   })
 
   test('no args renders action panel without completing', async () => {

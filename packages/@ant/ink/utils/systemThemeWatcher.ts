@@ -1,5 +1,6 @@
 import type React from 'react'
 import { oscColor, type TerminalQuerier } from '../src/core/terminal-querier.js'
+import { registerTerminalPoll } from './terminalPollRegistry.js'
 import {
   setCachedSystemTheme,
   themeFromOscColor,
@@ -34,6 +35,7 @@ export function watchSystemTheme(
   let stopped = false
   let inFlight = false
   let timer: ReturnType<typeof setInterval> | undefined
+  let unregister: (() => void) | undefined
 
   const stop = (): void => {
     stopped = true
@@ -41,6 +43,8 @@ export function watchSystemTheme(
       clearInterval(timer)
       timer = undefined
     }
+    unregister?.()
+    unregister = undefined
   }
 
   async function poll(): Promise<void> {
@@ -76,6 +80,10 @@ export function watchSystemTheme(
       inFlight = false
     }
   }
+
+  // Registered so shutdown can stop the poll without React unmounting — see
+  // terminalPollRegistry.ts for why that path is not reachable on Ctrl+C.
+  unregister = registerTerminalPoll(stop)
 
   // Fire immediately so switching to 'auto' corrects the $COLORFGBG seed
   // (or the 'dark' default) on the first frame rather than after a full

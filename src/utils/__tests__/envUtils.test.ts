@@ -322,20 +322,28 @@ describe('shouldMaintainProjectWorkingDir', () => {
 
 describe('getClaudeConfigHomeDir', () => {
   const saved = process.env.CLAUDE_CONFIG_DIR
+  const savedOcc = process.env.OCC_CONFIG_DIR
 
   afterEach(() => {
     if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR
     else process.env.CLAUDE_CONFIG_DIR = saved
+    if (savedOcc === undefined) delete process.env.OCC_CONFIG_DIR
+    else process.env.OCC_CONFIG_DIR = savedOcc
   })
 
   test('uses CLAUDE_CONFIG_DIR when set', () => {
+    // occConfigDir() honours OCC_CONFIG_DIR first — clear it so the
+    // deprecated CLAUDE_CONFIG_DIR fallback is actually exercised.
+    delete process.env.OCC_CONFIG_DIR
     process.env.CLAUDE_CONFIG_DIR = '/tmp/test-claude'
-    // Memoized by CLAUDE_CONFIG_DIR key, so changing env gives fresh value
+    // Memoized by the (OCC_CONFIG_DIR, CLAUDE_CONFIG_DIR) key, so changing
+    // env gives fresh value
     expect(getClaudeConfigHomeDir()).toBe('/tmp/test-claude')
   })
 
   test('returns a string ending with .occ by default', () => {
     delete process.env.CLAUDE_CONFIG_DIR
+    delete process.env.OCC_CONFIG_DIR
     const result = getClaudeConfigHomeDir()
     expect(result).toMatch(/\.occ$/)
   })
