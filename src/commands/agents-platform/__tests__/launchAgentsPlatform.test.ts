@@ -23,6 +23,9 @@ import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
 import { authMockWith } from '../../../../tests/mocks/auth.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
+import { setupConstantsOauthMock } from '../../../../tests/mocks/constantsOauth.js'
+import { setupOauthClientMock } from '../../../../tests/mocks/oauthClient.js'
+import { setupHostGuardMock } from '../../../../tests/mocks/hostGuard.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -45,12 +48,16 @@ mock.module(
   }),
 )
 
-mock.module('src/services/oauth/client.js', () => ({
+const oauthClientMock = setupOauthClientMock({
   getOrganizationUUID: async () => 'org-uuid-ap',
-}))
-mock.module('src/constants/oauth.js', () => ({
+})
+afterAll(() => oauthClientMock.reset())
+
+const oauthConstMock = setupConstantsOauthMock({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
-}))
+})
+afterAll(() => oauthConstMock.reset())
+
 const realTeleportApi = await import('src/utils/teleport/api.js')
 const teleportApiMock = setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({ Authorization: `Bearer ${token}` }),
@@ -63,11 +70,12 @@ const teleportApiMock = setupTeleportApiMock({
 })
 afterAll(() => teleportApiMock.reset())
 
-mock.module('src/services/auth/hostGuard.ts', () => ({
+const hostGuardMock = setupHostGuardMock({
   assertSubscriptionBaseUrl: () => {},
   assertWorkspaceHost: () => {},
   assertNoAnthropicEnvForOpenAI: () => {},
-}))
+})
+afterAll(() => hostGuardMock.reset())
 
 // ── cron mock ───────────────────────────────────────────────────────────────
 // cron.js via the shared complete-surface pattern: overrides below, every

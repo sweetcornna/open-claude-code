@@ -1,9 +1,18 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { existsSync } from 'fs'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { stateMockWith } from '../../../../tests/mocks/state'
 import { makeSharedModuleMock } from '../../../../tests/mocks/sharedModuleMock'
 import * as realWhich from '../../process/which.js'
+import { setupConfigMock } from '../../../../tests/mocks/config.js'
 
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
@@ -15,12 +24,13 @@ const whichMock = makeSharedModuleMock<typeof realWhich>(
 ).setup()
 
 let globalConfig: Record<string, unknown> = {}
-mock.module('src/utils/config/config.ts', () => ({
+const configMock = setupConfigMock({
   getGlobalConfig: () => globalConfig,
   getCurrentProjectConfig: () => ({}),
   saveCurrentProjectConfig: () => {},
   saveGlobalConfig: () => {},
-}))
+})
+afterAll(() => configMock.reset())
 
 // Go through stateMockWith rather than hand-spreading: bootstrap/state.ts is a
 // re-export barrel over @open-claude-code/tool-runtime, and on Linux (not

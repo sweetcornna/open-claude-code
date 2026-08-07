@@ -24,6 +24,8 @@ import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
 import { authMockWith } from '../../../../tests/mocks/auth.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
+import { setupConstantsOauthMock } from '../../../../tests/mocks/constantsOauth.js'
+import { setupOauthClientMock } from '../../../../tests/mocks/oauthClient.js'
 
 const analyticsMock = setupAnalyticsMock()
 afterAll(() => analyticsMock.reset())
@@ -43,12 +45,16 @@ mock.module(
   }),
 )
 
-mock.module('src/services/oauth/client.js', () => ({
+const oauthClientMock = setupOauthClientMock({
   getOrganizationUUID: async () => 'org-uuid',
-}))
-mock.module('src/constants/oauth.js', () => ({
+})
+afterAll(() => oauthClientMock.reset())
+
+const oauthConstMock = setupConstantsOauthMock({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
-}))
+})
+afterAll(() => oauthConstMock.reset())
+
 // Spread real teleport/api so any export not explicitly stubbed (like
 // prepareWorkspaceApiRequest, axiosGetWithRetry, type guards, schemas)
 // remains available to transitive importers.

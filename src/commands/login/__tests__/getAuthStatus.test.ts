@@ -19,6 +19,7 @@ import { authMockWith } from '../../../../tests/mocks/auth.js'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+import { setupConfigMock } from '../../../../tests/mocks/config.js'
 
 // Mock side-effect modules before importing subject
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -32,13 +33,14 @@ const settingsMock = setupSettingsMock({
 })
 afterAll(() => settingsMock.reset())
 
-mock.module('src/utils/config/config.ts', () => ({
+const configMock = setupConfigMock({
   isConfigEnabled: () => true,
   getGlobalConfig: () => ({
     workspaceApiKey: undefined,
   }),
   saveGlobalConfig: (_updater: unknown) => undefined,
-}))
+})
+afterAll(() => configMock.reset())
 
 // We mock auth.ts getClaudeAIOAuthTokens to return controlled values
 // per test — we mock getClaudeAIOAuthTokens from within the test using spies
@@ -220,12 +222,12 @@ describe('getAuthStatus', () => {
         getSubscriptionType: () => null,
       }),
     )
-    mock.module('src/utils/config/config.ts', () => ({
+    configMock.set({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-' + 'Y'.repeat(50),
       }),
-    }))
+    })
     const { getAuthStatus } = await import('../getAuthStatus.js')
     const status = getAuthStatus()
     expect(status.workspaceKey.source).toBe('env')
@@ -243,12 +245,12 @@ describe('getAuthStatus', () => {
         getSubscriptionType: () => null,
       }),
     )
-    mock.module('src/utils/config/config.ts', () => ({
+    configMock.set({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-' + 'Z'.repeat(50),
       }),
-    }))
+    })
     const { getAuthStatus } = await import('../getAuthStatus.js')
     const status = getAuthStatus()
     expect(status.workspaceKey.source).toBe('settings')
@@ -267,10 +269,10 @@ describe('getAuthStatus', () => {
         getSubscriptionType: () => null,
       }),
     )
-    mock.module('src/utils/config/config.ts', () => ({
+    configMock.set({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({ workspaceApiKey: undefined }),
-    }))
+    })
     const { getAuthStatus } = await import('../getAuthStatus.js')
     const status = getAuthStatus()
     expect(status.workspaceKey.source).toBeNull()
@@ -288,12 +290,12 @@ describe('getAuthStatus', () => {
         getSubscriptionType: () => null,
       }),
     )
-    mock.module('src/utils/config/config.ts', () => ({
+    configMock.set({
       isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-FROMSETTINGS' + 'S'.repeat(40),
       }),
-    }))
+    })
     const { getAuthStatus } = await import('../getAuthStatus.js')
     const status = getAuthStatus()
     // env wins

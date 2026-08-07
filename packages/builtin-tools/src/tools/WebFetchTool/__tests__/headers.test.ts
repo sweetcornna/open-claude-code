@@ -10,6 +10,7 @@ import {
 import { logMock } from '../../../../../../tests/mocks/log'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
 import { setupSettingsMock } from '../../../../../../tests/mocks/settings.js'
+import { setupHttpMock } from '../../../../../../tests/mocks/http.js'
 
 type MockAxiosResponse = {
   data: ArrayBuffer
@@ -54,9 +55,10 @@ mock.module('src/services/api/claude.js', () => ({
   queryHaiku: async () => ({ message: { content: [] } }),
 }))
 
-mock.module('src/utils/network/http.js', () => ({
+const httpMock = setupHttpMock({
   getWebFetchUserAgent: () => 'TestAgent/1.0',
-}))
+})
+afterAll(() => httpMock.reset())
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 

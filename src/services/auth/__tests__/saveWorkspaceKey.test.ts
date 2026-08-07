@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, test, mock } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+import { setupConfigMock } from '../../../../tests/mocks/config.js'
 
 // Mock side-effect modules first
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -39,13 +40,14 @@ let _mockGetGlobalConfig: () => unknown = () => ({
 let _mockSaveGlobalConfig: (updater: unknown) => unknown = (_u: unknown) =>
   undefined
 const _originalOccConfigDir = process.env.OCC_CONFIG_DIR
-mock.module('src/utils/config/config.ts', () => ({
+const configMock = setupConfigMock({
   isConfigEnabled: () => true,
   getGlobalConfig: () =>
     _useMockForConfig ? _mockGetGlobalConfig() : { workspaceApiKey: undefined },
   saveGlobalConfig: (updater: unknown) =>
     _useMockForConfig ? _mockSaveGlobalConfig(updater) : undefined,
-}))
+})
+afterAll(() => configMock.reset())
 
 beforeAll(() => {
   process.env.OCC_CONFIG_DIR = '/tmp/occ-saveWorkspaceKey-test'

@@ -25,6 +25,7 @@ import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
+import { setupConstantsOauthMock } from '../../../../tests/mocks/constantsOauth.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -32,9 +33,10 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 // ── Workspace API key mock ──────────────────────────────────────────────────
 const mockApiKey = 'sk-ant-api03-test-vaults-key'
 
-mock.module('src/constants/oauth.js', () => ({
+const oauthConstMock = setupConstantsOauthMock({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
-}))
+})
+afterAll(() => oauthConstMock.reset())
 
 const prepareWorkspaceApiRequestMock = mock(async () => ({
   apiKey: mockApiKey,

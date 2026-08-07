@@ -1,25 +1,39 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import type { Command } from '../../commands.js'
+import { setupUndercoverMock } from '../../../tests/mocks/undercover.js'
+import { setupPromptShellExecutionMock } from '../../../tests/mocks/promptShellExecution.js'
+import { setupGitAttributionMock } from '../../../tests/mocks/gitAttribution.js'
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => false,
 }))
 
-mock.module('src/utils/git/attribution.ts', () => ({
+const attributionMock = setupGitAttributionMock({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
   getEnhancedPRAttribution: async () => undefined,
   countUserPromptsInMessages: () => 0,
-}))
+})
+afterAll(() => attributionMock.reset())
 
-mock.module('src/utils/auth/undercover.ts', () => ({
+const undercoverMock = setupUndercoverMock({
   isUndercover: () => false,
   getUndercoverInstructions: () => '',
   shouldShowUndercoverAutoNotice: () => false,
-}))
+})
+afterAll(() => undercoverMock.reset())
 
-mock.module('src/utils/shell/promptShellExecution.ts', () => ({
+const shellPromptMock = setupPromptShellExecutionMock({
   executeShellCommandsInPrompt: async (content: string) => content,
-}))
+})
+afterAll(() => shellPromptMock.reset())
 
 // IMPORTANT: mock.module is process-global. findGitRoot/findCanonicalGitRoot
 // are SYNC in the real impl (returning string | null) — using async stubs
@@ -266,13 +280,12 @@ describe('commit-push-pr getPromptForCommand', () => {
     let capturedGetAppState: (() => any) | undefined
 
     // Re-mock executeShellCommandsInPrompt to capture the context argument
-    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
+    shellPromptMock.set({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedGetAppState = ctx.getAppState.bind(ctx)
         return content
       },
-    }))
-
+    })
     // Re-import to pick up the new mock
     const { default: freshCmd } = await import('../commit-push-pr.js')
 
@@ -302,22 +315,20 @@ describe('commit-push-pr getPromptForCommand', () => {
     process.env.USER_TYPE = 'ant'
 
     // Re-mock undercover to return true for this test
-    mock.module('src/utils/auth/undercover.ts', () => ({
+    undercoverMock.set({
       isUndercover: () => true,
       getUndercoverInstructions: () => 'UNDERCOVER_INSTRUCTIONS',
       shouldShowUndercoverAutoNotice: () => false,
-    }))
-
+    })
     // Also re-mock attribution to return commit text
-    mock.module('src/utils/git/attribution.ts', () => ({
+    attributionMock.set({
       getAttributionTexts: () => ({
         commit: 'Attribution text',
         pr: 'PR Attribution',
       }),
       getEnhancedPRAttribution: async () => 'Enhanced PR Attribution',
       countUserPromptsInMessages: () => 0,
-    }))
-
+    })
     const { default: freshCmd } = await import('../commit-push-pr.js')
 
     const result = await (freshCmd as any).getPromptForCommand(

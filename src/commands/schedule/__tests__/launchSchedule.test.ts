@@ -24,6 +24,9 @@ import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+import { setupConstantsOauthMock } from '../../../../tests/mocks/constantsOauth.js'
+import { setupOauthClientMock } from '../../../../tests/mocks/oauthClient.js'
+import { setupHostGuardMock } from '../../../../tests/mocks/hostGuard.js'
 
 const analyticsMock = setupAnalyticsMock()
 afterAll(() => analyticsMock.reset())
@@ -69,12 +72,16 @@ mock.module(
     getClaudeAIOAuthTokens: () => ({ accessToken: 'test-token-schedule' }),
   }),
 )
-mock.module('src/services/oauth/client.js', () => ({
+const oauthClientMock = setupOauthClientMock({
   getOrganizationUUID: async () => 'org-uuid-schedule',
-}))
-mock.module('src/constants/oauth.js', () => ({
+})
+afterAll(() => oauthClientMock.reset())
+
+const oauthConstMock = setupConstantsOauthMock({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
-}))
+})
+afterAll(() => oauthConstMock.reset())
+
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
 const teleportApiMock = setupTeleportApiMock({
@@ -90,11 +97,12 @@ const teleportApiMock = setupTeleportApiMock({
     apiKey: 'test-workspace-key',
   }),
 })
-mock.module('src/services/auth/hostGuard.ts', () => ({
+const hostGuardMock = setupHostGuardMock({
   assertSubscriptionBaseUrl: () => {},
   assertWorkspaceHost: () => {},
   assertNoAnthropicEnvForOpenAI: () => {},
-}))
+})
+afterAll(() => hostGuardMock.reset())
 
 // ── Axios mock ──────────────────────────────────────────────────────────────
 const axiosGetMock = mock(async () => ({}))

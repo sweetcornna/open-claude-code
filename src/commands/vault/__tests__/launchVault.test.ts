@@ -22,6 +22,8 @@ import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
 import { authMockWith } from '../../../../tests/mocks/auth.js'
+import { setupConstantsOauthMock } from '../../../../tests/mocks/constantsOauth.js'
+import { setupOauthClientMock } from '../../../../tests/mocks/oauthClient.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -34,12 +36,16 @@ mock.module(
   }),
 )
 
-mock.module('src/services/oauth/client.js', () => ({
+const oauthClientMock = setupOauthClientMock({
   getOrganizationUUID: async () => 'org-uuid-test',
-}))
-mock.module('src/constants/oauth.js', () => ({
+})
+afterAll(() => oauthClientMock.reset())
+
+const oauthConstMock = setupConstantsOauthMock({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
-}))
+})
+afterAll(() => oauthConstMock.reset())
+
 // teleport/api via the shared complete-surface mock (missing exports delegate
 // to the real module) — see tests/mocks/teleportApi.ts.
 const teleportApiMock = setupTeleportApiMock({

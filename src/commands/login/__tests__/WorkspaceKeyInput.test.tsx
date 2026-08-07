@@ -19,6 +19,7 @@ import * as React from 'react';
 import { logMock } from '../../../../tests/mocks/log';
 import { debugMock } from '../../../../tests/mocks/debug';
 import { setupSettingsMock } from '../../../../tests/mocks/settings.js';
+import { setupConfigMock } from '../../../../tests/mocks/config.js';
 
 mock.module('src/utils/telemetry/log.ts', logMock);
 mock.module('src/utils/telemetry/debug.ts', debugMock);
@@ -29,11 +30,13 @@ const settingsMock = setupSettingsMock({
 });
 afterAll(() => settingsMock.reset());
 
-mock.module('src/utils/config/config.ts', () => ({
+const configMock = setupConfigMock({
   isConfigEnabled: () => true,
   getGlobalConfig: () => ({ workspaceApiKey: undefined }),
   saveGlobalConfig: (_updater: unknown) => undefined,
-}));
+});
+afterAll(() => configMock.reset());
+
 // ---------------------------------------------------------------------------
 // Inline validation logic tests (key prefix / length rules)
 // These verify the guard behaviour without needing Ink render or useInput

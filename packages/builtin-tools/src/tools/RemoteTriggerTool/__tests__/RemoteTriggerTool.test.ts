@@ -10,6 +10,7 @@ import {
 } from 'bun:test'
 import { authMock } from '../../../../../../tests/mocks/auth'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
+import { setupOauthClientMock } from '../../../../../../tests/mocks/oauthClient.js'
 
 let requestStatus = 200
 const auditRecords: Record<string, unknown>[] = []
@@ -29,9 +30,10 @@ afterAll(() => {
 
 mock.module('src/utils/auth/auth.js', authMock)
 
-mock.module('src/services/oauth/client.js', () => ({
+const oauthClientMock = setupOauthClientMock({
   getOrganizationUUID: async () => 'org',
-}))
+})
+afterAll(() => oauthClientMock.reset())
 
 mock.module('@open-claude-code/tool-runtime/featureGate.js', () => ({
   getFeatureValue_CACHED_MAY_BE_STALE: () => true,

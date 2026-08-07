@@ -1,5 +1,16 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import type { Command } from '../../commands.js'
+import { setupUndercoverMock } from '../../../tests/mocks/undercover.js'
+import { setupPromptShellExecutionMock } from '../../../tests/mocks/promptShellExecution.js'
+import { setupGitAttributionMock } from '../../../tests/mocks/gitAttribution.js'
 
 // Mock bun:bundle before any imports that use feature()
 mock.module('bun:bundle', () => ({
@@ -7,21 +18,24 @@ mock.module('bun:bundle', () => ({
 }))
 
 // Mock dependencies to avoid side effects
-mock.module('src/utils/git/attribution.ts', () => ({
+const attributionMock = setupGitAttributionMock({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
   getEnhancedPRAttribution: async () => undefined,
   countUserPromptsInMessages: () => 0,
-}))
+})
+afterAll(() => attributionMock.reset())
 
-mock.module('src/utils/auth/undercover.ts', () => ({
+const undercoverMock = setupUndercoverMock({
   isUndercover: () => false,
   getUndercoverInstructions: () => '',
   shouldShowUndercoverAutoNotice: () => false,
-}))
+})
+afterAll(() => undercoverMock.reset())
 
-mock.module('src/utils/shell/promptShellExecution.ts', () => ({
+const shellPromptMock = setupPromptShellExecutionMock({
   executeShellCommandsInPrompt: async (content: string) => content,
-}))
+})
+afterAll(() => shellPromptMock.reset())
 
 let commit: Command
 let originalUserType: string | undefined
@@ -152,13 +166,12 @@ describe('commit command getPromptForCommand', () => {
     }
 
     // Wrap executeShellCommandsInPrompt to capture context
-    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
+    shellPromptMock.set({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedAppState = ctx.getAppState()
         return content
       },
-    }))
-
+    })
     const mod = await import('../commit.js')
     const freshCommit = mod.default as any
 
@@ -202,18 +215,16 @@ describe('commit command getPromptForCommand', () => {
   test('ant undercover path prepends undercover instructions', async () => {
     process.env.USER_TYPE = 'ant'
 
-    mock.module('src/utils/auth/undercover.ts', () => ({
+    undercoverMock.set({
       isUndercover: () => true,
       getUndercoverInstructions: () => 'SECRET_UNDERCOVER_PREFIX',
       shouldShowUndercoverAutoNotice: () => false,
-    }))
-
-    mock.module('src/utils/git/attribution.ts', () => ({
+    })
+    attributionMock.set({
       getAttributionTexts: () => ({ commit: 'Co-Authored-By: Claude', pr: '' }),
       getEnhancedPRAttribution: async () => undefined,
       countUserPromptsInMessages: () => 0,
-    }))
-
+    })
     const { default: freshCommit } = await import('../commit.js')
     const mockContext = {
       getAppState: () => ({
@@ -235,13 +246,12 @@ describe('commit command getPromptForCommand', () => {
   test('getAppState override in context passes ALLOWED_TOOLS', async () => {
     let capturedCtx: any
 
-    mock.module('src/utils/shell/promptShellExecution.ts', () => ({
+    shellPromptMock.set({
       executeShellCommandsInPrompt: async (content: string, ctx: any) => {
         capturedCtx = ctx
         return content
       },
-    }))
-
+    })
     const { default: freshCommit } = await import('../commit.js')
     const baseAppState = {
       toolPermissionContext: {

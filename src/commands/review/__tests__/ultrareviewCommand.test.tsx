@@ -71,9 +71,10 @@ mock.module('src/commands/review/reviewRemote.js', () => ({
 }));
 
 // Mock OAuth config so real fetchUltrareviewPreflight can run
-mock.module('src/constants/oauth.js', () => ({
+const oauthConstMock = setupConstantsOauthMock({
   getOauthConfig: () => ({ BASE_API_URL: 'https://api.anthropic.com' }),
-}));
+});
+afterAll(() => oauthConstMock.reset());
 
 // Mock prepareApiRequest so real fetchUltrareviewPreflight skips auth
 // teleport/api via the shared complete-surface mock (missing exports delegate
@@ -126,6 +127,7 @@ mock.module('src/commands/review/UltrareviewOverageDialog.js', () => ({
 }));
 
 import { call } from '../ultrareviewCommand.js';
+import { setupConstantsOauthMock } from '../../../../tests/mocks/constantsOauth.js';
 
 const makeContext = () =>
   ({

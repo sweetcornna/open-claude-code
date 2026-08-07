@@ -95,9 +95,11 @@ let mockGlobalCacheScope = false
 mock.module('src/utils/model/betas.js', () => ({
   shouldUseGlobalCacheScope: () => mockGlobalCacheScope,
 }))
-mock.module('src/utils/auth/undercover.js', () => ({
+const undercoverMock = setupUndercoverMock({
   isUndercover: () => false,
-}))
+})
+afterAll(() => undercoverMock.reset())
+
 mock.module('src/utils/model/antModels.js', () => ({
   getAntModelOverrideConfig: () => null,
 }))
@@ -225,6 +227,7 @@ import {
 import { CORE_TOOLS } from './tools.js'
 import type { Tools } from '../Tool.js'
 import { setupSettingsMock } from '../../tests/mocks/settings.js'
+import { setupUndercoverMock } from '../../tests/mocks/undercover.js'
 
 // --- 辅助 ---
 
