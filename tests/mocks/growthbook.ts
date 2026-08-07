@@ -8,7 +8,7 @@
  * CI. See tests/mocks/sharedModuleMock.ts for the mechanism that fixes this.
  *
  * Usage:
- *   import { setupGrowthbookMock } from 'tests/mocks/growthbook.js'
+ *   import { setupGrowthbookMock } from '../../tests/mocks/growthbook.js'
  *   setupGrowthbookMock({ getFeatureValue_CACHED_MAY_BE_STALE: () => false })
  */
 

@@ -1,3 +1,7 @@
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js';
+
+const analyticsMock = setupAnalyticsMock();
+afterAll(() => analyticsMock.reset());
 /**
  * Regression tests for `ultrareviewCommand.call` (src/commands/review/
  * ultrareviewCommand.tsx). The previous version of `call` made an axios
@@ -33,10 +37,6 @@ afterAll(() => {
 // Mock dependency chain before any subject import
 mock.module('src/utils/telemetry/debug.ts', debugMock);
 mock.module('src/utils/telemetry/log.ts', logMock);
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: () => {},
-}));
-
 // Mock auth utilities via the shared complete-surface mock (missing exports
 // get safe defaults) — see tests/mocks/auth.ts.
 mock.module(

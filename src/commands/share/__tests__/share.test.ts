@@ -21,6 +21,10 @@ import { promisify } from 'node:util'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+
+const analyticsMock = setupAnalyticsMock()
+afterAll(() => analyticsMock.reset())
 
 // Default: gh --version succeeds, gist create fails (upload error is acceptable
 // for tests that only need to reach the content-preparation stage).
@@ -102,11 +106,6 @@ mock.module('node:child_process', () => {
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => true,
-}))
-
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: () => {},
-  stripProtoFields: (v: unknown) => v,
 }))
 
 // NOTE: We do NOT mock src/bootstrap/state.js here to avoid interfering with

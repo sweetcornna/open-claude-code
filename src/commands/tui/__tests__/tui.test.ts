@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import {
   existsSync,
   mkdirSync,
@@ -9,14 +17,13 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getClaudeConfigHomeDir } from '../../../utils/config/envUtils.js'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+
+const analyticsMock = setupAnalyticsMock()
+afterAll(() => analyticsMock.reset())
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => true,
-}))
-
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: () => {},
-  stripProtoFields: (v: unknown) => v,
 }))
 
 let tmpDir: string

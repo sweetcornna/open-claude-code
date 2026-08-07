@@ -13,7 +13,7 @@
  * See tests/mocks/sharedModuleMock.ts for the delegating-surface mechanism.
  *
  * Usage:
- *   import { setupSessionStorageMock } from 'tests/mocks/sessionStorage.js'
+ *   import { setupSessionStorageMock } from '../../tests/mocks/sessionStorage.js'
  *   const sessionStorageMock = setupSessionStorageMock()   // all-real surface
  *   beforeAll(() => sessionStorageMock.set({ writeAgentMetadata: async () => {} }))
  *   afterAll(() => sessionStorageMock.reset())             // back to all-real

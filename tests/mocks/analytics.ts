@@ -12,7 +12,7 @@
  * all-real surface is already side-effect free — most suites need no overrides.
  *
  * Usage:
- *   import { setupAnalyticsMock } from 'tests/mocks/analytics.js'
+ *   import { setupAnalyticsMock } from '../../tests/mocks/analytics.js'
  *   const analyticsMock = setupAnalyticsMock()   // all-real (effectively no-op)
  *   afterAll(() => analyticsMock.reset())
  */

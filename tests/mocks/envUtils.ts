@@ -8,7 +8,7 @@
  * tests/mocks/sharedModuleMock.ts for the mechanism that fixes this.
  *
  * Usage:
- *   import { setupEnvUtilsMock } from 'tests/mocks/envUtils.js'
+ *   import { setupEnvUtilsMock } from '../../tests/mocks/envUtils.js'
  *   const envUtilsMock = setupEnvUtilsMock()          // all-real surface
  *   beforeAll(() => envUtilsMock.set({ getClaudeConfigHomeDir: () => tmpDir }))
  *   afterAll(() => envUtilsMock.reset())              // back to all-real

@@ -21,6 +21,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+
+const analyticsMock = setupAnalyticsMock()
+afterAll(() => analyticsMock.reset())
 
 // ── child_process mock (gh fails → shows gh not installed) ──
 let _execFileImplPD: (
@@ -80,11 +84,6 @@ mock.module('node:child_process', () => {
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => true,
-}))
-
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: () => {},
-  stripProtoFields: (v: unknown) => v,
 }))
 
 // ── State mock with non-null projectDir ──

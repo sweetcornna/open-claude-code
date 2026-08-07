@@ -14,6 +14,7 @@ import { stateMockWith } from '../../../../tests/mocks/state.js'
 import type { LocalJSXCommandCall } from '../../../types/command.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
 
 // ── Mock module-level side effects before any imports ──
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -108,14 +109,9 @@ const detectRepositoryMock = setupDetectRepositoryMock({
 })
 
 const logEventMock = mock(() => {})
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: logEventMock,
-  logEventAsync: mock(() => Promise.resolve()),
-  _resetForTesting: mock(() => {}),
-  attachAnalyticsSink: mock(() => {}),
-  stripProtoFields: mock((v: unknown) => v),
-}))
 
+const analyticsMock = setupAnalyticsMock({ logEvent: logEventMock })
+afterAll(() => analyticsMock.reset())
 const noop = () => {}
 mock.module(
   'src/bootstrap/state.js',

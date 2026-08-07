@@ -21,6 +21,10 @@ import {
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupAxiosMock } from '../../../../tests/mocks/axios.js'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+
+const analyticsMock = setupAnalyticsMock()
+afterAll(() => analyticsMock.reset())
 
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
@@ -28,11 +32,6 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 // ── Analytics mock ──────────────────────────────────────────────────────────
 const realAnalytics = await import('src/services/analytics/index.js')
 const logEventMock = mock(() => {})
-mock.module('src/services/analytics/index.js', () => ({
-  ...realAnalytics,
-  logEvent: logEventMock,
-}))
-
 // ── Auth / OAuth mocks ──────────────────────────────────────────────────────
 const realAuth = await import('src/utils/auth/auth.js')
 mock.module('src/utils/auth/auth.js', () => ({

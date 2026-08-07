@@ -12,7 +12,7 @@
  * See tests/mocks/sharedModuleMock.ts for the delegating mechanism.
  *
  * Usage:
- *   import { setupSettingsMock } from 'tests/mocks/settings.js'
+ *   import { setupSettingsMock } from '../../tests/mocks/settings.js'
  *   const settingsMock = setupSettingsMock()          // all-real surface
  *   beforeAll(() => settingsMock.set({ getSettings_DEPRECATED: () => ({}) }))
  *   afterAll(() => settingsMock.reset())              // back to all-real

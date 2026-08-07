@@ -63,7 +63,6 @@ mock.module('src/utils/messages.js', () => ({
 mock.module('src/utils/collections/uuid.js', () => ({
   createAgentId: () => 'agent-1',
 }))
-mock.module('src/services/analytics/index.js', () => ({ logEvent: () => {} }))
 mock.module('src/utils/telemetry/debug.js', () => ({
   logForDebugging: () => {},
 }))
@@ -119,6 +118,10 @@ import {
   WORKFLOW_AGENT,
 } from '../backends/claudeCodeBackend.js'
 import { makeHostHandle } from '../hostHandle.js'
+import { setupAnalyticsMock } from '../../../tests/mocks/analytics.js'
+
+const analyticsMock = setupAnalyticsMock()
+afterAll(() => analyticsMock.reset())
 
 function ctx() {
   return {

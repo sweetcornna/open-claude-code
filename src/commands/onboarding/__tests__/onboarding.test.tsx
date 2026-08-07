@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js';
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as React from 'react';
 import { logMock } from '../../../../tests/mocks/log';
 import { debugMock } from '../../../../tests/mocks/debug';
@@ -11,12 +12,13 @@ mock.module('src/utils/telemetry/log.ts', logMock);
 mock.module('src/utils/telemetry/debug.ts', debugMock);
 
 const loggedEvents: Array<{ name: string; payload: unknown }> = [];
-mock.module('src/services/analytics/index.js', () => ({
+
+const analyticsMock = setupAnalyticsMock({
   logEvent: (name: string, payload: unknown) => {
     loggedEvents.push({ name, payload });
   },
-}));
-
+});
+afterAll(() => analyticsMock.reset());
 // In-memory config used by the global/project config helpers so the
 // command's persistence path is exercised without touching disk.
 const fakeGlobalConfig: {

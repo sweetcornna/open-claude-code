@@ -11,14 +11,13 @@ import { setupEnvUtilsMock } from '../../../../tests/mocks/envUtils.js'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+
+const analyticsMock = setupAnalyticsMock()
+afterAll(() => analyticsMock.reset())
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => true,
-}))
-
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: () => {},
-  stripProtoFields: (v: unknown) => v,
 }))
 
 let tmpDir: string

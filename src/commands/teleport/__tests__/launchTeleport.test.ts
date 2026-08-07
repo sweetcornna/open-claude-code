@@ -12,6 +12,7 @@ import type { LocalJSXCommandCall } from '../../../types/command.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 import { setupTeleportApiMock } from '../../../../tests/mocks/teleportApi.js'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
 
 // ── Mock module-level side effects BEFORE any imports ──
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -81,14 +82,9 @@ mock.module('src/utils/sessionStorage.js', () => ({
 
 // ── Analytics ──
 const logEventMock = mock(() => {})
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: logEventMock,
-  logEventAsync: mock(() => Promise.resolve()),
-  _resetForTesting: mock(() => {}),
-  attachAnalyticsSink: mock(() => {}),
-  stripProtoFields: mock((v: unknown) => v),
-}))
 
+const analyticsMock = setupAnalyticsMock({ logEvent: logEventMock })
+afterAll(() => analyticsMock.reset())
 // ── Import SUT after mocks ──
 let callTeleport: LocalJSXCommandCall
 

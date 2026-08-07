@@ -23,6 +23,10 @@ import { promisify } from 'node:util'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setupAnalyticsMock } from '../../../../tests/mocks/analytics.js'
+
+const analyticsMock = setupAnalyticsMock()
+afterAll(() => analyticsMock.reset())
 
 // ── Mock control state ──
 // We use a single shared callback variable that each test can replace.
@@ -132,11 +136,6 @@ mock.module('node:child_process', () => {
 
 mock.module('bun:bundle', () => ({
   feature: (_name: string) => true,
-}))
-
-mock.module('src/services/analytics/index.js', () => ({
-  logEvent: () => {},
-  stripProtoFields: (v: unknown) => v,
 }))
 
 // ── State ──
