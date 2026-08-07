@@ -4,6 +4,11 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.32.4 - 2026-08-07
+
+- **修复：交互式会话里配好第三方 provider 后仍然 `Not logged in · Please run /login`。** occ 对环境里的 `ANTHROPIC_API_KEY` 有一道审批弹窗（「Detected a custom API key in your environment」），而且**默认选中「No (recommended)」**。问题是：occ 自己配好的 key 也被当成「在环境里发现的」—— 你在 `/login` 里输入的那把 provider key，被 occ 复制到内部后又反过来问你要不要用它，而你从来没有机会批准过它。按默认答一下，就把刚配好的 key 拒了。现在 occ 自己写入的 key 不再走这道审批：DeepSeek、以及任何通过「Anthropic 兼容」入口配置的网关/代理都适用。
+- 说明：`-p`（非交互）走的是另一条认证分支，完全不经过这道弹窗 —— 所以此前几个版本 headless 测试全绿、而 REPL 一直坏。这次是用真实交互式会话验证的：已发布的 2.32.3 弹出审批窗且一轮都没跑成，本版无弹窗并正常完成对话（确认由 `deepseek-v4-flash` 应答）。
+
 ## 2.32.3 - 2026-08-07
 
 - **修复：2.32.2 没有真正修好 `Not logged in · Please run /login`。** 上一版把修复挂在几个已知的入口上，但那是打地鼠 —— 还有别的地方会在会话中途改写 provider 配置，同样不会触发 DeepSeek 路由的内部镜像，于是请求照旧打到 Anthropic 官方接口、不带凭据。这一版把兜底放在**构造 API 客户端的那一步**：请求不可能再由一份没应用的配置构造出来，无论是谁、在什么时候改的配置。
