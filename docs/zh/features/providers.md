@@ -45,9 +45,11 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 两个键**故意不写**：
 
 - **`OPENAI_MODEL`** —— 它的优先级高于一切，不只压过四个档位别名，连 `/model <具体 id>` 也会被它顶掉（见 `resolveOpenAIModel`）。写了它就等于把会话锁死在一个模型上，正是这次要去掉的行为。
-- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** —— 一个全局值描述不了一份混着不同窗口的模型表（GLM 的 203K 和 205K 就挨在一起）。改为 `getContextWindowForModel()` 按模型从 preset 表里查真实窗口；它排在环境变量覆盖**之下**，所以那个键仍然是唯一的用户纠正入口。
+- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** —— 一个全局值描述不了一份混着不同窗口的模型表（GLM 的 203K 和 205K 就挨在一起）。改为 `getContextWindowForModel()` 按模型从 preset 表里查真实窗口；它排在环境变量覆盖**之下**。自 2.31.0 起中间还多了一层[分层模型设置](./model-settings.md)：优先级是 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` > `modelSettings.<tier>.contextTokens` > 内置默认，那个环境变量仍然是最高优先级的纠正入口。
 
 ## 三、协议（wire API）
+
+> **DeepSeek 是例外**：检测到 `OPENAI_BASE_URL` 指向 `api.deepseek.com` 时，occ 自动改走它的 **Anthropic 兼容端点**（`/anthropic`），因为那是它三条协议里唯一同时提供原生 thinking 块、零格式转换和**服务端 web 搜索**的一条。配置文件一字不改，存量配置继续有效。显式设置 `OPENAI_WIRE_API=chat|responses` 会覆盖这个选择，`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` 则完全关闭它。详见 `src/utils/model/deepseekWire.ts`。
 
 OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions，打 `<base>/chat/completions`）或 `responses`（Responses API，打 `<base>/responses`）。`OPENAI_AUTH_MODE=chatgpt` 强制 responses；Codex 家族模型（id 含 `codex`、GPT-5 世代）在未显式指定时也默认 responses。
 

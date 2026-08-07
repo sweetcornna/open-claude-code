@@ -4,6 +4,18 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.31.0 - 2026-08-07
+
+按模型档位分别配置思考强度和上下文窗口；DeepSeek 换用更合适的接口，顺带拿到免费的联网搜索；修掉两个一直有人反馈的界面问题。
+
+- **⚠️ 行为变更：GPT 模型的默认思考强度提高了。** 之前 `gpt-5.6-sol` 默认 low、其余 GPT 默认 medium，现在统一是 xhigh，**推理 token 消耗会明显上升**。同样地，此前不发送思考强度的第三方 provider（GLM、Qwen、Kimi、本地模型等）现在默认发送 xhigh。想回到原来的花销，用 `/model-settings <档位> effort medium`，或设 `CLAUDE_CODE_EFFORT_LEVEL`。两处都只对确认支持该参数的模型发送。
+- **⚠️ 行为变更：Claude Opus 和 Fable 默认使用 1M 上下文窗口。** 超过 200k 的请求走 Anthropic 的 1M 计价档。Sonnet 和 Haiku 不受影响，仍是 200k。
+- **新增 `/model-settings`**，按 haiku / sonnet / opus / fable 分别设置思考强度和上下文窗口。此前这两项都只有一个全局值，说不出「重活多想一点、杂活省着点」。出厂默认按 provider 分：DeepSeek 用 max 强度和 1M 窗口，GPT 用 xhigh 和 272k，Claude 用 high（Opus 和 Fable 给 1M），其余用 xhigh 和 200k。环境变量仍然优先于这里的设置。
+- **DeepSeek 用户现在有联网搜索了，而且是免费的。** occ 改用 DeepSeek 的 Anthropic 兼容接口，那是它唯一提供服务端搜索的一条；此前 DeepSeek 用户的 WebSearch 一直退化成无密钥网页抓取。同时思考过程不再需要拼接转换，格式转换的损耗也没有了。**不需要改任何配置**，检测到 DeepSeek 端点就自动生效；`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` 可关闭。
+- **修复：Ctrl+C 退出后终端里残留一串乱码。** 形如 `^[]11;rgb:...` 和 `^[[?62;22;52c`，是 occ 询问终端配色时收到的回复没来得及读走。退出流程现在会先停掉这些后台询问，再关闭输入。
+- **修复：状态栏出现一个不存在的子代理，按 x 也关不掉。** 子代理在恰好完成的同时被转入后台时，清理逻辑会跳过它，任务就永远停在「运行中」。
+- 修复：管道和文件输出里可能混入终端控制字符——只有真正的终端才会收到这些询问了。
+
 ## 2.30.0 - 2026-08-06
 
 Windows 上的一批实际故障，加上一个所有平台都存在的渲染问题。

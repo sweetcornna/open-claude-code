@@ -6,6 +6,18 @@ This is a translation of [`CHANGELOG.md`](CHANGELOG.md), which is the canonical
 source and the only one the tooling parses. Keep the structure identical:
 `## <semver> - <date>` headings, top-level `- ` entries, newest first.
 
+## 2.31.0 - 2026-08-07
+
+Per-tier thinking effort and context window; DeepSeek moves to a better-suited API and gains free web search; two long-reported UI problems fixed.
+
+- **⚠️ Behaviour change: GPT models now think harder by default.** `gpt-5.6-sol` used to default to low and other GPT models to medium; all of them are now xhigh, which **noticeably increases reasoning-token spend**. Third-party providers that previously sent no effort at all (GLM, Qwen, Kimi, local models) now default to xhigh too. To go back to the old cost, use `/model-settings <tier> effort medium` or set `CLAUDE_CODE_EFFORT_LEVEL`. Effort is only ever sent to models known to accept it.
+- **⚠️ Behaviour change: Claude Opus and Fable now default to the 1M context window.** Requests above 200k are billed at Anthropic's 1M rate. Sonnet and Haiku are unaffected and stay at 200k.
+- **New `/model-settings`** sets thinking effort and context window separately for haiku / sonnet / opus / fable. Both were single global values before, which could not express "think hard on the heavy tier, stay cheap on the light one". Defaults follow the provider: DeepSeek gets max effort and 1M, GPT gets xhigh and 272k, Claude gets high (with 1M for Opus and Fable), everything else gets xhigh and 200k. Environment variables still take precedence.
+- **DeepSeek users now have web search, and it is free.** occ now talks to DeepSeek's Anthropic-compatible API — the only one of its protocols that runs search server-side. Until now WebSearch on DeepSeek quietly fell back to keyless page scraping. Thinking blocks are also native now, so nothing is lost in format conversion. **No configuration change is needed**; it activates on detecting a DeepSeek endpoint, and `CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` turns it off.
+- **Fixed: escape sequences left in the terminal after Ctrl+C.** Text like `^[]11;rgb:...` and `^[[?62;22;52c` was the terminal answering occ's colour query after occ had already stopped reading. Shutdown now stops those background queries before closing input.
+- **Fixed: a phantom subagent in the status line that `x` would not dismiss.** A subagent that finished at the same moment it was moved to the background skipped its cleanup and stayed "running" forever.
+- Fixed: terminal control characters could leak into piped or redirected output. Only real terminals are queried now.
+
 ## 2.30.0 - 2026-08-06
 
 A batch of real Windows failures, plus a rendering problem that affected every platform.
