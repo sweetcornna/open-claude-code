@@ -2,8 +2,8 @@
  * Host facade for "do we hold credentials for this search provider?".
  *
  * WebSearch aggregates one lane per connected provider, so the source
- * resolver has to ask about Claude / Google / ChatGPT logins. Those probes
- * live deep in host auth (keychain, OAuth stores, env), and importing them
+ * resolver has to ask about Claude / DeepSeek / Google / ChatGPT logins. Those
+ * probes live deep in host auth (keychain, OAuth stores, env), and importing them
  * from the leaf package puts src/utils/auth in a dependency cycle with the
  * tool graph. The host registers its implementation during tool assembly
  * instead; see src/services/search/sourceCredentials.ts.
@@ -14,7 +14,11 @@
  * auth on every search.
  */
 
-export type SearchCredentialFamily = 'anthropic' | 'gemini' | 'codex'
+export type SearchCredentialFamily =
+  | 'anthropic'
+  | 'deepseek'
+  | 'gemini'
+  | 'codex'
 
 export type SearchCredentialProbe = (family: SearchCredentialFamily) => boolean
 

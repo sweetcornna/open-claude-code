@@ -87,6 +87,14 @@ export function isDeepSeekAnthropicWireActive(): boolean {
   return isDeepSeekBaseURL(process.env.OPENAI_BASE_URL)
 }
 
+/** `<host>` → `<host>/anthropic`, idempotent. */
+function toAnthropicBase(base: string): string {
+  const trimmed = base.replace(/\/+$/, '')
+  return trimmed.endsWith(ANTHROPIC_SUFFIX)
+    ? trimmed
+    : `${trimmed}${ANTHROPIC_SUFFIX}`
+}
+
 /**
  * The Anthropic Messages base URL derived from `OPENAI_BASE_URL`, or undefined
  * when this routing is not active.
@@ -98,10 +106,48 @@ export function getDeepSeekAnthropicBaseURL(): string | undefined {
   if (!isDeepSeekAnthropicWireActive()) return undefined
   const base = process.env.OPENAI_BASE_URL?.trim()
   if (!base) return undefined
-  const trimmed = base.replace(/\/+$/, '')
-  return trimmed.endsWith(ANTHROPIC_SUFFIX)
-    ? trimmed
-    : `${trimmed}${ANTHROPIC_SUFFIX}`
+  return toAnthropicBase(base)
+}
+
+/**
+ * Endpoint + key the `deepseek` WebSearch source posts to, or undefined when
+ * this machine holds no DeepSeek configuration.
+ *
+ * Deliberately NOT gated on `isDeepSeekAnthropicWireActive()`. That predicate
+ * answers a different question — "should the MAIN LOOP speak Anthropic Messages
+ * to DeepSeek" — and it says no as soon as `OPENAI_WIRE_API` names a protocol.
+ * A search source is its own lane, exactly like the `codex` and `gemini` lanes
+ * that run against their own provider whatever the main loop speaks. Tying the
+ * two together would withhold the search from the user who needs it most: the
+ * chat wire has NO built-in web search at all, so a session pinned to
+ * `OPENAI_WIRE_API=chat` is precisely the one currently falling back to keyless
+ * SERP scraping while holding a server-side search it never reaches.
+ *
+ * `CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` IS honoured: that switch names this
+ * endpoint specifically, so it reads as "do not talk to /anthropic at all".
+ *
+ * Whether the endpoint actually serves `web_search_20250305` is a separate,
+ * network-answered question — see probeDeepSeekSearchSupport().
+ */
+export function getDeepSeekSearchEndpoint():
+  | { baseURL: string; apiKey: string }
+  | undefined {
+  if (isOptedOut()) return undefined
+  const anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim()
+  const openaiBase = process.env.OPENAI_BASE_URL?.trim()
+  // ANTHROPIC_BASE_URL first: when it points at DeepSeek it is either the user's
+  // own choice or this module's mirror, and either way it is the URL the rest of
+  // the session is already talking to.
+  const base = isDeepSeekBaseURL(anthropicBase)
+    ? anthropicBase
+    : isDeepSeekBaseURL(openaiBase)
+      ? openaiBase
+      : undefined
+  if (!base) return undefined
+  const apiKey =
+    process.env.OPENAI_API_KEY?.trim() || process.env.ANTHROPIC_API_KEY?.trim()
+  if (!apiKey) return undefined
+  return { baseURL: toAnthropicBase(base), apiKey }
 }
 
 /** The four tier env keys, paired OpenAI → Anthropic. */

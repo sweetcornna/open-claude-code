@@ -268,7 +268,13 @@ export class AnthropicDirectSearchAdapter implements WebSearchAdapter {
   }
 }
 
-function extractSearchResults(blocks: BetaContentBlock[]): SearchResult[] {
+/**
+ * Shared with deepseekAdapter.ts: DeepSeek's /anthropic endpoint returns the
+ * same `web_search_tool_result` blocks, error shape included.
+ */
+export function extractSearchResults(
+  blocks: BetaContentBlock[],
+): SearchResult[] {
   const results: SearchResult[] = []
   // A web_search_tool_result whose content is NOT an array is a
   // WebSearchToolResultError (`{ error_code }`) — official Claude Code
@@ -289,13 +295,25 @@ function extractSearchResults(blocks: BetaContentBlock[]): SearchResult[] {
     }
 
     for (const r of block.content as Array<{
-      title: string
-      url: string
+      title?: string
+      url?: string
       page_age?: string
       type?: string
+      error_code?: string
     }>) {
+      // DeepSeek's /anthropic endpoint reports a failed search as an ITEM
+      // inside the array (`{type:'web_search_tool_result_error', error_code}`)
+      // rather than replacing the array with an error object, so the
+      // Array.isArray guard above never sees it. Taken as a result it became a
+      // `{title: undefined, url: undefined}` row: an entry the model reads as a
+      // real hit and cannot follow. Only `web_search_result` items are results.
+      if (r.type && r.type !== 'web_search_result') {
+        if (r.error_code) errorCodes.push(r.error_code)
+        continue
+      }
+      if (!r.url) continue
       results.push({
-        title: r.title,
+        title: r.title ?? r.url,
         url: r.url,
       })
     }

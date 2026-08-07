@@ -125,17 +125,57 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 
 默认不是「选一个后端」，而是**并行跑所有已连接的搜索源，合并成一份结果**。
 
-### 4.1 四个对称源（`adapters/searchSources.ts`）
+### 4.1 五个对称源（`adapters/searchSources.ts`）
 
 | 源 | 执行 | 凭据 |
 |---|---|---|
 | `anthropic` | Anthropic server-side `web_search_20250305` | Claude OAuth 或 `ANTHROPIC_API_KEY` |
+| `deepseek` | DeepSeek server-side `web_search_20250305`，走 `<base>/anthropic` | DeepSeek 端点 + key（`OPENAI_BASE_URL` 指向 api.deepseek.com） |
 | `gemini` | Gemini `generateContent` + `googleSearch` grounding | Google(Antigravity) OAuth 或 `GEMINI_API_KEY` |
 | `codex` | OpenAI Responses API 内建 `web_search` 工具 | ChatGPT OAuth 或 `OPENAI_API_KEY` |
 | `free` | 免密钥多引擎抓取（移植自 sweetcornna/free-search-mcp） | 无 |
 
 **有凭据即默认开**：settings 只存用户的显式改动（`webSearchSources.<id>`），没动过的源跟随凭据。
-面板在 `/search-setting`（勾选、登录、断开）。
+面板在 `/search-setting`（勾选、登录、断开、重新探测）。
+
+**`deepseek` 为什么是独立的一源，而不是并进 `anthropic`**：DeepSeek 会话的
+`getAPIProvider()` 答 `firstParty`，那答的是**协议**，从来不是「谁的模型」。并进去的后果是面板上
+出现一行「已连接的 Anthropic」而它的每个字节都发往 api.deepseek.com，并且同一个端点会被当成两家
+各发一路。所以 `hasAnthropicSearchCredentials()` 在 DeepSeek 线激活时返回 false，
+`primarySourceId()` 返回 `deepseek`。
+
+它也比 `anthropic` 那一源覆盖更宽：这条 lane **不看主循环说什么协议**（和 codex/gemini 增强路
+一样），所以 `OPENAI_WIRE_API=chat` 的会话 —— 恰恰是唯一一条**完全没有内建搜索**的协议 —— 也能
+用上服务端搜索，而不是掉回免密钥抓取。只有 `CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` 会把它整个关掉，
+因为那个开关点名的就是这个端点。
+
+**自动探测**：有 DeepSeek key ≠ 那个部署实现了 `web_search_20250305`（自建镜像、老网关会收下 key 然后
+拒掉工具）。`probeDeepSeekSearchSupport()` 发一个 `max_tokens: 16` 的最小请求问端点认不认这个工具 ——
+只问「收不收」，不真跑一次搜索（那要花掉用户一次搜索的 token 和秒数）。答不认就通过既有的
+**会话级 availability 轴**把这一源退役（和一次真实搜索失败走的是同一条路），面板上灰掉并显示端点原话。
+`supported`/`unsupported` 按端点缓存，`unreachable`（401/429/5xx/断网）**不缓存也不退役** ——
+那些回答与「支不支持搜索」无关，为一次网络抖动把 lane 关掉一整个会话是不对的。
+
+### 4.1.1 面板按键
+
+| 键 | 作用 |
+| --- | --- |
+| `↑` `↓` | 移动 |
+| `Space` | 勾选 / 取消勾选（只影响这一路进不进聚合） |
+| `Enter` | 未连接的 OAuth 源 → 开始登录；其余同 Space |
+| `D` | **断开**：删掉本面板自己存的凭据（gemini 的 Antigravity token、codex 的 ChatGPT auth） |
+| `R` | **重新探测**：清掉本会话的 availability 退役标记和 DeepSeek 探测缓存，全部重查 |
+| `Esc` | 有操作在飞 → **取消它**；否则关闭面板 |
+
+三条不显然的规则：
+
+- **`D` 不碰 `anthropic` / `deepseek`**。这两家的凭据就是会话自己的 provider 登录，从搜索设置面板里
+  把用户登出整个 CLI 是越权。想让它们不参与聚合用 `Space`，想登出用 `/logout`。
+- **断开后仍可能显示已连接，面板会说明为什么**：`removeChatGPTAuth()` 只删 occ 自己那份，
+  `~/.codex/auth.json` 是 Codex CLI 的、不归我们删；`GEMINI_API_KEY` 是用户的环境变量。
+- **`R` 存在是因为「登录了也用不了」是真实形态**：某个源在本会话早些时候失败过一次就被退役了，
+  用户随后修好了根因（登录、换 base URL），但那个标记不会自己消失，界面上就一直是灰的直到重启。
+  登录成功和断开成功也都会顺手清一次。
 
 ### 4.2 聚合规则（`adapters/aggregateAdapter.ts`）
 
@@ -154,6 +194,7 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | 源 | 主路 | 增强路 |
 | --- | --- | --- |
 | `anthropic` | 走会话自己的 query 管线（`ApiSearchAdapter`） | 独立的 Messages 调用（`AnthropicDirectSearchAdapter`）——管线会把请求路由到当前 provider，增强路不能用它 |
+| `deepseek` | 同上（管线本来就指着 DeepSeek） | 自己解析端点的独立调用（`DeepSeekDirectSearchAdapter`），所以任何一条线上都能跑 |
 | `gemini` | 按 `GEMINI_AUTH_MODE` 决定公网端点还是 Antigravity | 只要有 Google 登录就走 Antigravity |
 | `codex` | 按 `OPENAI_AUTH_MODE` 决定 API key 还是 ChatGPT OAuth | 优先用已连接的 ChatGPT 账号，没有登录才回落 API key |
 
@@ -165,7 +206,7 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 ### 4.3 显式点名（跳过聚合）
 
 `WEB_SEARCH_ADAPTER` 环境变量 > `settings.webSearchAdapter`，取值
-`api|codex|gemini|free|bing|brave|exa`，命中时**只跑这一个源**。
+`api|codex|deepseek|gemini|free|bing|brave|exa`，命中时**只跑这一个源**。
 不认识的值（例如已删除的 `tavily`）静默回落到默认聚合。
 
 点名一个源**不会**让它变成会话的 provider——`api`/`gemini`/`codex` 仍按 4.2 的表判定主路还是增强路。

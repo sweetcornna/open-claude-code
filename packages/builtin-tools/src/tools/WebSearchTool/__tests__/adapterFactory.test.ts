@@ -39,6 +39,26 @@ const { resetSourceAvailability, markSourceUnavailable, SourceHealthAdapter } =
 
 const originalWebSearchAdapter = process.env.WEB_SEARCH_ADAPTER
 
+/**
+ * Env the DeepSeek routing reads. Saved and cleared per test: primarySourceId()
+ * consults it directly (a DeepSeek session answers 'firstParty' for the
+ * protocol while being nobody's Anthropic), so a developer machine configured
+ * for DeepSeek would otherwise change what every scenario below means.
+ */
+const DEEPSEEK_ENV_KEYS = [
+  'OPENAI_BASE_URL',
+  'OPENAI_API_KEY',
+  'OPENAI_WIRE_API',
+  'ANTHROPIC_BASE_URL',
+  'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE',
+] as const
+const savedDeepSeekEnv = new Map<string, string | undefined>()
+
+function withDeepSeekEnv(env: Record<string, string> = {}): void {
+  for (const key of DEEPSEEK_ENV_KEYS) delete process.env[key]
+  Object.assign(process.env, env)
+}
+
 type Provider = ReturnType<typeof realProviders.getAPIProvider>
 
 /** Provider, credentials and settings for one scenario. */
@@ -97,6 +117,10 @@ function lanes(adapter: unknown): string[] {
 
 beforeEach(() => {
   delete process.env.WEB_SEARCH_ADAPTER
+  for (const key of DEEPSEEK_ENV_KEYS) {
+    savedDeepSeekEnv.set(key, process.env[key])
+    delete process.env[key]
+  }
   resetSourceAvailability()
   resetAdapterCache()
 })
@@ -106,6 +130,10 @@ afterEach(() => {
     delete process.env.WEB_SEARCH_ADAPTER
   } else {
     process.env.WEB_SEARCH_ADAPTER = originalWebSearchAdapter
+  }
+  for (const [key, value] of savedDeepSeekEnv) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
   }
 })
 
@@ -328,6 +356,62 @@ describe('createAdapter — default aggregation', () => {
     resetAdapterCache()
 
     expect(lanes(createAdapter())).toEqual([
+      'CodexSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('a DeepSeek session leads with DeepSeek, not with "Anthropic"', () => {
+    // getAPIProvider() answers 'firstParty' here because that is the PROTOCOL.
+    // Naming the lane `anthropic` on the strength of it would show a connected
+    // Anthropic row in /search-setting whose every byte goes to
+    // api.deepseek.com — and would run the same endpoint twice, once per name.
+    withDeepSeekEnv({
+      OPENAI_BASE_URL: 'https://api.deepseek.com',
+      OPENAI_API_KEY: 'sk-test',
+    })
+    scenario({ provider: 'firstParty', credentials: ['deepseek'] })
+
+    expect(lanes(createAdapter())).toEqual([
+      'ApiSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('DeepSeek on an OpenAI wire still contributes a lane', () => {
+    // OPENAI_WIRE_API is about what the MAIN LOOP speaks; a search source is its
+    // own lane. The chat wire has no built-in search at all, so this session is
+    // the one with the most to gain from the /anthropic endpoint.
+    withDeepSeekEnv({
+      OPENAI_BASE_URL: 'https://api.deepseek.com',
+      OPENAI_API_KEY: 'sk-test',
+      OPENAI_WIRE_API: 'chat',
+    })
+    scenario({ provider: 'openai', credentials: ['deepseek'] })
+
+    // codex is the openai provider's source but holds no credentials, so there
+    // is no primary lane — deepseek and free aggregate on their own.
+    expect(lanes(createAdapter())).toEqual([
+      'DeepSeekDirectSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('every connected source is still a separate parallel lane', () => {
+    // The registry grew a fifth source; adding one must add a lane, never
+    // replace the aggregation with a single pick.
+    withDeepSeekEnv({
+      OPENAI_BASE_URL: 'https://api.deepseek.com',
+      OPENAI_API_KEY: 'sk-test',
+    })
+    scenario({
+      provider: 'firstParty',
+      credentials: ['deepseek', 'gemini', 'codex'],
+    })
+
+    expect(lanes(createAdapter())).toEqual([
+      'ApiSearchAdapter',
+      'GeminiSearchAdapter',
       'CodexSearchAdapter',
       'FreeSearchAdapter',
     ])

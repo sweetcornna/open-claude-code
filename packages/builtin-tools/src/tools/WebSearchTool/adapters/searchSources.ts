@@ -1,9 +1,10 @@
 /**
  * The WebSearch source registry.
  *
- * Four symmetric sources — three provider search layers plus the keyless one:
+ * Five symmetric sources — four provider search layers plus the keyless one:
  *
  *   anthropic  server-side web_search (Claude OAuth / ANTHROPIC_API_KEY)
+ *   deepseek   server-side web_search over DeepSeek's /anthropic endpoint
  *   gemini     googleSearch grounding (Google OAuth / GEMINI_API_KEY)
  *   codex      Responses API web_search (ChatGPT OAuth / OPENAI_API_KEY)
  *   free       keyless multi-engine scraping, always available
@@ -21,16 +22,23 @@
  */
 
 import { hasSearchCredentials } from '@open-claude-code/tool-runtime/searchCredentials.js'
+import { isDeepSeekAnthropicWireActive } from 'src/utils/model/deepseekWire.js'
 import { getMainLoopModel } from 'src/utils/model/model.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js'
 
-export type SearchSourceId = 'anthropic' | 'gemini' | 'codex' | 'free'
+export type SearchSourceId =
+  | 'anthropic'
+  | 'deepseek'
+  | 'gemini'
+  | 'codex'
+  | 'free'
 
 /** Panel order, and the merge order for enhancer lanes. */
 export const SEARCH_SOURCE_IDS: readonly SearchSourceId[] = [
   'anthropic',
+  'deepseek',
   'gemini',
   'codex',
   'free',
@@ -38,6 +46,7 @@ export const SEARCH_SOURCE_IDS: readonly SearchSourceId[] = [
 
 export const SEARCH_SOURCE_LABELS: Record<SearchSourceId, string> = {
   anthropic: 'Anthropic (server-side web_search)',
+  deepseek: 'DeepSeek (server-side web_search)',
   gemini: 'Gemini (Google OAuth)',
   codex: 'Codex (ChatGPT OAuth)',
   free: 'Free search',
@@ -134,6 +143,12 @@ function supportsAnthropicServerSearch(): boolean {
  * leads the aggregation and is never also run as an extra lane.
  */
 export function primarySourceId(): SearchSourceId | undefined {
+  // Before the provider switch, not inside it. A DeepSeek session on the
+  // Anthropic wire reports getAPIProvider() === 'firstParty' — that answers
+  // "which protocol", never "whose models" (CLAUDE.md) — so the plain reading
+  // below would name the primary lane `anthropic` while every byte of it goes
+  // to api.deepseek.com.
+  if (isDeepSeekAnthropicWireActive()) return 'deepseek'
   const provider = getAPIProvider()
   if (provider === 'openai') return 'codex'
   if (provider === 'gemini') return 'gemini'

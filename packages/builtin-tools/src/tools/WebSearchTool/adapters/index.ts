@@ -12,8 +12,8 @@
  *
  * 2. AGGREGATED (the default) — every active source runs in parallel and the
  *    results merge into one list. Sources are symmetric (see
- *    searchSources.ts): anthropic, gemini, codex, free, each switched on by
- *    its own credentials unless the user said otherwise.
+ *    searchSources.ts): anthropic, deepseek, gemini, codex, free, each switched
+ *    on by its own credentials unless the user said otherwise.
  *
  *    The source matching the CURRENT provider is the primary lane: it runs
  *    through the normal query pipeline and its results are ordered first. The
@@ -33,6 +33,7 @@ import { AnthropicDirectSearchAdapter, ApiSearchAdapter } from './apiAdapter.js'
 import { BingSearchAdapter } from './bingAdapter.js'
 import { BraveSearchAdapter } from './braveAdapter.js'
 import { CodexSearchAdapter } from './codexAdapter.js'
+import { DeepSeekDirectSearchAdapter } from './deepseekAdapter.js'
 import { ExaSearchAdapter } from './exaAdapter.js'
 import { FreeSearchAdapter } from './freeAdapter.js'
 import { GeminiSearchAdapter } from './geminiAdapter.js'
@@ -57,6 +58,7 @@ export type SearchAdapterKey =
   | 'bing'
   | 'brave'
   | 'codex'
+  | 'deepseek'
   | 'exa'
   | 'free'
   | 'gemini'
@@ -66,6 +68,7 @@ const ADAPTER_KEYS: readonly string[] = [
   'bing',
   'brave',
   'codex',
+  'deepseek',
   'exa',
   'free',
   'gemini',
@@ -94,6 +97,15 @@ function createSourceAdapter(
       return asPrimary
         ? new ApiSearchAdapter()
         : new AnthropicDirectSearchAdapter()
+    case 'deepseek':
+      // Same split as `anthropic`, same reason: as the session's own provider
+      // the search rides the query pipeline, which already points at DeepSeek.
+      // Off-provider (any wire but the Anthropic one, or a DeepSeek key with the
+      // main loop on somebody else) the pipeline would route it elsewhere, so
+      // the lane resolves the DeepSeek endpoint itself.
+      return asPrimary
+        ? new ApiSearchAdapter()
+        : new DeepSeekDirectSearchAdapter()
     case 'gemini':
       return new GeminiSearchAdapter({ asExtraSource: !asPrimary })
     case 'codex':
@@ -131,6 +143,10 @@ function createExplicitAdapter(key: SearchAdapterKey): WebSearchAdapter {
       return new CodexSearchAdapter(
         primaryId === 'codex' ? {} : { forceChatGPTAuth: true },
       )
+    case 'deepseek':
+      return primaryId === 'deepseek'
+        ? new ApiSearchAdapter()
+        : new DeepSeekDirectSearchAdapter()
     case 'exa':
       return new ExaSearchAdapter()
     case 'gemini':

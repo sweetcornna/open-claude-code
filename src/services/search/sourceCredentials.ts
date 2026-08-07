@@ -20,6 +20,10 @@ import {
 import { hasGeminiOAuthCredentialsSync } from 'src/services/api/gemini/oauthToken.js'
 import { hasStoredChatGPTAuthSync } from 'src/services/api/openai/chatgptAuth.js'
 import { isOfficialOpenAIBaseURL } from 'src/services/api/openai/openaiShared.js'
+import {
+  getDeepSeekSearchEndpoint,
+  isDeepSeekAnthropicWireActive,
+} from 'src/utils/model/deepseekWire.js'
 
 /**
  * The two Anthropic auth probes, loaded on first use.
@@ -57,6 +61,15 @@ function loadAnthropicAuthProbes(): AnthropicAuthProbes {
  * must never blow up on it.
  */
 export function hasAnthropicSearchCredentials(): boolean {
+  // Not "are there Anthropic credentials" but "can this lane reach Anthropic".
+  // While the DeepSeek routing is active, ANTHROPIC_BASE_URL points at
+  // api.deepseek.com and ANTHROPIC_API_KEY is usually this process's own mirror
+  // of the DeepSeek key — so `AnthropicDirectSearchAdapter` would post to
+  // DeepSeek. Left saying "yes", the panel shows a connected *Anthropic* row
+  // that is really DeepSeek (the exact mislabelling CLAUDE.md forbids) and the
+  // aggregation fires the same endpoint twice, once per name. The `deepseek`
+  // source below is what that configuration owns.
+  if (isDeepSeekAnthropicWireActive()) return false
   try {
     if (loadAnthropicAuthProbes().isClaudeAISubscriber()) return true
   } catch {
@@ -67,6 +80,20 @@ export function hasAnthropicSearchCredentials(): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * A DeepSeek endpoint plus a key for it.
+ *
+ * "Configured", not "verified": whether that deployment really serves
+ * `web_search_20250305` is a network question, and this probe is contractually
+ * synchronous and side-effect free. The verified half is
+ * `probeDeepSeekSearchSupport()`, which retires the source through the
+ * session-scoped availability axis when the endpoint says no — the same axis a
+ * live search failure uses.
+ */
+export function hasDeepSeekSearchCredentials(): boolean {
+  return getDeepSeekSearchEndpoint() !== undefined
 }
 
 /** Google OAuth (Antigravity) or a Gemini API key. */
@@ -119,6 +146,8 @@ export function hasSearchCredentials(family: SearchCredentialFamily): boolean {
   switch (family) {
     case 'anthropic':
       return hasAnthropicSearchCredentials()
+    case 'deepseek':
+      return hasDeepSeekSearchCredentials()
     case 'gemini':
       return hasGeminiSearchCredentials()
     case 'codex':
