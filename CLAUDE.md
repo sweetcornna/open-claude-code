@@ -116,7 +116,13 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 **核心规则：不要 mock 被测模块的上层业务模块** —— mock 底层（如 axios，用 `tests/mocks/axios.js` 的 `setupAxiosMock`），否则会污染同目录需要测真实模块的回归测试（如 `api.test.ts`）。排查方法：单跑可疑文件→与同目录合跑定位→`console.error` 追执行顺序→核对 specifier 是否解析到同一模块。
 
-**多文件共用模块必须用完整表面 mock**：`envUtils.js` 用 `tests/mocks/envUtils.ts` 的 `setupEnvUtilsMock(overrides)`，`growthbook.js` 用 `tests/mocks/growthbook.ts`，其他模块用 `tests/mocks/sharedModuleMock.ts` 的 `makeSharedModuleMock` 就地包装。**禁止再手写部分表面的 `mock.module`**（只导出自己用到的几个函数）：进程全局 last-write-wins 下，后跑的文件会拿到缺导出（"Export not found"/undefined）或手抄后漂移的旧语义——这曾让 Linux CI 因文件顺序与 macOS 不同而红了一整批（envUtils 的手抄回退还停留在隔离前的 `~/.claude` 语义）。共享 mock 的默认行为是逐导出委托真实实现，套件只覆写真正需要变的函数，`afterAll` 里 `reset()`。
+**多文件共用模块必须用完整表面 mock**：`envUtils.js` 用 `tests/mocks/envUtils.ts` 的 `setupEnvUtilsMock(overrides)`，`growthbook.js` 用 `tests/mocks/growthbook.ts`，`settings/settings.js` 用 `tests/mocks/settings.ts`，其他模块用 `tests/mocks/sharedModuleMock.ts` 的 `makeSharedModuleMock` 就地包装。**禁止再手写部分表面的 `mock.module`**（只导出自己用到的几个函数）：进程全局 last-write-wins 下，后跑的文件会拿到缺导出（"Export not found"/undefined）或手抄后漂移的旧语义——这曾让 Linux CI 因文件顺序与 macOS 不同而红了一整批（envUtils 的手抄回退还停留在隔离前的 `~/.claude` 语义）。
+
+**表面完整还不够，覆盖必须限定在本 suite 生命周期内**：`setup()` 在模块顶层装完整表面，`beforeAll` 里 `set()`，**`afterAll` 里 `reset()`**。少了 `reset()` 就等于把这条覆盖装给了本进程后续所有文件。两次真实事故都是这么来的：`src/utils/sandbox/__tests__/` spread 了真实模块（表面完整）却把 `getSettingsFilePathForSource` 永久钉成 `undefined`，`changeDetector.test.ts` 于是监听了错误目录；`MagicDocs/__tests__/prompts.test.ts` 套件结束后留下一个**手写**的 fs 适配器，缺 `mkdirSync` 等 `*Sync` 方法，`updateSettingsForSource` 抛错被吞，`pluginOperations.builtinSecurity.test.ts` 拿到 `success:false`。**能用模块自带的 setter（`setFsImplementation`/`setOriginalFsImplementation` 这类）就别用 `mock.module`。**
+
+**Bun 的测试文件顺序由文件系统决定** —— 不是字母序，也**不是命令行参数顺序**（实测：显式传 `d c b a` 与传 `b d a c`，加载顺序完全一致）。所以这类问题在 macOS 上既无法复现也无法用参数强制，只能靠静态检查或真在 Linux 上跑。CI 从 v2.11.0 到 v2.30.0 连续 55 次全红就是这么攒出来的。
+
+**`bun run check:mock-hygiene` 守着这条规则**（也在 precheck 和 CI 里），查两类：仓库内模块的内联 `mock.module('src/…', () => ({ … }))`（必须走 `tests/mocks/` helper；`bun:bundle`/`axios`/`node:*` 豁免），以及顶层 `setup({…})` 却全文件没有 `.reset()`。存量按文件棘轮在 `scripts/mock-hygiene-budget.json`，双向严格（转换掉一处要 `--update` 提交更低基线）。
 
 ## Working with This Codebase
 
@@ -133,6 +139,6 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 - **npm 包名是 `@sweetcornna/open-claude-code`**（无 scope 的 `open-claude-code` 被第三方 0.0.0 占位包抢注，publish 会 403）。包名同时钉在 `package.json`、`src/constants/brand.ts` 的 `NPM_PACKAGE_NAME`（`updateIsolation.test.ts` 断言）、`scripts/install.sh`、README、`docs/zh/auto-updater.md`——改名五处必须同步。bin 名（`occ`/`occ-bun`/`open-claude-code`）与包名无关，不要动。
 - 发布流程：`bun run release <version>`（`scripts/release.ts`，纯逻辑在 `scripts/releaseCore.ts` 并有单测）改齐 `package.json` + `CHANGELOG.md`、跑门禁、提交并打 tag，**故意停在 push 之前**；`git push origin main --follow-tags` 才触发 `publish-npm.yml`：typecheck → `tests/integration` → build:vite + check:bundle + 双入口 `--version` 冒烟 → `npm publish --provenance` → GitHub Release。步骤与版本源清单见 `CONTRIBUTING.md` §11。
-- **publish 故意只跑集成测试**：全量单测在 Linux runner 上有既有的顺序性 env 污染失败（~10 个文件，macOS 本地不复现，main 的 ci.yml 同样红），修复前不要把 `bun test` 全量塞回 publish 门禁。
+- **publish 故意只跑集成测试**，不跑全量单测。历史原因是 Linux runner 上的顺序性 mock/env 污染失败；ci.yml 分片到目录后大部分消失，剩下的两处（settings 覆盖泄漏、fs 适配器泄漏）已在 2026-08-07 定位并修复，`check:mock-hygiene` 守着不再复发。**但在 `ci.yml` 连续绿一段时间之前，不要把 `bun test` 全量塞回 publish 门禁** —— publish 失败会卡住发布，而 ci.yml 失败只是信息。
 - 版本号延续 2.8.x 叙事（首个对外发布是 v2.9.0），**不要回退到 1.x**，也不要发不递增的版本——`occ update` 的 semver 比较会把老用户永远锁在"已是最新"（release 脚本对此有硬校验）。
 - **`CHANGELOG.md` 是用户可见面**：GitHub Release 正文与应用内「更新说明」都读它（后者由 `src/utils/update/releaseNotes.ts` 从本仓库 main 分支拉原始文件，**不是**上游 anthropics/claude-code）。格式受 `parseChangelog` 约束：`## <semver>` 标题 + 顶层 `- ` 条目，写坏了不报错、只是条目静默消失。release 脚本插入的是 commit subject 草稿，必须人工润色。

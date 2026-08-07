@@ -98,6 +98,26 @@ occ 必须能和官方 Claude Code 装在同一台机器上互不干扰。**所�
 
 另外：手写 lazy `require()` 当"破环器"**无效** —— madge 把 `require` 边也算进去。不要再加这类代码。
 
+### 9.1 Mock 卫生棘轮
+
+`bun run check:mock-hygiene` 与 `scripts/mock-hygiene-budget.json` 比对，同样双向严格，同样在 precheck 和 CI 里。
+
+规则只有一条：**mock 仓库内的模块必须走 `tests/mocks/` 的 helper，不能写内联 `mock.module('src/…', () => ({ … }))`。** 外部 specifier（`bun:bundle`、`axios`、`node:*`）豁免——它们没有可委托的仓库模块。
+
+脚本查两类，分别记账：
+
+1. **内联表面** —— `mock.module('src/…', () => ({ … }))`。
+2. **未复位的覆盖** —— `setupXMock({ … })` / `.setup({ … })` 在模块顶层装了覆盖，全文件却没有任何 `.reset()`。
+
+为什么值得一条棘轮：Bun 把一个分片的所有测试文件跑在**同一个进程**里，而 `mock.module` 是进程全局、last-write-wins 的。所以内联 mock 不是「给自己」装的，是给此后加载的每个文件装的。而且**表面完整也不够**，关键是覆盖的生命周期：
+
+- `src/utils/sandbox/__tests__/` spread 了真实模块（表面完整），只把 `getSettingsFilePathForSource` 永久钉成 `undefined` → `changeDetector.test.ts` 监听了错误目录。
+- `MagicDocs/__tests__/prompts.test.ts` 在套件结束后装了个**手写的** fs 适配器，缺 `mkdirSync` 等一批 `*Sync` 方法 → `updateSettingsForSource` 抛错被吞 → `pluginOperations.builtinSecurity.test.ts` 拿到 `success:false`。
+
+两个都只在 Linux 上炸：**Bun 的测试文件顺序由文件系统决定，既不是字母序也不是命令行参数顺序，本地无法复现、也无法用参数控制**。CI 从 v2.11.0 到 v2.30.0 连续 55 次全红。正确写法是 `setup()` 装完整表面 → `beforeAll` 里 `set()` → **`afterAll` 里 `reset()`**；能用模块自带的 setter（如 `setFsImplementation`/`setOriginalFsImplementation`）就别用 `mock.module`。
+
+存量 251 处内联 + 27 处未复位按文件记在预算里，逐步转换；每转换一处跑 `--update` 提交更低基线。
+
 ## 10. Pull Request
 
 1. 从 `main` 切分支。

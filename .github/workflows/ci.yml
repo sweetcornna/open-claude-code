@@ -55,6 +55,14 @@ jobs:
       - name: Check prompt purity
         run: bun run check:prompt-purity
 
+      # Guards the failure mode behind all 55 red runs between v2.11.0 and
+      # v2.30.0: a mock.module surface (or an unreset override) leaks to every
+      # later file in the shard, and Bun's test-file order comes from the
+      # filesystem — so it only ever reproduced here, never locally. Also a
+      # ratchet, also inside precheck.
+      - name: Check mock hygiene
+        run: bun run check:mock-hygiene
+
       - name: Test with Coverage (sharded per directory)
         run: |
           # Bun runs every test file in ONE process and mock.module is
@@ -64,9 +72,20 @@ jobs:
           # red on Linux" ordering failures. Every directory is REQUIRED to pass
           # standalone (no flaky tolerance); each shard writes its own lcov and
           # they are concatenated into the single coverage artifact.
-          set -euo pipefail
+          # `set -e` is deliberately NOT used for the loop: aborting on the
+          # first red shard hides every shard after it. That is not
+          # hypothetical — one poisoned mock in src/utils (shard 22 of 34) meant
+          # src/workflow, all of packages/*, tests/integration and scripts had
+          # never once been exercised on CI. Failures are collected and
+          # reported together at the end instead.
+          # `set +e` is required, not merely omitting `-e`: Actions invokes
+          # `run:` steps as `bash -e {0}`, so errexit is already on when the
+          # script starts.
+          set +e
+          set -uo pipefail
           rm -rf coverage && mkdir -p coverage
           shard=0
+          failed=()
           for d in src/* packages/* tests/integration scripts; do
             [ -d "$d" ] || continue
             if ! find "$d" \( -name '*.test.ts' -o -name '*.test.tsx' \) -print -quit | grep -q .; then
@@ -76,12 +95,26 @@ jobs:
             echo "──── shard ${shard}: ${d}"
             bun test --coverage --coverage-reporter lcov --coverage-dir "coverage/shard-${shard}" "$d" 2>&1 \
               | grep -vE '^\s*(\(pass\)|\(skip\))' | sed '/^.*\/__tests__\/.*:$/d' | cat -s
+            # PIPESTATUS[0], not $? — the pipeline's status is grep/sed/cat's,
+            # and `grep -v` exits 1 whenever it filters out every line.
+            if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+              failed+=("$d")
+              echo "::error title=Test shard failed::${d}"
+            fi
             # Tiny shards can produce no lcov at all — the artifact just needs
             # the union of what was measured, not a file per shard.
             if [ -f "coverage/shard-${shard}/lcov.info" ]; then
               cat "coverage/shard-${shard}/lcov.info" >> coverage/lcov.info
             fi
           done
+          set -e
+          # Failing shards are reported before the coverage sanity checks: when
+          # both go wrong, "which tests broke" is the actionable message.
+          if [ ${#failed[@]} -ne 0 ]; then
+            echo "──── ${#failed[@]} of ${shard} shards failed: ${failed[*]}"
+            exit 1
+          fi
+          echo "──── all ${shard} shards passed"
           test -s coverage/lcov.info
           grep -q '^SF:' coverage/lcov.info
 
