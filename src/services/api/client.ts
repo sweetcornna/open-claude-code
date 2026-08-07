@@ -12,6 +12,7 @@ import {
 } from 'src/utils/auth/auth.js'
 import { getUserAgent } from 'src/utils/network/http.js'
 import { getSmallFastModel } from 'src/utils/model/model.js'
+import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js'
 import { isDirectAnthropicApi } from 'src/utils/model/providers.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import {
@@ -94,6 +95,17 @@ export async function getAnthropicClient({
   fetchOverride?: ClientOptions['fetch']
   source?: string
 }): Promise<Anthropic> {
+  // Last line of defence for the DeepSeek routing. getAPIProvider() starts
+  // answering 'firstParty' the moment the DeepSeek keys appear in process.env,
+  // but the ANTHROPIC_* mirror that makes that answer *work* is a separate
+  // side effect — so every path that mutates provider env has to remember to
+  // re-run it, and the ones that forgot sent requests to api.anthropic.com
+  // with no credential ("Not logged in · Please run /login"). Chasing call
+  // sites was whack-a-mole; applying it here makes it impossible for a request
+  // to be built from an unapplied mirror, whatever wrote the env. Idempotent
+  // and env-only, and this function already builds a fresh client per call.
+  applyDeepSeekAnthropicWire()
+
   const containerId = process.env.CLAUDE_CODE_CONTAINER_ID
   const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
   const clientApp = process.env.CLAUDE_AGENT_SDK_CLIENT_APP

@@ -10,6 +10,7 @@ import type {
   SDKUserMessage,
 } from 'src/entrypoints/agentSdkTypes.js'
 import { SDKControlElicitationResponseSchema } from 'src/entrypoints/sdk/controlSchemas.js'
+import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js'
 import type {
   SDKControlRequest,
   SDKControlResponse,
@@ -366,6 +367,10 @@ export class StructuredIO {
         for (const [key, value] of Object.entries(variables)) {
           process.env[key] = value
         }
+        // Provider keys can arrive this way too, and they change what
+        // getAPIProvider() answers — so the DeepSeek mirror has to follow them
+        // here as much as it does after /login.
+        applyDeepSeekAnthropicWire()
         logForDebugging(
           `[structuredIO] applied update_environment_variables: ${keys.join(', ')}`,
         )
