@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { existsSync } from 'fs'
 import { debugMock } from '../../../../tests/mocks/debug'
-import { stateMock } from '../../../../tests/mocks/state'
+import { stateMockWith } from '../../../../tests/mocks/state'
 import { makeSharedModuleMock } from '../../../../tests/mocks/sharedModuleMock'
 import * as realWhich from '../../process/which.js'
 
@@ -22,14 +22,17 @@ mock.module('src/utils/config/config.ts', () => ({
   saveGlobalConfig: () => {},
 }))
 
-// Spread the shared mock rather than replacing state.ts with a two-export
-// stub: `mock.module` is process-global in Bun, so a partial mock here would
-// break every other test file that loads bootstrap/state afterwards.
+// Go through stateMockWith rather than hand-spreading: bootstrap/state.ts is a
+// re-export barrel over @open-claude-code/tool-runtime, and on Linux (not
+// macOS) mocking the barrel replaces the package module too. The helper builds
+// a surface that delegates every non-overridden export to the real module, so
+// that replacement is behaviour-preserving; a hand-written literal is what
+// breaks later files in the shard.
 let nonInteractive = false
-mock.module('src/bootstrap/state.ts', () => ({
-  ...stateMock(),
-  getIsNonInteractiveSession: () => nonInteractive,
-}))
+mock.module(
+  'src/bootstrap/state.ts',
+  stateMockWith({ getIsNonInteractiveSession: () => nonInteractive }),
+)
 
 const {
   buildChromeDevtoolsArgs,

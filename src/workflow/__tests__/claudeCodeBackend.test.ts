@@ -1,4 +1,6 @@
-import { expect, test, mock } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
+import * as realTools from 'src/tools.js'
+import { makeSharedModuleMock } from '../../../tests/mocks/sharedModuleMock.js'
 
 // Note: mock specifier must resolve to the same module that impl actually imports (bun mock.module
 // matches by resolved module). impl uses '@open-claude-code/builtin-tools/...' and 'src/*' alias
@@ -31,7 +33,15 @@ mock.module(
     isBuiltInAgent: () => true,
   }),
 )
-mock.module('src/tools.js', () => ({ assembleToolPool: () => ({ tools: [] }) }))
+// src/tools.ts is a re-export barrel over @open-claude-code/builtin-tools, and
+// on Linux mocking a barrel replaces the package module too — a one-export
+// literal here would blank out the other twelve for every later file in the
+// src/workflow shard. Wrap the real module so only assembleToolPool changes.
+const toolsMock = makeSharedModuleMock('src/tools.js', realTools).setup()
+beforeAll(() =>
+  toolsMock.set({ assembleToolPool: () => ({ tools: [] }) as never }),
+)
+afterAll(() => toolsMock.reset())
 mock.module('src/utils/messages.js', () => ({
   // Return a shape that satisfies UserMessage consumers process-wide.
   // Bun's mock.module is process-global (last-write-wins), so an incomplete

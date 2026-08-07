@@ -166,8 +166,21 @@ interface Offender {
   shims: string[]
 }
 
-/** Every `mock.module('<spec>', …)` call, helper-based factories included. */
-const ANY_MOCK_RE = /\bmock\.module\(\s*['"]([^'"]+)['"]/g
+/**
+ * A `mock.module` on a re-export shim whose factory is written out by hand.
+ *
+ * Helper-based factories (`stateMockWith({ … })`) are NOT flagged: those build
+ * a complete surface that delegates every non-overridden export to the real
+ * module, so replacing the package module with it preserves behaviour. What
+ * broke CI twice was a hand-written STUB on a shim — `findToolByName: () => {}`
+ * and `AbortError: class extends Error {}` — where the package's real
+ * implementation is gone and every later consumer in the shard gets the stub.
+ *
+ * Flagging the safe form too would put 7 correct call sites in the report, and
+ * a ratchet that cries wolf gets muted.
+ */
+const INLINE_SHIM_MOCK_RE =
+  /\bmock\.module\(\s*['"]([^'"]+)['"]\s*,\s*\(\s*\)\s*=>\s*\(\s*\{/g
 
 function scan(): {
   offenders: Offender[]
@@ -198,7 +211,7 @@ function scan(): {
       specifiers.push(specifier)
     }
     const shims: string[] = []
-    for (const match of source.matchAll(ANY_MOCK_RE)) {
+    for (const match of source.matchAll(INLINE_SHIM_MOCK_RE)) {
       const specifier = match[1]
       if (specifier === undefined) continue
       if (shimModules.has(specifier.replace(/\.(ts|tsx|js|jsx)$/, ''))) {
