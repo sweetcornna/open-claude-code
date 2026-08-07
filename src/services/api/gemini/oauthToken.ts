@@ -13,7 +13,10 @@
 
 import { existsSync } from 'fs'
 import { getAntigravityAccessToken } from 'src/services/auth/antigravity/oauth.js'
-import { antigravityAuthFilePath } from 'src/services/auth/antigravity/store.js'
+import {
+  antigravityAuthFilePath,
+  removeAntigravityTokens,
+} from 'src/services/auth/antigravity/store.js'
 
 /** Access token for the connected Google account, or null when not connected. */
 export async function getGeminiOAuthAccessToken(): Promise<string | null> {
@@ -42,10 +45,28 @@ export function hasGeminiOAuthCredentialsSync(): boolean {
 /**
  * Run the interactive Google login. Imported lazily: the login flow pulls in a
  * local callback server and the browser launcher, which no search path needs.
+ *
+ * The signal is the panel's cancel key: the flow parks on a local callback
+ * listener until the browser comes back, and without a way out that wait is
+ * unbounded — the user closes the consent tab and the row stays "logging in…"
+ * for the rest of the session.
  */
-export async function startGeminiOAuthLogin(): Promise<void> {
+export async function startGeminiOAuthLogin(
+  signal?: AbortSignal,
+): Promise<void> {
   const { startAntigravityOAuthLogin } = await import(
     'src/services/auth/antigravity/login.js'
   )
-  await startAntigravityOAuthLogin()
+  await startAntigravityOAuthLogin(signal ? { signal } : {})
+}
+
+/**
+ * Disconnect the Google account from the search stack.
+ *
+ * Only the stored OAuth tokens: `GEMINI_API_KEY` is the user's environment and
+ * not ours to unset, so a source that stays connected after this is being held
+ * up by that key — which is what /search-setting then says.
+ */
+export async function removeGeminiOAuthCredentials(): Promise<void> {
+  await removeAntigravityTokens()
 }
