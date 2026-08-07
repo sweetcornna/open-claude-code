@@ -4,6 +4,11 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.32.3 - 2026-08-07
+
+- **修复：2.32.2 没有真正修好 `Not logged in · Please run /login`。** 上一版把修复挂在几个已知的入口上，但那是打地鼠 —— 还有别的地方会在会话中途改写 provider 配置，同样不会触发 DeepSeek 路由的内部镜像，于是请求照旧打到 Anthropic 官方接口、不带凭据。这一版把兜底放在**构造 API 客户端的那一步**：请求不可能再由一份没应用的配置构造出来，无论是谁、在什么时候改的配置。
+- 这次是对着**真实构建产物**端到端验证的，不再只跑单元测试：同一份「配置中途到达」的输入，2.32.2 返回 `Not logged in`，本版返回正常回复并确认用的是 `deepseek-v4-flash`；两个启动入口的常规路径也回归过。
+
 ## 2.32.2 - 2026-08-07
 
 - **修复：配置完 DeepSeek 后立刻报 `Not logged in · Please run /login`，模型也显示成 `claude-sonnet-5`。** occ 把 DeepSeek 路由到它的 Anthropic 兼容接口，这需要在内部把配置镜像一份；但那个镜像**只在启动时跑一次**，而且要求 API key 当时就已存在。首次登录时进程启动阶段还没有 key，镜像就没做；随后登录写入配置，occ 立刻认为自己在走这条线，却没有真的应用它 —— 请求打到了 Anthropic 官方接口、没带任何凭据（于是 401），模型别名也解析成了 Anthropic 的名字。一个漏掉的调用，三个症状。现在镜像跟着配置走：登录、`/models`、`/provider use`、切换 provider 都会重新应用。
