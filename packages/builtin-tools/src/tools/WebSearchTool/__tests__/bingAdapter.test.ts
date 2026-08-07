@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, mock, test } from 'bun:test'
 import { setupAxiosMock } from '../../../../../../tests/mocks/axios'
 import { setupRuntimeErrorsMock } from '../../../../../../tests/mocks/runtimeErrors'
+import { setupHttpMock } from '../../../../../../tests/mocks/http'
 
 // Each test below calls `mock.module('axios', ...)` per-test. Re-register a
 // spread-real axios mock at end-of-file so the per-test stubs do not leak
@@ -15,6 +16,11 @@ afterAll(() => {
 // broke this very file's imports. Delegating to the real module also keeps
 // AbortError the SAME class the adapters throw.
 setupRuntimeErrorsMock()
+
+// All-real surface at load; each test that needs a fixed UA calls .set() at the
+// point the inline mock.module used to sit, so earlier tests keep the real one.
+const httpMock = setupHttpMock()
+afterAll(() => httpMock.reset())
 
 import { extractBingResults, decodeHtmlEntities } from '../adapters/bingAdapter'
 
@@ -331,9 +337,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const adapter = await createAdapter()
     const results = await adapter.search('test query', {})
@@ -349,9 +353,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const progressCalls: any[] = []
     const onProgress = (p: any) => progressCalls.push(p)
@@ -383,9 +385,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const adapter = await createAdapter()
     const results = await adapter.search('test', {
@@ -412,9 +412,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const adapter = await createAdapter()
     const results = await adapter.search('test', {
@@ -441,9 +439,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const adapter = await createAdapter()
     const results = await adapter.search('test', {
@@ -467,9 +463,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: (e: any) => e?.__CANCEL__ === true,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const adapter = await createAdapter()
     const controller = new AbortController()
@@ -489,9 +483,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const adapter = await createAdapter()
     await expect(adapter.search('test', {})).rejects.toThrow('Network error')
@@ -505,9 +497,7 @@ describe('BingSearchAdapter.search', () => {
         isCancel: () => false,
       },
     }))
-    mock.module('src/utils/network/http', () => ({
-      getWebFetchUserAgent: () => 'TestAgent/1.0',
-    }))
+    httpMock.set({ getWebFetchUserAgent: () => 'TestAgent/1.0' })
 
     const adapter = await createAdapter()
     await adapter.search('hello world & special=chars', {})

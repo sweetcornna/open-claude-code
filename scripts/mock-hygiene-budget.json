@@ -3,7 +3,7 @@
     2, 0, 0
   ],
   "packages/builtin-tools/src/tools/AgentTool/__tests__/agentToolUtils.test.ts": [
-    16, 0, 0
+    10, 0, 0
   ],
   "packages/builtin-tools/src/tools/PowerShellTool/__tests__/gitSafety.test.ts": [
     2, 0, 0
@@ -22,9 +22,6 @@
   ],
   "packages/builtin-tools/src/tools/WebFetchTool/__tests__/headers.test.ts": [
     3, 0, 0
-  ],
-  "packages/builtin-tools/src/tools/WebSearchTool/__tests__/bingAdapter.test.ts": [
-    8, 0, 0
   ],
   "src/commands/__tests__/commit-push-pr.test.ts": [1, 0, 0],
   "src/commands/autofix-pr/__tests__/launchAutofixPr.test.ts": [2, 0, 0],
