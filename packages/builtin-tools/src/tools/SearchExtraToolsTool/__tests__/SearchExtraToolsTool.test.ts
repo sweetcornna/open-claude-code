@@ -4,6 +4,11 @@ import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 import { makeSharedModuleMock } from '../../../../../../tests/mocks/sharedModuleMock'
 
+import * as realToolConstants from 'src/constants/tools.js'
+mock.module('src/constants/tools.js', () => ({
+  ...realToolConstants,
+  CORE_TOOLS: new Set(['Read', 'Edit', 'SearchExtraTools', 'ExecuteExtraTool']),
+}))
 mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
@@ -290,6 +295,30 @@ describe('SearchExtraTools delivers parameter schemas to the model', () => {
     const schema = result.data.schemas?.DiscoverSkills as {
       properties: Record<string, unknown>
       required: string[]
+    }
+    if (!schema) {
+      const { CORE_TOOLS } = await import('src/constants/tools.js')
+      const { zodToJsonSchema } = await import(
+        'src/utils/text/zodToJsonSchema.js'
+      )
+      let direct = 'n/a'
+      try {
+        direct = JSON.stringify(zodToJsonSchema(tool.inputSchema as never))
+      } catch (e) {
+        direct = 'THREW: ' + String(e)
+      }
+      console.error('[DIAG] result.data=' + JSON.stringify(result.data))
+      console.error(
+        '[DIAG] CORE_TOOLS.size=' +
+          (CORE_TOOLS?.size ?? 'undefined') +
+          ' hasRead=' +
+          (CORE_TOOLS?.has?.('Read') ?? 'n/a'),
+      )
+      console.error('[DIAG] zodToJsonSchema(tool.inputSchema)=' + direct)
+      console.error(
+        '[DIAG] typeof tool.inputSchema=' +
+          typeof (tool as { inputSchema?: unknown }).inputSchema,
+      )
     }
     expect(schema).toBeDefined()
     expect(Object.keys(schema.properties).sort()).toEqual([
