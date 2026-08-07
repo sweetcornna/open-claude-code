@@ -60,11 +60,12 @@
     "check:docs-i18n": "bun run scripts/check-docs-i18n.ts",
     "check:cycles": "bun run scripts/check-cycles.ts",
     "check:prompt-purity": "bun run scripts/check-prompt-purity.ts",
+    "check:mock-hygiene": "bun run scripts/check-mock-hygiene.ts",
     "postinstall": "node scripts/postinstall.cjs",
     "docs:dev": "npx mintlify dev",
     "typecheck": "tsc --noEmit",
     "release": "bun run scripts/release.ts",
-    "precheck": "bun run typecheck && bun run check:fix && bun run check:prompt-purity && bun test"
+    "precheck": "bun run typecheck && bun run check:fix && bun run check:prompt-purity && bun run check:mock-hygiene && bun test"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.19.0",

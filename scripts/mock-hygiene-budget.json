@@ -1,0 +1,95 @@
+{
+  "packages/builtin-tools/src/tools/AgentTool/__tests__/agentDisplay.test.ts": [
+    2, 0
+  ],
+  "packages/builtin-tools/src/tools/AgentTool/__tests__/agentToolUtils.test.ts": [
+    18, 0
+  ],
+  "packages/builtin-tools/src/tools/ExecuteTool/__tests__/ExecuteTool.render.test.ts": [
+    5, 0
+  ],
+  "packages/builtin-tools/src/tools/PowerShellTool/__tests__/gitSafety.test.ts": [
+    2, 0
+  ],
+  "packages/builtin-tools/src/tools/PowerShellTool/__tests__/powershellSecurity.test.ts": [
+    2, 0
+  ],
+  "packages/builtin-tools/src/tools/RemoteTriggerTool/__tests__/RemoteTriggerTool.test.ts": [
+    4, 0
+  ],
+  "packages/builtin-tools/src/tools/SearchExtraToolsTool/__tests__/SearchExtraToolsTool.test.ts": [
+    4, 1
+  ],
+  "packages/builtin-tools/src/tools/VaultHttpFetchTool/__tests__/VaultHttpFetchTool.test.ts": [
+    1, 0
+  ],
+  "packages/builtin-tools/src/tools/WebFetchTool/__tests__/headers.test.ts": [
+    5, 0
+  ],
+  "packages/builtin-tools/src/tools/WebSearchTool/__tests__/bingAdapter.test.ts": [
+    8, 0
+  ],
+  "src/commands/__tests__/commit-push-pr.test.ts": [7, 0],
+  "src/commands/__tests__/commit.test.ts": [7, 0],
+  "src/commands/agents-platform/__tests__/agentsApi.test.ts": [1, 1],
+  "src/commands/agents-platform/__tests__/launchAgentsPlatform.test.ts": [6, 1],
+  "src/commands/autofix-pr/__tests__/launchAutofixPr.test.ts": [3, 2],
+  "src/commands/break-cache/__tests__/break-cache.test.ts": [1, 0],
+  "src/commands/debug-tool-call/__tests__/debug-tool-call.test.ts": [1, 0],
+  "src/commands/login/__tests__/WorkspaceKeyInput.test.tsx": [2, 0],
+  "src/commands/login/__tests__/getAuthStatus.test.ts": [6, 0],
+  "src/commands/memory-stores/__tests__/api.test.ts": [1, 1],
+  "src/commands/memory-stores/__tests__/launchMemoryStores.test.ts": [7, 0],
+  "src/commands/onboarding/__tests__/onboarding.test.tsx": [2, 0],
+  "src/commands/perf-issue/__tests__/perf-issue.test.ts": [1, 0],
+  "src/commands/poor/__tests__/poorMode.test.ts": [1, 0],
+  "src/commands/recap/__tests__/recap.test.ts": [5, 1],
+  "src/commands/review/__tests__/ultrareviewCommand.test.tsx": [4, 2],
+  "src/commands/schedule/__tests__/api.test.ts": [3, 1],
+  "src/commands/schedule/__tests__/launchSchedule.test.ts": [5, 2],
+  "src/commands/share/__tests__/share-gh.test.ts": [1, 0],
+  "src/commands/share/__tests__/share-projectdir.test.ts": [1, 0],
+  "src/commands/share/__tests__/share.test.ts": [1, 0],
+  "src/commands/skill-store/__tests__/api.test.ts": [1, 1],
+  "src/commands/skill-store/__tests__/launchSkillStore.test.ts": [5, 0],
+  "src/commands/teleport/__tests__/launchTeleport.test.ts": [3, 1],
+  "src/commands/tui/__tests__/tui.test.ts": [1, 0],
+  "src/commands/usage/__tests__/usage.test.ts": [0, 3],
+  "src/commands/vault/__tests__/api.test.ts": [1, 1],
+  "src/commands/vault/__tests__/launchVault.test.ts": [3, 1],
+  "src/components/FeedbackSurvey/__tests__/useFrustrationDetection.test.tsx": [
+    3, 0
+  ],
+  "src/components/__tests__/SearchExtraToolsHint.test.ts": [0, 1],
+  "src/constants/__tests__/tools.test.ts": [0, 1],
+  "src/constants/promptEngineeringAudit.runner.ts": [35, 2],
+  "src/services/MagicDocs/__tests__/prompts.test.ts": [2, 0],
+  "src/services/SessionMemory/__tests__/prompts.test.ts": [5, 0],
+  "src/services/acp/__tests__/permissions.test.ts": [2, 0],
+  "src/services/api/grok/__tests__/client.test.ts": [1, 0],
+  "src/services/api/openai/__tests__/queryModelOpenAI.runner.ts": [17, 1],
+  "src/services/auth/__tests__/hostGuard.test.ts": [1, 0],
+  "src/services/auth/__tests__/saveWorkspaceKey.test.ts": [2, 0],
+  "src/services/goal/__tests__/goalTurnOutcome.test.ts": [1, 0],
+  "src/services/langfuse/__tests__/langfuse.test.ts": [0, 1],
+  "src/services/lsp/__tests__/closeAllFiles.test.ts": [4, 0],
+  "src/services/mcp/__tests__/channelAllowlist.test.ts": [1, 0],
+  "src/services/mcp/__tests__/channelPermissions.test.ts": [1, 0],
+  "src/services/searchExtraTools/__tests__/prefetch.runner.ts": [3, 0],
+  "src/services/searchExtraTools/__tests__/toolIndex.test.ts": [1, 0],
+  "src/services/skillSearch/__tests__/intentNormalize.test.ts": [1, 0],
+  "src/tasks/LocalAgentTask/__tests__/LocalAgentTask.test.ts": [5, 0],
+  "src/tasks/LocalWorkflowTask/__tests__/LocalWorkflowTask.test.ts": [1, 0],
+  "src/utils/__tests__/autonomyPersistence.test.ts": [1, 0],
+  "src/utils/__tests__/effort.test.ts": [1, 0],
+  "src/utils/__tests__/language.test.ts": [2, 0],
+  "src/utils/__tests__/taskSummary.test.ts": [2, 0],
+  "src/utils/__tests__/tokens.test.ts": [1, 0],
+  "src/utils/chromeDevtools/__tests__/setup.test.ts": [2, 0],
+  "src/utils/deepLink/__tests__/protocolHandler.test.ts": [5, 0],
+  "src/utils/plugins/__tests__/defaultMarketplace.test.ts": [0, 1],
+  "src/utils/processUserInput/__tests__/processSlashCommand.test.ts": [2, 0],
+  "src/utils/swarm/__tests__/agentTeamsLifecycle.test.ts": [0, 1],
+  "src/utils/task/__tests__/framework.test.ts": [2, 0],
+  "src/workflow/__tests__/claudeCodeBackend.test.ts": [16, 0]
+}
