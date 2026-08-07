@@ -134,9 +134,11 @@ jobs:
       - name: Check bundle integrity
         run: bun run check:bundle
 
-      # Surface knip drift without gating merges yet; promote this check after a clean period.
+      # Now gating. `check:unused` is a ratchet over knip rather than raw knip:
+      # seven categories (unused files/deps/binaries, unlisted, unresolved …)
+      # were cleaned to zero and are held there, while the ~1900 unused
+      # exports/types are a two-sided budget. Raw output: `check:unused:raw`.
       - name: Check unused exports
-        continue-on-error: true
         run: bun run check:unused
 
   # Deliberately a separate job rather than a matrix leg of `ci`: it runs a

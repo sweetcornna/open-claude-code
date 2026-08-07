@@ -116,7 +116,20 @@ occ 必须能和官方 Claude Code 装在同一台机器上互不干扰。**所�
 
 两个都只在 Linux 上炸：**Bun 的测试文件顺序由文件系统决定，既不是字母序也不是命令行参数顺序，本地无法复现、也无法用参数控制**。CI 从 v2.11.0 到 v2.30.0 连续 55 次全红。正确写法是 `setup()` 装完整表面 → `beforeAll` 里 `set()` → **`afterAll` 里 `reset()`**；能用模块自带的 setter（如 `setFsImplementation`/`setOriginalFsImplementation`）就别用 `mock.module`。
 
-存量 251 处内联 + 27 处未复位按文件记在预算里，逐步转换；每转换一处跑 `--update` 提交更低基线。
+存量按文件记在预算里，逐步转换；每转换一处跑 `--update` 提交更低基线。
+
+### 9.2 死代码棘轮
+
+`bun run check:unused` 是**套在 knip 外面的棘轮**，不是裸 knip。裸 knip 报 ~1900 条未使用导出/类型，其中相当一部分**不能删** —— 光 `src/entrypoints/sdk/` 就占约 170 条，那是 Agent SDK 的公开 schema 表面，`coreTypes.generated.ts` 正是从 `coreSchemas.ts` 生成的，"内部没人 import"是预期状态而非缺陷。照 knip 的话删会破坏已发布的契约。
+
+所以按可信度分两档：
+
+- **硬性零**（`files` / `dependencies` / `devDependencies` / `optionalPeerDependencies` / `unlisted` / `unresolved` / `binaries`）—— 已逐条核实清空，再出现就是真事故（没人 import 的文件、没人用的依赖、解析不到的 import）。**一出现就 fail。**
+- **预算档**（`exports` / `types` / `duplicates`）—— 存量记在 `scripts/unused-budget.json`，双向严格，与前面几个棘轮同一套契约。
+
+想看原始报告用 `bun run check:unused:raw`。
+
+**核实过再删。** knip 在这个仓库假阳性不少：vendored Ink（`packages/@ant/*` 被整体排除在分析外）让它把 `auto-bind`、`cli-boxes`、`emoji-regex`、`react-reconciler`、`wrap-ansi` 等十个**在用**的依赖报成未使用 —— 照单删会直接搞坏构建。这类只能进 `ignoreDependencies` 并写明原因。`@napi-rs/keyring` 同理：它是**故意可选**的动态 import（模块缺失就降级到加密文件存储），不是漏声明。
 
 ## 10. Pull Request
 
