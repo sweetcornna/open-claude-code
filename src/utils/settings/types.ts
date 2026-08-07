@@ -251,6 +251,35 @@ export const CUSTOMIZATION_SURFACES = [
   'mcp',
 ] as const
 
+/**
+ * One tier's overrides in `settings.modelSettings`.
+ *
+ * The effort enum is deliberately NOT gated on USER_TYPE === 'ant' the way the
+ * legacy flat `effortLevel` is: DeepSeek's factory default is `max`, so every
+ * user must be able to see, keep and choose it. `.catch(undefined)` on each
+ * field means a hand-edited bad value degrades to "unset" instead of failing
+ * the whole settings file.
+ */
+const ModelTierSettingsSchema = lazySchema(() =>
+  z
+    .object({
+      effort: z
+        .enum(['low', 'medium', 'high', 'xhigh', 'max'])
+        .optional()
+        .catch(undefined)
+        .describe('Thinking effort for this tier.'),
+      contextTokens: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .catch(undefined)
+        .describe('Context window in tokens for this tier.'),
+    })
+    .optional()
+    .catch(undefined),
+)
+
 export const SettingsSchema = lazySchema(() =>
   z
     .object({
@@ -806,6 +835,21 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .catch(undefined)
         .describe('Persisted effort level for supported models.'),
+      modelSettings: z
+        .object({
+          haiku: ModelTierSettingsSchema(),
+          sonnet: ModelTierSettingsSchema(),
+          opus: ModelTierSettingsSchema(),
+          fable: ModelTierSettingsSchema(),
+        })
+        .partial()
+        .optional()
+        .catch(undefined)
+        .describe(
+          'Per-tier thinking effort and context window. Overrides the built-in ' +
+            'provider defaults; CLAUDE_CODE_EFFORT_LEVEL and ' +
+            'CLAUDE_CODE_MAX_CONTEXT_TOKENS still win over both.',
+        ),
       advisorModel: z
         .string()
         .optional()

@@ -1,5 +1,9 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { CONTEXT_1M_BETA_HEADER } from '../../constants/betas.js'
+import {
+  getExplicitTierContextTokens,
+  getTierDefaultContextTokens,
+} from '../model/tierSettings.js'
 import { getGlobalConfig } from '../config/config.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { getCanonicalName } from '../model/model.js'
@@ -13,7 +17,10 @@ import { getDeepSeekContextWindow } from '../model/deepseekFamily.js'
 import { getModelCapability } from '../model/modelCapabilities.js'
 
 // Model context window size (200k tokens for all models right now)
-export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
+export /** At or above this, a window needs the 1M capability to be honoured. */
+const CONTEXT_1M_THRESHOLD = 1_000_000
+
+const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
 
 // Maximum output tokens for compact operations
 export const COMPACT_MAX_OUTPUT_TOKENS = 20_000
@@ -81,6 +88,27 @@ export function getContextWindowForModel(
   }
 
   // [1m] suffix — explicit client-side opt-in, respected over all detection
+  // An EXPLICIT per-tier setting sits directly under the env override: the user
+  // said what they want, so it beats every detection heuristic below.
+  //
+  // The family DEFAULT deliberately does not go here — it would return a value
+  // for every model and short-circuit China-preset windows, ChatGPT windows and
+  // the /v1/models capability lookup, all of which know more than a default
+  // does. It is applied at the bottom instead, in place of the flat 200k.
+  const explicitTierTokens = getExplicitTierContextTokens(model)
+  if (explicitTierTokens !== undefined) {
+    // Clamped by capability: widening the local accounting to 1M on a model
+    // that cannot do it would stop auto-compact from ever firing and turn a
+    // compaction into a hard prompt-too-long at the real limit.
+    if (
+      explicitTierTokens < CONTEXT_1M_THRESHOLD ||
+      has1mContext(model) ||
+      modelSupports1M(model)
+    ) {
+      return explicitTierTokens
+    }
+  }
+
   if (has1mContext(model)) {
     return 1_000_000
   }
@@ -114,7 +142,18 @@ export function getContextWindowForModel(
       is1mContextDisabled() &&
       chatgptContextWindow > MODEL_CONTEXT_WINDOW_DEFAULT
     ) {
-      return MODEL_CONTEXT_WINDOW_DEFAULT
+      // Family default in place of the flat 200k fallback: a DeepSeek or GPT model
+      // that reached here still gets a sane window instead of the generic guess.
+      //
+      // Clamped the same way as the explicit arm above. A Claude id that never went
+      // through apply1mContextOptIn carries no `[1m]`, so betas.ts sends no
+      // context-1m header and the API still cuts off at 200k — reporting 1M here
+      // would leave auto-compact idle right up to a hard prompt-too-long.
+      const familyDefault = getTierDefaultContextTokens(model)
+      if (familyDefault >= CONTEXT_1M_THRESHOLD && !has1mContext(model)) {
+        return MODEL_CONTEXT_WINDOW_DEFAULT
+      }
+      return familyDefault
     }
     return chatgptContextWindow
   }

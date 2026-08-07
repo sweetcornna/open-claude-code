@@ -23,12 +23,19 @@ afterAll(() => {
 })
 
 describe('OpenAI model effort defaults', () => {
-  test('uses low for gpt-5.6-sol variants', () => {
-    expect(getDefaultEffortForModel('gpt-5.6-sol')).toBe('low')
-    expect(getDefaultEffortForModel('gpt-5.6-sol-preview')).toBe('low')
+  // These used to assert low / medium, which came from
+  // getDefaultOpenAIReasoningEffort. The per-tier layer now supplies the
+  // default for every model that supports effort, and GPT's factory value is
+  // `xhigh` — a deliberate behaviour change, called out in the CHANGELOG
+  // because it raises reasoning-token spend for GPT users. The old
+  // sol-vs-terra split survives only as the fallback for models where
+  // modelSupportsEffort() is false.
+  test('gpt-5.6-sol variants take the GPT family default', () => {
+    expect(getDefaultEffortForModel('gpt-5.6-sol')).toBe('xhigh')
+    expect(getDefaultEffortForModel('gpt-5.6-sol-preview')).toBe('xhigh')
   })
 
-  test('keeps gpt-5.6-terra at medium', () => {
-    expect(getDefaultEffortForModel('gpt-5.6-terra')).toBe('medium')
+  test('gpt-5.6-terra takes the same family default', () => {
+    expect(getDefaultEffortForModel('gpt-5.6-terra')).toBe('xhigh')
   })
 })

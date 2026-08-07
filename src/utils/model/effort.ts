@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { isUltrathinkEnabled } from './thinking.js'
+import { getTierEffort } from './tierSettings.js'
 import { getInitialSettings } from '../settings/settings.js'
 import {
   isProSubscriber,
@@ -351,6 +352,19 @@ export function getDefaultEffortForModel(
   // IMPORTANT: Do not change the default effort level without notifying
   // the model launch DRI and research. Default effort is a sensitive setting
   // that can greatly affect model quality and bashing.
+  //
+  // occ note: that DRI does not exist in this fork, but the warning still
+  // holds — effort is the single biggest lever on cost and latency. The
+  // per-tier layer below is the user's own explicit choice, so it takes
+  // precedence over every heuristic that follows; CLAUDE_CODE_EFFORT_LEVEL
+  // and an in-session /effort still beat it (see resolveAppliedEffort).
+
+  // Per-tier configuration and the provider-family defaults behind it.
+  // Gated on modelSupportsEffort so a checkpoint that rejects the parameter
+  // never receives one — the same guard the DeepSeek arm below used.
+  if (modelSupportsEffort(model)) {
+    return getTierEffort(model)
+  }
 
   // Any-auth OpenAI reasoning model: keep the displayed default aligned with
   // the value selected by the OpenAI wire adapter.

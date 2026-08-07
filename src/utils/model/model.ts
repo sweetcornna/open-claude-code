@@ -6,6 +6,7 @@
  * during dead code elimination
  */
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
+import { wantsTierWideContext } from './tierWideContext.js'
 import { resolveAntModel, getAntModelOverrideConfig } from './antModels.js'
 import {
   getSubscriptionType,
@@ -135,8 +136,14 @@ export function apply1mContextOptIn(
   model: ModelName,
   optInList: string | undefined = process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
 ): ModelName {
-  if (!optInList) return model
   if (/\[1m\]/i.test(model)) return model
+  // Per-tier configuration is the second source of the opt-in. Asking for a 1M
+  // window in /model-settings has to produce the `[1m]` suffix, because that
+  // suffix is what makes betas.ts send context-1m-2025-08-07. Widening only the
+  // local accounting would leave the API rejecting at 200k while auto-compact
+  // still believed it had 800k of headroom.
+  if (wantsTierWideContext(model)) return `${model}[1m]`
+  if (!optInList) return model
   const lower = model.toLowerCase()
   const matched = optInList
     .split(',')
