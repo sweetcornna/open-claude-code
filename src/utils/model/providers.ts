@@ -46,6 +46,33 @@ export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS
 }
 
 /**
+ * Whether the models this session can reach belong to somebody other than
+ * Anthropic.
+ *
+ * This is NOT the same question as `getAPIProvider() !== 'firstParty'`, even
+ * though the codebase spelled it that way roughly forty times. That one asks
+ * "which wire format and client do we use". Since the DeepSeek Anthropic-wire
+ * routing landed, the two answers diverge for one configuration: DeepSeek
+ * speaks the Anthropic Messages protocol, so the provider is `firstParty`
+ * while every model behind it is a DeepSeek checkpoint.
+ *
+ * Everything that is really asking "is this Anthropic's own catalog" — the
+ * `/model` list, $/Mtok pricing suffixes, Anthropic-only beta headers, the
+ * legacy-model migrations, Fast mode, the bootstrap fetch — must ask this,
+ * not the wire question. Reading the wire answer is what made a DeepSeek
+ * session offer "Opus 5 · $5/$25 per Mtok".
+ *
+ * The rule this encodes: before the wire change a DeepSeek session was
+ * `provider === 'openai'`, and the wire change must not switch on a single
+ * Anthropic-only behaviour that was off then. The deliberate exceptions are
+ * the wire format itself, native thinking blocks, prompt caching and the
+ * server-side web-search adapter — all verified against the real endpoint.
+ */
+export function isThirdPartyModelCatalog(): boolean {
+  return getAPIProvider() !== 'firstParty' || isDeepSeekAnthropicWireActive()
+}
+
+/**
  * Check if ANTHROPIC_BASE_URL is a first-party Anthropic API URL.
  * Returns true if not set (default API) or points to api.anthropic.com
  * (or api-staging.anthropic.com for ant users).

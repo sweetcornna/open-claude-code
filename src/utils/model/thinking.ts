@@ -4,7 +4,7 @@ import { feature } from 'bun:bundle'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { getCanonicalName } from '../model/model.js'
 import { get3PModelCapabilityOverride } from '../model/modelSupportOverrides.js'
-import { getAPIProvider } from '../model/providers.js'
+import { getAPIProvider, isThirdPartyModelCatalog } from '../model/providers.js'
 import { getSettingsWithErrors } from '../settings/settings.js'
 import { resolveAntModel } from '../model/antModels.js'
 
@@ -153,8 +153,14 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
   // Default to true for unknown model strings on 1P and Foundry (because Foundry
   // is a proxy). Do not default to true for other 3P as they have different formats
   // for their model strings.
-  const provider = getAPIProvider()
-  return provider === 'firstParty' || provider === 'foundry'
+  //
+  // Adaptive thinking is an Anthropic-trained behaviour, so this asks about the
+  // catalog rather than the wire: DeepSeek talks the Anthropic protocol but was
+  // never trained on it, and turning it on there would send a thinking shape
+  // that endpoint has no reason to accept. (Plain `thinking` support is a
+  // different question and stays on — that one was verified against the
+  // endpoint and is half the reason for routing DeepSeek this way.)
+  return !isThirdPartyModelCatalog() || getAPIProvider() === 'foundry'
 }
 
 export function shouldEnableThinkingByDefault(): boolean {

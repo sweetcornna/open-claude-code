@@ -32,6 +32,7 @@ import { get3PModelCapabilityOverride } from '../model/modelSupportOverrides.js'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
+  isThirdPartyModelCatalog,
 } from '../model/providers.js'
 import { getInitialSettings } from '../settings/settings.js'
 
@@ -106,7 +107,7 @@ export function modelSupportsISP(model: string): boolean {
   if (provider === 'foundry') {
     return true
   }
-  if (provider === 'firstParty') {
+  if (provider === 'firstParty' && !isThirdPartyModelCatalog()) {
     return !canonical.includes('claude-3-')
   }
   return (
@@ -131,7 +132,7 @@ export function modelSupportsContextManagement(model: string): boolean {
   if (provider === 'foundry') {
     return true
   }
-  if (provider === 'firstParty') {
+  if (provider === 'firstParty' && !isThirdPartyModelCatalog()) {
     return !canonical.includes('claude-3-')
   }
   return (
@@ -197,7 +198,7 @@ export function shouldIncludeFirstPartyOnlyBetas(): boolean {
  */
 export function shouldUseGlobalCacheScope(): boolean {
   return (
-    getAPIProvider() === 'firstParty' &&
+    !isThirdPartyModelCatalog() &&
     !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
   )
 }

@@ -8,7 +8,7 @@ import {
   isTeamSubscriber,
 } from '../auth/auth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
-import { getAPIProvider } from '../model/providers.js'
+import { getAPIProvider, isThirdPartyModelCatalog } from '../model/providers.js'
 import { get3PModelCapabilityOverride } from '../model/modelSupportOverrides.js'
 import {
   isDeepSeekBaseURL,
@@ -90,8 +90,10 @@ export function modelSupportsEffort(modelOrAlias: string): boolean {
 
   // Default to true for unknown model strings on 1P.
   // Do not default to true for 3P as they have different formats for their
-  // model strings (ex. anthropics/claude-code#30795)
-  return getAPIProvider() === 'firstParty'
+  // model strings (ex. anthropics/claude-code#30795). "1P" here means
+  // Anthropic's own catalog, not the Anthropic wire format — DeepSeek speaks
+  // the latter, and its two known checkpoints are allowlisted above.
+  return !isThirdPartyModelCatalog()
 }
 
 // Effort max/xhigh restrictions removed — all models that support effort

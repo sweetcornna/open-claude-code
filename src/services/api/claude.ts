@@ -28,6 +28,7 @@ import { existsSync, unlinkSync } from 'node:fs'
 import {
   getAPIProvider,
   isDirectAnthropicApi,
+  isThirdPartyModelCatalog,
 } from 'src/utils/model/providers.js'
 import {
   getAttributionHeader,
@@ -1580,7 +1581,7 @@ async function* queryModel(
     if (
       !cacheEditingHeaderLatched &&
       cachedMCEnabled &&
-      getAPIProvider() === 'firstParty' &&
+      !isThirdPartyModelCatalog() &&
       options.querySource === 'repl_main_thread'
     ) {
       cacheEditingHeaderLatched = true
@@ -1823,12 +1824,12 @@ async function* queryModel(
     // the feature disables but the header doesn't flip.
     const useCachedMC =
       cachedMCEnabled &&
-      getAPIProvider() === 'firstParty' &&
+      !isThirdPartyModelCatalog() &&
       options.querySource === 'repl_main_thread'
     if (
       cacheEditingHeaderLatched &&
       cacheEditingBetaHeader &&
-      getAPIProvider() === 'firstParty' &&
+      !isThirdPartyModelCatalog() &&
       options.querySource === 'repl_main_thread' &&
       !betasParams.includes(cacheEditingBetaHeader)
     ) {

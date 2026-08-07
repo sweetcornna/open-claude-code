@@ -16,7 +16,10 @@ import {
 } from './modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
-import { getAPIProvider } from './providers.js'
+import { getAPIProvider, isThirdPartyModelCatalog } from './providers.js'
+import { isDeepSeekAnthropicWireActive } from './deepseekWire.js'
+import { type ModelTier } from './modelTier.js'
+import { capitalize } from '../text/stringUtils.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
   getCanonicalName,
@@ -83,7 +86,7 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
   }
 
   // PAYG
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: null,
     label: 'Default (recommended)',
@@ -91,46 +94,71 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
   }
 }
 
-function getCustomSonnetOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
+/**
+ * Env prefixes to read a tier's model/name/description from, most specific
+ * first.
+ *
+ * Two entries only happen under the DeepSeek Anthropic wire: that routing
+ * mirrors `OPENAI_DEFAULT_*_MODEL` onto the `ANTHROPIC_*` keys, but the mirror
+ * runs from the CLI init path, so any consumer that builds this list without
+ * having gone through it still needs the OPENAI_* originals — otherwise the
+ * picker falls back to Anthropic's built-in list, which is exactly the bug
+ * this pair of prefixes exists to prevent.
+ */
+function tierEnvPrefixes(): readonly string[] {
   const provider = getAPIProvider()
-  // Use provider-specific DEFAULT_SONNET_MODEL
-  const customSonnetModel =
-    provider === 'openai'
-      ? process.env.OPENAI_DEFAULT_SONNET_MODEL
-      : provider === 'gemini'
-        ? process.env.GEMINI_DEFAULT_SONNET_MODEL
-        : process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
-  // When a 3P user has a custom sonnet model string, show it directly
-  if (is3P && customSonnetModel) {
-    const is1m = has1mContext(customSonnetModel)
-    // Use appropriate NAME/DESCRIPTION env vars based on provider
-    const nameEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_SONNET_MODEL_NAME
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_SONNET_MODEL_NAME
-          : process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
-    const descEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_SONNET_MODEL_DESCRIPTION
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_SONNET_MODEL_DESCRIPTION
-          : process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION
-    return {
-      value: 'sonnet',
-      label: nameEnv ?? customSonnetModel,
-      description:
-        descEnv ?? `Custom Sonnet model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${descEnv ?? `Custom Sonnet model${is1m ? ' with 1M context' : ''}`} (${customSonnetModel})`,
-    }
+  if (provider === 'openai') return ['OPENAI']
+  if (provider === 'gemini') return ['GEMINI']
+  if (provider === 'grok') return ['GROK']
+  if (isDeepSeekAnthropicWireActive()) return ['ANTHROPIC', 'OPENAI']
+  return ['ANTHROPIC']
+}
+
+function tierEnv(
+  tier: Uppercase<ModelTier>,
+  suffix: string,
+): string | undefined {
+  for (const prefix of tierEnvPrefixes()) {
+    const value = process.env[`${prefix}_DEFAULT_${tier}_MODEL${suffix}`]
+    if (value) return value
+  }
+  return undefined
+}
+
+/**
+ * The picker row for a tier the user pinned to their own model id.
+ *
+ * One function rather than the four copy-pasted ones this replaces: they
+ * differed only in the tier word, and every provider added to the codebase had
+ * to be threaded through all four (Grok never was).
+ *
+ * The row's value is the tier ALIAS, not the concrete id — that is what makes
+ * `/model` and the per-tier settings in `settings.modelSettings` agree about
+ * which knob the highlighted row belongs to.
+ */
+function getCustomTierOption(tier: ModelTier): ModelOption | undefined {
+  if (!isThirdPartyModelCatalog()) return undefined
+  const upper = tier.toUpperCase() as Uppercase<ModelTier>
+  const model = tierEnv(upper, '')
+  if (!model) return undefined
+
+  const label = capitalize(tier)
+  const is1m = has1mContext(model)
+  const nameEnv = tierEnv(upper, '_NAME')
+  const descEnv = tierEnv(upper, '_DESCRIPTION')
+  return {
+    value: tier,
+    label: nameEnv ?? model,
+    description:
+      descEnv ?? `Custom ${label} model${is1m ? ' (1M context)' : ''}`,
+    descriptionForModel: `${descEnv ?? `Custom ${label} model${is1m ? ' with 1M context' : ''}`} (${model})`,
   }
 }
 
 // @[MODEL LAUNCH]: Update or add model option functions (getSonnetXXOption, getOpusXXOption, etc.)
 // with the new model's label and description. These appear in the /model picker.
 function getSonnet5Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: is3P ? getModelStrings().sonnet5 : 'sonnet',
     label: 'Sonnet',
@@ -140,43 +168,8 @@ function getSonnet5Option(): ModelOption {
   }
 }
 
-function getCustomOpusOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
-  const provider = getAPIProvider()
-  // Use provider-specific DEFAULT_OPUS_MODEL
-  const customOpusModel =
-    provider === 'openai'
-      ? process.env.OPENAI_DEFAULT_OPUS_MODEL
-      : provider === 'gemini'
-        ? process.env.GEMINI_DEFAULT_OPUS_MODEL
-        : process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
-  // When a 3P user has a custom opus model string, show it directly
-  if (is3P && customOpusModel) {
-    const is1m = has1mContext(customOpusModel)
-    // Use appropriate NAME/DESCRIPTION env vars based on provider
-    const nameEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_OPUS_MODEL_NAME
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_OPUS_MODEL_NAME
-          : process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
-    const descEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_OPUS_MODEL_DESCRIPTION
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_OPUS_MODEL_DESCRIPTION
-          : process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION
-    return {
-      value: 'opus',
-      label: nameEnv ?? customOpusModel,
-      description: descEnv ?? `Custom Opus model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${descEnv ?? `Custom Opus model${is1m ? ' with 1M context' : ''}`} (${customOpusModel})`,
-    }
-  }
-}
-
 function getOpus5Option(fastMode = false): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: is3P ? getModelStrings().opus5 : 'opus',
     label: 'Opus 5',
@@ -200,7 +193,7 @@ export function getOpus46Option(fastMode = false): ModelOption {
 }
 
 export function getSonnet5_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: is3P ? getModelStrings().sonnet5 + '[1m]' : 'sonnet[1m]',
     label: 'Sonnet (1M context)',
@@ -211,7 +204,7 @@ export function getSonnet5_1MOption(): ModelOption {
 }
 
 export function getOpus5_1MOption(fastMode = false): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: is3P ? getModelStrings().opus5 + '[1m]' : 'opus[1m]',
     label: 'Opus 5 (1M context)',
@@ -246,41 +239,8 @@ export function getOpus46_1MOption(fastMode = false): ModelOption {
   }
 }
 
-function getCustomFableOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
-  const provider = getAPIProvider()
-  const customFableModel =
-    provider === 'openai'
-      ? process.env.OPENAI_DEFAULT_FABLE_MODEL
-      : provider === 'gemini'
-        ? process.env.GEMINI_DEFAULT_FABLE_MODEL
-        : process.env.ANTHROPIC_DEFAULT_FABLE_MODEL
-  if (is3P && customFableModel) {
-    const is1m = has1mContext(customFableModel)
-    const nameEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_FABLE_MODEL_NAME
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_FABLE_MODEL_NAME
-          : process.env.ANTHROPIC_DEFAULT_FABLE_MODEL_NAME
-    const descEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_FABLE_MODEL_DESCRIPTION
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_FABLE_MODEL_DESCRIPTION
-          : process.env.ANTHROPIC_DEFAULT_FABLE_MODEL_DESCRIPTION
-    return {
-      value: 'fable',
-      label: nameEnv ?? customFableModel,
-      description:
-        descEnv ?? `Custom Fable model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${descEnv ?? `Custom Fable model${is1m ? ' with 1M context' : ''}`} (${customFableModel})`,
-    }
-  }
-}
-
 export function getFable5Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: is3P ? getModelStrings().fable5 : 'fable',
     label: 'Fable',
@@ -291,7 +251,7 @@ export function getFable5Option(): ModelOption {
 }
 
 export function getFable5_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: is3P ? getModelStrings().fable5 + '[1m]' : 'fable[1m]',
     label: 'Fable (1M context)',
@@ -301,42 +261,8 @@ export function getFable5_1MOption(): ModelOption {
   }
 }
 
-function getCustomHaikuOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
-  const provider = getAPIProvider()
-  // Use provider-specific DEFAULT_HAIKU_MODEL
-  const customHaikuModel =
-    provider === 'openai'
-      ? process.env.OPENAI_DEFAULT_HAIKU_MODEL
-      : provider === 'gemini'
-        ? process.env.GEMINI_DEFAULT_HAIKU_MODEL
-        : process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
-  // When a 3P user has a custom haiku model string, show it directly
-  if (is3P && customHaikuModel) {
-    // Use appropriate NAME/DESCRIPTION env vars based on provider
-    const nameEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_HAIKU_MODEL_NAME
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_HAIKU_MODEL_NAME
-          : process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
-    const descEnv =
-      provider === 'openai'
-        ? process.env.OPENAI_DEFAULT_HAIKU_MODEL_DESCRIPTION
-        : provider === 'gemini'
-          ? process.env.GEMINI_DEFAULT_HAIKU_MODEL_DESCRIPTION
-          : process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION
-    return {
-      value: 'haiku',
-      label: nameEnv ?? customHaikuModel,
-      description: descEnv ?? 'Custom Haiku model',
-      descriptionForModel: `${descEnv ?? 'Custom Haiku model'} (${customHaikuModel})`,
-    }
-  }
-}
-
 function getHaiku45Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: 'haiku',
     label: 'Haiku',
@@ -347,7 +273,7 @@ function getHaiku45Option(): ModelOption {
 }
 
 function getHaiku35Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: 'haiku',
     label: 'Haiku',
@@ -374,7 +300,7 @@ function getMaxOpusOption(fastMode = false): ModelOption {
 }
 
 export function getMaxSonnet5_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   const billingInfo = isClaudeAISubscriber() ? ' · Billed as extra usage' : ''
   return {
     value: 'sonnet[1m]',
@@ -393,7 +319,7 @@ export function getMaxOpus5_1MOption(fastMode = false): ModelOption {
 }
 
 function getMergedOpus1MOption(fastMode = false): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = isThirdPartyModelCatalog()
   return {
     value: is3P ? getModelStrings().opus5 + '[1m]' : 'opus[1m]',
     label: 'Opus 5 (1M context)',
@@ -467,7 +393,12 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     return getChatGPTCodexModelOptions()
   }
 
-  if (isClaudeAISubscriber()) {
+  // Subscriber lists describe what a Claude.ai plan entitles you to, so they
+  // only make sense while the session is actually pointed at Anthropic. A user
+  // who logged in with /login and then switched to a third-party provider can
+  // reach exactly one catalog — the provider's — and listing Opus 5 at
+  // Anthropic's rate card for them is the same bug as listing it for DeepSeek.
+  if (isClaudeAISubscriber() && !isThirdPartyModelCatalog()) {
     if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
       // Max and Team Premium users: Default = Opus 5 1M (merged), plus Opus 4.7 1M
       const premiumOptions = [getDefaultOptionForUser(fastMode)]
@@ -513,7 +444,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   }
 
   // PAYG 1P API: Default (Sonnet) + Opus 5 1M + Opus 4.7 1M + Fable + Sonnet 1M + Haiku
-  if (getAPIProvider() === 'firstParty') {
+  if (!isThirdPartyModelCatalog()) {
     const payg1POptions = [getDefaultOptionForUser(fastMode)]
     if (isOpus1mMergeEnabled()) {
       payg1POptions.push(getMergedOpus1MOption(fastMode))
@@ -536,7 +467,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   // PAYG 3P: Default (Sonnet 5) + Sonnet (3P custom) or Sonnet 5/1M + Opus (3P custom) or Opus 5 1M/Opus 4.7 1M + Fable + Haiku
   const payg3pOptions = [getDefaultOptionForUser(fastMode)]
 
-  const customSonnet = getCustomSonnetOption()
+  const customSonnet = getCustomTierOption('sonnet')
   if (customSonnet !== undefined) {
     payg3pOptions.push(customSonnet)
   } else {
@@ -547,7 +478,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     }
   }
 
-  const customOpus = getCustomOpusOption()
+  const customOpus = getCustomTierOption('opus')
   if (customOpus !== undefined) {
     payg3pOptions.push(customOpus)
   } else {
@@ -555,7 +486,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     payg3pOptions.push(getOpus5_1MOption(fastMode))
     payg3pOptions.push(getOpus47_1MOption(fastMode))
   }
-  const customFable = getCustomFableOption()
+  const customFable = getCustomTierOption('fable')
   if (customFable !== undefined) {
     payg3pOptions.push(customFable)
   } else {
@@ -563,7 +494,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     payg3pOptions.push(getFable5_1MOption())
   }
 
-  const customHaiku = getCustomHaikuOption()
+  const customHaiku = getCustomTierOption('haiku')
   if (customHaiku !== undefined) {
     payg3pOptions.push(customHaiku)
   } else {
@@ -712,8 +643,15 @@ export function getModelOptions(fastMode = false): ModelOption[] {
   // /models answer, so they carry labels, pricing and context windows, and they
   // are here the moment login finishes — the background catalog refresh below
   // only lands later, and would list bare ids.
+  // DeepSeek is one of these presets and is also the one provider whose
+  // getAPIProvider() now answers 'firstParty' (its Anthropic-compatible wire),
+  // so this cannot be a plain provider === 'openai' test any more — the whole
+  // curated catalog would vanish from the picker for exactly one provider.
   const chinaPreset = findChinaProviderByBaseURL(process.env.OPENAI_BASE_URL)
-  if (chinaPreset && getAPIProvider() === 'openai') {
+  if (
+    chinaPreset &&
+    (getAPIProvider() === 'openai' || isDeepSeekAnthropicWireActive())
+  ) {
     for (const model of chinaPreset.models) {
       if (options.some(existing => existing.value === model.id)) continue
       const price =
@@ -752,19 +690,19 @@ export function getModelOptions(fastMode = false): ModelOption[] {
     return filterModelOptionsByAllowlist(options)
   } else if (customModel === 'opusplan') {
     return filterModelOptionsByAllowlist([...options, getOpusPlanOption()])
-  } else if (customModel === 'opus' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'opus' && !isThirdPartyModelCatalog()) {
     return filterModelOptionsByAllowlist([
       ...options,
       getMaxOpusOption(fastMode),
     ])
-  } else if (customModel === 'opus[1m]' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'opus[1m]' && !isThirdPartyModelCatalog()) {
     return filterModelOptionsByAllowlist([
       ...options,
       getMergedOpus1MOption(fastMode),
     ])
-  } else if (customModel === 'fable' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'fable' && !isThirdPartyModelCatalog()) {
     return filterModelOptionsByAllowlist([...options, getFable5Option()])
-  } else if (customModel === 'fable[1m]' && getAPIProvider() === 'firstParty') {
+  } else if (customModel === 'fable[1m]' && !isThirdPartyModelCatalog()) {
     return filterModelOptionsByAllowlist([...options, getFable5_1MOption()])
   } else {
     // Try to show a human-readable label for known Anthropic models, with an

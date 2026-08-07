@@ -20,6 +20,7 @@
  */
 import * as React from 'react';
 import { Box, Text } from '@anthropic/ink';
+import { isDeepSeekAnthropicWireActive } from '../../utils/model/deepseekWire.js';
 import type { AuthStatus } from './getAuthStatus.js';
 
 // ---------------------------------------------------------------------------
@@ -103,7 +104,11 @@ function WorkspaceKeyInstructions({
 
 function ActiveProviderRow({ activeProvider }: { activeProvider: AuthStatus['activeProvider'] }): React.ReactNode {
   const { provider, baseUrl, wireApi, chatgptAuth, profile } = activeProvider;
-  const providerLabel = provider === 'firstParty' ? 'anthropic' : provider;
+  // 'firstParty' names the wire format, not the vendor: a DeepSeek session
+  // reports it while talking to api.deepseek.com. Labelling that "anthropic"
+  // would be the one line in /login that lies about where the key goes.
+  const providerLabel =
+    provider === 'firstParty' ? (isDeepSeekAnthropicWireActive() ? 'deepseek' : 'anthropic') : provider;
   const details: string[] = [];
   if (baseUrl) details.push(baseUrl);
   if (chatgptAuth) details.push('ChatGPT subscription');

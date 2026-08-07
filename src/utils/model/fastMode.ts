@@ -26,7 +26,7 @@ import {
   type ModelSetting,
   parseUserSpecifiedModel,
 } from '../model/model.js'
-import { getAPIProvider } from '../model/providers.js'
+import { getAPIProvider, isThirdPartyModelCatalog } from '../model/providers.js'
 import { isEssentialTrafficOnly } from '../auth/privacyLevel.js'
 import {
   getInitialSettings,
@@ -109,8 +109,9 @@ export function getFastModeUnavailableReason(): string | null {
     }
   }
 
-  // Only available for 1P (not Bedrock/Vertex/Foundry)
-  if (getAPIProvider() !== 'firstParty') {
+  // Only available on Anthropic's own models (not Bedrock/Vertex/Foundry, and
+  // not a third-party catalog reached over the Anthropic wire).
+  if (isThirdPartyModelCatalog()) {
     const reason = 'Fast mode is not available on Bedrock, Vertex, or Foundry'
     logForDebugging(`Fast mode unavailable: ${reason}`)
     return reason

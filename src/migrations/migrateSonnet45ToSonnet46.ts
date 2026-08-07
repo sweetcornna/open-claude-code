@@ -8,7 +8,7 @@ import {
   isTeamPremiumSubscriber,
 } from '../utils/auth/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js'
-import { getAPIProvider } from '../utils/model/providers.js'
+import { isThirdPartyModelCatalog } from '../utils/model/providers.js'
 import {
   getSettingsForSource,
   updateSettingsForSource,
@@ -27,7 +27,7 @@ import {
  * Idempotent: only writes if userSettings.model matches a Sonnet 4.5 string.
  */
 export function migrateSonnet45ToSonnet46(): void {
-  if (getAPIProvider() !== 'firstParty') {
+  if (isThirdPartyModelCatalog()) {
     return
   }
 

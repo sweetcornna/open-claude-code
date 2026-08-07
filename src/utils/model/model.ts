@@ -25,7 +25,11 @@ import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
 import { formatModelPricing, getOpus46CostTier } from './modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
-import { getAPIProvider, isDirectAnthropicApi } from './providers.js'
+import {
+  getAPIProvider,
+  isDirectAnthropicApi,
+  isThirdPartyModelCatalog,
+} from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
@@ -58,6 +62,27 @@ function getOpenAIModelForTier(
     isChatGPTAuth: isChatGPTAuthMode(),
     tierOverride: process.env[OPENAI_DEFAULT_MODEL_ENV_BY_TIER[tier]],
   })
+}
+
+/**
+ * The user's per-tier model override for the active provider, or undefined.
+ *
+ * Every non-OpenAI provider spelling lives here instead of being open-coded in
+ * each getDefault*Model(). The provider-setup wizard writes all four
+ * GROK_DEFAULT_<TIER>_MODEL keys (specs.ts, `tierEnv('GROK')`), but only Fable
+ * ever read one back — so a Grok user's Opus/Sonnet/Haiku choices were dead
+ * config and the picker offered Anthropic model names in their place. OpenAI
+ * keeps its own lookup above because its override has to go through the
+ * ChatGPT/Codex tier resolution first.
+ */
+function getProviderTierModel(
+  provider: ReturnType<typeof getAPIProvider>,
+  tier: 'HAIKU' | 'SONNET' | 'OPUS' | 'FABLE',
+): ModelName | undefined {
+  const prefix =
+    provider === 'gemini' ? 'GEMINI' : provider === 'grok' ? 'GROK' : undefined
+  if (!prefix) return undefined
+  return process.env[`${prefix}_DEFAULT_${tier}_MODEL`] || undefined
 }
 
 export function getSmallFastModel(): ModelName {
@@ -195,10 +220,9 @@ export function getDefaultOpusModel(): ModelName {
   const provider = getAPIProvider()
   const openAIModel = getOpenAIModelForTier(provider, 'opus')
   if (openAIModel) return openAIModel
-  // For Gemini provider, check GEMINI_DEFAULT_OPUS_MODEL
-  if (provider === 'gemini' && process.env.GEMINI_DEFAULT_OPUS_MODEL) {
-    return process.env.GEMINI_DEFAULT_OPUS_MODEL
-  }
+  // Gemini / Grok per-tier override
+  const providerTierModel = getProviderTierModel(provider, 'OPUS')
+  if (providerTierModel) return providerTierModel
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
@@ -228,11 +252,7 @@ export function getDefaultFableModel(): ModelName {
   const providerOverride =
     provider === 'openai'
       ? process.env.OPENAI_DEFAULT_FABLE_MODEL
-      : provider === 'gemini'
-        ? process.env.GEMINI_DEFAULT_FABLE_MODEL
-        : provider === 'grok'
-          ? process.env.GROK_DEFAULT_FABLE_MODEL
-          : undefined
+      : getProviderTierModel(provider, 'FABLE')
   if (providerOverride) return providerOverride
   if (process.env.ANTHROPIC_DEFAULT_FABLE_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_FABLE_MODEL
@@ -249,10 +269,9 @@ export function getDefaultSonnetModel(): ModelName {
   const provider = getAPIProvider()
   const openAIModel = getOpenAIModelForTier(provider, 'sonnet')
   if (openAIModel) return openAIModel
-  // For Gemini provider, check GEMINI_DEFAULT_SONNET_MODEL
-  if (provider === 'gemini' && process.env.GEMINI_DEFAULT_SONNET_MODEL) {
-    return process.env.GEMINI_DEFAULT_SONNET_MODEL
-  }
+  // Gemini / Grok per-tier override
+  const providerTierModel = getProviderTierModel(provider, 'SONNET')
+  if (providerTierModel) return providerTierModel
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
@@ -273,10 +292,9 @@ export function getDefaultHaikuModel(): ModelName {
   const provider = getAPIProvider()
   const openAIModel = getOpenAIModelForTier(provider, 'haiku')
   if (openAIModel) return openAIModel
-  // For Gemini provider, check GEMINI_DEFAULT_HAIKU_MODEL
-  if (provider === 'gemini' && process.env.GEMINI_DEFAULT_HAIKU_MODEL) {
-    return process.env.GEMINI_DEFAULT_HAIKU_MODEL
-  }
+  // Gemini / Grok per-tier override
+  const providerTierModel = getProviderTierModel(provider, 'HAIKU')
+  if (providerTierModel) return providerTierModel
   // Anthropic-specific override (for first-party and other 3P providers)
   if (process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
@@ -476,7 +494,9 @@ export function renderDefaultModelSetting(
 }
 
 export function getOpusPricingSuffix(fastMode: boolean): string {
-  if (getAPIProvider() !== 'firstParty') return ''
+  // Anthropic's rate card only describes Anthropic's models — see
+  // isThirdPartyModelCatalog for why the wire question is the wrong one here.
+  if (isThirdPartyModelCatalog()) return ''
   const pricing = formatModelPricing(getOpus46CostTier(fastMode))
   const fastModeIndicator = fastMode ? ` (${LIGHTNING_BOLT})` : ''
   return ` ·${fastModeIndicator} ${pricing}`
@@ -661,7 +681,7 @@ export function parseUserSpecifiedModel(
   // before 4.5 launched. 3P providers may not yet have 4.6/4.7 capacity,
   // so pass through unchanged.
   if (
-    getAPIProvider() === 'firstParty' &&
+    !isThirdPartyModelCatalog() &&
     isLegacyOpusFirstParty(modelString) &&
     isLegacyModelRemapEnabled()
   ) {

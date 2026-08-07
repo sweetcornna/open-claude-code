@@ -1,5 +1,5 @@
 import memoize from 'lodash-es/memoize.js'
-import { getAPIProvider } from './providers.js'
+import { getAPIProvider, isThirdPartyModelCatalog } from './providers.js'
 
 export type ModelCapabilityOverride =
   | 'effort'
@@ -45,12 +45,20 @@ const OPENAI_TIERS = [
  */
 export const get3PModelCapabilityOverride = memoize(
   (model: string, capability: ModelCapabilityOverride): boolean | undefined => {
-    if (getAPIProvider() === 'firstParty') {
+    if (!isThirdPartyModelCatalog()) {
       return undefined
     }
     const m = model.toLowerCase()
-    // Choose the appropriate tier list based on provider
-    const tiers = getAPIProvider() === 'openai' ? OPENAI_TIERS : ANTHROPIC_TIERS
+    // Choose the appropriate tier list based on provider. A DeepSeek session
+    // answers 'firstParty' (Anthropic wire) while its pins live under either
+    // prefix — the wire mirrors OPENAI_* onto ANTHROPIC_* — so it reads both
+    // rather than silently losing the user's capability overrides.
+    const tiers =
+      getAPIProvider() === 'openai'
+        ? OPENAI_TIERS
+        : getAPIProvider() === 'firstParty'
+          ? [...ANTHROPIC_TIERS, ...OPENAI_TIERS]
+          : ANTHROPIC_TIERS
     for (const tier of tiers) {
       const pinned = process.env[tier.modelEnvVar]
       const capabilities = process.env[tier.capabilitiesEnvVar]
