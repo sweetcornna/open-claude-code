@@ -65,7 +65,8 @@ const teleportApiMock = setupTeleportApiMock({
     apiKey: 'test-workspace-key-ap',
   }),
   prepareApiRequest: async () => ({
-    apiKey: 'test-api-key-ap',
+    accessToken: 'test-api-key-ap',
+    orgUUID: 'org-uuid-ap',
   }),
 })
 afterAll(() => teleportApiMock.reset())

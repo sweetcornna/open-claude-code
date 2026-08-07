@@ -18,7 +18,7 @@ mock.module('bun:bundle', () => ({
 
 const attributionMock = setupGitAttributionMock({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
-  getEnhancedPRAttribution: async () => undefined,
+  getEnhancedPRAttribution: async () => '',
   countUserPromptsInMessages: () => 0,
 })
 afterAll(() => attributionMock.reset())

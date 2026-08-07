@@ -24,14 +24,10 @@ import { setupConfigMock } from '../../../../tests/mocks/config.js';
 mock.module('src/utils/telemetry/log.ts', logMock);
 mock.module('src/utils/telemetry/debug.ts', debugMock);
 mock.module('bun:bundle', () => ({ feature: () => false }));
-const settingsMock = setupSettingsMock({
-  getCachedOrDefaultSettings: () => ({}),
-  getSettings: () => ({}),
-});
+const settingsMock = setupSettingsMock({});
 afterAll(() => settingsMock.reset());
 
 const configMock = setupConfigMock({
-  isConfigEnabled: () => true,
   getGlobalConfig: () => ({ workspaceApiKey: undefined }),
   saveGlobalConfig: (_updater: unknown) => undefined,
 });

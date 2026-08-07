@@ -16,9 +16,9 @@ mock.module('src/utils/session/sdkEventQueue.js', () => ({
 
 const diskOutputMock = setupTaskDiskOutputMock({
   getTaskOutputPath: (id: string) => `/tmp/output/${id}`,
-  getTaskOutputDelta: async () => null,
-  evictTaskOutput: noop,
-  initTaskOutputAsSymlink: async () => {},
+  getTaskOutputDelta: async () => ({ content: '', newOffset: 0 }),
+  evictTaskOutput: async () => {},
+  initTaskOutputAsSymlink: async (id: string) => `/tmp/output/${id}`,
 })
 afterAll(() => diskOutputMock.reset())
 

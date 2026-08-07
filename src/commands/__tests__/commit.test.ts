@@ -20,7 +20,7 @@ mock.module('bun:bundle', () => ({
 // Mock dependencies to avoid side effects
 const attributionMock = setupGitAttributionMock({
   getAttributionTexts: () => ({ commit: '', pr: '' }),
-  getEnhancedPRAttribution: async () => undefined,
+  getEnhancedPRAttribution: async () => '',
   countUserPromptsInMessages: () => 0,
 })
 afterAll(() => attributionMock.reset())
@@ -222,7 +222,7 @@ describe('commit command getPromptForCommand', () => {
     })
     attributionMock.set({
       getAttributionTexts: () => ({ commit: 'Co-Authored-By: Claude', pr: '' }),
-      getEnhancedPRAttribution: async () => undefined,
+      getEnhancedPRAttribution: async () => '',
       countUserPromptsInMessages: () => 0,
     })
     const { default: freshCommit } = await import('../commit.js')

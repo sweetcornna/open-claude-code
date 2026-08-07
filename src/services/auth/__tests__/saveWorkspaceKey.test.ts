@@ -20,10 +20,7 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 // downstream test file in the same process (mock.module is global).
 // We override the two keys this suite uses; the rest delegates to real impls.
 const _realSettings = await import('src/utils/settings/settings.js')
-const settingsMock = setupSettingsMock({
-  getCachedOrDefaultSettings: () => ({}),
-  getSettings: () => ({}),
-})
+const settingsMock = setupSettingsMock({})
 afterAll(() => settingsMock.reset())
 
 // Mock src/utils/config.ts with closure-driven impls and a flag-gated noop
@@ -34,14 +31,13 @@ afterAll(() => settingsMock.reset())
 // returns undefined for getGlobalConfig/saveGlobalConfig — matching the
 // behavior of unmocked side-effect-free defaults rather than throwing.
 let _useMockForConfig = true
-let _mockGetGlobalConfig: () => unknown = () => ({
+let _mockGetGlobalConfig: () => { workspaceApiKey?: string } = () => ({
   workspaceApiKey: undefined,
 })
 let _mockSaveGlobalConfig: (updater: unknown) => unknown = (_u: unknown) =>
   undefined
 const _originalOccConfigDir = process.env.OCC_CONFIG_DIR
 const configMock = setupConfigMock({
-  isConfigEnabled: () => true,
   getGlobalConfig: () =>
     _useMockForConfig ? _mockGetGlobalConfig() : { workspaceApiKey: undefined },
   saveGlobalConfig: (updater: unknown) =>

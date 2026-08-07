@@ -30,11 +30,7 @@ mock.module('src/utils/telemetry/debug.ts', () => ({
 }))
 
 // Mock settings to avoid filesystem side effects
-const settingsMock = setupSettingsMock({
-  getCachedSettings: () => ({}),
-  getSettings: async () => ({}),
-  updateSettings: async () => {},
-})
+const settingsMock = setupSettingsMock({})
 afterAll(() => settingsMock.reset())
 
 // Mock analytics (GrowthBook) — required for isEnabled()

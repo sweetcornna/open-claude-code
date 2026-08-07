@@ -61,7 +61,8 @@ const realTeleportApi = await import('src/utils/teleport/api.js')
 const teleportApiMock = setupTeleportApiMock({
   getOAuthHeaders: (token: string) => ({ Authorization: `Bearer ${token}` }),
   prepareApiRequest: async () => ({
-    apiKey: 'test-workspace-key',
+    accessToken: 'test-workspace-key',
+    orgUUID: 'org-uuid-ms',
   }),
   prepareWorkspaceApiRequest: async () => ({
     apiKey: 'test-workspace-key',

@@ -22,11 +22,33 @@ import { mock } from 'bun:test'
 
 type AnyModule = Record<string, unknown>
 
+/**
+ * A stub's return value only has to carry the fields the suite under test
+ * actually reads. `getOauthConfig: () => ({ BASE_API_URL })` is the normal
+ * shape of a mock, not a mistake, so plain object returns are widened to
+ * `Partial`.
+ *
+ * This deliberately stops SHORT of `any`. The widening is one level and only
+ * over plain objects, so the mismatches that matter still fail to compile:
+ * returning `null` where an object is required, `void` where a `Promise` is,
+ * or a differently-named field set (`{ apiKey }` for `{ accessToken }`) —
+ * all three of which this file's introduction actually caught in existing
+ * hand-rolled stubs. Widening further would have let them through.
+ */
+type StubReturn<R> =
+  R extends Promise<infer U>
+    ? Promise<StubReturn<U>>
+    : R extends (...args: never[]) => unknown
+      ? R
+      : R extends object
+        ? Partial<R>
+        : R
+
 export type ModuleOverrides<M extends AnyModule> = {
   // Callable exports accept a plain function (some real exports are memoized
   // and carry a .cache property; overrides shouldn't have to replicate that).
   [K in keyof M]?: M[K] extends (...args: infer A) => infer R
-    ? (...args: A) => R
+    ? (...args: A) => StubReturn<R>
     : M[K]
 }
 

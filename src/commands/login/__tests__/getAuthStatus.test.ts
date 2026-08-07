@@ -26,15 +26,12 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('bun:bundle', () => ({ feature: () => false }))
 const settingsMock = setupSettingsMock({
-  getCachedOrDefaultSettings: () => ({}),
-  getSettings: () => ({}),
   getInitialSettings: () => ({}),
   getSettings_DEPRECATED: () => ({}),
 })
 afterAll(() => settingsMock.reset())
 
 const configMock = setupConfigMock({
-  isConfigEnabled: () => true,
   getGlobalConfig: () => ({
     workspaceApiKey: undefined,
   }),
@@ -223,7 +220,6 @@ describe('getAuthStatus', () => {
       }),
     )
     configMock.set({
-      isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-' + 'Y'.repeat(50),
       }),
@@ -246,7 +242,6 @@ describe('getAuthStatus', () => {
       }),
     )
     configMock.set({
-      isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-' + 'Z'.repeat(50),
       }),
@@ -270,7 +265,6 @@ describe('getAuthStatus', () => {
       }),
     )
     configMock.set({
-      isConfigEnabled: () => true,
       getGlobalConfig: () => ({ workspaceApiKey: undefined }),
     })
     const { getAuthStatus } = await import('../getAuthStatus.js')
@@ -291,7 +285,6 @@ describe('getAuthStatus', () => {
       }),
     )
     configMock.set({
-      isConfigEnabled: () => true,
       getGlobalConfig: () => ({
         workspaceApiKey: 'sk-ant-api03-FROMSETTINGS' + 'S'.repeat(40),
       }),
