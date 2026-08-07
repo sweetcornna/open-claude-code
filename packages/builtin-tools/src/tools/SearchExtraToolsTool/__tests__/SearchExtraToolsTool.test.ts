@@ -41,10 +41,6 @@ mock.module('src/utils/tools/searchExtraTools.js', () => ({
   getDeferredToolsDelta: () => null,
 }))
 
-mock.module('src/constants/tools.js', () => ({
-  CORE_TOOLS: new Set(['Read', 'Edit', 'SearchExtraTools', 'ExecuteExtraTool']),
-}))
-
 // Mock toolIndex module
 type MockSearchExtraToolsResult = {
   name: string

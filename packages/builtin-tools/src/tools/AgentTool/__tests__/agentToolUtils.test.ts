@@ -1,3 +1,4 @@
+import * as realToolConstants from 'src/constants/tools.js'
 import { mock, describe, expect, test } from 'bun:test'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 
@@ -10,7 +11,13 @@ const noop = () => {}
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
+// Spread the real module: CORE_TOOLS and COORDINATOR_MODE_ALLOWED_TOOLS are
+// not overridden here, and leaving them out made CORE_TOOLS `undefined` for
+// every later file in the packages/builtin-tools shard — SearchExtraToolsTool's
+// isDeferred() reads it at call time. constants/tools.ts is a pure leaf (the
+// prompt-purity ratchet enforces that), so importing it costs nothing.
 mock.module('src/constants/tools.js', () => ({
+  ...realToolConstants,
   ALL_AGENT_DISALLOWED_TOOLS: new Set(),
   ASYNC_AGENT_ALLOWED_TOOLS: new Set(),
   CUSTOM_AGENT_DISALLOWED_TOOLS: new Set(),
