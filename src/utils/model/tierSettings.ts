@@ -17,7 +17,11 @@
  */
 
 import { getSettingsForSource } from '../settings/settings.js'
-import { getModelTier, getModelTiers, type ModelTier } from './modelTier.js'
+import {
+  getModelTier,
+  getModelTiers,
+  type ModelSettingsSlot,
+} from './modelTier.js'
 import {
   getTierDefaults,
   type TierDefaults,
@@ -35,13 +39,13 @@ type TierOverride = {
  * `userSettings` only — see the module comment.
  */
 export function getTierOverride(
-  tier: ModelTier | undefined,
+  slot: ModelSettingsSlot | undefined,
 ): TierOverride | undefined {
-  if (!tier) return undefined
+  if (!slot) return undefined
   const settings = getSettingsForSource('userSettings')
   const perTier = settings?.modelSettings
   if (!perTier) return undefined
-  return perTier[tier] as TierOverride | undefined
+  return perTier[slot] as TierOverride | undefined
 }
 
 /**
@@ -55,7 +59,11 @@ export function getTierOverride(
  * two of them are configured differently, which is a preference the id can no
  * longer carry either way.
  */
-function getOverrideForModel(model: string): TierOverride | undefined {
+function getOverrideForModel(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): TierOverride | undefined {
+  if (settingsSlot) return getTierOverride(settingsSlot)
   const tiers = getModelTiers(model)
   if (tiers.length === 0) return undefined
   if (tiers.length === 1) return getTierOverride(tiers[0])
@@ -63,14 +71,29 @@ function getOverrideForModel(model: string): TierOverride | undefined {
   return getTierOverride(configured ?? tiers[0])
 }
 
+function tierForDefaults(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): Exclude<ModelSettingsSlot, 'default'> | undefined {
+  return settingsSlot === 'default'
+    ? undefined
+    : (settingsSlot ?? getModelTier(model))
+}
+
 /**
  * Effort for a model after applying the per-tier override, or the factory
  * default. Does NOT consult the env override — callers sit downstream of that
  * (see resolveAppliedEffort, which checks CLAUDE_CODE_EFFORT_LEVEL first).
  */
-export function getTierEffort(model: string): TierEffort {
-  const override = getOverrideForModel(model)?.effort
-  return override ?? getTierDefaults(model, getModelTier(model)).effort
+export function getTierEffort(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): TierEffort {
+  const override = getOverrideForModel(model, settingsSlot)?.effort
+  return (
+    override ??
+    getTierDefaults(model, tierForDefaults(model, settingsSlot)).effort
+  )
 }
 
 /**
@@ -84,14 +107,18 @@ export function getTierEffort(model: string): TierEffort {
  */
 export function getExplicitTierContextTokens(
   model: string,
+  settingsSlot?: ModelSettingsSlot,
 ): number | undefined {
-  return getOverrideForModel(model)?.contextTokens
+  return getOverrideForModel(model, settingsSlot)?.contextTokens
 }
 
 /** The family default window, used as the bottom fallback. */
-export function getTierDefaultContextTokens(model: string): number {
-  const tier = getModelTier(model)
-  return getTierDefaults(model, tier).contextTokens
+export function getTierDefaultContextTokens(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): number {
+  return getTierDefaults(model, tierForDefaults(model, settingsSlot))
+    .contextTokens
 }
 
 /**
@@ -99,16 +126,25 @@ export function getTierDefaultContextTokens(model: string): number {
  * factory default. Used by the panel and by the 1M opt-in, which both want the
  * resolved intent rather than the layered lookup.
  */
-export function getTierContextTokens(model: string): number {
-  const override = getOverrideForModel(model)?.contextTokens
-  return override ?? getTierDefaults(model, getModelTier(model)).contextTokens
+export function getTierContextTokens(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): number {
+  const override = getOverrideForModel(model, settingsSlot)?.contextTokens
+  return (
+    override ??
+    getTierDefaults(model, tierForDefaults(model, settingsSlot)).contextTokens
+  )
 }
 
 /** Both axes at once, for the `/model-settings` panel and diagnostics. */
-export function getResolvedTierSettings(model: string): TierDefaults {
+export function getResolvedTierSettings(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): TierDefaults {
   return {
-    effort: getTierEffort(model),
-    contextTokens: getTierContextTokens(model),
+    effort: getTierEffort(model, settingsSlot),
+    contextTokens: getTierContextTokens(model, settingsSlot),
   }
 }
 
@@ -123,7 +159,7 @@ export function formatContextTokens(tokens: number): string {
 }
 
 /** Whether the user has explicitly configured anything for this tier. */
-export function hasTierOverride(tier: ModelTier | undefined): boolean {
-  const override = getTierOverride(tier)
+export function hasTierOverride(slot: ModelSettingsSlot | undefined): boolean {
+  const override = getTierOverride(slot)
   return override?.effort !== undefined || override?.contextTokens !== undefined
 }

@@ -23,13 +23,6 @@ const MAX_BATCH_SIZE = 100
 const NETWORK_TIMEOUT_MS = 5000
 
 const DATADOG_ALLOWED_EVENTS = new Set([
-  'chrome_bridge_connection_succeeded',
-  'chrome_bridge_connection_failed',
-  'chrome_bridge_disconnected',
-  'chrome_bridge_tool_call_completed',
-  'chrome_bridge_tool_call_error',
-  'chrome_bridge_tool_call_started',
-  'chrome_bridge_tool_call_timeout',
   'tengu_api_error',
   'tengu_api_success',
   'tengu_brief_mode_enabled',

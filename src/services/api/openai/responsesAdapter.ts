@@ -16,6 +16,7 @@ import {
   isResponsesReasoningSummaryDisabled,
 } from './reasoning.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   createOpenAIResponseError,
@@ -302,6 +303,54 @@ export function buildResponsesRequest(params: {
   }
 }
 
+const NON_COMMITTING_RESPONSE_EVENTS = new Set([
+  'response.created',
+  'response.in_progress',
+  'response.queued',
+])
+
+function commitsResponseAttempt(event: Record<string, unknown>): boolean {
+  return (
+    typeof event.type !== 'string' ||
+    !NON_COMMITTING_RESPONSE_EVENTS.has(event.type)
+  )
+}
+
+function streamEventError(
+  event: Record<string, unknown>,
+  label: string,
+): OpenAIRequestError | undefined {
+  const type = event.type
+  if (type !== 'response.error' && type !== 'response.failed') return undefined
+  const container =
+    type === 'response.failed' &&
+    event.response &&
+    typeof event.response === 'object'
+      ? (event.response as Record<string, unknown>)
+      : event
+  const error =
+    container.error && typeof container.error === 'object'
+      ? (container.error as Record<string, unknown>)
+      : undefined
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const message =
+    typeof error?.message === 'string'
+      ? error.message
+      : `${label} stream returned ${type}`
+  const detail = `${code} ${message}`
+  const permanent =
+    /auth|api.?key|permission|forbidden|invalid.?request|invalid.?argument|invalid.?parameter|bad.?request|model.?not.?found|unknown.?model|does not exist|context.?length/i.test(
+      detail,
+    )
+  const transient =
+    /server.?error|rate.?limit|timeout|timed.?out|overload|temporar|upstream|unavailable|internal.?error|bad.?gateway|gateway/i.test(
+      detail,
+    )
+  return new OpenAIRequestError(`${label} stream failed: ${message}`, {
+    retryable: !permanent && transient,
+  })
+}
+
 async function* parseSSE(
   response: Response,
   options: {
@@ -320,7 +369,7 @@ async function* parseSSE(
   const decoder = new TextDecoder()
   let buffer = ''
   let scanIndex = 0
-  let hasYieldedEvent = false
+  let hasCommittedEvent = false
 
   const parseFrame = (frame: string): Record<string, unknown> | undefined => {
     const data = frame
@@ -335,12 +384,14 @@ async function* parseSSE(
     } catch (cause) {
       throw new OpenAIRequestError(
         `${options.label} stream returned invalid SSE JSON`,
-        { retryable: false, cause },
+        { retryable: !hasCommittedEvent, cause },
       )
     }
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, unknown>)
-      : undefined
+    if (!parsed || typeof parsed !== 'object') return undefined
+    const event = parsed as Record<string, unknown>
+    const error = streamEventError(event, options.label)
+    if (error) throw error
+    return event
   }
 
   const takeFrame = (): string | undefined => {
@@ -388,7 +439,7 @@ async function* parseSSE(
       const timer = setTimeout(() => {
         const error = new OpenAIRequestError(
           `${options.label} stream idle timeout after ${options.idleTimeoutMs}ms`,
-          { retryable: !hasYieldedEvent },
+          { retryable: !hasCommittedEvent },
         )
         rejectOnce(error)
         options.abort(error)
@@ -411,7 +462,7 @@ async function* parseSSE(
       while (frame !== undefined) {
         const parsed = parseFrame(frame)
         if (parsed) {
-          hasYieldedEvent = true
+          if (commitsResponseAttempt(parsed)) hasCommittedEvent = true
           yield parsed
         }
         frame = takeFrame()
@@ -423,7 +474,7 @@ async function* parseSSE(
     while (frame !== undefined) {
       const parsed = parseFrame(frame)
       if (parsed) {
-        hasYieldedEvent = true
+        if (commitsResponseAttempt(parsed)) hasCommittedEvent = true
         yield parsed
       }
       frame = takeFrame()
@@ -434,7 +485,7 @@ async function* parseSSE(
     if (buffer.trim()) {
       const parsed = parseFrame(buffer)
       if (parsed) {
-        hasYieldedEvent = true
+        if (commitsResponseAttempt(parsed)) hasCommittedEvent = true
         yield parsed
       }
     }
@@ -778,6 +829,7 @@ async function fetchResponsesStream(params: {
   request: ResponsesRequest
   signal: AbortSignal
   fetchOverride?: typeof fetch
+  maxRetries?: number
   /** Human-readable route name for error messages. */
   label: string
 }): Promise<AsyncIterable<Record<string, unknown>>> {
@@ -816,8 +868,14 @@ async function fetchResponsesStream(params: {
         label: params.label,
       })
       const iterator = stream[Symbol.asyncIterator]()
-      const first = await iterator.next()
-      return { controller, cleanup, first, iterator }
+      const initial: Record<string, unknown>[] = []
+      while (true) {
+        const next = await iterator.next()
+        if (next.done) break
+        initial.push(next.value)
+        if (commitsResponseAttempt(next.value)) break
+      }
+      return { controller, cleanup, initial, iterator }
     } catch (error) {
       cleanup()
       if (!controller.signal.aborted) controller.abort(error)
@@ -825,7 +883,13 @@ async function fetchResponsesStream(params: {
     }
   }
 
-  const runLadder = () => retryOpenAIRequest(attempt, { signal: params.signal })
+  const runLadder = () =>
+    retryOpenAIRequest(attempt, {
+      signal: params.signal,
+      ...(params.maxRetries !== undefined
+        ? { maxRetries: params.maxRetries }
+        : {}),
+    })
 
   let prepared: Awaited<ReturnType<typeof runLadder>>
   try {
@@ -852,7 +916,7 @@ async function fetchResponsesStream(params: {
   return {
     async *[Symbol.asyncIterator]() {
       try {
-        if (!prepared.first.done) yield prepared.first.value
+        for (const event of prepared.initial) yield event
         while (true) {
           const next = await prepared.iterator.next()
           if (next.done) break
@@ -871,6 +935,7 @@ export async function createChatGPTResponsesStream(params: {
   request: ResponsesRequest
   signal: AbortSignal
   fetchOverride?: typeof fetch
+  maxRetries?: number
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const auth = await getValidChatGPTAuth()
   const headers: Record<string, string> = {
@@ -896,6 +961,7 @@ export async function createChatGPTResponsesStream(params: {
     request: params.request,
     signal: params.signal,
     fetchOverride: params.fetchOverride,
+    maxRetries: params.maxRetries,
     label: 'ChatGPT Responses API',
   })
 }
@@ -906,11 +972,11 @@ export async function createChatGPTResponsesStream(params: {
  * identical to the convention the Chat Completions SDK client uses.
  */
 export function resolveResponsesEndpoint(baseURL: string | undefined): string {
-  const base = (baseURL?.trim() || 'https://api.openai.com/v1').replace(
-    /\/+$/,
-    '',
+  return buildProviderResourceURL(
+    baseURL?.trim() || 'https://api.openai.com/v1',
+    'openai',
+    'responses',
   )
-  return `${base}/responses`
 }
 
 /**
@@ -923,6 +989,7 @@ export async function createOpenAIResponsesStream(params: {
   request: ResponsesRequest
   signal: AbortSignal
   fetchOverride?: typeof fetch
+  maxRetries?: number
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
@@ -940,6 +1007,7 @@ export async function createOpenAIResponsesStream(params: {
     request: params.request,
     signal: params.signal,
     fetchOverride: params.fetchOverride,
+    maxRetries: params.maxRetries,
     label: 'Responses API',
   })
 }

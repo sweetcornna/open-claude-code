@@ -12,8 +12,9 @@
  * different KIND of source rather than another site to scrape, which is the
  * point: a tier that fails for unrelated reasons is worth having.
  *
- * Adapted from the keyless API engines free-search-mcp grew in v0.9.x
- * (sweetcornna/free-search-mcp, MIT).
+ * Adapted from the keyless API engines free-search-mcp grew in its 0.9 line
+ * (sweetcornna/free-search-mcp @ v0.9.2,
+ * 3d462eb59287c17a17e78e07025508c299f00202, MIT).
  *
  * Cost discipline — these run only when the SERP tier came back walled or
  * short (see freeAdapter.ts). On the happy path the pool costs nothing, so

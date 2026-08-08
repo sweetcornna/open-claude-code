@@ -146,8 +146,6 @@ export type State = {
   inMemoryErrorLog: Array<{ error: string; timestamp: string }>
   // Session-only plugins from --plugin-dir flag
   inlinePlugins: Array<string>
-  // Explicit --chrome / --no-chrome flag value (undefined = not set on CLI)
-  chromeFlagOverride: boolean | undefined
   // Use cowork_plugins directory instead of plugins (--cowork flag or env var)
   useCoworkPlugins: boolean
   // Session-only bypass permissions mode flag (not persisted)
@@ -362,8 +360,6 @@ export function getInitialState(): State {
     inMemoryErrorLog: [],
     // Session-only plugins from --plugin-dir flag
     inlinePlugins: [],
-    // Explicit --chrome / --no-chrome flag value (undefined = not set on CLI)
-    chromeFlagOverride: undefined,
     // Use cowork_plugins directory instead of plugins
     useCoworkPlugins: false,
     // Session-only bypass permissions mode flag (not persisted)

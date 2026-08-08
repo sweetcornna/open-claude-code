@@ -67,9 +67,9 @@ function makeDeferredTool(name: string, desc: string = 'A tool') {
   }
 }
 
-function makeContext(tools: unknown[] = []) {
+function makeContext(tools: unknown[] = [], refreshTools?: () => unknown[]) {
   return {
-    options: { tools },
+    options: { tools, refreshTools },
     cwd: '/tmp',
     sessionId: 'test',
     getAppState: () => ({
@@ -209,6 +209,109 @@ describe('SearchExtraToolsTool search enhancements', () => {
     )
 
     expect(blockParam.content).toContain('No matching deferred tools found')
+  })
+})
+
+describe('SearchExtraTools uses the live tool pool', () => {
+  test.each([
+    'service-a',
+    'service_a',
+  ])('finds a slowly registered %s tool on the first select', async serverName => {
+    const name = `mcp__${serverName}__action`
+    const liveTool = makeDeferredTool(name)
+    const refreshTools = mock(() => [liveTool])
+
+    const result: { data: { matches: string[] } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: `select:${name}`, max_results: 5 },
+      makeContext([], refreshTools),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    expect(refreshTools).toHaveBeenCalledTimes(1)
+    expect(result.data.matches).toEqual([name])
+  })
+
+  test('does not find a tool removed after the round snapshot', async () => {
+    const removed = makeDeferredTool('mcp__service-a__removed')
+
+    const result: { data: { matches: string[] } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: `select:${removed.name}`, max_results: 5 },
+      makeContext([removed], () => []),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    expect(result.data.matches).toEqual([])
+  })
+
+  test('refreshes a same-name tool description after list_changed', async () => {
+    mockGetToolIndex.mockReset()
+    mockSearchTools.mockReset()
+    mockGetToolIndex.mockImplementation(async () => [])
+    mockSearchTools.mockImplementation(() => [])
+
+    const oldTool = makeDeferredTool(
+      'mcp__service-a__describe',
+      'legacy capability',
+    )
+    const updatedTool = makeDeferredTool(oldTool.name, 'current capability')
+
+    const oldResult: { data: { matches: string[] } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: 'legacy capability', max_results: 5 },
+      makeContext([], () => [oldTool]),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+    const updatedResult: { data: { matches: string[] } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: 'current capability', max_results: 5 },
+      makeContext([oldTool], () => [updatedTool]),
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg2' } as never,
+      undefined,
+    )
+
+    expect(oldResult.data.matches).toEqual([oldTool.name])
+    expect(updatedResult.data.matches).toEqual([updatedTool.name])
+  })
+
+  test('honors same-size list_changed replacement including auth pseudo-tools', async () => {
+    const authTool = makeDeferredTool('mcp__service_a__authenticate')
+    const actionTool = makeDeferredTool('mcp__service_a__action')
+    const context = makeContext([authTool], () => [actionTool])
+
+    const removedResult: { data: { matches: string[] } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: `select:${authTool.name}`, max_results: 5 },
+      context,
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+    const addedResult: { data: { matches: string[] } } = await (
+      SearchExtraToolsTool as any
+    ).call(
+      { query: `select:${actionTool.name}`, max_results: 5 },
+      context,
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg2' } as never,
+      undefined,
+    )
+
+    expect(removedResult.data.matches).toEqual([])
+    expect(addedResult.data.matches).toEqual([actionTool.name])
   })
 })
 

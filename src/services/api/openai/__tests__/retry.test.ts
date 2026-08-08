@@ -1,5 +1,20 @@
-import { describe, expect, test } from 'bun:test'
-import { createOpenAIResponseError, retryOpenAIRequest } from '../retry.js'
+import { afterEach, describe, expect, test } from 'bun:test'
+import {
+  createOpenAIResponseError,
+  OpenAIRequestError,
+  resolveOpenAIMaxRetries,
+  retryOpenAIRequest,
+} from '../retry.js'
+
+const savedMaxRetries = process.env.OPENAI_REQUEST_MAX_RETRIES
+
+afterEach(() => {
+  if (savedMaxRetries === undefined) {
+    delete process.env.OPENAI_REQUEST_MAX_RETRIES
+  } else {
+    process.env.OPENAI_REQUEST_MAX_RETRIES = savedMaxRetries
+  }
+})
 
 const noDelay = async (): Promise<void> => {}
 
@@ -11,6 +26,61 @@ async function requireSuccess(response: Response): Promise<Response> {
 }
 
 describe('retryOpenAIRequest', () => {
+  test('defaults to ten retries after the initial attempt', () => {
+    delete process.env.OPENAI_REQUEST_MAX_RETRIES
+    expect(resolveOpenAIMaxRetries()).toBe(10)
+  })
+
+  test('fails after ten transient retries (eleven total attempts)', async () => {
+    delete process.env.OPENAI_REQUEST_MAX_RETRIES
+    let calls = 0
+
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          throw new TypeError('fetch failed')
+        },
+        { signal: new AbortController().signal, delay: noDelay },
+      ),
+    ).rejects.toThrow('fetch failed')
+    expect(calls).toBe(11)
+  })
+
+  test('can succeed on the tenth retry', async () => {
+    delete process.env.OPENAI_REQUEST_MAX_RETRIES
+    let calls = 0
+
+    const result = await retryOpenAIRequest(
+      async () => {
+        calls++
+        if (calls <= 10) throw new TypeError('fetch failed')
+        return 'ok'
+      },
+      { signal: new AbortController().signal, delay: noDelay },
+    )
+
+    expect(result).toBe('ok')
+    expect(calls).toBe(11)
+  })
+
+  test('clamps env retry counts above ten', async () => {
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '999'
+    let calls = 0
+
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          throw new TypeError('fetch failed')
+        },
+        { signal: new AbortController().signal, delay: noDelay },
+      ),
+    ).rejects.toThrow('fetch failed')
+    expect(resolveOpenAIMaxRetries()).toBe(10)
+    expect(calls).toBe(11)
+  })
+
   test('retries two 500 responses before succeeding', async () => {
     let calls = 0
     const response = await retryOpenAIRequest(
@@ -30,6 +100,41 @@ describe('retryOpenAIRequest', () => {
 
     expect(response.status).toBe(200)
     expect(calls).toBe(3)
+  })
+
+  test('retries 429 even when Retry-After is absent', async () => {
+    let calls = 0
+    await retryOpenAIRequest(
+      async () => {
+        calls++
+        return requireSuccess(
+          new Response(calls === 1 ? 'rate limited' : 'ok', {
+            status: calls === 1 ? 429 : 200,
+          }),
+        )
+      },
+      {
+        signal: new AbortController().signal,
+        delay: noDelay,
+      },
+    )
+    expect(calls).toBe(2)
+  })
+
+  test('retries 425 Too Early', async () => {
+    let calls = 0
+    await retryOpenAIRequest(
+      async () => {
+        calls++
+        return requireSuccess(
+          new Response(calls === 1 ? 'too early' : 'ok', {
+            status: calls === 1 ? 425 : 200,
+          }),
+        )
+      },
+      { signal: new AbortController().signal, delay: noDelay },
+    )
+    expect(calls).toBe(2)
   })
 
   test('honors Retry-After seconds on 429', async () => {
@@ -57,6 +162,35 @@ describe('retryOpenAIRequest', () => {
     expect(delays).toEqual([1000])
   })
 
+  test('caps the exponential backoff so late retries stay bounded', async () => {
+    // Uncapped, 200 * 2^n spends its last three waits at ~26s, ~51s and ~102s —
+    // nearly three minutes inside a single sleep on a ten-retry ladder whose
+    // whole purpose is to outlast a blip.
+    delete process.env.OPENAI_REQUEST_MAX_RETRIES
+    const delays: number[] = []
+
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          throw new TypeError('fetch failed')
+        },
+        {
+          signal: new AbortController().signal,
+          random: () => 1,
+          delay: async delayMs => {
+            delays.push(delayMs)
+          },
+        },
+      ),
+    ).rejects.toThrow('fetch failed')
+
+    expect(delays).toHaveLength(10)
+    // 32s ceiling, +10% jitter at random() === 1.
+    expect(Math.max(...delays)).toBe(35_200)
+    // The early rungs are untouched: 200ms, 400ms, 800ms...
+    expect(delays.slice(0, 3)).toEqual([220, 440, 880])
+  })
+
   test('does not retry a 400 response', async () => {
     let calls = 0
     await expect(
@@ -71,6 +205,39 @@ describe('retryOpenAIRequest', () => {
         },
       ),
     ).rejects.toThrow('Responses API request failed (400)')
+    expect(calls).toBe(1)
+  })
+
+  test('does not retry auth, permission, model, or other permanent 4xx errors', async () => {
+    for (const status of [400, 401, 403, 404, 422]) {
+      let calls = 0
+      await expect(
+        retryOpenAIRequest(
+          async () => {
+            calls++
+            return requireSuccess(new Response('permanent', { status }))
+          },
+          {
+            signal: new AbortController().signal,
+            delay: noDelay,
+          },
+        ),
+      ).rejects.toThrow(`request failed (${status})`)
+      expect(calls).toBe(1)
+    }
+  })
+
+  test('does not retry a permanent synthetic API error', async () => {
+    let calls = 0
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          throw new OpenAIRequestError('invalid request', { retryable: false })
+        },
+        { signal: new AbortController().signal, delay: noDelay },
+      ),
+    ).rejects.toThrow('invalid request')
     expect(calls).toBe(1)
   })
 
@@ -94,6 +261,24 @@ describe('retryOpenAIRequest', () => {
     expect(calls).toBe(0)
   })
 
+  test('does not retry when the first attempt aborts', async () => {
+    const controller = new AbortController()
+    let calls = 0
+    const reason = new DOMException('stopped', 'AbortError')
+
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          controller.abort(reason)
+          throw reason
+        },
+        { signal: controller.signal, delay: noDelay },
+      ),
+    ).rejects.toBe(reason)
+    expect(calls).toBe(1)
+  })
+
   test('throws the final error after retries are exhausted', async () => {
     let calls = 0
     let lastError: Error | undefined
@@ -102,7 +287,7 @@ describe('retryOpenAIRequest', () => {
       await retryOpenAIRequest(
         async () => {
           calls++
-          lastError = new Error(`network-${calls}`)
+          lastError = new TypeError(`fetch failed: network-${calls}`)
           throw lastError
         },
         {

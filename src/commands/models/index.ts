@@ -1,14 +1,10 @@
 import type { Command } from '../../commands.js'
-import { currentProviderSetupKind } from '../../components/providerSetup/fromEnvironment.js'
 
 export default () =>
   ({
     type: 'local-jsx',
-    name: 'models',
+    name: 'models-setting',
     description:
-      'Choose which model each tier (haiku · sonnet · opus · fable) resolves to',
-    // Hidden for sessions with nothing to point anywhere — a first-party login
-    // resolves its tiers through the built-in Claude table.
-    isEnabled: () => currentProviderSetupKind() !== undefined,
+      'Edit the current provider’s models without redoing login: default model, per-tier mapping (haiku · sonnet · opus · fable), max context tokens and thinking effort',
     load: () => import('./models.js'),
   }) satisfies Command

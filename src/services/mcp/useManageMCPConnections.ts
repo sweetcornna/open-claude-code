@@ -10,6 +10,7 @@ import {
   fetchResourcesForClient,
   fetchToolsForClient,
   getMcpToolsCommandsAndResources,
+  invalidateFetchToolsForClient,
   reconnectMcpServerImpl,
 } from './client.js'
 import type {
@@ -638,10 +639,8 @@ export function useManageMCPConnections(
                 )
                 try {
                   // Grab cached promise before invalidating to log previous count
-                  const previousToolsPromise = fetchToolsForClient.cache.get(
-                    client.name,
-                  )
-                  fetchToolsForClient.cache.delete(client.name)
+                  const previousToolsPromise =
+                    invalidateFetchToolsForClient(client)
                   const newTools = await fetchToolsForClient(client)
                   const newCount = newTools.length
                   if (previousToolsPromise) {

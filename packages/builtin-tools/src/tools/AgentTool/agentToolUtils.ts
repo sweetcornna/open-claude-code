@@ -277,6 +277,12 @@ export function countToolUses(messages: MessageType[]): number {
   return count
 }
 
+function isNonEmptyTextBlock(
+  block: ContentItem,
+): block is Extract<ContentItem, { type: 'text' }> {
+  return block.type === 'text' && block.text.trim().length > 0
+}
+
 export function finalizeAgentTool(
   agentMessages: MessageType[],
   agentId: string,
@@ -307,19 +313,22 @@ export function finalizeAgentTool(
   // the most recent assistant message that has text content.
   let content = (
     (lastAssistantMessage.message?.content as ContentItem[]) ?? []
-  ).filter(_ => _.type === 'text')
+  ).filter(isNonEmptyTextBlock)
   if (content.length === 0) {
     for (let i = agentMessages.length - 1; i >= 0; i--) {
       const m = agentMessages[i]!
       if (m.type !== 'assistant') continue
       const textBlocks = ((m.message?.content as ContentItem[]) ?? []).filter(
-        _ => _.type === 'text',
+        isNonEmptyTextBlock,
       )
       if (textBlocks.length > 0) {
         content = textBlocks
         break
       }
     }
+  }
+  if (content.length === 0) {
+    throw new Error('Agent returned an empty response.')
   }
 
   const totalTokens = getTokenCountFromUsage(
@@ -687,6 +696,11 @@ export async function runAsyncAgentLifecycle({
     const msg = errorMessage(error)
     failAsyncAgent(taskId, msg, rootSetAppState)
     const worktreeResult = await getWorktreeResult()
+    // Same reasoning as the kill path above: what the agent already produced is
+    // real work, and an execution-limit kill in particular lands on agents that
+    // were still writing right up to the deadline. The status stays 'failed' —
+    // the partial result rides along, it does not fake a completion.
+    const partialResult = extractPartialResult(agentMessages)
     enqueueAgentNotification({
       taskId,
       description,
@@ -695,6 +709,7 @@ export async function runAsyncAgentLifecycle({
       setAppState: rootSetAppState,
       toolUseId: toolUseContext.toolUseId,
       agentId: toolUseContext.agentId,
+      finalMessage: partialResult,
       ...worktreeResult,
     })
   } finally {

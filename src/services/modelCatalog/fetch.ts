@@ -13,6 +13,7 @@
 
 import { OAUTH_BETA_HEADER } from 'src/constants/oauth.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { isChatGPTAuthMode } from 'src/utils/model/chatgptModels.js'
 import { resolveProviderBaseURL } from './cache.js'
@@ -104,7 +105,7 @@ async function fetchAnthropicModels(
     return null
   }
 
-  const url = `${joinVersionedPath(baseURL, 'models')}?limit=${PAGE_LIMIT}`
+  const url = joinVersionedPath(baseURL, 'models', { limit: PAGE_LIMIT })
   return parseAnthropicModelsResponse(await fetchJSON(url, headers, options))
 }
 
@@ -164,8 +165,9 @@ async function fetchGeminiModels(
     logForDebugging('[ModelCatalog] Gemini: no API key')
     return null
   }
-  // GEMINI_BASE_URL already carries the version segment (…/v1beta).
-  const url = `${baseURL}/models?pageSize=${PAGE_LIMIT}`
+  const url = buildProviderResourceURL(baseURL, 'gemini', 'models', {
+    pageSize: PAGE_LIMIT,
+  })
   return parseGeminiModelsResponse(
     await fetchJSON(
       url,

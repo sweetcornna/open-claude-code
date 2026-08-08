@@ -10,10 +10,7 @@ import {
 import {
   getMcpInstructionsDelta,
   isMcpInstructionsDeltaEnabled,
-  type ClientSideInstruction,
 } from '../mcp/mcpInstructionsDelta.js'
-import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from '../chromeDevtools/common.js'
-import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from '../chromeDevtools/prompt.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import { filterAgentsByMcpRequirements } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js'
 import { AGENT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/AgentTool/constants.js'
@@ -134,27 +131,11 @@ export function getAgentListingDeltaAttachment(
 // Exported for compact.ts / reactiveCompact.ts — single source of truth for the gate.
 export function getMcpInstructionsDeltaAttachment(
   mcpClients: MCPServerConnection[],
-  tools: Tools,
-  model: string,
   messages: Message[] | undefined,
 ): Attachment[] {
   if (!isMcpInstructionsDeltaEnabled()) return []
 
-  // The chrome SearchExtraTools hint is client-authored and SearchExtraTools-conditional;
-  // actual server `instructions` are unconditional. Decide the chrome part
-  // here, pass it into the pure diff as a synthesized entry.
-  const clientSide: ClientSideInstruction[] = []
-  if (
-    isSearchExtraToolsEnabledOptimistic() &&
-    isSearchExtraToolsToolAvailable(tools)
-  ) {
-    clientSide.push({
-      serverName: CHROME_DEVTOOLS_MCP_SERVER_NAME,
-      block: CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS,
-    })
-  }
-
-  const delta = getMcpInstructionsDelta(mcpClients, messages ?? [], clientSide)
+  const delta = getMcpInstructionsDelta(mcpClients, messages ?? [])
   if (!delta) return []
   return [{ type: 'mcp_instructions_delta', ...delta }]
 }

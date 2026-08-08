@@ -53,7 +53,7 @@ describe('WebBrowserTool', () => {
     const prompt = await WebBrowserTool.prompt()
     expect(prompt).toContain('Limitations')
     expect(prompt).toContain('No JavaScript')
-    expect(prompt).toContain('Chrome DevTools MCP')
+    expect(prompt).toContain('browser automation tool')
   })
 
   test('navigate fetches URL', async () => {

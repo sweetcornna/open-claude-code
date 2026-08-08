@@ -174,8 +174,6 @@ import {
   shouldIncludeFirstPartyOnlyBetas,
   shouldUseGlobalCacheScope,
 } from 'src/utils/model/betas.js'
-import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from 'src/utils/chromeDevtools/common.js'
-import { CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS } from 'src/utils/chromeDevtools/prompt.js'
 import { getMaxThinkingTokensForModel } from 'src/utils/session/context.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/telemetry/diagLogs.js'
@@ -191,7 +189,6 @@ import {
 } from 'src/utils/model/fastMode.js'
 import { returnValue } from 'src/utils/collections/generators.js'
 import { headlessProfilerCheckpoint } from 'src/utils/telemetry/headlessProfiler.js'
-import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcp/mcpInstructionsDelta.js'
 import { calculateUSDCost } from 'src/utils/model/modelCost.js'
 import {
   endQueryProfile,
@@ -244,7 +241,6 @@ import {
   pinCacheEdits,
 } from '../compact/microCompact.js'
 import { getInitializationStatus } from '../lsp/manager.js'
-import { isToolFromMcpServer } from '../mcp/utils.js'
 import { recordLLMObservation } from '../langfuse/index.js'
 import type { LangfuseSpan } from '../langfuse/index.js'
 import {
@@ -583,7 +579,7 @@ export async function verifyApiKey(
         () =>
           getAnthropicClient({
             apiKey,
-            maxRetries: 3,
+            maxRetries: 0,
             model,
             source: 'verify_api_key',
           }),
@@ -600,7 +596,7 @@ export async function verifyApiKey(
           })
           return true
         },
-        { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } }, // Use fewer retries for API key verification
+        { model, thinkingConfig: { type: 'disabled' } },
       ),
     )
   } catch (errorFromRetry) {
@@ -1488,16 +1484,6 @@ async function* queryModel(
     }
   }
 
-  // Chrome tool-search instructions: when the delta attachment is enabled,
-  // these are carried as a client-side block in mcp_instructions_delta
-  // (attachments.ts) instead of here. This per-request sys-prompt append
-  // busts the prompt cache when chrome connects late.
-  const hasChromeTools = filteredTools.some(t =>
-    isToolFromMcpServer(t.name, CHROME_DEVTOOLS_MCP_SERVER_NAME),
-  )
-  const injectChromeHere =
-    useSearchExtraTools && hasChromeTools && !isMcpInstructionsDeltaEnabled()
-
   // filter(Boolean) works by converting each element to a boolean - empty strings become false and are filtered out.
   systemPrompt = asSystemPrompt(
     [
@@ -1508,9 +1494,6 @@ async function* queryModel(
       }),
       ...systemPrompt,
       ...(advisorModel ? [ADVISOR_TOOL_INSTRUCTIONS] : []),
-      ...(injectChromeHere
-        ? [CHROME_DEVTOOLS_SEARCH_EXTRA_TOOLS_INSTRUCTIONS]
-        : []),
     ].filter(Boolean),
   )
 
@@ -2058,6 +2041,7 @@ async function* queryModel(
     usage = EMPTY_USAGE
     stopReason = null
     isAdvisorInProgress = false
+    let hasCommittedStreamOutput = false
 
     // Streaming idle timeout watchdog: abort the stream if no chunks arrive
     // for STREAM_IDLE_TIMEOUT_MS. Unlike the stall detection below (which only
@@ -2258,6 +2242,10 @@ async function* queryModel(
               })
               throw new RangeError('Content block not found')
             }
+            // Every content delta is yielded below. Once one escapes this API
+            // layer, replaying the request can duplicate visible output or a
+            // tool call, so the streaming-to-non-streaming fallback is closed.
+            hasCommittedStreamOutput = true
             if (
               feature('CONNECTOR_TEXT') &&
               delta.type === 'connector_text_delta'
@@ -2411,6 +2399,7 @@ async function* queryModel(
               ...(advisorModel && { advisorModel }),
             }
             newMessages.push(m)
+            hasCommittedStreamOutput = true
             yield m
             break
           }
@@ -2678,12 +2667,12 @@ async function* queryModel(
         }
       }
 
-      // When the flag is enabled, skip the non-streaming fallback and let the
-      // error propagate to withRetry. The mid-stream fallback causes double tool
-      // execution when streaming tool execution is active: the partial stream
-      // starts a tool, then the non-streaming retry produces the same tool_use
-      // and runs it again. See inc-4258.
+      // Never replay after model output escaped this API layer. The mid-stream
+      // fallback can otherwise duplicate visible text/thinking or execute the
+      // same tool twice (inc-4258). Before commitment, retain the compatibility
+      // fallback unless it was explicitly disabled.
       const disableFallback =
+        hasCommittedStreamOutput ||
         isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK) ||
         getFeatureValue_CACHED_MAY_BE_STALE(
           'tengu_disable_streaming_to_non_streaming_fallback',
@@ -2832,18 +2821,26 @@ async function* queryModel(
     // endpoints but work fine with non-streaming. Before v2.1.8, BetaMessageStream
     // threw 404s during iteration (caught by inner catch with fallback), but now
     // with raw streams, 404s are thrown during creation (caught here).
+    const streamCreationError =
+      errorFromRetry instanceof CannotRetryError &&
+      errorFromRetry.originalError instanceof APIError
+        ? errorFromRetry.originalError
+        : undefined
+    const isModelNotFound =
+      streamCreationError?.status === 404 &&
+      /model.{0,40}(?:not.?found|does not exist|unknown)|(?:not.?found|unknown).{0,40}model/i.test(
+        streamCreationError.message,
+      )
     const is404StreamCreationError =
       !didFallBackToNonStreaming &&
-      errorFromRetry instanceof CannotRetryError &&
-      errorFromRetry.originalError instanceof APIError &&
-      errorFromRetry.originalError.status === 404
+      streamCreationError?.status === 404 &&
+      !isModelNotFound
 
     if (is404StreamCreationError) {
       // 404 is thrown at .withResponse() before streamRequestId is assigned,
       // and CannotRetryError means every retry failed — so grab the failed
       // request's ID from the error header instead.
-      const failedRequestId =
-        (errorFromRetry.originalError as APIError).requestID ?? 'unknown'
+      const failedRequestId = streamCreationError?.requestID ?? 'unknown'
       logForDebugging(
         'Streaming endpoint returned 404, falling back to non-streaming mode',
         { level: 'warn' },

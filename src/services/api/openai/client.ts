@@ -2,6 +2,11 @@ import OpenAI from 'openai'
 import { openaiAdapter } from 'src/services/providerUsage/adapters/openai.js'
 import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import {
+  normalizeProviderBaseURL,
+  splitProviderBaseURL,
+} from 'src/utils/network/providerUrl.js'
+import { clampOpenAIMaxRetries } from './retry.js'
 
 /**
  * Environment variables:
@@ -54,8 +59,15 @@ export function getOpenAIClient(options?: {
     options?.apiKeyOverride !== undefined ||
     options?.baseURLOverride !== undefined
   const apiKey = options?.apiKeyOverride ?? process.env.OPENAI_API_KEY ?? ''
-  const baseURL = options?.baseURLOverride ?? process.env.OPENAI_BASE_URL
-  const maxRetries = options?.maxRetries ?? 0
+  const configuredBaseURL =
+    options?.baseURLOverride ?? process.env.OPENAI_BASE_URL
+  const baseURL = configuredBaseURL?.trim()
+    ? normalizeProviderBaseURL(configuredBaseURL, 'openai')
+    : undefined
+  const connection = baseURL
+    ? splitProviderBaseURL(baseURL, 'openai')
+    : undefined
+  const maxRetries = clampOpenAIMaxRetries(options?.maxRetries ?? 0, 0)
   if (
     cachedClient &&
     !hasConnectionOverride &&
@@ -71,7 +83,7 @@ export function getOpenAIClient(options?: {
 
   const client = new OpenAI({
     apiKey,
-    ...(baseURL && { baseURL }),
+    ...(connection && connection),
     maxRetries,
     timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,

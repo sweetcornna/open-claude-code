@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import {
   CONTEXT_1M,
   CONTEXT_200K,
@@ -7,6 +7,26 @@ import {
   getTierDefaults,
 } from '../tierDefaults.js'
 import { getModelTier, isModelTier, MODEL_TIERS } from '../modelTier.js'
+
+const TIER_ENV_KEYS = ['ANTHROPIC', 'OPENAI', 'GEMINI', 'GROK'].flatMap(
+  prefix =>
+    MODEL_TIERS.map(tier => `${prefix}_DEFAULT_${tier.toUpperCase()}_MODEL`),
+)
+const savedTierEnv = Object.fromEntries(
+  TIER_ENV_KEYS.map(key => [key, process.env[key]]),
+)
+
+beforeEach(() => {
+  for (const key of TIER_ENV_KEYS) delete process.env[key]
+})
+
+afterAll(() => {
+  for (const key of TIER_ENV_KEYS) {
+    const value = savedTierEnv[key]
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+})
 
 describe('getProviderFamily', () => {
   test('classifies the four families', () => {
@@ -24,6 +44,29 @@ describe('getProviderFamily', () => {
     // DeepSeek's Anthropic line accepts claude-* names; the concrete id is
     // what reaches here, but a gateway could hand back either.
     expect(getProviderFamily('deepseek-v4-flash')).toBe('deepseek')
+  })
+
+  test("OpenAI's o-series counts as GPT", () => {
+    // They carry none of the GPT spelling, so they fell into `other` and were
+    // handed the 200k fallback instead of the family's 272k budget.
+    for (const model of [
+      'o1',
+      'o1-preview',
+      'o1-mini',
+      'o3',
+      'o3-mini',
+      'o4-mini',
+    ]) {
+      expect(getProviderFamily(model)).toBe('gpt')
+    }
+    expect(getTierDefaults('o3-mini').contextTokens).toBe(CONTEXT_272K)
+  })
+
+  test('the o-series test does not swallow other ids starting with o', () => {
+    expect(getProviderFamily('claude-opus-5')).toBe('claude')
+    expect(getProviderFamily('opus')).toBe('claude')
+    expect(getProviderFamily('openai/gpt-oss-120b')).toBe('other')
+    expect(getProviderFamily('olmo-2')).toBe('other')
   })
 })
 

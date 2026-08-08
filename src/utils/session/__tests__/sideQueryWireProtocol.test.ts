@@ -104,10 +104,10 @@ afterAll(async () => {
   }
 })
 
-async function runSideQuery(): Promise<void> {
+async function runSideQuery(model = 'test-model'): Promise<void> {
   const { sideQuery } = await import('../sideQuery.js')
   await sideQuery({
-    model: 'test-model',
+    model,
     messages: [{ role: 'user', content: 'hi' }],
     max_tokens: 16,
     querySource: 'model_validation',
@@ -130,13 +130,8 @@ describe('sideQuery wire protocol', () => {
 
   test('GPT-family responses side queries explicitly use low reasoning', async () => {
     process.env.OPENAI_WIRE_API = 'responses'
-    process.env.OPENAI_MODEL = 'gpt-5.6-sol'
-    try {
-      await runSideQuery()
-      expect(requestBodies[0]?.reasoning).toEqual({ effort: 'low' })
-    } finally {
-      process.env.OPENAI_MODEL = 'test-model'
-    }
+    await runSideQuery('gpt-5.6-sol')
+    expect(requestBodies[0]?.reasoning).toEqual({ effort: 'low' })
   })
 
   test('OPENAI_WIRE_API=chat keeps side queries on Chat Completions', async () => {
@@ -147,12 +142,7 @@ describe('sideQuery wire protocol', () => {
 
   test('a Codex-family model defaults to /responses without an explicit setting', async () => {
     delete process.env.OPENAI_WIRE_API
-    process.env.OPENAI_MODEL = 'gpt-5-codex'
-    try {
-      await runSideQuery()
-      expect(hits).toEqual(['/v1/responses'])
-    } finally {
-      process.env.OPENAI_MODEL = 'test-model'
-    }
+    await runSideQuery('gpt-5-codex')
+    expect(hits).toEqual(['/v1/responses'])
   })
 })

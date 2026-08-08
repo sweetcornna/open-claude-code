@@ -25,10 +25,9 @@
 | 14 | Web Search Pages | `html.duckduckgo.com`, `www.mojeek.com`, `www4.bing.com`, public SearXNG instances, `www.bing.com`, `search.brave.com` | HTTPS | The `free` WebSearch source participates in aggregation by default; `bing`/`brave` must be selected explicitly through `WEB_SEARCH_ADAPTER` |
 | 15 | Google Cloud Storage (updates) | `storage.googleapis.com` | HTTPS | Version checks |
 | 16 | GitHub Raw (Changelog/Stats) | `raw.githubusercontent.com` | HTTPS | Update notices |
-| 17 | Chrome UX Report (CrUX) | `chromeuxreport.googleapis.com` | HTTPS | While running a performance trace under `--chrome` |
-| 18 | CCR Upstream Proxy | `api.anthropic.com` | WS | CCR remote sessions |
-| 19 | Voice STT | `api.anthropic.com/api/ws/...` | WSS | Voice Mode |
-| 20 | Desktop App Download | `claude.ai/api/desktop/...` | HTTPS | Download guidance |
+| 17 | CCR Upstream Proxy | `api.anthropic.com` | WS | CCR remote sessions |
+| 18 | Voice STT | `api.anthropic.com/api/ws/...` | WSS | Voice Mode |
+| 19 | Desktop App Download | `claude.ai/api/desktop/...` | HTTPS | Download guidance |
 
 ---
 
@@ -157,29 +156,18 @@ There is also a Domain Blocklist query:
 - **Endpoint**: `https://raw.githubusercontent.com/anthropics/claude-plugins-official/refs/heads/stats/stats/plugin-installs.json`
 - **Files**: `src/utils/update/releaseNotes.ts`, `src/utils/plugins/installCounts.ts`
 
-### 17. Chrome UX Report (CrUX)
-
-The `chrome-devtools-mcp` subprocess sends this request; occ itself does not.
-
-- **Endpoint**: `https://chromeuxreport.googleapis.com`
-- **Activation**: Only when `--chrome` is enabled **and** the model calls `performance_start_trace` / `performance_analyze_insight`. URLs in the trace are sent to Google in exchange for real-user performance data.
-- **Disable**: Add `--no-performance-crux` to the server
-- **File**: `src/utils/chromeDevtools/setup.ts` (constructs the server arguments)
-
-> occ disables `chrome-devtools-mcp` usage-statistics reporting and update checks by default (`--no-usage-statistics` + `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` / `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`), so they are not included in this table.
-
-### 18. CCR Upstream Proxy
+### 17. CCR Upstream Proxy
 
 - **Endpoint**: `ws://api.anthropic.com/v1/code/upstreamproxy/ws`
 - **Activation**: `CLAUDE_CODE_REMOTE=1` + `CCR_UPSTREAM_PROXY_ENABLED=1`
 - **File**: `src/upstreamproxy/upstreamproxy.ts`
 
-### 19. Voice STT
+### 18. Voice STT
 
 - **Endpoint**: `wss://api.anthropic.com/api/ws/...`
 - **File**: `src/services/voiceStreamSTT.ts`
 
-### 20. Desktop App Download
+### 19. Desktop App Download
 
 - **Endpoint**: `https://claude.ai/api/desktop/win32/x64/exe/latest/redirect` (Windows)
 - **Endpoint**: `https://claude.ai/api/desktop/darwin/universal/dmg/latest/redirect` (macOS)
@@ -222,7 +210,6 @@ All endpoints below are hosted on `api.anthropic.com` and grouped by function:
 | `search.brave.com` | Brave Search | HTTPS |
 | `storage.googleapis.com` | Automatic Updates | HTTPS |
 | `raw.githubusercontent.com` | Changelog / Plugin Statistics | HTTPS |
-| `bridge.claudeusercontent.com` | Chrome Bridge | WSS |
 | `platform.claude.com` | OAuth Authorization Page | HTTPS |
 | `claude.com` / `claude.ai` | OAuth / Download | HTTPS |
 | `claude.fedstart.com` | FedStart OAuth | HTTPS |

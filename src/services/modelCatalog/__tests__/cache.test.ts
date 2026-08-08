@@ -77,9 +77,17 @@ describe('catalog key', () => {
     expect(a).not.toBe(c)
   })
 
-  test('normalizes case and trailing slashes', () => {
-    expect(buildCatalogKey('openai', 'https://API.OpenAI.com/v1//')).toBe(
-      buildCatalogKey('openai', 'https://api.openai.com/v1'),
+  test('normalizes host/resource syntax without folding path or query case', () => {
+    expect(
+      buildCatalogKey(
+        'openai',
+        'https://API.OpenAI.com/v1/models///?Tenant=Prod',
+      ),
+    ).toBe(buildCatalogKey('openai', 'https://api.openai.com/v1?Tenant=Prod'))
+    expect(
+      buildCatalogKey('openai', 'https://gateway.example/Tenant?key=AbC'),
+    ).not.toBe(
+      buildCatalogKey('openai', 'https://gateway.example/tenant?key=abc'),
     )
   })
 
@@ -172,7 +180,7 @@ describe('disk cache', () => {
     writeFileSync(
       modelCatalogFilePath(),
       JSON.stringify({
-        version: 1,
+        version: 2,
         entries: {
           [key]: { fetchedAt: now, models: [{ id: 'ok' }, { nope: 1 }, 'x'] },
           broken: { models: [{ id: 'y' }] },
@@ -196,6 +204,6 @@ describe('disk cache', () => {
     const raw: unknown = JSON.parse(
       readFileSync(modelCatalogFilePath(), 'utf8'),
     )
-    expect((raw as { version: number }).version).toBe(1)
+    expect((raw as { version: number }).version).toBe(2)
   })
 })

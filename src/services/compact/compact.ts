@@ -604,8 +604,6 @@ export async function compactConversation(
     }
     for (const att of getMcpInstructionsDeltaAttachment(
       context.options.mcpClients,
-      context.options.tools,
-      context.options.mainLoopModel,
       [],
     )) {
       postCompactFileAttachments.push(createAttachmentMessage(att))
@@ -999,8 +997,6 @@ export async function partialCompactConversation(
     }
     for (const att of getMcpInstructionsDeltaAttachment(
       context.options.mcpClients,
-      context.options.tools,
-      context.options.mainLoopModel,
       messagesToKeep,
     )) {
       postCompactFileAttachments.push(createAttachmentMessage(att))

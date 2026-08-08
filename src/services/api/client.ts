@@ -15,6 +15,7 @@ import { getSmallFastModel } from 'src/utils/model/model.js'
 import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js'
 import { isDirectAnthropicApi } from 'src/utils/model/providers.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import { splitProviderBaseURL } from 'src/utils/network/providerUrl.js'
 import {
   getIsNonInteractiveSession,
   getSessionId,
@@ -79,6 +80,32 @@ function createStderrLogger(): ClientOptions['logger'] {
     info: (msg, ...args) => console.error('[Anthropic SDK INFO]', msg, ...args),
     debug: (msg, ...args) =>
       console.error('[Anthropic SDK DEBUG]', msg, ...args),
+  }
+}
+
+/**
+ * Turn a configured Anthropic base URL into the fields the SDK constructor
+ * takes, or undefined when nothing is configured.
+ *
+ * The try/catch is the point: `splitProviderBaseURL` throws a `TypeError` on
+ * anything `new URL()` rejects, and a typo'd `ANTHROPIC_BASE_URL` (`api.
+ * example.com`, missing scheme) would otherwise blow up *while the client is
+ * being constructed* — before any request exists, so no retry ladder and no
+ * API-error message, just a stack trace. Handing the raw string to the SDK
+ * instead lets the failure arrive as a normal request error the user can read.
+ * Same fallback shape as `canonicalCatalogBaseURL` in modelCatalog/cache.ts.
+ */
+export function resolveAnthropicBaseURL(
+  baseURL: string | undefined,
+):
+  | { baseURL: string; defaultQuery?: Record<string, string | undefined> }
+  | undefined {
+  const trimmed = baseURL?.trim()
+  if (!trimmed) return undefined
+  try {
+    return splitProviderBaseURL(trimmed, 'anthropic')
+  } catch {
+    return { baseURL: trimmed }
   }
 }
 
@@ -149,10 +176,14 @@ export async function getAnthropicClient({
   }
 
   const resolvedFetch = buildFetch(fetchOverride, source)
+  const boundedMaxRetries = Math.min(
+    10,
+    Math.max(0, Number.isFinite(maxRetries) ? Math.trunc(maxRetries) : 0),
+  )
 
   const ARGS = {
     defaultHeaders,
-    maxRetries,
+    maxRetries: boundedMaxRetries,
     timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,
     fetchOptions: getProxyFetchOptions({
@@ -310,16 +341,18 @@ export async function getAnthropicClient({
   }
 
   // Determine authentication method based on available tokens
+  const configuredBaseURL =
+    process.env.USER_TYPE === 'ant' &&
+    isEnvTruthy(process.env.USE_STAGING_OAUTH)
+      ? getOauthConfig().BASE_API_URL
+      : process.env.ANTHROPIC_BASE_URL
+  const configuredBase = resolveAnthropicBaseURL(configuredBaseURL)
   const clientConfig: ConstructorParameters<typeof Anthropic>[0] = {
     apiKey: isClaudeAISubscriber() ? null : apiKey || getAnthropicApiKey(),
     authToken: isClaudeAISubscriber()
       ? getClaudeAIOAuthTokens()?.accessToken
       : undefined,
-    // Set baseURL from OAuth config when using staging OAuth
-    ...(process.env.USER_TYPE === 'ant' &&
-    isEnvTruthy(process.env.USE_STAGING_OAUTH)
-      ? { baseURL: getOauthConfig().BASE_API_URL }
-      : {}),
+    ...configuredBase,
     ...ARGS,
     ...(isDebugToStdErr() && { logger: createStderrLogger() }),
   }

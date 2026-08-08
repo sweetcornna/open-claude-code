@@ -303,8 +303,6 @@ export function applyRootOptions(program: CommanderCommand) {
         [] as string[],
       )
       .option('--disable-slash-commands', 'Disable all skills', () => true)
-      .option('--chrome', 'Enable Chrome browser tools (Chrome DevTools MCP)')
-      .option('--no-chrome', 'Disable Chrome browser tools')
       .option(
         '--file <specs...>',
         'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)',

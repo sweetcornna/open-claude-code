@@ -8,6 +8,7 @@ export * from './agentAdapter.js'
 export * from './engine/concurrency.js'
 export * from './engine/script.js'
 export * from './engine/journal.js'
+export * from './engine/scriptHash.js'
 export * from './engine/budget.js'
 export * from './engine/structuredOutput.js'
 export * from './engine/namedWorkflows.js'
@@ -20,12 +21,29 @@ import {
   createWorkflowTool,
   type WorkflowToolDescriptor,
 } from './tool/WorkflowTool.js'
-import { workflowInputSchema, type WorkflowInput } from './tool/schema.js'
+import {
+  resumePolicySchema,
+  workflowCancelInputSchema,
+  workflowInputSchema,
+  workflowRunInputSchema,
+  workflowStatusInputSchema,
+  type WorkflowCancelInput,
+  type WorkflowInput,
+  type WorkflowRunInput,
+  type WorkflowStatusInput,
+} from './tool/schema.js'
 import { persistInlineScript } from './tool/persistInline.js'
 export {
   createWorkflowTool,
   type WorkflowToolDescriptor,
+  resumePolicySchema,
+  workflowCancelInputSchema,
   workflowInputSchema,
+  workflowRunInputSchema,
+  workflowStatusInputSchema,
+  type WorkflowCancelInput,
   type WorkflowInput,
+  type WorkflowRunInput,
+  type WorkflowStatusInput,
   persistInlineScript,
 }

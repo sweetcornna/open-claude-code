@@ -25,10 +25,9 @@
 | 14 | Web Search Pages | `html.duckduckgo.com`, `www.mojeek.com`, `www4.bing.com`, 公開 SearXNG インスタンス, `www.bing.com`, `search.brave.com` | HTTPS | WebSearch の `free` ソースはデフォルトで集約に参加する。`bing`/`brave` は `WEB_SEARCH_ADAPTER` での明示的な指定が必要 |
 | 15 | Google Cloud Storage (更新) | `storage.googleapis.com` | HTTPS | バージョン確認 |
 | 16 | GitHub Raw (Changelog/Stats) | `raw.githubusercontent.com` | HTTPS | 更新通知 |
-| 17 | Chrome UX Report (CrUX) | `chromeuxreport.googleapis.com` | HTTPS | `--chrome` で performance trace を実行するとき |
-| 18 | CCR Upstream Proxy | `api.anthropic.com` | WS | CCR リモートセッション |
-| 19 | Voice STT | `api.anthropic.com/api/ws/...` | WSS | Voice Mode |
-| 20 | Desktop App Download | `claude.ai/api/desktop/...` | HTTPS | ダウンロード案内 |
+| 17 | CCR Upstream Proxy | `api.anthropic.com` | WS | CCR リモートセッション |
+| 18 | Voice STT | `api.anthropic.com/api/ws/...` | WSS | Voice Mode |
+| 19 | Desktop App Download | `claude.ai/api/desktop/...` | HTTPS | ダウンロード案内 |
 
 ---
 
@@ -157,29 +156,18 @@ WebSearch はデフォルトで複数の検索ソースを集約します。`fre
 - **エンドポイント**: `https://raw.githubusercontent.com/anthropics/claude-plugins-official/refs/heads/stats/stats/plugin-installs.json`
 - **ファイル**: `src/utils/update/releaseNotes.ts`, `src/utils/plugins/installCounts.ts`
 
-### 17. Chrome UX Report (CrUX)
-
-リクエストを送るのは `chrome-devtools-mcp` 子プロセスであり、occ 自体ではありません。
-
-- **エンドポイント**: `https://chromeuxreport.googleapis.com`
-- **有効化**: `--chrome` が有効で、**かつ**モデルが `performance_start_trace` / `performance_analyze_insight` を呼び出した場合だけ。trace 内の URL は、実ユーザーのパフォーマンスデータを取得するため Google へ送信される
-- **無効化**: server に `--no-performance-crux` を追加する
-- **ファイル**: `src/utils/chromeDevtools/setup.ts`（server 引数を構築する）
-
-> `chrome-devtools-mcp` の利用統計送信と更新確認は occ がデフォルトで無効にしています（`--no-usage-statistics` + `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` / `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`）。そのため、この表には含めません。
-
-### 18. CCR Upstream Proxy
+### 17. CCR Upstream Proxy
 
 - **エンドポイント**: `ws://api.anthropic.com/v1/code/upstreamproxy/ws`
 - **有効化**: `CLAUDE_CODE_REMOTE=1` + `CCR_UPSTREAM_PROXY_ENABLED=1`
 - **ファイル**: `src/upstreamproxy/upstreamproxy.ts`
 
-### 19. Voice STT
+### 18. Voice STT
 
 - **エンドポイント**: `wss://api.anthropic.com/api/ws/...`
 - **ファイル**: `src/services/voiceStreamSTT.ts`
 
-### 20. Desktop App Download
+### 19. Desktop App Download
 
 - **エンドポイント**: `https://claude.ai/api/desktop/win32/x64/exe/latest/redirect` (Windows)
 - **エンドポイント**: `https://claude.ai/api/desktop/darwin/universal/dmg/latest/redirect` (macOS)
@@ -222,7 +210,6 @@ WebSearch はデフォルトで複数の検索ソースを集約します。`fre
 | `search.brave.com` | Brave 検索 | HTTPS |
 | `storage.googleapis.com` | 自動更新 | HTTPS |
 | `raw.githubusercontent.com` | Changelog / プラグイン統計 | HTTPS |
-| `bridge.claudeusercontent.com` | Chrome Bridge | WSS |
 | `platform.claude.com` | OAuth 認可ページ | HTTPS |
 | `claude.com` / `claude.ai` | OAuth / ダウンロード | HTTPS |
 | `claude.fedstart.com` | FedStart OAuth | HTTPS |

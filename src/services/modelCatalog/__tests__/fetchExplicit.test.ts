@@ -77,15 +77,17 @@ describe('fetchAnthropicCompatibleModelsWith', () => {
     expect(headers['anthropic-version']).toBe('2023-06-01')
   })
 
-  test('does not double the version segment on a base URL that already has it', async () => {
-    // Gateways are commonly configured as ANTHROPIC_BASE_URL=https://gw/v1.
+  test('does not double version or resource paths and preserves query values', async () => {
     const { fetchImpl, calls } = makeFetch({ body: { data: [{ id: 'm' }] } })
     await explicit.fetchAnthropicCompatibleModelsWith({
-      baseURL: 'https://gw.example.com/v1/',
+      baseURL:
+        'https://gw.example.com/Tenant/V1/MESSAGES/?api-version=AbC#wrong',
       apiKey: 'sk-test',
       fetchImpl,
     })
-    expect(calls[0]?.url).toBe('https://gw.example.com/v1/models?limit=200')
+    expect(calls[0]?.url).toBe(
+      'https://gw.example.com/Tenant/v1/models?api-version=AbC&limit=200',
+    )
   })
 
   test.each([
@@ -221,6 +223,21 @@ describe('fetchGeminiModelsWith', () => {
     expect(
       (calls[0]?.init?.headers as Record<string, string>)['x-goog-api-key'],
     ).toBe('goog-key')
+  })
+
+  test('canonicalizes a complete Gemini resource URL', async () => {
+    const { fetchImpl, calls } = makeFetch({
+      body: { models: [{ name: 'models/gemini-pro' }] },
+    })
+    await explicit.fetchGeminiModelsWith({
+      baseURL:
+        'https://gateway.example/v1beta/models/gemini-old:generateContent?tenant=AbC#wrong',
+      apiKey: 'goog-key',
+      fetchImpl,
+    })
+    expect(calls[0]?.url).toBe(
+      'https://gateway.example/v1beta/models?tenant=AbC&pageSize=200',
+    )
   })
 
   test('a list with only embedding models reads as empty, not as success', async () => {

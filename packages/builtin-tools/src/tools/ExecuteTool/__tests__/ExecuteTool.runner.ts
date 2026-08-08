@@ -68,10 +68,11 @@ mock.module('src/utils/messages.ts', () => ({
 const { ExecuteTool } = await import('../ExecuteTool.js')
 const { EXECUTE_TOOL_NAME } = await import('../constants.js')
 
-function makeContext(tools: unknown[] = []) {
+function makeContext(tools: unknown[] = [], refreshTools?: () => unknown[]) {
   return {
     options: {
       tools,
+      refreshTools,
     },
     cwd: '/tmp',
     sessionId: 'test',
@@ -181,6 +182,42 @@ describe('ExecuteTool', () => {
     })
     expect(result.newMessages).toBeDefined()
     expect(result.newMessages!.length).toBeGreaterThan(0)
+  })
+
+  test('executes a tool added after the round snapshot', async () => {
+    const mockTarget = makeMockTool('TestTool', 'live')
+    const refreshTools = mock(() => [mockTarget])
+    const ctx = makeContext([], refreshTools)
+
+    const result = await ExecuteTool.call(
+      { tool_name: 'TestTool', params: {} },
+      ctx,
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    expect(refreshTools).toHaveBeenCalledTimes(1)
+    expect(result.data).toEqual({ result: 'live', tool_name: 'TestTool' })
+  })
+
+  test('does not execute a tool removed after the round snapshot', async () => {
+    const mockTarget = makeMockTool('TestTool', 'stale')
+    const call = mock(mockTarget.call)
+    mockTarget.call = call
+    const ctx = makeContext([mockTarget], () => [])
+
+    const result = await ExecuteTool.call(
+      { tool_name: 'TestTool', params: {} },
+      ctx,
+      async () => ({ behavior: 'allow' }),
+      { type: 'assistant', content: [], uuid: 'msg1' } as never,
+      undefined,
+    )
+
+    expect(result.data).toEqual({ result: null, tool_name: 'TestTool' })
+    expect(call).not.toHaveBeenCalled()
+    expect(result.newMessages?.[0].content).toContain('not found')
   })
 
   test('returns permission denied when target denies', async () => {

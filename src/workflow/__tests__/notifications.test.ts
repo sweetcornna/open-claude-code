@@ -156,6 +156,29 @@ describe('installWorkflowNotifications', () => {
     expect(calls.length).toBe(1)
   })
 
+  test('removed run clears prior generation status before the runId is reused', async () => {
+    const { installWorkflowNotifications } = await import('../notifications.js')
+    const { service, emit, setRuns } = makeMockService([
+      makeRun('r1', 'running'),
+    ])
+    const calls: string[] = []
+    installWorkflowNotifications(service, msg => calls.push(msg))
+
+    emit()
+    setRuns([makeRun('r1', 'completed')])
+    emit()
+    expect(calls).toHaveLength(1)
+
+    setRuns([])
+    emit()
+    setRuns([makeRun('r1', 'completed')])
+    emit()
+
+    // Reappearing already-terminal history is a first sighting, not a stale
+    // running→completed transition from the evicted generation.
+    expect(calls).toHaveLength(1)
+  })
+
   test('after unsubscribe no more notifications', async () => {
     const { installWorkflowNotifications } = await import('../notifications.js')
     const { service, emit, setRuns } = makeMockService([

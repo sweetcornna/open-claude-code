@@ -1,6 +1,6 @@
 # 分层模型设置（`/model-settings`）
 
-按模型档位（haiku / sonnet / opus / fable）分别配置**思考强度**与**上下文窗口**。
+按 provider 默认模型与四个模型档位（default / haiku / sonnet / opus / fable）分别配置**思考强度**与**上下文窗口**。
 
 在此之前这两轴都是全局单值：一个扁平的 `settings.effortLevel`，和一个 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`。前者说不出「opus 多想一点、haiku 省着点」，后者更是 `utils/session/context.ts` 里明写的「the single knob」。而合理的默认值其实取决于别名背后是哪家 provider——DeepSeek 的三档 effort 梯子和 Anthropic 的五档不是一回事，GPT 的窗口也不是 200k。
 
@@ -11,7 +11,7 @@
 | provider 家族 | effort | 上下文 |
 | --- | --- | --- |
 | DeepSeek | `max` | 1M |
-| GPT | `xhigh` | 272k |
+| GPT（含 `o1`/`o3`/`o4-mini` 这条 reasoning 线） | `xhigh` | 272k |
 | Claude opus / fable | `xhigh` | 1M |
 | Claude sonnet / haiku | `xhigh` | 200k |
 | Gemini / Grok | `high` | 200k |
@@ -67,25 +67,39 @@ occ 的五档（`low`/`medium`/`high`/`xhigh`/`max`）只有 Anthropic 一家原
 
 补上的那一环是用户自己配的档位映射：`OPENAI_DEFAULT_OPUS_MODEL=deepseek-v4-pro` 本来就说明了「opus 别名解析到这个 id」，反着读一遍即可。四个前缀（`ANTHROPIC` / `OPENAI` / `GEMINI` / `GROK`）都扫，大小写与 `[1m]` 后缀都归一化。
 
-**反查可能是多对一**：把四个别名全指向同一个 checkpoint 是常见的 DeepSeek 配置，此时请求里没有任何东西能区分它们。规则是「先取已配置的那个档位，再取能力最高的（fable > opus > sonnet > haiku）」，`/model-settings` 会把这种情况显式打印出来 —— 因为同一个 id 上给两个档位配不同的值，本来就不可能都生效。
+**反查可能是多对一**：把四个别名全指向同一个 checkpoint 是常见的 DeepSeek 配置。主循环会保留用户选择的来源，所以 provider 默认请求使用 `default`、显式 `/model sonnet` 使用 `sonnet`，即使两者解析成同一个 id 也能各自生效。只有已经丢失来源的后台/显式 concrete-id 路径才使用兼容回退：「先取已配置的档位，再取能力最高的（fable > opus > sonnet > haiku）」。
+
+### `default` 槽认的是「来源」，不是「解析结果」
+
+判定入口是 `getMainLoopModelSettingsSlot()`，两条规则按序生效：
+
+1. **看选择从哪来。** provider 的单模型键（`ANTHROPIC_MODEL` / `OPENAI_MODEL` / `GEMINI_MODEL` / `GROK_MODEL`）和四个 `*_DEFAULT_<TIER>_MODEL` 都属于**默认链** —— 它们是向导用来描述 provider 的，不是用户在挑模型。把它们当成「用户选了这个 id」正是此前 `default` 槽**永远读不回来**的原因：第三方会话没配 `*_MODEL` 时判定恒为 false，配了又被当成显式选择，两条路都落不到 `default`。显式选择只有三个来源：`/model`、`--model`、`settings.model`。字面别名（`/model opus`）保留别名槽；具体 id 走反查；**显式 id 恰好等于 provider 默认模型时也归 `default`**，否则同一个 id 会分裂成两个槽。
+2. **只有主循环模型能拿到 `default`。** 子 agent 和 small/fast 模型直接拿自己的 id 调 `getContextWindowForModel` / `resolveAppliedEffort`，不加这条就会把主力模型的 effort 和窗口套到一个后台 haiku 上。一方会话内建默认（Opus 或 Sonnet，取决于订阅）无法在此处解析——那条链会在无凭据时抛错，而 `getContextWindowForModel` 就在它下游——所以按**取值范围**判定：内建默认永远不是 Haiku 也不是 Fable，这两档因此保留自己的槽。
+
+这也是 `--model default` 与 `/model default` 现在都存 `null`、agent 声明的 `model:` 现在按**原始别名**存的原因：提前解析成具体 id 就把「来源」丢了，槽随之判错。
+
+### 从 2.34 升上来
+
+2.34 的 `/model` 选择器没有 `default` 槽，Default 行写的是「默认模型反查出的那个 tier」。2.35 改按来源判定后，那些值对默认会话就读不到了。启动时的一次性迁移 `migrateDefaultTierSettingsToDefaultSlot` 会在 `modelSettings.default` **未设**且该 tier 槽有值时把它**复制**（不是移动）到 `default`；tier 槽原样保留，因为显式 `/model opus` 仍然该用它。`default` 已存在就什么都不做。
 
 ## 用法
 
 两个入口，写的是同一份 `settings.modelSettings`：
 
-**`/model` 选择器**（推荐）—— 高亮某一行时，`←/→` 调该档位的 effort，`Space` 循环该档位的最大上下文（默认 → 128k → 200k → 272k → 512k → 1M → 回到默认）。面板会写明当前这对旋钮属于哪个档位，并在 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` / `CLAUDE_CODE_EFFORT_LEVEL` 正在压制它时给出提示。
+**`/model` 选择器**（推荐）—— 高亮某一行时，`←/→` 调该设置槽的 effort，`Space` 循环该设置槽的最大上下文（默认 → 128k → 200k → 272k → 512k → 1M → 回到默认）。`Default` 行写入独立的 `default` 槽，其余别名写入各自档位；面板也会在 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` / `CLAUDE_CODE_EFFORT_LEVEL` 正在压制它时给出提示。
 
 `Space` 以前是「1M context 开/关」二元开关。它现在是同一件事的完整梯子：`[1m]` 后缀由所选窗口推导（≥1M 且模型支持时才加），不再是一个独立开关。旧的 `modelPicker:toggle1M` 键位 id 仍然可用，绑到同一个动作。
 
 选择器里对**任何**档位做的调整都会保存，不只是最后按 Enter 的那一行 —— 一路翻过去把每档调好再回车确认是这个界面的自然用法，只留最后一行等于把其余的活白干。
 
-**首启向导 / `/login` Step 2** 也写这里：`Max context tokens` 与新增的 `Thinking effort` 两个字段落进 `modelSettings`，而不是从前的 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`（那个键在本层**之上**，写在登录里等于让开场值静默压过用户此后每一次调整；保存时会删掉旧版留下的它）。留空 = 写入各档位自己的家族默认值，于是登录结束后就是四个已配置档位而非四行 `(defaults)`。**重跑向导时留空则什么都不动** —— 不会把你分档调好的值压平。
+**首启向导 / `/login` Step 2** 也写这里：`Max context tokens` 与 `Thinking effort` 两个字段落进 `modelSettings`，而不是从前的 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`（那个键在本层**之上**，写在登录里等于让开场值静默压过用户此后每一次调整；保存时会删掉旧版留下的它）。首次保存会为 provider 默认模型和四个档位分别写入家族默认值。**重跑向导时留空则什么都不动**；把 effort 明确选回 `(model default)` 会删除旧覆盖。
 
 **`/model-settings` 命令**：
 
 ```bash
-/model-settings                      # 打印四个档位当前生效的值
+/model-settings                      # 打印 default 与四个档位当前值
 /model-settings show                 # 同上
+/model-settings default effort high  # 设置 provider 默认模型
 /model-settings opus effort max      # 设一个档位的 effort
 /model-settings haiku context 128k   # 设窗口，接受 200000 / 272k / 1m
 /model-settings opus reset           # 清掉该档位的覆盖，回到默认
@@ -96,6 +110,7 @@ occ 的五档（`low`/`medium`/`high`/`xhigh`/`max`）只有 Anthropic 一家原
 ```json
 {
   "modelSettings": {
+    "default": { "effort": "high", "contextTokens": 272000 },
     "opus": { "effort": "max", "contextTokens": 1000000 },
     "haiku": { "contextTokens": 128000 }
   }

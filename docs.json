@@ -130,8 +130,7 @@
                   "docs/en/features/web-search-tool",
                   "docs/en/features/experimental-skill-search",
                   "docs/en/features/langfuse-monitoring",
-                  "docs/en/features/computer-use",
-                  "docs/en/features/chrome-devtools-mcp"
+                  "docs/en/features/computer-use"
                 ]
               },
               {
@@ -275,8 +274,7 @@
                   "docs/zh/features/web-search-tool",
                   "docs/zh/features/experimental-skill-search",
                   "docs/zh/features/langfuse-monitoring",
-                  "docs/zh/features/computer-use",
-                  "docs/zh/features/chrome-devtools-mcp"
+                  "docs/zh/features/computer-use"
                 ]
               },
               {
@@ -420,8 +418,7 @@
                   "docs/ja/features/web-search-tool",
                   "docs/ja/features/experimental-skill-search",
                   "docs/ja/features/langfuse-monitoring",
-                  "docs/ja/features/computer-use",
-                  "docs/ja/features/chrome-devtools-mcp"
+                  "docs/ja/features/computer-use"
                 ]
               },
               {

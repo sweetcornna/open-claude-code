@@ -5,21 +5,19 @@ import { wrappedRender as render } from '@anthropic/ink';
 import { SentryErrorBoundary } from '../../components/SentryErrorBoundary.js';
 import type { RunProgress } from '../progress/store.js';
 import { call as panelCall } from '../panel/panelCall.js';
-import { clampSelected, isRunTerminatedTransition, WorkflowsPanel } from '../panel/WorkflowsPanel.js';
+import { isRunTerminatedTransition, WorkflowsPanel } from '../panel/WorkflowsPanel.js';
 import { truncateLabel } from '../panel/AgentList.js';
 import { STATUS_DOT } from '../panel/status.js';
 import { __resetWorkflowServiceForTests, getWorkflowService } from '../service.js';
 
-// Pure function: clamp selection to valid range (same source as clampSelected inside the panel).
-test('clampSelected: empty list → 0; out of bounds → last; negative/NaN → 0; normal → original', () => {
-  expect(clampSelected(5, 0)).toBe(0);
-  expect(clampSelected(5, 3)).toBe(2);
-  expect(clampSelected(-3, 3)).toBe(0);
-  expect(clampSelected(1, 3)).toBe(1);
-  expect(clampSelected(0, 1)).toBe(0);
-  // NaN (e.g. uninitialized state) safely falls back to 0
-  expect(clampSelected(Number.NaN, 3)).toBe(0);
-});
+function fakeTty(): NodeJS.ReadStream {
+  const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
+  stdin.isTTY = true;
+  stdin.setRawMode = () => stdin;
+  stdin.ref = () => stdin;
+  stdin.unref = () => stdin;
+  return stdin;
+}
 
 // truncateLabel: short label as-is; with `#number` suffix keep suffix, truncate prefix + ellipsis;
 // without suffix, cut from the right. Lets audit workflow's verify:${dim}#${idx} multi-finding still be distinguishable.
@@ -165,7 +163,7 @@ test('WorkflowsPanel mount triggers loadPersistedRuns once', async () => {
         onDone: () => {},
         context: { canUseTool: undefined } as never,
       }),
-      { stdout: stdout as unknown as NodeJS.WriteStream, patchConsole: false },
+      { stdout: stdout as unknown as NodeJS.WriteStream, stdin: fakeTty(), patchConsole: false },
     );
     // after mount useEffect triggers asynchronously; wait a tick for React commit + effect to complete
     await new Promise(r => setTimeout(r, 30));

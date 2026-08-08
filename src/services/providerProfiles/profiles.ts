@@ -29,6 +29,13 @@ import { readFileSync } from 'fs'
 import { dirname } from 'path'
 import { occConfigPath } from 'src/config/paths.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
+import {
+  ALL_PROFILE_ENV_KEYS,
+  PROFILE_ENV_KEYS,
+  type ProfileModelType,
+} from './envKeys.js'
+
+export { ALL_PROFILE_ENV_KEYS } from './envKeys.js'
 
 /**
  * settings.env over process.env — the same merged view /provider uses.
@@ -47,8 +54,6 @@ export function getMergedProviderEnv(): Record<string, string> {
   return merged
 }
 
-export type ProfileModelType = 'anthropic' | 'openai' | 'gemini' | 'grok'
-
 export type ProviderProfile = {
   name: string
   modelType: ProfileModelType
@@ -64,72 +69,6 @@ export type ProviderProfilesFile = {
   active?: string
   profiles: Record<string, ProviderProfile>
 }
-
-/**
- * Env keys a profile may manage, per provider family. Activation clears the
- * union of ALL families before applying the target profile's env, so keys
- * from a previously active provider can never leak into the new one.
- */
-export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
-  anthropic: [
-    'ANTHROPIC_BASE_URL',
-    'ANTHROPIC_AUTH_TOKEN',
-    'ANTHROPIC_API_KEY',
-    'ANTHROPIC_MODEL',
-    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-    'ANTHROPIC_DEFAULT_SONNET_MODEL',
-    'ANTHROPIC_DEFAULT_OPUS_MODEL',
-    'ANTHROPIC_DEFAULT_FABLE_MODEL',
-    'ANTHROPIC_SMALL_FAST_MODEL',
-    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
-    'CLAUDE_CODE_1M_CONTEXT_MODELS',
-    'CLAUDE_CODE_PROMPT_CACHING_1H',
-  ],
-  openai: [
-    'OPENAI_BASE_URL',
-    'OPENAI_API_KEY',
-    'OPENAI_MODEL',
-    'OPENAI_DEFAULT_HAIKU_MODEL',
-    'OPENAI_DEFAULT_SONNET_MODEL',
-    'OPENAI_DEFAULT_OPUS_MODEL',
-    'OPENAI_DEFAULT_FABLE_MODEL',
-    'OPENAI_AUTH_MODE',
-    'OPENAI_WIRE_API',
-    'OPENAI_ENABLE_THINKING',
-    'OPENAI_MAX_TOKENS',
-    'OPENAI_ORG_ID',
-    'OPENAI_PROJECT_ID',
-    'OPENAI_PROMPT_CACHE_KEY',
-    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
-  ],
-  gemini: [
-    'GEMINI_API_KEY',
-    'GEMINI_AUTH_MODE',
-    'GEMINI_BASE_URL',
-    'GEMINI_MODEL',
-    'GEMINI_DEFAULT_HAIKU_MODEL',
-    'GEMINI_DEFAULT_SONNET_MODEL',
-    'GEMINI_DEFAULT_OPUS_MODEL',
-    'GEMINI_DEFAULT_FABLE_MODEL',
-    'GEMINI_MAX_TOKENS',
-    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
-  ],
-  grok: [
-    'GROK_API_KEY',
-    'XAI_API_KEY',
-    'GROK_MODEL',
-    'GROK_DEFAULT_FABLE_MODEL',
-    'GROK_BASE_URL',
-    'GROK_MAX_TOKENS',
-    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
-  ],
-}
-
-// Deduped union: CLAUDE_CODE_MAX_CONTEXT_TOKENS is managed by every family
-// (context window is provider-independent), so the flat() union repeats it.
-export const ALL_PROFILE_ENV_KEYS: readonly string[] = [
-  ...new Set(Object.values(PROFILE_ENV_KEYS).flat()),
-]
 
 export function profilesFilePath(): string {
   return occConfigPath('provider-profiles.json')

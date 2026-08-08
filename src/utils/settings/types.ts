@@ -837,6 +837,7 @@ export const SettingsSchema = lazySchema(() =>
         .describe('Persisted effort level for supported models.'),
       modelSettings: z
         .object({
+          default: ModelTierSettingsSchema(),
           haiku: ModelTierSettingsSchema(),
           sonnet: ModelTierSettingsSchema(),
           opus: ModelTierSettingsSchema(),

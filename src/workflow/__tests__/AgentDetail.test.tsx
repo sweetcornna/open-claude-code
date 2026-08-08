@@ -117,6 +117,33 @@ test('AgentDetail still reports a genuine engine failure as a failure', async ()
   expect(out).toContain('terminal API error');
 });
 
+test('AgentDetail does not call a watchdog timeout a deterministic failure', async () => {
+  // The backend reports both watchdog limits retryable:false, but that is a
+  // budget decision (an engine retry restarts the clock), not a claim that the
+  // identical call cannot succeed. The deterministic line said the opposite of
+  // the truth and steered the user away from the knob that actually fixes it.
+  for (const reason of ['agent-no-progress', 'agent-total-timeout']) {
+    const out = await renderDetail({
+      id: 11,
+      label: 'research:deps',
+      status: 'done',
+      resultKind: 'dead',
+      failureReason: reason,
+      retryable: false,
+      startedAt: 1_000,
+      endedAt: 4_000,
+    });
+
+    expect(out).toContain('Failure');
+    expect(out).not.toContain('Deterministic');
+    expect(out).toContain('not retried automatically');
+    // The raw identifier never reaches the screen, and the env knob that
+    // adjusts the limit does.
+    expect(out).not.toContain(reason);
+    expect(out).toContain('CLAUDE_CODE_AGENT_');
+  }
+});
+
 test('AgentDetail marks a skipped agent as skipped, not as a success', async () => {
   const out = await renderDetail({
     id: 3,

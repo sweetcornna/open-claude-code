@@ -104,7 +104,10 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 
 - `u` 参数前 2 字符为协议前缀：`a1` = https，`a0` = http
 - 剩余部分为 base64url 编码的真实 URL
-- Bing 内部链接和相对路径被过滤返回 `undefined`
+- **跟踪链接写成相对路径（`/ck/a?...&u=a1...`）时同样能解出发布者 URL**：真实 URL 在
+  base64 块里，跟 href 是绝对还是相对无关。先解码、解不出来再按形状判断，否则一整页
+  相对形式的结果会被整体丢弃（对齐上游 free-search-mcp v0.9.2）
+- 解不出目标的 Bing 内部链接与相对/锚点链接仍被过滤返回 `undefined`
 
 ### 3.3 摘要提取（`extractSnippet()`）
 
@@ -125,7 +128,9 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 
 默认不是「选一个后端」，而是**并行跑所有已连接的搜索源，合并成一份结果**。
 
-### 4.1 五个对称源（`adapters/searchSources.ts`）
+### 4.1 七个对称源（`adapters/searchSources.ts`）
+
+表中顺序 = 面板顺序 = 增强路的合并优先级。
 
 | 源 | 执行 | 凭据 |
 |---|---|---|
@@ -133,10 +138,21 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | `deepseek` | DeepSeek server-side `web_search_20250305`，走 `<base>/anthropic` | DeepSeek 端点 + key（`OPENAI_BASE_URL` 指向 api.deepseek.com） |
 | `gemini` | Gemini `generateContent` + `googleSearch` grounding | Google(Antigravity) OAuth 或 `GEMINI_API_KEY` |
 | `codex` | OpenAI Responses API 内建 `web_search` 工具 | ChatGPT OAuth 或 `OPENAI_API_KEY` |
+| `brave` | Brave LLM Context API（独立索引） | `settings.braveApiKey`，或 `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
+| `exa` | Exa 神经搜索 MCP 端点 | `settings.exaApiKey` |
 | `free` | 免密钥多引擎抓取（移植自 sweetcornna/free-search-mcp） | 无 |
 
 **有凭据即默认开**：settings 只存用户的显式改动（`webSearchSources.<id>`），没动过的源跟随凭据。
 面板在 `/search-setting`（勾选、登录、断开、重新探测）。
+
+**`brave` / `exa`：配了 key 就是凭据，语义与登录完全一致** —— 没 key 不点亮，显式关掉永远赢，
+勾一个没 key 的源不会凭空造出能力。它们在注册表里而不是只能显式点名，是因为此前用户为一个自己
+付过费的索引唯一的用法是 `WEB_SEARCH_ADAPTER=brave`，而那会把**其余所有源一起关掉**。
+判据直接问各自适配器「这次请求会带哪把 key」（`resolveBraveApiKey` / `resolveExaApiKey`），
+所以面板显示「已连接」和请求真带 key 不可能对不上。
+
+**`bing` 故意不进注册表**：它抓的是 `free` 那一路内部 Bing 引擎的同一个端点、同一个出口 IP，
+并进聚合等于把一份配额花两次，并让两路同时撞上 CAPTCHA 的概率翻倍。它仍可显式点名（见 4.3）。
 
 **`deepseek` 为什么是独立的一源，而不是并进 `anthropic`**：DeepSeek 会话的
 `getAPIProvider()` 答 `firstParty`，那答的是**协议**，从来不是「谁的模型」。并进去的后果是面板上
@@ -189,7 +205,7 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 - Gemini 的 grounding URL 是 `vertexaisearch.cloud.google.com/grounding-api-redirect/…` 重定向壳，
   先用 HEAD 跟随解析出真实 URL 再参与去重与域名过滤。
 
-**主路 / 增强路不只是排序，它决定了请求怎么发**，三个源各有一套：
+**主路 / 增强路不只是排序，它决定了请求怎么发**，四个 provider 源各有一套：
 
 | 源 | 主路 | 增强路 |
 | --- | --- | --- |
@@ -197,6 +213,9 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | `deepseek` | 同上（管线本来就指着 DeepSeek） | 自己解析端点的独立调用（`DeepSeekDirectSearchAdapter`），所以任何一条线上都能跑 |
 | `gemini` | 按 `GEMINI_AUTH_MODE` 决定公网端点还是 Antigravity | 只要有 Google 登录就走 Antigravity |
 | `codex` | 按 `OPENAI_AUTH_MODE` 决定 API key 还是 ChatGPT OAuth | 优先用已连接的 ChatGPT 账号，没有登录才回落 API key |
+
+`brave` / `exa` / `free` 不参与这张表：它们不是任何 provider 自己的搜索层，`primarySourceId()`
+永远不会点到它们，所以只有增强路一种形态，一把 key、一个端点、一种构造。
 
 **Gemini 的模型必须跟着路由走**：Antigravity 后端只服务它自己的模型 id（`gemini-3.1-pro-low` /
 `gemini-3.1-flash-lite` / `gemini-pro-agent`），公网 id 一律回 404 `Requested entity was not found`。
@@ -211,7 +230,8 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 
 点名一个源**不会**让它变成会话的 provider——`api`/`gemini`/`codex` 仍按 4.2 的表判定主路还是增强路。
 
-`brave` 需要 `BRAVE_SEARCH_API_KEY` 或 `BRAVE_API_KEY`；`exa` 可配 `exaApiKey`。
+`bing` 只有这一条入口（不进注册表，理由见 4.1）。`brave` 与 `exa` 现在配了 key 就会自动参与
+聚合，所以点名它们的唯一用途是**只要这一个源**——想加入而不是取代，直接配 key 即可。
 
 ## 五、接口定义
 

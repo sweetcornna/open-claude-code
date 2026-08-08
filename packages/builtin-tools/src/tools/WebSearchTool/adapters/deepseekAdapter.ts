@@ -101,7 +101,10 @@ async function postMessages(input: {
   if (!endpoint) {
     throw new Error('DeepSeek search is not configured')
   }
-  return input.fetchImpl(`${endpoint.baseURL}/v1/messages`, {
+  // `endpoint.messagesURL` is already the finished URL: this package is a leaf
+  // and does not get to reach into the host's URL helpers, and concatenating
+  // one here would put the path inside the query on a base that carries one.
+  return input.fetchImpl(endpoint.messagesURL, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -123,7 +126,7 @@ async function postMessages(input: {
  * and retiring the source on one would take the lane away for the rest of the
  * session over a transient failure.
  */
-export type DeepSeekSearchProbe =
+type DeepSeekSearchProbe =
   | { status: 'supported' }
   | { status: 'unsupported'; detail: string }
   | { status: 'unconfigured' }
@@ -226,7 +229,7 @@ export async function probeDeepSeekSearchSupport(
   return verdict
 }
 
-export interface DeepSeekSearchAdapterOptions {
+interface DeepSeekSearchAdapterOptions {
   /** Test seam: drive the request without a network. */
   fetchOverride?: typeof fetch
 }

@@ -1,25 +1,78 @@
-import { afterAll, afterEach, describe, expect, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
 import { makeSharedModuleMock } from '../../../../tests/mocks/sharedModuleMock.js'
 import * as realSettings from 'src/utils/settings/settings.js'
+import type { SettingsJson } from '../../settings/types.js'
+import { setMainLoopModelOverride } from '../../../bootstrap/state.js'
+
+let userSettings: SettingsJson = {}
+let initialSettings: SettingsJson = { modelType: 'openai' }
 
 const settingsMock = makeSharedModuleMock(
   'src/utils/settings/settings.js',
   realSettings,
 ).setup({
-  getInitialSettings: () => ({ modelType: 'openai' }),
+  getInitialSettings: () => initialSettings,
+  getSettings_DEPRECATED: () => initialSettings,
+  getSettingsForSource: source =>
+    source === 'userSettings' ? userSettings : null,
 })
 
-const { getDefaultEffortForModel } = await import('../effort.js')
-const savedUserType = process.env.USER_TYPE
+const { getDefaultEffortForModel, resolveAppliedEffort } = await import(
+  '../effort.js'
+)
+const { getDefaultMainLoopModel } = await import('../model.js')
+const ENV_KEYS = [
+  'USER_TYPE',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL',
+  'OPENAI_MODEL',
+  'OPENAI_DEFAULT_HAIKU_MODEL',
+  'OPENAI_DEFAULT_SONNET_MODEL',
+  'OPENAI_DEFAULT_OPUS_MODEL',
+  'OPENAI_DEFAULT_FABLE_MODEL',
+  'GEMINI_DEFAULT_HAIKU_MODEL',
+  'GEMINI_DEFAULT_SONNET_MODEL',
+  'GEMINI_DEFAULT_OPUS_MODEL',
+  'GEMINI_DEFAULT_FABLE_MODEL',
+  'GROK_DEFAULT_HAIKU_MODEL',
+  'GROK_DEFAULT_SONNET_MODEL',
+  'GROK_DEFAULT_OPUS_MODEL',
+  'GROK_DEFAULT_FABLE_MODEL',
+] as const
+const savedEnv = Object.fromEntries(
+  ENV_KEYS.map(key => [key, process.env[key]]),
+) as Record<(typeof ENV_KEYS)[number], string | undefined>
+
+beforeEach(() => {
+  userSettings = {}
+  initialSettings = { modelType: 'openai' }
+  setMainLoopModelOverride(undefined)
+  for (const key of ENV_KEYS) delete process.env[key]
+})
 
 afterEach(() => {
-  delete process.env.USER_TYPE
+  userSettings = {}
+  initialSettings = { modelType: 'openai' }
+  setMainLoopModelOverride(undefined)
+  for (const key of ENV_KEYS) delete process.env[key]
 })
 
 afterAll(() => {
   settingsMock.reset()
-  if (savedUserType === undefined) delete process.env.USER_TYPE
-  else process.env.USER_TYPE = savedUserType
+  for (const key of ENV_KEYS) {
+    if (savedEnv[key] === undefined) delete process.env[key]
+    else process.env[key] = savedEnv[key]
+  }
 })
 
 describe('OpenAI model effort defaults', () => {
@@ -37,5 +90,49 @@ describe('OpenAI model effort defaults', () => {
 
   test('gpt-5.6-terra takes the same family default', () => {
     expect(getDefaultEffortForModel('gpt-5.6-terra')).toBe('xhigh')
+  })
+
+  test('provider default effort stays independent from a same-id sonnet alias', () => {
+    process.env.OPENAI_MODEL = 'gpt-5.6-sol'
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'gpt-5.6-sol'
+    userSettings = {
+      modelSettings: {
+        default: { effort: 'low' },
+        sonnet: { effort: 'max' },
+      },
+    } as SettingsJson
+
+    setMainLoopModelOverride(null)
+    expect(resolveAppliedEffort('gpt-5.6-sol', undefined)).toBe('low')
+
+    setMainLoopModelOverride('sonnet')
+    expect(resolveAppliedEffort('gpt-5.6-sol', undefined)).toBe('max')
+  })
+
+  test('main-loop alias does not leak its effort into another model', () => {
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'gpt-5.6-sol'
+    process.env.OPENAI_DEFAULT_HAIKU_MODEL = 'gpt-5.6-terra'
+    userSettings = {
+      modelSettings: {
+        haiku: { effort: 'low' },
+        sonnet: { effort: 'max' },
+      },
+    } as SettingsJson
+
+    setMainLoopModelOverride('sonnet')
+    expect(resolveAppliedEffort('gpt-5.6-terra', undefined)).toBe('low')
+  })
+
+  test('first-party default selection uses the default slot', () => {
+    initialSettings = { modelType: 'anthropic' }
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+    userSettings = {
+      modelSettings: { default: { effort: 'low' } },
+    } as SettingsJson
+    setMainLoopModelOverride(null)
+
+    expect(resolveAppliedEffort(getDefaultMainLoopModel(), undefined)).toBe(
+      'low',
+    )
   })
 })

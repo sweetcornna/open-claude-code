@@ -16,6 +16,23 @@ import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
 const DEFAULT_EXA_MCP_URL = 'https://mcp.exa.ai/mcp'
 const FETCH_TIMEOUT_MS = 25_000
 
+/**
+ * The key `search()` would authenticate with, or undefined for the anonymous
+ * endpoint.
+ *
+ * Exported for the source registry, which switches the `exa` lane on when a key
+ * is configured. Anonymous calls to mcp.exa.ai do answer, but a lane every
+ * install fires by default is a network request nobody asked for — and one
+ * nobody has quota for. Sharing this resolver is what keeps "the panel says
+ * connected" and "the request carries an Authorization header" the same fact.
+ */
+export function resolveExaApiKey(): string | undefined {
+  const settings = getSettings_DEPRECATED() as Record<string, unknown> & {
+    exaApiKey?: string
+  }
+  return settings.exaApiKey?.trim() || undefined
+}
+
 export class ExaSearchAdapter implements WebSearchAdapter {
   async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
     const { signal, onProgress, allowedDomains, blockedDomains } = options
@@ -42,15 +59,15 @@ export class ExaSearchAdapter implements WebSearchAdapter {
     // Read settings for custom endpoint / API key
     const settings = getSettings_DEPRECATED() as Record<string, unknown> & {
       exaEndpointUrl?: string
-      exaApiKey?: string
     }
     const exaUrl = settings.exaEndpointUrl || DEFAULT_EXA_MCP_URL
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
     }
-    if (settings.exaApiKey) {
-      headers['Authorization'] = `Bearer ${settings.exaApiKey}`
+    const apiKey = resolveExaApiKey()
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
     }
 
     let responseText: string

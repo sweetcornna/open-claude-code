@@ -34,14 +34,15 @@
  *
  * Escape hatch: `CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` forces the old path.
  *
- * Zero imports beyond the dependency-free predicate module, because
- * getAPIProvider() consults this and is on every hot path.
+ * Imports stay dependency-free (host predicate plus pure URL normalization),
+ * because getAPIProvider() consults this and is on every hot path.
  */
 
+import {
+  buildProviderResourceURL,
+  normalizeProviderBaseURL,
+} from '../network/providerUrl.js'
 import { isDeepSeekBaseURL } from './deepseekHost.js'
-
-/** Path DeepSeek serves the Anthropic Messages API on. */
-const ANTHROPIC_SUFFIX = '/anthropic'
 
 /** Set to `0`/`false` to keep DeepSeek on the OpenAI-compatible wire. */
 const OPT_OUT_ENV = 'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE'
@@ -87,12 +88,25 @@ export function isDeepSeekAnthropicWireActive(): boolean {
   return isDeepSeekBaseURL(process.env.OPENAI_BASE_URL)
 }
 
-/** `<host>` → `<host>/anthropic`, idempotent. */
+/**
+ * `<host>` → `<host>/anthropic`, idempotent.
+ *
+ * normalizeProviderBaseURL throws a TypeError on anything `new URL()` rejects
+ * or on a non-http(s) scheme, and this runs from applyDeepSeekAnthropicWire() on
+ * the startup path (entrypoints/init.ts), whose catch rethrows anything that is
+ * not a ConfigParseError. `OPENAI_BASE_URL=api.deepseek.com` — no scheme, which
+ * isDeepSeekBaseURL still recognises through its substring fallback — therefore
+ * crashed the CLI before it drew a frame. Fall back to string-only handling, the
+ * same shape modelCatalog/cache.ts uses: a base URL occ cannot canonicalize is a
+ * reason to pass it through, not to refuse to start.
+ */
 function toAnthropicBase(base: string): string {
-  const trimmed = base.replace(/\/+$/, '')
-  return trimmed.endsWith(ANTHROPIC_SUFFIX)
-    ? trimmed
-    : `${trimmed}${ANTHROPIC_SUFFIX}`
+  try {
+    return normalizeProviderBaseURL(base, 'deepseekAnthropic')
+  } catch {
+    const trimmed = base.trim().replace(/\/+$/, '')
+    return /\/anthropic$/i.test(trimmed) ? trimmed : `${trimmed}/anthropic`
+  }
 }
 
 /**
@@ -130,7 +144,7 @@ export function getDeepSeekAnthropicBaseURL(): string | undefined {
  * network-answered question — see probeDeepSeekSearchSupport().
  */
 export function getDeepSeekSearchEndpoint():
-  | { baseURL: string; apiKey: string }
+  | { baseURL: string; messagesURL: string; apiKey: string }
   | undefined {
   if (isOptedOut()) return undefined
   const anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim()
@@ -147,7 +161,26 @@ export function getDeepSeekSearchEndpoint():
   const apiKey =
     process.env.OPENAI_API_KEY?.trim() || process.env.ANTHROPIC_API_KEY?.trim()
   if (!apiKey) return undefined
-  return { baseURL: toAnthropicBase(base), apiKey }
+  return {
+    baseURL: toAnthropicBase(base),
+    // The finished request URL is built HERE, not by the caller. The only
+    // consumer is the `deepseek` WebSearch adapter, which lives in
+    // packages/builtin-tools — a leaf that must not reach into host URL
+    // helpers — and the `${baseURL}/v1/messages` it used to concatenate lands
+    // the path inside the query string whenever the base carries one
+    // (`https://gw.deepseek.com/anthropic?tenant=x`).
+    messagesURL: toMessagesURL(base),
+    apiKey,
+  }
+}
+
+/** `<host>` → `<host>/anthropic/v1/messages`, with the same fallback as above. */
+function toMessagesURL(base: string): string {
+  try {
+    return buildProviderResourceURL(base, 'deepseekAnthropic', 'v1/messages')
+  } catch {
+    return `${toAnthropicBase(base)}/v1/messages`
+  }
 }
 
 /** The four tier env keys, paired OpenAI → Anthropic. */
@@ -183,8 +216,26 @@ let mirroredKeys = new Map<string, string>()
  * mode takes an earlier branch that skips approval entirely.
  */
 export function isDeepSeekMirroredApiKey(value: string | undefined): boolean {
+  return isMirroredValue('ANTHROPIC_API_KEY', value)
+}
+
+/**
+ * Whether `ANTHROPIC_MODEL` currently holds a value this module wrote.
+ *
+ * getUserSpecifiedModelSetting() ranks env ANTHROPIC_MODEL above settings.model,
+ * which is right for a key the user exported and wrong for the mirror's copy of
+ * OPENAI_MODEL. Without this check, a user whose settings.json said
+ * `"model": "deepseek-v4-flash"` was moved to `deepseek-v4-pro` the moment the
+ * first getAnthropicClient() ran the mirror — no message, no way to tell from
+ * the settings file, and the status line showed the model they never picked.
+ */
+export function isDeepSeekMirroredModel(value: string | undefined): boolean {
+  return isMirroredValue('ANTHROPIC_MODEL', value)
+}
+
+function isMirroredValue(key: string, value: string | undefined): boolean {
   if (!value) return false
-  return mirroredKeys.get('ANTHROPIC_API_KEY') === value
+  return mirroredKeys.get(key) === value
 }
 
 /**
@@ -242,9 +293,13 @@ export function applyDeepSeekAnthropicWire(): void {
     const value = process.env[from]?.trim()
     if (value && !process.env[to]?.trim()) claim(to, value)
   }
-  // OPENAI_MODEL pins one model for every alias; carry that intent across.
-  const pinned = process.env.OPENAI_MODEL?.trim()
-  if (pinned && !process.env.ANTHROPIC_MODEL?.trim()) {
-    claim('ANTHROPIC_MODEL', pinned)
+  // OPENAI_MODEL is the provider's DEFAULT model — the fallback for tiers the
+  // user did not pin, not an override of them (resolveOpenAIModel consults it
+  // after both `*_DEFAULT_<TIER>_MODEL` lookups). Carrying it to ANTHROPIC_MODEL
+  // reproduces that role on this wire; isDeepSeekMirroredModel() is what keeps
+  // the copy from being mistaken for a user selection downstream.
+  const providerDefault = process.env.OPENAI_MODEL?.trim()
+  if (providerDefault && !process.env.ANTHROPIC_MODEL?.trim()) {
+    claim('ANTHROPIC_MODEL', providerDefault)
   }
 }

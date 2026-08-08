@@ -3,9 +3,10 @@ import {
   type ProgressEvent,
   type WorkflowPorts,
 } from '@open-claude-code/workflow-engine'
+import { join } from 'node:path'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { getProjectRoot } from '../bootstrap/state.js'
-import { getRunsDir } from './persistence.js'
+import { cleanupOldRuns, getRunsDir, writeRunState } from './persistence.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -14,6 +15,7 @@ import {
   completeWorkflowTask,
   failWorkflowTask,
   killWorkflowTask,
+  reconcileLocalWorkflowTasksForRun,
   registerLocalWorkflowTask,
 } from '../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 import {
@@ -28,18 +30,21 @@ import {
   WORKFLOW_GRACE_MS,
 } from '../utils/task/framework.js'
 import type { ProgressBus } from './progress/bus.js'
-import type { ProgressStore } from './progress/store.js'
+import type { ProgressStore, RunProgress } from './progress/store.js'
 import type { SetAppState } from '../Task.js'
 import type { AssistantMessage } from '../types/message.js'
 
 type RunBinding = {
   runId: string
   taskId: string
+  instanceId: number
   setAppState: SetAppState
   abortController: AbortController
   workflowName: string
   /** agentId → AbortController. Registered when backend starts an agent; killAgent uses it for precise abort. */
   agentAbortControllers: Map<number, AbortController>
+  /** Shared terminal persistence/release barrier for duplicate terminal callbacks. */
+  terminalizing?: Promise<void>
 }
 
 /**
@@ -92,10 +97,93 @@ function makeHostFactory(): WorkflowPorts['hostFactory'] {
 export function createWorkflowPorts(opts: {
   bus: ProgressBus
   store: ProgressStore
+  /** Test seam; production uses the isolated project workflow-runs directory. */
+  runsDir?: string
+  /** Test seam for asserting persistence-before-release ordering. */
+  persistRunState?: (run: RunProgress) => Promise<void>
 }): WorkflowPorts & WorkflowTaskBindings {
   const bindings = new Map<string, RunBinding>()
-  const runsDir = getRunsDir()
+  const latestInstances = new Map<string, number>()
+  let nextInstanceId = 1
+  const runsDir = opts.runsDir ?? getRunsDir()
+  const persistRunState =
+    opts.persistRunState ?? ((run: RunProgress) => writeRunState(runsDir, run))
   const registry = buildRegistry()
+
+  const bindingFor = (
+    identifier: string,
+    instanceId?: number,
+  ): RunBinding | undefined => {
+    const binding =
+      bindings.get(identifier) ??
+      [...bindings.values()].find(candidate => candidate.taskId === identifier)
+    if (instanceId !== undefined && binding?.instanceId !== instanceId) {
+      return undefined
+    }
+    return binding
+  }
+
+  const scheduleRunProgressEviction = (binding: RunBinding): void => {
+    const timer = setTimeout(() => {
+      if (latestInstances.get(binding.runId) !== binding.instanceId) return
+      if (bindings.has(binding.runId)) return
+      opts.store.remove(binding.runId)
+      if (latestInstances.get(binding.runId) === binding.instanceId) {
+        latestInstances.delete(binding.runId)
+      }
+    }, WORKFLOW_GRACE_MS + 1_000)
+    if (typeof timer.unref === 'function') timer.unref()
+  }
+
+  const releaseBinding = (binding: RunBinding): void => {
+    if (bindings.get(binding.runId)?.instanceId !== binding.instanceId) return
+    bindings.delete(binding.runId)
+    scheduleRunProgressEviction(binding)
+  }
+
+  const abortBinding = (binding: RunBinding): void => {
+    binding.abortController.abort()
+    for (const ac of binding.agentAbortControllers.values()) {
+      try {
+        ac.abort()
+      } catch {
+        // no-op: abort won't throw internally, but fail-closed
+      }
+    }
+    binding.agentAbortControllers.clear()
+  }
+
+  const persistThenRelease = (
+    binding: RunBinding,
+    terminalize: () => void,
+  ): Promise<void> => {
+    if (binding.terminalizing) return binding.terminalizing
+    binding.terminalizing = (async () => {
+      const run = opts.store.get(binding.runId)
+      if (run && run.status !== 'running') {
+        await persistRunState(run)
+        void cleanupOldRuns(runsDir).catch(error => {
+          logForDebugging(
+            `[workflow warn] cleanupOldRuns after terminal state failed: ${(error as Error).message}`,
+          )
+        })
+      } else {
+        logForDebugging(
+          `[workflow warn] terminal task ${binding.runId} has no terminal progress snapshot`,
+        )
+      }
+      // A wrapper cannot satisfy the host's terminal-eviction predicate until
+      // its durable state is available to status/query.
+      terminalize()
+      scheduleTerminalTaskEviction(
+        binding.taskId,
+        binding.setAppState,
+        WORKFLOW_GRACE_MS,
+      )
+      releaseBinding(binding)
+    })()
+    return binding.terminalizing
+  }
 
   // Telemetry subscription (independent of store). LogEventMetadata only accepts boolean/number/undefined,
   // and runId is a string — use the brand cast provided by the analytics module (verified non-code/path) to pass it through.
@@ -115,6 +203,34 @@ export function createWorkflowPorts(opts: {
       const setAppState =
         bundle.toolUseContext.setAppStateForTasks ??
         bundle.toolUseContext.setAppState
+
+      if (regOpts.runId) {
+        const existing = bindings.get(regOpts.runId)
+        if (existing) {
+          reconcileLocalWorkflowTasksForRun(
+            existing.runId,
+            existing.taskId,
+            setAppState,
+          )
+          logForDebugging(
+            `workflow task reused: ${existing.runId} (${existing.workflowName})`,
+          )
+          return {
+            runId: existing.runId,
+            taskId: existing.taskId,
+            signal: existing.abortController.signal,
+            instanceId: existing.instanceId,
+            workflowName: existing.workflowName,
+            runDir: join(runsDir, existing.runId),
+            disposition: 'existing',
+          }
+        }
+
+        // A legacy overwritten binding can leave live wrappers behind. Abort and
+        // terminalize them before assigning a new canonical owner.
+        reconcileLocalWorkflowTasksForRun(regOpts.runId, undefined, setAppState)
+      }
+
       const abortController = new AbortController()
       const taskId = registerLocalWorkflowTask(setAppState, {
         description: regOpts.summary ?? regOpts.workflowName,
@@ -122,80 +238,125 @@ export function createWorkflowPorts(opts: {
         workflowFile: regOpts.workflowFile ?? '',
         summary: regOpts.summary,
         ...(regOpts.toolUseId ? { toolUseId: regOpts.toolUseId } : {}),
-        // Resume keeps the original runId while minting a new taskId; stamping it at
-        // registration means no consumer has to re-derive the mapping later.
         ...(regOpts.runId ? { runId: regOpts.runId } : {}),
         runsDir,
         abortController,
       })
       const runId = regOpts.runId ?? taskId
-      bindings.set(runId, {
+      const instanceId = nextInstanceId++
+      const binding: RunBinding = {
         runId,
         taskId,
+        instanceId,
         setAppState,
         abortController,
         workflowName: regOpts.workflowName,
         agentAbortControllers: new Map(),
-      })
+      }
+      bindings.set(runId, binding)
+      latestInstances.set(runId, instanceId)
       logForDebugging(
-        `workflow task registered: ${runId} (${regOpts.workflowName})`,
+        `workflow task registered: ${runId}#${instanceId} (${regOpts.workflowName})`,
       )
-      return { runId, signal: abortController.signal }
+      return {
+        runId,
+        taskId,
+        signal: abortController.signal,
+        instanceId,
+        workflowName: regOpts.workflowName,
+        runDir: join(runsDir, runId),
+        disposition: 'created',
+      }
     },
-    complete(runId, summary) {
-      const b = bindings.get(runId)
-      if (!b) return
-      completeWorkflowTask(b.taskId, b.setAppState)
-      // Reclaim after the grace window without waiting for a main-thread turn.
-      scheduleTerminalTaskEviction(b.taskId, b.setAppState, WORKFLOW_GRACE_MS)
-      logForDebugging(`workflow ${runId} completed: ${summary ?? ''}`)
-      bindings.delete(runId)
+    getActive(runId) {
+      const existing = bindings.get(runId)
+      if (!existing) return undefined
+      reconcileLocalWorkflowTasksForRun(
+        existing.runId,
+        existing.taskId,
+        existing.setAppState,
+      )
+      return {
+        runId: existing.runId,
+        taskId: existing.taskId,
+        signal: existing.abortController.signal,
+        instanceId: existing.instanceId,
+        workflowName: existing.workflowName,
+        runDir: join(runsDir, existing.runId),
+        disposition: 'existing',
+      }
     },
-    fail(runId, error) {
-      const b = bindings.get(runId)
-      if (!b) return
-      failWorkflowTask(b.taskId, b.setAppState, error)
-      scheduleTerminalTaskEviction(b.taskId, b.setAppState, WORKFLOW_GRACE_MS)
-      logForDebugging(`workflow ${runId} failed: ${error}`)
-      bindings.delete(runId)
+    complete(runId, summary, instanceId) {
+      const binding = bindingFor(runId, instanceId)
+      if (!binding) return
+      logForDebugging(
+        `workflow ${runId}#${binding.instanceId} completed: ${summary ?? ''}`,
+      )
+      return persistThenRelease(binding, () =>
+        completeWorkflowTask(binding.taskId, binding.setAppState),
+      )
     },
-    kill(runId) {
-      const b = bindings.get(runId)
-      if (!b) return
-      killWorkflowTask(b.taskId, b.setAppState) // internal abort controller
-      scheduleTerminalTaskEviction(b.taskId, b.setAppState, WORKFLOW_GRACE_MS)
-      // Killing the run also aborts all in-flight agents (guards against the edge timing where the backend misses the task abort)
-      for (const ac of b.agentAbortControllers.values()) {
+    fail(runId, error, instanceId) {
+      const binding = bindingFor(runId, instanceId)
+      if (!binding) return
+      logForDebugging(
+        `workflow ${runId}#${binding.instanceId} failed: ${error}`,
+      )
+      return persistThenRelease(binding, () =>
+        failWorkflowTask(binding.taskId, binding.setAppState, error),
+      )
+    },
+    kill(identifier, instanceId) {
+      const binding = bindingFor(identifier, instanceId)
+      if (!binding) return false
+      abortBinding(binding)
+      // External control deliberately keeps ownership until runWorkflow settles,
+      // preventing a resume from launching while the killed engine unwinds.
+      if (instanceId === undefined) return true
+      return persistThenRelease(binding, () =>
+        killWorkflowTask(binding.taskId, binding.setAppState),
+      ).then(() => true)
+    },
+    killAll() {
+      for (const binding of [...bindings.values()]) {
         try {
-          ac.abort()
-        } catch {
-          // no-op: abort won't throw internally, but fail-closed
+          abortBinding(binding)
+        } catch (error) {
+          logForDebugging(
+            `workflow shutdown: kill ${binding.runId} failed: ${(error as Error).message}`,
+          )
         }
       }
-      b.agentAbortControllers.clear()
-      bindings.delete(runId)
     },
-    registerAgentAbort(runId, agentId, ac) {
-      const b = bindings.get(runId)
-      if (!b) return
-      b.agentAbortControllers.set(agentId, ac)
+    isCurrent(runId, instanceId) {
+      return bindings.get(runId)?.instanceId === instanceId
     },
-    unregisterAgentAbort(runId, agentId) {
-      const b = bindings.get(runId)
-      if (!b) return
-      b.agentAbortControllers.delete(agentId)
+    registerAgentAbort(runId, agentId, ac, instanceId) {
+      const binding = bindingFor(runId, instanceId)
+      if (!binding) {
+        ac.abort()
+        return
+      }
+      if (binding.abortController.signal.aborted) {
+        ac.abort()
+        return
+      }
+      binding.agentAbortControllers.set(agentId, ac)
     },
-    killAgent(runId, agentId) {
-      const b = bindings.get(runId)
-      if (!b) return false
-      const ac = b.agentAbortControllers.get(agentId)
+    unregisterAgentAbort(runId, agentId, instanceId) {
+      bindingFor(runId, instanceId)?.agentAbortControllers.delete(agentId)
+    },
+    killAgent(identifier, agentId) {
+      const binding = bindingFor(identifier)
+      if (!binding) return false
+      const ac = binding.agentAbortControllers.get(agentId)
       if (!ac) return false
       try {
         ac.abort()
       } catch {
         // no-op
       }
-      b.agentAbortControllers.delete(agentId)
+      binding.agentAbortControllers.delete(agentId)
       return true
     },
     pendingAction() {

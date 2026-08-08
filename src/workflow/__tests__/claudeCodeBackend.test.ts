@@ -95,6 +95,7 @@ import {
   AGENT_MAX_RETRIES_BY_REASON,
   WorkflowAbortedError,
 } from '@open-claude-code/workflow-engine'
+import { AgentExecutionLimitError } from '@open-claude-code/builtin-tools/tools/AgentTool/agentExecutionWatchdog.js'
 import {
   claudeCodeBackend,
   resolveAgentDefinition,
@@ -280,6 +281,31 @@ test('runAgent throws → dead', async () => {
   } as unknown as RunAgentOverrides)
   const res = await claudeCodeBackend.run({ prompt: 'fail' }, ctx())
   expect(res.kind).toBe('dead')
+})
+
+test('execution limits are non-retryable dead results, not workflow aborts', async () => {
+  for (const [kind, reason] of [
+    ['total-timeout', 'agent-total-timeout'],
+    ['no-progress', 'agent-no-progress'],
+  ] as const) {
+    runAgentMock.set({
+      // biome-ignore lint/correctness/useYield: intentionally throws before output
+      runAgent: async function* (opts: {
+        override?: { abortController?: AbortController }
+      }) {
+        const error = new AgentExecutionLimitError(kind, 100)
+        opts.override?.abortController?.abort(error)
+        throw error
+      },
+    } as unknown as RunAgentOverrides)
+
+    const res = await claudeCodeBackend.run({ prompt: 'limit' }, ctx())
+    expect(res).toMatchObject({
+      kind: 'dead',
+      reason,
+      retryable: false,
+    })
+  }
 })
 
 // The next three groups of tests cover the 'x' invalid fix: backend must bridge ctx.signal to runAgent.override

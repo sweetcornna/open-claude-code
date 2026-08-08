@@ -35,7 +35,7 @@ export function autoHeapDumpEnabled(): boolean {
 }
 
 /** What a poll decided, or null when it was below every unfired threshold. */
-export type HeapObservation = {
+type HeapObservation = {
   /** The threshold, in GB, that this crossing reports. */
   thresholdGB: number
   message: string

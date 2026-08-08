@@ -25,11 +25,28 @@ const FAILURE_REASON_TEXT: Record<string, string> = {
   'worktree-failed': 'git worktree creation failed',
   'prompt-too-long': 'prompt exceeded the context window',
   'api-error': 'terminal API error',
+  'agent-total-timeout': 'hit the total execution budget (CLAUDE_CODE_AGENT_TOTAL_TIMEOUT_MS)',
+  'agent-no-progress':
+    'produced no tool result for the whole no-progress window (CLAUDE_CODE_AGENT_NO_PROGRESS_TIMEOUT_MS)',
   'run-killed': 'stopped when the workflow was killed',
   'run-failed': 'stopped when the workflow failed',
   'run-ended': 'still running when the workflow ended',
   unknown: 'unclassified failure',
 };
+
+/**
+ * Failure reasons that are reported `retryable:false` for a reason other than
+ * "the identical call cannot succeed".
+ *
+ * The watchdog limits are wall-clock verdicts: the same call might well finish
+ * next time, and the reason the engine does not retry them by itself is a
+ * budget decision — a retry re-runs the agent from zero with a fresh timer, so
+ * an automatic chain multiplies the very wall clock the limit exists to bound.
+ * Printing the deterministic line here told the user the opposite of the truth
+ * and steered them away from the one fix that works: raise the env knob named
+ * in the reason text (or re-run it yourself).
+ */
+const NON_DETERMINISTIC_FAILURE_REASONS = new Set(['agent-total-timeout', 'agent-no-progress']);
 
 /**
  * How much of the stored output preview to render. The store already caps
@@ -150,8 +167,11 @@ export function AgentDetail({ agent }: { agent: AgentProgress }): React.ReactNod
           <Text color={reaped ? 'subtle' : 'error'}>
             {FAILURE_REASON_TEXT[agent.failureReason ?? 'unknown'] ?? agent.failureReason}
           </Text>
-          {agent.retryable === false ? (
+          {agent.retryable === false && !NON_DETERMINISTIC_FAILURE_REASONS.has(agent.failureReason ?? '') ? (
             <Text color="subtle">Deterministic — re-running the identical call cannot succeed.</Text>
+          ) : null}
+          {NON_DETERMINISTIC_FAILURE_REASONS.has(agent.failureReason ?? '') ? (
+            <Text color="subtle">Timed out — not retried automatically, since each retry restarts the clock.</Text>
           ) : null}
           {agent.failureDetail ? <Text color="subtle">{agent.failureDetail.slice(0, PREVIEW_RENDER_MAX)}</Text> : null}
         </Box>

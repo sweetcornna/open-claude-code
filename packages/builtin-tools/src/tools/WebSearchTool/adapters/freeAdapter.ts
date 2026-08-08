@@ -1,7 +1,7 @@
 /**
  * Free (no-API-key) search adapter.
  *
- * Ported from sweetcornna/free-search-mcp @ v0.9.1 (7933a002a6159c03763d32a8c9f97742ee078cc7)
+ * Ported from sweetcornna/free-search-mcp @ v0.9.2 (3d462eb59287c17a17e78e07025508c299f00202)
  * (https://github.com/sweetcornna/free-search-mcp, MIT) — a local-first,
  * keyless search MCP server. Instead of spawning that Python server as an
  * MCP subprocess, its keyless search technique is re-implemented natively

@@ -2,6 +2,10 @@ import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import {
+  AgentExecutionWatchdog,
+  isAgentExecutionLimitError,
+} from './agentExecutionWatchdog.js'
+import {
   checkSpawnBudgets,
   registerSpawn,
   unregisterSpawn,
@@ -22,6 +26,7 @@ import type { QuerySource } from 'src/constants/querySource.js'
 import { getSystemContext, getUserContext } from 'src/context.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import { query } from 'src/query.js'
+import type { Terminal } from 'src/query/transitions.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js'
 import { cleanupAgentTracking } from 'src/services/api/promptCacheBreakDetection.js'
@@ -64,6 +69,7 @@ import {
   type CacheSafeParams,
   createSubagentContext,
 } from 'src/utils/agents/forkedAgent.js'
+import { filterParentToolsForFork } from 'src/utils/agents/agentToolFilter.js'
 import { registerFrontmatterHooks } from 'src/utils/hooks/registerFrontmatterHooks.js'
 import { clearSessionHooks } from 'src/utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from 'src/utils/hooks.js'
@@ -103,17 +109,33 @@ import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
 
 export { filterIncompleteToolCalls } from './filterIncompleteToolCalls.js'
 
+/** Human-readable label for an mcpServers frontmatter entry, for logs. */
+function describeMcpServerSpec(
+  spec: NonNullable<AgentDefinition['mcpServers']>[number],
+): string {
+  return typeof spec === 'string'
+    ? spec
+    : (Object.keys(spec)[0] ?? '<invalid spec>')
+}
+
 /**
  * Initialize agent-specific MCP servers
  * Agents can define their own MCP servers in their frontmatter that are additive
  * to the parent's MCP clients. These servers are connected when the agent starts
  * and cleaned up when the agent finishes.
  *
+ * Failure isolation: every server is initialized inside its own try/catch, so a
+ * server that connects but cannot list its tools (fetchToolsForClient throws
+ * since 2.35.0 — it used to swallow failures and return []) contributes zero
+ * tools instead of aborting the whole agent run. An abort here was especially
+ * bad because the cleanup closure did not exist yet, so inline servers already
+ * spawned by earlier iterations leaked their processes.
+ *
  * @param agentDefinition The agent definition with optional mcpServers
  * @param parentClients MCP clients inherited from parent context
  * @returns Merged clients (parent + agent-specific), agent MCP tools, and cleanup function
  */
-async function initializeAgentMcpServers(
+export async function initializeAgentMcpServers(
   agentDefinition: AgentDefinition,
   parentClients: MCPServerConnection[],
 ): Promise<{
@@ -153,68 +175,12 @@ async function initializeAgentMcpServers(
   const newlyCreatedClients: MCPServerConnection[] = []
   const agentTools: Tool[] = []
 
-  for (const spec of agentDefinition.mcpServers) {
-    let config: ScopedMcpServerConfig | null = null
-    let name: string
-    let isNewlyCreated = false
-
-    if (typeof spec === 'string') {
-      // Reference by name - look up in existing MCP configs
-      // This uses the memoized connectToServer, so we may get a shared client
-      name = spec
-      config = getMcpConfigByName(spec)
-      if (!config) {
-        logForDebugging(
-          `[Agent: ${agentDefinition.agentType}] MCP server not found: ${spec}`,
-          { level: 'warn' },
-        )
-        continue
-      }
-    } else {
-      // Inline definition as { [name]: config }
-      // These are agent-specific servers that should be cleaned up
-      const entries = Object.entries(spec)
-      if (entries.length !== 1) {
-        logForDebugging(
-          `[Agent: ${agentDefinition.agentType}] Invalid MCP server spec: expected exactly one key`,
-          { level: 'warn' },
-        )
-        continue
-      }
-      const [serverName, serverConfig] = entries[0]!
-      name = serverName
-      config = {
-        ...serverConfig,
-        scope: 'dynamic' as const,
-      } as ScopedMcpServerConfig
-      isNewlyCreated = true
-    }
-
-    // Connect to the server
-    const client = await connectToServer(name, config)
-    agentClients.push(client)
-    if (isNewlyCreated) {
-      newlyCreatedClients.push(client)
-    }
-
-    // Fetch tools if connected
-    if (client.type === 'connected') {
-      const tools = await fetchToolsForClient(client)
-      agentTools.push(...tools)
-      logForDebugging(
-        `[Agent: ${agentDefinition.agentType}] Connected to MCP server '${name}' with ${tools.length} tools`,
-      )
-    } else {
-      logForDebugging(
-        `[Agent: ${agentDefinition.agentType}] Failed to connect to MCP server '${name}': ${client.type}`,
-        { level: 'warn' },
-      )
-    }
-  }
-
-  // Create cleanup function for agent-specific servers
-  // Only clean up newly created clients (inline definitions), not shared/referenced ones
-  // Shared clients (referenced by string name) are memoized and used by the parent context
+  // Cleanup function for agent-specific servers.
+  // Declared BEFORE the connect loop so every exit path — including an
+  // unexpected throw halfway through — can release the inline servers this
+  // call already started. Only newly created clients (inline definitions) are
+  // closed; shared clients (referenced by string name) are memoized and stay
+  // owned by the parent context.
   const cleanup = async () => {
     for (const client of newlyCreatedClients) {
       if (client.type === 'connected') {
@@ -230,11 +196,153 @@ async function initializeAgentMcpServers(
     }
   }
 
+  try {
+    for (const spec of agentDefinition.mcpServers) {
+      // Per-server isolation: one bad server must not cost the agent its run
+      // (or the other servers their tools).
+      try {
+        let config: ScopedMcpServerConfig | null = null
+        let name: string
+        let isNewlyCreated = false
+
+        if (typeof spec === 'string') {
+          // Reference by name - look up in existing MCP configs
+          // This uses the memoized connectToServer, so we may get a shared client
+          name = spec
+          config = getMcpConfigByName(spec)
+          if (!config) {
+            logForDebugging(
+              `[Agent: ${agentDefinition.agentType}] MCP server not found: ${spec}`,
+              { level: 'warn' },
+            )
+            continue
+          }
+        } else {
+          // Inline definition as { [name]: config }
+          // These are agent-specific servers that should be cleaned up
+          const entries = Object.entries(spec)
+          if (entries.length !== 1) {
+            logForDebugging(
+              `[Agent: ${agentDefinition.agentType}] Invalid MCP server spec: expected exactly one key`,
+              { level: 'warn' },
+            )
+            continue
+          }
+          const [serverName, serverConfig] = entries[0]!
+          name = serverName
+          config = {
+            ...serverConfig,
+            scope: 'dynamic' as const,
+          } as ScopedMcpServerConfig
+          isNewlyCreated = true
+        }
+
+        // Connect to the server
+        const client = await connectToServer(name, config)
+        agentClients.push(client)
+        if (isNewlyCreated) {
+          newlyCreatedClients.push(client)
+        }
+
+        // Fetch tools if connected. A listTools failure is server-local: the
+        // client stays in the merged list (it IS connected, and cleanup owns
+        // it if we spawned it) and simply contributes no tools.
+        if (client.type === 'connected') {
+          const tools = await fetchToolsForClient(client)
+          agentTools.push(...tools)
+          logForDebugging(
+            `[Agent: ${agentDefinition.agentType}] Connected to MCP server '${name}' with ${tools.length} tools`,
+          )
+        } else {
+          logForDebugging(
+            `[Agent: ${agentDefinition.agentType}] Failed to connect to MCP server '${name}': ${client.type}`,
+            { level: 'warn' },
+          )
+        }
+      } catch (error) {
+        logForDebugging(
+          `[Agent: ${agentDefinition.agentType}] Skipping MCP server '${describeMcpServerSpec(spec)}': ${error}`,
+          { level: 'warn' },
+        )
+      }
+    }
+  } catch (error) {
+    // Nothing above should reach here (every server is guarded), but if it
+    // ever does, release the inline servers we started before propagating —
+    // otherwise their processes outlive the agent that never launched.
+    await cleanup()
+    throw error
+  }
+
   // Return merged clients (parent + agent-specific) and agent tools
   return {
     clients: [...parentClients, ...agentClients],
     tools: agentTools,
     cleanup,
+  }
+}
+
+/**
+ * Builds the subagent's `options.refreshTools`.
+ *
+ * Why it exists: SearchExtraTools and ExecuteExtraTool resolve their target
+ * from `options.refreshTools?.() ?? options.tools` on every call, and query()
+ * re-reads it between turns. The main session wires it to REPL's computeTools,
+ * so servers that connect mid-session, `tools_changed` notifications and
+ * auth-pseudo-tool swaps land immediately. Subagents got no callback at all,
+ * so a long-running one stayed pinned to the pool assembled at spawn time.
+ *
+ * Why it is not the parent callback verbatim: that pool is the MAIN THREAD's,
+ * and ExecuteExtraTool executes whatever it finds in it. Every refresh
+ * therefore runs the fresh pool through the same filter the spawn-time
+ * snapshot went through — `filterParentToolsForFork` on the fork path
+ * (`useExactTools`), `resolveAgentTools` (agent allowlist + disallowlist +
+ * ALL_AGENT_DISALLOWED_TOOLS + the async allowlist) everywhere else.
+ *
+ * Why `floorTools` is merged in rather than replaced:
+ *   - The parent pool is not the base the worker snapshot was built from.
+ *     AgentTool assembles worker tools with the worker's own permission
+ *     context precisely so parent-side restrictions do not apply
+ *     (AgentTool.tsx: "Workers ... aren't affected by the parent's tool
+ *     restrictions"). Coordinator mode is the extreme case: the main pool is
+ *     filtered down to Agent/TaskStop/SendMessage, so a plain replace would
+ *     strip a worker's Bash/Read/Edit at the first refresh. Same for a main
+ *     thread running under `--agent` with a narrow `tools:` list.
+ *   - Frontmatter MCP tools (`agentMcpTools`) exist only in the agent's own
+ *     pool and would vanish from a plain replace.
+ * Fresh entries come first so uniqBy lets a live definition win over the
+ * snapshot's (that is what makes auth-pseudo-tool replacement visible); the
+ * floor only keeps a name alive that the fresh pool no longer offers, which is
+ * exactly today's behaviour for a subagent that never refreshes.
+ *
+ * @returns undefined when the parent has no callback (headless/SDK contexts) —
+ * the subagent then keeps its static pool, as before.
+ */
+export function createAgentRefreshTools({
+  parentRefreshTools,
+  agentDefinition,
+  isAsync,
+  useExactTools,
+  floorTools,
+}: {
+  parentRefreshTools: (() => Tools) | undefined
+  agentDefinition: Pick<
+    AgentDefinition,
+    'tools' | 'disallowedTools' | 'source' | 'permissionMode'
+  >
+  isAsync: boolean
+  useExactTools: boolean
+  floorTools: Tools
+}): (() => Tools) | undefined {
+  if (!parentRefreshTools) return undefined
+  return () => {
+    const fresh = parentRefreshTools()
+    const filtered = useExactTools
+      ? filterParentToolsForFork(fresh)
+      : resolveAgentTools(agentDefinition, fresh, isAsync).resolvedTools
+    return floorTools.length > 0
+      ? uniqBy([...filtered, ...floorTools], 'name')
+      : filtered
   }
 }
 
@@ -288,6 +396,7 @@ export async function* runAgent({
   description,
   transcriptSubdir,
   onQueryProgress,
+  executionStartedAt,
 }: {
   agentDefinition: AgentDefinition
   promptMessages: Message[]
@@ -347,6 +456,8 @@ export async function* runAgent({
    * during long single-block streams (e.g. thinking) where no assistant
    * message is yielded for >60s. */
   onQueryProgress?: () => void
+  /** Stable start time shared across foreground-to-background handoff. */
+  executionStartedAt?: number
 }): AsyncGenerator<Message, void> {
   // Track subagent usage for feature discovery
 
@@ -571,12 +682,21 @@ export async function* runAgent({
   // Determine abortController:
   // - Override takes precedence
   // - Async agents get a new unlinked controller (runs independently)
-  // - Sync agents share parent's controller
-  const agentAbortController = override?.abortController
-    ? override.abortController
-    : isAsync
-      ? new AbortController()
-      : toolUseContext.abortController
+  // - Sync agents use a child controller so execution limits stop only the agent;
+  //   parent cancellation is still forwarded into that child.
+  const agentAbortController =
+    override?.abortController ?? new AbortController()
+  const parentAbortSignal =
+    !override?.abortController && !isAsync
+      ? toolUseContext.abortController.signal
+      : undefined
+  const onParentAbort = (): void =>
+    agentAbortController.abort(parentAbortSignal?.reason)
+  if (parentAbortSignal?.aborted) {
+    onParentAbort()
+  } else {
+    parentAbortSignal?.addEventListener('abort', onParentAbort, { once: true })
+  }
 
   // Execute SubagentStart hooks and collect additional context
   const additionalContexts: string[] = []
@@ -696,7 +816,11 @@ export async function* runAgent({
     }
   }
 
-  // Initialize agent-specific MCP servers (additive to parent's servers)
+  // Initialize agent-specific MCP servers (additive to parent's servers).
+  // Per-server failures are already isolated inside; this outer guard only
+  // catches an unexpected throw from the initializer itself, which must not
+  // take the whole agent run down. It has already released anything it
+  // started, so the fallback cleanup is a no-op.
   const {
     clients: mergedMcpClients,
     tools: agentMcpTools,
@@ -704,7 +828,17 @@ export async function* runAgent({
   } = await initializeAgentMcpServers(
     agentDefinition,
     toolUseContext.options.mcpClients,
-  )
+  ).catch(error => {
+    logForDebugging(
+      `[Agent: ${agentDefinition.agentType}] MCP initialization failed, continuing without agent MCP servers: ${error}`,
+      { level: 'warn' },
+    )
+    return {
+      clients: toolUseContext.options.mcpClients,
+      tools: [] as Tools,
+      cleanup: async () => {},
+    }
+  })
 
   // Merge agent MCP tools with resolved agent tools, deduplicating by name.
   // resolvedTools is already deduplicated (see resolveAgentTools), so skip
@@ -713,6 +847,19 @@ export async function* runAgent({
     agentMcpTools.length > 0
       ? uniqBy([...resolvedTools, ...agentMcpTools], 'name')
       : resolvedTools
+
+  // Live tool pool for this agent — see createAgentRefreshTools for why the
+  // parent callback is re-filtered instead of forwarded. On the fork path the
+  // snapshot IS the (fork-filtered) parent pool, so only frontmatter MCP tools
+  // act as the floor; anything else would break the byte-identical prefix the
+  // fork exists for.
+  const refreshAgentTools = createAgentRefreshTools({
+    parentRefreshTools: toolUseContext.options.refreshTools,
+    agentDefinition,
+    isAsync,
+    useExactTools: useExactTools === true,
+    floorTools: useExactTools ? agentMcpTools : allTools,
+  })
 
   // Build agent-specific options
   const agentOptions: ToolUseContext['options'] = {
@@ -723,6 +870,7 @@ export async function* runAgent({
         : (toolUseContext.options.isNonInteractiveSession ?? false),
     appendSystemPrompt: toolUseContext.options.appendSystemPrompt,
     tools: allTools,
+    refreshTools: refreshAgentTools,
     commands: [],
     debug: toolUseContext.options.debug,
     verbose: toolUseContext.options.verbose,
@@ -814,8 +962,17 @@ export async function* runAgent({
     agentToolUseContext.langfuseTrace = subTrace
   }
 
+  const executionWatchdog = new AgentExecutionWatchdog(
+    agentAbortController,
+    undefined,
+    undefined,
+    executionStartedAt === undefined
+      ? 0
+      : Math.max(0, Date.now() - executionStartedAt),
+  )
+
   try {
-    for await (const message of query({
+    const queryStream = query({
       messages: initialMessages,
       systemPrompt: agentSystemPrompt,
       userContext: resolvedUserContext,
@@ -824,8 +981,17 @@ export async function* runAgent({
       toolUseContext: agentToolUseContext,
       querySource,
       maxTurns: maxTurns ?? agentDefinition.maxTurns,
-    })) {
+    })
+    let terminal: Terminal | undefined
+    while (true) {
+      const next = await queryStream.next()
+      if (next.done) {
+        terminal = next.value
+        break
+      }
+      const message = next.value
       onQueryProgress?.()
+      executionWatchdog.observe(message)
       // Forward subagent API request starts to parent's metrics display
       // so TTFT/OTPS update during subagent execution.
       if (
@@ -853,7 +1019,7 @@ export async function* runAgent({
 }
 )`,
           )
-          break
+          continue
         }
         yield message as Message
         continue
@@ -875,7 +1041,21 @@ export async function* runAgent({
       }
     }
 
+    if (!terminal) {
+      throw new Error('Agent query ended without a terminal result.')
+    }
+    if (terminal.reason !== 'completed' && terminal.reason !== 'max_turns') {
+      if (
+        terminal.reason === 'model_error' &&
+        terminal.error instanceof Error
+      ) {
+        throw terminal.error
+      }
+      throw new Error(`Agent query ended with ${terminal.reason}.`)
+    }
+
     if (agentAbortController.signal.aborted) {
+      if (executionWatchdog.error) throw executionWatchdog.error
       throw new AbortError()
     }
 
@@ -883,7 +1063,14 @@ export async function* runAgent({
     if (isBuiltInAgent(agentDefinition) && agentDefinition.callback) {
       agentDefinition.callback()
     }
+  } catch (error) {
+    if (executionWatchdog.error && !isAgentExecutionLimitError(error)) {
+      throw executionWatchdog.error
+    }
+    throw error
   } finally {
+    executionWatchdog.dispose()
+    parentAbortSignal?.removeEventListener('abort', onParentAbort)
     // Release the concurrency slot on every exit path (normal/abort/error)
     unregisterSpawn(agentId)
     // End Langfuse sub-agent trace (no-op if not configured)

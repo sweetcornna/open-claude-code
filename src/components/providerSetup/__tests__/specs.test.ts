@@ -9,7 +9,7 @@
  *
  * Only the log/debug leaves are mock.module'd (shared mocks, per CLAUDE.md).
  */
-import { beforeAll, describe, expect, mock, test } from 'bun:test'
+import { beforeAll, describe, expect, mock, spyOn, test } from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
@@ -17,9 +17,17 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 let specs: typeof import('../specs.js')
+let chatgptAuth: typeof import('src/services/api/openai/chatgptAuth.js')
+let openaiClient: typeof import('src/services/api/openai/client.js')
 
 beforeAll(async () => {
   specs = await import('../specs.js')
+  // Imported here, not mocked: afterSave reaches them through a dynamic
+  // import, which resolves to this same live namespace, so a spy restored in
+  // the test that installs it is enough — and one that does not leak a
+  // process-global module replacement onto every file loaded afterwards.
+  chatgptAuth = await import('src/services/api/openai/chatgptAuth.js')
+  openaiClient = await import('src/services/api/openai/client.js')
 })
 
 type Values = import('../specs.js').ProviderSetupValues
@@ -152,8 +160,29 @@ describe('save-time extras', () => {
     })
   })
 
-  test('no other provider writes extra env', () => {
-    for (const kind of ['anthropic', 'gemini', 'grok'] as const) {
+  test('Gemini API setup clears an earlier Antigravity route', () => {
+    expect(specs.PROVIDER_SETUP_SPECS.gemini.extraEnv?.({})).toEqual({
+      GEMINI_AUTH_MODE: undefined,
+    })
+  })
+
+  test('a China preset drops a wire protocol nobody chose here', () => {
+    // The preset table settles the endpoint; the form never asks which OpenAI
+    // wire to speak. A leftover OPENAI_WIRE_API from an earlier OpenAI login
+    // therefore reads as an explicit choice that was never made — and for
+    // DeepSeek that phantom choice vetoes the Anthropic Messages wire the
+    // session is supposed to default to. The group sweep cannot catch it: this
+    // spec's own modelType is 'openai', so the OpenAI group is skipped.
+    expect(
+      Object.keys(specs.PROVIDER_SETUP_SPECS.china.extraEnv?.({}) ?? {}),
+    ).toContain('OPENAI_WIRE_API')
+    expect(
+      specs.PROVIDER_SETUP_SPECS.china.extraEnv?.({}).OPENAI_WIRE_API,
+    ).toBeUndefined()
+  })
+
+  test('Anthropic and Grok write no extra env', () => {
+    for (const kind of ['anthropic', 'grok'] as const) {
       expect(specs.PROVIDER_SETUP_SPECS[kind].extraEnv).toBeUndefined()
     }
   })
@@ -172,12 +201,8 @@ describe('save-time extras', () => {
 })
 
 describe('the China preset spec', () => {
-  test('never writes OPENAI_MODEL — that key would defeat /model <id>', () => {
-    // The whole point of configuring a China provider is that one key makes the
-    // catalog switchable. OPENAI_MODEL outranks both the family aliases and an
-    // explicit `/model <id>`, so it must stay unset; `omitted` is what stops the
-    // wizard from writing it.
-    expect(specs.PROVIDER_SETUP_SPECS.china.defaultModelField).toBe('omitted')
+  test('writes an independent provider default model', () => {
+    expect(specs.PROVIDER_SETUP_SPECS.china.defaultModelField).toBe('required')
     expect(specs.PROVIDER_SETUP_SPECS.china.env.model).toBe('OPENAI_MODEL')
   })
 
@@ -202,7 +227,7 @@ describe('the China preset spec', () => {
     })
   })
 
-  test('all four tiers are offered and nothing is mandatory', () => {
+  test('all four tiers are offered and the default is mandatory', () => {
     const spec = specs.PROVIDER_SETUP_SPECS.china
     expect([...spec.tiers]).toEqual([
       'haiku_model',
@@ -210,7 +235,96 @@ describe('the China preset spec', () => {
       'opus_model',
       'fable_model',
     ])
-    expect(spec.validate(values())).toBeNull()
+    expect(spec.validate(values())).toEqual({
+      message: 'Choose a default model for requests that do not select a tier.',
+      field: 'model',
+    })
+    expect(spec.validate(values({ model: 'deepseek-v4-pro' }))).toBeNull()
+  })
+})
+
+describe('subscription-authenticated sessions', () => {
+  test('only the two providers that have a subscription login declare one', () => {
+    // A China preset is an API key like any other, and Anthropic/Grok have no
+    // subscription path at all — declaring one would make their forms stop
+    // writing the credentials they are the only source of.
+    expect(specs.PROVIDER_SETUP_SPECS.openai.subscriptionAuth?.envKey).toBe(
+      'OPENAI_AUTH_MODE',
+    )
+    expect(specs.PROVIDER_SETUP_SPECS.gemini.subscriptionAuth?.envKey).toBe(
+      'GEMINI_AUTH_MODE',
+    )
+    for (const kind of ['anthropic', 'grok', 'china'] as const) {
+      expect(specs.PROVIDER_SETUP_SPECS[kind].subscriptionAuth).toBeUndefined()
+    }
+  })
+
+  test('the auth mode has to actually be set, and be one occ knows', () => {
+    const spec = specs.PROVIDER_SETUP_SPECS.openai
+    expect(specs.activeSubscriptionAuth(spec, {})).toBeUndefined()
+    // An unknown value is not a licence to stop writing credentials.
+    expect(
+      specs.activeSubscriptionAuth(spec, {
+        OPENAI_AUTH_MODE: 'something-else',
+      }),
+    ).toBeUndefined()
+    expect(
+      specs.activeSubscriptionAuth(spec, { OPENAI_AUTH_MODE: 'chatgpt' })
+        ?.label,
+    ).toBe('ChatGPT subscription')
+    expect(
+      specs.activeSubscriptionAuth(specs.PROVIDER_SETUP_SPECS.gemini, {
+        GEMINI_AUTH_MODE: 'antigravity',
+      })?.mode,
+    ).toBe('antigravity')
+  })
+
+  test('the overrides are merged in, and only while the mode is active', () => {
+    const spec = specs.PROVIDER_SETUP_SPECS.openai
+    const active = specs.specForSubscriptionAuth(
+      spec,
+      specs.activeSubscriptionAuth(spec, { OPENAI_AUTH_MODE: 'chatgpt' }),
+    )
+    expect(active.defaultModelField).toBe('optional')
+    expect(active.title({})).toBe('ChatGPT Subscription — Models')
+    // Same env keys — a ChatGPT session is still the OpenAI family.
+    expect(active.env).toEqual(spec.env)
+    expect(specs.specForSubscriptionAuth(spec, undefined)).toBe(spec)
+    expect(spec.defaultModelField).toBe('required')
+  })
+
+  test('a model-only save does not log the user out of ChatGPT', () => {
+    // afterSave is shared by both paths; only the one that just wrote an API
+    // key supersedes the subscription. Deleting the tokens on the other one is
+    // how /models-setting used to end a working session.
+    const spec = specs.PROVIDER_SETUP_SPECS.openai
+    const clear = spyOn(
+      openaiClient,
+      'clearOpenAIClientCache',
+    ).mockImplementation(() => {})
+    const remove = spyOn(chatgptAuth, 'removeChatGPTAuth').mockResolvedValue(
+      undefined as never,
+    )
+    try {
+      return Promise.resolve(spec.afterSave?.({ credentialsConfigured: false }))
+        .then(() => {
+          // The cached client still has to go: it was built from the old env.
+          expect(clear).toHaveBeenCalled()
+          expect(remove).not.toHaveBeenCalled()
+          return spec.afterSave?.({ credentialsConfigured: true })
+        })
+        .then(() => {
+          expect(remove).toHaveBeenCalled()
+        })
+        .finally(() => {
+          clear.mockRestore()
+          remove.mockRestore()
+        })
+    } catch (error) {
+      clear.mockRestore()
+      remove.mockRestore()
+      throw error
+    }
   })
 })
 
@@ -227,22 +341,37 @@ describe('built-in model tables', () => {
     expect(specs.PROVIDER_SETUP_SPECS.china.presetModels).toBeUndefined()
   })
 
-  test('the Anthropic table is Claude ids, the OpenAI one is GPT ids', () => {
+  test('official endpoints fall back to their maintained model tables', () => {
     const anthropic =
-      specs.PROVIDER_SETUP_SPECS.anthropic.presetModels?.() ?? []
+      specs.PROVIDER_SETUP_SPECS.anthropic.presetModels?.({ baseUrl: '' }) ?? []
     expect(anthropic.length).toBeGreaterThan(0)
     expect(anthropic.every(m => m.id.startsWith('claude-'))).toBe(true)
     expect(anthropic.map(m => m.id)).toContain('claude-opus-5')
 
-    const openai = specs.PROVIDER_SETUP_SPECS.openai.presetModels?.() ?? []
+    const openai =
+      specs.PROVIDER_SETUP_SPECS.openai.presetModels?.({ baseUrl: '' }) ?? []
     expect(openai.length).toBeGreaterThan(0)
     expect(openai.every(m => m.id.startsWith('gpt-'))).toBe(true)
   })
 
+  test('custom compatible endpoints never inherit a protocol vendor catalog', () => {
+    expect(
+      specs.PROVIDER_SETUP_SPECS.openai.presetModels?.({
+        baseUrl: 'https://gateway.example/v1',
+      }),
+    ).toEqual([])
+    expect(
+      specs.PROVIDER_SETUP_SPECS.anthropic.presetModels?.({
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+      }),
+    ).toEqual([])
+  })
+
   test('every entry is a usable option — an empty id would render a blank row', () => {
     for (const kind of ['openai', 'anthropic'] as const) {
-      for (const model of specs.PROVIDER_SETUP_SPECS[kind].presetModels?.() ??
-        []) {
+      for (const model of specs.PROVIDER_SETUP_SPECS[kind].presetModels?.({
+        baseUrl: '',
+      }) ?? []) {
         expect(model.id.length).toBeGreaterThan(0)
       }
     }

@@ -58,12 +58,12 @@ function getUserModelMap(): Record<string, string> | null {
  * Resolve the Grok model name for a given Anthropic model.
  */
 export function resolveGrokModel(anthropicModel: string): string {
-  if (process.env.GROK_MODEL) {
-    return process.env.GROK_MODEL
-  }
-
   const cleanModel = anthropicModel.replace(/\[1m\]$/, '')
   const family = getModelFamily(cleanModel)
+
+  if (!family) {
+    return cleanModel
+  }
 
   const userMap = getUserModelMap()
   if (userMap && family && userMap[family]) {
@@ -78,6 +78,10 @@ export function resolveGrokModel(anthropicModel: string): string {
     const anthropicEnvVar = `ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`
     const anthropicOverride = process.env[anthropicEnvVar]
     if (anthropicOverride) return anthropicOverride
+  }
+
+  if (process.env.GROK_MODEL) {
+    return process.env.GROK_MODEL
   }
 
   if (DEFAULT_MODEL_MAP[cleanModel]) {

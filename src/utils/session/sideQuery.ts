@@ -32,10 +32,15 @@ import {
   modelSupportsStructuredOutputs,
 } from '../model/betas.js'
 import { logForDebugging } from '../telemetry/debug.js'
+import { buildProviderResourceURL } from '../network/providerUrl.js'
 import { errorMessage } from '../runtime/errors.js'
 import { getAPIProvider } from '../model/providers.js'
 import { normalizeModelStringForAPI } from '../model/model.js'
 import { getOpenAIClient } from '../../services/api/openai/client.js'
+import {
+  createOpenAIResponseError,
+  retryOpenAIRequest,
+} from '../../services/api/openai/retry.js'
 import { getGrokClient } from '../../services/api/grok/client.js'
 import { isChatGPTAuthEnabled } from '../../services/api/openai/chatgptAuth.js'
 import {
@@ -98,7 +103,7 @@ export type SideQueryOptions = {
   output_format?: BetaJSONOutputFormat
   /** Max tokens (default: 1024) */
   max_tokens?: number
-  /** Max retries (default: 2) */
+  /** Max retries after the initial attempt (default: 10, clamped to 10) */
   maxRetries?: number
   /** Abort signal */
   signal?: AbortSignal
@@ -195,7 +200,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     tool_choice,
     output_format,
     max_tokens = 1024,
-    maxRetries = 2,
+    maxRetries = 10,
     signal,
     skipSystemPromptPrefix,
     temperature,
@@ -633,10 +638,11 @@ async function sideQueryViaResponsesApi(
   })
 
   const signal = opts.signal ?? new AbortController().signal
+  const maxRetries = opts.maxRetries ?? 10
   const rawStream =
     route === 'chatgpt'
-      ? await createChatGPTResponsesStream({ request, signal })
-      : await createOpenAIResponsesStream({ request, signal })
+      ? await createChatGPTResponsesStream({ request, signal, maxRetries })
+      : await createOpenAIResponsesStream({ request, signal, maxRetries })
   const adapted = adaptResponsesStreamToAnthropic(rawStream, openaiModel)
   const betaMessage = await collectAnthropicStreamToBetaMessage(
     adapted,
@@ -756,8 +762,8 @@ async function sideQueryViaOpenAICompatible(
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
   const client: import('openai').default =
     provider === 'grok'
-      ? getGrokClient({ maxRetries: opts.maxRetries ?? 2 })
-      : getOpenAIClient({ maxRetries: opts.maxRetries ?? 2 })
+      ? getGrokClient({ maxRetries: 0 })
+      : getOpenAIClient({ maxRetries: 0 })
 
   const start = Date.now()
 
@@ -777,9 +783,17 @@ async function sideQueryViaOpenAICompatible(
     if (openaiToolChoice) requestParams.tool_choice = openaiToolChoice
   }
 
-  const response = await client.chat.completions.create(
-    requestParams as unknown as import('openai/resources/chat/completions/completions.mjs').ChatCompletionCreateParamsNonStreaming,
-    { signal },
+  const requestSignal = signal ?? new AbortController().signal
+  const response = await retryOpenAIRequest(
+    () =>
+      client.chat.completions.create(
+        requestParams as unknown as import('openai/resources/chat/completions/completions.mjs').ChatCompletionCreateParamsNonStreaming,
+        { signal: requestSignal },
+      ),
+    {
+      signal: requestSignal,
+      maxRetries: opts.maxRetries ?? 10,
+    },
   )
 
   const choice = response.choices[0]
@@ -930,14 +944,15 @@ async function sideQueryViaGemini(
     ? anthropicToolChoiceToGemini(tool_choice)
     : undefined
 
-  const baseUrl = (
-    process.env.GEMINI_BASE_URL ||
-    'https://generativelanguage.googleapis.com/v1beta'
-  ).replace(/\/+$/, '')
   const modelPath = geminiModel.startsWith('models/')
     ? geminiModel
     : `models/${geminiModel}`
-  const url = `${baseUrl}/${modelPath}:generateContent`
+  const url = buildProviderResourceURL(
+    process.env.GEMINI_BASE_URL ||
+      'https://generativelanguage.googleapis.com/v1beta',
+    'gemini',
+    `${modelPath}:generateContent`,
+  )
 
   const body: Record<string, unknown> = {
     contents,
@@ -964,22 +979,28 @@ async function sideQueryViaGemini(
 
   const start = Date.now()
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': process.env.GEMINI_API_KEY || '',
+  const requestSignal = signal ?? new AbortController().signal
+  const res = await retryOpenAIRequest(
+    async () => {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': process.env.GEMINI_API_KEY || '',
+        },
+        body: JSON.stringify(body),
+        signal: requestSignal,
+      })
+      if (!response.ok) {
+        throw await createOpenAIResponseError(response, 'Gemini API')
+      }
+      return response
     },
-    body: JSON.stringify(body),
-    signal,
-  })
-
-  if (!res.ok) {
-    const errorBody = await res.text()
-    throw new Error(
-      `Gemini API request failed (${res.status} ${res.statusText}): ${errorBody || 'empty response body'}`,
-    )
-  }
+    {
+      signal: requestSignal,
+      maxRetries: opts.maxRetries ?? 10,
+    },
+  )
 
   const geminiResponse = (await res.json()) as {
     candidates?: Array<{

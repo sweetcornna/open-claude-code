@@ -37,24 +37,48 @@ function withCredentials(families: SearchCredentialFamily[]): void {
   registerSearchCredentialProbe(family => owned.has(family))
 }
 
-function withSourceSettings(sources?: Record<string, boolean>): void {
+/**
+ * `keys` defaults to BOTH key-only sources unconfigured.
+ *
+ * Not a convenience: the real settings file is spread in underneath, so a
+ * developer who has a Brave or Exa key of their own would otherwise be running
+ * a different scenario than CI on every case below.
+ */
+function withSourceSettings(
+  sources?: Record<string, boolean>,
+  keys: { braveApiKey?: string; exaApiKey?: string } = {},
+): void {
   settingsMock.set({
     getSettings_DEPRECATED: () =>
       ({
         ...realGetSettings(),
+        braveApiKey: keys.braveApiKey,
+        exaApiKey: keys.exaApiKey,
         webSearchSources: sources,
       }) as ReturnType<typeof realGetSettings>,
   })
 }
 
+/** Same reason as `keys` above, for brave's two environment variables. */
+const BRAVE_ENV_KEYS = ['BRAVE_SEARCH_API_KEY', 'BRAVE_API_KEY'] as const
+const savedBraveEnv = new Map<string, string | undefined>()
+
 beforeEach(() => {
   resetSourceAvailability()
   withCredentials([])
   withSourceSettings(undefined)
+  for (const key of BRAVE_ENV_KEYS) {
+    savedBraveEnv.set(key, process.env[key])
+    delete process.env[key]
+  }
 })
 
 afterEach(() => {
   resetSourceAvailability()
+  for (const [key, value] of savedBraveEnv) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
 })
 
 afterAll(() => {
@@ -113,6 +137,61 @@ describe('isSourceEnabled', () => {
 
     expect(isSourceEnabled('anthropic')).toBe(true)
     expect(isSourceEnabled('free')).toBe(true)
+  })
+})
+
+describe('isSourceEnabled — the key-only sources', () => {
+  test('brave follows either environment variable', () => {
+    expect(isSourceEnabled('brave')).toBe(false)
+
+    process.env.BRAVE_SEARCH_API_KEY = 'bsa-test'
+    expect(isSourceEnabled('brave')).toBe(true)
+
+    delete process.env.BRAVE_SEARCH_API_KEY
+    process.env.BRAVE_API_KEY = 'bsa-test'
+    expect(isSourceEnabled('brave')).toBe(true)
+  })
+
+  test('brave follows the settings key the adapter prefers', () => {
+    // The adapter reads settings.braveApiKey BEFORE the env vars, so a key
+    // stored there has to light the source up — otherwise the lane is dark
+    // while the request it would send is perfectly authenticated.
+    withSourceSettings(undefined, { braveApiKey: 'bsa-from-settings' })
+
+    expect(isSourceEnabled('brave')).toBe(true)
+  })
+
+  test('exa follows its settings key', () => {
+    expect(isSourceEnabled('exa')).toBe(false)
+
+    withSourceSettings(undefined, { exaApiKey: 'exa-test' })
+
+    expect(isSourceEnabled('exa')).toBe(true)
+  })
+
+  test('a blank key is not a key', () => {
+    withSourceSettings(undefined, { braveApiKey: '   ', exaApiKey: '' })
+    process.env.BRAVE_API_KEY = '  '
+
+    expect(isSourceEnabled('brave')).toBe(false)
+    expect(isSourceEnabled('exa')).toBe(false)
+  })
+
+  test('an explicit "off" wins over a configured key', () => {
+    withSourceSettings(
+      { brave: false, exa: false },
+      { braveApiKey: 'bsa-test', exaApiKey: 'exa-test' },
+    )
+
+    expect(isSourceEnabled('brave')).toBe(false)
+    expect(isSourceEnabled('exa')).toBe(false)
+  })
+
+  test('an explicit "on" cannot manufacture a missing key', () => {
+    withSourceSettings({ brave: true, exa: true })
+
+    expect(isSourceEnabled('brave')).toBe(false)
+    expect(isSourceEnabled('exa')).toBe(false)
   })
 })
 

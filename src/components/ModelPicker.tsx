@@ -2,7 +2,7 @@ import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import { has1mContext, modelSupports1M, supportsContextWindow } from '../utils/session/context.js';
-import { getModelTier, type ModelTier } from '../utils/model/modelTier.js';
+import { getModelSettingsSlot, type ModelSettingsSlot } from '../utils/model/modelTier.js';
 import { formatContextTokens, getTierContextTokens, getTierOverride } from '../utils/model/tierSettings.js';
 import { writeTierSettings } from '../commands/model-settings/state.js';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
@@ -148,15 +148,15 @@ export function ModelPicker({
 
   const focusedModelName = selectOptions.find(opt => opt.value === focusedValue)?.label;
   const focusedModel = resolveOptionModel(focusedValue);
-  const focusedTier = tierForOption(focusedValue);
-  const focusedContextKey = focusedTier ?? UNTIERED;
+  const focusedSlot = settingsSlotForOption(focusedValue);
+  const focusedContextKey = focusedSlot ?? UNTIERED;
   // The window this row would run with: an in-picker choice, else whatever the
-  // tier already resolves to (saved override, else provider-family default).
+  // settings slot already resolves to (saved override, else provider-family default).
   const pickedContext = contextByTier.get(focusedContextKey);
-  const savedContext = focusedModel ? getTierContextTokens(focusedModel) : undefined;
+  const savedContext = focusedModel ? getTierContextTokens(focusedModel, focusedSlot) : undefined;
   const focusedContextTokens = pickedContext ?? savedContext;
   const focusedContextIsDefault =
-    pickedContext === null || (pickedContext === undefined && !hasSavedContextOverride(focusedTier));
+    pickedContext === null || (pickedContext === undefined && !hasSavedContextOverride(focusedSlot));
   // Both env knobs outrank everything the picker writes, so a session that has
   // one set would otherwise show the user changing a value that cannot take
   // effect. Say so rather than letting them find out later.
@@ -184,7 +184,7 @@ export function ModelPicker({
       // must show that tier's value — either what was chosen here already, or
       // its resolved setting. Carrying the previous row's level over was how a
       // single ← press on Opus silently re-labelled Haiku too.
-      const key = tierForOption(value) ?? UNTIERED;
+      const key = settingsSlotForOption(value) ?? UNTIERED;
       const picked = effortByTier.get(key);
       if (picked !== undefined) {
         setEffort(picked);
@@ -218,10 +218,10 @@ export function ModelPicker({
     if (!focusedModel) return;
     setContextByTier(prev => {
       const next = new Map(prev);
-      next.set(focusedContextKey, nextContextChoice(focusedModel, prev.get(focusedContextKey), focusedTier));
+      next.set(focusedContextKey, nextContextChoice(focusedModel, prev.get(focusedContextKey), focusedSlot));
       return next;
     });
-  }, [focusedModel, focusedTier, focusedContextKey]);
+  }, [focusedModel, focusedSlot, focusedContextKey]);
 
   useKeybindings(
     {
@@ -239,8 +239,8 @@ export function ModelPicker({
     logEvent('tengu_model_command_menu_effort', {
       effort: effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
-    const selectedTier = tierForOption(value);
-    const selectedKey = selectedTier ?? UNTIERED;
+    const selectedSlot = settingsSlotForOption(value);
+    const selectedKey = selectedSlot ?? UNTIERED;
     const pickedEffort = effortByTier.get(selectedKey);
     const pickedContext = contextByTier.get(selectedKey);
 
@@ -258,23 +258,23 @@ export function ModelPicker({
       let wroteEffort = false;
       for (const key of touched) {
         if (key === UNTIERED) continue;
-        const tier = key as ModelTier;
+        const slot = key as ModelSettingsSlot;
         const tierEffort = effortByTier.get(key);
         const tierContext = contextByTier.get(key);
         const patch: { effort?: EffortLevel; contextTokens?: number } = {};
         if (tierEffort !== undefined) patch.effort = tierEffort;
         if (tierContext != null) patch.contextTokens = tierContext;
         if (patch.effort !== undefined || patch.contextTokens !== undefined) {
-          writeTierSettings(tier, patch);
+          writeTierSettings(slot, patch);
         }
-        if (tierContext === null) clearTierContext(tier);
+        if (tierContext === null) clearTierContext(slot);
         wroteEffort ||= tierEffort !== undefined;
       }
       if (wroteEffort) {
         setAppState(prev => ({ ...prev, effortValue: undefined }));
       }
 
-      if (!selectedTier) {
+      if (!selectedSlot) {
         // No tier to key on (a bare custom model id). Fall back to the flat
         // effortLevel, which is all this row can be described by.
         //
@@ -309,7 +309,8 @@ export function ModelPicker({
     // Third-party ids never take it — modelSupports1M is false for them and
     // their window comes from the setting alone.
     const baseValue = value.replace(/\[1m\]/i, '');
-    const chosenTokens = pickedContext ?? (selectedModel ? getTierContextTokens(selectedModel) : undefined);
+    const chosenTokens =
+      pickedContext ?? (selectedModel ? getTierContextTokens(selectedModel, selectedSlot) : undefined);
     const wants1M =
       chosenTokens !== undefined &&
       chosenTokens !== null &&
@@ -331,9 +332,9 @@ export function ModelPicker({
             {headerText ??
               'Choose a model for this and future sessions. Use ← → to adjust effort, Space to change max context.'}
           </Text>
-          {focusedTier && (
+          {focusedSlot && (
             <Text dimColor>
-              Effort and max context are saved per tier — this pair belongs to <Text bold>{focusedTier}</Text>.
+              Effort and max context are saved per model slot — this pair belongs to <Text bold>{focusedSlot}</Text>.
             </Text>
           )}
           {sessionModel && (
@@ -448,27 +449,27 @@ function resolveOptionModel(value?: string): string | undefined {
  * Which tier's settings the highlighted row edits.
  *
  * Rows for a tier carry the alias as their value ('opus', 'sonnet[1m]'), so
- * that answer is exact. Everything else — the Default row, a bare model id
- * pulled from the provider's catalog — goes through the resolved model, which
- * getModelTier can still place by name or by the user's own tier pins.
+ * that answer stays exact even when multiple rows resolve to the same model id.
+ * Bare ids from the provider catalog continue through the tier reverse lookup.
  */
-function tierForOption(value?: string): ModelTier | undefined {
+function settingsSlotForOption(value?: string): ModelSettingsSlot | undefined {
   if (!value) return undefined;
+  if (value === NO_PREFERENCE) return 'default';
   const model = resolveOptionModel(value);
-  return model ? getModelTier(model) : undefined;
+  return model ? getModelSettingsSlot(model, value) : undefined;
 }
 
-function hasSavedContextOverride(tier: ModelTier | undefined): boolean {
-  return tier !== undefined && getTierOverride(tier)?.contextTokens !== undefined;
+function hasSavedContextOverride(slot: ModelSettingsSlot | undefined): boolean {
+  return slot !== undefined && getTierOverride(slot)?.contextTokens !== undefined;
 }
 
-/** Drop just this tier's contextTokens, leaving any effort override in place. */
-function clearTierContext(tier: ModelTier): void {
+/** Drop just this slot's contextTokens, leaving any effort override in place. */
+function clearTierContext(slot: ModelSettingsSlot): void {
   const current = getSettingsForSource('userSettings')?.modelSettings ?? {};
-  const existing = { ...(current[tier] ?? {}) };
+  const existing = { ...(current[slot] ?? {}) };
   delete existing.contextTokens;
   updateSettingsForSource('userSettings', {
-    modelSettings: { ...current, [tier]: Object.keys(existing).length > 0 ? existing : undefined },
+    modelSettings: { ...current, [slot]: Object.keys(existing).length > 0 ? existing : undefined },
   });
 }
 
@@ -483,9 +484,9 @@ function clearTierContext(tier: ModelTier): void {
 function nextContextChoice(
   model: string,
   current: number | null | undefined,
-  tier: ModelTier | undefined,
+  slot: ModelSettingsSlot | undefined,
 ): number | null {
-  const saved = hasSavedContextOverride(tier) ? getTierContextTokens(model) : undefined;
+  const saved = hasSavedContextOverride(slot) ? getTierContextTokens(model, slot) : undefined;
   const rungs = [...new Set([...CONTEXT_LADDER, ...(saved !== undefined ? [saved] : [])])]
     .filter(tokens => supportsContextWindow(model, tokens))
     .sort((a, b) => a - b);
@@ -530,6 +531,6 @@ function cycleEffortLevel(
 
 function getDefaultEffortLevelForOption(value?: string): EffortLevel {
   const resolved = resolveOptionModel(value) ?? getDefaultMainLoopModel();
-  const defaultValue = getDefaultEffortForModel(resolved);
+  const defaultValue = getDefaultEffortForModel(resolved, settingsSlotForOption(value));
   return defaultValue !== undefined ? convertEffortValueToLevel(defaultValue) : 'high';
 }

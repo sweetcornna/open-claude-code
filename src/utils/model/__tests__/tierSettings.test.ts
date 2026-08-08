@@ -98,6 +98,21 @@ describe('per-tier overrides', () => {
     expect(getTierContextTokens('deepseek-v4-pro')).toBe(128_000)
   })
 
+  test('default and tier settings stay distinct when they share a model id', () => {
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro'
+    userSettings = {
+      modelSettings: {
+        default: { effort: 'high', contextTokens: 272_000 },
+        sonnet: { effort: 'low', contextTokens: 128_000 },
+      },
+    } as SettingsJson
+
+    expect(getTierEffort('deepseek-v4-pro', 'default')).toBe('high')
+    expect(getTierContextTokens('deepseek-v4-pro', 'default')).toBe(272_000)
+    expect(getTierEffort('deepseek-v4-pro', 'sonnet')).toBe('low')
+    expect(getTierContextTokens('deepseek-v4-pro', 'sonnet')).toBe(128_000)
+  })
+
   test('when several tiers share an id, the configured one wins', () => {
     for (const key of TIER_ENV) process.env[key] = 'deepseek-v4-flash'
     userSettings = {

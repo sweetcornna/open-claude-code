@@ -26,11 +26,16 @@ describe('resolveGeminiModel', () => {
     Object.assign(process.env, originalEnv)
   })
 
-  test('GEMINI_MODEL env var overrides family mappings', () => {
+  test('a family mapping takes priority over GEMINI_MODEL', () => {
     process.env.GEMINI_MODEL = 'gemini-2.5-pro'
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'gemini-2.5-flash'
 
-    expect(resolveGeminiModel('claude-sonnet-4-6')).toBe('gemini-2.5-pro')
+    expect(resolveGeminiModel('claude-sonnet-4-6')).toBe('gemini-2.5-flash')
+  })
+
+  test('an explicit Gemini model is never replaced by GEMINI_MODEL', () => {
+    process.env.GEMINI_MODEL = 'gemini-default'
+    expect(resolveGeminiModel('gemini-selected')).toBe('gemini-selected')
   })
 
   test('GEMINI_DEFAULT_*_MODEL takes precedence over ANTHROPIC_DEFAULT_*', () => {

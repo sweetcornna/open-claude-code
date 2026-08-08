@@ -3,6 +3,9 @@
  * All providers are OpenAI-compatible — just swap baseURL + apiKey.
  */
 
+import { normalizeProviderBaseURL } from '../network/providerUrl.js'
+import { isDeepSeekBaseURL } from './deepseekHost.js'
+
 export type ProviderModel = {
   id: string
   label: string
@@ -52,6 +55,7 @@ export type ProviderPreset = {
   modelsPage: string
   freeTier: string
   keyFormat: string
+  defaultModel: string
   tiers: ProviderTierModels
   codingPlan?: {
     baseURL: string
@@ -73,6 +77,7 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     modelsPage: 'https://api-docs.deepseek.com/zh-cn/',
     freeTier: '5M tokens on signup (30 days), min top-up ¥10',
     keyFormat: 'sk-...',
+    defaultModel: 'deepseek-v4-pro',
     tiers: {
       haiku: 'deepseek-v4-flash',
       sonnet: 'deepseek-v4-pro',
@@ -107,6 +112,7 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     apiKeyPage: 'https://open.bigmodel.cn/user/apiKeys',
     modelsPage: 'https://docs.bigmodel.cn/cn/guide/start/model-overview',
     freeTier: 'GLM-4.7-Flash / GLM-Z1-Flash free forever',
+    defaultModel: 'glm-4.7',
     tiers: {
       haiku: 'glm-4.7-flash',
       sonnet: 'glm-4.7',
@@ -180,6 +186,7 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     modelsPage:
       'https://help.aliyun.com/zh/model-studio/getting-started/models',
     freeTier: '90-day free tier for all models after activation',
+    defaultModel: 'qwen3.5-plus',
     tiers: {
       haiku: 'qwen3.5-flash',
       sonnet: 'qwen3.5-plus',
@@ -237,6 +244,7 @@ export const CHINA_LLM_PROVIDERS: ProviderPreset[] = [
     apiKeyPage: 'https://platform.xiaomimimo.com/api-keys',
     modelsPage: 'https://platform.xiaomimimo.com/models',
     freeTier: 'Credits for new users, mimo-v2-flash low cost',
+    defaultModel: 'mimo-v2.5-pro',
     tiers: {
       haiku: 'mimo-v2-flash',
       sonnet: 'mimo-v2.5-pro',
@@ -341,9 +349,17 @@ export function parseContextWindowTokens(
   return Math.round(m[2]!.toUpperCase() === 'M' ? n * 1_000_000 : n * 1_000)
 }
 
-/** Strip a trailing slash so `…/v4` and `…/v4/` compare equal. */
+/** Canonicalize without folding case-sensitive proxy paths or query values. */
 function normalizeBaseURL(baseURL: string): string {
-  return baseURL.trim().replace(/\/+$/, '').toLowerCase()
+  const trimmed = baseURL.trim()
+  try {
+    return normalizeProviderBaseURL(
+      trimmed,
+      isDeepSeekBaseURL(trimmed) ? 'deepseek' : 'openai',
+    )
+  } catch {
+    return trimmed.replace(/\/+$/, '')
+  }
 }
 
 /**
@@ -391,17 +407,12 @@ export function getChinaProviderContextWindow(
   return undefined
 }
 
-/**
- * The `OPENAI_DEFAULT_{TIER}_MODEL` values for a preset, ready to merge into
- * the env written at login. Deliberately does NOT include `OPENAI_MODEL`: that
- * key overrides every family alias *and* every explicit `/model <id>`, which
- * would pin the session to one model and undo the point of configuring the
- * provider as a whole.
- */
+/** The independent provider default plus the four tier mappings for a preset. */
 export function chinaProviderTierEnv(
   preset: ProviderPreset,
 ): Record<string, string> {
   return {
+    OPENAI_MODEL: preset.defaultModel,
     OPENAI_DEFAULT_HAIKU_MODEL: preset.tiers.haiku,
     OPENAI_DEFAULT_SONNET_MODEL: preset.tiers.sonnet,
     OPENAI_DEFAULT_OPUS_MODEL: preset.tiers.opus,

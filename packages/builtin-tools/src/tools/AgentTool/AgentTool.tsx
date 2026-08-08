@@ -80,6 +80,7 @@ import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/constants.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
+import { isAgentExecutionLimitError } from './agentExecutionWatchdog.js';
 import { formatAgentLine, shouldInjectAgentListInMessages } from './agentListing.js';
 import {
   agentToolResultSchema,
@@ -827,6 +828,7 @@ export const AgentTool = buildTool({
       ...(isForkPath && { useExactTools: true }),
       worktreePath: worktreeInfo?.worktreePath,
       description,
+      executionStartedAt: startTime,
     };
 
     // Helper to wrap execution with a cwd override: explicit cwd arg (KAIROS)
@@ -1251,6 +1253,14 @@ export const AgentTool = buildTool({
                       const errMsg = errorMessage(error);
                       failAsyncAgent(backgroundedTaskId, errMsg, rootSetAppState);
                       const worktreeResult = await cleanupWorktreeIfNeeded();
+                      // Same reasoning as the kill path above: whatever the
+                      // agent had already written is real work, and an
+                      // execution-limit kill in particular lands on agents that
+                      // were producing output right up to the deadline.
+                      // Dropping it forced the parent to re-derive everything.
+                      // The status stays 'failed' — the result rides along, it
+                      // does not disguise the failure as a completion.
+                      const partialResult = extractPartialResult(agentMessages);
                       enqueueAgentNotification({
                         taskId: backgroundedTaskId,
                         description,
@@ -1259,6 +1269,7 @@ export const AgentTool = buildTool({
                         setAppState: rootSetAppState,
                         toolUseId: toolUseContext.toolUseId,
                         agentId: toolUseContext.agentId,
+                        finalMessage: partialResult,
                         ...worktreeResult,
                       });
                     } finally {
@@ -1383,6 +1394,25 @@ export const AgentTool = buildTool({
             }
           } catch (error) {
             // Handle errors from the sync agent loop
+            // Execution limits are failures and must not fall through to partial
+            // result recovery, which would incorrectly report completion.
+            if (isAgentExecutionLimitError(error)) {
+              // Append whatever the agent produced before the deadline. The
+              // result still leaves here as an is_error tool_result — the
+              // parent must not read a timeout as a completion — but with the
+              // partial output attached it can build on the work instead of
+              // starting the whole sub-task over. The message is edited in
+              // place rather than rewrapped so the error keeps its
+              // AgentExecutionLimitError shape (name/kind/timeoutMs) for
+              // isAgentExecutionLimitError checks further up.
+              const limitError = toError(error);
+              const partialResult = extractPartialResult(agentMessages);
+              if (partialResult) {
+                limitError.message = `${limitError.message}\n\nPartial output produced before the agent was stopped:\n${partialResult}`;
+              }
+              syncAgentError = limitError;
+              throw limitError;
+            }
             // AbortError should be re-thrown for proper interruption handling
             if (error instanceof AbortError) {
               wasAborted = true;
@@ -1497,7 +1527,22 @@ export const AgentTool = buildTool({
             logForDebugging(`Sync agent recovering from error with ${agentMessages.length} messages`);
           }
 
-          const agentResult = finalizeAgentTool(agentMessages, syncAgentId, metadata);
+          // finalizeAgentTool throws "Agent returned an empty response." when the
+          // collected assistant messages hold no text — which is exactly what a
+          // run that died mid-tool-call looks like. On the recovery path that
+          // generic message *replaced* the real cause (a timeout, a 529, an
+          // overflow), so the parent was told the agent said nothing rather than
+          // why it stopped. Recovery is best-effort; when it fails the original
+          // error is the answer.
+          let agentResult: ReturnType<typeof finalizeAgentTool>;
+          try {
+            agentResult = finalizeAgentTool(agentMessages, syncAgentId, metadata);
+          } catch (finalizeError) {
+            if (syncAgentError) {
+              throw syncAgentError;
+            }
+            throw finalizeError;
+          }
 
           if (feature('TRANSCRIPT_CLASSIFIER')) {
             const currentAppState = toolUseContext.getAppState();

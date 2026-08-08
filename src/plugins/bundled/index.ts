@@ -5,9 +5,7 @@
  * /plugin UI for users to enable/disable.
  *
  * Not all bundled features should be built-in plugins — use this for
- * features that users should be able to explicitly enable/disable. For
- * features with complex setup or automatic-enabling logic (e.g.
- * chrome-devtools), use src/skills/bundled/ instead.
+ * features that users should be able to explicitly enable/disable.
  *
  * To add a new built-in plugin:
  * 1. Import registerBuiltinPlugin from '../builtinPlugins.js'

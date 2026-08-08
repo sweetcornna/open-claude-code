@@ -357,7 +357,6 @@ import {
 } from '../utils/github/autoRunIssue.js';
 import { TungstenLiveMonitor } from '@open-claude-code/builtin-tools/tools/TungstenTool/TungstenLiveMonitor.js';
 // WebBrowserPanel removed — browser-lite returns results inline via tool_result.
-// For full browser interaction use the Chrome DevTools MCP tools (--chrome).
 import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js';
 import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
 import { DevBar } from '../components/DevBar.js';

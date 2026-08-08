@@ -180,20 +180,30 @@ export const decodeHtmlEntities = he.decode
 
 /**
  * Resolve a Bing redirect URL to the actual target URL.
- * Bing uses URLs like: https://www.bing.com/ck/a?...&u=a1aHR0cHM6Ly9leGFtcGxlLmNvbQ...
- * The `u` query parameter is a base64-encoded URL prefixed with a1 (https) or a0 (http).
- * Returns `undefined` for Bing-internal or relative links that should be skipped.
+ *
+ * Bing wraps organic hrefs in a click-tracking shell —
+ * `/ck/a?!&&p=<hash>&u=a1<base64url of the real URL>&ntb=1` — whose `u` value
+ * carries a two-character type prefix (`a1` https, `a0` http) in front of the
+ * payload. Bing emits that shell in BOTH shapes: absolute
+ * (`https://www.bing.com/ck/a?…`) and site-relative (`/ck/a?…`).
+ *
+ * So the decode runs FIRST, on either shape. Deciding "this href is relative,
+ * skip it" before decoding threw away every relative wrapper — on a SERP that
+ * emits that shape, the whole result page — because the publisher URL lives
+ * inside the blob, never in the href's shape. Upstream free-search-mcp fixed
+ * the same bug in v0.9.2.
+ *
+ * Only when nothing decodes do the shape rules apply: a relative or anchor
+ * href that is not a wrapper is Bing's own navigation, and so is any other
+ * bing.com page. Those return `undefined` and the result is dropped.
  */
 export function resolveBingUrl(rawUrl: string): string | undefined {
-  // Skip relative / anchor links
-  if (rawUrl.startsWith('/') || rawUrl.startsWith('#')) return undefined
-
-  // Try to extract the `u` parameter from Bing redirect URLs
+  // Try to extract the `u` parameter from Bing redirect URLs. From here on a
+  // relative wrapper and an absolute one are the same string.
   const uMatch = rawUrl.match(/[?&]u=([a-zA-Z0-9+/_=-]+)/)
   if (uMatch) {
     const encoded = uMatch[1]
     if (encoded.length >= 3) {
-      const prefix = encoded.slice(0, 2)
       const b64 = encoded.slice(2)
       try {
         // Base64url decode (pad as needed)
@@ -205,6 +215,9 @@ export function resolveBingUrl(rawUrl: string): string | undefined {
       }
     }
   }
+
+  // Skip relative / anchor links that carried no decodable target
+  if (rawUrl.startsWith('/') || rawUrl.startsWith('#')) return undefined
 
   // Direct external URL (not a Bing-internal page)
   if (!rawUrl.includes('bing.com')) return rawUrl

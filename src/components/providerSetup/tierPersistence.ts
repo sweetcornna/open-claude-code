@@ -16,7 +16,7 @@
  *
  * So both now land in `settings.modelSettings`, per tier, as concrete values.
  * Concrete rather than left implicit because the point is that they persist:
- * after login `/model-settings` shows four configured tiers instead of four
+ * after login `/model-settings` shows five configured slots instead of five
  * rows of "(defaults)" whose meaning shifts under the user when occ's default
  * table changes. `/model-settings <tier> reset` puts a tier back on the
  * moving default.
@@ -26,14 +26,14 @@
  * testing without rendering a form.
  */
 
-import type { ModelTier } from 'src/utils/model/modelTier.js'
+import type { ModelSettingsSlot, ModelTier } from 'src/utils/model/modelTier.js'
 import {
   getTierDefaults,
   type TierEffort,
 } from 'src/utils/model/tierDefaults.js'
 import type { TierField } from './specs.js'
 
-export type TierSettingsPatch = {
+type TierSettingsPatch = {
   effort?: TierEffort
   contextTokens?: number
 }
@@ -46,7 +46,7 @@ const TIER_BY_FIELD: Record<TierField, ModelTier> = {
   fable_model: 'fable',
 }
 
-export type BuildTierSettingsArgs = {
+type BuildTierSettingsArgs = {
   /** The tier model fields as the form holds them; '' means "not configured". */
   tierModels: Record<TierField, string>
   /** The default-model field, used for tiers the user left empty. */
@@ -55,13 +55,18 @@ export type BuildTierSettingsArgs = {
   contextTokens: number | undefined
   /** Chosen effort; undefined when the field was left on "(model default)". */
   effort: TierEffort | undefined
+  /**
+   * Whether the user changed a saved effort back to "(model default)".
+   * Ignored on a first setup — there is nothing saved to change back.
+   */
+  resetEffort?: boolean
   /** What `settings.modelSettings` already holds, if anything. */
-  existing: Partial<Record<ModelTier, TierSettingsPatch>> | undefined
+  existing: Partial<Record<ModelSettingsSlot, TierSettingsPatch>> | undefined
 }
 
 /** Whether any tier has already been configured, by this wizard or by hand. */
 function hasAnyTierConfigured(
-  existing: Partial<Record<ModelTier, TierSettingsPatch>> | undefined,
+  existing: Partial<Record<ModelSettingsSlot, TierSettingsPatch>> | undefined,
 ): boolean {
   if (!existing) return false
   return Object.values(existing).some(
@@ -77,9 +82,9 @@ function hasAnyTierConfigured(
  *
  *   - **First setup** (nothing in `modelSettings` yet): write each tier's
  *     resolved family default. That is the whole point of persisting here — a
- *     fresh login ends with four concrete tiers rather than four rows whose
+ *     fresh login ends with five concrete slots rather than four rows whose
  *     meaning shifts under the user when occ's default table changes.
- *   - **Re-running the wizard** (`/models`, or a second `/login`): leave that
+ *   - **Re-running the wizard** (`/models-setting`, or a second `/login`): leave that
  *     axis alone. Someone who tuned opus and haiku differently in `/model` must
  *     not have both flattened to one value just because they reopened the form
  *     to change an endpoint. Only an explicitly filled field is applied, and it
@@ -96,24 +101,53 @@ export function buildTierSettings({
   defaultModel,
   contextTokens,
   effort,
+  resetEffort = false,
   existing,
-}: BuildTierSettingsArgs): Partial<Record<ModelTier, TierSettingsPatch>> {
+}: BuildTierSettingsArgs): Partial<
+  Record<ModelSettingsSlot, TierSettingsPatch>
+> {
   const seedDefaults = !hasAnyTierConfigured(existing)
-  const patch: Partial<Record<ModelTier, TierSettingsPatch>> = {}
+  // Nothing is configured yet, so there is nothing to clear. Honouring a reset
+  // here would invert the first-setup rule instead: the same empty field that
+  // is supposed to seed each family default would write `effort: undefined`
+  // over it, and a fresh login would end with the four rows of "(defaults)"
+  // this whole module exists to avoid.
+  const clearEffort = resetEffort && !seedDefaults
+  const patch: Partial<Record<ModelSettingsSlot, TierSettingsPatch>> = {}
+  const primaryModel = defaultModel.trim()
+  const slots: [ModelSettingsSlot, string][] = []
+  if (primaryModel) slots.push(['default', primaryModel])
   for (const [field, tier] of Object.entries(TIER_BY_FIELD) as [
     TierField,
     ModelTier,
   ][]) {
-    const model = tierModels[field].trim() || defaultModel.trim()
+    slots.push([tier, tierModels[field].trim() || primaryModel])
+  }
+
+  for (const [slot, model] of slots) {
     if (!model) continue
-    const defaults = getTierDefaults(model, tier)
+    const defaults = getTierDefaults(
+      model,
+      slot === 'default' ? undefined : slot,
+    )
     const tierEffort = effort ?? (seedDefaults ? defaults.effort : undefined)
     const tierContext =
       contextTokens ?? (seedDefaults ? defaults.contextTokens : undefined)
-    if (tierEffort === undefined && tierContext === undefined) continue
-    patch[tier] = {
-      ...(tierEffort !== undefined ? { effort: tierEffort } : {}),
+    if (tierEffort === undefined && tierContext === undefined && !clearEffort) {
+      continue
+    }
+    patch[slot] = {
+      ...(clearEffort
+        ? { effort: undefined }
+        : tierEffort !== undefined
+          ? { effort: tierEffort }
+          : {}),
       ...(tierContext !== undefined ? { contextTokens: tierContext } : {}),
+    }
+  }
+  if (clearEffort) {
+    for (const slot of Object.keys(existing ?? {}) as ModelSettingsSlot[]) {
+      patch[slot] = { ...patch[slot], effort: undefined }
     }
   }
   return patch
@@ -131,7 +165,7 @@ export function buildTierSettings({
  * written by an older occ opens showing the value it is actually running with.
  */
 export function prefillTierFields(
-  existing: Partial<Record<ModelTier, TierSettingsPatch>> | undefined,
+  existing: Partial<Record<ModelSettingsSlot, TierSettingsPatch>> | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): { maxContext: string; effort: string } {
   const configured = Object.values(existing ?? {}).filter(

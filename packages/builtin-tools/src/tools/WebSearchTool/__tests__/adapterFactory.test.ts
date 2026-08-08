@@ -51,6 +51,11 @@ const DEEPSEEK_ENV_KEYS = [
   'OPENAI_WIRE_API',
   'ANTHROPIC_BASE_URL',
   'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE',
+  // Brave's two keys sit here for the same reason: they are registry
+  // credentials now, so a developer holding one would add a lane to every
+  // expected-lane assertion in this file.
+  'BRAVE_SEARCH_API_KEY',
+  'BRAVE_API_KEY',
 ] as const
 const savedDeepSeekEnv = new Map<string, string | undefined>()
 
@@ -61,12 +66,20 @@ function withDeepSeekEnv(env: Record<string, string> = {}): void {
 
 type Provider = ReturnType<typeof realProviders.getAPIProvider>
 
-/** Provider, credentials and settings for one scenario. */
+/**
+ * Provider, credentials and settings for one scenario.
+ *
+ * `keys` carries the two key-only sources (brave, exa) and defaults to
+ * unconfigured — the real settings file is spread in underneath, so leaving
+ * them alone would make every lane assertion depend on whether the machine
+ * running the suite happens to hold an Exa key.
+ */
 function scenario(options: {
   provider: Provider
   credentials?: SearchCredentialFamily[]
   settingsAdapter?: string
   sources?: Record<string, boolean>
+  keys?: { braveApiKey?: string; exaApiKey?: string }
 }): void {
   providersMock.set({ getAPIProvider: () => options.provider })
   const owned = new Set(options.credentials ?? [])
@@ -77,6 +90,8 @@ function scenario(options: {
     getSettings_DEPRECATED: () =>
       ({
         ...realGetSettings(),
+        braveApiKey: options.keys?.braveApiKey,
+        exaApiKey: options.keys?.exaApiKey,
         webSearchAdapter: options.settingsAdapter,
         webSearchSources: options.sources,
       }) as ReturnType<typeof realGetSettings>,
@@ -415,6 +430,92 @@ describe('createAdapter — default aggregation', () => {
       'CodexSearchAdapter',
       'FreeSearchAdapter',
     ])
+  })
+
+  test('a configured Brave key joins the aggregation as its own lane', () => {
+    scenario({
+      provider: 'firstParty',
+      credentials: ['anthropic'],
+      keys: { braveApiKey: 'bsa-test' },
+    })
+
+    expect(lanes(createAdapter())).toEqual([
+      'ApiSearchAdapter',
+      'BraveSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('no Brave key, no Brave lane', () => {
+    // The registry entry is not a promotion: brave must stay out unless the
+    // user configured it, exactly like every credential-backed source.
+    scenario({ provider: 'firstParty', credentials: ['anthropic'] })
+
+    expect(lanes(createAdapter())).not.toContain('BraveSearchAdapter')
+  })
+
+  test('brave via the environment counts too', () => {
+    scenario({ provider: 'grok' })
+    process.env.BRAVE_SEARCH_API_KEY = 'bsa-test'
+    resetAdapterCache()
+
+    expect(lanes(createAdapter())).toEqual([
+      'BraveSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('a configured Exa key joins the aggregation as its own lane', () => {
+    scenario({
+      provider: 'firstParty',
+      credentials: ['anthropic'],
+      keys: { exaApiKey: 'exa-test' },
+    })
+
+    expect(lanes(createAdapter())).toEqual([
+      'ApiSearchAdapter',
+      'ExaSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('brave and exa merge in registry order, after the provider sources', () => {
+    scenario({
+      provider: 'openai',
+      credentials: ['codex', 'gemini'],
+      keys: { braveApiKey: 'bsa-test', exaApiKey: 'exa-test' },
+    })
+
+    expect(lanes(createAdapter())).toEqual([
+      'CodexSearchAdapter',
+      'GeminiSearchAdapter',
+      'BraveSearchAdapter',
+      'ExaSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('an explicit off switch drops a keyed source', () => {
+    scenario({
+      provider: 'firstParty',
+      credentials: ['anthropic'],
+      keys: { braveApiKey: 'bsa-test', exaApiKey: 'exa-test' },
+      sources: { brave: false, exa: false },
+    })
+
+    expect(lanes(createAdapter())).toEqual([
+      'ApiSearchAdapter',
+      'FreeSearchAdapter',
+    ])
+  })
+
+  test('bing is still explicit-only and never aggregates', () => {
+    // It scrapes the same endpoint from the same IP as the free lane's own Bing
+    // engine, so a bing lane would spend one quota twice and double the odds of
+    // drawing the CAPTCHA for both.
+    scenario({ provider: 'grok' })
+
+    expect(lanes(createAdapter())).not.toContain('BingSearchAdapter')
   })
 
   test('turning the provider source off leaves the other lanes running', () => {

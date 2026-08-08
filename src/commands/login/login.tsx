@@ -21,6 +21,7 @@ import { AuthPlaneSummary } from './AuthPlaneSummary.js';
 import { getAuthStatus } from './getAuthStatus.js';
 import { WorkspaceKeyInputContainer } from './WorkspaceKeyInput.js';
 import { removeWorkspaceKey } from '../../services/auth/saveWorkspaceKey.js';
+import { getInitialSettings } from '../../utils/settings/settings.js';
 
 export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode> {
   // Snapshot auth state once at call time (pure, no network)
@@ -29,6 +30,18 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
   return (
     <Login
       authStatus={authStatus}
+      onProviderChanged={outcome => {
+        context.setAppState(prev => ({
+          ...prev,
+          settings: getInitialSettings(),
+          // Only a different provider or default model invalidates an
+          // in-session `/model` choice. Dropping it on every save meant that
+          // reopening the form to nudge thinking effort silently moved the
+          // user back to the configured default.
+          ...(outcome.providerChanged ? { mainLoopModel: null, mainLoopModelForSession: null } : {}),
+          effortValue: undefined,
+        }));
+      }}
       onDone={async success => {
         context.onChangeAPIKey();
         // Signature-bearing blocks (thinking, connector_text) are bound to the API key —
@@ -64,6 +77,7 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
 
 export function Login(props: {
   onDone: (success: boolean, mainLoopModel: string) => void;
+  onProviderChanged?: (outcome: import('../../components/providerSetup/savePlan.js').ProviderSaveOutcome) => void;
   startingMessage?: string;
   /** Pre-computed auth status snapshot — passed from call() to avoid re-computing */
   authStatus?: import('./getAuthStatus.js').AuthStatus;
@@ -178,6 +192,7 @@ export function Login(props: {
             </Box>
             <ConsoleOAuthFlow
               onDone={() => props.onDone(true, mainLoopModel)}
+              onProviderChanged={props.onProviderChanged}
               startingMessage={props.startingMessage}
             />
           </>

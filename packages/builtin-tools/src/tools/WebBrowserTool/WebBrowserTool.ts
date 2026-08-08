@@ -49,7 +49,7 @@ Supported actions:
 Limitations:
 - No JavaScript execution — only sees server-rendered HTML
 - click/type/scroll require a full browser runtime (not available)
-- For full browser interaction, use the Chrome DevTools MCP tools instead (start occ with --chrome)
+- For full browser interaction, use a browser automation tool configured for the session
 
 Use this for:
 - Reading web page content and documentation
@@ -134,7 +134,7 @@ Use this for:
             data: {
               title,
               url: response.url,
-              content: `[Text snapshot — visual screenshots require Chrome browser tools]\n\n${textContent}`,
+              content: `[Text snapshot — visual screenshots require a browser automation tool]\n\n${textContent}`,
             },
           }
         }

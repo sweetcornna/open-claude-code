@@ -198,7 +198,7 @@ export async function runInputActionGates(
     if (tierSatisfies(frontmostTier, actionKind)) return null
     // In the allowlist but tier doesn't cover this action. Tailor the
     // guidance to the actual tier — at "read", suggesting left_click or Bash
-    // is wrong (nothing is allowed; use Chrome MCP). At "click", the
+    // is wrong (nothing is allowed). At "click", the
     // mouse_full/keyboard-specific messages apply.
     if (frontmostTier === 'read') {
       // tier "read" is not category-unique (browser AND trading map to it) —
@@ -210,9 +210,8 @@ export async function runInputActionGates(
         `"${frontmost.displayName}" is granted at tier "read" — ` +
           `visible in screenshots only, no clicks or typing.` +
           (isBrowser
-            ? ' Use the Chrome DevTools MCP for browser interaction (tools ' +
-              'named `mcp__chrome-devtools__*`; load via SearchExtraTools if ' +
-              'deferred).'
+            ? ' Use a separately configured browser automation tool if one ' +
+              'is available; otherwise ask the user to perform the interaction.'
             : ' No interaction is permitted; ask the user to take any ' +
               'actions in this app themselves.') +
           TIER_ANTI_SUBVERSION,
@@ -356,7 +355,8 @@ export async function runHitTestGate(
     `Click at these coordinates would land on "${target.displayName}", ` +
       `which is granted at tier "read" (screenshots only, no interaction). ` +
       (isBrowser
-        ? 'Use the Chrome DevTools MCP for browser interaction.'
+        ? 'Use a separately configured browser automation tool if one is ' +
+          'available; otherwise ask the user to perform the interaction.'
         : 'Ask the user to take any actions in this app themselves.') +
       TIER_ANTI_SUBVERSION,
     'tier_insufficient',

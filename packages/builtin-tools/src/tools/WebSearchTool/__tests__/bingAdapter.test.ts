@@ -22,7 +22,69 @@ setupRuntimeErrorsMock()
 const httpMock = setupHttpMock()
 afterAll(() => httpMock.reset())
 
-import { extractBingResults, decodeHtmlEntities } from '../adapters/bingAdapter'
+import {
+  extractBingResults,
+  decodeHtmlEntities,
+  resolveBingUrl,
+} from '../adapters/bingAdapter'
+
+// ---------------------------------------------------------------------------
+// resolveBingUrl — click-tracking unwrap (upstream free-search-mcp v0.9.2)
+// ---------------------------------------------------------------------------
+
+/** The `u=` payload Bing puts in a ck/a wrapper: `a1` + base64url(target). */
+function bingRedirectPayload(target: string): string {
+  const b64 = Buffer.from(target, 'utf-8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+  return `a1${b64}`
+}
+
+describe('resolveBingUrl', () => {
+  const TARGET = 'https://example.com/article'
+
+  test('unwraps a RELATIVE ck/a wrapper to the publisher URL', () => {
+    // The regression this covers: the relative shape used to be rejected on
+    // sight, before anything was decoded, so a SERP emitting `/ck/a?…` hrefs
+    // lost every organic result. The publisher URL is inside the blob — the
+    // href's shape says nothing about it.
+    expect(
+      resolveBingUrl(
+        `/ck/a?!&&p=deadbeef&u=${bingRedirectPayload(TARGET)}&ntb=1`,
+      ),
+    ).toBe(TARGET)
+  })
+
+  test('unwraps an absolute ck/a wrapper to the publisher URL', () => {
+    expect(
+      resolveBingUrl(
+        `https://www.bing.com/ck/a?!&&p=deadbeef&u=${bingRedirectPayload(TARGET)}&ntb=1`,
+      ),
+    ).toBe(TARGET)
+  })
+
+  test('passes a plain publisher URL through untouched', () => {
+    expect(resolveBingUrl('https://example.com/page')).toBe(
+      'https://example.com/page',
+    )
+  })
+
+  test('an undecodable u= payload falls back to the shape rules, no throw', () => {
+    // Nothing here decodes to an http URL, so each href is judged exactly as it
+    // was before the wrapper existed: bing's own pages and bare relative links
+    // are dropped, a real external link is kept.
+    expect(() => resolveBingUrl('/ck/a?u=a1notbase64$$$')).not.toThrow()
+    expect(resolveBingUrl('/ck/a?u=a1notbase64$$$')).toBeUndefined()
+    expect(
+      resolveBingUrl('https://www.bing.com/ck/a?u=a1!!!!notbase64'),
+    ).toBeUndefined()
+    expect(resolveBingUrl('https://example.com/page?u=a1notbase64$$$')).toBe(
+      'https://example.com/page?u=a1notbase64$$$',
+    )
+  })
+})
 
 // ---------------------------------------------------------------------------
 // decodeHtmlEntities

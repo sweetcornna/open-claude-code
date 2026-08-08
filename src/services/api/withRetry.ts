@@ -53,7 +53,9 @@ import { extractConnectionErrorDetails } from './errorUtils.js'
 
 const abortError = () => new APIUserAbortError()
 
-const DEFAULT_MAX_RETRIES = 10
+/** Ten retries after the initial request (eleven total attempts). */
+const MAX_API_RETRIES = 10
+const DEFAULT_MAX_RETRIES = MAX_API_RETRIES
 const FLOOR_OUTPUT_TOKENS = 3000
 const MAX_529_RETRIES = 3
 export const BASE_DELAY_MS = 500
@@ -98,8 +100,8 @@ function shouldRetry529(querySource: QuerySource | undefined): boolean {
 }
 
 // CLAUDE_CODE_UNATTENDED_RETRY: for unattended sessions (ant-only). Retries 429/529
-// indefinitely with higher backoff and periodic keep-alive yields so the host
-// environment does not mark the session idle mid-wait.
+// with higher backoff and periodic keep-alive yields so the host environment
+// does not mark the session idle mid-wait. It shares the same ten-retry cap.
 // TODO(ANT-344): the keep-alive via SystemAPIErrorMessage yields is a stopgap
 // until there's a dedicated keep-alive channel.
 const PERSISTENT_MAX_BACKOFF_MS = 5 * 60 * 1000
@@ -252,10 +254,22 @@ const TRANSIENT_GATEWAY_MESSAGE_PATTERN = new RegExp(
   'i',
 )
 
-/** HTTP statuses worth another attempt. */
-const TRANSIENT_HTTP_STATUSES = new Set([
-  408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 529,
-])
+/** HTTP statuses worth another attempt. All other 4xx responses are permanent. */
+const TRANSIENT_HTTP_STATUSES = new Set([408, 409, 425, 429])
+
+function isTransientHttpStatus(status: number): boolean {
+  return TRANSIENT_HTTP_STATUSES.has(status) || status >= 500
+}
+
+function getErrorHttpStatus(error: unknown): number | undefined {
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error
+      ? (error as { status?: unknown }).status
+      : undefined
+  return typeof status === 'number' && Number.isInteger(status)
+    ? status
+    : undefined
+}
 
 /**
  * Status codes are only read from positions a known producer actually writes
@@ -272,14 +286,12 @@ const TRANSIENT_HTTP_STATUSES = new Set([
 const ADAPTER_STATUS_PATTERN = /request failed \((\d{3})[\s):]/
 const SDK_STATUS_PATTERN = /^(?:API Error(?: \([^)]*\))?:\s*)?(\d{3})\s/
 
-function hasTransientHttpStatus(text: string): boolean {
+function getHttpStatusFromText(text: string): number | undefined {
   for (const pattern of [ADAPTER_STATUS_PATTERN, SDK_STATUS_PATTERN]) {
     const status = text.match(pattern)?.[1]
-    if (status !== undefined && TRANSIENT_HTTP_STATUSES.has(Number(status))) {
-      return true
-    }
+    if (status !== undefined) return Number(status)
   }
-  return false
+  return undefined
 }
 
 function hasTransientNetworkCode(code: string): boolean {
@@ -337,6 +349,19 @@ export function isTransientNetworkError(error: unknown): boolean {
     return false
   }
 
+  const status = getErrorHttpStatus(error)
+  if (status !== undefined) {
+    if (isTransientHttpStatus(status)) return true
+    if (status >= 400 && status < 500) return false
+  }
+
+  const syntheticRetryable =
+    typeof error === 'object' && error !== null && 'retryable' in error
+      ? (error as { retryable?: unknown }).retryable
+      : undefined
+  if (syntheticRetryable === false) return false
+  if (syntheticRetryable === true) return true
+
   const details = extractConnectionErrorDetails(error)
   if (details) {
     // TLS check runs BEFORE the transient-code check: a handshake failure must
@@ -354,7 +379,10 @@ export function isTransientNetworkError(error: unknown): boolean {
     return isTransientNetworkError(error.originalError)
   }
 
-  if (TRANSIENT_NETWORK_MESSAGE_PATTERN.test(message)) {
+  if (
+    TRANSIENT_NETWORK_MESSAGE_PATTERN.test(message) ||
+    TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(message)
+  ) {
     return true
   }
 
@@ -364,7 +392,10 @@ export function isTransientNetworkError(error: unknown): boolean {
     if (ABORT_MESSAGE_PATTERN.test(cause.message)) {
       return false
     }
-    if (TRANSIENT_NETWORK_MESSAGE_PATTERN.test(cause.message)) {
+    if (
+      TRANSIENT_NETWORK_MESSAGE_PATTERN.test(cause.message) ||
+      TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(cause.message)
+    ) {
       return true
     }
     cause = cause.cause
@@ -389,10 +420,14 @@ export function isTransientNetworkErrorText(text: string): boolean {
   if (ABORT_MESSAGE_PATTERN.test(text)) {
     return false
   }
+  const status = getHttpStatusFromText(text)
+  if (status !== undefined) {
+    if (isTransientHttpStatus(status)) return true
+    if (status >= 400 && status < 500) return false
+  }
   return (
     TRANSIENT_NETWORK_MESSAGE_PATTERN.test(text) ||
-    TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(text) ||
-    hasTransientHttpStatus(text)
+    TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(text)
   )
 }
 
@@ -505,12 +540,10 @@ export async function* withRetry<T>(
         }
       }
 
-      // Get a fresh client instance on first attempt or after authentication errors
-      // - 401 for first-party API authentication failures
-      // - 403 "OAuth token has been revoked" (another process refreshed the token)
-      // - Bedrock-specific auth errors (403 or CredentialsProviderError)
-      // - Vertex-specific auth errors (credential refresh failures, 401)
-      // - ECONNRESET/EPIPE: stale keep-alive socket; disable pooling and reconnect
+      // Get a fresh client on the first attempt or after a stale keep-alive
+      // socket. Authentication and permission failures are permanent for this
+      // request and never reach another attempt — their credential caches are
+      // dropped in the catch block instead, for the benefit of the next one.
       const isStaleConnection = isStaleConnectionError(lastError)
       if (
         isStaleConnection &&
@@ -525,24 +558,7 @@ export async function* withRetry<T>(
         disableKeepAlive()
       }
 
-      if (
-        client === null ||
-        (lastError instanceof APIError && lastError.status === 401) ||
-        isOAuthTokenRevokedError(lastError) ||
-        isBedrockAuthError(lastError) ||
-        isVertexAuthError(lastError) ||
-        isStaleConnection
-      ) {
-        // On 401 "token expired" or 403 "token revoked", force a token refresh
-        if (
-          (lastError instanceof APIError && lastError.status === 401) ||
-          isOAuthTokenRevokedError(lastError)
-        ) {
-          const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
-          if (failedAccessToken) {
-            await handleOAuth401Error(failedAccessToken)
-          }
-        }
+      if (client === null || isStaleConnection) {
         client = await getClient()
       }
 
@@ -553,6 +569,11 @@ export async function* withRetry<T>(
         `API error (attempt ${attempt}/${maxRetries + 1}): ${error instanceof APIError ? `${error.status} ${error.message}` : errorMessage(error)}`,
         { level: 'error' },
       )
+
+      // Before any retry decision: an auth failure ends this request either
+      // way, but the stale credential behind it must not survive into the next
+      // one. See recoverCredentialsForNextRequest.
+      await recoverCredentialsForNextRequest(error)
 
       // Fast mode fallback: on 429/529, either wait and retry (short delays)
       // or fall back to standard speed (long delays) to avoid cache thrashing.
@@ -663,22 +684,18 @@ export async function* withRetry<T>(
       // Only retry if the error indicates we should
       const persistent =
         isPersistentRetryEnabled() && isTransientCapacityError(error)
-      if (attempt > maxRetries && !persistent) {
+      if (attempt > maxRetries) {
         throw new CannotRetryError(error, retryContext)
       }
 
-      // AWS/GCP errors aren't always APIError, but can be retried
-      const handledCloudAuthError =
-        handleAwsCredentialError(error) || handleGcpCredentialError(error)
       // Non-APIError used to bail here unconditionally, which meant a bare
       // `TypeError: fetch failed` (Bun/undici transport failure, or a gateway
       // body the SDK never classified) got zero retries while a first-party
       // 500 got ten. Transient transport failures now take the same ladder;
-      // APIError classification is untouched.
+      // authentication and other permanent failures still fail immediately.
       const isRetriableBareError =
         !(error instanceof APIError) && isTransientNetworkError(error)
       if (
-        !handledCloudAuthError &&
         !isRetriableBareError &&
         (!(error instanceof APIError) || !shouldRetry(error))
       ) {
@@ -770,11 +787,9 @@ export async function* withRetry<T>(
           PERSISTENT_RESET_CAP_MS,
         )
       } else {
-        delayMs = getRetryDelay(attempt, retryAfter)
+        delayMs = getBoundedRetryDelay(attempt, retryAfter)
       }
 
-      // In persistent mode the for-loop `attempt` is clamped at maxRetries+1;
-      // use persistentAttempt for telemetry/yields so they show the true count.
       const reportedAttempt = persistent ? persistentAttempt : attempt
       logEvent('tengu_api_retry', {
         attempt: reportedAttempt,
@@ -810,9 +825,6 @@ export async function* withRetry<T>(
           await sleep(chunk, options.signal, { abortError })
           remaining -= chunk
         }
-        // Clamp so the for-loop never terminates. Backoff uses the separate
-        // persistentAttempt counter which keeps growing to the 5-min cap.
-        if (attempt >= maxRetries) attempt = maxRetries
       } else {
         // Widened from `error instanceof APIError`: bare transport failures now
         // reach this point (see the guard above) and would otherwise retry in
@@ -849,15 +861,42 @@ export function getRetryDelay(
   maxDelayMs = 32000,
 ): number {
   if (retryAfterHeader) {
-    const seconds = parseInt(retryAfterHeader, 10)
-    if (!isNaN(seconds)) {
+    const seconds = Number(retryAfterHeader)
+    if (Number.isFinite(seconds) && seconds >= 0) {
       return seconds * 1000
+    }
+    const retryAt = Date.parse(retryAfterHeader)
+    if (Number.isFinite(retryAt)) {
+      return Math.max(0, retryAt - Date.now())
     }
   }
 
   const baseDelay = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), maxDelayMs)
   const jitter = Math.random() * 0.25 * baseDelay
   return baseDelay + jitter
+}
+
+/**
+ * Ceiling on a server-supplied `Retry-After`.
+ *
+ * `getRetryDelay` deliberately lets the header bypass its exponential
+ * `maxDelayMs` — obeying the server is the correct default — but nothing on the
+ * wire is validated, and a gateway answering `Retry-After: 7200` would park the
+ * turn for two hours behind a countdown row the user cannot shorten. One minute
+ * is the same bound `openai/retry.ts` applies to the identical header.
+ *
+ * The unattended (`CLAUDE_CODE_UNATTENDED_RETRY`) branch keeps its own, far
+ * larger cap on purpose: nobody is watching that session, and waiting out a
+ * window-based rate limit is exactly what it is for.
+ */
+const RETRY_AFTER_MAX_MS = 60_000
+
+/** {@link getRetryDelay} with the Retry-After escape hatch bounded. */
+function getBoundedRetryDelay(
+  attempt: number,
+  retryAfterHeader?: string | null,
+): number {
+  return Math.min(getRetryDelay(attempt, retryAfterHeader), RETRY_AFTER_MAX_MS)
 }
 
 function parseMaxTokensContextOverflowError(error: APIError):
@@ -928,10 +967,33 @@ export function is529Error(error: unknown): boolean {
   // Check for 529 status code or overloaded error in message
   return (
     error.status === 529 ||
-    // See below: the SDK sometimes fails to properly pass the 529 status code during streaming
-    (error.message?.includes('"type":"overloaded_error"') ?? false)
+    // The SDK sometimes loses the 529 status during streaming. Never let text
+    // in a permanent 4xx body override that explicit status.
+    (error.status === undefined &&
+      (error.message?.includes('"type":"overloaded_error"') ?? false))
   )
 }
+
+// ---------------------------------------------------------------------------
+// Credential recovery
+//
+// "Do not retry this request" and "do not refresh the credential" are two
+// different decisions, and only the first one is wanted here. `shouldRetry`
+// fails a 401/403 immediately — repeating a rejected credential ten times just
+// makes the user wait — but every credential source behind this client is
+// memoized for the process, so without the side effects below the NEXT request
+// is built from the same dead value:
+//
+//   - Claude.ai OAuth: another process (a second CLI, a browser login) rotates
+//     the token in the keychain. `getAnthropicClient` only ever calls the
+//     non-forcing `checkAndRefreshOAuthTokenIfNeeded()`, which trusts the
+//     in-memory copy's expiry and therefore never re-reads. Every request 401s
+//     until the CLI is restarted.
+//   - apiKeyHelper: helpers that mint short-lived keys are cached until the
+//     cache is explicitly dropped.
+//   - Bedrock STS / Vertex: expired session tokens and failed credential
+//     refreshes stay cached the same way.
+// ---------------------------------------------------------------------------
 
 function isOAuthTokenRevokedError(error: unknown): boolean {
   return (
@@ -942,30 +1004,16 @@ function isOAuthTokenRevokedError(error: unknown): boolean {
 }
 
 function isBedrockAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
-    // AWS libs reject without an API call if .aws holds a past Expiration value
-    // otherwise, API calls that receive expired tokens give generic 403
-    // "The security token included in the request is invalid"
-    if (
-      isAwsCredentialsProviderError(error) ||
-      (error instanceof APIError && error.status === 403)
-    ) {
-      return true
-    }
+  if (!isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
+    return false
   }
-  return false
-}
-
-/**
- * Clear AWS auth caches if appropriate.
- * @returns true if action was taken.
- */
-function handleAwsCredentialError(error: unknown): boolean {
-  if (isBedrockAuthError(error)) {
-    clearAwsCredentialsCache()
-    return true
-  }
-  return false
+  // AWS libs reject without an API call if .aws holds a past Expiration value;
+  // otherwise, API calls that receive expired tokens give a generic 403
+  // "The security token included in the request is invalid".
+  return (
+    isAwsCredentialsProviderError(error) ||
+    (error instanceof APIError && error.status === 403)
+  )
 }
 
 // google-auth-library throws plain Error (no typed name like AWS's
@@ -981,29 +1029,52 @@ function isGoogleAuthLibraryCredentialError(error: unknown): boolean {
 }
 
 function isVertexAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) {
-    // SDK-level: google-auth-library fails in prepareOptions() before the HTTP call
-    if (isGoogleAuthLibraryCredentialError(error)) {
-      return true
-    }
-    // Server-side: Vertex returns 401 for expired/invalid tokens
-    if (error instanceof APIError && error.status === 401) {
-      return true
-    }
+  if (!isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) {
+    return false
   }
-  return false
+  return (
+    // SDK-level: google-auth-library fails in prepareOptions() before the HTTP call
+    isGoogleAuthLibraryCredentialError(error) ||
+    // Server-side: Vertex returns 401 for expired/invalid tokens
+    (error instanceof APIError && error.status === 401)
+  )
 }
 
 /**
- * Clear GCP auth caches if appropriate.
- * @returns true if action was taken.
+ * Invalidate whatever credential cache this failure implicates, so the next
+ * request is built from a fresh one. Never rethrows and never influences the
+ * retry decision — the request that just failed still fails.
  */
-function handleGcpCredentialError(error: unknown): boolean {
-  if (isVertexAuthError(error)) {
-    clearGcpCredentialsCache()
-    return true
+async function recoverCredentialsForNextRequest(error: unknown): Promise<void> {
+  try {
+    const isUnauthorized = error instanceof APIError && error.status === 401
+    const isRevoked = isOAuthTokenRevokedError(error)
+
+    if (isUnauthorized) {
+      clearApiKeyHelperCache()
+    }
+    if (isUnauthorized || isRevoked) {
+      // Re-reads the keychain (another process may already hold a good token)
+      // and force-refreshes when the rejected one is still the current one.
+      const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
+      if (failedAccessToken) {
+        await handleOAuth401Error(failedAccessToken)
+      }
+    }
+    if (isBedrockAuthError(error)) {
+      clearAwsCredentialsCache()
+    }
+    if (isVertexAuthError(error)) {
+      clearGcpCredentialsCache()
+    }
+  } catch (recoveryError) {
+    // A keychain read that itself fails must not replace the API error the
+    // caller is about to see.
+    logForDebugging(
+      `Credential recovery after an auth failure did not complete: ${errorMessage(recoveryError)}`,
+      { level: 'warn' },
+    )
   }
-  return false
 }
 
 function shouldRetry(error: APIError): boolean {
@@ -1018,27 +1089,36 @@ function shouldRetry(error: APIError): boolean {
     return true
   }
 
-  // CCR mode: auth is via infrastructure-provided JWTs, so a 401/403 is a
-  // transient blip (auth service flap, network hiccup) rather than bad
-  // credentials. Bypass x-should-retry:false — the server assumes we'd retry
-  // the same bad key, but our key is fine.
+  // The SDK sometimes loses the 529 status during streaming, so statusless
+  // overloaded errors are recoverable. An explicit permanent 4xx still wins.
   if (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-    (error.status === 401 || error.status === 403)
+    error.status === undefined &&
+    error.message?.includes('"type":"overloaded_error"')
   ) {
-    return true
-  }
-
-  // Check for overloaded errors first by examining the message content
-  // The SDK sometimes fails to properly pass the 529 status code during streaming,
-  // so we need to check the error message directly
-  if (error.message?.includes('"type":"overloaded_error"')) {
     return true
   }
 
   // Check for max tokens context overflow errors that we can handle
   if (parseMaxTokensContextOverflowError(error)) {
     return true
+  }
+
+  if (
+    error.status === undefined &&
+    TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(error.message ?? '')
+  ) {
+    return true
+  }
+
+  // Authentication, permission, invalid-request, model-not-found, and every
+  // other permanent 4xx fail once even if a proxy sets x-should-retry:true.
+  if (
+    error.status !== undefined &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    !TRANSIENT_HTTP_STATUSES.has(error.status)
+  ) {
+    return false
   }
 
   // Note this is not a standard header.
@@ -1072,25 +1152,13 @@ function shouldRetry(error: APIError): boolean {
   // Retry on request timeouts.
   if (error.status === 408) return true
 
-  // Retry on lock timeouts.
-  if (error.status === 409) return true
+  // Retry on lock timeouts and Too Early responses.
+  if (error.status === 409 || error.status === 425) return true
 
   // Retry on rate limits, but not for ClaudeAI Subscription users
   // Enterprise users can retry because they typically use PAYG instead of rate limits
   if (error.status === 429) {
     return !isClaudeAISubscriber() || isEnterpriseSubscriber()
-  }
-
-  // Clear API key cache on 401 and allow retry.
-  // OAuth token handling is done in the main retry loop via handleOAuth401Error.
-  if (error.status === 401) {
-    clearApiKeyHelperCache()
-    return true
-  }
-
-  // Retry on 403 "token revoked" (same refresh logic as 401, see above)
-  if (isOAuthTokenRevokedError(error)) {
-    return true
   }
 
   // Retry internal errors.
@@ -1099,14 +1167,26 @@ function shouldRetry(error: APIError): boolean {
   return false
 }
 
-export function getDefaultMaxRetries(): number {
-  if (process.env.CLAUDE_CODE_MAX_RETRIES) {
-    return parseInt(process.env.CLAUDE_CODE_MAX_RETRIES, 10)
-  }
-  return DEFAULT_MAX_RETRIES
+export function clampMaxRetries(
+  value: number,
+  fallback = DEFAULT_MAX_RETRIES,
+): number {
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(MAX_API_RETRIES, Math.max(0, Math.trunc(value)))
 }
+
+export function getDefaultMaxRetries(): number {
+  const raw = process.env.CLAUDE_CODE_MAX_RETRIES
+  if (raw === undefined || !/^\d+$/.test(raw.trim())) {
+    return DEFAULT_MAX_RETRIES
+  }
+  return clampMaxRetries(Number.parseInt(raw, 10))
+}
+
 function getMaxRetries(options: RetryOptions): number {
-  return options.maxRetries ?? getDefaultMaxRetries()
+  return options.maxRetries === undefined
+    ? getDefaultMaxRetries()
+    : clampMaxRetries(options.maxRetries)
 }
 
 const DEFAULT_FAST_MODE_FALLBACK_HOLD_MS = 30 * 60 * 1000 // 30 minutes
@@ -1174,11 +1254,13 @@ export function markTransientRetriesExhausted<T extends object>(message: T): T {
 }
 
 function hasExhaustedTransientRetries(message: unknown): boolean {
-  return (
-    typeof message === 'object' &&
-    message !== null &&
+  if (typeof message !== 'object' || message === null) return false
+  if (
     (message as Record<symbol, unknown>)[TRANSIENT_RETRIES_EXHAUSTED] === true
-  )
+  ) {
+    return true
+  }
+  return hasExhaustedTransientRetries((message as { error?: unknown }).error)
 }
 
 function isApiErrorAssistantMessage(item: QueryModelOutput): boolean {
@@ -1210,25 +1292,20 @@ function getMessageText(item: QueryModelOutput): string {
     .join('\n')
 }
 
+function getRetrySourceError(item: QueryModelOutput): unknown | undefined {
+  const error = (item as AssistantMessage).error as unknown
+  return error instanceof Error ? error : undefined
+}
+
 /**
  * "Did the model already say something the caller acted on?" Once true the
  * wrapper stops retrying forever: re-running `queryModel` after a partial
  * stream re-emits the same `tool_use` block and the tool runs twice (inc-4258).
  *
- * The bar is *observable side effects*, not "any bytes arrived". Two delta
- * kinds are deliberately excluded:
- *
- *   - `thinking` / `signature`: thinking is not replayed to the user as an
- *     answer and starts no tool, so a stream that died after only thinking has
- *     produced nothing to duplicate. Counting it meant a connection dropping
- *     during the (often long) thinking phase burned the whole turn on a single
- *     `Error: terminated` with zero retries — the reported symptom. Discarding
- *     that thinking and re-asking costs tokens; ending the turn costs the user
- *     the turn.
- *
- * `text` and `partial_json` still count: text is already on screen (a retry
- * would visibly restate it) and `partial_json` means a tool_use block is
- * materializing, which is exactly the double-execution case above.
+ * The bar is *observable model output*, not "any bytes arrived". Protocol-only
+ * events such as message_start do not commit an attempt, but text, tool JSON,
+ * thinking, and signatures do: all are yielded outside the API layer, and
+ * replaying after any of them risks duplicate output or tool execution.
  */
 function isModelContentOutput(item: QueryModelOutput): boolean {
   if (item.type === 'assistant') {
@@ -1242,10 +1319,12 @@ function isModelContentOutput(item: QueryModelOutput): boolean {
     return false
   }
   const delta = (event.delta ?? {}) as Record<string, unknown>
-  return Boolean(delta.text || delta.partial_json)
+  return Boolean(
+    delta.text || delta.partial_json || delta.thinking || delta.signature,
+  )
 }
 
-export interface TransientNetworkRetryOptions {
+interface TransientNetworkRetryOptions {
   signal?: AbortSignal
   /** Defaults to CLAUDE_CODE_MAX_RETRIES, else 10 — same source as withRetry. */
   maxRetries?: number
@@ -1266,7 +1345,10 @@ export async function* withTransientNetworkRetry(
   run: () => AsyncGenerator<QueryModelOutput, void>,
   options: TransientNetworkRetryOptions = {},
 ): AsyncGenerator<QueryModelOutput, void> {
-  const maxRetries = options.maxRetries ?? getDefaultMaxRetries()
+  const maxRetries =
+    options.maxRetries === undefined
+      ? getDefaultMaxRetries()
+      : clampMaxRetries(options.maxRetries)
   if (!(maxRetries > 0)) {
     yield* run()
     return
@@ -1285,10 +1367,19 @@ export async function* withTransientNetworkRetry(
       for await (const item of run()) {
         if (isApiErrorAssistantMessage(item)) {
           const text = getMessageText(item)
+          const sourceError = getRetrySourceError(item)
+          // The error OBJECT wins whenever there is one: it carries the
+          // producer's own verdict (`retryable`, a real status, an errno),
+          // whereas the text is a last resort for the producers that only ever
+          // yield prose. Or-ing the two let a message containing wording like
+          // "stream idle timeout" overrule an explicit `retryable: false` and
+          // replay a request the adapter had already ruled permanent.
           if (
             canRetry() &&
             !hasExhaustedTransientRetries(item) &&
-            isTransientNetworkErrorText(text)
+            (sourceError !== undefined
+              ? isTransientNetworkError(sourceError)
+              : isTransientNetworkErrorText(text))
           ) {
             // Current producers yield at most one error message per attempt,
             // but if a second ever arrives the first must not vanish — emit it
@@ -1297,7 +1388,8 @@ export async function* withTransientNetworkRetry(
               yield heldErrorMessage
             }
             heldErrorMessage = item
-            retryError = new APIConnectionError({ message: text })
+            retryError =
+              sourceError ?? new APIConnectionError({ message: text })
             continue
           }
           yield item
@@ -1332,7 +1424,7 @@ export async function* withTransientNetworkRetry(
       return
     }
 
-    const delayMs = getRetryDelay(attempt)
+    const delayMs = getBoundedRetryDelay(attempt, getRetryAfter(retryError))
     logForDebugging(
       `Transient network failure (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms: ${errorMessage(retryError)}`,
       { level: 'warn' },

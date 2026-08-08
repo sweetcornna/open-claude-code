@@ -124,8 +124,7 @@ REPL で `/login` を実行し、**Anthropic Compatible** を選ぶと、Anthrop
 | **カスタムプロバイダー** | OpenAI / Anthropic / Gemini / Grok 互換 | [ドキュメント](./docs/zh/features/all-features-guide.md) |
 | ボイスモード | 音声入力（Doubao `/voice doubao` を含む） | [ドキュメント](./docs/zh/features/voice-mode.md) |
 | Computer Use | スクリーンショット、キーボードとマウスの操作 | [ドキュメント](./docs/zh/features/computer-use.md) |
-| **Chrome ブラウザツール** | `occ --chrome` で Google の `chrome-devtools-mcp` を接続。ナビゲーション、クリック、スナップショット、コンソール／ネットワーク、パフォーマンストレース。ページを変更する操作は必ず確認を求めます | [ドキュメント](./docs/zh/features/chrome-devtools-mcp.md) |
-| Chrome Use（サードパーティ） | 別の選択肢として `hangwin/mcp-chrome` 拡張機能 | [ドキュメント](./docs/zh/features/chrome-use-mcp.md) |
+| ブラウザ MCP（ユーザー設定） | 通常の MCP 設定で任意のブラウザ MCP を追加できます。`chrome-devtools` や `mcp-chrome` などの名前も予約されていません | [ドキュメント](./docs/ja/extensibility/mcp-configuration.mdx) |
 | `/dream` | メモリの自動統合 | [ドキュメント](./docs/zh/features/auto-dream.md) |
 
 ## フィーチャーフラグ

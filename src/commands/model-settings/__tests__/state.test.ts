@@ -28,6 +28,14 @@ describe('parseArgs', () => {
     expect(parseArgs('current')).toEqual({ kind: 'show' })
   })
 
+  test('sets effort for the independent provider default', () => {
+    expect(parseArgs('default effort high')).toEqual({
+      kind: 'set',
+      tier: 'default',
+      effort: 'high',
+    })
+  })
+
   test('sets effort for one tier', () => {
     expect(parseArgs('opus effort max')).toEqual({
       kind: 'set',

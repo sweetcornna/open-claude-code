@@ -23,7 +23,7 @@ function acceptsReasoningEffort(model: string): boolean {
   return model.toLowerCase().includes('grok-3-mini')
 }
 
-export type GrokReasoningEffort = 'low' | 'high'
+type GrokReasoningEffort = 'low' | 'high'
 
 /**
  * The rung to send, or undefined to send nothing (no effort chosen, or a model

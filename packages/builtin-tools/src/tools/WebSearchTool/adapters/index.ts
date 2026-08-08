@@ -12,8 +12,8 @@
  *
  * 2. AGGREGATED (the default) — every active source runs in parallel and the
  *    results merge into one list. Sources are symmetric (see
- *    searchSources.ts): anthropic, deepseek, gemini, codex, free, each switched
- *    on by its own credentials unless the user said otherwise.
+ *    searchSources.ts): anthropic, deepseek, gemini, codex, brave, exa, free,
+ *    each switched on by its own credentials unless the user said otherwise.
  *
  *    The source matching the CURRENT provider is the primary lane: it runs
  *    through the normal query pipeline and its results are ordered first. The
@@ -112,6 +112,13 @@ function createSourceAdapter(
       return asPrimary
         ? new CodexSearchAdapter()
         : new CodexSearchAdapter({ forceChatGPTAuth: true })
+    // No primary/extra split for these two: neither is any provider's own
+    // search layer, so `primarySourceId()` never names them and they only ever
+    // run as lanes of their own. One key, one endpoint, one construction.
+    case 'brave':
+      return new BraveSearchAdapter()
+    case 'exa':
+      return new ExaSearchAdapter()
     case 'free':
       return new FreeSearchAdapter()
   }

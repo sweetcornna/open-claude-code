@@ -115,6 +115,52 @@ export function permissionModeFromString(str: string): PermissionMode {
     : 'default'
 }
 
+/**
+ * Picks the permission mode for a session that carries **no** explicit
+ * preference (no CLI flag, no `permissions.defaultMode`). Explicit
+ * configuration never reaches this function — it wins everywhere, including in
+ * headless sessions.
+ *
+ * `auto` hands approval to the transcript classifier, so every guard below is a
+ * precondition for that being a real (and safe) delegation:
+ *
+ * - `autoModeSupported` — with `TRANSCRIPT_CLASSIFIER` compiled out the
+ *   classifier path is dead code; reporting `auto` would be pure decoration.
+ * - `autoModeCircuitBroken` — the classifier was kicked out; don't re-enter.
+ * - `isRemote` — CCR only supports acceptEdits/plan.
+ * - `isNonInteractiveSession` — `-p` / headless / SDK sessions cannot show a
+ *   permission prompt, so `default` degrades to "deny and report" while `auto`
+ *   would silently let the classifier approve writes and command execution in
+ *   CI. Matching upstream Claude Code, unattended runs must opt in explicitly
+ *   via `--permission-mode` or `--dangerously-skip-permissions`.
+ *
+ * Callers pass `isNonInteractiveSession` rather than having this module read
+ * `getIsNonInteractiveSession()` directly: that global is derived from
+ * TTY-ness, which is the wrong signal for front ends that own their own
+ * prompting channel (see the ACP agent, which pipes stdio yet can prompt).
+ */
+export function resolveInitialPermissionModeFallback({
+  hasExplicitPermissionMode,
+  autoModeSupported,
+  autoModeCircuitBroken,
+  isRemote,
+  isNonInteractiveSession,
+}: {
+  hasExplicitPermissionMode: boolean
+  autoModeSupported: boolean
+  autoModeCircuitBroken: boolean
+  isRemote: boolean
+  isNonInteractiveSession: boolean
+}): PermissionMode {
+  return !hasExplicitPermissionMode &&
+    autoModeSupported &&
+    !autoModeCircuitBroken &&
+    !isRemote &&
+    !isNonInteractiveSession
+    ? 'auto'
+    : 'default'
+}
+
 export function permissionModeTitle(mode: PermissionMode): string {
   return getModeConfig(mode).title
 }

@@ -17,6 +17,7 @@ import type {
   ChatCompletionCreateParamsStreaming,
 } from 'openai/resources/chat/completions/completions.mjs'
 import { isChatGPTCodexReasoningModel } from 'src/utils/model/chatgptModels.js'
+import { resolveAppliedEffort } from 'src/utils/model/effort.js'
 import { isGptTuningActiveForModel } from 'src/utils/model/gptTuning.js'
 import { asSystemPrompt } from 'src/utils/session/systemPromptType.js'
 import { getSessionId } from '../../../bootstrap/state.js'
@@ -153,8 +154,10 @@ async function createChatStreamWithCacheKeyFallback(params: {
   // once the body is passed through a callback. `stream: true` is fixed by
   // buildOpenAIRequestBody, so narrow to what the adapter consumes.
 }): Promise<AsyncIterable<ChatCompletionChunk>> {
+  // queryModelWithStreaming owns this lane's ten-retry budget. Keep the SDK at
+  // zero so one failed request cannot expand into a nested 10×10 ladder.
   const client = getOpenAIClient({
-    maxRetries: 2,
+    maxRetries: 0,
     fetchOverride: params.fetchOverride,
     source: params.querySource,
   })
@@ -313,9 +316,18 @@ export async function* queryModelOpenAI(
     )
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
+    // options.model, NOT openaiModel: resolveAppliedEffort keys the per-tier
+    // settings slot off the model the SESSION selected, and the claude/gemini/
+    // grok lanes all hand it that unresolved value. Passing the wire-resolved id
+    // here made this the one lane whose displayed effort and sent effort could
+    // come from different slots.
+    const appliedEffort = resolveAppliedEffort(
+      options.model,
+      options.effortValue,
+    )
     const reasoningEffort = getResponsesReasoningEffort(
       openaiModel,
-      options.effortValue,
+      appliedEffort,
     )
     const verbosity = resolveOpenAIVerbosity(openaiModel, {
       baseURL: process.env.OPENAI_BASE_URL,
@@ -448,12 +460,12 @@ export async function* queryModelOpenAI(
                   promptCacheKey: cacheKey,
                   // DeepSeek runs its own reasoning_effort ladder off this;
                   // buildOpenAIRequestBody ignores it for every other model.
-                  effortValue: options.effortValue,
+                  effortValue: appliedEffort,
                   ...(isChatGPTCodexReasoningModel(openaiModel)
                     ? {
                         reasoningEffort: getChatReasoningEffort(
                           openaiModel,
-                          options.effortValue,
+                          appliedEffort,
                         ),
                       }
                     : {}),

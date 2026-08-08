@@ -116,7 +116,7 @@ describe('buildModelStep', () => {
     // Better than a blank text box: the endpoint may be fine and simply not
     // implement /models. The note tells the user these are occ's guesses.
     const step = wizard.buildModelStep(
-      endpointStatus(),
+      { ...endpointStatus(), baseUrl: 'https://api.openai.com/v1' },
       specs.PROVIDER_SETUP_SPECS.openai,
       null,
       'the /models endpoint was not found (HTTP 404)',
@@ -128,7 +128,7 @@ describe('buildModelStep', () => {
     expect(step.catalogNote).toContain('HTTP 404')
   })
 
-  test("the endpoint's answer is merged with occ's table, endpoint first", () => {
+  test("the endpoint's answer is authoritative", () => {
     const step = wizard.buildModelStep(
       endpointStatus(),
       specs.PROVIDER_SETUP_SPECS.openai,
@@ -138,10 +138,19 @@ describe('buildModelStep', () => {
 
     expect(step.entryMode).toBe('catalog')
     if (step.entryMode !== 'catalog') return
-    expect(step.models[0]?.id).toBe('house-blend-1')
-    expect(step.models.map(m => m.id)).toContain('gpt-5.6-sol')
-    // A merged fallback is not a failure — no note.
+    expect(step.models.map(m => m.id)).toEqual(['house-blend-1'])
     expect(step.catalogNote).toBeUndefined()
+  })
+
+  test('a custom endpoint with no model list falls back to manual entry', () => {
+    const step = wizard.buildModelStep(
+      endpointStatus(),
+      specs.PROVIDER_SETUP_SPECS.openai,
+      null,
+      'the /models endpoint was not found (HTTP 404)',
+    )
+
+    expect(step.entryMode).toBe('manual')
   })
 
   test('catalog entry seeds the current configuration as the selection', () => {

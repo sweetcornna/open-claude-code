@@ -6,7 +6,10 @@ import {
 } from '../model/tierSettings.js'
 import { getGlobalConfig } from '../config/config.js'
 import { isEnvTruthy } from '../config/envUtils.js'
-import { getCanonicalName } from '../model/model.js'
+import {
+  getCanonicalName,
+  getMainLoopModelSettingsSlot,
+} from '../model/model.js'
 import { resolveAntModel } from '../model/antModels.js'
 import {
   CHATGPT_CODEX_MAX_OUTPUT_TOKENS,
@@ -118,7 +121,8 @@ export function getContextWindowForModel(
   // for every model and short-circuit China-preset windows, ChatGPT windows and
   // the /v1/models capability lookup, all of which know more than a default
   // does. It is applied at the bottom instead, in place of the flat 200k.
-  const explicitTierTokens = getExplicitTierContextTokens(model)
+  const settingsSlot = getMainLoopModelSettingsSlot(model)
+  const explicitTierTokens = getExplicitTierContextTokens(model, settingsSlot)
   if (
     explicitTierTokens !== undefined &&
     supportsContextWindow(model, explicitTierTokens)
@@ -150,29 +154,12 @@ export function getContextWindowForModel(
     return chinaPresetWindow
   }
 
-  // GPT-5.6 family: OAuth/Codex ≈ 272k; API key path ≈ 1.05M (model card).
-  // Used for UI %, auto-compact thresholds, and local budgeting — not sent
-  // as a request field (Codex Responses does not take max_input_tokens).
-  const chatgptContextWindow = getChatGPTModelContextWindow(model)
-  if (chatgptContextWindow !== undefined) {
-    if (
-      is1mContextDisabled() &&
-      chatgptContextWindow > MODEL_CONTEXT_WINDOW_DEFAULT
-    ) {
-      // Family default in place of the flat 200k fallback: a DeepSeek or GPT model
-      // that reached here still gets a sane window instead of the generic guess.
-      //
-      // Clamped the same way as the explicit arm above. A Claude id that never went
-      // through apply1mContextOptIn carries no `[1m]`, so betas.ts sends no
-      // context-1m header and the API still cuts off at 200k — reporting 1M here
-      // would leave auto-compact idle right up to a hard prompt-too-long.
-      const familyDefault = getTierDefaultContextTokens(model)
-      if (familyDefault >= CONTEXT_1M_THRESHOLD && !has1mContext(model)) {
-        return MODEL_CONTEXT_WINDOW_DEFAULT
-      }
-      return familyDefault
-    }
-    return chatgptContextWindow
+  // The provider may advertise a larger physical GPT window, but occ's factory
+  // default is the conservative 272k budget. A per-tier or env override above can
+  // opt into more; without one, UI accounting and auto-compact must follow the
+  // same default the setup form shows.
+  if (getChatGPTModelContextWindow(model) !== undefined) {
+    return getTierDefaultContextTokens(model, settingsSlot)
   }
 
   const cap = getModelCapability(model)
@@ -198,7 +185,16 @@ export function getContextWindowForModel(
       return antModel.contextWindow
     }
   }
-  return MODEL_CONTEXT_WINDOW_DEFAULT
+
+  const familyDefault = getTierDefaultContextTokens(model, settingsSlot)
+  if (
+    familyDefault >= CONTEXT_1M_THRESHOLD &&
+    getCanonicalName(model).toLowerCase().includes('claude') &&
+    !has1mContext(model)
+  ) {
+    return MODEL_CONTEXT_WINDOW_DEFAULT
+  }
+  return familyDefault
 }
 
 export function getSonnet1mExpTreatmentEnabled(model: string): boolean {

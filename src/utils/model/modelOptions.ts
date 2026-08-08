@@ -82,8 +82,9 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
     }
   }
 
-  // Subscribers
-  if (isClaudeAISubscriber()) {
+  // Subscription entitlements describe Anthropic's catalog only. A retained
+  // Claude login must not relabel another provider's default as Opus or Sonnet.
+  if (isClaudeAISubscriber() && !isThirdPartyModelCatalog()) {
     return {
       value: null,
       label: 'Default (recommended)',
@@ -181,7 +182,8 @@ function getTierOption(tier: ModelTier): ModelOption {
     return {
       value: tier,
       label: nameEnv ?? label,
-      description: descEnv ?? `${label} tier · no model configured (/models)`,
+      description:
+        descEnv ?? `${label} tier · no model configured (/models-setting)`,
       descriptionForModel: `${label} tier — no model is configured for this provider`,
     }
   }
@@ -679,10 +681,13 @@ export function getModelOptions(fastMode = false): ModelOption[] {
     })
   }
 
-  // Append additional model options fetched during bootstrap
-  for (const opt of getGlobalConfig().additionalModelOptionsCache ?? []) {
-    if (!options.some(existing => existing.value === opt.value)) {
-      options.push(opt)
+  // Bootstrap options come from Anthropic's account API. The disk cache can
+  // outlive a provider switch, so only append it while that catalog is active.
+  if (!isThirdPartyModelCatalog()) {
+    for (const opt of getGlobalConfig().additionalModelOptionsCache ?? []) {
+      if (!options.some(existing => existing.value === opt.value)) {
+        options.push(opt)
+      }
     }
   }
 

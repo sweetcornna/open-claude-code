@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import type { Task, TaskType } from './Task.js'
 import { DreamTask } from './tasks/DreamTask/DreamTask.js'
+import { InProcessTeammateTask } from './tasks/InProcessTeammateTask/task.js'
 import { LocalAgentTask } from './tasks/LocalAgentTask/LocalAgentTask.js'
 import { LocalShellTask } from './tasks/LocalShellTask/LocalShellTask.js'
 import { RemoteAgentTask } from './tasks/RemoteAgentTask/RemoteAgentTask.js'
@@ -24,6 +25,7 @@ export function getAllTasks(): Task[] {
     LocalShellTask,
     LocalAgentTask,
     RemoteAgentTask,
+    InProcessTeammateTask,
     DreamTask,
   ]
   if (LocalWorkflowTask) tasks.push(LocalWorkflowTask)

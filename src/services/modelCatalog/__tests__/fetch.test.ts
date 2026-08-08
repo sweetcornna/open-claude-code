@@ -215,6 +215,23 @@ describe('fetchOpenAICompatibleModelsWith', () => {
     ])
   })
 
+  test('reduces a complete resource URL and keeps SDK query parameters', async () => {
+    const seen: string[] = []
+    await fetchOpenAICompatibleModelsWith({
+      baseURL:
+        'https://gateway.example/Tenant/v1/chat/completions/?api-version=AbC#wrong',
+      apiKey: 'fresh-form-key',
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        seen.push(String(input))
+        return jsonResponse({ data: [{ id: 'model-a' }] })
+      }) as unknown as typeof fetch,
+    })
+
+    expect(seen).toEqual([
+      'https://gateway.example/Tenant/v1/models?api-version=AbC',
+    ])
+  })
+
   test('returns null and reports authentication failures', async () => {
     let reason = ''
     const models = await fetchOpenAICompatibleModelsWith({

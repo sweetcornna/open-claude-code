@@ -141,14 +141,6 @@ export function getInlinePlugins(): Array<string> {
   return STATE.inlinePlugins
 }
 
-export function setChromeFlagOverride(value: boolean | undefined): void {
-  STATE.chromeFlagOverride = value
-}
-
-export function getChromeFlagOverride(): boolean | undefined {
-  return STATE.chromeFlagOverride
-}
-
 export function setUseCoworkPlugins(value: boolean): void {
   STATE.useCoworkPlugins = value
   resetSettingsCache()

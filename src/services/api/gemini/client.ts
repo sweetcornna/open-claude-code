@@ -3,6 +3,7 @@ import { getValidAntigravityAuth } from 'src/services/auth/antigravity/oauth.js'
 import { errorMessage } from 'src/utils/runtime/errors.js'
 import { isAntigravityAuthMode } from 'src/utils/model/antigravityModels.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
+import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import {
   antigravityHeaders,
   antigravityStreamUrl,
@@ -20,13 +21,6 @@ const DEFAULT_GEMINI_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta'
 
 const STREAM_DECODE_OPTS: TextDecodeOptions = { stream: true }
-
-function getGeminiBaseUrl(): string {
-  return (process.env.GEMINI_BASE_URL || DEFAULT_GEMINI_BASE_URL).replace(
-    /\/+$/,
-    '',
-  )
-}
 
 function getGeminiModelPath(model: string): string {
   const normalized = model.replace(/^\/+/, '')
@@ -46,6 +40,18 @@ type GeminiWireRequest = {
   headers: Record<string, string>
   body: unknown
   unwrapChunk: (raw: unknown) => GeminiStreamChunk | null
+}
+
+class GeminiRequestError extends Error {
+  readonly status: number
+  readonly headers: Headers
+
+  constructor(message: string, response: Response) {
+    super(message)
+    this.name = 'GeminiRequestError'
+    this.status = response.status
+    this.headers = response.headers
+  }
 }
 
 /**
@@ -101,7 +107,12 @@ async function resolveGeminiWireRequest(params: {
     }
   }
   return {
-    url: `${getGeminiBaseUrl()}/${getGeminiModelPath(params.model)}:streamGenerateContent?alt=sse`,
+    url: buildProviderResourceURL(
+      process.env.GEMINI_BASE_URL || DEFAULT_GEMINI_BASE_URL,
+      'gemini',
+      `${getGeminiModelPath(params.model)}:streamGenerateContent`,
+      { alt: 'sse' },
+    ),
     headers: {
       'Content-Type': 'application/json',
       ...(params.accessToken
@@ -158,8 +169,9 @@ export async function* streamGeminiGenerateContent(params: {
 
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(
+    throw new GeminiRequestError(
       `Gemini API request failed (${response.status} ${response.statusText}): ${body || 'empty response body'}`,
+      response,
     )
   }
 

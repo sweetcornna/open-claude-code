@@ -1,6 +1,5 @@
 import { feature } from 'bun:bundle'
 import { registerBatchSkill } from './batch.js'
-import { registerChromeDevtoolsSkill } from './chromeDevtools.js'
 import { registerDebugSkill } from './debug.js'
 import { registerKeybindingsSkill } from './keybindings.js'
 import { registerLoremIpsumSkill } from './loremIpsum.js'
@@ -54,7 +53,4 @@ export function initBundledSkills(): void {
     /* eslint-enable @typescript-eslint/no-require-imports */
     registerClaudeApiSkill()
   }
-  // Registered unconditionally; its own isEnabled() hides it unless the
-  // Chrome DevTools MCP server is attached to this session.
-  registerChromeDevtoolsSkill()
 }

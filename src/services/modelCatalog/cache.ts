@@ -6,7 +6,8 @@
  * module graph — and, because modelOptions already sits inside several long
  * import chains, a new hop through this file would mint brand-new cycles for
  * the `check:cycles` ratchet to count. It therefore depends on nothing but
- * node builtins, `src/config/paths.ts` and `./types.ts`; failures are
+ * node builtins, `src/config/paths.ts`, the zero-dependency provider URL helper,
+ * and `./types.ts`; failures are
  * swallowed rather than logged (no debug.ts import) and the API provider is
  * passed in as a plain string rather than imported from providers.ts.
  *
@@ -24,6 +25,10 @@ import {
 } from 'node:fs'
 import { dirname } from 'node:path'
 import { occConfigPath } from 'src/config/paths.js'
+import {
+  normalizeProviderBaseURL,
+  type ProviderURLKind,
+} from 'src/utils/network/providerUrl.js'
 import type {
   CatalogModel,
   ModelCatalogEntry,
@@ -31,7 +36,7 @@ import type {
 } from './types.js'
 
 export const MODEL_CATALOG_FILENAME = 'model-catalog.json'
-export const MODEL_CATALOG_VERSION = 1
+const MODEL_CATALOG_VERSION = 2
 /** Upstream model lists move slowly; one refresh per day is plenty. */
 export const MODEL_CATALOG_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -54,6 +59,23 @@ const BASE_URL_ENV_KEYS: Record<string, string> = {
   grok: 'GROK_BASE_URL',
 }
 
+const PROVIDER_URL_KINDS: Record<string, ProviderURLKind> = {
+  firstParty: 'anthropic',
+  openai: 'openai',
+  gemini: 'gemini',
+  grok: 'openai',
+}
+
+function canonicalCatalogBaseURL(provider: string, baseURL: string): string {
+  const kind = PROVIDER_URL_KINDS[provider]
+  if (!kind) return baseURL.replace(/\/+$/, '')
+  try {
+    return normalizeProviderBaseURL(baseURL, kind)
+  } catch {
+    return baseURL.replace(/\/+$/, '')
+  }
+}
+
 /**
  * Resolve the model-list endpoint root for a provider, or null when the
  * provider has no OpenAI/Anthropic-style model list (bedrock, vertex,
@@ -68,7 +90,7 @@ export function resolveProviderBaseURL(
   const envKey = BASE_URL_ENV_KEYS[provider]
   const configured = envKey ? env[envKey] : undefined
   const base = configured?.trim() || fallback
-  return base.replace(/\/+$/, '')
+  return canonicalCatalogBaseURL(provider, base)
 }
 
 /**
@@ -77,7 +99,7 @@ export function resolveProviderBaseURL(
  * the other endpoint's models.
  */
 export function buildCatalogKey(provider: string, baseURL: string): string {
-  return `${provider}|${baseURL.replace(/\/+$/, '').toLowerCase()}`
+  return `${provider}|${canonicalCatalogBaseURL(provider, baseURL)}`
 }
 
 /** Convenience wrapper: key for a provider using the current environment. */

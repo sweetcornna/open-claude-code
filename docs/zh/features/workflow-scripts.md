@@ -84,6 +84,10 @@ workflow 脚本内可用的钩子（语义详见引擎包 `engine/hooks.ts`）�
 
 **硬限**：单次 `parallel`/`pipeline` ≤ `MAX_ITEMS_PER_CALL`（4096）；单 workflow 总 agent ≤ `MAX_TOTAL_AGENTS`（1000）；并发 cap 默认 = `DEFAULT_MAX_CONCURRENCY`（6），可经 Workflow 工具的 `maxConcurrency` 入参覆盖，绝对上限 `MAX_CONCURRENCY_CAP`（16）。
 
+**子 agent 熔断**：Workflow `agent()` 与普通 Agent 工具共用同一执行看门狗。**没有真实工具进展的时限默认 40 分钟**（`CLAUDE_CODE_AGENT_NO_PROGRESS_TIMEOUT_MS`），**总执行时限默认关闭**（`CLAUDE_CODE_AGENT_TOTAL_TIMEOUT_MS`，只有显式设成正数才启用）；任一设为 `0` 可关闭。总时限之所以默认关：它是墙钟上限，杀的是「跑得久」而不是「卡住了」——持续产出工具结果、等权限确认、协调自己的子 agent 都会中枪，而「卡住」由无进展窗口判定得准得多。无进展窗口从 5 分钟提到 40 分钟：**重试倒计时期间不续期**，而 2.35.0 起 API 重试是 10 次指数退避，合法耗时可达 15–20 分钟，5 分钟窗口会在健康的重试链中途开火、并把用户指向错误的旋钮；40 分钟足以覆盖一整条 10 次重试链，同时仍能抓住它真正要抓的失败（只吐文本、永远没有工具调用完成）。
+
+普通文本、thinking、重试倒计时和 `Querying...` 一类占位输出都不会续期；看到 `tool_use` 后无进展计时暂停，直到并发中的最后一个 `tool_result` 返回，所以安静运行的长 Bash/MCP 调用不会被误杀（streaming fallback 撤回孤儿消息时发的 tombstone 同样释放对应的 tool_use，否则计时器会被永久挂起）。总时限不暂停，前台 Agent 自动转入后台时也沿用原始截止时间；超时在普通 Agent 记为 `failed`（错误里附带超时前已产出的部分文本，仍是 `is_error`，不冒充成功），在 Workflow 记为 `retryable:false` 的 `dead`，不会冒充用户取消或触发整轮重跑。这里的 `retryable:false` 是**预算判断而非「确定性失败」**：引擎的重试是原地重新调用后端，会重新计时，自动重试等于把一次超时变成最多四次连续超时；面板因此对超时显示「Timed out — not retried automatically」，不显示 deterministic 那句。
+
 ## 四、编写 workflow
 
 脚本置于 `.occ/workflows/<name>.js|.mjs`（也接受 `.ts`，但**引擎不转译 TS**，含类型注解会报语法错——推荐 `.js`/`.mjs`），自动成为 `/<name>` 命令。

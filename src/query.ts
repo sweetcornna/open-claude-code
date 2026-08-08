@@ -1579,6 +1579,27 @@ async function* queryLoop(
         }
       }
 
+      const hasVisibleResponse = assistantMessages.some(message =>
+        (Array.isArray(message.message?.content)
+          ? message.message.content
+          : []
+        ).some(
+          block =>
+            block.type === 'text' &&
+            typeof block.text === 'string' &&
+            block.text.trim().length > 0,
+        ),
+      )
+      if (!hasVisibleResponse) {
+        const error = new Error('Model returned an empty response.')
+        const errorMessage = createAssistantAPIErrorMessage({
+          content: error.message,
+        })
+        yield errorMessage
+        void executeStopFailureHooks(errorMessage, toolUseContext)
+        return { reason: 'model_error', error }
+      }
+
       const stopHookResult = yield* handleStopHooks(
         messagesForQuery,
         assistantMessages,

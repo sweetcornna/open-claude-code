@@ -1,9 +1,14 @@
 import type * as React from 'react';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { getModelTier, MODEL_TIERS, type ModelTier } from '../../utils/model/modelTier.js';
+import {
+  getModelTier,
+  MODEL_SETTINGS_SLOTS,
+  type ModelSettingsSlot,
+  type ModelTier,
+} from '../../utils/model/modelTier.js';
 import { getTierDefaults } from '../../utils/model/tierDefaults.js';
 import { formatContextTokens, getTierOverride } from '../../utils/model/tierSettings.js';
-import { getMainLoopModel } from '../../utils/model/model.js';
+import { getDefaultMainLoopModel, getMainLoopModel } from '../../utils/model/model.js';
 import { parseUserSpecifiedModel } from '../../utils/model/model.js';
 import { parseArgs, resetTierSettings, usage, writeTierSettings } from './state.js';
 
@@ -11,12 +16,13 @@ const COMMON_HELP_ARGS = ['help', '--help', '-h', '?'];
 
 /** Human-readable summary of what each tier resolves to right now. */
 function describeAll(): string {
-  const lines = ['Per-tier model settings (env still wins over these):', ''];
+  const lines = ['Model settings (env still wins over these):', ''];
   const models = new Map<string, ModelTier[]>();
-  for (const tier of MODEL_TIERS) {
-    const model = safeResolve(tier);
+  for (const slot of MODEL_SETTINGS_SLOTS) {
+    const model = safeResolve(slot);
+    const tier = slot === 'default' ? undefined : slot;
     const defaults = getTierDefaults(model, tier);
-    const override = getTierOverride(tier);
+    const override = getTierOverride(slot);
     const effort = override?.effort ?? defaults.effort;
     const tokens = override?.contextTokens ?? defaults.contextTokens;
     const marks = [
@@ -25,9 +31,9 @@ function describeAll(): string {
     ].filter(Boolean);
     const suffix = marks.length > 0 ? `  (${marks.join(', ')})` : '  (defaults)';
     lines.push(
-      `  ${tier.padEnd(7)} ${model.padEnd(24)} effort=${effort.padEnd(6)} context=${formatContextTokens(tokens)}${suffix}`,
+      `  ${slot.padEnd(7)} ${model.padEnd(24)} effort=${effort.padEnd(6)} context=${formatContextTokens(tokens)}${suffix}`,
     );
-    models.set(model, [...(models.get(model) ?? []), tier]);
+    if (tier) models.set(model, [...(models.get(model) ?? []), tier]);
   }
   lines.push(...shadowWarnings(), ...ambiguityWarnings(models), '', usage());
   return lines.join('\n');
@@ -75,11 +81,12 @@ function ambiguityWarnings(models: Map<string, ModelTier[]>): string[] {
  * (Gemini's resolver does). The panel must still render, so fall back to the
  * alias itself — the tier is what matters for the defaults lookup anyway.
  */
-function safeResolve(tier: ModelTier): string {
+function safeResolve(slot: ModelSettingsSlot): string {
+  if (slot === 'default') return getDefaultMainLoopModel();
   try {
-    return parseUserSpecifiedModel(tier) ?? tier;
+    return parseUserSpecifiedModel(slot) ?? slot;
   } catch {
-    return tier;
+    return slot;
   }
 }
 
@@ -129,9 +136,9 @@ export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, arg
   }
 }
 
-function summarize(tier: ModelTier): string {
+function summarize(tier: ModelSettingsSlot): string {
   const model = safeResolve(tier);
-  const defaults = getTierDefaults(model, tier);
+  const defaults = getTierDefaults(model, tier === 'default' ? undefined : tier);
   const override = getTierOverride(tier);
   const effort = override?.effort ?? defaults.effort;
   const tokens = override?.contextTokens ?? defaults.contextTokens;

@@ -20,6 +20,11 @@ export const MODEL_TIERS = ['haiku', 'sonnet', 'opus', 'fable'] as const
 
 export type ModelTier = (typeof MODEL_TIERS)[number]
 
+/** The provider default plus the four aliases that can own model settings. */
+export const MODEL_SETTINGS_SLOTS = ['default', ...MODEL_TIERS] as const
+
+export type ModelSettingsSlot = (typeof MODEL_SETTINGS_SLOTS)[number]
+
 /**
  * Env prefixes that can carry per-tier model pins, and the order they are
  * searched in. Every provider-setup spec writes one of these
@@ -90,6 +95,25 @@ export function getModelTiers(model: string): ModelTier[] {
  */
 export function getModelTier(model: string): ModelTier | undefined {
   return getModelTiers(model)[0]
+}
+
+/**
+ * Settings slot for a user-facing model selection.
+ *
+ * `null` means the provider default. A tier alias keeps its identity even when
+ * several aliases resolve to the same concrete id. Explicit model ids continue
+ * through the existing reverse lookup.
+ */
+export function getModelSettingsSlot(
+  model: string,
+  selection: string | null | undefined,
+): ModelSettingsSlot | undefined {
+  if (selection === null || selection === undefined) return 'default'
+  const normalizedSelection = normalizeModelId(selection)
+  if ((MODEL_TIERS as readonly string[]).includes(normalizedSelection)) {
+    return normalizedSelection as ModelTier
+  }
+  return getModelTier(model)
 }
 
 function sniffTierFromName(model: string): ModelTier | undefined {

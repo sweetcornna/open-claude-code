@@ -21,7 +21,6 @@ import type { ToolInputJSONSchema } from 'src/Tool.js';
 import type { ValidationError } from 'src/utils/settings/validation.js';
 import uniqBy from 'lodash-es/uniqBy.js';
 import { BIN_NAME, DISPLAY_NAME } from 'src/constants/brand.js';
-import { CHROME_DEVTOOLS_MCP_SERVER_NAME, isChromeDevtoolsMCPServer } from 'src/utils/chromeDevtools/common.js';
 import { DEFAULT_TASKS_MODE_TASK_LIST_ID } from 'src/utils/task/tasks.js';
 import { _pendingAssistantChat, _pendingSSH } from './pendingState.js';
 import { addToHistory } from 'src/history.js';
@@ -206,7 +205,6 @@ import { safeParseJSON } from 'src/utils/text/json.js';
 import { seedEarlyInput } from 'src/utils/terminal/earlyInput.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
 import { setCwd } from 'src/utils/shell/Shell.js';
-import { setupChromeDevtools, shouldEnableChromeDevtools } from 'src/utils/chromeDevtools/setup.js';
 import { shouldEnablePromptSuggestion } from 'src/services/PromptSuggestion/promptSuggestion.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/model/thinking.js';
 import { startDeferredPrefetches } from './prefetch.js';
@@ -222,7 +220,6 @@ import {
   getSessionId,
   getUserMsgOptIn,
   setAllowedChannels,
-  setChromeFlagOverride,
   setCwdState,
   setRemoteServerUrl,
   setInitialMainLoopModel,
@@ -665,17 +662,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   }
 
   // Parse the MCP config files/strings if provided
-  let dynamicMcpConfig: Record<string, ScopedMcpServerConfig> = {
-    // Built-in MCP servers (default disabled, user enables via /mcp)
-    'mcp-chrome': {
-      type: 'http',
-      url: 'http://127.0.0.1:12306/mcp',
-      scope: 'dynamic',
-      headers: {
-        Authorization: 'Bearer my-static-token',
-      },
-    },
-  };
+  let dynamicMcpConfig: Record<string, ScopedMcpServerConfig> = {};
 
   if (mcpConfig && mcpConfig.length > 0) {
     // Process mcpConfig array
@@ -742,9 +729,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         .map(([name]) => name);
 
       let reservedNameError: string | null = null;
-      if (nonSdkConfigNames.some(isChromeDevtoolsMCPServer)) {
-        reservedNameError = `Invalid MCP configuration: "${CHROME_DEVTOOLS_MCP_SERVER_NAME}" is a reserved MCP name.`;
-      } else if (feature('CHICAGO_MCP')) {
+      if (feature('CHICAGO_MCP')) {
         const { isComputerUseMCPServer, COMPUTER_USE_MCP_SERVER_NAME } = await import(
           'src/utils/computerUse/common.js'
         );
@@ -788,47 +773,6 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     }
   }
 
-  // Attach Google's chrome-devtools-mcp server when --chrome is active.
-  // Unlike the extension stack this replaced, it has no account gate: it is
-  // a local stdio subprocess with no Anthropic-side identity at all.
-  const chromeOpts = options as { chrome?: boolean };
-  // Store the explicit CLI flag so teammates can inherit it
-  setChromeFlagOverride(chromeOpts.chrome);
-  const enableChromeDevtools = shouldEnableChromeDevtools(chromeOpts.chrome);
-
-  if (enableChromeDevtools) {
-    const platform = getPlatform();
-    try {
-      logEvent('tengu_chrome_devtools_setup', {
-        platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      });
-
-      const {
-        mcpConfig: chromeMcpConfig,
-        allowedTools: chromeMcpTools,
-        systemPrompt: chromeSystemPrompt,
-      } = setupChromeDevtools();
-      dynamicMcpConfig = {
-        ...dynamicMcpConfig,
-        ...chromeMcpConfig,
-      };
-      allowedTools.push(...chromeMcpTools);
-      if (chromeSystemPrompt) {
-        appendSystemPrompt = appendSystemPrompt ? `${chromeSystemPrompt}\n\n${appendSystemPrompt}` : chromeSystemPrompt;
-      }
-    } catch (error) {
-      logEvent('tengu_chrome_devtools_setup_failed', {
-        platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      });
-      logForDebugging(`[chrome-devtools] Error: ${error}`);
-      logError(error);
-      console.error(
-        `Error: ${error instanceof Error ? error.message : 'Failed to start the Chrome DevTools MCP server.'}`,
-      );
-      process.exit(1);
-    }
-  }
-
   // Extract strict MCP config flag
   const strictMcpConfig = options.strictMcpConfig || false;
 
@@ -858,8 +802,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   // Placed AFTER the enterprise-MCP-config check: that check rejects any
   // dynamicMcpConfig entry with `type !== 'sdk'`, and our config is
   // `type: 'stdio'`. An enterprise-config ant with the GB gate on would
-  // otherwise process.exit(1). Chrome has the same latent issue but has
-  // shipped without incident; chicago places itself correctly.
+  // otherwise process.exit(1), so this block must remain after that check.
   if (feature('CHICAGO_MCP') && getPlatform() !== 'unknown' && !getIsNonInteractiveSession()) {
     try {
       const { getChicagoEnabled } = await import('src/utils/computerUse/gates.js');
@@ -1276,9 +1219,15 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     await initializeGrowthBook();
   }
 
-  // Special case the default model with the null keyword
+  // Special case the default model with the null keyword.
+  // `null` IS the representation of "the default" throughout — it is what
+  // `/model default` stores and what getMainLoopModelSettingsSlot() reads as the
+  // `default` settings slot. Resolving it to a concrete id here threw that
+  // identity away: `--model default` looked indistinguishable from
+  // `--model claude-opus-5`, so the session read the `opus` slot and a Max
+  // user's `/model-settings default …` never applied.
   // NOTE: Model resolution happens after setup() to ensure trust is established before AWS auth
-  const userSpecifiedModel = options.model === 'default' ? getDefaultMainLoopModel() : options.model;
+  const userSpecifiedModel = options.model === 'default' ? null : options.model;
   const userSpecifiedFallbackModel = fallbackModel === 'default' ? getDefaultMainLoopModel() : fallbackModel;
 
   // Reuse preSetupCwd unless setup() chdir'd (worktreeEnabled). Saves a
@@ -1382,17 +1331,30 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
 
   // Compute effective model early so hooks can run in parallel with MCP
   // If user didn't specify a model but agent has one, use the agent's model
-  let effectiveModel = userSpecifiedModel;
-  if (!effectiveModel && mainThreadAgentDefinition?.model && mainThreadAgentDefinition.model !== 'inherit') {
-    effectiveModel = parseUserSpecifiedModel(mainThreadAgentDefinition.model);
+  // `undefined` (nothing asked for), not falsy — `--model default` is now the
+  // explicit null, and an agent's own model must not override an explicit
+  // request for the default.
+  let effectiveModel: string | null | undefined = userSpecifiedModel;
+  if (
+    effectiveModel === undefined &&
+    mainThreadAgentDefinition?.model &&
+    mainThreadAgentDefinition.model !== 'inherit'
+  ) {
+    // Stored unresolved: an agent declaring `model: opus` means the opus ALIAS,
+    // and every consumer resolves it anyway (getMainLoopModel →
+    // parseUserSpecifiedModel). Resolving here erased which alias was asked for,
+    // so the session read the reverse-lookup tier instead of the alias's own
+    // settings slot — and on a provider where several aliases share one
+    // checkpoint, the wrong one.
+    effectiveModel = mainThreadAgentDefinition.model;
   }
 
   setMainLoopModelOverride(effectiveModel);
 
   // Compute resolved model for hooks (use user-specified model at launch)
   setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
-  const initialMainLoopModel = getInitialMainLoopModel();
-  const resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
+  let initialMainLoopModel = getInitialMainLoopModel();
+  let resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
 
   let advisorModel: string | undefined;
   if (isAdvisorEnabled()) {
@@ -1549,6 +1511,12 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       devChannels,
     );
     logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
+
+    if (onboardingShown) {
+      setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
+      initialMainLoopModel = getInitialMainLoopModel();
+      resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
+    }
 
     // Check for pending agent memory snapshot updates (only for --agent mode, ant-only)
     if (
@@ -2137,7 +2105,10 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         taskBudget: options.taskBudget ? { total: options.taskBudget } : undefined,
         systemPrompt,
         appendSystemPrompt,
-        userSpecifiedModel: effectiveModel,
+        // null means "the default"; the headless option is string | undefined
+        // and reads absence the same way (setMainLoopModelOverride(null) has
+        // already recorded the explicit choice on the bootstrap state).
+        userSpecifiedModel: effectiveModel ?? undefined,
         fallbackModel: userSpecifiedFallbackModel,
         teleport,
         sdkUrl,

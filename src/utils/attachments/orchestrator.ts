@@ -216,8 +216,6 @@ export async function getAttachments(
       Promise.resolve(
         getMcpInstructionsDeltaAttachment(
           toolUseContext.options.mcpClients,
-          toolUseContext.options.tools,
-          toolUseContext.options.mainLoopModel,
           messages,
         ),
       ),

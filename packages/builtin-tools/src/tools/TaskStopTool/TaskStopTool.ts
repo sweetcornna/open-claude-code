@@ -1,7 +1,7 @@
 import { z } from 'zod/v4'
 import type { TaskStateBase } from 'src/Task.js'
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
-import { stopTask } from 'src/tasks/stopTask.js'
+import { resolveTaskControlTarget, stopTask } from 'src/tasks/stopTask.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { DESCRIPTION, TASK_STOP_TOOL_NAME } from './prompt.js'
@@ -69,7 +69,9 @@ export const TaskStopTool = buildTool({
     }
 
     const appState = getAppState()
-    const task = appState.tasks?.[id] as TaskStateBase | undefined
+    const task = resolveTaskControlTarget(id, appState)?.task as
+      | TaskStateBase
+      | undefined
 
     if (!task) {
       return {

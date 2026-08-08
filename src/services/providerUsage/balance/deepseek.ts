@@ -1,3 +1,4 @@
+import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import type { ProviderBalance } from '../types.js'
 import type { BalanceProvider } from './types.js'
 
@@ -14,7 +15,7 @@ import type { BalanceProvider } from './types.js'
 
 function getBaseUrl(): string | null {
   const url = process.env.OPENAI_BASE_URL
-  if (url && /\bapi\.deepseek\.com\b/i.test(url)) return url.replace(/\/+$/, '')
+  if (url && /\bapi\.deepseek\.com\b/i.test(url)) return url
   if (process.env.DEEPSEEK_API_KEY) return 'https://api.deepseek.com'
   return null
 }
@@ -37,14 +38,17 @@ export const deepseekBalanceProvider: BalanceProvider = {
 
     let res: Response
     try {
-      res = await fetch(`${base}/user/balance`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${key}`,
-          Accept: 'application/json',
+      res = await fetch(
+        buildProviderResourceURL(base, 'deepseek', 'user/balance'),
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${key}`,
+            Accept: 'application/json',
+          },
+          signal,
         },
-        signal,
-      })
+      )
     } catch {
       return null
     }

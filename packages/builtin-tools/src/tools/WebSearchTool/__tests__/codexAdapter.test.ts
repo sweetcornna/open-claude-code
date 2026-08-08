@@ -153,10 +153,15 @@ describe('shouldUseChatGPTAuth', () => {
 describe('resolveCodexSearchModel', () => {
   const originalModel = process.env.OPENAI_MODEL
   const originalAnthropicModel = process.env.ANTHROPIC_MODEL
+  const originalOpenAISonnetModel = process.env.OPENAI_DEFAULT_SONNET_MODEL
+  const originalAnthropicSonnetModel =
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
 
   beforeEach(() => {
     // Pin the model so getMainLoopModel() never walks into the auth stack.
     process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-5-20250929'
+    delete process.env.OPENAI_DEFAULT_SONNET_MODEL
+    delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   })
 
   afterEach(() => {
@@ -164,6 +169,13 @@ describe('resolveCodexSearchModel', () => {
     else process.env.OPENAI_MODEL = originalModel
     if (originalAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL
     else process.env.ANTHROPIC_MODEL = originalAnthropicModel
+    if (originalOpenAISonnetModel === undefined)
+      delete process.env.OPENAI_DEFAULT_SONNET_MODEL
+    else process.env.OPENAI_DEFAULT_SONNET_MODEL = originalOpenAISonnetModel
+    if (originalAnthropicSonnetModel === undefined)
+      delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
+    else
+      process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = originalAnthropicSonnetModel
   })
 
   test('swaps a model the Codex backend does not serve for the cheap tier', () => {

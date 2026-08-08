@@ -12,17 +12,21 @@
 
 import { modelSupports1M } from '../session/context.js'
 import { servesAnthropicModels } from './providers.js'
+import type { ModelSettingsSlot } from './modelTier.js'
 import { getTierContextTokens } from './tierSettings.js'
 
 /** Tokens at or above which the 1M opt-in applies. */
 const ONE_MILLION = 1_000_000
 
-export function wantsTierWideContext(model: string): boolean {
+export function wantsTierWideContext(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): boolean {
   // The suffix exists to produce Anthropic's context-1m beta header, so it is
   // meaningless anywhere that header is not going to Anthropic. An
   // OpenAI-compatible session whose tier resolved to a leftover `claude-
   // sonnet-5` would otherwise be shown — and would send — `claude-sonnet-5[1m]`.
   if (!servesAnthropicModels()) return false
   if (!modelSupports1M(model)) return false
-  return getTierContextTokens(model) >= ONE_MILLION
+  return getTierContextTokens(model, settingsSlot) >= ONE_MILLION
 }

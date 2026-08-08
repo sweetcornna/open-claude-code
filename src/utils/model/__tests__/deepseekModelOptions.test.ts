@@ -176,6 +176,23 @@ describe('/model options for a DeepSeek session', () => {
     expect(renderDefaultModelSetting('fable')).toBe('deepseek-v4-pro')
   })
 
+  test('a custom Anthropic-compatible endpoint uses its own model identity', () => {
+    process.env.ANTHROPIC_BASE_URL = 'https://opencode.ai/zen/go/v1'
+    process.env.ANTHROPIC_API_KEY = 'sk-test'
+    process.env.ANTHROPIC_MODEL = 'deepseek-v4-flash'
+
+    expect(isThirdPartyModelCatalog()).toBe(true)
+    expect(servesAnthropicModels()).toBe(false)
+    const options = getModelOptions()
+    expect(options[0]?.description).toContain('deepseek-v4-flash')
+    expect(
+      options.some(
+        option =>
+          typeof option.value === 'string' && option.value.includes('claude-'),
+      ),
+    ).toBe(false)
+  })
+
   test('a first-party session still gets Anthropic’s list', () => {
     // A key of some kind is required before the auth layer will answer at all;
     // an API key keeps this on the PAYG branch without touching the keychain.

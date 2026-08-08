@@ -9,13 +9,38 @@ import { authMockWith } from '../../../../tests/mocks/auth.js'
 import { debugMock } from '../../../../tests/mocks/debug.js'
 import { logMock } from '../../../../tests/mocks/log.js'
 
+/**
+ * Credential-recovery side effects, in call order. Recorded rather than
+ * asserted through spies because the point of the fix is WHICH caches get
+ * dropped for WHICH failure — see `describe('credential recovery …')` below.
+ */
+const authCalls: string[] = []
+
 mock.module('bun:bundle', () => ({ feature: () => false }))
-mock.module('src/utils/auth/auth.js', authMockWith())
+mock.module(
+  'src/utils/auth/auth.js',
+  authMockWith({
+    clearApiKeyHelperCache: () => {
+      authCalls.push('clearApiKeyHelperCache')
+    },
+    clearAwsCredentialsCache: () => {
+      authCalls.push('clearAwsCredentialsCache')
+    },
+    clearGcpCredentialsCache: () => {
+      authCalls.push('clearGcpCredentialsCache')
+    },
+    handleOAuth401Error: async (failedAccessToken: string) => {
+      authCalls.push(`handleOAuth401Error:${failedAccessToken}`)
+      return true
+    },
+  }),
+)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 mock.module('src/utils/telemetry/log.ts', logMock)
 
 import {
   CannotRetryError,
+  clampMaxRetries,
   getDefaultMaxRetries,
   isTransientNetworkError,
   isTransientNetworkErrorText,
@@ -145,6 +170,9 @@ describe('isTransientNetworkError', () => {
     expect(isTransientNetworkError(new Error('socket hang up'))).toBe(true)
     expect(isTransientNetworkError(new Error('Body Timeout Error'))).toBe(true)
     expect(isTransientNetworkError(new Error('Premature close'))).toBe(true)
+    expect(isTransientNetworkError(new Error('Upstream request failed'))).toBe(
+      true,
+    )
   })
 
   test('matches errno codes carried on the error itself', () => {
@@ -182,6 +210,28 @@ describe('isTransientNetworkError', () => {
       cause: codedError('ETIMEDOUT'),
     })
     expect(isTransientNetworkError(error)).toBe(true)
+  })
+
+  test('classifies transient statuses but not permanent 4xx responses', () => {
+    for (const status of [408, 409, 425, 429, 500, 501, 503, 529]) {
+      expect(
+        isTransientNetworkError(
+          new APIError(status, undefined, `status ${status}`, new Headers()),
+        ),
+      ).toBe(true)
+    }
+    for (const status of [400, 401, 403, 404, 422]) {
+      expect(
+        isTransientNetworkError(
+          new APIError(
+            status,
+            undefined,
+            `status ${status}: Upstream request failed`,
+            new Headers(),
+          ),
+        ),
+      ).toBe(false)
+    }
   })
 
   test('never retries user aborts', () => {
@@ -272,6 +322,8 @@ describe('isTransientNetworkErrorText', () => {
       'API Error: Responses API request failed (502): bad gateway',
       'API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}',
       'API Error: 503 Service Unavailable',
+      'API Error: 501 Not Implemented',
+      'API Error: Gemini API request failed (425 Too Early): retry later',
       'API Error: Connection error.',
       'API Error: no healthy upstream',
     ]) {
@@ -325,6 +377,7 @@ describe('isTransientNetworkErrorText', () => {
       'API Error: 400 {"error":{"message":"exceeded the 500 output token maximum"}}',
       'API Error: 400 {"error":{"message":"max_tokens: must be <= 502"}}',
       'API Error: Responses API request failed (400): {"error":{"message":"input exceeds 429 tokens"}}',
+      'API Error: Responses API request failed (400): Upstream request failed',
       'API Error: 422 {"error":{"message":"expected 503 items, got 2"}}',
     ]) {
       expect(isTransientNetworkErrorText(text)).toBe(false)
@@ -387,6 +440,54 @@ describe('withRetry with bare (non-APIError) transport failures', () => {
     })
   }, 15_000)
 
+  test('retries a gateway failure with no status', async () => {
+    let calls = 0
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        calls++
+        if (calls === 1) throw new Error('Upstream request failed')
+        return 'ok'
+      },
+      {
+        maxRetries: 1,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+      },
+    )
+
+    const notice = await generator.next()
+    expect(notice).toMatchObject({ done: false, value: { retryAttempt: 1 } })
+    expect(await generator.next()).toEqual({ done: true, value: 'ok' })
+    expect(calls).toBe(2)
+  })
+
+  test('fails permanent API statuses after one attempt', async () => {
+    for (const status of [400, 401, 403, 404, 422]) {
+      let calls = 0
+      const generator = withRetry(
+        async () => ({}) as unknown as Anthropic,
+        async () => {
+          calls++
+          throw new APIError(
+            status,
+            undefined,
+            `status ${status}`,
+            new Headers(),
+          )
+        },
+        {
+          maxRetries: 10,
+          model: 'claude-sonnet',
+          thinkingConfig: { type: 'disabled' },
+        },
+      )
+
+      await expect(generator.next()).rejects.toBeInstanceOf(CannotRetryError)
+      expect(calls).toBe(1)
+    }
+  })
+
   test('still bails immediately on a bare non-network error', async () => {
     let calls = 0
     const generator = withRetry(
@@ -407,13 +508,212 @@ describe('withRetry with bare (non-APIError) transport failures', () => {
   })
 })
 
+describe('credential recovery after an auth failure', () => {
+  /**
+   * "Do not retry" and "do not refresh the credential" are separate decisions.
+   * Every case below still fails the request on its first attempt — what is
+   * asserted is that the memoized credential behind it was invalidated, so the
+   * NEXT request is not built from the same dead value. Without this a token
+   * rotated by another process 401s every request until the CLI restarts.
+   */
+  async function failOnce(error: unknown): Promise<number> {
+    authCalls.length = 0
+    let calls = 0
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        calls++
+        throw error
+      },
+      {
+        maxRetries: 3,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+      },
+    )
+    await expect(generator.next()).rejects.toBeInstanceOf(CannotRetryError)
+    return calls
+  }
+
+  test('a 401 drops the apiKeyHelper cache and re-reads the keychain', async () => {
+    const calls = await failOnce(
+      new APIError(401, undefined, 'unauthorized', new Headers()),
+    )
+    expect(calls).toBe(1)
+    expect(authCalls).toEqual([
+      'clearApiKeyHelperCache',
+      'handleOAuth401Error:token',
+    ])
+  })
+
+  test('a revoked OAuth token forces the same refresh as a 401', async () => {
+    const calls = await failOnce(
+      new APIError(
+        403,
+        undefined,
+        'OAuth token has been revoked',
+        new Headers(),
+      ),
+    )
+    expect(calls).toBe(1)
+    expect(authCalls).toEqual(['handleOAuth401Error:token'])
+  })
+
+  test('an ordinary 403 leaves OAuth state alone', async () => {
+    await failOnce(new APIError(403, undefined, 'forbidden', new Headers()))
+    expect(authCalls).toEqual([])
+  })
+
+  test('a transport blip is not treated as a credential problem', async () => {
+    authCalls.length = 0
+    let calls = 0
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        calls++
+        if (calls < 2) throw new TypeError('fetch failed')
+        return 'ok'
+      },
+      {
+        maxRetries: 2,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+      },
+    )
+    let step = await generator.next()
+    while (!step.done) step = await generator.next()
+    expect(step.value).toBe('ok')
+    expect(authCalls).toEqual([])
+  }, 15_000)
+
+  test('Bedrock credential failures clear the AWS cache', async () => {
+    process.env.CLAUDE_CODE_USE_BEDROCK = '1'
+    try {
+      // Server-side: an expired STS token comes back as a generic 403.
+      await failOnce(
+        new APIError(
+          403,
+          undefined,
+          'The security token included in the request is invalid',
+          new Headers(),
+        ),
+      )
+      expect(authCalls).toEqual(['clearAwsCredentialsCache'])
+
+      // SDK-level: the AWS libs reject before any HTTP call when the cached
+      // credential file already holds a past Expiration.
+      await failOnce(
+        Object.assign(new Error('expired'), {
+          name: 'CredentialsProviderError',
+        }),
+      )
+      expect(authCalls).toEqual(['clearAwsCredentialsCache'])
+    } finally {
+      delete process.env.CLAUDE_CODE_USE_BEDROCK
+    }
+  })
+
+  test('Vertex credential failures clear the GCP cache', async () => {
+    process.env.CLAUDE_CODE_USE_VERTEX = '1'
+    try {
+      // google-auth-library fails in prepareOptions(), before the HTTP call.
+      await failOnce(new Error('Could not refresh access token'))
+      expect(authCalls).toEqual(['clearGcpCredentialsCache'])
+
+      // Vertex answers 401 for an expired token, which is also a first-party
+      // OAuth signal — both recoveries have to run.
+      await failOnce(
+        new APIError(401, undefined, 'unauthorized', new Headers()),
+      )
+      expect(authCalls).toEqual([
+        'clearApiKeyHelperCache',
+        'handleOAuth401Error:token',
+        'clearGcpCredentialsCache',
+      ])
+    } finally {
+      delete process.env.CLAUDE_CODE_USE_VERTEX
+    }
+  })
+
+  test('cloud recovery stays off when the provider is not configured', async () => {
+    await failOnce(new Error('Could not refresh access token'))
+    expect(authCalls).toEqual([])
+  })
+})
+
+describe('Retry-After bounds', () => {
+  /** Reads the delay off the retry notice without letting the sleep run. */
+  async function firstRetryDelayMs(retryAfter: string): Promise<number> {
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        throw new APIError(
+          503,
+          undefined,
+          'service unavailable',
+          new Headers({ 'retry-after': retryAfter }),
+        )
+      },
+      {
+        maxRetries: 3,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+      },
+    )
+    const step = await generator.next()
+    await generator.return(undefined as never)
+    return (step.value as unknown as { retryInMs: number }).retryInMs
+  }
+
+  test('honors a sane Retry-After verbatim', async () => {
+    expect(await firstRetryDelayMs('45')).toBe(45_000)
+  })
+
+  test('caps an absurd Retry-After instead of parking the turn for hours', async () => {
+    // Nothing validates this header. A gateway answering `Retry-After: 7200`
+    // used to be taken at face value: two hours behind a countdown row the
+    // user cannot shorten, on a retry ladder meant to outlast a blip.
+    expect(await firstRetryDelayMs('7200')).toBe(60_000)
+  })
+
+  test('the exponential ladder is unaffected by the cap', async () => {
+    // 32s ceiling, +25% jitter — comfortably under the Retry-After bound.
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        throw new APIError(503, undefined, 'service unavailable', new Headers())
+      },
+      {
+        maxRetries: 3,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+      },
+    )
+    const step = await generator.next()
+    await generator.return(undefined as never)
+    const delay = (step.value as unknown as { retryInMs: number }).retryInMs
+    expect(delay).toBeGreaterThan(0)
+    expect(delay).toBeLessThan(60_000)
+  })
+})
+
 describe('withTransientNetworkRetry', () => {
-  test('defaults to a ten-attempt ladder', () => {
+  test('defaults to ten retries after the initial attempt and clamps overrides', () => {
     const previous = process.env.CLAUDE_CODE_MAX_RETRIES
-    delete process.env.CLAUDE_CODE_MAX_RETRIES
-    expect(getDefaultMaxRetries()).toBe(10)
-    if (previous !== undefined) {
-      process.env.CLAUDE_CODE_MAX_RETRIES = previous
+    try {
+      delete process.env.CLAUDE_CODE_MAX_RETRIES
+      expect(getDefaultMaxRetries()).toBe(10)
+      process.env.CLAUDE_CODE_MAX_RETRIES = '999'
+      expect(getDefaultMaxRetries()).toBe(10)
+      expect(clampMaxRetries(999)).toBe(10)
+      process.env.CLAUDE_CODE_MAX_RETRIES = 'not-a-number'
+      expect(getDefaultMaxRetries()).toBe(10)
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLAUDE_CODE_MAX_RETRIES
+      } else {
+        process.env.CLAUDE_CODE_MAX_RETRIES = previous
+      }
     }
   })
 
@@ -512,6 +812,59 @@ describe('withTransientNetworkRetry', () => {
     expect(attempts).toBe(1)
     expect(items).toHaveLength(1)
   })
+
+  test('an explicit retryable:false outranks transient-looking prose', async () => {
+    // The adapter already classified this failure as permanent. Or-ing the two
+    // signals let the wording of the message — 'stream idle timeout' is on the
+    // transient list — overrule that verdict and replay a request the producer
+    // had ruled out, up to ten times.
+    let attempts = 0
+    const items = await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          yield {
+            ...apiErrorMessage('API Error: stream idle timeout'),
+            error: Object.assign(new Error('stream idle timeout'), {
+              name: 'OpenAIRequestError',
+              retryable: false,
+            }),
+          }
+        },
+        { maxRetries: 5 },
+      ),
+    )
+
+    expect(attempts).toBe(1)
+    expect(items).toHaveLength(1)
+  })
+
+  test('an error object saying retryable:true is still retried', async () => {
+    let attempts = 0
+    await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          if (attempts === 1) {
+            // Text alone says nothing here — the object is what carries the
+            // verdict, and it must keep winning in this direction too.
+            yield {
+              ...apiErrorMessage('API Error: gateway said no'),
+              error: Object.assign(new Error('gateway said no'), {
+                name: 'OpenAIRequestError',
+                retryable: true,
+              }),
+            }
+            return
+          }
+          yield assistantMessage('recovered')
+        },
+        { maxRetries: 2 },
+      ),
+    )
+
+    expect(attempts).toBe(2)
+  }, 15_000)
 
   test('leaves deterministic API errors untouched', async () => {
     let attempts = 0
@@ -644,15 +997,8 @@ describe('withTransientNetworkRetry', () => {
   })
 })
 
-/**
- * A stream that dies during the thinking phase has produced nothing the caller
- * acted on — no text on screen, no tool started — so it must be retried. It
- * wasn't: `thinking`/`signature` deltas counted as "content emitted", which is
- * the guard against re-running a tool_use (inc-4258). A drop during a long
- * thinking phase therefore ended the whole turn on a single `Error: terminated`
- * with zero retries, which is the reported symptom.
- */
-describe('withTransientNetworkRetry retries after thinking-only output', () => {
+/** Once any model payload is yielded outside the API layer, replay is unsafe. */
+describe('withTransientNetworkRetry commitment boundary', () => {
   function thinkingDelta(thinking: string): StreamItem {
     return {
       type: 'stream_event',
@@ -677,28 +1023,23 @@ describe('withTransientNetworkRetry retries after thinking-only output', () => {
     ['thinking', thinkingDelta('reasoning...')],
     ['signature', signatureDelta('sig')],
   ] as Array<[string, StreamItem]>) {
-    test(`retries when the stream dies after ${label} only`, async () => {
+    test(`does not replay after ${label} output was yielded`, async () => {
       let attempts = 0
       const items = await collect(
         withTransientNetworkRetry(
           async function* () {
             attempts++
-            if (attempts === 1) {
-              yield partial
-              yield apiErrorMessage('API Error: terminated')
-              return
-            }
-            yield textDelta('recovered')
-            yield assistantMessage('recovered')
+            yield partial
+            yield apiErrorMessage('API Error: terminated')
           },
           { maxRetries: 2 },
         ),
       )
 
-      expect(attempts).toBe(2)
-      expect(items.filter(i => i.isApiErrorMessage)).toHaveLength(0)
-      expect(items.at(-1)).toMatchObject({ type: 'assistant' })
-    }, 15_000)
+      expect(attempts).toBe(1)
+      expect(items).toHaveLength(2)
+      expect(items.at(-1)).toMatchObject({ isApiErrorMessage: true })
+    })
   }
 
   test('still refuses to retry after a tool_use block started (inc-4258)', async () => {

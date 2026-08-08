@@ -93,9 +93,8 @@ export async function createComputerUseMcpServerForCli(): Promise<
 }
 
 /**
- * Subprocess entrypoint for `--computer-use-mcp`. Mirror of
- * the Chrome MCP server it was modelled on — stdio transport, exit on stdin close,
- * flush analytics before exit.
+ * Subprocess entrypoint for `--computer-use-mcp`: stdio transport, exit on
+ * stdin close, and flush analytics before exit.
  *
  * `serveStdio` owns both the transport and the era decision: it starts the
  * stdio transport synchronously (so the process stays alive on stdin exactly

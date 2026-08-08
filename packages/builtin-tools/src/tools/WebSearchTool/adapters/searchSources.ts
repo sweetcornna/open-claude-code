@@ -1,12 +1,15 @@
 /**
  * The WebSearch source registry.
  *
- * Five symmetric sources — four provider search layers plus the keyless one:
+ * Seven symmetric sources — four provider search layers, two key-only search
+ * APIs, and the keyless one:
  *
  *   anthropic  server-side web_search (Claude OAuth / ANTHROPIC_API_KEY)
  *   deepseek   server-side web_search over DeepSeek's /anthropic endpoint
  *   gemini     googleSearch grounding (Google OAuth / GEMINI_API_KEY)
  *   codex      Responses API web_search (ChatGPT OAuth / OPENAI_API_KEY)
+ *   brave      Brave's LLM context API (BRAVE_SEARCH_API_KEY / settings)
+ *   exa        Exa's neural search MCP endpoint (settings.exaApiKey)
  *   free       keyless multi-engine scraping, always available
  *
  * A source is ON when credentials for it exist, unless the user explicitly
@@ -14,6 +17,14 @@
  * (`webSearchSources.<id>`), never the derived state: logging in to a
  * provider folds its search layer into the results with no configuration at
  * all, and a source nobody touched keeps following its credentials.
+ *
+ * `brave` and `exa` are in the registry rather than being explicit-only picks
+ * because a configured key is exactly the same signal as a login: the user
+ * paid for an index occ was refusing to consult unless they also pinned
+ * WEB_SEARCH_ADAPTER and thereby switched every OTHER source off. `bing` is
+ * deliberately NOT here — it scrapes the same endpoint, from the same IP, that
+ * the `free` lane's own Bing engine already uses, so aggregating it spends one
+ * quota twice and doubles the odds of drawing the CAPTCHA for both.
  *
  * Availability is a second, session-scoped axis: a backend that answers "I do
  * not support the web_search tool" is retired for the rest of the process,
@@ -26,6 +37,8 @@ import { isDeepSeekAnthropicWireActive } from 'src/utils/model/deepseekWire.js'
 import { getMainLoopModel } from 'src/utils/model/model.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
+import { resolveBraveApiKey } from './braveAdapter.js'
+import { resolveExaApiKey } from './exaAdapter.js'
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js'
 
 export type SearchSourceId =
@@ -33,14 +46,25 @@ export type SearchSourceId =
   | 'deepseek'
   | 'gemini'
   | 'codex'
+  | 'brave'
+  | 'exa'
   | 'free'
 
-/** Panel order, and the merge order for enhancer lanes. */
+/**
+ * Panel order, and the merge order for enhancer lanes.
+ *
+ * The provider sources come first because one of them is usually the primary
+ * lane and the rest only fill gaps; `free` stays last because it is the one
+ * that is always on and therefore the one whose results should yield to any
+ * source the user actually configured.
+ */
 export const SEARCH_SOURCE_IDS: readonly SearchSourceId[] = [
   'anthropic',
   'deepseek',
   'gemini',
   'codex',
+  'brave',
+  'exa',
   'free',
 ]
 
@@ -49,6 +73,8 @@ export const SEARCH_SOURCE_LABELS: Record<SearchSourceId, string> = {
   deepseek: 'DeepSeek (server-side web_search)',
   gemini: 'Gemini (Google OAuth)',
   codex: 'Codex (ChatGPT OAuth)',
+  brave: 'Brave (Search API key)',
+  exa: 'Exa (API key)',
   free: 'Free search',
 }
 
@@ -62,9 +88,28 @@ export function readSourceOverrides(): SourceOverrides {
   return raw && typeof raw === 'object' ? raw : {}
 }
 
-/** `free` needs nothing; every provider source needs that provider's login. */
+/**
+ * `free` needs nothing; every provider source needs that provider's login; the
+ * two key-only sources need a key their own adapter would find.
+ *
+ * brave/exa deliberately skip the host credential facade: there is no keychain
+ * or OAuth store behind them, just a setting and (for brave) two env vars that
+ * the leaf package can read itself. What they must NOT do is re-derive the
+ * lookup — asking each adapter for the key it would actually send is the only
+ * way "the panel says connected" and "the request carries that key" cannot
+ * drift apart.
+ */
 export function hasSourceCredentials(id: SearchSourceId): boolean {
-  return id === 'free' ? true : hasSearchCredentials(id)
+  switch (id) {
+    case 'free':
+      return true
+    case 'brave':
+      return resolveBraveApiKey() !== undefined
+    case 'exa':
+      return resolveExaApiKey() !== undefined
+    default:
+      return hasSearchCredentials(id)
+  }
 }
 
 /**

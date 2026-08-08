@@ -19,6 +19,8 @@ import { isEnvTruthy } from '../config/envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 import { resolveAntModel } from '../model/antModels.js'
 import { getAntModelOverrideConfig } from '../model/antModels.js'
+import { getMainLoopModelSettingsSlot } from '../model/model.js'
+import type { ModelSettingsSlot } from '../model/modelTier.js'
 import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   isChatGPTCodexReasoningModel,
@@ -237,7 +239,11 @@ export function resolveAppliedEffort(
   if (envOverride === null) {
     return undefined
   }
-  return envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
+  return (
+    envOverride ??
+    appStateEffortValue ??
+    getDefaultEffortForModel(model, getMainLoopModelSettingsSlot(model))
+  )
 }
 
 /**
@@ -354,6 +360,7 @@ export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
 // @[MODEL LAUNCH]: Update the default effort levels for new models
 export function getDefaultEffortForModel(
   model: string,
+  settingsSlot?: ModelSettingsSlot,
 ): EffortValue | undefined {
   if (process.env.USER_TYPE === 'ant') {
     const config = getAntModelOverrideConfig()
@@ -390,7 +397,7 @@ export function getDefaultEffortForModel(
   // Gated on modelSupportsEffort so a checkpoint that rejects the parameter
   // never receives one — the same guard the DeepSeek arm below used.
   if (modelSupportsEffort(model)) {
-    return getTierEffort(model)
+    return getTierEffort(model, settingsSlot)
   }
 
   // Any-auth OpenAI reasoning model: keep the displayed default aligned with

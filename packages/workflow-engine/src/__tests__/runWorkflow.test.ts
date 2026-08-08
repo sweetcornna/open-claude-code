@@ -6,7 +6,12 @@ import { runWorkflow } from '../engine/runWorkflow.js'
 import { AGENT_MAX_RETRIES } from '../constants.js'
 import { agentCallKey, createFileJournalStore } from '../engine/journal.js'
 import { createHostHandle, type WorkflowPorts } from '../ports.js'
-import type { AgentRunParams, AgentRunResult, ProgressEvent } from '../types.js'
+import type {
+  AgentRunParams,
+  AgentRunResult,
+  ProgressEvent,
+  ResumePolicy,
+} from '../types.js'
 
 function portsWith(
   runsDir: string,
@@ -169,6 +174,479 @@ test('resume: journal hit skips runner call', async () => {
   }
 })
 
+test.each([
+  [{ scope: 'all' } as const, ['a', 'b', 'c'], 0],
+  [{ scope: 'range', fromAgentId: 1, toAgentId: 1 } as const, ['b'], 2],
+  [{ scope: 'agents', agentIds: [0, 2] } as ResumePolicy, ['a', 'c'], 1],
+])('selective resume policy %o reports live/replay execution and counts', async (resumePolicy, expectedLive, replayedCount) => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-policy-'))
+  try {
+    const events: ProgressEvent[] = []
+    const live: string[] = []
+    const ports = portsWith(dir, new Map())
+    ports.progressEmitter = { emit: event => void events.push(event) }
+    ports.agentRunner = {
+      runAgentToResult: async params => {
+        live.push(params.prompt)
+        return {
+          kind: 'ok',
+          output: `same:${params.prompt}`,
+          usage: { outputTokens: 1 },
+        }
+      },
+    }
+    for (const [seq, prompt] of ['a', 'b', 'c'].entries()) {
+      await ports.journalStore.append('run-policy', {
+        key: agentCallKey(prompt, { prompt }),
+        seq,
+        result: {
+          kind: 'ok',
+          output: `same:${prompt}`,
+          usage: { outputTokens: 1 },
+        },
+      })
+    }
+
+    const result = await runWorkflow({
+      script: `return [await agent('a'), await agent('b'), await agent('c')]`,
+      runId: 'run-policy',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      resumePolicy,
+    })
+
+    expect(live).toEqual(expectedLive)
+    expect(result.resume).toEqual({
+      policy: resumePolicy,
+      replayedCount,
+      liveCount: expectedLive.length,
+      selectorsNotReached: [],
+    })
+    expect(
+      events
+        .filter(event => event.type === 'agent_done')
+        .map(event => event.execution),
+    ).toEqual(
+      ['a', 'b', 'c'].map(prompt =>
+        expectedLive.includes(prompt) ? 'live' : 'replayed',
+      ),
+    )
+    const done = events.find(event => event.type === 'run_done')
+    expect(done?.type === 'run_done' ? done.resume : undefined).toEqual(
+      result.resume,
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('omitted and explicit checkpoint policies preserve replay-completed behavior', async () => {
+  for (const resumePolicy of [undefined, { scope: 'checkpoint' } as const]) {
+    const dir = await mkdtemp(join(tmpdir(), 'wf-run-checkpoint-'))
+    try {
+      let calls = 0
+      const ports = portsWith(dir, new Map())
+      ports.agentRunner = {
+        runAgentToResult: async () => {
+          calls++
+          return { kind: 'ok', output: 'live', usage: { outputTokens: 1 } }
+        },
+      }
+      await ports.journalStore.append('run-checkpoint', {
+        key: agentCallKey('a', { prompt: 'a' }),
+        seq: 0,
+        result: {
+          kind: 'ok',
+          output: 'cached',
+          usage: { outputTokens: 1 },
+        },
+      })
+      const result = await runWorkflow({
+        script: `return agent('a')`,
+        runId: 'run-checkpoint',
+        ports,
+        host: createHostHandle(null),
+        signal: new AbortController().signal,
+        cwd: dir,
+        budgetTotal: null,
+        resume: true,
+        ...(resumePolicy ? { resumePolicy } : {}),
+      })
+      expect(result.returnValue).toBe('cached')
+      expect(result.resume?.replayedCount).toBe(1)
+      expect(result.resume?.liveCount).toBe(0)
+      expect(calls).toBe(0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+})
+
+test('dead call always reruns; unchanged null output leaves later completed calls replayable', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-dead-'))
+  try {
+    const live: string[] = []
+    const ports = portsWith(dir, new Map())
+    ports.agentRunner = {
+      runAgentToResult: async params => {
+        live.push(params.prompt)
+        return { kind: 'dead', reason: 'api-error' }
+      },
+    }
+    await ports.journalStore.append('run-dead', {
+      key: agentCallKey('a', { prompt: 'a' }),
+      seq: 0,
+      result: { kind: 'dead', reason: 'api-error' },
+    })
+    await ports.journalStore.append('run-dead', {
+      key: agentCallKey('b', { prompt: 'b' }),
+      seq: 1,
+      result: {
+        kind: 'ok',
+        output: 'cached:b',
+        usage: { outputTokens: 1 },
+      },
+    })
+
+    const result = await runWorkflow({
+      script: `return [await agent('a'), await agent('b')]`,
+      runId: 'run-dead',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      agentMaxRetries: 0,
+      autoRetryOnFailure: false,
+    })
+
+    expect(result.returnValue).toEqual([null, 'cached:b'])
+    expect(live).toEqual(['a'])
+    expect(result.resume?.liveCount).toBe(1)
+    expect(result.resume?.replayedCount).toBe(1)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('changed selected output reruns the divergent suffix and rewrites only the authoritative seq records', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-divergence-'))
+  try {
+    const live: string[] = []
+    const ports = portsWith(dir, new Map())
+    ports.agentRunner = {
+      runAgentToResult: async params => {
+        live.push(params.prompt)
+        return {
+          kind: 'ok',
+          output: params.prompt === 'first' ? 'new' : `live:${params.prompt}`,
+          usage: { outputTokens: 1 },
+        }
+      },
+    }
+    await ports.journalStore.append('run-divergence', {
+      key: agentCallKey('first', { prompt: 'first' }),
+      seq: 0,
+      result: { kind: 'ok', output: 'old', usage: { outputTokens: 1 } },
+    })
+    await ports.journalStore.append('run-divergence', {
+      key: agentCallKey('second:old', { prompt: 'second:old' }),
+      seq: 1,
+      result: {
+        kind: 'ok',
+        output: 'cached:old-suffix',
+        usage: { outputTokens: 1 },
+      },
+    })
+
+    const result = await runWorkflow({
+      script: `const first = await agent('first')\nreturn agent('second:' + first)`,
+      runId: 'run-divergence',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      resumePolicy: { scope: 'agents', agentIds: [0] },
+    })
+
+    expect(result.returnValue).toBe('live:second:new')
+    expect(live).toEqual(['first', 'second:new'])
+    expect(result.resume?.liveCount).toBe(2)
+    expect(result.resume?.replayedCount).toBe(0)
+    const finalJournal = await ports.journalStore.read('run-divergence')
+    expect(finalJournal.map(entry => entry.seq)).toEqual([0, 1])
+    expect(finalJournal.map(entry => entry.key)).toEqual([
+      agentCallKey('first', { prompt: 'first' }),
+      agentCallKey('second:new', { prompt: 'second:new' }),
+    ])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+/** Seed `count` checkpoints for `runId`, one per `a<seq>` prompt. */
+async function seedJournal(
+  ports: WorkflowPorts,
+  runId: string,
+  count: number,
+  deadSeq?: number,
+): Promise<void> {
+  for (let seq = 0; seq < count; seq++) {
+    await ports.journalStore.append(runId, {
+      key: agentCallKey(`a${seq}`, { prompt: `a${seq}` }),
+      seq,
+      result:
+        seq === deadSeq
+          ? { kind: 'dead', reason: 'api-error' }
+          : {
+              kind: 'ok',
+              output: `cached:${seq}`,
+              usage: { outputTokens: 1 },
+            },
+    })
+  }
+}
+
+const SEQUENTIAL_AGENTS = (count: number): string =>
+  `const out = []\nfor (let i = 0; i < ${count}; i++) out.push(await agent('a' + i))\nreturn out`
+
+test('kill during a resume keeps every checkpoint the attempt never reached', async () => {
+  // The reported data loss: a 10-agent run whose agent 3 died, resumed, cancelled
+  // with x while agent 3 was back in flight — and the journal came back holding only
+  // the three entries the attempt had touched. Stopping early says nothing about
+  // whether checkpoints 4..9 are still valid, so they must survive.
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-abort-resume-'))
+  try {
+    const ac = new AbortController()
+    const { ports, events } = portsWithEvents(dir, new Map())
+    ports.agentRunner = {
+      runAgentToResult: async () => {
+        ac.abort()
+        throw new Error('cancelled by user')
+      },
+    }
+    await seedJournal(ports, 'run-abort', 5, 2)
+
+    const result = await runWorkflow({
+      script: SEQUENTIAL_AGENTS(5),
+      runId: 'run-abort',
+      ports,
+      host: createHostHandle(null),
+      signal: ac.signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      agentMaxRetries: 0,
+    })
+
+    expect(result.status).toBe('killed')
+    const journal = await ports.journalStore.read('run-abort')
+    expect(journal.map(entry => entry.seq)).toEqual([0, 1, 2, 3, 4])
+    // Nor may it be *reported* as a divergence: the cancelled rerun produced no
+    // output to disagree with the recorded one.
+    expect(
+      events.some(e => e.type === 'log' && e.message.includes('diverged')),
+    ).toBe(false)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('budget exhaustion during a selective resume keeps the cached tail', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-budget-resume-'))
+  try {
+    const ports = portsWith(dir, new Map())
+    await seedJournal(ports, 'run-budget', 4)
+
+    const result = await runWorkflow({
+      script: SEQUENTIAL_AGENTS(4),
+      runId: 'run-budget',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: 0,
+      resume: true,
+      resumePolicy: { scope: 'agents', agentIds: [1] },
+    })
+
+    expect(result.status).toBe('failed')
+    expect(result.error).toMatch(/budget/)
+    expect(
+      (await ports.journalStore.read('run-budget')).map(entry => entry.seq),
+    ).toEqual([0, 1, 2, 3])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a killed scope "all" rerun keeps the checkpoints it never reached', async () => {
+  // scope "all" pre-marks the whole journal for replacement, which is only earned by
+  // an attempt that actually reruns everything. Cut short, it may replace only what
+  // it produced.
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-all-abort-'))
+  try {
+    const ac = new AbortController()
+    const ports = portsWith(dir, new Map())
+    let live = 0
+    ports.agentRunner = {
+      runAgentToResult: async params => {
+        live++
+        if (live === 2) {
+          ac.abort()
+          throw new Error('cancelled by user')
+        }
+        return {
+          kind: 'ok',
+          output: `live:${params.prompt}`,
+          usage: { outputTokens: 1 },
+        }
+      },
+    }
+    await seedJournal(ports, 'run-all-abort', 4)
+
+    const result = await runWorkflow({
+      script: SEQUENTIAL_AGENTS(4),
+      runId: 'run-all-abort',
+      ports,
+      host: createHostHandle(null),
+      signal: ac.signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      resumePolicy: { scope: 'all' },
+      agentMaxRetries: 0,
+    })
+
+    expect(result.status).toBe('killed')
+    const journal = await ports.journalStore.read('run-all-abort')
+    expect(
+      journal.map(entry =>
+        entry.result.kind === 'ok' ? entry.result.output : entry.result.kind,
+      ),
+    ).toEqual(['live:a0', 'cached:1', 'cached:2', 'cached:3'])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a completed scope "all" rerun still drops the tail the new script no longer produces', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-all-shrink-'))
+  try {
+    const ports = portsWith(
+      dir,
+      new Map([
+        ['a0', { kind: 'ok', output: 'live:a0', usage: { outputTokens: 1 } }],
+      ]),
+    )
+    await seedJournal(ports, 'run-all-shrink', 3)
+
+    const result = await runWorkflow({
+      script: SEQUENTIAL_AGENTS(1),
+      runId: 'run-all-shrink',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      resumePolicy: { scope: 'all' },
+    })
+
+    expect(result.status).toBe('completed')
+    const journal = await ports.journalStore.read('run-all-shrink')
+    expect(journal.map(entry => entry.seq)).toEqual([0])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('selectors not reached are reported in the result and terminal progress event', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-not-reached-'))
+  try {
+    const { ports, events } = portsWithEvents(
+      dir,
+      new Map([['a', { kind: 'ok', output: 'a', usage: { outputTokens: 1 } }]]),
+    )
+    await ports.journalStore.append('run-not-reached', {
+      key: agentCallKey('a', { prompt: 'a' }),
+      seq: 0,
+      result: { kind: 'ok', output: 'a', usage: { outputTokens: 1 } },
+    })
+    const result = await runWorkflow({
+      script: `return agent('a')`,
+      runId: 'run-not-reached',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      resumePolicy: { scope: 'agents', agentIds: [0, 4, 7] },
+    })
+    expect(result.resume?.selectorsNotReached).toEqual([4, 7])
+    const done = events.find(event => event.type === 'run_done')
+    expect(
+      done?.type === 'run_done' ? done.resume?.selectorsNotReached : undefined,
+    ).toEqual([4, 7])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('direct engine rejects malformed selectors and changed-script selective resume without truncating', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-invalid-policy-'))
+  try {
+    const ports = portsWith(dir, new Map())
+    await ports.journalStore.append('run-invalid-policy', {
+      key: agentCallKey('a', { prompt: 'a' }),
+      seq: 0,
+      result: { kind: 'ok', output: 'cached', usage: { outputTokens: 1 } },
+    })
+    const malformed = await runWorkflow({
+      script: `return agent('a')`,
+      runId: 'run-invalid-policy',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      resumePolicy: {
+        scope: 'agents',
+        agentIds: [1, 1],
+      } as unknown as import('../types.js').ResumePolicy,
+    })
+    expect(malformed.status).toBe('failed')
+    expect(malformed.error).toMatch(/unique/)
+
+    const changed = await runWorkflow({
+      script: `return agent('a')`,
+      runId: 'run-invalid-policy',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      resumePolicy: { scope: 'range', fromAgentId: 0, toAgentId: 0 },
+      scriptChanged: true,
+    })
+    expect(changed.status).toBe('failed')
+    expect(changed.error).toMatch(/unchanged workflow script/)
+    expect(await ports.journalStore.read('run-invalid-policy')).toHaveLength(1)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('abort → killed', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {
@@ -273,6 +751,7 @@ test('scriptChanged=true → truncate journal and run all live', async () => {
       cwd: dir,
       budgetTotal: null,
       resume: true,
+      resumePolicy: { scope: 'all' },
       scriptChanged: true,
     })
     expect(result.status).toBe('completed')

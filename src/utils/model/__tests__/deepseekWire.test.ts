@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   applyDeepSeekAnthropicWire,
   getDeepSeekAnthropicBaseURL,
   isDeepSeekAnthropicWireActive,
   isDeepSeekMirroredApiKey,
+  isDeepSeekMirroredModel,
 } from '../deepseekWire.js'
 
 /**
@@ -31,6 +32,10 @@ const TOUCHED = [
   'ANTHROPIC_DEFAULT_FABLE_MODEL',
   'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE',
 ] as const
+
+beforeEach(() => {
+  for (const key of TOUCHED) delete process.env[key]
+})
 
 afterEach(() => {
   for (const key of TOUCHED) delete process.env[key]
@@ -113,8 +118,43 @@ describe('getDeepSeekAnthropicBaseURL', () => {
     )
   })
 
+  test('translates OpenAI and Anthropic resource bases to one endpoint', () => {
+    process.env.OPENAI_API_KEY = 'sk-test'
+    for (const baseURL of [
+      'https://api.deepseek.com/v1',
+      'https://api.deepseek.com/v1/chat/completions',
+      'https://api.deepseek.com/anthropic/v1',
+      'https://api.deepseek.com/anthropic/v1/messages',
+    ]) {
+      process.env.OPENAI_BASE_URL = baseURL
+      expect(getDeepSeekAnthropicBaseURL()).toBe(
+        'https://api.deepseek.com/anthropic',
+      )
+    }
+  })
+
   test('undefined when the routing is not active', () => {
     expect(getDeepSeekAnthropicBaseURL()).toBeUndefined()
+  })
+
+  test('a scheme-less base URL degrades instead of crashing startup', () => {
+    // isDeepSeekBaseURL falls back to a substring test for anything new URL()
+    // rejects, so `OPENAI_BASE_URL=api.deepseek.com` DOES select this routing —
+    // and normalizeProviderBaseURL then threw a TypeError out of
+    // applyDeepSeekAnthropicWire(), which runs on init()'s startup path where
+    // the catch rethrows anything that is not a ConfigParseError. The CLI died
+    // before drawing a frame over a missing `https://`.
+    process.env.OPENAI_API_KEY = 'sk-test'
+    process.env.OPENAI_BASE_URL = 'api.deepseek.com'
+    expect(getDeepSeekAnthropicBaseURL()).toBe('api.deepseek.com/anthropic')
+    expect(() => applyDeepSeekAnthropicWire()).not.toThrow()
+    expect(process.env.ANTHROPIC_BASE_URL).toBe('api.deepseek.com/anthropic')
+  })
+
+  test('the scheme-less fallback still refuses to double the suffix', () => {
+    process.env.OPENAI_API_KEY = 'sk-test'
+    process.env.OPENAI_BASE_URL = 'api.deepseek.com/anthropic/'
+    expect(getDeepSeekAnthropicBaseURL()).toBe('api.deepseek.com/anthropic')
   })
 })
 
@@ -148,13 +188,31 @@ describe('applyDeepSeekAnthropicWire', () => {
     expect(process.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('deepseek-v4-flash')
   })
 
-  test('carries OPENAI_MODEL across as the pinned model', () => {
+  test('carries OPENAI_MODEL across as the provider default', () => {
     deepseekEnv()
     process.env.OPENAI_MODEL = 'deepseek-v4-pro'
 
     applyDeepSeekAnthropicWire()
 
     expect(process.env.ANTHROPIC_MODEL).toBe('deepseek-v4-pro')
+    // …and is identifiable as this module's copy, so the read side can keep it
+    // from outranking an explicit settings.model. Without the bookkeeping a
+    // user pinned to deepseek-v4-flash in settings.json was silently moved to
+    // v4-pro the first time getAnthropicClient() ran the mirror.
+    expect(isDeepSeekMirroredModel('deepseek-v4-pro')).toBe(true)
+    expect(isDeepSeekMirroredModel('deepseek-v4-flash')).toBe(false)
+    expect(isDeepSeekMirroredModel(undefined)).toBe(false)
+  })
+
+  test('a model the user set on the Anthropic side is never claimed', () => {
+    process.env.ANTHROPIC_MODEL = 'deepseek-v4-flash'
+    deepseekEnv()
+    process.env.OPENAI_MODEL = 'deepseek-v4-pro'
+
+    applyDeepSeekAnthropicWire()
+
+    expect(process.env.ANTHROPIC_MODEL).toBe('deepseek-v4-flash')
+    expect(isDeepSeekMirroredModel('deepseek-v4-flash')).toBe(false)
   })
 
   test('is a no-op for a non-DeepSeek endpoint', () => {

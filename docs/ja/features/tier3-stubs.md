@@ -10,7 +10,7 @@
 
 | Feature | 参照数 | 状態 | 分類 | 概要 |
 |---------|------|------|------|---------|
-| CHICAGO_MCP | 16 | 実装済み | ツール | Computer Use + Chrome MCP 制御（build でデフォルト有効） |
+| CHICAGO_MCP | 16 | 実装済み | ツール | Computer Use 制御（build でデフォルト有効） |
 | MONITOR_TOOL | 13 | 実装済み | ツール | shell 出力を継続的に監視するバックグラウンド監視ツール（build でデフォルト有効） |
 | BG_SESSIONS | 11 | 部分実装 | セッション管理 | バックグラウンドセッションの登録/クリーンアップは実装済み、タスクの要約は stub（dev でデフォルト有効） |
 | SHOT_STATS | 10 | 実装済み | 統計 | API 呼び出し統計パネル（build でデフォルト有効） |

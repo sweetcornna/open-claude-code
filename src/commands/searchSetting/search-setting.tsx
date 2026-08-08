@@ -61,6 +61,7 @@ import {
   resetDeepSeekSearchProbe,
 } from '@open-claude-code/builtin-tools/tools/WebSearchTool/adapters/deepseekAdapter.js';
 import {
+  hasSourceCredentials,
   isSourceAvailable,
   isSourceEnabled,
   primarySourceId,
@@ -97,6 +98,8 @@ const SOURCE_HINTS: Record<SearchSourceId, string> = {
   deepseek: 'DeepSeek runs the search server-side, over its Anthropic-compatible endpoint',
   gemini: 'Google Search grounding through your Google account',
   codex: 'OpenAI Responses API web_search through your ChatGPT account',
+  brave: "Brave's independent index through your Brave Search API key",
+  exa: "Exa's neural search through your Exa API key",
   free: 'DuckDuckGo + Mojeek + Bing scraping — no account needed',
 };
 
@@ -162,6 +165,12 @@ async function readConnection(
         ...(oauth ? { account: await getStoredChatGPTAccountId() } : {}),
       };
     }
+    // Key-only sources: the same resolver the adapter authenticates with, so
+    // "connected" here means the request would carry a key, never just "some
+    // key-shaped setting exists".
+    case 'brave':
+    case 'exa':
+      return { connected: hasSourceCredentials(id) };
     case 'free':
       return { connected: true };
   }
@@ -203,8 +212,36 @@ function remedyFor(row: SourceRow): string {
         `${row.label} is not connected — point OPENAI_BASE_URL at api.deepseek.com ` +
         `with a DeepSeek key (/login), then press R to re-check.`
       );
+    case 'brave':
+      return `${row.label} has no key — set BRAVE_SEARCH_API_KEY (or BRAVE_API_KEY), or store braveApiKey in your settings.`;
+    case 'exa':
+      return `${row.label} has no key — store exaApiKey in your settings.`;
     case 'free':
       return `${row.label} needs no account.`;
+  }
+}
+
+/**
+ * Why `D` did nothing, said in terms of what the user would have to do instead.
+ *
+ * There are three reasons a source has no disconnect, not one: it has no
+ * credential at all, its credential is a key the user put somewhere themselves,
+ * or its credential IS the session's provider login (which this panel has no
+ * business revoking). Collapsing them lands the wrong instruction on the wrong
+ * row — telling someone to run /logout to stop sending their Brave key.
+ */
+function noDisconnectHint(row: SourceRow): string {
+  switch (row.id) {
+    case 'free':
+      return `${row.label} has no account to disconnect — press Space to switch the lane off.`;
+    case 'brave':
+    case 'exa':
+      return (
+        `${row.label} is configured by a key you hold, not a login occ can revoke. ` +
+        `Press Space to switch the lane off, or remove the key from your settings/environment.`
+      );
+    default:
+      return `${row.label} uses this session's provider login. Press Space to switch the lane off, or /logout to sign out.`;
   }
 }
 
@@ -250,6 +287,8 @@ function SearchSettingPanel({
     deepseek: 'checking',
     gemini: 'checking',
     codex: 'checking',
+    brave: 'checking',
+    exa: 'checking',
     free: 'connected',
   });
   const [accounts, setAccounts] = useState<Partial<Record<SearchSourceId, string>>>({});
@@ -397,11 +436,7 @@ function SearchSettingPanel({
     (row: SourceRow) => {
       if (busy) return;
       if (!row.canDisconnect) {
-        setNotice(
-          row.id === 'free'
-            ? `${row.label} has no account to disconnect — press Space to switch the lane off.`
-            : `${row.label} uses this session's provider login. Press Space to switch the lane off, or /logout to sign out.`,
-        );
+        setNotice(noDisconnectHint(row));
         return;
       }
       setBusy({ id: row.id, kind: 'disconnect' });

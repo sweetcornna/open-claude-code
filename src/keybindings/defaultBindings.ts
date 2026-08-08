@@ -251,6 +251,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       right: 'footer:next',
       left: 'footer:previous',
       enter: 'footer:openSelected',
+      x: 'footer:close',
       escape: 'footer:clearSelection',
     },
   },

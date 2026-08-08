@@ -46,6 +46,7 @@ import type { ToolPermissionContext } from '../../Tool.js';
 import { getRunningTeammatesSorted } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
 import { isPanelAgentTask, type LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
+import { stopTask } from '../../tasks/stopTask.js';
 import { isBackgroundTask } from '../../tasks/types.js';
 import {
   AGENT_COLOR_TO_THEME_COLOR,
@@ -1908,8 +1909,13 @@ function PromptInput({
             setCursorOffset(cursorOffset + 1);
             return;
           }
-          stopOrDismissAgent(task.id, setAppState);
-          if (task.status !== 'running') {
+          if (task.status === 'running') {
+            void stopTask(task.id, {
+              getAppState: store.getState,
+              setAppState,
+            });
+          } else {
+            stopOrDismissAgent(task.id, setAppState);
             setCoordinatorTaskIndex(i => Math.max(minCoordinatorIndex, i - 1));
           }
           return;

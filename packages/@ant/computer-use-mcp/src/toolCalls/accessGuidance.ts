@@ -31,9 +31,9 @@ export function buildTierGuidanceMessage(tiered: TieredApp[]): string {
       `${names} ${readBrowsers.length === 1 ? 'is a browser' : 'are browsers'} — ` +
         `granted at tier "read" (visible in screenshots only; no clicks or ` +
         `typing). You can read what's on screen but cannot navigate, click, ` +
-        `or type into ${readBrowsers.length === 1 ? 'it' : 'them'}. For browser ` +
-        `interaction, use the Chrome DevTools MCP (tools named ` +
-        `\`mcp__chrome-devtools__*\`; load via SearchExtraTools if deferred).`,
+        `or type into ${readBrowsers.length === 1 ? 'it' : 'them'}. Use a ` +
+        `separately configured browser automation tool if one is available; ` +
+        `otherwise ask the user to perform the interaction.`,
     )
   }
 

@@ -15,9 +15,10 @@ test('q / Esc → quit', () => {
   expect(routeWorkflowKey('', { escape: true })).toBe('quit')
 })
 
-test('x → killAgent；K → killWorkflow；r → resume；n → newRun', () => {
-  expect(routeWorkflowKey('x', {})).toBe('killAgent')
-  expect(routeWorkflowKey('K', {})).toBe('killWorkflow')
+test('x → cancelTarget；k/K have no workflow-kill special case', () => {
+  expect(routeWorkflowKey('x', {})).toBe('cancelTarget')
+  expect(routeWorkflowKey('k', {})).toBeNull()
+  expect(routeWorkflowKey('K', {})).toBeNull()
   expect(routeWorkflowKey('r', {})).toBe('resume')
   expect(routeWorkflowKey('n', {})).toBe('newRun')
 })
@@ -36,11 +37,13 @@ test('confirm mode: y/Enter → confirmYes; n/Esc/q → confirmNo; other keys �
   expect(routeWorkflowKey('', { upArrow: true }, 'confirm')).toBeNull()
 })
 
-test('←/→ switch focus column; ↑/↓ move within column', () => {
+test('←/→ switch pane; ↑/↓ always select agents; PageUp/PageDown scroll detail', () => {
   expect(routeWorkflowKey('', { leftArrow: true })).toBe('focusLeft')
   expect(routeWorkflowKey('', { rightArrow: true })).toBe('focusRight')
   expect(routeWorkflowKey('', { upArrow: true })).toBe('moveUp')
   expect(routeWorkflowKey('', { downArrow: true })).toBe('moveDown')
+  expect(routeWorkflowKey('', { pageUp: true })).toBe('pageUp')
+  expect(routeWorkflowKey('', { pageDown: true })).toBe('pageDown')
 })
 
 test('unrelated input → null', () => {

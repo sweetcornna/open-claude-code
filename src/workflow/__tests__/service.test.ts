@@ -4,7 +4,7 @@ import { expect, test } from 'bun:test'
 // result, taskRegistrar maintains abort bindings, journalStore is an in-memory empty impl. The real runWorkflow
 // thus runs to completion without needing LLM or mocks.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
@@ -132,9 +132,12 @@ function fakePorts(
         calls.push({ kind: 'fail', runId, error })
       },
       kill: (runId: string) => {
+        const binding = bindings.get(runId)
+        if (!binding) return false
         killed.push(runId)
         calls.push({ kind: 'kill', runId })
-        bindings.get(runId)?.abort.abort()
+        binding.abort.abort()
+        return true
       },
       registerAgentAbort: (
         runId: string,
@@ -203,6 +206,78 @@ test('launch → completed; store shows this run', async () => {
   expect(r!.workflowName).toBe('workflow')
 })
 
+test('detached rejection is reduced to a queryable terminal failure', async () => {
+  __resetWorkflowServiceForTests()
+  const { ports, store } = fakePorts()
+  ports.journalStore.append = async () => {
+    throw new Error('journal unavailable')
+  }
+  ports.journalStore.read = async () => {
+    throw new Error('journal unavailable')
+  }
+  const svc = makeService(ports, store)
+  const { runId } = await svc.launch(
+    { script: `return agent('compute')` },
+    stubTUC,
+    stubCanUseTool,
+  )
+  await settle()
+
+  expect(await svc.getRunAsync(runId)).toMatchObject({
+    runId,
+    status: 'failed',
+    error: 'journal unavailable',
+  })
+  expect(await ports.runStatusReader?.getRun(runId)).toMatchObject({
+    runId,
+    status: 'failed',
+  })
+})
+
+test('repeated active resume reuses the canonical service registration and starts one engine', async () => {
+  __resetWorkflowServiceForTests()
+  const { ports, store, adapterCallsRef } = fakePorts()
+  let registrations = 0
+  const canonical = {
+    runId: 'run-resume',
+    taskId: 'w-wrapper',
+    signal: new AbortController().signal,
+    instanceId: 9,
+  } as const
+  ports.taskRegistrar.getActive = () =>
+    registrations > 0 ? { ...canonical, disposition: 'existing' } : undefined
+  ports.taskRegistrar.register = () => {
+    registrations++
+    return { ...canonical, disposition: 'created' }
+  }
+  const svc = makeService(ports, store)
+
+  const first = await svc.launch(
+    { script: `return agent('x')`, resumeFromRunId: 'run-resume' },
+    stubTUC,
+    stubCanUseTool,
+  )
+  const duplicate = await svc.launch(
+    { script: `return ((`, resumeFromRunId: 'run-resume' },
+    stubTUC,
+    stubCanUseTool,
+  )
+  await settle()
+
+  expect(first.disposition).toBe('created')
+  expect(duplicate).toEqual({
+    runId: 'run-resume',
+    taskId: 'w-wrapper',
+    disposition: 'existing',
+  })
+  expect(registrations).toBe(1)
+  expect(adapterCallsRef.value).toBe(1)
+  expect(svc.getRun('run-resume')).toMatchObject({
+    taskId: 'w-wrapper',
+    instanceId: 9,
+  })
+})
+
 test('launch inline script → returns scriptPath (persisted to cwdOverride dir)', async () => {
   __resetWorkflowServiceForTests()
   const dir = await mkdtemp(join(tmpdir(), 'wf-svc-'))
@@ -221,6 +296,75 @@ test('launch inline script → returns scriptPath (persisted to cwdOverride dir)
     expect(await readFile(result.scriptPath!, 'utf-8')).toBe(
       `return agent('x')`,
     )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('launch records script.sha256, so a panel-started run is resumable at all', async () => {
+  // The panel entry never wrote one, which made every later selective resume of a
+  // panel-started run fail against a baseline that did not exist ("requires an
+  // unchanged workflow script"), and made a plain resume discard the journal.
+  __resetWorkflowServiceForTests()
+  const dir = await mkdtemp(join(tmpdir(), 'wf-svc-hash-'))
+  try {
+    const { ports, store } = fakePorts()
+    const svc = makeService(ports, store, dir)
+    const { runId } = await svc.launch(
+      { script: `return agent('x')` },
+      stubTUC,
+      stubCanUseTool,
+    )
+    await settle()
+    expect(
+      await readFile(
+        join(dir, PROJECT_DIR_NAME, 'workflow-runs', runId, 'script.sha256'),
+        'utf-8',
+      ),
+    ).toMatch(/^[0-9a-f]{64}\n$/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('selective resume from the panel compares against the hash launch recorded', async () => {
+  __resetWorkflowServiceForTests()
+  const dir = await mkdtemp(join(tmpdir(), 'wf-svc-selective-hash-'))
+  try {
+    const { ports, store } = fakePorts()
+    // Honor the resume runId so the resumes land in the first run's directory.
+    ports.taskRegistrar.register = (opts: { runId?: string }) => ({
+      runId: opts.runId ?? 'run-1',
+      signal: new AbortController().signal,
+      disposition: 'created' as const,
+    })
+    const svc = makeService(ports, store, dir)
+    await svc.launch({ script: `return agent('x')` }, stubTUC, stubCanUseTool)
+    await settle()
+
+    const unchanged = await svc.launch(
+      {
+        script: `return agent('x')`,
+        resumeFromRunId: 'run-1',
+        resumePolicy: { scope: 'agents', agentIds: [0] },
+      },
+      stubTUC,
+      stubCanUseTool,
+    )
+    expect(unchanged.runId).toBe('run-1')
+    await settle()
+
+    await expect(
+      svc.launch(
+        {
+          script: `return agent('y')`,
+          resumeFromRunId: 'run-1',
+          resumePolicy: { scope: 'agents', agentIds: [0] },
+        },
+        stubTUC,
+        stubCanUseTool,
+      ),
+    ).rejects.toThrow(/unchanged workflow script/)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -270,7 +414,8 @@ test('kill goes through taskRegistrar.kill', async () => {
     stubTUC,
     stubCanUseTool,
   )
-  svc.kill(runId)
+  expect(svc.kill(runId)).toBe(true)
+  expect(svc.kill('missing')).toBe(false)
   expect(killed).toContain(runId)
 })
 
@@ -594,6 +739,8 @@ test('getRunAsync memory miss + disk hit → returns disk value, and does not in
     const { writeRunState } = await import('../persistence.js')
     const historical = {
       runId: 'hist-only',
+      taskId: 'w-historical',
+      instanceId: 22,
       workflowName: 'old',
       status: 'completed',
       phases: [],
@@ -617,6 +764,16 @@ test('getRunAsync memory miss + disk hit → returns disk value, and does not in
     // subsequent get still returns (each goes through readRunState fallback)
     const got2 = await svc.getRunAsync('hist-only')
     expect(got2?.returnValue).toEqual({ x: 1 })
+
+    const status = await ports.runStatusReader?.getRun('hist-only')
+    expect(status).toMatchObject({
+      runId: 'hist-only',
+      taskId: 'w-historical',
+      instanceId: 22,
+      status: 'completed',
+      runDir: join(dir, 'hist-only'),
+    })
+    expect(svc.listRuns().map(r => r.runId)).not.toContain('hist-only')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

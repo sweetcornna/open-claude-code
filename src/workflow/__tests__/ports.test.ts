@@ -12,6 +12,24 @@ import { createProgressStoreFromBus } from '../progress/store.js'
 import { getProjectRoot } from '../../bootstrap/state.js'
 import type { SetAppState } from '../../Task.js'
 import type { AppState } from '../../state/AppState.tsx'
+import { registerLocalWorkflowTask } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
+
+function createTaskHost(ports: ReturnType<typeof createWorkflowPorts>): {
+  state: AppState
+  setAppState: SetAppState
+  host: ReturnType<typeof ports.hostFactory>
+} {
+  const state = { tasks: {} } as unknown as AppState
+  const setAppState: SetAppState = f => {
+    Object.assign(state, f(state))
+  }
+  const host = ports.hostFactory({
+    context: { agentId: 'a-1', toolUseId: 'tu-1', setAppState },
+    canUseTool: (() => Promise.resolve({ behavior: 'allow' })) as never,
+    parentMessage: {} as never,
+  })
+  return { state, setAppState, host }
+}
 
 test('buildRegistry registers claude-code as default and resolve hits', () => {
   const reg = buildRegistry()
@@ -195,4 +213,182 @@ test('hostFactory.cwd and journalStore share root (getProjectRoot) — fix K reg
     parentMessage: {} as never,
   })
   expect(hostCtx.cwd).toBe(getProjectRoot())
+})
+
+test('duplicate active resume reuses one canonical binding and wrapper', () => {
+  const bus = createProgressBus()
+  const store = createProgressStoreFromBus(bus)
+  const ports = createWorkflowPorts({ bus, store })
+  const { state, host } = createTaskHost(ports)
+
+  const first = ports.taskRegistrar.register(
+    { workflowName: 'wf', runId: 'w-resume' },
+    host.handle,
+  )
+  const second = ports.taskRegistrar.register(
+    { workflowName: 'wf', runId: 'w-resume' },
+    host.handle,
+  )
+
+  expect(first.disposition).toBe('created')
+  expect(second.disposition).toBe('existing')
+  expect(second.instanceId).toBe(first.instanceId)
+  expect(second.taskId).toBe(first.taskId)
+  expect(second.signal).toBe(first.signal)
+  expect(second.workflowName).toBe('wf')
+  expect(second.runDir).toContain('w-resume')
+  expect(
+    Object.values(state.tasks).filter(
+      task => task.type === 'local_workflow' && task.status === 'running',
+    ),
+  ).toHaveLength(1)
+})
+
+test('stale generation completion cannot remove or terminalize the newer binding', () => {
+  const bus = createProgressBus()
+  const store = createProgressStoreFromBus(bus)
+  const ports = createWorkflowPorts({ bus, store })
+  const { state, host } = createTaskHost(ports)
+
+  const first = ports.taskRegistrar.register(
+    { workflowName: 'wf', runId: 'w-generation' },
+    host.handle,
+  )
+  ports.taskRegistrar.complete(first.runId, 'first done', first.instanceId)
+  const second = ports.taskRegistrar.register(
+    { workflowName: 'wf', runId: first.runId },
+    host.handle,
+  )
+  ports.taskRegistrar.complete(first.runId, 'stale done', first.instanceId)
+
+  expect(second.instanceId).not.toBe(first.instanceId)
+  expect(ports.getTaskIdForRun(first.runId)).toBe(second.taskId)
+  expect(state.tasks[second.taskId!]?.status).toBe('running')
+})
+
+test('kill routes by runId or resumed wrapper taskId to the canonical controller', () => {
+  const bus = createProgressBus()
+  const store = createProgressStoreFromBus(bus)
+  const ports = createWorkflowPorts({ bus, store })
+  const { host } = createTaskHost(ports)
+  const registrar = ports.taskRegistrar as Required<typeof ports.taskRegistrar>
+
+  const byTask = registrar.register(
+    { workflowName: 'wf', runId: 'w-by-task' },
+    host.handle,
+  )
+  const taskAgent = new AbortController()
+  registrar.registerAgentAbort(byTask.runId, 1, taskAgent, byTask.instanceId)
+  registrar.kill(byTask.taskId!)
+  expect(byTask.signal.aborted).toBe(true)
+  expect(taskAgent.signal.aborted).toBe(true)
+
+  // Finish ownership transfer for the killed instance, then start another run.
+  registrar.kill(byTask.runId, byTask.instanceId)
+  const byRun = registrar.register(
+    { workflowName: 'wf', runId: 'w-by-run' },
+    host.handle,
+  )
+  registrar.kill(byRun.runId)
+  expect(byRun.signal.aborted).toBe(true)
+})
+
+test('registration reconciles duplicate in-memory wrappers without leaving a running zombie', () => {
+  const bus = createProgressBus()
+  const store = createProgressStoreFromBus(bus)
+  const ports = createWorkflowPorts({ bus, store })
+  const { state, setAppState, host } = createTaskHost(ports)
+  const oldA = new AbortController()
+  const oldB = new AbortController()
+  const oldIds = [oldA, oldB].map(abortController =>
+    registerLocalWorkflowTask(setAppState, {
+      description: 'legacy duplicate',
+      workflowName: 'wf',
+      workflowFile: 'wf.ts',
+      runId: 'w-legacy',
+      abortController,
+    }),
+  )
+
+  const canonical = ports.taskRegistrar.register(
+    { workflowName: 'wf', runId: 'w-legacy' },
+    host.handle,
+  )
+
+  expect(oldA.signal.aborted).toBe(true)
+  expect(oldB.signal.aborted).toBe(true)
+  for (const oldId of oldIds) {
+    expect(state.tasks[oldId]?.status).toBe('killed')
+    expect(
+      (state.tasks[oldId] as { evictAfter?: number })?.evictAfter,
+    ).toBeGreaterThan(Date.now())
+  }
+  const running = Object.values(state.tasks).filter(
+    task =>
+      task.type === 'local_workflow' &&
+      task.runId === 'w-legacy' &&
+      task.status === 'running',
+  )
+  expect(running.map(task => task.id)).toEqual([canonical.taskId!])
+})
+
+test('terminal progress persists before the live binding can be released', async () => {
+  const bus = createProgressBus()
+  const store = createProgressStoreFromBus(bus)
+  let releasePersistence: (() => void) | undefined
+  const persistenceGate = new Promise<void>(resolve => {
+    releasePersistence = resolve
+  })
+  let persistedStatus: string | undefined
+  let persistedIdentity: { taskId?: string; instanceId?: number } | undefined
+  const ports = createWorkflowPorts({
+    bus,
+    store,
+    runsDir: '/tmp/workflow-runs-test',
+    persistRunState: async run => {
+      persistedStatus = run.status
+      persistedIdentity = { taskId: run.taskId, instanceId: run.instanceId }
+      await persistenceGate
+    },
+  })
+  const { state, host } = createTaskHost(ports)
+  const registration = ports.taskRegistrar.register(
+    { workflowName: 'wf', runId: 'persist-first' },
+    host.handle,
+  )
+  bus.emit({
+    type: 'run_started',
+    runId: registration.runId,
+    taskId: registration.taskId,
+    instanceId: registration.instanceId,
+    workflowName: 'wf',
+    meta: null,
+  })
+  bus.emit({
+    type: 'run_done',
+    runId: registration.runId,
+    taskId: registration.taskId,
+    instanceId: registration.instanceId,
+    workflowName: 'wf',
+    status: 'completed',
+    returnValue: 'done',
+  })
+
+  const terminal = ports.taskRegistrar.complete(
+    registration.runId,
+    'done',
+    registration.instanceId,
+  )
+  expect(persistedStatus).toBe('completed')
+  expect(persistedIdentity).toEqual({
+    taskId: registration.taskId,
+    instanceId: registration.instanceId,
+  })
+  expect(ports.getTaskIdForRun(registration.runId)).toBe(registration.taskId)
+  expect(state.tasks[registration.taskId!]?.status).toBe('running')
+
+  releasePersistence?.()
+  await terminal
+  expect(state.tasks[registration.taskId!]?.status).toBe('completed')
+  expect(ports.getTaskIdForRun(registration.runId)).toBeUndefined()
 })

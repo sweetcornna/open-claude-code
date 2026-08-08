@@ -7,9 +7,8 @@
  */
 
 import {
-  isModelTier,
-  MODEL_TIERS,
-  type ModelTier,
+  MODEL_SETTINGS_SLOTS,
+  type ModelSettingsSlot,
 } from '../../utils/model/modelTier.js'
 import type { TierEffort } from '../../utils/model/tierDefaults.js'
 import {
@@ -30,11 +29,11 @@ export type ParsedCommand =
   | { kind: 'show' }
   | {
       kind: 'set'
-      tier: ModelTier
+      tier: ModelSettingsSlot
       effort?: TierEffort
       contextTokens?: number
     }
-  | { kind: 'reset'; tier: ModelTier }
+  | { kind: 'reset'; tier: ModelSettingsSlot }
   | { kind: 'error'; message: string }
 
 /**
@@ -58,11 +57,11 @@ export function parseArgs(args: string | undefined): ParsedCommand {
   if (parts.length === 0) return { kind: 'panel' }
   if (parts[0] === 'show' || parts[0] === 'current') return { kind: 'show' }
 
-  const tier = parts[0]!.toLowerCase()
-  if (!isModelTier(tier)) {
+  const tier = parts[0]!.toLowerCase() as ModelSettingsSlot
+  if (!(MODEL_SETTINGS_SLOTS as readonly string[]).includes(tier)) {
     return {
       kind: 'error',
-      message: `Unknown tier "${parts[0]}". Expected one of: ${MODEL_TIERS.join(', ')}.`,
+      message: `Unknown settings slot "${parts[0]}". Expected one of: ${MODEL_SETTINGS_SLOTS.join(', ')}.`,
     }
   }
   if (parts.length === 1) return { kind: 'error', message: usage() }
@@ -102,9 +101,10 @@ export function usage(): string {
     'Usage:',
     '  /model-settings                         open the panel',
     '  /model-settings show                    print the effective values',
+    '  /model-settings default effort max      set the provider default',
     '  /model-settings opus effort max         set effort for one tier',
     '  /model-settings opus context 1m         set the window (200000 / 272k / 1m)',
-    '  /model-settings opus reset              drop this tier’s overrides',
+    '  /model-settings opus reset              drop this slot’s overrides',
   ].join('\n')
 }
 
@@ -117,7 +117,7 @@ export function usage(): string {
  * user sets a value here and nothing changes. One-way migration, documented.
  */
 export function writeTierSettings(
-  tier: ModelTier,
+  tier: ModelSettingsSlot,
   patch: { effort?: TierEffort; contextTokens?: number },
 ): { error: Error | null } {
   const current = getSettingsForSource('userSettings')?.modelSettings ?? {}
@@ -129,7 +129,9 @@ export function writeTierSettings(
   })
 }
 
-export function resetTierSettings(tier: ModelTier): { error: Error | null } {
+export function resetTierSettings(tier: ModelSettingsSlot): {
+  error: Error | null
+} {
   const current = getSettingsForSource('userSettings')?.modelSettings ?? {}
   return updateSettingsForSource('userSettings', {
     modelSettings: { ...current, [tier]: undefined },

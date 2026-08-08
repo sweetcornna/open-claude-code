@@ -27,6 +27,7 @@ export const KEYBINDING_CONTEXTS = [
   'MessageSelector',
   'DiffDialog',
   'ModelPicker',
+  'TaskDetail',
   'Select',
   'Plugin',
 ] as const
@@ -54,6 +55,7 @@ export const KEYBINDING_CONTEXT_DESCRIPTIONS: Record<
   MessageSelector: 'When the message selector (rewind) is open',
   DiffDialog: 'When the diff dialog is open',
   ModelPicker: 'When the model picker is open',
+  TaskDetail: 'When a background task detail panel is open',
   Select: 'When a select/list component is focused',
   Plugin: 'When the plugin dialog is open',
 }
@@ -119,6 +121,8 @@ export const KEYBINDING_ACTIONS = [
   'historySearch:execute',
   // Task/agent actions
   'task:background',
+  'taskDetail:kill',
+  'taskDetail:foreground',
   // Theme picker actions
   'theme:toggleSyntaxHighlighting',
   // Help menu actions

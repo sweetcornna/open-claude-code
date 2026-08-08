@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import {
   agentCallKey,
   createFileJournalStore,
+  journalEntryMatches,
   JournalCorruptionError,
+  resolveResumePolicy,
 } from '../engine/journal.js'
 import type { AgentRunParams } from '../types.js'
 
@@ -23,6 +25,34 @@ test('agentCallKey ignores display-only fields label/phase', () => {
   const a = agentCallKey('p', { ...base, label: 'A', phase: 'ph1' })
   const b = agentCallKey('p', { ...base, label: 'B', phase: 'ph2' })
   expect(a).toBe(b)
+})
+
+test('journal identity requires both seq and key', () => {
+  const entry = {
+    key: 'same',
+    seq: 4,
+    result: { kind: 'dead' as const },
+  }
+  expect(journalEntryMatches(entry, 4, 'same')).toBe(true)
+  expect(journalEntryMatches(entry, 3, 'same')).toBe(false)
+  expect(journalEntryMatches(entry, 4, 'different')).toBe(false)
+})
+
+test('runtime resume policy validation preserves omitted checkpoint and rejects malformed selectors', () => {
+  expect(resolveResumePolicy(undefined, true)).toEqual({ scope: 'checkpoint' })
+  expect(resolveResumePolicy({ scope: 'all' }, true)).toEqual({ scope: 'all' })
+  expect(() =>
+    resolveResumePolicy({ scope: 'agents', agentIds: [1, 1] }, true),
+  ).toThrow(/unique/)
+  expect(() =>
+    resolveResumePolicy({ scope: 'range', fromAgentId: 2, toAgentId: 1 }, true),
+  ).toThrow(/fromAgentId/)
+  expect(() =>
+    resolveResumePolicy({ scope: 'agents', agentIds: [1000] }, true),
+  ).toThrow(/between 0 and 999/)
+  expect(() => resolveResumePolicy({ scope: 'all' }, false)).toThrow(
+    /only with/,
+  )
 })
 
 test('FileJournalStore append → read preserves order, truncate clears', async () => {
@@ -73,6 +103,24 @@ test('FileJournalStore read sorts by seq — resume stable when parallel complet
     const got = await store.read('r1')
     expect(got.map(e => e.key)).toEqual(['first', 'mid', 'late'])
     expect(got.map(e => e.seq)).toEqual([0, 1, 2])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('FileJournalStore normalizes legacy records without seq to append order', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-journal-legacy-seq-'))
+  try {
+    const runDir = join(dir, 'r1')
+    await mkdir(runDir, { recursive: true })
+    await writeFile(
+      join(runDir, 'journal.jsonl'),
+      `${JSON.stringify({ key: 'a', result: { kind: 'dead' } })}\n${JSON.stringify({ key: 'b', result: { kind: 'dead' } })}\n`,
+      'utf-8',
+    )
+    expect(
+      (await createFileJournalStore(dir).read('r1')).map(entry => entry.seq),
+    ).toEqual([0, 1])
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

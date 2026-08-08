@@ -18,7 +18,7 @@ Configuration layer (merges multiple sources)
   ├── plugin manifest (.mcp.json / .mcpb)                                                ← external (plugin)
   ├── claude.ai connectors                                                               ← external (remote)
   ├── enterprise managed-mcp.json                                                        ← external (enterprise-managed)
-  ├── setupComputerUseMCP() / setupChromeDevtools()                                      ← built-in (dynamically registered)
+  ├── setupComputerUseMCP()                                                              ← built-in (dynamically registered)
   └── passed by SDK (type:'sdk')                                                         ← built-in (embedded IDE)
   ↓
 getAllMcpConfigs()                    ← exclusive enterprise configuration or merged user/project/local + plugin + claude.ai
@@ -51,10 +51,9 @@ occ provides built-in MCP servers itself; users do not configure them manually. 
 | Server | Name | Package path | Feature Flag | Enablement |
 |--------|------|--------------|--------------|------------|
 | Computer Use | `computer-use` | `@ant/computer-use-mcp` | `CHICAGO_MCP` | GrowthBook gate + macOS + interactive |
-| Chrome DevTools | `chrome-devtools` | `chrome-devtools-mcp` (npm dependency) | — | `--chrome` / `CLAUDE_CODE_ENABLE_CFC` / `chromeDevtoolsDefaultEnabled` |
 | VSCode SDK | `claude-vscode` | — | — | Embedded IDE mode (type:`sdk`) |
 
-“Built-in” does not necessarily mean “in-process.” Computer Use uses `InProcessTransport`, while Chrome DevTools runs as a standard stdio child process (Google's `chrome-devtools-mcp`); occ merely injects its configuration automatically.
+Computer Use runs through `InProcessTransport` without launching a child process.
 
 #### InProcessTransport: zero-overhead, in-process communication
 
@@ -129,9 +128,6 @@ Built-in server names are reserved, so users cannot manually add configurations 
 
 ```typescript
 // Check reserved names when adding an MCP configuration
-if (isChromeDevtoolsMCPServer(name)) {
-  throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
-}
 if (feature('CHICAGO_MCP') && isComputerUseMCPServer(name)) {
   throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
 }
@@ -371,13 +367,13 @@ Local MCP servers using stdio are heavyweight child processes, so the default co
 
 | Dimension | Built-in MCP | External MCP |
 |-----------|--------------|--------------|
-| **Transport** | `InProcessTransport` (Computer Use) or stdio (Chrome DevTools) | stdio / SSE / HTTP / WebSocket |
-| **Configuration source** | Dynamic registration through `setupComputerUseMCP()` / `setupChromeDevtools()`, etc. | `~/.occ.json` / `.mcp.json` / plugins / claude.ai |
+| **Transport** | `InProcessTransport` (Computer Use) | stdio / SSE / HTTP / WebSocket |
+| **Configuration source** | Dynamic registration through `setupComputerUseMCP()`, etc. | `~/.occ.json` / `.mcp.json` / plugins / claude.ai |
 | **Scope** | `dynamic` | `user` / `project` / `local` / `enterprise` / `claudeai` |
 | **Process model** | Same process, zero overhead | Child process (stdio) or network connection |
 | **Name protection** | Reserved names; users cannot add same-name entries | User-defined names (alphanumeric + `-_`) |
 | **Lifecycle** | Starts and stops with the CLI | Connection cache + on-demand reconnection |
-| **Permissions** | Automatic authorization through `allowedTools` (Chrome DevTools allows only nine read-only tools; all others still require confirmation) | `passthrough` enters permission confirmation |
+| **Permissions** | Automatic authorization through the built-in server's `allowedTools` | `passthrough` enters permission confirmation |
 | **Feature Flag** | `CHICAGO_MCP` (Computer Use), etc. | None (always available) |
 | **Tool discovery** | Same as external servers (MCP protocol) | Standard MCP `tools/list` |
 | **Cleanup** | `inProcessServer.close()` | Signal escalation: SIGINT→SIGTERM→SIGKILL |
@@ -394,6 +390,5 @@ Local MCP servers using stdio are heavyweight child processes, so the default co
 | `src/services/mcp/useManageMCPConnections.ts` | React Hook: connection lifecycle and reconnection |
 | `src/utils/computerUse/mcpServer.ts` | Computer Use MCP Server construction |
 | `src/utils/computerUse/setup.ts` | Computer Use dynamic registration |
-| `src/utils/chromeDevtools/setup.ts` | Chrome DevTools MCP dynamic registration (entry-point resolution + connection arguments + allowedTools) |
 | `src/tools/MCPTool/MCPTool.ts` | MCP tool wrapper: unified Tool interface |
 | `src/entrypoints/mcp.ts` | MCP server entry point (Claude Code acting as an MCP server) |

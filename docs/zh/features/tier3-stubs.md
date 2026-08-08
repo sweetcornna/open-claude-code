@@ -10,7 +10,7 @@
 
 | Feature | 引用 | 状态 | 类别 | 简要说明 |
 |---------|------|------|------|---------|
-| CHICAGO_MCP | 16 | 已实现 | 工具 | Computer Use + Chrome MCP 控制（build 默认启用） |
+| CHICAGO_MCP | 16 | 已实现 | 工具 | Computer Use 控制（build 默认启用） |
 | MONITOR_TOOL | 13 | 已实现 | 工具 | 后台监控工具，持续监视 shell 输出（build 默认启用） |
 | BG_SESSIONS | 11 | 部分实现 | 会话管理 | 后台会话注册/清理已实现，任务摘要是 stub（dev 默认启用） |
 | SHOT_STATS | 10 | 已实现 | 统计 | API 调用统计面板（build 默认启用） |

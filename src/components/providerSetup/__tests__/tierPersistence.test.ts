@@ -86,6 +86,39 @@ describe('buildTierSettings on a first setup', () => {
       effort: undefined,
       existing: undefined,
     })
+    expect(patch.default).toEqual({
+      effort: 'max',
+      contextTokens: 1_000_000,
+    })
+    expect(patch.opus).toEqual({ effort: 'max', contextTokens: 1_000_000 })
+  })
+
+  test('keeps provider default settings independent from a tier using the same id', () => {
+    const patch = buildTierSettings({
+      tierModels: DEEPSEEK_TIERS,
+      defaultModel: 'deepseek-v4-pro',
+      contextTokens: 272_000,
+      effort: 'high',
+      existing: undefined,
+    })
+
+    expect(patch.default).toEqual({ effort: 'high', contextTokens: 272_000 })
+    expect(patch.sonnet).toEqual({ effort: 'high', contextTokens: 272_000 })
+  })
+
+  test('a reset is ignored — there is nothing configured to reset', () => {
+    // The picker cannot tell "I want the family default" from "I never touched
+    // this", so a first setup gets the reset flag routinely. Honouring it would
+    // invert the rule above: the empty field that is supposed to seed each
+    // family default would write `effort: undefined` over it instead.
+    const patch = buildTierSettings({
+      tierModels: DEEPSEEK_TIERS,
+      defaultModel: '',
+      contextTokens: undefined,
+      effort: undefined,
+      resetEffort: true,
+      existing: undefined,
+    })
     expect(patch.opus).toEqual({ effort: 'max', contextTokens: 1_000_000 })
   })
 
@@ -132,6 +165,23 @@ describe('buildTierSettings when tiers are already configured', () => {
     expect(patch.haiku).toEqual({ contextTokens: 272_000 })
     // No effort key at all — the saved per-tier levels survive the merge.
     expect(patch.opus).not.toHaveProperty('effort')
+  })
+
+  test('explicit model-default selection clears saved effort without touching context', () => {
+    const patch = buildTierSettings({
+      tierModels: DEEPSEEK_TIERS,
+      defaultModel: 'deepseek-v4-pro',
+      contextTokens: undefined,
+      effort: undefined,
+      resetEffort: true,
+      existing: {
+        default: { effort: 'low', contextTokens: 272_000 },
+        opus: { effort: 'max', contextTokens: 1_000_000 },
+      },
+    })
+
+    expect(patch.default).toEqual({ effort: undefined })
+    expect(patch.opus).toEqual({ effort: undefined })
   })
 
   test('a tier holding only a leftover empty object does not count as configured', () => {

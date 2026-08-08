@@ -17,9 +17,9 @@ import {
   isValidProfileName,
   loadProfilesFile,
   saveProfilesFile,
-  type ProfileModelType,
   type ProviderProfile,
 } from './profiles.js'
+import type { ProfileModelType } from './envKeys.js'
 
 export { getMergedProviderEnv }
 

@@ -11,9 +11,11 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 1. **Step 1 —— 连接信息**。只填 Base URL 和 API Key。这一步不写任何设置，填完按 Enter 只做一件事：拿刚输入的凭据去问端点 `GET /models`。
 2. **Step 2 —— 选模型**。端点答上来了，默认模型和四个档位就都是选择器，从它**实际提供**的模型里挑。答不上来（URL 写错、没有 key、网关不实现 `/models`）时分两种：**occ 自己有该 provider 的模型表**就用那张表继续给选择器，并在顶部说明这是 occ 的猜测、失败原因是什么；**没有表**才退回手填，并显示 `fetch failed (connect ECONNREFUSED 127.0.0.1:9)` 这样的原因 —— 端点能用但没有模型列表，从来不该挡住配置。
 
-内置表**只覆盖 occ 本来就在维护的两家**：Anthropic 兼容用 Claude 全系 id（`ALL_MODEL_CONFIGS`），OpenAI 用 GPT 列表（`CHATGPT_CODEX_MODEL_OPTIONS`）。Gemini 和 Grok **故意没有** —— 给它们现编一张第三方 model id 表意味着长期手工维护一份会过时的清单，而那正是 `/models` 探测要解决的问题。端点答上来时两者会合并（端点的排前面），所以服务器漏报某个 occ 认识的模型也仍然可选。
+内置表**只覆盖 occ 本来就在维护的两家、且只对官方端点生效**：`api.anthropic.com` 用 Claude 全系 id（`ALL_MODEL_CONFIGS`），`api.openai.com` 用 GPT 列表（`CHATGPT_CODEX_MODEL_OPTIONS`）。自建网关、代理、国产端点一律拿不到这两张表 —— 兼容一种协议不等于拥有那份目录，把 GPT 列表塞给一个 vLLM 部署只会让人选中一个它没有的模型。Gemini 和 Grok 连官方端点都**故意没有表** —— 给它们现编一张第三方 model id 表意味着长期手工维护一份会过时的清单，而那正是 `GET /models` 探测要解决的问题。
 
-**`/models` 随时重开这套设置**。改一个档位不必重走 `/login` 把端点和 key 再敲一遍：端点、key、四个档位当前值都从 env 读回来，只改模型再写回去。候选表来自后台 catalog 刷新缓存的 `/models` 结果（外加上面那两张内置表），所以是瞬时且离线的。与新登录不同，**候选表里没有的已配置值不会被丢弃** —— 用户是故意配的，缓存可能只是旧了。纯一方登录的会话里这个命令不出现：它的档位走内置 Claude 表，没有 `*_DEFAULT_*_MODEL` 可指。
+**端点答上来时就只用端点返回的表**（早期版本会把内置表合并进去，已删除）：服务器自己说它有什么，比 occ 猜它有什么更权威；合并的实际效果是把已下线的模型继续摆在选择器里。
+
+**`/models-setting` 随时重开这套设置**。改一个档位不必重走 `/login` 把端点和 key 再敲一遍：端点、key、四个档位当前值都从 env 读回来，只改模型再写回去。候选表来自后台 catalog 刷新缓存的 `GET /models` 结果（缓存为空时才退回官方端点的内置表），所以是瞬时且离线的。与新登录不同，**候选表里没有的已配置值不会被丢弃** —— 用户是故意配的，缓存可能只是旧了。这个命令**始终注册**（早期版本会在纯一方会话里隐藏它）：一方会话同样可以用 `ANTHROPIC_DEFAULT_<TIER>_MODEL` 把某一档钉到指定的 Claude checkpoint，而藏起来的命令是查不到的。
 
 几条容易踩的规则：
 
@@ -30,22 +32,23 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 
 | Provider | 启用 | Key | Base URL | 模型 | 输出上限 |
 |---|---|---|---|---|---|
-| OpenAI 兼容（GPT/GLM/Kimi/DeepSeek/Ollama/vLLM/One API…） | `modelType:'openai'` 或 `CLAUDE_CODE_USE_OPENAI=1` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` | `OPENAI_MODEL`（最高优先级，透传）或 `OPENAI_DEFAULT_{HAIKU,SONNET,OPUS,FABLE}_MODEL` 四档 | `OPENAI_MAX_TOKENS` |
+| OpenAI 兼容（GPT/GLM/Kimi/DeepSeek/Ollama/vLLM/One API…） | `modelType:'openai'` 或 `CLAUDE_CODE_USE_OPENAI=1` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` | `OPENAI_DEFAULT_{HAIKU,SONNET,OPUS,FABLE}_MODEL` 四档；`OPENAI_MODEL` 仅作未配置档位的 provider 兜底 | `OPENAI_MAX_TOKENS` |
 | ChatGPT 订阅 | 同上 + `OPENAI_AUTH_MODE=chatgpt` | 设备码 OAuth | Codex 专有后端 | tier 常量（sol/terra/luna） | 不发（Codex 不收） |
-| Gemini 原生 | `modelType:'gemini'` 或 `CLAUDE_CODE_USE_GEMINI=1` | `GEMINI_API_KEY` | `GEMINI_BASE_URL`（默认官方） | `GEMINI_MODEL` 或四档（**必须配一种**，无内置默认） | `GEMINI_MAX_TOKENS`（或通用 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`，opt-in） |
+| Gemini 原生 | `modelType:'gemini'` 或 `CLAUDE_CODE_USE_GEMINI=1` | `GEMINI_API_KEY` | `GEMINI_BASE_URL`（默认官方）；Antigravity 用 `ANTIGRAVITY_BASE_URL` | `GEMINI_MODEL` 或四档（**必须配一种**，无内置默认） | `GEMINI_MAX_TOKENS`（或通用 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`，opt-in） |
 | Grok | `modelType:'grok'` 或 `CLAUDE_CODE_USE_GROK=1` | `GROK_API_KEY`/`XAI_API_KEY` | `GROK_BASE_URL`（默认 api.x.ai/v1） | `GROK_MODEL` 或映射表 | `GROK_MAX_TOKENS`（同上，opt-in） |
 | Anthropic 兼容端点 | `modelType:'anthropic'` + baseURL | `ANTHROPIC_AUTH_TOKEN` | `ANTHROPIC_BASE_URL` | `ANTHROPIC_MODEL` 或四档 | （Anthropic 路径原生管理） |
 
 国产模型（DeepSeek / 智谱 GLM / 千问 / MiMo）走 OpenAI 兼容矩阵；`/login → China LLM Providers` 有内置 preset（baseURL、模型表、Coding Plan 专用端点）。
 
+> **Breaking change：Antigravity 的端点覆盖已从 `GEMINI_BASE_URL` 迁到独立的 `ANTIGRAVITY_BASE_URL`。** 两条线的路径形状根本不同（Antigravity 走 `/v1internal:streamGenerateContent`，Gemini 走 `/v1beta/models/...`），共用一个键意味着任何一方的代理设置都会打歪另一方。以前用 `GEMINI_BASE_URL` 给 Antigravity 配代理的，需要把值改到 `ANTIGRAVITY_BASE_URL`；两个键都不设时各走各的官方默认。
+
 **一个 key 配的是整个供应商，不是一个模型。** 流程是「选供应商 →（有 Coding Plan 的再选计费方式）→ 填 API Key → 选各档位模型」：填完 key 之后该供应商的**所有**模型都能用，`/model` 里直接列出来（带官方标签、价格、上下文窗口），随时切换。
 
-最后那一步走的是上面那个共用向导的 Step 2：四个档位各是一个选择器，选项就是该供应商的模型表，**默认值预填 preset 的 `tiers` 映射**（例如 DeepSeek：`haiku`→`deepseek-v4-flash`，`sonnet`/`opus`/`fable`→`deepseek-v4-pro`）—— 一路回车即接受默认，想改哪个改哪个，之后也能用 `/models` 再改。这里**没有「默认模型」字段**，因为那个字段写的是 `OPENAI_MODEL`，见下。
+最后那一步走的是上面那个共用向导的 Step 2：**默认模型 + 四个档位，一共五个槽各是一个选择器**（默认模型写 `OPENAI_MODEL` 之类的 provider 单模型键，四档写各自的 `{PROVIDER}_DEFAULT_<TIER>_MODEL`），选项就是端点 `GET /models` 真正返回的模型表；只有端点无法列举模型时才用官方 preset 或手填兜底。**默认值预填 preset 的 `tiers` 映射**（例如 DeepSeek：`haiku`→`deepseek-v4-flash`，`sonnet`/`opus`/`fable`→`deepseek-v4-pro`）—— 一路回车即接受默认，想改哪个改哪个，之后也能用 `/models-setting` 再改。
 
-两个键**故意不写**：
+默认模型与四个档位**彼此独立**：向导把 provider 默认写入 `OPENAI_MODEL`（或对应家族的 `*_MODEL`），把 Haiku / Sonnet / Opus / Fable 写入各自的 `{PROVIDER}_DEFAULT_<TIER>_MODEL`。默认请求使用 `modelSettings.default`，显式 `/model sonnet` 使用 `modelSettings.sonnet`；即使两者解析成同一个模型 ID，也不会再共享 effort 或 context 配置。`/model <具体 id>` 仍然原样透传，不会被 provider 默认值替换。
 
-- **`OPENAI_MODEL`** —— 它的优先级高于一切，不只压过四个档位别名，连 `/model <具体 id>` 也会被它顶掉（见 `resolveOpenAIModel`）。写了它就等于把会话锁死在一个模型上，正是这次要去掉的行为。
-- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** —— 一个全局值描述不了一份混着不同窗口的模型表（GLM 的 203K 和 205K 就挨在一起）。改为 `getContextWindowForModel()` 按模型从 preset 表里查真实窗口；它排在环境变量覆盖**之下**。自 2.31.0 起中间还多了一层[分层模型设置](./model-settings.md)：优先级是 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` > `modelSettings.<tier>.contextTokens` > 内置默认，那个环境变量仍然是最高优先级的纠正入口。
+唯一故意不写的是 **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`**：一个全局值描述不了一份混着不同窗口的模型表（GLM 的 203K 和 205K 就挨在一起）。改为 `getContextWindowForModel()` 按模型从 preset 表里查真实窗口；它排在环境变量覆盖**之下**。中间的[分层模型设置](./model-settings.md)优先级是 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` > `modelSettings.<slot>.contextTokens` > 内置默认，环境变量仍然是最高优先级的纠正入口。
 
 ## 三、协议（wire API）
 
@@ -63,8 +66,8 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 ## 四、模型名解析
 
-- 任意模型名（`glm-4.6`、`kimi-k2`、`deepseek-v4-pro`、`gpt-5.2`、`gemini-3-pro`）**都可透传**：设 `OPENAI_MODEL` 等单一模型键最直接；或设 `ANTHROPIC_MODEL`/`settings.model`（不含 haiku/sonnet/opus/fable 子串的名字原样透传）。
-- 含家族子串的名字按 `{PROVIDER}_DEFAULT_{FAMILY}_MODEL` → 内置家族表映射（映射逻辑在 `packages/@ant/model-provider/.../modelMapping.ts`）。
+- 任意具体模型名（`glm-4.6`、`kimi-k2`、`deepseek-v4-pro`、`gpt-5.2`、`gemini-3-pro`）**都可透传**：`/model <具体 id>` 或 `settings.model` 的显式选择优先，不会再被 provider 级 `OPENAI_MODEL` / `GEMINI_MODEL` / `GROK_MODEL` 改写。
+- 含家族子串的档位别名按 `{PROVIDER}_DEFAULT_{FAMILY}_MODEL` → provider 单模型键 → 内置家族表映射（映射逻辑在 `packages/@ant/model-provider/.../modelMapping.ts`）。
 
 ### 档位（family alias）
 
@@ -92,7 +95,7 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 配置面：`/provider` 档案随家族切换，或直接设环境变量。china preset 不写这个键 —— 它的模型窗口按模型查表（见上一节）。
 
-**首启向导 / `/login` Step 2 的 Max ctx 与 Thinking effort 字段不再写这个键**，改为落进 `settings.modelSettings` 的**分层配置**（见 `docs/zh/features/model-settings.md`）。原因就是上面这条优先级：env 是「探测不到时的最终纠正手段」，写在登录里等于让一个开场值静默压过用户此后在 `/model` 里的每一次调整。保存时会顺带删掉旧版留下的该键（字段会把旧值带过去，不丢）。两个字段留空时写入**各档位自己的家族默认值** —— 于是登录结束后 `/model-settings` 显示的是四个已配置档位，而不是四行含义会随 occ 默认表变化的 `(defaults)`。重跑向导（`/models` 或第二次 `/login`）时留空则**什么都不动**，不会把你在 `/model` 里分档调好的值压平。
+**首启向导 / `/login` Step 2 的 Max ctx 与 Thinking effort 字段不再写这个键**，改为落进 `settings.modelSettings` 的**分层配置**（见 `docs/zh/features/model-settings.md`）。原因就是上面这条优先级：env 是「探测不到时的最终纠正手段」，写在登录里等于让一个开场值静默压过用户此后在 `/model` 里的每一次调整。保存时会顺带删掉旧版留下的该键（字段会把旧值带过去，不丢）。两个字段留空时写入默认模型与各档位自己的家族默认值 —— 于是登录结束后 `/model-settings` 显示的是彼此独立的 `default` / Haiku / Sonnet / Opus / Fable。重跑向导（`/models-setting` 或第二次 `/login`）时留空则**什么都不动**，不会把你在 `/model` 里分档调好的值压平；把 Thinking effort 明确选回 `(model default)` 会删除旧覆盖并立即恢复家族默认。
 
 **按模型开启 1M 后缀**：`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔模型名/子串，大小写不敏感）。主循环模型解析后命中即自动追加 `[1m]` 后缀，等价于手选 `sonnet[1m]`——走完整的后缀链路（1M 窗口 **+ 1M beta 头**），适用于支持 1M 上下文的 Anthropic 系模型；已带后缀的模型不重复追加。第三方模型只需要窗口数值时，用 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 即可，无需该开关。
 
@@ -148,16 +151,17 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 
 **请求参数默认值**（用户显式设置永远优先）：
 
-- reasoning effort：未设置时 `gpt-5.6-sol` 默认 `low`（对齐 codex："Sol is highly capable at lower reasoning efforts"），其余 GPT 模型默认 `medium`。用 `CLAUDE_CODE_EFFORT_LEVEL` 或 `/model` 的 effort 档覆盖。
+- reasoning effort：GPT 家族出厂默认 `xhigh`；Responses 原样发送，Chat Completions 因协议最高只认 `high` 而夹到 `high`。`CLAUDE_CODE_EFFORT_LEVEL` 或 `/model` 当前档位的 effort 配置优先。
 - `text.verbosity`：responses 线对 GPT 模型默认发 `low`（ChatGPT OAuth 路由与官方 baseURL；第三方网关默认不发）。`OPENAI_VERBOSITY=low|medium|high` 强制指定并对任意端点放行，`=off` 强制不发。
 - 内部分类器（side query）对 GPT 模型显式用 `low` effort，不再落到服务端默认 medium。
 - `reasoning.summary` 默认发 `auto`。**不发这个字段，流里就一个推理事件都没有** —— 官方原话是"This output will not be included unless you explicitly opt in to including reasoning summaries"。occ 此前只发 `reasoning:{effort}`，于是 GPT 整个思考阶段既没有 thinking 块、spinner 也进不了 `thinking` 状态，看起来就是在发呆。`OPENAI_REASONING_SUMMARY=auto|concise|detailed` 指定详细度，`=off`（或 `0`/`false`/`none`）关闭。端点若拒收这个字段（组织未完成 verification、第三方网关不认），会**自动去掉该字段重发一次并在本次会话内不再尝试** —— 丢掉思考显示远好过丢掉这一轮。side query 恒不发（没有 UI 展示它的思考，而且会挤占本就紧张的输出预算）。
 
 **网络层**（responses 线此前是裸 fetch，无超时无重试）：
 
-- 建流重试：指数退避（200ms 起步、2 倍增长、±10% 抖动、尊重 `Retry-After`），对网络错误/5xx/408/带 `Retry-After` 的 429 重试，默认 4 次，`OPENAI_REQUEST_MAX_RETRIES` 覆盖。
-- 空闲看门狗：复用 `CLAUDE_STREAM_IDLE_TIMEOUT_MS`（默认 90s），首事件前 stall 自动重试整个请求。
-- responses 线接入代理配置（`HTTPS_PROXY` 等此前在 Bun 下对这条线不生效）；chat 线 SDK 客户端默认重试 0 → 2。
+- 每条请求 lane 默认允许 **10 次重试（初始请求之外，最多 11 次总尝试）**。网络/传输错误、408/409/425/429/5xx、无状态的上游失败与 provider 瞬态合成错误进入同一预算；认证、权限、无效请求、模型不存在等永久 4xx 只尝试一次。`CLAUDE_CODE_MAX_RETRIES` 覆盖通用/Anthropic 与 OpenAI chat、Gemini、Grok lane，`OPENAI_REQUEST_MAX_RETRIES` 覆盖 Responses 建流；两个覆盖都校验并夹在 `0..10`。
+- 退避尊重 `Retry-After`；Responses 使用 200ms 起步、2 倍增长、±10% 抖动。SDK 内建重试在外层拥有预算的 chat lane 关闭，Responses 自己耗尽建流预算后也会打标，避免外层再叠一条 10 次预算。
+- 空闲看门狗复用 `CLAUDE_STREAM_IDLE_TIMEOUT_MS`（默认 90s）：只有在尚未向外产出模型事件时才重试；一旦已产出文本、thinking 或工具参数就不回放，避免重复输出或工具调用。
+- Responses 线接入代理配置（`HTTPS_PROXY` 等此前在 Bun 下对这条线不生效）。
 
 ## 五点七、DeepSeek 调优（仅请求 DeepSeek 模型时生效）
 

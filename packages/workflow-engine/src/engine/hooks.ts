@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import {
   AGENT_MAX_RETRIES_BY_REASON,
   MAX_ITEMS_PER_CALL,
@@ -12,7 +13,11 @@ import type {
 } from '../types.js'
 import type { EngineContext } from './context.js'
 import { WorkflowAbortedError, WorkflowError } from './errors.js'
-import { agentCallKey } from './journal.js'
+import {
+  agentCallKey,
+  journalEntryMatches,
+  resumePolicySelectsAgent,
+} from './journal.js'
 import { retryDelayMs } from './retryBackoff.js'
 import type { WorkflowHooks } from './script.js'
 
@@ -34,6 +39,7 @@ type HookProgressInit =
       label?: string
       phase?: string
       result: AgentRunResult
+      execution: 'replayed' | 'live'
     }
   | {
       type: 'agent_progress'
@@ -68,6 +74,39 @@ export function makeHooks(
     } as ProgressEvent)
   }
 
+  const markJournalDivergence = (
+    agentId: number,
+    reason: 'identity' | 'output' | 'incomplete',
+  ): void => {
+    const state = ctx.resumeState
+    if (!state) return
+    if (state.divergentFrom !== null && state.divergentFrom <= agentId) {
+      return
+    }
+    state.divergentFrom = agentId
+    // Separate from divergentFrom, which scope:"all" pre-seeds to 0 to force every
+    // call live. Only an *observed* divergence proves the cached suffix is wrong, and
+    // that is the one thing allowed to delete records this attempt never visited.
+    state.observedDivergentFrom = agentId
+    state.journalNeedsRewrite = true
+    ctx.journalInvalidated = true
+    const discarded = [...state.journalBySeq.keys()].filter(
+      seq => seq >= agentId,
+    ).length
+    // Agent ids are 0-based on every surface that shows them (progress rows,
+    // resumePolicy selectors, the cancel input), so the message uses the id itself
+    // rather than a 1-based "call #N" the user would then have to translate back.
+    const at = `agentId ${agentId} (0-based)`
+    const message =
+      reason === 'identity'
+        ? `journal diverged at ${at} — ${state.replayedCount} cached result(s) replayed, ${discarded} discarded; the rest runs live`
+        : reason === 'output'
+          ? `rerun output diverged at ${at} — cached suffix discarded; the rest runs live`
+          : `journal has no completed call at ${at} — cached suffix discarded; the rest runs live`
+    ctx.ports.logger.warn?.(`resume ${ctx.runId}: ${message}`)
+    emit({ type: 'log', message })
+  }
+
   const agent: WorkflowHooks['agent'] = async (prompt, opts = {}) => {
     const r = ctx.resources
     if (r.agentCountBox.value >= MAX_TOTAL_AGENTS) {
@@ -85,67 +124,139 @@ export function makeHooks(
     const phase =
       (opts.phase as string | undefined) ?? ctx.currentPhase ?? undefined
 
-    // Journal hit -> return cached result directly. A dead entry is a recorded
-    // failure, not a result: consume its slot positionally and fall through to a
-    // live re-run — resume exists to retry failures, not to replay them.
-    let replayDeadIdx: number | null = null
-    if (!ctx.journalInvalidated && ctx.journalIndex < ctx.journal.length) {
-      const entry = ctx.journal[ctx.journalIndex]!
-      if (entry.key === key) {
-        if (entry.result.kind === 'dead') {
-          replayDeadIdx = ctx.journalIndex
-          ctx.journalIndex++
-        } else {
-          ctx.journalIndex++
-          emit({
-            type: 'agent_done',
-            agentId,
-            label,
-            phase,
-            result: entry.result,
-          })
-          return resultToOutput(entry.result)
-        }
-      } else {
-        // Divergence: atomically persist the valid prefix before live suffixes
-        // append, otherwise the next resume diverges at the first old record again.
-        //
-        // Report it. The cache key is sha256(prompt + canonical params), so any
-        // change to what the agents are asked — including one that only reaches
-        // the prompts through `args` — misses at this position and discards
-        // every checkpoint from here on. Silently that reads as "resume worked",
-        // and the only symptom is the wall-clock of a full re-run.
-        const replayed = ctx.journalIndex
-        const discarded = ctx.journal.length - ctx.journalIndex
-        ctx.ports.logger.warn?.(
-          `resume ${ctx.runId}: journal diverged at call #${replayed + 1} (prompt or params changed) — ${replayed} replayed, ${discarded} discarded and re-running live`,
-        )
-        emit({
-          type: 'log',
-          message: `journal diverged at call #${replayed + 1} — ${replayed} cached result(s) replayed, ${discarded} discarded; the rest runs live`,
-        })
-        ctx.journalInvalidated = true
-        ctx.journal = ctx.journal.slice(0, ctx.journalIndex)
-        const store = ctx.ports
-          .journalStore as typeof ctx.ports.journalStore & {
-          rewrite?: (runId: string, entries: JournalEntry[]) => Promise<void>
-        }
-        if (store.rewrite) {
-          await store.rewrite(ctx.runId, ctx.journal)
-        } else {
-          await store.truncate(ctx.runId)
-          for (const prefixEntry of ctx.journal) {
-            await store.append(ctx.runId, prefixEntry)
+    // Resume decisions are serialized, not backend work. A lower selected/dead/incomplete
+    // call can change the prompts or control flow of every later call; later decisions wait
+    // for that uncertain output before deciding whether their checkpoint is still valid.
+    const resumeState = ctx.resumeState
+    let priorEntry: JournalEntry | undefined
+    let priorEntryMissing = false
+    // Two ways this call's resume outcome can be closed out, and they mean opposite
+    // things. settleResumeOutcome carries a real result and compares it against the
+    // recorded one. abandonResumeOutcome is the early exit — kill, budget exhaustion,
+    // a configuration throw — where the call produced no output at all, so there is
+    // nothing to compare and nothing to invalidate. Collapsing the two is what used to
+    // turn Ctrl-C during a resume into a permanent journal truncation.
+    let settleResumeOutcome: ((result: AgentRunResult) => void) | undefined
+    let abandonResumeOutcome: (() => void) | undefined
+    if (resumeState) {
+      resumeState.seenAgentIds.add(agentId)
+      const previousDecision = resumeState.decisionTail
+      let releaseDecision = (): void => {}
+      resumeState.decisionTail = new Promise<void>(resolve => {
+        releaseDecision = resolve
+      })
+      await previousDecision
+      await Promise.all([...resumeState.pendingOutcomes])
+      try {
+        const entry = resumeState.journalBySeq.get(agentId)
+        const suffixAlreadyDiverged =
+          resumeState.divergentFrom !== null &&
+          agentId >= resumeState.divergentFrom
+        if (!suffixAlreadyDiverged) {
+          if (entry && !journalEntryMatches(entry, agentId, key)) {
+            markJournalDivergence(agentId, 'identity')
+          } else if (!entry) {
+            // A gap before later completed records is an incomplete call. Its output has
+            // no trustworthy baseline, so later checkpoints wait and then rerun.
+            priorEntryMissing = resumeState.maxJournalSeq > agentId
+          } else if (
+            entry.result.kind !== 'dead' &&
+            !resumePolicySelectsAgent(resumeState.policy, agentId)
+          ) {
+            ctx.journalIndex++
+            resumeState.reachedEntries.set(agentId, entry)
+            resumeState.replayedCount++
+            emit({
+              type: 'agent_done',
+              agentId,
+              label,
+              phase,
+              result: entry.result,
+              execution: 'replayed',
+            })
+            return resultToOutput(entry.result)
+          } else {
+            priorEntry = entry
           }
         }
+
+        if (priorEntry || priorEntryMissing) {
+          let resolveOutcome = (): void => {}
+          const outcome = new Promise<void>(resolve => {
+            resolveOutcome = resolve
+          })
+          resumeState.pendingOutcomes.add(outcome)
+          let settled = false
+          const release = (): void => {
+            resumeState.pendingOutcomes.delete(outcome)
+            resolveOutcome()
+          }
+          settleResumeOutcome = result => {
+            if (settled) return
+            settled = true
+            if (
+              priorEntryMissing ||
+              (priorEntry !== undefined &&
+                !isDeepStrictEqual(
+                  resultToOutput(priorEntry.result),
+                  resultToOutput(result),
+                ))
+            ) {
+              markJournalDivergence(
+                agentId,
+                priorEntryMissing ? 'incomplete' : 'output',
+              )
+            }
+            release()
+          }
+          abandonResumeOutcome = () => {
+            if (settled) return
+            settled = true
+            // No divergence: the recorded entry is still the newest thing known
+            // about this call, and every later checkpoint stays valid too.
+            release()
+          }
+        }
+      } finally {
+        releaseDecision()
       }
     }
 
-    let release: () => void
+    const finishLiveResult = async (result: AgentRunResult): Promise<void> => {
+      emit({
+        type: 'agent_done',
+        agentId,
+        label,
+        phase,
+        result,
+        execution: 'live',
+      })
+      const entry: JournalEntry = { key, seq: agentId, result }
+      const existingIndex = ctx.journal.findIndex(
+        journalEntry => journalEntry.seq === agentId,
+      )
+      if (existingIndex >= 0) ctx.journal[existingIndex] = entry
+      else ctx.journal.push(entry)
+      if (resumeState) {
+        resumeState.liveCount++
+        resumeState.reachedEntries.set(agentId, entry)
+        resumeState.journalBySeq.set(agentId, entry)
+      }
+      try {
+        await ctx.ports.journalStore.append(ctx.runId, entry)
+      } finally {
+        settleResumeOutcome?.(result)
+        settleResumeOutcome = undefined
+        abandonResumeOutcome = undefined
+      }
+    }
+
+    let release: (() => void) | undefined
     try {
       release = await ctx.resources.semaphore.acquire(ctx.signal)
     } catch {
       // Queued wait during abort: the semaphore already removed the waiter and did not consume a permit
+      abandonResumeOutcome?.()
       throw new WorkflowAbortedError()
     }
     try {
@@ -158,7 +269,7 @@ export function makeHooks(
       const pending = ctx.ports.taskRegistrar.pendingAction(ctx.runId)
       if (pending?.kind === 'skip') {
         const result: AgentRunResult = { kind: 'skipped' }
-        emit({ type: 'agent_done', agentId, label, phase, result })
+        await finishLiveResult(result)
         return null
       }
 
@@ -349,25 +460,15 @@ export function makeHooks(
       if (result.kind === 'ok') {
         ctx.resources.budget.addOutputTokens(result.usage.outputTokens)
       }
-      emit({ type: 'agent_done', agentId, label, phase, result })
-
-      const entry: JournalEntry = { key, seq: agentId, result }
-      if (replayDeadIdx !== null) {
-        // Re-run of a dead journal entry: replace the slot in place (its index was
-        // already consumed, so pushing would desync positional replay for the
-        // remaining entries). The store append reuses the same seq; read()'s
-        // keep-last dedupe makes the fresh result supersede the recorded failure.
-        ctx.journal[replayDeadIdx] = entry
-      } else {
-        // Key point: push order = completion order (not call order); read() already re-sorts by seq,
-        // so during resume the call order aligns with the journal order and the key index stays stable.
-        ctx.journal.push(entry)
-        ctx.journalIndex++
-      }
-      await ctx.ports.journalStore.append(ctx.runId, entry)
+      await finishLiveResult(result)
       return resultToOutput(result)
     } finally {
-      release()
+      // Reached only when the call left without a result (kill, budget exhaustion,
+      // an adapter configuration throw). Releasing the waiters is required — later
+      // resume decisions block on this outcome — but the release must not claim the
+      // cached suffix is stale, because nothing was produced to contradict it.
+      abandonResumeOutcome?.()
+      release?.()
     }
   }
 

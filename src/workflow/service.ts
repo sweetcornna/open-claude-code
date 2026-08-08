@@ -1,12 +1,18 @@
 import {
+  isScriptChanged,
+  isSelectiveResumePolicy,
   listNamedWorkflows,
   parseScript,
   persistInlineScript,
+  recordScriptHash,
   resolveNamedWorkflow,
   runWorkflow,
+  scopeWorkflowPortsToTaskInstance,
   type WorkflowHostContext,
-  type WorkflowInput,
   type WorkflowPorts,
+  type WorkflowRunInput,
+  type WorkflowRunResult,
+  type WorkflowTaskInstanceId,
 } from '@open-claude-code/workflow-engine'
 import { feature } from 'bun:bundle'
 import { readFile } from 'node:fs/promises'
@@ -16,12 +22,7 @@ import { PROJECT_DIR_NAME } from '../config/paths.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { buildHostBundle, makeHostHandle } from './hostHandle.js'
 import { installWorkflowNotifications } from './notifications.js'
-import {
-  attachRunStatePersistence,
-  getRunsDir,
-  listPersistedRuns,
-  readRunState,
-} from './persistence.js'
+import { getRunsDir, listPersistedRuns, readRunState } from './persistence.js'
 
 /**
  * How many newest persisted runs to hydrate into the store on panel open. Tuned to cover a normal
@@ -72,20 +73,27 @@ export type WorkflowService = {
   /** Panel/tool launches a workflow: parse script → register → detached runWorkflow. */
   launch(
     input: Pick<
-      WorkflowInput,
+      WorkflowRunInput,
       | 'script'
       | 'name'
       | 'scriptPath'
       | 'args'
       | 'description'
       | 'resumeFromRunId'
+      | 'resumePolicy'
       | 'title'
       | 'maxConcurrency'
     >,
     toolUseContext: ToolUseContext,
     canUseTool: CanUseToolFn,
-  ): Promise<{ runId: string; scriptPath?: string }>
-  kill(runId: string): void
+  ): Promise<{
+    runId: string
+    taskId?: string
+    disposition: 'created' | 'existing'
+    scriptPath?: string
+  }>
+  /** Cancel the active run and report whether a canonical owner was hit. */
+  kill(runId: string): boolean
   /**
    * Aborts a single agent (does not affect other agents in the same run; workflow keeps running).
    * Returns whether the agent was hit (false = agent already finished/does not exist). An aborted agent returns dead → null.
@@ -121,12 +129,8 @@ export function getWorkflowService(): WorkflowService {
   const store = createProgressStoreFromBus(bus)
   const ports = createWorkflowPorts({ bus, store })
   const service = makeService(ports, store)
-  // Subscribe to run_done to write the terminal snapshot to disk (shared entry for completed/failed/killed; shutdown-kill also routes here).
-  // ORDER MATTERS: the store subscribed to the bus above, and the bus dispatches in subscription
-  // order, so by the time this listener runs store.get(runId) is already terminal — including the
-  // store's sweep of agents left 'running' by a killed run. Swapping these two lines persists
-  // mid-flight agents into state.json (see the note in attachRunStatePersistence).
-  attachRunStatePersistence(bus, store)
+  // Terminal persistence is owned by the task registrar: it reads this same store
+  // after run_done and awaits state.json before releasing the live binding.
   // Install the state-change notification bridge (commit 0768d4dc promised "auto-notify on completion" but the old implementation left it unfulfilled)
   installWorkflowNotifications(service)
   // Stream live phase/agent progress into the registered background task so the footer
@@ -213,10 +217,21 @@ export function makeService(
   // Reset on scan failure to allow next retry. Each makeService call has its own closure variable (reset when tests build a new service).
   let persistedLoaded = false
 
-  return {
+  const service: WorkflowService = {
     ports,
 
     async launch(input, toolUseContext, canUseTool) {
+      if (input.resumeFromRunId) {
+        const active = ports.taskRegistrar.getActive?.(input.resumeFromRunId)
+        if (active) {
+          return {
+            runId: active.runId,
+            ...(active.taskId ? { taskId: active.taskId } : {}),
+            disposition: 'existing',
+          }
+        }
+      }
+
       const { script, workflowFile, workflowName } = await resolveSource(input)
       try {
         parseScript(script)
@@ -225,7 +240,45 @@ export function makeService(
       }
 
       const host = buildHost(toolUseContext, canUseTool)
-      const { runId, signal } = ports.taskRegistrar.register(
+
+      // Same script-hash contract as the Workflow tool, and it has to be the same or
+      // the two entries fight: the panel used to launch runs without ever writing
+      // script.sha256, so every later selective resume of a panel-started run failed
+      // with "requires an unchanged workflow script" against a hash that was never
+      // recorded. Read here, recorded only after this call wins registration.
+      const selective =
+        input.resumePolicy !== undefined &&
+        isSelectiveResumePolicy(input.resumePolicy)
+      let scriptChanged = false
+      if (input.resumeFromRunId) {
+        try {
+          scriptChanged = await isScriptChanged({
+            script,
+            runId: input.resumeFromRunId,
+            cwd: host.cwd,
+            workflowRunsDir: OCC_WORKFLOW_RUNS_DIR,
+          })
+        } catch (e) {
+          if (selective) {
+            throw new Error(
+              `Selective resume could not verify the prior script hash: ${(e as Error).message}`,
+            )
+          }
+          // A resume without trustworthy hash state must not replay checkpoints
+          // from a script we can no longer prove is identical.
+          scriptChanged = true
+          logForDebugging(
+            `workflow script hash check failed: ${(e as Error).message}`,
+          )
+        }
+        if (scriptChanged && selective) {
+          throw new Error(
+            'Selective resume requires an unchanged workflow script; use resume scope "all" to rerun the changed script',
+          )
+        }
+      }
+
+      const registration = ports.taskRegistrar.register(
         {
           workflowName,
           ...(workflowFile ? { workflowFile } : {}),
@@ -235,6 +288,14 @@ export function makeService(
         },
         host.handle,
       )
+      const { runId, signal, instanceId } = registration
+      if (registration.disposition === 'existing') {
+        return {
+          runId,
+          ...(registration.taskId ? { taskId: registration.taskId } : {}),
+          disposition: 'existing',
+        }
+      }
 
       // Inline entry: persist script to the run directory (symmetric with WorkflowTool), return a reusable path.
       // Degrade on write failure (log), do not block the run (script is already in memory).
@@ -254,59 +315,104 @@ export function makeService(
         }
       }
 
+      // Past the single-flight gate: only the launch that actually runs this script
+      // may stamp the run with its hash (see the tool's copy for why the loser of two
+      // concurrent resumes must not).
+      try {
+        await recordScriptHash({
+          script,
+          runId,
+          cwd: host.cwd,
+          workflowRunsDir: OCC_WORKFLOW_RUNS_DIR,
+        })
+      } catch (e) {
+        logForDebugging(
+          `workflow script hash persistence failed: ${(e as Error).message}`,
+        )
+      }
+
       const launchConcurrency =
         input.maxConcurrency ?? workflowDefaultMaxConcurrency()
 
       // detached: do not await, let the caller get runId immediately; on completion route to the registrar.
-      void runWorkflow({
-        script,
-        ...(input.args !== undefined ? { args: input.args } : {}),
+      const runPorts = scopeWorkflowPortsToTaskInstance(
+        ports,
+        runId,
+        instanceId,
+      )
+      void settleServiceRun(
+        runWorkflow({
+          script,
+          ...(input.args !== undefined ? { args: input.args } : {}),
+          runId,
+          workflowName,
+          ...(registration.taskId ? { taskId: registration.taskId } : {}),
+          ...(instanceId !== undefined ? { instanceId } : {}),
+          ports: runPorts,
+          host: host.handle,
+          signal,
+          cwd: host.cwd,
+          budgetTotal: host.budgetTotal,
+          // Explicit input wins; otherwise OCC_WORKFLOW_MAX_CONCURRENCY, otherwise the
+          // engine's DEFAULT_MAX_CONCURRENCY. Same precedence as the Workflow tool path.
+          ...(launchConcurrency !== undefined
+            ? { maxConcurrency: launchConcurrency }
+            : {}),
+          ...(input.resumeFromRunId
+            ? {
+                resume: true,
+                scriptChanged,
+                ...(input.resumePolicy
+                  ? { resumePolicy: input.resumePolicy }
+                  : {}),
+              }
+            : {}),
+          ...(retryBackoffMs !== undefined ? { retryBackoffMs } : {}),
+          workflowDir: OCC_WORKFLOW_DIR,
+        }),
+        ports,
+        runPorts,
         runId,
         workflowName,
-        ports,
-        host: host.handle,
-        signal,
-        cwd: host.cwd,
-        budgetTotal: host.budgetTotal,
-        // Explicit input wins; otherwise OCC_WORKFLOW_MAX_CONCURRENCY, otherwise the
-        // engine's DEFAULT_MAX_CONCURRENCY. Same precedence as the Workflow tool path.
-        ...(launchConcurrency !== undefined
-          ? { maxConcurrency: launchConcurrency }
-          : {}),
-        ...(input.resumeFromRunId ? { resume: true } : {}),
-        ...(retryBackoffMs !== undefined ? { retryBackoffMs } : {}),
-        workflowDir: OCC_WORKFLOW_DIR,
+        registration.taskId,
+        instanceId,
+      ).catch(e => {
+        // Terminal safety net for a detached promise. settleServiceRun already
+        // handles every failure it can attribute to the run; anything reaching here
+        // failed while *reporting* one, and an unhandled rejection here would take
+        // the session down rather than one workflow.
+        logForDebugging(
+          `workflow ${runId} settlement failed: ${(e as Error).message}`,
+        )
       })
-        .then(result => {
-          if (result.status === 'completed') {
-            ports.taskRegistrar.complete(runId)
-          } else if (result.status === 'failed') {
-            ports.taskRegistrar.fail(runId, result.error ?? 'failed')
-          } else {
-            ports.taskRegistrar.kill(runId)
-          }
-        })
-        .catch(e => ports.taskRegistrar.fail(runId, (e as Error).message))
 
       logForDebugging(`workflow launched: ${runId} (${workflowName})`)
       return {
         runId,
+        ...(registration.taskId ? { taskId: registration.taskId } : {}),
+        disposition: 'created',
         ...(persistedScriptPath ? { scriptPath: persistedScriptPath } : {}),
       }
     },
 
     kill(runId) {
-      ports.taskRegistrar.kill(runId)
+      return ports.taskRegistrar.kill(runId) === true
     },
     killAgent(runId, agentId) {
       return ports.taskRegistrar.killAgent?.(runId, agentId) ?? false
     },
 
     shutdown() {
-      // Only kill running: for completed/failed runs the taskRegistrar has already reclaimed the binding, kill is a no-op.
-      // taskRegistrar.kill is a safe no-op for unknown runIds, hence idempotent — multiple shutdowns do not throw repeatedly.
-      // Each kill is wrapped in its own try/catch: kill internally routes through setAppState, and process-exit phase triggers a React re-render
-      // which may throw (render already unmounted, etc.); a single failure should not block cleanup of other runs.
+      // Production ports own the canonical binding registry, including runs that
+      // have registered but have not emitted run_started yet. Prefer that source
+      // over the progress snapshot so shutdown cannot miss a wrapper taskId/runId
+      // mismatch or a journal-read startup window.
+      if (ports.taskRegistrar.killAll) {
+        ports.taskRegistrar.killAll()
+        return
+      }
+
+      // Backward-compatible standalone ports fall back to the progress store.
       for (const run of store.list()) {
         if (run.status !== 'running') continue
         try {
@@ -353,6 +459,72 @@ export function makeService(
         workflowDir ?? join(getProjectRoot(), OCC_WORKFLOW_DIR),
       )
     },
+  }
+
+  // Host facade for the package-level Workflow tool. It reads the existing live
+  // store first and uses getRunAsync's state.json fallback without maintaining a
+  // second run registry.
+  ports.runStatusReader = {
+    async getRun(runId) {
+      const run = await service.getRunAsync(runId)
+      return run
+        ? {
+            ...run,
+            agents: [...run.agents],
+            runDir: join(runsDirProvider(), runId),
+          }
+        : undefined
+    },
+  }
+  return service
+}
+
+async function settleServiceRun(
+  promise: Promise<WorkflowRunResult>,
+  ports: WorkflowPorts,
+  runPorts: WorkflowPorts,
+  runId: string,
+  workflowName: string,
+  taskId: string | undefined,
+  instanceId: WorkflowTaskInstanceId | undefined,
+): Promise<void> {
+  let result: WorkflowRunResult
+  try {
+    result = await promise
+  } catch (error) {
+    const message = (error as Error).message
+    runPorts.progressEmitter.emit({
+      type: 'run_done',
+      runId,
+      workflowName,
+      ...(taskId ? { taskId } : {}),
+      ...(instanceId !== undefined ? { instanceId } : {}),
+      status: 'failed',
+      error: message,
+    })
+    await ports.taskRegistrar.fail(runId, message, instanceId)
+    return
+  }
+  // Bookkeeping only, and deliberately outside the try that owns the run's outcome:
+  // complete/fail/kill persist state.json and evict the wrapper task, so a throw
+  // there means "the record could not be written", not "the workflow failed".
+  // Sharing one catch turned a successful run into a failed one.
+  try {
+    if (result.status === 'completed') {
+      await ports.taskRegistrar.complete(runId, undefined, instanceId)
+    } else if (result.status === 'failed') {
+      await ports.taskRegistrar.fail(
+        runId,
+        result.error ?? 'failed',
+        instanceId,
+      )
+    } else {
+      await ports.taskRegistrar.kill(runId, instanceId)
+    }
+  } catch (error) {
+    logForDebugging(
+      `workflow ${runId} finished ${result.status} but bookkeeping failed: ${(error as Error).message}`,
+    )
   }
 }
 

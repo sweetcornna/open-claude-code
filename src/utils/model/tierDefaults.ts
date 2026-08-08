@@ -47,7 +47,7 @@ import type { ModelTier } from './modelTier.js'
 export type TierEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 /** Provider families that get their own defaults. */
-export type ProviderFamily =
+type ProviderFamily =
   | 'deepseek'
   | 'gpt'
   | 'claude'
@@ -65,6 +65,16 @@ export type TierDefaults = {
 }
 
 /**
+ * OpenAI's reasoning line: `o1`, `o1-mini`, `o3`, `o3-mini`, `o4-mini`.
+ *
+ * They are GPT-family models with none of the GPT-family spelling, so without
+ * this they landed in `other` and were handed the 200k fallback instead of the
+ * 272k budget the rest of the family gets. Anchored and digit-gated so it cannot
+ * reach `opus`, `openai/…` or anything else that merely starts with an "o".
+ */
+const O_SERIES_ID = /^o[1-9][0-9]?(?:[-.]|$)/
+
+/**
  * Classify a model id by provider family.
  *
  * String-only so this stays dependency-free. The equivalent predicates
@@ -74,7 +84,13 @@ export type TierDefaults = {
 export function getProviderFamily(model: string): ProviderFamily {
   const lower = model.toLowerCase()
   if (lower.includes('deepseek')) return 'deepseek'
-  if (lower.startsWith('gpt-') || lower.includes('codex')) return 'gpt'
+  if (
+    lower.startsWith('gpt-') ||
+    lower.includes('codex') ||
+    O_SERIES_ID.test(lower)
+  ) {
+    return 'gpt'
+  }
   if (lower.startsWith('gemini')) return 'gemini'
   if (lower.startsWith('grok')) return 'grok'
   if (

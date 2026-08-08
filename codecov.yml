@@ -35,7 +35,6 @@ ignore:
   - "packages/@ant/computer-use-mcp/**"
   - "packages/@ant/computer-use-input/**"
   - "packages/@ant/computer-use-swift/**"
-  - "packages/@ant/claude-for-chrome-mcp/**"
   - "packages/audio-capture-napi/**"
   - "packages/color-diff-napi/**"
   - "packages/image-processor-napi/**"

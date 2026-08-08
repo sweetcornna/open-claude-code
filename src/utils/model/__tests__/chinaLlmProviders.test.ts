@@ -31,21 +31,19 @@ test('every preset model contextWindow parses (login flow auto-sets the limit fr
   }
 })
 
-test('every tier alias points at a model the provider actually ships', () => {
-  // The login flow writes these into OPENAI_DEFAULT_{TIER}_MODEL verbatim; a
-  // typo here is a 404 on the first request, not a load-time error.
+test('every default and tier alias points at a model the provider actually ships', () => {
+  // The login flow writes these model ids verbatim; a typo here is a 404 on the
+  // first request, not a load-time error.
   for (const provider of CHINA_LLM_PROVIDERS) {
     const ids = new Set(provider.models.map(m => m.id))
+    expect(ids.has(provider.defaultModel)).toBe(true)
     for (const tier of ['haiku', 'sonnet', 'opus', 'fable'] as const) {
       expect(ids.has(provider.tiers[tier])).toBe(true)
     }
   }
 })
 
-test('chinaProviderTierEnv never sets OPENAI_MODEL', () => {
-  // OPENAI_MODEL overrides every family alias AND every explicit `/model <id>`
-  // (see resolveOpenAIModel). Setting it would pin the session to one model,
-  // which is the exact behavior this flow moved away from.
+test('chinaProviderTierEnv keeps the provider default independent', () => {
   for (const provider of CHINA_LLM_PROVIDERS) {
     const env = chinaProviderTierEnv(provider)
     expect(Object.keys(env).sort()).toEqual([
@@ -53,8 +51,9 @@ test('chinaProviderTierEnv never sets OPENAI_MODEL', () => {
       'OPENAI_DEFAULT_HAIKU_MODEL',
       'OPENAI_DEFAULT_OPUS_MODEL',
       'OPENAI_DEFAULT_SONNET_MODEL',
+      'OPENAI_MODEL',
     ])
-    expect(env).not.toHaveProperty('OPENAI_MODEL')
+    expect(env.OPENAI_MODEL).toBe(provider.defaultModel)
   }
 })
 
@@ -67,6 +66,13 @@ test('findChinaProviderByBaseURL matches pay-as-you-go and coding-plan endpoints
   expect(findChinaProviderByBaseURL('https://API.DeepSeek.com/')?.id).toBe(
     'deepseek',
   )
+  expect(findChinaProviderByBaseURL('https://api.deepseek.com/v1')?.id).toBe(
+    'deepseek',
+  )
+  expect(
+    findChinaProviderByBaseURL('https://api.deepseek.com/v1/chat/completions')
+      ?.id,
+  ).toBe('deepseek')
   const zhipu = CHINA_LLM_PROVIDERS.find(p => p.id === 'zhipu')
   expect(findChinaProviderByBaseURL(zhipu?.codingPlan?.baseURL)?.id).toBe(
     'zhipu',

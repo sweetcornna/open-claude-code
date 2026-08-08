@@ -73,7 +73,7 @@ test('concurrent agent_done correlates by agentId precisely (regression of old L
   expect(agents.find(x => x.id === 1)?.label).toBe('b')
 })
 
-test('journal hit (agent_done without started) backfills done entry by id', () => {
+test('journal hit (agent_done without started) backfills replay execution and activity', () => {
   const { bus, store } = newStore()
   bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
   bus.emit({
@@ -83,9 +83,12 @@ test('journal hit (agent_done without started) backfills done entry by id', () =
     label: 'c',
     phase: 'A',
     result: ok('c'),
+    execution: 'replayed',
   })
   const a = store.get('r1')!.agents.find(x => x.id === 7)!
   expect(a.status).toBe('done')
+  expect(a.execution).toBe('replayed')
+  expect(typeof a.lastActivityAt).toBe('number')
 })
 
 test('run_done terminal state + list sort + subscribe notification', () => {
@@ -113,6 +116,84 @@ test('run_done failed terminal state records error', () => {
   const r = store.get('r2')!
   expect(r.status).toBe('failed')
   expect(r.error).toBe('boom')
+})
+
+test('latest wrapper task and instance identity survives terminal reduction', () => {
+  const { bus, store } = newStore()
+  bus.emit({
+    type: 'run_started',
+    runId: 'r-identity',
+    taskId: 'w-wrapper',
+    instanceId: 7,
+    workflowName: 'w',
+    meta: null,
+  })
+  bus.emit({
+    type: 'run_done',
+    runId: 'r-identity',
+    taskId: 'w-wrapper',
+    instanceId: 7,
+    workflowName: 'w',
+    status: 'completed',
+  })
+
+  expect(store.get('r-identity')).toMatchObject({
+    taskId: 'w-wrapper',
+    instanceId: 7,
+    status: 'completed',
+  })
+})
+
+test('run_started on resume resets stale instance agents, phases, output, error, and timing', () => {
+  const { bus, store } = newStore()
+  bus.emit({
+    type: 'run_started',
+    runId: 'r1',
+    workflowName: 'old',
+    meta: null,
+  })
+  bus.emit({ type: 'phase_started', runId: 'r1', phase: 'Old phase' })
+  bus.emit({ type: 'agent_started', runId: 'r1', agentId: 0, label: 'old' })
+  bus.emit({
+    type: 'run_done',
+    runId: 'r1',
+    status: 'failed',
+    returnValue: 'old result',
+    error: 'old error',
+  })
+  store.get('r1')!.startedAt = 1
+
+  bus.emit({
+    type: 'run_started',
+    runId: 'r1',
+    workflowName: 'resumed',
+    meta: { name: 'resumed', description: 'new', phases: [{ title: 'New' }] },
+  })
+
+  const resumed = store.get('r1')!
+  expect(resumed.status).toBe('running')
+  expect(resumed.workflowName).toBe('resumed')
+  expect(resumed.agents).toEqual([])
+  expect(resumed.phases).toEqual([])
+  expect(resumed.declaredPhases).toEqual(['New'])
+  expect(resumed.returnValue).toBeUndefined()
+  expect(resumed.error).toBeUndefined()
+  expect(resumed.startedAt).toBeGreaterThan(1)
+})
+
+test('remove forgets terminal progress and publishes a new snapshot', () => {
+  const { bus, store } = newStore()
+  let changes = 0
+  store.subscribe(() => changes++)
+  bus.emit({ type: 'run_started', runId: 'r1', workflowName: 'w', meta: null })
+  bus.emit({ type: 'run_done', runId: 'r1', status: 'completed' })
+  const beforeRemove = changes
+
+  store.remove('r1')
+
+  expect(store.get('r1')).toBeUndefined()
+  expect(store.list()).toEqual([])
+  expect(changes).toBe(beforeRemove + 1)
 })
 
 test('log event does not trigger notify', () => {
@@ -209,6 +290,8 @@ test('agent_progress real-time updates token/tool (correlated by agentId)', () =
   a = store.get('r1')!.agents.find(x => x.id === 0)!
   expect(a.tokenCount).toBe(2400)
   expect(a.toolCount).toBe(3)
+  expect(a.execution).toBe('live')
+  expect(typeof a.lastActivityAt).toBe('number')
 })
 
 test('agent_done persists model/tokenCount/toolCount (ok variant)', () => {

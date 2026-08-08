@@ -364,7 +364,7 @@ The unified queue is not limited to background agents. Common sources include:
 | Background shell / monitor completion or stall warning | `task-notification` | Inform the model about command status |
 | Remote agent / ultraplan / ultrareview completion | `task-notification` | Return remote results to the local model |
 | Scheduled task / cron | `prompt` | Trigger a main-model task on a schedule |
-| Chrome / MCP channel push | `prompt` | Let an external system inject a message proactively |
+| MCP channel push | `prompt` | Let an external system inject a message proactively |
 | Blocking hook error | `task-notification` | Wake the model to handle a stop-hook error |
 | Orphaned permission response | `orphaned-permission` | Handle a tool-permission response that arrives after its original request |
 

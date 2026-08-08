@@ -34,8 +34,9 @@ export interface Logger {
  *
  *   - `"read"` — visible in screenshots, NO interaction (no clicks, no typing).
  *     Browsers land here: the model can read a page that's already open, but
- *     must use the Chrome DevTools MCP for any navigation/clicking. Trading
- *     platforms land here too (no browser alternative — the model asks the user).
+ *     must use a separately configured browser automation tool for any
+ *     navigation/clicking. Trading platforms land here too (no browser
+ *     alternative — the model asks the user).
  *   - `"click"` — visible + plain left-click, scroll. NO typing/keys,
  *     NO right/middle-click, NO modifier-clicks, NO drag-drop (all text-
  *     injection vectors). Terminals/IDEs land here: the model can click a

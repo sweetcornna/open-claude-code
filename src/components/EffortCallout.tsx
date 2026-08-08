@@ -9,7 +9,7 @@ import {
   getOpusDefaultEffortConfig,
   toPersistableEffort,
 } from '../utils/model/effort.js';
-import { parseUserSpecifiedModel } from '../utils/model/model.js';
+import { getMainLoopModelSettingsSlot, parseUserSpecifiedModel } from '../utils/model/model.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
 import type { OptionWithDescription } from './CustomSelect/select.js';
 import { Select } from './CustomSelect/select.js';
@@ -48,7 +48,10 @@ export function EffortCallout({ model, onDone }: Props): React.ReactNode {
     return () => clearTimeout(timeoutId);
   }, [handleCancel]);
 
-  const defaultEffort = getDefaultEffortForModel(model);
+  // Slot-aware, like every other read of the model default: without it this
+  // dialog offered a "recommended" level derived from the family fallback while
+  // the status line and the request both used the tier the user configured.
+  const defaultEffort = getDefaultEffortForModel(model, getMainLoopModelSettingsSlot(model));
   const defaultLevel = defaultEffort ? convertEffortValueToLevel(defaultEffort) : 'high';
 
   const handleSelect = useCallback(

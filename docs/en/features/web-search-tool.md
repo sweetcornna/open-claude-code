@@ -104,7 +104,11 @@ Bing returns redirect URLs in this form: `bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 
 - The first two characters of the `u` parameter are a protocol prefix: `a1` = https, `a0` = http
 - The remainder is the real URL encoded as base64url
-- Bing-internal links and relative paths are filtered out by returning `undefined`
+- **A tracking link written as a relative path (`/ck/a?...&u=a1...`) resolves to the publisher URL too**: the real
+  URL lives inside the base64 blob, so whether the href is absolute or relative says nothing about it. Decoding
+  runs first and the shape rules apply only to what does not decode — otherwise a whole SERP that emits the
+  relative form is discarded wholesale (matching upstream free-search-mcp v0.9.2)
+- Bing-internal links and relative/anchor links that carry no decodable target are still filtered out by returning `undefined`
 
 ### 3.3 Snippet extraction (`extractSnippet()`)
 
@@ -125,17 +129,33 @@ Implemented on the client and supports subdomain matching:
 
 By default, the tool does not “select one backend.” It **runs every connected search source in parallel and merges their results**.
 
-### 4.1 Four symmetric sources (`adapters/searchSources.ts`)
+### 4.1 Seven symmetric sources (`adapters/searchSources.ts`)
+
+The table order is the panel order and the merge priority for enhancement lanes.
 
 | Source | Execution | Credentials |
 |---|---|---|
 | `anthropic` | Anthropic server-side `web_search_20250305` | Claude OAuth or `ANTHROPIC_API_KEY` |
+| `deepseek` | DeepSeek server-side `web_search_20250305`, over `<base>/anthropic` | A DeepSeek endpoint plus a key (`OPENAI_BASE_URL` pointing at api.deepseek.com) |
 | `gemini` | Gemini `generateContent` with `googleSearch` grounding | Google (Antigravity) OAuth or `GEMINI_API_KEY` |
 | `codex` | Built-in `web_search` tool in the OpenAI Responses API | ChatGPT OAuth or `OPENAI_API_KEY` |
+| `brave` | Brave LLM Context API (an independent index) | `settings.braveApiKey`, or `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
+| `exa` | Exa neural search over its MCP endpoint | `settings.exaApiKey` |
 | `free` | Keyless multi-engine fetching (ported from sweetcornna/free-search-mcp) | None |
 
 **Credentials enable a source by default**: settings store only the user's explicit changes (`webSearchSources.<id>`); untouched sources follow credential availability.
 The panel is available at `/search-setting` for enabling, signing in, and disconnecting sources.
+
+**For `brave` and `exa`, a configured key IS the credential**, with exactly the semantics a login has: no key, no
+lane; an explicit "off" always wins; ticking a source with no key cannot manufacture the capability. They are in the
+registry rather than being explicit-only picks because, previously, the only way to consult an index the user had
+paid for was `WEB_SEARCH_ADAPTER=brave` — which switches **every other source off**. The check asks each adapter
+which key it would actually send (`resolveBraveApiKey` / `resolveExaApiKey`), so "the panel says connected" and
+"the request carries a key" cannot drift apart.
+
+**`bing` is deliberately NOT in the registry**: it scrapes the same endpoint, from the same IP, that the `free`
+lane's own Bing engine already uses, so aggregating it spends one quota twice and doubles the odds of drawing the
+CAPTCHA for both. It remains available as an explicit pick (see §4.3).
 
 ### 4.2 Aggregation rules (`adapters/aggregateAdapter.ts`)
 
@@ -149,13 +169,18 @@ The panel is available at `/search-setting` for enabling, signing in, and discon
 - Gemini grounding URLs are redirect wrappers under `vertexaisearch.cloud.google.com/grounding-api-redirect/…`.
   The tool first follows them with HEAD to resolve the real URL, then applies deduplication and domain filtering.
 
-**Primary and enhancement lanes determine more than ordering; they determine how requests are sent.** Each of the three sources has its own behavior:
+**Primary and enhancement lanes determine more than ordering; they determine how requests are sent.** Each provider source has its own behavior:
 
 | Source | Primary lane | Enhancement lane |
 | --- | --- | --- |
 | `anthropic` | Uses the session's query pipeline (`ApiSearchAdapter`) | Makes an independent Messages call (`AnthropicDirectSearchAdapter`); the pipeline routes requests to the current provider, so the enhancement lane cannot use it |
+| `deepseek` | The same (the pipeline already points at DeepSeek) | An independent call that resolves the endpoint itself (`DeepSeekDirectSearchAdapter`), so it runs on any wire |
 | `gemini` | Selects the public endpoint or Antigravity according to `GEMINI_AUTH_MODE` | Uses Antigravity whenever a Google login is available |
 | `codex` | Selects an API key or ChatGPT OAuth according to `OPENAI_AUTH_MODE` | Prefers a connected ChatGPT account and falls back to the API key only when no account is signed in |
+
+`brave`, `exa` and `free` are absent from this table: none of them is any provider's own search layer, so
+`primarySourceId()` never names them and they exist only as enhancement lanes — one key, one endpoint, one
+construction.
 
 **The Gemini model must follow the route**: the Antigravity backend serves only its own model IDs (`gemini-3.1-pro-low` /
 `gemini-3.1-flash-lite` / `gemini-pro-agent`); public IDs always return 404 `Requested entity was not found`.
@@ -165,12 +190,14 @@ and **does not** forward a public `GEMINI_MODEL` value unchanged to Antigravity.
 ### 4.3 Explicit selection (skip aggregation)
 
 The `WEB_SEARCH_ADAPTER` environment variable takes precedence over `settings.webSearchAdapter`. Valid values are
-`api|codex|gemini|free|bing|brave|exa`; when a value matches, the tool **runs only that source**.
+`api|codex|deepseek|gemini|free|bing|brave|exa`; when a value matches, the tool **runs only that source**.
 An unrecognized value (for example, the removed `tavily`) silently falls back to default aggregation.
 
 Naming a source explicitly **does not** make it the session's provider. `api`/`gemini`/`codex` still determine whether they are primary or enhancement lanes according to the table in §4.2.
 
-`brave` requires `BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`; `exa` can use `exaApiKey`.
+`bing` has no other entry point (it is not in the registry; see §4.1). `brave` and `exa` now join the aggregation
+automatically once a key is configured, so naming them explicitly is only useful when you want **that source and
+nothing else** — to add one rather than replace the rest, just configure the key.
 
 ## 5. Interface definitions
 

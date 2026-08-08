@@ -104,7 +104,11 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 
 - `u` パラメータの先頭 2 文字はプロトコル接頭辞: `a1` = https、`a0` = http
 - 残りは実際の URL を base64url でエンコードしたもの
-- Bing の内部リンクと相対パスはフィルタされ、`undefined` を返す
+- **追跡リンクが相対パス（`/ck/a?...&u=a1...`）で書かれていても発行元 URL を復元できます**。実際の URL は
+  base64 の中にあり、href が絶対か相対かとは無関係です。まずデコードし、デコードできなかったものにだけ
+  形状のルールを適用します。そうしないと、相対形式を出力する SERP は 1 ページ丸ごと捨てられます
+  （上流 free-search-mcp v0.9.2 に追従）
+- デコード可能な対象を持たない Bing の内部リンクと相対 / アンカーリンクは、引き続きフィルタされ `undefined` を返す
 
 ### 3.3 概要の抽出（`extractSnippet()`）
 
@@ -125,17 +129,33 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 
 デフォルト動作は「バックエンドを 1 つ選ぶ」のではなく、**接続済みのすべての検索ソースを並列実行し、結果を 1 つにまとめる**ことです。
 
-### 4.1 対称な 4 ソース（`adapters/searchSources.ts`）
+### 4.1 対称な 7 ソース（`adapters/searchSources.ts`）
+
+表の順序がパネルの順序であり、拡張経路のマージ優先度でもあります。
 
 | ソース | 実行 | 認証情報 |
 |---|---|---|
 | `anthropic` | Anthropic server-side `web_search_20250305` | Claude OAuth または `ANTHROPIC_API_KEY` |
+| `deepseek` | DeepSeek server-side `web_search_20250305`（`<base>/anthropic` 経由） | DeepSeek エンドポイントと key（`OPENAI_BASE_URL` が api.deepseek.com を指す） |
 | `gemini` | Gemini `generateContent` + `googleSearch` grounding | Google(Antigravity) OAuth または `GEMINI_API_KEY` |
 | `codex` | OpenAI Responses API 組み込みの `web_search` ツール | ChatGPT OAuth または `OPENAI_API_KEY` |
+| `brave` | Brave LLM Context API（独立インデックス） | `settings.braveApiKey`、または `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
+| `exa` | Exa のニューラル検索（MCP エンドポイント） | `settings.exaApiKey` |
 | `free` | キー不要の複数エンジンスクレイピング（sweetcornna/free-search-mcp から移植） | なし |
 
 **認証情報があればデフォルトで有効**です。settings にはユーザーの明示的な変更（`webSearchSources.<id>`）だけを保存し、未変更のソースは認証情報の有無に従います。
 パネルは `/search-setting` にあります（選択、ログイン、切断）。
+
+**`brave` / `exa` は、設定された key がそのまま認証情報**であり、意味付けはログインと完全に同じです。key が
+なければ点灯せず、明示的な「off」が常に優先され、key のないソースにチェックを入れても能力は生まれません。
+明示指定専用ではなくレジストリに入っている理由は、それまで「ユーザーが自分で課金したインデックス」を使う
+唯一の方法が `WEB_SEARCH_ADAPTER=brave` であり、それは**他のすべてのソースを止めてしまう**からです。
+判定は各アダプタに「実際にどの key を送るか」を問い合わせます（`resolveBraveApiKey` / `resolveExaApiKey`）。
+そのため「パネルが接続済みと表示する」ことと「リクエストが key を持つ」ことがずれることはありません。
+
+**`bing` は意図的にレジストリへ入れていません**。`free` 経路の内部 Bing エンジンと同じエンドポイント・同じ
+送信元 IP を叩くため、集約に加えると 1 つのクォータを二重に消費し、両方が CAPTCHA を引く確率も倍になります。
+明示指定でなら引き続き利用できます（4.3 を参照）。
 
 ### 4.2 集約規則（`adapters/aggregateAdapter.ts`）
 
@@ -146,13 +166,18 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 - 正規化した URL（fragment、utm/gclid などの追跡パラメータ、末尾のスラッシュを除去）で重複を排除し、総数は `num_results`（デフォルト 8）を上限とする
 - Gemini の grounding URL は `vertexaisearch.cloud.google.com/grounding-api-redirect/…` というリダイレクトラッパーなので、まず HEAD のリダイレクト追跡で実際の URL を解決してから、重複排除とドメインフィルタを行う
 
-**主経路 / 拡張経路は並び順だけではなく、リクエストの送信方法も決定します**。3 つのソースはそれぞれ異なる方式を使います。
+**主経路 / 拡張経路は並び順だけではなく、リクエストの送信方法も決定します**。provider 系の各ソースはそれぞれ異なる方式を使います。
 
 | ソース | 主経路 | 拡張経路 |
 | --- | --- | --- |
 | `anthropic` | セッション自身の query パイプライン（`ApiSearchAdapter`）を通す | 独立した Messages 呼び出し（`AnthropicDirectSearchAdapter`）。パイプラインはリクエストを現在の provider へルーティングするため、拡張経路では使えない |
+| `deepseek` | 同上（パイプラインが元から DeepSeek を指している） | 自分でエンドポイントを解決する独立呼び出し（`DeepSeekDirectSearchAdapter`）。どの wire でも動く |
 | `gemini` | `GEMINI_AUTH_MODE` に基づいて公開エンドポイントか Antigravity を選ぶ | Google ログインがあれば Antigravity を使う |
 | `codex` | `OPENAI_AUTH_MODE` に基づいて API key か ChatGPT OAuth を選ぶ | 接続済みの ChatGPT アカウントを優先し、未ログインの場合だけ API key へフォールバックする |
+
+`brave` / `exa` / `free` はこの表に含まれません。いずれも特定の provider 固有の検索層ではないため
+`primarySourceId()` が選ぶことはなく、拡張経路という形態しか持ちません（key 1 つ、エンドポイント 1 つ、
+構築 1 通り）。
 
 **Gemini のモデルはルートに合わせる必要があります**。Antigravity バックエンドは固有の model id（`gemini-3.1-pro-low` /
 `gemini-3.1-flash-lite` / `gemini-pro-agent`）だけを提供し、公開 id はすべて 404 `Requested entity was not found` を返します。
@@ -162,12 +187,14 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 ### 4.3 明示指定（集約をスキップ）
 
 `WEB_SEARCH_ADAPTER` 環境変数 > `settings.webSearchAdapter` の順で優先し、値は
-`api|codex|gemini|free|bing|brave|exa` です。一致した場合は**そのソースだけ**を実行します。
+`api|codex|deepseek|gemini|free|bing|brave|exa` です。一致した場合は**そのソースだけ**を実行します。
 認識できない値（削除済みの `tavily` など）は、何も表示せずにデフォルトの集約へフォールバックします。
 
 ソースの明示指定は、そのソースをセッションの provider にするものではありません。`api`/`gemini`/`codex` は引き続き 4.2 の表に従って主経路か拡張経路かを決定します。
 
-`brave` には `BRAVE_SEARCH_API_KEY` または `BRAVE_API_KEY` が必要です。`exa` には `exaApiKey` を設定できます。
+`bing` の入口はこれだけです（レジストリには入りません。理由は 4.1）。`brave` と `exa` は key を設定すれば
+自動的に集約へ参加するため、明示指定の用途は**そのソースだけを使いたい場合**に限られます。他を止めずに
+追加したいなら、key を設定するだけで十分です。
 
 ## 5. インターフェース定義
 

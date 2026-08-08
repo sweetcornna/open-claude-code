@@ -76,6 +76,13 @@ test('China-preset models resolve their real window per model, not the 200k fall
   expect(getContextWindowForModel('glm-4.7-flash')).toBe(203_000)
 })
 
+test('GPT models use the 272k family default unless explicitly overridden', () => {
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
+  delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+  expect(getContextWindowForModel('gpt-5.6-sol')).toBe(272_000)
+  expect(getContextWindowForModel('gpt-5.6-terra')).toBe(272_000)
+})
+
 test('the env override still wins over the preset lookup', () => {
   // The preset table is detection, not a second override — CLAUDE.md pins
   // CLAUDE_CODE_MAX_CONTEXT_TOKENS as the single correction knob.

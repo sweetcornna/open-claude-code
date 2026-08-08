@@ -2,7 +2,8 @@ import { mock, describe, expect, test } from 'bun:test'
 
 mock.module('bun:bundle', () => ({ feature: () => false }))
 
-const { formatCompactSummary } = await import('../prompt')
+const { formatCompactSummary, getCompactPrompt, getCompactUserSummaryMessage } =
+  await import('../prompt')
 
 describe('formatCompactSummary', () => {
   test('strips <analysis>...</analysis> block', () => {
@@ -76,5 +77,33 @@ describe('formatCompactSummary', () => {
     const result = formatCompactSummary(input)
     expect(result).toContain('middle text')
     expect(result).toContain('final')
+  })
+})
+
+describe('compact instruction boundaries', () => {
+  test('excludes the compaction request from the generated summary', () => {
+    const prompt = getCompactPrompt('focus on the latest changes')
+
+    expect(prompt).toContain('internal compaction orchestration')
+    expect(prompt).toContain('from the summary and from "All user messages"')
+    expect(prompt).toContain(
+      'Never preserve it as an instruction for the continuing session.',
+    )
+  })
+
+  test('restored summaries preserve original instruction scope', () => {
+    const message = getCompactUserSummaryMessage(
+      '<summary>The latest turn required text-only output.</summary>',
+      true,
+    )
+
+    expect(message).toContain('Treat it as historical reference')
+    expect(message).toContain('retain their original author and scope')
+    expect(message).toContain(
+      'a one-turn or compaction-only instruction is not renewed',
+    )
+    expect(message).toContain(
+      'Continue the conversation from where it left off',
+    )
   })
 })

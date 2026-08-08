@@ -144,8 +144,7 @@ bun run build    # 构建
 | **自定义模型供应商** | OpenAI 兼容（GPT/GLM/Kimi/DeepSeek）/ Anthropic 兼容 / Gemini / Grok，可配协议、模型与最大上下文 | [文档](./docs/zh/features/providers.md) |
 | Voice Mode | 语音输入，支持豆包（`/voice doubao`） | [文档](./docs/zh/features/voice-mode.md) |
 | Computer Use | 屏幕截图、键鼠控制 | [文档](./docs/zh/features/computer-use.md) |
-| **Chrome 浏览器工具** | `occ --chrome` 接上 Google `chrome-devtools-mcp`：导航、点击、快照、控制台/网络、性能 trace。改页面的操作都要确认 | [文档](./docs/zh/features/chrome-devtools-mcp.md) |
-| Chrome Use（第三方） | 另一套方案：`hangwin/mcp-chrome` 扩展 | [文档](./docs/zh/features/chrome-use-mcp.md) |
+| 浏览器 MCP（用户配置） | 通过普通 MCP 配置接入任意浏览器 MCP；`chrome-devtools`、`mcp-chrome` 等名称均不保留 | [文档](./docs/zh/extensibility/mcp-configuration.mdx) |
 | /dream 记忆整理 | 自动整理和优化记忆文件 | [文档](./docs/zh/features/auto-dream.md) |
 
 ## Feature Flags

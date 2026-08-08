@@ -22,25 +22,36 @@ import {
   ANTIGRAVITY_API_BASE_DAILY,
   ANTIGRAVITY_USER_AGENT,
 } from 'src/services/auth/antigravity/constants.js'
+import {
+  buildProviderResourceURL,
+  normalizeProviderBaseURL,
+} from 'src/utils/network/providerUrl.js'
 import type {
   GeminiGenerateContentRequest,
   GeminiStreamChunk,
 } from '@ant/model-provider'
 
-const ANTIGRAVITY_STREAM_PATH = '/v1internal:streamGenerateContent'
+const ANTIGRAVITY_STREAM_PATH = 'v1internal:streamGenerateContent'
 
 /**
- * Base URL for Antigravity traffic. GEMINI_BASE_URL still wins so a user
- * fronting the backend with a proxy keeps working; otherwise the `daily-` host
- * the IDE itself prefers is used.
+ * Base URL for Antigravity traffic. It has a dedicated override because a
+ * public Gemini base ends in `/v1beta` and cannot also be the root of the
+ * Antigravity `/v1internal` protocol.
  */
 export function getAntigravityBaseUrl(): string {
-  const override = process.env.GEMINI_BASE_URL?.trim()
-  return (override || ANTIGRAVITY_API_BASE_DAILY).replace(/\/+$/, '')
+  return normalizeProviderBaseURL(
+    process.env.ANTIGRAVITY_BASE_URL?.trim() || ANTIGRAVITY_API_BASE_DAILY,
+    'antigravity',
+  )
 }
 
 export function antigravityStreamUrl(): string {
-  return `${getAntigravityBaseUrl()}${ANTIGRAVITY_STREAM_PATH}?alt=sse`
+  return buildProviderResourceURL(
+    getAntigravityBaseUrl(),
+    'antigravity',
+    ANTIGRAVITY_STREAM_PATH,
+    { alt: 'sse' },
+  )
 }
 
 export function antigravityHeaders(

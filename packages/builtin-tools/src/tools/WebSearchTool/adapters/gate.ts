@@ -15,7 +15,8 @@
  *     to surface as an error instead.
  *
  * Ported from free-search-mcp's `_GATE_MARKERS` (sweetcornna/free-search-mcp @
- * v0.9.1, 7933a002). The markers are the load-bearing part and they rot with
+ * v0.9.2, 3d462eb5 — that release left the markers untouched, only the Bing
+ * click-tracking unwrap changed). The markers are the load-bearing part and they rot with
  * the SERPs; re-check them against that file when an engine starts returning
  * suspiciously empty runs.
  */

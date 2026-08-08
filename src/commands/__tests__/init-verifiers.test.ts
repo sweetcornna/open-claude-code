@@ -74,9 +74,14 @@ describe('init-verifiers getPromptForCommand', () => {
     expect(result[0].text).toContain('Phase 5')
   })
 
-  test('text mentions Playwright', async () => {
+  test('text keeps browser MCP discovery vendor-neutral', async () => {
     const result = await initVerifiers.getPromptForCommand()
+    expect(result[0].text).toContain(
+      'already-configured browser automation servers',
+    )
     expect(result[0].text).toContain('Playwright')
+    expect(result[0].text).not.toContain('Chrome DevTools MCP')
+    expect(result[0].text).not.toContain('Claude Chrome Extension')
   })
 
   test('text mentions SKILL.md template', async () => {

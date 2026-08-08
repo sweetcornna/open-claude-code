@@ -9,8 +9,8 @@ import { CLI_CU_CAPABILITIES, COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
 import { getChicagoCoordinateMode } from './gates.js'
 
 /**
- * Build the dynamic MCP config + allowed tool names. Mirror of
- * `setupChromeDevtools`. The `mcp__computer-use__*` tools are added to
+ * Build the dynamic MCP config + allowed tool names. The
+ * `mcp__computer-use__*` tools are added to
  * `allowedTools` so they bypass the normal permission prompt — the package's
  * `request_access` handles approval for the whole session.
  *
@@ -31,7 +31,7 @@ export function setupComputerUseMCP(): {
 
   // command/args are never spawned — client.ts intercepts by name and
   // uses the in-process server. The config just needs to exist with
-  // type 'stdio' to hit the right branch. Mirrors Chrome's setup.
+  // type 'stdio' to hit the right branch.
   const args = isInBundledMode()
     ? ['--computer-use-mcp']
     : [join(distRoot, 'cli.js'), '--computer-use-mcp']

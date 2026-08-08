@@ -16,6 +16,7 @@ import { getCwd } from '../../utils/filesystem/cwd.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
 import { logError } from '../../utils/telemetry/log.js'
+import { buildProviderResourceURL } from '../../utils/network/providerUrl.js'
 import { sleep } from '../../utils/process/sleep.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -134,7 +135,11 @@ export async function downloadFile(
   config: FilesApiConfig,
 ): Promise<Buffer> {
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
-  const url = `${baseUrl}/v1/files/${fileId}/content`
+  const url = buildProviderResourceURL(
+    baseUrl,
+    'anthropic',
+    `v1/files/${encodeURIComponent(fileId)}/content`,
+  )
 
   const headers = {
     Authorization: `Bearer ${config.oauthToken}`,
@@ -382,7 +387,7 @@ export async function uploadFile(
   opts?: { signal?: AbortSignal },
 ): Promise<UploadResult> {
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
-  const url = `${baseUrl}/v1/files`
+  const url = buildProviderResourceURL(baseUrl, 'anthropic', 'v1/files')
 
   const headers = {
     Authorization: `Bearer ${config.oauthToken}`,
@@ -632,20 +637,17 @@ export async function listFilesCreatedAfter(
 
   // Paginate through results
   while (true) {
-    const params: Record<string, string> = {
+    const url = buildProviderResourceURL(baseUrl, 'anthropic', 'v1/files', {
       after_created_at: afterCreatedAt,
-    }
-    if (afterId) {
-      params.after_id = afterId
-    }
+      after_id: afterId,
+    })
 
     const page = await retryWithBackoff(
       `List files after ${afterCreatedAt}`,
       async () => {
         try {
-          const response = await axios.get(`${baseUrl}/v1/files`, {
+          const response = await axios.get(url, {
             headers,
-            params,
             timeout: 60000,
             validateStatus: status => status < 500,
           })

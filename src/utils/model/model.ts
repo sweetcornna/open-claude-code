@@ -28,12 +28,19 @@ import type { PermissionMode } from '../permissions/PermissionMode.js'
 import {
   getAPIProvider,
   isDirectAnthropicApi,
+  isThirdPartyAnthropicEndpoint,
   isThirdPartyModelCatalog,
   servesAnthropicModels,
 } from './providers.js'
+import { isDeepSeekMirroredModel } from './deepseekWire.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
+import {
+  getModelSettingsSlot,
+  getModelTier,
+  type ModelSettingsSlot,
+} from './modelTier.js'
 import { capitalize } from '../text/stringUtils.js'
 import {
   type ChatGPTCodexModelTier,
@@ -151,7 +158,17 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    // Order matters twice over. ANTHROPIC_MODEL normally outranks
+    // settings.model, but the DeepSeek Anthropic wire MIRRORS OPENAI_MODEL onto
+    // that key — so without the mirror check a user whose settings.model says
+    // `deepseek-v4-flash` was silently switched to `deepseek-v4-pro` the first
+    // time getAnthropicClient() ran the mirror. A value this process copied
+    // there is the provider default, never a user selection.
+    specifiedModel =
+      getEnvSpecifiedModel() ||
+      settings.model ||
+      process.env.ANTHROPIC_MODEL ||
+      undefined
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
@@ -160,6 +177,142 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   }
 
   return specifiedModel
+}
+
+function sameModelId(left: string, right: string): boolean {
+  const normalize = (value: string): string =>
+    value
+      .trim()
+      .replace(/\[1m\]$/i, '')
+      .trim()
+      .toLowerCase()
+  return normalize(left) === normalize(right)
+}
+
+/**
+ * ANTHROPIC_MODEL as a USER setting, or undefined.
+ *
+ * The DeepSeek Anthropic wire mirrors OPENAI_MODEL onto this key, and that copy
+ * is this session's provider default — treating it as a selection is what let it
+ * outrank settings.model.
+ */
+function getEnvSpecifiedModel(): string | undefined {
+  const value = process.env.ANTHROPIC_MODEL?.trim()
+  if (!value) return undefined
+  return isDeepSeekMirroredModel(value) ? undefined : value
+}
+
+/**
+ * What the user picked for the main loop, or `null` when nothing was picked and
+ * the provider default chain applies.
+ *
+ * Deliberately does NOT resolve the answer. Resolving the default chain means
+ * getDefaultMainLoopModel() → isMaxSubscriber() → getAnthropicApiKeyWithSource(),
+ * which throws under CI/NODE_ENV=test; getContextWindowForModel() sits
+ * downstream of this, so that whole chain has to stay unreachable from here.
+ *
+ * The provider's primary-model env key (ANTHROPIC_MODEL / OPENAI_MODEL / …) and
+ * the four `*_DEFAULT_<TIER>_MODEL` pins are part of the DEFAULT chain, not
+ * selections: they are what the setup wizard writes to describe the provider, so
+ * reading them as "the user chose this id" left `modelSettings.default`
+ * unreachable for every third-party session — the slot could never be read back.
+ */
+function getMainLoopSelection(): string | null {
+  const override = getMainLoopModelOverride()
+  // `null` is an explicit "use the default" (from `/model default` or
+  // `--model default`); `undefined` is "nothing was set at startup".
+  if (override !== undefined) return override
+  if (getEnvSpecifiedModel()) return null
+  return getSettings_DEPRECATED()?.model?.trim() || null
+}
+
+const MODEL_TIER_ALIASES: readonly string[] = [
+  'haiku',
+  'sonnet',
+  'opus',
+  'fable',
+]
+
+/**
+ * What the default chain resolves to, when that can be answered without the
+ * subscription chain.
+ *
+ * Mirrors getDefaultMainLoopModelSetting()'s third-party arm exactly — primary
+ * model, else the Sonnet-class tier as the neutral fallback. Its first-party arm
+ * (Opus for Max/Team Premium, Sonnet otherwise) is the one that needs
+ * isMaxSubscriber(), so that case returns undefined and is handled by range
+ * instead.
+ */
+function defaultChainModel(primary: ModelName | undefined): string | undefined {
+  if (primary) return primary
+  // Anthropic's own endpoint has no "primary model" key, but ANTHROPIC_MODEL
+  // plays the same role there and resolves without touching the subscription
+  // chain — so a first-party session that pins one still gets an exact answer
+  // instead of the range heuristic below.
+  const envModel = getEnvSpecifiedModel()
+  if (envModel) return parseUserSpecifiedModel(envModel)
+  return isThirdPartyModelCatalog() ? getDefaultSonnetModel() : undefined
+}
+
+/**
+ * The settings slot that owns a main-loop model selection.
+ *
+ * Two rules, in this order:
+ *
+ *  1. The slot follows the SOURCE of the selection, not the id it resolves to.
+ *     A literal alias (`/model opus`) keeps its alias slot even when several
+ *     aliases resolve to one checkpoint; the default chain owns `default`; an
+ *     explicit concrete id continues through the tier reverse lookup — except
+ *     when it is character-for-character the provider's primary model, which is
+ *     the same selection by another spelling and must not split into two slots.
+ *
+ *  2. A model that is NOT the main-loop selection never reaches `default`. Sub
+ *     agents and the small/fast model call straight into
+ *     getContextWindowForModel / resolveAppliedEffort with their own id, and
+ *     handing them the default slot applies the main model's effort and window
+ *     to a background haiku.
+ */
+export function getMainLoopModelSettingsSlot(
+  model: string,
+): ModelSettingsSlot | undefined {
+  const selection = getMainLoopSelection()
+  const primary = getProviderPrimaryModel()
+
+  if (selection === null) {
+    const defaultModel = defaultChainModel(primary)
+    if (defaultModel) {
+      return sameModelId(model, defaultModel) ? 'default' : getModelTier(model)
+    }
+    // First-party Anthropic with nothing pinned: the built-in default is Opus
+    // for Max/Team Premium and Sonnet for everyone else, and which one it is
+    // can only be answered by the subscription chain this function must not
+    // touch. What IS known without it is the range — the built-in default is
+    // never Haiku and never Fable — so those two keep their own tier and the
+    // small/fast model stops borrowing the main loop's settings.
+    const tier = getModelTier(model)
+    return tier === 'haiku' || tier === 'fable' ? tier : 'default'
+  }
+
+  const normalizedSelection = selection
+    .trim()
+    .replace(/\[1m\]$/i, '')
+    .trim()
+    .toLowerCase()
+
+  if (MODEL_TIER_ALIASES.includes(normalizedSelection)) {
+    return sameModelId(model, parseUserSpecifiedModel(selection))
+      ? getModelSettingsSlot(model, selection)
+      : getModelTier(model)
+  }
+
+  // An explicit id equal to the provider's primary model is the default slot —
+  // otherwise `/model deepseek-v4-pro` and the default session that resolves to
+  // the same string would own two different slots for one model.
+  if (primary && sameModelId(selection, primary)) {
+    return sameModelId(model, primary) ? 'default' : getModelTier(model)
+  }
+
+  return getModelTier(model)
 }
 
 /**
@@ -173,6 +326,7 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
 export function apply1mContextOptIn(
   model: ModelName,
   optInList: string | undefined = process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
+  settingsSlot?: ModelSettingsSlot,
 ): ModelName {
   if (/\[1m\]/i.test(model)) return model
   // Per-tier configuration is the second source of the opt-in. Asking for a 1M
@@ -180,7 +334,7 @@ export function apply1mContextOptIn(
   // suffix is what makes betas.ts send context-1m-2025-08-07. Widening only the
   // local accounting would leave the API rejecting at 200k while auto-compact
   // still believed it had 800k of headroom.
-  if (wantsTierWideContext(model)) return `${model}[1m]`
+  if (wantsTierWideContext(model, settingsSlot)) return `${model}[1m]`
   if (!optInList) return model
   const lower = model.toLowerCase()
   const matched = optInList
@@ -205,10 +359,15 @@ export function apply1mContextOptIn(
  */
 export function getMainLoopModel(): ModelName {
   const model = getUserSpecifiedModelSetting()
-  if (model !== undefined && model !== null) {
-    return apply1mContextOptIn(parseUserSpecifiedModel(model))
-  }
-  return apply1mContextOptIn(getDefaultMainLoopModel())
+  const resolved =
+    model !== undefined && model !== null
+      ? parseUserSpecifiedModel(model)
+      : getDefaultMainLoopModel()
+  return apply1mContextOptIn(
+    resolved,
+    process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
+    getMainLoopModelSettingsSlot(resolved),
+  )
 }
 
 export function getBestModel(): ModelName {
@@ -218,13 +377,23 @@ export function getBestModel(): ModelName {
 /**
  * Resolve the provider's primary model from its env var (e.g. OPENAI_MODEL).
  * Returns undefined for providers that don't have a primary-model env var
- * (Bedrock, Vertex, Foundry, firstParty).
+ * (Bedrock, Vertex, Foundry, and Anthropic itself).
+ *
+ * The Anthropic-wire arm is gated on isThirdPartyAnthropicEndpoint(), NOT on
+ * "the base URL is not api.anthropic.com". Every getDefault*Model() falls back
+ * to this value before its built-in tier default, so widening it to all custom
+ * base URLs collapsed a gateway session's whole ladder onto ANTHROPIC_MODEL:
+ * `/model opus` returned the Sonnet the gateway user had pinned, and the
+ * small/fast model became the expensive one.
  */
 function getProviderPrimaryModel(): ModelName | undefined {
   const provider = getAPIProvider()
   if (provider === 'openai') return process.env.OPENAI_MODEL
   if (provider === 'gemini') return process.env.GEMINI_MODEL
   if (provider === 'grok') return process.env.GROK_MODEL
+  if (provider === 'firstParty' && isThirdPartyAnthropicEndpoint()) {
+    return process.env.ANTHROPIC_MODEL
+  }
   return undefined
 }
 
@@ -366,6 +535,13 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
       (getAntModelOverrideConfig()?.defaultModel as string) ??
       getDefaultOpusModel() + '[1m]'
     )
+  }
+
+  // Claude subscription tiers do not choose another provider's default. Prefer
+  // that provider's primary model; providers without one use their Sonnet-class
+  // tier as the neutral fallback.
+  if (isThirdPartyModelCatalog()) {
+    return getProviderPrimaryModel() ?? getDefaultSonnetModel()
   }
 
   // Max users get Opus as default

@@ -4,6 +4,7 @@ import { unlinkSync } from 'fs'
 import { getClaudeAIOAuthTokens } from 'src/utils/auth/auth.js'
 import { getOauthConfig } from 'src/constants/oauth.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 
 export interface SSHAuthProxy {
   stop(): void
@@ -47,7 +48,12 @@ async function proxyFetch(
 
   const upstreamBase = resolveUpstreamBaseUrl()
   const url = new URL(req.url)
-  const upstreamUrl = `${upstreamBase}${url.pathname}${url.search}`
+  const upstreamUrl = buildProviderResourceURL(
+    upstreamBase,
+    'anthropic',
+    url.pathname,
+    Object.fromEntries(url.searchParams),
+  )
 
   const authHeaders = resolveAuthHeaders()
   if (Object.keys(authHeaders).length === 0) {

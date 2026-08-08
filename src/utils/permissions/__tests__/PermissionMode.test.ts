@@ -6,6 +6,7 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 const {
   isExternalPermissionMode,
   toExternalPermissionMode,
+  resolveInitialPermissionModeFallback,
   permissionModeFromString,
   permissionModeTitle,
   isDefaultMode,
@@ -61,6 +62,107 @@ describe('permissionModeFromString', () => {
   test('returns mode for all known external modes', () => {
     for (const mode of EXTERNAL_PERMISSION_MODES) {
       expect(permissionModeFromString(mode)).toBe(mode)
+    }
+  })
+})
+
+describe('resolveInitialPermissionModeFallback', () => {
+  // The only combination that yields auto: nothing explicit, classifier
+  // compiled in and healthy, local, and a session that can actually prompt.
+  const AUTO_ELIGIBLE = {
+    hasExplicitPermissionMode: false,
+    autoModeSupported: true,
+    autoModeCircuitBroken: false,
+    isRemote: false,
+    isNonInteractiveSession: false,
+  } as const
+
+  test('defaults to auto when auto mode is available locally', () => {
+    expect(resolveInitialPermissionModeFallback({ ...AUTO_ELIGIBLE })).toBe(
+      'auto',
+    )
+  })
+
+  test('keeps the safe fallback when a mode was explicitly configured', () => {
+    expect(
+      resolveInitialPermissionModeFallback({
+        ...AUTO_ELIGIBLE,
+        hasExplicitPermissionMode: true,
+      }),
+    ).toBe('default')
+  })
+
+  test('falls back to default without auto support', () => {
+    expect(
+      resolveInitialPermissionModeFallback({
+        ...AUTO_ELIGIBLE,
+        autoModeSupported: false,
+      }),
+    ).toBe('default')
+  })
+
+  test('falls back to default when the auto circuit breaker is active', () => {
+    expect(
+      resolveInitialPermissionModeFallback({
+        ...AUTO_ELIGIBLE,
+        autoModeCircuitBroken: true,
+      }),
+    ).toBe('default')
+  })
+
+  test('falls back to default for remote sessions', () => {
+    expect(
+      resolveInitialPermissionModeFallback({
+        ...AUTO_ELIGIBLE,
+        isRemote: true,
+      }),
+    ).toBe('default')
+  })
+
+  // ── headless / non-interactive branch ────────────────────────────────
+  //
+  // `-p`, SDK and CI runs cannot render a permission prompt. Defaulting them
+  // to auto would let the classifier approve writes and command execution with
+  // nobody watching, so the implicit mode must stay 'default' (deny) there.
+  // These two tests are deliberately paired: the interactive branch and the
+  // non-interactive branch are separate code paths and testing only one of
+  // them is testing neither.
+
+  test('falls back to default for non-interactive (headless / -p / SDK) sessions', () => {
+    expect(
+      resolveInitialPermissionModeFallback({
+        ...AUTO_ELIGIBLE,
+        isNonInteractiveSession: true,
+      }),
+    ).toBe('default')
+  })
+
+  test('still defaults to auto for the equivalent interactive session', () => {
+    // Same inputs as the headless case above except interactivity — proves the
+    // headless result comes from that flag and not from another guard.
+    expect(
+      resolveInitialPermissionModeFallback({
+        ...AUTO_ELIGIBLE,
+        isNonInteractiveSession: false,
+      }),
+    ).toBe('auto')
+  })
+
+  test('non-interactive sessions stay on default regardless of the other guards', () => {
+    for (const autoModeSupported of [true, false]) {
+      for (const autoModeCircuitBroken of [true, false]) {
+        for (const isRemote of [true, false]) {
+          expect(
+            resolveInitialPermissionModeFallback({
+              hasExplicitPermissionMode: false,
+              autoModeSupported,
+              autoModeCircuitBroken,
+              isRemote,
+              isNonInteractiveSession: true,
+            }),
+          ).toBe('default')
+        }
+      }
     }
   })
 })

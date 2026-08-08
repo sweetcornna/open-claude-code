@@ -4,20 +4,19 @@ import { KeyboardEvent, useInput } from '@anthropic/ink'
 import {
   type AppState,
   useAppState,
+  useAppStateStore,
   useSetAppState,
 } from '../state/AppState.js'
 import {
   enterTeammateView,
   exitTeammateView,
 } from '../state/teammateViewHelpers.js'
-import {
-  getRunningTeammatesSorted,
-  InProcessTeammateTask,
-} from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
+import { getRunningTeammatesSorted } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
 import {
   type InProcessTeammateTaskState,
   isInProcessTeammateTask,
 } from '../tasks/InProcessTeammateTask/types.js'
+import { stopTask } from '../tasks/stopTask.js'
 import { isBackgroundTask } from '../tasks/types.js'
 
 // Step teammate selection by delta, wrapping across leader(-1)..teammates(0..n-1)..hide(n).
@@ -61,7 +60,7 @@ function stepTeammateSelection(
  * Custom hook that handles Shift+Up/Down keyboard navigation for background tasks.
  * When teammates (swarm) are present, navigates between leader and teammates.
  * When only non-teammate background tasks exist, opens the background tasks dialog.
- * Also handles Enter to confirm selection, 'f' to view transcript, and 'k' to kill.
+ * Also handles Enter to confirm selection, 'f' to view transcript, and 'x' to cancel.
  */
 export function useBackgroundTaskNavigation(options?: {
   onOpenBackgroundTasks?: () => void
@@ -70,6 +69,7 @@ export function useBackgroundTaskNavigation(options?: {
   const viewSelectionMode = useAppState(s => s.viewSelectionMode)
   const viewingAgentTaskId = useAppState(s => s.viewingAgentTaskId)
   const selectedIPAgentIndex = useAppState(s => s.selectedIPAgentIndex)
+  const store = useAppStateStore()
   const setAppState = useSetAppState()
 
   // Filter to running teammates and sort alphabetically to match TeammateSpinnerTree display
@@ -224,16 +224,19 @@ export function useBackgroundTaskNavigation(options?: {
       return
     }
 
-    // k to kill selected teammate (only in selecting mode)
+    // x cancels the selected ordinary background task.
     if (
-      e.key === 'k' &&
+      e.key === 'x' &&
       viewSelectionMode === 'selecting-agent' &&
       selectedIPAgentIndex >= 0
     ) {
       e.preventDefault()
       const selected = getSelectedTeammate()
       if (selected && selected.task.status === 'running') {
-        void InProcessTeammateTask.kill(selected.taskId, setAppState)
+        void stopTask(selected.taskId, {
+          getAppState: store.getState,
+          setAppState,
+        })
       }
       return
     }

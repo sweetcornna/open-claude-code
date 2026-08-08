@@ -39,7 +39,6 @@ import { logForDebugging } from '../telemetry/debug.js'
 import type { FileHistorySnapshot } from '../filesystem/fileHistory.js'
 import { fileHistoryRestoreStateFromLog } from '../filesystem/fileHistory.js'
 import { createSystemMessage } from '../messages.js'
-import { parseUserSpecifiedModel } from '../model/model.js'
 import { getPlansDirectory } from '../agents/plans.js'
 import { setCwd } from '../shell/Shell.js'
 import {
@@ -221,7 +220,10 @@ export function restoreAgentFromSession(
     resumedAgent.model &&
     resumedAgent.model !== 'inherit'
   ) {
-    setMainLoopModelOverride(parseUserSpecifiedModel(resumedAgent.model))
+    // Stored unresolved, matching rootAction: `model: opus` names the alias, and
+    // every reader resolves it. Pre-resolving loses the alias identity that
+    // decides which `modelSettings` slot the session edits.
+    setMainLoopModelOverride(resumedAgent.model)
   }
 
   return { agentDefinition: resumedAgent, agentType: resumedAgent.agentType }

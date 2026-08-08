@@ -981,25 +981,6 @@ export function Config({
           },
         ]
       : []),
-    {
-      id: 'chromeDevtoolsDefaultEnabled',
-      label: 'Chrome browser tools enabled by default',
-      value: globalConfig.chromeDevtoolsDefaultEnabled ?? false,
-      type: 'boolean' as const,
-      onChange(enabled: boolean) {
-        saveGlobalConfig(current => ({
-          ...current,
-          chromeDevtoolsDefaultEnabled: enabled,
-        }));
-        setGlobalConfig({
-          ...getGlobalConfig(),
-          chromeDevtoolsDefaultEnabled: enabled,
-        });
-        logEvent('tengu_chrome_devtools_setting_changed', {
-          enabled,
-        });
-      },
-    },
     // Teammate mode (only shown when agent swarms are enabled)
     ...(isAgentSwarmsEnabled()
       ? (() => {

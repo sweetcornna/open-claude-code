@@ -1,4 +1,8 @@
 import { CHATGPT_CODEX_DEFAULT_MODEL } from 'src/utils/model/chatgptModels.js'
+import {
+  getProviderFamily,
+  getTierDefaults,
+} from 'src/utils/model/tierDefaults.js'
 
 export type ResponsesReasoningEffort =
   | 'low'
@@ -19,7 +23,13 @@ function convertToResponsesReasoningEffort(
   return undefined
 }
 
-function getDefaultOpenAIReasoningEffort(model: string): 'low' | 'medium' {
+function getDefaultOpenAIReasoningEffort(
+  model: string,
+): ResponsesReasoningEffort {
+  if (getProviderFamily(model) === 'gpt') {
+    return getTierDefaults(model).effort
+  }
+
   const normalized = model.toLowerCase().replace(/\[1m\]$/i, '')
   return normalized === CHATGPT_CODEX_DEFAULT_MODEL ||
     normalized.startsWith(`${CHATGPT_CODEX_DEFAULT_MODEL}-`)

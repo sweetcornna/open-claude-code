@@ -1,5 +1,5 @@
 /**
- * Tests for reopening the model step from the environment (`/models`).
+ * Tests for reopening the model step from the environment (`/models-setting`).
  *
  * The rule worth pinning is which sessions have something to configure at all,
  * and that reopening prefills from the same env keys the wizard writes — a
@@ -52,6 +52,8 @@ const TOUCHED = [
   'CLAUDE_CODE_USE_GROK',
   'OPENAI_BASE_URL',
   'OPENAI_API_KEY',
+  'OPENAI_WIRE_API',
+  'OPENAI_MODEL',
   'OPENAI_DEFAULT_HAIKU_MODEL',
   'OPENAI_DEFAULT_SONNET_MODEL',
   'OPENAI_DEFAULT_OPUS_MODEL',
@@ -71,6 +73,7 @@ function deepseekEnv(): NodeJS.ProcessEnv {
     CLAUDE_CODE_USE_OPENAI: '1',
     OPENAI_BASE_URL: 'https://api.deepseek.com',
     OPENAI_API_KEY: 'sk-test',
+    OPENAI_MODEL: 'deepseek-v4-pro',
     OPENAI_DEFAULT_HAIKU_MODEL: 'deepseek-v4-flash',
     OPENAI_DEFAULT_SONNET_MODEL: 'deepseek-v4-pro',
     OPENAI_DEFAULT_OPUS_MODEL: 'deepseek-v4-pro',
@@ -117,6 +120,7 @@ describe('buildModelStepFromEnvironment', () => {
     const step = fromEnv.buildModelStepFromEnvironment(deepseekEnv())
 
     expect(step?.kind).toBe('china')
+    expect(step?.model).toBe('deepseek-v4-pro')
     expect(step?.haikuModel).toBe('deepseek-v4-flash')
     expect(step?.sonnetModel).toBe('deepseek-v4-pro')
     expect(step?.opusModel).toBe('deepseek-v4-pro')
@@ -136,11 +140,25 @@ describe('buildModelStepFromEnvironment', () => {
     expect(ids).toContain('deepseek-v4-flash')
   })
 
-  test('opens on the first tier when the provider has no default-model field', () => {
+  test('opens on the independent provider default model', () => {
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
     expect(
       fromEnv.buildModelStepFromEnvironment(deepseekEnv())?.activeField,
-    ).toBe('haiku_model')
+    ).toBe('model')
+  })
+
+  test('preserves the OpenAI wire protocol when reopening settings', () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    const step = fromEnv.buildModelStepFromEnvironment({
+      CLAUDE_CODE_USE_OPENAI: '1',
+      OPENAI_BASE_URL: 'https://gw.example.com/v1',
+      OPENAI_API_KEY: 'sk-test',
+      OPENAI_WIRE_API: 'responses',
+      OPENAI_MODEL: 'gpt-test',
+    } as NodeJS.ProcessEnv)
+
+    expect(step?.kind).toBe('openai')
+    expect(step?.wireApi).toBe('responses')
   })
 
   test('no cached catalog and no built-in table falls back to manual entry', () => {
@@ -158,13 +176,52 @@ describe('buildModelStepFromEnvironment', () => {
     expect(step?.sonnetModel).toBe('some-model')
   })
 
+  test('a ChatGPT-subscription session opens in model-only mode', () => {
+    // Its OPENAI_API_KEY is empty by design, so a form that treats empty as
+    // "delete" would delete the login it was opened on top of. The lock is set
+    // here rather than inferred inside the wizard because the same provider
+    // reached from /login means the opposite: replace those credentials.
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    const step = fromEnv.buildModelStepFromEnvironment({
+      CLAUDE_CODE_USE_OPENAI: '1',
+      OPENAI_AUTH_MODE: 'chatgpt',
+    } as NodeJS.ProcessEnv)
+
+    expect(step?.kind).toBe('openai')
+    expect(step?.credentialEditing).toBe('locked')
+  })
+
+  test('an Antigravity session opens in model-only mode too', () => {
+    process.env.CLAUDE_CODE_USE_GEMINI = '1'
+    const step = fromEnv.buildModelStepFromEnvironment({
+      CLAUDE_CODE_USE_GEMINI: '1',
+      GEMINI_AUTH_MODE: 'antigravity',
+      GEMINI_DEFAULT_OPUS_MODEL: 'gemini-pro-agent',
+    } as NodeJS.ProcessEnv)
+
+    expect(step?.kind).toBe('gemini')
+    expect(step?.credentialEditing).toBe('locked')
+    expect(step?.opusModel).toBe('gemini-pro-agent')
+  })
+
+  test('a plain API-key session still owns its credentials', () => {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    const step = fromEnv.buildModelStepFromEnvironment({
+      CLAUDE_CODE_USE_OPENAI: '1',
+      OPENAI_BASE_URL: 'https://gw.example.com/v1',
+      OPENAI_API_KEY: 'sk-test',
+    } as NodeJS.ProcessEnv)
+
+    expect(step?.credentialEditing).toBeUndefined()
+  })
+
   test("no cached catalog still offers occ's own table where one exists", () => {
     // Reopening the setting must not degrade to a blank text box just because
     // the background refresh has not visited this endpoint yet.
     process.env.CLAUDE_CODE_USE_OPENAI = '1'
     const step = fromEnv.buildModelStepFromEnvironment({
       CLAUDE_CODE_USE_OPENAI: '1',
-      OPENAI_BASE_URL: 'https://gw.nowhere.example/v1',
+      OPENAI_BASE_URL: 'https://api.openai.com/v1',
       OPENAI_DEFAULT_SONNET_MODEL: 'some-model',
     } as NodeJS.ProcessEnv)
 

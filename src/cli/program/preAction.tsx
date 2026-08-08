@@ -7,6 +7,7 @@
 import type { Command as CommanderCommand } from '@commander-js/extra-typings';
 import { feature } from 'bun:bundle';
 import { migrateBypassPermissionsAcceptedToSettings } from 'src/migrations/migrateBypassPermissionsAcceptedToSettings.js';
+import { migrateDefaultTierSettingsToDefaultSlot } from 'src/migrations/migrateDefaultTierSettingsToDefaultSlot.js';
 import { migrateEnableAllProjectMcpServersToSettings } from 'src/migrations/migrateEnableAllProjectMcpServersToSettings.js';
 import { migrateFennecToOpus } from 'src/migrations/migrateFennecToOpus.js';
 import { migrateLegacyOpusToCurrent } from 'src/migrations/migrateLegacyOpusToCurrent.js';
@@ -89,7 +90,7 @@ export function registerPreActionHook(program: CommanderCommand): void {
 
 // @[MODEL LAUNCH]: Consider any migrations you may need for model strings. See migrateSonnet1mToSonnet45.ts for an example.
 // Bump this when adding a new sync migration so existing users re-run the set.
-const CURRENT_MIGRATION_VERSION = 11;
+const CURRENT_MIGRATION_VERSION = 12;
 function runMigrations(): void {
   if (getGlobalConfig().migrationVersion !== CURRENT_MIGRATION_VERSION) {
     migrateBypassPermissionsAcceptedToSettings();
@@ -99,6 +100,7 @@ function runMigrations(): void {
     migrateLegacyOpusToCurrent();
     migrateSonnet45ToSonnet46();
     migrateOpusToOpus1m();
+    migrateDefaultTierSettingsToDefaultSlot();
     if (feature('TRANSCRIPT_CLASSIFIER')) {
       resetAutoModeOptInForDefaultOffer();
     }

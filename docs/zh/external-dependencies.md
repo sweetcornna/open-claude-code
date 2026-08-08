@@ -25,10 +25,9 @@
 | 14 | Web Search Pages | `html.duckduckgo.com`, `www.mojeek.com`, `www4.bing.com`, 公共 SearXNG 实例, `www.bing.com`, `search.brave.com` | HTTPS | WebSearch 的 `free` 源默认参与聚合；`bing`/`brave` 需 `WEB_SEARCH_ADAPTER` 显式点名 |
 | 15 | Google Cloud Storage (更新) | `storage.googleapis.com` | HTTPS | 版本检查 |
 | 16 | GitHub Raw (Changelog/Stats) | `raw.githubusercontent.com` | HTTPS | 更新提示 |
-| 17 | Chrome UX Report (CrUX) | `chromeuxreport.googleapis.com` | HTTPS | `--chrome` 下跑性能 trace 时 |
-| 18 | CCR Upstream Proxy | `api.anthropic.com` | WS | CCR 远程会话 |
-| 19 | Voice STT | `api.anthropic.com/api/ws/...` | WSS | Voice Mode |
-| 20 | Desktop App Download | `claude.ai/api/desktop/...` | HTTPS | 下载引导 |
+| 17 | CCR Upstream Proxy | `api.anthropic.com` | WS | CCR 远程会话 |
+| 18 | Voice STT | `api.anthropic.com/api/ws/...` | WSS | Voice Mode |
+| 19 | Desktop App Download | `claude.ai/api/desktop/...` | HTTPS | 下载引导 |
 
 ---
 
@@ -157,29 +156,18 @@ WebSearch 默认聚合多个搜索源。其中 `free` 源（免密钥，默认�
 - **端点**: `https://raw.githubusercontent.com/anthropics/claude-plugins-official/refs/heads/stats/stats/plugin-installs.json`
 - **文件**: `src/utils/update/releaseNotes.ts`, `src/utils/plugins/installCounts.ts`
 
-### 17. Chrome UX Report (CrUX)
-
-由 `chrome-devtools-mcp` 子进程发起，不是 occ 自己发的。
-
-- **端点**: `https://chromeuxreport.googleapis.com`
-- **激活**: 仅在 `--chrome` 启用 **且** 模型调用 `performance_start_trace` / `performance_analyze_insight` 时。trace 里的 URL 会被发给 Google 以换取真实用户性能数据。
-- **关闭**: 给 server 加 `--no-performance-crux`
-- **文件**: `src/utils/chromeDevtools/setup.ts`（构造 server 参数）
-
-> `chrome-devtools-mcp` 的使用统计上报和更新检查已被 occ 默认关闭（`--no-usage-statistics` + `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` / `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS`），不在此表内。
-
-### 18. CCR Upstream Proxy
+### 17. CCR Upstream Proxy
 
 - **端点**: `ws://api.anthropic.com/v1/code/upstreamproxy/ws`
 - **激活**: `CLAUDE_CODE_REMOTE=1` + `CCR_UPSTREAM_PROXY_ENABLED=1`
 - **文件**: `src/upstreamproxy/upstreamproxy.ts`
 
-### 19. Voice STT
+### 18. Voice STT
 
 - **端点**: `wss://api.anthropic.com/api/ws/...`
 - **文件**: `src/services/voiceStreamSTT.ts`
 
-### 20. Desktop App Download
+### 19. Desktop App Download
 
 - **端点**: `https://claude.ai/api/desktop/win32/x64/exe/latest/redirect` (Windows)
 - **端点**: `https://claude.ai/api/desktop/darwin/universal/dmg/latest/redirect` (macOS)
@@ -222,7 +210,6 @@ WebSearch 默认聚合多个搜索源。其中 `free` 源（免密钥，默认�
 | `search.brave.com` | Brave 搜索 | HTTPS |
 | `storage.googleapis.com` | 自动更新 | HTTPS |
 | `raw.githubusercontent.com` | Changelog / 插件统计 | HTTPS |
-| `bridge.claudeusercontent.com` | Chrome Bridge | WSS |
 | `platform.claude.com` | OAuth 授权页 | HTTPS |
 | `claude.com` / `claude.ai` | OAuth / 下载 | HTTPS |
 | `claude.fedstart.com` | FedStart OAuth | HTTPS |

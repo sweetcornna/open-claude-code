@@ -17,6 +17,7 @@ import type { Key } from '@anthropic/ink'
 import { resolveKey } from '@anthropic/ink'
 import { DEFAULT_BINDINGS } from '../defaultBindings.js'
 import { parseBindings } from '../parser.js'
+import { KeybindingsSchema } from '../schema.js'
 
 function makeKey(overrides: Partial<Key> = {}): Key {
   return {
@@ -88,6 +89,29 @@ describe('TaskDetail bindings do not leak into typing contexts', () => {
       }
     })
   }
+})
+
+describe('unified x cancellation bindings', () => {
+  test('Footer resolves x to footer:close and leaves k/K unbound', () => {
+    expect(resolveKey('x', makeKey(), ['Footer'], bindings)).toEqual({
+      type: 'match',
+      action: 'footer:close',
+    })
+    expect(resolveKey('k', makeKey(), ['Footer'], bindings).type).toBe('none')
+    expect(
+      resolveKey('K', makeKey({ shift: true }), ['Footer'], bindings).type,
+    ).toBe('none')
+  })
+
+  test('the public schema accepts TaskDetail cancellation overrides', () => {
+    expect(
+      KeybindingsSchema().safeParse({
+        bindings: [
+          { context: 'TaskDetail', bindings: { x: 'taskDetail:kill' } },
+        ],
+      }).success,
+    ).toBe(true)
+  })
 })
 
 describe('TaskDetail bindings are user-overridable', () => {

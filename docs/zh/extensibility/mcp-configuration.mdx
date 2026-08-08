@@ -21,7 +21,7 @@ Claude Code 的 MCP 配置来自多个来源，每个来源对应一个 `scope`�
 | 用户全局 | `user` | `~/.occ/settings.json` | 用户级配置，所有项目共享 |
 | 插件 | `dynamic` | 插件 manifest 中 `.mcp.json` / `.mcpb` | 插件提供的 MCP 服务器 |
 | claude.ai | `claudeai` | 通过 API 获取 | claude.ai 网页端配置的连接器 |
-| 内置动态 | `dynamic` | 代码中注册 | Computer Use / Chrome 等内置服务器 |
+| 内置动态 | `dynamic` | 代码中注册 | Computer Use 等内置服务器 |
 | IDE SDK | `sdk` | IDE 传入 | VS Code / JetBrains 嵌入模式 |
 
 ### 合并优先级（从低到高）
@@ -155,6 +155,9 @@ occ mcp add my-server -s user -- npx @my-org/mcp-server
 # 添加到项目配置
 occ mcp add my-server -s project -- npx @my-org/mcp-server
 
+# 把 Chrome DevTools 添加为用户管理的 stdio server
+occ mcp add chrome-devtools -s user -- npx -y chrome-devtools-mcp@latest
+
 # 添加 HTTP 类型
 occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 ```
@@ -162,7 +165,7 @@ occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 添加时的验证流程：
 
 1. **名称校验**：只允许字母、数字、连字符和下划线
-2. **保留名检查**：`chrome-devtools` 被保留；`computer-use` 仅在 `computerUse.backend` 为 `builtin`（默认）时保留
+2. **保留名检查**：`computer-use` 仅在 `computerUse.backend` 为 `builtin`（默认）时保留
 3. **企业管控检查**：企业模式下拒绝添加
 4. **Schema 验证**：Zod 校验配置格式
 5. **策略检查**：denylist 拒绝、allowlist 验证
@@ -315,35 +318,16 @@ export function setupComputerUseMCP(): {
 - 非非交互式会话
 - GrowthBook gate `getChicagoEnabled()` 返回 true
 
-### Chrome DevTools MCP
-
-```typescript
-// 类似 Computer Use，在 main.tsx 中注册
-const { mcpConfig, allowedTools, systemPrompt } = setupChromeDevtools()
-dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
-```
-
-与 Computer Use 不同的是，它**不是**进程内 server：`mcpConfig` 是一条普通的
-stdio 配置，spawn `node <chrome-devtools-mcp 入口>`。`allowedTools` 只含 9 个
-只读工具，其余一律走权限确认。
-
-启用条件：
-- `--chrome` 参数、`CLAUDE_CODE_ENABLE_CFC` 环境变量，或 `chromeDevtoolsDefaultEnabled` 配置
-- 非非交互式会话（除非显式 `--chrome`）
-
-详见 `docs/zh/features/chrome-devtools-mcp.md`。
-
 ### VSCode SDK MCP
 
 IDE 嵌入模式通过初始化消息传入 `type:'sdk'` 的配置，由 `setupVscodeSdkMcp()` 设置双向通知。
 
 ## 保留名称
 
-以下 MCP 服务器名称被保留，用户无法手动配置同名服务器：
+`chrome-devtools` 等名称可用于普通用户配置。以下内置名称仍被保留：
 
 | 名称 | 用途 | 检查条件 |
 |------|------|---------|
-| `chrome-devtools` | Chrome 浏览器控制 | 始终检查 |
 | `computer-use` | 桌面自动化 | `CHICAGO_MCP` feature flag 开启时检查 |
 | `claude-vscode` | VSCode IDE 集成 | 由 SDK 传入，不经过名称检查 |
 
@@ -360,5 +344,4 @@ IDE 嵌入模式通过初始化消息传入 `type:'sdk'` 的配置，由 `setupV
 | `src/services/mcp/client.ts` | 连接管理、传输层选择 |
 | `src/utils/plugins/mcpPluginIntegration.ts` | 插件 MCP 配置加载 |
 | `src/utils/computerUse/setup.ts` | Computer Use 动态注册 |
-| `src/utils/chromeDevtools/common.ts` | Chrome DevTools MCP 保留名、工具清单与只读白名单 |
 | `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK 双向通知 |

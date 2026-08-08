@@ -195,6 +195,36 @@ describe('getToolIndex caching', () => {
     expect(first).toBe(second) // Same reference = cached
   })
 
+  test('rebuilds same-name entries after list_changed definition updates', async () => {
+    const firstTools = [
+      makeMockTool({
+        name: 'mcp__service-a__action',
+        prompt: async () => 'Old description.',
+        inputJSONSchema: {
+          type: 'object',
+          properties: { oldField: { type: 'string' } },
+        },
+      }),
+    ] as unknown as import('../../../Tool.js').Tool[]
+    const updatedTools = [
+      makeMockTool({
+        name: 'mcp__service-a__action',
+        prompt: async () => 'Updated description.',
+        inputJSONSchema: {
+          type: 'object',
+          properties: { newField: { type: 'number' } },
+        },
+      }),
+    ] as unknown as import('../../../Tool.js').Tool[]
+
+    const first = await getToolIndex(firstTools)
+    const updated = await getToolIndex(updatedTools)
+
+    expect(updated).not.toBe(first)
+    expect(updated[0]?.description).toBe('Updated description.')
+    expect(updated[0]?.inputSchema).toEqual(updatedTools[0]?.inputJSONSchema)
+  })
+
   test('rebuilds index after clearToolIndexCache', async () => {
     const tools = [
       makeMockTool({

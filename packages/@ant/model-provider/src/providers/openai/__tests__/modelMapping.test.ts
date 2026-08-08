@@ -26,9 +26,20 @@ describe('resolveOpenAIModel', () => {
     Object.assign(process.env, originalEnv)
   })
 
-  test('OPENAI_MODEL env var overrides all', () => {
+  test('OPENAI_MODEL is the fallback for an unconfigured tier', () => {
     process.env.OPENAI_MODEL = 'my-custom-model'
     expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('my-custom-model')
+  })
+
+  test('an explicit provider model is never replaced by OPENAI_MODEL', () => {
+    process.env.OPENAI_MODEL = 'default-model'
+    expect(resolveOpenAIModel('selected-model')).toBe('selected-model')
+  })
+
+  test('a tier override takes priority over OPENAI_MODEL', () => {
+    process.env.OPENAI_MODEL = 'default-model'
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'tier-model'
+    expect(resolveOpenAIModel('claude-sonnet-4-6')).toBe('tier-model')
   })
 
   test('ANTHROPIC_DEFAULT_SONNET_MODEL overrides default map', () => {

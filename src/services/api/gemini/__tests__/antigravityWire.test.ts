@@ -9,11 +9,14 @@ import {
   wrapAntigravityRequest,
 } from '../antigravityWire.js'
 
-const ORIGINAL_BASE_URL = process.env.GEMINI_BASE_URL
+const ORIGINAL_BASE_URL = process.env.ANTIGRAVITY_BASE_URL
+const ORIGINAL_GEMINI_BASE_URL = process.env.GEMINI_BASE_URL
 
 afterEach(() => {
-  if (ORIGINAL_BASE_URL === undefined) delete process.env.GEMINI_BASE_URL
-  else process.env.GEMINI_BASE_URL = ORIGINAL_BASE_URL
+  if (ORIGINAL_BASE_URL === undefined) delete process.env.ANTIGRAVITY_BASE_URL
+  else process.env.ANTIGRAVITY_BASE_URL = ORIGINAL_BASE_URL
+  if (ORIGINAL_GEMINI_BASE_URL === undefined) delete process.env.GEMINI_BASE_URL
+  else process.env.GEMINI_BASE_URL = ORIGINAL_GEMINI_BASE_URL
 })
 
 function body(
@@ -27,19 +30,28 @@ function body(
 
 describe('base URL and endpoint', () => {
   test('defaults to the daily Cloud Code host the IDE prefers', () => {
-    delete process.env.GEMINI_BASE_URL
+    delete process.env.ANTIGRAVITY_BASE_URL
     expect(getAntigravityBaseUrl()).toBe(
       'https://daily-cloudcode-pa.googleapis.com',
     )
   })
 
-  test('GEMINI_BASE_URL still wins so a proxy in front keeps working', () => {
-    process.env.GEMINI_BASE_URL = 'https://proxy.example.com/'
+  test('ANTIGRAVITY_BASE_URL supports a dedicated proxy override', () => {
+    process.env.ANTIGRAVITY_BASE_URL = 'https://proxy.example.com/'
     expect(getAntigravityBaseUrl()).toBe('https://proxy.example.com')
   })
 
+  test('does not reuse a public Gemini API base for Antigravity traffic', () => {
+    delete process.env.ANTIGRAVITY_BASE_URL
+    process.env.GEMINI_BASE_URL =
+      'https://generativelanguage.googleapis.com/v1beta'
+    expect(getAntigravityBaseUrl()).toBe(
+      'https://daily-cloudcode-pa.googleapis.com',
+    )
+  })
+
   test('streams over the v1internal endpoint, not the public models/ path', () => {
-    delete process.env.GEMINI_BASE_URL
+    delete process.env.ANTIGRAVITY_BASE_URL
     expect(antigravityStreamUrl()).toBe(
       'https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse',
     )

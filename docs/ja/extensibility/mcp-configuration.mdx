@@ -21,7 +21,7 @@ Claude Code の MCP 設定は複数のソースから読み込まれ、各ソー
 | ユーザー全体 | `user` | `~/.occ/settings.json` | ユーザー単位の設定。すべてのプロジェクトで共有 |
 | プラグイン | `dynamic` | プラグイン manifest 内の `.mcp.json` / `.mcpb` | プラグインが提供する MCP サーバー |
 | claude.ai | `claudeai` | API から取得 | claude.ai の Web 側で設定された connector |
-| 内蔵動的 | `dynamic` | コードから登録 | Computer Use / Chrome などの内蔵サーバー |
+| 内蔵動的 | `dynamic` | コードから登録 | Computer Use などの内蔵サーバー |
 | IDE SDK | `sdk` | IDE から受け取る | VS Code / JetBrains 組み込みモード |
 
 ### 統合の優先順位（低い順）
@@ -155,6 +155,9 @@ occ mcp add my-server -s user -- npx @my-org/mcp-server
 # プロジェクト設定へ追加する
 occ mcp add my-server -s project -- npx @my-org/mcp-server
 
+# Chrome DevTools をユーザー管理の stdio server として追加する
+occ mcp add chrome-devtools -s user -- npx -y chrome-devtools-mcp@latest
+
 # HTTP 種別を追加する
 occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 ```
@@ -162,7 +165,7 @@ occ mcp add my-remote -s user -t http -u https://mcp.example.com/mcp
 追加時の検証フロー:
 
 1. **名前の検証**: 英字、数字、ハイフン、アンダースコアだけを許可
-2. **予約名の確認**: `chrome-devtools` は予約済み。`computer-use` は `computerUse.backend` が `builtin`（既定）の場合に限り予約済み
+2. **予約名の確認**: `computer-use` は `computerUse.backend` が `builtin`（既定）の場合に限り予約済み
 3. **企業管理の確認**: 企業モードでは追加を拒否
 4. **Schema 検証**: Zod で設定形式を検証
 5. **ポリシー確認**: denylist による拒否、allowlist による検証
@@ -306,35 +309,16 @@ export function setupComputerUseMCP(): {
 - 非対話セッションではない
 - GrowthBook gate `getChicagoEnabled()` が true を返す
 
-### Chrome DevTools MCP
-
-```typescript
-// Computer Use と同様に main.tsx で登録する
-const { mcpConfig, allowedTools, systemPrompt } = setupChromeDevtools()
-dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
-```
-
-Computer Use とは異なり、これはプロセス内 server ではありません。`mcpConfig` は通常の
-stdio 設定であり、`node <chrome-devtools-mcp エントリ>` を spawn します。`allowedTools` に含まれるのは 9 個の
-読み取り専用ツールだけで、それ以外はすべて権限確認へ進みます。
-
-有効化条件:
-- `--chrome` 引数、`CLAUDE_CODE_ENABLE_CFC` 環境変数、または `chromeDevtoolsDefaultEnabled` 設定
-- 非対話セッションではない（明示的に `--chrome` を指定した場合を除く）
-
-詳しくは `docs/zh/features/chrome-devtools-mcp.md` を参照してください。
-
 ### VSCode SDK MCP
 
 IDE 組み込みモードは初期化メッセージで `type:'sdk'` の設定を渡し、`setupVscodeSdkMcp()` が双方向通知を設定します。
 
 ## 予約名
 
-次の MCP サーバー名は予約済みであり、ユーザーは同名のサーバーを手動設定できません。
+`chrome-devtools` などの名前は通常のユーザー設定で利用できます。次の内蔵名は引き続き予約されています。
 
 | 名前 | 用途 | 確認条件 |
 |------|------|----------|
-| `chrome-devtools` | Chrome ブラウザ制御 | 常に確認 |
 | `computer-use` | デスクトップ自動化 | `CHICAGO_MCP` feature flag が有効な場合に確認 |
 | `claude-vscode` | VSCode IDE 統合 | SDK から渡されるため、名前チェックを通らない |
 
@@ -351,5 +335,4 @@ IDE 組み込みモードは初期化メッセージで `type:'sdk'` の設定�
 | `src/services/mcp/client.ts` | 接続管理、トランスポート層の選択 |
 | `src/utils/plugins/mcpPluginIntegration.ts` | プラグイン MCP 設定の読み込み |
 | `src/utils/computerUse/setup.ts` | Computer Use の動的登録 |
-| `src/utils/chromeDevtools/common.ts` | Chrome DevTools MCP の予約名、ツール一覧、読み取り専用 allowlist |
 | `src/services/mcp/vscodeSdkMcp.ts` | VSCode SDK の双方向通知 |

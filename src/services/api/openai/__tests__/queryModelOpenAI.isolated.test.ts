@@ -21,9 +21,23 @@ const RUNNER = resolve(__dirname, 'queryModelOpenAI.runner.ts')
 
 describe('queryModelOpenAI (isolated)', () => {
   test('runs in its own process so its module mocks stay contained', async () => {
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      NODE_ENV: 'test',
+    }
+    for (const key of Object.keys(env)) {
+      if (
+        key.startsWith('OPENAI_') ||
+        key.startsWith('ANTHROPIC_') ||
+        key === 'CLAUDE_CODE_USE_OPENAI'
+      ) {
+        delete env[key]
+      }
+    }
+
     const proc = Bun.spawn(['bun', 'test', '--timeout', '60000', RUNNER], {
       cwd: resolve(__dirname, '..', '..', '..', '..', '..'),
-      env: { ...process.env, NODE_ENV: 'test' },
+      env,
       stdout: 'pipe',
       stderr: 'pipe',
     })

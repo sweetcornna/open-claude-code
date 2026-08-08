@@ -38,6 +38,8 @@ export type AgentProgress = {
   label?: string
   phase?: string
   status: 'running' | 'done'
+  /** Whether this call executed now or was replayed from the resume journal. */
+  execution?: 'live' | 'replayed'
   resultKind?: string
   /** Only meaningful when done·ok: output is an object -> 'object', otherwise -> 'text'. None for dead/skipped. */
   outputShape?: 'text' | 'object'
@@ -51,6 +53,8 @@ export type AgentProgress = {
   startedAt?: number
   /** agent_done wall-clock (ms). Absent while running — the UI measures against Date.now() instead. */
   endedAt?: number
+  /** Wall-clock of the latest start/progress/retry/done event for control-plane status. */
+  lastActivityAt?: number
   /** done·ok only: bounded preview of the return value (see {@link buildOutputPreview}). */
   outputPreview?: string
   /** done·ok only: tokens the agent generated (result.usage.outputTokens). */
@@ -90,6 +94,9 @@ export type AgentProgress = {
 
 export type RunProgress = {
   runId: string
+  /** Latest host wrapper generation; retained in terminal state.json for status/query. */
+  taskId?: string
+  instanceId?: number
   workflowName: string
   status: 'running' | 'completed' | 'failed' | 'killed'
   phases: Array<{ title: string; status: 'running' | 'done' }>
@@ -113,6 +120,8 @@ export type ProgressStore = {
   get(runId: string): RunProgress | undefined
   /** Directly inject a run read from disk (bypassing bus); skips existing runId - in-memory takes priority. */
   hydrate(run: RunProgress): void
+  /** Forget a terminal run after its host wrapper grace period. */
+  remove(runId: string): void
   /** For useSyncExternalStore: returns a stable reference, the same array when no change. */
   subscribe(listener: () => void): () => void
   getSnapshot(): RunProgress[]
@@ -155,14 +164,27 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
     const runId = event.runId
     const p = ensure(
       runId,
-      'workflowName' in event ? event.workflowName : 'workflow',
+      'workflowName' in event ? (event.workflowName ?? 'workflow') : 'workflow',
     )
     p.updatedAt = Date.now()
     switch (event.type) {
       case 'run_started':
+        // A resume intentionally reuses runId but represents a fresh live
+        // instance. Do not carry terminal output, old agents, phases, or timing
+        // into the new generation — besides lying in the panel, stale running
+        // rows can make one current workflow look like several old ones.
         p.workflowName = event.workflowName
+        p.taskId = event.taskId
+        p.instanceId = event.instanceId
         p.status = 'running'
+        p.phases = []
         p.declaredPhases = event.meta?.phases?.map(ph => ph.title) ?? []
+        p.currentPhase = null
+        p.agents = []
+        p.agentCount = 0
+        p.returnValue = undefined
+        p.error = undefined
+        p.startedAt = p.updatedAt
         p.description = event.meta?.description ?? undefined
         break
       case 'phase_started':
@@ -184,7 +206,9 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
             label: event.label,
             phase: event.phase,
             status: 'running',
+            execution: 'live',
             startedAt: p.updatedAt,
+            lastActivityAt: p.updatedAt,
           }
           p.agents.push(a)
           p.agentCount = p.agents.length
@@ -192,7 +216,9 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
           a.status = 'running'
           a.label = event.label
           a.phase = event.phase
+          a.execution = 'live'
           a.startedAt = p.updatedAt
+          a.lastActivityAt = p.updatedAt
           // A genuinely fresh attempt at this agent id — the workflow-level journal
           // resume builds a new context and hands out ids from 0 again. Restart the
           // clock and clear the previous attempt's terminal fields so the row does not
@@ -200,6 +226,12 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
           // through here (they emit agent_retry precisely so startedAt survives).
           a.endedAt = undefined
           a.resultKind = undefined
+          a.outputShape = undefined
+          a.outputPreview = undefined
+          a.outputTokens = undefined
+          a.model = undefined
+          a.tokenCount = undefined
+          a.toolCount = undefined
           a.failureReason = undefined
           a.failureDetail = undefined
           a.retryable = undefined
@@ -224,6 +256,7 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
           ar.lastFailureDetail = event.detail
           ar.retryingSince = p.updatedAt
           ar.retryDelayMs = event.delayMs
+          ar.lastActivityAt = p.updatedAt
         }
         break
       }
@@ -233,6 +266,7 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
         if (ap) {
           ap.tokenCount = event.tokenCount
           ap.toolCount = event.toolCount
+          ap.lastActivityAt = p.updatedAt
         }
         break
       }
@@ -244,14 +278,18 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
             label: event.label,
             phase: event.phase,
             status: 'done',
+            execution: event.execution ?? 'live',
             endedAt: p.updatedAt,
+            lastActivityAt: p.updatedAt,
           }
           p.agents.push(a)
           p.agentCount = p.agents.length
         }
         a.status = 'done'
+        a.execution = event.execution ?? a.execution ?? 'live'
         a.resultKind = event.result.kind
         a.endedAt = p.updatedAt
+        a.lastActivityAt = p.updatedAt
         if (event.result.kind === 'ok') {
           a.outputShape =
             typeof event.result.output === 'object' &&
@@ -272,6 +310,8 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
       }
       case 'run_done': {
         p.status = event.status
+        if (event.taskId !== undefined) p.taskId = event.taskId
+        if (event.instanceId !== undefined) p.instanceId = event.instanceId
         if (event.returnValue !== undefined) p.returnValue = event.returnValue
         if (event.error !== undefined) p.error = event.error
         // The run is over, so nothing can still be running. A killed run tears down the
@@ -284,6 +324,7 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
           if (a.status !== 'running') continue
           a.status = 'done'
           a.endedAt = p.updatedAt
+          a.lastActivityAt = p.updatedAt
           a.resultKind = 'dead'
           a.failureReason = `run-${event.status === 'completed' ? 'ended' : event.status}`
           a.retryingSince = undefined
@@ -303,6 +344,10 @@ export function createProgressStoreFromBus(bus: ProgressBus): ProgressStore {
     hydrate(run) {
       if (byId.has(run.runId)) return
       byId.set(run.runId, run)
+      notify()
+    },
+    remove(runId) {
+      if (!byId.delete(runId)) return
       notify()
     },
     subscribe: fn => {

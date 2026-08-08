@@ -1,5 +1,17 @@
+import { feature } from 'bun:bundle'
 import type { PermissionMode } from '../../../types/permissions.js'
+import { isEnvTruthy } from '../../../utils/config/envUtils.js'
+import { resolveInitialPermissionModeFallback } from '../../../utils/permissions/PermissionMode.js'
 import { resolvePermissionMode } from '../utils.js'
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+// Mirrors permissionSetup.ts: the auto-mode gate lives behind
+// TRANSCRIPT_CLASSIFIER, so only pull the module in when the flag is compiled
+// in. With the flag off the require never runs and auto is unreachable anyway.
+const autoModeGateModule = feature('TRANSCRIPT_CLASSIFIER')
+  ? (require('../../../utils/permissions/permissionSetup.js') as typeof import('../../../utils/permissions/permissionSetup.js'))
+  : null
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 export const permissionModeIds: readonly PermissionMode[] = [
   'auto',
@@ -36,8 +48,49 @@ export function resolveSessionPermissionMode(
     return metaResolved
   }
 
+  if (settingsMode === undefined || settingsMode === null) {
+    return resolveAcpFallbackPermissionMode()
+  }
+
   const settingsResolved = resolveConfiguredPermissionMode(settingsMode)
   return settingsResolved ?? 'default'
+}
+
+/**
+ * Implicit mode for an ACP session that carries neither `_meta.permissionMode`
+ * nor `permissions.defaultMode`.
+ *
+ * This used to be a bare `return 'auto'`, which reported a mode the session
+ * could not actually honor: with TRANSCRIPT_CLASSIFIER compiled out the
+ * classifier path is dead, and neither the auto-mode circuit breaker nor
+ * CLAUDE_CODE_REMOTE were consulted. Route through the shared resolver so the
+ * ACP surface obeys exactly the same guards as the CLI surface.
+ *
+ * ACP counts as an **interactive** session. `getIsNonInteractiveSession()` is
+ * derived from TTY-ness (main.tsx), and `occ --acp` speaks JSON-RPC over piped
+ * stdio, so that global reports "non-interactive" — but the ACP client owns a
+ * live `session/request_permission` channel (see createAcpCanUseTool in
+ * ../permissions.ts) and a human answers it in the editor. The headless
+ * argument for forcing 'default' (no way to prompt ⇒ auto silently approves)
+ * therefore does not apply here, so we pass `isNonInteractiveSession: false`
+ * deliberately rather than reading the TTY-derived global.
+ */
+function resolveAcpFallbackPermissionMode(): PermissionMode {
+  let autoModeSupported = false
+  if (feature('TRANSCRIPT_CLASSIFIER')) {
+    autoModeSupported = true
+  }
+
+  return resolveInitialPermissionModeFallback({
+    // Callers only reach here after establishing that neither
+    // _meta.permissionMode nor permissions.defaultMode was supplied.
+    hasExplicitPermissionMode: false,
+    autoModeSupported,
+    autoModeCircuitBroken:
+      autoModeGateModule?.getAutoModeEnabledStateIfCached() === 'disabled',
+    isRemote: isEnvTruthy(process.env.CLAUDE_CODE_REMOTE),
+    isNonInteractiveSession: false,
+  })
 }
 
 function resolveRequiredPermissionMode(

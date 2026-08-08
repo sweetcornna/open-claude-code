@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { getModelTier, getModelTiers, isModelTier } from '../modelTier.js'
+import {
+  getModelSettingsSlot,
+  getModelTier,
+  getModelTiers,
+  isModelTier,
+} from '../modelTier.js'
 
 /**
  * The tier of a model id is what per-tier settings are keyed on. Getting it
@@ -96,6 +101,17 @@ describe('getModelTiers by pin', () => {
     process.env.OPENAI_DEFAULT_OPUS_MODEL = 'deepseek-v4-pro'
     process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-v4-pro'
     expect(getModelTiers('deepseek-v4-pro')).toEqual(['opus'])
+  })
+})
+
+describe('getModelSettingsSlot', () => {
+  test('keeps the provider default distinct from tier aliases', () => {
+    process.env.OPENAI_DEFAULT_SONNET_MODEL = 'deepseek-v4-pro'
+    expect(getModelSettingsSlot('deepseek-v4-pro', null)).toBe('default')
+    expect(getModelSettingsSlot('deepseek-v4-pro', 'sonnet')).toBe('sonnet')
+    expect(getModelSettingsSlot('deepseek-v4-pro', 'deepseek-v4-pro')).toBe(
+      'sonnet',
+    )
   })
 })
 

@@ -9,6 +9,7 @@ import {
 } from '@open-claude-code/workflow-engine'
 import { assembleToolPool } from '../../tools.js'
 import { finalizeAgentTool } from '@open-claude-code/builtin-tools/tools/AgentTool/agentToolUtils.js'
+import { isAgentExecutionLimitError } from '@open-claude-code/builtin-tools/tools/AgentTool/agentExecutionWatchdog.js'
 import { runAgent } from '@open-claude-code/builtin-tools/tools/AgentTool/runAgent.js'
 import {
   isBuiltInAgent,
@@ -318,6 +319,7 @@ export const claudeCodeBackend: AgentAdapter = {
     params: AgentRunParams,
     ctx: AgentAdapterContext,
   ): Promise<AgentRunResult> {
+    const startTime = Date.now()
     const { toolUseContext, canUseTool } = readHostBundle(ctx.host)
     const appState = toolUseContext.getAppState()
     const agentDef = resolveAgentDefinition(params.agentType, toolUseContext)
@@ -421,7 +423,6 @@ export const claudeCodeBackend: AgentAdapter = {
 
     const promptMessages = [createUserMessage({ content: promptText })]
     const messages: Message[] = []
-    const startTime = Date.now()
     // Accumulate running progress (onProgress push -> agent_progress event -> panel refreshes token/tool in real time).
     let tokenCount = 0
     let toolCount = 0
@@ -442,6 +443,7 @@ export const claudeCodeBackend: AgentAdapter = {
           override: { agentId: coreAgentId, abortController: agentAbort },
           ...(model ? { model: model as unknown as ModelAlias } : {}),
           ...(worktreeInfo ? { worktreePath: worktreeInfo.worktreePath } : {}),
+          executionStartedAt: startTime,
         })) {
           messages.push(msg as Message)
           // Accumulate running progress: assistant message carries usage (cumulative value -> overwrite), tool_use inside content (incremental).
@@ -460,6 +462,28 @@ export const claudeCodeBackend: AgentAdapter = {
         }
       })
     } catch (e) {
+      if (isAgentExecutionLimitError(e)) {
+        const reason =
+          e.kind === 'total-timeout'
+            ? 'agent-total-timeout'
+            : 'agent-no-progress'
+        logForDebugging(
+          `workflow sub-agent execution limit (${agentDef.agentType}): ${e.message}`,
+        )
+        logEvent('tengu_workflow_agent', { ok: 0 })
+        // retryable:false here is a *budget* verdict, not a claim that the call
+        // is deterministic — a timeout might well pass on a second run. The
+        // engine's retry is an in-place re-invocation of this very function,
+        // which re-captures startTime, so every attempt gets a full fresh
+        // watchdog budget: flipping this to true turns one limit into up to
+        // four consecutive ones (AGENT_MAX_RETRIES = 3), multiplying exactly
+        // the wall clock the limit exists to bound — and, when the user set
+        // CLAUDE_CODE_AGENT_TOTAL_TIMEOUT_MS explicitly, overrunning a bound
+        // they stated on purpose. The panel says "timed out, not retried"
+        // rather than "deterministic" (AgentDetail's
+        // NON_DETERMINISTIC_FAILURE_REASONS) so the copy stays honest.
+        return { kind: 'dead', reason, detail: e.message, retryable: false }
+      }
       // abort (kill workflow / kill agent): must rethrow WorkflowAbortedError after detection,
       // otherwise hooks.agent will swallow the abort as an ordinary failure into dead, and the workflow won't know it was killed
       // (the other side of the 'x' kill path being ineffective: the signal did arrive, but the result was disguised as a normal completion).

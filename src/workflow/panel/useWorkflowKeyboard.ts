@@ -19,6 +19,8 @@ type KeyEvent = {
   rightArrow?: boolean
   upArrow?: boolean
   downArrow?: boolean
+  pageUp?: boolean
+  pageDown?: boolean
 }
 
 /** key -> action (pure function, easy to unit test; no rendering dependencies). */
@@ -30,8 +32,9 @@ export type WorkflowKeyAction =
   | 'moveUp'
   | 'moveDown'
   | 'openDetail'
-  | 'killAgent'
-  | 'killWorkflow'
+  | 'cancelTarget'
+  | 'pageUp'
+  | 'pageDown'
   | 'resume'
   | 'newRun'
   | 'cycleStatusFilter'
@@ -55,10 +58,9 @@ export function routeWorkflowKey(
   // @anthropic/ink sets key.tab to true for the Tab key; some environments fall back to '\t'
   if (key.tab || input === '\t') return key.shift ? 'prevTab' : 'nextTab'
   if (key.escape || input === 'q') return 'quit'
-  // Capital K = kill the entire workflow; lowercase x = kill the currently selected agent (agents column only).
-  // Case distinction avoids x accidentally triggering workflow kill; K explicitly requires Shift, hinting at a "heavy operation".
-  if (input === 'K') return 'killWorkflow'
-  if (input === 'x') return 'killAgent'
+  // Every task surface uses x for the target currently in focus. The panel
+  // decides whether that target is the selected agent or the whole run.
+  if (input === 'x') return 'cancelTarget'
   if (input === 'r') return 'resume'
   if (input === 'n') return 'newRun'
   if (input === 'f') return 'cycleStatusFilter'
@@ -72,6 +74,8 @@ export function routeWorkflowKey(
   if (key.rightArrow) return 'focusRight'
   if (key.upArrow) return 'moveUp'
   if (key.downArrow) return 'moveDown'
+  if (key.pageUp) return 'pageUp'
+  if (key.pageDown) return 'pageDown'
   return null
 }
 
@@ -99,10 +103,11 @@ export type WorkflowKeyboardHandlers = {
   openDetail: () => void
   /** Cycle the agent-list status filter (all → running → done → failed → all). */
   cycleStatusFilter: () => void
-  /** Request killing the currently selected agent (panel pops a Dialog for secondary confirmation). */
-  killAgent: () => void
-  /** Request killing the entire workflow (panel pops a Dialog for secondary confirmation). */
-  killWorkflow: () => void
+  /** Request cancellation of the target represented by the active pane. */
+  cancelTarget: () => void
+  /** Scroll the fixed detail viewport without changing agent selection. */
+  pageUp: () => void
+  pageDown: () => void
   resumeFocused: () => void
   newRun: () => void
   quit: () => void
@@ -117,9 +122,10 @@ export type WorkflowKeyboardHandlers = {
  * - Tab / Shift+Tab: switch the top run tab
  * - Left / Right: step between phases → agents → agent detail
  * - Enter: open the selected agent's detail view
- * - Up / Down: move within the currently focused column
+ * - Up / Down: always move the selected agent
+ * - PageUp / PageDown: scroll the fixed detail viewport
  * - f cycle the agent status filter
- * - x kill single agent · K kill the entire workflow (with Dialog secondary confirmation) · r resume · n new · q / Esc quit
+ * - x cancel the active target (selected agent or whole workflow) · r resume · n new · q / Esc quit
  *
  * @param mode In confirm mode only y/n/Esc/q are accepted, all other keys are swallowed - avoid mis-navigation inside the confirmation dialog.
  */
@@ -155,11 +161,14 @@ export function useWorkflowKeyboard(
       case 'cycleStatusFilter':
         h.cycleStatusFilter()
         break
-      case 'killAgent':
-        h.killAgent()
+      case 'cancelTarget':
+        h.cancelTarget()
         break
-      case 'killWorkflow':
-        h.killWorkflow()
+      case 'pageUp':
+        h.pageUp()
+        break
+      case 'pageDown':
+        h.pageDown()
         break
       case 'resume':
         h.resumeFocused()

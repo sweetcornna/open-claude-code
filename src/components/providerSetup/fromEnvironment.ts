@@ -19,7 +19,12 @@ import type { CatalogModel } from 'src/services/modelCatalog/types.js'
 import { findChinaProviderByBaseURL } from 'src/utils/model/chinaLlmProviders.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getSettingsForSource } from 'src/utils/settings/settings.js'
-import { PROVIDER_SETUP_SPECS, type ProviderSetupKind } from './specs.js'
+import {
+  activeSubscriptionAuth,
+  type OpenAIWireApi,
+  PROVIDER_SETUP_SPECS,
+  type ProviderSetupKind,
+} from './specs.js'
 import type { ProviderModelSetupStatus } from './state.js'
 import { prefillTierFields } from './tierPersistence.js'
 
@@ -79,12 +84,17 @@ function catalogFor(
   // Anthropic-compatible path 'firstParty'.
   const providerKey = kind === 'anthropic' ? 'firstParty' : kind
   const cached = getCachedModelCatalog(buildCatalogKey(providerKey, baseURL))
-  const preset = spec.presetModels?.() ?? []
-  if (!cached) return preset.length > 0 ? preset : null
-  return [
-    ...cached,
-    ...preset.filter(extra => !cached.some(model => model.id === extra.id)),
-  ]
+  if (cached) return cached
+  const preset = spec.presetModels?.({ baseUrl: baseURL }) ?? []
+  return preset.length > 0 ? preset : null
+}
+
+function openAIWireFromEnvironment(
+  kind: ProviderSetupKind,
+  env: NodeJS.ProcessEnv,
+): OpenAIWireApi | undefined {
+  if (kind !== 'openai') return undefined
+  return env.OPENAI_WIRE_API === 'responses' ? 'responses' : 'chat'
 }
 
 /**
@@ -102,14 +112,22 @@ export function buildModelStepFromEnvironment(
     kind === 'china'
       ? findChinaProviderByBaseURL(env.OPENAI_BASE_URL)
       : undefined
+  const wireApi = openAIWireFromEnvironment(kind, env)
+
+  // A session authenticated by a subscription login (ChatGPT, Antigravity) has
+  // no credential for this form to carry, and the keys it would otherwise
+  // rewrite ARE that login. Reopening the setting therefore edits models only.
+  const subscriptionAuth = activeSubscriptionAuth(spec, env)
 
   const base = {
     state: 'provider_model_setup' as const,
     kind,
     baseUrl: env[spec.env.baseUrl] ?? '',
     apiKey: env[spec.env.apiKey] ?? '',
+    ...(wireApi ? { wireApi } : {}),
     ...(preset ? { providerLabel: preset.label } : {}),
-    model: env[spec.env.model] ?? '',
+    ...(subscriptionAuth ? { credentialEditing: 'locked' as const } : {}),
+    model: env[spec.env.model] ?? preset?.defaultModel ?? '',
     ...prefillTierFields(
       getSettingsForSource('userSettings')?.modelSettings,
       env,

@@ -13,6 +13,7 @@ import type {
   AgentRunResult,
   JournalEntry,
   ProgressEvent,
+  ResumePolicy,
 } from '../types.js'
 
 type CtxOverrides = Partial<{
@@ -20,6 +21,7 @@ type CtxOverrides = Partial<{
   runner: (params: AgentRunParams) => Promise<AgentRunResult>
   pending: { kind: 'skip' | 'retry' } | null
   journal: JournalEntry[]
+  resumePolicy: ResumePolicy
   budgetTotal: number | null
   signal: AbortSignal
   truncated: string[]
@@ -112,6 +114,7 @@ function buildCtx(overrides: CtxOverrides = {}): {
     cwd: '/tmp',
     budgetTotal: overrides.budgetTotal ?? null,
     journal: overrides.journal,
+    ...(overrides.resumePolicy ? { resumePolicy: overrides.resumePolicy } : {}),
     retryBackoffMs: overrides.retryBackoffMs ?? 0, // keep retry tests instant
     ...(overrides.agentMaxRetries !== undefined
       ? { agentMaxRetries: overrides.agentMaxRetries }
@@ -310,6 +313,191 @@ test('agent journal hit does not call runner', async () => {
   expect(called).toBe(0)
 })
 
+test('checkpoint resume replays a skipped journal call without running it live', async () => {
+  let calls = 0
+  const prompt = 'skipped-before'
+  const { hooks, events } = buildCtx({
+    journal: [
+      {
+        key: agentCallKey(prompt, { prompt }),
+        seq: 0,
+        result: { kind: 'skipped' },
+      },
+    ],
+    runner: async () => {
+      calls++
+      return { kind: 'ok', output: 'live', usage: { outputTokens: 1 } }
+    },
+  })
+
+  expect(await hooks.agent(prompt)).toBeNull()
+  expect(calls).toBe(0)
+  const done = events.find(event => event.type === 'agent_done')
+  expect(done?.type === 'agent_done' ? done.execution : undefined).toBe(
+    'replayed',
+  )
+})
+
+test('resume policy all reruns every completed call and reports live execution', async () => {
+  const prompts: string[] = []
+  const journal = ['a', 'b'].map((prompt, seq) => ({
+    key: agentCallKey(prompt, { prompt }),
+    seq,
+    result: {
+      kind: 'ok' as const,
+      output: `cached:${prompt}`,
+      usage: { outputTokens: 1 },
+    },
+  }))
+  const { hooks, events } = buildCtx({
+    journal,
+    resumePolicy: { scope: 'all' },
+    runner: async params => {
+      prompts.push(params.prompt)
+      return {
+        kind: 'ok',
+        output: `live:${params.prompt}`,
+        usage: { outputTokens: 1 },
+      }
+    },
+  })
+
+  expect(await hooks.agent('a')).toBe('live:a')
+  expect(await hooks.agent('b')).toBe('live:b')
+  expect(prompts).toEqual(['a', 'b'])
+  expect(
+    events
+      .filter(event => event.type === 'agent_done')
+      .map(event => event.execution),
+  ).toEqual(['live', 'live'])
+})
+
+test.each([
+  [{ scope: 'range', fromAgentId: 1, toAgentId: 2 } as const, [1, 2]],
+  [{ scope: 'agents', agentIds: [0, 2] } as ResumePolicy, [0, 2]],
+])('selective resume reruns only selected completed calls: %o', async (policy, selected) => {
+  const liveIds: number[] = []
+  const journal = ['a', 'b', 'c'].map((prompt, seq) => ({
+    key: agentCallKey(prompt, { prompt }),
+    seq,
+    result: {
+      kind: 'ok' as const,
+      output: `same:${prompt}`,
+      usage: { outputTokens: 1 },
+    },
+  }))
+  const { hooks, events } = buildCtx({
+    journal,
+    resumePolicy: policy,
+    runner: async params => {
+      liveIds.push(['a', 'b', 'c'].indexOf(params.prompt))
+      return {
+        kind: 'ok',
+        output: `same:${params.prompt}`,
+        usage: { outputTokens: 1 },
+      }
+    },
+  })
+
+  await hooks.agent('a')
+  await hooks.agent('b')
+  await hooks.agent('c')
+  expect(liveIds).toEqual(selected)
+  expect(
+    events
+      .filter(event => event.type === 'agent_done')
+      .map(event => event.execution),
+  ).toEqual([0, 1, 2].map(id => (selected.includes(id) ? 'live' : 'replayed')))
+})
+
+test('parallel resume decisions wait for selected output before replaying a later checkpoint', async () => {
+  const live: string[] = []
+  const journal = ['a', 'b'].map((prompt, seq) => ({
+    key: agentCallKey(prompt, { prompt }),
+    seq,
+    result: {
+      kind: 'ok' as const,
+      output: prompt === 'a' ? 'old:a' : 'cached:b',
+      usage: { outputTokens: 1 },
+    },
+  }))
+  const { hooks } = buildCtx({
+    journal,
+    resumePolicy: { scope: 'agents', agentIds: [0] },
+    runner: async params => {
+      live.push(params.prompt)
+      if (params.prompt === 'a') {
+        await new Promise(resolve => setTimeout(resolve, 5))
+      }
+      return {
+        kind: 'ok',
+        output: `live:${params.prompt}`,
+        usage: { outputTokens: 1 },
+      }
+    },
+  })
+
+  expect(
+    await hooks.parallel([() => hooks.agent('a'), () => hooks.agent('b')]),
+  ).toEqual(['live:a', 'live:b'])
+  expect(live).toEqual(['a', 'b'])
+})
+
+test('journal match requires both global seq and key', async () => {
+  let calls = 0
+  const prompt = 'same-key'
+  const { hooks } = buildCtx({
+    journal: [
+      {
+        key: agentCallKey(prompt, { prompt }),
+        seq: 1,
+        result: {
+          kind: 'ok',
+          output: 'wrong-seq-cache',
+          usage: { outputTokens: 1 },
+        },
+      },
+    ],
+    runner: async () => {
+      calls++
+      return { kind: 'ok', output: 'live', usage: { outputTokens: 1 } }
+    },
+  })
+
+  expect(await hooks.agent(prompt)).toBe('live')
+  expect(calls).toBe(1)
+})
+
+test('incomplete call reruns and conservatively closes over the cached suffix', async () => {
+  const live: string[] = []
+  const promptB = 'b'
+  const { hooks } = buildCtx({
+    journal: [
+      {
+        key: agentCallKey(promptB, { prompt: promptB }),
+        seq: 1,
+        result: {
+          kind: 'ok',
+          output: 'cached:b',
+          usage: { outputTokens: 1 },
+        },
+      },
+    ],
+    runner: async params => {
+      live.push(params.prompt)
+      return {
+        kind: 'ok',
+        output: `live:${params.prompt}`,
+        usage: { outputTokens: 1 },
+      }
+    },
+  })
+
+  expect(await hooks.agent('a')).toBe('live:a')
+  expect(await hooks.agent('b')).toBe('live:b')
+  expect(live).toEqual(['a', 'b'])
+})
+
 test('agent exceeding total cap throws', async () => {
   const { hooks, ctx } = buildCtx()
   ctx.resources.agentCountBox.value = 1000
@@ -418,7 +606,7 @@ test('agent pendingAction=skip → null, does not call runner, not counted', asy
   expect(ctx.resources.agentCountBox.value).toBe(0)
 })
 
-test('agent journal key diverges → invalidate and truncate', async () => {
+test('agent journal identity diverges → marks suffix for authoritative rewrite', async () => {
   const truncated: string[] = []
   const { hooks, ctx } = buildCtx({
     runner: async () => ({
@@ -437,16 +625,18 @@ test('agent journal key diverges → invalidate and truncate', async () => {
   })
   const out = await hooks.agent('different-prompt')
   expect(out).toBe('live')
-  expect(truncated).toContain('r1')
+  expect(truncated).toEqual([])
   expect(ctx.journalInvalidated).toBe(true)
+  expect(ctx.resumeState?.journalNeedsRewrite).toBe(true)
+  expect(ctx.resumeState?.divergentFrom).toBe(0)
 })
 
-test('agent journal divergence rewrites the valid prefix before appending the live suffix', async () => {
+test('agent journal divergence retains the valid prefix and appends the live suffix at the same seq', async () => {
   const rewritten: Array<{ runId: string; entries: JournalEntry[] }> = []
   const appended: JournalEntry[] = []
   const firstPrompt = 'cached-first'
   const firstKey = agentCallKey(firstPrompt, { prompt: firstPrompt })
-  const { hooks } = buildCtx({
+  const { hooks, ctx } = buildCtx({
     runner: async params => ({
       kind: 'ok',
       output: `live:${params.prompt}`,
@@ -479,9 +669,15 @@ test('agent journal divergence rewrites the valid prefix before appending the li
   expect(await hooks.agent(firstPrompt)).toBe('cached:first')
   expect(await hooks.agent('changed-second')).toBe('live:changed-second')
 
-  expect(rewritten).toHaveLength(1)
-  expect(rewritten[0]!.runId).toBe('r1')
-  expect(rewritten[0]!.entries.map(entry => entry.key)).toEqual([firstKey])
+  // Hooks defer the atomic rewrite until the attempt finishes, avoiding rewrite/append
+  // races between parallel calls. The run engine persists exactly this reached prefix.
+  expect(rewritten).toEqual([])
+  expect(ctx.resumeState?.journalNeedsRewrite).toBe(true)
+  expect(
+    [...(ctx.resumeState?.reachedEntries.values() ?? [])].map(
+      entry => entry.key,
+    ),
+  ).toEqual([firstKey, appended[0]!.key])
   expect(appended).toHaveLength(1)
   expect(appended[0]!.seq).toBe(1)
 })
@@ -710,7 +906,7 @@ test('agent dead retryable:true → still retried once (explicit transient)', as
   expect(calls).toBe(2)
 })
 
-test('journal dead entry → re-runs live instead of replaying the failure; subsequent ok entries still replay', async () => {
+test('journal dead entry recovery invalidates and reruns the divergent suffix', async () => {
   const keyA = agentCallKey('a', { prompt: 'a' })
   const keyB = agentCallKey('b', { prompt: 'b' })
   let calls = 0
@@ -734,17 +930,16 @@ test('journal dead entry → re-runs live instead of replaying the failure; subs
     ],
     appended,
   })
-  // dead entry consumed positionally, live re-run happens
+  // The dead baseline produced null. Recovering to a value can alter every downstream
+  // prompt/control branch, so the suffix must run live rather than replay stale output.
   expect(await hooks.agent('a')).toBe('fresh')
   expect(calls).toBe(1)
-  // positional replay of the following ok entry is unaffected (no divergence/truncate)
-  expect(await hooks.agent('b')).toBe('cached-b')
-  expect(calls).toBe(1)
-  expect(ctx.journalInvalidated).toBe(false)
-  // superseding record appended with the original seq (read()'s keep-last dedupe makes it win)
-  expect(appended).toHaveLength(1)
-  expect(appended[0]!.seq).toBe(0)
-  expect(appended[0]!.result.kind).toBe('ok')
+  expect(await hooks.agent('b')).toBe('fresh')
+  expect(calls).toBe(2)
+  expect(ctx.journalInvalidated).toBe(true)
+  // Every live replacement keeps the original global seq.
+  expect(appended.map(entry => entry.seq)).toEqual([0, 1])
+  expect(appended.every(entry => entry.result.kind === 'ok')).toBe(true)
 })
 
 // ---- retry loop: budget, observability, and the journal/budget invariants ----
@@ -1059,8 +1254,12 @@ test('agent journal divergence is reported, not silent', async () => {
   expect(warnings.some(w => w.includes('diverged'))).toBe(true)
   const logEvents = events.filter(e => e.type === 'log')
   expect(logEvents.length).toBe(1)
-  // Diverging at the very first call means nothing was reused.
-  expect((logEvents[0] as { message: string }).message).toContain('call #1')
+  // Diverging at the very first call means nothing was reused. The id is reported
+  // 0-based, matching the progress rows and the resumePolicy selectors — a 1-based
+  // "call #N" left the user to translate before they could re-select the agent.
+  expect((logEvents[0] as { message: string }).message).toContain(
+    'agentId 0 (0-based)',
+  )
   expect((logEvents[0] as { message: string }).message).toContain(
     '0 cached result(s) replayed',
   )

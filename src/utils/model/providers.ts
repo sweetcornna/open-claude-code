@@ -1,5 +1,6 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
 import { isDeepSeekAnthropicWireActive } from './deepseekWire.js'
+import { isDeepSeekBaseURL } from './deepseekHost.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { SettingsJson } from '../settings/types.js'
 import { isEnvTruthy } from '../config/envUtils.js'
@@ -69,7 +70,76 @@ export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS
  * server-side web-search adapter — all verified against the real endpoint.
  */
 export function isThirdPartyModelCatalog(): boolean {
-  return getAPIProvider() !== 'firstParty' || isDeepSeekAnthropicWireActive()
+  return getAPIProvider() !== 'firstParty' || isThirdPartyAnthropicEndpoint()
+}
+
+/**
+ * The four aliases (plus the two compound ones) and the env key each resolves
+ * through on the Anthropic wire. Local, because reading this file must not pull
+ * in model.ts — every predicate here sits under getAPIProvider(), which model.ts
+ * consumes.
+ */
+const ANTHROPIC_TIER_ALIAS_ENV: Record<string, string> = {
+  haiku: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  sonnet: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  opus: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  fable: 'ANTHROPIC_DEFAULT_FABLE_MODEL',
+  // `opusplan` runs Sonnet outside plan mode; `best` is the Opus alias.
+  opusplan: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  best: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+}
+
+/** Whether a configured model setting names one of Anthropic's own ids. */
+function namesAnthropicModel(configured: string): boolean {
+  const normalized = configured
+    .trim()
+    .replace(/\[1m\]$/i, '')
+    .trim()
+    .toLowerCase()
+  if (!normalized) return true
+  const aliasEnv = ANTHROPIC_TIER_ALIAS_ENV[normalized]
+  if (aliasEnv) {
+    // An alias only leaves Anthropic's catalog when the user repointed it.
+    const pinned = process.env[aliasEnv]?.trim()
+    return pinned ? pinned.toLowerCase().includes('claude') : true
+  }
+  return normalized.includes('claude')
+}
+
+/**
+ * Whether an Anthropic-wire session pointed somewhere other than
+ * api.anthropic.com is serving somebody ELSE's models.
+ *
+ * "Not the official host" is not the same question. A LiteLLM deployment, a
+ * corporate gateway and an SSO-terminating proxy all set ANTHROPIC_BASE_URL and
+ * all serve real Claude checkpoints; answering "third party" for them strips the
+ * whole Anthropic-only surface — context-management / global-cache / interleaved
+ * thinking beta headers, the `[1m]` opt-in (so a 1M session silently clamps back
+ * to 200k), the marketing name in the system prompt, Fast mode, the legacy-model
+ * migrations and the $/Mtok rate card — from users who lose nothing but a
+ * hostname by proxying.
+ *
+ * So the endpoint has to be POSITIVELY identified as another vendor's:
+ *   - DeepSeek, either through the OPENAI_* routing or a DeepSeek base URL, or
+ *   - the session's own model pin (ANTHROPIC_MODEL / settings.model, aliases
+ *     resolved through their ANTHROPIC_DEFAULT_<TIER>_MODEL pins) names
+ *     something that is not a Claude id.
+ *
+ * A gateway with a `claude-*` pin — or with nothing pinned at all — keeps the
+ * pre-2.35 answer: an Anthropic proxy.
+ *
+ * Reads process.env and settings only. It must never reach the auth or
+ * subscription chain: getContextWindowForModel() is downstream of this and runs
+ * in contexts (tests, CI, config subprocesses) where that chain throws.
+ */
+export function isThirdPartyAnthropicEndpoint(): boolean {
+  if (isDeepSeekAnthropicWireActive()) return true
+  if (isFirstPartyAnthropicBaseUrl()) return false
+  if (isDeepSeekBaseURL(process.env.ANTHROPIC_BASE_URL)) return true
+  const configured =
+    process.env.ANTHROPIC_MODEL?.trim() || getInitialSettings().model?.trim()
+  if (!configured) return false
+  return !namesAnthropicModel(configured)
 }
 
 /**
@@ -94,13 +164,22 @@ export function isThirdPartyModelCatalog(): boolean {
  * remaps that to its own checkpoint; everyone else 404s. Calling it "Fable 5"
  * then tells the user — and, through the system prompt, the model itself —
  * that Anthropic's Fable is answering when it is not.
+ *
+ * A plain proxy or gateway answers YES: it forwards to Anthropic and the
+ * `claude-*` id on the wire means exactly what it says. See
+ * isThirdPartyAnthropicEndpoint for how "somebody else's endpoint" is told apart
+ * from "Anthropic's endpoint behind a different hostname".
  */
 export function servesAnthropicModels(): boolean {
   const provider = getAPIProvider()
-  if (provider === 'openai' || provider === 'gemini' || provider === 'grok') {
-    return false
+  if (
+    provider === 'bedrock' ||
+    provider === 'vertex' ||
+    provider === 'foundry'
+  ) {
+    return true
   }
-  return !isDeepSeekAnthropicWireActive()
+  return provider === 'firstParty' && !isThirdPartyAnthropicEndpoint()
 }
 
 /**

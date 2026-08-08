@@ -9,10 +9,6 @@ function getModelFamily(
 }
 
 export function resolveGeminiModel(anthropicModel: string): string {
-  if (process.env.GEMINI_MODEL) {
-    return process.env.GEMINI_MODEL
-  }
-
   const cleanModel = anthropicModel.replace(/\[1m\]$/i, '')
   const family = getModelFamily(cleanModel)
 
@@ -30,6 +26,10 @@ export function resolveGeminiModel(anthropicModel: string): string {
   const resolvedModel = process.env[sharedEnvVar]
   if (resolvedModel) {
     return resolvedModel
+  }
+
+  if (process.env.GEMINI_MODEL) {
+    return process.env.GEMINI_MODEL
   }
 
   throw new Error(

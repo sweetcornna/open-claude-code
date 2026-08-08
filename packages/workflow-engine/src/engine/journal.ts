@@ -8,8 +8,9 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { join } from 'node:path'
+import { MAX_TOTAL_AGENTS } from '../constants.js'
 import type { JournalStore } from '../ports.js'
-import type { AgentRunParams, JournalEntry } from '../types.js'
+import type { AgentRunParams, JournalEntry, ResumePolicy } from '../types.js'
 import { assertValidRunId } from './paths.js'
 
 type FileJournalStore = JournalStore & {
@@ -40,6 +41,118 @@ export function agentCallKey(prompt: string, params: AgentRunParams): string {
   return createHash('sha256')
     .update(prompt + '\n' + canonicalParams(params))
     .digest('hex')
+}
+
+/** Journal identity is positional and content-addressed; neither component is sufficient alone. */
+export function journalEntryMatches(
+  entry: JournalEntry | undefined,
+  seq: number,
+  key: string,
+): entry is JournalEntry {
+  return entry?.seq === seq && entry.key === key
+}
+
+export function isSelectiveResumePolicy(
+  policy: ResumePolicy,
+): policy is Extract<ResumePolicy, { scope: 'range' | 'agents' }> {
+  return policy.scope === 'range' || policy.scope === 'agents'
+}
+
+export function resumePolicySelectsAgent(
+  policy: ResumePolicy,
+  agentId: number,
+): boolean {
+  if (policy.scope === 'all') return true
+  if (policy.scope === 'range') {
+    return agentId >= policy.fromAgentId && agentId <= policy.toAgentId
+  }
+  return policy.scope === 'agents' && policy.agentIds.includes(agentId)
+}
+
+export function resumePolicyAgentIds(policy: ResumePolicy): number[] {
+  if (policy.scope === 'range') {
+    return Array.from(
+      { length: policy.toAgentId - policy.fromAgentId + 1 },
+      (_, index) => policy.fromAgentId + index,
+    )
+  }
+  return policy.scope === 'agents' ? [...policy.agentIds] : []
+}
+
+/**
+ * Runtime boundary for direct engine callers which do not pass through the Zod tool schema.
+ * Omitted policy preserves the historical checkpoint behavior whenever resume=true.
+ */
+export function resolveResumePolicy(
+  value: unknown,
+  resume: boolean,
+): ResumePolicy | undefined {
+  if (value === undefined) return resume ? { scope: 'checkpoint' } : undefined
+  if (!resume)
+    throw new Error('resumePolicy is valid only with resumeFromRunId')
+  if (!isRecord(value) || typeof value.scope !== 'string') {
+    throw new Error('Malformed resumePolicy selector')
+  }
+
+  if (value.scope === 'checkpoint' || value.scope === 'all') {
+    assertExactKeys(value, ['scope'])
+    return { scope: value.scope }
+  }
+  if (value.scope === 'range') {
+    assertExactKeys(value, ['scope', 'fromAgentId', 'toAgentId'])
+    assertAgentId(value.fromAgentId, 'fromAgentId')
+    assertAgentId(value.toAgentId, 'toAgentId')
+    if (value.fromAgentId > value.toAgentId) {
+      throw new Error('resumePolicy range requires fromAgentId <= toAgentId')
+    }
+    return {
+      scope: 'range',
+      fromAgentId: value.fromAgentId,
+      toAgentId: value.toAgentId,
+    }
+  }
+  if (value.scope === 'agents') {
+    assertExactKeys(value, ['scope', 'agentIds'])
+    if (!Array.isArray(value.agentIds) || value.agentIds.length === 0) {
+      throw new Error('resumePolicy agents requires a non-empty agentIds array')
+    }
+    const agentIds: number[] = []
+    for (const id of value.agentIds) {
+      assertAgentId(id, 'agentIds')
+      agentIds.push(id)
+    }
+    if (new Set(agentIds).size !== agentIds.length) {
+      throw new Error('resumePolicy agentIds must be unique')
+    }
+    return { scope: 'agents', agentIds }
+  }
+  throw new Error(`Unknown resumePolicy scope ${JSON.stringify(value.scope)}`)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function assertExactKeys(
+  value: Record<string, unknown>,
+  allowed: string[],
+): void {
+  if (Object.keys(value).some(key => !allowed.includes(key))) {
+    throw new Error('Malformed resumePolicy selector')
+  }
+}
+
+function assertAgentId(value: unknown, field: string): asserts value is number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value >= MAX_TOTAL_AGENTS
+  ) {
+    throw new Error(
+      `${field} must be an integer between 0 and ${MAX_TOTAL_AGENTS - 1}`,
+    )
+  }
 }
 
 /** File-based JournalStore (jsonl, one directory per run). Pure fs, no core dependencies. */
@@ -127,8 +240,12 @@ export function createFileJournalStore(
       entries.forEach((e, i) => {
         bySeq.set(typeof e.seq === 'number' ? e.seq : i, e)
       })
-      // parallel completion order ≠ call order; re-sort by seq so the key index is stable during resume.
-      return [...bySeq.entries()].sort((a, b) => a[0] - b[0]).map(([, e]) => e)
+      // parallel completion order ≠ call order; re-sort by seq so identity matching is stable during resume.
+      // Normalize legacy records which omitted seq to their append index: identity now requires both
+      // seq and key, so leaving seq undefined would turn every legacy checkpoint into a miss.
+      return [...bySeq.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([seq, entry]) => (entry.seq === seq ? entry : { ...entry, seq }))
     },
     async append(runId, entry) {
       await mkdir(dirOf(runId), { recursive: true })

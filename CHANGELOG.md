@@ -4,6 +4,21 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.35.0 - 2026-08-08
+
+- **模型设置新增独立的 `default` 槽。** provider 默认模型与 haiku/sonnet/opus/fable 四档各自独立配置 effort 与上下文，即使解析为同一 model id 也互不影响；显式 model id 一律原样透传。出厂默认统一为：GPT（含 o 系）xhigh·272K、DeepSeek max·1M、Claude Opus/Fable xhigh·1M、Claude Sonnet/Haiku xhigh·200K、Gemini/Grok high·200K。自 2.34 升级时，原「Default」行的档位配置自动迁移至 `default` 槽。
+- **`/models` 命令更名为 `/models-setting`（provider 的 HTTP `GET /models` 端点不变）。** 保存等待全部副作用完成后立即在当前会话生效，无需重启；Claude.ai、ChatGPT 订阅与 Antigravity 登录流程同样即时生效。ChatGPT 订阅与 Antigravity 会话在该页仅编辑模型与档位映射，凭据与登录状态不受影响。模型选择器仅展示端点实际返回的模型，内建模型表仅在官方端点兜底；重新打开 OpenAI 设置会保留 `OPENAI_WIRE_API`。
+- **可恢复的 API 错误统一重试，上限 10 次。** 网络中断、429、临时 5xx、无状态 upstream 错误与 Responses 流首个输出前的 idle timeout 均重试；认证、权限、invalid request、model not found 与用户取消立即失败。`Retry-After` 上限 60 秒、退避单次上限 32 秒；SDK 内层重试关闭，避免重试放大；已提交 text/thinking/signature/tool 输出后不再重放请求。例外：Claude 订阅（Max/Pro）的 429 不重试（限额按时间窗口恢复）；`CLAUDE_CODE_UNATTENDED_RETRY` 由无限改为同样封顶 10 次。
+- **Agent 与 Workflow 子 agent 共享执行看门狗。** 连续 40 分钟（默认）无工具产出即终止；占位文本不计为进展，活跃的 Bash/MCP/工具调用暂停计时；总时限默认关闭。`CLAUDE_CODE_AGENT_NO_PROGRESS_TIMEOUT_MS` 与 `CLAUDE_CODE_AGENT_TOTAL_TIMEOUT_MS` 可调，0 为禁用。被终止的 agent 保留已产出的部分结果并报告明确原因。空白或纯 thinking 响应不再被视为成功，包括主会话在内一律显示为模型错误。
+- **主 Agent 可查询与控制 Workflow。** 状态含 run/phase/子 agent/进度/token 统计/失败原因与 run 目录；resume 支持 checkpoint、全量、agent 区间或指定列表；同一 runId 单飞，旧代际不覆盖新运行。
+- **Workflow 与后台任务统一为固定尺寸面板。** `/workflows` 与任务入口共享同一视图，内容多少不改变布局；`↑/↓` 选择，`x` 取消选中 agent 或整个 run，独立的 `K` 快捷键移除。
+- **MCP 工具池实时化。** SearchExtraTools 与 Execute 每次调用读取实时工具池（含子 agent 内）；动态注册、删除与 `tools/list_changed` 同轮生效。首次 `listTools` 失败不再缓存为空结果，失败的 server 明确显示为 failed；单个畸形工具不影响同 server 其他工具；同名 server 重连不复用旧 schema。
+- **不再内置 Chrome MCP。** `chrome-devtools-mcp` 依赖、默认 server、CLI flag、`/chrome`、skill、settings 与 doctor 项全部移除；此前启用过内置 `mcp-chrome` 的用户需按普通 MCP 自行重新添加，任意浏览器类 MCP 均可正常配置。
+- **交互式会话在无显式权限配置时默认 `auto`。** `-p`/headless 会话保持 `default`；显式 CLI/settings 配置一律优先。compact 摘要不再将一次性编排指令带入后续会话。
+- **provider URL 拼接统一。** 不再产生重复版本段、不丢失多段自定义 base path、模型目录请求发往正确端点。Antigravity 的 base URL 覆盖键由 `GEMINI_BASE_URL` 迁移为独立的 `ANTIGRAVITY_BASE_URL`，原有代理配置需改键。
+- **修复 Bing 搜索结果整页丢失。** Bing 的点击跟踪壳使用相对路径时，结果在解包前即被丢弃；现在两种写法均先解包取出真实地址。
+- **配置了 key 的 Brave 与 Exa 自动参与多源搜索。** 与已登录官方源一致：有 key 即参与并行合并，无 key 不出现，可在 `/search-setting` 中关闭；不再需要独占式固定后端。
+
 ## 2.34.0 - 2026-08-07
 
 - **修复：跑子 agent 的长会话内存会一直涨，最后整个崩掉。** 症状是 `FATAL ERROR: Ineffective mark-compacts near heap limit`，实测一次崩在 4GB。原因是子 agent 产生的**每一条**消息都会留在父会话里，而且永不清理 —— 一次真实会话跑了 216 个子 agent、其中一个自己就产生了 1,270 条消息。现在子 agent 结束时它的过程记录会被裁掉，只留尾部若干条。运行中的 agent 完全不受影响，短的 agent 也一条不少；被裁掉的完整内容本来就在 `subagents/agent-<id>.jsonl` 里。`CLAUDE_CODE_AGENT_PROGRESS_RETAIN` 可调保留条数。

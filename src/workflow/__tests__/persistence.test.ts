@@ -162,12 +162,16 @@ test('writeRunState writes full AgentProgress (no output content, includes label
   try {
     const run = makeRun({
       runId: 'rAg',
+      taskId: 'w-wrapper',
+      instanceId: 12,
       agents: [
         {
           id: 1,
           label: 'review:hooks',
           phase: 'Review',
           status: 'done',
+          execution: 'replayed',
+          lastActivityAt: 9876,
           outputShape: 'object',
           tokenCount: 12345,
           toolCount: 3,
@@ -178,12 +182,15 @@ test('writeRunState writes full AgentProgress (no output content, includes label
     })
     await writeRunState(dir, run)
     const got = await readRunState(dir, 'rAg')
+    expect(got).toMatchObject({ taskId: 'w-wrapper', instanceId: 12 })
     expect(got!.agents).toHaveLength(1)
     expect(got!.agents[0]).toEqual({
       id: 1,
       label: 'review:hooks',
       phase: 'Review',
       status: 'done',
+      execution: 'replayed',
+      lastActivityAt: 9876,
       outputShape: 'object',
       tokenCount: 12345,
       toolCount: 3,

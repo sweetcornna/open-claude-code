@@ -9,15 +9,18 @@ afterEach(() => {
 })
 
 describe('OpenAI reasoning effort defaults', () => {
-  test('defaults gpt-5.6-sol variants to low', () => {
-    expect(getResponsesReasoningEffort('gpt-5.6-sol', undefined)).toBe('low')
-    expect(getChatReasoningEffort('gpt-5.6-sol-preview', undefined)).toBe('low')
+  test('uses the GPT family xhigh default on Responses', () => {
+    expect(getResponsesReasoningEffort('gpt-5.6-sol', undefined)).toBe('xhigh')
+    expect(getResponsesReasoningEffort('gpt-5.6-sol-preview', undefined)).toBe(
+      'xhigh',
+    )
+    expect(getResponsesReasoningEffort('gpt-5.6-terra', undefined)).toBe(
+      'xhigh',
+    )
   })
 
-  test('keeps other reasoning models at medium', () => {
-    expect(getResponsesReasoningEffort('gpt-5.6-terra', undefined)).toBe(
-      'medium',
-    )
+  test('clamps the GPT family default to high on Chat Completions', () => {
+    expect(getChatReasoningEffort('gpt-5.6-sol', undefined)).toBe('high')
   })
 
   test('an explicit effort value takes priority over the model default', () => {

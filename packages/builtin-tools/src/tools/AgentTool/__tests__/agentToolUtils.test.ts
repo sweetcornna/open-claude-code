@@ -56,7 +56,9 @@ const sdkProgressMock = setupSdkProgressMock({
 })
 afterAll(() => sdkProgressMock.reset())
 
-const { countToolUses, getLastToolUseName } = await import('../agentToolUtils')
+const { countToolUses, finalizeAgentTool, getLastToolUseName } = await import(
+  '../agentToolUtils'
+)
 
 function makeAssistantMessage(content: any[]): any {
   return { type: 'assistant', message: { content } }
@@ -104,6 +106,25 @@ describe('countToolUses', () => {
       ]),
     ]
     expect(countToolUses(messages)).toBe(3)
+  })
+})
+
+describe('finalizeAgentTool', () => {
+  test('rejects whitespace-only output instead of returning empty content', () => {
+    expect(() =>
+      finalizeAgentTool(
+        [makeAssistantMessage([{ type: 'text', text: '   ' }])],
+        'agent-empty',
+        {
+          prompt: 'test',
+          resolvedAgentModel: 'test-model',
+          isBuiltInAgent: false,
+          startTime: Date.now(),
+          agentType: 'test',
+          isAsync: false,
+        },
+      ),
+    ).toThrow('Agent returned an empty response.')
   })
 })
 

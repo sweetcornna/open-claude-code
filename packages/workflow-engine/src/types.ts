@@ -9,6 +9,24 @@ export type WorkflowMeta = {
   phases?: Array<{ title: string; detail?: string }>
 }
 
+/** Backwards-compatible journal resume selector. Agent ids are global across nested workflows. */
+export type ResumePolicy =
+  | { scope: 'checkpoint' }
+  | { scope: 'all' }
+  | { scope: 'range'; fromAgentId: number; toAgentId: number }
+  | { scope: 'agents'; agentIds: number[] }
+
+export type AgentExecution = 'replayed' | 'live'
+
+/** Aggregate resume telemetry attached to the terminal result/event. */
+export type WorkflowResumeSummary = {
+  policy: ResumePolicy
+  replayedCount: number
+  liveCount: number
+  /** Requested range/agent selectors which were never invoked by the resumed script. */
+  selectorsNotReached: number[]
+}
+
 /** Parameters passed by agent() to the AgentRunner. */
 export type AgentRunParams = {
   prompt: string
@@ -62,6 +80,7 @@ export type AgentRunResult =
        * - worktree-failed: isolation:'worktree' creation failed (fail-closed degradation)
        * - prompt-too-long: terminal context-overflow API error — deterministic for the identical call (backend sets retryable:false)
        * - api-error: terminal API error other than context overflow (overload / stream drop / timeout) — transient, retry may succeed
+       * - agent-total-timeout / agent-no-progress: configured execution limits — deterministic for the identical run
        * - unknown: unclassified (compatible with old backends / third-party adapters)
        */
       reason?:
@@ -70,6 +89,8 @@ export type AgentRunResult =
         | 'worktree-failed'
         | 'prompt-too-long'
         | 'api-error'
+        | 'agent-total-timeout'
+        | 'agent-no-progress'
         | 'unknown'
       /** Detail (error message / text preview) for logs; not shown to end users. */
       detail?: string
@@ -94,8 +115,12 @@ export type ProgressEvent =
   | {
       type: 'run_started'
       runId: string
+      /** Identity of this host-owned execution generation, when the host has one. */
+      taskId?: string
+      instanceId?: number
       workflowName: string
       meta: WorkflowMeta | null
+      resumePolicy?: ResumePolicy
     }
   | { type: 'phase_started'; runId: string; phase: string }
   | { type: 'phase_done'; runId: string; phase: string }
@@ -113,6 +138,8 @@ export type ProgressEvent =
       label?: string
       phase?: string
       result: AgentRunResult
+      /** Always emitted by the engine; optional so older host-authored events remain valid. */
+      execution?: AgentExecution
     }
   | {
       type: 'agent_progress'
@@ -151,9 +178,15 @@ export type ProgressEvent =
   | {
       type: 'run_done'
       runId: string
+      /** Present on engine/tool-authored events so failures before run_started keep their identity. */
+      workflowName?: string
+      /** Latest wrapper generation; allows detached pre-start failures to persist identity too. */
+      taskId?: string
+      instanceId?: number
       status: 'completed' | 'failed' | 'killed'
       returnValue?: unknown
       error?: string
+      resume?: WorkflowResumeSummary
     }
 
 /** Engine run result. */
@@ -161,4 +194,5 @@ export type WorkflowRunResult = {
   status: 'completed' | 'failed' | 'killed'
   returnValue?: unknown
   error?: string
+  resume?: WorkflowResumeSummary
 }

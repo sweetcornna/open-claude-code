@@ -18,6 +18,7 @@
  * failures resolve to `null` with a user-readable reason via `onError`.
  */
 
+import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   ANTHROPIC_VERSION,
@@ -272,9 +273,8 @@ export async function fetchAnthropicCompatibleModelsWith({
   const reportFailure = makeFailureReporter('Anthropic', onError)
   if (!validateEndpoint(baseURL, apiKey, reportFailure)) return null
 
-  const root = baseURL.replace(/\/+$/, '')
   return fetchAndParse(
-    `${joinVersionedPath(root, 'models')}?limit=${PAGE_LIMIT}`,
+    joinVersionedPath(baseURL, 'models', { limit: PAGE_LIMIT }),
     {
       'x-api-key': apiKey,
       'anthropic-version': ANTHROPIC_VERSION,
@@ -304,9 +304,10 @@ export async function fetchGeminiModelsWith({
   const reportFailure = makeFailureReporter('Gemini', onError)
   if (!validateEndpoint(baseURL, apiKey, reportFailure)) return null
 
-  const root = baseURL.replace(/\/+$/, '')
   return fetchAndParse(
-    `${root}/models?pageSize=${PAGE_LIMIT}`,
+    buildProviderResourceURL(baseURL, 'gemini', 'models', {
+      pageSize: PAGE_LIMIT,
+    }),
     { 'x-goog-api-key': apiKey, accept: 'application/json' },
     parseGeminiModelsResponse,
     { signal, fetchImpl },

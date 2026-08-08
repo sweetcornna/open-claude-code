@@ -22,6 +22,7 @@ import {
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from './prompt.js'
 import {
+  getToolDefinitionsCacheKey,
   getToolIndex,
   getToolInputJSONSchema,
   searchTools,
@@ -74,18 +75,10 @@ type OutputSchema = ReturnType<typeof outputSchema>
 
 export type Output = z.infer<OutputSchema>
 
-// Track deferred tool names to detect when cache should be cleared
-let cachedDeferredToolNames: string | null = null
-
-/**
- * Get a cache key representing the current set of deferred tools.
- */
-function getDeferredToolsCacheKey(deferredTools: Tools): string {
-  return deferredTools
-    .map(t => t.name)
-    .sort()
-    .join(',')
-}
+// Track deferred tool definitions to detect when cache should be cleared.
+// Names alone are insufficient: tools/list_changed may replace a tool's
+// description or schema while keeping the same name.
+let cachedDeferredToolDefinitions: string | null = null
 
 /**
  * Get tool description, memoized by tool name.
@@ -117,19 +110,19 @@ const getToolDescriptionMemoized = memoize(
  * Invalidate the description cache if deferred tools have changed.
  */
 function maybeInvalidateCache(deferredTools: Tools): void {
-  const currentKey = getDeferredToolsCacheKey(deferredTools)
-  if (cachedDeferredToolNames !== currentKey) {
+  const currentKey = getToolDefinitionsCacheKey(deferredTools)
+  if (cachedDeferredToolDefinitions !== currentKey) {
     logForDebugging(
       `SearchExtraToolsTool: cache invalidated - deferred tools changed`,
     )
     getToolDescriptionMemoized.cache.clear?.()
-    cachedDeferredToolNames = currentKey
+    cachedDeferredToolDefinitions = currentKey
   }
 }
 
 export function clearSearchExtraToolsDescriptionCache(): void {
   getToolDescriptionMemoized.cache.clear?.()
-  cachedDeferredToolNames = null
+  cachedDeferredToolDefinitions = null
 }
 
 /**
@@ -382,15 +375,16 @@ export const SearchExtraToolsTool = buildTool({
   get outputSchema(): OutputSchema {
     return outputSchema()
   },
-  async call(input, { options: { tools }, getAppState }) {
+  async call(input, context) {
     const { query, max_results = 5 } = input
+    const tools = context.options.refreshTools?.() ?? context.options.tools
 
     const deferredTools = tools.filter(isDeferredTool)
     maybeInvalidateCache(deferredTools)
 
     // Check for MCP servers still connecting
     function getPendingServerNames(): string[] | undefined {
-      const appState = getAppState()
+      const appState = context.getAppState()
       const pending = appState.mcp.clients.filter(c => c.type === 'pending')
       return pending.length > 0 ? pending.map(s => s.name) : undefined
     }

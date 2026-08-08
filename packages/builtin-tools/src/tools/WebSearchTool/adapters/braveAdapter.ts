@@ -156,7 +156,15 @@ function normalizeSnippet(snippets: string[] | undefined): string | undefined {
   return normalized.join(' ')
 }
 
-function getBraveApiKey(): string {
+/**
+ * The key `search()` would actually use, or undefined when none is configured.
+ *
+ * Exported because the source registry has to answer "is Brave switched on?"
+ * and the only honest answer is "would this adapter find a key". Re-deriving
+ * that from the env list alone would light the lane up for one half of the
+ * configurations and leave it dark for the other.
+ */
+export function resolveBraveApiKey(): string | undefined {
   // Priority: settings.braveApiKey (from /web-tools panel) > environment variable
   const settings = getSettings_DEPRECATED() as Record<string, unknown> & {
     braveApiKey?: string
@@ -171,6 +179,13 @@ function getBraveApiKey(): string {
       return value
     }
   }
+
+  return undefined
+}
+
+function getBraveApiKey(): string {
+  const key = resolveBraveApiKey()
+  if (key) return key
 
   throw new Error(
     'BraveSearchAdapter requires BRAVE_SEARCH_API_KEY or BRAVE_API_KEY',

@@ -121,6 +121,22 @@ describe('DeepSeekDirectSearchAdapter', () => {
     ])
   })
 
+  test('a base URL carrying query parameters still gets a well-formed path', async () => {
+    // The adapter consumes `endpoint.messagesURL` rather than concatenating
+    // `${baseURL}/v1/messages`: on a base with a query the concatenation put the
+    // whole path INSIDE the query value and the request went to the wrong route.
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com/v1?tenant=x'
+    const fetchOverride = stubFetch({
+      body: searchReply(['https://a.example/1']),
+    })
+
+    await new DeepSeekDirectSearchAdapter({ fetchOverride }).search('q', {})
+
+    expect(fetchOverride.calls[0]?.url).toBe(
+      'https://api.deepseek.com/anthropic/v1/messages?tenant=x',
+    )
+  })
+
   test('maps web_search_result blocks into results', async () => {
     const fetchOverride = stubFetch({
       body: searchReply(['https://a.example/1', 'https://b.example/2']),

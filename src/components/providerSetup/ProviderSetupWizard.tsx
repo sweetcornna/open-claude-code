@@ -26,9 +26,11 @@ import { Select } from '../CustomSelect/select.js';
 import { Spinner } from '../Spinner.js';
 import TextInput from '../TextInput.js';
 import {
+  activeSubscriptionAuth,
   PROVIDER_SETUP_SPECS,
   type ProviderSetupSpec,
   type ProviderSetupValues,
+  specForSubscriptionAuth,
   TIER_LABELS,
   type TierField,
 } from './specs.js';
@@ -42,10 +44,11 @@ import {
 } from './state.js';
 import { parseMaxContextInput } from './maxContext.js';
 import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js';
-import { buildTierSettings, prefillTierFields } from './tierPersistence.js';
+import { prefillTierFields } from './tierPersistence.js';
+import { applyProviderSaveEnv, planProviderSave, type ProviderSaveOutcome } from './savePlan.js';
 import { EFFORT_LEVELS } from 'src/utils/model/effort.js';
-import type { TierEffort } from 'src/utils/model/tierDefaults.js';
 import { getSettingsForSource } from 'src/utils/settings/settings.js';
+import { normalizeProviderBaseURL } from 'src/utils/network/providerUrl.js';
 
 export type ProviderSetupWizardProps = {
   status: ProviderSetupStatus;
@@ -58,8 +61,11 @@ export type ProviderSetupWizardProps = {
    * forwards that so the event reaches the handler that is actually current.
    */
   onCancel: () => void | false;
-  /** Settings written; the flow is finished. */
-  onSaved: () => void;
+  /**
+   * Settings written; the flow is finished. The outcome says whether the
+   * session's model selection is still meaningful — see ProviderSaveOutcome.
+   */
+  onSaved: (outcome: ProviderSaveOutcome) => void;
 };
 
 export function ProviderSetupWizard(props: ProviderSetupWizardProps): React.ReactNode {
@@ -102,25 +108,32 @@ function EndpointStep({
   );
 
   const beginModelFetch = useCallback(() => {
-    const trimmedBaseUrl = baseUrl.trim();
+    const enteredBaseUrl = baseUrl.trim();
     const trimmedApiKey = apiKey.trim();
     const retryState: ProviderEndpointSetupStatus = {
       state: 'provider_endpoint_setup',
       kind: status.kind,
       phase: 'editing',
-      baseUrl: trimmedBaseUrl,
+      baseUrl: enteredBaseUrl,
       apiKey: trimmedApiKey,
       ...(status.wireApi ? { wireApi: status.wireApi } : {}),
       activeField: 'base_url',
     };
 
-    if (!trimmedBaseUrl && spec.baseUrlRequired) {
+    if (!enteredBaseUrl && spec.baseUrlRequired) {
       onError('Base URL is required. Enter the full server URL, including https:// or http://.', retryState);
       return;
     }
-    if (trimmedBaseUrl) {
+
+    let normalizedBaseUrl = enteredBaseUrl;
+    if (enteredBaseUrl) {
       try {
-        new URL(trimmedBaseUrl);
+        const parsed = new URL(enteredBaseUrl);
+        if (parsed.hash) {
+          onError('Base URL must not contain a #fragment.', retryState);
+          return;
+        }
+        normalizedBaseUrl = normalizeProviderBaseURL(enteredBaseUrl, spec.urlKind);
       } catch {
         onError('Invalid Base URL. Enter the full server URL, including https:// or http://.', retryState);
         return;
@@ -129,6 +142,7 @@ function EndpointStep({
     if (!trimmedApiKey && spec.apiKeyRequired) {
       onError('API Key is required so the server can authorize the model-list request.', {
         ...retryState,
+        baseUrl: normalizedBaseUrl,
         activeField: 'api_key',
       });
       return;
@@ -138,7 +152,7 @@ function EndpointStep({
       state: 'provider_endpoint_setup',
       kind: status.kind,
       phase: 'fetching',
-      baseUrl: trimmedBaseUrl,
+      baseUrl: normalizedBaseUrl,
       apiKey: trimmedApiKey,
       ...(status.wireApi ? { wireApi: status.wireApi } : {}),
       activeField: 'api_key',
@@ -309,10 +323,10 @@ export function buildModelStep(
     activeField: 'model' as const,
   };
 
-  // occ's own table for this provider, where one exists. Merged with the
-  // endpoint's answer so a server that omits a model occ knows about still
-  // offers it, and used alone when the request failed.
-  const preset = spec.presetModels?.() ?? [];
+  // Built-in tables are failure fallbacks for official endpoints only. A
+  // compatible wire protocol does not prove that a custom endpoint serves GPT
+  // or Claude models, and a successful /models response is authoritative.
+  const preset = spec.presetModels?.(status) ?? [];
   if (!models) {
     if (preset.length === 0) {
       return { ...base, entryMode: 'manual', fetchError: failureReason };
@@ -324,13 +338,12 @@ export function buildModelStep(
       catalogNote: `Could not fetch the model list from the server (${failureReason}). Showing the models occ knows for this provider — pick one or press Esc to fix the endpoint.`,
     };
   }
-  const merged = [...models, ...preset.filter(extra => !models.some(model => model.id === extra.id))];
-  const ids = new Set(merged.map(model => model.id));
+  const ids = new Set(models.map(model => model.id));
   const keep = (value: string): string => (ids.has(value) ? value : '');
   return {
     ...base,
     entryMode: 'catalog',
-    models: merged,
+    models,
     model: keep(base.model),
     haikuModel: keep(base.haikuModel),
     sonnetModel: keep(base.sonnetModel),
@@ -348,7 +361,16 @@ function ModelStep({
   onCancel,
   onSaved,
 }: ProviderSetupWizardProps & { status: ProviderModelSetupStatus }): React.ReactNode {
-  const spec = PROVIDER_SETUP_SPECS[status.kind];
+  // Model-only mode. The credentials belong to a subscription login, so the
+  // spec's own answers about them (which field is mandatory, what the heading
+  // names) are the wrong ones — the table says what changes, not this file.
+  const credentialsLocked = status.credentialEditing === 'locked';
+  const baseSpec = PROVIDER_SETUP_SPECS[status.kind];
+  const subscriptionAuth = credentialsLocked ? activeSubscriptionAuth(baseSpec) : undefined;
+  const spec = specForSubscriptionAuth(baseSpec, subscriptionAuth);
+  // There was no step 1 in this run, so "back" is the host's business and the
+  // heading must not advertise a step the user never saw.
+  const showsEndpointStep = spec.hasEndpointStep && !credentialsLocked;
   const showsDefaultModel = spec.defaultModelField !== 'omitted';
   const fields: ProviderModelField[] = [
     ...(showsDefaultModel ? (['model'] as const) : []),
@@ -369,6 +391,18 @@ function ModelStep({
   const [activeField, setActiveField] = useState<ProviderModelField>(status.activeField);
   const [cursorOffset, setCursorOffset] = useState(() => valueOf(status, status.activeField).length);
   const inputColumns = Math.max(20, useTerminalSize().columns - 24);
+  /**
+   * Whether the user has moved the effort picker off where it opened.
+   *
+   * The picker is the only widget that can save, so "the user pressed Enter"
+   * cannot distinguish choosing a value from walking past the field. What can:
+   * the prefill is empty both when nothing is configured AND when the tiers
+   * disagree, and in the second case the user opening the form is precisely
+   * the one who wants "(model default)" applied to all of them. A ref rather
+   * than state because it must be readable inside the same save that the
+   * picker's onChange starts, before any re-render.
+   */
+  const effortTouchedRef = useRef(false);
 
   const getValue = (field: ProviderModelField): string =>
     field === 'max_context' ? values.maxContext : field === 'effort' ? values.effort : values[field];
@@ -391,6 +425,7 @@ function ModelStep({
         apiKey: status.apiKey,
         ...(status.wireApi ? { wireApi: status.wireApi } : {}),
         ...(status.providerLabel ? { providerLabel: status.providerLabel } : {}),
+        ...(status.credentialEditing ? { credentialEditing: status.credentialEditing } : {}),
         model: values.model,
         maxContext: values.maxContext,
         effort: values.effort,
@@ -409,8 +444,10 @@ function ModelStep({
 
   const returnToEndpoint = useCallback((): void | false => {
     // No step 1 for the China presets — they arrive here from their own
-    // provider/key screens, so "back" is the host's business, not ours.
-    if (!spec.hasEndpointStep) {
+    // provider/key screens, so "back" is the host's business, not ours. Same
+    // for model-only mode: there is no endpoint form to go back to, and
+    // opening one would present a blank API key field over a live login.
+    if (!showsEndpointStep) {
       return onCancel();
     }
     setStatus({
@@ -422,7 +459,7 @@ function ModelStep({
       ...(status.wireApi ? { wireApi: status.wireApi } : {}),
       activeField: 'base_url',
     });
-  }, [onCancel, setStatus, spec, status]);
+  }, [onCancel, setStatus, showsEndpointStep, status]);
 
   // ↑/↓ belong to whichever widget the active field renders.
   //
@@ -458,14 +495,14 @@ function ModelStep({
     isActive: !activeFieldIsSelector,
   });
 
-  const doSave = (): void => {
-    const invalid = spec.validate(values);
+  const doSave = async (valuesToSave: ProviderSetupValues = values): Promise<void> => {
+    const invalid = spec.validate(valuesToSave);
     if (invalid) {
       onError(invalid.message, retryStatus(invalid.field === 'maxContext' ? 'max_context' : invalid.field));
       return;
     }
 
-    const maxContextValue = parseMaxContextInput(values.maxContext);
+    const maxContextValue = parseMaxContextInput(valuesToSave.maxContext);
     if (maxContextValue === null) {
       onError(
         'Invalid max context: enter a token count like 128000 (or 128k / 1m), or leave it empty.',
@@ -474,61 +511,34 @@ function ModelStep({
       return;
     }
 
-    // The max-context answer goes to settings.modelSettings, not to
-    // CLAUDE_CODE_MAX_CONTEXT_TOKENS. That key sits ABOVE the per-tier layer on
-    // purpose — it is the last-resort correction for a window nobody can detect
-    // — so a value written there at login would silently outrank everything the
-    // user later sets in /model. Any value an older occ left behind is deleted
-    // here for the same reason: leaving it would make the setting they just
-    // chose invisible. One-way, and the field carries the old value forward
-    // (see prefillTierFields), so nothing is lost.
-    const env: Record<string, string | undefined> = {
-      ...(spec.extraEnv?.(status) ?? {}),
-      CLAUDE_CODE_MAX_CONTEXT_TOKENS: undefined,
-    };
-    // An empty Base URL stays empty: writing the provider default would pin the
-    // session to today's endpoint instead of following the provider's own.
-    if (status.baseUrl.trim()) env[spec.env.baseUrl] = status.baseUrl.trim();
-    if (status.apiKey.trim()) env[spec.env.apiKey] = status.apiKey.trim();
-    // `omitted` still assigns undefined — that deletes any value a previous
-    // login left behind, which is the point (see defaultModelField's docs).
-    env[spec.env.model] = showsDefaultModel ? values.model.trim() || undefined : undefined;
-    for (const tier of spec.tiers) {
-      env[spec.env.tiers[tier]] = values[tier].trim() || undefined;
-    }
-
-    const existingTierSettings = getSettingsForSource('userSettings')?.modelSettings;
-    const modelSettings = buildTierSettings({
-      tierModels: {
-        haiku_model: values.haiku_model,
-        sonnet_model: values.sonnet_model,
-        opus_model: values.opus_model,
-        fable_model: values.fable_model,
-      },
-      defaultModel: showsDefaultModel ? values.model : '',
+    // What to write is decided in one pure place (savePlan.ts) so the rules —
+    // which keys a subscription session must not touch, when "(model default)"
+    // means "clear", what counts as changing provider — are testable without
+    // rendering a form.
+    const existingSettings = getSettingsForSource('userSettings');
+    const plan = planProviderSave({
+      spec,
+      status,
+      values: valuesToSave,
       contextTokens: maxContextValue === undefined ? undefined : Number(maxContextValue),
-      effort: (values.effort || undefined) as TierEffort | undefined,
-      existing: existingTierSettings,
+      effortTouched: effortTouchedRef.current,
+      existingSettings,
+      processEnv: process.env,
     });
 
     const { error } = updateSettingsForSource('userSettings', {
       modelType: spec.modelType,
-      env: env as unknown as Record<string, string>,
-      ...(Object.keys(modelSettings).length > 0 ? { modelSettings } : {}),
-      // The flat effortLevel seeds AppState, which outranks the per-tier layer.
-      // Written together they would produce the worst outcome: a value chosen
-      // here that changes nothing. Same one-way migration /model-settings does.
-      ...(values.effort ? { effortLevel: undefined } : {}),
+      model: undefined,
+      env: plan.env as unknown as Record<string, string>,
+      ...(Object.keys(plan.modelSettings).length > 0 ? { modelSettings: plan.modelSettings } : {}),
+      ...(plan.clearFlatEffort ? { effortLevel: undefined } : {}),
     } as unknown as Parameters<typeof updateSettingsForSource>[1]);
     if (error) {
       onError('Failed to save settings. Please try again.', retryStatus(activeField));
       return;
     }
 
-    for (const [key, value] of Object.entries(env)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+    applyProviderSaveEnv(plan.env, existingSettings?.env, process.env);
     // This writes provider env straight to the process, bypassing managedEnv,
     // so the DeepSeek mirror has to be re-run here by hand. Without it a
     // first-time login leaves the session claiming the Anthropic wire
@@ -536,8 +546,8 @@ function ModelStep({
     // requests go to api.anthropic.com unauthenticated and come back
     // "Not logged in · Please run /login".
     applyDeepSeekAnthropicWire();
-    spec.afterSave?.();
-    onSaved();
+    await spec.afterSave?.({ credentialsConfigured: plan.credentialsConfigured });
+    onSaved(plan.outcome);
   };
 
   const handleSubmit = (): void => {
@@ -545,14 +555,16 @@ function ModelStep({
     // that adding the effort field after it left the new field unreachable:
     // Enter still saved from the field before it.
     if (fields.indexOf(activeField) === fields.length - 1) {
-      doSave();
+      void doSave();
       return;
     }
     step(1);
   };
 
   const modelOptions =
-    status.entryMode === 'catalog' ? status.models.map(model => ({ label: model.id, value: model.id })) : [];
+    status.entryMode === 'catalog'
+      ? status.models.map(model => ({ label: model.displayName?.trim() || model.id, value: model.id }))
+      : [];
 
   const renderField = (field: ProviderModelField, label: string, optional: boolean): React.ReactNode => {
     const active = activeField === field;
@@ -590,10 +602,19 @@ function ModelStep({
             defaultValue={value}
             defaultFocusValue={value || options[0]?.value}
             visibleOptionCount={9}
+            onFocus={
+              field === 'effort'
+                ? focused => {
+                    // Fires once on mount with the opening value; anything else
+                    // is the user having navigated.
+                    if (focused !== value) effortTouchedRef.current = true;
+                  }
+                : undefined
+            }
             onChange={selected => {
               setValue(field, selected);
               if (field === 'effort') {
-                doSave();
+                void doSave({ ...values, effort: selected });
                 return;
               }
               step(1);
@@ -624,8 +645,14 @@ function ModelStep({
     <Box flexDirection="column" gap={1}>
       <Text bold>
         {spec.title(status)}
-        {spec.hasEndpointStep ? ' — Step 2 of 2' : ''}
+        {showsEndpointStep ? ' — Step 2 of 2' : ''}
       </Text>
+      {subscriptionAuth && (
+        <Text dimColor>
+          Signed in with your {subscriptionAuth.label}. That login owns the credentials — nothing here touches them, and
+          this form only changes which model each tier uses.
+        </Text>
+      )}
       {status.entryMode === 'manual' && (
         <Text color="warning">
           Could not fetch the model list from the server ({status.fetchError}). Enter model names manually.
@@ -649,8 +676,8 @@ function ModelStep({
       </Text>
       <Text dimColor>
         {status.entryMode === 'catalog'
-          ? `Use ↑↓ and Enter to choose each model. Enter on thinking effort saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`
-          : `Enter or Tab moves to the next field. Enter on thinking effort saves. Esc goes ${spec.hasEndpointStep ? 'back to Step 1' : 'back'}.`}
+          ? `Use ↑↓ and Enter to choose each model. Enter on thinking effort saves. Esc goes ${showsEndpointStep ? 'back to Step 1' : 'back'}.`
+          : `Enter or Tab moves to the next field. Enter on thinking effort saves. Esc goes ${showsEndpointStep ? 'back to Step 1' : 'back'}.`}
       </Text>
     </Box>
   );

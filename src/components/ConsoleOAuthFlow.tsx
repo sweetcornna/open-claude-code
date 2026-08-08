@@ -20,6 +20,7 @@ import { backFromScreen } from './providerSetup/backNavigation.js';
 import { ProviderSetupWizard } from './providerSetup/ProviderSetupWizard.js';
 import { parseMaxContextInput } from './providerSetup/maxContext.js';
 import { PROVIDER_SETUP_SPECS, type ProviderSetupKind } from './providerSetup/specs.js';
+import type { ProviderSaveOutcome } from './providerSetup/savePlan.js';
 import type {
   ProviderEndpointSetupStatus,
   ProviderModelSetupStatus,
@@ -49,6 +50,17 @@ import TextInput from './TextInput.js';
 
 type Props = {
   onDone(): void;
+  /**
+   * The session's provider configuration was rewritten — reload settings and,
+   * when the outcome says so, drop the in-session model selection.
+   *
+   * Every path that writes provider settings must call this, not just the
+   * shared wizard: the three OAuth flows below (Claude/Console, ChatGPT,
+   * Antigravity) used to finish with `onDone()` alone, which left AppState
+   * holding the settings and the resolved model from before the login. The
+   * user's only fix was to restart occ.
+   */
+  onProviderChanged?: (outcome: ProviderSaveOutcome) => void;
   startingMessage?: string;
   mode?: 'login' | 'setup-token';
   forceLoginMethod?: 'claudeai' | 'console';
@@ -124,6 +136,7 @@ function chinaModeForStatus(status: { baseUrl: string }): 'api' | 'coding-plan' 
 
 export function ConsoleOAuthFlow({
   onDone,
+  onProviderChanged,
   startingMessage,
   mode = 'login',
   forceLoginMethod: forceLoginMethodProp,
@@ -153,6 +166,12 @@ export function ConsoleOAuthFlow({
   // Read by backFrom() so a stale key handler can tell it is stale.
   const statusRef = React.useRef<OAuthStatus>(oauthStatus);
   statusRef.current = oauthStatus;
+
+  // Through a ref so startOAuth can notify without listing the callback in its
+  // dependency array — a new identity there would rebuild startOAuth and, with
+  // the flow still in 'ready_to_start', kick off a second browser round trip.
+  const onProviderChangedRef = React.useRef(onProviderChanged);
+  onProviderChangedRef.current = onProviderChanged;
 
   const [pastedCode, setPastedCode] = useState('');
   const [cursorOffset, setCursorOffset] = useState(0);
@@ -324,6 +343,10 @@ export function ConsoleOAuthFlow({
         updateSettingsForSource('userSettings', { modelType: 'anthropic' } as unknown as Parameters<
           typeof updateSettingsForSource
         >[1]);
+        // The provider just changed under the session. Without this the caller
+        // keeps the settings snapshot and the resolved model from whatever was
+        // configured before the login, and only a restart fixes it.
+        onProviderChangedRef.current?.({ modelType: 'anthropic', providerChanged: true });
 
         setOAuthStatus({ state: 'success' });
         void sendNotification(
@@ -435,6 +458,7 @@ export function ConsoleOAuthFlow({
           statusRef={statusRef}
           setLoginWithClaudeAi={setLoginWithClaudeAi}
           onDone={onDone}
+          onProviderChanged={onProviderChanged}
         />
       </Box>
     </Box>
@@ -451,6 +475,7 @@ type OAuthStatusMessageProps = {
   setPastedCode: (value: string) => void;
   cursorOffset: number;
   onDone: () => void;
+  onProviderChanged?: (outcome: ProviderSaveOutcome) => void;
   setCursorOffset: (offset: number) => void;
   textInputColumns: number;
   handleSubmitCode: (value: string, url: string) => void;
@@ -471,9 +496,15 @@ type ChatGPTSubscriptionSetupProps = {
   status: Extract<OAuthStatus, { state: 'chatgpt_subscription' }>;
   setOAuthStatus: OAuthStatusSetter;
   onDone: () => void;
+  onProviderChanged?: (outcome: ProviderSaveOutcome) => void;
 };
 
-function ChatGPTSubscriptionSetup({ status, setOAuthStatus, onDone }: ChatGPTSubscriptionSetupProps): React.ReactNode {
+function ChatGPTSubscriptionSetup({
+  status,
+  setOAuthStatus,
+  onDone,
+  onProviderChanged,
+}: ChatGPTSubscriptionSetupProps): React.ReactNode {
   const startedRef = useRef(false);
 
   useKeybinding(
@@ -522,6 +553,11 @@ function ChatGPTSubscriptionSetup({ status, setOAuthStatus, onDone }: ChatGPTSub
         // entirely (uses createChatGPTResponsesStream) but a stale cached
         // client would still be picked up by sideQuery.
         clearOpenAIClientCache();
+        // Same session refresh the shared wizard does on save. Without it the
+        // session keeps the pre-login settings snapshot and its already
+        // resolved main-loop model, so the new provider only takes effect
+        // after a restart.
+        onProviderChanged?.({ modelType: 'openai', providerChanged: true });
         setOAuthStatus({ state: 'success' });
         void onDone();
       } catch (err) {
@@ -541,7 +577,7 @@ function ChatGPTSubscriptionSetup({ status, setOAuthStatus, onDone }: ChatGPTSub
       cancelled = true;
       controller.abort();
     };
-  }, [setOAuthStatus, onDone]);
+  }, [setOAuthStatus, onDone, onProviderChanged]);
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -576,9 +612,15 @@ type AntigravityOAuthSetupProps = {
   status: Extract<OAuthStatus, { state: 'antigravity_oauth' }>;
   setOAuthStatus: OAuthStatusSetter;
   onDone: () => void;
+  onProviderChanged?: (outcome: ProviderSaveOutcome) => void;
 };
 
-function AntigravityOAuthSetup({ status, setOAuthStatus, onDone }: AntigravityOAuthSetupProps): React.ReactNode {
+function AntigravityOAuthSetup({
+  status,
+  setOAuthStatus,
+  onDone,
+  onProviderChanged,
+}: AntigravityOAuthSetupProps): React.ReactNode {
   const startedRef = useRef(false);
 
   useKeybinding(
@@ -620,6 +662,9 @@ function AntigravityOAuthSetup({ status, setOAuthStatus, onDone }: AntigravityOA
         // left by a previous configuration; the apply releases its own claim
         // before deciding again, so this is the teardown too.
         applyDeepSeekAnthropicWire();
+        // Same session refresh the shared wizard does on save; see the note in
+        // ChatGPTSubscriptionSetup.
+        onProviderChanged?.({ modelType: 'gemini', providerChanged: true });
         setOAuthStatus({ state: 'success' });
         void onDone();
       } catch (err) {
@@ -636,7 +681,7 @@ function AntigravityOAuthSetup({ status, setOAuthStatus, onDone }: AntigravityOA
       cancelled = true;
       controller.abort();
     };
-  }, [setOAuthStatus, onDone]);
+  }, [setOAuthStatus, onDone, onProviderChanged]);
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -684,6 +729,7 @@ function OAuthStatusMessage({
   statusRef,
   setLoginWithClaudeAi,
   onDone,
+  onProviderChanged,
 }: OAuthStatusMessageProps): React.ReactNode {
   /**
    * Enter the shared two-step wizard. Only the connection details are seeded
@@ -903,18 +949,33 @@ function OAuthStatusMessage({
                 : { state: 'idle' },
             );
           }}
-          onSaved={() => {
+          onSaved={outcome => {
             setOAuthStatus({ state: 'success' });
+            onProviderChanged?.(outcome);
             void onDone();
           }}
         />
       );
 
     case 'chatgpt_subscription':
-      return <ChatGPTSubscriptionSetup status={oauthStatus} setOAuthStatus={setOAuthStatus} onDone={onDone} />;
+      return (
+        <ChatGPTSubscriptionSetup
+          status={oauthStatus}
+          setOAuthStatus={setOAuthStatus}
+          onDone={onDone}
+          onProviderChanged={onProviderChanged}
+        />
+      );
 
     case 'antigravity_oauth':
-      return <AntigravityOAuthSetup status={oauthStatus} setOAuthStatus={setOAuthStatus} onDone={onDone} />;
+      return (
+        <AntigravityOAuthSetup
+          status={oauthStatus}
+          setOAuthStatus={setOAuthStatus}
+          onDone={onDone}
+          onProviderChanged={onProviderChanged}
+        />
+      );
 
     case 'china_provider_select': {
       return (
@@ -1016,7 +1077,7 @@ function OAuthStatusMessage({
           // immediately and the tier defaults below are expressed in its ids.
           entryMode: 'catalog',
           models: provider.models.map(m => ({ id: m.id, displayName: m.label })),
-          model: '',
+          model: provider.defaultModel,
           // Both empty: the model step turns that into each tier's own family
           // default and persists it per tier, which is the right answer here —
           // one preset can mix windows across its catalog, so a single value
@@ -1027,7 +1088,7 @@ function OAuthStatusMessage({
           sonnetModel: provider.tiers.sonnet,
           opusModel: provider.tiers.opus,
           fableModel: provider.tiers.fable,
-          activeField: 'haiku_model',
+          activeField: 'model',
         });
       }, [chinaKeyValue, provider, accessMode, setOAuthStatus]);
 

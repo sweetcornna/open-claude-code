@@ -47,6 +47,7 @@ afterAll(() => {
 const { registerLocalWorkflowTask, failWorkflowTask } = await import(
   '../LocalWorkflowTask.js'
 )
+const { resolveTaskControlTarget } = await import('../../stopTask.js')
 
 // ─── Helpers ───
 
@@ -123,6 +124,29 @@ describe('run directory and eviction grace', () => {
     expect(task.runId).toBe('w0ldrunid')
     expect(taskId).not.toBe('w0ldrunid')
     expect(task.runDir).toBe('/proj/.occ/workflow-runs/w0ldrunid')
+  })
+
+  test('TaskStop 的 runId 与任一 wrapper id 都解析到当前 running wrapper', () => {
+    const { setAppState, getState } = createSetState()
+    const originalId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'first',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+    })
+    failWorkflowTask(originalId, setAppState as any, 'old generation')
+    const activeId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'resume',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+      runId: originalId,
+    })
+
+    expect(
+      resolveTaskControlTarget(originalId, getState() as any)?.taskId,
+    ).toBe(activeId)
+    expect(resolveTaskControlTarget(activeId, getState() as any)?.taskId).toBe(
+      activeId,
+    )
   })
 
   test('不传 runsDir 时不写 runDir（保持字段可选）', () => {

@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { relative } from 'path'
 import {
+  getIsNonInteractiveSession,
   getOriginalCwd,
   handleAutoModeTransition,
   handlePlanModeTransition,
@@ -18,12 +19,14 @@ import { SETTING_SOURCES } from '../settings/constants.js'
 import {
   getSettings_DEPRECATED,
   getSettingsFilePathForSource,
+  getSettingsWithErrors,
   getUseAutoModeDuringPlan,
   hasAutoModeOptIn,
 } from '../settings/settings.js'
 import {
   type PermissionMode,
   permissionModeFromString,
+  resolveInitialPermissionModeFallback,
 } from './PermissionMode.js'
 import { applyPermissionRulesToPermissionContext } from './permissions.js'
 import { loadAllPermissionRulesFromDisk } from './permissionsLoader.js'
@@ -693,7 +696,7 @@ export function initialPermissionModeFromCLI({
   permissionModeCli: string | undefined
   dangerouslySkipPermissions: boolean | undefined
 }): { mode: PermissionMode; notification?: string } {
-  const settings = getSettings_DEPRECATED() || {}
+  const { settings, errors: settingsErrors } = getSettingsWithErrors()
 
   // Check GrowthBook gate first - highest precedence
   const growthBookDisableBypassPermissionsMode =
@@ -717,6 +720,12 @@ export function initialPermissionModeFromCLI({
   const autoModeCircuitBrokenSync = feature('TRANSCRIPT_CLASSIFIER')
     ? getAutoModeEnabledStateIfCached() === 'disabled'
     : false
+
+  const hasExplicitPermissionMode =
+    dangerouslySkipPermissions === true ||
+    permissionModeCli !== undefined ||
+    settings.permissions?.defaultMode !== undefined ||
+    settingsErrors.some(error => error.path === 'permissions.defaultMode')
 
   // Modes in order of priority
   const orderedModes: PermissionMode[] = []
@@ -795,12 +804,26 @@ export function initialPermissionModeFromCLI({
     break
   }
 
-  if (!result) {
-    result = { mode: 'default', notification }
+  let autoModeSupported = false
+  if (feature('TRANSCRIPT_CLASSIFIER')) {
+    autoModeSupported = true
   }
 
   if (!result) {
-    result = { mode: 'default', notification }
+    result = {
+      mode: resolveInitialPermissionModeFallback({
+        hasExplicitPermissionMode,
+        autoModeSupported,
+        autoModeCircuitBroken: autoModeCircuitBrokenSync,
+        isRemote: isEnvTruthy(process.env.CLAUDE_CODE_REMOTE),
+        // -p / headless / SDK sessions have no way to render a permission
+        // prompt, so the implicit default must stay 'default' (deny) rather
+        // than handing approval to the classifier. Explicit --permission-mode
+        // / --dangerously-skip-permissions still works: those never reach here.
+        isNonInteractiveSession: getIsNonInteractiveSession(),
+      }),
+      notification,
+    }
   }
 
   if (feature('TRANSCRIPT_CLASSIFIER') && result.mode === 'auto') {

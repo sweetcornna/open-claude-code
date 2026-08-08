@@ -26,21 +26,34 @@ export function PhaseSidebar({
   agents,
   selectedIndex,
   focused,
+  maxRows,
 }: {
   phases: MergedPhase[];
   agents: AgentProgress[];
   selectedIndex: number;
   focused: boolean;
+  maxRows?: number;
 }): React.ReactNode {
   const [ref, time] = useAnimationFrame(FRAME_MS);
   const frame = SPINNER_FRAMES[Math.floor(time / FRAME_MS) % SPINNER_FRAMES.length];
   const totalAgents = agents.length;
   const doneAgents = agents.filter(a => a.status === 'done').length;
   const rows: PhaseRow[] = [{ title: ALL_PHASE, done: doneAgents, total: totalAgents }, ...phases];
+  const rowBudget = Math.max(1, Math.trunc(maxRows ?? rows.length));
+  const contentBudget = rows.length > rowBudget ? Math.max(1, rowBudget - 2) : rowBudget;
+  const start = Math.min(
+    Math.max(0, selectedIndex - Math.floor(contentBudget / 2)),
+    Math.max(0, rows.length - contentBudget),
+  );
+  const visible = rows.slice(start, start + contentBudget);
+  const hiddenAbove = start;
+  const hiddenBelow = rows.length - start - visible.length;
 
   return (
-    <Box ref={ref} flexDirection="column">
-      {rows.map((row, i) => {
+    <Box ref={ref} flexDirection="column" height={rowBudget} overflowY="hidden">
+      {hiddenAbove > 0 ? <Text color="subtle">… {hiddenAbove} earlier</Text> : null}
+      {visible.map((row, localIndex) => {
+        const i = start + localIndex;
         const selected = i === selectedIndex;
         const highlighted = selected && focused;
         const running = row.status === 'running';
@@ -72,6 +85,7 @@ export function PhaseSidebar({
           </Box>
         );
       })}
+      {hiddenBelow > 0 ? <Text color="subtle">… {hiddenBelow} more</Text> : null}
     </Box>
   );
 }

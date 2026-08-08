@@ -31,6 +31,18 @@ type ProviderModelSetupBase = {
   wireApi?: OpenAIWireApi
   /** China presets only: shown in the heading, since the endpoint has no form. */
   providerLabel?: string
+  /**
+   * `locked` opens the step in model-only mode: no credential or auth-mode key
+   * is written, and `afterSave` is told the credentials were left alone.
+   *
+   * Set by fromEnvironment.ts — reopening the setting for a session that is
+   * authenticated by a subscription login (ChatGPT, Antigravity) — and never by
+   * a login flow, where the user came through the endpoint form precisely to
+   * replace those credentials. Deriving it from the environment inside the
+   * wizard instead would conflate the two: a ChatGPT user picking "OpenAI Chat
+   * Completions" from /login is asking to leave the subscription behind.
+   */
+  credentialEditing?: 'locked'
   model: string
   maxContext: string
   /** One of EFFORT_LEVELS, or '' for "each model's family default". */

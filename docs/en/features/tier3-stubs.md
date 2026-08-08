@@ -10,7 +10,7 @@
 
 | Feature | References | Status | Category | Summary |
 |---------|------|------|------|---------|
-| CHICAGO_MCP | 16 | Implemented | Tool | Computer Use + Chrome MCP control (enabled by default in builds) |
+| CHICAGO_MCP | 16 | Implemented | Tool | Computer Use control (enabled by default in builds) |
 | MONITOR_TOOL | 13 | Implemented | Tool | Background monitoring tool that continuously watches shell output (enabled by default in builds) |
 | BG_SESSIONS | 11 | Partially implemented | Session management | Background session registration and cleanup are implemented; task summarization is a stub (enabled by default in development) |
 | SHOT_STATS | 10 | Implemented | Metrics | API call statistics panel (enabled by default in builds) |

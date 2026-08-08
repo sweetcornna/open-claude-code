@@ -9,25 +9,15 @@
  * 4. Can be idle (waiting for work) or active (processing)
  */
 
-import { isTerminalTaskStatus, type SetAppState, type Task, type TaskStateBase } from '../../Task.js';
+import { isTerminalTaskStatus, type SetAppState, type TaskStateBase } from '../../Task.js';
 import type { Message, MessageOrigin } from '../../types/message.js';
 import { logForDebugging } from '../../utils/telemetry/debug.js';
 import { createUserMessage } from '../../utils/messages.js';
-import { killInProcessTeammate } from '../../utils/swarm/spawnInProcess.js';
 import { updateTaskState } from '../../utils/task/framework.js';
 import type { InProcessTeammateTaskState, PendingTeammateUserMessage } from './types.js';
 import { appendCappedMessage, isInProcessTeammateTask } from './types.js';
 
-/**
- * InProcessTeammateTask - Handles in-process teammate execution.
- */
-export const InProcessTeammateTask: Task = {
-  name: 'InProcessTeammateTask',
-  type: 'in_process_teammate',
-  async kill(taskId, setAppState) {
-    killInProcessTeammate(taskId, setAppState);
-  },
-};
+export { InProcessTeammateTask } from './task.js';
 
 /**
  * Request shutdown for a teammate.

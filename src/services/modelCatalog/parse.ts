@@ -11,6 +11,7 @@
  * skipped. Nothing throws.
  */
 
+import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import type { CatalogModel } from './types.js'
 
 /** Anthropic requires an explicit API version on every request. */
@@ -42,8 +43,12 @@ function toUnixSeconds(value: unknown): number | undefined {
  * Anthropic endpoint does not, while gateways commonly configure
  * `ANTHROPIC_BASE_URL=https://gw.example.com/v1`.
  */
-export function joinVersionedPath(baseURL: string, path: string): string {
-  return /\/v1$/.test(baseURL) ? `${baseURL}/${path}` : `${baseURL}/v1/${path}`
+export function joinVersionedPath(
+  baseURL: string,
+  path: string,
+  query: Record<string, string | number | undefined> = {},
+): string {
+  return buildProviderResourceURL(baseURL, 'anthropic', `v1/${path}`, query)
 }
 
 /** Parse an Anthropic `GET /v1/models` body. Null when the shape is wrong. */

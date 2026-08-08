@@ -3,7 +3,6 @@
   "ignoreDependencies": [
     "@ant/*",
     "react-compiler-runtime",
-    "chrome-devtools-mcp",
     "undici",
     "@napi-rs/keyring",
     "auto-bind",

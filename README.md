@@ -123,8 +123,7 @@ Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-part
 | **Custom providers** | OpenAI / Anthropic / Gemini / Grok compatible | [docs](./docs/zh/features/all-features-guide.md) |
 | Voice mode | Voice input, including Doubao (`/voice doubao`) | [docs](./docs/zh/features/voice-mode.md) |
 | Computer Use | Screenshots, keyboard and mouse control | [docs](./docs/zh/features/computer-use.md) |
-| **Chrome browser tools** | `occ --chrome` attaches Google's `chrome-devtools-mcp`: navigate, click, snapshot, console/network, performance traces. Anything that changes the page asks first | [docs](./docs/zh/features/chrome-devtools-mcp.md) |
-| Chrome Use (third-party) | A separate option: the `hangwin/mcp-chrome` extension | [docs](./docs/zh/features/chrome-use-mcp.md) |
+| Browser MCPs (user-configured) | Add any browser MCP through ordinary MCP configuration; names such as `chrome-devtools` and `mcp-chrome` are not reserved | [docs](./docs/en/extensibility/mcp-configuration.mdx) |
 | `/dream` | Automatic memory consolidation | [docs](./docs/zh/features/auto-dream.md) |
 
 ## Feature flags

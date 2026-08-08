@@ -19,9 +19,20 @@ describe('resolveGrokModel', () => {
     process.env = { ...originalEnv }
   })
 
-  test('GROK_MODEL env var takes highest priority', () => {
+  test('GROK_MODEL is the fallback for an unconfigured tier', () => {
     process.env.GROK_MODEL = 'grok-custom'
     expect(resolveGrokModel('claude-sonnet-4-6')).toBe('grok-custom')
+  })
+
+  test('an explicit Grok model is never replaced by GROK_MODEL', () => {
+    process.env.GROK_MODEL = 'grok-default'
+    expect(resolveGrokModel('grok-selected')).toBe('grok-selected')
+  })
+
+  test('a tier override takes priority over GROK_MODEL', () => {
+    process.env.GROK_MODEL = 'grok-default'
+    process.env.GROK_DEFAULT_SONNET_MODEL = 'grok-tier'
+    expect(resolveGrokModel('claude-sonnet-4-6')).toBe('grok-tier')
   })
 
   test('maps opus models to grok-4.20-reasoning', () => {

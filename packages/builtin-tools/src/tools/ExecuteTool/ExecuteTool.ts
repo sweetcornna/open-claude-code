@@ -64,7 +64,8 @@ export const ExecuteTool = buildTool({
     return getPrompt()
   },
   async call(input, context, canUseTool, parentMessage, onProgress) {
-    const tools: Tools = context.options.tools ?? []
+    const tools: Tools =
+      context.options.refreshTools?.() ?? context.options.tools
 
     const targetTool = findToolByName(tools, input.tool_name)
     if (!targetTool) {

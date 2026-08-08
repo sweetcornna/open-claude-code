@@ -147,6 +147,61 @@ function createToolUseContext(): any {
 }
 
 describe('query autonomy/provider boundary', () => {
+  test('an empty provider stream is a visible model error, not completion', async () => {
+    const previousDisableAttachments =
+      process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
+    process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS = '1'
+    try {
+      const generator = query({
+        messages: [createUserMessage({ content: 'empty response test' })],
+        systemPrompt: asSystemPrompt([]),
+        userContext: {},
+        systemContext: {},
+        canUseTool: async (_tool, input) => ({
+          behavior: 'allow',
+          updatedInput: input,
+        }),
+        toolUseContext: createToolUseContext(),
+        querySource: 'sdk',
+        deps: {
+          uuid: () => 'empty-query-chain-id',
+          microcompact: async (messages: unknown[]) => ({ messages }),
+          autocompact: async () => ({
+            compactionResult: undefined,
+            consecutiveFailures: 0,
+          }),
+          callModel: async function* () {},
+        } as never,
+      })
+
+      const emitted: any[] = []
+      let next = await generator.next()
+      while (!next.done) {
+        emitted.push(next.value)
+        next = await generator.next()
+      }
+
+      expect(next.value.reason).toBe('model_error')
+      expect(
+        emitted.some(
+          message =>
+            message.type === 'assistant' &&
+            message.isApiErrorMessage &&
+            message.message.content.some(
+              (block: { type: string; text?: string }) =>
+                block.type === 'text' && block.text?.includes('empty response'),
+            ),
+        ),
+      ).toBe(true)
+    } finally {
+      if (previousDisableAttachments === undefined) {
+        delete process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
+      } else {
+        process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS = previousDisableAttachments
+      }
+    }
+  })
+
   test('provider api-error messages fail a consumed autonomy run instead of advancing the flow', async () => {
     const previousDisableAttachments =
       process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS

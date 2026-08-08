@@ -6,7 +6,6 @@ import { dirname, join, parse } from 'path'
 import { getPlatform } from 'src/utils/process/platform.js'
 import type { PluginError } from '../../types/plugin.js'
 import { getPluginErrorMessage } from '../../types/plugin.js'
-import { isChromeDevtoolsMCPServer } from '../../utils/chromeDevtools/common.js'
 import {
   getCurrentProjectConfig,
   getGlobalConfig,
@@ -635,11 +634,6 @@ export async function addMcpConfig(
     throw new Error(
       `Invalid name ${name}. Names can only contain letters, numbers, hyphens, and underscores.`,
     )
-  }
-
-  // Block the reserved built-in server name "chrome-devtools"
-  if (isChromeDevtoolsMCPServer(name)) {
-    throw new Error(`Cannot add MCP server "${name}": this name is reserved.`)
   }
 
   if (feature('CHICAGO_MCP')) {
@@ -1529,17 +1523,7 @@ export function areMcpConfigsAllowedWithEnterpriseMcpConfig(
   )
 }
 
-/**
- * Built-in MCP servers that default to disabled. Unlike user-configured servers
- * (opt-out via disabledMcpServers), these require explicit opt-in via
- * enabledMcpServers. They show up in /mcp as disabled until the user enables them.
- */
-/* eslint-disable @typescript-eslint/no-require-imports */
-const DEFAULT_DISABLED_BUILTINS: Set<string> = new Set(['mcp-chrome'])
-/* eslint-enable @typescript-eslint/no-require-imports */
-
 function isDefaultDisabledBuiltin(name: string): boolean {
-  if (DEFAULT_DISABLED_BUILTINS.has(name)) return true
   if (feature('CHICAGO_MCP')) {
     const { isComputerUseMCPServer } =
       require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')

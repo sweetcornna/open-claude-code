@@ -45,6 +45,60 @@ const CJK_MIN_BIGRAM_MATCHES = 2
 
 const CJK_RANGE = /[\u4e00-\u9fff\u3400-\u4dbf]/
 
+let nextToolDefinitionId = 1
+const toolDefinitionIds = new WeakMap<object, number>()
+
+function getDefinitionIdentity(value: unknown): string {
+  if (
+    (typeof value !== 'object' || value === null) &&
+    typeof value !== 'function'
+  ) {
+    return JSON.stringify(value) ?? String(value)
+  }
+
+  let id = toolDefinitionIds.get(value)
+  if (id === undefined) {
+    id = nextToolDefinitionId++
+    toolDefinitionIds.set(value, id)
+  }
+  return `#${id}`
+}
+
+function getOwnPropertyIdentity(tool: object, property: string): string {
+  const descriptor = Object.getOwnPropertyDescriptor(tool, property)
+  if (!descriptor) return ''
+  if ('value' in descriptor) return getDefinitionIdentity(descriptor.value)
+  return `get:${getDefinitionIdentity(descriptor.get)}`
+}
+
+/**
+ * Cache key for the live deferred-tool definitions.
+ *
+ * tools/list_changed may replace a tool with the same name but a different
+ * prompt, search hint, or schema. Object/function/schema identities catch that
+ * normal immutable replacement path without eagerly rendering every prompt or
+ * rebuilding the index on every search. The scalar fields also catch the few
+ * definitions that are updated in place.
+ */
+export function getToolDefinitionsCacheKey(tools: Tools): string {
+  return tools
+    .filter(isDeferredTool)
+    .map(tool =>
+      JSON.stringify([
+        tool.name,
+        getDefinitionIdentity(tool),
+        tool.searchHint,
+        tool.isMcp === true,
+        tool.alwaysLoad === true,
+        getOwnPropertyIdentity(tool, 'prompt'),
+        getOwnPropertyIdentity(tool, 'inputJSONSchema'),
+        getOwnPropertyIdentity(tool, 'inputSchema'),
+      ]),
+    )
+    .sort()
+    .join('\n')
+}
+
 function isCjk(ch: string): boolean {
   return CJK_RANGE.test(ch)
 }
@@ -249,25 +303,22 @@ export function searchTools(
 }
 
 let cachedIndex: ToolIndexEntry[] | null = null
-let cachedToolNames: string | null = null
+let cachedToolDefinitions: string | null = null
 
 export async function getToolIndex(tools: Tools): Promise<ToolIndexEntry[]> {
-  const currentKey = tools
-    .map(t => t.name)
-    .sort()
-    .join(',')
+  const currentKey = getToolDefinitionsCacheKey(tools)
 
-  if (cachedIndex && cachedToolNames === currentKey) {
+  if (cachedIndex && cachedToolDefinitions === currentKey) {
     return cachedIndex
   }
 
   cachedIndex = await buildToolIndex(tools)
-  cachedToolNames = currentKey
+  cachedToolDefinitions = currentKey
   return cachedIndex
 }
 
 export function clearToolIndexCache(): void {
   cachedIndex = null
-  cachedToolNames = null
+  cachedToolDefinitions = null
   logForDebugging('[search-extra-tools] index cache cleared')
 }

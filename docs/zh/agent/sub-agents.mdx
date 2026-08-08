@@ -364,7 +364,7 @@ runAsyncAgentLifecycle()
 | 后台 shell / monitor 结束或卡住提醒 | `task-notification` | 通知模型命令状态 |
 | remote agent / ultraplan / ultrareview 完成 | `task-notification` | 把远程结果交给本地模型 |
 | scheduled task / cron | `prompt` | 定时触发主模型任务 |
-| Chrome / MCP channel 推送 | `prompt` | 外部系统主动注入消息 |
+| MCP channel 推送 | `prompt` | 外部系统主动注入消息 |
 | hook 阻塞错误 | `task-notification` | 唤醒模型处理 stop hook 错误 |
 | orphaned permission response | `orphaned-permission` | 处理工具权限回复比原请求更晚到达的情况 |
 

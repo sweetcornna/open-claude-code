@@ -403,6 +403,21 @@ describe('AcpAgent', () => {
       expect(res.sessionId).toBeDefined()
     })
 
+    // The implicit mode (no _meta.permissionMode, no permissions.defaultMode)
+    // runs through resolveInitialPermissionModeFallback, so it is only 'auto'
+    // when the transcript classifier can actually arbitrate. Under bun test
+    // `feature()` is unbundled and returns false, i.e. TRANSCRIPT_CLASSIFIER is
+    // compiled out — the classifier path is dead code and reporting 'auto'
+    // would be a mode the session cannot honor. The previous bare
+    // `return 'auto'` in resolveSessionPermissionMode ignored that gate (plus
+    // the circuit breaker and CLAUDE_CODE_REMOTE) entirely.
+    test('falls back to default when neither _meta nor settings provide a mode and the classifier is compiled out', async () => {
+      const agent = new AcpAgent(makeConn())
+      const res = await agent.newSession({ cwd: '/tmp' } as any)
+
+      expect(res.modes?.currentModeId).toBe('default')
+    })
+
     test('uses settings permissions.defaultMode when _meta does not provide a mode', async () => {
       mockGetSettings.mockImplementationOnce(() => ({
         permissions: { defaultMode: 'acceptEdits' },
@@ -1062,6 +1077,8 @@ describe('AcpAgent', () => {
         agent.setSessionMode({ sessionId, modeId: 'bypassPermissions' } as any),
       ).rejects.toThrow('Mode not available')
 
+      // Unchanged from the session's implicit starting mode, which is
+      // 'default' while TRANSCRIPT_CLASSIFIER is compiled out.
       expect(session?.modes.currentModeId).toBe('default')
       expect(session?.appState.toolPermissionContext.mode).toBe('default')
     })
@@ -1110,6 +1127,8 @@ describe('AcpAgent', () => {
         } as any),
       ).rejects.toThrow('Mode not available')
 
+      // Unchanged from the session's implicit starting mode, which is
+      // 'default' while TRANSCRIPT_CLASSIFIER is compiled out.
       expect(session?.modes.currentModeId).toBe('default')
       expect(session?.appState.toolPermissionContext.mode).toBe('default')
     })

@@ -3,25 +3,22 @@ import figures from 'figures';
 import React, { type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { isCoordinatorMode } from 'src/coordinator/coordinatorMode.js';
 import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
-import { useAppState, useSetAppState } from 'src/state/AppState.js';
+import { useAppState, useAppStateStore, useSetAppState } from 'src/state/AppState.js';
 import { enterTeammateView, exitTeammateView } from 'src/state/teammateViewHelpers.js';
 import type { ToolUseContext } from 'src/Tool.js';
-import { DreamTask, type DreamTaskState } from 'src/tasks/DreamTask/DreamTask.js';
-import { InProcessTeammateTask } from 'src/tasks/InProcessTeammateTask/InProcessTeammateTask.js';
+import type { DreamTaskState } from 'src/tasks/DreamTask/DreamTask.js';
 import type { InProcessTeammateTaskState } from 'src/tasks/InProcessTeammateTask/types.js';
 import type { LocalAgentTaskState } from 'src/tasks/LocalAgentTask/LocalAgentTask.js';
-import { LocalAgentTask } from 'src/tasks/LocalAgentTask/LocalAgentTask.js';
 import type { LocalShellTaskState } from 'src/tasks/LocalShellTask/guards.js';
-import { LocalShellTask } from 'src/tasks/LocalShellTask/LocalShellTask.js';
 // Type import is erased at build time — safe even though module is ant-gated.
 import type { LocalWorkflowTaskState } from 'src/tasks/LocalWorkflowTask/LocalWorkflowTask.js';
 import type { MonitorMcpTaskState } from 'src/tasks/MonitorMcpTask/MonitorMcpTask.js';
-import { RemoteAgentTask, type RemoteAgentTaskState } from 'src/tasks/RemoteAgentTask/RemoteAgentTask.js';
+import type { RemoteAgentTaskState } from 'src/tasks/RemoteAgentTask/RemoteAgentTask.js';
+import { stopTask } from 'src/tasks/stopTask.js';
 import { type BackgroundTaskState, isBackgroundTask, type TaskState } from 'src/tasks/types.js';
 import type { DeepImmutable } from 'src/types/utils.js';
 import { intersperse } from 'src/utils/collections/array.js';
 import { TEAM_LEAD_NAME } from 'src/utils/swarm/constants.js';
-import { stopUltraplan } from '../../commands/ultraplan.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
@@ -103,27 +100,15 @@ type ListItem =
       status: 'running';
     };
 
-// WORKFLOW_SCRIPTS is ant-only (build_flags.yaml). Static imports would leak
-// ~1.3K lines into external builds. Gate with feature() + require so the
-// bundler can dead-code-eliminate the branch.
+// Feature-gated detail adapters must not pull workflow/monitor implementations
+// into builds where those subsystems are compiled out.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const workflowTaskModule = feature('WORKFLOW_SCRIPTS')
-  ? (require('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js') as typeof import('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js'))
-  : null;
-const killWorkflowTask = workflowTaskModule?.killWorkflowTask ?? null;
-// Relative path so Bun's DCE can statically resolve + eliminate it, matching the
-// monitorMcpModule pattern below. Pulls in the workflow service (and the engine) —
-// must not leak into builds without WORKFLOW_SCRIPTS.
 const WorkflowDetailDialog = feature('WORKFLOW_SCRIPTS')
   ? (require('./WorkflowDetailDialog.js') as typeof import('./WorkflowDetailDialog.js')).WorkflowDetailDialog
   : null;
-// Relative path, not `src/...` path-mapping — Bun's DCE can statically
-// resolve + eliminate `./` requires, but path-mapped strings stay opaque
-// and survive as dead literals in the bundle. Matches tasks.ts pattern.
-const monitorMcpModule = feature('MONITOR_TOOL')
-  ? (require('../../tasks/MonitorMcpTask/MonitorMcpTask.js') as typeof import('../../tasks/MonitorMcpTask/MonitorMcpTask.js'))
+const workflowServiceModule = feature('WORKFLOW_SCRIPTS')
+  ? (require('../../workflow/service.js') as typeof import('../../workflow/service.js'))
   : null;
-const killMonitorMcp = monitorMcpModule?.killMonitorMcp ?? null;
 const MonitorMcpDetailDialog = feature('MONITOR_TOOL')
   ? (require('./MonitorMcpDetailDialog.js') as typeof import('./MonitorMcpDetailDialog.js')).MonitorMcpDetailDialog
   : null;
@@ -142,6 +127,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
   const tasks = useAppState(s => s.tasks);
   const foregroundedTaskId = useAppState(s => s.foregroundedTaskId);
   const showSpinnerTree = useAppState(s => s.expandedView) === 'teammates';
+  const store = useAppStateStore();
   const setAppState = useSetAppState();
   const killAgentsShortcut = useShortcutDisplay('chat:killAgents', 'Chat', 'ctrl+x ctrl+k');
   const typedTasks = tasks as Record<string, TaskState> | undefined;
@@ -276,30 +262,14 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
     const currentSelection = allSelectableItems[selectedIndex];
     if (!currentSelection) return; // everything below requires a selection
 
-    if (e.key === 'x') {
+    if (e.key === 'x' && currentSelection.status === 'running') {
       e.preventDefault();
-      if (currentSelection.type === 'local_bash' && currentSelection.status === 'running') {
-        void killShellTask(currentSelection.id);
-      } else if (currentSelection.type === 'local_agent' && currentSelection.status === 'running') {
-        void killAgentTask(currentSelection.id);
-      } else if (currentSelection.type === 'in_process_teammate' && currentSelection.status === 'running') {
-        void killTeammateTask(currentSelection.id);
-      } else if (
-        currentSelection.type === 'local_workflow' &&
-        currentSelection.status === 'running' &&
-        killWorkflowTask
-      ) {
-        killWorkflowTask(currentSelection.id, setAppState);
-      } else if (currentSelection.type === 'monitor_mcp' && currentSelection.status === 'running' && killMonitorMcp) {
-        killMonitorMcp(currentSelection.id, setAppState);
-      } else if (currentSelection.type === 'dream' && currentSelection.status === 'running') {
-        void killDreamTask(currentSelection.id);
-      } else if (currentSelection.type === 'remote_agent' && currentSelection.status === 'running') {
-        if (currentSelection.task.isUltraplan) {
-          void stopUltraplan(currentSelection.id, currentSelection.task.sessionId, setAppState);
-        } else {
-          void killRemoteAgentTask(currentSelection.id);
-        }
+      if (currentSelection.type === 'local_workflow') {
+        // A resumed workflow's wrapper task id differs from its durable run id.
+        // Service cancellation is keyed by run id; never send the wrapper id.
+        workflowServiceModule?.peekWorkflowService()?.kill(currentSelection.task.runId);
+      } else if (currentSelection.type !== 'leader') {
+        void stopOrdinaryTask(currentSelection.task.id);
       }
     }
 
@@ -316,24 +286,11 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
     }
   };
 
-  async function killShellTask(taskId: string): Promise<void> {
-    await LocalShellTask.kill(taskId, setAppState);
-  }
-
-  async function killAgentTask(taskId: string): Promise<void> {
-    await LocalAgentTask.kill(taskId, setAppState);
-  }
-
-  async function killTeammateTask(taskId: string): Promise<void> {
-    await InProcessTeammateTask.kill(taskId, setAppState);
-  }
-
-  async function killDreamTask(taskId: string): Promise<void> {
-    await DreamTask.kill(taskId, setAppState);
-  }
-
-  async function killRemoteAgentTask(taskId: string): Promise<void> {
-    await RemoteAgentTask.kill(taskId, setAppState);
+  async function stopOrdinaryTask(taskId: string): Promise<void> {
+    await stopTask(taskId, {
+      getAppState: store.getState,
+      setAppState,
+    });
   }
 
   // Wrap onDone in useEffectEvent to get a stable reference that always calls
@@ -391,7 +348,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <ShellDetailDialog
             shell={task}
             onDone={onDone}
-            onKillShell={() => void killShellTask(task.id)}
+            onKillShell={() => void stopOrdinaryTask(task.id)}
             onBack={goBackToList}
             key={`shell-${task.id}`}
           />
@@ -401,7 +358,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <AsyncAgentDetailDialog
             agent={task}
             onDone={onDone}
-            onKillAgent={() => void killAgentTask(task.id)}
+            onKillAgent={() => void stopOrdinaryTask(task.id)}
             onBack={goBackToList}
             key={`agent-${task.id}`}
           />
@@ -413,13 +370,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
             onDone={onDone}
             toolUseContext={toolUseContext}
             onBack={goBackToList}
-            onKill={
-              task.status !== 'running'
-                ? undefined
-                : task.isUltraplan
-                  ? () => void stopUltraplan(task.id, task.sessionId, setAppState)
-                  : () => void killRemoteAgentTask(task.id)
-            }
+            onKill={task.status === 'running' ? () => void stopOrdinaryTask(task.id) : undefined}
             key={`session-${task.id}`}
           />
         );
@@ -428,7 +379,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           <InProcessTeammateDetailDialog
             teammate={task}
             onDone={onDone}
-            onKill={task.status === 'running' ? () => void killTeammateTask(task.id) : undefined}
+            onKill={task.status === 'running' ? () => void stopOrdinaryTask(task.id) : undefined}
             onBack={goBackToList}
             onForeground={
               task.status === 'running'
@@ -442,28 +393,16 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
           />
         );
       case 'local_workflow': {
-        // shift+下/Enter 进入的 workflow 详情：与 /workflows 面板同源（ProgressStore）的
-        // 实时视图，phase 行 + 逐 agent 行，↑/↓ 选 agent、x kill agent、K kill workflow。
+        // shift+下/Enter 进入的 workflow 详情直接复用 /workflows 的固定尺寸 run panel。
         if (!WorkflowDetailDialog) return null;
-        return (
-          <WorkflowDetailDialog
-            task={task}
-            onBack={goBackToList}
-            onKillWorkflow={
-              task.status === 'running' && killWorkflowTask ? () => killWorkflowTask(task.id, setAppState) : undefined
-            }
-            key={`workflow-${task.id}`}
-          />
-        );
+        return <WorkflowDetailDialog task={task} onBack={goBackToList} key={`workflow-${task.id}`} />;
       }
       case 'monitor_mcp':
         if (!MonitorMcpDetailDialog) return null;
         return (
           <MonitorMcpDetailDialog
             task={task}
-            onKill={
-              task.status === 'running' && killMonitorMcp ? () => killMonitorMcp(task.id, setAppState) : undefined
-            }
+            onKill={task.status === 'running' ? () => void stopOrdinaryTask(task.id) : undefined}
             onBack={goBackToList}
             key={`monitor-mcp-${task.id}`}
           />
@@ -478,7 +417,7 @@ export function BackgroundTasksDialog({ onDone, toolUseContext, initialDetailTas
               })
             }
             onBack={goBackToList}
-            onKill={task.status === 'running' ? () => void killDreamTask(task.id) : undefined}
+            onKill={task.status === 'running' ? () => void stopOrdinaryTask(task.id) : undefined}
             key={`dream-${task.id}`}
           />
         );

@@ -648,12 +648,36 @@ function isLocalMcpServer(config: ScopedMcpServerConfig): boolean {
   return !config.type || config.type === 'stdio' || config.type === 'sdk'
 }
 
-// For the IDE MCP servers, we only include specific tools
-const ALLOWED_IDE_TOOLS = ['mcp__ide__executeCode', 'mcp__ide__getDiagnostics']
-function isIncludedMcpTool(tool: Tool): boolean {
-  return (
-    !tool.name.startsWith('mcp__ide__') || ALLOWED_IDE_TOOLS.includes(tool.name)
-  )
+/**
+ * The only tools the first-party IDE integration is allowed to advertise to
+ * the model. The extension exposes more than this, but the rest are private
+ * RPCs the CLI drives itself — `openDiff` / `close_tab` back the edit review
+ * flow (hooks/useDiffInIDE.ts) and `closeAllDiffTabs` is the teardown call
+ * (utils/terminal/ide.ts). A model that calls them steals the diff panel an
+ * in-flight edit is holding.
+ */
+const IDE_INTEGRATION_MODEL_TOOL_NAMES = new Set([
+  'executeCode',
+  'getDiagnostics',
+])
+
+/**
+ * Whether a connection was established by IDE-lockfile discovery rather than
+ * by user configuration.
+ *
+ * `sse-ide` / `ws-ide` are internal-only transports (see the "Internal-only
+ * server type for IDE extensions" schemas in ./types.ts). Nothing builds them
+ * except the two IDE auto-connect paths — hooks/useIDEIntegration.tsx and the
+ * `/ide` picker in commands/ide/ide.tsx — and both source their url/authToken
+ * from getSortedIdeLockfiles(), i.e. from getIdeLockfilesPaths() (which
+ * deliberately scans both the occ and ~/.claude roots).
+ *
+ * Deliberately NOT a server-name check: a server the user configured in
+ * .mcp.json or user scope, even one they named `ide`, is an ordinary MCP
+ * server and keeps every tool it advertises.
+ */
+function isIdeIntegrationConnection(config: ScopedMcpServerConfig): boolean {
+  return config.type === 'sse-ide' || config.type === 'ws-ide'
 }
 
 /**
@@ -1476,7 +1500,7 @@ export const connectToServer = memoize(
         // Also clear fetch caches (keyed by server name). Reconnection
         // creates a new connection object; without clearing, the next
         // fetch would return stale tools/resources from the old connection.
-        fetchToolsForClient.cache.delete(name)
+        clearFetchToolsCacheForConnection(name, client)
         fetchResourcesForClient.cache.delete(name)
         fetchCommandsForClient.cache.delete(name)
         if (feature('MCP_SKILLS')) {
@@ -1746,6 +1770,10 @@ export async function clearServerCache(
     const wrappedClient = await connectToServer(name, serverRef)
 
     if (wrappedClient.type === 'connected') {
+      clearFetchToolsCacheForConnection(
+        wrappedClient.name,
+        wrappedClient.client,
+      )
       await wrappedClient.cleanup()
     }
   } catch {
@@ -1755,7 +1783,6 @@ export async function clearServerCache(
   // Clear from cache (both connection and fetch caches so reconnect
   // fetches fresh tools/resources/commands instead of stale ones)
   connectToServer.cache.delete(key)
-  fetchToolsForClient.cache.delete(name)
   fetchResourcesForClient.cache.delete(name)
   fetchCommandsForClient.cache.delete(name)
   if (feature('MCP_SKILLS')) {
@@ -1812,9 +1839,56 @@ export function areMcpConfigsEqual(
   return jsonStringify(configA) === jsonStringify(configB)
 }
 
-// Max cache size for fetch* caches. Keyed by server name (stable across
-// reconnects), bounded to prevent unbounded growth with many MCP servers.
+// Max cache size for fetch* caches, bounded to prevent unbounded growth with
+// many MCP servers.
 const MCP_FETCH_CACHE_SIZE = 20
+
+let nextMcpToolConnectionId = 1
+const mcpToolConnectionIds = new WeakMap<object, number>()
+
+function getFetchToolsCacheKeyForConnection(
+  serverName: string,
+  connection: object,
+): string {
+  let connectionId = mcpToolConnectionIds.get(connection)
+  if (connectionId === undefined) {
+    connectionId = nextMcpToolConnectionId++
+    mcpToolConnectionIds.set(connection, connectionId)
+  }
+  return `${serverName}:${connectionId}`
+}
+
+function getFetchToolsCacheKey(client: MCPServerConnection): string {
+  const connection = client.type === 'connected' ? client.client : client
+  return getFetchToolsCacheKeyForConnection(client.name, connection)
+}
+
+function clearFetchToolsCacheForConnection(
+  serverName: string,
+  connection: object,
+): void {
+  fetchToolsForClient.cache.delete(
+    getFetchToolsCacheKeyForConnection(serverName, connection),
+  )
+}
+
+function mapMcpToolDefinitions<T, U>(
+  definitions: T[],
+  convert: (definition: T, index: number) => U,
+  onError: (error: unknown, index: number) => void,
+): { values: U[]; failureCount: number } {
+  const values: U[] = []
+  let failureCount = 0
+  definitions.forEach((definition, index) => {
+    try {
+      values.push(convert(definition, index))
+    } catch (error) {
+      failureCount++
+      onError(error, index)
+    }
+  })
+  return { values, failureCount }
+}
 
 /**
  * Encode MCP tool input for the auto-mode security classifier.
@@ -1831,7 +1905,7 @@ export function mcpToolInputToAutoClassifierInput(
     : toolName
 }
 
-export const fetchToolsForClient = memoizeWithLRU(
+const fetchToolsForClientMemoized = memoizeWithLRU(
   async (client: MCPServerConnection): Promise<Tool[]> => {
     if (client.type !== 'connected') return []
 
@@ -1853,17 +1927,32 @@ export const fetchToolsForClient = memoizeWithLRU(
       // without it, every such server would hard-fail instead.
       const result = await client.client.listTools()
 
-      // Sanitize tool data from MCP server
-      const toolsToProcess = recursivelySanitizeUnicode(result.tools)
+      // Sanitize each definition independently so one malformed object cannot
+      // abort conversion of every other tool from the server.
+      const advertisedToolCount = result.tools.length
+      const sanitized = mapMcpToolDefinitions(
+        result.tools,
+        tool => recursivelySanitizeUnicode(tool),
+        (error, index) => {
+          logMCPError(
+            client.name,
+            `Failed to sanitize tool at index ${index}: ${errorMessage(error)}`,
+          )
+        },
+      )
+      let conversionFailures = sanitized.failureCount
+      const toolsToProcess = sanitized.values
 
       // Check if we should skip the mcp__ prefix for SDK MCP servers
       const skipPrefix =
         client.config.type === 'sdk' &&
         isEnvTruthy(process.env.CLAUDE_AGENT_SDK_MCP_NO_PREFIX)
 
-      // Convert MCP tools to our Tool format
-      return toolsToProcess
-        .map((tool): Tool => {
+      // Convert MCP tools independently. One malformed definition must not
+      // hide every valid tool returned by the same server.
+      const converted = mapMcpToolDefinitions(
+        toolsToProcess,
+        (tool): Tool => {
           const fullyQualifiedName = buildMcpToolName(client.name, tool.name)
           return {
             ...MCPTool,
@@ -2086,16 +2175,70 @@ export const fetchToolsForClient = memoizeWithLRU(
               ? computerUseWrapper!().getComputerUseMCPToolOverrides(tool.name)
               : {}),
           }
-        })
-        .filter(isIncludedMcpTool)
+        },
+        (error, index) => {
+          logMCPError(
+            client.name,
+            `Failed to convert tool at index ${index}: ${errorMessage(error)}`,
+          )
+        },
+      )
+      conversionFailures += converted.failureCount
+      const convertedTools = converted.values
+
+      if (
+        conversionFailures > 0 &&
+        convertedTools.length === 0 &&
+        advertisedToolCount > 0
+      ) {
+        throw new Error('Every advertised MCP tool failed conversion')
+      }
+
+      // Applied after the conversion-health check on purpose: tools we hide
+      // from the model were still converted fine, so hiding them must not read
+      // as a broken server. Filter on the unqualified MCP tool name so the
+      // narrowing does not depend on the connection being keyed `ide`.
+      if (isIdeIntegrationConnection(client.config)) {
+        return convertedTools.filter(tool =>
+          IDE_INTEGRATION_MODEL_TOOL_NAMES.has(tool.mcpInfo?.toolName ?? ''),
+        )
+      }
+
+      return convertedTools
     } catch (error) {
       logMCPError(client.name, `Failed to fetch tools: ${errorMessage(error)}`)
-      return []
+      throw error
     }
   },
-  (client: MCPServerConnection) => client.name,
+  getFetchToolsCacheKey,
   MCP_FETCH_CACHE_SIZE,
 )
+
+/**
+ * Tool discovery failures are retryable. memoizeWithLRU stores returned
+ * promises immediately, so eviction belongs outside the memoized callback: it
+ * also covers a listTools implementation that throws synchronously.
+ */
+export const fetchToolsForClient = Object.assign(
+  async (client: MCPServerConnection): Promise<Tool[]> => {
+    try {
+      return await fetchToolsForClientMemoized(client)
+    } catch (error) {
+      fetchToolsForClientMemoized.cache.delete(getFetchToolsCacheKey(client))
+      throw error
+    }
+  },
+  { cache: fetchToolsForClientMemoized.cache },
+)
+
+export function invalidateFetchToolsForClient(
+  client: MCPServerConnection,
+): Promise<Tool[]> | undefined {
+  const key = getFetchToolsCacheKey(client)
+  const previous = fetchToolsForClient.cache.get(key)
+  fetchToolsForClient.cache.delete(key)
+  return previous
+}
 
 export const fetchResourcesForClient = memoizeWithLRU(
   async (client: MCPServerConnection): Promise<ServerResource[]> => {

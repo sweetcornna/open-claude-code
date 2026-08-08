@@ -11,6 +11,7 @@ import type { AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import {
   registerTask,
+  scheduleTerminalTaskEviction,
   updateTaskState,
   WORKFLOW_GRACE_MS,
 } from '../../utils/task/framework.js'
@@ -116,6 +117,64 @@ export function registerLocalWorkflowTask(
   }
   registerTask(task, setAppState)
   return id
+}
+
+/**
+ * Reconcile host wrappers that claim the same durable runId.
+ *
+ * Registration calls this before transferring ownership (canonicalTaskId omitted)
+ * or when reusing an existing binding (canonicalTaskId supplied). Every
+ * noncanonical wrapper is made terminal and scheduled through the normal grace
+ * eviction path; running controllers are aborted before a new owner can launch.
+ */
+export function reconcileLocalWorkflowTasksForRun(
+  runId: string,
+  canonicalTaskId: string | undefined,
+  setAppState: SetAppState,
+): string[] {
+  const reconciledTaskIds: string[] = []
+  const now = Date.now()
+
+  setAppState(prev => {
+    let changed = false
+    const tasks = { ...prev.tasks }
+    for (const [taskId, value] of Object.entries(prev.tasks ?? {})) {
+      if (
+        taskId === canonicalTaskId ||
+        !isLocalWorkflowTask(value) ||
+        value.runId !== runId
+      ) {
+        continue
+      }
+      reconciledTaskIds.push(taskId)
+      value.abortController?.abort()
+      if (
+        value.status === 'running' ||
+        value.status === 'pending' ||
+        !value.notified ||
+        value.evictAfter === undefined
+      ) {
+        tasks[taskId] = {
+          ...value,
+          status:
+            value.status === 'running' || value.status === 'pending'
+              ? 'killed'
+              : value.status,
+          endTime: value.endTime ?? now,
+          notified: true,
+          evictAfter: value.evictAfter ?? now + WORKFLOW_GRACE_MS,
+          abortController: undefined,
+        }
+        changed = true
+      }
+    }
+    return changed ? { ...prev, tasks } : prev
+  })
+
+  for (const taskId of reconciledTaskIds) {
+    scheduleTerminalTaskEviction(taskId, setAppState, WORKFLOW_GRACE_MS)
+  }
+  return reconciledTaskIds
 }
 
 export function completeWorkflowTask(

@@ -200,6 +200,57 @@ test('resume invalidates the journal only when the persisted script hash changes
   }
 })
 
+test('changed script rejects selective resume before registration and preserves the prior hash', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-selective-hash-'))
+  try {
+    const { ports, truncated } = mockPorts(
+      dir,
+      new Map([
+        ['first', { kind: 'ok', output: 'first', usage: { outputTokens: 1 } }],
+        [
+          'second',
+          { kind: 'ok', output: 'second', usage: { outputTokens: 1 } },
+        ],
+      ]),
+    )
+    const tool = createWorkflowTool(ports)
+    await tool.call(
+      { script: `return agent('first')` },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => setTimeout(resolve, 30))
+    const scriptPath = join(dir, '.occ', 'workflow-runs', 'run-x', 'script.js')
+    const hashPath = join(
+      dir,
+      '.occ',
+      'workflow-runs',
+      'run-x',
+      'script.sha256',
+    )
+    const priorHash = await readFile(hashPath, 'utf-8')
+    await writeFile(scriptPath, `return agent('second')`, 'utf-8')
+
+    const result = await tool.call(
+      {
+        scriptPath,
+        resumeFromRunId: 'run-x',
+        resumePolicy: { scope: 'agents', agentIds: [0] },
+      },
+      undefined,
+      undefined,
+      undefined,
+    )
+
+    expect(result.data.output).toMatch(/^Error: selective resume/)
+    expect(truncated).toEqual([])
+    expect(await readFile(hashPath, 'utf-8')).toBe(priorHash)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('resume without prior script hash fails closed and invalidates legacy journal state', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-hash-missing-'))
   try {
@@ -728,6 +779,448 @@ test('launch message names the run directory and the files inside it', async () 
     expect(
       await readFile(join(expectedRunDir, 'script.sha256'), 'utf-8'),
     ).toMatch(/^[0-9a-f]{64}\n$/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('concurrent duplicate resumes reuse one registration and launch one engine', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-single-flight-'))
+  try {
+    const { ports } = mockPorts(dir, new Map())
+    let engineCalls = 0
+    let releaseEngine: (() => void) | undefined
+    const engineBlocked = new Promise<void>(resolve => {
+      releaseEngine = resolve
+    })
+    ports.agentRunner = {
+      runAgentToResult: async () => {
+        engineCalls++
+        await engineBlocked
+        return { kind: 'ok', output: 'done', usage: { outputTokens: 1 } }
+      },
+    }
+
+    const controller = new AbortController()
+    const canonical = {
+      runId: 'run-resume',
+      taskId: 'w-wrapper',
+      signal: controller.signal,
+      instanceId: 7,
+    } as const
+    let registrations = 0
+    ports.taskRegistrar.getActive = () =>
+      registrations > 0 ? { ...canonical, disposition: 'existing' } : undefined
+    ports.taskRegistrar.register = () => {
+      registrations++
+      return { ...canonical, disposition: 'created' }
+    }
+
+    const tool = createWorkflowTool(ports)
+    const first = await tool.call(
+      { script: `return agent('x')`, resumeFromRunId: 'run-resume' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    const duplicate = await tool.call(
+      { script: `return ((`, resumeFromRunId: 'run-resume' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => {
+      setTimeout(resolve, 10)
+    })
+
+    expect(first.data.output).toContain('Workflow started')
+    expect(duplicate.data.output).toContain('already running')
+    expect(duplicate.data.output).toContain('task_id: w-wrapper')
+    expect(registrations).toBe(1)
+    expect(engineCalls).toBe(1)
+
+    releaseEngine?.()
+    await new Promise(resolve => {
+      setTimeout(resolve, 30)
+    })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('status/query returns active wrapper and bounded per-agent live/durable state', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-status-'))
+  try {
+    const { ports } = mockPorts(dir, new Map())
+    const signal = new AbortController().signal
+    let active = true
+    ports.taskRegistrar.getActive = () =>
+      active
+        ? {
+            runId: 'run-status',
+            taskId: 'w-wrapper',
+            instanceId: 9,
+            signal,
+            disposition: 'existing',
+          }
+        : undefined
+    ports.runStatusReader = {
+      async getRun() {
+        return {
+          runId: 'run-status',
+          taskId: 'w-wrapper',
+          instanceId: 9,
+          workflowName: 'research',
+          status: active ? 'running' : 'failed',
+          currentPhase: 'verify',
+          updatedAt: 1234,
+          runDir: join(dir, '.occ', 'workflow-runs', 'run-status'),
+          returnValue: { partial: true },
+          error: 'terminal error',
+          agents: [
+            {
+              id: 3,
+              label: 'checker',
+              phase: 'verify',
+              status: 'done',
+              execution: 'replayed',
+              resultKind: 'dead',
+              tokenCount: 42,
+              toolCount: 2,
+              lastActivityAt: 1200,
+              retryCount: 1,
+              retryLimit: 3,
+              lastFailureReason: 'api-error',
+              failureReason: 'prompt-too-long',
+              failureDetail: 'x'.repeat(600),
+              retryable: false,
+            },
+            {
+              id: 4,
+              label: 'writer',
+              phase: 'verify',
+              status: active ? 'running' : 'done',
+              execution: 'live',
+              ...(!active ? { resultKind: 'ok' } : {}),
+              tokenCount: 8,
+              toolCount: 3,
+              startedAt: 1210,
+              lastActivityAt: 1220,
+            },
+          ],
+        }
+      },
+    }
+
+    const tool = createWorkflowTool(ports)
+    const res = await tool.call(
+      { operation: 'query', runId: 'run-status' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    const status = JSON.parse(res.data.output)
+
+    expect(status.wrapper).toEqual({
+      active: true,
+      task_id: 'w-wrapper',
+      instance_id: 9,
+    })
+    expect(status.totals).toEqual({
+      token_count: 50,
+      tool_count: 5,
+      agent_count: 2,
+      running_count: 1,
+      done_count: 1,
+      replayed_count: 1,
+      live_count: 1,
+    })
+    expect(status.status).toBe('running')
+    expect(status.workflow).toBe('research')
+    expect(status.phase).toBe('verify')
+    expect(status.updated_at).toBe(1234)
+    expect(status.return_value).toBeUndefined()
+    expect(status.error).toBeUndefined()
+    expect(status.run_dir).toContain('run-status')
+    expect(status.agents[0]).toMatchObject({
+      id: 3,
+      label: 'checker',
+      status: 'done',
+      execution: 'replayed',
+      token_count: 42,
+      tool_count: 2,
+      last_activity_at: 1200,
+    })
+    expect(status.agents[0].retry).toMatchObject({
+      count: 1,
+      limit: 3,
+      reason: 'api-error',
+    })
+    expect(status.agents[0].failure.reason).toBe('prompt-too-long')
+    expect(status.agents[0].failure.detail.length).toBeLessThanOrEqual(401)
+
+    // Once the active binding is released, status falls back to the identity
+    // persisted with the terminal RunProgress instead of losing generation data.
+    active = false
+    const terminal = JSON.parse(
+      (
+        await tool.call(
+          { operation: 'status', runId: 'run-status' },
+          undefined,
+          undefined,
+          undefined,
+        )
+      ).data.output,
+    )
+    expect(terminal.wrapper).toEqual({
+      active: false,
+      task_id: 'w-wrapper',
+      instance_id: 9,
+    })
+    expect(terminal.status).toBe('failed')
+    expect(terminal.return_value).toBe('{"partial":true}')
+    expect(terminal.error).toBe('terminal error')
+    expect(terminal.totals).toEqual({
+      token_count: 50,
+      tool_count: 5,
+      agent_count: 2,
+      running_count: 0,
+      done_count: 2,
+      replayed_count: 1,
+      live_count: 1,
+    })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('cancel reports exact whole-run and child-agent hits and misses', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-cancel-'))
+  try {
+    const { ports } = mockPorts(dir, new Map())
+    ports.taskRegistrar.getActive = runId =>
+      runId === 'active'
+        ? {
+            runId,
+            taskId: 'w-active',
+            instanceId: 4,
+            signal: new AbortController().signal,
+          }
+        : undefined
+    ports.taskRegistrar.kill = runId => runId === 'active'
+    ports.taskRegistrar.killAgent = (runId, agentId) =>
+      runId === 'active' && agentId === 2
+    const tool = createWorkflowTool(ports)
+
+    const runHit = JSON.parse(
+      (
+        await tool.call(
+          { operation: 'cancel', runId: 'active' },
+          undefined,
+          undefined,
+          undefined,
+        )
+      ).data.output,
+    )
+    const agentHit = JSON.parse(
+      (
+        await tool.call(
+          { operation: 'cancel', runId: 'active', agentId: 2 },
+          undefined,
+          undefined,
+          undefined,
+        )
+      ).data.output,
+    )
+    const agentMiss = JSON.parse(
+      (
+        await tool.call(
+          { operation: 'cancel', runId: 'active', agentId: 8 },
+          undefined,
+          undefined,
+          undefined,
+        )
+      ).data.output,
+    )
+
+    expect(runHit).toMatchObject({ target: 'run', hit: true })
+    expect(agentHit).toMatchObject({
+      target: 'agent',
+      agent_id: 2,
+      supported: true,
+      hit: true,
+    })
+    expect(agentMiss).toMatchObject({
+      target: 'agent',
+      agent_id: 8,
+      supported: true,
+      hit: false,
+    })
+    expect(agentMiss.message).toMatch(/already finished/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a host without single-agent cancellation says so instead of reporting no match', async () => {
+  // Both used to come back as `hit: false`, which told the model to hunt for the
+  // right agentId on a host that can never honor one — the answer is "cancel the
+  // whole run instead".
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-cancel-unsupported-'))
+  try {
+    const { ports } = mockPorts(dir, new Map())
+    ports.taskRegistrar.getActive = runId => ({
+      runId,
+      taskId: 'w-active',
+      instanceId: 4,
+      signal: new AbortController().signal,
+    })
+    expect(ports.taskRegistrar.killAgent).toBeUndefined()
+    const tool = createWorkflowTool(ports)
+
+    const result = JSON.parse(
+      (
+        await tool.call(
+          { operation: 'cancel', runId: 'active', agentId: 2 },
+          undefined,
+          undefined,
+          undefined,
+        )
+      ).data.output,
+    )
+
+    expect(result).toMatchObject({
+      target: 'agent',
+      agent_id: 2,
+      supported: false,
+      hit: false,
+    })
+    expect(result.message).toMatch(/does not support/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('the loser of a concurrent resume does not overwrite the winner script hash', async () => {
+  // Both callers reach the hash comparison; only one gets disposition 'created' and
+  // only that one's script actually runs. Recording before the gate let the loser
+  // stamp the run with a script that never executed, and the winner's own
+  // checkpoints then failed the next resume's identity check.
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-race-hash-'))
+  try {
+    const { ports } = mockPorts(dir, new Map())
+    const tool = createWorkflowTool(ports)
+    await tool.call(
+      { script: `return agent('winner')`, resumeFromRunId: 'run-x' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => setTimeout(resolve, 30))
+    const hashPath = join(
+      dir,
+      '.occ',
+      'workflow-runs',
+      'run-x',
+      'script.sha256',
+    )
+    const winnerHash = await readFile(hashPath, 'utf-8')
+
+    // Second caller: no live binding to short-circuit on, but registration reports
+    // the canonical owner already exists.
+    ports.taskRegistrar.register = () => ({
+      runId: 'run-x',
+      signal: new AbortController().signal,
+      taskId: 'w-wrapper',
+      disposition: 'existing',
+    })
+    const loser = await tool.call(
+      { script: `return agent('loser')`, resumeFromRunId: 'run-x' },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => setTimeout(resolve, 30))
+
+    expect(loser.data.output).toContain('already running')
+    expect(await readFile(hashPath, 'utf-8')).toBe(winnerHash)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a completed run stays completed when terminal bookkeeping throws', async () => {
+  // taskRegistrar.complete persists state.json and evicts the wrapper task. It used
+  // to share a catch with the engine, so a failed state write re-reported the run as
+  // run_done {status:'failed'} — the model was told its workflow failed because a
+  // file could not be written.
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-bookkeeping-'))
+  try {
+    const { ports, events } = mockPorts(
+      dir,
+      new Map([
+        ['x', { kind: 'ok', output: '42', usage: { outputTokens: 1 } }],
+      ]),
+    )
+    ports.taskRegistrar.complete = () => {
+      throw new Error('state.json write failed')
+    }
+    const tool = createWorkflowTool(ports)
+    await tool.call(
+      { script: `return agent('x')` },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    const terminal = events.filter(event => event.type === 'run_done')
+    expect(terminal).toHaveLength(1)
+    expect(terminal[0]).toMatchObject({ status: 'completed' })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('detached rejection emits a queryable terminal failure before failing the wrapper', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-detached-fail-'))
+  try {
+    const { ports, events, runStatus } = mockPorts(
+      dir,
+      new Map([['x', { kind: 'ok', output: 'x', usage: { outputTokens: 1 } }]]),
+    )
+    ports.taskRegistrar.register = () => ({
+      runId: 'run-x',
+      taskId: 'w-detached',
+      instanceId: 14,
+      signal: new AbortController().signal,
+    })
+    ports.journalStore.append = async () => {
+      throw new Error('journal unavailable')
+    }
+    ports.journalStore.read = async () => {
+      throw new Error('journal unavailable')
+    }
+    const tool = createWorkflowTool(ports)
+
+    await tool.call(
+      { script: `return agent('x')` },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await new Promise(resolve => setTimeout(resolve, 30))
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'run_done',
+      runId: 'run-x',
+      workflowName: 'workflow',
+      taskId: 'w-detached',
+      instanceId: 14,
+      status: 'failed',
+      error: 'journal unavailable',
+    })
+    expect(runStatus.get('run-x')).toBe('failed')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

@@ -20,6 +20,7 @@ import {
 import type { CatalogModel } from 'src/services/modelCatalog/types.js'
 import { ALL_MODEL_CONFIGS } from 'src/utils/model/configs.js'
 import { CHATGPT_CODEX_MODEL_OPTIONS } from 'src/utils/model/chatgptModels.js'
+import type { ProviderURLKind } from 'src/utils/network/providerUrl.js'
 
 export type ProviderSetupKind =
   | 'openai'
@@ -58,6 +59,8 @@ export type ProviderSetupValues = {
 export type ProviderSetupContext = {
   /** OpenAI only: which wire protocol the session will speak. */
   wireApi?: OpenAIWireApi
+  /** Endpoint selected by the user; empty means the provider's official default. */
+  baseUrl?: string
   /** China presets only: the provider's display name, for the heading. */
   providerLabel?: string
 }
@@ -67,6 +70,46 @@ type ModelsFetchArgs = {
   apiKey: string
   signal?: AbortSignal
   onError?: (reason: string) => void
+}
+
+/** What the save that just happened did, for `afterSave` to react to. */
+export type ProviderSetupSaveContext = {
+  /**
+   * Whether this save (re)configured the provider's credentials.
+   *
+   * False when the wizard ran in model-only mode for a subscription session:
+   * the credentials belong to that login, the form never showed them, and
+   * anything that tears them down (`removeChatGPTAuth`) must not run.
+   */
+  credentialsConfigured: boolean
+}
+
+/**
+ * A provider whose credentials can come from a subscription/OAuth login rather
+ * than from this form.
+ *
+ * When the named env key holds one of these modes, the session is authenticated
+ * by that login and the form has nothing to say about it: reopening
+ * `/models-setting` must edit models and tiers only. Without this the save path
+ * wrote `<KEY>_API_KEY: undefined`, cleared the auth mode through `extraEnv`,
+ * and ran `afterSave` — which for OpenAI deletes the stored ChatGPT tokens.
+ * Three writes, one destroyed session, for a user who only wanted to repoint a
+ * tier.
+ */
+export type SubscriptionAuthSpec = {
+  /** Env key naming the session's auth mode. */
+  envKey: string
+  /** Auth-mode value → how to name whoever owns the credentials, for the UI. */
+  modes: Record<string, string>
+  /**
+   * Spec fields that change meaning while one of those modes is active. The
+   * subscription backend resolves tiers on its own, so a provider whose form
+   * normally insists on a default model stops needing one — and the heading
+   * has to stop naming an endpoint the session is not using.
+   */
+  overrides?: Partial<
+    Pick<ProviderSetupSpec, 'defaultModelField' | 'validate' | 'title'>
+  >
 }
 
 export type ProviderSetupSpec = {
@@ -82,6 +125,8 @@ export type ProviderSetupSpec = {
    * provider's own default keeps applying.
    */
   defaultBaseUrl: string
+  /** URL/resource grammar used to canonicalize the endpoint before saving. */
+  urlKind: ProviderURLKind
   /** OpenAI has always required an explicit base URL; the others default. */
   baseUrlRequired: boolean
   /**
@@ -90,15 +135,7 @@ export type ProviderSetupSpec = {
    * there has to go back to that screen, not to an endpoint form they never saw.
    */
   hasEndpointStep: boolean
-  /**
-   * What the "Default model" field means for this provider.
-   *
-   * `omitted` is not cosmetic: it also stops the primary model key from being
-   * written. For the China presets that key is OPENAI_MODEL, which overrides
-   * every family alias *and* every explicit `/model <id>` — setting it pins the
-   * session to one model, which is what configuring a whole provider is meant
-   * to avoid.
-   */
+  /** What the independent provider-default model field means for this provider. */
   defaultModelField: 'required' | 'optional' | 'omitted'
   /**
    * When false, an empty API key skips the catalog request and drops straight
@@ -109,16 +146,11 @@ export type ProviderSetupSpec = {
   apiKeyRequired: boolean
   fetchModels: (args: ModelsFetchArgs) => Promise<CatalogModel[] | null>
   /**
-   * Models occ already knows this provider by name, merged into whatever
-   * `/models` returns and used on its own when that request fails.
-   *
-   * Only where a maintained table already exists: the Claude configs for the
-   * Anthropic-compatible path, the GPT list for OpenAI. Gemini and Grok are
-   * deliberately absent — inventing third-party model ids here means hand-
-   * maintaining a list that goes stale, which is the problem `/models` exists
-   * to avoid. Those two keep endpoint discovery plus manual entry.
+   * Models occ knows for the provider's official endpoint, used only when model
+   * discovery fails. A compatible wire protocol does not imply catalog
+   * ownership, so custom endpoints never inherit GPT or Claude guesses.
    */
-  presetModels?: () => CatalogModel[]
+  presetModels?: (context: ProviderSetupContext) => CatalogModel[]
   /** Env var names this provider writes. */
   env: {
     baseUrl: string
@@ -136,12 +168,58 @@ export type ProviderSetupSpec = {
   validate: (
     values: ProviderSetupValues,
   ) => { message: string; field: keyof ProviderSetupValues } | null
-  /** Extra env written on save (wire protocol, auth-mode resets). */
+  /**
+   * Extra env written on save (wire protocol, auth-mode resets).
+   *
+   * Skipped entirely in model-only mode — every entry here describes the
+   * credential plane, which that mode does not own.
+   */
   extraEnv?: (
     context: ProviderSetupContext,
   ) => Record<string, string | undefined>
+  /**
+   * Whether this provider can be authenticated by a subscription/OAuth login
+   * instead of by this form. Undefined means it always owns its credentials.
+   */
+  subscriptionAuth?: SubscriptionAuthSpec
   /** Client-cache invalidation and similar, after settings are persisted. */
-  afterSave?: () => void
+  afterSave?: (context: ProviderSetupSaveContext) => void | Promise<void>
+}
+
+/**
+ * The subscription login this session is running on, or undefined when the
+ * credentials are this form's own business.
+ *
+ * Read from the environment rather than stored on the wizard status because the
+ * auth mode is a property of the session, not of the screen.
+ */
+export function activeSubscriptionAuth(
+  spec: ProviderSetupSpec,
+  env: NodeJS.ProcessEnv = process.env,
+): { envKey: string; mode: string; label: string } | undefined {
+  const auth = spec.subscriptionAuth
+  if (!auth) return undefined
+  const mode = env[auth.envKey]?.trim()
+  if (!mode) return undefined
+  const label = auth.modes[mode]
+  return label ? { envKey: auth.envKey, mode, label } : undefined
+}
+
+/**
+ * The spec as it applies to this screen: the base table, plus whatever an
+ * active subscription login changes about it.
+ *
+ * Keeping the merge here rather than in the component is the point — the
+ * wizard renders one form for every provider and must not learn that ChatGPT
+ * sessions are special.
+ */
+export function specForSubscriptionAuth(
+  spec: ProviderSetupSpec,
+  auth: ReturnType<typeof activeSubscriptionAuth>,
+): ProviderSetupSpec {
+  if (!auth) return spec
+  const overrides = spec.subscriptionAuth?.overrides
+  return overrides ? { ...spec, ...overrides } : spec
 }
 
 const OPENAI_WIRE_API_TITLES: Record<OpenAIWireApi, string> = {
@@ -166,6 +244,19 @@ function tierEnv(prefix: string): Record<TierField, string> {
 /** Most providers ship built-in family defaults, so no model is mandatory. */
 const noValidation = (): null => null
 
+function usesOfficialEndpoint(
+  context: ProviderSetupContext,
+  officialHost: string,
+): boolean {
+  const baseUrl = context.baseUrl?.trim()
+  if (!baseUrl) return true
+  try {
+    return new URL(baseUrl).host === officialHost
+  } catch {
+    return false
+  }
+}
+
 export const PROVIDER_SETUP_SPECS: Record<
   ProviderSetupKind,
   ProviderSetupSpec
@@ -176,16 +267,19 @@ export const PROVIDER_SETUP_SPECS: Record<
     endpointHint: ({ wireApi }) =>
       `Requests will use ${OPENAI_WIRE_API_ENDPOINTS[wireApi ?? 'chat']}.`,
     defaultBaseUrl: 'https://api.openai.com/v1',
+    urlKind: 'openai',
     baseUrlRequired: true,
     hasEndpointStep: true,
     defaultModelField: 'required',
     apiKeyRequired: true,
     fetchModels: fetchOpenAICompatibleModelsWith,
-    presetModels: () =>
-      CHATGPT_CODEX_MODEL_OPTIONS.map(option => ({
-        id: option.value,
-        displayName: option.label,
-      })),
+    presetModels: context =>
+      usesOfficialEndpoint(context, 'api.openai.com')
+        ? CHATGPT_CODEX_MODEL_OPTIONS.map(option => ({
+            id: option.value,
+            displayName: option.label,
+          }))
+        : [],
     env: {
       baseUrl: 'OPENAI_BASE_URL',
       apiKey: 'OPENAI_API_KEY',
@@ -209,13 +303,30 @@ export const PROVIDER_SETUP_SPECS: Record<
       // session; leaving the mode set would route to the Codex backend.
       OPENAI_AUTH_MODE: undefined,
     }),
-    afterSave: () => {
-      void import('src/services/api/openai/client.js').then(m =>
-        m.clearOpenAIClientCache(),
-      )
-      void import('src/services/api/openai/chatgptAuth.js').then(m =>
-        m.removeChatGPTAuth().catch(() => {}),
-      )
+    subscriptionAuth: {
+      envKey: 'OPENAI_AUTH_MODE',
+      modes: { chatgpt: 'ChatGPT subscription' },
+      // The Codex backend maps each tier from its own table, so OPENAI_MODEL
+      // is not needed — and demanding one here would be worse than useless:
+      // OPENAI_MODEL pins a single model for every alias, which is the exact
+      // opposite of what someone opening the tier form is asking for.
+      overrides: {
+        defaultModelField: 'optional',
+        validate: noValidation,
+        // Not "OpenAI Chat Completions Setup": that heading names a wire
+        // protocol this session does not speak (ChatGPT auth forces the
+        // Responses API against the Codex backend).
+        title: () => 'ChatGPT Subscription — Models',
+      },
+    },
+    afterSave: async ({ credentialsConfigured }) => {
+      const client = await import('src/services/api/openai/client.js')
+      client.clearOpenAIClientCache()
+      // Only an API key the user just entered supersedes a ChatGPT login. A
+      // model-only save is not a logout.
+      if (!credentialsConfigured) return
+      const auth = await import('src/services/api/openai/chatgptAuth.js')
+      await auth.removeChatGPTAuth().catch(() => {})
     },
   },
 
@@ -225,6 +336,7 @@ export const PROVIDER_SETUP_SPECS: Record<
     endpointHint: () =>
       'Requests will use POST <base URL>/v1/messages. Base URL may be left empty to use api.anthropic.com.',
     defaultBaseUrl: 'https://api.anthropic.com',
+    urlKind: 'anthropic',
     baseUrlRequired: false,
     hasEndpointStep: true,
     defaultModelField: 'optional',
@@ -232,10 +344,12 @@ export const PROVIDER_SETUP_SPECS: Record<
     fetchModels: fetchAnthropicCompatibleModelsWith,
     // An Anthropic-compatible endpoint serves Claude model names, and the
     // canonical ids are already a maintained table in this repo.
-    presetModels: () =>
-      Object.values(ALL_MODEL_CONFIGS).map(config => ({
-        id: config.firstParty,
-      })),
+    presetModels: context =>
+      usesOfficialEndpoint(context, 'api.anthropic.com')
+        ? Object.values(ALL_MODEL_CONFIGS).map(config => ({
+            id: config.firstParty,
+          }))
+        : [],
     env: {
       baseUrl: 'ANTHROPIC_BASE_URL',
       apiKey: 'ANTHROPIC_AUTH_TOKEN',
@@ -252,6 +366,7 @@ export const PROVIDER_SETUP_SPECS: Record<
     endpointHint: () =>
       "Configure a Gemini Generate Content compatible endpoint. Base URL may be left empty to use Google's v1beta API.",
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    urlKind: 'gemini',
     baseUrlRequired: false,
     hasEndpointStep: true,
     defaultModelField: 'optional',
@@ -280,6 +395,19 @@ export const PROVIDER_SETUP_SPECS: Record<
           }
         : null
     },
+    extraEnv: () => ({
+      // A public API endpoint/key must not remain routed through an earlier
+      // Antigravity OAuth session.
+      GEMINI_AUTH_MODE: undefined,
+    }),
+    subscriptionAuth: {
+      envKey: 'GEMINI_AUTH_MODE',
+      modes: { antigravity: 'Antigravity Google sign-in' },
+      // Only the heading: the Gemini form already treats the default model as
+      // optional, and the Antigravity login writes all three base tiers, so
+      // its validation passes unchanged.
+      overrides: { title: () => 'Antigravity — Models' },
+    },
   },
 
   /**
@@ -295,10 +423,10 @@ export const PROVIDER_SETUP_SPECS: Record<
       `${providerLabel ?? 'China LLM Provider'} — Models`,
     endpointHint: () => '',
     defaultBaseUrl: '',
+    urlKind: 'openai',
     baseUrlRequired: false,
     hasEndpointStep: false,
-    // See the field docs: writing OPENAI_MODEL would defeat `/model <id>`.
-    defaultModelField: 'omitted',
+    defaultModelField: 'required',
     apiKeyRequired: false,
     fetchModels: async () => null,
     env: {
@@ -308,18 +436,33 @@ export const PROVIDER_SETUP_SPECS: Record<
       tiers: tierEnv('OPENAI'),
     },
     tiers: TIER_FIELDS,
-    validate: noValidation,
+    validate: values =>
+      values.model.trim()
+        ? null
+        : {
+            message:
+              'Choose a default model for requests that do not select a tier.',
+            field: 'model',
+          },
     extraEnv: () => ({
       // An API key means this is no longer a ChatGPT-subscription session.
       OPENAI_AUTH_MODE: undefined,
+      // A China preset writes the OpenAI keys but never asks which OpenAI wire
+      // protocol to speak — the preset table settles that. A leftover
+      // `OPENAI_WIRE_API` from an earlier OpenAI login therefore reads as an
+      // explicit protocol choice that nobody made here, and for DeepSeek that
+      // choice is load-bearing: hasExplicitWireChoice() turns it into a veto
+      // that keeps the session off the Anthropic Messages wire it is supposed
+      // to default to (deepseekWire.ts). The group cleanup cannot catch it —
+      // this spec's own modelType is 'openai', so the OpenAI group is skipped.
+      OPENAI_WIRE_API: undefined,
     }),
-    afterSave: () => {
-      void import('src/services/api/openai/client.js').then(m =>
-        m.clearOpenAIClientCache(),
-      )
-      void import('src/services/api/openai/chatgptAuth.js').then(m =>
-        m.removeChatGPTAuth().catch(() => {}),
-      )
+    afterSave: async ({ credentialsConfigured }) => {
+      const client = await import('src/services/api/openai/client.js')
+      client.clearOpenAIClientCache()
+      if (!credentialsConfigured) return
+      const auth = await import('src/services/api/openai/chatgptAuth.js')
+      await auth.removeChatGPTAuth().catch(() => {})
     },
   },
 
@@ -329,6 +472,7 @@ export const PROVIDER_SETUP_SPECS: Record<
     endpointHint: () =>
       'Requests will use the xAI OpenAI-compatible API. Base URL may be left empty to use api.x.ai/v1.',
     defaultBaseUrl: 'https://api.x.ai/v1',
+    urlKind: 'openai',
     baseUrlRequired: false,
     hasEndpointStep: true,
     defaultModelField: 'optional',
@@ -343,10 +487,9 @@ export const PROVIDER_SETUP_SPECS: Record<
     },
     tiers: TIER_FIELDS,
     validate: noValidation,
-    afterSave: () => {
-      void import('src/services/api/grok/client.js').then(m =>
-        m.clearGrokClientCache(),
-      )
+    afterSave: async () => {
+      const client = await import('src/services/api/grok/client.js')
+      client.clearGrokClientCache()
     },
   },
 }

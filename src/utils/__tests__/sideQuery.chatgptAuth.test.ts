@@ -121,6 +121,7 @@ const ENV_KEYS = [
   'OPENAI_AUTH_MODE',
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
+  'OPENAI_WIRE_API',
 ] as const
 
 const savedEnv: Record<string, string | undefined> = {}
@@ -179,6 +180,7 @@ beforeEach(() => {
   chatCompletionsUsage = { prompt_tokens: 3, completion_tokens: 2 }
   capturedFetch = null
   enableOpenAIProvider()
+  delete process.env.OPENAI_WIRE_API
   originalFetch = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
