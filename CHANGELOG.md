@@ -4,6 +4,11 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.35.1 - 2026-08-08
+
+- **修复 Bedrock inference-profile 后台查询延迟落地时污染全局模型缓存的隐患。** 该查询以 fire-and-forget 方式发出,结果可能在数秒后写回一个已不属于 Bedrock 会话的缓存;缓存只在为空时重新推导,一次过期写入即永久生效,此后所有默认模型解析均返回 `us.anthropic.*` 形式的 id。现写入前校验会话仍为 Bedrock 且缓存仍为空,过期结果直接丢弃。
+- **测试套件:清理 18 个测试文件的跨文件 env/模块缓存泄漏(Linux CI 顺序性失败的根源),Bedrock 相关测试不再发起真实 AWS 请求。** 新增模块级注入点供测试替换 inference-profile 查询,未引入任何 `mock.module`。
+
 ## 2.35.0 - 2026-08-08
 
 - **模型设置新增独立的 `default` 槽。** provider 默认模型与 haiku/sonnet/opus/fable 四档各自独立配置 effort 与上下文，即使解析为同一 model id 也互不影响；显式 model id 一律原样透传。出厂默认统一为：GPT（含 o 系）xhigh·272K、DeepSeek max·1M、Claude Opus/Fable xhigh·1M、Claude Sonnet/Haiku xhigh·200K、Gemini/Grok high·200K。自 2.34 升级时，原「Default」行的档位配置自动迁移至 `default` 槽。

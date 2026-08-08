@@ -6,6 +6,11 @@ This is a translation of [`CHANGELOG.md`](CHANGELOG.md), which is the canonical
 source and the only one the tooling parses. Keep the structure identical:
 `## <semver> - <date>` headings, top-level `- ` entries, newest first.
 
+## 2.35.1 - 2026-08-08
+
+- **Fixed a latent race where the background Bedrock inference-profile lookup could poison the global model-string cache.** The lookup is fired without being awaited, so its result could land seconds later in a cache that no longer belonged to a Bedrock session; the cache is only re-derived while empty, making one stale write permanent — every subsequent default-model resolution returned `us.anthropic.*`-style ids. Writes are now discarded unless the session is still Bedrock and the cache is still empty.
+- **Test suite: eliminated cross-file env/module-cache leaks across 18 test files (the source of order-dependent Linux CI failures); Bedrock tests no longer make real AWS calls.** A module-level injection point now lets tests replace the inference-profile lookup without any `mock.module`.
+
 ## 2.35.0 - 2026-08-08
 
 - **New independent `default` slot in model settings.** The provider default model configures effort and context independently from the haiku/sonnet/opus/fable tiers, even when they resolve to the same model id; explicit model ids always pass through unchanged. Factory defaults are now: GPT (incl. o-series) xhigh·272K, DeepSeek max·1M, Claude Opus/Fable xhigh·1M, Claude Sonnet/Haiku xhigh·200K, Gemini/Grok high·200K. Existing "Default"-row tier settings migrate to the `default` slot on upgrade from 2.34.
