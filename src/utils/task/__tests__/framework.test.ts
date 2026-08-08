@@ -43,6 +43,7 @@ const {
   updateTaskState,
   registerTask,
   evictTerminalTask,
+  scheduleTerminalTaskEviction,
   POLL_INTERVAL_MS,
   PANEL_GRACE_MS,
 } = await import('../framework.js')
@@ -237,5 +238,112 @@ describe('constants', () => {
 
   test('PANEL_GRACE_MS is 30000', () => {
     expect(PANEL_GRACE_MS).toBe(30_000)
+  })
+})
+
+describe('evictTerminalTask — non-agent grace periods', () => {
+  // A local_workflow task has no `retain` field, so before evictAfter was
+  // honored for it the task was terminal+notified the instant it finished —
+  // which is the eviction predicate exactly. It vanished on the next sweep,
+  // and any attempt to read the run's result answered "No task found".
+  test('honors evictAfter on a task type without retain', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'task-001': makeTask({
+          type: 'local_workflow',
+          status: 'completed',
+          notified: true,
+          evictAfter: Date.now() + 60_000,
+        }),
+      },
+    })
+
+    evictTerminalTask('task-001', setAppState as any)
+
+    expect(getState().tasks['task-001']).toBeDefined()
+  })
+
+  test('evicts once the deadline has passed', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'task-001': makeTask({
+          type: 'local_workflow',
+          status: 'completed',
+          notified: true,
+          evictAfter: Date.now() - 1,
+        }),
+      },
+    })
+
+    evictTerminalTask('task-001', setAppState as any)
+
+    expect(getState().tasks['task-001']).toBeUndefined()
+  })
+
+  test('a type that never stamps evictAfter still evicts immediately', () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'task-001': makeTask({
+          type: 'local_bash',
+          status: 'completed',
+          notified: true,
+        }),
+      },
+    })
+
+    evictTerminalTask('task-001', setAppState as any)
+
+    expect(getState().tasks['task-001']).toBeUndefined()
+  })
+})
+
+describe('scheduleTerminalTaskEviction', () => {
+  test('evicts on its own timer, without a main-thread sweep', async () => {
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'task-001': makeTask({
+          type: 'local_agent',
+          status: 'completed',
+          notified: true,
+          retain: false,
+          evictAfter: Date.now() - 1,
+        }),
+      },
+    })
+
+    // graceMs 0 → fires after the +1s safety margin; wait past it.
+    scheduleTerminalTaskEviction('task-001', setAppState as any, 0)
+    expect(getState().tasks['task-001']).toBeDefined()
+    await new Promise(r => setTimeout(r, 1100))
+
+    expect(getState().tasks['task-001']).toBeUndefined()
+  })
+
+  test('leaves a task that is no longer eligible alone', async () => {
+    // Re-checked on fresh state: a task resumed back to running between the
+    // schedule and the fire must not be deleted out from under its loop.
+    const { setAppState, getState } = createSetAppState({
+      tasks: {
+        'task-001': makeTask({
+          type: 'local_agent',
+          status: 'completed',
+          notified: true,
+          retain: false,
+          evictAfter: Date.now() - 1,
+        }),
+      },
+    })
+
+    scheduleTerminalTaskEviction('task-001', setAppState as any, 0)
+    setAppState(prev => ({
+      ...prev,
+      tasks: {
+        ...prev.tasks,
+        'task-001': { ...prev.tasks['task-001'], status: 'running' },
+      },
+    }))
+    await new Promise(r => setTimeout(r, 1100))
+
+    expect(getState().tasks['task-001']).toBeDefined()
   })
 })

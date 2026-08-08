@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { join } from 'path'
+import { dirname, join, parse } from 'path'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import type { AgentMcpServerInfo } from '../../components/mcp/types.js'
@@ -169,16 +169,55 @@ export function hashMcpConfig(config: ScopedMcpServerConfig): string {
 }
 
 /**
+ * The `.mcp.json` chain, for the config watcher to poll: every directory from
+ * cwd up to the filesystem root, matching the walk getMcpConfigsByScope does
+ * for the 'project' scope (a parent file can define servers for a nested cwd).
+ *
+ * Only 'project' is watched, deliberately:
+ *   - 'user' and 'local' live in the global config file, which occ rewrites on
+ *     its own schedule (session cost snapshots, project state, counters).
+ *     Watching it would tie MCP re-enumeration to occ's own write frequency and
+ *     re-read every scope for changes that never touch a server definition.
+ *     Those scopes are edited through `occ mcp add/remove -s user|local`, and
+ *     still apply on the next session — the same as before this watcher
+ *     existed.
+ *   - 'enterprise' is administered out-of-band and is not expected to change
+ *     mid-session.
+ *
+ * Lives here rather than beside the watcher because this module already imports
+ * getCwd; pulling config helpers into a new module closes an import cycle
+ * through utils/config.
+ */
+export function getMcpConfigWatchPaths(): string[] {
+  const paths = new Set<string>()
+
+  let dir = getCwd()
+  while (dir !== parse(dir).root) {
+    paths.add(join(dir, '.mcp.json'))
+    dir = dirname(dir)
+  }
+  paths.add(join(dir, '.mcp.json'))
+
+  return [...paths]
+}
+
+/**
  * Remove stale MCP clients and their tools/commands/resources. A client is
  * stale if:
- *   - scope 'dynamic' and name no longer in configs (plugin disabled), or
+ *   - its name is no longer in configs AND its scope is one the caller vouched
+ *     for via `authoritativeScopes` (the server really was removed), or
  *   - config hash changed (args/url/env edited in .mcp.json) — any scope
  *
- * The removal case is scoped to 'dynamic' so /reload-plugins can't
- * accidentally disconnect a user-configured server that's just temporarily
- * absent from the in-memory config (e.g. during a partial reload). The
- * config-changed case applies to all scopes — if the config actually changed
- * on disk, reconnecting is what you want.
+ * `authoritativeScopes` exists because absence from `configs` is ambiguous. It
+ * means "removed" only if the caller actually enumerated that scope and the
+ * enumeration succeeded. A caller that skipped the claude.ai network fetch, or
+ * that got zero project servers because `.mcp.json` has a syntax error, must
+ * leave those scopes out — otherwise this tears down live servers over a typo
+ * or a deliberately-skipped lookup. Callers that pass nothing get the old
+ * plugin-only behavior.
+ *
+ * The config-changed case applies to all scopes unconditionally — a server
+ * present in configs with different contents genuinely needs reconnecting.
  *
  * Returns the stale clients so the caller can disconnect them (clearServerCache).
  */
@@ -190,6 +229,9 @@ export function excludeStalePluginClients(
     resources: Record<string, ServerResource[]>
   },
   configs: Record<string, ScopedMcpServerConfig>,
+  authoritativeScopes: ReadonlySet<ConfigScope> = new Set<ConfigScope>([
+    'dynamic',
+  ]),
 ): {
   clients: MCPServerConnection[]
   tools: Tool[]
@@ -199,7 +241,7 @@ export function excludeStalePluginClients(
 } {
   const stale = mcp.clients.filter(c => {
     const fresh = configs[c.name]
-    if (!fresh) return c.config.scope === 'dynamic'
+    if (!fresh) return authoritativeScopes.has(c.config.scope)
     return hashMcpConfig(c.config) !== hashMcpConfig(fresh)
   })
   if (stale.length === 0) {

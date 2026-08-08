@@ -109,6 +109,21 @@ export function makeHooks(
       } else {
         // Divergence: atomically persist the valid prefix before live suffixes
         // append, otherwise the next resume diverges at the first old record again.
+        //
+        // Report it. The cache key is sha256(prompt + canonical params), so any
+        // change to what the agents are asked — including one that only reaches
+        // the prompts through `args` — misses at this position and discards
+        // every checkpoint from here on. Silently that reads as "resume worked",
+        // and the only symptom is the wall-clock of a full re-run.
+        const replayed = ctx.journalIndex
+        const discarded = ctx.journal.length - ctx.journalIndex
+        ctx.ports.logger.warn?.(
+          `resume ${ctx.runId}: journal diverged at call #${replayed + 1} (prompt or params changed) — ${replayed} replayed, ${discarded} discarded and re-running live`,
+        )
+        emit({
+          type: 'log',
+          message: `journal diverged at call #${replayed + 1} — ${replayed} cached result(s) replayed, ${discarded} discarded; the rest runs live`,
+        })
         ctx.journalInvalidated = true
         ctx.journal = ctx.journal.slice(0, ctx.journalIndex)
         const store = ctx.ports

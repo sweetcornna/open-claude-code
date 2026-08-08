@@ -236,6 +236,7 @@ import {
   isLoggableMessage,
   getAgentTranscript,
 } from '../utils/sessionStorage.js';
+import { pruneFinishedAgentProgress, resolvedToolUseIDsIn } from '../utils/messages/pruneAgentProgress.js';
 import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/session/queryHelpers.js';
 import { resetMicrocompactState } from '../services/compact/microCompact.js';
 import { runPostCompactCleanup, registerCompactCleanup } from '../services/compact/postCompactCleanup.js';
@@ -2475,7 +2476,17 @@ export function REPL({
               return [...oldMessages, newMessage];
             });
           } else {
-            setMessages(oldMessages => [...oldMessages, newMessage]);
+            // A tool_result also retires the corresponding subagent's progress
+            // trail. Those entries are appended and never replaced (see the
+            // branch above), so without this the parent keeps every message
+            // every subagent ever produced — the 4GB OOM in
+            // utils/messages/pruneAgentProgress.ts.
+            const finishedToolUseIDs = resolvedToolUseIDsIn(newMessage);
+            setMessages(oldMessages =>
+              finishedToolUseIDs.length > 0
+                ? [...pruneFinishedAgentProgress(oldMessages, finishedToolUseIDs), newMessage]
+                : [...oldMessages, newMessage],
+            );
           }
           // Block ticks on API errors to prevent tick → error → tick
           // runaway loops (e.g., auth failure, rate limit, blocking limit).

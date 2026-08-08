@@ -146,6 +146,14 @@ export type AppState = DeepImmutable<{
      * as a dependency; the value itself is not consumed.
      */
     pluginReconnectKey: number
+    /**
+     * Incremented when a file that can define MCP servers changes on disk
+     * (`.mcp.json` anywhere from cwd up to the filesystem root, or the global
+     * config). Effects read it as a dependency so an edited or deleted server
+     * is picked up in-session — without it, a server removed from `.mcp.json`
+     * kept its child process alive until /clear or a restart.
+     */
+    configReloadKey: number
   }
   plugins: {
     enabled: LoadedPlugin[]
@@ -473,6 +481,7 @@ export function getDefaultAppState(): AppState {
       commands: [],
       resources: {},
       pluginReconnectKey: 0,
+      configReloadKey: 0,
     },
     plugins: {
       enabled: [],

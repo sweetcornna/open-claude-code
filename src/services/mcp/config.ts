@@ -1083,6 +1083,11 @@ export async function getClaudeCodeMcpConfigs(
 ): Promise<{
   servers: Record<string, ScopedMcpServerConfig>
   errors: PluginError[]
+  /**
+   * Scopes whose config file failed to load. Their absence from `servers` means
+   * "could not read", not "not configured" — see the note where this is built.
+   */
+  unhealthyScopes: ConfigScope[]
 }> {
   const { servers: enterpriseServers } = getMcpConfigsByScope('enterprise')
 
@@ -1099,24 +1104,37 @@ export async function getClaudeCodeMcpConfigs(
       filtered[name] = serverConfig
     }
 
-    return { servers: filtered, errors: [] }
+    return { servers: filtered, errors: [], unhealthyScopes: [] }
   }
 
   // Load other scopes — unless the managed policy locks MCP to plugin-only.
   // Unlike the enterprise-exclusive block above, this keeps plugin servers.
   const mcpLocked = isRestrictedToPluginOnly('mcp')
-  const noServers: { servers: Record<string, ScopedMcpServerConfig> } = {
+  const noServers: {
+    servers: Record<string, ScopedMcpServerConfig>
+    errors: ValidationError[]
+  } = {
     servers: {},
+    errors: [],
   }
-  const { servers: userServers } = mcpLocked
+  const { servers: userServers, errors: userErrors } = mcpLocked
     ? noServers
     : getMcpConfigsByScope('user')
-  const { servers: projectServers } = mcpLocked
+  const { servers: projectServers, errors: projectErrors } = mcpLocked
     ? noServers
     : getMcpConfigsByScope('project')
-  const { servers: localServers } = mcpLocked
+  const { servers: localServers, errors: localErrors } = mcpLocked
     ? noServers
     : getMcpConfigsByScope('local')
+
+  // A scope whose file failed to parse yields zero servers, which is
+  // indistinguishable from "the user deleted every server" unless we say so.
+  // Callers that disconnect servers missing from this result must not act on an
+  // unhealthy scope — a typo mid-edit would otherwise tear down live servers.
+  const unhealthyScopes: ConfigScope[] = []
+  if (userErrors.length > 0) unhealthyScopes.push('user')
+  if (projectErrors.length > 0) unhealthyScopes.push('project')
+  if (localErrors.length > 0) unhealthyScopes.push('local')
 
   // Load plugin MCP servers
   const pluginMcpServers: Record<string, ScopedMcpServerConfig> = {}
@@ -1254,7 +1272,7 @@ export async function getClaudeCodeMcpConfigs(
     filtered[name] = serverConfig as ScopedMcpServerConfig
   }
 
-  return { servers: filtered, errors: mcpErrors }
+  return { servers: filtered, errors: mcpErrors, unhealthyScopes }
 }
 
 /**

@@ -18,7 +18,9 @@ import {
   TASK_NOTIFICATION_TAG,
   TASK_TYPE_TAG,
 } from '../constants/xml.js'
+import { join } from 'node:path'
 import { enqueuePendingNotification } from '../utils/session/messageQueueManager.js'
+import { getRunsDir } from './persistence.js'
 import type { RunProgress } from './progress/store.js'
 import type { WorkflowService } from './service.js'
 
@@ -87,7 +89,11 @@ function buildMessage(run: RunProgress): string {
         : 'was stopped'
   const errorSuffix =
     run.status === 'failed' && run.error ? `: ${run.error}` : ''
-  const summary = `Workflow "${run.workflowName}" ${statusText}${errorSuffix}`
+  // Name the run directory here too. This notification is often the only thing
+  // still in context by the time the run's result is questioned, and the
+  // journal is the difference between diagnosing an empty result and guessing.
+  const runDir = join(getRunsDir(), run.runId)
+  const summary = `Workflow "${run.workflowName}" ${statusText}${errorSuffix}. Run directory: ${runDir} (journal.jsonl records each agent() call's actual return value; state.json holds terminal per-agent status).`
 
   return `<${TASK_NOTIFICATION_TAG}>
 <${TASK_ID_TAG}>${run.runId}</${TASK_ID_TAG}>

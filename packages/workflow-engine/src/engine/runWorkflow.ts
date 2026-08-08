@@ -70,6 +70,18 @@ export async function runWorkflow(
   } else if (opts.scriptChanged) {
     await ports.journalStore.truncate(opts.runId)
     journalInvalidated = true
+    // Say so out loud. A resume that silently discards every checkpoint is
+    // indistinguishable from one that replayed them — the run just costs a full
+    // fresh fan-out again while looking like it resumed.
+    ports.logger.warn?.(
+      `resume ${opts.runId}: script changed since the recorded run — journal discarded, every agent() call re-runs`,
+    )
+    ports.progressEmitter.emit({
+      type: 'log',
+      runId: opts.runId,
+      message:
+        'script changed since the recorded run — journal discarded, resuming as a full fresh run',
+    })
   }
 
   ports.progressEmitter.emit({

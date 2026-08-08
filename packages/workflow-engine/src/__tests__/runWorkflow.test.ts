@@ -765,3 +765,60 @@ test('workflow() references a non-existent name → failed', async () => {
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('scriptChanged=true announces that the journal was discarded', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
+  try {
+    const events: ProgressEvent[] = []
+    const warnings: string[] = []
+    const ports: WorkflowPorts = {
+      agentRunner: {
+        runAgentToResult: async () => ({
+          kind: 'ok',
+          output: 'live',
+          usage: { outputTokens: 1 },
+        }),
+      },
+      progressEmitter: { emit: e => void events.push(e) },
+      taskRegistrar: {
+        register: () => ({ runId: 'r', signal: new AbortController().signal }),
+        complete: () => {},
+        fail: () => {},
+        kill: () => {},
+        pendingAction: () => null,
+      },
+      journalStore: createFileJournalStore(dir),
+      permissionGate: { isAborted: () => false },
+      logger: {
+        debug: () => {},
+        event: () => {},
+        warn: msg => void warnings.push(msg),
+      },
+      hostFactory: () => ({
+        handle: createHostHandle(null),
+        cwd: dir,
+        budgetTotal: null,
+      }),
+    }
+    await runWorkflow({
+      script: `return agent('compute')`,
+      runId: 'run-say-so',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      scriptChanged: true,
+    })
+
+    expect(warnings.some(w => w.includes('journal discarded'))).toBe(true)
+    expect(
+      events.some(
+        e => e.type === 'log' && e.message.includes('journal discarded'),
+      ),
+    ).toBe(true)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})

@@ -239,6 +239,15 @@ export function createWorkflowTool(
         .catch(e => ports.taskRegistrar.fail(runId, (e as Error).message))
 
       const scriptPath = workflowFile ?? `<inline run ${runId}>`
+      // Hand back the run directory, not just the id. The journal and the
+      // terminal state.json live here and survive both the background task's
+      // eviction from AppState and the session itself — without the path the
+      // only way to diagnose a finished run is to guess where it landed.
+      const runDir = runDirFor(
+        host.cwd,
+        options.workflowRunsDir ?? WORKFLOW_RUNS_DIR,
+        runId,
+      )
       return {
         data: {
           output: [
@@ -246,8 +255,10 @@ export function createWorkflowTool(
             `run_id: ${runId}`,
             `workflow: ${workflowName}`,
             `script: ${scriptPath}`,
+            `run_dir: ${runDir}`,
             '',
             'You will be notified on completion. Use /workflows to view live progress.',
+            `To inspect the finished run, Read ${join(runDir, 'journal.jsonl')} (one record per agent() call, with its actual return value) or ${join(runDir, 'state.json')} (terminal per-agent status).`,
           ].join('\n'),
         },
       }
@@ -265,6 +276,19 @@ export function createWorkflowTool(
 
 const SCRIPT_HASH_FILE = 'script.sha256'
 
+/**
+ * Absolute path of a run's on-disk directory (journal.jsonl, state.json,
+ * script.sha256, persisted inline script). Single definition so the path shown
+ * to the model can never drift from the one written to.
+ */
+function runDirFor(
+  cwd: string,
+  workflowRunsDir: string,
+  runId: string,
+): string {
+  return join(cwd, workflowRunsDir, assertValidRunId(runId))
+}
+
 async function persistScriptHash(opts: {
   script: string
   runId: string
@@ -272,8 +296,7 @@ async function persistScriptHash(opts: {
   workflowRunsDir: string
   resume: boolean
 }): Promise<boolean> {
-  const runId = assertValidRunId(opts.runId)
-  const runDir = join(opts.cwd, opts.workflowRunsDir, runId)
+  const runDir = runDirFor(opts.cwd, opts.workflowRunsDir, opts.runId)
   const hashPath = join(runDir, SCRIPT_HASH_FILE)
   const currentHash = createHash('sha256').update(opts.script).digest('hex')
   let previousHash: string | undefined

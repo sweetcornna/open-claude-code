@@ -13,6 +13,7 @@ import {
   reconnectMcpServerImpl,
 } from './client.js'
 import type {
+  ConfigScope,
   MCPServerConnection,
   ScopedMcpServerConfig,
   ServerResource,
@@ -78,7 +79,12 @@ import {
 } from './claudeai.js'
 import { registerElicitationHandler } from './elicitationHandler.js'
 import { getMcpPrefix } from './mcpStringUtils.js'
-import { commandBelongsToServer, excludeStalePluginClients } from './utils.js'
+import { startMcpConfigWatcher } from './configWatcher.js'
+import {
+  commandBelongsToServer,
+  excludeStalePluginClients,
+  getMcpConfigWatchPaths,
+} from './utils.js'
 
 // Constants for reconnection with exponential backoff
 const MAX_RECONNECT_ATTEMPTS = 5
@@ -147,7 +153,22 @@ export function useManageMCPConnections(
   // which has been cleared by refreshActivePlugins, so the effects below see
   // fresh plugin data on re-run.
   const _pluginReconnectKey = useAppState(s => s.mcp.pluginReconnectKey)
+  // Bumped by the .mcp.json / global-config watcher below. Same role as
+  // _pluginReconnectKey: read purely as an effect dependency.
+  const _configReloadKey = useAppState(s => s.mcp.configReloadKey)
   const setAppState = useSetAppState()
+
+  // Re-run the connection effects when a file that defines MCP servers changes.
+  // Installed once per session — the watched paths derive from cwd and the
+  // global config location, neither of which moves under a live session.
+  useEffect(() => {
+    return startMcpConfigWatcher(getMcpConfigWatchPaths(), () => {
+      setAppState(prev => ({
+        ...prev,
+        mcp: { ...prev.mcp, configReloadKey: prev.mcp.configReloadKey + 1 },
+      }))
+    })
+  }, [setAppState])
 
   // Track active reconnection attempts to allow cancellation
   const reconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
@@ -763,22 +784,50 @@ export function useManageMCPConnections(
   const sessionId = getSessionId()
   useEffect(() => {
     async function initializeServersAsPending() {
-      const { servers: existingConfigs, errors: mcpErrors } = isStrictMcpConfig
-        ? { servers: {}, errors: [] }
+      const {
+        servers: existingConfigs,
+        errors: mcpErrors,
+        unhealthyScopes,
+      } = isStrictMcpConfig
+        ? { servers: {}, errors: [], unhealthyScopes: [] as ConfigScope[] }
         : await getClaudeCodeMcpConfigs(dynamicMcpConfig)
       const configs = { ...existingConfigs, ...dynamicMcpConfig }
+
+      // Which scopes `configs` speaks for. Absence from it means "removed" only
+      // for these; for anything else it just means we didn't look. The list is
+      // exactly the scopes getClaudeCodeMcpConfigs enumerates, minus:
+      //
+      // - 'claudeai': this effect skips the claude.ai network fetch to avoid
+      //   blocking (see the comment above), so every claude.ai server is
+      //   missing from `configs` by construction — treating that as removal
+      //   would disconnect all of them on each re-run.
+      // - 'managed': nothing in the repo produces a server at that scope today,
+      //   so listing it would pre-authorize reclaiming servers from a source
+      //   this function does not read. Add it here together with whatever
+      //   starts enumerating it.
+      // - any scope whose file failed to parse: zero servers there means
+      //   unreadable, not deleted, and tearing down live servers over a
+      //   mid-edit typo is exactly what this guard is for.
+      const authoritativeScopes = new Set<ConfigScope>(
+        (['dynamic', 'user', 'project', 'local', 'enterprise'] as const).filter(
+          s => !unhealthyScopes.includes(s),
+        ),
+      )
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
       addErrorsToAppState(setAppState, mcpErrors)
 
       setAppState(prevState => {
-        // Disconnect MCP servers that are stale: plugin servers removed from
-        // config, or any server whose config hash changed (edited .mcp.json).
-        // Stale servers get re-added as 'pending' below since their name is
-        // now absent from mcpWithoutStale.clients.
+        // Disconnect MCP servers that are stale: servers removed from config
+        // (in a scope we can vouch for), or any server whose config hash
+        // changed (edited .mcp.json). Stale servers get re-added as 'pending'
+        // below since their name is now absent from mcpWithoutStale.clients —
+        // removed ones aren't in `configs` either, so they simply stay gone and
+        // their child process is reclaimed by the cleanup loop below.
         const { stale, ...mcpWithoutStale } = excludeStalePluginClients(
           prevState.mcp,
           configs,
+          authoritativeScopes,
         )
         // Clean up stale connections. Fire-and-forget — state updaters must
         // be synchronous. Three hazards to defuse before calling cleanup:
@@ -843,6 +892,7 @@ export function useManageMCPConnections(
     setAppState,
     sessionId,
     _pluginReconnectKey,
+    _configReloadKey,
   ])
 
   // Load MCP configs and connect to servers
@@ -1013,6 +1063,7 @@ export function useManageMCPConnections(
     _authVersion,
     sessionId,
     _pluginReconnectKey,
+    _configReloadKey,
   ])
 
   // Cleanup all timers on unmount

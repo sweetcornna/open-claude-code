@@ -63,6 +63,12 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - 新增 facade 照抄 `slowOperations.ts`；注册与翻转分两个提交。
 - `packages/tool-runtime/` 包内**零** `src/` 与 `builtin-tools` import（含 type-only），由 `src/__tests__/toolRuntimeTypeContract.test.ts` 的类型断言守着。
 
+### 长会话驻留（会静默变成 OOM 的一类）
+
+- **子 agent 的每条消息都会变成父会话 `messages` 里的一条 `agent_progress`**，且 bash/mcp 那套就地替换**不适用**（替换会让运行中的 AgentTool 卡在「Initializing…」）。它们不落盘（`isLoggableMessage` 返回 false），所以主 transcript 再小也不代表内存小 —— 实测 9MB transcript / 4GB 堆，216 个子 agent、其中一个自己就 1,270 条消息。裁剪在 `utils/messages/pruneAgentProgress.ts`：**只在 agent 的 `tool_result` 到达时裁，运行中一律不动**，且**永不动 index 0**（`useLogMessages` 靠 `messages[0].uuid` 区分同头缩短与 compaction）。
+- **终态任务的驱逐只在主线程 attachment 阶段跑**（`orchestrator.ts` 的 `isMainThread`），子 agent 轮次从不清扫。所以新增的任务类型要么自己排 `scheduleTerminalTaskEviction`，要么就会在长轮次里一直堆着。
+- 判断是不是真漏看 GC 日志：`Ineffective mark-compacts` + 回收量接近 0 = 真实驻留，调 `--max-old-space-size` 只是推后。真源文档 `docs/zh/features/memory-footprint.md`。
+
 ### UI / 包
 
 - **Ink 框架在 `packages/@ant/ink/`**，不是 `src/ink/`（该目录不存在）。

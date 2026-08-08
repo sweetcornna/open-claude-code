@@ -1027,3 +1027,41 @@ test('taskRegistrar does not provide registerAgentAbort → adapterCtx also lack
     (capturedCtx! as Record<string, unknown>).registerAgentAbort,
   ).toBeUndefined()
 })
+
+test('agent journal divergence is reported, not silent', async () => {
+  // A resume that discards its checkpoints looks exactly like one that replayed
+  // them — same tool result, same run id — and the only symptom is paying for a
+  // full fresh fan-out again. It has to announce itself.
+  const warnings: string[] = []
+  const { hooks, events } = buildCtx({
+    runner: async () => ({
+      kind: 'ok',
+      output: 'live',
+      usage: { outputTokens: 1 },
+    }),
+    journal: [
+      {
+        key: 'stale-key',
+        seq: 0,
+        result: { kind: 'ok', output: 'old', usage: { outputTokens: 1 } },
+      },
+      {
+        key: 'another-stale-key',
+        seq: 1,
+        result: { kind: 'ok', output: 'old2', usage: { outputTokens: 1 } },
+      },
+    ],
+    loggerWarn: (msg: string) => void warnings.push(msg),
+  })
+
+  await hooks.agent('a-prompt-that-was-never-recorded')
+
+  expect(warnings.some(w => w.includes('diverged'))).toBe(true)
+  const logEvents = events.filter(e => e.type === 'log')
+  expect(logEvents.length).toBe(1)
+  // Diverging at the very first call means nothing was reused.
+  expect((logEvents[0] as { message: string }).message).toContain('call #1')
+  expect((logEvents[0] as { message: string }).message).toContain(
+    '0 cached result(s) replayed',
+  )
+})

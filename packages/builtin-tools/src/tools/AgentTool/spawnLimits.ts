@@ -1,23 +1,33 @@
 /**
- * Subagent spawn budgets (official 2.1.212/2.1.217/2.1.172 parity):
+ * Subagent spawn budgets (official 2.1.212/2.1.217/2.1.172 parity, with one
+ * deliberate divergence noted below):
  *
- * - CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION (default 200) — cumulative spawns
- *   per process lifetime; a runaway spawn loop burns real money.
+ * - CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION — cumulative spawns per process
+ *   lifetime. **Unlimited unless set**, unlike the official default of 200.
+ *   The counter only resets on /clear, so in a long orchestration session the
+ *   cap arrives as a hard stop partway through legitimate work: a real session
+ *   spawned 216 subagents across six analysis stages, and a 200 ceiling would
+ *   have failed it in the last stage with an error about a budget the user
+ *   never chose. Runaway loops are bounded by the token/USD budget, which is
+ *   enforced separately and which the user actually sets. Same reasoning, and
+ *   same posture, as WebSearchTool/sessionLimit.ts.
  * - CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS (default 20) — simultaneously
- *   running subagents. Tracked here in a module-level Set keyed by agentId;
- *   deliberately NOT derived from appState.tasks — foreground agents skip
- *   task registration under CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, and
- *   `agentDefinitions.activeAgents` is a same-name trap (that's the agent
- *   DEFINITION list, not running instances).
+ *   running subagents. This one keeps its default: it bounds live resource
+ *   use rather than cumulative work, releases as agents finish, and is what
+ *   stops a fan-out from thrashing the machine. Tracked in a module-level Set
+ *   keyed by agentId; deliberately NOT derived from appState.tasks —
+ *   foreground agents skip task registration under
+ *   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, and `agentDefinitions.activeAgents`
+ *   is a same-name trap (that's the agent DEFINITION list, not running
+ *   instances).
  * - CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH (default 3) — nesting depth,
  *   carried on ToolUseContext.agentDepth (an env var cannot carry it:
  *   subagents run in-process and share process.env with siblings).
  *
- * Same env parsing posture as WebSearchTool/sessionLimit.ts:
- * Number.parseInt + isFinite + > 0, garbage falls back to the default.
+ * Env parsing: Number.parseInt + isFinite + > 0, garbage falls back to the
+ * default.
  */
 
-const DEFAULT_MAX_SUBAGENTS_PER_SESSION = 200
 const DEFAULT_MAX_CONCURRENT_SUBAGENTS = 20
 const DEFAULT_MAX_SPAWN_DEPTH = 3
 
@@ -30,10 +40,11 @@ function positiveIntEnv(name: string, fallback: number): number {
   return fallback
 }
 
+/** Configured cumulative cap, or Infinity when none is set. */
 export function maxSubagentsPerSession(): number {
   return positiveIntEnv(
     'CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION',
-    DEFAULT_MAX_SUBAGENTS_PER_SESSION,
+    Number.POSITIVE_INFINITY,
   )
 }
 
@@ -62,7 +73,7 @@ export function checkSpawnBudgets(agentDepth: number | undefined): void {
   if (spawnedThisSession >= maxSubagentsPerSession()) {
     throw new Error(
       `Subagent session budget exhausted (${maxSubagentsPerSession()} spawns). ` +
-        `Raise with CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION.`,
+        `This cap only exists because CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION is set — raise or unset it.`,
     )
   }
   if (runningAgents.size >= maxConcurrentSubagents()) {

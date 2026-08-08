@@ -95,3 +95,55 @@ describe('failWorkflowTask', () => {
     expect(task.error).toBeUndefined()
   })
 })
+
+describe('run directory and eviction grace', () => {
+  test('runDir 由 runsDir + runId 推导（fresh run 用新生成的 task id）', () => {
+    const { setAppState, getState } = createSetState()
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'test',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+      runsDir: '/proj/.occ/workflow-runs',
+    })
+    const task = getState().tasks[taskId]
+    expect(task.runId).toBe(taskId)
+    expect(task.runDir).toBe(`/proj/.occ/workflow-runs/${taskId}`)
+  })
+
+  test('resume 保留原 runId，runDir 跟着 runId 走而不是新 task id', () => {
+    const { setAppState, getState } = createSetState()
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'test',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+      runId: 'w0ldrunid',
+      runsDir: '/proj/.occ/workflow-runs',
+    })
+    const task = getState().tasks[taskId]
+    expect(task.runId).toBe('w0ldrunid')
+    expect(taskId).not.toBe('w0ldrunid')
+    expect(task.runDir).toBe('/proj/.occ/workflow-runs/w0ldrunid')
+  })
+
+  test('不传 runsDir 时不写 runDir（保持字段可选）', () => {
+    const { setAppState, getState } = createSetState()
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'test',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+    })
+    expect(getState().tasks[taskId].runDir).toBeUndefined()
+  })
+
+  test('终态会盖上 evictAfter —— 没有它，任务在完成的那一刻就满足驱逐条件', () => {
+    const { setAppState, getState } = createSetState()
+    const taskId = registerLocalWorkflowTask(setAppState as any, {
+      description: 'test',
+      workflowName: 'wf',
+      workflowFile: '/tmp/wf.ts',
+    })
+    expect(getState().tasks[taskId].evictAfter).toBeUndefined()
+    failWorkflowTask(taskId, setAppState as any, 'boom')
+    expect(getState().tasks[taskId].evictAfter).toBeGreaterThan(Date.now())
+  })
+})

@@ -3,12 +3,17 @@
 // dialog. Follows the DreamTask pattern: lifecycle + UI surfacing via
 // the existing task registry.
 
+import { join } from 'node:path'
 import type { AppState } from '../../state/AppState.js'
 import type { SetAppState, Task, TaskStateBase } from '../../Task.js'
 import { createTaskStateBase, generateTaskId } from '../../Task.js'
 import type { AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
-import { registerTask, updateTaskState } from '../../utils/task/framework.js'
+import {
+  registerTask,
+  updateTaskState,
+  WORKFLOW_GRACE_MS,
+} from '../../utils/task/framework.js'
 
 export type LocalWorkflowTaskState = TaskStateBase & {
   type: 'local_workflow'
@@ -23,6 +28,13 @@ export type LocalWorkflowTaskState = TaskStateBase & {
   workflowName: string
   /** Absolute path to the workflow file on disk. */
   workflowFile: string
+  /**
+   * Absolute path to this run's directory (journal.jsonl, state.json). Carried
+   * on the task so TaskOutput can point at the durable record without having to
+   * re-derive the runs root — and so the answer survives the original tool
+   * result falling out of context.
+   */
+  runDir?: string
   /** Human-readable one-line summary for the task list. */
   summary?: string
   /** Number of sub-agents spawned by this workflow. */
@@ -33,6 +45,12 @@ export type LocalWorkflowTaskState = TaskStateBase & {
   error?: string
   /** Agent that spawned this task. Used for orphan cleanup. */
   agentId?: AgentId
+  /**
+   * Eviction deadline stamped on completion (see WORKFLOW_GRACE_MS). Without it
+   * the task is terminal + notified the instant it finishes, which is exactly
+   * the eviction predicate — it vanished before anything could read its result.
+   */
+  evictAfter?: number
   /** Abort controller for cancellation. */
   abortController?: AbortController
   /**
@@ -69,9 +87,16 @@ export function registerLocalWorkflowTask(
     abortController?: AbortController
     /** Engine run id when resuming; defaults to the freshly generated task id. */
     runId?: string
+    /**
+     * Root of the workflow runs tree. The per-run directory is derived here
+     * rather than by the caller because a fresh run's id is this function's
+     * return value — the caller does not know it yet.
+     */
+    runsDir?: string
   },
 ): string {
   const id = generateTaskId('local_workflow')
+  const runId = opts.runId ?? id
   const task: LocalWorkflowTaskState = {
     ...createTaskStateBase(
       id,
@@ -81,9 +106,10 @@ export function registerLocalWorkflowTask(
     ),
     type: 'local_workflow',
     status: 'running',
-    runId: opts.runId ?? id,
+    runId,
     workflowName: opts.workflowName,
     workflowFile: opts.workflowFile,
+    ...(opts.runsDir ? { runDir: join(opts.runsDir, runId) } : {}),
     summary: opts.summary,
     agentId: opts.agentId,
     abortController: opts.abortController,
@@ -101,6 +127,7 @@ export function completeWorkflowTask(
     status: 'completed',
     endTime: Date.now(),
     notified: true,
+    evictAfter: Date.now() + WORKFLOW_GRACE_MS,
     abortController: undefined,
   }))
 }
@@ -115,6 +142,7 @@ export function failWorkflowTask(
     status: 'failed',
     endTime: Date.now(),
     notified: true,
+    evictAfter: Date.now() + WORKFLOW_GRACE_MS,
     abortController: undefined,
     ...(error !== undefined ? { error } : {}),
   }))
@@ -136,6 +164,7 @@ export function killWorkflowTask(
       status: 'killed',
       endTime: Date.now(),
       notified: true,
+      evictAfter: Date.now() + WORKFLOW_GRACE_MS,
       abortController: undefined,
     }
   })

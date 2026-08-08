@@ -194,14 +194,16 @@ export async function clearConversation({
           snapshotSequence: 0,
         },
         // Reset MCP state to default to trigger re-initialization.
-        // Preserve pluginReconnectKey so /clear doesn't cause a no-op
-        // (it's only bumped by /reload-plugins).
+        // Preserve pluginReconnectKey and configReloadKey so /clear doesn't
+        // cause a no-op (they're bumped by /reload-plugins and by the MCP
+        // config watcher respectively, not here).
         mcp: {
           clients: [],
           tools: [],
           commands: [],
           resources: {},
           pluginReconnectKey: prev.mcp.pluginReconnectKey,
+          configReloadKey: prev.mcp.configReloadKey,
         },
       }
     })

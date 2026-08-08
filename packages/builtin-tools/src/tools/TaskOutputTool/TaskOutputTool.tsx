@@ -10,6 +10,7 @@ import type { Tool } from '@open-claude-code/tool-runtime/Tool.js';
 import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js';
 import type { LocalAgentTaskState } from 'src/tasks/LocalAgentTask/LocalAgentTask.js';
 import type { LocalShellTaskState } from 'src/tasks/LocalShellTask/guards.js';
+import type { LocalWorkflowTaskState } from 'src/tasks/LocalWorkflowTask/LocalWorkflowTask.js';
 import type { RemoteAgentTaskState } from 'src/tasks/RemoteAgentTask/RemoteAgentTask.js';
 import type { TaskState } from 'src/tasks/types.js';
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js';
@@ -119,7 +120,39 @@ async function getTaskOutputData(task: TaskState): Promise<TaskOutput> {
     };
   }
 
+  if (task.type === 'local_workflow') {
+    // Workflow runs never write the per-task disk output file, so `output`
+    // above is always ''. The run's real record is on disk under runDir —
+    // report the summary and point at it rather than returning nothing.
+    const wfTask = task as LocalWorkflowTaskState;
+    const parts = [
+      wfTask.output || wfTask.summary || '',
+      wfTask.runDir
+        ? `run_dir: ${wfTask.runDir} (journal.jsonl = one record per agent() call with its return value; state.json = terminal per-agent status)`
+        : '',
+    ].filter(Boolean);
+    return {
+      ...baseOutput,
+      output: parts.join('\n\n') || output,
+      result: wfTask.output || wfTask.summary,
+      error: wfTask.error,
+    };
+  }
+
   return baseOutput;
+}
+
+/**
+ * Resolve an id to a task, by task id first and then by run id.
+ *
+ * A resumed workflow keeps its original runId but is registered under a fresh
+ * task id, and the Workflow tool only ever hands back the runId — so the one
+ * identifier the caller has is, for that case, never a key of `tasks`.
+ */
+function findTask(tasks: Record<string, TaskState> | undefined, id: string): TaskState | undefined {
+  const byTaskId = tasks?.[id];
+  if (byTaskId) return byTaskId;
+  return Object.values(tasks ?? {}).find(t => 'runId' in t && t.runId === id);
 }
 
 // Wait for task to complete
@@ -138,7 +171,7 @@ async function waitForTaskCompletion(
     }
 
     const state = getAppState();
-    const task = state.tasks?.[taskId] as TaskState | undefined;
+    const task = findTask(state.tasks, taskId);
 
     if (!task) {
       return null;
@@ -154,7 +187,7 @@ async function waitForTaskCompletion(
 
   // Timeout - return current state
   const finalState = getAppState();
-  return (finalState.tasks?.[taskId] as TaskState) ?? null;
+  return findTask(finalState.tasks, taskId) ?? null;
 }
 
 export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool({
@@ -214,7 +247,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     }
 
     const appState = getAppState();
-    const task = appState.tasks?.[task_id] as TaskState | undefined;
+    const task = findTask(appState.tasks, task_id);
 
     if (!task) {
       return {
@@ -231,7 +264,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
     const { task_id, block, timeout } = input;
 
     const appState = toolUseContext.getAppState();
-    const task = appState.tasks?.[task_id] as TaskState | undefined;
+    const task = findTask(appState.tasks, task_id);
 
     if (!task) {
       throw new Error(`No task found with ID: ${task_id}`);

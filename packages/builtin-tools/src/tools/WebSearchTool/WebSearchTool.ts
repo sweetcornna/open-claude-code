@@ -173,7 +173,7 @@ export const WebSearchTool = buildTool({
         result: false,
         message:
           `Error: Web search budget exhausted (${maxWebSearchesPerSession()} searches this session). ` +
-          `Raise with CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION.`,
+          `This cap only exists because CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION is set — raise or unset it.`,
         errorCode: 3,
       }
     }

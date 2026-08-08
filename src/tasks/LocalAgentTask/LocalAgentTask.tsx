@@ -28,7 +28,12 @@ import { getSearchExtraToolsOrReadInfo } from '../../utils/session/collapseReadS
 import { enqueuePendingNotification } from '../../utils/session/messageQueueManager.js';
 import { getAgentTranscriptPath } from '../../utils/sessionStorage.js';
 import { evictTaskOutput, getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js';
-import { PANEL_GRACE_MS, registerTask, updateTaskState } from '../../utils/task/framework.js';
+import {
+  PANEL_GRACE_MS,
+  registerTask,
+  scheduleTerminalTaskEviction,
+  updateTaskState,
+} from '../../utils/task/framework.js';
 import { emitTaskProgress } from '../../utils/task/sdkProgress.js';
 import type { TaskState } from '../types.js';
 
@@ -374,6 +379,7 @@ export function killAsyncAgent(taskId: string, setAppState: SetAppState): void {
   });
   if (killed) {
     void evictTaskOutput(taskId);
+    scheduleTerminalTaskEviction(taskId, setAppState, PANEL_GRACE_MS);
   }
 }
 
@@ -501,6 +507,9 @@ export function completeAgentTask(result: AgentToolResult, setAppState: SetAppSt
     };
   });
   void evictTaskOutput(taskId);
+  // Reclaim the task itself once the panel grace period lapses, rather than
+  // waiting for the next main-thread turn (see scheduleTerminalTaskEviction).
+  scheduleTerminalTaskEviction(taskId, setAppState, PANEL_GRACE_MS);
   // Note: Notification is sent by AgentTool via enqueueAgentNotification
 }
 
@@ -527,6 +536,9 @@ export function failAgentTask(taskId: string, error: string, setAppState: SetApp
     };
   });
   void evictTaskOutput(taskId);
+  // Reclaim the task itself once the panel grace period lapses, rather than
+  // waiting for the next main-thread turn (see scheduleTerminalTaskEviction).
+  scheduleTerminalTaskEviction(taskId, setAppState, PANEL_GRACE_MS);
   // Note: Notification is sent by AgentTool via enqueueAgentNotification
 }
 

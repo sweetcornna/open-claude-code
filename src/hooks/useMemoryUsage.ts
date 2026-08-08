@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useInterval } from 'usehooks-ts'
+import { observeHeapUsage } from '../utils/telemetry/autoHeapDump.js'
 
 export type MemoryUsageStatus = 'normal' | 'high' | 'critical'
 
@@ -20,6 +21,10 @@ export function useMemoryUsage(): MemoryUsageInfo | null {
 
   useInterval(() => {
     const heapUsed = process.memoryUsage().heapUsed
+    // Record growth and warn at escalating thresholds. This is the only place
+    // that samples the heap on a timer, so it is also the only place that can
+    // leave a trail behind before an OOM kills the process.
+    observeHeapUsage(heapUsed)
     const status: MemoryUsageStatus =
       heapUsed >= CRITICAL_MEMORY_THRESHOLD
         ? 'critical'

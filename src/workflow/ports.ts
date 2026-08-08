@@ -23,6 +23,10 @@ import {
   type WorkflowHostBundle,
 } from './hostHandle.js'
 import { buildRegistry } from './registry.js'
+import {
+  scheduleTerminalTaskEviction,
+  WORKFLOW_GRACE_MS,
+} from '../utils/task/framework.js'
 import type { ProgressBus } from './progress/bus.js'
 import type { ProgressStore } from './progress/store.js'
 import type { SetAppState } from '../Task.js'
@@ -121,6 +125,7 @@ export function createWorkflowPorts(opts: {
         // Resume keeps the original runId while minting a new taskId; stamping it at
         // registration means no consumer has to re-derive the mapping later.
         ...(regOpts.runId ? { runId: regOpts.runId } : {}),
+        runsDir,
         abortController,
       })
       const runId = regOpts.runId ?? taskId
@@ -141,6 +146,8 @@ export function createWorkflowPorts(opts: {
       const b = bindings.get(runId)
       if (!b) return
       completeWorkflowTask(b.taskId, b.setAppState)
+      // Reclaim after the grace window without waiting for a main-thread turn.
+      scheduleTerminalTaskEviction(b.taskId, b.setAppState, WORKFLOW_GRACE_MS)
       logForDebugging(`workflow ${runId} completed: ${summary ?? ''}`)
       bindings.delete(runId)
     },
@@ -148,6 +155,7 @@ export function createWorkflowPorts(opts: {
       const b = bindings.get(runId)
       if (!b) return
       failWorkflowTask(b.taskId, b.setAppState, error)
+      scheduleTerminalTaskEviction(b.taskId, b.setAppState, WORKFLOW_GRACE_MS)
       logForDebugging(`workflow ${runId} failed: ${error}`)
       bindings.delete(runId)
     },
@@ -155,6 +163,7 @@ export function createWorkflowPorts(opts: {
       const b = bindings.get(runId)
       if (!b) return
       killWorkflowTask(b.taskId, b.setAppState) // internal abort controller
+      scheduleTerminalTaskEviction(b.taskId, b.setAppState, WORKFLOW_GRACE_MS)
       // Killing the run also aborts all in-flight agents (guards against the edge timing where the backend misses the task abort)
       for (const ac of b.agentAbortControllers.values()) {
         try {

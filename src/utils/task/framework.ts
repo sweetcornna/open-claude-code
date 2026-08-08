@@ -27,6 +27,19 @@ export const STOPPED_DISPLAY_MS = 3_000
 // Grace period for terminal local_agent tasks in the coordinator panel
 export const PANEL_GRACE_MS = 30_000
 
+/**
+ * Grace period for terminal local_workflow tasks.
+ *
+ * Longer than PANEL_GRACE_MS because this one is not about display. A workflow
+ * completes, the model is notified, and the next thing it does is ask what the
+ * run produced — with no grace period at all the very first sweep after
+ * completion deleted the task, so that lookup could only ever answer "No task
+ * found with ID". The task object is a handful of scalars; holding it for a few
+ * turns costs nothing, and <runDir>/state.json remains the durable record once
+ * this expires.
+ */
+export const WORKFLOW_GRACE_MS = 10 * 60_000
+
 // Attachment type for task status updates
 export type TaskAttachment = {
   type: 'task_status'
@@ -118,6 +131,23 @@ export function registerTask(task: TaskState, setAppState: SetAppState): void {
 }
 
 /**
+ * Timestamp before which a terminal task must not be evicted (0 = evict now).
+ *
+ * Two opt-in shapes, deliberately different:
+ * - `retain` (LocalAgentTaskState only) means the coordinator panel is holding
+ *   the task; an unset evictAfter there reads as "not released yet" → Infinity.
+ *   Testing `'evictAfter' in task` instead would evict tasks that simply
+ *   haven't had the field stamped yet.
+ * - Any other type opts in by stamping a deadline on completion. No stamp keeps
+ *   the original evict-immediately behavior.
+ */
+function evictionGraceDeadline(task: TaskState): number {
+  if ('retain' in task) return task.evictAfter ?? Infinity
+  if ('evictAfter' in task) return task.evictAfter ?? 0
+  return 0
+}
+
+/**
  * Eagerly evict a terminal task from AppState.
  * The task must be in a terminal state (completed/failed/killed) with notified=true.
  * This allows memory to be freed without waiting for the next query loop iteration.
@@ -132,16 +162,42 @@ export function evictTerminalTask(
     if (!task) return prev
     if (!isTerminalTaskStatus(task.status)) return prev
     if (!task.notified) return prev
-    // Panel grace period — blocks eviction until deadline passes.
-    // 'retain' in task narrows to LocalAgentTaskState (the only type with
-    // that field); evictAfter is optional so 'evictAfter' in task would
-    // miss tasks that haven't had it set yet.
-    if ('retain' in task && (task.evictAfter ?? Infinity) > Date.now()) {
+    if (evictionGraceDeadline(task) > Date.now()) {
       return prev
     }
     const { [taskId]: _, ...remainingTasks } = prev.tasks
     return { ...prev, tasks: remainingTasks }
   })
+}
+
+/**
+ * Schedule a task to evict itself once its grace period expires.
+ *
+ * Terminal tasks were only ever swept by generateTaskAttachments, which runs on
+ * the MAIN THREAD ONLY (`isMainThread = !toolUseContext.agentId` in
+ * utils/attachments/orchestrator.ts) — that is, once per user turn. A single
+ * turn that fans out to many subagents therefore performs zero sweeps for its
+ * whole duration, and every finished agent's task sits in AppState holding its
+ * complete AgentToolResult until the turn ends. Coordinator and workflow runs
+ * do exactly that, which is how "agents don't clean up after themselves and
+ * memory keeps climbing" was reproducible while every per-agent cleanup in
+ * runAgent's finally block was in fact running correctly.
+ *
+ * evictTerminalTask re-checks terminal + notified + grace on fresh state, so a
+ * task that got retained, resumed, or already evicted in the meantime is left
+ * alone. The timer is unref'd: this must never hold the process open.
+ */
+export function scheduleTerminalTaskEviction(
+  taskId: string,
+  setAppState: SetAppState,
+  graceMs: number,
+): void {
+  // +1s so the deadline stamped alongside this call has definitely passed by
+  // the time the check runs; otherwise the grace test rejects its own timer.
+  const timer = setTimeout(() => {
+    evictTerminalTask(taskId, setAppState)
+  }, graceMs + 1_000)
+  if (typeof timer.unref === 'function') timer.unref()
 }
 
 /**
@@ -239,7 +295,7 @@ export function applyTaskOffsetsAndEvictions(
       if (!fresh || !isTerminalTaskStatus(fresh.status) || !fresh.notified) {
         continue
       }
-      if ('retain' in fresh && (fresh.evictAfter ?? Infinity) > Date.now()) {
+      if (evictionGraceDeadline(fresh) > Date.now()) {
         continue
       }
       delete newTasks[id]

@@ -1,3 +1,4 @@
+import { WORKFLOW_RUNS_DIR } from '@open-claude-code/workflow-engine'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 /**
@@ -213,7 +214,11 @@ Use this tool for multi-step orchestration where control flow should be determin
 
 ## Resume
 
-The tool result includes a runId. To resume after a pause, kill, or script edit, relaunch with \`Workflow({scriptPath, resumeFromRunId})\` — the longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live. Same script + same args → 100% cache hit. Date.now()/Math.random()/new Date() are unavailable in scripts (they would break this) — stamp results after the workflow returns, or pass timestamps via args. Fallback when no journal is available: Read agent-<id>.jsonl files in the transcript directory and hand-author a continuation script.
+The tool result includes a runId and a run_dir. To resume after a pause, kill, or script edit, relaunch with \`Workflow({scriptPath, resumeFromRunId})\` — the longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live. Same script + same args → 100% cache hit. Date.now()/Math.random()/new Date() are unavailable in scripts (they would break this) — stamp results after the workflow returns, or pass timestamps via args.
+
+The run directory is \`${WORKFLOW_RUNS_DIR}/<runId>/\` under the project root. It holds \`journal.jsonl\` (one record per completed agent() call, with that agent's actual return value), \`state.json\` (terminal per-agent status), and \`script.sha256\`. Before diagnosing why a completed workflow returned an empty or unexpected result, Read the journal — do not assume cached results were non-empty. Fallback if the journal is gone: Read the \`agent-<id>.jsonl\` transcripts and hand-author a continuation script.
+
+Cache hits are matched **by position**, keyed on sha256(prompt + params). Anything that changes what an agent is asked — including a change that reaches the prompts only through \`args\` — misses at that call and discards every checkpoint from there on, so resuming with a reworded question is a full fresh run, not a partial one. The engine logs this when it happens; if you see it, don't expect the resume to have saved any work.
 `
 
 export function registerUltracodeSkill(): void {

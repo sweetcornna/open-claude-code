@@ -260,8 +260,10 @@ maxTokens clamp 4096、每会话 100 次上限、文本 only）。见 mcp-2026.m
 **里程碑 D 剩余**：augmented tool calls（CreateMessageResultWithTools）、逐请求审批 UI、
 serve 端 prompts/resources capability、v1 SDK 退役四步。
 
-**里程碑 E 已落地**：`CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`（默认 200，
-WebSearchTool/sessionLimit.ts）。
+**里程碑 E 已落地**：`CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`
+（WebSearchTool/sessionLimit.ts）。**默认无上限** —— 官方那个 200 的默认值已撤：
+它按进程计数且永不重置，长会话最终会整个失去 WebSearch，而报错落在一次普通搜索的
+校验上、离真正失控的循环很远。失控循环由 token 预算兜底；要硬停的人自己设这个变量。
 **里程碑 E 剩余**：subagent 深度/并发上限（AgentTool 无现成深度概念，需新机制，
 比红表预估重）、MCP_AUTO_BACKGROUND_MS、request_timeout_ms、prompt 冗余审计（1A 全部）。
 

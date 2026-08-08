@@ -296,8 +296,15 @@ describe('H7: circuit breaker', () => {
     const { llmObserverBackend } = await import('../llmObserverBackend.js')
     resetCircuitBreaker()
 
+    // timeoutMs is set explicitly, and must stay set. These tests drive the
+    // REAL backend and rely on queryHaiku failing; the default timeout is
+    // 10_000ms against a 5_000ms test budget, so the moment the ambient
+    // environment lets that call actually reach the network the test times out
+    // instead of failing fast. That is exactly what happened in the full
+    // unsharded suite — passing in isolation, timing out when some earlier file
+    // had put credentials in process.env.
     setSkillLearningConfigForTest({
-      llm: { failureThreshold: 3, circuitCooldownMs: 60_000 },
+      llm: { failureThreshold: 3, circuitCooldownMs: 60_000, timeoutMs: 50 },
     })
 
     const obs = makeObs(5)
@@ -330,7 +337,7 @@ describe('H7: circuit breaker', () => {
     resetCircuitBreaker()
 
     setSkillLearningConfigForTest({
-      llm: { failureThreshold: 1, circuitCooldownMs: 60_000 },
+      llm: { failureThreshold: 1, circuitCooldownMs: 60_000, timeoutMs: 50 },
     })
 
     const obs = makeObs(5)

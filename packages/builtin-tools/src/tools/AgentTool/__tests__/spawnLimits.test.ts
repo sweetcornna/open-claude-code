@@ -35,8 +35,12 @@ describe('subagent spawn budgets', () => {
     }
   })
 
-  test('defaults: 200 per session, 20 concurrent, depth 3; env overrides win', () => {
-    expect(maxSubagentsPerSession()).toBe(200)
+  test('defaults: unlimited per session, 20 concurrent, depth 3; env overrides win', () => {
+    // The cumulative cap is opt-in: it only resets on /clear, so a default
+    // ceiling stops long orchestration sessions partway through legitimate
+    // work. Concurrency and depth keep their defaults — they bound live
+    // resource use, not total work done.
+    expect(maxSubagentsPerSession()).toBe(Number.POSITIVE_INFINITY)
     expect(maxConcurrentSubagents()).toBe(20)
     expect(maxSubagentSpawnDepth()).toBe(3)
     process.env.CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION = '5'
@@ -80,5 +84,16 @@ describe('subagent spawn budgets', () => {
     unregisterSpawn('x')
     unregisterSpawn('x')
     expect(runningAgentCount()).toBe(0)
+  })
+
+  test('an unset session budget never exhausts', () => {
+    // A real session spawned 216 subagents across six stages; the old default
+    // of 200 would have failed the last one.
+    for (let i = 0; i < 250; i++) {
+      checkSpawnBudgets(0)
+      registerSpawn(`agent-${i}`)
+      unregisterSpawn(`agent-${i}`)
+    }
+    expect(() => checkSpawnBudgets(0)).not.toThrow()
   })
 })

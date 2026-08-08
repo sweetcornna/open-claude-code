@@ -697,3 +697,38 @@ test('returnValue is an object → complete (formatValue takes JSON branch)', as
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('launch message names the run directory and the files inside it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
+  try {
+    const { ports } = mockPorts(
+      dir,
+      new Map([['x', { kind: 'ok', output: 'x', usage: { outputTokens: 1 } }]]),
+    )
+    const tool = createWorkflowTool(ports, {
+      workflowRunsDir: '.occ/workflow-runs',
+    })
+    const res = await tool.call(
+      { script: `return agent('x')` },
+      undefined,
+      undefined,
+      undefined,
+    )
+
+    // Without this the only way to find a finished run's journal is to guess.
+    const expectedRunDir = join(dir, '.occ/workflow-runs', 'run-x')
+    expect(res.data.output).toContain(`run_dir: ${expectedRunDir}`)
+    expect(res.data.output).toContain(join(expectedRunDir, 'journal.jsonl'))
+    expect(res.data.output).toContain(join(expectedRunDir, 'state.json'))
+
+    // The advertised directory must be the one actually written to.
+    await new Promise(r => {
+      setTimeout(r, 50)
+    })
+    expect(
+      await readFile(join(expectedRunDir, 'script.sha256'), 'utf-8'),
+    ).toMatch(/^[0-9a-f]{64}\n$/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})

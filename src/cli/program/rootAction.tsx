@@ -2280,6 +2280,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       commands: [],
       resources: {},
       pluginReconnectKey: 0,
+      configReloadKey: 0,
     },
     plugins: {
       enabled: [],
