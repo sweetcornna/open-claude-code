@@ -645,13 +645,19 @@ describe('task notifications', () => {
 // isTodoV2Enabled
 // ---------------------------------------------------------------------------
 describe('isTodoV2Enabled', () => {
+  const savedEnableTasks = process.env.CLAUDE_CODE_ENABLE_TASKS
+
+  afterEach(() => {
+    if (savedEnableTasks === undefined) {
+      delete process.env.CLAUDE_CODE_ENABLE_TASKS
+    } else {
+      process.env.CLAUDE_CODE_ENABLE_TASKS = savedEnableTasks
+    }
+  })
+
   test('returns true when CLAUDE_CODE_ENABLE_TASKS is set', () => {
     process.env.CLAUDE_CODE_ENABLE_TASKS = '1'
-    try {
-      expect(isTodoV2Enabled()).toBe(true)
-    } finally {
-      delete process.env.CLAUDE_CODE_ENABLE_TASKS
-    }
+    expect(isTodoV2Enabled()).toBe(true)
   })
 
   test('returns true in interactive sessions by default', () => {

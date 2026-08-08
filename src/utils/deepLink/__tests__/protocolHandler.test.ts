@@ -44,12 +44,16 @@ const originalUrlEvent = process.env.OCC_URL_EVENT
 beforeEach(() => {
   mockParseDeepLink.mockClear()
   mockLaunchInTerminal.mockClear()
-  process.env.__CFBundleIdentifier = undefined
+  // delete, not `= undefined`: assigning undefined stores the literal string
+  // "undefined", so the handler saw a bundle identifier where the test meant
+  // "no bundle identifier at all".
+  delete process.env.__CFBundleIdentifier
   delete process.env.OCC_URL_EVENT
 })
 
 afterEach(() => {
-  process.env.__CFBundleIdentifier = originalBundleId
+  if (originalBundleId === undefined) delete process.env.__CFBundleIdentifier
+  else process.env.__CFBundleIdentifier = originalBundleId
   if (originalUrlEvent === undefined) {
     delete process.env.OCC_URL_EVENT
   } else {

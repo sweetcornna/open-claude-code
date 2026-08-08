@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import type Anthropic from '@anthropic-ai/sdk'
 import {
   APIConnectionError,
@@ -509,6 +509,28 @@ describe('withRetry with bare (non-APIError) transport failures', () => {
 })
 
 describe('credential recovery after an auth failure', () => {
+  // Restored, not deleted. An unconditional `delete` here wipes the setting of
+  // anyone who actually runs on Bedrock or Vertex for the rest of the process —
+  // and CLAUDE_CODE_USE_BEDROCK in particular decides getAPIProvider() ahead of
+  // everything else, so every later file in the shard inherits the answer.
+  const CLOUD_ENV = [
+    'CLAUDE_CODE_USE_BEDROCK',
+    'CLAUDE_CODE_USE_VERTEX',
+  ] as const
+  const savedCloudEnv: Record<string, string | undefined> = {}
+  for (const key of CLOUD_ENV) savedCloudEnv[key] = process.env[key]
+
+  beforeEach(() => {
+    for (const key of CLOUD_ENV) delete process.env[key]
+  })
+
+  afterEach(() => {
+    for (const key of CLOUD_ENV) {
+      if (savedCloudEnv[key] === undefined) delete process.env[key]
+      else process.env[key] = savedCloudEnv[key]
+    }
+  })
+
   /**
    * "Do not retry" and "do not refresh the credential" are separate decisions.
    * Every case below still fails the request on its first attempt — what is
@@ -588,51 +610,41 @@ describe('credential recovery after an auth failure', () => {
 
   test('Bedrock credential failures clear the AWS cache', async () => {
     process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-    try {
-      // Server-side: an expired STS token comes back as a generic 403.
-      await failOnce(
-        new APIError(
-          403,
-          undefined,
-          'The security token included in the request is invalid',
-          new Headers(),
-        ),
-      )
-      expect(authCalls).toEqual(['clearAwsCredentialsCache'])
+    // Server-side: an expired STS token comes back as a generic 403.
+    await failOnce(
+      new APIError(
+        403,
+        undefined,
+        'The security token included in the request is invalid',
+        new Headers(),
+      ),
+    )
+    expect(authCalls).toEqual(['clearAwsCredentialsCache'])
 
-      // SDK-level: the AWS libs reject before any HTTP call when the cached
-      // credential file already holds a past Expiration.
-      await failOnce(
-        Object.assign(new Error('expired'), {
-          name: 'CredentialsProviderError',
-        }),
-      )
-      expect(authCalls).toEqual(['clearAwsCredentialsCache'])
-    } finally {
-      delete process.env.CLAUDE_CODE_USE_BEDROCK
-    }
+    // SDK-level: the AWS libs reject before any HTTP call when the cached
+    // credential file already holds a past Expiration.
+    await failOnce(
+      Object.assign(new Error('expired'), {
+        name: 'CredentialsProviderError',
+      }),
+    )
+    expect(authCalls).toEqual(['clearAwsCredentialsCache'])
   })
 
   test('Vertex credential failures clear the GCP cache', async () => {
     process.env.CLAUDE_CODE_USE_VERTEX = '1'
-    try {
-      // google-auth-library fails in prepareOptions(), before the HTTP call.
-      await failOnce(new Error('Could not refresh access token'))
-      expect(authCalls).toEqual(['clearGcpCredentialsCache'])
+    // google-auth-library fails in prepareOptions(), before the HTTP call.
+    await failOnce(new Error('Could not refresh access token'))
+    expect(authCalls).toEqual(['clearGcpCredentialsCache'])
 
-      // Vertex answers 401 for an expired token, which is also a first-party
-      // OAuth signal — both recoveries have to run.
-      await failOnce(
-        new APIError(401, undefined, 'unauthorized', new Headers()),
-      )
-      expect(authCalls).toEqual([
-        'clearApiKeyHelperCache',
-        'handleOAuth401Error:token',
-        'clearGcpCredentialsCache',
-      ])
-    } finally {
-      delete process.env.CLAUDE_CODE_USE_VERTEX
-    }
+    // Vertex answers 401 for an expired token, which is also a first-party
+    // OAuth signal — both recoveries have to run.
+    await failOnce(new APIError(401, undefined, 'unauthorized', new Headers()))
+    expect(authCalls).toEqual([
+      'clearApiKeyHelperCache',
+      'handleOAuth401Error:token',
+      'clearGcpCredentialsCache',
+    ])
   })
 
   test('cloud recovery stays off when the provider is not configured', async () => {

@@ -1,4 +1,11 @@
-import { afterAll, afterEach, beforeAll, expect, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  test,
+} from 'bun:test'
 import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
 import type { SettingsJson } from '../../settings/types.js'
 
@@ -25,12 +32,25 @@ const ENV_KEYS = [
   'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   'CLAUDE_CODE_DISABLE_1M_CONTEXT',
   'CLAUDE_CODE_USE_OPENAI',
+  // getAPIProvider() answers Bedrock/Vertex/Foundry *before* it looks at
+  // CLAUDE_CODE_USE_OPENAI, and the alias cases below only reach the
+  // OPENAI_DEFAULT_<TIER>_MODEL reverse-lookup while the provider is 'openai'.
+  // One leaked sibling key silently drops them back to the 200k fallback.
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_USE_GEMINI',
+  'CLAUDE_CODE_USE_GROK',
   'OPENAI_DEFAULT_SONNET_MODEL',
   'OPENAI_DEFAULT_HAIKU_MODEL',
   'USER_TYPE',
 ] as const
 const saved: Record<string, string | undefined> = {}
 for (const k of ENV_KEYS) saved[k] = process.env[k]
+
+beforeEach(() => {
+  for (const k of ENV_KEYS) delete process.env[k]
+})
 
 afterEach(() => {
   for (const k of ENV_KEYS) {

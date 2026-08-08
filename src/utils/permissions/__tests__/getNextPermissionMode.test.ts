@@ -7,7 +7,7 @@
  * After the "open auto/bypass to all users" change, there is no USER_TYPE
  * distinction — all users share the same cycle order.
  */
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import type { ToolPermissionContext } from '../../../Tool.js'
 import type { PermissionMode } from '../PermissionMode.js'
 
@@ -103,10 +103,16 @@ describe('getNextPermissionMode', () => {
   // ── USER_TYPE independence ──────────────────────────────────────────────
 
   describe('no USER_TYPE distinction', () => {
-    test('cycle order is the same regardless of USER_TYPE', () => {
-      // Save original
-      const originalUserType = process.env.USER_TYPE
+    // In a hook, not inline in the test body: the restore used to sit between
+    // the mutation and the assertions, so any failure left USER_TYPE='ant' set
+    // for every later file in the shard.
+    const originalUserType = process.env.USER_TYPE
+    afterEach(() => {
+      if (originalUserType === undefined) delete process.env.USER_TYPE
+      else process.env.USER_TYPE = originalUserType
+    })
 
+    test('cycle order is the same regardless of USER_TYPE', () => {
       // Test with no USER_TYPE
       delete process.env.USER_TYPE
       const cycleNoType: PermissionMode[] = []
@@ -125,13 +131,6 @@ describe('getNextPermissionMode', () => {
         const next = getNextPermissionMode(ctx)
         cycleAnt.push(next)
         ctx = makeContext(next)
-      }
-
-      // Restore
-      if (originalUserType !== undefined) {
-        process.env.USER_TYPE = originalUserType
-      } else {
-        delete process.env.USER_TYPE
       }
 
       // Both should produce the same cycle

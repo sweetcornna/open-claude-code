@@ -177,13 +177,19 @@ describe('convertEffortValueToLevel', () => {
   })
 
   test("non-ant numeric value returns 'high'", () => {
+    // try/finally, and a conditional restore: `process.env.X = undefined`
+    // stores the literal string "undefined", which reads as truthy everywhere
+    // downstream — and without the finally a failed assertion leaked
+    // USER_TYPE=<deleted> into the rest of the shard.
     const saved = process.env.USER_TYPE
     delete process.env.USER_TYPE
-
-    expect(convertEffortValueToLevel(50)).toBe('high')
-    expect(convertEffortValueToLevel(100)).toBe('high')
-
-    process.env.USER_TYPE = saved
+    try {
+      expect(convertEffortValueToLevel(50)).toBe('high')
+      expect(convertEffortValueToLevel(100)).toBe('high')
+    } finally {
+      if (saved === undefined) delete process.env.USER_TYPE
+      else process.env.USER_TYPE = saved
+    }
   })
 
   describe('ant numeric mapping', () => {

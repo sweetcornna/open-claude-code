@@ -33,12 +33,29 @@ const TOUCHED = [
   'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE',
 ] as const
 
+const saved: Record<string, string | undefined> = {}
+for (const key of TOUCHED) saved[key] = process.env[key]
+
+/**
+ * Restoring rather than deleting matters twice over: a DeepSeek user running
+ * the suite has real values in most of these, and `applyDeepSeekAnthropicWire`
+ * keeps a module-level ledger of the keys it claimed. Re-running it once the
+ * env is back to its original shape is what releases that ledger — it deletes
+ * only keys still holding the exact value it wrote, then rebuilds an empty map.
+ * Without it `isDeepSeekMirroredApiKey()` / `isDeepSeekMirroredModel()` go on
+ * vouching for this file's `sk-test` in every later file of the shard.
+ */
 beforeEach(() => {
   for (const key of TOUCHED) delete process.env[key]
+  applyDeepSeekAnthropicWire()
 })
 
 afterEach(() => {
-  for (const key of TOUCHED) delete process.env[key]
+  for (const key of TOUCHED) {
+    if (saved[key] === undefined) delete process.env[key]
+    else process.env[key] = saved[key]
+  }
+  applyDeepSeekAnthropicWire()
 })
 
 /** The shape a DeepSeek user's settings.json actually produces. */

@@ -9,7 +9,10 @@ import {
 import { makeSharedModuleMock } from '../../../../tests/mocks/sharedModuleMock.js'
 import * as realSettings from 'src/utils/settings/settings.js'
 import type { SettingsJson } from '../../settings/types.js'
-import { setMainLoopModelOverride } from '../../../bootstrap/state.js'
+import {
+  resetModelStringsForTestingOnly,
+  setMainLoopModelOverride,
+} from '../../../bootstrap/state.js'
 
 let userSettings: SettingsJson = {}
 let initialSettings: SettingsJson = { modelType: 'openai' }
@@ -53,10 +56,16 @@ const savedEnv = Object.fromEntries(
   ENV_KEYS.map(key => [key, process.env[key]]),
 ) as Record<(typeof ENV_KEYS)[number], string | undefined>
 
+// The provider-derived model-string cache is only re-derived while it is null,
+// so whatever fills it first owns it for the rest of the process. This file
+// pins modelType to 'openai' and then resolves default models, which caches the
+// OpenAI column — clear it on both edges so neither this file's settings mock
+// nor an earlier file's provider decides the other's answers.
 beforeEach(() => {
   userSettings = {}
   initialSettings = { modelType: 'openai' }
   setMainLoopModelOverride(undefined)
+  resetModelStringsForTestingOnly()
   for (const key of ENV_KEYS) delete process.env[key]
 })
 
@@ -64,6 +73,7 @@ afterEach(() => {
   userSettings = {}
   initialSettings = { modelType: 'openai' }
   setMainLoopModelOverride(undefined)
+  resetModelStringsForTestingOnly()
   for (const key of ENV_KEYS) delete process.env[key]
 })
 

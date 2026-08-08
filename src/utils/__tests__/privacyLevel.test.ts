@@ -50,11 +50,17 @@ describe('getPrivacyLevel', () => {
 
 describe('isEssentialTrafficOnly', () => {
   const original = process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
+  // DISABLE_TELEMETRY is written by two of the cases below, so it has to be
+  // saved here too — it was only ever deleted.
+  const originalTelemetry = process.env.DISABLE_TELEMETRY
 
   afterEach(() => {
     delete process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
+    delete process.env.DISABLE_TELEMETRY
     if (original !== undefined)
       process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = original
+    if (originalTelemetry !== undefined)
+      process.env.DISABLE_TELEMETRY = originalTelemetry
   })
 
   test("returns true for 'essential-traffic' level", () => {
@@ -76,9 +82,16 @@ describe('isEssentialTrafficOnly', () => {
 })
 
 describe('isTelemetryDisabled', () => {
+  const original = process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
+  const originalTelemetry = process.env.DISABLE_TELEMETRY
+
   afterEach(() => {
     delete process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
     delete process.env.DISABLE_TELEMETRY
+    if (original !== undefined)
+      process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = original
+    if (originalTelemetry !== undefined)
+      process.env.DISABLE_TELEMETRY = originalTelemetry
   })
 
   test("returns true for 'no-telemetry' level", () => {

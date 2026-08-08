@@ -1,9 +1,18 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
 import { resetModelStringsForTestingOnly } from 'src/bootstrap/state.js'
 import {
   resetSettingsCache,
   setSessionSettingsCache,
 } from 'src/utils/settings/settingsCache.js'
+import { setBedrockInferenceProfilesForTestingOnly } from '../bedrock.js'
 import { ALL_MODEL_CONFIGS } from '../configs.js'
 import { getDefaultOpusModel } from '../model.js'
 import { getOpus46Option } from '../modelOptions.js'
@@ -40,6 +49,17 @@ function resetProviderState(): void {
   setSessionSettingsCache({ settings: {}, errors: [] })
   resetModelStringsForTestingOnly()
 }
+
+/**
+ * The Bedrock cases below reach initModelStrings(), which kicks off a real
+ * ListInferenceProfiles call against AWS and never awaits it. An empty profile
+ * list is what an unconfigured account effectively returns, and
+ * getBedrockModelStrings() then falls back to the built-in Bedrock ids — the
+ * same values these tests assert — so nothing about the assertions changes,
+ * only whether a socket is opened.
+ */
+beforeAll(() => setBedrockInferenceProfilesForTestingOnly(async () => []))
+afterAll(() => setBedrockInferenceProfilesForTestingOnly(null))
 
 describe('getDefaultOpusModel', () => {
   beforeEach(() => {

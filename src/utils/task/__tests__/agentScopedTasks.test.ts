@@ -47,9 +47,15 @@ type TaskLike = {
   metadata?: Record<string, unknown>
 }
 
+const savedTaskListId = process.env.CLAUDE_CODE_TASK_LIST_ID
+
 afterEach(() => {
   setDynamicTeamContext(null)
-  delete process.env.CLAUDE_CODE_TASK_LIST_ID
+  if (savedTaskListId === undefined) {
+    delete process.env.CLAUDE_CODE_TASK_LIST_ID
+  } else {
+    process.env.CLAUDE_CODE_TASK_LIST_ID = savedTaskListId
+  }
 })
 
 describe('getTaskAgentTag', () => {

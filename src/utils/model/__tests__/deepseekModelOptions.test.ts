@@ -1,9 +1,18 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
 import { resetModelStringsForTestingOnly } from 'src/bootstrap/state.js'
 import {
   resetSettingsCache,
   setSessionSettingsCache,
 } from 'src/utils/settings/settingsCache.js'
+import { setBedrockInferenceProfilesForTestingOnly } from '../bedrock.js'
 import { applyDeepSeekAnthropicWire } from '../deepseekWire.js'
 import {
   getMarketingNameForModel,
@@ -46,10 +55,28 @@ const ENV_KEYS = [
   'ANTHROPIC_DEFAULT_OPUS_MODEL',
   'ANTHROPIC_DEFAULT_FABLE_MODEL',
   'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE',
+  // The whole CLAUDE_CODE_USE_* family, not just the one key the Bedrock case
+  // below sets. getAPIProvider() checks these before anything else this file
+  // configures, so a single leftover — from an earlier file in the shard, or
+  // from the environment of a developer who actually uses Bedrock — turns every
+  // "plain first-party session" case here into a Bedrock/Vertex/… one.
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_USE_OPENAI',
+  'CLAUDE_CODE_USE_GEMINI',
+  'CLAUDE_CODE_USE_GROK',
   'USER_TYPE',
 ] as const
 
 const saved: Record<string, string | undefined> = {}
+
+// The Bedrock case at the bottom reaches initModelStrings(), which fires a real
+// ListInferenceProfiles call at AWS without awaiting it. An empty list is what
+// getBedrockModelStrings() already falls back on, so the assertions are
+// unchanged — the socket is not.
+beforeAll(() => setBedrockInferenceProfilesForTestingOnly(async () => []))
+afterAll(() => setBedrockInferenceProfilesForTestingOnly(null))
 
 beforeEach(() => {
   for (const key of ENV_KEYS) {
@@ -212,14 +239,13 @@ describe('/model options for a DeepSeek session', () => {
     // beta support) but the checkpoints ARE Anthropic's, so calling
     // us.anthropic.claude-opus-5-v1 "Opus 5" is correct and must not regress.
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
+    // Cleanup is the shared afterEach, which restores the key's previous value
+    // instead of deleting it: an unconditional `delete` here wiped a real
+    // Bedrock user's own CLAUDE_CODE_USE_BEDROCK for the rest of the process.
     process.env.CLAUDE_CODE_USE_BEDROCK = '1'
-    try {
-      expect(isThirdPartyModelCatalog()).toBe(true)
-      expect(servesAnthropicModels()).toBe(true)
-      expect(getModelOptions().some(o => o.label.startsWith('Opus'))).toBe(true)
-      expect(getMarketingNameForModel('claude-opus-5')).toBe('Opus 5')
-    } finally {
-      delete process.env.CLAUDE_CODE_USE_BEDROCK
-    }
+    expect(isThirdPartyModelCatalog()).toBe(true)
+    expect(servesAnthropicModels()).toBe(true)
+    expect(getModelOptions().some(o => o.label.startsWith('Opus'))).toBe(true)
+    expect(getMarketingNameForModel('claude-opus-5')).toBe('Opus 5')
   })
 })

@@ -4,9 +4,23 @@ import { getAWSRegion, isEnvTruthy } from '../config/envUtils.js'
 import { logError } from '../telemetry/log.js'
 import { getAWSClientProxyConfig } from '../network/proxy.js'
 
+/**
+ * Test-only stand-in for the inference-profile lookup, installed through
+ * setBedrockInferenceProfilesForTestingOnly().
+ *
+ * The lookup is the only thing on the Bedrock model-string path that talks to
+ * the network, and it is reached fire-and-forget from initModelStrings(), so a
+ * test that merely sets CLAUDE_CODE_USE_BEDROCK ends up making a real AWS call
+ * whose result lands seconds later, outside the test that caused it.
+ */
+let inferenceProfilesOverride: (() => Promise<string[]>) | null = null
+
 export const getBedrockInferenceProfiles = memoize(async function (): Promise<
   string[]
 > {
+  if (inferenceProfilesOverride) {
+    return inferenceProfilesOverride()
+  }
   const [client, { ListInferenceProfilesCommand }] = await Promise.all([
     createBedrockClient(),
     import('@aws-sdk/client-bedrock'),
@@ -39,6 +53,29 @@ export const getBedrockInferenceProfiles = memoize(async function (): Promise<
     throw error
   }
 })
+
+/**
+ * Install (or, with `null`, remove) the test-only inference-profile stand-in.
+ *
+ * Both directions MUST drop the memo, and that is the whole reason this is a
+ * function rather than an exported binding. `getBedrockInferenceProfiles` is
+ * memoized on its (absent) arguments, so it holds exactly one entry for the
+ * lifetime of the process: install without clearing and the FIRST caller's real
+ * AWS answer is what the stand-in-using test sees; uninstall without clearing
+ * and the stand-in's answer is pinned into the cache for every later file in
+ * the shard. Either way the memo turns a suite-local override into
+ * process-global state — the same failure this whole path was just cleaned up
+ * for.
+ *
+ * Callers must restore `null` in afterAll: an override that outlives its suite
+ * is exactly the leak CLAUDE.md's "覆盖限定在本 suite 生命周期内" rule forbids.
+ */
+export function setBedrockInferenceProfilesForTestingOnly(
+  fn: (() => Promise<string[]>) | null,
+): void {
+  inferenceProfilesOverride = fn
+  getBedrockInferenceProfiles.cache.clear?.()
+}
 
 export function findFirstMatch(
   profiles: string[],

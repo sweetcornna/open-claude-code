@@ -2,12 +2,16 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   test,
 } from 'bun:test'
 import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
-import { setMainLoopModelOverride } from '../../../bootstrap/state.js'
+import {
+  resetModelStringsForTestingOnly,
+  setMainLoopModelOverride,
+} from '../../../bootstrap/state.js'
 import type { SettingsJson } from '../../settings/types.js'
 
 /**
@@ -49,16 +53,41 @@ const {
 const { applyDeepSeekAnthropicWire } = await import('../deepseekWire.js')
 
 const ENV = [
+  // Every key applyDeepSeekAnthropicWire() can claim has to be in here. The
+  // last case calls it, and an assertion failing before its manual second call
+  // used to leave ANTHROPIC_API_KEY / the tier pins pointed at DeepSeek for the
+  // rest of the shard.
   'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_API_KEY',
   'ANTHROPIC_MODEL',
-  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
   'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL',
   'OPENAI_BASE_URL',
   'OPENAI_API_KEY',
   'OPENAI_MODEL',
+  // getAPIProvider() reads the CLAUDE_CODE_USE_* family before any of the keys
+  // above, so a leftover from an earlier file in this shard (or a Bedrock
+  // user's own environment) decides every "plain Anthropic gateway" case here
+  // before the test gets a say.
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_USE_OPENAI',
+  'CLAUDE_CODE_USE_GEMINI',
+  'CLAUDE_CODE_USE_GROK',
   'USER_TYPE',
 ] as const
 const saved = Object.fromEntries(ENV.map(key => [key, process.env[key]]))
+
+beforeEach(() => {
+  for (const key of ENV) delete process.env[key]
+  // getDefault*Model() reads the provider-derived model-string cache, which is
+  // only re-derived while it is null. Anything that populated it under another
+  // provider stays until someone clears it.
+  resetModelStringsForTestingOnly()
+})
 
 afterEach(() => {
   settings = {}
@@ -68,6 +97,13 @@ afterEach(() => {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
   }
+  resetModelStringsForTestingOnly()
+  // Drop the mirror's module-level claim ledger as well. With the env restored
+  // above it finds no DeepSeek configuration, releases nothing it no longer
+  // owns and rebuilds an empty map — otherwise isDeepSeekMirroredApiKey() /
+  // isDeepSeekMirroredModel() keep answering true for this file's values in
+  // every later file.
+  applyDeepSeekAnthropicWire()
 })
 
 describe('a plain Anthropic gateway', () => {

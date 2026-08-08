@@ -2,6 +2,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   test,
@@ -39,13 +40,22 @@ const TIER_ENV = [
   'OPENAI_DEFAULT_SONNET_MODEL',
   'OPENAI_DEFAULT_OPUS_MODEL',
   'OPENAI_DEFAULT_FABLE_MODEL',
+  'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+  'CLAUDE_CODE_EFFORT_LEVEL',
 ] as const
+const savedTierEnv: Record<string, string | undefined> = {}
+for (const key of TIER_ENV) savedTierEnv[key] = process.env[key]
+
+beforeEach(() => {
+  for (const key of TIER_ENV) delete process.env[key]
+})
 
 afterEach(() => {
   userSettings = {}
-  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
-  delete process.env.CLAUDE_CODE_EFFORT_LEVEL
-  for (const key of TIER_ENV) delete process.env[key]
+  for (const key of TIER_ENV) {
+    if (savedTierEnv[key] === undefined) delete process.env[key]
+    else process.env[key] = savedTierEnv[key]
+  }
 })
 
 describe('per-tier overrides', () => {

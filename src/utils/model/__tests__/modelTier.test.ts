@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
   getModelSettingsSlot,
   getModelTier,
@@ -25,8 +25,18 @@ const TOUCHED = [
   'GROK_DEFAULT_SONNET_MODEL',
 ] as const
 
-afterEach(() => {
+const saved: Record<string, string | undefined> = {}
+for (const key of TOUCHED) saved[key] = process.env[key]
+
+beforeEach(() => {
   for (const key of TOUCHED) delete process.env[key]
+})
+
+afterEach(() => {
+  for (const key of TOUCHED) {
+    if (saved[key] === undefined) delete process.env[key]
+    else process.env[key] = saved[key]
+  }
 })
 
 describe('getModelTier by name', () => {

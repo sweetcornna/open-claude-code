@@ -1,4 +1,11 @@
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
 
 // Complete-surface shared mocks, never a hand-rolled `mock.module`: Bun's
 // module registry is process-global and last-write-wins, so a partial surface
@@ -39,18 +46,27 @@ function setSettingsEnv(
   settingsMock.set({ getSettings_DEPRECATED: () => ({ env: settingsEnv }) })
 }
 
-beforeEach(() => {
-  for (const key of ENV_KEYS) {
-    saved[key] = process.env[key]
-    delete process.env[key]
-  }
-})
+// Snapshotted once, at import time. Re-snapshotting in beforeEach would record
+// whatever the PREVIOUS test wrote as the "original" value, so the very first
+// test that sets one of these keys makes it permanent for the rest of the
+// process; the restore then has to happen per test, not only in afterAll.
+for (const key of ENV_KEYS) saved[key] = process.env[key]
 
-afterAll(() => {
+function restoreEnv(): void {
   for (const key of ENV_KEYS) {
     if (saved[key] === undefined) delete process.env[key]
     else process.env[key] = saved[key]
   }
+}
+
+beforeEach(() => {
+  for (const key of ENV_KEYS) delete process.env[key]
+})
+
+afterEach(restoreEnv)
+
+afterAll(() => {
+  restoreEnv()
   configMock.reset()
   settingsMock.reset()
 })

@@ -109,6 +109,17 @@ const updateBedrockModelStrings = sequential(async () => {
   }
   try {
     const ms = await getBedrockModelStrings()
+    // Re-check before writing. initModelStrings() starts this fetch with `void`
+    // and never awaits it, so the profile round-trip can land seconds later —
+    // long after the session (or, in the test suite, the case that triggered
+    // it) stopped being a Bedrock one. The cache is only ever re-derived while
+    // it is null, so a late write is permanent: every later getModelStrings()
+    // hands out `us.anthropic.claude-sonnet-5-v1` to a first-party session, and
+    // a synchronous resetModelStringsForTestingOnly() in an afterEach cannot
+    // prevent it because the write happens after the hook has already run.
+    if (getAPIProvider() !== 'bedrock' || getModelStringsState() !== null) {
+      return
+    }
     setModelStringsState(ms)
   } catch (error) {
     logError(error as Error)

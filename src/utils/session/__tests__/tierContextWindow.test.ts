@@ -8,7 +8,10 @@ import {
   test,
 } from 'bun:test'
 import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
-import { setMainLoopModelOverride } from '../../../bootstrap/state.js'
+import {
+  resetModelStringsForTestingOnly,
+  setMainLoopModelOverride,
+} from '../../../bootstrap/state.js'
 import type { SettingsJson } from '../../settings/types.js'
 
 /**
@@ -52,6 +55,11 @@ const TIER_ENV = [
   'OPENAI_DEFAULT_HAIKU_MODEL',
   'OPENAI_DEFAULT_OPUS_MODEL',
   'OPENAI_DEFAULT_SONNET_MODEL',
+  // Listed rather than blind-deleted in afterEach: these two are the highest
+  // priority context knob there is, so dropping a developer's own value on the
+  // floor changes every later file's idea of the window.
+  'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+  'CLAUDE_CODE_DISABLE_1M_CONTEXT',
 ] as const
 const savedTierEnv = Object.fromEntries(
   TIER_ENV.map(key => [key, process.env[key]]),
@@ -59,6 +67,10 @@ const savedTierEnv = Object.fromEntries(
 
 beforeEach(() => {
   for (const key of TIER_ENV) delete process.env[key]
+  // getDefaultMainLoopModel() below fills the provider-derived model-string
+  // cache under this file's mocked settings, and nothing re-derives it while it
+  // is non-null.
+  resetModelStringsForTestingOnly()
 })
 
 afterAll(() => {
@@ -73,8 +85,7 @@ afterEach(() => {
   userSettings = {}
   initialSettings = { modelType: 'openai' }
   setMainLoopModelOverride(undefined)
-  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
-  delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT
+  resetModelStringsForTestingOnly()
   for (const key of TIER_ENV) delete process.env[key]
 })
 

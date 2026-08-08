@@ -39,12 +39,19 @@ function makeMainThreadContext(queryChainDepth: number): ToolUseContext {
 }
 
 describe('subagent nesting depth', () => {
+  const savedDepth = process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH
+
   beforeEach(() => {
     resetSpawnBudgetsForTests()
     delete process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH
   })
   afterEach(() => {
     resetSpawnBudgetsForTests()
+    if (savedDepth === undefined) {
+      delete process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH
+    } else {
+      process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = savedDepth
+    }
   })
 
   test('main thread can spawn no matter how many tool round-trips it has made', () => {
