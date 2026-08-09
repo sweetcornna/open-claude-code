@@ -49,6 +49,10 @@ import {
   isMockRateLimitError,
 } from '../rateLimitMocking.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
+import {
+  getAPIErrorSource,
+  isRetryableAPIError,
+} from './retryClassification.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 
 const abortError = () => new APIUserAbortError()
@@ -147,92 +151,6 @@ function isStaleConnectionError(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Node/undici/libuv error codes that mean "the transport failed", not "the
- * request was wrong". Sourced from the two verified lists already in the repo
- * (`services/mcp/client.ts` terminal-connection errors and REPL.tsx's
- * connectivity-failure check) plus the undici `UND_ERR_*` family, which is
- * matched by prefix rather than enumerated.
- */
-const TRANSIENT_NETWORK_ERROR_CODES = new Set([
-  'ECONNRESET',
-  'ECONNREFUSED',
-  'ECONNABORTED',
-  'EPIPE',
-  'ETIMEDOUT',
-  'ESOCKETTIMEDOUT',
-  'ENOTFOUND',
-  'EAI_AGAIN',
-  'EHOSTUNREACH',
-  'EHOSTDOWN',
-  'ENETUNREACH',
-  'ENETDOWN',
-  'ENETRESET',
-  'EADDRNOTAVAIL',
-  // NOT EPROTO: in an HTTPS client that is almost always a TLS alert
-  // ("write EPROTO ... ssl/tls alert handshake failure"), which is
-  // deterministic. See isTlsError below.
-  'ERR_STREAM_PREMATURE_CLOSE',
-  'ERR_SOCKET_CONNECTION_TIMEOUT',
-  'ERR_NETWORK',
-  'ERR_NETWORK_CHANGED',
-])
-
-/**
- * Fallback for errors whose cause chain carries no `code` (Bun's `fetch failed`
- * frequently has none). Matched case-insensitively against the error message.
- */
-const TRANSIENT_NETWORK_MESSAGE_PATTERN = new RegExp(
-  [
-    'fetch failed',
-    'terminated',
-    'socket hang ?up',
-    'body timeout error',
-    'headers timeout error',
-    'premature close',
-    'network error',
-    'network changed',
-    'connection error',
-    'connection closed',
-    'connection reset',
-    'connection refused',
-    'connection timeout',
-    'other side closed',
-    'client network socket disconnected',
-    'sse stream disconnected',
-    'failed to reconnect sse stream',
-    'request timed out',
-    'read timeout',
-    'timeout error',
-    // Stream deaths thrown by claude.ts itself (the idle watchdog and the
-    // "proxy answered 200 with a non-SSE body" guard). With
-    // CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1 these are the only signal a
-    // turn ever gets, and nothing else here matches their wording.
-    'stream idle timeout',
-    'without receiving any events',
-    'econnreset',
-    'econnrefused',
-    'epipe',
-    'etimedout',
-    'enotfound',
-    'eai_again',
-    'ehostunreach',
-    'enetunreach',
-    'enetdown',
-    'ehostdown',
-    'eaddrnotavail',
-    'und_err_',
-  ].join('|'),
-  'i',
-)
-
-/**
- * Abort wording that must never be treated as transient — retrying a user
- * cancellation would resurrect a turn the user explicitly killed.
- */
-const ABORT_MESSAGE_PATTERN =
-  /(request was aborted|operation was aborted|aborterror|user abort)/i
-
-/**
  * Gateway/proxy wording seen in front of third-party providers. These never
  * reach the SDK as an `APIError` because the proxy answers with its own body
  * (sometimes even with a 200), so only the text is available.
@@ -257,69 +175,6 @@ const TRANSIENT_GATEWAY_MESSAGE_PATTERN = new RegExp(
 /** HTTP statuses worth another attempt. All other 4xx responses are permanent. */
 const TRANSIENT_HTTP_STATUSES = new Set([408, 409, 425, 429])
 
-function isTransientHttpStatus(status: number): boolean {
-  return TRANSIENT_HTTP_STATUSES.has(status) || status >= 500
-}
-
-function getErrorHttpStatus(error: unknown): number | undefined {
-  const status =
-    typeof error === 'object' && error !== null && 'status' in error
-      ? (error as { status?: unknown }).status
-      : undefined
-  return typeof status === 'number' && Number.isInteger(status)
-    ? status
-    : undefined
-}
-
-/**
- * Status codes are only read from positions a known producer actually writes
- * them. Free-scanning the text for a delimited 3-digit number reads response
- * *bodies* too, so a permanent 400 whose body says "exceeded the 500 output
- * token maximum" would be retried ten times before failing. The two anchors:
- *
- *   - `<label> request failed (<status>)` / `(<status> <statusText>)` — every
- *     3P adapter that hand-rolls fetch (responsesAdapter.ts, gemini/client.ts,
- *     chatgptAuth.ts).
- *   - a leading `<status> ` — how both the Anthropic and OpenAI SDKs stringify
- *     an APIError, optionally behind our own `API Error[ (model)]: ` prefix.
- */
-const ADAPTER_STATUS_PATTERN = /request failed \((\d{3})[\s):]/
-const SDK_STATUS_PATTERN = /^(?:API Error(?: \([^)]*\))?:\s*)?(\d{3})\s/
-
-function getHttpStatusFromText(text: string): number | undefined {
-  for (const pattern of [ADAPTER_STATUS_PATTERN, SDK_STATUS_PATTERN]) {
-    const status = text.match(pattern)?.[1]
-    if (status !== undefined) return Number(status)
-  }
-  return undefined
-}
-
-function hasTransientNetworkCode(code: string): boolean {
-  return TRANSIENT_NETWORK_ERROR_CODES.has(code) || code.startsWith('UND_ERR_')
-}
-
-/**
- * TLS/certificate failures are deterministic: the handshake will fail again
- * identically, and the user needs `getSSLErrorHint`'s NODE_EXTRA_CA_CERTS
- * advice now, not in three minutes. `SSL_ERROR_CODES` misses some OpenSSL
- * codes (e.g. ERR_SSL_PACKET_LENGTH_TOO_LONG), hence the prefix check.
- */
-function isTlsError(details: {
-  code: string
-  message: string
-  isSSLError: boolean
-}): boolean {
-  return (
-    details.isSSLError ||
-    details.code.startsWith('ERR_SSL_') ||
-    // EPROTO out of an HTTPS client is a TLS alert in practice. It has to be
-    // caught here rather than merely dropped from the transient-code set: an
-    // outer `TypeError: fetch failed` wrapper would otherwise match on message
-    // alone and retry the handshake ten times.
-    (details.code === 'EPROTO' && /ssl|tls|handshake/i.test(details.message))
-  )
-}
-
 /**
  * True when `error` is a transport-level blip that deserves a retry.
  *
@@ -331,77 +186,11 @@ function isTlsError(details: {
  * Exported for tests.
  */
 export function isTransientNetworkError(error: unknown): boolean {
-  if (error === null || error === undefined) {
-    return false
-  }
-  if (error instanceof APIUserAbortError) {
-    return false
-  }
-  if (error instanceof Error && error.name === 'AbortError') {
-    return false
-  }
-  if (error instanceof FallbackTriggeredError) {
-    return false
-  }
-
-  const message = error instanceof Error ? error.message : String(error)
-  if (ABORT_MESSAGE_PATTERN.test(message)) {
-    return false
-  }
-
-  const status = getErrorHttpStatus(error)
-  if (status !== undefined) {
-    if (isTransientHttpStatus(status)) return true
-    if (status >= 400 && status < 500) return false
-  }
-
-  const syntheticRetryable =
-    typeof error === 'object' && error !== null && 'retryable' in error
-      ? (error as { retryable?: unknown }).retryable
-      : undefined
-  if (syntheticRetryable === false) return false
-  if (syntheticRetryable === true) return true
-
-  const details = extractConnectionErrorDetails(error)
-  if (details) {
-    // TLS check runs BEFORE the transient-code check: a handshake failure must
-    // fail in seconds with getSSLErrorHint's advice, never after 10 backoffs.
-    if (isTlsError(details)) {
-      return false
-    }
-    if (hasTransientNetworkCode(details.code)) {
-      return true
-    }
-  }
-
-  // Unwrap CannotRetryError so callers can classify what actually failed.
+  if (error instanceof FallbackTriggeredError) return false
   if (error instanceof CannotRetryError) {
     return isTransientNetworkError(error.originalError)
   }
-
-  if (
-    TRANSIENT_NETWORK_MESSAGE_PATTERN.test(message) ||
-    TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(message)
-  ) {
-    return true
-  }
-
-  // Walk the cause chain's messages too — undici nests the useful text.
-  let cause: unknown = error instanceof Error ? error.cause : undefined
-  for (let depth = 0; cause instanceof Error && depth < 5; depth++) {
-    if (ABORT_MESSAGE_PATTERN.test(cause.message)) {
-      return false
-    }
-    if (
-      TRANSIENT_NETWORK_MESSAGE_PATTERN.test(cause.message) ||
-      TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(cause.message)
-    ) {
-      return true
-    }
-    cause = cause.cause
-  }
-
-  return false
+  return isRetryableAPIError(error)
 }
 
 /**
@@ -414,21 +203,7 @@ export function isTransientNetworkError(error: unknown): boolean {
  * Exported for tests.
  */
 export function isTransientNetworkErrorText(text: string): boolean {
-  if (!text) {
-    return false
-  }
-  if (ABORT_MESSAGE_PATTERN.test(text)) {
-    return false
-  }
-  const status = getHttpStatusFromText(text)
-  if (status !== undefined) {
-    if (isTransientHttpStatus(status)) return true
-    if (status >= 400 && status < 500) return false
-  }
-  return (
-    TRANSIENT_NETWORK_MESSAGE_PATTERN.test(text) ||
-    TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(text)
-  )
+  return isRetryableAPIError(text)
 }
 
 /**
@@ -1260,7 +1035,10 @@ function hasExhaustedTransientRetries(message: unknown): boolean {
   ) {
     return true
   }
-  return hasExhaustedTransientRetries((message as { error?: unknown }).error)
+  return (
+    hasExhaustedTransientRetries(getAPIErrorSource(message)) ||
+    hasExhaustedTransientRetries((message as { error?: unknown }).error)
+  )
 }
 
 function isApiErrorAssistantMessage(item: QueryModelOutput): boolean {
@@ -1293,8 +1071,12 @@ function getMessageText(item: QueryModelOutput): string {
 }
 
 function getRetrySourceError(item: QueryModelOutput): unknown | undefined {
-  const error = (item as AssistantMessage).error as unknown
-  return error instanceof Error ? error : undefined
+  const sourceError = getAPIErrorSource(item)
+  if (sourceError !== undefined) return sourceError
+  // Compatibility for in-memory callers created before source errors moved to
+  // symbol metadata. New provider messages never put Error objects here.
+  const legacyError = (item as AssistantMessage).error as unknown
+  return legacyError instanceof Error ? legacyError : undefined
 }
 
 /**
@@ -1314,7 +1096,28 @@ function isModelContentOutput(item: QueryModelOutput): boolean {
   if (item.type !== 'stream_event') {
     return false
   }
-  const event = (item as { event?: { type?: string; delta?: unknown } }).event
+  const event = (
+    item as {
+      event?: {
+        type?: string
+        delta?: unknown
+        content_block?: { type?: string }
+      }
+    }
+  ).event
+  if (
+    event?.type === 'content_block_start' &&
+    (event.content_block?.type === 'tool_use' ||
+      event.content_block?.type === 'server_tool_use')
+  ) {
+    return true
+  }
+  if (event?.type === 'message_delta') {
+    return (
+      (event.delta as { stop_reason?: string } | undefined)?.stop_reason ===
+      'refusal'
+    )
+  }
   if (event?.type !== 'content_block_delta') {
     return false
   }

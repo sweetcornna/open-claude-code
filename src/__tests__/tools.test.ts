@@ -67,6 +67,24 @@ describe('filterToolsByDenyRules', () => {
     expect(result.map(t => t.name)).toEqual(['Read', 'mcp__server__tool'])
   })
 
+  test('does not re-inject a blanket-denied ExecuteExtraTool', () => {
+    const gatewayTools = [
+      { name: 'SearchExtraTools', mcpInfo: undefined },
+      { name: 'ExecuteExtraTool', mcpInfo: undefined },
+      mockTools[3]!,
+    ]
+    const ctx = {
+      ...getEmptyToolPermissionContext(),
+      alwaysDenyRules: {
+        localSettings: ['ExecuteExtraTool'],
+      },
+    }
+
+    expect(
+      filterToolsByDenyRules(gatewayTools, ctx as any).map(t => t.name),
+    ).toEqual(['SearchExtraTools', 'mcp__server__tool'])
+  })
+
   test('returns empty array when all tools denied', () => {
     const ctx = {
       ...getEmptyToolPermissionContext(),

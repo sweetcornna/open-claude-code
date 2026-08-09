@@ -27,6 +27,9 @@ type StorageData = Record<string, unknown>
 
 let data: StorageData | null = null
 let writeCount = 0
+let deleteCount = 0
+let updateResult: { success: boolean; warning?: string } = { success: true }
+let deleteResult = true
 
 // Mirrors `plainTextStorage`'s surface exactly — production code type-checks
 // against `SecureStorage`, which is `any` in this codebase, so a missing method
@@ -36,13 +39,16 @@ const storage = {
   read: () => data,
   readAsync: async () => data,
   update: (next: StorageData) => {
-    data = structuredClone(next)
-    writeCount++
-    return { success: true }
+    if (updateResult.success) {
+      data = structuredClone(next)
+      writeCount++
+    }
+    return { ...updateResult }
   },
   delete: () => {
-    data = null
-    return true
+    deleteCount++
+    if (deleteResult) data = null
+    return deleteResult
   },
 }
 
@@ -57,9 +63,22 @@ export const secureStorageMock = {
   snapshot: (): StorageData | null => (data ? structuredClone(data) : null),
   /** Successful writes so far — for asserting a migration wrote exactly once. */
   writes: () => writeCount,
+  /** Delete attempts so far. */
+  deletes: () => deleteCount,
+  /** Set the result returned by future update attempts. */
+  setUpdateResult: (result: { success: boolean; warning?: string }) => {
+    updateResult = { ...result }
+  },
+  /** Set the result returned by future delete attempts. */
+  setDeleteResult: (result: boolean) => {
+    deleteResult = result
+  },
   /** Drop everything. Call from `beforeEach`. */
   reset: () => {
     data = null
     writeCount = 0
+    deleteCount = 0
+    updateResult = { success: true }
+    deleteResult = true
   },
 }

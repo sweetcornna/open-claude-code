@@ -41,7 +41,7 @@ const GROUNDED_CHUNK: GeminiStreamChunk = {
 }
 
 function sseBody(chunks: unknown[]): string {
-  return `${chunks.map(chunk => `data: ${JSON.stringify(chunk)}`).join('\n\n')}\n\n`
+  return `${chunks.map(chunk => `data: ${JSON.stringify(chunk)}`).join('\n\n')}\n\ndata: [DONE]\n\n`
 }
 
 describe('extractGeminiSearchResults', () => {

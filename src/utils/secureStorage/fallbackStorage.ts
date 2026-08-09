@@ -47,10 +47,10 @@ export function createFallbackStorage(
         // entry. read() prefers primary whenever it returns non-null, so that
         // stale entry would shadow the fresh data we just wrote to secondary —
         // e.g. a refresh token the server has already rotated away, causing a
-        // /login loop (#30337). Best-effort delete; if this also fails the
-        // user's keychain is in a bad state we can't fix from here.
-        if (primaryDataBefore !== null) {
-          primary.delete()
+        // /login loop (#30337). The pre-read is not authoritative: a transient
+        // read failure can return null while the stale entry still exists.
+        if (!primary.delete()) {
+          return { success: false }
         }
         return {
           success: true,
@@ -64,7 +64,7 @@ export function createFallbackStorage(
       const primarySuccess = primary.delete()
       const secondarySuccess = secondary.delete()
 
-      return primarySuccess || secondarySuccess
+      return primarySuccess && secondarySuccess
     },
   }
 }

@@ -209,7 +209,7 @@ describe('retryOpenAIRequest', () => {
   })
 
   test('does not retry auth, permission, model, or other permanent 4xx errors', async () => {
-    for (const status of [400, 401, 403, 404, 422]) {
+    for (const status of [400, 401, 402, 403, 404, 413, 422]) {
       let calls = 0
       await expect(
         retryOpenAIRequest(
@@ -225,6 +225,50 @@ describe('retryOpenAIRequest', () => {
       ).rejects.toThrow(`request failed (${status})`)
       expect(calls).toBe(1)
     }
+  })
+
+  test('retries statusless API error types and network errno codes', async () => {
+    for (const sourceError of [
+      Object.assign(new Error('provider failed'), { type: 'server_error' }),
+      Object.assign(new Error('provider failed'), { type: 'api_error' }),
+      Object.assign(new Error('provider failed'), { code: 'UNAVAILABLE' }),
+      Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }),
+    ]) {
+      let calls = 0
+      const result = await retryOpenAIRequest(
+        async () => {
+          calls++
+          if (calls === 1) throw sourceError
+          return 'ok'
+        },
+        {
+          signal: new AbortController().signal,
+          maxRetries: 1,
+          delay: noDelay,
+        },
+      )
+      expect(result).toBe('ok')
+      expect(calls).toBe(2)
+    }
+  })
+
+  test('does not retry deterministic TLS behind transient fetch wording', async () => {
+    const tls = Object.assign(
+      new Error('write EPROTO ssl/tls alert handshake failure'),
+      { code: 'EPROTO' },
+    )
+    const error = new TypeError('fetch failed', { cause: tls })
+    let calls = 0
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          throw error
+        },
+        { signal: new AbortController().signal, delay: noDelay },
+      ),
+    ).rejects.toBe(error)
+    expect(calls).toBe(1)
   })
 
   test('does not retry a permanent synthetic API error', async () => {

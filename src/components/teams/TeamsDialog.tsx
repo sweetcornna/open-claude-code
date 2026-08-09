@@ -83,6 +83,13 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
     return teammateStatuses.find(t => t.name === dialogLevel.memberName) ?? null;
   }, [dialogLevel, teammateStatuses]);
 
+  useEffect(() => {
+    if (dialogLevel.type === 'teammateDetail' && !currentTeammate) {
+      setDialogLevel({ type: 'teammateList', teamName: dialogLevel.teamName });
+      setSelectedIndex(0);
+    }
+  }, [currentTeammate, dialogLevel]);
+
   // Get isBypassPermissionsModeAvailable from AppState
   const isBypassAvailable = useAppState(s => s.toolPermissionContext.isBypassPermissionsModeAvailable);
 

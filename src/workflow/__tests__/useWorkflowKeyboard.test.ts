@@ -5,9 +5,14 @@ import {
   routeWorkflowKey,
 } from '../panel/useWorkflowKeyboard.js'
 
-test('Tab → nextTab；Shift+Tab → prevTab', () => {
-  expect(routeWorkflowKey('', { tab: true })).toBe('nextTab')
-  expect(routeWorkflowKey('', { tab: true, shift: true })).toBe('prevTab')
+test('Tab → nextPane；Shift+Tab → prevPane', () => {
+  expect(routeWorkflowKey('', { tab: true })).toBe('nextPane')
+  expect(routeWorkflowKey('', { tab: true, shift: true })).toBe('prevPane')
+})
+
+test('[ / ] switch workflow runs independently from pane focus', () => {
+  expect(routeWorkflowKey('[', {})).toBe('prevRun')
+  expect(routeWorkflowKey(']', {})).toBe('nextRun')
 })
 
 test('q / Esc → quit', () => {
@@ -37,7 +42,7 @@ test('confirm mode: y/Enter → confirmYes; n/Esc/q → confirmNo; other keys �
   expect(routeWorkflowKey('', { upArrow: true }, 'confirm')).toBeNull()
 })
 
-test('←/→ switch pane; ↑/↓ always select agents; PageUp/PageDown scroll detail', () => {
+test('←/→ switch pane; ↑/↓ move the focused selection; PageUp/PageDown scroll detail', () => {
   expect(routeWorkflowKey('', { leftArrow: true })).toBe('focusLeft')
   expect(routeWorkflowKey('', { rightArrow: true })).toBe('focusRight')
   expect(routeWorkflowKey('', { upArrow: true })).toBe('moveUp')

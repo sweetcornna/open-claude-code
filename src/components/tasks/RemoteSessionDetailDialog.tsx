@@ -522,7 +522,7 @@ export function RemoteSessionDetailDialog({ session, toolUseContext, onDone, onB
             </Box>
             <Box marginTop={1}>
               <Text dimColor italic>
-                Showing last {lastMessages.length} of {session.log.length} messages
+                Showing last {lastMessages.length} of {session.logEventCount} messages
               </Text>
             </Box>
           </Box>

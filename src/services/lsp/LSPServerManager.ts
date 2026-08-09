@@ -65,6 +65,8 @@ export function createLSPServerManager(
   // Private state managed via closures
   const servers: Map<string, LSPServerInstance> = new Map()
   const extensionMap: Map<string, string[]> = new Map()
+  const startPromises: Map<LSPServerInstance, Promise<void>> = new Map()
+  let shuttingDown = false
   // Track which files have been opened on which servers (URI -> server name).
   // LRU-bounded (official 2.1.208 parity): closeFile() has no callers yet, so
   // without a cap every Read/Edit pinned a document on the server until the
@@ -111,10 +113,12 @@ export function createLSPServerManager(
    * @throws {Error} If configuration loading fails
    */
   async function initialize(): Promise<void> {
+    if (shuttingDown) return
     let serverConfigs: Record<string, ScopedLspServerConfig>
 
     try {
       const result = await getAllLspServers()
+      if (shuttingDown) return
       serverConfigs = result.servers
       logForDebugging(
         `[LSP SERVER MANAGER] getAllLspServers returned ${Object.keys(serverConfigs).length} server(s)`,
@@ -190,29 +194,45 @@ export function createLSPServerManager(
   }
 
   /**
-   * Shutdown all running servers and clear state.
-   * Only servers in 'running' state are explicitly stopped;
-   * servers in other states are cleared without shutdown.
+   * Shutdown every server that may own a process, including in-flight starts.
    *
    * @throws {Error} If one or more servers fail to stop
    */
   async function shutdown(): Promise<void> {
+    shuttingDown = true
     const toStop = Array.from(servers.entries()).filter(
-      ([, s]) => s.state === 'running' || s.state === 'error',
+      ([, server]) => server.state !== 'stopped' || startPromises.has(server),
     )
 
     const results = await Promise.allSettled(
-      toStop.map(([name, server]) =>
-        withTimeout(
-          server.stop(),
+      toStop.map(([name, server]) => {
+        const stopAttempts = [Promise.resolve().then(() => server.stop())]
+        const pendingStart = startPromises.get(server)
+        if (pendingStart) {
+          stopAttempts.push(
+            pendingStart
+              .then(
+                () => undefined,
+                () => undefined,
+              )
+              .then(() => server.stop()),
+          )
+        }
+        const stopAll = Promise.allSettled(stopAttempts).then(settled => {
+          const failure = settled.find(result => result.status === 'rejected')
+          if (failure?.status === 'rejected') throw failure.reason
+        })
+        return withTimeout(
+          stopAll,
           stopTimeoutMs,
           `LSP server '${name}' stop timed out after ${stopTimeoutMs}ms`,
-        ),
-      ),
+        )
+      }),
     )
 
     servers.clear()
     extensionMap.clear()
+    startPromises.clear()
     openedFiles.clear()
 
     const errors = results
@@ -263,12 +283,22 @@ export function createLSPServerManager(
   async function ensureServerStarted(
     filePath: string,
   ): Promise<LSPServerInstance | undefined> {
+    if (shuttingDown) return undefined
     const server = getServerForFile(filePath)
     if (!server) return undefined
 
-    if (server.state === 'stopped' || server.state === 'error') {
+    let startPromise = startPromises.get(server)
+    if (
+      startPromise ||
+      server.state === 'stopped' ||
+      server.state === 'error'
+    ) {
       try {
-        await server.start()
+        if (!startPromise) {
+          startPromise = server.start()
+          startPromises.set(server, startPromise)
+        }
+        await startPromise
       } catch (error) {
         const err = error as Error
         logError(
@@ -277,6 +307,10 @@ export function createLSPServerManager(
           ),
         )
         throw error
+      } finally {
+        if (startPromise && startPromises.get(server) === startPromise) {
+          startPromises.delete(server)
+        }
       }
     }
 

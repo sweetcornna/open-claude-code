@@ -10,8 +10,9 @@
  * refresh token that mints Google Cloud access tokens.
  */
 
-import { chmod, mkdir, readFile, unlink, writeFile } from 'fs/promises'
+import { mkdir, readFile, unlink } from 'fs/promises'
 import { occConfigDir, occConfigPath } from 'src/config/paths.js'
+import { writePrivateFileAtomic } from 'src/utils/secureStorage/atomicWrite.js'
 import { ANTIGRAVITY_AUTH_FILE } from './constants.js'
 
 export type AntigravityTokens = {
@@ -92,8 +93,7 @@ export async function saveAntigravityTokens(
     },
     last_refresh: new Date().toISOString(),
   }
-  await writeFile(path, `${JSON.stringify(body, null, 2)}\n`, { mode: 0o600 })
-  await chmod(path, 0o600).catch(() => undefined)
+  await writePrivateFileAtomic(path, `${JSON.stringify(body, null, 2)}\n`)
 }
 
 export async function removeAntigravityTokens(): Promise<void> {

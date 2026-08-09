@@ -29,7 +29,9 @@ describe('queryModelOpenAI (isolated)', () => {
       if (
         key.startsWith('OPENAI_') ||
         key.startsWith('ANTHROPIC_') ||
-        key === 'CLAUDE_CODE_USE_OPENAI'
+        key === 'CLAUDE_CODE_USE_OPENAI' ||
+        key === 'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS' ||
+        key === 'ENABLE_SEARCH_EXTRA_TOOLS'
       ) {
         delete env[key]
       }

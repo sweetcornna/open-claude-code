@@ -2,9 +2,9 @@ import { toolMatchesName, type Tools, type ToolUseContext } from '../../Tool.js'
 import type { Message } from 'src/types/message.js'
 import {
   getDeferredToolsDelta,
+  isDeferredToolExecutionPathAvailable,
   isDeferredToolsDeltaEnabled,
   isSearchExtraToolsEnabledOptimistic,
-  isSearchExtraToolsToolAvailable,
   type DeferredToolsDeltaScanContext,
 } from '../tools/searchExtraTools.js'
 import {
@@ -32,15 +32,15 @@ export function getDeferredToolsDeltaAttachment(
   scanContext?: DeferredToolsDeltaScanContext,
 ): Attachment[] {
   if (!isDeferredToolsDeltaEnabled()) return []
-  // These three checks mirror the sync parts of isSearchExtraToolsEnabled —
-  // the attachment text says "available via SearchExtraTools", so SearchExtraTools
-  // has to actually be in the request. The async auto-threshold check
+  // These checks mirror the sync parts of isSearchExtraToolsEnabled — the
+  // attachment announces a deferred workflow, so both SearchExtraTools and
+  // ExecuteExtraTool have to be in the request. The async auto-threshold check
   // is not replicated (would double-fire tengu_search_extra_tools_mode_decision);
-  // in tst-auto below-threshold the attachment can fire while SearchExtraTools
-  // is filtered out, but that's a narrow case and the tools announced
-  // are directly callable anyway.
+  // in tst-auto below-threshold the attachment can fire while the gateway is
+  // filtered out, but that's a narrow case and the tools announced are directly
+  // callable anyway.
   if (!isSearchExtraToolsEnabledOptimistic()) return []
-  if (!isSearchExtraToolsToolAvailable(tools)) return []
+  if (!isDeferredToolExecutionPathAvailable(tools)) return []
   const delta = getDeferredToolsDelta(tools, messages ?? [], scanContext)
   if (!delta) return []
   return [{ type: 'deferred_tools_delta', ...delta }]

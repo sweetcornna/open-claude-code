@@ -67,6 +67,8 @@ const ENV = [
   'OPENAI_BASE_URL',
   'OPENAI_API_KEY',
   'OPENAI_MODEL',
+  'OPENAI_WIRE_API',
+  'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE',
   // getAPIProvider() reads the CLAUDE_CODE_USE_* family before any of the keys
   // above, so a leftover from an earlier file in this shard (or a Bedrock
   // user's own environment) decides every "plain Anthropic gateway" case here

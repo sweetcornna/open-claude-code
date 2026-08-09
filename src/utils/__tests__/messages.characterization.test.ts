@@ -92,6 +92,7 @@ const EXPECTED_RUNTIME_EXPORTS = [
   'createAgentsKilledMessage',
   'createApiMetricsMessage',
   'createAssistantAPIErrorMessage',
+  'createAssistantAPIErrorMessageFromError',
   'createAssistantMessage',
   'createAwaySummaryMessage',
   'createBridgeStatusMessage',

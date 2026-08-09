@@ -48,6 +48,13 @@ import {
   withRetry,
   withTransientNetworkRetry,
 } from '../withRetry.js'
+import { createAssistantAPIErrorMessageFromError } from '../../../utils/messages.js'
+import {
+  attachAPIErrorSource,
+  categorizeRetryableAPIError,
+  classifyRetryableAPIError,
+  getAPIErrorSource,
+} from '../retryClassification.js'
 
 describe('withRetry context overflow adjustment', () => {
   test('does not retry when thinking alone exceeds the remaining context', async () => {
@@ -244,16 +251,12 @@ describe('isTransientNetworkError', () => {
     expect(isTransientNetworkError(abortError)).toBe(false)
   })
 
-  test('an outer transport failure outranks a nested abort message', () => {
+  test('a nested abort outranks outer transient transport wording', () => {
     const nested = withCause(
       'fetch failed',
       new Error('The operation was aborted'),
     )
-    // Documents the precedence rather than asserting it is desirable: the outer
-    // `fetch failed` matches before the chain walk reaches the abort text. Real
-    // aborts never rely on this — both retry loops check `signal.aborted`
-    // before sleeping, and APIUserAbortError is rejected outright above.
-    expect(isTransientNetworkError(nested)).toBe(true)
+    expect(isTransientNetworkError(nested)).toBe(false)
   })
 
   test('does not retry deterministic failures', () => {
@@ -310,6 +313,116 @@ describe('isTransientNetworkError', () => {
         new Error('Stream ended without receiving any events'),
       ),
     ).toBe(true)
+  })
+})
+
+describe('structured API error classification', () => {
+  test('classifies HTTP statuses without retrying permanent 4xx errors', () => {
+    for (const status of [408, 409, 425, 429, 529, 500, 503]) {
+      expect(classifyRetryableAPIError({ status }).retryable).toBe(true)
+    }
+    for (const status of [400, 401, 402, 403, 404, 413, 422]) {
+      expect(classifyRetryableAPIError({ status }).retryable).toBe(false)
+    }
+    expect(categorizeRetryableAPIError({ status: 401 })).toBe(
+      'authentication_failed',
+    )
+    expect(categorizeRetryableAPIError({ status: 402 })).toBe('billing_error')
+    expect(categorizeRetryableAPIError({ status: 413 })).toBe('invalid_request')
+    expect(categorizeRetryableAPIError({ status: 503 })).toBe('server_error')
+  })
+
+  test('recognizes statusless provider type and code families', () => {
+    for (const value of [
+      { type: 'server_error' },
+      { type: 'api_error' },
+      { code: 'internal_error' },
+      { status: 'UNAVAILABLE' },
+      { code: 'DEADLINE_EXCEEDED' },
+      { status: 'RESOURCE_EXHAUSTED' },
+      { code: 'ECONNRESET' },
+    ]) {
+      expect(classifyRetryableAPIError(value).retryable).toBe(true)
+    }
+    expect(categorizeRetryableAPIError({ status: 'RESOURCE_EXHAUSTED' })).toBe(
+      'rate_limit',
+    )
+    expect(classifyRetryableAPIError({ code: 'INVALID_ARGUMENT' })).toEqual({
+      category: 'invalid_request',
+      retryable: false,
+    })
+  })
+
+  test('uses the documented abort, TLS, explicit, and structured precedence', () => {
+    expect(
+      classifyRetryableAPIError(
+        Object.assign(new Error('fetch failed'), {
+          retryable: true,
+          cause: new Error('The operation was aborted'),
+        }),
+      ).retryable,
+    ).toBe(false)
+    expect(
+      classifyRetryableAPIError(
+        Object.assign(new Error('fetch failed'), {
+          retryable: true,
+          cause: codedError(
+            'EPROTO',
+            'write EPROTO ssl/tls alert handshake failure',
+          ),
+        }),
+      ).retryable,
+    ).toBe(false)
+    expect(
+      classifyRetryableAPIError({
+        status: 503,
+        retryable: false,
+        message: 'service unavailable',
+      }),
+    ).toEqual({ category: 'server_error', retryable: false })
+    expect(
+      classifyRetryableAPIError({
+        status: 400,
+        retryable: true,
+        message: 'upstream timeout',
+      }),
+    ).toEqual({ category: 'invalid_request', retryable: false })
+    expect(classifyRetryableAPIError({ retryable: true })).toEqual({
+      category: 'server_error',
+      retryable: true,
+    })
+    expect(
+      classifyRetryableAPIError(new Error('unclassified failure')),
+    ).toEqual({ category: 'unknown', retryable: false })
+  })
+
+  test('keeps source errors in non-enumerable symbol metadata', () => {
+    const source = Object.assign(new Error('upstream unavailable'), {
+      type: 'server_error',
+      secret: 'raw-only',
+    })
+    const message = createAssistantAPIErrorMessageFromError({
+      content: 'API Error: upstream unavailable',
+      apiError: 'api_error',
+      sourceError: source,
+    })
+
+    expect(message.error).toBe('server_error')
+    expect(getAPIErrorSource(message)).toBe(source)
+    const sourceSymbol = Object.getOwnPropertySymbols(message).find(symbol =>
+      String(symbol).includes('sourceError'),
+    )
+    expect(sourceSymbol).toBeDefined()
+    expect(
+      Object.getOwnPropertyDescriptor(message, sourceSymbol!)?.enumerable,
+    ).toBe(false)
+    expect(Object.keys(message).some(key => key.includes('sourceError'))).toBe(
+      false,
+    )
+    const ndjson = `${JSON.stringify(message)}\n`
+    expect(ndjson).not.toContain('sourceError')
+    expect(ndjson).not.toContain('raw-only')
+    expect(JSON.parse(ndjson).error).toBe('server_error')
   })
 })
 
@@ -825,6 +938,32 @@ describe('withTransientNetworkRetry', () => {
     expect(items).toHaveLength(1)
   })
 
+  test('does not multiply a provider ladder exhausted on the source error', async () => {
+    const exhausted = Object.assign(new Error('fetch failed'), {
+      retryable: true,
+      [Symbol.for('occ.api.transientRetriesExhausted')]: true,
+    })
+    let attempts = 0
+    const items = await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          yield attachAPIErrorSource(
+            {
+              ...apiErrorMessage('API Error: fetch failed'),
+              error: 'server_error',
+            },
+            exhausted,
+          )
+        },
+        { maxRetries: 10 },
+      ),
+    )
+
+    expect(attempts).toBe(1)
+    expect(items).toHaveLength(1)
+  })
+
   test('an explicit retryable:false outranks transient-looking prose', async () => {
     // The adapter already classified this failure as permanent. Or-ing the two
     // signals let the wording of the message — 'stream idle timeout' is on the
@@ -1054,9 +1193,37 @@ describe('withTransientNetworkRetry commitment boundary', () => {
     })
   }
 
-  test('still refuses to retry after a tool_use block started (inc-4258)', async () => {
-    // The double-execution guard must survive the change above: partial_json
-    // means a tool_use is materializing, and re-running would run it twice.
+  for (const blockType of ['tool_use', 'server_tool_use']) {
+    test(`does not replay after a ${blockType} identity was yielded`, async () => {
+      let attempts = 0
+      const items = await collect(
+        withTransientNetworkRetry(
+          async function* () {
+            attempts++
+            yield {
+              type: 'stream_event',
+              event: {
+                type: 'content_block_start',
+                content_block: {
+                  type: blockType,
+                  id: 'toolu_1',
+                  name: 'Bash',
+                  input: {},
+                },
+              },
+            } as StreamItem
+            yield apiErrorMessage('API Error: terminated')
+          },
+          { maxRetries: 5 },
+        ),
+      )
+
+      expect(attempts).toBe(1)
+      expect(items.at(-1)).toMatchObject({ isApiErrorMessage: true })
+    })
+  }
+
+  test('still refuses to retry after tool arguments started (inc-4258)', async () => {
     let attempts = 0
     const items = await collect(
       withTransientNetworkRetry(
@@ -1077,6 +1244,29 @@ describe('withTransientNetworkRetry commitment boundary', () => {
 
     expect(attempts).toBe(1)
     expect(items.at(-1)).toMatchObject({ isApiErrorMessage: true })
+  })
+
+  test('does not replay after a refusal terminal event', async () => {
+    let attempts = 0
+    await collect(
+      withTransientNetworkRetry(
+        async function* () {
+          attempts++
+          yield {
+            type: 'stream_event',
+            event: {
+              type: 'message_delta',
+              delta: { stop_reason: 'refusal', stop_sequence: null },
+              usage: { output_tokens: 0 },
+            },
+          } as StreamItem
+          yield apiErrorMessage('API Error: terminated')
+        },
+        { maxRetries: 5 },
+      ),
+    )
+
+    expect(attempts).toBe(1)
   })
 
   test('still refuses to retry after text reached the user', async () => {

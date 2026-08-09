@@ -256,6 +256,7 @@ import {
   getAssistantMessageFromError,
   getErrorMessageIfRefusal,
 } from './errors.js'
+import { attachAPIErrorSource } from './retryClassification.js'
 import {
   EMPTY_USAGE,
   type GlobalCacheStrategy,
@@ -2171,6 +2172,12 @@ async function* queryModel(
             break
           }
           case 'content_block_start':
+            if (
+              part.content_block.type === 'tool_use' ||
+              part.content_block.type === 'server_tool_use'
+            ) {
+              hasCommittedStreamOutput = true
+            }
             switch (part.content_block.type) {
               case 'tool_use':
                 contentBlocks[part.index] = {
@@ -2456,6 +2463,7 @@ async function* queryModel(
               options.model,
             )
             if (refusalMessage) {
+              hasCommittedStreamOutput = true
               yield refusalMessage
             }
 
@@ -2969,10 +2977,13 @@ async function* queryModel(
         // ladder on this failure; tell the queryModel-level wrapper not to
         // stack a second ladder on top of it.
         yield maybeMarkExhausted(
-          getAssistantMessageFromError(error, errorModel, {
-            messages,
-            messagesForAPI,
-          }),
+          attachAPIErrorSource(
+            getAssistantMessageFromError(error, errorModel, {
+              messages,
+              messagesForAPI,
+            }),
+            error,
+          ),
           fallbackError,
         )
         releaseStreamResources()
@@ -3034,10 +3045,13 @@ async function* queryModel(
       }
 
       yield maybeMarkExhausted(
-        getAssistantMessageFromError(error, errorModel, {
-          messages,
-          messagesForAPI,
-        }),
+        attachAPIErrorSource(
+          getAssistantMessageFromError(error, errorModel, {
+            messages,
+            messagesForAPI,
+          }),
+          error,
+        ),
         errorFromRetry,
       )
       releaseStreamResources()

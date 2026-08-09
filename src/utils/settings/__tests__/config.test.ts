@@ -132,6 +132,28 @@ describe('SettingsSchema', () => {
     }
   })
 
+  test('preserves every aggregated web search source override', () => {
+    const webSearchSources = {
+      anthropic: false,
+      deepseek: false,
+      gemini: false,
+      codex: false,
+      brave: false,
+      exa: false,
+      free: false,
+    }
+    const result = SettingsSchema().safeParse({
+      webSearchAdapter: 'deepseek',
+      webSearchSources,
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.webSearchAdapter).toBe('deepseek')
+      expect(result.data.webSearchSources).toEqual(webSearchSources)
+    }
+  })
+
   test('coerces env var numbers to strings', () => {
     const result = EnvironmentVariablesSchema().safeParse({ PORT: 3000 })
     expect(result.success).toBe(true)

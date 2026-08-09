@@ -319,14 +319,12 @@ export const PROVIDER_SETUP_SPECS: Record<
         title: () => 'ChatGPT Subscription — Models',
       },
     },
-    afterSave: async ({ credentialsConfigured }) => {
+    afterSave: async () => {
       const client = await import('src/services/api/openai/client.js')
       client.clearOpenAIClientCache()
-      // Only an API key the user just entered supersedes a ChatGPT login. A
-      // model-only save is not a logout.
-      if (!credentialsConfigured) return
-      const auth = await import('src/services/api/openai/chatgptAuth.js')
-      await auth.removeChatGPTAuth().catch(() => {})
+      // OPENAI_AUTH_MODE selects inference auth. The stored ChatGPT OAuth file
+      // remains an independent Codex Web Search credential across provider
+      // changes and may only be removed by an explicit logout/disconnect.
     },
   },
 
@@ -457,12 +455,10 @@ export const PROVIDER_SETUP_SPECS: Record<
       // this spec's own modelType is 'openai', so the OpenAI group is skipped.
       OPENAI_WIRE_API: undefined,
     }),
-    afterSave: async ({ credentialsConfigured }) => {
+    afterSave: async () => {
       const client = await import('src/services/api/openai/client.js')
       client.clearOpenAIClientCache()
-      if (!credentialsConfigured) return
-      const auth = await import('src/services/api/openai/chatgptAuth.js')
-      await auth.removeChatGPTAuth().catch(() => {})
+      // Keep ChatGPT OAuth available to the independent Codex search source.
     },
   },
 

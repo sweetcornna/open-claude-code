@@ -1,19 +1,36 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync, readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import {
   BIN_NAME,
   DEEP_LINK_PROTOCOL,
   MACOS_DEEP_LINK_BUNDLE_ID,
   NPM_PACKAGE_NAME,
 } from 'src/constants/brand.js'
-import { occConfigPath } from 'src/config/paths.js'
+import {
+  occConfigDir,
+  occConfigPath,
+  occGlobalConfigFile,
+} from 'src/config/paths.js'
 import { SYNC_KEYS } from 'src/services/settingsSync/types.js'
 import {
   buildDeepLink,
   parseDeepLink,
 } from 'src/utils/deepLink/parseDeepLink.js'
 import { filterOccAliases } from 'src/utils/shell/shellConfig.js'
+import {
+  getSettingsForSource,
+  updateSettingsForSource,
+} from 'src/utils/settings/settings.js'
+import { resetSettingsCache } from 'src/utils/settings/settingsCache.js'
 
 const sourceRoot = resolve(import.meta.dir, '..', '..')
 
@@ -34,6 +51,47 @@ function readProgramSources(): string {
     readSource('main.tsx'),
     ...files.map(name => readFileSync(resolve(programDir, name), 'utf8')),
   ].join('\n')
+}
+
+const UPGRADE_CREDENTIAL_FILES = [
+  'gemini-antigravity-auth.json',
+  'openai-chatgpt-auth.json',
+  '.credentials.json',
+  'provider-profiles.json',
+] as const
+
+type UpgradeSnapshot = {
+  credentials: Record<string, string>
+  globalState: string
+  search: {
+    webSearchAdapter?: unknown
+    webSearchSources?: unknown
+    braveApiKey?: unknown
+    exaApiKey?: unknown
+    env?: unknown
+  }
+}
+
+function takeUpgradeSnapshot(): UpgradeSnapshot {
+  const settings = JSON.parse(
+    readFileSync(occConfigPath('settings.json'), 'utf8'),
+  ) as Record<string, unknown>
+  return {
+    credentials: Object.fromEntries(
+      UPGRADE_CREDENTIAL_FILES.map(file => [
+        file,
+        readFileSync(occConfigPath(file), 'utf8'),
+      ]),
+    ),
+    globalState: readFileSync(occGlobalConfigFile(), 'utf8'),
+    search: {
+      webSearchAdapter: settings.webSearchAdapter,
+      webSearchSources: settings.webSearchSources,
+      braveApiKey: settings.braveApiKey,
+      exaApiKey: settings.exaApiKey,
+      env: settings.env,
+    },
+  }
 }
 
 describe('occ update isolation', () => {
@@ -150,6 +208,94 @@ describe('occ update isolation', () => {
     expect(deferredSource).not.toContain('@anthropic-ai/claude-code')
     expect(deferredSource).not.toContain('nativeInstaller')
     expect(deferredSource).not.toContain("'claude'")
+  })
+
+  test('update paths cannot mutate persisted credentials or search settings', () => {
+    const updaterSources = [
+      readSource('cli/updateOcc.ts'),
+      readSource('services/autoUpdate/backgroundOccUpdate.ts'),
+      readSource('services/autoUpdate/deferredOccInstall.ts'),
+      readSource('utils/update/autoUpdater.ts'),
+      readSource('utils/update/localInstaller.ts'),
+    ].join('\n')
+
+    for (const credentialMutation of [
+      'removeAntigravityAuth',
+      'removeChatGPTAuth',
+      'removeApiKey',
+      'getSecureStorage',
+      'gemini-antigravity-auth.json',
+      'openai-chatgpt-auth.json',
+      'webSearchSources',
+    ]) {
+      expect(updaterSources).not.toContain(credentialMutation)
+    }
+  })
+
+  test('an upgrade migration preserves the credential and Web Search snapshot', () => {
+    const previousConfigDir = process.env.OCC_CONFIG_DIR
+    const configDir = mkdtempSync(join(tmpdir(), 'occ-upgrade-snapshot-'))
+    process.env.OCC_CONFIG_DIR = configDir
+    occConfigDir.cache.clear?.()
+    resetSettingsCache()
+
+    try {
+      mkdirSync(occConfigDir(), { recursive: true })
+      writeFileSync(
+        occConfigPath('settings.json'),
+        `${JSON.stringify(
+          {
+            webSearchAdapter: 'deepseek',
+            webSearchSources: {
+              anthropic: true,
+              deepseek: false,
+              gemini: true,
+              codex: false,
+              brave: true,
+              exa: false,
+              free: true,
+            },
+            braveApiKey: 'brave-api-key-canary',
+            exaApiKey: 'exa-api-key-canary',
+            env: {
+              ANTHROPIC_API_KEY: 'anthropic-api-key-canary',
+              GEMINI_API_KEY: 'gemini-api-key-canary',
+              OPENAI_API_KEY: 'openai-api-key-canary',
+            },
+            modelSettings: { opus: { effort: 'high' } },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      for (const file of UPGRADE_CREDENTIAL_FILES) {
+        writeFileSync(occConfigPath(file), `${file}:credential-canary\n`)
+      }
+      writeFileSync(
+        occGlobalConfigFile(),
+        '{"primaryApiKey":"global-api-key-canary","migrationVersion":11}\n',
+      )
+      const before = takeUpgradeSnapshot()
+
+      // Every install route converges on the next version's startup migrations.
+      // Exercise the real read/merge/rewrite helper: this was the reachable path
+      // that stripped nested source ids even though the updater deleted nothing.
+      expect(
+        updateSettingsForSource('userSettings', {
+          modelSettings: { default: { effort: 'high' } },
+        }),
+      ).toEqual({ error: null })
+      resetSettingsCache()
+
+      expect(takeUpgradeSnapshot()).toEqual(before)
+      expect(getSettingsForSource('userSettings')).toMatchObject(before.search)
+    } finally {
+      resetSettingsCache()
+      if (previousConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+      else process.env.OCC_CONFIG_DIR = previousConfigDir
+      occConfigDir.cache.clear?.()
+      rmSync(configDir, { recursive: true, force: true })
+    }
   })
 
   test('alias cleanup preserves official Claude Code and custom aliases', () => {

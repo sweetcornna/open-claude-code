@@ -165,15 +165,23 @@ export function filterActiveRuns(runs: RunProgress[]): RunProgress[] {
  * re-introduce the garbled render. Anything past maxTabs is folded into an `overflow` count
  * that the panel renders as `+N`.
  *
- * `runs` is sliced as-is (no re-sort); the caller is expected to have already applied
- * filterActiveRuns and any ordering upstream.
+ * When an active run is supplied, the window rotates to start there. This keeps
+ * the selected tab at the unclipped left edge while preserving navigation order.
  */
 export function capTabsForDisplay(
   runs: RunProgress[],
   maxTabs: number,
+  activeRunId?: string | null,
 ): { runs: RunProgress[]; overflow: number } {
   const cap = Math.max(0, Math.trunc(maxTabs))
-  const visible = runs.slice(0, cap)
+  const activeIndex = activeRunId
+    ? runs.findIndex(run => run.runId === activeRunId)
+    : -1
+  const ordered =
+    activeIndex > 0
+      ? [...runs.slice(activeIndex), ...runs.slice(0, activeIndex)]
+      : runs
+  const visible = ordered.slice(0, cap)
   return { runs: visible, overflow: Math.max(0, runs.length - visible.length) }
 }
 

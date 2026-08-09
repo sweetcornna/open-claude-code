@@ -189,6 +189,19 @@ export class SSHSessionManagerImpl implements SSHSessionManager {
 
       try {
         const newProc = await reconnect()
+        if (this.userInitiatedDisconnect || this.disconnected) {
+          try {
+            newProc.stdin?.end()
+          } catch {
+            // stdin may already be closed
+          }
+          try {
+            newProc.kill()
+          } catch {
+            // process may already be dead
+          }
+          return
+        }
         this.proc = newProc
         this.reconnectAttempt = 0
         this.connected = true

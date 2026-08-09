@@ -20,7 +20,7 @@ import type { AgentProgress, RunProgress } from '../progress/store.js';
  * empty row it does not need is exactly one of the defects under test, and a
  * harness that drops blank lines cannot see the difference.
  */
-async function renderAt(node: React.ReactNode, columns: number): Promise<string[]> {
+async function renderAt(node: React.ReactNode, columns: number, waitMs: number = 30): Promise<string[]> {
   const stream = new PassThrough();
   const stdout = stream as unknown as NodeJS.WriteStream;
   (stdout as unknown as { columns: number }).columns = columns;
@@ -36,7 +36,7 @@ async function renderAt(node: React.ReactNode, columns: number): Promise<string[
     { stdout, patchConsole: false },
   );
   try {
-    await new Promise(r => setTimeout(r, 30));
+    await new Promise(r => setTimeout(r, waitMs));
     // Read before unmounting: teardown writes one more frame to the stream.
     const esc = String.fromCharCode(27);
     return out.replace(new RegExp(`${esc}\\[[0-9;?]*[a-zA-Z]`, 'g'), '').split('\n');
@@ -66,7 +66,8 @@ test('truncateLabel keeps its legacy behaviour for ASCII labels', () => {
   expect(truncateLabel('review:correctness', 18)).toBe('review:correctness');
   expect(truncateLabel('verify:correctness#0', 18)).toBe('verify:correctn…#0');
   expect(truncateLabel('verify:architecture#15', 18)).toBe('verify:archite…#15');
-  expect(truncateLabel('a-very-long-label-no-suffix', 18)).toBe('a-very-long-label-');
+  expect(truncateLabel('a-very-long-label-no-suffix', 18)).toBe('a-very-long-label…');
+  expect(truncateLabel('agent', 0)).toBe('');
 });
 
 test('truncateLabel budgets CJK labels by display width, not string length', () => {
@@ -77,7 +78,7 @@ test('truncateLabel budgets CJK labels by display width, not string length', () 
   expect(cjk.length).toBe(14);
   expect(width(cjk)).toBe(28);
   expect(width(truncateLabel(cjk, 12))).toBeLessThanOrEqual(12);
-  expect(truncateLabel(cjk, 12)).toBe('审查中文标签');
+  expect(truncateLabel(cjk, 12)).toBe('审查中文标…');
   // The `#n` suffix survives, and the elided result still fits the budget.
   const suffixed = `${cjk}#3`;
   expect(width(truncateLabel(suffixed, 14))).toBeLessThanOrEqual(14);
@@ -115,6 +116,7 @@ test('a narrow terminal keeps every agent row on a single line', async () => {
       ]}
       selectedIndex={0}
       focused
+      width={40}
     />,
     40,
   );
@@ -142,6 +144,7 @@ test('the meta column stays intact and the label yields when width runs out', as
       ]}
       selectedIndex={0}
       focused
+      width={44}
     />,
     44,
   );
@@ -170,6 +173,7 @@ test('the row survives a pane narrower than the meta column itself', async () =>
         ]}
         selectedIndex={0}
         focused
+        width={columns}
       />,
       columns,
     );
@@ -189,6 +193,7 @@ test('the phase sidebar survives a pane narrower than its counter', async () => 
         agents={[agent({ id: 1 })]}
         selectedIndex={1}
         focused
+        width={columns}
       />,
       columns,
     );
@@ -216,12 +221,43 @@ test('a CJK label does not wrap the row it sits on', async () => {
       ]}
       selectedIndex={0}
       focused
+      width={40}
     />,
     40,
   );
 
   expect(lines).toHaveLength(1);
   expect(width(lines[0]!)).toBeLessThanOrEqual(40);
+});
+
+test('spinner repaints never expose text hidden behind an ellipsis', async () => {
+  const hiddenTail = 'TRAILING_CHARS';
+  const agentFrames = await renderAt(
+    <AgentList
+      agents={[agent({ id: 1, label: `visible-${hiddenTail}`, startedAt: Date.now() - 1_000 })]}
+      selectedIndex={0}
+      focused
+      width={22}
+    />,
+    22,
+    320,
+  );
+  const phaseFrames = await renderAt(
+    <PhaseSidebar
+      phases={[{ title: `visible-${hiddenTail}`, status: 'running', done: 1, total: 2 }]}
+      agents={[agent({ id: 1 })]}
+      selectedIndex={1}
+      focused
+      width={16}
+    />,
+    16,
+    320,
+  );
+
+  expect(agentFrames.join('\n')).toContain('…');
+  expect(agentFrames.join('\n')).not.toContain(hiddenTail);
+  expect(phaseFrames.join('\n')).toContain('…');
+  expect(phaseFrames.join('\n')).not.toContain(hiddenTail);
 });
 
 // ─── retry backoff is visible on the row ───
@@ -296,6 +332,7 @@ test('a retrying agent renders ↻ instead of a spinner and still fits one line'
       ]}
       selectedIndex={0}
       focused
+      width={60}
     />,
     60,
   );
@@ -319,6 +356,7 @@ test('a long phase title truncates instead of wrapping the sidebar row', async (
       agents={[agent({ id: 1, status: 'done' }), agent({ id: 2 })]}
       selectedIndex={1}
       focused
+      width={20}
     />,
     20,
   );
@@ -391,6 +429,17 @@ test('an overflowing tab bar with an active run is exactly two lines', async () 
   expect(lines).toHaveLength(2);
   expect(lines[0]).toContain('+2');
   // Second line is the underline under the first tab and nothing else.
+  expect(lines[1]!.trim()).toMatch(/^═+$/);
+});
+
+test('a narrow overflowing tab bar keeps a later active run visible', async () => {
+  const runs = Array.from({ length: 8 }, (_, i) => run(`run-000${i}`, `wf${i}`));
+  const lines = await renderAt(<TabsBar runs={runs} activeRunId="run-0007" maxWidth={24} />, 40);
+
+  expect(lines).toHaveLength(2);
+  expect(lines[0]).toContain('wf7#0007');
+  expect(lines[0]).toContain('+7');
+  expect(lines[0]).not.toContain('wf0#0000');
   expect(lines[1]!.trim()).toMatch(/^═+$/);
 });
 

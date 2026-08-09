@@ -28,6 +28,8 @@ import {
   getOauthAccountInfo,
   getSubscriptionType,
   isUsing3PServices,
+  removeApiKey,
+  removeClaudeAIOAuthTokens,
   saveOAuthTokensIfNeeded,
   validateForceLoginOrg,
 } from '../../utils/auth/auth.js'
@@ -49,14 +51,52 @@ import {
  * and sets up the local auth state.
  */
 export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
-  // Clear old state before saving new credentials. Provider configuration is
-  // deliberately left alone here — this is a login, and wiping the user's
-  // endpoint/model setup as a side effect of it would be a surprise.
-  await performLogout({ clearOnboarding: false, resetProviderConfig: false })
-
-  // Reuse pre-fetched profile if available, otherwise fetch fresh
+  // Resolve all network-derived identity data before mutating local auth. A
+  // failed login must leave the previous working credentials untouched.
   const profile =
     tokens.profile ?? (await getOauthProfileFromOauthToken(tokens.accessToken))
+  const useClaudeAiAuth = shouldUseClaudeAIAuth(tokens.scopes)
+
+  if (useClaudeAiAuth) {
+    // saveOAuthTokensIfNeeded updates only claudeAiOauth inside the shared secure
+    // storage record. ChatGPT, Gemini, MCP, and plugin credentials are separate
+    // families and must survive an Anthropic login.
+    const storageResult = saveOAuthTokensIfNeeded(tokens)
+    if (storageResult.warning) {
+      logEvent('tengu_oauth_storage_warning', {
+        warning:
+          storageResult.warning as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      })
+    }
+    if (!storageResult.success) {
+      throw new Error('Failed to save OAuth credentials to secure storage.')
+    }
+    // The replacement OAuth token is durable now; it is safe to retire an old
+    // Anthropic API key without risking a failed login leaving no credentials.
+    await removeApiKey()
+  } else {
+    // API key creation is critical for Console users — let it throw. Do this
+    // before removing old OAuth so every failure path retains a working login.
+    const apiKey = await createAndStoreApiKey(tokens.accessToken)
+    if (!apiKey) {
+      throw new Error(
+        'Unable to create API key. The server accepted the request but did not return a key.',
+      )
+    }
+    const removalResult = removeClaudeAIOAuthTokens()
+    if (removalResult.warning) {
+      logEvent('tengu_oauth_storage_warning', {
+        warning:
+          removalResult.warning as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      })
+    }
+    if (!removalResult.success) {
+      throw new Error('Failed to replace OAuth credentials in secure storage.')
+    }
+  }
+  clearOAuthTokenCache()
+
+  // Commit account metadata only after the replacement credential is durable.
   if (profile) {
     storeOAuthAccountInfo({
       accountUuid: profile.account.uuid,
@@ -71,42 +111,26 @@ export async function installOAuthTokens(tokens: OAuthTokens): Promise<void> {
       accountCreatedAt: profile.account.created_at,
     })
   } else if (tokens.tokenAccount) {
-    // Fallback to token exchange account data when profile endpoint fails
+    // Fallback to token exchange account data when profile endpoint fails.
     storeOAuthAccountInfo({
       accountUuid: tokens.tokenAccount.uuid,
       emailAddress: tokens.tokenAccount.emailAddress,
       organizationUuid: tokens.tokenAccount.organizationUuid,
     })
+  } else {
+    saveGlobalConfig(current => ({ ...current, oauthAccount: undefined }))
   }
 
-  const storageResult = saveOAuthTokensIfNeeded(tokens)
-  clearOAuthTokenCache()
-
-  if (storageResult.warning) {
-    logEvent('tengu_oauth_storage_warning', {
-      warning:
-        storageResult.warning as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-  }
-
-  // Roles and first-token-date may fail for limited-scope tokens (e.g.
-  // inference-only from setup-token). They're not required for core auth.
+  // Roles and first-token-date may fail for limited-scope tokens. They're not
+  // required for core auth and run only after the credential commit above.
   await fetchAndStoreUserRoles(tokens.accessToken).catch(err =>
     logForDebugging(String(err), { level: 'error' }),
   )
 
-  if (shouldUseClaudeAIAuth(tokens.scopes)) {
+  if (useClaudeAiAuth) {
     await fetchAndStoreClaudeCodeFirstTokenDate().catch(err =>
       logForDebugging(String(err), { level: 'error' }),
     )
-  } else {
-    // API key creation is critical for Console users — let it throw.
-    const apiKey = await createAndStoreApiKey(tokens.accessToken)
-    if (!apiKey) {
-      throw new Error(
-        'Unable to create API key. The server accepted the request but did not return a key.',
-      )
-    }
   }
 
   await clearAuthRelatedCaches()

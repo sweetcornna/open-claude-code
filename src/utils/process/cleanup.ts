@@ -155,6 +155,42 @@ async function tryRmdir(dirPath: string, fsImpl: FsOperations): Promise<void> {
   }
 }
 
+async function cleanupManagedSessionTree(
+  dirPath: string,
+  cutoffDate: Date,
+  fsImpl: FsOperations,
+  result: CleanupResult,
+): Promise<void> {
+  let entries
+  try {
+    const stats = fsImpl.lstatSync(dirPath)
+    if (!stats.isDirectory() || stats.isSymbolicLink()) return
+    entries = await fsImpl.readdir(dirPath)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') {
+      result.errors++
+    }
+    return
+  }
+
+  for (const entry of entries) {
+    const entryPath = join(dirPath, entry.name)
+    if (entry.isDirectory()) {
+      await cleanupManagedSessionTree(entryPath, cutoffDate, fsImpl, result)
+    } else if (entry.isFile()) {
+      try {
+        if (await unlinkIfOld(entryPath, cutoffDate, fsImpl)) {
+          result.messages++
+        }
+      } catch {
+        result.errors++
+      }
+    }
+  }
+
+  await tryRmdir(dirPath, fsImpl)
+}
+
 export async function cleanupOldSessionFiles(): Promise<CleanupResult> {
   const cutoffDate = getCutoffDate()
   const result: CleanupResult = { messages: 0, errors: 0 }
@@ -196,60 +232,19 @@ export async function cleanupOldSessionFiles(): Promise<CleanupResult> {
           result.errors++
         }
       } else if (entry.isDirectory()) {
-        // Session directory — clean up tool-results/<toolDir>/* beneath it
         const sessionDir = join(projectDir, entry.name)
-        const toolResultsDir = join(sessionDir, TOOL_RESULTS_SUBDIR)
-        let toolDirs
-        try {
-          toolDirs = await fsImpl.readdir(toolResultsDir)
-        } catch {
-          // No tool-results dir — still try to remove an empty session dir
-          await tryRmdir(sessionDir, fsImpl)
-          continue
-        }
-        for (const toolEntry of toolDirs) {
-          if (toolEntry.isFile()) {
-            try {
-              if (
-                await unlinkIfOld(
-                  join(toolResultsDir, toolEntry.name),
-                  cutoffDate,
-                  fsImpl,
-                )
-              ) {
-                result.messages++
-              }
-            } catch {
-              result.errors++
-            }
-          } else if (toolEntry.isDirectory()) {
-            const toolDirPath = join(toolResultsDir, toolEntry.name)
-            let toolFiles
-            try {
-              toolFiles = await fsImpl.readdir(toolDirPath)
-            } catch {
-              continue
-            }
-            for (const tf of toolFiles) {
-              if (!tf.isFile()) continue
-              try {
-                if (
-                  await unlinkIfOld(
-                    join(toolDirPath, tf.name),
-                    cutoffDate,
-                    fsImpl,
-                  )
-                ) {
-                  result.messages++
-                }
-              } catch {
-                result.errors++
-              }
-            }
-            await tryRmdir(toolDirPath, fsImpl)
-          }
-        }
-        await tryRmdir(toolResultsDir, fsImpl)
+        await cleanupManagedSessionTree(
+          join(sessionDir, TOOL_RESULTS_SUBDIR),
+          cutoffDate,
+          fsImpl,
+          result,
+        )
+        await cleanupManagedSessionTree(
+          join(sessionDir, 'subagents'),
+          cutoffDate,
+          fsImpl,
+          result,
+        )
         await tryRmdir(sessionDir, fsImpl)
       }
     }

@@ -165,10 +165,12 @@ export const macOsKeychainStorage = {
         CREDENTIALS_SERVICE_SUFFIX,
       )
       const username = getUsername()
-      execSyncWithDefaults_DEPRECATED(
-        `security delete-generic-password -a "${username}" -s "${storageServiceName}"`,
+      const result = execaSync(
+        'security',
+        ['delete-generic-password', '-a', username, '-s', storageServiceName],
+        { stdio: ['ignore', 'pipe', 'pipe'], reject: false },
       )
-      return true
+      return result.exitCode === 0 || result.exitCode === 44
     } catch (_e) {
       return false
     }

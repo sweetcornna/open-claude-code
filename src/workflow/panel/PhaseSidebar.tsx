@@ -1,6 +1,7 @@
 import React from 'react';
-import { Box, Text, useAnimationFrame } from '@anthropic/ink';
+import { Box, Text, stringWidth, useAnimationFrame } from '@anthropic/ink';
 import type { Theme } from '@anthropic/ink';
+import { truncateToWidth } from '../../utils/text/truncate.js';
 import type { AgentProgress } from '../progress/store.js';
 import { PHASE_COLOR, PHASE_MARK, type PhaseStatus } from './status.js';
 import { ALL_PHASE, type MergedPhase } from './selectors.js';
@@ -26,12 +27,14 @@ export function PhaseSidebar({
   agents,
   selectedIndex,
   focused,
+  width,
   maxRows,
 }: {
   phases: MergedPhase[];
   agents: AgentProgress[];
   selectedIndex: number;
   focused: boolean;
+  width: number;
   maxRows?: number;
 }): React.ReactNode {
   const [ref, time] = useAnimationFrame(FRAME_MS);
@@ -48,10 +51,15 @@ export function PhaseSidebar({
   const visible = rows.slice(start, start + contentBudget);
   const hiddenAbove = start;
   const hiddenBelow = rows.length - start - visible.length;
+  const rowWidth = Math.max(1, Math.trunc(width));
 
   return (
-    <Box ref={ref} flexDirection="column" height={rowBudget} overflowY="hidden">
-      {hiddenAbove > 0 ? <Text color="subtle">… {hiddenAbove} earlier</Text> : null}
+    <Box ref={ref} width={rowWidth} flexDirection="column" height={rowBudget} overflowY="hidden">
+      {hiddenAbove > 0 ? (
+        <Text color="subtle" wrap="truncate-end">
+          {truncateToWidth(`… ${hiddenAbove} earlier`, rowWidth)}
+        </Text>
+      ) : null}
       {visible.map((row, localIndex) => {
         const i = start + localIndex;
         const selected = i === selectedIndex;
@@ -59,6 +67,12 @@ export function PhaseSidebar({
         const running = row.status === 'running';
         const mark = running ? frame : row.status ? PHASE_MARK[row.status] : ' ';
         const color = (row.status ? PHASE_COLOR[row.status] : 'subtle') as keyof Theme;
+        const rawCounter = `${row.done}/${row.total}`;
+        const counterBudget = Math.max(0, rowWidth - 5);
+        const counter = counterBudget > 0 ? truncateToWidth(rawCounter, counterBudget) : '';
+        const counterGap = counter === '' ? 0 : 1;
+        const titleBudget = Math.max(0, rowWidth - 4 - counterGap - stringWidth(counter));
+        const title = titleBudget > 0 ? truncateToWidth(row.title, titleBudget) : '';
         return (
           <Box
             key={row.title}
@@ -74,18 +88,24 @@ export function PhaseSidebar({
             <Box flexShrink={1}>
               <Text wrap="truncate-end">
                 <Text color={selected ? 'claude' : undefined}>{highlighted ? '>' : ' '}</Text>{' '}
-                <Text color={color}>{mark}</Text> {row.title}
+                <Text color={color}>{mark}</Text> {title}
               </Text>
             </Box>
-            <Box flexShrink={0} marginLeft={1}>
-              <Text color="subtle" wrap="truncate-end">
-                {row.done}/{row.total}
-              </Text>
-            </Box>
+            {counter === '' ? null : (
+              <Box flexShrink={0} marginLeft={1}>
+                <Text color="subtle" wrap="truncate-end">
+                  {counter}
+                </Text>
+              </Box>
+            )}
           </Box>
         );
       })}
-      {hiddenBelow > 0 ? <Text color="subtle">… {hiddenBelow} more</Text> : null}
+      {hiddenBelow > 0 ? (
+        <Text color="subtle" wrap="truncate-end">
+          {truncateToWidth(`… ${hiddenBelow} more`, rowWidth)}
+        </Text>
+      ) : null}
     </Box>
   );
 }

@@ -55,6 +55,7 @@ function baseAuthMock() {
     // Boolean gates default to "no API-key auth configured".
     hasAnthropicApiKeyAuth: () => false,
     isAnthropicAuthEnabled: () => false,
+    removeClaudeAIOAuthTokens: () => ({ success: true }),
   }
 }
 

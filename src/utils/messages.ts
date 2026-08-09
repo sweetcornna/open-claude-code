@@ -54,6 +54,7 @@ export {
 export {
   createAssistantMessage,
   createAssistantAPIErrorMessage,
+  createAssistantAPIErrorMessageFromError,
   createUserMessage,
   prepareUserContent,
   createUserInterruptionMessage,

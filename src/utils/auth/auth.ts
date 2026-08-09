@@ -1144,8 +1144,6 @@ export async function saveApiKey(apiKey: string): Promise<void> {
     )
   }
 
-  // Store as primary API key
-  await maybeRemoveApiKeyFromMacOSKeychain()
   let savedToKeychain = false
   if (process.platform === 'darwin') {
     try {
@@ -1161,10 +1159,15 @@ export async function saveApiKey(apiKey: string): Promise<void> {
       // Process monitors only see "security -i", not the password
       const command = `add-generic-password -U -a "${username}" -s "${storageServiceName}" -X "${hexValue}"\n`
 
-      await execa('security', ['-i'], {
+      const result = await execa('security', ['-i'], {
         input: command,
         reject: false,
       })
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `Failed to save API key to keychain (security exited with code ${result.exitCode})`,
+        )
+      }
 
       logEvent('tengu_api_key_saved_to_keychain', {})
       savedToKeychain = true
@@ -1189,7 +1192,7 @@ export async function saveApiKey(apiKey: string): Promise<void> {
     return {
       ...current,
       // Only save to config if keychain save failed or not on darwin
-      primaryApiKey: savedToKeychain ? current.primaryApiKey : apiKey,
+      primaryApiKey: savedToKeychain ? undefined : apiKey,
       customApiKeyResponses: {
         ...current.customApiKeyResponses,
         approved: approved.includes(normalizedKey)
@@ -1214,7 +1217,7 @@ export function isCustomApiKeyApproved(apiKey: string): boolean {
 }
 
 export async function removeApiKey(): Promise<void> {
-  await maybeRemoveApiKeyFromMacOSKeychain()
+  await maybeRemoveApiKeyFromMacOSKeychainThrows()
 
   // Also remove from config instead of returning early, for older clients
   // that set keys before we supported keychain.
@@ -1228,11 +1231,43 @@ export async function removeApiKey(): Promise<void> {
   clearLegacyApiKeyPrefetch()
 }
 
-async function maybeRemoveApiKeyFromMacOSKeychain(): Promise<void> {
+/**
+ * Remove only Anthropic OAuth state while preserving MCP, plugin, and other
+ * credentials stored in the same secure-storage record.
+ */
+export function removeClaudeAIOAuthTokens(): {
+  success: boolean
+  warning?: string
+} {
+  const secureStorage = getSecureStorage()
+  const storageBackend =
+    secureStorage.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+
   try {
-    await maybeRemoveApiKeyFromMacOSKeychainThrows()
-  } catch (e) {
-    logError(e)
+    const storageData = secureStorage.read()
+    if (!storageData?.claudeAiOauth) {
+      getClaudeAIOAuthTokens.cache?.clear?.()
+      return { success: true }
+    }
+    const updated = { ...storageData }
+    delete updated.claudeAiOauth
+    const updateStatus = secureStorage.update(updated)
+    if (!updateStatus.success) {
+      logEvent('tengu_oauth_tokens_delete_failed', { storageBackend })
+    }
+    getClaudeAIOAuthTokens.cache?.clear?.()
+    clearBetasCaches()
+    clearToolSchemaCache()
+    return updateStatus
+  } catch (error) {
+    logError(error)
+    logEvent('tengu_oauth_tokens_delete_exception', {
+      storageBackend,
+      error: errorMessage(
+        error,
+      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    })
+    return { success: false, warning: 'Failed to remove OAuth tokens' }
   }
 }
 
@@ -1257,21 +1292,27 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
     secureStorage.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 
   try {
-    const storageData = secureStorage.read() || {}
-    const existingOauth = storageData.claudeAiOauth
-
-    storageData.claudeAiOauth = {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresAt: tokens.expiresAt,
-      scopes: tokens.scopes,
-      // Profile fetch in refreshOAuthToken swallows errors and returns null on
-      // transient failures (network, 5xx, rate limit). Don't clobber a valid
-      // stored subscription with null — fall back to the existing value.
-      subscriptionType:
-        tokens.subscriptionType ?? existingOauth?.subscriptionType ?? null,
-      rateLimitTier:
-        tokens.rateLimitTier ?? existingOauth?.rateLimitTier ?? null,
+    const existingData = secureStorage.read() || {}
+    const existingOauth = existingData.claudeAiOauth
+    // Never mutate the object returned by read(). The keychain implementation
+    // also caches that reference, so a failed update would otherwise make the
+    // process believe the replacement succeeded even though disk still held the
+    // old refresh token.
+    const storageData = {
+      ...existingData,
+      claudeAiOauth: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: tokens.expiresAt,
+        scopes: tokens.scopes,
+        // Profile fetch in refreshOAuthToken swallows errors and returns null on
+        // transient failures (network, 5xx, rate limit). Don't clobber a valid
+        // stored subscription with null — fall back to the existing value.
+        subscriptionType:
+          tokens.subscriptionType ?? existingOauth?.subscriptionType ?? null,
+        rateLimitTier:
+          tokens.rateLimitTier ?? existingOauth?.rateLimitTier ?? null,
+      },
     }
 
     const updateStatus = secureStorage.update(storageData)

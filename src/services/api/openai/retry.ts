@@ -1,3 +1,5 @@
+import { isRetryableAPIError } from '../retryClassification.js'
+
 /** Ten retries after the initial request (eleven total attempts). */
 const OPENAI_MAX_RETRIES = 10
 const DEFAULT_MAX_RETRIES = OPENAI_MAX_RETRIES
@@ -19,12 +21,18 @@ type OpenAIRetryDelay = (delayMs: number, signal: AbortSignal) => Promise<void>
 export class OpenAIRequestError extends Error {
   readonly retryable: boolean
   readonly retryAfterMs: number | undefined
+  readonly type: string | undefined
+  readonly code: string | number | undefined
+  readonly status: string | number | undefined
 
   constructor(
     message: string,
     options: {
       retryable: boolean
       retryAfterMs?: number
+      type?: string
+      code?: string | number
+      status?: string | number
       cause?: unknown
     },
   ) {
@@ -32,6 +40,9 @@ export class OpenAIRequestError extends Error {
     this.name = 'OpenAIRequestError'
     this.retryable = options.retryable
     this.retryAfterMs = options.retryAfterMs
+    this.type = options.type
+    this.code = options.code
+    this.status = options.status
   }
 }
 
@@ -101,46 +112,7 @@ export async function createOpenAIResponseError(
     response.status >= 500
   return new OpenAIRequestError(
     `${label} request failed (${response.status})${body ? `: ${body.slice(0, 500)}` : ''}`,
-    { retryable, retryAfterMs },
-  )
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === 'AbortError') ||
-    (error instanceof Error && error.name === 'AbortError')
-  )
-}
-
-function shouldRetry(error: unknown): boolean {
-  if (isAbortError(error)) return false
-  if (error instanceof OpenAIRequestError) return error.retryable
-
-  const status =
-    typeof error === 'object' && error !== null && 'status' in error
-      ? (error as { status?: unknown }).status
-      : undefined
-  if (typeof status === 'number') {
-    return (
-      status === 408 ||
-      status === 409 ||
-      status === 425 ||
-      status === 429 ||
-      status >= 500
-    )
-  }
-
-  if (!(error instanceof Error)) return false
-  const code =
-    'code' in error && typeof error.code === 'string' ? error.code : ''
-  return (
-    error instanceof TypeError ||
-    /^(?:ECONN|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|UND_ERR_)/i.test(
-      code,
-    ) ||
-    /fetch failed|terminated|socket hang ?up|network error|connection (?:error|closed|reset|refused|timeout)|request timed out|timeout error|premature close|upstream request failed|no healthy upstream|bad gateway|service unavailable|gateway time-?out/i.test(
-      error.message,
-    )
+    { retryable, retryAfterMs, status: response.status },
   )
 }
 
@@ -202,7 +174,7 @@ export async function retryOpenAIRequest<T>(
     try {
       return await operation(attempt)
     } catch (error) {
-      const retryable = shouldRetry(error)
+      const retryable = isRetryableAPIError(error)
       if (options.signal.aborted || !retryable) {
         throw error
       }

@@ -51,6 +51,8 @@ export type RemoteAgentTaskState = TaskStateBase & {
   title: string;
   todoList: TodoList;
   log: SDKMessage[];
+  /** Total SDK events received, including events trimmed from `log`. */
+  logEventCount: number;
   /**
    * Long-running agent that will not be marked as complete after the first `result`.
    */
@@ -545,7 +547,7 @@ Remote review did not produce output (${reason}). Tell the user to retry /ultrar
 /**
  * Extract todo list from SDK messages (finds last TodoWrite tool use).
  */
-function extractTodoListFromLog(log: SDKMessage[]): TodoList {
+function extractTodoListFromLog(log: SDKMessage[]): TodoList | undefined {
   const todoListMessage = log.findLast(
     (msg): msg is SDKAssistantMessage =>
       msg.type === 'assistant' &&
@@ -555,7 +557,7 @@ function extractTodoListFromLog(log: SDKMessage[]): TodoList {
       ),
   );
   if (!todoListMessage) {
-    return [];
+    return undefined;
   }
 
   const contentBlocks = (todoListMessage.message?.content ?? []) as Array<{
@@ -567,12 +569,12 @@ function extractTodoListFromLog(log: SDKMessage[]): TodoList {
     (block): block is ToolUseBlock => block.type === 'tool_use' && block.name === TodoWriteTool.name,
   )?.input;
   if (!input) {
-    return [];
+    return undefined;
   }
 
   const parsedInput = TodoWriteTool.inputSchema.safeParse(input);
   if (!parsedInput.success) {
-    return [];
+    return undefined;
   }
 
   return parsedInput.data.todos;
@@ -626,6 +628,7 @@ export function registerRemoteAgentTask(options: {
     title: session.title,
     todoList: [],
     log: [],
+    logEventCount: 0,
     isRemoteReview,
     isUltraplan,
     isLongRunning,
@@ -722,6 +725,7 @@ async function restoreRemoteAgentTasksImpl(context: TaskContext): Promise<void> 
       title: meta.title,
       todoList: [],
       log: [],
+      logEventCount: 0,
       isRemoteReview: meta.isRemoteReview,
       isUltraplan: meta.isUltraplan,
       isLongRunning: meta.isLongRunning,
@@ -740,6 +744,8 @@ async function restoreRemoteAgentTasksImpl(context: TaskContext): Promise<void> 
  * Start polling for remote session updates.
  * Returns a cleanup function to stop polling.
  */
+const MAX_LONG_RUNNING_LOG_EVENTS = 200;
+
 function startRemoteSessionPolling(taskId: string, context: TaskContext): () => void {
   let isRunning = true;
   const POLL_INTERVAL_MS = 1000;
@@ -751,6 +757,8 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
   let consecutiveIdlePolls = 0;
   let lastEventId: string | null = null;
   let accumulatedLog: SDKMessage[] = [];
+  let logEventCount = 0;
+  let cachedRichContent: string | null = null;
   // Cached across ticks so we don't re-scan the full log. Tag appears once
   // at end of run; scanning only the delta (response.newEvents) is O(new).
   let cachedReviewContent: string | null = null;
@@ -772,8 +780,10 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
       const response = await pollRemoteSessionEvents(task.sessionId, lastEventId);
       lastEventId = response.lastEventId;
       const logGrew = response.newEvents.length > 0;
+      let newTodoList: TodoList | undefined;
       if (logGrew) {
         accumulatedLog = [...accumulatedLog, ...response.newEvents];
+        logEventCount += response.newEvents.length;
         const deltaText = response.newEvents
           .map(msg => {
             if (msg.type === 'assistant') {
@@ -790,13 +800,37 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
         if (deltaText) {
           appendTaskOutput(taskId, deltaText + '\n');
         }
+
+        newTodoList = extractTodoListFromLog(response.newEvents);
+        const richContent = tryExtractRichContent(task, accumulatedLog);
+        if (richContent !== null) {
+          cachedRichContent = richContent;
+        }
+
+        if (
+          task.isLongRunning &&
+          !task.isUltraplan &&
+          !task.isRemoteReview &&
+          accumulatedLog.length > MAX_LONG_RUNNING_LOG_EVENTS
+        ) {
+          accumulatedLog = accumulatedLog.slice(-MAX_LONG_RUNNING_LOG_EVENTS);
+        }
       }
 
       if (response.sessionStatus === 'archived') {
         updateTaskState<RemoteAgentTaskState>(taskId, context.setAppState, t =>
-          t.status === 'running' ? { ...t, status: 'completed', endTime: Date.now() } : t,
+          t.status === 'running'
+            ? {
+                ...t,
+                status: 'completed',
+                endTime: Date.now(),
+                log: accumulatedLog,
+                logEventCount,
+                todoList: newTodoList ?? t.todoList,
+              }
+            : t,
         );
-        const richContent = tryExtractRichContent(task, accumulatedLog);
+        const richContent = cachedRichContent;
         if (richContent) {
           enqueueRichRemoteNotification(
             taskId,
@@ -820,9 +854,18 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
         const completionResult = await checker(task.remoteTaskMetadata);
         if (completionResult !== null) {
           updateTaskState<RemoteAgentTaskState>(taskId, context.setAppState, t =>
-            t.status === 'running' ? { ...t, status: 'completed', endTime: Date.now() } : t,
+            t.status === 'running'
+              ? {
+                  ...t,
+                  status: 'completed',
+                  endTime: Date.now(),
+                  log: accumulatedLog,
+                  logEventCount,
+                  todoList: newTodoList ?? t.todoList,
+                }
+              : t,
           );
-          const richContent = tryExtractRichContent(task, accumulatedLog);
+          const richContent = cachedRichContent;
           if (richContent) {
             enqueueRichRemoteNotification(
               taskId,
@@ -968,10 +1011,10 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
           ...prevTask,
           status: newStatus === 'starting' ? 'running' : newStatus,
           log: accumulatedLog,
-          // Only re-scan for TodoWrite when log grew — log is append-only,
-          // so no growth means no new tool_use blocks. Avoids findLast +
-          // some + find + safeParse every second when idle.
-          todoList: logGrew ? extractTodoListFromLog(accumulatedLog) : prevTask.todoList,
+          logEventCount,
+          // No TodoWrite in the delta means no update. A successfully parsed
+          // empty list is distinct and explicitly clears the previous list.
+          todoList: newTodoList ?? prevTask.todoList,
           reviewProgress: newProgress ?? prevTask.reviewProgress,
           endTime: result || sessionDone || reviewTimedOut ? Date.now() : undefined,
         };
@@ -1021,7 +1064,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
 
         // finalStatus is 'completed' | 'failed' on this path — kill is a
         // separate code path (RemoteAgentTask.kill) and never reaches here.
-        const richContent = tryExtractRichContent(task, accumulatedLog);
+        const richContent = cachedRichContent;
         if (richContent) {
           enqueueRichRemoteNotification(
             taskId,

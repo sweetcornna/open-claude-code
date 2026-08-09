@@ -35,15 +35,16 @@ const RETRY_REASON_MAX = 14;
  * Exported for unit test coverage.
  */
 export function truncateLabel(raw: string, max: number): string {
+  if (max <= 0) return '';
   if (stringWidth(raw) <= max) return raw;
   const m = raw.match(/#\d+$/);
-  if (!m) return truncateToWidthNoEllipsis(raw, max);
+  if (!m) return truncateToWidth(raw, max);
   const suffix = m[0]; // includes the # sign
   const prefix = raw.slice(0, raw.length - suffix.length);
   const available = max - stringWidth(suffix) - 1; // -1 reserved for …
   // A suffix wider than the whole budget leaves nothing to elide into; fall
   // back to a plain right-truncation rather than emitting a bare `…#12345`.
-  if (available <= 0) return truncateToWidthNoEllipsis(raw, max);
+  if (available <= 0) return truncateToWidth(raw, max);
   return `${truncateToWidthNoEllipsis(prefix, available)}…${suffix}`;
 }
 
@@ -83,11 +84,13 @@ export function AgentList({
   agents,
   selectedIndex,
   focused,
+  width,
   emptyText,
 }: {
   agents: AgentProgress[];
   selectedIndex: number;
   focused: boolean;
+  width: number;
   /** Override for the empty state — a status filter emptying the list is not the same as an empty phase. */
   emptyText?: string;
 }): React.ReactNode {
@@ -101,8 +104,9 @@ export function AgentList({
   // One clock read per render, so every row's live duration ticks together
   // rather than drifting apart across the map.
   const now = Date.now();
+  const rowWidth = Math.max(1, Math.trunc(width));
   return (
-    <Box ref={ref} flexDirection="column">
+    <Box ref={ref} width={rowWidth} flexDirection="column">
       {agents.map((a, i) => {
         const v = agentVisual(a);
         const selected = i === selectedIndex;
@@ -113,8 +117,13 @@ export function AgentList({
         // point: the row stops looking busy while nothing is happening.
         const mark = retry !== null ? '↻' : running ? frame : v.mark;
         const markColor = (retry !== null ? 'warning' : v.color) as keyof Theme;
-        const label = truncateLabel(a.label ?? `agent-${a.id}`, LABEL_MAX);
+        const rawMeta = retry ?? agentMetaText(a);
+        const metaBudget = Math.max(0, rowWidth - TIME_COL - 3);
+        const meta = metaBudget > 0 ? truncateToWidth(rawMeta, metaBudget) : '';
+        const labelBudget = Math.min(LABEL_MAX, Math.max(0, rowWidth - stringWidth(meta) - TIME_COL - 3));
+        const label = truncateLabel(a.label ?? `agent-${a.id}`, labelBudget);
         const elapsed = agentElapsedMs(a, now);
+        const elapsedText = elapsed === null ? '–' : truncateToWidth(formatDuration(elapsed), TIME_COL);
         return (
           <Box
             key={a.id}
@@ -132,10 +141,10 @@ export function AgentList({
                   the label, but a pane narrower than the column itself still squeezes it,
                   and the default wrap would put the row back on two lines. */}
               <Text color={retry !== null ? 'warning' : 'subtle'} wrap="truncate-end">
-                {retry ?? agentMetaText(a)}
+                {meta}
               </Text>
               <Box width={TIME_COL} justifyContent="flex-end">
-                <Text color="subtle">{elapsed === null ? '–' : formatDuration(elapsed)}</Text>
+                <Text color="subtle">{elapsedText}</Text>
               </Box>
             </Box>
           </Box>

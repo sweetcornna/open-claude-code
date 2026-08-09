@@ -38,6 +38,15 @@ import {
  *   DeepSeek reports usage.prompt_cache_hit_tokens; some proxies flatten it to
  *   usage.cached_tokens. All three map to Anthropic's cache_read_input_tokens.
  */
+class IncompleteOpenAIStreamError extends Error {
+  readonly retryable = true
+
+  constructor() {
+    super('OpenAI-compatible stream ended before finish_reason')
+    this.name = 'IncompleteOpenAIStreamError'
+  }
+}
+
 export async function* adaptOpenAIStreamToAnthropic(
   stream: AsyncIterable<ChatCompletionChunk>,
   model: string,
@@ -325,6 +334,10 @@ export async function* adaptOpenAIStreamToAnthropic(
       pendingFinishReason = choice.finish_reason
       pendingHasToolCalls = toolBlocks.size > 0
     }
+  }
+
+  if (pendingFinishReason === null) {
+    throw new IncompleteOpenAIStreamError()
   }
 
   // Safety: close any remaining open blocks

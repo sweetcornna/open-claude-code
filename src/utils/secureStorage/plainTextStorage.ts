@@ -1,13 +1,9 @@
-import { chmodSync } from 'fs'
 import { join } from 'path'
 import { getClaudeConfigHomeDir } from '../config/envUtils.js'
 import { getErrnoCode } from '../runtime/errors.js'
 import { getFsImplementation } from '../filesystem/fsOperations.js'
-import {
-  jsonParse,
-  jsonStringify,
-  writeFileSync_DEPRECATED,
-} from '../telemetry/slowOperations.js'
+import { jsonParse, jsonStringify } from '../telemetry/slowOperations.js'
+import { writePrivateFileAtomicSync } from './atomicWrite.js'
 import type { SecureStorage, SecureStorageData } from './types.js'
 
 function getStoragePath(): { storageDir: string; storagePath: string } {
@@ -54,11 +50,7 @@ export const plainTextStorage = {
         }
       }
 
-      writeFileSync_DEPRECATED(storagePath, jsonStringify(data), {
-        encoding: 'utf8',
-        flush: false,
-      })
-      chmodSync(storagePath, 0o600)
+      writePrivateFileAtomicSync(storagePath, jsonStringify(data))
       return {
         success: true,
         warning: 'Warning: Storing credentials in plaintext.',

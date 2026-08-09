@@ -1,29 +1,19 @@
 /**
  * Tests for queryModelOpenAI in index.ts.
  *
- * Focused on the two bugs fixed:
- *  1. stop_reason was always null in the assembled AssistantMessage because
- *     partialMessage (from message_start) has stop_reason: null, and the
- *     stop_reason captured from message_delta was never applied.
- *  2. partialMessage was not reset to null after message_stop, so the safety
- *     fallback at the end of the loop would yield a second identical
- *     AssistantMessage (causing doubled content in the next API request).
+ * Focused on stream assembly invariants: final stop reasons and usage must be
+ * retained, message_stop must produce exactly one AssistantMessage, and EOF
+ * before message_stop must surface as an API error instead of accepting partial
+ * output as a completed turn.
  *
  * Strategy: mock getOpenAIClient + adaptOpenAIStreamToAnthropic so we can
  * feed pre-built Anthropic events directly into queryModelOpenAI and inspect
  * what it emits — without any real HTTP calls.
  */
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from 'bun:test'
+import { afterAll, describe, expect, mock, test } from 'bun:test'
 import * as realModelProvider from '@ant/model-provider'
 import type { SystemPrompt } from '@ant/model-provider'
+import * as realMessages from '../../../../utils/messages.js'
 import { makeSharedModuleMock } from '../../../../../tests/mocks/sharedModuleMock'
 import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
@@ -141,6 +131,7 @@ async function* eventStream(events: BetaRawMessageStreamEvent[]) {
 async function runQueryModel(
   events: BetaRawMessageStreamEvent[],
   envOverrides: Record<string, string | undefined> = {},
+  tools: any[] = [],
 ) {
   // Wire events into the mocked stream adapter
   _nextEvents = events
@@ -164,7 +155,7 @@ async function runQueryModel(
 
     const minimalOptions: any = {
       model: 'test-model',
-      tools: [],
+      tools,
       agents: [],
       querySource: 'main_loop',
       getToolPermissionContext: async () => ({
@@ -179,7 +170,7 @@ async function runQueryModel(
     for await (const item of queryModelOpenAI(
       [],
       { type: 'text', text: '' } as any,
-      [],
+      tools as any,
       new AbortController().signal,
       minimalOptions,
     )) {
@@ -207,7 +198,6 @@ async function runQueryModel(
 // We mock at module level. Bun's mock.module replaces the module for the
 // entire file, so we configure the stream per-test via a shared variable.
 let _nextEvents: BetaRawMessageStreamEvent[] = []
-let _searchExtraToolsEnabled = false
 
 /** Captured arguments from the last chat.completions.create() call */
 let _lastCreateArgs: Record<string, any> | null = null
@@ -336,13 +326,16 @@ mock.module('../../../../utils/session/context.js', () => ({
   getMaxThinkingTokensForModel: () => 0,
 }))
 
-mock.module('../../../../utils/messages.js', () => ({
+const messagesMock = makeSharedModuleMock(
+  '../../../../utils/messages.js',
+  realMessages,
+).setup({
   normalizeMessagesForAPI: (msgs: any) => msgs,
   normalizeContentFromAPI: (blocks: any[]) => blocks,
   createUserMessage: (opts: any) => ({
     type: 'user',
     message: { role: 'user', content: opts.content },
-    uuid: 'user-uuid',
+    uuid: '00000000-0000-0000-0000-000000000001',
     timestamp: new Date().toISOString(),
     isMeta: opts.isMeta,
   }),
@@ -352,24 +345,13 @@ mock.module('../../../../utils/messages.js', () => ({
       content: [{ type: 'text', text: opts.content }],
       apiError: opts.apiError,
     },
-    uuid: 'error-uuid',
+    uuid: '00000000-0000-0000-0000-000000000002',
     timestamp: new Date().toISOString(),
   }),
-}))
+})
 
 mock.module('../../../../utils/telemetry/api.js', () => ({
   toolToAPISchema: async (t: any) => t,
-}))
-
-mock.module('../../../../utils/tools/searchExtraTools.js', () => ({
-  isSearchExtraToolsEnabled: async () => _searchExtraToolsEnabled,
-  extractDiscoveredToolNames: () => new Set(),
-  isDeferredToolsDeltaEnabled: () => false,
-}))
-
-mock.module('../../../../tools/SearchExtraToolsTool/prompt.js', () => ({
-  isDeferredTool: () => false,
-  SEARCH_EXTRA_TOOLS_TOOL_NAME: '__tool_search__',
 }))
 
 mock.module('../../../../cost-tracker.js', () => ({
@@ -477,26 +459,31 @@ describe('queryModelOpenAI — stop_reason propagation', () => {
     const contentMsg = assistantMessages[0]!
     expect(contentMsg.message.stop_reason).toBe('max_tokens')
     // Second item is the error signal (has apiError set)
-    const errorMsg = assistantMessages[1]!.message as any
+    const errorMsg = assistantMessages[1] as any
     expect(errorMsg.apiError).toBe('max_output_tokens')
   })
 
-  test('stop_reason is null when no message_delta was received (safety fallback path)', async () => {
-    // Stream ends without message_stop — triggers the safety fallback branch.
-    // stop_reason stays null since no message_delta was ever seen.
+  test('reports a premature close when message_stop is missing', async () => {
     _nextEvents = [
       makeMessageStart(),
       makeContentBlockStart(0, 'text'),
       makeTextDelta(0, 'partial'),
       makeContentBlockStop(0),
-      // No message_delta / message_stop
     ]
 
-    const { assistantMessages } = await runQueryModel(_nextEvents)
+    const { assistantMessages, streamEvents } = await runQueryModel(_nextEvents)
 
-    // Safety fallback should yield the partial content
+    expect(
+      streamEvents.some(
+        item =>
+          (item.event as { type?: string }).type === 'content_block_delta',
+      ),
+    ).toBe(true)
     expect(assistantMessages).toHaveLength(1)
-    expect(assistantMessages[0]!.message.stop_reason).toBeNull()
+    expect(assistantMessages[0]).toMatchObject({
+      isApiErrorMessage: true,
+      error: 'server_error',
+    })
   })
 })
 
@@ -600,18 +587,20 @@ describe('queryModelOpenAI — no duplicate AssistantMessage (partialMessage res
     expect(assistantMessages).toHaveLength(1)
   })
 
-  test('safety fallback path still yields message when stream ends without message_stop', async () => {
-    // Simulates a stream that cuts off without the normal termination sequence.
+  test('does not assemble a partial message after abrupt EOF', async () => {
     _nextEvents = [
       makeMessageStart(),
       makeContentBlockStart(0, 'text'),
       makeTextDelta(0, 'abrupt end'),
-      // No content_block_stop, no message_delta, no message_stop
     ]
 
     const { assistantMessages } = await runQueryModel(_nextEvents)
 
     expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]).toMatchObject({
+      isApiErrorMessage: true,
+      error: 'server_error',
+    })
   })
 })
 
@@ -686,59 +675,94 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
   })
 })
 
+function makeApiTool(name: string, isMcp = false) {
+  return {
+    name,
+    isMcp,
+    input_schema: { type: 'object', properties: {} },
+    prompt: async () => `${name} prompt`,
+  }
+}
+
+function capturedToolNames(): string[] {
+  const capturedTools = (_lastCreateArgs?.tools ?? []) as {
+    function?: { name?: string }
+  }[]
+  return capturedTools.flatMap(tool =>
+    tool.function?.name ? [tool.function.name] : [],
+  )
+}
+
 describe('queryModelOpenAI — deferred MCP tool visibility', () => {
-  test('prepends available deferred MCP tools to OpenAI messages', async () => {
-    _searchExtraToolsEnabled = true
-    _nextEvents = [makeMessageStart(), makeMessageStop()]
+  const searchTool = makeApiTool('SearchExtraTools')
+  const executeTool = makeApiTool('ExecuteExtraTool')
+  const firstMcpTool = makeApiTool('mcp__wechat__send_message', true)
 
-    try {
-      const { queryModelOpenAI } = await import('../index.js')
-      const tools: any[] = [
-        {
-          name: 'SearchExtraTools',
-          isMcp: false,
-          input_schema: { type: 'object', properties: {} },
-          prompt: async () => 'Search deferred tools',
-        },
-        {
-          name: 'mcp__wechat__send_message',
-          isMcp: true,
-          input_schema: { type: 'object', properties: {} },
-          prompt: async () => 'Send a WeChat message',
-        },
-      ]
+  test('defers MCP schemas when both gateway endpoints are available', async () => {
+    await runQueryModel([makeMessageStart(), makeMessageStop()], {}, [
+      searchTool,
+      executeTool,
+      firstMcpTool,
+    ])
 
-      const options: any = {
-        model: 'test-model',
-        tools: [],
-        agents: [],
-        querySource: 'main_loop',
-        getToolPermissionContext: async () => ({
-          alwaysAllow: [],
-          alwaysDeny: [],
-          needsPermission: [],
-          mode: 'default',
-          isBypassingPermissions: false,
-        }),
-      }
+    expect(capturedToolNames()).toEqual([
+      'SearchExtraTools',
+      'ExecuteExtraTool',
+    ])
+    expect(JSON.stringify(_lastCreateArgs!.messages)).toContain(
+      '<available-deferred-tools>\\nmcp__wechat__send_message\\n</available-deferred-tools>',
+    )
+  })
 
-      for await (const _item of queryModelOpenAI(
-        [],
-        { type: 'text', text: '' } as any,
-        tools as any,
-        new AbortController().signal,
-        options,
-      )) {
-        // Exhaust generator so request body is built.
-      }
+  test('drops SearchExtraTools and sends MCP schemas when ExecuteExtraTool is missing', async () => {
+    await runQueryModel([makeMessageStart(), makeMessageStop()], {}, [
+      searchTool,
+      firstMcpTool,
+    ])
 
-      expect(_lastCreateArgs).not.toBeNull()
-      expect(JSON.stringify(_lastCreateArgs!.messages)).toContain(
-        '<available-deferred-tools>\\nmcp__wechat__send_message\\n</available-deferred-tools>',
-      )
-    } finally {
-      _searchExtraToolsEnabled = false
-    }
+    expect(capturedToolNames()).toEqual(['mcp__wechat__send_message'])
+    expect(JSON.stringify(_lastCreateArgs!.messages)).not.toContain(
+      '<available-deferred-tools>',
+    )
+  })
+
+  test('sends MCP schemas directly when SearchExtraTools is missing', async () => {
+    await runQueryModel([makeMessageStart(), makeMessageStop()], {}, [
+      executeTool,
+      firstMcpTool,
+    ])
+
+    expect(capturedToolNames()).toEqual([
+      'ExecuteExtraTool',
+      'mcp__wechat__send_message',
+    ])
+    expect(JSON.stringify(_lastCreateArgs!.messages)).not.toContain(
+      '<available-deferred-tools>',
+    )
+  })
+
+  test('re-evaluates the gateway and sends refreshed MCP schemas on the next request', async () => {
+    await runQueryModel([makeMessageStart(), makeMessageStop()], {}, [
+      searchTool,
+      executeTool,
+      firstMcpTool,
+    ])
+    expect(capturedToolNames()).toEqual([
+      'SearchExtraTools',
+      'ExecuteExtraTool',
+    ])
+
+    const refreshedMcpTool = makeApiTool('mcp__github__create_issue', true)
+    await runQueryModel([makeMessageStart(), makeMessageStop()], {}, [
+      searchTool,
+      firstMcpTool,
+      refreshedMcpTool,
+    ])
+
+    expect(capturedToolNames()).toEqual([
+      'mcp__wechat__send_message',
+      'mcp__github__create_issue',
+    ])
   })
 })
 
@@ -747,5 +771,6 @@ describe('queryModelOpenAI — deferred MCP tool visibility', () => {
 // them into beforeAll. Without this they stay installed for every later file
 // in the shard — mock.module is process-global.
 afterAll(() => {
+  messagesMock.reset()
   sharedMock.reset()
 })

@@ -492,7 +492,7 @@ describe('createOpenAIResponsesStream', () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     const bytes = new TextEncoder().encode(
       'data: {"type":"first","text":"hé"}\r\n\r\n' +
-        'data: {"type":"second","text":"尾"}',
+        'data: {"type":"response.completed","text":"尾"}',
     )
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -519,8 +519,82 @@ describe('createOpenAIResponsesStream', () => {
 
     expect(events).toEqual([
       { type: 'first', text: 'hé' },
-      { type: 'second', text: '尾' },
+      { type: 'response.completed', text: '尾' },
     ])
+  })
+
+  for (const [label, firstResponse] of [
+    ['empty', ''],
+    ['metadata-only', 'data: {"type":"response.created"}\n\n'],
+  ] as const) {
+    test(`retries a clean ${label} EOF before a terminal event`, async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key'
+      process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+      let calls = 0
+      const fetchOverride = (async () => {
+        calls++
+        return new Response(
+          calls === 1
+            ? firstResponse
+            : 'data: {"type":"ready"}\n\ndata: [DONE]\n\n',
+        )
+      }) as unknown as typeof fetch
+
+      const stream = await createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+      })
+      const events: Record<string, unknown>[] = []
+      for await (const event of stream) events.push(event)
+
+      expect(calls).toBe(2)
+      expect(events).toEqual([{ type: 'ready' }])
+    })
+  }
+
+  test('throws without retry when clean EOF follows committed output', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(
+        'data: {"type":"response.output_text.delta","delta":"visible"}\n\n',
+      )
+    }) as unknown as typeof fetch
+
+    const stream = await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.6-sol',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+    const events: Record<string, unknown>[] = []
+    let caught: unknown
+    try {
+      for await (const event of stream) events.push(event)
+    } catch (error) {
+      caught = error
+    }
+
+    expect(events).toEqual([
+      { type: 'response.output_text.delta', delta: 'visible' },
+    ])
+    expect(calls).toBe(1)
+    expect((caught as Error).message).toBe(
+      'Responses API stream ended before a terminal event',
+    )
+    expect((caught as { retryable?: boolean }).retryable).toBe(false)
   })
 
   test('retries when the stream stalls before its first event', async () => {
@@ -553,7 +627,7 @@ describe('createOpenAIResponsesStream', () => {
     expect(events).toEqual([{ type: 'ready' }])
   })
 
-  test('retries an idle timeout after control events but before output', async () => {
+  test('retries an idle timeout after metadata but before output', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
     process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
@@ -566,7 +640,13 @@ describe('createOpenAIResponsesStream', () => {
             start(controller) {
               controller.enqueue(
                 new TextEncoder().encode(
-                  'data: {"type":"response.created"}\n\n',
+                  [
+                    'data: {"type":"response.created"}',
+                    'data: {"type":"response.output_item.added","item":{"type":"reasoning","id":"rs_1"}}',
+                    'data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1","encrypted_content":"ENC"}}',
+                    'data: {"type":"response.content_part.added","part":{"type":"output_text","text":""}}',
+                    'data: {"type":"response.reasoning_summary_text.delta","delta":""}',
+                  ].join('\n\n') + '\n\n',
                 ),
               )
             },
@@ -601,7 +681,11 @@ describe('createOpenAIResponsesStream', () => {
       calls++
       return new Response(
         calls === 1
-          ? 'data: {"type":"response.failed","response":{"error":{"code":"server_error","message":"upstream timeout"}}}\n\n'
+          ? [
+              'data: {"type":"response.output_item.added","item":{"type":"reasoning","id":"rs_1"}}',
+              'data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1"}}',
+              'data: {"type":"response.failed","response":{"error":{"code":"server_error","message":"upstream timeout"}}}',
+            ].join('\n\n') + '\n\n'
           : 'data: {"type":"ready"}\n\ndata: [DONE]\n\n',
       )
     }) as unknown as typeof fetch
@@ -622,6 +706,51 @@ describe('createOpenAIResponsesStream', () => {
     expect(calls).toBe(2)
     expect(events).toEqual([{ type: 'ready' }])
   })
+
+  for (const [label, firstResponse] of [
+    [
+      'standard event:error',
+      'event: error\ndata: {"code":"UNAVAILABLE","message":"backend unavailable"}\n\n',
+    ],
+    [
+      'top-level data.error',
+      'data: {"error":{"type":"internal_error","message":"backend failed"}}\n\n',
+    ],
+    [
+      'response.error envelope',
+      'data: {"type":"response.error","response":{"error":{"status":"DEADLINE_EXCEEDED","message":"deadline"}}}\n\n',
+    ],
+  ] as const) {
+    test(`retries ${label} before output`, async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key'
+      process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+      let calls = 0
+      const fetchOverride = (async () => {
+        calls++
+        return new Response(
+          calls === 1
+            ? firstResponse
+            : 'data: {"type":"ready"}\n\ndata: [DONE]\n\n',
+        )
+      }) as unknown as typeof fetch
+
+      const stream = await createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+      })
+      const events: Record<string, unknown>[] = []
+      for await (const event of stream) events.push(event)
+
+      expect(calls).toBe(2)
+      expect(events).toEqual([{ type: 'ready' }])
+    })
+  }
 
   test('does not retry permanent model errors from the stream', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
@@ -649,23 +778,88 @@ describe('createOpenAIResponsesStream', () => {
     expect(calls).toBe(1)
   })
 
-  test('throws without retry when the stream stalls after yielding output', async () => {
-    process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
-    process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
-    let calls = 0
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(
-          new TextEncoder().encode(
-            'data: {"type":"response.output_text.delta","delta":"x"}\n\n',
-          ),
-        )
+  for (const [label, committedEvent] of [
+    ['text output', { type: 'response.output_text.delta', delta: 'x' }],
+    ['refusal output', { type: 'response.refusal.delta', delta: 'no' }],
+    [
+      'thinking output',
+      { type: 'response.reasoning_summary_text.delta', delta: 'thinking' },
+    ],
+    [
+      'function call identity',
+      {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { type: 'function_call', call_id: 'call_1', name: 'Bash' },
       },
+    ],
+    [
+      'function call arguments',
+      {
+        type: 'response.function_call_arguments.delta',
+        output_index: 0,
+        delta: '{"path":"/tmp"}',
+      },
+    ],
+  ] as const) {
+    test(`throws without retry when the stream stalls after ${label}`, async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key'
+      process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+      process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
+      let calls = 0
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify(committedEvent)}\n\n`,
+            ),
+          )
+        },
+      })
+      const fetchOverride = (async () => {
+        calls++
+        return new Response(body)
+      }) as unknown as typeof fetch
+
+      const stream = await createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+      })
+      const events: Record<string, unknown>[] = []
+      let caught: unknown
+      try {
+        for await (const event of stream) events.push(event)
+      } catch (error) {
+        caught = error
+      }
+
+      expect(events).toEqual([committedEvent])
+      expect(calls).toBe(1)
+      expect((caught as Error).message).toBe(
+        'Responses API stream idle timeout after 30ms',
+      )
+      expect((caught as { retryable?: boolean }).retryable).toBe(false)
     })
+  }
+
+  test('marks an SSE API error after committed output as non-retryable', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    let calls = 0
     const fetchOverride = (async () => {
       calls++
-      return new Response(body)
+      return new Response(
+        [
+          'data: {"type":"response.output_text.delta","delta":"visible"}',
+          'data: {"type":"response.failed","response":{"error":{"type":"server_error","message":"upstream failed"}}}',
+        ].join('\n\n') + '\n\n',
+      )
     }) as unknown as typeof fetch
 
     const stream = await createOpenAIResponsesStream({
@@ -686,11 +880,11 @@ describe('createOpenAIResponsesStream', () => {
       caught = error
     }
 
-    expect(events).toEqual([{ type: 'response.output_text.delta', delta: 'x' }])
+    expect(events).toEqual([
+      { type: 'response.output_text.delta', delta: 'visible' },
+    ])
     expect(calls).toBe(1)
-    expect((caught as Error).message).toBe(
-      'Responses API stream idle timeout after 30ms',
-    )
+    expect((caught as { retryable?: boolean }).retryable).toBe(false)
   })
 })
 

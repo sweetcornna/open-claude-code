@@ -188,15 +188,10 @@ export async function refreshOAuthToken(
     // the global-config profile fields AND the secure-storage subscription data.
     // Routine refreshes satisfy both, so we cut ~7M req/day fleet-wide.
     //
-    // Checking secure storage (not just config) matters for the
-    // CLAUDE_CODE_OAUTH_REFRESH_TOKEN re-login path: installOAuthTokens runs
-    // performLogout() AFTER we return, wiping secure storage. If we returned
-    // null for subscriptionType here, saveOAuthTokensIfNeeded would persist
-    // null ?? (wiped) ?? null = null, and every future refresh would see the
-    // config guard fields satisfied and skip again, permanently losing the
-    // subscription type for paying users. By passing through existing values,
-    // the re-login path writes cached ?? wiped ?? null = cached; and if secure
-    // storage was already empty we fall through to the fetch.
+    // Checking secure storage (not just config) also preserves subscription
+    // metadata across refresh-token re-login. installOAuthTokens replaces only
+    // claudeAiOauth now, but a refresh response can still omit these profile
+    // fields; passing the stored values through avoids replacing them with null.
     const config = getGlobalConfig()
     const existing = getClaudeAIOAuthTokens()
     const haveProfileAlready =

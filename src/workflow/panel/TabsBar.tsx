@@ -27,16 +27,35 @@ const MAX_TABS = 6;
  * - Per-tab name truncated via truncateLabel (keeps `#xxxx` suffix for disambiguation).
  * - Row capped at MAX_TABS; remainder rendered as a `+N` marker so total width is bounded.
  */
-export function TabsBar({ runs, activeRunId }: { runs: RunProgress[]; activeRunId: string | null }): React.ReactNode {
+export function TabsBar({
+  runs,
+  activeRunId,
+  maxWidth = Number.POSITIVE_INFINITY,
+}: {
+  runs: RunProgress[];
+  activeRunId: string | null;
+  maxWidth?: number;
+}): React.ReactNode {
   if (runs.length === 0) {
     return <Text color="subtle">(no runs)</Text>;
   }
-  const { runs: visible, overflow } = capTabsForDisplay(runs, MAX_TABS);
+  const capped = capTabsForDisplay(runs, MAX_TABS, activeRunId).runs;
+  const visible: Array<{ run: RunProgress; label: string }> = [];
+  let usedWidth = 0;
+  for (const run of capped) {
+    const label = truncateLabel(tabLabel(run.workflowName, run.runId), TAB_LABEL_MAX);
+    const tabWidth = stringWidth(label) + 4;
+    const remaining = runs.length - visible.length - 1;
+    const overflowWidth = remaining > 0 ? stringWidth(`+${remaining}`) + 2 : 0;
+    if (visible.length > 0 && usedWidth + tabWidth + overflowWidth > maxWidth) break;
+    visible.push({ run, label });
+    usedWidth += tabWidth;
+  }
+  const overflow = runs.length - visible.length;
   return (
     <Box>
-      {visible.map(r => {
+      {visible.map(({ run: r, label }) => {
         const active = r.runId === activeRunId;
-        const label = truncateLabel(tabLabel(r.workflowName, r.runId), TAB_LABEL_MAX);
         // Display columns, not code units: `.length` under-counts CJK (and the `…`
         // that truncateLabel inserts), so the underline stopped short of the label
         // it is supposed to sit under.  +2 covers the status dot and its space.

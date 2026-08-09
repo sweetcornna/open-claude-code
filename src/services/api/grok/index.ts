@@ -24,8 +24,10 @@ import {
   adaptOpenAIStreamToAnthropic,
   resolveGrokModel,
 } from '@ant/model-provider'
-import { normalizeMessagesForAPI } from '../../../utils/messages.js'
-import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
+import {
+  createAssistantAPIErrorMessageFromError,
+  normalizeMessagesForAPI,
+} from '../../../utils/messages.js'
 import { toolToAPISchema } from '../../../utils/telemetry/api.js'
 import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
@@ -39,7 +41,7 @@ import {
 import type { Options } from '../claude.js'
 import { resolveAppliedEffort } from '../../../utils/model/effort.js'
 import { resolveGrokReasoningEffort } from './reasoning.js'
-import { createAssistantAPIErrorMessage } from '../../../utils/messages.js'
+import { OpenAIRequestError } from '../openai/retry.js'
 import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
 import { isUserAbort } from '../userAbort.js'
 
@@ -162,6 +164,7 @@ export async function* queryModelGrok(
       cache_read_input_tokens: 0,
     }
     let stopReason: string | null = null
+    let sawMessageStop = false
     let ttftMs = 0
     const start = Date.now()
 
@@ -232,6 +235,7 @@ export async function* queryModelGrok(
           break
         }
         case 'message_stop': {
+          sawMessageStop = true
           if (partialMessage) {
             for (const output of assembleFinalAssistantOutputs({
               partialMessage,
@@ -275,6 +279,12 @@ export async function* queryModelGrok(
       } as StreamEvent
     }
 
+    if (!sawMessageStop) {
+      throw new OpenAIRequestError('Grok stream ended before message_stop', {
+        retryable: true,
+      })
+    }
+
     // Record LLM observation in Langfuse (no-op if not configured)
     recordLLMObservation(options.langfuseTrace ?? null, {
       model: grokModel,
@@ -292,25 +302,6 @@ export async function* queryModelGrok(
       completionStartTime: ttftMs > 0 ? new Date(start + ttftMs) : undefined,
       tools: convertToolsToLangfuse(toolSchemas as unknown[]),
     })
-
-    // Safety: if the stream ended without message_stop, assemble what we have
-    // so the turn still carries usage instead of vanishing.
-    if (partialMessage) {
-      for (const output of assembleFinalAssistantOutputs({
-        partialMessage,
-        contentBlocks,
-        tools,
-        agentId: options.agentId,
-        usage,
-        stopReason,
-        ...(Number.isFinite(grokMaxTokens) && grokMaxTokens > 0
-          ? { maxTokens: grokMaxTokens }
-          : {}),
-        maxTokensEnvHint: GROK_MAX_TOKENS_ENV_HINT,
-      })) {
-        yield output
-      }
-    }
   } catch (error) {
     // A user interrupt is not a failure — see isUserAbort.
     if (isUserAbort(error, signal)) {
@@ -319,12 +310,10 @@ export async function* queryModelGrok(
     }
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Grok] Error: ${errorMessage}`, { level: 'error' })
-    yield createAssistantAPIErrorMessage({
+    yield createAssistantAPIErrorMessageFromError({
       content: `API Error: ${errorMessage}`,
       apiError: 'api_error',
-      error: (error instanceof Error
-        ? error
-        : new Error(String(error))) as unknown as SDKAssistantMessageError,
+      sourceError: error,
     })
   }
 }

@@ -54,6 +54,59 @@ class GeminiRequestError extends Error {
   }
 }
 
+class GeminiStreamError extends Error {
+  readonly code: string | number | undefined
+  readonly status: string | number | undefined
+  readonly retryable: boolean | undefined
+
+  constructor(
+    message: string,
+    details: {
+      code?: string | number
+      status?: string | number
+      retryable?: boolean
+      cause: unknown
+    },
+  ) {
+    super(message, { cause: details.cause })
+    this.name = 'GeminiStreamError'
+    this.code = details.code
+    this.status = details.status
+    this.retryable = details.retryable
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function geminiStreamError(
+  parsed: unknown,
+  eventName?: string,
+): GeminiStreamError | undefined {
+  const event = asRecord(parsed)
+  if (!event) return undefined
+  const data = asRecord(event.data)
+  const nested = asRecord(event.error) ?? asRecord(data?.error)
+  if (eventName !== 'error' && !nested) return undefined
+  const error = nested ?? event
+  const scalar = (value: unknown): string | number | undefined =>
+    typeof value === 'string' || typeof value === 'number' ? value : undefined
+  const code = scalar(error.code)
+  const status = scalar(error.status)
+  const message =
+    typeof error.message === 'string'
+      ? error.message
+      : 'Gemini stream returned an error envelope'
+  return new GeminiStreamError(message, {
+    ...(code !== undefined ? { code } : {}),
+    ...(status !== undefined ? { status } : {}),
+    cause: error,
+  })
+}
+
 /**
  * Whether a call with these options will go out over Antigravity rather than
  * the public Gemini endpoint.
@@ -168,7 +221,9 @@ export async function* streamGeminiGenerateContent(params: {
   })
 
   if (!response.ok) {
-    const body = await response.text()
+    const body = await response
+      .text()
+      .catch(error => `unable to read response body: ${errorMessage(error)}`)
     throw new GeminiRequestError(
       `Gemini API request failed (${response.status} ${response.statusText}): ${body || 'empty response body'}`,
       response,
@@ -182,6 +237,33 @@ export async function* streamGeminiGenerateContent(params: {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let hasTerminalEvent = false
+
+  const parseFrame = (
+    frame: { data?: string; event?: string },
+    trailing: boolean,
+  ): GeminiStreamChunk | null => {
+    if (!frame.data) return null
+    if (frame.data === '[DONE]') {
+      hasTerminalEvent = true
+      return null
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(frame.data)
+    } catch (error) {
+      throw new Error(
+        `${trailing ? 'Failed to parse trailing' : 'Failed to parse'} Gemini SSE payload: ${errorMessage(error)}`,
+      )
+    }
+    const streamError = geminiStreamError(parsed, frame.event)
+    if (streamError) throw streamError
+    const chunk = unwrapChunk(parsed)
+    if (chunk?.candidates?.some(candidate => candidate.finishReason)) {
+      hasTerminalEvent = true
+    }
+    return chunk
+  }
 
   try {
     while (true) {
@@ -193,34 +275,32 @@ export async function* streamGeminiGenerateContent(params: {
       buffer = remaining
 
       for (const frame of frames) {
-        if (!frame.data || frame.data === '[DONE]') continue
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(frame.data)
-        } catch (error) {
-          throw new Error(
-            `Failed to parse Gemini SSE payload: ${errorMessage(error)}`,
-          )
-        }
-        const chunk = unwrapChunk(parsed)
+        const chunk = parseFrame(frame, false)
         if (chunk) yield chunk
       }
     }
 
     buffer += decoder.decode()
-    const { frames } = parseSSEFrames(buffer)
+    const { frames, remaining } = parseSSEFrames(buffer)
     for (const frame of frames) {
-      if (!frame.data || frame.data === '[DONE]') continue
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(frame.data)
-      } catch (error) {
-        throw new Error(
-          `Failed to parse trailing Gemini SSE payload: ${errorMessage(error)}`,
-        )
-      }
-      const chunk = unwrapChunk(parsed)
+      const chunk = parseFrame(frame, true)
       if (chunk) yield chunk
+    }
+    if (remaining.trim()) {
+      const event = remaining.match(/(?:^|\n)event:\s*([^\r\n]+)/)?.[1]
+      const data = remaining
+        .split(/\r?\n/)
+        .filter(line => line.startsWith('data:'))
+        .map(line => line.slice(5).trimStart())
+        .join('\n')
+      const chunk = parseFrame({ data, event }, true)
+      if (chunk) yield chunk
+    }
+    if (!hasTerminalEvent) {
+      throw new GeminiStreamError(
+        'Gemini stream ended before a terminal event',
+        { retryable: true, cause: undefined },
+      )
     }
   } finally {
     reader.releaseLock()

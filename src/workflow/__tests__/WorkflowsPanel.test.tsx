@@ -20,8 +20,9 @@ function fakeTty(): NodeJS.ReadStream {
 }
 
 // truncateLabel: short label as-is; with `#number` suffix keep suffix, truncate prefix + ellipsis;
-// without suffix, cut from the right. Lets audit workflow's verify:${dim}#${idx} multi-finding still be distinguishable.
-test('truncateLabel: short label as-is; with #number suffix keep suffix and truncate prefix; without suffix cut from right', () => {
+// without suffix, truncate from the right with a stable ellipsis. Lets audit workflow's
+// verify:${dim}#${idx} multi-finding still be distinguishable.
+test('truncateLabel: short labels stay intact and long labels retain a stable ellipsis', () => {
   // short label as-is
   expect(truncateLabel('agent-1', 18)).toBe('agent-1');
   expect(truncateLabel('review:bugs', 18)).toBe('review:bugs');
@@ -32,8 +33,8 @@ test('truncateLabel: short label as-is; with #number suffix keep suffix and trun
   expect(truncateLabel('verify:architecture#15', 18)).toBe('verify:archite…#15');
   // multi-digit #idx also distinguishable
   expect(truncateLabel('verify:correctness#2', 18)).toBe('verify:correctn…#2');
-  // without #number suffix: cut from right (legacy behavior)
-  expect(truncateLabel('a-very-long-label-no-suffix', 18)).toBe('a-very-long-label-');
+  // without #number suffix: reserve the final display column for the ellipsis
+  expect(truncateLabel('a-very-long-label-no-suffix', 18)).toBe('a-very-long-label…');
 });
 
 // The budget is display columns, not code units. Every case above is ASCII, where
@@ -42,13 +43,13 @@ test('truncateLabel: short label as-is; with #number suffix keep suffix and trun
 // column, and wraps the row (which the selection highlight then paints twice).
 test('truncateLabel: CJK labels are budgeted by display width, not string length', () => {
   // 9 chars, 18 columns: `.length` would call this a fit for a budget of 12.
-  expect(truncateLabel('中文工作流名称测试', 12)).toBe('中文工作流名');
+  expect(truncateLabel('中文工作流名称测试', 12)).toBe('中文工作流…');
   // Already at budget → untouched.
   expect(truncateLabel('中文工作流名', 12)).toBe('中文工作流名');
   // `#n` suffix survives, and `…` (one column) is accounted for.
   expect(truncateLabel('中文工作流名称测试#7', 12)).toBe('中文工作…#7');
-  // Mixed-width label: the ASCII tail is what gets dropped.
-  expect(truncateLabel('中文abcdefgh', 8)).toBe('中文abcd');
+  // Mixed-width labels reserve the final column for the ellipsis too.
+  expect(truncateLabel('中文abcdefgh', 8)).toBe('中文abc…');
 });
 
 // STATUS_DOT covers four states, all visible dot characters.

@@ -83,10 +83,10 @@ import { isUserAbort } from '../userAbort.js'
 import { getModelMaxOutputTokens } from '../../../utils/session/context.js'
 import type { Options } from '../claude.js'
 import {
-  createAssistantAPIErrorMessage,
+  createAssistantAPIErrorMessageFromError,
   createUserMessage,
 } from '../../../utils/messages.js'
-import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
+import { OpenAIRequestError } from './retry.js'
 import {
   isSearchExtraToolsEnabled,
   isDeferredToolsDeltaEnabled,
@@ -251,8 +251,8 @@ export async function* queryModelOpenAI(
     // Never include deferred tools in the API tools array — they are invoked
     // via ExecuteExtraTool which looks them up from the global tool registry
     // at runtime. Keeping the tools array stable preserves the prompt cache.
-    let filteredTools = tools
-    if (useSearchExtraTools && deferredToolNames.size > 0) {
+    let filteredTools: Tools
+    if (useSearchExtraTools) {
       filteredTools = tools.filter(tool => {
         // Always include non-deferred tools
         if (!deferredToolNames.has(tool.name)) return true
@@ -261,6 +261,13 @@ export async function* queryModelOpenAI(
         // All other deferred tools are excluded — use ExecuteExtraTool instead
         return false
       })
+    } else {
+      // Without the complete SearchExtraTools + ExecuteExtraTool path, search has
+      // no useful outcome. Drop only its schema and expose every other tool that
+      // survived permission filtering directly, matching the Anthropic path.
+      filteredTools = tools.filter(
+        tool => !toolMatchesName(tool, SEARCH_EXTRA_TOOLS_TOOL_NAME),
+      )
     }
 
     // 6. Build tool schemas with deferLoading flag
@@ -491,6 +498,7 @@ export async function* queryModelOpenAI(
     const collectedMessages: AssistantMessage[] = []
     let partialMessage: BetaMessage | null = null
     let stopReason: string | null = null
+    let sawMessageStop = false
     let usage = {
       input_tokens: 0,
       output_tokens: 0,
@@ -563,6 +571,7 @@ export async function* queryModelOpenAI(
           break
         }
         case 'message_stop': {
+          sawMessageStop = true
           // Assemble ONE AssistantMessage with ALL content blocks, matching the
           // Anthropic SDK path. Real usage (input + output tokens) is available
           // here and injected so tokenCountWithEstimation() can read it.
@@ -611,6 +620,13 @@ export async function* queryModelOpenAI(
       } as StreamEvent
     }
 
+    if (!sawMessageStop) {
+      throw new OpenAIRequestError(
+        'OpenAI Chat stream ended before message_stop',
+        { retryable: true },
+      )
+    }
+
     // Record LLM observation in Langfuse (no-op if not configured)
     recordLLMObservation(options.langfuseTrace ?? null, {
       model: openaiModel,
@@ -629,23 +645,6 @@ export async function* queryModelOpenAI(
       tools: convertToolsToLangfuse(toolSchemas as unknown[]),
       ...(enableThinking && { thinking: { type: 'enabled' } }),
     })
-
-    // Safety: if stream ended without message_stop, assemble and yield whatever we have
-    if (partialMessage) {
-      for (const output of assembleFinalAssistantOutputs({
-        partialMessage,
-        contentBlocks,
-        tools,
-        agentId: options.agentId,
-        usage,
-        stopReason,
-        maxTokens,
-        maxTokensEnvHint: OPENAI_MAX_TOKENS_ENV_HINT,
-        providerMetadata: reasoningMetadata(reasoningItems),
-      })) {
-        yield output
-      }
-    }
   } catch (error) {
     // A user interrupt is not a failure — return silently and let query.ts
     // render the interrupt, matching the first-party path. See isUserAbort.
@@ -655,12 +654,10 @@ export async function* queryModelOpenAI(
     }
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[OpenAI] Error: ${errorMessage}`, { level: 'error' })
-    yield createAssistantAPIErrorMessage({
+    yield createAssistantAPIErrorMessageFromError({
       content: `API Error: ${errorMessage}`,
       apiError: 'api_error',
-      error: (error instanceof Error
-        ? error
-        : new Error(String(error))) as unknown as SDKAssistantMessageError,
+      sourceError: error,
     })
   }
 }

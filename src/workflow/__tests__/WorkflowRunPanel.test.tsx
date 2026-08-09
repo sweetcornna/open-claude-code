@@ -45,6 +45,9 @@ async function renderPanel(
   rows: number,
   run: RunProgress,
   callbacks: {
+    runs?: RunProgress[];
+    onNextRun?: () => void;
+    onPreviousRun?: () => void;
     onCancelAgent?: (runId: string, agentId: number) => void;
     onCancelRun?: (runId: string) => void;
   } = {},
@@ -70,6 +73,9 @@ async function renderPanel(
   const panel = (current: RunProgress) => (
     <WorkflowRunPanel
       run={current}
+      runs={callbacks.runs}
+      onNextRun={callbacks.onNextRun}
+      onPreviousRun={callbacks.onPreviousRun}
       onClose={() => {}}
       onCancelAgent={callbacks.onCancelAgent ?? (() => {})}
       onCancelRun={callbacks.onCancelRun ?? (() => {})}
@@ -112,6 +118,93 @@ for (const [columns, rows, expectedWidth, expectedHeight] of [
     }
   });
 }
+
+test('Tab cycles pane focus and phase arrows filter the agent list', async () => {
+  const run = workflowRun({
+    declaredPhases: ['Scan', 'Verify'],
+    agents: [
+      {
+        id: 1,
+        label: 'scan:auth',
+        phase: 'Scan',
+        status: 'running',
+        startedAt: Date.now() - 1_000,
+      },
+      {
+        id: 2,
+        label: 'verify:api',
+        phase: 'Verify',
+        status: 'running',
+        startedAt: Date.now() - 1_000,
+      },
+    ],
+    agentCount: 2,
+  });
+  const mounted = await renderPanel(110, 28, run);
+  try {
+    expect(stripAnsi(mounted.output())).toContain('scan:auth');
+    expect(stripAnsi(mounted.output())).not.toContain('verify:api');
+
+    mounted.clearOutput();
+    mounted.stdin.write('\t');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    mounted.stdin.write('\t');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(stripAnsi(mounted.output())).toContain('x stop workflow');
+
+    mounted.clearOutput();
+    mounted.stdin.write('\u001b[A');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const allPhaseFrame = stripAnsi(mounted.output());
+    expect(allPhaseFrame).toContain('scan:auth');
+    expect(allPhaseFrame).toContain('verify:api');
+
+    mounted.clearOutput();
+    mounted.stdin.write('\u001b[B');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(stripAnsi(mounted.output())).toContain('scan:auth');
+
+    mounted.clearOutput();
+    mounted.stdin.write('\u001b[B');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const verifyPhaseFrame = stripAnsi(mounted.output());
+    expect(verifyPhaseFrame).toContain('verify:api');
+    expect(verifyPhaseFrame).not.toContain('scan:auth');
+  } finally {
+    mounted.unmount();
+  }
+});
+
+test('[ and ] switch runs while Tab leaves run selection unchanged', async () => {
+  let nextRuns = 0;
+  let previousRuns = 0;
+  const run = workflowRun();
+  const mounted = await renderPanel(110, 28, run, {
+    runs: [run],
+    onNextRun: () => {
+      nextRuns += 1;
+    },
+    onPreviousRun: () => {
+      previousRuns += 1;
+    },
+  });
+  try {
+    mounted.stdin.write('\t');
+    mounted.stdin.write('\t');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(nextRuns).toBe(0);
+    expect(previousRuns).toBe(0);
+
+    mounted.stdin.write(']');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(nextRuns).toBe(1);
+    mounted.stdin.write('[');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(previousRuns).toBe(1);
+  } finally {
+    mounted.unmount();
+  }
+});
 
 test('long agent/result/error content and agent churn do not resize the frame', async () => {
   const longAgents = Array.from({ length: 60 }, (_, index) => ({

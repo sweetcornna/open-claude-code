@@ -19,6 +19,10 @@ const { isDeferredTool } = await import(
   '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 )
 const { setGoalPresent } = await import('../../services/goal/goalPresence.js')
+const {
+  isDeferredToolExecutionPathAvailable,
+  isSearchExtraToolsToolAvailable,
+} = await import('../../utils/tools/searchExtraTools.js')
 
 type MockTool = {
   name: string
@@ -54,6 +58,7 @@ describe('CORE_TOOLS', () => {
       'Agent',
       'AskUserQuestion',
       'SearchExtraTools',
+      'ExecuteExtraTool',
       'WebSearch',
       'WebFetch',
       'LSP',
@@ -83,6 +88,29 @@ describe('CORE_TOOLS', () => {
     // but we verify the cast was applied by checking it's a Set
     expect(CORE_TOOLS).toBeInstanceOf(Set)
     // The `as ReadonlySet<string>` ensures type-level immutability
+  })
+})
+
+describe('deferred tool execution path availability', () => {
+  test('requires both SearchExtraTools and ExecuteExtraTool', () => {
+    const tools = [{ name: 'SearchExtraTools' }, { name: 'ExecuteExtraTool' }]
+
+    expect(isSearchExtraToolsToolAvailable(tools)).toBe(true)
+    expect(isDeferredToolExecutionPathAvailable(tools)).toBe(true)
+  })
+
+  test('is unavailable when ExecuteExtraTool is missing', () => {
+    const tools = [{ name: 'SearchExtraTools' }]
+
+    expect(isSearchExtraToolsToolAvailable(tools)).toBe(true)
+    expect(isDeferredToolExecutionPathAvailable(tools)).toBe(false)
+  })
+
+  test('is unavailable when SearchExtraTools is missing', () => {
+    const tools = [{ name: 'ExecuteExtraTool' }]
+
+    expect(isSearchExtraToolsToolAvailable(tools)).toBe(false)
+    expect(isDeferredToolExecutionPathAvailable(tools)).toBe(false)
   })
 })
 

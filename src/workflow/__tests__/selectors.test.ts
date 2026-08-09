@@ -195,6 +195,16 @@ test('capTabsForDisplay: over cap -> first maxTabs runs + overflow count', () =>
   expect(capped.overflow).toBe(2)
 })
 
+test('capTabsForDisplay: rotates the window to keep the active run first', () => {
+  const runs = Array.from({ length: 10 }, (_, i) =>
+    run({ runId: `r${i}`, status: 'running' }),
+  )
+  const capped = capTabsForDisplay(runs, 4, 'r8')
+
+  expect(capped.runs.map(r => r.runId)).toEqual(['r8', 'r9', 'r0', 'r1'])
+  expect(capped.overflow).toBe(6)
+})
+
 test('capTabsForDisplay: exactly at cap -> no overflow', () => {
   const runs = Array.from({ length: 8 }, (_, i) =>
     run({ runId: `r${i}`, status: 'running' }),

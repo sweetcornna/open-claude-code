@@ -8,7 +8,6 @@ import type {
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { AFK_MODE_BETA_HEADER } from 'src/constants/betas.js'
-import type { SDKAssistantMessageError } from 'src/entrypoints/agentSdkTypes.js'
 import type {
   AssistantMessage,
   Message,
@@ -1160,27 +1159,6 @@ export function classifyAPIError(error: unknown): string {
     return 'connection_error'
   }
 
-  return 'unknown'
-}
-
-export function categorizeRetryableAPIError(
-  error: APIError,
-): SDKAssistantMessageError {
-  if (
-    error.status === 529 ||
-    error.message?.includes('"type":"overloaded_error"')
-  ) {
-    return 'rate_limit'
-  }
-  if (error.status === 429) {
-    return 'rate_limit'
-  }
-  if (error.status === 401 || error.status === 403) {
-    return 'authentication_failed'
-  }
-  if (error.status !== undefined && error.status >= 408) {
-    return 'server_error'
-  }
   return 'unknown'
 }
 

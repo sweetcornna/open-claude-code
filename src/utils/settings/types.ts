@@ -708,7 +708,16 @@ export const SettingsSchema = lazySchema(() =>
           'Skip the WebFetch blocklist check for enterprise environments with restrictive security policies',
         ),
       webSearchAdapter: z
-        .enum(['api', 'bing', 'brave', 'codex', 'exa', 'free', 'gemini'])
+        .enum([
+          'api',
+          'bing',
+          'brave',
+          'codex',
+          'deepseek',
+          'exa',
+          'free',
+          'gemini',
+        ])
         .optional()
         // Unknown values (notably the removed "tavily", which still sits in
         // settings.json for anyone who picked it) must not null the whole
@@ -717,16 +726,20 @@ export const SettingsSchema = lazySchema(() =>
         .catch(undefined)
         .describe(
           'Pin web search to ONE backend instead of aggregating sources. ' +
-            '"api" Anthropic server-side search, "codex" OpenAI Responses web_search, ' +
-            '"gemini" googleSearch grounding, "free" keyless multi-engine search, ' +
+            '"api" Anthropic server-side search, "deepseek" DeepSeek server-side search, ' +
+            '"codex" OpenAI Responses web_search, "gemini" googleSearch grounding, ' +
+            '"free" keyless multi-engine search, ' +
             '"bing" scrapes Bing HTML, "brave" Brave Search API, "exa" Exa AI. ' +
             'Unset (recommended) runs every connected source in parallel — see /search-setting.',
         ),
       webSearchSources: z
         .object({
           anthropic: z.boolean().optional(),
+          deepseek: z.boolean().optional(),
           gemini: z.boolean().optional(),
           codex: z.boolean().optional(),
+          brave: z.boolean().optional(),
+          exa: z.boolean().optional(),
           free: z.boolean().optional(),
         })
         .optional()

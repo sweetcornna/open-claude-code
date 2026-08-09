@@ -50,6 +50,28 @@ async function collectEvents(
 }
 
 describe('adaptOpenAIStreamToAnthropic', () => {
+  test('rejects EOF before a finish reason', async () => {
+    const result = collectEvents([
+      makeChunk({
+        choices: [
+          { index: 0, delta: { content: 'partial' }, finish_reason: null },
+        ],
+      }),
+    ])
+
+    await expect(result).rejects.toMatchObject({
+      name: 'IncompleteOpenAIStreamError',
+      retryable: true,
+    })
+  })
+
+  test('rejects an empty stream', async () => {
+    await expect(collectEvents([])).rejects.toMatchObject({
+      name: 'IncompleteOpenAIStreamError',
+      retryable: true,
+    })
+  })
+
   test('emits message_start on first chunk', async () => {
     const events = await collectEvents([
       makeChunk({

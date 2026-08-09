@@ -7,7 +7,9 @@ import { AgentDetail } from './AgentDetail.js';
 import { AgentList } from './AgentList.js';
 import { PhaseSidebar } from './PhaseSidebar.js';
 import {
+  ALL_PHASE,
   type AgentStatusFilter,
+  filterAgentsByPhase,
   filterAgentsByStatus,
   formatDuration,
   mergePhases,
@@ -162,23 +164,32 @@ export function WorkflowRunPanel({
 
   const [activePane, setActivePane] = useState<FocusColumn>('agents');
   const [selection, setSelection] = useState({ agentId: null as number | null, visualIndex: 0 });
+  const [selectedPhase, setSelectedPhase] = useState<string>(run?.currentPhase ?? ALL_PHASE);
   const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>('all');
   const [confirmTarget, setConfirmTarget] = useState<CancelTarget | null>(null);
   const detailScrollRef = useRef<ScrollBoxHandle | null>(null);
+  const runIdRef = useRef(run?.runId);
 
   useEffect(() => {
+    if (runIdRef.current === run?.runId) return;
+    runIdRef.current = run?.runId;
     setSelection({ agentId: null, visualIndex: 0 });
+    setSelectedPhase(run?.currentPhase ?? ALL_PHASE);
     setStatusFilter('all');
     setActivePane('agents');
     setConfirmTarget(null);
-  }, [run?.runId]);
+  }, [run?.runId, run?.currentPhase]);
 
   useEffect(() => {
     if (layout === 'medium' && activePane === 'phases') setActivePane('agents');
   }, [activePane, layout]);
 
   const allAgents = run?.agents ?? [];
-  const visibleAgents = filterAgentsByStatus(allAgents, statusFilter);
+  const phases = run ? mergePhases(run) : [];
+  const phaseTitles = [ALL_PHASE, ...phases.map(phase => phase.title)];
+  const selectedPhaseIndex = Math.max(0, phaseTitles.indexOf(selectedPhase));
+  const selectedPhaseTitle = phaseTitles[selectedPhaseIndex];
+  const visibleAgents = filterAgentsByStatus(filterAgentsByPhase(allAgents, selectedPhaseTitle), statusFilter);
   const resolvedSelection = resolveAgentSelection(visibleAgents, selection);
   const selectedAgent = resolvedSelection.agent;
 
@@ -189,10 +200,6 @@ export function WorkflowRunPanel({
   useEffect(() => {
     detailScrollRef.current?.scrollTo(0);
   }, [run?.runId, selectedAgent?.id]);
-
-  const phases = run ? mergePhases(run) : [];
-  const selectedPhaseTitle = selectedAgent?.phase ?? run?.currentPhase ?? undefined;
-  const selectedPhaseIndex = Math.max(0, phases.findIndex(phase => phase.title === selectedPhaseTitle) + 1);
 
   const agentRowBudget = Math.max(1, paneContentHeight - 2);
   const agentWindow = windowAgents(visibleAgents, resolvedSelection.index, agentRowBudget);
@@ -235,6 +242,16 @@ export function WorkflowRunPanel({
     setSelection({ agentId: agent?.id ?? null, visualIndex: index });
   };
 
+  const movePhase = (delta: 1 | -1): void => {
+    const index = Math.min(phaseTitles.length - 1, Math.max(0, selectedPhaseIndex + delta));
+    setSelectedPhase(phaseTitles[index] ?? ALL_PHASE);
+  };
+
+  const moveFocusedSelection = (delta: 1 | -1): void => {
+    if (activePane === 'phases') movePhase(delta);
+    else if (activePane === 'agents') moveAgent(delta);
+  };
+
   const movePane = (direction: 'left' | 'right'): void => {
     if (layout === 'narrow') {
       setActivePane(current => cyclePane(current, layout, direction === 'right' ? 1 : -1));
@@ -248,18 +265,14 @@ export function WorkflowRunPanel({
   };
 
   const handlers: WorkflowKeyboardHandlers = {
-    nextTab: () => {
-      if (layout === 'narrow') setActivePane(current => cyclePane(current, layout, 1));
-      else onNextRun?.();
-    },
-    prevTab: () => {
-      if (layout === 'narrow') setActivePane(current => cyclePane(current, layout, -1));
-      else onPreviousRun?.();
-    },
+    nextPane: () => setActivePane(current => cyclePane(current, layout, 1)),
+    prevPane: () => setActivePane(current => cyclePane(current, layout, -1)),
+    nextRun: () => onNextRun?.(),
+    prevRun: () => onPreviousRun?.(),
     focusLeft: () => movePane('left'),
     focusRight: () => movePane('right'),
-    moveUp: () => moveAgent(-1),
-    moveDown: () => moveAgent(1),
+    moveUp: () => moveFocusedSelection(-1),
+    moveDown: () => moveFocusedSelection(1),
     openDetail: () => {
       if (selectedAgent) setActivePane('detail');
     },
@@ -292,6 +305,8 @@ export function WorkflowRunPanel({
   const detailWidthWide = Math.max(1, innerWidth - phaseWidth - agentWidthWide - 2);
   const agentWidthMedium = Math.max(22, Math.floor(innerWidth * 0.44));
   const detailWidthMedium = Math.max(1, innerWidth - agentWidthMedium - 1);
+  const phasePaneWidth = layout === 'narrow' ? innerWidth : phaseWidth;
+  const agentPaneWidth = layout === 'wide' ? agentWidthWide : layout === 'medium' ? agentWidthMedium : innerWidth;
 
   const phasePane = (
     <Box width="100%" height={bodyHeight} flexDirection="column" overflow="hidden">
@@ -303,6 +318,7 @@ export function WorkflowRunPanel({
         agents={allAgents}
         selectedIndex={selectedPhaseIndex}
         focused={activePane === 'phases'}
+        width={phasePaneWidth}
         maxRows={paneContentHeight}
       />
     </Box>
@@ -319,7 +335,8 @@ export function WorkflowRunPanel({
         <AgentList
           agents={agentWindow.visible}
           selectedIndex={agentWindow.selectedInWindow}
-          focused={activePane !== 'phases'}
+          focused={activePane === 'agents'}
+          width={agentPaneWidth}
           emptyText={statusFilter === 'all' ? undefined : `(no ${statusFilter} agents — press f)`}
         />
         {agentWindow.hiddenBelow > 0 ? <Text color="subtle">… {agentWindow.hiddenBelow} more</Text> : null}
@@ -414,7 +431,7 @@ export function WorkflowRunPanel({
         </Box>
         <Box height={2} overflow="hidden">
           {runs && runs.length > 0 ? (
-            <TabsBar runs={runs} activeRunId={run?.runId ?? null} />
+            <TabsBar runs={runs} activeRunId={run?.runId ?? null} maxWidth={innerWidth} />
           ) : (
             <Text color="subtle" wrap="truncate-end">
               {run ? `run ${run.runId}` : ' '}
@@ -446,9 +463,7 @@ export function WorkflowRunPanel({
 
       <Box height={FOOTER_ROWS} flexDirection="column" overflow="hidden">
         <Text color="subtle" wrap="truncate-end">
-          {confirmTarget
-            ? 'y/Enter stop · n/Esc cancel'
-            : '↑/↓ select agent · ←/→ pane · Tab run/pane · PgUp/PgDn detail'}
+          {confirmTarget ? 'y/Enter stop · n/Esc cancel' : '↑/↓ select row · ←/→/Tab pane · [/] run · PgUp/PgDn detail'}
         </Text>
         <Text color="subtle" wrap="truncate-end">
           {confirmTarget ? `Target: ${confirmTarget.label}` : `f filter · x stop ${targetText} · r resume · Esc close`}

@@ -38,7 +38,7 @@ function createMockStreamingProcess(options?: {
       return d.length
     },
     flush() {},
-    end() {},
+    end: mock(() => {}),
   }
 
   const exited = new Promise<number>(resolve => {
@@ -331,6 +331,51 @@ describe('SSHSessionManagerImpl', () => {
 
     expect(reconnectCalled).toBe(false)
     expect(opts.state.reconnectingCalls.length).toBe(0)
+  })
+
+  test('disconnect during reconnect disposes the replacement process', async () => {
+    const { proc, simulateExit } = createMockStreamingProcess()
+    const { proc: replacementProc } = createMockStreamingProcess()
+    let resolveReconnect!: (proc: StreamingProcess) => void
+    const reconnectResult = new Promise<StreamingProcess>(resolve => {
+      resolveReconnect = resolve
+    })
+    let signalReconnectStarted!: () => void
+    const reconnectStarted = new Promise<void>(resolve => {
+      signalReconnectStarted = resolve
+    })
+    let signalReplacementKilled!: () => void
+    const replacementKilled = new Promise<void>(resolve => {
+      signalReplacementKilled = resolve
+    })
+    replacementProc.kill = mock(() => signalReplacementKilled())
+
+    const opts = createMockOptions({
+      reconnect: mock(async () => {
+        signalReconnectStarted()
+        return reconnectResult
+      }),
+      maxReconnectAttempts: 1,
+    })
+    const manager = new SSHSessionManagerImpl(proc, opts)
+
+    manager.connect()
+    simulateExit(1)
+    await reconnectStarted
+    manager.disconnect()
+    resolveReconnect(replacementProc)
+    await replacementKilled
+
+    expect(
+      (replacementProc.stdin?.end as ReturnType<typeof mock>).mock.calls.length,
+    ).toBe(1)
+    expect(
+      (replacementProc.kill as ReturnType<typeof mock>).mock.calls.length,
+    ).toBe(1)
+    expect(replacementProc.stdout?.locked).toBe(false)
+    expect(manager.isConnected()).toBe(false)
+    expect(opts.state.connectedCount).toBe(1)
+    expect(opts.state.disconnectedCount).toBe(0)
   })
 
   test('invalid JSON lines are silently skipped', async () => {

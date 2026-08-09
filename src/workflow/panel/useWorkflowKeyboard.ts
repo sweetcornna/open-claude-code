@@ -25,8 +25,10 @@ type KeyEvent = {
 
 /** key -> action (pure function, easy to unit test; no rendering dependencies). */
 export type WorkflowKeyAction =
-  | 'nextTab'
-  | 'prevTab'
+  | 'nextPane'
+  | 'prevPane'
+  | 'nextRun'
+  | 'prevRun'
   | 'focusLeft'
   | 'focusRight'
   | 'moveUp'
@@ -56,7 +58,9 @@ export function routeWorkflowKey(
     return null
   }
   // @anthropic/ink sets key.tab to true for the Tab key; some environments fall back to '\t'
-  if (key.tab || input === '\t') return key.shift ? 'prevTab' : 'nextTab'
+  if (key.tab || input === '\t') return key.shift ? 'prevPane' : 'nextPane'
+  if (input === ']') return 'nextRun'
+  if (input === '[') return 'prevRun'
   if (key.escape || input === 'q') return 'quit'
   // Every task surface uses x for the target currently in focus. The panel
   // decides whether that target is the selected agent or the whole run.
@@ -93,8 +97,10 @@ export function focusColumnRightOf(current: FocusColumn): FocusColumn {
 
 /** Focus model callbacks (injected by WorkflowsPanel). */
 export type WorkflowKeyboardHandlers = {
-  nextTab: () => void
-  prevTab: () => void
+  nextPane: () => void
+  prevPane: () => void
+  nextRun: () => void
+  prevRun: () => void
   focusLeft: () => void
   focusRight: () => void
   moveUp: () => void
@@ -119,10 +125,11 @@ export type WorkflowKeyboardHandlers = {
 
 /**
  * /workflows panel keybindings (focus rotation model):
- * - Tab / Shift+Tab: switch the top run tab
+ * - Tab / Shift+Tab: rotate focus through the visible panes
+ * - [ / ]: switch the top run tab
  * - Left / Right: step between phases → agents → agent detail
  * - Enter: open the selected agent's detail view
- * - Up / Down: always move the selected agent
+ * - Up / Down: move the selection in the focused list pane
  * - PageUp / PageDown: scroll the fixed detail viewport
  * - f cycle the agent status filter
  * - x cancel the active target (selected agent or whole workflow) · r resume · n new · q / Esc quit
@@ -137,11 +144,17 @@ export function useWorkflowKeyboard(
     const action = routeWorkflowKey(input, key as KeyEvent, mode)
     if (action === null) return
     switch (action) {
-      case 'nextTab':
-        h.nextTab()
+      case 'nextPane':
+        h.nextPane()
         break
-      case 'prevTab':
-        h.prevTab()
+      case 'prevPane':
+        h.prevPane()
+        break
+      case 'nextRun':
+        h.nextRun()
+        break
+      case 'prevRun':
+        h.prevRun()
         break
       case 'focusLeft':
         h.focusLeft()

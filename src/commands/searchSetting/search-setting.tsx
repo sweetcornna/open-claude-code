@@ -55,7 +55,7 @@ import {
   hasDeepSeekSearchCredentials,
 } from '../../services/search/sourceCredentials.js';
 import type { LocalJSXCommandCall, LocalJSXCommandContext } from '../../types/command.js';
-import { getSettings_DEPRECATED, updateSettingsForSource } from '../../utils/settings/settings.js';
+import { getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import {
   probeDeepSeekSearchSupport,
   resetDeepSeekSearchProbe,
@@ -177,11 +177,13 @@ async function readConnection(
 }
 
 function writeOverride(id: SearchSourceId, enabled: boolean): void {
-  const settings = getSettings_DEPRECATED() as unknown as SettingsJson;
-  const next: SourceOverrides = { ...(settings.webSearchSources ?? {}), [id]: enabled };
-  updateSettingsForSource('userSettings', {
-    webSearchSources: next,
+  // Patch only the selected user-level key. Rewriting the effective merged
+  // object would promote project/policy choices into settings.json and lets a
+  // stale full-shape snapshot erase a source added by another write.
+  const { error } = updateSettingsForSource('userSettings', {
+    webSearchSources: { [id]: enabled },
   } as unknown as SettingsJson);
+  if (error) throw error;
 }
 
 /**
@@ -358,9 +360,13 @@ function SearchSettingPanel({
       setNotice(remedyFor(row));
       return;
     }
-    writeOverride(row.id, !row.enabled);
-    setOverrideVersion(v => v + 1);
-    setNotice(`${row.label} ${row.enabled ? 'disabled' : 'enabled'}.`);
+    try {
+      writeOverride(row.id, !row.enabled);
+      setOverrideVersion(v => v + 1);
+      setNotice(`${row.label} ${row.enabled ? 'disabled' : 'enabled'}.`);
+    } catch (error) {
+      setNotice(`${row.label} settings update failed: ${errorMessageWithCause(error)}`);
+    }
   }, []);
 
   /**
@@ -403,7 +409,7 @@ function SearchSettingPanel({
           if (controller.signal.aborted) return;
           // A fresh login has credentials, so the source is on by default —
           // clear any stale explicit "off" so the row really is ticked.
-          const settings = getSettings_DEPRECATED() as unknown as SettingsJson;
+          const settings = (getSettingsForSource('userSettings') ?? {}) as unknown as SettingsJson;
           if (settings.webSearchSources?.[row.id] === false) {
             writeOverride(row.id, true);
           }

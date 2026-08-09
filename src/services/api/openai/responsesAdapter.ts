@@ -18,6 +18,7 @@ import {
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
+import { isRetryableAPIError } from '../retryClassification.js'
 import {
   createOpenAIResponseError,
   OpenAIRequestError,
@@ -303,51 +304,77 @@ export function buildResponsesRequest(params: {
   }
 }
 
-const NON_COMMITTING_RESPONSE_EVENTS = new Set([
-  'response.created',
-  'response.in_progress',
-  'response.queued',
+const COMMITTING_RESPONSE_DELTAS = new Set([
+  'response.output_text.delta',
+  'response.refusal.delta',
+  'response.reasoning_text.delta',
+  'response.reasoning_summary_text.delta',
+  'response.function_call_arguments.delta',
 ])
 
 function commitsResponseAttempt(event: Record<string, unknown>): boolean {
+  if (
+    event.type === 'response.completed' ||
+    event.type === 'response.incomplete'
+  ) {
+    return true
+  }
+  if (event.type === 'response.output_item.added') {
+    const item = event.item as Record<string, unknown> | undefined
+    return item?.type === 'function_call'
+  }
   return (
-    typeof event.type !== 'string' ||
-    !NON_COMMITTING_RESPONSE_EVENTS.has(event.type)
+    typeof event.type === 'string' &&
+    COMMITTING_RESPONSE_DELTAS.has(event.type) &&
+    String(event.delta ?? '').length > 0
   )
+}
+
+function eventErrorPayload(
+  event: Record<string, unknown>,
+  sseEvent: string | undefined,
+): Record<string, unknown> | undefined {
+  const response =
+    event.response && typeof event.response === 'object'
+      ? (event.response as Record<string, unknown>)
+      : undefined
+  const data =
+    event.data && typeof event.data === 'object'
+      ? (event.data as Record<string, unknown>)
+      : undefined
+  const nested = [event.error, response?.error, data?.error].find(
+    value => typeof value === 'object' && value !== null,
+  ) as Record<string, unknown> | undefined
+  const isErrorEvent =
+    sseEvent === 'error' ||
+    event.type === 'error' ||
+    event.type === 'response.error' ||
+    event.type === 'response.failed'
+  return nested ?? (isErrorEvent ? event : undefined)
 }
 
 function streamEventError(
   event: Record<string, unknown>,
+  sseEvent: string | undefined,
   label: string,
+  hasCommittedEvent: boolean,
 ): OpenAIRequestError | undefined {
-  const type = event.type
-  if (type !== 'response.error' && type !== 'response.failed') return undefined
-  const container =
-    type === 'response.failed' &&
-    event.response &&
-    typeof event.response === 'object'
-      ? (event.response as Record<string, unknown>)
-      : event
-  const error =
-    container.error && typeof container.error === 'object'
-      ? (container.error as Record<string, unknown>)
-      : undefined
-  const code = typeof error?.code === 'string' ? error.code : ''
+  const error = eventErrorPayload(event, sseEvent)
+  if (!error) return undefined
   const message =
-    typeof error?.message === 'string'
+    typeof error.message === 'string'
       ? error.message
-      : `${label} stream returned ${type}`
-  const detail = `${code} ${message}`
-  const permanent =
-    /auth|api.?key|permission|forbidden|invalid.?request|invalid.?argument|invalid.?parameter|bad.?request|model.?not.?found|unknown.?model|does not exist|context.?length/i.test(
-      detail,
-    )
-  const transient =
-    /server.?error|rate.?limit|timeout|timed.?out|overload|temporar|upstream|unavailable|internal.?error|bad.?gateway|gateway/i.test(
-      detail,
-    )
+      : `${label} stream returned an error event`
+  const scalar = (value: unknown): string | number | undefined =>
+    typeof value === 'string' || typeof value === 'number' ? value : undefined
   return new OpenAIRequestError(`${label} stream failed: ${message}`, {
-    retryable: !permanent && transient,
+    retryable: !hasCommittedEvent && isRetryableAPIError(error),
+    ...(typeof error.type === 'string' ? { type: error.type } : {}),
+    ...(scalar(error.code) !== undefined ? { code: scalar(error.code) } : {}),
+    ...(scalar(error.status) !== undefined
+      ? { status: scalar(error.status) }
+      : {}),
+    cause: error,
   })
 }
 
@@ -370,14 +397,23 @@ async function* parseSSE(
   let buffer = ''
   let scanIndex = 0
   let hasCommittedEvent = false
+  let hasTerminalEvent = false
 
   const parseFrame = (frame: string): Record<string, unknown> | undefined => {
-    const data = frame
-      .split(/\r?\n/)
+    const lines = frame.split(/\r?\n/)
+    const data = lines
       .filter(line => line.startsWith('data:'))
       .map(line => line.slice(5).trimStart())
       .join('\n')
-    if (!data || data === '[DONE]') return undefined
+    const sseEvent = lines
+      .find(line => line.startsWith('event:'))
+      ?.slice(6)
+      .trimStart()
+    if (!data) return undefined
+    if (data === '[DONE]') {
+      hasTerminalEvent = true
+      return undefined
+    }
     let parsed: unknown
     try {
       parsed = JSON.parse(data) as unknown
@@ -389,7 +425,18 @@ async function* parseSSE(
     }
     if (!parsed || typeof parsed !== 'object') return undefined
     const event = parsed as Record<string, unknown>
-    const error = streamEventError(event, options.label)
+    if (
+      event.type === 'response.completed' ||
+      event.type === 'response.incomplete'
+    ) {
+      hasTerminalEvent = true
+    }
+    const error = streamEventError(
+      event,
+      sseEvent,
+      options.label,
+      hasCommittedEvent,
+    )
     if (error) throw error
     return event
   }
@@ -455,7 +502,21 @@ async function* parseSSE(
 
   try {
     while (true) {
-      const { done, value } = await read()
+      let result: ReadResult
+      try {
+        result = await read()
+      } catch (cause) {
+        if (hasCommittedEvent && isRetryableAPIError(cause)) {
+          throw new OpenAIRequestError(
+            cause instanceof Error
+              ? cause.message
+              : `${options.label} stream failed`,
+            { retryable: false, cause },
+          )
+        }
+        throw cause
+      }
+      const { done, value } = result
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       let frame = takeFrame()
@@ -488,6 +549,12 @@ async function* parseSSE(
         if (commitsResponseAttempt(parsed)) hasCommittedEvent = true
         yield parsed
       }
+    }
+    if (!hasTerminalEvent) {
+      throw new OpenAIRequestError(
+        `${options.label} stream ended before a terminal event`,
+        { retryable: !hasCommittedEvent },
+      )
     }
   } finally {
     reader.releaseLock()
@@ -583,6 +650,7 @@ export async function* adaptResponsesStreamToAnthropic(
   let currentContentIndex = -1
   let textBlockOpen = false
   let thinkingBlockOpen = false
+  let hasCommittedOutput = false
 
   const ensureStarted = async function* () {
     if (started) return
@@ -608,6 +676,14 @@ export async function* adaptResponsesStreamToAnthropic(
   }
 
   for await (const event of stream) {
+    const sourceError = streamEventError(
+      event,
+      undefined,
+      'Responses API',
+      hasCommittedOutput,
+    )
+    if (sourceError) throw sourceError
+    if (commitsResponseAttempt(event)) hasCommittedOutput = true
     for await (const startedEvent of ensureStarted()) yield startedEvent
     const type = event.type
 
@@ -738,17 +814,6 @@ export async function* adaptResponsesStreamToAnthropic(
         block.open = false
       }
       continue
-    }
-
-    if (type === 'response.error') {
-      const error = event.error as Record<string, unknown> | undefined
-      throw new Error(String(error?.message ?? 'ChatGPT Responses API error'))
-    }
-
-    if (type === 'response.failed') {
-      const response = event.response as Record<string, unknown> | undefined
-      const error = response?.error as Record<string, unknown> | undefined
-      throw new Error(String(error?.message ?? 'ChatGPT Responses API failed'))
     }
 
     if (type === 'response.completed' || type === 'response.incomplete') {

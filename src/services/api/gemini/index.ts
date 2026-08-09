@@ -13,7 +13,7 @@ import { type Tools } from '../../../Tool.js'
 import { toolToAPISchema } from '../../../utils/telemetry/api.js'
 import { logForDebugging } from '../../../utils/telemetry/debug.js'
 import {
-  createAssistantAPIErrorMessage,
+  createAssistantAPIErrorMessageFromError,
   normalizeMessagesForAPI,
 } from '../../../utils/messages.js'
 import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
@@ -23,7 +23,6 @@ import { applyGeminiEffortToThinkingBudget } from './reasoning.js'
 import { updateOpenAIUsage } from '../openai/openaiShared.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/model/modelCost.js'
-import type { SDKAssistantMessageError } from '../../../entrypoints/agentSdkTypes.js'
 import type { SystemPrompt } from '../../../utils/session/systemPromptType.js'
 import type { ThinkingConfig } from '../../../utils/model/thinking.js'
 import type { Options } from '../claude.js'
@@ -326,12 +325,10 @@ export async function* queryModelGemini(
     }
     const errorMessage = error instanceof Error ? error.message : String(error)
     logForDebugging(`[Gemini] Error: ${errorMessage}`, { level: 'error' })
-    yield createAssistantAPIErrorMessage({
+    yield createAssistantAPIErrorMessageFromError({
       content: `API Error: ${errorMessage}`,
       apiError: 'api_error',
-      error: (error instanceof Error
-        ? error
-        : new Error(String(error))) as unknown as SDKAssistantMessageError,
+      sourceError: error,
     })
   }
 }

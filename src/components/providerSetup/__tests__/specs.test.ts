@@ -293,11 +293,10 @@ describe('subscription-authenticated sessions', () => {
     expect(spec.defaultModelField).toBe('required')
   })
 
-  test('a model-only save does not log the user out of ChatGPT', () => {
-    // afterSave is shared by both paths; only the one that just wrote an API
-    // key supersedes the subscription. Deleting the tokens on the other one is
-    // how /models-setting used to end a working session.
-    const spec = specs.PROVIDER_SETUP_SPECS.openai
+  test('provider saves preserve ChatGPT OAuth for Codex Web Search', async () => {
+    // OPENAI_AUTH_MODE switches inference away from the subscription backend;
+    // the OAuth file remains an independent search credential until the user
+    // explicitly logs out or disconnects Codex in /search-setting.
     const clear = spyOn(
       openaiClient,
       'clearOpenAIClientCache',
@@ -306,24 +305,17 @@ describe('subscription-authenticated sessions', () => {
       undefined as never,
     )
     try {
-      return Promise.resolve(spec.afterSave?.({ credentialsConfigured: false }))
-        .then(() => {
-          // The cached client still has to go: it was built from the old env.
-          expect(clear).toHaveBeenCalled()
-          expect(remove).not.toHaveBeenCalled()
-          return spec.afterSave?.({ credentialsConfigured: true })
-        })
-        .then(() => {
-          expect(remove).toHaveBeenCalled()
-        })
-        .finally(() => {
-          clear.mockRestore()
-          remove.mockRestore()
-        })
-    } catch (error) {
+      for (const kind of ['openai', 'china'] as const) {
+        const spec = specs.PROVIDER_SETUP_SPECS[kind]
+        await spec.afterSave?.({ credentialsConfigured: false })
+        await spec.afterSave?.({ credentialsConfigured: true })
+      }
+      // The cached client still has to go: it was built from the old env.
+      expect(clear).toHaveBeenCalledTimes(4)
+      expect(remove).not.toHaveBeenCalled()
+    } finally {
       clear.mockRestore()
       remove.mockRestore()
-      throw error
     }
   })
 })

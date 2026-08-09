@@ -24,6 +24,7 @@ import {
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+import { EXECUTE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExecuteTool/constants.js'
 import type { Message } from '../../types/message.js'
 import {
   countToolDefinitionTokens,
@@ -245,6 +246,21 @@ export function isSearchExtraToolsToolAvailable(
 }
 
 /**
+ * Check whether the complete deferred-tool gateway is available.
+ * SearchExtraTools without ExecuteExtraTool can discover tools but cannot invoke
+ * them, so both endpoints must survive permission filtering for deferral to be
+ * safe.
+ */
+export function isDeferredToolExecutionPathAvailable(
+  tools: readonly { name: string }[],
+): boolean {
+  return (
+    isSearchExtraToolsToolAvailable(tools) &&
+    tools.some(tool => toolMatchesName(tool, EXECUTE_TOOL_NAME))
+  )
+}
+
+/**
  * Calculate total deferred tool description size in characters.
  * Includes name, description text, and input schema to match what's actually sent to the API.
  */
@@ -281,7 +297,7 @@ async function calculateDeferredToolDescriptionChars(
  * This is the definitive check that includes:
  * - MCP mode (Tst, TstAuto, McpCli, Standard)
  * - Model compatibility (haiku doesn't support tool_reference)
- * - SearchExtraToolsTool availability (must be in tools list)
+ * - Deferred gateway availability (SearchExtraTools and ExecuteExtraTool)
  * - Threshold check for TstAuto mode
  *
  * Use this when making actual API calls where all context is available.
@@ -329,12 +345,13 @@ export async function isSearchExtraToolsEnabled(
   // Tool search is enabled uniformly regardless of provider or model.
   // All providers use self-built TF-IDF + keyword search via SearchExtraToolsTool + ExecuteExtraTool.
 
-  // Check if SearchExtraToolsTool is available (respects disallowedTools)
-  if (!isSearchExtraToolsToolAvailable(tools)) {
+  // Check the complete deferred execution path before any threshold work.
+  // Both endpoints respect disallowedTools through the final tool pool.
+  if (!isDeferredToolExecutionPathAvailable(tools)) {
     logForDebugging(
-      `Tool search disabled: SearchExtraToolsTool is not available (may have been disallowed via disallowedTools).`,
+      `Tool search disabled: deferred tool gateway is unavailable (requires both SearchExtraTools and ExecuteExtraTool).`,
     )
-    logModeDecision(false, 'standard', 'mcp_search_unavailable')
+    logModeDecision(false, 'standard', 'deferred_gateway_unavailable')
     return false
   }
 
