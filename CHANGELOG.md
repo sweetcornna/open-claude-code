@@ -4,6 +4,16 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.35.2 - 2026-08-09
+
+- **补齐 Anthropic Messages、OpenAI Chat/Responses、Gemini 与 Grok 的错误分类和重试边界。** HTTP status、provider `type/code/status`、网络 errno 与 SSE error envelope 统一进入同一分类器；408/409/425/429/529、5xx、连接中断与暂时不可用会在既有上限内重试，认证、权限、计费、无效请求、model not found、确定性 TLS 错误与用户取消立即失败。Responses 的标准 `event: error`、顶层 `error` 与 `response.error/failed` 不再被忽略；Chat/Grok/Gemini/Responses 的流若未收到协议终止标记，不再把半截响应当成功。只有在没有可观察输出时才可重放；text、thinking、signature、tool identity/arguments 或 refusal 一旦出现即禁止重放。SDK/NDJSON 的 `error` 字段继续保持合法枚举，原始 producer error 仅保存在非枚举元数据中。
+- **登录、刷新与 logout 不再误删或丢失其他 Provider 的凭证。** 新 Anthropic 凭证先可靠落盘，再清理旧 API key/OAuth；macOS Keychain 直接 upsert，不再先删旧项，删除失败也不再宣称成功。普通 Anthropic logout 只移除 Anthropic credential 字段，ChatGPT/Codex、Gemini/Antigravity、MCP/plugin secrets、其他 API key、provider profiles、模型/端点与 Web Search 配置全部保留；安全存储的 fallback 只有在确认旧 primary 不会遮蔽新值时才报告成功。
+- **凭证文件写入改为 0600 原子替换，Web Search 设置失败会如实显示。** ChatGPT、Antigravity 与明文 secure-storage fallback 都通过同目录临时文件 write+fsync+rename，原子替换失败时不再退回直接截断目标文件。`/search-setting` 只 patch 当前 source 的 override，写入失败不会乐观翻转复选框或显示成功。
+- **修复 SSH 重连与 LSP 启停竞态留下未受管进程。** 用户断开后才完成的 SSH reconnect 会立即关闭新进程；同一 LSP server 的并发首次请求共享一次启动。shutdown 开始后拒绝新的 initialize/start，并等待已登记的启动结束后再次 stop，避免清空 manager 后进程才复活。
+- **Workflow 面板在窄/矮终端中始终保持当前选择可见。** phase 与 agent 列表按焦点分别导航，选中的 agent 不会滑入被裁剪区域，分页提示不再遮住选中行；当前 run tab 会旋转到可见窗口左端并按真实面板宽度裁剪。`Tab`/`Shift+Tab` 负责切 pane，`[`/`]` 切换 run。
+- **长期后台任务与会话清理不再无界增长或留下空白 UI。** long-running RemoteAgent 只保留最近 200 条事件，同时继续累计总数、todo 与 rich result；`cleanupPeriodDays` 递归清理 `tool-results` 和 `subagents`，每层都拒绝跟随 symlink。teammate 退出导致详情对象消失时，TeamsDialog 自动返回成员列表，不再留下空白模态层。
+- **禁用延迟工具网关的一半不再让全部延迟工具消失。** 只有 SearchExtraTools 与 ExecuteExtraTool 同时可用时才延迟 schema；任一端被权限规则移除时，不再宣告不可执行的搜索路径，其余 MCP/延迟工具改为直接随请求发送，保持可调用。
+
 ## 2.35.1 - 2026-08-08
 
 - **修复 Bedrock inference-profile 后台查询延迟落地时污染全局模型缓存的隐患。** 该查询以 fire-and-forget 方式发出,结果可能在数秒后写回一个已不属于 Bedrock 会话的缓存;缓存只在为空时重新推导,一次过期写入即永久生效,此后所有默认模型解析均返回 `us.anthropic.*` 形式的 id。现写入前校验会话仍为 Bedrock 且缓存仍为空,过期结果直接丢弃。

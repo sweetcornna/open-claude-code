@@ -6,6 +6,16 @@ open-claude-code（`occ`）のリリースノート。
 解析するのはそちらだけです。構造は同一に保ってください：`## <semver> - <日付>`
 の見出し、トップレベルの `- ` 項目、新しい順。
 
+## 2.35.2 - 2026-08-09
+
+- **Anthropic Messages、OpenAI Chat/Responses、Gemini、Grok 全体で、エラー分類と再送安全な retry 境界を補完。** HTTP status、provider の `type/code/status`、network errno、SSE error envelope を単一の分類器で扱います。408/409/425/429/529、5xx、接続障害、一時的な unavailable は既存上限内で再試行し、認証・権限・課金・invalid request・model not found・決定的な TLS エラー・ユーザーキャンセルは即時失敗します。Responses は標準の `event: error`、トップレベル `error`、`response.error/failed` を認識し、Chat/Grok/Gemini/Responses は protocol の終端マーカーがない途中切断を成功扱いしません。再送できるのは可観測出力の前だけで、text、thinking、signature、tool identity/arguments、refusal のいずれかが現れた時点で attempt を確定します。SDK/NDJSON の `error` は正規 enum のまま、元の producer error は非列挙 metadata にのみ保持します。
+- **login・refresh・logout が他 provider 所有の資格情報を削除または消失させる問題を修正。** 新しい Anthropic 資格情報を確実に永続化してから古い API key/OAuth を退役させます。macOS Keychain は事前削除せず直接 upsert し、削除失敗時に logout 成功を表示しません。通常の Anthropic logout は Anthropic の credential field だけを削除し、ChatGPT/Codex、Gemini/Antigravity、MCP/plugin secrets、他の API key、provider profiles、model/endpoint、Web Search 設定を保持します。fallback secure storage は、古い primary が新しい fallback を隠さないことを確認できた場合だけ成功を返します。
+- **資格情報ファイルを 0600 の原子的置換へ移行し、Web Search 設定の保存失敗を正しく表示。** ChatGPT、Antigravity、plaintext secure-storage fallback は同一ディレクトリの一時ファイルへ書き込み、fsync 後に rename します。原子的置換が失敗しても、対象ファイルを直接 truncate する fallback は行いません。`/search-setting` は選択中 source の override だけを patch し、保存失敗時に checkbox を楽観的に反転したり成功表示したりしません。
+- **未管理 process を残しうる SSH reconnect と LSP lifecycle の競合を修正。** ユーザー切断後に完了した SSH reconnect は新 process を即時終了します。同じ LSP server への並行した初回 request は 1 回の start を共有します。shutdown 開始後は新しい initialize/start を拒否し、既に登録済みの start は完了を待って再度 stop するため、manager の clear 後に process が復活しません。
+- **狭い・低い terminal でも Workflow の現在選択を常に表示。** phase と agent の list は focus に応じて独立して移動し、選択 agent が clip 範囲へ入り込まず、pagination hint が選択行を覆いません。active run tab は表示 window の左端へ回転し、panel の実 display width に合わせて tab 数を制限します。`Tab`/`Shift+Tab` は pane、`[`/`]` は run を切り替えます。
+- **長時間 background state と session cleanup の無制限増加、および空白 UI を修正。** long-running RemoteAgent は最新 200 event のみ保持しつつ、総数、todo、rich result の追跡を継続します。`cleanupPeriodDays` は `tool-results` と `subagents` を再帰的に清掃し、各階層で symlink を拒否します。詳細表示中の teammate が退出した場合、TeamsDialog は空の modal を残さず member list へ戻ります。
+- **deferred-tool gateway の片側を無効化しても全 deferred tool が消えないよう修正。** schema を遅延化するのは SearchExtraTools と ExecuteExtraTool の両方が利用可能な場合だけです。permission によりどちらかが除外された場合、実行不能な search path を告知せず、残りの MCP/deferred tool schema を request に直接含めて呼び出し可能な状態を維持します。
+
 ## 2.35.1 - 2026-08-08
 
 - **バックグラウンドの Bedrock inference-profile 照会が遅延到着時にグローバルなモデル文字列キャッシュを汚染しうる潜在的な競合を修正。** 照会は await されずに発行されるため、結果が数秒後に、既に Bedrock セッションではなくなったキャッシュへ書き込まれることがありました。キャッシュは空のときにのみ再導出されるため、一度の過期書き込みが恒久化し、以後の既定モデル解決はすべて `us.anthropic.*` 形式の id を返していました。現在はセッションが依然 Bedrock でありキャッシュが空の場合にのみ書き込み、過期の結果は破棄します。
