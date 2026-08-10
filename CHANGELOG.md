@@ -4,6 +4,16 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.36.0 - 2026-08-09
+
+- **订阅会话触达限额时立即给出结论，不再空等一轮无效重试。** Claude 订阅（Max/Pro）遇到 429 时优先读取服务端返回的限额重置时间，直接显示「已达限额」与恢复时刻；此前要走完约 10 分钟的重试倒计时才给出同一个结果。这条规则对所有 provider 生效：服务端明示的重置窗口一旦超过单次退避上限就不再重试，服务端没给这项信息时维持既有的订阅重试契约，OpenAI 两条线遵循同一判断。
+- **配置类错误立即报错并给出处置指引。** ChatGPT 订阅未登录、Antigravity 未初始化项目这类由 occ 自己抛出的永久性错误不再进入重试阶梯，第一时间说明需要做什么，而不是拖满约 2 分钟后显示同一条消息。
+- **容量过载（529）期间后台请求不再放大重试洪峰。** 标题生成、分类器等后台辅助请求在 529 上直接放弃并记录，把重试预算留给用户可见的前台请求。
+- **API 错误消息附带结构化诊断信息。** 非标准形态的错误统一转换成同一种错误消息，并带上 provider、HTTP status、错误类别与是否可重试，便于判断是配置问题还是临时故障。
+- **修复三处自动更新失效。** 关闭 `autoUpdates` 或设置 `DISABLE_AUTOUPDATER=1` 后，退出时不再执行此前排队的延迟安装；`occ -p` 的脚本化调用只登记会话，不再意外拉起全局安装；会话租约同时记录进程启动时间，pid 被系统复用不会再让自动更新永久静默停摆。
+- **ultracode 收口为一个真正的开关。** 模式关闭时，模型不再收到 ultracode 与多 agent 编排的怂恿文本，Workflow 工具带明确的 opt-in 门槛；`/ultracode` 的显式调用仍然有效，作为仅限当前任务的一次性 opt-in；会话中途开关模式即时生效。
+- **修复长会话 compaction 后界面出现重复消息。** compact 之后重放的历史消息按唯一 id 合并，同一条不再显示两次。
+
 ## 2.35.2 - 2026-08-09
 
 - **补齐 Anthropic Messages、OpenAI Chat/Responses、Gemini 与 Grok 的错误分类和重试边界。** HTTP status、provider `type/code/status`、网络 errno 与 SSE error envelope 统一进入同一分类器；408/409/425/429/529、5xx、连接中断与暂时不可用会在既有上限内重试，认证、权限、计费、无效请求、model not found、确定性 TLS 错误与用户取消立即失败。Responses 的标准 `event: error`、顶层 `error` 与 `response.error/failed` 不再被忽略；Chat/Grok/Gemini/Responses 的流若未收到协议终止标记，不再把半截响应当成功。只有在没有可观察输出时才可重放；text、thinking、signature、tool identity/arguments 或 refusal 一旦出现即禁止重放。SDK/NDJSON 的 `error` 字段继续保持合法枚举，原始 producer error 仅保存在非枚举元数据中。
