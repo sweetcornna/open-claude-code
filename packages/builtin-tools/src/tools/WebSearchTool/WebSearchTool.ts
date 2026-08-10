@@ -4,6 +4,7 @@ import { buildTool, type ToolDef } from '@open-claude-code/tool-runtime/Tool.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { createAdapter } from './adapters/index.js'
+import { getWebSearchExecutionTimeoutMs } from './executionTimeout.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import {
   countWebSearch,
@@ -95,6 +96,7 @@ import type { WebSearchProgress } from 'src/types/tools.js'
 export const WebSearchTool = buildTool({
   name: WEB_SEARCH_TOOL_NAME,
   searchHint: 'search the web for current information',
+  getExecutionTimeoutMs: getWebSearchExecutionTimeoutMs,
   maxResultSizeChars: 100_000,
   shouldDefer: true,
   async description(input) {

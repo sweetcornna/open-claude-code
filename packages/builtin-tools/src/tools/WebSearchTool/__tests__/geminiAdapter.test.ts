@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { GeminiStreamChunk } from '@ant/model-provider'
+import { registerAPIRetryHost } from '@open-claude-code/tool-runtime/apiRetry.js'
+import { retryOpenAIRequest } from 'src/services/api/openai/retry.js'
 import { findAntigravityModelOption } from 'src/utils/model/antigravityModels.js'
 import {
   extractGeminiSearchResults,
@@ -200,6 +202,13 @@ describe('GeminiSearchAdapter.search', () => {
   }
 
   beforeEach(() => {
+    registerAPIRetryHost({
+      retry: (operation, options) =>
+        retryOpenAIRequest(operation, {
+          ...options,
+          delay: async () => {},
+        }),
+    })
     headRequests = []
     process.env.GEMINI_API_KEY = 'test-gemini-key'
     // Pin the model so getMainLoopModel() never walks into the auth stack,
@@ -208,6 +217,7 @@ describe('GeminiSearchAdapter.search', () => {
   })
 
   afterEach(() => {
+    registerAPIRetryHost(null)
     if (originalApiKey === undefined) delete process.env.GEMINI_API_KEY
     else process.env.GEMINI_API_KEY = originalApiKey
     if (originalModel === undefined) delete process.env.ANTHROPIC_MODEL
@@ -275,14 +285,36 @@ describe('GeminiSearchAdapter.search', () => {
     })
   })
 
-  test('surfaces an API failure so the source can be retired', async () => {
-    const failing = (async () =>
-      new Response('web_search is not supported for this project', {
+  test('retries a transient API failure before consuming the stream', async () => {
+    let postAttempts = 0
+    const success = fetchStub([GROUNDED_CHUNK])
+    const flaky = (async (url: string | URL, init?: RequestInit) => {
+      if (init?.method !== 'HEAD' && ++postAttempts === 1) {
+        return new Response('upstream unavailable', { status: 503 })
+      }
+      return success(url, init)
+    }) as unknown as typeof fetch
+
+    const results = await new GeminiSearchAdapter({
+      fetchOverride: flaky,
+    }).search('rrf', {})
+
+    expect(postAttempts).toBe(2)
+    expect(results).toHaveLength(2)
+  })
+
+  test('surfaces a permanent API failure without retrying it', async () => {
+    let attempts = 0
+    const failing = (async () => {
+      attempts++
+      return new Response('web_search is not supported for this project', {
         status: 403,
-      })) as unknown as typeof fetch
+      })
+    }) as unknown as typeof fetch
 
     await expect(
       new GeminiSearchAdapter({ fetchOverride: failing }).search('rrf', {}),
     ).rejects.toThrow(/403/)
+    expect(attempts).toBe(1)
   })
 })

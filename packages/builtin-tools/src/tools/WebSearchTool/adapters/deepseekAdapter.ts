@@ -20,6 +20,7 @@
  */
 
 import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import { retryAPIRequest } from '@open-claude-code/tool-runtime/apiRetry.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import { getDeepSeekSearchEndpoint } from 'src/utils/model/deepseekWire.js'
 import { getSmallFastModel } from 'src/utils/model/model.js'
@@ -42,6 +43,9 @@ const SEARCH_MAX_TOKENS = 4096
 
 /** Enough for the endpoint to validate the request without composing an answer. */
 const PROBE_MAX_TOKENS = 16
+
+/** Direct search calls stay inside WebSearch's outer wall-clock budget. */
+const SEARCH_MAX_RETRIES = 2
 
 /** Server messages are echoed to the user, so keep them short. */
 const MAX_DETAIL_CHARS = 300
@@ -150,6 +154,37 @@ function classifyFailure(status: number, body: string): DeepSeekSearchProbe {
   return { status: 'unreachable', detail }
 }
 
+class DeepSeekSearchRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly verdict: DeepSeekSearchProbe,
+  ) {
+    super(
+      verdict.status === 'unsupported'
+        ? `DeepSeek does not support web_search (${status}): ${verdict.detail}`
+        : `DeepSeek web search failed (${status}): ${
+            'detail' in verdict ? verdict.detail : `HTTP ${status}`
+          }`,
+    )
+    this.name = 'DeepSeekSearchRequestError'
+  }
+}
+
+async function requestMessages(input: {
+  body: Record<string, unknown>
+  signal: AbortSignal
+  fetchImpl: typeof fetch
+}): Promise<Response> {
+  const response = await postMessages(input)
+  if (response.ok) return response
+
+  const body = await response.text().catch(() => '')
+  throw new DeepSeekSearchRequestError(
+    response.status,
+    classifyFailure(response.status, body),
+  )
+}
+
 let cachedProbe: { key: string; verdict: DeepSeekSearchProbe } | undefined
 
 /** Test seam / re-check after the endpoint configuration changed. */
@@ -199,27 +234,35 @@ export async function probeDeepSeekSearchSupport(
     return cachedProbe.verdict
   }
 
+  const requestSignal = options.signal ?? new AbortController().signal
   let verdict: DeepSeekSearchProbe
   try {
-    const response = await postMessages({
-      body: {
-        model: resolveDeepSeekSearchModel(),
-        max_tokens: PROBE_MAX_TOKENS,
-        messages: [{ role: 'user', content: 'ping' }],
-        tools: [makeToolSchema({})],
-      },
-      ...(options.signal ? { signal: options.signal } : {}),
-      fetchImpl: options.fetchOverride ?? fetch,
-    })
-    verdict = response.ok
-      ? { status: 'supported' }
-      : classifyFailure(response.status, await response.text().catch(() => ''))
+    await retryAPIRequest(
+      () =>
+        requestMessages({
+          body: {
+            model: resolveDeepSeekSearchModel(),
+            max_tokens: PROBE_MAX_TOKENS,
+            messages: [{ role: 'user', content: 'ping' }],
+            tools: [makeToolSchema({})],
+          },
+          signal: requestSignal,
+          fetchImpl: options.fetchOverride ?? fetch,
+        }),
+      { signal: requestSignal, maxRetries: SEARCH_MAX_RETRIES },
+    )
+    verdict = { status: 'supported' }
   } catch (error) {
     if (options.signal?.aborted) throw new AbortError()
-    verdict = {
-      status: 'unreachable',
-      detail: truncate(error instanceof Error ? error.message : String(error)),
-    }
+    verdict =
+      error instanceof DeepSeekSearchRequestError
+        ? error.verdict
+        : {
+            status: 'unreachable',
+            detail: truncate(
+              error instanceof Error ? error.message : String(error),
+            ),
+          }
   }
 
   if (verdict.status === 'unsupported') markSourceUnavailable('deepseek')
@@ -254,40 +297,28 @@ export class DeepSeekDirectSearchAdapter implements WebSearchAdapter {
     if (signal?.aborted) throw new AbortError()
     onProgress?.({ type: 'query_update', query })
 
-    const response = await postMessages({
-      body: {
-        model: resolveDeepSeekSearchModel(),
-        max_tokens: SEARCH_MAX_TOKENS,
-        messages: [
-          {
-            role: 'user',
-            content: `Perform a web search for the query: ${query}`,
+    const requestSignal = signal ?? new AbortController().signal
+    const response = await retryAPIRequest(
+      () =>
+        requestMessages({
+          body: {
+            model: resolveDeepSeekSearchModel(),
+            max_tokens: SEARCH_MAX_TOKENS,
+            messages: [
+              {
+                role: 'user',
+                content: `Perform a web search for the query: ${query}`,
+              },
+            ],
+            tools: [makeToolSchema({ allowedDomains, blockedDomains })],
           },
-        ],
-        tools: [makeToolSchema({ allowedDomains, blockedDomains })],
-      },
-      ...(signal ? { signal } : {}),
-      fetchImpl: this.fetchOverride ?? fetch,
-    })
+          signal: requestSignal,
+          fetchImpl: this.fetchOverride ?? fetch,
+        }),
+      { signal: requestSignal, maxRetries: SEARCH_MAX_RETRIES },
+    )
 
     if (signal?.aborted) throw new AbortError()
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
-      const verdict = classifyFailure(response.status, body)
-      if (verdict.status === 'unsupported') {
-        // Phrased so isUnsupportedSourceError recognises it: SourceHealthAdapter
-        // is what actually retires the lane, and it only reads the message.
-        throw new Error(
-          `DeepSeek does not support web_search (${response.status}): ${verdict.detail}`,
-        )
-      }
-      throw new Error(
-        `DeepSeek web search failed (${response.status}): ${
-          'detail' in verdict ? verdict.detail : `HTTP ${response.status}`
-        }`,
-      )
-    }
 
     const message = (await response.json()) as { content?: BetaContentBlock[] }
     const results = filterResultsByDomains(

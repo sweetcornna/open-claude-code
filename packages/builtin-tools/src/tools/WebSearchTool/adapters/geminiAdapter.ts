@@ -28,6 +28,7 @@ import type {
   GeminiStreamChunk,
 } from '@ant/model-provider'
 import { resolveGeminiModel } from '@ant/model-provider'
+import { retryAPIRequest } from '@open-claude-code/tool-runtime/apiRetry.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import {
   streamGeminiGenerateContent,
@@ -64,6 +65,7 @@ const DEFAULT_SEARCH_MODEL = 'gemini-2.5-flash'
 /** Cheapest tier the Antigravity backend serves — a grounded search only has
  * to call the tool. */
 const ANTIGRAVITY_SEARCH_MODEL = ANTIGRAVITY_FLASH_LITE_MODEL
+const SEARCH_MAX_RETRIES = 2
 
 /**
  * The two backends serve different model catalogues, and Antigravity rejects
@@ -270,13 +272,7 @@ export class GeminiSearchAdapter implements WebSearchAdapter {
 
     onProgress?.({ type: 'query_update', query })
 
-    const abortController = new AbortController()
-    if (signal) {
-      signal.addEventListener('abort', () => abortController.abort(), {
-        once: true,
-      })
-    }
-
+    const requestSignal = signal ?? new AbortController().signal
     const body: GeminiGenerateContentRequest = {
       contents: [
         {
@@ -288,42 +284,44 @@ export class GeminiSearchAdapter implements WebSearchAdapter {
       tools: [GOOGLE_SEARCH_TOOL],
     }
 
-    const collected = new Map<string, SearchResult>()
     const seenQueries = new Set<string>()
-
     const useAntigravity = usesAntigravityRoute({
       useAntigravityWhenAvailable: this.asExtraSource,
     })
-    const stream = streamGeminiGenerateContent({
-      model: resolveGeminiSearchModel(useAntigravity),
-      body,
-      signal: abortController.signal,
-      fetchOverride: this.fetchOverride,
-      requestType: 'web_search',
-      useAntigravityWhenAvailable: this.asExtraSource,
-    })
+    const model = resolveGeminiSearchModel(useAntigravity)
+    const collected = await retryAPIRequest(
+      async () => {
+        const attemptResults = new Map<string, SearchResult>()
+        const stream = streamGeminiGenerateContent({
+          model,
+          body,
+          signal: requestSignal,
+          fetchOverride: this.fetchOverride,
+          requestType: 'web_search',
+          useAntigravityWhenAvailable: this.asExtraSource,
+        })
 
-    for await (const chunk of stream) {
-      if (abortController.signal.aborted) {
-        throw new AbortError()
-      }
-      collectGeminiGroundingChunk(chunk, collected, searchQuery => {
-        if (seenQueries.has(searchQuery)) return
-        seenQueries.add(searchQuery)
-        onProgress?.({ type: 'query_update', query: searchQuery })
-      })
-    }
+        for await (const chunk of stream) {
+          if (requestSignal.aborted) throw new AbortError()
+          collectGeminiGroundingChunk(chunk, attemptResults, searchQuery => {
+            if (seenQueries.has(searchQuery)) return
+            seenQueries.add(searchQuery)
+            onProgress?.({ type: 'query_update', query: searchQuery })
+          })
+        }
 
-    if (abortController.signal.aborted) {
-      throw new AbortError()
-    }
+        if (requestSignal.aborted) throw new AbortError()
+        return [...attemptResults.values()]
+      },
+      { signal: requestSignal, maxRetries: SEARCH_MAX_RETRIES },
+    )
 
     // Resolve the redirect wrappers BEFORE filtering: the allow/block lists
     // (and the aggregator's dedup) are about the publisher's host, which the
     // wrapper URL hides.
     const resolved = await resolveGroundingRedirects(
-      [...collected.values()],
-      abortController.signal,
+      collected,
+      requestSignal,
       this.fetchOverride ?? fetch,
     )
 

@@ -94,6 +94,7 @@ import type {
 import type { UUID } from 'crypto'
 import type { z } from 'zod/v4'
 import type { FileStateCache } from './fileStateCache.js'
+import { callToolWithExecutionTimeout } from './toolExecutionTimeout.js'
 import type {
   AgentDefinition,
   AgentDefinitionsResult,
@@ -524,6 +525,8 @@ export type Tool<
   isReadOnly(input: z.infer<Input>): boolean
   /** Defaults to false. Only set when the tool performs irreversible operations (delete, overwrite, send). */
   isDestructive?(input: z.infer<Input>): boolean
+  /** A positive wall-clock limit opts this finite operation into timeout protection. */
+  getExecutionTimeoutMs?(input: z.infer<Input>): number
   /**
    * What should happen when the user submits a new message while this tool
    * is running.
@@ -904,9 +907,31 @@ export function buildTool<D extends AnyToolDef>(def: D): BuiltTool<D> {
   // The runtime spread is straightforward; the `as` bridges the gap between
   // the structural-any constraint and the precise BuiltTool<D> return. The
   // type semantics are proven by the 0-error typecheck across all 60+ tools.
-  return {
+  const built = {
     ...TOOL_DEFAULTS,
     userFacingName: () => def.name,
     ...def,
   } as BuiltTool<D>
+
+  const getExecutionTimeoutMs = def.getExecutionTimeoutMs
+  if (!getExecutionTimeoutMs) return built
+
+  const originalCall = built.call
+  const wrappedCall: Tool['call'] = (
+    input,
+    context,
+    canUseTool,
+    parentMessage,
+    onProgress,
+  ) =>
+    callToolWithExecutionTimeout({
+      toolName: def.name,
+      timeoutMs: getExecutionTimeoutMs(input),
+      context,
+      onProgress,
+      call: (callContext, progress) =>
+        originalCall(input, callContext, canUseTool, parentMessage, progress),
+    })
+
+  return { ...built, call: wrappedCall } as BuiltTool<D>
 }
