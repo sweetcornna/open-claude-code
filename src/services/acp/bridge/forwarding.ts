@@ -390,6 +390,11 @@ export async function forwardSessionUpdates(
       return { stopReason: 'cancelled', usage: accumulatedUsage }
     }
     throw err
+  } finally {
+    // AsyncGenerator.return() queues behind an in-flight next(). Awaiting it is
+    // intentional: the caller must not hand the session lock to another prompt
+    // until the old query has resumed from abort and run its finally blocks.
+    await sdkMessages.return()
   }
 
   return { stopReason, usage: accumulatedUsage }

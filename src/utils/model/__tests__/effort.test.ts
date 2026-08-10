@@ -145,4 +145,24 @@ describe('OpenAI model effort defaults', () => {
       'low',
     )
   })
+
+  test('an explicit agent slot overrides an ambiguous first-party default', () => {
+    initialSettings = { modelType: 'anthropic' }
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+    userSettings = {
+      modelSettings: {
+        default: { effort: 'max' },
+        sonnet: { effort: 'high' },
+      },
+    } as SettingsJson
+    setMainLoopModelOverride(null)
+
+    expect(resolveAppliedEffort('claude-sonnet-5', undefined)).toBe('max')
+    expect(resolveAppliedEffort('claude-sonnet-5', undefined, 'sonnet')).toBe(
+      'high',
+    )
+    expect(resolveAppliedEffort('claude-opus-5', undefined, 'default')).toBe(
+      'max',
+    )
+  })
 })

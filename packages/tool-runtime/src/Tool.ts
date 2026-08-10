@@ -147,6 +147,13 @@ export type ToolInputJSONSchema = {
  */
 type ServerResource = Resource & { server: string }
 
+export type ModelSettingsSlot =
+  | 'default'
+  | 'haiku'
+  | 'sonnet'
+  | 'opus'
+  | 'fable'
+
 export type QueryChainTracking = {
   chainId: string
   /**
@@ -223,6 +230,8 @@ export type ToolUseContext = {
     commands: Command[]
     debug: boolean
     mainLoopModel: string
+    /** Settings slot selected for this conversation thread's model. */
+    modelSettingsSlot?: ModelSettingsSlot
     tools: Tools
     verbose: boolean
     thinkingConfig: ThinkingConfig

@@ -76,7 +76,12 @@ import {
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/session/context.js'
 import { resolveAppliedEffort } from '../../utils/model/effort.js'
+import type { ModelSettingsSlot } from '../../utils/model/modelTier.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/config/envUtils.js'
+import {
+  getClaudeStreamIdleTimeoutMs,
+  isClaudeStreamWatchdogEnabled,
+} from '../../utils/network/timeoutHint.js'
 import {
   matches1hCacheAllowlist,
   resolve1hCacheAllowlist,
@@ -737,6 +742,7 @@ function stripGeminiProviderMetadata<T extends BetaContentBlockParam | string>(
 export type Options = {
   getToolPermissionContext: () => Promise<ToolPermissionContext>
   model: string
+  modelSettingsSlot?: ModelSettingsSlot
   toolChoice?: BetaToolChoiceTool | BetaToolChoiceAuto | undefined
   isNonInteractiveSession: boolean
   extraToolSchemas?: BetaToolUnion[]
@@ -1101,15 +1107,41 @@ export function stripExcessMediaItems(
   }) as (UserMessage | AssistantMessage)[]
 }
 
+const AVAILABLE_DEFERRED_TOOLS_INSTRUCTIONS = `IMPORTANT: The tools listed above are deferred-loading — they are NOT in your tool list. To use them, you MUST first discover a tool via SearchExtraTools, then invoke it with ExecuteExtraTool.
+
+SearchExtraTools and ExecuteExtraTool are core tools already in your tool list right now — call them directly, do NOT use Bash/Glob to find them.
+
+Steps:
+1. SearchExtraTools({"query": "select:<tool_name>"}) — discover the tool and its schema
+2. ExecuteExtraTool({"tool_name": "<name>", "params": {...}}) — invoke it with correct parameters`
+
 /**
- * Module-level cache of deferred-tool lines that have already been announced
- * via <available-deferred-tools>. Because the injection is ephemeral (appended
- * to a local `messagesForAPI` that is never persisted back into the caller's
- * message history), we cannot scan history to detect prior injections — the
- * injected message is gone after each API call. Instead we keep this Set so we
- * only re-inject when new deferred tools appear (e.g. MCP server connects).
+ * Append the complete current deferred-tool pool to one Anthropic request.
+ * This message is intentionally ephemeral, so every request must receive its
+ * own copy rather than relying on process-global state from another request or
+ * session.
  */
-const lastAnnouncedDeferredTools = new Set<string>()
+export function appendAvailableDeferredToolsForAnthropicRequest(
+  messagesForAPI: (UserMessage | AssistantMessage)[],
+  tools: Tools,
+  deferredToolNames: ReadonlySet<string>,
+): (UserMessage | AssistantMessage)[] {
+  const deferredToolList = tools
+    .filter(t => deferredToolNames.has(t.name))
+    .map(formatDeferredToolLine)
+    .sort()
+    .join('\n')
+
+  if (!deferredToolList) return messagesForAPI
+
+  return [
+    ...messagesForAPI,
+    createUserMessage({
+      content: `<system-reminder>\n<available-deferred-tools>\n${deferredToolList}\n</available-deferred-tools>\n${AVAILABLE_DEFERRED_TOOLS_INSTRUCTIONS}\n</system-reminder>`,
+      isMeta: true,
+    }),
+  ]
+}
 
 async function* queryModel(
   messages: Message[],
@@ -1220,6 +1252,7 @@ async function* queryModel(
     options.getToolPermissionContext,
     options.agents,
     'query',
+    options.modelSettingsSlot,
   )
 
   // Precompute once — isDeferredTool does 2 GrowthBook lookups per call
@@ -1451,38 +1484,16 @@ async function* queryModel(
     postNormalizedMessageCount: messagesForAPI.length,
   })
 
-  // When the delta attachment is enabled, deferred tools are announced
-  // via persisted deferred_tools_delta attachments instead of this
-  // ephemeral prepend (which busts cache whenever the pool changes).
+  // When the delta attachment is enabled, deferred tools are announced via
+  // persisted deferred_tools_delta attachments instead of this ephemeral copy.
+  // Otherwise each request needs the complete current pool because the appended
+  // message is not written back to conversation history.
   if (useSearchExtraTools && !isDeferredToolsDeltaEnabled()) {
-    // Diff current deferred tools against what's already been announced in
-    // prior <available-deferred-tools> injections. Only re-inject when new
-    // tools appear (e.g. MCP server connects mid-session).
-    const deferredToolList = tools
-      .filter(t => deferredToolNames.has(t.name))
-      .map(formatDeferredToolLine)
-      .sort()
-      .join('\n')
-
-    if (deferredToolList) {
-      const currentTools = new Set(deferredToolList.split('\n'))
-      const hasNewTools = [...currentTools].some(
-        t => !lastAnnouncedDeferredTools.has(t),
-      )
-
-      if (hasNewTools) {
-        lastAnnouncedDeferredTools.clear()
-        for (const t of currentTools) lastAnnouncedDeferredTools.add(t)
-
-        messagesForAPI = [
-          ...messagesForAPI,
-          createUserMessage({
-            content: `<system-reminder>\n<available-deferred-tools>\n${deferredToolList}\n</available-deferred-tools>\nIMPORTANT: The tools listed above are deferred-loading — they are NOT in your tool list. To use them, you MUST first discover a tool via SearchExtraTools, then invoke it with ExecuteExtraTool.\n\nSearchExtraTools and ExecuteExtraTool are core tools already in your tool list right now — call them directly, do NOT use Bash/Glob to find them.\n\nSteps:\n1. SearchExtraTools({"query": "select:<tool_name>"}) — discover the tool and its schema\n2. ExecuteExtraTool({"tool_name": "<name>", "params": {...}}) — invoke it with correct parameters\n</system-reminder>`,
-            isMeta: true,
-          }),
-        ]
-      }
-    }
+    messagesForAPI = appendAvailableDeferredToolsForAnthropicRequest(
+      messagesForAPI,
+      tools,
+      deferredToolNames,
+    )
   }
 
   // filter(Boolean) works by converting each element to a boolean - empty strings become false and are filtered out.
@@ -1596,7 +1607,11 @@ async function* queryModel(
     }
   }
 
-  const effort = resolveAppliedEffort(options.model, options.effortValue)
+  const effort = resolveAppliedEffort(
+    options.model,
+    options.effortValue,
+    options.modelSettingsSlot,
+  )
 
   if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
     // Exclude defer_loading tools from the hash -- the API strips them from the
@@ -2050,11 +2065,12 @@ async function* queryModel(
     // kill hung streams. Without this, a silently dropped connection can hang
     // the session indefinitely since the SDK's request timeout only covers the
     // initial fetch(), not the streaming body.
-    const streamWatchdogEnabled = isEnvTruthy(
+    const streamWatchdogEnabled = isClaudeStreamWatchdogEnabled(
       process.env.CLAUDE_ENABLE_STREAM_WATCHDOG,
     )
-    const STREAM_IDLE_TIMEOUT_MS =
-      parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
+    const STREAM_IDLE_TIMEOUT_MS = getClaudeStreamIdleTimeoutMs(
+      process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS,
+    )
     const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
     let streamIdleAborted = false
     // performance.now() snapshot when watchdog fires, for measuring abort propagation delay

@@ -3,10 +3,14 @@ import treeKill from 'tree-kill'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { BIN_NAME } from '../constants/brand.js'
+import { occConfigPath } from '../config/paths.js'
 import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { isProcessRunning } from '../utils/process/genericProcessUtils.js'
 import { getPlatform } from '../utils/process/platform.js'
-import { getProcessStartMarker } from '../utils/session/concurrentSessions.js'
+import {
+  getProcessStartMarker,
+  removeManagedSessionLog,
+} from '../utils/session/concurrentSessions.js'
 import { jsonParse } from '../utils/telemetry/slowOperations.js'
 import { selectEngine } from './bg/engines/index.js'
 import type { SessionEntry } from './bg/engine.js'
@@ -36,6 +40,16 @@ function getSessionsDir(): string {
   return join(getClaudeConfigHomeDir(), 'sessions')
 }
 
+async function removeSessionArtifacts(
+  pidFile: string,
+  logPath?: string,
+): Promise<void> {
+  await Promise.all([
+    unlink(pidFile).catch(() => {}),
+    removeManagedSessionLog(logPath),
+  ])
+}
+
 export async function listLiveSessions(): Promise<SessionEntry[]> {
   const dir = getSessionsDir()
   let files: string[]
@@ -50,38 +64,42 @@ export async function listLiveSessions(): Promise<SessionEntry[]> {
     if (!/^\d+\.json$/.test(file)) continue
     const pid = parseInt(file.slice(0, -5), 10)
     const pidFile = join(dir, file)
+    const processRunning = isProcessRunning(pid)
 
-    if (!isProcessRunning(pid)) {
-      void unlink(pidFile).catch(() => {})
+    let entry: SessionEntry
+    try {
+      const raw = await readFile(pidFile, 'utf-8')
+      entry = jsonParse(raw) as SessionEntry
+    } catch {
+      // Corrupt stale registries should not survive forever.
+      if (!processRunning) await unlink(pidFile).catch(() => {})
       continue
     }
 
-    try {
-      const raw = await readFile(pidFile, 'utf-8')
-      const entry = jsonParse(raw) as SessionEntry
+    if (!processRunning) {
+      await removeSessionArtifacts(pidFile, entry.logPath)
+      continue
+    }
 
-      // The filename is the registry authority. Trusting a divergent JSON PID
-      // would let a stale or tampered entry redirect signal-sending commands.
-      if (!Number.isSafeInteger(entry.pid) || entry.pid !== pid) {
-        await unlink(pidFile).catch(() => {})
+    // The filename is the registry authority. Trusting a divergent JSON PID
+    // would let a stale or tampered entry redirect signal-sending commands.
+    if (!Number.isSafeInteger(entry.pid) || entry.pid !== pid) {
+      await removeSessionArtifacts(pidFile, entry.logPath)
+      continue
+    }
+
+    if (entry.processStartMarker) {
+      const currentMarker = await getProcessStartMarker(pid)
+      if (currentMarker && currentMarker !== entry.processStartMarker) {
+        if (getPlatform() !== 'wsl') {
+          await removeSessionArtifacts(pidFile, entry.logPath)
+        }
         continue
       }
-
-      if (entry.processStartMarker) {
-        const currentMarker = await getProcessStartMarker(pid)
-        if (currentMarker && currentMarker !== entry.processStartMarker) {
-          if (getPlatform() !== 'wsl') {
-            await unlink(pidFile).catch(() => {})
-          }
-          continue
-        }
-      }
-
-      sessionPidFiles.set(entry, pidFile)
-      sessions.push(entry)
-    } catch {
-      // Corrupt file — skip
     }
+
+    sessionPidFiles.set(entry, pidFile)
+    sessions.push(entry)
   }
 
   return sessions
@@ -310,7 +328,7 @@ export async function killHandler(target: string | undefined): Promise<void> {
     )
     process.exitCode = 1
     const pidFile = sessionPidFiles.get(session)
-    if (pidFile) await unlink(pidFile).catch(() => {})
+    if (pidFile) await removeSessionArtifacts(pidFile, session.logPath)
     return
   }
 
@@ -326,7 +344,7 @@ export async function killHandler(target: string | undefined): Promise<void> {
   } catch {
     console.log('Session already exited.')
     const pidFile = sessionPidFiles.get(session)
-    if (pidFile) await unlink(pidFile).catch(() => {})
+    if (pidFile) await removeSessionArtifacts(pidFile, session.logPath)
     return
   }
 
@@ -347,7 +365,7 @@ export async function killHandler(target: string | undefined): Promise<void> {
       )
       process.exitCode = 1
       const pidFile = sessionPidFiles.get(session)
-      if (pidFile) await unlink(pidFile).catch(() => {})
+      if (pidFile) await removeSessionArtifacts(pidFile, session.logPath)
       return
     }
 
@@ -362,7 +380,7 @@ export async function killHandler(target: string | undefined): Promise<void> {
   }
 
   const pidFile = sessionPidFiles.get(session)
-  if (pidFile) await unlink(pidFile).catch(() => {})
+  if (pidFile) await removeSessionArtifacts(pidFile, session.logPath)
 }
 
 /**
@@ -401,12 +419,7 @@ export async function handleBgStart(args: string[]): Promise<void> {
   }
 
   const sessionName = `${BIN_NAME}-bg-${randomUUID().slice(0, 8)}`
-  const logPath = join(
-    getClaudeConfigHomeDir(),
-    'sessions',
-    'logs',
-    `${sessionName}.log`,
-  )
+  const logPath = occConfigPath('sessions', 'logs', `${sessionName}.log`)
 
   try {
     const result = await engine.start({

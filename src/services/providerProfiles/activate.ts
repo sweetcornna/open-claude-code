@@ -9,7 +9,10 @@ import { clearOpenAIClientCache } from 'src/services/api/openai/client.js'
 import { clearGrokClientCache } from 'src/services/api/grok/client.js'
 import { applyConfigEnvironmentVariables } from 'src/utils/config/managedEnv.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
-import { updateSettingsForSource } from 'src/utils/settings/settings.js'
+import {
+  getSettingsForSource,
+  updateSettingsForSource,
+} from 'src/utils/settings/settings.js'
 import {
   buildActivationEnvPatch,
   captureProfile,
@@ -79,16 +82,27 @@ export function activateProfile(
   }
 
   const envPatch = buildActivationEnvPatch(profile)
+  const previousManagedEnv = {
+    ...(getSettingsForSource('userSettings')?.env ?? {}),
+  }
   const { error } = updateSettingsForSource('userSettings', {
     modelType: profile.modelType,
     env: envPatch,
   } as unknown as Parameters<typeof updateSettingsForSource>[1])
   if (error) return { error: `Failed to save settings: ${error.message}` }
 
-  // Mirror into the live process the same way ConsoleOAuthFlow does.
+  // settings.env is occ-owned, but process.env is shared with the parent shell.
+  // Clear only values still owned by the settings layer we just replaced;
+  // shell values and later manual overrides must survive the profile switch.
   for (const [key, value] of Object.entries(envPatch)) {
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
+    if (value !== undefined) {
+      process.env[key] = value
+      continue
+    }
+    const current = process.env[key]
+    if (current !== undefined && current === previousManagedEnv[key]) {
+      delete process.env[key]
+    }
   }
   applyConfigEnvironmentVariables()
   // Cached clients hold pre-switch baseURL/key; force rebuild on next use.

@@ -116,7 +116,11 @@ export async function* queryModelGrok(
 
     const grokReasoningEffort = resolveGrokReasoningEffort(
       grokModel,
-      resolveAppliedEffort(options.model, options.effortValue),
+      resolveAppliedEffort(
+        options.model,
+        options.effortValue,
+        options.modelSettingsSlot,
+      ),
     )
 
     const stream = await client.chat.completions.create(

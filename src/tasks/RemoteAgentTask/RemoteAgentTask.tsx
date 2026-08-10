@@ -35,7 +35,7 @@ import {
 } from '../../utils/sessionStorage.js';
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js';
 import { appendTaskOutput, evictTaskOutput, getTaskOutputPath, initTaskOutput } from '../../utils/task/diskOutput.js';
-import { registerTask, updateTaskState } from '../../utils/task/framework.js';
+import { registerTask, scheduleTerminalTaskEviction, updateTaskState } from '../../utils/task/framework.js';
 import { fetchSession } from '../../utils/teleport/api.js';
 import { archiveRemoteSession, pollRemoteSessionEvents } from '../../utils/teleport/teleport.js';
 import type { TodoList } from '../../utils/todo/types.js';
@@ -341,6 +341,13 @@ function markTaskNotified(taskId: string, setAppState: SetAppState): boolean {
     return { ...task, notified: true };
   });
   return shouldEnqueue;
+}
+
+/** Schedule AppState eviction after notification and preserve disk/sidecar cleanup. */
+function finalizeTerminalRemoteTask(taskId: string, setAppState: SetAppState): void {
+  scheduleTerminalTaskEviction(taskId, setAppState, 0);
+  void evictTaskOutput(taskId);
+  void removeRemoteAgentMetadata(taskId);
 }
 
 /**
@@ -843,8 +850,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
         } else {
           enqueueRemoteNotification(taskId, task.title, 'completed', context.setAppState, task.toolUseId);
         }
-        void evictTaskOutput(taskId);
-        void removeRemoteAgentMetadata(taskId);
+        finalizeTerminalRemoteTask(taskId, context.setAppState);
         runCompletionHook(taskId, task);
         return;
       }
@@ -878,8 +884,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
           } else {
             enqueueRemoteNotification(taskId, completionResult, 'completed', context.setAppState, task.toolUseId);
           }
-          void evictTaskOutput(taskId);
-          void removeRemoteAgentMetadata(taskId);
+          finalizeTerminalRemoteTask(taskId, context.setAppState);
           runCompletionHook(taskId, task);
           return;
         }
@@ -1038,8 +1043,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
           const reviewContent = cachedReviewContent ?? extractReviewFromLog(accumulatedLog);
           if (reviewContent && finalStatus === 'completed') {
             enqueueRemoteReviewNotification(taskId, reviewContent, context.setAppState);
-            void evictTaskOutput(taskId);
-            void removeRemoteAgentMetadata(taskId);
+            finalizeTerminalRemoteTask(taskId, context.setAppState);
             runCompletionHook(taskId, task);
             return; // Stop polling
           }
@@ -1056,8 +1060,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
                 ? 'remote session exceeded 30 minutes'
                 : 'no review output — orchestrator may have exited early';
           enqueueRemoteReviewFailureNotification(taskId, reason, context.setAppState);
-          void evictTaskOutput(taskId);
-          void removeRemoteAgentMetadata(taskId);
+          finalizeTerminalRemoteTask(taskId, context.setAppState);
           runCompletionHook(taskId, task);
           return; // Stop polling
         }
@@ -1077,8 +1080,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
         } else {
           enqueueRemoteNotification(taskId, task.title, finalStatus, context.setAppState, task.toolUseId);
         }
-        void evictTaskOutput(taskId);
-        void removeRemoteAgentMetadata(taskId);
+        finalizeTerminalRemoteTask(taskId, context.setAppState);
         runCompletionHook(taskId, task);
         return; // Stop polling
       }
@@ -1103,8 +1105,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
             endTime: Date.now(),
           }));
           enqueueRemoteReviewFailureNotification(taskId, 'remote session exceeded 30 minutes', context.setAppState);
-          void evictTaskOutput(taskId);
-          void removeRemoteAgentMetadata(taskId);
+          finalizeTerminalRemoteTask(taskId, context.setAppState);
           return; // Stop polling
         }
       } catch {
@@ -1173,8 +1174,7 @@ export const RemoteAgentTask: Task = {
       }
     }
 
-    void evictTaskOutput(taskId);
-    void removeRemoteAgentMetadata(taskId);
+    finalizeTerminalRemoteTask(taskId, setAppState);
     logForDebugging(`RemoteAgentTask ${taskId} killed, archiving session ${sessionId ?? 'unknown'}`);
   },
 };

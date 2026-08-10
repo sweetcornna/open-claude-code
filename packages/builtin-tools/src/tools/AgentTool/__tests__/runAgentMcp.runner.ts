@@ -13,7 +13,7 @@
  * Runs in its own process (see runAgentMcp.test.ts) because it replaces
  * src/services/mcp/* for the whole module registry.
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../../../tests/mocks/log'
 import { debugMock } from '../../../../../../tests/mocks/debug'
 
@@ -47,6 +47,7 @@ const connectBehaviour = new Map<
 >()
 const connectCalls: string[] = []
 const clientsByName = new Map<string, FakeClient>()
+const savedSubagentModel = process.env.CLAUDE_CODE_SUBAGENT_MODEL
 
 // Complete surfaces: only the two entry points under test are replaced, every
 // other export keeps delegating to the real module (other files in this
@@ -78,12 +79,16 @@ mock.module('src/services/mcp/config.ts', () => ({
     name === 'known' ? { type: 'stdio', command: 'x', scope: 'user' } : null,
 }))
 
-const { initializeAgentMcpServers, createAgentRefreshTools } = await import(
-  '../runAgent.js'
-)
+const {
+  continueAgentIterator,
+  initializeAgentMcpServers,
+  createAgentRefreshTools,
+} = await import('../runAgent.js')
 const { ASK_USER_QUESTION_TOOL_NAME } = await import(
   '../../AskUserQuestionTool/prompt.js'
 )
+const { getAgentModelSettingsSlot, removeInherited1mForAgentAlias } =
+  await import('src/utils/model/agent.js')
 
 type AgentDefinitionLike = Parameters<typeof initializeAgentMcpServers>[0]
 type ParentClients = Parameters<typeof initializeAgentMcpServers>[1]
@@ -104,6 +109,134 @@ beforeEach(() => {
   connectBehaviour.clear()
   connectCalls.length = 0
   clientsByName.clear()
+  delete process.env.CLAUDE_CODE_SUBAGENT_MODEL
+})
+
+describe('foreground-to-background iterator handoff', () => {
+  test('continues the pending next call even when it exceeds the old 1s timeout', async () => {
+    let runCount = 0
+    let sideEffectCount = 0
+    let nextCallCount = 0
+    let returnCallCount = 0
+
+    async function* source(): AsyncGenerator<string, void> {
+      runCount++
+      await new Promise(resolve => setTimeout(resolve, 1_100))
+      sideEffectCount++
+      yield 'first-result'
+      yield 'terminal-result'
+    }
+
+    const sourceIterator = source()
+    const iterator: AsyncIterator<string, void> = {
+      next: () => {
+        nextCallCount++
+        return sourceIterator.next()
+      },
+      return: async () => {
+        returnCallCount++
+        return sourceIterator.return()
+      },
+    }
+    const pendingNext = iterator.next()
+    const results: string[] = []
+
+    for await (const result of continueAgentIterator(iterator, pendingNext)) {
+      results.push(result)
+    }
+
+    expect(results).toEqual(['first-result', 'terminal-result'])
+    expect(runCount).toBe(1)
+    expect(sideEffectCount).toBe(1)
+    expect(returnCallCount).toBe(0)
+    expect(nextCallCount).toBe(3)
+  }, 5_000)
+
+  test('closes the owned iterator when the continuation consumer exits early', async () => {
+    let finalized = false
+    async function* source(): AsyncGenerator<string, void> {
+      try {
+        yield 'first-result'
+        yield 'unconsumed-result'
+      } finally {
+        finalized = true
+      }
+    }
+
+    const iterator = source()
+    for await (const result of continueAgentIterator(
+      iterator,
+      iterator.next(),
+    )) {
+      expect(result).toBe('first-result')
+      break
+    }
+
+    expect(finalized).toBe(true)
+  })
+})
+
+afterAll(() => {
+  if (savedSubagentModel === undefined) {
+    delete process.env.CLAUDE_CODE_SUBAGENT_MODEL
+  } else {
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL = savedSubagentModel
+  }
+})
+
+describe('Agent model-settings slot propagation', () => {
+  test('empty env override follows the configured Agent selection', () => {
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL = ''
+
+    expect(
+      getAgentModelSettingsSlot('default', 'claude-opus-5', 'sonnet'),
+    ).toBe('default')
+  })
+
+  test('explicit family aliases use their own slot', () => {
+    expect(
+      getAgentModelSettingsSlot(
+        'inherit',
+        'claude-sonnet-5',
+        'default',
+        'sonnet',
+      ),
+    ).toBe('sonnet')
+  })
+
+  test('inherit keeps the parent default slot and suffix', () => {
+    expect(
+      getAgentModelSettingsSlot('inherit', 'claude-opus-5[1m]', 'default'),
+    ).toBe('default')
+    expect(removeInherited1mForAgentAlias('inherit', 'claude-opus-5[1m]')).toBe(
+      'claude-opus-5[1m]',
+    )
+  })
+
+  test('a bare alias re-applies 1M from its own slot', () => {
+    expect(removeInherited1mForAgentAlias('opus', 'claude-opus-5[1m]')).toBe(
+      'claude-opus-5',
+    )
+    expect(
+      removeInherited1mForAgentAlias('opus[1m]', 'claude-opus-5[1m]'),
+    ).toBe('claude-opus-5[1m]')
+  })
+
+  test('explicit concrete ids use reverse tier lookup', () => {
+    expect(
+      getAgentModelSettingsSlot(
+        'claude-sonnet-5',
+        'claude-sonnet-5',
+        'default',
+      ),
+    ).toBe('sonnet')
+  })
+
+  test('provider default selections use the default slot', () => {
+    expect(
+      getAgentModelSettingsSlot('default', 'claude-opus-5', 'sonnet'),
+    ).toBe('default')
+  })
 })
 
 describe('initializeAgentMcpServers — per-server failure isolation', () => {

@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { getTimeoutHintEnvVar } from '../timeoutHint.js'
+import {
+  getClaudeStreamIdleTimeoutMs,
+  getTimeoutHintEnvVar,
+  isClaudeStreamWatchdogEnabled,
+} from '../timeoutHint.js'
 
 describe('getTimeoutHintEnvVar', () => {
   test('says nothing for connection drops — the case that started this', () => {
@@ -59,5 +63,26 @@ describe('getTimeoutHintEnvVar', () => {
     expect(
       getTimeoutHintEnvVar('APIConnectionTimeoutError: Request timed out.'),
     ).toBe('API_TIMEOUT_MS')
+  })
+})
+
+describe('Claude stream watchdog configuration', () => {
+  test('is enabled by default and only explicit false values disable it', () => {
+    expect(isClaudeStreamWatchdogEnabled(undefined)).toBe(true)
+    expect(isClaudeStreamWatchdogEnabled('1')).toBe(true)
+    expect(isClaudeStreamWatchdogEnabled('true')).toBe(true)
+    expect(isClaudeStreamWatchdogEnabled('unexpected')).toBe(true)
+
+    expect(isClaudeStreamWatchdogEnabled('0')).toBe(false)
+    expect(isClaudeStreamWatchdogEnabled('false')).toBe(false)
+    expect(isClaudeStreamWatchdogEnabled(' FALSE ')).toBe(false)
+    expect(isClaudeStreamWatchdogEnabled('')).toBe(false)
+    expect(isClaudeStreamWatchdogEnabled('   ')).toBe(false)
+  })
+
+  test('defaults to 90 seconds and honors the idle timeout override alone', () => {
+    expect(getClaudeStreamIdleTimeoutMs(undefined)).toBe(90_000)
+    expect(getClaudeStreamIdleTimeoutMs('')).toBe(90_000)
+    expect(getClaudeStreamIdleTimeoutMs('1234')).toBe(1234)
   })
 })

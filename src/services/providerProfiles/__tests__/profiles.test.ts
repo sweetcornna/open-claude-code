@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { PROFILE_ENV_KEYS, type ProfileModelType } from '../envKeys.js'
 import {
   ALL_PROFILE_ENV_KEYS,
   buildActivationEnvPatch,
@@ -11,6 +12,96 @@ import {
   profilesFilePath,
   saveProfilesFile,
 } from '../profiles.js'
+
+const EXPECTED_TIER_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
+  anthropic: [
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
+    'ANTHROPIC_DEFAULT_FABLE_MODEL',
+    'ANTHROPIC_DEFAULT_FABLE_MODEL_NAME',
+    'ANTHROPIC_DEFAULT_FABLE_MODEL_DESCRIPTION',
+    'ANTHROPIC_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES',
+  ],
+  openai: [
+    'OPENAI_DEFAULT_HAIKU_MODEL',
+    'OPENAI_DEFAULT_HAIKU_MODEL_NAME',
+    'OPENAI_DEFAULT_HAIKU_MODEL_DESCRIPTION',
+    'OPENAI_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES',
+    'OPENAI_DEFAULT_SONNET_MODEL',
+    'OPENAI_DEFAULT_SONNET_MODEL_NAME',
+    'OPENAI_DEFAULT_SONNET_MODEL_DESCRIPTION',
+    'OPENAI_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
+    'OPENAI_DEFAULT_OPUS_MODEL',
+    'OPENAI_DEFAULT_OPUS_MODEL_NAME',
+    'OPENAI_DEFAULT_OPUS_MODEL_DESCRIPTION',
+    'OPENAI_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
+    'OPENAI_DEFAULT_FABLE_MODEL',
+    'OPENAI_DEFAULT_FABLE_MODEL_NAME',
+    'OPENAI_DEFAULT_FABLE_MODEL_DESCRIPTION',
+    'OPENAI_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES',
+  ],
+  gemini: [
+    'GEMINI_DEFAULT_HAIKU_MODEL',
+    'GEMINI_DEFAULT_HAIKU_MODEL_NAME',
+    'GEMINI_DEFAULT_HAIKU_MODEL_DESCRIPTION',
+    'GEMINI_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES',
+    'GEMINI_DEFAULT_SONNET_MODEL',
+    'GEMINI_DEFAULT_SONNET_MODEL_NAME',
+    'GEMINI_DEFAULT_SONNET_MODEL_DESCRIPTION',
+    'GEMINI_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
+    'GEMINI_DEFAULT_OPUS_MODEL',
+    'GEMINI_DEFAULT_OPUS_MODEL_NAME',
+    'GEMINI_DEFAULT_OPUS_MODEL_DESCRIPTION',
+    'GEMINI_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
+    'GEMINI_DEFAULT_FABLE_MODEL',
+    'GEMINI_DEFAULT_FABLE_MODEL_NAME',
+    'GEMINI_DEFAULT_FABLE_MODEL_DESCRIPTION',
+    'GEMINI_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES',
+  ],
+  grok: [
+    'GROK_DEFAULT_HAIKU_MODEL',
+    'GROK_DEFAULT_HAIKU_MODEL_NAME',
+    'GROK_DEFAULT_HAIKU_MODEL_DESCRIPTION',
+    'GROK_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES',
+    'GROK_DEFAULT_SONNET_MODEL',
+    'GROK_DEFAULT_SONNET_MODEL_NAME',
+    'GROK_DEFAULT_SONNET_MODEL_DESCRIPTION',
+    'GROK_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
+    'GROK_DEFAULT_OPUS_MODEL',
+    'GROK_DEFAULT_OPUS_MODEL_NAME',
+    'GROK_DEFAULT_OPUS_MODEL_DESCRIPTION',
+    'GROK_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
+    'GROK_DEFAULT_FABLE_MODEL',
+    'GROK_DEFAULT_FABLE_MODEL_NAME',
+    'GROK_DEFAULT_FABLE_MODEL_DESCRIPTION',
+    'GROK_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES',
+  ],
+}
+
+describe('PROFILE_ENV_KEYS', () => {
+  test('includes every tier model field for every provider family', () => {
+    for (const modelType of Object.keys(
+      EXPECTED_TIER_ENV_KEYS,
+    ) as ProfileModelType[]) {
+      expect(PROFILE_ENV_KEYS[modelType]).toEqual(
+        expect.arrayContaining(EXPECTED_TIER_ENV_KEYS[modelType]),
+      )
+    }
+    expect(ALL_PROFILE_ENV_KEYS).toEqual(
+      expect.arrayContaining(Object.values(EXPECTED_TIER_ENV_KEYS).flat()),
+    )
+  })
+})
 
 describe('isValidProfileName', () => {
   test('accepts shell-friendly names', () => {
@@ -42,6 +133,26 @@ describe('captureProfile', () => {
     expect(profile.env).toEqual({
       OPENAI_BASE_URL: 'https://api.deepseek.com/v1',
       OPENAI_API_KEY: 'sk-x',
+    })
+  })
+
+  test('captures tier model metadata and capability overrides', () => {
+    const profile = captureProfile({
+      name: 'custom',
+      modelType: 'openai',
+      mergedEnv: {
+        OPENAI_DEFAULT_OPUS_MODEL: 'shared-model',
+        OPENAI_DEFAULT_OPUS_MODEL_NAME: 'Profile A Opus',
+        OPENAI_DEFAULT_OPUS_MODEL_DESCRIPTION: 'Profile A description',
+        OPENAI_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES: 'thinking,effort',
+      },
+    })
+
+    expect(profile.env).toEqual({
+      OPENAI_DEFAULT_OPUS_MODEL: 'shared-model',
+      OPENAI_DEFAULT_OPUS_MODEL_NAME: 'Profile A Opus',
+      OPENAI_DEFAULT_OPUS_MODEL_DESCRIPTION: 'Profile A description',
+      OPENAI_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES: 'thinking,effort',
     })
   })
 
@@ -86,6 +197,16 @@ describe('buildActivationEnvPatch', () => {
     expect('GEMINI_API_KEY' in patch).toBe(true)
     expect('ANTHROPIC_BASE_URL' in patch).toBe(true)
     expect(patch.OPENAI_API_KEY).toBe('sk-x')
+    expect(patch.OPENAI_DEFAULT_OPUS_MODEL_NAME).toBeUndefined()
+    expect('OPENAI_DEFAULT_OPUS_MODEL_NAME' in patch).toBe(true)
+    expect(patch.OPENAI_DEFAULT_OPUS_MODEL_DESCRIPTION).toBeUndefined()
+    expect('OPENAI_DEFAULT_OPUS_MODEL_DESCRIPTION' in patch).toBe(true)
+    expect(
+      patch.OPENAI_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES,
+    ).toBeUndefined()
+    expect('OPENAI_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES' in patch).toBe(
+      true,
+    )
     expect(Object.keys(patch).length).toBe(ALL_PROFILE_ENV_KEYS.length)
   })
 

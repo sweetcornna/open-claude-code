@@ -1,5 +1,21 @@
 export type ProfileModelType = 'anthropic' | 'openai' | 'gemini' | 'grok'
 
+const PROFILE_MODEL_TIERS = ['HAIKU', 'SONNET', 'OPUS', 'FABLE'] as const
+const PROFILE_MODEL_TIER_KEYS = [
+  'MODEL',
+  'MODEL_NAME',
+  'MODEL_DESCRIPTION',
+  'MODEL_SUPPORTED_CAPABILITIES',
+] as const
+
+function tierProfileEnvKeys(providerPrefix: string): readonly string[] {
+  return PROFILE_MODEL_TIERS.flatMap(tier =>
+    PROFILE_MODEL_TIER_KEYS.map(
+      key => `${providerPrefix}_DEFAULT_${tier}_${key}`,
+    ),
+  )
+}
+
 /**
  * Env keys a profile may manage, per provider family. Activation clears the
  * union of ALL families before applying the target profile's env, so keys
@@ -15,10 +31,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'ANTHROPIC_AUTH_TOKEN',
     'ANTHROPIC_API_KEY',
     'ANTHROPIC_MODEL',
-    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-    'ANTHROPIC_DEFAULT_SONNET_MODEL',
-    'ANTHROPIC_DEFAULT_OPUS_MODEL',
-    'ANTHROPIC_DEFAULT_FABLE_MODEL',
+    ...tierProfileEnvKeys('ANTHROPIC'),
     'ANTHROPIC_SMALL_FAST_MODEL',
     'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
     'CLAUDE_CODE_1M_CONTEXT_MODELS',
@@ -28,10 +41,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'OPENAI_BASE_URL',
     'OPENAI_API_KEY',
     'OPENAI_MODEL',
-    'OPENAI_DEFAULT_HAIKU_MODEL',
-    'OPENAI_DEFAULT_SONNET_MODEL',
-    'OPENAI_DEFAULT_OPUS_MODEL',
-    'OPENAI_DEFAULT_FABLE_MODEL',
+    ...tierProfileEnvKeys('OPENAI'),
     'OPENAI_AUTH_MODE',
     'OPENAI_WIRE_API',
     'OPENAI_ENABLE_THINKING',
@@ -50,10 +60,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'GEMINI_BASE_URL',
     'ANTIGRAVITY_BASE_URL',
     'GEMINI_MODEL',
-    'GEMINI_DEFAULT_HAIKU_MODEL',
-    'GEMINI_DEFAULT_SONNET_MODEL',
-    'GEMINI_DEFAULT_OPUS_MODEL',
-    'GEMINI_DEFAULT_FABLE_MODEL',
+    ...tierProfileEnvKeys('GEMINI'),
     'GEMINI_MAX_TOKENS',
     'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   ],
@@ -62,10 +69,7 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'XAI_API_KEY',
     'GROK_MODEL',
     'GROK_MODEL_MAP',
-    'GROK_DEFAULT_HAIKU_MODEL',
-    'GROK_DEFAULT_SONNET_MODEL',
-    'GROK_DEFAULT_OPUS_MODEL',
-    'GROK_DEFAULT_FABLE_MODEL',
+    ...tierProfileEnvKeys('GROK'),
     'GROK_BASE_URL',
     'GROK_MAX_TOKENS',
     'CLAUDE_CODE_MAX_CONTEXT_TOKENS',

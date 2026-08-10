@@ -81,8 +81,12 @@ function shouldRetainUnreadAsProtocolMessage(
   }
 }
 
+function mailboxMessageIdentity(message: TeammateMessage): string {
+  return jsonStringify([message.from, message.timestamp, message.text])
+}
+
 function sameMailboxMessage(a: TeammateMessage, b: TeammateMessage): boolean {
-  return a.from === b.from && a.timestamp === b.timestamp && a.text === b.text
+  return mailboxMessageIdentity(a) === mailboxMessageIdentity(b)
 }
 
 function mailboxMessageStorageBytes(message: TeammateMessage): number {
@@ -528,6 +532,74 @@ export async function markMessageAsReadByIdentity(
     if (code === 'ENOENT') return false
     logError(error)
     return false
+  } finally {
+    if (release) {
+      await release()
+    }
+  }
+}
+
+/**
+ * Marks the unread messages present in a previously read snapshot as read.
+ * Identity counts prevent newly appended messages, including exact duplicates,
+ * from being acknowledged beyond the number observed in the snapshot.
+ */
+export async function markMessagesAsReadBySnapshot(
+  agentName: string,
+  teamName: string | undefined,
+  snapshot: TeammateMessage[],
+): Promise<void> {
+  if (snapshot.length === 0) return
+
+  const remainingByIdentity = new Map<string, number>()
+  for (const message of snapshot) {
+    if (message.read) continue
+    const identity = mailboxMessageIdentity(message)
+    remainingByIdentity.set(
+      identity,
+      (remainingByIdentity.get(identity) ?? 0) + 1,
+    )
+  }
+  if (remainingByIdentity.size === 0) return
+
+  const inboxPath = getInboxPath(agentName, teamName)
+  const lockFilePath = `${inboxPath}.lock`
+  let release: (() => Promise<void>) | undefined
+
+  try {
+    release = await lockfile.lock(inboxPath, {
+      lockfilePath: lockFilePath,
+      ...LOCK_OPTIONS,
+    })
+
+    const messages = await readMailboxForMutation(agentName, teamName)
+    let markedCount = 0
+    for (let index = 0; index < messages.length; index++) {
+      const message = messages[index]
+      if (!message || message.read) continue
+      const identity = mailboxMessageIdentity(message)
+      const remaining = remainingByIdentity.get(identity) ?? 0
+      if (remaining === 0) continue
+
+      messages[index] = { ...message, read: true }
+      markedCount++
+      if (remaining === 1) {
+        remainingByIdentity.delete(identity)
+      } else {
+        remainingByIdentity.set(identity, remaining - 1)
+      }
+    }
+
+    if (markedCount > 0) {
+      await writeCompactedMailbox(
+        inboxPath,
+        messages,
+        'markMessagesAsReadBySnapshot',
+      )
+    }
+  } catch (error) {
+    const code = getErrnoCode(error)
+    if (code !== 'ENOENT') logError(error)
   } finally {
     if (release) {
       await release()

@@ -48,6 +48,7 @@ import { expandPath } from 'src/utils/filesystem/path.js'
 import {
   getDefaultMainLoopModel,
   getMainLoopModel,
+  getMainLoopModelSettingsSlot,
   modelDisplayString,
 } from 'src/utils/model/model.js'
 import {
@@ -281,11 +282,13 @@ export async function handleHeadlessControlRequest(
   } else if (msg.request.subtype === 'get_context_usage') {
     try {
       const appState = state.getAppState()
+      const mainLoopModel = getMainLoopModel()
       const data = await collectContextData({
         messages: state.mutableMessages,
         getAppState: state.getAppState,
         options: {
-          mainLoopModel: getMainLoopModel(),
+          mainLoopModel,
+          modelSettingsSlot: getMainLoopModelSettingsSlot(mainLoopModel),
           tools: buildAllTools(state, appState),
           agentDefinitions: appState.agentDefinitions,
           customSystemPrompt: state.options.systemPrompt,
@@ -526,7 +529,11 @@ export async function handleHeadlessControlRequest(
     // modelSupportsEffort gate matches claude.ts — applied.effort must
     // mirror what actually goes to the API, not just what's configured.
     const effort = modelSupportsEffort(model)
-      ? resolveAppliedEffort(model, currentAppState.effortValue)
+      ? resolveAppliedEffort(
+          model,
+          currentAppState.effortValue,
+          getMainLoopModelSettingsSlot(model),
+        )
       : undefined
     sendControlResponseSuccess(state, msg, {
       ...getSettingsWithSources(),

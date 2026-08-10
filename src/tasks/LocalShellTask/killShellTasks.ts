@@ -6,7 +6,6 @@ import type { AppState } from '../../state/AppState.js'
 import type { AgentId } from '../../types/ids.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { logError } from '../../utils/telemetry/log.js'
-import { dequeueAllMatching } from '../../utils/session/messageQueueManager.js'
 import { evictTaskOutput } from '../../utils/task/diskOutput.js'
 import { updateTaskState } from '../../utils/task/framework.js'
 import { isLocalShellTask } from './guards.js'
@@ -68,9 +67,4 @@ export function killShellTasksForAgent(
       killTask(taskId, setAppState)
     }
   }
-  // Purge any queued notifications addressed to this agent — its query loop
-  // has exited and won't drain them. killTask fires 'killed' notifications
-  // asynchronously; drop the ones already queued and any that land later sit
-  // harmlessly (no consumer matches a dead agentId).
-  dequeueAllMatching(cmd => cmd.agentId === agentId)
 }

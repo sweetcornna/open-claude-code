@@ -131,23 +131,26 @@ export class SessionsWebSocket {
       this.ws = ws
 
       ws.addEventListener('open', () => {
+        if (this.ws !== ws) return
         logForDebugging(
           '[SessionsWebSocket] Connection opened, authenticated via headers',
         )
         this.state = 'connected'
         this.reconnectAttempts = 0
         this.sessionNotFoundRetries = 0
-        this.startPingInterval()
+        this.startPingInterval(ws)
         this.callbacks.onConnected?.()
       })
 
       ws.addEventListener('message', (event: MessageEvent) => {
+        if (this.ws !== ws) return
         const data =
           typeof event.data === 'string' ? event.data : String(event.data)
         this.handleMessage(data)
       })
 
       ws.addEventListener('error', () => {
+        if (this.ws !== ws) return
         const err = new Error('[SessionsWebSocket] WebSocket error')
         logError(err)
         this.callbacks.onError?.(err)
@@ -155,13 +158,15 @@ export class SessionsWebSocket {
 
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       ws.addEventListener('close', (event: CloseEvent) => {
+        if (this.ws !== ws) return
         logForDebugging(
           `[SessionsWebSocket] Closed: code=${event.code} reason=${event.reason}`,
         )
-        this.handleClose(event.code)
+        this.handleClose(ws, event.code)
       })
 
       ws.addEventListener('pong', () => {
+        if (this.ws !== ws) return
         logForDebugging('[SessionsWebSocket] Pong received')
       })
     } else {
@@ -174,6 +179,7 @@ export class SessionsWebSocket {
       this.ws = ws
 
       ws.on('open', () => {
+        if (this.ws !== ws) return
         logForDebugging(
           '[SessionsWebSocket] Connection opened, authenticated via headers',
         )
@@ -181,27 +187,31 @@ export class SessionsWebSocket {
         this.state = 'connected'
         this.reconnectAttempts = 0
         this.sessionNotFoundRetries = 0
-        this.startPingInterval()
+        this.startPingInterval(ws)
         this.callbacks.onConnected?.()
       })
 
       ws.on('message', (data: Buffer) => {
+        if (this.ws !== ws) return
         this.handleMessage(data.toString())
       })
 
       ws.on('error', (err: Error) => {
+        if (this.ws !== ws) return
         logError(new Error(`[SessionsWebSocket] Error: ${err.message}`))
         this.callbacks.onError?.(err)
       })
 
       ws.on('close', (code: number, reason: Buffer) => {
+        if (this.ws !== ws) return
         logForDebugging(
           `[SessionsWebSocket] Closed: code=${code} reason=${reason.toString()}`,
         )
-        this.handleClose(code)
+        this.handleClose(ws, code)
       })
 
       ws.on('pong', () => {
+        if (this.ws !== ws) return
         logForDebugging('[SessionsWebSocket] Pong received')
       })
     }
@@ -234,7 +244,9 @@ export class SessionsWebSocket {
   /**
    * Handle WebSocket close
    */
-  private handleClose(closeCode: number): void {
+  private handleClose(socket: WebSocketLike, closeCode: number): void {
+    if (this.ws !== socket) return
+
     this.stopPingInterval()
 
     if (this.state === 'closed') {
@@ -301,16 +313,15 @@ export class SessionsWebSocket {
     }, delay)
   }
 
-  private startPingInterval(): void {
+  private startPingInterval(socket: WebSocketLike): void {
     this.stopPingInterval()
 
     this.pingInterval = setInterval(() => {
-      if (this.ws && this.state === 'connected') {
-        try {
-          this.ws.ping?.()
-        } catch {
-          // Ignore ping errors, close handler will deal with connection issues
-        }
+      if (this.ws !== socket || this.state !== 'connected') return
+      try {
+        socket.ping?.()
+      } catch {
+        // Ignore ping errors, close handler will deal with connection issues
       }
     }, PING_INTERVAL_MS)
   }
@@ -379,14 +390,9 @@ export class SessionsWebSocket {
       this.reconnectTimer = null
     }
 
-    if (this.ws) {
-      // Null out event handlers to prevent race conditions during reconnect.
-      // Under Bun (native WebSocket), onX handlers are the clean way to detach.
-      // Under Node (ws package), the listeners were attached with .on() in connect(),
-      // but since we're about to close and null out this.ws, no cleanup is needed.
-      this.ws.close()
-      this.ws = null
-    }
+    const socket = this.ws
+    this.ws = null
+    socket?.close()
   }
 
   /**

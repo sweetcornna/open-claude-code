@@ -79,14 +79,21 @@ export function isThirdPartyModelCatalog(): boolean {
  * in model.ts — every predicate here sits under getAPIProvider(), which model.ts
  * consumes.
  */
+const ANTHROPIC_TIER_MODEL_ENVS = [
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL',
+] as const
+
 const ANTHROPIC_TIER_ALIAS_ENV: Record<string, string> = {
-  haiku: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-  sonnet: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
-  opus: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
-  fable: 'ANTHROPIC_DEFAULT_FABLE_MODEL',
+  haiku: ANTHROPIC_TIER_MODEL_ENVS[0],
+  sonnet: ANTHROPIC_TIER_MODEL_ENVS[1],
+  opus: ANTHROPIC_TIER_MODEL_ENVS[2],
+  fable: ANTHROPIC_TIER_MODEL_ENVS[3],
   // `opusplan` runs Sonnet outside plan mode; `best` is the Opus alias.
-  opusplan: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
-  best: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  opusplan: ANTHROPIC_TIER_MODEL_ENVS[1],
+  best: ANTHROPIC_TIER_MODEL_ENVS[2],
 }
 
 /** Whether a configured model setting names one of Anthropic's own ids. */
@@ -138,8 +145,11 @@ export function isThirdPartyAnthropicEndpoint(): boolean {
   if (isDeepSeekBaseURL(process.env.ANTHROPIC_BASE_URL)) return true
   const configured =
     process.env.ANTHROPIC_MODEL?.trim() || getInitialSettings().model?.trim()
-  if (!configured) return false
-  return !namesAnthropicModel(configured)
+  if (configured) return !namesAnthropicModel(configured)
+  return ANTHROPIC_TIER_MODEL_ENVS.some(envName => {
+    const pinned = process.env[envName]?.trim()
+    return pinned ? !namesAnthropicModel(pinned) : false
+  })
 }
 
 /**

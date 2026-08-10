@@ -17,7 +17,10 @@ import type {
   ChatCompletionCreateParamsStreaming,
 } from 'openai/resources/chat/completions/completions.mjs'
 import { isChatGPTCodexReasoningModel } from 'src/utils/model/chatgptModels.js'
-import { resolveAppliedEffort } from 'src/utils/model/effort.js'
+import {
+  modelSupportsEffort,
+  resolveAppliedEffort,
+} from 'src/utils/model/effort.js'
 import { isGptTuningActiveForModel } from 'src/utils/model/gptTuning.js'
 import { asSystemPrompt } from 'src/utils/session/systemPromptType.js'
 import { getSessionId } from '../../../bootstrap/state.js'
@@ -237,6 +240,7 @@ export async function* queryModelOpenAI(
         (async () => getEmptyToolPermissionContext()),
       options.agents || [],
       options.querySource,
+      options.modelSettingsSlot,
     )
 
     // 4. Build deferred tools set (similar to Anthropic path)
@@ -331,11 +335,11 @@ export async function* queryModelOpenAI(
     const appliedEffort = resolveAppliedEffort(
       options.model,
       options.effortValue,
+      options.modelSettingsSlot,
     )
-    const reasoningEffort = getResponsesReasoningEffort(
-      openaiModel,
-      appliedEffort,
-    )
+    const reasoningEffort = modelSupportsEffort(openaiModel)
+      ? getResponsesReasoningEffort(openaiModel, appliedEffort)
+      : undefined
     const verbosity = resolveOpenAIVerbosity(openaiModel, {
       baseURL: process.env.OPENAI_BASE_URL,
       isChatGPTAuth: useChatGPTResponses,

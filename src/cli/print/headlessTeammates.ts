@@ -19,7 +19,7 @@ import {
 } from 'src/utils/agents/teammate.js'
 import {
   isShutdownApproved,
-  markMessagesAsRead,
+  markMessagesAsReadBySnapshot,
   readUnreadMessages,
 } from 'src/utils/agents/teammateMailbox.js'
 import { removeTeammateFromTeamFile } from 'src/utils/swarm/teamHelpers.js'
@@ -76,10 +76,12 @@ export async function pollTeamLeadInbox(
           `[print.ts] Team-lead found ${unread.length} unread messages`,
         )
 
-        // Mark as read immediately to avoid duplicate processing
-        await markMessagesAsRead(
+        // Mark only the messages from this read snapshot to avoid consuming
+        // messages appended while the snapshot is being processed.
+        await markMessagesAsReadBySnapshot(
           agentName,
           refreshedState.teamContext?.teamName,
+          unread,
         )
 
         // Process shutdown_approved messages - remove teammates from team file

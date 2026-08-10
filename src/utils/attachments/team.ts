@@ -3,7 +3,7 @@ import type { Message } from 'src/types/message.js'
 import { getViewedTeammateTask } from '../../state/selectors.js'
 import {
   readUnreadMessages,
-  markMessagesAsReadByPredicate,
+  markMessagesAsReadBySnapshot,
   isShutdownApproved,
   isStructuredProtocolMessage,
   isIdleNotification,
@@ -190,11 +190,7 @@ export async function getTeammateMailboxAttachments(
   // Mark only non-structured mailbox messages as read after attachment is built.
   // Structured protocol messages stay unread for useInboxPoller to handle.
   if (unreadMessages.length > 0) {
-    await markMessagesAsReadByPredicate(
-      agentName,
-      m => !isStructuredProtocolMessage(m.text),
-      teamName,
-    )
+    await markMessagesAsReadBySnapshot(agentName, teamName, unreadMessages)
     logForDebugging(
       `[MailboxBridge] marked ${unreadMessages.length} non-structured message(s) as read for agent="${agentName}" team="${teamName || 'default'}"`,
     )

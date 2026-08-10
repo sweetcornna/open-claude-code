@@ -132,6 +132,7 @@ async function runQueryModel(
   events: BetaRawMessageStreamEvent[],
   envOverrides: Record<string, string | undefined> = {},
   tools: any[] = [],
+  optionOverrides: Record<string, unknown> = {},
 ) {
   // Wire events into the mocked stream adapter
   _nextEvents = events
@@ -165,11 +166,12 @@ async function runQueryModel(
         mode: 'default',
         isBypassingPermissions: false,
       }),
+      ...optionOverrides,
     }
 
     for await (const item of queryModelOpenAI(
       [],
-      { type: 'text', text: '' } as any,
+      [] as unknown as SystemPrompt,
       tools as any,
       new AbortController().signal,
       minimalOptions,
@@ -624,6 +626,83 @@ describe('queryModelOpenAI — stream_events forwarded', () => {
     expect(eventTypes).toContain('content_block_stop')
     expect(eventTypes).toContain('message_delta')
     expect(eventTypes).toContain('message_stop')
+  })
+})
+
+async function captureResponsesBody(params: {
+  model: string
+  effortValue?: string
+  env?: Record<string, string | undefined>
+}): Promise<Record<string, any>> {
+  let capturedBody: Record<string, any> | undefined
+  const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body ?? '{}'))
+    return new Response(
+      'data: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      { status: 200 },
+    )
+  }) as unknown as typeof fetch
+
+  await runQueryModel(
+    [],
+    {
+      CLAUDE_CODE_USE_OPENAI: '1',
+      CLAUDE_CODE_EFFORT_LEVEL: undefined,
+      CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: undefined,
+      OPENAI_API_KEY: 'sk-test-key',
+      OPENAI_BASE_URL: 'https://api.openai.com/v1',
+      OPENAI_WIRE_API: 'responses',
+      ...params.env,
+    },
+    [],
+    {
+      model: params.model,
+      effortValue: params.effortValue,
+      fetchOverride,
+    },
+  )
+
+  if (!capturedBody) throw new Error('Responses request body was not captured')
+  return capturedBody
+}
+
+describe('queryModelOpenAI — Responses reasoning effort capability gate', () => {
+  test('omits reasoning for unsupported models regardless of effort source', async () => {
+    for (const model of ['gpt-4o', 'glm-4.7']) {
+      const providerDefaultBody = await captureResponsesBody({ model })
+      expect('reasoning' in providerDefaultBody).toBe(false)
+    }
+
+    const sessionEffortBody = await captureResponsesBody({
+      model: 'gpt-4o',
+      effortValue: 'high',
+    })
+    expect('reasoning' in sessionEffortBody).toBe(false)
+
+    const envEffortBody = await captureResponsesBody({
+      model: 'glm-4.7',
+      env: { CLAUDE_CODE_EFFORT_LEVEL: 'max' },
+    })
+    expect('reasoning' in envEffortBody).toBe(false)
+  })
+
+  test('sends the selected effort for a supported GPT model', async () => {
+    const body = await captureResponsesBody({
+      model: 'gpt-5.6-sol',
+      effortValue: 'high',
+    })
+
+    expect(body.reasoning).toEqual({ effort: 'high', summary: 'auto' })
+  })
+
+  test('CLAUDE_CODE_ALWAYS_ENABLE_EFFORT opts an unsupported model in', async () => {
+    const body = await captureResponsesBody({
+      model: 'glm-4.7',
+      effortValue: 'low',
+      env: { CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: '1' },
+    })
+
+    expect(body.reasoning).toEqual({ effort: 'low', summary: 'auto' })
   })
 })
 

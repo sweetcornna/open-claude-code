@@ -18,6 +18,7 @@ import {
 import { getChinaProviderContextWindow } from '../model/chinaLlmProviders.js'
 import { getDeepSeekContextWindow } from '../model/deepseekFamily.js'
 import { getModelCapability } from '../model/modelCapabilities.js'
+import type { ModelSettingsSlot } from '../model/modelTier.js'
 
 // Model context window size (200k tokens for all models right now)
 export /** At or above this, a window needs the 1M capability to be honoured. */
@@ -98,6 +99,7 @@ export function supportsContextWindow(model: string, tokens: number): boolean {
 export function getContextWindowForModel(
   model: string,
   betas?: string[],
+  settingsSlotOverride?: ModelSettingsSlot,
 ): number {
   // Allow override via environment variable.
   // This takes precedence over all other context window resolution, including 1M detection.
@@ -121,7 +123,8 @@ export function getContextWindowForModel(
   // for every model and short-circuit China-preset windows, ChatGPT windows and
   // the /v1/models capability lookup, all of which know more than a default
   // does. It is applied at the bottom instead, in place of the flat 200k.
-  const settingsSlot = getMainLoopModelSettingsSlot(model)
+  const settingsSlot =
+    settingsSlotOverride ?? getMainLoopModelSettingsSlot(model)
   const explicitTierTokens = getExplicitTierContextTokens(model, settingsSlot)
   if (
     explicitTierTokens !== undefined &&

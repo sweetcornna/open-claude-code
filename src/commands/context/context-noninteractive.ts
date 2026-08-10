@@ -24,6 +24,7 @@ type CollectContextDataInput = {
   getAppState: () => AppState
   options: {
     mainLoopModel: string
+    modelSettingsSlot?: ToolUseContext['options']['modelSettingsSlot']
     tools: Tools
     agentDefinitions: AgentDefinitionsResult
     customSystemPrompt?: string
@@ -39,6 +40,7 @@ export async function collectContextData(
     getAppState,
     options: {
       mainLoopModel,
+      modelSettingsSlot,
       tools,
       agentDefinitions,
       customSystemPrompt,
@@ -60,10 +62,9 @@ export async function collectContextData(
     undefined, // terminalWidth
     // analyzeContextUsage only reads options.{customSystemPrompt,appendSystemPrompt}
     // but its signature declares the full Pick<ToolUseContext, 'options'>.
-    { options: { customSystemPrompt, appendSystemPrompt } } as Pick<
-      ToolUseContext,
-      'options'
-    >,
+    {
+      options: { customSystemPrompt, appendSystemPrompt, modelSettingsSlot },
+    } as Pick<ToolUseContext, 'options'>,
     undefined, // mainThreadAgentDefinition
     apiView, // original messages for API usage extraction
   )

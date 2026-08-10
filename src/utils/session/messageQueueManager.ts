@@ -51,6 +51,8 @@ function logOperation(operation: QueueOperation, content?: string): void {
 // ============================================================================
 
 const commandQueue: QueuedCommand[] = []
+/** Agent query loops that can currently drain agent-scoped notifications. */
+const activeAgentConsumers = new Set<string>()
 /** Frozen snapshot — recreated on every mutation for useSyncExternalStore. */
 let snapshot: readonly QueuedCommand[] = Object.freeze([])
 const queueChanged = createSignal()
@@ -117,6 +119,37 @@ export function recheckCommandQueue(): void {
 }
 
 // ============================================================================
+// Agent notification consumers
+// ============================================================================
+
+/** Register an agent query loop that can drain notifications addressed to it. */
+export function registerActiveAgentConsumer(agentId: string): void {
+  activeAgentConsumers.add(agentId)
+}
+
+/**
+ * Unregister an agent query loop and rescue notifications it can no longer
+ * consume. Existing task notifications are redirected to the main thread;
+ * notifications that arrive after this point take the same fallback in
+ * enqueuePendingNotification.
+ */
+export function unregisterActiveAgentConsumer(agentId: string): void {
+  activeAgentConsumers.delete(agentId)
+
+  let changed = false
+  for (let i = 0; i < commandQueue.length; i++) {
+    const command = commandQueue[i]!
+    if (command.mode === 'task-notification' && command.agentId === agentId) {
+      commandQueue[i] = { ...command, agentId: undefined }
+      changed = true
+    }
+  }
+  if (changed) {
+    notifySubscribers()
+  }
+}
+
+// ============================================================================
 // Write operations
 // ============================================================================
 
@@ -149,7 +182,21 @@ export function enqueue(command: QueuedCommand): void {
  * 'later' for anything that is not a terminal outcome.
  */
 export function enqueuePendingNotification(command: QueuedCommand): void {
-  commandQueue.push({ ...command, priority: command.priority ?? 'later' })
+  // A task notification produced before its target agent registers, or after
+  // that agent exits, must remain deliverable. Fall back to the main thread
+  // rather than leaving a permanently orphaned agentId in the shared queue.
+  // Main-thread notifications and non-task commands keep their existing route.
+  const agentId =
+    command.mode === 'task-notification' &&
+    command.agentId !== undefined &&
+    !activeAgentConsumers.has(command.agentId)
+      ? undefined
+      : command.agentId
+  commandQueue.push({
+    ...command,
+    priority: command.priority ?? 'later',
+    agentId,
+  })
   notifySubscribers()
   logOperation(
     'enqueue',
@@ -342,6 +389,7 @@ export function clearCommandQueue(): void {
  */
 export function resetCommandQueue(): void {
   commandQueue.length = 0
+  activeAgentConsumers.clear()
   snapshot = Object.freeze([])
 }
 
@@ -423,7 +471,7 @@ function extractImagesFromValue(
   return images
 }
 
-export type PopAllEditableResult = {
+type PopAllEditableResult = {
   text: string
   cursorOffset: number
   images: PastedContent[]

@@ -958,7 +958,12 @@ export async function analyzeContextUsage(
     mainLoopModel: model,
   })
   // Get context window size
-  const contextWindow = getContextWindowForModel(runtimeModel, getSdkBetas())
+  const settingsSlot = toolUseContext?.options.modelSettingsSlot
+  const contextWindow = getContextWindowForModel(
+    runtimeModel,
+    getSdkBetas(),
+    settingsSlot,
+  )
 
   // Build the effective system prompt using the shared utility
   const defaultSystemPrompt = await getSystemPrompt(tools, runtimeModel)
@@ -1027,7 +1032,8 @@ export async function analyzeContextUsage(
   // Check if autocompact is enabled and calculate threshold
   const isAutoCompact = isAutoCompactEnabled()
   const autoCompactThreshold = isAutoCompact
-    ? getEffectiveContextWindowSize(model) - AUTOCOMPACT_BUFFER_TOKENS
+    ? getEffectiveContextWindowSize(model, settingsSlot) -
+      AUTOCOMPACT_BUFFER_TOKENS
     : undefined
 
   // Create categories

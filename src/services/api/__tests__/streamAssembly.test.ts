@@ -153,4 +153,32 @@ describe('assembleFinalAssistantOutputs', () => {
     expect(outputs).toHaveLength(2)
     expect(JSON.stringify(outputs[1])).toContain('TEST_MAX_TOKENS')
   })
+
+  test('preserves partial output but appends a provider termination error', () => {
+    const outputs = assembleFinalAssistantOutputs({
+      partialMessage: PARTIAL,
+      contentBlocks: { 0: { type: 'text', text: 'partial answer' } },
+      tools: [],
+      agentId: undefined,
+      usage: CACHED_USAGE,
+      stopReason: 'SAFETY',
+      maxTokensEnvHint: 'TEST_MAX_TOKENS',
+      terminalError: {
+        content: 'Gemini stopped the response: SAFETY.',
+        errorDetails: 'Gemini finishReason=SAFETY',
+      },
+    })
+
+    expect(outputs).toHaveLength(2)
+    expect(outputs[0]?.type).toBe('assistant')
+    expect('isApiErrorMessage' in outputs[0]!).toBe(false)
+    expect(outputs[1]).toMatchObject({
+      type: 'assistant',
+      isApiErrorMessage: true,
+      apiError: 'api_error',
+      error: 'unknown',
+      errorDetails: 'Gemini finishReason=SAFETY',
+    })
+    expect(JSON.stringify(outputs[1])).toContain('SAFETY')
+  })
 })

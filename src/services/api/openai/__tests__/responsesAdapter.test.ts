@@ -944,6 +944,95 @@ describe('adaptResponsesStreamToAnthropic event coverage', () => {
       'I cannot help with that.',
     )
   })
+
+  test('completed maps to end_turn', async () => {
+    const out = await collectEvents([
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+    const messageDelta = out.find(event => event.type === 'message_delta')
+    expect(messageDelta?.delta).toEqual({
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+    })
+  })
+
+  test('max_output_tokens incomplete maps to max_tokens', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.incomplete',
+        response: {
+          status: 'incomplete',
+          incomplete_details: { reason: 'max_output_tokens' },
+        },
+      },
+    ])
+    const messageDelta = out.find(event => event.type === 'message_delta')
+    expect(messageDelta?.delta).toEqual({
+      stop_reason: 'max_tokens',
+      stop_sequence: null,
+      incomplete_reason: 'max_output_tokens',
+    })
+  })
+
+  test('content_filter with refusal uses refusal without looking token-limited', async () => {
+    const out = await collectEvents([
+      { type: 'response.refusal.delta', delta: 'Blocked.' },
+      {
+        type: 'response.incomplete',
+        response: {
+          status: 'incomplete',
+          incomplete_details: { reason: 'content_filter' },
+        },
+      },
+    ])
+    const messageDelta = out.find(event => event.type === 'message_delta')
+    expect(messageDelta?.delta).toEqual({
+      stop_reason: 'refusal',
+      stop_sequence: null,
+      incomplete_reason: 'content_filter',
+    })
+    expect(
+      (messageDelta?.delta as Record<string, unknown>)?.stop_reason,
+    ).not.toBe('max_tokens')
+  })
+
+  test('content_filter without refusal preserves the provider reason', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.incomplete',
+        response: {
+          status: 'incomplete',
+          incomplete_details: { reason: 'content_filter' },
+        },
+      },
+    ])
+    const messageDelta = out.find(event => event.type === 'message_delta')
+    expect(messageDelta?.delta).toEqual({
+      stop_reason: 'content_filter',
+      stop_sequence: null,
+      incomplete_reason: 'content_filter',
+    })
+  })
+
+  test('unknown incomplete reason is an explicit non-retryable error', async () => {
+    let error: unknown
+    try {
+      await collectEvents([
+        {
+          type: 'response.incomplete',
+          response: {
+            status: 'incomplete',
+            incomplete_details: { reason: 'provider_shutdown' },
+          },
+        },
+      ])
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toMatchObject({ retryable: false })
+    expect((error as Error).message).toContain('provider_shutdown')
+  })
 })
 
 // ── reasoning replay: the Codex/`store:false` fidelity contract ────────────

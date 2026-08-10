@@ -900,6 +900,7 @@ async function* queryLoop(
       const { isAtBlockingLimit } = calculateTokenWarningState(
         tokenCountWithEstimation(messagesForQuery),
         toolUseContext.options.mainLoopModel,
+        toolUseContext.options.modelSettingsSlot,
       )
       if (isAtBlockingLimit) {
         yield createAssistantAPIErrorMessage({
@@ -919,7 +920,10 @@ async function* queryLoop(
       const currentTokens = tokenCountWithEstimation(messagesForQuery)
       const estimatedGrowth = estimateMaxTurnGrowth(model)
       const predictiveThreshold =
-        getEffectiveContextWindowSize(model) - estimatedGrowth
+        getEffectiveContextWindowSize(
+          model,
+          toolUseContext.options.modelSettingsSlot,
+        ) - estimatedGrowth
       if (currentTokens > predictiveThreshold) {
         const predictiveResult = await deps.autocompact(
           messagesForQuery,
@@ -985,6 +989,7 @@ async function* queryLoop(
                 return appState.toolPermissionContext
               },
               model: currentModel,
+              modelSettingsSlot: toolUseContext.options.modelSettingsSlot,
               ...(config.gates.fastModeEnabled && {
                 fastMode: appState.fastMode,
               }),

@@ -4,6 +4,7 @@ import {
   resetCommandQueue,
   enqueue,
   enqueuePendingNotification,
+  registerActiveAgentConsumer,
 } from '../session/messageQueueManager.js'
 import {
   hasQueuedCommands,
@@ -102,6 +103,7 @@ describe('processQueueIfReady', () => {
   })
 
   test('skips commands with agentId set (subagent notifications)', () => {
+    registerActiveAgentConsumer('agent-123')
     // This simulates the v2.1.119 fix: subagent task-notification with agentId
     // should not be processed by the main thread queue processor
     enqueuePendingNotification({
@@ -119,6 +121,8 @@ describe('processQueueIfReady', () => {
   })
 
   test('returns processed:false when only subagent commands in queue', () => {
+    registerActiveAgentConsumer('agent-456')
+    registerActiveAgentConsumer('agent-789')
     enqueuePendingNotification({
       value: '<task-notification/>',
       mode: 'task-notification',
@@ -139,6 +143,7 @@ describe('processQueueIfReady', () => {
   })
 
   test('processes main-thread command but skips subagent command', () => {
+    registerActiveAgentConsumer('agent-123')
     const executed: string[][] = []
     enqueuePendingNotification({
       value: '<main-task/>',

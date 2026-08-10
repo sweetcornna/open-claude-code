@@ -21,6 +21,12 @@ const DEFAULT_GEMINI_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta'
 
 const STREAM_DECODE_OPTS: TextDecodeOptions = { stream: true }
+const DEFAULT_API_TIMEOUT_MS = 600_000
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 90_000
+
+function timeoutFromEnv(name: string, fallback: number): number {
+  return Number.parseInt(process.env[name] ?? '', 10) || fallback
+}
 
 function getGeminiModelPath(model: string): string {
   const normalized = model.replace(/^\/+/, '')
@@ -73,6 +79,75 @@ class GeminiStreamError extends Error {
     this.code = details.code
     this.status = details.status
     this.retryable = details.retryable
+  }
+}
+
+function geminiTimeoutError(
+  phase: 'connection' | 'stream idle',
+  timeoutMs: number,
+  envName: 'API_TIMEOUT_MS' | 'CLAUDE_STREAM_IDLE_TIMEOUT_MS',
+): GeminiStreamError {
+  return new GeminiStreamError(
+    `Gemini ${phase} timeout after ${timeoutMs}ms (${envName})`,
+    {
+      code: 'ETIMEDOUT',
+      retryable: true,
+      cause: undefined,
+    },
+  )
+}
+
+function waitForAbort(signal: AbortSignal): {
+  promise: Promise<never>
+  cleanup: () => void
+} {
+  let onAbort = () => {}
+  const promise = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason)
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+  })
+  return {
+    promise,
+    cleanup: () => signal.removeEventListener('abort', onAbort),
+  }
+}
+
+async function readGeminiChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  controller: AbortController,
+  callerSignal: AbortSignal,
+  idleTimeoutMs: number,
+) {
+  const timeoutError = geminiTimeoutError(
+    'stream idle',
+    idleTimeoutMs,
+    'CLAUDE_STREAM_IDLE_TIMEOUT_MS',
+  )
+  const abort = waitForAbort(controller.signal)
+  const timeout = setTimeout(
+    () => controller.abort(timeoutError),
+    idleTimeoutMs,
+  )
+  try {
+    return await Promise.race([reader.read(), abort.promise])
+  } catch (error) {
+    if (controller.signal.aborted) {
+      const reason = callerSignal.aborted
+        ? callerSignal.reason
+        : controller.signal.reason
+      try {
+        await reader.cancel(reason)
+      } catch {
+        // Preserve the timeout/cancellation that caused cleanup.
+      }
+      if (callerSignal.aborted) throw reason ?? error
+      if (controller.signal.reason === timeoutError) throw timeoutError
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+    abort.cleanup()
   }
 }
 
@@ -211,14 +286,52 @@ export async function* streamGeminiGenerateContent(params: {
       : {}),
   })
   const { url, unwrapChunk } = wire
+  const controller = new AbortController()
+  const forwardCallerAbort = () => controller.abort(params.signal.reason)
+  if (params.signal.aborted) forwardCallerAbort()
+  else {
+    params.signal.addEventListener('abort', forwardCallerAbort, { once: true })
+  }
+  const cleanupRequest = () =>
+    params.signal.removeEventListener('abort', forwardCallerAbort)
 
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers: wire.headers,
-    body: JSON.stringify(wire.body),
-    signal: params.signal,
-    ...getProxyFetchOptions({ forAnthropicAPI: false }),
-  })
+  const connectionTimeoutMs = timeoutFromEnv(
+    'API_TIMEOUT_MS',
+    DEFAULT_API_TIMEOUT_MS,
+  )
+  const connectionTimeoutError = geminiTimeoutError(
+    'connection',
+    connectionTimeoutMs,
+    'API_TIMEOUT_MS',
+  )
+  const connectionAbort = waitForAbort(controller.signal)
+  const connectionTimer = setTimeout(
+    () => controller.abort(connectionTimeoutError),
+    connectionTimeoutMs,
+  )
+  let response: Response
+  try {
+    response = await Promise.race([
+      fetchImpl(url, {
+        method: 'POST',
+        headers: wire.headers,
+        body: JSON.stringify(wire.body),
+        signal: controller.signal,
+        ...getProxyFetchOptions({ forAnthropicAPI: false }),
+      }),
+      connectionAbort.promise,
+    ])
+  } catch (error) {
+    cleanupRequest()
+    if (params.signal.aborted) throw params.signal.reason ?? error
+    if (controller.signal.reason === connectionTimeoutError) {
+      throw connectionTimeoutError
+    }
+    throw error
+  } finally {
+    clearTimeout(connectionTimer)
+    connectionAbort.cleanup()
+  }
 
   if (!response.ok) {
     let cause: unknown
@@ -255,6 +368,7 @@ export async function* streamGeminiGenerateContent(params: {
     } catch (error) {
       cause = new Error(`Unable to read response body: ${errorMessage(error)}`)
     }
+    cleanupRequest()
     throw new GeminiRequestError(
       `Gemini API request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ''})`,
       response,
@@ -263,6 +377,7 @@ export async function* streamGeminiGenerateContent(params: {
   }
 
   if (!response.body) {
+    cleanupRequest()
     throw new GeminiStreamError('Gemini API returned no response body', {
       retryable: true,
       cause: undefined,
@@ -270,6 +385,10 @@ export async function* streamGeminiGenerateContent(params: {
   }
 
   const reader = response.body.getReader()
+  const idleTimeoutMs = timeoutFromEnv(
+    'CLAUDE_STREAM_IDLE_TIMEOUT_MS',
+    DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+  )
   const decoder = new TextDecoder()
   let buffer = ''
   let hasTerminalEvent = false
@@ -295,7 +414,10 @@ export async function* streamGeminiGenerateContent(params: {
     const streamError = geminiStreamError(parsed, frame.event)
     if (streamError) throw streamError
     const chunk = unwrapChunk(parsed)
-    if (chunk?.candidates?.some(candidate => candidate.finishReason)) {
+    if (
+      chunk?.candidates?.some(candidate => candidate.finishReason) ||
+      chunk?.promptFeedback?.blockReason
+    ) {
       hasTerminalEvent = true
     }
     return chunk
@@ -303,7 +425,12 @@ export async function* streamGeminiGenerateContent(params: {
 
   try {
     while (true) {
-      const { done, value } = await reader.read()
+      const { done, value } = await readGeminiChunk(
+        reader,
+        controller,
+        params.signal,
+        idleTimeoutMs,
+      )
       if (done) break
 
       buffer += decoder.decode(value, STREAM_DECODE_OPTS)
@@ -340,5 +467,6 @@ export async function* streamGeminiGenerateContent(params: {
     }
   } finally {
     reader.releaseLock()
+    cleanupRequest()
   }
 }

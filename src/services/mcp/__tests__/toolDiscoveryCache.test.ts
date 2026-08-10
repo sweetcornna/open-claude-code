@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { logMock } from '../../../../tests/mocks/log'
+import { createToolsListChangedRefreshGuard } from '../toolsListChangedRefreshGuard.js'
 import type { MCPServerConnection } from '../types.js'
 
 mock.module('src/utils/telemetry/log.ts', logMock)
@@ -24,6 +25,17 @@ function listedTool(
     description,
     inputSchema: { type: 'object', properties: {} },
   }
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve = (_value: T): void => {}
+  const promise = new Promise<T>(promiseResolve => {
+    resolve = promiseResolve
+  })
+  return { promise, resolve }
 }
 
 function connectedClient(
@@ -182,5 +194,59 @@ describe('MCP tool discovery cache', () => {
     await expect(fetchToolsForClient(connection)).rejects.toThrow(
       'Every advertised MCP tool failed conversion',
     )
+  })
+})
+
+describe('tools/list_changed refresh ordering', () => {
+  test('publishes only the newest notification when fetches finish out of order', async () => {
+    const guard = createToolsListChangedRefreshGuard()
+    const connection = { name: 'service-a', client: {} }
+    const first = deferred<string[]>()
+    const second = deferred<string[]>()
+    const published: string[][] = []
+    guard.activate(connection)
+
+    const firstRefresh = guard.refresh(
+      connection,
+      () => first.promise,
+      tools => published.push(tools),
+    )
+    const secondRefresh = guard.refresh(
+      connection,
+      () => second.promise,
+      tools => published.push(tools),
+    )
+
+    second.resolve(['new-tool'])
+    await expect(secondRefresh).resolves.toBe(true)
+    first.resolve(['old-tool'])
+    await expect(firstRefresh).resolves.toBe(false)
+    expect(published).toEqual([['new-tool']])
+  })
+
+  test('rejects a late refresh from a replaced connection', async () => {
+    const guard = createToolsListChangedRefreshGuard()
+    const oldConnection = { name: 'service-a', client: {} }
+    const replacement = { name: 'service-a', client: {} }
+    const oldFetch = deferred<string[]>()
+    const published: string[][] = []
+    guard.activate(oldConnection)
+
+    const oldRefresh = guard.refresh(
+      oldConnection,
+      () => oldFetch.promise,
+      tools => published.push(tools),
+    )
+    guard.activate(replacement)
+    const replacementRefresh = guard.refresh(
+      replacement,
+      () => Promise.resolve(['replacement-tool']),
+      tools => published.push(tools),
+    )
+
+    await expect(replacementRefresh).resolves.toBe(true)
+    oldFetch.resolve(['stale-tool'])
+    await expect(oldRefresh).resolves.toBe(false)
+    expect(published).toEqual([['replacement-tool']])
   })
 })

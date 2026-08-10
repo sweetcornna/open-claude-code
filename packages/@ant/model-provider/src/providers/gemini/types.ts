@@ -114,8 +114,22 @@ export type GeminiCandidate = {
   groundingMetadata?: GeminiGroundingMetadata
 }
 
+type GeminiSafetyRating = {
+  category?: string
+  probability?: string
+  blocked?: boolean
+}
+
+/** Prompt-level rejection details; blocked prompts may have no candidates. */
+type GeminiPromptFeedback = {
+  blockReason?: string
+  blockReasonMessage?: string
+  safetyRatings?: GeminiSafetyRating[]
+}
+
 export type GeminiStreamChunk = {
   candidates?: GeminiCandidate[]
+  promptFeedback?: GeminiPromptFeedback
   usageMetadata?: GeminiUsageMetadata
   modelVersion?: string
 }

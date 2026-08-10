@@ -19,6 +19,18 @@ export async function* adaptGeminiStreamToAnthropic(
     null
   let sawToolUse = false
   let finishReason: string | undefined
+  let deferContentEvents = false
+  const deferredContentEvents: BetaRawMessageStreamEvent[] = []
+  const toolContentIndexes = new Set<number>()
+  const queueContentEvent = (
+    event: BetaRawMessageStreamEvent,
+  ): BetaRawMessageStreamEvent | undefined => {
+    if (deferContentEvents) {
+      deferredContentEvents.push(event)
+      return undefined
+    }
+    return event
+  }
   // Token accounting (including the promptTokenCount/cachedContentTokenCount
   // overlap correction) lives in normalizeGeminiUsage — shared with the
   // non-streaming side-query path so the two cannot drift.
@@ -66,17 +78,20 @@ export async function* adaptGeminiStreamToAnthropic(
     for (const part of parts) {
       if (part.functionCall) {
         if (openTextLikeBlock) {
-          yield {
+          const event = queueContentEvent({
             type: 'content_block_stop',
             index: openTextLikeBlock.index,
-          } as BetaRawMessageStreamEvent
+          } as BetaRawMessageStreamEvent)
+          if (event) yield event
           openTextLikeBlock = null
         }
 
         sawToolUse = true
         const toolIndex = nextContentIndex++
+        toolContentIndexes.add(toolIndex)
+        deferContentEvents = true
         const toolId = `toolu_${randomUUID().replace(/-/g, '').slice(0, 24)}`
-        yield {
+        queueContentEvent({
           type: 'content_block_start',
           index: toolIndex,
           content_block: {
@@ -85,37 +100,37 @@ export async function* adaptGeminiStreamToAnthropic(
             name: part.functionCall.name || '',
             input: {},
           },
-        } as BetaRawMessageStreamEvent
+        } as BetaRawMessageStreamEvent)
 
         if (part.thoughtSignature) {
-          yield {
+          queueContentEvent({
             type: 'content_block_delta',
             index: toolIndex,
             delta: {
               type: 'signature_delta',
               signature: part.thoughtSignature,
             },
-          } as BetaRawMessageStreamEvent
+          } as BetaRawMessageStreamEvent)
         }
 
         if (
           part.functionCall.args &&
           Object.keys(part.functionCall.args).length > 0
         ) {
-          yield {
+          queueContentEvent({
             type: 'content_block_delta',
             index: toolIndex,
             delta: {
               type: 'input_json_delta',
               partial_json: JSON.stringify(part.functionCall.args),
             },
-          } as BetaRawMessageStreamEvent
+          } as BetaRawMessageStreamEvent)
         }
 
-        yield {
+        queueContentEvent({
           type: 'content_block_stop',
           index: toolIndex,
-        } as BetaRawMessageStreamEvent
+        } as BetaRawMessageStreamEvent)
         continue
       }
 
@@ -123,10 +138,11 @@ export async function* adaptGeminiStreamToAnthropic(
       if (textLikeType) {
         if (!openTextLikeBlock || openTextLikeBlock.type !== textLikeType) {
           if (openTextLikeBlock) {
-            yield {
+            const event = queueContentEvent({
               type: 'content_block_stop',
               index: openTextLikeBlock.index,
-            } as BetaRawMessageStreamEvent
+            } as BetaRawMessageStreamEvent)
+            if (event) yield event
           }
 
           openTextLikeBlock = {
@@ -134,7 +150,7 @@ export async function* adaptGeminiStreamToAnthropic(
             type: textLikeType,
           }
 
-          yield {
+          const event = queueContentEvent({
             type: 'content_block_start',
             index: openTextLikeBlock.index,
             content_block:
@@ -148,11 +164,12 @@ export async function* adaptGeminiStreamToAnthropic(
                     type: 'text',
                     text: '',
                   },
-          } as BetaRawMessageStreamEvent
+          } as BetaRawMessageStreamEvent)
+          if (event) yield event
         }
 
         if (part.text) {
-          yield {
+          const event = queueContentEvent({
             type: 'content_block_delta',
             index: openTextLikeBlock.index,
             delta:
@@ -165,37 +182,42 @@ export async function* adaptGeminiStreamToAnthropic(
                     type: 'text_delta',
                     text: part.text,
                   },
-          } as BetaRawMessageStreamEvent
+          } as BetaRawMessageStreamEvent)
+          if (event) yield event
         }
 
         if (part.thoughtSignature) {
-          yield {
+          const event = queueContentEvent({
             type: 'content_block_delta',
             index: openTextLikeBlock.index,
             delta: {
               type: 'signature_delta',
               signature: part.thoughtSignature,
             },
-          } as BetaRawMessageStreamEvent
+          } as BetaRawMessageStreamEvent)
+          if (event) yield event
         }
 
         continue
       }
 
       if (part.thoughtSignature && openTextLikeBlock) {
-        yield {
+        const event = queueContentEvent({
           type: 'content_block_delta',
           index: openTextLikeBlock.index,
           delta: {
             type: 'signature_delta',
             signature: part.thoughtSignature,
           },
-        } as BetaRawMessageStreamEvent
+        } as BetaRawMessageStreamEvent)
+        if (event) yield event
       }
     }
 
     if (candidate?.finishReason) {
       finishReason = candidate.finishReason
+    } else if (chunk.promptFeedback?.blockReason) {
+      finishReason = chunk.promptFeedback.blockReason
     }
   }
 
@@ -204,17 +226,33 @@ export async function* adaptGeminiStreamToAnthropic(
   }
 
   if (openTextLikeBlock) {
-    yield {
+    const event = queueContentEvent({
       type: 'content_block_stop',
       index: openTextLikeBlock.index,
-    } as BetaRawMessageStreamEvent
+    } as BetaRawMessageStreamEvent)
+    if (event) yield event
+  }
+
+  const malformedFunctionCall = finishReason === 'MALFORMED_FUNCTION_CALL'
+  for (const event of deferredContentEvents) {
+    const index = (event as { index?: number }).index
+    if (
+      !malformedFunctionCall ||
+      index === undefined ||
+      !toolContentIndexes.has(index)
+    ) {
+      yield event
+    }
   }
 
   if (!stopped) {
     yield {
       type: 'message_delta',
       delta: {
-        stop_reason: mapGeminiFinishReason(finishReason, sawToolUse),
+        stop_reason: mapGeminiFinishReason(
+          finishReason,
+          sawToolUse && !malformedFunctionCall,
+        ),
         stop_sequence: null,
       },
       usage: usageTotals,
@@ -242,14 +280,12 @@ function mapGeminiFinishReason(
     case 'MAX_TOKENS':
       return 'max_tokens'
     case 'STOP':
-    case 'FINISH_REASON_UNSPECIFIED':
-    case 'SAFETY':
-    case 'RECITATION':
-    case 'BLOCKLIST':
-    case 'PROHIBITED_CONTENT':
-    case 'SPII':
-    case 'MALFORMED_FUNCTION_CALL':
-    default:
+    case undefined:
       return sawToolUse ? 'tool_use' : 'end_turn'
+    default:
+      // Gemini policy and malformed-call reasons are meaningful terminal states,
+      // not successful end turns. Keep the provider reason intact so callers do
+      // not execute or silently accept a blocked response.
+      return reason
   }
 }

@@ -45,6 +45,21 @@ import {
 const GEMINI_MAX_TOKENS_ENV_HINT =
   'GEMINI_MAX_TOKENS or CLAUDE_CODE_MAX_OUTPUT_TOKENS'
 
+function getGeminiTerminationError(stopReason: string | null) {
+  if (
+    stopReason === null ||
+    stopReason === 'end_turn' ||
+    stopReason === 'tool_use' ||
+    stopReason === 'max_tokens'
+  ) {
+    return undefined
+  }
+  return {
+    content: `Gemini stopped the response: ${stopReason}.`,
+    errorDetails: `Gemini finishReason=${stopReason}`,
+  }
+}
+
 export async function* queryModelGemini(
   messages: Message[],
   systemPrompt: SystemPrompt,
@@ -131,7 +146,11 @@ export async function* queryModelGemini(
                 // default, so an untouched session sends what it always did.
                 thinkingBudget: applyGeminiEffortToThinkingBudget(
                   thinkingConfig.budgetTokens,
-                  resolveAppliedEffort(options.model, options.effortValue),
+                  resolveAppliedEffort(
+                    options.model,
+                    options.effortValue,
+                    options.modelSettingsSlot,
+                  ),
                 ),
               }),
             },
@@ -241,6 +260,7 @@ export async function* queryModelGemini(
                 ? { maxTokens: geminiMaxTokens }
                 : {}),
               maxTokensEnvHint: GEMINI_MAX_TOKENS_ENV_HINT,
+              terminalError: getGeminiTerminationError(stopReason),
             })) {
               if (output.type === 'assistant') {
                 collectedMessages.push(output)
@@ -313,6 +333,7 @@ export async function* queryModelGemini(
           ? { maxTokens: geminiMaxTokens }
           : {}),
         maxTokensEnvHint: GEMINI_MAX_TOKENS_ENV_HINT,
+        terminalError: getGeminiTerminationError(stopReason),
       })) {
         yield output
       }

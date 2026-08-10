@@ -103,7 +103,7 @@ import {
 import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { renderAgentPrompt } from './prompt.js';
-import { runAgent } from './runAgent.js';
+import { continueAgentIterator, runAgent } from './runAgent.js';
 import {
   renderGroupedAgentToolUse,
   renderToolResultMessage,
@@ -1012,6 +1012,7 @@ export const AgentTool = buildTool({
           // each iteration adds a new .then() reaction to the same pending
           // promise, accumulating callbacks for the lifetime of the agent.
           let backgroundPromise: Promise<{ type: 'background' }> | undefined;
+          let foregroundAbortController: AbortController | undefined;
           let cancelAutoBackground: (() => void) | undefined;
           if (!isBackgroundTasksDisabled) {
             const registration = registerAgentForeground({
@@ -1020,10 +1021,12 @@ export const AgentTool = buildTool({
               prompt,
               selectedAgent,
               setAppState: rootSetAppState,
+              parentAbortController: toolUseContext.abortController,
               toolUseId: toolUseContext.toolUseId,
               autoBackgroundMs: getAutoBackgroundMs() || undefined,
             });
             foregroundTaskId = registration.taskId;
+            foregroundAbortController = registration.abortController;
             backgroundPromise = registration.backgroundSignal.then(() => ({
               type: 'background' as const,
             }));
@@ -1037,6 +1040,7 @@ export const AgentTool = buildTool({
           // Per-scope stop function — NOT shared with the backgrounded closure.
           // idempotent: startAgentSummarization's stop() checks `stopped` flag.
           let stopForegroundSummarization: (() => void) | undefined;
+          let backgroundCacheSafeParams: CacheSafeParams | undefined;
           // const capture for sound type narrowing inside the callback below
           const summaryTaskId = foregroundTaskId;
 
@@ -1046,17 +1050,24 @@ export const AgentTool = buildTool({
             override: {
               ...runAgentParams.override,
               agentId: syncAgentId,
+              ...(foregroundAbortController && {
+                abortController: foregroundAbortController,
+              }),
             },
-            // FOREGROUND summarization stays SDK-opt-in — deliberately NOT
-            // widened to interactive TUI sessions like the two background
-            // gates. Rationale lives with the predicate.
-            onCacheSafeParams:
-              summaryTaskId && isForegroundAgentSummarizationEnabled()
-                ? (params: CacheSafeParams) => {
+            // Always retain cache-safe params when handoff is possible: the
+            // background continuation owns the same iterator, so runAgent will
+            // not restart merely to publish these params a second time.
+            onCacheSafeParams: summaryTaskId
+              ? (params: CacheSafeParams) => {
+                  backgroundCacheSafeParams = params;
+                  // FOREGROUND summarization stays SDK-opt-in — deliberately
+                  // not widened to interactive TUI sessions.
+                  if (isForegroundAgentSummarizationEnabled()) {
                     const { stop } = startAgentSummarization(summaryTaskId, syncAgentId, params, rootSetAppState);
                     stopForegroundSummarization = stop;
                   }
-                : undefined,
+                }
+              : undefined,
           })[Symbol.asyncIterator]();
 
           // Track if an error occurred during iteration
@@ -1110,9 +1121,10 @@ export const AgentTool = buildTool({
               if (raceResult.type === 'background' && foregroundTaskId) {
                 const appState = toolUseContext.getAppState();
                 const task = appState.tasks[foregroundTaskId];
-                if (isLocalAgentTask(task) && task.isBackgrounded) {
-                  // Capture the taskId for use in the async callback
+                if (isLocalAgentTask(task) && task.isBackgrounded && task.abortController) {
+                  // Capture task-owned values for use in the async callback.
                   const backgroundedTaskId = foregroundTaskId;
+                  const backgroundedAbortController = task.abortController;
                   wasBackgrounded = true;
                   // Stop foreground summarization; the backgrounded closure
                   // below owns its own independent stop function.
@@ -1124,41 +1136,30 @@ export const AgentTool = buildTool({
                   void runWithAgentContext(syncAgentContext, async () => {
                     let stopBackgroundedSummarization: (() => void) | undefined;
                     try {
-                      // Clean up the foreground iterator so its finally block runs
-                      // (releases MCP connections, session hooks, prompt cache tracking, etc.)
-                      // Timeout prevents blocking if MCP server cleanup hangs.
-                      // .catch() prevents unhandled rejection if timeout wins the race.
-                      await Promise.race([agentIterator.return(undefined).catch(() => {}), sleep(1000)]);
-                      // Initialize progress tracking from existing messages
-                      const tracker = createProgressTracker();
-                      const resolveActivity2 = createActivityDescriptionResolver(toolUseContext.options.tools);
-                      for (const existingMsg of agentMessages) {
-                        updateProgressFromMessage(tracker, existingMsg, resolveActivity2, toolUseContext.options.tools);
-                      }
-                      for await (const msg of runAgent({
-                        ...runAgentParams,
-                        isAsync: true, // Agent is now running in background
-                        override: {
-                          ...runAgentParams.override,
-                          agentId: asAgentId(backgroundedTaskId),
-                          abortController: task.abortController,
-                        },
-                        // The agent has just become a background task, so it
-                        // now has a row in the background surfaces to show a
-                        // recap in — start summarizing on the same terms as an
-                        // async-from-start agent. Stopped in the finally below.
-                        onCacheSafeParams: isBackgroundAgentSummarizationEnabled()
-                          ? (params: CacheSafeParams) => {
-                              const { stop } = startAgentSummarization(
-                                backgroundedTaskId,
-                                asAgentId(backgroundedTaskId),
-                                params,
-                                rootSetAppState,
-                              );
-                              stopBackgroundedSummarization = stop;
-                            }
-                          : undefined,
-                      })) {
+                      // Transfer ownership of both the existing iterator and
+                      // the in-flight next() call. The first result may take
+                      // arbitrarily long; restarting after a timeout would run
+                      // the same tools and hooks twice.
+                      const tracker = syncTracker;
+                      const resolveActivity2 = syncResolveActivity;
+                      const enableBackgroundSummarization = isBackgroundAgentSummarizationEnabled();
+                      for await (const msg of continueAgentIterator(agentIterator, nextMessagePromise)) {
+                        // A handoff can win while runAgent is still preparing
+                        // cache-safe params. Start lazily after the pending next
+                        // resolves, by which point runAgent has published them.
+                        if (
+                          !stopBackgroundedSummarization &&
+                          enableBackgroundSummarization &&
+                          backgroundCacheSafeParams
+                        ) {
+                          const { stop } = startAgentSummarization(
+                            backgroundedTaskId,
+                            asAgentId(backgroundedTaskId),
+                            backgroundCacheSafeParams,
+                            rootSetAppState,
+                          );
+                          stopBackgroundedSummarization = stop;
+                        }
                         agentMessages.push(msg);
 
                         // Track progress for backgrounded agents
@@ -1194,7 +1195,7 @@ export const AgentTool = buildTool({
                           agentMessages,
                           tools: toolUseContext.options.tools,
                           toolPermissionContext: backgroundedAppState.toolPermissionContext,
-                          abortSignal: task.abortController!.signal,
+                          abortSignal: backgroundedAbortController.signal,
                           subagentType: selectedAgent.agentType,
                           totalToolUseCount: agentResult.totalToolUseCount,
                         });

@@ -4,9 +4,11 @@ import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
 import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
 import {
   getCanonicalName,
+  getDefaultMainLoopModel,
   getRuntimeMainLoopModel,
   parseUserSpecifiedModel,
 } from './model.js'
+import { getModelSettingsSlot, type ModelSettingsSlot } from './modelTier.js'
 import { getAPIProvider } from './providers.js'
 
 export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
@@ -41,7 +43,18 @@ export function getAgentModel(
   permissionMode?: PermissionMode,
 ): string {
   if (process.env.CLAUDE_CODE_SUBAGENT_MODEL) {
-    return parseUserSpecifiedModel(process.env.CLAUDE_CODE_SUBAGENT_MODEL)
+    const configuredModel =
+      process.env.CLAUDE_CODE_SUBAGENT_MODEL.trim().toLowerCase()
+    if (configuredModel === 'inherit') {
+      return getRuntimeMainLoopModel({
+        permissionMode: permissionMode ?? 'default',
+        mainLoopModel: parentModel,
+        exceeds200kTokens: false,
+      })
+    }
+    return configuredModel === 'default'
+      ? getDefaultMainLoopModel()
+      : parseUserSpecifiedModel(process.env.CLAUDE_CODE_SUBAGENT_MODEL)
   }
 
   // Extract Bedrock region prefix from parent model to inherit for subagents.
@@ -86,12 +99,65 @@ export function getAgentModel(
       exceeds200kTokens: false,
     })
   }
+  if (agentModelWithExp.trim().toLowerCase() === 'default') {
+    return getDefaultMainLoopModel()
+  }
 
   if (aliasMatchesParentTier(agentModelWithExp, parentModel)) {
     return parentModel
   }
   const model = parseUserSpecifiedModel(agentModelWithExp)
   return applyParentRegionPrefix(model, agentModelWithExp)
+}
+
+/** The raw model selection after applying Agent-specific precedence. */
+function getAgentModelSelection(
+  agentModel: string | undefined,
+  toolSpecifiedModel?: ModelAlias,
+): string {
+  return (
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL ||
+    toolSpecifiedModel ||
+    agentModel ||
+    'inherit'
+  )
+}
+
+/**
+ * Resolve the model-settings slot from the source of an Agent model selection.
+ * The resolved model id alone is insufficient when the first-party default can
+ * be either Opus or Sonnet, or when several aliases pin the same checkpoint.
+ */
+export function getAgentModelSettingsSlot(
+  agentModel: string | undefined,
+  resolvedModel: string,
+  parentSettingsSlot: ModelSettingsSlot | undefined,
+  toolSpecifiedModel?: ModelAlias,
+): ModelSettingsSlot | undefined {
+  const selection = getAgentModelSelection(agentModel, toolSpecifiedModel)
+  const normalizedSelection = selection.trim().toLowerCase()
+
+  if (normalizedSelection === 'inherit') return parentSettingsSlot
+  if (normalizedSelection === 'default') return 'default'
+  return getModelSettingsSlot(resolvedModel, selection)
+}
+
+/**
+ * A matching bare alias may reuse the parent's exact id, including an inherited
+ * `[1m]` suffix. Remove only that inherited suffix before applying the alias's
+ * own slot; an explicit `opus[1m]` selection remains explicit.
+ */
+export function removeInherited1mForAgentAlias(
+  agentModel: string | undefined,
+  resolvedModel: string,
+  toolSpecifiedModel?: ModelAlias,
+): string {
+  const selection = getAgentModelSelection(agentModel, toolSpecifiedModel)
+    .trim()
+    .toLowerCase()
+  return ['haiku', 'sonnet', 'opus', 'fable'].includes(selection)
+    ? resolvedModel.replace(/\[1m\]$/i, '')
+    : resolvedModel
 }
 
 /**

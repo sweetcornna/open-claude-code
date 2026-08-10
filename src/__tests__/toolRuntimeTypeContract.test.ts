@@ -29,7 +29,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import type * as TR from '@open-claude-code/tool-runtime/types/hostContracts.js'
-import type { CanUseToolFn as ContractCanUseToolFn } from '@open-claude-code/tool-runtime/Tool.js'
+import type {
+  CanUseToolFn as ContractCanUseToolFn,
+  ModelSettingsSlot as ContractModelSettingsSlot,
+} from '@open-claude-code/tool-runtime/Tool.js'
 
 import type { CanUseToolFn as HostCanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { SpinnerMode } from 'src/components/Spinner.js'
@@ -53,6 +56,7 @@ import type {
 } from 'src/utils/filesystem/fileHistory.js'
 import type { DenialTrackingState } from 'src/utils/permissions/denialTracking.js'
 import type { Theme, ThemeName } from 'src/utils/terminal/theme.js'
+import type { ModelSettingsSlot } from 'src/utils/model/modelTier.js'
 import type { ThinkingConfig } from 'src/utils/model/thinking.js'
 import type { ContentReplacementState } from 'src/utils/tools/toolResultStorage.js'
 
@@ -88,6 +92,7 @@ describe('tool-runtime host type contract', () => {
     assertExact<TR.SDKStatus, SDKStatus>(true)
     assertExact<TR.AgentId, AgentId>(true)
     assertExact<TR.ThinkingConfig, ThinkingConfig>(true)
+    assertExact<ContractModelSettingsSlot, ModelSettingsSlot>(true)
     assertExact<TR.SpinnerMode, SpinnerMode>(true)
     assertExact<TR.ThemeName, ThemeName>(true)
     assertExact<TR.ToolProgressData, ToolProgressData>(true)

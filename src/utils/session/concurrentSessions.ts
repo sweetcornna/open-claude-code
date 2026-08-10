@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { chmod, mkdir, readdir, readFile, unlink, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { basename, dirname, join, resolve } from 'path'
+import { BIN_NAME, occConfigPath } from '../../config/paths.js'
 import {
   getOriginalCwd,
   getSessionId,
@@ -32,6 +33,42 @@ export type PeerSession = {
 
 function getSessionsDir(): string {
   return join(getClaudeConfigHomeDir(), 'sessions')
+}
+
+/**
+ * Delete only logs created by the background-session launcher. Registry files
+ * are user-writable input, so a recorded path must never be passed directly to
+ * unlink: it must resolve to a direct child of the managed log directory and
+ * match the launcher's filename format.
+ */
+export async function removeManagedSessionLog(
+  logPath: string | undefined,
+): Promise<void> {
+  if (!logPath) return
+
+  const logsDir = resolve(occConfigPath('sessions', 'logs'))
+  const target = resolve(logPath)
+  const prefix = `${BIN_NAME}-bg-`
+  const filename = basename(target)
+  if (
+    dirname(target) !== logsDir ||
+    !filename.startsWith(prefix) ||
+    !/^[0-9a-f]{8}\.log$/i.test(filename.slice(prefix.length))
+  ) {
+    return
+  }
+
+  await unlink(target).catch(() => {})
+}
+
+async function removeSessionArtifacts(
+  pidFile: string,
+  logPath?: string,
+): Promise<void> {
+  await Promise.all([
+    unlink(pidFile).catch(() => {}),
+    removeManagedSessionLog(logPath),
+  ])
 }
 
 /**
@@ -185,13 +222,13 @@ export async function registerSession(): Promise<boolean> {
   const dir = getSessionsDir()
   const pidFile = join(dir, `${process.pid}.json`)
   const processStartMarker = await getProcessStartMarker(process.pid)
+  const logPath =
+    process.env.CLAUDE_CODE_SESSION_KIND === 'bg'
+      ? getBgSessionMetadata().logPath
+      : undefined
 
   registerCleanup(async () => {
-    try {
-      await unlink(pidFile)
-    } catch {
-      // ENOENT is fine (already deleted or never written)
-    }
+    await removeSessionArtifacts(pidFile, logPath)
   })
 
   try {
@@ -312,7 +349,18 @@ export async function countConcurrentSessions(): Promise<number> {
       // or CLAUDE_CONFIG_DIR), a Windows PID won't be probeable from WSL
       // and we'd falsely delete a live session's file. This is just
       // telemetry so conservative undercount is acceptable.
-      void unlink(join(dir, file)).catch(() => {})
+      const pidFile = join(dir, file)
+      let logPath: string | undefined
+      try {
+        const data = jsonParse(await readFile(pidFile, 'utf8')) as Record<
+          string,
+          unknown
+        >
+        if (typeof data.logPath === 'string') logPath = data.logPath
+      } catch {
+        // Corrupt stale registries still need their PID file removed.
+      }
+      await removeSessionArtifacts(pidFile, logPath)
     }
   }
   return count
