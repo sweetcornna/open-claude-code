@@ -44,6 +44,11 @@ interface LaneOutcome {
   error?: unknown
 }
 
+interface RunningLane {
+  outcome: Promise<LaneOutcome>
+  abort(reason: unknown): void
+}
+
 async function runLane(
   adapter: WebSearchAdapter,
   query: string,
@@ -59,23 +64,49 @@ async function runLane(
   }
 }
 
-/**
- * Await `lane` for at most `graceMs`. Returns undefined on timeout; the lane
- * promise keeps running harmlessly (it can no longer reject unobserved — see
- * runLane) and its result is simply discarded.
- */
+function startLane(
+  adapter: WebSearchAdapter,
+  query: string,
+  options: SearchOptions,
+): RunningLane {
+  const controller = new AbortController()
+  const parentSignal = options.signal
+  const forwardParentAbort = (): void => controller.abort(parentSignal?.reason)
+  if (parentSignal?.aborted) {
+    forwardParentAbort()
+  } else {
+    parentSignal?.addEventListener('abort', forwardParentAbort, { once: true })
+  }
+
+  const outcome = runLane(adapter, query, {
+    ...options,
+    signal: controller.signal,
+  }).finally(() => {
+    parentSignal?.removeEventListener('abort', forwardParentAbort)
+  })
+
+  return {
+    outcome,
+    abort(reason) {
+      controller.abort(reason)
+    },
+  }
+}
+
 async function withGrace(
-  lane: Promise<LaneOutcome>,
+  lane: RunningLane,
   graceMs: number,
 ): Promise<LaneOutcome | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<undefined>(resolve => {
-    timer = setTimeout(() => resolve(undefined), graceMs)
-    // Never hold the process open for the grace window.
-    ;(timer as { unref?: () => void }).unref?.()
+    timer = setTimeout(() => {
+      resolve(undefined)
+      lane.abort(new Error('Web search enhancer grace period expired'))
+    }, graceMs)
+    timer.unref?.()
   })
   try {
-    return await Promise.race([lane, timeout])
+    return await Promise.race([lane.outcome, timeout])
   } finally {
     if (timer) clearTimeout(timer)
   }
@@ -174,14 +205,18 @@ export class AggregateSearchAdapter implements WebSearchAdapter {
     // Every lane is launched before anything is awaited — that concurrency is
     // the whole point.
     const primaryLane = this.primary
-      ? runLane(this.primary, query, primaryOptions)
+      ? startLane(this.primary, query, primaryOptions)
       : undefined
     const enhancerLanes = this.enhancers.map(enhancer =>
-      runLane(enhancer, query, enhancerOptions),
+      startLane(enhancer, query, enhancerOptions),
     )
 
-    const primaryOutcome = primaryLane ? await primaryLane : undefined
-    if (isAbortError(primaryOutcome?.error)) throw primaryOutcome?.error
+    const primaryOutcome = primaryLane ? await primaryLane.outcome : undefined
+    const primaryError = primaryOutcome?.error
+    if (isAbortError(primaryError)) {
+      for (const lane of enhancerLanes) lane.abort(primaryError)
+      throw primaryError
+    }
 
     // With nothing from the primary lane there is nothing to enhance, so the
     // enhancers ARE the answer and get awaited in full. Same code path — the
@@ -189,7 +224,7 @@ export class AggregateSearchAdapter implements WebSearchAdapter {
     const hasPrimaryResults = (primaryOutcome?.results.length ?? 0) > 0
     const enhancerOutcomes = await Promise.all(
       enhancerLanes.map(lane =>
-        hasPrimaryResults ? withGrace(lane, this.graceMs) : lane,
+        hasPrimaryResults ? withGrace(lane, this.graceMs) : lane.outcome,
       ),
     )
 

@@ -198,7 +198,9 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 - 当前主循环 provider 对应的那个源是**主路**，结果排在最前；其余启用的源是**增强路**，
   只补主路没有的 URL。同一家凭据只发一路（主循环是 Gemini 就不再发 gemini 增强路）。
 - 全部并行发起。主路返回后增强路只有一小段宽限期（`ENHANCER_GRACE_MS`，2s），超时即丢弃——
-  慢抓取最多让用户多等 2 秒，不会拖垮整次搜索。
+  慢抓取最多让用户多等 2 秒，不会拖垮整次搜索。**丢弃时会连带 abort 那条 lane**：每条 lane 都跑在
+  自己的子 `AbortController` 上（`startLane()`），过期只是「不再等它」在长尾抓取上等于泄漏一个
+  仍在发请求的 lane。主路自己被取消时同理，会把取消原因转发给全部增强路再抛。
 - 主路失败或为空时，增强路会被**完整等待**（没有可增强的东西时它们就是答案）。
 - 单路失败静默；**所有路都失败**才把错误抛给工具。
 - 去重按归一化 URL（去 fragment、去 utm/gclid 等跟踪参数、去末尾斜杠），总数封顶 `num_results`（默认 8）。
@@ -232,6 +234,36 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 
 `bing` 只有这一条入口（不进注册表，理由见 4.1）。`brave` 与 `exa` 现在配了 key 就会自动参与
 聚合，所以点名它们的唯一用途是**只要这一个源**——想加入而不是取代，直接配 key 即可。
+
+### 4.4 超时与重试
+
+搜索是**唯一一个会自己走网络、且没有任何天然上界的内置工具** —— 抓取端点挂起时既不返回也不报错，
+整个会话就停在那里。所以它是第一个（目前也是唯一一个）显式选入执行超时保护的工具。
+
+**外层墙钟超时**：工具定义里声明 `getExecutionTimeoutMs`，`buildTool()` 就把 `call()` 包进
+`callToolWithExecutionTimeout()`（`packages/tool-runtime/src/toolExecutionTimeout.ts`）。
+
+- 默认 **60s**，`CLAUDE_CODE_WEB_SEARCH_TIMEOUT_MS` 可调，设 `0`（或任何非正整数）关闭。
+- **超时只取消这一个工具，不动会话**：包装层建一个子 `AbortController` 喂给工具，父信号单向转发进来。
+  超时抛 `ToolExecutionTimeoutError` 并 abort 子控制器；父 `abortController` 不受影响。
+  这条是这套机制的全部要点 —— 直接复用会话控制器等于一次搜索超时就杀掉整个会话。
+- 超时后到达的 `onProgress` 会被丢弃，避免已经结束的工具继续往 UI 里写。
+- **这是显式 opt-in，不是全局策略**：没声明 `getExecutionTimeoutMs` 的工具走原路径、零包装。
+  Bash / Agent 这类本来就有自己的超时语义或天然无界的工具不该被套这层。
+
+**内层 API 重试**：三条自己发请求的 lane（`AnthropicDirectSearchAdapter`、
+`DeepSeekDirectSearchAdapter`、`GeminiSearchAdapter`）统一走 `retryAPIRequest()` facade，
+各自 `maxRetries: 2`，由 `retryClassification.ts` 判定可恢复性 —— 永久 4xx（认证、权限、参数、
+不支持的模型）和用户取消立即失败，不进梯子。
+
+- 重试预算刻意小：它跑在上面那层 60s 墙钟**里面**，不是外面。
+- Anthropic lane 的 SDK client 同时把 `maxRetries` 从 1 降到 **0**，否则 SDK 自己的重试会和这层
+  相乘。
+- Gemini lane 每次尝试用**独立的结果 Map**，重试不会把上一轮的半份结果混进来；
+  但 `seenQueries` 跨尝试共享，所以重放不会重复刷 `query_update`。
+- DeepSeek lane 的非 2xx 现在统一抛 `DeepSeekSearchRequestError`（带上 `classifyFailure()` 的
+  裁决），`probeDeepSeekSearchSupport()` 从异常里取回裁决 —— 探测的「不支持」判定语义没变，
+  只是绕过了重试梯子。
 
 ## 五、接口定义
 
@@ -283,6 +315,9 @@ interface SearchProgress {
 | `packages/builtin-tools/src/tools/WebSearchTool/adapters/index.ts` | 适配器工厂 |
 | `packages/builtin-tools/src/tools/WebSearchTool/adapters/apiAdapter.ts` | API 服务端搜索适配器 |
 | `packages/builtin-tools/src/tools/WebSearchTool/adapters/bingAdapter.ts` | Bing HTML 解析适配器 |
+| `packages/builtin-tools/src/tools/WebSearchTool/executionTimeout.ts` | 墙钟超时时长解析（`CLAUDE_CODE_WEB_SEARCH_TIMEOUT_MS`） |
+| `packages/tool-runtime/src/toolExecutionTimeout.ts` | 通用超时包装（子 AbortController，见 4.4） |
+| `packages/tool-runtime/src/apiRetry.ts` | API 重试 facade，host 实现在 `src/services/api/retryFacade.ts` |
 | `packages/builtin-tools/src/tools/WebSearchTool/__tests__/bingAdapter.test.ts` | 单元测试 (32 cases) |
 | `packages/builtin-tools/src/tools/WebSearchTool/__tests__/bingAdapter.integration.ts` | 集成测试 |
 | `src/tools.ts` | 工具注册 |

@@ -172,6 +172,34 @@ describe('AggregateSearchAdapter', () => {
     ])
   })
 
+  test('aborts an enhancer that misses the grace window', async () => {
+    let aborted = false
+    const slowEnhancer: WebSearchAdapter = {
+      async search(_query, options): Promise<SearchResult[]> {
+        return new Promise(resolve => {
+          options.signal?.addEventListener(
+            'abort',
+            () => {
+              aborted = true
+              resolve(ENHANCER_HITS)
+            },
+            { once: true },
+          )
+        })
+      },
+    }
+    const adapter = new AggregateSearchAdapter({
+      primary: lane(PRIMARY_HITS),
+      enhancers: [slowEnhancer],
+      graceMs: 5,
+    })
+
+    const results = await adapter.search('q', {})
+
+    expect(aborted).toBe(true)
+    expect(results).toHaveLength(PRIMARY_HITS.length)
+  })
+
   test('waits out a slow enhancer when the primary lane came back empty', async () => {
     const adapter = new AggregateSearchAdapter({
       primary: lane([]),

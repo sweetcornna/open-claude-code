@@ -16,6 +16,17 @@ export class AbortError extends Error {
   }
 }
 
+export class ToolExecutionTimeoutError extends Error {
+  readonly name = 'ToolExecutionTimeoutError'
+
+  constructor(
+    readonly toolName: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`Tool "${toolName}" timed out after ${timeoutMs}ms`)
+  }
+}
+
 /**
  * True iff `e` is any of the abort-shaped errors the codebase encounters:
  * our AbortError class, a DOMException from AbortController.abort()

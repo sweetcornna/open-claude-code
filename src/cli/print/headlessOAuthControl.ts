@@ -309,11 +309,13 @@ export async function handleClaudeAuthenticate(
       },
     )
     .then(async tokens => {
-      // installOAuthTokens: performLogout (clear stale state) →
-      // store profile → saveOAuthTokensIfNeeded → clearOAuthTokenCache
-      // → clearAuthRelatedCaches. After this resolves, the memoized
-      // getClaudeAIOAuthTokens in this process is invalidated; the
-      // next API call re-reads keychain/file and works. No respawn.
+      // installOAuthTokens: resolve profile → saveOAuthTokensIfNeeded (or
+      // createAndStoreApiKey + removeClaudeAIOAuthTokens for Console) →
+      // clearOAuthTokenCache → store account info → fetch roles →
+      // clearAuthRelatedCaches. It does NOT call performLogout — logging in
+      // must not wipe the user's provider configuration. After this resolves,
+      // the memoized getClaudeAIOAuthTokens in this process is invalidated;
+      // the next API call re-reads keychain/file and works. No respawn.
       await installOAuthTokens(tokens)
       logEvent('tengu_oauth_success', {
         loginWithClaudeAi: (loginWithClaudeAi ?? true) as boolean | number,

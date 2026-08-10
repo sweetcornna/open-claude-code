@@ -19,6 +19,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
+import { ToolExecutionTimeoutError } from '@open-claude-code/tool-runtime/errors.js'
 import * as ToolModule from '../Tool.js'
 
 const TOOL_FILE = join(import.meta.dir, '..', 'Tool.ts')
@@ -184,6 +185,36 @@ describe('Tool contract behavior', () => {
     expect(tool.isReadOnly({})).toBe(true)
     expect(tool.name).toBe('SurfaceTool')
     expect(tool.maxResultSizeChars).toBe(1000)
+  })
+
+  test('buildTool wraps only definitions that opt into an execution timeout', async () => {
+    const parent = new AbortController()
+    const tool = ToolModule.buildTool(
+      makeToolDef({
+        getExecutionTimeoutMs: () => 5,
+        call: async (
+          _input: unknown,
+          context: { abortController: AbortController },
+        ) =>
+          new Promise<never>((_, reject) => {
+            context.abortController.signal.addEventListener(
+              'abort',
+              () => reject(context.abortController.signal.reason),
+              { once: true },
+            )
+          }),
+      }),
+    )
+
+    const pending = (tool.call as any)(
+      {},
+      { abortController: parent },
+      async () => ({ behavior: 'allow' }),
+      {},
+    )
+
+    await expect(pending).rejects.toBeInstanceOf(ToolExecutionTimeoutError)
+    expect(parent.signal.aborted).toBe(false)
   })
 
   test('toolMatchesName matches the primary name and any alias', () => {

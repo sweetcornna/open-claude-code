@@ -351,7 +351,10 @@ export async function authStatus(opts: {
 
 export async function authLogout(): Promise<void> {
   try {
-    await performLogout({ clearOnboarding: false })
+    // Same reset as `/logout`. Leaving onboarding marked complete here meant
+    // the next launch skipped the wizard — i.e. skipped the only path back to a
+    // login — after the CLI had just thrown the credentials away.
+    await performLogout({ clearOnboarding: true })
   } catch {
     process.stderr.write('Failed to log out.\n')
     process.exit(1)

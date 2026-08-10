@@ -20,9 +20,11 @@ import type {
   BetaWebSearchTool20250305,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAnthropicClient } from 'src/services/api/client.js'
+import { retryAPIRequest } from '@open-claude-code/tool-runtime/apiRetry.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import { queryModelWithStreaming } from 'src/services/api/claude.js'
+import { getAPIErrorSource } from 'src/services/api/retryClassification.js'
 import {
   createTrace,
   endTrace,
@@ -41,6 +43,7 @@ import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
  * — only the web_search_tool_result blocks are read.
  */
 const DIRECT_SEARCH_MAX_TOKENS = 4096
+const DIRECT_SEARCH_MAX_RETRIES = 2
 
 function makeToolSchema(input: {
   allowedDomains?: string[]
@@ -118,10 +121,20 @@ export class ApiSearchAdapter implements WebSearchAdapter {
     let currentToolUseJson = ''
     const toolUseQueries = new Map<string, string>()
     let progressCounter = 0
+    let terminalAPIError: unknown
 
     for await (const event of queryStream) {
       if (event.type === 'assistant') {
-        const msg = event as { message: { content: BetaContentBlock[] } }
+        const msg = event as {
+          isApiErrorMessage?: boolean
+          message: { content: BetaContentBlock[] }
+        }
+        if (msg.isApiErrorMessage) {
+          terminalAPIError =
+            getAPIErrorSource(event) ??
+            new Error('Web search API request failed after retries')
+          continue
+        }
         allContentBlocks.push(...msg.message.content)
         continue
       }
@@ -205,7 +218,7 @@ export class ApiSearchAdapter implements WebSearchAdapter {
 
     endTrace(langfuseTrace)
 
-    // Extract SearchResult[] from content blocks
+    if (terminalAPIError !== undefined) throw terminalAPIError
     return extractSearchResults(allContentBlocks)
   }
 }
@@ -228,9 +241,10 @@ export class AnthropicDirectSearchAdapter implements WebSearchAdapter {
 
     onProgress?.({ type: 'query_update', query })
 
+    const requestSignal = signal ?? new AbortController().signal
     const model = getSmallFastModel()
     const client = await getAnthropicClient({
-      maxRetries: 1,
+      maxRetries: 0,
       model,
       source: 'web_search_source',
     })
@@ -242,14 +256,18 @@ export class AnthropicDirectSearchAdapter implements WebSearchAdapter {
       },
     ]
 
-    const message = await client.beta.messages.create(
-      {
-        model,
-        max_tokens: DIRECT_SEARCH_MAX_TOKENS,
-        messages,
-        tools: [makeToolSchema({ allowedDomains, blockedDomains })],
-      },
-      { signal },
+    const message = await retryAPIRequest(
+      () =>
+        client.beta.messages.create(
+          {
+            model,
+            max_tokens: DIRECT_SEARCH_MAX_TOKENS,
+            messages,
+            tools: [makeToolSchema({ allowedDomains, blockedDomains })],
+          },
+          { signal: requestSignal },
+        ),
+      { signal: requestSignal, maxRetries: DIRECT_SEARCH_MAX_RETRIES },
     )
 
     if (signal?.aborted) {

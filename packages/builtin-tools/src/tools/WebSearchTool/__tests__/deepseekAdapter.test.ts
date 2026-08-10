@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { registerAPIRetryHost } from '@open-claude-code/tool-runtime/apiRetry.js'
+import { retryOpenAIRequest } from 'src/services/api/openai/retry.js'
 import {
   DeepSeekDirectSearchAdapter,
   probeDeepSeekSearchSupport,
@@ -22,12 +24,14 @@ const ENV_KEYS = [
 
 const saved = new Map<string, string | undefined>()
 
-/** A fetch that records the one request it is given and replays a canned reply. */
-function stubFetch(reply: {
+type StubReply = {
   status?: number
   body?: unknown
   text?: string
-}): typeof fetch & {
+}
+
+/** A fetch that records the one request it is given and replays a canned reply. */
+function stubFetch(reply: StubReply): typeof fetch & {
   calls: Array<{ url: string; body: Record<string, unknown> }>
 } {
   const calls: Array<{ url: string; body: Record<string, unknown> }> = []
@@ -44,6 +48,26 @@ function stubFetch(reply: {
       text: async () => reply.text ?? JSON.stringify(reply.body ?? ''),
     } as unknown as Response
   }) as unknown as typeof fetch & { calls: typeof calls }
+  impl.calls = calls
+  return impl
+}
+
+function stubFetchSequence(replies: StubReply[]): ReturnType<typeof stubFetch> {
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = []
+  const impl = (async (url: string, init?: RequestInit) => {
+    const reply = replies[calls.length] ?? replies.at(-1) ?? {}
+    calls.push({
+      url: String(url),
+      body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+    })
+    const status = reply.status ?? 200
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => reply.body,
+      text: async () => reply.text ?? JSON.stringify(reply.body ?? ''),
+    } as unknown as Response
+  }) as ReturnType<typeof stubFetch>
   impl.calls = calls
   return impl
 }
@@ -75,6 +99,13 @@ function searchReply(urls: string[]): unknown {
 }
 
 beforeEach(() => {
+  registerAPIRetryHost({
+    retry: (operation, options) =>
+      retryOpenAIRequest(operation, {
+        ...options,
+        delay: async () => {},
+      }),
+  })
   for (const key of ENV_KEYS) {
     saved.set(key, process.env[key])
     delete process.env[key]
@@ -86,6 +117,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  registerAPIRetryHost(null)
   for (const [key, value] of saved) {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
@@ -207,6 +239,20 @@ describe('DeepSeekDirectSearchAdapter', () => {
     expect(results.map(r => r.url)).toEqual(['https://a.example/1'])
   })
 
+  test('retries a transient API failure before returning results', async () => {
+    const fetchOverride = stubFetchSequence([
+      { status: 503, text: 'upstream unavailable' },
+      { body: searchReply(['https://a.example/1']) },
+    ])
+
+    const results = await new DeepSeekDirectSearchAdapter({
+      fetchOverride,
+    }).search('q', {})
+
+    expect(fetchOverride.calls).toHaveLength(2)
+    expect(results.map(result => result.url)).toEqual(['https://a.example/1'])
+  })
+
   test('a rejected tool schema is phrased so the health wrapper retires the lane', async () => {
     const fetchOverride = stubFetch({
       status: 400,
@@ -216,6 +262,7 @@ describe('DeepSeekDirectSearchAdapter', () => {
     await expect(
       new DeepSeekDirectSearchAdapter({ fetchOverride }).search('q', {}),
     ).rejects.toThrow(/does not support web_search/)
+    expect(fetchOverride.calls).toHaveLength(1)
   })
 
   test('enforces the domain filter client-side', async () => {

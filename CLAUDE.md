@@ -56,11 +56,11 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 ### Host facade 模式（依赖反转）
 
-`packages/builtin-tools/` 是叶子，不该反向 import host 的 `src/`。工具需要 host 能力时走 facade：**`packages/tool-runtime/` 声明接口 + host 实现模块在自己文件末尾自注册 + 消费方从 tool-runtime 取**。现有 5 个：`slowOperations`、`analytics`、`featureGate`、`messageResponse`、`bootstrapState`。
+`packages/builtin-tools/` 是叶子，不该反向 import host 的 `src/`。工具需要 host 能力时走 facade：**`packages/tool-runtime/` 声明接口 + host 实现模块在自己文件末尾自注册 + 消费方从 tool-runtime 取**。现有 6 个：`slowOperations`、`analytics`、`featureGate`、`messageResponse`、`bootstrapState`、`apiRetry`。
 
 - 注册由 `src/tools.ts` 顶部 side-effect import 保证先于 builtin tool 加载。**例外是 `bootstrapState`** —— 它故意**不**从 `tools.ts` 触发（type-only 回边会让类型图环数暴涨几百），改为搭 session bootstrap 顺风车。
-- **未注册时的 fallback 各不相同，是刻意的**：`slowOperations` 退回原生 JSON、`analytics` no-op、`featureGate` 返回 defaultValue、`messageResponse` 透传 children、**`bootstrapState` fail-fast 抛错**（掩盖注册顺序 bug 比崩溃更糟）。
-- 新增 facade 照抄 `slowOperations.ts`；注册与翻转分两个提交。
+- **未注册时的 fallback 各不相同，是刻意的**：`slowOperations` 退回原生 JSON、`analytics` no-op、`featureGate` 返回 defaultValue、`messageResponse` 透传 children、`apiRetry` 原样跑一次（不重试）、**`bootstrapState` fail-fast 抛错**（掩盖注册顺序 bug 比崩溃更糟）。
+- 新增 facade 照抄 `slowOperations.ts`；注册与翻转分两个提交。**`apiRetry` 的注册是个例外**：host 实现 `src/services/api/openai/retry.ts` 是纯库（`sideQuery` 等多处直接 import 它），在文件末尾自注册会让每个 importer 都产生副作用，所以注册单独放在 `src/services/api/retryFacade.ts` 这层薄壳里，由 `tools.ts` 顶部 side-effect import。名字带 OpenAI 是历史包袱，`retryOpenAIRequest` 本身按 `retryClassification.ts` 分类，Anthropic/DeepSeek/Gemini 都在用。
 - `packages/tool-runtime/` 包内**零** `src/` 与 `builtin-tools` import（含 type-only），由 `src/__tests__/toolRuntimeTypeContract.test.ts` 的类型断言守着。
 
 ### 长会话驻留（会静默变成 OOM 的一类）
