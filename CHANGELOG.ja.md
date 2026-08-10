@@ -6,6 +6,15 @@ open-claude-code（`occ`）のリリースノート。
 解析するのはそちらだけです。構造は同一に保ってください：`## <semver> - <日付>`
 の見出し、トップレベルの `- ` 項目、新しい順。
 
+## 2.36.1 - 2026-08-09
+
+- **Agent と Workflow の引き継ぎ・キャンセルが互いに干渉しなくなりました。** 前景 Agent をバックグラウンドへ移す際は同じストリームを継続し、重複した Agent を起動しません。Workflow の単一 agent をキャンセルしても、その agent だけが終了し、兄弟 agent と後続 phase は継続します。agent 終了後に遅れて届いたバックグラウンドタスク通知はメインセッションへ戻り、終端状態の RemoteAgent タスクはライフサイクルに従って自動退役します。
+- **バックグラウンド process と connection の cleanup が最後まで実行されます。** 自然完了した Shell タスクは cleanup callback を解除し、ACP のキャンセルは query generator の `return()` を待機します。daemon セッションは終了時に管理対象ログを削除し、古い WebSocket から遅れて届く event が新しい接続を無効化することもなくなりました。
+- **サードパーティの streaming API が実際の理由で timeout・終了するようになりました。** Anthropic stream は既定で idle watchdog を有効化し、Gemini は接続 timeout と read ごとの timeout の両方を備えます。Gemini の safety block と不正な tool call は部分出力を保持しつつ明示的なエラーを表示します。Responses API は content filtering や未知の終了理由を output token の打ち切りと誤報せず、実際に対応する model にだけ reasoning effort を送信します。
+- **deferred tool、MCP、teammate mailbox が並行処理中も最新状態を保ちます。** 事前取得された tool discovery を ExecuteExtraTool へ直接渡せるようになり、Anthropic の後続 request も deferred-tool 一覧を失いません。並行した `tools/list_changed` refresh が古い connection のデータを書き戻すことはなく、mailbox polling も snapshot 後に届いた message を削除しません。
+- **provider、profile、model settings が互いに漏れなくなりました。** tier をまたぐ Agent は、その model を実際に選択した slot から effort/context を読み取ります。provider profile の切り替えは古い model metadata を完全に除去しつつ、shell 由来または後からユーザーが上書きした環境変数を保持します。tier だけを設定した Anthropic-compatible endpoint はサードパーティ catalog として扱われ、明示的な `FEATURE_*=0/false` opt-out は Bun build でも有効です。
+- **migration と list UI が race・resize に対して安全になりました。** migration の実行は no-clobber semantics を使用し、計画後に現れた destination file/ディレクトリへ merge または overwrite しません。terminal の高さが変わると CustomSelect は表示 window を即座に再計算し、現在項目を画面内に保ちます。
+
 ## 2.36.0 - 2026-08-09
 
 - **サブスクリプションのセッションが上限到達を即座に提示し、無駄な再試行を待たされなくなりました。** Claude サブスクリプション（Max/Pro）の 429 は、サーバーが返す上限リセット時刻を優先して読み取り、「上限に達しました」と回復時刻をその場で表示します。以前は同じ結論に至るまで約 10 分の再試行カウントダウンが必要でした。この判断は全 provider に適用され、サーバーが明示したリセット窓が 1 回あたりのバックオフ上限を超える場合は再試行を打ち切り、その情報がない場合は既存のサブスクリプション再試行の契約を維持します。OpenAI の 2 系統も同じ規則に従います。

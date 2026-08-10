@@ -4,6 +4,15 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.36.1 - 2026-08-09
+
+- **Agent 与 Workflow 的切换和取消不再串线。** 前台 Agent 转入后台时继续消费同一个流，不再重复启动第二个 Agent；取消单个 Workflow agent 只终止该 agent，兄弟节点与后续阶段继续运行。agent 退出后，迟到的后台任务通知会回到主会话，RemoteAgent 终态任务也会按生命周期自动驱逐。
+- **后台进程与连接的收尾完整执行。** 自然完成的 Shell 任务会注销 cleanup 回调，ACP 取消会等待查询生成器执行 `return()`，daemon 会话退出后清理其受管日志；旧 WebSocket 的延迟事件不能再破坏新连接。
+- **第三方流式 API 会按真实原因超时或终止。** Anthropic 流默认启用空闲看门狗，Gemini 同时具备连接和逐次读取超时；Gemini 的安全拦截与畸形工具调用会保留部分输出并明确报错。Responses API 不再把内容过滤或未知终止原因误报为输出 token 截断，也只向实际支持的模型发送 reasoning effort。
+- **延迟工具、MCP 与 teammate 邮箱在并发下保持最新。** 预取发现的工具可直接交给 ExecuteExtraTool，Anthropic 后续请求不会丢失延迟工具清单；并发 `tools/list_changed` 刷新不能回写旧连接的数据，邮箱轮询也不会误删快照之后到达的消息。
+- **Provider、profile 与模型设置不再互相污染。** 跨档 Agent 使用其真实来源槽位读取 effort/context；切换 provider profile 会完整清理旧模型元数据，同时保留 shell 或后续用户覆盖的环境变量。仅配置 tier 的 Anthropic-compatible 端点会按第三方目录处理，显式 `FEATURE_*=0/false` 在 Bun build 中继续生效。
+- **迁移与列表界面在竞态和尺寸变化下更安全。** 迁移执行阶段采用 no-clobber 语义，不会合并或覆盖规划后出现的目标文件与目录；终端高度变化后，CustomSelect 会立即重算可见窗口并保持当前项可见。
+
 ## 2.36.0 - 2026-08-09
 
 - **订阅会话触达限额时立即给出结论，不再空等一轮无效重试。** Claude 订阅（Max/Pro）遇到 429 时优先读取服务端返回的限额重置时间，直接显示「已达限额」与恢复时刻；此前要走完约 10 分钟的重试倒计时才给出同一个结果。这条规则对所有 provider 生效：服务端明示的重置窗口一旦超过单次退避上限就不再重试，服务端没给这项信息时维持既有的订阅重试契约，OpenAI 两条线遵循同一判断。
