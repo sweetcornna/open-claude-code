@@ -4,6 +4,13 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.37.0 - 2026-08-10
+
+- **登出恢复为重置整个账户面，修复登出后无法重新配置。** 此前登出只清除三个 Anthropic 凭据键，第三方 provider 的端点与 key 全部幸存并在下次启动被重新写回进程环境；`isAnthropicAuthEnabled()` 因此判定会话仍属第三方，首启向导不再插入登录步骤，用户登出后没有任何重新配置的入口。DeepSeek 会话中登出更是完全无效：内存镜像会用幸存的 `OPENAI_API_KEY` 重新生成 `ANTHROPIC_API_KEY`。现在登出会清除全部 provider 键与 `modelType`、移除 ChatGPT 与 Antigravity 的 OAuth 凭据、释放 DeepSeek 镜像；MCP OAuth token、plugin secrets 与已保存的 provider 档案不受影响，`occ auth logout` 与 `/logout` 语义一致。
+- **登出会清空被拒绝的自定义 API key 名单。** 「Detected a custom API key」对话框仅对状态为「新」的 key 弹出，默认选项为 No 且取消按 No 计，此前一次拒绝即永久锁定该 key，且没有任何命令能恢复。
+- **WebSearch 具备执行超时保护，单个工具卡死不再拖住会话。** 工具可显式声明墙钟上限并在独立的子取消控制器中执行，超时只终止该工具本身，不影响会话；WebSearch 默认 60 秒，可通过 `CLAUDE_CODE_WEB_SEARCH_TIMEOUT_MS` 调整或设为 `0` 关闭。聚合搜索的各路搜索源在宽限期结束或主路取消时会被真正中止，不再遗留仍在发送请求的后台分支。
+- **第三方搜索路径统一接入 API 错误重试。** Anthropic、DeepSeek 与 Gemini 的直连搜索对可恢复错误重试，认证、权限、参数等永久性 4xx 与用户取消立即失败；Anthropic 路径的 SDK 客户端重试已关闭，避免与该层叠乘。
+
 ## 2.36.1 - 2026-08-09
 
 - **Agent 与 Workflow 的切换和取消不再串线。** 前台 Agent 转入后台时继续消费同一个流，不再重复启动第二个 Agent；取消单个 Workflow agent 只终止该 agent，兄弟节点与后续阶段继续运行。agent 退出后，迟到的后台任务通知会回到主会话，RemoteAgent 终态任务也会按生命周期自动驱逐。
