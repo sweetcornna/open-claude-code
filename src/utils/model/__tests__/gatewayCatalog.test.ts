@@ -45,6 +45,8 @@ const {
 } = await import('../providers.js')
 const {
   getDefaultOpusModel,
+  getDefaultFableModel,
+  getDefaultSonnetModel,
   getDefaultHaikuModel,
   getMainLoopModel,
   getMainLoopModelSettingsSlot,
@@ -121,8 +123,29 @@ describe('a plain Anthropic gateway', () => {
   test('is not a third-party catalog when nothing is pinned', () => {
     process.env.ANTHROPIC_BASE_URL = 'https://gateway.corp.example/anthropic'
 
+    expect(isThirdPartyAnthropicEndpoint()).toBe(false)
     expect(isThirdPartyModelCatalog()).toBe(false)
     expect(servesAnthropicModels()).toBe(true)
+    expect(getDefaultHaikuModel()).toContain('claude')
+    expect(getDefaultSonnetModel()).toContain('claude')
+    expect(getDefaultOpusModel()).toContain('claude')
+    expect(getDefaultFableModel()).toContain('claude')
+  })
+
+  test('stays Anthropic when every tier-only pin is a Claude id', () => {
+    process.env.ANTHROPIC_BASE_URL = 'https://gateway.corp.example/anthropic'
+    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'claude-haiku-gateway'
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'claude-sonnet-gateway'
+    process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'claude-opus-gateway'
+    process.env.ANTHROPIC_DEFAULT_FABLE_MODEL = 'claude-fable-gateway'
+
+    expect(isThirdPartyAnthropicEndpoint()).toBe(false)
+    expect(isThirdPartyModelCatalog()).toBe(false)
+    expect(servesAnthropicModels()).toBe(true)
+    expect(getDefaultHaikuModel()).toBe('claude-haiku-gateway')
+    expect(getDefaultSonnetModel()).toBe('claude-sonnet-gateway')
+    expect(getDefaultOpusModel()).toBe('claude-opus-gateway')
+    expect(getDefaultFableModel()).toBe('claude-fable-gateway')
   })
 
   test('reads a settings.model pin the same way as the env one', () => {
@@ -146,6 +169,19 @@ describe('a plain Anthropic gateway', () => {
 })
 
 describe('an endpoint positively identified as somebody else', () => {
+  test('a non-Claude tier-only pin makes it third party', () => {
+    process.env.ANTHROPIC_BASE_URL = 'https://open.bigmodel.cn/api/anthropic'
+    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'claude-haiku-gateway'
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'glm-4.7'
+
+    expect(isThirdPartyAnthropicEndpoint()).toBe(true)
+    expect(isThirdPartyModelCatalog()).toBe(true)
+    expect(servesAnthropicModels()).toBe(false)
+    expect(getDefaultHaikuModel()).toBe('claude-haiku-gateway')
+    expect(getDefaultSonnetModel()).toBe('glm-4.7')
+    expect(getMainLoopModel()).toBe('glm-4.7')
+  })
+
   test('a non-Claude model pin makes it third party', () => {
     process.env.ANTHROPIC_BASE_URL = 'https://open.bigmodel.cn/api/anthropic'
     process.env.ANTHROPIC_MODEL = 'glm-4.7'

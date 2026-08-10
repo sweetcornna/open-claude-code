@@ -65,6 +65,7 @@ import { getInMemoryErrors } from './utils/telemetry/log.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
   getMainLoopModel,
+  getMainLoopModelSettingsSlot,
   parseUserSpecifiedModel,
 } from './utils/model/model.js'
 import { loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js'
@@ -342,6 +343,7 @@ export class QueryEngine {
         tools,
         verbose,
         mainLoopModel: initialMainLoopModel,
+        modelSettingsSlot: getMainLoopModelSettingsSlot(initialMainLoopModel),
         thinkingConfig: initialThinkingConfig,
         mcpClients,
         mcpResources: {},
@@ -491,6 +493,7 @@ export class QueryEngine {
         tools,
         verbose,
         mainLoopModel,
+        modelSettingsSlot: getMainLoopModelSettingsSlot(mainLoopModel),
         thinkingConfig: initialThinkingConfig,
         mcpClients,
         mcpResources: {},

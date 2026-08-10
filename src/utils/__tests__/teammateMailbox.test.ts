@@ -13,12 +13,14 @@ import {
   markMessageAsReadByIdentity,
   markMessagesAsRead,
   markMessagesAsReadByPredicate,
+  markMessagesAsReadBySnapshot,
   MAX_MAILBOX_MESSAGE_TEXT_BYTES,
   MAX_MAILBOX_FILE_BYTES,
   MAX_MAILBOX_MESSAGES,
   MAX_READ_MAILBOX_MESSAGES,
   MAX_UNREAD_PROTOCOL_MAILBOX_MESSAGES,
   readMailbox,
+  readUnreadMessages,
   type TeammateMessage,
   writeToMailbox,
 } from 'src/utils/agents/teammateMailbox.js'
@@ -300,6 +302,50 @@ describe('teammate mailbox retention', () => {
     expect(after.some(m => m.text === permissionResponse.text && !m.read)).toBe(
       false,
     )
+  })
+
+  test('snapshot acknowledgement leaves messages appended after the read unread', async () => {
+    await seedMailbox('worker', 'alpha', [
+      message('snapshot-message', false, new Date(10).toISOString()),
+    ])
+    const snapshot = await readUnreadMessages('worker', 'alpha')
+
+    await writeToMailbox(
+      'worker',
+      {
+        from: 'team-lead',
+        text: 'later-message',
+        timestamp: new Date(11).toISOString(),
+      },
+      'alpha',
+    )
+    await markMessagesAsReadBySnapshot('worker', 'alpha', snapshot)
+
+    const after = await readRawMailbox('worker', 'alpha')
+    expect(after.map(m => [m.text, m.read])).toEqual([
+      ['snapshot-message', true],
+      ['later-message', false],
+    ])
+  })
+
+  test('snapshot acknowledgement does not over-confirm duplicate identities', async () => {
+    const duplicate = message('duplicate', false, new Date(12).toISOString())
+    await seedMailbox('worker', 'alpha', [duplicate])
+    const snapshot = await readUnreadMessages('worker', 'alpha')
+
+    await writeToMailbox(
+      'worker',
+      {
+        from: duplicate.from,
+        text: duplicate.text,
+        timestamp: duplicate.timestamp,
+      },
+      'alpha',
+    )
+    await markMessagesAsReadBySnapshot('worker', 'alpha', snapshot)
+
+    const after = await readRawMailbox('worker', 'alpha')
+    expect(after.map(m => m.read)).toEqual([true, false])
   })
 
   test('markMessageAsReadByIndex also compacts through the compatibility path', async () => {

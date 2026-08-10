@@ -41,7 +41,11 @@ afterAll(() => settingsMock.reset())
 const { getContextWindowForModel, supportsContextWindow } = await import(
   '../context.js'
 )
-const { getDefaultMainLoopModel } = await import('../../model/model.js')
+const { apply1mContextOptIn, getDefaultMainLoopModel } = await import(
+  '../../model/model.js'
+)
+const { clearBetasCaches, getModelBetas } = await import('../../model/betas.js')
+const { CONTEXT_1M_BETA_HEADER } = await import('../../../constants/betas.js')
 
 // ANTHROPIC_MODEL and ANTHROPIC_BASE_URL are in here even though no test sets
 // them: the slot resolver reads both to work out what the default chain
@@ -71,6 +75,7 @@ beforeEach(() => {
   // cache under this file's mocked settings, and nothing re-derives it while it
   // is non-null.
   resetModelStringsForTestingOnly()
+  clearBetasCaches()
 })
 
 afterAll(() => {
@@ -79,6 +84,7 @@ afterAll(() => {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
   }
+  clearBetasCaches()
 })
 
 afterEach(() => {
@@ -86,6 +92,7 @@ afterEach(() => {
   initialSettings = { modelType: 'openai' }
   setMainLoopModelOverride(undefined)
   resetModelStringsForTestingOnly()
+  clearBetasCaches()
   for (const key of TIER_ENV) delete process.env[key]
 })
 
@@ -189,6 +196,40 @@ describe('per-tier context window', () => {
     setMainLoopModelOverride(null)
 
     expect(getContextWindowForModel(getDefaultMainLoopModel())).toBe(128_000)
+  })
+
+  test('agent slots keep context accounting and the 1M beta aligned', () => {
+    initialSettings = { modelType: 'anthropic' }
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+    userSettings = {
+      modelSettings: {
+        default: { contextTokens: 1_000_000 },
+        sonnet: { contextTokens: 200_000 },
+      },
+    } as SettingsJson
+    setMainLoopModelOverride(null)
+
+    const explicitSonnet = apply1mContextOptIn(
+      'claude-sonnet-5',
+      undefined,
+      'sonnet',
+    )
+    expect(explicitSonnet).toBe('claude-sonnet-5')
+    expect(getContextWindowForModel(explicitSonnet, undefined, 'sonnet')).toBe(
+      200_000,
+    )
+    expect(getModelBetas(explicitSonnet)).not.toContain(CONTEXT_1M_BETA_HEADER)
+
+    const inheritedOpus = apply1mContextOptIn(
+      'claude-opus-5',
+      undefined,
+      'default',
+    )
+    expect(inheritedOpus).toBe('claude-opus-5[1m]')
+    expect(getContextWindowForModel(inheritedOpus, undefined, 'default')).toBe(
+      1_000_000,
+    )
+    expect(getModelBetas(inheritedOpus)).toContain(CONTEXT_1M_BETA_HEADER)
   })
 
   test('a third-party 1M is honoured — the [1m] gate is an Anthropic fact', () => {

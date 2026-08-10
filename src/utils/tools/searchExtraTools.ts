@@ -32,6 +32,7 @@ import {
 } from '../session/analyzeContext.js'
 import { count } from '../collections/array.js'
 import { getMergedBetas } from '../model/betas.js'
+import type { ModelSettingsSlot } from '../model/modelTier.js'
 import { getContextWindowForModel } from '../session/context.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../config/envUtils.js'
@@ -98,9 +99,12 @@ const CHARS_PER_TOKEN = 2.5
 /**
  * Get the token threshold for auto-enabling tool search for a given model.
  */
-function getAutoSearchExtraToolsTokenThreshold(model: string): number {
+function getAutoSearchExtraToolsTokenThreshold(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): number {
   const betas = getMergedBetas(model)
-  const contextWindow = getContextWindowForModel(model, betas)
+  const contextWindow = getContextWindowForModel(model, betas, settingsSlot)
   const percentage = getAutoSearchExtraToolsPercentage() / 100
   return Math.floor(contextWindow * percentage)
 }
@@ -109,9 +113,13 @@ function getAutoSearchExtraToolsTokenThreshold(model: string): number {
  * Get the character threshold for auto-enabling tool search for a given model.
  * Used as fallback when the token counting API is unavailable.
  */
-export function getAutoSearchExtraToolsCharThreshold(model: string): number {
+export function getAutoSearchExtraToolsCharThreshold(
+  model: string,
+  settingsSlot?: ModelSettingsSlot,
+): number {
   return Math.floor(
-    getAutoSearchExtraToolsTokenThreshold(model) * CHARS_PER_TOKEN,
+    getAutoSearchExtraToolsTokenThreshold(model, settingsSlot) *
+      CHARS_PER_TOKEN,
   )
 }
 
@@ -315,6 +323,7 @@ export async function isSearchExtraToolsEnabled(
   getToolPermissionContext: () => Promise<ToolPermissionContext>,
   agents: AgentDefinition[],
   source?: string,
+  settingsSlot?: ModelSettingsSlot,
 ): Promise<boolean> {
   const mcpToolCount = count(tools, t => t.isMcp)
 
@@ -368,6 +377,7 @@ export async function isSearchExtraToolsEnabled(
         getToolPermissionContext,
         agents,
         model,
+        settingsSlot,
       )
 
       if (enabled) {
@@ -534,6 +544,29 @@ export function extractDiscoveredToolNames(messages: Message[]): Set<string> {
       continue
     }
 
+    // Internal prefetch emits tool_discovery attachments with complete tool
+    // metadata, including the input schema. Treat those recommendations as
+    // discovery so ExecuteExtraTool can invoke them without another search.
+    if (
+      msg.type === 'attachment' &&
+      msg.attachment?.type === 'tool_discovery'
+    ) {
+      const discovered = msg.attachment.tools
+      if (Array.isArray(discovered)) {
+        for (const tool of discovered) {
+          if (
+            typeof tool === 'object' &&
+            tool !== null &&
+            'name' in tool &&
+            typeof tool.name === 'string'
+          ) {
+            discoveredTools.add(tool.name)
+          }
+        }
+      }
+      continue
+    }
+
     // Only user messages contain tool_result blocks (responses to tool_use)
     if (msg.type !== 'user') continue
 
@@ -695,6 +728,7 @@ async function checkAutoThreshold(
   getToolPermissionContext: () => Promise<ToolPermissionContext>,
   agents: AgentDefinition[],
   model: string,
+  settingsSlot?: ModelSettingsSlot,
 ): Promise<{
   enabled: boolean
   debugDescription: string
@@ -709,7 +743,7 @@ async function checkAutoThreshold(
   )
 
   if (deferredToolTokens !== null) {
-    const threshold = getAutoSearchExtraToolsTokenThreshold(model)
+    const threshold = getAutoSearchExtraToolsTokenThreshold(model, settingsSlot)
     return {
       enabled: deferredToolTokens >= threshold,
       debugDescription:
@@ -726,7 +760,10 @@ async function checkAutoThreshold(
       getToolPermissionContext,
       agents,
     )
-  const charThreshold = getAutoSearchExtraToolsCharThreshold(model)
+  const charThreshold = getAutoSearchExtraToolsCharThreshold(
+    model,
+    settingsSlot,
+  )
   return {
     enabled: deferredToolDescriptionChars >= charThreshold,
     debugDescription:

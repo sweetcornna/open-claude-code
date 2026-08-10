@@ -13,6 +13,7 @@ import {
   invalidateFetchToolsForClient,
   reconnectMcpServerImpl,
 } from './client.js'
+import { createToolsListChangedRefreshGuard } from './toolsListChangedRefreshGuard.js'
 import type {
   ConfigScope,
   MCPServerConnection,
@@ -173,6 +174,9 @@ export function useManageMCPConnections(
 
   // Track active reconnection attempts to allow cancellation
   const reconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const toolsListChangedRefreshGuardRef = useRef(
+    createToolsListChangedRefreshGuard(),
+  )
 
   // Dedup the --channels blocked warning per skip kind so that a user who
   // sees "run /login" (auth skip), logs in, then hits the policy gate
@@ -342,6 +346,8 @@ export function useManageMCPConnections(
       // Handle side effects based on client state
       switch (client.type) {
         case 'connected': {
+          toolsListChangedRefreshGuardRef.current.activate(client)
+
           // Overwrite the default elicitation handler registered in connectToServer
           // with the real one (queues elicitation in AppState for UI). Registering
           // here (once per connect) instead of in a [mcpClients] effect avoids
@@ -349,6 +355,7 @@ export function useManageMCPConnections(
           registerElicitationHandler(client.client, client.name, setAppState)
 
           client.client.onclose = () => {
+            toolsListChangedRefreshGuardRef.current.deactivate(client)
             const configType = client.config.type ?? 'stdio'
 
             clearServerCache(client.name, client.config).catch(() => {
@@ -638,34 +645,42 @@ export function useManageMCPConnections(
                   `Received tools/list_changed notification, refreshing tools`,
                 )
                 try {
-                  // Grab cached promise before invalidating to log previous count
-                  const previousToolsPromise =
-                    invalidateFetchToolsForClient(client)
-                  const newTools = await fetchToolsForClient(client)
-                  const newCount = newTools.length
-                  if (previousToolsPromise) {
-                    previousToolsPromise.then(
-                      (previousTools: Tool[]) => {
+                  let previousToolsPromise: Promise<Tool[]> | undefined
+                  await toolsListChangedRefreshGuardRef.current.refresh(
+                    client,
+                    () => {
+                      // Grab cached promise before invalidating to log previous count
+                      previousToolsPromise =
+                        invalidateFetchToolsForClient(client)
+                      return fetchToolsForClient(client)
+                    },
+                    newTools => {
+                      const newCount = newTools.length
+                      if (previousToolsPromise) {
+                        previousToolsPromise.then(
+                          (previousTools: Tool[]) => {
+                            logEvent('tengu_mcp_list_changed', {
+                              type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                              previousCount: previousTools.length,
+                              newCount,
+                            })
+                          },
+                          () => {
+                            logEvent('tengu_mcp_list_changed', {
+                              type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                              newCount,
+                            })
+                          },
+                        )
+                      } else {
                         logEvent('tengu_mcp_list_changed', {
                           type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                          previousCount: previousTools.length,
                           newCount,
                         })
-                      },
-                      () => {
-                        logEvent('tengu_mcp_list_changed', {
-                          type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                          newCount,
-                        })
-                      },
-                    )
-                  } else {
-                    logEvent('tengu_mcp_list_changed', {
-                      type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      newCount,
-                    })
-                  }
-                  updateServer({ ...client, tools: newTools })
+                      }
+                      updateServer({ ...client, tools: newTools })
+                    },
+                  )
                 } catch (error) {
                   logMCPError(
                     client.name,
@@ -846,6 +861,7 @@ export function useManageMCPConnections(
             reconnectTimersRef.current.delete(s.name)
           }
           if (s.type === 'connected') {
+            toolsListChangedRefreshGuardRef.current.deactivate(s)
             s.client.onclose = undefined
             void clearServerCache(s.name, s.config).catch(() => {})
           }
@@ -1138,6 +1154,7 @@ export function useManageMCPConnections(
 
         // Disabling: disconnect and clean up if currently connected
         if (client.type === 'connected') {
+          toolsListChangedRefreshGuardRef.current.deactivate(client)
           await clearServerCache(serverName, client.config)
         }
 

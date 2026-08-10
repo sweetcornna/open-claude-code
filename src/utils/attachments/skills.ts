@@ -225,6 +225,7 @@ export async function getSkillListingAttachments(
   const contextWindowTokens = getContextWindowForModel(
     toolUseContext.options.mainLoopModel,
     getSdkBetas(),
+    toolUseContext.options.modelSettingsSlot,
   )
   const content = formatCommandsWithinBudget(newSkills, contextWindowTokens)
 

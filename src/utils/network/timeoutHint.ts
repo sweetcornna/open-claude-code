@@ -56,3 +56,19 @@ export function getTimeoutHintEnvVar(
   }
   return null
 }
+
+/** Anthropic streaming watchdog is on unless explicitly disabled. */
+export function isClaudeStreamWatchdogEnabled(
+  value: string | undefined,
+): boolean {
+  if (value === undefined) return true
+  const normalized = value.trim().toLowerCase()
+  return normalized !== '' && normalized !== '0' && normalized !== 'false'
+}
+
+/** Idle watchdog budget, with the same positive/default semantics as before. */
+export function getClaudeStreamIdleTimeoutMs(
+  value: string | undefined,
+): number {
+  return Number.parseInt(value ?? '', 10) || 90_000
+}

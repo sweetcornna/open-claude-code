@@ -43,9 +43,13 @@ let state: AppState
 let context: TaskContext
 let registerRemoteAgentTask: typeof import('../RemoteAgentTask.js').registerRemoteAgentTask
 let registerContentExtractor: typeof import('../RemoteAgentTask.js').registerContentExtractor
+let RemoteAgentTask: typeof import('../RemoteAgentTask.js').RemoteAgentTask
 
 beforeAll(async () => {
-  teleportMock.set({ pollRemoteSessionEvents })
+  teleportMock.set({
+    archiveRemoteSession: async () => {},
+    pollRemoteSessionEvents,
+  })
   sessionStorageMock.set({
     writeRemoteAgentMetadata: async () => {},
     deleteRemoteAgentMetadata: async () => {},
@@ -69,6 +73,7 @@ beforeAll(async () => {
   const sut = await import('../RemoteAgentTask.js')
   registerRemoteAgentTask = sut.registerRemoteAgentTask
   registerContentExtractor = sut.registerContentExtractor
+  RemoteAgentTask = sut.RemoteAgentTask
   registerContentExtractor('autofix-pr', extractAutofixResultFromLog)
 })
 
@@ -139,6 +144,25 @@ async function waitFor(
     if (Date.now() >= deadline)
       throw new Error('Timed out waiting for remote task polling')
     await Bun.sleep(10)
+  }
+}
+
+async function withFakeTimers(
+  run: (runAllTimers: () => void) => Promise<void>,
+): Promise<void> {
+  const realSetTimeout = globalThis.setTimeout
+  const pending: Array<() => void> = []
+  globalThis.setTimeout = ((callback: () => void) => {
+    pending.push(callback)
+    return { unref: () => {} } as unknown as ReturnType<typeof setTimeout>
+  }) as typeof setTimeout
+
+  try {
+    await run(() => {
+      while (pending.length > 0) pending.shift()?.()
+    })
+  } finally {
+    globalThis.setTimeout = realSetTimeout
   }
 }
 
@@ -251,5 +275,78 @@ describe('long-running remote task log retention', () => {
       expect(currentTask(handle.taskId).logEventCount).toBe(events.length)
       handle.cleanup()
     }
+  })
+})
+
+describe('terminal task eviction', () => {
+  test('archived task evicts itself without a main-thread attachment sweep', async () => {
+    await withFakeTimers(async runAllTimers => {
+      pollRemoteSessionEvents.mockImplementationOnce(async () => ({
+        newEvents: [],
+        lastEventId: null,
+        sessionStatus: 'archived',
+      }))
+
+      const handle = registerRemoteAgentTask({
+        remoteTaskType: 'remote-agent',
+        session: { id: 'archived-session', title: 'Archived task' },
+        command: 'run',
+        context,
+      })
+
+      await waitFor(() => currentTask(handle.taskId).status === 'completed')
+      expect(currentTask(handle.taskId).notified).toBe(true)
+      runAllTimers()
+      expect(state.tasks[handle.taskId]).toBeUndefined()
+      handle.cleanup()
+    })
+  })
+
+  test('failed result evicts itself without retrying or a main-thread sweep', async () => {
+    await withFakeTimers(async runAllTimers => {
+      pollRemoteSessionEvents.mockImplementationOnce(async () => ({
+        newEvents: [
+          {
+            type: 'result',
+            subtype: 'error',
+          } as unknown as SDKMessage,
+        ],
+        lastEventId: 'failed-result',
+        sessionStatus: 'running',
+      }))
+
+      const handle = registerRemoteAgentTask({
+        remoteTaskType: 'remote-agent',
+        session: { id: 'failed-session', title: 'Failed task' },
+        command: 'run',
+        context,
+      })
+
+      await waitFor(() => currentTask(handle.taskId).status === 'failed')
+      expect(currentTask(handle.taskId).notified).toBe(true)
+      runAllTimers()
+      expect(state.tasks[handle.taskId]).toBeUndefined()
+      handle.cleanup()
+    })
+  })
+
+  test('killed task evicts itself without a main-thread attachment sweep', async () => {
+    await withFakeTimers(async runAllTimers => {
+      const handle = registerRemoteAgentTask({
+        remoteTaskType: 'remote-agent',
+        session: { id: 'killed-session', title: 'Killed task' },
+        command: 'run',
+        context,
+      })
+
+      await RemoteAgentTask.kill?.(handle.taskId, context.setAppState)
+      expect(currentTask(handle.taskId)).toMatchObject({
+        status: 'killed',
+        notified: true,
+      })
+      runAllTimers()
+      expect(state.tasks[handle.taskId]).toBeUndefined()
+      handle.cleanup()
+    })
   })
 })

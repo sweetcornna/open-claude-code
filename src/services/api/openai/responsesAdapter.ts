@@ -21,6 +21,7 @@ import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
   getAPIErrorDiagnostics,
   isRetryableAPIError,
+  NonRetryableError,
 } from '../retryClassification.js'
 import {
   createOpenAIResponseError,
@@ -604,9 +605,37 @@ export function extractUsage(
   })
 }
 
-function mapStopReason(response: Record<string, unknown> | undefined): string {
-  if (response?.status === 'incomplete') return 'max_tokens'
-  return 'end_turn'
+type ResponsesTermination = {
+  stopReason: string
+  incompleteReason?: string
+}
+
+function mapStopReason(
+  eventType: 'response.completed' | 'response.incomplete',
+  response: Record<string, unknown> | undefined,
+  sawRefusal: boolean,
+): ResponsesTermination {
+  if (eventType === 'response.completed') return { stopReason: 'end_turn' }
+
+  const incompleteDetails = response?.incomplete_details as
+    | Record<string, unknown>
+    | undefined
+  const reason = incompleteDetails?.reason
+  if (reason === 'max_output_tokens') {
+    return { stopReason: 'max_tokens', incompleteReason: reason }
+  }
+  if (reason === 'content_filter') {
+    return {
+      stopReason: sawRefusal ? 'refusal' : reason,
+      incompleteReason: reason,
+    }
+  }
+
+  const preservedReason = typeof reason === 'string' ? reason : 'missing'
+  throw new NonRetryableError(
+    `Responses API returned an incomplete response with unsupported reason: ${preservedReason}`,
+    { category: 'invalid_request', cause: response },
+  )
 }
 
 /**
@@ -654,6 +683,7 @@ export async function* adaptResponsesStreamToAnthropic(
   let textBlockOpen = false
   let thinkingBlockOpen = false
   let hasCommittedOutput = false
+  let sawRefusal = false
 
   const ensureStarted = async function* () {
     if (started) return
@@ -696,6 +726,7 @@ export async function* adaptResponsesStreamToAnthropic(
       type === 'response.output_text.delta' ||
       type === 'response.refusal.delta'
     ) {
+      if (type === 'response.refusal.delta') sawRefusal = true
       if (!textBlockOpen) {
         if (thinkingBlockOpen) {
           yield {
@@ -835,9 +866,16 @@ export async function* adaptResponsesStreamToAnthropic(
         thinkingBlockOpen = false
       }
       const response = event.response as Record<string, unknown> | undefined
+      const termination = mapStopReason(type, response, sawRefusal)
       yield {
         type: 'message_delta',
-        delta: { stop_reason: mapStopReason(response), stop_sequence: null },
+        delta: {
+          stop_reason: termination.stopReason,
+          stop_sequence: null,
+          ...(termination.incompleteReason
+            ? { incomplete_reason: termination.incompleteReason }
+            : {}),
+        },
         usage: extractUsage(response),
       } as unknown as BetaRawMessageStreamEvent
       yield { type: 'message_stop' } as BetaRawMessageStreamEvent

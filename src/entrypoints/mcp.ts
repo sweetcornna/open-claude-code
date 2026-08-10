@@ -20,7 +20,10 @@ import { createAbortController } from '../utils/process/abortController.js'
 import { createFileStateCacheWithSizeLimit } from '../utils/fileStateCache.js'
 import { logError } from '../utils/telemetry/log.js'
 import { createAssistantMessage } from '../utils/messages.js'
-import { getMainLoopModel } from '../utils/model/model.js'
+import {
+  getMainLoopModel,
+  getMainLoopModelSettingsSlot,
+} from '../utils/model/model.js'
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js'
 import { setCwd } from '../utils/shell/Shell.js'
 import { jsonStringify } from '../utils/telemetry/slowOperations.js'
@@ -164,12 +167,14 @@ export function createMcpServerFactory(
         try {
           // Assume MCP servers do not read messages separately from the tool
           // call arguments.
+          const mainLoopModel = getMainLoopModel()
           const toolUseContext: ToolUseContext = {
             abortController,
             options: {
               commands: MCP_COMMANDS,
               tools,
-              mainLoopModel: getMainLoopModel(),
+              mainLoopModel,
+              modelSettingsSlot: getMainLoopModelSettingsSlot(mainLoopModel),
               thinkingConfig: { type: 'disabled' },
               mcpClients: [],
               mcpResources: {},

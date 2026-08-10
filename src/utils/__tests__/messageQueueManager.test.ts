@@ -6,11 +6,14 @@ import {
   dequeueAllMatching,
   enqueue,
   enqueuePendingNotification,
+  getCommandQueue,
   getCommandsByMaxPriority,
   hasCommandsInQueue,
   isSlashCommand,
   peek,
+  registerActiveAgentConsumer,
   resetCommandQueue,
+  unregisterActiveAgentConsumer,
 } from '../session/messageQueueManager.js'
 
 // Reset module-level queue state between tests
@@ -97,7 +100,8 @@ describe('messageQueueManager.enqueuePendingNotification', () => {
     expect(drained.map(c => c.value)).toEqual(['agent-done'])
   })
 
-  test('subagent notifications are addressable via agentId', () => {
+  test('active subagent notifications are addressable via agentId', () => {
+    registerActiveAgentConsumer('agent-7')
     enqueuePendingNotification({
       value: 'for-subagent',
       mode: 'task-notification',
@@ -118,6 +122,88 @@ describe('messageQueueManager.enqueuePendingNotification', () => {
     expect(
       drained.filter(c => c.agentId === 'agent-7').map(c => c.value),
     ).toEqual(['for-subagent'])
+  })
+})
+
+describe('messageQueueManager agent consumer lifecycle', () => {
+  test('keeps task notifications scoped while the target agent is active', () => {
+    registerActiveAgentConsumer('agent-active')
+
+    enqueuePendingNotification({
+      value: 'nested-complete',
+      mode: 'task-notification',
+      agentId: 'agent-active',
+    } as any)
+
+    expect(getCommandQueue()[0]?.agentId).toBe('agent-active' as any)
+  })
+
+  test('redirects queued task notifications when their agent unregisters', () => {
+    registerActiveAgentConsumer('agent-exiting')
+    enqueuePendingNotification({
+      value: 'queued-result',
+      mode: 'task-notification',
+      agentId: 'agent-exiting',
+    } as any)
+    enqueue({
+      value: 'ordinary-user-message',
+      mode: 'prompt',
+      agentId: 'agent-exiting',
+    } as any)
+
+    unregisterActiveAgentConsumer('agent-exiting')
+
+    const commands = getCommandQueue()
+    expect(commands[0]?.agentId).toBeUndefined()
+    // Routing changes apply only to task notifications, never ordinary input.
+    expect(commands[1]?.agentId).toBe('agent-exiting' as any)
+  })
+
+  test('redirects late notifications after an agent unregisters', () => {
+    registerActiveAgentConsumer('agent-done')
+    unregisterActiveAgentConsumer('agent-done')
+
+    enqueuePendingNotification({
+      value: 'late-result',
+      mode: 'task-notification',
+      agentId: 'agent-done',
+    } as any)
+
+    expect(getCommandQueue()[0]?.agentId).toBeUndefined()
+  })
+
+  test('safely routes notifications produced before registration to main', () => {
+    enqueuePendingNotification({
+      value: 'early-result',
+      mode: 'task-notification',
+      agentId: 'not-registered-yet',
+    } as any)
+
+    expect(getCommandQueue()[0]?.agentId).toBeUndefined()
+  })
+
+  test('preserves nested-agent routing only for live consumers', () => {
+    registerActiveAgentConsumer('parent-agent')
+    registerActiveAgentConsumer('child-agent')
+
+    enqueuePendingNotification({
+      value: 'child-finished',
+      mode: 'task-notification',
+      agentId: 'parent-agent',
+    } as any)
+    unregisterActiveAgentConsumer('child-agent')
+
+    expect(getCommandQueue()[0]?.agentId).toBe('parent-agent' as any)
+
+    unregisterActiveAgentConsumer('parent-agent')
+    expect(getCommandQueue()[0]?.agentId).toBeUndefined()
+
+    enqueuePendingNotification({
+      value: 'late-grandchild',
+      mode: 'task-notification',
+      agentId: 'parent-agent',
+    } as any)
+    expect(getCommandQueue()[1]?.agentId).toBeUndefined()
   })
 })
 

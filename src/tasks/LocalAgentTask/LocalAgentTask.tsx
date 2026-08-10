@@ -605,9 +605,43 @@ export function registerAsyncAgent({
   return taskState;
 }
 
-// Map of taskId -> resolve function for background signals
-// When backgroundAgentTask is called, it resolves the corresponding promise
-const backgroundSignalResolvers = new Map<string, () => void>();
+// Foreground agents use a task-owned abort controller that follows the parent
+// only until handoff. Once backgrounded, detach first so later parent ESCs do
+// not kill work that now has an independent task lifecycle.
+type BackgroundSignalRegistration = {
+  resolve: () => void;
+  detachParentAbort: () => void;
+};
+
+const backgroundSignalResolvers = new Map<string, BackgroundSignalRegistration>();
+
+function linkForegroundAbortToParent(
+  abortController: AbortController,
+  parentAbortController?: AbortController,
+): () => void {
+  if (!parentAbortController) return () => {};
+  if (parentAbortController.signal.aborted) {
+    abortController.abort(parentAbortController.signal.reason);
+    return () => {};
+  }
+
+  const onParentAbort = () => abortController.abort(parentAbortController.signal.reason);
+  const detach = () => {
+    parentAbortController.signal.removeEventListener('abort', onParentAbort);
+    abortController.signal.removeEventListener('abort', detach);
+  };
+  parentAbortController.signal.addEventListener('abort', onParentAbort, { once: true });
+  abortController.signal.addEventListener('abort', detach, { once: true });
+  return detach;
+}
+
+function resolveBackgroundSignal(taskId: string): void {
+  const registration = backgroundSignalResolvers.get(taskId);
+  if (!registration) return;
+  registration.detachParentAbort();
+  registration.resolve();
+  backgroundSignalResolvers.delete(taskId);
+}
 
 /**
  * Register a foreground agent task that could be backgrounded later.
@@ -620,6 +654,7 @@ export function registerAgentForeground({
   prompt,
   selectedAgent,
   setAppState,
+  parentAbortController,
   autoBackgroundMs,
   toolUseId,
 }: {
@@ -628,16 +663,19 @@ export function registerAgentForeground({
   prompt: string;
   selectedAgent: AgentDefinition;
   setAppState: SetAppState;
+  parentAbortController?: AbortController;
   autoBackgroundMs?: number;
   toolUseId?: string;
 }): {
   taskId: string;
+  abortController: AbortController;
   backgroundSignal: Promise<void>;
   cancelAutoBackground?: () => void;
 } {
   void initTaskOutputAsSymlink(agentId, getAgentTranscriptPath(asAgentId(agentId)));
 
   const abortController = createAbortController();
+  const detachParentAbort = linkForegroundAbortToParent(abortController, parentAbortController);
 
   const unregisterCleanup = registerCleanup(async () => {
     killAsyncAgent(agentId, setAppState);
@@ -663,11 +701,14 @@ export function registerAgentForeground({
   };
 
   // Create background signal promise
-  let resolveBackgroundSignal: () => void;
+  let resolveSignal: () => void;
   const backgroundSignal = new Promise<void>(resolve => {
-    resolveBackgroundSignal = resolve;
+    resolveSignal = resolve;
   });
-  backgroundSignalResolvers.set(agentId, resolveBackgroundSignal!);
+  backgroundSignalResolvers.set(agentId, {
+    resolve: resolveSignal!,
+    detachParentAbort,
+  });
 
   registerTask(taskState, setAppState);
 
@@ -690,11 +731,7 @@ export function registerAgentForeground({
             },
           };
         });
-        const resolver = backgroundSignalResolvers.get(agentId);
-        if (resolver) {
-          resolver();
-          backgroundSignalResolvers.delete(agentId);
-        }
+        resolveBackgroundSignal(agentId);
       },
       autoBackgroundMs,
       setAppState,
@@ -703,7 +740,12 @@ export function registerAgentForeground({
     cancelAutoBackground = () => clearTimeout(timer);
   }
 
-  return { taskId: agentId, backgroundSignal, cancelAutoBackground };
+  return {
+    taskId: agentId,
+    abortController,
+    backgroundSignal,
+    cancelAutoBackground,
+  };
 }
 
 /**
@@ -732,12 +774,8 @@ export function backgroundAgentTask(taskId: string, getAppState: () => AppState,
     };
   });
 
-  // Resolve the background signal to interrupt the agent loop
-  const resolver = backgroundSignalResolvers.get(taskId);
-  if (resolver) {
-    resolver();
-    backgroundSignalResolvers.delete(taskId);
-  }
+  // Detach parent cancellation before handing execution to the background.
+  resolveBackgroundSignal(taskId);
 
   return true;
 }
@@ -757,7 +795,9 @@ export function unregisterAgentForeground(
     handedOffToBackground?: boolean;
   },
 ): void {
-  // Clean up the background signal resolver
+  // Clean up the background signal resolver and parent abort listener when the
+  // foreground run finishes without resolving a handoff.
+  backgroundSignalResolvers.get(taskId)?.detachParentAbort();
   backgroundSignalResolvers.delete(taskId);
 
   const handedOff = options?.handedOffToBackground === true;

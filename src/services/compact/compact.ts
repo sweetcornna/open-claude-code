@@ -1304,6 +1304,7 @@ async function streamCompactSummary({
         async () => appState.toolPermissionContext,
         context.options.agentDefinitions.activeAgents,
         'compact',
+        context.options.modelSettingsSlot,
       )
 
       // When tool search is enabled, include SearchExtraToolsTool and MCP tools. They get
@@ -1347,6 +1348,7 @@ async function streamCompactSummary({
             return appState.toolPermissionContext
           },
           model: context.options.mainLoopModel,
+          modelSettingsSlot: context.options.modelSettingsSlot,
           toolChoice: undefined,
           isNonInteractiveSession: context.options.isNonInteractiveSession,
           hasAppendSystemPrompt: !!context.options.appendSystemPrompt,

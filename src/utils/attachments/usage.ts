@@ -26,12 +26,13 @@ import type { Attachment } from './types.js'
 export function getTokenUsageAttachment(
   messages: Message[],
   model: string,
+  settingsSlot?: ToolUseContext['options']['modelSettingsSlot'],
 ): Attachment[] {
   if (!isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT)) {
     return []
   }
 
-  const contextWindow = getEffectiveContextWindowSize(model)
+  const contextWindow = getEffectiveContextWindowSize(model, settingsSlot)
   const usedTokens = tokenCountFromLastAPIResponse(messages)
 
   return [
@@ -150,6 +151,7 @@ export async function getVerifyPlanReminderAttachment(
 export function getCompactionReminderAttachment(
   messages: Message[],
   model: string,
+  settingsSlot?: ToolUseContext['options']['modelSettingsSlot'],
 ): Attachment[] {
   if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_fox', false)) {
     return []
@@ -159,12 +161,16 @@ export function getCompactionReminderAttachment(
     return []
   }
 
-  const contextWindow = getContextWindowForModel(model, getSdkBetas())
+  const contextWindow = getContextWindowForModel(
+    model,
+    getSdkBetas(),
+    settingsSlot,
+  )
   if (contextWindow < 1_000_000) {
     return []
   }
 
-  const effectiveWindow = getEffectiveContextWindowSize(model)
+  const effectiveWindow = getEffectiveContextWindowSize(model, settingsSlot)
   const usedTokens = tokenCountWithEstimation(messages)
   if (usedTokens < effectiveWindow * 0.25) {
     return []

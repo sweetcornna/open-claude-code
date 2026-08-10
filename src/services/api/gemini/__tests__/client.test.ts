@@ -1,5 +1,17 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import { streamGeminiGenerateContent } from '../client.js'
+
+const savedTimeoutEnv = {
+  API_TIMEOUT_MS: process.env.API_TIMEOUT_MS,
+  CLAUDE_STREAM_IDLE_TIMEOUT_MS: process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS,
+}
+
+afterEach(() => {
+  for (const [name, value] of Object.entries(savedTimeoutEnv)) {
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+  }
+})
 
 function requestFor(body: string) {
   const fetchOverride = (async () =>
@@ -163,5 +175,121 @@ describe('streamGeminiGenerateContent error envelopes', () => {
       name: 'GeminiRequestError',
       status: 400,
     })
+  })
+
+  test('accepts promptFeedback blockReason as a terminal event', async () => {
+    const chunks = []
+    for await (const chunk of requestFor(
+      'data: {"candidates":[],"promptFeedback":{"blockReason":"SAFETY"}}\n\n',
+    )) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { candidates: [], promptFeedback: { blockReason: 'SAFETY' } },
+    ])
+  })
+
+  test('times out a pending fetch with a retryable connection error', async () => {
+    process.env.API_TIMEOUT_MS = '20'
+    let requestSignal: AbortSignal | undefined
+    const fetchOverride = ((_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_, reject) => {
+        requestSignal = init?.signal as AbortSignal
+        requestSignal.addEventListener(
+          'abort',
+          () => reject(requestSignal?.reason),
+          { once: true },
+        )
+      })) as unknown as typeof fetch
+    const stream = streamGeminiGenerateContent({
+      model: 'gemini-test',
+      body: { contents: [] },
+      signal: new AbortController().signal,
+      accessToken: 'test-token',
+      fetchOverride,
+    })
+
+    let error: unknown
+    try {
+      await stream.next()
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toMatchObject({
+      name: 'GeminiStreamError',
+      code: 'ETIMEDOUT',
+      retryable: true,
+    })
+    expect((error as Error).message).toContain('API_TIMEOUT_MS')
+    expect(requestSignal?.aborted).toBe(true)
+  })
+
+  test('times out a silent reader, cancels it, and releases its lock', async () => {
+    process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '20'
+    let cancelled = false
+    let cancelReason: unknown
+    const body = new ReadableStream<Uint8Array>({
+      cancel(reason) {
+        cancelled = true
+        cancelReason = reason
+      },
+    })
+    const response = new Response(body)
+    const stream = streamGeminiGenerateContent({
+      model: 'gemini-test',
+      body: { contents: [] },
+      signal: new AbortController().signal,
+      accessToken: 'test-token',
+      fetchOverride: (async () => response) as unknown as typeof fetch,
+    })
+
+    let error: unknown
+    try {
+      await stream.next()
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toMatchObject({
+      name: 'GeminiStreamError',
+      code: 'ETIMEDOUT',
+      retryable: true,
+    })
+    expect((error as Error).message).toContain('CLAUDE_STREAM_IDLE_TIMEOUT_MS')
+    expect(cancelled).toBe(true)
+    expect(cancelReason).toBe(error)
+    expect(body.locked).toBe(false)
+  })
+
+  test('preserves caller cancellation instead of classifying it as timeout', async () => {
+    process.env.API_TIMEOUT_MS = '1000'
+    const caller = new AbortController()
+    const reason = new DOMException('cancelled by user', 'AbortError')
+    const stream = streamGeminiGenerateContent({
+      model: 'gemini-test',
+      body: { contents: [] },
+      signal: caller.signal,
+      accessToken: 'test-token',
+      fetchOverride: ((_: unknown, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          const signal = init?.signal as AbortSignal
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          })
+        })) as unknown as typeof fetch,
+    })
+
+    const pending = stream.next()
+    caller.abort(reason)
+
+    let error: unknown
+    try {
+      await pending
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBe(reason)
   })
 })

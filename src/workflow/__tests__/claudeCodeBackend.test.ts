@@ -66,9 +66,11 @@ const worktreeState = {
   created: [] as string[],
   removed: [] as string[],
   changesCalls: 0,
+  createGate: null as Promise<void> | null,
 }
 const worktreeMock = setupWorktreeMock({
   createAgentWorktree: async (slug: string) => {
+    if (worktreeState.createGate) await worktreeState.createGate
     if (worktreeState.shouldThrow) throw new Error(worktreeState.throwMessage)
     worktreeState.created.push(slug)
     return {
@@ -91,8 +93,12 @@ const worktreeMock = setupWorktreeMock({
 afterAll(() => worktreeMock.reset())
 
 import {
+  AgentAdapterRegistry,
   AGENT_MAX_RETRIES,
   AGENT_MAX_RETRIES_BY_REASON,
+  runWorkflow,
+  type ProgressEvent,
+  type WorkflowPorts,
   WorkflowAbortedError,
 } from '@open-claude-code/workflow-engine'
 import { AgentExecutionLimitError } from '@open-claude-code/builtin-tools/tools/AgentTool/agentExecutionWatchdog.js'
@@ -181,6 +187,54 @@ test('isolation:worktree → create worktree + auto-cleanup on no changes; slug 
   expect(worktreeState.created[0]).toMatch(/^wf_[0-9a-f]{8}-[0-9a-f]{3}-\d+$/)
   expect(worktreeState.changesCalls).toBe(1)
   expect(worktreeState.removed).toHaveLength(1) // no changes → auto-remove
+})
+
+test('isolation:worktree can be cancelled before creation completes', async () => {
+  let releaseWorktree!: () => void
+  worktreeState.createGate = new Promise<void>(resolve => {
+    releaseWorktree = resolve
+  })
+  worktreeState.hasChanges = false
+  worktreeState.created = []
+  worktreeState.removed = []
+  worktreeState.changesCalls = 0
+
+  let abortController!: AbortController
+  let confirmRegistration!: () => void
+  const registered = new Promise<void>(resolve => {
+    confirmRegistration = resolve
+  })
+  const unregistered: number[] = []
+
+  try {
+    const resultPromise = claudeCodeBackend.run(
+      { prompt: 'cancel during setup', isolation: 'worktree' },
+      {
+        ...ctx(),
+        agentId: 88,
+        registerAgentAbort: (_id, controller) => {
+          abortController = controller
+          confirmRegistration()
+        },
+        unregisterAgentAbort: id => unregistered.push(id),
+      },
+    )
+
+    await registered
+    abortController.abort()
+    releaseWorktree()
+
+    await expect(resultPromise).resolves.toEqual({
+      kind: 'dead',
+      reason: 'agent-cancelled',
+      retryable: false,
+    })
+    expect(worktreeState.created).toHaveLength(1)
+    expect(worktreeState.removed).toEqual(['/fake/wt'])
+    expect(unregistered).toEqual([88])
+  } finally {
+    worktreeState.createGate = null
+  }
 })
 
 test('isolation:worktree has changes → keep worktree (no remove)', async () => {
@@ -308,9 +362,8 @@ test('execution limits are non-retryable dead results, not workflow aborts', asy
   }
 })
 
-// The next three groups of tests cover the 'x' invalid fix: backend must bridge ctx.signal to runAgent.override
-// .abortController, and recognize AbortError as abort (throw WorkflowAbortedError, not swallow as dead).
-// Also verify registerAgentAbort injection so service.kill(runId, agentId) can precisely abort a single agent.
+// The next tests cover both cancellation scopes: ctx.signal owns the whole
+// workflow, while the registered agent controller owns only one child.
 
 test('ctx.signal pre-abort → backend bridge: override.abortController.signal.aborted=true', async () => {
   // use capturedOverride to expose the agentAbort created by backend (the override.abortController received by mock)
@@ -337,17 +390,63 @@ test('ctx.signal pre-abort → backend bridge: override.abortController.signal.a
   expect(capturedController?.signal.aborted).toBe(true)
 })
 
-test('runAgent throws AbortError → backend throws WorkflowAbortedError (not swallowed as dead)', async () => {
+test('unscoped AbortError → ordinary dead result, not a workflow cancellation', async () => {
   runAgentMock.set({
-    // biome-ignore lint/correctness/useYield: intentionally throws AbortError to test recognition branch
+    // biome-ignore lint/correctness/useYield: intentionally throws before output
     runAgent: async function* () {
-      const e = new Error('aborted by parent')
-      e.name = 'AbortError'
-      throw e
+      const error = new Error('transport aborted')
+      error.name = 'AbortError'
+      throw error
     },
   } as unknown as RunAgentOverrides)
+
   await expect(
     claudeCodeBackend.run({ prompt: 'abort' }, ctx()),
+  ).resolves.toMatchObject({
+    kind: 'dead',
+    reason: 'runagent-threw',
+  })
+})
+
+test('per-agent abort → non-retryable dead agent-cancelled result', async () => {
+  runAgentMock.set({
+    // biome-ignore lint/correctness/useYield: intentionally throws after local cancellation
+    runAgent: async function* (opts: {
+      override?: { abortController?: AbortController }
+    }) {
+      opts.override?.abortController?.abort()
+      const error = new Error('cancelled child')
+      error.name = 'AbortError'
+      throw error
+    },
+  } as unknown as RunAgentOverrides)
+
+  await expect(
+    claudeCodeBackend.run({ prompt: 'cancel child' }, ctx()),
+  ).resolves.toEqual({
+    kind: 'dead',
+    reason: 'agent-cancelled',
+    retryable: false,
+  })
+})
+
+test('parent workflow abort → WorkflowAbortedError', async () => {
+  const parentAbort = new AbortController()
+  runAgentMock.set({
+    // biome-ignore lint/correctness/useYield: intentionally throws after parent cancellation
+    runAgent: async function* () {
+      parentAbort.abort()
+      const error = new Error('aborted by parent')
+      error.name = 'AbortError'
+      throw error
+    },
+  } as unknown as RunAgentOverrides)
+
+  await expect(
+    claudeCodeBackend.run(
+      { prompt: 'abort workflow' },
+      { ...ctx(), signal: parentAbort.signal },
+    ),
   ).rejects.toBeInstanceOf(WorkflowAbortedError)
 })
 
@@ -376,6 +475,125 @@ test('registerAgentAbort/unregisterAgentAbort injection: key=ctx.agentId (number
   expect(registered[0]?.id).toBe(42) // engine numeric agentId (not coreAgentId string)
   expect(registered[0]?.controller).toBeInstanceOf(AbortController)
   expect(unregistered).toEqual([42]) // finally cleanup idempotent
+})
+
+test('cancel one parallel agent → sibling and follow-up finish, run stays completed', async () => {
+  let runAgentCalls = 0
+  runAgentMock.set({
+    runAgent: async function* (opts: {
+      override?: { abortController?: AbortController }
+    }) {
+      const call = runAgentCalls++
+      if (call === 0) {
+        const signal = opts.override?.abortController?.signal
+        await new Promise<void>((_resolve, reject) => {
+          const rejectAbort = (): void => {
+            const error = new Error('cancelled child')
+            error.name = 'AbortError'
+            reject(error)
+          }
+          if (signal?.aborted) rejectAbort()
+          else signal?.addEventListener('abort', rejectAbort, { once: true })
+        })
+      }
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: `agent-${call}` }] },
+      }
+    },
+  } as unknown as RunAgentOverrides)
+
+  const parentAbort = new AbortController()
+  const agentControllers = new Map<number, AbortController>()
+  const events: ProgressEvent[] = []
+  const host = ctx().host
+  const registry = new AgentAdapterRegistry()
+    .register(claudeCodeBackend)
+    .default(claudeCodeBackend.id)
+  const ports: WorkflowPorts = {
+    agentAdapterRegistry: registry,
+    agentRunner: {
+      runAgentToResult: async () => {
+        throw new Error('adapter registry should handle every agent')
+      },
+    },
+    progressEmitter: { emit: event => void events.push(event) },
+    taskRegistrar: {
+      register: () => ({
+        runId: 'parallel-cancel',
+        signal: parentAbort.signal,
+      }),
+      complete: () => {},
+      fail: () => {},
+      kill: () => false,
+      registerAgentAbort: (_runId, agentId, controller) => {
+        agentControllers.set(agentId, controller)
+        if (agentControllers.size === 2) {
+          agentControllers.get(0)?.abort()
+        }
+      },
+      unregisterAgentAbort: (_runId, agentId) => {
+        agentControllers.delete(agentId)
+      },
+      pendingAction: () => null,
+    },
+    journalStore: {
+      read: async () => [],
+      append: async () => {},
+      truncate: async () => {},
+    },
+    permissionGate: { isAborted: () => false },
+    logger: { debug: () => {}, event: () => {}, warn: () => {} },
+    hostFactory: () => ({ handle: host, cwd: '/tmp', budgetTotal: null }),
+  }
+
+  const result = await runWorkflow({
+    script: `
+      const parallelResults = await parallel([
+        () => agent('cancel-me'),
+        () => agent('keep-going'),
+      ])
+      const followUp = await agent('follow-up')
+      return { parallelResults, followUp }
+    `,
+    runId: 'parallel-cancel',
+    ports,
+    host,
+    signal: parentAbort.signal,
+    cwd: '/tmp',
+    budgetTotal: null,
+    retryBackoffMs: 0,
+  })
+
+  expect(result).toEqual({
+    status: 'completed',
+    returnValue: {
+      parallelResults: [null, 'agent-text'],
+      followUp: 'agent-text',
+    },
+  })
+  expect(runAgentCalls).toBe(3)
+  expect(parentAbort.signal.aborted).toBe(false)
+  expect(agentControllers.size).toBe(0)
+  expect(
+    events.find(event => event.type === 'agent_done' && event.agentId === 0),
+  ).toMatchObject({
+    result: {
+      kind: 'dead',
+      reason: 'agent-cancelled',
+      retryable: false,
+    },
+  })
+  expect(
+    events.find(event => event.type === 'agent_done' && event.agentId === 1),
+  ).toMatchObject({ result: { kind: 'ok' } })
+  expect(
+    events.find(event => event.type === 'agent_done' && event.agentId === 2),
+  ).toMatchObject({ result: { kind: 'ok' } })
+  expect(events.at(-1)).toMatchObject({
+    type: 'run_done',
+    status: 'completed',
+  })
 })
 
 // query() surfaces terminal API errors as an assistant message (isApiErrorMessage) and ends the

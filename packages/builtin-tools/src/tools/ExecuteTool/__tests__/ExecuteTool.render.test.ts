@@ -21,8 +21,148 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 mock.module('src/utils/telemetry/debug.ts', debugMock)
 
 const { ExecuteTool } = await import('../ExecuteTool.js')
+const { buildToolDiscoveryAttachment } = await import(
+  'src/services/searchExtraTools/prefetch.js'
+)
+const { extractDiscoveredToolNames } = await import(
+  'src/utils/tools/searchExtraTools.js'
+)
 
 type RenderResult = React.ReactNode
+
+describe('extractDiscoveredToolNames', () => {
+  test('extracts every name from a tool_discovery attachment', () => {
+    const attachment = buildToolDiscoveryAttachment(
+      [
+        {
+          name: 'CronCreate',
+          description: 'Create a cron job',
+          searchHint: 'schedule recurring work',
+          score: 0.9,
+          isMcp: false,
+          isDeferred: true,
+          inputSchema: {
+            type: 'object',
+            properties: { cron: { type: 'string' } },
+            required: ['cron'],
+          },
+        },
+        {
+          name: 'mcp__calendar__create_event',
+          description: 'Create a calendar event',
+          searchHint: 'calendar meeting',
+          score: 0.8,
+          isMcp: true,
+          isDeferred: true,
+          inputSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title'],
+          },
+        },
+      ],
+      'assistant_turn',
+      'schedule a meeting',
+      4,
+      20,
+    )
+
+    const discovered = extractDiscoveredToolNames([
+      {
+        type: 'attachment',
+        attachment,
+        uuid: 'prefetch-discovery',
+      },
+    ] as never)
+
+    expect(discovered).toEqual(
+      new Set(['CronCreate', 'mcp__calendar__create_event']),
+    )
+  })
+})
+
+describe('ExecuteTool prefetch discovery integration', () => {
+  test('executes a deferred tool directly after a prefetch attachment', async () => {
+    const previousSearchMode = process.env.ENABLE_SEARCH_EXTRA_TOOLS
+    const previousBetaKillSwitch =
+      process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+    process.env.ENABLE_SEARCH_EXTRA_TOOLS = 'true'
+    delete process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+
+    try {
+      const call = mock(async () => ({ data: { executed: true } }))
+      const targetTool = {
+        name: 'PrefetchedTool',
+        call,
+        checkPermissions: async () => ({ behavior: 'allow' as const }),
+        inputSchema: {},
+        isEnabled: () => true,
+        alwaysLoad: false,
+      }
+      const searchTool = { name: 'SearchExtraTools' }
+      const attachment = buildToolDiscoveryAttachment(
+        [
+          {
+            name: targetTool.name,
+            description: 'Run a prefetched operation',
+            searchHint: 'prefetched operation',
+            score: 0.9,
+            isMcp: false,
+            isDeferred: true,
+            inputSchema: {
+              type: 'object',
+              properties: { value: { type: 'string' } },
+              required: ['value'],
+            },
+          },
+        ],
+        'assistant_turn',
+        'run the prefetched operation',
+        2,
+        10,
+      )
+      const context = {
+        messages: [
+          {
+            type: 'attachment',
+            attachment,
+            uuid: 'prefetch-discovery',
+          },
+        ],
+        options: { tools: [searchTool, targetTool] },
+      } as never
+
+      const result = await ExecuteTool.call(
+        {
+          tool_name: targetTool.name,
+          params: { value: 'ready' },
+        },
+        context,
+        async () => ({ behavior: 'allow' }),
+        { type: 'assistant', content: [], uuid: 'assistant' } as never,
+        undefined,
+      )
+
+      expect(call).toHaveBeenCalledTimes(1)
+      expect(result.data).toEqual({
+        result: { executed: true },
+        tool_name: targetTool.name,
+      })
+    } finally {
+      if (previousSearchMode === undefined) {
+        delete process.env.ENABLE_SEARCH_EXTRA_TOOLS
+      } else {
+        process.env.ENABLE_SEARCH_EXTRA_TOOLS = previousSearchMode
+      }
+      if (previousBetaKillSwitch === undefined) {
+        delete process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+      } else {
+        process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS =
+          previousBetaKillSwitch
+      }
+    }
+  })
+})
 
 describe('ExecuteTool.renderToolResultMessage delegation', () => {
   test('delegates to inner tool with content.result and unwrapped params', () => {

@@ -128,6 +128,7 @@ afterAll(() => sdkProgressMock.reset())
 // ─── Import after mocks ───
 
 const {
+  backgroundAgentTask,
   createProgressTracker,
   updateProgressFromMessage,
   getProgressUpdate,
@@ -135,6 +136,7 @@ const {
   failAgentTask,
   killAsyncAgent,
   enqueueAgentNotification,
+  registerAgentForeground,
   registerAsyncAgent,
   updateAgentProgress,
   updateAgentSummary,
@@ -641,6 +643,54 @@ describe('updateAgentProgress', () => {
 
     const task = getState().tasks['test-agent-001']
     expect(task.progress.toolUseCount).toBeUndefined()
+  })
+})
+
+describe('foreground agent abort ownership', () => {
+  test('parent abort stops the task before handoff', () => {
+    const parentAbortController = new AbortController()
+    const { setAppState } = createSetAppState()
+    const registration = registerAgentForeground({
+      agentId: 'foreground-parent-linked',
+      description: 'linked agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+      parentAbortController,
+    })
+
+    parentAbortController.abort()
+
+    expect(registration.abortController.signal.aborted).toBe(true)
+    unregisterAgentForeground('foreground-parent-linked', setAppState as any)
+  })
+
+  test('handoff detaches parent abort but task kill still stops the same controller', async () => {
+    const parentAbortController = new AbortController()
+    const { setAppState, getState } = createSetAppState()
+    const registration = registerAgentForeground({
+      agentId: 'foreground-handed-off',
+      description: 'handed off agent',
+      prompt: 'work',
+      selectedAgent: { agentType: 'general-purpose' } as any,
+      setAppState: setAppState as any,
+      parentAbortController,
+    })
+
+    expect(
+      backgroundAgentTask(
+        registration.taskId,
+        getState as any,
+        setAppState as any,
+      ),
+    ).toBe(true)
+    await registration.backgroundSignal
+
+    parentAbortController.abort()
+    expect(registration.abortController.signal.aborted).toBe(false)
+
+    killAsyncAgent(registration.taskId, setAppState as any)
+    expect(registration.abortController.signal.aborted).toBe(true)
   })
 })
 

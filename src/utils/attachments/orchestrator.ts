@@ -278,6 +278,7 @@ export async function getAttachments(
               getCompactionReminderAttachment(
                 messages ?? [],
                 toolUseContext.options.mainLoopModel,
+                toolUseContext.options.modelSettingsSlot,
               ),
             ),
           ),
@@ -314,6 +315,7 @@ export async function getAttachments(
             getTokenUsageAttachment(
               messages ?? [],
               toolUseContext.options.mainLoopModel,
+              toolUseContext.options.modelSettingsSlot,
             ),
           ),
         ),

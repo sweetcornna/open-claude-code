@@ -49,6 +49,8 @@ export {
   type GeminiInlineData,
   type GeminiUsageMetadata,
   type GeminiCandidate,
+  type GeminiPromptFeedback,
+  type GeminiSafetyRating,
   type GeminiGroundingChunk,
   type GeminiGroundingMetadata,
   type GeminiGroundingSupport,

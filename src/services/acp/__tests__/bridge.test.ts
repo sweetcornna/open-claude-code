@@ -1059,7 +1059,7 @@ describe('forwardSessionUpdates', () => {
     expect(abortListeners).toBe(0)
   })
 
-  test('cleans abort listeners when abort wins the race', async () => {
+  test('awaits pending next and generator cleanup before releasing an aborted prompt', async () => {
     const ac = new AbortController()
     let abortListeners = 0
     const add = ac.signal.addEventListener.bind(ac.signal)
@@ -1081,22 +1081,54 @@ describe('forwardSessionUpdates', () => {
       return remove(type, listener, options)
     }
 
-    async function* never(): AsyncGenerator<SDKMessage, void, unknown> {
-      await new Promise(() => {})
+    const events: string[] = []
+    let resumePendingNext!: () => void
+    async function* pendingStream(): AsyncGenerator<SDKMessage, void, unknown> {
+      try {
+        await new Promise<void>(resolve => {
+          resumePendingNext = () => {
+            events.push('old-next-resumed')
+            resolve()
+          }
+        })
+        yield {
+          type: 'system',
+          subtype: 'api_retry',
+        } as unknown as SDKMessage
+      } finally {
+        events.push('old-generator-finally')
+      }
     }
 
     const resultPromise = forwardSessionUpdates(
       's1',
-      never(),
+      pendingStream(),
       makeConn(),
       ac.signal,
       {},
     )
+    await Promise.resolve()
     ac.abort()
+    let forwardingSettled = false
+    void resultPromise.then(() => {
+      forwardingSettled = true
+    })
+    await new Promise<void>(resolve => setImmediate(resolve))
+
+    expect(abortListeners).toBe(0)
+    expect(forwardingSettled).toBe(false)
+    expect(events).toEqual([])
+
+    resumePendingNext()
     const result = await resultPromise
+    events.push('next-prompt-start')
 
     expect(result.stopReason).toBe('cancelled')
-    expect(abortListeners).toBe(0)
+    expect(events).toEqual([
+      'old-next-resumed',
+      'old-generator-finally',
+      'next-prompt-start',
+    ])
   })
 
   test('forwards assistant text message as agent_message_chunk', async () => {

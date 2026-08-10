@@ -328,6 +328,23 @@ export const claudeCodeBackend: AgentAdapter = {
     // Different from ctx.agentId (the engine's number seq, used for panel / killAgent routing) - two distinct concepts, must not be mixed up.
     const coreAgentId = createAgentId()
 
+    const agentAbort = new AbortController()
+    const onParentAbort = (): void => agentAbort.abort()
+    if (ctx.signal.aborted) {
+      agentAbort.abort()
+    } else {
+      ctx.signal.addEventListener('abort', onParentAbort, { once: true })
+    }
+    if (typeof ctx.registerAgentAbort === 'function') {
+      ctx.registerAgentAbort(ctx.agentId, agentAbort)
+    }
+    const cleanupAbortBridge = (): void => {
+      if (typeof ctx.unregisterAgentAbort === 'function') {
+        ctx.unregisterAgentAbort(ctx.agentId)
+      }
+      ctx.signal.removeEventListener('abort', onParentAbort)
+    }
+
     // isolation:'worktree' - run the agent inside an independent git worktree, so concurrent writes do not conflict.
     let worktreeInfo: WorkflowWorktreeInfo | null = null
     if (params.isolation === 'worktree') {
@@ -336,6 +353,16 @@ export const claudeCodeBackend: AgentAdapter = {
           makeWorkflowWorktreeSlug(ctx.runId, coreAgentId),
         )
       } catch (e) {
+        cleanupAbortBridge()
+        if (ctx.signal.aborted) throw new WorkflowAbortedError()
+        if (agentAbort.signal.aborted) {
+          return {
+            kind: 'dead',
+            reason: 'agent-cancelled',
+            retryable: false,
+          }
+        }
+
         // fail-closed: when isolation fails, do not silently fall back to a shared cwd (otherwise concurrent writes race on data)
         const detail = (e as Error).message
         logForDebugging(
@@ -362,27 +389,28 @@ export const claudeCodeBackend: AgentAdapter = {
         }
       }
     }
+
+    if (worktreeInfo && agentAbort.signal.aborted) {
+      cleanupAbortBridge()
+      if (worktreeInfo) {
+        const info = worktreeInfo
+        worktreeInfo = null
+        await cleanupWorkflowWorktree(info, agentDef.agentType)
+      }
+      if (ctx.signal.aborted) throw new WorkflowAbortedError()
+      return {
+        kind: 'dead',
+        reason: 'agent-cancelled',
+        retryable: false,
+      }
+    }
+
     // runWithCwdOverride makes tools such as Bash/Read inside the agent see the worktree path
     // (AsyncLocalStorage is preserved across awaits); the worktreePath parameter of runAgent only writes metadata.
     const runInCwd = worktreeInfo
       ? <T>(fn: () => T): T =>
           runWithCwdOverride(worktreeInfo!.worktreePath, fn)
       : <T>(fn: () => T): T => fn()
-
-    // Bridge ctx.signal -> runAgent.override.abortController. Otherwise, when the workflow is killed
-    // runAgent is unaware (root cause of 'x' being ineffective): the abort signal cannot reach the internal fetch, and the agent runs to completion.
-    // Single-agent kill goes through service.kill(runId, agentId) -> ports.taskRegistrar.killAgent ->
-    // agentAbortControllers.get(agentId).abort(); the same controller takes over both paths.
-    const agentAbort = new AbortController()
-    const onParentAbort = (): void => agentAbort.abort()
-    if (ctx.signal.aborted) {
-      agentAbort.abort()
-    } else {
-      ctx.signal.addEventListener('abort', onParentAbort, { once: true })
-    }
-    if (typeof ctx.registerAgentAbort === 'function') {
-      ctx.registerAgentAbort(ctx.agentId, agentAbort)
-    }
 
     const workerPermissionContext = {
       ...appState.toolPermissionContext,
@@ -484,11 +512,16 @@ export const claudeCodeBackend: AgentAdapter = {
         // NON_DETERMINISTIC_FAILURE_REASONS) so the copy stays honest.
         return { kind: 'dead', reason, detail: e.message, retryable: false }
       }
-      // abort (kill workflow / kill agent): must rethrow WorkflowAbortedError after detection,
-      // otherwise hooks.agent will swallow the abort as an ordinary failure into dead, and the workflow won't know it was killed
-      // (the other side of the 'x' kill path being ineffective: the signal did arrive, but the result was disguised as a normal completion).
-      if (agentAbort.signal.aborted || (e as Error)?.name === 'AbortError') {
-        throw new WorkflowAbortedError()
+      // Parent cancellation owns the whole run. Check it first because the
+      // parent bridge also aborts agentAbort, while a direct agentAbort only
+      // cancels this child and must degrade to null without a retry.
+      if (ctx.signal.aborted) throw new WorkflowAbortedError()
+      if (agentAbort.signal.aborted) {
+        return {
+          kind: 'dead',
+          reason: 'agent-cancelled',
+          retryable: false,
+        }
       }
       const detail = (e as Error).message
       logForDebugging(
@@ -497,11 +530,7 @@ export const claudeCodeBackend: AgentAdapter = {
       logEvent('tengu_workflow_agent', { ok: 0 })
       return { kind: 'dead', reason: 'runagent-threw', detail }
     } finally {
-      // cleanup (idempotent): listener removeEventListener / Map.delete are safe to call repeatedly.
-      if (typeof ctx.unregisterAgentAbort === 'function') {
-        ctx.unregisterAgentAbort(ctx.agentId)
-      }
-      ctx.signal.removeEventListener('abort', onParentAbort)
+      cleanupAbortBridge()
       if (worktreeInfo) {
         const info = worktreeInfo
         worktreeInfo = null

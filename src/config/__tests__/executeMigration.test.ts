@@ -248,3 +248,74 @@ describe('executeMigration credential bookkeeping', () => {
     expect(result.notes.some(n => n.includes('primaryApiKey'))).toBe(true)
   })
 })
+
+describe('executeMigration plan/execute races', () => {
+  test('skips a directory created after planning instead of merging into it', async () => {
+    const { sourceDir, targetDir } = makeSandbox({})
+    const sourceAgents = join(sourceDir, 'agents')
+    const targetAgents = join(targetDir, 'agents')
+    mkdirSync(sourceAgents)
+    writeFileSync(join(sourceAgents, 'legacy.md'), 'legacy agent\n')
+
+    const plan = makePlan({
+      sourceDir,
+      targetDir,
+      migrateCredentials: false,
+      items: [
+        {
+          name: 'agents',
+          kind: 'dir',
+          from: sourceAgents,
+          to: targetAgents,
+        },
+      ],
+    })
+
+    mkdirSync(targetAgents)
+    writeFileSync(join(targetAgents, 'occ.md'), 'occ agent\n')
+
+    const result = await executeMigration(plan)
+
+    expect(readFileSync(join(targetAgents, 'occ.md'), 'utf8')).toBe(
+      'occ agent\n',
+    )
+    expect(() =>
+      readFileSync(join(targetAgents, 'legacy.md'), 'utf8'),
+    ).toThrow()
+    expect(result.copied).not.toContain('agents')
+    expect(result.errors).toEqual([])
+    expect(readFileSync(join(sourceAgents, 'legacy.md'), 'utf8')).toBe(
+      'legacy agent\n',
+    )
+  })
+
+  test('skips an ordinary file created after planning', async () => {
+    const { sourceDir, targetDir } = makeSandbox({})
+    const sourceFile = join(sourceDir, 'CLAUDE.md')
+    const targetFile = join(targetDir, 'CLAUDE.md')
+    writeFileSync(sourceFile, 'legacy memory\n')
+
+    const plan = makePlan({
+      sourceDir,
+      targetDir,
+      migrateCredentials: false,
+      items: [
+        {
+          name: 'CLAUDE.md',
+          kind: 'file',
+          from: sourceFile,
+          to: targetFile,
+        },
+      ],
+    })
+
+    writeFileSync(targetFile, 'occ memory\n')
+
+    const result = await executeMigration(plan)
+
+    expect(readFileSync(targetFile, 'utf8')).toBe('occ memory\n')
+    expect(readFileSync(sourceFile, 'utf8')).toBe('legacy memory\n')
+    expect(result.copied).not.toContain('CLAUDE.md')
+    expect(result.errors).toEqual([])
+  })
+})

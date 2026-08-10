@@ -53,6 +53,10 @@ export function assembleFinalAssistantOutputs(params: {
    * block-level metadata would ride along into another provider's request.
    */
   providerMetadata?: Record<string, unknown>
+  terminalError?: {
+    content: string
+    errorDetails: string
+  }
 }): (AssistantMessage | SystemAPIErrorMessage)[] {
   const {
     partialMessage,
@@ -64,6 +68,7 @@ export function assembleFinalAssistantOutputs(params: {
     maxTokens,
     maxTokensEnvHint,
     providerMetadata,
+    terminalError,
   } = params
   const outputs: (AssistantMessage | SystemAPIErrorMessage)[] = []
 
@@ -104,6 +109,17 @@ export function assembleFinalAssistantOutputs(params: {
               `Set ${maxTokensEnvHint} to raise it.`,
         apiError: 'max_output_tokens',
         error: 'max_output_tokens',
+      }),
+    )
+  }
+
+  if (terminalError) {
+    outputs.push(
+      createAssistantAPIErrorMessage({
+        content: terminalError.content,
+        apiError: 'api_error',
+        error: 'unknown',
+        errorDetails: terminalError.errorDetails,
       }),
     )
   }

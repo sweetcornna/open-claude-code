@@ -270,6 +270,10 @@ export async function spawnShellTask(
       };
     });
 
+    // The result can arrive after kill() or handle cleanup. Unregistration is
+    // idempotent, so always release the process-level callback at terminality.
+    unregisterCleanup();
+
     enqueueShellNotification(
       taskId,
       description,

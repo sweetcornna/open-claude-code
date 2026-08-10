@@ -22,6 +22,7 @@ import { errorMessage } from '../runtime/errors.js'
 import type { HookResult } from '../hooks.js'
 import { createUserMessage, handleMessageFromStream } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
+import { getModelSettingsSlot } from '../model/modelTier.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { getAgentTranscriptPath, getTranscriptPath } from '../sessionStorage.js'
 import type { AgentHook } from '../settings/types.js'
@@ -153,6 +154,12 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
           ...toolUseContext.options,
           tools,
           mainLoopModel: model,
+          modelSettingsSlot: getModelSettingsSlot(
+            model,
+            hook.model?.toLowerCase() === 'default'
+              ? null
+              : (hook.model ?? model),
+          ),
           isNonInteractiveSession: true,
           thinkingConfig: { type: 'disabled' as const },
         },

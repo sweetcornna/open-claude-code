@@ -107,6 +107,7 @@ import { SpinnerWithVerb, BriefIdleStatus, type SpinnerMode } from '../component
 import { getSystemPrompt } from '../constants/prompts.js';
 import { buildEffectiveSystemPrompt } from '../utils/session/systemPrompt.js';
 import { getSystemContext, getUserContext } from '../context.js';
+import { getMainLoopModelSettingsSlot } from '../utils/model/model.js';
 import { getMemoryFiles } from '../utils/session/claudemd.js';
 import { startBackgroundHousekeeping } from '../utils/agents/backgroundHousekeeping.js';
 import { getTotalCost } from '../cost-tracker.js';
@@ -2237,6 +2238,7 @@ export function REPL({
           debug,
           verbose: s.verbose,
           mainLoopModel,
+          modelSettingsSlot: getMainLoopModelSettingsSlot(mainLoopModel),
           thinkingConfig: s.thinkingEnabled !== false ? thinkingConfig : { type: 'disabled' },
           // Merge fresh from store rather than closing over useMergedClients'
           // memoized output. initialMcpClients is a prop (session-constant).

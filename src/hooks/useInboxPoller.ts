@@ -62,7 +62,7 @@ import {
   isShutdownApproved,
   isShutdownRequest,
   isTeamPermissionUpdate,
-  markMessagesAsRead,
+  markMessagesAsReadBySnapshot,
   readMailbox,
   readUnreadMessages,
   type TeammateMessage,
@@ -360,7 +360,11 @@ export function useInboxPoller({
     // Helper to mark messages as read in the inbox file.
     // Called after messages are successfully delivered or reliably queued.
     const markRead = () => {
-      void markMessagesAsRead(agentName, currentAppState.teamContext?.teamName)
+      void markMessagesAsReadBySnapshot(
+        agentName,
+        currentAppState.teamContext?.teamName,
+        unread,
+      )
     }
 
     // Separate permission messages from regular teammate messages

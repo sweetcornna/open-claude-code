@@ -275,4 +275,84 @@ describe('adaptGeminiStreamToAnthropic', () => {
     expect(messageDelta.usage.cache_read_input_tokens).toBe(20_000)
     expect(messageDelta.usage.output_tokens).toBe(9)
   })
+
+  for (const reason of [
+    'SAFETY',
+    'RECITATION',
+    'BLOCKLIST',
+    'PROHIBITED_CONTENT',
+    'SPII',
+  ]) {
+    test(`preserves Gemini policy termination ${reason}`, async () => {
+      const events = await collectEvents([
+        {
+          candidates: [
+            {
+              content: { parts: [{ text: 'blocked' }] },
+              finishReason: reason,
+            },
+          ],
+        },
+      ])
+
+      const messageDelta = events.find(event => event.type === 'message_delta')
+      expect(messageDelta.delta.stop_reason).toBe(reason)
+    })
+  }
+
+  test('uses promptFeedback when a blocked prompt has no candidate', async () => {
+    const events = await collectEvents([
+      {
+        candidates: [],
+        promptFeedback: {
+          blockReason: 'SAFETY',
+          blockReasonMessage: 'prompt was blocked',
+          safetyRatings: [
+            {
+              category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+              probability: 'HIGH',
+              blocked: true,
+            },
+          ],
+        },
+      },
+    ])
+
+    const messageDelta = events.find(event => event.type === 'message_delta')
+    expect(messageDelta.delta.stop_reason).toBe('SAFETY')
+  })
+
+  test('drops parsed tool_use blocks after MALFORMED_FUNCTION_CALL', async () => {
+    const events = await collectEvents([
+      {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    name: 'bash',
+                    args: { command: 'rm -rf /' },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        candidates: [{ finishReason: 'MALFORMED_FUNCTION_CALL' }],
+      },
+    ])
+
+    expect(
+      events.some(
+        event =>
+          event.type === 'content_block_start' &&
+          event.content_block.type === 'tool_use',
+      ),
+    ).toBe(false)
+    const messageDelta = events.find(event => event.type === 'message_delta')
+    expect(messageDelta.delta.stop_reason).toBe('MALFORMED_FUNCTION_CALL')
+  })
 })

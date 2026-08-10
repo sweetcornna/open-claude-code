@@ -81,6 +81,7 @@ export type AgentRunResult =
        * - prompt-too-long: terminal context-overflow API error — deterministic for the identical call (backend sets retryable:false)
        * - api-error: terminal API error other than context overflow (overload / stream drop / timeout) — transient, retry may succeed
        * - agent-total-timeout / agent-no-progress: configured execution limits — deterministic for the identical run
+       * - agent-cancelled: this child agent was cancelled without aborting its parent workflow
        * - unknown: unclassified (compatible with old backends / third-party adapters)
        */
       reason?:
@@ -91,6 +92,7 @@ export type AgentRunResult =
         | 'api-error'
         | 'agent-total-timeout'
         | 'agent-no-progress'
+        | 'agent-cancelled'
         | 'unknown'
       /** Detail (error message / text preview) for logs; not shown to end users. */
       detail?: string

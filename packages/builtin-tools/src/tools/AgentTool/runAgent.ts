@@ -74,7 +74,12 @@ import { registerFrontmatterHooks } from 'src/utils/hooks/registerFrontmatterHoo
 import { clearSessionHooks } from 'src/utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from 'src/utils/hooks.js'
 import { createUserMessage } from 'src/utils/messages.js'
-import { getAgentModel } from 'src/utils/model/agent.js'
+import {
+  getAgentModel,
+  getAgentModelSettingsSlot,
+  removeInherited1mForAgentAlias,
+} from 'src/utils/model/agent.js'
+import { apply1mContextOptIn } from 'src/utils/model/model.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import {
   createSubagentTrace,
@@ -103,6 +108,10 @@ import {
 } from 'src/utils/telemetry/perfettoTracing.js'
 import type { ContentReplacementState } from 'src/utils/tools/toolResultStorage.js'
 import { createAgentId } from 'src/utils/collections/uuid.js'
+import {
+  registerActiveAgentConsumer,
+  unregisterActiveAgentConsumer,
+} from 'src/utils/session/messageQueueManager.js'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { filterIncompleteToolCalls } from './filterIncompleteToolCalls.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
@@ -354,6 +363,31 @@ type QueryMessage =
   | TombstoneMessage
 
 /**
+ * Continue an iterator after ownership of an already-pending next() call moves
+ * to another consumer. Awaiting that exact promise before calling next() again
+ * prevents concurrent pulls, lost messages, and foreground-to-background
+ * restarts of the underlying agent execution.
+ */
+export async function* continueAgentIterator<T>(
+  iterator: AsyncIterator<T, void>,
+  pendingNext: Promise<IteratorResult<T, void>>,
+): AsyncGenerator<T, void> {
+  let completed = false
+  try {
+    let next = await pendingNext
+    while (!next.done) {
+      yield next.value
+      next = await iterator.next()
+    }
+    completed = true
+  } finally {
+    // If the continuation's consumer fails while processing a message, release
+    // the iterator it owns so runAgent still executes its lifecycle cleanup.
+    if (!completed) await iterator.return?.()
+  }
+}
+
+/**
  * Type guard to check if a message from query() is a recordable Message type.
  * Matches the types we want to record: assistant, user, progress, or system compact_boundary.
  */
@@ -469,11 +503,26 @@ export async function* runAgent({
   const rootSetAppState =
     toolUseContext.setAppStateForTasks ?? toolUseContext.setAppState
 
-  const resolvedAgentModel = getAgentModel(
+  const baseAgentModel = getAgentModel(
     agentDefinition.model,
     toolUseContext.options.mainLoopModel,
     model,
     permissionMode,
+  )
+  const modelSettingsSlot = getAgentModelSettingsSlot(
+    agentDefinition.model,
+    baseAgentModel,
+    toolUseContext.options.modelSettingsSlot,
+    model,
+  )
+  const resolvedAgentModel = apply1mContextOptIn(
+    removeInherited1mForAgentAlias(
+      agentDefinition.model,
+      baseAgentModel,
+      model,
+    ),
+    process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
+    modelSettingsSlot,
   )
 
   const agentId = override?.agentId ? override.agentId : createAgentId()
@@ -875,6 +924,7 @@ export async function* runAgent({
     debug: toolUseContext.options.debug,
     verbose: toolUseContext.options.verbose,
     mainLoopModel: resolvedAgentModel,
+    modelSettingsSlot,
     // For fork children (useExactTools), inherit thinking config to match the
     // parent's API request prefix for prompt cache hits. For regular
     // sub-agents, disable thinking to control output token costs.
@@ -971,6 +1021,10 @@ export async function* runAgent({
       : Math.max(0, Date.now() - executionStartedAt),
   )
 
+  // Nested task notifications may target this agent while its query loop is
+  // alive. Registration happens immediately before consumption begins; any
+  // earlier notification safely falls back to the main thread.
+  registerActiveAgentConsumer(agentId)
   try {
     const queryStream = query({
       messages: initialMessages,
@@ -1069,6 +1123,9 @@ export async function* runAgent({
     }
     throw error
   } finally {
+    // Stop advertising this queue consumer before any potentially slow cleanup.
+    // Queued notifications are redirected now; late arrivals fall back on enqueue.
+    unregisterActiveAgentConsumer(agentId)
     executionWatchdog.dispose()
     parentAbortSignal?.removeEventListener('abort', onParentAbort)
     // Release the concurrency slot on every exit path (normal/abort/error)

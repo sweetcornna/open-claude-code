@@ -968,6 +968,15 @@ export function buildGlobalConfigMerge(
   }
 }
 
+function isAlreadyExistsError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'EEXIST'
+  )
+}
+
 /**
  * Perform the copy described by `plan`.
  *
@@ -984,7 +993,10 @@ export async function executeMigration(
   plan: MigrationPlan,
   deps: ExecuteMigrationDeps = {},
 ): Promise<MigrationResult> {
-  const { cp, mkdir, readFile, writeFile } = await import('node:fs/promises')
+  const { cp, copyFile, mkdir, readFile, writeFile } = await import(
+    'node:fs/promises'
+  )
+  const { constants: fsConstants } = await import('node:fs')
   const result: MigrationResult = {
     copied: [],
     mcpServersImported: 0,
@@ -1022,15 +1034,27 @@ export async function executeMigration(
         continue
       }
 
-      // force:false so an entry created between planning and now is not
-      // overwritten — the no-clobber rule holds even under a race.
-      await cp(item.from, item.to, {
-        recursive: item.kind === 'dir',
-        force: false,
-        errorOnExist: false,
-      })
+      if (item.kind === 'dir') {
+        // Claim the whole destination atomically. Recursive mkdir/cp would merge
+        // into a directory another occ process created after planning.
+        try {
+          await mkdir(item.to)
+        } catch (error) {
+          if (isAlreadyExistsError(error)) continue
+          throw error
+        }
+        await cp(item.from, item.to, {
+          recursive: true,
+          force: false,
+          errorOnExist: true,
+        })
+      } else {
+        // COPYFILE_EXCL closes the same plan/execute race for ordinary files.
+        await copyFile(item.from, item.to, fsConstants.COPYFILE_EXCL)
+      }
       result.copied.push(item.name)
     } catch (error) {
+      if (isAlreadyExistsError(error)) continue
       result.errors.push(`${item.name}: ${(error as Error).message}`)
     }
   }

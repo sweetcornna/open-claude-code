@@ -236,6 +236,7 @@ export function getEffortEnvOverride(): EffortValue | null | undefined {
 export function resolveAppliedEffort(
   model: string,
   appStateEffortValue: EffortValue | undefined,
+  settingsSlot?: ModelSettingsSlot,
 ): EffortValue | undefined {
   const envOverride = getEffortEnvOverride()
   if (envOverride === null) {
@@ -244,7 +245,10 @@ export function resolveAppliedEffort(
   return (
     envOverride ??
     appStateEffortValue ??
-    getDefaultEffortForModel(model, getMainLoopModelSettingsSlot(model))
+    getDefaultEffortForModel(
+      model,
+      settingsSlot ?? getMainLoopModelSettingsSlot(model),
+    )
   )
 }
 
