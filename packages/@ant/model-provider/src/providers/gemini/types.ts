@@ -114,14 +114,14 @@ export type GeminiCandidate = {
   groundingMetadata?: GeminiGroundingMetadata
 }
 
-export type GeminiSafetyRating = {
+type GeminiSafetyRating = {
   category?: string
   probability?: string
   blocked?: boolean
 }
 
 /** Prompt-level rejection details; blocked prompts may have no candidates. */
-export type GeminiPromptFeedback = {
+type GeminiPromptFeedback = {
   blockReason?: string
   blockReasonMessage?: string
   safetyRatings?: GeminiSafetyRating[]

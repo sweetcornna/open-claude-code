@@ -471,7 +471,7 @@ function extractImagesFromValue(
   return images
 }
 
-export type PopAllEditableResult = {
+type PopAllEditableResult = {
   text: string
   cursorOffset: number
   images: PastedContent[]
