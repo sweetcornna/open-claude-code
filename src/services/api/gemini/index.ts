@@ -323,12 +323,11 @@ export async function* queryModelGemini(
       logForDebugging('[Gemini] Request aborted by user')
       return
     }
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logForDebugging(`[Gemini] Error: ${errorMessage}`, { level: 'error' })
+    logForDebugging('[Gemini] API request failed', { level: 'error' })
     yield createAssistantAPIErrorMessageFromError({
-      content: `API Error: ${errorMessage}`,
       apiError: 'api_error',
       sourceError: error,
+      provider: 'Gemini',
     })
   }
 }

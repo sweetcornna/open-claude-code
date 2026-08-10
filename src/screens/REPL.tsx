@@ -237,6 +237,7 @@ import {
   getAgentTranscript,
 } from '../utils/sessionStorage.js';
 import { pruneFinishedAgentProgress, resolvedToolUseIDsIn } from '../utils/messages/pruneAgentProgress.js';
+import { upsertMessageByUuid } from '../utils/messages/merge.js';
 import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/session/queryHelpers.js';
 import { resetMicrocompactState } from '../services/compact/microCompact.js';
 import { runPostCompactCleanup, registerCompactCleanup } from '../services/compact/postCompactCleanup.js';
@@ -2482,9 +2483,12 @@ export function REPL({
             // utils/messages/pruneAgentProgress.ts.
             const finishedToolUseIDs = resolvedToolUseIDsIn(newMessage);
             setMessages(oldMessages =>
-              finishedToolUseIDs.length > 0
-                ? [...pruneFinishedAgentProgress(oldMessages, finishedToolUseIDs), newMessage]
-                : [...oldMessages, newMessage],
+              upsertMessageByUuid(
+                finishedToolUseIDs.length > 0
+                  ? pruneFinishedAgentProgress(oldMessages, finishedToolUseIDs)
+                  : oldMessages,
+                newMessage,
+              ),
             );
           }
           // Block ticks on API errors to prevent tick → error → tick

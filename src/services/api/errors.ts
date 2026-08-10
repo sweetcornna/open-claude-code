@@ -21,6 +21,7 @@ import {
 } from 'src/utils/auth/auth.js'
 import {
   createAssistantAPIErrorMessage,
+  createAssistantAPIErrorMessageFromError,
   NO_RESPONSE_REQUESTED,
 } from 'src/utils/messages.js'
 import {
@@ -912,23 +913,21 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Connection errors (non-timeout) — use formatAPIError for detailed messages
+  // Connection errors retain the actionable TLS/network hint while gaining the
+  // same structured diagnostics as every provider adapter.
   if (error instanceof APIConnectionError) {
-    return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: ${formatAPIError(error)}`,
-      error: 'unknown',
+    return createAssistantAPIErrorMessageFromError({
+      sourceError: error,
+      apiError: 'api_error',
+      provider: getAPIProvider(),
+      message: formatAPIError(error),
     })
   }
 
-  if (error instanceof Error) {
-    return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: ${error.message}`,
-      error: 'unknown',
-    })
-  }
-  return createAssistantAPIErrorMessage({
-    content: API_ERROR_MESSAGE_PREFIX,
-    error: 'unknown',
+  return createAssistantAPIErrorMessageFromError({
+    sourceError: error,
+    apiError: 'api_error',
+    provider: getAPIProvider(),
   })
 }
 

@@ -63,6 +63,40 @@ describe('streamGeminiGenerateContent error envelopes', () => {
     })
   })
 
+  test('marks malformed SSE as retryable', async () => {
+    const error = await caughtStreamError('data: {not-json}\n\n')
+
+    expect(error).toMatchObject({
+      name: 'GeminiStreamError',
+      retryable: true,
+    })
+  })
+
+  test('marks a successful response without a body as retryable', async () => {
+    const stream = streamGeminiGenerateContent({
+      model: 'gemini-test',
+      body: { contents: [] },
+      signal: new AbortController().signal,
+      accessToken: 'test-token',
+      fetchOverride: (async () =>
+        new Response(null, { status: 200 })) as unknown as typeof fetch,
+    })
+
+    let error: unknown
+    try {
+      for await (const _chunk of stream) {
+        // drain
+      }
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toMatchObject({
+      name: 'GeminiStreamError',
+      retryable: true,
+    })
+  })
+
   test('keeps successful stream chunks unchanged', async () => {
     const chunks = []
     for await (const chunk of requestFor(

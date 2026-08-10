@@ -18,6 +18,49 @@ import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/anal
 import { isToolReferenceBlock } from '../tools/searchExtraTools.js'
 
 /**
+ * Append `incoming`, or replace the existing entry that already carries its
+ * uuid.
+ *
+ * The one producer of same-uuid arrivals is compaction. `buildPostCompactMessages`
+ * (services/compact/compact.ts) yields `stripToolUseResults(messagesToKeep)`
+ * one message at a time through the same stream the REPL listens on, and those
+ * keep their original uuids. In fullscreen the REPL deliberately holds the
+ * pre-compact scrollback (REPL.tsx, `getMessagesAfterCompactBoundary`), so the
+ * originals are still in the array when the stripped copies arrive. A plain
+ * append rendered every one of them twice.
+ *
+ * Replacing is not merely de-duplication — the copies differ, and the
+ * difference is the point. `stripToolUseResults` drops `toolUseResult`
+ * specifically to release large tool payloads from the heap; swapping the
+ * object out is what makes them unreachable. Keeping the older, richer entry
+ * would quietly undo that.
+ *
+ * This deliberately does not reach the transcript, and must not be "fixed" to:
+ *   - `recordTranscript` skips any uuid already written (transcriptWriter.ts) —
+ *     it has no update path, and the skip is what keeps the compact boundary
+ *     from being orphaned.
+ *   - the on-disk entry is the *pre-strip* one, with `toolUseResult` intact.
+ *     The transcript is the archive; stripping is an in-memory optimization.
+ *     Persisting the stripped copy would delete tool output from `/resume` and
+ *     from exports to save memory that was already released.
+ *
+ * Reference equality is preserved when the same object arrives twice, so a
+ * literal re-emit costs no render.
+ */
+export function upsertMessageByUuid(
+  messages: Message[],
+  incoming: Message,
+): Message[] {
+  const index = messages.findIndex(message => message.uuid === incoming.uuid)
+  if (index === -1) return [...messages, incoming]
+  if (messages[index] === incoming) return messages
+
+  const result = messages.slice()
+  result[index] = incoming
+  return result
+}
+
+/**
  * Final pass: smoosh any `<system-reminder>`-prefixed text siblings into the
  * last tool_result of the same user message. Catches siblings from:
  * - PreToolUse hook additionalContext (Gap F: attachment between assistant and

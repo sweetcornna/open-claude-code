@@ -14,7 +14,7 @@ import { randomUUID, type UUID } from 'crypto'
 import type { SDKAssistantMessageError } from 'src/entrypoints/agentSdkTypes.js'
 import {
   attachAPIErrorSource,
-  categorizeRetryableAPIError,
+  describeAPIError,
 } from '../../services/api/retryClassification.js'
 import { NO_CONTENT_MESSAGE } from '../../constants/messages.js'
 import {
@@ -147,15 +147,24 @@ export function createAssistantAPIErrorMessage({
 
 /** Build a schema-safe API error message while retaining the raw retry signal. */
 export function createAssistantAPIErrorMessageFromError(params: {
-  content: string
+  content?: string
   sourceError: unknown
   apiError?: AssistantMessage['apiError']
+  provider?: string
+  wire?: string
+  message?: string
 }): AssistantMessage {
+  const diagnostic = describeAPIError(params.sourceError, {
+    ...(params.provider ? { provider: params.provider } : {}),
+    ...(params.wire ? { wire: params.wire } : {}),
+    ...(params.message ? { message: params.message } : {}),
+  })
   return attachAPIErrorSource(
     createAssistantAPIErrorMessage({
-      content: params.content,
+      content: params.content ?? diagnostic.content,
       ...(params.apiError !== undefined ? { apiError: params.apiError } : {}),
-      error: categorizeRetryableAPIError(params.sourceError),
+      error: diagnostic.category,
+      errorDetails: diagnostic.errorDetails,
     }),
     params.sourceError,
   )

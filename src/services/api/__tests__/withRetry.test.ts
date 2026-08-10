@@ -16,10 +16,19 @@ import { logMock } from '../../../../tests/mocks/log.js'
  */
 const authCalls: string[] = []
 
+/**
+ * Subscription shape, per test. The 429 gate asks two different questions of
+ * auth, and both answers change the outcome, so they have to be steerable
+ * rather than pinned by the shared mock's defaults.
+ */
+const subscription = { claudeAI: true, enterprise: false }
+
 mock.module('bun:bundle', () => ({ feature: () => false }))
 mock.module(
   'src/utils/auth/auth.js',
   authMockWith({
+    isClaudeAISubscriber: () => subscription.claudeAI,
+    isEnterpriseSubscriber: () => subscription.enterprise,
     clearApiKeyHelperCache: () => {
       authCalls.push('clearApiKeyHelperCache')
     },
@@ -53,7 +62,9 @@ import {
   attachAPIErrorSource,
   categorizeRetryableAPIError,
   classifyRetryableAPIError,
+  describeAPIError,
   getAPIErrorSource,
+  NonRetryableError,
 } from '../retryClassification.js'
 
 describe('withRetry context overflow adjustment', () => {
@@ -180,6 +191,9 @@ describe('isTransientNetworkError', () => {
     expect(isTransientNetworkError(new Error('Upstream request failed'))).toBe(
       true,
     )
+    expect(
+      isTransientNetworkError(new Error('unclassified provider failure')),
+    ).toBe(true)
   })
 
   test('matches errno codes carried on the error itself', () => {
@@ -340,6 +354,10 @@ describe('structured API error classification', () => {
       { status: 'UNAVAILABLE' },
       { code: 'DEADLINE_EXCEEDED' },
       { status: 'RESOURCE_EXHAUSTED' },
+      { status: 'ABORTED' },
+      { code: 'ThrottlingException' },
+      { code: 'InternalServerException' },
+      { code: 'ModelStreamErrorException' },
       { code: 'ECONNRESET' },
     ]) {
       expect(classifyRetryableAPIError(value).retryable).toBe(true)
@@ -351,6 +369,23 @@ describe('structured API error classification', () => {
       category: 'invalid_request',
       retryable: false,
     })
+    expect(classifyRetryableAPIError({ code: 'ValidationException' })).toEqual({
+      category: 'invalid_request',
+      retryable: false,
+    })
+    for (const code of [
+      'AccessDeniedException',
+      'UnrecognizedClientException',
+      'ExpiredTokenException',
+      'InvalidSignatureException',
+      'NotAuthorizedException',
+      'PermissionDeniedException',
+    ]) {
+      expect(classifyRetryableAPIError({ code })).toEqual({
+        category: 'authentication_failed',
+        retryable: false,
+      })
+    }
   })
 
   test('uses the documented abort, TLS, explicit, and structured precedence', () => {
@@ -387,13 +422,94 @@ describe('structured API error classification', () => {
         message: 'upstream timeout',
       }),
     ).toEqual({ category: 'invalid_request', retryable: false })
+    for (const value of [
+      {
+        status: 500,
+        code: 'ValidationException',
+        message: 'invalid request',
+      },
+      {
+        status: 503,
+        type: 'INVALID_ARGUMENT',
+        message: 'service unavailable',
+      },
+      { status: 429, code: 'InvalidModel', message: 'invalid model' },
+    ]) {
+      expect(classifyRetryableAPIError(value)).toEqual({
+        category: 'invalid_request',
+        retryable: false,
+      })
+    }
     expect(classifyRetryableAPIError({ retryable: true })).toEqual({
       category: 'server_error',
       retryable: true,
     })
     expect(
       classifyRetryableAPIError(new Error('unclassified failure')),
-    ).toEqual({ category: 'unknown', retryable: false })
+    ).toEqual({ category: 'server_error', retryable: true })
+  })
+
+  test('refuses to retry occ own permanent configuration failures', () => {
+    // Both of these are thrown before anything reaches the network, from a
+    // condition only the user can change. Under the default-retry tail they
+    // used to be retried eleven times — about two minutes of backoff spent
+    // re-reading an absent credentials file — because their prose matches no
+    // transient pattern and, at the time, no permanent keyword either.
+    //
+    // Asserted through the plain message as well as the marked error: the
+    // structural `retryable: false` is the fix, and the message patterns are
+    // the backstop for when the object is re-wrapped or rebuilt from text.
+    const chatgpt =
+      'ChatGPT account is not logged in. Run /login and select ChatGPT account with subscription.'
+    const antigravity =
+      'Antigravity project discovery returned no project. Open Antigravity once with this Google account, then retry.'
+
+    expect(classifyRetryableAPIError(new Error(chatgpt))).toEqual({
+      category: 'authentication_failed',
+      retryable: false,
+    })
+    expect(
+      classifyRetryableAPIError(
+        new NonRetryableError(chatgpt, { category: 'authentication_failed' }),
+      ),
+    ).toEqual({ category: 'authentication_failed', retryable: false })
+
+    expect(classifyRetryableAPIError(new Error(antigravity))).toEqual({
+      category: 'invalid_request',
+      retryable: false,
+    })
+    expect(
+      classifyRetryableAPIError(
+        new NonRetryableError(antigravity, { category: 'invalid_request' }),
+      ),
+    ).toEqual({ category: 'invalid_request', retryable: false })
+  })
+
+  test('the declared category survives re-wrapping', () => {
+    // The thrower states the category outright so the SDK error surface does
+    // not depend on the prose continuing to match a regex.
+    const wrapped = new Error('request failed', {
+      cause: new NonRetryableError('account has no seat', {
+        category: 'billing_error',
+      }),
+    })
+    expect(classifyRetryableAPIError(wrapped)).toEqual({
+      category: 'billing_error',
+      retryable: false,
+    })
+  })
+
+  test('the new permanent phrases do not swallow transient wording', () => {
+    // "then retry" in the Antigravity copy is advice for the user, and a
+    // gateway saying it is unavailable must still climb the ladder.
+    for (const message of [
+      'service unavailable, please retry',
+      'upstream request failed — try again later',
+      'no healthy upstream',
+      'the model is temporarily unavailable, retry shortly',
+    ]) {
+      expect(classifyRetryableAPIError(new Error(message)).retryable).toBe(true)
+    }
   })
 
   test('keeps source errors in non-enumerable symbol metadata', () => {
@@ -423,6 +539,69 @@ describe('structured API error classification', () => {
     expect(ndjson).not.toContain('sourceError')
     expect(ndjson).not.toContain('raw-only')
     expect(JSON.parse(ndjson).error).toBe('server_error')
+  })
+
+  test('formats detailed diagnostics from whitelisted, redacted scalars', () => {
+    const source = Object.assign(
+      new Error(
+        '503 {"error":{"message":"backend unavailable api_key=sk-proj-123456789","prompt":"do not expose"}}',
+      ),
+      {
+        status: 503,
+        code: 'UPSTREAM_FAILURE',
+        type: 'server_error',
+        requestID: 'req_123',
+        headers: new Headers({
+          authorization: 'Bearer secret-token',
+          'x-request-id': 'req_header',
+        }),
+      },
+    )
+
+    const diagnostic = describeAPIError(source, {
+      provider: 'OpenAI',
+      wire: 'responses',
+    })
+
+    expect(diagnostic.content).toContain('API Error [OpenAI]')
+    expect(diagnostic.content).toContain('backend unavailable')
+    expect(diagnostic.content).toContain('wire=responses')
+    expect(diagnostic.content).toContain('status=503')
+    expect(diagnostic.content).toContain('code=UPSTREAM_FAILURE')
+    expect(diagnostic.content).toContain('type=server_error')
+    expect(diagnostic.content).toContain('request_id=req_123')
+    expect(diagnostic.content).toContain('retryable=yes')
+    expect(diagnostic.content).not.toContain('sk-proj-123456789')
+    expect(diagnostic.errorDetails).not.toContain('do not expose')
+    expect(diagnostic.errorDetails).not.toContain('authorization')
+    expect(diagnostic.errorDetails).not.toContain('secret-token')
+  })
+
+  test('redacts authorization, prompts, and request bodies from diagnostics', () => {
+    for (const [message, secret] of [
+      ['upstream failed Authorization: Basic dXNlcjpwYXNz', 'dXNlcjpwYXNz'],
+      ['request rejected prompt=PRIVATE_USER_PROMPT', 'PRIVATE_USER_PROMPT'],
+      [
+        'request failed body={"messages":[{"content":"PRIVATE_BODY"}]}',
+        'PRIVATE_BODY',
+      ],
+      ['custom Authorization: Token TOP_SECRET_VALUE', 'TOP_SECRET_VALUE'],
+      [
+        'provider says prompt was PRIVATE_PROMPT_VARIANT',
+        'PRIVATE_PROMPT_VARIANT',
+      ],
+      [
+        'request body was {"conversation":"PRIVATE_BODY_VARIANT"}',
+        'PRIVATE_BODY_VARIANT',
+      ],
+    ]) {
+      const diagnostic = describeAPIError(new Error(message), {
+        provider: 'Probe',
+      })
+      expect(diagnostic.content).not.toContain(secret)
+      expect(diagnostic.errorDetails).not.toContain(secret)
+      expect(diagnostic.content).toContain('[REDACTED]')
+    }
   })
 })
 
@@ -601,13 +780,13 @@ describe('withRetry with bare (non-APIError) transport failures', () => {
     }
   })
 
-  test('still bails immediately on a bare non-network error', async () => {
+  test('routes an unclassified API-boundary error into the retry ladder', async () => {
     let calls = 0
     const generator = withRetry(
       async () => ({}) as unknown as Anthropic,
       async () => {
         calls++
-        throw new Error('something deterministic broke')
+        throw new Error('unclassified provider failure')
       },
       {
         maxRetries: 3,
@@ -616,8 +795,12 @@ describe('withRetry with bare (non-APIError) transport failures', () => {
       },
     )
 
-    await expect(generator.next()).rejects.toBeInstanceOf(CannotRetryError)
+    expect(await generator.next()).toMatchObject({
+      done: false,
+      value: { retryAttempt: 1 },
+    })
     expect(calls).toBe(1)
+    await generator.return(undefined as never)
   })
 })
 
@@ -819,6 +1002,142 @@ describe('Retry-After bounds', () => {
     const delay = (step.value as unknown as { retryInMs: number }).retryInMs
     expect(delay).toBeGreaterThan(0)
     expect(delay).toBeLessThan(60_000)
+  })
+})
+
+describe('429 rate limits that outlast the retry ladder', () => {
+  /**
+   * The ladder's first decision. A granted retry yields its countdown notice
+   * before sleeping; a refusal throws CannotRetryError out of the same call.
+   */
+  async function decisionFor(
+    headers: Record<string, string>,
+  ): Promise<'retried' | 'refused'> {
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        throw new APIError(
+          429,
+          undefined,
+          'rate limit exceeded',
+          new Headers(headers),
+        )
+      },
+      {
+        maxRetries: 3,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+      },
+    )
+    try {
+      const step = await generator.next()
+      await generator.return(undefined as never)
+      return step.done ? 'refused' : 'retried'
+    } catch {
+      return 'refused'
+    }
+  }
+
+  const inSeconds = (offsetMs: number): string =>
+    String(Math.floor((Date.now() + offsetMs) / 1000))
+
+  afterEach(() => {
+    subscription.claudeAI = true
+    subscription.enterprise = false
+  })
+
+  test('refuses a 429 whose advertised reset is hours away', async () => {
+    // The Max/Pro 5-hour window. Every step of this ladder is clamped to 60s,
+    // so ten retries cannot outlast it — they only delay the "5-hour limit
+    // reached" message by ~10 minutes. That message still arrives, from
+    // errors.ts by way of CannotRetryError.originalError; this only makes it
+    // immediate.
+    expect(
+      await decisionFor({
+        'anthropic-ratelimit-unified-reset': inSeconds(5 * 60 * 60 * 1000),
+      }),
+    ).toBe('refused')
+  })
+
+  test('still retries a 429 whose window reopens inside the ladder', async () => {
+    // A per-minute limit is exactly what the ladder is for.
+    expect(
+      await decisionFor({
+        'anthropic-ratelimit-unified-reset': inSeconds(20_000),
+      }),
+    ).toBe('retried')
+  })
+
+  test('reads a long Retry-After the same way as a reset timestamp', async () => {
+    expect(await decisionFor({ 'retry-after': '7200' })).toBe('refused')
+    expect(await decisionFor({ 'retry-after': '30' })).toBe('retried')
+  })
+
+  test('refuses an unlabelled 429 for a subscription plan', async () => {
+    // Windowed by nature: without a reset header, assume the window is long.
+    subscription.claudeAI = true
+    subscription.enterprise = false
+    expect(await decisionFor({})).toBe('refused')
+  })
+
+  test('retries an unlabelled 429 for PAYG and enterprise seats', async () => {
+    subscription.claudeAI = false
+    expect(await decisionFor({})).toBe('retried')
+
+    subscription.claudeAI = true
+    subscription.enterprise = true
+    expect(await decisionFor({})).toBe('retried')
+  })
+})
+
+describe('529 background amplification', () => {
+  /** The ladder's first decision for a 529 raised under `querySource`. */
+  async function decisionFor(
+    querySource?: string,
+  ): Promise<'retried' | 'refused'> {
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        throw new APIError(529, undefined, 'overloaded', new Headers())
+      },
+      {
+        maxRetries: 3,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+        ...(querySource ? { querySource } : {}),
+      },
+    )
+    try {
+      const step = await generator.next()
+      await generator.return(undefined as never)
+      return step.done ? 'refused' : 'retried'
+    } catch {
+      return 'refused'
+    }
+  }
+
+  test('drops a 529 raised by a source nobody is waiting on', async () => {
+    // During a capacity cascade every retry is 3-10x gateway amplification,
+    // and the user never sees a title/summary/suggestion fail.
+    for (const source of ['title_generation', 'suggestions', 'quota_probe']) {
+      expect(await decisionFor(source)).toBe('refused')
+    }
+  })
+
+  test('retries a 529 the user is blocked on', async () => {
+    for (const source of [
+      'repl_main_thread',
+      'agent:default',
+      'workflow',
+      'compact',
+      'auto_mode',
+    ]) {
+      expect(await decisionFor(source)).toBe('retried')
+    }
+  })
+
+  test('retries an untagged 529, conservatively', async () => {
+    expect(await decisionFor()).toBe('retried')
   })
 })
 

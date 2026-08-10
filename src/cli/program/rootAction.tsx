@@ -247,6 +247,19 @@ type RootActionHandler = Parameters<RootCommand['action']>[0];
 export const rootAction: RootActionHandler = async (prompt, options) => {
   profileCheckpoint('action_handler_start');
 
+  // Announce this session before anything long-lived starts, so a *different*
+  // session's deferred update never replaces the install tree while this one is
+  // still lazily importing chunks out of it. Every process registers, --print
+  // included: the point is to be visible to the sessions that do update.
+  // Attaching the installer itself is a separate, interactive-only decision
+  // further down (setLiveSessionExitHandler).
+  try {
+    const { registerLiveSession } = await import('src/services/autoUpdate/liveSessions.js');
+    await registerLiveSession();
+  } catch (error) {
+    logForDebugging(`liveSessions: startup registration failed: ${error}`);
+  }
+
   // --bare = one-switch minimal mode. Sets SIMPLE so all the existing
   // gates fire (CLAUDE.md, skills, hooks inside executeHooks, agent
   // dir-walk). Must be set before setup() / any of the gated work runs.
@@ -2127,21 +2140,26 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     return;
   }
 
-  // Announce this session so a *different* session's deferred update never
-  // replaces the install tree while this one is still lazily importing chunks
-  // out of it. Registered even when auto-updates are off for this session —
-  // the point is to be visible to the sessions that do update.
+  // Interactive sessions only (the --print path returned above): let this
+  // session be the one that installs a queued update on the way out. A --print
+  // run must never spawn an installer — they fire many times a minute in
+  // scripts, and each one exits into the same handoff.
   void import('src/services/autoUpdate/liveSessions.js')
-    .then(mod => mod.registerLiveSession())
+    .then(mod => {
+      mod.setLiveSessionExitHandler(async () => {
+        const { flushDeferredOccInstall } = await import('src/services/autoUpdate/deferredOccInstall.js');
+        await flushDeferredOccInstall();
+      });
+    })
     .catch(() => {
       // Updater wiring must never affect startup.
     });
 
-  // Interactive sessions only (the --print path returned above): schedule the
-  // silent background self-update — at most one check per session, delayed a
-  // few minutes past startup. The dynamic import keeps the update chain off
-  // the print fast path, and the service gates itself (autoUpdates config,
-  // DISABLE_AUTOUPDATER, global-install detection) and fails silently.
+  // Interactive sessions only: schedule the silent background self-update — at
+  // most one check per session, delayed a few minutes past startup. The dynamic
+  // import keeps the update chain off the print fast path, and the service
+  // gates itself (autoUpdates config, DISABLE_AUTOUPDATER, global-install
+  // detection) and fails silently.
   void import('src/services/autoUpdate/backgroundOccUpdate.js')
     .then(mod => mod.maybeScheduleBackgroundOccUpdate())
     .catch(() => {

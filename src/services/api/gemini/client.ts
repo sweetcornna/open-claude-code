@@ -46,8 +46,8 @@ class GeminiRequestError extends Error {
   readonly status: number
   readonly headers: Headers
 
-  constructor(message: string, response: Response) {
-    super(message)
+  constructor(message: string, response: Response, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause })
     this.name = 'GeminiRequestError'
     this.status = response.status
     this.headers = response.headers
@@ -221,17 +221,52 @@ export async function* streamGeminiGenerateContent(params: {
   })
 
   if (!response.ok) {
-    const body = await response
-      .text()
-      .catch(error => `unable to read response body: ${errorMessage(error)}`)
+    let cause: unknown
+    try {
+      const body = await response.text()
+      if (body.trim()) {
+        try {
+          const parsed = JSON.parse(body) as unknown
+          const streamError = geminiStreamError(parsed)
+          if (streamError) {
+            cause = streamError
+          } else {
+            const record = asRecord(parsed)
+            const nested = asRecord(record?.error) ?? record
+            const safe: Record<string, unknown> = {}
+            for (const key of [
+              'message',
+              'type',
+              'code',
+              'status',
+              'request_id',
+            ]) {
+              const value = nested?.[key]
+              if (typeof value === 'string' || typeof value === 'number') {
+                safe[key] = value
+              }
+            }
+            if (Object.keys(safe).length > 0) cause = safe
+          }
+        } catch {
+          // Never copy an arbitrary response body into a user-visible error.
+        }
+      }
+    } catch (error) {
+      cause = new Error(`Unable to read response body: ${errorMessage(error)}`)
+    }
     throw new GeminiRequestError(
-      `Gemini API request failed (${response.status} ${response.statusText}): ${body || 'empty response body'}`,
+      `Gemini API request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ''})`,
       response,
+      cause,
     )
   }
 
   if (!response.body) {
-    throw new Error('Gemini API returned no response body')
+    throw new GeminiStreamError('Gemini API returned no response body', {
+      retryable: true,
+      cause: undefined,
+    })
   }
 
   const reader = response.body.getReader()
@@ -252,8 +287,9 @@ export async function* streamGeminiGenerateContent(params: {
     try {
       parsed = JSON.parse(frame.data)
     } catch (error) {
-      throw new Error(
+      throw new GeminiStreamError(
         `${trailing ? 'Failed to parse trailing' : 'Failed to parse'} Gemini SSE payload: ${errorMessage(error)}`,
+        { retryable: true, cause: error },
       )
     }
     const streamError = geminiStreamError(parsed, frame.event)

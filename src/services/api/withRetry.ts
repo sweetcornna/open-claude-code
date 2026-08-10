@@ -151,31 +151,6 @@ function isStaleConnectionError(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Gateway/proxy wording seen in front of third-party providers. These never
- * reach the SDK as an `APIError` because the proxy answers with its own body
- * (sometimes even with a 200), so only the text is available.
- */
-const TRANSIENT_GATEWAY_MESSAGE_PATTERN = new RegExp(
-  [
-    'upstream request failed',
-    'upstream connect error',
-    'no healthy upstream',
-    'bad gateway',
-    'service unavailable',
-    'gateway time-?out',
-    'internal server error',
-    'temporarily unavailable',
-    'overloaded_error',
-    'server_error',
-    'try again later',
-  ].join('|'),
-  'i',
-)
-
-/** HTTP statuses worth another attempt. All other 4xx responses are permanent. */
-const TRANSIENT_HTTP_STATUSES = new Set([408, 409, 425, 429])
-
-/**
  * True when `error` is a transport-level blip that deserves a retry.
  *
  * Order matters: the abort check runs first (an aborted fetch surfaces as a
@@ -463,11 +438,8 @@ export async function* withRetry<T>(
         throw new CannotRetryError(error, retryContext)
       }
 
-      // Non-APIError used to bail here unconditionally, which meant a bare
-      // `TypeError: fetch failed` (Bun/undici transport failure, or a gateway
-      // body the SDK never classified) got zero retries while a first-party
-      // 500 got ten. Transient transport failures now take the same ladder;
-      // authentication and other permanent failures still fail immediately.
+      // Every API-boundary failure uses the shared default-retry classifier.
+      // Explicit abort/TLS/auth/billing/invalid-request signals still fail once.
       const isRetriableBareError =
         !(error instanceof APIError) && isTransientNetworkError(error)
       if (
@@ -853,93 +825,53 @@ async function recoverCredentialsForNextRequest(error: unknown): Promise<void> {
 }
 
 function shouldRetry(error: APIError): boolean {
-  // Never retry mock errors - they're from /mock-limits command for testing
-  if (isMockRateLimitError(error)) {
-    return false
-  }
+  if (isMockRateLimitError(error)) return false
 
-  // Persistent mode: 429/529 always retryable, bypass subscriber gates and
-  // x-should-retry header.
-  if (isPersistentRetryEnabled() && isTransientCapacityError(error)) {
-    return true
-  }
+  // This is a deterministic 400 whose next attempt uses a corrected max_tokens.
+  if (parseMaxTokensContextOverflowError(error)) return true
 
-  // The SDK sometimes loses the 529 status during streaming, so statusless
-  // overloaded errors are recoverable. An explicit permanent 4xx still wins.
-  if (
-    error.status === undefined &&
-    error.message?.includes('"type":"overloaded_error"')
-  ) {
-    return true
-  }
+  // Persistent capacity mode intentionally overrides the server's long-lived
+  // x-should-retry:false response and waits for the advertised reset window.
+  if (isPersistentRetryEnabled() && isTransientCapacityError(error)) return true
 
-  // Check for max tokens context overflow errors that we can handle
-  if (parseMaxTokensContextOverflowError(error)) {
-    return true
-  }
-
-  if (
-    error.status === undefined &&
-    TRANSIENT_GATEWAY_MESSAGE_PATTERN.test(error.message ?? '')
-  ) {
-    return true
-  }
-
-  // Authentication, permission, invalid-request, model-not-found, and every
-  // other permanent 4xx fail once even if a proxy sets x-should-retry:true.
-  if (
-    error.status !== undefined &&
-    error.status >= 400 &&
-    error.status < 500 &&
-    !TRANSIENT_HTTP_STATUSES.has(error.status)
-  ) {
-    return false
-  }
-
-  // Note this is not a standard header.
   const shouldRetryHeader = error.headers?.get('x-should-retry')
-
-  // If the server explicitly says whether or not to retry, obey.
-  // For Max and Pro users, should-retry is true, but in several hours, so we shouldn't.
-  // Enterprise users can retry because they typically use PAYG instead of rate limits.
-  if (
-    shouldRetryHeader === 'true' &&
-    (!isClaudeAISubscriber() || isEnterpriseSubscriber())
-  ) {
-    return true
-  }
-
-  // Ants can ignore x-should-retry: false for 5xx server errors only.
-  // For other status codes (401, 403, 400, 429, etc.), respect the header.
   if (shouldRetryHeader === 'false') {
     const is5xxError = error.status !== undefined && error.status >= 500
-    if (!(process.env.USER_TYPE === 'ant' && is5xxError)) {
-      return false
-    }
+    if (!(process.env.USER_TYPE === 'ant' && is5xxError)) return false
   }
 
-  if (error instanceof APIConnectionError) {
-    return true
-  }
+  if (error.status === 429 && !canOutwaitRateLimit(error)) return false
 
-  if (!error.status) return false
+  return isRetryableAPIError(error)
+}
 
-  // Retry on request timeouts.
-  if (error.status === 408) return true
+/**
+ * Whether a 429 can plausibly clear inside this retry ladder.
+ *
+ * A 429 is retryable *in principle* — that is what `isRetryableAPIError` says,
+ * and for a per-minute PAYG limit it is the right answer. Window-based
+ * subscription limits (the Max/Pro 5-hour window) are the exception: they clear
+ * hours from now, and every step of this ladder is clamped to
+ * {@link RETRY_AFTER_MAX_MS}. Retrying one is therefore guaranteed to 429 again,
+ * ten times over, and all it buys the user is ~10 minutes of countdown rows
+ * before the `5-hour limit reached` message they were always going to get.
+ *
+ * Note the message itself is not produced here: bailing throws `CannotRetryError`,
+ * `claude.ts` unwraps `.originalError`, and `errors.ts` renders the limit copy
+ * from the same headers read below. This gate only decides *when*.
+ *
+ * `CLAUDE_CODE_UNATTENDED_RETRY` never reaches this function — `shouldRetry`
+ * returns early for it — because waiting out a window is exactly its purpose.
+ */
+function canOutwaitRateLimit(error: APIError): boolean {
+  // Prefer the reset timestamp; a window-based limit always advertises one.
+  const resetDelayMs = getRateLimitResetDelayMs(error) ?? getRetryAfterMs(error)
+  if (resetDelayMs !== null) return resetDelayMs <= RETRY_AFTER_MAX_MS
 
-  // Retry on lock timeouts and Too Early responses.
-  if (error.status === 409 || error.status === 425) return true
-
-  // Retry on rate limits, but not for ClaudeAI Subscription users
-  // Enterprise users can retry because they typically use PAYG instead of rate limits
-  if (error.status === 429) {
-    return !isClaudeAISubscriber() || isEnterpriseSubscriber()
-  }
-
-  // Retry internal errors.
-  if (error.status && error.status >= 500) return true
-
-  return false
+  // No reset advertised. Subscription plans are windowed by nature, so their
+  // unlabelled 429s are assumed long; enterprise seats are typically PAYG and
+  // keep the ordinary short-limit behaviour.
+  return !isClaudeAISubscriber() || isEnterpriseSubscriber()
 }
 
 export function clampMaxRetries(

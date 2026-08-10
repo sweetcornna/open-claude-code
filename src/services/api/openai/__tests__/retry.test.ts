@@ -162,6 +162,83 @@ describe('retryOpenAIRequest', () => {
     expect(delays).toEqual([1000])
   })
 
+  test('gives up on a Retry-After longer than the ladder can wait', async () => {
+    // The regression: this used to clamp a 2-hour Retry-After down to 60s and
+    // retry anyway, so the request came back too early to succeed, ten times
+    // over — ten minutes of blocking before the same failure. Callers cannot
+    // always cancel out of that: findRelevantMemories and autoMode pass no
+    // AbortSignal.
+    let calls = 0
+    const delays: number[] = []
+
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          return requireSuccess(
+            new Response('rate limited', {
+              status: 429,
+              headers: { 'Retry-After': '7200' },
+            }),
+          )
+        },
+        {
+          signal: new AbortController().signal,
+          delay: async delayMs => {
+            delays.push(delayMs)
+          },
+        },
+      ),
+    ).rejects.toThrow('Responses API request failed (429)')
+
+    expect(calls).toBe(1)
+    expect(delays).toEqual([])
+  })
+
+  test('still waits out a Retry-After at the edge of the ceiling', async () => {
+    let calls = 0
+    const delays: number[] = []
+    await retryOpenAIRequest(
+      async () => {
+        calls++
+        return requireSuccess(
+          new Response(calls === 1 ? 'rate limited' : 'ok', {
+            status: calls === 1 ? 429 : 200,
+            headers: calls === 1 ? { 'Retry-After': '60' } : undefined,
+          }),
+        )
+      },
+      {
+        signal: new AbortController().signal,
+        delay: async delayMs => {
+          delays.push(delayMs)
+        },
+      },
+    )
+
+    expect(calls).toBe(2)
+    expect(delays).toEqual([60_000])
+  })
+
+  test('gives up on a long retry-after-ms too', async () => {
+    let calls = 0
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          throw new OpenAIRequestError('rate limited', {
+            retryable: true,
+            status: 429,
+            headers: new Headers({ 'retry-after-ms': '3600000' }),
+          })
+        },
+        { signal: new AbortController().signal, delay: noDelay },
+      ),
+    ).rejects.toThrow('rate limited')
+
+    expect(calls).toBe(1)
+  })
+
   test('caps the exponential backoff so late retries stay bounded', async () => {
     // Uncapped, 200 * 2^n spends its last three waits at ~26s, ~51s and ~102s —
     // nearly three minutes inside a single sleep on a ten-retry ladder whose
@@ -189,6 +266,35 @@ describe('retryOpenAIRequest', () => {
     expect(Math.max(...delays)).toBe(35_200)
     // The early rungs are untouched: 200ms, 400ms, 800ms...
     expect(delays.slice(0, 3)).toEqual([220, 440, 880])
+  })
+
+  test('retains only whitelisted response error fields', async () => {
+    const error = await createOpenAIResponseError(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: 'backend unavailable',
+            type: 'server_error',
+            code: 'upstream_failure',
+            request_id: 'req_123',
+            prompt: 'do not expose',
+          },
+        }),
+        { status: 503 },
+      ),
+      'Responses API',
+    )
+
+    expect(error.message).toBe(
+      'Responses API request failed (503): backend unavailable',
+    )
+    expect(error.message).not.toContain('do not expose')
+    expect(error.cause).toEqual({
+      message: 'backend unavailable',
+      type: 'server_error',
+      code: 'upstream_failure',
+      request_id: 'req_123',
+    })
   })
 
   test('does not retry a 400 response', async () => {

@@ -57,10 +57,9 @@ export type BackgroundOccUpdateDeps = {
   getCurrentVersion: () => string
   /** `signal` cancels the spawned `npm view` when the session is shutting down. */
   getLatestVersion: (signal?: AbortSignal) => Promise<string | null>
-  /** Queue the install for after this session exits. */
-  armInstall: (install: DeferredOccInstall) => void
+  /** Persist the install for whichever session exits last. */
+  armInstall: (install: DeferredOccInstall) => Promise<void>
   packageSpec: () => string
-  acquireLock: () => Promise<boolean>
   notify: (text: string) => void
   now: () => number
   claimUpdateCheck: ClaimCheck
@@ -89,9 +88,8 @@ export type BackgroundOccUpdateOutcome =
  * full flow through injected deps without process-global mock.module calls.
  */
 async function loadDefaultDeps(): Promise<BackgroundOccUpdateDeps> {
-  const [updateOcc, autoUpdater, config, doctor, privacy] = await Promise.all([
+  const [updateOcc, config, doctor, privacy] = await Promise.all([
     import('src/cli/updateOcc.js'),
-    import('src/utils/update/autoUpdater.js'),
     import('src/utils/config/config.js'),
     import('src/utils/runtime/doctorDiagnostic.js'),
     import('src/utils/auth/privacyLevel.js'),
@@ -106,7 +104,6 @@ async function loadDefaultDeps(): Promise<BackgroundOccUpdateDeps> {
     getLatestVersion: updateOcc.getLatestOccVersion,
     armInstall: armDeferredOccInstall,
     packageSpec: updateOcc.latestPackageSpec,
-    acquireLock: autoUpdater.acquireUpdateLock,
     notify: emitBackgroundUpdateNotification,
     now: Date.now,
     claimUpdateCheck: (checkedAt, minimumElapsedMs) => {
@@ -228,11 +225,10 @@ export async function runBackgroundOccUpdateOnce(
     // Queue only — installing now would delete the chunks this very session
     // still needs (deferredOccInstall.ts). Nothing is lost: a running process
     // could never have adopted the new version anyway.
-    d.armInstall({
+    await d.armInstall({
       pkgManager: eligibility.pkgManager,
       spec: d.packageSpec(),
       version: latestVersion,
-      acquireLock: d.acquireLock,
     })
     lastQueuedVersion = latestVersion
     d.notify(updateQueuedText(latestVersion))

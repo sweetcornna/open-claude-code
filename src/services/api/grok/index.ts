@@ -308,12 +308,11 @@ export async function* queryModelGrok(
       logForDebugging('[Grok] Request aborted by user')
       return
     }
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logForDebugging(`[Grok] Error: ${errorMessage}`, { level: 'error' })
+    logForDebugging('[Grok] API request failed', { level: 'error' })
     yield createAssistantAPIErrorMessageFromError({
-      content: `API Error: ${errorMessage}`,
       apiError: 'api_error',
       sourceError: error,
+      provider: 'Grok',
     })
   }
 }

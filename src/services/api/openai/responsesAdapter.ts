@@ -18,7 +18,10 @@ import {
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import { buildProviderResourceURL } from 'src/utils/network/providerUrl.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
-import { isRetryableAPIError } from '../retryClassification.js'
+import {
+  getAPIErrorDiagnostics,
+  isRetryableAPIError,
+} from '../retryClassification.js'
 import {
   createOpenAIResponseError,
   OpenAIRequestError,
@@ -868,7 +871,11 @@ export function _resetReasoningSummarySupportForTesting(): void {
  */
 function isReasoningSummaryRejection(error: unknown): boolean {
   if (!(error instanceof Error)) return false
-  const message = error.message.toLowerCase()
+  const details = getAPIErrorDiagnostics(error)
+  const message = [error.message, details.message, details.type, details.code]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
   if (!message.includes('summary')) return false
   return (
     message.includes('unknown parameter') ||

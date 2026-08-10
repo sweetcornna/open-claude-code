@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs'
-import type { UserMessage } from '../../../types/message.js'
-import { mergeUserMessageRun, mergeUserMessages } from '../merge.js'
+import type { Message, UserMessage } from '../../../types/message.js'
+import {
+  mergeUserMessageRun,
+  mergeUserMessages,
+  upsertMessageByUuid,
+} from '../merge.js'
 
 // Deterministic PRNG — Math.random would make failures unreproducible.
 function mulberry32(seed: number): () => number {
@@ -62,6 +66,59 @@ function randomRun(rand: () => number, length: number): UserMessage[] {
 function foldOracle(run: UserMessage[]): UserMessage {
   return run.reduce((acc, msg) => mergeUserMessages(acc, msg))
 }
+
+describe('upsertMessageByUuid', () => {
+  test('appends a message whose uuid is new', () => {
+    const original = makeUserMessage('original', false)
+    const incoming = makeUserMessage('incoming', false)
+    const messages: Message[] = [original]
+
+    const result = upsertMessageByUuid(messages, incoming)
+
+    expect(result).toEqual([original, incoming])
+    expect(messages).toEqual([original])
+  })
+
+  test('replaces a replayed message in place without duplicating its uuid', () => {
+    const original = makeUserMessage('before compaction', false)
+    const replayed = {
+      ...original,
+      message: { ...original.message, content: 'preserved after compaction' },
+    } as UserMessage
+    const trailing = makeUserMessage('trailing', false)
+
+    const result = upsertMessageByUuid([original, trailing], replayed)
+
+    expect(result).toEqual([replayed, trailing])
+    expect(
+      result.filter(message => message.uuid === original.uuid),
+    ).toHaveLength(1)
+  })
+
+  test('drops the payload the compaction replay is there to release', () => {
+    // `stripToolUseResults` re-emits messagesToKeep under their original uuids
+    // with `toolUseResult` removed, specifically to release large tool payloads
+    // from the heap. Swapping the object out is what makes the old one
+    // unreachable — keeping the richer entry would quietly undo that.
+    const withResult = Object.assign(makeUserMessage('tool output', false), {
+      toolUseResult: { stdout: 'x'.repeat(1024) },
+    })
+    const { toolUseResult: _dropped, ...stripped } = withResult
+
+    const result = upsertMessageByUuid([withResult], stripped as UserMessage)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).not.toBe(withResult)
+    expect(result[0]).not.toHaveProperty('toolUseResult')
+  })
+
+  test('returns the same array when the same message object is replayed', () => {
+    const message = makeUserMessage('same object', false)
+    const messages: Message[] = [message]
+
+    expect(upsertMessageByUuid(messages, message)).toBe(messages)
+  })
+})
 
 describe('mergeUserMessageRun ≡ pairwise fold (oracle)', () => {
   test('random runs: byte-identical output across sizes and seeds', () => {

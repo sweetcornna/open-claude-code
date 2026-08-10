@@ -216,11 +216,6 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     return sideQueryViaGemini(opts)
   }
 
-  const client = await getAnthropicClient({
-    maxRetries,
-    model,
-    source: 'side_query',
-  })
   const betas = [...getModelBetas(model)]
   // Add structured-outputs beta if using output_format and provider supports it
   if (
@@ -302,24 +297,34 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
           querySource: opts.querySource,
         })
 
+  const request = {
+    model: normalizedModel,
+    max_tokens,
+    system: systemBlocks,
+    messages,
+    ...(tools && { tools }),
+    ...(tool_choice && { tool_choice }),
+    ...(output_format && { output_config: { format: output_format } }),
+    ...(temperature !== undefined && { temperature }),
+    ...(stop_sequences && { stop_sequences }),
+    ...(thinkingConfig && { thinking: thinkingConfig }),
+    ...(betas.length > 0 && { betas }),
+    metadata: getAPIMetadata(),
+  }
+
+  const requestSignal = signal ?? new AbortController().signal
   let response: BetaMessage
   try {
-    response = await client.beta.messages.create(
-      {
-        model: normalizedModel,
-        max_tokens,
-        system: systemBlocks,
-        messages,
-        ...(tools && { tools }),
-        ...(tool_choice && { tool_choice }),
-        ...(output_format && { output_config: { format: output_format } }),
-        ...(temperature !== undefined && { temperature }),
-        ...(stop_sequences && { stop_sequences }),
-        ...(thinkingConfig && { thinking: thinkingConfig }),
-        ...(betas.length > 0 && { betas }),
-        metadata: getAPIMetadata(),
+    response = await retryOpenAIRequest(
+      async () => {
+        const client = await getAnthropicClient({
+          maxRetries: 0,
+          model,
+          source: 'side_query',
+        })
+        return client.beta.messages.create(request, { signal: requestSignal })
       },
-      { signal },
+      { signal: requestSignal, maxRetries },
     )
   } catch (error) {
     endTrace(

@@ -3,6 +3,7 @@ import { mkdir, readFile, unlink } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { occConfigDir, occConfigPath } from 'src/config/paths.js'
+import { NonRetryableError } from 'src/services/api/retryClassification.js'
 import { sleep } from 'src/utils/process/sleep.js'
 import { writePrivateFileAtomic } from 'src/utils/secureStorage/atomicWrite.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
@@ -405,8 +406,11 @@ export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
     }
   }
   if (!tokens) {
-    throw new Error(
+    // No credentials on disk: nothing was sent, and re-reading an absent file
+    // ten times only delays the /login prompt. See NonRetryableError.
+    throw new NonRetryableError(
       'ChatGPT account is not logged in. Run /login and select ChatGPT account with subscription.',
+      { category: 'authentication_failed' },
     )
   }
   const expiresAt = getTokenExpiryMs(tokens.accessToken)

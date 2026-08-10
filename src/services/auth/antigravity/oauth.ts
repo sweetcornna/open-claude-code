@@ -19,6 +19,7 @@
  * onboarding wizard, /search-setting, and the Gemini request path alike.
  */
 
+import { NonRetryableError } from 'src/services/api/retryClassification.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import {
   errorMessageWithCause,
@@ -394,8 +395,13 @@ export async function discoverAntigravityProject(params: {
     ...(params.signal ? { signal: params.signal } : {}),
   })
   if (!onboarded) {
-    throw new Error(
+    // Onboarding completed and still produced no project — the account is not
+    // provisioned for Antigravity. Only a human action in the Antigravity app
+    // changes that, so this must not enter the retry ladder. The prose ends in
+    // "then retry", which is advice for the user, not for the client.
+    throw new NonRetryableError(
       'Antigravity project discovery returned no project. Open Antigravity once with this Google account, then retry.',
+      { category: 'invalid_request' },
     )
   }
   return onboarded

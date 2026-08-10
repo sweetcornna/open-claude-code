@@ -9,6 +9,60 @@ import {
   recordTranscript,
 } from '../utils/sessionStorage.js'
 
+export type TranscriptWritePlan = {
+  wasFirstRender: boolean
+  isIncremental: boolean
+  isSameHeadShrink: boolean
+  /** Where the slice handed to recordTranscript starts. */
+  startIndex: number
+  /** Nothing new to write; the effect returns without touching the transcript. */
+  skip: boolean
+}
+
+/**
+ * Classify a render against the last one that was recorded. Pure, and split out
+ * so the cases below can be pinned without a React renderer.
+ *
+ * `skip` covers in-place replacement: the array is the same length with the
+ * same head, so no message is new. Two producers rely on that and both are
+ * correct to write nothing:
+ *
+ *   - ephemeral progress ticks (bash chunks), which are not loggable at all;
+ *   - compaction replaying `messagesToKeep` with `toolUseResult` stripped
+ *     (see `upsertMessageByUuid`). The transcript already holds those uuids,
+ *     with the payload the in-memory copy just dropped, and `recordTranscript`
+ *     would skip them anyway.
+ */
+export function planTranscriptWrite(state: {
+  length: number
+  firstUuid: UUID | undefined
+  recordedLength: number
+  recordedFirstUuid: UUID | undefined
+}): TranscriptWritePlan {
+  // First-render: recordedFirstUuid is undefined. Compaction: first uuid changes.
+  // Both are !isIncremental, but first-render sync-walk is safe (no messagesToKeep).
+  const wasFirstRender = state.recordedFirstUuid === undefined
+  const sameHead =
+    state.firstUuid !== undefined &&
+    !wasFirstRender &&
+    state.firstUuid === state.recordedFirstUuid
+  const isIncremental = sameHead && state.recordedLength <= state.length
+  // Same-head shrink: tombstone filter, rewind, snip, partial-compact.
+  // Distinguished from compaction (first uuid changes) because the tail
+  // is either an existing on-disk message or a fresh message that this
+  // same effect's recordTranscript(fullArray) will write — see sync-walk
+  // guard in the hook below.
+  const isSameHeadShrink = sameHead && state.recordedLength > state.length
+  const startIndex = isIncremental ? state.recordedLength : 0
+  return {
+    wasFirstRender,
+    isIncremental,
+    isSameHeadShrink,
+    startIndex,
+    skip: startIndex === state.length,
+  }
+}
+
 /**
  * Hook that logs messages to the transcript
  * conversation ID that only changes when a new conversation is started.
@@ -35,29 +89,19 @@ export function useLogMessages(messages: Message[], ignore: boolean = false) {
     if (ignore) return
 
     const currentFirstUuid = messages[0]?.uuid as UUID | undefined
-    const prevLength = lastRecordedLengthRef.current
-
-    // First-render: firstMessageUuidRef is undefined. Compaction: first uuid changes.
-    // Both are !isIncremental, but first-render sync-walk is safe (no messagesToKeep).
-    const wasFirstRender = firstMessageUuidRef.current === undefined
-    const isIncremental =
-      currentFirstUuid !== undefined &&
-      !wasFirstRender &&
-      currentFirstUuid === firstMessageUuidRef.current &&
-      prevLength <= messages.length
-    // Same-head shrink: tombstone filter, rewind, snip, partial-compact.
-    // Distinguished from compaction (first uuid changes) because the tail
-    // is either an existing on-disk message or a fresh message that this
-    // same effect's recordTranscript(fullArray) will write — see sync-walk
-    // guard below.
-    const isSameHeadShrink =
-      currentFirstUuid !== undefined &&
-      !wasFirstRender &&
-      currentFirstUuid === firstMessageUuidRef.current &&
-      prevLength > messages.length
-
-    const startIndex = isIncremental ? prevLength : 0
-    if (startIndex === messages.length) return
+    const {
+      wasFirstRender,
+      isIncremental,
+      isSameHeadShrink,
+      startIndex,
+      skip,
+    } = planTranscriptWrite({
+      length: messages.length,
+      firstUuid: currentFirstUuid,
+      recordedLength: lastRecordedLengthRef.current,
+      recordedFirstUuid: firstMessageUuidRef.current,
+    })
+    if (skip) return
 
     // Full array on first call + after compaction: recordTranscript's own
     // O(n) dedup loop handles messagesToKeep interleaving correctly there.

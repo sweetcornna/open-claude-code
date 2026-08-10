@@ -73,11 +73,10 @@ function makeDeps(overrides: Partial<Deps> = {}): {
       calls.latestChecks++
       return '1.1.0'
     },
-    armInstall: install => {
+    armInstall: async install => {
       calls.queued.push(install)
     },
     packageSpec: () => '@scope/pkg@latest',
-    acquireLock: async () => true,
     notify: text => {
       calls.notified.push(text)
     },
@@ -134,7 +133,6 @@ describe('runBackgroundOccUpdateOnce', () => {
         pkgManager: 'npm',
         spec: '@scope/pkg@latest',
         version: '1.1.0',
-        acquireLock: deps.acquireLock,
       },
     ])
     expect(calls.notified).toEqual(['✓ Update v1.1.0 ready · installs on exit'])
@@ -270,22 +268,12 @@ describe('runBackgroundOccUpdateOnce', () => {
     expect(calls.queued).toEqual([])
   })
 
-  test('the update lock is deferred to flush time, not taken during the check', async () => {
-    // Holding the lock for the whole session would be wrong: the install now
-    // happens after exit, so the lock belongs to that moment (see
-    // deferredOccInstall). The check itself must never block on it.
-    let lockCalls = 0
-    const { deps, calls } = makeDeps({
-      acquireLock: async () => {
-        lockCalls++
-        return false
-      },
-    })
+  test('queues without taking the exit-time update lock', async () => {
+    const { deps, calls } = makeDeps()
     const outcome = await updater.runBackgroundOccUpdateOnce(deps)
 
     expect(outcome).toEqual({ status: 'queued', version: '1.1.0' })
-    expect(lockCalls).toBe(0)
-    expect(calls.queued[0]?.acquireLock).toBe(deps.acquireLock)
+    expect(calls.queued).toHaveLength(1)
   })
 
   test('a throwing dependency yields error status and never throws', async () => {

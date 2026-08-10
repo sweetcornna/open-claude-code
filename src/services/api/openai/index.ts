@@ -652,12 +652,11 @@ export async function* queryModelOpenAI(
       logForDebugging('[OpenAI] Request aborted by user')
       return
     }
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logForDebugging(`[OpenAI] Error: ${errorMessage}`, { level: 'error' })
+    logForDebugging('[OpenAI] API request failed', { level: 'error' })
     yield createAssistantAPIErrorMessageFromError({
-      content: `API Error: ${errorMessage}`,
       apiError: 'api_error',
       sourceError: error,
+      provider: 'OpenAI',
     })
   }
 }
