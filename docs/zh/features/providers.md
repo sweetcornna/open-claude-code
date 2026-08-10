@@ -200,11 +200,13 @@ thinking 关闭时不发（此时它不控制任何东西，这也顺带让 `max
 
 ## 七、登出会清掉什么
 
-`/logout`（与 `occ logout`）重置**整个账户面**，不区分 OAuth 还是 API key：Claude OAuth token、ChatGPT / Antigravity 的 OAuth 凭据文件、secure storage，以及 settings.env 与 `~/.occ.json` 里全部 provider 键（`ALL_PROFILE_ENV_KEYS` + `CLAUDE_CODE_OAUTH_TOKEN`），`modelType` 一并回到未设置；当前进程的 `process.env` 同步删除。
+`/logout`（与 `occ logout`）重置**整个账户面**，不区分 OAuth 还是 API key：secure storage 里的 Claude OAuth 记录（`claudeAiOauth`）、ChatGPT / Antigravity 的 OAuth 凭据文件，以及 settings.env 与 `~/.occ.json` 里全部 provider 键（`ALL_PROFILE_ENV_KEYS` + `CLAUDE_CODE_OAUTH_TOKEN`），`modelType` 一并回到未设置；当前进程的 `process.env` 同步删除，DeepSeek 的内存镜像同时释放。两个入口语义一致：都会把 `hasCompletedOnboarding` 归零，下次启动重新走首启向导。
 
-早期版本把第三方 key 当"配置而非登录态"保留，结果是非 Claude 用户登出后下一轮请求照旧打同一个端点、用同一把 key —— 等于没登出。
+早期版本把第三方 key 当"配置而非登录态"保留，结果是非 Claude 用户登出后下一轮请求照旧打同一个端点、用同一把 key —— 等于没登出。更糟的是那些键会在下次启动被重新灌回 `process.env`，`isAnthropicAuthEnabled()` 于是判定这是第三方会话，向导连登录步骤都不再出现 —— 登出了，也没法再登回来。
 
-**保留的**：`/provider save` 存下的档案本身（只清 active 指针），所以 `/provider use <name>` 可以一键恢复；MCP、hooks、主题等与账户无关的设置不受影响。登录（`installOAuthTokens`）内部也会清一次旧状态，但**不**动 provider 配置 —— 登录不该顺手删掉用户的端点设置。
+**保留的**：secure storage 里其他凭据家族 —— MCP 的 OAuth token 与 plugin secrets **不受影响**（登出只移除 `claudeAiOauth` 这一条，不是清空整个存储）；`/provider save` 存下的档案本身（只清 active 指针），所以 `/provider use <name>` 可以一键恢复；MCP、hooks、主题、`/search-setting` 的搜索源开关等与账户无关的设置不受影响。登录（`installOAuthTokens`）**不**调用登出逻辑 —— 登录不该顺手删掉用户的端点设置。
+
+同时清空的还有 `customApiKeyResponses` 的 `approved` 与 `rejected` 两份名单。`rejected` 必须一起清：CLI 里没有别的地方能清它，而进了这份名单的 key 会被永久拒绝 —— "Detected a custom API key" 对话框只对状态为「新」的 key 弹出，所以一次拒绝（或一次取消，取消按 No 计）就等于再也无法接受那把 key。
 
 ## 八、已知限制
 
