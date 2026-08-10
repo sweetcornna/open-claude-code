@@ -170,5 +170,10 @@ describe('computeConfirmOutcome', () => {
 test('常量字符串', () => {
   expect(CANCEL_MESSAGE).toBe('Effort unchanged.')
   expect(ULTRACODE_ON_MESSAGE).toContain('Ultracode ON')
-  expect(ULTRACODE_OFF_MESSAGE).toContain('/ultracode <context>')
+  // `/ultracode` is a knowledge-only skill — it loads the playbook and starts
+  // nothing. The old copy promised "/ultracode <context> still starts a
+  // one-off workflow", which is a run the command cannot launch.
+  expect(ULTRACODE_OFF_MESSAGE).toContain('Ultracode off')
+  expect(ULTRACODE_OFF_MESSAGE).toContain('one-off opt-in')
+  expect(ULTRACODE_OFF_MESSAGE).not.toContain('starts a one-off workflow')
 })

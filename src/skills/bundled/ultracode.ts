@@ -10,6 +10,13 @@ import { registerBundledSkill } from '../bundledSkills.js'
  * fan-out and verification, and how to keep runs deterministic and resumable.
  *
  * General-purpose skill (not ant-only); available to all users.
+ *
+ * Listed to the model only while ultracode mode is on (see `listWhen` below).
+ * Its whenToUse is active encouragement to fan out dozens of agents, and the
+ * skill listing is injected into every session — unlisting it keeps that
+ * nudge out of sessions that never asked for multi-agent orchestration. The
+ * skill stays registered either way, so `/ultracode` remains available as an
+ * explicit one-off opt-in.
  */
 const ULTRACODE_PROMPT = `# /ultracode — Workflow Orchestration Playbook
 
@@ -19,8 +26,7 @@ A workflow structures work across many agents — to be comprehensive (decompose
 
 ONLY call this tool when the user has explicitly opted into multi-agent orchestration. Workflows can spawn dozens of agents and consume a large amount of tokens; the user must request that scale, not have it inferred. Explicit opt-in means one of:
 
-- The user included the keyword "ultracode" in their prompt (you'll see a system-reminder confirming it).
-- Ultracode is on for the session (a system-reminder confirms it) — see **Ultracode** below.
+- Ultracode mode is on for the session — the user turns it on from the \`/effort\` panel or with \`/effort ultracode\`, and while it is on a system-reminder confirms it on every human turn. See **Ultracode** below.
 - The user directly asked you to run a workflow or use multi-agent orchestration in their own words ("use a workflow", "run a workflow", "fan out agents", "orchestrate this with subagents"). The ask must be in the user's words — a task that would merely benefit from a workflow does not count.
 - The user invoked a skill or slash command whose instructions tell you to call Workflow.
 - The user asked you to run a specific named or saved workflow.
@@ -39,9 +45,11 @@ Common single-phase workflows you can chain across turns:
 
 For larger work, run several in sequence — read each result before deciding the next phase. You stay in the loop; each workflow is one well-scoped fan-out.
 
-**Opt-in is harness-injected, not repo-controlled.** The "ultracode is on for the session" system-reminder is produced by the harness (claude.ai/client), not by this skill or any repo state. This skill is knowledge-only — it injects the playbook and toggles nothing. There is no in-repo feature flag, env var, or effort level for ultracode; do not add one. The Workflow tool is compiled in via the build-time WORKFLOW_SCRIPTS feature flag and exposes no per-session runtime gate.
+**Where the switch lives.** Ultracode mode is a session-scoped boolean, \`AppState.ultracodeMode\`, toggled from the \`/effort\` panel or with \`/effort ultracode\`. It is in-memory only: it is never persisted, and there is no env var and no build-time feature flag for it. It is also **not an effort level** — it is orthogonal to low…max and must never be added to \`EFFORT_LEVELS\`. This skill is knowledge-only: it injects the playbook and toggles nothing. The Workflow tool itself is compiled in via the build-time WORKFLOW_SCRIPTS feature flag and exposes no per-session runtime gate.
 
-**Ultracode.** When a system-reminder confirms ultracode is on, that opt-in is standing: author and run a workflow for every substantive task by default. The goal is the most exhaustive, correct answer you can produce — token cost is not a constraint. For multi-phase work (understand → design → implement → review), that often means several workflows in sequence — one per phase — so you stay in the loop between them. The quality patterns below (adversarial verify, multi-modal sweep, completeness critic, loop-until-dry) are the tools; pick what fits the task. Lean toward orchestrating with workflows and adversarially verifying your findings — unless the work is trivial or already verified. Solo only on conversational turns or trivial mechanical edits. When a reminder says ultracode is off, revert to the opt-in rule above.
+**Ultracode.** Act in standing mode ONLY when this turn's context actually contains a system-reminder saying ultracode is ON. When it does, the opt-in is standing: author and run a workflow for every substantive task by default. The goal is the most exhaustive, correct answer you can produce — token cost is not a constraint. For multi-phase work (understand → design → implement → review), that often means several workflows in sequence — one per phase — so you stay in the loop between them. The quality patterns below (adversarial verify, multi-modal sweep, completeness critic, loop-until-dry) are the tools; pick what fits the task. Lean toward orchestrating with workflows and adversarially verifying your findings — unless the work is trivial or already verified. Solo only on conversational turns or trivial mechanical edits.
+
+If you are reading this playbook and no such reminder is present, ultracode mode is OFF. Loading this skill is then a one-off opt-in scoped to the current task only — orchestrate that task, and once it is done revert to the opt-in rule above (ask before spending another fan-out).
 
 Pass the script inline via \`script\` — do not Write it to a file first. Every invocation automatically persists its script to a file under the session directory and returns the path in the tool result. To iterate on a workflow, edit that file with Write/Edit and re-invoke Workflow with \`{scriptPath: "<path>"}\` instead of resending the full script.
 
@@ -229,6 +237,10 @@ export function registerUltracodeSkill(): void {
     whenToUse:
       'When a task can be decomposed or parallelized, needs multi-perspective confidence (e.g. find then adversarially verify), exceeds a single context (large migrations, broad audits, long-tail enumeration), or needs resume/auditability — orchestrate multiple subagents with the Workflow tool.',
     userInvocable: true,
+    // Listing-only gate, re-evaluated every turn so a mid-session toggle takes
+    // effect. NOT isEnabled: unlisting must not cost the user the ability to
+    // type /ultracode while the mode is off.
+    listWhen: context => context.getAppState().ultracodeMode === true,
     async getPromptForCommand(args) {
       let prompt = ULTRACODE_PROMPT
       if (args) {

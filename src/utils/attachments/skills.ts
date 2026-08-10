@@ -125,6 +125,25 @@ export function filterToBundledAndMcp(commands: Command[]): Command[] {
   return filtered
 }
 
+/**
+ * Drop skills whose per-turn `listWhen` predicate says they don't belong in
+ * this turn's listing (see CommandBase.listWhen).
+ *
+ * Evaluated here rather than at registration because the state these
+ * predicates read is session-scoped and togglable mid-conversation —
+ * `getSkillToolCommands` is memoized per cwd, so anything decided there would
+ * be frozen for the life of the process.
+ *
+ * A skill filtered out is also never added to `sentSkillNames`, so turning its
+ * gate on later announces it as a normal dynamic addition.
+ */
+export function filterByListPredicate(
+  commands: Command[],
+  toolUseContext: ToolUseContext,
+): Command[] {
+  return commands.filter(cmd => cmd.listWhen?.(toolUseContext) ?? true)
+}
+
 export async function getSkillListingAttachments(
   toolUseContext: ToolUseContext,
 ): Promise<Attachment[]> {
@@ -144,10 +163,12 @@ export async function getSkillListingAttachments(
   const mcpSkills = getMcpSkillCommands(
     toolUseContext.getAppState().mcp.commands,
   )
-  let allCommands =
+  let allCommands = filterByListPredicate(
     mcpSkills.length > 0
       ? uniqBy([...localCommands, ...mcpSkills], 'name')
-      : localCommands
+      : localCommands,
+    toolUseContext,
+  )
 
   // When skill search is active, filter to bundled + MCP instead of full
   // suppression. Resolves the turn-0 gap: main thread gets turn-0 discovery

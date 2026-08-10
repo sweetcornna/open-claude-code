@@ -23,6 +23,12 @@ export type BundledSkillDefinition = {
   disableModelInvocation?: boolean
   userInvocable?: boolean
   isEnabled?: () => boolean
+  /**
+   * Per-turn predicate for the model-facing skill listing (see
+   * CommandBase.listWhen). Omit unless the skill should stay registered and
+   * user-invocable while being hidden from the listing.
+   */
+  listWhen?: (context: ToolUseContext) => boolean
   hooks?: HooksSettings
   context?: 'inline' | 'fork'
   agent?: string
@@ -92,6 +98,7 @@ export function registerBundledSkill(definition: BundledSkillDefinition): void {
     context: definition.context,
     agent: definition.agent,
     isEnabled: definition.isEnabled,
+    listWhen: definition.listWhen,
     isHidden: !(definition.userInvocable ?? true),
     progressMessage: 'running',
     getPromptForCommand,

@@ -109,7 +109,7 @@ export const ULTRACODE_ON_MESSAGE =
   'Ultracode ON for this session — substantive tasks are orchestrated as multi-agent workflows by default. Select ultracode again to turn it off.'
 
 export const ULTRACODE_OFF_MESSAGE =
-  'Ultracode off — back to normal single-agent behavior. /ultracode <context> still starts a one-off workflow.'
+  'Ultracode off — back to normal single-agent behavior. /ultracode still loads the orchestration playbook as a one-off opt-in for a single task.'
 
 export const CANCEL_MESSAGE = 'Effort unchanged.'
 

@@ -86,6 +86,8 @@ function buildWorkflowToolPrompt(opts: {
   const d = opts.defaultMaxConcurrency
   return `Use the Workflow tool to execute, inspect, or cancel workflow runs. operation "run" is the backward-compatible default; its script runs in the background and returns a run_id immediately. Use operation "status" (alias "query") with runId to inspect live or persisted terminal progress. Use operation "cancel" with runId to cancel the whole run, or add agentId to cancel exactly one active child agent.
 
+Run requires an explicit opt-in. A run can fan out dozens of agents and spend a large number of tokens, so the user has to ask for that scale — it is never inferred from the task. Opt-in means one of: (a) this turn's context contains a system-reminder saying ultracode mode is ON; (b) the user asked for a workflow or multi-agent orchestration in their own words ("use a workflow", "fan out agents", "orchestrate this with subagents"), or named a saved workflow to run; (c) the user invoked a skill or slash command whose instructions tell you to call Workflow — /ultracode is that skill, and it carries the full playbook and quality patterns. With none of those present, do not call run, even when the task looks like a good fit for parallelism: use the Agent tool for individual subagents, or say what a workflow would do and ask the user first. status and cancel need no opt-in.
+
 For run, provide the script inline via "script", or reference a named workflow via "name" (resolved from ${opts.workflowDir}/), or an existing file via "scriptPath". Pass "args" as a real JSON value (object/array/string), not a stringified string. Do not send script fields with status/query/cancel.
 
 Use "resumeFromRunId" to resume a prior run. Omit "resumePolicy" (or use scope "checkpoint") for the existing behavior: completed calls replay and dead/incomplete calls rerun. scope "all" reruns every call. scope "range" and "agents" rerun only selected completed calls while replaying the rest. Agent IDs are the global 0-based sequence shown in workflow progress, including nested workflows.
@@ -99,7 +101,7 @@ Script execution model (common pitfalls — getting these wrong is the #1 cause 
 - Do NOT use TS type annotations, \`interface\`, \`enum\`, \`as\`, or generics — the engine does not transpile, so even a .ts file with type syntax fails to parse.
 - Keep EXACTLY ONE \`export const meta = {...}\` (plain literal) and remove every other \`export\` / \`export default\`.
 - Return the result with a top-level \`return\`.
-Prefer .js / .mjs. See /ultracode for the full playbook and quality patterns.`
+Prefer .js / .mjs.`
 }
 
 export type WorkflowToolOptions = {
@@ -120,10 +122,13 @@ export function createWorkflowTool(
   return {
     name: WORKFLOW_TOOL_NAME,
     inputSchema: workflowInputSchema,
-    // No per-session runtime opt-in gate here: the "ultracode is on for the
-    // session" signal is injected by the harness (claude.ai/client), not held
-    // in any repo state. This tool is compiled in/out via feature('WORKFLOW_SCRIPTS')
-    // in src/tools.ts; beyond that it is always enabled when present.
+    // No per-session runtime opt-in gate here, deliberately. The opt-in signal
+    // (AppState.ultracodeMode on the host side, surfaced as a per-turn
+    // system-reminder) is session state that can flip mid-conversation, while
+    // this descriptor's prompt lands in the cached tool block — gating it here
+    // would invalidate the prompt cache on every toggle. The constraint is
+    // stated in the prompt instead; see buildWorkflowToolPrompt. Compiled
+    // in/out via feature('WORKFLOW_SCRIPTS') in src/tools.ts.
     isEnabled: () => true,
     isReadOnly: input =>
       input.operation === 'status' || input.operation === 'query',

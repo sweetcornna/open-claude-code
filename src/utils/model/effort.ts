@@ -29,9 +29,11 @@ import {
 export type { EffortLevel }
 
 // NOTE: 'ultracode' is NOT an effort level. It is a session-scoped multi-agent
-// orchestration opt-in injected by the harness (claude.ai/client) as a
-// system-reminder, orthogonal to the effort parameter. EffortLevel / EffortValue
-// must never include 'ultracode'; /effort only accepts the levels below.
+// orchestration opt-in held in AppState.ultracodeMode (toggled from the /effort
+// panel or `/effort ultracode`, never persisted) and surfaced to the model as a
+// per-human-turn system-reminder. Orthogonal to the effort parameter:
+// EffortLevel / EffortValue must never include 'ultracode', and the /effort
+// levels below are the only values the parameter itself accepts.
 export const EFFORT_LEVELS = [
   'low',
   'medium',

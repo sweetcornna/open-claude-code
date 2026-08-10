@@ -203,6 +203,17 @@ export type CommandBase = {
   isEnabled?: () => boolean
   /** Defaults to false. Only set when the command should be hidden from typeahead/help. */
   isHidden?: boolean
+  /**
+   * Per-turn predicate for the model-facing "available skills" listing.
+   * Defaults to always-listed. Re-evaluated on every attachment pass, so a
+   * session-scoped toggle (e.g. AppState.ultracodeMode) takes effect mid-
+   * conversation rather than being frozen at registration time.
+   *
+   * Listing only — NOT invocability. The command stays in the registry, so
+   * `/name` and an explicit Skill tool call still work while it is unlisted.
+   * Use `isEnabled` when the command should be unavailable outright.
+   */
+  listWhen?: (context: ToolUseContext) => boolean
   name: string
   aliases?: string[]
   isMcp?: boolean

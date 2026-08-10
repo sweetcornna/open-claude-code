@@ -7,7 +7,6 @@ import { registerRememberSkill } from './remember.js'
 import { registerSimplifySkill } from './simplify.js'
 import { registerUseArtifactsSkill } from './useArtifacts.js'
 import { registerSkillifySkill } from './skillify.js'
-import { registerUltracodeSkill } from './ultracode.js'
 import { registerCronDeleteSkill, registerCronListSkill } from './cronManage.js'
 import { registerLoopSkill } from './loop.js'
 import { registerDreamSkill } from './dream.js'
@@ -34,7 +33,15 @@ export function initBundledSkills(): void {
   registerSimplifySkill()
   registerUseArtifactsSkill()
   registerBatchSkill()
-  registerUltracodeSkill()
+  if (feature('WORKFLOW_SCRIPTS')) {
+    // The whole skill is a manual for the Workflow tool. With WORKFLOW_SCRIPTS
+    // compiled out that tool does not exist, so registering it would advertise
+    // and document a tool the model cannot call.
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { registerUltracodeSkill } = require('./ultracode.js')
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    registerUltracodeSkill()
+  }
   registerLoopSkill()
   registerCronListSkill()
   registerCronDeleteSkill()

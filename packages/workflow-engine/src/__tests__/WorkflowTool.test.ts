@@ -430,6 +430,27 @@ test('prompt states the real default concurrency + AskUserQuestion guidance', as
   expect(p).toMatch(/AskUserQuestion/i)
 })
 
+test('prompt states the run opt-in gate and its three routes', async () => {
+  // isEnabled() is unconditionally true and the prompt sits in the cached tool
+  // block, so the opt-in constraint can only live in this text. Without it the
+  // model sees a freely callable tool that fans out dozens of agents.
+  const { ports } = mockPorts('/tmp', new Map())
+  const p = await createWorkflowTool(ports).prompt()
+
+  expect(p).toContain('Run requires an explicit opt-in')
+  // (a) session mode, (b) the user's own words, (c) a skill that says to.
+  expect(p).toContain('ultracode mode is ON')
+  expect(p).toContain('in their own words')
+  expect(p).toContain('/ultracode')
+  expect(p).toContain('do not call run')
+  // Read-only operations must stay reachable without an opt-in.
+  expect(p).toContain('status and cancel need no opt-in')
+  // The /ultracode pointer is now one opt-in route, not a standing suggestion.
+  expect(p).not.toContain(
+    'See /ultracode for the full playbook and quality patterns',
+  )
+})
+
 test('defaultMaxConcurrency fills an omitted maxConcurrency; an explicit input still wins', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-mc-'))
   try {

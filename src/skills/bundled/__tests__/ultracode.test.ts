@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import type { PromptCommand } from '../../../types/command.js'
+import type { ToolUseContext } from '../../../Tool.js'
 import { clearBundledSkills, getBundledSkills } from '../../bundledSkills.js'
 import {
   DEFAULT_MAX_CONCURRENCY,
@@ -12,6 +13,14 @@ import { registerUltracodeSkill } from '../ultracode.js'
 // variant. Narrow via type assertion once we've confirmed type === 'prompt'.
 function asPrompt(c: { type: string }): PromptCommand {
   return c as unknown as PromptCommand
+}
+
+// listWhen only reads getAppState().ultracodeMode; the rest of ToolUseContext
+// is irrelevant to it.
+function appStateCtx(ultracodeMode: boolean | undefined): ToolUseContext {
+  return {
+    getAppState: () => ({ ultracodeMode }),
+  } as unknown as ToolUseContext
 }
 
 // bundledSkills is a process-global registry (per CLAUDE.md mock/state rules,
@@ -51,10 +60,9 @@ describe('registerUltracodeSkill', () => {
     expect(blocks[0]!.type).toBe('text')
 
     const text = (blocks[0] as { type: 'text'; text: string }).text
-    // Title + opt-in rule + harness-injection note
+    // Title + opt-in rule
     expect(text).toContain('Workflow Orchestration Playbook')
     expect(text).toContain('explicitly opted into multi-agent orchestration')
-    expect(text).toContain('harness')
     // Orchestration primitives
     expect(text).toContain('Script body hooks')
     expect(text).toContain('parallel')
@@ -67,6 +75,87 @@ describe('registerUltracodeSkill', () => {
     expect(text).toContain('Quality patterns')
     expect(text).toContain('resumeFromRunId')
     expect(text).toContain('4096')
+  })
+
+  test('describes the real opt-in mechanism, not a keyword detector or a harness injection', async () => {
+    // The playbook used to claim a "ultracode" keyword in the user's prompt
+    // produces a system-reminder, and that the reminder comes from the
+    // claude.ai harness. Neither exists here: the only switch is the
+    // session-scoped AppState.ultracodeMode toggled from /effort. Describing a
+    // detector that does not exist tells the model to expect a signal that
+    // never arrives.
+    clearBundledSkills()
+    registerUltracodeSkill()
+    const ultracode = getBundledSkills().find(s => s.name === 'ultracode')!
+    const blocks = await asPrompt(ultracode).getPromptForCommand(
+      '',
+      {} as never,
+    )
+    const text = (blocks[0] as { type: 'text'; text: string }).text
+
+    expect(text).not.toContain('keyword')
+    expect(text).not.toContain('harness-injected')
+    expect(text).not.toContain('claude.ai/client')
+
+    expect(text).toContain('/effort ultracode')
+    expect(text).toContain('AppState.ultracodeMode')
+    // The invariant survives the correction: still not an effort level.
+    expect(text).toContain('EFFORT_LEVELS')
+  })
+
+  test('standing mode is conditioned on the reminder, and its absence means one-off', async () => {
+    // Loading the playbook must not by itself put the model into standing
+    // orchestrate-everything mode — that is what the ON reminder is for.
+    clearBundledSkills()
+    registerUltracodeSkill()
+    const ultracode = getBundledSkills().find(s => s.name === 'ultracode')!
+    const blocks = await asPrompt(ultracode).getPromptForCommand(
+      '',
+      {} as never,
+    )
+    const text = (blocks[0] as { type: 'text'; text: string }).text
+
+    expect(text).toContain(
+      "Act in standing mode ONLY when this turn's context actually contains a system-reminder saying ultracode is ON",
+    )
+    expect(text).toContain('no such reminder is present, ultracode mode is OFF')
+    expect(text).toContain('one-off opt-in scoped to the current task')
+  })
+
+  test('listWhen hides the skill from the listing unless ultracode mode is on', () => {
+    clearBundledSkills()
+    registerUltracodeSkill()
+    const ultracode = getBundledSkills().find(s => s.name === 'ultracode')!
+
+    expect(ultracode.listWhen).toBeDefined()
+    expect(ultracode.listWhen!(appStateCtx(true))).toBe(true)
+    expect(ultracode.listWhen!(appStateCtx(false))).toBe(false)
+    expect(ultracode.listWhen!(appStateCtx(undefined))).toBe(false)
+  })
+
+  test('unlisting is listing-only: the skill stays invocable with the mode off', async () => {
+    // Regression guard for the difference between listWhen and isEnabled.
+    // Using isEnabled here would have taken `/ultracode` away from exactly the
+    // users the unlisting is meant to serve — the ones who have the mode off
+    // and want to opt in for a single task.
+    clearBundledSkills()
+    registerUltracodeSkill()
+    const ultracode = getBundledSkills().find(s => s.name === 'ultracode')!
+
+    expect(ultracode.listWhen!(appStateCtx(false))).toBe(false)
+    // Still registered, still user-invocable, still resolvable by the Skill
+    // tool and the slash-command typeahead (both read this same registry).
+    expect(ultracode.isEnabled).toBeUndefined()
+    expect(ultracode.isHidden).toBe(false)
+    expect(ultracode.userInvocable).toBe(true)
+    // And it still produces its prompt when invoked.
+    const blocks = await asPrompt(ultracode).getPromptForCommand(
+      '',
+      {} as never,
+    )
+    expect((blocks[0] as { type: 'text'; text: string }).text).toContain(
+      'Workflow Orchestration Playbook',
+    )
   })
 
   test('concurrency guidance quotes the engine constant, not a hardcoded number', async () => {
