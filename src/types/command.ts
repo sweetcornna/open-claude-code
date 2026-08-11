@@ -155,6 +155,17 @@ export type LocalJSXCommandModule = {
 type LocalJSXCommand = {
   type: 'local-jsx'
   /**
+   * Whether headless (`-p`) runs may invoke this command.
+   *
+   * Defaults to false, because a local-jsx command normally answers by
+   * rendering, and there is nothing to render into. Opting in is for commands
+   * whose ARGUMENT forms are plain text and which fall back to text when
+   * `getIsNonInteractiveSession()` — /provider-settings absorbed `/provider`,
+   * which was a `local` command with headless support, and dropping that would
+   * have broken `-p "/provider save x"`.
+   */
+  supportsNonInteractive?: boolean
+  /**
    * Lazy-load the command implementation.
    * Returns a module with a call() function.
    * This defers loading heavy dependencies until the command is invoked.

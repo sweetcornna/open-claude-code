@@ -11,9 +11,12 @@ import {
   captureProfile,
   isValidProfileName,
   loadProfilesFile,
+  planProfileRename,
   profilesFilePath,
+  renameProfile,
   saveProfilesFile,
   updateProfileCatalog,
+  type ProviderProfilesFile,
 } from '../profiles.js'
 
 const EXPECTED_TIER_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
@@ -432,5 +435,173 @@ describe('updateProfileCatalog', () => {
       error: 'Unknown profile "nope".',
     })
     expect(loadProfilesFile().profiles.nope).toBeUndefined()
+  })
+})
+
+describe('planProfileRename', () => {
+  const NOW = '2026-08-11T00:00:00.000Z'
+
+  function file(
+    active: string | undefined,
+    ...names: string[]
+  ): ProviderProfilesFile {
+    return {
+      version: 1,
+      ...(active !== undefined ? { active } : {}),
+      profiles: Object.fromEntries(
+        names.map(name => [
+          name,
+          captureProfile({
+            name,
+            modelType: 'openai',
+            mergedEnv: { OPENAI_API_KEY: `sk-${name}` },
+          }),
+        ]),
+      ),
+    }
+  }
+
+  test('moves the key AND the record name, keeping everything else', () => {
+    // The key is what activateProfile() resolves and what every aggregated
+    // selector carries; a record whose own name trailed behind would be
+    // reported by listProfiles() under a name nothing can activate.
+    const planned = planProfileRename(
+      file(undefined, 'a', 'relay', 'z'),
+      'relay',
+      'zen',
+      NOW,
+    )
+    expect(planned).not.toHaveProperty('error')
+    const { profiles } = (planned as { file: ProviderProfilesFile }).file
+    expect(Object.keys(profiles)).toEqual(['a', 'zen', 'z'])
+    expect(profiles.zen).toMatchObject({
+      name: 'zen',
+      env: { OPENAI_API_KEY: 'sk-relay' },
+      updatedAt: NOW,
+    })
+    expect(profiles.relay).toBeUndefined()
+  })
+
+  test('the active pointer follows the profile it points at', () => {
+    const planned = planProfileRename(
+      file('relay', 'relay'),
+      'relay',
+      'zen',
+      NOW,
+    )
+    expect(planned).toMatchObject({
+      wasActive: true,
+      file: { active: 'zen' },
+    })
+  })
+
+  test('another profile being active is left alone', () => {
+    const planned = planProfileRename(
+      file('other', 'other', 'relay'),
+      'relay',
+      'zen',
+      NOW,
+    )
+    expect(planned).toMatchObject({
+      wasActive: false,
+      file: { active: 'other' },
+    })
+  })
+
+  test('refuses to rename onto an existing profile', () => {
+    // The registry is the only copy of a relay's endpoint and key.
+    const result = planProfileRename(
+      file(undefined, 'relay', 'zen'),
+      'relay',
+      'zen',
+      NOW,
+    )
+    expect(result).toHaveProperty('error')
+    expect((result as { error: string }).error).toContain('already exists')
+  })
+
+  test('refuses an unknown source, a no-op and an unusable name', () => {
+    const registry = file(undefined, 'relay')
+    expect(planProfileRename(registry, 'nope', 'zen', NOW)).toEqual({
+      error: 'Unknown profile "nope".',
+    })
+    expect(planProfileRename(registry, 'relay', 'relay', NOW)).toEqual({
+      error: '"relay" already has that name.',
+    })
+    const invalid = planProfileRename(registry, 'relay', 'my zen!', NOW)
+    expect((invalid as { error: string }).error).toContain(
+      'Invalid profile name',
+    )
+  })
+
+  test('no error names a credential or the key holding one', () => {
+    const registry = file(undefined, 'relay', 'zen')
+    for (const [from, to] of [
+      ['relay', 'zen'],
+      ['nope', 'zen'],
+      ['relay', 'bad name'],
+    ]) {
+      const result = planProfileRename(registry, from!, to!, NOW)
+      const message = (result as { error?: string }).error ?? ''
+      expect(message).not.toContain('sk-')
+      expect(message).not.toContain('OPENAI_API_KEY')
+    }
+  })
+})
+
+describe('renameProfile', () => {
+  const savedConfigDir = process.env.OCC_CONFIG_DIR
+  let tempDir: string | undefined
+
+  afterEach(() => {
+    if (savedConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+    else process.env.OCC_CONFIG_DIR = savedConfigDir
+    occConfigDir.cache.clear?.()
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true })
+    tempDir = undefined
+  })
+
+  test('rewrites the registry and follows the active pointer', () => {
+    tempDir = enterTempConfigDir()
+    saveProfilesFile({
+      version: 1,
+      active: 'relay',
+      profiles: {
+        relay: captureProfile({
+          name: 'relay',
+          modelType: 'openai',
+          mergedEnv: { OPENAI_API_KEY: 'sk-x' },
+          models: [{ id: 'gpt-5.4' }],
+          aggregate: true,
+        }),
+      },
+    })
+
+    expect(renameProfile('relay', 'zen')).toEqual({
+      renamed: true,
+      wasActive: true,
+    })
+    const reloaded = loadProfilesFile()
+    expect(reloaded.active).toBe('zen')
+    expect(reloaded.profiles.relay).toBeUndefined()
+    expect(reloaded.profiles.zen).toMatchObject({
+      name: 'zen',
+      aggregate: true,
+      env: { OPENAI_API_KEY: 'sk-x' },
+    })
+    // The aggregated selectors carry the registry key, so they move with it.
+    expect(buildAggregatedModels(reloaded)).toMatchObject([
+      { id: 'gpt-5.4', profile: 'zen' },
+    ])
+  })
+
+  test('a refused rename leaves the file untouched', () => {
+    tempDir = enterTempConfigDir()
+    saveProfilesFile({ version: 1, profiles: {} })
+
+    expect(renameProfile('nope', 'zen')).toEqual({
+      error: 'Unknown profile "nope".',
+    })
+    expect(loadProfilesFile()).toEqual({ version: 1, profiles: {} })
   })
 })

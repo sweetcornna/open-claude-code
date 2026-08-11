@@ -5,8 +5,13 @@ import { has1mContext, modelSupports1M, supportsContextWindow } from '../utils/s
 import { getModelSettingsSlot, getModelTier, type ModelSettingsSlot } from '../utils/model/modelTier.js';
 import { buildAggregatedModels } from '../services/providerProfiles/aggregate.js';
 import { activateProfileForModel } from '../services/providerProfiles/activate.js';
-import { loadProfilesFile } from '../services/providerProfiles/profiles.js';
-import { buildAggregatedModelOptions, parseAggregatedOptionValue } from './providerSettings/aggregatedOptions.js';
+import { getMergedProviderEnv, loadProfilesFile } from '../services/providerProfiles/profiles.js';
+import {
+  buildAggregatedModelOptions,
+  offeredModelIds,
+  parseAggregatedOptionValue,
+  sessionOwnedProfiles,
+} from './providerSettings/aggregatedOptions.js';
 import { formatContextTokens, getTierContextTokens, getTierOverride } from '../utils/model/tierSettings.js';
 import { writeTierSettings } from '../commands/model-settings/state.js';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
@@ -155,12 +160,21 @@ export function ModelPicker({
   const aggregatedOptions = useMemo(() => {
     if (skipSettingsWrite) return [];
     const file = loadProfilesFile();
-    const existingValues = new Set(
-      optionsWithInitial.flatMap(opt => (typeof opt.value === 'string' ? [opt.value] : [])),
+    // Both sides of the de-duplication are computed here and neither is the
+    // raw option value: the ids come from resolving each row (a tier row's
+    // value is an alias), and "the provider in use" comes from the live
+    // configuration rather than from `file.active`, which a session configured
+    // by /login never wrote. See aggregatedOptions.ts.
+    const existingModelIds = offeredModelIds(
+      optionsWithInitial.map(opt => (opt.value === null ? NO_PREFERENCE : opt.value)),
+      resolveOptionModel,
     );
     return buildAggregatedModelOptions(buildAggregatedModels(file), {
-      existingValues,
-      ...(file.active !== undefined ? { activeProfile: file.active } : {}),
+      existingModelIds,
+      sessionProfiles: sessionOwnedProfiles(file, {
+        modelType: getSettingsForSource('userSettings')?.modelType,
+        env: getMergedProviderEnv(),
+      }),
     }).filter(opt => isModelAllowed(parseAggregatedOptionValue(opt.value)?.id ?? opt.value));
   }, [optionsWithInitial, skipSettingsWrite]);
 

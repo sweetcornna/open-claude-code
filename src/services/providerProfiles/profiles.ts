@@ -199,6 +199,82 @@ export function updateProfileCatalog(
 }
 
 /**
+ * Rename decided before anything is written.
+ *
+ * A rename is a KEY MOVE, not a field edit: the registry key is the identity
+ * `activateProfile()` resolves and the one `buildAggregatedModels()` puts in
+ * every selector, so the record's own `name` field trailing behind would leave
+ * `listProfiles()` reporting a name nothing can activate. Both move together
+ * here.
+ *
+ * Two cases the caller must not be left to discover:
+ *   - the target name is taken. Overwriting would delete another provider's
+ *     endpoint and key, and the registry is the only copy of both.
+ *   - the profile is the ACTIVE one. Only `file.active` points at it — the live
+ *     configuration is in settings.env and carries no profile name at all — so
+ *     moving the pointer is the whole of it. Nothing is re-activated: the
+ *     session is already running on exactly these values.
+ */
+export function planProfileRename(
+  file: ProviderProfilesFile,
+  from: string,
+  to: string,
+  now: string,
+): { file: ProviderProfilesFile; wasActive: boolean } | { error: string } {
+  const existing = file.profiles?.[from]
+  if (!existing) return { error: `Unknown profile "${from}".` }
+  if (to === from) return { error: `"${from}" already has that name.` }
+  if (!isValidProfileName(to)) {
+    return {
+      error: `Invalid profile name "${to}" (use letters, digits, ".", "_", "-"; max 64 chars).`,
+    }
+  }
+  if (file.profiles[to]) {
+    return {
+      error:
+        `A profile named "${to}" already exists. Delete it first or pick ` +
+        `another name — renaming onto it would drop its endpoint and key.`,
+    }
+  }
+  // Rebuilt in place rather than delete+append so the renamed profile keeps its
+  // position in the file and the diff stays one entry wide.
+  const profiles: Record<string, ProviderProfile> = {}
+  for (const [key, profile] of Object.entries(file.profiles)) {
+    if (key === from) {
+      profiles[to] = { ...existing, name: to, updatedAt: now }
+      continue
+    }
+    profiles[key] = profile
+  }
+  const wasActive = file.active === from
+  return {
+    file: {
+      version: 1,
+      profiles,
+      ...(file.active !== undefined
+        ? { active: wasActive ? to : file.active }
+        : {}),
+    },
+    wasActive,
+  }
+}
+
+export function renameProfile(
+  from: string,
+  to: string,
+): { renamed: true; wasActive: boolean } | { error: string } {
+  const planned = planProfileRename(
+    loadProfilesFile(),
+    from,
+    to,
+    new Date().toISOString(),
+  )
+  if ('error' in planned) return planned
+  saveProfilesFile(planned.file)
+  return { renamed: true, wasActive: planned.wasActive }
+}
+
+/**
  * Compute the settings.env patch that activates a profile: every managed key
  * explicitly cleared (undefined → deletion under updateSettingsForSource's
  * merge), then the profile's own keys overlaid.

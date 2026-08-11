@@ -92,6 +92,12 @@ export function activateProfile(
     return { error: `Unknown profile "${name}". Saved profiles: ${known}` }
   }
 
+  // Note what this deliberately does not reach: credentials pinned for web
+  // search. The patch below clears the union of EVERY family's env keys before
+  // applying the target's, which is right for the account plane and was exactly
+  // why merely switching profiles used to take the user's search key with it.
+  // Those live in services/search/searchCredentialStore.ts instead — a separate
+  // file, so the independence does not rely on this list staying correct.
   const envPatch = buildActivationEnvPatch(profile)
   const previousManagedEnv = {
     ...(getSettingsForSource('userSettings')?.env ?? {}),

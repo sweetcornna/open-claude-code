@@ -15,7 +15,7 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 
 **端点答上来时就只用端点返回的表**（早期版本会把内置表合并进去，已删除）：服务器自己说它有什么，比 occ 猜它有什么更权威；合并的实际效果是把已下线的模型继续摆在选择器里。
 
-**`/models-setting` 随时重开这套设置**。改一个档位不必重走 `/login` 把端点和 key 再敲一遍：端点、key、四个档位当前值都从 env 读回来，只改模型再写回去。候选表来自后台 catalog 刷新缓存的 `GET /models` 结果（缓存为空时才退回官方端点的内置表），所以是瞬时且离线的。与新登录不同，**候选表里没有的已配置值不会被丢弃** —— 用户是故意配的，缓存可能只是旧了。这个命令**始终注册**（早期版本会在纯一方会话里隐藏它）：一方会话同样可以用 `ANTHROPIC_DEFAULT_<TIER>_MODEL` 把某一档钉到指定的 Claude checkpoint，而藏起来的命令是查不到的。
+**`/model-settings`（不带参数；旧名 `/models-setting` 仍是别名）随时重开这套设置**。改一个档位不必重走 `/login` 把端点和 key 再敲一遍：端点、key、四个档位当前值都从 env 读回来，只改模型再写回去。候选表来自后台 catalog 刷新缓存的 `GET /models` 结果（缓存为空时才退回官方端点的内置表），所以是瞬时且离线的。与新登录不同，**候选表里没有的已配置值不会被丢弃** —— 用户是故意配的，缓存可能只是旧了。这个命令**始终注册**（早期版本会在纯一方会话里隐藏它）：一方会话同样可以用 `ANTHROPIC_DEFAULT_<TIER>_MODEL` 把某一档钉到指定的 Claude checkpoint，而藏起来的命令是查不到的。
 
 几条容易踩的规则：
 
@@ -44,7 +44,7 @@ OpenAI（两条线）、Anthropic 兼容端点、Gemini、Grok 走的是**同一
 
 **一个 key 配的是整个供应商，不是一个模型。** 流程是「选供应商 →（有 Coding Plan 的再选计费方式）→ 填 API Key → 选各档位模型」：填完 key 之后该供应商的**所有**模型都能用，`/model` 里直接列出来（带官方标签、价格、上下文窗口），随时切换。
 
-最后那一步走的是上面那个共用向导的 Step 2：**默认模型 + 四个档位，一共五个槽各是一个选择器**（默认模型写 `OPENAI_MODEL` 之类的 provider 单模型键，四档写各自的 `{PROVIDER}_DEFAULT_<TIER>_MODEL`），选项就是端点 `GET /models` 真正返回的模型表；只有端点无法列举模型时才用官方 preset 或手填兜底。**默认值预填 preset 的 `tiers` 映射**（例如 DeepSeek：`haiku`→`deepseek-v4-flash`，`sonnet`/`opus`/`fable`→`deepseek-v4-pro`）—— 一路回车即接受默认，想改哪个改哪个，之后也能用 `/models-setting` 再改。
+最后那一步走的是上面那个共用向导的 Step 2：**默认模型 + 四个档位，一共五个槽各是一个选择器**（默认模型写 `OPENAI_MODEL` 之类的 provider 单模型键，四档写各自的 `{PROVIDER}_DEFAULT_<TIER>_MODEL`），选项就是端点 `GET /models` 真正返回的模型表；只有端点无法列举模型时才用官方 preset 或手填兜底。**默认值预填 preset 的 `tiers` 映射**（例如 DeepSeek：`haiku`→`deepseek-v4-flash`，`sonnet`/`opus`/`fable`→`deepseek-v4-pro`）—— 一路回车即接受默认，想改哪个改哪个，之后也能用 `/model-settings` 再改。
 
 默认模型与四个档位**彼此独立**：向导把 provider 默认写入 `OPENAI_MODEL`（或对应家族的 `*_MODEL`），把 Haiku / Sonnet / Opus / Fable 写入各自的 `{PROVIDER}_DEFAULT_<TIER>_MODEL`。默认请求使用 `modelSettings.default`，显式 `/model sonnet` 使用 `modelSettings.sonnet`；即使两者解析成同一个模型 ID，也不会再共享 effort 或 context 配置。`/model <具体 id>` 仍然原样透传，不会被 provider 默认值替换。
 
@@ -93,9 +93,9 @@ OpenAI 家族有两条线：`OPENAI_WIRE_API=chat`（默认，Chat Completions�
 - auto-compact 阈值（窗口 − 20k 输出预留 − 13k 缓冲）与预测式 compact —— 即"靠近阈值触发 compact"
 - 硬阻断线、statusline 的 `ctx:%`、`/context` 显示
 
-配置面：`/provider` 档案随家族切换，或直接设环境变量。china preset 不写这个键 —— 它的模型窗口按模型查表（见上一节）。
+配置面：`/provider-settings` 档案随家族切换，或直接设环境变量。china preset 不写这个键 —— 它的模型窗口按模型查表（见上一节）。
 
-**首启向导 / `/login` Step 2 的 Max ctx 与 Thinking effort 字段不再写这个键**，改为落进 `settings.modelSettings` 的**分层配置**（见 `docs/zh/features/model-settings.md`）。原因就是上面这条优先级：env 是「探测不到时的最终纠正手段」，写在登录里等于让一个开场值静默压过用户此后在 `/model` 里的每一次调整。保存时会顺带删掉旧版留下的该键（字段会把旧值带过去，不丢）。两个字段留空时写入默认模型与各档位自己的家族默认值 —— 于是登录结束后 `/model-settings` 显示的是彼此独立的 `default` / Haiku / Sonnet / Opus / Fable。重跑向导（`/models-setting` 或第二次 `/login`）时留空则**什么都不动**，不会把你在 `/model` 里分档调好的值压平；把 Thinking effort 明确选回 `(model default)` 会删除旧覆盖并立即恢复家族默认。
+**首启向导 / `/login` Step 2 的 Max ctx 与 Thinking effort 字段不再写这个键**，改为落进 `settings.modelSettings` 的**分层配置**（见 `docs/zh/features/model-settings.md`）。原因就是上面这条优先级：env 是「探测不到时的最终纠正手段」，写在登录里等于让一个开场值静默压过用户此后在 `/model` 里的每一次调整。保存时会顺带删掉旧版留下的该键（字段会把旧值带过去，不丢）。两个字段留空时写入默认模型与各档位自己的家族默认值 —— 于是登录结束后 `/model-settings` 显示的是彼此独立的 `default` / Haiku / Sonnet / Opus / Fable。重跑向导（`/model-settings` 或第二次 `/login`）时留空则**什么都不动**，不会把你在 `/model` 里分档调好的值压平；把 Thinking effort 明确选回 `(model default)` 会删除旧覆盖并立即恢复家族默认。
 
 **按模型开启 1M 后缀**：`CLAUDE_CODE_1M_CONTEXT_MODELS`（逗号分隔模型名/子串，大小写不敏感）。主循环模型解析后命中即自动追加 `[1m]` 后缀，等价于手选 `sonnet[1m]`——走完整的后缀链路（1M 窗口 **+ 1M beta 头**），适用于支持 1M 上下文的 Anthropic 系模型；已带后缀的模型不重复追加。第三方模型只需要窗口数值时，用 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 即可，无需该开关。
 
@@ -220,7 +220,7 @@ thinking 关闭时不发（此时它不控制任何东西，这也顺带让 `max
 
 ## 六、Provider 档案
 
-`/provider save <name>` 把当前整组 env 快照成档案，`/provider use <name>` 全形状切换（先清全部家族键再写目标，含 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`）。多模型来回切换的推荐方式。
+`/provider-settings save <name>` 把当前整组 env 快照成档案，`/provider-settings use <name>` 全形状切换（先清全部家族键再写目标，含 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`）。多模型来回切换的推荐方式。面板里按 `A` 可以直接新增一个 provider（跑登录向导并存成档案）。旧名 `/provider`、`/api`、`/providers` 都是同一条命令的别名（2026-08-11 合并）。详见 [provider-settings.md](./provider-settings.md)。
 
 ## 七、登出会清掉什么
 
@@ -228,7 +228,7 @@ thinking 关闭时不发（此时它不控制任何东西，这也顺带让 `max
 
 早期版本把第三方 key 当"配置而非登录态"保留，结果是非 Claude 用户登出后下一轮请求照旧打同一个端点、用同一把 key —— 等于没登出。更糟的是那些键会在下次启动被重新灌回 `process.env`，`isAnthropicAuthEnabled()` 于是判定这是第三方会话，向导连登录步骤都不再出现 —— 登出了，也没法再登回来。
 
-**保留的**：secure storage 里其他凭据家族 —— MCP 的 OAuth token 与 plugin secrets **不受影响**（登出只移除 `claudeAiOauth` 这一条，不是清空整个存储）；`/provider save` 存下的档案本身（只清 active 指针），所以 `/provider use <name>` 可以一键恢复；MCP、hooks、主题、`/search-setting` 的搜索源开关等与账户无关的设置不受影响。登录（`installOAuthTokens`）**不**调用登出逻辑 —— 登录不该顺手删掉用户的端点设置。
+**保留的**：secure storage 里其他凭据家族 —— MCP 的 OAuth token 与 plugin secrets **不受影响**（登出只移除 `claudeAiOauth` 这一条，不是清空整个存储）；`/provider-settings save` 存下的档案本身（只清 active 指针），所以 `/provider-settings use <name>` 可以一键恢复；MCP、hooks、主题、`/search-setting` 的搜索源开关等与账户无关的设置不受影响。登录（`installOAuthTokens`）**不**调用登出逻辑 —— 登录不该顺手删掉用户的端点设置。
 
 同时清空的还有 `customApiKeyResponses` 的 `approved` 与 `rejected` 两份名单。`rejected` 必须一起清：CLI 里没有别的地方能清它，而进了这份名单的 key 会被永久拒绝 —— "Detected a custom API key" 对话框只对状态为「新」的 key 弹出，所以一次拒绝（或一次取消，取消按 No 计）就等于再也无法接受那把 key。
 

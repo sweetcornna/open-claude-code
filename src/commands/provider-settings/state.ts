@@ -14,6 +14,11 @@
  */
 
 import type { AggregatedModel } from 'src/services/providerProfiles/aggregate.js'
+import {
+  isProviderFamily,
+  PROVIDER_FAMILIES,
+  type ProviderFamily,
+} from './providerFamilies.js'
 import { PROFILE_ENV_KEYS } from 'src/services/providerProfiles/envKeys.js'
 import {
   ALL_PROFILE_ENV_KEYS,
@@ -25,11 +30,16 @@ export type ParsedCommand =
   | { kind: 'panel' }
   | { kind: 'list' }
   | { kind: 'models' }
+  | { kind: 'overview' }
   | { kind: 'use'; name: string }
   | { kind: 'save'; name: string; notes?: string }
+  | { kind: 'add'; name?: string }
+  | { kind: 'rename'; from: string; to: string }
   | { kind: 'delete'; name: string }
   | { kind: 'refresh'; name: string }
   | { kind: 'aggregate'; name: string; enabled: boolean }
+  | { kind: 'set-provider'; provider: ProviderFamily }
+  | { kind: 'unset-provider' }
   | { kind: 'help' }
   | { kind: 'error'; message: string }
 
@@ -54,6 +64,9 @@ const VERB_ALIASES: Record<string, string> = {
   remove: 'delete',
   fetch: 'refresh',
   models: 'models',
+  new: 'add',
+  mv: 'rename',
+  summary: 'overview',
 }
 
 /**
@@ -73,11 +86,34 @@ export function parseArgs(args: string | undefined): ParsedCommand {
   const name = parts[1]
   const rest = parts.slice(2)
 
+  // A bare family name is the `/provider <family>` form, which this command
+  // absorbed. Checked before the verb table so a profile that happens to be
+  // called `openai` cannot shadow it: switching the family and activating a
+  // profile are different requests, told apart by position — `use openai`
+  // activates the profile, `openai` selects the family.
+  if (isProviderFamily(verb)) return { kind: 'set-provider', provider: verb }
+  if (verb === 'unset') return { kind: 'unset-provider' }
+
   switch (verb) {
     case 'list':
       return { kind: 'list' }
     case 'models':
       return { kind: 'models' }
+    case 'overview':
+      return { kind: 'overview' }
+    case 'add':
+      // The name is optional: `add` on its own is the "how do I do this"
+      // answer, and `add <name>` additionally says whether that name is free.
+      return name ? { kind: 'add', name } : { kind: 'add' }
+    case 'rename': {
+      const to = rest[0]
+      return name && to
+        ? { kind: 'rename', from: name, to }
+        : {
+            kind: 'error',
+            message: 'Usage: /provider-settings rename <old> <new>',
+          }
+    }
     case 'use':
       return name
         ? { kind: 'use', name }
@@ -133,13 +169,42 @@ export function usage(): string {
     '  /provider-settings                        open the panel',
     '  /provider-settings list                   print every saved profile',
     '  /provider-settings models                 print the aggregated model list',
+    '  /provider-settings overview               who contributes what to it',
     '  /provider-settings use <name>             switch this session to a profile',
     '  /provider-settings save <name> [notes]    snapshot the current provider',
+    '  /provider-settings add [name]             how to add one (needs the panel)',
+    '  /provider-settings rename <old> <new>     rename a profile',
     '  /provider-settings aggregate <name> on    add its models to the union',
     '  /provider-settings aggregate <name> off   remove them again',
     '  /provider-settings refresh <name>         re-read its /models endpoint',
     '  /provider-settings delete <name>          drop the profile',
+    '',
+    // The other axis, absorbed from `/provider`: pick the family without
+    // touching credentials. `use <name>` activates a profile; a bare family
+    // name selects the family.
+    `  /provider-settings <family>               select a provider family`,
+    `                                            (${PROVIDER_FAMILIES.join(', ')})`,
+    '  /provider-settings unset                  fall back to the environment',
   ].join('\n')
+}
+
+/**
+ * The line `/provider` printed on its own: which provider this session would
+ * talk to, and which saved profile it came from.
+ *
+ * `getAPIProvider()` answers the WIRE protocol rather than the vendor, which is
+ * what this has always reported — a DeepSeek or OpenCode session on the
+ * /messages lane reads as `firstParty` here. Kept as it was: the merge is not
+ * the place to change what a long-standing line means.
+ */
+export function describeCurrentProvider(
+  provider: string,
+  activeProfile: string | undefined,
+): string {
+  return (
+    `Current API provider: ${provider}` +
+    (activeProfile ? ` (profile: ${activeProfile})` : '')
+  )
 }
 
 export type ProviderRow = {
@@ -318,6 +383,93 @@ export function summarizeAggregate(
     `Aggregated list: ${aggregated.length} models from ` +
     `${participating.length} profile(s)${shared}.`
   )
+}
+
+type AggregateOverview = {
+  /** Participating profiles and what each actually contributes. */
+  contributors: { profile: string; models: number }[]
+  /** Ids more than one participating profile serves, with their owners. */
+  collisions: { id: string; profiles: string[] }[]
+}
+
+/**
+ * The union broken down by who contributes what.
+ *
+ * Counts come from the AGGREGATED rows, not from `row.modelCount`: the
+ * snapshot is the provider's raw answer and the union drops what it cannot
+ * use (a blank id, the same id listed twice). A profile whose two numbers
+ * disagree is the one case where "61 models" in the row and "58 models" in the
+ * picker are both true, and the picker's number is the one being explained
+ * here.
+ *
+ * Collisions are exactly the `ambiguous` rows, regrouped: the union carries one
+ * row per (id, profile) because that is what the picker lists, while the
+ * question "which ids are shared" is asked once per id.
+ */
+function buildAggregateOverview(
+  rows: readonly ProviderRow[],
+  aggregated: readonly AggregatedModel[],
+): AggregateOverview {
+  const counts = new Map<string, number>()
+  for (const model of aggregated) {
+    counts.set(model.profile, (counts.get(model.profile) ?? 0) + 1)
+  }
+  const owners = new Map<string, string[]>()
+  for (const model of aggregated) {
+    if (!model.ambiguous) continue
+    const existing = owners.get(model.id)
+    if (existing) existing.push(model.profile)
+    else owners.set(model.id, [model.profile])
+  }
+  return {
+    contributors: rows
+      .filter(row => row.aggregate)
+      .map(row => ({ profile: row.name, models: counts.get(row.name) ?? 0 })),
+    // buildAggregatedModels already ordered by id then profile, so both the
+    // collision order and each collision's owner order are stable.
+    collisions: [...owners].map(([id, profiles]) => ({ id, profiles })),
+  }
+}
+
+function withOverflow(shown: string[], total: number): string {
+  const rest = total - shown.length
+  return rest > 0 ? [...shown, `+${rest} more`].join(' · ') : shown.join(' · ')
+}
+
+/**
+ * The aggregated list as a whole: the headline, who feeds it, and which ids
+ * two providers both answer to.
+ *
+ * Returned as lines so the panel can bound it (a registry with eight profiles
+ * would otherwise push the rows off the screen) and the argument form can print
+ * all of it. One implementation, because a panel that counts differently from
+ * the command is a panel nobody can check.
+ *
+ * The collision list is the `ambiguous` flag made visible: those are precisely
+ * the ids that render as `id (profile)` in `/model`, and until they are named
+ * the tag looks like a rendering quirk rather than the answer to "these two are
+ * not the same model".
+ */
+export function describeAggregateOverview(
+  rows: readonly ProviderRow[],
+  aggregated: readonly AggregatedModel[],
+  limits: { contributors?: number; collisions?: number } = {},
+): string[] {
+  const lines = [summarizeAggregate(rows, aggregated)]
+  const { contributors, collisions } = buildAggregateOverview(rows, aggregated)
+  if (contributors.length > 0) {
+    const shown = contributors
+      .slice(0, limits.contributors ?? contributors.length)
+      .map(entry => `${entry.profile} ${entry.models}`)
+    lines.push(`  from: ${withOverflow(shown, contributors.length)}`)
+  }
+  if (collisions.length > 0) {
+    const shown = collisions
+      .slice(0, limits.collisions ?? collisions.length)
+      .map(entry => `${entry.id} (${entry.profiles.join(', ')})`)
+    lines.push(`  shared ids: ${withOverflow(shown, collisions.length)}`)
+  }
+  return lines
 }
 
 /**

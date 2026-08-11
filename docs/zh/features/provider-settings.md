@@ -1,8 +1,43 @@
-# `/provider-settings` —— 多 provider 配置、切换与聚合
+# `/provider-settings` —— 多 provider 新增、切换与聚合
 
 一台机器上可以同时配置多个 provider（Anthropic 直连、OpenAI 兼容端点、Gemini、Grok、OpenCode Zen / Go），随时切换，还能把其中几个**聚合**成一份模型列表，在 `/model` 里一起挑。
 
-底层沿用既有的 provider profile 存储（`src/services/providerProfiles/`），不是新造一套。`/provider save|use|list|delete` 全部保留并共用同一份实现。
+底层沿用既有的 provider profile 存储（`src/services/providerProfiles/`），不是新造一套。
+
+## 〇、一条命令，四个名字
+
+`/provider`（别名 `/api`）与 `/provider-settings`（别名 `/providers`）在 2026-08-11 合并成**一条**命令。合并前者是后者的薄壳：`save|use|list|delete|models|refresh|aggregate` 直接转调同一份实现，只有「provider 家族切换」是它自己的。`/help` 里两行读起来像重复项，因为它们确实是。
+
+**四个名字全部保留为别名，所有旧写法照旧工作**：`/provider save x`、`/provider use x`、`/provider list`、`/api openai`、`/providers`。
+
+家族切换也保留，作为裸参数：
+
+```
+/provider-settings openai        选家族（不动凭据）
+/provider-settings unset         回落到环境变量
+/provider-settings use openai    激活名为 openai 的档案
+```
+
+**裸家族名和 `use <名>` 是两件事**，靠位置区分 —— 档案真的可以叫 `openai`。家族切换只改 `settings.modelType`，档案切换是整形状 env 替换。
+
+`-p` 下也照旧：`/provider` 原本是 headless 可用的 `local` 命令，合并后的 `local-jsx` 命令显式声明了 `supportsNonInteractive`，无参调用在无法渲染的环境里回答**列表文本**而不是面板。
+
+## 〇bis、新增 provider 会切换会话（这是刻意的）
+
+面板里按 `A` 新增一个 provider：选家族 → （若当前配置尚未存档）问要不要先存档 → 起名 → 问要不要加入聚合 → 跑**既有的**登录向导（`ProviderSetupWizard`，不是第二套表单）→ 回到面板，新行已在。
+
+**向导保存的那一刻就是激活**：它写的是 settings.env 整形状，并同步到 `process.env`。所以新增结束后，会话就在新 provider 上。这在第一屏就写明。
+
+为什么不「保存完再恢复原状」：
+
+- 唯一诚实的恢复手段是 `activateProfile()`，而它需要一个档案。`file.active` 不是 —— 那个指针只由档案切换写入，之后一次 `/login` 或手改 settings.env 都会让它指向一个会话早已不在用的配置。拿它去「恢复」等于静默切到第三个配置，比诚实地切到用户刚配好的那个更糟。
+- 从来没经过档案的会话（纯 OAuth、导出的 env、手写的 settings.env）根本没有可恢复的东西 —— 而那恰恰是第一次按 `A` 的常见情形。只在部分情况下生效的回滚，就是这里要避免的「半恢复」。
+
+所以做法是把**回程**变成真的：当前配置若匹配不到任何档案，流程会先问一句要不要把它存成档案（就是 `save <名>`）。之后回去只是在某一行按 `Enter` —— 一个既有的、已经能用的机制。
+
+判据是纯函数 `sessionProfileMatch()`：某个档案的**每一个**受管键都与当前合并 env 相等（即激活它不会改变任何东西）。多出一个键就不算，因为激活真的会删掉它。
+
+**已知粗糙边**：档案只存 env，不存 `settings.modelSettings`。所以切回旧 provider 会恢复端点与凭据，但各档位的 effort / 最大上下文仍是最后一次设置的值。这条在合并前就存在（任何一次 `/login` 都如此），不是新增流程带来的。
 
 ## 一、聚合是「列表」的聚合，不是「连接」的聚合
 
@@ -24,6 +59,15 @@
 理由：profile 首先是一份**凭据快照**，「曾经拉取过模型列表」不等于同意把这些模型塞进其他 provider 的选择器。
 
 用 `/provider-settings aggregate <名字> on` 或面板里 `Space` 加入。方向必须写明（`on`/`off`），不猜。
+
+## 二bis、聚合列表不会和当前 provider 叠加
+
+`/model` 里聚合行接在当前 provider 自己的行后面。如果不去重，正在用的那家的模型会出现两次 —— 这正是曾经的实际表现，两个原因各自独立：
+
+1. **归属判据依赖 `file.active`**。那个指针只由 `activateProfile()` 写入，所以经 `/login` 配好 provider 再把档案加入聚合的用户根本没有指针，整个去重条件被跳过。现在改问**配置本身**：`sessionOwnedProfiles()` 认为「家族与 `settings.modelType` 相同、且各 `*_BASE_URL` 与当前一致」的档案就是当前 provider（**只比端点不比 key** —— 同一端点两把 key 是同一个 provider）。`file.active` 仍然叠加生效，老行为不变。
+2. **「已提供的模型」比的是 option value**。当前 provider 的行 value 是**档位别名**（`opus`、`sonnet[1m]`），而聚合行带的是**具体 id**，两边根本不是同一种东西，于是对档位行这个条件几乎永远为假。现在两边都比**解析后的具体 id**（`offeredModelIds()` 逐行过 `resolveOptionModel`）。解析会碰模型 provider 链，Gemini 未配置时会抛，`__NO_PREFERENCE__` 还会走订阅链 —— 所以逐行 try/catch：解析不出来的那一行不参与去重，绝不能拖垮整个列表。
+
+**两个条件仍然是「与」**：只有「来自当前 provider」**且**「这个 id 已经在列表里」才丢弃。别家 provider 服务同一个 id 照样列出并标注归属 —— 换个账号/中转跑同一个模型是正当需求，那正是 `ambiguous` 与 `id (profile)` 的意义。
 
 ## 三、重名怎么办
 
@@ -57,22 +101,32 @@ profile 名不可能含 `@`，所以「第一个未成对的 `@` 就是分隔符
 
 ## 五、命令表面
 
-面板：`/provider-settings`（别名 `/providers`）。
+面板：`/provider-settings`（别名 `/providers`、`/provider`、`/api`）。
 
 | 键 | 作用 |
 |---|---|
 | `↑`/`↓` | 移动 |
 | `Enter` | 切换到该 provider |
 | `Space` | 加入/移出聚合 |
+| `A` | **新增 provider**（跑登录向导 → 存成档案 → 会话切过去） |
+| `E` | **重命名**该档案 |
 | `R` | 刷新该 profile 的模型列表 |
 | `D` `D` | 删除（按两次） |
-| `Esc` | 关闭；有刷新在跑时先取消刷新 |
+| `Esc` | 关闭；有刷新在跑时先取消刷新；子流程里先回到列表 |
 
-非交互式：`list` / `models` / `use <名>` / `save <名> [备注]` / `aggregate <名> on|off` / `refresh <名>` / `delete <名>` / `help`。动词大小写不敏感，**profile 名大小写敏感**。
+`A` 不需要选中行 —— 空注册表按 `A` 正是它存在的理由。子流程（新增、重命名）占屏时，面板自己的单键快捷键整体关闭，否则输入框里打字会被它吃掉。
+
+非交互式：`list` / `models` / `overview` / `use <名>` / `save <名> [备注]` / `add [名]` / `rename <旧> <新>` / `aggregate <名> on|off` / `refresh <名>` / `delete <名>` / `help`，外加裸家族名与 `unset`（见 §〇）。动词大小写不敏感，**profile 名大小写敏感**。
+
+- `overview`（别名 `summary`）：聚合列表的整体视图 —— 共多少个模型、分别来自哪几个档案、哪些 id 重名。面板顶部也显示同一份内容（截断到 6 个贡献者 / 3 个重名 id），**同一个函数**，两边不可能算出不同的数。计数取自**聚合后**的结果而不是快照长度：某个档案重复列了同一个 id 时，「快照 2 个模型」和「选择器里 1 行」都是对的，而需要解释的是后者。
+- `add`：没有可脚本化的版本，也**不会**有 —— 它收集的是凭据，作为命令参数传就会进 shell 历史。所以 `add` 只回答「怎么做」（面板按 `A`，或者当前会话已经连着目标 provider 时用 `save <名>`），并顺手校验一下名字是否可用。
+- `rename <旧> <新>`：注册表**键**才是身份（`activateProfile()` 解析的、每个聚合选择符携带的都是它），所以重命名是一次键迁移，记录里的 `name` 字段同步移动。目标名已存在时拒绝 —— 覆盖会丢掉对方的端点和 key，而注册表是唯一的一份。重命名激活中的档案只移动 `file.active` 指针：会话的实际配置在 settings.env 里，从来不带名字，**不需要也不会**重新激活。
 
 ## 六、凭据永不显示
 
-面板只打印端点、是否存有 key（`key saved` / `no key (OAuth or env)`）、模型数量和备注。**不显示 key 值，也不显示 key 的环境变量名**。有测试断言列表输出里既不含 `sk-` 也不含 `OPENAI_API_KEY`。
+面板只打印端点、是否存有 key（`key saved` / `no key (OAuth or env)`）、模型数量和备注。**不显示 key 值，也不显示 key 的环境变量名**。有测试断言列表输出、聚合总览、新增流程的菜单文案与重命名的错误信息里，既不含 `sk-` 也不含 `OPENAI_API_KEY`。
+
+**一处刻意的例外**：家族切换在目标家族还没配好时会打印缺哪个变量（`Warning: Missing env vars: OPENAI_API_KEY, OPENAI_BASE_URL`）。那是「你还**没**设的变量」，是一条操作指引；上面禁止的是「某个档案**已经存了**哪个 key」，那是秘密。两者不是同一件事。
 
 `refresh` 对没有保存 key 的 profile 会直接返回说明而不发网络请求 —— 那正是 OpenCode 的 OAuth 情况，它的 token 是**故意**不放进 profile 的（见 [opencode.md](./opencode.md)）。
 
