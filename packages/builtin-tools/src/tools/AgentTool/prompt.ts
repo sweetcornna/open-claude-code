@@ -161,8 +161,7 @@ When NOT to use the ${AGENT_TOOL_NAME} tool:
   return `${shared}
 ${whenNotToUseSection}
 
-Usage notes:
-- Always include a short description (3-5 words) summarizing what the agent will do${concurrencyNote}
+Usage notes:${concurrencyNote}
 - When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.${
     p.backgroundAgentsAvailable
       ? `
