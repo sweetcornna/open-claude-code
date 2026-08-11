@@ -19,6 +19,12 @@
  *     buildResponsesRequest on that route — the existing request builder owns
  *     the shape, we never hand-roll a body around it.
  *   - API key → createOpenAIResponsesStream against `<OPENAI_BASE_URL>/responses`.
+ *
+ * A credential pinned through /search-setting outranks both. It is the only
+ * one that survives a `/logout` or a `/provider use` — those delete
+ * OPENAI_API_KEY and OPENAI_BASE_URL — and it is handed to the request layer
+ * explicitly (`credential`), key and endpoint together, so it cannot inherit a
+ * base URL the account plane has since repointed at somebody else.
  */
 
 import { resolveOpenAIModel } from '@ant/model-provider'
@@ -34,9 +40,11 @@ import {
   createChatGPTResponsesStream,
   createOpenAIResponsesStream,
 } from 'src/services/api/openai/responsesAdapter.js'
+import { resolvePinnedCodexSearchCredential } from 'src/services/search/searchEndpoints.js'
 import {
   CHATGPT_CODEX_FAST_MODEL,
   isChatGPTCodexReasoningModel,
+  isGptFamilyModel,
 } from 'src/utils/model/chatgptModels.js'
 import { getMainLoopModel } from 'src/utils/model/model.js'
 import { filterResultsByDomains } from './domainFilter.js'
@@ -205,8 +213,18 @@ export function extractCodexSearchResults(
  *
  * Official-endpoint users are unaffected: with an OpenAI base URL the extra
  * clause is false and the route is exactly what it was.
+ *
+ * `pinnedApiKey` stands the OAuth route down entirely, and is the same
+ * statement `usesAntigravityRoute` reads an explicit key as: the caller has
+ * chosen its credential, so routing the request to a backend that would
+ * authenticate as somebody else's account is not "preferring a better login",
+ * it is ignoring the pin.
  */
-export function shouldUseChatGPTAuth(forceChatGPTAuth: boolean): boolean {
+export function shouldUseChatGPTAuth(
+  forceChatGPTAuth: boolean,
+  pinnedApiKey?: string,
+): boolean {
+  if (pinnedApiKey) return false
   if (isChatGPTAuthEnabled()) return true
   if (!hasStoredChatGPTAuthSync()) return false
   return (
@@ -227,9 +245,23 @@ export function shouldUseChatGPTAuth(forceChatGPTAuth: boolean): boolean {
  *
  * A search turn only has to call the tool and emit citations, so the cheap tier
  * is the sane default when the session's model is not one this backend knows.
+ *
+ * `pinned` is the third case, and it exists because a pin is precisely what
+ * decouples this lane's endpoint from the session's. The plain API-key route
+ * can forward the main-loop model because OPENAI_BASE_URL is where both the
+ * model and the key come from; a pinned credential points at api.openai.com
+ * while the session may be on DeepSeek, so forwarding `deepseek-v4-flash`
+ * there earns a 400 the aggregator silences — the pinned key would then have
+ * changed nothing at all. `isGptFamilyModel` keeps an explicitly configured
+ * OpenAI model (including gpt-4o) and swaps out only ids OpenAI does not serve.
  */
-export function resolveCodexSearchModel(useChatGPTAuth: boolean): string {
+export function resolveCodexSearchModel(
+  useChatGPTAuth: boolean,
+  pinned = false,
+): string {
   const mapped = resolveOpenAIModel(getMainLoopModel())
+  if (pinned)
+    return isGptFamilyModel(mapped) ? mapped : CHATGPT_CODEX_FAST_MODEL
   if (!useChatGPTAuth) return mapped
   return isChatGPTCodexReasoningModel(mapped)
     ? mapped
@@ -281,9 +313,15 @@ export class CodexSearchAdapter implements WebSearchAdapter {
       })
     }
 
-    const useChatGPTAuth = shouldUseChatGPTAuth(this.forceChatGPTAuth)
+    // The pin first: it is the credential this lane will actually send, so the
+    // route and the model both have to be decided knowing about it.
+    const pinned = resolvePinnedCodexSearchCredential()
+    const useChatGPTAuth = shouldUseChatGPTAuth(
+      this.forceChatGPTAuth,
+      pinned?.apiKey,
+    )
     const request = buildResponsesRequest({
-      model: resolveCodexSearchModel(useChatGPTAuth),
+      model: resolveCodexSearchModel(useChatGPTAuth, pinned !== undefined),
       messages: [
         { role: 'system', content: SEARCH_SYSTEM_PROMPT },
         {
@@ -319,6 +357,11 @@ export class CodexSearchAdapter implements WebSearchAdapter {
           signal: abortController.signal,
           fetchOverride: this.fetchOverride,
           discardsPartialOutput: true,
+          // Key and endpoint as one unit, or neither. Handing over only the
+          // key would let it inherit an OPENAI_BASE_URL the account plane has
+          // repointed since the pin was made — i.e. post the user's OpenAI
+          // secret to a third party.
+          ...(pinned ? { credential: pinned } : {}),
         })
 
     const collected = new Map<string, SearchResult>()

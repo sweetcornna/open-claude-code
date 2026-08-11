@@ -165,13 +165,45 @@ describe('a pinned credential lights a source with no provider env at all', () =
     expect(hasDeepSeekSearchCredentials()).toBe(true)
   })
 
-  test('codex is not among them — its lane could not send the key', async () => {
-    // Kept as a test rather than left implicit: a pin that lights this row
-    // without the request layer reading it is the silent-empty-lane failure,
-    // and the store is the only place that can refuse it.
-    await expect(
-      pinSearchCredential('codex', { apiKey: 'sk-pinned' }),
-    ).rejects.toThrow()
+  test('codex, once its lane could send the key', async () => {
+    expect(hasCodexSearchCredentials()).toBe(false)
+
+    await pinSearchCredential('codex', { apiKey: 'sk-pinned' })
+
+    // No baseURL means the SDK default, api.openai.com — which is where the
+    // pinned request goes, so the row is honest.
+    expect(hasCodexSearchCredentials()).toBe(true)
+  })
+})
+
+describe('the codex base-URL rule applies to the pinned endpoint', () => {
+  test.each([
+    ['DeepSeek', 'https://api.deepseek.com'],
+    ['a LiteLLM gateway', 'https://litellm.internal.example/v1'],
+    ['a malformed URL', 'not a url'],
+  ])('a pin aimed at %s does not light the source', async (_label, baseUrl) => {
+    // Only OpenAI runs the server-side web_search this source uses. A pin
+    // elsewhere is the same green-row-zero-results failure as the env case —
+    // the store having accepted the key changes nothing about that.
+    await pinSearchCredential('codex', {
+      apiKey: 'sk-pinned',
+      baseURL: baseUrl,
+    })
+
+    expect(hasCodexSearchCredentials()).toBe(false)
+  })
+
+  test('a pin outranks a ChatGPT login rather than hiding behind it', async () => {
+    // The pin is what the lane will send (shouldUseChatGPTAuth stands down for
+    // an explicit key), so it has to be what this predicate answers about —
+    // otherwise an unusable pin shows green on the strength of a login the
+    // request is not going to use.
+    chatGPTAuthOnDisk = true
+    await pinSearchCredential('codex', {
+      apiKey: 'sk-pinned',
+      baseURL: 'https://api.deepseek.com',
+    })
+
     expect(hasCodexSearchCredentials()).toBe(false)
   })
 })

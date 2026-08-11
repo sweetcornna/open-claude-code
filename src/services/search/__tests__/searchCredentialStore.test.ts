@@ -15,6 +15,7 @@ import {
   expect,
   test,
 } from 'bun:test'
+import type { SearchCredentialFamily } from '@open-claude-code/tool-runtime/searchCredentials.js'
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -116,22 +117,39 @@ describe('pinSearchCredential', () => {
     expect(readPinnedSearchCredential('gemini')).toBeUndefined()
   })
 
-  test('refuses codex, whose lane cannot read the store', async () => {
-    // Storing it would light the row green for a key that never leaves disk —
-    // the "connected source that can only return nothing" failure the source
-    // registry exists to prevent.
-    expect(isPinnableSearchSource('codex')).toBe(false)
-    await expect(
-      pinSearchCredential('codex', { apiKey: 'sk-openai' }),
-    ).rejects.toBeInstanceOf(UnpinnableSearchSourceError)
-    expect(readPinnedSearchCredential('codex')).toBeUndefined()
+  test('stores codex like any other family, now that its lane has a seam', async () => {
+    // createOpenAIResponsesStream grew an optional `credential`, so the key
+    // reaches the wire instead of sitting on disk under a green row.
+    expect(isPinnableSearchSource('codex')).toBe(true)
+
+    await pinSearchCredential('codex', {
+      apiKey: 'sk-openai',
+      baseURL: 'https://api.openai.com/v1',
+    })
+
+    expect(readPinnedSearchCredential('codex')).toMatchObject({
+      apiKey: 'sk-openai',
+      baseURL: 'https://api.openai.com/v1',
+    })
   })
 
-  test('PINNABLE_SEARCH_SOURCES is the three lanes that read the store', () => {
+  test('the registry is still the gate, not a formality', async () => {
+    // A family whose request layer has no credential seam must be refused
+    // rather than stored-and-ignored. Reached through a cast because every
+    // family in the union qualifies today — the guard is for the next one.
+    const seamless = 'brave' as unknown as SearchCredentialFamily
+    expect(isPinnableSearchSource(seamless)).toBe(false)
+    await expect(
+      pinSearchCredential(seamless, { apiKey: 'sk-whatever' }),
+    ).rejects.toBeInstanceOf(UnpinnableSearchSourceError)
+  })
+
+  test('PINNABLE_SEARCH_SOURCES is the four lanes that read the store', () => {
     expect([...PINNABLE_SEARCH_SOURCES]).toEqual([
       'anthropic',
       'deepseek',
       'gemini',
+      'codex',
     ])
   })
 })

@@ -138,7 +138,7 @@ The table order is the panel order and the merge priority for enhancement lanes.
 | `anthropic` | Anthropic server-side `web_search_20250305` | **Pinned credential** > Claude OAuth or `ANTHROPIC_API_KEY` |
 | `deepseek` | DeepSeek server-side `web_search_20250305`, over `<base>/anthropic` | **Pinned credential** > a DeepSeek endpoint plus a key (`OPENAI_BASE_URL` pointing at api.deepseek.com) |
 | `gemini` | Gemini `generateContent` with `googleSearch` grounding | **Pinned credential** > Google (Antigravity) OAuth or `GEMINI_API_KEY` |
-| `codex` | Built-in `web_search` tool in the OpenAI Responses API | ChatGPT OAuth or `OPENAI_API_KEY` (**cannot be pinned**, see §4.1.1) |
+| `codex` | Built-in `web_search` tool in the OpenAI Responses API | **Pinned credential** > ChatGPT OAuth or `OPENAI_API_KEY` (the endpoint must be `api.openai.com` either way) |
 | `brave` | Brave LLM Context API (an independent index) | `settings.braveApiKey`, or `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa neural search over its MCP endpoint | `settings.exaApiKey` |
 | `free` | Keyless multi-engine fetching (ported from sweetcornna/free-search-mcp) | None |
@@ -174,7 +174,7 @@ own credential file.
 | Path | `occConfigPath('search-credentials.json')` — i.e. `~/.occ/search-credentials.json`, moved by `OCC_CONFIG_DIR` |
 | Mode | `0600`, written atomically through `writePrivateFileAtomic` |
 | Shape | `{ version, sources: { <source>: { apiKey, baseURL?, pinnedAt } } }` — **per source**, not one blob |
-| Pinnable | `anthropic`, `deepseek`, `gemini` |
+| Pinnable | `anthropic`, `deepseek`, `gemini`, `codex` |
 
 **Resolution order: pinned credential → provider env.** A user who never pins keeps working exactly as before, byte
 for byte, with no migration step.
@@ -193,14 +193,16 @@ The rules that are not obvious:
 - **`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` still outranks a pin.** That switch names this endpoint specifically; a
   pin says *which credential*, never "override a capability the user switched off".
 - **A key is never rendered.** The panel appends `· pinned` to the connected badge — no value, prefix or length.
-- **Mirrored values are refused.** `ANTHROPIC_API_KEY` is not always an Anthropic key: the DeepSeek wire mirrors the
-  DeepSeek key onto it and an OpenCode session mirrors an hourly OAuth access token there. Detected through the
-  mirrors' own bookkeeping (`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey`), never by guessing at shape.
-- **`codex` cannot be pinned.** Its lane authenticates inside `createOpenAIResponsesStream`, which builds the request
-  from `OPENAI_API_KEY`/`OPENAI_BASE_URL` with no credential seam — a pin would light the row green for a key that
-  never leaves disk, which is the "connected source that can only return nothing" the registry exists to prevent.
-  Its ChatGPT login is already a 0600 file of occ's own. The read side is uniform across all four families, so
-  enabling it later is one line here plus a seam in the request layer.
+- **Mirrored values are refused.** A provider-shaped env var is not proof of that provider's key: the DeepSeek wire
+  mirrors the DeepSeek key onto `ANTHROPIC_API_KEY`, and an OpenCode session mirrors an hourly OAuth access token
+  onto `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` depending on its lane. Detected through the mirrors' own bookkeeping
+  (`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey` / `isOpencodeMirroredOpenAIApiKey`), never by guessing at
+  shape.
+- **A pinnable source is one whose request layer has a credential seam.** `PINNABLE_SEARCH_SOURCES` is that list and
+  `pinSearchCredential` refuses anything outside it (`UnpinnableSearchSourceError`) rather than storing a key that
+  never leaves disk — the "connected source that can only return nothing" the registry exists to prevent. All four
+  families qualify today; `codex` was the last, and only once `createOpenAIResponsesStream` grew the optional
+  `credential` parameter described below.
 
 A pin is genuinely sent, not merely displayed:
 
@@ -209,6 +211,21 @@ A pin is genuinely sent, not merely displayed:
 | `anthropic` | `AnthropicDirectSearchAdapter` switches to a standalone `fetch`: `x-api-key` at `<pinned endpoint>/v1/messages`. Not `getAnthropicClient()`, which is assembled from `ANTHROPIC_*` env — after a profile switch those keys can hold another provider's mirrored token and gateway |
 | `deepseek` | `resolveDeepSeekSearchEndpoint()` returns the pinned endpoint and key first |
 | `gemini` | `streamGeminiGenerateContent({ apiKey, baseURL })`; `usesAntigravityRoute()` stands down for an explicit key, the same rule it already applies to `accessToken` |
+| `codex` | `createOpenAIResponsesStream({ credential })` — an optional parameter the main loop never passes, so with it omitted the request is byte-for-byte what it was. `shouldUseChatGPTAuth()` stands down for an explicit key, the same rule as Gemini's |
+
+Three things are specific to `codex`:
+
+- **The credential is one object, not two parameters.** A key and the endpoint it authenticates against travel
+  together or not at all. Had the endpoint half fallen back to `OPENAI_BASE_URL`, a pinned OpenAI key on a session
+  since repointed at DeepSeek would have been posted to DeepSeek. A pin carrying no endpoint therefore means
+  OpenAI's own default, never "whatever the env says".
+- **The `api.openai.com` rule applies to the stored endpoint.** `hasCodexSearchCredentials()` answers the pin first
+  and checks *its* base URL, so a pin aimed at an OpenAI-compatible gateway leaves the row dark instead of lighting
+  a lane that accepts the request, runs a search, and reports no citations. `S` refuses to create such a pin in the
+  first place; the check covers a hand-edited file.
+- **The model is re-picked on the pinned route.** A pin decouples this lane's endpoint from the session's, so the
+  main-loop model may be one api.openai.com has never heard of (`deepseek-v4-flash` → HTTP 400, silenced by the
+  aggregator). Non-GPT ids are swapped for the cheap tier; an explicitly configured OpenAI model is kept.
 
 ### 4.2 Aggregation rules (`adapters/aggregateAdapter.ts`)
 

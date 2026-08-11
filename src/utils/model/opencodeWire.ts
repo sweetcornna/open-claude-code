@@ -238,6 +238,24 @@ export function isOpencodeMirroredApiKey(value: string | undefined): boolean {
 }
 
 /**
+ * Whether `OPENAI_API_KEY` currently holds a value this module wrote.
+ *
+ * The non-`messages` lanes mirror the credential onto OPENAI_API_KEY instead,
+ * so a session on a GPT-family OpenCode model has an OpenAI-shaped env var
+ * holding an OpenCode OAuth access token — one that expires within the hour
+ * and must never reach disk. /search-setting's `S` copies the environment into
+ * a 0600 file, so it has to be able to tell that value apart from a real
+ * OpenAI key; only this module's own bookkeeping can, since nothing about the
+ * string says which vendor issued it.
+ */
+export function isOpencodeMirroredOpenAIApiKey(
+  value: string | undefined,
+): boolean {
+  if (!value) return false
+  return mirroredKeys.get('OPENAI_API_KEY') === value
+}
+
+/**
  * Mirror the OPENCODE_* configuration onto the lane keys the clients read.
  * In-memory only — settings.json is never rewritten.
  *

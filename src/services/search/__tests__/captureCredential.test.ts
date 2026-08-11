@@ -14,16 +14,29 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js'
+import {
+  applyOpencodeWire,
+  OPENCODE_AUTH_MODE_ENV,
+  OPENCODE_BASE_URL_ENV,
+  OPENCODE_MODEL_ENV,
+  setOpencodeRuntimeCredential,
+} from 'src/utils/model/opencodeWire.js'
 import { captureSearchCredentialFromEnvironment } from '../captureCredential.js'
 
 const ENV_KEYS = [
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_MODEL',
   'GEMINI_API_KEY',
   'GEMINI_BASE_URL',
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
+  'OPENAI_MODEL',
   'OPENAI_WIRE_API',
+  'OPENCODE_API_KEY',
+  OPENCODE_AUTH_MODE_ENV,
+  OPENCODE_BASE_URL_ENV,
+  OPENCODE_MODEL_ENV,
 ] as const
 
 const saved = new Map<string, string | undefined>()
@@ -34,12 +47,17 @@ beforeEach(() => {
     delete process.env[key]
   }
   // Release any claim a previous test (or this process's startup) left behind.
+  // The runtime credential is module state, so it is cleared the same way.
+  setOpencodeRuntimeCredential(undefined)
   applyDeepSeekAnthropicWire()
+  applyOpencodeWire()
 })
 
 afterEach(() => {
   for (const key of ENV_KEYS) delete process.env[key]
+  setOpencodeRuntimeCredential(undefined)
   applyDeepSeekAnthropicWire()
+  applyOpencodeWire()
   for (const [key, value] of saved) {
     if (value !== undefined) process.env[key] = value
   }
@@ -136,12 +154,67 @@ describe('anthropic', () => {
 })
 
 describe('codex', () => {
-  test('is refused before anything is read from the environment', () => {
+  test('captures the OpenAI key with its endpoint', () => {
     process.env.OPENAI_API_KEY = 'sk-openai'
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+
+    expect(captureSearchCredentialFromEnvironment('codex')).toEqual({
+      credential: {
+        apiKey: 'sk-openai',
+        baseURL: 'https://api.openai.com/v1',
+      },
+    })
+  })
+
+  test('captures a key with no base URL — the SDK default is OpenAI', () => {
+    process.env.OPENAI_API_KEY = 'sk-openai'
+
+    expect(captureSearchCredentialFromEnvironment('codex')).toEqual({
+      credential: { apiKey: 'sk-openai' },
+    })
+  })
+
+  test.each([
+    ['DeepSeek', 'https://api.deepseek.com'],
+    ['GLM', 'https://open.bigmodel.cn/api/paas/v4'],
+    ['a local vLLM', 'http://localhost:8000/v1'],
+  ])('refuses a key pointed at %s', (_label, baseUrl) => {
+    // That key belongs to THAT vendor, and none of them run OpenAI's
+    // server-side web_search — pinning it would store the one credential shape
+    // that produces a green row and zero results on every query.
+    process.env.OPENAI_API_KEY = 'sk-openai'
+    process.env.OPENAI_BASE_URL = baseUrl
+
+    const result = captureSearchCredentialFromEnvironment('codex')
+    expect(result).toHaveProperty('error')
+    expect((result as { error: string }).error).toMatch(/api\.openai\.com/)
+  })
+
+  test('refuses an OpenCode access token mirrored onto OPENAI_API_KEY', () => {
+    // An OpenCode session on a GPT-family model puts its hour-long OAuth token
+    // here. Nothing about the string says which vendor issued it, so the
+    // mirror's own bookkeeping is the only thing that can tell.
+    process.env[OPENCODE_AUTH_MODE_ENV] = 'opencode'
+    process.env[OPENCODE_BASE_URL_ENV] = 'https://opencode.ai/zen/v1'
+    process.env[OPENCODE_MODEL_ENV] = 'gpt-5.6-sol'
+    setOpencodeRuntimeCredential('oc-access-token')
+    applyOpencodeWire()
+    // Sanity: the mirror really did claim the key this capture would copy.
+    expect(process.env.OPENAI_API_KEY).toBe('oc-access-token')
+    // Point the endpoint at OpenAI so the base-URL rule cannot be what refuses
+    // this — only the mirror check is left standing.
     process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
 
     const result = captureSearchCredentialFromEnvironment('codex')
     expect(result).toHaveProperty('error')
-    expect((result as { error: string }).error).toMatch(/ChatGPT account/)
+    expect((result as { error: string }).error).toMatch(
+      /another provider’s credential/,
+    )
+  })
+
+  test('refuses when there is only a ChatGPT login, and says it needs no pin', () => {
+    const result = captureSearchCredentialFromEnvironment('codex')
+    expect(result).toHaveProperty('error')
+    expect((result as { error: string }).error).toMatch(/OPENAI_API_KEY/)
   })
 })

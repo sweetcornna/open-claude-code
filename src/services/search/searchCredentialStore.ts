@@ -26,22 +26,21 @@
  * keys — and deliberately NOT `settings.json`, which is world-readable-ish and
  * is the file users paste into bug reports.
  *
- * WHY NOT EVERY SOURCE CAN BE PINNED
+ * A PIN IS ONLY WORTH STORING IF THE LANE SENDS IT
  *
- * A pinned credential is only worth anything if the lane actually sends it, so
  * `PINNABLE_SEARCH_SOURCES` lists the sources whose request layer reads this
- * store. `codex` is absent: its lane authenticates inside
- * `src/services/api/openai/responsesAdapter.ts`, which builds the request from
- * `OPENAI_API_KEY`/`OPENAI_BASE_URL` directly and offers no credential seam.
- * Accepting a pin there would light the panel green for a key that is never
- * sent — the "connected source that can only return nothing" failure the whole
- * source registry exists to prevent (see searchSources.ts `isSourceEnabled`).
- * Its ChatGPT login is a 0600 file of its own, which is why the source has a
- * survivable credential at all.
+ * store, and pinning anything else is refused rather than accepted-and-ignored:
+ * a key that never leaves the disk while its row shows green is the "connected
+ * source that can only return nothing" failure the whole source registry exists
+ * to prevent (see searchSources.ts `isSourceEnabled`).
  *
- * The READ side is uniform across all four families on purpose: enabling
- * `codex` later is a one-line addition here plus the credential seam in the
- * request layer, not a re-shape of the store.
+ * All four families qualify today. `codex` was the late one — its lane
+ * authenticates inside `createOpenAIResponsesStream`, which used to build the
+ * request from `OPENAI_API_KEY`/`OPENAI_BASE_URL` with nowhere to inject a
+ * stored value, so the store refused it until that function grew an optional
+ * `credential` parameter. The registry is still the gate, not a formality: a
+ * fifth family added here without a seam in its request layer would recreate
+ * exactly that hole.
  */
 
 import type { SearchCredentialFamily } from '@open-claude-code/tool-runtime/searchCredentials.js'
@@ -56,12 +55,13 @@ const FILE_VERSION = 1
 
 /**
  * Sources whose search lane reads this store, and which may therefore be
- * pinned. See the module header for why `codex` is not one of them.
+ * pinned. See the module header for what disqualifies one.
  */
 export const PINNABLE_SEARCH_SOURCES: readonly SearchCredentialFamily[] = [
   'anthropic',
   'deepseek',
   'gemini',
+  'codex',
 ]
 
 export function isPinnableSearchSource(
@@ -209,8 +209,8 @@ async function persist(
 export class UnpinnableSearchSourceError extends Error {
   constructor(readonly family: SearchCredentialFamily) {
     super(
-      `${family} cannot be pinned: its search lane authenticates through the ` +
-        `provider request layer, so a pinned key would never be sent.`,
+      `${family} cannot be pinned: its search lane has no credential seam, ` +
+        `so a pinned key would never be sent.`,
     )
     this.name = 'UnpinnableSearchSourceError'
   }

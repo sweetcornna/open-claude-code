@@ -137,7 +137,7 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | `anthropic` | Anthropic server-side `web_search_20250305` | **固定凭据** > Claude OAuth 或 `ANTHROPIC_API_KEY` |
 | `deepseek` | DeepSeek server-side `web_search_20250305`，走 `<base>/anthropic` | **固定凭据** > DeepSeek 端点 + key（`OPENAI_BASE_URL` 指向 api.deepseek.com） |
 | `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定凭据** > Google(Antigravity) OAuth 或 `GEMINI_API_KEY` |
-| `codex` | OpenAI Responses API 内建 `web_search` 工具 | ChatGPT OAuth 或 `OPENAI_API_KEY`（**不可固定**，见 4.1.2） |
+| `codex` | OpenAI Responses API 内建 `web_search` 工具 | **固定凭据** > ChatGPT OAuth 或 `OPENAI_API_KEY`（两种都要求端点是 api.openai.com） |
 | `brave` | Brave LLM Context API（独立索引） | `settings.braveApiKey`，或 `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa 神经搜索 MCP 端点 | `settings.exaApiKey` |
 | `free` | 免密钥多引擎抓取（移植自 sweetcornna/free-search-mcp） | 无 |
@@ -212,7 +212,7 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | 路径 | `occConfigPath('search-credentials.json')`（即 `~/.occ/search-credentials.json`，跟随 `OCC_CONFIG_DIR`） |
 | 权限 | `0600`，经 `writePrivateFileAtomic` 原子写 |
 | 形状 | `{ version, sources: { <源>: { apiKey, baseURL?, pinnedAt } } }` —— **按源独立**，不是一个大 blob |
-| 可固定的源 | `anthropic`、`deepseek`、`gemini` |
+| 可固定的源 | `anthropic`、`deepseek`、`gemini`、`codex` |
 
 **解析顺序：固定凭据 → provider 环境变量。** 没固定过的用户行为与改造前**逐字节相同**，
 不需要任何迁移步骤就能继续搜索。
@@ -231,15 +231,16 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 - **`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` 仍然压过固定凭据**。那个开关点名的就是这个端点；
   固定说的是「用哪把 key」，从来不是「无视用户关掉的能力」（与源开关的单向语义一致）。
 - **绝不渲染 key**。面板只在已连接的徽章后面加一个 `· pinned`，不显示值、前缀或长度。
-- **镜像值会被拒绝**。`ANTHROPIC_API_KEY` 并不总是 Anthropic 的 key —— DeepSeek 线会把 DeepSeek key
-  镜像上去，OpenCode 会把一小时过期的 OAuth access token 镜像上去。固定它等于把别家的密钥以
-  Anthropic 的名义写进磁盘、再发往 api.anthropic.com。判定用的是两个镜像自己的记账谓词
-  （`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey`），不是猜值的形状。
-- **`codex` 不可固定**。它那一路的认证发生在 `createOpenAIResponsesStream` 内部，请求直接从
-  `OPENAI_API_KEY` / `OPENAI_BASE_URL` 构造、没有凭据入口。允许固定只会让这一行亮绿而 key 永远
-  不出磁盘 —— 正是整个源注册表要防的「点亮了却只能返回空」。它的 ChatGPT 登录本身就是 occ 自己的
-  0600 文件，这也是这一源在切换 provider 后仍可能有凭据的原因。读取侧对四家是统一的，将来接上
-  请求层的凭据入口即可放开。
+- **镜像值会被拒绝**。带某家名字的环境变量并不等于那家的 key —— DeepSeek 线把 DeepSeek key 镜像到
+  `ANTHROPIC_API_KEY`，OpenCode 按 lane 把一小时过期的 OAuth access token 镜像到
+  `ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY`。固定它等于把别家的密钥以这个名字写进磁盘、再发往这个
+  名字的端点。判定用的是各镜像自己的记账谓词（`isDeepSeekMirroredApiKey` /
+  `isOpencodeMirroredApiKey` / `isOpencodeMirroredOpenAIApiKey`），不是猜值的形状。
+- **可固定 = 那一路的请求层有凭据入口**。`PINNABLE_SEARCH_SOURCES` 就是这份名单，
+  `pinSearchCredential` 对名单外的源直接拒绝（`UnpinnableSearchSourceError`），而不是收下一把
+  永远不出磁盘的 key —— 那正是整个源注册表要防的「点亮了却只能返回空」。四家目前都在名单里；
+  `codex` 是最后进来的一个，前提是 `createOpenAIResponsesStream` 加上了下面那个可选的
+  `credential` 参数。
 
 **固定凭据真的会被发送**，不只是点亮面板：
 
@@ -248,6 +249,20 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | `anthropic` | `AnthropicDirectSearchAdapter` 改走独立 `fetch`，`x-api-key` + `<pin 端点>/v1/messages`。不再用 `getAnthropicClient()` —— 那个客户端由 `ANTHROPIC_*` 环境变量拼出来，切档案后那些键里可能是别家镜像进来的 token 和别家的网关 |
 | `deepseek` | `resolveDeepSeekSearchEndpoint()` 优先返回 pin 的端点与 key |
 | `gemini` | `streamGeminiGenerateContent({ apiKey, baseURL })`；`usesAntigravityRoute()` 见到显式 apiKey 即让路（与已有的 `accessToken` 同一条规则） |
+| `codex` | `createOpenAIResponsesStream({ credential })` —— 主循环从不传这个可选参数，不传时请求逐字节与加参数前相同。`shouldUseChatGPTAuth()` 见到显式 key 即让路，与 Gemini 同一条规则 |
+
+`codex` 有三点是它独有的：
+
+- **凭据是一个对象，不是两个参数**。key 和它认证的那个端点要么一起传、要么都不传。如果端点那半边
+  回退到 `OPENAI_BASE_URL`，那么在一个后来被指向 DeepSeek 的会话里，固定的 OpenAI key 就会被发往
+  DeepSeek。所以「pin 没带端点」= OpenAI 自己的默认值，绝不是「环境里写的那个」。
+- **`api.openai.com` 这条判据作用在存下来的端点上**。`hasCodexSearchCredentials()` 先答 pin，比的是
+  **pin 自己的** base URL，所以指向 OpenAI 兼容网关的 pin 让这一行保持灰色，而不是点亮一条会收下
+  请求、真跑一次搜索、然后一条引用都不报的 lane。`S` 一开始就不会造出这种 pin，这层判据兜的是
+  手改过的文件。
+- **固定后模型会重挑**。pin 把这一路的端点与会话的端点解耦了，于是主循环模型可能是 api.openai.com
+  根本不认的（`deepseek-v4-flash` → 400，被聚合器静音）。非 GPT 系的 id 换成便宜档，用户显式配置的
+  OpenAI 模型保留。
 
 ### 4.2 聚合规则（`adapters/aggregateAdapter.ts`）
 
@@ -375,8 +390,8 @@ interface SearchProgress {
 | `packages/tool-runtime/src/toolExecutionTimeout.ts` | 通用超时包装（子 AbortController，见 4.4） |
 | `packages/tool-runtime/src/apiRetry.ts` | API 重试 facade，host 实现在 `src/services/api/retryFacade.ts` |
 | `src/services/search/searchCredentialStore.ts` | 固定凭据存储（0600 文件，`/logout` 与 `activateProfile()` 都不碰） |
-| `src/services/search/searchEndpoints.ts` | 「固定凭据 → provider env」解析：DeepSeek / Anthropic / Gemini 各自的端点与 key |
-| `src/services/search/captureCredential.ts` | 从环境捕获当前凭据以供固定；拒绝镜像值与不可固定的源 |
+| `src/services/search/searchEndpoints.ts` | 「固定凭据 → provider env」解析：DeepSeek / Anthropic / Gemini / Codex 各自的端点与 key |
+| `src/services/search/captureCredential.ts` | 从环境捕获当前凭据以供固定；拒绝镜像值、非官方端点与没有凭据入口的源 |
 | `src/services/search/sourceCredentials.ts` | 四家「有没有凭据」的同步判据（tool-runtime facade 的 host 实现） |
 | `src/commands/searchSetting/search-setting.tsx` | `/search-setting` 面板（勾选 / 登录 / `S` 固定 / `D` 取消固定或断开 / `R` 重查） |
 | `packages/builtin-tools/src/tools/WebSearchTool/__tests__/bingAdapter.test.ts` | 单元测试 (32 cases) |

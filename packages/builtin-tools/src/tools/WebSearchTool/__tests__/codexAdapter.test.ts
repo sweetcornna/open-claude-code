@@ -148,6 +148,21 @@ describe('shouldUseChatGPTAuth', () => {
     // …unless this adapter is the extra source, which asks for it outright.
     expect(shouldUseChatGPTAuth(true)).toBe(true)
   })
+
+  test('a pinned key stands the OAuth route down, however loudly it is asked for', () => {
+    // A pin is the user naming a credential. Routing past it to a backend that
+    // authenticates as somebody else's account is not "preferring a better
+    // login" — it is ignoring the pin, which is how a stored key ends up never
+    // being sent.
+    chatGPTAuthMock.set({
+      hasStoredChatGPTAuthSync: () => true,
+      isChatGPTAuthEnabled: () => true,
+    })
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com'
+
+    expect(shouldUseChatGPTAuth(false, 'sk-pinned')).toBe(false)
+    expect(shouldUseChatGPTAuth(true, 'sk-pinned')).toBe(false)
+  })
 })
 
 describe('resolveCodexSearchModel', () => {
@@ -196,6 +211,22 @@ describe('resolveCodexSearchModel', () => {
     process.env.OPENAI_MODEL = 'deepseek-v4-flash'
 
     expect(resolveCodexSearchModel(false)).toBe('deepseek-v4-flash')
+  })
+
+  test('swaps a model OpenAI does not serve on the pinned route', () => {
+    // A pin decouples this lane's endpoint from the session's, so unlike the
+    // plain API-key route the session model is not guaranteed to exist where
+    // the request is going — api.openai.com answers a 400 the aggregator
+    // silences, and the pinned key would have bought nothing.
+    process.env.OPENAI_MODEL = 'deepseek-v4-flash'
+
+    expect(resolveCodexSearchModel(false, true)).toBe('gpt-5.6-luna')
+  })
+
+  test('keeps an explicitly configured OpenAI model on the pinned route', () => {
+    process.env.OPENAI_MODEL = 'gpt-4o'
+
+    expect(resolveCodexSearchModel(false, true)).toBe('gpt-4o')
   })
 })
 

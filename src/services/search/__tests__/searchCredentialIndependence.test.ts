@@ -47,6 +47,7 @@ import {
 } from '../searchCredentialStore.js'
 import {
   resolveDeepSeekSearchEndpoint,
+  resolvePinnedCodexSearchCredential,
   resolvePinnedGeminiSearchCredential,
 } from '../searchEndpoints.js'
 
@@ -167,6 +168,33 @@ describe('a pinned search credential survives /logout', () => {
       apiKey: 'sk-pinned',
     })
   })
+
+  test('the Codex lane keeps its credential when OPENAI_* is deleted', async () => {
+    await pinSearchCredential('codex', {
+      apiKey: 'sk-openai-pinned',
+      baseURL: 'https://api.openai.com/v1',
+    })
+    persistedSettings = {
+      env: {
+        OPENAI_API_KEY: 'sk-provider',
+        OPENAI_BASE_URL: 'https://api.openai.com/v1',
+      },
+    }
+    process.env.OPENAI_API_KEY = 'sk-provider'
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+
+    resetProviderConfiguration()
+
+    expect(process.env.OPENAI_API_KEY).toBeUndefined()
+    expect(process.env.OPENAI_BASE_URL).toBeUndefined()
+
+    // This is the credential `createOpenAIResponsesStream` is handed, so the
+    // lane still has both halves of a request the environment no longer holds.
+    expect(resolvePinnedCodexSearchCredential()).toEqual({
+      apiKey: 'sk-openai-pinned',
+      baseURL: 'https://api.openai.com/v1',
+    })
+  })
 })
 
 describe('a pinned search credential survives a provider switch', () => {
@@ -231,6 +259,36 @@ describe('a pinned search credential survives a provider switch', () => {
 
     expect(process.env.OPENAI_API_KEY).toBeUndefined()
     expect(resolveDeepSeekSearchEndpoint()?.apiKey).toBe('sk-pinned')
+  })
+
+  test('a pinned Codex key is not the one the switch just overwrote', async () => {
+    // `activateProfile` clears the union of every family's keys — OPENAI_* very
+    // much included — and then writes the target's. Nothing in either step can
+    // reach the search store, which is the whole point of it being a separate
+    // file rather than a settings key.
+    seedOpencodeProfile()
+    await pinSearchCredential('codex', { apiKey: 'sk-openai-pinned' })
+    persistedSettings = {
+      modelType: 'openai',
+      env: {
+        OPENAI_API_KEY: 'sk-provider',
+        OPENAI_BASE_URL: 'https://api.openai.com/v1',
+      },
+    }
+    process.env.OPENAI_API_KEY = 'sk-provider'
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+
+    expect(activateProfile('oc-work')).toMatchObject({
+      profile: { name: 'oc-work' },
+    })
+
+    expect(process.env.OPENAI_API_KEY).not.toBe('sk-provider')
+    expect(persistedSettings.env?.OPENAI_API_KEY).toBeUndefined()
+
+    expect(resolvePinnedCodexSearchCredential()?.apiKey).toBe(
+      'sk-openai-pinned',
+    )
+    expect(listPinnedSearchSources()).toEqual(['codex'])
   })
 })
 

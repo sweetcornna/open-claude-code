@@ -498,6 +498,156 @@ describe('createOpenAIResponsesStream', () => {
     expect('OpenAI-Beta' in capturedHeaders).toBe(false)
   })
 
+  // The `credential` seam was added for WebSearch's pinned `codex` source. This
+  // same function also carries ordinary inference, so the two cases below are
+  // the guard on that: a recorded request with the parameter omitted, and the
+  // parameter's effect when it is not.
+  describe('the optional credential', () => {
+    /** Everything the adapter hands to fetch, in full. */
+    type Recorded = {
+      url: string
+      initKeys: string[]
+      method: unknown
+      headers: unknown
+      body: unknown
+    }
+
+    function recorder(): { calls: Recorded[]; fetchOverride: typeof fetch } {
+      const calls: Recorded[] = []
+      const fetchOverride = (async (url: unknown, init?: RequestInit) => {
+        calls.push({
+          url: String(url),
+          initKeys: Object.keys(init ?? {}).sort(),
+          method: init?.method,
+          headers: init?.headers,
+          body: init?.body,
+        })
+        return new Response('data: [DONE]\n\n', { status: 200 })
+      }) as unknown as typeof fetch
+      return { calls, fetchOverride }
+    }
+
+    const REQUEST = buildResponsesRequest({
+      model: 'gpt-5.5',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      toolChoice: undefined,
+    })
+
+    // The remaining fetch-init keys come from getProxyFetchOptions, which reads
+    // the ambient proxy/mTLS environment. Cleared so the recorded shape below
+    // is the same on a developer machine behind a corporate proxy as in CI —
+    // otherwise this assertion would be about the machine, not the code.
+    const TRANSPORT_ENV = [
+      'https_proxy',
+      'HTTPS_PROXY',
+      'http_proxy',
+      'HTTP_PROXY',
+      'CLAUDE_CODE_CLIENT_CERT',
+      'CLAUDE_CODE_CLIENT_KEY',
+      'NODE_EXTRA_CA_CERTS',
+    ] as const
+
+    test('omitted, the request is the recorded pre-seam one, byte for byte', async () => {
+      // Recorded from the env-only implementation and left literal on purpose:
+      // the main loop passes no credential, so anything that shifts here — a
+      // header, the URL derivation, the serialized body, even an extra key in
+      // the fetch init — is a change to ordinary inference, not to search.
+      const savedTransport = TRANSPORT_ENV.map(
+        key => [key, process.env[key]] as const,
+      )
+      for (const key of TRANSPORT_ENV) delete process.env[key]
+      process.env.OPENAI_API_KEY = 'sk-main-loop'
+      process.env.OPENAI_BASE_URL = 'https://gateway.example/v1'
+      const { calls, fetchOverride } = recorder()
+
+      try {
+        await createOpenAIResponsesStream({
+          request: REQUEST,
+          signal: new AbortController().signal,
+          fetchOverride,
+        })
+      } finally {
+        for (const [key, value] of savedTransport) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+
+      expect(calls).toEqual([
+        {
+          url: 'https://gateway.example/v1/responses',
+          initKeys: ['body', 'headers', 'method', 'signal'],
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer sk-main-loop',
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify(REQUEST),
+        },
+      ])
+    })
+
+    test('supplied, it replaces the key and the endpoint together', async () => {
+      process.env.OPENAI_API_KEY = 'sk-session'
+      process.env.OPENAI_BASE_URL = 'https://gateway.example/v1'
+      const { calls, fetchOverride } = recorder()
+
+      await createOpenAIResponsesStream({
+        request: REQUEST,
+        signal: new AbortController().signal,
+        fetchOverride,
+        credential: {
+          apiKey: 'sk-pinned',
+          baseURL: 'https://api.openai.com/v1',
+        },
+      })
+
+      expect(calls[0]?.url).toBe('https://api.openai.com/v1/responses')
+      expect(calls[0]?.headers).toMatchObject({
+        Authorization: 'Bearer sk-pinned',
+      })
+    })
+
+    test('an endpoint-less credential goes to OpenAI, never to OPENAI_BASE_URL', async () => {
+      // The leak this shape exists to prevent: falling back to the env base URL
+      // for the endpoint half would post the caller's OpenAI key to whichever
+      // third-party gateway the session happens to be configured for.
+      process.env.OPENAI_API_KEY = 'sk-session'
+      process.env.OPENAI_BASE_URL = 'https://api.deepseek.com'
+      const { calls, fetchOverride } = recorder()
+
+      await createOpenAIResponsesStream({
+        request: REQUEST,
+        signal: new AbortController().signal,
+        fetchOverride,
+        credential: { apiKey: 'sk-pinned' },
+      })
+
+      expect(calls[0]?.url).toBe('https://api.openai.com/v1/responses')
+      expect(calls[0]?.url).not.toContain('deepseek')
+    })
+
+    test('a credential is enough on its own — OPENAI_API_KEY need not exist', async () => {
+      // The post-`/logout` state the pin exists for.
+      delete process.env.OPENAI_API_KEY
+      delete process.env.OPENAI_BASE_URL
+      const { calls, fetchOverride } = recorder()
+
+      await createOpenAIResponsesStream({
+        request: REQUEST,
+        signal: new AbortController().signal,
+        fetchOverride,
+        credential: { apiKey: 'sk-pinned' },
+      })
+
+      expect(calls[0]?.headers).toMatchObject({
+        Authorization: 'Bearer sk-pinned',
+      })
+    })
+  })
+
   test('parses CRLF frames and dispatches the final frame at EOF', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     const bytes = new TextEncoder().encode(

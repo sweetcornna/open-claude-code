@@ -138,7 +138,7 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 | `anthropic` | Anthropic server-side `web_search_20250305` | **固定した認証情報** > Claude OAuth または `ANTHROPIC_API_KEY` |
 | `deepseek` | DeepSeek server-side `web_search_20250305`（`<base>/anthropic` 経由） | **固定した認証情報** > DeepSeek エンドポイントと key（`OPENAI_BASE_URL` が api.deepseek.com を指す） |
 | `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定した認証情報** > Google(Antigravity) OAuth または `GEMINI_API_KEY` |
-| `codex` | OpenAI Responses API 組み込みの `web_search` ツール | ChatGPT OAuth または `OPENAI_API_KEY`（**固定不可**、4.1.1 を参照） |
+| `codex` | OpenAI Responses API 組み込みの `web_search` ツール | **固定した認証情報** > ChatGPT OAuth または `OPENAI_API_KEY`（いずれもエンドポイントは api.openai.com であることが必要） |
 | `brave` | Brave LLM Context API（独立インデックス） | `settings.braveApiKey`、または `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa のニューラル検索（MCP エンドポイント） | `settings.exaApiKey` |
 | `free` | キー不要の複数エンジンスクレイピング（sweetcornna/free-search-mcp から移植） | なし |
@@ -175,7 +175,7 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 | パス | `occConfigPath('search-credentials.json')`（= `~/.occ/search-credentials.json`、`OCC_CONFIG_DIR` に追従） |
 | 権限 | `0600`、`writePrivateFileAtomic` によるアトミック書き込み |
 | 形状 | `{ version, sources: { <ソース>: { apiKey, baseURL?, pinnedAt } } }` —— **ソースごとに独立**、単一の blob ではない |
-| 固定可能なソース | `anthropic`、`deepseek`、`gemini` |
+| 固定可能なソース | `anthropic`、`deepseek`、`gemini`、`codex` |
 
 **解決順序：固定した認証情報 → provider 環境変数。** 固定していないユーザーの挙動は改修前とバイト単位で同一
 であり、検索を続けるための移行手順は一切不要です。
@@ -195,14 +195,17 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
   しており、固定は「どの認証情報を使うか」を言うだけで、「ユーザーが切った能力を無視する」ものではありません。
 - **key は決して描画しません**。パネルは接続済みバッジに `· pinned` を付けるだけで、値も先頭数文字も長さも
   表示しません。
-- **ミラーされた値は拒否します**。`ANTHROPIC_API_KEY` は常に Anthropic の key とは限りません —— DeepSeek 線は
-  DeepSeek の key を、OpenCode セッションは 1 時間で失効する OAuth access token をそこへミラーします。判定は
-  各ミラー自身の記帳（`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey`）で行い、値の形から推測しません。
-- **`codex` は固定できません**。この経路の認証は `createOpenAIResponsesStream` の内部で行われ、リクエストは
-  `OPENAI_API_KEY` / `OPENAI_BASE_URL` から直接組み立てられて認証情報の差し込み口がありません。固定を許すと、
-  ディスクから出ることのない key でこの行だけが緑に点灯します —— レジストリが防ごうとしている「接続済みなのに
-  空しか返せないソース」そのものです。ChatGPT ログインはもともと occ 自身の 0600 ファイルです。読み取り側は
-  4 家族で統一されているため、将来リクエスト層に差し込み口ができれば 1 行で解放できます。
+- **ミラーされた値は拒否します**。ある provider の名前を持つ環境変数は、その provider の key である証拠には
+  なりません —— DeepSeek 線は DeepSeek の key を `ANTHROPIC_API_KEY` へ、OpenCode セッションは 1 時間で失効する
+  OAuth access token を lane に応じて `ANTHROPIC_API_KEY` か `OPENAI_API_KEY` へミラーします。判定は各ミラー
+  自身の記帳（`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey` / `isOpencodeMirroredOpenAIApiKey`）で
+  行い、値の形から推測しません。
+- **固定可能なソースとは、リクエスト層に認証情報の差し込み口があるソースのことです**。その一覧が
+  `PINNABLE_SEARCH_SOURCES` であり、`pinSearchCredential` は一覧外のソースを拒否します
+  （`UnpinnableSearchSourceError`）——ディスクから出ない key を受け取るくらいなら拒否する、という判断で、
+  それがレジストリの防ごうとしている「接続済みなのに空しか返せないソース」です。現在は 4 家族すべてが該当し、
+  最後に入ったのが `codex` です。前提は `createOpenAIResponsesStream` に後述の任意パラメータ `credential` が
+  追加されたことです。
 
 固定した認証情報は、表示だけでなく**実際に送信されます**：
 
@@ -211,6 +214,22 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 | `anthropic` | `AnthropicDirectSearchAdapter` が独立した `fetch` に切り替わり、`x-api-key` で `<固定したエンドポイント>/v1/messages` へ。`getAnthropicClient()` は使いません —— あのクライアントは `ANTHROPIC_*` 環境変数から組み立てられ、プロファイル切替後はそこに他 provider のミラーされた token とゲートウェイが入っていることがあります |
 | `deepseek` | `resolveDeepSeekSearchEndpoint()` が固定したエンドポイントと key を優先して返す |
 | `gemini` | `streamGeminiGenerateContent({ apiKey, baseURL })`。`usesAntigravityRoute()` は明示的な apiKey があれば道を譲る（既存の `accessToken` と同じ規則） |
+| `codex` | `createOpenAIResponsesStream({ credential })` —— メインループが決して渡さない任意パラメータで、渡さなければリクエストは追加前とバイト単位で同一です。`shouldUseChatGPTAuth()` は明示的な key があれば道を譲る（Gemini と同じ規則） |
+
+`codex` に固有の点が 3 つあります：
+
+- **認証情報は 2 つのパラメータではなく 1 つのオブジェクトです**。key と、それが認証する相手のエンドポイントは、
+  一緒に渡すか、まったく渡さないかのどちらかです。エンドポイント側だけ `OPENAI_BASE_URL` にフォールバック
+  させていたら、その後 DeepSeek に向け直されたセッションで、固定した OpenAI の key が DeepSeek へ送られて
+  いました。したがって「エンドポイントを持たない固定」は OpenAI 自身の既定値を意味し、「環境変数が言っている
+  もの」では決してありません。
+- **`api.openai.com` の規則は保存されたエンドポイントに適用されます**。`hasCodexSearchCredentials()` はまず
+  固定を見て、**その固定自身の** base URL を判定します。そのため OpenAI 互換ゲートウェイを指す固定では行は
+  灰色のままになり、リクエストを受理して検索まで走らせながら引用を 1 件も返さない経路が点灯することは
+  ありません。`S` はそもそもそのような固定を作りません。この判定は手で編集されたファイル向けです。
+- **固定後はモデルを選び直します**。固定はこの経路のエンドポイントをセッションのそれから切り離すため、
+  メインループのモデルが api.openai.com の知らないものであり得ます（`deepseek-v4-flash` → 400、集約器が
+  握りつぶす）。GPT 系でない id は安価な段へ差し替え、ユーザーが明示的に設定した OpenAI モデルは維持します。
 
 ### 4.2 集約規則（`adapters/aggregateAdapter.ts`）
 

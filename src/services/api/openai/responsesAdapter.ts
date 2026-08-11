@@ -1345,10 +1345,35 @@ export function resolveResponsesEndpoint(baseURL: string | undefined): string {
 }
 
 /**
+ * A caller-supplied credential for the generic `/responses` route.
+ *
+ * ONE OBJECT, NOT TWO PARAMETERS. A key and the endpoint it authenticates
+ * against travel together or not at all: an injected key that inherited
+ * `OPENAI_BASE_URL` would post the caller's OpenAI secret to whatever
+ * third-party gateway the session happens to be configured for, which is worse
+ * than the failure the injection exists to fix. `baseURL` left out therefore
+ * means OpenAI's own default, never "whatever the env says".
+ *
+ * The only user today is WebSearch's `codex` source with a credential pinned
+ * through /search-setting — that lane has to keep working after a `/logout` or
+ * a `/provider use`, both of which delete OPENAI_API_KEY/OPENAI_BASE_URL.
+ */
+type ResponsesCredential = {
+  apiKey: string
+  /** Endpoint for `apiKey`. Absent means `https://api.openai.com/v1`. */
+  baseURL?: string
+}
+
+/**
  * Generic Responses API route: any endpoint speaking the standard
  * `/responses` protocol with API-key auth (official OpenAI or compatible
  * providers). Selected via `OPENAI_WIRE_API=responses`. No ChatGPT-specific
  * headers are sent on this route.
+ *
+ * `credential` is optional and the main loop never passes it: with it absent
+ * every byte of the request — URL, headers, body — is what it was before the
+ * parameter existed (`responsesAdapter.test.ts` pins that against a recorded
+ * baseline, rather than asserting it in prose).
  */
 export async function createOpenAIResponsesStream(params: {
   request: ResponsesRequest
@@ -1357,15 +1382,21 @@ export async function createOpenAIResponsesStream(params: {
   maxRetries?: number
   /** See {@link closesRetryWindow}. */
   discardsPartialOutput?: boolean
+  /** See {@link ResponsesCredential}. Omitted ⇒ the OPENAI_* environment. */
+  credential?: ResponsesCredential
 }): Promise<AsyncIterable<Record<string, unknown>>> {
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = params.credential?.apiKey ?? process.env.OPENAI_API_KEY
   if (!apiKey) {
     throw new Error(
       'OPENAI_API_KEY is required when OPENAI_WIRE_API=responses is set without ChatGPT auth',
     )
   }
   return fetchResponsesStream({
-    url: resolveResponsesEndpoint(process.env.OPENAI_BASE_URL),
+    url: resolveResponsesEndpoint(
+      params.credential
+        ? params.credential.baseURL
+        : process.env.OPENAI_BASE_URL,
+    ),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',

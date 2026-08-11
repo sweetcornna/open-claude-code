@@ -137,3 +137,33 @@ export function resolvePinnedGeminiSearchCredential():
     ...(pinned.baseURL ? { baseURL: pinned.baseURL } : {}),
   }
 }
+
+/** Credential the Codex search lane authenticates with, when one is pinned. */
+type CodexSearchCredential = {
+  apiKey: string
+  baseURL?: string
+}
+
+/**
+ * The pinned Codex/OpenAI search credential, or nothing.
+ *
+ * No env fallback, same as the Anthropic and Gemini resolvers: unpinned, the
+ * lane picks between a stored ChatGPT login and `OPENAI_API_KEY` exactly as it
+ * did before this store existed, and `undefined` is what leaves that alone.
+ *
+ * The key deliberately keeps whatever endpoint it was pinned with — including
+ * none, which `createOpenAIResponsesStream` reads as OpenAI's own default.
+ * Completing an endpoint-less pin from `OPENAI_BASE_URL` would send the user's
+ * OpenAI key to whichever third-party gateway the session was later pointed
+ * at; that env var is the thing a pin is supposed to stop depending on.
+ */
+export function resolvePinnedCodexSearchCredential():
+  | CodexSearchCredential
+  | undefined {
+  const pinned = readPinnedSearchCredential('codex')
+  if (!pinned) return undefined
+  return {
+    apiKey: pinned.apiKey,
+    ...(pinned.baseURL ? { baseURL: pinned.baseURL } : {}),
+  }
+}
