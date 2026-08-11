@@ -1,4 +1,33 @@
-export type ProfileModelType = 'anthropic' | 'openai' | 'gemini' | 'grok'
+/**
+ * Provider families a profile can be saved as.
+ *
+ * Must stay in lockstep with `settings.modelType`'s zod enum: activateProfile()
+ * writes this value straight into settings, and a value that enum rejects is
+ * not merely ignored — parseSettingsFileUncached drops the WHOLE file, making
+ * every other setting in it invisible.
+ *
+ * `opencode` has to be a member in its own right rather than being folded onto
+ * the lane it happens to speak. Folding it is not a cosmetic simplification: an
+ * OpenCode session's lane keys (the ANTHROPIC_ and OPENAI_ families) hold
+ * values the wire mirror put in process.env, and the credential among them is
+ * an OAuth access token with about an hour to live. Capturing under the lane's
+ * family therefore wrote that token into provider-profiles.json — stale within
+ * the hour, and a secret on disk that this design exists to keep off disk.
+ * Capturing under `opencode`
+ * snapshots the OPENCODE_* keys the user actually configured, and the live
+ * token stays where it belongs: the 0600 file the credential layer refreshes.
+ */
+export type ProfileModelType =
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'grok'
+  | 'opencode'
+
+// The two intents — "family a profile can be saved as" and "family whose env
+// keys activation clears" — were briefly separate types while OpenCode could
+// not be persisted as a modelType. They are the same set again, and a second
+// name for an identical union is one more thing to keep in sync for no gain.
 
 const PROFILE_MODEL_TIERS = ['HAIKU', 'SONNET', 'OPUS', 'FABLE'] as const
 const PROFILE_MODEL_TIER_KEYS = [
@@ -72,6 +101,28 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     ...tierProfileEnvKeys('GROK'),
     'GROK_BASE_URL',
     'GROK_MAX_TOKENS',
+    'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+  ],
+  // OpenCode. `OPENCODE_BASE_URL` is in the list because it is what selects the
+  // product — Zen or Go — so a profile without it would restore a session onto
+  // the other one's endpoint and bill the wrong balance.
+  // `OPENCODE_API_KEY` is the only credential that lives in env
+  // here — the OAuth pair is a 0600 file the credential layer refreshes hourly,
+  // and a copy of it in settings.json would be stale within the hour and a
+  // secret in a config file at the same time.
+  //
+  // Only the `_MODEL` tier keys, not the `_NAME`/`_DESCRIPTION`/
+  // `_SUPPORTED_CAPABILITIES` trio the other families carry: the mirror in
+  // opencodeWire.ts copies the model id onto the lane's own tier key and the
+  // metadata is then read from THAT key, so an OPENCODE_-prefixed copy would be
+  // written by nothing and read by nothing.
+  opencode: [
+    'OPENCODE_AUTH_MODE',
+    'OPENCODE_BASE_URL',
+    'OPENCODE_MODEL',
+    'OPENCODE_WIRE_API',
+    'OPENCODE_API_KEY',
+    ...PROFILE_MODEL_TIERS.map(tier => `OPENCODE_DEFAULT_${tier}_MODEL`),
     'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   ],
 }

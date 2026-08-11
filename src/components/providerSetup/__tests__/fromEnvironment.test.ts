@@ -61,6 +61,11 @@ const TOUCHED = [
   'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   'GROK_BASE_URL',
   'GROK_DEFAULT_SONNET_MODEL',
+  'OPENCODE_AUTH_MODE',
+  'OPENCODE_BASE_URL',
+  'OPENCODE_MODEL',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_TOKEN',
 ] as const
 
 afterEach(() => {
@@ -108,6 +113,30 @@ describe('currentProviderSetupKind', () => {
     process.env.CLAUDE_CODE_USE_GROK = '1'
     expect(fromEnv.currentProviderSetupKind({} as NodeJS.ProcessEnv)).toBe(
       'grok',
+    )
+  })
+
+  /**
+   * The lane is what getAPIProvider() reports for OpenCode, so both of these
+   * used to fall through to another provider's spec. The /messages case is the
+   * dangerous one: it resolved to `anthropic`, whose API-key field is seeded
+   * from ANTHROPIC_AUTH_TOKEN — the access token the wire mirror wrote — and
+   * saving put that credential into settings.env in plaintext.
+   */
+  test('an OpenCode session reads as opencode on either lane', () => {
+    process.env.OPENCODE_AUTH_MODE = 'opencode'
+    process.env.OPENCODE_BASE_URL = 'https://opencode.ai/zen/v1'
+
+    process.env.OPENCODE_MODEL = 'claude-opus-5'
+    process.env.ANTHROPIC_BASE_URL = 'https://opencode.ai/zen/v1'
+    process.env.ANTHROPIC_AUTH_TOKEN = 'mirrored-access-token'
+    expect(fromEnv.currentProviderSetupKind({} as NodeJS.ProcessEnv)).toBe(
+      'opencode',
+    )
+
+    process.env.OPENCODE_MODEL = 'gpt-5.6-sol'
+    expect(fromEnv.currentProviderSetupKind({} as NodeJS.ProcessEnv)).toBe(
+      'opencode',
     )
   })
 })

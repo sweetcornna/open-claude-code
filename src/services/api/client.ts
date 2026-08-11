@@ -14,6 +14,8 @@ import { getUserAgent } from 'src/utils/network/http.js'
 import { getSmallFastModel } from 'src/utils/model/model.js'
 import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js'
 import { isDirectAnthropicApi } from 'src/utils/model/providers.js'
+import { applyOpencodeWire } from 'src/utils/model/opencodeWire.js'
+import { ensureOpencodeCredential } from './opencodeCredential.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import { splitProviderBaseURL } from 'src/utils/network/providerUrl.js'
 import {
@@ -133,6 +135,19 @@ export async function getAnthropicClient({
   // and env-only, and this function already builds a fresh client per call.
   applyDeepSeekAnthropicWire()
 
+  // Same backstop for OpenCode Zen's /messages lane, in two halves. The mirror
+  // is the sync one and publishes the endpoint and model keys; the credential
+  // is the async one, because unlike DeepSeek — whose key sits in env for the
+  // whole session — an OpenCode OAuth token lives in a file and lapses about
+  // hourly, so the mirror has nothing to publish until the credential layer has
+  // been asked. Awaiting it here means a client cannot be built from a stale or
+  // absent token; this function already builds a fresh client per call, so
+  // there is nothing to invalidate afterwards. `x-org-id` comes back with it
+  // because the mirror cannot carry a header — and omitting it bills a
+  // multi-org account to whichever org the console happens to default to.
+  applyOpencodeWire()
+  const opencodeHeaders = await ensureOpencodeCredential()
+
   const containerId = process.env.CLAUDE_CODE_CONTAINER_ID
   const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
   const clientApp = process.env.CLAUDE_AGENT_SDK_CLIENT_APP
@@ -141,6 +156,9 @@ export async function getAnthropicClient({
     'x-app': 'cli',
     'User-Agent': getUserAgent(),
     'X-Claude-Code-Session-Id': getSessionId(),
+    ...(opencodeHeaders?.['x-org-id']
+      ? { 'x-org-id': opencodeHeaders['x-org-id'] }
+      : {}),
     ...customHeaders,
     ...(containerId ? { 'x-claude-remote-container-id': containerId } : {}),
     ...(remoteSessionId

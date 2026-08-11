@@ -412,11 +412,16 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe('Computer Use backend configuration'),
       modelType: z
-        .enum(['anthropic', 'openai', 'gemini', 'grok'])
+        // Unknown values are not tolerated here: a settings.json this schema
+        // rejects is dropped WHOLE (parseSettingsFileUncached returns null), so
+        // a provider missing from this list does not degrade — it makes every
+        // other setting in the file invisible.
+        .enum(['anthropic', 'openai', 'gemini', 'grok', 'opencode'])
         .optional()
         .describe(
-          'API provider type. "anthropic" uses the Anthropic API (default), "openai" uses the OpenAI Chat Completions API, "gemini" uses the Gemini API, and "grok" uses the xAI Grok API (OpenAI-compatible). ' +
-            'When set to "openai", configure OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL. When set to "gemini", configure GEMINI_API_KEY and optional GEMINI_BASE_URL. When set to "grok", configure GROK_API_KEY (or XAI_API_KEY), optional GROK_BASE_URL, GROK_MODEL, and GROK_MODEL_MAP.',
+          'API provider type. "anthropic" uses the Anthropic API (default), "openai" uses the OpenAI Chat Completions API, "gemini" uses the Gemini API, "grok" uses the xAI Grok API (OpenAI-compatible), and "opencode" uses OpenCode — either the Zen gateway or the Go subscription, selected by OPENCODE_BASE_URL. ' +
+            'When set to "openai", configure OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL. When set to "gemini", configure GEMINI_API_KEY and optional GEMINI_BASE_URL. When set to "grok", configure GROK_API_KEY (or XAI_API_KEY), optional GROK_BASE_URL, GROK_MODEL, and GROK_MODEL_MAP. ' +
+            'When set to "opencode", configure OPENCODE_AUTH_MODE, OPENCODE_BASE_URL, OPENCODE_MODEL, and either OPENCODE_API_KEY or a Console device login.',
         ),
       model: z
         .string()

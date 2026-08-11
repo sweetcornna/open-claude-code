@@ -115,6 +115,12 @@ const PROVIDER_MANAGED_ENV_PREFIXES = [
   // Per-model Vertex region overrides — scales with model releases, so
   // prefix-matched to avoid drift on each launch.
   'VERTEX_REGION_CLAUDE_',
+  // Every OpenCode key is provider configuration by construction; prefix-matched
+  // because the tier keys scale with the tier list. Without this,
+  // CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST strips the other families' keys from
+  // settings-sourced env and leaves these — so a host that means "I own provider
+  // configuration" would find OPENCODE_* still steering the session at OpenCode.
+  'OPENCODE_',
 ]
 
 export function isProviderManagedEnvVar(key: string): boolean {

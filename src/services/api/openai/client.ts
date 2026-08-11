@@ -6,6 +6,11 @@ import {
   normalizeProviderBaseURL,
   splitProviderBaseURL,
 } from 'src/utils/network/providerUrl.js'
+import {
+  applyOpencodeWire,
+  isOpencodeSessionActive,
+} from 'src/utils/model/opencodeWire.js'
+import { ensureOpencodeCredential } from '../opencodeCredential.js'
 import { clampOpenAIMaxRetries } from './retry.js'
 
 /**
@@ -48,6 +53,37 @@ function wrapFetchForUsage(base: typeof fetch): typeof fetch {
   return wrapped as unknown as typeof fetch
 }
 
+/**
+ * Attach the live OpenCode credential to each request.
+ *
+ * Not done at construction, because construction is synchronous and the
+ * credential is not: it comes from a 0600 file whose OAuth pair is refreshed
+ * roughly hourly. Baking one into the client would mean the first request of a
+ * fresh login goes out with no key at all (the mirror had nothing to publish
+ * yet) and every request after the first hour goes out with a dead one — and
+ * this client is cached for the life of the process, so nothing would rebuild
+ * it. A request is exactly the right granularity: it is already async, and it
+ * is the moment at which "which token is valid" has an answer.
+ *
+ * Installed only for OpenCode sessions, so every other endpoint keeps the
+ * fetch it had.
+ */
+function wrapFetchForOpencodeAuth(base: typeof fetch): typeof fetch {
+  const wrapped = async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+  ): Promise<Response> => {
+    const auth = await ensureOpencodeCredential()
+    if (!auth) return base(input, init)
+    const headers = new Headers(init?.headers)
+    for (const [name, value] of Object.entries(auth)) {
+      headers.set(name, value)
+    }
+    return base(input, { ...init, headers })
+  }
+  return wrapped as unknown as typeof fetch
+}
+
 export function getOpenAIClient(options?: {
   maxRetries?: number
   fetchOverride?: typeof fetch
@@ -55,6 +91,15 @@ export function getOpenAIClient(options?: {
   apiKeyOverride?: string
   baseURLOverride?: string
 }): OpenAI {
+  // Republish OPENCODE_* onto the OPENAI_* keys read three lines down. The
+  // synchronous half of the mirror only — it uses whichever token is already
+  // cached, and the wrapper below is what guarantees the request carries a live
+  // one. Placed here rather than at the call sites for the reason the DeepSeek
+  // lane learned the hard way: chasing every path that mutates provider env is
+  // whack-a-mole, and applying it where the client is built makes a request
+  // impossible to construct from an unapplied mirror.
+  applyOpencodeWire()
+
   const hasConnectionOverride =
     options?.apiKeyOverride !== undefined ||
     options?.baseURLOverride !== undefined
@@ -79,7 +124,9 @@ export function getOpenAIClient(options?: {
   }
 
   const baseFetch = options?.fetchOverride ?? (globalThis.fetch as typeof fetch)
-  const wrappedFetch = wrapFetchForUsage(baseFetch)
+  const wrappedFetch = wrapFetchForUsage(
+    isOpencodeSessionActive() ? wrapFetchForOpencodeAuth(baseFetch) : baseFetch,
+  )
 
   const client = new OpenAI({
     apiKey,

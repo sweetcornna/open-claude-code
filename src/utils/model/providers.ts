@@ -1,6 +1,11 @@
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
 import { isDeepSeekAnthropicWireActive } from './deepseekWire.js'
 import { isDeepSeekBaseURL } from './deepseekHost.js'
+import {
+  getOpencodeLane,
+  isOpencodeSessionActive,
+  OPENCODE_MODEL_ENV,
+} from './opencodeWire.js'
 import { getInitialSettings } from '../settings/settings.js'
 import type { SettingsJson } from '../settings/types.js'
 import { isEnvTruthy } from '../config/envUtils.js'
@@ -17,6 +22,16 @@ export type APIProvider =
 export function getAPIProvider(
   settings: Pick<SettingsJson, 'modelType'> = getInitialSettings(),
 ): APIProvider {
+  // OpenCode Zen serves three wire protocols behind one base URL, so the
+  // client this session needs is a property of the model it is configured for,
+  // not of the vendor. Checked before modelType for the same reason as
+  // DeepSeek below: `settings.modelType` records the lane's family, and reading
+  // it first would send a /messages session through the OpenAI client.
+  const opencodeLane = getOpencodeLane()
+  if (opencodeLane) {
+    return opencodeLane === 'messages' ? 'firstParty' : 'openai'
+  }
+
   // DeepSeek is configured through the OPENAI_* keys, but its
   // Anthropic-compatible endpoint is a strictly better fit: occ's own wire
   // format (no lossy round-trip), native thinking blocks, and a server-side
@@ -70,6 +85,14 @@ export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS
  * server-side web-search adapter — all verified against the real endpoint.
  */
 export function isThirdPartyModelCatalog(): boolean {
+  // OpenCode is a reseller on both products (Zen and Go): its own catalog, its
+  // own rate card, its own bill. That is true on all three lanes, including
+  // /messages, where
+  // the wire answer is 'firstParty' and isThirdPartyAnthropicEndpoint() says
+  // "no" — because a `claude-*` id there really is that checkpoint. Both of
+  // those are the right answers to their own questions and neither is this
+  // one, so this needs its own term rather than borrowing either.
+  if (isOpencodeSessionActive()) return true
   return getAPIProvider() !== 'firstParty' || isThirdPartyAnthropicEndpoint()
 }
 
@@ -128,18 +151,35 @@ function namesAnthropicModel(configured: string): boolean {
  *
  * So the endpoint has to be POSITIVELY identified as another vendor's:
  *   - DeepSeek, either through the OPENAI_* routing or a DeepSeek base URL, or
+ *   - OpenCode Zen on a lane that is not /messages, or on /messages with a
+ *     model that is not a Claude id, or
  *   - the session's own model pin (ANTHROPIC_MODEL / settings.model, aliases
  *     resolved through their ANTHROPIC_DEFAULT_<TIER>_MODEL pins) names
  *     something that is not a Claude id.
  *
  * A gateway with a `claude-*` pin — or with nothing pinned at all — keeps the
- * pre-2.35 answer: an Anthropic proxy.
+ * pre-2.35 answer: an Anthropic proxy. So does Zen's /messages lane, which is
+ * why this is NOT the predicate that makes OpenCode third-party — see
+ * isThirdPartyModelCatalog(), which carries that answer on its own.
  *
  * Reads process.env and settings only. It must never reach the auth or
  * subscription chain: getContextWindowForModel() is downstream of this and runs
  * in contexts (tests, CI, config subprocesses) where that chain throws.
  */
 export function isThirdPartyAnthropicEndpoint(): boolean {
+  // Zen proxies real Anthropic checkpoints on /messages, so `claude-opus-5`
+  // there IS Opus 5 — calling it somebody else's model would strip the `[1m]`
+  // opt-in (a 1M session silently clamping to 200k) and lie to the system
+  // prompt about which model is answering. The other two lanes speak OpenAI and
+  // can never be an Anthropic endpoint; /messages can still be reached by a
+  // non-Claude id through an explicit OPENCODE_WIRE_API=messages pin, and that
+  // one is not Anthropic's either.
+  const opencodeLane = getOpencodeLane()
+  if (opencodeLane) {
+    if (opencodeLane !== 'messages') return true
+    const model = process.env[OPENCODE_MODEL_ENV]?.trim()
+    return model ? !namesAnthropicModel(model) : false
+  }
   if (isDeepSeekAnthropicWireActive()) return true
   if (isFirstPartyAnthropicBaseUrl()) return false
   if (isDeepSeekBaseURL(process.env.ANTHROPIC_BASE_URL)) return true
@@ -179,6 +219,12 @@ export function isThirdPartyAnthropicEndpoint(): boolean {
  * `claude-*` id on the wire means exactly what it says. See
  * isThirdPartyAnthropicEndpoint for how "somebody else's endpoint" is told apart
  * from "Anthropic's endpoint behind a different hostname".
+ *
+ * OpenCode Zen is the case that makes the second and third questions visibly
+ * come apart: its bill and its catalog are its own (so the second says "third
+ * party"), while a `claude-*` id on its /messages lane is a real Anthropic
+ * checkpoint (so this one says yes). A `gpt-*` or `gemini-*` id on the same
+ * account says no.
  */
 export function servesAnthropicModels(): boolean {
   const provider = getAPIProvider()
