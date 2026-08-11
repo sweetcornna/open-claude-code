@@ -12,6 +12,9 @@
  *     credentials but the main loop talks to somebody else: the pipeline
  *     would route the request to that other provider, which has no
  *     server_tool_use at all.
+ *
+ * A credential pinned by /search-setting takes a third path — plain `fetch` at
+ * the endpoint the pin carries. See AnthropicDirectSearchAdapter.
  */
 
 import type {
@@ -31,6 +34,7 @@ import {
   isLangfuseEnabled,
 } from 'src/services/langfuse/index.js'
 import { getSessionId } from '@open-claude-code/tool-runtime/bootstrapState.js'
+import { resolvePinnedAnthropicSearchEndpoint } from 'src/services/search/searchEndpoints.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { createUserMessage } from 'src/utils/messages.js'
 import { getMainLoopModel, getSmallFastModel } from 'src/utils/model/model.js'
@@ -44,6 +48,9 @@ import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
  */
 const DIRECT_SEARCH_MAX_TOKENS = 4096
 const DIRECT_SEARCH_MAX_RETRIES = 2
+
+/** Wire version header the Messages endpoint validates against. */
+const ANTHROPIC_VERSION = '2023-06-01'
 
 function makeToolSchema(input: {
   allowedDomains?: string[]
@@ -231,7 +238,18 @@ export class ApiSearchAdapter implements WebSearchAdapter {
  * base URL and headers come from getAnthropicClient, i.e. the same OAuth /
  * ANTHROPIC_API_KEY channel the rest of the CLI uses.
  */
+interface AnthropicDirectSearchAdapterOptions {
+  /** Test seam: drive the pinned-credential request without a network. */
+  fetchOverride?: typeof fetch
+}
+
 export class AnthropicDirectSearchAdapter implements WebSearchAdapter {
+  private readonly fetchOverride?: typeof fetch
+
+  constructor(options: AnthropicDirectSearchAdapterOptions = {}) {
+    if (options.fetchOverride) this.fetchOverride = options.fetchOverride
+  }
+
   async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
     const { signal, onProgress, allowedDomains, blockedDomains } = options
 
@@ -243,38 +261,57 @@ export class AnthropicDirectSearchAdapter implements WebSearchAdapter {
 
     const requestSignal = signal ?? new AbortController().signal
     const model = getSmallFastModel()
-    const client = await getAnthropicClient({
-      maxRetries: 0,
+    const body = {
       model,
-      source: 'web_search_source',
+      max_tokens: DIRECT_SEARCH_MAX_TOKENS,
+      messages: [
+        {
+          role: 'user',
+          content: `Perform a web search for the query: ${query}`,
+        },
+      ] satisfies BetaMessageParam[],
+      tools: [makeToolSchema({ allowedDomains, blockedDomains })],
+    }
+
+    // A pin is answered by a standalone request, NOT by getAnthropicClient.
+    // That client is assembled from ANTHROPIC_* env, and after a
+    // `/provider use` those keys may hold an OpenCode access token mirrored
+    // onto them and a base URL pointing at somebody else's gateway — the same
+    // reason DeepSeekDirectSearchAdapter resolves its own endpoint. Handing a
+    // pinned Anthropic key to that client would post the user's credential to a
+    // third party.
+    const pinned = resolvePinnedAnthropicSearchEndpoint()
+    let runSearch: () => Promise<BetaContentBlock[]>
+    if (pinned) {
+      const fetchImpl = this.fetchOverride ?? fetch
+      runSearch = () =>
+        postPinnedAnthropicSearch({
+          endpoint: pinned,
+          body,
+          signal: requestSignal,
+          fetchImpl,
+        })
+    } else {
+      const client = await getAnthropicClient({
+        maxRetries: 0,
+        model,
+        source: 'web_search_source',
+      })
+      runSearch = async () =>
+        (await client.beta.messages.create(body, { signal: requestSignal }))
+          .content
+    }
+
+    const content = await retryAPIRequest(runSearch, {
+      signal: requestSignal,
+      maxRetries: DIRECT_SEARCH_MAX_RETRIES,
     })
-
-    const messages: BetaMessageParam[] = [
-      {
-        role: 'user',
-        content: `Perform a web search for the query: ${query}`,
-      },
-    ]
-
-    const message = await retryAPIRequest(
-      () =>
-        client.beta.messages.create(
-          {
-            model,
-            max_tokens: DIRECT_SEARCH_MAX_TOKENS,
-            messages,
-            tools: [makeToolSchema({ allowedDomains, blockedDomains })],
-          },
-          { signal: requestSignal },
-        ),
-      { signal: requestSignal, maxRetries: DIRECT_SEARCH_MAX_RETRIES },
-    )
 
     if (signal?.aborted) {
       throw new AbortError()
     }
 
-    const results = extractSearchResults(message.content)
+    const results = extractSearchResults(content)
 
     onProgress?.({
       type: 'search_results_received',
@@ -284,6 +321,43 @@ export class AnthropicDirectSearchAdapter implements WebSearchAdapter {
 
     return results
   }
+}
+
+/**
+ * One Messages call against a pinned endpoint, with the key the pin carries.
+ *
+ * `x-api-key` rather than a bearer, because that is what the Anthropic SDK
+ * sends for an api-key credential and therefore the header the endpoint is
+ * already known to accept. (CLAUDE.md: the two are NOT interchangeable — a
+ * bearer alone comes back "Missing API key".)
+ */
+async function postPinnedAnthropicSearch(input: {
+  endpoint: { messagesURL: string; apiKey: string }
+  body: unknown
+  signal: AbortSignal
+  fetchImpl: typeof fetch
+}): Promise<BetaContentBlock[]> {
+  const response = await input.fetchImpl(input.endpoint.messagesURL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': input.endpoint.apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
+    },
+    body: JSON.stringify(input.body),
+    signal: input.signal,
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    // The status and body go into the message unchanged: isUnsupportedSource
+    // Error() reads it to decide whether to retire the source for the session,
+    // and a summarised message would hide the phrases it matches on.
+    throw new Error(
+      `Anthropic web search failed (${response.status}): ${detail}`,
+    )
+  }
+  const message = (await response.json()) as { content?: BetaContentBlock[] }
+  return message.content ?? []
 }
 
 /**

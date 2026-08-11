@@ -135,10 +135,10 @@ The table order is the panel order and the merge priority for enhancement lanes.
 
 | Source | Execution | Credentials |
 |---|---|---|
-| `anthropic` | Anthropic server-side `web_search_20250305` | Claude OAuth or `ANTHROPIC_API_KEY` |
-| `deepseek` | DeepSeek server-side `web_search_20250305`, over `<base>/anthropic` | A DeepSeek endpoint plus a key (`OPENAI_BASE_URL` pointing at api.deepseek.com) |
-| `gemini` | Gemini `generateContent` with `googleSearch` grounding | Google (Antigravity) OAuth or `GEMINI_API_KEY` |
-| `codex` | Built-in `web_search` tool in the OpenAI Responses API | ChatGPT OAuth or `OPENAI_API_KEY` |
+| `anthropic` | Anthropic server-side `web_search_20250305` | **Pinned credential** > Claude OAuth or `ANTHROPIC_API_KEY` |
+| `deepseek` | DeepSeek server-side `web_search_20250305`, over `<base>/anthropic` | **Pinned credential** > a DeepSeek endpoint plus a key (`OPENAI_BASE_URL` pointing at api.deepseek.com) |
+| `gemini` | Gemini `generateContent` with `googleSearch` grounding | **Pinned credential** > Google (Antigravity) OAuth or `GEMINI_API_KEY` |
+| `codex` | Built-in `web_search` tool in the OpenAI Responses API | ChatGPT OAuth or `OPENAI_API_KEY` (**cannot be pinned**, see §4.1.1) |
 | `brave` | Brave LLM Context API (an independent index) | `settings.braveApiKey`, or `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa neural search over its MCP endpoint | `settings.exaApiKey` |
 | `free` | Keyless multi-engine fetching (ported from sweetcornna/free-search-mcp) | None |
@@ -156,6 +156,59 @@ which key it would actually send (`resolveBraveApiKey` / `resolveExaApiKey`), so
 **`bing` is deliberately NOT in the registry**: it scrapes the same endpoint, from the same IP, that the `free`
 lane's own Bing engine already uses, so aggregating it spends one quota twice and doubles the odds of drawing the
 CAPTCHA for both. It remains available as an explicit pick (see §4.3).
+
+### 4.1.1 Pinned credentials (`services/search/searchCredentialStore.ts`)
+
+**The problem.** Search credentials used to be entirely parasitic on the main provider configuration: all four
+provider sources read `GEMINI_API_KEY` / `OPENAI_API_KEY` + `OPENAI_BASE_URL` / `ANTHROPIC_API_KEY` straight out of
+the environment. Those are exactly the keys `/logout` deletes (`LOGOUT_ENV_KEYS`, derived from
+`ALL_PROFILE_ENV_KEYS`) and the keys `activateProfile()` clears **wholesale** before applying a target profile — it
+wipes the union of every family's keys. So logging out, or merely switching from an OpenAI profile to an OpenCode
+one, silently dropped web search to the keyless scraping lane, with nothing said.
+
+**The fix.** `S` in `/search-setting` copies the credential a source is authenticating with **right now** into occ's
+own credential file.
+
+| | |
+| --- | --- |
+| Path | `occConfigPath('search-credentials.json')` — i.e. `~/.occ/search-credentials.json`, moved by `OCC_CONFIG_DIR` |
+| Mode | `0600`, written atomically through `writePrivateFileAtomic` |
+| Shape | `{ version, sources: { <source>: { apiKey, baseURL?, pinnedAt } } }` — **per source**, not one blob |
+| Pinnable | `anthropic`, `deepseek`, `gemini` |
+
+**Resolution order: pinned credential → provider env.** A user who never pins keeps working exactly as before, byte
+for byte, with no migration step.
+
+The rules that are not obvious:
+
+- **Not `settings.json`.** That file is the one users paste into bug reports, and it is not 0600.
+- **Neither `/logout` nor `activateProfile()` reaches this file** — not because they remember to skip a key, but
+  because it is outside anything either of them rewrites. One regression test pins each of those.
+- **`/logout` says so.** If anything is still pinned afterwards, the logout message names each source and points at
+  `/search-setting` (`D`) to remove it. Keeping rather than silently revoking, because pinning is an explicit
+  per-source choice — and a silent revoke would recreate the exact failure the store exists to end.
+- **A credential must carry its endpoint**, or the endpoint predicates pass on a key that cannot be used:
+  `hasCodexSearchCredentials()` requires `api.openai.com`, and the DeepSeek lane derives its own endpoint
+  (`getDeepSeekSearchEndpoint()`, deliberately not gated on the main loop's wire).
+- **`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` still outranks a pin.** That switch names this endpoint specifically; a
+  pin says *which credential*, never "override a capability the user switched off".
+- **A key is never rendered.** The panel appends `· pinned` to the connected badge — no value, prefix or length.
+- **Mirrored values are refused.** `ANTHROPIC_API_KEY` is not always an Anthropic key: the DeepSeek wire mirrors the
+  DeepSeek key onto it and an OpenCode session mirrors an hourly OAuth access token there. Detected through the
+  mirrors' own bookkeeping (`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey`), never by guessing at shape.
+- **`codex` cannot be pinned.** Its lane authenticates inside `createOpenAIResponsesStream`, which builds the request
+  from `OPENAI_API_KEY`/`OPENAI_BASE_URL` with no credential seam — a pin would light the row green for a key that
+  never leaves disk, which is the "connected source that can only return nothing" the registry exists to prevent.
+  Its ChatGPT login is already a 0600 file of occ's own. The read side is uniform across all four families, so
+  enabling it later is one line here plus a seam in the request layer.
+
+A pin is genuinely sent, not merely displayed:
+
+| Source | Path taken once pinned |
+| --- | --- |
+| `anthropic` | `AnthropicDirectSearchAdapter` switches to a standalone `fetch`: `x-api-key` at `<pinned endpoint>/v1/messages`. Not `getAnthropicClient()`, which is assembled from `ANTHROPIC_*` env — after a profile switch those keys can hold another provider's mirrored token and gateway |
+| `deepseek` | `resolveDeepSeekSearchEndpoint()` returns the pinned endpoint and key first |
+| `gemini` | `streamGeminiGenerateContent({ apiKey, baseURL })`; `usesAntigravityRoute()` stands down for an explicit key, the same rule it already applies to `accessToken` |
 
 ### 4.2 Aggregation rules (`adapters/aggregateAdapter.ts`)
 

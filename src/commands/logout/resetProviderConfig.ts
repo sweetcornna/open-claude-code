@@ -62,6 +62,15 @@ export const LOGOUT_ENV_KEYS: readonly string[] = [
  * living a layer above settings (see providerProfiles/profiles.ts), so
  * `/provider use <name>` still restores a setup after logout. Only the *active*
  * pointer is dropped, because nothing is active any more.
+ *
+ * Pinned web-search credentials are NOT touched either, and that is load-bearing
+ * rather than incidental. LOGOUT_ENV_KEYS is derived from the provider-profile
+ * table, and every search source used to read its key out of exactly those
+ * variables — so this function was what silently dropped web search to the
+ * keyless lane on every logout. The store (services/search/searchCredential
+ * Store.ts) is a separate file this function has no reach into by construction,
+ * which is the point: independence that depends on remembering to skip a key is
+ * not independence. `/search-setting` removes them; logout says which were kept.
  */
 export function resetProviderConfiguration(): void {
   const envPatch: Record<string, string | undefined> = {}

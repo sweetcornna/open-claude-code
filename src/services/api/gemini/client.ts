@@ -203,10 +203,17 @@ function geminiStreamError(
  */
 export function usesAntigravityRoute(params: {
   accessToken?: string
+  apiKey?: string
   useAntigravityWhenAvailable?: boolean
 }): boolean {
   return (
     !params.accessToken &&
+    // An explicit apiKey is the same statement as an explicit accessToken: the
+    // caller has already chosen its credential, so rerouting it through
+    // Antigravity would send a request authenticated as somebody else. This is
+    // how a credential pinned by /search-setting stays the one that is used
+    // even on a machine that also holds a Google login.
+    !params.apiKey &&
     (isAntigravityAuthMode() ||
       (params.useAntigravityWhenAvailable === true &&
         hasGeminiOAuthCredentialsSync()))
@@ -217,6 +224,8 @@ async function resolveGeminiWireRequest(params: {
   model: string
   body: GeminiGenerateContentRequest
   accessToken?: string
+  apiKey?: string
+  baseURL?: string
   requestType?: AntigravityRequestType
   useAntigravityWhenAvailable?: boolean
 }): Promise<GeminiWireRequest> {
@@ -236,7 +245,7 @@ async function resolveGeminiWireRequest(params: {
   }
   return {
     url: buildProviderResourceURL(
-      process.env.GEMINI_BASE_URL || DEFAULT_GEMINI_BASE_URL,
+      params.baseURL || process.env.GEMINI_BASE_URL || DEFAULT_GEMINI_BASE_URL,
       'gemini',
       `${getGeminiModelPath(params.model)}:streamGenerateContent`,
       { alt: 'sse' },
@@ -245,7 +254,9 @@ async function resolveGeminiWireRequest(params: {
       'Content-Type': 'application/json',
       ...(params.accessToken
         ? { Authorization: `Bearer ${params.accessToken}` }
-        : { 'x-goog-api-key': process.env.GEMINI_API_KEY || '' }),
+        : {
+            'x-goog-api-key': params.apiKey || process.env.GEMINI_API_KEY || '',
+          }),
     },
     body: params.body,
     unwrapChunk: raw => raw as GeminiStreamChunk,
@@ -264,6 +275,18 @@ export async function* streamGeminiGenerateContent(params: {
    */
   accessToken?: string
   /**
+   * API key to send as `x-goog-api-key` instead of `GEMINI_API_KEY`, with
+   * `baseURL` as its endpoint. Used by WebSearch's Gemini source when the user
+   * has pinned a search credential — that key must survive a `/logout` or a
+   * `/provider use`, both of which delete `GEMINI_API_KEY`.
+   *
+   * Like `accessToken`, supplying it means the caller picked its own
+   * credential, so the Antigravity route is not taken (usesAntigravityRoute).
+   */
+  apiKey?: string
+  /** Endpoint for `apiKey`. Falls back to `GEMINI_BASE_URL`, then the default. */
+  baseURL?: string
+  /**
    * Antigravity request kind. Defaults to 'agent'; WebSearch's Gemini source
    * sends 'web_search'. Ignored on the public Gemini endpoint, which has no
    * envelope.
@@ -280,6 +303,8 @@ export async function* streamGeminiGenerateContent(params: {
     model: params.model,
     body: params.body,
     ...(params.accessToken ? { accessToken: params.accessToken } : {}),
+    ...(params.apiKey ? { apiKey: params.apiKey } : {}),
+    ...(params.baseURL ? { baseURL: params.baseURL } : {}),
     ...(params.requestType ? { requestType: params.requestType } : {}),
     ...(params.useAntigravityWhenAvailable
       ? { useAntigravityWhenAvailable: true }

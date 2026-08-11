@@ -15,14 +15,15 @@
  * Deliberately plain `fetch` rather than the Anthropic SDK client: the client is
  * built from ANTHROPIC_* env, which points at DeepSeek only while the main-loop
  * routing happens to be active. This lane resolves its own endpoint
- * (getDeepSeekSearchEndpoint) so it works on every wire, and the same request
- * builder then serves the availability probe below.
+ * (resolveDeepSeekSearchEndpoint — a credential pinned by /search-setting, else
+ * the env derivation) so it works on every wire, and the same request builder
+ * then serves the availability probe below.
  */
 
 import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { retryAPIRequest } from '@open-claude-code/tool-runtime/apiRetry.js'
 import { AbortError } from '@open-claude-code/tool-runtime/errors.js'
-import { getDeepSeekSearchEndpoint } from 'src/utils/model/deepseekWire.js'
+import { resolveDeepSeekSearchEndpoint } from 'src/services/search/searchEndpoints.js'
 import { getSmallFastModel } from 'src/utils/model/model.js'
 import { extractSearchResults } from './apiAdapter.js'
 import { filterResultsByDomains } from './domainFilter.js'
@@ -101,7 +102,7 @@ async function postMessages(input: {
   signal?: AbortSignal
   fetchImpl: typeof fetch
 }): Promise<Response> {
-  const endpoint = getDeepSeekSearchEndpoint()
+  const endpoint = resolveDeepSeekSearchEndpoint()
   if (!endpoint) {
     throw new Error('DeepSeek search is not configured')
   }
@@ -219,7 +220,7 @@ export async function probeDeepSeekSearchSupport(
     force?: boolean
   } = {},
 ): Promise<DeepSeekSearchProbe> {
-  const endpoint = getDeepSeekSearchEndpoint()
+  const endpoint = resolveDeepSeekSearchEndpoint()
   if (!endpoint) return { status: 'unconfigured' }
 
   const key = endpoint.baseURL

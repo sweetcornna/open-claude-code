@@ -11,6 +11,7 @@ import { resetOpencodeCredentialCache } from '../../services/api/opencodeCredent
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
+import { listPinnedSearchSources } from '../../services/search/searchCredentialStore.js';
 import { getClaudeAIOAuthTokens, removeApiKey, removeClaudeAIOAuthTokens } from '../../utils/auth/auth.js';
 import { clearBetasCaches } from '../../utils/model/betas.js';
 import { applyDeepSeekAnthropicWire } from '../../utils/model/deepseekWire.js';
@@ -40,6 +41,17 @@ const ANTHROPIC_CREDENTIAL_ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKE
  * `claudeAiOauth` is removed), saved `/provider` profiles (only the *active*
  * pointer is dropped), and everything account-independent (MCP servers, hooks,
  * themes, web-search source overrides).
+ *
+ * Credentials PINNED for web search (services/search/searchCredentialStore.ts)
+ * survive too, and that is a deliberate answer rather than an oversight. A
+ * pinned key is the user having said "this one is for search" — it is not the
+ * session's login, and this account plane never wrote it. Removing it here is
+ * also unnecessary: pinning is opt-in and per source, so anyone who wants it
+ * gone can say so, whereas a logout that silently revoked it would recreate the
+ * exact failure the store was built to end (search quietly degrading to the
+ * keyless lane with nothing said). What logout must not do is stay quiet about
+ * it, so `call()` below names every source that kept a credential and says how
+ * to remove it.
  */
 export async function performLogout({ clearOnboarding = false }: { clearOnboarding?: boolean }): Promise<void> {
   // Flush telemetry BEFORE clearing credentials to prevent org data leakage
@@ -147,7 +159,19 @@ export async function clearAuthRelatedCaches(): Promise<void> {
 export async function call(): Promise<React.ReactNode> {
   await performLogout({ clearOnboarding: true });
 
-  const message = <Text>Successfully logged out.</Text>;
+  // Read AFTER the logout: what is listed here is what genuinely survived it,
+  // not what happened to be there beforehand.
+  const keptForSearch = listPinnedSearchSources();
+  const message =
+    keptForSearch.length > 0 ? (
+      <Text>
+        Successfully logged out.
+        {'\n'}Web-search credentials pinned for {keptForSearch.join(', ')} were kept — remove them with /search-setting
+        (D).
+      </Text>
+    ) : (
+      <Text>Successfully logged out.</Text>
+    );
 
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');

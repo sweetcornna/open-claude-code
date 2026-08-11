@@ -34,6 +34,7 @@ import {
   streamGeminiGenerateContent,
   usesAntigravityRoute,
 } from 'src/services/api/gemini/client.js'
+import { resolvePinnedGeminiSearchCredential } from 'src/services/search/searchEndpoints.js'
 import {
   ANTIGRAVITY_FLASH_LITE_MODEL,
   findAntigravityModelOption,
@@ -285,7 +286,14 @@ export class GeminiSearchAdapter implements WebSearchAdapter {
     }
 
     const seenQueries = new Set<string>()
+    // A credential pinned by /search-setting outranks both routes and is the
+    // only one that survives a `/logout` or a `/provider use` — those delete
+    // GEMINI_API_KEY, which is what silently dropped this lane down to the
+    // keyless one. Passed to usesAntigravityRoute too, so the model resolved
+    // below matches the catalogue the request will actually hit.
+    const pinned = resolvePinnedGeminiSearchCredential()
     const useAntigravity = usesAntigravityRoute({
+      ...(pinned ? { apiKey: pinned.apiKey } : {}),
       useAntigravityWhenAvailable: this.asExtraSource,
     })
     const model = resolveGeminiSearchModel(useAntigravity)
@@ -297,6 +305,8 @@ export class GeminiSearchAdapter implements WebSearchAdapter {
           body,
           signal: requestSignal,
           fetchOverride: this.fetchOverride,
+          ...(pinned ? { apiKey: pinned.apiKey } : {}),
+          ...(pinned?.baseURL ? { baseURL: pinned.baseURL } : {}),
           requestType: 'web_search',
           useAntigravityWhenAvailable: this.asExtraSource,
         })
