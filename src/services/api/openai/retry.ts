@@ -1,6 +1,8 @@
 import {
+  classifyRetryableAPIError,
   getAPIErrorDiagnostics,
-  isRetryableAPIError,
+  PERMANENT_RETRY_DELAY_MS,
+  PERMANENT_RETRY_MAX_RETRIES,
 } from '../retryClassification.js'
 
 /** Ten retries after the initial request (eleven total attempts). */
@@ -158,12 +160,15 @@ export async function createOpenAIResponseError(
     ? getAPIErrorDiagnostics(details).message
     : undefined
   const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'))
-  const retryable =
-    response.status === 408 ||
-    response.status === 409 ||
-    response.status === 425 ||
-    response.status === 429 ||
-    response.status >= 500
+  // Deliberately not a hand-rolled status list any more. This function knows
+  // the status and nothing else, so it asks the same classifier the ladders
+  // read — otherwise a 401 here would carry `retryable: false`, and that field
+  // is an absolute veto reserved for the one thing only a producer can know:
+  // that this attempt's output already went downstream (see closesRetryWindow).
+  const retryable = classifyRetryableAPIError({
+    ...(details ?? {}),
+    status: response.status,
+  }).retryable
   return new OpenAIRequestError(
     `${label} request failed (${response.status})${safeMessage ? `: ${safeMessage}` : ''}`,
     {
@@ -239,11 +244,17 @@ export async function retryOpenAIRequest<T>(
     try {
       return await operation(attempt)
     } catch (error) {
-      const retryable = isRetryableAPIError(error)
-      if (options.signal.aborted || !retryable) {
+      const verdict = classifyRetryableAPIError(error)
+      if (options.signal.aborted || !verdict.retryable) {
         throw error
       }
-      if (attempt >= maxRetries) {
+      // A permanent class is retried here too, but on the cheap lane: one
+      // attempt at a fixed short delay instead of the ten-step ladder.
+      const attemptBudget =
+        verdict.persistence === 'permanent'
+          ? Math.min(maxRetries, PERMANENT_RETRY_MAX_RETRIES)
+          : maxRetries
+      if (attempt >= attemptBudget) {
         markRetryBudgetExhausted(error)
         throw error
       }
@@ -255,7 +266,11 @@ export async function retryOpenAIRequest<T>(
         markRetryBudgetExhausted(error)
         throw error
       }
-      await delay(retryAfterMs ?? retryDelayMs(attempt, random), options.signal)
+      const backoffMs =
+        verdict.persistence === 'permanent'
+          ? PERMANENT_RETRY_DELAY_MS
+          : retryDelayMs(attempt, random)
+      await delay(retryAfterMs ?? backoffMs, options.signal)
       attempt++
     }
   }

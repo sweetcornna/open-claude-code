@@ -50,8 +50,11 @@ import {
 } from '../rateLimitMocking.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import {
+  classifyRetryableAPIError,
   getAPIErrorSource,
-  isRetryableAPIError,
+  isRetryEveryAPIErrorEnabled,
+  PERMANENT_RETRY_DELAY_MS,
+  PERMANENT_RETRY_MAX_RETRIES,
 } from './retryClassification.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 
@@ -150,22 +153,58 @@ function isStaleConnectionError(error: unknown): boolean {
 // gets the same 10-attempt exponential backoff as a first-party 500.
 // ---------------------------------------------------------------------------
 
+/** The classifier's verdict shape, without importing its (unused) type name. */
+type RetryVerdict = ReturnType<typeof classifyRetryableAPIError>
+
+const NEVER_RETRY: RetryVerdict = {
+  category: 'unknown',
+  retryable: false,
+  persistence: 'permanent',
+}
+
+function transiently(verdict: RetryVerdict): RetryVerdict {
+  return { ...verdict, retryable: true, persistence: 'transient' }
+}
+
 /**
- * True when `error` is a transport-level blip that deserves a retry.
+ * The single verdict every retry decision in this file is taken from.
  *
- * Order matters: the abort check runs first (an aborted fetch surfaces as a
- * DOMException whose message would otherwise match the timeout patterns), then
- * the `cause` chain is walked for a real errno, and only then does the message
- * regex get a say.
+ * `classifyRetryableAPIError` answers for the error itself; this adds the two
+ * things it cannot see — control-flow errors occ throws through the same catch,
+ * and the `APIError`-only gates in {@link apiErrorVerdict}. Routing both loops
+ * through one function is what keeps the classifier and the ladder from
+ * disagreeing: before this, `shouldRetry` re-derived its own boolean and could
+ * silently veto a class the classifier had just called retryable.
+ */
+function retryVerdict(error: unknown): RetryVerdict {
+  // Not a failure: the caller asked for a different model, so this loop is
+  // done and the fallback loop takes over.
+  if (error instanceof FallbackTriggeredError) return NEVER_RETRY
+  if (error instanceof CannotRetryError) {
+    return retryVerdict(error.originalError)
+  }
+  if (error instanceof APIError) return apiErrorVerdict(error)
+  return classifyRetryableAPIError(error)
+}
+
+/** Retries this failure gets, on top of the initial request. */
+function attemptBudgetFor(verdict: RetryVerdict, maxRetries: number): number {
+  return verdict.persistence === 'permanent'
+    ? Math.min(maxRetries, PERMANENT_RETRY_MAX_RETRIES)
+    : maxRetries
+}
+
+/**
+ * True when `error` deserves another attempt at all.
+ *
+ * No longer only transport blips: under the retry-everything policy this is
+ * true for permanent classes too, and the caller is expected to consult
+ * {@link attemptBudgetFor} for how many attempts that actually buys.
  *
  * Exported for tests.
  */
 export function isTransientNetworkError(error: unknown): boolean {
-  if (error instanceof FallbackTriggeredError) return false
-  if (error instanceof CannotRetryError) {
-    return isTransientNetworkError(error.originalError)
-  }
-  return isRetryableAPIError(error)
+  return retryVerdict(error).retryable
 }
 
 /**
@@ -178,7 +217,7 @@ export function isTransientNetworkError(error: unknown): boolean {
  * Exported for tests.
  */
 export function isTransientNetworkErrorText(text: string): boolean {
-  return isRetryableAPIError(text)
+  return classifyRetryableAPIError(text).retryable
 }
 
 /**
@@ -434,18 +473,17 @@ export async function* withRetry<T>(
       // Only retry if the error indicates we should
       const persistent =
         isPersistentRetryEnabled() && isTransientCapacityError(error)
-      if (attempt > maxRetries) {
+
+      // One verdict for every shape that reaches this catch — SDK errors, bare
+      // transport failures, provider-synthesised errors alike. A permanent
+      // class is still retried, on the small budget below rather than the
+      // ladder, so it surfaces about as fast as it used to.
+      const verdict = retryVerdict(error)
+      if (!verdict.retryable) {
         throw new CannotRetryError(error, retryContext)
       }
-
-      // Every API-boundary failure uses the shared default-retry classifier.
-      // Explicit abort/TLS/auth/billing/invalid-request signals still fail once.
-      const isRetriableBareError =
-        !(error instanceof APIError) && isTransientNetworkError(error)
-      if (
-        !isRetriableBareError &&
-        (!(error instanceof APIError) || !shouldRetry(error))
-      ) {
+      const attemptBudget = attemptBudgetFor(verdict, maxRetries)
+      if (attempt > attemptBudget) {
         throw new CannotRetryError(error, retryContext)
       }
 
@@ -533,6 +571,10 @@ export async function* withRetry<T>(
           ),
           PERSISTENT_RESET_CAP_MS,
         )
+      } else if (verdict.persistence === 'permanent') {
+        // No congestion to back off from, and nobody should wait 32s to be
+        // told their tool schema is malformed. See PERMANENT_RETRY_DELAY_MS.
+        delayMs = PERMANENT_RETRY_DELAY_MS
       } else {
         delayMs = getBoundedRetryDelay(attempt, retryAfter)
       }
@@ -566,7 +608,7 @@ export async function* withRetry<T>(
             toRetryDisplayError(error),
             remaining,
             reportedAttempt,
-            maxRetries,
+            attemptBudget,
           )
           const chunk = Math.min(remaining, HEARTBEAT_INTERVAL_MS)
           await sleep(chunk, options.signal, { abortError })
@@ -581,7 +623,7 @@ export async function* withRetry<T>(
           toRetryDisplayError(error),
           delayMs,
           attempt,
-          maxRetries,
+          attemptBudget,
         )
         await sleep(delayMs, options.signal, { abortError })
       }
@@ -824,25 +866,61 @@ async function recoverCredentialsForNextRequest(error: unknown): Promise<void> {
   }
 }
 
-function shouldRetry(error: APIError): boolean {
-  if (isMockRateLimitError(error)) return false
+/**
+ * The classifier's verdict for an `APIError`, plus the four decisions that
+ * depend on things the error text cannot express.
+ *
+ * Only two of them still refuse outright, and neither is about the error being
+ * permanent — both say "another attempt provably cannot succeed", which is a
+ * different claim from "this class rarely succeeds". Everything else either
+ * upgrades to the full ladder or drops to the cheap lane.
+ */
+function apiErrorVerdict(error: APIError): RetryVerdict {
+  const classified = classifyRetryableAPIError(error)
 
-  // This is a deterministic 400 whose next attempt uses a corrected max_tokens.
-  if (parseMaxTokensContextOverflowError(error)) return true
+  // /mock-limits fabricates this to reproduce the rate-limit UI on demand.
+  // It is not a request that failed, so there is nothing to attempt again.
+  if (isMockRateLimitError(error)) {
+    return { ...classified, retryable: false, persistence: 'permanent' }
+  }
+
+  // A deterministic 400 whose next attempt uses a corrected max_tokens — the
+  // one permanent status that answers differently without waiting for
+  // anything, so it earns the full ladder rather than the cheap lane.
+  if (parseMaxTokensContextOverflowError(error)) {
+    return transiently(classified)
+  }
 
   // Persistent capacity mode intentionally overrides the server's long-lived
   // x-should-retry:false response and waits for the advertised reset window.
-  if (isPersistentRetryEnabled() && isTransientCapacityError(error)) return true
+  if (isPersistentRetryEnabled() && isTransientCapacityError(error)) {
+    return transiently(classified)
+  }
 
+  // A window-based 429 (the Max/Pro 5-hour limit) reopens hours from now, and
+  // every step of this ladder is clamped to RETRY_AFTER_MAX_MS. See
+  // canOutwaitRateLimit: this is arithmetic, not a judgement about the class.
+  if (error.status === 429 && !canOutwaitRateLimit(error)) {
+    return { ...classified, retryable: false, persistence: 'permanent' }
+  }
+
+  // `x-should-retry: false` is the server stating this exact request will fail
+  // again. It used to end the request outright; under the retry-everything
+  // policy it demotes to the cheap lane instead, so the server's opinion still
+  // costs one attempt rather than ten.
   const shouldRetryHeader = error.headers?.get('x-should-retry')
   if (shouldRetryHeader === 'false') {
     const is5xxError = error.status !== undefined && error.status >= 500
-    if (!(process.env.USER_TYPE === 'ant' && is5xxError)) return false
+    if (!(process.env.USER_TYPE === 'ant' && is5xxError)) {
+      return {
+        category: classified.category,
+        retryable: classified.retryable && isRetryEveryAPIErrorEnabled(),
+        persistence: 'permanent',
+      }
+    }
   }
 
-  if (error.status === 429 && !canOutwaitRateLimit(error)) return false
-
-  return isRetryableAPIError(error)
+  return classified
 }
 
 /**
@@ -1092,10 +1170,20 @@ export async function* withTransientNetworkRetry(
   let hasEmittedContent = false
 
   for (let attempt = 1; ; attempt++) {
-    const canRetry = (): boolean =>
-      !hasEmittedContent && attempt <= maxRetries && !options.signal?.aborted
+    /**
+     * `hasEmittedContent` comes first and is unconditional. No retry policy
+     * reaches past it: once a delta left this generator it is on the terminal,
+     * in an ACP `agent_message_chunk` and on `--include-partial-messages`
+     * stdout, and none of those has an update kind that takes it back.
+     */
+    const canRetry = (verdict: RetryVerdict): boolean =>
+      !hasEmittedContent &&
+      !options.signal?.aborted &&
+      verdict.retryable &&
+      attempt <= attemptBudgetFor(verdict, maxRetries)
 
     let retryError: unknown
+    let retryLane: RetryVerdict | undefined
     let heldErrorMessage: QueryModelOutput | undefined
 
     try {
@@ -1109,13 +1197,11 @@ export async function* withTransientNetworkRetry(
           // yield prose. Or-ing the two let a message containing wording like
           // "stream idle timeout" overrule an explicit `retryable: false` and
           // replay a request the adapter had already ruled permanent.
-          if (
-            canRetry() &&
-            !hasExhaustedTransientRetries(item) &&
-            (sourceError !== undefined
-              ? isTransientNetworkError(sourceError)
-              : isTransientNetworkErrorText(text))
-          ) {
+          const verdict =
+            sourceError !== undefined
+              ? retryVerdict(sourceError)
+              : retryVerdict(text)
+          if (canRetry(verdict) && !hasExhaustedTransientRetries(item)) {
             // Current producers yield at most one error message per attempt,
             // but if a second ever arrives the first must not vanish — emit it
             // rather than letting the assignment below swallow it.
@@ -1125,6 +1211,7 @@ export async function* withTransientNetworkRetry(
             heldErrorMessage = item
             retryError =
               sourceError ?? new APIConnectionError({ message: text })
+            retryLane = verdict
             continue
           }
           yield item
@@ -1138,11 +1225,13 @@ export async function* withTransientNetworkRetry(
     } catch (error) {
       // queryModel normally converts failures to messages, but user aborts and
       // FallbackTriggeredError still propagate — neither is retriable, and
-      // isTransientNetworkError rejects both.
-      if (!canRetry() || !isTransientNetworkError(error)) {
+      // retryVerdict rejects both.
+      const verdict = retryVerdict(error)
+      if (!canRetry(verdict)) {
         throw error
       }
       retryError = error
+      retryLane = verdict
       heldErrorMessage = undefined
     }
 
@@ -1159,15 +1248,22 @@ export async function* withTransientNetworkRetry(
       return
     }
 
-    const delayMs = getBoundedRetryDelay(attempt, getRetryAfter(retryError))
+    const attemptBudget =
+      retryLane === undefined
+        ? maxRetries
+        : attemptBudgetFor(retryLane, maxRetries)
+    const delayMs =
+      retryLane?.persistence === 'permanent'
+        ? PERMANENT_RETRY_DELAY_MS
+        : getBoundedRetryDelay(attempt, getRetryAfter(retryError))
     logForDebugging(
-      `Transient network failure (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms: ${errorMessage(retryError)}`,
+      `API failure (attempt ${attempt}/${attemptBudget}, ${retryLane?.persistence ?? 'transient'}), retrying in ${delayMs}ms: ${errorMessage(retryError)}`,
       { level: 'warn' },
     )
     logEvent('tengu_api_transient_network_retry', {
       attempt,
       delayMs,
-      maxRetries,
+      maxRetries: attemptBudget,
       provider: getAPIProviderForStatsig(),
       query_source:
         options.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1176,7 +1272,7 @@ export async function* withTransientNetworkRetry(
       toRetryDisplayError(retryError),
       delayMs,
       attempt,
-      maxRetries,
+      attemptBudget,
     )
     // Throws APIUserAbortError on abort so the whole turn unwinds immediately.
     await sleep(delayMs, options.signal, { abortError })
