@@ -53,6 +53,16 @@ isVoiceModeEnabled() = hasVoiceAuth() && isVoiceGrowthBookEnabled()
 isVoiceAvailable() = isVoiceGrowthBookEnabled()
 ```
 
+**3 つのバックエンドは「誰が使えるか」が大きく異なります**。既定値を選ぶ際に最も見落とされやすい点です：
+
+| `voiceProvider` | 必要なもの | 使える人 |
+|---|---|---|
+| `anthropic`（既定） | claude.ai の OAuth token | ファーストパーティのログインのみ。API key、Bedrock、Vertex、Foundry、あらゆるサードパーティ provider は不可 |
+| `doubao` | なし | **機能停止** —— 当該パッケージは廃止された ByteDance アプリのビルドを騙っており、現在は `service discovery failure` を返します |
+| `local` | なし（初回ダウンロード後はオフライン） | 全員 |
+
+2.38.x より前は、サードパーティ provider の利用者に動作する音声バックエンドが一つも存在しませんでした。既定は入手不可能な認証情報を要求し、もう一方は壊れていたためです。`local` はそのために追加されました。
+
 1. **Feature Flag**：`feature('VOICE_MODE')` — コンパイル時と実行時のスイッチ
 2. **GrowthBook Kill-Switch**：`!getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_quartz_disabled', false)` — 緊急停止スイッチ（デフォルトの false は無効化されていない状態）
 3. **Auth チェック（Anthropic のみ）**：`hasVoiceAuth()` — Anthropic OAuth token が必要（API key は不可）
@@ -129,6 +139,34 @@ finalize() が即座に戻る（Doubao は録音中に結果を返している�
       ▼
 文字起こししたテキスト → 入力欄へ挿入 → 自動送信
 ```
+
+#### ローカルバックエンド（sherpa-onnx、オフライン）
+
+3 つ目のバックエンドであり、**アカウントを一切必要としない唯一の選択肢**です：`voiceProvider: 'local'`。初回利用時に認識器とモデルを `<設定ディレクトリ>/stt/` へダウンロードし、以後は完全にオフラインで動作します——キー不要、クォータ不要、外部通信なし。
+
+実装は `src/services/localStt/`（カタログ、インストール、ダイジェスト検証、展開、書き起こし）と `src/services/localSttStream.ts`（他の 2 つと同じストリーミングインターフェースに適合させる層）です。
+
+**認識は occ のプロセス内ではなく子プロセスで実行されます。** これは必須条件です：occ の常駐 RSS は約 35 MB で、バンドル分割によって約 1 GB から到達した値であり（`memory-footprint.md` 参照）、モデルをプロセス内へ読み込めばその成果をそのまま失います。子プロセスは発話終了とともに終了し、そのメモリも解放されます。
+
+**whisper.cpp ではなく sherpa-onnx を選んだ理由。** whisper.cpp のリリースページは Linux と Windows のバイナリを配布していますが、**macOS の CLI は配布していません**。残る選択肢は Homebrew ボトル（brew がある環境限定）かソースビルド（利用者側にツールチェーンを要求）です。sherpa-onnx は 8 つのプラットフォーム/アーキテクチャ全てにビルド済み CLI を配布しています。Windows では `MT`（静的 CRT）ビルドを使い、Visual C++ 再頒布可能パッケージを要求しないようにしています。`no-tts` ビルドが公開されている場合はそちらを使います——音声合成側は展開後サイズをおよそ倍にします。
+
+**全ての成果物はバージョンとダイジェストで固定**され、ダイジェストは GitHub / Hugging Face のメタデータ API から取得します——ダウンロードした本体からは取りません。不一致の場合、未検証のバイナリを実行するのではなく、明示的に失敗します。`SHERPA_ONNX_VERSION` の更新時はリリースの `digest` を読み直し、`catalog.ts` の url/sha256/bytes の三つ組を全て置き換える必要があります。
+
+##### モデルの選択
+
+macOS arm64 での実測（5.28 秒の中国語サンプル、`--num-threads=2`）：
+
+| モデル | ダウンロード | ピーク RSS | RTF | 中国語 | 英語 |
+|---|---|---|---|---|---|
+| `sense-voice`（既定） | 226 MB | 555 MB | 0.054 | 一字も誤りなし | 実用範囲だが専門用語は崩れる |
+| `paraformer-zh-small` | 78 MB | **225 MB** | **0.013** | 一字も誤りなし | 実用不可 |
+| `whisper-tiny` | 99 MB | — | — | — | — |
+
+**中国語のみの音声入力なら `paraformer-zh-small`** を選んでください：精度は同等、メモリは半分以下、速度は 4 倍、ダウンロードは 3 分の 1 です。既定が `sense-voice` なのは中国語・英語・日本語・韓国語・広東語をカバーするためで、Paraformer は中国語専用です——英語を与えると `please refacor the redry clasassiation` のような出力になります。
+
+どちらのモデルも英語の技術用語は不得手です（`retry` → `RERY`、`test suite` → `TET WEEK`）。これはモデル自体の性質であり、組み込み方の問題ではありません。
+
+ピーク RSS の列は**子プロセス**の値です。発話終了とともに解放され、occ 自身の RSS には影響しません。
 
 ### 3.4 音声録音
 

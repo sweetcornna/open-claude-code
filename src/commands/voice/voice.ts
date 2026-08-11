@@ -12,6 +12,165 @@ import { isVoiceAvailable } from '../../voice/voiceModeEnabled.js'
 
 const LANG_HINT_MAX_SHOWS = 2
 
+/**
+ * Microphone pre-flight for the local backend.
+ *
+ * Deliberately a separate function rather than a refactor of the toggle-ON
+ * path below: that path interleaves an Anthropic-only credential check
+ * between these three probes, and the two existing backends must keep
+ * behaving exactly as they did. Returns a message to show the user, or
+ * null when recording is usable.
+ */
+async function checkMicrophonePreflight(): Promise<{
+  type: 'text'
+  value: string
+} | null> {
+  const {
+    checkRecordingAvailability,
+    checkVoiceDependencies,
+    requestMicrophonePermission,
+  } = await import('../../services/voice.js')
+
+  const recording = await checkRecordingAvailability()
+  if (!recording.available) {
+    return {
+      type: 'text' as const,
+      value:
+        recording.reason ?? 'Voice mode is not available in this environment.',
+    }
+  }
+
+  const deps = await checkVoiceDependencies()
+  if (!deps.available) {
+    const hint = deps.installCommand
+      ? `\nInstall audio recording tools? Run: ${deps.installCommand}`
+      : '\nInstall SoX manually for audio recording.'
+    return {
+      type: 'text' as const,
+      value: `No audio recording tool found.${hint}`,
+    }
+  }
+
+  if (!(await requestMicrophonePermission())) {
+    let guidance: string
+    if (process.platform === 'win32') {
+      guidance = 'Settings → Privacy → Microphone'
+    } else if (process.platform === 'linux') {
+      guidance = "your system's audio settings"
+    } else {
+      guidance = 'System Settings → Privacy & Security → Microphone'
+    }
+    return {
+      type: 'text' as const,
+      value: `Microphone access is denied. To enable it, go to ${guidance}, then run /voice local again.`,
+    }
+  }
+
+  return null
+}
+
+/**
+ * Enable (or report on) the offline backend.
+ *
+ * The artifacts are hundreds of megabytes, so this never blocks: a missing
+ * install is started in the background and the command returns what is
+ * being fetched and how big it is. Running `/voice local` again reports
+ * progress. Everything is lazy-imported — the catalog and installer must
+ * not be pulled into the startup graph for sessions that never dictate.
+ */
+async function handleLocalBackend(
+  modelArg: string | undefined,
+  runPreflight: boolean,
+): Promise<{
+  type: 'text'
+  value: string
+}> {
+  if (runPreflight) {
+    const preflight = await checkMicrophonePreflight()
+    if (preflight) return preflight
+  }
+  const { isLocalSttModelId, LOCAL_STT_MODELS, formatMegabytes } = await import(
+    '../../services/localStt/catalog.js'
+  )
+  const { currentLocalSttModel } = await import(
+    '../../services/localSttStream.js'
+  )
+  const {
+    checkLocalSttReadiness,
+    describeInstallProgress,
+    ensureLocalSttInstalled,
+    getInstallProgress,
+  } = await import('../../services/localStt/install.js')
+
+  if (modelArg !== undefined && !isLocalSttModelId(modelArg)) {
+    const options = Object.values(LOCAL_STT_MODELS)
+      .map(
+        model =>
+          `  ${model.id} — ${model.label}, ${formatMegabytes(model.bytes)}, ${model.languages}`,
+      )
+      .join('\n')
+    return {
+      type: 'text' as const,
+      value: `未知的本地模型 "${modelArg}"。可选：\n${options}`,
+    }
+  }
+
+  const settingsPatch: {
+    voiceEnabled: true
+    voiceProvider: 'local'
+    voiceLocalModel?: 'sense-voice' | 'paraformer-zh-small' | 'whisper-tiny'
+  } = { voiceEnabled: true, voiceProvider: 'local' }
+  if (modelArg !== undefined && isLocalSttModelId(modelArg)) {
+    settingsPatch.voiceLocalModel = modelArg
+  }
+  const saved = updateSettingsForSource('userSettings', settingsPatch)
+  if (saved.error) {
+    return {
+      type: 'text' as const,
+      value:
+        'Failed to update settings. Check your settings file for syntax errors.',
+    }
+  }
+  settingsChangeDetector.notifyChange('userSettings')
+  logEvent('tengu_voice_toggled', { enabled: true })
+
+  const model = currentLocalSttModel()
+  const key = getShortcutDisplay('voice:pushToTalk', 'Chat', 'Space')
+  const readiness = checkLocalSttReadiness(model)
+  if (readiness.ready) {
+    return {
+      type: 'text' as const,
+      value: `语音模式已启用（本地离线识别 · ${model.label}）。按住 ${key} 说话。`,
+    }
+  }
+
+  const phase = getInstallProgress().phase
+  if (phase === 'runtime' || phase === 'model' || phase === 'installing') {
+    return {
+      type: 'text' as const,
+      value: `${describeInstallProgress()}\n下载完成后按住 ${key} 即可离线听写。`,
+    }
+  }
+  // A platform with no prebuilt artifact fails here rather than starting a
+  // download that cannot succeed; the reason names the platform.
+  if (readiness.reason.includes('没有')) {
+    return { type: 'text' as const, value: readiness.reason }
+  }
+
+  void ensureLocalSttInstalled(model).catch(() => {
+    // Surfaced through describeInstallProgress on the next /voice local;
+    // the installer already recorded the message.
+  })
+  return {
+    type: 'text' as const,
+    value:
+      `语音模式已启用（本地离线识别 · ${model.label}，${model.languages}）。\n` +
+      `正在后台下载识别引擎与模型（约 ${formatMegabytes(model.bytes)} 模型 + 约 20 MB 引擎），` +
+      '仅此一次，之后完全离线、无需账号。\n' +
+      `再次运行 /voice local 可查看进度；换模型用 /voice local <${Object.keys(LOCAL_STT_MODELS).join('|')}>。`,
+  }
+}
+
 export const call: LocalCommandCall = async args => {
   // Check kill-switch before allowing voice mode
   if (!isVoiceAvailable()) {
@@ -23,7 +182,23 @@ export const call: LocalCommandCall = async args => {
 
   const currentSettings = getInitialSettings()
   const isCurrentlyEnabled = currentSettings.voiceEnabled === true
-  const providerArg = args?.trim().toLowerCase()
+  const argTokens = (args ?? '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+  const providerArg = argTokens[0] ?? ''
+
+  // `whisper` is accepted as a synonym for `local`: the backend runs
+  // Whisper models among others, and it is the word users reach for.
+  if (providerArg === 'local' || providerArg === 'whisper') {
+    // Skip the microphone probe when voice is already on — it starts a
+    // real recording, and `/voice local` doubles as the progress check.
+    return handleLocalBackend(
+      argTokens[1],
+      !isCurrentlyEnabled || currentSettings.voiceProvider !== 'local',
+    )
+  }
 
   // Handle provider argument when already enabled — switch backend only
   if (isCurrentlyEnabled && providerArg === 'doubao') {

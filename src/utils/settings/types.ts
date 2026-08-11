@@ -1034,10 +1034,20 @@ export const SettingsSchema = lazySchema(() =>
               .optional()
               .describe('Enable voice mode (hold-to-talk dictation)'),
             voiceProvider: z
-              .enum(['anthropic', 'doubao'])
+              .enum(['anthropic', 'doubao', 'local'])
               .optional()
               .describe(
-                'Voice STT backend: "anthropic" (default) or "doubao" (Doubao ASR)',
+                'Voice STT backend: "anthropic" (default, needs Claude.ai OAuth), ' +
+                  '"doubao" (Doubao ASR), or "local" (offline sherpa-onnx, no account)',
+              ),
+            voiceLocalModel: z
+              .enum(['sense-voice', 'paraformer-zh-small', 'whisper-tiny'])
+              .optional()
+              .describe(
+                'Model used by the "local" voice backend. ' +
+                  '"sense-voice" (default, 237MB, zh/en/ja/ko/yue), ' +
+                  '"paraformer-zh-small" (82MB, Chinese only), ' +
+                  '"whisper-tiny" (104MB, 99 languages, lower accuracy)',
               ),
           }
         : {}),

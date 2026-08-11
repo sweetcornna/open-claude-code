@@ -24,6 +24,7 @@ import {
   connectDoubaoStream,
   isDoubaoAvailableSync,
 } from '../services/doubaoSTT.js'
+import { connectLocalSttStream } from '../services/localSttStream.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { toError } from '../utils/runtime/errors.js'
 import { getSystemLocaleLanguage } from '../utils/text/intl.js'
@@ -33,6 +34,20 @@ import { sleep } from '../utils/process/sleep.js'
 
 function isDoubaoProvider(): boolean {
   return getInitialSettings().voiceProvider === 'doubao'
+}
+
+function isLocalProvider(): boolean {
+  return getInitialSettings().voiceProvider === 'local'
+}
+
+/**
+ * True for the backends that recognise a finished utterance in one shot
+ * rather than streaming interim results. They share three behaviours:
+ * no keyterm fetch, no focus-mode continuous transcription, and no
+ * silent-drop replay (there is no server to drop anything).
+ */
+function isBatchProvider(): boolean {
+  return isDoubaoProvider() || isLocalProvider()
 }
 
 // ─── Language normalization ─────────────────────────────────────────────
@@ -386,6 +401,11 @@ export function useVoice({
         // early-error retry path below).
         if (
           finalizeSource === 'no_data_timeout' &&
+          // The local backend has no server to silently drop audio: an
+          // empty result means the recognizer heard nothing. Replaying it
+          // through connectVoiceStream would send the user's microphone to
+          // Anthropic from a session that deliberately chose offline STT.
+          !isLocalProvider() &&
           hadAudioSignal &&
           wsConnected &&
           !focusTriggered &&
@@ -582,7 +602,7 @@ export function useVoice({
   // stop when it loses focus. This enables a "multi-clauding army"
   // workflow where voice input follows window focus.
   useEffect(() => {
-    if (!enabled || !focusMode || isDoubaoProvider()) {
+    if (!enabled || !focusMode || isBatchProvider()) {
       // Focus mode was disabled while a focus-driven recording was active —
       // stop the recording so it doesn't linger until the silence timer fires.
       if (focusTriggeredRef.current && stateRef.current === 'recording') {
@@ -787,15 +807,17 @@ export function useVoice({
     const attemptConnect = (keyterms: string[]): void => {
       const myAttemptGen = attemptGenRef.current
       // Select STT backend based on settings.voiceProvider
-      const connectFn = isDoubaoProvider()
-        ? (
-            cbs: Parameters<typeof connectDoubaoStream>[0],
-            opts: Parameters<typeof connectDoubaoStream>[1],
-          ) => connectDoubaoStream(cbs, opts)
-        : (
-            cbs: Parameters<typeof connectVoiceStream>[0],
-            opts: Parameters<typeof connectVoiceStream>[1],
-          ) => connectVoiceStream(cbs, opts)
+      let connectFn: (
+        cbs: Parameters<typeof connectVoiceStream>[0],
+        opts: Parameters<typeof connectVoiceStream>[1],
+      ) => Promise<VoiceStreamConnection | null>
+      if (isDoubaoProvider()) {
+        connectFn = (cbs, opts) => connectDoubaoStream(cbs, opts)
+      } else if (isLocalProvider()) {
+        connectFn = (cbs, opts) => connectLocalSttStream(cbs, opts)
+      } else {
+        connectFn = (cbs, opts) => connectVoiceStream(cbs, opts)
+      }
       void connectFn(
         {
           onTranscript: (text: string, isFinal: boolean) => {
@@ -1025,8 +1047,8 @@ export function useVoice({
       })
     }
 
-    // Doubao backend doesn't use keyterms — skip the async fetch
-    if (isDoubaoProvider()) {
+    // Batch backends don't use keyterms — skip the async fetch
+    if (isBatchProvider()) {
       attemptConnect([])
     } else {
       void getVoiceKeyterms().then(attemptConnect)
@@ -1044,9 +1066,17 @@ export function useVoice({
   // delay of ~500ms on macOS).
   const handleKeyEvent = useCallback(
     (fallbackMs = REPEAT_FALLBACK_MS): void => {
-      const sttAvailable = isDoubaoProvider()
-        ? isDoubaoAvailableSync()
-        : isVoiceStreamAvailable()
+      let sttAvailable: boolean
+      if (isDoubaoProvider()) {
+        sttAvailable = isDoubaoAvailableSync()
+      } else if (isLocalProvider()) {
+        // Not installed yet: let the press through so connectLocalSttStream
+        // can surface the "run /voice local to download" message. Silently
+        // swallowing the key is what made the other backends look broken.
+        sttAvailable = true
+      } else {
+        sttAvailable = isVoiceStreamAvailable()
+      }
       if (!enabled || !sttAvailable) {
         return
       }

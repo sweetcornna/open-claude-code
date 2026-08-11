@@ -21,7 +21,9 @@ export function useVoiceEnabled(): boolean {
   const authVersion = useAppState(s => s.authVersion)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const authed = useMemo(hasVoiceAuth, [authVersion])
-  if (provider === 'doubao') {
+  // Only the Anthropic backend needs an OAuth token; Doubao carries its own
+  // credentials and the local backend needs no account at all.
+  if (provider === 'doubao' || provider === 'local') {
     return userIntent && isVoiceGrowthBookEnabled()
   }
   return userIntent && authed && isVoiceGrowthBookEnabled()
