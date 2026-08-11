@@ -49,13 +49,55 @@ bun install -g @sweetcornna/open-claude-code@latest
 实现位于 `src/cli/updateOcc.ts`，流程如下：
 
 1. 读取当前版本。
-2. 从 npm registry 查询 `@sweetcornna/open-claude-code@latest`。
-3. 如果当前版本已是最新版本，则直接退出。
-4. 检测当前安装是否位于 Bun 的全局安装目录。
-5. Bun 全局安装使用 `bun install -g @sweetcornna/open-claude-code@latest`；其他安装使用 `npm install -g @sweetcornna/open-claude-code@latest`。
-6. 更新失败时打印等价的手动恢复命令。
+2. 选定本次更新使用的 registry（见下一节；已配置 registry 的用户直接沿用自己的）。
+3. 从选定的 registry 查询 `@sweetcornna/open-claude-code@latest`。
+4. 如果当前版本已是最新版本，则直接退出。
+5. 若 registry 是 occ 自己竞速选出来的镜像，先过完整性校验；不通过就退回官方 registry。
+6. 检测当前安装是否位于 Bun 的全局安装目录。
+7. Bun 全局安装使用 `bun install -g`；其他安装使用 `npm install -g`，两者都带 `--registry=<选定的 registry>`。
+8. 更新失败时打印等价的手动恢复命令。
 
 包名来自 `src/constants/brand.ts` 的 `NPM_PACKAGE_NAME`，不是在更新器中重复维护的字符串。
+
+## Registry 竞速与镜像加速
+
+更新是纯网络开销，而瓶颈通常不在源站、在边缘。同一台机器、同一时刻，对**同一个** 8.3 MB tarball 实测：
+
+| registry | 吞吐 | 下载 8.3 MB 需要 |
+|---|---|---|
+| `registry.npmjs.org` | 17,599 B/s | 约 8 分钟 |
+| `registry.npmmirror.com` | 1,101,809 B/s | **7.6 秒** |
+
+一次真实的 `bun install -g @sweetcornna/open-claude-code@2.38.1` 耗时 **347.93 秒**（user 0.19 / sys 0.42）——几乎全部时间在等网络。
+
+所以 occ 会**并发**探测候选 registry，然后把**版本查询和安装两半**都发给最快的那个。实测同一次 `npm view` 直连 2.95 秒、经镜像 0.356 秒；完整安装（含 6 个依赖，约 20 MB）从 347.93 秒降到 42.3 秒。
+
+**探测用什么。** 探测的是**真实 tarball 的前 64 KiB**（`Range` 请求，读满即中止），而不是 packument。原因有三：要衡量的是马上要搬运 8 MB 的那条通道，而镜像的元数据端点和 CDN 往往不是同一台主机（npmmirror 的 tarball 会 302 到 `cdn.npmmirror.com`）；packument 探测会把「元数据在本地、CDN 在天边」的 registry 排到前面；而且 tarball 探测顺带回答了「这个镜像到底有没有这个包」。64 KiB 是为了测**吞吐**而不是**握手延迟**——几 KB 的探测跑不出 TCP 慢启动。上限 3 秒，全部候选并发跑，一有赢家立刻中止其余（所以一次竞速的实际代价略多于 64 KiB）。全部失败或超时 = 退回官方 registry。
+
+**候选清单**（`UPDATE_REGISTRY_CANDIDATES`，`src/services/autoUpdate/updateRegistry.ts`）只有三个，每一个都是 occ 可能把自我安装交出去的主机，所以门槛是「公开可达、免认证、全量镜像 npm、运营方可追溯」：
+
+- `registry.npmjs.org` —— 源站。始终参赛，所以到 npm 链路健康的用户永远不会被重定向到别处。
+- `registry.yarnpkg.com` —— 同一份 npm 内容、不同 CDN，由 Yarn 项目运营。收录它是因为要绕开的往往是**劣化的边缘**而不是劣化的源站，它用另一条路径取到同样的字节，且不含任何地域假设。
+- `registry.npmmirror.com` —— 阿里云运营的 npm 全量公开镜像（前身 cnpm/taobao）。收录它是因为它是实测中**真正改变结果**的那一个：上面两家 37 KB/s 时它 1.6 MB/s。
+
+**绝不动用户的 npm/bun 配置。** 不写 `~/.npmrc`、不写 `~/.bunfig.toml`、不改全局配置。选中的 registry 以 `--registry=<url>` 逐次传给子进程，只对那一个子进程生效；occ 的自我更新是唯一被重定向的流量。npm 11.16.0 与 bun 1.3.13 都验证过：把两者指向一个本地 registry，所有请求确实落在那里。
+
+**用户显式配置过的 registry 优先，且完全不参与竞速。** 命中以下任意一条就直接沿用、连探测都不做：`npm_config_registry` / `NPM_CONFIG_REGISTRY` 环境变量、`npm config get registry` 返回值不等于默认值（即 `.npmrc` 链）、bunfig 的 `[install] registry`。理由很实际：那是用户自己的选择，很可能是一个私有镜像，而且可能是**唯一**装着这个包的地方——拿公开 registry 去和它竞速只会更糟。（bunfig 那一条不能省：`npm config` 看不见 bunfig.toml，漏掉就等于绕过了 bun 用户自己写下的配置。）
+
+**完整性不是可选项。** 镜像是第三方，它说的话一律不采信：
+
+1. occ 从**官方** registry 取即将安装的那个版本的单版本文档（约 7.5 KB，不是 253 KB 的 packument），拿到 `dist.integrity`，要求竞速胜出的镜像对**同一个版本**给出**同一个值**。对不上、没有这个版本、或者取不到，该镜像就在这里被丢弃，安装退回 `registry.npmjs.org`。
+2. 随后 npm / bun 会把下载到的 tarball 与它们自己取到的 packument 里的 integrity 比对——而第 1 步刚刚把那个值钉死成官方值。这一条是**实测**而非假设的：让一个本地 registry 提供诚实的 `dist.integrity` 元数据配一个被篡改的 tarball，npm 11.16.0 报 `EINTEGRITY`、bun 1.3.13 报 `IntegrityCheckFailed`，两者都拒绝安装、什么也没留下。
+
+合起来是一条可以明说的端到端性质：**即使字节来自镜像，最终解包的那份 tarball 的哈希仍然等于 npm 官方发布的值。**
+
+**做不到的部分同样明说：没有安装后校验，用这两个包管理器也不可能有。** 它们解包完就丢弃 tarball，而 gzip 不可复现，所以装好的目录树无法反推回 `dist.integrity`；何况后台安装是一个**故意活得比会话久**的 detached 子进程，事后根本没有进程可以去校验。安装前的这道闸门就是 occ 能给出的全部承诺。残余风险是「镜像给 occ 一份 packument、几秒后给包管理器另一份」——那是定向攻击而非被动风险，也正是任何不确定情形都退回官方 registry 的原因。
+
+这道闸门**只作用于 occ 自己竞速选出来的镜像**。用户自己配置的 registry 是用户的信任锚而不是 occ 的猜测，它完全可以合法地托管一个 npmjs 上根本没有的构建；拿公开哈希去卡它，恰好会卡死上一段要保护的那批用户。
+
+**逃生舱**：`OCC_UPDATE_REGISTRY=official` 钉死官方 registry 并跳过竞速。同一个变量也接受显式 registry URL，同样直接采用、不竞速。
+
+竞速结果按**进程**缓存：后台循环每 30 分钟醒一次，每轮重跑竞速只是反复回答一个在单次会话内通常不会变的问题，也会让盯着自己流量的用户每半小时看见一次莫名其妙的 registry 请求。新进程会重新竞速，所以网络变好了下次启动就能吃到。
 
 ## 与官方原生安装器的隔离
 
@@ -132,6 +174,7 @@ bun install -g @sweetcornna/open-claude-code@latest
 | 配置项 | 位置 | 默认值 | 说明 |
 |---|---|---|---|
 | `OCC_UPDATE_CHECK_INTERVAL_MS` | 环境变量 | `1800000`（30 分钟） | 覆盖 occ 自更新与插件更新的周期检查间隔（两条链共用同一个值）。下限 `60000`（1 分钟）；非法值回落到默认值 |
+| `OCC_UPDATE_REGISTRY` | 环境变量 | 未设置（竞速） | 逃生舱：`official` 钉死 `registry.npmjs.org` 并跳过 registry 竞速；也接受显式 registry URL，同样跳过竞速。见「Registry 竞速与镜像加速」 |
 | `lastBackgroundUpdateCheckAt` | `~/.occ.json` | — | occ 自更新上一次后台检查的时间戳，内部字段 |
 | `lastBackgroundPluginUpdateCheckAt` | `~/.occ.json` | — | 插件上一次后台检查的时间戳，内部字段 |
 
@@ -187,6 +230,7 @@ claude --version
 | `src/constants/brand.ts` | occ 命令名和 npm 包名的唯一真源 |
 | `src/cli/updateOcc.ts` | `occ update` 的版本检查与 npm/Bun 更新流程；导出后台更新复用的检测、包名规格与静默安装函数 |
 | `src/services/autoUpdate/backgroundOccUpdate.ts` | occ 后台静默自动更新服务（周期调度、门禁、版本比较与立即安装） |
+| `src/services/autoUpdate/updateRegistry.ts` | registry 竞速、用户已配置 registry 的检测、以及镜像安装前的完整性闸门 |
 | `src/services/autoUpdate/occInstaller.ts` | detached spawn `install -g`，会话不等它 |
 | `src/services/autoUpdate/runtimeFarm.ts` | 启动时进入 `<配置目录>/runtime/<版本>-<指纹>/` 硬链接副本；包目录被替换也不影响正在跑的会话 |
 | `src/services/autoUpdate/runtimeFarmGc.ts` | 回收没有活会话在用的 farm；顺带清掉已废弃的 `pending-updates/` 目录 |

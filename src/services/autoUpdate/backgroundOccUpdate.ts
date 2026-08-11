@@ -42,6 +42,11 @@ import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { gt } from 'src/utils/text/semver.js'
 import * as updateInterval from './backgroundUpdateInterval.js'
 import { type OccInstall, spawnDetachedOccInstaller } from './occInstaller.js'
+import {
+  approveRegistryForInstall,
+  getSessionUpdateRegistry,
+  type UpdateRegistryChoice,
+} from './updateRegistry.js'
 import { emitBackgroundUpdateNotification } from './updateNotifier.js'
 
 /**
@@ -63,8 +68,31 @@ export type BackgroundOccUpdateDeps = {
   getInstallationType: () => Promise<InstallationType>
   isBunGlobalInstall: () => boolean
   getCurrentVersion: () => string
+  /**
+   * Which registry this session's update traffic goes to. Resolved before the
+   * version check so both halves benefit from a fast one; see
+   * updateRegistry.ts. Memoised per process, so this is one race per session
+   * rather than one per 30-minute pass.
+   */
+  resolveRegistry: (
+    probeVersion: string,
+    signal?: AbortSignal,
+  ) => Promise<UpdateRegistryChoice>
+  /**
+   * Integrity gate. Returns the registry the install may actually use, which
+   * is the official one whenever a raced mirror cannot prove it serves the
+   * same artifact npm published for this exact version.
+   */
+  approveRegistry: (
+    choice: UpdateRegistryChoice,
+    version: string,
+    signal?: AbortSignal,
+  ) => Promise<string>
   /** `signal` cancels the spawned `npm view` when the session is shutting down. */
-  getLatestVersion: (signal?: AbortSignal) => Promise<string | null>
+  getLatestVersion: (
+    signal?: AbortSignal,
+    registry?: string,
+  ) => Promise<string | null>
   /**
    * Cross-process update lock. Held by whichever process is installing, so a
    * second session that notices the same release in the same minute stands
@@ -121,6 +149,10 @@ async function loadDefaultDeps(): Promise<BackgroundOccUpdateDeps> {
     getInstallationType: doctor.getCurrentInstallationType,
     isBunGlobalInstall: updateOcc.isRunningFromBunGlobalInstall,
     getCurrentVersion: updateOcc.getCurrentOccVersion,
+    resolveRegistry: (probeVersion, signal) =>
+      getSessionUpdateRegistry({ probeVersion, signal }),
+    approveRegistry: (choice, version, signal) =>
+      approveRegistryForInstall({ choice, version, signal }),
     getLatestVersion: updateOcc.getLatestOccVersion,
     acquireLock: autoUpdater.acquireUpdateLock,
     releaseLock: autoUpdater.releaseUpdateLock,
@@ -238,7 +270,12 @@ export async function runBackgroundOccUpdateOnce(
     }
 
     const currentVersion = getComparisonVersion(d.getCurrentVersion())
-    const latestVersion = await d.getLatestVersion(signal)
+    // The probe reads the running version's tarball, which is published by
+    // definition and sits at the same CDN path as the one about to be
+    // downloaded — so the registry can be chosen before the version check
+    // instead of after it, and the version check gets the fast one too.
+    const choice = await d.resolveRegistry(d.getCurrentVersion(), signal)
+    const latestVersion = await d.getLatestVersion(signal, choice.registry)
     if (!latestVersion) {
       logForDebugging('backgroundOccUpdate: version check failed')
       return { status: 'check-failed' }
@@ -249,6 +286,11 @@ export async function runBackgroundOccUpdateOnce(
       )
       return { status: 'up-to-date', version: currentVersion }
     }
+
+    // Before the lock, not after: this is a network read, and the lock is
+    // deliberately never released on success, so holding it across the gate
+    // would extend the window in which another session stands down.
+    const registry = await d.approveRegistry(choice, latestVersion, signal)
 
     if (!(await d.acquireLock())) {
       // Somebody else is already installing this. Doing nothing is the whole
@@ -266,6 +308,7 @@ export async function runBackgroundOccUpdateOnce(
       // path can ever hand `install -g` a spec that came from anywhere else.
       spec: d.packageSpec(),
       version: latestVersion,
+      registry,
     }
     try {
       await d.spawnInstaller(install)
@@ -281,7 +324,7 @@ export async function runBackgroundOccUpdateOnce(
     lastInstalledVersion = latestVersion
     d.notify(updateInstallingText(latestVersion))
     logForDebugging(
-      `backgroundOccUpdate: installing ${latestVersion} via ${eligibility.pkgManager} (current ${currentVersion})`,
+      `backgroundOccUpdate: installing ${latestVersion} via ${eligibility.pkgManager} from ${registry} (current ${currentVersion})`,
     )
     return { status: 'installing', version: latestVersion }
   } catch (error) {

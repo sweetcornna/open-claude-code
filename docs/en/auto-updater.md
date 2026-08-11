@@ -49,13 +49,55 @@ bun install -g @sweetcornna/open-claude-code@latest
 The implementation is in `src/cli/updateOcc.ts`. It performs the following steps:
 
 1. Read the current version.
-2. Query the npm registry for `@sweetcornna/open-claude-code@latest`.
-3. Exit immediately if the current version is already the latest.
-4. Detect whether the current installation is in Bun's global installation directory.
-5. Use `bun install -g @sweetcornna/open-claude-code@latest` for a Bun global installation; use `npm install -g @sweetcornna/open-claude-code@latest` for other installations.
-6. If the update fails, print the equivalent manual recovery command.
+2. Choose the registry for this update (see the next section; users who configured one keep it).
+3. Query the chosen registry for `@sweetcornna/open-claude-code@latest`.
+4. Exit immediately if the current version is already the latest.
+5. If the registry is a mirror occ raced into rather than one the user chose, run the integrity gate; fall back to the official registry if it does not pass.
+6. Detect whether the current installation is in Bun's global installation directory.
+7. Use `bun install -g` for a Bun global installation and `npm install -g` otherwise, both with `--registry=<chosen registry>`.
+8. If the update fails, print the equivalent manual recovery command.
 
 The package name comes from `NPM_PACKAGE_NAME` in `src/constants/brand.ts`; the updater does not maintain a duplicate string.
+
+## Registry Racing
+
+Updating is pure network cost, and the bottleneck is usually not the origin but the edge. Measured on one machine at one moment, against the **same** 8.3 MB tarball:
+
+| registry | throughput | time for 8.3 MB |
+|---|---|---|
+| `registry.npmjs.org` | 17,599 B/s | ~8 minutes |
+| `registry.npmmirror.com` | 1,101,809 B/s | **7.6 s** |
+
+A real `bun install -g @sweetcornna/open-claude-code@2.38.1` took **347.93 s** wall (0.19 s user / 0.42 s sys) — essentially all of it waiting on the network.
+
+So occ probes the candidate registries **concurrently** and sends **both halves** of the update — the version check and the install — to whichever answered fastest. Measured: the same `npm view` takes 2.95 s direct and 0.356 s through the mirror; a full install including all six dependencies (~20 MB) drops from 347.93 s to 42.3 s.
+
+**What the probe reads.** The first 64 KiB of the **real tarball** (a `Range` request, cancelled as soon as enough has arrived), not the packument. Three reasons: the thing worth measuring is the path that is about to carry 8 MB, and on a mirror the metadata endpoint is often a different host from the CDN (npmmirror redirects tarballs to `cdn.npmmirror.com`); a packument probe would rank a registry whose metadata is nearby and whose CDN is not; and a tarball probe also answers "does this mirror carry this package at all". 64 KiB is chosen to measure **throughput** rather than **handshake latency** — a few-KB probe completes inside TCP slow start. The race is bounded at 3 s, all candidates run at once, and the losers are aborted the instant a winner appears (so a race costs a little over 64 KiB in practice). Every probe failing, or the timeout expiring, means falling back to the official registry.
+
+**The candidate list** (`UPDATE_REGISTRY_CANDIDATES` in `src/services/autoUpdate/updateRegistry.ts`) has three entries. Each one is a host occ may hand a self-install to, so the bar is "publicly reachable, unauthenticated, mirrors the whole npm tree, operated by someone identifiable":
+
+- `registry.npmjs.org` — the origin. Always in the race, so a user whose path to npm is healthy is never redirected anywhere else.
+- `registry.yarnpkg.com` — the same npm content behind a different CDN, operated by the Yarn project. Included because the failure being worked around is usually a **degraded edge** rather than a degraded origin, and this reaches the same bytes by another path with no region-specific assumption.
+- `registry.npmmirror.com` — Alibaba's public full mirror of npm (formerly cnpm/taobao). Included because it is the entry measured to actually change the outcome: 1.6 MB/s where the two above were at 37 KB/s.
+
+**The user's npm/bun configuration is never modified.** Nothing writes `~/.npmrc`, `~/.bunfig.toml`, or any global config. The chosen registry is passed per invocation as `--registry=<url>`, scoped to that one child process; occ's self-update is the only traffic redirected. Verified against npm 11.16.0 and bun 1.3.13 by pointing both at a local registry and confirming every request arrived there.
+
+**An explicitly configured registry wins and is never raced.** Any of these short-circuits before a single probe is attempted: the `npm_config_registry` / `NPM_CONFIG_REGISTRY` environment variables, a `npm config get registry` result other than the default (i.e. the `.npmrc` chain), or a bunfig `[install] registry`. The reason is practical: that is the user's own choice, quite possibly a private mirror that is the **only** host carrying the package, and racing it against public registries could only make things worse. (The bunfig case cannot be skipped: `npm config` cannot see bunfig.toml, so omitting it would race straight past what a bun user wrote down.)
+
+**Integrity is not optional.** A mirror is a third party, so nothing it says is taken on faith:
+
+1. occ reads the single-version document for the exact version about to be installed from the **official** registry (~7.5 KB, not the 253 KB packument), takes its `dist.integrity`, and requires the winning mirror to advertise the same value for the same version. A mirror that disagrees, that is missing the version, or that cannot be reached is discarded here, and the install falls back to `registry.npmjs.org`.
+2. npm and bun then verify the downloaded tarball against the integrity in the packument they fetched — which step 1 has just pinned to the official value. This was **verified rather than assumed**: pointing each at a local registry serving honest `dist.integrity` metadata alongside a corrupted tarball, npm 11.16.0 refused with `EINTEGRITY` and bun 1.3.13 with `IntegrityCheckFailed`, and neither left anything installed.
+
+Together those give an end-to-end property worth stating plainly: **the bytes that get unpacked hash to the value npm published, even though they came from a mirror.**
+
+**What is not guaranteed, stated equally plainly: there is no post-install verification, and there cannot be one with these package managers.** Both unpack the tarball and discard it, and gzip is not reproducible, so the installed tree cannot be hashed back to `dist.integrity`; and the background install is a detached child that by design outlives the session that started it, so there is no process left to check afterwards. The pre-install gate is what occ can actually promise. The residual gap is a mirror that serves one packument to occ and a different one to the package manager moments later — a targeted attack rather than a passive risk, and the reason anything inconclusive falls back to the official registry.
+
+The gate deliberately applies **only** to a mirror occ raced into. A registry the user configured is their trust anchor, not occ's guess, and may legitimately host a build that is not on npmjs at all; holding it to the public hash would break exactly the users the previous paragraph protects.
+
+**Escape hatch**: `OCC_UPDATE_REGISTRY=official` pins `registry.npmjs.org` and skips racing entirely. The same variable also accepts an explicit registry URL, which is likewise used as-is without probing.
+
+The race result is cached **per process**. The background loop wakes every 30 minutes, and re-racing on each pass would repeatedly answer a question whose answer does not usually change within one session — and would show a user watching their own traffic an unexplained registry request every half hour. A new process re-probes, so a network that improves is picked up at the next launch.
 
 ## Isolation from the Official Native Installer
 
@@ -132,6 +174,7 @@ A single environment variable controls the period for both chains:
 | Setting | Location | Default | Description |
 |---|---|---|---|
 | `OCC_UPDATE_CHECK_INTERVAL_MS` | Environment variable | `1800000` (30 minutes) | Overrides the periodic check interval for both the occ self-update and plugin updates (both chains share one value). Lower bound `60000` (1 minute); an invalid value falls back to the default |
+| `OCC_UPDATE_REGISTRY` | Environment variable | unset (race) | Escape hatch: `official` pins `registry.npmjs.org` and skips registry racing; an explicit registry URL is also accepted and likewise skips racing. See "Registry Racing" |
 | `lastBackgroundUpdateCheckAt` | `~/.occ.json` | — | Timestamp of the last background occ update check; internal field |
 | `lastBackgroundPluginUpdateCheckAt` | `~/.occ.json` | — | Timestamp of the last background plugin update check; internal field |
 
@@ -187,6 +230,7 @@ If the official Claude Code is not installed, the absence of the second command 
 | `src/constants/brand.ts` | Single source of truth for the occ command name and npm package name |
 | `src/cli/updateOcc.ts` | Version check and npm/Bun update flow for `occ update`; exports the detection, package-spec, and silent-installation functions reused by background updates |
 | `src/services/autoUpdate/backgroundOccUpdate.ts` | Silent background automatic-update service for occ (periodic scheduling, gates, version comparison, and queueing) |
+| `src/services/autoUpdate/updateRegistry.ts` | Registry racing, detection of a user-configured registry, and the integrity gate a mirror must pass before it may install |
 | `src/services/autoUpdate/occInstaller.ts` | Spawns `install -g` detached; the session never waits on it |
 | `src/services/autoUpdate/runtimeFarm.ts` | Enters the `<config>/runtime/<version>-<fingerprint>/` hard-link copy at startup, so replacing the package directory cannot strand a running session |
 | `src/services/autoUpdate/runtimeFarmGc.ts` | Reclaims farms no live session is running from; also sweeps the retired `pending-updates/` directory |
