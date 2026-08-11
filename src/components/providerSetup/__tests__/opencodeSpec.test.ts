@@ -151,7 +151,20 @@ describe('save-time extras', () => {
     // The regression this guards: both keys used to live in `extraEnv`/the
     // credential block, which planProviderSave skips for a subscription
     // session — so a Console login's own model step could not carry them.
-    expect(specs.PROVIDER_SETUP_SPECS.opencode.extraEnv).toBeUndefined()
+    const extra = specs.PROVIDER_SETUP_SPECS.opencode.extraEnv?.({})
+    expect(extra).not.toHaveProperty('OPENCODE_AUTH_MODE')
+    expect(extra).not.toHaveProperty('OPENCODE_BASE_URL')
+  })
+
+  test('the inference plane IS on the credential plane, and only clears', () => {
+    // The Console plane describes where a CONSOLE CREDENTIAL talks. A save that
+    // owns the credential is by definition an API-key setup, and an API key
+    // talks to Zen or Go — so this entry exists to clear the marker, never to
+    // set one. `extraEnv` is skipped for the model-only save a subscription
+    // session performs, which is how the marker survives `/model-settings`.
+    expect(specs.PROVIDER_SETUP_SPECS.opencode.extraEnv?.({})).toEqual({
+      OPENCODE_INFERENCE_PLANE: undefined,
+    })
   })
 
   test('an empty endpoint falls back to Zen rather than unsetting the key', () => {

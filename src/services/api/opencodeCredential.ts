@@ -45,6 +45,36 @@ import {
 let appliedToken: string | undefined
 
 /**
+ * The Console endpoint most recently pushed with it.
+ *
+ * Tracked separately from the token because the two change on different clocks:
+ * the token turns over roughly hourly while the endpoint is whatever
+ * `/api/config` said at login. A refresh that only moves the token must still
+ * re-publish the endpoint, and a session that switches from a Console login to
+ * an API key must drop it.
+ */
+let appliedBaseUrl: string | undefined
+
+function publish(credential: {
+  token?: string
+  inferenceUrl?: string
+}): boolean {
+  if (
+    credential.token === appliedToken &&
+    credential.inferenceUrl === appliedBaseUrl
+  ) {
+    return false
+  }
+  appliedToken = credential.token
+  appliedBaseUrl = credential.inferenceUrl
+  setOpencodeRuntimeCredential(credential.token, {
+    ...(credential.inferenceUrl ? { baseUrl: credential.inferenceUrl } : {}),
+  })
+  applyOpencodeWire()
+  return true
+}
+
+/**
  * Refresh the in-memory credential, re-apply the mirror if it moved, and hand
  * back the headers a request should carry.
  *
@@ -58,37 +88,33 @@ export async function ensureOpencodeCredential(): Promise<
   Record<string, string> | undefined
 > {
   if (!isOpencodeSessionActive()) {
-    if (appliedToken !== undefined) {
-      appliedToken = undefined
-      setOpencodeRuntimeCredential(undefined)
-      applyOpencodeWire()
-    }
+    publish({})
     return undefined
   }
   try {
     const credential = await getOpencodeCredential()
     if (!credential) {
-      if (appliedToken !== undefined) {
-        appliedToken = undefined
-        setOpencodeRuntimeCredential(undefined)
-        applyOpencodeWire()
-      }
+      publish({})
       return undefined
     }
-    if (credential.token !== appliedToken) {
-      appliedToken = credential.token
-      setOpencodeRuntimeCredential(credential.token)
-      applyOpencodeWire()
-    }
+    publish(credential)
     return opencodeAuthHeaders(credential)
   } catch {
     return undefined
   }
 }
 
-/** Drop the cached token — for logout, and for tests that switch sessions. */
+/**
+ * Drop the cached token — for logout, and for tests that switch sessions.
+ *
+ * Unconditional rather than routed through `publish`: the runtime slot is also
+ * written directly by the device login (activateSession.ts), so "this module has
+ * nothing cached" does not mean "the slot is empty", and a logout that skipped
+ * the clear would leave a live bearer in memory.
+ */
 export function resetOpencodeCredentialCache(): void {
   appliedToken = undefined
+  appliedBaseUrl = undefined
   setOpencodeRuntimeCredential(undefined)
   applyOpencodeWire()
 }

@@ -1898,7 +1898,12 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       : commands.filter(
           command =>
             (command.type === 'prompt' && !command.disableNonInteractive) ||
-            (command.type === 'local' && command.supportsNonInteractive),
+            (command.type === 'local' && command.supportsNonInteractive) ||
+            // A local-jsx command may opt in when its argument forms answer
+            // with text: /provider-settings absorbed `/provider`, which was a
+            // headless-capable `local` command, and the merge must not take
+            // `-p "/provider save x"` away with it.
+            (command.type === 'local-jsx' && command.supportsNonInteractive === true),
         );
 
     const defaultState = getDefaultAppState();

@@ -125,6 +125,40 @@ function parseRetryAfterMs(
   return Math.max(0, retryAt - nowMs)
 }
 
+/**
+ * `Please try again in 1.5s` — the only place a mid-stream rate limit states
+ * how long to wait.
+ *
+ * An SSE `response.failed` event carries no HTTP headers, so `Retry-After` is
+ * structurally unavailable there and the ladder falls back to its 200ms first
+ * step: it re-asks a limiter that just said "1.5s" roughly eight times before
+ * the backoff even reaches the stated wait, and can burn the whole budget on a
+ * limit that would have cleared. OpenAI's own client reads the number out of
+ * the prose for exactly this reason (codex-rs/codex-api/src/sse/responses.rs
+ * `try_parse_retry_after`, lines 602-626).
+ *
+ * Gated on the rate-limit code like Codex's is: prose in any other error class
+ * is not a scheduling instruction, and a stray "try again in" in, say, a 400
+ * body must not be able to stall the ladder.
+ */
+export function parseRetryAfterFromErrorPayload(
+  error: Record<string, unknown>,
+): number | undefined {
+  const code = error.code
+  if (typeof code !== 'string' || code !== 'rate_limit_exceeded')
+    return undefined
+  const message = error.message
+  if (typeof message !== 'string') return undefined
+  const matched = message.match(
+    /try again in\s*(\d+(?:\.\d+)?)\s*(ms|milliseconds?|s|secs?|seconds?)\b/i,
+  )
+  if (!matched?.[1] || !matched[2]) return undefined
+  const value = Number.parseFloat(matched[1])
+  if (!Number.isFinite(value) || value < 0) return undefined
+  const unit = matched[2].toLowerCase()
+  return unit === 'ms' || unit.startsWith('milli') ? value : value * 1000
+}
+
 function parsedResponseError(
   body: string,
 ): Record<string, unknown> | undefined {

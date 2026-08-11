@@ -135,10 +135,10 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 
 | ソース | 実行 | 認証情報 |
 |---|---|---|
-| `anthropic` | Anthropic server-side `web_search_20250305` | Claude OAuth または `ANTHROPIC_API_KEY` |
-| `deepseek` | DeepSeek server-side `web_search_20250305`（`<base>/anthropic` 経由） | DeepSeek エンドポイントと key（`OPENAI_BASE_URL` が api.deepseek.com を指す） |
-| `gemini` | Gemini `generateContent` + `googleSearch` grounding | Google(Antigravity) OAuth または `GEMINI_API_KEY` |
-| `codex` | OpenAI Responses API 組み込みの `web_search` ツール | ChatGPT OAuth または `OPENAI_API_KEY` |
+| `anthropic` | Anthropic server-side `web_search_20250305` | **固定した認証情報** > Claude OAuth または `ANTHROPIC_API_KEY` |
+| `deepseek` | DeepSeek server-side `web_search_20250305`（`<base>/anthropic` 経由） | **固定した認証情報** > DeepSeek エンドポイントと key（`OPENAI_BASE_URL` が api.deepseek.com を指す） |
+| `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定した認証情報** > Google(Antigravity) OAuth または `GEMINI_API_KEY` |
+| `codex` | OpenAI Responses API 組み込みの `web_search` ツール | ChatGPT OAuth または `OPENAI_API_KEY`（**固定不可**、4.1.1 を参照） |
 | `brave` | Brave LLM Context API（独立インデックス） | `settings.braveApiKey`、または `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa のニューラル検索（MCP エンドポイント） | `settings.exaApiKey` |
 | `free` | キー不要の複数エンジンスクレイピング（sweetcornna/free-search-mcp から移植） | なし |
@@ -156,6 +156,61 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 **`bing` は意図的にレジストリへ入れていません**。`free` 経路の内部 Bing エンジンと同じエンドポイント・同じ
 送信元 IP を叩くため、集約に加えると 1 つのクォータを二重に消費し、両方が CAPTCHA を引く確率も倍になります。
 明示指定でなら引き続き利用できます（4.3 を参照）。
+
+### 4.1.1 認証情報の固定（`services/search/searchCredentialStore.ts`）
+
+**問題**：検索の認証情報は、これまで**メイン provider の設定に完全に寄生**していました。4 つの provider
+ソースはいずれも `GEMINI_API_KEY` / `OPENAI_API_KEY` + `OPENAI_BASE_URL` / `ANTHROPIC_API_KEY` を環境変数から
+直接読んでいます。ところがそれらは `/logout` が削除するキー（`ALL_PROFILE_ENV_KEYS` から導出される
+`LOGOUT_ENV_KEYS`）そのものであり、`activateProfile()` が対象プロファイルを適用する前に**全家族分をまとめて
+消去する**キーでもあります。そのため「ログアウトした」あるいは単に「OpenAI プロファイルから OpenCode
+プロファイルへ切り替えた」だけで、Web 検索は何の通知もないままキー不要のスクレイピング経路へ静かに退行して
+いました。
+
+**対処**：`/search-setting` で `S` を押すと、そのソースが**今まさに使っている** key とエンドポイントを occ
+自身の認証情報ファイルへ書き込みます。
+
+| 項目 | 値 |
+| --- | --- |
+| パス | `occConfigPath('search-credentials.json')`（= `~/.occ/search-credentials.json`、`OCC_CONFIG_DIR` に追従） |
+| 権限 | `0600`、`writePrivateFileAtomic` によるアトミック書き込み |
+| 形状 | `{ version, sources: { <ソース>: { apiKey, baseURL?, pinnedAt } } }` —— **ソースごとに独立**、単一の blob ではない |
+| 固定可能なソース | `anthropic`、`deepseek`、`gemini` |
+
+**解決順序：固定した認証情報 → provider 環境変数。** 固定していないユーザーの挙動は改修前とバイト単位で同一
+であり、検索を続けるための移行手順は一切不要です。
+
+自明でない規則：
+
+- **`settings.json` には書かない**。あのファイルはユーザーが issue に丸ごと貼るものであり、0600 でもありません。
+- **`/logout` も `activateProfile()` もこのファイルに触れません** —— 「特定のキーを除外するのを忘れない」から
+  ではなく、そもそも両者が書き換える範囲の外にあるからです。回帰テストが各 1 本ずつ固定しています。
+- **`/logout` はそれを明示します**。ログアウト後にまだ固定された認証情報があれば、メッセージが該当ソース名を
+  列挙し、`/search-setting` の `D` で削除できることを伝えます。黙って削除せず残すのは、固定がソースごとの
+  明示的なユーザー操作であり、黙って取り消すことこそこの仕組みが無くそうとしている失敗形態の再現だからです。
+- **認証情報はエンドポイントを伴う必要があります**。さもないとエンドポイント判定が、実際には使えない key を
+  通してしまいます：`hasCodexSearchCredentials()` は `api.openai.com` を要求し、DeepSeek 経路は自前で
+  エンドポイントを導出します（`getDeepSeekSearchEndpoint()`、**意図的にメインループの wire を見ません**）。
+- **`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` は固定より優先されます**。あのスイッチはこのエンドポイントを名指し
+  しており、固定は「どの認証情報を使うか」を言うだけで、「ユーザーが切った能力を無視する」ものではありません。
+- **key は決して描画しません**。パネルは接続済みバッジに `· pinned` を付けるだけで、値も先頭数文字も長さも
+  表示しません。
+- **ミラーされた値は拒否します**。`ANTHROPIC_API_KEY` は常に Anthropic の key とは限りません —— DeepSeek 線は
+  DeepSeek の key を、OpenCode セッションは 1 時間で失効する OAuth access token をそこへミラーします。判定は
+  各ミラー自身の記帳（`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey`）で行い、値の形から推測しません。
+- **`codex` は固定できません**。この経路の認証は `createOpenAIResponsesStream` の内部で行われ、リクエストは
+  `OPENAI_API_KEY` / `OPENAI_BASE_URL` から直接組み立てられて認証情報の差し込み口がありません。固定を許すと、
+  ディスクから出ることのない key でこの行だけが緑に点灯します —— レジストリが防ごうとしている「接続済みなのに
+  空しか返せないソース」そのものです。ChatGPT ログインはもともと occ 自身の 0600 ファイルです。読み取り側は
+  4 家族で統一されているため、将来リクエスト層に差し込み口ができれば 1 行で解放できます。
+
+固定した認証情報は、表示だけでなく**実際に送信されます**：
+
+| ソース | 固定後の経路 |
+| --- | --- |
+| `anthropic` | `AnthropicDirectSearchAdapter` が独立した `fetch` に切り替わり、`x-api-key` で `<固定したエンドポイント>/v1/messages` へ。`getAnthropicClient()` は使いません —— あのクライアントは `ANTHROPIC_*` 環境変数から組み立てられ、プロファイル切替後はそこに他 provider のミラーされた token とゲートウェイが入っていることがあります |
+| `deepseek` | `resolveDeepSeekSearchEndpoint()` が固定したエンドポイントと key を優先して返す |
+| `gemini` | `streamGeminiGenerateContent({ apiKey, baseURL })`。`usesAntigravityRoute()` は明示的な apiKey があれば道を譲る（既存の `accessToken` と同じ規則） |
 
 ### 4.2 集約規則（`adapters/aggregateAdapter.ts`）
 

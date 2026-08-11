@@ -1,5 +1,6 @@
 /**
- * Pure argument parsing and persistence for /model-settings.
+ * Pure argument parsing and persistence for /model-settings (alias
+ * /models-setting).
  *
  * Split from the component the way EffortPanel splits effortPanelState, so the
  * rules are testable without rendering: what the user typed, what it means,
@@ -99,7 +100,7 @@ export function parseArgs(args: string | undefined): ParsedCommand {
 export function usage(): string {
   return [
     'Usage:',
-    '  /model-settings                         open the panel',
+    '  /model-settings                         edit models, effort and context',
     '  /model-settings show                    print the effective values',
     '  /model-settings default effort max      set the provider default',
     '  /model-settings opus effort max         set effort for one tier',

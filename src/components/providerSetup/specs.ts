@@ -21,11 +21,16 @@ import type { CatalogModel } from 'src/services/modelCatalog/types.js'
 import {
   fetchOpencodeModels,
   fetchZenModels,
+  getOpencodeCredential,
   OPENCODE_ZEN_BASE_URL,
 } from 'src/services/auth/opencode/index.js'
 import { ALL_MODEL_CONFIGS } from 'src/utils/model/configs.js'
 import { CHATGPT_CODEX_MODEL_OPTIONS } from 'src/utils/model/chatgptModels.js'
-import { applyOpencodeWire } from 'src/utils/model/opencodeWire.js'
+import {
+  applyOpencodeWire,
+  isOpencodeConsolePlane,
+  OPENCODE_INFERENCE_PLANE_ENV,
+} from 'src/utils/model/opencodeWire.js'
 import type { ProviderURLKind } from 'src/utils/network/providerUrl.js'
 import {
   OPENCODE_PRODUCTS,
@@ -340,6 +345,11 @@ const noValidation = (): null => null
  * product's balance.
  */
 function opencodeEndpointLabel(baseUrl: string | undefined): string {
+  // The Console plane is not one of the two products and must not borrow their
+  // names: it is billed through the account rather than through Zen credits or
+  // a Go subscription, and calling it "OpenCode Zen" here is how a user ends up
+  // reading the wrong billing model into the screen they are on.
+  if (isOpencodeConsolePlane()) return 'OpenCode Console'
   const product = opencodeProductForBaseUrl(baseUrl)
   return product ? OPENCODE_PRODUCTS[product].label : 'OpenCode'
 }
@@ -641,6 +651,22 @@ export const PROVIDER_SETUP_SPECS: Record<
     // block the form.
     apiKeyRequired: false,
     fetchModels: async ({ baseURL, apiKey, signal, onError }) => {
+      // A Console session has no key in this form — the credential is a stored
+      // OAuth pair — and its endpoint is the console's own inference proxy,
+      // which serves no public `/models`. Its list is the org's entitlement
+      // config, so the stored credential is fetched rather than reconstructed
+      // from the form. Lane suffixes are omitted here for the same reason the
+      // login omits them: on that plane every id lands on /chat/completions.
+      if (isOpencodeConsolePlane()) {
+        const credential = await getOpencodeCredential().catch(() => null)
+        const models = credential
+          ? await fetchOpencodeModels(credential, baseURL, signal).catch(
+              () => null,
+            )
+          : null
+        if (!models) onError?.('the console did not list any models')
+        return models
+      }
       const key = apiKey.trim()
       const credential = key ? { token: key, kind: 'key' as const } : null
       // The barrel's fetcher prefers the org's entitlement config, which is an
@@ -654,6 +680,13 @@ export const PROVIDER_SETUP_SPECS: Record<
       if (!models) onError?.('the endpoint did not answer GET /models')
       return withLaneLabels(models)
     },
+    // The Console plane is a property of the CREDENTIAL, so it is cleared by
+    // exactly the saves that own one. This form owning the credential means the
+    // user is configuring an API key, and an API key talks to Zen or Go with
+    // the lane rules — never to the console's proxy. A model-only save skips
+    // `extraEnv` entirely (savePlan.ts), which is how a subscription session
+    // keeps its plane across `/model-settings`.
+    extraEnv: () => ({ [OPENCODE_INFERENCE_PLANE_ENV]: undefined }),
     // The only provider that needs one, and for the reason the fetcher above
     // makes unavoidable: that request answers 200 to anybody. Without this the
     // key path repeats the failure the Console path was just fixed for —

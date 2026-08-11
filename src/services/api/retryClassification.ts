@@ -332,8 +332,14 @@ function signalCategory(
   if (/(?:BILLING|PAYMENT|CREDIT_BALANCE)/.test(normalized)) {
     return classify('billing_error', 'permanent')
   }
+  // MODEL_DISABLED is a deployment saying "not this model", which arrives as a
+  // 403 and would otherwise be classified from the status alone as
+  // `authentication_failed` — sending the user to /login to repair a credential
+  // that is working. OpenCode's `managed_inference_model_disabled` is the case
+  // this was added for; the signal is read before the status, so the body's own
+  // word wins over the HTTP class.
   if (
-    /(?:INVALID|VALIDATION|BAD_REQUEST|NOT_FOUND|FAILED_PRECONDITION|OUT_OF_RANGE|CONTEXT_LENGTH|TOO_LARGE|UNSUPPORTED|UNIMPLEMENTED)/.test(
+    /(?:INVALID|VALIDATION|BAD_REQUEST|NOT_FOUND|FAILED_PRECONDITION|OUT_OF_RANGE|CONTEXT_LENGTH|TOO_LARGE|UNSUPPORTED|UNIMPLEMENTED|MODEL_DISABLED)/.test(
       normalized,
     )
   ) {

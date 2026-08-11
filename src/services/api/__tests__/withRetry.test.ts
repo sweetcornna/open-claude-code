@@ -414,6 +414,26 @@ describe('structured API error classification', () => {
     expect(categorizeRetryableAPIError({ status: 503 })).toBe('server_error')
   })
 
+  test('a disabled model is an invalid request, not a bad credential', () => {
+    // OpenCode's Console plane refuses a model the org is not entitled to with
+    // a 403, and the status alone classifies that as `authentication_failed` —
+    // which sends the user to /login to repair a credential that is working.
+    // The body's own type is read before the status, so it wins.
+    expect(
+      categorizeRetryableAPIError({
+        status: 403,
+        error: {
+          type: 'managed_inference_model_disabled',
+          message: 'Model is disabled for this organization',
+        },
+      }),
+    ).toBe('invalid_request')
+    // A real 403 with nothing to say is still an auth failure.
+    expect(categorizeRetryableAPIError({ status: 403 })).toBe(
+      'authentication_failed',
+    )
+  })
+
   test('recognizes statusless provider type and code families', () => {
     for (const value of [
       { type: 'server_error' },

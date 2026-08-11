@@ -1,5 +1,6 @@
-import type * as React from 'react';
-import type { LocalJSXCommandOnDone } from '../../types/command.js';
+import * as React from 'react';
+import { buildModelStepFromEnvironment } from '../../components/providerSetup/fromEnvironment.js';
+import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import {
   getModelTier,
   MODEL_SETTINGS_SLOTS,
@@ -11,6 +12,7 @@ import { formatContextTokens, getTierOverride } from '../../utils/model/tierSett
 import { getDefaultMainLoopModel, getMainLoopModel } from '../../utils/model/model.js';
 import { parseUserSpecifiedModel } from '../../utils/model/model.js';
 import { parseArgs, resetTierSettings, usage, writeTierSettings } from './state.js';
+import { ModelTierSetup } from './tierWizard.js';
 
 const COMMON_HELP_ARGS = ['help', '--help', '-h', '?'];
 
@@ -77,20 +79,35 @@ function ambiguityWarnings(models: Map<string, ModelTier[]>): string[] {
 }
 
 /**
- * Resolving an alias can throw for providers that require configuration
- * (Gemini's resolver does). The panel must still render, so fall back to the
- * alias itself — the tier is what matters for the defaults lookup anyway.
+ * Resolving a slot can throw: Gemini's resolver requires configuration, and the
+ * `default` slot goes through the subscription/auth chain, which throws outright
+ * when nothing is logged in yet. The panel must still render — it is the one
+ * view that works on every session — so fall back to the slot name. The slot is
+ * what matters for the defaults lookup anyway.
  */
 function safeResolve(slot: ModelSettingsSlot): string {
-  if (slot === 'default') return getDefaultMainLoopModel();
   try {
-    return parseUserSpecifiedModel(slot) ?? slot;
+    return (slot === 'default' ? getDefaultMainLoopModel() : parseUserSpecifiedModel(slot)) ?? slot;
   } catch {
     return slot;
   }
 }
 
-export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
+/**
+ * `/model-settings` (alias `/models-setting`) — one command for the three axes
+ * that all land in `settings.modelSettings`: which model each tier resolves to,
+ * its thinking effort and its context window.
+ *
+ * Bare opens the interactive editor; anything else is the scriptable form,
+ * answered without rendering the way `/provider-settings` does it. The rules
+ * exercised by the argument form live in ./state.ts, which is what makes them
+ * testable without an Ink tree.
+ */
+export async function call(
+  onDone: LocalJSXCommandOnDone,
+  context: LocalJSXCommandContext,
+  args?: string,
+): Promise<React.ReactNode> {
   const trimmed = args?.trim() || '';
 
   if (COMMON_HELP_ARGS.includes(trimmed)) {
@@ -101,7 +118,22 @@ export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, arg
   const parsed = parseArgs(trimmed);
 
   switch (parsed.kind) {
-    case 'panel':
+    case 'panel': {
+      const initial = buildModelStepFromEnvironment();
+      if (initial) return <ModelTierSetup initial={initial} onDone={onDone} context={context} />;
+      // No configurable provider: bedrock / vertex / foundry configure models
+      // through their own consoles, and a plain first-party session has no
+      // `*_DEFAULT_<TIER>_MODEL` keys to point anywhere. The wizard therefore
+      // has nothing to edit — but effort and context are still theirs to set,
+      // and the text panel below is exactly the view `/model-settings` showed
+      // those sessions. Falling back to it rather than to the old
+      // `/models-setting` "nothing to configure here" dialog is the whole
+      // point of the merge: one name must not be *less* useful than the two it
+      // replaced. `show` and the `<slot> …` forms work on these sessions too.
+      onDone(describeAll());
+      return;
+    }
+
     case 'show':
       onDone(describeAll());
       return;

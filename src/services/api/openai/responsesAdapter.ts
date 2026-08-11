@@ -26,6 +26,7 @@ import {
 import {
   createOpenAIResponseError,
   OpenAIRequestError,
+  parseRetryAfterFromErrorPayload,
   retryOpenAIRequest,
 } from './retry.js'
 
@@ -338,7 +339,14 @@ function responseCommitment(
   ) {
     return 'side_effect'
   }
-  if (event.type === 'response.output_item.added') {
+  if (
+    event.type === 'response.output_item.added' ||
+    // `.done` and not just `.added`: an endpoint that announces a completed
+    // function call in one event (see the `.done` fallback in
+    // adaptResponsesStreamToAnthropic) has still put a tool call beyond recall,
+    // and monotonicity makes this a no-op on streams that sent `.added` first.
+    event.type === 'response.output_item.done'
+  ) {
     const item = event.item as Record<string, unknown> | undefined
     return item?.type === 'function_call' ? 'side_effect' : 'none'
   }
@@ -427,8 +435,12 @@ function streamEventError(
       : `${label} stream returned an error event`
   const scalar = (value: unknown): string | number | undefined =>
     typeof value === 'string' || typeof value === 'number' ? value : undefined
+  // No headers exist on an SSE frame, so a rate limit can only state its wait
+  // in prose. See parseRetryAfterFromErrorPayload.
+  const retryAfterMs = parseRetryAfterFromErrorPayload(error)
   return new OpenAIRequestError(`${label} stream failed: ${message}`, {
     retryable: !retryWindowClosed && isRetryableAPIError(error),
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     ...(typeof error.type === 'string' ? { type: error.type } : {}),
     ...(scalar(error.code) !== undefined ? { code: scalar(error.code) } : {}),
     ...(scalar(error.status) !== undefined
@@ -703,23 +715,37 @@ function mapStopReason(
 
 /**
  * Pull the replayable parts out of a `reasoning` output item. Returns null
- * when there is nothing worth replaying — an item with neither an id nor
- * encrypted content carries no recoverable reasoning, so echoing it back
- * would only add a token the model cannot use.
+ * when there is nothing worth replaying.
+ *
+ * The bar is `encrypted_content`, not "an id or encrypted content". Every
+ * request this adapter builds sets `store: false`, so the server keeps no copy
+ * of the response and an `rs_…` id resolves to nothing on its own — it is a
+ * handle to the payload that travels *beside* it, not a reference the server
+ * can look up. Replaying a bare id therefore does not merely waste a token: the
+ * next request names an item the server never stored, OpenAI answers
+ * `400 Item with id 'rs_…' not found`, and because the item stays on the
+ * assistant message it does so again on every following turn of the session.
+ *
+ * Reachable whenever the response carries reasoning items while the request did
+ * not ask for their encrypted payload — `CLAUDE_CODE_EFFORT_LEVEL=auto` takes
+ * that branch (see buildResponsesRequest), as does any gateway that ignores
+ * `include`. Codex never meets it because it asks for
+ * `reasoning.encrypted_content` on every request
+ * (codex-rs/core/src/client.rs:894).
  */
 export function extractReasoningItem(
   item: Record<string, unknown> | undefined,
 ): OpenAIReasoningItem | null {
   if (item?.type !== 'reasoning') return null
-  const id = typeof item.id === 'string' ? item.id : undefined
   const encrypted =
     typeof item.encrypted_content === 'string'
       ? item.encrypted_content
       : undefined
-  if (id === undefined && encrypted === undefined) return null
+  if (encrypted === undefined) return null
+  const id = typeof item.id === 'string' ? item.id : undefined
   return {
     ...(id !== undefined ? { id } : {}),
-    ...(encrypted !== undefined ? { encrypted_content: encrypted } : {}),
+    encrypted_content: encrypted,
     summary: Array.isArray(item.summary) ? item.summary : [],
   }
 }
@@ -737,18 +763,117 @@ export async function* adaptResponsesStreamToAnthropic(
   },
 ): AsyncGenerator<BetaRawMessageStreamEvent, void> {
   const messageId = `msg_${randomUUID().replace(/-/g, '').slice(0, 24)}`
-  const toolBlocks = new Map<
-    number,
-    { contentIndex: number; open: boolean; name: string; id: string }
-  >()
+  type ToolBlock = {
+    contentIndex: number
+    open: boolean
+    name: string
+    id: string
+    /** Bytes delivered by `response.function_call_arguments.delta`. */
+    streamedArguments: string
+  }
+  /**
+   * Keyed by every identifier the stream might correlate a tool call with, not
+   * by `output_index` alone.
+   *
+   * `response.function_call_arguments.delta` is specified to carry
+   * `output_index`, `item_id` and `call_id`; endpoints do not all send the
+   * first. Looking up only `output_index` meant a gateway that omits it landed
+   * on the `-1` default, missed the block, and dropped every argument byte on
+   * the floor — the tool call still surfaced, with empty input.
+   */
+  const toolBlocks = new Map<string, ToolBlock>()
+  const toolBlockKey = (kind: 'out' | 'item' | 'call', value: unknown) => {
+    if (kind === 'out') {
+      return typeof value === 'number' && value >= 0
+        ? `out:${value}`
+        : undefined
+    }
+    return typeof value === 'string' && value ? `${kind}:${value}` : undefined
+  }
+  const registerToolBlock = (
+    block: ToolBlock,
+    keys: Array<string | undefined>,
+  ) => {
+    for (const key of keys) if (key) toolBlocks.set(key, block)
+  }
+  const findToolBlock = (
+    keys: Array<string | undefined>,
+  ): ToolBlock | undefined => {
+    for (const key of keys) {
+      if (!key) continue
+      const block = toolBlocks.get(key)
+      if (block) return block
+    }
+    return undefined
+  }
+  /**
+   * The `tool_use` id this adapter will emit. Derived identically from
+   * `.added` and `.done`, so both events resolve to the same block even when
+   * the endpoint labels them with nothing else.
+   */
+  const derivedToolId = (item: Record<string, unknown>, outputIndex: unknown) =>
+    String(
+      item.call_id ??
+        item.id ??
+        `call_${typeof outputIndex === 'number' ? outputIndex : -1}`,
+    )
   let started = false
   let currentContentIndex = -1
   let textBlockOpen = false
   let thinkingBlockOpen = false
+  /** Whether the open thinking block has received any text yet. */
+  let thinkingHasText = false
+  /** `summary_index` of the reasoning summary part currently streaming. */
+  let summaryPartIndex: number | undefined
+  /** A new summary part starts with the next delta; separate it visually. */
+  let pendingSummaryBreak = false
   // This adapter has no idea who is reading its output, so it stays with the
   // conservative rule: any commitment ends the retry window.
   let commitment: ResponseCommitment = 'none'
   let sawRefusal = false
+
+  /** Close whatever is open, then start a `tool_use` block for `item`. */
+  function* openToolBlock(
+    item: Record<string, unknown>,
+    outputIndex: unknown,
+  ): Generator<BetaRawMessageStreamEvent, ToolBlock> {
+    if (textBlockOpen) {
+      yield {
+        type: 'content_block_stop',
+        index: currentContentIndex,
+      } as BetaRawMessageStreamEvent
+      textBlockOpen = false
+    }
+    if (thinkingBlockOpen) {
+      yield {
+        type: 'content_block_stop',
+        index: currentContentIndex,
+      } as BetaRawMessageStreamEvent
+      thinkingBlockOpen = false
+      thinkingHasText = false
+    }
+    currentContentIndex++
+    const id = derivedToolId(item, outputIndex)
+    const block: ToolBlock = {
+      contentIndex: currentContentIndex,
+      open: true,
+      name: String(item.name ?? ''),
+      id,
+      streamedArguments: '',
+    }
+    registerToolBlock(block, [
+      toolBlockKey('out', outputIndex),
+      toolBlockKey('item', item.id),
+      toolBlockKey('call', item.call_id),
+      toolBlockKey('call', id),
+    ])
+    yield {
+      type: 'content_block_start',
+      index: currentContentIndex,
+      content_block: { type: 'tool_use', id, name: block.name, input: {} },
+    } as BetaRawMessageStreamEvent
+    return block
+  }
 
   const ensureStarted = async function* () {
     if (started) return
@@ -816,10 +941,40 @@ export async function* adaptResponsesStreamToAnthropic(
       continue
     }
 
+    // A reasoning summary arrives as several independent parts, each its own
+    // paragraph with its own bold header. The Responses API separates them with
+    // `response.reasoning_summary_part.added` and a bumped `summary_index`, and
+    // carries no newline of its own across the seam — so concatenating the
+    // deltas verbatim runs the last sentence of one part into the header of the
+    // next. Codex breaks the section on the same signal
+    // (codex-rs/tui/src/chatwidget/protocol.rs:88 →
+    // `on_reasoning_section_break`, streaming.rs:290).
+    if (type === 'response.reasoning_summary_part.added') {
+      if (thinkingHasText) pendingSummaryBreak = true
+      continue
+    }
+
     if (
       type === 'response.reasoning_text.delta' ||
       type === 'response.reasoning_summary_text.delta'
     ) {
+      if (type === 'response.reasoning_summary_text.delta') {
+        const partIndex =
+          typeof event.summary_index === 'number'
+            ? event.summary_index
+            : undefined
+        // Second signal, for endpoints that bump the index without sending
+        // `part.added` — either alone is enough, and both together break once.
+        if (
+          partIndex !== undefined &&
+          summaryPartIndex !== undefined &&
+          partIndex !== summaryPartIndex &&
+          thinkingHasText
+        ) {
+          pendingSummaryBreak = true
+        }
+        if (partIndex !== undefined) summaryPartIndex = partIndex
+      }
       if (!thinkingBlockOpen) {
         if (textBlockOpen) {
           yield {
@@ -830,69 +985,53 @@ export async function* adaptResponsesStreamToAnthropic(
         }
         currentContentIndex++
         thinkingBlockOpen = true
+        thinkingHasText = false
+        pendingSummaryBreak = false
         yield {
           type: 'content_block_start',
           index: currentContentIndex,
           content_block: { type: 'thinking', thinking: '', signature: '' },
         } as BetaRawMessageStreamEvent
       }
+      if (pendingSummaryBreak) {
+        pendingSummaryBreak = false
+        yield {
+          type: 'content_block_delta',
+          index: currentContentIndex,
+          delta: { type: 'thinking_delta', thinking: '\n\n' },
+        } as BetaRawMessageStreamEvent
+      }
+      const thinking = String(event.delta ?? '')
+      if (thinking) thinkingHasText = true
       yield {
         type: 'content_block_delta',
         index: currentContentIndex,
-        delta: { type: 'thinking_delta', thinking: String(event.delta ?? '') },
+        delta: { type: 'thinking_delta', thinking },
       } as BetaRawMessageStreamEvent
       continue
     }
 
     if (type === 'response.output_item.added') {
       const item = event.item as Record<string, unknown> | undefined
-      const outputIndex =
-        typeof event.output_index === 'number' ? event.output_index : -1
-      if (item?.type === 'function_call' && outputIndex >= 0) {
-        if (textBlockOpen) {
-          yield {
-            type: 'content_block_stop',
-            index: currentContentIndex,
-          } as BetaRawMessageStreamEvent
-          textBlockOpen = false
-        }
-        if (thinkingBlockOpen) {
-          yield {
-            type: 'content_block_stop',
-            index: currentContentIndex,
-          } as BetaRawMessageStreamEvent
-          thinkingBlockOpen = false
-        }
-        currentContentIndex++
-        const id = String(item.call_id ?? item.id ?? `call_${outputIndex}`)
-        const name = String(item.name ?? '')
-        toolBlocks.set(outputIndex, {
-          contentIndex: currentContentIndex,
-          open: true,
-          name,
-          id,
-        })
-        yield {
-          type: 'content_block_start',
-          index: currentContentIndex,
-          content_block: { type: 'tool_use', id, name, input: {} },
-        } as BetaRawMessageStreamEvent
+      if (item?.type === 'function_call') {
+        yield* openToolBlock(item, event.output_index)
       }
       continue
     }
 
     if (type === 'response.function_call_arguments.delta') {
-      const outputIndex =
-        typeof event.output_index === 'number' ? event.output_index : -1
-      const block = toolBlocks.get(outputIndex)
+      const block = findToolBlock([
+        toolBlockKey('item', event.item_id),
+        toolBlockKey('call', event.call_id),
+        toolBlockKey('out', event.output_index),
+      ])
       if (block) {
+        const partialJson = String(event.delta ?? '')
+        block.streamedArguments += partialJson
         yield {
           type: 'content_block_delta',
           index: block.contentIndex,
-          delta: {
-            type: 'input_json_delta',
-            partial_json: String(event.delta ?? ''),
-          },
+          delta: { type: 'input_json_delta', partial_json: partialJson },
         } as BetaRawMessageStreamEvent
       }
       continue
@@ -902,10 +1041,42 @@ export async function* adaptResponsesStreamToAnthropic(
       const doneItem = event.item as Record<string, unknown> | undefined
       const reasoning = extractReasoningItem(doneItem)
       if (reasoning) options?.onReasoningItem?.(reasoning)
-      const outputIndex =
-        typeof event.output_index === 'number' ? event.output_index : -1
-      const block = toolBlocks.get(outputIndex)
+      let block = findToolBlock([
+        toolBlockKey('item', event.item_id ?? doneItem?.id),
+        toolBlockKey('call', event.call_id ?? doneItem?.call_id),
+        toolBlockKey('out', event.output_index),
+        ...(doneItem
+          ? [toolBlockKey('call', derivedToolId(doneItem, event.output_index))]
+          : []),
+      ])
+      // Never announced: an endpoint that emits only `.done` for a completed
+      // call would otherwise lose the call entirely. Codex has no `.added`
+      // requirement at all — it reconstructs every FunctionCall from this event
+      // (codex-rs/codex-api/src/sse/responses.rs:334-341).
+      if (!block && doneItem?.type === 'function_call') {
+        block = yield* openToolBlock(doneItem, event.output_index)
+      }
       if (block?.open) {
+        // The completed item carries the whole argument string
+        // (codex-rs/protocol/src/models.rs:886), and Codex treats it as the
+        // only source — it never reads the delta events. occ keeps streaming
+        // the deltas, because a rendering caller wants arguments as they
+        // arrive, but falls back here when none came: without this the tool
+        // call reaches the executor with input `''`, which fails schema
+        // validation on a call the model made correctly.
+        const finalArguments = doneItem?.arguments
+        if (
+          block.streamedArguments.length === 0 &&
+          typeof finalArguments === 'string' &&
+          finalArguments.length > 0
+        ) {
+          block.streamedArguments = finalArguments
+          yield {
+            type: 'content_block_delta',
+            index: block.contentIndex,
+            delta: { type: 'input_json_delta', partial_json: finalArguments },
+          } as BetaRawMessageStreamEvent
+        }
         yield {
           type: 'content_block_stop',
           index: block.contentIndex,

@@ -75,7 +75,7 @@ describe('a save only drops the in-session model when it has to', () => {
   // unconditionally meant someone who opened the form to nudge thinking effort
   // came back on a different model.
   test.each([
-    ['commands/models/models.tsx'],
+    ['commands/model-settings/tierWizard.tsx'],
     ['commands/login/login.tsx'],
   ])('%s gates the reset on the outcome', relativePath => {
     const source = readSource(relativePath)

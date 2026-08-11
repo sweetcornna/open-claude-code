@@ -119,6 +119,11 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
   opencode: [
     'OPENCODE_AUTH_MODE',
     'OPENCODE_BASE_URL',
+    // Which inference plane the session was configured for. In the list for the
+    // same reason the base URL is: restoring a profile without it turns a
+    // Console session back into a Zen one, whose lane rules point `claude-*` at
+    // a `/messages` path the console answers with 404.
+    'OPENCODE_INFERENCE_PLANE',
     'OPENCODE_MODEL',
     'OPENCODE_WIRE_API',
     'OPENCODE_API_KEY',

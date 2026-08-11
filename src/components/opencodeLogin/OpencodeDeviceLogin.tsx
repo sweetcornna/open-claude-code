@@ -37,6 +37,24 @@
  * Zen, which left a Go subscriber no way to reach their own endpoint except by
  * typing its URL from memory, and a session pointed at Zen bills the Zen credit
  * balance and fails with "Insufficient balance".
+ *
+ * ── Where a Console token is actually accepted ──
+ *
+ * Not at either product. That was the bug this screen carried: it minted a
+ * token and pointed the session at a constant, and every request came back
+ * `API Error [OpenAI]: Invalid API key. status=401`. Measured on one account
+ * with one token (2026-08-11):
+ *
+ *   POST {config.provider.opencode.api}/chat/completions   200, real completion
+ *   POST https://opencode.ai/zen/v1/chat/completions        401 AuthError
+ *
+ * So the endpoint is READ from `GET {console}/api/config`, together with the
+ * headers it says the provider needs (`x-org-id`, per account) and the org's
+ * entitlement models. That plane is OpenAI-compatible and nothing else —
+ * `/messages` there answers 404 — so the session is marked
+ * `OPENCODE_INFERENCE_PLANE=console` and the lane heuristic is skipped
+ * entirely. The product prop still decides the fallback endpoint for a console
+ * that describes no provider, and still names the billing copy on screen.
  */
 
 import { Box, Link, Text } from '@anthropic/ink';
@@ -45,7 +63,8 @@ import { useKeybinding } from 'src/keybindings/useKeybinding.js';
 import {
   type DeviceCodeGrant,
   fetchAccount,
-  fetchOpencodeModels,
+  fetchOpencodeConsoleConfig,
+  fetchZenModels,
   OPENCODE_CONSOLE_URL,
   type OpencodeAccount,
   pollForTokens,
@@ -91,6 +110,11 @@ export function OpencodeDeviceLogin({
   const startedRef = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
   const [accountLabel, setAccountLabel] = useState<string | undefined>(undefined);
+  // Starts as the product the user picked and is replaced the moment
+  // `/api/config` names the account's own inference proxy. The line on screen
+  // has to say where requests will really go: for a Console account that is the
+  // console's endpoint, and the product URL shown until then is not it.
+  const [shownEndpoint, setEndpoint] = useState(baseUrl);
 
   useKeybinding(
     'confirm:no',
@@ -130,26 +154,63 @@ export function OpencodeDeviceLogin({
           () => noAccount,
         );
         if (!cancelled) setAccountLabel(describeOpencodeAccount(account));
-        await saveOpencodeTokens({
-          ...tokens,
-          server: OPENCODE_CONSOLE_URL,
-          ...account,
-        });
+
+        // `/api/config` is asked before anything is stored, because it decides
+        // where this session's requests go. A Console token is NOT a credential
+        // for the Zen gateway — measured on one account, side by side: 200 with
+        // a real completion at `config.provider.opencode.api`, and 401
+        // `AuthError: Invalid API key.` at https://opencode.ai/zen/v1. The
+        // endpoint, the required headers (`x-org-id`, per account, so never a
+        // constant) and the entitlement models all come out of this one answer,
+        // exactly as sst/opencode's own provider plugin reads them.
+        const config = await fetchOpencodeConsoleConfig(
+          {
+            token: tokens.accessToken,
+            kind: 'oauth',
+            server: OPENCODE_CONSOLE_URL,
+            // Only the org id: `email` and `orgName` are display fields, and a
+            // credential is the wrong place to carry them.
+            ...(account.orgId ? { orgId: account.orgId } : {}),
+          },
+          controller.signal,
+        ).catch(() => null);
         if (cancelled) return;
+
+        // No provider in the console's answer means no Console inference plane
+        // to point at, so the session falls back to the product the user chose
+        // and to the Zen/Go lane rules. The probe below still decides whether
+        // that fallback is usable — it is not assumed to be.
+        const inference = config?.inference;
+        const endpoint = inference?.api ?? baseUrl;
+        const plane = inference ? ('console' as const) : undefined;
+        if (!cancelled) setEndpoint(endpoint);
 
         const credential = {
           token: tokens.accessToken,
           kind: 'oauth' as const,
           server: OPENCODE_CONSOLE_URL,
           ...(account.orgId ? { orgId: account.orgId } : {}),
+          ...(inference?.headers ? { headers: inference.headers } : {}),
         };
+
+        await saveOpencodeTokens({
+          ...tokens,
+          server: OPENCODE_CONSOLE_URL,
+          ...account,
+          // Stored with the account rather than with the token: refreshing
+          // answers with tokens alone, so a plane kept beside the access token
+          // would be gone an hour into the session.
+          ...(inference ? { inference } : {}),
+        });
+        if (cancelled) return;
 
         // The entitlement list, which only an OAuth credential has — the paid
         // models an org's plan excludes are exactly the ones it must not be
-        // offered, and they would otherwise fail at first use. The base URL
-        // goes with it: the public fallback behind that call is per-product,
-        // and Zen's 61 models are the wrong answer for a Go subscription.
-        const models = await fetchOpencodeModels(credential, baseUrl, controller.signal).catch(() => null);
+        // offered, and they would otherwise fail at first use. Falling back to
+        // the endpoint's public catalog rather than re-asking the console,
+        // which has already answered above.
+        const models =
+          config?.models ?? (await fetchZenModels(endpoint, credential, controller.signal).catch(() => null));
         if (cancelled) return;
 
         // Nothing above this line proves the token works HERE. The console
@@ -159,19 +220,22 @@ export function OpencodeDeviceLogin({
         // and finds out at the first prompt. Verify before activating, so a
         // credential this endpoint refuses fails on the login screen (loud, and
         // Enter retries) instead of becoming a REPL that 401s on everything.
-        const probeModel = models?.[0]?.id ?? OPENCODE_PRODUCTS[product].models[0];
+        // Probed at `endpoint`, never at the product constant: those are
+        // different hosts for a Console session and the token only works at one.
+        const probeModel = models?.[0]?.id ?? (plane ? undefined : OPENCODE_PRODUCTS[product].models[0]);
         const access = probeModel
-          ? await verifyOpencodeAccess(credential, baseUrl, probeModel, controller.signal)
+          ? await verifyOpencodeAccess(credential, endpoint, probeModel, controller.signal)
           : ({ ok: true } as const);
         if (cancelled) return;
 
         // Activation and refusal are one decision, and it is made before the
         // first write rather than after the last one (activateSession.ts).
         const activation = activateOpencodeConsoleSession({
-          baseUrl,
+          baseUrl: endpoint,
           label,
           otherLabel: OPENCODE_PRODUCTS[product === 'go' ? 'zen' : 'go'].label,
           accessToken: tokens.accessToken,
+          ...(plane ? { plane } : {}),
           access,
         });
         if (!activation.activated) {
@@ -181,8 +245,11 @@ export function OpencodeDeviceLogin({
 
         onReady(
           buildOpencodeModelStep({
-            baseUrl,
-            models: withLaneLabels(models),
+            baseUrl: endpoint,
+            // Lane suffixes describe a Zen/Go pick. On the Console plane every
+            // id lands on the same `/chat/completions`, so annotating them with
+            // `/messages` would advertise a path that answers 404 there.
+            models: plane ? models : withLaneLabels(models),
             prefill: prefillTierFields(getSettingsForSource('userSettings')?.modelSettings),
             fetchError: 'the model list could not be read for this account',
           }),
@@ -216,7 +283,7 @@ export function OpencodeDeviceLogin({
           configures one of them, and the other one's bill is what a wrong pick
           lands on. */}
       <Text dimColor>
-        Endpoint: {baseUrl} · {billing}
+        Endpoint: {shownEndpoint} · {billing}
       </Text>
       {phase === 'requesting' && (
         <Box>

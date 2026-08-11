@@ -1,20 +1,72 @@
-# OpenCode 接入（Zen 网关 · Go 订阅 · Console 登录）
+# OpenCode 接入（Console 推理面 · Zen 网关 · Go 订阅）
 
-occ 可以直接接 [OpenCode](https://opencode.ai) 的订阅和网关。**一个账号后面卖的是两个产品**，它们不是同一个端点：Zen 是按量计费的聚合网关（61 个模型，横跨 Anthropic、OpenAI、Google、DeepSeek、xAI、Kimi、Qwen、MiniMax、GLM 等家，外加 9 个免费档）；Go 是包月订阅（25 个开源系编码模型，**一个 Claude 都没有**）。
+occ 可以直接接 [OpenCode](https://opencode.ai) 的订阅和网关。**一个账号后面挂着三个推理端点**，它们互不通用：Console 自己的推理代理（设备码登录拿到的 token 只在这里被接受）；Zen 是按量计费的聚合网关（61 个模型，横跨 Anthropic、OpenAI、Google、DeepSeek、xAI、Kimi、Qwen、MiniMax、GLM 等家，外加 9 个免费档）；Go 是包月订阅（25 个开源系编码模型，**一个 Claude 都没有**）。
 
-本文是配置与判定的真源。实现散在 `src/services/auth/opencode/`（认证与目录）、`src/components/opencodeLogin/opencodeCatalog.ts`（两张产品表）和 `src/utils/model/opencodeWire.ts`（协议线路由）。
+本文是配置与判定的真源。实现散在 `src/services/auth/opencode/`（认证、`/api/config`、目录）、`src/components/opencodeLogin/opencodeCatalog.ts`（两张产品表）和 `src/utils/model/opencodeWire.ts`（会话种类与协议线路由）。
 
-## 〇、三个平面，别混
+## 〇、四个平面，别混
 
-OpenCode 有一个账号面和**两个**推理面，职责完全不同，混淆它们是这里最容易犯的错：
+OpenCode 有一个账号面和**三个**推理面，职责完全不同，混淆它们是这里最容易犯的错：
 
 | 平面 | 主机 / base URL | 管什么 | 计费 |
 |---|---|---|---|
-| **账号面** | `console.opencode.ai` | 设备码 OAuth；`/api/config` 给出该组织**有权使用**的 provider/模型表 | — |
+| **账号面** | `console.opencode.ai` | 设备码 OAuth；`/api/config` 给出该组织**有权使用**的 provider、**推理端点**与**必带请求头** | — |
+| **推理面 · Console** | `/api/config` 里的 `provider.opencode.api`（公有 console 上是 `https://console.opencode.ai/inference/openai/v1`） | 该组织授权的模型，**只有 OpenAI 兼容一条线** | 走账号 |
 | **推理面 · Zen** | `https://opencode.ai/zen/v1` | 61 个模型（含 Claude），三条协议线 | 按量，扣 credit 余额 |
 | **推理面 · Go** | `https://opencode.ai/zen/go/v1` | 25 个开源系编码模型，无 Claude | 包月订阅（首月 $5，其后 $10/月） |
 
-账号面回答「你是谁、你能用什么」，推理面回答「话发到哪」。`/api/config` 的答案**永远不靠推断**，只从账号面取。
+账号面回答「你是谁、你能用什么、话发到哪」，推理面回答「话怎么说」。**Console 推理面的 base URL 与请求头永远从 `/api/config` 取，不许写成常量**（详见 §〇bis）；Zen/Go 那两个是公开固定的端点，写成常量是对的。
+
+## 〇bis、Console 登录的 token 不能发给 Zen
+
+**这是本文最贵的一条，也是 Console 登录曾经完全不可用的原因。** 设备码登录拿到的 access token 只在 console 自己的推理代理上被接受。同一个账号、同一个 token，实测（2026-08-11）：
+
+| 请求 | 结果 |
+|---|---|
+| `POST {config.provider.opencode.api}/chat/completions` + `x-org-id` | **200**，真实 completion（用 `big-pickle` 验） |
+| `POST https://opencode.ai/zen/v1/chat/completions`（occ 曾写死的那个） | **401** `{"type":"AuthError","message":"Invalid API key."}` |
+
+症状是每一条请求都回 `API Error [OpenAI]: Invalid API key. status=401`。这条错既不提端点也不提登录方式，所以此前多次被误判成「账号没开通」——**不是**，是 occ 把 token 发错了地方。
+
+`GET https://console.opencode.ai/api/config`（`Authorization: Bearer <access token>` + `x-org-id`）返回 200，`config.provider` 下**只有一个 provider**：
+
+```jsonc
+config.provider.opencode = {
+  name, npm: "@ai-sdk/openai-compatible",
+  api: "https://console.opencode.ai/inference/openai/v1",  // ← 推理 base URL
+  env: ["OPENCODE_CONSOLE_TOKEN"],
+  options: {
+    apiKey:  "{env:OPENCODE_CONSOLE_TOKEN}",               // ← 解析成 access token
+    headers: { "x-org-id": "org_01KZ…" }                   // ← 必带，且按账号不同
+  },
+  whitelist: [...],
+  models: { …59 条，全部 status:"active"… }
+}
+```
+
+sst/opencode 自己的插件就是这么读的（`packages/core/src/plugin/provider/opencode.ts`：`provider.api = item.npm ? { type:"aisdk", package:item.npm, url:item.api } : …`，外加 `Object.assign(provider.request.headers, item.options?.headers)`）。occ 现在照做：
+
+- **base URL** ← `provider.opencode.api`
+- **请求头** ← `provider.opencode.options.headers`（带 `x-org-id`；不带就没有按组织收窄）
+- **凭据** ← OAuth access token 作 bearer
+- **协议** ← OpenAI chat completions，**无条件**，不做线路由
+- **模型表** ← 同一份响应里的授权模型
+
+**`POST {console}/inference/openai/v1/messages` 实测 404。** 那个平面只有 OpenAI 兼容一条线，所以 §一 的三线路由**不适用于 Console 会话**——连 `OPENCODE_WIRE_API=messages` 这个逃生口也不适用，钉了也只能钉出一个 404。`getOpencodeLane()` 因此在 Console 会话上直接返回 `chat`，不看模型家族也不看那个 env。
+
+### 授权表说了不算：`managed_inference_model_disabled`
+
+`/api/config` 把 `claude-haiku-4-5` 列成 `status: "active"` 并放进 `whitelist`，但真发请求时：
+
+```
+POST {console}/inference/openai/v1/chat/completions  {"model":"claude-haiku-4-5", …}
+→ 403 {"error":{"type":"managed_inference_model_disabled",
+                "message":"Model is disabled for this organization"}}
+```
+
+同一个账号、同一个端点上 `big-pickle`（免费）照样 200。**结论：按组织的可用性在请求之前不可知**，目录里筛不掉，所以 occ 不假装能筛，改为在撞上时说人话（`src/services/auth/opencode/inferenceErrors.ts`）：点名是哪个模型、说明凭据没问题、指出目录本来就答不了这个问题、给出 `/model` 换一个或去 console 开通两条出路。
+
+**它不是认证失败，也不许被当成认证失败。** 403 单看 status 会被分类成 `authentication_failed`，那会把用户赶去 `/login` 修一把根本没坏的凭据。`retryClassification.ts` 的信号判定排在 status 之前，`MODEL_DISABLED` 落在 `invalid_request` 一档。同理，登录探针（`verifyOpencodeAccess`）遇到这个 type 直接判**通过**——探针模型是 occ 从那张「全是 active」的表里挑的，为它否掉一个好账号是本末倒置。
 
 **Zen 和 Go 只差一个路径段，主机相同 —— 这是本文最贵的一条。** 拿 Go 订阅的 key 去打 Zen 的 base URL，请求会记到 **Zen 的 credit 余额**上并失败：
 
@@ -28,7 +80,9 @@ POST /zen/v1/chat/completions   （Go 订阅者的 key）
 
 Go 的订阅性质在响应体里也能看到：`/zen/go/v1/chat/completions` 实测返回的 completion 带 `"cost":"0"`（用 `kimi-k3` 验的），也就是不走计量。
 
-## 一、三条协议线
+## 一、三条协议线（**只在 Zen / Go 上**）
+
+Console 推理面不参与这一节：它只有 `/chat/completions`，`/messages` 是 404（见 §〇bis）。以下只对两个网关产品成立。
 
 两个产品在各自的 base URL 下都提供多条协议线（均已对真实端点实测，无凭据时返回 401 而不是 404）：
 
@@ -57,7 +111,7 @@ POST /zen/v1/messages   {"model":"mimo-v2.5-free", …Anthropic 形状的 body�
 
 **当前阶段的已知限制**：一个会话只说一种协议。把 `opus` 钉在 `claude-opus-5`、同时把 `haiku` 钉在 `gpt-5.6-luna`，必然有一个走错线。真正的按请求路由是更大的一次改造，不在这一期。
 
-`OPENCODE_WIRE_API`（`messages` | `responses` | `chat`）可以强制钉死某条线，给命名让这套启发式误判的部署留的出口。
+`OPENCODE_WIRE_API`（`messages` | `responses` | `chat`）可以强制钉死某条线，给命名让这套启发式误判的部署留的出口。**它对 Console 会话无效**——那个出口的语义是「用户比表更清楚」，而 Console 平面上不存在第二条线可选，钉了只能钉出 404。
 
 ### Go 上的三条线
 
@@ -80,7 +134,15 @@ Go 的 base URL 底下同样挂着这三条路径，**同一套 `laneForModel()`
 | **Console 订阅** | 设备码 OAuth（RFC 8628） | `<配置目录>/opencode-auth.json`，0600 |
 | **API key** | Zen 页面复制，或服务账号 key | `OPENCODE_API_KEY` |
 
-**两者在推理面完全等价**，这不是 occ 的简化：opencode 运行时把两种凭据解析成同一个 bearer 值（`packages/core/src/session/runner/model.ts`，`credential.type === "key" ? key : access`），推理面根本区分不了。
+**两者作为 bearer 的形状等价，但它们打的不是同一个端点。** 形状那半是真的、也不是 occ 的简化：opencode 运行时把两种凭据解析成同一个 bearer 值（`packages/core/src/session/runner/model.ts`，`credential.type === "key" ? key : access`）。但「形状一样」曾被错误地外推成「端点也一样」，于是 Console 的 token 被发去了 Zen，实测 401（§〇bis）。**两种凭据 = 两种会话种类 = 两套配置，不要合并**：
+
+| | Console 订阅 | API key |
+|---|---|---|
+| base URL | `/api/config` 的 `provider.opencode.api` | 用户在登录菜单里选的 Zen / Go |
+| 请求头 | `/api/config` 的 `options.headers`（`x-org-id`，按账号） | 只有 `Authorization`（多组织账号另加 `x-org-id`） |
+| 协议 | 只有 OpenAI chat completions | 三线路由，按 `OPENCODE_MODEL` 的家族 |
+| 模型表 | 该组织的授权表 | 产品的公开 `/models`，拉不到退回 occ 内置表 |
+| 标记 | `OPENCODE_INFERENCE_PLANE=console` | 该键不存在 |
 
 **优先级是 key 压过 OAuth。** 显式导出的 `OPENCODE_API_KEY` 是一次刻意行为（CI、服务账号、另一个组织），而存着的登录是环境自带的。让环境自带的赢，等于让环境变量静默失效 —— 这正是 CLAUDE.md 记录的 `OPENAI_MODEL` 那个坑。
 
@@ -113,7 +175,7 @@ GET  /api/user, /api/orgs                           取邮箱与组织
 
 于是登录能一路走完、写进 settings、开出一个装满真模型的选择器，而 token 一次都没被真正用过 —— **第一次用它是用户的第一条 prompt**，回来的是 `API Error [OpenAI]: Invalid API key`。那个提示既不提登录也不提产品，看起来像 provider 坏了。
 
-**修法是在激活之前探一次**（`verifyOpencodeAccess`，`services/auth/opencode/catalog.ts`）：拿 `messages: []` 打一次 `POST {base}/chat/completions`。**网关先鉴权后校验 body**，所以这个形状既能问出凭据的判决又不可能计费。三个方向都对真实端点实测（2026-08-10）：
+**修法是在激活之前探一次**（`verifyOpencodeAccess`，`services/auth/opencode/catalog.ts`）：拿 `messages: []` 打一次 `POST {base}/chat/completions`。**那个 `{base}` 必须是会话真正会用的端点**，Console 会话上就是 `/api/config` 给的那个而不是产品常量 —— 拿 Zen 去探一个 Console token 只会得到 401，这个探针从「防止半配置会话」变成「拦下所有 Console 登录」。**网关先鉴权后校验 body**，所以这个形状既能问出凭据的判决又不可能计费。三个方向都对真实端点实测（2026-08-10）：
 
 | 发什么 | 回什么 |
 |---|---|
@@ -123,7 +185,7 @@ GET  /api/user, /api/orgs                           取邮箱与组织
 
 **只有 `AuthError` 算拒绝。** 未知 model id 网关回的是 `ModelError`，而且**照样盖 401**（实测），只看 status 会因为 occ 探针模型猜错而否掉一个好账号。传输层抛错也不算判决 —— 设备码流程几秒前刚连上 console，这里抛就是网络抖动，为它拦下登录比它要防的问题更糟。
 
-拒绝时**一个字都不写**（`components/opencodeLogin/activateSession.ts`）：settings.json、`process.env`、镜像的认领表全部保持原样，用户停在登录界面上，错误里写明是哪个产品、哪个 URL、以及可以换另一个产品或改用 API key。半配置的会话正是这条检查要消灭的东西 —— `modelType: "opencode"` 一项就足以让 `/models-setting`、`/provider save` 和状态栏一起报告一个答不出任何请求的会话。
+拒绝时**一个字都不写**（`components/opencodeLogin/activateSession.ts`）：settings.json、`process.env`、镜像的认领表全部保持原样，用户停在登录界面上，错误里写明是哪个产品、哪个 URL、以及可以换另一个产品或改用 API key。半配置的会话正是这条检查要消灭的东西 —— `modelType: "opencode"` 一项就足以让 `/model-settings`、`/provider save` 和状态栏一起报告一个答不出任何请求的会话。
 
 ### API key 走的是同一个坑，也是同一个探针
 
@@ -162,13 +224,20 @@ GET  /api/user, /api/orgs                           取邮箱与组织
 | 键 | 含义 |
 |---|---|
 | `OPENCODE_AUTH_MODE` | 置为 `opencode` 标记这是 OpenCode 会话 |
-| `OPENCODE_BASE_URL` | 推理面 base URL，**同时也是选产品的那个键**：`https://opencode.ai/zen/v1` = Zen（默认），`https://opencode.ai/zen/go/v1` = Go |
+| `OPENCODE_BASE_URL` | 推理面 base URL。API key 会话上**同时也是选产品的那个键**：`https://opencode.ai/zen/v1` = Zen（默认），`https://opencode.ai/zen/go/v1` = Go。Console 会话上是 `/api/config` 给的那个地址 |
+| `OPENCODE_INFERENCE_PLANE` | 只有 `console` 一个取值，**不设置**就是 Zen/Go 那种会话。由设备码登录写入（且只在 `/api/config` 真给出了端点时），由 `PROVIDER_SETUP_SPECS.opencode.extraEnv` 清除——那个钩子只在「本次保存拥有凭据面」时跑，也就是配 API key 的时候，而订阅会话的纯模型保存会整块跳过它 |
 | `OPENCODE_API_KEY` | OpenCode / 服务账号 key，或 `public`（Zen 免费档） |
 | `OPENCODE_MODEL` | 默认模型；**线路由从它的家族推出** |
 | `OPENCODE_WIRE_API` | 强制钉线 |
 | `OPENCODE_DEFAULT_{HAIKU,SONNET,OPUS,FABLE}_MODEL` | 四个档位 |
 
 **access token 绝不写进 settings.json。** 它一小时就过期，写进去既是个必然过期的值、又是一份明文密钥躺在普通配置文件里。持久化的只有上面这些配置键；活 token 由认证层推进内存，镜像时才落到线路对应的键上（`ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY`）。
+
+### 端点与请求头必须活过刷新
+
+Console 会话的端点和 `x-org-id` 不是 occ 选的，是 console 说的，所以它们**存在 0600 凭据文件里、和账号放在一起**（`opencode-auth.json` 的 `inference: { api, headers }`），不是和 token 放在一起。理由很具体：刷新接口只回 token，任何跟着 token 走的东西都会在第一次续期时丢掉，然后会话回落到常量端点——正好是本文要修的那个 401。`refreshAndPersist` 展开上一条记录，所以这一块自然被带过每一次写入。
+
+活 token 与端点一起被推进 `opencodeWire.ts` 的内存槽（`setOpencodeRuntimeCredential(token, { baseUrl })`）。**槽里的端点压过 `OPENCODE_BASE_URL`**：那个 env 是 console 答案的一份持久化副本，凭据文件里的才是原件；从旧版本升级上来、settings 里还写着 Zen 的会话因此在第一次请求时就自愈，不用重登。反过来，API key 凭据不携带端点，槽里是空的，env 说了算。
 
 ### messages 线只认 `x-api-key`
 
@@ -198,7 +267,9 @@ CLAUDE.md 里那三个容易混的判定，OpenCode 会话上的答案是：
 
 第三条的后果是实打实的：答错会让 Zen 上的 claude 会话丢掉 `[1m]` opt-in 和 Anthropic 专属 beta 头。
 
-**三个判定都不看 base URL**，读的是 `OPENCODE_AUTH_MODE` 和 `OPENCODE_MODEL`，所以 Go 无需任何改动就得到正确答案：Go 目录里没有 claude id → 线永远不是 `messages` → `getAPIProvider()` 答 `openai`、`servesAnthropicModels()` 答否、`isThirdPartyModelCatalog()` 答是。
+**三个判定都不看 base URL**，读的是 `OPENCODE_AUTH_MODE`、`OPENCODE_INFERENCE_PLANE` 和 `OPENCODE_MODEL`，所以 Go 无需任何改动就得到正确答案：Go 目录里没有 claude id → 线永远不是 `messages` → `getAPIProvider()` 答 `openai`、`servesAnthropicModels()` 答否、`isThirdPartyModelCatalog()` 答是。
+
+**Console 会话同理，且更简单**：线恒为 `chat`，于是 `getAPIProvider()` 恒答 `openai`、`isThirdPartyAnthropicEndpoint()` 恒答是。这一条是有代价的——Console 上的 `claude-*` 会因此拿不到 `[1m]` opt-in 和 Anthropic 专属 beta 头。这是对的：那些头是 Anthropic Messages 协议上的东西，而这条会话根本不走那个协议（`/messages` 在这里是 404）。
 
 ## 五、隔离
 
@@ -215,7 +286,7 @@ CLAUDE.md 里那三个容易混的判定，OpenCode 会话上的答案是：
 
 选完产品是三个凭据入口（Go 上只有前两个）：
 
-1. **Console 订阅** —— 设备码流程。屏幕上给出 `user_code`、自动打开的验证地址，以及**这次登录配的是哪个端点**（产品名 + base URL + 计费方式）。`Esc` 会真的中止轮询（`AbortController` 同时喂给 `pollForTokens` 的循环判断和 fetch，所以是一个 tick 内响应，不是等到下一个 5 秒间隔）。设备码流程本身两个产品完全一样 —— console 发的是同一个 token —— 差别全在它之后：写进 settings 的 base URL、拉哪个目录、谁付钱。
+1. **Console 订阅** —— 设备码流程。屏幕上给出 `user_code`、自动打开的验证地址，以及**这次登录配的是哪个端点**。那一行先显示所选产品的 URL，等 `/api/config` 答出 `provider.opencode.api` 就换成真正会被打的那个地址 —— 因为对 Console 会话来说产品 URL 并不是答案（§〇bis）。`Esc` 会真的中止轮询（`AbortController` 同时喂给 `pollForTokens` 的循环判断和 fetch，所以是一个 tick 内响应，不是等到下一个 5 秒间隔）。产品选择在这条路径上只剩两个作用：错误文案里的计费说明，以及 `/api/config` 没给出任何 provider 时的回退端点。
 2. **API key** —— 粘贴 OpenCode 页面的 key，或服务账号 key。key 在进第二步之前会先被探一次，拒绝就停在端点表单上（见 §二「API key 走的是同一个坑」）。
 3. **仅免费模型**（Zen 限定）—— 不需要账号，用 `Bearer public` 直接拉真实模型列表。
 
@@ -223,16 +294,18 @@ CLAUDE.md 里那三个容易混的判定，OpenCode 会话上的答案是：
 
 登录完进入统一的两步向导第二步（`src/components/providerSetup/`，opencode 的差异全在 `specs.ts` 的表里）。
 
-**订阅模式下 opencode 仍然自己写 `OPENCODE_AUTH_MODE` 和 `OPENCODE_BASE_URL`**，走 `specs.ts` 的 `sessionEnv` 而不是 `extraEnv`。这条区分不是命名洁癖：`planProviderSave` 对订阅会话（`credentialEditing: 'locked'`）**整块跳过**凭据面，包括 `extraEnv` 和 base URL —— 对 ChatGPT 和 Antigravity 是对的（它们的 OAuth 流程自己存凭据，端点是隐式的），对 opencode 是错的。**端点在这里不属于凭据面，它选的是产品**，是用户在登录菜单里做的选择；而 `OPENCODE_AUTH_MODE` 是 `isOpencodeSessionActive()` 的唯一依据，`getAPIProvider()`、`currentProfileModelType()`、`currentProviderSetupKind()` 三个都问它。少任何一个，会话就会「声称」走 OpenCode 却没应用 —— `applyOpencodeWire()` 没有 base URL 会直接早返回，整个镜像形同虚设。`sessionEnv` 排在凭据块之后，所以两种模式下它都是权威。**选择器里直接标出每个模型落在哪条线**：`claude-opus-5 · /messages`、`gpt-5.6-luna · /responses`、`kimi-k3 · /chat/completions`。标签只是显示，存的值仍是纯 id。
+**订阅模式下 opencode 仍然自己写 `OPENCODE_AUTH_MODE` 和 `OPENCODE_BASE_URL`**，走 `specs.ts` 的 `sessionEnv` 而不是 `extraEnv`。这条区分不是命名洁癖：`planProviderSave` 对订阅会话（`credentialEditing: 'locked'`）**整块跳过**凭据面，包括 `extraEnv` 和 base URL —— 对 ChatGPT 和 Antigravity 是对的（它们的 OAuth 流程自己存凭据，端点是隐式的），对 opencode 是错的。**端点在这里不属于凭据面，它选的是产品**，是用户在登录菜单里做的选择；而 `OPENCODE_AUTH_MODE` 是 `isOpencodeSessionActive()` 的唯一依据，`getAPIProvider()`、`currentProfileModelType()`、`currentProviderSetupKind()` 三个都问它。少任何一个，会话就会「声称」走 OpenCode 却没应用 —— `applyOpencodeWire()` 没有 base URL 会直接早返回，整个镜像形同虚设。`sessionEnv` 排在凭据块之后，所以两种模式下它都是权威。**Zen/Go 的选择器里直接标出每个模型落在哪条线**：`claude-opus-5 · /messages`、`gpt-5.6-luna · /responses`、`kimi-k3 · /chat/completions`。标签只是显示，存的值仍是纯 id。**Console 会话不加这个后缀** —— 那里所有 id 都落在同一个 `/chat/completions` 上，标上 `/messages` 等于在广告一个 404。
+
+`OPENCODE_INFERENCE_PLANE` 恰恰相反，走的是 `extraEnv`：它描述的是**这把凭据**说话的地方，而「本次保存拥有凭据面」就等于「用户在配 API key」，API key 只会打 Zen 或 Go。所以那个钩子只做清除、从不设置；订阅会话的纯模型保存跳过 `extraEnv`，标记因此活过 `/model-settings`。
 
 两条容易踩的：
 
-- **默认模型是必填的**，且订阅模式也不放宽。`OPENCODE_MODEL` 是 `laneForModel()` 唯一的输入，留空会让会话静默落到 `/chat/completions` —— 哪怕四个档位配的全是 `claude-*`。这跟 ChatGPT 订阅不同：Codex 后端自己会按档位解析，Zen 和 Go 都不会。
+- **默认模型是必填的**，且订阅模式也不放宽。`OPENCODE_MODEL` 是 `laneForModel()` 唯一的输入，留空会让会话静默落到 `/chat/completions` —— 哪怕四个档位配的全是 `claude-*`。这跟 ChatGPT 订阅不同：Codex 后端自己会按档位解析，Zen 和 Go 都不会。（Console 会话不受这条影响：它本来就只有一条线。）
 - **`urlKind` 用 `openai` 而不是 `anthropic`**。Anthropic 的 URL 语法会剥掉结尾的 `/v1`，把 `…/zen/v1` 变成 `…/zen`（`…/zen/go/v1` 同理变成 `…/zen/go`）。
 
 订阅模式下第二步的标题仍然带产品名（`OpenCode Go — Models`）：那个模式跳过端点步骤，标题是**唯一**还在说「这个会话打的是哪个端点」的地方。
 
-`/models-setting` 随时重开模型步骤。它认 OpenCode 会话靠的是 `isOpencodeSessionActive()` 而不是 `getAPIProvider()` —— 后者答的是协议，会把 messages 线的会话认成 anthropic，进而用镜像写入的**活 access token** 预填 API-key 字段并明文存进 `settings.env`。
+`/model-settings` 随时重开模型步骤。它认 OpenCode 会话靠的是 `isOpencodeSessionActive()` 而不是 `getAPIProvider()` —— 后者答的是协议，会把 messages 线的会话认成 anthropic，进而用镜像写入的**活 access token** 预填 API-key 字段并明文存进 `settings.env`。
 
 多 provider 共存、切换与聚合见 [provider-settings.md](./provider-settings.md)。
 
@@ -240,10 +313,10 @@ CLAUDE.md 里那三个容易混的判定，OpenCode 会话上的答案是：
 
 两个来源，顺序是刻意的：
 
-1. `GET {console}/api/config` —— **授权**答案。按组织，只有 OAuth 凭据才有，但它是唯一知道企业自建部署的来源。404 按「没有远端配置」处理，不是错误（照搬 sst/opencode 的做法）。
+1. `GET {console}/api/config` —— **授权**答案，也是 Console 会话的**端点与请求头**答案（§〇bis）。按组织，只有 OAuth 凭据才有，但它是唯一知道企业自建部署的来源。404 按「没有远端配置」处理，不是错误（照搬 sst/opencode 的做法）。实测那份响应里 59 个模型全部 `status: "active"`，而其中一部分真发请求会 403 —— 所以这是**授权**答案，不是**可用性**答案。
 2. `GET {base}/models` —— **目录**答案。两个产品都公开可读（无凭据 200：Zen 61 个、Go 25 个），OpenAI 形状，同一产品下对所有人相同。
 
-公开表是回退而不是首选：某个套餐不含的模型如果照样列出来，用户会在第一次使用时才撞墙。但对一把纯 API key 来说它就是正确答案 —— 那背后没有可问的 console 账号。
+公开表是回退而不是首选：某个套餐不含的模型如果照样列出来，用户会在第一次使用时才撞墙。但对一把纯 API key 来说它就是正确答案 —— 那背后没有可问的 console 账号。Console 会话不走这个回退：那个端点没有公开 `/models`，`/model-settings` 重开模型步骤时会拿存着的 OAuth 凭据重新问一次 `/api/config`。
 
 **base URL 是 `fetchOpencodeModels()` 的必填参数，没有默认值。** 有默认值就意味着 Go 会话可以在没人写下这件事的情况下退回去拉 Zen 的 61 个模型。**未验证的一点**：`/api/config` 是账号面的答案，它会不会按当前配置的产品收窄未知。真出现「Go 会话拿到账号的全部 Zen 目录」，修法在 `catalog.ts` 里 —— 但拿 occ 自带的表去和它求交集是不行的，那会静默隐藏企业自建部署真实提供的模型。
 

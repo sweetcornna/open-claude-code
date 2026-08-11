@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { GeminiStreamChunk } from '@ant/model-provider'
 import { registerAPIRetryHost } from '@open-claude-code/tool-runtime/apiRetry.js'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { occConfigDir } from 'src/config/paths.js'
 import { retryOpenAIRequest } from 'src/services/api/openai/retry.js'
+import {
+  pinSearchCredential,
+  reloadPinnedSearchCredentials,
+} from 'src/services/search/searchCredentialStore.js'
 import { findAntigravityModelOption } from 'src/utils/model/antigravityModels.js'
 import {
   extractGeminiSearchResults,
@@ -318,5 +326,100 @@ describe('GeminiSearchAdapter.search', () => {
     // Every API error is retried, but a permanent class gets one cheap
     // attempt — not the three SEARCH_MAX_RETRIES buys a transient failure.
     expect(attempts).toBe(2)
+  })
+})
+
+/**
+ * A credential pinned by /search-setting has to be the one that is sent, not
+ * just the one that lights the row. That means two things at once: the key
+ * travels in `x-goog-api-key`, and the Antigravity route stands down — pinning
+ * would be pointless if a Google login on the same machine kept winning, and it
+ * is the pin that survives the `/logout` which revokes that login.
+ */
+describe('GeminiSearchAdapter.search with a pinned credential', () => {
+  const savedConfigDir = process.env.OCC_CONFIG_DIR
+  const originalApiKey = process.env.GEMINI_API_KEY
+  const originalModel = process.env.ANTHROPIC_MODEL
+  let tempDir: string
+  let requests: Array<{ url: string; headers: Record<string, string> }> = []
+
+  /** A publisher URL rather than a wrapper, so no HEAD follows the POST. */
+  const DIRECT_CHUNK: GeminiStreamChunk = {
+    candidates: [
+      {
+        content: { role: 'model', parts: [{ text: 'RRF fuses rankings.' }] },
+        groundingMetadata: {
+          groundingChunks: [
+            { web: { uri: 'https://example.com/rrf', title: 'example.com' } },
+          ],
+        },
+      },
+    ],
+  }
+
+  function capturingFetch(): typeof fetch {
+    return (async (url: string | URL, init?: RequestInit) => {
+      requests.push({
+        url: String(url),
+        headers: (init?.headers ?? {}) as Record<string, string>,
+      })
+      return new Response(sseBody([DIRECT_CHUNK]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    }) as unknown as typeof fetch
+  }
+
+  beforeEach(() => {
+    registerAPIRetryHost({
+      retry: (operation, options) =>
+        retryOpenAIRequest(operation, { ...options, delay: async () => {} }),
+    })
+    requests = []
+    tempDir = mkdtempSync(join(tmpdir(), 'occ-gemini-pin-'))
+    process.env.OCC_CONFIG_DIR = tempDir
+    occConfigDir.cache.clear?.()
+    reloadPinnedSearchCredentials()
+    delete process.env.GEMINI_API_KEY
+    process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-5-20250929'
+  })
+
+  afterEach(() => {
+    registerAPIRetryHost(null)
+    if (savedConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+    else process.env.OCC_CONFIG_DIR = savedConfigDir
+    occConfigDir.cache.clear?.()
+    reloadPinnedSearchCredentials()
+    rmSync(tempDir, { recursive: true, force: true })
+    if (originalApiKey === undefined) delete process.env.GEMINI_API_KEY
+    else process.env.GEMINI_API_KEY = originalApiKey
+    if (originalModel === undefined) delete process.env.ANTHROPIC_MODEL
+    else process.env.ANTHROPIC_MODEL = originalModel
+  })
+
+  test('sends the pinned key with GEMINI_API_KEY unset', async () => {
+    await pinSearchCredential('gemini', { apiKey: 'AIza-pinned' })
+
+    await new GeminiSearchAdapter({
+      asExtraSource: true,
+      fetchOverride: capturingFetch(),
+    }).search('rrf', {})
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.headers['x-goog-api-key']).toBe('AIza-pinned')
+    expect(requests[0]?.url).toContain('generativelanguage.googleapis.com')
+  })
+
+  test('honours an endpoint carried by the pin', async () => {
+    await pinSearchCredential('gemini', {
+      apiKey: 'AIza-pinned',
+      baseURL: 'https://gemini.example/v1beta',
+    })
+
+    await new GeminiSearchAdapter({
+      fetchOverride: capturingFetch(),
+    }).search('rrf', {})
+
+    expect(requests[0]?.url).toStartWith('https://gemini.example/v1beta/')
   })
 })

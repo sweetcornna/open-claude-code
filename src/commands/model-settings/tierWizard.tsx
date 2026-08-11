@@ -2,36 +2,21 @@ import { Box, Dialog, Text } from '@anthropic/ink';
 import * as React from 'react';
 import { useState } from 'react';
 import { ProviderSetupWizard } from '../../components/providerSetup/ProviderSetupWizard.js';
-import { buildModelStepFromEnvironment } from '../../components/providerSetup/fromEnvironment.js';
 import type { ProviderSetupStatus } from '../../components/providerSetup/state.js';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
 
 /**
- * `/models-setting` — repoint the tier aliases without redoing login.
+ * The interactive half of `/model-settings` (was its own `/models-setting`).
  *
  * The same wizard step the login flows end on, seeded from the env keys already
  * in effect. Nothing about the endpoint or the credentials is asked for again:
  * they are read back out, carried through unchanged, and written out with the
- * new model assignment.
+ * new model assignment. That step already collects all three axes this command
+ * owns — the per-tier model ids, thinking effort and max context — which is why
+ * merging the two commands did not need a second UI built next to it.
  */
-export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode> {
-  const initial = buildModelStepFromEnvironment();
-  if (!initial) {
-    // The command remains registered so a provider configured during this
-    // session can open it without restarting.
-    return (
-      <Dialog title="Model tiers" onCancel={() => onDone('Model tiers unchanged.')}>
-        <Text dimColor>
-          This session has no configurable model tiers. Run /login to set up an API-key provider first.
-        </Text>
-      </Dialog>
-    );
-  }
-  return <ModelTierSetup initial={initial} onDone={onDone} context={context} />;
-}
-
-function ModelTierSetup({
+export function ModelTierSetup({
   initial,
   onDone,
   context,
@@ -44,7 +29,7 @@ function ModelTierSetup({
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Dialog title="Model tiers" onCancel={() => onDone('Model tiers unchanged.')}>
+    <Dialog title="Model settings" onCancel={() => onDone('Model settings unchanged.')}>
       <Box flexDirection="column" gap={1}>
         {error ? <Text color="error">{error}</Text> : null}
         <ProviderSetupWizard
@@ -57,7 +42,7 @@ function ModelTierSetup({
             setError(message);
             setStatus(retry);
           }}
-          onCancel={() => onDone('Model tiers unchanged.')}
+          onCancel={() => onDone('Model settings unchanged.')}
           onSaved={outcome => {
             context.setAppState(prev => ({
               ...prev,
@@ -71,7 +56,7 @@ function ModelTierSetup({
               ...(outcome.providerChanged ? { mainLoopModel: null, mainLoopModelForSession: null } : {}),
               effortValue: undefined,
             }));
-            onDone('Model tiers updated.');
+            onDone('Model settings updated.');
           }}
         />
       </Box>

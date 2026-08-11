@@ -20,25 +20,38 @@ import {
 } from 'src/services/providerProfiles/activate.js'
 import {
   loadProfilesFile,
+  renameProfile,
   updateProfileCatalog,
 } from 'src/services/providerProfiles/profiles.js'
+import { getAPIProvider } from 'src/utils/model/providers.js'
+import { describeNonInteractiveAdd } from './addFlow.js'
 import { refreshProfileCatalog } from './catalogRefresh.js'
+import { clearProviderFamily, switchProviderFamily } from './providerSwitch.js'
 import {
   buildProviderRows,
   describeAggregatedModels,
+  describeAggregateOverview,
+  describeCurrentProvider,
   describeProviderRows,
   summarizeAggregate,
   usage,
   type ParsedCommand,
 } from './state.js'
 
-/** Current registry rendered as the panel's text equivalent. */
+/**
+ * Current registry rendered as the panel's text equivalent, under the line
+ * bare `/provider` used to print on its own. That line is the whole of what
+ * the old command answered with no arguments, so the merged command keeps it
+ * — here rather than as a separate verb, since "which provider am I on" and
+ * "which profiles do I have" are one question in two halves.
+ */
 function renderRegistry(): string {
   const file = loadProfilesFile()
-  return describeProviderRows(
-    buildProviderRows(file),
-    buildAggregatedModels(file),
-  )
+  return [
+    describeCurrentProvider(getAPIProvider(), file.active),
+    '',
+    describeProviderRows(buildProviderRows(file), buildAggregatedModels(file)),
+  ].join('\n')
 }
 
 /**
@@ -65,6 +78,37 @@ export async function runProviderSettingsCommand(
 
     case 'models':
       return describeAggregatedModels(buildAggregatedModels(loadProfilesFile()))
+
+    case 'overview': {
+      const file = loadProfilesFile()
+      // Unbounded here: the panel truncates because it has rows to leave room
+      // for, and this form has nothing else on the screen.
+      return describeAggregateOverview(
+        buildProviderRows(file),
+        buildAggregatedModels(file),
+      ).join('\n')
+    }
+
+    case 'add':
+      return describeNonInteractiveAdd(loadProfilesFile(), parsed.name)
+
+    case 'set-provider':
+      return switchProviderFamily(parsed.provider)
+
+    case 'unset-provider':
+      return clearProviderFamily()
+
+    case 'rename': {
+      const result = renameProfile(parsed.from, parsed.to)
+      if ('error' in result) return result.error
+      // Only the registry key moved. The live configuration is in settings.env
+      // and never carried the name, so an active profile stays active without
+      // anything being re-applied.
+      return (
+        `Renamed "${parsed.from}" to "${parsed.to}".` +
+        (result.wasActive ? ' It is still the active profile.' : '')
+      )
+    }
 
     case 'use': {
       const result = activateProfile(parsed.name)

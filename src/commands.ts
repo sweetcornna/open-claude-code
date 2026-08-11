@@ -24,7 +24,6 @@ import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
 import lang from './commands/lang/index.js'
 import login from './commands/login/index.js'
-import models from './commands/models/index.js'
 import logout from './commands/logout/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
 import breakCache, {
@@ -148,7 +147,6 @@ import tui, { tuiNonInteractive } from './commands/tui/index.js'
 import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
 import autonomy from './commands/autonomy.js'
-import provider from './commands/provider.js'
 import providerSettings from './commands/provider-settings/index.js'
 import { logError } from './utils/telemetry/log.js'
 import { toError } from './utils/runtime/errors.js'
@@ -237,7 +235,6 @@ const COMMANDS = memoize((): Command[] => [
   localVaultCommand,
   localMemoryCommand,
   autonomy,
-  provider,
   providerSettings,
   artifacts,
   agents,
@@ -317,7 +314,6 @@ const COMMANDS = memoize((): Command[] => [
   exportCommand,
   sandboxToggle,
   ...(!isUsing3PServices() ? [logout, login()] : []),
-  models(),
   passes,
   tasks,
   ...(workflowsCmd ? [workflowsCmd] : []),

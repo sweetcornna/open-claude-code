@@ -40,6 +40,26 @@ describe('buildOpencodeConsoleEnv', () => {
       OPENCODE_AUTH_MODE: 'opencode',
       OPENCODE_BASE_URL: ZEN,
       OPENCODE_API_KEY: undefined,
+      // Absence is the Zen/Go kind, so the marker is cleared rather than left
+      // to whatever an earlier Console login on this machine wrote.
+      OPENCODE_INFERENCE_PLANE: undefined,
+    })
+  })
+
+  test('a Console login marks the plane its endpoint came from', () => {
+    // `/api/config` named this URL and the token is accepted there and refused
+    // at Zen, so the marker is what tells the mirror to stop choosing lanes:
+    // that plane serves /chat/completions and answers /messages with 404.
+    expect(
+      plan.buildOpencodeConsoleEnv(
+        'https://console.opencode.ai/inference/openai/v1',
+        'console',
+      ),
+    ).toEqual({
+      OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_BASE_URL: 'https://console.opencode.ai/inference/openai/v1',
+      OPENCODE_API_KEY: undefined,
+      OPENCODE_INFERENCE_PLANE: 'console',
     })
   })
 

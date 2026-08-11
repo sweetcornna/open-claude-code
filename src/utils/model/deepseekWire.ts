@@ -47,7 +47,13 @@ import { isDeepSeekBaseURL } from './deepseekHost.js'
 /** Set to `0`/`false` to keep DeepSeek on the OpenAI-compatible wire. */
 const OPT_OUT_ENV = 'CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE'
 
-function isOptedOut(): boolean {
+/**
+ * Exported for the search-credential layer, which has to honour the same
+ * switch: `CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` names the `/anthropic`
+ * endpoint specifically, so it reads as "do not talk to it at all" — including
+ * with a credential pinned by /search-setting rather than found in env.
+ */
+export function isDeepSeekAnthropicWireOptedOut(): boolean {
   const raw = process.env[OPT_OUT_ENV]?.trim().toLowerCase()
   return raw === '0' || raw === 'false'
 }
@@ -68,7 +74,7 @@ function hasExplicitWireChoice(): boolean {
  * and nothing has asked for a different protocol.
  */
 export function isDeepSeekAnthropicWireActive(): boolean {
-  if (isOptedOut()) return false
+  if (isDeepSeekAnthropicWireOptedOut()) return false
   if (hasExplicitWireChoice()) return false
   // A key is required: without one the Anthropic client would send no auth and
   // the failure would be a confusing 401 rather than the existing behaviour.
@@ -100,7 +106,7 @@ export function isDeepSeekAnthropicWireActive(): boolean {
  * same shape modelCatalog/cache.ts uses: a base URL occ cannot canonicalize is a
  * reason to pass it through, not to refuse to start.
  */
-function toAnthropicBase(base: string): string {
+export function toDeepSeekAnthropicBase(base: string): string {
   try {
     return normalizeProviderBaseURL(base, 'deepseekAnthropic')
   } catch {
@@ -120,7 +126,7 @@ export function getDeepSeekAnthropicBaseURL(): string | undefined {
   if (!isDeepSeekAnthropicWireActive()) return undefined
   const base = process.env.OPENAI_BASE_URL?.trim()
   if (!base) return undefined
-  return toAnthropicBase(base)
+  return toDeepSeekAnthropicBase(base)
 }
 
 /**
@@ -146,7 +152,7 @@ export function getDeepSeekAnthropicBaseURL(): string | undefined {
 export function getDeepSeekSearchEndpoint():
   | { baseURL: string; messagesURL: string; apiKey: string }
   | undefined {
-  if (isOptedOut()) return undefined
+  if (isDeepSeekAnthropicWireOptedOut()) return undefined
   const anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim()
   const openaiBase = process.env.OPENAI_BASE_URL?.trim()
   // ANTHROPIC_BASE_URL first: when it points at DeepSeek it is either the user's
@@ -162,24 +168,24 @@ export function getDeepSeekSearchEndpoint():
     process.env.OPENAI_API_KEY?.trim() || process.env.ANTHROPIC_API_KEY?.trim()
   if (!apiKey) return undefined
   return {
-    baseURL: toAnthropicBase(base),
+    baseURL: toDeepSeekAnthropicBase(base),
     // The finished request URL is built HERE, not by the caller. The only
     // consumer is the `deepseek` WebSearch adapter, which lives in
     // packages/builtin-tools — a leaf that must not reach into host URL
     // helpers — and the `${baseURL}/v1/messages` it used to concatenate lands
     // the path inside the query string whenever the base carries one
     // (`https://gw.deepseek.com/anthropic?tenant=x`).
-    messagesURL: toMessagesURL(base),
+    messagesURL: toDeepSeekMessagesURL(base),
     apiKey,
   }
 }
 
 /** `<host>` → `<host>/anthropic/v1/messages`, with the same fallback as above. */
-function toMessagesURL(base: string): string {
+export function toDeepSeekMessagesURL(base: string): string {
   try {
     return buildProviderResourceURL(base, 'deepseekAnthropic', 'v1/messages')
   } catch {
-    return `${toAnthropicBase(base)}/v1/messages`
+    return `${toDeepSeekAnthropicBase(base)}/v1/messages`
   }
 }
 

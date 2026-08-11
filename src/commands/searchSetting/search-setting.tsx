@@ -12,15 +12,22 @@
  * (aggregateAdapter.ts). Nothing in this panel picks *one* backend; ticking a
  * second source adds a lane, it never replaces one.
  *
- * Three things a row can do beyond being ticked:
+ * Four things a row can do beyond being ticked:
  *   - Enter on a disconnected provider source starts that provider's OAuth flow
  *     and the row flips to connected + ticked when it returns.
- *   - `d` disconnects a source whose credentials this panel owns, so a login can
- *     be undone without leaving the CLI.
+ *   - `s` PINS the credential the source is authenticating with right now into
+ *     occ's own 0600 store (searchCredentialStore.ts). That is the whole point
+ *     of this panel owning credentials: unpinned, every provider source reads
+ *     the provider env, which `/logout` deletes and `/provider use` replaces
+ *     wholesale — so switching providers used to drop web search to the keyless
+ *     lane with nothing said. A pin is not touched by either.
+ *   - `d` removes the pin if there is one, and otherwise disconnects a source
+ *     whose login this panel owns. Two distinct undos, in that order, because
+ *     they are two distinct credentials.
  *   - `r` re-checks every row, which also clears the session-scoped "this source
- *     failed, stop using it" flags. Without that, a source retired before the
- *     user fixed the underlying problem stays greyed out until restart — the
- *     "I logged in and it still does not work" shape.
+ *     failed, stop using it" flags and re-reads the pin store. Without that, a
+ *     source retired before the user fixed the underlying problem stays greyed
+ *     out until restart — the "I logged in and it still does not work" shape.
  *
  * Anything that touches the network is cancellable: Esc while an operation is in
  * flight aborts it rather than closing the panel. An OAuth flow parked on a
@@ -31,6 +38,7 @@
  */
 
 import { Box, Text, useInput } from '@anthropic/ink';
+import type { SearchCredentialFamily } from '@open-claude-code/tool-runtime/searchCredentials.js';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsInsideModal } from '../../context/modalContext.js';
@@ -49,6 +57,15 @@ import {
   removeChatGPTAuth,
   requestChatGPTDeviceCode,
 } from '../../services/api/openai/chatgptAuth.js';
+import { captureSearchCredentialFromEnvironment } from '../../services/search/captureCredential.js';
+import {
+  isPinnableSearchSource,
+  listPinnedSearchSources,
+  pinSearchCredential,
+  readPinnedSearchCredential,
+  reloadPinnedSearchCredentials,
+  unpinSearchCredential,
+} from '../../services/search/searchCredentialStore.js';
 import {
   hasAnthropicSearchCredentials,
   hasCodexSearchCredentials,
@@ -91,6 +108,10 @@ type SourceRow = {
   isCurrentProvider: boolean;
   canLogin: boolean;
   canDisconnect: boolean;
+  /** A credential for this source is stored in occ's own search-credential file. */
+  pinned: boolean;
+  /** This source's lane reads the pin store, so pinning it would mean something. */
+  canPin: boolean;
 };
 
 const SOURCE_HINTS: Record<SearchSourceId, string> = {
@@ -115,6 +136,22 @@ const LOGIN_CAPABLE: ReadonlySet<SearchSourceId> = new Set(['gemini', 'codex']);
  * which is what a user asking to disconnect them actually wants.
  */
 const DISCONNECT_CAPABLE: ReadonlySet<SearchSourceId> = new Set(['gemini', 'codex']);
+
+/**
+ * The four provider sources whose ids are also credential-family names.
+ * `brave`, `exa` and `free` have no entry in the credential store: the first
+ * two are keys the user holds in their own settings, and the third needs none.
+ */
+const CREDENTIAL_FAMILIES: ReadonlySet<SearchSourceId> = new Set(['anthropic', 'deepseek', 'gemini', 'codex']);
+
+function toCredentialFamily(id: SearchSourceId): SearchCredentialFamily | undefined {
+  return CREDENTIAL_FAMILIES.has(id) ? (id as SearchCredentialFamily) : undefined;
+}
+
+function isPinnableSearchSourceId(id: SearchSourceId): boolean {
+  const family = toCredentialFamily(id);
+  return family !== undefined && isPinnableSearchSource(family);
+}
 
 /**
  * Connection state for one source: whether it is usable, and (when the
@@ -151,7 +188,14 @@ async function readConnection(
     }
     case 'gemini':
       return {
-        connected: (await getGeminiOAuthAccessToken()) !== null || Boolean(process.env.GEMINI_API_KEY),
+        // The pin first, and without awaiting anything: it is the credential
+        // the lane will actually send (usesAntigravityRoute stands down for an
+        // explicit key), so a row backed by one must not be reported through a
+        // Google token that request is not going to carry.
+        connected:
+          readPinnedSearchCredential('gemini') !== undefined ||
+          (await getGeminiOAuthAccessToken()) !== null ||
+          Boolean(process.env.GEMINI_API_KEY),
       };
     case 'codex': {
       const oauth = await hasStoredChatGPTAuth();
@@ -243,7 +287,11 @@ function noDisconnectHint(row: SourceRow): string {
         `Press Space to switch the lane off, or remove the key from your settings/environment.`
       );
     default:
-      return `${row.label} uses this session's provider login. Press Space to switch the lane off, or /logout to sign out.`;
+      return (
+        `${row.label} uses this session's provider login — nothing pinned to remove. ` +
+        `Press S to pin its credential so a /logout or provider switch keeps it, ` +
+        `Space to switch the lane off, or /logout to sign out.`
+      );
   }
 }
 
@@ -265,7 +313,14 @@ function statusBadge(row: SourceRow): {
   }
   if (row.connection === 'connected') {
     if (row.id === 'free') return { text: '✓ no account needed', color: 'success' };
-    return { text: row.account ? `✓ connected (${row.account})` : '✓ connected', color: 'success' };
+    // "pinned" is the only credential detail ever shown. Never the key, never a
+    // prefix of it, never its length — the store exists so the value stays on
+    // disk at 0600, and a settings panel is exactly where it would leak from.
+    const suffix = row.pinned ? ' · pinned' : '';
+    return {
+      text: row.account ? `✓ connected (${row.account})${suffix}` : `✓ connected${suffix}`,
+      color: 'success',
+    };
   }
   if (row.detail) return { text: row.detail, dim: true };
   return row.canLogin
@@ -273,8 +328,20 @@ function statusBadge(row: SourceRow): {
     : { text: 'not connected', dim: true };
 }
 
+/**
+ * The `S` affordance for the highlighted row, when it would do something.
+ *
+ * Only offered on a connected, pinnable, not-yet-pinned source: there is no
+ * credential to copy otherwise, and an offer that answers with a refusal reads
+ * as a broken key.
+ */
+function pinOffer(row: SourceRow): string {
+  if (!row.canPin || row.pinned || row.connection !== 'connected') return '';
+  return ' · S keeps this credential through /logout and provider switches';
+}
+
 /** What an in-flight operation is, so Esc can say what it would cancel. */
-type Busy = { id: SearchSourceId; kind: 'login' | 'disconnect' };
+type Busy = { id: SearchSourceId; kind: 'login' | 'disconnect' | 'pin' };
 
 function SearchSettingPanel({
   onClose,
@@ -331,6 +398,9 @@ function SearchSettingPanel({
   useEffect(() => refreshConnections(), [refreshConnections]);
 
   const provider = primarySourceId();
+  // Same render-key trick as `enabled` below: the store is memoized, so this
+  // re-reads it only after a pin/unpin bumps the version.
+  const pinnedSources = new Set<SearchSourceId>(overrideVersion >= 0 ? listPinnedSearchSources() : []);
 
   const sourceRows: SourceRow[] = SEARCH_SOURCE_IDS.map(id => ({
     id,
@@ -344,7 +414,11 @@ function SearchSettingPanel({
     ...(details[id] ? { detail: details[id] } : {}),
     isCurrentProvider: id === provider,
     canLogin: LOGIN_CAPABLE.has(id),
-    canDisconnect: DISCONNECT_CAPABLE.has(id),
+    // A pinned credential is something this panel stored and can therefore
+    // remove, whatever the source's login situation is.
+    canDisconnect: DISCONNECT_CAPABLE.has(id) || pinnedSources.has(id),
+    pinned: pinnedSources.has(id),
+    canPin: isPinnableSearchSourceId(id),
   }));
 
   const toggleSource = useCallback((row: SourceRow) => {
@@ -380,6 +454,9 @@ function SearchSettingPanel({
   const recheck = useCallback(() => {
     resetSourceAvailability();
     resetDeepSeekSearchProbe();
+    // The pin store is memoized for the process (it is read on every row of
+    // every render), so R is also what picks up a file edited from outside.
+    reloadPinnedSearchCredentials();
     setDetails({});
     setOverrideVersion(v => v + 1);
     refreshConnections();
@@ -438,9 +515,68 @@ function SearchSettingPanel({
     [busy, refreshConnections],
   );
 
+  /**
+   * Copy the credential this source is authenticating with right now into occ's
+   * own store, where the account plane cannot reach it.
+   *
+   * The capture is refused rather than approximated when the environment holds
+   * nothing pinnable — most importantly when `ANTHROPIC_API_KEY` is a mirror of
+   * some other provider's secret. See captureCredential.ts.
+   */
+  const pin = useCallback(
+    (row: SourceRow) => {
+      if (busy) return;
+      const family = toCredentialFamily(row.id);
+      if (!family) {
+        setNotice(
+          row.id === 'free'
+            ? `${row.label} needs no account, so there is nothing to pin.`
+            : `${row.label} is configured by a key you hold in your own settings, which /logout never touches.`,
+        );
+        return;
+      }
+      const captured = captureSearchCredentialFromEnvironment(family);
+      if ('error' in captured) {
+        setNotice(`${row.label}: ${captured.error}`);
+        return;
+      }
+      setBusy({ id: row.id, kind: 'pin' });
+      void pinSearchCredential(family, captured.credential)
+        .then(() => {
+          setOverrideVersion(v => v + 1);
+          refreshConnections();
+          setNotice(`${row.label} pinned — kept through /logout and provider switches. D removes it.`);
+        })
+        .catch((error: unknown) => {
+          setNotice(`${row.label} pin failed: ${errorMessageWithCause(error)}`);
+        })
+        .finally(() => setBusy(undefined));
+    },
+    [busy, refreshConnections],
+  );
+
   const disconnect = useCallback(
     (row: SourceRow) => {
       if (busy) return;
+      // The pin goes first when there is one. It and a login are two different
+      // credentials, so collapsing them would make one D revoke a Google
+      // account the user only meant to stop pinning a key for.
+      const family = toCredentialFamily(row.id);
+      if (row.pinned && family) {
+        setBusy({ id: row.id, kind: 'disconnect' });
+        void unpinSearchCredential(family)
+          .then(() => {
+            resetSourceAvailability();
+            setOverrideVersion(v => v + 1);
+            refreshConnections();
+            setNotice(`${row.label} credential unpinned — this source follows your provider configuration again.`);
+          })
+          .catch((error: unknown) => {
+            setNotice(`${row.label} unpin failed: ${errorMessageWithCause(error)}`);
+          })
+          .finally(() => setBusy(undefined));
+        return;
+      }
       if (!row.canDisconnect) {
         setNotice(noDisconnectHint(row));
         return;
@@ -530,6 +666,10 @@ function SearchSettingPanel({
       disconnect(row);
       return;
     }
+    if (input === 's' || input === 'S') {
+      pin(row);
+      return;
+    }
     if (input === ' ') {
       toggleSource(row);
       return;
@@ -579,7 +719,14 @@ function SearchSettingPanel({
               </Box>
               {isCursor ? (
                 <Box marginLeft={6}>
-                  <Text dimColor>{row.hint}</Text>
+                  {/* The pin offer rides the hint line rather than the badge: a
+                      user only discovers this if it is mentioned where they are
+                      already looking, and the badge is where "pinned" is said
+                      once it has happened. */}
+                  <Text dimColor>
+                    {row.hint}
+                    {pinOffer(row)}
+                  </Text>
                 </Box>
               ) : null}
             </Box>
@@ -597,9 +744,11 @@ function SearchSettingPanel({
         <Text dimColor>
           {busy?.kind === 'login'
             ? `${'↑↓'} navigate · Esc cancel login`
-            : busy
-              ? `${'↑↓'} navigate · disconnecting…`
-              : `${'↑↓'} navigate · Space toggle · Enter toggle/log in · D disconnect · R re-check · Esc close`}
+            : busy?.kind === 'pin'
+              ? `${'↑↓'} navigate · pinning…`
+              : busy
+                ? `${'↑↓'} navigate · disconnecting…`
+                : `${'↑↓'} navigate · Space toggle · Enter toggle/log in · S pin credential · D unpin/disconnect · R re-check · Esc close`}
         </Text>
       </Box>
     </Box>

@@ -44,12 +44,16 @@ const previousConfigDir = process.env[OCC]
 const TOUCHED = [
   'OPENCODE_AUTH_MODE',
   'OPENCODE_BASE_URL',
+  'OPENCODE_INFERENCE_PLANE',
   'OPENCODE_API_KEY',
   'OPENCODE_MODEL',
   'OPENAI_BASE_URL',
   'OPENAI_API_KEY',
   'OPENAI_WIRE_API',
   'OPENAI_MODEL',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_MODEL',
 ] as const
 const savedEnv = new Map<string, string | undefined>()
 
@@ -172,5 +176,93 @@ describe('a credential the endpoint accepts', () => {
     expect(readFileSync(join(dir, 'settings.json'), 'utf8')).not.toContain(
       'access-token',
     )
+  })
+})
+
+/**
+ * The other session kind. A Console token is not a credential for either
+ * product — measured on one account, side by side: 200 at
+ * `config.provider.opencode.api`, 401 `AuthError: Invalid API key.` at
+ * https://opencode.ai/zen/v1 — so the endpoint written here is the one
+ * `/api/config` named, and the plane marker is what stops the lane heuristic
+ * from aiming a `claude-*` session at a `/messages` path that answers 404.
+ */
+const CONSOLE = 'https://console.opencode.ai/inference/openai/v1'
+
+describe('a Console-plane session', () => {
+  test('is configured at the endpoint the console named, on the chat lane', () => {
+    resetConfigDir()
+    // A claude id: on Zen this is precisely what routes to /messages.
+    process.env.OPENCODE_MODEL = 'claude-opus-5'
+    const result = activate.activateOpencodeConsoleSession({
+      baseUrl: CONSOLE,
+      label: 'OpenCode Zen',
+      otherLabel: 'OpenCode Go',
+      accessToken: 'access-token',
+      plane: 'console',
+      access: { ok: true },
+    })
+
+    expect(result.activated).toBe(true)
+    expect(onDisk()).toEqual({
+      env: {
+        OPENCODE_AUTH_MODE: 'opencode',
+        OPENCODE_BASE_URL: CONSOLE,
+        OPENCODE_INFERENCE_PLANE: 'console',
+      },
+      modelType: 'opencode',
+    })
+    // The mirror published the console endpoint on the OpenAI keys…
+    expect(process.env.OPENAI_BASE_URL).toBe(CONSOLE)
+    expect(process.env.OPENAI_WIRE_API).toBe('chat')
+    expect(process.env.OPENAI_API_KEY).toBe('access-token')
+    // …and nothing at all on the Anthropic ones. This is the bug: a `claude-*`
+    // model here used to point the Anthropic client at the base URL and speak
+    // /messages, which that plane does not serve.
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
+  })
+
+  test('a refusal does not offer the other product — there is no other product', () => {
+    resetConfigDir()
+    const result = activate.activateOpencodeConsoleSession({
+      baseUrl: CONSOLE,
+      label: 'OpenCode Zen',
+      otherLabel: 'OpenCode Go',
+      accessToken: 'access-token',
+      plane: 'console',
+      access: { ok: false, reason: 'Invalid API key.' },
+    })
+    if (result.activated) throw new Error('expected a refusal')
+
+    // The Zen/Go sentence is about two separately-billed products one path
+    // segment apart. The console's own inference proxy is neither of them, and
+    // telling a refused Console user to "pick OpenCode Go instead" is advice
+    // about a bill they are not on.
+    expect(result.message).toContain(CONSOLE)
+    expect(result.message).not.toContain('OpenCode Go')
+    expect(result.message).toContain('Nothing was configured')
+    expect(onDisk()).toEqual({ env: {} })
+  })
+
+  test('an API-key session gets no plane marker', () => {
+    resetConfigDir()
+    activate.activateOpencodeConsoleSession({
+      baseUrl: 'https://opencode.ai/zen/go/v1',
+      label: 'OpenCode Go',
+      otherLabel: 'OpenCode Zen',
+      accessToken: 'access-token',
+      access: { ok: true },
+    })
+    // Absence is the Zen/Go kind. A marker left on would force every model onto
+    // /chat/completions and pin the base URL semantics of a different plane.
+    expect(process.env.OPENCODE_INFERENCE_PLANE).toBeUndefined()
+    expect(onDisk()).toEqual({
+      env: {
+        OPENCODE_AUTH_MODE: 'opencode',
+        OPENCODE_BASE_URL: 'https://opencode.ai/zen/go/v1',
+      },
+      modelType: 'opencode',
+    })
   })
 })

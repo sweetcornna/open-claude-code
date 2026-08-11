@@ -134,10 +134,10 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 
 | 源 | 执行 | 凭据 |
 |---|---|---|
-| `anthropic` | Anthropic server-side `web_search_20250305` | Claude OAuth 或 `ANTHROPIC_API_KEY` |
-| `deepseek` | DeepSeek server-side `web_search_20250305`，走 `<base>/anthropic` | DeepSeek 端点 + key（`OPENAI_BASE_URL` 指向 api.deepseek.com） |
-| `gemini` | Gemini `generateContent` + `googleSearch` grounding | Google(Antigravity) OAuth 或 `GEMINI_API_KEY` |
-| `codex` | OpenAI Responses API 内建 `web_search` 工具 | ChatGPT OAuth 或 `OPENAI_API_KEY` |
+| `anthropic` | Anthropic server-side `web_search_20250305` | **固定凭据** > Claude OAuth 或 `ANTHROPIC_API_KEY` |
+| `deepseek` | DeepSeek server-side `web_search_20250305`，走 `<base>/anthropic` | **固定凭据** > DeepSeek 端点 + key（`OPENAI_BASE_URL` 指向 api.deepseek.com） |
+| `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定凭据** > Google(Antigravity) OAuth 或 `GEMINI_API_KEY` |
+| `codex` | OpenAI Responses API 内建 `web_search` 工具 | ChatGPT OAuth 或 `OPENAI_API_KEY`（**不可固定**，见 4.1.2） |
 | `brave` | Brave LLM Context API（独立索引） | `settings.braveApiKey`，或 `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa 神经搜索 MCP 端点 | `settings.exaApiKey` |
 | `free` | 免密钥多引擎抓取（移植自 sweetcornna/free-search-mcp） | 无 |
@@ -179,19 +179,75 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | `↑` `↓` | 移动 |
 | `Space` | 勾选 / 取消勾选（只影响这一路进不进聚合） |
 | `Enter` | 未连接的 OAuth 源 → 开始登录；其余同 Space |
-| `D` | **断开**：删掉本面板自己存的凭据（gemini 的 Antigravity token、codex 的 ChatGPT auth） |
-| `R` | **重新探测**：清掉本会话的 availability 退役标记和 DeepSeek 探测缓存，全部重查 |
+| `S` | **固定凭据**：把这一源当前用的 key + 端点存进 occ 自己的 0600 文件（见 4.1.2） |
+| `D` | **取消固定 / 断开**：有固定凭据先删它；否则删掉本面板自己存的登录（gemini 的 Antigravity token、codex 的 ChatGPT auth） |
+| `R` | **重新探测**：清掉本会话的 availability 退役标记、DeepSeek 探测缓存和固定凭据缓存，全部重查 |
 | `Esc` | 有操作在飞 → **取消它**；否则关闭面板 |
 
-三条不显然的规则：
+四条不显然的规则：
 
-- **`D` 不碰 `anthropic` / `deepseek`**。这两家的凭据就是会话自己的 provider 登录，从搜索设置面板里
-  把用户登出整个 CLI 是越权。想让它们不参与聚合用 `Space`，想登出用 `/logout`。
+- **`D` 的两步是有序的，不是二选一**。固定凭据和 provider 登录是两份不同的凭据，合成一步会让
+  「我只想不再固定这把 key」变成「把 Google 账号也注销了」。
+- **`D` 不会为了断开而把用户登出整个 CLI**：`anthropic` / `deepseek` 没有固定凭据时，它们的凭据
+  就是会话自己的 provider 登录，从搜索设置面板里注销是越权。想让它们不参与聚合用 `Space`，
+  想登出用 `/logout`，想让凭据活下来用 `S`。
 - **断开后仍可能显示已连接，面板会说明为什么**：`removeChatGPTAuth()` 只删 occ 自己那份，
   `~/.codex/auth.json` 是 Codex CLI 的、不归我们删；`GEMINI_API_KEY` 是用户的环境变量。
 - **`R` 存在是因为「登录了也用不了」是真实形态**：某个源在本会话早些时候失败过一次就被退役了，
   用户随后修好了根因（登录、换 base URL），但那个标记不会自己消失，界面上就一直是灰的直到重启。
   登录成功和断开成功也都会顺手清一次。
+
+### 4.1.2 固定凭据（`services/search/searchCredentialStore.ts`）
+
+**问题**：搜索凭据此前**完全寄生在主 provider 配置上** —— 四个 provider 源都直接读
+`GEMINI_API_KEY` / `OPENAI_API_KEY` + `OPENAI_BASE_URL` / `ANTHROPIC_API_KEY`。而那批键恰好是
+`/logout` 删掉的那批（`LOGOUT_ENV_KEYS`，从 `ALL_PROFILE_ENV_KEYS` 推导），也是 `activateProfile()`
+在应用目标档案前**整体清空**的那批（它清的是所有家族键的并集）。于是「登出一次」或者仅仅是
+「从 OpenAI 档案切到 OpenCode 档案」，就会静默地把网页搜索打回免密钥抓取那一路 —— 没有任何提示。
+
+**做法**：`/search-setting` 按 `S` 把该源**当前正在用**的 key + 端点，写进 occ 自己的凭据文件。
+
+| 项 | 值 |
+| --- | --- |
+| 路径 | `occConfigPath('search-credentials.json')`（即 `~/.occ/search-credentials.json`，跟随 `OCC_CONFIG_DIR`） |
+| 权限 | `0600`，经 `writePrivateFileAtomic` 原子写 |
+| 形状 | `{ version, sources: { <源>: { apiKey, baseURL?, pinnedAt } } }` —— **按源独立**，不是一个大 blob |
+| 可固定的源 | `anthropic`、`deepseek`、`gemini` |
+
+**解析顺序：固定凭据 → provider 环境变量。** 没固定过的用户行为与改造前**逐字节相同**，
+不需要任何迁移步骤就能继续搜索。
+
+几条不显然但关键的规则：
+
+- **不写 `settings.json`**。那个文件是用户会整份贴进 issue 的东西，也不是 0600。
+- **`/logout` 与 `activateProfile()` 都不碰这个文件** —— 靠的不是「记得跳过某个键」，而是它压根不在
+  那两条路径能触及的范围内。两条回归测试分别钉住这一点。
+- **`/logout` 会把这件事说出来**：登出后若还有固定凭据，消息里会逐个列出源名，并告诉用户用
+  `/search-setting` 的 `D` 删除。选择保留而不是静默删除，是因为固定本身是逐源显式的用户动作，
+  而静默删除恰好会重演这个特性要消灭的那个失败形态。
+- **凭据必须自带端点**，否则端点判据会给一把根本用不了的 key 开绿灯：`hasCodexSearchCredentials()`
+  要求 `api.openai.com`，DeepSeek 那一路的端点是自己推导的（`getDeepSeekSearchEndpoint()`，
+  **故意不看主循环协议**）。所以存的是「key + 它认证的那个端点」，而不是裸 key。
+- **`CLAUDE_CODE_DEEPSEEK_ANTHROPIC_WIRE=0` 仍然压过固定凭据**。那个开关点名的就是这个端点；
+  固定说的是「用哪把 key」，从来不是「无视用户关掉的能力」（与源开关的单向语义一致）。
+- **绝不渲染 key**。面板只在已连接的徽章后面加一个 `· pinned`，不显示值、前缀或长度。
+- **镜像值会被拒绝**。`ANTHROPIC_API_KEY` 并不总是 Anthropic 的 key —— DeepSeek 线会把 DeepSeek key
+  镜像上去，OpenCode 会把一小时过期的 OAuth access token 镜像上去。固定它等于把别家的密钥以
+  Anthropic 的名义写进磁盘、再发往 api.anthropic.com。判定用的是两个镜像自己的记账谓词
+  （`isDeepSeekMirroredApiKey` / `isOpencodeMirroredApiKey`），不是猜值的形状。
+- **`codex` 不可固定**。它那一路的认证发生在 `createOpenAIResponsesStream` 内部，请求直接从
+  `OPENAI_API_KEY` / `OPENAI_BASE_URL` 构造、没有凭据入口。允许固定只会让这一行亮绿而 key 永远
+  不出磁盘 —— 正是整个源注册表要防的「点亮了却只能返回空」。它的 ChatGPT 登录本身就是 occ 自己的
+  0600 文件，这也是这一源在切换 provider 后仍可能有凭据的原因。读取侧对四家是统一的，将来接上
+  请求层的凭据入口即可放开。
+
+**固定凭据真的会被发送**，不只是点亮面板：
+
+| 源 | 固定后走哪条路 |
+| --- | --- |
+| `anthropic` | `AnthropicDirectSearchAdapter` 改走独立 `fetch`，`x-api-key` + `<pin 端点>/v1/messages`。不再用 `getAnthropicClient()` —— 那个客户端由 `ANTHROPIC_*` 环境变量拼出来，切档案后那些键里可能是别家镜像进来的 token 和别家的网关 |
+| `deepseek` | `resolveDeepSeekSearchEndpoint()` 优先返回 pin 的端点与 key |
+| `gemini` | `streamGeminiGenerateContent({ apiKey, baseURL })`；`usesAntigravityRoute()` 见到显式 apiKey 即让路（与已有的 `accessToken` 同一条规则） |
 
 ### 4.2 聚合规则（`adapters/aggregateAdapter.ts`）
 
@@ -318,6 +374,11 @@ interface SearchProgress {
 | `packages/builtin-tools/src/tools/WebSearchTool/executionTimeout.ts` | 墙钟超时时长解析（`CLAUDE_CODE_WEB_SEARCH_TIMEOUT_MS`） |
 | `packages/tool-runtime/src/toolExecutionTimeout.ts` | 通用超时包装（子 AbortController，见 4.4） |
 | `packages/tool-runtime/src/apiRetry.ts` | API 重试 facade，host 实现在 `src/services/api/retryFacade.ts` |
+| `src/services/search/searchCredentialStore.ts` | 固定凭据存储（0600 文件，`/logout` 与 `activateProfile()` 都不碰） |
+| `src/services/search/searchEndpoints.ts` | 「固定凭据 → provider env」解析：DeepSeek / Anthropic / Gemini 各自的端点与 key |
+| `src/services/search/captureCredential.ts` | 从环境捕获当前凭据以供固定；拒绝镜像值与不可固定的源 |
+| `src/services/search/sourceCredentials.ts` | 四家「有没有凭据」的同步判据（tool-runtime facade 的 host 实现） |
+| `src/commands/searchSetting/search-setting.tsx` | `/search-setting` 面板（勾选 / 登录 / `S` 固定 / `D` 取消固定或断开 / `R` 重查） |
 | `packages/builtin-tools/src/tools/WebSearchTool/__tests__/bingAdapter.test.ts` | 单元测试 (32 cases) |
 | `packages/builtin-tools/src/tools/WebSearchTool/__tests__/bingAdapter.integration.ts` | 集成测试 |
 | `src/tools.ts` | 工具注册 |

@@ -1,5 +1,5 @@
 /**
- * Tests for reopening the model step from the environment (`/models-setting`).
+ * Tests for reopening the model step from the environment (`/model-settings`).
  *
  * The rule worth pinning is which sessions have something to configure at all,
  * and that reopening prefills from the same env keys the wizard writes — a

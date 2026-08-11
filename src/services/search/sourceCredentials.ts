@@ -11,6 +11,13 @@
  * of a credential file. A file that exists but holds a stale token still reads
  * as "connected" here — the search itself surfaces that, and a token refresh
  * must never be triggered from a settings panel render.
+ *
+ * RESOLUTION ORDER — pinned credential (searchCredentialStore.ts) first, the
+ * provider env second. Search used to be entirely parasitic on the provider
+ * plane, so `/logout` and `/provider use` silently took it away; a pin is the
+ * user saying "this key is for search, leave it alone". Nothing about the
+ * unpinned path changed, so an existing setup needs no migration to keep
+ * searching.
  */
 
 import {
@@ -20,10 +27,9 @@ import {
 import { hasGeminiOAuthCredentialsSync } from 'src/services/api/gemini/oauthToken.js'
 import { hasStoredChatGPTAuthSync } from 'src/services/api/openai/chatgptAuth.js'
 import { isOfficialOpenAIBaseURL } from 'src/services/api/openai/openaiShared.js'
-import {
-  getDeepSeekSearchEndpoint,
-  isDeepSeekAnthropicWireActive,
-} from 'src/utils/model/deepseekWire.js'
+import { isDeepSeekAnthropicWireActive } from 'src/utils/model/deepseekWire.js'
+import { readPinnedSearchCredential } from './searchCredentialStore.js'
+import { resolveDeepSeekSearchEndpoint } from './searchEndpoints.js'
 
 /**
  * The two Anthropic auth probes, loaded on first use.
@@ -61,6 +67,12 @@ function loadAnthropicAuthProbes(): AnthropicAuthProbes {
  * must never blow up on it.
  */
 export function hasAnthropicSearchCredentials(): boolean {
+  // A pin carries its own endpoint and its own key, and the lane posts to them
+  // directly (resolvePinnedAnthropicSearchEndpoint), so none of the reasoning
+  // below about what the session's provider plane happens to hold applies to
+  // it. Answered first for exactly that reason: it is the one case where "this
+  // really is Anthropic" is known rather than inferred.
+  if (readPinnedSearchCredential('anthropic')) return true
   // Not "are there Anthropic credentials" but "can this lane reach Anthropic".
   // While the DeepSeek routing is active, ANTHROPIC_BASE_URL points at
   // api.deepseek.com and ANTHROPIC_API_KEY is usually this process's own mirror
@@ -93,11 +105,12 @@ export function hasAnthropicSearchCredentials(): boolean {
  * live search failure uses.
  */
 export function hasDeepSeekSearchCredentials(): boolean {
-  return getDeepSeekSearchEndpoint() !== undefined
+  return resolveDeepSeekSearchEndpoint() !== undefined
 }
 
-/** Google OAuth (Antigravity) or a Gemini API key. */
+/** A pinned key, Google OAuth (Antigravity), or a Gemini API key. */
 export function hasGeminiSearchCredentials(): boolean {
+  if (readPinnedSearchCredential('gemini')) return true
   return hasGeminiOAuthCredentialsSync() || Boolean(process.env.GEMINI_API_KEY)
 }
 
@@ -131,6 +144,14 @@ export function hasGeminiSearchCredentials(): boolean {
  * routes to the Codex backend whenever the base URL is not OpenAI's, precisely
  * so the login counted here is the login the search uses. Loosening either side
  * alone re-opens the silent-empty-results hole above.
+ *
+ * No pinned-credential branch, unlike the other three sources — this is the one
+ * source `/search-setting` refuses to pin (PINNABLE_SEARCH_SOURCES). Its lane
+ * authenticates inside `createOpenAIResponsesStream`, which builds the request
+ * from `OPENAI_API_KEY`/`OPENAI_BASE_URL` with no credential seam, so a pin
+ * would light this row green for a key that never leaves the disk. Its ChatGPT
+ * login is already a 0600 file rather than an env var, which is what gives this
+ * source a credential that survives a provider switch at all.
  */
 export function hasCodexSearchCredentials(): boolean {
   // A ChatGPT/Codex login authenticates against OpenAI's own backend by

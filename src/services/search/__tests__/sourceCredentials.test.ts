@@ -1,11 +1,16 @@
 import {
   afterAll,
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
   test,
 } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { occConfigDir } from 'src/config/paths.js'
 
 // Only the credential-file probes are mocked — they are the side-effecting
 // dependencies (OAuth stores on disk). `isOfficialOpenAIBaseURL` is a pure
@@ -31,10 +36,32 @@ makeSharedModuleMock(
 let chatGPTAuthOnDisk = false
 chatGPTAuthMock.set({ hasStoredChatGPTAuthSync: () => chatGPTAuthOnDisk })
 
-const { hasCodexSearchCredentials } = await import('../sourceCredentials')
+const {
+  hasCodexSearchCredentials,
+  hasDeepSeekSearchCredentials,
+  hasGeminiSearchCredentials,
+} = await import('../sourceCredentials')
+const { pinSearchCredential, reloadPinnedSearchCredentials } = await import(
+  '../searchCredentialStore.js'
+)
 
-const ENV_KEYS = ['OPENAI_API_KEY', 'OPENAI_BASE_URL'] as const
+const ENV_KEYS = [
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'GEMINI_API_KEY',
+] as const
 const saved: Record<string, string | undefined> = {}
+
+// A temporary config root for the whole file, so the developer's own pinned
+// credentials can never light a source these tests expect to be dark.
+const savedConfigDir = process.env.OCC_CONFIG_DIR
+let tempDir: string
+
+beforeAll(() => {
+  tempDir = mkdtempSync(join(tmpdir(), 'occ-search-credentials-'))
+  process.env.OCC_CONFIG_DIR = tempDir
+  occConfigDir.cache.clear?.()
+})
 
 beforeEach(() => {
   for (const key of ENV_KEYS) {
@@ -42,6 +69,8 @@ beforeEach(() => {
     delete process.env[key]
   }
   chatGPTAuthOnDisk = false
+  rmSync(join(tempDir, 'search-credentials.json'), { force: true })
+  reloadPinnedSearchCredentials()
 })
 
 afterEach(() => {
@@ -55,6 +84,11 @@ afterEach(() => {
 // process.
 afterAll(() => {
   chatGPTAuthMock.reset()
+  if (savedConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+  else process.env.OCC_CONFIG_DIR = savedConfigDir
+  occConfigDir.cache.clear?.()
+  reloadPinnedSearchCredentials()
+  rmSync(tempDir, { recursive: true, force: true })
 })
 
 describe('hasCodexSearchCredentials', () => {
@@ -104,6 +138,40 @@ describe('hasCodexSearchCredentials', () => {
   test('a malformed base URL is treated as not-OpenAI', () => {
     process.env.OPENAI_API_KEY = 'sk-test'
     process.env.OPENAI_BASE_URL = 'not a url'
+    expect(hasCodexSearchCredentials()).toBe(false)
+  })
+})
+
+describe('a pinned credential lights a source with no provider env at all', () => {
+  test('gemini', async () => {
+    // The Google login probe is mocked to "not connected" and GEMINI_API_KEY is
+    // unset, so the only thing that can answer here is the pin — which is the
+    // state a user is left in the moment /logout runs.
+    expect(hasGeminiSearchCredentials()).toBe(false)
+
+    await pinSearchCredential('gemini', { apiKey: 'AIza-pinned' })
+
+    expect(hasGeminiSearchCredentials()).toBe(true)
+  })
+
+  test('deepseek, carrying its own endpoint', async () => {
+    expect(hasDeepSeekSearchCredentials()).toBe(false)
+
+    await pinSearchCredential('deepseek', {
+      apiKey: 'sk-pinned',
+      baseURL: 'https://api.deepseek.com',
+    })
+
+    expect(hasDeepSeekSearchCredentials()).toBe(true)
+  })
+
+  test('codex is not among them — its lane could not send the key', async () => {
+    // Kept as a test rather than left implicit: a pin that lights this row
+    // without the request layer reading it is the silent-empty-lane failure,
+    // and the store is the only place that can refuse it.
+    await expect(
+      pinSearchCredential('codex', { apiKey: 'sk-pinned' }),
+    ).rejects.toThrow()
     expect(hasCodexSearchCredentials()).toBe(false)
   })
 })

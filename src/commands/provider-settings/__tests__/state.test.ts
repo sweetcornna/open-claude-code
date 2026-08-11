@@ -14,6 +14,7 @@ import type {
 import {
   buildProviderRows,
   describeAggregatedModels,
+  describeAggregateOverview,
   describeCredential,
   describeProviderRows,
   EMPTY_REGISTRY_HINT,
@@ -141,6 +142,36 @@ describe('parseArgs', () => {
       expect(result.kind).toBe('error')
       expect((result as { message: string }).message).toContain(verb)
     }
+  })
+
+  test('add takes an optional name', () => {
+    expect(parseArgs('add')).toEqual({ kind: 'add' })
+    expect(parseArgs('new zen')).toEqual({ kind: 'add', name: 'zen' })
+  })
+
+  test('rename needs both names and keeps their case', () => {
+    expect(parseArgs('rename Old New')).toEqual({
+      kind: 'rename',
+      from: 'Old',
+      to: 'New',
+    })
+    expect(parseArgs('mv old new')).toEqual({
+      kind: 'rename',
+      from: 'old',
+      to: 'new',
+    })
+    for (const args of ['rename', 'rename only-one']) {
+      const result = parseArgs(args)
+      expect(result.kind).toBe('error')
+      expect((result as { message: string }).message).toContain(
+        'rename <old> <new>',
+      )
+    }
+  })
+
+  test('overview and its alias', () => {
+    expect(parseArgs('overview')).toEqual({ kind: 'overview' })
+    expect(parseArgs('summary')).toEqual({ kind: 'overview' })
   })
 
   test('an unknown verb reports itself and the usage block', () => {
@@ -388,6 +419,114 @@ describe('summarizeAggregate', () => {
     expect(text).toContain('3 models')
     expect(text).toContain('2 profile(s)')
     expect(text).toContain('2 of them served by more than one')
+  })
+})
+
+describe('describeAggregateOverview', () => {
+  const shared = registry(
+    undefined,
+    profile({
+      name: 'official',
+      aggregate: true,
+      models: [{ id: 'gpt-5.4' }, { id: 'o5' }],
+    }),
+    profile({
+      name: 'relay',
+      aggregate: true,
+      models: [{ id: 'gpt-5.4' }, { id: 'glm-5' }],
+    }),
+    profile({ name: 'unused', models: [{ id: 'never-listed' }] }),
+  )
+
+  function lines(
+    file: ProviderProfilesFile,
+    limits?: { contributors?: number; collisions?: number },
+  ): string[] {
+    return describeAggregateOverview(
+      buildProviderRows(file),
+      buildAggregatedModels(file),
+      limits,
+    )
+  }
+
+  test('the headline is the same sentence the one-liner gives', () => {
+    // Two renderings of the aggregate that disagree is the failure this
+    // shares an implementation to avoid.
+    expect(lines(shared)[0]).toBe(
+      summarizeAggregate(
+        buildProviderRows(shared),
+        buildAggregatedModels(shared),
+      ),
+    )
+  })
+
+  test('names who contributes and how much', () => {
+    const text = lines(shared).join('\n')
+    expect(text).toContain('official 2')
+    expect(text).toContain('relay 2')
+    // Opted out, so it feeds nothing and is not listed as feeding anything.
+    expect(text).not.toContain('unused')
+  })
+
+  test('counts what the union kept, not what the snapshot claimed', () => {
+    // A provider listing the same id twice contributes it once, so the row's
+    // "2 models" and the picker's one entry are both true.
+    const file = registry(
+      undefined,
+      profile({
+        name: 'dupe',
+        aggregate: true,
+        models: [{ id: 'a' }, { id: 'a' }],
+      }),
+    )
+    expect(lines(file).join('\n')).toContain('dupe 1')
+  })
+
+  test('names the ids two providers both answer to', () => {
+    // These are exactly the rows the picker renders as `id (profile)`; until
+    // they are named the tag reads as a rendering quirk.
+    const text = lines(shared).join('\n')
+    expect(text).toContain('shared ids: gpt-5.4 (official, relay)')
+    expect(text).not.toContain('glm-5')
+  })
+
+  test('nothing shared means no collision line at all', () => {
+    const file = registry(
+      undefined,
+      profile({ name: 'a', aggregate: true, models: [{ id: 'x' }] }),
+    )
+    expect(lines(file).some(line => line.includes('shared ids'))).toBe(false)
+  })
+
+  test('an empty aggregate is one line, still saying how to fix it', () => {
+    const file = registry(undefined, profile({ name: 'a' }))
+    expect(lines(file)).toEqual([
+      summarizeAggregate(buildProviderRows(file), buildAggregatedModels(file)),
+    ])
+  })
+
+  test('limits truncate with a count, so the panel cannot overflow', () => {
+    const text = lines(shared, { contributors: 1, collisions: 0 }).join('\n')
+    expect(text).toContain('official 2 · +1 more')
+    expect(text).toContain('shared ids: +1 more')
+  })
+
+  test('never prints a credential or the name of one', () => {
+    const file = registry(
+      undefined,
+      profile({
+        name: 'relay',
+        aggregate: true,
+        models: [{ id: 'gpt-5.4' }],
+        env: {
+          OPENAI_BASE_URL: 'https://relay.example/v1',
+          OPENAI_API_KEY: 'sk-do-not-print-me',
+        },
+      }),
+    )
+    const text = lines(file).join('\n')
+    expect(text).not.toContain('sk-do-not-print-me')
+    expect(text).not.toContain('OPENAI_API_KEY')
   })
 })
 

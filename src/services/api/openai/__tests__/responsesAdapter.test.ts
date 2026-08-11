@@ -1513,9 +1513,23 @@ describe('extractReasoningItem', () => {
     expect(extractReasoningItem({ type: 'reasoning', summary: [] })).toBeNull()
   })
 
+  test('drops an id-only item — under store:false the id resolves to nothing', () => {
+    // Replaying `{type:'reasoning', id:'rs_1'}` names an item the server never
+    // stored. OpenAI answers 400 "Item with id 'rs_1' not found", and since the
+    // item stays on the assistant message it does so on every later turn too.
+    expect(extractReasoningItem({ type: 'reasoning', id: 'rs_1' })).toBeNull()
+  })
+
   test('defaults a missing summary to an empty array', () => {
-    expect(extractReasoningItem({ type: 'reasoning', id: 'rs_1' })).toEqual({
+    expect(
+      extractReasoningItem({
+        type: 'reasoning',
+        id: 'rs_1',
+        encrypted_content: 'ENC',
+      }),
+    ).toEqual({
       id: 'rs_1',
+      encrypted_content: 'ENC',
       summary: [],
     })
   })
@@ -1556,12 +1570,12 @@ describe('adaptResponsesStreamToAnthropic reasoning capture', () => {
       {
         type: 'response.output_item.done',
         output_index: 0,
-        item: { type: 'reasoning', id: 'rs_1' },
+        item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'ENC1' },
       },
       {
         type: 'response.output_item.done',
         output_index: 2,
-        item: { type: 'reasoning', id: 'rs_2' },
+        item: { type: 'reasoning', id: 'rs_2', encrypted_content: 'ENC2' },
       },
       { type: 'response.completed', response: { status: 'completed' } },
     ])
@@ -1595,5 +1609,438 @@ describe('adaptResponsesStreamToAnthropic reasoning capture', () => {
       events.push(event as unknown as Record<string, unknown>)
     }
     expect(events.some(e => e.type === 'content_block_stop')).toBe(true)
+  })
+})
+
+/**
+ * Tool-call reconstruction, measured against how OpenAI's own Responses client
+ * does it. Codex never reads `response.function_call_arguments.delta` at all
+ * (its only appearance in the repo is a test fixture); it rebuilds every
+ * FunctionCall from the completed item in `response.output_item.done`
+ * (codex-rs/codex-api/src/sse/responses.rs:334-341, and the non-optional
+ * `arguments: String` / `call_id: String` fields at
+ * codex-rs/protocol/src/models.rs:875-894). occ keeps streaming the deltas so a
+ * rendering caller sees arguments as they arrive, but must not depend on them.
+ */
+describe('Responses tool-call reconstruction', () => {
+  const toolInput = (out: Record<string, unknown>[]) =>
+    out
+      .filter(
+        e =>
+          e.type === 'content_block_delta' &&
+          (e.delta as Record<string, unknown>)?.type === 'input_json_delta',
+      )
+      .map(e => (e.delta as Record<string, unknown>).partial_json)
+      .join('')
+
+  const toolStart = (out: Record<string, unknown>[]) =>
+    out.find(
+      e =>
+        e.type === 'content_block_start' &&
+        (e.content_block as Record<string, unknown>)?.type === 'tool_use',
+    )?.content_block as Record<string, unknown> | undefined
+
+  test('falls back to the completed item when no argument deltas arrived', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { type: 'function_call', call_id: 'call_1', name: 'Bash' },
+      },
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: {
+          type: 'function_call',
+          call_id: 'call_1',
+          name: 'Bash',
+          arguments: '{"command":"ls"}',
+        },
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    // Without the fallback the executor receives input '' for a call the model
+    // made correctly, and schema validation rejects it.
+    expect(toolInput(out)).toBe('{"command":"ls"}')
+  })
+
+  test('does not duplicate arguments that already streamed as deltas', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { type: 'function_call', call_id: 'call_1', name: 'Bash' },
+      },
+      {
+        type: 'response.function_call_arguments.delta',
+        output_index: 0,
+        delta: '{"command":"ls"}',
+      },
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: {
+          type: 'function_call',
+          call_id: 'call_1',
+          arguments: '{"command":"ls"}',
+        },
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(toolInput(out)).toBe('{"command":"ls"}')
+  })
+
+  test('correlates argument deltas by item_id when output_index is absent', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.output_item.added',
+        item: {
+          type: 'function_call',
+          id: 'fc_1',
+          call_id: 'call_1',
+          name: 'Bash',
+        },
+      },
+      {
+        type: 'response.function_call_arguments.delta',
+        item_id: 'fc_1',
+        delta: '{"command":"ls"}',
+      },
+      {
+        type: 'response.output_item.done',
+        item: { type: 'function_call', id: 'fc_1', call_id: 'call_1' },
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    // Keyed on output_index alone these deltas landed on the `-1` default,
+    // missed the block, and were dropped — an empty tool call, silently.
+    expect(toolInput(out)).toBe('{"command":"ls"}')
+  })
+
+  test('correlates argument deltas by call_id when output_index is absent', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.output_item.added',
+        item: { type: 'function_call', call_id: 'call_1', name: 'Bash' },
+      },
+      {
+        type: 'response.function_call_arguments.delta',
+        call_id: 'call_1',
+        delta: '{"command":"ls"}',
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(toolInput(out)).toBe('{"command":"ls"}')
+  })
+
+  test('reconstructs a call announced only by output_item.done', async () => {
+    const out = await collectEvents([
+      { type: 'response.output_text.delta', delta: 'running it' },
+      {
+        type: 'response.output_item.done',
+        output_index: 1,
+        item: {
+          type: 'function_call',
+          call_id: 'call_9',
+          name: 'Bash',
+          arguments: '{"command":"pwd"}',
+        },
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(toolStart(out)).toEqual({
+      type: 'tool_use',
+      id: 'call_9',
+      name: 'Bash',
+      input: {},
+    })
+    expect(toolInput(out)).toBe('{"command":"pwd"}')
+    // The preceding text block has to be closed before the tool block opens.
+    const order = out.map(e => e.type)
+    expect(order.indexOf('content_block_stop')).toBeLessThan(
+      order.indexOf(
+        'content_block_start',
+        order.indexOf('content_block_start') + 1,
+      ),
+    )
+  })
+
+  test('emits exactly one tool block when added and done both carry the call', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { type: 'function_call', call_id: 'call_1', name: 'Bash' },
+      },
+      {
+        type: 'response.output_item.done',
+        output_index: 0,
+        item: {
+          type: 'function_call',
+          call_id: 'call_1',
+          name: 'Bash',
+          arguments: '{}',
+        },
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    const toolStarts = out.filter(
+      e =>
+        e.type === 'content_block_start' &&
+        (e.content_block as Record<string, unknown>)?.type === 'tool_use',
+    )
+    expect(toolStarts).toHaveLength(1)
+  })
+
+  test('keeps parallel tool calls on their own blocks', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: {
+          type: 'function_call',
+          id: 'fc_a',
+          call_id: 'call_a',
+          name: 'Bash',
+        },
+      },
+      {
+        type: 'response.output_item.added',
+        output_index: 1,
+        item: {
+          type: 'function_call',
+          id: 'fc_b',
+          call_id: 'call_b',
+          name: 'Read',
+        },
+      },
+      {
+        type: 'response.function_call_arguments.delta',
+        item_id: 'fc_b',
+        delta: '{"b":1}',
+      },
+      {
+        type: 'response.function_call_arguments.delta',
+        item_id: 'fc_a',
+        delta: '{"a":1}',
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    const byIndex = new Map<number, string>()
+    for (const event of out) {
+      if (
+        event.type === 'content_block_delta' &&
+        (event.delta as Record<string, unknown>)?.type === 'input_json_delta'
+      ) {
+        const index = event.index as number
+        byIndex.set(
+          index,
+          (byIndex.get(index) ?? '') +
+            String((event.delta as Record<string, unknown>).partial_json),
+        )
+      }
+    }
+    expect([...byIndex.values()].sort()).toEqual(['{"a":1}', '{"b":1}'])
+  })
+})
+
+/**
+ * A reasoning summary is delivered as several parts, each its own paragraph
+ * with its own header, separated by `response.reasoning_summary_part.added`
+ * and a bumped `summary_index` — and by no whitespace of its own. Codex breaks
+ * the section on that event (codex-rs/tui/src/chatwidget/protocol.rs:88 →
+ * `on_reasoning_section_break`, codex-rs/tui/src/chatwidget/streaming.rs:290).
+ */
+describe('Responses reasoning summary parts', () => {
+  const thinking = (out: Record<string, unknown>[]) =>
+    out
+      .filter(
+        e =>
+          e.type === 'content_block_delta' &&
+          (e.delta as Record<string, unknown>)?.type === 'thinking_delta',
+      )
+      .map(e => (e.delta as Record<string, unknown>).thinking)
+      .join('')
+
+  test('separates parts announced by reasoning_summary_part.added', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.reasoning_summary_text.delta',
+        delta: '**Reading files**',
+      },
+      { type: 'response.reasoning_summary_part.added', summary_index: 1 },
+      { type: 'response.reasoning_summary_text.delta', delta: '**Editing**' },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(thinking(out)).toBe('**Reading files**\n\n**Editing**')
+  })
+
+  test('separates parts signalled only by a bumped summary_index', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.reasoning_summary_text.delta',
+        summary_index: 0,
+        delta: 'first',
+      },
+      {
+        type: 'response.reasoning_summary_text.delta',
+        summary_index: 1,
+        delta: 'second',
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(thinking(out)).toBe('first\n\nsecond')
+  })
+
+  test('breaks once when both signals arrive for the same seam', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.reasoning_summary_text.delta',
+        summary_index: 0,
+        delta: 'first',
+      },
+      { type: 'response.reasoning_summary_part.added', summary_index: 1 },
+      {
+        type: 'response.reasoning_summary_text.delta',
+        summary_index: 1,
+        delta: 'second',
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(thinking(out)).toBe('first\n\nsecond')
+  })
+
+  test('never leads a thinking block with a blank line', async () => {
+    const out = await collectEvents([
+      { type: 'response.reasoning_summary_part.added', summary_index: 0 },
+      {
+        type: 'response.reasoning_summary_text.delta',
+        summary_index: 0,
+        delta: 'only part',
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(thinking(out)).toBe('only part')
+  })
+
+  test('keeps deltas of one part contiguous', async () => {
+    const out = await collectEvents([
+      {
+        type: 'response.reasoning_summary_text.delta',
+        summary_index: 0,
+        delta: 'a',
+      },
+      {
+        type: 'response.reasoning_summary_text.delta',
+        summary_index: 0,
+        delta: 'b',
+      },
+      { type: 'response.completed', response: { status: 'completed' } },
+    ])
+
+    expect(thinking(out)).toBe('ab')
+  })
+})
+
+describe('mid-stream rate limits state their wait in prose', () => {
+  const savedEnv = {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    OPENAI_REQUEST_MAX_RETRIES: process.env.OPENAI_REQUEST_MAX_RETRIES,
+  }
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+
+  function failedFrame(message: string): string {
+    return `data: ${JSON.stringify({
+      type: 'response.failed',
+      response: {
+        error: {
+          type: 'rate_limit_error',
+          code: 'rate_limit_exceeded',
+          message,
+        },
+      },
+    })}\n\n`
+  }
+
+  test('a wait past the ladder ceiling ends it instead of burning the budget', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(
+        failedFrame('Rate limit reached. Please try again in 3600s.'),
+        { status: 200 },
+      )
+    }) as unknown as typeof fetch
+
+    const error = await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    }).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    )
+
+    // An SSE frame has no Retry-After header, so before the message was parsed
+    // this looked like an ordinary retryable rate limit: the ladder re-asked a
+    // limiter that had just named an hour, three times over.
+    expect((error as { retryAfterMs?: number })?.retryAfterMs).toBe(3_600_000)
+    expect(calls).toBe(1)
+  })
+
+  test('a short wait stays on the ladder', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '0'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(failedFrame('Please try again in 1.5s.'), {
+        status: 200,
+      })
+    }) as unknown as typeof fetch
+
+    const error = await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.5',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    }).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    )
+
+    expect((error as { retryAfterMs?: number })?.retryAfterMs).toBe(1500)
+    // The injected fetch is the only transport these cases ever reach; a real
+    // request would have needed a credential none of them supply.
+    expect(calls).toBe(1)
   })
 })

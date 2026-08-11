@@ -15,7 +15,7 @@
  */
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { verifyOpencodeAccess } from '../catalog.js'
+import { fetchOpencodeConsoleConfig, verifyOpencodeAccess } from '../catalog.js'
 import type { OpencodeCredential } from '../oauth.js'
 
 const realFetch = globalThis.fetch
@@ -129,5 +129,101 @@ describe('verifyOpencodeAccess', () => {
       model: 'deepseek-v4-flash',
       messages: [],
     })
+  })
+})
+
+/**
+ * The Console inference plane, read off `/api/config`.
+ *
+ * The body below is the live console's answer with a real access token
+ * (2026-08-11), trimmed to the fields occ reads. It is the whole reason this
+ * exists: the same token answers 200 at `provider.opencode.api` and 401
+ * `AuthError: Invalid API key.` at the Zen base URL occ used to hard-code, so
+ * the endpoint cannot be a constant — and neither can the headers, whose
+ * `x-org-id` is per account.
+ */
+const CONSOLE_CONFIG = {
+  config: {
+    provider: {
+      opencode: {
+        name: 'opencode',
+        npm: '@ai-sdk/openai-compatible',
+        api: 'https://console.opencode.ai/inference/openai/v1',
+        env: ['OPENCODE_CONSOLE_TOKEN'],
+        options: {
+          apiKey: '{env:OPENCODE_CONSOLE_TOKEN}',
+          headers: { 'x-org-id': 'org_01KZ', 'x-ignored': 7 },
+        },
+        models: {
+          'big-pickle': { name: 'Big Pickle' },
+          'claude-haiku-4-5': { name: 'Claude Haiku 4.5', status: 'active' },
+        },
+      },
+    },
+  },
+}
+
+describe('fetchOpencodeConsoleConfig', () => {
+  test('reads the endpoint, the headers and the entitlement models', async () => {
+    stubFetch(200, CONSOLE_CONFIG)
+    const config = await fetchOpencodeConsoleConfig(credential)
+
+    expect(calls[0]?.url).toBe('https://console.opencode.ai/api/config')
+    expect(config?.inference).toEqual({
+      api: 'https://console.opencode.ai/inference/openai/v1',
+      // Non-string header values are dropped rather than passed through: they
+      // reach fetch as headers and would throw at request time, not read time.
+      headers: { 'x-org-id': 'org_01KZ' },
+    })
+    expect(config?.models?.map(model => model.id)).toEqual([
+      'big-pickle',
+      'claude-haiku-4-5',
+    ])
+  })
+
+  test('a config with no api names no plane', async () => {
+    // Nothing is invented: without an endpoint from the console the caller
+    // keeps whatever it already had, and the probe decides whether that works.
+    stubFetch(200, {
+      config: { provider: { opencode: { models: { 'big-pickle': {} } } } },
+    })
+    const config = await fetchOpencodeConsoleConfig(credential)
+    expect(config?.inference).toBeUndefined()
+    expect(config?.models).toHaveLength(1)
+  })
+
+  test('a key credential has no account to ask', async () => {
+    stubFetch(200, CONSOLE_CONFIG)
+    expect(
+      await fetchOpencodeConsoleConfig({ token: 'zen-key', kind: 'key' }),
+    ).toBeNull()
+    expect(calls).toHaveLength(0)
+  })
+
+  test('404 is “no remote config”, not an error', async () => {
+    stubFetch(404, { error: 'not found' })
+    expect(await fetchOpencodeConsoleConfig(credential)).toBeNull()
+  })
+})
+
+describe('a model the organization may not use', () => {
+  test('is not an auth verdict', async () => {
+    // Measured: `claude-haiku-4-5` on the console plane answers 403 with this
+    // body while `/api/config` reports it `status: "active"`. It is the model
+    // that was refused, not the credential — rejecting the login for it would
+    // block a working account over a probe model occ chose itself.
+    stubFetch(403, {
+      error: {
+        type: 'managed_inference_model_disabled',
+        message: 'Model is disabled for this organization',
+      },
+    })
+    expect(
+      await verifyOpencodeAccess(
+        credential,
+        'https://console.opencode.ai/inference/openai/v1',
+        'claude-haiku-4-5',
+      ),
+    ).toEqual({ ok: true })
   })
 })

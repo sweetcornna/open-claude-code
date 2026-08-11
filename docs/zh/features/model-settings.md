@@ -1,6 +1,8 @@
 # 分层模型设置（`/model-settings`）
 
-按 provider 默认模型与四个模型档位（default / haiku / sonnet / opus / fable）分别配置**思考强度**与**上下文窗口**。
+按 provider 默认模型与四个模型档位（default / haiku / sonnet / opus / fable）分别配置**档位模型**、**思考强度**与**上下文窗口**。
+
+> `/models-setting` 现在是 `/model-settings` 的别名。两条命令此前只差一个 `s` 的位置，且写的是同一份 `settings.modelSettings`（前者开向导的模型步骤，那一步本来就同时收模型 id、effort 和最大上下文），在 `/help` 里读起来就是重复项。已合并为一条：**不带参数打开交互式编辑器，带参数走脚本形式**。旧名保留为别名，肌肉记忆和既有脚本不受影响。
 
 在此之前这两轴都是全局单值：一个扁平的 `settings.effortLevel`，和一个 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`。前者说不出「opus 多想一点、haiku 省着点」，后者更是 `utils/session/context.ts` 里明写的「the single knob」。而合理的默认值其实取决于别名背后是哪家 provider——DeepSeek 的三档 effort 梯子和 Anthropic 的五档不是一回事，GPT 的窗口也不是 200k。
 
@@ -84,7 +86,7 @@ occ 的五档（`low`/`medium`/`high`/`xhigh`/`max`）只有 Anthropic 一家原
 
 ## 用法
 
-两个入口，写的是同一份 `settings.modelSettings`：
+三个入口，写的是同一份 `settings.modelSettings`：
 
 **`/model` 选择器**（推荐）—— 高亮某一行时，`←/→` 调该设置槽的 effort，`Space` 循环该设置槽的最大上下文（默认 → 128k → 200k → 272k → 512k → 1M → 回到默认）。`Default` 行写入独立的 `default` 槽，其余别名写入各自档位；面板也会在 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` / `CLAUDE_CODE_EFFORT_LEVEL` 正在压制它时给出提示。
 
@@ -94,16 +96,23 @@ occ 的五档（`low`/`medium`/`high`/`xhigh`/`max`）只有 Anthropic 一家原
 
 **首启向导 / `/login` Step 2** 也写这里：`Max context tokens` 与 `Thinking effort` 两个字段落进 `modelSettings`，而不是从前的 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`（那个键在本层**之上**，写在登录里等于让开场值静默压过用户此后每一次调整；保存时会删掉旧版留下的它）。首次保存会为 provider 默认模型和四个档位分别写入家族默认值。**重跑向导时留空则什么都不动**；把 effort 明确选回 `(model default)` 会删除旧覆盖。
 
-**`/model-settings` 命令**：
+**`/model-settings` 命令**（别名 `/models-setting`）：
 
 ```bash
-/model-settings                      # 打印 default 与四个档位当前值
-/model-settings show                 # 同上
+/model-settings                      # 交互式：档位模型 + effort + 上下文一起改
+/model-settings show                 # 打印 default 与四个档位当前值
 /model-settings default effort high  # 设置 provider 默认模型
 /model-settings opus effort max      # 设一个档位的 effort
 /model-settings haiku context 128k   # 设窗口，接受 200000 / 272k / 1m
 /model-settings opus reset           # 清掉该档位的覆盖，回到默认
+/model-settings help                 # 用法（`--help` / `-h` / `?` 同义）
 ```
+
+**不带参数**打开的就是登录流程末尾那一步向导（端点与凭据从 env 读回来，一个字都不用重敲），所以档位模型、effort、最大上下文在同一个界面里改完。
+
+**没有可配置 provider 的会话不会因此变得更弱**：Bedrock / Vertex / Foundry 在各自控制台配模型，纯一方会话也没有 `*_DEFAULT_<TIER>_MODEL` 可指——这些会话不带参数时**退回上面那份文字面板**（等同 `show`），而不是弹一个「这里没什么可配」的死胡同对话框。effort 与上下文本来就是它们能设的，`show` 和各个 `<槽位> …` 形式一样可用。
+
+所有带参数的形式都不渲染 UI，可以直接在脚本里用。
 
 落盘在 `settings.json` 的 `modelSettings`：
 
