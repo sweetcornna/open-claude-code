@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import {
   createOpenAIResponseError,
   OpenAIRequestError,
+  parseRetryAfterFromErrorPayload,
   resolveOpenAIMaxRetries,
   retryOpenAIRequest,
 } from '../retry.js'
@@ -484,5 +485,81 @@ describe('retryOpenAIRequest', () => {
     }
     expect(calls).toBe(3)
     expect(caught).toBe(lastError)
+  })
+})
+
+/**
+ * An SSE `response.failed` frame carries no HTTP headers, so a mid-stream rate
+ * limit can only state its wait in prose. OpenAI's own client reads it out of
+ * the message for that reason (codex-rs/codex-api/src/sse/responses.rs:602-626,
+ * `try_parse_retry_after`, gated on `code == "rate_limit_exceeded"`).
+ */
+describe('parseRetryAfterFromErrorPayload', () => {
+  const rateLimited = (message: string) => ({
+    code: 'rate_limit_exceeded',
+    message,
+  })
+
+  test('reads a fractional seconds wait', () => {
+    expect(
+      parseRetryAfterFromErrorPayload(
+        rateLimited(
+          'Rate limit reached for gpt-5.5. Please try again in 1.5s. Contact us…',
+        ),
+      ),
+    ).toBe(1500)
+  })
+
+  test('reads a milliseconds wait', () => {
+    expect(
+      parseRetryAfterFromErrorPayload(
+        rateLimited('Please try again in 872ms.'),
+      ),
+    ).toBe(872)
+  })
+
+  test('reads the spelled-out unit', () => {
+    expect(
+      parseRetryAfterFromErrorPayload(
+        rateLimited('Please try again in 20 seconds.'),
+      ),
+    ).toBe(20_000)
+  })
+
+  test('is case-insensitive', () => {
+    expect(
+      parseRetryAfterFromErrorPayload(rateLimited('TRY AGAIN IN 2S')),
+    ).toBe(2000)
+  })
+
+  test('ignores prose in any other error class', () => {
+    // A 400 body is free to mention a wait; that is not a scheduling
+    // instruction and must not be able to stall the ladder.
+    expect(
+      parseRetryAfterFromErrorPayload({
+        code: 'invalid_request_error',
+        message: 'Please try again in 60s.',
+      }),
+    ).toBeUndefined()
+  })
+
+  test('returns undefined when the message states no wait', () => {
+    expect(
+      parseRetryAfterFromErrorPayload(
+        rateLimited('Rate limit reached for requests.'),
+      ),
+    ).toBeUndefined()
+  })
+
+  test('tolerates a missing or non-string message', () => {
+    expect(
+      parseRetryAfterFromErrorPayload({ code: 'rate_limit_exceeded' }),
+    ).toBeUndefined()
+    expect(
+      parseRetryAfterFromErrorPayload({
+        code: 'rate_limit_exceeded',
+        message: 42,
+      }),
+    ).toBeUndefined()
   })
 })

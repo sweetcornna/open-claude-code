@@ -44,6 +44,7 @@ import {
   OPENAI_REASONING_ITEMS_FIELD,
   type OpenAIReasoningItem,
 } from '@ant/model-provider'
+import { describeOpencodeModelDisabled } from 'src/services/auth/opencode/inferenceErrors.js'
 import { isChatGPTAuthEnabled } from './chatgptAuth.js'
 import { resolveOpenAIWireProtocol } from './wireProtocol.js'
 import {
@@ -657,10 +658,20 @@ export async function* queryModelOpenAI(
       return
     }
     logForDebugging('[OpenAI] API request failed', { level: 'error' })
+    // One failure on this lane needs occ's own words. OpenCode's Console plane
+    // answers 403 `managed_inference_model_disabled` for a model the
+    // organization is not entitled to, and its own `/api/config` reports that
+    // same model as active — so the picker could not have known, and the raw
+    // 403 reads as "your credential is bad" for a credential that is fine.
+    const modelDisabled = describeOpencodeModelDisabled(
+      error,
+      resolveOpenAIModel(options.model),
+    )
     yield createAssistantAPIErrorMessageFromError({
       apiError: 'api_error',
       sourceError: error,
       provider: 'OpenAI',
+      ...(modelDisabled ? { message: modelDisabled } : {}),
     })
   }
 }
