@@ -38,6 +38,29 @@ export function isSafeVersionSpec(spec: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9.+-]*$/.test(spec)
 }
 
+/**
+ * True for a registry URL that is safe to put on an `install -g` command line.
+ *
+ * Same hazard as `isSafeVersionSpec`, one step further out: on Windows the
+ * spawn goes through cmd.exe (see `packageManagerSpawnOptions`) and `occ
+ * update` shells out directly, so `https://x/&calc` would run a second
+ * command. Registry URLs are also read from places occ does not own — npmrc,
+ * bunfig, environment — so "it came from config" is not a reason to trust it.
+ *
+ * The allowed set is what registry URLs actually contain (scheme, host, port,
+ * path, percent-escapes, and the userinfo separators private registries use);
+ * every shell metacharacter, quote, backslash and space is excluded.
+ */
+export function isSafeRegistryUrl(url: string): boolean {
+  if (!/^https?:\/\/[A-Za-z0-9._~:@\-/%]+$/.test(url)) return false
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
 /** Batch wrappers Windows cannot hand straight to CreateProcess. */
 const WINDOWS_SHIM_EXTENSIONS = ['.cmd', '.bat']
 

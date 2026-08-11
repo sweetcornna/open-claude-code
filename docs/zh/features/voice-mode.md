@@ -49,9 +49,19 @@ VOICE_MODE 实现"按键说话"（Push-to-Talk）语音输入。用户按住空�
 // Anthropic 后端（需要 OAuth）
 isVoiceModeEnabled() = hasVoiceAuth() && isVoiceGrowthBookEnabled()
 
-// 豆包后端 / 通用可用性检查（不需要 OAuth）
+// 豆包 / 本地后端 / 通用可用性检查（不需要 OAuth）
 isVoiceAvailable() = isVoiceGrowthBookEnabled()
 ```
+
+**三个后端的可用性差别很大**，这是选默认值时最容易忽略的一点：
+
+| `voiceProvider` | 需要什么 | 谁用得上 |
+|---|---|---|
+| `anthropic`（默认） | claude.ai 的 OAuth token | 只有一方登录。API key、Bedrock、Vertex、Foundry、任何第三方 provider 都不满足 |
+| `doubao` | 无 | **已失效** —— 该包冒充的是一个已被下线的字节应用版本，现在返回 `service discovery failure` |
+| `local` | 无（首次下载后离线） | 所有人 |
+
+也就是说在 2.38.x 之前，用第三方 provider 的用户没有任何可用的语音后端 —— 默认那条要求他们拿不到的凭据，另一条已经坏了。`local` 是为此加的。
 
 1. **Feature Flag**：`feature('VOICE_MODE')` — 编译时/运行时开关
 2. **GrowthBook Kill-Switch**：`!getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_quartz_disabled', false)` — 紧急关闭开关（默认 false = 未禁用）
@@ -129,6 +139,34 @@ finalize() 立即返回（豆包在录音过程中已返回结果，无需等待
       ▼
 转录文本 → 插入输入框 → 自动提交
 ```
+
+#### 本地后端（sherpa-onnx，离线）
+
+第三个后端，也是**唯一一个不依赖任何账号的**：`voiceProvider: 'local'`。首次使用时下载识别器与模型到 `<配置目录>/stt/`，之后完全离线，无密钥、无配额、无外发请求。
+
+实现在 `src/services/localStt/`（目录、安装、校验、解包、转写）与 `src/services/localSttStream.ts`（把它接成与另外两个后端相同的流式接口）。
+
+**识别在子进程里跑，不在 occ 进程内。** 这是硬要求：occ 的常驻 RSS 约 35MB，是靠代码分割从约 1GB 压下来的（见 `memory-footprint.md`），把模型加载进主进程会一次性还回去。子进程说完即退，模型内存随之释放。
+
+**为什么是 sherpa-onnx 而不是 whisper.cpp。** whisper.cpp 的 release 页面发 Linux 和 Windows 二进制，但**不发 macOS CLI**；剩下两条路是 Homebrew bottle（等于只支持装了 brew 的机器）或源码编译（等于要求用户机器上有工具链）。sherpa-onnx 对八个平台/架构组合都发预编译 CLI。Windows 取 `MT`（静态 CRT）版本，免得逼用户装 VC++ 运行库；有 `no-tts` 版本的取它，语音合成那一半会让解压体积翻倍。
+
+**所有产物按版本与摘要钉死**，摘要取自 GitHub / Hugging Face 的元数据 API，**不取自下载物本身**。摘要对不上就报错终止，而不是运行一个未经校验的二进制。升级 `SHERPA_ONNX_VERSION` 需要重读 release 的 `digest` 字段并整体替换 `catalog.ts` 里的 url/sha256/bytes 三元组。
+
+##### 模型选择
+
+在 macOS arm64 上实测（5.28 秒中文样本，`--num-threads=2`）：
+
+| 模型 | 下载体积 | 峰值内存 | RTF | 中文 | 英文 |
+|---|---|---|---|---|---|
+| `sense-voice`（默认） | 226 MB | 555 MB | 0.054 | 逐字正确 | 可用但技术词有误 |
+| `paraformer-zh-small` | 78 MB | **225 MB** | **0.013** | 逐字正确 | 不可用 |
+| `whisper-tiny` | 99 MB | — | — | — | — |
+
+**纯中文听写选 `paraformer-zh-small`**：同样逐字正确，内存少一半以上，快四倍，下载小三分之二。默认之所以是 `sense-voice`，是因为它同时支持中英日韩粤，而 Paraformer 只做中文 —— 拿它跑英文会得到 `please refacor the redry clasassiation` 这种结果。
+
+两个模型对英文技术词汇都不理想（`retry` → `RERY`、`test suite` → `TET WEEK`），这是模型本身的限制，不是接入方式的问题。
+
+峰值内存那一列是**子进程**的，说完即释放，occ 自身的 RSS 不受影响。
 
 ### 3.4 音频录制
 

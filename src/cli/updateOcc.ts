@@ -4,13 +4,24 @@
  * Detection strategy:
  *  1. If `bun` is available and the current installation was done via bun → use `bun update -g`
  *  2. Otherwise → use `npm install -g`
+ *
+ * Both halves — the `npm view` version check and the `install -g` — go to
+ * whichever registry `resolveUpdateRegistry` picked for this process; see
+ * src/services/autoUpdate/updateRegistry.ts for why and for the integrity
+ * gate that has to pass before a raced mirror is allowed to install anything.
  */
 import { BIN_NAME, NPM_PACKAGE_NAME } from 'src/constants/brand.js'
 import chalk from 'chalk'
-import { execSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import {
+  approveRegistryForInstall,
+  getSessionUpdateRegistry,
+  registryCliArgs,
+} from '../services/autoUpdate/updateRegistry.js'
+import { packageManagerSpawnOptions } from '../utils/process/packageManager.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { whichSync } from '../utils/process/which.js'
 import { distRoot } from '../utils/filesystem/distRoot.js'
@@ -93,21 +104,52 @@ export function isRunningFromBunGlobalInstall(): boolean {
 }
 
 /**
+ * Ceiling for the `npm view` version check.
+ *
+ * This was 10 s, which was not a budget so much as a coin flip: a cold
+ * `npm view` on the network this whole registry-racing change exists for
+ * measured 8.85 s — 88% of the allowance — and npm does its own retries on top
+ * (fetch-retries defaults to 2, with a 10 s minimum backoff), so a 10 s
+ * ceiling truncated npm's first retry before it could help. When it tripped,
+ * `getLatestOccVersion` returned null, the updater read that as "no update
+ * available", and the only evidence was one logForDebugging line.
+ *
+ * 30 s is picked to be clear of both the measurement and npm's first retry.
+ * It is not larger because the interactive `occ update` blocks the user on
+ * this call and beyond roughly half a minute it reads as hung; the background
+ * loop can afford it either way, since its timers are unref'd and the child is
+ * bound to the shutdown signal. Note this ceiling now mostly governs the
+ * fallback path: through a raced mirror the same check measured 0.356 s
+ * against 2.95 s direct.
+ */
+const VERSION_CHECK_TIMEOUT_MS = 30_000
+
+/**
  * Get the latest version from npm registry.
  *
  * `signal` lets the caller cancel the spawn — the background updater passes a
  * shutdown signal so Ctrl+C is not held hostage by an in-flight `npm view`.
+ *
+ * `registry` redirects this one invocation only; nothing is written to the
+ * user's npm configuration.
  */
 export async function getLatestOccVersion(
   signal?: AbortSignal,
+  registry?: string,
 ): Promise<string | null> {
   const { signal: combined, cleanup } = createCombinedAbortSignal(signal, {
-    timeoutMs: 10_000,
+    timeoutMs: VERSION_CHECK_TIMEOUT_MS,
   })
   try {
     const result = await execFileNoThrowWithCwd(
       'npm',
-      ['view', `${PACKAGE_NAME}@latest`, 'version', '--prefer-online'],
+      [
+        'view',
+        `${PACKAGE_NAME}@latest`,
+        'version',
+        '--prefer-online',
+        ...registryCliArgs(registry),
+      ],
       { abortSignal: combined, cwd: homedir() },
     )
     if (result.code !== 0) {
@@ -120,7 +162,17 @@ export async function getLatestOccVersion(
   }
 }
 
-const INSTALL_TIMEOUT_MS = 120_000
+/**
+ * Ceiling for the interactive install.
+ *
+ * Also raised from 120 s, and for a measured reason: a real
+ * `bun install -g @sweetcornna/open-claude-code@2.38.1` on the slow path took
+ * 347.93 s wall (0.19 s user / 0.42 s sys — all of it network). The old cap
+ * killed that install just under a third of the way through and reported it as
+ * a failure. Racing registries usually makes this moot, but the fallback path
+ * is precisely the one where the old ceiling was wrong.
+ */
+const INSTALL_TIMEOUT_MS = 600_000
 
 /**
  * Shared by the interactive `occ update` path below and the background
@@ -144,8 +196,16 @@ export async function updateOcc(): Promise<void> {
   writeToStdout(`Package manager: ${pkgManager}\n`)
   writeToStdout('Checking for updates...\n')
 
+  // Pick the registry before the version check, so both halves benefit.
+  const choice = await getSessionUpdateRegistry({
+    probeVersion: currentVersion,
+  })
+  if (choice.source === 'raced') {
+    writeToStdout(`Fastest registry: ${choice.registry}\n`)
+  }
+
   // Get latest version
-  const latestVersion = await getLatestOccVersion()
+  const latestVersion = await getLatestOccVersion(undefined, choice.registry)
   if (!latestVersion) {
     process.stderr.write(chalk.red('Failed to check for updates') + '\n')
     process.stderr.write('Unable to fetch latest version from npm registry.\n')
@@ -165,21 +225,46 @@ export async function updateOcc(): Promise<void> {
   writeToStdout(
     `New version available: ${latestVersion} (current: ${currentVersion})\n`,
   )
+
+  // A raced mirror is a third party occ picked on the user's behalf, so it has
+  // to prove it serves the same artifact npm published before it is allowed to
+  // install anything. On any doubt this returns the official registry.
+  const registry = await approveRegistryForInstall({
+    choice,
+    version: latestVersion,
+  })
+  if (choice.source === 'raced' && registry !== choice.registry) {
+    writeToStdout(
+      chalk.yellow(
+        `Integrity check did not pass for ${choice.registry}; installing from the official registry instead.`,
+      ) + '\n',
+    )
+  }
   writeToStdout(`Installing update via ${pkgManager}...\n`)
 
   try {
-    if (pkgManager === 'bun') {
-      execSync(`bun install -g ${latestPackageSpec()}`, {
+    // Argument array, not a shell string. The registry URL reaching this line
+    // came from npmrc / bunfig / the environment, so it is not occ's to trust;
+    // isSafeRegistryUrl screens it, but not going through a shell in the first
+    // place is the part that does not depend on getting a regex right. On
+    // Windows packageManagerSpawnOptions still needs shell:true, because npm
+    // and bun are .cmd shims there and CreateProcess cannot run a batch file —
+    // which is exactly why the screening stays.
+    const result = spawnSync(
+      pkgManager,
+      ['install', '-g', ...registryCliArgs(registry), latestPackageSpec()],
+      {
         stdio: 'inherit',
         cwd: homedir(),
         timeout: INSTALL_TIMEOUT_MS,
-      })
-    } else {
-      execSync(`npm install -g ${latestPackageSpec()}`, {
-        stdio: 'inherit',
-        cwd: homedir(),
-        timeout: INSTALL_TIMEOUT_MS,
-      })
+        ...packageManagerSpawnOptions(),
+      },
+    )
+    if (result.error) throw result.error
+    if (result.status !== 0) {
+      throw new Error(
+        `${pkgManager} install -g exited with ${result.status ?? result.signal}`,
+      )
     }
 
     writeToStdout(

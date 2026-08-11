@@ -48,6 +48,12 @@ type Calls = {
     checkedAt: number
     minimumElapsedMs: number
   }>
+  /** Registries handed to the version check, in order. */
+  versionCheckRegistries: Array<string | undefined>
+  /** Probe versions the registry resolution was asked about. */
+  registryProbeVersions: string[]
+  /** (choice, version) pairs the integrity gate saw. */
+  approvals: Array<{ registry: string; source: string; version: string }>
 }
 
 function makeDeps(overrides: Partial<Deps> = {}): {
@@ -62,6 +68,9 @@ function makeDeps(overrides: Partial<Deps> = {}): {
     latestChecks: 0,
     installTypeChecks: 0,
     checkClaims: [],
+    versionCheckRegistries: [],
+    registryProbeVersions: [],
+    approvals: [],
   }
   const deps: Deps = {
     env: { NODE_ENV: 'production' } as NodeJS.ProcessEnv,
@@ -73,8 +82,17 @@ function makeDeps(overrides: Partial<Deps> = {}): {
     },
     isBunGlobalInstall: () => false,
     getCurrentVersion: () => '1.0.0',
-    getLatestVersion: async () => {
+    resolveRegistry: async probeVersion => {
+      calls.registryProbeVersions.push(probeVersion)
+      return { registry: 'https://mirror.example', source: 'raced' }
+    },
+    approveRegistry: async (choice, version) => {
+      calls.approvals.push({ ...choice, version })
+      return choice.registry
+    },
+    getLatestVersion: async (_signal, registry) => {
       calls.latestChecks++
+      calls.versionCheckRegistries.push(registry)
       return '1.1.0'
     },
     acquireLock: async () => {
@@ -144,6 +162,7 @@ describe('runBackgroundOccUpdateOnce', () => {
         pkgManager: 'npm',
         spec: '@scope/pkg@latest',
         version: '1.1.0',
+        registry: 'https://mirror.example',
       },
     ])
     expect(calls.notified).toEqual([
@@ -162,6 +181,51 @@ describe('runBackgroundOccUpdateOnce', () => {
     expect(calls.spawned.map(install => install.pkgManager)).toEqual(['bun'])
     // bun path check short-circuits the (subprocess-spawning) type detection
     expect(calls.installTypeChecks).toBe(0)
+  })
+
+  test('sends both the version check and the install to the chosen registry', async () => {
+    // "Both halves benefit": before this, `npm view` always went to the
+    // default registry — measured 2.95 s there against 0.356 s through the
+    // mirror the race picks.
+    const { deps, calls } = makeDeps()
+    await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(calls.versionCheckRegistries).toEqual(['https://mirror.example'])
+    expect(calls.spawned[0]?.registry).toBe('https://mirror.example')
+    // The probe reads the running version's tarball, so the registry can be
+    // chosen before the version check rather than after it.
+    expect(calls.registryProbeVersions).toEqual(['1.0.0'])
+  })
+
+  test('installs from the official registry when the integrity gate rejects the mirror', async () => {
+    // A mirror is a third party. If it will not prove it serves the artifact
+    // npm published for this exact version, the install still happens — just
+    // not from there.
+    const { deps, calls } = makeDeps()
+    deps.approveRegistry = async (choice, version) => {
+      calls.approvals.push({ ...choice, version })
+      return 'https://registry.npmjs.org'
+    }
+    const outcome = await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(outcome).toEqual({ status: 'installing', version: '1.1.0' })
+    expect(calls.spawned[0]?.registry).toBe('https://registry.npmjs.org')
+    // The gate is asked about the version actually being installed, not the
+    // one the probe happened to use.
+    expect(calls.approvals).toEqual([
+      {
+        registry: 'https://mirror.example',
+        source: 'raced',
+        version: '1.1.0',
+      },
+    ])
+  })
+
+  test('never runs the integrity gate when there is nothing to install', async () => {
+    const { deps, calls } = makeDeps({ getLatestVersion: async () => '1.0.0' })
+    await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(calls.approvals).toEqual([])
   })
 
   test('stands down when another process already holds the update lock', async () => {

@@ -16,6 +16,7 @@
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { packageManagerSpawnOptions } from 'src/utils/process/packageManager.js'
+import { registryCliArgs } from './updateRegistry.js'
 
 export type OccInstall = {
   pkgManager: 'bun' | 'npm'
@@ -23,19 +24,30 @@ export type OccInstall = {
   spec: string
   /** Version resolved at check time; for logging and the REPL notice. */
   version: string
+  /**
+   * Registry for this one invocation, already screened and — when occ picked
+   * it rather than the user — already past the integrity gate in
+   * updateRegistry.ts. Omitted means "whatever the package manager is already
+   * configured to use"; nothing on disk is ever modified either way.
+   */
+  registry?: string
 }
 
 export function spawnDetachedOccInstaller(install: OccInstall): Promise<void> {
-  const child = spawn(install.pkgManager, ['install', '-g', install.spec], {
-    // Never from the project cwd: a repo-level .npmrc / bunfig.toml could
-    // redirect the install to another registry.
-    cwd: homedir(),
-    detached: true,
-    stdio: 'ignore',
-    // shell:true + windowsHide, because npm and bun are .cmd shims on Windows
-    // and CreateProcess cannot execute a batch file.
-    ...packageManagerSpawnOptions(),
-  })
+  const child = spawn(
+    install.pkgManager,
+    ['install', '-g', ...registryCliArgs(install.registry), install.spec],
+    {
+      // Never from the project cwd: a repo-level .npmrc / bunfig.toml could
+      // redirect the install to another registry.
+      cwd: homedir(),
+      detached: true,
+      stdio: 'ignore',
+      // shell:true + windowsHide, because npm and bun are .cmd shims on Windows
+      // and CreateProcess cannot execute a batch file.
+      ...packageManagerSpawnOptions(),
+    },
+  )
   return new Promise((resolve, reject) => {
     child.once('spawn', () => {
       child.unref()

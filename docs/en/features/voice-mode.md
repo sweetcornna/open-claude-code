@@ -53,6 +53,16 @@ isVoiceModeEnabled() = hasVoiceAuth() && isVoiceGrowthBookEnabled()
 isVoiceAvailable() = isVoiceGrowthBookEnabled()
 ```
 
+**The three backends differ sharply in who can reach them**, which is the part most easily missed when picking a default:
+
+| `voiceProvider` | Requires | Who can use it |
+|---|---|---|
+| `anthropic` (default) | A claude.ai OAuth token | First-party logins only. API keys, Bedrock, Vertex, Foundry and every third-party provider fail the check |
+| `doubao` | Nothing | **Dead** — the package impersonates a retired ByteDance app build and now answers `service discovery failure` |
+| `local` | Nothing (offline after the first download) | Everyone |
+
+Before 2.38.x that left users on a third-party provider with no working voice backend at all: the default demanded a credential they cannot obtain, and the other one was broken. `local` exists for them.
+
 1. **Feature Flag**: `feature('VOICE_MODE')` — compile-time/runtime switch
 2. **GrowthBook Kill-Switch**: `!getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_quartz_disabled', false)` — emergency disable switch; false by default means enabled
 3. **Authentication check (Anthropic only)**: `hasVoiceAuth()` — requires an Anthropic OAuth token, not an API key
@@ -129,6 +139,34 @@ finalize() returns immediately (Doubao already returned results during recording
       ▼
 Transcribed text → insert into input field → submit automatically
 ```
+
+#### Local backend (sherpa-onnx, offline)
+
+The third backend, and the only one that needs no account at all: `voiceProvider: 'local'`. On first use it downloads a recognizer and a model into `<config dir>/stt/`; after that it is fully offline — no key, no quota, no outbound request.
+
+It lives in `src/services/localStt/` (catalog, install, digest verification, extraction, transcription) and `src/services/localSttStream.ts`, which adapts it to the same streaming interface the other two backends expose.
+
+**Recognition runs in a CHILD PROCESS, not inside occ.** That is a hard requirement: occ's resident RSS is ~35 MB, reached by splitting the bundle down from ~1 GB (see `memory-footprint.md`), and loading a model in-process would hand all of that back. The child exits when the utterance ends and its memory goes with it.
+
+**Why sherpa-onnx rather than whisper.cpp.** whisper.cpp's release page publishes Linux and Windows binaries but **no macOS CLI**; the remaining options there are a Homebrew bottle (works only where brew exists) or building from source (requires a toolchain on the user's machine). sherpa-onnx publishes a prebuilt CLI for all eight platform/arch combinations. Windows uses the `MT` (static CRT) builds so the feature never demands the Visual C++ redistributable, and `no-tts` builds are preferred where published — the synthesis half roughly doubles the extracted size.
+
+**Every artifact is pinned by version and digest**, and the digests come from the GitHub / Hugging Face metadata APIs — never from the download itself. A mismatch fails the install loudly instead of running an unverified binary. Bumping `SHERPA_ONNX_VERSION` means re-reading the release's `digest` fields and replacing every url/sha256/bytes triple in `catalog.ts`.
+
+##### Choosing a model
+
+Measured on macOS arm64 (5.28 s Chinese sample, `--num-threads=2`):
+
+| Model | Download | Peak RSS | RTF | Chinese | English |
+|---|---|---|---|---|---|
+| `sense-voice` (default) | 226 MB | 555 MB | 0.054 | Character-perfect | Usable, technical terms suffer |
+| `paraformer-zh-small` | 78 MB | **225 MB** | **0.013** | Character-perfect | Unusable |
+| `whisper-tiny` | 99 MB | — | — | — | — |
+
+**For Chinese-only dictation, pick `paraformer-zh-small`**: identical accuracy, less than half the memory, four times faster, a third of the download. The default is `sense-voice` because it also covers English, Japanese, Korean and Cantonese, whereas Paraformer is Chinese-only — feeding it English yields output like `please refacor the redry clasassiation`.
+
+Neither model is good at English technical vocabulary (`retry` → `RERY`, `test suite` → `TET WEEK`). That is a property of the models, not of how they are wired in.
+
+The peak-RSS column is the **child** process; it is released when the utterance ends and occ's own RSS is unaffected.
 
 ### 3.4 Audio recording
 
