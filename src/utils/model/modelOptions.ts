@@ -183,7 +183,7 @@ function getTierOption(tier: ModelTier): ModelOption {
       value: tier,
       label: nameEnv ?? label,
       description:
-        descEnv ?? `${label} tier · no model configured (/models-setting)`,
+        descEnv ?? `${label} tier · no model configured (/model-settings)`,
       descriptionForModel: `${label} tier — no model is configured for this provider`,
     }
   }

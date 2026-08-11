@@ -84,7 +84,7 @@ function hasAnyTierConfigured(
  *     resolved family default. That is the whole point of persisting here — a
  *     fresh login ends with five concrete slots rather than four rows whose
  *     meaning shifts under the user when occ's default table changes.
- *   - **Re-running the wizard** (`/models-setting`, or a second `/login`): leave that
+ *   - **Re-running the wizard** (`/model-settings`, or a second `/login`): leave that
  *     axis alone. Someone who tuned opus and haiku differently in `/model` must
  *     not have both flattened to one value just because they reopened the form
  *     to change an endpoint. Only an explicitly filled field is applied, and it
