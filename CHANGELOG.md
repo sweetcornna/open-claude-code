@@ -4,6 +4,13 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.38.0 - 2026-08-10
+
+- **新增 OpenCode provider，可直接接入 Zen 网关与 Go 订阅。** 同一个账号后面是两个不同的产品，`/login` 里并列列出：Zen 按量付费（61 个模型，含 Claude 全系），Go 为订阅制（25 个开源编码模型）。选错的表现是 `Insufficient balance`，而那句报错本身不解释原因，因此两者的端点与计费方式在选择时直接标明。凭据支持 Console 设备码登录与 API key 两种，二者在推理面等价；免费档无需账号即可使用。协议线按模型家族自动选择：Claude 走 Anthropic Messages 线，GPT 与 o 系走 Responses 线，其余走 Chat Completions 线。access token 仅保存在 0600 权限的凭据文件中，不写入 `settings.json`，也不进入 provider 档案。当前阶段一个会话只说一种协议，因此跨家族钉档位会有一档走错。
+- **新增 `/provider-settings`，可同时配置多个 provider、自由切换，并把其中几个聚合成一份模型列表。** 面板列出已保存的 provider 及其端点与模型数量：`Enter` 切换、`Space` 加入或移出聚合、`R` 刷新该 provider 的模型列表。聚合后 `/model` 显示这些 provider 的模型并集，重名的模型标出归属（如 `gpt-5.4 (relay)`），选中即把会话切换到该模型所属的 provider。聚合的是模型列表而不是连接 —— 同一时刻仍然只有一个 provider 在服务，档位别名与子 agent 随之切换。面板只显示端点与「是否存有 key」，从不渲染凭据本身。原有的 `/provider save|use|list|delete` 全部保留。
+- **自动更新改为检测到即在后台安装，不再等到所有会话退出。** 此前更新会排队等最后一个会话退出才安装，实际表现是开着会话等半小时也毫无动静。不能边运行边安装原本有其原因：occ 由约 612 个内容哈希命名的模块组成、在整个会话生命周期内按需加载，而 `install -g` 重建包目录会让运行中会话里尚未加载的模块消失，之后任何一次加载都会让界面卡死到无法退出。现在启动时会把运行文件硬链接到独立目录并从那里加载，包目录被替换不再影响运行中的会话，更新因此可以立即安装：启动约 60 秒后检测，发现新版即在后台安装，重启生效，且同一时间只会有一个安装进程。硬链接不额外占用磁盘，跨磁盘时自动回退为复制。
+- **登出会一并清除分层模型设置，修复上一个 provider 的档位默认值污染下次配置。** 登出此前保留 `settings.modelSettings` 与遗留的 `effortLevel`，而这些值是按上一个 provider 的模型家族播种的。于是从 DeepSeek 登出后再配置 GPT，四个档位拿到的是 DeepSeek 那一行 —— 1M 上下文、max 思考档，而不应有的 272k 与 xhigh，并且配置向导会把这两个数字显示得像是用户自己选定的。
+
 ## 2.37.0 - 2026-08-10
 
 - **登出恢复为重置整个账户面，修复登出后无法重新配置。** 此前登出只清除三个 Anthropic 凭据键，第三方 provider 的端点与 key 全部幸存并在下次启动被重新写回进程环境；`isAnthropicAuthEnabled()` 因此判定会话仍属第三方，首启向导不再插入登录步骤，用户登出后没有任何重新配置的入口。DeepSeek 会话中登出更是完全无效：内存镜像会用幸存的 `OPENAI_API_KEY` 重新生成 `ANTHROPIC_API_KEY`。现在登出会清除全部 provider 键与 `modelType`、移除 ChatGPT 与 Antigravity 的 OAuth 凭据、释放 DeepSeek 镜像；MCP OAuth token、plugin secrets 与已保存的 provider 档案不受影响，`occ auth logout` 与 `/logout` 语义一致。
