@@ -122,6 +122,77 @@ function activateAndExpectPersisted(clearedKey: string): void {
   expect(persistedSettings.env?.GEMINI_API_KEY).toBe(targetApiKey)
 }
 
+describe('activateProfileForModel', () => {
+  /** Two aggregating profiles that share one model id and own one each. */
+  function seedAggregatedRegistry(): void {
+    profiles.saveProfilesFile({
+      version: 1,
+      profiles: {
+        'gemini-work': {
+          name: 'gemini-work',
+          modelType: 'gemini',
+          env: { GEMINI_API_KEY: targetApiKey },
+          models: [{ id: 'shared-model' }, { id: 'gemini-only' }],
+          aggregate: true,
+          createdAt: '2026-08-09T00:00:00.000Z',
+          updatedAt: '2026-08-09T00:00:00.000Z',
+        },
+        relay: {
+          name: 'relay',
+          modelType: 'openai',
+          env: { OPENAI_API_KEY: 'sk-relay' },
+          models: [{ id: 'shared-model' }],
+          aggregate: true,
+          createdAt: '2026-08-09T00:00:00.000Z',
+          updatedAt: '2026-08-09T00:00:00.000Z',
+        },
+      },
+    })
+  }
+
+  test('a unique model id switches the session to its owning profile', () => {
+    seedAggregatedRegistry()
+
+    const result = activate.activateProfileForModel('gemini-only')
+
+    expect(result).toMatchObject({
+      profile: { name: 'gemini-work' },
+      model: { id: 'gemini-only', profile: 'gemini-work', ambiguous: false },
+    })
+    expect(lastUpdate?.modelType).toBe('gemini')
+    expect(persistedSettings.env?.GEMINI_API_KEY).toBe(targetApiKey)
+    expect(profiles.loadProfilesFile().active).toBe('gemini-work')
+  })
+
+  test('a qualified selector picks the named profile', () => {
+    seedAggregatedRegistry()
+
+    const result = activate.activateProfileForModel('shared-model@relay')
+
+    expect(result).toMatchObject({
+      profile: { name: 'relay' },
+      model: { id: 'shared-model', profile: 'relay', ambiguous: true },
+    })
+    expect(lastUpdate?.modelType).toBe('openai')
+    expect(persistedSettings.env?.OPENAI_API_KEY).toBe('sk-relay')
+  })
+
+  test('an unresolvable selector activates nothing', () => {
+    seedAggregatedRegistry()
+
+    // Ambiguous without a qualifier, and simply unknown: both must leave the
+    // session exactly as it was rather than half-switching.
+    expect(activate.activateProfileForModel('shared-model')).toHaveProperty(
+      'error',
+    )
+    expect(activate.activateProfileForModel('no-such-model')).toHaveProperty(
+      'error',
+    )
+    expect(lastUpdate).toBeUndefined()
+    expect(profiles.loadProfilesFile().active).toBeUndefined()
+  })
+})
+
 describe('activateProfile live environment ownership', () => {
   test('preserves a parent-shell value that old settings did not manage', () => {
     persistedSettings = {
@@ -172,5 +243,64 @@ describe('activateProfile live environment ownership', () => {
     activateAndExpectPersisted('GROK_API_KEY')
 
     expect(process.env.GEMINI_API_KEY).toBe(targetApiKey)
+  })
+})
+
+describe('saving an OpenCode session', () => {
+  const OPENCODE_ENV = [
+    'OPENCODE_AUTH_MODE',
+    'OPENCODE_BASE_URL',
+    'OPENCODE_MODEL',
+    'ANTHROPIC_BASE_URL',
+    'ANTHROPIC_AUTH_TOKEN',
+  ] as const
+
+  afterEach(() => {
+    for (const key of OPENCODE_ENV) delete process.env[key]
+  })
+
+  /**
+   * The session is on Zen's /messages lane, so getAPIProvider() reports
+   * 'firstParty' and the ANTHROPIC_* keys hold what the wire mirror wrote —
+   * including an access token that expires within the hour.
+   */
+  function configureZenMessagesSession(): void {
+    persistedSettings = { env: {} }
+    process.env.OPENCODE_AUTH_MODE = 'opencode'
+    process.env.OPENCODE_BASE_URL = 'https://opencode.ai/zen/v1'
+    process.env.OPENCODE_MODEL = 'claude-opus-5'
+    process.env.ANTHROPIC_BASE_URL = 'https://opencode.ai/zen/v1'
+    process.env.ANTHROPIC_AUTH_TOKEN = 'mirrored-access-token'
+  }
+
+  test('captures the OPENCODE_ keys, not the lane it happens to speak', () => {
+    configureZenMessagesSession()
+
+    const saved = activate.saveCurrentAsProfile({ name: 'zen' })
+    expect('error' in saved).toBe(false)
+    if ('error' in saved) return
+
+    expect(saved.profile.modelType).toBe('opencode')
+    expect(saved.profile.env.OPENCODE_MODEL).toBe('claude-opus-5')
+    expect(saved.profile.env.OPENCODE_BASE_URL).toBe(
+      'https://opencode.ai/zen/v1',
+    )
+  })
+
+  test('never persists the mirrored access token', () => {
+    configureZenMessagesSession()
+
+    const saved = activate.saveCurrentAsProfile({ name: 'zen-token' })
+    expect('error' in saved).toBe(false)
+    if ('error' in saved) return
+
+    // The whole reason OpenCode is its own profile family. Captured under the
+    // lane's family instead, this key held a credential with about an hour to
+    // live — written into provider-profiles.json, where it would be both stale
+    // and a secret on disk.
+    expect(saved.profile.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
+    expect(Object.values(saved.profile.env)).not.toContain(
+      'mirrored-access-token',
+    )
   })
 })

@@ -28,6 +28,7 @@ import { chmodSync, mkdirSync, renameSync, writeFileSync } from 'fs'
 import { readFileSync } from 'fs'
 import { dirname } from 'path'
 import { occConfigPath } from 'src/config/paths.js'
+import type { CatalogModel } from 'src/services/modelCatalog/types.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
 import {
   ALL_PROFILE_ENV_KEYS,
@@ -60,6 +61,16 @@ export type ProviderProfile = {
   /** Provider-managed env keys to write into settings.env on activation. */
   env: Record<string, string>
   notes?: string
+  /**
+   * Catalog snapshot, ids exactly as the provider serves them.
+   *
+   * Optional, and it stays optional: every profile written by an earlier
+   * version lacks this field, and loadProfilesFile() must keep parsing those
+   * files unchanged. Absent means "no snapshot yet", never "no models".
+   */
+  models?: CatalogModel[]
+  /** When true, this profile's models join the aggregated list. */
+  aggregate?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -131,6 +142,10 @@ export function captureProfile(params: {
   /** Merged env to snapshot from (settings.env over process.env). */
   mergedEnv: Record<string, string>
   notes?: string
+  /** Catalog snapshot; omit to keep whatever `existing` already carries. */
+  models?: CatalogModel[]
+  /** Aggregation opt-in; omit to keep whatever `existing` already carries. */
+  aggregate?: boolean
   existing?: ProviderProfile
 }): ProviderProfile {
   const env: Record<string, string> = {}
@@ -138,15 +153,49 @@ export function captureProfile(params: {
     const value = params.mergedEnv[key]
     if (value !== undefined && value !== '') env[key] = value
   }
+  // Model list and aggregation opt-in survive a re-save (`/provider save` over
+  // an existing name re-snapshots credentials, and losing the catalog there
+  // would silently drop the profile out of the aggregated picker). `??` and
+  // not `||` on purpose: an explicit `[]`/`false` is a real "clear it".
+  const models = params.models ?? params.existing?.models
+  const aggregate = params.aggregate ?? params.existing?.aggregate
   const now = new Date().toISOString()
   return {
     name: params.name,
     modelType: params.modelType,
     env,
     ...(params.notes ? { notes: params.notes } : {}),
+    ...(models !== undefined ? { models } : {}),
+    ...(aggregate !== undefined ? { aggregate } : {}),
     createdAt: params.existing?.createdAt ?? now,
     updatedAt: now,
   }
+}
+
+/**
+ * Update only the aggregation-facing fields of a saved profile.
+ *
+ * Deliberately not captureProfile(): refreshing a model list or flipping the
+ * aggregate switch must not re-snapshot credentials from the live session,
+ * which would rewrite a profile's env with whatever provider happens to be
+ * active right now. Catalogs refresh far more often than credentials change.
+ */
+export function updateProfileCatalog(
+  name: string,
+  patch: { models?: CatalogModel[]; aggregate?: boolean },
+): { profile: ProviderProfile } | { error: string } {
+  const file = loadProfilesFile()
+  const existing = file.profiles[name]
+  if (!existing) return { error: `Unknown profile "${name}".` }
+  const profile: ProviderProfile = {
+    ...existing,
+    ...(patch.models !== undefined ? { models: patch.models } : {}),
+    ...(patch.aggregate !== undefined ? { aggregate: patch.aggregate } : {}),
+    updatedAt: new Date().toISOString(),
+  }
+  file.profiles[name] = profile
+  saveProfilesFile(file)
+  return { profile }
 }
 
 /**
