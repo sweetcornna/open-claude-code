@@ -4,11 +4,12 @@
  *
  * 1. Patch globalThis.Bun destructuring in third-party deps for Node.js compat
  * 2. Copy native addon files
- * 3. Generate dual entry points (cli-bun.js, cli-node.js)
+ * 3. Bundle the runtime-farm bootstrap and generate the dual entry points
+ *    (cli-bun.js, cli-node.js) that enter it
  */
 import { readdir, readFile, writeFile, cp } from 'node:fs/promises'
-import { chmodSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeEntrypoints } from './entrypoints.ts'
 
 const outdir = 'dist'
 
@@ -68,18 +69,12 @@ async function postBuild() {
   await cp('src/utils/vendor/ripgrep', ripgrepDir, { recursive: true } as never)
   console.log(`Copied src/utils/vendor/ripgrep/ → ${ripgrepDir}/`)
 
-  // Step 3: Generate dual entry points
-  const cliBun = join(outdir, 'cli-bun.js')
-  const cliNode = join(outdir, 'cli-node.js')
-
-  await writeFile(cliBun, '#!/usr/bin/env bun\nimport "./cli.js"\n')
-  await writeFile(cliNode, '#!/usr/bin/env node\nimport "./cli.js"\n')
-
-  chmodSync(cliBun, 0o755)
-  chmodSync(cliNode, 0o755)
+  // Step 3: Bundle the runtime-farm bootstrap and generate the entry points
+  // that hand control to it — shared with build.ts, see scripts/entrypoints.ts
+  const version = await writeEntrypoints(outdir)
 
   console.log(
-    `Post-build complete: patched ${bunPatched} Bun destructure across ${jsFiles.length + chunkFiles.length} files, generated entry points`,
+    `Post-build complete: patched ${bunPatched} Bun destructure across ${jsFiles.length + chunkFiles.length} files, generated entry points for v${version}`,
   )
 }
 

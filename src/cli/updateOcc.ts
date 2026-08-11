@@ -123,8 +123,8 @@ export async function getLatestOccVersion(
 const INSTALL_TIMEOUT_MS = 120_000
 
 /**
- * Shared by the interactive `occ update` path below and the deferred background
- * installer (src/services/autoUpdate/deferredOccInstall.ts) so the two can
+ * Shared by the interactive `occ update` path below and the background
+ * installer (src/services/autoUpdate/occInstaller.ts) so the two can
  * never drift to different package specs. Both resolve to NPM_PACKAGE_NAME and
  * nothing else — src/cli/__tests__/updateIsolation.test.ts pins that.
  */

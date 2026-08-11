@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile, cp } from 'fs/promises'
 import { join } from 'path'
 import { getMacroDefines, resolveBuildFeatures } from './scripts/defines.ts'
+import { writeEntrypoints } from './scripts/entrypoints.ts'
 
 const outdir = 'dist'
 
@@ -88,17 +89,12 @@ const ripgrepDir = join(outdir, 'vendor', 'ripgrep')
 await cp('src/utils/vendor/ripgrep', ripgrepDir, { recursive: true })
 console.log(`Copied src/utils/vendor/ripgrep/ → ${ripgrepDir}/`)
 
-// Step 5: Generate cli-bun and cli-node executable entry points
-const cliBun = join(outdir, 'cli-bun.js')
-const cliNode = join(outdir, 'cli-node.js')
+// Step 5: Bundle the runtime-farm bootstrap and generate the cli-bun /
+// cli-node entry points that enter it. Shared with scripts/post-build.ts so
+// the two builders cannot emit different entrypoints — see
+// scripts/entrypoints.ts.
+const version = await writeEntrypoints(outdir)
 
-await writeFile(cliBun, '#!/usr/bin/env bun\nimport "./cli.js"\n')
-
-await writeFile(cliNode, '#!/usr/bin/env node\nimport "./cli.js"\n')
-
-// Make both executable
-const { chmodSync } = await import('fs')
-chmodSync(cliBun, 0o755)
-chmodSync(cliNode, 0o755)
-
-console.log(`Generated ${cliBun} (shebang: bun) and ${cliNode} (shebang: node)`)
+console.log(
+  `Generated ${join(outdir, 'cli-bun.js')} (shebang: bun) and ${join(outdir, 'cli-node.js')} (shebang: node) for v${version}`,
+)

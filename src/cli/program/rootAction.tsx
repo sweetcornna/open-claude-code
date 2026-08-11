@@ -247,12 +247,9 @@ type RootActionHandler = Parameters<RootCommand['action']>[0];
 export const rootAction: RootActionHandler = async (prompt, options) => {
   profileCheckpoint('action_handler_start');
 
-  // Announce this session before anything long-lived starts, so a *different*
-  // session's deferred update never replaces the install tree while this one is
-  // still lazily importing chunks out of it. Every process registers, --print
-  // included: the point is to be visible to the sessions that do update.
-  // Attaching the installer itself is a separate, interactive-only decision
-  // further down (setLiveSessionExitHandler).
+  // Announce this session before anything long-lived starts, so no peer's farm
+  // sweep reclaims the tree this one is still lazily importing chunks out of.
+  // Every process registers, --print included: the point is to be visible.
   try {
     const { registerLiveSession } = await import('src/services/autoUpdate/liveSessions.js');
     await registerLiveSession();
@@ -2140,19 +2137,16 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     return;
   }
 
-  // Interactive sessions only (the --print path returned above): let this
-  // session be the one that installs a queued update on the way out. A --print
-  // run must never spawn an installer — they fire many times a minute in
-  // scripts, and each one exits into the same handoff.
-  void import('src/services/autoUpdate/liveSessions.js')
-    .then(mod => {
-      mod.setLiveSessionExitHandler(async () => {
-        const { flushDeferredOccInstall } = await import('src/services/autoUpdate/deferredOccInstall.js');
-        await flushDeferredOccInstall();
-      });
-    })
+  // Interactive sessions only (the --print path returned above): reclaim the
+  // runtime farms of builds nothing is running from any more. Scheduled here
+  // rather than from the update loop because farms are created on every
+  // launch, including ones where auto-updates are switched off — hanging the
+  // sweep off the updater's gates would let those users accumulate one farm
+  // per manual `occ update`, forever.
+  void import('src/services/autoUpdate/runtimeFarmGc.js')
+    .then(mod => mod.scheduleRuntimeFarmGc())
     .catch(() => {
-      // Updater wiring must never affect startup.
+      // Housekeeping must never affect startup.
     });
 
   // Interactive sessions only: schedule the silent background self-update — at

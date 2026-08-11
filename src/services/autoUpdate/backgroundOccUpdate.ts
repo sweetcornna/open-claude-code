@@ -10,11 +10,22 @@
  * Timeline: rootAction installs one recursive, unref'd timer loop per session,
  * first firing a minute past startup and every 30 minutes after. Each run
  * completes before the next is scheduled. The check reuses the `occ update`
- * chain up to the comparison (npm view → compare) and then stops: the install
- * itself is queued for after the session exits, see deferredOccInstall.ts for
- * why installing in place wedges the running REPL. A queued update surfaces as
- * one low-key REPL notification via updateNotifier; every failure path is
- * logForDebugging-only and never interrupts the session.
+ * chain up to the comparison (npm view → compare) and then spawns a detached
+ * `install -g` straight away — no waiting for the session to end.
+ *
+ * That immediacy is only safe because of runtimeFarm.ts: the session is
+ * running from a private hard-link farm under `<config>/runtime/`, not from
+ * the package directory the installer replaces. Before the farm, installing in
+ * place stranded every not-yet-loaded chunk and wedged the REPL, so installs
+ * had to be deferred until the last live session exited — which, from the
+ * user's seat, looked like auto-update simply not working. Do not reintroduce
+ * a "wait for other sessions" gate here; the reason for it is gone, and the
+ * one remaining coordination need (two sessions installing at once) is what
+ * the cross-process update lock is for.
+ *
+ * An install in flight surfaces as one low-key REPL notification via
+ * updateNotifier; every failure path is logForDebugging-only and never
+ * interrupts the session.
  *
  * Hard gates — all must pass, re-checked when the timer fires:
  *  - NODE_ENV is not test/development
@@ -30,10 +41,7 @@ import type { InstallationType } from 'src/utils/runtime/doctorDiagnostic.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { gt } from 'src/utils/text/semver.js'
 import * as updateInterval from './backgroundUpdateInterval.js'
-import {
-  armDeferredOccInstall,
-  type DeferredOccInstall,
-} from './deferredOccInstall.js'
+import { type OccInstall, spawnDetachedOccInstaller } from './occInstaller.js'
 import { emitBackgroundUpdateNotification } from './updateNotifier.js'
 
 /**
@@ -57,8 +65,14 @@ export type BackgroundOccUpdateDeps = {
   getCurrentVersion: () => string
   /** `signal` cancels the spawned `npm view` when the session is shutting down. */
   getLatestVersion: (signal?: AbortSignal) => Promise<string | null>
-  /** Persist the install for whichever session exits last. */
-  armInstall: (install: DeferredOccInstall) => Promise<void>
+  /**
+   * Cross-process update lock. Held by whichever process is installing, so a
+   * second session that notices the same release in the same minute stands
+   * down instead of racing a competing `install -g` over the same tree.
+   */
+  acquireLock: () => Promise<boolean>
+  releaseLock: () => Promise<void>
+  spawnInstaller: (install: OccInstall) => Promise<void>
   packageSpec: () => string
   notify: (text: string) => void
   now: () => number
@@ -77,8 +91,13 @@ export type BackgroundOccUpdateOutcome =
   | { status: 'throttled' }
   | { status: 'up-to-date'; version: string }
   | { status: 'check-failed' }
-  /** Newer version found and handed to deferredOccInstall for exit time. */
-  | { status: 'queued'; version: string }
+  /** Newer version found; a detached installer is now running. */
+  | { status: 'installing'; version: string }
+  /**
+   * Newer version found, but another process already holds the update lock —
+   * i.e. it is already installing. Nothing to do this round.
+   */
+  | { status: 'install-in-flight'; version: string }
   | { status: 'error' }
 
 /**
@@ -88,11 +107,12 @@ export type BackgroundOccUpdateOutcome =
  * full flow through injected deps without process-global mock.module calls.
  */
 async function loadDefaultDeps(): Promise<BackgroundOccUpdateDeps> {
-  const [updateOcc, config, doctor, privacy] = await Promise.all([
+  const [updateOcc, config, doctor, privacy, autoUpdater] = await Promise.all([
     import('src/cli/updateOcc.js'),
     import('src/utils/config/config.js'),
     import('src/utils/runtime/doctorDiagnostic.js'),
     import('src/utils/auth/privacyLevel.js'),
+    import('src/utils/update/autoUpdater.js'),
   ])
   return {
     env: process.env,
@@ -102,7 +122,9 @@ async function loadDefaultDeps(): Promise<BackgroundOccUpdateDeps> {
     isBunGlobalInstall: updateOcc.isRunningFromBunGlobalInstall,
     getCurrentVersion: updateOcc.getCurrentOccVersion,
     getLatestVersion: updateOcc.getLatestOccVersion,
-    armInstall: armDeferredOccInstall,
+    acquireLock: autoUpdater.acquireUpdateLock,
+    releaseLock: autoUpdater.releaseUpdateLock,
+    spawnInstaller: spawnDetachedOccInstaller,
     packageSpec: updateOcc.latestPackageSpec,
     notify: emitBackgroundUpdateNotification,
     now: Date.now,
@@ -164,20 +186,26 @@ async function resolveEligibility(
   return { skip: `not a global install (${installationType})`, permanent: true }
 }
 
-function updateQueuedText(version: string): string {
-  return `✓ Update v${version} ready · installs on exit`
+/**
+ * The notice must not promise anything the process can no longer do. It used
+ * to read "installs on exit", which stopped being true the moment installs
+ * became immediate; a running process still cannot adopt the new code, so
+ * "restart to apply" is the whole of the user's action.
+ */
+function updateInstallingText(version: string): string {
+  return `✓ Update v${version} installing · restart to apply`
 }
 
-let lastQueuedVersion: string | undefined
+let lastInstalledVersion: string | undefined
 
 /**
- * Compare against the newest version already queued, not just the running one.
- * Without this, every subsequent 30-minute pass would re-queue and re-notify
- * the same release for the rest of the session.
+ * Compare against the newest version already handed to an installer, not just
+ * the running one. Without this, every subsequent 30-minute pass would install
+ * and re-notify the same release for the rest of the session.
  */
 function getComparisonVersion(currentVersion: string): string {
-  if (lastQueuedVersion && gt(lastQueuedVersion, currentVersion)) {
-    return lastQueuedVersion
+  if (lastInstalledVersion && gt(lastInstalledVersion, currentVersion)) {
+    return lastInstalledVersion
   }
   return currentVersion
 }
@@ -222,20 +250,40 @@ export async function runBackgroundOccUpdateOnce(
       return { status: 'up-to-date', version: currentVersion }
     }
 
-    // Queue only — installing now would delete the chunks this very session
-    // still needs (deferredOccInstall.ts). Nothing is lost: a running process
-    // could never have adopted the new version anyway.
-    await d.armInstall({
+    if (!(await d.acquireLock())) {
+      // Somebody else is already installing this. Doing nothing is the whole
+      // behaviour: their installer replaces the same package directory, and
+      // this session is not reading from it.
+      logForDebugging(
+        `backgroundOccUpdate: ${latestVersion} already being installed elsewhere`,
+      )
+      return { status: 'install-in-flight', version: latestVersion }
+    }
+
+    const install: OccInstall = {
       pkgManager: eligibility.pkgManager,
+      // Rebuilt from NPM_PACKAGE_NAME rather than carried along, so no code
+      // path can ever hand `install -g` a spec that came from anywhere else.
       spec: d.packageSpec(),
       version: latestVersion,
-    })
-    lastQueuedVersion = latestVersion
-    d.notify(updateQueuedText(latestVersion))
+    }
+    try {
+      await d.spawnInstaller(install)
+    } catch (error) {
+      await d.releaseLock()
+      throw error
+    }
+    // No releaseLock on success, on purpose. The installer is detached and
+    // outlives this call, so releasing here would open the window to a second
+    // session starting a competing `install -g` over the same tree. The lock
+    // is left to expire on its own (LOCK_TIMEOUT_MS, 5 min), which is longer
+    // than an install takes. Do not "fix" this into a symmetric release.
+    lastInstalledVersion = latestVersion
+    d.notify(updateInstallingText(latestVersion))
     logForDebugging(
-      `backgroundOccUpdate: queued ${latestVersion} via ${eligibility.pkgManager} for exit (current ${currentVersion})`,
+      `backgroundOccUpdate: installing ${latestVersion} via ${eligibility.pkgManager} (current ${currentVersion})`,
     )
-    return { status: 'queued', version: latestVersion }
+    return { status: 'installing', version: latestVersion }
   } catch (error) {
     logForDebugging(`backgroundOccUpdate: ${error}`)
     return { status: 'error' }
@@ -256,8 +304,8 @@ type BackgroundOccScheduleFn = (
  * `npm view` (10s) child does. Without this, Ctrl+C during a background check
  * sat until gracefulShutdown's 5s failsafe fired and then hard-exited.
  * Cancelling the child instead lets the event loop drain and exit on its own.
- * (The installer itself is no longer spawned here at all — see
- * deferredOccInstall.ts.)
+ * The installer this loop spawns needs no such treatment: it is detached and
+ * `unref`'d, so it never holds the event loop open in the first place.
  */
 function registerShutdownAbort(controller: AbortController): void {
   registerCleanup(async () => {
@@ -336,5 +384,5 @@ export function maybeScheduleBackgroundOccUpdate(options?: {
 
 export function resetBackgroundOccUpdateForTests(): void {
   scheduledThisSession = false
-  lastQueuedVersion = undefined
+  lastInstalledVersion = undefined
 }
