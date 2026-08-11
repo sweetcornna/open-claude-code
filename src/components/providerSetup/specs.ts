@@ -33,6 +33,7 @@ import {
   opencodeProductForBaseUrl,
   withLaneLabels,
 } from '../opencodeLogin/opencodeCatalog.js'
+import { verifyOpencodeFormCredential } from '../opencodeLogin/verifyFormCredential.js'
 
 export type ProviderSetupKind =
   | 'openai'
@@ -83,6 +84,24 @@ type ModelsFetchArgs = {
   apiKey: string
   signal?: AbortSignal
   onError?: (reason: string) => void
+}
+
+/**
+ * What a credential check answers.
+ *
+ * `ok: false` is a refusal the wizard must not proceed past, and the message is
+ * everything the user gets — so it has to be actionable on its own rather than
+ * a relayed HTTP error.
+ */
+type ProviderCredentialVerdict = { ok: true } | { ok: false; message: string }
+
+type CredentialCheckArgs = {
+  /** Endpoint, already resolved to `defaultBaseUrl` when the field was empty. */
+  baseURL: string
+  apiKey: string
+  /** Whatever `fetchModels` answered; null when it failed or was skipped. */
+  models: CatalogModel[] | null
+  signal?: AbortSignal
 }
 
 /** What the save that just happened did, for `afterSave` to react to. */
@@ -172,6 +191,26 @@ export type ProviderSetupSpec = {
   apiKeyRequired: boolean
   fetchModels: (args: ModelsFetchArgs) => Promise<CatalogModel[] | null>
   /**
+   * Prove the collected credential is actually accepted, before step 2 exists.
+   *
+   * Optional, and only OpenCode declares one. For most providers `GET /models`
+   * already needs the credential, so a wrong key fails step 1 by itself.
+   * OpenCode's does not: `/models` is PUBLIC on both products (verified: 200
+   * with no credential at all), so a wrong key produces a full picker of real
+   * ids and a complete save, and the first thing that ever sends it is the
+   * user's first prompt — answered `API Error [OpenAI]: Invalid API key`, which
+   * reads as a broken provider rather than a bad credential.
+   *
+   * Separate from `validate`, which stays synchronous and shape-only. This is a
+   * network round trip, it needs `fetchModels`' answer to name a model with, and
+   * it is cancellable. Refusing costs nothing to undo because step 1 writes
+   * nothing at all — the same invariant `activateOpencodeConsoleSession`
+   * enforces for the device flow, where it had to be built by hand.
+   */
+  verifyCredential?: (
+    args: CredentialCheckArgs,
+  ) => Promise<ProviderCredentialVerdict>
+  /**
    * Models occ knows for the provider's official endpoint, used only when model
    * discovery fails. A compatible wire protocol does not imply catalog
    * ownership, so custom endpoints never inherit GPT or Claude guesses.
@@ -201,6 +240,27 @@ export type ProviderSetupSpec = {
    * credential plane, which that mode does not own.
    */
   extraEnv?: (
+    context: ProviderSetupContext,
+  ) => Record<string, string | undefined>
+  /**
+   * Env written on EVERY save, model-only mode included.
+   *
+   * `extraEnv`'s counterpart, and the distinction is the whole reason this
+   * field exists. `extraEnv` describes the CREDENTIAL plane, which a
+   * subscription login owns and this form must not touch. What belongs here is
+   * session IDENTITY and ROUTING: the keys that decide whether the session is
+   * an OpenCode session at all and which of the two products it talks to. Those
+   * answer a question the user was asked on a previous screen, not one the login
+   * settled, so a model-only save has to carry them forward.
+   *
+   * ChatGPT and Antigravity need nothing here — their OAuth flow persists its
+   * own credentials and their endpoint is implicit — which is exactly why the
+   * skip was invisible. OpenCode has neither property: `OPENCODE_AUTH_MODE` is
+   * the sole basis of `isOpencodeSessionActive()`, and `applyOpencodeWire()`
+   * returns early with no `OPENCODE_BASE_URL`, so dropping either leaves a
+   * session claiming a routing it never applied.
+   */
+  sessionEnv?: (
     context: ProviderSetupContext,
   ) => Record<string, string | undefined>
   /**
@@ -594,6 +654,13 @@ export const PROVIDER_SETUP_SPECS: Record<
       if (!models) onError?.('the endpoint did not answer GET /models')
       return withLaneLabels(models)
     },
+    // The only provider that needs one, and for the reason the fetcher above
+    // makes unavoidable: that request answers 200 to anybody. Without this the
+    // key path repeats the failure the Console path was just fixed for —
+    // configure everything, then discover at the first prompt that the
+    // credential was never accepted. Kept as a reference rather than a wrapper
+    // so the spec table stays a table.
+    verifyCredential: verifyOpencodeFormCredential,
     // Unlike Gemini and Grok, these tables were read off the service rather
     // than invented — /models is public on both products — so they are real
     // answers, not guesses. Chosen by the base URL's PATH, not by
@@ -617,10 +684,20 @@ export const PROVIDER_SETUP_SPECS: Record<
               'Default model is required — it also decides which OpenCode protocol this session speaks.',
             field: 'model',
           },
-    extraEnv: () => ({
-      // Not a credential marker: this is what routes the session to Zen, so the
-      // key path sets it exactly like the Console login does.
+    // Not `extraEnv`: neither of these is a credential. `OPENCODE_AUTH_MODE` is
+    // what routes the session to OpenCode at all (the key path sets it exactly
+    // like the Console login does), and the base URL selects the PRODUCT — Zen
+    // or Go — which is a choice the user made in the login menu, not something
+    // the credential carries. Both therefore have to survive a model-only save,
+    // and the endpoint one is why: `applyOpencodeWire()` returns early without
+    // it, leaving the whole mirror inert while the session still reports itself
+    // as OpenCode. Falling back to the Zen default rather than deleting the key
+    // keeps that from happening at all — it is the same value the endpoint step
+    // seeds (`defaultBaseUrl`), so this only makes explicit what a save with an
+    // untouched endpoint field already meant.
+    sessionEnv: ({ baseUrl }) => ({
       OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_BASE_URL: baseUrl?.trim() || OPENCODE_ZEN_BASE_URL,
     }),
     subscriptionAuth: {
       envKey: 'OPENCODE_AUTH_MODE',

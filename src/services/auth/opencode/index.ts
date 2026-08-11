@@ -30,6 +30,11 @@ export {
   type OpencodeAccount,
 } from './deviceFlow.js'
 
-export { fetchOpencodeModels, fetchZenModels } from './catalog.js'
+export {
+  fetchOpencodeModels,
+  fetchZenModels,
+  verifyOpencodeAccess,
+  type OpencodeAccessCheck,
+} from './catalog.js'
 
 export { saveOpencodeTokens } from './store.js'

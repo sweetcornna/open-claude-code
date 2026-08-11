@@ -170,6 +170,62 @@ describe('a subscription session edits models only', () => {
     expect(result.env.OPENAI_AUTH_MODE).toBeUndefined()
     expect(result.env.OPENAI_WIRE_API).toBe('responses')
   })
+
+  test('an OpenCode subscription save still writes identity and endpoint', () => {
+    // The asymmetry ChatGPT and Antigravity hide: for them the endpoint really
+    // is credential-plane, so skipping it costs nothing. OpenCode's selects the
+    // PRODUCT — Zen or Go — which the user chose in the login menu, and
+    // OPENCODE_AUTH_MODE is the sole basis of isOpencodeSessionActive(). Left
+    // out, the session reports itself as OpenCode while applyOpencodeWire()
+    // returns early and mirrors nothing: a routing it claims but never applied.
+    const opencodeEnv = { OPENCODE_AUTH_MODE: 'opencode' } as NodeJS.ProcessEnv
+    const result = plan({
+      spec: specFor('opencode', opencodeEnv),
+      status: status({
+        kind: 'opencode',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        credentialEditing: 'locked',
+        model: 'deepseek-v4-flash',
+      }),
+      values: values({ model: 'deepseek-v4-flash' }),
+      existingSettings: { modelType: 'opencode' },
+      processEnv: opencodeEnv,
+    })
+
+    expect(result.credentialsConfigured).toBe(false)
+    expect(result.env.OPENCODE_AUTH_MODE).toBe('opencode')
+    expect(result.env.OPENCODE_BASE_URL).toBe('https://opencode.ai/zen/go/v1')
+    expect(result.env.OPENCODE_MODEL).toBe('deepseek-v4-flash')
+    // Still model-only where it counts: the credential is a 0600 access token
+    // that must never reach settings.env.
+    expect(result.env.OPENCODE_API_KEY).toBeUndefined()
+  })
+
+  test('switching OpenCode product counts as a provider change', () => {
+    // Reachable only because sessionEnv puts the endpoint in `env` for a
+    // model-only save too; before that this comparison was gated on
+    // credentialsConfigured and a Zen→Go move was reported as no change,
+    // leaving an in-session /model choice pointed at the other product's bill.
+    const opencodeEnv = {
+      OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_BASE_URL: 'https://opencode.ai/zen/v1',
+      OPENCODE_MODEL: 'kimi-k3',
+    } as NodeJS.ProcessEnv
+    const result = plan({
+      spec: specFor('opencode', opencodeEnv),
+      status: status({
+        kind: 'opencode',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        credentialEditing: 'locked',
+        model: 'kimi-k3',
+      }),
+      values: values({ model: 'kimi-k3' }),
+      existingSettings: { modelType: 'opencode' },
+      processEnv: opencodeEnv,
+    })
+
+    expect(result.outcome.providerChanged).toBe(true)
+  })
 })
 
 describe('clearing the other provider groups', () => {

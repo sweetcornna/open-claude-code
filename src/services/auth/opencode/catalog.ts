@@ -88,6 +88,77 @@ async function fetchEntitlementModels(
   return models.length > 0 ? models : null
 }
 
+/**
+ * Whether a credential is actually accepted by the product it was issued for.
+ *
+ * The Console sign-in had no such check and structurally could not have one:
+ * every request it makes either needs no credential or forgives a bad one.
+ * `GET {base}/models` is PUBLIC on both products (verified: 200 with no
+ * credential at all), `fetchAccount` absorbs its own failures on purpose, and
+ * `/api/config` treats 404 as "no remote config". So a sign-in could complete,
+ * write settings, and open a model picker full of real ids without the token
+ * ever having been exercised against the endpoint it just configured. The first
+ * time it was exercised was the user's first prompt, arriving as
+ * `API Error [OpenAI]: Invalid API key` — which reads as a broken provider
+ * rather than a failed login, and leaves no obvious way back.
+ *
+ * The probe is a chat completion with an EMPTY `messages` array, and that shape
+ * is the point: the gateway authenticates BEFORE it validates the body, so a
+ * rejected credential answers 401 `AuthError` while an accepted one falls
+ * through to the upstream's complaint about the empty body — no inference runs
+ * and nothing is billed. All three directions verified against the live service
+ * (2026-08-10): no bearer → 401 `Missing API key.`, garbage bearer → 401
+ * `Invalid API key.`, and Zen's free `Bearer public` → 400 `Input required:
+ * specify "prompt" or "messages"`.
+ *
+ * Only `AuthError` counts as a rejection. The gateway answers an unknown model
+ * id with `ModelError` and — verified — still stamps it 401, so classifying on
+ * the status would reject a perfectly good account whenever occ guessed the
+ * probe model wrong. A transport failure is not a rejection either: the device
+ * flow reached the console seconds earlier, so a throw here is a flaky network
+ * rather than a verdict, and blocking a login on it would be a worse failure
+ * than the one this exists to prevent.
+ */
+export type OpencodeAccessCheck = { ok: true } | { ok: false; reason: string }
+
+export async function verifyOpencodeAccess(
+  credential: OpencodeCredential,
+  baseUrl: string,
+  /** A model id this product serves — the probe needs one to get past
+   * `ModelError` and reach the credential verdict. */
+  model: string,
+  signal?: AbortSignal,
+): Promise<OpencodeAccessCheck> {
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        ...opencodeAuthHeaders(credential),
+      },
+      body: JSON.stringify({ model, messages: [] }),
+      ...(signal ? { signal } : {}),
+    })
+  } catch {
+    return { ok: true }
+  }
+  if (response.ok) return { ok: true }
+
+  const body = record(await response.json().catch(() => undefined))
+  const error = record(body?.error)
+  if (asString(error?.type) === 'AuthError') {
+    return { ok: false, reason: asString(error?.message) ?? 'Invalid API key.' }
+  }
+  // A 401 with no readable body is still a rejection; anything else (400 from
+  // the empty body, ModelError, a 5xx) says the credential got through.
+  if (response.status === 401 && !error) {
+    return { ok: false, reason: `HTTP ${response.status}` }
+  }
+  return { ok: true }
+}
+
 /** The public catalog of one inference base, OpenAI `/models` shape. */
 export async function fetchZenModels(
   baseUrl: string,

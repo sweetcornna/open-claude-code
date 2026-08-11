@@ -130,6 +130,11 @@ export function planProviderSave({
     env[spec.env.baseUrl] = status.baseUrl.trim() || undefined
     env[spec.env.apiKey] = status.apiKey.trim() || undefined
   }
+  // Last, so it outranks the credential block: what a spec puts here is session
+  // identity and routing rather than credentials, and model-only mode owns it
+  // just as much as a full save does. Skipping it is how a subscription session
+  // ends up claiming a provider it never pointed anywhere (see sessionEnv).
+  Object.assign(env, spec.sessionEnv?.(status) ?? {})
   // `omitted` still assigns undefined — that deletes any value a previous
   // login left behind, which is the point (see defaultModelField's docs).
   env[spec.env.model] = showsDefaultModel
@@ -176,7 +181,6 @@ export function planProviderSave({
       providerChanged: didProviderChange({
         spec,
         env,
-        credentialsConfigured,
         existingSettings,
         processEnv,
       }),
@@ -196,13 +200,11 @@ export function planProviderSave({
 function didProviderChange({
   spec,
   env,
-  credentialsConfigured,
   existingSettings,
   processEnv,
 }: {
   spec: ProviderSetupSpec
   env: Record<string, string | undefined>
-  credentialsConfigured: boolean
   existingSettings: ProviderSaveSettings | null | undefined
   processEnv: NodeJS.ProcessEnv
 }): boolean {
@@ -210,10 +212,13 @@ function didProviderChange({
   const before = (key: string): string => processEnv[key]?.trim() ?? ''
   const after = (key: string): string => env[key]?.trim() ?? ''
   if (before(spec.env.model) !== after(spec.env.model)) return true
-  // A model-only save never writes the base URL, so there is nothing to
-  // compare — reading `env` there would report every save as a change.
+  // Compare the endpoint only when this save actually decides one. For a
+  // provider whose endpoint is credential-plane a model-only save leaves the
+  // key out of `env` entirely, and reading it there would report every save as
+  // a change; where a spec owns the endpoint as session identity (sessionEnv)
+  // the key is present in both modes and a product switch has to count.
   return (
-    credentialsConfigured &&
+    spec.env.baseUrl in env &&
     before(spec.env.baseUrl) !== after(spec.env.baseUrl)
   )
 }

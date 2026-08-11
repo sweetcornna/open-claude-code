@@ -101,6 +101,56 @@ GET  /api/user, /api/orgs                           取邮箱与组织
 
 **刷新做了单飞。** 并发的模型请求会在同一刻同时发现 token 过期；各刷各的会导致最后一次写入生效，而之前每个持有者刚拿到的新 pair 全部作废。
 
+### 拿到设备码不等于登录成功
+
+**console 发的 token 是给账号的，不是给产品的**，而 Zen 和 Go 分开计费。所以「设备码换到了 token」和「这个 token 能用在你刚选的那个端点上」是两件事，中间没有任何东西把它们连起来 —— 登录流程里的每一个请求要么根本不需要凭据，要么按设计吞掉自己的失败：
+
+| 登录期间的请求 | 为什么证明不了凭据可用 |
+|---|---|
+| `GET {base}/models` | **两个产品都公开**（实测无凭据 200），选择器里那 25 个真 id 跟你的订阅无关 |
+| `GET {console}/api/user`·`/api/orgs` | `fetchAccount` 逐个 `.catch`，拿不到就退回 `{}`（这是刻意的：账号描述不该否决一个能推理的 token） |
+| `GET {console}/api/config` | 404 按「没有远端配置」处理，照搬 sst/opencode |
+
+于是登录能一路走完、写进 settings、开出一个装满真模型的选择器，而 token 一次都没被真正用过 —— **第一次用它是用户的第一条 prompt**，回来的是 `API Error [OpenAI]: Invalid API key`。那个提示既不提登录也不提产品，看起来像 provider 坏了。
+
+**修法是在激活之前探一次**（`verifyOpencodeAccess`，`services/auth/opencode/catalog.ts`）：拿 `messages: []` 打一次 `POST {base}/chat/completions`。**网关先鉴权后校验 body**，所以这个形状既能问出凭据的判决又不可能计费。三个方向都对真实端点实测（2026-08-10）：
+
+| 发什么 | 回什么 |
+|---|---|
+| 不带 bearer | 401 `{"type":"AuthError","message":"Missing API key."}` |
+| 错的 bearer | 401 `{"type":"AuthError","message":"Invalid API key."}` |
+| **被接受的 bearer**（Zen 免费档 `Bearer public`） | **400** `Input required: specify "prompt" or "messages"` —— 鉴权已过，没跑推理 |
+
+**只有 `AuthError` 算拒绝。** 未知 model id 网关回的是 `ModelError`，而且**照样盖 401**（实测），只看 status 会因为 occ 探针模型猜错而否掉一个好账号。传输层抛错也不算判决 —— 设备码流程几秒前刚连上 console，这里抛就是网络抖动，为它拦下登录比它要防的问题更糟。
+
+拒绝时**一个字都不写**（`components/opencodeLogin/activateSession.ts`）：settings.json、`process.env`、镜像的认领表全部保持原样，用户停在登录界面上，错误里写明是哪个产品、哪个 URL、以及可以换另一个产品或改用 API key。半配置的会话正是这条检查要消灭的东西 —— `modelType: "opencode"` 一项就足以让 `/models-setting`、`/provider save` 和状态栏一起报告一个答不出任何请求的会话。
+
+### API key 走的是同一个坑，也是同一个探针
+
+上一条对 API key 一字不差地成立。向导第一步唯一的请求就是 `GET {base}/models`，而它**两个产品都公开** —— 所以打错一个字符、把 Go 的 key 贴在 Zen 的 URL 上、或者用了另一个组织的 key，第一步照样成功、选择器照样装满真 id、第二步照样保存完成，第一次真正发出这把 key 的仍然是用户的第一条 prompt。
+
+修法是同一个探针，挂在共享向导的一个**可选钩子**上：`ProviderSetupSpec.verifyCredential`（`src/components/providerSetup/specs.ts`），只有 opencode 一家声明，实现在 `components/opencodeLogin/verifyFormCredential.ts`。串起两个请求的是 `providerSetup/endpointRequests.ts`，顺序是刻意的 —— 先 `GET /models`，因为目录的答案正好用来挑探针模型：
+
+| 判决 | 结果 |
+|---|---|
+| 接受 | 照常进第二步，目录原样带过去 |
+| `AuthError` | **停在第一步**，光标回到 API Key 字段（端点和 key 都还在，改一处就能重试），错误里写明产品、URL、另一个产品的 URL 与计费方式，以及可以改用 Console 登录 |
+| 探不出来（没有目录也没有内置表可挑模型、或传输层抛错） | 放行 —— 不确定不是拒绝 |
+
+**「第一步写不了任何东西」是这条检查最便宜的部分。** 设备码那条线要靠 `activateSession.ts` 手工保证「拒绝时一个字都不写」；向导第一步本来就不写 settings.json、不写 `process.env`、不碰镜像的认领表，所以拒绝天然零副作用。`Esc` 在探测期间会真的中止：`/models` 和探针共用第一步那一个 `AbortController`。
+
+**其余五家 provider 不声明这个钩子，第一步因此一次调用都没多** —— 这不是巧合，是回归测试钉住的（`providerSetup/__tests__/endpointRequests.test.ts`）。它们也不需要：`GET /models` 在它们那儿是要凭据的，key 错了第一步自己就会失败。`validate` 保持原样 —— 同步、只管形状；这个钩子是另一件事，不要往 `validate` 里塞。
+
+#### 空 key 在两个产品上不是一回事
+
+`apiKeyRequired: false`，因为 Zen 的免费档 `Bearer public` 无账号可用，**空 key 在 Zen 上必须仍然配得出来**。所以空 key 时探针发 `public`，并**优先挑一个免费 id** 当探针模型 —— 公共 bearer 只对免费模型有权限，拿付费模型去探是在问另一个问题。
+
+「仅免费模型」那个入口传进来的 apiKey **就是 `public` 本身**（不是空串），所以这两种情况在探针这里必须算同一种。分开算的后果很具体：那条路上 `/models` 会成功返回 Zen 的 61 个，于是探针模型取到 `claude-fable-5` —— 一个付费模型 —— 用公共 bearer 去问它，问的已经不是「这个凭据能不能用」了。
+
+**Go 没有免费档**（25 个 id 里没有 `-free`，也没有 `big-pickle`），所以同一个 `public` 在 Go 上预期会被拒。occ **不把这条预期写死**：端点答应就算通过，occ 只负责在它拒绝时说清楚「Go 没有免费档，25 个模型全都需要凭据」。这是刻意的 —— 「Go 无免费档」的结论来自目录表，不是来自对 Go 打过 `public` 的实测，把没实测过的推断写成硬规则正是本文反复在防的事。
+
+其他 provider 的无凭据本地网关（Anthropic 兼容壳后面的 vLLM 之类）不受影响：`apiKeyRequired: false` 在那边的含义没变，而它们没有钩子。
+
 ### 免费档不需要登录（只有 Zen 有）
 
 `Authorization: Bearer public` 无账号即可用免费模型（`mimo-v2.5-free` 实测返回真实 completion）。这与 opencode 插件的行为一致：无凭据时它把 `apiKey` 设为 `public`，并只禁用成本非零的模型。
@@ -166,12 +216,14 @@ CLAUDE.md 里那三个容易混的判定，OpenCode 会话上的答案是：
 选完产品是三个凭据入口（Go 上只有前两个）：
 
 1. **Console 订阅** —— 设备码流程。屏幕上给出 `user_code`、自动打开的验证地址，以及**这次登录配的是哪个端点**（产品名 + base URL + 计费方式）。`Esc` 会真的中止轮询（`AbortController` 同时喂给 `pollForTokens` 的循环判断和 fetch，所以是一个 tick 内响应，不是等到下一个 5 秒间隔）。设备码流程本身两个产品完全一样 —— console 发的是同一个 token —— 差别全在它之后：写进 settings 的 base URL、拉哪个目录、谁付钱。
-2. **API key** —— 粘贴 OpenCode 页面的 key，或服务账号 key。
+2. **API key** —— 粘贴 OpenCode 页面的 key，或服务账号 key。key 在进第二步之前会先被探一次，拒绝就停在端点表单上（见 §二「API key 走的是同一个坑」）。
 3. **仅免费模型**（Zen 限定）—— 不需要账号，用 `Bearer public` 直接拉真实模型列表。
 
 端点步骤（第一步）也把产品写在标题和说明里：标题是 `OpenCode Zen Setup` / `OpenCode Go Setup`，说明里给出**另一个**产品的 URL 和计费方式，因为换产品就是把那个 URL 粘进 Base URL 字段而已。base URL 不是这两个之一时标题退回 `OpenCode Setup` —— occ 只描述自己读过的两个端点。
 
-登录完进入统一的两步向导第二步（`src/components/providerSetup/`，opencode 的差异全在 `specs.ts` 的表里）。**选择器里直接标出每个模型落在哪条线**：`claude-opus-5 · /messages`、`gpt-5.6-luna · /responses`、`kimi-k3 · /chat/completions`。标签只是显示，存的值仍是纯 id。
+登录完进入统一的两步向导第二步（`src/components/providerSetup/`，opencode 的差异全在 `specs.ts` 的表里）。
+
+**订阅模式下 opencode 仍然自己写 `OPENCODE_AUTH_MODE` 和 `OPENCODE_BASE_URL`**，走 `specs.ts` 的 `sessionEnv` 而不是 `extraEnv`。这条区分不是命名洁癖：`planProviderSave` 对订阅会话（`credentialEditing: 'locked'`）**整块跳过**凭据面，包括 `extraEnv` 和 base URL —— 对 ChatGPT 和 Antigravity 是对的（它们的 OAuth 流程自己存凭据，端点是隐式的），对 opencode 是错的。**端点在这里不属于凭据面，它选的是产品**，是用户在登录菜单里做的选择；而 `OPENCODE_AUTH_MODE` 是 `isOpencodeSessionActive()` 的唯一依据，`getAPIProvider()`、`currentProfileModelType()`、`currentProviderSetupKind()` 三个都问它。少任何一个，会话就会「声称」走 OpenCode 却没应用 —— `applyOpencodeWire()` 没有 base URL 会直接早返回，整个镜像形同虚设。`sessionEnv` 排在凭据块之后，所以两种模式下它都是权威。**选择器里直接标出每个模型落在哪条线**：`claude-opus-5 · /messages`、`gpt-5.6-luna · /responses`、`kimi-k3 · /chat/completions`。标签只是显示，存的值仍是纯 id。
 
 两条容易踩的：
 
