@@ -164,4 +164,4 @@ Architecture, the module map, the path/isolation invariants and the testing rule
 
 ## License
 
-This project is for study and research purposes only. All rights to Claude Code belong to [Anthropic](https://www.anthropic.com/).
+The restoration and original work in this repository are released under the [MIT License](./LICENSE). "Claude", "Claude Code" and "Anthropic" are trademarks of [Anthropic](https://www.anthropic.com/); this project is not affiliated with, or endorsed by, Anthropic.

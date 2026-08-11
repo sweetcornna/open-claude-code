@@ -165,4 +165,4 @@ bun run build:vite
 
 ## ライセンス
 
-本プロジェクトは学習・研究目的のみを対象としています。Claude Code に関するすべての権利は [Anthropic](https://www.anthropic.com/) に帰属します。
+本リポジトリの復元および独自の成果物は [MIT License](./LICENSE) の下で公開されています。「Claude」「Claude Code」「Anthropic」は [Anthropic](https://www.anthropic.com/) の商標です。本プロジェクトは Anthropic とは無関係であり、その承認を受けたものではありません。

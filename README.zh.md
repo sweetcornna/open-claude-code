@@ -187,4 +187,4 @@ bun run build:vite
 
 ## 许可证
 
-本仓库的还原与原创工作以 [MIT License](./LICENSE) 发布，仅供学习研究用途。"Claude"、"Claude Code" 与 "Anthropic" 是 [Anthropic](https://www.anthropic.com/) 的商标；本项目与 Anthropic 无关联、未获其背书。
+本仓库的还原与原创工作以 [MIT License](./LICENSE) 发布。"Claude"、"Claude Code" 与 "Anthropic" 是 [Anthropic](https://www.anthropic.com/) 的商标；本项目与 Anthropic 无关联、未获其背书。
