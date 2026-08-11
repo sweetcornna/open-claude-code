@@ -27,7 +27,15 @@ import { updateSettingsForSource } from '../../utils/settings/settings.js'
  */
 const EXTRA_LOGOUT_ENV_KEYS = ['CLAUDE_CODE_OAUTH_TOKEN'] as const
 
-/** Every env key logout removes from settings, global config, and the process. */
+/**
+ * Every env key logout removes from settings, global config, and the process.
+ *
+ * Derived from ALL_PROFILE_ENV_KEYS, so a provider family added to the profile
+ * table is logged out of for free — that is the point of deriving it. What it
+ * cannot cover is credentials that are not env vars: the ChatGPT, Antigravity
+ * and OpenCode tokens live in files, and removing those is async and therefore
+ * logout.tsx's job, not this synchronous function's.
+ */
 export const LOGOUT_ENV_KEYS: readonly string[] = [
   ...new Set([...ALL_PROFILE_ENV_KEYS, ...EXTRA_LOGOUT_ENV_KEYS]),
 ]
@@ -36,6 +44,19 @@ export const LOGOUT_ENV_KEYS: readonly string[] = [
  * Drop every provider endpoint/key/model override written by `/login` or
  * `/provider use`, put `modelType` back to unset, and stop the live process
  * from seeing the values.
+ *
+ * `modelSettings` and the legacy flat `effortLevel` go too. Both look like
+ * standalone preferences and are not: every value in them was either seeded by
+ * the setup wizard from the *provider family* of the model behind each tier
+ * (tierPersistence.ts) or tuned by the user against a model that this logout
+ * just removed. Leaving them behind broke the next login in a way that was
+ * invisible until much later — `buildModelStep` prefills the wizard's "Max
+ * context tokens" and "Thinking effort" fields from whatever the five slots
+ * agree on, and `buildTierSettings` skips seeding the new provider's family
+ * defaults whenever anything is already configured. So logging out of DeepSeek
+ * and configuring GPT handed every GPT tier DeepSeek's row — 1M context, `max`
+ * effort — instead of 272k/`xhigh`, with the wizard showing those numbers as if
+ * the user had chosen them.
  *
  * Saved provider profiles are NOT touched — they are an explicit user snapshot
  * living a layer above settings (see providerProfiles/profiles.ts), so
@@ -51,6 +72,8 @@ export function resetProviderConfiguration(): void {
 
   updateSettingsForSource('userSettings', {
     modelType: undefined,
+    modelSettings: undefined,
+    effortLevel: undefined,
     env: envPatch,
   } as unknown as Parameters<typeof updateSettingsForSource>[1])
 
