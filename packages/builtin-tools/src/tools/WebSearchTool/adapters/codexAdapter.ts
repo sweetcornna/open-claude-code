@@ -303,16 +303,22 @@ export class CodexSearchAdapter implements WebSearchAdapter {
           }),
     })
 
+    // Search results are accumulated below and only handed over once the
+    // stream ends, and onProgress fires from inside that loop — so a failed
+    // attempt leaves no trace to duplicate. That makes a mid-stream text
+    // failure replayable here, where in the main loop it is not.
     const stream = useChatGPTAuth
       ? await createChatGPTResponsesStream({
           request,
           signal: abortController.signal,
           fetchOverride: this.fetchOverride,
+          discardsPartialOutput: true,
         })
       : await createOpenAIResponsesStream({
           request,
           signal: abortController.signal,
           fetchOverride: this.fetchOverride,
+          discardsPartialOutput: true,
         })
 
     const collected = new Map<string, SearchResult>()

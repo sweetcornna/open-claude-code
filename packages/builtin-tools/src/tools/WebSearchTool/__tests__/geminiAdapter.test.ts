@@ -303,7 +303,7 @@ describe('GeminiSearchAdapter.search', () => {
     expect(results).toHaveLength(2)
   })
 
-  test('surfaces a permanent API failure without retrying it', async () => {
+  test('surfaces a permanent API failure without climbing the ladder', async () => {
     let attempts = 0
     const failing = (async () => {
       attempts++
@@ -315,6 +315,8 @@ describe('GeminiSearchAdapter.search', () => {
     await expect(
       new GeminiSearchAdapter({ fetchOverride: failing }).search('rrf', {}),
     ).rejects.toThrow(/403/)
-    expect(attempts).toBe(1)
+    // Every API error is retried, but a permanent class gets one cheap
+    // attempt — not the three SEARCH_MAX_RETRIES buys a transient failure.
+    expect(attempts).toBe(2)
   })
 })

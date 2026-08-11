@@ -7,12 +7,20 @@ import {
 } from '../retry.js'
 
 const savedMaxRetries = process.env.OPENAI_REQUEST_MAX_RETRIES
+const savedRetryPolicy = process.env.CLAUDE_CODE_RETRY_ALL_ERRORS
 
 afterEach(() => {
   if (savedMaxRetries === undefined) {
     delete process.env.OPENAI_REQUEST_MAX_RETRIES
   } else {
     process.env.OPENAI_REQUEST_MAX_RETRIES = savedMaxRetries
+  }
+  // Restored here as well as set locally: the classifier reads this for every
+  // error in the process, so a leak re-decides later files in the shard.
+  if (savedRetryPolicy === undefined) {
+    delete process.env.CLAUDE_CODE_RETRY_ALL_ERRORS
+  } else {
+    process.env.CLAUDE_CODE_RETRY_ALL_ERRORS = savedRetryPolicy
   }
 })
 
@@ -297,7 +305,7 @@ describe('retryOpenAIRequest', () => {
     })
   })
 
-  test('does not retry a 400 response', async () => {
+  test('gives a 400 response one cheap retry, not the ladder', async () => {
     let calls = 0
     await expect(
       retryOpenAIRequest(
@@ -311,11 +319,33 @@ describe('retryOpenAIRequest', () => {
         },
       ),
     ).rejects.toThrow('Responses API request failed (400)')
-    expect(calls).toBe(1)
+    expect(calls).toBe(2)
   })
 
-  test('does not retry auth, permission, model, or other permanent 4xx errors', async () => {
+  test('gives auth, permission, model and other permanent 4xx one cheap retry', async () => {
+    // Every API error is retried; a class that almost never answers
+    // differently gets one attempt rather than the ten-step ladder.
     for (const status of [400, 401, 402, 403, 404, 413, 422]) {
+      let calls = 0
+      await expect(
+        retryOpenAIRequest(
+          async () => {
+            calls++
+            return requireSuccess(new Response('permanent', { status }))
+          },
+          {
+            signal: new AbortController().signal,
+            delay: noDelay,
+          },
+        ),
+      ).rejects.toThrow(`request failed (${status})`)
+      expect(calls).toBe(2)
+    }
+  })
+
+  test('CLAUDE_CODE_RETRY_ALL_ERRORS=0 restores the single-attempt failure', async () => {
+    process.env.CLAUDE_CODE_RETRY_ALL_ERRORS = '0'
+    for (const status of [400, 401, 403, 404, 422]) {
       let calls = 0
       await expect(
         retryOpenAIRequest(
@@ -358,7 +388,10 @@ describe('retryOpenAIRequest', () => {
     }
   })
 
-  test('does not retry deterministic TLS behind transient fetch wording', async () => {
+  test('keeps deterministic TLS off the ladder despite transient fetch wording', async () => {
+    // The point of this test is unchanged: a bad certificate must not cost the
+    // ten-step ladder, so getSSLErrorHint's NODE_EXTRA_CA_CERTS advice arrives
+    // while it is still useful. It now costs the cheap lane's one attempt.
     const tls = Object.assign(
       new Error('write EPROTO ssl/tls alert handshake failure'),
       { code: 'EPROTO' },
@@ -374,7 +407,7 @@ describe('retryOpenAIRequest', () => {
         { signal: new AbortController().signal, delay: noDelay },
       ),
     ).rejects.toBe(error)
-    expect(calls).toBe(1)
+    expect(calls).toBe(2)
   })
 
   test('does not retry a permanent synthetic API error', async () => {

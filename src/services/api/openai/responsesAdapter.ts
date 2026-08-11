@@ -308,29 +308,85 @@ export function buildResponsesRequest(params: {
   }
 }
 
-const COMMITTING_RESPONSE_DELTAS = new Set([
+/**
+ * What an attempt has already put beyond recall. The two committing kinds are
+ * separated because only one of them is unsafe to replay for *every* consumer:
+ *
+ *  - `side_effect` — a `function_call` item was announced, its arguments
+ *    started streaming, or the response reached a terminal event. Replaying
+ *    could surface the same tool call twice, so it ends the retry window no
+ *    matter who is reading.
+ *  - `text` — assistant text, a refusal, or reasoning text. Whether replaying
+ *    is safe depends entirely on what the reader did with it, which is why the
+ *    reader has to say so (see `discardsPartialOutput`).
+ */
+type ResponseCommitment = 'none' | 'text' | 'side_effect'
+
+const COMMITTING_TEXT_DELTAS = new Set([
   'response.output_text.delta',
   'response.refusal.delta',
   'response.reasoning_text.delta',
   'response.reasoning_summary_text.delta',
-  'response.function_call_arguments.delta',
 ])
 
-function commitsResponseAttempt(event: Record<string, unknown>): boolean {
+function responseCommitment(
+  event: Record<string, unknown>,
+): ResponseCommitment {
   if (
     event.type === 'response.completed' ||
     event.type === 'response.incomplete'
   ) {
-    return true
+    return 'side_effect'
   }
   if (event.type === 'response.output_item.added') {
     const item = event.item as Record<string, unknown> | undefined
-    return item?.type === 'function_call'
+    return item?.type === 'function_call' ? 'side_effect' : 'none'
   }
+  if (
+    typeof event.type !== 'string' ||
+    String(event.delta ?? '').length === 0
+  ) {
+    return 'none'
+  }
+  if (event.type === 'response.function_call_arguments.delta') {
+    return 'side_effect'
+  }
+  return COMMITTING_TEXT_DELTAS.has(event.type) ? 'text' : 'none'
+}
+
+/** Monotonic: no amount of following text takes a side effect back. */
+function raiseCommitment(
+  current: ResponseCommitment,
+  event: Record<string, unknown>,
+): ResponseCommitment {
+  if (current === 'side_effect') return current
+  const next = responseCommitment(event)
+  return next === 'none' ? current : next
+}
+
+/**
+ * Has this attempt lost the right to be replayed?
+ *
+ * `discardsPartialOutput` is the reader's promise that it buffers the whole
+ * response and throws partial output away — true for `sideQuery` and the
+ * WebSearch codex adapter, false for the main loop, whose deltas go straight
+ * to the terminal, to ACP `agent_message_chunk` notifications and to
+ * `--include-partial-messages` stdout. Those three are append-only: there is
+ * no protocol for un-saying a chunk, so replaying after text double-renders.
+ *
+ * This predicate is deliberately the *same* one that moves the handoff barrier
+ * in `fetchResponsesStream`'s `attempt`. Keeping them in lockstep is what makes
+ * exactly-once delivery structural rather than incidental: an event is either
+ * still inside the buffer a retry will discard, or it is out and the failure is
+ * permanent — never both.
+ */
+function closesRetryWindow(
+  commitment: ResponseCommitment,
+  discardsPartialOutput: boolean,
+): boolean {
   return (
-    typeof event.type === 'string' &&
-    COMMITTING_RESPONSE_DELTAS.has(event.type) &&
-    String(event.delta ?? '').length > 0
+    commitment === 'side_effect' ||
+    (commitment === 'text' && !discardsPartialOutput)
   )
 }
 
@@ -361,7 +417,7 @@ function streamEventError(
   event: Record<string, unknown>,
   sseEvent: string | undefined,
   label: string,
-  hasCommittedEvent: boolean,
+  retryWindowClosed: boolean,
 ): OpenAIRequestError | undefined {
   const error = eventErrorPayload(event, sseEvent)
   if (!error) return undefined
@@ -372,7 +428,7 @@ function streamEventError(
   const scalar = (value: unknown): string | number | undefined =>
     typeof value === 'string' || typeof value === 'number' ? value : undefined
   return new OpenAIRequestError(`${label} stream failed: ${message}`, {
-    retryable: !hasCommittedEvent && isRetryableAPIError(error),
+    retryable: !retryWindowClosed && isRetryableAPIError(error),
     ...(typeof error.type === 'string' ? { type: error.type } : {}),
     ...(scalar(error.code) !== undefined ? { code: scalar(error.code) } : {}),
     ...(scalar(error.status) !== undefined
@@ -389,6 +445,8 @@ async function* parseSSE(
     abort: (reason: Error) => void
     idleTimeoutMs: number
     label: string
+    /** See {@link closesRetryWindow}. */
+    discardsPartialOutput: boolean
   },
 ): AsyncGenerator<Record<string, unknown>, void> {
   if (!response.body)
@@ -400,8 +458,10 @@ async function* parseSSE(
   const decoder = new TextDecoder()
   let buffer = ''
   let scanIndex = 0
-  let hasCommittedEvent = false
+  let commitment: ResponseCommitment = 'none'
   let hasTerminalEvent = false
+  const retryWindowClosed = () =>
+    closesRetryWindow(commitment, options.discardsPartialOutput)
 
   const parseFrame = (frame: string): Record<string, unknown> | undefined => {
     const lines = frame.split(/\r?\n/)
@@ -424,7 +484,7 @@ async function* parseSSE(
     } catch (cause) {
       throw new OpenAIRequestError(
         `${options.label} stream returned invalid SSE JSON`,
-        { retryable: !hasCommittedEvent, cause },
+        { retryable: !retryWindowClosed(), cause },
       )
     }
     if (!parsed || typeof parsed !== 'object') return undefined
@@ -439,7 +499,7 @@ async function* parseSSE(
       event,
       sseEvent,
       options.label,
-      hasCommittedEvent,
+      retryWindowClosed(),
     )
     if (error) throw error
     return event
@@ -490,7 +550,7 @@ async function* parseSSE(
       const timer = setTimeout(() => {
         const error = new OpenAIRequestError(
           `${options.label} stream idle timeout after ${options.idleTimeoutMs}ms`,
-          { retryable: !hasCommittedEvent },
+          { retryable: !retryWindowClosed() },
         )
         rejectOnce(error)
         options.abort(error)
@@ -510,7 +570,10 @@ async function* parseSSE(
       try {
         result = await read()
       } catch (cause) {
-        if (hasCommittedEvent && isRetryableAPIError(cause)) {
+        // A transport failure this late is still transient, but replaying it
+        // would re-produce output the reader can no longer un-see. Pin it
+        // permanent so no ladder above tries. See closesRetryWindow.
+        if (retryWindowClosed() && isRetryableAPIError(cause)) {
           throw new OpenAIRequestError(
             cause instanceof Error
               ? cause.message
@@ -527,7 +590,7 @@ async function* parseSSE(
       while (frame !== undefined) {
         const parsed = parseFrame(frame)
         if (parsed) {
-          if (commitsResponseAttempt(parsed)) hasCommittedEvent = true
+          commitment = raiseCommitment(commitment, parsed)
           yield parsed
         }
         frame = takeFrame()
@@ -539,7 +602,7 @@ async function* parseSSE(
     while (frame !== undefined) {
       const parsed = parseFrame(frame)
       if (parsed) {
-        if (commitsResponseAttempt(parsed)) hasCommittedEvent = true
+        commitment = raiseCommitment(commitment, parsed)
         yield parsed
       }
       frame = takeFrame()
@@ -550,14 +613,14 @@ async function* parseSSE(
     if (buffer.trim()) {
       const parsed = parseFrame(buffer)
       if (parsed) {
-        if (commitsResponseAttempt(parsed)) hasCommittedEvent = true
+        commitment = raiseCommitment(commitment, parsed)
         yield parsed
       }
     }
     if (!hasTerminalEvent) {
       throw new OpenAIRequestError(
         `${options.label} stream ended before a terminal event`,
-        { retryable: !hasCommittedEvent },
+        { retryable: !retryWindowClosed() },
       )
     }
   } finally {
@@ -682,7 +745,9 @@ export async function* adaptResponsesStreamToAnthropic(
   let currentContentIndex = -1
   let textBlockOpen = false
   let thinkingBlockOpen = false
-  let hasCommittedOutput = false
+  // This adapter has no idea who is reading its output, so it stays with the
+  // conservative rule: any commitment ends the retry window.
+  let commitment: ResponseCommitment = 'none'
   let sawRefusal = false
 
   const ensureStarted = async function* () {
@@ -713,10 +778,10 @@ export async function* adaptResponsesStreamToAnthropic(
       event,
       undefined,
       'Responses API',
-      hasCommittedOutput,
+      closesRetryWindow(commitment, false),
     )
     if (sourceError) throw sourceError
-    if (commitsResponseAttempt(event)) hasCommittedOutput = true
+    commitment = raiseCommitment(commitment, event)
     for await (const startedEvent of ensureStarted()) yield startedEvent
     const type = event.type
 
@@ -942,7 +1007,10 @@ async function fetchResponsesStream(params: {
   maxRetries?: number
   /** Human-readable route name for error messages. */
   label: string
+  /** See {@link closesRetryWindow}. */
+  discardsPartialOutput?: boolean
 }): Promise<AsyncIterable<Record<string, unknown>>> {
+  const discardsPartialOutput = params.discardsPartialOutput === true
   const fetchFn = params.fetchOverride ?? (globalThis.fetch as typeof fetch)
   const idleTimeoutMs =
     Number.parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS ?? '', 10) ||
@@ -976,14 +1044,27 @@ async function fetchResponsesStream(params: {
         abort: reason => controller.abort(reason),
         idleTimeoutMs,
         label: params.label,
+        discardsPartialOutput,
       })
       const iterator = stream[Symbol.asyncIterator]()
       const initial: Record<string, unknown>[] = []
+      // Everything read here is still ours: it goes into `initial`, and a retry
+      // rebuilds `initial` from scratch, so nothing a failed attempt produced
+      // can reach the caller. The barrier is therefore the *same* predicate the
+      // error stamps use — read past it and a failure is no longer replayable.
+      //
+      // For a rendering caller that means stopping at the first visible token,
+      // which is what keeps time-to-first-token unchanged. A caller that
+      // buffers the whole response instead trades nothing away by reading on,
+      // and gains a retry for exactly the mid-stream text failures that used to
+      // end the turn.
+      let commitment: ResponseCommitment = 'none'
       while (true) {
         const next = await iterator.next()
         if (next.done) break
         initial.push(next.value)
-        if (commitsResponseAttempt(next.value)) break
+        commitment = raiseCommitment(commitment, next.value)
+        if (closesRetryWindow(commitment, discardsPartialOutput)) break
       }
       return { controller, cleanup, initial, iterator }
     } catch (error) {
@@ -1046,6 +1127,8 @@ export async function createChatGPTResponsesStream(params: {
   signal: AbortSignal
   fetchOverride?: typeof fetch
   maxRetries?: number
+  /** See {@link closesRetryWindow}. */
+  discardsPartialOutput?: boolean
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const auth = await getValidChatGPTAuth()
   const headers: Record<string, string> = {
@@ -1073,6 +1156,7 @@ export async function createChatGPTResponsesStream(params: {
     fetchOverride: params.fetchOverride,
     maxRetries: params.maxRetries,
     label: 'ChatGPT Responses API',
+    discardsPartialOutput: params.discardsPartialOutput,
   })
 }
 
@@ -1100,6 +1184,8 @@ export async function createOpenAIResponsesStream(params: {
   signal: AbortSignal
   fetchOverride?: typeof fetch
   maxRetries?: number
+  /** See {@link closesRetryWindow}. */
+  discardsPartialOutput?: boolean
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
@@ -1119,5 +1205,6 @@ export async function createOpenAIResponsesStream(params: {
     fetchOverride: params.fetchOverride,
     maxRetries: params.maxRetries,
     label: 'Responses API',
+    discardsPartialOutput: params.discardsPartialOutput,
   })
 }

@@ -644,10 +644,26 @@ async function sideQueryViaResponsesApi(
 
   const signal = opts.signal ?? new AbortController().signal
   const maxRetries = opts.maxRetries ?? 10
+  // Nothing here is streamed anywhere: collectAnthropicStreamToBetaMessage
+  // accumulates into locals and the caller only ever sees the finished
+  // BetaMessage. A half-delivered response is therefore genuinely discardable,
+  // so an upstream that dies mid-text may be replayed instead of failing the
+  // classifier — the opposite of the main loop, whose deltas are already on the
+  // user's screen by then.
   const rawStream =
     route === 'chatgpt'
-      ? await createChatGPTResponsesStream({ request, signal, maxRetries })
-      : await createOpenAIResponsesStream({ request, signal, maxRetries })
+      ? await createChatGPTResponsesStream({
+          request,
+          signal,
+          maxRetries,
+          discardsPartialOutput: true,
+        })
+      : await createOpenAIResponsesStream({
+          request,
+          signal,
+          maxRetries,
+          discardsPartialOutput: true,
+        })
   const adapted = adaptResponsesStreamToAnthropic(rawStream, openaiModel)
   const betaMessage = await collectAnthropicStreamToBetaMessage(
     adapted,

@@ -20,6 +20,16 @@
  * not handed to the setup wizard (whose API-key field is written to
  * settings.env). See loginPlan.ts.
  *
+ * A successful device code is NOT a successful login. The console mints a token
+ * for the account; the two products are billed separately, and both answer
+ * `GET /models` without any credential — so signing in, naming the account and
+ * filling a model picker all succeed for someone who cannot use the endpoint
+ * they picked. `verifyOpencodeAccess` is therefore the gate, and it runs BEFORE
+ * anything is written: a rejected credential leaves settings, `process.env` and
+ * the runtime slot exactly as they were and puts the user on the error screen
+ * with a reason and Enter-to-retry, instead of dropping them into a REPL where
+ * every request comes back `Invalid API key`.
+ *
  * One account, two products. The device flow is identical for Zen and Go — the
  * console mints the same token — but everything downstream of it is not: the
  * base URL written to settings, the catalog fetched, and who gets billed. So
@@ -41,16 +51,15 @@ import {
   pollForTokens,
   requestDeviceCode,
   saveOpencodeTokens,
+  verifyOpencodeAccess,
 } from 'src/services/auth/opencode/index.js';
-import { applyProviderSaveEnv } from 'src/components/providerSetup/savePlan.js';
 import type { ProviderModelSetupStatus } from 'src/components/providerSetup/state.js';
 import { prefillTierFields } from 'src/components/providerSetup/tierPersistence.js';
-import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js';
-import { applyOpencodeWire, setOpencodeRuntimeCredential } from 'src/utils/model/opencodeWire.js';
 import { openBrowser } from 'src/utils/network/browser.js';
-import { getSettingsForSource, updateSettingsForSource } from 'src/utils/settings/settings.js';
+import { getSettingsForSource } from 'src/utils/settings/settings.js';
 import { Spinner } from '../Spinner.js';
-import { buildOpencodeConsoleEnv, buildOpencodeModelStep, describeOpencodeAccount } from './loginPlan.js';
+import { activateOpencodeConsoleSession } from './activateSession.js';
+import { buildOpencodeModelStep, describeOpencodeAccount } from './loginPlan.js';
 import { OPENCODE_PRODUCTS, type OpencodeProduct, withLaneLabels } from './opencodeCatalog.js';
 
 export type OpencodeDevicePhase = 'requesting' | 'waiting' | 'finishing';
@@ -128,43 +137,47 @@ export function OpencodeDeviceLogin({
         });
         if (cancelled) return;
 
-        // Activate the provider before anything reads it. `applyProviderSaveEnv`
-        // rather than a plain loop so clearing OPENCODE_API_KEY takes back only
-        // what occ itself wrote — a key exported in the user's shell is theirs,
-        // and occ hands the whole environment to every Bash tool call.
-        const previous = getSettingsForSource('userSettings');
-        const env = buildOpencodeConsoleEnv(baseUrl);
-        const { error } = updateSettingsForSource('userSettings', {
-          modelType: 'opencode',
-          env,
-        } as unknown as Parameters<typeof updateSettingsForSource>[1]);
-        if (error) {
-          throw new Error('Failed to save settings. Please try again.');
-        }
-        applyProviderSaveEnv(env, previous?.env, process.env);
-        setOpencodeRuntimeCredential(tokens.accessToken);
-        applyOpencodeWire();
-        // Switching provider mid-session must also tear down a DeepSeek mirror
-        // left by a previous configuration; the apply releases its own claim
-        // before deciding again, so this is the teardown too.
-        applyDeepSeekAnthropicWire();
+        const credential = {
+          token: tokens.accessToken,
+          kind: 'oauth' as const,
+          server: OPENCODE_CONSOLE_URL,
+          ...(account.orgId ? { orgId: account.orgId } : {}),
+        };
 
         // The entitlement list, which only an OAuth credential has — the paid
         // models an org's plan excludes are exactly the ones it must not be
         // offered, and they would otherwise fail at first use. The base URL
         // goes with it: the public fallback behind that call is per-product,
         // and Zen's 61 models are the wrong answer for a Go subscription.
-        const models = await fetchOpencodeModels(
-          {
-            token: tokens.accessToken,
-            kind: 'oauth',
-            server: OPENCODE_CONSOLE_URL,
-            ...(account.orgId ? { orgId: account.orgId } : {}),
-          },
-          baseUrl,
-          controller.signal,
-        ).catch(() => null);
+        const models = await fetchOpencodeModels(credential, baseUrl, controller.signal).catch(() => null);
         if (cancelled) return;
+
+        // Nothing above this line proves the token works HERE. The console
+        // minted it for the account, not for a product, and both products serve
+        // `/models` publicly — so a Go sign-in by someone who only pays for Zen
+        // gets a device code, an account name and a picker full of real ids,
+        // and finds out at the first prompt. Verify before activating, so a
+        // credential this endpoint refuses fails on the login screen (loud, and
+        // Enter retries) instead of becoming a REPL that 401s on everything.
+        const probeModel = models?.[0]?.id ?? OPENCODE_PRODUCTS[product].models[0];
+        const access = probeModel
+          ? await verifyOpencodeAccess(credential, baseUrl, probeModel, controller.signal)
+          : ({ ok: true } as const);
+        if (cancelled) return;
+
+        // Activation and refusal are one decision, and it is made before the
+        // first write rather than after the last one (activateSession.ts).
+        const activation = activateOpencodeConsoleSession({
+          baseUrl,
+          label,
+          otherLabel: OPENCODE_PRODUCTS[product === 'go' ? 'zen' : 'go'].label,
+          accessToken: tokens.accessToken,
+          access,
+        });
+        if (!activation.activated) {
+          onError(activation.message);
+          return;
+        }
 
         onReady(
           buildOpencodeModelStep({

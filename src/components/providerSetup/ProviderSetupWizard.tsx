@@ -2,12 +2,14 @@
  * The shared two-step provider setup: connection details, then a model picked
  * from whatever the endpoint actually serves.
  *
- * Step 1 collects Base URL + API Key and does nothing else with them but ask
- * the endpoint `GET /models`. Step 2 turns that answer into a picker for the
- * default model and each tier override. When the request fails — wrong URL, no
- * key, a gateway that does not implement /models — the same step 2 renders as
- * plain text inputs with the failure reason shown, so a working endpoint is
- * never blocked by a missing model list.
+ * Step 1 collects Base URL + API Key and asks the endpoint about them — see
+ * endpointRequests.ts for what that means per provider. Step 2 turns the answer
+ * into a picker for the default model and each tier override. When the model
+ * request fails — wrong URL, no key, a gateway that does not implement /models
+ * — the same step 2 renders as plain text inputs with the failure reason shown,
+ * so a working endpoint is never blocked by a missing model list. A credential
+ * the endpoint outright REFUSES is the other case, and it does not reach step 2
+ * at all.
  *
  * Nothing is written to settings until step 2 is submitted: the model request
  * runs on credentials that exist only in this component's state, which is the
@@ -43,6 +45,7 @@ import {
   TIER_STATUS_KEYS,
 } from './state.js';
 import { parseMaxContextInput } from './maxContext.js';
+import { runEndpointRequests } from './endpointRequests.js';
 import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js';
 import { prefillTierFields } from './tierPersistence.js';
 import { applyProviderSaveEnv, planProviderSave, type ProviderSaveOutcome } from './savePlan.js';
@@ -165,31 +168,36 @@ function EndpointStep({
     const controller = new AbortController();
     fetchControllerRef.current = controller;
     let disposed = false;
-    let failureReason = 'the request failed';
 
     // An unset base URL is legal for every provider but OpenAI; the request
     // still has to go somewhere, so it goes to the same default the provider
     // would use at runtime. It is deliberately not written to settings later.
     const effectiveBaseUrl = status.baseUrl || spec.defaultBaseUrl;
 
-    const request: Promise<Awaited<ReturnType<ProviderSetupSpec['fetchModels']>>> =
-      !status.apiKey && !spec.apiKeyRequired
-        ? Promise.resolve(null).then(models => {
-            failureReason = 'no API key was provided, so the model list could not be requested';
-            return models;
-          })
-        : spec.fetchModels({
-            baseURL: effectiveBaseUrl,
-            apiKey: status.apiKey,
-            signal: controller.signal,
-            onError: reason => {
-              failureReason = reason;
-            },
-          });
-
-    void request.then(models => {
+    void runEndpointRequests({
+      spec,
+      baseURL: effectiveBaseUrl,
+      apiKey: status.apiKey,
+      signal: controller.signal,
+    }).then(outcome => {
       if (disposed || controller.signal.aborted) return;
-      setStatus(buildModelStep(status, spec, models, failureReason));
+      if (!outcome.proceed) {
+        // A credential this endpoint refuses stops here, one screen before
+        // anything is written. Coming back lands on the API Key field with the
+        // endpoint still filled in, so correcting it is a keystroke rather than
+        // a restart.
+        onError(outcome.message, {
+          state: 'provider_endpoint_setup',
+          kind: status.kind,
+          phase: 'editing',
+          baseUrl: status.baseUrl,
+          apiKey: status.apiKey,
+          ...(status.wireApi ? { wireApi: status.wireApi } : {}),
+          activeField: 'api_key',
+        });
+        return;
+      }
+      setStatus(buildModelStep(status, spec, outcome.models, outcome.failureReason));
     });
 
     return () => {
@@ -197,6 +205,11 @@ function EndpointStep({
       controller.abort();
       if (fetchControllerRef.current === controller) fetchControllerRef.current = null;
     };
+    // `onError` is left out on purpose: the host passes an inline arrow, so
+    // including it would abort and restart the request on every render of the
+    // screen above. It only ever closes over a stable state setter, so the
+    // handler captured on the first pass is the same one a later render builds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setStatus, spec, status]);
 
   useKeybinding(

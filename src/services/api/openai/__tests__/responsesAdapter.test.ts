@@ -240,8 +240,12 @@ describe('reasoning summaries (thinking visibility)', () => {
 
     const bodies: string[] = []
     const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
-      bodies.push(String(init?.body ?? ''))
-      if (bodies.length === 1) {
+      const body = String(init?.body ?? '')
+      bodies.push(body)
+      // Keyed on the body, not the call count: a strict endpoint rejects the
+      // field every time it is sent. No retry ladder can talk it round — only
+      // dropping the field can, which is what this path exists to do.
+      if (JSON.parse(body).reasoning?.summary) {
         return new Response(
           JSON.stringify({
             error: { message: "Unknown parameter: 'reasoning.summary'." },
@@ -264,14 +268,20 @@ describe('reasoning summaries (thinking visibility)', () => {
       fetchOverride,
     })
 
-    expect(bodies).toHaveLength(2)
-    expect(JSON.parse(bodies[0]!).reasoning).toEqual({
-      effort: 'high',
-      summary: 'auto',
-    })
+    // Three bodies, not two: under the retry-everything policy the 400 buys
+    // one identical cheap-lane retry before the degradation path takes over.
+    // That costs one round trip per session — the suppression below is
+    // latched — and it is the price of the ladder no longer failing outright.
+    expect(bodies).toHaveLength(3)
+    for (const body of [bodies[0]!, bodies[1]!]) {
+      expect(JSON.parse(body).reasoning).toEqual({
+        effort: 'high',
+        summary: 'auto',
+      })
+    }
     // Retried without the field, and the rest of the body is untouched.
-    expect(JSON.parse(bodies[1]!).reasoning).toEqual({ effort: 'high' })
-    expect(JSON.parse(bodies[1]!).model).toBe('gpt-5.6-sol')
+    expect(JSON.parse(bodies[2]!).reasoning).toEqual({ effort: 'high' })
+    expect(JSON.parse(bodies[2]!).model).toBe('gpt-5.6-sol')
 
     // Latched: later requests in the session stop paying the failed probe.
     const next = buildResponsesRequest({
@@ -284,7 +294,7 @@ describe('reasoning summaries (thinking visibility)', () => {
     expect(next.reasoning).toEqual({ effort: 'high' })
   })
 
-  test('an unrelated 400 still fails the turn', async () => {
+  test('an unrelated 400 still fails the turn after one cheap retry', async () => {
     delete process.env.OPENAI_REASONING_SUMMARY
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
@@ -311,7 +321,7 @@ describe('reasoning summaries (thinking visibility)', () => {
         fetchOverride,
       }),
     ).rejects.toThrow()
-    expect(calls).toBe(1)
+    expect(calls).toBe(2)
   })
 })
 
@@ -752,7 +762,9 @@ describe('createOpenAIResponsesStream', () => {
     })
   }
 
-  test('does not retry permanent model errors from the stream', async () => {
+  test('keeps permanent model errors off the stream ladder', async () => {
+    // OPENAI_REQUEST_MAX_RETRIES=2 means a transient failure would be tried
+    // three times. A bad model id gets the cheap lane's single retry instead.
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
     let calls = 0
@@ -775,7 +787,7 @@ describe('createOpenAIResponsesStream', () => {
         fetchOverride,
       }),
     ).rejects.toThrow(/model does not exist/)
-    expect(calls).toBe(1)
+    expect(calls).toBe(2)
   })
 
   for (const [label, committedEvent] of [
@@ -885,6 +897,302 @@ describe('createOpenAIResponsesStream', () => {
     ])
     expect(calls).toBe(1)
     expect((caught as { retryable?: boolean }).retryable).toBe(false)
+  })
+
+  // ── discardsPartialOutput ────────────────────────────────────────────────
+  //
+  // A reader that buffers the whole response and hands it over in one piece
+  // (sideQuery, the WebSearch codex adapter) can afford to replay a stream that
+  // died after producing text: the partial output never left the adapter's own
+  // buffer. The main loop cannot — its deltas are already on the terminal, in
+  // ACP `agent_message_chunk` notifications and on `--include-partial-messages`
+  // stdout, none of which can be taken back. Every case below is asserted from
+  // both sides so the two policies stay visibly paired.
+
+  /** The upstream-gateway failure from the bug report, verbatim. */
+  const UPSTREAM_FAILURE =
+    'data: {"type":"response.failed","response":{"error":{"type":"upstream_error","code":"stream_read_error","message":"stream_read_error"}}}\n\n'
+  const PARTIAL_TEXT =
+    'data: {"type":"response.output_text.delta","delta":"half an ans"}\n\n'
+  const COMPLETE_RESPONSE =
+    'data: {"type":"response.output_text.delta","delta":"the whole answer"}\n\n' +
+    'data: {"type":"response.completed","response":{}}\n\n'
+  const COMPLETE_EVENTS = [
+    { type: 'response.output_text.delta', delta: 'the whole answer' },
+    { type: 'response.completed', response: {} },
+  ]
+
+  function respondPerCall(bodies: (calls: number) => BodyInit): {
+    fetchOverride: typeof fetch
+    getCalls: () => number
+  } {
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(bodies(calls))
+    }) as unknown as typeof fetch
+    return { fetchOverride, getCalls: () => calls }
+  }
+
+  async function drain(
+    fetchOverride: typeof fetch,
+    discardsPartialOutput: boolean,
+  ): Promise<{ events: Record<string, unknown>[]; caught: unknown }> {
+    const events: Record<string, unknown>[] = []
+    let caught: unknown
+    try {
+      // A buffered reader reads past the first token inside the retry ladder,
+      // so a permanent failure surfaces from the creation call rather than from
+      // iteration. Both shapes have to land in `caught`.
+      const stream = await createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+        discardsPartialOutput,
+      })
+      for await (const event of stream) events.push(event)
+    } catch (error) {
+      caught = error
+    }
+    return { events, caught }
+  }
+
+  test('a buffered reader replays a text-only failure and delivers the answer exactly once', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const { fetchOverride, getCalls } = respondPerCall(calls =>
+      calls === 1 ? PARTIAL_TEXT + UPSTREAM_FAILURE : COMPLETE_RESPONSE,
+    )
+
+    const { events, caught } = await drain(fetchOverride, true)
+
+    expect(caught).toBeUndefined()
+    expect(getCalls()).toBe(2)
+    // The whole point: the abandoned attempt's text never reached the reader,
+    // so the answer is delivered once rather than twice.
+    expect(events).toEqual(COMPLETE_EVENTS)
+    expect(JSON.stringify(events)).not.toContain('half an ans')
+  })
+
+  test('a rendering reader keeps a text-only failure permanent — its deltas are already out', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const { fetchOverride, getCalls } = respondPerCall(calls =>
+      calls === 1 ? PARTIAL_TEXT + UPSTREAM_FAILURE : COMPLETE_RESPONSE,
+    )
+
+    const { events, caught } = await drain(fetchOverride, false)
+
+    expect(getCalls()).toBe(1)
+    expect(events).toEqual([
+      { type: 'response.output_text.delta', delta: 'half an ans' },
+    ])
+    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+  })
+
+  for (const [label, committedEvent] of [
+    [
+      'function call identity',
+      'data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"Bash"}}\n\n',
+    ],
+    [
+      'function call arguments',
+      'data: {"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\\"command\\":\\"rm -rf /tmp/x\\"}"}\n\n',
+    ],
+  ] as const) {
+    test(`a committed ${label} stays permanent even for a buffered reader`, async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key'
+      process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+      const { fetchOverride, getCalls } = respondPerCall(calls =>
+        calls === 1 ? committedEvent + UPSTREAM_FAILURE : COMPLETE_RESPONSE,
+      )
+
+      const { events, caught } = await drain(fetchOverride, true)
+
+      // Replaying could announce the same tool call twice. No reader is
+      // allowed to opt out of that.
+      expect(getCalls()).toBe(1)
+      expect(events).toHaveLength(1)
+      expect((caught as { retryable?: boolean }).retryable).toBe(false)
+    })
+  }
+
+  test('text before a committed function call does not reopen the window', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const { fetchOverride, getCalls } = respondPerCall(calls =>
+      calls === 1
+        ? PARTIAL_TEXT +
+          'data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"Bash"}}\n\n' +
+          UPSTREAM_FAILURE
+        : COMPLETE_RESPONSE,
+    )
+
+    const { caught } = await drain(fetchOverride, true)
+
+    expect(getCalls()).toBe(1)
+    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+  })
+
+  test('a buffered reader replays a transport read error after text', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      if (calls > 1) return new Response(COMPLETE_RESPONSE)
+      // `error()` resets the queue, so enqueue-then-error in `start` would
+      // drop the text and test nothing. Erroring from a later `pull` makes the
+      // reader see the delta first and only then the transport failure — the
+      // shape the bug report describes.
+      let sentText = false
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (sentText) {
+              controller.error(new Error('terminated'))
+              return
+            }
+            sentText = true
+            controller.enqueue(new TextEncoder().encode(PARTIAL_TEXT))
+          },
+        }),
+      )
+    }) as unknown as typeof fetch
+
+    const { events, caught } = await drain(fetchOverride, true)
+
+    expect(caught).toBeUndefined()
+    expect(calls).toBe(2)
+    expect(events).toEqual(COMPLETE_EVENTS)
+  })
+
+  test('a rendering reader keeps a transport read error after text permanent', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      let sentText = false
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (sentText) {
+              controller.error(new Error('terminated'))
+              return
+            }
+            sentText = true
+            controller.enqueue(new TextEncoder().encode(PARTIAL_TEXT))
+          },
+        }),
+      )
+    }) as unknown as typeof fetch
+
+    const { events, caught } = await drain(fetchOverride, false)
+
+    expect(calls).toBe(1)
+    expect(events).toEqual([
+      { type: 'response.output_text.delta', delta: 'half an ans' },
+    ])
+    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+  })
+
+  test('a buffered reader replays an idle timeout after text', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      if (calls > 1) return new Response(COMPLETE_RESPONSE)
+      // Fresh stalled body per call: reusing one would make a retry read from
+      // an already-locked reader and hide the retry it is meant to prove.
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(PARTIAL_TEXT))
+          },
+        }),
+      )
+    }) as unknown as typeof fetch
+
+    const { events, caught } = await drain(fetchOverride, true)
+
+    expect(caught).toBeUndefined()
+    expect(calls).toBe(2)
+    expect(events).toEqual(COMPLETE_EVENTS)
+  })
+
+  test('a buffered reader replays a clean EOF after text', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const { fetchOverride, getCalls } = respondPerCall(calls =>
+      calls === 1 ? PARTIAL_TEXT : COMPLETE_RESPONSE,
+    )
+
+    const { events, caught } = await drain(fetchOverride, true)
+
+    expect(caught).toBeUndefined()
+    expect(getCalls()).toBe(2)
+    expect(events).toEqual(COMPLETE_EVENTS)
+  })
+
+  test('a buffered reader replays invalid SSE JSON after text', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const { fetchOverride, getCalls } = respondPerCall(calls =>
+      calls === 1 ? PARTIAL_TEXT + 'data: {not json\n\n' : COMPLETE_RESPONSE,
+    )
+
+    const { events, caught } = await drain(fetchOverride, true)
+
+    expect(caught).toBeUndefined()
+    expect(getCalls()).toBe(2)
+    expect(events).toEqual(COMPLETE_EVENTS)
+  })
+
+  test('permanent stream errors stay off the ladder for a buffered reader', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const { fetchOverride, getCalls } = respondPerCall(
+      () =>
+        PARTIAL_TEXT +
+        'data: {"type":"response.failed","response":{"error":{"code":"model_not_found","message":"model does not exist"}}}\n\n',
+    )
+
+    const { caught } = await drain(fetchOverride, true)
+
+    // Buffering says "a replay would be invisible", not "every failure is
+    // transient". A bad model id gets the cheap lane's single retry; the
+    // transient case above would have been tried three times.
+    expect(getCalls()).toBe(2)
+    expect((caught as Error).message).toMatch(/model does not exist/)
+  })
+
+  test('a 400 still fails fast for a buffered reader', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(
+        JSON.stringify({
+          error: { type: 'invalid_request_error', message: 'bad tool schema' },
+        }),
+        { status: 400 },
+      )
+    }) as unknown as typeof fetch
+
+    const { caught } = await drain(fetchOverride, true)
+    expect((caught as Error).message).toMatch(/bad tool schema/)
+    // Two attempts, not the three OPENAI_REQUEST_MAX_RETRIES=2 would buy a
+    // transient failure: a malformed tool schema still surfaces immediately.
+    expect(calls).toBe(2)
   })
 })
 

@@ -133,13 +133,41 @@ describe('form shape', () => {
 
 describe('save-time extras', () => {
   test('the auth mode is SET, not cleared — it is what activates OpenCode', () => {
-    // Every other provider's *_AUTH_MODE entry here clears a subscription
-    // route. OpenCode's is the switch that points the session at OpenCode at all
-    // (opencodeWire.ts), so a key session has to write it too or the mirror
-    // never runs and requests go to the previous provider's host.
-    expect(specs.PROVIDER_SETUP_SPECS.opencode.extraEnv?.({})).toEqual({
+    // Every other provider's *_AUTH_MODE entry is in `extraEnv` and CLEARS a
+    // subscription route. OpenCode's is the switch that points the session at
+    // OpenCode at all (opencodeWire.ts), so a key session has to write it too
+    // or the mirror never runs and requests go to the previous provider's host.
+    expect(
+      specs.PROVIDER_SETUP_SPECS.opencode.sessionEnv?.({
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+      }),
+    ).toEqual({
       OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_BASE_URL: 'https://opencode.ai/zen/go/v1',
     })
+  })
+
+  test('identity and routing are NOT on the credential plane', () => {
+    // The regression this guards: both keys used to live in `extraEnv`/the
+    // credential block, which planProviderSave skips for a subscription
+    // session — so a Console login's own model step could not carry them.
+    expect(specs.PROVIDER_SETUP_SPECS.opencode.extraEnv).toBeUndefined()
+  })
+
+  test('an empty endpoint falls back to Zen rather than unsetting the key', () => {
+    // applyOpencodeWire() returns early with no OPENCODE_BASE_URL, so deleting
+    // it leaves a session that reports itself as OpenCode and routes nowhere.
+    expect(
+      specs.PROVIDER_SETUP_SPECS.opencode.sessionEnv?.({ baseUrl: '  ' })
+        ?.OPENCODE_BASE_URL,
+    ).toBe(specs.PROVIDER_SETUP_SPECS.opencode.defaultBaseUrl)
+  })
+
+  test('no other provider claims session env — their endpoints are implicit', () => {
+    for (const [kind, spec] of Object.entries(specs.PROVIDER_SETUP_SPECS)) {
+      if (kind === 'opencode') continue
+      expect(spec.sessionEnv).toBeUndefined()
+    }
   })
 })
 

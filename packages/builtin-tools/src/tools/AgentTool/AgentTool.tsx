@@ -148,7 +148,11 @@ function getAutoBackgroundMs(): number {
 // Base input schema without multi-agent parameters
 const baseInputSchema = lazySchema(() =>
   z.object({
-    description: z.string().describe('A short (3-5 word) description of the task'),
+    description: z
+      .string()
+      .describe(
+        'Imperative summary of the task, 2-4 words. Rendered verbatim in the agent status list — one line per agent, beside the agent type — so it stays scannable when several run at once.',
+      ),
     prompt: z.string().describe('The task for the agent to perform'),
     subagent_type: z.string().optional().describe('The type of specialized agent to use for this task'),
     model: z
