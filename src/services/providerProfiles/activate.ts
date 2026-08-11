@@ -9,6 +9,7 @@ import { clearOpenAIClientCache } from 'src/services/api/openai/client.js'
 import { clearGrokClientCache } from 'src/services/api/grok/client.js'
 import { applyConfigEnvironmentVariables } from 'src/utils/config/managedEnv.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { isOpencodeSessionActive } from 'src/utils/model/opencodeWire.js'
 import {
   getSettingsForSource,
   updateSettingsForSource,
@@ -22,6 +23,7 @@ import {
   saveProfilesFile,
   type ProviderProfile,
 } from './profiles.js'
+import { resolveModelSelector, type AggregatedModel } from './aggregate.js'
 import type { ProfileModelType } from './envKeys.js'
 
 export { getMergedProviderEnv }
@@ -29,6 +31,15 @@ export { getMergedProviderEnv }
 function currentProfileModelType():
   | { modelType: ProfileModelType }
   | { error: string } {
+  // Asked BEFORE getAPIProvider(), which answers a different question. That one
+  // reports the wire protocol, and for OpenCode the wire is whatever lane the
+  // configured model implies — 'firstParty' on /messages, 'openai' otherwise.
+  // Saving under that answer captures the lane's ANTHROPIC_*/OPENAI_* keys,
+  // which on an OpenCode session hold values the mirror wrote, including an
+  // access token that expires within the hour. The profile has to record what
+  // the user configured (the OPENCODE_* keys), not what the mirror derived.
+  if (isOpencodeSessionActive()) return { modelType: 'opencode' }
+
   const provider = getAPIProvider()
   switch (provider) {
     case 'firstParty':
@@ -116,6 +127,30 @@ export function activateProfile(
   file.active = name
   saveProfilesFile(file)
   return { profile }
+}
+
+/**
+ * Activate the profile that owns an aggregated model.
+ *
+ * This is the whole "cheap version" of multi-provider: selecting a model from
+ * the union list switches the session to that model's provider. It delegates
+ * to activateProfile() rather than reimplementing the switch — the whole-shape
+ * env write plus client-cache clear is the part that is easy to get subtly
+ * wrong, and there must be exactly one copy of it.
+ *
+ * The caller still owns "and now use this model id": the returned
+ * AggregatedModel carries the id exactly as the provider serves it.
+ */
+export function activateProfileForModel(
+  selector: string,
+): { profile: ProviderProfile; model: AggregatedModel } | { error: string } {
+  const resolved = resolveModelSelector(loadProfilesFile(), selector)
+  if ('error' in resolved) return resolved
+  // Second read inside activateProfile() is intentional: it keeps that
+  // function's contract (name in, switch done) untouched for its other callers.
+  const activated = activateProfile(resolved.model.profile)
+  if ('error' in activated) return activated
+  return { profile: activated.profile, model: resolved.model }
 }
 
 export function deleteProfile(

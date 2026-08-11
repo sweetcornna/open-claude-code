@@ -17,6 +17,8 @@ mock.module('src/utils/telemetry/log.ts', logMock)
 
 type SettingsUpdate = {
   modelType?: string
+  modelSettings?: unknown
+  effortLevel?: string
   env?: Record<string, string | undefined>
 }
 
@@ -39,6 +41,15 @@ const ENV_KEYS = [
   'GEMINI_API_KEY',
   'GEMINI_AUTH_MODE',
   'GROK_API_KEY',
+  // OpenCode: OPENCODE_AUTH_MODE is the one key getAPIProvider() reads before
+  // everything else, so a logout that leaves it behind puts the next launch
+  // back on Zen — with no credential, because the OAuth file is gone.
+  'OPENCODE_AUTH_MODE',
+  'OPENCODE_BASE_URL',
+  'OPENCODE_MODEL',
+  'OPENCODE_WIRE_API',
+  'OPENCODE_API_KEY',
+  'OPENCODE_DEFAULT_OPUS_MODEL',
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_BASE_URL',
@@ -95,6 +106,23 @@ describe('resetProviderConfiguration', () => {
     }
   })
 
+  test('clears the per-tier settings so the next login reseeds them', async () => {
+    const { resetProviderConfiguration } = await import(
+      '../resetProviderConfig.js'
+    )
+
+    resetProviderConfiguration()
+
+    const update = updates[0]!
+    // Present-and-undefined, which is how updateSettingsForSource spells
+    // deletion. Merely absent would leave DeepSeek's 1M/max on the five slots
+    // for the next provider's wizard to prefill and persist.
+    expect('modelSettings' in update).toBe(true)
+    expect(update.modelSettings).toBeUndefined()
+    expect('effortLevel' in update).toBe(true)
+    expect(update.effortLevel).toBeUndefined()
+  })
+
   test('the live process stops seeing the credentials', async () => {
     const { resetProviderConfiguration } = await import(
       '../resetProviderConfig.js'
@@ -104,6 +132,8 @@ describe('resetProviderConfiguration', () => {
     process.env.OPENAI_WIRE_API = 'responses'
     process.env.OPENAI_AUTH_MODE = 'chatgpt'
     process.env.GEMINI_AUTH_MODE = 'antigravity'
+    process.env.OPENCODE_AUTH_MODE = 'opencode'
+    process.env.OPENCODE_API_KEY = 'zen-key'
     process.env.CLAUDE_CODE_OAUTH_TOKEN = 'oauth-token'
 
     resetProviderConfiguration()
@@ -113,6 +143,8 @@ describe('resetProviderConfiguration', () => {
     expect(process.env.OPENAI_WIRE_API).toBeUndefined()
     expect(process.env.OPENAI_AUTH_MODE).toBeUndefined()
     expect(process.env.GEMINI_AUTH_MODE).toBeUndefined()
+    expect(process.env.OPENCODE_AUTH_MODE).toBeUndefined()
+    expect(process.env.OPENCODE_API_KEY).toBeUndefined()
     expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
   })
 

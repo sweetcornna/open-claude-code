@@ -18,9 +18,21 @@ import {
   fetchOpenAICompatibleModelsWith,
 } from 'src/services/modelCatalog/fetchExplicit.js'
 import type { CatalogModel } from 'src/services/modelCatalog/types.js'
+import {
+  fetchOpencodeModels,
+  fetchZenModels,
+  OPENCODE_ZEN_BASE_URL,
+} from 'src/services/auth/opencode/index.js'
 import { ALL_MODEL_CONFIGS } from 'src/utils/model/configs.js'
 import { CHATGPT_CODEX_MODEL_OPTIONS } from 'src/utils/model/chatgptModels.js'
+import { applyOpencodeWire } from 'src/utils/model/opencodeWire.js'
 import type { ProviderURLKind } from 'src/utils/network/providerUrl.js'
+import {
+  OPENCODE_PRODUCTS,
+  opencodePresetModels,
+  opencodeProductForBaseUrl,
+  withLaneLabels,
+} from '../opencodeLogin/opencodeCatalog.js'
 
 export type ProviderSetupKind =
   | 'openai'
@@ -28,6 +40,7 @@ export type ProviderSetupKind =
   | 'gemini'
   | 'grok'
   | 'china'
+  | 'opencode'
 
 export type OpenAIWireApi = 'chat' | 'responses'
 
@@ -101,6 +114,19 @@ export type SubscriptionAuthSpec = {
   envKey: string
   /** Auth-mode value → how to name whoever owns the credentials, for the UI. */
   modes: Record<string, string>
+  /**
+   * Env key that must be UNSET for the mode to mean "a subscription owns the
+   * credentials".
+   *
+   * OpenAI and Gemini do not need this: their auth-mode key is written by the
+   * subscription login and by nothing else, so its presence is proof. OpenCode's
+   * is different — `OPENCODE_AUTH_MODE` is the switch that routes the session
+   * to OpenCode at all, so an API-key session sets it too. Without this
+   * discriminator that session would be told a subscription owns its
+   * credentials, and the form would refuse to edit the key it wrote itself
+   * while claiming a login the user never performed.
+   */
+  onlyWhenUnset?: string
   /**
    * Spec fields that change meaning while one of those modes is active. The
    * subscription backend resolves tiers on its own, so a provider whose form
@@ -201,6 +227,7 @@ export function activeSubscriptionAuth(
   if (!auth) return undefined
   const mode = env[auth.envKey]?.trim()
   if (!mode) return undefined
+  if (auth.onlyWhenUnset && env[auth.onlyWhenUnset]?.trim()) return undefined
   const label = auth.modes[mode]
   return label ? { envKey: auth.envKey, mode, label } : undefined
 }
@@ -243,6 +270,19 @@ function tierEnv(prefix: string): Record<TierField, string> {
 
 /** Most providers ship built-in family defaults, so no model is mandatory. */
 const noValidation = (): null => null
+
+/**
+ * How to name the OpenCode endpoint a screen is pointed at.
+ *
+ * Zen and Go are one path segment apart on the same host, so a heading that
+ * says only "OpenCode" leaves the user's most consequential choice invisible —
+ * and the wrong one is only reported later, as a CreditsError from the other
+ * product's balance.
+ */
+function opencodeEndpointLabel(baseUrl: string | undefined): string {
+  const product = opencodeProductForBaseUrl(baseUrl)
+  return product ? OPENCODE_PRODUCTS[product].label : 'OpenCode'
+}
 
 function usesOfficialEndpoint(
   context: ProviderSetupContext,
@@ -486,6 +526,127 @@ export const PROVIDER_SETUP_SPECS: Record<
     afterSave: async () => {
       const client = await import('src/services/api/grok/client.js')
       client.clearGrokClientCache()
+    },
+  },
+
+  /**
+   * OpenCode — two products (Zen and Go) behind one account, several wire
+   * protocols behind each base URL.
+   *
+   * Three things make this entry unlike the others. First, the model choice
+   * decides the PROTOCOL, not just the checkpoint (opencodeWire.ts derives the
+   * lane from `OPENCODE_MODEL`), which is why the picker labels every option
+   * with the path it lands on and why the default model is mandatory below.
+   * Second, the credential can come from a Console device login OR from a key,
+   * and both write the same auth mode — see `onlyWhenUnset`. Third, the base
+   * URL selects the PRODUCT, and with it the catalog and who gets billed, so
+   * every string here is derived from it rather than fixed to Zen.
+   */
+  opencode: {
+    modelType: 'opencode',
+    title: ({ baseUrl }) => `${opencodeEndpointLabel(baseUrl)} Setup`,
+    endpointHint: ({ baseUrl }) => {
+      const product = opencodeProductForBaseUrl(baseUrl)
+      const other = product === 'go' ? 'zen' : 'go'
+      const lanes =
+        'claude-* use /messages, gpt-* and the o-series use /responses, everything else uses /chat/completions. ' +
+        'A session speaks one of them — the default model below picks which, so tiers pinned to another family still ride that lane.'
+      if (!product) return `Custom OpenCode-compatible endpoint. ${lanes}`
+      return (
+        `${OPENCODE_PRODUCTS[product].label} — ${OPENCODE_PRODUCTS[product].billing}, ` +
+        `${OPENCODE_PRODUCTS[product].models.length} models. ` +
+        // Spelled out because the two are one path segment apart and share a
+        // host: a subscriber who leaves this on Zen is billed against the
+        // credit balance and gets "Insufficient balance", which names neither
+        // product. Switching is a matter of pasting the other URL here.
+        `For ${OPENCODE_PRODUCTS[other].label} (${OPENCODE_PRODUCTS[other].billing}) use ${OPENCODE_PRODUCTS[other].baseUrl} instead. ` +
+        lanes
+      )
+    },
+    defaultBaseUrl: OPENCODE_ZEN_BASE_URL,
+    // 'openai', not 'anthropic', even for the /messages lane: the Anthropic
+    // grammar strips a trailing `/v1`, which would turn the documented base
+    // (…/zen/v1) into …/zen and point every request one path segment short.
+    // The Anthropic client re-derives its own version segment at request time.
+    urlKind: 'openai',
+    baseUrlRequired: false,
+    hasEndpointStep: true,
+    // Required, and this is the one provider where it is not a convenience:
+    // `OPENCODE_MODEL` is the only input to the lane decision. Left empty the
+    // session silently falls to /chat/completions no matter what the tiers say
+    // — including a set of tiers that are all `claude-*` and expect /messages.
+    defaultModelField: 'required',
+    // The free tier answers with `Authorization: Bearer public` and no account
+    // at all, so an empty key must drop through to the catalog rather than
+    // block the form.
+    apiKeyRequired: false,
+    fetchModels: async ({ baseURL, apiKey, signal, onError }) => {
+      const key = apiKey.trim()
+      const credential = key ? { token: key, kind: 'key' as const } : null
+      // The barrel's fetcher prefers the org's entitlement config, which is an
+      // ACCOUNT-plane answer; a base URL occ does not recognise as one of the
+      // two products has to be asked directly, or the form would validate a
+      // self-hosted deployment against somebody else's console.
+      const models = await (opencodeProductForBaseUrl(baseURL)
+        ? fetchOpencodeModels(credential, baseURL, signal)
+        : fetchZenModels(baseURL, credential ?? undefined, signal)
+      ).catch(() => null)
+      if (!models) onError?.('the endpoint did not answer GET /models')
+      return withLaneLabels(models)
+    },
+    // Unlike Gemini and Grok, these tables were read off the service rather
+    // than invented — /models is public on both products — so they are real
+    // answers, not guesses. Chosen by the base URL's PATH, not by
+    // usesOfficialEndpoint: that compares hosts, and Zen and Go share one, so
+    // it would hand a Go subscriber Zen's 61 models. A base URL that is neither
+    // product gets nothing — a compatible wire protocol is not catalog
+    // ownership.
+    presetModels: ({ baseUrl }) => opencodePresetModels(baseUrl),
+    env: {
+      baseUrl: 'OPENCODE_BASE_URL',
+      apiKey: 'OPENCODE_API_KEY',
+      model: 'OPENCODE_MODEL',
+      tiers: tierEnv('OPENCODE'),
+    },
+    tiers: TIER_FIELDS,
+    validate: values =>
+      values.model.trim()
+        ? null
+        : {
+            message:
+              'Default model is required — it also decides which OpenCode protocol this session speaks.',
+            field: 'model',
+          },
+    extraEnv: () => ({
+      // Not a credential marker: this is what routes the session to Zen, so the
+      // key path sets it exactly like the Console login does.
+      OPENCODE_AUTH_MODE: 'opencode',
+    }),
+    subscriptionAuth: {
+      envKey: 'OPENCODE_AUTH_MODE',
+      modes: { opencode: 'OpenCode Console subscription' },
+      // …but only while there is no key, which is the whole reason this field
+      // exists. With one set, the credential is this form's own.
+      onlyWhenUnset: 'OPENCODE_API_KEY',
+      // Only the heading, and it keeps naming the product: the endpoint step is
+      // skipped in this mode, so the title is the one place left that says
+      // whether this session talks to Zen or to Go. The default model stays
+      // mandatory: neither product resolves tiers on its own, and it is still
+      // the only thing that decides the lane — a subscription changes who pays,
+      // not how the request is shaped.
+      overrides: {
+        title: ({ baseUrl }) => `${opencodeEndpointLabel(baseUrl)} — Models`,
+      },
+    },
+    afterSave: async () => {
+      // The mirror is what actually points the clients at the configured
+      // OpenCode endpoint, and it reads
+      // `OPENCODE_MODEL` — which this save is the thing that changed. Skipping
+      // it leaves the session claiming a lane it has not applied, which shows
+      // up as an unauthenticated request to the previous provider's host.
+      applyOpencodeWire()
+      const client = await import('src/services/api/openai/client.js')
+      client.clearOpenAIClientCache()
     },
   },
 }

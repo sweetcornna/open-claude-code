@@ -2,7 +2,11 @@ import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import { has1mContext, modelSupports1M, supportsContextWindow } from '../utils/session/context.js';
-import { getModelSettingsSlot, type ModelSettingsSlot } from '../utils/model/modelTier.js';
+import { getModelSettingsSlot, getModelTier, type ModelSettingsSlot } from '../utils/model/modelTier.js';
+import { buildAggregatedModels } from '../services/providerProfiles/aggregate.js';
+import { activateProfileForModel } from '../services/providerProfiles/activate.js';
+import { loadProfilesFile } from '../services/providerProfiles/profiles.js';
+import { buildAggregatedModelOptions, parseAggregatedOptionValue } from './providerSettings/aggregatedOptions.js';
 import { formatContextTokens, getTierContextTokens, getTierOverride } from '../utils/model/tierSettings.js';
 import { writeTierSettings } from '../commands/model-settings/state.js';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
@@ -36,7 +40,8 @@ import {
   parseUserSpecifiedModel,
 } from '../utils/model/model.js';
 import { getModelOptions } from '../utils/model/modelOptions.js';
-import { getSettingsForSource, updateSettingsForSource } from '../utils/settings/settings.js';
+import { isModelAllowed } from '../utils/model/modelAllowlist.js';
+import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../utils/settings/settings.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint, Pane } from '@anthropic/ink';
@@ -101,6 +106,10 @@ export function ModelPicker({
   // clear an existing override, the second must leave it alone.
   const [contextByTier, setContextByTier] = useState<Map<string, number | null>>(() => new Map());
 
+  // Set when an aggregated row could not be activated. Rendered instead of
+  // closing the picker, since the selection did not take effect.
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+
   const [hasToggledEffort, setHasToggledEffort] = useState(false);
   const effortValue = useAppState(s => s.effortValue);
   const [effort, setEffort] = useState<EffortLevel | undefined>(
@@ -131,13 +140,39 @@ export function ModelPicker({
     return modelOptions;
   }, [modelOptions, initial]);
 
+  /**
+   * The union of every profile that opted into aggregation, appended after the
+   * active provider's own rows.
+   *
+   * Skipped entirely when this picker may not write settings: that flag marks
+   * the assistant installer, whose model choice is project-scoped, and every
+   * row here switches the whole session's provider when selected.
+   *
+   * `availableModels` applies here too. getModelOptions() filters its own list
+   * and these rows arrive after it, so an org allowlist would otherwise be
+   * bypassed by the one list assembled outside that function.
+   */
+  const aggregatedOptions = useMemo(() => {
+    if (skipSettingsWrite) return [];
+    const file = loadProfilesFile();
+    const existingValues = new Set(
+      optionsWithInitial.flatMap(opt => (typeof opt.value === 'string' ? [opt.value] : [])),
+    );
+    return buildAggregatedModelOptions(buildAggregatedModels(file), {
+      existingValues,
+      ...(file.active !== undefined ? { activeProfile: file.active } : {}),
+    }).filter(opt => isModelAllowed(parseAggregatedOptionValue(opt.value)?.id ?? opt.value));
+  }, [optionsWithInitial, skipSettingsWrite]);
+
   const selectOptions = useMemo(
-    () =>
-      optionsWithInitial.map(opt => ({
+    () => [
+      ...optionsWithInitial.map(opt => ({
         ...opt,
         value: opt.value === null ? NO_PREFERENCE : opt.value,
       })),
-    [optionsWithInitial],
+      ...aggregatedOptions,
+    ],
+    [optionsWithInitial, aggregatedOptions],
   );
   const initialFocusValue = useMemo(
     () => (selectOptions.some(_ => _.value === initialValue) ? initialValue : (selectOptions[0]?.value ?? undefined)),
@@ -299,6 +334,28 @@ export function ModelPicker({
 
     const selectedModel = resolveOptionModel(value);
     const selectedEffort = hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel) ? effort : undefined;
+
+    const aggregated = parseAggregatedOptionValue(value);
+    if (aggregated) {
+      // Selecting an aggregated model switches the session to the provider
+      // that serves it. activateProfileForModel() delegates to
+      // activateProfile(), which owns the whole-shape settings.env write and
+      // the client-cache clear — there must be exactly one copy of that.
+      const activated = activateProfileForModel(aggregated.selector);
+      if ('error' in activated) {
+        // Stay open: the row is real but the registry disagrees (a profile
+        // deleted while this picker was on screen), and closing would leave
+        // the user on the old provider with no explanation.
+        setSelectionError(activated.error);
+        return;
+      }
+      setSelectionError(null);
+      // settings.env was just rewritten under the session.
+      setAppState(prev => ({ ...prev, settings: getInitialSettings() }));
+      onSelect(activated.model.id, selectedEffort);
+      return;
+    }
+
     if (value === NO_PREFERENCE) {
       onSelect(null, selectedEffort);
       return;
@@ -335,6 +392,12 @@ export function ModelPicker({
           {focusedSlot && (
             <Text dimColor>
               Effort and max context are saved per model slot — this pair belongs to <Text bold>{focusedSlot}</Text>.
+            </Text>
+          )}
+          {aggregatedOptions.length > 0 && (
+            <Text dimColor>
+              The last {aggregatedOptions.length} entries come from other saved providers (/provider-settings) —
+              selecting one switches this session to that provider.
             </Text>
           )}
           {sessionModel && (
@@ -398,6 +461,7 @@ export function ModelPicker({
               CLAUDE_CODE_EFFORT_LEVEL={effortEnvOverride} overrides this — unset it for the setting to apply.
             </Text>
           )}
+          {selectionError !== null && <Text color="error">{selectionError}</Text>}
         </Box>
 
         {isFastModeEnabled() ? (
@@ -440,9 +504,22 @@ export function ModelPicker({
   return <Pane color="permission">{content}</Pane>;
 }
 
-function resolveOptionModel(value?: string): string | undefined {
+/**
+ * The concrete model an option row runs with.
+ *
+ * Exported for `__tests__/modelPickerOptions.test.ts`: this and
+ * settingsSlotForOption are the two places an aggregated selector could be
+ * mistaken for a tier alias, and that is worth pinning without rendering.
+ */
+export function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined;
-  return value === NO_PREFERENCE ? getDefaultMainLoopModel() : parseUserSpecifiedModel(value);
+  if (value === NO_PREFERENCE) return getDefaultMainLoopModel();
+  // An aggregated row already names a concrete model id, as the owning
+  // provider serves it. parseUserSpecifiedModel would try to read it as one of
+  // occ's aliases and answer for a different model entirely.
+  const aggregated = parseAggregatedOptionValue(value);
+  if (aggregated) return aggregated.id;
+  return parseUserSpecifiedModel(value);
 }
 
 /**
@@ -452,9 +529,17 @@ function resolveOptionModel(value?: string): string | undefined {
  * that answer stays exact even when multiple rows resolve to the same model id.
  * Bare ids from the provider catalog continue through the tier reverse lookup.
  */
-function settingsSlotForOption(value?: string): ModelSettingsSlot | undefined {
+export function settingsSlotForOption(value?: string): ModelSettingsSlot | undefined {
   if (!value) return undefined;
   if (value === NO_PREFERENCE) return 'default';
+  // An aggregated row is a provider's own model id, never a SELECTION of a
+  // tier — and a provider is free to serve a model literally named `opus`.
+  // Passing that to getModelSettingsSlot as the selection would let a relay's
+  // id capture the opus slot and quietly re-point that tier's effort and max
+  // context. Only the reverse lookup (does any *_DEFAULT_<TIER>_MODEL pin this
+  // id) can answer for these rows.
+  const aggregated = parseAggregatedOptionValue(value);
+  if (aggregated) return getModelTier(aggregated.id);
   const model = resolveOptionModel(value);
   return model ? getModelSettingsSlot(model, value) : undefined;
 }

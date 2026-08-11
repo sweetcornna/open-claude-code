@@ -18,6 +18,7 @@ import {
 import type { CatalogModel } from 'src/services/modelCatalog/types.js'
 import { findChinaProviderByBaseURL } from 'src/utils/model/chinaLlmProviders.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { isOpencodeSessionActive } from 'src/utils/model/opencodeWire.js'
 import { getSettingsForSource } from 'src/utils/settings/settings.js'
 import {
   activeSubscriptionAuth,
@@ -39,6 +40,14 @@ import { prefillTierFields } from './tierPersistence.js'
 export function currentProviderSetupKind(
   env: NodeJS.ProcessEnv = process.env,
 ): ProviderSetupKind | undefined {
+  // Asked before getAPIProvider(), which for OpenCode answers with the LANE
+  // ('firstParty' on Zen's /messages, 'openai' otherwise). Falling through to
+  // that answer resolved the `anthropic` spec and seeded its API-key field from
+  // ANTHROPIC_AUTH_TOKEN — which on this session is the access token the wire
+  // mirror put there. Saving then wrote a credential with about an hour to live
+  // into settings.env, in plaintext, under a key OpenCode does not even read.
+  if (isOpencodeSessionActive()) return 'opencode'
+
   switch (getAPIProvider()) {
     case 'openai':
       // A China preset is an OpenAI-compatible endpoint; the base URL is what

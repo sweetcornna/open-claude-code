@@ -253,10 +253,13 @@ function forceExit(exitCode: number): never {
  * not a crash but a wedge: the REPL stops responding and Ctrl+C never reaches
  * the exit path.
  *
- * occ's own background updater no longer installs in place (see
- * src/services/autoUpdate/deferredOccInstall.ts), but a manual `occ update` or
- * a package manager run from another terminal still can. Turning the wedge into
- * a one-line explanation and a clean exit is the difference between "occ
+ * A session normally runs from a private hard-link farm that no package
+ * manager touches (src/services/autoUpdate/runtimeFarm.ts), so this should now
+ * be unreachable. It stays because the farm is allowed to fail: a cross-volume
+ * config dir, a full disk, or `OCC_DISABLE_RUNTIME_FARM=1` all put the session
+ * back on the install tree, where a manual `occ update` or a package manager
+ * run from another terminal can still replace it underneath. Turning the wedge
+ * into a one-line explanation and a clean exit is the difference between "occ
  * froze" and "restart occ".
  */
 export function isInstallTreeReplacedError(error: unknown): boolean {

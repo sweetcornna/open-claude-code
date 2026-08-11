@@ -149,6 +149,7 @@ import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
 import autonomy from './commands/autonomy.js'
 import provider from './commands/provider.js'
+import providerSettings from './commands/provider-settings/index.js'
 import { logError } from './utils/telemetry/log.js'
 import { toError } from './utils/runtime/errors.js'
 import { logForDebugging } from './utils/telemetry/debug.js'
@@ -237,6 +238,7 @@ const COMMANDS = memoize((): Command[] => [
   localMemoryCommand,
   autonomy,
   provider,
+  providerSettings,
   artifacts,
   agents,
   branch,

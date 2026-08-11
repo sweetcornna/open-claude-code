@@ -18,7 +18,7 @@ import {
 } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { debugMock } from '../../../../tests/mocks/debug.js'
@@ -60,16 +60,21 @@ async function writeEntry(pid: number, root = distRootValue): Promise<void> {
   await writeFile(join(sessionsDir(), String(pid)), root, 'utf8')
 }
 
-/** A lease in the current format, carrying the start time of the process. */
+/** A lease in the current format, carrying start time and heartbeat. */
 async function writeDatedEntry(
   pid: number,
   startedAt: number,
-  root = distRootValue,
+  options: { root?: string; renewedAt?: number } = {},
 ): Promise<void> {
   await mkdir(sessionsDir(), { recursive: true })
   await writeFile(
     join(sessionsDir(), String(pid)),
-    JSON.stringify({ schemaVersion: 1, distRoot: root, startedAt }),
+    JSON.stringify({
+      schemaVersion: 2,
+      distRoot: options.root ?? distRootValue,
+      startedAt,
+      renewedAt: options.renewedAt ?? Date.now(),
+    }),
     'utf8',
   )
 }
@@ -85,36 +90,24 @@ function deadPid(): number {
   return result.pid ?? 2 ** 22
 }
 
+/** Roots reported for live sessions, ignoring the completeness flag. */
+async function liveRoots(): Promise<Set<string>> {
+  return (await live.getLiveSessionDistRoots()).roots
+}
+
 describe('registerLiveSession', () => {
   test('does not resolve until this process lease is visible', async () => {
     await live.registerLiveSession()
 
     const entry = join(sessionsDir(), String(process.pid))
     expect(existsSync(entry)).toBe(true)
-    // The lease carries the dist root plus this process's start time; see the
-    // dedicated assertion on the start time below.
     expect(
       (JSON.parse(await readFile(entry, 'utf8')) as { distRoot: string })
         .distRoot,
     ).toBe(distRootValue)
   })
 
-  test('removes its lease before handing off a deferred install', async () => {
-    const entry = join(sessionsDir(), String(process.pid))
-    let leaseVisibleDuringHandoff: boolean | undefined
-    await live.registerLiveSession(async () => {
-      leaseVisibleDuringHandoff = existsSync(entry)
-    })
-
-    await cleanupRegistry.runCleanupFunctions()
-
-    expect(leaseVisibleDuringHandoff).toBe(false)
-    expect(existsSync(entry)).toBe(false)
-  })
-
-  test('registering without a handler runs no handoff at exit', async () => {
-    // The --print path: visible to peer sessions so they postpone replacing the
-    // tree, but never the process that spawns an installer.
+  test('removes its lease at exit', async () => {
     await live.registerLiveSession()
 
     await cleanupRegistry.runCleanupFunctions()
@@ -122,139 +115,203 @@ describe('registerLiveSession', () => {
     expect(existsSync(join(sessionsDir(), String(process.pid)))).toBe(false)
   })
 
-  test('a handler attached after registration still runs at exit', async () => {
-    // rootAction only knows the session is interactive after the --print early
-    // return, which is well past the point where the lease has to exist.
-    await live.registerLiveSession()
-    let handoffs = 0
-    live.setLiveSessionExitHandler(async () => {
-      handoffs++
-    })
-
-    await cleanupRegistry.runCleanupFunctions()
-
-    expect(handoffs).toBe(1)
-  })
-
-  test('records this process start time in its own lease', async () => {
+  test('records this process start time and a heartbeat in its own lease', async () => {
     await live.registerLiveSession()
 
     const raw = await readFile(join(sessionsDir(), String(process.pid)), 'utf8')
     const lease = JSON.parse(raw) as {
       distRoot: string
       startedAt: number
+      renewedAt: number
     }
 
     expect(lease.distRoot).toBe(distRootValue)
     const expected = Date.now() - process.uptime() * 1000
     expect(Math.abs(lease.startedAt - expected)).toBeLessThan(2_000)
+    expect(Math.abs(lease.renewedAt - Date.now())).toBeLessThan(2_000)
+  })
+
+  test('refreshes its own lease on the heartbeat interval', async () => {
+    // Staleness on win32 has nothing but this write to go on: `ps` is not
+    // available there, so a lease that stops being refreshed is the only
+    // evidence that a pid was recycled onto an unrelated process.
+    const entry = join(sessionsDir(), String(process.pid))
+    await live.registerLiveSession({ heartbeatIntervalMs: 5 })
+    const before = JSON.parse(await readFile(entry, 'utf8')) as {
+      renewedAt: number
+    }
+
+    await Bun.sleep(60)
+
+    const after = JSON.parse(await readFile(entry, 'utf8')) as {
+      renewedAt: number
+    }
+    expect(after.renewedAt).toBeGreaterThan(before.renewedAt)
+  })
+
+  test('stops the heartbeat at exit', async () => {
+    const entry = join(sessionsDir(), String(process.pid))
+    await live.registerLiveSession({ heartbeatIntervalMs: 5 })
+
+    await cleanupRegistry.runCleanupFunctions()
+    await Bun.sleep(40)
+
+    // A heartbeat that outlived cleanup would recreate the lease it just
+    // removed, leaving a permanently live phantom session behind.
+    expect(existsSync(entry)).toBe(false)
   })
 })
 
-describe('hasOtherLiveSessions', () => {
-  test('is false when the registry does not exist yet', async () => {
-    expect(await live.hasOtherLiveSessions()).toBe(false)
+describe('getLiveSessionDistRoots', () => {
+  test('reports this process own root when the registry does not exist yet', async () => {
+    const result = await live.getLiveSessionDistRoots()
+    expect([...result.roots]).toEqual([distRootValue])
+    expect(result.complete).toBe(true)
   })
 
-  test('ignores this process own entry', async () => {
-    await writeEntry(process.pid)
-    expect(await live.hasOtherLiveSessions()).toBe(false)
-  })
-
-  test('reports another live process on the same dist root', async () => {
+  test('reports the root of another live process', async () => {
     // process.ppid is alive by construction and is not us.
-    await writeEntry(process.ppid)
-    expect(await live.hasOtherLiveSessions()).toBe(true)
-  })
-
-  test('ignores a live process running from a different dist root', async () => {
-    // A `bun run dev` checkout is unaffected by replacing the global install.
     await writeEntry(process.ppid, '/somewhere/else/dist')
-    expect(await live.hasOtherLiveSessions()).toBe(false)
+    expect([...(await liveRoots())].sort()).toEqual(
+      [distRootValue, '/somewhere/else/dist'].sort(),
+    )
   })
 
-  test('prunes entries whose process is gone, so a crash cannot block updates', async () => {
+  test('prunes entries whose process is gone, so a crash cannot pin a farm', async () => {
     const gone = deadPid()
-    await writeEntry(gone)
+    await writeEntry(gone, '/gone/dist')
 
-    expect(await live.hasOtherLiveSessions()).toBe(false)
+    expect(await liveRoots()).not.toContain('/gone/dist')
     expect(await readdir(sessionsDir())).not.toContain(String(gone))
   })
 
   test('a malformed filename is ignored rather than throwing', async () => {
     await mkdir(sessionsDir(), { recursive: true })
     await writeFile(join(sessionsDir(), 'not-a-pid'), distRootValue, 'utf8')
-    expect(await live.hasOtherLiveSessions()).toBe(false)
+    const result = await live.getLiveSessionDistRoots()
+    expect(result.complete).toBe(true)
+  })
+
+  test('an unreadable lease marks the answer incomplete', async () => {
+    // A live pid whose tree we cannot name must not license deleting anything.
+    await mkdir(sessionsDir(), { recursive: true })
+    await mkdir(join(sessionsDir(), String(process.ppid)), { recursive: true })
+
+    const result = await live.getLiveSessionDistRoots()
+    expect(result.complete).toBe(false)
   })
 
   test('still honours a legacy lease that has no start time', async () => {
-    // A session registered by the previous build must keep blocking installs
-    // for as long as it runs — it is reading chunks out of the tree.
-    await writeEntry(process.ppid)
+    // A session registered by the previous build is reading chunks out of its
+    // tree; a fresh mtime is the only heartbeat it has.
+    await writeEntry(process.ppid, '/legacy/dist')
     live.setProcessStartTimeProbeForTests(async () => new Map())
-    expect(await live.hasOtherLiveSessions()).toBe(true)
+    expect(await liveRoots()).toContain('/legacy/dist')
   })
 
   test('reports a live process whose recorded start time matches', async () => {
     const startedAt = 1_000_000
-    await writeDatedEntry(process.ppid, startedAt)
+    await writeDatedEntry(process.ppid, startedAt, { root: '/peer/dist' })
     live.setProcessStartTimeProbeForTests(async pids => {
-      expect(pids).toEqual([process.ppid])
+      expect(pids).toContain(process.ppid)
       return new Map([[process.ppid, startedAt]])
     })
 
-    expect(await live.hasOtherLiveSessions()).toBe(true)
+    expect(await liveRoots()).toContain('/peer/dist')
     expect(await readdir(sessionsDir())).toContain(String(process.ppid))
   })
 
   test('prunes a lease whose pid was recycled onto a newer process', async () => {
-    // The regression: a `-p` session SIGKILLed before cleanup leaves its lease
-    // behind. Once the OS hands that pid to something unrelated, the lease
-    // reads as permanently live and auto-updates for this dist root stop for
-    // good — silently, because every failure path here is swallowed.
+    // A `-p` session SIGKILLed before cleanup leaves its lease behind. Once
+    // the OS hands that pid to something unrelated, the lease reads as
+    // permanently live and pins a farm that nothing is running from.
     const startedAt = 1_000_000
-    await writeDatedEntry(process.ppid, startedAt)
+    await writeDatedEntry(process.ppid, startedAt, { root: '/peer/dist' })
     live.setProcessStartTimeProbeForTests(
       async () => new Map([[process.ppid, startedAt + 600_000]]),
     )
 
-    expect(await live.hasOtherLiveSessions()).toBe(false)
+    expect(await liveRoots()).not.toContain('/peer/dist')
     expect(await readdir(sessionsDir())).not.toContain(String(process.ppid))
   })
 
   test('treats clock skew within tolerance as the same process', async () => {
-    // A wall-clock step between registration and this check must not read as
-    // reuse: pruning a live lease is the accident this registry exists to stop.
     const startedAt = 1_000_000
-    await writeDatedEntry(process.ppid, startedAt)
+    await writeDatedEntry(process.ppid, startedAt, { root: '/peer/dist' })
     live.setProcessStartTimeProbeForTests(
       async () => new Map([[process.ppid, startedAt + 30_000]]),
     )
 
-    expect(await live.hasOtherLiveSessions()).toBe(true)
+    expect(await liveRoots()).toContain('/peer/dist')
     expect(await readdir(sessionsDir())).toContain(String(process.ppid))
   })
 
   test('a start time earlier than recorded never prunes', async () => {
-    // Only a *later* start proves reuse. Anything else (an NTP step, a probe
-    // that disagrees) must fail safe: pruning a live session's lease is what
-    // lets an install replace the tree it is still importing from.
     const startedAt = 1_000_000
-    await writeDatedEntry(process.ppid, startedAt)
+    await writeDatedEntry(process.ppid, startedAt, { root: '/peer/dist' })
     live.setProcessStartTimeProbeForTests(
       async () => new Map([[process.ppid, startedAt - 3_600_000]]),
     )
 
-    expect(await live.hasOtherLiveSessions()).toBe(true)
+    expect(await liveRoots()).toContain('/peer/dist')
   })
 
-  test('an unavailable probe degrades to pid-resolves-means-alive', async () => {
-    await writeDatedEntry(process.ppid, 1_000_000)
+  test('prunes a lease nothing has refreshed within the TTL', async () => {
+    // The win32 case: `readProcessStartTimes` returns nothing there, so before
+    // the TTL a stale lease whose pid had been recycled read as a live occ
+    // session forever. An expired heartbeat settles it without any probe.
+    await writeDatedEntry(process.ppid, 1_000_000, {
+      root: '/peer/dist',
+      renewedAt: Date.now() - live.LEASE_TTL_MS - 60_000,
+    })
+    live.setProcessStartTimeProbeForTests(async () => new Map())
+
+    expect(await liveRoots()).not.toContain('/peer/dist')
+    expect(await readdir(sessionsDir())).not.toContain(String(process.ppid))
+  })
+
+  test('a fresh heartbeat keeps a lease the probe cannot identify', async () => {
+    await writeDatedEntry(process.ppid, 1_000_000, { root: '/peer/dist' })
+    live.setProcessStartTimeProbeForTests(async () => new Map())
+
+    expect(await liveRoots()).toContain('/peer/dist')
+    expect(await readdir(sessionsDir())).toContain(String(process.ppid))
+  })
+
+  test('an identified process survives an expired heartbeat', async () => {
+    // Timers stop while a laptop sleeps, so after a long suspend every lease
+    // looks expired. Where `ps` can prove the process is the same one that
+    // registered, that proof wins — pruning it would let a peer reclaim the
+    // farm it is still importing chunks from.
+    const startedAt = 1_000_000
+    await writeDatedEntry(process.ppid, startedAt, {
+      root: '/peer/dist',
+      renewedAt: Date.now() - live.LEASE_TTL_MS - 3_600_000,
+    })
+    live.setProcessStartTimeProbeForTests(
+      async () => new Map([[process.ppid, startedAt]]),
+    )
+
+    expect(await liveRoots()).toContain('/peer/dist')
+    expect(await readdir(sessionsDir())).toContain(String(process.ppid))
+  })
+
+  test('falls back to the file mtime for leases written before heartbeats', async () => {
+    await writeEntry(process.ppid, '/legacy/dist')
+    const stale = new Date(Date.now() - live.LEASE_TTL_MS - 60_000)
+    await utimes(join(sessionsDir(), String(process.ppid)), stale, stale)
+    live.setProcessStartTimeProbeForTests(async () => new Map())
+
+    expect(await liveRoots()).not.toContain('/legacy/dist')
+  })
+
+  test('an unavailable probe degrades to the TTL, not to pruning', async () => {
+    await writeDatedEntry(process.ppid, 1_000_000, { root: '/peer/dist' })
     live.setProcessStartTimeProbeForTests(async () => {
       throw new Error('no ps on this platform')
     })
 
-    expect(await live.hasOtherLiveSessions()).toBe(true)
+    expect(await liveRoots()).toContain('/peer/dist')
     expect(await readdir(sessionsDir())).toContain(String(process.ppid))
   })
 
@@ -275,7 +332,7 @@ describe('hasOtherLiveSessions', () => {
 
     expect(reported).toBeDefined()
     const expected = Date.now() - process.uptime() * 1000
-    // `ps` truncates lstart to whole seconds.
+    // `ps` truncates elapsed time to whole seconds.
     expect(Math.abs((reported ?? 0) - expected)).toBeLessThan(2_000)
   })
 })

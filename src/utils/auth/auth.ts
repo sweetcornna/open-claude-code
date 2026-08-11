@@ -46,6 +46,7 @@ import {
 import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
 import { clearBetasCaches } from '../model/betas.js'
 import { isDeepSeekMirroredApiKey } from '../model/deepseekWire.js'
+import { isOpencodeMirroredApiKey } from '../model/opencodeWire.js'
 import {
   type AccountInfo,
   checkHasTrustDialogAccepted,
@@ -241,10 +242,13 @@ export function hasAnthropicApiKeyAuth(): boolean {
  * setup that works headlessly reports "Not logged in · Please run /login" in
  * the REPL, which is a maddening way to find out.
  *
- * Two sources count, and they cover every provider that can produce one:
+ * Three sources count, and they cover every provider that can produce one:
  *   - occ's own settings env, written by the Anthropic-compatible provider
  *     setup (`/login` → Anthropic-compatible, any gateway or proxy).
  *   - the in-memory DeepSeek mirror, which never touches settings at all.
+ *   - the in-memory OpenCode mirror, likewise. Its token is a short-lived OAuth
+ *     access token that is deliberately never persisted, so settings can never
+ *     vouch for it and this is the only thing that can.
  *
  * Bedrock, Vertex and Foundry authenticate through their own credential
  * chains and never reach this function; OpenAI, Gemini and Grok carry their
@@ -259,6 +263,7 @@ export function hasAnthropicApiKeyAuth(): boolean {
  */
 export function isOccConfiguredAnthropicApiKey(apiKey: string): boolean {
   if (isDeepSeekMirroredApiKey(apiKey)) return true
+  if (isOpencodeMirroredApiKey(apiKey)) return true
   const fromUserSettings =
     getSettingsForSource('userSettings')?.env?.ANTHROPIC_API_KEY
   if (fromUserSettings === apiKey) return true

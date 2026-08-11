@@ -189,9 +189,7 @@ describe('occ update isolation', () => {
     const serviceSource = readSource(
       'services/autoUpdate/backgroundOccUpdate.ts',
     )
-    const deferredSource = readSource(
-      'services/autoUpdate/deferredOccInstall.ts',
-    )
+    const installerSource = readSource('services/autoUpdate/occInstaller.ts')
     const updateOccSource = readSource('cli/updateOcc.ts')
 
     // The background check must go through cli/updateOcc.ts (pinned above to
@@ -201,20 +199,21 @@ describe('occ update isolation', () => {
     expect(serviceSource).not.toContain('nativeInstaller')
     expect(updateOccSource).toContain('export function latestPackageSpec')
 
-    // The install itself now happens after the session exits, in a detached
-    // child spawned here. It must never name a package of its own: the spec is
-    // handed down from latestPackageSpec() via the queued install.
-    expect(deferredSource).toContain('install.spec')
-    expect(deferredSource).not.toContain('@anthropic-ai/claude-code')
-    expect(deferredSource).not.toContain('nativeInstaller')
-    expect(deferredSource).not.toContain("'claude'")
+    // The install is a detached child spawned here. It must never name a
+    // package of its own: the spec is handed down from latestPackageSpec().
+    expect(installerSource).toContain('install.spec')
+    expect(installerSource).not.toContain('@anthropic-ai/claude-code')
+    expect(installerSource).not.toContain('nativeInstaller')
+    expect(installerSource).not.toContain("'claude'")
   })
 
   test('update paths cannot mutate persisted credentials or search settings', () => {
     const updaterSources = [
       readSource('cli/updateOcc.ts'),
       readSource('services/autoUpdate/backgroundOccUpdate.ts'),
-      readSource('services/autoUpdate/deferredOccInstall.ts'),
+      readSource('services/autoUpdate/occInstaller.ts'),
+      readSource('services/autoUpdate/runtimeFarm.ts'),
+      readSource('services/autoUpdate/runtimeFarmGc.ts'),
       readSource('utils/update/autoUpdater.ts'),
       readSource('utils/update/localInstaller.ts'),
     ].join('\n')

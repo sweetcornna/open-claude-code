@@ -16,6 +16,14 @@ import {
 } from '../services/api/openai/chatgptAuth.js';
 import { clearOpenAIClientCache } from '../services/api/openai/client.js';
 import { startAntigravityOAuthLogin } from '../services/auth/antigravity/index.js';
+import type { DeviceCodeGrant } from '../services/auth/opencode/index.js';
+import { OpencodeDeviceLogin, type OpencodeDevicePhase } from './opencodeLogin/OpencodeDeviceLogin.js';
+import {
+  isFreeZenModel,
+  OPENCODE_PRODUCTS,
+  type OpencodeProduct,
+  ZEN_PUBLIC_KEY,
+} from './opencodeLogin/opencodeCatalog.js';
 import { backFromScreen } from './providerSetup/backNavigation.js';
 import { ProviderSetupWizard } from './providerSetup/ProviderSetupWizard.js';
 import { parseMaxContextInput } from './providerSetup/maxContext.js';
@@ -102,6 +110,22 @@ type OAuthStatus =
       phase: 'starting' | 'waiting';
       authUrl?: string;
     } // Google Antigravity subscription via Google OAuth loopback flow
+  // OpenCode registers two credential kinds and the free tier needs neither, so
+  // each product's menu entry opens a picker rather than adding top-level rows.
+  // Same shape as the China presets: one row in the login menu, the branching
+  // one screen in.
+  //
+  // `product` travels with the state because it is not recoverable later: Zen
+  // and Go are one path segment apart on the same host, nothing in the device
+  // flow itself differs, and the wrong one is only reported as a CreditsError
+  // from the other product's balance.
+  | { state: 'opencode_method_select'; product: OpencodeProduct }
+  | {
+      state: 'opencode_device';
+      product: OpencodeProduct;
+      phase: OpencodeDevicePhase;
+      grant?: DeviceCodeGrant;
+    } // OpenCode Console subscription via RFC 8628 device code
   | { state: 'china_provider_select'; activeIndex: number } // China LLM: pick provider
   | { state: 'china_mode_select'; provider: ProviderPreset; activeIndex: number } // China LLM: pick access mode
   // No model step: one API key configures the provider as a whole, and every
@@ -736,13 +760,27 @@ function OAuthStatusMessage({
    * here — the model fields are filled in after the endpoint answers, since
    * which of them are pickers depends on whether it served a model list.
    */
-  const startProviderSetup = (kind: ProviderSetupKind, wireApi?: 'chat' | 'responses'): void => {
+  const startProviderSetup = (
+    kind: ProviderSetupKind,
+    wireApi?: 'chat' | 'responses',
+    // A choice the user just made on the previous screen, which therefore
+    // outranks whatever the environment happens to hold. OpenCode's two
+    // products differ only by base URL, so picking Go while OPENCODE_BASE_URL
+    // still names Zen has to land on Go — otherwise the selection is silently
+    // discarded and the session bills the wrong balance.
+    chosenBaseUrl?: string,
+  ): void => {
     const spec = PROVIDER_SETUP_SPECS[kind];
     setOAuthStatus({
       state: 'provider_endpoint_setup',
       kind,
       phase: 'editing',
-      baseUrl: process.env[spec.env.baseUrl] ?? '',
+      // Left blank the field means "use the provider's own default", which is
+      // only harmless when the client re-derives that default at request time.
+      // OpenCode's does not: applyOpencodeWire() returns early without
+      // OPENCODE_BASE_URL, so the session would claim a routing it never
+      // applied — requests to the previous provider's host, unauthenticated.
+      baseUrl: chosenBaseUrl ?? process.env[spec.env.baseUrl] ?? (kind === 'opencode' ? spec.defaultBaseUrl : ''),
       // Grok accepts either name for its key; XAI_API_KEY is the xAI-native one.
       apiKey: process.env[spec.env.apiKey] ?? (kind === 'grok' ? (process.env.XAI_API_KEY ?? '') : ''),
       ...(wireApi ? { wireApi } : {}),
@@ -801,6 +839,36 @@ function OAuthStatusMessage({
                     </Text>
                   ),
                   value: 'china_providers',
+                },
+                {
+                  label: (
+                    <Text>
+                      OpenCode Zen ·{' '}
+                      <Text dimColor>
+                        Pay-as-you-go gateway — {OPENCODE_PRODUCTS.zen.models.length} models incl. Claude, billed
+                        against a credit balance
+                      </Text>
+                      {'\n'}
+                    </Text>
+                  ),
+                  value: 'opencode_zen',
+                },
+                {
+                  /* A separate row rather than a sub-choice: Zen and Go are one
+                     path segment apart on the same host, and a Go subscriber
+                     who lands on Zen is billed against a credit balance they
+                     have not funded — the only symptom is "Insufficient
+                     balance", which names neither product. */
+                  label: (
+                    <Text>
+                      OpenCode Go ·{' '}
+                      <Text dimColor>
+                        Flat monthly subscription — {OPENCODE_PRODUCTS.go.models.length} open-coding models, no Claude
+                      </Text>
+                      {'\n'}
+                    </Text>
+                  ),
+                  value: 'opencode_go',
                 },
                 {
                   label: (
@@ -890,6 +958,12 @@ function OAuthStatusMessage({
                 } else if (value === 'china_providers') {
                   logEvent('tengu_china_providers_selected', {});
                   setOAuthStatus({ state: 'china_provider_select', activeIndex: 0 });
+                } else if (value === 'opencode_zen' || value === 'opencode_go') {
+                  logEvent('tengu_opencode_selected', {});
+                  setOAuthStatus({
+                    state: 'opencode_method_select',
+                    product: value === 'opencode_go' ? 'go' : 'zen',
+                  });
                 } else if (value === 'chatgpt_subscription') {
                   logEvent('tengu_chatgpt_subscription_selected', {});
                   setOAuthStatus({
@@ -974,6 +1048,144 @@ function OAuthStatusMessage({
           setOAuthStatus={setOAuthStatus}
           onDone={onDone}
           onProviderChanged={onProviderChanged}
+        />
+      );
+
+    case 'opencode_method_select': {
+      // Both credential kinds resolve to the same bearer value downstream, so
+      // this screen is about where the credential comes from, not about what
+      // the session can then reach.
+      const { product } = oauthStatus;
+      const { baseUrl, billing, label, models } = OPENCODE_PRODUCTS[product];
+      // Zen only. Go ships no `-free` ids at all, and offering "free models"
+      // there would open a picker with nothing in it.
+      const freeCount = product === 'zen' ? models.filter(isFreeZenModel).length : 0;
+      // Precedence is key-over-OAuth (services/auth/opencode/oauth.ts). occ
+      // clears the key it wrote itself when a Console login succeeds, but a key
+      // exported in the user's shell is theirs and stays — silently outranking
+      // the login they are about to perform, which is worth saying out loud.
+      const shellKey = process.env.OPENCODE_API_KEY?.trim();
+      return (
+        <Box flexDirection="column" gap={1} marginTop={1}>
+          <Text bold>{label} — Select Credential</Text>
+          <Text dimColor>
+            {product === 'go'
+              ? `A ${billing} over ${models.length} open-coding models — Kimi, MiniMax, GLM, Qwen, DeepSeek, MiMo and more, plus one GPT and one Grok. No Claude: Go does not serve it at any tier.`
+              : `One gateway, ${models.length} models across Anthropic, OpenAI, Google, DeepSeek, xAI and more, ${billing}.`}{' '}
+            Which wire protocol a session speaks follows from the model you pick next.
+          </Text>
+          <Box>
+            <Select
+              options={[
+                {
+                  label: (
+                    <Text>
+                      Console subscription · <Text dimColor>Sign in with your OpenCode account (device code)</Text>
+                      {'\n'}
+                    </Text>
+                  ),
+                  value: 'subscription',
+                },
+                {
+                  label: (
+                    <Text>
+                      API key · <Text dimColor>An OpenCode or service-account key you already have</Text>
+                      {'\n'}
+                    </Text>
+                  ),
+                  value: 'apikey',
+                },
+                ...(freeCount > 0
+                  ? [
+                      {
+                        label: (
+                          <Text>
+                            Free models only ·{' '}
+                            <Text dimColor>
+                              No account — {freeCount} free models answer, the rest need a credential
+                            </Text>
+                            {'\n'}
+                          </Text>
+                        ),
+                        value: 'free',
+                      },
+                    ]
+                  : []),
+              ]}
+              onChange={value => {
+                logEvent('tengu_opencode_method_selected', {});
+                if (value === 'subscription') {
+                  setOAuthStatus({ state: 'opencode_device', product, phase: 'requesting' });
+                  return;
+                }
+                if (value === 'free') {
+                  // Straight into the catalog request: the public bearer needs
+                  // no form, and the endpoint answers /models for it, so the
+                  // user lands on a real model list rather than occ's fallback.
+                  setOAuthStatus({
+                    state: 'provider_endpoint_setup',
+                    kind: 'opencode',
+                    phase: 'fetching',
+                    baseUrl,
+                    apiKey: ZEN_PUBLIC_KEY,
+                    activeField: 'api_key',
+                  });
+                  return;
+                }
+                startProviderSetup('opencode', undefined, baseUrl);
+              }}
+              onCancel={() => setOAuthStatus({ state: 'idle' })}
+            />
+          </Box>
+          {product === 'zen' ? (
+            <Text dimColor>
+              Free models are the ids ending in <Text bold>-free</Text>, plus <Text bold>big-pickle</Text>. Everything
+              else is billed to whichever credential you configure.
+            </Text>
+          ) : null}
+          {/* The two products share a host and an account, so nothing later in
+              the flow can catch a wrong pick: a Go key sent to Zen is charged
+              to the Zen credit balance and answers "Insufficient balance". */}
+          <Text dimColor>
+            Requests go to {baseUrl} — {billing}.
+          </Text>
+          {shellKey ? (
+            <Text color="warning">
+              OPENCODE_API_KEY is already set in this environment. An API key takes precedence over a Console login, so
+              unset it in your shell if you want the subscription to be used.
+            </Text>
+          ) : null}
+          <Text dimColor>Esc to go back</Text>
+        </Box>
+      );
+    }
+
+    case 'opencode_device':
+      return (
+        <OpencodeDeviceLogin
+          product={oauthStatus.product}
+          phase={oauthStatus.phase}
+          {...(oauthStatus.grant ? { grant: oauthStatus.grant } : {})}
+          onPhase={(phase, grant) =>
+            setOAuthStatus({
+              state: 'opencode_device',
+              product: oauthStatus.product,
+              phase,
+              ...(grant ? { grant } : {}),
+            })
+          }
+          onReady={setOAuthStatus}
+          onError={message =>
+            setOAuthStatus({
+              state: 'error',
+              message,
+              // Retrying has to land on the same product; dropping it here
+              // would restart the device flow against Zen no matter which one
+              // the user chose.
+              toRetry: { state: 'opencode_device', product: oauthStatus.product, phase: 'requesting' },
+            })
+          }
+          onCancel={() => setOAuthStatus({ state: 'opencode_method_select', product: oauthStatus.product })}
         />
       );
 

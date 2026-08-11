@@ -6,6 +6,8 @@ import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove
 import { removeChatGPTAuth } from '../../services/api/openai/chatgptAuth.js';
 import { clearOpenAIClientCache } from '../../services/api/openai/client.js';
 import { removeAntigravityAuth } from '../../services/auth/antigravity/oauth.js';
+import { removeOpencodeAuth } from '../../services/auth/opencode/oauth.js';
+import { resetOpencodeCredentialCache } from '../../services/api/opencodeCredential.js';
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
@@ -51,6 +53,10 @@ export async function performLogout({ clearOnboarding = false }: { clearOnboardi
   }
   await removeChatGPTAuth();
   await removeAntigravityAuth();
+  // The OpenCode credential is a file, not an env var, so resetProviderConfiguration()
+  // below cannot reach it — clearing OPENCODE_* out of settings would leave a refresh
+  // token on disk that mints a working access token for the account just logged out of.
+  await removeOpencodeAuth();
   clearAnthropicCredentialSettings();
   resetProviderConfiguration();
   // Cached SDK clients hold the pre-logout auth — drop them so the next
@@ -64,6 +70,11 @@ export async function performLogout({ clearOnboarding = false }: { clearOnboardi
   // the session that just logged out. Runs AFTER the resets: with OPENAI_* gone
   // there is nothing left to mirror, so this is a pure release.
   applyDeepSeekAnthropicWire();
+  // Same release for the OpenCode mirror, plus the in-memory bearer token it
+  // publishes — that one is held outside process.env, so clearing settings and
+  // env leaves the logged-out account's token still being mirrored onto
+  // ANTHROPIC_AUTH_TOKEN / OPENAI_API_KEY on the next apply.
+  resetOpencodeCredentialCache();
 
   await clearAuthRelatedCaches();
   saveGlobalConfig(current => {

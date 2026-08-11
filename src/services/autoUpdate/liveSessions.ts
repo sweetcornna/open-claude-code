@@ -2,26 +2,31 @@
  * Registry of live occ processes, keyed by pid and tagged with the dist root
  * each one runs from.
  *
- * Why this has to exist at all: occ ships as ~600 content-hashed chunks that
- * are `import()`ed lazily for the entire life of a session — that code split
- * is what keeps RSS at ~35MB instead of ~1GB (see CLAUDE.md, "不要把构建
- * 优化回单文件"). `npm|bun install -g` deletes the old package directory, and
- * roughly half the chunk filenames change between any two releases, so the
- * moment a new version lands every not-yet-loaded chunk of the *running*
- * session stops existing. Each later import then throws ERR_MODULE_NOT_FOUND
- * and the REPL wedges — that is how a background update used to leave a
- * session that could not even be exited with Ctrl+C.
+ * WHAT IT IS FOR NOW
  *
- * Official Claude Code gets away with in-place replacement because it ships a
- * single bundled file that is fully read at startup. occ cannot, so installs
- * are deferred until no session is reading from the tree being replaced.
+ * It used to gate self-installs: occ ships ~612 content-hashed chunks that are
+ * `import()`ed lazily for the whole life of a session, `install -g` replaces
+ * the package directory, and roughly half those filenames change between
+ * releases — so installing while any session was still reading from that tree
+ * stranded it. Sessions therefore had to wait for each other.
+ *
+ * That constraint is gone: a session now runs from a private hard-link farm
+ * under `<config>/runtime/` that no package manager touches (see
+ * runtimeFarm.ts), so installs happen immediately and this registry no longer
+ * decides anything about updates.
+ *
+ * What it decides instead is which farms are still in use. A farm holds the
+ * only remaining links to a replaced build's inodes, so reclaiming one that a
+ * live session is still importing from resurrects the exact wedge the farm was
+ * built to prevent. runtimeFarmGc.ts asks this module which dist roots are
+ * live; everything below exists to make that answer trustworthy.
  *
  * The registry is best-effort by design: a missing or unreadable entry only
- * costs a postponed update, never a broken session, so every failure path here
- * is swallowed.
+ * costs a postponed cleanup, never a broken session, so every failure path
+ * here is swallowed.
  */
 import { execFile } from 'node:child_process'
-import { mkdir, readdir, readFile, unlink } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { occConfigPath } from 'src/config/paths.js'
 import { distRoot } from 'src/utils/filesystem/distRoot.js'
@@ -75,25 +80,41 @@ function isProcessAlive(pid: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Pid reuse
+// Staleness
 //
 // `process.kill(pid, 0)` answers "does *a* process hold this pid", not "does
 // *my* session still hold it". `-p` sessions are short-lived and numerous, and
 // one killed hard enough to skip cleanup (SIGKILL, OOM, a closed terminal)
 // leaves its lease behind. When the OS eventually recycles that pid onto an
 // unrelated process, the stale lease starts reading as a permanently live
-// session and auto-updates for that dist root stop for good — silently, since
-// every failure path in this file is swallowed by design.
+// session — silently, since every failure path in this file is swallowed.
 //
-// A lease therefore records *when* the process it describes started. A pid
-// whose real start time is materially later than the recorded one is a
-// different process wearing the same number.
+// Two independent answers to that, because neither works everywhere:
 //
-// The comparison is deliberately one-directional and tolerant. A false
-// "recycled" verdict prunes a live session's lease and lets an install replace
-// the tree it is still importing chunks from — the exact accident this registry
-// exists to prevent — so anything ambiguous (no recorded time, no probe, a
-// start time *earlier* than recorded, a platform without `ps`) counts as alive.
+//   start time  a lease records when the process it describes started, and a
+//               pid whose real start time is materially later is a different
+//               process wearing the same number. Exact, but it needs `ps`, and
+//               readProcessStartTimes returns nothing on win32 — the one
+//               platform where pids recycle fast enough to matter. Before the
+//               TTL below, that meant reuse detection was simply *off* on
+//               Windows and a recycled pid read as a live occ session forever.
+//
+//   TTL         a live session rewrites its lease every
+//               LEASE_HEARTBEAT_INTERVAL_MS. A lease nobody has refreshed
+//               inside LEASE_TTL_MS is stale no matter what the pid says, so
+//               staleness stops depending on a probe some platforms cannot
+//               run.
+//
+// The start time wins when it is available, and the TTL is consulted only when
+// the probe cannot decide. That order matters: timers stop while a laptop
+// sleeps, so after a long suspend every lease looks expired — but on a
+// platform with `ps` we can still see that the process is the same one that
+// registered, and a verified-live session must never be pruned. On win32 there
+// is nothing better, so a suspend longer than the TTL can prune a live lease;
+// the cost is bounded to a farm being reclaimed early, which surfaces as
+// gracefulShutdown's "restart occ" message rather than a silent wedge.
+//
+// Everything ambiguous counts as alive.
 // ---------------------------------------------------------------------------
 
 /**
@@ -105,11 +126,23 @@ function isProcessAlive(pid: number): boolean {
  * a live session's lease. A minute is well past any realistic NTP correction
  * (steps are rare, and slewing produces no jump at all), while costing almost
  * nothing in the other direction: a recycled pid is simply detected on a later
- * exit instead, once the impostor is more than a minute old. Recycling requires
- * the pid space to wrap onto this exact number, so nothing plausible fits
- * inside the window and then disappears.
+ * sweep instead, once the impostor is more than a minute old. Recycling
+ * requires the pid space to wrap onto this exact number, so nothing plausible
+ * fits inside the window and then disappears.
  */
 const PID_REUSE_TOLERANCE_MS = 60_000
+
+/** How often a live session rewrites its own lease. */
+export const LEASE_HEARTBEAT_INTERVAL_MS = 5 * 60_000
+
+/**
+ * How long a lease survives without a heartbeat.
+ *
+ * Six missed beats. Generous because the penalty for being wrong is asymmetric:
+ * an over-long TTL leaks one farm's worth of disk until the next sweep, while
+ * an over-short one can reclaim a farm a live session is still importing from.
+ */
+export const LEASE_TTL_MS = 30 * 60_000
 
 type ProcessStartTimeProbe = (pids: number[]) => Promise<Map<number, number>>
 
@@ -132,7 +165,7 @@ function parseElapsedMs(value: string): number | undefined {
 
 /**
  * Start times for `pids`, as one `ps` call. Absent entries mean "unknown",
- * never "dead" — the caller treats unknown as alive.
+ * never "dead" — the caller falls back to the TTL for those.
  *
  * Derived from `etime` (elapsed) rather than `lstart` (an absolute timestamp)
  * because `lstart` prints local time with no offset, and whether `Date.parse`
@@ -154,8 +187,8 @@ async function readProcessStartTimes(
   )
   const sampledAt = Date.now()
   // A `ps` that answered with something unparseable yields no entries, and no
-  // entries means "unknown", which the caller reads as alive. Same safe
-  // direction as a missing `ps` — never prune a lease on a bad reading.
+  // entries means "unknown", which hands the decision to the TTL. Same safe
+  // direction as a missing `ps` — never prune a lease on a bad reading alone.
   if (!stdout) return startTimes
   for (const line of stdout.split('\n')) {
     const match = /^\s*(\d+)\s+(\S+)\s*$/.exec(line)
@@ -185,9 +218,8 @@ async function probeStartTimes(pids: number[]): Promise<Map<number, number>> {
   try {
     return await startTimeProbe(pids)
   } catch (error) {
-    // Unknown start times must not decide anything: fall back to "the pid
-    // resolves, so the session is alive", which is what this file did before
-    // reuse detection existed.
+    // Unknown start times must not decide anything on their own: fall through
+    // to the TTL, which does not need a subprocess.
     logForDebugging(`liveSessions: start-time probe failed: ${error}`)
     return new Map()
   }
@@ -203,43 +235,52 @@ function isRecycledPid(
   return actualStartedAt > recordedStartedAt + PID_REUSE_TOLERANCE_MS
 }
 
-type LeaseRecord = { distRoot: string; startedAt?: number }
+type LeaseRecord = {
+  distRoot: string
+  startedAt?: number
+  /** Last heartbeat, wall-clock ms. Absent on leases from older builds. */
+  renewedAt?: number
+}
 
 /**
  * Leases used to be the bare dist root. That spelling is still read, without a
- * start time, so a session registered by the previous build keeps blocking
- * installs for as long as it runs.
+ * start time, so a session registered by the previous build keeps its farm
+ * (which is the install tree, since that build never farmed) for as long as it
+ * runs — or until the TTL retires it, using the file's mtime as its only
+ * heartbeat.
  */
 function parseLease(contents: string): LeaseRecord {
   const trimmed = contents.trim()
   if (!trimmed.startsWith('{')) return { distRoot: trimmed }
   try {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>
-    const startedAt = parsed.startedAt
     return {
       distRoot: typeof parsed.distRoot === 'string' ? parsed.distRoot : '',
-      startedAt:
-        typeof startedAt === 'number' && Number.isFinite(startedAt)
-          ? startedAt
-          : undefined,
+      startedAt: finiteNumber(parsed.startedAt),
+      renewedAt: finiteNumber(parsed.renewedAt),
     }
   } catch {
     return { distRoot: trimmed }
   }
 }
 
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
 function leasePayload(): string {
   return JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     distRoot,
     startedAt: processStartedAtMs(),
+    renewedAt: Date.now(),
   })
 }
 
 let registered = false
 let registrationPromise: Promise<void> | undefined
 let unregisterCleanup: (() => void) | undefined
-let exitHandler: (() => Promise<void>) | undefined
+let heartbeatTimer: ReturnType<typeof setInterval> | undefined
 
 async function unregisterLiveSession(): Promise<void> {
   try {
@@ -254,29 +295,37 @@ async function unregisterLiveSession(): Promise<void> {
   registered = false
 }
 
-/**
- * Run `handler` at exit, after this session's lease is removed.
- *
- * Separate from registration because the two have different audiences. *Every*
- * process registers — including `--print`, whose whole job is to be visible to
- * the sessions that do update, so they postpone replacing the tree it is
- * reading from. Only an interactive session attaches the handoff, because only
- * it should ever spawn an installer. Attaching is therefore allowed after
- * registration, once the entrypoint knows which kind of session this is.
- */
-export function setLiveSessionExitHandler(handler: () => Promise<void>): void {
-  exitHandler = handler
+function stopHeartbeat(): void {
+  if (heartbeatTimer) clearInterval(heartbeatTimer)
+  heartbeatTimer = undefined
 }
 
 /**
- * Announce this process before it starts long-lived work. Cleanup removes this
- * lease before trying a persisted deferred install, so the last session exits
- * with an empty registry and can safely take over another session's update.
+ * Keep this session's lease fresh so peers can tell it apart from the leftover
+ * of a SIGKILLed one. Unref'd: a heartbeat must never be the reason a process
+ * stays alive.
  */
-export async function registerLiveSession(
-  afterUnregister?: () => Promise<void>,
-): Promise<void> {
-  if (afterUnregister) setLiveSessionExitHandler(afterUnregister)
+function startHeartbeat(entryPath: string, intervalMs: number): void {
+  stopHeartbeat()
+  heartbeatTimer = setInterval(() => {
+    void writePrivateFileAtomic(entryPath, leasePayload()).catch(error => {
+      logForDebugging(`liveSessions: heartbeat failed: ${error}`)
+    })
+  }, intervalMs)
+  heartbeatTimer.unref()
+}
+
+/**
+ * Announce this process before it starts long-lived work.
+ *
+ * *Every* process registers — `--print` included: the point is to be visible
+ * to whichever session next sweeps the runtime farms, so the tree this one is
+ * importing chunks from is not reclaimed underneath it.
+ */
+export async function registerLiveSession(options?: {
+  /** Heartbeat period; tests use a short one. */
+  heartbeatIntervalMs?: number
+}): Promise<void> {
   if (registered) return
   if (registrationPromise) return registrationPromise
 
@@ -285,19 +334,13 @@ export async function registerLiveSession(
     await mkdir(liveSessionsDir(), { recursive: true, mode: 0o700 })
     await writePrivateFileAtomic(entryPath, leasePayload())
     registered = true
+    startHeartbeat(
+      entryPath,
+      options?.heartbeatIntervalMs ?? LEASE_HEARTBEAT_INTERVAL_MS,
+    )
     unregisterCleanup = registerCleanup(async () => {
+      stopHeartbeat()
       await unregisterLiveSession()
-      // Read at exit, not at registration: the interactive path attaches this
-      // after rootAction has ruled out --print.
-      const handler = exitHandler
-      if (!handler) return
-      try {
-        await handler()
-      } catch (error) {
-        logForDebugging(
-          `liveSessions: deferred install handoff failed: ${error}`,
-        )
-      }
     })
   })()
 
@@ -309,77 +352,114 @@ export async function registerLiveSession(
   }
 }
 
+type ResolvedLease = {
+  pid: number
+  path: string
+  lease: LeaseRecord | undefined
+  /** Heartbeat, or the file's mtime for leases written by older builds. */
+  lastSeenAt: number | undefined
+}
+
+async function resolveLease(name: string): Promise<ResolvedLease | undefined> {
+  const pid = Number(name)
+  if (!Number.isInteger(pid) || pid <= 0) return undefined
+  const entryPath = join(liveSessionsDir(), name)
+  if (!isProcessAlive(pid)) {
+    await pruneEntry(entryPath)
+    return undefined
+  }
+  try {
+    const lease = parseLease(await readFile(entryPath, 'utf8'))
+    return {
+      pid,
+      path: entryPath,
+      lease,
+      // Only leases from before the heartbeat existed need the extra stat.
+      lastSeenAt: lease.renewedAt ?? (await fileMtimeMs(entryPath)),
+    }
+  } catch {
+    // A live pid with an unreadable lease is treated as live: it may well be
+    // reading from a farm, and reclaiming that farm is the expensive mistake.
+    return { pid, path: entryPath, lease: undefined, lastSeenAt: undefined }
+  }
+}
+
+async function fileMtimeMs(path: string): Promise<number | undefined> {
+  try {
+    return (await stat(path)).mtimeMs
+  } catch {
+    return undefined
+  }
+}
+
+function isExpired(lastSeenAt: number | undefined, now: number): boolean {
+  if (lastSeenAt === undefined) return false
+  return now - lastSeenAt > LEASE_TTL_MS
+}
+
 /**
- * Whether another live process is running from the same dist root as this one.
+ * What {@link getLiveSessionDistRoots} could establish.
  *
- * Prunes entries for pids that are gone, so a crashed session cannot block
- * updates permanently. Only the dist root matters: a `bun run dev` checkout
- * running alongside a global install is unaffected by replacing that install,
- * and vice versa.
+ * `complete: false` means at least one live session's tree could not be
+ * identified, so the set is not a licence to delete anything. Callers that
+ * reclaim disk must treat it as "keep everything" — an unreadable registry is
+ * not evidence that a tree is unused.
  */
-export async function hasOtherLiveSessions(): Promise<boolean> {
+export type LiveSessionRoots = { roots: Set<string>; complete: boolean }
+
+/**
+ * Dist roots that live occ processes are running from, pruning leases that are
+ * provably stale on the way through.
+ *
+ * Includes this process's own root: the caller is deciding what may be
+ * deleted, and "the tree I am running from" is the first thing that may not.
+ */
+export async function getLiveSessionDistRoots(): Promise<LiveSessionRoots> {
+  const roots = new Set<string>([distRoot])
+  let complete = true
   let entries: string[]
   try {
     entries = await readdir(liveSessionsDir())
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-    // An unreadable registry cannot prove that replacing the install tree is safe.
-    return true
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { roots, complete }
+    }
+    logForDebugging(`liveSessions: registry unreadable: ${error}`)
+    return { roots, complete: false }
   }
 
-  const resolved: {
-    pid: number
-    path: string
-    lease: LeaseRecord | undefined
-  }[] = []
-  await Promise.all(
-    entries.map(async name => {
-      const pid = Number(name)
-      if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) {
-        return
-      }
-      const entryPath = join(liveSessionsDir(), name)
-      if (!isProcessAlive(pid)) {
-        await pruneEntry(entryPath)
-        return
-      }
-      try {
-        resolved.push({
-          pid,
-          path: entryPath,
-          lease: parseLease(await readFile(entryPath, 'utf8')),
-        })
-      } catch {
-        // A live pid with an unreadable lease must block a destructive install.
-        resolved.push({ pid, path: entryPath, lease: undefined })
-      }
-    }),
+  const resolved = (await Promise.all(entries.map(resolveLease))).filter(
+    (entry): entry is ResolvedLease => entry !== undefined,
   )
 
-  // One `ps` for every lease that recorded a start time, and only when there is
-  // something to check — the common case (no peer sessions) spawns nothing.
-  const startTimes = await probeStartTimes(
-    resolved
-      .filter(entry => entry.lease?.startedAt !== undefined)
-      .map(entry => entry.pid),
-  )
+  // One `ps` for every live lease, and only when there is something to check —
+  // a lone session spawns nothing.
+  const startTimes = await probeStartTimes(resolved.map(entry => entry.pid))
+  const now = Date.now()
 
-  let foundOther = false
   await Promise.all(
     resolved.map(async entry => {
-      if (isRecycledPid(entry.lease?.startedAt, startTimes.get(entry.pid))) {
+      const actualStartedAt = startTimes.get(entry.pid)
+      const recycled = isRecycledPid(entry.lease?.startedAt, actualStartedAt)
+      // The probe answering at all proves this is the same process, whatever
+      // the heartbeat says — see the staleness note above on laptop suspend.
+      const identified =
+        entry.lease?.startedAt !== undefined && actualStartedAt !== undefined
+      if (recycled || (!identified && isExpired(entry.lastSeenAt, now))) {
         logForDebugging(
-          `liveSessions: pruning lease for recycled pid ${entry.pid}`,
+          `liveSessions: pruning stale lease for pid ${entry.pid}`,
         )
         await pruneEntry(entry.path)
         return
       }
-      if (!entry.lease || entry.lease.distRoot === distRoot) {
-        foundOther = true
+      if (!entry.lease) {
+        complete = false
+        return
       }
+      roots.add(entry.lease.distRoot)
     }),
   )
-  return foundOther
+  return { roots, complete }
 }
 
 async function pruneEntry(entryPath: string): Promise<void> {
@@ -393,8 +473,8 @@ async function pruneEntry(entryPath: string): Promise<void> {
 export function resetLiveSessionsForTests(): void {
   unregisterCleanup?.()
   unregisterCleanup = undefined
+  stopHeartbeat()
   registrationPromise = undefined
   registered = false
-  exitHandler = undefined
   setProcessStartTimeProbeForTests()
 }

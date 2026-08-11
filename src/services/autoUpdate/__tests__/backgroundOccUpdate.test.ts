@@ -34,12 +34,14 @@ afterEach(() => {
 
 type Deps = import('../backgroundOccUpdate.js').BackgroundOccUpdateDeps
 
-type Queued = import('../deferredOccInstall.js').DeferredOccInstall
+type Install = import('../occInstaller.js').OccInstall
 
 type Calls = {
-  /** Installs handed to deferredOccInstall — nothing installs in-session. */
-  queued: Queued[]
+  /** Installs actually spawned, detached, during the session. */
+  spawned: Install[]
   notified: string[]
+  locks: number
+  releases: number
   latestChecks: number
   installTypeChecks: number
   checkClaims: Array<{
@@ -53,8 +55,10 @@ function makeDeps(overrides: Partial<Deps> = {}): {
   calls: Calls
 } {
   const calls: Calls = {
-    queued: [],
+    spawned: [],
     notified: [],
+    locks: 0,
+    releases: 0,
     latestChecks: 0,
     installTypeChecks: 0,
     checkClaims: [],
@@ -73,8 +77,15 @@ function makeDeps(overrides: Partial<Deps> = {}): {
       calls.latestChecks++
       return '1.1.0'
     },
-    armInstall: async install => {
-      calls.queued.push(install)
+    acquireLock: async () => {
+      calls.locks++
+      return true
+    },
+    releaseLock: async () => {
+      calls.releases++
+    },
+    spawnInstaller: async install => {
+      calls.spawned.push(install)
     },
     packageSpec: () => '@scope/pkg@latest',
     notify: text => {
@@ -121,34 +132,96 @@ function makeScheduler(): {
 }
 
 describe('runBackgroundOccUpdateOnce', () => {
-  test('queues an npm-global install for exit and notifies once', async () => {
+  test('installs an npm-global update immediately and notifies once', async () => {
     const { deps, calls } = makeDeps()
     const outcome = await updater.runBackgroundOccUpdateOnce(deps)
 
-    expect(outcome).toEqual({ status: 'queued', version: '1.1.0' })
-    // Nothing is installed in-session: replacing the tree under a running
-    // process strands half its lazily imported chunks.
-    expect(calls.queued).toEqual([
+    expect(outcome).toEqual({ status: 'installing', version: '1.1.0' })
+    // Immediate, not deferred to exit: the session runs from a hard-link farm
+    // (runtimeFarm.ts), so replacing the package directory strands nothing.
+    expect(calls.spawned).toEqual([
       {
         pkgManager: 'npm',
         spec: '@scope/pkg@latest',
         version: '1.1.0',
       },
     ])
-    expect(calls.notified).toEqual(['✓ Update v1.1.0 ready · installs on exit'])
+    expect(calls.notified).toEqual([
+      '✓ Update v1.1.0 installing · restart to apply',
+    ])
     expect(calls.checkClaims).toEqual([
       { checkedAt: 1_000_000, minimumElapsedMs: 1_620_000 },
     ])
   })
 
-  test('queues a bun global install via bun without probing npm install type', async () => {
+  test('installs a bun global update via bun without probing npm install type', async () => {
     const { deps, calls } = makeDeps({ isBunGlobalInstall: () => true })
     const outcome = await updater.runBackgroundOccUpdateOnce(deps)
 
-    expect(outcome).toEqual({ status: 'queued', version: '1.1.0' })
-    expect(calls.queued.map(q => q.pkgManager)).toEqual(['bun'])
+    expect(outcome).toEqual({ status: 'installing', version: '1.1.0' })
+    expect(calls.spawned.map(install => install.pkgManager)).toEqual(['bun'])
     // bun path check short-circuits the (subprocess-spawning) type detection
     expect(calls.installTypeChecks).toBe(0)
+  })
+
+  test('stands down when another process already holds the update lock', async () => {
+    // "If an update process is already running, skip." Its installer replaces
+    // the same package directory; racing it with a second `install -g` is the
+    // only thing the cross-process lock exists to prevent.
+    const { deps, calls } = makeDeps({ acquireLock: async () => false })
+    const outcome = await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(outcome).toEqual({ status: 'install-in-flight', version: '1.1.0' })
+    expect(calls.spawned).toEqual([])
+    expect(calls.notified).toEqual([])
+    // Nothing to release: the lock was never taken.
+    expect(calls.releases).toBe(0)
+  })
+
+  test('the lock is held, not released, once the detached installer starts', async () => {
+    // The child outlives this process, so releasing on success would let a
+    // second session start a competing `install -g` over the same tree. The
+    // lock is left to expire on its own.
+    const { deps, calls } = makeDeps()
+    await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(calls.locks).toBe(1)
+    expect(calls.releases).toBe(0)
+  })
+
+  test('releases the lock when the spawn fails', async () => {
+    const { deps, calls } = makeDeps({
+      spawnInstaller: () =>
+        new Promise((_, reject) => {
+          queueMicrotask(() => {
+            reject(Object.assign(new Error('spawn failed'), { code: 'ENOENT' }))
+          })
+        }),
+    })
+    const outcome = await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(outcome).toEqual({ status: 'error' })
+    expect(calls.releases).toBe(1)
+    expect(calls.notified).toEqual([])
+  })
+
+  test('never takes the lock before the version comparison', async () => {
+    // Acquiring on every pass would leave a five-minute lock behind for a
+    // check that had nothing to install, starving the session that does.
+    const { deps, calls } = makeDeps({ getLatestVersion: async () => '1.0.0' })
+    await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(calls.locks).toBe(0)
+  })
+
+  test('rebuilds the package spec instead of trusting anything carried along', async () => {
+    const { deps, calls } = makeDeps({
+      packageSpec: () => '@sweetcornna/open-claude-code@latest',
+    })
+
+    await updater.runBackgroundOccUpdateOnce(deps)
+
+    expect(calls.spawned[0]?.spec).toBe('@sweetcornna/open-claude-code@latest')
   })
 
   test('skips when DISABLE_AUTOUPDATER is set, before any network check', async () => {
@@ -162,7 +235,7 @@ describe('runBackgroundOccUpdateOnce', () => {
 
     expect(outcome.status).toBe('skipped')
     expect(calls.latestChecks).toBe(0)
-    expect(calls.queued).toEqual([])
+    expect(calls.spawned).toEqual([])
   })
 
   test('skips when globalConfig.autoUpdates === false', async () => {
@@ -181,7 +254,7 @@ describe('runBackgroundOccUpdateOnce', () => {
   test('runs when autoUpdates is undefined (default-enabled)', async () => {
     const { deps } = makeDeps({ getAutoUpdatesConfig: () => undefined })
     const outcome = await updater.runBackgroundOccUpdateOnce(deps)
-    expect(outcome.status).toBe('queued')
+    expect(outcome.status).toBe('installing')
   })
 
   test('skips under essential-traffic-only env', async () => {
@@ -229,7 +302,7 @@ describe('runBackgroundOccUpdateOnce', () => {
       // How occ was installed cannot change while it is running.
       permanent: true,
     })
-    expect(calls.queued).toEqual([])
+    expect(calls.spawned).toEqual([])
     expect(calls.notified).toEqual([])
   })
 
@@ -239,7 +312,7 @@ describe('runBackgroundOccUpdateOnce', () => {
       const outcome = await updater.runBackgroundOccUpdateOnce(deps)
 
       expect(outcome).toEqual({ status: 'up-to-date', version: '1.0.0' })
-      expect(calls.queued).toEqual([])
+      expect(calls.spawned).toEqual([])
       expect(calls.notified).toEqual([])
     }
   })
@@ -249,7 +322,7 @@ describe('runBackgroundOccUpdateOnce', () => {
     const outcome = await updater.runBackgroundOccUpdateOnce(deps)
 
     expect(outcome).toEqual({ status: 'check-failed' })
-    expect(calls.queued).toEqual([])
+    expect(calls.spawned).toEqual([])
     expect(calls.notified).toEqual([])
   })
 
@@ -265,21 +338,13 @@ describe('runBackgroundOccUpdateOnce', () => {
 
     expect(outcome).toEqual({ status: 'throttled' })
     expect(calls.latestChecks).toBe(0)
-    expect(calls.queued).toEqual([])
-  })
-
-  test('queues without taking the exit-time update lock', async () => {
-    const { deps, calls } = makeDeps()
-    const outcome = await updater.runBackgroundOccUpdateOnce(deps)
-
-    expect(outcome).toEqual({ status: 'queued', version: '1.1.0' })
-    expect(calls.queued).toHaveLength(1)
+    expect(calls.spawned).toEqual([])
   })
 
   test('a throwing dependency yields error status and never throws', async () => {
     const { deps, calls } = makeDeps({
-      armInstall: () => {
-        throw new Error('registration failure')
+      getInstallationType: () => {
+        throw new Error('probe failure')
       },
     })
     const outcome = await updater.runBackgroundOccUpdateOnce(deps)
@@ -288,17 +353,17 @@ describe('runBackgroundOccUpdateOnce', () => {
     expect(calls.notified).toEqual([])
   })
 
-  test('uses the last queued version as the next comparison baseline', async () => {
+  test('uses the last installed version as the next comparison baseline', async () => {
     let latestVersion = '1.1.0'
     const { deps, calls } = makeDeps({
       getLatestVersion: async () => latestVersion,
     })
 
     expect(await updater.runBackgroundOccUpdateOnce(deps)).toEqual({
-      status: 'queued',
+      status: 'installing',
       version: '1.1.0',
     })
-    // Without the baseline, every 30-minute pass would re-queue and re-notify
+    // Without the baseline, every 30-minute pass would reinstall and renotify
     // the same release for the rest of the session.
     expect(await updater.runBackgroundOccUpdateOnce(deps)).toEqual({
       status: 'up-to-date',
@@ -307,10 +372,13 @@ describe('runBackgroundOccUpdateOnce', () => {
 
     latestVersion = '1.2.0'
     expect(await updater.runBackgroundOccUpdateOnce(deps)).toEqual({
-      status: 'queued',
+      status: 'installing',
       version: '1.2.0',
     })
-    expect(calls.queued.map(q => q.version)).toEqual(['1.1.0', '1.2.0'])
+    expect(calls.spawned.map(install => install.version)).toEqual([
+      '1.1.0',
+      '1.2.0',
+    ])
     expect(calls.notified).toHaveLength(2)
   })
 })

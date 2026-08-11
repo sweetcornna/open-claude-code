@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, statSync } from 'fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { occConfigDir } from 'src/config/paths.js'
+import { buildAggregatedModels } from '../aggregate.js'
 import { PROFILE_ENV_KEYS, type ProfileModelType } from '../envKeys.js'
 import {
   ALL_PROFILE_ENV_KEYS,
@@ -11,6 +13,7 @@ import {
   loadProfilesFile,
   profilesFilePath,
   saveProfilesFile,
+  updateProfileCatalog,
 } from '../profiles.js'
 
 const EXPECTED_TIER_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
@@ -85,6 +88,16 @@ const EXPECTED_TIER_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
     'GROK_DEFAULT_FABLE_MODEL_NAME',
     'GROK_DEFAULT_FABLE_MODEL_DESCRIPTION',
     'GROK_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES',
+  ],
+  // Only the bare `_MODEL` key per tier, unlike every other family: the wire
+  // mirror copies the id onto the LANE's tier key, and the name/description/
+  // capabilities metadata is then read from that key. An OPENCODE_-prefixed
+  // copy of the trio would be written by nothing and read by nothing.
+  opencode: [
+    'OPENCODE_DEFAULT_HAIKU_MODEL',
+    'OPENCODE_DEFAULT_SONNET_MODEL',
+    'OPENCODE_DEFAULT_OPUS_MODEL',
+    'OPENCODE_DEFAULT_FABLE_MODEL',
   ],
 }
 
@@ -172,6 +185,60 @@ describe('captureProfile', () => {
     expect(second.env.ANTHROPIC_BASE_URL).toBe('https://x')
   })
 
+  test('carries a model snapshot and the aggregate opt-in through a re-save', () => {
+    const first = captureProfile({
+      name: 'relay',
+      modelType: 'openai',
+      mergedEnv: { OPENAI_API_KEY: 'sk-1' },
+      models: [{ id: 'gpt-5.4' }],
+      aggregate: true,
+    })
+    expect(first.models).toEqual([{ id: 'gpt-5.4' }])
+    expect(first.aggregate).toBe(true)
+
+    // Re-saving credentials must not silently drop the profile out of the
+    // aggregated picker.
+    const second = captureProfile({
+      name: 'relay',
+      modelType: 'openai',
+      mergedEnv: { OPENAI_API_KEY: 'sk-2' },
+      existing: first,
+    })
+    expect(second.models).toEqual([{ id: 'gpt-5.4' }])
+    expect(second.aggregate).toBe(true)
+    expect(second.env.OPENAI_API_KEY).toBe('sk-2')
+  })
+
+  test('explicit empty/false clears the snapshot and the opt-in', () => {
+    const existing = captureProfile({
+      name: 'relay',
+      modelType: 'openai',
+      mergedEnv: {},
+      models: [{ id: 'gpt-5.4' }],
+      aggregate: true,
+    })
+    const cleared = captureProfile({
+      name: 'relay',
+      modelType: 'openai',
+      mergedEnv: {},
+      models: [],
+      aggregate: false,
+      existing,
+    })
+    expect(cleared.models).toEqual([])
+    expect(cleared.aggregate).toBe(false)
+  })
+
+  test('omits both fields entirely when neither is known', () => {
+    const profile = captureProfile({
+      name: 'plain',
+      modelType: 'anthropic',
+      mergedEnv: {},
+    })
+    expect('models' in profile).toBe(false)
+    expect('aggregate' in profile).toBe(false)
+  })
+
   test('drops empty-string values', () => {
     const profile = captureProfile({
       name: 'p',
@@ -222,6 +289,19 @@ describe('buildActivationEnvPatch', () => {
   })
 })
 
+/**
+ * occConfigDir() is memoized, so pointing OCC_CONFIG_DIR at a temp dir is not
+ * enough — without clearing the memo a second test in the same process keeps
+ * writing wherever the first call resolved, up to and including the real
+ * ~/.occ of whoever runs the suite.
+ */
+function enterTempConfigDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'occ-profiles-'))
+  process.env.OCC_CONFIG_DIR = dir
+  occConfigDir.cache.clear?.()
+  return dir
+}
+
 describe('profiles file roundtrip', () => {
   const savedConfigDir = process.env.OCC_CONFIG_DIR
   let tempDir: string | undefined
@@ -229,13 +309,13 @@ describe('profiles file roundtrip', () => {
   afterEach(() => {
     if (savedConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
     else process.env.OCC_CONFIG_DIR = savedConfigDir
+    occConfigDir.cache.clear?.()
     if (tempDir) rmSync(tempDir, { recursive: true, force: true })
     tempDir = undefined
   })
 
   test('load missing file → empty registry; save → load roundtrip; 0600 perms', () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'occ-profiles-'))
-    process.env.OCC_CONFIG_DIR = tempDir
+    tempDir = enterTempConfigDir()
 
     expect(loadProfilesFile()).toEqual({ version: 1, profiles: {} })
 
@@ -257,12 +337,100 @@ describe('profiles file roundtrip', () => {
   })
 
   test('corrupt file fails soft to an empty registry', () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'occ-profiles-'))
-    process.env.OCC_CONFIG_DIR = tempDir
+    tempDir = enterTempConfigDir()
     saveProfilesFile({ version: 1, profiles: {} })
     // overwrite with garbage via the same path helper
-    const { writeFileSync } = require('fs') as typeof import('fs')
     writeFileSync(profilesFilePath(), '{not json', 'utf8')
     expect(loadProfilesFile()).toEqual({ version: 1, profiles: {} })
+  })
+
+  test('a profile written before models/aggregate existed still loads', () => {
+    tempDir = enterTempConfigDir()
+    // Verbatim shape of a v2.37-era profile: no `models`, no `aggregate`.
+    writeFileSync(
+      profilesFilePath(),
+      JSON.stringify({
+        version: 1,
+        active: 'legacy',
+        profiles: {
+          legacy: {
+            name: 'legacy',
+            modelType: 'openai',
+            env: { OPENAI_API_KEY: 'sk-x' },
+            createdAt: '2026-08-02T00:00:00.000Z',
+            updatedAt: '2026-08-02T00:00:00.000Z',
+          },
+        },
+      }),
+      'utf8',
+    )
+
+    const loaded = loadProfilesFile()
+    const legacy = loaded.profiles.legacy
+    expect(loaded.active).toBe('legacy')
+    expect(legacy?.env.OPENAI_API_KEY).toBe('sk-x')
+    expect(legacy?.models).toBeUndefined()
+    expect(legacy?.aggregate).toBeUndefined()
+    // No snapshot and no opt-in: contributes nothing, throws nothing.
+    expect(buildAggregatedModels(loaded)).toEqual([])
+  })
+})
+
+describe('updateProfileCatalog', () => {
+  const savedConfigDir = process.env.OCC_CONFIG_DIR
+  let tempDir: string | undefined
+
+  afterEach(() => {
+    if (savedConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
+    else process.env.OCC_CONFIG_DIR = savedConfigDir
+    occConfigDir.cache.clear?.()
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true })
+    tempDir = undefined
+  })
+
+  test('attaches a snapshot and the opt-in without touching env', () => {
+    tempDir = enterTempConfigDir()
+    saveProfilesFile({
+      version: 1,
+      profiles: {
+        relay: captureProfile({
+          name: 'relay',
+          modelType: 'openai',
+          mergedEnv: { OPENAI_API_KEY: 'sk-x' },
+        }),
+      },
+    })
+
+    const result = updateProfileCatalog('relay', {
+      models: [{ id: 'gpt-5.4' }],
+      aggregate: true,
+    })
+    expect(result).toMatchObject({ profile: { aggregate: true } })
+
+    const reloaded = loadProfilesFile().profiles.relay
+    expect(reloaded?.models).toEqual([{ id: 'gpt-5.4' }])
+    expect(reloaded?.env.OPENAI_API_KEY).toBe('sk-x')
+    expect(buildAggregatedModels(loadProfilesFile())).toHaveLength(1)
+
+    // Flipping only the switch leaves the snapshot in place.
+    updateProfileCatalog('relay', { aggregate: false })
+    const off = loadProfilesFile().profiles.relay
+    expect(off?.aggregate).toBe(false)
+    expect(off?.models).toEqual([{ id: 'gpt-5.4' }])
+    expect(buildAggregatedModels(loadProfilesFile())).toEqual([])
+
+    if (process.platform !== 'win32') {
+      expect(statSync(profilesFilePath()).mode & 0o777).toBe(0o600)
+    }
+  })
+
+  test('an unknown profile is an error, not a silent create', () => {
+    tempDir = enterTempConfigDir()
+    saveProfilesFile({ version: 1, profiles: {} })
+
+    expect(updateProfileCatalog('nope', { aggregate: true })).toEqual({
+      error: 'Unknown profile "nope".',
+    })
+    expect(loadProfilesFile().profiles.nope).toBeUndefined()
   })
 })

@@ -20,9 +20,12 @@ const configMock = makeSharedModuleMock(
 ).setup()
 const settingsMock = setupSettingsMock()
 
-const { createSettingsAwareEnvLookup, getEffectiveSettingsEnv } = await import(
-  '../managedEnv'
-)
+const {
+  applySafeConfigEnvironmentVariables,
+  createSettingsAwareEnvLookup,
+  getEffectiveSettingsEnv,
+} = await import('../managedEnv')
+const { applyOpencodeWire } = await import('../../model/opencodeWire.js')
 
 /** Vars the assertions read straight out of process.env. */
 const ENV_KEYS = [
@@ -32,6 +35,16 @@ const ENV_KEYS = [
   // Guards: filterSettingsEnv strips keys when these are set.
   'ANTHROPIC_UNIX_SOCKET',
   'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
+  // The OpenCode mirror's inputs, and every key it can claim.
+  'OPENCODE_AUTH_MODE',
+  'OPENCODE_BASE_URL',
+  'OPENCODE_MODEL',
+  'OPENCODE_WIRE_API',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_MODEL',
+  'OPENAI_BASE_URL',
+  'OPENAI_MODEL',
+  'OPENAI_WIRE_API',
 ] as const
 const saved: Record<string, string | undefined> = {}
 
@@ -63,7 +76,13 @@ beforeEach(() => {
   for (const key of ENV_KEYS) delete process.env[key]
 })
 
-afterEach(restoreEnv)
+afterEach(() => {
+  restoreEnv()
+  // Release the OpenCode mirror's claim ledger before the next file sees it.
+  // It only drops a key still holding the value it wrote, so with the env
+  // already restored this is a pure release.
+  applyOpencodeWire()
+})
 
 afterAll(() => {
   restoreEnv()
@@ -147,5 +166,54 @@ describe('createSettingsAwareEnvLookup', () => {
     expect(createSettingsAwareEnvLookup()('MANAGED_ENV_TEST_BOTH')).toBe(
       'second',
     )
+  })
+})
+
+describe('the provider mirrors run on every settings apply', () => {
+  // Not only at startup. getAPIProvider() flips to the OpenCode lane the
+  // instant OPENCODE_AUTH_MODE lands in process.env — which is what `/login`
+  // and `/provider use` do, long after init. A settings apply that does not
+  // re-run the mirror leaves the session claiming a routing it never applied:
+  // ANTHROPIC_BASE_URL / OPENAI_BASE_URL still unset, so requests go to the
+  // wrong host and come back 401. One missing call, and nothing says so.
+  test('a settings.env that configures OpenCode is mirrored onto the lane keys', () => {
+    settingsMock.set({
+      getSettings_DEPRECATED: () => ({}),
+      getSettingsForSource: () => ({
+        env: {
+          OPENCODE_AUTH_MODE: 'opencode',
+          OPENCODE_BASE_URL: 'https://opencode.ai/zen/v1',
+          OPENCODE_MODEL: 'claude-opus-5',
+        },
+      }),
+    })
+    configMock.set({
+      getGlobalConfig: () =>
+        ({}) as ReturnType<typeof realConfig.getGlobalConfig>,
+    })
+
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
+
+    applySafeConfigEnvironmentVariables()
+
+    expect(process.env.OPENCODE_AUTH_MODE).toBe('opencode')
+    expect(process.env.ANTHROPIC_BASE_URL).toBe('https://opencode.ai/zen/v1')
+    expect(process.env.ANTHROPIC_MODEL).toBe('claude-opus-5')
+  })
+
+  test('leaves a session that configures no provider untouched', () => {
+    settingsMock.set({
+      getSettings_DEPRECATED: () => ({}),
+      getSettingsForSource: () => null,
+    })
+    configMock.set({
+      getGlobalConfig: () =>
+        ({}) as ReturnType<typeof realConfig.getGlobalConfig>,
+    })
+
+    applySafeConfigEnvironmentVariables()
+
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(process.env.OPENAI_BASE_URL).toBeUndefined()
   })
 })

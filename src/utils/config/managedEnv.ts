@@ -1,5 +1,6 @@
 import { isRemoteManagedSettingsEligible } from '../../services/remoteManagedSettings/syncCache.js'
 import { applyDeepSeekAnthropicWire } from '../model/deepseekWire.js'
+import { applyOpencodeWire } from '../model/opencodeWire.js'
 import { clearCACertsCache } from '../network/caCerts.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -178,6 +179,7 @@ export function applySafeConfigEnvironmentVariables(): void {
   }
 
   applyDeepSeekAnthropicWire()
+  applyOpencodeWire()
 }
 
 /**
@@ -241,6 +243,11 @@ export function applyConfigEnvironmentVariables(): void {
   // that makes that answer true has to land in the same breath. See
   // applyDeepSeekAnthropicWire for what a missed re-run looks like.
   applyDeepSeekAnthropicWire()
+  // Same contract for OpenCode, one degree worse: its lane is derived from
+  // OPENCODE_MODEL, so a settings change can move the session from the Anthropic
+  // client to the OpenAI one. The credential half is refreshed separately, on
+  // the async paths — this call only republishes the endpoint and model keys.
+  applyOpencodeWire()
 
   // Clear caches so agents are rebuilt with the new env vars
   clearCACertsCache()
