@@ -196,7 +196,9 @@ import {
   formatCommandInputTags,
 } from '../utils/messages.js';
 import { generateSessionTitle } from '../utils/session/sessionTitle.js';
-import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
+import { planSessionTitleAttempt, sessionTitleGateAfterAttempt } from '../utils/session/sessionTitleGate.js';
+import { DEFERRED_MESSAGES_CAP, shouldShowSubmitPlaceholder } from './repl/submitPlaceholder.js';
+import { LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
 import { escapeXml } from '../utils/text/xml.js';
 import { gracefulShutdownSync } from '../utils/process/gracefulShutdown.js';
 import { handlePromptSubmit, type PromptInputHelpers } from '../utils/session/handlePromptSubmit.js';
@@ -1208,7 +1210,7 @@ export function REPL({
   // Cap at 500 messages to limit memory double-buffering. The bypass
   // at display-time uses sync messages during streaming and non-loading,
   // so this cap only affects reduced-motion scenarios.
-  const DEFERRED_CAP = 500;
+  const DEFERRED_CAP = DEFERRED_MESSAGES_CAP;
   const cappedMessages = React.useMemo(
     () => (messages.length > DEFERRED_CAP ? messages.slice(-DEFERRED_CAP) : messages),
     [messages],
@@ -2592,31 +2594,30 @@ export function REPL({
       // useDeferredHookMessages) and attachment messages (appended by
       // processTextPrompt) — both pushed length past 1 on turn one, so the
       // title silently fell through to the "Claude Code" default.
-      if (!titleDisabled && !sessionTitle && !agentTitle && !haikuTitleAttemptedRef.current) {
+      // The policy lives in sessionTitleGate.ts: the gate must stay spent
+      // even when the side query comes back empty, or a provider that
+      // rejects it makes every prompt pay for a second API call.
+      if (!haikuTitleAttemptedRef.current) {
         const firstUserMessage = newMessages.find(m => m.type === 'user' && !m.isMeta);
-        const text =
-          firstUserMessage?.type === 'user'
-            ? getContentText(firstUserMessage.message!.content as string | ContentBlockParam[])
-            : null;
-        // Skip synthetic breadcrumbs — slash-command output, prompt-skill
-        // expansions (/commit → <command-message>), local-command headers
-        // (/help → <command-name>), and bash-mode (!cmd → <bash-input>).
-        // None of these are the user's topic; wait for real prose.
-        if (
-          text &&
-          !text.startsWith(`<${LOCAL_COMMAND_STDOUT_TAG}>`) &&
-          !text.startsWith(`<${COMMAND_MESSAGE_TAG}>`) &&
-          !text.startsWith(`<${COMMAND_NAME_TAG}>`) &&
-          !text.startsWith(`<${BASH_INPUT_TAG}>`)
-        ) {
+        const titleSource = planSessionTitleAttempt({
+          disabled: titleDisabled,
+          existingTitle: sessionTitle,
+          agentTitle,
+          attempted: haikuTitleAttemptedRef.current,
+          text:
+            firstUserMessage?.type === 'user'
+              ? getContentText(firstUserMessage.message!.content as string | ContentBlockParam[])
+              : null,
+        });
+        if (titleSource !== null) {
           haikuTitleAttemptedRef.current = true;
-          void generateSessionTitle(text, new AbortController().signal).then(
+          void generateSessionTitle(titleSource, new AbortController().signal).then(
             title => {
               if (title) setHaikuTitle(title);
-              else haikuTitleAttemptedRef.current = false;
+              haikuTitleAttemptedRef.current = sessionTitleGateAfterAttempt(haikuTitleAttemptedRef.current, title);
             },
             () => {
-              haikuTitleAttemptedRef.current = false;
+              haikuTitleAttemptedRef.current = sessionTitleGateAfterAttempt(haikuTitleAttemptedRef.current, null);
             },
           );
         }
@@ -4538,16 +4539,22 @@ export function REPL({
 
   // Show the placeholder until the real user message appears in
   // displayedMessages. userInputOnProcessing stays set for the whole turn
-  // (cleared in resetLoadingState); this length check hides it once
-  // displayedMessages grows past the baseline captured at submit time.
-  // Covers both gaps: before setMessages is called (processUserInput), and
-  // while deferredMessages lags behind messages. Suppressed when viewing an
-  // agent — displayedMessages is a different array there, and onAgentSubmit
-  // doesn't use the placeholder anyway.
-  const placeholderText =
-    userInputOnProcessing && !viewedAgentTask && displayedMessages.length <= userInputBaselineRef.current
-      ? userInputOnProcessing
-      : undefined;
+  // (cleared in resetLoadingState); the rule below hides it once the real
+  // message is on screen, covering both gaps: before setMessages is called
+  // (processUserInput), and while deferredMessages lags behind messages.
+  // The length comparison it uses is only valid while displayedMessages is
+  // the uncapped array — see submitPlaceholder.ts for why a capped tail
+  // makes it permanently true (the prompt rendered twice, all turn).
+  const placeholderText = shouldShowSubmitPlaceholder({
+    hasPlaceholder: userInputOnProcessing !== undefined,
+    viewingAgent: !!viewedAgentTask,
+    displayedLength: displayedMessages.length,
+    baselineLength: userInputBaselineRef.current,
+    userMessagePending: userMessagePendingRef.current,
+    displayedIsCapped: !usesSyncMessages && messages.length > DEFERRED_CAP,
+  })
+    ? userInputOnProcessing
+    : undefined;
 
   const toolPermissionOverlay =
     focusedInputDialog === 'tool-permission' ? (
