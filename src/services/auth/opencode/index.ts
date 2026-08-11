@@ -31,10 +31,16 @@ export {
 } from './deviceFlow.js'
 
 export {
+  fetchOpencodeConsoleConfig,
   fetchOpencodeModels,
   fetchZenModels,
   verifyOpencodeAccess,
   type OpencodeAccessCheck,
 } from './catalog.js'
+
+// The screens need a stored Console credential for exactly one thing: asking
+// `/api/config` again when `/models-setting` reopens the model step. Only the
+// reader is re-exported — the refresh policy and the storage stay behind it.
+export { getOpencodeCredential } from './oauth.js'
 
 export { saveOpencodeTokens } from './store.js'

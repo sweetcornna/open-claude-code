@@ -25,6 +25,7 @@ const ENV = [
   'OCC_CONFIG_DIR',
   'OPENCODE_AUTH_MODE',
   'OPENCODE_BASE_URL',
+  'OPENCODE_INFERENCE_PLANE',
   'OPENCODE_MODEL',
   'OPENCODE_WIRE_API',
   'OPENCODE_API_KEY',
@@ -161,6 +162,84 @@ describe('ensureOpencodeCredential', () => {
 
     await ensureOpencodeCredential()
     expect(process.env.ANTHROPIC_API_KEY).toBe('user-exported')
+  })
+})
+
+/**
+ * The Console plane, end to end through the real store and the real mirror.
+ *
+ * The bug this pins: a Console OAuth token was sent to a hard-coded Zen base
+ * URL and every request answered `API Error [OpenAI]: Invalid API key.
+ * status=401`. Measured on one account with one token (2026-08-11): 200 with a
+ * real completion at `config.provider.opencode.api`, 401 `AuthError` at
+ * https://opencode.ai/zen/v1. So the endpoint and the `x-org-id` header both
+ * come from the account's own config and travel with the credential.
+ */
+describe('a Console-plane session', () => {
+  const CONSOLE = 'https://console.opencode.ai/inference/openai/v1'
+
+  async function storeConsoleLogin(): Promise<void> {
+    await saveOpencodeTokens({
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      expiresAt: notExpiring(),
+      server: 'https://console.opencode.ai',
+      orgId: 'org-from-orgs-api',
+      inference: { api: CONSOLE, headers: { 'x-org-id': 'org_01KZ' } },
+    })
+  }
+
+  test('targets the config-supplied URL and sends x-org-id', async () => {
+    process.env.OPENCODE_AUTH_MODE = 'opencode'
+    process.env.OPENCODE_INFERENCE_PLANE = 'console'
+    process.env.OPENCODE_BASE_URL = CONSOLE
+    // A `claude-*` model, which on Zen is exactly what selects /messages.
+    process.env.OPENCODE_MODEL = 'claude-opus-5'
+    await storeConsoleLogin()
+
+    expect(await ensureOpencodeCredential()).toEqual({
+      authorization: 'Bearer access-1',
+      // Without it the request is not scoped to the organization. The console
+      // states which one; occ's own pick from /api/orgs does not override it.
+      'x-org-id': 'org_01KZ',
+    })
+    expect(process.env.OPENAI_BASE_URL).toBe(CONSOLE)
+    expect(process.env.OPENAI_WIRE_API).toBe('chat')
+    expect(process.env.OPENAI_API_KEY).toBe('access-1')
+    // Never /messages: that path answers 404 on this plane.
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
+  })
+
+  test('the credential’s endpoint outranks a stale settings copy', async () => {
+    // An upgrade from the broken build leaves OPENCODE_BASE_URL naming Zen.
+    // The 0600 file is the copy that came from the console, so it wins and the
+    // session heals without a second login.
+    process.env.OPENCODE_AUTH_MODE = 'opencode'
+    process.env.OPENCODE_INFERENCE_PLANE = 'console'
+    process.env.OPENCODE_BASE_URL = ZEN
+    process.env.OPENCODE_MODEL = 'big-pickle'
+    await storeConsoleLogin()
+
+    await ensureOpencodeCredential()
+    expect(process.env.OPENAI_BASE_URL).toBe(CONSOLE)
+  })
+
+  test('an API-key session keeps the Zen endpoint and the lane rules', async () => {
+    // The other kind, side by side. A stored Console login is present and must
+    // not leak its endpoint into a session the key owns.
+    process.env.OPENCODE_AUTH_MODE = 'opencode'
+    process.env.OPENCODE_BASE_URL = ZEN
+    process.env.OPENCODE_MODEL = 'claude-opus-5'
+    process.env.OPENCODE_API_KEY = 'zen-key'
+    await storeConsoleLogin()
+
+    expect(await ensureOpencodeCredential()).toEqual({
+      authorization: 'Bearer zen-key',
+    })
+    expect(process.env.ANTHROPIC_BASE_URL).toBe(ZEN)
+    expect(process.env.ANTHROPIC_API_KEY).toBe('zen-key')
+    expect(process.env.OPENAI_BASE_URL).toBeUndefined()
   })
 })
 

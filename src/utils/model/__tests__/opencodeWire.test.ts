@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import {
   applyOpencodeWire,
   getOpencodeLane,
+  isOpencodeConsolePlane,
   isOpencodeMirroredApiKey,
   isOpencodeSessionActive,
   laneForModel,
@@ -17,6 +18,8 @@ import {
 const MANAGED = [
   'OPENCODE_AUTH_MODE',
   'OPENCODE_BASE_URL',
+  'OPENCODE_INFERENCE_PLANE',
+  'OPENCODE_API_KEY',
   'OPENCODE_MODEL',
   'OPENCODE_WIRE_API',
   'OPENCODE_DEFAULT_HAIKU_MODEL',
@@ -55,6 +58,8 @@ afterEach(() => {
 })
 
 const ZEN = 'https://opencode.ai/zen/v1'
+/** `config.provider.opencode.api`, read off the live console 2026-08-11. */
+const CONSOLE = 'https://console.opencode.ai/inference/openai/v1'
 
 describe('laneForModel', () => {
   test('claude ids take the Anthropic Messages lane', () => {
@@ -105,6 +110,89 @@ describe('getOpencodeLane', () => {
       OPENCODE_WIRE_API: 'chat',
     })
     expect(getOpencodeLane()).toBe('chat')
+  })
+})
+
+describe('the Console inference plane', () => {
+  test('a Console session never selects /messages, whatever the model', () => {
+    // Measured: POST {console}/inference/openai/v1/messages answers 404. The
+    // plane is OpenAI-compatible ONLY, so a claude id there is still a chat
+    // request — the lane heuristic would send it to a path that does not exist.
+    configure({
+      OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_INFERENCE_PLANE: 'console',
+      OPENCODE_BASE_URL: CONSOLE,
+      OPENCODE_MODEL: 'claude-opus-5',
+    })
+    expect(isOpencodeConsolePlane()).toBe(true)
+    expect(getOpencodeLane()).toBe('chat')
+  })
+
+  test('not even an explicit messages pin can select it', () => {
+    // `OPENCODE_WIRE_API` exists for a deployment whose model naming the
+    // heuristic misreads. It cannot conjure a lane the endpoint does not serve,
+    // so honouring it here would only produce that 404.
+    configure({
+      OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_INFERENCE_PLANE: 'console',
+      OPENCODE_BASE_URL: CONSOLE,
+      OPENCODE_MODEL: 'claude-opus-5',
+      OPENCODE_WIRE_API: 'messages',
+    })
+    expect(getOpencodeLane()).toBe('chat')
+  })
+
+  test('mirrors onto the OpenAI keys at the config-supplied URL', () => {
+    configure({
+      OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_INFERENCE_PLANE: 'console',
+      OPENCODE_BASE_URL: CONSOLE,
+      OPENCODE_MODEL: 'claude-opus-5',
+    })
+    setOpencodeRuntimeCredential('tok-live')
+    applyOpencodeWire()
+
+    expect(process.env.OPENAI_BASE_URL).toBe(CONSOLE)
+    expect(process.env.OPENAI_WIRE_API).toBe('chat')
+    expect(process.env.OPENAI_API_KEY).toBe('tok-live')
+    // The Anthropic client must not be pointed anywhere: the whole failure this
+    // fixes was a Console token arriving at an endpoint that refuses it.
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined()
+  })
+
+  test('the credential’s own endpoint outranks a stale settings copy', () => {
+    // The endpoint lives in the 0600 file as well as in settings, because it is
+    // the console's answer rather than occ's choice. An upgrade that left
+    // OPENCODE_BASE_URL naming Zen must not send the token there.
+    configure({
+      OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_INFERENCE_PLANE: 'console',
+      OPENCODE_BASE_URL: ZEN,
+      OPENCODE_MODEL: 'big-pickle',
+    })
+    setOpencodeRuntimeCredential('tok-live', { baseUrl: CONSOLE })
+    applyOpencodeWire()
+
+    expect(process.env.OPENAI_BASE_URL).toBe(CONSOLE)
+  })
+
+  test('an API-key session is untouched by any of it', () => {
+    // The other kind, side by side: no plane marker, so the Zen/Go base URL and
+    // the family-derived lane both stand.
+    configure({
+      OPENCODE_AUTH_MODE: 'opencode',
+      OPENCODE_BASE_URL: ZEN,
+      OPENCODE_MODEL: 'claude-opus-5',
+      OPENCODE_API_KEY: 'zen-key',
+    })
+    setOpencodeRuntimeCredential('zen-key')
+    applyOpencodeWire()
+
+    expect(isOpencodeConsolePlane()).toBe(false)
+    expect(getOpencodeLane()).toBe('messages')
+    expect(process.env.ANTHROPIC_BASE_URL).toBe(ZEN)
+    expect(process.env.OPENAI_BASE_URL).toBeUndefined()
   })
 })
 

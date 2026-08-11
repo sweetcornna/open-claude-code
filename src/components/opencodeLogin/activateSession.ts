@@ -34,7 +34,14 @@ export type OpencodeActivation =
   | { activated: false; message: string }
 
 export type OpencodeActivationArgs = {
-  /** Inference base URL of the product the user chose. */
+  /**
+   * Inference base URL this session will use.
+   *
+   * For a Console login that is `provider.opencode.api` out of `/api/config`,
+   * not a product constant — the OAuth token is accepted there and refused by
+   * Zen, so the constant was the bug. It falls back to the chosen product's URL
+   * only when the console described no provider at all.
+   */
   baseUrl: string
   /** That product's display name, for the refusal message. */
   label: string
@@ -42,6 +49,13 @@ export type OpencodeActivationArgs = {
   otherLabel: string
   /** Live access token; never persisted outside the 0600 credential file. */
   accessToken: string
+  /**
+   * Set when `baseUrl` came from the console's own config.
+   *
+   * Carried into `OPENCODE_INFERENCE_PLANE` so the mirror stops choosing lanes:
+   * that plane is OpenAI-compatible only.
+   */
+  plane?: 'console'
   /** Verdict from verifyOpencodeAccess. */
   access: OpencodeAccessCheck
 }
@@ -60,7 +74,19 @@ function refusal(
   otherLabel: string,
   baseUrl: string,
   reason: string,
+  plane?: 'console',
 ): string {
+  // On the Console plane the two-products sentence would be a lie: that
+  // endpoint is the account's own inference proxy, named by the console itself,
+  // so there is no sibling product to switch to and nothing about credit
+  // balances to explain. What is left to say is that the credential was refused
+  // at the endpoint the console pointed at.
+  if (plane === 'console') {
+    return (
+      `Signed in, but the OpenCode Console refused the account at its own inference endpoint (${baseUrl}): ${reason} ` +
+      'Nothing was configured — press Enter to retry, or Esc to use an API key instead.'
+    )
+  }
   return (
     `Signed in, but ${label} refused the account: ${reason} ` +
     `${label} (${baseUrl}) is billed separately, and a subscription to ${otherLabel} does not cover it. ` +
@@ -73,12 +99,13 @@ export function activateOpencodeConsoleSession({
   label,
   otherLabel,
   accessToken,
+  plane,
   access,
 }: OpencodeActivationArgs): OpencodeActivation {
   if (!access.ok) {
     return {
       activated: false,
-      message: refusal(label, otherLabel, baseUrl, access.reason),
+      message: refusal(label, otherLabel, baseUrl, access.reason, plane),
     }
   }
 
@@ -87,7 +114,7 @@ export function activateOpencodeConsoleSession({
   // the user's shell is theirs, and occ hands the whole environment to every
   // Bash tool call.
   const previous = getSettingsForSource('userSettings')
-  const env = buildOpencodeConsoleEnv(baseUrl)
+  const env = buildOpencodeConsoleEnv(baseUrl, plane)
   const { error } = updateSettingsForSource('userSettings', {
     modelType: 'opencode',
     env,
@@ -99,7 +126,13 @@ export function activateOpencodeConsoleSession({
     }
   }
   applyProviderSaveEnv(env, previous?.env, process.env)
-  setOpencodeRuntimeCredential(accessToken)
+  // The endpoint goes into the runtime slot alongside the token so the very
+  // first request of this session is built from the console's own answer rather
+  // than from whatever `OPENCODE_BASE_URL` held a moment ago. The 0600 file
+  // carries the same value for every later process.
+  setOpencodeRuntimeCredential(accessToken, {
+    ...(plane === 'console' ? { baseUrl } : {}),
+  })
   applyOpencodeWire()
   // Switching provider mid-session must also tear down a DeepSeek mirror left
   // by a previous configuration; the apply releases its own claim before

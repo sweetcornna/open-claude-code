@@ -21,6 +21,8 @@ import { OPENCODE_API_KEY_ENV } from 'src/services/auth/opencode/index.js'
 import {
   OPENCODE_AUTH_MODE_ENV,
   OPENCODE_BASE_URL_ENV,
+  OPENCODE_CONSOLE_PLANE,
+  OPENCODE_INFERENCE_PLANE_ENV,
   OPENCODE_MODEL_ENV,
 } from 'src/utils/model/opencodeWire.js'
 import { PROVIDER_SETUP_SPECS } from 'src/components/providerSetup/specs.js'
@@ -36,12 +38,25 @@ export type OpencodeEnvPatch = Record<string, string | undefined>
  * routes the session to OpenCode at all (opencodeWire.ts), so it is written by
  * the
  * key path too. What distinguishes this login is the absence of a key.
+ *
+ * `OPENCODE_INFERENCE_PLANE` is the second thing only this path can write, and
+ * it is written only when `/api/config` actually named an endpoint. It says the
+ * session talks to the console's own OpenAI-compatible proxy, which has no lane
+ * to choose: `/messages` there is a 404, not a forward. Left unset the session
+ * keeps the Zen/Go behaviour — three protocols behind one base URL, the lane
+ * derived from the model family — which is the right answer for an API key and
+ * the right fallback for a console that described no provider.
  */
-export function buildOpencodeConsoleEnv(baseUrl: string): OpencodeEnvPatch {
+export function buildOpencodeConsoleEnv(
+  baseUrl: string,
+  plane?: 'console',
+): OpencodeEnvPatch {
   return {
     [OPENCODE_AUTH_MODE_ENV]: 'opencode',
     [OPENCODE_BASE_URL_ENV]: baseUrl,
     [OPENCODE_API_KEY_ENV]: undefined,
+    [OPENCODE_INFERENCE_PLANE_ENV]:
+      plane === 'console' ? OPENCODE_CONSOLE_PLANE : undefined,
   }
 }
 

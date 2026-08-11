@@ -45,7 +45,7 @@ export type ProviderSaveSettings = {
  *
  * `providerChanged` is deliberately narrower than "the wizard saved": an
  * in-session `/model` choice survives an effort or context-window edit, and
- * dropping it every time meant a user who opened `/models-setting` to nudge
+ * dropping it every time meant a user who opened `/model-settings` to nudge
  * thinking effort came back to a different model than the one they were using.
  */
 export type ProviderSaveOutcome = {

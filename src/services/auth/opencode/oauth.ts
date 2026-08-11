@@ -37,6 +37,23 @@ export type OpencodeCredential = {
   orgId?: string
   /** Console host, for catalog requests. OAuth credentials only. */
   server?: string
+  /**
+   * Inference base URL this credential is for, when the credential names one.
+   *
+   * Only a Console login does: its endpoint is `provider.opencode.api` from
+   * `/api/config`, which is per-account and therefore cannot be a constant. An
+   * API key names nothing — the user picked Zen or Go on a previous screen and
+   * that choice lives in `OPENCODE_BASE_URL`.
+   */
+  inferenceUrl?: string
+  /**
+   * Extra headers `/api/config` requires on that plane, `x-org-id` among them.
+   *
+   * Merged over the org id derived from `/api/orgs`: when the console states
+   * which organization a request must be scoped to, that statement wins over
+   * occ's own tie-break between the account's orgs.
+   */
+  headers?: Record<string, string>
 }
 
 function envApiKey(): string | undefined {
@@ -111,6 +128,8 @@ export async function getOpencodeCredential(): Promise<OpencodeCredential | null
     kind: 'oauth',
     server: fresh.server,
     ...(fresh.orgId ? { orgId: fresh.orgId } : {}),
+    ...(fresh.inference ? { inferenceUrl: fresh.inference.api } : {}),
+    ...(fresh.inference?.headers ? { headers: fresh.inference.headers } : {}),
   }
 }
 
@@ -118,7 +137,13 @@ export async function getOpencodeCredential(): Promise<OpencodeCredential | null
  * Headers every OpenCode request carries.
  *
  * `x-org-id` scopes the request to one organization; omitting it on a
- * multi-org account bills whichever org the console defaults to.
+ * multi-org account bills whichever org the console defaults to — and on the
+ * Console inference plane the header is not optional at all, since that is how
+ * `/api/config` describes the provider (`options.headers`).
+ *
+ * The config's headers go last on purpose. Two sources can name an org: occ's
+ * own first-by-name pick out of `/api/orgs`, and the console's statement of
+ * which one this provider is scoped to. When both speak, the console is right.
  */
 export function opencodeAuthHeaders(
   credential: OpencodeCredential,
@@ -126,6 +151,7 @@ export function opencodeAuthHeaders(
   return {
     authorization: `Bearer ${credential.token}`,
     ...(credential.orgId ? { 'x-org-id': credential.orgId } : {}),
+    ...credential.headers,
   }
 }
 
