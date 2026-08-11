@@ -16,6 +16,7 @@ import {
 } from 'src/utils/settings/settings.js'
 import {
   buildActivationEnvPatch,
+  buildActivationModelSettingsPatch,
   captureProfile,
   getMergedProviderEnv,
   isValidProfileName,
@@ -24,7 +25,7 @@ import {
   type ProviderProfile,
 } from './profiles.js'
 import { resolveModelSelector, type AggregatedModel } from './aggregate.js'
-import type { ProfileModelType } from './envKeys.js'
+import { SESSION_KIND_ENV_KEYS, type ProfileModelType } from './envKeys.js'
 
 export { getMergedProviderEnv }
 
@@ -74,6 +75,11 @@ export function saveCurrentAsProfile(params: {
     name: params.name,
     modelType: typed.modelType,
     mergedEnv: getMergedProviderEnv(),
+    // `userSettings` only, matching tierSettings.ts: project and policy layers
+    // are not this user's choice to snapshot, and activation writes back into
+    // userSettings, so capturing a merged value would promote someone else's
+    // layer into the user's own settings.json on the next switch.
+    modelSettings: getSettingsForSource('userSettings')?.modelSettings,
     notes: params.notes,
     existing: file.profiles[params.name],
   })
@@ -98,26 +104,56 @@ export function activateProfile(
   // why merely switching profiles used to take the user's search key with it.
   // Those live in services/search/searchCredentialStore.ts instead — a separate
   // file, so the independence does not rely on this list staying correct.
+  //
+  // Nor does it reach the env overrides. `CLAUDE_CODE_EFFORT_LEVEL` and
+  // `CLAUDE_CODE_MAX_CONTEXT_TOKENS` sit ABOVE the per-tier layer on purpose
+  // (tierSettings.ts's header: they are the last-resort correction scripts and
+  // CI rely on), and restoring a profile must not reorder that. So the context
+  // key keeps moving with settings.env — it is in PROFILE_ENV_KEYS for every
+  // family and therefore cleared-then-restored like any other managed key — and
+  // the effort key is not managed at all: nothing in occ writes it, so a value
+  // in the environment is the user's own and outranks whatever is restored
+  // below, exactly as it did before.
   const envPatch = buildActivationEnvPatch(profile)
   const previousManagedEnv = {
     ...(getSettingsForSource('userSettings')?.env ?? {}),
   }
+  // Env and per-tier settings go in ONE write. Two writes would mean two
+  // settings-file rewrites and two cache resets for one logical switch, and a
+  // failure between them would leave a session holding one provider's endpoint
+  // and another's context window — the exact state this is closing.
+  //
+  // The legacy flat `effortLevel` goes with them, and it does NOT travel in the
+  // profile. It is the pre-modelSettings global that seeds AppState, and
+  // AppState outranks the per-tier layer (resolveAppliedEffort), so a profile
+  // that carried one would shadow its own restored rows — the fix would look
+  // like it did nothing. Every other write path already deletes it on sight
+  // (writeTierSettings, savePlan's clearFlatEffort, resetProviderConfiguration);
+  // storing it here would be the one place that put it back.
   const { error } = updateSettingsForSource('userSettings', {
     modelType: profile.modelType,
     env: envPatch,
+    modelSettings: buildActivationModelSettingsPatch(profile),
+    effortLevel: undefined,
   } as unknown as Parameters<typeof updateSettingsForSource>[1])
   if (error) return { error: `Failed to save settings: ${error.message}` }
 
   // settings.env is occ-owned, but process.env is shared with the parent shell.
   // Clear only values still owned by the settings layer we just replaced;
   // shell values and later manual overrides must survive the profile switch.
+  //
+  // Except the session-kind markers, which are reclaimed on sight. They have no
+  // legitimate shell origin to protect and are read as mode switches on every
+  // client build, so an orphaned one reroutes the session rather than merely
+  // lingering — see SESSION_KIND_ENV_KEYS for the failure it produced.
   for (const [key, value] of Object.entries(envPatch)) {
     if (value !== undefined) {
       process.env[key] = value
       continue
     }
     const current = process.env[key]
-    if (current !== undefined && current === previousManagedEnv[key]) {
+    if (current === undefined) continue
+    if (SESSION_KIND_ENV_KEYS.has(key) || current === previousManagedEnv[key]) {
       delete process.env[key]
     }
   }

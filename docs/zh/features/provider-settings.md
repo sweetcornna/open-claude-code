@@ -35,9 +35,39 @@
 
 所以做法是把**回程**变成真的：当前配置若匹配不到任何档案，流程会先问一句要不要把它存成档案（就是 `save <名>`）。之后回去只是在某一行按 `Enter` —— 一个既有的、已经能用的机制。
 
-判据是纯函数 `sessionProfileMatch()`：某个档案的**每一个**受管键都与当前合并 env 相等（即激活它不会改变任何东西）。多出一个键就不算，因为激活真的会删掉它。
+判据是纯函数 `sessionProfileMatch()`：某个档案的**每一个**受管键都与当前合并 env 相等（即激活它不会改变**凭据面**上的任何东西）。多出一个键就不算，因为激活真的会删掉它。判据**只比 env**，不比档位设置 —— 后者加进去会让所有本次改动之前存的档案统统匹配不上，把一句「要不要先存档」变成每次按 `A` 都出现的噪音。
 
-**已知粗糙边**：档案只存 env，不存 `settings.modelSettings`。所以切回旧 provider 会恢复端点与凭据，但各档位的 effort / 最大上下文仍是最后一次设置的值。这条在合并前就存在（任何一次 `/login` 都如此），不是新增流程带来的。
+档案同时会带上 `settings.modelSettings`（见 §〇ter），所以切回去恢复的是当时那套配置，而不只是端点和凭据。
+
+## 〇ter、档案存什么：env **加上**各档位的 effort / 上下文
+
+档案快照的是「我在跟哪个 provider 说话、怎么说」：`modelType` + 该家族的受管 env 键 + `settings.modelSettings`（各档位的 thinking effort 与最大上下文）。
+
+**为什么后者必须跟着走**：这些值是**按 provider 形状**来的。`tierPersistence.ts` 按每个档位背后的模型家族播种默认值 —— DeepSeek 一行是 `max` / 1M，GPT 是 `xhigh` / 272k，Claude opus·fable 是 `xhigh` / 1M。只恢复端点和凭据、把上一家的那行留在原地，等于拿 DeepSeek 的数字去跑 GPT 的模型。这正是 2.38.0 给 `/logout` 修过的同一个缺陷（见 `resetProviderConfig.ts` 的注释），现在补上 `/provider use` 这一半。
+
+### 激活是整形状写入（和 env 一样）
+
+`updateSettingsForSource` 是**深合并**，所以只写「本档案配了的槽位」不够 —— 没写到的槽位、乃至同一槽位里没写到的那个轴，都会留着上一家的值。`buildActivationModelSettingsPatch()` 因此点名**全部五个槽位**（`default` + 四档），恢复的槽位里两个轴也都点名，`undefined` 在那次合并里就是删除。
+
+### 本次改动之前存的档案：清空，不是沿用
+
+这是个明确的取舍，两个答案都有代价：
+
+- **沿用**（原行为）就是那个 bug —— 留下的值是从**上一个** provider 的模型家族播种的。
+- **清空**意味着老档案激活后各档位回落到 `getTierDefaults()`，而那正是按这个档案刚刚恢复的那些模型算出来的家族默认值。`/logout` 出于同样理由也是这么做的。
+
+决定性的理由是第三条：清空让激活的结果**只取决于档案本身**。如果结果还要看「这个档案是什么时候存的」，那界面上没有任何地方能告诉用户答案 —— 那比正在修的这条粗糙边更糟。对老档案跑一次 `/provider-settings save <同名>` 就会把当前值记进去，它从此不再是老档案。
+
+### 扁平的 `effortLevel` 不跟着走，而是被删掉
+
+`settings.effortLevel` 是 `modelSettings` 之前的全局单值，它会 seed AppState，而 AppState **压过**分层设置（`resolveAppliedEffort`）。所以档案要是也带着它，恢复出来的分层值会被它自己盖住 —— 看起来就像什么都没修。occ 里其他写入路径（`writeTierSettings`、向导的 `clearFlatEffort`、`resetProviderConfiguration`）本来就见一次删一次，激活跟着删。会话内的另一半（`AppState.effortValue`）由切换入口清掉：`/provider-settings` 面板的 `onProviderSwitched` 与 `/model` 里选中聚合模型的那条分支。
+
+### env 覆盖仍在最上面
+
+`CLAUDE_CODE_EFFORT_LEVEL` 与 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 按设计排在分层设置之上（见 `tierSettings.ts` 头部），**恢复档案不改这个顺序**：
+
+- `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 是每个家族的受管键，照旧随 settings.env 整形状清除再恢复；
+- `CLAUDE_CODE_EFFORT_LEVEL` 不受管 —— occ 自己从不写它，所以环境里有值就是用户自己设的，激活不碰。
 
 ## 一、聚合是「列表」的聚合，不是「连接」的聚合
 

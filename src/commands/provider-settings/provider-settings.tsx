@@ -42,6 +42,14 @@ export async function call(
           // serves, and a stale pin outlives the switch as a 404 per request.
           mainLoopModel: null,
           mainLoopModelForSession: null,
+          // activateProfile() restored this profile's per-tier effort and
+          // deleted the legacy flat effortLevel. AppState is the flat value's
+          // other home and outranks the per-tier layer, so leaving it here
+          // would keep the previous provider's effort in force for the rest of
+          // the session and make the restore look like it did nothing.
+          // undefined is what lets getDefaultEffortForModel reach the tier
+          // setting — the same reason ModelPicker clears it.
+          effortValue: undefined,
         }))
       }
     />

@@ -8,14 +8,17 @@ import { PROFILE_ENV_KEYS, type ProfileModelType } from '../envKeys.js'
 import {
   ALL_PROFILE_ENV_KEYS,
   buildActivationEnvPatch,
+  buildActivationModelSettingsPatch,
   captureProfile,
   isValidProfileName,
   loadProfilesFile,
   planProfileRename,
   profilesFilePath,
   renameProfile,
+  sanitizeProfileModelSettings,
   saveProfilesFile,
   updateProfileCatalog,
+  type ProfileModelSettings,
   type ProviderProfilesFile,
 } from '../profiles.js'
 
@@ -240,6 +243,60 @@ describe('captureProfile', () => {
     })
     expect('models' in profile).toBe(false)
     expect('aggregate' in profile).toBe(false)
+    expect('modelSettings' in profile).toBe(false)
+  })
+
+  test('snapshots the per-tier effort and context window', () => {
+    const profile = captureProfile({
+      name: 'gpt',
+      modelType: 'openai',
+      mergedEnv: { OPENAI_API_KEY: 'sk-x' },
+      modelSettings: {
+        opus: { effort: 'xhigh', contextTokens: 272_000 },
+        haiku: { effort: 'low' },
+      },
+    })
+
+    expect(profile.modelSettings).toEqual({
+      opus: { effort: 'xhigh', contextTokens: 272_000 },
+      haiku: { effort: 'low' },
+    })
+  })
+
+  test('a re-save re-snapshots tier settings instead of carrying them', () => {
+    // The opposite of `models`/`aggregate` on purpose: effort and context are
+    // session configuration like the endpoint, and `save <name>` means "record
+    // what I am running now". Carrying them would make a re-save the one way
+    // to keep a stale row alive.
+    const first = captureProfile({
+      name: 'ds',
+      modelType: 'openai',
+      mergedEnv: { OPENAI_API_KEY: 'sk-1' },
+      modelSettings: { opus: { effort: 'max', contextTokens: 1_000_000 } },
+      models: [{ id: 'deepseek-v4-pro' }],
+      aggregate: true,
+    })
+
+    const second = captureProfile({
+      name: 'ds',
+      modelType: 'openai',
+      mergedEnv: { OPENAI_API_KEY: 'sk-1' },
+      modelSettings: { opus: { effort: 'high' } },
+      existing: first,
+    })
+    expect(second.modelSettings).toEqual({ opus: { effort: 'high' } })
+
+    const cleared = captureProfile({
+      name: 'ds',
+      modelType: 'openai',
+      mergedEnv: { OPENAI_API_KEY: 'sk-1' },
+      existing: second,
+    })
+    expect('modelSettings' in cleared).toBe(false)
+    // The catalog cache and the opt-in still survive — they are the profile's,
+    // not the session's.
+    expect(cleared.models).toEqual([{ id: 'deepseek-v4-pro' }])
+    expect(cleared.aggregate).toBe(true)
   })
 
   test('drops empty-string values', () => {
@@ -249,6 +306,88 @@ describe('captureProfile', () => {
       mergedEnv: { GROK_API_KEY: '', XAI_API_KEY: 'xai-1' },
     })
     expect(profile.env).toEqual({ XAI_API_KEY: 'xai-1' })
+  })
+})
+
+describe('sanitizeProfileModelSettings', () => {
+  test('keeps known slots and drops values the settings enum would reject', () => {
+    expect(
+      sanitizeProfileModelSettings({
+        opus: { effort: 'max', contextTokens: 1_000_000 },
+        sonnet: { effort: 'turbo', contextTokens: -1 },
+        haiku: { contextTokens: 200_000.5 },
+        fable: { effort: 'low' },
+        nonsense: { effort: 'low' },
+        default: 'not an object',
+      }),
+    ).toEqual({
+      opus: { effort: 'max', contextTokens: 1_000_000 },
+      fable: { effort: 'low' },
+    })
+  })
+
+  test('a slot left with neither axis, and an empty result, become absent', () => {
+    expect(sanitizeProfileModelSettings({ opus: {} })).toBeUndefined()
+    expect(sanitizeProfileModelSettings({})).toBeUndefined()
+    expect(sanitizeProfileModelSettings(undefined)).toBeUndefined()
+    expect(sanitizeProfileModelSettings('modelSettings')).toBeUndefined()
+  })
+})
+
+describe('buildActivationModelSettingsPatch', () => {
+  const base = {
+    name: 'gpt',
+    modelType: 'openai',
+    env: {},
+    createdAt: '2026-08-02T00:00:00.000Z',
+    updatedAt: '2026-08-02T00:00:00.000Z',
+  } as const
+
+  test('names every slot, and both axes of a restored one', () => {
+    const patch = buildActivationModelSettingsPatch({
+      ...base,
+      modelSettings: { opus: { effort: 'xhigh' } },
+    })
+
+    // Whole-shape, like the env patch: updateSettingsForSource deep-merges, so
+    // an unnamed slot — or an unnamed axis inside a named slot — would keep the
+    // previous provider's value.
+    expect(Object.keys(patch).sort()).toEqual([
+      'default',
+      'fable',
+      'haiku',
+      'opus',
+      'sonnet',
+    ])
+    expect(patch.opus).toEqual({ effort: 'xhigh', contextTokens: undefined })
+    expect('contextTokens' in (patch.opus ?? {})).toBe(true)
+    expect(patch.sonnet).toBeUndefined()
+    expect('sonnet' in patch).toBe(true)
+  })
+
+  test('a profile with no stored settings clears every slot', () => {
+    // The 2.38.3-era shape. Clearing rather than leaving is the decision:
+    // whatever is in settings now was seeded from the PREVIOUS provider's model
+    // family, so leaving it is the defect. Cleared slots fall back to
+    // getTierDefaults for the models this profile just restored.
+    const patch = buildActivationModelSettingsPatch(base)
+    expect(Object.keys(patch)).toHaveLength(5)
+    expect(Object.values(patch).every(slot => slot === undefined)).toBe(true)
+  })
+
+  test('a hand-edited value the settings enum would reject is dropped', () => {
+    // loadProfilesFile() casts without validating (fail-soft by design), so
+    // this is the one point where a hand-written value would reach the schema.
+    const patch = buildActivationModelSettingsPatch({
+      ...base,
+      modelSettings: {
+        opus: { effort: 'turbo', contextTokens: 272_000 },
+        sonnet: { effort: 'low' },
+      } as unknown as ProfileModelSettings,
+    })
+
+    expect(patch.opus).toEqual({ effort: undefined, contextTokens: 272_000 })
+    expect(patch.sonnet).toEqual({ effort: 'low', contextTokens: undefined })
   })
 })
 
@@ -376,6 +515,56 @@ describe('profiles file roundtrip', () => {
     expect(legacy?.aggregate).toBeUndefined()
     // No snapshot and no opt-in: contributes nothing, throws nothing.
     expect(buildAggregatedModels(loaded)).toEqual([])
+  })
+
+  test('a profile written before modelSettings existed still loads and activates', () => {
+    tempDir = enterTempConfigDir()
+    // Verbatim shape of a v2.38.3 profile: `models` and `aggregate` are there,
+    // `modelSettings` is not. It has to keep loading unchanged, and it has to
+    // activate to a defined outcome rather than to "whatever the last provider
+    // left behind".
+    writeFileSync(
+      profilesFilePath(),
+      JSON.stringify({
+        version: 1,
+        active: 'relay',
+        profiles: {
+          relay: {
+            name: 'relay',
+            modelType: 'openai',
+            env: {
+              OPENAI_BASE_URL: 'https://relay.example/v1',
+              OPENAI_API_KEY: 'sk-relay',
+            },
+            models: [{ id: 'gpt-5.4' }],
+            aggregate: true,
+            createdAt: '2026-08-10T00:00:00.000Z',
+            updatedAt: '2026-08-10T00:00:00.000Z',
+          },
+        },
+      }),
+      'utf8',
+    )
+
+    const loaded = loadProfilesFile()
+    const relay = loaded.profiles.relay
+    expect(loaded.active).toBe('relay')
+    expect(relay?.env.OPENAI_API_KEY).toBe('sk-relay')
+    expect(relay?.modelSettings).toBeUndefined()
+    expect(buildAggregatedModels(loaded)).toEqual([
+      {
+        id: 'gpt-5.4',
+        profile: 'relay',
+        selector: 'gpt-5.4',
+        ambiguous: false,
+      },
+    ])
+
+    if (!relay) throw new Error('unreachable')
+    const patch = buildActivationModelSettingsPatch(relay)
+    expect(Object.values(patch).every(slot => slot === undefined)).toBe(true)
+    // Still a whole-shape write: the slots are named so the merge deletes them.
+    expect(Object.keys(patch)).toHaveLength(5)
   })
 })
 

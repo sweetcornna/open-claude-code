@@ -137,3 +137,36 @@ export const PROFILE_ENV_KEYS: Record<ProfileModelType, readonly string[]> = {
 export const ALL_PROFILE_ENV_KEYS: readonly string[] = [
   ...new Set(Object.values(PROFILE_ENV_KEYS).flat()),
 ]
+
+/**
+ * Keys that say WHICH KIND of session this is, rather than how to reach a
+ * provider — and which therefore must never survive a switch away.
+ *
+ * Everything else in the table above is configuration a user could plausibly
+ * have exported themselves, which is why `activateProfile()` only reclaims a
+ * live value that still matches what the settings layer it is replacing had
+ * put there. These four are different: occ is their only writer, they are
+ * undocumented for users, and each one is read as a mode switch by code that
+ * runs on EVERY client build (`applyOpencodeWire`, `shouldUseChatGPTAuth`,
+ * `usesAntigravityRoute`). Orphaning one — a value in `process.env` with no
+ * counterpart in `settings.env` for the comparison to match — therefore does
+ * not degrade gracefully: it silently rewrites the endpoint of every later
+ * request while settings.json goes on describing the provider the user
+ * believes they are using.
+ *
+ * That is the failure this closes. A session left with `OPENCODE_AUTH_MODE`
+ * behind kept having `OPENAI_BASE_URL` repointed at the OpenCode gateway, which
+ * answered the session's pinned GPT model with
+ * `401 {"type":"ModelError","message":"Model <id> is not supported"}` — read as
+ * a credential failure, sending the user to /provider to repair a key that was
+ * never broken. `/model` could not fix it because the model was never the
+ * problem; only `/logout` could, because `resetProviderConfiguration()` is the
+ * one path that deletes these unconditionally. A switch should not need a
+ * logout to finish.
+ */
+export const SESSION_KIND_ENV_KEYS: ReadonlySet<string> = new Set([
+  'OPENAI_AUTH_MODE',
+  'OPENCODE_AUTH_MODE',
+  'OPENCODE_INFERENCE_PLANE',
+  'GEMINI_AUTH_MODE',
+])

@@ -19,7 +19,6 @@ import {
   aggregatedOptionValue,
   buildAggregatedModelOptions,
   describeAggregatedModel,
-  offeredModelIds,
   parseAggregatedOptionValue,
   sessionOwnedProfiles,
 } from '../aggregatedOptions.js'
@@ -215,19 +214,16 @@ describe('buildAggregatedModelOptions', () => {
     ).toEqual(['B-2', 'C-3', 'a-1'])
   })
 
-  test('the session’s own provider does not re-offer a model the picker has', () => {
+  test('the session’s own provider contributes no rows at all', () => {
     const models = [
       model({ id: 'gpt-5.4', profile: 'official' }),
       model({ id: 'o5', profile: 'official' }),
       model({ id: 'glm-5', profile: 'relay' }),
     ]
     const options = buildAggregatedModelOptions(models, {
-      // Resolved ids, not the picker's raw values: a tier row's value is the
-      // alias `opus`, and comparing that against a catalog id never matches.
-      existingModelIds: new Set(['gpt-5.4']),
       sessionProfiles: new Set(['official']),
     })
-    expect(options.map(o => o.label)).toEqual(['o5', 'glm-5'])
+    expect(options.map(o => o.label)).toEqual(['glm-5'])
   })
 
   test('another profile serving a listed id is still offered', () => {
@@ -236,10 +232,7 @@ describe('buildAggregatedModelOptions', () => {
     // the same model on another account is a legitimate thing to want.
     const options = buildAggregatedModelOptions(
       [model({ id: 'gpt-5.4', profile: 'relay', ambiguous: true })],
-      {
-        existingModelIds: new Set(['gpt-5.4']),
-        sessionProfiles: new Set(['official']),
-      },
+      { sessionProfiles: new Set(['official']) },
     )
     expect(options).toHaveLength(1)
     expect(parseAggregatedOptionValue(options[0]!.value)?.id).toBe('gpt-5.4')
@@ -247,15 +240,19 @@ describe('buildAggregatedModelOptions', () => {
     expect(options[0]!.label).toBe('gpt-5.4 (relay)')
   })
 
-  test('a model the picker does not already offer survives its own provider', () => {
+  test('an id the picker filtered out does not come back under its own provider', () => {
+    // The residue this closed: the picker drops the image/audio/realtime ids a
+    // chat session cannot use, while the profile snapshot is the raw /models
+    // answer — so exactly those came back at the bottom, tagged with the name
+    // of the provider already in use.
     const options = buildAggregatedModelOptions(
-      [model({ id: 'gpt-5.4', profile: 'official' })],
-      {
-        existingModelIds: new Set(['o5']),
-        sessionProfiles: new Set(['official']),
-      },
+      [
+        model({ id: 'gpt-image-2', profile: 'official' }),
+        model({ id: 'gpt-4o-audio-preview', profile: 'official' }),
+      ],
+      { sessionProfiles: new Set(['official']) },
     )
-    expect(options).toHaveLength(1)
+    expect(options).toEqual([])
   })
 
   test('a duplicated row from a hand-edited registry is dropped', () => {
@@ -339,34 +336,6 @@ describe('sessionOwnedProfiles', () => {
       profiles: { nulled: null as unknown as ProviderProfile },
     }
     expect(sessionOwnedProfiles(file, { env: {} })).toEqual(new Set())
-  })
-})
-
-describe('offeredModelIds', () => {
-  test('resolves aliases, which is the comparison that was missing', () => {
-    // The picker's own rows carry `opus` / `sonnet[1m]`; the aggregated rows
-    // carry concrete ids. Comparing them raw meant the guard never fired.
-    const resolve = (value: string): string | undefined =>
-      value === 'opus' ? 'gpt-5.6-sol' : value
-    expect(offeredModelIds(['opus', 'glm-5'], resolve)).toEqual(
-      new Set(['gpt-5.6-sol', 'glm-5']),
-    )
-  })
-
-  test('a resolver that throws costs one row, not the list', () => {
-    // Gemini's resolver throws without configuration, and the no-preference
-    // row reaches the subscription chain — neither may take the picker down.
-    const resolve = (value: string): string | undefined => {
-      if (value === '__NO_PREFERENCE__') throw new Error('not configured')
-      return value
-    }
-    expect(offeredModelIds(['__NO_PREFERENCE__', 'o5'], resolve)).toEqual(
-      new Set(['o5']),
-    )
-  })
-
-  test('an unresolvable row contributes nothing', () => {
-    expect(offeredModelIds(['x'], () => undefined)).toEqual(new Set())
   })
 })
 

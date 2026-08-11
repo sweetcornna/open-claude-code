@@ -96,6 +96,8 @@ occ 的五档（`low`/`medium`/`high`/`xhigh`/`max`）只有 Anthropic 一家原
 
 **首启向导 / `/login` Step 2** 也写这里：`Max context tokens` 与 `Thinking effort` 两个字段落进 `modelSettings`，而不是从前的 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`（那个键在本层**之上**，写在登录里等于让开场值静默压过用户此后每一次调整；保存时会删掉旧版留下的它）。首次保存会为 provider 默认模型和四个档位分别写入家族默认值。**重跑向导时留空则什么都不动**；把 effort 明确选回 `(model default)` 会删除旧覆盖。
 
+**`/provider-settings use <名>`** 不算第四个入口，但会**整形状覆盖**这里：provider 档案把这五个槽和 env 一起快照，切换时按档案恢复；本次特性之前存的档案没有快照，切换时把五个槽清空回家族默认，而不是留着上一家的值。理由见 [provider-settings.md](./provider-settings.md) §〇ter。
+
 **`/model-settings` 命令**（别名 `/models-setting`）：
 
 ```bash

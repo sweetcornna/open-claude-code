@@ -8,7 +8,6 @@ import { activateProfileForModel } from '../services/providerProfiles/activate.j
 import { getMergedProviderEnv, loadProfilesFile } from '../services/providerProfiles/profiles.js';
 import {
   buildAggregatedModelOptions,
-  offeredModelIds,
   parseAggregatedOptionValue,
   sessionOwnedProfiles,
 } from './providerSettings/aggregatedOptions.js';
@@ -165,12 +164,7 @@ export function ModelPicker({
     // value is an alias), and "the provider in use" comes from the live
     // configuration rather than from `file.active`, which a session configured
     // by /login never wrote. See aggregatedOptions.ts.
-    const existingModelIds = offeredModelIds(
-      optionsWithInitial.map(opt => (opt.value === null ? NO_PREFERENCE : opt.value)),
-      resolveOptionModel,
-    );
     return buildAggregatedModelOptions(buildAggregatedModels(file), {
-      existingModelIds,
       sessionProfiles: sessionOwnedProfiles(file, {
         modelType: getSettingsForSource('userSettings')?.modelType,
         env: getMergedProviderEnv(),
@@ -364,8 +358,12 @@ export function ModelPicker({
         return;
       }
       setSelectionError(null);
-      // settings.env was just rewritten under the session.
-      setAppState(prev => ({ ...prev, settings: getInitialSettings() }));
+      // settings.env was just rewritten under the session — and so was
+      // settings.modelSettings, with the flat effortLevel deleted. Clearing
+      // effortValue is the AppState half of that: it outranks the per-tier
+      // layer, so the profile's restored effort is only reachable once this is
+      // undefined (same rule as the writeTierSettings loop above).
+      setAppState(prev => ({ ...prev, settings: getInitialSettings(), effortValue: undefined }));
       onSelect(activated.model.id, selectedEffort);
       return;
     }
