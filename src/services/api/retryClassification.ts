@@ -338,8 +338,19 @@ function signalCategory(
   // that is working. OpenCode's `managed_inference_model_disabled` is the case
   // this was added for; the signal is read before the status, so the body's own
   // word wins over the HTTP class.
+  //
+  // MODELERROR is the same defect one gateway family further out. OpenCode's
+  // Zen/Go gateway answers an id it does not serve with
+  // `401 {"type":"error","error":{"type":"ModelError","message":"Model <id> is
+  // not supported"}}` — measured against the live endpoint — and relays that
+  // pass an upstream's body through verbatim reproduce it under their own
+  // domain. 401 made it `authentication_failed`, so occ told the user their
+  // credentials had failed for a key that had just authenticated well enough
+  // for the gateway to look the model up and answer about it. `ModelError`
+  // survives normalization with no separator, which is why the MODEL_DISABLED
+  // alternative above does not already cover it.
   if (
-    /(?:INVALID|VALIDATION|BAD_REQUEST|NOT_FOUND|FAILED_PRECONDITION|OUT_OF_RANGE|CONTEXT_LENGTH|TOO_LARGE|UNSUPPORTED|UNIMPLEMENTED|MODEL_DISABLED)/.test(
+    /(?:INVALID|VALIDATION|BAD_REQUEST|NOT_FOUND|FAILED_PRECONDITION|OUT_OF_RANGE|CONTEXT_LENGTH|TOO_LARGE|UNSUPPORTED|UNIMPLEMENTED|MODEL_DISABLED|MODEL_?ERROR)/.test(
       normalized,
     )
   ) {

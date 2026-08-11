@@ -51,12 +51,14 @@ import {
   startGeminiOAuthLogin,
 } from '../../services/api/gemini/oauthToken.js';
 import {
+  type ChatGPTDeviceCode,
   completeChatGPTDeviceLogin,
   getStoredChatGPTAccountId,
   hasStoredChatGPTAuth,
   removeChatGPTAuth,
   requestChatGPTDeviceCode,
 } from '../../services/api/openai/chatgptAuth.js';
+import { openBrowser } from '../../utils/network/browser.js';
 import { captureSearchCredentialFromEnvironment } from '../../services/search/captureCredential.js';
 import {
   isPinnableSearchSource,
@@ -198,6 +200,13 @@ async function readConnection(
           Boolean(process.env.GEMINI_API_KEY),
       };
     case 'codex': {
+      // The pin first, and without awaiting the login probe — same rule as the
+      // gemini row above. A pinned key stands the ChatGPT route down
+      // (shouldUseChatGPTAuth), so naming an account here would attribute the
+      // row to a credential the request is not going to carry.
+      if (readPinnedSearchCredential('codex')) {
+        return { connected: hasCodexSearchCredentials() };
+      }
       const oauth = await hasStoredChatGPTAuth();
       return {
         // Deliberately the shared probe rather than a second `OPENAI_API_KEY`
@@ -218,6 +227,29 @@ async function readConnection(
     case 'free':
       return { connected: true };
   }
+}
+
+/**
+ * The two things a user must do with a device code, in the order the server
+ * enforces.
+ *
+ * Signing in comes first and is not optional: a signed-out browser opening
+ * `/codex/device` is 302'd to `/api/accounts/deviceauth/authorize` and on into
+ * `/oauth/authorize`, and the field that accepts the code only exists after
+ * that round trip. Phrasing this as one instruction ("open X and enter Y", as
+ * it was) sends a first-time user to type their code into a login page, which
+ * is why the first attempt failed for everyone who was not already signed in
+ * and the retry — now signed in — worked.
+ *
+ * The dash is called out because the code arrives as `M1G0-1YEMB` and the form
+ * inserts its own separator; pasting the whole thing is the other way a first
+ * attempt is rejected.
+ */
+export function deviceCodeSteps(code: {
+  verificationUrl: string;
+  userCode: string;
+}): [signIn: string, enterCode: string] {
+  return [`Sign in to ChatGPT at ${code.verificationUrl}`, `Then enter this code, dash included: ${code.userCode}`];
 }
 
 function writeOverride(id: SearchSourceId, enabled: boolean): void {
@@ -366,6 +398,19 @@ function SearchSettingPanel({
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState<Busy | undefined>(undefined);
   const busyAbort = useRef<AbortController | undefined>(undefined);
+  // The pairing code gets its own slot rather than riding `notice`. A device
+  // code is on screen for however long the user needs to switch to a browser,
+  // sign in, and type it — minutes, during which any other message (a probe
+  // result, a toggle refusal) would otherwise overwrite the one thing they
+  // cannot recover: pressing Esc to "get it back" cancels the device auth and
+  // mints a different code.
+  const [deviceCode, setDeviceCode] = useState<ChatGPTDeviceCode | undefined>(undefined);
+  // Set synchronously, unlike `busy`. A second Enter arriving in the same tick
+  // (terminals that deliver CRLF as two key events, or a double-tap) still sees
+  // the pre-render closure where `busy` is undefined, so the state check alone
+  // starts a second device authorization: two live codes, one displayed, the
+  // other polling unattended for its full 15 minutes.
+  const loginInFlight = useRef(false);
 
   const insideModal = useIsInsideModal();
   const { rows } = useTerminalSize();
@@ -465,7 +510,8 @@ function SearchSettingPanel({
 
   const startLogin = useCallback(
     (row: SourceRow) => {
-      if (busy) return;
+      if (busy || loginInFlight.current) return;
+      loginInFlight.current = true;
       const controller = new AbortController();
       busyAbort.current = controller;
       setBusy({ id: row.id, kind: 'login' });
@@ -476,9 +522,14 @@ function SearchSettingPanel({
           await startGeminiOAuthLogin(controller.signal);
           return;
         }
-        const deviceCode = await requestChatGPTDeviceCode();
-        setNotice(`Open ${deviceCode.verificationUrl} and enter code ${deviceCode.userCode} (Esc cancels)`);
-        await completeChatGPTDeviceLogin(deviceCode, controller.signal);
+        const code = await requestChatGPTDeviceCode();
+        setDeviceCode(code);
+        setNotice(undefined);
+        // Opened for the user, as the ChatGPT subscription login does. Hand
+        // copying a URL out of a status line is the step this panel used to
+        // leave them, and the destination is not a page they can guess.
+        void openBrowser(code.verificationUrl);
+        await completeChatGPTDeviceLogin(code, controller.signal);
       };
 
       void run()
@@ -509,6 +560,8 @@ function SearchSettingPanel({
         })
         .finally(() => {
           if (busyAbort.current === controller) busyAbort.current = undefined;
+          loginInFlight.current = false;
+          setDeviceCode(undefined);
           setBusy(undefined);
         });
     },
@@ -734,7 +787,21 @@ function SearchSettingPanel({
         })}
       </Box>
 
-      {notice ? (
+      {/* Two numbered steps, in that order, because the order is enforced:
+          /codex/device redirects a signed-out browser into the OAuth sign-in
+          and only shows the code field afterwards, so a user who reads this as
+          "go here and type the code" spends their first attempt typing into a
+          login page. Kept to two lines — the panel has a fixed height and a
+          third would push the footer off a short terminal. */}
+      {deviceCode ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Text>1. {deviceCodeSteps(deviceCode)[0]} (opened for you)</Text>
+          <Text>
+            2. {deviceCodeSteps(deviceCode)[1]}
+            <Text dimColor> · Esc cancels</Text>
+          </Text>
+        </Box>
+      ) : notice ? (
         <Box marginTop={1}>
           <Text dimColor>{notice}</Text>
         </Box>

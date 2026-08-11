@@ -434,6 +434,27 @@ describe('structured API error classification', () => {
     )
   })
 
+  test('an unserved model is an invalid request even when it arrives as a 401', () => {
+    // Measured against opencode.ai/zen/go/v1, which answers an id it does not
+    // serve with this exact shape. Relays that pass an upstream body through
+    // verbatim reproduce it under their own domain, so the user sees "your
+    // credentials failed" for a key that had just authenticated well enough for
+    // the gateway to look the model up and answer about it.
+    expect(
+      categorizeRetryableAPIError({
+        status: 401,
+        error: {
+          type: 'ModelError',
+          message: 'Model gpt-5.6-sol is not supported',
+        },
+      }),
+    ).toBe('invalid_request')
+    // A 401 that says nothing about a model is still an auth failure.
+    expect(categorizeRetryableAPIError({ status: 401 })).toBe(
+      'authentication_failed',
+    )
+  })
+
   test('recognizes statusless provider type and code families', () => {
     for (const value of [
       { type: 'server_error' },
