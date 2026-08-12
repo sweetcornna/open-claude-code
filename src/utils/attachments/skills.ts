@@ -9,6 +9,7 @@ import type { Command } from '../../types/command.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { formatCommandsWithinBudget } from '@open-claude-code/builtin-tools/tools/SkillTool/prompt.js'
 import { getContextWindowForModel } from '../session/context.js'
+import { getSkillListingBudgetOptions } from '../skills/listingBudget.js'
 import { logForDebugging } from '../telemetry/debug.js'
 import type { Attachment } from './types.js'
 import { skillSearchModules } from './features.js'
@@ -144,26 +145,23 @@ export function filterByListPredicate(
   return commands.filter(cmd => cmd.listWhen?.(toolUseContext) ?? true)
 }
 
-export async function getSkillListingAttachments(
+/**
+ * The skill set this session's listing is built from, after every filter that
+ * decides membership (list predicates, skill-search narrowing).
+ *
+ * Extracted so `/skill-doctor` audits the same set the model actually sees —
+ * recomputing the filters at the audit site would drift the moment one of them
+ * changes.
+ */
+export async function collectListingSkillCommands(
   toolUseContext: ToolUseContext,
-): Promise<Attachment[]> {
-  if (process.env.NODE_ENV === 'test') {
-    return []
-  }
-
-  // Skip skill listing for agents that don't have the Skill tool — they can't use skills directly.
-  if (
-    !toolUseContext.options.tools.some(t => toolMatchesName(t, SKILL_TOOL_NAME))
-  ) {
-    return []
-  }
-
+): Promise<Command[]> {
   const cwd = getProjectRoot()
   const localCommands = await getSkillToolCommands(cwd)
   const mcpSkills = getMcpSkillCommands(
     toolUseContext.getAppState().mcp.commands,
   )
-  let allCommands = filterByListPredicate(
+  const allCommands = filterByListPredicate(
     mcpSkills.length > 0
       ? uniqBy([...localCommands, ...mcpSkills], 'name')
       : localCommands,
@@ -181,8 +179,26 @@ export async function getSkillListingAttachments(
     feature('EXPERIMENTAL_SKILL_SEARCH') &&
     skillSearchModules?.featureCheck.isSkillSearchEnabled()
   ) {
-    allCommands = filterToBundledAndMcp(allCommands)
+    return filterToBundledAndMcp(allCommands)
   }
+  return allCommands
+}
+
+export async function getSkillListingAttachments(
+  toolUseContext: ToolUseContext,
+): Promise<Attachment[]> {
+  if (process.env.NODE_ENV === 'test') {
+    return []
+  }
+
+  // Skip skill listing for agents that don't have the Skill tool — they can't use skills directly.
+  if (
+    !toolUseContext.options.tools.some(t => toolMatchesName(t, SKILL_TOOL_NAME))
+  ) {
+    return []
+  }
+
+  const allCommands = await collectListingSkillCommands(toolUseContext)
 
   const agentKey = toolUseContext.agentId ?? ''
   let sent = sentSkillNames.get(agentKey)
@@ -227,7 +243,11 @@ export async function getSkillListingAttachments(
     getSdkBetas(),
     toolUseContext.options.modelSettingsSlot,
   )
-  const content = formatCommandsWithinBudget(newSkills, contextWindowTokens)
+  const content = formatCommandsWithinBudget(
+    newSkills,
+    contextWindowTokens,
+    getSkillListingBudgetOptions(),
+  )
 
   return [
     {

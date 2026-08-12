@@ -6,51 +6,74 @@ import {
   getSlashCommandToolSkills,
 } from 'src/commands.js'
 import { COMMAND_NAME_TAG } from 'src/constants/xml.js'
+import {
+  CHARS_PER_TOKEN,
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
+  MAX_LISTING_DESC_CHARS,
+  SKILL_BUDGET_CONTEXT_PERCENT,
+  type SkillListingBudgetOptions,
+} from './constants.js'
 import { stringWidth } from '@anthropic/ink'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '@open-claude-code/tool-runtime/analytics.js'
-import { count } from 'src/utils/collections/array.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { toError } from '@open-claude-code/tool-runtime/errors.js'
-import { truncate } from 'src/utils/text/format.js'
 import { logError } from 'src/utils/telemetry/log.js'
 
-// Skill listing gets 1% of the context window (in characters)
-export const SKILL_BUDGET_CONTEXT_PERCENT = 0.01
-export const CHARS_PER_TOKEN = 4
-export const DEFAULT_CHAR_BUDGET = 8_000 // Fallback: 1% of 200k × 4
+// The budget vocabulary lives in ./constants.ts (a true leaf) so the settings
+// reader and /skill-doctor can use it without importing this module's graph.
+// Re-exported here to keep the existing public surface intact.
+export {
+  CHARS_PER_TOKEN,
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
+  MAX_LISTING_DESC_CHARS,
+  SKILL_BUDGET_CONTEXT_PERCENT,
+  type SkillListingBudgetOptions,
+} from './constants.js'
 
-// Per-entry hard cap. The listing is for discovery only — the Skill tool loads
-// full content on invoke, so verbose whenToUse strings waste turn-1 cache_creation
-// tokens without improving match rate. Applies to all entries, including bundled,
-// since the cap is generous enough to preserve the core use case.
-// v2.1.117: raised from 250 → 1536 to allow richer skill descriptions.
-export const MAX_LISTING_DESC_CHARS = 1536
+function resolveBudgetFraction(options?: SkillListingBudgetOptions): number {
+  const fraction = options?.budgetFraction
+  return fraction !== undefined && fraction > 0 && fraction <= 1
+    ? fraction
+    : SKILL_BUDGET_CONTEXT_PERCENT
+}
 
-export function getCharBudget(contextWindowTokens?: number): number {
+function resolveMaxDescChars(options?: SkillListingBudgetOptions): number {
+  const max = options?.maxDescChars
+  return max !== undefined && Number.isInteger(max) && max > 0
+    ? max
+    : MAX_LISTING_DESC_CHARS
+}
+
+export function getCharBudget(
+  contextWindowTokens?: number,
+  options?: SkillListingBudgetOptions,
+): number {
   if (Number(process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET)) {
     return Number(process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET)
   }
-  if (contextWindowTokens) {
-    return Math.floor(
-      contextWindowTokens * CHARS_PER_TOKEN * SKILL_BUDGET_CONTEXT_PERCENT,
-    )
-  }
-  return DEFAULT_CHAR_BUDGET
+  const windowTokens =
+    contextWindowTokens && contextWindowTokens > 0
+      ? contextWindowTokens
+      : DEFAULT_CONTEXT_WINDOW_TOKENS
+  return Math.max(
+    1,
+    Math.floor(windowTokens * CHARS_PER_TOKEN * resolveBudgetFraction(options)),
+  )
 }
 
-function getCommandDescription(cmd: Command): string {
+function getCommandDescription(cmd: Command, maxDescChars: number): string {
   const desc = cmd.whenToUse
     ? `${cmd.description} - ${cmd.whenToUse}`
     : cmd.description
-  return desc.length > MAX_LISTING_DESC_CHARS
-    ? desc.slice(0, MAX_LISTING_DESC_CHARS - 1) + '\u2026'
+  return desc.length > maxDescChars
+    ? desc.slice(0, maxDescChars - 1) + '\u2026'
     : desc
 }
 
-function formatCommandDescription(cmd: Command): string {
+function formatCommandDescription(cmd: Command, maxDescChars: number): string {
   // Debug: log if userFacingName differs from cmd.name for plugin skills
   const displayName = getCommandName(cmd)
   if (
@@ -63,23 +86,64 @@ function formatCommandDescription(cmd: Command): string {
     )
   }
 
-  return `- ${cmd.name}: ${getCommandDescription(cmd)}`
+  return `- ${cmd.name}: ${getCommandDescription(cmd, maxDescChars)}`
 }
 
-const MIN_DESC_LENGTH = 20
+/** One rendered line of the skill listing, with its accounting. */
+export type SkillListingEntry = {
+  command: Command
+  /** The line exactly as it appears in the listing sent to the model. */
+  entry: string
+  /** Display width of `entry`, the unit the budget is measured in. */
+  chars: number
+  /**
+   * True when the budget dropped this skill's description, leaving a name-only
+   * line. Degradation is all-or-nothing per skill: the budget never delivers a
+   * half-sentence. The per-skill `maxDescChars` cap is applied before this and
+   * is not reported here — it shapes the "full" form itself.
+   */
+  degraded: boolean
+}
 
-export function formatCommandsWithinBudget(
+export type SkillListingResult = {
+  entries: SkillListingEntry[]
+  /** Character budget the listing had to fit into. */
+  budget: number
+  /** Width the listing would have taken with every description at full length. */
+  fullTotal: number
+  /** Width the listing actually takes (entries plus joining newlines). */
+  totalChars: number
+  /** True when `fullTotal` exceeded `budget`, i.e. degradation kicked in. */
+  overBudget: boolean
+}
+
+/**
+ * Budget-aware skill listing, returned per entry so callers can attribute cost
+ * to individual skills (see `/skill-doctor`). `formatCommandsWithinBudget` is
+ * the string-producing wrapper used to build the actual attachment.
+ */
+export function buildSkillListing(
   commands: Command[],
   contextWindowTokens?: number,
-): string {
-  if (commands.length === 0) return ''
+  options?: SkillListingBudgetOptions,
+): SkillListingResult {
+  const budget = getCharBudget(contextWindowTokens, options)
+  if (commands.length === 0) {
+    return {
+      entries: [],
+      budget,
+      fullTotal: 0,
+      totalChars: 0,
+      overBudget: false,
+    }
+  }
 
-  const budget = getCharBudget(contextWindowTokens)
+  const maxDescChars = resolveMaxDescChars(options)
 
   // Try full descriptions first
   const fullEntries = commands.map(cmd => ({
     cmd,
-    full: formatCommandDescription(cmd),
+    full: formatCommandDescription(cmd, maxDescChars),
   }))
   // join('\n') produces N-1 newlines for N entries
   const fullTotal =
@@ -87,87 +151,147 @@ export function formatCommandsWithinBudget(
     (fullEntries.length - 1)
 
   if (fullTotal <= budget) {
-    return fullEntries.map(e => e.full).join('\n')
+    return finishListing(
+      fullEntries,
+      fullEntries.map(e => e.full),
+      {
+        budget,
+        fullTotal,
+        overBudget: false,
+      },
+    )
   }
 
-  // Partition into bundled (never truncated) and rest
-  const bundledIndices = new Set<number>()
-  const restCommands: Command[] = []
+  logForDebugging(
+    `Skill listing over budget: ${commands.length} skills, ${fullTotal} chars > ${budget} budget — descriptions will be truncated. Run /skills to disable some, or raise skillListingBudgetFraction in settings.`,
+    { level: 'warn' },
+  )
+
+  // Locked: bundled skills keep their full entry no matter what. They are
+  // Anthropic-curated and small, and degrading them buys almost nothing.
+  const lockedIndices = new Set<number>()
   for (let i = 0; i < commands.length; i++) {
     const cmd = commands[i]!
     if (cmd.type === 'prompt' && cmd.source === 'bundled') {
-      bundledIndices.add(i)
-    } else {
-      restCommands.push(cmd)
+      lockedIndices.add(i)
     }
   }
 
-  // Compute space used by bundled skills (full descriptions, always preserved)
-  const bundledChars = fullEntries.reduce(
-    (sum, e, i) =>
-      bundledIndices.has(i) ? sum + stringWidth(e.full) + 1 : sum,
-    0,
-  )
-  const remainingBudget = budget - bundledChars
+  const candidateIndices = commands
+    .map((_, i) => i)
+    .filter(i => !lockedIndices.has(i))
 
-  // Calculate max description length for non-bundled commands
-  if (restCommands.length === 0) {
-    return fullEntries.map(e => e.full).join('\n')
-  }
-
-  const restNameOverhead =
-    restCommands.reduce((sum, cmd) => sum + stringWidth(cmd.name) + 4, 0) +
-    (restCommands.length - 1)
-  const availableForDescs = remainingBudget - restNameOverhead
-  const maxDescLen = Math.floor(availableForDescs / restCommands.length)
-
-  if (maxDescLen < MIN_DESC_LENGTH) {
-    // Extreme case: non-bundled go names-only, bundled keep descriptions
-    if (process.env.USER_TYPE === 'ant') {
-      logEvent('tengu_skill_descriptions_truncated', {
-        skill_count: commands.length,
+  // Everything is locked — there is nothing left to shrink.
+  if (candidateIndices.length === 0) {
+    return finishListing(
+      fullEntries,
+      fullEntries.map(e => e.full),
+      {
         budget,
-        full_total: fullTotal,
-        truncation_mode:
-          'names_only' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        max_desc_length: maxDescLen,
-        bundled_count: bundledIndices.size,
-        bundled_chars: bundledChars,
-      })
-    }
-    return commands
-      .map((cmd, i) =>
-        bundledIndices.has(i) ? fullEntries[i]!.full : `- ${cmd.name}`,
-      )
-      .join('\n')
+        fullTotal,
+        overBudget: true,
+      },
+    )
   }
 
-  // Truncate non-bundled descriptions to fit within budget
-  const truncatedCount = count(
-    restCommands,
-    cmd => stringWidth(getCommandDescription(cmd)) > maxDescLen,
+  const nameOnlyWidth = (i: number) => stringWidth(`- ${commands[i]!.name}`)
+  const fullWidth = (i: number) => stringWidth(fullEntries[i]!.full)
+
+  // Baseline: locked entries at full width, every candidate stripped to its
+  // name. This is the floor the listing can always afford to print, which is
+  // what guarantees every skill stays listed — and therefore invocable — even
+  // when the budget is hopeless.
+  const baseline =
+    commands.reduce(
+      (sum, _, i) =>
+        sum + (lockedIndices.has(i) ? fullWidth(i) : nameOnlyWidth(i)),
+      0,
+    ) +
+    (commands.length - 1)
+
+  // Spend what's left on the skills most likely to be reached for, so a
+  // crowded listing degrades where it costs the least. Descending by usage
+  // score; Array.sort is stable, so equal scores (including the all-zero case
+  // of a fresh install) keep their original listing order.
+  const scoreOf = options?.usageScore ?? (() => 0)
+  const ranked = [...candidateIndices].sort(
+    (a, b) => scoreOf(commands[b]!.name) - scoreOf(commands[a]!.name),
   )
+
+  let remaining = budget - baseline
+  const promoted = new Set<number>()
+  for (const i of ranked) {
+    const upgradeCost = fullWidth(i) - nameOnlyWidth(i)
+    if (upgradeCost <= remaining) {
+      promoted.add(i)
+      remaining -= upgradeCost
+    }
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     logEvent('tengu_skill_descriptions_truncated', {
       skill_count: commands.length,
       budget,
       full_total: fullTotal,
       truncation_mode:
-        'description_trimmed' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      max_desc_length: maxDescLen,
-      truncated_count: truncatedCount,
-      // Count of bundled skills included in this prompt (excludes skills with disableModelInvocation)
-      bundled_count: bundledIndices.size,
-      bundled_chars: bundledChars,
+        'usage_ranked' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      promoted_count: promoted.size,
+      name_only_count: candidateIndices.length - promoted.size,
+      bundled_count: lockedIndices.size,
     })
   }
-  return commands
-    .map((cmd, i) => {
-      // Bundled skills always get full descriptions
-      if (bundledIndices.has(i)) return fullEntries[i]!.full
-      const description = getCommandDescription(cmd)
-      return `- ${cmd.name}: ${truncate(description, maxDescLen)}`
-    })
+
+  return finishListing(
+    fullEntries,
+    commands.map((cmd, i) =>
+      lockedIndices.has(i) || promoted.has(i)
+        ? fullEntries[i]!.full
+        : `- ${cmd.name}`,
+    ),
+    { budget, fullTotal, overBudget: true },
+  )
+}
+
+/**
+ * Zips the rendered lines back onto their commands and totals the result.
+ * `rendered[i]` must correspond to `fullEntries[i]`.
+ */
+function finishListing(
+  fullEntries: Array<{ cmd: Command; full: string }>,
+  rendered: string[],
+  totals: { budget: number; fullTotal: number; overBudget: boolean },
+): SkillListingResult {
+  const entries = fullEntries.map((e, i) => {
+    const entry = rendered[i]!
+    return {
+      command: e.cmd,
+      entry,
+      chars: stringWidth(entry),
+      degraded: entry !== e.full,
+    }
+  })
+  return {
+    entries,
+    budget: totals.budget,
+    fullTotal: totals.fullTotal,
+    // join('\n') produces N-1 newlines for N entries
+    totalChars:
+      entries.reduce((sum, e) => sum + e.chars, 0) + (entries.length - 1),
+    overBudget: totals.overBudget,
+  }
+}
+
+/**
+ * The skill listing as a single string — what actually ships in the
+ * `skill_listing` attachment.
+ */
+export function formatCommandsWithinBudget(
+  commands: Command[],
+  contextWindowTokens?: number,
+  options?: SkillListingBudgetOptions,
+): string {
+  return buildSkillListing(commands, contextWindowTokens, options)
+    .entries.map(e => e.entry)
     .join('\n')
 }
 

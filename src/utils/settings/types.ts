@@ -1274,6 +1274,20 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Whether to show cache hit rate warnings in the message flow when the rate falls below cacheThreshold. Default: true.',
         ),
+      autoCompactWindow: z
+        .number()
+        .int()
+        .min(100_000)
+        .max(1_000_000)
+        .optional()
+        .catch(undefined)
+        .describe(
+          'How full the context is allowed to get before auto-compaction runs, in tokens (100k-1M). ' +
+            'This is a compaction threshold, not a context-window override: the effective value is ' +
+            "the minimum of this setting and the model's own context window. " +
+            'Omit (or set via `/autocompact auto`) to track the model window. ' +
+            'CLAUDE_CODE_AUTO_COMPACT_WINDOW takes precedence over this setting.',
+        ),
       pluginTrustMessage: z
         .string()
         .optional()
@@ -1300,6 +1314,25 @@ export const SettingsSchema = lazySchema(() =>
           'Workspace API key (sk-ant-api03-*) saved via /login UI. ' +
             `Stored in plaintext at ${occGlobalConfigFile()} — keep this file gitignored and restrict its permissions. ` +
             'ANTHROPIC_API_KEY environment variable takes precedence when both are set.',
+        ),
+      skillListingMaxDescChars: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Per-skill description character cap in the skill listing sent to Claude (default: 1536). ' +
+            'Descriptions longer than this are truncated. Raise to opt in to higher per-turn context cost.',
+        ),
+      skillListingBudgetFraction: z
+        .number()
+        .gt(0)
+        .lte(1)
+        .optional()
+        .describe(
+          'Fraction of the context window (in characters) reserved for the skill listing sent to Claude ' +
+            '(default: 0.01 = 1%). When the listing exceeds this, descriptions are shortened to fit. ' +
+            'Raise to opt in to higher per-turn context cost.',
         ),
     })
     .passthrough(),

@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
+import autocompact from './commands/autocompact/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import btw from './commands/btw/index.js'
 import issue from './commands/issue/index.js'
@@ -46,6 +47,7 @@ import teleport from './commands/teleport/index.js'
 import agentsPlatform from './commands/agents-platform/index.js'
 import scheduleCommand from './commands/schedule/index.js'
 import memoryStoresCommand from './commands/memory-stores/index.js'
+import pauseMemory from './commands/pause-memory/index.js'
 import skillStoreCommand from './commands/skill-store/index.js'
 import vaultCommand from './commands/vault/index.js'
 import localVaultCommand from './commands/local-vault/index.js'
@@ -200,6 +202,7 @@ const usageReport: Command = {
   },
 }
 import debugToolCall from './commands/debug-tool-call/index.js'
+import skillDoctor from './commands/skill-doctor/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
 import {
   type Command,
@@ -234,6 +237,7 @@ const COMMANDS = memoize((): Command[] => [
   vaultCommand,
   localVaultCommand,
   localMemoryCommand,
+  autocompact,
   autonomy,
   providerSettings,
   artifacts,
@@ -264,6 +268,7 @@ const COMMANDS = memoize((): Command[] => [
   installSlackApp,
   mcp,
   memory,
+  pauseMemory,
   mobile,
   model,
   outputStyle,
@@ -333,6 +338,7 @@ const COMMANDS = memoize((): Command[] => [
   initVerifiers,
   env,
   debugToolCall,
+  skillDoctor,
   perfIssue,
   breakCache,
   breakCacheNonInteractive,
