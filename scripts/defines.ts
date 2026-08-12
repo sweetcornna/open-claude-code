@@ -41,7 +41,6 @@ export const DEFAULT_BUILD_FEATURES = [
   'AGENT_TRIGGERS_REMOTE', // sessionIngress 模块级 Map 累积（非 GB 级主因）
   'CHICAGO_MCP', // Chicago MCP 集成（内部代号）
   'VOICE_MODE', // Push-to-Talk 语音输入模式
-  'SHOT_STATS', // 单次请求统计信息收集
   'PROMPT_CACHE_BREAK_DETECTION', // 检测 prompt cache 是否被打破（有 10 条上限，可控）
   'TOKEN_BUDGET', // Token 预算管理与控制
   // P0: local features

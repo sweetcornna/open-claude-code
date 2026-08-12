@@ -52,7 +52,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 
 - **print 模式（`-p`）靠 `rootAction` 里的提前 return 跳过子命令注册**，`src/cli/program/commands/` barrel 只能经那之后的**动态** import 触达。改成顶层静态 import 会静默让 print 路径付出注册成本，而 golden 测试测不出来（它们测输出正确性，不测启动耗时）。
 - **REPL.tsx 的 hook 调用顺序由 `src/screens/__tests__/replHookOrder.test.ts` 钉住**（253 次调用的顺序快照）。组件本体 5400 行是有意停手 —— 剩余 hook 簇捕获面都在 50 字段以上，提取只会把代码藏到巨型上下文对象后面。文件头有 hook 簇映射注释。
-- 工具白名单 `CORE_TOOLS` 在 `src/constants/tools.ts`（29 个），非白名单工具 + 全部 MCP 工具走延迟加载（SearchExtraTools TF-IDF 检索）。`src/services/searchExtraTools/` 复用 `localSearch.ts` 的 TF-IDF 函数——改那些函数需同步跑工具索引测试。
+- 工具白名单 `CORE_TOOLS` 在 `src/constants/tools.ts`（28 个），非白名单工具 + 全部 MCP 工具走延迟加载（SearchExtraTools TF-IDF 检索）。`src/services/searchExtraTools/` 复用 `localSearch.ts` 的 TF-IDF 函数——改那些函数需同步跑工具索引测试。
 
 ### Host facade 模式（依赖反转）
 
@@ -85,7 +85,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - Daemon 的 `DAEMON_WORKER_KINDS` 目前是**空的**（唯一 worker 随 bridge 删除），supervisor 机制保留为扩展点。后台会话（`daemon bg`/`attach` 等）不受影响。
 - 已移除的 feature flag（代码全删，别再引用）：`CONTEXT_COLLAPSE`、`UDS_INBOX`、`LAN_PIPES`、`REVIEW_ARTIFACT`、`TEAMMEM`、`HISTORY_SNIP`、`OVERFLOW_TEST_TOOL` 及对应命令/工具。
 - **`FORK_SUBAGENT` 并未被移除**（文档曾写错）——只是不进默认编译列表，`FEATURE_FORK_SUBAGENT=1 bun run dev` 可启用；`/fork` 现在是 `/branch` 的 alias。
-- Analytics / GrowthBook / Sentry 是空实现。
+- Analytics / GrowthBook / Sentry **是完整实现，只是默认门控为假**：Datadog 还要 `NODE_ENV=production` + provider 为 `firstParty` + `DATADOG_LOGS_ENDPOINT`/`DATADOG_API_KEY`，Sentry 要 `SENTRY_DSN`，1P 事件走 `is1PEventLoggingEnabled()`（即未 opt-out）。别当 stub 删。
 
 ### Feature Flags
 

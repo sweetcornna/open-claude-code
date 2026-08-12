@@ -135,7 +135,7 @@ export const COORDINATOR_MODE_ALLOWED_TOOLS = new Set([
  */
 export const CORE_TOOLS = new Set([
   // File operations
-  ...SHELL_TOOL_NAMES, // 'Bash', 'Shell'
+  ...SHELL_TOOL_NAMES, // 'Bash', 'PowerShell'
   FILE_READ_TOOL_NAME, // 'Read'
   FILE_EDIT_TOOL_NAME, // 'Edit'
   FILE_WRITE_TOOL_NAME, // 'Write'
@@ -172,5 +172,5 @@ export const CORE_TOOLS = new Set([
   // Tool discovery (always loaded)
   SEARCH_EXTRA_TOOLS_TOOL_NAME, // 'SearchExtraTools'
   EXECUTE_TOOL_NAME, // 'ExecuteExtraTool'
-  SYNTHETIC_OUTPUT_TOOL_NAME, // 'SyntheticOutput'
+  SYNTHETIC_OUTPUT_TOOL_NAME, // 'StructuredOutput'
 ]) as ReadonlySet<string>

@@ -122,7 +122,7 @@ bun run dev
 ## 7. Feature Flags 与 GrowthBook
 
 **PR**: #140 + #153 `feat: enable GrowthBook local gate defaults`
-**Feature Flags**: `SHOT_STATS`, `PROMPT_CACHE_BREAK_DETECTION`, `TOKEN_BUDGET`
+**Feature Flags**: `PROMPT_CACHE_BREAK_DETECTION`, `TOKEN_BUDGET`
 
 ### 说明
 本地 GrowthBook gate defaults 机制，绕过远程 feature flag 服务，确保功能在无网络时也可使用。
@@ -139,7 +139,6 @@ FEATURE_PROACTIVE=1 bun run dev
 ### 关键 feature flags
 | Flag | 说明 |
 |------|------|
-| `SHOT_STATS` | API 调用统计 |
 | `TOKEN_BUDGET` | Token 预算控制 |
 | `PROMPT_CACHE_BREAK_DETECTION` | Prompt 缓存命中检测 |
 
@@ -345,7 +344,6 @@ FEATURE_FORK_SUBAGENT=1 bun run dev
 | `VOICE_MODE` | ✅ dev+build | 语音模式 |
 | `CHICAGO_MCP` | ✅ dev+build | Computer Use |
 | `AGENT_TRIGGERS_REMOTE` | ✅ dev+build | 定时任务 |
-| `SHOT_STATS` | ✅ dev+build | API 统计 |
 | `TOKEN_BUDGET` | ✅ dev+build | Token 预算 |
 | `PROMPT_CACHE_BREAK_DETECTION` | ✅ dev+build | 缓存检测 |
 | `ULTRAPLAN` | ✅ dev+build | 高级规划 |

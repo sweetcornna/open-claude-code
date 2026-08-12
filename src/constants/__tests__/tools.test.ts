@@ -43,8 +43,8 @@ function makeTool(overrides: Partial<MockTool> = {}): MockTool {
 
 describe('CORE_TOOLS', () => {
   test('contains expected number of tools', () => {
-    // 7 SHELL_TOOL_NAMES + 19 independent tool names
-    expect(CORE_TOOLS.size).toBeGreaterThanOrEqual(26)
+    // 2 SHELL_TOOL_NAMES ('Bash', 'PowerShell') + 26 independent tool names
+    expect(CORE_TOOLS.size).toBeGreaterThanOrEqual(28)
   })
 
   test('contains key core tool names', () => {
