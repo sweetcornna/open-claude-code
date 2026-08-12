@@ -230,6 +230,40 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Fast-path for the terminal verbs `stop` / `rm`.
+  //
+  // These do not route through `daemon <sub>` the way ps/logs/attach/kill do,
+  // because `daemon stop` already means "stop the supervisor". They dispatch
+  // straight into the same handlers `occ daemon` uses, and stay off the
+  // commander surface (so no `--help` entry, so no golden churn) exactly like
+  // `daemon` and `--bg`.
+  if (feature('BG_SESSIONS') && (args[0] === 'stop' || args[0] === 'rm')) {
+    profileCheckpoint('cli_daemon_path');
+    const { enableConfigs } = await import('../utils/config/config.js');
+    enableConfigs();
+    const { setShellIfWindows } = await import('../utils/filesystem/windowsPaths.js');
+    setShellIfWindows();
+    const bg = await import('../cli/bg.js');
+    if (args[0] === 'stop') await bg.stopHandler(args[1]);
+    else await bg.rmHandler(args[1]);
+    return;
+  }
+
+  // `respawn` is Phase 3. It is claimed here rather than left to commander so
+  // that `occ respawn a1b2c3d4` says what to do instead of failing with "too
+  // many arguments" — the root command takes a single `[prompt]` operand.
+  if (feature('BG_SESSIONS') && args[0] === 'respawn') {
+    console.error(
+      `${BIN_NAME} respawn is not implemented yet.\n` +
+        `To restart a background session on the current build:\n` +
+        `  ${BIN_NAME} stop <id>        stop it, keeping the conversation\n` +
+        `  ${BIN_NAME} --resume <id>    reopen the conversation here\n` +
+        `  ${BIN_NAME} daemon bg --resume <id>   put it back in the background`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   // Backward-compat: ps/logs/attach/kill → daemon <sub> (deprecated)
   if (
     feature('BG_SESSIONS') &&

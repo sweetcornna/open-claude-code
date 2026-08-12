@@ -49,7 +49,9 @@ interface WorkerState {
  *   bg      — start a background session
  *   attach  — attach to a background session
  *   logs    — show session logs
+ *   stop    — stop the supervisor, or (with an id) a background session
  *   kill    — kill a session
+ *   rm      — remove a stopped session's job record
  */
 export async function daemonMain(args: string[]): Promise<void> {
   const subcommand = args[0] || 'status'
@@ -59,8 +61,17 @@ export async function daemonMain(args: string[]): Promise<void> {
     case 'start':
       await runSupervisor(args.slice(1))
       break
+    // `stop` is overloaded on arity: bare it stops the supervisor (unchanged),
+    // with a target it gracefully stops that background session. Splitting the
+    // two under one name keeps `occ stop <id>` and `occ daemon stop <id>`
+    // meaning the same thing without renaming the supervisor verb.
     case 'stop':
-      await handleDaemonStop()
+      if (args[1]) {
+        const bg = await import('../cli/bg.js')
+        await bg.stopHandler(args[1])
+      } else {
+        await handleDaemonStop()
+      }
       break
 
     // --- Unified status ---
@@ -90,6 +101,11 @@ export async function daemonMain(args: string[]): Promise<void> {
       await bg.killHandler(args[1])
       break
     }
+    case 'rm': {
+      const bg = await import('../cli/bg.js')
+      await bg.rmHandler(args[1])
+      break
+    }
 
     case '--help':
     case '-h':
@@ -117,7 +133,9 @@ SUBCOMMANDS
   bg          Start a background session
   attach      Attach to a background session
   logs        Show session logs
-  kill        Kill a session
+  stop <id>   Stop a background session gracefully (conversation is kept)
+  kill <id>   Kill a background session (SIGTERM, then SIGKILL)
+  rm <id>     Remove a stopped session's job record and managed log
   help        Show this help
 
 REPL

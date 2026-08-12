@@ -45,8 +45,18 @@ occ --daemon-worker=remoteControl
 occ daemon bg
 occ daemon attach <session>
 occ daemon logs <session>
-occ daemon kill <session>
+occ daemon stop <session>    # 优雅停止（SIGTERM，不升级），对话保留可 resume
+occ daemon kill <session>    # 强制（SIGTERM → 2s → SIGKILL）
+occ daemon rm <session>      # 删除已停止会话的 job 记录与受管日志
+
+# 终态动词也有顶层写法（与官方 CLI 对齐）
+occ stop <session>
+occ rm <session>
 ```
+
+> `daemon stop` 按参数个数分流：**不带参数**停 supervisor（历史语义不变），
+> **带参数**停那个后台会话。顶层 `occ stop <id>` 直接走会话分支，不经过
+> supervisor。`occ respawn` 尚未实现（Phase 3），命中时会打印替代做法。
 
 ### 2.3 架构
 

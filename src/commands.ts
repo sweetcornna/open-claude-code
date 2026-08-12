@@ -111,6 +111,9 @@ const daemonCmd =
   feature('DAEMON') || feature('BG_SESSIONS')
     ? require('./commands/daemon/index.js').default
     : null
+const backgroundCmd = feature('BG_SESSIONS')
+  ? require('./commands/background/index.js').default
+  : null
 const jobCmd = feature('TEMPLATES')
   ? require('./commands/job/index.js').default
   : null
@@ -331,6 +334,7 @@ const COMMANDS = memoize((): Command[] => [
   ...(ultraplan ? [ultraplan] : []),
   ...(torch ? [torch] : []),
   ...(daemonCmd ? [daemonCmd] : []),
+  ...(backgroundCmd ? [backgroundCmd] : []),
   ...(jobCmd ? [jobCmd] : []),
   summary,
   recap,

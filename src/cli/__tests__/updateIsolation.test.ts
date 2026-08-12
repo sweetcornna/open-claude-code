@@ -450,7 +450,10 @@ describe('occ update isolation', () => {
     )
     expect(entrySource).toMatch(/Use: \$\{BIN_NAME\} daemon/)
     expect(entrySource).toMatch(/Use: \$\{BIN_NAME\} job/)
-    expect(bgSource).toMatch(/`\$\{BIN_NAME\}-bg-\$\{randomUUID\(\)/)
+    // Session names are `<bin>-bg-<jobId>`; the job id is now generated one
+    // line earlier so the job record and the session share it.
+    expect(bgSource).toMatch(/`\$\{BIN_NAME\}-bg-\$\{jobId\}`/)
+    expect(bgSource).toMatch(/const jobId = randomUUID\(\)\.slice\(0, 8\)/)
     expect(jobsSource).toContain("occConfigPath('templates')")
 
     for (const source of [
