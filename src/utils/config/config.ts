@@ -749,24 +749,52 @@ export function isProjectConfigKey(key: string): key is ProjectConfigKey {
 }
 
 /**
+ * Credential-bearing fields of the global config.
+ *
+ * Every one of these is a thing the user would have to re-authenticate to get
+ * back, so their disappearance from a re-read is the signal we key on. The
+ * upstream check only covered `oauthAccount`, which left the two API-key
+ * logins (`/login` workspace key and the OAuth-managed `primaryApiKey`)
+ * unprotected: a config caught mid-write while the user was on an API key got
+ * the key silently dropped and the next request 401'd.
+ *
+ * `customApiKeyResponses` is deliberately NOT here. It is an approval ledger
+ * of truncated key hashes, not a credential — losing it re-prompts, it does
+ * not log anyone out. Same reasoning as AUTH_BEARING_ACCOUNT_KEYS in
+ * migrateFromClaude.ts.
+ */
+const AUTH_BEARING_CONFIG_KEYS = [
+  'oauthAccount',
+  'primaryApiKey',
+  'workspaceApiKey',
+] as const
+
+type AuthBearingConfigShape = {
+  [K in (typeof AUTH_BEARING_CONFIG_KEYS)[number]]?: unknown
+} & { hasCompletedOnboarding?: boolean }
+
+/**
  * Detect whether writing `fresh` would lose auth/onboarding state that the
  * in-memory cache still has. This happens when `getConfig` hits a corrupted
  * or truncated file mid-write (from another process or a non-atomic fallback)
  * and returns DEFAULT_GLOBAL_CONFIG. Writing that back would permanently
  * wipe auth. See GH #3117.
+ *
+ * `fresh` is always the MERGE BASE (what we just re-read from disk), never the
+ * content about to be written. Checking the result instead would refuse every
+ * intentional logout, since `/logout` legitimately clears exactly these fields
+ * on top of a merge base that still has them.
  */
-function wouldLoseAuthState(fresh: {
-  oauthAccount?: unknown
-  hasCompletedOnboarding?: boolean
-}): boolean {
+function wouldLoseAuthState(fresh: AuthBearingConfigShape): boolean {
   const cached = globalConfigCache.config
   if (!cached) return false
-  const lostOauth =
-    cached.oauthAccount !== undefined && fresh.oauthAccount === undefined
+  const lostCredential = AUTH_BEARING_CONFIG_KEYS.some(
+    key => cached[key] !== undefined && fresh[key] === undefined,
+  )
   const lostOnboarding =
     cached.hasCompletedOnboarding === true &&
     fresh.hasCompletedOnboarding !== true
-  return lostOauth || lostOnboarding
+  return lostCredential || lostOnboarding
 }
 
 export function saveGlobalConfig(
@@ -812,20 +840,12 @@ export function saveGlobalConfig(
     })
     // Fall back to non-locked version on error. This fallback is a race
     // window: if another process is mid-write (or the file got truncated),
-    // getConfig returns defaults. Refuse to write those over a good cached
-    // config to avoid wiping auth. See GH #3117.
+    // getConfig returns defaults. saveConfig refuses to write those over a
+    // good cached config to avoid wiping auth. See GH #3117.
     const currentConfig = getConfig(
       getGlobalClaudeFile(),
       createDefaultGlobalConfig,
     )
-    if (wouldLoseAuthState(currentConfig)) {
-      logForDebugging(
-        'saveGlobalConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
-        { level: 'error' },
-      )
-      logEvent('tengu_config_auth_loss_prevented', {})
-      return
-    }
     const config = updater(currentConfig)
     // Skip if no changes (same reference returned)
     if (config === currentConfig) {
@@ -835,8 +855,15 @@ export function saveGlobalConfig(
       ...config,
       projects: removeProjectHistory(currentConfig.projects),
     }
-    saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
-    writeThroughGlobalConfigCache(written)
+    const didWriteFallback = saveConfig(
+      getGlobalClaudeFile(),
+      written,
+      DEFAULT_GLOBAL_CONFIG,
+      { caller: 'saveGlobalConfig fallback', mergeBase: currentConfig },
+    )
+    if (didWriteFallback) {
+      writeThroughGlobalConfigCache(written)
+    }
   }
 }
 
@@ -1073,11 +1100,39 @@ export function getCustomApiKeyStatus(
   return 'new'
 }
 
+/**
+ * Write a config file, unlocked. This is the last function before bytes hit
+ * the disk on the fallback path, so the auth-loss guard is enforced HERE
+ * rather than only at the call sites: `~/.occ.json` has several writers and a
+ * new one that forgot the check would silently reintroduce GH #3117.
+ *
+ * `authGuard.mergeBase` is mandatory (not optional) on purpose — it forces any
+ * future caller to name the config its write was derived from instead of
+ * defaulting into the unguarded behaviour. It is ignored for files other than
+ * the global config, which is the only document holding auth.
+ *
+ * Returns true if a write happened, false if the guard refused it. Callers
+ * must not write through to the cache on false: the cache is the good copy the
+ * guard is protecting.
+ */
 function saveConfig<A extends object>(
   file: string,
   config: A,
   defaultConfig: A,
-): void {
+  authGuard: { caller: string; mergeBase: AuthBearingConfigShape },
+): boolean {
+  if (
+    file === getGlobalClaudeFile() &&
+    wouldLoseAuthState(authGuard.mergeBase)
+  ) {
+    logForDebugging(
+      `${authGuard.caller}: re-read config is missing auth that cache has; refusing to write. See GH #3117.`,
+      { level: 'error' },
+    )
+    logEvent('tengu_config_auth_loss_prevented', {})
+    return false
+  }
+
   // Ensure the directory exists before writing the config file
   const dir = dirname(file)
   const fs = getFsImplementation()
@@ -1102,6 +1157,7 @@ function saveConfig<A extends object>(
   if (file === getGlobalClaudeFile()) {
     globalConfigWriteCount++
   }
+  return true
 }
 
 /**
@@ -1627,17 +1683,9 @@ export function saveCurrentProjectConfig(
       level: 'error',
     })
 
-    // Same race window as saveGlobalConfig's fallback -- refuse to write
-    // defaults over good cached config. See GH #3117.
+    // Same race window as saveGlobalConfig's fallback -- saveConfig refuses to
+    // write defaults over good cached config. See GH #3117.
     const config = getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig)
-    if (wouldLoseAuthState(config)) {
-      logForDebugging(
-        'saveCurrentProjectConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
-        { level: 'error' },
-      )
-      logEvent('tengu_config_auth_loss_prevented', {})
-      return
-    }
     const currentProjectConfig =
       config.projects?.[absolutePath] ?? DEFAULT_PROJECT_CONFIG
     const newProjectConfig = updater(currentProjectConfig)
@@ -1652,8 +1700,15 @@ export function saveCurrentProjectConfig(
         [absolutePath]: newProjectConfig,
       },
     }
-    saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
-    writeThroughGlobalConfigCache(written)
+    const didWriteFallback = saveConfig(
+      getGlobalClaudeFile(),
+      written,
+      DEFAULT_GLOBAL_CONFIG,
+      { caller: 'saveCurrentProjectConfig fallback', mergeBase: config },
+    )
+    if (didWriteFallback) {
+      writeThroughGlobalConfigCache(written)
+    }
   }
 }
 
@@ -1769,6 +1824,7 @@ export function getUserClaudeRulesDir(): string {
 // Exported for testing only
 export const _getConfigForTesting = getConfig
 export const _wouldLoseAuthStateForTesting = wouldLoseAuthState
+export const _saveConfigForTesting = saveConfig
 export function _setGlobalConfigCacheForTesting(
   config: GlobalConfig | null,
 ): void {

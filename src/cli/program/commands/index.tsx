@@ -16,6 +16,7 @@ import { registerAuthCommands, registerSetupTokenCommand } from './auth.js';
 import { registerAutoModeCommands } from './autoMode.js';
 import { registerAutonomyCommands } from './autonomy.js';
 import { registerDoctorCommand } from './doctor.js';
+import { registerImportCommand } from './import.js';
 import { registerMaintenanceCommands } from './maintenance.js';
 import { registerMcpCommands } from './mcp.js';
 import { registerMigrateCommand } from './migrate.js';
@@ -37,6 +38,7 @@ export function registerSubcommands(program: CommanderCommand): void {
   registerRemoteControlCommand(program);
   registerAssistantCommand(program);
   registerMigrateCommand(program);
+  registerImportCommand(program);
   registerDoctorCommand(program);
   registerProjectCommands(program);
   registerMaintenanceCommands(program);

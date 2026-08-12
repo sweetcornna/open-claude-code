@@ -204,6 +204,7 @@ const ROOT_COMMANDS = [
   'auth',
   'autonomy',
   'doctor',
+  'import',
   'mcp',
   'migrate',
   'plugin|plugins',
