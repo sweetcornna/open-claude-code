@@ -11,6 +11,13 @@
  *     so a pin cannot silently differ from what the row was reporting as
  *     connected.
  *
+ * THIS IS THE KEY HALF ONLY. Two sources authenticate with an OAuth login
+ * rather than a key, and that credential is kept by copying its file — see
+ * oauthCopies.ts. The env-mirrored access tokens below are still refused, and
+ * for the unchanged reason: they expire within the hour and belong to somebody
+ * else's provider. Copying a login FILE is a different act, because that file
+ * holds the refresh token and occ wrote it itself.
+ *
  * MIRRORED VALUES ARE REFUSED. A provider-shaped env var does not mean that
  * provider's key: the DeepSeek wire copies the DeepSeek key onto
  * `ANTHROPIC_API_KEY`, and an OpenCode session mirrors an OAuth access token
@@ -63,9 +70,10 @@ function captureAnthropic(): SearchCredentialCapture {
   if (!apiKey) {
     return {
       error:
-        'No ANTHROPIC_API_KEY to pin. A Claude subscription login is an OAuth ' +
-        'token this panel will not copy — set an API key for search, or leave ' +
-        'this source following your login.',
+        'No ANTHROPIC_API_KEY to pin. A Claude subscription login lives in the ' +
+        'system keychain rather than in a file of occ’s own, so there is ' +
+        'nothing here to copy — set an API key for search, or leave this ' +
+        'source following your login.',
     }
   }
   if (isDeepSeekMirroredApiKey(apiKey) || isOpencodeMirroredApiKey(apiKey)) {
@@ -102,9 +110,9 @@ function captureGemini(): SearchCredentialCapture {
   if (!apiKey) {
     return {
       error:
-        'No GEMINI_API_KEY to pin. A Google login is an OAuth token this panel ' +
-        'will not copy — set an API key for search to have one that survives ' +
-        '/logout.',
+        'No GEMINI_API_KEY to pin. A Google login is not a key — search keeps ' +
+        'that one by copying its authorization file instead (oauthCopies.ts), ' +
+        'which is what S does on this row when no key is set.',
     }
   }
   const baseURL = trimmedEnv('GEMINI_BASE_URL')
@@ -120,19 +128,21 @@ function captureGemini(): SearchCredentialCapture {
  * run a search, but report neither `url_citation` annotations nor
  * `action.sources`.
  *
- * A stored ChatGPT login needs no pin: it is already a 0600 file of occ's own,
- * untouched by `/logout` and by `activateProfile()`. So there is nothing to
- * capture in that case, and the message says so rather than implying the
- * source is about to break.
+ * A stored ChatGPT login is not captured here, and that is a division of
+ * labour rather than a refusal: it is a file, not an env var, so keeping it
+ * means copying the file (oauthCopies.ts) rather than lifting a value out of
+ * the environment. `/logout` DOES delete the original — the earlier claim that
+ * it "leaves it alone" was simply wrong, and web search going dark on logout
+ * for every ChatGPT user was the price of it.
  */
 function captureCodex(): SearchCredentialCapture {
   const apiKey = trimmedEnv('OPENAI_API_KEY')
   if (!apiKey) {
     return {
       error:
-        'No OPENAI_API_KEY to pin. A ChatGPT login is an OAuth token this ' +
-        'panel will not copy — and it does not need pinning: it already lives ' +
-        'in a file of occ’s own that /logout and provider switches leave alone.',
+        'No OPENAI_API_KEY to pin. A ChatGPT login is not a key — search keeps ' +
+        'that one by copying its authorization file instead (oauthCopies.ts), ' +
+        'which is what S does on this row when no key is set.',
     }
   }
   // An OpenCode session on a GPT-family model mirrors its OAuth access token

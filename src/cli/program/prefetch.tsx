@@ -6,6 +6,7 @@
 import { getIsNonInteractiveSession } from 'src/bootstrap/state.js';
 import { getSystemContext, getUserContext } from 'src/context.js';
 import { initializeAnalyticsGates } from 'src/services/analytics/sink.js';
+import { autoPinSearchCredentials } from 'src/services/search/autoPin.js';
 import { getRelevantTips } from 'src/services/tips/tipRegistry.js';
 import { prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe } from 'src/utils/auth/auth.js';
 import { checkHasTrustDialogAccepted } from 'src/utils/config/config.js';
@@ -86,6 +87,19 @@ export function startDeferredPrefetches(): void {
   void initializeAnalyticsGates();
 
   void refreshModelCapabilities();
+
+  // Copy whatever credential each web-search lane is authenticating with into
+  // occ's own store, so the next /logout or /provider use does not take web
+  // search down to the keyless lane silently (autoPin.ts).
+  //
+  // This is the first point in startup where BOTH entry paths have applied the
+  // full provider env: interactive reaches it through renderAndRun, which runs
+  // after showSetupScreens()'s applyConfigEnvironmentVariables(); -p reaches it
+  // from rootAction's headless branch, after the same call there. Earlier seams
+  // (init(), setup()) run before that, when only the trusted sources' env and
+  // the safe allowlist are in place — and running before the DeepSeek/OpenCode
+  // mirrors settle is how a mirrored secret gets read as its host key's own.
+  void autoPinSearchCredentials();
 
   // File change detectors deferred from init() to unblock first render
   void settingsChangeDetector.initialize();

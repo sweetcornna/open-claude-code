@@ -25,6 +25,13 @@
  * OPENAI_API_KEY and OPENAI_BASE_URL — and it is handed to the request layer
  * explicitly (`credential`), key and endpoint together, so it cannot inherit a
  * base URL the account plane has since repointed at somebody else.
+ *
+ * The OAuth route has its own version of that: `authPlane: 'search'` lets it
+ * fall back to web search's copy of the ChatGPT login (chatgptAuth.ts), which
+ * `/logout` does not delete because it does not know about it. Without it this
+ * source went dark on logout even though nothing about the account had
+ * changed — the same silent degradation the key pin exists to prevent, one
+ * credential type over.
  */
 
 import { resolveOpenAIModel } from '@ant/model-provider'
@@ -351,6 +358,11 @@ export class CodexSearchAdapter implements WebSearchAdapter {
           signal: abortController.signal,
           fetchOverride: this.fetchOverride,
           discardsPartialOutput: true,
+          // The search credential plane: occ's ChatGPT login while there is
+          // one, and otherwise the copy of it this lane pinned for itself —
+          // the only credential left after a `/logout`, which is precisely
+          // when this source used to go dark.
+          authPlane: 'search',
         })
       : await createOpenAIResponsesStream({
           request,

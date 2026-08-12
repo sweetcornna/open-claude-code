@@ -108,7 +108,13 @@ export function hasDeepSeekSearchCredentials(): boolean {
   return resolveDeepSeekSearchEndpoint() !== undefined
 }
 
-/** A pinned key, Google OAuth (Antigravity), or a Gemini API key. */
+/**
+ * A pinned key, Google OAuth (Antigravity), or a Gemini API key.
+ *
+ * The OAuth probe counts web search's own copy of the Google login as well as
+ * the login itself — the copy is a credential this lane really does
+ * authenticate with, and it is the one that is still there after a `/logout`.
+ */
 export function hasGeminiSearchCredentials(): boolean {
   if (readPinnedSearchCredential('gemini')) return true
   return hasGeminiOAuthCredentialsSync() || Boolean(process.env.GEMINI_API_KEY)
@@ -159,7 +165,10 @@ export function hasCodexSearchCredentials(): boolean {
   const pinned = readPinnedSearchCredential('codex')
   if (pinned) return isOfficialOpenAIBaseURL(pinned.baseURL)
   // A ChatGPT/Codex login authenticates against OpenAI's own backend by
-  // construction, whatever OPENAI_BASE_URL happens to say.
+  // construction, whatever OPENAI_BASE_URL happens to say. Web search's own
+  // copy of that login counts here too: it is the credential the lane falls
+  // back to once `/logout` has deleted the original, and the backend it reaches
+  // is the same one.
   if (hasStoredChatGPTAuthSync()) return true
   return (
     Boolean(process.env.OPENAI_API_KEY) &&

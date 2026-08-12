@@ -137,8 +137,8 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 |---|---|---|
 | `anthropic` | Anthropic server-side `web_search_20250305` | **固定した認証情報** > Claude OAuth または `ANTHROPIC_API_KEY` |
 | `deepseek` | DeepSeek server-side `web_search_20250305`（`<base>/anthropic` 経由） | **固定した認証情報** > DeepSeek エンドポイントと key（`OPENAI_BASE_URL` が api.deepseek.com を指す） |
-| `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定した認証情報** > Google(Antigravity) OAuth または `GEMINI_API_KEY` |
-| `codex` | OpenAI Responses API 組み込みの `web_search` ツール | **固定した認証情報** > ChatGPT OAuth または `OPENAI_API_KEY`（いずれもエンドポイントは api.openai.com であることが必要） |
+| `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定した認証情報** > Google(Antigravity) OAuth > **ログインの複製**（4.1.3） > `GEMINI_API_KEY` |
+| `codex` | OpenAI Responses API 組み込みの `web_search` ツール | **固定した認証情報** > ChatGPT OAuth > **ログインの複製**（4.1.3） > `OPENAI_API_KEY`（key の 2 経路はいずれもエンドポイントが api.openai.com であることが必要） |
 | `brave` | Brave LLM Context API（独立インデックス） | `settings.braveApiKey`、または `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa のニューラル検索（MCP エンドポイント） | `settings.exaApiKey` |
 | `free` | キー不要の複数エンジンスクレイピング（sweetcornna/free-search-mcp から移植） | なし |
@@ -230,6 +230,102 @@ Bing が返すリダイレクト URL の形式: `bing.com/ck/a?...&u=a1aHR0cHM6L
 - **固定後はモデルを選び直します**。固定はこの経路のエンドポイントをセッションのそれから切り離すため、
   メインループのモデルが api.openai.com の知らないものであり得ます（`deepseek-v4-flash` → 400、集約器が
   握りつぶす）。GPT 系でない id は安価な段へ差し替え、ユーザーが明示的に設定した OpenAI モデルは維持します。
+
+### 4.1.2 自動固定（`services/search/autoPin.ts`）
+
+**固定は既定で自動であり、`S` は手動側の半分にすぎません。** 上の仕組み自体に問題はなく、問題は
+**それを押すよう促すものが何もない**ことでした。ウェブ検索が鍵なしのスクレイピング経路へ退化するのは
+構造上ずっと無言です（ツールは答え続け、質だけが落ちる）。したがって「このパネルを開こう」と思う瞬間は
+永遠に訪れません。被害の前に発見されなければ効かない対処は、その失敗形態に対する対処ではありません。
+
+**4 つの契機**（5 つ目は増やしません）：起動時 prefetch（`src/cli/program/prefetch.tsx`）、パネルの mount、
+パネルの `R`、provider ウィザードの保存成功後。共通しているのは「その時点で環境が、各経路が実際に使っている
+認証情報を確実に保持している」ことです。これより早い地点（`init()` / `setup()`）は
+`applyConfigEnvironmentVariables()` と DeepSeek/OpenCode のミラー確定より前に走るため、
+ミラーされた他社の秘密鍵を自社のものとして読み取ってしまいます。
+
+- **何が認証情報かを自分では判断しません**。key 側はすべて `captureSearchCredentialFromEnvironment` を通るため、
+  4.1.1 に挙げた拒否条件（ミラー値、非公式エンドポイント、差し込み口のないソース）をそのまま継承し、
+  緩い規則を作り直すことはありません。「環境に固定できるものが何もない」がほとんどのセッションの結果であり、
+  それはエラーではなく no-op です。
+- **内容が変わらなければ書きません**。key とエンドポイントが既存の固定と一致していれば `pinnedAt` すら
+  動かしません。この処理は毎回の起動で走るので、毎回時刻を書き換えるファイルの mtime は何も語らなくなります。
+  ログインの複製も同じ理由で生バイトを比較します。
+- **決して reject しません**。呼び出し側はすべて `void autoPinSearchCredentials()` か素の `.then()` で、
+  下流に付けられる `.catch` はありません ——「reject しない」はこのモジュールの契約です。`async` 関数の
+  **最初の await より前**に投げられたものも promise の reject になるため、try は settings 読み取りを含む
+  関数本体全体を包みます。
+- **オプトアウトは `settings.webSearchAutoPin.<ソース>: false`**。パネルの `D` だけが書き込み、明示的な
+  「いいえ」のみを保存します（項目がなければ既定＝固定する）。`S` はその取り消しで、`true` を書くのではなく
+  キーを削除します。1 つのスイッチが key とログイン複製の両方を覆うのは、それが「このソース」についての
+  表明だからです。分割すると `D` の意味が、その行がたまたま表示していた認証情報の種類に依存してしまいます。
+
+### 4.1.3 OAuth ログインの複製（`services/search/oauthCopies.ts`）
+
+**問題**：`gemini`（Antigravity / Google OAuth）と `codex`（ChatGPT OAuth）は key を一切使わずに認証できます。
+その認証情報は occ 自身の 0600 の認可ファイルです。`/provider use` はそれらに届きませんが、
+**`/logout` は削除します**（`removeChatGPTAuth()` / `removeAntigravityAuth()`）。削除後、検索は同じように
+無言で鍵なし経路へ退化します —— 4.1.1 と同じ失敗形態の、認証情報の種類違いです。そして固定ストアは
+key しか保持できません：`captureCredential.ts` は access token を拒否します。1 時間で失効するため、
+複製したところで 1 時間後には死んだ秘密になるからです。
+
+**対処**：保つ価値があるのは access token ではなく**そのファイル**です。refresh token を持っているのは
+ファイルの方だからです。したがって「OAuth の固定」とは、認可ファイルを丸ごと検索専用の 1 部として複製すること、
+schema は主ファイルとバイト単位で同一です。
+
+| 項目 | 値 |
+| --- | --- |
+| パス | `occConfigPath('search-oauth-chatgpt.json')` / `occConfigPath('search-oauth-antigravity.json')` |
+| 権限 | `0600`、`writePrivateFileAtomic` による原子的書き込み（`copyFile` ではありません。あれは元ファイルの mode を引き継ぎ、原子的な rename も行いません） |
+| 形状 | 元ファイルと**完全に同一**。複製そのものだからです |
+| 目印 | **複製ファイルの存在そのもの**が「固定済み」を意味します。`search-credentials.json` の形式は 1 バイトも変えておらず、v2 もありません |
+
+**各経路の認証チェーン**（上位から）：
+
+1. **固定した key**（4.1.1）。明示的な key は OAuth 経路を完全に降ろします
+   （`shouldUseChatGPTAuth` / `usesAntigravityRoute` は明示的な認証情報を見ると道を譲ります）。
+2. **主ログインファイル**。ログインが存在する間は構造上これが最も新しい —— provider 側がリクエストごとに
+   更新するため、複製がこれを上回ってはなりません。
+3. **複製**。主ファイルが消えて初めて到達します。それはまさに `/logout` の挙動であり、
+   この仕組みが存在する理由そのものです。
+4. **環境変数の key**（`OPENAI_API_KEY` / `GEMINI_API_KEY`）。
+
+`codex` には 5 段目 `~/.codex/auth.json`（公式 Codex CLI 自身のファイル）があり、**複製より後**、かつ
+**読み取り専用**です。後ろに置くのは、複製が「検索がどのアカウントを使うか」という明示的な記録であるのに対し、
+あちらは「このマシンにたまたま別のツールが入っている」というだけだからです。あれが固定を上回ると、
+パネルの表示アカウントとリクエストの実アカウントが食い違います。読み取り専用なのは、それが別の CLI のもの
+（隔離不変式）であり、またその更新結果を occ 自身のログインファイルへ書くこと —— provider 側はまさにそうします ——
+がログアウト済みのアカウントをディスクへ書き戻すことになるからです。
+
+自明ではないが要となる規則：
+
+- **複製の更新は複製にだけ書き戻し、主ファイルには決して書きません**。さもなければ `/logout` の後の
+  検索側 token 更新 1 回で provider 側のログインが復活し、ログアウトがログアウトでなくなります。
+  実装は「読み出したファイルへ書き戻す」です：`chatgptAuth.ts` は `persistTo` を持つ 2 つのソース表
+  （`providerAuthSources` / `searchAuthSources`）を持ち、Antigravity の
+  `refreshAndPersist(tokens, fetchImpl, path)` も path 駆動です（projectId の補完も同様）。
+- **逆方向も同じです：provider 側の入口は複製を読めません**。`getValidChatGPTAuth()` と
+  `getValidAntigravityAuth()` は主ファイルだけを見ます。検索側は `getValidChatGPTAuthForSearch()` と
+  `getValidAntigravitySearchAuth()` を通り、`createChatGPTResponsesStream({ authPlane: 'search' })` /
+  `streamGeminiGenerateContent({ antigravityAuthPlane: 'search' })` が選択します。
+  provider 側が複製へ fall through できるなら、`/logout` は何もログアウトしていないことになります。
+- **Antigravity の並行更新の重複排除キーは「(ファイル, refresh token)」であり、素の refresh token では
+  ありません**。複製直後の両ファイルは**同一の** refresh token を持ちながら、独立した 2 つの認証情報・
+  2 つの書き込み先です。token だけを鍵にすると、一方の更新が他方の promise を受け取り、片方のファイルしか
+  更新されません。同一性検査も path 単位で読みます。
+- **判定は複製を「接続済み」に数えます**。`hasStoredChatGPTAuthSync`/`Async`、`getStoredChatGPTAccountId`、
+  `hasGeminiOAuthCredentialsSync` はいずれも複製を含みます —— これらの呼び出し側はすべて検索側であり、
+  そこでは複製こそが経路が実際に使う認証情報だからです。アカウント名は経路自身の解決順で読むので、
+  `/logout` の後もパネルは灰色にならず、検索が実際に使っているアカウントを表示し続けます。
+- **パネルのバッジ `· pinned` は両方の認証情報で同義です**。ユーザーの問いは「これは `/logout` の後も残るか」
+  であり、答えが背後の種類に依存すべきではありません。したがって `D` は**両方を削除します**。
+  複製を残すと、固定を消した直後に行が再び「固定済み」と描画され、ユーザーが今削除したはずの認証情報で
+  検索を続けてしまいます。
+- **`anthropic` / `deepseek` に複製できるログインはありません**。Claude サブスクリプションのログインは
+  システム keychain のレコード（隔離不変式の第 1 条）であり、keychain 項目をファイルへ複製するのは
+  固定ではなく保管の格下げです。よって `SEARCH_OAUTH_FAMILIES` は上記 2 ソースだけです。
+- **`/logout` は複製も明示します**。存続一覧は 2 つのストアを両方読みます。残っていると最も予想されにくいのが
+  ログイン複製なので、なおさら言う必要があります。
 
 ### 4.2 集約規則（`adapters/aggregateAdapter.ts`）
 

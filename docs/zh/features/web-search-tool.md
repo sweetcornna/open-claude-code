@@ -136,8 +136,8 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 |---|---|---|
 | `anthropic` | Anthropic server-side `web_search_20250305` | **固定凭据** > Claude OAuth 或 `ANTHROPIC_API_KEY` |
 | `deepseek` | DeepSeek server-side `web_search_20250305`，走 `<base>/anthropic` | **固定凭据** > DeepSeek 端点 + key（`OPENAI_BASE_URL` 指向 api.deepseek.com） |
-| `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定凭据** > Google(Antigravity) OAuth 或 `GEMINI_API_KEY` |
-| `codex` | OpenAI Responses API 内建 `web_search` 工具 | **固定凭据** > ChatGPT OAuth 或 `OPENAI_API_KEY`（两种都要求端点是 api.openai.com） |
+| `gemini` | Gemini `generateContent` + `googleSearch` grounding | **固定凭据** > Google(Antigravity) OAuth > **登录副本**（4.1.4） > `GEMINI_API_KEY` |
+| `codex` | OpenAI Responses API 内建 `web_search` 工具 | **固定凭据** > ChatGPT OAuth > **登录副本**（4.1.4） > `OPENAI_API_KEY`（key 那两级都要求端点是 api.openai.com） |
 | `brave` | Brave LLM Context API（独立索引） | `settings.braveApiKey`，或 `BRAVE_SEARCH_API_KEY` / `BRAVE_API_KEY` |
 | `exa` | Exa 神经搜索 MCP 端点 | `settings.exaApiKey` |
 | `free` | 免密钥多引擎抓取（移植自 sweetcornna/free-search-mcp） | 无 |
@@ -179,8 +179,8 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 | `↑` `↓` | 移动 |
 | `Space` | 勾选 / 取消勾选（只影响这一路进不进聚合） |
 | `Enter` | 未连接的 OAuth 源 → 开始登录；其余同 Space |
-| `S` | **固定凭据**：把这一源当前用的 key + 端点存进 occ 自己的 0600 文件（见 4.1.2） |
-| `D` | **取消固定 / 断开**：有固定凭据先删它；否则删掉本面板自己存的登录（gemini 的 Antigravity token、codex 的 ChatGPT auth） |
+| `S` | **固定凭据**：把这一源当前用的东西存进 occ 自己的 0600 文件 —— 环境里的 key（见 4.1.2）、OAuth 登录文件的副本（见 4.1.4），有哪个存哪个；同时清掉 `D` 写下的退出标记 |
+| `D` | **取消固定 / 断开**：有固定凭据先删它（key 与登录副本一起删，并记下「以后别再自动固定这一源」）；否则删掉本面板自己存的登录（gemini 的 Antigravity token、codex 的 ChatGPT auth） |
 | `R` | **重新探测**：清掉本会话的 availability 退役标记、DeepSeek 探测缓存和固定凭据缓存，全部重查 |
 | `Esc` | 有操作在飞 → **取消它**；否则关闭面板 |
 
@@ -263,6 +263,89 @@ Bing 返回的重定向 URL 格式：`bing.com/ck/a?...&u=a1aHR0cHM6Ly9...`
 - **固定后模型会重挑**。pin 把这一路的端点与会话的端点解耦了，于是主循环模型可能是 api.openai.com
   根本不认的（`deepseek-v4-flash` → 400，被聚合器静音）。非 GPT 系的 id 换成便宜档，用户显式配置的
   OpenAI 模型保留。
+
+### 4.1.3 自动固定（`services/search/autoPin.ts`）
+
+**固定默认是自动的，`S` 只是手动的那一半。** 4.1.2 那套机制本身没问题，问题是**没有任何东西提示
+用户去按它**：搜索降级到免密钥那一路是静默的（工具照常出结果，只是变差了），所以「该打开这个面板」
+的那个时刻永远不会到来。一个必须先被发现才生效的补救，对它要补救的失败形态而言不是补救。
+
+**四个时机**（不新增第五个）：启动 prefetch（`src/cli/program/prefetch.tsx`）、面板 mount、面板 `R`、
+provider 向导保存成功后。这四个点的共同性质是「环境此刻确实持有 lane 正在用的凭据」——
+放得更早（`init()` / `setup()`）会赶在 `applyConfigEnvironmentVariables()` 和 DeepSeek/OpenCode
+镜像落定之前跑，那会把镜像进来的别家密钥当成本家的读走。
+
+- **它不自己判断什么是凭据**。key 那一半全部走 `captureSearchCredentialFromEnvironment`，
+  4.1.2 列的每一条拒绝（镜像值、非官方端点、没有凭据入口的源）自动继承，不另立一套更松的规则。
+  「环境里没有可固定的东西」是绝大多数会话的结果，那是一个 no-op，不是错误。
+- **内容没变就不写盘**。key 与端点都和已固定的一致时，连 `pinnedAt` 都不动 —— 这个函数每次启动都跑，
+  每次都刷新时间戳的文件，它的 mtime 就什么也不说明了。登录副本用同样的理由比较原始字节。
+- **它永远不 reject**。三个调用点全是 `void autoPinSearchCredentials()` 或裸 `.then()`，
+  下游没有 `.catch` 可加 —— 「不 reject」是这个模块的契约，不是调用方的问题。注意 `async` 函数
+  **第一个 await 之前**抛出的东西同样会变成 rejected promise，所以 try 包住整个函数体（含 settings 读取）。
+- **退出开关是 `settings.webSearchAutoPin.<源>: false`**，只由面板的 `D` 写入，只存显式的「否」——
+  没有条目 = 按默认（固定）。`S` 是它的撤销：清掉该键而不是写 `true`。
+  一个开关同时管 key 与登录副本，因为它说的是「这一源」，拆成两个会让 `D` 的含义取决于按下时
+  那一行恰好显示的是哪种凭据。
+
+### 4.1.4 OAuth 登录的副本（`services/search/oauthCopies.ts`）
+
+**问题**：`gemini`（Antigravity / Google OAuth）和 `codex`（ChatGPT OAuth）这两源可以完全不用 key，
+凭据是 occ 自己的 0600 授权文件。`/provider use` 碰不到它们，但 **`/logout` 会删**
+（`removeChatGPTAuth()` / `removeAntigravityAuth()`）。删掉之后搜索照样静默降级到免密钥那一路 ——
+和 4.1.2 修掉的是同一个失败形态，只是换了一种凭据。而 4.1.2 的 pin store **只能存 key**：
+`captureCredential.ts` 拒绝 access token，理由是它一小时就过期，存下来的是一份一小时后必死的密钥。
+
+**做法**：值得保住的不是 access token 而是**那个文件** —— 它带着 refresh token。所以「固定 OAuth」=
+把授权文件整份复制成搜索自己的一份，schema 与主文件逐字节相同。
+
+| 项 | 值 |
+| --- | --- |
+| 路径 | `occConfigPath('search-oauth-chatgpt.json')` / `occConfigPath('search-oauth-antigravity.json')` |
+| 权限 | `0600`，经 `writePrivateFileAtomic` 原子写（不是 `copyFile`：那会带着源文件的 mode 且没有原子 rename） |
+| 形状 | 与各自主文件**完全相同**，因为它就是一份拷贝 |
+| 标记 | **副本文件存在本身**就是「已固定」。`search-credentials.json` 的格式一个字节都没改，也没有 v2 |
+
+**每条 lane 的认证链**（四级，从高到低）：
+
+1. **固定的 key**（4.1.2）。显式 key 会让 OAuth 那一路整个让位（`shouldUseChatGPTAuth` /
+   `usesAntigravityRoute` 见到显式凭据即停手）。
+2. **主 OAuth 文件**。登录还在的时候它按定义最新鲜 —— provider 面每次请求都会刷新它，
+   所以副本绝不能压过它。
+3. **副本**。主文件消失后才轮到它，而那正是 `/logout` 干的事，也正是这套机制存在的理由。
+4. **env 里的 key**（`OPENAI_API_KEY` / `GEMINI_API_KEY`）。
+
+`codex` 还有第五级 `~/.codex/auth.json`（官方 Codex CLI 的文件），排在**副本之后**且**只读**。
+排在后面是因为副本是用户对「搜索用哪个账号」的一次显式记录，而那个文件只是「这台机器上碰巧还装了
+另一个工具」；让它压过 pin 会让面板显示的账号和请求实际用的账号不是同一个。只读是因为它属于另一个
+CLI（隔离不变式），而且把它的刷新结果写进 occ 自己的登录文件 —— provider 面正是这么做的 ——
+等于在一次搜索里把刚登出的账号重新写回磁盘。
+
+几条不显然但关键的规则：
+
+- **副本的刷新只写回副本，绝不写主文件**。否则 `/logout` 之后搜索面的一次 token 刷新就会复活
+  provider 面的登录，logout 的语义就漏了。实现上是「token 从哪个文件读来，就写回哪个文件」：
+  `chatgptAuth.ts` 的两张 source 表（`providerAuthSources` / `searchAuthSources`）带 `persistTo`，
+  Antigravity 的 `refreshAndPersist(tokens, fetchImpl, path)` 也是按 path 走的（连 projectId 补写也一样）。
+- **反方向同样成立：provider 面入口读不到副本**。`getValidChatGPTAuth()` 与 `getValidAntigravityAuth()`
+  只看主文件；搜索面走 `getValidChatGPTAuthForSearch()` 和 `getValidAntigravitySearchAuth()`
+  （由 `createChatGPTResponsesStream({ authPlane: 'search' })` /
+  `streamGeminiGenerateContent({ antigravityAuthPlane: 'search' })` 选中）。
+  如果 provider 面能 fall through 到副本，`/logout` 就等于什么都没登出。
+- **Antigravity 的并发去重键是「(文件, refresh token)」而不是裸 refresh token**。刚复制完的那一刻
+  两个文件持有的是**同一个** refresh token，却是两份独立凭据、两个独立写入目标；只按 token 去重，
+  其中一次刷新会拿到另一次的 promise，于是只有一个文件被更新。身份校验也改成按 path 读。
+- **判据把副本算进「已连接」**。`hasStoredChatGPTAuthSync/Async` / `getStoredChatGPTAccountId` /
+  `hasGeminiOAuthCredentialsSync` 都把副本计入 —— 它们的调用方**全部在搜索面**，而在那一面，
+  副本就是 lane 真会拿去认证的凭据。账号名按 lane 的取用顺序读，所以 `/logout` 之后面板显示的
+  仍是搜索实际使用的那个账号，而不是变灰。
+- **面板徽章 `· pinned` 对两种凭据同义**：用户问的是「这个 `/logout` 之后还在吗」，答案不该取决于
+  背后碰巧是 key 还是登录。`D` 因此**两份一起删**，否则清掉 pin 后行会重新画成「已固定」，
+  并继续用刚被用户删掉的那份凭据搜索。
+- **`anthropic` / `deepseek` 没有可复制的登录**。Claude 订阅登录是系统 keychain 记录（隔离不变式里
+  的第一条），把 keychain 条目复制成文件是存储降级而不是固定。所以 `SEARCH_OAUTH_FAMILIES` 只有两家。
+- **`/logout` 会把副本也说出来**：存活清单同时读两个 store，逐个列出源名。最不会被预料到还活着的
+  恰恰是登录副本，所以更要说。
 
 ### 4.2 聚合规则（`adapters/aggregateAdapter.ts`）
 
@@ -390,6 +473,8 @@ interface SearchProgress {
 | `packages/tool-runtime/src/toolExecutionTimeout.ts` | 通用超时包装（子 AbortController，见 4.4） |
 | `packages/tool-runtime/src/apiRetry.ts` | API 重试 facade，host 实现在 `src/services/api/retryFacade.ts` |
 | `src/services/search/searchCredentialStore.ts` | 固定凭据存储（0600 文件，`/logout` 与 `activateProfile()` 都不碰） |
+| `src/services/search/oauthCopies.ts` | OAuth 登录副本的路径与复制/删除/存在性（4.1.4）；只依赖 `paths.ts` 与原子写，不认识主文件在哪 |
+| `src/services/search/autoPin.ts` | 自动固定的策略层（4.1.3）：退出开关、key 与登录两条轴、主登录文件的路径映射 |
 | `src/services/search/searchEndpoints.ts` | 「固定凭据 → provider env」解析：DeepSeek / Anthropic / Gemini / Codex 各自的端点与 key |
 | `src/services/search/captureCredential.ts` | 从环境捕获当前凭据以供固定；拒绝镜像值、非官方端点与没有凭据入口的源 |
 | `src/services/search/sourceCredentials.ts` | 四家「有没有凭据」的同步判据（tool-runtime facade 的 host 实现） |

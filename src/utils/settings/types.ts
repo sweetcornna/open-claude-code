@@ -756,6 +756,24 @@ export const SettingsSchema = lazySchema(() =>
             'Stores explicit choices ONLY — an absent source follows its credentials, ' +
             'so logging in to a provider enables its search layer automatically.',
         ),
+      webSearchAutoPin: z
+        .object({
+          anthropic: z.boolean().optional(),
+          deepseek: z.boolean().optional(),
+          gemini: z.boolean().optional(),
+          codex: z.boolean().optional(),
+        })
+        .optional()
+        // Same reasoning as webSearchSources: a malformed block degrades to
+        // "no explicit choices", never to a rejected settings file. Degrading
+        // that way means auto-pinning, which is the default anyway.
+        .catch(undefined)
+        .describe(
+          'Per-source opt-outs for automatic web-search credential pinning. ' +
+            'Stores explicit "false" ONLY — an absent source is pinned automatically, ' +
+            'so a key found in the environment survives /logout and provider switches. ' +
+            'D in /search-setting writes the opt-out; S clears it.',
+        ),
       webFetchAdapter: z
         .enum(['tavily', 'http'])
         .optional()

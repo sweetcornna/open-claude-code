@@ -17,6 +17,7 @@ import {
   antigravityAuthFilePath,
   removeAntigravityTokens,
 } from 'src/services/auth/antigravity/store.js'
+import { hasSearchOAuthCopy } from 'src/services/search/oauthCopies.js'
 
 /** Access token for the connected Google account, or null when not connected. */
 export async function getGeminiOAuthAccessToken(): Promise<string | null> {
@@ -34,12 +35,21 @@ export async function isGeminiOAuthConnected(): Promise<boolean> {
 }
 
 /**
- * Sync credential probe — "is there a stored Google login". Used by the
- * synchronous search-source resolver, where an async read is not an option;
- * anything wrong with the token's contents surfaces when the search runs.
+ * Sync credential probe — "is there a stored Google login this search can use".
+ * Used by the synchronous search-source resolver, where an async read is not an
+ * option; anything wrong with the token's contents surfaces when the search
+ * runs.
+ *
+ * Counts WebSearch's own copy of the login as well as the login itself, and
+ * that is a statement about who asks rather than a loosening: both callers are
+ * on the search plane (`sourceCredentials.ts` and the `useAntigravity
+ * WhenAvailable` branch of `usesAntigravityRoute`, which only non-main-loop
+ * callers set). The main loop asks `isAntigravityAuthMode()` and
+ * `getValidAntigravityAuth()`, neither of which knows the copy exists — so
+ * `/logout` still logs the account out.
  */
 export function hasGeminiOAuthCredentialsSync(): boolean {
-  return existsSync(antigravityAuthFilePath())
+  return existsSync(antigravityAuthFilePath()) || hasSearchOAuthCopy('gemini')
 }
 
 /**

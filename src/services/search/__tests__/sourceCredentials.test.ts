@@ -28,7 +28,7 @@ const chatGPTAuthMock = makeSharedModuleMock(
   'src/services/api/openai/chatgptAuth.js',
   realChatGPTAuth,
 ).setup()
-makeSharedModuleMock(
+const geminiOAuthMock = makeSharedModuleMock(
   'src/services/api/gemini/oauthToken.js',
   realGeminiOAuth,
 ).setup({ hasGeminiOAuthCredentialsSync: () => false })
@@ -81,9 +81,14 @@ afterEach(() => {
 })
 
 // Hand every export back to the real module for whatever runs next in this
-// process.
+// process. BOTH mocks — the Gemini one was installed and never released, so
+// `hasGeminiOAuthCredentialsSync` stayed pinned to `false` for every file that
+// loaded after this one in the same shard. That is the process-global,
+// last-write-wins failure CLAUDE.md describes, and it hid until a later suite
+// asserted the probe answers `true`.
 afterAll(() => {
   chatGPTAuthMock.reset()
+  geminiOAuthMock.reset()
   if (savedConfigDir === undefined) delete process.env.OCC_CONFIG_DIR
   else process.env.OCC_CONFIG_DIR = savedConfigDir
   occConfigDir.cache.clear?.()

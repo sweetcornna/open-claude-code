@@ -49,9 +49,20 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-export async function readAntigravityTokens(): Promise<AntigravityTokens | null> {
+/**
+ * Read one credential file.
+ *
+ * The path is a parameter because web search keeps its own copy of this file
+ * (services/search/oauthCopies.ts) so its `gemini` lane survives a `/logout`.
+ * Both files have the identical schema — the copy IS a copy — so one reader
+ * serves both, and the choice of which one a caller may look at is made where
+ * that question belongs: `oauth.ts`'s two credential planes.
+ */
+export async function readAntigravityTokens(
+  path: string = antigravityAuthFilePath(),
+): Promise<AntigravityTokens | null> {
   try {
-    const raw = await readFile(antigravityAuthFilePath(), 'utf8')
+    const raw = await readFile(path, 'utf8')
     const parsed = JSON.parse(raw) as StoredAuthFile
     const tokens = parsed.tokens
     const accessToken = asString(tokens?.access_token)
@@ -79,8 +90,8 @@ export async function readAntigravityTokens(): Promise<AntigravityTokens | null>
 
 export async function saveAntigravityTokens(
   tokens: AntigravityTokens,
+  path: string = antigravityAuthFilePath(),
 ): Promise<void> {
-  const path = antigravityAuthFilePath()
   await mkdir(occConfigDir(), { recursive: true })
   const body: StoredAuthFile = {
     auth_mode: 'antigravity',

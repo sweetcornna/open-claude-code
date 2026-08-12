@@ -6,7 +6,10 @@ import {
   type AnthropicUsage,
   type OpenAIReasoningItem,
 } from '@ant/model-provider'
-import { getValidChatGPTAuth } from './chatgptAuth.js'
+import {
+  getValidChatGPTAuth,
+  getValidChatGPTAuthForSearch,
+} from './chatgptAuth.js'
 import type {
   ResponsesReasoningEffort,
   ResponsesReasoningSummary,
@@ -1300,8 +1303,22 @@ export async function createChatGPTResponsesStream(params: {
   maxRetries?: number
   /** See {@link closesRetryWindow}. */
   discardsPartialOutput?: boolean
+  /**
+   * Which set of credential files this call may authenticate from.
+   *
+   * `'provider'` (the default, and what the main loop passes by omission) is
+   * occ's login file or the Codex CLI's. `'search'` adds the login web search
+   * pinned for itself, which is the only one that outlives a `/logout` — and
+   * refreshes it back into the copy rather than into the login file, so a
+   * search cannot resurrect the account the user just signed out of. See
+   * chatgptAuth.ts's two source lists.
+   */
+  authPlane?: 'provider' | 'search'
 }): Promise<AsyncIterable<Record<string, unknown>>> {
-  const auth = await getValidChatGPTAuth()
+  const auth =
+    params.authPlane === 'search'
+      ? await getValidChatGPTAuthForSearch()
+      : await getValidChatGPTAuth()
   const headers: Record<string, string> = {
     Authorization: `Bearer ${auth.accessToken}`,
     'Content-Type': 'application/json',

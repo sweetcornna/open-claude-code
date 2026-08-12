@@ -20,6 +20,7 @@
  */
 
 import { NonRetryableError } from 'src/services/api/retryClassification.js'
+import { searchOAuthCopyPath } from 'src/services/search/oauthCopies.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
 import {
   errorMessageWithCause,
@@ -46,6 +47,7 @@ import {
 } from './constants.js'
 import {
   type AntigravityTokens,
+  antigravityAuthFilePath,
   readAntigravityTokens,
   removeAntigravityTokens,
   saveAntigravityTokens,
@@ -407,6 +409,38 @@ export async function discoverAntigravityProject(params: {
   return onboarded
 }
 
+/**
+ * Which credential files a caller may authenticate from.
+ *
+ * `'provider'` is the login file `/login` writes and `/logout` deletes.
+ * `'search'` adds web search's own copy of it — the copy exists precisely
+ * because `/logout` deletes the original, which used to drop the `gemini`
+ * search source to the keyless scraping lane without saying anything (see
+ * services/search/oauthCopies.ts).
+ *
+ * The login file is FIRST on both planes: while a login exists it is the
+ * freshest by construction — every provider request refreshes it — so the copy
+ * must never outrank it. And the copy is on the search plane ONLY: if the main
+ * loop could fall through to it, `/logout` would not log anything out.
+ */
+export type AntigravityCredentialPlane = 'provider' | 'search'
+
+function credentialPaths(plane: AntigravityCredentialPlane): string[] {
+  const own = antigravityAuthFilePath()
+  return plane === 'search' ? [own, searchOAuthCopyPath('gemini')] : [own]
+}
+
+/** The first file on this plane that holds a usable login, and which file it was. */
+async function readPlaneTokens(
+  plane: AntigravityCredentialPlane,
+): Promise<{ tokens: AntigravityTokens; path: string } | null> {
+  for (const path of credentialPaths(plane)) {
+    const tokens = await readAntigravityTokens(path)
+    if (tokens) return { tokens, path }
+  }
+  return null
+}
+
 type InFlightRefresh = {
   generation: number
   controller: AbortController
@@ -416,6 +450,12 @@ type InFlightRefresh = {
 // Refreshes dedupe only for the same credential identity. A global promise
 // lets a newly logged-in account await and receive the previous account's
 // token, while a generation guard prevents pre-logout work from committing.
+//
+// The identity is (file, refresh token), not the refresh token alone. Right
+// after web search copies the login, both files hold the SAME refresh token
+// while being two independent credentials with two independent write targets —
+// keyed on the token alone, a refresh of one would be handed the other's
+// promise and only one of the two files would ever be updated.
 const inFlightRefreshes = new Map<string, InFlightRefresh>()
 let credentialGeneration = 0
 
@@ -426,11 +466,20 @@ async function invalidateAntigravityRefreshes(): Promise<void> {
   await Promise.allSettled(stale.map(refresh => refresh.promise))
 }
 
+/**
+ * Refresh one credential file's tokens and write them back to THAT file.
+ *
+ * `path` is the file the tokens were read from, and the refresh never lands
+ * anywhere else. For web search's copy that is the load-bearing part: writing
+ * a refresh into the login file instead would recreate, from inside a search,
+ * the account login the user had just ended with `/logout`.
+ */
 async function refreshAndPersist(
   tokens: AntigravityTokens,
   fetchImpl: FetchLike,
+  path: string = antigravityAuthFilePath(),
 ): Promise<AntigravityTokens> {
-  const identityKey = tokens.refreshToken
+  const identityKey = `${path} ${tokens.refreshToken}`
   const existing = inFlightRefreshes.get(identityKey)
   if (existing?.generation === credentialGeneration) return existing.promise
 
@@ -443,14 +492,14 @@ async function refreshAndPersist(
       fetchImpl,
       controller.signal,
     )
-    const current = await readAntigravityTokens()
+    const current = await readAntigravityTokens(path)
     if (
       generation !== credentialGeneration ||
-      current?.refreshToken !== identityKey
+      current?.refreshToken !== tokens.refreshToken
     ) {
       throw new Error('Antigravity credentials changed during token refresh')
     }
-    await saveAntigravityTokens(refreshed)
+    await saveAntigravityTokens(refreshed, path)
     if (generation !== credentialGeneration) {
       throw new Error('Antigravity credentials changed during token refresh')
     }
@@ -483,18 +532,24 @@ export function _resetAntigravityRefreshStateForTesting(): void {
  * Throws (rather than returning null) because the caller is a request path that
  * must surface *why* the call cannot be made — an opaque failure here reads as
  * a model outage.
+ *
+ * Everything it writes goes back to the file the login was read from — see
+ * {@link AntigravityCredentialPlane}.
  */
-export async function getValidAntigravityAuth(
-  fetchImpl: FetchLike = fetch,
+async function resolveAntigravityAuth(
+  plane: AntigravityCredentialPlane,
+  fetchImpl: FetchLike,
 ): Promise<AntigravityAuth> {
-  let tokens = await readAntigravityTokens()
-  if (!tokens) {
+  const found = await readPlaneTokens(plane)
+  if (!found) {
     throw new Error(
       'Antigravity account is not logged in. Run /login and select Antigravity (Google OAuth).',
     )
   }
+  let { tokens } = found
+  const { path } = found
   if (tokens.expiresAt <= Date.now() + ANTIGRAVITY_REFRESH_SKEW_MS) {
-    tokens = await refreshAndPersist(tokens, fetchImpl)
+    tokens = await refreshAndPersist(tokens, fetchImpl, path)
   }
   let projectId = tokens.projectId
   if (!projectId) {
@@ -504,26 +559,54 @@ export async function getValidAntigravityAuth(
       accessToken: tokens.accessToken,
       fetchImpl,
     })
-    await saveAntigravityTokens({ ...tokens, projectId })
+    // Into the file this login came from, for the same reason the refresh is:
+    // a search running off the copy must not write the login file back into
+    // existence.
+    await saveAntigravityTokens({ ...tokens, projectId }, path)
   }
   return { accessToken: tokens.accessToken, projectId }
+}
+
+export async function getValidAntigravityAuth(
+  fetchImpl: FetchLike = fetch,
+): Promise<AntigravityAuth> {
+  return resolveAntigravityAuth('provider', fetchImpl)
+}
+
+/**
+ * The same credential for WebSearch's `gemini` lane, which may also use the
+ * copy of the login web search pinned for itself. See
+ * {@link AntigravityCredentialPlane}.
+ */
+export async function getValidAntigravitySearchAuth(
+  fetchImpl: FetchLike = fetch,
+): Promise<AntigravityAuth> {
+  return resolveAntigravityAuth('search', fetchImpl)
 }
 
 /**
  * Contract export (pinned): a valid access token, or null when the user is not
  * logged in or the refresh token has been revoked. Never throws — callers such
  * as the search-source picker use it as a capability probe.
+ *
+ * Reads the SEARCH plane, because that is the only thing that asks: the one
+ * consumer is `gemini/oauthToken.ts`, the seam between this flow and the search
+ * stack (the main loop goes through `getValidAntigravityAuth` instead). It has
+ * to see the copy, or `/search-setting` would report the `gemini` row as
+ * disconnected after a `/logout` while its lane was still searching happily off
+ * the copied login.
  */
 export async function getAntigravityAccessToken(
   fetchImpl: FetchLike = fetch,
 ): Promise<string | null> {
   try {
-    const tokens = await readAntigravityTokens()
-    if (!tokens) return null
+    const found = await readPlaneTokens('search')
+    if (!found) return null
+    const { tokens, path } = found
     if (tokens.expiresAt > Date.now() + ANTIGRAVITY_REFRESH_SKEW_MS) {
       return tokens.accessToken
     }
-    const refreshed = await refreshAndPersist(tokens, fetchImpl)
+    const refreshed = await refreshAndPersist(tokens, fetchImpl, path)
     return refreshed.accessToken
   } catch (error) {
     logForDebugging(

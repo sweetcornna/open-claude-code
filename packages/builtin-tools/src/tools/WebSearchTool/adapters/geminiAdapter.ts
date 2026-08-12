@@ -309,6 +309,11 @@ export class GeminiSearchAdapter implements WebSearchAdapter {
           ...(pinned?.baseURL ? { baseURL: pinned.baseURL } : {}),
           requestType: 'web_search',
           useAntigravityWhenAvailable: this.asExtraSource,
+          // The search credential plane: the Google login while there is one,
+          // and otherwise the copy of it this lane pinned for itself. `/logout`
+          // deletes the login file and knows nothing about the copy, which is
+          // what stops this source going dark the moment somebody signs out.
+          antigravityAuthPlane: 'search',
         })
 
         for await (const chunk of stream) {

@@ -12,22 +12,35 @@
  * (aggregateAdapter.ts). Nothing in this panel picks *one* backend; ticking a
  * second source adds a lane, it never replaces one.
  *
+ * Pinning happens by itself. Every provider source reads the provider env
+ * unpinned, and that env is what `/logout` deletes and `/provider use` replaces
+ * wholesale — so switching providers used to drop web search to the keyless
+ * lane with nothing said. The same was true one credential over: `gemini` and
+ * `codex` can authenticate with an OAuth login instead of a key, and `/logout`
+ * deletes those login files too. autoPin.ts keeps both — the key in occ's own
+ * 0600 store (searchCredentialStore.ts), the login as a copy of its file
+ * (oauthCopies.ts) — on startup, when this panel opens, on `r`, and after a
+ * provider save; the keys below are the manual half of that.
+ *
  * Four things a row can do beyond being ticked:
  *   - Enter on a disconnected provider source starts that provider's OAuth flow
  *     and the row flips to connected + ticked when it returns.
- *   - `s` PINS the credential the source is authenticating with right now into
- *     occ's own 0600 store (searchCredentialStore.ts). That is the whole point
- *     of this panel owning credentials: unpinned, every provider source reads
- *     the provider env, which `/logout` deletes and `/provider use` replaces
- *     wholesale — so switching providers used to drop web search to the keyless
- *     lane with nothing said. A pin is not touched by either.
- *   - `d` removes the pin if there is one, and otherwise disconnects a source
- *     whose login this panel owns. Two distinct undos, in that order, because
- *     they are two distinct credentials.
+ *   - `s` PINS whatever the source is authenticating with right now — an API
+ *     key, an OAuth login, or both — and clears any opt-out `d` left behind. It
+ *     is the way back, not the only way in: a source that is connected and
+ *     still unpinned either opted out or has nothing occ can keep (a Claude
+ *     subscription is a keychain record, not a file of ours).
+ *   - `d` removes the pin if there is one — both kinds, and records that this
+ *     source is not to be pinned again, or the next startup would silently put
+ *     it back — and otherwise disconnects a source whose login this panel owns.
+ *     Two distinct undos, in that order, because they are two distinct
+ *     credentials: the first `d` stops search keeping its own copy, the second
+ *     signs the account out.
  *   - `r` re-checks every row, which also clears the session-scoped "this source
- *     failed, stop using it" flags and re-reads the pin store. Without that, a
- *     source retired before the user fixed the underlying problem stays greyed
- *     out until restart — the "I logged in and it still does not work" shape.
+ *     failed, stop using it" flags, re-reads the pin store and re-runs the
+ *     automatic capture. Without that, a source retired before the user fixed
+ *     the underlying problem stays greyed out until restart — the "I logged in
+ *     and it still does not work" shape.
  *
  * Anything that touches the network is cancellable: Esc while an operation is in
  * flight aborts it rather than closing the panel. An OAuth flow parked on a
@@ -59,7 +72,18 @@ import {
   requestChatGPTDeviceCode,
 } from '../../services/api/openai/chatgptAuth.js';
 import { openBrowser } from '../../utils/network/browser.js';
+import {
+  autoPinSearchCredentials,
+  copySearchOAuthLogin,
+  hasSearchOAuthLogin,
+  readSearchAutoPinOverrides,
+  removeSearchOAuthLogin,
+  type SearchAutoPinOverrides,
+  setSearchAutoPinEnabled,
+  wroteSearchCredential,
+} from '../../services/search/autoPin.js';
 import { captureSearchCredentialFromEnvironment } from '../../services/search/captureCredential.js';
+import { listSearchOAuthCopies } from '../../services/search/oauthCopies.js';
 import {
   isPinnableSearchSource,
   listPinnedSearchSources,
@@ -110,10 +134,21 @@ type SourceRow = {
   isCurrentProvider: boolean;
   canLogin: boolean;
   canDisconnect: boolean;
-  /** A credential for this source is stored in occ's own search-credential file. */
+  /**
+   * A credential for this source is stored in a file of occ's own that the
+   * account plane does not touch — either a key in search-credentials.json or a
+   * copy of the source's OAuth login.
+   */
   pinned: boolean;
   /** This source's lane reads the pin store, so pinning it would mean something. */
   canPin: boolean;
+  /**
+   * This source is still eligible for automatic pinning — i.e. `d` has not
+   * been pressed on it since the last `s`. True for anything that cannot be
+   * pinned at all, which keeps the copy on those rows about the lane rather
+   * than about a switch that does not apply to them.
+   */
+  autoPin: boolean;
 };
 
 const SOURCE_HINTS: Record<SearchSourceId, string> = {
@@ -156,6 +191,18 @@ function isPinnableSearchSourceId(id: SearchSourceId): boolean {
 }
 
 /**
+ * Whether the automatic capture may still pin this row.
+ *
+ * A source with no credential family answers true — there is no opt-out to
+ * store for it, and reporting "automatic pinning is off" on a row that was
+ * never pinnable would be a switch the user cannot find.
+ */
+function isAutoPinAllowed(id: SearchSourceId, overrides: SearchAutoPinOverrides): boolean {
+  const family = toCredentialFamily(id);
+  return family === undefined || overrides[family] !== false;
+}
+
+/**
  * Connection state for one source: whether it is usable, and (when the
  * credential carries one) which account it belongs to, so a user with several
  * logins can tell which one is feeding their searches.
@@ -190,10 +237,13 @@ async function readConnection(
     }
     case 'gemini':
       return {
-        // The pin first, and without awaiting anything: it is the credential
-        // the lane will actually send (usesAntigravityRoute stands down for an
-        // explicit key), so a row backed by one must not be reported through a
-        // Google token that request is not going to carry.
+        // The pinned KEY first, and without awaiting anything: it is the
+        // credential the lane will actually send (usesAntigravityRoute stands
+        // down for an explicit key), so a row backed by one must not be
+        // reported through a Google token that request is not going to carry.
+        // A pinned LOGIN needs no separate branch — getGeminiOAuthAccessToken
+        // reads the copy itself, so after a /logout this still answers "yes"
+        // with the same token the search will use.
         connected:
           readPinnedSearchCredential('gemini') !== undefined ||
           (await getGeminiOAuthAccessToken()) !== null ||
@@ -207,6 +257,10 @@ async function readConnection(
       if (readPinnedSearchCredential('codex')) {
         return { connected: hasCodexSearchCredentials() };
       }
+      // Counts the copied login as well as the live one, and names the account
+      // from whichever the lane would pick — so after a /logout this row keeps
+      // reporting the ChatGPT account the searches are still running as,
+      // instead of going dark while the lane quietly keeps working.
       const oauth = await hasStoredChatGPTAuth();
       return {
         // Deliberately the shared probe rather than a second `OPENAI_API_KEY`
@@ -319,11 +373,17 @@ function noDisconnectHint(row: SourceRow): string {
         `Press Space to switch the lane off, or remove the key from your settings/environment.`
       );
     default:
-      return (
-        `${row.label} uses this session's provider login — nothing pinned to remove. ` +
-        `Press S to pin its credential so a /logout or provider switch keeps it, ` +
-        `Space to switch the lane off, or /logout to sign out.`
-      );
+      // Two different reasons a pinnable source has no pin, and the automatic
+      // capture is what separates them: with it on, "nothing pinned" means the
+      // environment held nothing copyable, and telling that user to press S
+      // sends them at a refusal. With it off, S is exactly the answer.
+      return row.autoPin
+        ? `${row.label} uses this session's provider login — nothing pinned to remove. ` +
+            `An API key in your environment, or an OAuth login stored by occ, would be pinned here on its own. ` +
+            `Press Space to switch the lane off, or /logout to sign out.`
+        : `${row.label} is not pinned and is set never to be pinned automatically. ` +
+            `Press S to pin its credential and turn automatic pinning back on, ` +
+            `Space to switch the lane off, or /logout to sign out.`;
   }
 }
 
@@ -363,13 +423,23 @@ function statusBadge(row: SourceRow): {
 /**
  * The `S` affordance for the highlighted row, when it would do something.
  *
- * Only offered on a connected, pinnable, not-yet-pinned source: there is no
- * credential to copy otherwise, and an offer that answers with a refusal reads
- * as a broken key.
+ * Only offered on a connected, pinnable, not-yet-pinned source that really has
+ * something to keep — an offer that answers with a refusal reads as a broken
+ * key, and now that pinning is automatic, "connected but unpinned" most often
+ * means precisely that there was nothing to capture. Two things count as
+ * something: a key the environment is holding, or an OAuth login file occ
+ * itself wrote. Both probes are local reads (process.env plus the wires' own
+ * bookkeeping; one existsSync), and this runs for the highlighted row only, so
+ * asking per render costs nothing.
  */
 function pinOffer(row: SourceRow): string {
   if (!row.canPin || row.pinned || row.connection !== 'connected') return '';
-  return ' · S keeps this credential through /logout and provider switches';
+  const family = toCredentialFamily(row.id);
+  if (!family) return '';
+  const hasKey = !('error' in captureSearchCredentialFromEnvironment(family));
+  if (!hasKey && !hasSearchOAuthLogin(family)) return '';
+  const what = hasKey ? 'credential' : 'login';
+  return row.autoPin ? ` · S pins this ${what} now` : ` · S pins this ${what} and turns automatic pinning back on`;
 }
 
 /** What an in-flight operation is, so Esc can say what it would cancel. */
@@ -442,10 +512,37 @@ function SearchSettingPanel({
 
   useEffect(() => refreshConnections(), [refreshConnections]);
 
+  // Opening the panel is one of the moments the environment is known to hold
+  // whatever the lanes are authenticating with, so it is one of the moments the
+  // capture runs. Fire-and-forget, and only re-render when it actually wrote
+  // something — a run that pinned nothing (the usual outcome) must not restart
+  // the connection probes underneath a user who is already reading the rows.
+  useEffect(() => {
+    let live = true;
+    void autoPinSearchCredentials().then(results => {
+      if (!live) return;
+      if (results.some(wroteSearchCredential)) {
+        setOverrideVersion(v => v + 1);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const provider = primarySourceId();
   // Same render-key trick as `enabled` below: the store is memoized, so this
   // re-reads it only after a pin/unpin bumps the version.
-  const pinnedSources = new Set<SearchSourceId>(overrideVersion >= 0 ? listPinnedSearchSources() : []);
+  //
+  // Two stores, one badge. A source's credential is either a key (in
+  // search-credentials.json) or a login (a copied file of its own), and a row
+  // reads "pinned" when EITHER is kept — the user's question is "does this
+  // survive /logout", and the answer does not depend on which kind of
+  // credential happens to be answering it.
+  const pinnedSources = new Set<SearchSourceId>(
+    overrideVersion >= 0 ? [...listPinnedSearchSources(), ...listSearchOAuthCopies()] : [],
+  );
+  const autoPinOverrides = overrideVersion >= 0 ? readSearchAutoPinOverrides() : {};
 
   const sourceRows: SourceRow[] = SEARCH_SOURCE_IDS.map(id => ({
     id,
@@ -464,6 +561,7 @@ function SearchSettingPanel({
     canDisconnect: DISCONNECT_CAPABLE.has(id) || pinnedSources.has(id),
     pinned: pinnedSources.has(id),
     canPin: isPinnableSearchSourceId(id),
+    autoPin: isAutoPinAllowed(id, autoPinOverrides),
   }));
 
   const toggleSource = useCallback((row: SourceRow) => {
@@ -502,6 +600,10 @@ function SearchSettingPanel({
     // The pin store is memoized for the process (it is read on every row of
     // every render), so R is also what picks up a file edited from outside.
     reloadPinnedSearchCredentials();
+    // After the reload, never before: the capture compares against what is
+    // pinned, and comparing against a stale cache would rewrite a file that
+    // already agreed with the environment.
+    void autoPinSearchCredentials().then(() => setOverrideVersion(v => v + 1));
     setDetails({});
     setOverrideVersion(v => v + 1);
     refreshConnections();
@@ -569,12 +671,15 @@ function SearchSettingPanel({
   );
 
   /**
-   * Copy the credential this source is authenticating with right now into occ's
-   * own store, where the account plane cannot reach it.
+   * Copy whatever this source is authenticating with right now into occ's own
+   * store, where the account plane cannot reach it.
    *
-   * The capture is refused rather than approximated when the environment holds
-   * nothing pinnable — most importantly when `ANTHROPIC_API_KEY` is a mirror of
-   * some other provider's secret. See captureCredential.ts.
+   * Both credentials, in one keypress. A key is captured out of the environment
+   * — refused rather than approximated when there is nothing pinnable there,
+   * most importantly when `ANTHROPIC_API_KEY` is a mirror of some other
+   * provider's secret (captureCredential.ts). An OAuth login is copied file and
+   * all (oauthCopies.ts), which is what makes `S` mean something on a row whose
+   * credential is a ChatGPT or Google account rather than a key.
    */
   const pin = useCallback(
     (row: SourceRow) => {
@@ -589,16 +694,44 @@ function SearchSettingPanel({
         return;
       }
       const captured = captureSearchCredentialFromEnvironment(family);
-      if ('error' in captured) {
+      // The capture's refusal is only the answer when there is no login to copy
+      // either. Reporting "no OPENAI_API_KEY to pin" to somebody who is signed
+      // in to ChatGPT is how this key looked broken for exactly the users it
+      // now serves.
+      if ('error' in captured && !hasSearchOAuthLogin(family)) {
         setNotice(`${row.label}: ${captured.error}`);
         return;
       }
       setBusy({ id: row.id, kind: 'pin' });
-      void pinSearchCredential(family, captured.credential)
-        .then(() => {
+      const run = async (): Promise<string> => {
+        const key = 'error' in captured ? undefined : captured.credential;
+        if (key) await pinSearchCredential(family, key);
+        const login = await copySearchOAuthLogin(family);
+        const kept = [...(key ? ['its API key'] : []), ...(login === 'absent' ? [] : ['its login'])].join(' and ');
+        // The login file can go away between the offer and the keypress (a
+        // /logout in another window), which would otherwise print a sentence
+        // with a hole where the credential's name belongs.
+        if (!kept) return `${row.label} had nothing left to pin — press R to re-check.`;
+        // S is also the undo for D's opt-out. Pinning by hand and then having
+        // the next startup refuse to keep the pin fresh is the shape nobody
+        // would predict from either key's description.
+        let automatic = true;
+        try {
+          setSearchAutoPinEnabled(family, true);
+        } catch {
+          // The pin itself landed, which is what the keypress was for. Say so
+          // rather than reporting a failure over a successful write.
+          automatic = false;
+        }
+        return automatic
+          ? `${row.label} pinned ${kept} — kept through /logout and provider switches, and refreshed automatically. D removes it.`
+          : `${row.label} pinned ${kept} — kept through /logout and provider switches. Automatic pinning could not be re-enabled.`;
+      };
+      void run()
+        .then(message => {
           setOverrideVersion(v => v + 1);
           refreshConnections();
-          setNotice(`${row.label} pinned — kept through /logout and provider switches. D removes it.`);
+          setNotice(message);
         })
         .catch((error: unknown) => {
           setNotice(`${row.label} pin failed: ${errorMessageWithCause(error)}`);
@@ -617,12 +750,33 @@ function SearchSettingPanel({
       const family = toCredentialFamily(row.id);
       if (row.pinned && family) {
         setBusy({ id: row.id, kind: 'disconnect' });
+        // Both stores, because the badge names both: leaving the copied login
+        // behind after `D` would clear the pin, redraw the row as still pinned,
+        // and keep serving searches from the credential the user just removed.
+        // Sequentially — two independent files, and the second must run even
+        // though the first is the one that usually has something to delete.
         void unpinSearchCredential(family)
+          .then(() => removeSearchOAuthLogin(family))
           .then(() => {
+            // Removing the pin without recording the decision would last until
+            // the next startup, which then puts the same credential back. D has
+            // to mean "stop doing this", or it means nothing.
+            let optedOut = true;
+            try {
+              setSearchAutoPinEnabled(family, false);
+            } catch {
+              optedOut = false;
+            }
             resetSourceAvailability();
             setOverrideVersion(v => v + 1);
             refreshConnections();
-            setNotice(`${row.label} credential unpinned — this source follows your provider configuration again.`);
+            setNotice(
+              optedOut
+                ? `${row.label} unpinned, and this source will not be pinned automatically again. ` +
+                    `Press S to pin it and restore automatic pinning.`
+                : `${row.label} unpinned — this source follows your provider configuration and login again. ` +
+                    `The opt-out could not be saved, so a later session may pin it again.`,
+            );
           })
           .catch((error: unknown) => {
             setNotice(`${row.label} unpin failed: ${errorMessageWithCause(error)}`);
@@ -815,7 +969,7 @@ function SearchSettingPanel({
               ? `${'↑↓'} navigate · pinning…`
               : busy
                 ? `${'↑↓'} navigate · disconnecting…`
-                : `${'↑↓'} navigate · Space toggle · Enter toggle/log in · S pin credential · D unpin/disconnect · R re-check · Esc close`}
+                : `${'↑↓'} navigate · Space toggle · Enter toggle/log in · S pin now · D unpin (stops auto)/disconnect · R re-check · Esc close`}
         </Text>
       </Box>
     </Box>

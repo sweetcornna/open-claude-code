@@ -4,6 +4,10 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { occConfigDir, occConfigPath } from 'src/config/paths.js'
 import { NonRetryableError } from 'src/services/api/retryClassification.js'
+import {
+  readSearchOAuthCopySync,
+  searchOAuthCopyPath,
+} from 'src/services/search/oauthCopies.js'
 import { sleep } from 'src/utils/process/sleep.js'
 import { writePrivateFileAtomic } from 'src/utils/secureStorage/atomicWrite.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
@@ -47,8 +51,19 @@ type StoredAuthFile = {
   last_refresh?: string
 }
 
-function authFilePath(): string {
+/**
+ * occ's own ChatGPT credential file — the one `/login` writes and `/logout`
+ * deletes.
+ *
+ * Exported so `autoPin.ts` can copy it into web search's own store; nothing
+ * else outside this module should be reading or writing it directly.
+ */
+export function chatgptAuthFilePath(): string {
   return occConfigPath(AUTH_FILE)
+}
+
+function authFilePath(): string {
+  return chatgptAuthFilePath()
 }
 
 function codexAuthFilePath(): string {
@@ -148,8 +163,10 @@ async function readStoredAuth(path: string): Promise<ChatGPTAuthTokens | null> {
   }
 }
 
-async function saveStoredAuth(tokens: ChatGPTAuthTokens): Promise<void> {
-  const path = authFilePath()
+async function saveStoredAuth(
+  tokens: ChatGPTAuthTokens,
+  path: string = authFilePath(),
+): Promise<void> {
   await mkdir(occConfigDir(), { recursive: true })
   const body: StoredAuthFile = {
     auth_mode: 'chatgpt',
@@ -335,11 +352,79 @@ export function isChatGPTAuthEnabled(): boolean {
 }
 
 /**
- * Sync probe for the same two credential files — the async version's rules,
- * without the await.
+ * One credential file a plane may authenticate from, and where a refresh of it
+ * is written back.
+ *
+ * `persistTo` absent means "read only": the tokens may be used, but a refresh
+ * of them lands nowhere. That is not laziness, it is the only honest answer for
+ * a file this CLI does not own — see the two lists below.
+ */
+type AuthSource = { path: string; persistTo?: string }
+
+/**
+ * Where the MAIN LOOP authenticates from. Unchanged, and it must stay that way:
+ * occ's own file, then the Codex CLI's, with a refresh of either written into
+ * occ's own.
+ *
+ * Web search's copy is deliberately absent. A `/logout` deletes the file this
+ * list starts with; if the provider plane could then fall through to the search
+ * copy, logging out would not log anything out.
+ */
+function providerAuthSources(): AuthSource[] {
+  const own = authFilePath()
+  return [
+    { path: own, persistTo: own },
+    { path: codexAuthFilePath(), persistTo: own },
+  ]
+}
+
+/**
+ * Where WEB SEARCH's `codex` lane authenticates from.
+ *
+ * Order, and why each position is where it is:
+ *
+ *   1. occ's own login file. Freshest by construction while a login exists —
+ *      the provider plane refreshes it on every request — so the copy must
+ *      never outrank it.
+ *   2. The search copy. Reached once the login file is gone, which is exactly
+ *      what `/logout` does and exactly what this whole mechanism is for. A
+ *      refresh here writes back to the COPY and never to the login file:
+ *      recreating that file would resurrect the provider-plane login the user
+ *      just ended, from inside a web search.
+ *   3. `~/.codex/auth.json`, the official Codex CLI's own credential file.
+ *      LAST, and read-only. Last because the copy is a deliberate, recorded
+ *      decision about which account search uses, while this file is an incidental
+ *      borrow from another tool that happens to be installed — letting it
+ *      outrank the pin would put the panel's account display and the lane's
+ *      request on different accounts. Read-only because it belongs to another
+ *      CLI (the isolation invariant), and because writing a refresh of it into
+ *      occ's own login file — which is what the provider plane does — would
+ *      recreate that file after a logout.
+ */
+function searchAuthSources(): AuthSource[] {
+  const own = authFilePath()
+  const copy = searchOAuthCopyPath('codex')
+  return [
+    { path: own, persistTo: own },
+    { path: copy, persistTo: copy },
+    { path: codexAuthFilePath() },
+  ]
+}
+
+/**
+ * Sync probe for the credential files — the async version's rules, without the
+ * await.
  *
  * Used where an async read is not an option: the WebSearch source resolver runs
  * inside a synchronous factory.
+ *
+ * IT COUNTS THE SEARCH COPY, and the three probes below do too. That is a
+ * statement about their callers, not a loosening: every one of them is on the
+ * web-search plane (`sourceCredentials.ts`, `codexAdapter`'s route choice, and
+ * `/search-setting`'s row), and on that plane a copied login is a credential
+ * the lane really will authenticate with. The provider plane never asks these —
+ * it asks `getValidChatGPTAuth()`, which is copy-blind by construction
+ * (`providerAuthSources`), so `/logout` still logs the account out.
  *
  * It reads the file rather than just stat-ing it, because `~/.codex/auth.json`
  * has two shapes. The official Codex CLI writes `{"OPENAI_API_KEY": "..."}`
@@ -350,18 +435,30 @@ export function isChatGPTAuthEnabled(): boolean {
  * unused. The three OAuth token fields are the only honest signal.
  */
 export function hasStoredChatGPTAuthSync(): boolean {
-  return [authFilePath(), codexAuthFilePath()].some(path => {
-    if (!existsSync(path)) return false
-    try {
-      const parsed = JSON.parse(readFileSync(path, 'utf8')) as StoredAuthFile
-      const tokens = parsed.tokens
-      return Boolean(
-        tokens?.id_token && tokens.access_token && tokens.refresh_token,
-      )
-    } catch {
-      return false
-    }
-  })
+  const fromDisk = [authFilePath(), codexAuthFilePath()].map(path =>
+    existsSync(path) ? readFileTextOrUndefined(path) : undefined,
+  )
+  return [...fromDisk, readSearchOAuthCopySync('codex')].some(isChatGPTAuthText)
+}
+
+function readFileTextOrUndefined(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
+function isChatGPTAuthText(text: string | undefined): boolean {
+  if (text === undefined) return false
+  try {
+    const tokens = (JSON.parse(text) as StoredAuthFile).tokens
+    return Boolean(
+      tokens?.id_token && tokens.access_token && tokens.refresh_token,
+    )
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -374,16 +471,24 @@ export function hasStoredChatGPTAuthSync(): boolean {
  * network — so the panel and the source resolver can call it freely.
  */
 export async function hasStoredChatGPTAuth(): Promise<boolean> {
-  for (const path of [authFilePath(), codexAuthFilePath()]) {
-    if (await readStoredAuth(path)) return true
+  for (const source of searchAuthSources()) {
+    if (await readStoredAuth(source.path)) return true
   }
   return false
 }
 
-/** Account id of the stored ChatGPT credentials, for status display. */
+/**
+ * Account id of the stored ChatGPT credentials, for status display.
+ *
+ * Read in `searchAuthSources()` order, which is the order the lane itself picks
+ * a credential in — so after a `/logout` this names the account inside the
+ * copied login, which is the one the next search will authenticate as. A
+ * display order that disagreed with the request order is the mislabelling the
+ * `gemini` row already had to be fixed for.
+ */
 export async function getStoredChatGPTAccountId(): Promise<string | undefined> {
-  for (const path of [authFilePath(), codexAuthFilePath()]) {
-    const tokens = await readStoredAuth(path)
+  for (const source of searchAuthSources()) {
+    const tokens = await readStoredAuth(source.path)
     if (tokens) return tokens.accountId ?? extractAccountId(tokens)
   }
   return undefined
@@ -397,13 +502,17 @@ export async function removeChatGPTAuth(): Promise<void> {
   })
 }
 
-export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
-  let tokens = await readStoredAuth(authFilePath())
-  if (!tokens) {
-    tokens = await readStoredAuth(codexAuthFilePath())
-    if (tokens) {
+async function resolveChatGPTAuth(sources: AuthSource[]): Promise<ChatGPTAuth> {
+  let tokens: ChatGPTAuthTokens | null = null
+  let persistTo: string | undefined
+  for (const source of sources) {
+    tokens = await readStoredAuth(source.path)
+    if (!tokens) continue
+    persistTo = source.persistTo
+    if (source.path === codexAuthFilePath()) {
       logForDebugging('[OpenAI] Using ChatGPT auth from Codex auth.json')
     }
+    break
   }
   if (!tokens) {
     // No credentials on disk: nothing was sent, and re-reading an absent file
@@ -425,7 +534,11 @@ export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
   if (expiringSoon || stale) {
     try {
       tokens = await refreshTokens(tokens)
-      await saveStoredAuth(tokens)
+      // Back into the file the tokens came from, or nowhere. Nowhere is the
+      // right answer for `~/.codex/auth.json` on the search plane: writing the
+      // refresh into occ's own login file — which is what the provider plane
+      // does with it — would put a logged-out account back on disk.
+      if (persistTo) await saveStoredAuth(tokens, persistTo)
     } catch (error) {
       // A stale-only refresh is opportunistic: the access token is still
       // valid, so keep serving it rather than failing the request.
@@ -439,4 +552,24 @@ export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
     accessToken: tokens.accessToken,
     accountId: tokens.accountId ?? extractAccountId(tokens),
   }
+}
+
+/**
+ * The main loop's ChatGPT credential: occ's own login file, or the Codex CLI's.
+ *
+ * Never the web-search copy. That is the whole reason the copy exists as a
+ * separate file rather than as a longer fallback chain here — see
+ * `providerAuthSources`.
+ */
+export async function getValidChatGPTAuth(): Promise<ChatGPTAuth> {
+  return resolveChatGPTAuth(providerAuthSources())
+}
+
+/**
+ * WebSearch's ChatGPT credential: the login file, then the copy web search
+ * pinned, then the Codex CLI's file (read-only). See `searchAuthSources` for
+ * why that order and why a refresh lands where it does.
+ */
+export async function getValidChatGPTAuthForSearch(): Promise<ChatGPTAuth> {
+  return resolveChatGPTAuth(searchAuthSources())
 }

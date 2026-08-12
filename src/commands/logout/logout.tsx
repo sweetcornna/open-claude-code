@@ -11,6 +11,7 @@ import { resetOpencodeCredentialCache } from '../../services/api/opencodeCredent
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
+import { listSearchOAuthCopies } from '../../services/search/oauthCopies.js';
 import { listPinnedSearchSources } from '../../services/search/searchCredentialStore.js';
 import { getClaudeAIOAuthTokens, removeApiKey, removeClaudeAIOAuthTokens } from '../../utils/auth/auth.js';
 import { clearBetasCaches } from '../../utils/model/betas.js';
@@ -42,16 +43,25 @@ const ANTHROPIC_CREDENTIAL_ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKE
  * pointer is dropped), and everything account-independent (MCP servers, hooks,
  * themes, web-search source overrides).
  *
- * Credentials PINNED for web search (services/search/searchCredentialStore.ts)
- * survive too, and that is a deliberate answer rather than an oversight. A
- * pinned key is the user having said "this one is for search" — it is not the
- * session's login, and this account plane never wrote it. Removing it here is
- * also unnecessary: pinning is opt-in and per source, so anyone who wants it
- * gone can say so, whereas a logout that silently revoked it would recreate the
- * exact failure the store was built to end (search quietly degrading to the
- * keyless lane with nothing said). What logout must not do is stay quiet about
- * it, so `call()` below names every source that kept a credential and says how
- * to remove it.
+ * Credentials PINNED for web search survive too — both kinds: the API keys in
+ * services/search/searchCredentialStore.ts, and the COPIES of the ChatGPT and
+ * Google login files in services/search/oauthCopies.ts. That is a deliberate
+ * answer rather than an oversight. A pinned credential is the user having said
+ * "this one is for search"; it is not the session's login, and this account
+ * plane never wrote it. Removing it here is also unnecessary: pinning is per
+ * source and can be switched off, whereas a logout that silently revoked it
+ * would recreate the exact failure the store was built to end (search quietly
+ * degrading to the keyless lane with nothing said).
+ *
+ * The copies are not a hole in the logout above. `removeChatGPTAuth()` and
+ * `removeAntigravityAuth()` still delete the login files, so nothing the
+ * provider plane authenticates with is left: the search planes are separate
+ * read paths (`getValidChatGPTAuthForSearch`, the Antigravity `'search'`
+ * plane) that the main loop cannot reach, and a token refreshed through one
+ * of them is written back to the copy, never to the file just deleted.
+ *
+ * What logout must not do is stay quiet about it, so `call()` below names every
+ * source that kept a credential and says how to remove it.
  */
 export async function performLogout({ clearOnboarding = false }: { clearOnboarding?: boolean }): Promise<void> {
   // Flush telemetry BEFORE clearing credentials to prevent org data leakage
@@ -160,8 +170,11 @@ export async function call(): Promise<React.ReactNode> {
   await performLogout({ clearOnboarding: true });
 
   // Read AFTER the logout: what is listed here is what genuinely survived it,
-  // not what happened to be there beforehand.
-  const keptForSearch = listPinnedSearchSources();
+  // not what happened to be there beforehand. Both stores, because both kinds
+  // of pinned credential outlive this — a source whose copied OAuth login is
+  // still serving searches has to be named for the same reason a pinned key
+  // does, and it is the one a user would least expect to have survived.
+  const keptForSearch = [...new Set([...listPinnedSearchSources(), ...listSearchOAuthCopies()])].sort();
   const message =
     keptForSearch.length > 0 ? (
       <Text>

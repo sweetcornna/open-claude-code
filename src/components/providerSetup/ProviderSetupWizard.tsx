@@ -47,6 +47,7 @@ import {
 import { parseMaxContextInput } from './maxContext.js';
 import { runEndpointRequests } from './endpointRequests.js';
 import { applyDeepSeekAnthropicWire } from 'src/utils/model/deepseekWire.js';
+import { autoPinSearchCredentials } from 'src/services/search/autoPin.js';
 import { prefillTierFields } from './tierPersistence.js';
 import { applyProviderSaveEnv, planProviderSave, type ProviderSaveOutcome } from './savePlan.js';
 import { EFFORT_LEVELS } from 'src/utils/model/effort.js';
@@ -560,6 +561,13 @@ function ModelStep({
     // "Not logged in · Please run /login".
     applyDeepSeekAnthropicWire();
     await spec.afterSave?.({ credentialsConfigured: plan.credentialsConfigured });
+    // A save is the one moment a just-entered key is certain to be in the
+    // environment, so it is where web search copies it into its own store —
+    // otherwise the first /logout or provider switch after this takes it, and
+    // search degrades to the keyless lane with nothing said (autoPin.ts).
+    // Fire-and-forget: onSaved closes the wizard and must not wait on a write,
+    // and the capture refuses anything it should not store on its own.
+    void autoPinSearchCredentials();
     onSaved(plan.outcome);
   };
 
