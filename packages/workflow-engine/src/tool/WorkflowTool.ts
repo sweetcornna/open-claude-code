@@ -31,6 +31,10 @@ import {
   type WorkflowInput,
   type WorkflowRunInput,
 } from './schema.js'
+import {
+  hasNoHiddenControlCharacters,
+  resolvedScriptControlCharMessage,
+} from './controlChars.js'
 import { persistInlineScript } from './persistInline.js'
 
 /** Self-contained tool descriptor (core wiring wraps it with buildTool). Zero core-layer dependencies. */
@@ -192,6 +196,19 @@ export function createWorkflowTool(
         workflowFile = resolved.workflowFile
       } catch (e) {
         return { data: { output: `Error: ${(e as Error).message}` } }
+      }
+
+      // Disk-loaded scripts (name/scriptPath) never pass through the schema refinement,
+      // so they get the same control-character screen here — before parseScript, before
+      // registration, and before anything renders the source to the user.
+      if (!hasNoHiddenControlCharacters(script)) {
+        return {
+          data: {
+            output: `Error: ${resolvedScriptControlCharMessage(
+              workflowFile ?? runInput.scriptPath ?? runInput.name ?? 'disk',
+            )}`,
+          },
+        }
       }
 
       // Quick validation (meta + syntax): on failure return an error to the model directly, do not enter the background

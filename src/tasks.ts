@@ -4,14 +4,16 @@ import { DreamTask } from './tasks/DreamTask/DreamTask.js'
 import { InProcessTeammateTask } from './tasks/InProcessTeammateTask/task.js'
 import { LocalAgentTask } from './tasks/LocalAgentTask/LocalAgentTask.js'
 import { LocalShellTask } from './tasks/LocalShellTask/LocalShellTask.js'
+// Not feature-gated (it used to sit behind MONITOR_TOOL): auto-backgrounded MCP tool
+// calls register as monitor_mcp tasks in every build, and stopTask() resolves the killer
+// through getTaskByType — an absent entry means TaskStop cannot stop them, while the
+// message handed to the model tells it to do exactly that.
+import { MonitorMcpTask } from './tasks/MonitorMcpTask/MonitorMcpTask.js'
 import { RemoteAgentTask } from './tasks/RemoteAgentTask/RemoteAgentTask.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const LocalWorkflowTask: Task | null = feature('WORKFLOW_SCRIPTS')
   ? require('./tasks/LocalWorkflowTask/LocalWorkflowTask.js').LocalWorkflowTask
-  : null
-const MonitorMcpTask: Task | null = feature('MONITOR_TOOL')
-  ? require('./tasks/MonitorMcpTask/MonitorMcpTask.js').MonitorMcpTask
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -27,9 +29,9 @@ export function getAllTasks(): Task[] {
     RemoteAgentTask,
     InProcessTeammateTask,
     DreamTask,
+    MonitorMcpTask,
   ]
   if (LocalWorkflowTask) tasks.push(LocalWorkflowTask)
-  if (MonitorMcpTask) tasks.push(MonitorMcpTask)
   return tasks
 }
 

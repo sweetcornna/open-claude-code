@@ -33,6 +33,20 @@ import {
   type WorkflowStatusInput,
 } from './tool/schema.js'
 import { persistInlineScript } from './tool/persistInline.js'
+import {
+  argsHaveNoHiddenControlCharacters,
+  hasNoHiddenControlCharacters,
+  resolvedScriptControlCharMessage,
+  WORKFLOW_ARGS_CONTROL_CHAR_MESSAGE,
+  WORKFLOW_SCRIPT_CONTROL_CHAR_MESSAGE,
+} from './tool/controlChars.js'
+export {
+  argsHaveNoHiddenControlCharacters,
+  hasNoHiddenControlCharacters,
+  resolvedScriptControlCharMessage,
+  WORKFLOW_ARGS_CONTROL_CHAR_MESSAGE,
+  WORKFLOW_SCRIPT_CONTROL_CHAR_MESSAGE,
+}
 export {
   createWorkflowTool,
   type WorkflowToolDescriptor,

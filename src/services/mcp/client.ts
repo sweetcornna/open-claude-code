@@ -28,7 +28,17 @@ import treeKill from 'tree-kill'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
-import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
+import {
+  getIsNonInteractiveSession,
+  getOriginalCwd,
+  getSessionId,
+} from '../../bootstrap/state.js'
+import {
+  callMcpToolWithAutoBackground,
+  getMcpAutoBackgroundMs,
+  mcpBackgroundedMessage,
+  mcpContentToText,
+} from './autoBackground.js'
 import type { Command } from '../../commands.js'
 import { getOauthConfig } from '../../constants/oauth.js'
 import type { AppState } from '../../state/AppState.js'
@@ -2045,122 +2055,186 @@ const fetchToolsForClientMemoized = memoizeWithLRU(
 
               const startTime = Date.now()
               const MAX_SESSION_RETRIES = 1
-              for (let attempt = 0; ; attempt++) {
-                try {
-                  const connectedClient = await ensureConnectedClient(client)
-                  const mcpResult = await callMCPToolWithUrlElicitationRetry({
-                    client: connectedClient,
-                    clientConnection: client,
-                    tool: tool.name,
-                    args,
-                    meta,
-                    signal: context.abortController.signal,
-                    setAppState: context.setAppState,
-                    onProgress:
-                      onProgress && toolUseId
-                        ? progressData => {
-                            onProgress({
-                              toolUseID: toolUseId,
-                              data: progressData,
-                            })
-                          }
-                        : undefined,
-                    handleElicitation: context.handleElicitation,
-                  })
-
-                  // Emit progress when tool completes successfully
-                  if (onProgress && toolUseId) {
-                    onProgress({
-                      toolUseID: toolUseId,
-                      data: {
-                        type: 'mcp_progress',
-                        status: 'completed',
-                        serverName: client.name,
-                        toolName: tool.name,
-                        elapsedTimeMs: Date.now() - startTime,
-                      },
+              // Flipped once the call is handed to a background task. After that the
+              // tool_use is already answered, so late terminal progress for this
+              // toolUseId would re-open a row the UI has finished with.
+              let handedOff = false
+              const invoke = async (
+                signal: AbortSignal,
+              ): Promise<MCPToolCallResult> => {
+                for (let attempt = 0; ; attempt++) {
+                  try {
+                    const connectedClient = await ensureConnectedClient(client)
+                    const mcpResult = await callMCPToolWithUrlElicitationRetry({
+                      client: connectedClient,
+                      clientConnection: client,
+                      tool: tool.name,
+                      args,
+                      meta,
+                      signal,
+                      setAppState: context.setAppState,
+                      onProgress:
+                        onProgress && toolUseId
+                          ? progressData => {
+                              if (handedOff) return
+                              onProgress({
+                                toolUseID: toolUseId,
+                                data: progressData,
+                              })
+                            }
+                          : undefined,
+                      handleElicitation: context.handleElicitation,
                     })
-                  }
 
-                  return {
-                    data: mcpResult.content,
-                    ...((mcpResult._meta || mcpResult.structuredContent) && {
-                      mcpMeta: {
-                        ...(mcpResult._meta && {
-                          _meta: mcpResult._meta,
-                        }),
-                        ...(mcpResult.structuredContent && {
-                          structuredContent: mcpResult.structuredContent,
-                        }),
-                      },
-                    }),
-                  }
-                } catch (error) {
-                  // Session expired — the connection cache has been
-                  // cleared, so retry with a fresh client.
-                  if (
-                    error instanceof McpSessionExpiredError &&
-                    attempt < MAX_SESSION_RETRIES
-                  ) {
-                    logMCPDebug(
-                      client.name,
-                      `Retrying tool '${tool.name}' after session recovery`,
-                    )
-                    continue
-                  }
-
-                  // Emit progress when tool fails
-                  if (onProgress && toolUseId) {
-                    onProgress({
-                      toolUseID: toolUseId,
-                      data: {
-                        type: 'mcp_progress',
-                        status: 'failed',
-                        serverName: client.name,
-                        toolName: tool.name,
-                        elapsedTimeMs: Date.now() - startTime,
-                      },
-                    })
-                  }
-                  // Wrap MCP SDK errors so telemetry gets useful context
-                  // instead of just "Error" or "McpError" (the constructor
-                  // name). MCP SDK errors are protocol-level messages and
-                  // don't contain user file paths or code.
-                  if (
-                    error instanceof Error &&
-                    !(
-                      error instanceof
-                      TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-                    )
-                  ) {
-                    const name = error.constructor.name
-                    if (name === 'Error') {
-                      throw new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
-                        error.message,
-                        error.message.slice(0, 200),
-                      )
+                    // Emit progress when tool completes successfully
+                    if (onProgress && toolUseId && !handedOff) {
+                      onProgress({
+                        toolUseID: toolUseId,
+                        data: {
+                          type: 'mcp_progress',
+                          status: 'completed',
+                          serverName: client.name,
+                          toolName: tool.name,
+                          elapsedTimeMs: Date.now() - startTime,
+                        },
+                      })
                     }
-                    // Both SDK generations carry a machine-readable code:
-                    // v1's McpError and v2's ProtocolError use numeric
-                    // JSON-RPC codes; v2's SdkError (local-only failures such
-                    // as REQUEST_TIMEOUT / CONNECTION_CLOSED) uses a
-                    // descriptive string. Either is safe to put in telemetry.
+
+                    return mcpResult
+                  } catch (error) {
+                    // Session expired — the connection cache has been
+                    // cleared, so retry with a fresh client.
                     if (
-                      (error instanceof ProtocolError ||
-                        error instanceof SdkError ||
-                        name === 'McpError') &&
-                      'code' in error &&
-                      (typeof error.code === 'number' ||
-                        typeof error.code === 'string')
+                      error instanceof McpSessionExpiredError &&
+                      attempt < MAX_SESSION_RETRIES
                     ) {
-                      throw new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
-                        error.message,
-                        `${name} ${error.code}`,
+                      logMCPDebug(
+                        client.name,
+                        `Retrying tool '${tool.name}' after session recovery`,
                       )
+                      continue
                     }
+
+                    // Emit progress when tool fails
+                    if (onProgress && toolUseId && !handedOff) {
+                      onProgress({
+                        toolUseID: toolUseId,
+                        data: {
+                          type: 'mcp_progress',
+                          status: 'failed',
+                          serverName: client.name,
+                          toolName: tool.name,
+                          elapsedTimeMs: Date.now() - startTime,
+                        },
+                      })
+                    }
+                    // Wrap MCP SDK errors so telemetry gets useful context
+                    // instead of just "Error" or "McpError" (the constructor
+                    // name). MCP SDK errors are protocol-level messages and
+                    // don't contain user file paths or code.
+                    if (
+                      error instanceof Error &&
+                      !(
+                        error instanceof
+                        TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+                      )
+                    ) {
+                      const name = error.constructor.name
+                      if (name === 'Error') {
+                        throw new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
+                          error.message,
+                          error.message.slice(0, 200),
+                        )
+                      }
+                      // Both SDK generations carry a machine-readable code:
+                      // v1's McpError and v2's ProtocolError use numeric
+                      // JSON-RPC codes; v2's SdkError (local-only failures such
+                      // as REQUEST_TIMEOUT / CONNECTION_CLOSED) uses a
+                      // descriptive string. Either is safe to put in telemetry.
+                      if (
+                        (error instanceof ProtocolError ||
+                          error instanceof SdkError ||
+                          name === 'McpError') &&
+                        'code' in error &&
+                        (typeof error.code === 'number' ||
+                          typeof error.code === 'string')
+                      ) {
+                        throw new TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
+                          error.message,
+                          `${name} ${error.code}`,
+                        )
+                      }
+                    }
+                    throw error
                   }
-                  throw error
                 }
+              }
+
+              // Auto-backgrounding: an MCP call has no effective timeout
+              // (DEFAULT_MCP_TOOL_TIMEOUT_MS ~= 28h), so without this a slow
+              // server holds the whole turn. Disabled (0) keeps the exact
+              // pre-existing path — no extra controller, no race, no task.
+              const autoBackgroundMs = getMcpAutoBackgroundMs(client.config, {
+                isNonInteractiveSession: getIsNonInteractiveSession(),
+              })
+              const mcpResult =
+                autoBackgroundMs > 0
+                  ? await callMcpToolWithAutoBackground<MCPToolCallResult>({
+                      run: invoke,
+                      serverName: client.name,
+                      toolName: tool.name,
+                      ...(toolUseId ? { toolUseId } : {}),
+                      ...(context.agentId ? { agentId: context.agentId } : {}),
+                      parentAbortController: context.abortController,
+                      autoBackgroundMs,
+                      // Subagents must use the shared setter or the task never
+                      // reaches the registry the UI and TaskStop read.
+                      setAppState:
+                        context.setAppStateForTasks ?? context.setAppState,
+                      // A server waiting on an elicitation is blocked on the
+                      // user, not slow. Backgrounding then would strand a
+                      // dialog the user is looking at.
+                      hasPendingElicitation: () =>
+                        context
+                          .getAppState()
+                          .elicitation.queue.some(
+                            event => event.serverName === client.name,
+                          ),
+                      onBackgrounded: () => {
+                        handedOff = true
+                      },
+                      describeResult: result =>
+                        mcpContentToText(result.content),
+                      buildBackgroundedResult: ({
+                        taskId,
+                        elapsedSeconds,
+                      }) => ({
+                        content: [
+                          {
+                            type: 'text' as const,
+                            text: mcpBackgroundedMessage(
+                              `${client.name} - ${tool.name}`,
+                              taskId,
+                              elapsedSeconds,
+                            ),
+                          },
+                        ],
+                      }),
+                    })
+                  : await invoke(context.abortController.signal)
+
+              return {
+                data: mcpResult.content,
+                ...((mcpResult._meta || mcpResult.structuredContent) && {
+                  mcpMeta: {
+                    ...(mcpResult._meta && {
+                      _meta: mcpResult._meta,
+                    }),
+                    ...(mcpResult.structuredContent && {
+                      structuredContent: mcpResult.structuredContent,
+                    }),
+                  },
+                }),
               }
             },
             userFacingName() {

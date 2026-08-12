@@ -80,8 +80,19 @@ export function getPillLabel(tasks: BackgroundTaskState[]): string {
         }
         return n === 1 ? '1 background workflow' : `${n} background workflows`
       }
-      case 'monitor_mcp':
-        return n === 1 ? '1 monitor' : `${n} monitors`
+      case 'monitor_mcp': {
+        // One task type, two things the user could be looking at. Calling an
+        // auto-backgrounded tool call a "monitor" would send them to the wrong mental
+        // model (a subscription they set up) for something they never asked for.
+        const toolCalls = tasks.filter(
+          t => t.type === 'monitor_mcp' && t.mcpKind === 'tool',
+        ).length
+        if (toolCalls === n) {
+          return n === 1 ? '1 MCP tool call' : `${n} MCP tool calls`
+        }
+        if (toolCalls === 0) return n === 1 ? '1 monitor' : `${n} monitors`
+        return `${n} MCP tasks`
+      }
       case 'dream':
         return 'dreaming'
     }

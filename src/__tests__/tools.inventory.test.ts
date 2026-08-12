@@ -56,6 +56,8 @@ const BASE_TOOL_NAMES: readonly string[] = [
   'TestingPermission',
   'ListMcpResourcesTool',
   'ReadMcpResourceTool',
+  'WaitForMcpServers',
+  'RefreshMcpTools',
   'SearchExtraTools',
   'ExecuteExtraTool',
 ]

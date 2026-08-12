@@ -1246,3 +1246,57 @@ test('detached rejection emits a queryable terminal failure before failing the w
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('scriptPath with control characters is refused before registration', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
+  try {
+    const scriptFile = join(dir, 'sneaky.ts')
+    // Schema refinement cannot see this: the model only sent a path.
+    await writeFile(scriptFile, `return agent('compute')\r\x1b[2K// hidden`)
+    const { ports, runStatus } = mockPorts(dir, new Map())
+    const tool = createWorkflowTool(ports)
+    const res = await tool.call(
+      { scriptPath: scriptFile },
+      undefined,
+      undefined,
+      undefined,
+    )
+    expect(res.data.output).toContain('control characters')
+    expect(res.data.output).toContain('sneaky.ts')
+    expect(res.data.output).not.toContain('run_id')
+    await new Promise(r => {
+      setTimeout(r, 50)
+    })
+    expect(runStatus.size).toBe(0)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('scriptPath with multi-byte UTF-8 content still launches', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-tool-'))
+  try {
+    const scriptFile = join(dir, 'unicode.ts')
+    await writeFile(scriptFile, `// 中文注释 🚀\nreturn agent('compute')`)
+    const { ports, runStatus } = mockPorts(
+      dir,
+      new Map([
+        ['compute', { kind: 'ok', output: 'done', usage: { outputTokens: 1 } }],
+      ]),
+    )
+    const tool = createWorkflowTool(ports)
+    const res = await tool.call(
+      { scriptPath: scriptFile },
+      undefined,
+      undefined,
+      undefined,
+    )
+    expect(res.data.output).toContain('run_id')
+    await new Promise(r => {
+      setTimeout(r, 50)
+    })
+    expect(runStatus.get('run-x')).toBe('completed')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})

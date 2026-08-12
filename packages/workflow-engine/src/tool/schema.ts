@@ -5,6 +5,12 @@ import {
   MAX_TOTAL_AGENTS,
   WORKFLOW_DIR_NAME,
 } from '../constants.js'
+import {
+  argsHaveNoHiddenControlCharacters,
+  hasNoHiddenControlCharacters,
+  WORKFLOW_ARGS_CONTROL_CHAR_MESSAGE,
+  WORKFLOW_SCRIPT_CONTROL_CHAR_MESSAGE,
+} from './controlChars.js'
 
 const agentIdSchema = z
   .number()
@@ -55,6 +61,13 @@ export const workflowRunInputSchema = z
       .describe('Launch a workflow run. This is the default when omitted.'),
     script: z
       .string()
+      // Rejected at the schema boundary, not in call(): input validation runs before the
+      // permission dialog is built, so a script carrying an escape sequence never reaches
+      // the surface it would be lying to.
+      .refine(
+        hasNoHiddenControlCharacters,
+        WORKFLOW_SCRIPT_CONTROL_CHAR_MESSAGE,
+      )
       .optional()
       .describe('Self-contained workflow script source (inline)'),
     name: z
@@ -69,6 +82,12 @@ export const workflowRunInputSchema = z
       .describe('Absolute path to an existing script file'),
     args: z
       .unknown()
+      // The dialog stringifies args next to the script, so the same hiding trick works
+      // from here; upstream only screens `script`, this closes the neighbouring hole.
+      .refine(
+        argsHaveNoHiddenControlCharacters,
+        WORKFLOW_ARGS_CONTROL_CHAR_MESSAGE,
+      )
       .optional()
       .describe(
         'The args global variable passed through to the script. Pass a real JSON value (object/array/string), not a JSON string.',

@@ -87,6 +87,8 @@ import { AskUserQuestionTool } from './tools/AskUserQuestionTool/AskUserQuestion
 import { LSPTool } from './tools/LSPTool/LSPTool.js'
 import { ListMcpResourcesTool } from './tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { ReadMcpResourceTool } from './tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
+import { WaitForMcpServersTool } from './tools/WaitForMcpServersTool/WaitForMcpServersTool.js'
+import { RefreshMcpToolsTool } from './tools/RefreshMcpToolsTool/RefreshMcpToolsTool.js'
 import { SearchExtraToolsTool } from './tools/SearchExtraToolsTool/SearchExtraToolsTool.js'
 import { ExecuteTool } from './tools/ExecuteTool/ExecuteTool.js'
 import { EnterPlanModeTool } from './tools/EnterPlanModeTool/EnterPlanModeTool.js'
@@ -231,6 +233,12 @@ export function getAllBaseTools(env: RegistryEnv): Tools {
     ...(process.env.NODE_ENV === 'test' ? [TestingPermissionTool] : []),
     ListMcpResourcesTool,
     ReadMcpResourceTool,
+    // Grouped with the other MCP tools rather than appended at the very end: these two
+    // are unconditional (they answer usefully with zero servers — "nothing to wait for",
+    // "no servers to refresh"), so keeping the MCP block contiguous is what makes the
+    // ordering readable at all. Both are deferred: absent from CORE_TOOLS.
+    WaitForMcpServersTool,
+    RefreshMcpToolsTool,
     // Include SearchExtraToolsTool when tool search might be enabled (optimistic check)
     // The actual decision to defer tools happens at request time in claude.ts
     ...(env.isSearchExtraToolsEnabled ? [SearchExtraToolsTool] : []),
