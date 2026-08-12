@@ -68,3 +68,14 @@ export function getUserPromptSubmitHookBlockingMessage(
 ): string {
   return `UserPromptSubmit operation blocked by hook:\n${blockingError.blockingError}`
 }
+
+/**
+ * Format a blocking error from a UserPromptExpansion hook.
+ * @param blockingError Blocking error from a hook
+ * @returns Formatted blocking message
+ */
+export function getUserPromptExpansionHookBlockingMessage(
+  blockingError: HookBlockingError,
+): string {
+  return `UserPromptExpansion operation blocked by hook:\n${blockingError.blockingError}`
+}

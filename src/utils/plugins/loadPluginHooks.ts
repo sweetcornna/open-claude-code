@@ -35,6 +35,7 @@ function convertPluginHooksToMatchers(
     PermissionDenied: [],
     Notification: [],
     UserPromptSubmit: [],
+    UserPromptExpansion: [],
     SessionStart: [],
     SessionEnd: [],
     Stop: [],
@@ -57,6 +58,7 @@ function convertPluginHooksToMatchers(
     CwdChanged: [],
     DirectoryAdded: [],
     FileChanged: [],
+    MessageDisplay: [],
   }
 
   if (!plugin.hooksConfig) {
@@ -98,6 +100,7 @@ export const loadPluginHooks = memoize(async (): Promise<void> => {
     PermissionDenied: [],
     Notification: [],
     UserPromptSubmit: [],
+    UserPromptExpansion: [],
     SessionStart: [],
     SessionEnd: [],
     Stop: [],
@@ -120,6 +123,7 @@ export const loadPluginHooks = memoize(async (): Promise<void> => {
     CwdChanged: [],
     DirectoryAdded: [],
     FileChanged: [],
+    MessageDisplay: [],
   }
 
   // Process each enabled plugin

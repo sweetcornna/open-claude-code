@@ -70,6 +70,20 @@ declare module '*/sdk/coreTypes.generated.js' {
   export type PermissionDeniedHookInput = HookInput
   export type NotificationHookInput = HookInput & { message: string }
   export type UserPromptSubmitHookInput = HookInput & { prompt: string }
+  export type UserPromptExpansionHookInput = HookInput & {
+    expansion_type: 'slash_command' | 'mcp_prompt'
+    command_name: string
+    command_args: string
+    command_source?: string
+    prompt: string
+  }
+  export type MessageDisplayHookInput = HookInput & {
+    turn_id: string
+    message_id: string
+    index: number
+    final: boolean
+    delta: string
+  }
   export type SessionStartHookInput = HookInput
   export type SessionEndHookInput = HookInput & { exit_reason: string }
   export type SetupHookInput = HookInput

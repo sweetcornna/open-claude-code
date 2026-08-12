@@ -23,6 +23,7 @@ import {
   ERROR_MESSAGE_USER_ABORT,
   type RecompactionInfo,
 } from './compact.js'
+import { resolveActiveAutoCompactWindow } from './autoCompactWindow.js'
 import { runPostCompactCleanup } from './postCompactCleanup.js'
 import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 
@@ -39,19 +40,17 @@ export function getEffectiveContextWindowSize(
     getMaxOutputTokensForModel(model),
     MAX_OUTPUT_TOKENS_FOR_SUMMARY,
   )
-  let contextWindow = getContextWindowForModel(
+  const modelContextWindow = getContextWindowForModel(
     model,
     getSdkBetas(),
     settingsSlot,
   )
 
-  const autoCompactWindow = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW
-  if (autoCompactWindow) {
-    const parsed = parseInt(autoCompactWindow, 10)
-    if (!isNaN(parsed) && parsed > 0) {
-      contextWindow = Math.min(contextWindow, parsed)
-    }
-  }
+  // The auto-compact window only ever narrows the model's real window; the
+  // context-window precedence chain lives in getContextWindowForModel and is
+  // deliberately not duplicated here. See autoCompactWindow.ts.
+  const { window: contextWindow } =
+    resolveActiveAutoCompactWindow(modelContextWindow)
 
   return contextWindow - reservedTokensForSummary
 }

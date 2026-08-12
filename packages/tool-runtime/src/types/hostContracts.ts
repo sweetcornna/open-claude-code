@@ -237,6 +237,7 @@ export type HookEvent =
   | 'PostToolUseFailure'
   | 'Notification'
   | 'UserPromptSubmit'
+  | 'UserPromptExpansion'
   | 'SessionStart'
   | 'SessionEnd'
   | 'Stop'
@@ -260,6 +261,7 @@ export type HookEvent =
   | 'CwdChanged'
   | 'DirectoryAdded'
   | 'FileChanged'
+  | 'MessageDisplay'
 
 /** Mirrors `src/types/hooks.ts`. */
 export type HookProgress = {

@@ -434,9 +434,14 @@ export async function getMatchingHooks(
       case 'SubagentStop':
         matchQuery = hookInput.agent_type as string
         break
+      case 'UserPromptExpansion':
+        matchQuery = hookInput.command_name as string
+        break
       case 'TeammateIdle':
       case 'TaskCreated':
       case 'TaskCompleted':
+      // MessageDisplay fires per streamed delta and has no matcher field.
+      case 'MessageDisplay':
         break
       case 'Elicitation':
         matchQuery = hookInput.mcp_server_name as string

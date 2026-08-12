@@ -2,6 +2,15 @@
  * Barrel over src/utils/hooks/. Every name below used to live in this file;
  * the modules behind it are the same code, moved verbatim. Keep re-exports
  * explicit because the characterization test pins the runtime surface.
+ *
+ * The barrel is deliberately NOT exhaustive. `executeMessageDisplayHooks`,
+ * `executeUserPromptExpansionHooks` and `getUserPromptExpansionHookBlockingMessage`
+ * are reachable only from their leaf modules on purpose: importing this file
+ * pulls in lifecycleHooks.ts (compaction, session storage, elicitation) plus
+ * toolHooks/commandHooks, and their call sites — QueryEngine.ts via
+ * hooks/messageDisplay.ts, and processUserInput/processSlashCommand.tsx — sit
+ * where that import set closes 17 new import cycles. Do not "restore
+ * consistency" by adding them here and routing the callers through the barrel.
  */
 export {
   createBaseHookInput,

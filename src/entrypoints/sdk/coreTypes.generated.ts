@@ -120,6 +120,22 @@ export type HookInput =
     })
   | (HookInputBase & { hook_event_name: 'UserPromptSubmit'; prompt: string })
   | (HookInputBase & {
+      hook_event_name: 'UserPromptExpansion'
+      expansion_type: 'slash_command' | 'mcp_prompt'
+      command_name: string
+      command_args: string
+      command_source?: string
+      prompt: string
+    })
+  | (HookInputBase & {
+      hook_event_name: 'MessageDisplay'
+      turn_id: string
+      message_id: string
+      index: number
+      final: boolean
+      delta: string
+    })
+  | (HookInputBase & {
       hook_event_name: 'SessionStart'
       source: 'startup' | 'resume' | 'clear' | 'compact'
       agent_type?: string
@@ -315,6 +331,8 @@ export type SyncHookJSONOutput = {
     | { hookEventName: 'CwdChanged'; watchPaths?: string[] }
     | { hookEventName: 'FileChanged'; watchPaths?: string[] }
     | { hookEventName: 'WorktreeCreate'; worktreePath: string }
+    | { hookEventName: 'UserPromptExpansion'; additionalContext?: string }
+    | { hookEventName: 'MessageDisplay'; displayContent?: string }
 }
 
 export type HookJSONOutput = AsyncHookJSONOutput | SyncHookJSONOutput
@@ -326,6 +344,20 @@ export type PermissionRequestHookInput = HookInput & { tool_name: string }
 export type PermissionDeniedHookInput = HookInput
 export type NotificationHookInput = HookInput & { message: string }
 export type UserPromptSubmitHookInput = HookInput & { prompt: string }
+export type UserPromptExpansionHookInput = HookInput & {
+  expansion_type: 'slash_command' | 'mcp_prompt'
+  command_name: string
+  command_args: string
+  command_source?: string
+  prompt: string
+}
+export type MessageDisplayHookInput = HookInput & {
+  turn_id: string
+  message_id: string
+  index: number
+  final: boolean
+  delta: string
+}
 export type SessionStartHookInput = HookInput
 export type SessionEndHookInput = HookInput & { exit_reason: string }
 export type SetupHookInput = HookInput

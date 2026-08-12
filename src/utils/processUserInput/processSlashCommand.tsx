@@ -50,6 +50,8 @@ import { getFsImplementation } from '../filesystem/fsOperations.js';
 import { isFullscreenEnvEnabled } from '../terminal/fullscreen.js';
 import { toArray } from '../collections/generators.js';
 import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
+import { executeUserPromptExpansionHooks } from '../hooks/promptExpansionHooks.js';
+import { getUserPromptExpansionHookBlockingMessage } from '../hooks/messages.js';
 import { logError } from '../telemetry/log.js';
 import { enqueue, enqueuePendingNotification } from '../session/messageQueueManager.js';
 import {
@@ -937,9 +939,17 @@ async function getMessagesForSlashCommand(
       }
       case 'prompt': {
         try {
+          // UserPromptExpansion fires before the command expands, so a hook can
+          // veto the expansion or attach context to it. Fork and inline paths
+          // both go through here.
+          const { hookMessages, blocked } = await runUserPromptExpansionHook(command, args, context);
+          if (blocked) {
+            return blocked;
+          }
+
           // Check if command should run as forked sub-agent
           if (command.context === 'fork') {
-            return await executeForkedSlashCommand(
+            const forked = await executeForkedSlashCommand(
               command,
               args,
               context,
@@ -948,9 +958,10 @@ async function getMessagesForSlashCommand(
               canUseTool ?? hasPermissionsToUseTool,
               autonomy,
             );
+            return hookMessages.length > 0 ? { ...forked, messages: [...hookMessages, ...forked.messages] } : forked;
           }
 
-          return await getMessagesForPromptSlashCommand(
+          const expanded = await getMessagesForPromptSlashCommand(
             command,
             args,
             context,
@@ -958,6 +969,9 @@ async function getMessagesForSlashCommand(
             imageContentBlocks,
             uuid,
           );
+          return hookMessages.length > 0
+            ? { ...expanded, messages: [...hookMessages, ...expanded.messages] }
+            : expanded;
         } catch (e) {
           // Handle abort errors specially to show proper "Interrupted" message
           if (e instanceof AbortError) {
@@ -1060,6 +1074,105 @@ function formatCommandLoadingMetadata(command: CommandBase & PromptCommand, args
     return formatSkillLoadingMetadata(command.name, command.progressMessage);
   }
   return formatSlashCommandLoadingMetadata(command.name, args);
+}
+
+const MAX_EXPANSION_HOOK_OUTPUT_LENGTH = 10000;
+
+function truncateExpansionHookOutput(content: string): string {
+  if (content.length > MAX_EXPANSION_HOOK_OUTPUT_LENGTH) {
+    return `${content.substring(0, MAX_EXPANSION_HOOK_OUTPUT_LENGTH)}… [output truncated - exceeded ${MAX_EXPANSION_HOOK_OUTPUT_LENGTH} characters]`;
+  }
+  return content;
+}
+
+/**
+ * Run UserPromptExpansion hooks for a slash command that is about to expand
+ * into a prompt (official 2.1.228 parity).
+ *
+ * The hook is additive: `additionalContext` rides along with the expansion, it
+ * never replaces it. The only way for a hook to change the outcome is to block
+ * (exit 2 / decision "block") or stop the turn (`continue: false`).
+ *
+ * Returns the messages to prepend, or a fully-formed result when the expansion
+ * was blocked.
+ */
+async function runUserPromptExpansionHook(
+  command: CommandBase & PromptCommand,
+  args: string,
+  context: ToolUseContext,
+): Promise<{ hookMessages: SlashCommandResult['messages']; blocked?: SlashCommandResult }> {
+  const hookMessages: SlashCommandResult['messages'] = [];
+  const prompt = args ? `/${command.name} ${args}` : `/${command.name}`;
+  const expansionType = command.source === 'mcp' ? 'mcp_prompt' : 'slash_command';
+
+  try {
+    for await (const hookResult of executeUserPromptExpansionHooks(
+      expansionType,
+      command.name,
+      args,
+      command.source,
+      prompt,
+      context.getAppState().toolPermissionContext.mode,
+      context,
+    )) {
+      if (hookResult.message?.type === 'progress') {
+        continue;
+      }
+
+      if (hookResult.blockingError) {
+        const blockingMessage = getUserPromptExpansionHookBlockingMessage(hookResult.blockingError);
+        const value = `${blockingMessage}\n\nOriginal prompt: ${prompt}`;
+        return {
+          hookMessages,
+          blocked: {
+            messages: [createSystemMessage(value, 'warning')],
+            shouldQuery: false,
+            resultText: value,
+            command,
+          },
+        };
+      }
+
+      if (hookResult.preventContinuation) {
+        const value = hookResult.stopReason
+          ? `Operation stopped by hook: ${hookResult.stopReason}`
+          : 'Operation stopped by hook';
+        return {
+          hookMessages,
+          blocked: {
+            messages: [createUserMessage({ content: value, isMeta: true }), createSystemMessage(value, 'warning')],
+            shouldQuery: false,
+            resultText: value,
+            command,
+          },
+        };
+      }
+
+      if (hookResult.additionalContexts && hookResult.additionalContexts.length > 0) {
+        hookMessages.push(
+          createAttachmentMessage({
+            type: 'hook_additional_context',
+            content: hookResult.additionalContexts.map(truncateExpansionHookOutput),
+            hookName: 'UserPromptExpansion',
+            toolUseID: `hook-${randomUUID()}`,
+            hookEvent: 'UserPromptExpansion',
+          }),
+        );
+      }
+
+      // Skip the empty hook_success placeholder emitted by hooks that print
+      // nothing — it would render as a blank attachment.
+      const attachment = hookResult.message?.attachment;
+      if (hookResult.message && !(attachment?.type === 'hook_success' && !attachment.content)) {
+        hookMessages.push(hookResult.message as AttachmentMessage);
+      }
+    }
+  } catch (e) {
+    // A misbehaving display/expansion hook must not take down the expansion.
+    logError(e);
+  }
+
+  return { hookMessages };
 }
 
 export async function processPromptSlashCommand(

@@ -216,6 +216,8 @@ export interface HookResult {
   watchPaths?: string[]
   elicitationResultResponse?: ElicitationResponse
   retry?: boolean
+  /** MessageDisplay: replacement text for the delta. Display-only. */
+  displayContent?: string
   hook: HookCommand | HookCallback | FunctionHook
 }
 
@@ -237,6 +239,7 @@ export type AggregatedHookResult = {
   elicitationResponse?: ElicitationResponse // Elicitation 钩子的交互/采集结果（MCP elicit 流程）
   elicitationResultResponse?: ElicitationResponse // ElicitationResult 钩子对上一轮引导的后续响应数据
   retry?: boolean // PermissionDenied 等场景是否建议用户重试当前操作
+  displayContent?: string // MessageDisplay 钩子替换到屏幕上的文本；仅影响显示，不动已存消息与模型可见内容
 }
 
 /**
@@ -369,6 +372,14 @@ export interface TypedSyncHookOutput {
     | {
         hookEventName: 'UserPromptSubmit'
         additionalContext?: string
+      }
+    | {
+        hookEventName: 'UserPromptExpansion'
+        additionalContext?: string
+      }
+    | {
+        hookEventName: 'MessageDisplay'
+        displayContent?: string
       }
     | {
         hookEventName: 'SessionStart'
@@ -570,6 +581,16 @@ function processHookJSONOutput({
         break
       case 'UserPromptSubmit':
         result.additionalContext = json.hookSpecificOutput.additionalContext
+        break
+      case 'UserPromptExpansion':
+        // Additive only: this never replaces the expanded prompt. To stop an
+        // expansion a hook must block (decision "block" / exit code 2).
+        result.additionalContext = json.hookSpecificOutput.additionalContext
+        break
+      case 'MessageDisplay':
+        // Display-only: swaps the delta on screen, leaves the stored message
+        // and the model-visible transcript alone.
+        result.displayContent = json.hookSpecificOutput.displayContent
         break
       case 'SessionStart':
         result.additionalContext = json.hookSpecificOutput.additionalContext
@@ -2274,6 +2295,14 @@ export async function* executeHooks({
       )
       yield {
         updatedMCPToolOutput: result.updatedMCPToolOutput,
+      }
+    }
+
+    // MessageDisplay: last hook to answer wins, matching upstream — consumers
+    // keep the most recent displayContent they see.
+    if (result.displayContent !== undefined) {
+      yield {
+        displayContent: result.displayContent,
       }
     }
 

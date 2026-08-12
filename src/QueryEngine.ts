@@ -61,6 +61,7 @@ import {
 } from './utils/fileStateCache.js'
 import { headlessProfilerCheckpoint } from './utils/telemetry/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
+import { applyMessageDisplayHooks } from './utils/hooks/messageDisplay.js'
 import { getInMemoryErrors } from './utils/telemetry/log.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
@@ -653,6 +654,8 @@ export class QueryEngine {
     // Track current message usage (reset on each message_start)
     let currentMessageUsage: NonNullableUsage = EMPTY_USAGE
     let turnCount = 1
+    // Stable id for MessageDisplay hook payloads; rotates with each user turn.
+    let displayTurnId = randomUUID() as string
     let hasAcknowledgedInitialMessages = false
     // Track structured output from StructuredOutput tool calls
     let structuredOutputFromTool: unknown
@@ -750,6 +753,7 @@ export class QueryEngine {
 
       if (message.type === 'user') {
         turnCount++
+        displayTurnId = randomUUID()
       }
 
       switch (message.type) {
@@ -769,7 +773,15 @@ export class QueryEngine {
             lastStopReason = stopReason
           }
           this.mutableMessages.push(msg)
-          yield* normalizeMessage(msg)
+          // MessageDisplay is display-only: the message was already pushed to
+          // mutableMessages and recorded to the transcript above, so this
+          // rewrites only the copy that leaves the SDK.
+          yield* normalizeMessage(
+            await applyMessageDisplayHooks(msg, displayTurnId, {
+              getAppState: processUserInputContext.getAppState,
+              signal: processUserInputContext.abortController.signal,
+            }),
+          )
           break
         }
         case 'progress': {

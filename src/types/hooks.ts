@@ -81,6 +81,24 @@ export const syncHookResponseSchema = lazySchema(() =>
           additionalContext: z.string().optional(),
         }),
         z.object({
+          hookEventName: z.literal('UserPromptExpansion'),
+          additionalContext: z
+            .string()
+            .describe(
+              'Appended alongside the expanded prompt; never replaces it',
+            )
+            .optional(),
+        }),
+        z.object({
+          hookEventName: z.literal('MessageDisplay'),
+          displayContent: z
+            .string()
+            .describe(
+              'Text displayed in place of the delta. Omit to display the original. Display-only.',
+            )
+            .optional(),
+        }),
+        z.object({
           hookEventName: z.literal('SessionStart'),
           additionalContext: z.string().optional(),
           initialUserMessage: z.string().optional(),
@@ -270,6 +288,7 @@ export type HookResult = {
   updatedToolOutput?: unknown
   permissionRequestResult?: PermissionRequestResult
   retry?: boolean
+  displayContent?: string
 }
 
 export type AggregatedHookResult = {
@@ -286,4 +305,5 @@ export type AggregatedHookResult = {
   updatedToolOutput?: unknown
   permissionRequestResult?: PermissionRequestResult
   retry?: boolean
+  displayContent?: string
 }

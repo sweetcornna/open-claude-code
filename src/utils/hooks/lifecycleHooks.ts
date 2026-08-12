@@ -17,6 +17,7 @@ import type {
   FileChangedHookInput,
   HookInput,
   InstructionsLoadedHookInput,
+  MessageDisplayHookInput,
   NotificationHookInput,
   PostCompactHookInput,
   PreCompactHookInput,
@@ -366,6 +367,67 @@ export async function* executeUserPromptSubmitHooks(
     timeoutMs: TOOL_HOOK_EXECUTION_TIMEOUT_MS,
     toolUseContext,
     requestPrompt,
+  })
+}
+
+/**
+ * Default timeout for MessageDisplay hooks. Much shorter than
+ * TOOL_HOOK_EXECUTION_TIMEOUT_MS on purpose: this hook sits on the display
+ * path, so a slow hook stalls output rather than a tool. Matches upstream's
+ * 10s (its 600s generic default is only the unused parameter default).
+ *
+ * Not exported: the sole caller (hooks/messageDisplay.ts) takes the default
+ * rather than keeping a second copy of the number.
+ */
+const MESSAGE_DISPLAY_HOOK_TIMEOUT_MS = 10_000
+
+/**
+ * Execute MessageDisplay hooks as assistant text is displayed
+ * (official 2.1.228 parity).
+ *
+ * Display-only: a hook may return `hookSpecificOutput.displayContent` to swap
+ * what is printed for this delta, but the stored message and what the model
+ * sees on the next turn are untouched. Any failure (non-zero exit, timeout,
+ * throw) falls back to displaying the original delta.
+ *
+ * `forceSyncExecution` is set because a backgrounded hook could not influence
+ * a delta that has already been printed.
+ *
+ * @param params.turnId UUID of the current turn
+ * @param params.messageId UUID of the message being displayed (stable across flushes)
+ * @param params.index Zero-based flush index within the message
+ * @param params.final True on the message's last flush
+ * @param params.delta Text completed since the previous flush
+ */
+export async function* executeMessageDisplayHooks(
+  params: {
+    turnId: string
+    messageId: string
+    index: number
+    final: boolean
+    delta: string
+  },
+  signal?: AbortSignal,
+  timeoutMs: number = MESSAGE_DISPLAY_HOOK_TIMEOUT_MS,
+  toolUseContext?: ToolUseContext,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: MessageDisplayHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'MessageDisplay',
+    turn_id: params.turnId,
+    message_id: params.messageId,
+    index: params.index,
+    final: params.final,
+    delta: params.delta,
+  }
+
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `${params.messageId}-${params.index}`,
+    signal,
+    timeoutMs,
+    toolUseContext,
+    forceSyncExecution: true,
   })
 }
 

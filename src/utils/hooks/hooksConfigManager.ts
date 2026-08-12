@@ -83,6 +83,15 @@ export const getHookEventMetadata = memoize(
         description:
           'Input to command is JSON with original user prompt text.\nExit code 0 - stdout shown to Claude\nExit code 2 - block processing, erase original prompt, and show stderr to user only\nOther exit codes - show stderr to user only',
       },
+      UserPromptExpansion: {
+        summary: 'When a user-typed slash command expands into a prompt',
+        description:
+          'Input to command is JSON with expansion_type, command_name, command_args, command_source, and original prompt.\nExit code 0 - stdout shown to Claude\nExit code 2 - block expansion and show stderr to user only\nOther exit codes - show stderr to user only',
+        matcherMetadata: {
+          fieldToMatch: 'command_name',
+          values: [],
+        },
+      },
       SessionStart: {
         summary: 'When a new session is started',
         description:
@@ -266,6 +275,11 @@ export const getHookEventMetadata = memoize(
         description:
           'Input to command is JSON with file_path and event (change, add, unlink).\nCLAUDE_ENV_FILE is set — write bash exports there to apply env to subsequent BashTool commands.\nThe matcher field specifies filenames to watch in the current directory (e.g. ".envrc|.env").\nHook output can include hookSpecificOutput.watchPaths (array of absolute paths) to dynamically update the watch list.\nExit code 0 - command completes successfully\nOther exit codes - show stderr to user only',
       },
+      MessageDisplay: {
+        summary: 'While assistant message text is displayed',
+        description:
+          'Input to command is JSON with turn_id, message_id, index, final, and delta (the newly completed text).\nOutput JSON with hookSpecificOutput containing displayContent to replace the delta on screen.\nDisplay-only: the stored message and what the model sees are untouched.\nExit code 0 - use hook response if provided\nOther exit codes - display the original delta',
+      },
     }
   },
   toolNames => toolNames.slice().sort().join(','),
@@ -283,6 +297,7 @@ export function groupHooksByEventAndMatcher(
     PermissionDenied: {},
     Notification: {},
     UserPromptSubmit: {},
+    UserPromptExpansion: {},
     SessionStart: {},
     SessionEnd: {},
     Stop: {},
@@ -305,6 +320,7 @@ export function groupHooksByEventAndMatcher(
     CwdChanged: {},
     DirectoryAdded: {},
     FileChanged: {},
+    MessageDisplay: {},
   }
 
   const metadata = getHookEventMetadata(toolNames)

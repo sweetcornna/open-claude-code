@@ -366,6 +366,7 @@ export const HOOK_EVENTS = [
   'PostToolUseFailure',
   'Notification',
   'UserPromptSubmit',
+  'UserPromptExpansion',
   'SessionStart',
   'SessionEnd',
   'Stop',
@@ -389,6 +390,7 @@ export const HOOK_EVENTS = [
   'CwdChanged',
   'DirectoryAdded',
   'FileChanged',
+  'MessageDisplay',
 ] as const
 
 export const HookEventSchema = lazySchema(() => z.enum(HOOK_EVENTS))
@@ -497,6 +499,62 @@ export const UserPromptSubmitHookInputSchema = lazySchema(() =>
       prompt: z.string(),
     }),
   ),
+)
+
+// Fired when a user-typed slash command (or MCP prompt) expands into a prompt,
+// before the expansion is handed to the model (official 2.1.228 parity).
+export const UserPromptExpansionHookInputSchema = lazySchema(() =>
+  BaseHookInputSchema()
+    .and(
+      z.object({
+        hook_event_name: z.literal('UserPromptExpansion'),
+        expansion_type: z.enum(['slash_command', 'mcp_prompt']),
+        command_name: z.string(),
+        command_args: z.string(),
+        command_source: z.string().optional(),
+        prompt: z
+          .string()
+          .describe('The literal text the user typed, e.g. "/review HEAD~1".'),
+      }),
+    )
+    .describe(
+      'Hook input for the UserPromptExpansion event. Fired when a user-typed slash command expands into a prompt. ' +
+        'Matchers match against command_name.',
+    ),
+)
+
+export const MessageDisplayHookInputSchema = lazySchema(() =>
+  BaseHookInputSchema()
+    .and(
+      z.object({
+        hook_event_name: z.literal('MessageDisplay'),
+        turn_id: z.string().describe('UUID of the current turn.'),
+        message_id: z
+          .string()
+          .describe(
+            'UUID of the assistant message being displayed. Stable across ' +
+              'every flush of the same message. Not the API msg_… id.',
+          ),
+        index: z
+          .number()
+          .int()
+          .describe(
+            'Zero-based index of this delta within the message. Increments by one per flush.',
+          ),
+        final: z
+          .boolean()
+          .describe(
+            "True on the message's last flush. Exactly one flush per message has it.",
+          ),
+        delta: z
+          .string()
+          .describe('The newly completed text since the prior flush.'),
+      }),
+    )
+    .describe(
+      'Hook input for the MessageDisplay event. Fired as assistant message text is displayed. ' +
+        'Display-only: the stored message and what the model sees are untouched.',
+    ),
 )
 
 export const SessionStartHookInputSchema = lazySchema(() =>
@@ -793,6 +851,7 @@ export const HookInputSchema = lazySchema(() =>
     PermissionDeniedHookInputSchema(),
     NotificationHookInputSchema(),
     UserPromptSubmitHookInputSchema(),
+    UserPromptExpansionHookInputSchema(),
     SessionStartHookInputSchema(),
     SessionEndHookInputSchema(),
     StopHookInputSchema(),
@@ -815,6 +874,7 @@ export const HookInputSchema = lazySchema(() =>
     CwdChangedHookInputSchema(),
     DirectoryAddedHookInputSchema(),
     FileChangedHookInputSchema(),
+    MessageDisplayHookInputSchema(),
   ]),
 )
 
@@ -840,6 +900,34 @@ export const UserPromptSubmitHookSpecificOutputSchema = lazySchema(() =>
     hookEventName: z.literal('UserPromptSubmit'),
     additionalContext: z.string().optional(),
   }),
+)
+
+export const UserPromptExpansionHookSpecificOutputSchema = lazySchema(() =>
+  z
+    .object({
+      hookEventName: z.literal('UserPromptExpansion'),
+      additionalContext: z.string().optional(),
+    })
+    .describe(
+      'Hook-specific output for the UserPromptExpansion event. additionalContext is appended alongside the ' +
+        'expanded prompt; it never replaces it. Use decision "block" to stop the expansion instead.',
+    ),
+)
+
+export const MessageDisplayHookSpecificOutputSchema = lazySchema(() =>
+  z
+    .object({
+      hookEventName: z.literal('MessageDisplay'),
+      displayContent: z
+        .string()
+        .optional()
+        .describe(
+          'Text displayed in place of the delta. Omit (or return the delta unchanged) to display the original.',
+        ),
+    })
+    .describe(
+      'Hook-specific output for the MessageDisplay event. Display-only: replaces the delta on screen without changing the stored message.',
+    ),
 )
 
 export const SessionStartHookSpecificOutputSchema = lazySchema(() =>
@@ -940,6 +1028,8 @@ export const SyncHookJSONOutputSchema = lazySchema(() =>
       .union([
         PreToolUseHookSpecificOutputSchema(),
         UserPromptSubmitHookSpecificOutputSchema(),
+        UserPromptExpansionHookSpecificOutputSchema(),
+        MessageDisplayHookSpecificOutputSchema(),
         SessionStartHookSpecificOutputSchema(),
         SetupHookSpecificOutputSchema(),
         SubagentStartHookSpecificOutputSchema(),

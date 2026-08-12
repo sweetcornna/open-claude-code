@@ -28,6 +28,7 @@ export const HOOK_EVENTS = [
   'PostToolUseFailure',
   'Notification',
   'UserPromptSubmit',
+  'UserPromptExpansion',
   'SessionStart',
   'SessionEnd',
   'Stop',
@@ -51,6 +52,7 @@ export const HOOK_EVENTS = [
   'CwdChanged',
   'DirectoryAdded',
   'FileChanged',
+  'MessageDisplay',
 ] as const
 
 export const EXIT_REASONS = [
