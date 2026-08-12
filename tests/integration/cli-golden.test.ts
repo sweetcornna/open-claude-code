@@ -127,6 +127,7 @@ const INVOCATIONS: Record<
 > = {
   'root-help': { args: ['--help'] },
   version: { args: ['--version'] },
+  'agents-help': { args: ['agents', '--help'] },
   'mcp-help': { args: ['mcp', '--help'] },
   'auth-help': { args: ['auth', '--help'] },
   'plugin-help': { args: ['plugin', '--help'] },
@@ -419,6 +420,29 @@ describe('occ <subcommand> --help', () => {
       ASSERT_TIMEOUT_MS,
     )
   }
+
+  test(
+    'agents exposes the --list escape hatch alongside the interactive list',
+    () => {
+      // `occ agents` with no flags on a TTY mounts FleetView; `--list` keeps
+      // the original "print configured agent definitions" behaviour, and a
+      // non-TTY invocation (this one, and CI) falls back to it on its own.
+      // The flag is what makes the semantic change reversible, so it is pinned
+      // here rather than left to the description text.
+      const result = golden('agents-help')
+      expect(result.exitCode).toBe(0)
+      expect(result.stderr.trim()).toBe('')
+      expect(result.stdout.split('\n')[0]).toBe('Usage: occ agents [options]')
+      expect(commandNames(result.stdout)).toEqual([])
+      expect(optionFlags(result.stdout)).toEqual([
+        '-h',
+        '--help',
+        '--list',
+        '--setting-sources',
+      ])
+    },
+    ASSERT_TIMEOUT_MS,
+  )
 
   test(
     'task is registered only when USER_TYPE=ant',
