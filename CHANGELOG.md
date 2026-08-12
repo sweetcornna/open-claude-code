@@ -4,6 +4,21 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.41.0 - 2026-08-12
+
+- **新增 `/background`（`/bg`）与后台会话动词族。** `/background` 把当前会话移交为后台进程继续运行并腾出终端：对话完整随行（以 fork 恢复，原会话记录不动），进行中的回合会在后台重新驱动，确认框会列出将被终止的后台任务——丢失永远可见而非静默发生。新增 `occ stop <id>`（优雅停止，会话仍可恢复）与 `occ rm <id>`（删除后台会话记录与日志；被占用、进程仍在、记录不可读等七类情形会拒绝并说明原因，宁可报错不硬删）。`occ kill` 保持既有的强停升级链。
+- **`occ agents` 在终端下变为全部会话的交互列表。** 跨项目列出活动与近期会话，按项目分组、当前项目置顶，行内区分运行中/启动中/已结束；后台会话可 attach、看日志、停止，已结束会话按 Enter 直接恢复。`occ agents --list` 保留原有的 agent 定义输出，管道与脚本调用不受影响。
+- **新增 `occ import`：从 Codex 与 Gemini CLI 导入配置。** 确定性扫描 MCP 服务器、指令文件、自定义命令与子代理——外部配置一律视为不可信数据，不由模型自由读取；预览与确认之间用内容摘要绑定，防止确认的与看到的不一致。凭据默认剥离并列出剥离项，导入永远跳过同名项而不覆盖。
+- **新增 `--safe-mode`：临时关闭全部自定义，用于排查坏配置。** hooks、插件、skills、自定义命令、statusline 与 CLAUDE.md 全部旁路，认证、模型、工具与权限保持正常。与 `--bare` 定位不同：后者还会收窄认证与工具面。
+- **新增 `occ project purge [path]`：清除单个项目的本地状态。** 删除该项目的会话记录与全局配置中的项目条目（信任、历史、项目级 MCP 记录），`--dry-run` 先看清单，`--all` 清全部项目；shell-snapshots 非项目级，不受影响。
+- **延迟工具列表不再每轮全量重发。** 延迟加载工具改为增量通告并随对话持久化，提示词缓存断点从此落在可复用的消息上，长会话的缓存命中率显著改善（`CLAUDE_CODE_DEFERRED_TOOLS_DELTA=0` 回退旧行为）。同批修复：ExecuteExtraTool 的内置示例与 CronCreate 实际参数不一致导致照抄必败；搜索不到工具时按 MCP 服务器状态分类说明（连接中/失败/需认证/已禁用）；相关服务器仍在连接时搜索会等待至多 5 秒；新增按服务器的 `alwaysLoad` 配置让指定 MCP 服务器的工具跳过延迟加载。
+- **skill 列表进入上下文预算管理，新增 `/skill-doctor`。** 新设置 `skillListingMaxDescChars`（单个描述上限）与 `skillListingBudgetFraction`（列表总预算占上下文比例）；超预算时按使用频率决定谁保留完整描述——常用 skill 优先，所有 skill 始终保留名字、始终可调用。`/skill-doctor` 报告每个已加载 skill 的上下文成本与本会话使用情况，标出从未使用且成本高的项。
+- **新增 `/cd`、`/autocompact`、`/pause-memory`、`/wellbeing` 四个会话命令。** `/cd` 移动会话工作目录（新目录未受信时先确认，信任按仓库粒度记忆）；`/autocompact` 查看与调整自动摘要的触发窗口（env `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 优先）；`/pause-memory` 暂停本会话的自动记忆；`/wellbeing`（`/breaks`）配置休息提醒与安静时段。`/extra-usage` 新增别名 `/usage-credits`。
+- **输入框支持 emoji 短码补全。** 输入 `:name:` 触发建议弹窗与内联替换，内置约 1200 个短码，零外部依赖；`emojiCompletionEnabled: false` 关闭。
+- **hook 事件新增 `MessageDisplay` 与 `UserPromptExpansion`。** 前者可改写终端上显示的内容——模型可见历史与会话记录不受影响；后者在 slash 命令或 MCP prompt 展开前触发，可追加上下文或阻止执行，matcher 按命令名匹配。
+- **慢 MCP 调用自动转后台。** 超过 120 秒未返回的 MCP 工具调用自动转为后台任务，完成时以通知送达（`CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` 可调，0 关闭）。新增 `WaitForMcpServers`（等待服务器就绪）与 `RefreshMcpTools`（手动刷新工具列表）两个工具。
+- **两处防护加固。** 全局配置写入前重读磁盘，若磁盘副本在竞态中缺失内存持有的登录凭据则拒绝覆盖写，避免被并发写登出；workflow 脚本与参数中的隐藏控制字符（会在审批对话框中不可见的那类）在展示前即被拒绝。
+
 ## 2.40.1 - 2026-08-12
 
 - **修复 `/provider-settings` 新增 provider 时看起来被添加两次。** 旧流程会先提议把当前会话自动保存为 `openai` 等家族名，随后又要求为真正要添加的 provider 命名，结果是一次操作留下两份档案。现在选择家族后直接要求命名，只保存新 provider 一次。聚合开关也会在档案尚无模型快照时立即刷新，不再要求另按 `R`；当前 provider 按完整配置识别而非依赖可能过期的活动指针，因此同一端点上的不同账号仍会作为可切换来源出现在 `/model`。
