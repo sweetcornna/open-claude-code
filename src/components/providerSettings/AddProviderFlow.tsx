@@ -1,9 +1,9 @@
 /**
  * Adding a provider from inside /provider-settings.
  *
- * Wiring only: which screen comes next, whether the "save what is running now"
- * offer applies, whether a name is acceptable and what the finished add reads
- * as are all decided in ../../commands/provider-settings/addFlow.ts — including
+ * Wiring only: which screen comes next, whether a name is acceptable and what
+ * the finished add reads as are all decided in
+ * ../../commands/provider-settings/addFlow.ts — including
  * the reason this flow ACTIVATES what it adds rather than pretending to roll
  * back to whatever the session was on. Ink's test mode does not pump concurrent
  * updates, so a decision taken inside a render is a decision nothing can check.
@@ -24,21 +24,13 @@ import {
   afterAggregateAnswered,
   afterKindChosen,
   afterNameSubmitted,
-  afterPreserveAnswered,
   beginAddFlow,
   describeAddOutcome,
-  sessionProfileMatch,
-  suggestSnapshotName,
   type AddFlowState,
   type AddProviderEntry,
 } from '../../commands/provider-settings/addFlow.js';
 import { saveCurrentAsProfile } from '../../services/providerProfiles/activate.js';
-import {
-  getMergedProviderEnv,
-  loadProfilesFile,
-  updateProfileCatalog,
-} from '../../services/providerProfiles/profiles.js';
-import { getInitialSettings } from '../../utils/settings/settings.js';
+import { loadProfilesFile } from '../../services/providerProfiles/profiles.js';
 import { Select } from '../CustomSelect/select.js';
 import { ProviderSetupWizard } from '../providerSetup/ProviderSetupWizard.js';
 import { PROVIDER_SETUP_SPECS, type ProviderSetupKind } from '../providerSetup/specs.js';
@@ -77,28 +69,10 @@ export function AddProviderFlow({ onCancel, onFinished }: AddProviderFlowProps):
     (value: string) => {
       const entry = entries.find(candidate => candidate.value === value);
       if (!entry) return;
-      const file = loadProfilesFile();
-      setFlow(
-        afterKindChosen(entry, {
-          savedAs: sessionProfileMatch(file, getMergedProviderEnv()),
-          suggestion: suggestSnapshotName(file, getInitialSettings().modelType),
-        }),
-      );
+      setFlow(afterKindChosen(entry));
     },
     [entries],
   );
-
-  const preserveCurrent = useCallback((state: Extract<AddFlowState, { step: 'preserve' }>) => {
-    // The same snapshot `/provider-settings save <name>` takes, and the reason
-    // this screen exists: it is what makes switching back a row away.
-    const saved = saveCurrentAsProfile({ name: state.suggestion });
-    setNotice(
-      'error' in saved
-        ? `The current setup was not saved: ${saved.error}`
-        : `Saved the current setup as "${state.suggestion}".`,
-    );
-    setFlow(afterPreserveAnswered(state));
-  }, []);
 
   const enterSetup = useCallback(
     (state: Extract<AddFlowState, { step: 'aggregate' }>, aggregate: boolean) => {
@@ -125,20 +99,19 @@ export function AddProviderFlow({ onCancel, onFinished }: AddProviderFlowProps):
     (state: Extract<AddFlowState, { step: 'setup' }>) => {
       // settings.env already describes the new provider — the wizard wrote it —
       // so this snapshots what the session is now running, exactly like `save`.
-      const captured = saveCurrentAsProfile({ name: state.name });
+      const captured = saveCurrentAsProfile({
+        name: state.name,
+        aggregate: state.aggregate,
+        setActive: true,
+      });
       const outcome = describeAddOutcome({
         name: state.name,
         aggregate: state.aggregate,
         capture: 'error' in captured ? { error: captured.error } : { modelType: captured.profile.modelType },
       });
-      let notice = outcome.notice;
-      if (outcome.enrollAggregate) {
-        const enrolled = updateProfileCatalog(state.name, { aggregate: true });
-        if ('error' in enrolled) notice = `${notice} ${enrolled.error}`;
-      }
       onFinished({
         ...('error' in captured ? {} : { focus: state.name }),
-        notice,
+        notice: outcome.notice,
         refreshCatalog: outcome.refreshCatalog && !('error' in captured),
       });
     },
@@ -172,38 +145,6 @@ export function AddProviderFlow({ onCancel, onFinished }: AddProviderFlowProps):
           }))}
           visibleOptionCount={9}
           onChange={chooseKind}
-          onCancel={() => onCancel('Add cancelled.')}
-        />
-      </Box>
-    );
-  }
-
-  if (flow.step === 'preserve') {
-    const state = flow;
-    return (
-      <Box flexDirection="column" padding={1}>
-        {banner}
-        <Text bold>Save what this session is running first?</Text>
-        <Box marginTop={1} marginBottom={1} flexDirection="column">
-          <Text dimColor>
-            The current configuration matches no saved profile, so once the setup form writes over it there is nothing
-            to switch back to. Saving it now is the return trip.
-          </Text>
-        </Box>
-        <Select
-          options={[
-            {
-              label: `Save it as "${state.suggestion}"`,
-              value: 'save',
-              description: 'Then Enter on that row brings this session back',
-            },
-            {
-              label: 'Continue without saving',
-              value: 'skip',
-              description: 'The current configuration is replaced and not kept',
-            },
-          ]}
-          onChange={value => (value === 'save' ? preserveCurrent(state) : setFlow(afterPreserveAnswered(state)))}
           onCancel={() => onCancel('Add cancelled.')}
         />
       </Box>

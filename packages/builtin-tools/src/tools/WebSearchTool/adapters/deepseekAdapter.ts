@@ -46,7 +46,7 @@ const SEARCH_MAX_TOKENS = 4096
 const PROBE_MAX_TOKENS = 16
 
 /** Direct search calls stay inside WebSearch's outer wall-clock budget. */
-const SEARCH_MAX_RETRIES = 2
+const SEARCH_MAX_RETRIES = 10
 
 /** Server messages are echoed to the user, so keep them short. */
 const MAX_DETAIL_CHARS = 300

@@ -135,8 +135,8 @@ function prependDeferredToolListIfNeeded(
 }
 
 /**
- * Issue the chat-completions request, retrying once without
- * `prompt_cache_key` if the endpoint rejects that field.
+ * Issue the chat-completions request and remember when a compatible endpoint
+ * rejects `prompt_cache_key`.
  *
  * The key is the single largest cache lever on the OpenAI side (75.8% vs
  * 18.3% cumulative hit rate in the measurement quoted on
@@ -144,7 +144,8 @@ function prependDeferredToolListIfNeeded(
  * only to OpenAI's own endpoint. Strict OpenAI-compatible servers that reject
  * unknown top-level keys pay one failed request per session and are then
  * suppressed for the rest of the process; servers that merely ignore the field
- * pay nothing.
+ * pay nothing. The rejection is rethrown so the next request is owned by the
+ * caller's unified retry budget rather than becoming an extra attempt here.
  */
 async function createChatStreamWithCacheKeyFallback(params: {
   buildBody: (
@@ -182,9 +183,9 @@ async function createChatStreamWithCacheKeyFallback(params: {
     }
     markPromptCacheKeyRejected()
     logForDebugging(
-      '[OpenAI] endpoint rejected prompt_cache_key; retrying without it and suppressing it for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.',
+      '[OpenAI] endpoint rejected prompt_cache_key; the next retry will omit it and it is suppressed for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.',
     )
-    return create(undefined)
+    throw error
   }
 }
 

@@ -366,6 +366,7 @@ describe('H7: circuit breaker', () => {
   test('resetCircuitBreaker resets state to closed', async () => {
     const { llmObserverBackend } = await import('../llmObserverBackend.js')
     resetCircuitBreaker()
+    setSkillLearningConfigForTest({ llm: { timeoutMs: 50 } })
 
     // After reset, the backend is in clean state. Calling it with observations
     // returns an array (either LLM result or heuristic fallback).

@@ -8,20 +8,12 @@ import {
 } from '../retry.js'
 
 const savedMaxRetries = process.env.OPENAI_REQUEST_MAX_RETRIES
-const savedRetryPolicy = process.env.CLAUDE_CODE_RETRY_ALL_ERRORS
 
 afterEach(() => {
   if (savedMaxRetries === undefined) {
     delete process.env.OPENAI_REQUEST_MAX_RETRIES
   } else {
     process.env.OPENAI_REQUEST_MAX_RETRIES = savedMaxRetries
-  }
-  // Restored here as well as set locally: the classifier reads this for every
-  // error in the process, so a leak re-decides later files in the shard.
-  if (savedRetryPolicy === undefined) {
-    delete process.env.CLAUDE_CODE_RETRY_ALL_ERRORS
-  } else {
-    process.env.CLAUDE_CODE_RETRY_ALL_ERRORS = savedRetryPolicy
   }
 })
 
@@ -171,12 +163,7 @@ describe('retryOpenAIRequest', () => {
     expect(delays).toEqual([1000])
   })
 
-  test('gives up on a Retry-After longer than the ladder can wait', async () => {
-    // The regression: this used to clamp a 2-hour Retry-After down to 60s and
-    // retry anyway, so the request came back too early to succeed, ten times
-    // over — ten minutes of blocking before the same failure. Callers cannot
-    // always cancel out of that: findRelevantMemories and autoMode pass no
-    // AbortSignal.
+  test('caps a long Retry-After while consuming all ten retries', async () => {
     let calls = 0
     const delays: number[] = []
 
@@ -200,8 +187,8 @@ describe('retryOpenAIRequest', () => {
       ),
     ).rejects.toThrow('Responses API request failed (429)')
 
-    expect(calls).toBe(1)
-    expect(delays).toEqual([])
+    expect(calls).toBe(11)
+    expect(delays).toEqual(Array(10).fill(60_000))
   })
 
   test('still waits out a Retry-After at the edge of the ceiling', async () => {
@@ -229,8 +216,9 @@ describe('retryOpenAIRequest', () => {
     expect(delays).toEqual([60_000])
   })
 
-  test('gives up on a long retry-after-ms too', async () => {
+  test('consumes all ten retries for a long retry-after-ms', async () => {
     let calls = 0
+    const delays: number[] = []
     await expect(
       retryOpenAIRequest(
         async () => {
@@ -241,11 +229,17 @@ describe('retryOpenAIRequest', () => {
             headers: new Headers({ 'retry-after-ms': '3600000' }),
           })
         },
-        { signal: new AbortController().signal, delay: noDelay },
+        {
+          signal: new AbortController().signal,
+          delay: async delayMs => {
+            delays.push(delayMs)
+          },
+        },
       ),
     ).rejects.toThrow('rate limited')
 
-    expect(calls).toBe(1)
+    expect(calls).toBe(11)
+    expect(delays).toEqual(Array(10).fill(60_000))
   })
 
   test('caps the exponential backoff so late retries stay bounded', async () => {
@@ -306,7 +300,7 @@ describe('retryOpenAIRequest', () => {
     })
   })
 
-  test('gives a 400 response one cheap retry, not the ladder', async () => {
+  test('gives a 400 response all ten retries on the fixed-delay lane', async () => {
     let calls = 0
     await expect(
       retryOpenAIRequest(
@@ -320,12 +314,11 @@ describe('retryOpenAIRequest', () => {
         },
       ),
     ).rejects.toThrow('Responses API request failed (400)')
-    expect(calls).toBe(2)
+    expect(calls).toBe(11)
   })
 
-  test('gives auth, permission, model and other permanent 4xx one cheap retry', async () => {
-    // Every API error is retried; a class that almost never answers
-    // differently gets one attempt rather than the ten-step ladder.
+  test('gives auth, permission, model and other permanent 4xx all ten retries', async () => {
+    // Every API error receives the configured retry count.
     for (const status of [400, 401, 402, 403, 404, 413, 422]) {
       let calls = 0
       await expect(
@@ -340,27 +333,7 @@ describe('retryOpenAIRequest', () => {
           },
         ),
       ).rejects.toThrow(`request failed (${status})`)
-      expect(calls).toBe(2)
-    }
-  })
-
-  test('CLAUDE_CODE_RETRY_ALL_ERRORS=0 restores the single-attempt failure', async () => {
-    process.env.CLAUDE_CODE_RETRY_ALL_ERRORS = '0'
-    for (const status of [400, 401, 403, 404, 422]) {
-      let calls = 0
-      await expect(
-        retryOpenAIRequest(
-          async () => {
-            calls++
-            return requireSuccess(new Response('permanent', { status }))
-          },
-          {
-            signal: new AbortController().signal,
-            delay: noDelay,
-          },
-        ),
-      ).rejects.toThrow(`request failed (${status})`)
-      expect(calls).toBe(1)
+      expect(calls).toBe(11)
     }
   })
 
@@ -390,9 +363,8 @@ describe('retryOpenAIRequest', () => {
   })
 
   test('keeps deterministic TLS off the ladder despite transient fetch wording', async () => {
-    // The point of this test is unchanged: a bad certificate must not cost the
-    // ten-step ladder, so getSSLErrorHint's NODE_EXTRA_CA_CERTS advice arrives
-    // while it is still useful. It now costs the cheap lane's one attempt.
+    // A bad certificate uses fixed delays instead of exponential backoff while
+    // still receiving the configured retry count.
     const tls = Object.assign(
       new Error('write EPROTO ssl/tls alert handshake failure'),
       { code: 'EPROTO' },
@@ -408,10 +380,10 @@ describe('retryOpenAIRequest', () => {
         { signal: new AbortController().signal, delay: noDelay },
       ),
     ).rejects.toBe(error)
-    expect(calls).toBe(2)
+    expect(calls).toBe(11)
   })
 
-  test('does not retry a permanent synthetic API error', async () => {
+  test('retries a provider synthetic API error ten times', async () => {
     let calls = 0
     await expect(
       retryOpenAIRequest(
@@ -422,7 +394,7 @@ describe('retryOpenAIRequest', () => {
         { signal: new AbortController().signal, delay: noDelay },
       ),
     ).rejects.toThrow('invalid request')
-    expect(calls).toBe(1)
+    expect(calls).toBe(11)
   })
 
   test('does not call the operation for an already-aborted signal', async () => {

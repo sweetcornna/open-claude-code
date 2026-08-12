@@ -139,6 +139,7 @@ describe('getOpenAIPromptCacheKey', () => {
 describe('shouldSendOpenAIPromptCacheKey', () => {
   afterEach(() => {
     delete process.env.OPENAI_PROMPT_CACHE_KEY
+    _resetPromptCacheKeySupportForTesting()
   })
 
   test('Chat Completions sends the key by default, on any base URL', () => {
@@ -164,8 +165,7 @@ describe('shouldSendOpenAIPromptCacheKey', () => {
       expect(
         shouldSendOpenAIPromptCacheKey('https://api.openai.com/v1', 'chat'),
       ).toBe(true)
-      // /responses implements the field by definition — a chat-line rejection
-      // says nothing about it.
+      // A chat-line rejection says nothing about the Responses protocol.
       expect(
         shouldSendOpenAIPromptCacheKey(
           'https://gateway.internal/v1',
@@ -200,23 +200,30 @@ describe('shouldSendOpenAIPromptCacheKey', () => {
     expect(isPromptCacheKeyRejection(new Error('rate limited'))).toBe(false)
   })
 
-  test('the Responses protocol always gets a key, on any base URL', () => {
+  test('the Responses protocol gets a key until that protocol rejects it', () => {
     // Measured against a live gateway (5 turns, identical prefix): omitting
     // the key dropped the cumulative hit rate from 75.8% to 18.3%, per-turn
-    // 95/0/0/0/0. Serving /responses means implementing OpenAI's Responses
-    // schema, where prompt_cache_key is a documented standard field.
+    // 95/0/0/0/0. Compatible implementations still vary, so a recognized
+    // rejection disables only their Responses lane.
     expect(
       shouldSendOpenAIPromptCacheKey(
         'https://gateway.internal/v1',
         'responses',
       ),
     ).toBe(true)
+    markPromptCacheKeyRejected('responses')
     expect(
       getOpenAIPromptCacheKey(
         'https://gateway.internal/v1',
         'sess',
         'responses',
       ),
+    ).toBeUndefined()
+    expect(
+      getOpenAIPromptCacheKey('https://gateway.internal/v1', 'sess', 'chat'),
+    ).toBe('occ:sess')
+    expect(
+      getOpenAIPromptCacheKey('https://api.openai.com/v1', 'sess', 'responses'),
     ).toBe('occ:sess')
   })
 

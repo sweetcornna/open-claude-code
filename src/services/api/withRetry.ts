@@ -23,7 +23,6 @@ import {
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
   isClaudeAISubscriber,
-  isEnterpriseSubscriber,
 } from '../../utils/auth/auth.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
@@ -48,13 +47,11 @@ import {
   checkMockRateLimitError,
   isMockRateLimitError,
 } from '../rateLimitMocking.js'
-import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import {
   classifyRetryableAPIError,
   getAPIErrorSource,
-  isRetryEveryAPIErrorEnabled,
+  isAPIErrorReplayable,
   PERMANENT_RETRY_DELAY_MS,
-  PERMANENT_RETRY_MAX_RETRIES,
 } from './retryClassification.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 
@@ -66,45 +63,6 @@ const DEFAULT_MAX_RETRIES = MAX_API_RETRIES
 const FLOOR_OUTPUT_TOKENS = 3000
 const MAX_529_RETRIES = 3
 export const BASE_DELAY_MS = 500
-
-// Foreground query sources where the user IS blocking on the result — these
-// retry on 529. Everything else (summaries, titles, suggestions, classifiers)
-// bails immediately: during a capacity cascade each retry is 3-10× gateway
-// amplification, and the user never sees those fail anyway. New sources
-// default to no-retry — add here only if the user is waiting on the result.
-const FOREGROUND_529_RETRY_SOURCES = new Set<QuerySource>([
-  'repl_main_thread',
-  'repl_main_thread:outputStyle:custom',
-  'repl_main_thread:outputStyle:Explanatory',
-  'repl_main_thread:outputStyle:Learning',
-  'sdk',
-  'agent:custom',
-  'agent:default',
-  'agent:builtin',
-  // Workflow sub-agents: the user is blocked on the Workflow tool result, same
-  // as Agent-tool subagents above. Without this, a 529 bails instantly, bubbles
-  // up as agent death, and the engine's single retry re-fires into the same
-  // congestion — one backed-off retry here is strictly less amplification.
-  'workflow',
-  'compact',
-  'hook_agent',
-  'hook_prompt',
-  'verification_agent',
-  'side_question',
-  // Security classifiers — must complete for auto-mode correctness.
-  // yoloClassifier.ts uses 'auto_mode' (not 'yolo_classifier' — that's
-  // type-only). bash_classifier is ant-only; feature-gate so the string
-  // tree-shakes out of external builds (excluded-strings.txt).
-  'auto_mode',
-  ...(feature('BASH_CLASSIFIER') ? (['bash_classifier'] as const) : []),
-])
-
-function shouldRetry529(querySource: QuerySource | undefined): boolean {
-  // undefined → retry (conservative for untagged call paths)
-  return (
-    querySource === undefined || FOREGROUND_529_RETRY_SOURCES.has(querySource)
-  )
-}
 
 // CLAUDE_CODE_UNATTENDED_RETRY: for unattended sessions (ant-only). Retries 429/529
 // with higher backoff and periodic keep-alive yields so the host environment
@@ -185,13 +143,6 @@ function retryVerdict(error: unknown): RetryVerdict {
   }
   if (error instanceof APIError) return apiErrorVerdict(error)
   return classifyRetryableAPIError(error)
-}
-
-/** Retries this failure gets, on top of the initial request. */
-function attemptBudgetFor(verdict: RetryVerdict, maxRetries: number): number {
-  return verdict.persistence === 'permanent'
-    ? Math.min(maxRetries, PERMANENT_RETRY_MAX_RETRIES)
-    : maxRetries
 }
 
 /**
@@ -330,9 +281,9 @@ export async function* withRetry<T>(
       }
 
       // Get a fresh client on the first attempt or after a stale keep-alive
-      // socket. Authentication and permission failures are permanent for this
-      // request and never reach another attempt — their credential caches are
-      // dropped in the catch block instead, for the benefit of the next one.
+      // socket. Authentication and permission failures use fixed-delay retries;
+      // their credential caches are dropped in the catch block before each next
+      // attempt so a rotated credential can recover within this request.
       const isStaleConnection = isStaleConnectionError(lastError)
       if (
         isStaleConnection &&
@@ -419,16 +370,6 @@ export async function* withRetry<T>(
         continue
       }
 
-      // Non-foreground sources bail immediately on 529 — no retry amplification
-      // during capacity cascades. User never sees these fail.
-      if (is529Error(error) && !shouldRetry529(options.querySource)) {
-        logEvent('tengu_api_529_background_dropped', {
-          query_source:
-            options.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
-        throw new CannotRetryError(error, retryContext)
-      }
-
       // Track consecutive 529 errors
       if (
         is529Error(error) &&
@@ -455,18 +396,6 @@ export async function* withRetry<T>(
               options.fallbackModel,
             )
           }
-
-          if (
-            process.env.USER_TYPE === 'external' &&
-            !process.env.IS_SANDBOX &&
-            !isPersistentRetryEnabled()
-          ) {
-            logEvent('tengu_api_custom_529_overloaded_error', {})
-            throw new CannotRetryError(
-              new Error(REPEATED_529_ERROR_MESSAGE),
-              retryContext,
-            )
-          }
         }
       }
 
@@ -475,14 +404,13 @@ export async function* withRetry<T>(
         isPersistentRetryEnabled() && isTransientCapacityError(error)
 
       // One verdict for every shape that reaches this catch — SDK errors, bare
-      // transport failures, provider-synthesised errors alike. A permanent
-      // class is still retried, on the small budget below rather than the
-      // ladder, so it surfaces about as fast as it used to.
+      // transport failures and provider-synthesised errors alike. Every API
+      // class receives the configured retry count; persistence selects delay.
       const verdict = retryVerdict(error)
       if (!verdict.retryable) {
         throw new CannotRetryError(error, retryContext)
       }
-      const attemptBudget = attemptBudgetFor(verdict, maxRetries)
+      const attemptBudget = maxRetries
       if (attempt > attemptBudget) {
         throw new CannotRetryError(error, retryContext)
       }
@@ -501,41 +429,39 @@ export async function* withRetry<T>(
             0,
             contextLimit - inputTokens - safetyBuffer,
           )
+          // Ensure we have enough tokens for thinking + at least 1 output token
+          const minRequired =
+            (retryContext.thinkingConfig.type === 'enabled'
+              ? retryContext.thinkingConfig.budgetTokens
+              : 0) + 1
           if (availableContext < FLOOR_OUTPUT_TOKENS) {
             logError(
               new Error(
                 `availableContext ${availableContext} is less than FLOOR_OUTPUT_TOKENS ${FLOOR_OUTPUT_TOKENS}`,
               ),
             )
-            throw error
-          }
-          // Ensure we have enough tokens for thinking + at least 1 output token
-          const minRequired =
-            (retryContext.thinkingConfig.type === 'enabled'
-              ? retryContext.thinkingConfig.budgetTokens
-              : 0) + 1
-          if (minRequired > availableContext) {
+          } else if (minRequired > availableContext) {
             logError(
               new Error(
                 `thinking minimum ${minRequired} exceeds available context ${availableContext}`,
               ),
             )
-            throw error
+          } else {
+            // availableContext is already above the output floor and is the
+            // largest value the retry can request without repeating the same
+            // context overflow.
+            const adjustedMaxTokens = availableContext
+            retryContext.maxTokensOverride = adjustedMaxTokens
+
+            logEvent('tengu_max_tokens_context_overflow_adjustment', {
+              inputTokens,
+              contextLimit,
+              adjustedMaxTokens,
+              attempt,
+            })
+
+            continue
           }
-          // availableContext is already above the output floor and is the
-          // largest value the retry can request without repeating the same
-          // context overflow.
-          const adjustedMaxTokens = availableContext
-          retryContext.maxTokensOverride = adjustedMaxTokens
-
-          logEvent('tengu_max_tokens_context_overflow_adjustment', {
-            inputTokens,
-            contextLimit,
-            adjustedMaxTokens,
-            attempt,
-          })
-
-          continue
         }
       }
 
@@ -766,12 +692,11 @@ export function is529Error(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 // Credential recovery
 //
-// "Do not retry this request" and "do not refresh the credential" are two
-// different decisions, and only the first one is wanted here. `shouldRetry`
-// fails a 401/403 immediately — repeating a rejected credential ten times just
-// makes the user wait — but every credential source behind this client is
-// memoized for the process, so without the side effects below the NEXT request
-// is built from the same dead value:
+// "Retry this request" and "refresh the credential" are two different
+// decisions. The unified policy retries 401/403 on a fixed delay, while every
+// credential source behind this client is memoized for the process. Without the
+// side effects below, every attempt and the next request would be built from the
+// same dead value:
 //
 //   - Claude.ai OAuth: another process (a second CLI, a browser login) rotates
 //     the token in the keychain. `getAnthropicClient` only ever calls the
@@ -867,13 +792,10 @@ async function recoverCredentialsForNextRequest(error: unknown): Promise<void> {
 }
 
 /**
- * The classifier's verdict for an `APIError`, plus the four decisions that
- * depend on things the error text cannot express.
- *
- * Only two of them still refuse outright, and neither is about the error being
- * permanent — both say "another attempt provably cannot succeed", which is a
- * different claim from "this class rarely succeeds". Everything else either
- * upgrades to the full ladder or drops to the cheap lane.
+ * The classifier's verdict for an `APIError`, plus the decisions that depend on
+ * things the error text cannot express. Only synthetic /mock-limits errors
+ * refuse outright because no API request failed; all real API errors receive the
+ * configured budget on either exponential or fixed delays.
  */
 function apiErrorVerdict(error: APIError): RetryVerdict {
   const classified = classifyRetryableAPIError(error)
@@ -884,72 +806,28 @@ function apiErrorVerdict(error: APIError): RetryVerdict {
     return { ...classified, retryable: false, persistence: 'permanent' }
   }
 
-  // A deterministic 400 whose next attempt uses a corrected max_tokens — the
-  // one permanent status that answers differently without waiting for
-  // anything, so it earns the full ladder rather than the cheap lane.
-  if (parseMaxTokensContextOverflowError(error)) {
-    return transiently(classified)
-  }
-
   // Persistent capacity mode intentionally overrides the server's long-lived
   // x-should-retry:false response and waits for the advertised reset window.
   if (isPersistentRetryEnabled() && isTransientCapacityError(error)) {
     return transiently(classified)
   }
 
-  // A window-based 429 (the Max/Pro 5-hour limit) reopens hours from now, and
-  // every step of this ladder is clamped to RETRY_AFTER_MAX_MS. See
-  // canOutwaitRateLimit: this is arithmetic, not a judgement about the class.
-  if (error.status === 429 && !canOutwaitRateLimit(error)) {
-    return { ...classified, retryable: false, persistence: 'permanent' }
-  }
-
   // `x-should-retry: false` is the server stating this exact request will fail
-  // again. It used to end the request outright; under the retry-everything
-  // policy it demotes to the cheap lane instead, so the server's opinion still
-  // costs one attempt rather than ten.
+  // again. Under the retry-everything policy it selects the fixed-delay lane,
+  // while the configured retry count remains unchanged.
   const shouldRetryHeader = error.headers?.get('x-should-retry')
   if (shouldRetryHeader === 'false') {
     const is5xxError = error.status !== undefined && error.status >= 500
     if (!(process.env.USER_TYPE === 'ant' && is5xxError)) {
       return {
         category: classified.category,
-        retryable: classified.retryable && isRetryEveryAPIErrorEnabled(),
+        retryable: classified.retryable,
         persistence: 'permanent',
       }
     }
   }
 
   return classified
-}
-
-/**
- * Whether a 429 can plausibly clear inside this retry ladder.
- *
- * A 429 is retryable *in principle* — that is what `isRetryableAPIError` says,
- * and for a per-minute PAYG limit it is the right answer. Window-based
- * subscription limits (the Max/Pro 5-hour window) are the exception: they clear
- * hours from now, and every step of this ladder is clamped to
- * {@link RETRY_AFTER_MAX_MS}. Retrying one is therefore guaranteed to 429 again,
- * ten times over, and all it buys the user is ~10 minutes of countdown rows
- * before the `5-hour limit reached` message they were always going to get.
- *
- * Note the message itself is not produced here: bailing throws `CannotRetryError`,
- * `claude.ts` unwraps `.originalError`, and `errors.ts` renders the limit copy
- * from the same headers read below. This gate only decides *when*.
- *
- * `CLAUDE_CODE_UNATTENDED_RETRY` never reaches this function — `shouldRetry`
- * returns early for it — because waiting out a window is exactly its purpose.
- */
-function canOutwaitRateLimit(error: APIError): boolean {
-  // Prefer the reset timestamp; a window-based limit always advertises one.
-  const resetDelayMs = getRateLimitResetDelayMs(error) ?? getRetryAfterMs(error)
-  if (resetDelayMs !== null) return resetDelayMs <= RETRY_AFTER_MAX_MS
-
-  // No reset advertised. Subscription plans are windowed by nature, so their
-  // unlabelled 429s are assumed long; enterprise seats are typically PAYG and
-  // keep the ordinary short-limit behaviour.
-  return !isClaudeAISubscriber() || isEnterpriseSubscriber()
 }
 
 export function clampMaxRetries(
@@ -1180,7 +1058,7 @@ export async function* withTransientNetworkRetry(
       !hasEmittedContent &&
       !options.signal?.aborted &&
       verdict.retryable &&
-      attempt <= attemptBudgetFor(verdict, maxRetries)
+      attempt <= maxRetries
 
     let retryError: unknown
     let retryLane: RetryVerdict | undefined
@@ -1191,17 +1069,22 @@ export async function* withTransientNetworkRetry(
         if (isApiErrorAssistantMessage(item)) {
           const text = getMessageText(item)
           const sourceError = getRetrySourceError(item)
-          // The error OBJECT wins whenever there is one: it carries the
-          // producer's own verdict (`retryable`, a real status, an errno),
-          // whereas the text is a last resort for the producers that only ever
-          // yield prose. Or-ing the two let a message containing wording like
-          // "stream idle timeout" overrule an explicit `retryable: false` and
-          // replay a request the adapter had already ruled permanent.
+          // The error OBJECT wins whenever there is one: it carries a real
+          // status, errno and replay-safety marker, whereas the text is a last
+          // resort for producers that only yield prose. Or-ing the two lets
+          // transient-looking text overrule structured metadata and can replay
+          // output that already crossed the commitment boundary.
           const verdict =
             sourceError !== undefined
               ? retryVerdict(sourceError)
               : retryVerdict(text)
-          if (canRetry(verdict) && !hasExhaustedTransientRetries(item)) {
+          const replayable =
+            sourceError === undefined || isAPIErrorReplayable(sourceError)
+          if (
+            replayable &&
+            canRetry(verdict) &&
+            !hasExhaustedTransientRetries(item)
+          ) {
             // Current producers yield at most one error message per attempt,
             // but if a second ever arrives the first must not vanish — emit it
             // rather than letting the assignment below swallow it.
@@ -1227,7 +1110,7 @@ export async function* withTransientNetworkRetry(
       // FallbackTriggeredError still propagate — neither is retriable, and
       // retryVerdict rejects both.
       const verdict = retryVerdict(error)
-      if (!canRetry(verdict)) {
+      if (!isAPIErrorReplayable(error) || !canRetry(verdict)) {
         throw error
       }
       retryError = error
@@ -1248,10 +1131,7 @@ export async function* withTransientNetworkRetry(
       return
     }
 
-    const attemptBudget =
-      retryLane === undefined
-        ? maxRetries
-        : attemptBudgetFor(retryLane, maxRetries)
+    const attemptBudget = maxRetries
     const delayMs =
       retryLane?.persistence === 'permanent'
         ? PERMANENT_RETRY_DELAY_MS

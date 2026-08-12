@@ -41,6 +41,12 @@ function currentProfileModelType():
   // the user configured (the OPENCODE_* keys), not what the mirror derived.
   if (isOpencodeSessionActive()) return { modelType: 'opencode' }
 
+  // Persisted modelType answers provider ownership; getAPIProvider answers the
+  // wire protocol. DeepSeek's default Anthropic-compatible lane reports
+  // firstParty even though the user configured and must snapshot OPENAI_* keys.
+  const persistedModelType = getSettingsForSource('userSettings')?.modelType
+  if (persistedModelType) return { modelType: persistedModelType }
+
   const provider = getAPIProvider()
   switch (provider) {
     case 'firstParty':
@@ -61,6 +67,8 @@ function currentProfileModelType():
 export function saveCurrentAsProfile(params: {
   name: string
   notes?: string
+  aggregate?: boolean
+  setActive?: boolean
 }): { profile: ProviderProfile } | { error: string } {
   if (!isValidProfileName(params.name)) {
     return {
@@ -81,9 +89,11 @@ export function saveCurrentAsProfile(params: {
     // layer into the user's own settings.json on the next switch.
     modelSettings: getSettingsForSource('userSettings')?.modelSettings,
     notes: params.notes,
+    aggregate: params.aggregate,
     existing: file.profiles[params.name],
   })
   file.profiles[params.name] = profile
+  if (params.setActive) file.active = params.name
   saveProfilesFile(file)
   return { profile }
 }

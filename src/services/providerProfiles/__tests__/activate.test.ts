@@ -314,6 +314,40 @@ describe('activateProfile live environment ownership', () => {
   })
 })
 
+describe('saving a DeepSeek Anthropic-wire session', () => {
+  test('captures its persisted OpenAI ownership, not mirrored Anthropic keys', () => {
+    persistedSettings = {
+      modelType: 'openai',
+      env: {
+        OPENAI_BASE_URL: 'https://api.deepseek.com/v1',
+        OPENAI_API_KEY: 'sk-deepseek',
+        OPENAI_MODEL: 'deepseek-chat',
+      },
+    }
+    process.env.OPENAI_BASE_URL = 'https://api.deepseek.com/v1'
+    process.env.OPENAI_API_KEY = 'sk-deepseek'
+    process.env.OPENAI_MODEL = 'deepseek-chat'
+    process.env.ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
+    process.env.ANTHROPIC_API_KEY = 'mirrored-deepseek-key'
+
+    const saved = activate.saveCurrentAsProfile({ name: 'deepseek' })
+    expect('error' in saved).toBe(false)
+    if ('error' in saved) return
+
+    expect(saved.profile.modelType).toBe('openai')
+    expect(saved.profile.env).toMatchObject({
+      OPENAI_BASE_URL: 'https://api.deepseek.com/v1',
+      OPENAI_API_KEY: 'sk-deepseek',
+      OPENAI_MODEL: 'deepseek-chat',
+    })
+    expect(saved.profile.env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(saved.profile.env.ANTHROPIC_API_KEY).toBeUndefined()
+    expect(Object.values(saved.profile.env)).not.toContain(
+      'mirrored-deepseek-key',
+    )
+  })
+})
+
 describe('saving an OpenCode session', () => {
   const OPENCODE_ENV = [
     'OPENCODE_AUTH_MODE',
@@ -508,6 +542,26 @@ describe('activateProfile restores per-tier model settings', () => {
 
     expect(saved.profile.modelSettings).toEqual({
       opus: { effort: 'xhigh', contextTokens: 272_000 },
+    })
+  })
+
+  test('an add-flow capture can mark the saved profile active atomically', () => {
+    profiles.saveProfilesFile({
+      version: 1,
+      active: 'old',
+      profiles: profiles.loadProfilesFile().profiles,
+    })
+
+    const saved = activate.saveCurrentAsProfile({
+      name: 'new',
+      aggregate: true,
+      setActive: true,
+    })
+
+    expect('error' in saved).toBe(false)
+    expect(profiles.loadProfilesFile()).toMatchObject({
+      active: 'new',
+      profiles: { new: { aggregate: true } },
     })
   })
 })

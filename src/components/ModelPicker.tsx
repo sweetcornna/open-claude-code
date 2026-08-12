@@ -190,6 +190,7 @@ export function ModelPicker({
   const hiddenCount = Math.max(0, selectOptions.length - visibleCount);
 
   const focusedModelName = selectOptions.find(opt => opt.value === focusedValue)?.label;
+  const focusedAggregated = !canEditSettingsForOption(focusedValue);
   const focusedModel = resolveOptionModel(focusedValue);
   const focusedSlot = settingsSlotForOption(focusedValue);
   const focusedContextKey = focusedSlot ?? UNTIERED;
@@ -243,7 +244,7 @@ export function ModelPicker({
   // Effort level cycling keybindings
   const handleCycleEffort = useCallback(
     (direction: 'left' | 'right') => {
-      if (!focusedSupportsEffort) return;
+      if (focusedAggregated || !focusedSupportsEffort) return;
       const next = cycleEffortLevel(
         effort ?? focusedDefaultEffort,
         direction,
@@ -254,17 +255,25 @@ export function ModelPicker({
       setEffortByTier(prev => new Map(prev).set(focusedContextKey, next));
       setHasToggledEffort(true);
     },
-    [effort, focusedSupportsEffort, focusedSupportsXhigh, focusedSupportsMax, focusedDefaultEffort, focusedContextKey],
+    [
+      effort,
+      focusedAggregated,
+      focusedSupportsEffort,
+      focusedSupportsXhigh,
+      focusedSupportsMax,
+      focusedDefaultEffort,
+      focusedContextKey,
+    ],
   );
 
   const handleCycleMaxContext = useCallback(() => {
-    if (!focusedModel) return;
+    if (focusedAggregated || !focusedModel) return;
     setContextByTier(prev => {
       const next = new Map(prev);
       next.set(focusedContextKey, nextContextChoice(focusedModel, prev.get(focusedContextKey), focusedSlot));
       return next;
     });
-  }, [focusedModel, focusedSlot, focusedContextKey]);
+  }, [focusedAggregated, focusedModel, focusedSlot, focusedContextKey]);
 
   useKeybindings(
     {
@@ -286,6 +295,29 @@ export function ModelPicker({
     const selectedKey = selectedSlot ?? UNTIERED;
     const pickedEffort = effortByTier.get(selectedKey);
     const pickedContext = contextByTier.get(selectedKey);
+    const selectedModel = resolveOptionModel(value);
+    const selectedEffort = hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel) ? effort : undefined;
+
+    const aggregated = parseAggregatedOptionValue(value);
+    if (aggregated) {
+      // Aggregated rows only switch provider and model. Their effort/context
+      // belongs to the target profile, whose settings are restored below; the
+      // picker cannot edit those accurately while the old provider is active.
+      const activated = activateProfileForModel(aggregated.selector);
+      if ('error' in activated) {
+        setSelectionError(activated.error);
+        return;
+      }
+
+      setSelectionError(null);
+      setAppState(prev => ({
+        ...prev,
+        settings: getInitialSettings(),
+        effortValue: undefined,
+      }));
+      onSelect(activated.model.id, undefined);
+      return;
+    }
 
     if (!skipSettingsWrite) {
       // EVERY tier touched in this session of the picker is saved, not just the
@@ -338,34 +370,6 @@ export function ModelPicker({
         }
         setAppState(prev => ({ ...prev, effortValue: effortLevel }));
       }
-    }
-
-    const selectedModel = resolveOptionModel(value);
-    const selectedEffort = hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel) ? effort : undefined;
-
-    const aggregated = parseAggregatedOptionValue(value);
-    if (aggregated) {
-      // Selecting an aggregated model switches the session to the provider
-      // that serves it. activateProfileForModel() delegates to
-      // activateProfile(), which owns the whole-shape settings.env write and
-      // the client-cache clear — there must be exactly one copy of that.
-      const activated = activateProfileForModel(aggregated.selector);
-      if ('error' in activated) {
-        // Stay open: the row is real but the registry disagrees (a profile
-        // deleted while this picker was on screen), and closing would leave
-        // the user on the old provider with no explanation.
-        setSelectionError(activated.error);
-        return;
-      }
-      setSelectionError(null);
-      // settings.env was just rewritten under the session — and so was
-      // settings.modelSettings, with the flat effortLevel deleted. Clearing
-      // effortValue is the AppState half of that: it outranks the per-tier
-      // layer, so the profile's restored effort is only reachable once this is
-      // undefined (same rule as the writeTierSettings loop above).
-      setAppState(prev => ({ ...prev, settings: getInitialSettings(), effortValue: undefined }));
-      onSelect(activated.model.id, selectedEffort);
-      return;
     }
 
     if (value === NO_PREFERENCE) {
@@ -440,28 +444,36 @@ export function ModelPicker({
         </Box>
 
         <Box marginBottom={1} flexDirection="column">
-          {focusedSupportsEffort ? (
-            <Text dimColor>
-              <EffortLevelIndicator effort={displayEffort} /> {capitalize(displayEffort)} effort
-              {displayEffort === focusedDefaultEffort ? ` (default)` : ``} <Text color="subtle">← → to adjust</Text>
+          {focusedAggregated ? (
+            <Text color="subtle">
+              Effort and max context come from the target profile · switch first, then reopen /model to adjust
             </Text>
           ) : (
-            <Text color="subtle">
-              <EffortLevelIndicator effort={undefined} /> Effort not supported
-              {focusedModelName ? ` for ${focusedModelName}` : ''}
-            </Text>
-          )}
-          {focusedContextTokens !== undefined && focusedContextTokens !== null ? (
-            <Text dimColor>
-              <EffortLevelIndicator effort={'high'} /> {formatContextTokens(focusedContextTokens)} max context
-              {focusedContextIsDefault ? ' (default)' : ''}
-              <Text color="subtle"> · Space to change</Text>
-            </Text>
-          ) : (
-            <Text color="subtle">
-              <EffortLevelIndicator effort={undefined} /> Max context not configurable
-              {focusedModelName ? ` for ${focusedModelName}` : ''}
-            </Text>
+            <>
+              {focusedSupportsEffort ? (
+                <Text dimColor>
+                  <EffortLevelIndicator effort={displayEffort} /> {capitalize(displayEffort)} effort
+                  {displayEffort === focusedDefaultEffort ? ` (default)` : ``} <Text color="subtle">← → to adjust</Text>
+                </Text>
+              ) : (
+                <Text color="subtle">
+                  <EffortLevelIndicator effort={undefined} /> Effort not supported
+                  {focusedModelName ? ` for ${focusedModelName}` : ''}
+                </Text>
+              )}
+              {focusedContextTokens !== undefined && focusedContextTokens !== null ? (
+                <Text dimColor>
+                  <EffortLevelIndicator effort={'high'} /> {formatContextTokens(focusedContextTokens)} max context
+                  {focusedContextIsDefault ? ' (default)' : ''}
+                  <Text color="subtle"> · Space to change</Text>
+                </Text>
+              ) : (
+                <Text color="subtle">
+                  <EffortLevelIndicator effort={undefined} /> Max context not configurable
+                  {focusedModelName ? ` for ${focusedModelName}` : ''}
+                </Text>
+              )}
+            </>
           )}
           {contextEnvOverride !== undefined && (
             <Text color="subtle">
@@ -514,6 +526,11 @@ export function ModelPicker({
   }
 
   return <Pane color="permission">{content}</Pane>;
+}
+
+/** Aggregated rows restore settings from their target profile before editing. */
+export function canEditSettingsForOption(value?: string): boolean {
+  return parseAggregatedOptionValue(value) === undefined;
 }
 
 /**

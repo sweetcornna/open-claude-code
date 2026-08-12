@@ -27,11 +27,8 @@ import {
   parseModelSelector,
   type AggregatedModel,
 } from 'src/services/providerProfiles/aggregate.js'
-import {
-  PROFILE_ENV_KEYS,
-  type ProfileModelType,
-} from 'src/services/providerProfiles/envKeys.js'
 import type { ProviderProfilesFile } from 'src/services/providerProfiles/profiles.js'
+import { PROFILE_ENV_KEYS } from 'src/services/providerProfiles/envKeys.js'
 
 /**
  * Marks an option value as an aggregated selector rather than a model id.
@@ -87,25 +84,18 @@ export function parseAggregatedOptionValue(
 }
 
 /**
- * Which saved profiles describe the provider this session is ALREADY talking
- * to.
+ * Which saved profiles exactly describe the provider configuration in force.
  *
- * Not `file.active`, or not only it. That pointer is written by
- * `activateProfile()` and by nothing else, so a session configured through
- * `/login` — or through the setup wizard, or by exported keys — has none at
- * all, and the de-duplication below was silently skipped for exactly those
- * users: every model of the provider they were using came back a second time
- * under its profile's name.
+ * `file.active` is only a record of the last profile switch. `/login`, the add
+ * wizard and hand-edited settings can all replace the live configuration
+ * without updating it, so trusting that pointer hides a stale profile from the
+ * aggregated picker. Comparing only endpoints is also too broad: two profiles
+ * on the same service with different credentials are distinct switch targets.
  *
- * The identity that does not depend on a pointer is the configuration itself: a
- * profile whose family matches `settings.modelType` and whose endpoint matches
- * the live one IS the provider in use, whether or not anything recorded that.
- * Only the endpoint is compared, not the credentials — two profiles on the same
- * endpoint with different keys are the same PROVIDER, and offering the session
- * its own models again is the thing being fixed.
- *
- * `file.active` is still honoured on top, so a session that did switch through
- * a profile keeps behaving exactly as before.
+ * Match the selected family's managed shape instead. Values from other families
+ * may belong to the parent shell or a runtime wire mirror and are deliberately
+ * preserved across activation; they do not make this profile a different
+ * account. Every other profile remains visible and selectable.
  */
 export function sessionOwnedProfiles(
   file: ProviderProfilesFile,
@@ -117,33 +107,19 @@ export function sessionOwnedProfiles(
   },
 ): Set<string> {
   const owned = new Set<string>()
-  if (file.active !== undefined) owned.add(file.active)
   const family = session.modelType ?? 'anthropic'
   for (const [name, profile] of Object.entries(file.profiles ?? {})) {
     if (!profile || typeof profile !== 'object') continue
     if (profile.modelType !== family) continue
-    const keys = endpointKeysFor(family)
-    const sameEndpoint = keys.every(
-      key =>
-        normalizeEndpoint(profile.env?.[key]) ===
-        normalizeEndpoint(session.env[key]),
+    const managedKeys = PROFILE_ENV_KEYS[profile.modelType]
+    if (!managedKeys) continue
+    const profileEnv = profile.env ?? {}
+    const sameConfiguration = managedKeys.every(
+      key => (profileEnv[key] ?? '') === (session.env[key] ?? ''),
     )
-    if (sameEndpoint) owned.add(name)
+    if (sameConfiguration) owned.add(name)
   }
   return owned
-}
-
-function endpointKeysFor(family: string): readonly string[] {
-  // Indexed loosely: the registry file is user-editable and a hand-written
-  // modelType must degrade to "no endpoint keys", not throw.
-  const keys: readonly string[] =
-    PROFILE_ENV_KEYS[family as ProfileModelType] ?? []
-  return keys.filter(key => key.endsWith('_BASE_URL'))
-}
-
-/** Unset and "the default spelled out with a trailing slash" are one endpoint. */
-function normalizeEndpoint(value: string | undefined): string {
-  return (value ?? '').trim().replace(/\/+$/, '')
 }
 
 type BuildAggregatedOptionsParams = {

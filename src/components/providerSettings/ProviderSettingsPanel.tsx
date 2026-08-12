@@ -117,25 +117,6 @@ export function ProviderSettingsPanel({ onClose, onProviderSwitched }: ProviderS
     [onProviderSwitched, reload],
   );
 
-  const toggleAggregate = useCallback(
-    (row: ProviderRow) => {
-      const result = updateProfileCatalog(row.name, { aggregate: !row.aggregate });
-      if ('error' in result) {
-        setNotice(result.error);
-        return;
-      }
-      reload();
-      if (row.aggregate) {
-        setNotice(`"${row.name}" no longer contributes to the aggregated model list.`);
-      } else if (row.modelCount === 0) {
-        setNotice(`"${row.name}" is in the aggregated list but has no models yet — press R to read them.`);
-      } else {
-        setNotice(`"${row.name}" contributes ${row.modelCount} models to the aggregated list.`);
-      }
-    },
-    [reload],
-  );
-
   // Keyed by name rather than by row: a just-added profile has no row in this
   // render yet, and the refresh that follows an aggregate opt-in cannot wait
   // for one.
@@ -170,6 +151,26 @@ export function ProviderSettingsPanel({ onClose, onProviderSwitched }: ProviderS
         });
     },
     [reload],
+  );
+
+  const toggleAggregate = useCallback(
+    (row: ProviderRow) => {
+      const enabling = !row.aggregate;
+      const result = updateProfileCatalog(row.name, { aggregate: enabling });
+      if ('error' in result) {
+        setNotice(result.error);
+        return;
+      }
+      reload();
+      if (!enabling) {
+        setNotice(`"${row.name}" no longer contributes to the aggregated model list.`);
+      } else if (row.modelCount === 0) {
+        refresh(row.name);
+      } else {
+        setNotice(`"${row.name}" contributes ${row.modelCount} models to the aggregated list.`);
+      }
+    },
+    [refresh, reload],
   );
 
   const remove = useCallback(

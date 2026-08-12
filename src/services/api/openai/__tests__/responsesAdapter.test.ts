@@ -10,7 +10,11 @@ import {
   resolveResponsesEndpoint,
 } from '../responsesAdapter.js'
 import { OPENAI_REASONING_ITEMS_FIELD } from '@ant/model-provider'
-import { formatOpenAIPromptCacheKey } from '../openaiShared.js'
+import {
+  _resetPromptCacheKeySupportForTesting,
+  formatOpenAIPromptCacheKey,
+  getOpenAIPromptCacheKey,
+} from '../openaiShared.js'
 import { calculateCacheHitRate } from '../../../../utils/telemetry/cacheWarning.js'
 
 describe('buildResponsesRequest', () => {
@@ -238,6 +242,7 @@ describe('reasoning summaries (thinking visibility)', () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
 
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
     const bodies: string[] = []
     const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
       const body = String(init?.body ?? '')
@@ -268,20 +273,15 @@ describe('reasoning summaries (thinking visibility)', () => {
       fetchOverride,
     })
 
-    // Three bodies, not two: under the retry-everything policy the 400 buys
-    // one identical cheap-lane retry before the degradation path takes over.
-    // That costs one round trip per session — the suppression below is
-    // latched — and it is the price of the ladder no longer failing outright.
-    expect(bodies).toHaveLength(3)
-    for (const body of [bodies[0]!, bodies[1]!]) {
-      expect(JSON.parse(body).reasoning).toEqual({
-        effort: 'high',
-        summary: 'auto',
-      })
-    }
+    // The rejected probe and the downgraded request share one retry budget.
+    expect(bodies).toHaveLength(2)
+    expect(JSON.parse(bodies[0]!).reasoning).toEqual({
+      effort: 'high',
+      summary: 'auto',
+    })
     // Retried without the field, and the rest of the body is untouched.
-    expect(JSON.parse(bodies[2]!).reasoning).toEqual({ effort: 'high' })
-    expect(JSON.parse(bodies[2]!).model).toBe('gpt-5.6-sol')
+    expect(JSON.parse(bodies[1]!).reasoning).toEqual({ effort: 'high' })
+    expect(JSON.parse(bodies[1]!).model).toBe('gpt-5.6-sol')
 
     // Latched: later requests in the session stop paying the failed probe.
     const next = buildResponsesRequest({
@@ -294,9 +294,53 @@ describe('reasoning summaries (thinking visibility)', () => {
     expect(next.reasoning).toEqual({ effort: 'high' })
   })
 
-  test('an unrelated 400 still fails the turn after one cheap retry', async () => {
+  test('summary degradation cannot start a second retry budget', async () => {
     delete process.env.OPENAI_REASONING_SUMMARY
     process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+    const bodies: string[] = []
+    const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
+      const body = String(init?.body ?? '')
+      bodies.push(body)
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: JSON.parse(body).reasoning?.summary
+              ? "Unknown parameter: 'reasoning.summary'."
+              : 'backend unavailable',
+          },
+        }),
+        { status: JSON.parse(body).reasoning?.summary ? 400 : 503 },
+      )
+    }) as unknown as typeof fetch
+
+    await expect(
+      createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+          reasoningEffort: 'high',
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+      }),
+    ).rejects.toThrow(/backend unavailable/)
+
+    expect(bodies).toHaveLength(3)
+    expect(JSON.parse(bodies[0]!).reasoning.summary).toBe('auto')
+    for (const body of bodies.slice(1)) {
+      expect(JSON.parse(body).reasoning).toEqual({ effort: 'high' })
+    }
+  })
+
+  test('an unrelated 400 uses the full configured budget', async () => {
+    delete process.env.OPENAI_REASONING_SUMMARY
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
 
     let calls = 0
@@ -321,7 +365,7 @@ describe('reasoning summaries (thinking visibility)', () => {
         fetchOverride,
       }),
     ).rejects.toThrow()
-    expect(calls).toBe(2)
+    expect(calls).toBe(3)
   })
 })
 
@@ -443,6 +487,7 @@ describe('createOpenAIResponsesStream', () => {
   const savedEnv = {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    OPENAI_PROMPT_CACHE_KEY: process.env.OPENAI_PROMPT_CACHE_KEY,
     OPENAI_REQUEST_MAX_RETRIES: process.env.OPENAI_REQUEST_MAX_RETRIES,
     CLAUDE_STREAM_IDLE_TIMEOUT_MS: process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS,
   }
@@ -452,6 +497,7 @@ describe('createOpenAIResponsesStream', () => {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
+    _resetPromptCacheKeySupportForTesting()
   })
 
   test('rejects without OPENAI_API_KEY', async () => {
@@ -467,6 +513,137 @@ describe('createOpenAIResponsesStream', () => {
         signal: new AbortController().signal,
       }),
     ).rejects.toThrow('OPENAI_API_KEY is required')
+  })
+
+  test('a compatible endpoint drops a rejected cache key within one retry budget', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_BASE_URL = 'https://gateway.internal/v1'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const bodies: Record<string, unknown>[] = []
+    const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+        string,
+        unknown
+      >
+      bodies.push(body)
+      if ('prompt_cache_key' in body) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "Unknown parameter: 'prompt_cache_key'." },
+          }),
+          { status: 400 },
+        )
+      }
+      return new Response('data: [DONE]\n\n', { status: 200 })
+    }) as unknown as typeof fetch
+
+    await createOpenAIResponsesStream({
+      request: buildResponsesRequest({
+        model: 'gpt-5.6-sol',
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        toolChoice: undefined,
+        promptCacheKey: formatOpenAIPromptCacheKey('responses-session'),
+      }),
+      signal: new AbortController().signal,
+      fetchOverride,
+    })
+
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0]!.prompt_cache_key).toBe('occ:responses-session')
+    expect('prompt_cache_key' in bodies[1]!).toBe(false)
+    expect(
+      getOpenAIPromptCacheKey(
+        'https://gateway.internal/v1',
+        'next-session',
+        'responses',
+      ),
+    ).toBeUndefined()
+  })
+
+  test('cache-key degradation cannot start a second retry budget', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_BASE_URL = 'https://gateway.internal/v1'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    const bodies: Record<string, unknown>[] = []
+    const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<
+        string,
+        unknown
+      >
+      bodies.push(body)
+      return new Response(
+        JSON.stringify({
+          error: {
+            message:
+              'prompt_cache_key' in body
+                ? "Unknown parameter: 'prompt_cache_key'."
+                : 'backend unavailable',
+          },
+        }),
+        { status: 'prompt_cache_key' in body ? 400 : 503 },
+      )
+    }) as unknown as typeof fetch
+
+    await expect(
+      createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+          promptCacheKey: formatOpenAIPromptCacheKey('responses-session'),
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+      }),
+    ).rejects.toThrow(/backend unavailable/)
+
+    expect(bodies).toHaveLength(3)
+    expect(bodies[0]!.prompt_cache_key).toBe('occ:responses-session')
+    for (const body of bodies.slice(1)) {
+      expect('prompt_cache_key' in body).toBe(false)
+    }
+  })
+
+  test('an explicit cache-key override keeps it on after rejection', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test-key'
+    process.env.OPENAI_BASE_URL = 'https://gateway.internal/v1'
+    process.env.OPENAI_PROMPT_CACHE_KEY = '1'
+    let calls = 0
+    const fetchOverride = (async () => {
+      calls++
+      return new Response(
+        JSON.stringify({
+          error: { message: "Unknown parameter: 'prompt_cache_key'." },
+        }),
+        { status: 400 },
+      )
+    }) as unknown as typeof fetch
+
+    await expect(
+      createOpenAIResponsesStream({
+        request: buildResponsesRequest({
+          model: 'gpt-5.6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          tools: [],
+          toolChoice: undefined,
+          promptCacheKey: formatOpenAIPromptCacheKey('forced-session'),
+        }),
+        signal: new AbortController().signal,
+        fetchOverride,
+        maxRetries: 1,
+      }),
+    ).rejects.toThrow(/prompt_cache_key/)
+
+    expect(calls).toBe(2)
+    expect(
+      getOpenAIPromptCacheKey(
+        'https://gateway.internal/v1',
+        'next-session',
+        'responses',
+      ),
+    ).toBe('occ:next-session')
   })
 
   test('POSTs to <base>/responses with bearer auth and no ChatGPT headers', async () => {
@@ -754,7 +931,7 @@ describe('createOpenAIResponsesStream', () => {
     expect((caught as Error).message).toBe(
       'Responses API stream ended before a terminal event',
     )
-    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+    expect(caught).toMatchObject({ retryable: true, replayable: false })
   })
 
   test('retries when the stream stalls before its first event', async () => {
@@ -912,9 +1089,8 @@ describe('createOpenAIResponsesStream', () => {
     })
   }
 
-  test('keeps permanent model errors off the stream ladder', async () => {
-    // OPENAI_REQUEST_MAX_RETRIES=2 means a transient failure would be tried
-    // three times. A bad model id gets the cheap lane's single retry instead.
+  test('gives permanent model errors the configured stream budget', async () => {
+    // OPENAI_REQUEST_MAX_RETRIES=2 means the initial attempt plus two retries.
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
     let calls = 0
@@ -937,7 +1113,7 @@ describe('createOpenAIResponsesStream', () => {
         fetchOverride,
       }),
     ).rejects.toThrow(/model does not exist/)
-    expect(calls).toBe(2)
+    expect(calls).toBe(3)
   })
 
   for (const [label, committedEvent] of [
@@ -1006,7 +1182,7 @@ describe('createOpenAIResponsesStream', () => {
       expect((caught as Error).message).toBe(
         'Responses API stream idle timeout after 30ms',
       )
-      expect((caught as { retryable?: boolean }).retryable).toBe(false)
+      expect(caught).toMatchObject({ retryable: true, replayable: false })
     })
   }
 
@@ -1046,7 +1222,7 @@ describe('createOpenAIResponsesStream', () => {
       { type: 'response.output_text.delta', delta: 'visible' },
     ])
     expect(calls).toBe(1)
-    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+    expect(caught).toMatchObject({ retryable: true, replayable: false })
   })
 
   // ── discardsPartialOutput ────────────────────────────────────────────────
@@ -1142,7 +1318,7 @@ describe('createOpenAIResponsesStream', () => {
     expect(events).toEqual([
       { type: 'response.output_text.delta', delta: 'half an ans' },
     ])
-    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+    expect(caught).toMatchObject({ retryable: true, replayable: false })
   })
 
   for (const [label, committedEvent] of [
@@ -1168,7 +1344,7 @@ describe('createOpenAIResponsesStream', () => {
       // allowed to opt out of that.
       expect(getCalls()).toBe(1)
       expect(events).toHaveLength(1)
-      expect((caught as { retryable?: boolean }).retryable).toBe(false)
+      expect(caught).toMatchObject({ retryable: true, replayable: false })
     })
   }
 
@@ -1186,7 +1362,7 @@ describe('createOpenAIResponsesStream', () => {
     const { caught } = await drain(fetchOverride, true)
 
     expect(getCalls()).toBe(1)
-    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+    expect(caught).toMatchObject({ retryable: true, replayable: false })
   })
 
   test('a buffered reader replays a transport read error after text', async () => {
@@ -1249,7 +1425,7 @@ describe('createOpenAIResponsesStream', () => {
     expect(events).toEqual([
       { type: 'response.output_text.delta', delta: 'half an ans' },
     ])
-    expect((caught as { retryable?: boolean }).retryable).toBe(false)
+    expect(caught).toMatchObject({ retryable: true, replayable: false })
   })
 
   test('a buffered reader replays an idle timeout after text', async () => {
@@ -1317,14 +1493,13 @@ describe('createOpenAIResponsesStream', () => {
 
     const { caught } = await drain(fetchOverride, true)
 
-    // Buffering says "a replay would be invisible", not "every failure is
-    // transient". A bad model id gets the cheap lane's single retry; the
-    // transient case above would have been tried three times.
-    expect(getCalls()).toBe(2)
+    // Buffering makes replay safe; permanent and transient errors both use the
+    // configured retry count, with different delays.
+    expect(getCalls()).toBe(3)
     expect((caught as Error).message).toMatch(/model does not exist/)
   })
 
-  test('a 400 still fails fast for a buffered reader', async () => {
+  test('a 400 uses the configured budget for a buffered reader', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
     let calls = 0
@@ -1340,9 +1515,7 @@ describe('createOpenAIResponsesStream', () => {
 
     const { caught } = await drain(fetchOverride, true)
     expect((caught as Error).message).toMatch(/bad tool schema/)
-    // Two attempts, not the three OPENAI_REQUEST_MAX_RETRIES=2 would buy a
-    // transient failure: a malformed tool schema still surfaces immediately.
-    expect(calls).toBe(2)
+    expect(calls).toBe(3)
   })
 })
 
@@ -2107,6 +2280,7 @@ describe('mid-stream rate limits state their wait in prose', () => {
   const savedEnv = {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    OPENAI_PROMPT_CACHE_KEY: process.env.OPENAI_PROMPT_CACHE_KEY,
     OPENAI_REQUEST_MAX_RETRIES: process.env.OPENAI_REQUEST_MAX_RETRIES,
   }
 
@@ -2130,9 +2304,9 @@ describe('mid-stream rate limits state their wait in prose', () => {
     })}\n\n`
   }
 
-  test('a wait past the ladder ceiling ends it instead of burning the budget', async () => {
+  test('preserves a long wait parsed from a mid-stream error', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.OPENAI_REQUEST_MAX_RETRIES = '0'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -2156,9 +2330,6 @@ describe('mid-stream rate limits state their wait in prose', () => {
       (thrown: unknown) => thrown,
     )
 
-    // An SSE frame has no Retry-After header, so before the message was parsed
-    // this looked like an ordinary retryable rate limit: the ladder re-asked a
-    // limiter that had just named an hour, three times over.
     expect((error as { retryAfterMs?: number })?.retryAfterMs).toBe(3_600_000)
     expect(calls).toBe(1)
   })

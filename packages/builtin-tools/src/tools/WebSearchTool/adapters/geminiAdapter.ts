@@ -66,7 +66,7 @@ const DEFAULT_SEARCH_MODEL = 'gemini-2.5-flash'
 /** Cheapest tier the Antigravity backend serves — a grounded search only has
  * to call the tool. */
 const ANTIGRAVITY_SEARCH_MODEL = ANTIGRAVITY_FLASH_LITE_MODEL
-const SEARCH_MAX_RETRIES = 2
+const SEARCH_MAX_RETRIES = 10
 
 /**
  * The two backends serve different model catalogues, and Antigravity rejects

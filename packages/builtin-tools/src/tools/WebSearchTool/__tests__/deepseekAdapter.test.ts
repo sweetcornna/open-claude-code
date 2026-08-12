@@ -262,9 +262,7 @@ describe('DeepSeekDirectSearchAdapter', () => {
     await expect(
       new DeepSeekDirectSearchAdapter({ fetchOverride }).search('q', {}),
     ).rejects.toThrow(/does not support web_search/)
-    // Every API error is retried, but a rejected tool schema is a permanent
-    // class: one cheap attempt, not the three SEARCH_MAX_RETRIES would buy.
-    expect(fetchOverride.calls).toHaveLength(2)
+    expect(fetchOverride.calls).toHaveLength(11)
   })
 
   test('enforces the domain filter client-side', async () => {

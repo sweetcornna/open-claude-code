@@ -196,27 +196,25 @@ thinking 关闭时不发（此时它不控制任何东西，这也顺带让 `max
 
 ## 五点八、重试策略（对所有 lane 生效）
 
-**每一个 API 错误都会重试。** 分歧只在「重试多少次值得」，判定真源是 `src/services/api/retryClassification.ts` 的 `classifyRetryableAPIError()`，它同时给出 `category`（报给 SDK / UI 的错误类别）与 `persistence`（落在哪条预算）。
+**每一个会向用户或工具返回错误的 provider 请求，遇到 API 错误时默认最多重试 10 次**（初始请求之外，共 11 次尝试）。覆盖主模型、side query 与 WebSearch 各 provider lane；模型目录、能力缓存、token 估算和配额检查属于 best-effort 内部探测，失败静默回退，不生成 `API Error`，仍保留各自轻量预算。判定真源是 `src/services/api/retryClassification.ts` 的 `classifyRetryableAPIError()`，它同时给出 `category`（报给 SDK / UI 的错误类别）与 `persistence`（使用哪种等待方式）。
 
-| 档 | 谁进来 | 预算 |
+| 档 | 谁进来 | 等待方式 |
 | --- | --- | --- |
-| `transient` | 网络/传输错误、408/409/425/429/5xx、无状态的上游失败、`upstream_error`/`stream_read_error` 这类网关合成错误、以及分类不出来的兜底 | **10 次重试**（初始请求之外，共 11 次尝试），指数退避 500ms → 32s，尊重 `Retry-After`（上限 60s） |
-| `permanent` | 认证、权限、无效请求、计费、模型不存在等 4xx，确定性 TLS 失败（证书/握手），以及服务端明说 `x-should-retry: false` 的响应 | **1 次重试**，固定 250ms |
+| `transient` | 网络/传输错误、408/409/425/429/5xx、无状态的上游失败、`upstream_error`/`stream_read_error` 这类网关合成错误、以及分类不出来的兜底 | 指数退避 500ms → 32s，尊重 `Retry-After`（上限 60s） |
+| `permanent` | 认证、权限、无效请求、计费、模型不存在等 4xx，确定性 TLS 失败（证书/握手），以及服务端明说 `x-should-retry: false` 的响应 | 固定 250ms，避免确定性错误爬完整条指数退避阶梯 |
 
-`permanent` 那一档为什么是 1 次 / 250ms：这些类别第二次基本还是同一个答案，多给一次只是为了兜住少数例外——比如请求发出到 401 之间凭据刚好被另一个进程轮换（`withRetry` 在决定重试**之前**就已丢弃过期凭据缓存，所以第二次是用新凭据构造的），或者网关短暂拒收了一个它随后会接受的 body。250ms 固定而非指数：这里没有拥塞需要退避，而工具 schema 写错时的 400 必须在一秒内浮出来（`transient` 那条梯子光第一步就是 500ms）。
-
-**`CLAUDE_CODE_RETRY_ALL_ERRORS=0`**（也接受 `false` / `off` / `no`）**关掉这条策略**，恢复到旧行为：`permanent` 档一次尝试就失败。默认开启。
+两档使用同一份重试次数预算；区别只在等待方式。
 
 **两件事这个开关碰不到**，因为它们都不是「API 出错」：
 
 1. **用户取消**。`APIUserAbortError`、`AbortError`、已 abort 的 signal 一律不重试——重试取消等于让 Esc 失效。
-2. **producer 显式标了 `retryable: false`**。这是流适配器表达「这一次尝试的输出已经交付出去了」的方式：token 已经进了终端、进了 ACP 的 `agent_message_chunk`、进了 `--include-partial-messages` 的 stdout，而这三条都是只能追加、没有「撤回/替换」这种更新类型的。重放 = 用户看到两遍。见 `openai/responsesAdapter.ts` 的 `closesRetryWindow`，以及 `withTransientNetworkRetry` 里 `hasEmittedContent` 那道闸——**那道闸在策略之上，任何分类结果都越不过去**。occ 自己抛的 `NonRetryableError`（未登录、账号无 project）用的也是这个字段。
+2. **当前流不可安全重放**。流适配器用独立的 `replayable: false` 表达「这一次尝试的输出已经交付出去了」：token 已经进了终端、进了 ACP 的 `agent_message_chunk`、进了 `--include-partial-messages` 的 stdout，而这三条都是只能追加、没有「撤回/替换」这种更新类型的。重放 = 用户看到两遍。此时 `UND_ERR_SOCKET` 等网络错误仍正确报告 `retryable=yes`，同时附带 `replayable=no`，实际请求不会重放。见 `openai/responsesAdapter.ts` 的 `closesRetryWindow`，以及 `withTransientNetworkRetry` 里 `hasEmittedContent` 那道闸——**那道闸在策略之上，任何分类结果都越不过去**。occ 自己抛的 `NonRetryableError`（未登录、账号无 project）仍用 `retryable: false`，因为那类错误根本没有发出 API 请求。
 
 **报出来的 `category` 只取决于错误本身，与重试结论无关。** 曾经不是这样：同一个上游断流，走瞬态尾部时报 `server_error`、被钉成永久时报 `unknown`，同一个 bug 看起来像两个。
 
-**预算覆盖**：`CLAUDE_CODE_MAX_RETRIES` 覆盖通用/Anthropic 与 OpenAI chat、Gemini、Grok lane，`OPENAI_REQUEST_MAX_RETRIES` 覆盖 Responses 建流；两个覆盖都校验并夹在 `0..10`，且都只抬 `transient` 档的上限——`permanent` 档取两者的较小值，所以调大 `CLAUDE_CODE_MAX_RETRIES` 不会让一个 400 重试十次。
+**预算覆盖**：`CLAUDE_CODE_MAX_RETRIES` 覆盖通用/Anthropic 与 OpenAI chat、Gemini、Grok lane，`OPENAI_REQUEST_MAX_RETRIES` 覆盖 Responses 建流；两个覆盖都校验并夹在 `0..10`，同时作用于 `transient` 与 `permanent` 两档。底层 Anthropic/OpenAI SDK 的内建 retry 保持关闭，避免应用层 10 次与 SDK 10 次相乘。
 
-**仍然独立于本策略的两个 bail**（它们说的是「再试一次不可能成功」，不是「这一类很少成功」）：非前台 querySource 的 529 直接放弃（避免容量雪崩时的放大），以及窗口型 429（Max/Pro 五小时窗）——每一步退避都夹在 60s，十次也熬不到窗口重开，只会把「5-hour limit reached」推迟十分钟。
+529 与窗口型 429 也使用完整 10 次预算；服务端给出的单次 `Retry-After` 最多等待 60 秒，避免一个多小时或异常 header 把进程长期挂起。
 
 ## 六、Provider 档案
 

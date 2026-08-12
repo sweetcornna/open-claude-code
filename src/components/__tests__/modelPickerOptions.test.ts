@@ -10,7 +10,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { resolveOptionModel, settingsSlotForOption } from '../ModelPicker.js'
+import {
+  canEditSettingsForOption,
+  resolveOptionModel,
+  settingsSlotForOption,
+} from '../ModelPicker.js'
 import { aggregatedOptionValue } from '../providerSettings/aggregatedOptions.js'
 
 const TIER_ENV_KEYS = [
@@ -31,6 +35,16 @@ afterEach(() => {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
   }
+})
+
+describe('settings editing on an aggregated row', () => {
+  test('requires switching to the target profile first', () => {
+    expect(canEditSettingsForOption(aggregatedOptionValue('gpt-5.4'))).toBe(
+      false,
+    )
+    expect(canEditSettingsForOption('opus')).toBe(true)
+    expect(canEditSettingsForOption('__NO_PREFERENCE__')).toBe(true)
+  })
 })
 
 describe('resolveOptionModel on an aggregated row', () => {

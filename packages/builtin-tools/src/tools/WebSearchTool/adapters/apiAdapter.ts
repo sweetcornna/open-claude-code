@@ -47,7 +47,7 @@ import type { SearchResult, SearchOptions, WebSearchAdapter } from './types.js'
  * — only the web_search_tool_result blocks are read.
  */
 const DIRECT_SEARCH_MAX_TOKENS = 4096
-const DIRECT_SEARCH_MAX_RETRIES = 2
+const DIRECT_SEARCH_MAX_RETRIES = 10
 
 /** Wire version header the Messages endpoint validates against. */
 const ANTHROPIC_VERSION = '2023-06-01'

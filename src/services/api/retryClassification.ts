@@ -49,71 +49,24 @@ const SDK_HTTP_STATUS_PATTERN = /^(?:API Error(?: \([^)]*\))?:\s*)?(\d{3})\s/
 /**
  * How much another attempt is worth.
  *
- * `transient` earns the full ladder — ten retries with exponential backoff.
- * `permanent` is the set that almost never answers differently: authentication,
- * permission, invalid request, billing, a deterministic TLS failure, and the
- * unclassifiable tail of a 4xx. occ retries those too (see
- * {@link isRetryEveryAPIErrorEnabled}), but on {@link PERMANENT_RETRY_MAX_RETRIES}
- * attempts of {@link PERMANENT_RETRY_DELAY_MS} rather than the ladder, so a bad
- * tool schema still surfaces in about the time a hard failure used to.
+ * Both classes receive the configured retry budget. `transient` uses exponential
+ * backoff; `permanent` covers authentication, permission, invalid request,
+ * billing, deterministic TLS failures and the unclassifiable tail of a 4xx, and
+ * uses {@link PERMANENT_RETRY_DELAY_MS} between attempts so errors that cannot
+ * recover do not spend the full congestion ladder waiting.
  */
 type RetryPersistence = 'transient' | 'permanent'
 
 export type RetryableAPIErrorClassification = {
   category: SDKAssistantMessageError
   retryable: boolean
-  /**
-   * Which retry budget this failure belongs in. `retryable: false` always
-   * implies `permanent`; the reverse does not hold — under the default policy a
-   * permanent class is retried, just cheaply.
-   */
+  /** Which delay lane this failure uses. */
   persistence: RetryPersistence
 }
 
 /**
- * Single documented switch for the retry-everything policy.
- *
- * On by default: every classified API failure gets at least one more attempt,
- * including the classes that used to fail immediately — `authentication_failed`,
- * `invalid_request`, `billing_error`, permission, and the unclassified
- * fall-through. Set `CLAUDE_CODE_RETRY_ALL_ERRORS` to `0`, `false`, `off` or
- * `no` to restore the previous fast-fail behaviour, where only transient
- * failures were retried at all.
- *
- * Two things this switch deliberately does not reach, because neither is an API
- * failure:
- *
- *  - **User cancellation** (`APIUserAbortError`, an `AbortError`, an aborted
- *    signal). Retrying a cancellation defeats Esc.
- *  - **An explicit `retryable: false` from the producer.** That field is how the
- *    stream adapters say "this attempt's output already reached the terminal,
- *    ACP and `--include-partial-messages` stdout; there is no protocol for
- *    un-saying it". See `closesRetryWindow` in `openai/responsesAdapter.ts`.
- *    It is also what occ's own {@link NonRetryableError} sets for a local
- *    precondition no request was ever made for.
- */
-export function isRetryEveryAPIErrorEnabled(): boolean {
-  const raw = process.env.CLAUDE_CODE_RETRY_ALL_ERRORS?.trim().toLowerCase()
-  return !(raw === '0' || raw === 'false' || raw === 'off' || raw === 'no')
-}
-
-/**
- * Retries granted to a `permanent` failure, on top of the initial request.
- *
- * One, not the ladder's ten. These classes answer the same way the second time
- * in nearly every case; the single extra attempt exists for the few that do not
- * — a credential rotated between the request and its 401 (`withRetry` drops the
- * stale credential cache *before* it decides, so attempt two is built from a
- * fresh one), or a gateway that briefly rejects a body it goes on to accept. A
- * second retry would double the cost of the common case to buy almost nothing.
- */
-export const PERMANENT_RETRY_MAX_RETRIES = 1
-
-/**
- * Backoff between the two attempts above. Fixed rather than exponential: there
- * is no congestion to back off from, and the whole point of this lane is that a
- * 400 for a malformed tool schema still surfaces in well under a second. The
- * transient ladder's *first* step alone is 500ms and its last is 32s.
+ * Fixed delay for deterministic API failures. They still receive the full
+ * configured retry count, but do not climb the congestion backoff ladder.
  */
 export const PERMANENT_RETRY_DELAY_MS = 250
 
@@ -128,7 +81,7 @@ function classify(
   return {
     category,
     persistence,
-    retryable: persistence === 'transient' || isRetryEveryAPIErrorEnabled(),
+    retryable: true,
   }
 }
 
@@ -160,13 +113,11 @@ function apiBoundaryCategory(
  * "you are not logged in", "this account has no project". No request was ever
  * put on the wire, so there is nothing transient to outlast.
  *
- * The `retryable: false` field is what earns that: it is the classifier's
- * highest-precedence signal below abort/TLS (see
- * {@link classifyRetryableAPIError}), the same one `responsesAdapter.ts` uses to
- * pin a committed stream failure as permanent. Without it these land in the
- * default-retry tail — a plain `new Error('… Run /login …')` matches no
- * transient pattern and no permanent keyword, so the ladder spends eleven
- * attempts and ~2 minutes re-reading the same empty credentials file.
+ * The concrete class is the veto; provider SDKs may also expose a
+ * `retryable:false` field, but their failures reached an API and therefore still
+ * receive the configured budget. Without this class, a plain `new Error('… Run
+ * /login …')` would spend eleven attempts re-reading the same empty credentials
+ * file.
  *
  * `category` is explicit rather than inferred, so the SDK error surface does not
  * hinge on the prose ever matching a regex.
@@ -448,15 +399,13 @@ function knownErrorCategory(
  * Classify SDK errors, hand-written fetch errors, and SSE error envelopes.
  *
  * Precedence is part of the contract: abort > deterministic TLS > an explicit
- * retryable:false > permanent type/code/name > HTTP status > other structured
- * signals > retryable:true > message.
+ * local {@link NonRetryableError} > permanent type/code/name > HTTP status > other
+ * structured signals > retryable:true > message.
  *
- * What that precedence now decides is mostly the *lane*, not whether to retry:
- * every class the classifier can name is retryable under the default policy
- * (see {@link isRetryEveryAPIErrorEnabled}), with permanent classes routed to
- * the small budget in {@link PERMANENT_RETRY_MAX_RETRIES}. The two exceptions
- * are the first two rungs — a user cancellation, and a producer that declared
- * `retryable: false` because its output already went downstream.
+ * What that precedence decides is mostly the delay lane, not the attempt budget:
+ * every API class is retryable under the default policy. Whether a stream can be
+ * safely replayed after output has been delivered is a separate `replayable`
+ * decision made by the producer and its caller.
  */
 export function classifyRetryableAPIError(
   error: unknown,
@@ -479,8 +428,7 @@ export function classifyRetryableAPIError(
     records.some(record => record.name === 'AbortError') ||
     messages.some(message => ABORT_ERROR_PATTERN.test(message))
   ) {
-    // The user pressed Esc. Never retried, under any policy — see
-    // isRetryEveryAPIErrorEnabled.
+    // The user pressed Esc. Retrying would defeat cancellation.
     return neverRetry('unknown')
   }
 
@@ -499,19 +447,17 @@ export function classifyRetryableAPIError(
     messages.some(message => DETERMINISTIC_TLS_PATTERN.test(message))
   ) {
     // A bad certificate or a protocol mismatch answers the same way every
-    // time, and `getSSLErrorHint`'s NODE_EXTRA_CA_CERTS advice is only useful
-    // if it arrives quickly — hence the cheap lane rather than the ladder.
+    // time, so it uses fixed delays rather than exponential backoff.
     // Reported as whatever the error itself said, usually `unknown`: a
     // handshake that never completed produced no provider payload to name.
     return classify(knownCategory, 'permanent')
   }
 
-  // The producer's own verdict, and the only "do not retry" this file honours
-  // besides a cancellation. It is how a stream adapter reports that the
-  // attempt's output already reached the terminal / ACP / partial-message
-  // stdout, where nothing can be un-said. Overriding it replays the user's
-  // output. See closesRetryWindow in openai/responsesAdapter.ts.
-  if (records.some(record => record.retryable === false)) {
+  // Only occ's local precondition error can veto the API retry policy. Provider
+  // SDKs also attach retryable:false to deterministic HTTP failures; those still
+  // reached an API and must receive the configured ten retries. Stream replay
+  // safety is represented separately by `replayable`.
+  if (records.some(record => record instanceof NonRetryableError)) {
     return neverRetry(apiBoundaryCategory(knownCategory))
   }
 
@@ -563,6 +509,7 @@ export type APIErrorDiagnostics = {
   message?: string
   category: SDKAssistantMessageError
   retryable: boolean
+  replayable: boolean
 }
 
 export type APIErrorDiagnosticContext = {
@@ -694,6 +641,7 @@ export function getAPIErrorDiagnostics(
   const records = collectErrorRecords(error)
   const messages = errorMessages(error, records)
   const classification = classifyRetryableAPIError(error)
+  const replayable = isAPIErrorReplayable(error)
   const status = firstScalar(records, ['status', 'statusCode', 'httpStatus'])
   const code = firstScalar(records, ['code'])
   const type = firstScalar(records, ['type'])
@@ -722,6 +670,7 @@ export function getAPIErrorDiagnostics(
     ...(message ? { message } : {}),
     category: classification.category,
     retryable: classification.retryable,
+    replayable,
   }
 }
 
@@ -733,6 +682,7 @@ export function describeAPIError(
   errorDetails: string
   category: SDKAssistantMessageError
   retryable: boolean
+  replayable: boolean
 } {
   const details = getAPIErrorDiagnostics(error, context)
   const label = details.provider
@@ -747,6 +697,7 @@ export function describeAPIError(
     details.name ? `name=${details.name}` : undefined,
     `category=${details.category}`,
     `retryable=${details.retryable ? 'yes' : 'no'}`,
+    details.replayable ? undefined : 'replayable=no',
   ].filter((value): value is string => value !== undefined)
   const content = `${label}: ${details.message ?? 'Request failed'} · ${metadata.join(' · ')}`
 
@@ -755,11 +706,17 @@ export function describeAPIError(
     errorDetails: JSON.stringify(details),
     category: details.category,
     retryable: details.retryable,
+    replayable: details.replayable,
   }
 }
 
 export function isRetryableAPIError(error: unknown): boolean {
   return classifyRetryableAPIError(error).retryable
+}
+
+/** Whether repeating the current request can preserve exactly-once output. */
+export function isAPIErrorReplayable(error: unknown): boolean {
+  return !collectErrorRecords(error).some(record => record.replayable === false)
 }
 
 export function categorizeRetryableAPIError(

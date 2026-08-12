@@ -14,14 +14,10 @@ import {
   afterAggregateAnswered,
   afterKindChosen,
   afterNameSubmitted,
-  afterPreserveAnswered,
   beginAddFlow,
   describeAddOutcome,
   describeNonInteractiveAdd,
-  sessionProfileMatch,
-  suggestSnapshotName,
   validateNewProfileName,
-  type AddFlowState,
   type AddProviderEntry,
   type SetupSpecView,
 } from '../addFlow.js'
@@ -129,85 +125,6 @@ describe('addableProviderEntries', () => {
   })
 })
 
-describe('sessionProfileMatch', () => {
-  test('a profile whose activation would change nothing is the session', () => {
-    const file = registry(
-      profile({
-        name: 'relay',
-        env: {
-          OPENAI_BASE_URL: 'https://relay.example/v1',
-          OPENAI_API_KEY: 'sk-live',
-        },
-      }),
-    )
-    expect(
-      sessionProfileMatch(file, {
-        OPENAI_BASE_URL: 'https://relay.example/v1',
-        OPENAI_API_KEY: 'sk-live',
-        PATH: '/usr/bin',
-      }),
-    ).toBe('relay')
-  })
-
-  test('one extra managed key means this is not that profile', () => {
-    // Activation would delete it, so the session genuinely is not the profile
-    // — and offering no snapshot here is how the extra key gets lost.
-    const file = registry(
-      profile({ name: 'relay', env: { OPENAI_BASE_URL: 'https://r/v1' } }),
-    )
-    expect(
-      sessionProfileMatch(file, {
-        OPENAI_BASE_URL: 'https://r/v1',
-        OPENAI_MODEL: 'gpt-5.4',
-      }),
-    ).toBeUndefined()
-  })
-
-  test('an empty-env profile matches a session with no provider keys', () => {
-    // The Claude-OAuth profile: modelType anthropic, no env at all.
-    const file = registry(profile({ name: 'claude', modelType: 'anthropic' }))
-    expect(sessionProfileMatch(file, { PATH: '/usr/bin' })).toBe('claude')
-  })
-
-  test('an empty registry matches nothing', () => {
-    expect(
-      sessionProfileMatch({ version: 1, profiles: {} }, {}),
-    ).toBeUndefined()
-  })
-
-  test('a garbage entry degrades instead of throwing', () => {
-    const file: ProviderProfilesFile = {
-      version: 1,
-      profiles: { nulled: null as unknown as ProviderProfile },
-    }
-    expect(sessionProfileMatch(file, {})).toBeUndefined()
-  })
-})
-
-describe('suggestSnapshotName', () => {
-  test('uses the family name when it is free', () => {
-    expect(suggestSnapshotName({ version: 1, profiles: {} }, 'openai')).toBe(
-      'openai',
-    )
-  })
-
-  test('never collides with an existing profile', () => {
-    const file = registry(
-      profile({ name: 'openai' }),
-      profile({ name: 'openai-2' }),
-    )
-    expect(suggestSnapshotName(file, 'openai')).toBe('openai-3')
-  })
-
-  test('an unusable base falls back rather than proposing an invalid name', () => {
-    for (const base of [undefined, '', '///']) {
-      expect(suggestSnapshotName({ version: 1, profiles: {} }, base)).toBe(
-        'current',
-      )
-    }
-  })
-})
-
 describe('validateNewProfileName', () => {
   const file = registry(profile({ name: 'relay' }))
 
@@ -244,26 +161,8 @@ describe('the flow', () => {
     expect(beginAddFlow()).toEqual({ step: 'kind' })
   })
 
-  test('offers to keep the running configuration when it is not saved', () => {
-    expect(
-      afterKindChosen(ENTRY, { savedAs: undefined, suggestion: 'openai' }),
-    ).toEqual({ step: 'preserve', entry: ENTRY, suggestion: 'openai' })
-  })
-
-  test('skips that offer when the session already is a profile', () => {
-    // Nothing to preserve; an extra screen saying so is just an extra screen.
-    expect(
-      afterKindChosen(ENTRY, { savedAs: 'relay', suggestion: 'openai' }),
-    ).toEqual({ step: 'name', entry: ENTRY, draft: '' })
-  })
-
-  test('either answer to the offer moves on to naming', () => {
-    const state: AddFlowState = {
-      step: 'preserve',
-      entry: ENTRY,
-      suggestion: 'openai',
-    }
-    expect(afterPreserveAnswered(state)).toEqual({
+  test('asks the user to name the new profile immediately after choosing a provider', () => {
+    expect(afterKindChosen(ENTRY)).toEqual({
       step: 'name',
       entry: ENTRY,
       draft: '',
@@ -311,10 +210,7 @@ describe('describeAddOutcome', () => {
       capture: { modelType: 'opencode' },
     })
     expect(outcome.notice).toContain('switched this session to it')
-    expect(outcome).toMatchObject({
-      enrollAggregate: false,
-      refreshCatalog: false,
-    })
+    expect(outcome).toMatchObject({ refreshCatalog: false })
   })
 
   test('opting in reads the model list, because a new profile has none', () => {
@@ -323,10 +219,7 @@ describe('describeAddOutcome', () => {
       aggregate: true,
       capture: { modelType: 'opencode' },
     })
-    expect(outcome).toMatchObject({
-      enrollAggregate: true,
-      refreshCatalog: true,
-    })
+    expect(outcome).toMatchObject({ refreshCatalog: true })
   })
 
   test('a failed capture still leads with where the session ended up', () => {
@@ -337,10 +230,7 @@ describe('describeAddOutcome', () => {
     })
     expect(outcome.notice).toContain('This session is now using the provider')
     expect(outcome.notice).toContain('env-only')
-    expect(outcome).toMatchObject({
-      enrollAggregate: false,
-      refreshCatalog: false,
-    })
+    expect(outcome).toMatchObject({ refreshCatalog: false })
   })
 })
 

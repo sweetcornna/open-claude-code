@@ -271,10 +271,7 @@ describe('sessionOwnedProfiles', () => {
     },
   })
 
-  test('a /login session with no active pointer still finds its provider', () => {
-    // The regression: `file.active` is written by activateProfile() and by
-    // nothing else, so a session configured through /login had no pointer at
-    // all and every model of the provider in use came back a second time.
+  test('a /login session with no active pointer still finds its exact profile', () => {
     const file = registry(relay)
     expect(file.active).toBeUndefined()
     expect(
@@ -282,18 +279,34 @@ describe('sessionOwnedProfiles', () => {
         modelType: 'openai',
         env: {
           OPENAI_BASE_URL: 'https://relay.example/v1',
-          // A different key on the same endpoint is the same PROVIDER.
-          OPENAI_API_KEY: 'sk-live',
+          OPENAI_API_KEY: 'sk-saved',
         },
       }),
     ).toEqual(new Set(['gpt']))
   })
 
-  test('a trailing slash is the same endpoint', () => {
+  test('another credential on the same endpoint remains a switch target', () => {
     expect(
       sessionOwnedProfiles(registry(relay), {
         modelType: 'openai',
-        env: { OPENAI_BASE_URL: 'https://relay.example/v1/' },
+        env: {
+          OPENAI_BASE_URL: 'https://relay.example/v1',
+          OPENAI_API_KEY: 'sk-live',
+        },
+      }),
+    ).toEqual(new Set())
+  })
+
+  test('unrelated provider env does not hide the current profile match', () => {
+    expect(
+      sessionOwnedProfiles(registry(relay), {
+        modelType: 'openai',
+        env: {
+          OPENAI_BASE_URL: 'https://relay.example/v1',
+          OPENAI_API_KEY: 'sk-saved',
+          ANTHROPIC_API_KEY: 'parent-shell-key',
+          GEMINI_API_KEY: 'runtime-mirror',
+        },
       }),
     ).toEqual(new Set(['gpt']))
   })
@@ -317,25 +330,34 @@ describe('sessionOwnedProfiles', () => {
   })
 
   test('no modelType means the Anthropic default', () => {
-    // Plain OAuth: nothing is set anywhere, and the profile that restores that
-    // is an anthropic one with no endpoint of its own.
     const file = registry(profile({ name: 'claude', modelType: 'anthropic' }))
     expect(sessionOwnedProfiles(file, { env: {} })).toEqual(new Set(['claude']))
   })
 
-  test('the active pointer is honoured on top, as it was before', () => {
+  test('a stale active pointer does not hide a profile from aggregation', () => {
     const file = { ...registry(relay), active: 'gpt' }
     expect(
       sessionOwnedProfiles(file, { modelType: 'gemini', env: {} }),
-    ).toEqual(new Set(['gpt']))
+    ).toEqual(new Set())
   })
 
   test('a garbage entry degrades instead of throwing', () => {
     const file: ProviderProfilesFile = {
       version: 1,
-      profiles: { nulled: null as unknown as ProviderProfile },
+      profiles: {
+        nulled: null as unknown as ProviderProfile,
+        unknown: {
+          ...profile({ name: 'unknown', modelType: 'anthropic' }),
+          modelType: 'future-provider',
+        } as unknown as ProviderProfile,
+      },
     }
-    expect(sessionOwnedProfiles(file, { env: {} })).toEqual(new Set())
+    expect(
+      sessionOwnedProfiles(file, {
+        modelType: 'future-provider',
+        env: {},
+      }),
+    ).toEqual(new Set())
   })
 })
 

@@ -118,14 +118,26 @@ function envFlag(raw: string | undefined): boolean | undefined {
  * neither accepts the key nor returns a recognisable rejection; `=1` forces it
  * on even after a rejection.
  */
+export function canAutoDisableOpenAIPromptCacheKey(
+  baseURL: string | undefined,
+): boolean {
+  return (
+    envFlag(process.env.OPENAI_PROMPT_CACHE_KEY) !== true &&
+    !isOfficialOpenAIBaseURL(baseURL)
+  )
+}
+
 export function shouldSendOpenAIPromptCacheKey(
   baseURL: string | undefined,
   wireProtocol?: 'chat' | 'responses',
 ): boolean {
   const forced = envFlag(process.env.OPENAI_PROMPT_CACHE_KEY)
   if (forced !== undefined) return forced
-  if (wireProtocol === 'responses') return true
-  return !promptCacheKeyRejected || isOfficialOpenAIBaseURL(baseURL)
+  const rejected =
+    wireProtocol === 'responses'
+      ? responsesPromptCacheKeyRejected
+      : promptCacheKeyRejected
+  return !rejected || isOfficialOpenAIBaseURL(baseURL)
 }
 
 /**
@@ -134,6 +146,7 @@ export function shouldSendOpenAIPromptCacheKey(
  * for OpenAI's own endpoint, which documents the field.
  */
 let promptCacheKeyRejected = false
+let responsesPromptCacheKeyRejected = false
 
 /**
  * Whether a failed chat request looks like the endpoint objecting to
@@ -158,14 +171,18 @@ export function isPromptCacheKeyRejection(error: unknown): boolean {
   )
 }
 
-/** Suppress the key for the remainder of the process. */
-export function markPromptCacheKeyRejected(): void {
-  promptCacheKeyRejected = true
+/** Suppress the key for the remainder of the process on one wire protocol. */
+export function markPromptCacheKeyRejected(
+  wireProtocol: 'chat' | 'responses' = 'chat',
+): void {
+  if (wireProtocol === 'responses') responsesPromptCacheKeyRejected = true
+  else promptCacheKeyRejected = true
 }
 
-/** Test-only: undo the process-wide latch between cases. */
+/** Test-only: undo the process-wide latches between cases. */
 export function _resetPromptCacheKeySupportForTesting(): void {
   promptCacheKeyRejected = false
+  responsesPromptCacheKeyRejected = false
 }
 
 /**

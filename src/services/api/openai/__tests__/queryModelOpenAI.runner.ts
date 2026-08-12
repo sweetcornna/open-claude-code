@@ -10,7 +10,7 @@
  * feed pre-built Anthropic events directly into queryModelOpenAI and inspect
  * what it emits — without any real HTTP calls.
  */
-import { afterAll, describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import * as realModelProvider from '@ant/model-provider'
 import type { SystemPrompt } from '@ant/model-provider'
 import * as realMessages from '../../../../utils/messages.js'
@@ -133,6 +133,7 @@ async function runQueryModel(
   envOverrides: Record<string, string | undefined> = {},
   tools: any[] = [],
   optionOverrides: Record<string, unknown> = {},
+  maxRetries?: number,
 ) {
   // Wire events into the mocked stream adapter
   _nextEvents = events
@@ -149,6 +150,7 @@ async function runQueryModel(
     // Bun resolves mock.module at the call site synchronously (hoisted),
     // so we register once per test file, then re-import each time.
     const { queryModelOpenAI } = await import('../index.js')
+    const { withTransientNetworkRetry } = await import('../../withRetry.js')
 
     const assistantMessages: AssistantMessage[] = []
     const streamEvents: StreamEvent[] = []
@@ -169,13 +171,25 @@ async function runQueryModel(
       ...optionOverrides,
     }
 
-    for await (const item of queryModelOpenAI(
-      [],
-      [] as unknown as SystemPrompt,
-      tools as any,
-      new AbortController().signal,
-      minimalOptions,
-    )) {
+    const signal = new AbortController().signal
+    const query = () =>
+      queryModelOpenAI(
+        [],
+        [] as unknown as SystemPrompt,
+        tools as any,
+        signal,
+        minimalOptions,
+      )
+    const output =
+      maxRetries === undefined
+        ? query()
+        : withTransientNetworkRetry(query, {
+            maxRetries,
+            model: minimalOptions.model,
+            signal,
+          })
+
+    for await (const item of output) {
       if (item.type === 'assistant') {
         assistantMessages.push(item as AssistantMessage)
       } else if (item.type === 'stream_event') {
@@ -201,8 +215,10 @@ async function runQueryModel(
 // entire file, so we configure the stream per-test via a shared variable.
 let _nextEvents: BetaRawMessageStreamEvent[] = []
 
-/** Captured arguments from the last chat.completions.create() call */
+/** Captured chat.completions.create() calls and queued failures. */
 let _lastCreateArgs: Record<string, any> | null = null
+let _createArgs: Record<string, any>[] = []
+let _createErrors: unknown[] = []
 
 // Complete-surface mock: every export delegates to the real module unless
 // overridden below. A hand-written partial surface is what kept this file from
@@ -285,6 +301,8 @@ mock.module('../client.js', () => ({
       completions: {
         create: async (args: Record<string, any>) => {
           _lastCreateArgs = args
+          _createArgs.push(args)
+          if (_createErrors.length > 0) throw _createErrors.shift()
           return { [Symbol.asyncIterator]: async function* () {} }
         },
       },
@@ -409,6 +427,16 @@ mock.module('../../../../utils/telemetry/debug.js', () => ({
 }))
 
 // ─── tests ───────────────────────────────────────────────────────────────────
+
+beforeEach(async () => {
+  _lastCreateArgs = null
+  _createArgs = []
+  _createErrors = []
+  const { _resetPromptCacheKeySupportForTesting } = await import(
+    '../openaiShared.js'
+  )
+  _resetPromptCacheKeySupportForTesting()
+})
 
 describe('queryModelOpenAI — stop_reason propagation', () => {
   test('assembled AssistantMessage has stop_reason end_turn (not null)', async () => {
@@ -739,6 +767,27 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
 
     expect(_lastCreateArgs).not.toBeNull()
     expect(_lastCreateArgs!.prompt_cache_key).toStartWith('occ:')
+  })
+
+  test('cache-key compatibility fallback shares the unified retry budget', async () => {
+    _createErrors = [
+      new Error("400 Unknown parameter: 'prompt_cache_key'."),
+      new Error('503 Service unavailable'),
+      new Error('503 Service unavailable'),
+    ]
+
+    await runQueryModel(
+      [],
+      { OPENAI_BASE_URL: 'https://gateway.internal/v1' },
+      [],
+      {},
+      2,
+    )
+
+    expect(_createArgs).toHaveLength(3)
+    expect(_createArgs[0]!.prompt_cache_key).toStartWith('occ:')
+    expect('prompt_cache_key' in _createArgs[1]!).toBe(false)
+    expect('prompt_cache_key' in _createArgs[2]!).toBe(false)
   })
 
   test('OPENAI_PROMPT_CACHE_KEY=0 forces the cache key off', async () => {

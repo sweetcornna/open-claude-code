@@ -156,13 +156,17 @@ describe('AnthropicDirectSearchAdapter with a pinned credential', () => {
 
   test('with nothing pinned the lane does not touch the pinned path', async () => {
     const fetchOverride = stubFetch({ body: RESULT_BODY })
+    const controller = new AbortController()
 
-    // No pin, so this goes through getAnthropicClient instead. Whether that
-    // call succeeds depends on the machine's own credentials; all this asserts
-    // is that the standalone pinned request was not the thing that ran.
-    await new AnthropicDirectSearchAdapter({ fetchOverride })
-      .search('q', {})
-      .catch(() => undefined)
+    // No pin, so this enters the SDK-client branch. Cancel after the async call
+    // has reached that branch; the pinned fetch must remain untouched, and the
+    // test must not depend on ambient credentials or a real network response.
+    const request = new AnthropicDirectSearchAdapter({ fetchOverride }).search(
+      'q',
+      { signal: controller.signal },
+    )
+    controller.abort()
+    await request.catch(() => undefined)
 
     expect(fetchOverride.calls).toHaveLength(0)
   })

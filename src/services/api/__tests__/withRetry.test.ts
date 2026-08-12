@@ -64,11 +64,12 @@ import {
   classifyRetryableAPIError,
   describeAPIError,
   getAPIErrorSource,
+  isAPIErrorReplayable,
   NonRetryableError,
 } from '../retryClassification.js'
 
 describe('withRetry context overflow adjustment', () => {
-  test('does not retry when thinking alone exceeds the remaining context', async () => {
+  test('uses the full retry budget when thinking prevents an adjustment', async () => {
     const overflow = new APIError(
       400,
       {
@@ -83,20 +84,22 @@ describe('withRetry context overflow adjustment', () => {
     let calls = 0
     const generator = withRetry(
       async () => ({}) as unknown as Anthropic,
-      async (_client, _attempt, context) => {
+      async () => {
         calls++
-        if (calls === 1) throw overflow
-        return context.maxTokensOverride
+        throw overflow
       },
       {
-        maxRetries: 1,
+        maxRetries: 2,
         model: 'claude-sonnet',
         thinkingConfig: { type: 'enabled', budgetTokens: 5_000 },
       },
     )
 
-    await expect(generator.next()).rejects.toBe(overflow)
-    expect(calls).toBe(1)
+    await expect(async () => {
+      let step = await generator.next()
+      while (!step.done) step = await generator.next()
+    }).toThrow(CannotRetryError)
+    expect(calls).toBe(3)
   })
 
   test('caps a retry max_tokens value at the remaining context', async () => {
@@ -192,27 +195,6 @@ function laneOf(error: unknown): 'transient' | 'permanent' {
   return classifyRetryableAPIError(error).persistence
 }
 
-/**
- * Runs `body` with the retry-everything policy pinned to `value`.
- *
- * Restored in `finally`: this variable is read by every classification in the
- * process, so leaking it would silently re-decide later files in the shard.
- */
-async function withRetryPolicy<T>(
-  value: string | undefined,
-  body: () => Promise<T>,
-): Promise<T> {
-  const previous = process.env.CLAUDE_CODE_RETRY_ALL_ERRORS
-  if (value === undefined) delete process.env.CLAUDE_CODE_RETRY_ALL_ERRORS
-  else process.env.CLAUDE_CODE_RETRY_ALL_ERRORS = value
-  try {
-    return await body()
-  } finally {
-    if (previous === undefined) delete process.env.CLAUDE_CODE_RETRY_ALL_ERRORS
-    else process.env.CLAUDE_CODE_RETRY_ALL_ERRORS = previous
-  }
-}
-
 /** Every attempt `withRetry` makes for `error`, and how long it took. */
 async function runLadder(
   error: unknown,
@@ -293,7 +275,7 @@ describe('isTransientNetworkError', () => {
     expect(isTransientNetworkError(error)).toBe(true)
   })
 
-  test('puts transient statuses on the ladder and permanent 4xx on the cheap lane', () => {
+  test('puts transient statuses on backoff and permanent 4xx on fixed delay', () => {
     for (const status of [408, 409, 425, 429, 500, 501, 503, 529]) {
       // A short retry-after keeps the 429 out of the window gate, which is a
       // separate decision with its own describe block below.
@@ -313,8 +295,8 @@ describe('isTransientNetworkError', () => {
         `status ${status}: Upstream request failed`,
         new Headers(),
       )
-      // Retried now — the repo owner's policy is that every API error gets
-      // another attempt — but on the cheap lane, not the ten-step ladder.
+      // All API errors receive the same retry count; deterministic classes use
+      // the fixed-delay lane instead of exponential backoff.
       expect(isTransientNetworkError(error)).toBe(true)
       expect(laneOf(error)).toBe('permanent')
     }
@@ -346,7 +328,7 @@ describe('isTransientNetworkError', () => {
     expect(isTransientNetworkError('')).toBe(false)
   })
 
-  test('deterministic failures take the cheap lane rather than the ladder', () => {
+  test('deterministic failures take the fixed-delay lane', () => {
     for (const error of [
       new Error('Prompt is too long'),
       codedError('CERT_HAS_EXPIRED'),
@@ -358,10 +340,8 @@ describe('isTransientNetworkError', () => {
   })
 
   test('a TLS handshake failure stays off the ladder', () => {
-    // Must still fail in about a second so getSSLErrorHint's
-    // NODE_EXTRA_CA_CERTS advice is actionable, rather than arriving after a
-    // ~3 minute backoff ladder. The cheap lane is what keeps that true now
-    // that nothing fails outright.
+    // The fixed-delay lane avoids the multi-minute exponential backoff while
+    // still honoring the configured retry count.
     for (const error of [
       codedError('EPROTO', 'write EPROTO ssl/tls alert handshake failure'),
       codedError('ERR_SSL_PACKET_LENGTH_TOO_LONG'),
@@ -533,8 +513,8 @@ describe('structured API error classification', () => {
       }),
     ).toEqual({
       category: 'server_error',
-      retryable: false,
-      persistence: 'permanent',
+      retryable: true,
+      persistence: 'transient',
     })
     expect(
       classifyRetryableAPIError({
@@ -580,23 +560,16 @@ describe('structured API error classification', () => {
     })
   })
 
-  test('an explicit retryable:false is never overridden by the policy', () => {
-    // This field is the delivered-content barrier: the stream adapters set it
-    // when an attempt's output has already reached the terminal, ACP and
-    // `--include-partial-messages` stdout, none of which can un-say a chunk.
-    // occ's own NonRetryableError uses the same field for a local precondition
-    // where no request was ever put on the wire.
-    //
-    // Asserted through the plain message as well as the marked error: the
-    // structural `retryable: false` is the veto, and the message patterns are
-    // the backstop for when the object is re-wrapped or rebuilt from text.
+  test('only NonRetryableError can veto the API retry policy', () => {
+    // Local preconditions use this field when no API request happened. Stream
+    // replay safety is represented separately by `replayable`.
     const chatgpt =
       'ChatGPT account is not logged in. Run /login and select ChatGPT account with subscription.'
     const antigravity =
       'Antigravity project discovery returned no project. Open Antigravity once with this Google account, then retry.'
 
-    // Rebuilt from prose alone: no producer verdict survives, so the policy
-    // applies and the failure gets its one cheap attempt.
+    // Rebuilt from prose alone: no local veto survives, so the retry policy
+    // applies.
     expect(classifyRetryableAPIError(new Error(chatgpt))).toEqual({
       category: 'authentication_failed',
       retryable: true,
@@ -643,10 +616,36 @@ describe('structured API error classification', () => {
     })
   })
 
+  test('a committed UND_ERR_SOCKET stays retryable but is not replayable', () => {
+    const socket = Object.assign(new Error('other side closed'), {
+      code: 'UND_ERR_SOCKET',
+    })
+    const committed = Object.assign(
+      new Error('other side closed', { cause: socket }),
+      {
+        name: 'OpenAIRequestError',
+        retryable: true,
+        replayable: false,
+      },
+    )
+
+    expect(classifyRetryableAPIError(committed)).toEqual({
+      category: 'server_error',
+      retryable: true,
+      persistence: 'transient',
+    })
+    expect(isAPIErrorReplayable(committed)).toBe(false)
+    expect(
+      describeAPIError(committed, { provider: 'OpenAI' }).content,
+    ).toContain(
+      'code=UND_ERR_SOCKET · name=OpenAIRequestError · category=server_error · retryable=yes · replayable=no',
+    )
+  })
+
   test('the reported category does not depend on the retry verdict', () => {
-    // The upstream-gateway failure from the real bug report, in both the shape
-    // that reaches the transient tail and the shape a closed retry window pins
-    // permanent. It used to report category=server_error in the first and
+    // The upstream-gateway failure from the real bug report, in both the plain
+    // shape and the shape a closed retry window marks non-replayable. It used to
+    // report category=server_error in the first and
     // category=unknown in the second, which made one failure look like two and
     // sent a diagnosis down the wrong path.
     const payload = {
@@ -656,13 +655,15 @@ describe('structured API error classification', () => {
     }
     const pinned = Object.assign(new Error('stream_read_error'), {
       name: 'OpenAIRequestError',
-      retryable: false,
+      retryable: true,
+      replayable: false,
       cause: payload,
     })
 
     expect(categorizeRetryableAPIError(payload)).toBe('server_error')
     expect(categorizeRetryableAPIError(pinned)).toBe('server_error')
-    expect(classifyRetryableAPIError(pinned).retryable).toBe(false)
+    expect(classifyRetryableAPIError(pinned).retryable).toBe(true)
+    expect(isAPIErrorReplayable(pinned)).toBe(false)
 
     // Same invariant for a failure with no signal at all: whichever verdict it
     // ends up with, the reported category is the same one.
@@ -935,30 +936,15 @@ describe('withRetry with bare (non-APIError) transport failures', () => {
     expect(calls).toBe(2)
   })
 
-  test('gives permanent API statuses exactly one cheap retry', async () => {
-    // The policy: every API error is retried. The budget: a class that almost
-    // never answers differently gets one attempt at 250ms, not ten attempts
-    // over ~3 minutes. A 400 for a malformed tool schema has to keep surfacing
-    // in about the time a hard failure used to.
+  test('gives permanent API statuses the full retry count with fixed delays', async () => {
     for (const status of [400, 401, 403, 404, 422]) {
       const { calls, elapsedMs } = await runLadder(
         new APIError(status, undefined, `status ${status}`, new Headers()),
       )
-      expect(calls).toBe(2)
-      expect(elapsedMs).toBeLessThan(2_000)
+      expect(calls).toBe(11)
+      expect(elapsedMs).toBeLessThan(4_000)
     }
-  }, 20_000)
-
-  test('CLAUDE_CODE_RETRY_ALL_ERRORS=0 restores the old fast failure', async () => {
-    await withRetryPolicy('0', async () => {
-      for (const status of [400, 401, 403, 404, 422]) {
-        const { calls } = await runLadder(
-          new APIError(status, undefined, `status ${status}`, new Headers()),
-        )
-        expect(calls).toBe(1)
-      }
-    })
-  })
+  }, 25_000)
 
   test('a transient status still gets the full ladder', async () => {
     // The cheap lane must not have quietly capped everything at one retry.
@@ -1202,7 +1188,7 @@ describe('Retry-After bounds', () => {
   })
 })
 
-describe('429 rate limits that outlast the retry ladder', () => {
+describe('429 retry coverage', () => {
   /**
    * The ladder's first decision. A granted retry yields its countdown notice
    * before sleeping; a refusal throws CannotRetryError out of the same call.
@@ -1243,17 +1229,12 @@ describe('429 rate limits that outlast the retry ladder', () => {
     subscription.enterprise = false
   })
 
-  test('refuses a 429 whose advertised reset is hours away', async () => {
-    // The Max/Pro 5-hour window. Every step of this ladder is clamped to 60s,
-    // so ten retries cannot outlast it — they only delay the "5-hour limit
-    // reached" message by ~10 minutes. That message still arrives, from
-    // errors.ts by way of CannotRetryError.originalError; this only makes it
-    // immediate.
+  test('retries a 429 whose advertised reset is hours away', async () => {
     expect(
       await decisionFor({
         'anthropic-ratelimit-unified-reset': inSeconds(5 * 60 * 60 * 1000),
       }),
-    ).toBe('refused')
+    ).toBe('retried')
   })
 
   test('still retries a 429 whose window reopens inside the ladder', async () => {
@@ -1265,16 +1246,15 @@ describe('429 rate limits that outlast the retry ladder', () => {
     ).toBe('retried')
   })
 
-  test('reads a long Retry-After the same way as a reset timestamp', async () => {
-    expect(await decisionFor({ 'retry-after': '7200' })).toBe('refused')
+  test('retries both long and short Retry-After values', async () => {
+    expect(await decisionFor({ 'retry-after': '7200' })).toBe('retried')
     expect(await decisionFor({ 'retry-after': '30' })).toBe('retried')
   })
 
-  test('refuses an unlabelled 429 for a subscription plan', async () => {
-    // Windowed by nature: without a reset header, assume the window is long.
+  test('retries an unlabelled 429 for a subscription plan', async () => {
     subscription.claudeAI = true
     subscription.enterprise = false
-    expect(await decisionFor({})).toBe('refused')
+    expect(await decisionFor({})).toBe('retried')
   })
 
   test('retries an unlabelled 429 for PAYG and enterprise seats', async () => {
@@ -1287,7 +1267,7 @@ describe('429 rate limits that outlast the retry ladder', () => {
   })
 })
 
-describe('529 background amplification', () => {
+describe('529 retry coverage', () => {
   /** The ladder's first decision for a 529 raised under `querySource`. */
   async function decisionFor(
     querySource?: string,
@@ -1313,11 +1293,9 @@ describe('529 background amplification', () => {
     }
   }
 
-  test('drops a 529 raised by a source nobody is waiting on', async () => {
-    // During a capacity cascade every retry is 3-10x gateway amplification,
-    // and the user never sees a title/summary/suggestion fail.
+  test('retries a 529 for background sources too', async () => {
     for (const source of ['title_generation', 'suggestions', 'quota_probe']) {
-      expect(await decisionFor(source)).toBe('refused')
+      expect(await decisionFor(source)).toBe('retried')
     }
   })
 
@@ -1335,6 +1313,19 @@ describe('529 background amplification', () => {
 
   test('retries an untagged 529, conservatively', async () => {
     expect(await decisionFor()).toBe('retried')
+  })
+
+  test('uses the full retry budget when no fallback model is configured', async () => {
+    const error = new APIError(
+      529,
+      undefined,
+      'overloaded',
+      new Headers({
+        'retry-after': '0',
+      }),
+    )
+    const { calls } = await runLadder(error, 4)
+    expect(calls).toBe(5)
   })
 })
 
@@ -1480,11 +1471,9 @@ describe('withTransientNetworkRetry', () => {
     expect(items).toHaveLength(1)
   })
 
-  test('an explicit retryable:false outranks transient-looking prose', async () => {
-    // The adapter already classified this failure as permanent. Or-ing the two
-    // signals let the wording of the message — 'stream idle timeout' is on the
-    // transient list — overrule that verdict and replay a request the producer
-    // had ruled out, up to ten times.
+  test('an explicit replayable:false outranks transient-looking prose', async () => {
+    // The transport error remains retryable for diagnostics, but the producer
+    // has ruled out replay because output was already delivered.
     let attempts = 0
     const items = await collect(
       withTransientNetworkRetry(
@@ -1494,7 +1483,8 @@ describe('withTransientNetworkRetry', () => {
             ...apiErrorMessage('API Error: stream idle timeout'),
             error: Object.assign(new Error('stream idle timeout'), {
               name: 'OpenAIRequestError',
-              retryable: false,
+              retryable: true,
+              replayable: false,
             }),
           }
         },
@@ -1533,7 +1523,7 @@ describe('withTransientNetworkRetry', () => {
     expect(attempts).toBe(2)
   }, 15_000)
 
-  test('gives a deterministic API error one cheap retry, then surfaces it', async () => {
+  test('gives a deterministic API error all ten retries, then surfaces it', async () => {
     const startedAt = Date.now()
     let attempts = 0
     const items = await collect(
@@ -1548,29 +1538,10 @@ describe('withTransientNetworkRetry', () => {
       ),
     )
 
-    expect(attempts).toBe(2)
-    expect(Date.now() - startedAt).toBeLessThan(2_000)
+    expect(attempts).toBe(11)
+    expect(Date.now() - startedAt).toBeLessThan(4_000)
     expect(items.at(-1)).toMatchObject({ isApiErrorMessage: true })
   }, 15_000)
-
-  test('CLAUDE_CODE_RETRY_ALL_ERRORS=0 keeps a deterministic error at one attempt', async () => {
-    await withRetryPolicy('0', async () => {
-      let attempts = 0
-      const items = await collect(
-        withTransientNetworkRetry(
-          async function* () {
-            attempts++
-            yield apiErrorMessage(
-              'API Error: 400 {"type":"invalid_request_error"}',
-            )
-          },
-          { maxRetries: 10 },
-        ),
-      )
-      expect(attempts).toBe(1)
-      expect(items).toHaveLength(1)
-    })
-  })
 
   test('retries the stream deaths seen with the non-streaming fallback disabled', async () => {
     // CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1 rethrows these out of the
@@ -1875,8 +1846,8 @@ describe('withTransientNetworkRetry commitment boundary', () => {
       return { attempts, items }
     }
 
-    // Nothing delivered: the policy applies and the failure is retried.
-    expect((await run(false)).attempts).toBe(2)
+    // Nothing delivered: the policy applies and the full budget is used.
+    expect((await run(false)).attempts).toBe(11)
 
     // A delta already went to the terminal, to an ACP `agent_message_chunk`
     // and to `--include-partial-messages` stdout — none of which has an update
@@ -1910,8 +1881,8 @@ describe('retry-everything policy', () => {
     const { calls } = await runLadder(
       new APIError(401, undefined, 'unauthorized', new Headers()),
     )
-    expect(calls).toBe(2)
-  })
+    expect(calls).toBe(11)
+  }, 15_000)
 
   test('billing, permission and invalid-request failures are retried too', () => {
     for (const [error, category] of [
@@ -1947,26 +1918,13 @@ describe('retry-everything policy', () => {
     })
   })
 
-  test('x-should-retry:false costs one attempt instead of ending the request', async () => {
-    // The server's own "this exact request will fail again" used to be a hard
-    // bail. It is now the cheap lane: its opinion is worth one attempt.
+  test('x-should-retry:false still uses the configured retry count', async () => {
+    // The header selects the fixed-delay lane but does not reduce the budget.
     const header = new Headers({ 'x-should-retry': 'false' })
     const { calls } = await runLadder(
       new APIError(503, undefined, 'service unavailable', header),
     )
-    expect(calls).toBe(2)
-
-    await withRetryPolicy('0', async () => {
-      const off = await runLadder(
-        new APIError(
-          503,
-          undefined,
-          'service unavailable',
-          new Headers(header),
-        ),
-      )
-      expect(off.calls).toBe(1)
-    })
+    expect(calls).toBe(11)
   })
 
   test('a cancellation is never retried, whatever else the error says', async () => {
