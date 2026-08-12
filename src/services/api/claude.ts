@@ -205,8 +205,8 @@ import {
   type ThinkingConfig,
 } from 'src/utils/model/thinking.js'
 import {
-  isDeferredToolsDeltaEnabled,
   isSearchExtraToolsEnabled,
+  shouldAppendEphemeralDeferredToolList,
 } from 'src/utils/tools/searchExtraTools.js'
 import { API_MAX_MEDIA_PER_REQUEST } from '../../constants/apiLimits.js'
 import { ADVISOR_BETA_HEADER } from '../../constants/betas.js'
@@ -1488,7 +1488,7 @@ async function* queryModel(
   // persisted deferred_tools_delta attachments instead of this ephemeral copy.
   // Otherwise each request needs the complete current pool because the appended
   // message is not written back to conversation history.
-  if (useSearchExtraTools && !isDeferredToolsDeltaEnabled()) {
+  if (shouldAppendEphemeralDeferredToolList(useSearchExtraTools)) {
     messagesForAPI = appendAvailableDeferredToolsForAnthropicRequest(
       messagesForAPI,
       tools,

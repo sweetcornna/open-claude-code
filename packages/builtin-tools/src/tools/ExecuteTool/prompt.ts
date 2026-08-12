@@ -19,14 +19,11 @@ Step 2: This tool executes it.
 
 Example — user asks to schedule a cron job:
   SearchExtraTools({"query": "select:CronCreate"})
-  → Response: "Found deferred tool(s): CronCreate"
-  ExecuteExtraTool({"tool_name": "CronCreate", "params": {"schedule": "*/5 * * * *", "prompt": "check deploy"}})
+  → Response: "Found 1 deferred tool(s): CronCreate." plus CronCreate's parameter schema
+  ExecuteExtraTool({"tool_name": "CronCreate", "params": {"cron": "*/5 * * * *", "prompt": "check deploy"}})
   → Response: Cron job created
 
-Example — MCP tool:
-  SearchExtraTools({"query": "select:mcp__slack__send_message"})
-  → Response: "Found deferred tool(s): mcp__slack__send_message"
-  ExecuteExtraTool({"tool_name": "mcp__slack__send_message", "params": {"channel": "C123", "text": "hello"}})
+The params object must match the schema step 1 returned, field for field. Do not carry field names over from a different tool or from memory — many deferred tools reject unknown keys outright.
 
 ## Inputs
 - tool_name: Exact name of the target tool (string, e.g. "CronCreate", "mcp__slack__send_message")

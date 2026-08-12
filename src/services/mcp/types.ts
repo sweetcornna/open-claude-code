@@ -32,12 +32,27 @@ const McpTimeoutFields = {
   request_timeout_ms: z.number().int().positive().optional(),
 }
 
+// Per-server opt-out of tool-search deferral (.mcp.json / settings mcpServers).
+// Consumed in client.ts when building each MCP Tool; `serverAlwaysLoad` below
+// is the single reader. Only offered on the transports a user actually writes
+// by hand — the IDE, SDK and claude.ai-proxy variants are constructed
+// internally and have no config file to put this in.
+const McpDeferralFields = {
+  alwaysLoad: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, every tool from this server is loaded into the prompt directly instead of being deferred behind SearchExtraTools. Best-effort on turn 1: occ deliberately never blocks startup on MCP, so a server that has not finished connecting yet contributes its tools from the next turn onward.',
+    ),
+}
+
 export const McpStdioServerConfigSchema = lazySchema(() =>
   z.object({
     type: z.literal('stdio').optional(), // Optional for backwards compatibility
     command: z.string().min(1, 'Command cannot be empty'),
     args: z.array(z.string()).default([]),
     env: z.record(z.string(), z.string()).optional(),
+    ...McpDeferralFields,
     ...McpTimeoutFields,
   }),
 )
@@ -70,6 +85,7 @@ export const McpSSEServerConfigSchema = lazySchema(() =>
     headers: z.record(z.string(), z.string()).optional(),
     headersHelper: z.string().optional(),
     oauth: McpOAuthConfigSchema().optional(),
+    ...McpDeferralFields,
     ...McpTimeoutFields,
   }),
 )
@@ -102,6 +118,7 @@ export const McpHTTPServerConfigSchema = lazySchema(() =>
     headers: z.record(z.string(), z.string()).optional(),
     headersHelper: z.string().optional(),
     oauth: McpOAuthConfigSchema().optional(),
+    ...McpDeferralFields,
     ...McpTimeoutFields,
   }),
 )
@@ -112,6 +129,7 @@ export const McpWebSocketServerConfigSchema = lazySchema(() =>
     url: z.string(),
     headers: z.record(z.string(), z.string()).optional(),
     headersHelper: z.string().optional(),
+    ...McpDeferralFields,
     ...McpTimeoutFields,
   }),
 )
@@ -170,6 +188,16 @@ export type McpClaudeAIProxyServerConfig = z.infer<
   ReturnType<typeof McpClaudeAIProxyServerConfigSchema>
 >
 export type McpServerConfig = z.infer<ReturnType<typeof McpServerConfigSchema>>
+
+/**
+ * True when the user asked for this server's tools to skip deferral.
+ *
+ * Only the hand-written transports carry the field, so this narrows rather
+ * than reading it off the union blindly.
+ */
+export function serverAlwaysLoad(config: McpServerConfig): boolean {
+  return 'alwaysLoad' in config && config.alwaysLoad === true
+}
 
 export type ScopedMcpServerConfig = McpServerConfig & {
   scope: ConfigScope

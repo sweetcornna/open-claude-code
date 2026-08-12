@@ -7,7 +7,6 @@
  */
 
 import memoize from 'lodash-es/memoize.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -24,6 +23,10 @@ import {
   isDeferredTool,
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+import {
+  isDeferredToolsDeltaEnabled,
+  shouldAppendEphemeralDeferredToolList,
+} from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/deferredToolsDelta.js'
 import { EXECUTE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/ExecuteTool/constants.js'
 import type { Message } from '../../types/message.js'
 import {
@@ -532,15 +535,19 @@ export function extractDiscoveredToolNames(messages: Message[]): Set<string> {
       continue
     }
 
-    // Deferred-tools-delta attachments announce tools that the model should
-    // see as available. Include their addedNames so the filter in claude.ts
-    // keeps the corresponding tool schemas in the API request.
+    // deferred_tools_delta announces that a tool EXISTS; it does not carry the
+    // tool's schema. "Discovered" here means "the model has seen the parameter
+    // schema", which is what ExecuteExtraTool's guard and compaction's
+    // preCompactDiscoveredTools both rely on. Counting an announcement as
+    // discovery would let the model skip SearchExtraTools entirely and guess
+    // field names against a strictObject — the failure mode the guard exists
+    // to prevent. (The old rationale here — "so the filter in claude.ts keeps
+    // the schemas in the API request" — died with c14b7ead: deferred tools are
+    // never put in the tools array, discovered or not.)
     if (
       msg.type === 'attachment' &&
       (msg as any).attachment?.type === 'deferred_tools_delta'
     ) {
-      const added: string[] = (msg as any).attachment.addedNames ?? []
-      for (const name of added) discoveredTools.add(name)
       continue
     }
 
@@ -613,6 +620,19 @@ export type DeferredToolsDelta = {
 }
 
 /**
+ * Cap on how many names one announcement spells out. A 300-tool MCP setup
+ * would otherwise emit a 300-line system-reminder on the first turn.
+ *
+ * Only `addedLines` (the rendered view) is truncated — `addedNames` stays
+ * complete because it is the bookkeeping the next scan diffs against, and
+ * dropping entries from it would re-announce the same tools every turn. The
+ * consequence is real but bounded: tools past the cap are never spelled out,
+ * so the model reaches them through keyword/`discover:` search instead of
+ * `select:`. The renderer says so explicitly.
+ */
+export const DEFERRED_DELTA_LIST_CAP = 30
+
+/**
  * Call-site discriminator for the tengu_deferred_tools_pool_change event.
  * The scan runs from several sites with different expected-prior semantics
  * (inc-4747):
@@ -621,9 +641,13 @@ export type DeferredToolsDelta = {
  *     (fresh conversation, initialMessages has no DTD)
  *   - compact_full: compact.ts passes [] → prior=0 is EXPECTED
  *   - compact_partial: compact.ts passes messagesToKeep → depends on what survived
- *   - reactive_compact: reactiveCompact.ts passes preservedMessages → same
  * Without this the 96%-prior=0 stat is dominated by EXPECTED buckets and
  * the real main-thread cross-turn bug (if any) is invisible in BQ.
+ *
+ * There is deliberately no 'reactive_compact' member: reactiveCompact.ts
+ * delegates straight to compactConversation, so its re-announcement already
+ * arrives labelled compact_full/compact_partial. The member used to exist with
+ * no producer, which made the bucket look permanently empty rather than absent.
  */
 export type DeferredToolsDeltaScanContext = {
   callSite:
@@ -631,21 +655,19 @@ export type DeferredToolsDeltaScanContext = {
     | 'attachments_subagent'
     | 'compact_full'
     | 'compact_partial'
-    | 'reactive_compact'
   querySource?: string
 }
 
 /**
  * True → announce deferred tools via persisted delta attachments.
- * False → claude.ts keeps its per-call <available-deferred-tools>
- * header prepend (the attachment does not fire).
+ * False → claude.ts keeps its per-call <available-deferred-tools> tail append
+ * (the attachment does not fire).
+ *
+ * Re-exported rather than defined here: SearchExtraToolsTool's description
+ * needs the same answer and this module imports from that directory, so the
+ * predicate lives at the leaf. See deferredToolsDelta.ts for why it defaults on.
  */
-export function isDeferredToolsDeltaEnabled(): boolean {
-  return (
-    process.env.USER_TYPE === 'ant' ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_glacier_2xr', false)
-  )
-}
+export { isDeferredToolsDeltaEnabled, shouldAppendEphemeralDeferredToolList }
 
 /**
  * Diff the current deferred-tool pool against what's already been
@@ -714,7 +736,10 @@ export function getDeferredToolsDelta(
 
   return {
     addedNames: added.map(t => t.name).sort(),
-    addedLines: added.map(formatDeferredToolLine).sort(),
+    addedLines: added
+      .map(formatDeferredToolLine)
+      .sort()
+      .slice(0, DEFERRED_DELTA_LIST_CAP),
     removedNames: removed.sort(),
   }
 }

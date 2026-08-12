@@ -444,6 +444,13 @@ export type Attachment =
       removedNames: string[]
     }
   | {
+      type: 'tool_search_usage_reminder'
+      /** Sorted, capped sample of deferred tools the model hasn't looked at. */
+      undiscoveredToolNames: string[]
+      /** Full count, so the renderer can say how many were left out. */
+      undiscoveredCount: number
+    }
+  | {
       type: 'agent_listing_delta'
       addedTypes: string[]
       addedLines: string[]

@@ -93,7 +93,7 @@ import {
 import { OpenAIRequestError } from './retry.js'
 import {
   isSearchExtraToolsEnabled,
-  isDeferredToolsDeltaEnabled,
+  shouldAppendEphemeralDeferredToolList,
 } from '../../../utils/tools/searchExtraTools.js'
 import {
   formatDeferredToolLine,
@@ -115,7 +115,8 @@ function prependDeferredToolListIfNeeded(
   deferredToolNames: Set<string>,
   useSearchExtraTools: boolean,
 ): (AssistantMessage | UserMessage)[] {
-  if (!useSearchExtraTools || isDeferredToolsDeltaEnabled()) return messages
+  if (!shouldAppendEphemeralDeferredToolList(useSearchExtraTools))
+    return messages
 
   const deferredToolList = tools
     .filter(tool => deferredToolNames.has(tool.name))
@@ -276,7 +277,10 @@ export async function* queryModelOpenAI(
       )
     }
 
-    // 6. Build tool schemas with deferLoading flag
+    // 6. Build tool schemas.
+    // No deferLoading flag: step 5 already dropped every deferred tool from
+    // filteredTools, so the flag could only ever have been false — and
+    // OpenAI-compatible endpoints have no defer_loading concept to read it.
     const toolSchemas = await Promise.all(
       filteredTools.map(tool =>
         toolToAPISchema(tool, {
@@ -285,7 +289,6 @@ export async function* queryModelOpenAI(
           agents: options.agents,
           allowedAgentTypes: options.allowedAgentTypes,
           model: options.model,
-          deferLoading: useSearchExtraTools && deferredToolNames.has(tool.name),
         }),
       ),
     )

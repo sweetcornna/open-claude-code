@@ -1,12 +1,19 @@
 import { toolMatchesName, type Tools, type ToolUseContext } from '../../Tool.js'
 import type { Message } from 'src/types/message.js'
 import {
+  extractDiscoveredToolNames,
   getDeferredToolsDelta,
+  getSearchExtraToolsMode,
   isDeferredToolExecutionPathAvailable,
   isDeferredToolsDeltaEnabled,
   isSearchExtraToolsEnabledOptimistic,
   type DeferredToolsDeltaScanContext,
 } from '../tools/searchExtraTools.js'
+import {
+  isDeferredTool,
+  SEARCH_EXTRA_TOOLS_TOOL_NAME,
+} from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
+import { isEnvDefinedFalsy } from '../config/envUtils.js'
 import {
   getMcpInstructionsDelta,
   isMcpInstructionsDeltaEnabled,
@@ -44,6 +51,119 @@ export function getDeferredToolsDeltaAttachment(
   const delta = getDeferredToolsDelta(tools, messages ?? [], scanContext)
   if (!delta) return []
   return [{ type: 'deferred_tools_delta', ...delta }]
+}
+
+/**
+ * Assistant turns that must pass with no SearchExtraTools call (and no prior
+ * reminder) before the nudge fires again.
+ */
+const TOOL_SEARCH_REMINDER_EVERY_N_TURNS = 15
+/** How many undiscovered tool names one reminder spells out. */
+const TOOL_SEARCH_REMINDER_MAX_NAMES = 10
+
+/** Escape hatch for anyone who finds the nudge noisy. */
+function isToolSearchUsageReminderEnabled(): boolean {
+  return !isEnvDefinedFalsy(process.env.CLAUDE_CODE_TOOL_SEARCH_REMINDER)
+}
+
+/**
+ * Count assistant turns back to the last SearchExtraTools call and to the last
+ * reminder. API-error turns don't count — they aren't the model choosing not to
+ * search.
+ */
+function countTurnsSinceToolSearchAndReminder(messages: Message[]): {
+  turnsSinceLastToolSearch: number
+  turnsSinceLastReminder: number
+} {
+  let foundSearch = false
+  let foundReminder = false
+  let turnsSinceLastToolSearch = 0
+  let turnsSinceLastReminder = 0
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg?.type === 'assistant') {
+      if (msg.isApiErrorMessage) continue
+      if (!foundSearch) {
+        const content = msg.message?.content
+        const searched =
+          Array.isArray(content) &&
+          content.some(
+            block =>
+              block.type === 'tool_use' &&
+              block.name === SEARCH_EXTRA_TOOLS_TOOL_NAME,
+          )
+        if (searched) foundSearch = true
+        else turnsSinceLastToolSearch++
+      }
+      if (!foundReminder) turnsSinceLastReminder++
+    } else if (
+      !foundReminder &&
+      msg?.type === 'attachment' &&
+      msg.attachment?.type === 'tool_search_usage_reminder'
+    ) {
+      foundReminder = true
+    }
+    if (foundSearch && foundReminder) break
+  }
+
+  return { turnsSinceLastToolSearch, turnsSinceLastReminder }
+}
+
+/**
+ * Nudge the model toward SearchExtraTools when it has gone many turns without
+ * using it while deferred tools it has never looked at are still sitting there.
+ *
+ * This is the complement of the `tool_discovery` prefetch, not a duplicate:
+ * prefetch guesses what the user wants and pre-loads it, this one says "you
+ * haven't looked". The failure it targets is the model concluding a capability
+ * is missing — or hand-rolling a Bash workaround — without ever searching,
+ * which is easy to fall into here because occ defers by default (everything
+ * outside CORE_TOOLS, plus every MCP tool).
+ *
+ * Exported for compact.ts? No — deliberately not. After a compaction the
+ * counters restart from the summary, which is the right behavior: the model
+ * gets a fresh 15 turns before being nudged again.
+ */
+export function getToolSearchUsageReminderAttachment(
+  toolUseContext: ToolUseContext,
+  messages: Message[] | undefined,
+): Attachment[] {
+  if (!isToolSearchUsageReminderEnabled()) return []
+  if (!messages || messages.length === 0) return []
+  // 'tst-auto' below threshold and 'standard' both mean nothing is deferred
+  // behind search, so there is nothing to nudge about.
+  if (getSearchExtraToolsMode() !== 'tst') return []
+
+  const tools = toolUseContext.options.tools
+  if (!isDeferredToolExecutionPathAvailable(tools)) return []
+
+  const { turnsSinceLastToolSearch, turnsSinceLastReminder } =
+    countTurnsSinceToolSearchAndReminder(messages)
+  if (
+    turnsSinceLastToolSearch < TOOL_SEARCH_REMINDER_EVERY_N_TURNS ||
+    turnsSinceLastReminder < TOOL_SEARCH_REMINDER_EVERY_N_TURNS
+  ) {
+    return []
+  }
+
+  const discovered = extractDiscoveredToolNames(messages)
+  const undiscovered = tools
+    .filter(tool => isDeferredTool(tool) && !discovered.has(tool.name))
+    .map(tool => tool.name)
+    .sort()
+  if (undiscovered.length === 0) return []
+
+  return [
+    {
+      type: 'tool_search_usage_reminder',
+      undiscoveredToolNames: undiscovered.slice(
+        0,
+        TOOL_SEARCH_REMINDER_MAX_NAMES,
+      ),
+      undiscoveredCount: undiscovered.length,
+    },
+  ]
 }
 
 /**

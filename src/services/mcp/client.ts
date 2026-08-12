@@ -154,6 +154,7 @@ import { markClaudeAiMcpConnected } from './claudeai.js'
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
 import { getMcpServerHeaders } from './headersHelper.js'
 import { SdkControlClientTransport } from './SdkControlTransport.js'
+import { serverAlwaysLoad } from './types.js'
 import type {
   ConnectedMCPServer,
   MCPServerConnection,
@@ -1980,7 +1981,14 @@ const fetchToolsForClientMemoized = memoizeWithLRU(
                     .replace(/\s+/g, ' ')
                     .trim() || undefined
                 : undefined,
-            alwaysLoad: tool._meta?.['anthropic/alwaysLoad'] === true,
+            // Two independent opt-outs of deferral, either one wins: the
+            // server marks a single tool via _meta, or the user marks the
+            // whole server via `alwaysLoad` in its config entry. The user
+            // side exists because the _meta route is unreachable for anyone
+            // who doesn't control the server they depend on.
+            alwaysLoad:
+              tool._meta?.['anthropic/alwaysLoad'] === true ||
+              serverAlwaysLoad(client.config),
             async description() {
               return tool.description ?? ''
             },

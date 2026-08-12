@@ -134,6 +134,13 @@ async function runQueryModel(
   tools: any[] = [],
   optionOverrides: Record<string, unknown> = {},
   maxRetries?: number,
+  /**
+   * Conversation history. Production hands this lane messages that claude.ts
+   * ALREADY normalized (claude.ts:1388, before the provider branch at :1442),
+   * which is why the shared mock stubs normalizeMessagesForAPI to identity —
+   * attachments have become plain user messages by the time they get here.
+   */
+  messages: any[] = [],
 ) {
   // Wire events into the mocked stream adapter
   _nextEvents = events
@@ -174,7 +181,7 @@ async function runQueryModel(
     const signal = new AbortController().signal
     const query = () =>
       queryModelOpenAI(
-        [],
+        messages,
         [] as unknown as SystemPrompt,
         tools as any,
         signal,
@@ -310,23 +317,14 @@ mock.module('../client.js', () => ({
   }),
 }))
 
-mock.module('../streamAdapter.js', () => ({
-  adaptOpenAIStreamToAnthropic: (_stream: any, _model: string) =>
-    eventStream(_nextEvents),
-}))
-
-mock.module('../modelMapping.js', () => ({
-  resolveOpenAIModel: (m: string) => m,
-}))
-
-mock.module('../convertMessages.js', () => ({
-  anthropicMessagesToOpenAI: () => [],
-}))
-
-mock.module('../convertTools.js', () => ({
-  anthropicToolsToOpenAI: () => [],
-  anthropicToolChoiceToOpenAI: () => undefined,
-}))
+// NOTE: there used to be four more mock.module calls here — '../streamAdapter.js',
+// '../modelMapping.js', '../convertMessages.js', '../convertTools.js'. None of
+// those files exist, and openai/index.ts imports every one of those symbols from
+// '@ant/model-provider', so all four were inert. They were worse than useless:
+// '../convertMessages.js' declared `anthropicMessagesToOpenAI: () => []`, which
+// is the first thing you find when a body comes back with `messages: []` and it
+// sends you down a dead end. The live overrides are in the shared
+// '@ant/model-provider' mock above.
 
 mock.module('../../../../utils/session/context.js', () => ({
   MODEL_CONTEXT_WINDOW_DEFAULT: 200_000,
@@ -826,12 +824,91 @@ describe('queryModelOpenAI — deferred MCP tool visibility', () => {
   const executeTool = makeApiTool('ExecuteExtraTool')
   const firstMcpTool = makeApiTool('mcp__wechat__send_message', true)
 
+  /**
+   * The normalized form of a `deferred_tools_delta` attachment — i.e. exactly
+   * what claude.ts:1388 has already turned it into by the time this lane runs.
+   * Built through the real renderer so the fixture cannot drift from it.
+   */
+  async function deferredToolsReminderMessages(pool: any[]) {
+    const { getDeferredToolsDelta } = await import(
+      '../../../../utils/tools/searchExtraTools.js'
+    )
+    const { normalizeAttachmentForAPI } = await import(
+      '../../../../utils/messages/attachmentNormalize.js'
+    )
+    const delta = getDeferredToolsDelta(pool as any, [])
+    if (!delta) throw new Error('expected a delta for this pool')
+    return normalizeAttachmentForAPI({
+      type: 'deferred_tools_delta',
+      ...delta,
+    } as any)
+  }
+
   test('defers MCP schemas when both gateway endpoints are available', async () => {
     await runQueryModel([makeMessageStart(), makeMessageStop()], {}, [
       searchTool,
       executeTool,
       firstMcpTool,
     ])
+
+    expect(capturedToolNames()).toEqual([
+      'SearchExtraTools',
+      'ExecuteExtraTool',
+    ])
+  })
+
+  /**
+   * The announcement moved out of request assembly and into conversation
+   * history (persisted `deferred_tools_delta` attachment), so an empty history
+   * now legitimately carries no list — there is nothing to re-announce. What
+   * this lane still owes is delivery: a meta/system-reminder user message must
+   * survive `filter(isOpenAIConvertibleMessage)` and the OpenAI conversion and
+   * reach the wire body. That is the property worth pinning here.
+   */
+  test('carries the deferred-tool reminder from history to the wire', async () => {
+    const pool = [searchTool, executeTool, firstMcpTool]
+    const history = await deferredToolsReminderMessages(pool)
+
+    await runQueryModel(
+      [makeMessageStart(), makeMessageStop()],
+      {},
+      pool,
+      {},
+      undefined,
+      history,
+    )
+
+    expect(capturedToolNames()).toEqual([
+      'SearchExtraTools',
+      'ExecuteExtraTool',
+    ])
+    const body = JSON.stringify(_lastCreateArgs!.messages)
+    expect(body).toContain('mcp__wechat__send_message')
+    expect(body).toContain('SearchExtraTools')
+    // No second, synthesized copy — that duplication is what the flip removed.
+    expect(body).not.toContain('<available-deferred-tools>')
+  })
+
+  test('does not synthesize a per-request list when history is empty', async () => {
+    await runQueryModel([makeMessageStart(), makeMessageStop()], {}, [
+      searchTool,
+      executeTool,
+      firstMcpTool,
+    ])
+
+    const body = JSON.stringify(_lastCreateArgs!.messages)
+    expect(body).not.toContain('<available-deferred-tools>')
+    // Pairs with the test above: proves that assertion's hit came from the
+    // history message and not from somewhere else in the body.
+    expect(body).not.toContain('mcp__wechat__send_message')
+  })
+
+  test('the escape hatch restores the per-request list on this lane too', async () => {
+    await runQueryModel(
+      [makeMessageStart(), makeMessageStop()],
+      { CLAUDE_CODE_DEFERRED_TOOLS_DELTA: '0' },
+      [searchTool, executeTool, firstMcpTool],
+    )
 
     expect(capturedToolNames()).toEqual([
       'SearchExtraTools',

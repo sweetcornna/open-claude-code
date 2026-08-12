@@ -44,8 +44,8 @@ ToolSearch 采用 **延迟加载（Deferred Loading）** 模式：
 | Web | WebFetch, WebSearch |
 | 代码智能 | LSP |
 | 技能 | Skill |
-| 调度/监控 | Monitor |
-| 工具发现 | SearchExtraTools, ExecuteExtraTool, SyntheticOutput |
+| 工作流 | Workflow |
+| 工具发现 | SearchExtraTools, ExecuteExtraTool, StructuredOutput |
 
 **isDeferredTool 判定逻辑**（`packages/builtin-tools/src/tools/SearchExtraToolsTool/prompt.ts`）：
 
@@ -53,8 +53,16 @@ ToolSearch 采用 **延迟加载（Deferred Loading）** 模式：
 isDeferredTool(tool) =
   tool.alwaysLoad === true?  → false（显式跳过延迟）
   CORE_TOOLS.has(tool.name)? → false（核心工具不延迟）
+  tool.name === Goal?        → !isGoalPresent()（有 goal 时不延迟）
   otherwise                  → true（其余全部延迟）
 ```
+
+`alwaysLoad` 有两个来源，任一为真即生效：MCP 服务器给单个工具打的
+`_meta['anthropic/alwaysLoad']`，以及用户在该服务器配置里写的 `alwaysLoad: true`
+（`.mcp.json` / settings 的 `mcpServers`，stdio·sse·http·ws 四种传输均支持）。
+后者是给「重度依赖某一个 MCP 服务器」的用户准备的逃生阀 —— 前者要求你能控制
+那台服务器。注意它对 turn 1 是尽力而为：occ 刻意不让 MCP 阻塞启动，未连上的
+服务器从下一轮起才贡献工具。
 
 ### 3.2 三层组件架构
 
@@ -63,7 +71,7 @@ isDeferredTool(tool) =
 │  API Layer (src/services/api/claude.ts)              │
 │  ├─ 判定是否启用 ToolSearch                          │
 │  ├─ 过滤 deferred tools 不进入 API tools 数组         │
-│  ├─ 注入 <available-deferred-tools> 或 delta 附件    │
+│  ├─ 宣告 deferred 名单（delta 附件；env 可退回旧式）   │
 │  └─ 处理 tool_reference/text 格式的消息归一化         │
 ├──────────────────────────────────────────────────────┤
 │  Query Loop (src/query.ts)                           │
@@ -174,13 +182,54 @@ prefetch → Attachment(type: 'tool_discovery')
 
 ## 6. Deferred Tools Delta 机制
 
-对于 Anthropic 内部用户（`USER_TYPE=ant`）或启用了 `tengu_glacier_2xr` feature flag 的用户，使用 **delta attachment** 替代 `<available-deferred-tools>` 头部注入：
+deferred 名单通过**持久化的 `deferred_tools_delta` attachment** 宣告：首次注入完整
+名单，之后只注入增量（新增/移除），中间轮次一个字节都不发。
 
-- 首次：注入完整的 deferred tools 列表
-- 后续：只注入增量变化（新增/移除）
-- 优势：不会因为工具池变化导致整个头部缓存失效
+**为什么必须是持久化的**：它替代的那条 `<available-deferred-tools>` 临时消息由
+`claude.ts` 在每次请求的**尾部**重新拼一次、且不写回历史；而 `addCacheBreakpoints`
+全局只放一个 message 级 `cache_control` 标记，位置正是 `messages.length - 1` ——
+于是每一轮的缓存写入都落在一条下一轮不会再出现的消息上，写进去永远读不回来。
+代价是每轮一次 1.25× 的 cache write，外加整份 deferred 名单（MCP 装满时几百行）
+按未命中重新计费。`promptCacheBreakDetection` 看不见这件事：它只比
+`toolsHash`/`systemHash`/`cacheControlHash`，不比消息体。
 
-Delta attachment 扫描历史消息中的 `deferred_tools_delta` 类型 attachment，重建已宣告集合，然后差分计算当前 deferred pool 的变化。
+判定在 `packages/builtin-tools/src/tools/SearchExtraToolsTool/deferredToolsDelta.ts`
+（零依赖叶子模块），默认开启，`CLAUDE_CODE_DEFERRED_TOOLS_DELTA=0` 退回旧式临时消息。
+**这个判定必须只有一处**：`SearchExtraToolsTool` 的描述要告诉模型去哪儿找工具名
+（system-reminder 还是 `<available-deferred-tools>`），两边一旦漂移，模型就会去找
+一条根本不存在的消息。`searchExtraTools.ts` 再导出它而不是自己复制一份，正是因为
+后者曾经是两份手抄。
+
+**宣告 ≠ 已发现**：`extractDiscoveredToolNames` 刻意不把 delta 的 `addedNames` 计入
+discovered 集合。discovered 的语义是「模型已经看过参数 schema」，`ExecuteExtraTool`
+的「先搜后调」守卫和 compaction 的 `preCompactDiscoveredTools` 都依赖这一点；混淆
+两者等于取消守卫，模型会对着 strictObject 猜字段名。
+
+`addedLines`（渲染用）截断到 `DEFERRED_DELTA_LIST_CAP = 30`，`addedNames`（记账用）
+保持完整 —— 从记账里丢名字会让同一批工具每轮重新宣告。超出部分由渲染文案指引模型
+改用关键词 / `discover:` 检索。
+
+### 6.1 tool_search_usage_reminder
+
+与 delta 互补的反向提醒：连续 15 个 assistant 轮次没调过 `SearchExtraTools`、且仍
+有从未被搜索过的 deferred 工具时，注入一条 system-reminder 点名其中前 10 个。
+针对的失败是「模型断定某能力不存在」或直接用 Bash 手搓替代方案 —— occ 默认全量延迟
+（`CORE_TOOLS` 之外 + 全部 MCP 工具），这个坑比上游深。`tool_discovery` 预取是「猜
+你要什么」，这条是「提醒你还没看」，两者不重复。`CLAUDE_CODE_TOOL_SEARCH_REMINDER=0`
+关闭。
+
+### 6.2 搜不到时的分状态说明
+
+`SearchExtraTools` 返回空结果时按 MCP server 状态分四类说明，而不是笼统的
+"No matching deferred tools found"：still-connecting（可以再搜）、failed（是连接
+失败，不是能力缺失）、needs-auth（去 `/mcp` 认证，别问用户要 token）、disabled
+（管理性状态，重试无用）。区分的理由是模型会把「找不到工具」读成「这个能力不存在」，
+然后去告诉用户或自己造轮子。服务器上报的 error 文本先经消毒（去控制字符、去尖括号
+引号、截断 200 字符）才进上下文，并明确标注为诊断数据而非指令。
+
+搜索还会**主动等待**仍在连接的 MCP server（最多 5s，50ms 轮询，尊重 abort），条件是
+先刷新工具池仍无结果、且查询指向的正是 pending 的那台（或没点名任何 server）。
+不等的话就是白白多烧一整个往返 —— 而且模型未必会重试。
 
 ## 7. 演进历史
 
@@ -235,6 +284,23 @@ Delta attachment 扫描历史消息中的 `deferred_tools_delta` 类型 attachme
 
 **设计决策**：不是所有用户都需要团队功能。将其延迟化后，大部分用户可以节省约 3 个工具定义的 token 开销。
 
+### v5: 宣告改走缓存（吸收官方局部改进）
+
+- **`deferred_tools_delta` 默认开启**，弃用每轮重发的 `<available-deferred-tools>`
+  临时消息（理由见 §6）。判定下沉到零依赖叶子模块，消除两处手抄的同一个门控。
+- **宣告与「已发现」解耦** —— delta 不再把工具计入 discovered 集合。
+- **搜不到时分四类说明** + **MCP pending 主动等待 5s**（§6.2）。
+- **`tool_search_usage_reminder`**（§6.1）。
+- **用户侧 per-MCP-server `alwaysLoad`** —— 此前只有服务器自己声明的 `_meta` 一条路。
+- 修 `ExecuteExtraTool` few-shot 教错字段名（`schedule` → `cron`，CronCreate 是
+  strictObject，照抄必被拒），并加了一条把示例参数喂给真 schema 的守卫测试。
+
+**设计决策**：这一轮**没有**迁移到官方的 `defer_loading` / `tool_reference` 直调式。
+那套依赖服务端不把带标记的工具渲进 prompt 顶部，只有 `api.anthropic.com` 与做过能力
+探测的托管平面兑现；官方自己在非官方 `ANTHROPIC_BASE_URL` 上默认关闭它。迁移等于
+回滚 v3，并把正确性押在 occ 大部分会话都拿不到的服务端契约上。真正可测量的浪费不在
+机制选择上，而在宣告的载体 —— 那个不迁移就能修。
+
 ## 8. 文件索引
 
 ### 核心文件
@@ -242,14 +308,15 @@ Delta attachment 扫描历史消息中的 `deferred_tools_delta` 类型 attachme
 | 文件 | 职责 |
 |------|------|
 | `src/constants/tools.ts` | CORE_TOOLS 白名单、工具权限集合 |
-| `src/utils/searchExtraTools.ts` | 模式判定、阈值计算、delta 差分、discovered tools 提取 |
+| `src/utils/tools/searchExtraTools.ts` | 模式判定、阈值计算、delta 差分、discovered tools 提取 |
 | `src/services/searchExtraTools/toolIndex.ts` | TF-IDF 索引构建和搜索 |
 | `src/services/searchExtraTools/prefetch.ts` | 预取管道（turn-zero + inter-turn） |
 | `packages/builtin-tools/src/tools/SearchExtraToolsTool/` | 搜索工具实现（4 种查询模式） |
 | `packages/builtin-tools/src/tools/ExecuteTool/` | 代理执行器实现 |
 | `src/services/api/claude.ts` | API 层集成（工具过滤、消息归一化） |
 | `src/query.ts` | 查询循环集成（预取触发点） |
-| `src/utils/messages.ts` | Attachment → system-reminder 转换 |
+| `src/utils/messages/attachmentNormalize.ts` | Attachment → system-reminder 转换 |
+| `src/utils/attachments/deltas.ts` | delta / usage-reminder attachment 的生产者 |
 
 ### 共享基础设施
 

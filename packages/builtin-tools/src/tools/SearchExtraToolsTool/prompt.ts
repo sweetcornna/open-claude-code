@@ -1,4 +1,3 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@open-claude-code/tool-runtime/featureGate.js'
 import type { Tool } from '@open-claude-code/tool-runtime/Tool.js'
 import { CORE_TOOLS } from 'src/constants/tools.js'
 import { isGoalPresent } from 'src/services/goal/goalPresence.js'
@@ -7,20 +6,17 @@ import { GOAL_TOOL_NAME } from '../GoalTool/constants.js'
 export { SEARCH_EXTRA_TOOLS_TOOL_NAME } from './constants.js'
 
 import { SEARCH_EXTRA_TOOLS_TOOL_NAME } from './constants.js'
+import { isDeferredToolsDeltaEnabled } from './deferredToolsDelta.js'
 
 const PROMPT_HEAD = `Search for deferred tools by name or keyword. LOW PRIORITY — only use this tool when no core tool can accomplish the task. Core tools are always in your tool list and should be called directly. This tool is for discovering additional capabilities like MCP tools, cron scheduling, worktree management, agent teams, etc.
 
 `
 
-// Matches isDeferredToolsDeltaEnabled in searchExtraTools.ts (not imported —
-// searchExtraTools.ts imports from this file). When enabled: tools announced
-// via system-reminder attachments. When disabled: prepended
-// <available-deferred-tools> block (pre-gate behavior).
+// Same predicate the request builder uses, so the description can never point
+// the model at the wrong carrier. Both sides call deferredToolsDelta.ts; they
+// used to hold hand-copied duplicates with nothing pinning them together.
 function getToolLocationHint(): string {
-  const deltaEnabled =
-    process.env.USER_TYPE === 'ant' ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_glacier_2xr', false)
-  return deltaEnabled
+  return isDeferredToolsDeltaEnabled()
     ? 'Deferred tools appear by name in <system-reminder> messages.'
     : 'Deferred tools appear by name in <available-deferred-tools> messages.'
 }
@@ -38,7 +34,7 @@ Step 2 — Execute: Call ExecuteExtraTool with {"tool_name": "<name>", "params":
 If you don't know the exact tool name, use keyword search first, then execute the best match.
 
 ## Query forms
-- "select:CronCreate" — exact tool name (fastest, preferred when you know the name from <available-deferred-tools>)
+- "select:CronCreate" — exact tool name (fastest, preferred when the name was already announced to you)
 - "select:CronCreate,CronList" — comma-separated multi-select
 - "discover:schedule cron job" — returns tool name + description + schema without loading. Use to understand a tool before calling it.
 - "notebook jupyter" — keyword search, up to max_results best matches

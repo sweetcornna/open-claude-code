@@ -41,6 +41,7 @@ import {
   getDeferredToolsDeltaAttachment,
   getMcpInstructionsDeltaAttachment,
   getOutputStyleAttachment,
+  getToolSearchUsageReminderAttachment,
 } from './deltas.js'
 import { getChangedFiles } from './changedFiles.js'
 import { getNestedMemoryAttachments } from './directories.js'
@@ -207,6 +208,11 @@ export async function getAttachments(
             querySource,
           },
         ),
+      ),
+    ),
+    maybe('tool_search_usage_reminder', () =>
+      Promise.resolve(
+        getToolSearchUsageReminderAttachment(toolUseContext, messages),
       ),
     ),
     maybe('agent_listing_delta', () =>

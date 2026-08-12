@@ -826,8 +826,18 @@ You have exited auto mode. The user may now want to interact more directly. You 
     case 'deferred_tools_delta': {
       const parts: string[] = []
       if (attachment.addedLines.length > 0) {
+        // This is the only announcement the model gets — it is written once and
+        // then rides the prompt cache, unlike the per-request copy claude.ts
+        // used to append. So it has to carry the full two-step instruction, not
+        // just the names.
+        const hidden =
+          attachment.addedNames.length - attachment.addedLines.length
+        const overflow =
+          hidden > 0
+            ? `\n…and ${hidden} more deferred tool(s) not listed here — find them with a SearchExtraTools keyword or "discover:" query.`
+            : ''
         parts.push(
-          `The following deferred tools are now available:\n${attachment.addedLines.join('\n')}\n\nTo use these tools, call SearchExtraTools then ExecuteExtraTool — both are core tools already in your tool list. Call them directly, do NOT use Bash/Glob to find them.`,
+          `The following deferred tools are now available. Their parameter schemas are NOT loaded, so guessing parameters will fail validation:\n${attachment.addedLines.join('\n')}${overflow}\n\nTo use one:\n1. SearchExtraTools({"query": "select:<tool_name>"}) — returns the tool's parameter schema\n2. ExecuteExtraTool({"tool_name": "<name>", "params": {...}}) — invoke it with those exact parameters\n\nSearchExtraTools and ExecuteExtraTool are core tools already in your tool list — call them directly, do NOT use Bash/Glob to find them.`,
         )
       }
       if (attachment.removedNames.length > 0) {
@@ -837,6 +847,19 @@ You have exited auto mode. The user may now want to interact more directly. You 
       }
       return wrapMessagesInSystemReminder([
         createUserMessage({ content: parts.join('\n\n'), isMeta: true }),
+      ])
+    }
+    case 'tool_search_usage_reminder': {
+      const hidden =
+        attachment.undiscoveredCount - attachment.undiscoveredToolNames.length
+      const names =
+        attachment.undiscoveredToolNames.join(', ') +
+        (hidden > 0 ? ` (+${hidden} more)` : '')
+      return wrapMessagesInSystemReminder([
+        createUserMessage({
+          content: `Some available tools' parameter schemas are not loaded in this conversation yet: ${names}. Before concluding a capability is missing or building a workaround, use SearchExtraTools to find and load a relevant tool — keywords to search, or "select:<name>[,<name>...]" for a specific one — then run it with ExecuteExtraTool. Passing guessed parameters without loading the schema first will fail. This is just a gentle reminder — ignore it if it isn't relevant to the current work.`,
+          isMeta: true,
+        }),
       ])
     }
     case 'agent_listing_delta': {
