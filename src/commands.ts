@@ -3,6 +3,7 @@ import addDir from './commands/add-dir/index.js'
 import autocompact from './commands/autocompact/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import btw from './commands/btw/index.js'
+import cd from './commands/cd/index.js'
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
@@ -20,6 +21,7 @@ import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
 import help from './commands/help/index.js'
 import ide from './commands/ide/index.js'
+import importCommand from './commands/import/index.js'
 import init from './commands/init.js'
 import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
@@ -57,6 +59,7 @@ import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
+import wellbeing from './commands/wellbeing/index.js'
 import searchSetting from './commands/searchSetting/index.js'
 import webTools from './commands/web-tools/index.js'
 import { feature } from 'bun:bundle'
@@ -244,6 +247,7 @@ const COMMANDS = memoize((): Command[] => [
   agents,
   branch,
   btw,
+  cd,
   clear,
   color,
   compact,
@@ -262,6 +266,7 @@ const COMMANDS = memoize((): Command[] => [
   heapDump,
   help,
   ide,
+  importCommand,
   init,
   keybindings,
   lang,
@@ -299,6 +304,7 @@ const COMMANDS = memoize((): Command[] => [
   usage,
   usageReport,
   vim,
+  wellbeing,
   searchSetting,
   webTools,
   ...(webCmd ? [webCmd] : []),

@@ -3,6 +3,7 @@ import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 // AgentColorName comes via ./container.js on purpose: agentColorManager.ts
 // imports getAgentColorMap() back from the barrel, so container stays this
 // directory's single importer of it and the cycle count is unchanged.
+import { noteUserActivity } from 'src/services/wellbeing/activityTracker.js'
 import type {
   AgentColorName,
   RegisteredHookMatcher,
@@ -46,6 +47,10 @@ export function flushInteractionTime(): void {
 function flushInteractionTime_inner(): void {
   STATE.lastInteractionTime = Date.now()
   interactionTimeDirty = false
+  // Feeds the opt-in break reminder. activityTracker is import-free arithmetic
+  // on purpose — this runs once per Ink interaction flush, and pulling settings
+  // in here would put a file read on the keystroke path.
+  noteUserActivity(STATE.lastInteractionTime)
 }
 
 export function getLastInteractionTime(): number {

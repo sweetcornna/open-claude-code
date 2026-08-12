@@ -21,6 +21,7 @@ export type SuggestionType =
   | 'shell'
   | 'custom-title'
   | 'slack-channel'
+  | 'emoji'
   | 'none';
 
 export const OVERLAY_MAX_ITEMS = 5;

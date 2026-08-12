@@ -7,6 +7,7 @@ import type {
 import { randomUUID } from 'crypto'
 import type { QuerySource } from 'src/constants/querySource.js'
 import { logEvent } from 'src/services/analytics/index.js'
+import { collectWellbeingNudges } from 'src/services/wellbeing/reminder.js'
 import { getContentText } from 'src/utils/messages.js'
 import {
   findCommand,
@@ -272,6 +273,19 @@ export async function processUserInput({
     }
   }
   queryCheckpoint('query_hooks_end')
+
+  // Opt-in wellbeing nudges (break reminder / quiet hours). Display-only:
+  // system messages are dropped by normalizeMessagesForAPI, so the model never
+  // sees them, and they never affect whether we query.
+  if (
+    mode === 'prompt' &&
+    !isMeta &&
+    !context.options.isNonInteractiveSession
+  ) {
+    for (const nudge of collectWellbeingNudges()) {
+      result.messages.push(createSystemMessage(nudge, 'suggestion'))
+    }
+  }
 
   // Happy path: onQuery will clear userInputOnProcessing via startTransition
   // so it resolves in the same frame as deferredMessages (no flicker gap).

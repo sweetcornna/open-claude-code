@@ -350,6 +350,87 @@ export const SettingsSchema = lazySchema(() =>
           'Whether file picker should respect .gitignore files (default: true). ' +
             'Note: .ignore files are always respected.',
         ),
+      emojiCompletionEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When false, the :emoji: shortcode typeahead (the suggestion popup and ' +
+            'the :name: inline replacement) is disabled. When absent or true, it is enabled.',
+        ),
+      breakReminder: z
+        .object({
+          enabled: z
+            .boolean()
+            .optional()
+            .describe(
+              'Show a friendly nudge after sustained continuous use (default false). ' +
+                'Must be true for the reminder to fire.',
+            ),
+          intervalMinutes: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe(
+              'Minutes of continuous use before the reminder fires (default 30). ' +
+                'Re-fires every interval until you take a break.',
+            ),
+          breakThresholdMinutes: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe(
+              'Minutes of inactivity that count as a break and reset the timer (default 10)',
+            ),
+          message: z
+            .string()
+            .optional()
+            .describe(
+              'Custom reminder text. Leave unset for a rotating set of friendly nudges.',
+            ),
+        })
+        .optional()
+        .describe(
+          'Opt-in break reminder. When enabled, shows a nudge after sustained ' +
+            'continuous use. Never blocks — just a friendly heads-up.',
+        ),
+      quietHours: z
+        .object({
+          enabled: z
+            .boolean()
+            .optional()
+            .describe(
+              'Show a one-time nudge when you start or keep using the CLI inside ' +
+                'your quiet-hours window (default false).',
+            ),
+          start: z
+            .string()
+            .regex(
+              /^([01]?\d|2[0-3]):[0-5]\d$/,
+              'Expected 24-hour local time "HH:MM" (e.g. "22:00")',
+            )
+            .optional()
+            .describe(
+              'Start of the quiet-hours window, 24-hour local time "HH:MM".',
+            ),
+          end: z
+            .string()
+            .regex(
+              /^([01]?\d|2[0-3]):[0-5]\d$/,
+              'Expected 24-hour local time "HH:MM" (e.g. "07:00")',
+            )
+            .optional()
+            .describe(
+              'End of the quiet-hours window, 24-hour local time "HH:MM". ' +
+                'May be earlier than start for an overnight range.',
+            ),
+        })
+        .optional()
+        .describe(
+          'Opt-in quiet hours. When enabled, shows a single soft nudge per session ' +
+            'while inside the configured local-time window. Never blocks.',
+        ),
       cleanupPeriodDays: z
         .number()
         .nonnegative()

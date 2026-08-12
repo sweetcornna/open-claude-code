@@ -32,6 +32,15 @@ import {
   getPathCompletions,
   isPathLikeToken,
 } from '../utils/suggestions/directoryCompletion.js';
+import {
+  EMOJI_PARTIAL_RE,
+  ensureEmojiIndex,
+  getEmojiSuggestions,
+  getLoadedEmojiIndex,
+  isEmojiCompletionEnabled,
+  looksLikeEmojiShortcode,
+  resolveInlineEmojiReplacement,
+} from '../utils/suggestions/emojiSuggestions.js';
 import { getShellHistoryCompletion } from '../utils/suggestions/shellHistoryCompletion.js';
 import { getSlackChannelSuggestions, hasSlackMcpServer } from '../utils/suggestions/slackChannelSuggestions.js';
 import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js';
@@ -473,6 +482,10 @@ export function useTypeahead({
   const latestSearchTokenRef = useRef<string | null>(null);
   // Track previous input to detect actual text changes vs. callback recreations
   const prevInputRef = useRef('');
+  // The input as it was *before* the current change. The `:name:` inline
+  // replacement needs it to tell "the user just typed the closing colon" from
+  // "the cursor moved past a colon that was already there".
+  const inputBeforeChangeRef = useRef<string | undefined>(undefined);
   // Track the latest path token to discard stale results from path completion
   const latestPathTokenRef = useRef('');
   // Track the latest bash input to discard stale results from history completion
@@ -701,6 +714,50 @@ export function useTypeahead({
           return;
         } else if (suggestionType === 'slack-channel') {
           debouncedFetchSlackChannels.cancel();
+          clearSuggestions();
+        }
+      }
+
+      // Check for :shortcode: to trigger emoji completion
+      if (mode === 'prompt') {
+        const beforeCursor = value.substring(0, effectiveCursorOffset);
+        if (isEmojiCompletionEnabled() && looksLikeEmojiShortcode(beforeCursor)) {
+          // The table is a lazily imported chunk. Warm it on the first ':' and
+          // work only with what's already resolved — awaiting here would let a
+          // newer keystroke land while we hold a stale value.
+          const emojiIndex = getLoadedEmojiIndex();
+          if (emojiIndex === null) {
+            void ensureEmojiIndex();
+          } else {
+            const inlineReplacement = resolveInlineEmojiReplacement(
+              emojiIndex,
+              value,
+              effectiveCursorOffset,
+              inputBeforeChangeRef.current,
+            );
+            if (inlineReplacement) {
+              onInputChange(inlineReplacement.text);
+              setCursorOffset(inlineReplacement.cursorOffset);
+              clearSuggestions();
+              return;
+            }
+
+            const partial = beforeCursor.match(EMOJI_PARTIAL_RE);
+            const emojiItems = partial?.[2] ? getEmojiSuggestions(emojiIndex, partial[2]) : [];
+            if (emojiItems.length > 0) {
+              debouncedFetchFileSuggestions.cancel();
+              setSuggestionsState(prev => ({
+                commandArgumentHint: undefined,
+                suggestions: emojiItems,
+                selectedSuggestion: getPreservedSelection(prev.suggestions, prev.selectedSuggestion, emojiItems),
+              }));
+              setSuggestionType('emoji');
+              setMaxColumnWidth(undefined);
+              return;
+            }
+          }
+        }
+        if (suggestionType === 'emoji') {
           clearSuggestions();
         }
       }
@@ -986,6 +1043,7 @@ export function useTypeahead({
     // reset the search token ref so the same query can be re-fetched.
     // This fixes: type @readme.md, clear, retype @readme.md → no suggestions.
     if (prevInputRef.current !== input) {
+      inputBeforeChangeRef.current = prevInputRef.current;
       prevInputRef.current = input;
       latestSearchTokenRef.current = null;
     }
@@ -1142,6 +1200,12 @@ export function useTypeahead({
         const suggestion = suggestions[index];
         if (suggestion) {
           applyTriggerSuggestion(suggestion, input, cursorOffset, HASH_CHANNEL_RE, onInputChange, setCursorOffset);
+          clearSuggestions();
+        }
+      } else if (suggestionType === 'emoji' && suggestions.length > 0) {
+        const suggestion = suggestions[index];
+        if (suggestion) {
+          applyTriggerSuggestion(suggestion, input, cursorOffset, EMOJI_PARTIAL_RE, onInputChange, setCursorOffset);
           clearSuggestions();
         }
       } else if (suggestionType === 'file' && suggestions.length > 0) {
@@ -1338,6 +1402,11 @@ export function useTypeahead({
       if (suggestion) {
         applyTriggerSuggestion(suggestion, input, cursorOffset, HASH_CHANNEL_RE, onInputChange, setCursorOffset);
         debouncedFetchSlackChannels.cancel();
+        clearSuggestions();
+      }
+    } else if (suggestionType === 'emoji' && selectedSuggestion < suggestions.length) {
+      if (suggestion) {
+        applyTriggerSuggestion(suggestion, input, cursorOffset, EMOJI_PARTIAL_RE, onInputChange, setCursorOffset);
         clearSuggestions();
       }
     } else if (suggestionType === 'file' && selectedSuggestion < suggestions.length) {

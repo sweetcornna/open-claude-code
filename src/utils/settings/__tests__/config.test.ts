@@ -181,6 +181,38 @@ describe('SettingsSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  test('accepts emojiCompletionEnabled', () => {
+    const result = SettingsSchema().safeParse({ emojiCompletionEnabled: false })
+    expect(result.success).toBe(true)
+  })
+
+  test('accepts breakReminder and quietHours', () => {
+    const result = SettingsSchema().safeParse({
+      breakReminder: {
+        enabled: true,
+        intervalMinutes: 45,
+        breakThresholdMinutes: 15,
+        message: 'stretch',
+      },
+      quietHours: { enabled: true, start: '22:00', end: '07:00' },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects non-positive breakReminder intervals', () => {
+    const result = SettingsSchema().safeParse({
+      breakReminder: { intervalMinutes: 0 },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('rejects quiet hours that are not HH:MM', () => {
+    const result = SettingsSchema().safeParse({
+      quietHours: { enabled: true, start: '10pm', end: '07:00' },
+    })
+    expect(result.success).toBe(false)
+  })
+
   test('accepts statusLine configuration', () => {
     const result = SettingsSchema().safeParse({
       statusLine: { type: 'command', command: 'echo status' },
