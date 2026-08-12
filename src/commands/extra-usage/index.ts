@@ -13,6 +13,9 @@ function isExtraUsageAllowed(): boolean {
 export const extraUsage = {
   type: 'local-jsx',
   name: 'extra-usage',
+  // Official renamed this command to /usage-credits and kept the old name
+  // working; occ keeps /extra-usage as the primary name and accepts both.
+  aliases: ['usage-credits'],
   description: 'Configure extra usage to keep working when limits are hit',
   isEnabled: () => isExtraUsageAllowed() && !getIsNonInteractiveSession(),
   load: () => import('./extra-usage.js'),
@@ -21,6 +24,7 @@ export const extraUsage = {
 export const extraUsageNonInteractive = {
   type: 'local',
   name: 'extra-usage',
+  aliases: ['usage-credits'],
   supportsNonInteractive: true,
   description: 'Configure extra usage to keep working when limits are hit',
   isEnabled: () => isExtraUsageAllowed() && getIsNonInteractiveSession(),
