@@ -1,4 +1,5 @@
 import { resetSdkInitState } from '../../bootstrap/state.js'
+import { isSafeMode } from '../config/envUtils.js'
 import { isRestrictedToPluginOnly } from '../settings/pluginOnlyPolicy.js'
 // Import as module object so spyOn works in tests (direct imports bypass spies)
 import * as settingsModule from '../settings/settings.js'
@@ -55,11 +56,21 @@ function getHooksFromAllowedSources(): HooksSettings {
 /**
  * Check if only managed hooks should run.
  * This is true when:
+ * - `--safe-mode` is active (settings-file hooks, statusLine and
+ *   fileSuggestion commands are all user configuration; the managed ones
+ *   still run), OR
  * - policySettings has allowManagedHooksOnly: true, OR
  * - disableAllHooks is set in non-managed settings (non-managed settings
  *   cannot disable managed hooks, so they effectively become managed-only)
+ *
+ * Note the hooks *config* itself needs no separate safe-mode branch:
+ * `getHooksFromAllowedSources()` already returns policy hooks only once
+ * `isRestrictedToPluginOnly('hooks')` is true, which safe mode makes so.
  */
 export function shouldAllowManagedHooksOnly(): boolean {
+  if (isSafeMode()) {
+    return true
+  }
   const policySettings = settingsModule.getSettingsForSource('policySettings')
   if (policySettings?.allowManagedHooksOnly === true) {
     return true

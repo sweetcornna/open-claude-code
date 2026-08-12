@@ -66,6 +66,39 @@ export function isBareMode(): boolean {
 }
 
 /**
+ * --safe-mode / CLAUDE_CODE_SAFE_MODE — start with every *user* customization
+ * off so a broken configuration can be diagnosed: CLAUDE.md, skills, custom
+ * slash commands, agents, output styles, workflows, plugins, hooks, statusLine,
+ * fileSuggestion, MCP servers and custom keybindings. Admin-managed
+ * (`policySettings`) sources still load, and auth, model selection, the built-in
+ * tools and the permission system are untouched.
+ *
+ * NOT the same thing as `--bare` (`CLAUDE_CODE_SIMPLE`), which additionally
+ * restricts auth to ANTHROPIC_API_KEY/apiKeyHelper and cuts the tool set down
+ * to Bash/Read/Edit. The two flags are independent and may be combined.
+ *
+ * Checks argv directly (in addition to the env var) for the same reason
+ * `isBareMode()` does: several gates run before the root action handler has
+ * had a chance to set the env var.
+ */
+export function isSafeMode(): boolean {
+  return (
+    isEnvTruthy(process.env.CLAUDE_CODE_SAFE_MODE) ||
+    process.argv.includes('--safe-mode')
+  )
+}
+
+/**
+ * Hint telling the user how to leave safe mode, phrased for whichever way they
+ * entered it. Mirrors the official CLI's wording so docs/issues line up.
+ */
+export function safeModeExitHint(): string {
+  return process.argv.includes('--safe-mode')
+    ? 'restart without --safe-mode'
+    : 'unset CLAUDE_CODE_SAFE_MODE'
+}
+
+/**
  * Parses an array of environment variable strings into a key-value object
  * @param envVars Array of strings in KEY=VALUE format
  * @returns Object with key-value pairs

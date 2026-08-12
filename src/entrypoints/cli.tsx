@@ -305,6 +305,14 @@ async function main(): Promise<void> {
     process.env.CLAUDE_CODE_SIMPLE = '1';
   }
 
+  // --safe-mode: same reasoning as --bare above — the customization gates run
+  // during module eval and commander option building, well before the root
+  // action handler would set these.
+  if (args.includes('--safe-mode')) {
+    process.env.CLAUDE_CODE_SAFE_MODE = '1';
+    process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = '1';
+  }
+
   // No special flags detected, load and run the full CLI
   const { startCapturingEarlyInput } = await import('../utils/terminal/earlyInput.js');
   startCapturingEarlyInput();

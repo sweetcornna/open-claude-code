@@ -17,7 +17,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growt
 import { logEvent } from '../services/analytics/index.js'
 import { registerCleanup } from '../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
-import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
+import { getClaudeConfigHomeDir, isSafeMode } from '../utils/config/envUtils.js'
 import { errorMessage, isENOENT } from '../utils/runtime/errors.js'
 import { createSignal } from '../utils/process/signal.js'
 import { jsonParse } from '../utils/telemetry/slowOperations.js'
@@ -39,6 +39,11 @@ import {
  * can check the same condition consistently.
  */
 export function isKeybindingCustomizationEnabled(): boolean {
+  // --safe-mode: custom keybindings are user configuration. Edits still save;
+  // they just don't load until safe mode is off.
+  if (isSafeMode()) {
+    return false
+  }
   return getFeatureValue_CACHED_MAY_BE_STALE(
     'tengu_keybinding_customization_release',
     false,

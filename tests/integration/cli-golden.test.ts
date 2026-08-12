@@ -207,6 +207,7 @@ const ROOT_COMMANDS = [
   'mcp',
   'migrate',
   'plugin|plugins',
+  'project',
   'setup-token',
   'update',
 ]
@@ -257,6 +258,7 @@ const ROOT_OPTIONS = [
   '--replay-user-messages',
   '-r',
   '--resume',
+  '--safe-mode',
   '--session-id',
   '--setting-sources',
   '--settings',

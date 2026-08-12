@@ -59,7 +59,7 @@ import type {
   PluginManifest,
 } from '../../types/plugin.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { isEnvTruthy } from '../config/envUtils.js'
+import { isEnvTruthy, isSafeMode } from '../config/envUtils.js'
 import {
   errorMessage,
   getErrnoPath,
@@ -3238,6 +3238,19 @@ async function assemblePluginLoadResult(
     errors: PluginError[]
   }>,
 ): Promise<PluginLoadResult> {
+  // --safe-mode: no plugins at all — marketplace, --plugin-dir session
+  // plugins and CLI built-ins alike. Short-circuiting here rather than at
+  // the two memoized entry points keeps every current and future caller
+  // (commands, agents, hooks, MCP, LSP, output styles) on one gate, and
+  // skips cachePluginSettings() so plugin-contributed settings stay out of
+  // the cascade too. Explicit --plugin-dir is ignored on purpose: safe mode
+  // means "load nothing I authored", unlike --bare which honours explicit
+  // flags.
+  if (isSafeMode()) {
+    logForDebugging('Safe mode: skipping all plugin loading')
+    return { enabled: [], disabled: [], errors: [] }
+  }
+
   // Load marketplace plugins and session-only plugins in parallel.
   // getInlinePlugins() is a synchronous state read with no dependency on
   // marketplace loading, so these two sources can be fetched concurrently.

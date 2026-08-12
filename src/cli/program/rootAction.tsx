@@ -264,6 +264,14 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     process.env.CLAUDE_CODE_SIMPLE = '1';
   }
 
+  // --safe-mode = every user customization off (see isSafeMode()). CLAUDE.md is
+  // the one surface with no source-scoped loader, so it reuses the existing
+  // hard-off switch instead of a second gate — same thing the official CLI does.
+  if ((options as { safeMode?: boolean }).safeMode) {
+    process.env.CLAUDE_CODE_SAFE_MODE = '1';
+    process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = '1';
+  }
+
   // Ignore "code" as a prompt - treat it the same as no prompt
   if (prompt === 'code') {
     logEvent('tengu_code_prompt_ignored', {});

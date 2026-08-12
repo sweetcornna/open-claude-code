@@ -18,6 +18,7 @@ import { basename } from 'path'
 import { getIsRemoteMode } from '../../bootstrap/state.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { ENTRYPOINT_NAME } from '../../memdir/memdir.js'
+import { isMemoryPaused } from '../../memdir/memoryPause.js'
 import {
   formatMemoryManifest,
   scanMemoryFiles,
@@ -567,6 +568,15 @@ export async function executeExtractMemories(
   context: REPLHookContext,
   appendSystemMessage?: AppendSystemMessageFn,
 ): Promise<void> {
+  // /pause-memory: no new memories are written for the rest of this session.
+  // Checked here rather than at the (several) call sites so any future caller
+  // inherits the pause.
+  if (isMemoryPaused()) {
+    logForDebugging(
+      '[extractMemories] skipping — memory paused (/pause-memory)',
+    )
+    return
+  }
   await extractor?.(context, appendSystemMessage)
 }
 

@@ -25,6 +25,7 @@ import { logForDebugging } from '../../utils/telemetry/debug.js'
 import type { ToolUseContext } from '../../Tool.js'
 import { logEvent } from '../analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { isMemoryPaused } from '../../memdir/memoryPause.js'
 import { isAutoMemoryEnabled, getAutoMemPath } from '../../memdir/paths.js'
 import { isAutoDreamEnabled } from './config.js'
 import { getProjectDir } from '../../utils/sessionStorage.js'
@@ -323,5 +324,10 @@ export async function executeAutoDream(
   context: REPLHookContext,
   appendSystemMessage?: AppendSystemMessageFn,
 ): Promise<void> {
+  // /pause-memory: dreaming consolidates and rewrites memory files, so it is a
+  // write path and pauses with the rest.
+  if (isMemoryPaused()) {
+    return
+  }
   await runner?.(context, appendSystemMessage)
 }

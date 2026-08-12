@@ -11,7 +11,11 @@ import {
 } from 'src/services/analytics/index.js'
 import { getProjectRoot } from '../../bootstrap/state.js'
 import { logForDebugging } from '../telemetry/debug.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../config/envUtils.js'
+import {
+  getClaudeConfigHomeDir,
+  isEnvTruthy,
+  isSafeMode,
+} from '../config/envUtils.js'
 import { isFsInaccessible } from '../runtime/errors.js'
 import { normalizePathForComparison } from '../filesystem/file.js'
 import type { FrontmatterData } from './frontmatterParser.js'
@@ -335,6 +339,12 @@ export const loadMarkdownFilesForSubdir = memoize(
       }
     }
 
+    // --safe-mode: every one of these subdirs (commands, agents, output-styles,
+    // skills, workflows, templates) is user-authored configuration, so none of
+    // the user/project copies load. The managed dir below is untouched —
+    // admin-managed settings still apply in safe mode.
+    const safeModeBlocked = isSafeMode()
+
     const [managedFiles, userFiles, projectFilesNested] = await Promise.all([
       // Always load managed (policy settings)
       loadMarkdownFiles(managedDir).then(_ =>
@@ -345,6 +355,7 @@ export const loadMarkdownFilesForSubdir = memoize(
         })),
       ),
       // Conditionally load user files
+      !safeModeBlocked &&
       isSettingSourceEnabled('userSettings') &&
       !(subdir === 'agents' && isRestrictedToPluginOnly('agents'))
         ? loadMarkdownFiles(userDir).then(_ =>
@@ -356,6 +367,7 @@ export const loadMarkdownFilesForSubdir = memoize(
           )
         : Promise.resolve([]),
       // Conditionally load project files from all directories up to home
+      !safeModeBlocked &&
       isSettingSourceEnabled('projectSettings') &&
       !(subdir === 'agents' && isRestrictedToPluginOnly('agents'))
         ? Promise.all(

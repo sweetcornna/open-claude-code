@@ -5,6 +5,7 @@ import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileR
 import type { FileStateCache } from '../fileStateCache.js'
 import { createChildAbortController } from '../process/abortController.js'
 import { findRelevantMemories } from '../../memdir/findRelevantMemories.js'
+import { isMemoryPaused } from '../../memdir/memoryPause.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from '../../memdir/paths.js'
 import { getAgentMemoryDir } from '@open-claude-code/builtin-tools/tools/AgentTool/agentMemory.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -199,6 +200,9 @@ export function startRelevantMemoryPrefetch(
   toolUseContext: ToolUseContext,
 ): MemoryPrefetch | undefined {
   if (
+    // /pause-memory: no new memory content is surfaced into the conversation
+    // for the rest of this session.
+    isMemoryPaused() ||
     !isAutoMemoryEnabled() ||
     !getFeatureValue_CACHED_MAY_BE_STALE('tengu_moth_copse', false)
   ) {

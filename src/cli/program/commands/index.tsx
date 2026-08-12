@@ -20,6 +20,7 @@ import { registerMaintenanceCommands } from './maintenance.js';
 import { registerMcpCommands } from './mcp.js';
 import { registerMigrateCommand } from './migrate.js';
 import { registerPluginCommands } from './plugin.js';
+import { registerProjectCommands } from './project.js';
 import { registerRemoteControlCommand } from './remoteControl.js';
 import { registerSshCommand } from './ssh.js';
 import { registerUpdateCommand } from './update.js';
@@ -37,6 +38,7 @@ export function registerSubcommands(program: CommanderCommand): void {
   registerAssistantCommand(program);
   registerMigrateCommand(program);
   registerDoctorCommand(program);
+  registerProjectCommands(program);
   registerMaintenanceCommands(program);
   registerUpdateCommand(program);
   registerAntOnlyCommands(program);
