@@ -116,7 +116,11 @@ export async function glob(
     args.push('--glob', exclusion)
   }
 
-  const allPaths = await ripGrep(args, searchDir, abortSignal)
+  // Surface an unparseable glob pattern as an error rather than "no files",
+  // matching the official Glob implementation.
+  const allPaths = await ripGrep(args, searchDir, abortSignal, {
+    rejectOnInputError: true,
+  })
 
   // ripgrep returns relative paths, convert to absolute
   const absolutePaths = allPaths.map(p =>

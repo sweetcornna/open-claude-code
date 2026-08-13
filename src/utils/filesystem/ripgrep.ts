@@ -157,6 +157,40 @@ export class RipgrepTimeoutError extends Error {
   }
 }
 
+/**
+ * ripgrep exits with code 2 for two very different reasons: a genuine usage
+ * error (unparseable regex, malformed glob, unknown file type) OR a transient
+ * runtime failure. Only the first should be surfaced to the model — otherwise
+ * "your regex is invalid" gets silently laundered into "the repository has no
+ * matches", and the model stops searching. This regex identifies the usage-error
+ * subset from ripgrep's own stderr (matches official Grep/Glob behavior).
+ */
+const RIPGREP_USAGE_ERROR_REGEX =
+  /^rg: (?:regex parse error|error parsing glob|unrecognized file type|error parsing flag|compiled regex exceeds size limit)/m
+
+/**
+ * Thrown when ripgrep rejected the pattern/glob/type before searching (exit
+ * code 2 with a usage error on stderr). Callers opt in via
+ * `{ rejectOnInputError: true }`; interactive callers that fire on every
+ * keystroke leave it off so a half-typed pattern does not throw.
+ */
+export class RipgrepUsageError extends Error {
+  constructor(stderr: string) {
+    super(
+      `Search failed — ripgrep rejected the pattern, glob, or file type without searching:\n${stderr.trim().slice(0, 2000)}`,
+    )
+    this.name = 'RipgrepUsageError'
+  }
+}
+
+type RipGrepOptions = {
+  /**
+   * When true, a ripgrep exit-2 usage error (invalid regex/glob/type) rejects
+   * with {@link RipgrepUsageError} instead of resolving to an empty result set.
+   */
+  rejectOnInputError?: boolean
+}
+
 function ripGrepRaw(
   args: string[],
   target: string,
@@ -398,6 +432,7 @@ export async function ripGrep(
   args: string[],
   target: string,
   abortSignal: AbortSignal,
+  options?: RipGrepOptions,
 ): Promise<string[]> {
   await codesignRipgrepIfNecessary()
 
@@ -486,9 +521,23 @@ export async function ripGrep(
         `rg error (signal=${error.signal}, code=${error.code}, stderr: ${stderr}), ${lines.length} results`,
       )
 
-      // code 2 = ripgrep usage error (already handled); ABORT_ERR = caller
-      // explicitly aborted (not an error, just a cancellation — interactive
-      // callers may abort on every keystroke-after-debounce).
+      // Exit code 2 with a usage error on stderr means ripgrep rejected the
+      // input (invalid regex/glob/type) before searching. Opt-in callers get a
+      // modeled error so the model learns its pattern was unparseable, instead
+      // of "no matches" (which would end the search on a false signal).
+      if (
+        options?.rejectOnInputError &&
+        error.code === 2 &&
+        lines.length === 0 &&
+        RIPGREP_USAGE_ERROR_REGEX.test(stderr)
+      ) {
+        reject(new RipgrepUsageError(stderr))
+        return
+      }
+
+      // code 2 = ripgrep usage error (handled above when opted in); ABORT_ERR =
+      // caller explicitly aborted (not an error, just a cancellation —
+      // interactive callers may abort on every keystroke-after-debounce).
       if (error.code !== 2 && error.code !== 'ABORT_ERR') {
         logError(error)
       }

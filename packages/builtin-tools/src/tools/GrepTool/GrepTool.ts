@@ -351,7 +351,12 @@ export const GrepTool = buildTool({
     if (output_mode === 'files_with_matches') {
       args.push('-l')
     } else if (output_mode === 'count') {
-      args.push('-c')
+      // -H forces the `path:` prefix even for a single-file target. Without it,
+      // `rg -c PATTERN <file>` prints a bare count (e.g. `3`), and the
+      // `lastIndexOf(':')` parse below returns -1 → totalMatches/fileCount both
+      // stay 0 while the content shows the real count ("Found 0 total
+      // occurrences across 0 files." next to `3`). See official Grep impl.
+      args.push('-c', '-H')
     }
 
     // Add line numbers if requested
@@ -438,7 +443,11 @@ export const GrepTool = buildTool({
     // We don't use AbortController for timeout to avoid interrupting the agent loop
     // If ripgrep times out, it throws RipgrepTimeoutError which propagates up
     // so Claude knows the search didn't complete (rather than thinking there were no matches)
-    const results = await ripGrep(args, absolutePath, abortController.signal)
+    const results = await ripGrep(args, absolutePath, abortController.signal, {
+      // Surface an unparseable pattern/glob/type as an error instead of
+      // silently reporting "no matches" (which stops the model searching).
+      rejectOnInputError: true,
+    })
 
     if (output_mode === 'content') {
       // For content mode, results are the actual content lines

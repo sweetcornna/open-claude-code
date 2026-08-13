@@ -97,10 +97,16 @@ function getResponseHeader(
 // as the class itself while Bun wraps CJS in { default } — hence the cast.
 type TurndownCtor = typeof import('turndown')
 let turndownServicePromise: Promise<InstanceType<TurndownCtor>> | undefined
-function getTurndownService(): Promise<InstanceType<TurndownCtor>> {
+export function getTurndownService(): Promise<InstanceType<TurndownCtor>> {
   return (turndownServicePromise ??= import('turndown').then(m => {
     const Turndown = (m as unknown as { default: TurndownCtor }).default
-    return new Turndown()
+    const service = new Turndown()
+    // Drop non-content nodes. Turndown's default rules emit the TEXT of
+    // <script>/<style> blocks, so without this every fetch of a modern page
+    // feeds inline JS bundles and CSS into the summarizer and evicts real
+    // content from the markdown-length budget. Matches the official WebFetch.
+    service.remove(['style', 'script', 'noscript', 'iframe'])
+    return service
   }))
 }
 

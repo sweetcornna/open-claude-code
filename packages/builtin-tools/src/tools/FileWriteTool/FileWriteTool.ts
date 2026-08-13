@@ -184,6 +184,24 @@ export const FileWriteTool = buildTool({
       }
     }
 
+    // A path covered by a Read deny rule cannot be written either. occ
+    // previously only checked the 'edit' axis, so a read-denied-but-not-edit-
+    // denied path was freely writable.
+    const readDenyRule = matchingRuleForInput(
+      fullFilePath,
+      appState.toolPermissionContext,
+      'read',
+      'deny',
+    )
+    if (readDenyRule !== null) {
+      return {
+        result: false,
+        message:
+          'File is covered by a Read deny rule in your permission settings and cannot be written.',
+        errorCode: 13,
+      }
+    }
+
     // SECURITY: Skip filesystem operations for UNC paths to prevent NTLM credential leaks.
     // On Windows, fs.existsSync() on UNC paths triggers SMB authentication which could
     // leak credentials to malicious servers. Let the permission check handle UNC paths.
@@ -216,17 +234,31 @@ export const FileWriteTool = buildTool({
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
 
+    // Read-before-write: the file EXISTS here (a fresh create returned above on
+    // ENOENT), so overwriting it requires a prior real Read. `isPartialView`
+    // entries (context-injected CLAUDE.md / truncated MEMORY.md — only a
+    // partial view) do NOT count; the must-Read-first invariant is documented
+    // on FileState.isPartialView. Without this guard an existing-but-unread
+    // file fails later in call() with the misleading "File has been
+    // unexpectedly modified."
+    if (!readTimestamp || readTimestamp.isPartialView) {
+      return {
+        result: false,
+        message:
+          'File has not been read yet. Read it first before writing to it.',
+        errorCode: 2,
+      }
+    }
+
     // Reuse mtime from the stat above — avoids a redundant statSync via
     // getFileModificationTime.
-    if (readTimestamp) {
-      const lastWriteTime = Math.floor(fileMtimeMs)
-      if (lastWriteTime > readTimestamp.timestamp) {
-        return {
-          result: false,
-          message:
-            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
-          errorCode: 3,
-        }
+    const lastWriteTime = Math.floor(fileMtimeMs)
+    if (lastWriteTime > readTimestamp.timestamp) {
+      return {
+        result: false,
+        message:
+          'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+        errorCode: 3,
       }
     }
 

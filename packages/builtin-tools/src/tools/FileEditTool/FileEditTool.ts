@@ -176,6 +176,26 @@ export const FileEditTool = buildTool({
       }
     }
 
+    // A path covered by a Read deny rule must not be editable either — editing
+    // requires reading first, so a read-denied file is implicitly write-denied.
+    // occ previously only checked the 'edit' axis, leaving read-denied-but-not-
+    // edit-denied paths freely editable.
+    const readDenyRule = matchingRuleForInput(
+      fullFilePath,
+      appState.toolPermissionContext,
+      'read',
+      'deny',
+    )
+    if (readDenyRule !== null) {
+      return {
+        result: false,
+        behavior: 'ask',
+        message:
+          'File is covered by a Read deny rule in your permission settings and cannot be edited.',
+        errorCode: 13,
+      }
+    }
+
     // SECURITY: Skip filesystem operations for UNC paths to prevent NTLM credential leaks.
     // On Windows, fs.existsSync() on UNC paths triggers SMB authentication which could
     // leak credentials to malicious servers. Let the permission check handle UNC paths.
@@ -288,6 +308,27 @@ export const FileEditTool = buildTool({
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
+
+    // Read-before-edit: the model must have performed a real Read of this file
+    // before editing it. `isPartialView` marks entries seeded from context
+    // injection (CLAUDE.md / truncated MEMORY.md) where the model saw only a
+    // partial/normalized view — those do NOT satisfy the requirement (the
+    // must-Read-first invariant is documented on FileState.isPartialView).
+    // Without this guard an existing-but-unread file falls through to call()
+    // and fails there with the misleading "File has been unexpectedly
+    // modified." for a file the model never read.
+    if (!readTimestamp || readTimestamp.isPartialView) {
+      return {
+        result: false,
+        behavior: 'ask',
+        message:
+          'File has not been read yet. Read it first before writing to it.',
+        meta: {
+          isFilePathAbsolute: String(isAbsolute(file_path)),
+        },
+        errorCode: 6,
+      }
+    }
 
     // Check if file exists and get its last modified time
     if (readTimestamp) {

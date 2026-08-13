@@ -8,7 +8,8 @@ import {
   suggestPathUnderCwd,
 } from 'src/utils/filesystem/file.js'
 import { getFsImplementation } from 'src/utils/filesystem/fsOperations.js'
-import { glob } from 'src/utils/filesystem/glob.js'
+import { isAbsolute } from 'path'
+import { extractGlobBaseDirectory, glob } from 'src/utils/filesystem/glob.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { expandPath, toRelativePath } from 'src/utils/filesystem/path.js'
 import { checkReadPermissionForTool } from 'src/utils/permissions/filesystem.js'
@@ -85,7 +86,19 @@ export const GlobTool = buildTool({
   isSearchOrReadCommand() {
     return { isSearch: true, isRead: false }
   },
-  getPath({ path }): string {
+  getPath({ path, pattern }): string {
+    // SECURITY: when the pattern is absolute, glob() re-roots the search at the
+    // pattern's base dir (glob.ts) and IGNORES `path`. The permission check runs
+    // against getPath(), so it MUST return that same base dir — otherwise
+    // Glob({pattern: "/Users/victim/.ssh/**"}) with cwd /repo would be checked
+    // against /repo (allowed) while ripgrep actually walks /Users/victim/.ssh.
+    // This mirrors glob()'s re-rooting condition exactly.
+    if (isAbsolute(pattern)) {
+      const { baseDir } = extractGlobBaseDirectory(pattern)
+      if (baseDir) {
+        return baseDir
+      }
+    }
     return path ? expandPath(path) : getCwd()
   },
   async preparePermissionMatcher({ pattern }) {
