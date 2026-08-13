@@ -5,12 +5,23 @@ const DEFAULT_FEATURE = DEFAULT_BUILD_FEATURES[0]
 const NON_DEFAULT_FEATURE = 'TEST_ONLY_FEATURE'
 
 describe('resolveBuildFeatures', () => {
+  test('includes reactive compact by default', () => {
+    expect(DEFAULT_BUILD_FEATURES).toContain('REACTIVE_COMPACT')
+    expect(resolveBuildFeatures({}).has('REACTIVE_COMPACT')).toBe(true)
+  })
+
   test.each(['0', 'false', ''])('%s disables a default feature', value => {
     const features = resolveBuildFeatures({
       [`FEATURE_${DEFAULT_FEATURE}`]: value,
     })
 
     expect(features.has(DEFAULT_FEATURE)).toBe(false)
+  })
+
+  test('FEATURE_REACTIVE_COMPACT=0 disables reactive compact', () => {
+    const features = resolveBuildFeatures({ FEATURE_REACTIVE_COMPACT: '0' })
+
+    expect(features.has('REACTIVE_COMPACT')).toBe(false)
   })
 
   test.each(['1', 'true'])('%s enables a non-default feature', value => {

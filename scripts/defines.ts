@@ -99,6 +99,9 @@ export const DEFAULT_BUILD_FEATURES = [
   // Persistent thread goal command — auto-continuation, JSONL persistence,
   // strict completion/blocked audit. See src/services/goal.
   'GOAL',
+  // Recover automatically when the API rejects an oversized prompt by
+  // summarizing older turns and retrying with the compacted history.
+  'REACTIVE_COMPACT',
 ] as const
 
 /**

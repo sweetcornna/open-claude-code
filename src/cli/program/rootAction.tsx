@@ -583,7 +583,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   const isNonInteractiveSession = getIsNonInteractiveSession();
 
   // Validate that fallback model is different from main model
-  if (fallbackModel && options.model && fallbackModel === options.model) {
+  if (fallbackModel?.includes(options.model ?? '')) {
     process.stderr.write(
       chalk.red(
         'Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n',
@@ -1246,7 +1246,10 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   // user's `/model-settings default …` never applied.
   // NOTE: Model resolution happens after setup() to ensure trust is established before AWS auth
   const userSpecifiedModel = options.model === 'default' ? null : options.model;
-  const userSpecifiedFallbackModel = fallbackModel === 'default' ? getDefaultMainLoopModel() : fallbackModel;
+  const configuredFallbackModels = fallbackModel ?? getInitialSettings().fallbackModel;
+  const userSpecifiedFallbackModels = configuredFallbackModels?.map(model =>
+    parseUserSpecifiedModel(model === 'default' ? getDefaultMainLoopModel() : model),
+  );
 
   // Reuse preSetupCwd unless setup() chdir'd (worktreeEnabled). Saves a
   // getCwd() syscall in the common path.
@@ -2132,7 +2135,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         // and reads absence the same way (setMainLoopModelOverride(null) has
         // already recorded the explicit choice on the bootstrap state).
         userSpecifiedModel: effectiveModel ?? undefined,
-        fallbackModel: userSpecifiedFallbackModel,
+        fallbackModel: userSpecifiedFallbackModels,
         teleport,
         sdkUrl,
         replayUserMessages: effectiveReplayUserMessages,

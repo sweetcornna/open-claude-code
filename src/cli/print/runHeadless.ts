@@ -94,7 +94,7 @@ export async function runHeadless(
     systemPrompt: string | undefined
     appendSystemPrompt: string | undefined
     userSpecifiedModel: string | undefined
-    fallbackModel: string | undefined
+    fallbackModel: string[] | undefined
     teleport: string | true | null | undefined
     sdkUrl: string | undefined
     replayUserMessages: boolean | undefined

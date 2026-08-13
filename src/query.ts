@@ -96,6 +96,7 @@ import { notifyCommandLifecycle } from './utils/task/commandLifecycle.js'
 import { headlessProfilerCheckpoint } from './utils/telemetry/headlessProfiler.js'
 import {
   getRuntimeMainLoopModel,
+  parseUserSpecifiedModel,
   renderModelName,
 } from './utils/model/model.js'
 import {
@@ -388,7 +389,7 @@ export type QueryParams = {
   systemContext: { [k: string]: string }
   canUseTool: CanUseToolFn
   toolUseContext: ToolUseContext
-  fallbackModel?: string
+  fallbackModels?: string[]
   querySource: QuerySource
   maxOutputTokensOverride?: number
   maxTurns?: number
@@ -554,12 +555,18 @@ async function* queryLoop(
     userContext,
     systemContext,
     canUseTool,
-    fallbackModel,
+    fallbackModels,
     querySource,
     maxTurns,
     skipCacheWrite,
   } = params
   const deps = params.deps ?? productionDeps()
+  // QueryEngine resolves CLI/settings aliases before reaching this loop, but
+  // direct query() callers (including SDK-side helpers) can still pass them.
+  // Resolve at the consumption boundary so aliases are never sent as raw API
+  // model ids and each fallback attempt updates the context consistently.
+  const resolvedFallbackModels = fallbackModels?.map(parseUserSpecifiedModel)
+  let nextFallbackIndex = 0
 
   // Mutable cross-iteration state. The loop body destructures this at the top
   // of each iteration so reads stay bare-name (`messages`, `toolUseContext`).
@@ -996,7 +1003,7 @@ async function* queryLoop(
               toolChoice: undefined,
               isNonInteractiveSession:
                 toolUseContext.options.isNonInteractiveSession,
-              fallbackModel,
+              fallbackModel: resolvedFallbackModels?.[nextFallbackIndex],
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },
@@ -1220,9 +1227,19 @@ async function* queryLoop(
             }
           }
         } catch (innerError) {
-          if (innerError instanceof FallbackTriggeredError && fallbackModel) {
-            // Fallback was triggered - switch model and retry
-            currentModel = fallbackModel
+          const nextFallbackModel =
+            innerError instanceof FallbackTriggeredError
+              ? resolvedFallbackModels?.[nextFallbackIndex]
+              : undefined
+          if (
+            innerError instanceof FallbackTriggeredError &&
+            nextFallbackModel
+          ) {
+            // Fallback was triggered - switch model and retry. The next request
+            // is armed with the following configured fallback, so an overloaded
+            // fallback advances through the list rather than retrying itself.
+            currentModel = nextFallbackModel
+            nextFallbackIndex += 1
             attemptWithFallback = true
 
             // Clear assistant messages since we'll retry the entire request
@@ -1248,7 +1265,7 @@ async function* queryLoop(
             }
 
             // Update tool use context with new model
-            toolUseContext.options.mainLoopModel = fallbackModel
+            toolUseContext.options.mainLoopModel = nextFallbackModel
 
             // Thinking signatures are model-bound: replaying a protected-thinking
             // block (e.g. capybara) to an unprotected fallback (e.g. opus) 400s.
@@ -1262,7 +1279,7 @@ async function* queryLoop(
               original_model:
                 innerError.originalModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
-                fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                nextFallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               entrypoint:
                 'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               queryChainId: queryChainIdForAnalytics,

@@ -65,6 +65,7 @@ import { applyMessageDisplayHooks } from './utils/hooks/messageDisplay.js'
 import { getInMemoryErrors } from './utils/telemetry/log.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
+  getDefaultMainLoopModel,
   getMainLoopModel,
   getMainLoopModelSettingsSlot,
   parseUserSpecifiedModel,
@@ -142,7 +143,7 @@ export type QueryEngineConfig = {
   customSystemPrompt?: string
   appendSystemPrompt?: string
   userSpecifiedModel?: string
-  fallbackModel?: string
+  fallbackModel?: string[]
   thinkingConfig?: ThinkingConfig
   maxTurns?: number
   maxBudgetUsd?: number
@@ -266,6 +267,11 @@ export class QueryEngine {
     const initialMainLoopModel = userSpecifiedModel
       ? parseUserSpecifiedModel(userSpecifiedModel)
       : getMainLoopModel()
+    const resolvedFallbackModels = fallbackModel?.map(model =>
+      parseUserSpecifiedModel(
+        model === 'default' ? getDefaultMainLoopModel() : model,
+      ),
+    )
 
     const initialThinkingConfig: ThinkingConfig = thinkingConfig
       ? thinkingConfig
@@ -678,7 +684,7 @@ export class QueryEngine {
       systemContext,
       canUseTool: wrappedCanUseTool,
       toolUseContext: processUserInputContext,
-      fallbackModel,
+      fallbackModels: resolvedFallbackModels,
       querySource: 'sdk',
       maxTurns,
       taskBudget,
@@ -1282,7 +1288,7 @@ export async function* ask({
   customSystemPrompt?: string
   appendSystemPrompt?: string
   userSpecifiedModel?: string
-  fallbackModel?: string
+  fallbackModel?: string | string[]
   jsonSchema?: Record<string, unknown>
   getAppState: () => AppState
   setAppState: (f: (prev: AppState) => AppState) => void
@@ -1310,7 +1316,8 @@ export async function* ask({
     customSystemPrompt,
     appendSystemPrompt,
     userSpecifiedModel,
-    fallbackModel,
+    fallbackModel:
+      typeof fallbackModel === 'string' ? [fallbackModel] : fallbackModel,
     thinkingConfig,
     maxTurns,
     maxBudgetUsd,

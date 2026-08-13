@@ -110,7 +110,7 @@ export type HeadlessStreamingOptions = {
   systemPrompt: string | undefined
   appendSystemPrompt: string | undefined
   userSpecifiedModel: string | undefined
-  fallbackModel: string | undefined
+  fallbackModel: string[] | undefined
   replayUserMessages?: boolean | undefined
   includePartialMessages?: boolean | undefined
   enableAuthStatus?: boolean | undefined

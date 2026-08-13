@@ -270,7 +270,12 @@ export function applyRootOptions(program: CommanderCommand) {
       .option('--betas <betas...>', 'Beta headers to include in API requests (API key users only)')
       .option(
         '--fallback-model <model>',
-        'Enable automatic fallback to specified model when default model is overloaded (only works with --print)',
+        'Enable automatic fallback to specified model(s) when the default model is overloaded or unavailable. Accepts a comma-separated list to try each in order. Re-tries the primary at the start of each user turn. (only works with --print)',
+        value =>
+          value
+            .split(',')
+            .map(model => model.trim())
+            .filter(Boolean),
       )
       .addOption(
         new Option(

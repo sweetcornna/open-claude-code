@@ -11,6 +11,7 @@ import { isEnvTruthy } from '../config/envUtils.js'
 import { lazySchema } from '../collections/lazySchema.js'
 import { PERMISSION_MODES } from '../permissions/PermissionMode.js'
 import { MarketplaceSourceSchema } from '../plugins/schemas.js'
+import { THEME_SETTINGS } from '../terminal/themeNames.js'
 import { CLAUDE_CODE_SETTINGS_SCHEMA_URL } from './constants.js'
 import { PermissionRuleSchema } from './permissionValidation.js'
 
@@ -508,6 +509,12 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe('Override the default model used by Claude Code'),
+      fallbackModel: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Fallback model(s) tried in order when the primary model is overloaded or unavailable. Each element accepts a model name or alias; "default" expands to the default model. CLI --fallback-model takes precedence.',
+        ),
       // Enterprise allowlist of models
       availableModels: z
         .array(z.string())
@@ -930,6 +937,10 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('Whether to disable syntax highlighting in diffs'),
+      theme: z
+        .enum(THEME_SETTINGS)
+        .optional()
+        .describe('Color theme for the interface'),
       terminalTitleFromRename: z
         .boolean()
         .optional()

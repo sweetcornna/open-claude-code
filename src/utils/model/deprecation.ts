@@ -4,12 +4,17 @@
  * Contains information about deprecated models and their retirement dates.
  */
 
-import { type APIProvider, getAPIProvider } from './providers.js'
+import {
+  type APIProvider,
+  getAPIProvider,
+  servesAnthropicModels,
+} from './providers.js'
 
 type DeprecatedModelInfo = {
   isDeprecated: true
   modelName: string
   retirementDate: string
+  replacementModel?: string
 }
 
 type NotDeprecatedInfo = {
@@ -23,6 +28,8 @@ type DeprecationEntry = {
   modelName: string
   /** Retirement dates by provider (null = not deprecated for that provider) */
   retirementDates: Partial<Record<APIProvider, string | null>>
+  /** Provider-specific replacement ID (null = provider has no published path). */
+  replacementModels: Partial<Record<APIProvider, string | null>>
 }
 
 /**
@@ -39,6 +46,15 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
       vertex: 'January 5, 2026',
       foundry: 'January 5, 2026',
     },
+    replacementModels: {
+      // Official 2.1.227 / current Platform docs recommend this newer ID.
+      // It intentionally need not be in the local picker table: the warning is
+      // migration guidance for a retired explicit ID, not model selection.
+      firstParty: 'claude-opus-4-8',
+      bedrock: null,
+      vertex: null,
+      foundry: null,
+    },
   },
   'claude-3-7-sonnet': {
     modelName: 'Claude 3.7 Sonnet',
@@ -48,11 +64,23 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
       vertex: 'May 11, 2026',
       foundry: 'February 19, 2026',
     },
+    replacementModels: {
+      firstParty: 'claude-sonnet-4-6',
+      bedrock: null,
+      vertex: null,
+      foundry: null,
+    },
   },
   'claude-3-5-haiku': {
     modelName: 'Claude 3.5 Haiku',
     retirementDates: {
       firstParty: 'February 19, 2026',
+      bedrock: null,
+      vertex: null,
+      foundry: null,
+    },
+    replacementModels: {
+      firstParty: 'claude-haiku-4-5-20251001',
       bedrock: null,
       vertex: null,
       foundry: null,
@@ -64,18 +92,21 @@ const DEPRECATED_MODELS: Record<string, DeprecationEntry> = {
  * Check if a model is deprecated and get its deprecation info
  */
 function getDeprecatedModelInfo(modelId: string): DeprecationInfo {
+  if (!servesAnthropicModels()) return { isDeprecated: false }
+
   const lowercaseModelId = modelId.toLowerCase()
   const provider = getAPIProvider()
 
   for (const [key, value] of Object.entries(DEPRECATED_MODELS)) {
     const retirementDate = value.retirementDates[provider]
-    if (!lowercaseModelId.includes(key) || !retirementDate) {
-      continue
-    }
+    if (!lowercaseModelId.includes(key) || !retirementDate) continue
+
+    const replacementModel = value.replacementModels[provider]
     return {
       isDeprecated: true,
       modelName: value.modelName,
       retirementDate,
+      ...(replacementModel && { replacementModel }),
     }
   }
 
@@ -97,5 +128,8 @@ export function getModelDeprecationWarning(
     return null
   }
 
-  return `⚠ ${info.modelName} will be retired on ${info.retirementDate}. Consider switching to a newer model.`
+  const replacement = info.replacementModel
+    ? ` Switch to ${info.replacementModel}.`
+    : ''
+  return `⚠ ${info.modelName} was retired on ${info.retirementDate}.${replacement}`
 }

@@ -44,6 +44,19 @@ describe('SettingsSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  test('accepts fallback model lists', () => {
+    const result = SettingsSchema().safeParse({
+      fallbackModel: ['sonnet', 'default'],
+    })
+    expect(result.success).toBe(true)
+    expect(result.data?.fallbackModel).toEqual(['sonnet', 'default'])
+  })
+
+  test('rejects scalar fallback models', () => {
+    const result = SettingsSchema().safeParse({ fallbackModel: 'sonnet' })
+    expect(result.success).toBe(false)
+  })
+
   test('validates computer use backend settings', () => {
     expect(
       SettingsSchema().safeParse({
@@ -179,6 +192,21 @@ describe('SettingsSchema', () => {
   test('rejects negative cleanupPeriodDays', () => {
     const result = SettingsSchema().safeParse({ cleanupPeriodDays: -1 })
     expect(result.success).toBe(false)
+  })
+
+  test('accepts every persisted theme setting', () => {
+    for (const theme of [
+      'auto',
+      'dark',
+      'light',
+      'dark-daltonized',
+      'light-daltonized',
+      'dark-ansi',
+      'light-ansi',
+    ]) {
+      expect(SettingsSchema().safeParse({ theme }).success).toBe(true)
+    }
+    expect(SettingsSchema().safeParse({ theme: 'unknown' }).success).toBe(false)
   })
 
   test('accepts emojiCompletionEnabled', () => {
@@ -523,6 +551,13 @@ describe('filterInvalidPermissionRules', () => {
 })
 
 describe('validateSettingsFileContent', () => {
+  test('accepts a persisted theme and rejects an invalid one', () => {
+    expect(validateSettingsFileContent('{"theme": "auto"}').isValid).toBe(true)
+    expect(validateSettingsFileContent('{"theme": "unknown"}').isValid).toBe(
+      false,
+    )
+  })
+
   test('accepts valid JSON settings', () => {
     const result = validateSettingsFileContent('{"model": "sonnet"}')
     expect(result.isValid).toBe(true)
