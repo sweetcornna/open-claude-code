@@ -510,6 +510,7 @@ export function calculateApiKeyHelperTTL(): number {
 // captured epoch before touching module state so a settings-change or 401-retry
 // mid-flight can't clobber the newer cache/inflight.
 let _apiKeyHelperCache: { value: string; timestamp: number } | null = null
+let _apiKeyHelperError: string | null = null
 let _apiKeyHelperInflight: {
   promise: Promise<string | null>
   // Only set on cold launches (user is waiting); null for SWR background refreshes.
@@ -564,6 +565,7 @@ async function _runAndCache(
     if (epoch !== _apiKeyHelperEpoch) return value
     if (value !== null) {
       _apiKeyHelperCache = { value, timestamp: Date.now() }
+      _apiKeyHelperError = null
     }
     return value
   } catch (e) {
@@ -581,6 +583,7 @@ async function _runAndCache(
       return _apiKeyHelperCache.value
     }
     // Cold cache or prior error — cache ' ' so callers don't fall back to OAuth
+    _apiKeyHelperError = detail
     _apiKeyHelperCache = { value: ' ', timestamp: Date.now() }
     return ' '
   } finally {
@@ -637,9 +640,15 @@ export function getApiKeyFromApiKeyHelperCached(): string | null {
   return _apiKeyHelperCache?.value ?? null
 }
 
+export function getApiKeyHelperError(): string | null {
+  if (!getConfiguredApiKeyHelper()) return null
+  return _apiKeyHelperError
+}
+
 export function clearApiKeyHelperCache(): void {
   _apiKeyHelperEpoch++
   _apiKeyHelperCache = null
+  _apiKeyHelperError = null
   _apiKeyHelperInflight = null
 }
 

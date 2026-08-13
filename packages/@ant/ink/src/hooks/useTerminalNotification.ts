@@ -18,6 +18,16 @@ export const TerminalWriteContext = createContext<WriteRaw | null>(null)
 
 export const TerminalWriteProvider = TerminalWriteContext.Provider
 
+export function sanitizeNotificationText(value: string): string {
+  let sanitized = ''
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index)
+    sanitized +=
+      code < 0x20 || (code >= 0x7f && code <= 0x9f) ? ' ' : value[index]
+  }
+  return sanitized
+}
+
 export type TerminalNotification = {
   notifyITerm2: (opts: { message: string; title?: string }) => void
   notifyKitty: (opts: { message: string; title: string; id: number }) => void
@@ -41,8 +51,12 @@ export function useTerminalNotification(): TerminalNotification {
 
   const notifyITerm2 = useCallback(
     ({ message, title }: { message: string; title?: string }) => {
-      const displayString = title ? `${title}:\n${message}` : message
-      writeRaw(wrapForMultiplexer(osc(OSC.ITERM2, `\n\n${displayString}`)))
+      const displayString = title ? `${title}: ${message}` : message
+      writeRaw(
+        wrapForMultiplexer(
+          osc(OSC.ITERM2, sanitizeNotificationText(displayString)),
+        ),
+      )
     },
     [writeRaw],
   )
@@ -57,8 +71,20 @@ export function useTerminalNotification(): TerminalNotification {
       title: string
       id: number
     }) => {
-      writeRaw(wrapForMultiplexer(osc(OSC.KITTY, `i=${id}:d=0:p=title`, title)))
-      writeRaw(wrapForMultiplexer(osc(OSC.KITTY, `i=${id}:p=body`, message)))
+      writeRaw(
+        wrapForMultiplexer(
+          osc(
+            OSC.KITTY,
+            `i=${id}:d=0:p=title`,
+            sanitizeNotificationText(title),
+          ),
+        ),
+      )
+      writeRaw(
+        wrapForMultiplexer(
+          osc(OSC.KITTY, `i=${id}:p=body`, sanitizeNotificationText(message)),
+        ),
+      )
       writeRaw(wrapForMultiplexer(osc(OSC.KITTY, `i=${id}:d=1:a=focus`, '')))
     },
     [writeRaw],
@@ -66,7 +92,16 @@ export function useTerminalNotification(): TerminalNotification {
 
   const notifyGhostty = useCallback(
     ({ message, title }: { message: string; title: string }) => {
-      writeRaw(wrapForMultiplexer(osc(OSC.GHOSTTY, 'notify', title, message)))
+      writeRaw(
+        wrapForMultiplexer(
+          osc(
+            OSC.GHOSTTY,
+            'notify',
+            sanitizeNotificationText(title),
+            sanitizeNotificationText(message),
+          ),
+        ),
+      )
     },
     [writeRaw],
   )

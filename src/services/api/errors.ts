@@ -15,6 +15,7 @@ import type {
 } from 'src/types/message.js'
 import {
   getAnthropicApiKeyWithSource,
+  getApiKeyHelperError,
   getClaudeAIOAuthTokens,
   getOauthAccountInfo,
   isClaudeAISubscriber,
@@ -159,6 +160,18 @@ export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
   'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
   'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
+export const API_KEY_AUTH_DISABLED_ENV_WITH_OAUTH_ERROR_MESSAGE =
+  'Your organization has disabled API key authentication · Unset ANTHROPIC_API_KEY to use your claude.ai account instead'
+export const API_KEY_AUTH_DISABLED_ENV_ERROR_MESSAGE =
+  'Your organization has disabled API key authentication · Unset ANTHROPIC_API_KEY and run /login to sign in with your claude.ai account'
+export const API_KEY_AUTH_DISABLED_HELPER_ERROR_MESSAGE =
+  'Your organization has disabled API key authentication · Unset the apiKeyHelper setting and run /login to sign in with your claude.ai account'
+export const API_KEY_AUTH_DISABLED_MANAGED_ERROR_MESSAGE =
+  'Your organization has disabled API key authentication · Run /login to sign in with your claude.ai account'
+export const API_KEY_HELPER_FAILED_ERROR_MESSAGE =
+  "Your apiKeyHelper script is failing · This usually means you need to re-authenticate with your provider · Run /status to see the script's error output"
+export const SERVER_TEMPORARILY_LIMITING_ERROR_MESSAGE =
+  'Server is temporarily limiting requests (not your usage limit)'
 export const TOKEN_REVOKED_ERROR_MESSAGE =
   'OAuth token revoked · Please run /login'
 export const CCR_AUTH_ERROR_MESSAGE =
@@ -207,6 +220,68 @@ export function getOauthOrgNotAllowedErrorMessage(): string {
   return getIsNonInteractiveSession()
     ? 'Your organization does not have access to Claude. Please login again or contact your administrator.'
     : OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE
+}
+
+type ApiKeyAuthErrorCopy = {
+  content: string
+  error: 'authentication_failed' | 'invalid_request'
+}
+
+export function getApiKeyAuthErrorCopy({
+  status,
+  message,
+  provider,
+  source,
+  hasStoredOAuth,
+  apiKeyHelperError,
+}: {
+  status: number | undefined
+  message: string
+  provider: string
+  source: 'ANTHROPIC_API_KEY' | 'apiKeyHelper' | '/login managed key' | 'none'
+  hasStoredOAuth: boolean
+  apiKeyHelperError: string | null
+}): ApiKeyAuthErrorCopy | undefined {
+  if (
+    (status === 401 || status === 403) &&
+    provider === 'firstParty' &&
+    source === 'apiKeyHelper' &&
+    apiKeyHelperError
+  ) {
+    return {
+      content: API_KEY_HELPER_FAILED_ERROR_MESSAGE,
+      error: 'invalid_request',
+    }
+  }
+
+  if (
+    status !== 403 ||
+    !message.toLowerCase().includes('api key authentication is disabled')
+  ) {
+    return undefined
+  }
+
+  if (source === 'ANTHROPIC_API_KEY' && process.env.ANTHROPIC_API_KEY) {
+    return {
+      content: hasStoredOAuth
+        ? API_KEY_AUTH_DISABLED_ENV_WITH_OAUTH_ERROR_MESSAGE
+        : API_KEY_AUTH_DISABLED_ENV_ERROR_MESSAGE,
+      error: 'invalid_request',
+    }
+  }
+  if (source === 'apiKeyHelper') {
+    return {
+      content: API_KEY_AUTH_DISABLED_HELPER_ERROR_MESSAGE,
+      error: 'invalid_request',
+    }
+  }
+  if (source === '/login managed key') {
+    return {
+      content: API_KEY_AUTH_DISABLED_MANAGED_ERROR_MESSAGE,
+      error: 'authentication_failed',
+    }
+  }
+  return undefined
 }
 
 /**
@@ -462,11 +537,10 @@ export function getAssistantMessageFromError(
     })
   }
 
-  if (
-    error instanceof APIError &&
-    error.status === 429 &&
-    shouldProcessRateLimits(isClaudeAISubscriber())
-  ) {
+  if (error instanceof APIError && error.status === 429) {
+    const shouldTreatAsSubscriberLimit = shouldProcessRateLimits(
+      isClaudeAISubscriber(),
+    )
     // Check if this is the new API with multiple rate limit headers
     const rateLimitType = error.headers?.get?.(
       'anthropic-ratelimit-unified-representative-claim',
@@ -477,7 +551,7 @@ export function getAssistantMessageFromError(
     ) as 'allowed' | 'allowed_warning' | 'rejected' | null
 
     // If we have the new headers, use the new message generation
-    if (rateLimitType || overageStatus) {
+    if (shouldTreatAsSubscriberLimit && (rateLimitType || overageStatus)) {
       // Build limits object from error headers to determine the appropriate message
       const limits: ClaudeAILimits = {
         status: 'rejected',
@@ -537,7 +611,10 @@ export function getAssistantMessageFromError(
     // No quota headers — this is NOT a quota limit. Surface what the API actually
     // said instead of a generic "Rate limit reached". Entitlement rejections
     // (e.g. 1M context without Extra Usage) and infra capacity 429s land here.
-    if (error.message.includes('Extra usage is required for long context')) {
+    if (
+      shouldTreatAsSubscriberLimit &&
+      error.message.includes('Extra usage is required for long context')
+    ) {
       const hint = getIsNonInteractiveSession()
         ? 'enable extra usage at claude.ai/settings/usage, or use --model to switch to standard context'
         : 'run /extra-usage to enable, or /model to switch to standard context'
@@ -551,8 +628,22 @@ export function getAssistantMessageFromError(
     const stripped = error.message.replace(/^429\s+/, '')
     const innerMessage = stripped.match(/"message"\s*:\s*"([^"]*)"/)?.[1]
     const detail = innerMessage || stripped
+    if (
+      shouldTreatAsSubscriberLimit &&
+      error.headers?.get?.(
+        'anthropic-ratelimit-unified-overage-disabled-reason',
+      )
+    ) {
+      return createAssistantAPIErrorMessage({
+        content: detail,
+        error: 'rate_limit',
+      })
+    }
+    const rejectionLabel = shouldTreatAsSubscriberLimit
+      ? SERVER_TEMPORARILY_LIMITING_ERROR_MESSAGE
+      : 'Request rejected (429)'
     return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: Request rejected (429) · ${detail || 'this may be a temporary capacity issue — check status.anthropic.com'}`,
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${rejectionLabel} · ${detail || 'this may be a temporary capacity issue — check status.anthropic.com'}`,
       error: 'rate_limit',
     })
   }
@@ -806,6 +897,26 @@ export function getAssistantMessageFromError(
         content: hasStoredOAuth
           ? ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH
           : ORG_DISABLED_ERROR_MESSAGE_ENV_KEY,
+      })
+    }
+  }
+
+  if (error instanceof APIError) {
+    const { source } = getAnthropicApiKeyWithSource({
+      skipRetrievingKeyFromApiKeyHelper: true,
+    })
+    const authCopy = getApiKeyAuthErrorCopy({
+      status: error.status,
+      message: error.message,
+      provider: getAPIProvider(),
+      source,
+      hasStoredOAuth: getClaudeAIOAuthTokens()?.accessToken != null,
+      apiKeyHelperError: getApiKeyHelperError(),
+    })
+    if (authCopy) {
+      return createAssistantAPIErrorMessage({
+        content: authCopy.content,
+        error: authCopy.error,
       })
     }
   }
