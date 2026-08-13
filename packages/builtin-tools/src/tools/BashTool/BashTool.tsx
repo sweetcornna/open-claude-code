@@ -62,6 +62,7 @@ import { getTaskOutputPath } from 'src/utils/task/diskOutput.js';
 import { TaskOutput } from 'src/utils/task/TaskOutput.js';
 import { isOutputLineTruncated } from 'src/utils/terminal/terminal.js';
 import {
+  clampBashTimeoutMs,
   getDefaultBashTimeoutMs as getDefaultTimeoutMs,
   getMaxBashTimeoutMs as getMaxTimeoutMs,
 } from 'src/utils/process/timeouts.js';
@@ -79,6 +80,7 @@ import {
   bashToolHasPermission,
   commandHasAnyCd,
   matchWildcardPattern,
+  maybeForceSandboxOverrideAsk,
   permissionRuleExtractPrefix,
 } from './bashPermissions.js';
 import { interpretCommandResult } from './commandSemantics.js';
@@ -771,7 +773,10 @@ export const BashTool = buildTool({
     return { result: true };
   },
   async checkPermissions(input, context): Promise<PermissionResult> {
-    return bashToolHasPermission(input, context);
+    const result = await bashToolHasPermission(input, context);
+    // If the model requested a sandbox escape via dangerouslyDisableSandbox,
+    // force a confirmation prompt rather than silently running unsandboxed.
+    return maybeForceSandboxOverrideAsk(input, result);
   },
   renderToolUseMessage,
   renderToolUseProgressMessage,
@@ -1114,7 +1119,10 @@ async function* runShellCommand({
   void
 > {
   const { command, description, timeout, run_in_background } = input;
-  const timeoutMs = timeout || getDefaultTimeoutMs();
+  // Clamp to the advertised ceiling — the schema/prompt promise "max 600000"
+  // but nothing enforced it before, so a model could request an hour-long
+  // blocking foreground bash. See clampBashTimeoutMs.
+  const timeoutMs = clampBashTimeoutMs(timeout);
 
   let fullOutput = '';
   let lastProgressOutput = '';

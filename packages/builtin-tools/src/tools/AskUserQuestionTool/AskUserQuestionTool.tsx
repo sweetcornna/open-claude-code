@@ -269,7 +269,7 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
       data: { questions, answers, ...(annotations && { annotations }) },
     };
   },
-  mapToolResultToToolResultBlockParam({ answers, annotations }, toolUseID) {
+  mapToolResultToToolResultBlockParam({ questions, answers, annotations }, toolUseID) {
     const answersText = Object.entries(answers)
       .map(([questionText, answer]) => {
         const annotation = annotations?.[questionText];
@@ -284,9 +284,49 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
       })
       .join(', ');
 
+    // Distinguish "the user picked one of the offered options" from "the user
+    // typed custom text into Other" (or left freeform notes). When every answer
+    // is exactly an offered label we can safely tell the model to proceed; when
+    // it is not, the user may be asking for a change, a clarification, or to
+    // stop outright — so the model must read the answer literally rather than
+    // read approval into it. Mirrors official's label-membership branch
+    // (module-236ea4981fca.mjs:244-258). Without this, a user who selects
+    // "Other" and writes "actually don't do that" was rendered identically to
+    // an approval ("You can now continue…"), reversing their intent.
+    const everyAnswerIsOfferedLabel = questions.every(q => {
+      // Freeform notes are, by definition, not a clean option pick.
+      if (annotations?.[q.question]?.notes) {
+        return false;
+      }
+      const answer = answers[q.question];
+      // An unanswered question does not, by itself, signal a redirection.
+      if (answer === undefined || answer === '') {
+        return true;
+      }
+      const labels = new Set(q.options.map(opt => opt.label));
+      if (labels.has(answer)) {
+        return true;
+      }
+      // Multi-select answers arrive comma-joined (QuestionView joins with ', ').
+      if (!q.multiSelect) {
+        return false;
+      }
+      const parts = answer.split(', ');
+      return parts.length > 0 && parts.every(part => labels.has(part));
+    });
+
+    let content: string;
+    if (answersText === '') {
+      content = 'The user did not answer the questions.';
+    } else if (everyAnswerIsOfferedLabel) {
+      content = `Your questions have been answered: ${answersText}. You can now continue with these answers in mind.`;
+    } else {
+      content = `The user answered: ${answersText}. Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.`;
+    }
+
     return {
       type: 'tool_result',
-      content: `User has answered your questions: ${answersText}. You can now continue with the user's answers in mind.`,
+      content,
       tool_use_id: toolUseID,
     };
   },

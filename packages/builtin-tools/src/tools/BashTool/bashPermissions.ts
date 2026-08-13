@@ -1666,6 +1666,78 @@ export async function executeAsyncClassifierCheck(
 }
 
 /**
+ * True when a permission decision came from an explicit user-configured rule
+ * (or, for a compound command, from rules on every subcommand). Mirrors
+ * official's `mIn` (module-42dbf630dee6.mjs:23-27). Used so the sandbox-escape
+ * prompt below never overrides a user's own allow rule.
+ */
+function decisionReasonIsRuleBased(
+  reason: PermissionDecisionReason | undefined,
+): boolean {
+  if (reason?.type === 'rule') {
+    return true
+  }
+  if (reason?.type === 'subcommandResults') {
+    return [...reason.reasons.values()].every(r =>
+      decisionReasonIsRuleBased(r.decisionReason),
+    )
+  }
+  return false
+}
+
+/**
+ * If the model set `dangerouslyDisableSandbox` to escape a sandbox that would
+ * otherwise apply, force a permission prompt instead of silently running
+ * unsandboxed. Mirrors official's checkPermissions wrapper
+ * (module-9ba64ea5a928.mjs:336-350).
+ *
+ * The Bash prompt tells the model that retrying with `dangerouslyDisableSandbox:
+ * true` "will prompt the user for permission" — before this, it did not, so the
+ * model could unilaterally leave the sandbox on any allowlisted command. occ
+ * even keeps the `sandboxOverride` decision-reason (four consumers, e.g.
+ * permissions.ts renders "Run outside of the sandbox") with no producer; this
+ * restores the producer.
+ *
+ * The override fires only when: the flag is set; the base decision is not
+ * already deny/ask; the base decision is not governed by an explicit rule (we
+ * don't override the user's own allow rule); the command would NOT be sandboxed
+ * with the flag as-is (i.e. policy actually honors the escape — see
+ * areUnsandboxedCommandsAllowed); and the command WOULD be sandboxed without the
+ * flag (i.e. there is a sandbox to escape).
+ *
+ * `shouldSandbox` is injectable so the pure decision can be unit-tested without
+ * standing up the SandboxManager platform/settings chain; production uses the
+ * real predicate.
+ */
+export function maybeForceSandboxOverrideAsk(
+  input: z.infer<typeof BashTool.inputSchema>,
+  result: PermissionResult,
+  shouldSandbox: (i: {
+    command?: string
+    dangerouslyDisableSandbox?: boolean
+  }) => boolean = shouldUseSandbox,
+): PermissionResult {
+  if (
+    input.dangerouslyDisableSandbox &&
+    result.behavior !== 'deny' &&
+    result.behavior !== 'ask' &&
+    !decisionReasonIsRuleBased(result.decisionReason) &&
+    !shouldSandbox(input) &&
+    shouldSandbox({ ...input, dangerouslyDisableSandbox: false })
+  ) {
+    return {
+      behavior: 'ask',
+      decisionReason: {
+        type: 'sandboxOverride',
+        reason: 'dangerouslyDisableSandbox',
+      },
+      message: 'Run outside of the sandbox',
+    }
+  }
+  return result
+}
+
+/**
  * The main implementation to check if we need to ask for user permission to call BashTool with a given input
  */
 export async function bashToolHasPermission(
