@@ -1,5 +1,14 @@
 import chalk, { Chalk } from 'chalk'
 import { env } from '../config/env.js'
+import {
+  THEME_NAMES,
+  THEME_SETTINGS,
+  type ThemeName,
+  type ThemeSetting,
+} from './themeNames.js'
+
+export { THEME_NAMES, THEME_SETTINGS }
+export type { ThemeName, ThemeSetting }
 
 export type Theme = {
   autoAccept: string
@@ -87,26 +96,6 @@ export type Theme = {
   rainbow_indigo_shimmer: string
   rainbow_violet_shimmer: string
 }
-
-export const THEME_NAMES = [
-  'dark',
-  'light',
-  'light-daltonized',
-  'dark-daltonized',
-  'light-ansi',
-  'dark-ansi',
-] as const
-
-/** A renderable theme. Always resolvable to a concrete color palette. */
-export type ThemeName = (typeof THEME_NAMES)[number]
-
-export const THEME_SETTINGS = ['auto', ...THEME_NAMES] as const
-
-/**
- * A theme preference as stored in user config. `'auto'` follows the system
- * dark/light mode and is resolved to a ThemeName at runtime.
- */
-export type ThemeSetting = (typeof THEME_SETTINGS)[number]
 
 /**
  * Light theme using explicit RGB values to avoid inconsistencies

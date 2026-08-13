@@ -1,5 +1,9 @@
+import chokidar, { type FSWatcher } from 'chokidar'
 import type { StructuredPatchHunk } from 'diff'
+import { relative, sep } from 'path'
 import { useEffect, useMemo, useState } from 'react'
+import { PROJECT_DIR_NAME } from '../config/paths.js'
+import { getCwd } from '../utils/filesystem/cwd.js'
 import {
   fetchGitDiff,
   fetchGitDiffHunks,
@@ -8,6 +12,39 @@ import {
 } from '../utils/git/gitDiff.js'
 
 const MAX_LINES_PER_FILE = 400
+const DIFF_REFRESH_DEBOUNCE_MS = 150
+
+type DiffWatcher = {
+  watcher: FSWatcher
+  ready: Promise<void>
+}
+
+type DiffWatcherDependencies = {
+  watch: (path: string, onChange: () => void) => DiffWatcher
+}
+
+const DEFAULT_DIFF_WATCHER_DEPENDENCIES: DiffWatcherDependencies = {
+  watch: (path, onChange) => {
+    const watcher = chokidar.watch(path, {
+      persistent: false,
+      ignoreInitial: true,
+      ignored: watchedPath => {
+        const relativePath = relative(path, watchedPath)
+        return relativePath
+          .split(sep)
+          .some(part => part === '.git' || part === PROJECT_DIR_NAME)
+      },
+      ignorePermissionErrors: true,
+    })
+    watcher.on('add', onChange)
+    watcher.on('change', onChange)
+    watcher.on('unlink', onChange)
+    return {
+      watcher,
+      ready: new Promise(resolve => watcher.once('ready', resolve)),
+    }
+  },
+}
 
 export type DiffFile = {
   path: string
@@ -27,10 +64,7 @@ export type DiffData = {
   loading: boolean
 }
 
-/**
- * Hook to fetch current git diff data on demand.
- * Fetches both stats and hunks when component mounts.
- */
+/** Fetch current git diff data and refresh it while the view remains mounted. */
 export function useDiffData(): DiffData {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null)
   const [hunks, setHunks] = useState<Map<string, StructuredPatchHunk[]>>(
@@ -38,13 +72,28 @@ export function useDiffData(): DiffData {
   )
   const [loading, setLoading] = useState(true)
 
-  // Fetch diff data on mount
   useEffect(() => {
     let cancelled = false
+    let loadingNow = false
+    let refreshPending = false
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
-    async function loadDiffData() {
+    const scheduleRefresh = (): void => {
+      if (cancelled) return
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null
+        void loadDiffData()
+      }, DIFF_REFRESH_DEBOUNCE_MS)
+    }
+
+    async function loadDiffData(): Promise<void> {
+      if (loadingNow) {
+        refreshPending = true
+        return
+      }
+      loadingNow = true
       try {
-        // Fetch both stats and hunks
         const [statsResult, hunksResult] = await Promise.all([
           fetchGitDiff(),
           fetchGitDiffHunks(),
@@ -61,13 +110,30 @@ export function useDiffData(): DiffData {
           setHunks(new Map())
           setLoading(false)
         }
+      } finally {
+        loadingNow = false
+        if (refreshPending && !cancelled) {
+          refreshPending = false
+          scheduleRefresh()
+        }
       }
     }
 
+    const { watcher, ready } = DEFAULT_DIFF_WATCHER_DEPENDENCIES.watch(
+      getCwd(),
+      scheduleRefresh,
+    )
     void loadDiffData()
+    // Chokidar does not deliver events until `ready`. Always refresh once after
+    // that boundary so edits between the initial read and readiness are covered.
+    void ready.then(() => {
+      if (!cancelled) scheduleRefresh()
+    })
 
     return () => {
       cancelled = true
+      if (refreshTimer) clearTimeout(refreshTimer)
+      void watcher.close()
     }
   }, [])
 

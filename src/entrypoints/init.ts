@@ -59,6 +59,10 @@ import { initUser } from '../utils/auth/user.js'
 import { initLangfuse, shutdownLangfuse } from '../services/langfuse/index.js'
 import { setSystemThemeMirror, setThemeConfigCallbacks } from '@anthropic/ink'
 import { setCachedSystemTheme } from '../utils/terminal/systemTheme.js'
+import {
+  loadAndSyncThemeSetting,
+  persistThemeSetting,
+} from '../utils/settings/themePersistence.js'
 
 // initialize1PEventLogging is dynamically imported to defer OpenTelemetry sdk-logs/resources
 
@@ -74,10 +78,10 @@ export const init = memoize(async (): Promise<void> => {
   try {
     const configsStart = Date.now()
     enableConfigs()
+    loadAndSyncThemeSetting()
     setThemeConfigCallbacks({
-      loadTheme: () => getGlobalConfig().theme,
-      saveTheme: setting =>
-        saveGlobalConfig(current => ({ ...current, theme: setting })),
+      loadTheme: loadAndSyncThemeSetting,
+      saveTheme: persistThemeSetting,
     })
     // The host keeps its own copy of systemTheme.ts (vendored for package
     // independence) with its own module-level cache, and host callers resolve

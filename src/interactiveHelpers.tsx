@@ -126,10 +126,7 @@ export function showSetupDialog<T = void>(
   options?: { onChangeAppState?: typeof onChangeAppState },
 ): Promise<T> {
   return showDialog<T>(root, done => (
-    <ThemeProvider
-      initialState={getGlobalConfig().theme}
-      onThemeSave={setting => saveGlobalConfig(current => ({ ...current, theme: setting }))}
-    >
+    <ThemeProvider>
       <AppStateProvider onChangeAppState={options?.onChangeAppState}>
         <KeybindingSetup>{renderer(done)}</KeybindingSetup>
       </AppStateProvider>

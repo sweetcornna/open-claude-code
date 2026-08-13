@@ -5,7 +5,6 @@ import { type AppState, AppStateProvider } from '../state/AppState.js';
 import { onChangeAppState } from '../state/onChangeAppState.js';
 import type { FpsMetrics } from '../utils/telemetry/fpsTracker.js';
 import { ThemeProvider } from '@anthropic/ink';
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config/config.js';
 
 type Props = {
   getFpsMetrics: () => FpsMetrics | undefined;
@@ -23,12 +22,7 @@ export function App({ getFpsMetrics, stats, initialState, children }: Props): Re
     <FpsMetricsProvider getFpsMetrics={getFpsMetrics}>
       <StatsProvider store={stats}>
         <AppStateProvider initialState={initialState} onChangeAppState={onChangeAppState}>
-          <ThemeProvider
-            initialState={getGlobalConfig().theme}
-            onThemeSave={setting => saveGlobalConfig(current => ({ ...current, theme: setting }))}
-          >
-            {children}
-          </ThemeProvider>
+          <ThemeProvider>{children}</ThemeProvider>
         </AppStateProvider>
       </StatsProvider>
     </FpsMetricsProvider>

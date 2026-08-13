@@ -1270,9 +1270,9 @@ export function Config({
   // applied to disk/AppState immediately on toggle, so "cancel" means
   // actively writing the old values back.
   const revertChanges = useCallback(() => {
-    // Theme: restores ThemeProvider React state. Must run before the global
-    // config overwrite since setTheme internally calls saveGlobalConfig with
-    // a partial update — we want the full snapshot to be the last write.
+    // ThemeProvider persists to user settings and mirrors legacy global state.
+    // Restore the source snapshot explicitly after resetting the provider so
+    // Escape deletes theme when the user had not previously stored it there.
     if (themeSetting !== initialThemeSetting.current) {
       setTheme(initialThemeSetting.current);
     }
@@ -1297,6 +1297,7 @@ export function Config({
       autoUpdatesChannel: iu?.autoUpdatesChannel,
       minimumVersion: iu?.minimumVersion,
       language: iu?.language,
+      theme: iu?.theme,
       ...(feature('TRANSCRIPT_CLASSIFIER')
         ? {
             useAutoModeDuringPlan: (iu as { useAutoModeDuringPlan?: boolean } | undefined)?.useAutoModeDuringPlan,
