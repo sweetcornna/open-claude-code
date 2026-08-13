@@ -1,27 +1,14 @@
 import {
   classifyRetryableAPIError,
   getAPIErrorDiagnostics,
-  isAPIErrorReplayable,
-  PERMANENT_RETRY_DELAY_MS,
 } from '../retryClassification.js'
 
-/** Ten retries after the initial request (eleven total attempts). */
-const OPENAI_MAX_RETRIES = 10
-const DEFAULT_MAX_RETRIES = OPENAI_MAX_RETRIES
-const BASE_DELAY_MS = 200
-/**
- * Longest server-directed wait for one retry. Longer Retry-After values are
- * capped so every API error can consume the configured budget without one
- * malformed or multi-hour header parking the process indefinitely.
- */
-const RETRY_AFTER_MAX_MS = 60_000
-/**
- * Ceiling on one exponential backoff step, matching `getRetryDelay` in
- * withRetry.ts. Uncapped, `200 * 2^n` over the ten-retry budget spends its last
- * three waits at ~26s, ~51s and ~102s — nearly three minutes of the total sat
- * in a single sleep, for a ladder whose point is to outlast a blip.
- */
+/** Ten retries by default; the official CLI allows explicit values up to 15. */
+const DEFAULT_MAX_RETRIES = 10
+const MAX_CONFIGURED_RETRIES = 15
+const BASE_DELAY_MS = 500
 const MAX_BACKOFF_MS = 32_000
+const MAX_RETRY_AFTER_MS = 60_000
 const TRANSIENT_RETRIES_EXHAUSTED = Symbol.for(
   'occ.api.transientRetriesExhausted',
 )
@@ -88,11 +75,11 @@ export function clampOpenAIMaxRetries(
   fallback = DEFAULT_MAX_RETRIES,
 ): number {
   if (!Number.isFinite(value)) return fallback
-  return Math.min(OPENAI_MAX_RETRIES, Math.max(0, Math.trunc(value)))
+  return Math.min(MAX_CONFIGURED_RETRIES, Math.max(0, Math.trunc(value)))
 }
 
 export function resolveOpenAIMaxRetries(
-  raw = process.env.OPENAI_REQUEST_MAX_RETRIES,
+  raw = process.env.CLAUDE_CODE_MAX_RETRIES,
 ): number {
   if (raw === undefined || !/^\d+$/.test(raw.trim())) {
     return DEFAULT_MAX_RETRIES
@@ -124,10 +111,10 @@ function parseRetryAfterMs(
  * how long to wait.
  *
  * An SSE `response.failed` event carries no HTTP headers, so `Retry-After` is
- * structurally unavailable there and the ladder falls back to its 200ms first
- * step: it re-asks a limiter that just said "1.5s" roughly eight times before
- * the backoff even reaches the stated wait, and can burn the whole budget on a
- * limit that would have cleared. OpenAI's own client reads the number out of
+ * structurally unavailable there and the ladder falls back to its 500ms first
+ * step: it can re-ask a limiter before the wait stated in the error has elapsed
+ * and burn the budget on a limit that would have cleared. OpenAI's own client
+ * reads the number out of
  * the prose for exactly this reason (codex-rs/codex-api/src/sse/responses.rs
  * `try_parse_retry_after`, lines 602-626).
  *
@@ -244,9 +231,12 @@ function retryAfterMsFromError(error: unknown): number | undefined {
   return parseRetryAfterMs(headers.get('retry-after'))
 }
 
-function retryDelayMs(retryIndex: number, random: () => number): number {
-  const exponential = Math.min(BASE_DELAY_MS * 2 ** retryIndex, MAX_BACKOFF_MS)
-  return Math.round(exponential * (0.9 + random() * 0.2))
+function retryDelayMs(attempt: number, random: () => number): number {
+  const exponential = Math.min(
+    BASE_DELAY_MS * 2 ** (attempt - 1),
+    MAX_BACKOFF_MS,
+  )
+  return Math.round(exponential + random() * 0.25 * exponential)
 }
 
 export async function retryOpenAIRequest<T>(
@@ -272,11 +262,7 @@ export async function retryOpenAIRequest<T>(
       return await operation(attempt)
     } catch (error) {
       const verdict = classifyRetryableAPIError(error)
-      if (
-        options.signal.aborted ||
-        !verdict.retryable ||
-        !isAPIErrorReplayable(error)
-      ) {
+      if (options.signal.aborted || !verdict.retryable) {
         throw error
       }
       if (attempt >= maxRetries) {
@@ -284,14 +270,14 @@ export async function retryOpenAIRequest<T>(
         throw error
       }
       const retryAfterMs = retryAfterMsFromError(error)
-      const backoffMs =
-        verdict.persistence === 'permanent'
-          ? PERMANENT_RETRY_DELAY_MS
-          : retryDelayMs(attempt, random)
+      const backoffMs = retryDelayMs(attempt + 1, random)
+      if (retryAfterMs !== undefined && retryAfterMs > MAX_RETRY_AFTER_MS) {
+        throw error
+      }
       await delay(
         retryAfterMs === undefined
           ? backoffMs
-          : Math.min(retryAfterMs, RETRY_AFTER_MAX_MS),
+          : Math.max(retryAfterMs, backoffMs),
         options.signal,
       )
       attempt++

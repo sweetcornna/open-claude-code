@@ -376,6 +376,7 @@ describe('sideQuery OpenAI ChatGPT OAuth path', () => {
         querySource: 'auto_mode',
         model: 'gpt-5.5',
         messages: [{ role: 'user', content: 'classify' }],
+        maxRetries: 0,
         tools: [classifierTool as never],
         tool_choice: { type: 'tool', name: 'classify_result' },
       }),

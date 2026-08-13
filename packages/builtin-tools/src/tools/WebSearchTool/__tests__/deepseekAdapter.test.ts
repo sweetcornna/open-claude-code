@@ -262,7 +262,7 @@ describe('DeepSeekDirectSearchAdapter', () => {
     await expect(
       new DeepSeekDirectSearchAdapter({ fetchOverride }).search('q', {}),
     ).rejects.toThrow(/does not support web_search/)
-    expect(fetchOverride.calls).toHaveLength(11)
+    expect(fetchOverride.calls).toHaveLength(1)
   })
 
   test('enforces the domain filter client-side', async () => {

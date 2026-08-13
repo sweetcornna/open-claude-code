@@ -767,25 +767,24 @@ describe('queryModelOpenAI — max_tokens forwarded to request', () => {
     expect(_lastCreateArgs!.prompt_cache_key).toStartWith('occ:')
   })
 
-  test('cache-key compatibility fallback shares the unified retry budget', async () => {
-    _createErrors = [
-      new Error("400 Unknown parameter: 'prompt_cache_key'."),
-      new Error('503 Service unavailable'),
-      new Error('503 Service unavailable'),
+  test('cache-key compatibility fallback retries once without the field', async () => {
+    _nextEvents = [
+      makeMessageStart(),
+      makeMessageDelta('end_turn', 1),
+      makeMessageStop(),
     ]
+    _createErrors = [new Error("400 Unknown parameter: 'prompt_cache_key'.")]
 
     await runQueryModel(
       [],
       { OPENAI_BASE_URL: 'https://gateway.internal/v1' },
       [],
       {},
-      2,
     )
 
-    expect(_createArgs).toHaveLength(3)
+    expect(_createArgs).toHaveLength(2)
     expect(_createArgs[0]!.prompt_cache_key).toStartWith('occ:')
     expect('prompt_cache_key' in _createArgs[1]!).toBe(false)
-    expect('prompt_cache_key' in _createArgs[2]!).toBe(false)
   })
 
   test('OPENAI_PROMPT_CACHE_KEY=0 forces the cache key off', async () => {

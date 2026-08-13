@@ -49,8 +49,8 @@ describe('getGrokClient', () => {
     ])
   })
 
-  test('clamps SDK retry options at ten', () => {
-    expect(getGrokClient({ maxRetries: 999 }).maxRetries).toBe(10)
+  test('clamps SDK retry options at fifteen', () => {
+    expect(getGrokClient({ maxRetries: 999 }).maxRetries).toBe(15)
   })
 
   test('returns cached client on second call', () => {

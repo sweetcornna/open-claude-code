@@ -311,7 +311,7 @@ describe('GeminiSearchAdapter.search', () => {
     expect(results).toHaveLength(2)
   })
 
-  test('retries a permanent API failure ten times', async () => {
+  test('does not retry a permanent API failure', async () => {
     let attempts = 0
     const failing = (async () => {
       attempts++
@@ -323,7 +323,7 @@ describe('GeminiSearchAdapter.search', () => {
     await expect(
       new GeminiSearchAdapter({ fetchOverride: failing }).search('rrf', {}),
     ).rejects.toThrow(/403/)
-    expect(attempts).toBe(11)
+    expect(attempts).toBe(1)
   })
 })
 

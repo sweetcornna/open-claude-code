@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type Anthropic from '@anthropic-ai/sdk'
 import {
   APIConnectionError,
@@ -50,23 +49,21 @@ import {
 import {
   classifyRetryableAPIError,
   getAPIErrorSource,
-  isAPIErrorReplayable,
-  PERMANENT_RETRY_DELAY_MS,
 } from './retryClassification.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 
 const abortError = () => new APIUserAbortError()
 
-/** Ten retries after the initial request (eleven total attempts). */
-const MAX_API_RETRIES = 10
-const DEFAULT_MAX_RETRIES = MAX_API_RETRIES
+/** Ten retries by default; the official CLI allows explicit values up to 15. */
+const DEFAULT_MAX_RETRIES = 10
+const WATCHDOG_DEFAULT_MAX_RETRIES = 300
+const MAX_API_RETRIES = 15
 const FLOOR_OUTPUT_TOKENS = 3000
 const MAX_529_RETRIES = 3
 export const BASE_DELAY_MS = 500
 
-// CLAUDE_CODE_UNATTENDED_RETRY: for unattended sessions (ant-only). Retries 429/529
-// with higher backoff and periodic keep-alive yields so the host environment
-// does not mark the session idle mid-wait. It shares the same ten-retry cap.
+// CLAUDE_CODE_RETRY_WATCHDOG matches the official unattended capacity mode:
+// 300 retries for 429/529, higher backoff, and periodic keep-alive yields.
 // TODO(ANT-344): the keep-alive via SystemAPIErrorMessage yields is a stopgap
 // until there's a dedicated keep-alive channel.
 const PERSISTENT_MAX_BACKOFF_MS = 5 * 60 * 1000
@@ -74,14 +71,47 @@ const PERSISTENT_RESET_CAP_MS = 6 * 60 * 60 * 1000
 const HEARTBEAT_INTERVAL_MS = 30_000
 
 function isPersistentRetryEnabled(): boolean {
-  return feature('UNATTENDED_RETRY')
-    ? isEnvTruthy(process.env.CLAUDE_CODE_UNATTENDED_RETRY)
-    : false
+  return isEnvTruthy(process.env.CLAUDE_CODE_RETRY_WATCHDOG)
 }
 
 function isTransientCapacityError(error: unknown): boolean {
   return (
     is529Error(error) || (error instanceof APIError && error.status === 429)
+  )
+}
+
+const FOREGROUND_529_RETRY_SOURCES = new Set([
+  'repl_main_thread',
+  'repl_main_thread:outputStyle:custom',
+  'repl_main_thread:outputStyle:Proactive',
+  'repl_main_thread:outputStyle:Explanatory',
+  'repl_main_thread:outputStyle:Learning',
+  'sdk',
+  'agent:custom',
+  'agent:default',
+  'agent:builtin',
+  'compact',
+  'workflow',
+  'hook_agent',
+  'hook_prompt',
+  'side_question',
+  'web_search_tool',
+  'web_fetch_apply',
+  'repl_sampling',
+  'auto_mode',
+  'compact_fab_check',
+  'auto_mode_critique',
+  'auto_mode_setup_propose',
+  'chrome_mcp',
+])
+
+function shouldRetryForeground529(
+  querySource: QuerySource | undefined,
+): boolean {
+  return (
+    querySource === undefined ||
+    querySource.startsWith('agent:') ||
+    FOREGROUND_529_RETRY_SOURCES.has(querySource)
   )
 }
 
@@ -148,9 +178,7 @@ function retryVerdict(error: unknown): RetryVerdict {
 /**
  * True when `error` deserves another attempt at all.
  *
- * No longer only transport blips: under the retry-everything policy this is
- * true for permanent classes too, and the caller is expected to consult
- * {@link attemptBudgetFor} for how many attempts that actually buys.
+ * Mirrors the official retry predicate after bridging provider error shapes.
  *
  * Exported for tests.
  */
@@ -281,9 +309,8 @@ export async function* withRetry<T>(
       }
 
       // Get a fresh client on the first attempt or after a stale keep-alive
-      // socket. Authentication and permission failures use fixed-delay retries;
-      // their credential caches are dropped in the catch block before each next
-      // attempt so a rotated credential can recover within this request.
+      // socket. Retryable credential failures drop their caches in the catch
+      // block so a rotated credential can recover within this request.
       const isStaleConnection = isStaleConnectionError(lastError)
       if (
         isStaleConnection &&
@@ -370,12 +397,19 @@ export async function* withRetry<T>(
         continue
       }
 
+      if (
+        is529Error(error) &&
+        !isPersistentRetryEnabled() &&
+        !shouldRetryForeground529(options.querySource)
+      ) {
+        throw new CannotRetryError(error, retryContext)
+      }
+
       // Track consecutive 529 errors
       if (
         is529Error(error) &&
-        // If FALLBACK_FOR_ALL_PRIMARY_MODELS is not set, fall through only if the primary model is a non-custom Opus model.
-        // TODO: Revisit if the isNonCustomOpusModel check should still exist, or if isNonCustomOpusModel is a stale artifact of when Claude Code was hardcoded on Opus.
         (process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS ||
+          options.fallbackModel !== undefined ||
           (!isClaudeAISubscriber() && isNonCustomOpusModel(options.model)))
       ) {
         consecutive529Errors++
@@ -404,14 +438,13 @@ export async function* withRetry<T>(
         isPersistentRetryEnabled() && isTransientCapacityError(error)
 
       // One verdict for every shape that reaches this catch — SDK errors, bare
-      // transport failures and provider-synthesised errors alike. Every API
-      // class receives the configured retry count; persistence selects delay.
+      // transport failures and provider-synthesised errors alike.
       const verdict = retryVerdict(error)
       if (!verdict.retryable) {
         throw new CannotRetryError(error, retryContext)
       }
       const attemptBudget = maxRetries
-      if (attempt > attemptBudget) {
+      if (!persistent && attempt > attemptBudget) {
         throw new CannotRetryError(error, retryContext)
       }
 
@@ -497,12 +530,11 @@ export async function* withRetry<T>(
           ),
           PERSISTENT_RESET_CAP_MS,
         )
-      } else if (verdict.persistence === 'permanent') {
-        // No congestion to back off from, and nobody should wait 32s to be
-        // told their tool schema is malformed. See PERMANENT_RETRY_DELAY_MS.
-        delayMs = PERMANENT_RETRY_DELAY_MS
       } else {
-        delayMs = getBoundedRetryDelay(attempt, retryAfter)
+        delayMs = getRetryDelay(attempt, retryAfter)
+        if (delayMs > RETRY_AFTER_MAX_MS) {
+          throw new CannotRetryError(error, retryContext)
+        }
       }
 
       const reportedAttempt = persistent ? persistentAttempt : attempt
@@ -553,6 +585,9 @@ export async function* withRetry<T>(
         )
         await sleep(delayMs, options.signal, { abortError })
       }
+      if (persistent && attempt >= maxRetries) {
+        attempt = maxRetries - 1
+      }
     }
   }
 
@@ -575,20 +610,15 @@ export function getRetryDelay(
   retryAfterHeader?: string | null,
   maxDelayMs = 32000,
 ): number {
+  const baseDelay = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), maxDelayMs)
+  const backoff = Math.round(baseDelay + Math.random() * 0.25 * baseDelay)
   if (retryAfterHeader) {
-    const seconds = Number(retryAfterHeader)
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return seconds * 1000
-    }
-    const retryAt = Date.parse(retryAfterHeader)
-    if (Number.isFinite(retryAt)) {
-      return Math.max(0, retryAt - Date.now())
+    const seconds = Number.parseInt(retryAfterHeader, 10)
+    if (!Number.isNaN(seconds)) {
+      return Math.max(seconds * 1000, backoff)
     }
   }
-
-  const baseDelay = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), maxDelayMs)
-  const jitter = Math.random() * 0.25 * baseDelay
-  return baseDelay + jitter
+  return backoff
 }
 
 /**
@@ -600,19 +630,10 @@ export function getRetryDelay(
  * turn for two hours behind a countdown row the user cannot shorten. One minute
  * is the same bound `openai/retry.ts` applies to the identical header.
  *
- * The unattended (`CLAUDE_CODE_UNATTENDED_RETRY`) branch keeps its own, far
- * larger cap on purpose: nobody is watching that session, and waiting out a
- * window-based rate limit is exactly what it is for.
+ * The official retry-watchdog branch keeps its own larger cap because waiting
+ * out a window-based capacity limit is exactly what it is for.
  */
 const RETRY_AFTER_MAX_MS = 60_000
-
-/** {@link getRetryDelay} with the Retry-After escape hatch bounded. */
-function getBoundedRetryDelay(
-  attempt: number,
-  retryAfterHeader?: string | null,
-): number {
-  return Math.min(getRetryDelay(attempt, retryAfterHeader), RETRY_AFTER_MAX_MS)
-}
 
 function parseMaxTokensContextOverflowError(error: APIError):
   | {
@@ -693,8 +714,8 @@ export function is529Error(error: unknown): boolean {
 // Credential recovery
 //
 // "Retry this request" and "refresh the credential" are two different
-// decisions. The unified policy retries 401/403 on a fixed delay, while every
-// credential source behind this client is memoized for the process. Without the
+// decisions. The official policy retries 401 to refresh credentials, while
+// every credential source behind this client is memoized for the process. Without the
 // side effects below, every attempt and the next request would be built from the
 // same dead value:
 //
@@ -793,9 +814,7 @@ async function recoverCredentialsForNextRequest(error: unknown): Promise<void> {
 
 /**
  * The classifier's verdict for an `APIError`, plus the decisions that depend on
- * things the error text cannot express. Only synthetic /mock-limits errors
- * refuse outright because no API request failed; all real API errors receive the
- * configured budget on either exponential or fixed delays.
+ * things the error text cannot express.
  */
 function apiErrorVerdict(error: APIError): RetryVerdict {
   const classified = classifyRetryableAPIError(error)
@@ -810,21 +829,6 @@ function apiErrorVerdict(error: APIError): RetryVerdict {
   // x-should-retry:false response and waits for the advertised reset window.
   if (isPersistentRetryEnabled() && isTransientCapacityError(error)) {
     return transiently(classified)
-  }
-
-  // `x-should-retry: false` is the server stating this exact request will fail
-  // again. Under the retry-everything policy it selects the fixed-delay lane,
-  // while the configured retry count remains unchanged.
-  const shouldRetryHeader = error.headers?.get('x-should-retry')
-  if (shouldRetryHeader === 'false') {
-    const is5xxError = error.status !== undefined && error.status >= 500
-    if (!(process.env.USER_TYPE === 'ant' && is5xxError)) {
-      return {
-        category: classified.category,
-        retryable: classified.retryable,
-        persistence: 'permanent',
-      }
-    }
   }
 
   return classified
@@ -847,9 +851,11 @@ export function getDefaultMaxRetries(): number {
 }
 
 function getMaxRetries(options: RetryOptions): number {
-  return options.maxRetries === undefined
-    ? getDefaultMaxRetries()
-    : clampMaxRetries(options.maxRetries)
+  if (options.maxRetries !== undefined)
+    return clampMaxRetries(options.maxRetries)
+  return isPersistentRetryEnabled()
+    ? WATCHDOG_DEFAULT_MAX_RETRIES
+    : getDefaultMaxRetries()
 }
 
 const DEFAULT_FAST_MODE_FALLBACK_HOLD_MS = 30 * 60 * 1000 // 30 minutes
@@ -1048,6 +1054,7 @@ export async function* withTransientNetworkRetry(
   let hasEmittedContent = false
 
   for (let attempt = 1; ; attempt++) {
+    hasEmittedContent = false
     /**
      * `hasEmittedContent` comes first and is unconditional. No retry policy
      * reaches past it: once a delta left this generator it is on the terminal,
@@ -1061,7 +1068,6 @@ export async function* withTransientNetworkRetry(
       attempt <= maxRetries
 
     let retryError: unknown
-    let retryLane: RetryVerdict | undefined
     let heldErrorMessage: QueryModelOutput | undefined
 
     try {
@@ -1078,11 +1084,11 @@ export async function* withTransientNetworkRetry(
             sourceError !== undefined
               ? retryVerdict(sourceError)
               : retryVerdict(text)
-          const replayable =
-            sourceError === undefined || isAPIErrorReplayable(sourceError)
           if (
-            replayable &&
-            canRetry(verdict) &&
+            !hasEmittedContent &&
+            !options.signal?.aborted &&
+            verdict.retryable &&
+            attempt <= maxRetries &&
             !hasExhaustedTransientRetries(item)
           ) {
             // Current producers yield at most one error message per attempt,
@@ -1093,8 +1099,12 @@ export async function* withTransientNetworkRetry(
             }
             heldErrorMessage = item
             retryError =
-              sourceError ?? new APIConnectionError({ message: text })
-            retryLane = verdict
+              sourceError instanceof Error
+                ? new APIConnectionError({
+                    message: sourceError.message,
+                    cause: sourceError,
+                  })
+                : new APIConnectionError({ message: text })
             continue
           }
           yield item
@@ -1110,11 +1120,13 @@ export async function* withTransientNetworkRetry(
       // FallbackTriggeredError still propagate — neither is retriable, and
       // retryVerdict rejects both.
       const verdict = retryVerdict(error)
-      if (!isAPIErrorReplayable(error) || !canRetry(verdict)) {
+      if (!canRetry(verdict)) {
         throw error
       }
-      retryError = error
-      retryLane = verdict
+      retryError =
+        error instanceof Error
+          ? new APIConnectionError({ message: error.message, cause: error })
+          : new APIConnectionError({ message: String(error) })
       heldErrorMessage = undefined
     }
 
@@ -1132,12 +1144,13 @@ export async function* withTransientNetworkRetry(
     }
 
     const attemptBudget = maxRetries
-    const delayMs =
-      retryLane?.persistence === 'permanent'
-        ? PERMANENT_RETRY_DELAY_MS
-        : getBoundedRetryDelay(attempt, getRetryAfter(retryError))
+    const delayMs = getRetryDelay(attempt, getRetryAfter(retryError))
+    if (delayMs > RETRY_AFTER_MAX_MS) {
+      if (heldErrorMessage) yield heldErrorMessage
+      return
+    }
     logForDebugging(
-      `API failure (attempt ${attempt}/${attemptBudget}, ${retryLane?.persistence ?? 'transient'}), retrying in ${delayMs}ms: ${errorMessage(retryError)}`,
+      `API failure (attempt ${attempt}/${attemptBudget}), retrying in ${delayMs}ms: ${errorMessage(retryError)}`,
       { level: 'warn' },
     )
     logEvent('tengu_api_transient_network_retry', {

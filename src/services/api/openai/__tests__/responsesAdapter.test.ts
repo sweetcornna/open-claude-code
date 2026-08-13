@@ -242,7 +242,7 @@ describe('reasoning summaries (thinking visibility)', () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
 
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const bodies: string[] = []
     const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
       const body = String(init?.body ?? '')
@@ -297,7 +297,7 @@ describe('reasoning summaries (thinking visibility)', () => {
   test('summary degradation cannot start a second retry budget', async () => {
     delete process.env.OPENAI_REASONING_SUMMARY
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
 
     const bodies: string[] = []
@@ -337,10 +337,10 @@ describe('reasoning summaries (thinking visibility)', () => {
     }
   })
 
-  test('an unrelated 400 uses the full configured budget', async () => {
+  test('an unrelated 400 does not retry', async () => {
     delete process.env.OPENAI_REASONING_SUMMARY
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
 
     let calls = 0
@@ -365,7 +365,7 @@ describe('reasoning summaries (thinking visibility)', () => {
         fetchOverride,
       }),
     ).rejects.toThrow()
-    expect(calls).toBe(3)
+    expect(calls).toBe(1)
   })
 })
 
@@ -488,7 +488,7 @@ describe('createOpenAIResponsesStream', () => {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     OPENAI_PROMPT_CACHE_KEY: process.env.OPENAI_PROMPT_CACHE_KEY,
-    OPENAI_REQUEST_MAX_RETRIES: process.env.OPENAI_REQUEST_MAX_RETRIES,
+    CLAUDE_CODE_MAX_RETRIES: process.env.CLAUDE_CODE_MAX_RETRIES,
     CLAUDE_STREAM_IDLE_TIMEOUT_MS: process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS,
   }
 
@@ -518,7 +518,7 @@ describe('createOpenAIResponsesStream', () => {
   test('a compatible endpoint drops a rejected cache key within one retry budget', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_BASE_URL = 'https://gateway.internal/v1'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const bodies: Record<string, unknown>[] = []
     const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<
@@ -564,7 +564,7 @@ describe('createOpenAIResponsesStream', () => {
   test('cache-key degradation cannot start a second retry budget', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_BASE_URL = 'https://gateway.internal/v1'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const bodies: Record<string, unknown>[] = []
     const fetchOverride = (async (_url: unknown, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<
@@ -606,7 +606,7 @@ describe('createOpenAIResponsesStream', () => {
     }
   })
 
-  test('an explicit cache-key override keeps it on after rejection', async () => {
+  test('an explicit cache-key override keeps it on and does not retry 400', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_BASE_URL = 'https://gateway.internal/v1'
     process.env.OPENAI_PROMPT_CACHE_KEY = '1'
@@ -636,7 +636,7 @@ describe('createOpenAIResponsesStream', () => {
       }),
     ).rejects.toThrow(/prompt_cache_key/)
 
-    expect(calls).toBe(2)
+    expect(calls).toBe(1)
     expect(
       getOpenAIPromptCacheKey(
         'https://gateway.internal/v1',
@@ -866,7 +866,7 @@ describe('createOpenAIResponsesStream', () => {
   ] as const) {
     test(`retries a clean ${label} EOF before a terminal event`, async () => {
       process.env.OPENAI_API_KEY = 'sk-test-key'
-      process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+      process.env.CLAUDE_CODE_MAX_RETRIES = '1'
       let calls = 0
       const fetchOverride = (async () => {
         calls++
@@ -897,7 +897,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('throws without retry when clean EOF follows committed output', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '1'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -936,7 +936,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('retries when the stream stalls before its first event', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '1'
     process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
     let calls = 0
     const fetchOverride = (async () => {
@@ -966,7 +966,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('retries an idle timeout after metadata but before output', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '1'
     process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
     let calls = 0
     const fetchOverride = (async () => {
@@ -1010,9 +1010,9 @@ describe('createOpenAIResponsesStream', () => {
     expect(events).toEqual([{ type: 'ready' }])
   })
 
-  test('retries a transient API failure event before output', async () => {
+  test('retries the reported upstream stream_read_error before output', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '1'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -1021,7 +1021,7 @@ describe('createOpenAIResponsesStream', () => {
           ? [
               'data: {"type":"response.output_item.added","item":{"type":"reasoning","id":"rs_1"}}',
               'data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1"}}',
-              'data: {"type":"response.failed","response":{"error":{"code":"server_error","message":"upstream timeout"}}}',
+              'data: {"type":"response.failed","response":{"error":{"type":"upstream_error","code":"stream_read_error","message":"stream_read_error"}}}',
             ].join('\n\n') + '\n\n'
           : 'data: {"type":"ready"}\n\ndata: [DONE]\n\n',
       )
@@ -1060,7 +1060,7 @@ describe('createOpenAIResponsesStream', () => {
   ] as const) {
     test(`retries ${label} before output`, async () => {
       process.env.OPENAI_API_KEY = 'sk-test-key'
-      process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+      process.env.CLAUDE_CODE_MAX_RETRIES = '1'
       let calls = 0
       const fetchOverride = (async () => {
         calls++
@@ -1089,10 +1089,10 @@ describe('createOpenAIResponsesStream', () => {
     })
   }
 
-  test('gives permanent model errors the configured stream budget', async () => {
-    // OPENAI_REQUEST_MAX_RETRIES=2 means the initial attempt plus two retries.
+  test('does not retry permanent model errors', async () => {
+    // CLAUDE_CODE_MAX_RETRIES=2 means the initial attempt plus two retries.
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -1113,7 +1113,7 @@ describe('createOpenAIResponsesStream', () => {
         fetchOverride,
       }),
     ).rejects.toThrow(/model does not exist/)
-    expect(calls).toBe(3)
+    expect(calls).toBe(1)
   })
 
   for (const [label, committedEvent] of [
@@ -1142,7 +1142,7 @@ describe('createOpenAIResponsesStream', () => {
   ] as const) {
     test(`throws without retry when the stream stalls after ${label}`, async () => {
       process.env.OPENAI_API_KEY = 'sk-test-key'
-      process.env.OPENAI_REQUEST_MAX_RETRIES = '1'
+      process.env.CLAUDE_CODE_MAX_RETRIES = '1'
       process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
       let calls = 0
       const body = new ReadableStream<Uint8Array>({
@@ -1188,7 +1188,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('marks an SSE API error after committed output as non-retryable', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -1290,7 +1290,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('a buffered reader replays a text-only failure and delivers the answer exactly once', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const { fetchOverride, getCalls } = respondPerCall(calls =>
       calls === 1 ? PARTIAL_TEXT + UPSTREAM_FAILURE : COMPLETE_RESPONSE,
     )
@@ -1307,7 +1307,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('a rendering reader keeps a text-only failure permanent — its deltas are already out', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const { fetchOverride, getCalls } = respondPerCall(calls =>
       calls === 1 ? PARTIAL_TEXT + UPSTREAM_FAILURE : COMPLETE_RESPONSE,
     )
@@ -1333,7 +1333,7 @@ describe('createOpenAIResponsesStream', () => {
   ] as const) {
     test(`a committed ${label} stays permanent even for a buffered reader`, async () => {
       process.env.OPENAI_API_KEY = 'sk-test-key'
-      process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+      process.env.CLAUDE_CODE_MAX_RETRIES = '2'
       const { fetchOverride, getCalls } = respondPerCall(calls =>
         calls === 1 ? committedEvent + UPSTREAM_FAILURE : COMPLETE_RESPONSE,
       )
@@ -1350,7 +1350,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('text before a committed function call does not reopen the window', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const { fetchOverride, getCalls } = respondPerCall(calls =>
       calls === 1
         ? PARTIAL_TEXT +
@@ -1367,7 +1367,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('a buffered reader replays a transport read error after text', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -1400,7 +1400,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('a rendering reader keeps a transport read error after text permanent', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -1430,7 +1430,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('a buffered reader replays an idle timeout after text', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS = '30'
     let calls = 0
     const fetchOverride = (async () => {
@@ -1456,7 +1456,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('a buffered reader replays a clean EOF after text', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const { fetchOverride, getCalls } = respondPerCall(calls =>
       calls === 1 ? PARTIAL_TEXT : COMPLETE_RESPONSE,
     )
@@ -1470,7 +1470,7 @@ describe('createOpenAIResponsesStream', () => {
 
   test('a buffered reader replays invalid SSE JSON after text', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const { fetchOverride, getCalls } = respondPerCall(calls =>
       calls === 1 ? PARTIAL_TEXT + 'data: {not json\n\n' : COMPLETE_RESPONSE,
     )
@@ -1482,9 +1482,9 @@ describe('createOpenAIResponsesStream', () => {
     expect(events).toEqual(COMPLETE_EVENTS)
   })
 
-  test('permanent stream errors stay off the ladder for a buffered reader', async () => {
+  test('permanent stream errors stay off the ladder for every reader', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     const { fetchOverride, getCalls } = respondPerCall(
       () =>
         PARTIAL_TEXT +
@@ -1493,15 +1493,13 @@ describe('createOpenAIResponsesStream', () => {
 
     const { caught } = await drain(fetchOverride, true)
 
-    // Buffering makes replay safe; permanent and transient errors both use the
-    // configured retry count, with different delays.
-    expect(getCalls()).toBe(3)
+    expect(getCalls()).toBe(1)
     expect((caught as Error).message).toMatch(/model does not exist/)
   })
 
-  test('a 400 uses the configured budget for a buffered reader', async () => {
+  test('a 400 does not retry for a buffered reader', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '2'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '2'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -1515,7 +1513,7 @@ describe('createOpenAIResponsesStream', () => {
 
     const { caught } = await drain(fetchOverride, true)
     expect((caught as Error).message).toMatch(/bad tool schema/)
-    expect(calls).toBe(3)
+    expect(calls).toBe(1)
   })
 })
 
@@ -2281,7 +2279,7 @@ describe('mid-stream rate limits state their wait in prose', () => {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     OPENAI_PROMPT_CACHE_KEY: process.env.OPENAI_PROMPT_CACHE_KEY,
-    OPENAI_REQUEST_MAX_RETRIES: process.env.OPENAI_REQUEST_MAX_RETRIES,
+    CLAUDE_CODE_MAX_RETRIES: process.env.CLAUDE_CODE_MAX_RETRIES,
   }
 
   afterEach(() => {
@@ -2306,7 +2304,7 @@ describe('mid-stream rate limits state their wait in prose', () => {
 
   test('preserves a long wait parsed from a mid-stream error', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '0'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '0'
     let calls = 0
     const fetchOverride = (async () => {
       calls++
@@ -2336,7 +2334,7 @@ describe('mid-stream rate limits state their wait in prose', () => {
 
   test('a short wait stays on the ladder', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
-    process.env.OPENAI_REQUEST_MAX_RETRIES = '0'
+    process.env.CLAUDE_CODE_MAX_RETRIES = '0'
     let calls = 0
     const fetchOverride = (async () => {
       calls++

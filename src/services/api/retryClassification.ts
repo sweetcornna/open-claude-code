@@ -1,10 +1,10 @@
-import { APIUserAbortError } from '@anthropic-ai/sdk'
+import { APIConnectionError, APIUserAbortError } from '@anthropic-ai/sdk'
 import type { SDKAssistantMessageError } from 'src/entrypoints/agentSdkTypes.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 
 const API_ERROR_SOURCE = Symbol.for('occ.api.sourceError')
 
-const RETRYABLE_HTTP_STATUSES = new Set([408, 409, 425, 429, 529])
+const RETRYABLE_HTTP_STATUSES = new Set([401, 408, 409, 429, 529])
 const RETRYABLE_NETWORK_CODES = new Set([
   'ECONNRESET',
   'ECONNREFUSED',
@@ -18,19 +18,35 @@ const RETRYABLE_NETWORK_CODES = new Set([
   'EHOSTDOWN',
   'ENETUNREACH',
   'ENETDOWN',
-  'ENETRESET',
-  'EADDRNOTAVAIL',
-  'ERR_STREAM_PREMATURE_CLOSE',
-  'ERR_SOCKET_CONNECTION_TIMEOUT',
-  'ERR_NETWORK',
-  'ERR_NETWORK_CHANGED',
+  'ERR_SOCKET_CLOSED',
+  'CONNECTIONCLOSED',
+  'STREAMSUSPENDED',
+])
+const NON_RETRYABLE_CONNECTION_CODES = new Set([
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'CERT_SIGNATURE_FAILURE',
+  'CERT_NOT_YET_VALID',
+  'CERT_HAS_EXPIRED',
+  'CERT_REVOKED',
+  'CERT_REJECTED',
+  'CERT_UNTRUSTED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'CERT_CHAIN_TOO_LONG',
+  'PATH_LENGTH_EXCEEDED',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+  'HOSTNAME_MISMATCH',
+  'BEDROCKUNEXPECTEDCONTENTTYPE',
 ])
 const ABORT_ERROR_PATTERN =
   /(request was aborted|operation was aborted|aborterror|user abort)/i
 const DETERMINISTIC_TLS_PATTERN =
   /(certificate|self[ -]signed|unable to verify|ssl routines|ssl\/tls alert|tls alert|handshake failure|wrong version number)/i
-const TRANSIENT_ERROR_MESSAGE_PATTERN =
-  /fetch failed|terminated|socket hang ?up|body timeout error|headers timeout error|premature close|network error|network changed|connection (?:error|closed|reset|refused|timeout)|other side closed|client network socket disconnected|sse stream disconnected|failed to reconnect sse stream|request timed out|read timeout|timeout error|stream idle timeout|without receiving any events|upstream request failed|upstream connect error|no healthy upstream|bad gateway|service unavailable|gateway time-?out|internal server error|temporarily unavailable|overloaded_error|server_error|try again later|econnreset|econnrefused|epipe|etimedout|enotfound|eai_again|ehostunreach|enetunreach|enetdown|ehostdown|eaddrnotavail|und_err_/i
+const OVERLOADED_ERROR_PATTERN = /"type"\s*:\s*"overloaded_error"/i
+const MAX_TOKENS_OVERFLOW_PATTERN =
+  /input length and `max_tokens` exceed context limit/i
 /**
  * Wording that can only describe a permanently-broken request or local setup.
  *
@@ -46,34 +62,17 @@ const PERMANENT_ERROR_MESSAGE_PATTERN =
 const ADAPTER_HTTP_STATUS_PATTERN = /request failed \((\d{3})[\s):]/
 const SDK_HTTP_STATUS_PATTERN = /^(?:API Error(?: \([^)]*\))?:\s*)?(\d{3})\s/
 
-/**
- * How much another attempt is worth.
- *
- * Both classes receive the configured retry budget. `transient` uses exponential
- * backoff; `permanent` covers authentication, permission, invalid request,
- * billing, deterministic TLS failures and the unclassifiable tail of a 4xx, and
- * uses {@link PERMANENT_RETRY_DELAY_MS} between attempts so errors that cannot
- * recover do not spend the full congestion ladder waiting.
- */
+/** Classification lane retained for diagnostics and provider-shape precedence. */
 type RetryPersistence = 'transient' | 'permanent'
 
 export type RetryableAPIErrorClassification = {
   category: SDKAssistantMessageError
   retryable: boolean
-  /** Which delay lane this failure uses. */
+  /** Retained for diagnostics; only retryable failures enter a delay lane. */
   persistence: RetryPersistence
 }
 
-/**
- * Fixed delay for deterministic API failures. They still receive the full
- * configured retry count, but do not climb the congestion backoff ladder.
- */
-export const PERMANENT_RETRY_DELAY_MS = 250
-
-/**
- * Build a verdict from the one thing the error actually tells us — its class —
- * and let the policy decide whether `permanent` still earns an attempt.
- */
+/** Build a retryable verdict for an official transient class. */
 function classify(
   category: SDKAssistantMessageError,
   persistence: RetryPersistence,
@@ -99,8 +98,8 @@ function neverRetry(
  * that reached a provider and produced a payload we could not name is a
  * server-side failure and must be reported as one **regardless of the retry
  * verdict**. Reporting the same upstream failure as `unknown` when it was
- * pinned permanent and `server_error` when it was transient made one bug look
- * like two.
+ * non-retryable and `server_error` when transient would make one bug look like
+ * two.
  */
 function apiBoundaryCategory(
   category: SDKAssistantMessageError,
@@ -113,11 +112,8 @@ function apiBoundaryCategory(
  * "you are not logged in", "this account has no project". No request was ever
  * put on the wire, so there is nothing transient to outlast.
  *
- * The concrete class is the veto; provider SDKs may also expose a
- * `retryable:false` field, but their failures reached an API and therefore still
- * receive the configured budget. Without this class, a plain `new Error('… Run
- * /login …')` would spend eleven attempts re-reading the same empty credentials
- * file.
+ * The concrete class preserves the declared category even if the error is
+ * wrapped before it reaches diagnostics.
  *
  * `category` is explicit rather than inferred, so the SDK error surface does not
  * hinge on the prose ever matching a regex.
@@ -214,12 +210,9 @@ function httpStatusCategory(status: number): SDKAssistantMessageError {
 }
 
 function classifyHttpStatus(status: number): RetryableAPIErrorClassification {
-  return classify(
-    httpStatusCategory(status),
-    RETRYABLE_HTTP_STATUSES.has(status) || (status >= 500 && status < 600)
-      ? 'transient'
-      : 'permanent',
-  )
+  return RETRYABLE_HTTP_STATUSES.has(status) || (status >= 500 && status < 600)
+    ? classify(httpStatusCategory(status), 'transient')
+    : neverRetry(httpStatusCategory(status))
 }
 
 function numericHttpStatus(
@@ -325,9 +318,8 @@ function structuredSignalClassification(
           : typeof value === 'string'
             ? signalCategory(value)
             : undefined
-      // Filtered on the lane, not on `retryable`: under the retry-everything
-      // policy a permanent class is retryable, so reading the boolean here
-      // would silently stop giving permanent signals their precedence.
+      // Filtered on the lane so permanent provider signals keep precedence over
+      // an outer transport-looking wrapper or HTTP status.
       if (
         classification &&
         (!permanentOnly || classification.persistence === 'permanent')
@@ -350,6 +342,43 @@ function statusFromMessage(message: string): number | undefined {
   return undefined
 }
 
+function retryDirectiveFromRecords(
+  records: Record<string, unknown>[],
+): boolean | undefined {
+  for (const record of records) {
+    const headers = record.headers
+    if (headers instanceof Headers) {
+      const value = headers.get('x-should-retry')
+      if (value === 'true') return true
+      if (value === 'false') return false
+      continue
+    }
+    const headerRecord = asErrorRecord(headers)
+    const value =
+      headerRecord?.['x-should-retry'] ?? headerRecord?.['X-Should-Retry']
+    if (value === 'true') return true
+    if (value === 'false') return false
+  }
+  return undefined
+}
+
+function httpStatusFromRecordsOrMessages(
+  records: Record<string, unknown>[],
+  messages: string[],
+): number | undefined {
+  for (const record of records) {
+    for (const key of ['status', 'statusCode', 'httpStatus']) {
+      const status = numericHttpStatus(record[key], true)
+      if (status !== undefined) return status
+    }
+  }
+  for (const message of messages) {
+    const status = statusFromMessage(message)
+    if (status !== undefined) return status
+  }
+  return undefined
+}
+
 function permanentMessageCategory(
   message: string,
 ): SDKAssistantMessageError | undefined {
@@ -367,6 +396,12 @@ function permanentMessageCategory(
   return 'invalid_request'
 }
 
+function permanentStructuredCategory(
+  records: Record<string, unknown>[],
+): SDKAssistantMessageError | undefined {
+  return structuredSignalClassification(records, true)?.category
+}
+
 function knownErrorCategory(
   records: Record<string, unknown>[],
   messages: string[],
@@ -377,12 +412,13 @@ function knownErrorCategory(
   const permanentSignal = structuredSignalClassification(records, true)
   if (permanentSignal) return permanentSignal.category
 
+  const structuredSignal = structuredSignalClassification(records, false)
+  if (structuredSignal) return structuredSignal.category
+
   for (const record of records) {
     const status = numericHttpStatus(record.status, true)
     if (status !== undefined) return httpStatusCategory(status)
   }
-  const structuredSignal = structuredSignalClassification(records, false)
-  if (structuredSignal) return structuredSignal.category
 
   for (const message of messages) {
     const status = statusFromMessage(message)
@@ -402,10 +438,10 @@ function knownErrorCategory(
  * local {@link NonRetryableError} > permanent type/code/name > HTTP status > other
  * structured signals > retryable:true > message.
  *
- * What that precedence decides is mostly the delay lane, not the attempt budget:
- * every API class is retryable under the default policy. Whether a stream can be
- * safely replayed after output has been delivered is a separate `replayable`
- * decision made by the producer and its caller.
+ * The result mirrors the official CLI predicate: retryable transport failures,
+ * 408/409/429/5xx, 401 credential refresh, explicit x-should-retry, and the
+ * max_tokens adjustment case. Provider-specific type/code names only bridge
+ * equivalent error shapes into that policy.
  */
 export function classifyRetryableAPIError(
   error: unknown,
@@ -415,87 +451,88 @@ export function classifyRetryableAPIError(
     error === undefined ||
     (typeof error === 'string' && !error.trim())
   ) {
-    // Not an API failure — there is nothing here to attempt again.
     return neverRetry('unknown')
   }
 
   const records = collectErrorRecords(error)
   const messages = errorMessages(error, records)
-  const knownCategory = knownErrorCategory(records, messages)
+  const category = apiBoundaryCategory(knownErrorCategory(records, messages))
+  const permanentCategory = permanentStructuredCategory(records)
+  const explicitStatus = httpStatusFromRecordsOrMessages(records, messages)
 
   if (
     error instanceof APIUserAbortError ||
     records.some(record => record.name === 'AbortError') ||
     messages.some(message => ABORT_ERROR_PATTERN.test(message))
   ) {
-    // The user pressed Esc. Retrying would defeat cancellation.
     return neverRetry('unknown')
+  }
+  if (records.some(record => record instanceof NonRetryableError)) {
+    return neverRetry(category)
   }
 
   const connectionDetails = extractConnectionErrorDetails(error)
+  const connectionCode = connectionDetails?.code.toUpperCase()
   if (
     connectionDetails?.isSSLError ||
-    connectionDetails?.code.startsWith('ERR_SSL_') ||
-    (connectionDetails?.code === 'EPROTO' &&
-      /ssl|tls|handshake/i.test(connectionDetails.message)) ||
-    records.some(record =>
-      typeof record.code === 'string'
-        ? record.code.startsWith('ERR_SSL_') ||
-          record.code === 'ERR_TLS_CERT_ALTNAME_INVALID'
-        : false,
-    ) ||
+    (connectionCode !== undefined &&
+      NON_RETRYABLE_CONNECTION_CODES.has(connectionCode)) ||
+    connectionCode?.startsWith('ERR_SSL_') ||
+    (connectionCode === 'EPROTO' &&
+      /ssl|tls|handshake/i.test(connectionDetails?.message ?? '')) ||
     messages.some(message => DETERMINISTIC_TLS_PATTERN.test(message))
   ) {
-    // A bad certificate or a protocol mismatch answers the same way every
-    // time, so it uses fixed delays rather than exponential backoff.
-    // Reported as whatever the error itself said, usually `unknown`: a
-    // handshake that never completed produced no provider payload to name.
-    return classify(knownCategory, 'permanent')
+    return neverRetry(category)
   }
-
-  // Only occ's local precondition error can veto the API retry policy. Provider
-  // SDKs also attach retryable:false to deterministic HTTP failures; those still
-  // reached an API and must receive the configured ten retries. Stream replay
-  // safety is represented separately by `replayable`.
-  if (records.some(record => record instanceof NonRetryableError)) {
-    return neverRetry(apiBoundaryCategory(knownCategory))
-  }
-
-  const permanentSignal = structuredSignalClassification(records, true)
-  if (permanentSignal) return permanentSignal
-
-  for (const record of records) {
-    const status = numericHttpStatus(record.status, true)
-    if (status !== undefined) return classifyHttpStatus(status)
-  }
-
-  const structuredSignal = structuredSignalClassification(records, false)
-  if (structuredSignal) return structuredSignal
-
-  if (records.some(record => record.retryable === true)) {
-    return classify(apiBoundaryCategory(knownCategory), 'transient')
-  }
-
-  for (const message of messages) {
-    const status = statusFromMessage(message)
-    if (status !== undefined) return classifyHttpStatus(status)
-  }
-  for (const message of messages) {
-    const permanent = permanentMessageCategory(message)
-    if (permanent) return classify(permanent, 'permanent')
-  }
-  if (
-    knownCategory === 'authentication_failed' ||
-    knownCategory === 'billing_error' ||
-    knownCategory === 'invalid_request'
-  ) {
-    return classify(knownCategory, 'permanent')
-  }
-  if (messages.some(message => TRANSIENT_ERROR_MESSAGE_PATTERN.test(message))) {
+  if (error instanceof APIConnectionError) {
     return classify('server_error', 'transient')
   }
 
-  return classify(apiBoundaryCategory(knownCategory), 'transient')
+  const retryDirective = retryDirectiveFromRecords(records)
+  if (retryDirective !== undefined) {
+    return retryDirective
+      ? classify(category, 'transient')
+      : neverRetry(category)
+  }
+
+  if (permanentCategory !== undefined) {
+    return neverRetry(permanentCategory)
+  }
+
+  if (explicitStatus !== undefined) {
+    const maxTokensOverflow = messages.some(message =>
+      MAX_TOKENS_OVERFLOW_PATTERN.test(message),
+    )
+    return RETRYABLE_HTTP_STATUSES.has(explicitStatus) ||
+      explicitStatus >= 500 ||
+      maxTokensOverflow
+      ? classify(category, 'transient')
+      : neverRetry(category)
+  }
+
+  const structured = structuredSignalClassification(records, false)
+  if (structured?.persistence === 'transient') {
+    return classify(structured.category, 'transient')
+  }
+
+  if (
+    messages.some(
+      message =>
+        OVERLOADED_ERROR_PATTERN.test(message) ||
+        MAX_TOKENS_OVERFLOW_PATTERN.test(message) ||
+        /fetch failed|terminated|socket hang ?up|body timeout error|headers timeout error|connection (?:error|closed|reset)|other side closed|premature close|stream idle timeout|without receiving any events|upstream request failed|no healthy upstream/i.test(
+          message,
+        ),
+    )
+  ) {
+    return classify(category, 'transient')
+  }
+
+  if (records.some(record => record.retryable === true)) {
+    return classify(category, 'transient')
+  }
+
+  return neverRetry(category)
 }
 
 export type APIErrorDiagnostics = {

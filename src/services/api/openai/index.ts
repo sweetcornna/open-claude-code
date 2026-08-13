@@ -145,8 +145,9 @@ function prependDeferredToolListIfNeeded(
  * only to OpenAI's own endpoint. Strict OpenAI-compatible servers that reject
  * unknown top-level keys pay one failed request per session and are then
  * suppressed for the rest of the process; servers that merely ignore the field
- * pay nothing. The rejection is rethrown so the next request is owned by the
- * caller's unified retry budget rather than becoming an extra attempt here.
+ * pay nothing. The one request without the unsupported field is a protocol-shape
+ * fallback, not a general API retry; any failure from it is handled by the
+ * caller's official retry budget.
  */
 async function createChatStreamWithCacheKeyFallback(params: {
   buildBody: (
@@ -184,9 +185,9 @@ async function createChatStreamWithCacheKeyFallback(params: {
     }
     markPromptCacheKeyRejected()
     logForDebugging(
-      '[OpenAI] endpoint rejected prompt_cache_key; the next retry will omit it and it is suppressed for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.',
+      '[OpenAI] endpoint rejected prompt_cache_key; retrying once without it and suppressing it for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.',
     )
-    throw error
+    return create(undefined)
   }
 }
 
