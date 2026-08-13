@@ -169,6 +169,28 @@ function shouldAllowManagedReadPathsOnly(): boolean {
 }
 
 /**
+ * Resolve the filesystem-isolation policy from trusted settings sources.
+ *
+ * Project and local settings are repository-controlled and may not relax the
+ * sandbox. Managed settings have the first say; when they configure any
+ * filesystem restriction, lower-precedence user/flag settings cannot disable
+ * that layer. This mirrors Claude Code's getEffectiveFilesystemPolicy().
+ */
+function isSandboxFilesystemDisabled(): boolean {
+  const policySettings = getSettingsForSource('policySettings')
+  const managedDisabled = policySettings?.sandbox?.filesystem?.disabled
+  if (managedDisabled !== undefined) return managedDisabled
+
+  if (policySettings?.sandbox?.filesystem !== undefined) return false
+
+  return (
+    getSettingsForSource('flagSettings')?.sandbox?.filesystem?.disabled ??
+    getSettingsForSource('userSettings')?.sandbox?.filesystem?.disabled ??
+    false
+  )
+}
+
+/**
  * Convert Claude Code settings format to SandboxRuntimeConfig format
  * (Function exported for testing)
  *
@@ -279,14 +301,16 @@ export function convertToSandboxRuntimeConfig(
     )
   }
 
-  // sandbox.filesystem.disabled (official 2.1.216 parity): skip filesystem
+  // sandbox.filesystem.disabled (official 2.1.227 parity): skip filesystem
   // isolation — the whole tree becomes writable and the path-collection
   // below is bypassed — while network egress controls stay fully active.
-  // The always-deny set computed above (settings files, managed drop-in,
-  // protected config directories) is kept: "disabled" must never grant a
-  // sandboxed command a settings-file escape that even the ISOLATED mode
-  // forbids.
-  const filesystemDisabled = settings.sandbox?.filesystem?.disabled === true
+  // Only trusted user/flag/managed sources may select this relaxed policy;
+  // repository-controlled project/local settings are ignored. Managed
+  // filesystem restrictions also pin the layer so user/flag settings cannot
+  // turn them off. The always-deny set computed above (settings files, managed
+  // drop-in, protected config directories) is kept: "disabled" must never
+  // grant a settings-file escape that even the isolated mode forbids.
+  const filesystemDisabled = isSandboxFilesystemDisabled()
   if (filesystemDisabled) {
     allowWrite.length = 0
     allowWrite.push('/')

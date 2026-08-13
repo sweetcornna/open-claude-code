@@ -65,12 +65,21 @@ describe('sandbox.credentials (2.1.187 parity, filesystem half)', () => {
     expect(config.filesystem.denyRead.some(p => p.includes('.aws'))).toBe(false)
   })
 
-  test('credential denial survives filesystem.disabled mode', () => {
-    const config = convertToSandboxRuntimeConfig({
+  test('credential denial survives trusted filesystem.disabled mode', () => {
+    const settings = {
       sandbox: { credentials: true, filesystem: { disabled: true } },
-    } as SettingsJson)
+    } as SettingsJson
+    settingsMock.set({
+      ...HERMETIC_SOURCES,
+      getSettingsForSource: source =>
+        source === 'userSettings' ? settings : {},
+    })
+
+    const config = convertToSandboxRuntimeConfig(settings)
     expect(config.filesystem.allowWrite).toContain('/')
     expect(config.filesystem.denyRead).toContain(join(homedir(), '.ssh'))
+
+    settingsMock.set(HERMETIC_SOURCES)
   })
 })
 

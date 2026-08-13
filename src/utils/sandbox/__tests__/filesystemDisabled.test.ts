@@ -14,12 +14,13 @@ mock.module('bun:bundle', () => ({ feature: () => false }))
 // getSettingsFilePathForSource() === undefined poisons every later file in
 // the src/utils shard. See tests/mocks/settings.ts.
 const settingsMock = setupSettingsMock()
-beforeAll(() =>
+const sourceSettings = new Map<string, SettingsJson>()
+const installSourceSettings = () =>
   settingsMock.set({
-    getSettingsForSource: () => ({}),
+    getSettingsForSource: source => sourceSettings.get(source) ?? {},
     getSettingsFilePathForSource: () => undefined,
-  }),
-)
+  })
+beforeAll(installSourceSettings)
 afterAll(() => settingsMock.reset())
 
 const { convertToSandboxRuntimeConfig } = await import('../sandbox-adapter.js')
@@ -27,7 +28,7 @@ const { occConfigDir } = await import('src/config/paths.js')
 
 import type { SettingsJson } from '../../settings/types.js'
 
-describe('sandbox.filesystem.disabled (2.1.216 parity)', () => {
+describe('sandbox.filesystem.disabled trusted-source policy (2.1.227 parity)', () => {
   const baseSettings: SettingsJson = {
     sandbox: {
       filesystem: { disabled: true },
@@ -42,10 +43,28 @@ describe('sandbox.filesystem.disabled (2.1.216 parity)', () => {
     },
   } as SettingsJson
 
-  test('filesystem opens to / and skips rule-derived path collection', () => {
+  test.each([
+    'projectSettings',
+    'localSettings',
+  ] as const)('%s cannot disable filesystem isolation', source => {
+    sourceSettings.clear()
+    sourceSettings.set(source, baseSettings)
+
+    const config = convertToSandboxRuntimeConfig(baseSettings)
+    expect(config.filesystem.allowWrite).toContain('.')
+    expect(config.filesystem.allowWrite).not.toContain('/')
+  })
+
+  test.each([
+    'userSettings',
+    'flagSettings',
+    'policySettings',
+  ] as const)('%s can disable filesystem isolation', source => {
+    sourceSettings.clear()
+    sourceSettings.set(source, baseSettings)
+
     const config = convertToSandboxRuntimeConfig(baseSettings)
     expect(config.filesystem.allowWrite).toContain('/')
-    // Rule-derived paths are NOT collected in disabled mode
     expect(config.filesystem.allowWrite).not.toContain('/srv/data/**')
     expect(
       config.filesystem.denyWrite.some(p => p.includes('/srv/secret')),
@@ -53,7 +72,22 @@ describe('sandbox.filesystem.disabled (2.1.216 parity)', () => {
     expect(config.filesystem.denyRead).toEqual([])
   })
 
+  test('managed filesystem settings prevent lower-trust disabling', () => {
+    sourceSettings.clear()
+    sourceSettings.set('policySettings', {
+      sandbox: { filesystem: { denyWrite: ['/managed/secret'] } },
+    } as SettingsJson)
+    sourceSettings.set('flagSettings', baseSettings)
+    sourceSettings.set('userSettings', baseSettings)
+
+    const config = convertToSandboxRuntimeConfig(baseSettings)
+    expect(config.filesystem.allowWrite).not.toContain('/')
+    expect(config.filesystem.denyWrite).toContain('/managed/secret')
+  })
+
   test('network controls remain fully active', () => {
+    sourceSettings.clear()
+    sourceSettings.set('userSettings', baseSettings)
     const config = convertToSandboxRuntimeConfig(baseSettings)
     expect(config.network.allowedDomains).toContain('example.com')
     expect(config.network.allowedDomains).toContain('allowed.dev')
@@ -62,6 +96,8 @@ describe('sandbox.filesystem.disabled (2.1.216 parity)', () => {
   })
 
   test('protected config directories stay denied even when disabled', () => {
+    sourceSettings.clear()
+    sourceSettings.set('userSettings', baseSettings)
     const config = convertToSandboxRuntimeConfig(baseSettings)
     expect(config.filesystem.denyWrite).toContain(occConfigDir())
   })
@@ -71,6 +107,8 @@ describe('sandbox.filesystem.disabled (2.1.216 parity)', () => {
       ...baseSettings,
       sandbox: { ...baseSettings.sandbox, filesystem: { disabled: false } },
     } as SettingsJson
+    sourceSettings.clear()
+    sourceSettings.set('userSettings', settings)
     const config = convertToSandboxRuntimeConfig(settings)
     expect(config.filesystem.allowWrite).toContain('.')
     expect(config.filesystem.allowWrite).not.toContain('/')

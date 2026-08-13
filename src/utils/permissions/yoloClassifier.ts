@@ -38,6 +38,10 @@ import {
   getBashPromptDenyDescriptions,
 } from './bashClassifier.js'
 import {
+  renderAutoModeSystemPrompt,
+  renderExternalAutoModeSystemPrompt,
+} from './autoModePromptRenderer.js'
+import {
   extractToolUseBlock,
   parseClassifierResponse,
 } from './classifierShared.js'
@@ -123,22 +127,7 @@ function extractTaggedBullets(tagName: string): string[] {
  * classifier sees its instructions.
  */
 export function buildDefaultExternalSystemPrompt(): string {
-  return BASE_PROMPT.replace(
-    '<permissions_template>',
-    () => EXTERNAL_PERMISSIONS_TEMPLATE,
-  )
-    .replace(
-      /<user_allow_rules_to_replace>([\s\S]*?)<\/user_allow_rules_to_replace>/,
-      (_m, defaults: string) => defaults,
-    )
-    .replace(
-      /<user_deny_rules_to_replace>([\s\S]*?)<\/user_deny_rules_to_replace>/,
-      (_m, defaults: string) => defaults,
-    )
-    .replace(
-      /<user_environment_to_replace>([\s\S]*?)<\/user_environment_to_replace>/,
-      (_m, defaults: string) => defaults,
-    )
+  return renderResolvedAutoModeSystemPrompt('external')
 }
 
 function getAutoModeDumpDir(): string {
@@ -476,12 +465,6 @@ export async function buildYoloSystemPrompt(
   context: ToolPermissionContext,
 ): Promise<string> {
   const usingExternal = isUsingExternalPermissions()
-  const systemPrompt = BASE_PROMPT.replace('<permissions_template>', () =>
-    usingExternal
-      ? EXTERNAL_PERMISSIONS_TEMPLATE
-      : ANTHROPIC_PERMISSIONS_TEMPLATE,
-  )
-
   const autoMode = getAutoModeConfig()
   const includeBashPromptRules = feature('BASH_CLASSIFIER')
     ? !usingExternal
@@ -489,45 +472,44 @@ export async function buildYoloSystemPrompt(
   const includePowerShellGuidance = feature('POWERSHELL_AUTO_MODE')
     ? !usingExternal
     : false
-  const allowDescriptions = [
-    ...(includeBashPromptRules ? getBashPromptAllowDescriptions(context) : []),
-    ...(autoMode?.allow ?? []),
-  ]
-  const denyDescriptions = [
-    ...(includeBashPromptRules ? getBashPromptDenyDescriptions(context) : []),
-    ...(includePowerShellGuidance ? POWERSHELL_DENY_GUIDANCE : []),
-    ...(autoMode?.soft_deny ?? []),
-  ]
 
-  // All three sections use the same <foo_to_replace>...</foo_to_replace>
-  // delimiter pattern. The external template wraps its defaults inside the
-  // tags, so user-provided values REPLACE the defaults entirely. The
-  // anthropic template keeps its defaults outside the tags and uses an empty
-  // tag pair at the end of each section, so user-provided values are
-  // strictly ADDITIVE.
-  const userAllow = allowDescriptions.length
-    ? allowDescriptions.map(d => `- ${d}`).join('\n')
-    : undefined
-  const userDeny = denyDescriptions.length
-    ? denyDescriptions.map(d => `- ${d}`).join('\n')
-    : undefined
-  const userEnvironment = autoMode?.environment?.length
-    ? autoMode.environment.map(e => `- ${e}`).join('\n')
-    : undefined
+  return renderResolvedAutoModeSystemPrompt(
+    usingExternal ? 'external' : 'anthropic',
+    {
+      allow: [
+        ...(includeBashPromptRules
+          ? getBashPromptAllowDescriptions(context)
+          : []),
+        ...(autoMode?.allow ?? []),
+      ],
+      soft_deny: [
+        ...(includeBashPromptRules
+          ? getBashPromptDenyDescriptions(context)
+          : []),
+        ...(includePowerShellGuidance ? POWERSHELL_DENY_GUIDANCE : []),
+        ...(autoMode?.soft_deny ?? []),
+      ],
+      environment: autoMode?.environment ?? [],
+    },
+  )
+}
 
-  return systemPrompt
-    .replace(
-      /<user_allow_rules_to_replace>([\s\S]*?)<\/user_allow_rules_to_replace>/,
-      (_m, defaults: string) => userAllow ?? defaults,
+function renderResolvedAutoModeSystemPrompt(
+  template: 'external' | 'anthropic',
+  rules: AutoModeRules = { allow: [], soft_deny: [], environment: [] },
+): string {
+  if (template === 'external') {
+    return renderExternalAutoModeSystemPrompt(
+      BASE_PROMPT,
+      EXTERNAL_PERMISSIONS_TEMPLATE,
+      rules,
     )
-    .replace(
-      /<user_deny_rules_to_replace>([\s\S]*?)<\/user_deny_rules_to_replace>/,
-      (_m, defaults: string) => userDeny ?? defaults,
-    )
-    .replace(
-      /<user_environment_to_replace>([\s\S]*?)<\/user_environment_to_replace>/,
-      (_m, defaults: string) => userEnvironment ?? defaults,
-    )
+  }
+  return renderAutoModeSystemPrompt(
+    BASE_PROMPT,
+    ANTHROPIC_PERMISSIONS_TEMPLATE,
+    rules,
+  )
 }
 // ============================================================================
 // 2-Stage XML Classifier
