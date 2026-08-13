@@ -4,6 +4,16 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.44.0 - 2026-08-13
+
+- **Auto Compact 现在真正使用会话级窗口并贯通所有执行路径。** `CLAUDE_CODE_AUTO_COMPACT_WINDOW`、`--autocompact <auto|tokens>`、`/autocompact`、SDK `apply_flag_settings`、设置热更新、子 Agent 与后台 handoff 共享同一状态；显式 `auto` 会覆盖持久设置而回到模型默认。compact 触发窗口与模型真实 hard-block 上限分离，较小窗口只会更早摘要，不会提前报 `Prompt is too long`；`/context`、token usage、预警和 1M reminder 也使用相同口径。
+- **推理 API 改用单一的 Claude Code 2.1.228 重试内核。** 删除查询级整轮重放和第二套 exhausted 状态，避免 provider 内层重试叠成 10×10 或重复工具副作用；统一错误变换 token、退避、`Retry-After`、fallback、凭据恢复和 `max_tokens` 推进保护。401、AWS/GCP 凭据失败与 stale socket 会重建 client，而不只是清缓存后继续复用旧连接。
+- **修复 `UND_ERR_SOCKET: other side closed` 等流中断无法恢复。** OpenAI Responses、Chat、Gemini、Grok 与 Anthropic 流统一按“尚无输出 / 仅 thinking / 已有可见文本或工具调用”处理：首字节前使用正常重试预算，仅 thinking 最多恢复两次；可见输出后只安全结束部分响应，绝不重放已经展示的文本或工具调用。协议字段降级作为唯一变换不消耗网络重试次数。
+- **运行中排队消息会在正确的工具轮边界继续处理。** 普通 queued prompt 可折入当前 query chain；当达到 `maxTurns`、构造 attachment 失败或请求已 abort 时不再提前消费，而是完整留给 turn-end processor 自动开启下一轮。query 从 running 回到 idle 后会立即唤醒队列，无需等会话退出。
+- **网页与文件读取的安全边界收紧。** WebFetch 的显式 `deny > ask > allow` 规则现在先于内置预批准域名，支持 `domain:*`、`domain:*.example.com`，并规范化大小写、尾点及编码路径边界；FileRead 在任何文件系统访问前阻止 `/proc/<pid>|self/{environ,cmdline,auxv,maps,mem,stat}`，普通 procfs 元数据仍可读取。
+- **Headless 会话恢复更准确且可选择 fail-closed。** `--resume` 在 UUID、URL 与 JSONL 解析失败后可按标题精确搜索：唯一命中直接恢复，多命中列出 session ID 和修改时间要求消歧。新增隐藏的 `--resume-drops-turn <user-message-id>` 校验被截断 suffix 必须完整属于指定 user turn；queued command、compact summary、外部 user、系统注入和未知消息都会拒绝截断。
+- **文件建议索引不再被旧异步任务覆盖。** FileIndex 使用单调 generation 取消过期 build，只在当前 build 完整结束后提交 signature；Typeahead 使用请求序号判定 stale，修复 `A1 → B → A2` 时最早的 A1 结果覆盖最新 A2。
+
 ## 2.43.0 - 2026-08-13
 
 - **Workflow 执行内核改为加固的隔离 VM。** 工作流脚本禁用动态导入、字符串代码生成与 WASM，移除进程、模块加载等逃逸面，冻结内建对象，并在宿主边界严格校验跨 realm 数据、循环引用、访问器和超大数组；计时器由运行实例统一持有和清理。原有 `agent`、`parallel`、`pipeline`、`phase` 与嵌套 workflow 语义保持兼容。
