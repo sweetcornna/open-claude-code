@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import {
+  applyProviderSaveEnv,
+  planProviderSave,
+} from '../../../../components/providerSetup/savePlan.js'
+import { PROVIDER_SETUP_SPECS } from '../../../../components/providerSetup/specs.js'
 import { resetOpencodeCredentialCache } from '../../opencodeCredential.js'
 import { clearOpenAIClientCache, getOpenAIClient } from '../client.js'
 
@@ -39,7 +44,150 @@ describe('getOpenAIClient cache', () => {
     expect(twoRetriesAgain).toBe(twoRetries)
     expect(noRetries.maxRetries).toBe(0)
     expect(twoRetries.maxRetries).toBe(2)
-    expect(clampedRetries.maxRetries).toBe(10)
+    expect(clampedRetries.maxRetries).toBe(15)
+  })
+
+  test('turns a trailing-slash origin into a versioned SDK base', async () => {
+    const seen: {
+      url: string
+      authorization: string | null
+      model: unknown
+    }[] = []
+    // Build the same patch the model step saves, then replay it before the
+    // client is built. Credentials must survive and the selected model must pass
+    // through unchanged to the request body.
+    const plan = planProviderSave({
+      spec: PROVIDER_SETUP_SPECS.openai,
+      status: {
+        state: 'provider_model_setup',
+        kind: 'openai',
+        baseUrl: 'https://gateway.example/',
+        apiKey: 'sk-test',
+        wireApi: 'chat',
+        model: '',
+        maxContext: '',
+        effort: '',
+        haikuModel: '',
+        sonnetModel: '',
+        opusModel: '',
+        fableModel: '',
+        activeField: 'model',
+        entryMode: 'catalog',
+        models: [{ id: 'house-model' }],
+      },
+      values: {
+        model: 'house-model',
+        maxContext: '',
+        effort: '',
+        haiku_model: '',
+        sonnet_model: '',
+        opus_model: '',
+        fable_model: '',
+      },
+      contextTokens: undefined,
+      effortTouched: false,
+      existingSettings: undefined,
+      processEnv: {},
+    })
+    applyProviderSaveEnv(plan.env, undefined, process.env)
+    expect(plan.env.OPENAI_API_KEY).toBe('sk-test')
+    expect(plan.env.OPENAI_MODEL).toBe('house-model')
+    expect(plan.env.OPENAI_WIRE_API).toBe('chat')
+    const client = getOpenAIClient({
+      fetchOverride: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        seen.push({
+          url: String(input),
+          authorization: new Headers(init?.headers).get('authorization'),
+          model: body.model,
+        })
+        return new Response(
+          [
+            `data: ${JSON.stringify({
+              id: 'chatcmpl-test',
+              object: 'chat.completion.chunk',
+              created: 1,
+              model: 'house-model',
+              choices: [
+                {
+                  index: 0,
+                  delta: { role: 'assistant', content: 'OK' },
+                  finish_reason: null,
+                },
+              ],
+            })}`,
+            `data: ${JSON.stringify({
+              id: 'chatcmpl-test',
+              object: 'chat.completion.chunk',
+              created: 1,
+              model: 'house-model',
+              choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+            })}`,
+            'data: [DONE]',
+            '',
+          ].join('\n\n'),
+          { headers: { 'content-type': 'text/event-stream' } },
+        )
+      }) as unknown as typeof fetch,
+    })
+
+    let content = ''
+    const stream = await client.chat.completions.create({
+      model: 'house-model',
+      messages: [{ role: 'user', content: 'Hi' }],
+      max_tokens: 8,
+      stream: true,
+    })
+    for await (const chunk of stream) {
+      content += chunk.choices[0]?.delta.content ?? ''
+    }
+
+    expect(client.baseURL).toBe('https://gateway.example/v1')
+    expect(seen).toEqual([
+      {
+        url: 'https://gateway.example/v1/chat/completions',
+        authorization: 'Bearer sk-test',
+        model: 'house-model',
+      },
+    ])
+    expect(content).toBe('OK')
+  })
+
+  test('keeps an explicit root Chat Completions resource on the root route', async () => {
+    const seen: string[] = []
+    const client = getOpenAIClient({
+      apiKeyOverride: 'sk-test',
+      baseURLOverride: 'https://gateway.example/chat/completions',
+      fetchOverride: (async (input: RequestInfo | URL) => {
+        seen.push(String(input))
+        return new Response(
+          [
+            `data: ${JSON.stringify({
+              id: 'chatcmpl-test',
+              object: 'chat.completion.chunk',
+              created: 1,
+              model: 'house-model',
+              choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+            })}`,
+            'data: [DONE]',
+            '',
+          ].join('\n\n'),
+          { headers: { 'content-type': 'text/event-stream' } },
+        )
+      }) as unknown as typeof fetch,
+    })
+
+    const stream = await client.chat.completions.create({
+      model: 'house-model',
+      messages: [{ role: 'user', content: 'Hi' }],
+      stream: true,
+    })
+    for await (const _chunk of stream) {
+      // Drain the request; only the URL is under test.
+    }
+
+    expect(client.baseURL).toBe('https://gateway.example')
+    expect(seen).toEqual(['https://gateway.example/chat/completions'])
   })
 
   test('splits resource URLs and query params before SDK requests', async () => {

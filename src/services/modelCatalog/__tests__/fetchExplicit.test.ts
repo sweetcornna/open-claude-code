@@ -33,14 +33,13 @@ function makeFetch(
   const fetchImpl = (async (url: string, init?: RequestInit) => {
     calls.push({ url: String(url), init })
     if (response instanceof Error) throw response
-    return {
-      ok: (response.status ?? 200) >= 200 && (response.status ?? 200) < 300,
-      status: response.status ?? 200,
-      json: async () => {
-        if (response.invalidJson) throw new Error('Unexpected token')
-        return response.body
+    return new Response(
+      response.invalidJson ? 'not JSON' : JSON.stringify(response.body),
+      {
+        status: response.status ?? 200,
+        headers: { 'content-type': 'application/json' },
       },
-    } as unknown as Response
+    )
   }) as unknown as typeof fetch
   return { fetchImpl, calls }
 }
@@ -187,6 +186,36 @@ describe('fetchAnthropicCompatibleModelsWith', () => {
     ).toBeNull()
     expect(reasons).toEqual([reason])
     expect(calls).toEqual([])
+  })
+})
+
+describe('fetchOpenAICompatibleModelsWith', () => {
+  test.each([
+    ['https://gateway.example', 'https://gateway.example/v1/models'],
+    ['https://gateway.example/', 'https://gateway.example/v1/models'],
+    ['https://gateway.example/v1/', 'https://gateway.example/v1/models'],
+    [
+      'https://gateway.example/chat/completions',
+      'https://gateway.example/models',
+    ],
+    ['https://gateway.example/responses', 'https://gateway.example/models'],
+  ])('normalizes %s before the authenticated model request', async (baseURL, expectedURL) => {
+    const { fetchImpl, calls } = makeFetch({
+      body: { object: 'list', data: [{ id: 'house-model' }] },
+    })
+
+    const models = await explicit.fetchOpenAICompatibleModelsWith({
+      baseURL,
+      apiKey: 'sk-test',
+      fetchImpl,
+    })
+
+    expect(models).toEqual([{ id: 'house-model' }])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(expectedURL)
+    expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBe(
+      'Bearer sk-test',
+    )
   })
 })
 

@@ -2,10 +2,7 @@ import OpenAI from 'openai'
 import { openaiAdapter } from 'src/services/providerUsage/adapters/openai.js'
 import { updateProviderBuckets } from 'src/services/providerUsage/store.js'
 import { getProxyFetchOptions } from 'src/utils/network/proxy.js'
-import {
-  normalizeProviderBaseURL,
-  splitProviderBaseURL,
-} from 'src/utils/network/providerUrl.js'
+import { splitProviderBaseURL } from 'src/utils/network/providerUrl.js'
 import {
   applyOpencodeWire,
   isOpencodeSessionActive,
@@ -25,7 +22,7 @@ import { clampOpenAIMaxRetries } from './retry.js'
 let cachedClient:
   | {
       apiKey: string
-      baseURL: string | undefined
+      connectionKey: string | undefined
       maxRetries: number
       client: OpenAI
     }
@@ -106,18 +103,24 @@ export function getOpenAIClient(options?: {
   const apiKey = options?.apiKeyOverride ?? process.env.OPENAI_API_KEY ?? ''
   const configuredBaseURL =
     options?.baseURLOverride ?? process.env.OPENAI_BASE_URL
-  const baseURL = configuredBaseURL?.trim()
-    ? normalizeProviderBaseURL(configuredBaseURL, 'openai')
+  // Derive the SDK connection once. In particular, `/chat/completions` means
+  // the root route while a bare origin means `/v1`; normalizing once here and
+  // again inside split used to erase that distinction.
+  const connection = configuredBaseURL?.trim()
+    ? splitProviderBaseURL(configuredBaseURL, 'openai')
     : undefined
-  const connection = baseURL
-    ? splitProviderBaseURL(baseURL, 'openai')
+  const connectionKey = connection
+    ? JSON.stringify({
+        baseURL: connection.baseURL,
+        defaultQuery: connection.defaultQuery ?? null,
+      })
     : undefined
   const maxRetries = clampOpenAIMaxRetries(options?.maxRetries ?? 0, 0)
   if (
     cachedClient &&
     !hasConnectionOverride &&
     cachedClient.apiKey === apiKey &&
-    cachedClient.baseURL === baseURL &&
+    cachedClient.connectionKey === connectionKey &&
     cachedClient.maxRetries === maxRetries
   ) {
     return cachedClient.client
@@ -145,7 +148,7 @@ export function getOpenAIClient(options?: {
   })
 
   if (!options?.fetchOverride && !hasConnectionOverride) {
-    cachedClient = { apiKey, baseURL, maxRetries, client }
+    cachedClient = { apiKey, connectionKey, maxRetries, client }
   }
 
   return client

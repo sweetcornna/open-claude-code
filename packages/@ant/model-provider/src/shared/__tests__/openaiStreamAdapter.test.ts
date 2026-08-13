@@ -72,6 +72,51 @@ describe('adaptOpenAIStreamToAnthropic', () => {
     })
   })
 
+  test('accepts output followed by terminal usage when finish_reason is omitted', async () => {
+    // Some compatible gateways end after the include_usage chunk and omit both
+    // finish_reason and [DONE]. Non-zero completion usage after actual output is
+    // still a complete response; accepting either signal alone would hide a
+    // genuinely truncated stream.
+    const events = await collectEvents([
+      makeChunk({
+        choices: [{ index: 0, delta: { content: 'OK' }, finish_reason: null }],
+      }),
+      makeChunk({
+        choices: [],
+        usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
+      }),
+    ])
+
+    expect(
+      events.find(e => e.type === 'message_delta')?.delta.stop_reason,
+    ).toBe('end_turn')
+    expect(events.at(-1)?.type).toBe('message_stop')
+  })
+
+  test('terminal usage alone does not turn an empty response into success', async () => {
+    await expect(
+      collectEvents([
+        makeChunk({
+          choices: [],
+          usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
+        }),
+      ]),
+    ).rejects.toMatchObject({ name: 'IncompleteOpenAIStreamError' })
+  })
+
+  test('output without terminal usage is still an incomplete stream', async () => {
+    await expect(
+      collectEvents([
+        makeChunk({
+          choices: [
+            { index: 0, delta: { content: 'partial' }, finish_reason: null },
+          ],
+        }),
+        makeChunk({ choices: [], usage: { completion_tokens: 0 } as any }),
+      ]),
+    ).rejects.toMatchObject({ name: 'IncompleteOpenAIStreamError' })
+  })
+
   test('emits message_start on first chunk', async () => {
     const events = await collectEvents([
       makeChunk({

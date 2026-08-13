@@ -13,6 +13,7 @@ type SplitProviderBaseURL = {
 
 const ANTHROPIC_RESOURCE_SUFFIX = /\/v1\/(?:messages|models|files)(?:\/.*)?$/i
 const OPENAI_RESOURCE_SUFFIX = /\/(?:chat\/completions|responses)$/i
+const OPENAI_ROOT_RESOURCE_PATH = /^\/(?:chat\/completions|responses)\/*$/i
 /** `…/models/gpt-5` — naming a model can only ever be a resource, not a base. */
 const OPENAI_MODEL_RESOURCE_SUFFIX = /\/models\/[^/]+$/i
 /**
@@ -107,18 +108,40 @@ export function normalizeProviderBaseURL(
   }
   const query = new URLSearchParams()
   for (const [key, value] of url.searchParams) query.set(key, value)
-  url.pathname = normalizePathname(url.pathname, kind)
+  // OpenAI SDK base URLs include the API version. A user-entered bare origin is
+  // therefore shorthand for `/v1`; keeping it at `/` can make GET /models look
+  // healthy while POST /chat/completions lands on an unrelated web application.
+  // A root resource is different: it explicitly selects the unversioned API.
+  // Preserve that resource here so the canonical string carries its provenance;
+  // split/build remove it exactly once when deriving the request base.
+  const shouldInferOpenAIV1 = kind === 'openai' && /^\/+$/u.test(url.pathname)
+  const rootOpenAIResource =
+    kind === 'openai' && OPENAI_ROOT_RESOURCE_PATH.test(url.pathname)
+      ? stripTrailingSlashes(url.pathname)
+      : undefined
+  url.pathname = rootOpenAIResource ?? normalizePathname(url.pathname, kind)
+  if (shouldInferOpenAIV1) url.pathname = '/v1'
   url.search = query.toString()
   url.hash = ''
   return serializeBaseURL(url)
 }
 
-/** Split a canonical base into the fields accepted by provider SDK clients. */
+function requestBaseURL(baseURL: string, kind: ProviderURLKind): URL {
+  const url = new URL(normalizeProviderBaseURL(baseURL, kind))
+  if (kind === 'openai' && OPENAI_ROOT_RESOURCE_PATH.test(url.pathname)) {
+    url.pathname = '/'
+  } else {
+    url.pathname = normalizePathname(url.pathname, kind)
+  }
+  return url
+}
+
+/** Split a provider URL into the fields accepted by provider SDK clients. */
 export function splitProviderBaseURL(
   baseURL: string,
   kind: ProviderURLKind,
 ): SplitProviderBaseURL {
-  const url = new URL(normalizeProviderBaseURL(baseURL, kind))
+  const url = requestBaseURL(baseURL, kind)
   const defaultQuery: Record<string, string | undefined> = {}
   for (const [key, value] of url.searchParams) defaultQuery[key] = value
   url.search = ''
@@ -135,7 +158,7 @@ export function buildProviderResourceURL(
   resourcePath: string,
   query: Record<string, string | number | undefined> = {},
 ): string {
-  const url = new URL(normalizeProviderBaseURL(baseURL, kind))
+  const url = requestBaseURL(baseURL, kind)
   const basePath = url.pathname === '/' ? '' : url.pathname
   url.pathname = `${basePath}/${resourcePath.replace(/^\/+/, '')}`
   for (const [key, value] of Object.entries(query)) {

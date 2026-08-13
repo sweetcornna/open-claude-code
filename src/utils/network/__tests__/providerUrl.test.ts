@@ -23,6 +23,31 @@ describe('normalizeProviderBaseURL', () => {
       'https://gateway.example/tenant',
     ],
     [
+      'https://gateway.example',
+      'openai' as const,
+      'https://gateway.example/v1',
+    ],
+    [
+      'https://gateway.example/',
+      'openai' as const,
+      'https://gateway.example/v1',
+    ],
+    [
+      'https://gateway.example/v1/',
+      'openai' as const,
+      'https://gateway.example/v1',
+    ],
+    [
+      'https://gateway.example/chat/completions///',
+      'openai' as const,
+      'https://gateway.example/chat/completions',
+    ],
+    [
+      'https://gateway.example/responses',
+      'openai' as const,
+      'https://gateway.example/responses',
+    ],
+    [
       'https://gateway.example/tenant/v1/chat/completions///',
       'openai' as const,
       'https://gateway.example/tenant/v1',
@@ -42,8 +67,10 @@ describe('normalizeProviderBaseURL', () => {
       'antigravity' as const,
       'https://gateway.example',
     ],
-  ])('canonicalizes %s', (input, kind, expected) => {
-    expect(normalizeProviderBaseURL(input, kind)).toBe(expected)
+  ])('canonicalizes %s idempotently', (input, kind, expected) => {
+    const normalized = normalizeProviderBaseURL(input, kind)
+    expect(normalized).toBe(expected)
+    expect(normalizeProviderBaseURL(normalized, kind)).toBe(normalized)
   })
 
   test.each([
@@ -61,8 +88,12 @@ describe('normalizeProviderBaseURL', () => {
       'https://api.deepseek.com/anthropic/v1/messages',
       'https://api.deepseek.com/anthropic',
     ],
-  ])('normalizes DeepSeek Anthropic base %s', (input, expected) => {
-    expect(normalizeProviderBaseURL(input, 'deepseekAnthropic')).toBe(expected)
+  ])('normalizes DeepSeek Anthropic base %s idempotently', (input, expected) => {
+    const normalized = normalizeProviderBaseURL(input, 'deepseekAnthropic')
+    expect(normalized).toBe(expected)
+    expect(normalizeProviderBaseURL(normalized, 'deepseekAnthropic')).toBe(
+      normalized,
+    )
   })
 
   test.each([
@@ -77,7 +108,9 @@ describe('normalizeProviderBaseURL', () => {
     ['https://gw.example/zen/models', 'https://gw.example/zen/models'],
     ['https://gw.example/models', 'https://gw.example/models'],
   ])('does not mistake the base path %s for a resource', (input, expected) => {
-    expect(normalizeProviderBaseURL(input, 'openai')).toBe(expected)
+    const normalized = normalizeProviderBaseURL(input, 'openai')
+    expect(normalized).toBe(expected)
+    expect(normalizeProviderBaseURL(normalized, 'openai')).toBe(normalized)
   })
 
   test('preserves path and query case while dropping fragments', () => {
@@ -107,6 +140,15 @@ describe('normalizeProviderBaseURL', () => {
 })
 
 describe('splitProviderBaseURL', () => {
+  test.each([
+    ['https://gateway.example', 'https://gateway.example/v1'],
+    ['https://gateway.example/', 'https://gateway.example/v1'],
+    ['https://gateway.example/chat/completions', 'https://gateway.example'],
+    ['https://gateway.example/responses', 'https://gateway.example'],
+  ])('derives the intended OpenAI request base from %s', (input, expected) => {
+    expect(splitProviderBaseURL(input, 'openai').baseURL).toBe(expected)
+  })
+
   test('separates SDK query parameters from the clean base URL', () => {
     expect(
       splitProviderBaseURL(
@@ -124,6 +166,17 @@ describe('splitProviderBaseURL', () => {
 })
 
 describe('buildProviderResourceURL', () => {
+  test.each([
+    ['https://gateway.example', 'https://gateway.example/v1/models'],
+    [
+      'https://gateway.example/chat/completions',
+      'https://gateway.example/models',
+    ],
+    ['https://gateway.example/responses', 'https://gateway.example/models'],
+  ])('builds an OpenAI resource from %s', (input, expected) => {
+    expect(buildProviderResourceURL(input, 'openai', 'models')).toBe(expected)
+  })
+
   test('appends a resource after the proxy prefix and merges query params', () => {
     expect(
       buildProviderResourceURL(
