@@ -24,10 +24,14 @@ export const KEYBINDING_CONTEXTS = [
   // New contexts for keybindings migration
   'Attachments',
   'Footer',
+  'FormField',
+  'MessageActions',
   'MessageSelector',
   'DiffDialog',
   'ModelPicker',
+  'EffortPanel',
   'TaskDetail',
+  'Scroll',
   'Select',
   'Plugin',
 ] as const
@@ -52,10 +56,14 @@ export const KEYBINDING_CONTEXT_DESCRIPTIONS: Record<
   Tabs: 'When tab navigation is active',
   Attachments: 'When navigating image attachments in a select dialog',
   Footer: 'When footer indicators are focused',
+  FormField: 'When navigating fields in login and setup forms',
+  MessageActions: 'When the message actions menu is open',
   MessageSelector: 'When the message selector (rewind) is open',
   DiffDialog: 'When the diff dialog is open',
   ModelPicker: 'When the model picker is open',
+  EffortPanel: 'When the effort selection panel is open',
   TaskDetail: 'When a background task detail panel is open',
+  Scroll: 'When a scrollable view is focused',
   Select: 'When a select/list component is focused',
   Plugin: 'When the plugin dialog is open',
 }
@@ -127,6 +135,14 @@ export const KEYBINDING_ACTIONS = [
   'theme:toggleSyntaxHighlighting',
   // Help menu actions
   'help:dismiss',
+  // Scroll and selection actions
+  'scroll:pageUp',
+  'scroll:pageDown',
+  'scroll:lineUp',
+  'scroll:lineDown',
+  'scroll:top',
+  'scroll:bottom',
+  'selection:copy',
   // Attachment navigation (select dialog image attachments)
   'attachments:next',
   'attachments:previous',
@@ -146,6 +162,18 @@ export const KEYBINDING_ACTIONS = [
   'messageSelector:top',
   'messageSelector:bottom',
   'messageSelector:select',
+  // Message actions menu
+  'messageActions:prev',
+  'messageActions:next',
+  'messageActions:top',
+  'messageActions:bottom',
+  'messageActions:prevUser',
+  'messageActions:nextUser',
+  'messageActions:escape',
+  'messageActions:ctrlc',
+  'messageActions:enter',
+  'messageActions:c',
+  'messageActions:p',
   // Diff dialog actions
   'diff:dismiss',
   'diff:previousSource',

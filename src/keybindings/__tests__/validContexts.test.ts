@@ -16,10 +16,29 @@
  */
 import { describe, expect, test } from 'bun:test'
 import { DEFAULT_BINDINGS } from '../defaultBindings.js'
+import {
+  KEYBINDING_ACTIONS,
+  KEYBINDING_CONTEXTS,
+  KeybindingsSchema,
+} from '../schema.js'
+import {
+  clearBundledSkills,
+  getBundledSkills,
+} from '../../skills/bundledSkills.js'
+import { registerKeybindingsSkill } from '../../skills/bundled/keybindings.js'
 import { validateUserConfig } from '../validate.js'
 
-describe('VALID_CONTEXTS covers every shipped default context', () => {
+describe('keybinding schemas cover every shipped default', () => {
   const defaultContexts = [...new Set(DEFAULT_BINDINGS.map(b => b.context))]
+  const defaultActions = [
+    ...new Set(
+      DEFAULT_BINDINGS.flatMap(block =>
+        Object.values(block.bindings).filter(
+          (action): action is string => action !== null,
+        ),
+      ),
+    ),
+  ]
 
   test('DEFAULT_BINDINGS declares at least the well-known contexts', () => {
     // Guards against the source list silently emptying out (e.g. a bad merge),
@@ -29,8 +48,51 @@ describe('VALID_CONTEXTS covers every shipped default context', () => {
     expect(defaultContexts).toContain('EffortPanel')
   })
 
+  test('schema lists every default context and action', () => {
+    expect(
+      defaultContexts.filter(
+        context =>
+          !(KEYBINDING_CONTEXTS as readonly string[]).includes(context),
+      ),
+    ).toEqual([])
+    expect(
+      defaultActions.filter(
+        action => !(KEYBINDING_ACTIONS as readonly string[]).includes(action),
+      ),
+    ).toEqual([])
+  })
+
+  test('the public schema accepts all default binding blocks', () => {
+    expect(
+      KeybindingsSchema().safeParse({ bindings: DEFAULT_BINDINGS }).success,
+    ).toBe(true)
+  })
+
+  test('the keybindings-help prompt lists every default action', async () => {
+    clearBundledSkills()
+    try {
+      registerKeybindingsSkill()
+      const skill = getBundledSkills().find(
+        command => command.name === 'keybindings-help',
+      )
+      expect(skill?.type).toBe('prompt')
+      if (!skill || skill.type !== 'prompt') return
+
+      const blocks = await skill.getPromptForCommand('', {} as never)
+      const prompt = blocks
+        .filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join('\n')
+      for (const action of defaultActions) {
+        expect(prompt).toContain(`\`${action}\``)
+      }
+    } finally {
+      clearBundledSkills()
+    }
+  })
+
   for (const context of defaultContexts) {
-    test(`context "${context}" is accepted in a user keybindings.json`, () => {
+    test(`context "${context}" is accepted by runtime validation`, () => {
       const warnings = validateUserConfig([{ context, bindings: {} }])
       const contextErrors = warnings.filter(w => w.type === 'invalid_context')
       expect(contextErrors).toEqual([])
