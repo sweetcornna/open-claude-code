@@ -351,6 +351,10 @@ export class QueryEngine {
         verbose,
         mainLoopModel: initialMainLoopModel,
         modelSettingsSlot: getMainLoopModelSettingsSlot(initialMainLoopModel),
+        sessionModelSettingsOverrides:
+          initialAppState.sessionModelSettingsOverrides,
+        autoCompactWindow: initialAppState.autoCompactWindow,
+        autoCompactWindowOverride: initialAppState.autoCompactWindowOverride,
         thinkingConfig: initialThinkingConfig,
         mcpClients,
         mcpResources: {},
@@ -486,6 +490,7 @@ export class QueryEngine {
     }))
 
     const mainLoopModel = modelFromUserInput ?? initialMainLoopModel
+    const currentAppState = getAppState()
 
     // Recreate after processing the prompt to pick up updated messages and
     // model (from slash commands).
@@ -501,6 +506,10 @@ export class QueryEngine {
         verbose,
         mainLoopModel,
         modelSettingsSlot: getMainLoopModelSettingsSlot(mainLoopModel),
+        sessionModelSettingsOverrides:
+          currentAppState.sessionModelSettingsOverrides,
+        autoCompactWindow: currentAppState.autoCompactWindow,
+        autoCompactWindowOverride: currentAppState.autoCompactWindowOverride,
         thinkingConfig: initialThinkingConfig,
         mcpClients,
         mcpResources: {},

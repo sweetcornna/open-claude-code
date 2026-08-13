@@ -123,17 +123,38 @@ const BLOCKED_DEVICE_PATHS = new Set([
   '/dev/fd/2',
 ])
 
-function isBlockedDevicePath(filePath: string): boolean {
-  if (BLOCKED_DEVICE_PATHS.has(filePath)) return true
-  // /proc/self/fd/0-2 and /proc/<pid>/fd/0-2 are Linux aliases for stdio
+const BLOCKED_PROC_FILES = new Set([
+  'environ',
+  'cmdline',
+  'auxv',
+  'maps',
+  'mem',
+  'stat',
+])
+
+function blockedSpecialFileReason(filePath: string): string | undefined {
+  if (BLOCKED_DEVICE_PATHS.has(filePath)) {
+    return 'this device file would block or produce infinite output'
+  }
+  const normalized = filePath.replaceAll('\\', '/')
+  if (!normalized.startsWith('/proc/')) return undefined
   if (
-    filePath.startsWith('/proc/') &&
-    (filePath.endsWith('/fd/0') ||
-      filePath.endsWith('/fd/1') ||
-      filePath.endsWith('/fd/2'))
-  )
-    return true
-  return false
+    normalized.endsWith('/fd/0') ||
+    normalized.endsWith('/fd/1') ||
+    normalized.endsWith('/fd/2')
+  ) {
+    return 'this device file would block or produce infinite output'
+  }
+  const segments = normalized.split('/').filter(Boolean)
+  if (
+    segments[0] === 'proc' &&
+    segments.length === 3 &&
+    (segments[1] === 'self' || /^\d+$/.test(segments[1] ?? '')) &&
+    BLOCKED_PROC_FILES.has(segments[2] ?? '')
+  ) {
+    return 'this procfs file may expose process secrets or memory'
+  }
+  return undefined
 }
 
 // Narrow no-break space (U+202F) used by some macOS versions in screenshot filenames
@@ -467,6 +488,15 @@ export const FileReadTool = buildTool({
       }
     }
 
+    const blockedReason = blockedSpecialFileReason(fullFilePath)
+    if (blockedReason) {
+      return {
+        result: false,
+        message: `Cannot read '${file_path}': ${blockedReason}.`,
+        errorCode: 9,
+      }
+    }
+
     // SECURITY: UNC path check (no I/O) — defer filesystem operations
     // until after user grants permission to prevent NTLM credential leaks
     const isUncPath =
@@ -504,16 +534,6 @@ export const FileReadTool = buildTool({
         result: false,
         message: `This tool cannot read binary files. The file appears to be a binary ${ext} file. Please use appropriate tools for binary file analysis.`,
         errorCode: 4,
-      }
-    }
-
-    // Block specific device files that would hang (infinite output or blocking input).
-    // This is a path-based check with no I/O — safe special files like /dev/null are allowed.
-    if (isBlockedDevicePath(fullFilePath)) {
-      return {
-        result: false,
-        message: `Cannot read '${file_path}': this device file would block or produce infinite output.`,
-        errorCode: 9,
       }
     }
 

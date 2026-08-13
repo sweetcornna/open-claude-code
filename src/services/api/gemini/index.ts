@@ -16,7 +16,10 @@ import {
   createAssistantAPIErrorMessageFromError,
   normalizeMessagesForAPI,
 } from '../../../utils/messages.js'
-import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import {
+  assembleFinalAssistantOutputs,
+  retryThirdPartyEventStream,
+} from '../streamAssembly.js'
 import { isUserAbort } from '../userAbort.js'
 import { resolveAppliedEffort } from '../../../utils/model/effort.js'
 import { applyGeminiEffortToThinkingBudget } from './reasoning.js'
@@ -117,7 +120,7 @@ export async function* queryModelGemini(
         ? geminiMaxTokensRaw
         : undefined
 
-    const stream = streamGeminiGenerateContent({
+    const request = {
       model: geminiModel,
       signal,
       fetchOverride: options.fetchOverride as typeof fetch | undefined,
@@ -158,13 +161,20 @@ export async function* queryModelGemini(
           }),
         },
       },
-    })
+    }
 
     logForDebugging(
       `[Gemini] Calling model=${geminiModel}, messages=${contents.length}, tools=${geminiTools.length}`,
     )
 
-    const adaptedStream = adaptGeminiStreamToAnthropic(stream, geminiModel)
+    const adaptedStream = retryThirdPartyEventStream({
+      signal,
+      create: async () =>
+        adaptGeminiStreamToAnthropic(
+          streamGeminiGenerateContent(request),
+          geminiModel,
+        ),
+    })
     const contentBlocks: Record<number, Record<string, unknown>> = {}
     const collectedMessages: AssistantMessage[] = []
     let partialMessage: BetaMessage | null = null

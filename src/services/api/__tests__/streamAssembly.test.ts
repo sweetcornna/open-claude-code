@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import type { BetaMessage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import type {
+  BetaMessage,
+  BetaRawMessageStreamEvent,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import {
+  assembleFinalAssistantOutputs,
+  retryThirdPartyEventStream,
+} from '../streamAssembly.js'
 
 const PARTIAL: BetaMessage = {
   id: 'msg_test',
@@ -24,6 +30,119 @@ const CACHED_USAGE = {
   cache_creation_input_tokens: 0,
   cache_read_input_tokens: 28_800,
 }
+
+async function collectStream(
+  stream: AsyncIterable<BetaRawMessageStreamEvent>,
+): Promise<BetaRawMessageStreamEvent[]> {
+  const events: BetaRawMessageStreamEvent[] = []
+  for await (const event of stream) events.push(event)
+  return events
+}
+
+const messageStart = {
+  type: 'message_start',
+  message: PARTIAL,
+} as unknown as BetaRawMessageStreamEvent
+const messageStop = {
+  type: 'message_stop',
+} as BetaRawMessageStreamEvent
+
+function socketClosed(): Error {
+  return Object.assign(new Error('other side closed'), {
+    code: 'UND_ERR_SOCKET',
+  })
+}
+
+describe('retryThirdPartyEventStream', () => {
+  test('retries UND_ERR_SOCKET before any model output', async () => {
+    let attempts = 0
+    const events = await collectStream(
+      retryThirdPartyEventStream({
+        signal: new AbortController().signal,
+        maxRetries: 1,
+        delay: async () => {},
+        create: async () =>
+          (async function* () {
+            attempts++
+            if (attempts === 1) throw socketClosed()
+            yield messageStart
+            yield messageStop
+          })(),
+      }),
+    )
+
+    expect(attempts).toBe(2)
+    expect(events).toEqual([messageStart, messageStop])
+  })
+
+  test('retries a thinking-only disconnect at most twice', async () => {
+    let attempts = 0
+    const events = await collectStream(
+      retryThirdPartyEventStream({
+        signal: new AbortController().signal,
+        maxRetries: 10,
+        delay: async () => {},
+        create: async () =>
+          (async function* () {
+            attempts++
+            yield messageStart
+            yield {
+              type: 'content_block_start',
+              index: 0,
+              content_block: { type: 'thinking', thinking: '', signature: '' },
+            } as BetaRawMessageStreamEvent
+            yield {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'thinking_delta', thinking: 'reasoning' },
+            } as BetaRawMessageStreamEvent
+            if (attempts < 3) throw socketClosed()
+            yield { type: 'content_block_stop', index: 0 }
+            yield messageStop
+          })(),
+      }),
+    )
+
+    expect(attempts).toBe(3)
+    expect(events.filter(event => event.type === 'message_stop')).toHaveLength(
+      3,
+    )
+  })
+
+  test('finalizes visible output instead of replaying the request', async () => {
+    let attempts = 0
+    const events = await collectStream(
+      retryThirdPartyEventStream({
+        signal: new AbortController().signal,
+        maxRetries: 10,
+        delay: async () => {},
+        create: async () =>
+          (async function* () {
+            attempts++
+            yield messageStart
+            yield {
+              type: 'content_block_start',
+              index: 0,
+              content_block: { type: 'text', text: '' },
+            } as BetaRawMessageStreamEvent
+            yield {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: 'visible' },
+            } as BetaRawMessageStreamEvent
+            throw socketClosed()
+          })(),
+      }),
+    )
+
+    expect(attempts).toBe(1)
+    expect(events.at(-2)).toMatchObject({
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' },
+    })
+    expect(events.at(-1)).toEqual(messageStop)
+  })
+})
 
 describe('assembleFinalAssistantOutputs', () => {
   test('lands the accumulated usage on the assembled message', () => {

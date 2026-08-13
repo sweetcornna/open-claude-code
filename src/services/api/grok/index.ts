@@ -15,7 +15,7 @@ import type {
   ChatCompletionChunk,
   ChatCompletionCreateParamsStreaming,
 } from 'openai/resources/chat/completions/completions.mjs'
-import { getGrokClient } from './client.js'
+import { clearGrokClientCache, getGrokClient } from './client.js'
 import { updateOpenAIUsage } from '../openai/openaiShared.js'
 import {
   anthropicMessagesToOpenAI,
@@ -42,7 +42,10 @@ import type { Options } from '../claude.js'
 import { resolveAppliedEffort } from '../../../utils/model/effort.js'
 import { resolveGrokReasoningEffort } from './reasoning.js'
 import { OpenAIRequestError } from '../openai/retry.js'
-import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import {
+  assembleFinalAssistantOutputs,
+  retryThirdPartyEventStream,
+} from '../streamAssembly.js'
 import { isUserAbort } from '../userAbort.js'
 
 const GROK_MAX_TOKENS_ENV_HINT =
@@ -94,11 +97,12 @@ export async function* queryModelGrok(
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
 
-    const client = getGrokClient({
-      maxRetries: 0,
-      fetchOverride: options.fetchOverride as typeof fetch | undefined,
-      source: options.querySource,
-    })
+    const getClient = () =>
+      getGrokClient({
+        maxRetries: 0,
+        fetchOverride: options.fetchOverride as typeof fetch | undefined,
+        source: options.querySource,
+      })
 
     logForDebugging(
       `[Grok] Calling model=${grokModel}, messages=${openaiMessages.length}, tools=${openaiTools.length}`,
@@ -124,35 +128,34 @@ export async function* queryModelGrok(
       ),
     )
 
-    const stream = await client.chat.completions.create(
-      {
-        model: grokModel,
-        messages: openaiMessages,
-        ...(openaiTools.length > 0 && {
-          tools: openaiTools,
-          ...(openaiToolChoice && { tool_choice: openaiToolChoice }),
-        }),
-        stream: true,
-        stream_options: { include_usage: true },
-        ...(Number.isFinite(grokMaxTokens) &&
-          grokMaxTokens > 0 && { max_tokens: grokMaxTokens }),
-        ...(options.temperatureOverride !== undefined && {
-          temperature: options.temperatureOverride,
-        }),
-        // Only the grok-3-mini family takes this; the grok-4 reasoning models
-        // reject it, so the resolver returns undefined for them and the body is
-        // byte-identical to what it has always been.
-        ...(grokReasoningEffort && { reasoning_effort: grokReasoningEffort }),
-      } as ChatCompletionCreateParamsStreaming,
-      {
-        signal,
-      },
-    )
+    const request = {
+      model: grokModel,
+      messages: openaiMessages,
+      ...(openaiTools.length > 0 && {
+        tools: openaiTools,
+        ...(openaiToolChoice && { tool_choice: openaiToolChoice }),
+      }),
+      stream: true,
+      stream_options: { include_usage: true },
+      ...(Number.isFinite(grokMaxTokens) &&
+        grokMaxTokens > 0 && { max_tokens: grokMaxTokens }),
+      ...(options.temperatureOverride !== undefined && {
+        temperature: options.temperatureOverride,
+      }),
+      ...(grokReasoningEffort && { reasoning_effort: grokReasoningEffort }),
+    } as ChatCompletionCreateParamsStreaming
 
-    const adaptedStream = adaptOpenAIStreamToAnthropic(
-      stream as AsyncIterable<ChatCompletionChunk>,
-      grokModel,
-    )
+    const adaptedStream = retryThirdPartyEventStream({
+      signal,
+      onRetry: () => clearGrokClientCache(),
+      create: async () =>
+        adaptOpenAIStreamToAnthropic(
+          (await getClient().chat.completions.create(request, {
+            signal,
+          })) as AsyncIterable<ChatCompletionChunk>,
+          grokModel,
+        ),
+    })
 
     const contentBlocks: Record<number, Record<string, unknown>> = {}
     const collectedMessages: AssistantMessage[] = []

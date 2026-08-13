@@ -1219,7 +1219,6 @@ async function fetchResponsesStream(params: {
   // Read at attempt time, not captured once: optional-field degradation
   // replaces it before the same retry ladder advances to its next attempt.
   let request = params.request
-  let retryOptionalFieldRejection = false
 
   const attempt = async () => {
     const body = JSON.stringify(request)
@@ -1272,35 +1271,6 @@ async function fetchResponsesStream(params: {
     } catch (error) {
       cleanup()
       if (!controller.signal.aborted) controller.abort(error)
-      if (!params.signal.aborted) {
-        if (request.reasoning?.summary && isReasoningSummaryRejection(error)) {
-          reasoningSummaryRejected = true
-          retryOptionalFieldRejection = true
-          logForDebugging(
-            `[OpenAI] ${params.label} rejected reasoning.summary; retrying without it and suppressing it for the rest of the session. Set OPENAI_REASONING_SUMMARY=off to skip this probe.`,
-          )
-          request = withoutReasoningSummary(request)
-        }
-        if (
-          params.allowPromptCacheKeyFallback &&
-          request.prompt_cache_key &&
-          isPromptCacheKeyRejection(error)
-        ) {
-          markPromptCacheKeyRejected('responses')
-          retryOptionalFieldRejection = true
-          logForDebugging(
-            `[OpenAI] ${params.label} rejected prompt_cache_key; retrying without it and suppressing it for compatible Responses endpoints for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.`,
-          )
-          request = withoutPromptCacheKey(request)
-        }
-      }
-      if (retryOptionalFieldRejection) {
-        retryOptionalFieldRejection = false
-        throw new OpenAIRequestError(
-          error instanceof Error ? error.message : String(error),
-          { retryable: true, status: 503, cause: error },
-        )
-      }
       throw error
     }
   }
@@ -1310,6 +1280,30 @@ async function fetchResponsesStream(params: {
     ...(params.maxRetries !== undefined
       ? { maxRetries: params.maxRetries }
       : {}),
+    onError: error => {
+      if (params.signal.aborted) return undefined
+      if (request.reasoning?.summary && isReasoningSummaryRejection(error)) {
+        reasoningSummaryRejected = true
+        logForDebugging(
+          `[OpenAI] ${params.label} rejected reasoning.summary; retrying without it and suppressing it for the rest of the session. Set OPENAI_REASONING_SUMMARY=off to skip this probe.`,
+        )
+        request = withoutReasoningSummary(request)
+        return 'retry:reasoning-summary'
+      }
+      if (
+        params.allowPromptCacheKeyFallback &&
+        request.prompt_cache_key &&
+        isPromptCacheKeyRejection(error)
+      ) {
+        markPromptCacheKeyRejected('responses')
+        logForDebugging(
+          `[OpenAI] ${params.label} rejected prompt_cache_key; retrying without it and suppressing it for compatible Responses endpoints for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.`,
+        )
+        request = withoutPromptCacheKey(request)
+        return 'retry:prompt-cache-key'
+      }
+      return undefined
+    },
   })
 
   return {

@@ -78,12 +78,19 @@ export function Notifications({
   // would leak into this session's display (anthropics/claude-code#37596).
   const mainLoopModel = useMainLoopModel();
   const sessionModelSettingsOverrides = useAppState(s => s.sessionModelSettingsOverrides);
+  const autoCompactWindow = useAppState(s => s.autoCompactWindow);
+  const autoCompactWindowOverride = useAppState(s => s.autoCompactWindowOverride);
   const modelSettingsSlot = getMainLoopModelSettingsSlot(mainLoopModel);
+  const compactContext = {
+    settingsSlot: modelSettingsSlot,
+    sessionOverrides: sessionModelSettingsOverrides,
+    autoCompactWindow,
+    autoCompactWindowOverride,
+  };
   const isShowingCompactMessage = calculateTokenWarningState(
     tokenUsage,
     mainLoopModel,
-    modelSettingsSlot,
-    sessionModelSettingsOverrides,
+    compactContext,
   ).isAboveWarningThreshold;
   const { status: ideStatus } = useIdeConnectionStatus(mcpClients);
   const notifications = useAppState(s => s.notifications);
@@ -197,6 +204,8 @@ export function Notifications({
           mainLoopModel={mainLoopModel}
           modelSettingsSlot={modelSettingsSlot}
           sessionModelSettingsOverrides={sessionModelSettingsOverrides}
+          autoCompactWindow={autoCompactWindow}
+          autoCompactWindowOverride={autoCompactWindowOverride}
         />
       </Box>
     </SentryErrorBoundary>
@@ -217,6 +226,8 @@ function NotificationContent({
   mainLoopModel,
   modelSettingsSlot,
   sessionModelSettingsOverrides,
+  autoCompactWindow,
+  autoCompactWindowOverride,
 }: {
   ideSelection: IDESelection | undefined;
   mcpClients?: MCPServerConnection[];
@@ -235,6 +246,8 @@ function NotificationContent({
   mainLoopModel: string;
   modelSettingsSlot?: ModelSettingsSlot;
   sessionModelSettingsOverrides: SessionModelSettingsOverrides;
+  autoCompactWindow?: number;
+  autoCompactWindowOverride?: boolean;
 }): ReactNode {
   // Poll apiKeyHelper inflight state to show slow-helper notice.
   // Gated on configuration — most users never set apiKeyHelper, so the
@@ -272,6 +285,12 @@ function NotificationContent({
 
   const current = shouldDisplayNotification(notifications.current, diffPanelVisible) ? notifications.current : null;
   const pinned = sortPinnedNotifications(notifications.pinned);
+  const compactContext = {
+    settingsSlot: modelSettingsSlot,
+    sessionOverrides: sessionModelSettingsOverrides,
+    autoCompactWindow,
+    autoCompactWindowOverride,
+  };
 
   return (
     <>
@@ -320,14 +339,7 @@ function NotificationContent({
           </Text>
         </Box>
       )}
-      {!isBriefOnly && (
-        <TokenWarning
-          tokenUsage={tokenUsage}
-          model={mainLoopModel}
-          settingsSlot={modelSettingsSlot}
-          sessionOverrides={sessionModelSettingsOverrides}
-        />
-      )}
+      {!isBriefOnly && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} compactContext={compactContext} />}
       {feature('VOICE_MODE')
         ? voiceEnabled &&
           voiceError && (

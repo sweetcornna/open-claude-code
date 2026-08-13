@@ -49,6 +49,42 @@ type OutputSchema = ReturnType<typeof outputSchema>
 
 export type Output = z.infer<OutputSchema>
 
+function normalizeDomainRule(content: string): string {
+  if (!content.startsWith('domain:')) return content
+  return `domain:${content
+    .slice(7)
+    .toLowerCase()
+    .replace(/(?<=[^*.])\.+$/, '')}`
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function domainRuleMatches(pattern: string, target: string): boolean {
+  const normalizedPattern = normalizeDomainRule(pattern)
+  const normalizedTarget = normalizeDomainRule(target)
+  if (!normalizedPattern.startsWith('domain:')) return false
+  if (normalizedPattern === 'domain:*') return true
+  const domain = normalizedPattern.slice(7)
+  const source = domain.startsWith('*.')
+    ? `(?:[^.:]+\\.)+${escapeRegex(domain.slice(2))}`
+    : domain.split('*').map(escapeRegex).join('[^.:]*')
+  return new RegExp(`^domain:${source}$`, 'i').test(normalizedTarget)
+}
+
+function matchingDomainRule(
+  rules: ReturnType<typeof getRuleByContentsForTool>,
+  target: string,
+) {
+  const exact = rules.get(target)
+  if (exact) return exact
+  for (const [pattern, rule] of rules) {
+    if (domainRuleMatches(pattern, target)) return rule
+  }
+  return undefined
+}
+
 function webFetchToolInputToPermissionRuleContent(input: {
   [k: string]: unknown
 }): string {
@@ -107,29 +143,12 @@ export const WebFetchTool = buildTool({
     const appState = context.getAppState()
     const permissionContext = appState.toolPermissionContext
 
-    // Check if the hostname is in the preapproved list
-    try {
-      const { url } = input as { url: string }
-      const parsedUrl = new URL(url)
-      if (isPreapprovedHost(parsedUrl.hostname, parsedUrl.pathname)) {
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-          decisionReason: { type: 'other', reason: 'Preapproved host' },
-        }
-      }
-    } catch {
-      // If URL parsing fails, continue with normal permission checks
-    }
-
-    // Check for a rule specific to the tool input (matching hostname)
     const ruleContent = webFetchToolInputToPermissionRuleContent(input)
 
-    const denyRule = getRuleByContentsForTool(
-      permissionContext,
-      WebFetchTool,
-      'deny',
-    ).get(ruleContent)
+    const denyRule = matchingDomainRule(
+      getRuleByContentsForTool(permissionContext, WebFetchTool, 'deny'),
+      ruleContent,
+    )
     if (denyRule) {
       return {
         behavior: 'deny',
@@ -141,11 +160,10 @@ export const WebFetchTool = buildTool({
       }
     }
 
-    const askRule = getRuleByContentsForTool(
-      permissionContext,
-      WebFetchTool,
-      'ask',
-    ).get(ruleContent)
+    const askRule = matchingDomainRule(
+      getRuleByContentsForTool(permissionContext, WebFetchTool, 'ask'),
+      ruleContent,
+    )
     if (askRule) {
       return {
         behavior: 'ask',
@@ -158,11 +176,10 @@ export const WebFetchTool = buildTool({
       }
     }
 
-    const allowRule = getRuleByContentsForTool(
-      permissionContext,
-      WebFetchTool,
-      'allow',
-    ).get(ruleContent)
+    const allowRule = matchingDomainRule(
+      getRuleByContentsForTool(permissionContext, WebFetchTool, 'allow'),
+      ruleContent,
+    )
     if (allowRule) {
       return {
         behavior: 'allow',
@@ -172,6 +189,20 @@ export const WebFetchTool = buildTool({
           rule: allowRule,
         },
       }
+    }
+
+    try {
+      const { url } = input as { url: string }
+      const parsedUrl = new URL(url)
+      if (isPreapprovedHost(parsedUrl.hostname, parsedUrl.pathname)) {
+        return {
+          behavior: 'allow',
+          updatedInput: input,
+          decisionReason: { type: 'other', reason: 'Preapproved host' },
+        }
+      }
+    } catch {
+      // Invalid URLs fall through to the normal permission prompt.
     }
 
     return {

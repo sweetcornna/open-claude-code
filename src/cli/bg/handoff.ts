@@ -75,6 +75,8 @@ type HandoffPlanInput = {
   interactive: boolean
   /** Session id the forked conversation will use. Generated when omitted. */
   forkSessionId: string
+  autoCompactWindow?: number
+  autoCompactWindowOverride?: boolean
   jobId?: string
 }
 
@@ -109,6 +111,14 @@ export function planHandoff(input: HandoffPlanInput): HandoffPlan {
     '--session-id',
     input.forkSessionId,
   ]
+  if (input.autoCompactWindowOverride) {
+    args.push(
+      '--autocompact',
+      input.autoCompactWindow === undefined
+        ? 'auto'
+        : String(input.autoCompactWindow),
+    )
+  }
   // Without a TTY the child cannot host a REPL, so a prompt-less handover is
   // refused upstream and a prompted one runs headless into the log.
   if (!input.interactive) args.push('-p')

@@ -24,7 +24,7 @@ import {
 import { isGptTuningActiveForModel } from 'src/utils/model/gptTuning.js'
 import { asSystemPrompt } from 'src/utils/session/systemPromptType.js'
 import { getSessionId } from '../../../bootstrap/state.js'
-import { getOpenAIClient } from './client.js'
+import { clearOpenAIClientCache, getOpenAIClient } from './client.js'
 import {
   formatOpenAIPromptCacheKey,
   getOpenAIPromptCacheKey,
@@ -82,7 +82,10 @@ export {
   resolveOpenAIMaxTokens,
   buildOpenAIRequestBody,
 }
-import { assembleFinalAssistantOutputs } from '../streamAssembly.js'
+import {
+  assembleFinalAssistantOutputs,
+  retryThirdPartyEventStream,
+} from '../streamAssembly.js'
 import { isUserAbort } from '../userAbort.js'
 import { getModelMaxOutputTokens } from '../../../utils/session/context.js'
 import type { Options } from '../claude.js'
@@ -161,8 +164,8 @@ async function createChatStreamWithCacheKeyFallback(params: {
   // once the body is passed through a callback. `stream: true` is fixed by
   // buildOpenAIRequestBody, so narrow to what the adapter consumes.
 }): Promise<AsyncIterable<ChatCompletionChunk>> {
-  // queryModelWithStreaming owns this lane's ten-retry budget. Keep the SDK at
-  // zero so one failed request cannot expand into a nested 10×10 ladder.
+  // The provider stream boundary owns this lane's retry budget. Keep the SDK at
+  // zero so one failed request cannot start a nested ladder.
   const client = getOpenAIClient({
     maxRetries: 0,
     fetchOverride: params.fetchOverride,
@@ -427,79 +430,79 @@ export async function* queryModelOpenAI(
     // no max_output_tokens) and generic API-key `/responses` endpoints
     // (standard headers, max_output_tokens honored). Everything else keeps
     // the Chat Completions adapter.
-    const adaptedStream =
-      wireProtocol === 'responses'
-        ? adaptResponsesStreamToAnthropic(
-            useChatGPTResponses
-              ? await createChatGPTResponsesStream({
-                  request: buildResponsesRequest({
+    const adaptedStream = retryThirdPartyEventStream({
+      signal,
+      onRetry: () => clearOpenAIClientCache(),
+      create: async () =>
+        wireProtocol === 'responses'
+          ? adaptResponsesStreamToAnthropic(
+              useChatGPTResponses
+                ? await createChatGPTResponsesStream({
+                    request: buildResponsesRequest({
+                      model: openaiModel,
+                      messages: openaiMessages,
+                      tools: openaiTools,
+                      toolChoice: openaiToolChoice,
+                      reasoningEffort,
+                      verbosity,
+                      promptCacheKey: sessionPromptCacheKey,
+                    }),
+                    signal,
+                    fetchOverride:
+                      options.fetchOverride as unknown as typeof fetch,
+                    maxRetries: 0,
+                  })
+                : await createOpenAIResponsesStream({
+                    request: buildResponsesRequest({
+                      model: openaiModel,
+                      messages: openaiMessages,
+                      tools: openaiTools,
+                      toolChoice: openaiToolChoice,
+                      reasoningEffort,
+                      verbosity,
+                      promptCacheKey,
+                      maxOutputTokens: maxTokens,
+                    }),
+                    signal,
+                    fetchOverride:
+                      options.fetchOverride as unknown as typeof fetch,
+                    maxRetries: 0,
+                  }),
+              openaiModel,
+              { onReasoningItem: item => reasoningItems.push(item) },
+            )
+          : adaptOpenAIStreamToAnthropic(
+              await createChatStreamWithCacheKeyFallback({
+                buildBody: cacheKey =>
+                  buildOpenAIRequestBody({
                     model: openaiModel,
                     messages: openaiMessages,
                     tools: openaiTools,
                     toolChoice: openaiToolChoice,
-                    reasoningEffort,
-                    verbosity,
-                    promptCacheKey: sessionPromptCacheKey,
-                  }),
-                  signal,
-                  fetchOverride:
-                    options.fetchOverride as unknown as typeof fetch,
-                })
-              : await createOpenAIResponsesStream({
-                  request: buildResponsesRequest({
-                    model: openaiModel,
-                    messages: openaiMessages,
-                    tools: openaiTools,
-                    toolChoice: openaiToolChoice,
-                    reasoningEffort,
-                    verbosity,
-                    promptCacheKey,
-                    maxOutputTokens: maxTokens,
-                  }),
-                  signal,
-                  fetchOverride:
-                    options.fetchOverride as unknown as typeof fetch,
-                }),
-            openaiModel,
-            { onReasoningItem: item => reasoningItems.push(item) },
-          )
-        : adaptOpenAIStreamToAnthropic(
-            await createChatStreamWithCacheKeyFallback({
-              buildBody: cacheKey =>
-                buildOpenAIRequestBody({
-                  model: openaiModel,
-                  messages: openaiMessages,
-                  tools: openaiTools,
-                  toolChoice: openaiToolChoice,
-                  enableThinking,
-                  maxTokens,
-                  baseURL: process.env.OPENAI_BASE_URL,
-                  temperatureOverride: options.temperatureOverride,
-                  promptCacheKey: cacheKey,
-                  // DeepSeek runs its own reasoning_effort ladder off this;
-                  // buildOpenAIRequestBody ignores it for every other model.
-                  effortValue: appliedEffort,
-                  ...(isChatGPTCodexReasoningModel(openaiModel)
-                    ? {
-                        reasoningEffort: getChatReasoningEffort(
-                          openaiModel,
-                          appliedEffort,
-                        ),
-                      }
-                    : {}),
-                  // The SDK types `reasoning_effort` as OpenAI's own union, which
-                  // has no `max` rung; DeepSeek's ladder does. The body is passed
-                  // through to HTTP verbatim, so the wider value is correct on the
-                  // wire even though the client types can't express it.
-                }) as unknown as ChatCompletionCreateParamsStreaming,
-              promptCacheKey,
-              fetchOverride: options.fetchOverride as unknown as typeof fetch,
-              querySource: options.querySource,
-              signal,
-            }),
-            openaiModel,
-            { includeCacheWriteTokens: reportsCacheWrites },
-          )
+                    enableThinking,
+                    maxTokens,
+                    baseURL: process.env.OPENAI_BASE_URL,
+                    temperatureOverride: options.temperatureOverride,
+                    promptCacheKey: cacheKey,
+                    effortValue: appliedEffort,
+                    ...(isChatGPTCodexReasoningModel(openaiModel)
+                      ? {
+                          reasoningEffort: getChatReasoningEffort(
+                            openaiModel,
+                            appliedEffort,
+                          ),
+                        }
+                      : {}),
+                  }) as unknown as ChatCompletionCreateParamsStreaming,
+                promptCacheKey,
+                fetchOverride: options.fetchOverride as unknown as typeof fetch,
+                querySource: options.querySource,
+                signal,
+              }),
+              openaiModel,
+              { includeCacheWriteTokens: reportsCacheWrites },
+            ),
+    })
 
     // 12. Convert OpenAI stream to Anthropic events, then process into
     //     AssistantMessage + StreamEvent (matching the Anthropic path behavior)

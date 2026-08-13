@@ -281,10 +281,8 @@ import {
   CannotRetryError,
   FallbackTriggeredError,
   is529Error,
-  markTransientRetriesExhausted,
   type RetryContext,
   withRetry,
-  withTransientNetworkRetry,
 } from './withRetry.js'
 import { isUserAbort } from './userAbort.js'
 
@@ -798,17 +796,13 @@ export async function queryModelWithoutStreaming({
   // logAPISuccessAndDuration gets called (which happens after all yields)
   let assistantMessage: AssistantMessage | undefined
   for await (const message of withStreamingVCR(messages, async function* () {
-    yield* withTransientNetworkRetry(
-      () =>
-        queryModel(
-          messages,
-          systemPrompt,
-          thinkingConfig,
-          tools,
-          signal,
-          options,
-        ),
-      { signal, model: options.model, querySource: options.querySource },
+    yield* queryModel(
+      messages,
+      systemPrompt,
+      thinkingConfig,
+      tools,
+      signal,
+      options,
     )
   })) {
     if (message.type === 'assistant') {
@@ -844,37 +838,16 @@ export async function* queryModelWithStreaming({
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
-  // withTransientNetworkRetry sits INSIDE the VCR so a recorded cassette holds
-  // the successful attempt, not the transport failure that preceded it.
   return yield* withStreamingVCR(messages, async function* () {
-    yield* withTransientNetworkRetry(
-      () =>
-        queryModel(
-          messages,
-          systemPrompt,
-          thinkingConfig,
-          tools,
-          signal,
-          options,
-        ),
-      { signal, model: options.model, querySource: options.querySource },
+    yield* queryModel(
+      messages,
+      systemPrompt,
+      thinkingConfig,
+      tools,
+      signal,
+      options,
     )
   })
-}
-
-/**
- * Tags an API error message when the failure already exhausted a `withRetry`
- * ladder (`CannotRetryError`), so `withTransientNetworkRetry` re-runs
- * `queryModel` only for failures that got no backoff at all — third-party
- * providers and mid-stream deaths with the non-streaming fallback disabled.
- */
-function maybeMarkExhausted(
-  message: AssistantMessage,
-  sourceError: unknown,
-): AssistantMessage {
-  return sourceError instanceof CannotRetryError
-    ? markTransientRetriesExhausted(message)
-    : message
 }
 
 /**
@@ -2994,18 +2967,12 @@ async function* queryModel(
           return
         }
 
-        // CannotRetryError means withRetry already spent its full backoff
-        // ladder on this failure; tell the queryModel-level wrapper not to
-        // stack a second ladder on top of it.
-        yield maybeMarkExhausted(
-          attachAPIErrorSource(
-            getAssistantMessageFromError(error, errorModel, {
-              messages,
-              messagesForAPI,
-            }),
-            error,
-          ),
-          fallbackError,
+        yield attachAPIErrorSource(
+          getAssistantMessageFromError(error, errorModel, {
+            messages,
+            messagesForAPI,
+          }),
+          error,
         )
         releaseStreamResources()
         return
@@ -3065,15 +3032,12 @@ async function* queryModel(
         return
       }
 
-      yield maybeMarkExhausted(
-        attachAPIErrorSource(
-          getAssistantMessageFromError(error, errorModel, {
-            messages,
-            messagesForAPI,
-          }),
-          error,
-        ),
-        errorFromRetry,
+      yield attachAPIErrorSource(
+        getAssistantMessageFromError(error, errorModel, {
+          messages,
+          messagesForAPI,
+        }),
+        error,
       )
       releaseStreamResources()
       return

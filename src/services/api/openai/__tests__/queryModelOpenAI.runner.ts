@@ -133,7 +133,6 @@ async function runQueryModel(
   envOverrides: Record<string, string | undefined> = {},
   tools: any[] = [],
   optionOverrides: Record<string, unknown> = {},
-  maxRetries?: number,
   /**
    * Conversation history. Production hands this lane messages that claude.ts
    * ALREADY normalized (claude.ts:1388, before the provider branch at :1442),
@@ -157,7 +156,6 @@ async function runQueryModel(
     // Bun resolves mock.module at the call site synchronously (hoisted),
     // so we register once per test file, then re-import each time.
     const { queryModelOpenAI } = await import('../index.js')
-    const { withTransientNetworkRetry } = await import('../../withRetry.js')
 
     const assistantMessages: AssistantMessage[] = []
     const streamEvents: StreamEvent[] = []
@@ -179,22 +177,13 @@ async function runQueryModel(
     }
 
     const signal = new AbortController().signal
-    const query = () =>
-      queryModelOpenAI(
-        messages,
-        [] as unknown as SystemPrompt,
-        tools as any,
-        signal,
-        minimalOptions,
-      )
-    const output =
-      maxRetries === undefined
-        ? query()
-        : withTransientNetworkRetry(query, {
-            maxRetries,
-            model: minimalOptions.model,
-            signal,
-          })
+    const output = queryModelOpenAI(
+      messages,
+      [] as unknown as SystemPrompt,
+      tools as any,
+      signal,
+      minimalOptions,
+    )
 
     for await (const item of output) {
       if (item.type === 'assistant') {
@@ -873,7 +862,6 @@ describe('queryModelOpenAI — deferred MCP tool visibility', () => {
       {},
       pool,
       {},
-      undefined,
       history,
     )
 

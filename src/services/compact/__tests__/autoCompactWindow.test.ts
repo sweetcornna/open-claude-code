@@ -8,6 +8,7 @@ import {
   normalizeAutoCompactWindowSetting,
   parseAutoCompactWindowInput,
   resolveAutoCompactWindow,
+  resolveInitialAutoCompactWindow,
 } from '../autoCompactWindow.js'
 
 // Pure functions with env injected as an argument — no process.env mutation
@@ -132,6 +133,29 @@ describe('resolveAutoCompactWindow precedence', () => {
         resolveAutoCompactWindow(MODEL_WINDOW, 150_000, env()),
       ),
     ).toBe(true)
+  })
+})
+
+describe('resolveInitialAutoCompactWindow', () => {
+  test('inherits settings when the CLI flag is absent', () => {
+    expect(resolveInitialAutoCompactWindow(undefined, 400_000)).toEqual({
+      autoCompactWindow: 400_000,
+      autoCompactWindowOverride: false,
+    })
+  })
+
+  test('a CLI token value overrides settings for this session', () => {
+    expect(resolveInitialAutoCompactWindow(500_000, 400_000)).toEqual({
+      autoCompactWindow: 500_000,
+      autoCompactWindowOverride: true,
+    })
+  })
+
+  test('explicit CLI auto suppresses the settings window', () => {
+    expect(resolveInitialAutoCompactWindow('auto', 400_000)).toEqual({
+      autoCompactWindow: undefined,
+      autoCompactWindowOverride: true,
+    })
   })
 })
 

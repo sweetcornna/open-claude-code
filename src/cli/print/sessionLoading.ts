@@ -5,7 +5,10 @@ import { EMPTY_USAGE } from '@ant/model-provider'
 import { BIN_NAME } from 'src/constants/brand.js'
 import type { Message, NormalizedUserMessage } from 'src/types/message.js'
 import type { TurnInterruptionState } from 'src/utils/session/conversationRecovery.js'
-import { loadConversationForResume } from 'src/utils/session/conversationRecovery.js'
+import {
+  loadConversationForResume,
+  validateResumeDropRange,
+} from 'src/utils/session/conversationRecovery.js'
 import type { AppState } from 'src/state/AppStateStore.js'
 import type { SessionExternalMetadata } from 'src/utils/session/sessionState.js'
 import { processSessionStartHooks } from 'src/utils/session/sessionStart.js'
@@ -30,6 +33,8 @@ import { setMainLoopModelOverride, switchSession } from 'src/bootstrap/state.js'
 import { asSessionId } from 'src/types/ids.js'
 import { getCwd } from 'src/utils/filesystem/cwd.js'
 import { restoreSessionStateFromLog } from 'src/utils/session/sessionRestore.js'
+import { searchSessionsByCustomTitle } from 'src/utils/sessionStorage/sessionListing.js'
+import { getSessionIdFromLog } from 'src/utils/sessionStorage/logAssembly.js'
 import { coordinatorModeModule } from './runtime.js'
 
 /**
@@ -86,6 +91,7 @@ type LoadInitialMessagesResult = {
   messages: Message[]
   turnInterruptionState?: TurnInterruptionState
   agentSetting?: string
+  resumedSession?: boolean
 }
 
 async function loadInitialMessages(
@@ -95,6 +101,7 @@ async function loadInitialMessages(
     teleport: string | true | null | undefined
     resume: string | boolean | undefined
     resumeSessionAt: string | undefined
+    resumeDropsTurn: string | undefined
     forkSession: boolean | undefined
     outputFormat: string | undefined
     sessionStartHooksPromise?: ReturnType<typeof processSessionStartHooks>
@@ -228,16 +235,41 @@ async function loadInitialMessages(
     try {
       logEvent('tengu_resume_print', {})
 
-      // In print mode - we require a valid session ID, JSONL file or URL
-      const parsedSessionId = parseSessionIdentifier(
-        typeof options.resume === 'string' ? options.resume : '',
-      )
-      if (!parsedSessionId) {
-        let errorMessage = `Error: --resume requires a valid session ID when used with --print. Usage: ${BIN_NAME} -p --resume <session-id>`
-        if (typeof options.resume === 'string') {
-          errorMessage += `. Session IDs must be in UUID format (e.g., 550e8400-e29b-41d4-a716-446655440000). Provided value "${options.resume}" is not a valid UUID`
+      const resumeIdentifier =
+        typeof options.resume === 'string' ? options.resume : ''
+      let parsedSessionId = parseSessionIdentifier(resumeIdentifier)
+      if (!parsedSessionId && resumeIdentifier.trim()) {
+        const titleMatches = await searchSessionsByCustomTitle(
+          resumeIdentifier,
+          {
+            exact: true,
+          },
+        )
+        if (titleMatches.length > 1) {
+          const matches = titleMatches
+            .map(log => {
+              const sessionId = getSessionIdFromLog(log) ?? 'unknown'
+              return `- ${sessionId} (${log.modified.toISOString()})`
+            })
+            .join('\n')
+          emitLoadError(
+            `Multiple sessions match title "${resumeIdentifier}":\n${matches}\nUse a session ID to disambiguate.`,
+            options.outputFormat,
+          )
+          gracefulShutdownSync(1)
+          return { messages: [] }
         }
-        emitLoadError(errorMessage, options.outputFormat)
+        const sessionId =
+          titleMatches.length === 1
+            ? getSessionIdFromLog(titleMatches[0]!)
+            : undefined
+        if (sessionId) parsedSessionId = parseSessionIdentifier(sessionId)
+      }
+      if (!parsedSessionId) {
+        emitLoadError(
+          `Error: --resume requires a valid session ID, JSONL file, URL, or exact session title when used with --print. Usage: ${BIN_NAME} -p --resume <session-id-or-title>`,
+          options.outputFormat,
+        )
         gracefulShutdownSync(1)
         return { messages: [] }
       }
@@ -313,7 +345,21 @@ async function loadInitialMessages(
           return { messages: [] }
         }
 
-        result.messages = index >= 0 ? result.messages.slice(0, index + 1) : []
+        if (options.resumeDropsTurn !== undefined) {
+          const guard = validateResumeDropRange(
+            result.messages.slice(index + 1),
+            options.resumeDropsTurn,
+          )
+          if (!guard.ok) {
+            emitLoadError(
+              `Resume rejected by --resume-drops-turn: resuming at ${options.resumeSessionAt} would discard entries not attributable to turn ${options.resumeDropsTurn}: ${guard.reason}`,
+              options.outputFormat,
+            )
+            gracefulShutdownSync(1)
+            return { messages: [] }
+          }
+        }
+        result.messages = result.messages.slice(0, index + 1)
       }
 
       // Match coordinator mode to the resumed session's mode
@@ -371,6 +417,7 @@ async function loadInitialMessages(
         messages: result.messages,
         turnInterruptionState: result.turnInterruptionState,
         agentSetting: result.agentSetting,
+        resumedSession: true,
       }
     } catch (error) {
       logError(error)

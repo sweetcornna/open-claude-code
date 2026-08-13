@@ -404,6 +404,10 @@ export type AppState = DeepImmutable<{
   effortValue?: EffortValue
   // Per-slot model-picker overrides owned by this AppState store only.
   sessionModelSettingsOverrides: SessionModelSettingsOverrides
+  // Session-scoped auto-compact window. Undefined tracks the model default.
+  autoCompactWindow?: number
+  // True when CLI/runtime state overrides the settings layer, including explicit auto.
+  autoCompactWindowOverride?: boolean
   // Set synchronously in launchUltraplan before the detached flow starts.
   // Prevents duplicate launches during the ~5s window before
   // ultraplanSessionUrl is set by teleportToRemote. Cleared by launchDetached
@@ -539,6 +543,8 @@ export function getDefaultAppState(): AppState {
     initialMessage: null,
     effortValue: undefined,
     sessionModelSettingsOverrides: {},
+    autoCompactWindow: undefined,
+    autoCompactWindowOverride: false,
     activeOverlays: new Set<string>(),
     fastMode: false,
   }

@@ -29,13 +29,20 @@
 
 import { validateBoundedIntEnvVar } from '../../utils/config/envValidation.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import {
+  AUTO_COMPACT_WINDOW_ENV_VAR,
+  AUTO_COMPACT_WINDOW_MAX_TOKENS,
+  AUTO_COMPACT_WINDOW_MIN_TOKENS,
+  normalizeAutoCompactWindowSetting,
+} from './autoCompactWindowValue.js'
 
-/** Smallest window the knob accepts. Values below are raised to it. */
-export const AUTO_COMPACT_WINDOW_MIN_TOKENS = 100_000
-/** Largest window the knob accepts. Values above are capped to it. */
-export const AUTO_COMPACT_WINDOW_MAX_TOKENS = 1_000_000
-
-export const AUTO_COMPACT_WINDOW_ENV_VAR = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
+export {
+  AUTO_COMPACT_WINDOW_ENV_VAR,
+  AUTO_COMPACT_WINDOW_MAX_TOKENS,
+  AUTO_COMPACT_WINDOW_MIN_TOKENS,
+  normalizeAutoCompactWindowSetting,
+  parseAutoCompactWindowInput,
+} from './autoCompactWindowValue.js'
 
 /** Official source labels, in the order they are consulted. */
 export const AUTO_COMPACT_WINDOW_SOURCES = [
@@ -60,40 +67,9 @@ export type ResolvedAutoCompactWindow = {
   source: AutoCompactWindowSource
 }
 
-/**
- * Parse a user-typed window value.
- *
- * Accepts `auto`, `500k`, `1m`, `200000`, and the bare shorthand `200` (read as
- * 200k, because nobody means a 200-token window). Returns `undefined` when the
- * text is unparseable or lands outside 100k–1M.
- */
-export function parseAutoCompactWindowInput(
-  raw: string,
-): number | 'auto' | undefined {
-  const text = raw.trim().toLowerCase()
-  if (text === 'auto') {
-    return 'auto'
-  }
-
-  let tokens: number
-  if (text.endsWith('m')) {
-    tokens = parseFloat(text) * 1_000_000
-  } else if (text.endsWith('k')) {
-    tokens = parseFloat(text) * 1_000
-  } else {
-    const parsed = parseInt(text, 10)
-    // Bare 100–1000 is shorthand for "that many thousand".
-    tokens = parsed >= 100 && parsed <= 1000 ? parsed * 1_000 : parsed
-  }
-
-  if (
-    !Number.isFinite(tokens) ||
-    tokens < AUTO_COMPACT_WINDOW_MIN_TOKENS ||
-    tokens > AUTO_COMPACT_WINDOW_MAX_TOKENS
-  ) {
-    return undefined
-  }
-  return Math.round(tokens)
+export type AutoCompactWindowContext = {
+  autoCompactWindow?: number
+  autoCompactWindowOverride?: boolean
 }
 
 /**
@@ -117,25 +93,6 @@ export function getAutoCompactWindowFromEnv(
     return undefined
   }
   return Math.max(AUTO_COMPACT_WINDOW_MIN_TOKENS, validated.effective)
-}
-
-/**
- * Normalize a `settings.autoCompactWindow` value. Out-of-range or non-integer
- * values are ignored rather than clamped — a bad settings file should fall
- * through to `auto`, not silently pick a different number.
- */
-export function normalizeAutoCompactWindowSetting(
-  value: unknown,
-): number | undefined {
-  if (
-    typeof value !== 'number' ||
-    !Number.isInteger(value) ||
-    value < AUTO_COMPACT_WINDOW_MIN_TOKENS ||
-    value > AUTO_COMPACT_WINDOW_MAX_TOKENS
-  ) {
-    return undefined
-  }
-  return value
 }
 
 /**
@@ -188,11 +145,32 @@ function readAutoCompactWindowSetting(): number | undefined {
  */
 export function resolveActiveAutoCompactWindow(
   modelContextWindow: number,
+  context?: AutoCompactWindowContext,
 ): ResolvedAutoCompactWindow {
   return resolveAutoCompactWindow(
     modelContextWindow,
-    readAutoCompactWindowSetting(),
+    context
+      ? context.autoCompactWindowOverride
+        ? context.autoCompactWindow
+        : (context.autoCompactWindow ?? readAutoCompactWindowSetting())
+      : readAutoCompactWindowSetting(),
   )
+}
+
+export function resolveInitialAutoCompactWindow(
+  cliWindow: number | 'auto' | undefined,
+  settingsWindow: unknown = readAutoCompactWindowSetting(),
+): AutoCompactWindowContext {
+  if (cliWindow !== undefined) {
+    return {
+      autoCompactWindow: cliWindow === 'auto' ? undefined : cliWindow,
+      autoCompactWindowOverride: true,
+    }
+  }
+  return {
+    autoCompactWindow: normalizeAutoCompactWindowSetting(settingsWindow),
+    autoCompactWindowOverride: false,
+  }
 }
 
 /** True when something is actively narrowing the window (i.e. not `auto`). */

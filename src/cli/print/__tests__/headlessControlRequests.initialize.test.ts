@@ -18,6 +18,7 @@ import type { Command } from 'src/commands.js'
 import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import { handleHeadlessControlRequest } from '../headlessControlRequests.js'
 import type { HeadlessRunState } from '../headlessRunState.js'
+import { type AppState, getDefaultAppState } from 'src/state/AppStateStore.js'
 
 const savedBedrock = process.env.CLAUDE_CODE_USE_BEDROCK
 
@@ -71,6 +72,56 @@ function makeState(overrides: Partial<HeadlessRunState>): {
   } as unknown as HeadlessRunState
   return { state, outputs }
 }
+
+describe('handleHeadlessControlRequest apply_flag_settings', () => {
+  test('applies a runtime auto-compact window to the current session', async () => {
+    let appState = getDefaultAppState()
+    const { state } = makeState({
+      getAppState: () => appState,
+      setAppState: updater => {
+        appState = updater(appState)
+      },
+    })
+
+    await handleHeadlessControlRequest(state, {
+      type: 'control_request',
+      request_id: 'req-autocompact-1',
+      request: {
+        subtype: 'apply_flag_settings',
+        settings: { autoCompactWindow: 500_000 },
+      },
+    })
+
+    expect(appState.autoCompactWindow).toBe(500_000)
+    expect(appState.autoCompactWindowOverride).toBe(true)
+  })
+
+  test('treats null as an explicit auto override', async () => {
+    let appState: AppState = {
+      ...getDefaultAppState(),
+      autoCompactWindow: 500_000,
+      autoCompactWindowOverride: true,
+    }
+    const { state } = makeState({
+      getAppState: () => appState,
+      setAppState: updater => {
+        appState = updater(appState)
+      },
+    })
+
+    await handleHeadlessControlRequest(state, {
+      type: 'control_request',
+      request_id: 'req-autocompact-2',
+      request: {
+        subtype: 'apply_flag_settings',
+        settings: { autoCompactWindow: null },
+      },
+    })
+
+    expect(appState.autoCompactWindow).toBeUndefined()
+    expect(appState.autoCompactWindowOverride).toBe(true)
+  })
+})
 
 describe('handleHeadlessControlRequest initialize', () => {
   test('reports currentCommands/currentAgents, not construction-time arrays', async () => {

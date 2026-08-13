@@ -46,6 +46,7 @@ export class FileIndex {
   private charBits: Int32Array = new Int32Array(0)
   private pathLens: Uint16Array = new Uint16Array(0)
   private topLevelCache: SearchResult[] | null = null
+  private buildGeneration = 0
   // During async build, tracks how many paths have bitmap/lowerPath filled.
   // search() uses this to search the ready prefix while build continues.
   // biome-ignore lint/correctness/noUnusedPrivateClassMembers: used via destructuring in search()
@@ -83,20 +84,27 @@ export class FileIndex {
    */
   loadFromFileListAsync(fileList: string[]): {
     queryable: Promise<void>
-    done: Promise<void>
+    done: Promise<boolean>
   } {
+    const generation = ++this.buildGeneration
     let markQueryable: () => void = () => {}
+    let queryableSettled = false
     const queryable = new Promise<void>(resolve => {
-      markQueryable = resolve
+      markQueryable = () => {
+        if (queryableSettled) return
+        queryableSettled = true
+        resolve()
+      }
     })
-    const done = this.buildAsync(fileList, markQueryable)
+    const done = this.buildAsync(fileList, generation, markQueryable)
     return { queryable, done }
   }
 
   private async buildAsync(
     fileList: string[],
+    generation: number,
     markQueryable: () => void,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const seen = new Set<string>()
     const paths: string[] = []
     let chunkStart = performance.now()
@@ -109,10 +117,18 @@ export class FileIndex {
       // Check every 256 iterations to amortize performance.now() overhead
       if ((i & 0xff) === 0xff && performance.now() - chunkStart > CHUNK_MS) {
         await yieldToEventLoop()
+        if (generation !== this.buildGeneration) {
+          markQueryable()
+          return false
+        }
         chunkStart = performance.now()
       }
     }
 
+    if (generation !== this.buildGeneration) {
+      markQueryable()
+      return false
+    }
     this.resetArrays(paths)
 
     chunkStart = performance.now()
@@ -126,14 +142,24 @@ export class FileIndex {
           firstChunk = false
         }
         await yieldToEventLoop()
+        if (generation !== this.buildGeneration) {
+          markQueryable()
+          return false
+        }
         chunkStart = performance.now()
       }
     }
+    if (generation !== this.buildGeneration) {
+      markQueryable()
+      return false
+    }
     this.readyCount = paths.length
     markQueryable()
+    return true
   }
 
   private buildIndex(paths: string[]): void {
+    this.buildGeneration++
     this.resetArrays(paths)
     for (let i = 0; i < paths.length; i++) {
       this.indexPath(i)

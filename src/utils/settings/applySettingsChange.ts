@@ -87,6 +87,9 @@ export function applySettingsChange(
       ...(effortChanged && newEffort !== undefined
         ? { effortValue: newEffort }
         : {}),
+      ...(!prev.autoCompactWindowOverride
+        ? { autoCompactWindow: newSettings.autoCompactWindow }
+        : {}),
     }
   })
 }

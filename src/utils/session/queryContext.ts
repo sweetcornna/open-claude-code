@@ -148,6 +148,9 @@ export async function buildSideQuestionFallbackParams({
       debug: false,
       mainLoopModel,
       modelSettingsSlot: getMainLoopModelSettingsSlot(mainLoopModel),
+      sessionModelSettingsOverrides: appState.sessionModelSettingsOverrides,
+      autoCompactWindow: appState.autoCompactWindow,
+      autoCompactWindowOverride: appState.autoCompactWindowOverride,
       tools,
       verbose: false,
       thinkingConfig:

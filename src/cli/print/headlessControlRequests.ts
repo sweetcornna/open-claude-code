@@ -56,6 +56,7 @@ import {
   resolveAppliedEffort,
 } from 'src/utils/model/effort.js'
 import { getSettingsWithSources } from 'src/utils/settings/settings.js'
+import { normalizeAutoCompactWindowSetting } from 'src/services/compact/autoCompactWindowValue.js'
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
 import { notifySessionMetadataChanged } from 'src/utils/session/sessionState.js'
 import { buildSideQuestionFallbackParams } from 'src/utils/session/queryContext.js'
@@ -497,6 +498,21 @@ export async function handleHeadlessControlRequest(
     // (loadPluginHooks, sandbox-adapter) about the change, which the
     // previous direct call skipped.
     settingsChangeDetector.notifyChange('flagSettings')
+
+    if ('autoCompactWindow' in incoming) {
+      const requested = incoming.autoCompactWindow
+      const window =
+        requested == null
+          ? undefined
+          : normalizeAutoCompactWindowSetting(requested)
+      if (requested == null || window !== undefined) {
+        state.setAppState(prev => ({
+          ...prev,
+          autoCompactWindow: window,
+          autoCompactWindowOverride: true,
+        }))
+      }
+    }
 
     // If the incoming settings include a model change, update the
     // override so getMainLoopModel() reflects it. The override has

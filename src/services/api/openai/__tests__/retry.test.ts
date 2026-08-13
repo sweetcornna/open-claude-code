@@ -457,6 +457,46 @@ describe('retryOpenAIRequest', () => {
     expect(calls).toBe(1)
   })
 
+  test('a unique error transform does not consume the retry budget', async () => {
+    let calls = 0
+    const result = await retryOpenAIRequest(
+      async () => {
+        calls++
+        if (calls <= 2) throw new TypeError('fetch failed')
+        return 'ok'
+      },
+      {
+        signal: new AbortController().signal,
+        maxRetries: 1,
+        delay: noDelay,
+        onError: () => 'retry:drop-optional-field',
+      },
+    )
+
+    expect(result).toBe('ok')
+    expect(calls).toBe(3)
+  })
+
+  test('the same error transform token is only free once', async () => {
+    let calls = 0
+    await expect(
+      retryOpenAIRequest(
+        async () => {
+          calls++
+          throw new TypeError('fetch failed')
+        },
+        {
+          signal: new AbortController().signal,
+          maxRetries: 1,
+          delay: noDelay,
+          onError: () => 'retry:drop-optional-field',
+        },
+      ),
+    ).rejects.toThrow('fetch failed')
+
+    expect(calls).toBe(3)
+  })
+
   test('throws the final error after retries are exhausted', async () => {
     let calls = 0
     let lastError: Error | undefined

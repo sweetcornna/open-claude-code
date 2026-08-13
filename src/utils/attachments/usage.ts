@@ -13,6 +13,7 @@ import {
   tokenCountWithEstimation,
 } from '../session/tokens.js'
 import {
+  type AutoCompactContext,
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
 } from '../../services/compact/autoCompact.js'
@@ -26,13 +27,13 @@ import type { Attachment } from './types.js'
 export function getTokenUsageAttachment(
   messages: Message[],
   model: string,
-  settingsSlot?: ToolUseContext['options']['modelSettingsSlot'],
+  compactContext: AutoCompactContext = {},
 ): Attachment[] {
   if (!isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT)) {
     return []
   }
 
-  const contextWindow = getEffectiveContextWindowSize(model, settingsSlot)
+  const contextWindow = getEffectiveContextWindowSize(model, compactContext)
   const usedTokens = tokenCountFromLastAPIResponse(messages)
 
   return [
@@ -151,8 +152,7 @@ export async function getVerifyPlanReminderAttachment(
 export function getCompactionReminderAttachment(
   messages: Message[],
   model: string,
-  settingsSlot?: ToolUseContext['options']['modelSettingsSlot'],
-  sessionOverrides?: ToolUseContext['options']['sessionModelSettingsOverrides'],
+  compactContext: AutoCompactContext = {},
 ): Attachment[] {
   if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_fox', false)) {
     return []
@@ -165,18 +165,14 @@ export function getCompactionReminderAttachment(
   const contextWindow = getContextWindowForModel(
     model,
     getSdkBetas(),
-    settingsSlot,
-    sessionOverrides,
+    compactContext.settingsSlot,
+    compactContext.sessionOverrides,
   )
   if (contextWindow < 1_000_000) {
     return []
   }
 
-  const effectiveWindow = getEffectiveContextWindowSize(
-    model,
-    settingsSlot,
-    sessionOverrides,
-  )
+  const effectiveWindow = getEffectiveContextWindowSize(model, compactContext)
   const usedTokens = tokenCountWithEstimation(messages)
   if (usedTokens < effectiveWindow * 0.25) {
     return []

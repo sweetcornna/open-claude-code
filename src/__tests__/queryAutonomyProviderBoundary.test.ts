@@ -380,6 +380,148 @@ describe('query autonomy/provider boundary', () => {
     }
   })
 
+  test('folds queued user input into the active query after a tool round', async () => {
+    const previousDisableAttachments =
+      process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
+    delete process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
+    try {
+      let callCount = 0
+      const deps = {
+        uuid: () => 'queued-input-query-chain-id',
+        microcompact: async (messages: unknown[]) => ({ messages }),
+        autocompact: async () => ({
+          compactionResult: undefined,
+          consecutiveFailures: 0,
+        }),
+        callModel: async function* () {
+          callCount++
+          if (callCount === 1) {
+            yield createToolUseAssistantMessage()
+            return
+          }
+          yield createAssistantAPIErrorMessage({
+            content: 'queued input handled',
+            apiError: 'api_error',
+          })
+        },
+      }
+
+      const generator = query({
+        messages: [createUserMessage({ content: 'first prompt' })],
+        systemPrompt: asSystemPrompt([]),
+        userContext: {},
+        systemContext: {},
+        canUseTool: async (_tool, input) => ({
+          behavior: 'allow',
+          updatedInput: input,
+        }),
+        toolUseContext: createToolUseContext(),
+        querySource: 'repl_main_thread',
+        maxTurns: 3,
+        deps: deps as never,
+      })
+
+      const emitted: any[] = []
+      let queued = false
+      let next = await generator.next()
+      while (!next.done) {
+        const message = next.value as any
+        emitted.push(message)
+        if (
+          !queued &&
+          message.type === 'assistant' &&
+          message.message.content.some(
+            (block: { type: string }) => block.type === 'tool_use',
+          )
+        ) {
+          enqueue({ value: 'steer the active turn', mode: 'prompt' })
+          queued = true
+        }
+        next = await generator.next()
+      }
+
+      expect(queued).toBe(true)
+      expect(
+        emitted.some(
+          message =>
+            message.type === 'attachment' &&
+            message.attachment.type === 'queued_command' &&
+            message.attachment.prompt === 'steer the active turn',
+        ),
+      ).toBe(true)
+      expect(callCount).toBe(2)
+      expect(getCommandsByMaxPriority('later')).toHaveLength(0)
+    } finally {
+      if (previousDisableAttachments === undefined) {
+        delete process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS
+      } else {
+        process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS = previousDisableAttachments
+      }
+    }
+  })
+
+  test('leaves queued user input for the next turn when maxTurns stops the active query', async () => {
+    let callCount = 0
+    const deps = {
+      uuid: () => 'max-turn-queued-input-query-chain-id',
+      microcompact: async (messages: unknown[]) => ({ messages }),
+      autocompact: async () => ({
+        compactionResult: undefined,
+        consecutiveFailures: 0,
+      }),
+      callModel: async function* () {
+        callCount++
+        yield createToolUseAssistantMessage()
+      },
+    }
+
+    const generator = query({
+      messages: [createUserMessage({ content: 'first prompt' })],
+      systemPrompt: asSystemPrompt([]),
+      userContext: {},
+      systemContext: {},
+      canUseTool: async (_tool, input) => ({
+        behavior: 'allow',
+        updatedInput: input,
+      }),
+      toolUseContext: createToolUseContext(),
+      querySource: 'repl_main_thread',
+      maxTurns: 1,
+      deps: deps as never,
+    })
+
+    let queued = false
+    let sawQueuedAttachment = false
+    let next = await generator.next()
+    while (!next.done) {
+      const message = next.value as any
+      if (
+        !queued &&
+        message.type === 'assistant' &&
+        message.message.content.some(
+          (block: { type: string }) => block.type === 'tool_use',
+        )
+      ) {
+        enqueue({ value: 'run after max turns', mode: 'prompt' })
+        queued = true
+      }
+      if (
+        message.type === 'attachment' &&
+        message.attachment.type === 'queued_command'
+      ) {
+        sawQueuedAttachment = true
+      }
+      next = await generator.next()
+    }
+
+    expect(queued).toBe(true)
+    expect(sawQueuedAttachment).toBe(false)
+    expect(callCount).toBe(1)
+    expect(getCommandsByMaxPriority('later')).toMatchObject([
+      { value: 'run after max turns', mode: 'prompt' },
+    ])
+  })
+
   test('generator return cancels a consumed autonomy run instead of leaving it running', async () => {
     const previousDisableAttachments =
       process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS

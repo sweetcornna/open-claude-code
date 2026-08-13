@@ -478,8 +478,10 @@ export function useTypeahead({
   const cursorOffsetRef = useRef(cursorOffset);
   cursorOffsetRef.current = cursorOffset;
 
-  // Track the latest search token to discard stale results from slow async operations
+  // Track the latest search request to discard stale results from slow async operations.
+  // The sequence distinguishes A1 → B → A2, where a token-only guard cannot.
   const latestSearchTokenRef = useRef<string | null>(null);
+  const latestSearchRequestRef = useRef(0);
   // Track previous input to detect actual text changes vs. callback recreations
   const prevInputRef = useRef('');
   // The input as it was *before* the current change. The `:name:` inline
@@ -514,9 +516,10 @@ export function useTypeahead({
   const fetchFileSuggestions = useCallback(
     async (searchToken: string, isAtSymbol = false): Promise<void> => {
       latestSearchTokenRef.current = searchToken;
+      const request = ++latestSearchRequestRef.current;
       const combinedItems = await generateUnifiedSuggestions(searchToken, mcpResources, agents, isAtSymbol);
       // Discard stale results if a newer query was initiated while waiting
-      if (latestSearchTokenRef.current !== searchToken) {
+      if (latestSearchRequestRef.current !== request) {
         return;
       }
       if (combinedItems.length === 0) {
@@ -1046,6 +1049,7 @@ export function useTypeahead({
       inputBeforeChangeRef.current = prevInputRef.current;
       prevInputRef.current = input;
       latestSearchTokenRef.current = null;
+      latestSearchRequestRef.current++;
     }
     // Clear the dismissed state when input changes
     dismissedForInputRef.current = null;

@@ -294,7 +294,7 @@ describe('reasoning summaries (thinking visibility)', () => {
     expect(next.reasoning).toEqual({ effort: 'high' })
   })
 
-  test('summary degradation cannot start a second retry budget', async () => {
+  test('summary degradation keeps one network retry budget', async () => {
     delete process.env.OPENAI_REASONING_SUMMARY
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.CLAUDE_CODE_MAX_RETRIES = '2'
@@ -330,7 +330,7 @@ describe('reasoning summaries (thinking visibility)', () => {
       }),
     ).rejects.toThrow(/backend unavailable/)
 
-    expect(bodies).toHaveLength(3)
+    expect(bodies).toHaveLength(4)
     expect(JSON.parse(bodies[0]!).reasoning.summary).toBe('auto')
     for (const body of bodies.slice(1)) {
       expect(JSON.parse(body).reasoning).toEqual({ effort: 'high' })
@@ -561,7 +561,7 @@ describe('createOpenAIResponsesStream', () => {
     ).toBeUndefined()
   })
 
-  test('cache-key degradation cannot start a second retry budget', async () => {
+  test('cache-key degradation keeps one network retry budget', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-key'
     process.env.OPENAI_BASE_URL = 'https://gateway.internal/v1'
     process.env.CLAUDE_CODE_MAX_RETRIES = '2'
@@ -599,7 +599,7 @@ describe('createOpenAIResponsesStream', () => {
       }),
     ).rejects.toThrow(/backend unavailable/)
 
-    expect(bodies).toHaveLength(3)
+    expect(bodies).toHaveLength(4)
     expect(bodies[0]!.prompt_cache_key).toBe('occ:responses-session')
     for (const body of bodies.slice(1)) {
       expect('prompt_cache_key' in body).toBe(false)

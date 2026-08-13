@@ -1098,10 +1098,14 @@ export async function runInProcessTeammate(
       const tokenCount = tokenCountWithEstimation(allMessages)
       if (
         tokenCount >
-        getAutoCompactThreshold(
-          toolUseContext.options.mainLoopModel,
-          toolUseContext.options.modelSettingsSlot,
-        )
+        getAutoCompactThreshold(toolUseContext.options.mainLoopModel, {
+          settingsSlot: toolUseContext.options.modelSettingsSlot,
+          sessionOverrides:
+            toolUseContext.options.sessionModelSettingsOverrides,
+          autoCompactWindow: toolUseContext.options.autoCompactWindow,
+          autoCompactWindowOverride:
+            toolUseContext.options.autoCompactWindowOverride,
+        })
       ) {
         logForDebugging(
           `[inProcessRunner] ${identity.agentId} compacting history (${tokenCount} tokens)`,

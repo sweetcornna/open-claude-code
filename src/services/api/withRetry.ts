@@ -5,11 +5,7 @@ import {
   APIUserAbortError,
 } from '@anthropic-ai/sdk'
 import type { QuerySource } from 'src/constants/querySource.js'
-import type {
-  AssistantMessage,
-  StreamEvent,
-  SystemAPIErrorMessage,
-} from 'src/types/message.js'
+import type { SystemAPIErrorMessage } from 'src/types/message.js'
 import { isAwsCredentialsProviderError } from 'src/utils/auth/aws.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import { logError } from 'src/utils/telemetry/log.js'
@@ -46,10 +42,7 @@ import {
   checkMockRateLimitError,
   isMockRateLimitError,
 } from '../rateLimitMocking.js'
-import {
-  classifyRetryableAPIError,
-  getAPIErrorSource,
-} from './retryClassification.js'
+import { classifyRetryableAPIError } from './retryClassification.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 
 const abortError = () => new APIUserAbortError()
@@ -115,18 +108,26 @@ function shouldRetryForeground529(
   )
 }
 
+const STALE_CONNECTION_CODES = new Set([
+  'ECONNRESET',
+  'EPIPE',
+  'CONNECTIONCLOSED',
+  'ETIMEDOUT',
+  'ECONNABORTED',
+  'ERR_SOCKET_CLOSED',
+  'STREAMSUSPENDED',
+  'UND_ERR_SOCKET',
+])
+
 function isStaleConnectionError(error: unknown): boolean {
-  // Bare transport failures (TypeError: fetch failed / Error: terminated) are
-  // never APIConnectionError but carry the same ECONNRESET/EPIPE cause, and
-  // they need the same keep-alive teardown before the retry reconnects.
   if (
     !(error instanceof APIConnectionError) &&
     !isTransientNetworkError(error)
   ) {
     return false
   }
-  const details = extractConnectionErrorDetails(error)
-  return details?.code === 'ECONNRESET' || details?.code === 'EPIPE'
+  const code = extractConnectionErrorDetails(error)?.code.toUpperCase()
+  return code !== undefined && STALE_CONNECTION_CODES.has(code)
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +232,7 @@ interface RetryOptions {
   fastMode?: boolean
   signal?: AbortSignal
   querySource?: QuerySource
+  onError?: (error: unknown) => string | undefined | Promise<string | undefined>
   /**
    * Pre-seed the consecutive 529 counter. Used when this retry loop is a
    * non-streaming fallback after a streaming 529 — the streaming 529 should
@@ -260,6 +262,12 @@ export class FallbackTriggeredError extends Error {
   constructor(
     public readonly originalModel: string,
     public readonly fallbackModel: string,
+    public readonly reason:
+      | 'model_not_found'
+      | 'permission_denied'
+      | 'server_error'
+      | 'overloaded' = 'overloaded',
+    public readonly originalError?: unknown,
   ) {
     super(`Model fallback triggered: ${originalModel} -> ${fallbackModel}`)
     this.name = 'FallbackTriggeredError'
@@ -285,6 +293,10 @@ export async function* withRetry<T>(
   let consecutive529Errors = options.initialConsecutive529Errors ?? 0
   let lastError: unknown
   let persistentAttempt = 0
+  let oauthRecoveryAttempts = 0
+  let awsRecoveryAttempts = 0
+  let gcpRecoveryAttempts = 0
+  const appliedErrorTransforms = new Set<string>()
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     if (options.signal?.aborted) {
       throw new APIUserAbortError()
@@ -312,6 +324,12 @@ export async function* withRetry<T>(
       // socket. Retryable credential failures drop their caches in the catch
       // block so a rotated credential can recover within this request.
       const isStaleConnection = isStaleConnectionError(lastError)
+      const mustRebuildClient =
+        (lastError instanceof APIError && lastError.status === 401) ||
+        isOAuthTokenRevokedError(lastError) ||
+        isBedrockAuthError(lastError) ||
+        isVertexAuthError(lastError) ||
+        isStaleConnection
       if (
         isStaleConnection &&
         getFeatureValue_CACHED_MAY_BE_STALE(
@@ -325,7 +343,7 @@ export async function* withRetry<T>(
         disableKeepAlive()
       }
 
-      if (client === null || isStaleConnection) {
+      if (client === null || mustRebuildClient) {
         client = await getClient()
       }
 
@@ -337,9 +355,45 @@ export async function* withRetry<T>(
         { level: 'error' },
       )
 
-      // Before any retry decision: an auth failure ends this request either
-      // way, but the stale credential behind it must not survive into the next
-      // one. See recoverCredentialsForNextRequest.
+      const transform = await options.onError?.(error)
+      if (transform && !appliedErrorTransforms.has(transform)) {
+        appliedErrorTransforms.add(transform)
+        attempt--
+        continue
+      }
+
+      const fallbackReason = modelFallbackReason(error)
+      if (
+        fallbackReason &&
+        options.fallbackModel &&
+        options.fallbackModel !== options.model &&
+        !isPersistentRetryEnabled()
+      ) {
+        throw new FallbackTriggeredError(
+          options.model,
+          options.fallbackModel,
+          fallbackReason,
+          error,
+        )
+      }
+
+      const oauthFailure =
+        (error instanceof APIError && error.status === 401) ||
+        isOAuthTokenRevokedError(error)
+      const awsFailure = isBedrockAuthError(error)
+      const gcpFailure = isVertexAuthError(error)
+      if (oauthFailure && oauthRecoveryAttempts >= 2) {
+        throw new CannotRetryError(error, retryContext)
+      }
+      if (awsFailure && awsRecoveryAttempts >= 2) {
+        throw new CannotRetryError(error, retryContext)
+      }
+      if (gcpFailure && gcpRecoveryAttempts >= 2) {
+        throw new CannotRetryError(error, retryContext)
+      }
+      if (oauthFailure) oauthRecoveryAttempts++
+      if (awsFailure) awsRecoveryAttempts++
+      if (gcpFailure) gcpRecoveryAttempts++
       await recoverCredentialsForNextRequest(error)
 
       // Fast mode fallback: on 429/529, either wait and retry (short delays)
@@ -428,6 +482,8 @@ export async function* withRetry<T>(
             throw new FallbackTriggeredError(
               options.model,
               options.fallbackModel,
+              'overloaded',
+              error,
             )
           }
         }
@@ -484,6 +540,15 @@ export async function* withRetry<T>(
             // largest value the retry can request without repeating the same
             // context overflow.
             const adjustedMaxTokens = availableContext
+            if (
+              retryContext.maxTokensOverride !== undefined &&
+              adjustedMaxTokens >= retryContext.maxTokensOverride
+            ) {
+              logError(
+                new Error('max_tokens overflow adjustment made no progress'),
+              )
+              throw new CannotRetryError(error, retryContext)
+            }
             retryContext.maxTokensOverride = adjustedMaxTokens
 
             logEvent('tengu_max_tokens_context_overflow_adjustment', {
@@ -680,6 +745,39 @@ function parseMaxTokensContextOverflowError(error: APIError):
   }
 
   return { inputTokens, maxTokens, contextLimit }
+}
+
+function modelFallbackReason(
+  error: unknown,
+): 'model_not_found' | 'permission_denied' | 'server_error' | undefined {
+  if (!(error instanceof APIError)) return undefined
+  const message = error.message ?? ''
+  const isModelError = message.includes('model:') || /\bmodel\b/i.test(message)
+  if (
+    error.status === 404 &&
+    isModelError &&
+    (error.type === 'not_found_error' ||
+      message.includes('"type":"not_found_error"'))
+  ) {
+    return 'model_not_found'
+  }
+  if (
+    error.status === 403 &&
+    isModelError &&
+    (error.type === 'permission_error' ||
+      message.includes('"type":"permission_error"'))
+  ) {
+    return 'permission_denied'
+  }
+  if (
+    error.status !== undefined &&
+    error.status >= 500 &&
+    error.status < 600 &&
+    error.status !== 529
+  ) {
+    return 'server_error'
+  }
+  return undefined
 }
 
 // TODO: Replace with a response header check once the API adds a dedicated
@@ -881,293 +979,4 @@ function getRateLimitResetDelayMs(error: APIError): number | null {
   const delayMs = resetUnixSec * 1000 - Date.now()
   if (delayMs <= 0) return null
   return Math.min(delayMs, PERSISTENT_RESET_CAP_MS)
-}
-
-// ---------------------------------------------------------------------------
-// queryModel-level transient retry (covers what `withRetry` structurally can't)
-//
-// `withRetry` only wraps *stream creation* on the first-party path. Two gaps
-// remain, and they are the ones agents actually die on:
-//
-//   1. Third-party providers (OpenAI / Gemini / Grok) branch out of `queryModel`
-//      before `withRetry` is ever reached, and each has a single catch-all that
-//      turns any failure into an error message — zero retries.
-//   2. A stream that dies *mid-iteration* escapes the `withRetry` operation
-//      entirely; it lands in the non-streaming fallback, or dies outright when
-//      CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK is set.
-//
-// `queryModel` never throws for either case — it yields an assistant message
-// with `isApiErrorMessage: true`. So the wrapper below re-runs the whole
-// generator, matching on that message rather than on a thrown error.
-// ---------------------------------------------------------------------------
-
-type QueryModelOutput = StreamEvent | AssistantMessage | SystemAPIErrorMessage
-
-/**
- * Marker set by `claude.ts` on error messages produced from a `CannotRetryError`
- * — i.e. the inner `withRetry` ladder already burned its ten attempts on this
- * failure. Without it the two layers compose into 10x10 attempts and roughly
- * half an hour of backoff for a genuinely-down network.
- *
- * A Symbol, not a string key: assistant messages get JSON-serialized into the
- * session transcript JSONL, and `JSON.stringify` skips symbol-keyed properties.
- * `Symbol.for` rather than `Symbol()` so the marker survives the module being
- * instantiated twice (Vite splits this bundle into 600+ chunks).
- */
-const TRANSIENT_RETRIES_EXHAUSTED = Symbol.for(
-  'occ.api.transientRetriesExhausted',
-)
-
-export function markTransientRetriesExhausted<T extends object>(message: T): T {
-  return Object.assign(message, { [TRANSIENT_RETRIES_EXHAUSTED]: true })
-}
-
-function hasExhaustedTransientRetries(message: unknown): boolean {
-  if (typeof message !== 'object' || message === null) return false
-  if (
-    (message as Record<symbol, unknown>)[TRANSIENT_RETRIES_EXHAUSTED] === true
-  ) {
-    return true
-  }
-  return (
-    hasExhaustedTransientRetries(getAPIErrorSource(message)) ||
-    hasExhaustedTransientRetries((message as { error?: unknown }).error)
-  )
-}
-
-function isApiErrorAssistantMessage(item: QueryModelOutput): boolean {
-  return (
-    item.type === 'assistant' &&
-    (item as AssistantMessage).isApiErrorMessage === true
-  )
-}
-
-function getMessageText(item: QueryModelOutput): string {
-  const content = (item as AssistantMessage).message?.content
-  if (typeof content === 'string') {
-    return content
-  }
-  if (!Array.isArray(content)) {
-    return ''
-  }
-  return content
-    .map(block => {
-      if (
-        typeof block === 'object' &&
-        block !== null &&
-        (block as { type?: string }).type === 'text'
-      ) {
-        return String((block as { text?: unknown }).text ?? '')
-      }
-      return ''
-    })
-    .join('\n')
-}
-
-function getRetrySourceError(item: QueryModelOutput): unknown | undefined {
-  const sourceError = getAPIErrorSource(item)
-  if (sourceError !== undefined) return sourceError
-  // Compatibility for in-memory callers created before source errors moved to
-  // symbol metadata. New provider messages never put Error objects here.
-  const legacyError = (item as AssistantMessage).error as unknown
-  return legacyError instanceof Error ? legacyError : undefined
-}
-
-/**
- * "Did the model already say something the caller acted on?" Once true the
- * wrapper stops retrying forever: re-running `queryModel` after a partial
- * stream re-emits the same `tool_use` block and the tool runs twice (inc-4258).
- *
- * The bar is *observable model output*, not "any bytes arrived". Protocol-only
- * events such as message_start do not commit an attempt, but text, tool JSON,
- * thinking, and signatures do: all are yielded outside the API layer, and
- * replaying after any of them risks duplicate output or tool execution.
- */
-function isModelContentOutput(item: QueryModelOutput): boolean {
-  if (item.type === 'assistant') {
-    return (item as AssistantMessage).isApiErrorMessage !== true
-  }
-  if (item.type !== 'stream_event') {
-    return false
-  }
-  const event = (
-    item as {
-      event?: {
-        type?: string
-        delta?: unknown
-        content_block?: { type?: string }
-      }
-    }
-  ).event
-  if (
-    event?.type === 'content_block_start' &&
-    (event.content_block?.type === 'tool_use' ||
-      event.content_block?.type === 'server_tool_use')
-  ) {
-    return true
-  }
-  if (event?.type === 'message_delta') {
-    return (
-      (event.delta as { stop_reason?: string } | undefined)?.stop_reason ===
-      'refusal'
-    )
-  }
-  if (event?.type !== 'content_block_delta') {
-    return false
-  }
-  const delta = (event.delta ?? {}) as Record<string, unknown>
-  return Boolean(
-    delta.text || delta.partial_json || delta.thinking || delta.signature,
-  )
-}
-
-interface TransientNetworkRetryOptions {
-  signal?: AbortSignal
-  /** Defaults to CLAUDE_CODE_MAX_RETRIES, else 10 — same source as withRetry. */
-  maxRetries?: number
-  model?: string
-  querySource?: QuerySource
-}
-
-/**
- * Re-runs `run()` when an attempt produced nothing but a transient-looking API
- * error message. Applies to every agent alike: main loop, Agent-tool subagents
- * and workflow agents all funnel through `queryModelWith{,out}Streaming`.
- *
- * Never retries once content has been emitted, once the signal is aborted, or
- * once the inner ladder has already given up (see
- * {@link markTransientRetriesExhausted}).
- */
-export async function* withTransientNetworkRetry(
-  run: () => AsyncGenerator<QueryModelOutput, void>,
-  options: TransientNetworkRetryOptions = {},
-): AsyncGenerator<QueryModelOutput, void> {
-  const maxRetries =
-    options.maxRetries === undefined
-      ? getDefaultMaxRetries()
-      : clampMaxRetries(options.maxRetries)
-  if (!(maxRetries > 0)) {
-    yield* run()
-    return
-  }
-
-  let hasEmittedContent = false
-
-  for (let attempt = 1; ; attempt++) {
-    hasEmittedContent = false
-    /**
-     * `hasEmittedContent` comes first and is unconditional. No retry policy
-     * reaches past it: once a delta left this generator it is on the terminal,
-     * in an ACP `agent_message_chunk` and on `--include-partial-messages`
-     * stdout, and none of those has an update kind that takes it back.
-     */
-    const canRetry = (verdict: RetryVerdict): boolean =>
-      !hasEmittedContent &&
-      !options.signal?.aborted &&
-      verdict.retryable &&
-      attempt <= maxRetries
-
-    let retryError: unknown
-    let heldErrorMessage: QueryModelOutput | undefined
-
-    try {
-      for await (const item of run()) {
-        if (isApiErrorAssistantMessage(item)) {
-          const text = getMessageText(item)
-          const sourceError = getRetrySourceError(item)
-          // The error OBJECT wins whenever there is one: it carries a real
-          // status, errno and replay-safety marker, whereas the text is a last
-          // resort for producers that only yield prose. Or-ing the two lets
-          // transient-looking text overrule structured metadata and can replay
-          // output that already crossed the commitment boundary.
-          const verdict =
-            sourceError !== undefined
-              ? retryVerdict(sourceError)
-              : retryVerdict(text)
-          if (
-            !hasEmittedContent &&
-            !options.signal?.aborted &&
-            verdict.retryable &&
-            attempt <= maxRetries &&
-            !hasExhaustedTransientRetries(item)
-          ) {
-            // Current producers yield at most one error message per attempt,
-            // but if a second ever arrives the first must not vanish — emit it
-            // rather than letting the assignment below swallow it.
-            if (heldErrorMessage) {
-              yield heldErrorMessage
-            }
-            heldErrorMessage = item
-            retryError =
-              sourceError instanceof Error
-                ? new APIConnectionError({
-                    message: sourceError.message,
-                    cause: sourceError,
-                  })
-                : new APIConnectionError({ message: text })
-            continue
-          }
-          yield item
-          continue
-        }
-        if (isModelContentOutput(item)) {
-          hasEmittedContent = true
-        }
-        yield item
-      }
-    } catch (error) {
-      // queryModel normally converts failures to messages, but user aborts and
-      // FallbackTriggeredError still propagate — neither is retriable, and
-      // retryVerdict rejects both.
-      const verdict = retryVerdict(error)
-      if (!canRetry(verdict)) {
-        throw error
-      }
-      retryError =
-        error instanceof Error
-          ? new APIConnectionError({ message: error.message, cause: error })
-          : new APIConnectionError({ message: String(error) })
-      heldErrorMessage = undefined
-    }
-
-    if (retryError === undefined) {
-      return
-    }
-
-    // Content that arrived after the held error (possible when the fallback
-    // path yields late) retroactively disqualifies the retry.
-    if (hasEmittedContent || options.signal?.aborted) {
-      if (heldErrorMessage) {
-        yield heldErrorMessage
-      }
-      return
-    }
-
-    const attemptBudget = maxRetries
-    const delayMs = getRetryDelay(attempt, getRetryAfter(retryError))
-    if (delayMs > RETRY_AFTER_MAX_MS) {
-      if (heldErrorMessage) yield heldErrorMessage
-      return
-    }
-    logForDebugging(
-      `API failure (attempt ${attempt}/${attemptBudget}), retrying in ${delayMs}ms: ${errorMessage(retryError)}`,
-      { level: 'warn' },
-    )
-    logEvent('tengu_api_transient_network_retry', {
-      attempt,
-      delayMs,
-      maxRetries: attemptBudget,
-      provider: getAPIProviderForStatsig(),
-      query_source:
-        options.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-    yield createSystemAPIErrorMessage(
-      toRetryDisplayError(retryError),
-      delayMs,
-      attempt,
-      attemptBudget,
-    )
-    // Throws APIUserAbortError on abort so the whole turn unwinds immediately.
-    await sleep(delayMs, options.signal, { abortError })
-  }
 }

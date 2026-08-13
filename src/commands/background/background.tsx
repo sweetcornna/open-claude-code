@@ -83,6 +83,8 @@ export async function call(
       prompt={prompt}
       engine={engine}
       tasks={collectBackgroundTasks(context)}
+      autoCompactWindow={context.getAppState().autoCompactWindow}
+      autoCompactWindowOverride={context.getAppState().autoCompactWindowOverride}
       binName={BIN_NAME}
       onDone={onDone}
     />

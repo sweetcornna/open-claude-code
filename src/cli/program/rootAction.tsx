@@ -126,6 +126,7 @@ import {
   resolveFastModeStatusFromCache,
 } from 'src/utils/model/fastMode.js';
 import { getInitialSettings, getSettingsWithErrors } from 'src/utils/settings/settings.js';
+import { resolveInitialAutoCompactWindow } from 'src/services/compact/autoCompactWindow.js';
 import { getMcpToolsCommandsAndResources, prefetchAllMcpResources } from 'src/services/mcp/client.js';
 import { getModelDeprecationWarning } from 'src/utils/model/deprecation.js';
 import { getOauthConfig } from 'src/constants/oauth.js';
@@ -391,6 +392,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
 
   // Extract disable slash commands flag
   const disableSlashCommands = options.disableSlashCommands || false;
+  const autoCompactState = resolveInitialAutoCompactWindow(options.autocompact);
 
   // Extract tasks mode options (ant-only)
   const tasksOption = process.env.USER_TYPE === 'ant' && (options as { tasks?: boolean | string }).tasks;
@@ -1928,6 +1930,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       },
       toolPermissionContext,
       effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
+      ...autoCompactState,
       ...(isFastModeEnabled() && {
         fastMode: getInitialFastModeSetting(effectiveModel ?? null),
       }),
@@ -2142,6 +2145,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         includePartialMessages: effectiveIncludePartialMessages,
         forkSession: options.forkSession || false,
         resumeSessionAt: options.resumeSessionAt || undefined,
+        resumeDropsTurn: options.resumeDropsTurn || undefined,
         rewindFiles: options.rewindFiles,
         enableAuthStatus: options.enableAuthStatus,
         agent: agentCli,
@@ -2348,6 +2352,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       : null,
     effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
     sessionModelSettingsOverrides: {},
+    ...autoCompactState,
     activeOverlays: new Set<string>(),
     fastMode: getInitialFastModeSetting(resolvedInitialModel),
     ...(isAdvisorEnabled() && advisorModel && { advisorModel }),

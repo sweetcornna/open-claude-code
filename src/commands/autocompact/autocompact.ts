@@ -101,6 +101,7 @@ export function applyAutoCompactWindow(
   rawArgs: string,
   model: string,
   settingsSlot?: ModelSettingsSlot,
+  onApplied?: (value: number | undefined) => void,
 ): string {
   const window = modelContextWindow(model, settingsSlot)
   if (resolveActiveAutoCompactWindow(window).source === 'env') {
@@ -132,7 +133,11 @@ export function applyAutoCompactWindow(
   // out-ranks userSettings) may still be dictating the effective value, and
   // saying "set to X" when X is not what runs is the bug worth avoiding here.
   const effectiveSetting = getInitialSettings().autoCompactWindow
-  const after = resolveActiveAutoCompactWindow(window)
+  onApplied?.(effectiveSetting)
+  const after = resolveActiveAutoCompactWindow(window, {
+    autoCompactWindow: effectiveSetting,
+    autoCompactWindowOverride: true,
+  })
   const overridden = after.source === 'env' || effectiveSetting !== value
 
   if (parsed === 'auto') {
@@ -159,8 +164,13 @@ export const call: LocalCommandCall = async (
   const trimmed = args.trim()
 
   if (!trimmed) {
+    const state = context.getAppState()
     const resolved = resolveActiveAutoCompactWindow(
       modelContextWindow(model, settingsSlot),
+      {
+        autoCompactWindow: state.autoCompactWindow,
+        autoCompactWindowOverride: state.autoCompactWindowOverride,
+      },
     )
     return {
       type: 'text',
@@ -170,6 +180,12 @@ export const call: LocalCommandCall = async (
 
   return {
     type: 'text',
-    value: applyAutoCompactWindow(trimmed, model, settingsSlot),
+    value: applyAutoCompactWindow(trimmed, model, settingsSlot, value => {
+      context.setAppState(prev => ({
+        ...prev,
+        autoCompactWindow: value,
+        autoCompactWindowOverride: true,
+      }))
+    }),
   }
 }

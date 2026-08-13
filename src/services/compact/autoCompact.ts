@@ -26,7 +26,10 @@ import {
   ERROR_MESSAGE_USER_ABORT,
   type RecompactionInfo,
 } from './compact.js'
-import { resolveActiveAutoCompactWindow } from './autoCompactWindow.js'
+import {
+  type AutoCompactWindowContext,
+  resolveActiveAutoCompactWindow,
+} from './autoCompactWindow.js'
 import { runPostCompactCleanup } from './postCompactCleanup.js'
 import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 
@@ -35,29 +38,44 @@ import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 
 // Returns the context window size minus the max output tokens for the model
-export function getEffectiveContextWindowSize(
-  model: string,
-  settingsSlot?: ModelSettingsSlot,
-  sessionOverrides?: SessionModelSettingsOverrides,
-): number {
-  const reservedTokensForSummary = Math.min(
+export type AutoCompactContext = AutoCompactWindowContext & {
+  settingsSlot?: ModelSettingsSlot
+  sessionOverrides?: SessionModelSettingsOverrides
+}
+
+function getReservedOutputTokens(model: string): number {
+  return Math.min(
     getMaxOutputTokensForModel(model),
     MAX_OUTPUT_TOKENS_FOR_SUMMARY,
   )
+}
+
+export function getModelEffectiveContextWindowSize(
+  model: string,
+  context: AutoCompactContext = {},
+): number {
+  return (
+    getContextWindowForModel(
+      model,
+      getSdkBetas(),
+      context.settingsSlot,
+      context.sessionOverrides,
+    ) - getReservedOutputTokens(model)
+  )
+}
+
+export function getEffectiveContextWindowSize(
+  model: string,
+  context: AutoCompactContext = {},
+): number {
   const modelContextWindow = getContextWindowForModel(
     model,
     getSdkBetas(),
-    settingsSlot,
-    sessionOverrides,
+    context.settingsSlot,
+    context.sessionOverrides,
   )
-
-  // The auto-compact window only ever narrows the model's real window; the
-  // context-window precedence chain lives in getContextWindowForModel and is
-  // deliberately not duplicated here. See autoCompactWindow.ts.
-  const { window: contextWindow } =
-    resolveActiveAutoCompactWindow(modelContextWindow)
-
-  return contextWindow - reservedTokensForSummary
+  const { window } = resolveActiveAutoCompactWindow(modelContextWindow, context)
+  return window - getReservedOutputTokens(model)
 }
 
 export type AutoCompactTrackingState = {
@@ -86,18 +104,7 @@ const TOOL_RESULT_GROWTH_ESTIMATE = 15_000
  * headroom because a single turn can produce proportionally more tokens
  * (longer model outputs + larger tool results).
  */
-export function getAutocompactBufferTokens(
-  model: string,
-  settingsSlot?: ModelSettingsSlot,
-  sessionOverrides?: SessionModelSettingsOverrides,
-): number {
-  const effectiveWindow = getEffectiveContextWindowSize(
-    model,
-    settingsSlot,
-    sessionOverrides,
-  )
-  if (effectiveWindow >= 800_000) return 50_000
-  if (effectiveWindow >= 400_000) return 30_000
+export function getAutocompactBufferTokens(): number {
   return AUTOCOMPACT_BUFFER_TOKENS
 }
 
@@ -120,18 +127,12 @@ const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3
 
 export function getAutoCompactThreshold(
   model: string,
-  settingsSlot?: ModelSettingsSlot,
-  sessionOverrides?: SessionModelSettingsOverrides,
+  context: AutoCompactContext = {},
 ): number {
-  const effectiveContextWindow = getEffectiveContextWindowSize(
-    model,
-    settingsSlot,
-    sessionOverrides,
-  )
+  const effectiveContextWindow = getEffectiveContextWindowSize(model, context)
 
   const autocompactThreshold =
-    effectiveContextWindow -
-    getAutocompactBufferTokens(model, settingsSlot, sessionOverrides)
+    effectiveContextWindow - getAutocompactBufferTokens()
 
   // Override for easier testing of autocompact
   const envPercent = process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
@@ -148,11 +149,20 @@ export function getAutoCompactThreshold(
   return autocompactThreshold
 }
 
+export function getBlockingLimit(
+  model: string,
+  context: AutoCompactContext = {},
+): number {
+  return (
+    getModelEffectiveContextWindowSize(model, context) -
+    MANUAL_COMPACT_BUFFER_TOKENS
+  )
+}
+
 export function calculateTokenWarningState(
   tokenUsage: number,
   model: string,
-  settingsSlot?: ModelSettingsSlot,
-  sessionOverrides?: SessionModelSettingsOverrides,
+  context: AutoCompactContext = {},
 ): {
   percentLeft: number
   isAboveWarningThreshold: boolean
@@ -160,14 +170,10 @@ export function calculateTokenWarningState(
   isAboveAutoCompactThreshold: boolean
   isAtBlockingLimit: boolean
 } {
-  const autoCompactThreshold = getAutoCompactThreshold(
-    model,
-    settingsSlot,
-    sessionOverrides,
-  )
+  const autoCompactThreshold = getAutoCompactThreshold(model, context)
   const threshold = isAutoCompactEnabled()
     ? autoCompactThreshold
-    : getEffectiveContextWindowSize(model, settingsSlot, sessionOverrides)
+    : getModelEffectiveContextWindowSize(model, context)
 
   const percentLeft = Math.max(
     0,
@@ -183,13 +189,7 @@ export function calculateTokenWarningState(
   const isAboveAutoCompactThreshold =
     isAutoCompactEnabled() && tokenUsage >= autoCompactThreshold
 
-  const actualContextWindow = getEffectiveContextWindowSize(
-    model,
-    settingsSlot,
-    sessionOverrides,
-  )
-  const defaultBlockingLimit =
-    actualContextWindow - MANUAL_COMPACT_BUFFER_TOKENS
+  const defaultBlockingLimit = getBlockingLimit(model, context)
 
   // Allow override for testing
   const blockingLimitOverride = process.env.CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE
@@ -229,8 +229,7 @@ export async function shouldAutoCompact(
   messages: Message[],
   model: string,
   querySource?: QuerySource,
-  settingsSlot?: ModelSettingsSlot,
-  sessionOverrides?: SessionModelSettingsOverrides,
+  context: AutoCompactContext = {},
 ): Promise<boolean> {
   // Recursion guards. session_memory and compact are forked agents that
   // would deadlock.
@@ -254,16 +253,8 @@ export async function shouldAutoCompact(
   }
 
   const tokenCount = tokenCountWithEstimation(messages)
-  const threshold = getAutoCompactThreshold(
-    model,
-    settingsSlot,
-    sessionOverrides,
-  )
-  const effectiveWindow = getEffectiveContextWindowSize(
-    model,
-    settingsSlot,
-    sessionOverrides,
-  )
+  const threshold = getAutoCompactThreshold(model, context)
+  const effectiveWindow = getEffectiveContextWindowSize(model, context)
 
   logForDebugging(
     `autocompact: tokens=${tokenCount} threshold=${threshold} effectiveWindow=${effectiveWindow}`,
@@ -272,8 +263,7 @@ export async function shouldAutoCompact(
   const { isAboveAutoCompactThreshold } = calculateTokenWarningState(
     tokenCount,
     model,
-    settingsSlot,
-    sessionOverrides,
+    context,
   )
 
   return isAboveAutoCompactThreshold
@@ -305,13 +295,17 @@ export async function autoCompactIfNeeded(
   }
 
   const model = toolUseContext.options.mainLoopModel
-  const settingsSlot = toolUseContext.options.modelSettingsSlot
+  const context: AutoCompactContext = {
+    settingsSlot: toolUseContext.options.modelSettingsSlot,
+    sessionOverrides: toolUseContext.options.sessionModelSettingsOverrides,
+    autoCompactWindow: toolUseContext.options.autoCompactWindow,
+    autoCompactWindowOverride: toolUseContext.options.autoCompactWindowOverride,
+  }
   const shouldCompact = await shouldAutoCompact(
     messages,
     model,
     querySource,
-    settingsSlot,
-    toolUseContext.options.sessionModelSettingsOverrides,
+    context,
   )
 
   if (!shouldCompact) {
@@ -322,11 +316,7 @@ export async function autoCompactIfNeeded(
     isRecompactionInChain: tracking?.compacted === true,
     turnsSincePreviousCompact: tracking?.turnCounter ?? -1,
     previousCompactTurnId: tracking?.turnId,
-    autoCompactThreshold: getAutoCompactThreshold(
-      model,
-      settingsSlot,
-      toolUseContext.options.sessionModelSettingsOverrides,
-    ),
+    autoCompactThreshold: getAutoCompactThreshold(model, context),
     querySource,
   }
 

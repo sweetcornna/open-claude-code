@@ -9,11 +9,15 @@ const MAX_CONFIGURED_RETRIES = 15
 const BASE_DELAY_MS = 500
 const MAX_BACKOFF_MS = 32_000
 const MAX_RETRY_AFTER_MS = 60_000
-const TRANSIENT_RETRIES_EXHAUSTED = Symbol.for(
-  'occ.api.transientRetriesExhausted',
-)
-
 type OpenAIRetryDelay = (delayMs: number, signal: AbortSignal) => Promise<void>
+
+export type APIRetryOptions = {
+  signal: AbortSignal
+  maxRetries?: number
+  delay?: OpenAIRetryDelay
+  random?: () => number
+  onError?: (error: unknown) => string | undefined | Promise<string | undefined>
+}
 
 export class OpenAIRequestError extends Error {
   readonly retryable: boolean
@@ -195,19 +199,6 @@ export async function createOpenAIResponseError(
   )
 }
 
-function markRetryBudgetExhausted(error: unknown): void {
-  if (typeof error !== 'object' || error === null) return
-  try {
-    Object.defineProperty(error, TRANSIENT_RETRIES_EXHAUSTED, {
-      value: true,
-      configurable: true,
-    })
-  } catch {
-    // A frozen third-party error cannot carry the marker. The original error is
-    // still rethrown; this only affects the outer de-duplication guard.
-  }
-}
-
 function retryAfterMsFromError(error: unknown): number | undefined {
   // An OpenAIRequestError may carry the parsed value, the raw headers, or both:
   // `createOpenAIResponseError` only pre-parses `retry-after`, so a response
@@ -231,7 +222,10 @@ function retryAfterMsFromError(error: unknown): number | undefined {
   return parseRetryAfterMs(headers.get('retry-after'))
 }
 
-function retryDelayMs(attempt: number, random: () => number): number {
+export function getOpenAIRetryDelay(
+  attempt: number,
+  random: () => number = Math.random,
+): number {
   const exponential = Math.min(
     BASE_DELAY_MS * 2 ** (attempt - 1),
     MAX_BACKOFF_MS,
@@ -239,14 +233,9 @@ function retryDelayMs(attempt: number, random: () => number): number {
   return Math.round(exponential + random() * 0.25 * exponential)
 }
 
-export async function retryOpenAIRequest<T>(
+export async function retryAPIRequest<T>(
   operation: (attempt: number) => Promise<T>,
-  options: {
-    signal: AbortSignal
-    maxRetries?: number
-    delay?: OpenAIRetryDelay
-    random?: () => number
-  },
+  options: APIRetryOptions,
 ): Promise<T> {
   const maxRetries =
     options.maxRetries === undefined
@@ -254,6 +243,7 @@ export async function retryOpenAIRequest<T>(
       : clampOpenAIMaxRetries(options.maxRetries)
   const delay = options.delay ?? defaultDelay
   const random = options.random ?? Math.random
+  const appliedErrorTransforms = new Set<string>()
   let attempt = 0
 
   while (true) {
@@ -261,16 +251,21 @@ export async function retryOpenAIRequest<T>(
     try {
       return await operation(attempt)
     } catch (error) {
-      const verdict = classifyRetryableAPIError(error)
-      if (options.signal.aborted || !verdict.retryable) {
-        throw error
+      const transform = await options.onError?.(error)
+      if (transform && !appliedErrorTransforms.has(transform)) {
+        appliedErrorTransforms.add(transform)
+        continue
       }
-      if (attempt >= maxRetries) {
-        markRetryBudgetExhausted(error)
+      const verdict = classifyRetryableAPIError(error)
+      if (
+        options.signal.aborted ||
+        !verdict.retryable ||
+        attempt >= maxRetries
+      ) {
         throw error
       }
       const retryAfterMs = retryAfterMsFromError(error)
-      const backoffMs = retryDelayMs(attempt + 1, random)
+      const backoffMs = getOpenAIRetryDelay(attempt + 1, random)
       if (retryAfterMs !== undefined && retryAfterMs > MAX_RETRY_AFTER_MS) {
         throw error
       }
@@ -284,3 +279,5 @@ export async function retryOpenAIRequest<T>(
     }
   }
 }
+
+export const retryOpenAIRequest = retryAPIRequest

@@ -1,9 +1,34 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
-  applyAutoCompactWindow,
-  formatAutoCompactWindowStatus,
-} from '../autocompact.js'
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
 import type { AutoCompactWindowSource } from '../../../services/compact/autoCompactWindow.js'
+import { setupSettingsMock } from '../../../../tests/mocks/settings.js'
+
+const settingsMock = setupSettingsMock()
+let effectiveAutoCompactWindow: number | undefined
+
+beforeAll(() => {
+  settingsMock.set({
+    getInitialSettings: () => ({
+      autoCompactWindow: effectiveAutoCompactWindow,
+    }),
+    updateSettingsForSource: () => ({ error: null }),
+  })
+})
+
+afterAll(() => {
+  settingsMock.reset()
+})
+
+const { applyAutoCompactWindow, formatAutoCompactWindowStatus } = await import(
+  '../autocompact.js'
+)
 
 // No mock.module: the status formatter is pure, and the only applyAutoCompactWindow
 // path exercised here is the one that refuses to write (env override active) plus
@@ -84,6 +109,7 @@ describe('applyAutoCompactWindow', () => {
 
   beforeEach(() => {
     delete process.env[ENV_KEY]
+    effectiveAutoCompactWindow = undefined
   })
 
   afterEach(() => {
@@ -109,5 +135,17 @@ describe('applyAutoCompactWindow', () => {
 
   test('out-of-range values are a parse error, not a clamp', () => {
     expect(applyAutoCompactWindow('50k', MODEL)).toContain("Couldn't parse")
+  })
+
+  test('applies the effective higher-priority value to the current session', () => {
+    effectiveAutoCompactWindow = 150_000
+    let applied: number | undefined
+
+    const result = applyAutoCompactWindow('300k', MODEL, undefined, value => {
+      applied = value
+    })
+
+    expect(applied).toBe(150_000)
+    expect(result).toContain('higher-priority override is active (150k tokens)')
   })
 })

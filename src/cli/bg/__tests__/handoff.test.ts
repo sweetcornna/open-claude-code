@@ -90,6 +90,37 @@ describe('planHandoff', () => {
     expect(plan.cwd).toBe('/tmp/project')
   })
 
+  test('forwards a session-scoped auto-compact window', () => {
+    const plan = planHandoff({
+      ...base,
+      interactive: true,
+      autoCompactWindow: 500_000,
+      autoCompactWindowOverride: true,
+    })
+    expect(plan.args).toContain('--autocompact')
+    expect(plan.args).toContain('500000')
+  })
+
+  test('forwards explicit auto without freezing the settings value', () => {
+    const plan = planHandoff({
+      ...base,
+      interactive: true,
+      autoCompactWindowOverride: true,
+    })
+    expect(plan.args).toContain('--autocompact')
+    expect(plan.args).toContain('auto')
+  })
+
+  test('does not freeze a settings-derived window into the child argv', () => {
+    const plan = planHandoff({
+      ...base,
+      interactive: true,
+      autoCompactWindow: 500_000,
+      autoCompactWindowOverride: false,
+    })
+    expect(plan.args).not.toContain('--autocompact')
+  })
+
   test('passes a prompt as an operand so a leading dash is not a flag', () => {
     const plan = planHandoff({
       ...base,

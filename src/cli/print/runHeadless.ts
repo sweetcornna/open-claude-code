@@ -36,7 +36,6 @@ import {
 } from 'src/services/api/grove.js'
 import { initializeGrowthBook } from 'src/services/analytics/growthbook.js'
 import { gracefulShutdownSync } from 'src/utils/process/gracefulShutdown.js'
-import { validateUuid } from 'src/utils/collections/uuid.js'
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js'
 import { errorMessage } from 'src/utils/runtime/errors.js'
 import { registerHookEventHandler } from 'src/utils/hooks/hookEvents.js'
@@ -82,6 +81,7 @@ export async function runHeadless(
     continue: boolean | undefined
     resume: string | boolean | undefined
     resumeSessionAt: string | undefined
+    resumeDropsTurn: string | undefined
     verbose: boolean | undefined
     outputFormat: string | undefined
     jsonSchema: Record<string, unknown> | undefined
@@ -186,6 +186,14 @@ export async function runHeadless(
 
   if (options.resumeSessionAt && !options.resume) {
     process.stderr.write(`Error: --resume-session-at requires --resume\n`)
+    gracefulShutdownSync(1)
+    return
+  }
+
+  if (options.resumeDropsTurn && !options.resumeSessionAt) {
+    process.stderr.write(
+      `Error: --resume-drops-turn requires --resume-session-at\n`,
+    )
     gracefulShutdownSync(1)
     return
   }
@@ -303,11 +311,13 @@ export async function runHeadless(
     messages: initialMessages,
     turnInterruptionState,
     agentSetting: resumedAgentSetting,
+    resumedSession,
   } = await loadInitialMessages(setAppState, {
     continue: options.continue,
     teleport: options.teleport,
     resume: options.resume,
     resumeSessionAt: options.resumeSessionAt,
+    resumeDropsTurn: options.resumeDropsTurn,
     forkSession: options.forkSession,
     outputFormat: options.outputFormat,
     sessionStartHooksPromise: options.sessionStartHooksPromise,
@@ -390,13 +400,9 @@ export async function runHeadless(
     return
   }
 
-  // Check if we need input prompt - skip if we're resuming with a valid session ID/JSONL file or using SDK URL
-  const hasValidResumeSessionId =
-    typeof options.resume === 'string' &&
-    (Boolean(validateUuid(options.resume)) || options.resume.endsWith('.jsonl'))
   const isUsingSdkUrl = Boolean(options.sdkUrl)
 
-  if (!inputPrompt && !hasValidResumeSessionId && !isUsingSdkUrl) {
+  if (!inputPrompt && !resumedSession && !isUsingSdkUrl) {
     process.stderr.write(
       `Error: Input must be provided either through stdin or as a prompt argument when using --print\n`,
     )

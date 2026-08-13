@@ -32,6 +32,8 @@ type Props = {
   prompt?: string;
   engine: BgEngine;
   tasks: BackgroundTaskSummary[];
+  autoCompactWindow?: number;
+  autoCompactWindowOverride?: boolean;
   binName: string;
   onDone: LocalJSXCommandOnDone;
 };
@@ -50,7 +52,16 @@ async function flushWithTimeout(): Promise<void> {
   }
 }
 
-export function BackgroundHandoffDialog({ sessionId, prompt, engine, tasks, binName, onDone }: Props): React.ReactNode {
+export function BackgroundHandoffDialog({
+  sessionId,
+  prompt,
+  engine,
+  tasks,
+  autoCompactWindow,
+  autoCompactWindowOverride,
+  binName,
+  onDone,
+}: Props): React.ReactNode {
   const [status, setStatus] = React.useState<'asking' | 'working'>('asking');
 
   async function handleConfirm(): Promise<void> {
@@ -76,6 +87,8 @@ export function BackgroundHandoffDialog({ sessionId, prompt, engine, tasks, binN
       cwd: getOriginalCwd(),
       interactive: engine.supportsInteractiveInput,
       forkSessionId: randomUUID(),
+      autoCompactWindow,
+      autoCompactWindowOverride,
     });
 
     let hints: string;

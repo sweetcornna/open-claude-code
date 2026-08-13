@@ -904,11 +904,17 @@ async function* queryLoop(
       querySource !== 'session_memory' &&
       !(reactiveCompact?.isReactiveCompactEnabled() && isAutoCompactEnabled())
     ) {
+      const compactContext = {
+        settingsSlot: toolUseContext.options.modelSettingsSlot,
+        sessionOverrides: toolUseContext.options.sessionModelSettingsOverrides,
+        autoCompactWindow: toolUseContext.options.autoCompactWindow,
+        autoCompactWindowOverride:
+          toolUseContext.options.autoCompactWindowOverride,
+      }
       const { isAtBlockingLimit } = calculateTokenWarningState(
         tokenCountWithEstimation(messagesForQuery),
         toolUseContext.options.mainLoopModel,
-        toolUseContext.options.modelSettingsSlot,
-        toolUseContext.options.sessionModelSettingsOverrides,
+        compactContext,
       )
       if (isAtBlockingLimit) {
         yield createAssistantAPIErrorMessage({
@@ -928,11 +934,14 @@ async function* queryLoop(
       const currentTokens = tokenCountWithEstimation(messagesForQuery)
       const estimatedGrowth = estimateMaxTurnGrowth(model)
       const predictiveThreshold =
-        getEffectiveContextWindowSize(
-          model,
-          toolUseContext.options.modelSettingsSlot,
-          toolUseContext.options.sessionModelSettingsOverrides,
-        ) - estimatedGrowth
+        getEffectiveContextWindowSize(model, {
+          settingsSlot: toolUseContext.options.modelSettingsSlot,
+          sessionOverrides:
+            toolUseContext.options.sessionModelSettingsOverrides,
+          autoCompactWindow: toolUseContext.options.autoCompactWindow,
+          autoCompactWindowOverride:
+            toolUseContext.options.autoCompactWindowOverride,
+        }) - estimatedGrowth
       if (currentTokens > predictiveThreshold) {
         const predictiveResult = await deps.autocompact(
           messagesForQuery,
@@ -1934,17 +1943,18 @@ async function* queryLoop(
     const isMainThread =
       querySource.startsWith('repl_main_thread') || querySource === 'sdk'
     const currentAgentId = toolUseContext.agentId
-    const queuedCommandsSnapshot = getCommandsByMaxPriority('next').filter(
-      cmd => {
-        if (isSlashCommand(cmd)) return false
-        if (isMainThread) return cmd.agentId === undefined
-        // Subagents only drain task-notifications addressed to them — never
-        // user prompts, even if someone stamps an agentId on one.
-        return (
-          cmd.mode === 'task-notification' && cmd.agentId === currentAgentId
-        )
-      },
-    )
+    const reachedMaxTurns = maxTurns !== undefined && turnCount + 1 > maxTurns
+    const queuedCommandsSnapshot = reachedMaxTurns
+      ? []
+      : getCommandsByMaxPriority('next').filter(cmd => {
+          if (isSlashCommand(cmd)) return false
+          if (isMainThread) return cmd.agentId === undefined
+          // Subagents only drain task-notifications addressed to them — never
+          // user prompts, even if someone stamps an agentId on one.
+          return (
+            cmd.mode === 'task-notification' && cmd.agentId === currentAgentId
+          )
+        })
     const queuedAutonomyClaim = await claimConsumableQueuedAutonomyCommands(
       queuedCommandsSnapshot,
     )
@@ -1966,6 +1976,7 @@ async function* queryLoop(
       removeFromQueue(claimedConsumedCommands)
     }
 
+    let emittedQueuedCommandCount = 0
     for await (const attachment of getAttachmentMessages(
       null,
       updatedToolUseContext,
@@ -1976,6 +1987,12 @@ async function* queryLoop(
     )) {
       yield attachment
       toolResults.push(attachment)
+      if (
+        attachment.attachment.type === 'queued_command' &&
+        attachment.attachment.commandMode !== undefined
+      ) {
+        emittedQueuedCommandCount++
+      }
     }
 
     // Memory prefetch consume: only if settled and not already consumed on
@@ -2031,11 +2048,14 @@ async function* queryLoop(
     // Remove only commands that were actually consumed as attachments.
     // Prompt and task-notification commands are converted to attachments above.
     const claimedCommandSet = new Set(claimedConsumedCommands)
-    const consumedCommands = queuedAutonomyClaim.attachmentCommands.filter(
+    const consumableCommands = queuedAutonomyClaim.attachmentCommands.filter(
       cmd =>
         (cmd.mode === 'prompt' || cmd.mode === 'task-notification') &&
         !claimedCommandSet.has(cmd),
     )
+    const consumedCommands = toolUseContext.abortController.signal.aborted
+      ? []
+      : consumableCommands.slice(0, emittedQueuedCommandCount)
     if (consumedCommands.length > 0) {
       for (const cmd of consumedCommands) {
         if (cmd.uuid) {

@@ -10,6 +10,7 @@ import { feature } from 'bun:bundle';
 import { BIN_NAME, DISPLAY_NAME } from 'src/constants/brand.js';
 import { canUserConfigureAdvisor } from 'src/utils/agents/advisor.js';
 import { PERMISSION_MODES } from 'src/utils/permissions/PermissionMode.js';
+import { parseAutoCompactWindowInput } from 'src/services/compact/autoCompactWindowValue.js';
 
 export function applyRootOptions(program: CommanderCommand) {
   return (
@@ -236,9 +237,30 @@ export function applyRootOptions(program: CommanderCommand) {
         'Disable session persistence - sessions will not be saved to disk and cannot be resumed (only works with --print)',
       )
       .addOption(
+        new Option('--autocompact <auto|tokens>', 'Auto-compact window size (auto, or 100k–1M tokens)').argParser(
+          value => {
+            const parsed = parseAutoCompactWindowInput(value);
+            if (parsed === undefined) {
+              throw new InvalidArgumentError(
+                "It must be 'auto', or between 100k and 1M (e.g. 500k, 200000, or 200 as shorthand)",
+              );
+            }
+            return parsed;
+          },
+        ),
+      )
+      .addOption(
         new Option(
           '--resume-session-at <message id>',
           'When resuming, only messages up to and including the assistant message with <message.id> (use with --resume in print mode)',
+        )
+          .argParser(String)
+          .hideHelp(),
+      )
+      .addOption(
+        new Option(
+          '--resume-drops-turn <user message id>',
+          'Require the discarded resume suffix to belong to this user turn',
         )
           .argParser(String)
           .hideHelp(),

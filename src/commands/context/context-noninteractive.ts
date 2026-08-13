@@ -70,6 +70,8 @@ export async function collectContextData(
         appendSystemPrompt,
         modelSettingsSlot,
         sessionModelSettingsOverrides,
+        autoCompactWindow: appState.autoCompactWindow,
+        autoCompactWindowOverride: appState.autoCompactWindowOverride,
       },
     } as Pick<ToolUseContext, 'options'>,
     undefined, // mainThreadAgentDefinition

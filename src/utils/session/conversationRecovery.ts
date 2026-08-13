@@ -367,6 +367,238 @@ export type DeserializeResult = {
   turnInterruptionState: TurnInterruptionState
 }
 
+export type ResumeDropGuardResult = { ok: true } | { ok: false; reason: string }
+
+const RESUME_FURNITURE_ATTACHMENTS = new Set([
+  'agent_listing_delta',
+  'agent_mention',
+  'already_read_file',
+  'attention_budget',
+  'auto_mode',
+  'auto_mode_exit',
+  'budget_usd',
+  'command_permissions',
+  'compact_file_reference',
+  'context_efficiency',
+  'critical_system_reminder',
+  'date_change',
+  'deferred_tools_delta',
+  'diagnostics',
+  'directory',
+  'dynamic_skill',
+  'edited_image_file',
+  'edited_text_file',
+  'file',
+  'goal_status',
+  'hook_additional_context',
+  'hook_blocking_error',
+  'hook_cancelled',
+  'hook_error_during_execution',
+  'hook_non_blocking_error',
+  'hook_permission_decision',
+  'hook_stopped_continuation',
+  'hook_success',
+  'hook_system_message',
+  'invoked_skills',
+  'max_turns_reached',
+  'mcp_dropped_tools_delta',
+  'mcp_instructions_delta',
+  'mcp_resource',
+  'memory_update',
+  'nested_memory',
+  'opened_file_in_ide',
+  'output_style',
+  'output_token_usage',
+  'pdf_reference',
+  'plan_file_reference',
+  'plan_mode',
+  'plan_mode_exit',
+  'plan_mode_reentry',
+  'read_truncation_notice',
+  'relevant_memories',
+  'selected_lines_in_diff',
+  'selected_lines_in_ide',
+  'skill_listing',
+  'structured_output',
+  'task_reminder',
+  'team_context',
+  'teammate_shutdown_batch',
+  'todo_reminder',
+  'token_usage',
+  'tool_search_usage_reminder',
+  'total_tokens_reminder',
+  'ultrathink_effort',
+  'workflow_keyword_request',
+  'workflow_size_guideline_change',
+])
+
+function messageOriginIsLocal(message: Message): boolean {
+  const origin = message.origin as unknown
+  if (origin === undefined) return true
+  if (typeof origin === 'object' && origin !== null) {
+    const kind = (origin as { kind?: unknown }).kind
+    return kind === 'human' || kind === 'auto-continuation'
+  }
+  return origin === 'human' || origin === 'auto-continuation'
+}
+
+function onlyToolResults(message: Message): boolean {
+  const content = message.message?.content
+  return (
+    Array.isArray(content) &&
+    content.length > 0 &&
+    content.every(
+      block =>
+        typeof block === 'object' &&
+        block !== null &&
+        'type' in block &&
+        block.type === 'tool_result',
+    )
+  )
+}
+
+function describeResumeEntry(message: Message, index: number): string {
+  const attachment =
+    message.type === 'attachment' ? ` (${message.attachment?.type})` : ''
+  return `entry ${index} [type=${message.type}${attachment}, uuid=${message.uuid}]`
+}
+
+function isSkippableBeforeResumeTurn(message: Message): boolean {
+  if (message.type === 'assistant') {
+    const content = message.message?.content
+    return (
+      Array.isArray(content) &&
+      content.length === 1 &&
+      content[0]?.type === 'text' &&
+      content[0].text === NO_RESPONSE_REQUESTED
+    )
+  }
+  if (message.type === 'system' || message.type === 'progress') return true
+  if (message.type === 'attachment') {
+    return (
+      message.attachment?.type !== 'queued_command' &&
+      message.attachment?.type !== 'mcp_resource' &&
+      message.attachment?.type !== 'structured_output' &&
+      RESUME_FURNITURE_ATTACHMENTS.has(message.attachment?.type ?? '')
+    )
+  }
+  if (message.type !== 'user' || !messageOriginIsLocal(message)) return false
+  return (
+    message.isCompactSummary !== true &&
+    message.isMeta === true &&
+    message.promptSource === undefined
+  )
+}
+
+export function validateResumeDropRange(
+  discardedMessages: Message[],
+  turnId: string,
+): ResumeDropGuardResult {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      turnId,
+    )
+  ) {
+    return { ok: false, reason: `declared turn id is not a UUID: ${turnId}` }
+  }
+  let start = 0
+  while (
+    start < discardedMessages.length &&
+    isSkippableBeforeResumeTurn(discardedMessages[start]!)
+  ) {
+    start++
+  }
+  if (start === discardedMessages.length) return { ok: true }
+
+  const first = discardedMessages[start]!
+  if (first.type !== 'user' || first.uuid !== turnId) {
+    return {
+      ok: false,
+      reason: `range does not start with the declared turn prompt; first discarded ${describeResumeEntry(first, start)}`,
+    }
+  }
+  if (
+    first.isMeta === true ||
+    first.isCompactSummary === true ||
+    first.stackedExpansion === true ||
+    onlyToolResults(first)
+  ) {
+    return {
+      ok: false,
+      reason: `declared turn id names a non-prompt user entry; ${describeResumeEntry(first, start)}`,
+    }
+  }
+  if (!messageOriginIsLocal(first)) {
+    return {
+      ok: false,
+      reason: `declared turn id names an externally-sourced entry; ${describeResumeEntry(first, start)}`,
+    }
+  }
+
+  for (let index = start + 1; index < discardedMessages.length; index++) {
+    const message = discardedMessages[index]!
+    if (
+      message.type === 'assistant' ||
+      message.type === 'system' ||
+      message.type === 'progress'
+    ) {
+      continue
+    }
+    if (message.type === 'attachment') {
+      if (message.attachment?.type === 'queued_command') {
+        return {
+          ok: false,
+          reason: `range contains absorbed queued content; ${describeResumeEntry(message, index)}`,
+        }
+      }
+      if (!RESUME_FURNITURE_ATTACHMENTS.has(message.attachment?.type ?? '')) {
+        return {
+          ok: false,
+          reason: `range contains a non-furniture attachment; ${describeResumeEntry(message, index)}`,
+        }
+      }
+      continue
+    }
+    if (message.type === 'user') {
+      if (message.uuid === turnId) continue
+      if (message.isCompactSummary === true) {
+        return {
+          ok: false,
+          reason: `range contains a compaction summary; ${describeResumeEntry(message, index)}`,
+        }
+      }
+      if (!messageOriginIsLocal(message)) {
+        return {
+          ok: false,
+          reason: `range contains an externally-sourced user entry; ${describeResumeEntry(message, index)}`,
+        }
+      }
+      if (
+        message.stackedExpansion === true ||
+        onlyToolResults(message) ||
+        (message.isMeta === true && message.promptSource === undefined)
+      ) {
+        continue
+      }
+      if (message.isMeta === true) {
+        return {
+          ok: false,
+          reason: `range contains a system-injected turn prompt; ${describeResumeEntry(message, index)}`,
+        }
+      }
+      return {
+        ok: false,
+        reason: `range contains a user entry not attributable to the declared turn; ${describeResumeEntry(message, index)}`,
+      }
+    }
+    return {
+      ok: false,
+      reason: `range contains an unrecognized entry; ${describeResumeEntry(message, index)}`,
+    }
+  }
+  return { ok: true }
+}
+
 /**
  * Deserializes messages from a log file into the format expected by the REPL.
  * Filters unresolved tool uses, orphaned thinking messages, and appends a

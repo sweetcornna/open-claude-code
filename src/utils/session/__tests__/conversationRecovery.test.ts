@@ -7,6 +7,7 @@ import {
   dropMalformedAttachments,
   dropRetractedMessages,
   isWellFormedAttachmentPayload,
+  validateResumeDropRange,
 } from '../conversationRecovery.js'
 
 function uuid(n: number): UUID {
@@ -57,6 +58,120 @@ function attachment(
     ...extra,
   } as unknown as Message
 }
+
+describe('validateResumeDropRange', () => {
+  const turnId = uuid(10)
+
+  test('allows a local prompt and its internal turn output', () => {
+    const result = validateResumeDropRange(
+      [
+        user(10, [{ type: 'text', text: 'do work' }]),
+        assistant(11, [{ type: 'text', text: 'working' }]),
+        attachment(12, { type: 'token_usage' }),
+        user(13, [
+          { type: 'tool_result', tool_use_id: 'toolu_1', content: 'done' },
+        ]),
+      ],
+      turnId,
+    )
+
+    expect(result).toEqual({ ok: true })
+  })
+
+  test('allows furniture before the declared turn prompt', () => {
+    expect(
+      validateResumeDropRange(
+        [
+          attachment(1, { type: 'date_change' }),
+          user(10, [{ type: 'text', text: 'do work' }]),
+        ],
+        turnId,
+      ),
+    ).toEqual({ ok: true })
+  })
+
+  test('rejects queued content absorbed into the turn', () => {
+    const result = validateResumeDropRange(
+      [
+        user(10, [{ type: 'text', text: 'do work' }]),
+        attachment(11, { type: 'queued_command', prompt: 'next task' }),
+      ],
+      turnId,
+    )
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('absorbed queued content'),
+    })
+  })
+
+  test('rejects a compaction summary in the discarded range', () => {
+    const result = validateResumeDropRange(
+      [
+        user(10, [{ type: 'text', text: 'do work' }]),
+        user(11, [{ type: 'text', text: 'summary' }], {
+          isCompactSummary: true,
+        }),
+      ],
+      turnId,
+    )
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('compaction summary'),
+    })
+  })
+
+  test('rejects another ordinary user prompt', () => {
+    const result = validateResumeDropRange(
+      [
+        user(10, [{ type: 'text', text: 'do work' }]),
+        user(11, [{ type: 'text', text: 'do something else' }]),
+      ],
+      turnId,
+    )
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('not attributable'),
+    })
+  })
+
+  test('rejects an externally sourced declared prompt', () => {
+    const result = validateResumeDropRange(
+      [
+        user(10, [{ type: 'text', text: 'remote' }], {
+          origin: { kind: 'channel', server: 'external' },
+        }),
+      ],
+      turnId,
+    )
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('externally-sourced'),
+    })
+  })
+
+  test('rejects unknown entry types and invalid turn ids', () => {
+    expect(
+      validateResumeDropRange(
+        [
+          user(10, [{ type: 'text', text: 'do work' }]),
+          { type: 'future-entry', uuid: uuid(11) } as unknown as Message,
+        ],
+        turnId,
+      ),
+    ).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('unrecognized entry'),
+    })
+    expect(validateResumeDropRange([], 'not-a-uuid')).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('not a UUID'),
+    })
+  })
+})
 
 function sessionStartContext(n: number, content: string[]): Message {
   return attachment(n, {

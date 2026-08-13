@@ -245,6 +245,10 @@ export type ToolUseContext = {
     modelSettingsSlot?: ModelSettingsSlot
     /** Per-slot overrides owned by this session's AppState store. */
     sessionModelSettingsOverrides?: SessionModelSettingsOverrides
+    /** Session-scoped auto-compact window after CLI/settings resolution. */
+    autoCompactWindow?: number
+    /** True when a CLI or runtime update overrides the settings layer. */
+    autoCompactWindowOverride?: boolean
     tools: Tools
     verbose: boolean
     thinkingConfig: ThinkingConfig

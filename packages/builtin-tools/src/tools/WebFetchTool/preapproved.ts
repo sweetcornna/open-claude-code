@@ -152,8 +152,9 @@ const { HOSTNAME_ONLY, PATH_PREFIXES } = (() => {
 })()
 
 export function isPreapprovedHost(hostname: string, pathname: string): boolean {
-  if (HOSTNAME_ONLY.has(hostname)) return true
-  const prefixes = PATH_PREFIXES.get(hostname)
+  const normalizedHost = hostname.toLowerCase().replace(/\.+$/, '')
+  if (HOSTNAME_ONLY.has(normalizedHost)) return true
+  const prefixes = PATH_PREFIXES.get(normalizedHost)
   if (prefixes) {
     for (const p of prefixes) {
       // Enforce path segment boundaries: "/anthropics" must not match

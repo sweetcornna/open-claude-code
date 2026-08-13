@@ -222,6 +222,7 @@ const ROOT_OPTIONS = [
   '--allowedTools',
   '--allowed-tools',
   '--append-system-prompt',
+  '--autocompact',
   '--bare',
   '--betas',
   '-c',

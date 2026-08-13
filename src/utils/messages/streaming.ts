@@ -125,8 +125,8 @@ export function handleMessageFromStream(
     // Tool-input previews only ever belong to the message being streamed right
     // now, but the only reset used to be message_stop — which a dying stream
     // never reaches. The leftovers then outlive their message: a transport
-    // retry (withTransientNetworkRetry) or a non-streaming fallback starts a
-    // fresh message whose content_block_start appends alongside the ghosts,
+    // provider stream retry or a non-streaming fallback starts a fresh message
+    // whose content_block_start appends alongside the ghosts,
     // and input_json_delta's index lookup can even merge new input into one.
     // Clearing here is a no-op on the happy path (message_stop already ran).
     onStreamingToolUses(() => [])

@@ -10,21 +10,19 @@ import {
 } from '../services/compact/autoCompact.js';
 import { useCompactWarningSuppression } from '../services/compact/compactWarningHook.js';
 import { getUpgradeMessage } from '../utils/model/contextWindowUpgradeCheck.js';
-import type { ModelSettingsSlot, SessionModelSettingsOverrides } from '../utils/model/modelTier.js';
+import type { AutoCompactContext } from '../services/compact/autoCompact.js';
 
 type Props = {
   tokenUsage: number;
   model: string;
-  settingsSlot?: ModelSettingsSlot;
-  sessionOverrides?: SessionModelSettingsOverrides;
+  compactContext: AutoCompactContext;
 };
 
-export function TokenWarning({ tokenUsage, model, settingsSlot, sessionOverrides }: Props): React.ReactNode {
+export function TokenWarning({ tokenUsage, model, compactContext }: Props): React.ReactNode {
   const { percentLeft, isAboveWarningThreshold, isAboveErrorThreshold } = calculateTokenWarningState(
     tokenUsage,
     model,
-    settingsSlot,
-    sessionOverrides,
+    compactContext,
   );
 
   // Use reactive hook to check if warning should be suppressed
@@ -52,7 +50,7 @@ export function TokenWarning({ tokenUsage, model, settingsSlot, sessionOverrides
     }
   }
   if (reactiveOnlyMode) {
-    const effectiveWindow = getEffectiveContextWindowSize(model, settingsSlot, sessionOverrides);
+    const effectiveWindow = getEffectiveContextWindowSize(model, compactContext);
     displayPercentLeft = Math.max(0, Math.round(((effectiveWindow - tokenUsage) / effectiveWindow) * 100));
   }
 

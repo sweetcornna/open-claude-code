@@ -284,8 +284,14 @@ export async function getAttachments(
               getCompactionReminderAttachment(
                 messages ?? [],
                 toolUseContext.options.mainLoopModel,
-                toolUseContext.options.modelSettingsSlot,
-                toolUseContext.options.sessionModelSettingsOverrides,
+                {
+                  settingsSlot: toolUseContext.options.modelSettingsSlot,
+                  sessionOverrides:
+                    toolUseContext.options.sessionModelSettingsOverrides,
+                  autoCompactWindow: toolUseContext.options.autoCompactWindow,
+                  autoCompactWindowOverride:
+                    toolUseContext.options.autoCompactWindowOverride,
+                },
               ),
             ),
           ),
@@ -322,7 +328,14 @@ export async function getAttachments(
             getTokenUsageAttachment(
               messages ?? [],
               toolUseContext.options.mainLoopModel,
-              toolUseContext.options.modelSettingsSlot,
+              {
+                settingsSlot: toolUseContext.options.modelSettingsSlot,
+                sessionOverrides:
+                  toolUseContext.options.sessionModelSettingsOverrides,
+                autoCompactWindow: toolUseContext.options.autoCompactWindow,
+                autoCompactWindowOverride:
+                  toolUseContext.options.autoCompactWindowOverride,
+              },
             ),
           ),
         ),

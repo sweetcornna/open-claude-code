@@ -42,6 +42,17 @@ describe('isPreapprovedHost', () => {
     expect(isPreapprovedHost('github.com', '/torvalds/linux')).toBe(false)
   })
 
+  test('encoded separators do not enter a path-scoped preapproval', () => {
+    expect(isPreapprovedHost('github.com', '/anthropics%2Fevil')).toBe(false)
+    expect(isPreapprovedHost('github.com', '/anthropics%5Cevil')).toBe(false)
+  })
+
+  test('encoded dot segments do not enter a path-scoped preapproval', () => {
+    expect(isPreapprovedHost('github.com', '/other/%2e%2e/anthropics')).toBe(
+      false,
+    )
+  })
+
   test('path-scoped entry with trailing slash', () => {
     expect(isPreapprovedHost('github.com', '/anthropics/')).toBe(true)
   })
@@ -62,8 +73,8 @@ describe('isPreapprovedHost', () => {
     expect(isPreapprovedHost('docs.netlify.com', '/')).toBe(true)
   })
 
-  test('case sensitivity — hostname must match exactly', () => {
-    expect(isPreapprovedHost('Docs.Python.org', '/3/')).toBe(false)
+  test('normalizes hostname case and a trailing dot', () => {
+    expect(isPreapprovedHost('Docs.Python.org.', '/3/')).toBe(true)
   })
 
   test('subdomain of preapproved host does not match', () => {

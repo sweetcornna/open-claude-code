@@ -935,6 +935,8 @@ export async function* runAgent({
     modelSettingsSlot,
     sessionModelSettingsOverrides:
       toolUseContext.options.sessionModelSettingsOverrides,
+    autoCompactWindow: toolUseContext.options.autoCompactWindow,
+    autoCompactWindowOverride: toolUseContext.options.autoCompactWindowOverride,
     // For fork children (useExactTools), inherit thinking config to match the
     // parent's API request prefix for prompt cache hits. For regular
     // sub-agents, disable thinking to control output token costs.

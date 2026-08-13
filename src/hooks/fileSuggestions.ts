@@ -168,11 +168,14 @@ function normalizeGitPaths(
  */
 async function mergeUntrackedIntoNormalizedCache(
   normalizedUntracked: string[],
+  generation: number,
 ): Promise<void> {
+  if (generation !== cacheGeneration) return
   if (normalizedUntracked.length === 0) return
   if (!fileIndex || cachedTrackedFiles.length === 0) return
 
   const untrackedDirs = await getDirectoryNamesAsync(normalizedUntracked)
+  if (generation !== cacheGeneration) return
   const allPaths = [
     ...cachedTrackedFiles,
     ...cachedConfigFiles,
@@ -187,7 +190,8 @@ async function mergeUntrackedIntoNormalizedCache(
     )
     return
   }
-  await fileIndex.loadFromFileListAsync(allPaths).done
+  const completed = await fileIndex.loadFromFileListAsync(allPaths).done
+  if (!completed || generation !== cacheGeneration) return
   loadedMergedSignature = sig
   logForDebugging(
     `[FileIndex] rebuilt index with ${cachedTrackedFiles.length} tracked + ${normalizedUntracked.length} untracked files`,
@@ -361,7 +365,10 @@ async function getFilesUsingGit(
               `[FileIndex] background untracked fetch: ${normalizedUntracked.length} files`,
             )
             // Pass already-normalized files directly to merge function
-            void mergeUntrackedIntoNormalizedCache(normalizedUntracked)
+            void mergeUntrackedIntoNormalizedCache(
+              normalizedUntracked,
+              generation,
+            )
           }
         })
         .catch(error => {
@@ -515,6 +522,7 @@ async function getProjectFiles(
  */
 export async function getPathsForSuggestions(): Promise<FileIndex> {
   const signal = AbortSignal.timeout(10_000)
+  const generation = cacheGeneration
   const index = getFileIndex()
 
   try {
@@ -529,12 +537,14 @@ export async function getPathsForSuggestions(): Promise<FileIndex> {
       getProjectFiles(signal, respectGitignore),
       getClaudeConfigFiles(cwd),
     ])
+    if (generation !== cacheGeneration) return index
 
     // Cache for mergeUntrackedIntoNormalizedCache
     cachedConfigFiles = configFiles
 
     const allFiles = [...projectFiles, ...configFiles]
     const directories = await getDirectoryNamesAsync(allFiles)
+    if (generation !== cacheGeneration) return index
     cachedTrackedDirs = directories
     const allPathsList = [...directories, ...allFiles]
 
@@ -545,7 +555,8 @@ export async function getPathsForSuggestions(): Promise<FileIndex> {
       // Await the full build so cold-start returns complete results. The
       // build yields every ~4ms so the UI stays responsive — user can keep
       // typing during the ~120ms wait without input lag.
-      await index.loadFromFileListAsync(allPathsList).done
+      const completed = await index.loadFromFileListAsync(allPathsList).done
+      if (!completed || generation !== cacheGeneration) return index
       loadedTrackedSignature = sig
       // We just replaced the merged index with tracked-only data. Force
       // the next untracked merge to rebuild even if its own sig matches.
