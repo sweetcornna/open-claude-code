@@ -1,8 +1,8 @@
 import type { StructuredPatchHunk } from 'diff';
 import { resolve } from 'path';
-import React, { useMemo } from 'react';
+import React, { type RefObject, useMemo } from 'react';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
-import { Box, Text } from '@anthropic/ink';
+import { Box, ScrollBox, type ScrollBoxHandle, Text } from '@anthropic/ink';
 import { getCwd } from '../../utils/filesystem/cwd.js';
 import { readFileSafe } from '../../utils/filesystem/file.js';
 import { Divider } from '@anthropic/ink';
@@ -15,12 +15,14 @@ type Props = {
   isBinary?: boolean;
   isTruncated?: boolean;
   isUntracked?: boolean;
+  scrollRef?: RefObject<ScrollBoxHandle | null>;
+  viewportHeight?: number;
 };
 
 /**
- * Displays the diff content for a single file.
- * Uses StructuredDiff for word-level diffing and syntax highlighting.
- * No scrolling - renders all lines (max 400 due to parsing limits).
+ * Displays the diff content for a single file inside a bounded viewport.
+ * StructuredDiff still owns word-level diffing, syntax highlighting, wrapping,
+ * and the 400-line data cap; ScrollBox culls everything outside the viewport.
  */
 export function DiffDetailView({
   filePath,
@@ -29,6 +31,8 @@ export function DiffDetailView({
   isBinary,
   isTruncated,
   isUntracked,
+  scrollRef,
+  viewportHeight,
 }: Props): React.ReactNode {
   const { columns } = useTerminalSize();
 
@@ -103,6 +107,30 @@ export function DiffDetailView({
 
   const outerPaddingX = 1;
   const outerBorderWidth = 1;
+  const diffContent = (
+    <Box flexDirection="column">
+      {hunks.length === 0 ? (
+        <Text dimColor>No diff content</Text>
+      ) : (
+        hunks.map((hunk, index) => (
+          <StructuredDiff
+            key={index}
+            patch={hunk}
+            filePath={filePath}
+            firstLine={firstLine}
+            fileContent={fileContent}
+            dim={false}
+            width={columns - 2 * outerPaddingX - 2 * outerBorderWidth}
+          />
+        ))
+      )}
+      {isTruncated && (
+        <Text dimColor italic>
+          … diff truncated (exceeded 400 line limit)
+        </Text>
+      )}
+    </Box>
+  );
 
   return (
     <Box flexDirection="column" width="100%">
@@ -112,28 +140,12 @@ export function DiffDetailView({
       </Box>
 
       <Divider padding={4} />
-      <Box flexDirection="column">
-        {hunks.length === 0 ? (
-          <Text dimColor>No diff content</Text>
-        ) : (
-          hunks.map((hunk, index) => (
-            <StructuredDiff
-              key={index}
-              patch={hunk}
-              filePath={filePath}
-              firstLine={firstLine}
-              fileContent={fileContent}
-              dim={false}
-              width={columns - 2 * outerPaddingX - 2 * outerBorderWidth}
-            />
-          ))
-        )}
-      </Box>
-
-      {isTruncated && (
-        <Text dimColor italic>
-          … diff truncated (exceeded 400 line limit)
-        </Text>
+      {scrollRef && viewportHeight !== undefined ? (
+        <ScrollBox ref={scrollRef} flexDirection="column" width="100%" height={Math.max(1, viewportHeight)}>
+          {diffContent}
+        </ScrollBox>
+      ) : (
+        diffContent
       )}
     </Box>
   );

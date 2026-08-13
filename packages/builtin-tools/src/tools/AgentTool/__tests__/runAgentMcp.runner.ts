@@ -19,7 +19,12 @@ import { debugMock } from '../../../../../../tests/mocks/debug'
 
 mock.module('bun:bundle', () => ({ feature: (_name: string) => true }))
 mock.module('src/utils/telemetry/log.ts', logMock)
-mock.module('src/utils/telemetry/debug.ts', debugMock)
+mock.module('src/utils/telemetry/debug.ts', () => ({
+  ...debugMock(),
+  logForDebugging: (message: string) => {
+    debugMessages.push(message)
+  },
+}))
 
 type FakeClient = {
   name: string
@@ -46,7 +51,9 @@ const connectBehaviour = new Map<
   { connect?: () => FakeClient; listTools?: () => unknown[] }
 >()
 const connectCalls: string[] = []
+const connectConfigs = new Map<string, unknown>()
 const clientsByName = new Map<string, FakeClient>()
+const debugMessages: string[] = []
 const savedSubagentModel = process.env.CLAUDE_CODE_SUBAGENT_MODEL
 
 // Complete surfaces: only the two entry points under test are replaced, every
@@ -57,8 +64,9 @@ const realMcpConfig = await import('src/services/mcp/config.js')
 
 mock.module('src/services/mcp/client.ts', () => ({
   ...realMcpClient,
-  connectToServer: async (name: string) => {
+  connectToServer: async (name: string, config: unknown) => {
     connectCalls.push(name)
+    connectConfigs.set(name, config)
     const behaviour = connectBehaviour.get(name)
     const client = behaviour?.connect
       ? behaviour.connect()
@@ -108,7 +116,9 @@ function agentWithServers(servers: unknown[]): AgentDefinitionLike {
 beforeEach(() => {
   connectBehaviour.clear()
   connectCalls.length = 0
+  connectConfigs.clear()
   clientsByName.clear()
+  debugMessages.length = 0
   delete process.env.CLAUDE_CODE_SUBAGENT_MODEL
 })
 
@@ -307,6 +317,123 @@ describe('initializeAgentMcpServers — per-server failure isolation', () => {
     await result.cleanup()
     expect(clientsByName.get('known')?.cleanupCalls).toBe(0)
     expect(clientsByName.get('inline')?.cleanupCalls).toBe(1)
+  })
+
+  test('directly constructed definitions cannot connect malformed reserved specs', async () => {
+    const secret = 'malformed-reserved-secret'
+    const result = await initializeAgentMcpServers(
+      agentWithServers([
+        Object.fromEntries([
+          ['__proto__', { type: 'stdio', command: 'run', args: [secret] }],
+        ]),
+        inlineServer('good'),
+      ]),
+      [] as unknown as ParentClients,
+    )
+
+    expect(connectCalls).toEqual(['good'])
+    expect(debugMessages).toContain(
+      "[Agent: tester] Skipping reserved MCP server name '__proto__' in frontmatter",
+    )
+    expect(debugMessages.join('\n')).not.toContain(secret)
+  })
+
+  test('directly constructed definitions cannot connect reserved server names', async () => {
+    const secret = 'reserved-secret'
+    const result = await initializeAgentMcpServers(
+      agentWithServers([
+        {
+          'computer-use': {
+            type: 'stdio',
+            command: 'run',
+            args: [secret],
+          },
+        },
+        inlineServer('good'),
+      ]),
+      [] as unknown as ParentClients,
+    )
+
+    expect(connectCalls).toEqual(['good'])
+    expect(result.tools.map(t => t.name)).toEqual(['mcp__good__tool'])
+    expect(debugMessages).toContain(
+      "[Agent: tester] Skipping reserved MCP server name 'computer-use' in frontmatter",
+    )
+    expect(debugMessages.join('\n')).not.toContain(secret)
+  })
+
+  test('directly constructed malformed IDE transport is blocked', async () => {
+    const secret = 'malformed-ide-secret'
+    const result = await initializeAgentMcpServers(
+      agentWithServers([
+        {
+          internal: {
+            type: 'sse-ide',
+            url: 'http://127.0.0.1',
+            authToken: secret,
+          },
+        },
+        inlineServer('good'),
+      ]),
+      [] as unknown as ParentClients,
+    )
+
+    expect(connectCalls).toEqual(['good'])
+    expect(result.tools.map(t => t.name)).toEqual(['mcp__good__tool'])
+    expect(debugMessages).toContain(
+      "[Agent: tester] Skipping internal-only MCP transport 'sse-ide' for 'internal' in frontmatter",
+    )
+    expect(debugMessages.join('\n')).not.toContain(secret)
+  })
+
+  test.each([
+    'sse-ide',
+    'ws-ide',
+    'sdk',
+    'claudeai-proxy',
+  ] as const)('directly constructed definitions cannot connect %s transports', async transport => {
+    const secret = `${transport}-secret`
+    const config =
+      transport === 'sdk'
+        ? { type: transport, name: secret }
+        : transport === 'claudeai-proxy'
+          ? { type: transport, url: 'https://example.test/mcp', id: secret }
+          : {
+              type: transport,
+              url: 'http://127.0.0.1',
+              ideName: 'test-ide',
+              authToken: secret,
+            }
+    const result = await initializeAgentMcpServers(
+      agentWithServers([{ internal: config }, inlineServer('good')]),
+      [] as unknown as ParentClients,
+    )
+
+    expect(connectCalls).toEqual(['good'])
+    expect(result.tools.map(t => t.name)).toEqual(['mcp__good__tool'])
+    expect(debugMessages).toContain(
+      `[Agent: tester] Skipping internal-only MCP transport '${transport}' for 'internal' in frontmatter`,
+    )
+    expect(debugMessages.join('\n')).not.toContain(secret)
+  })
+
+  test.each([
+    ['stdio', { type: 'stdio' as const, command: 'run', args: [] }],
+    ['http', { type: 'http' as const, url: 'https://example.test/mcp' }],
+    ['sse', { type: 'sse' as const, url: 'https://example.test/sse' }],
+    ['ws', { type: 'ws' as const, url: 'wss://example.test/mcp' }],
+  ])('keeps user-authored %s transports', async (name, config) => {
+    const result = await initializeAgentMcpServers(
+      agentWithServers([{ [name]: config }]),
+      [] as unknown as ParentClients,
+    )
+
+    expect(connectCalls).toEqual([name])
+    expect(connectConfigs.get(name)).toMatchObject({
+      ...config,
+      scope: 'dynamic',
+    })
+    expect(result.tools.map(t => t.name)).toEqual([`mcp__${name}__tool`])
   })
 
   test('parent clients are preserved ahead of agent clients', async () => {

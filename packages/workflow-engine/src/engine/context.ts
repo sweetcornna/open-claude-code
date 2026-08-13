@@ -19,6 +19,8 @@ export type SharedResources = {
   agentCountBox: { value: number }
   /** Increasing sequence number for agent() calls; stamps agent_started/agent_done for precise progress correlation. Shared across sub-workflows. */
   agentIdSeq: { value: number }
+  /** Previous v2 checkpoint key, advanced synchronously in agent() call order. */
+  checkpointKeyBox: { value: string }
   depth: number
 }
 
@@ -77,6 +79,7 @@ export function createSharedResources(
     budget: new Budget(budgetTotal),
     agentCountBox: { value: 0 },
     agentIdSeq: { value: 0 },
+    checkpointKeyBox: { value: '' },
     depth: 0,
   }
 }

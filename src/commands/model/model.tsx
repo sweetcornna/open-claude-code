@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import * as React from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { ModelPicker } from '../../components/ModelPicker.js';
+import { rehydrateProviderSession } from '../provider-settings/sessionRehydrate.js';
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -21,11 +22,14 @@ import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1mAccess.js';
 import {
   getDefaultMainLoopModelSetting,
+  getMainLoopModelSettingsSlot,
   isOpus1mMergeEnabled,
+  parseUserSpecifiedModel,
   renderDefaultModelSetting,
 } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
+import { activateProfileForModel } from '../../services/providerProfiles/activate.js';
 
 function ModelPickerWrapper({
   onDone,
@@ -238,21 +242,28 @@ function ShowModelAndClose({ onDone }: { onDone: (result?: string) => void }): R
   const mainLoopModel = useAppState(s => s.mainLoopModel);
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession);
   const effortValue = useAppState(s => s.effortValue);
+  const sessionOverrides = useAppState(s => s.sessionModelSettingsOverrides);
   const displayModel = renderModelLabel(mainLoopModel);
-  const effortInfo = effortValue !== undefined ? ` (effort: ${effortValue})` : '';
+  const effortInfo = effortValue !== undefined ? ` (global /effort: ${effortValue})` : '';
+  const model = mainLoopModelForSession ?? mainLoopModel ?? getDefaultMainLoopModelSetting();
+  const slot = getMainLoopModelSettingsSlot(parseUserSpecifiedModel(model));
+  const sessionOverride = slot ? sessionOverrides[slot] : undefined;
+  const sessionInfo = sessionOverride
+    ? `\nSession ${slot} override: effort=${sessionOverride.effort ?? 'policy'} context=${sessionOverride.contextTokens ?? 'policy'}`
+    : '';
 
   if (mainLoopModelForSession) {
     onDone(
-      `Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}`,
+      `Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}${sessionInfo}`,
     );
   } else {
-    onDone(`Current model: ${displayModel}${effortInfo}`);
+    onDone(`Current model: ${displayModel}${effortInfo}${sessionInfo}`);
   }
 
   return null;
 }
 
-export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
+export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   args = args?.trim() || '';
   if (COMMON_INFO_ARGS.includes(args)) {
     logEvent('tengu_model_command_inline_help', {
@@ -261,7 +272,32 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     return <ShowModelAndClose onDone={onDone} />;
   }
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Run /model to open the model selection menu, or /model [modelName] to set the model.', {
+    onDone(
+      'Run /model to open the session model picker, /model [modelName] to select within the current provider, or /model profile <selector> to switch a saved profile and model.',
+      { display: 'system' },
+    );
+    return;
+  }
+
+  const profileSelector = args.match(/^profile\s+(.+)$/i)?.[1]?.trim();
+  if (profileSelector) {
+    const activated = activateProfileForModel(profileSelector);
+    if ('error' in activated) {
+      onDone(activated.error, { display: 'system' });
+      return;
+    }
+    rehydrateProviderSession(context);
+    context.setAppState(prev => ({
+      ...prev,
+      mainLoopModel: activated.model.id,
+    }));
+    onDone(`Switched to profile ${chalk.bold(activated.profile.name)} and model ${chalk.bold(activated.model.id)}`, {
+      display: 'system',
+    });
+    return;
+  }
+  if (/^profile(?:\s|$)/i.test(args)) {
+    onDone('Usage: /model profile <model-id[@profile]>', {
       display: 'system',
     });
     return;

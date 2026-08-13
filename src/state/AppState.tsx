@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle';
-import React, { useContext, useEffect, useEffectEvent, useState, useSyncExternalStore } from 'react';
+import React, { useContext, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react';
 import { MailboxProvider } from '../context/mailbox.js';
 import { useSettingsChange } from '../hooks/useSettingsChange.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
@@ -47,6 +47,9 @@ export {
 } from './AppStateStore.js';
 
 export const AppStoreContext = React.createContext<AppStateStore | null>(null);
+export const NotificationTimerContext = React.createContext<React.MutableRefObject<ReturnType<
+  typeof setTimeout
+> | null> | null>(null);
 
 type Props = {
   children: React.ReactNode;
@@ -67,6 +70,17 @@ export function AppStateProvider({ children, initialState, onChangeAppState }: P
   // the provider never triggers re-renders. Consumers subscribe to slices
   // via useSyncExternalStore in useAppState(selector).
   const [store] = useState(() => createStore<AppState>(initialState ?? getDefaultAppState(), onChangeAppState));
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (notificationTimerRef.current !== null) {
+        clearTimeout(notificationTimerRef.current);
+        notificationTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   // Check on mount if bypass mode should be disabled
   // This handles the race condition where remote settings load BEFORE this component mounts,
@@ -93,9 +107,11 @@ export function AppStateProvider({ children, initialState, onChangeAppState }: P
   return (
     <HasAppStateContext.Provider value={true}>
       <AppStoreContext.Provider value={store}>
-        <MailboxProvider>
-          <VoiceProvider>{children}</VoiceProvider>
-        </MailboxProvider>
+        <NotificationTimerContext.Provider value={notificationTimerRef}>
+          <MailboxProvider>
+            <VoiceProvider>{children}</VoiceProvider>
+          </MailboxProvider>
+        </NotificationTimerContext.Provider>
       </AppStoreContext.Provider>
     </HasAppStateContext.Provider>
   );

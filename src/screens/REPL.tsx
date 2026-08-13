@@ -2241,6 +2241,7 @@ export function REPL({
           verbose: s.verbose,
           mainLoopModel,
           modelSettingsSlot: getMainLoopModelSettingsSlot(mainLoopModel),
+          sessionModelSettingsOverrides: s.sessionModelSettingsOverrides,
           thinkingConfig: s.thinkingEnabled !== false ? thinkingConfig : { type: 'disabled' },
           // Merge fresh from store rather than closing over useMergedClients'
           // memoized output. initialMcpClients is a prop (session-constant).

@@ -166,3 +166,238 @@ test('parseScript does not misfire when a line contains the import string litera
   )
   expect(typeof execute).toBe('function')
 })
+
+test('meta must be the first statement and never evaluates getters, calls, or interpolation', () => {
+  expect(() =>
+    extractMeta(
+      `const before = true\nexport const meta = { name: 'n', description: 'd' }`,
+    ),
+  ).toThrow(/FIRST statement/)
+  expect(() =>
+    extractMeta(
+      `export const meta = { name: 'n', get description() { throw new Error('ran') } }`,
+    ),
+  ).toThrow(/plain literal/)
+  expect(() =>
+    extractMeta(
+      `export const meta = { name: 'n', description: (() => { throw new Error('ran') })() }`,
+    ),
+  ).toThrow(/plain literal/)
+  expect(() =>
+    extractMeta(
+      "export const meta = { name: 'n', description: `unsafe $" +
+        '{process.env.HOME}` }',
+    ),
+  ).toThrow(/interpolation/)
+})
+
+test('VM exposes only workflow globals plus safe standard intrinsics', async () => {
+  const { execute } = parseScript(`
+    return {
+      process: typeof process,
+      require: typeof require,
+      module: typeof module,
+      global: typeof global,
+      globalThisProcess: typeof globalThis.process,
+      globalThisRequire: typeof globalThis.require,
+      buffer: typeof Buffer,
+      shadowRealm: typeof ShadowRealm,
+      agent: typeof agent,
+      timeout: typeof setTimeout,
+      array: typeof Array,
+    }
+  `)
+  await expect(execute(stubHooks, {}, { total: null })).resolves.toEqual({
+    process: 'undefined',
+    require: 'undefined',
+    module: 'undefined',
+    global: 'undefined',
+    globalThisProcess: 'undefined',
+    globalThisRequire: 'undefined',
+    buffer: 'undefined',
+    shadowRealm: 'undefined',
+    agent: 'function',
+    timeout: 'function',
+    array: 'function',
+  })
+})
+
+test('host hook functions cannot be used to escape the VM realm', async () => {
+  const attempts = [
+    `return agent.constructor.constructor('return process')()`,
+    `return Object.getPrototypeOf(agent).constructor('return process')()`,
+    `return globalThis.constructor.constructor('return process')()`,
+  ]
+  for (const source of attempts) {
+    await expect(
+      parseScript(source).execute(stubHooks, {}, { total: null }),
+    ).rejects.toThrow()
+  }
+})
+
+test('string and wasm code generation are disabled', async () => {
+  for (const source of [
+    `return Function('return 1')()`,
+    `return eval('1 + 1')`,
+    `return WebAssembly`,
+  ]) {
+    await expect(
+      parseScript(source).execute(stubHooks, {}, { total: null }),
+    ).rejects.toThrow()
+  }
+})
+
+test('args and workflow return values are recursively cleaned across realms', async () => {
+  const { execute } = parseScript(`
+    return {
+      value: args.nested.value,
+      argProtoSafe: Object.getPrototypeOf(args) === Object.prototype,
+      nestedProtoSafe: Object.getPrototypeOf(args.nested) === Object.prototype,
+      resultProtoSafe: Object.getPrototypeOf({ ok: true }) === Object.prototype,
+    }
+  `)
+  const result = await execute(
+    stubHooks,
+    { nested: { value: 7 } },
+    { total: null },
+  )
+  expect(result).toEqual({
+    value: 7,
+    argProtoSafe: true,
+    nestedProtoSafe: true,
+    resultProtoSafe: true,
+  })
+  expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+})
+
+test('boundary rejects custom prototypes, cycles, functions, symbols, and oversized arrays', async () => {
+  const executeArgs = parseScript(`return args`).execute
+  const custom = Object.create({ inherited: true }) as Record<string, unknown>
+  custom.value = 1
+  await expect(executeArgs(stubHooks, custom, null)).rejects.toThrow(
+    /custom prototypes/,
+  )
+
+  const cycle: Record<string, unknown> = {}
+  cycle.self = cycle
+  await expect(executeArgs(stubHooks, cycle, null)).rejects.toThrow(/cycles/)
+  await expect(executeArgs(stubHooks, { fn: () => 1 }, null)).rejects.toThrow(
+    /functions/,
+  )
+  await expect(
+    executeArgs(stubHooks, { symbol: Symbol('x') }, null),
+  ).rejects.toThrow(/symbols/)
+  await expect(executeArgs(stubHooks, Array(4097), null)).rejects.toThrow(
+    /maximum of 4096/,
+  )
+
+  await expect(
+    parseScript(`const x = {}; x.self = x; return x`).execute(
+      stubHooks,
+      {},
+      null,
+    ),
+  ).rejects.toThrow(/cycles/)
+  await expect(
+    parseScript(`return Object.create({ inherited: true })`).execute(
+      stubHooks,
+      {},
+      null,
+    ),
+  ).rejects.toThrow(/custom prototypes/)
+})
+
+test('hook arguments and results are cleaned in both directions', async () => {
+  let receivedOptions: unknown
+  const hooks: WorkflowHooks = {
+    ...stubHooks,
+    agent: async (_prompt, opts) => {
+      receivedOptions = opts
+      return { answer: 42 }
+    },
+  }
+  const result = await parseScript(`
+    const value = await agent('hello', { nested: { ok: true } })
+    return {
+      answer: value.answer,
+      resultProtoSafe: Object.getPrototypeOf(value) === Object.prototype,
+    }
+  `).execute(hooks, {}, null)
+
+  expect(receivedOptions).toEqual({ nested: { ok: true } })
+  expect(Object.getPrototypeOf(receivedOptions)).toBe(Object.prototype)
+  expect(result).toEqual({ answer: 42, resultProtoSafe: true })
+
+  const cyclicHooks: WorkflowHooks = {
+    ...stubHooks,
+    agent: async () => {
+      const cyclic: Record<string, unknown> = {}
+      cyclic.self = cyclic
+      return cyclic
+    },
+  }
+  await expect(
+    parseScript(`return agent('hello')`).execute(cyclicHooks, {}, null),
+  ).rejects.toThrow(/cycles/)
+})
+
+test('timers are cleared when execution settles, independent of abort', async () => {
+  let fired = false
+  const hooks: WorkflowHooks = {
+    ...stubHooks,
+    log: message => {
+      if (message === 'late') fired = true
+    },
+  }
+  const result = await parseScript(`
+    setTimeout(() => log('late'), 20)
+    return 'done'
+  `).execute(hooks, {}, null)
+  expect(result).toBe('done')
+  await new Promise(resolve => setTimeout(resolve, 40))
+  expect(fired).toBe(false)
+})
+
+test('normal async workflow supports agent, parallel, pipeline, timers, and logs', async () => {
+  const messages: string[] = []
+  const hooks: WorkflowHooks = {
+    ...stubHooks,
+    agent: async prompt => `${prompt}:ok`,
+    pipeline: async <T, R>(
+      items: readonly T[],
+      ...stages: Array<
+        (prev: unknown, item: T, index: number) => Promise<unknown>
+      >
+    ) =>
+      Promise.all(
+        items.map(async (item, index): Promise<R | null> => {
+          let previous: unknown = item
+          for (const stage of stages) {
+            previous = await stage(previous, item, index)
+          }
+          return previous as R
+        }),
+      ),
+    log: message => messages.push(message),
+  }
+  const result = await parseScript(`
+    const direct = await agent('direct')
+    const fanout = await parallel([
+      () => agent('a'),
+      () => agent('b'),
+    ])
+    const piped = await pipeline([1, 2], async (_prev, item) => {
+      await new Promise(resolve => setTimeout(resolve, 1))
+      return item * 2
+    })
+    log('finished')
+    return { direct, fanout, piped }
+  `).execute(hooks, {}, null)
+
+  expect(result).toEqual({
+    direct: 'direct:ok',
+    fanout: ['a:ok', 'b:ok'],
+    piped: [2, 4],
+  })
+  expect(messages).toEqual(['finished'])
+})

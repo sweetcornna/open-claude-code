@@ -545,7 +545,6 @@ function ModelStep({
       model: undefined,
       env: plan.env as unknown as Record<string, string>,
       ...(Object.keys(plan.modelSettings).length > 0 ? { modelSettings: plan.modelSettings } : {}),
-      ...(plan.clearFlatEffort ? { effortLevel: undefined } : {}),
     } as unknown as Parameters<typeof updateSettingsForSource>[1]);
     if (error) {
       onError('Failed to save settings. Please try again.', retryStatus(activeField));

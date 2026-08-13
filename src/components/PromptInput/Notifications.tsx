@@ -1,7 +1,12 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { type Notification, useNotifications } from 'src/context/notifications.js';
+import {
+  type Notification,
+  shouldDisplayNotification,
+  sortPinnedNotifications,
+  useNotifications,
+} from 'src/context/notifications.js';
 import { logEvent } from 'src/services/analytics/index.js';
 import { setPluginUpdateNotifier } from 'src/services/autoUpdate/pluginUpdateNotifier.js';
 import { setBackgroundUpdateNotifier } from 'src/services/autoUpdate/updateNotifier.js';
@@ -24,6 +29,8 @@ import { formatDuration } from '../../utils/text/format.js';
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js';
 import { toIDEDisplayName } from '../../utils/terminal/ide.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
+import { getMainLoopModelSettingsSlot } from '../../utils/model/model.js';
+import type { ModelSettingsSlot, SessionModelSettingsOverrides } from '../../utils/model/modelTier.js';
 import { tokenCountFromLastAPIResponse } from '../../utils/session/tokens.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { IdeStatusIndicator } from '../IdeStatusIndicator.js';
@@ -70,9 +77,17 @@ export function Notifications({
   // re-reads settings.json on every call, so another session's /model write
   // would leak into this session's display (anthropics/claude-code#37596).
   const mainLoopModel = useMainLoopModel();
-  const isShowingCompactMessage = calculateTokenWarningState(tokenUsage, mainLoopModel).isAboveWarningThreshold;
+  const sessionModelSettingsOverrides = useAppState(s => s.sessionModelSettingsOverrides);
+  const modelSettingsSlot = getMainLoopModelSettingsSlot(mainLoopModel);
+  const isShowingCompactMessage = calculateTokenWarningState(
+    tokenUsage,
+    mainLoopModel,
+    modelSettingsSlot,
+    sessionModelSettingsOverrides,
+  ).isAboveWarningThreshold;
   const { status: ideStatus } = useIdeConnectionStatus(mcpClients);
   const notifications = useAppState(s => s.notifications);
+  const diffPanelVisible = useAppState(s => s.diffPanelVisible);
   const { addNotification, removeNotification } = useNotifications();
   const claudeAiLimits = useClaudeAiLimits();
 
@@ -172,6 +187,7 @@ export function Notifications({
           ideSelection={ideSelection}
           mcpClients={mcpClients}
           notifications={notifications}
+          diffPanelVisible={diffPanelVisible}
           isInOverageMode={isInOverageMode ?? false}
           isTeamOrEnterprise={isTeamOrEnterprise}
           apiKeyStatus={apiKeyStatus}
@@ -179,6 +195,8 @@ export function Notifications({
           verbose={verbose}
           tokenUsage={tokenUsage}
           mainLoopModel={mainLoopModel}
+          modelSettingsSlot={modelSettingsSlot}
+          sessionModelSettingsOverrides={sessionModelSettingsOverrides}
         />
       </Box>
     </SentryErrorBoundary>
@@ -189,6 +207,7 @@ function NotificationContent({
   ideSelection,
   mcpClients,
   notifications,
+  diffPanelVisible,
   isInOverageMode,
   isTeamOrEnterprise,
   apiKeyStatus,
@@ -196,13 +215,17 @@ function NotificationContent({
   verbose,
   tokenUsage,
   mainLoopModel,
+  modelSettingsSlot,
+  sessionModelSettingsOverrides,
 }: {
   ideSelection: IDESelection | undefined;
   mcpClients?: MCPServerConnection[];
   notifications: {
     current: Notification | null;
     queue: Notification[];
+    pinned: Notification[];
   };
+  diffPanelVisible: boolean;
   isInOverageMode: boolean;
   isTeamOrEnterprise: boolean;
   apiKeyStatus: VerificationStatus;
@@ -210,6 +233,8 @@ function NotificationContent({
   verbose: boolean;
   tokenUsage: number;
   mainLoopModel: string;
+  modelSettingsSlot?: ModelSettingsSlot;
+  sessionModelSettingsOverrides: SessionModelSettingsOverrides;
 }): ReactNode {
   // Poll apiKeyHelper inflight state to show slow-helper notice.
   // Gated on configuration — most users never set apiKeyHelper, so the
@@ -245,19 +270,16 @@ function NotificationContent({
     return <VoiceIndicator voiceState={voiceState} />;
   }
 
+  const current = shouldDisplayNotification(notifications.current, diffPanelVisible) ? notifications.current : null;
+  const pinned = sortPinnedNotifications(notifications.pinned);
+
   return (
     <>
       <IdeStatusIndicator ideSelection={ideSelection} mcpClients={mcpClients} />
-      {notifications.current &&
-        ('jsx' in notifications.current ? (
-          <Text wrap="truncate" key={notifications.current.key}>
-            {notifications.current.jsx}
-          </Text>
-        ) : (
-          <Text color={notifications.current.color} dimColor={!notifications.current.color} wrap="truncate">
-            {notifications.current.text}
-          </Text>
-        ))}
+      {current && <NotificationLine notification={current} />}
+      {pinned.map(notification => (
+        <NotificationLine notification={notification} key={notification.key} pinned />
+      ))}
       {isInOverageMode && !isTeamOrEnterprise && (
         <Box>
           <Text dimColor wrap="truncate">
@@ -298,7 +320,14 @@ function NotificationContent({
           </Text>
         </Box>
       )}
-      {!isBriefOnly && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />}
+      {!isBriefOnly && (
+        <TokenWarning
+          tokenUsage={tokenUsage}
+          model={mainLoopModel}
+          settingsSlot={modelSettingsSlot}
+          sessionOverrides={sessionModelSettingsOverrides}
+        />
+      )}
       {feature('VOICE_MODE')
         ? voiceEnabled &&
           voiceError && (
@@ -312,5 +341,34 @@ function NotificationContent({
       <MemoryUsageIndicator />
       <SandboxPromptFooterHint />
     </>
+  );
+}
+
+function NotificationLine({
+  notification,
+  pinned = false,
+}: {
+  notification: Notification;
+  pinned?: boolean;
+}): ReactNode {
+  if ('jsx' in notification) {
+    return (
+      <Text color={pinned ? 'warning' : undefined} wrap="truncate" key={notification.key}>
+        {pinned ? '! ' : null}
+        {notification.jsx}
+      </Text>
+    );
+  }
+
+  return (
+    <Text
+      color={notification.color ?? (pinned ? 'warning' : undefined)}
+      dimColor={!notification.color && !pinned}
+      wrap="truncate"
+      key={notification.key}
+    >
+      {pinned ? '! ' : null}
+      {notification.text}
+    </Text>
   );
 }

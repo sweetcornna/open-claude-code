@@ -9,6 +9,7 @@ import {
 } from '../../utils/model/modelTier.js';
 import { getTierDefaults } from '../../utils/model/tierDefaults.js';
 import { formatContextTokens, getTierOverride } from '../../utils/model/tierSettings.js';
+import { getSettingsForSource } from '../../utils/settings/settings.js';
 import { getDefaultMainLoopModel, getMainLoopModel } from '../../utils/model/model.js';
 import { parseUserSpecifiedModel } from '../../utils/model/model.js';
 import { parseArgs, resetTierSettings, usage, writeTierSettings } from './state.js';
@@ -56,6 +57,13 @@ function shadowWarnings(): string[] {
   const effortEnv = process.env.CLAUDE_CODE_EFFORT_LEVEL;
   if (effortEnv) {
     warnings.push(`  ! CLAUDE_CODE_EFFORT_LEVEL=${effortEnv} overrides every effort value above.`);
+  } else {
+    const globalEffort = getSettingsForSource('userSettings')?.effortLevel;
+    if (globalEffort) {
+      warnings.push(
+        `  ! Global /effort is ${globalEffort}; it overrides every effort value above. Run /effort auto to use per-slot policy.`,
+      );
+    }
   }
   return warnings.length > 0 ? ['', ...warnings] : [];
 }
@@ -161,7 +169,11 @@ export async function call(
         onDone(`Could not update settings: ${error.message}`);
         return;
       }
-      const note = parsed.effort !== undefined ? '\nCleared the older global effortLevel so this takes effect.' : '';
+      const globalEffort = getSettingsForSource('userSettings')?.effortLevel;
+      const note =
+        parsed.effort !== undefined && globalEffort
+          ? `\nSaved as per-slot policy, but global /effort=${globalEffort} still overrides it. Run /effort auto to apply per-slot effort.`
+          : '';
       onDone(`${parsed.tier}: ${summarize(parsed.tier)}${note}`);
       return;
     }

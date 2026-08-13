@@ -37,7 +37,13 @@ import { logForDebugging } from '../utils/telemetry/debug.js';
 import { isFullscreenEnvEnabled } from '../utils/terminal/fullscreen.js';
 import { createBaseHookInput, executeStatusLineCommand } from '../utils/hooks.js';
 import { getLastAssistantMessage } from '../utils/messages.js';
-import { getRuntimeMainLoopModel, type ModelName, renderModelName } from '../utils/model/model.js';
+import {
+  getMainLoopModelSettingsSlot,
+  getRuntimeMainLoopModel,
+  type ModelName,
+  renderModelName,
+} from '../utils/model/model.js';
+import type { SessionModelSettingsOverrides } from '../utils/model/modelTier.js';
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js';
 import { doesMostRecentAssistantMessageExceed200k, getCurrentUsage } from '../utils/session/tokens.js';
 import { getCurrentWorktreeSession } from '../utils/git/worktree.js';
@@ -224,6 +230,7 @@ function buildStatusLineCommandInput(
   messages: Message[],
   addedDirs: string[],
   mainLoopModel: ModelName,
+  sessionOverrides: SessionModelSettingsOverrides,
   vimMode?: VimMode,
 ): StatusLineCommandInput {
   const agentType = getMainThreadAgentType();
@@ -236,7 +243,12 @@ function buildStatusLineCommandInput(
   const outputStyleName = settings?.outputStyle || DEFAULT_OUTPUT_STYLE_NAME;
 
   const currentUsage = getCurrentUsage(messages);
-  const contextWindowSize = getContextWindowForModel(runtimeModel, getSdkBetas());
+  const contextWindowSize = getContextWindowForModel(
+    runtimeModel,
+    getSdkBetas(),
+    getMainLoopModelSettingsSlot(mainLoopModel),
+    sessionOverrides,
+  );
   const contextPercentages = calculateContextPercentages(currentUsage, contextWindowSize);
 
   const sessionId = getSessionId();
@@ -335,6 +347,7 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
   const permissionMode = useAppState(s => s.toolPermissionContext.mode);
   const additionalWorkingDirectories = useAppState(s => s.toolPermissionContext.additionalWorkingDirectories);
   const statusLineText = useAppState(s => s.statusLineText);
+  const sessionModelSettingsOverrides = useAppState(s => s.sessionModelSettingsOverrides);
   const setAppState = useSetAppState();
   const settings = useSettings();
   const { addNotification } = useNotifications();
@@ -354,6 +367,8 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
   addedDirsRef.current = additionalWorkingDirectories;
   const mainLoopModelRef = useRef(mainLoopModel);
   mainLoopModelRef.current = mainLoopModel;
+  const sessionOverridesRef = useRef(sessionModelSettingsOverrides);
+  sessionOverridesRef.current = sessionModelSettingsOverrides;
 
   // Track previous state to detect changes and cache expensive calculations
   const previousStateRef = useRef<{
@@ -414,6 +429,7 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
         msgs,
         Array.from(addedDirsRef.current.keys()),
         mainLoopModelRef.current,
+        sessionOverridesRef.current,
         vimModeRef.current,
       );
 
@@ -524,7 +540,12 @@ function StatusLineInner({ messagesRef, lastAssistantMessageId, vimMode }: Props
     mainLoopModel,
     exceeds200kTokens: previousStateRef.current.exceeds200kTokens,
   });
-  const builtinContextWindowSize = getContextWindowForModel(builtinRuntimeModel, getSdkBetas());
+  const builtinContextWindowSize = getContextWindowForModel(
+    builtinRuntimeModel,
+    getSdkBetas(),
+    getMainLoopModelSettingsSlot(mainLoopModel),
+    sessionModelSettingsOverrides,
+  );
   const builtinCurrentUsage = getCurrentUsage(messagesRef.current);
   const builtinUsedTokens = builtinCurrentUsage
     ? builtinCurrentUsage.input_tokens +

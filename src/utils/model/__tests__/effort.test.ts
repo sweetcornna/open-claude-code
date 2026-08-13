@@ -146,6 +146,23 @@ describe('OpenAI model effort defaults', () => {
     )
   })
 
+  test('global effort outranks a session slot, which outranks persistent settings', () => {
+    userSettings = {
+      modelSettings: { opus: { effort: 'low' } },
+    } as SettingsJson
+    const session = { opus: { effort: 'max' as const } }
+
+    expect(
+      resolveAppliedEffort('claude-opus-5', undefined, 'opus', session),
+    ).toBe('max')
+    expect(resolveAppliedEffort('claude-opus-5', 'high', 'opus', session)).toBe(
+      'high',
+    )
+    expect(
+      resolveAppliedEffort('claude-sonnet-5', undefined, 'sonnet', session),
+    ).not.toBe('max')
+  })
+
   test('an explicit agent slot overrides an ambiguous first-party default', () => {
     initialSettings = { modelType: 'anthropic' }
     process.env.ANTHROPIC_API_KEY = 'test-key'

@@ -37,12 +37,17 @@ import {
   type Command,
 } from '../../../commands.js'
 import { occConfigDir } from '../../../config/paths.js'
+import { saveProfilesFile } from '../../../services/providerProfiles/profiles.js'
+import type { AppState } from '../../../state/AppStateStore.js'
+import type { LocalJSXCommandContext } from '../../../types/command.js'
 import type { SettingsJson } from '../../../utils/settings/types.js'
 import providerSettings from '../index.js'
+import { call } from '../provider-settings.js'
 import { runProviderSettingsCommand } from '../actions.js'
 import { parseArgs } from '../state.js'
 
 let userSettings: SettingsJson = {}
+let settingsWriteError: Error | null = null
 const settingsMock = setupSettingsMock()
 
 /**
@@ -81,6 +86,7 @@ beforeAll(() => {
     getSettingsForSource: source =>
       source === 'userSettings' ? userSettings : {},
     updateSettingsForSource: (_source, patch) => {
+      if (settingsWriteError) return { error: settingsWriteError }
       userSettings = { ...userSettings, ...patch }
       return { error: null }
     },
@@ -102,6 +108,7 @@ afterEach(() => {
   if (tempDir) rmSync(tempDir, { recursive: true, force: true })
   tempDir = undefined
   userSettings = {}
+  settingsWriteError = null
 })
 
 function enterTempConfigDir(): void {
@@ -113,6 +120,27 @@ function enterTempConfigDir(): void {
 /** Run the argument form exactly as a user typed it, parser included. */
 function run(args: string): Promise<string> {
   return runProviderSettingsCommand(parseArgs(args))
+}
+
+function makeCommandContext(input: {
+  setAppState?: (update: (prev: AppState) => AppState) => void
+}): LocalJSXCommandContext {
+  return input as unknown as LocalJSXCommandContext
+}
+
+async function callArgument(
+  args: string,
+  context: LocalJSXCommandContext,
+): Promise<string | undefined> {
+  let output: string | undefined
+  await call(
+    result => {
+      output = result
+    },
+    context,
+    args,
+  )
+  return output
 }
 
 describe('the merged command surface', () => {
@@ -211,5 +239,132 @@ describe('the forms `/provider` owned survive the merge', () => {
     expect(output).toContain('"frobnicate"')
     expect(output).toContain('bedrock')
     expect(output).toContain('unset')
+  })
+})
+
+describe('session rehydrate after argument switches', () => {
+  test.each([
+    ['anthropic', 'API provider set to anthropic.'],
+    ['unset', 'API provider cleared (will use environment variables).'],
+  ])('%s reloads settings and clears provider-scoped session pins', async (args, message) => {
+    enterTempConfigDir()
+    userSettings =
+      args === 'unset'
+        ? { modelType: 'openai', env: { OPENAI_MODEL: 'gpt-before' } }
+        : { env: { ANTHROPIC_MODEL: 'claude-after' } }
+    let nextState: AppState | undefined
+    const previous = {
+      settings: { modelType: 'openai' },
+      mainLoopModel: 'old-model',
+      mainLoopModelForSession: 'session-model',
+      effortValue: 'high',
+      sessionModelSettingsOverrides: { sonnet: { effort: 'low' } },
+      untouched: 'kept',
+    } as unknown as AppState
+    const context = makeCommandContext({
+      setAppState: update => {
+        nextState = update(previous)
+      },
+    })
+
+    expect(await callArgument(args, context)).toBe(message)
+    expect(nextState).toMatchObject({
+      settings: userSettings,
+      mainLoopModel: null,
+      mainLoopModelForSession: null,
+      sessionModelSettingsOverrides: {},
+      untouched: 'kept',
+    })
+    expect(nextState?.effortValue).toBeUndefined()
+  })
+
+  test('use rehydrates only after activation succeeds', async () => {
+    enterTempConfigDir()
+    saveProfilesFile({
+      version: 1,
+      profiles: {
+        relay: {
+          name: 'relay',
+          modelType: 'openai',
+          env: { OPENAI_MODEL: 'gpt-relay' },
+          createdAt: '2026-08-10T00:00:00.000Z',
+          updatedAt: '2026-08-10T00:00:00.000Z',
+        },
+      },
+    })
+    const seen: AppState[] = []
+    const previous = {
+      settings: {},
+      mainLoopModel: 'old-model',
+      mainLoopModelForSession: 'session-model',
+      effortValue: 'max',
+      sessionModelSettingsOverrides: { opus: { contextTokens: 1_000_000 } },
+    } as unknown as AppState
+    const context = makeCommandContext({
+      setAppState: update => {
+        seen.push(update(previous))
+      },
+    })
+
+    expect(await callArgument('use relay', context)).toBe(
+      'Activated profile "relay" → provider openai.',
+    )
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      settings: userSettings,
+      mainLoopModel: null,
+      mainLoopModelForSession: null,
+      sessionModelSettingsOverrides: {},
+    })
+    expect(seen[0]?.effortValue).toBeUndefined()
+
+    expect(await callArgument('use missing', context)).toContain(
+      'Unknown profile "missing"',
+    )
+    expect(seen).toHaveLength(1)
+  })
+
+  test.each([
+    'list',
+    'save snapshot',
+    'aggregate missing on',
+    'refresh missing',
+  ])('%s does not rehydrate', async args => {
+    enterTempConfigDir()
+    let rehydrates = 0
+    const context = makeCommandContext({
+      setAppState: () => {
+        rehydrates++
+      },
+    })
+
+    await callArgument(args, context)
+    expect(rehydrates).toBe(0)
+  })
+
+  test('failed family persistence does not rehydrate', async () => {
+    enterTempConfigDir()
+    settingsWriteError = new Error('disk full')
+    let rehydrates = 0
+    const context = makeCommandContext({
+      setAppState: () => {
+        rehydrates++
+      },
+    })
+
+    expect(await callArgument('anthropic', context)).toBe(
+      'Failed to save settings: disk full',
+    )
+    expect(rehydrates).toBe(0)
+  })
+
+  test('headless-style context without AppState still switches successfully', async () => {
+    enterTempConfigDir()
+    const context = makeCommandContext({})
+
+    expect(await callArgument('anthropic', context)).toBe(
+      'API provider set to anthropic.',
+    )
+    expect(userSettings.modelType).toBe('anthropic')
   })
 })

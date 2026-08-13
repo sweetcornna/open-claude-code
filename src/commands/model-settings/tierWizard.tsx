@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ProviderSetupWizard } from '../../components/providerSetup/ProviderSetupWizard.js';
 import type { ProviderSetupStatus } from '../../components/providerSetup/state.js';
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
+import { getInitialEffortSetting } from '../../utils/model/effort.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
 
 /**
@@ -27,11 +28,18 @@ export function ModelTierSetup({
 }): React.ReactNode {
   const [status, setStatus] = useState<ProviderSetupStatus>(initial);
   const [error, setError] = useState<string | null>(null);
+  const globalEffort = getInitialSettings().effortLevel;
 
   return (
     <Dialog title="Model settings" onCancel={() => onDone('Model settings unchanged.')}>
       <Box flexDirection="column" gap={1}>
         {error ? <Text color="error">{error}</Text> : null}
+        {globalEffort ? (
+          <Text color="warning">
+            Global /effort is {globalEffort}; it overrides per-slot effort. Run /effort auto to use the values saved
+            here.
+          </Text>
+        ) : null}
         <ProviderSetupWizard
           status={status}
           setStatus={next => {
@@ -53,8 +61,14 @@ export function ModelTierSetup({
               // endpoint or default model makes the current selection wrong,
               // and clearing it unconditionally meant someone who came here to
               // change thinking effort left with a different model too.
-              ...(outcome.providerChanged ? { mainLoopModel: null, mainLoopModelForSession: null } : {}),
-              effortValue: undefined,
+              ...(outcome.providerChanged
+                ? {
+                    mainLoopModel: null,
+                    mainLoopModelForSession: null,
+                    effortValue: getInitialEffortSetting(),
+                    sessionModelSettingsOverrides: {},
+                  }
+                : {}),
             }));
             onDone('Model settings updated.');
           }}

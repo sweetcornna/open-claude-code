@@ -76,7 +76,10 @@ import {
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/session/context.js'
 import { resolveAppliedEffort } from '../../utils/model/effort.js'
-import type { ModelSettingsSlot } from '../../utils/model/modelTier.js'
+import type {
+  ModelSettingsSlot,
+  SessionModelSettingsOverrides,
+} from '../../utils/model/modelTier.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/config/envUtils.js'
 import {
   getClaudeStreamIdleTimeoutMs,
@@ -743,6 +746,7 @@ export type Options = {
   getToolPermissionContext: () => Promise<ToolPermissionContext>
   model: string
   modelSettingsSlot?: ModelSettingsSlot
+  sessionModelSettingsOverrides?: SessionModelSettingsOverrides
   toolChoice?: BetaToolChoiceTool | BetaToolChoiceAuto | undefined
   isNonInteractiveSession: boolean
   extraToolSchemas?: BetaToolUnion[]
@@ -1611,6 +1615,7 @@ async function* queryModel(
     options.model,
     options.effortValue,
     options.modelSettingsSlot,
+    options.sessionModelSettingsOverrides,
   )
 
   if (feature('PROMPT_CACHE_BREAK_DETECTION')) {

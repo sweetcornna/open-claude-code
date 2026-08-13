@@ -25,6 +25,7 @@ type CollectContextDataInput = {
   options: {
     mainLoopModel: string
     modelSettingsSlot?: ToolUseContext['options']['modelSettingsSlot']
+    sessionModelSettingsOverrides?: ToolUseContext['options']['sessionModelSettingsOverrides']
     tools: Tools
     agentDefinitions: AgentDefinitionsResult
     customSystemPrompt?: string
@@ -41,6 +42,7 @@ export async function collectContextData(
     options: {
       mainLoopModel,
       modelSettingsSlot,
+      sessionModelSettingsOverrides,
       tools,
       agentDefinitions,
       customSystemPrompt,
@@ -63,7 +65,12 @@ export async function collectContextData(
     // analyzeContextUsage only reads options.{customSystemPrompt,appendSystemPrompt}
     // but its signature declares the full Pick<ToolUseContext, 'options'>.
     {
-      options: { customSystemPrompt, appendSystemPrompt, modelSettingsSlot },
+      options: {
+        customSystemPrompt,
+        appendSystemPrompt,
+        modelSettingsSlot,
+        sessionModelSettingsOverrides,
+      },
     } as Pick<ToolUseContext, 'options'>,
     undefined, // mainThreadAgentDefinition
     apiView, // original messages for API usage extraction

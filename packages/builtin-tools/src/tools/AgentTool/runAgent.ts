@@ -114,7 +114,11 @@ import {
 } from 'src/utils/session/messageQueueManager.js'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { filterIncompleteToolCalls } from './filterIncompleteToolCalls.js'
-import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
+import {
+  type AgentDefinition,
+  isBuiltInAgent,
+  validateAgentMcpServerSpec,
+} from './loadAgentsDir.js'
 
 export { filterIncompleteToolCalls } from './filterIncompleteToolCalls.js'
 
@@ -239,6 +243,9 @@ export async function initializeAgentMcpServers(
           }
           const [serverName, serverConfig] = entries[0]!
           name = serverName
+          if (!validateAgentMcpServerSpec(agentDefinition.agentType, spec)) {
+            continue
+          }
           config = {
             ...serverConfig,
             scope: 'dynamic' as const,
@@ -523,6 +530,7 @@ export async function* runAgent({
     ),
     process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
     modelSettingsSlot,
+    toolUseContext.options.sessionModelSettingsOverrides,
   )
 
   const agentId = override?.agentId ? override.agentId : createAgentId()
@@ -925,6 +933,8 @@ export async function* runAgent({
     verbose: toolUseContext.options.verbose,
     mainLoopModel: resolvedAgentModel,
     modelSettingsSlot,
+    sessionModelSettingsOverrides:
+      toolUseContext.options.sessionModelSettingsOverrides,
     // For fork children (useExactTools), inherit thinking config to match the
     // parent's API request prefix for prompt cache hits. For regular
     // sub-agents, disable thinking to control output token costs.

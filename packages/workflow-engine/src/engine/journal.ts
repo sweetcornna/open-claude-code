@@ -27,29 +27,125 @@ export class JournalCorruptionError extends Error {
   }
 }
 
-/** Canonical parameter string after removing display-only fields. */
-function canonicalParams(params: AgentRunParams): string {
-  const { label: _label, phase: _phase, ...rest } = params
-  const keys = Object.keys(rest).sort()
-  const sorted: Record<string, unknown> = {}
-  for (const k of keys) sorted[k] = rest[k as keyof typeof rest]
-  return JSON.stringify(sorted)
+const CHECKPOINT_VERSION = 'v2'
+const OCC_IDENTITY_VERSION = 1
+const UPSTREAM_IDENTITY_FIELDS = [
+  'schema',
+  'model',
+  'effort',
+  'isolation',
+  'agentType',
+  'disallowedTools',
+  'bashCommandClamp',
+] as const
+const NON_IDENTITY_FIELDS = new Set(['prompt', 'label', 'phase'])
+
+/**
+ * Canonical options follow the upstream v2 surface. OCC-only options remain
+ * identity-bearing under an explicit compatibility namespace instead of being
+ * silently dropped when the upstream whitelist is applied.
+ */
+function canonicalCheckpointOptions(params: AgentRunParams): string {
+  const source = params as Record<string, unknown>
+  const options: Record<string, unknown> = {}
+  for (const field of UPSTREAM_IDENTITY_FIELDS) {
+    const value = source[field]
+    if (value === undefined || typeof value === 'function') continue
+    options[field] =
+      (field === 'disallowedTools' || field === 'bashCommandClamp') &&
+      Array.isArray(value)
+        ? [...value].sort()
+        : value
+  }
+
+  const extensions: Record<string, unknown> = {}
+  const upstreamFields = new Set<string>(UPSTREAM_IDENTITY_FIELDS)
+  for (const field of Object.keys(source)) {
+    if (NON_IDENTITY_FIELDS.has(field) || upstreamFields.has(field)) continue
+    const value = source[field]
+    if (value === undefined || typeof value === 'function') continue
+    extensions[field] = value
+  }
+  if (Object.keys(extensions).length > 0) {
+    options.occ = {
+      identityVersion: OCC_IDENTITY_VERSION,
+      options: extensions,
+    }
+  }
+  return JSON.stringify(canonicalize(options))
 }
 
-/** Determinism key for an agent() call (sha256 of prompt + canonical params). */
-export function agentCallKey(prompt: string, params: AgentRunParams): string {
+function canonicalize(value: unknown): unknown {
+  if (typeof value === 'function') return undefined
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (value && typeof value === 'object') {
+    const sorted: Record<string, unknown> = {}
+    for (const key of Object.keys(value).sort()) {
+      if (key === '__proto__') continue
+      sorted[key] = canonicalize((value as Record<string, unknown>)[key])
+    }
+    return sorted
+  }
+  return value
+}
+
+/** Upstream-compatible v2 chained checkpoint key. The first link uses an empty previous key. */
+export function agentCallKey(
+  prompt: string,
+  params: AgentRunParams,
+  previousKey = '',
+): string {
+  const digest = createHash('sha256')
+    .update(previousKey)
+    .update('\0')
+    .update(prompt)
+    .update('\0')
+    .update(canonicalCheckpointOptions(params))
+    .digest('hex')
+  return `${CHECKPOINT_VERSION}:${digest}`
+}
+
+/** Current OCC key, retained solely for exact migration of pre-v2 journals. */
+export function legacyOccAgentCallKey(
+  prompt: string,
+  params: AgentRunParams,
+): string {
+  const { label: _label, phase: _phase, ...rest } = params
+  const sorted: Record<string, unknown> = {}
+  for (const key of Object.keys(rest).sort()) {
+    sorted[key] = rest[key as keyof typeof rest]
+  }
   return createHash('sha256')
-    .update(prompt + '\n' + canonicalParams(params))
+    .update(`${prompt}\n${JSON.stringify(sorted)}`)
     .digest('hex')
 }
 
+export type JournalEntryMatch =
+  | { kind: 'v2'; entry: JournalEntry }
+  | { kind: 'legacy'; entry: JournalEntry }
+  | { kind: 'miss' }
+
 /** Journal identity is positional and content-addressed; neither component is sufficient alone. */
+export function journalEntryMatch(
+  entry: JournalEntry | undefined,
+  seq: number,
+  key: string,
+  legacyKeys: readonly string[] = [],
+): JournalEntryMatch {
+  if (entry?.seq !== seq) return { kind: 'miss' }
+  if (entry.key === key) return { kind: 'v2', entry }
+  return legacyKeys.includes(entry.key)
+    ? { kind: 'legacy', entry }
+    : { kind: 'miss' }
+}
+
 export function journalEntryMatches(
   entry: JournalEntry | undefined,
   seq: number,
   key: string,
+  legacyKeys: readonly string[] = [],
 ): entry is JournalEntry {
-  return entry?.seq === seq && entry.key === key
+  return journalEntryMatch(entry, seq, key, legacyKeys).kind !== 'miss'
 }
 
 export function isSelectiveResumePolicy(

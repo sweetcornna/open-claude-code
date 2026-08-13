@@ -2,8 +2,13 @@ import capitalize from 'lodash-es/capitalize.js';
 import * as React from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import { has1mContext, modelSupports1M, supportsContextWindow } from '../utils/session/context.js';
-import { getModelSettingsSlot, getModelTier, type ModelSettingsSlot } from '../utils/model/modelTier.js';
-import { buildAggregatedModels } from '../services/providerProfiles/aggregate.js';
+import {
+  getModelSettingsSlot,
+  getModelTier,
+  type ModelSettingsSlot,
+  updateSessionModelSettingsOverride,
+} from '../utils/model/modelTier.js';
+import { buildAggregatedModels, resolveModelSelector } from '../services/providerProfiles/aggregate.js';
 import { activateProfileForModel } from '../services/providerProfiles/activate.js';
 import { getMergedProviderEnv, loadProfilesFile } from '../services/providerProfiles/profiles.js';
 import {
@@ -12,7 +17,6 @@ import {
   sessionOwnedProfiles,
 } from './providerSettings/aggregatedOptions.js';
 import { formatContextTokens, getTierContextTokens, getTierOverride } from '../utils/model/tierSettings.js';
-import { writeTierSettings } from '../commands/model-settings/state.js';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -24,18 +28,17 @@ import {
   isFastModeCooldown,
   isFastModeEnabled,
 } from 'src/utils/model/fastMode.js';
-import { Box, Text } from '@anthropic/ink';
+import { Box, Dialog, Text } from '@anthropic/ink';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
 import {
   convertEffortValueToLevel,
   type EffortLevel,
   getDefaultEffortForModel,
+  getInitialEffortSetting,
   modelSupportsEffort,
   modelSupportsMaxEffort,
   modelSupportsXhighEffort,
-  resolvePickerEffortPersistence,
-  toPersistableEffort,
 } from '../utils/model/effort.js';
 import {
   getDefaultMainLoopModel,
@@ -45,7 +48,7 @@ import {
 } from '../utils/model/model.js';
 import { getModelOptions } from '../utils/model/modelOptions.js';
 import { isModelAllowed } from '../utils/model/modelAllowlist.js';
-import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../utils/settings/settings.js';
+import { getInitialSettings, getSettingsForSource } from '../utils/settings/settings.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { Select } from './CustomSelect/index.js';
 import { Byline, KeyboardShortcutHint, Pane } from '@anthropic/ink';
@@ -113,9 +116,11 @@ export function ModelPicker({
   // Set when an aggregated row could not be activated. Rendered instead of
   // closing the picker, since the selection did not take effect.
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [pendingProfileSwitch, setPendingProfileSwitch] = useState<ReturnType<typeof parseAggregatedOptionValue>>();
 
   const [hasToggledEffort, setHasToggledEffort] = useState(false);
   const effortValue = useAppState(s => s.effortValue);
+  const sessionOverrides = useAppState(s => s.sessionModelSettingsOverrides);
   const [effort, setEffort] = useState<EffortLevel | undefined>(
     effortValue !== undefined ? convertEffortValueToLevel(effortValue) : undefined,
   );
@@ -178,6 +183,16 @@ export function ModelPicker({
         ...opt,
         value: opt.value === null ? NO_PREFERENCE : opt.value,
       })),
+      ...(aggregatedOptions.length > 0
+        ? [
+            {
+              value: '__PROFILE_MODELS_SEPARATOR__',
+              label: 'Saved provider profiles',
+              description: 'Selecting a model below switches the whole provider profile',
+              disabled: true,
+            },
+          ]
+        : []),
       ...aggregatedOptions,
     ],
     [optionsWithInitial, aggregatedOptions],
@@ -197,18 +212,20 @@ export function ModelPicker({
   // The window this row would run with: an in-picker choice, else whatever the
   // settings slot already resolves to (saved override, else provider-family default).
   const pickedContext = contextByTier.get(focusedContextKey);
+  const sessionContext = focusedSlot ? sessionOverrides[focusedSlot]?.contextTokens : undefined;
   const savedContext = focusedModel ? getTierContextTokens(focusedModel, focusedSlot) : undefined;
-  const focusedContextTokens = pickedContext ?? savedContext;
+  const focusedContextTokens = focusedSlot ? (pickedContext ?? sessionContext ?? savedContext) : undefined;
   const focusedContextIsDefault =
-    pickedContext === null || (pickedContext === undefined && !hasSavedContextOverride(focusedSlot));
+    pickedContext === null ||
+    (pickedContext === undefined && sessionContext === undefined && !hasSavedContextOverride(focusedSlot));
   // Both env knobs outrank everything the picker writes, so a session that has
   // one set would otherwise show the user changing a value that cannot take
   // effect. Say so rather than letting them find out later.
   const contextEnvOverride = process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS || undefined;
   const effortEnvOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL || undefined;
-  const focusedSupportsEffort = focusedModel ? modelSupportsEffort(focusedModel) : false;
-  const focusedSupportsXhigh = focusedModel ? modelSupportsXhighEffort(focusedModel) : false;
-  const focusedSupportsMax = focusedModel ? modelSupportsMaxEffort(focusedModel) : false;
+  const focusedSupportsEffort = focusedModel && focusedSlot ? modelSupportsEffort(focusedModel) : false;
+  const focusedSupportsXhigh = focusedSupportsEffort ? modelSupportsXhighEffort(focusedModel!) : false;
+  const focusedSupportsMax = focusedSupportsEffort ? modelSupportsMaxEffort(focusedModel!) : false;
   const focusedDefaultEffort = getDefaultEffortLevelForOption(focusedValue);
   // Clamp display when selected effort isn't supported by the focused model.
   // resolveAppliedEffort() does the same downgrade at API-send time.
@@ -230,15 +247,18 @@ export function ModelPicker({
       // single ← press on Opus silently re-labelled Haiku too.
       const key = settingsSlotForOption(value) ?? UNTIERED;
       const picked = effortByTier.get(key);
+      const sessionEffort = key === UNTIERED ? undefined : sessionOverrides[key as ModelSettingsSlot]?.effort;
       if (picked !== undefined) {
         setEffort(picked);
-      } else if (!hasToggledEffort && effortValue === undefined) {
-        setEffort(getDefaultEffortLevelForOption(value));
-      } else if (key !== UNTIERED) {
+      } else if (effortValue !== undefined) {
+        setEffort(convertEffortValueToLevel(effortValue));
+      } else if (sessionEffort !== undefined) {
+        setEffort(sessionEffort);
+      } else if (!hasToggledEffort || key !== UNTIERED) {
         setEffort(getDefaultEffortLevelForOption(value));
       }
     },
-    [hasToggledEffort, effortValue, effortByTier],
+    [hasToggledEffort, effortValue, effortByTier, sessionOverrides],
   );
 
   // Effort level cycling keybindings
@@ -293,82 +313,39 @@ export function ModelPicker({
     });
     const selectedSlot = settingsSlotForOption(value);
     const selectedKey = selectedSlot ?? UNTIERED;
-    const pickedEffort = effortByTier.get(selectedKey);
     const pickedContext = contextByTier.get(selectedKey);
     const selectedModel = resolveOptionModel(value);
-    const selectedEffort = hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel) ? effort : undefined;
+    const selectedEffort = undefined;
 
     const aggregated = parseAggregatedOptionValue(value);
     if (aggregated) {
-      // Aggregated rows only switch provider and model. Their effort/context
-      // belongs to the target profile, whose settings are restored below; the
-      // picker cannot edit those accurately while the old provider is active.
-      const activated = activateProfileForModel(aggregated.selector);
-      if ('error' in activated) {
-        setSelectionError(activated.error);
+      const resolved = resolveModelSelector(loadProfilesFile(), aggregated.selector);
+      if ('error' in resolved) {
+        setSelectionError(resolved.error);
         return;
       }
-
       setSelectionError(null);
-      setAppState(prev => ({
-        ...prev,
-        settings: getInitialSettings(),
-        effortValue: undefined,
-      }));
-      onSelect(activated.model.id, undefined);
+      setPendingProfileSwitch({
+        ...aggregated,
+        profile: resolved.model.profile,
+      });
       return;
     }
 
     if (!skipSettingsWrite) {
-      // EVERY tier touched in this session of the picker is saved, not just the
-      // row that was finally chosen. Arrowing through the list adjusting each
-      // tier and then pressing Enter once is the natural way to use this, and
-      // discarding all but the last would silently throw that work away.
-      // Per-tier is the real home for both axes, so the flat effortLevel goes:
-      // writeTierSettings clears it when an effort is written, because it seeds
-      // AppState, which outranks the per-tier layer. AppState.effortValue is
-      // cleared for the same reason — undefined is what lets
-      // getDefaultEffortForModel resolve the tier setting.
       const touched = new Set([...effortByTier.keys(), ...contextByTier.keys()]);
-      let wroteEffort = false;
-      for (const key of touched) {
-        if (key === UNTIERED) continue;
-        const slot = key as ModelSettingsSlot;
-        const tierEffort = effortByTier.get(key);
-        const tierContext = contextByTier.get(key);
-        const patch: { effort?: EffortLevel; contextTokens?: number } = {};
-        if (tierEffort !== undefined) patch.effort = tierEffort;
-        if (tierContext != null) patch.contextTokens = tierContext;
-        if (patch.effort !== undefined || patch.contextTokens !== undefined) {
-          writeTierSettings(slot, patch);
-        }
-        if (tierContext === null) clearTierContext(slot);
-        wroteEffort ||= tierEffort !== undefined;
-      }
-      if (wroteEffort) {
-        setAppState(prev => ({ ...prev, effortValue: undefined }));
-      }
-
-      if (!selectedSlot) {
-        // No tier to key on (a bare custom model id). Fall back to the flat
-        // effortLevel, which is all this row can be described by.
-        //
-        // Prior comes from userSettings on disk — NOT merged settings (which
-        // includes project/policy layers that must not leak into the user's
-        // global ~/.claude/settings.json), and NOT AppState.effortValue (which
-        // includes session-ephemeral sources like --effort CLI flag).
-        // See resolvePickerEffortPersistence JSDoc.
-        const effortLevel = resolvePickerEffortPersistence(
-          effort,
-          getDefaultEffortLevelForOption(value),
-          getSettingsForSource('userSettings')?.effortLevel,
-          hasToggledEffort,
-        );
-        const persistable = toPersistableEffort(effortLevel);
-        if (persistable !== undefined) {
-          updateSettingsForSource('userSettings', { effortLevel: persistable });
-        }
-        setAppState(prev => ({ ...prev, effortValue: effortLevel }));
+      if (touched.size > 0) {
+        setAppState(prev => {
+          let next = prev.sessionModelSettingsOverrides;
+          for (const key of touched) {
+            if (key === UNTIERED) continue;
+            next = updateSessionModelSettingsOverride(next, key as ModelSettingsSlot, {
+              effort: effortByTier.get(key),
+              contextTokens: contextByTier.get(key),
+            });
+          }
+          return { ...prev, sessionModelSettingsOverrides: next };
+        });
       }
     }
 
@@ -394,6 +371,51 @@ export function ModelPicker({
     onSelect(finalValue, selectedEffort);
   }
 
+  function confirmProfileSwitch(): void {
+    if (!pendingProfileSwitch) return;
+    const activated = activateProfileForModel(pendingProfileSwitch.selector);
+    if ('error' in activated) {
+      setPendingProfileSwitch(undefined);
+      setSelectionError(activated.error);
+      return;
+    }
+    setAppState(prev => ({
+      ...prev,
+      settings: getInitialSettings(),
+      effortValue: getInitialEffortSetting(),
+      sessionModelSettingsOverrides: {},
+    }));
+    onSelect(activated.model.id, undefined);
+  }
+
+  if (pendingProfileSwitch) {
+    return (
+      <Dialog title="Switch provider profile?" color="permission" onCancel={() => setPendingProfileSwitch(undefined)}>
+        <Box flexDirection="column" gap={1}>
+          <Text>
+            Use <Text bold>{pendingProfileSwitch.id}</Text> from the <Text bold>{pendingProfileSwitch.profile}</Text>{' '}
+            profile?
+          </Text>
+          <Text dimColor>
+            This replaces the session provider, credentials, endpoint, wire protocol, and model policy. Session-only
+            effort and max-context adjustments will be cleared.
+          </Text>
+          <Select
+            options={[
+              { label: 'Switch profile and model', value: 'switch' as const },
+              { label: 'Go back', value: 'back' as const },
+            ]}
+            onChange={value => {
+              if (value === 'switch') confirmProfileSwitch();
+              else setPendingProfileSwitch(undefined);
+            }}
+            onCancel={() => setPendingProfileSwitch(undefined)}
+          />
+        </Box>
+      </Dialog>
+    );
+  }
+
   const content = (
     <Box flexDirection="column">
       <Box flexDirection="column">
@@ -403,17 +425,18 @@ export function ModelPicker({
           </Text>
           <Text dimColor>
             {headerText ??
-              'Choose a model for this and future sessions. Use ← → to adjust effort, Space to change max context.'}
+              'Choose a model for this session. Use ← → for session effort, Space for session max context.'}
           </Text>
           {focusedSlot && (
             <Text dimColor>
-              Effort and max context are saved per model slot — this pair belongs to <Text bold>{focusedSlot}</Text>.
+              Session-only effort and max context belong to the <Text bold>{focusedSlot}</Text> slot and are not written
+              to settings.
             </Text>
           )}
           {aggregatedOptions.length > 0 && (
             <Text dimColor>
-              The last {aggregatedOptions.length} entries come from other saved providers (/provider-settings) —
-              selecting one switches this session to that provider.
+              Models below “Saved provider profiles” come from /provider-settings — selecting one asks before switching
+              this session to that provider.
             </Text>
           )}
           {sessionModel && (
@@ -575,16 +598,6 @@ export function settingsSlotForOption(value?: string): ModelSettingsSlot | undef
 
 function hasSavedContextOverride(slot: ModelSettingsSlot | undefined): boolean {
   return slot !== undefined && getTierOverride(slot)?.contextTokens !== undefined;
-}
-
-/** Drop just this slot's contextTokens, leaving any effort override in place. */
-function clearTierContext(slot: ModelSettingsSlot): void {
-  const current = getSettingsForSource('userSettings')?.modelSettings ?? {};
-  const existing = { ...(current[slot] ?? {}) };
-  delete existing.contextTokens;
-  updateSettingsForSource('userSettings', {
-    modelSettings: { ...current, [slot]: Object.keys(existing).length > 0 ? existing : undefined },
-  });
 }
 
 /**

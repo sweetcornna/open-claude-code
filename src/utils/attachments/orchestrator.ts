@@ -285,6 +285,7 @@ export async function getAttachments(
                 messages ?? [],
                 toolUseContext.options.mainLoopModel,
                 toolUseContext.options.modelSettingsSlot,
+                toolUseContext.options.sessionModelSettingsOverrides,
               ),
             ),
           ),

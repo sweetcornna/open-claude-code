@@ -20,7 +20,10 @@ import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 import { resolveAntModel } from '../model/antModels.js'
 import { getAntModelOverrideConfig } from '../model/antModels.js'
 import { getMainLoopModelSettingsSlot } from '../model/model.js'
-import type { ModelSettingsSlot } from '../model/modelTier.js'
+import type {
+  ModelSettingsSlot,
+  SessionModelSettingsOverrides,
+} from '../model/modelTier.js'
 import {
   CHATGPT_CODEX_DEFAULT_MODEL,
   isChatGPTCodexReasoningModel,
@@ -228,7 +231,7 @@ export function getEffortEnvOverride(): EffortValue | null | undefined {
 /**
  * Resolve the effort value that will actually be sent to the API for a given
  * model, following the full precedence chain:
- *   env CLAUDE_CODE_EFFORT_LEVEL → appState.effortValue → model default
+ *   env → global session effort → per-slot session override → persistent/default
  *
  * Returns undefined when no effort parameter should be sent (env set to
  * 'unset', or no default exists for the model).
@@ -237,18 +240,18 @@ export function resolveAppliedEffort(
   model: string,
   appStateEffortValue: EffortValue | undefined,
   settingsSlot?: ModelSettingsSlot,
+  sessionOverrides?: SessionModelSettingsOverrides,
 ): EffortValue | undefined {
   const envOverride = getEffortEnvOverride()
   if (envOverride === null) {
     return undefined
   }
+  const slot = settingsSlot ?? getMainLoopModelSettingsSlot(model)
   return (
     envOverride ??
     appStateEffortValue ??
-    getDefaultEffortForModel(
-      model,
-      settingsSlot ?? getMainLoopModelSettingsSlot(model),
-    )
+    (slot ? sessionOverrides?.[slot]?.effort : undefined) ??
+    getDefaultEffortForModel(model, slot)
   )
 }
 

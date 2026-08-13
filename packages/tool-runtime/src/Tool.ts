@@ -155,6 +155,16 @@ export type ModelSettingsSlot =
   | 'opus'
   | 'fable'
 
+export type SessionModelSettingsOverrides = Partial<
+  Record<
+    ModelSettingsSlot,
+    {
+      effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+      contextTokens?: number
+    }
+  >
+>
+
 export type QueryChainTracking = {
   chainId: string
   /**
@@ -233,6 +243,8 @@ export type ToolUseContext = {
     mainLoopModel: string
     /** Settings slot selected for this conversation thread's model. */
     modelSettingsSlot?: ModelSettingsSlot
+    /** Per-slot overrides owned by this session's AppState store. */
+    sessionModelSettingsOverrides?: SessionModelSettingsOverrides
     tools: Tools
     verbose: boolean
     thinkingConfig: ThinkingConfig

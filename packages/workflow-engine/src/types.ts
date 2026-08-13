@@ -33,12 +33,15 @@ export type AgentRunParams = {
   /** JSON Schema; when provided, agent returns a validated object instead of text. */
   schema?: object
   model?: string
+  effort?: string
   /** Output token cap (passed through to the agent backend, e.g. LLM max_tokens). */
   maxTokens?: number
   /** Custom subagent type (resolved from the registry). */
   agentType?: string
-  isolation?: 'worktree'
+  isolation?: 'worktree' | 'remote'
   allowedTools?: string[]
+  disallowedTools?: string[]
+  bashCommandClamp?: string[]
   /** Display-only; not part of the journal key. */
   label?: string
   /** Display-only; not part of the journal key. */
@@ -106,6 +109,7 @@ export type AgentRunResult =
 
 /** A single record in the journal. seq = agent() call sequence number; read() re-sorts by it to stabilize resume. */
 export type JournalEntry = {
+  /** v2 entries are chained SHA-256 checkpoints; unprefixed/v1 keys are legacy identities. */
   key: string
   /** agent() call order (from agentIdSeq; monotonically increasing across sub-workflows). */
   seq: number

@@ -17,6 +17,7 @@ export type {
   CompactProgressEvent,
   Progress,
   QueryChainTracking,
+  SessionModelSettingsOverrides,
   SetToolJSXFn,
   Tool,
   ToolCallProgress,

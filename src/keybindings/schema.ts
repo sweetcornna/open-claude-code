@@ -182,6 +182,12 @@ export const KEYBINDING_ACTIONS = [
   'diff:viewDetails',
   'diff:previousFile',
   'diff:nextFile',
+  'diff:pageUp',
+  'diff:pageDown',
+  'diff:fullPageUp',
+  'diff:fullPageDown',
+  'diff:top',
+  'diff:bottom',
   // Model picker actions (ant-only)
   'modelPicker:decreaseEffort',
   'modelPicker:increaseEffort',

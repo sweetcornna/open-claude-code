@@ -299,6 +299,10 @@ type BaseNotification = {
   invalidates?: string[]
   priority: NotificationPriority
   timeoutMs?: number
+  pinned?: boolean
+  heldDuringDiffPanel?: boolean
+  exemptFromDiffPanelHold?: boolean
+  requeueOnPreempt?: boolean
   /** Combine notifications sharing a key, like Array.reduce(). */
   fold?: (accumulator: Notification, incoming: Notification) => Notification
 }

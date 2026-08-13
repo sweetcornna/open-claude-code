@@ -40,6 +40,7 @@ import {
   getModelSettingsSlot,
   getModelTier,
   type ModelSettingsSlot,
+  type SessionModelSettingsOverrides,
 } from './modelTier.js'
 import { capitalize } from '../text/stringUtils.js'
 import {
@@ -327,6 +328,7 @@ export function apply1mContextOptIn(
   model: ModelName,
   optInList: string | undefined = process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
   settingsSlot?: ModelSettingsSlot,
+  sessionOverrides?: SessionModelSettingsOverrides,
 ): ModelName {
   if (/\[1m\]/i.test(model)) return model
   // Per-tier configuration is the second source of the opt-in. Asking for a 1M
@@ -334,7 +336,9 @@ export function apply1mContextOptIn(
   // suffix is what makes betas.ts send context-1m-2025-08-07. Widening only the
   // local accounting would leave the API rejecting at 200k while auto-compact
   // still believed it had 800k of headroom.
-  if (wantsTierWideContext(model, settingsSlot)) return `${model}[1m]`
+  if (wantsTierWideContext(model, settingsSlot, sessionOverrides)) {
+    return `${model}[1m]`
+  }
   if (!optInList) return model
   const lower = model.toLowerCase()
   const matched = optInList

@@ -25,6 +25,34 @@ export const MODEL_SETTINGS_SLOTS = ['default', ...MODEL_TIERS] as const
 
 export type ModelSettingsSlot = (typeof MODEL_SETTINGS_SLOTS)[number]
 
+export type SessionModelSettingsOverride = {
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  contextTokens?: number
+}
+
+export type SessionModelSettingsOverrides = Partial<
+  Record<ModelSettingsSlot, SessionModelSettingsOverride>
+>
+
+export function updateSessionModelSettingsOverride(
+  current: SessionModelSettingsOverrides,
+  slot: ModelSettingsSlot,
+  patch: {
+    effort?: SessionModelSettingsOverride['effort']
+    contextTokens?: number | null
+  },
+): SessionModelSettingsOverrides {
+  const next = { ...current }
+  const entry = { ...next[slot] }
+  if (patch.effort !== undefined) entry.effort = patch.effort
+  if (patch.contextTokens === null) delete entry.contextTokens
+  else if (patch.contextTokens !== undefined) {
+    entry.contextTokens = patch.contextTokens
+  }
+  next[slot] = Object.keys(entry).length > 0 ? entry : undefined
+  return next
+}
+
 /**
  * Env prefixes that can carry per-tier model pins, and the order they are
  * searched in. Every provider-setup spec writes one of these

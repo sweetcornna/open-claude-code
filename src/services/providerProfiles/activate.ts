@@ -133,18 +133,13 @@ export function activateProfile(
   // failure between them would leave a session holding one provider's endpoint
   // and another's context window — the exact state this is closing.
   //
-  // The legacy flat `effortLevel` goes with them, and it does NOT travel in the
-  // profile. It is the pre-modelSettings global that seeds AppState, and
-  // AppState outranks the per-tier layer (resolveAppliedEffort), so a profile
-  // that carried one would shadow its own restored rows — the fix would look
-  // like it did nothing. Every other write path already deletes it on sight
-  // (writeTierSettings, savePlan's clearFlatEffort, resetProviderConfiguration);
-  // storing it here would be the one place that put it back.
+  // Global `effortLevel` is owned independently by `/effort`, not by a
+  // provider profile. Activation therefore neither snapshots nor deletes it;
+  // `/effort auto` is the explicit operation that exposes per-slot policy.
   const { error } = updateSettingsForSource('userSettings', {
     modelType: profile.modelType,
     env: envPatch,
     modelSettings: buildActivationModelSettingsPatch(profile),
-    effortLevel: undefined,
   } as unknown as Parameters<typeof updateSettingsForSource>[1])
   if (error) return { error: `Failed to save settings: ${error.message}` }
 

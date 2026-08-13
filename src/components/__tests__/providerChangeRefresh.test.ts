@@ -80,7 +80,7 @@ describe('a save only drops the in-session model when it has to', () => {
   ])('%s gates the reset on the outcome', relativePath => {
     const source = readSource(relativePath)
     expect(source).toMatch(
-      /\.\.\.\(outcome\.providerChanged \? \{ mainLoopModel: null, mainLoopModelForSession: null \} : \{\}\)/,
+      /\.\.\.\(outcome\.providerChanged\s*\?\s*\{[\s\S]{0,300}?mainLoopModel: null,[\s\S]{0,100}?mainLoopModelForSession: null,[\s\S]{0,200}?sessionModelSettingsOverrides: \{},[\s\S]{0,80}?\}\s*:\s*\{\}\)/,
     )
     // And there is no second, ungated path that undoes the gate.
     expect(source.match(/mainLoopModel: null/g)).toHaveLength(1)

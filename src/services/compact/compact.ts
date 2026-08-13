@@ -1349,6 +1349,8 @@ async function streamCompactSummary({
           },
           model: context.options.mainLoopModel,
           modelSettingsSlot: context.options.modelSettingsSlot,
+          sessionModelSettingsOverrides:
+            context.options.sessionModelSettingsOverrides,
           toolChoice: undefined,
           isNonInteractiveSession: context.options.isNonInteractiveSession,
           hasAppendSystemPrompt: !!context.options.appendSystemPrompt,

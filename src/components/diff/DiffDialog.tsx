@@ -1,10 +1,13 @@
 import type { StructuredPatchHunk } from 'diff';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
+import { useModalOrTerminalSize } from '../../context/modalContext.js';
+import { useNotifications } from '../../context/notifications.js';
 import { useRegisterOverlay } from '../../context/overlayContext.js';
 import { type DiffData, useDiffData } from '../../hooks/useDiffData.js';
+import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { type TurnDiff, useTurnDiffs } from '../../hooks/useTurnDiffs.js';
-import { Box, Text } from '@anthropic/ink';
+import { Box, type ScrollBoxHandle, Text } from '@anthropic/ink';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import type { Message } from '../../types/message.js';
@@ -21,6 +24,60 @@ type Props = {
 type ViewMode = 'list' | 'detail';
 
 type DiffSource = { type: 'current' } | { type: 'turn'; turn: TurnDiff };
+
+type DetailScrollAction =
+  | 'lineUp'
+  | 'lineDown'
+  | 'pageUp'
+  | 'pageDown'
+  | 'fullPageUp'
+  | 'fullPageDown'
+  | 'top'
+  | 'bottom';
+
+const DETAIL_CHROME_ROWS = 8;
+const MIN_DETAIL_VIEWPORT_ROWS = 3;
+const MAX_DETAIL_VIEWPORT_ROWS = 24;
+
+export function moveDiffSourceIndex(current: number, count: number, direction: -1 | 1, viewMode: ViewMode): number {
+  if (viewMode !== 'list' || count <= 1) return current;
+  return (current + direction + count) % count;
+}
+
+export function moveDiffFileIndex(current: number, count: number, direction: -1 | 1, viewMode: ViewMode): number {
+  if (viewMode !== 'list' || count === 0) return current;
+  return Math.max(0, Math.min(count - 1, current + direction));
+}
+
+export function applyDiffDetailScroll(handle: ScrollBoxHandle, action: DetailScrollAction): void {
+  const viewportHeight = Math.max(1, handle.getViewportHeight());
+  switch (action) {
+    case 'lineUp':
+      handle.scrollBy(-1);
+      break;
+    case 'lineDown':
+      handle.scrollBy(1);
+      break;
+    case 'pageUp':
+      handle.scrollBy(-Math.max(1, Math.floor(viewportHeight / 2)));
+      break;
+    case 'pageDown':
+      handle.scrollBy(Math.max(1, Math.floor(viewportHeight / 2)));
+      break;
+    case 'fullPageUp':
+      handle.scrollBy(-viewportHeight);
+      break;
+    case 'fullPageDown':
+      handle.scrollBy(viewportHeight);
+      break;
+    case 'top':
+      handle.scrollTo(0);
+      break;
+    case 'bottom':
+      handle.scrollToBottom();
+      break;
+  }
+}
 
 function turnDiffToDiffData(turn: TurnDiff): DiffData {
   const files = Array.from(turn.files.values())
@@ -55,10 +112,22 @@ function turnDiffToDiffData(turn: TurnDiff): DiffData {
 export function DiffDialog({ messages, onDone }: Props): React.ReactNode {
   const gitDiffData = useDiffData();
   const turnDiffs = useTurnDiffs(messages);
+  const { setDiffPanelVisible } = useNotifications();
+
+  useEffect(() => {
+    setDiffPanelVisible(true);
+    return () => setDiffPanelVisible(false);
+  }, [setDiffPanelVisible]);
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [sourceIndex, setSourceIndex] = useState<number>(0);
+  const detailScrollRef = useRef<ScrollBoxHandle>(null);
+  const { rows } = useModalOrTerminalSize(useTerminalSize());
+  const detailViewportHeight = Math.max(
+    MIN_DETAIL_VIEWPORT_ROWS,
+    Math.min(MAX_DETAIL_VIEWPORT_ROWS, rows - DETAIL_CHROME_ROWS),
+  );
 
   const sources: DiffSource[] = useMemo(
     () => [{ type: 'current' }, ...turnDiffs.map((turn): DiffSource => ({ type: 'turn', turn }))],
@@ -97,51 +166,49 @@ export function DiffDialog({ messages, onDone }: Props): React.ReactNode {
   // are disabled while DiffDialog is showing
   useRegisterOverlay('diff-dialog');
 
-  // Diff dialog navigation keybindings
-  // View-mode dependent: left/right arrows have different behavior based on mode
-  // (source tab switching vs back navigation), and up/down/enter are
-  // context-sensitive to viewMode
-  //
-  // Note: Escape handling (diff:dismiss) is NOT registered here because Dialog's
-  // built-in useKeybinding('confirm:no', handleCancel) already handles it.
-  // Having both would be dead code since Dialog's child effect registers first
-  // and calls stopImmediatePropagation(). The diff:dismiss binding in
-  // defaultBindings.ts is kept for useShortcutDisplay to show the "esc close" hint.
+  function scrollDetail(action: DetailScrollAction): void {
+    if (viewMode !== 'detail' || !detailScrollRef.current) return;
+    applyDiffDetailScroll(detailScrollRef.current, action);
+  }
+
+  // Diff dialog navigation keybindings. Source switching wraps exactly like
+  // upstream and is disabled in detail mode, where arrows belong to scrolling.
+  // Escape remains owned by Dialog's confirm:no handler; diff:dismiss exists so
+  // its configurable shortcut can still be displayed.
   useKeybindings(
     {
-      // Left arrow: in detail mode goes back, in list mode switches source
       'diff:previousSource': () => {
-        if (viewMode === 'detail') {
-          setViewMode('list');
-        } else if (viewMode === 'list' && sources.length > 1) {
-          setSourceIndex(prev => Math.max(0, prev - 1));
-        }
+        setSourceIndex(prev => moveDiffSourceIndex(prev, sources.length, -1, viewMode));
       },
       'diff:nextSource': () => {
-        if (viewMode === 'list' && sources.length > 1) {
-          setSourceIndex(prev => Math.min(sources.length - 1, prev + 1));
-        }
+        setSourceIndex(prev => moveDiffSourceIndex(prev, sources.length, 1, viewMode));
       },
       'diff:back': () => {
-        if (viewMode === 'detail') {
-          setViewMode('list');
-        }
+        if (viewMode === 'detail') setViewMode('list');
       },
       'diff:viewDetails': () => {
-        if (viewMode === 'list' && selectedFile) {
-          setViewMode('detail');
-        }
+        if (viewMode === 'list' && selectedFile) setViewMode('detail');
       },
       'diff:previousFile': () => {
-        if (viewMode === 'list') {
-          setSelectedIndex(prev => Math.max(0, prev - 1));
+        if (viewMode === 'detail') {
+          scrollDetail('lineUp');
+        } else {
+          setSelectedIndex(prev => moveDiffFileIndex(prev, diffData.files.length, -1, viewMode));
         }
       },
       'diff:nextFile': () => {
-        if (viewMode === 'list') {
-          setSelectedIndex(prev => Math.min(diffData.files.length - 1, prev + 1));
+        if (viewMode === 'detail') {
+          scrollDetail('lineDown');
+        } else {
+          setSelectedIndex(prev => moveDiffFileIndex(prev, diffData.files.length, 1, viewMode));
         }
       },
+      'diff:pageUp': () => scrollDetail('pageUp'),
+      'diff:pageDown': () => scrollDetail('pageDown'),
+      'diff:fullPageUp': () => scrollDetail('fullPageUp'),
+      'diff:fullPageDown': () => scrollDetail('fullPageDown'),
+      'diff:top': () => scrollDetail('top'),
+      'diff:bottom': () => scrollDetail('bottom'),
     },
     { context: 'DiffDialog' },
   );
@@ -231,8 +298,9 @@ export function DiffDialog({ messages, onDone }: Props): React.ReactNode {
           </Byline>
         ) : (
           <Byline>
-            <Text>← back</Text>
-            <Text>{dismissShortcut} close</Text>
+            <Text>↑/↓ scroll</Text>
+            <Text>PgUp/PgDn page</Text>
+            <Text>{dismissShortcut} back</Text>
           </Byline>
         )
       }
@@ -256,6 +324,8 @@ export function DiffDialog({ messages, onDone }: Props): React.ReactNode {
             isBinary={selectedFile?.isBinary}
             isTruncated={selectedFile?.isTruncated}
             isUntracked={selectedFile?.isUntracked}
+            scrollRef={detailScrollRef}
+            viewportHeight={detailViewportHeight}
           />
         </Box>
       )}

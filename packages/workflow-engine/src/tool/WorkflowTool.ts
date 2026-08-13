@@ -222,21 +222,24 @@ export function createWorkflowTool(
         }
       }
 
-      // Read-only hash comparison. Recording happens further down, only if this call
-      // is the one that wins registration — see the comment at that write.
+      // Explicit range/agents selectors refer to positions in one exact script,
+      // so they remain fail-closed on a hash mismatch. Default checkpoint resume
+      // and scope "all" deliberately do not use the whole-script hash: chained
+      // checkpoint identities determine the longest valid prefix even when only
+      // post-processing code changed.
       const selective =
         runInput.resumePolicy !== undefined &&
         isSelectiveResumePolicy(runInput.resumePolicy)
-      let scriptChanged = false
-      if (runInput.resumeFromRunId) {
+      if (runInput.resumeFromRunId && selective) {
         try {
-          scriptChanged = await isScriptChanged({
-            script,
-            runId: runInput.resumeFromRunId,
-            cwd: host.cwd,
-            workflowRunsDir: options.workflowRunsDir ?? WORKFLOW_RUNS_DIR,
-          })
-          if (scriptChanged && selective) {
+          if (
+            await isScriptChanged({
+              script,
+              runId: runInput.resumeFromRunId,
+              cwd: host.cwd,
+              workflowRunsDir: options.workflowRunsDir ?? WORKFLOW_RUNS_DIR,
+            })
+          ) {
             return {
               data: {
                 output:
@@ -245,19 +248,11 @@ export function createWorkflowTool(
             }
           }
         } catch (error) {
-          if (selective) {
-            return {
-              data: {
-                output: `Error: selective resume could not verify the prior script hash: ${(error as Error).message}`,
-              },
-            }
+          return {
+            data: {
+              output: `Error: selective resume could not verify the prior script hash: ${(error as Error).message}`,
+            },
           }
-          // A resume without trustworthy hash state must not replay checkpoints
-          // from a script we can no longer prove is identical.
-          scriptChanged = true
-          ports.logger.warn?.(
-            `workflow script hash check failed: ${(error as Error).message}`,
-          )
         }
       }
 
@@ -352,7 +347,6 @@ export function createWorkflowTool(
           ...(runInput.resumeFromRunId
             ? {
                 resume: true,
-                scriptChanged,
                 ...(runInput.resumePolicy
                   ? { resumePolicy: runInput.resumePolicy }
                   : {}),

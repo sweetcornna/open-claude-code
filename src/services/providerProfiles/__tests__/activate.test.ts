@@ -498,18 +498,15 @@ describe('activateProfile restores per-tier model settings', () => {
     expect(persistedSettings.modelSettings).toEqual({})
   })
 
-  test('the legacy flat effortLevel is dropped rather than carried', () => {
+  test('the global effort override is independent from provider profiles', () => {
     runningOnDeepSeek()
+    persistedSettings.effortLevel = 'high'
     seedGptProfile({ opus: { effort: 'low' } })
 
     activate.activateProfile('gpt')
 
-    // It seeds AppState and AppState outranks the per-tier layer, so a value
-    // left here would shadow the row that was just restored — the restore
-    // would look like it did nothing.
-    expect('effortLevel' in lastUpdate!).toBe(true)
-    expect(lastUpdate?.effortLevel).toBeUndefined()
-    expect(persistedSettings.effortLevel).toBeUndefined()
+    expect('effortLevel' in lastUpdate!).toBe(false)
+    expect(persistedSettings.effortLevel).toBe('high')
   })
 
   test('the env overrides keep their place above the restored layer', () => {

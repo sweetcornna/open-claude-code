@@ -2,7 +2,9 @@ import { useEffect, useReducer } from 'react'
 import { onGrowthBookRefresh } from '../services/analytics/growthbook.js'
 import { useAppState } from '../state/AppState.js'
 import {
+  apply1mContextOptIn,
   getDefaultMainLoopModelSetting,
+  getMainLoopModelSettingsSlot,
   type ModelName,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
@@ -13,6 +15,7 @@ import {
 export function useMainLoopModel(): ModelName {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
+  const sessionOverrides = useAppState(s => s.sessionModelSettingsOverrides)
 
   // parseUserSpecifiedModel reads tengu_ant_model_override via
   // _CACHED_MAY_BE_STALE (in resolveAntModel). Until GB init completes,
@@ -30,5 +33,10 @@ export function useMainLoopModel(): ModelName {
       mainLoopModel ??
       getDefaultMainLoopModelSetting(),
   )
-  return model
+  return apply1mContextOptIn(
+    model,
+    process.env.CLAUDE_CODE_1M_CONTEXT_MODELS,
+    getMainLoopModelSettingsSlot(model),
+    sessionOverrides,
+  )
 }

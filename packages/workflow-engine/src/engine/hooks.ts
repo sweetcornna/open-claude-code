@@ -15,7 +15,8 @@ import type { EngineContext } from './context.js'
 import { WorkflowAbortedError, WorkflowError } from './errors.js'
 import {
   agentCallKey,
-  journalEntryMatches,
+  journalEntryMatch,
+  legacyOccAgentCallKey,
   resumePolicySelectsAgent,
 } from './journal.js'
 import { retryDelayMs } from './retryBackoff.js'
@@ -77,6 +78,7 @@ export function makeHooks(
   const markJournalDivergence = (
     agentId: number,
     reason: 'identity' | 'output' | 'incomplete',
+    observed = true,
   ): void => {
     const state = ctx.resumeState
     if (!state) return
@@ -84,10 +86,9 @@ export function makeHooks(
       return
     }
     state.divergentFrom = agentId
-    // Separate from divergentFrom, which scope:"all" pre-seeds to 0 to force every
-    // call live. Only an *observed* divergence proves the cached suffix is wrong, and
-    // that is the one thing allowed to delete records this attempt never visited.
-    state.observedDivergentFrom = agentId
+    // A dead/incomplete checkpoint closes replay immediately, but until a live result
+    // actually contradicts it, abort must keep the untouched audit suffix intact.
+    if (observed) state.observedDivergentFrom = agentId
     state.journalNeedsRewrite = true
     ctx.journalInvalidated = true
     const discarded = [...state.journalBySeq.keys()].filter(
@@ -119,7 +120,10 @@ export function makeHooks(
     const agentId = r.agentIdSeq.value++
 
     const params: AgentRunParams = { prompt, ...opts }
-    const key = agentCallKey(prompt, params)
+    const resumeState = ctx.resumeState
+    const key = agentCallKey(prompt, params, r.checkpointKeyBox.value)
+    r.checkpointKeyBox.value = key
+    const legacyKeys = [legacyOccAgentCallKey(prompt, params)]
     const label = opts.label as string | undefined
     const phase =
       (opts.phase as string | undefined) ?? ctx.currentPhase ?? undefined
@@ -127,9 +131,7 @@ export function makeHooks(
     // Resume decisions are serialized, not backend work. A lower selected/dead/incomplete
     // call can change the prompts or control flow of every later call; later decisions wait
     // for that uncertain output before deciding whether their checkpoint is still valid.
-    const resumeState = ctx.resumeState
     let priorEntry: JournalEntry | undefined
-    let priorEntryMissing = false
     // Two ways this call's resume outcome can be closed out, and they mean opposite
     // things. settleResumeOutcome carries a real result and compares it against the
     // recorded one. abandonResumeOutcome is the early exit — kill, budget exhaustion,
@@ -146,41 +148,41 @@ export function makeHooks(
         releaseDecision = resolve
       })
       await previousDecision
-      await Promise.all([...resumeState.pendingOutcomes])
+      let replayEntry: JournalEntry | undefined
+      let legacyReplayEntry: JournalEntry | undefined
+      let blockingOutcomes: Promise<void>[] = []
       try {
         const entry = resumeState.journalBySeq.get(agentId)
         const suffixAlreadyDiverged =
           resumeState.divergentFrom !== null &&
           agentId >= resumeState.divergentFrom
         if (!suffixAlreadyDiverged) {
-          if (entry && !journalEntryMatches(entry, agentId, key)) {
-            markJournalDivergence(agentId, 'identity')
-          } else if (!entry) {
-            // A gap before later completed records is an incomplete call. Its output has
-            // no trustworthy baseline, so later checkpoints wait and then rerun.
-            priorEntryMissing = resumeState.maxJournalSeq > agentId
-          } else if (
-            entry.result.kind !== 'dead' &&
-            !resumePolicySelectsAgent(resumeState.policy, agentId)
-          ) {
-            ctx.journalIndex++
-            resumeState.reachedEntries.set(agentId, entry)
-            resumeState.replayedCount++
-            emit({
-              type: 'agent_done',
-              agentId,
-              label,
-              phase,
-              result: entry.result,
-              execution: 'replayed',
-            })
-            return resultToOutput(entry.result)
+          const match = journalEntryMatch(entry, agentId, key, legacyKeys)
+          if (match.kind === 'miss') {
+            markJournalDivergence(agentId, entry ? 'identity' : 'incomplete')
           } else {
-            priorEntry = entry
+            const matchedEntry = match.entry
+            if (matchedEntry.result.kind !== 'ok') {
+              // Upstream persists null/dead attempts for audit but never treats them as
+              // successful checkpoints. The first such record closes the replay prefix;
+              // every later call can launch live without waiting for this backend result.
+              priorEntry = matchedEntry
+              markJournalDivergence(agentId, 'incomplete', false)
+            } else if (!resumePolicySelectsAgent(resumeState.policy, agentId)) {
+              replayEntry = matchedEntry
+              if (match.kind === 'legacy') {
+                legacyReplayEntry = matchedEntry
+              }
+              // Only replay decisions wait for earlier selective reruns. Selected calls
+              // release the decision chain immediately and can overlap in the backend.
+              blockingOutcomes = [...resumeState.pendingOutcomes]
+            } else {
+              priorEntry = matchedEntry
+            }
           }
         }
 
-        if (priorEntry || priorEntryMissing) {
+        if (priorEntry) {
           let resolveOutcome = (): void => {}
           const outcome = new Promise<void>(resolve => {
             resolveOutcome = resolve
@@ -195,17 +197,12 @@ export function makeHooks(
             if (settled) return
             settled = true
             if (
-              priorEntryMissing ||
-              (priorEntry !== undefined &&
-                !isDeepStrictEqual(
-                  resultToOutput(priorEntry.result),
-                  resultToOutput(result),
-                ))
-            ) {
-              markJournalDivergence(
-                agentId,
-                priorEntryMissing ? 'incomplete' : 'output',
+              !isDeepStrictEqual(
+                resultToOutput(priorEntry!.result),
+                resultToOutput(result),
               )
+            ) {
+              markJournalDivergence(agentId, 'output')
             }
             release()
           }
@@ -219,6 +216,37 @@ export function makeHooks(
         }
       } finally {
         releaseDecision()
+      }
+
+      if (replayEntry) {
+        await Promise.all(blockingOutcomes)
+        const suffixDiverged =
+          resumeState.divergentFrom !== null &&
+          agentId >= resumeState.divergentFrom
+        if (!suffixDiverged) {
+          let reachedEntry = replayEntry
+          if (legacyReplayEntry) {
+            reachedEntry = { ...legacyReplayEntry, key }
+            await ctx.ports.journalStore.append(ctx.runId, reachedEntry)
+            const existingIndex = ctx.journal.findIndex(
+              journalEntry => journalEntry.seq === agentId,
+            )
+            if (existingIndex >= 0) ctx.journal[existingIndex] = reachedEntry
+            resumeState.journalBySeq.set(agentId, reachedEntry)
+          }
+          ctx.journalIndex++
+          resumeState.reachedEntries.set(agentId, reachedEntry)
+          resumeState.replayedCount++
+          emit({
+            type: 'agent_done',
+            agentId,
+            label,
+            phase,
+            result: reachedEntry.result,
+            execution: 'replayed',
+          })
+          return resultToOutput(reachedEntry.result)
+        }
       }
     }
 

@@ -342,6 +342,7 @@ export async function* queryModelOpenAI(
       options.model,
       options.effortValue,
       options.modelSettingsSlot,
+      options.sessionModelSettingsOverrides,
     )
     const reasoningEffort = modelSupportsEffort(openaiModel)
       ? getResponsesReasoningEffort(openaiModel, appliedEffort)

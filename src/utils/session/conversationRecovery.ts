@@ -67,6 +67,232 @@ const LEGACY_BRIEF_TOOL_NAME: string | null =
     : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
+const DERIVED_UUID_PREFIX_LENGTH = 24
+const PERSISTED_OUTPUT_PREFIX = '<persisted-output>'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/**
+ * Checks the attachment fields that recovery and API normalization access
+ * without further guards. Unknown attachment types are deliberately accepted:
+ * transcripts can outlive the build that introduced an attachment.
+ */
+export function isWellFormedAttachmentPayload(
+  attachment: unknown,
+): attachment is { type: string; [key: string]: unknown } {
+  if (
+    !isRecord(attachment) ||
+    !('type' in attachment) ||
+    typeof attachment.type !== 'string'
+  ) {
+    return false
+  }
+
+  switch (attachment.type) {
+    case 'invoked_skills':
+      return (
+        Array.isArray(attachment.skills) &&
+        attachment.skills.every(skill => isRecord(skill))
+      )
+    case 'hook_success':
+      return typeof attachment.content === 'string'
+    case 'skill_listing':
+      return typeof attachment.content === 'string'
+    case 'hook_additional_context':
+      return (
+        Array.isArray(attachment.content) &&
+        attachment.content.every(item => typeof item === 'string')
+      )
+    default:
+      return true
+  }
+}
+
+/** Drop attachment entries whose payload cannot be safely restored. */
+export function dropMalformedAttachments(messages: Message[]): Message[] {
+  let dropped = false
+  const filtered = messages.filter(message => {
+    if (
+      message.type === 'attachment' &&
+      !isWellFormedAttachmentPayload(message.attachment)
+    ) {
+      dropped = true
+      return false
+    }
+    return true
+  })
+  return dropped ? filtered : messages
+}
+
+/**
+ * Remove messages retracted by model-refusal fallback. UUIDs are compared by
+ * the stable 24-character prefix used by deriveUUID, so split/normalized
+ * descendants of a retracted message are removed as well. System bookkeeping
+ * messages, including the fallback marker itself, remain in the transcript.
+ */
+export function dropRetractedMessages(messages: Message[]): Message[] {
+  const retractedUuidPrefixes = new Set<string>()
+  for (const message of messages) {
+    if (
+      message.type !== 'system' ||
+      message.subtype !== 'model_refusal_fallback' ||
+      !Array.isArray(message.retractedMessageUuids)
+    ) {
+      continue
+    }
+    for (const uuid of message.retractedMessageUuids) {
+      if (typeof uuid === 'string') {
+        retractedUuidPrefixes.add(uuid.slice(0, DERIVED_UUID_PREFIX_LENGTH))
+      }
+    }
+  }
+
+  if (retractedUuidPrefixes.size === 0) return messages
+  return messages.filter(
+    message =>
+      message.type === 'system' ||
+      !retractedUuidPrefixes.has(
+        message.uuid.slice(0, DERIVED_UUID_PREFIX_LENGTH),
+      ),
+  )
+}
+
+/**
+ * Drop interrupted-stream text blocks whose text payload is not a string. The
+ * enclosing message and all provider-specific fields are retained when any
+ * valid content remains; a message made empty by the repair is removed.
+ */
+function dropMalformedTextBlocks(messages: Message[]): Message[] {
+  let changed = false
+  const repaired: Message[] = []
+
+  for (const message of messages) {
+    if (message.type !== 'assistant' && message.type !== 'user') {
+      repaired.push(message)
+      continue
+    }
+
+    const content = message.message?.content
+    if (!Array.isArray(content)) {
+      repaired.push(message)
+      continue
+    }
+
+    const filteredContent = content.filter(block => {
+      if (!isRecord(block) || block.type !== 'text') return true
+      return typeof block.text === 'string'
+    })
+    if (filteredContent.length === content.length) {
+      repaired.push(message)
+      continue
+    }
+
+    changed = true
+    if (filteredContent.length === 0) continue
+    repaired.push({
+      ...message,
+      message: {
+        ...message.message,
+        content: filteredContent,
+      },
+    })
+  }
+
+  return changed ? repaired : messages
+}
+
+function normalizeSessionStartHookContent(content: string): string {
+  if (!content.startsWith(PERSISTED_OUTPUT_PREFIX)) return content
+  return content.replace(/(Full output saved to: ).*$/m, '$1<persisted>')
+}
+
+function getSessionStartHookMessageKeys(message: Message): string[] {
+  if (message.type !== 'attachment') return []
+  const attachment = message.attachment
+  if (
+    !isWellFormedAttachmentPayload(attachment) ||
+    attachment.hookEvent !== 'SessionStart'
+  ) {
+    return []
+  }
+
+  switch (attachment.type) {
+    case 'hook_additional_context':
+      return (attachment.content as string[]).map(
+        normalizeSessionStartHookContent,
+      )
+    case 'hook_success': {
+      const content = attachment.content as string
+      return content === '' ? [] : [normalizeSessionStartHookContent(content)]
+    }
+    case 'hook_non_blocking_error':
+      return [
+        `${attachment.command ?? ''}\0${attachment.exitCode}\0${attachment.stderr}`,
+      ]
+    default:
+      return []
+  }
+}
+
+/**
+ * Keep only SessionStart hook output not already present in the restored
+ * transcript. Additional-context batches are filtered item-by-item so one new
+ * context is not lost merely because another context in the batch is old.
+ */
+export function dedupeSessionStartHookMessages(
+  existingMessages: Message[],
+  hookMessages: Message[],
+): Message[] {
+  if (hookMessages.length === 0) return []
+
+  const existingKeys = new Set<string>()
+  for (const message of existingMessages) {
+    for (const key of getSessionStartHookMessageKeys(message)) {
+      existingKeys.add(key)
+    }
+  }
+  if (existingKeys.size === 0) return [...hookMessages]
+
+  let hasNewSessionStartOutput = false
+  const deduped: Message[] = []
+  for (const message of hookMessages) {
+    const keys = getSessionStartHookMessageKeys(message)
+    if (keys.length === 0 || message.type !== 'attachment') {
+      deduped.push(message)
+      continue
+    }
+
+    const attachment = message.attachment!
+    if (
+      attachment.type === 'hook_additional_context' &&
+      (attachment.content as string[]).length > 1
+    ) {
+      const content = (attachment.content as string[]).filter(
+        item => !existingKeys.has(normalizeSessionStartHookContent(item)),
+      )
+      if (content.length === 0) continue
+      hasNewSessionStartOutput = true
+      deduped.push(
+        content.length === (attachment.content as string[]).length
+          ? message
+          : ({
+              ...message,
+              attachment: { ...attachment, content },
+            } as Message),
+      )
+      continue
+    }
+
+    if (existingKeys.has(keys[0]!)) continue
+    hasNewSessionStartOutput = true
+    deduped.push(message)
+  }
+
+  return hasNewSessionStartOutput ? deduped : []
+}
+
 /**
  * Transforms legacy attachment types to current types for backward compatibility
  */
@@ -161,10 +387,14 @@ export function deserializeMessagesWithInterruptDetection(
   serializedMessages: Message[],
 ): DeserializeResult {
   try {
+    // Clean transcript corruption before migrations or the existing API-shape
+    // filters access attachment/content fields.
+    const unretractedMessages = dropRetractedMessages(serializedMessages)
+    const wellFormedMessages = dropMalformedAttachments(unretractedMessages)
+    const repairedMessages = dropMalformedTextBlocks(wellFormedMessages)
+
     // Transform legacy attachment types before processing
-    const migratedMessages = serializedMessages.map(
-      migrateLegacyAttachmentTypes,
-    )
+    const migratedMessages = repairedMessages.map(migrateLegacyAttachmentTypes)
 
     // Strip invalid permissionMode values from deserialized user messages.
     // The field is unvalidated JSON from disk and may contain modes from a different build.
@@ -387,11 +617,14 @@ function isTerminalToolResult(
  */
 export function restoreSkillStateFromMessages(messages: Message[]): void {
   for (const message of messages) {
-    if (message.type !== 'attachment') {
+    if (
+      message.type !== 'attachment' ||
+      !isWellFormedAttachmentPayload(message.attachment)
+    ) {
       continue
     }
-    if (message.attachment!.type === 'invoked_skills') {
-      const skills = message.attachment!.skills as Array<{
+    if (message.attachment.type === 'invoked_skills') {
+      const skills = message.attachment.skills as Array<{
         name?: string
         path?: string
         content?: string
@@ -407,7 +640,7 @@ export function restoreSkillStateFromMessages(messages: Message[]): void {
     // in the transcript the model is about to see. sentSkillNames is
     // process-local, so without this every resume re-announces the same
     // ~600 tokens. Fire-once latch; consumed on the first attachment pass.
-    if (message.attachment!.type === 'skill_listing') {
+    if (message.attachment.type === 'skill_listing') {
       suppressNextSkillListing()
     }
   }
@@ -576,19 +809,25 @@ export async function loadConversationForResume(
       checkResumeConsistency(messages)
     }
 
+    // Clean entries before restoreSkillStateFromMessages dereferences attachment
+    // payloads. deserializeMessages repeats these idempotent passes because it is
+    // also called directly by SDK, teleport, and agent-resume paths.
+    messages = dropMalformedAttachments(dropRetractedMessages(messages!))
+
     // Restore skill state from invoked_skills attachments before deserialization.
     // This ensures skills survive multiple compaction cycles after resume.
-    restoreSkillStateFromMessages(messages!)
+    restoreSkillStateFromMessages(messages)
 
     // Deserialize messages to handle unresolved tool uses and ensure proper format
-    const deserialized = deserializeMessagesWithInterruptDetection(messages!)
+    const deserialized = deserializeMessagesWithInterruptDetection(messages)
     messages = deserialized.messages
 
     // Process session start hooks for resume
     const hookMessages = await processSessionStartHooks('resume', { sessionId })
 
-    // Append hook messages to the conversation
-    messages.push(...hookMessages)
+    // Append only SessionStart output not already persisted by an earlier
+    // resume. Hooks still execute so their non-message side effects are kept.
+    messages.push(...dedupeSessionStartHookMessages(messages, hookMessages))
 
     return {
       messages,

@@ -4,7 +4,10 @@ import {
   getModelTier,
   getModelTiers,
   isModelTier,
+  type SessionModelSettingsOverrides,
+  updateSessionModelSettingsOverride,
 } from '../modelTier.js'
+import { createStore } from '../../../state/store.js'
 
 /**
  * The tier of a model id is what per-tier settings are keyed on. Getting it
@@ -122,6 +125,42 @@ describe('getModelSettingsSlot', () => {
     expect(getModelSettingsSlot('deepseek-v4-pro', 'deepseek-v4-pro')).toBe(
       'sonnet',
     )
+  })
+})
+
+describe('session model settings isolation', () => {
+  test('updates one slot in one store without touching another session or slot', () => {
+    const sessionA = createStore({
+      overrides: {} as SessionModelSettingsOverrides,
+    })
+    const sessionB = createStore({
+      overrides: {} as SessionModelSettingsOverrides,
+    })
+
+    sessionA.setState(prev => ({
+      overrides: updateSessionModelSettingsOverride(prev.overrides, 'opus', {
+        effort: 'max',
+        contextTokens: 1_000_000,
+      }),
+    }))
+
+    expect(sessionA.getState().overrides).toEqual({
+      opus: { effort: 'max', contextTokens: 1_000_000 },
+    })
+    expect(sessionA.getState().overrides.sonnet).toBeUndefined()
+    expect(sessionB.getState().overrides).toEqual({})
+  })
+
+  test('clears only the requested context axis', () => {
+    const initial = {
+      opus: { effort: 'high' as const, contextTokens: 512_000 },
+    }
+    expect(
+      updateSessionModelSettingsOverride(initial, 'opus', {
+        contextTokens: null,
+      }),
+    ).toEqual({ opus: { effort: 'high' } })
+    expect(initial.opus.contextTokens).toBe(512_000)
   })
 })
 

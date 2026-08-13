@@ -5,7 +5,12 @@ import { join } from 'node:path'
 import { createWorkflowTool } from '../tool/WorkflowTool.js'
 import { DEFAULT_MAX_CONCURRENCY, MAX_CONCURRENCY_CAP } from '../constants.js'
 import { createHostHandle, type WorkflowPorts } from '../ports.js'
-import type { AgentRunParams, AgentRunResult, ProgressEvent } from '../types.js'
+import type {
+  AgentRunParams,
+  AgentRunResult,
+  JournalEntry,
+  ProgressEvent,
+} from '../types.js'
 
 function mockPorts(
   runsDir: string,
@@ -19,6 +24,7 @@ function mockPorts(
   const events: ProgressEvent[] = []
   const runStatus = new Map<string, string>()
   const truncated: string[] = []
+  const journal = new Map<string, JournalEntry[]>()
   const ports: WorkflowPorts = {
     agentRunner: {
       runAgentToResult: async (p: AgentRunParams) =>
@@ -36,10 +42,15 @@ function mockPorts(
       pendingAction: () => null,
     },
     journalStore: {
-      read: async () => [],
-      append: async () => {},
+      read: async runId => [...(journal.get(runId) ?? [])],
+      append: async (runId, entry) => {
+        const entries = journal.get(runId) ?? []
+        entries.push(entry)
+        journal.set(runId, entries)
+      },
       truncate: async runId => {
         truncated.push(runId)
+        journal.delete(runId)
       },
     },
     permissionGate: { isAborted: () => false },
@@ -142,17 +153,13 @@ test('inline script persists to run directory, returns real scriptPath', async (
   }
 })
 
-test('resume invalidates the journal only when the persisted script hash changes', async () => {
+test('default resume leaves changed-script journal invalidation to chained checkpoint identity', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-hash-'))
   try {
-    const { ports, truncated } = mockPorts(
+    const { ports, events, truncated } = mockPorts(
       dir,
       new Map([
         ['first', { kind: 'ok', output: 'first', usage: { outputTokens: 1 } }],
-        [
-          'second',
-          { kind: 'ok', output: 'second', usage: { outputTokens: 1 } },
-        ],
       ]),
     )
     const tool = createWorkflowTool(ports)
@@ -172,29 +179,27 @@ test('resume invalidates the journal only when the persisted script hash changes
     )
     expect(await readFile(hashPath, 'utf-8')).toMatch(/^[a-f0-9]{64}\n$/)
 
-    await writeFile(scriptPath, `return agent('second')`, 'utf-8')
+    await new Promise(resolve => setTimeout(resolve, 30))
+    events.length = 0
+    await writeFile(
+      scriptPath,
+      `const value = await agent('first'); return value + '!'`,
+      'utf-8',
+    )
     await tool.call(
       { scriptPath, resumeFromRunId: 'run-x' },
       undefined,
       undefined,
       undefined,
     )
-    await new Promise(resolve => {
-      setTimeout(resolve, 30)
-    })
-    expect(truncated).toEqual(['run-x'])
+    await new Promise(resolve => setTimeout(resolve, 30))
 
-    truncated.length = 0
-    await tool.call(
-      { scriptPath, resumeFromRunId: 'run-x' },
-      undefined,
-      undefined,
-      undefined,
-    )
-    await new Promise(resolve => {
-      setTimeout(resolve, 30)
-    })
     expect(truncated).toEqual([])
+    expect(
+      events.some(
+        event => event.type === 'agent_done' && event.execution === 'replayed',
+      ),
+    ).toBe(true)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -251,7 +256,7 @@ test('changed script rejects selective resume before registration and preserves 
   }
 })
 
-test('resume without prior script hash fails closed and invalidates legacy journal state', async () => {
+test('default resume without prior script hash delegates safely to checkpoint identity', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-tool-hash-missing-'))
   try {
     const scriptPath = join(dir, 'legacy-workflow.js')
@@ -269,7 +274,7 @@ test('resume without prior script hash fails closed and invalidates legacy journ
       setTimeout(resolve, 30)
     })
 
-    expect(truncated).toEqual(['run-x'])
+    expect(truncated).toEqual([])
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

@@ -55,6 +55,18 @@ const PROVIDER_SELECTION_ENV = [
   'CLAUDE_CODE_USE_GROK',
 ] as const
 
+type ProviderSwitchResult = {
+  message: string
+  switched: boolean
+}
+
+function settingsWriteFailed(error: Error): ProviderSwitchResult {
+  return {
+    message: `Failed to save settings: ${error.message}`,
+    switched: false,
+  }
+}
+
 /**
  * Select a provider family.
  *
@@ -62,44 +74,67 @@ const PROVIDER_SELECTION_ENV = [
  * the setup wizard write into the family `settings.modelType` names, so
  * choosing first and configuring second is the documented order.
  */
-export function switchProviderFamily(provider: ProviderFamily): string {
+export function switchProviderFamily(
+  provider: ProviderFamily,
+): ProviderSwitchResult {
   const missing = missingProviderEnv(provider, getMergedProviderEnv())
   // Only the settings-backed families can report anything missing; the guard
   // is what proves that to the compiler at the one write that needs it.
   if (missing.length > 0 && isSettingsFamily(provider)) {
-    updateSettingsForSource('userSettings', { modelType: provider })
-    return describeMissingProviderEnv(provider, missing)
+    const { error } = updateSettingsForSource('userSettings', {
+      modelType: provider,
+    })
+    if (error) return settingsWriteFailed(error)
+    return {
+      message: describeMissingProviderEnv(provider, missing),
+      switched: true,
+    }
   }
 
   if (isSettingsFamily(provider)) {
+    const { error } = updateSettingsForSource('userSettings', {
+      modelType: provider,
+    })
+    if (error) return settingsWriteFailed(error)
     // Clear any cloud provider env vars to avoid conflicts
     for (const key of PROVIDER_SELECTION_ENV) delete process.env[key]
-    updateSettingsForSource('userSettings', { modelType: provider })
     // Ensure settings.env gets applied to process.env
     applyConfigEnvironmentVariables()
-    return `API provider set to ${provider}.`
+    return { message: `API provider set to ${provider}.`, switched: true }
   }
 
   // Cloud providers are env-only, but a previously persisted `modelType` must
   // still be cleared: getAPIProvider() reads modelType BEFORE any env var, so
   // leaving `modelType: 'openai'` in place would keep routing every request to
   // OpenAI while this command reported a switch to Bedrock.
+  const { error } = updateSettingsForSource('userSettings', {
+    modelType: undefined,
+  })
+  if (error) return settingsWriteFailed(error)
   delete process.env.CLAUDE_CODE_USE_OPENAI
   delete process.env.OPENAI_API_KEY
   delete process.env.OPENAI_BASE_URL
   delete process.env.CLAUDE_CODE_USE_GEMINI
   delete process.env.CLAUDE_CODE_USE_GROK
-  updateSettingsForSource('userSettings', { modelType: undefined })
   const envVar = CLOUD_ENV_VAR[provider]
   if (envVar) process.env[envVar] = '1'
   applyConfigEnvironmentVariables()
-  return `API provider set to ${provider} (via environment variable).`
+  return {
+    message: `API provider set to ${provider} (via environment variable).`,
+    switched: true,
+  }
 }
 
 /** Fall back to whatever the environment says. */
-export function clearProviderFamily(): string {
-  updateSettingsForSource('userSettings', { modelType: undefined })
+export function clearProviderFamily(): ProviderSwitchResult {
+  const { error } = updateSettingsForSource('userSettings', {
+    modelType: undefined,
+  })
+  if (error) return settingsWriteFailed(error)
   // Also clear all provider-specific env vars to prevent conflicts
   for (const key of PROVIDER_SELECTION_ENV) delete process.env[key]
-  return 'API provider cleared (will use environment variables).'
+  return {
+    message: 'API provider cleared (will use environment variables).',
+    switched: true,
+  }
 }

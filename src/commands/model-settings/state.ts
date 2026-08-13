@@ -112,10 +112,9 @@ export function usage(): string {
 /**
  * Persist one tier's overrides.
  *
- * Also clears the legacy flat `effortLevel` whenever a per-tier effort is
- * written. That key seeds AppState at startup and AppState outranks the
- * per-tier layer, so leaving it would produce the worst possible outcome: the
- * user sets a value here and nothing changes. One-way migration, documented.
+ * The independent global `effortLevel` is deliberately left untouched. It is
+ * owned by `/effort`, outranks this policy, and `/effort auto` is the explicit
+ * way to expose per-slot effort again.
  */
 export function writeTierSettings(
   tier: ModelSettingsSlot,
@@ -124,10 +123,7 @@ export function writeTierSettings(
   const current = getSettingsForSource('userSettings')?.modelSettings ?? {}
   const existing = current[tier] ?? {}
   const next = { ...current, [tier]: { ...existing, ...patch } }
-  return updateSettingsForSource('userSettings', {
-    modelSettings: next,
-    ...(patch.effort !== undefined ? { effortLevel: undefined } : {}),
-  })
+  return updateSettingsForSource('userSettings', { modelSettings: next })
 }
 
 export function resetTierSettings(tier: ModelSettingsSlot): {

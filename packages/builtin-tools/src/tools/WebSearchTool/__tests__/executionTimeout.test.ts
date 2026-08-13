@@ -5,8 +5,8 @@ import {
 } from '../executionTimeout.js'
 
 describe('parseWebSearchExecutionTimeoutMs', () => {
-  test('defaults to 60 seconds', () => {
-    expect(parseWebSearchExecutionTimeoutMs(undefined)).toBe(60_000)
+  test('defaults to three minutes', () => {
+    expect(parseWebSearchExecutionTimeoutMs(undefined)).toBe(180_000)
   })
 
   test('accepts zero as the explicit disable value', () => {

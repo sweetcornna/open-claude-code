@@ -18,7 +18,10 @@ import {
 import { getChinaProviderContextWindow } from '../model/chinaLlmProviders.js'
 import { getDeepSeekContextWindow } from '../model/deepseekFamily.js'
 import { getModelCapability } from '../model/modelCapabilities.js'
-import type { ModelSettingsSlot } from '../model/modelTier.js'
+import type {
+  ModelSettingsSlot,
+  SessionModelSettingsOverrides,
+} from '../model/modelTier.js'
 
 // Model context window size (200k tokens for all models right now)
 export /** At or above this, a window needs the 1M capability to be honoured. */
@@ -100,6 +103,7 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
   settingsSlotOverride?: ModelSettingsSlot,
+  sessionOverrides?: SessionModelSettingsOverrides,
 ): number {
   // Allow override via environment variable.
   // This takes precedence over all other context window resolution, including 1M detection.
@@ -125,6 +129,15 @@ export function getContextWindowForModel(
   // does. It is applied at the bottom instead, in place of the flat 200k.
   const settingsSlot =
     settingsSlotOverride ?? getMainLoopModelSettingsSlot(model)
+  const sessionTokens = settingsSlot
+    ? sessionOverrides?.[settingsSlot]?.contextTokens
+    : undefined
+  if (
+    sessionTokens !== undefined &&
+    supportsContextWindow(model, sessionTokens)
+  ) {
+    return sessionTokens
+  }
   const explicitTierTokens = getExplicitTierContextTokens(model, settingsSlot)
   if (
     explicitTierTokens !== undefined &&

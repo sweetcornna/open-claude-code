@@ -120,6 +120,7 @@ export async function* queryModelGrok(
         options.model,
         options.effortValue,
         options.modelSettingsSlot,
+        options.sessionModelSettingsOverrides,
       ),
     )
 

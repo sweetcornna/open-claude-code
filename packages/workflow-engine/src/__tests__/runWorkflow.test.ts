@@ -195,9 +195,12 @@ test.each([
         }
       },
     }
+    let previousKey = ''
     for (const [seq, prompt] of ['a', 'b', 'c'].entries()) {
+      const key = agentCallKey(prompt, { prompt }, previousKey)
+      previousKey = key
       await ports.journalStore.append('run-policy', {
-        key: agentCallKey(prompt, { prompt }),
+        key,
         seq,
         result: {
           kind: 'ok',
@@ -286,7 +289,7 @@ test('omitted and explicit checkpoint policies preserve replay-completed behavio
   }
 })
 
-test('dead call always reruns; unchanged null output leaves later completed calls replayable', async () => {
+test('dead call closes the successful checkpoint prefix and reruns the suffix', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-dead-'))
   try {
     const live: string[] = []
@@ -297,13 +300,14 @@ test('dead call always reruns; unchanged null output leaves later completed call
         return { kind: 'dead', reason: 'api-error' }
       },
     }
+    const deadKey = agentCallKey('a', { prompt: 'a' })
     await ports.journalStore.append('run-dead', {
-      key: agentCallKey('a', { prompt: 'a' }),
+      key: deadKey,
       seq: 0,
       result: { kind: 'dead', reason: 'api-error' },
     })
     await ports.journalStore.append('run-dead', {
-      key: agentCallKey('b', { prompt: 'b' }),
+      key: agentCallKey('b', { prompt: 'b' }, deadKey),
       seq: 1,
       result: {
         kind: 'ok',
@@ -325,10 +329,10 @@ test('dead call always reruns; unchanged null output leaves later completed call
       autoRetryOnFailure: false,
     })
 
-    expect(result.returnValue).toEqual([null, 'cached:b'])
-    expect(live).toEqual(['a'])
-    expect(result.resume?.liveCount).toBe(1)
-    expect(result.resume?.replayedCount).toBe(1)
+    expect(result.returnValue).toEqual([null, null])
+    expect(live).toEqual(['a', 'b'])
+    expect(result.resume?.liveCount).toBe(2)
+    expect(result.resume?.replayedCount).toBe(0)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -349,13 +353,14 @@ test('changed selected output reruns the divergent suffix and rewrites only the 
         }
       },
     }
+    const firstKey = agentCallKey('first', { prompt: 'first' })
     await ports.journalStore.append('run-divergence', {
-      key: agentCallKey('first', { prompt: 'first' }),
+      key: firstKey,
       seq: 0,
       result: { kind: 'ok', output: 'old', usage: { outputTokens: 1 } },
     })
     await ports.journalStore.append('run-divergence', {
-      key: agentCallKey('second:old', { prompt: 'second:old' }),
+      key: agentCallKey('second:old', { prompt: 'second:old' }, firstKey),
       seq: 1,
       result: {
         kind: 'ok',
@@ -383,8 +388,8 @@ test('changed selected output reruns the divergent suffix and rewrites only the 
     const finalJournal = await ports.journalStore.read('run-divergence')
     expect(finalJournal.map(entry => entry.seq)).toEqual([0, 1])
     expect(finalJournal.map(entry => entry.key)).toEqual([
-      agentCallKey('first', { prompt: 'first' }),
-      agentCallKey('second:new', { prompt: 'second:new' }),
+      firstKey,
+      agentCallKey('second:new', { prompt: 'second:new' }, firstKey),
     ])
   } finally {
     await rm(dir, { recursive: true, force: true })
@@ -398,9 +403,13 @@ async function seedJournal(
   count: number,
   deadSeq?: number,
 ): Promise<void> {
+  let previousKey = ''
   for (let seq = 0; seq < count; seq++) {
+    const prompt = `a${seq}`
+    const key = agentCallKey(prompt, { prompt }, previousKey)
+    previousKey = key
     await ports.journalStore.append(runId, {
-      key: agentCallKey(`a${seq}`, { prompt: `a${seq}` }),
+      key,
       seq,
       result:
         seq === deadSeq
@@ -706,7 +715,43 @@ test('workflow() nesting (one level) shares counts', async () => {
 
 // ---- boundary and events ----
 
-test('scriptChanged=true → truncate journal and run all live', async () => {
+test('changed default resume replays a matching agent prefix through post-processing edits', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
+  try {
+    let called = 0
+    const ports = portsWith(dir, new Map())
+    ports.agentRunner.runAgentToResult = async () => {
+      called++
+      return { kind: 'ok', output: 'live', usage: { outputTokens: 1 } }
+    }
+    await ports.journalStore.append('run-changed-postprocess', {
+      key: agentCallKey('compute', { prompt: 'compute' }),
+      seq: 0,
+      result: { kind: 'ok', output: 'cached', usage: { outputTokens: 1 } },
+    })
+
+    const result = await runWorkflow({
+      script: `const value = await agent('compute'); return value + '!'`,
+      runId: 'run-changed-postprocess',
+      ports,
+      host: createHostHandle(null),
+      signal: new AbortController().signal,
+      cwd: dir,
+      budgetTotal: null,
+      resume: true,
+      scriptChanged: true,
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.returnValue).toBe('cached!')
+    expect(result.resume?.replayedCount).toBe(1)
+    expect(called).toBe(0)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('scope all reruns live without eagerly truncating a changed-script journal', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {
     let called = 0
@@ -757,7 +802,8 @@ test('scriptChanged=true → truncate journal and run all live', async () => {
     expect(result.status).toBe('completed')
     expect(result.returnValue).toBe('live')
     expect(called).toBe(1)
-    // truncate cleared the old cached journal, live agent appends a new entry
+    // The live result supersedes the old record at the same sequence without a
+    // destructive pre-run truncate window.
     const final = await ports.journalStore.read('run-chg')
     expect(final).toHaveLength(1)
     expect((final[0]!.result as { output: string }).output).toBe('live')
@@ -1245,7 +1291,7 @@ test('workflow() references a non-existent name → failed', async () => {
   }
 })
 
-test('scriptChanged=true announces that the journal was discarded', async () => {
+test('changed default resume uses checkpoint identity without announcing journal discard', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wf-run-'))
   try {
     const events: ProgressEvent[] = []
@@ -1291,12 +1337,12 @@ test('scriptChanged=true announces that the journal was discarded', async () => 
       scriptChanged: true,
     })
 
-    expect(warnings.some(w => w.includes('journal discarded'))).toBe(true)
+    expect(warnings.some(w => w.includes('journal discarded'))).toBe(false)
     expect(
       events.some(
         e => e.type === 'log' && e.message.includes('journal discarded'),
       ),
-    ).toBe(true)
+    ).toBe(false)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

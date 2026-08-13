@@ -156,15 +156,14 @@ describe('the scriptable forms survive the merge', () => {
     expect(await run('current')).toBe(await run('show'))
   })
 
-  test('setting an effort persists it and says the legacy key was cleared', async () => {
+  test('setting slot effort preserves and explains the global override', async () => {
     userSettings = { effortLevel: 'low' }
     const output = await run('opus effort max')
     expect(output).toStartWith('opus: effort=max')
-    expect(output).toContain(
-      'Cleared the older global effortLevel so this takes effect.',
-    )
+    expect(output).toContain('global /effort=low still overrides it')
+    expect(output).toContain('/effort auto')
     expect(userSettings.modelSettings?.opus?.effort).toBe('max')
-    expect(userSettings.effortLevel).toBeUndefined()
+    expect(userSettings.effortLevel).toBe('low')
   })
 
   test('setting a context window persists it and does not mention effort', async () => {

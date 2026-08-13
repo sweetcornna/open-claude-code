@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { AgentAdapterRegistry } from '../agentAdapter.js'
 import { createEngineContext } from '../engine/context.js'
 import { maxConcurrency, Semaphore } from '../engine/concurrency.js'
-import { agentCallKey } from '../engine/journal.js'
+import { agentCallKey, legacyOccAgentCallKey } from '../engine/journal.js'
 import { makeHooks, type SubWorkflowRunner } from '../engine/hooks.js'
 import { AGENT_MAX_RETRIES, AGENT_MAX_RETRIES_BY_REASON } from '../constants.js'
 import { WorkflowError, WorkflowAbortedError } from '../engine/errors.js'
@@ -42,6 +42,18 @@ type CtxOverrides = Partial<{
   ) => void
   unregisterAgentAbort: (runId: string, agentId: number) => void
 }>
+
+function checkpointJournal(
+  prompts: string[],
+  result: (prompt: string, seq: number) => AgentRunResult,
+): JournalEntry[] {
+  let previousKey = ''
+  return prompts.map((prompt, seq) => {
+    const key = agentCallKey(prompt, { prompt }, previousKey)
+    previousKey = key
+    return { key, seq, result: result(prompt, seq) }
+  })
+}
 
 function buildCtx(overrides: CtxOverrides = {}): {
   ctx: ReturnType<typeof createEngineContext>
@@ -313,41 +325,69 @@ test('agent journal hit does not call runner', async () => {
   expect(called).toBe(0)
 })
 
-test('checkpoint resume replays a skipped journal call without running it live', async () => {
+test('checkpoint resume safely replays a legacy OCC journal entry and migrates the next live entry to v2', async () => {
+  let calls = 0
+  const appended: JournalEntry[] = []
+  const first = 'legacy-first'
+  const { hooks } = buildCtx({
+    journal: [
+      {
+        key: legacyOccAgentCallKey(first, { prompt: first }),
+        seq: 0,
+        result: {
+          kind: 'ok',
+          output: 'cached:first',
+          usage: { outputTokens: 1 },
+        },
+      },
+    ],
+    appended,
+    runner: async params => {
+      calls++
+      return {
+        kind: 'ok',
+        output: `live:${params.prompt}`,
+        usage: { outputTokens: 1 },
+      }
+    },
+  })
+
+  expect(await hooks.agent(first)).toBe('cached:first')
+  expect(await hooks.agent('new-second')).toBe('live:new-second')
+  expect(calls).toBe(1)
+  expect(appended.map(entry => entry.key)).toEqual([
+    agentCallKey(first, { prompt: first }),
+    agentCallKey(
+      'new-second',
+      { prompt: 'new-second' },
+      agentCallKey(first, { prompt: first }),
+    ),
+  ])
+})
+
+test('checkpoint resume audits but does not replay a skipped journal call', async () => {
   let calls = 0
   const prompt = 'skipped-before'
   const { hooks, events } = buildCtx({
-    journal: [
-      {
-        key: agentCallKey(prompt, { prompt }),
-        seq: 0,
-        result: { kind: 'skipped' },
-      },
-    ],
+    journal: checkpointJournal([prompt], () => ({ kind: 'skipped' })),
     runner: async () => {
       calls++
       return { kind: 'ok', output: 'live', usage: { outputTokens: 1 } }
     },
   })
 
-  expect(await hooks.agent(prompt)).toBeNull()
-  expect(calls).toBe(0)
+  expect(await hooks.agent(prompt)).toBe('live')
+  expect(calls).toBe(1)
   const done = events.find(event => event.type === 'agent_done')
-  expect(done?.type === 'agent_done' ? done.execution : undefined).toBe(
-    'replayed',
-  )
+  expect(done?.type === 'agent_done' ? done.execution : undefined).toBe('live')
 })
 
 test('resume policy all reruns every completed call and reports live execution', async () => {
   const prompts: string[] = []
-  const journal = ['a', 'b'].map((prompt, seq) => ({
-    key: agentCallKey(prompt, { prompt }),
-    seq,
-    result: {
-      kind: 'ok' as const,
-      output: `cached:${prompt}`,
-      usage: { outputTokens: 1 },
-    },
+  const journal = checkpointJournal(['a', 'b'], prompt => ({
+    kind: 'ok',
+    output: `cached:${prompt}`,
+    usage: { outputTokens: 1 },
   }))
   const { hooks, events } = buildCtx({
     journal,
@@ -377,14 +417,10 @@ test.each([
   [{ scope: 'agents', agentIds: [0, 2] } as ResumePolicy, [0, 2]],
 ])('selective resume reruns only selected completed calls: %o', async (policy, selected) => {
   const liveIds: number[] = []
-  const journal = ['a', 'b', 'c'].map((prompt, seq) => ({
-    key: agentCallKey(prompt, { prompt }),
-    seq,
-    result: {
-      kind: 'ok' as const,
-      output: `same:${prompt}`,
-      usage: { outputTokens: 1 },
-    },
+  const journal = checkpointJournal(['a', 'b', 'c'], prompt => ({
+    kind: 'ok',
+    output: `same:${prompt}`,
+    usage: { outputTokens: 1 },
   }))
   const { hooks, events } = buildCtx({
     journal,
@@ -412,14 +448,10 @@ test.each([
 
 test('parallel resume decisions wait for selected output before replaying a later checkpoint', async () => {
   const live: string[] = []
-  const journal = ['a', 'b'].map((prompt, seq) => ({
-    key: agentCallKey(prompt, { prompt }),
-    seq,
-    result: {
-      kind: 'ok' as const,
-      output: prompt === 'a' ? 'old:a' : 'cached:b',
-      usage: { outputTokens: 1 },
-    },
+  const journal = checkpointJournal(['a', 'b'], prompt => ({
+    kind: 'ok',
+    output: prompt === 'a' ? 'old:a' : 'cached:b',
+    usage: { outputTokens: 1 },
   }))
   const { hooks } = buildCtx({
     journal,
@@ -441,6 +473,70 @@ test('parallel resume decisions wait for selected output before replaying a late
     await hooks.parallel([() => hooks.agent('a'), () => hooks.agent('b')]),
   ).toEqual(['live:a', 'live:b'])
   expect(live).toEqual(['a', 'b'])
+})
+
+test('checkpoint replays only the longest matching prefix after post-processing code changes', async () => {
+  const journal = checkpointJournal(
+    ['fetch', 'summarize-old', 'publish'],
+    prompt => ({
+      kind: 'ok',
+      output: `cached:${prompt}`,
+      usage: { outputTokens: 1 },
+    }),
+  )
+  const live: string[] = []
+  const { hooks } = buildCtx({
+    journal,
+    runner: async params => {
+      live.push(params.prompt)
+      return {
+        kind: 'ok',
+        output: `live:${params.prompt}`,
+        usage: { outputTokens: 1 },
+      }
+    },
+  })
+
+  expect(await hooks.agent('fetch')).toBe('cached:fetch')
+  expect(await hooks.agent('summarize-new')).toBe('live:summarize-new')
+  expect(await hooks.agent('publish')).toBe('live:publish')
+  expect(live).toEqual(['summarize-new', 'publish'])
+})
+
+test('parallel chained checkpoints keep invocation order while live backends overlap', async () => {
+  const journal = checkpointJournal(['a', 'b', 'c'], prompt => ({
+    kind: 'ok',
+    output: `cached:${prompt}`,
+    usage: { outputTokens: 1 },
+  }))
+  const starts: string[] = []
+  let releaseA = (): void => {}
+  const waitForA = new Promise<void>(resolve => {
+    releaseA = resolve
+  })
+  const { hooks } = buildCtx({
+    journal,
+    resumePolicy: { scope: 'agents', agentIds: [0, 1] },
+    runner: async params => {
+      starts.push(params.prompt)
+      if (params.prompt === 'a') await waitForA
+      if (params.prompt === 'b') releaseA()
+      return {
+        kind: 'ok',
+        output: `cached:${params.prompt}`,
+        usage: { outputTokens: 1 },
+      }
+    },
+  })
+
+  expect(
+    await hooks.parallel([
+      () => hooks.agent('a'),
+      () => hooks.agent('b'),
+      () => hooks.agent('c'),
+    ]),
+  ).toEqual(['cached:a', 'cached:b', 'cached:c'])
+  expect(starts).toEqual(['a', 'b'])
 })
 
 test('journal match requires both global seq and key', async () => {
@@ -470,11 +566,10 @@ test('journal match requires both global seq and key', async () => {
 
 test('incomplete call reruns and conservatively closes over the cached suffix', async () => {
   const live: string[] = []
-  const promptB = 'b'
   const { hooks } = buildCtx({
     journal: [
       {
-        key: agentCallKey(promptB, { prompt: promptB }),
+        key: agentCallKey('b', { prompt: 'b' }),
         seq: 1,
         result: {
           kind: 'ok',
@@ -636,6 +731,11 @@ test('agent journal divergence retains the valid prefix and appends the live suf
   const appended: JournalEntry[] = []
   const firstPrompt = 'cached-first'
   const firstKey = agentCallKey(firstPrompt, { prompt: firstPrompt })
+  const staleSecondKey = agentCallKey(
+    'stale-second',
+    { prompt: 'stale-second' },
+    firstKey,
+  )
   const { hooks, ctx } = buildCtx({
     runner: async params => ({
       kind: 'ok',
@@ -653,7 +753,7 @@ test('agent journal divergence retains the valid prefix and appends the live suf
         },
       },
       {
-        key: 'stale-second',
+        key: staleSecondKey,
         seq: 1,
         result: {
           kind: 'ok',
@@ -908,7 +1008,7 @@ test('agent dead retryable:true → still retried once (explicit transient)', as
 
 test('journal dead entry recovery invalidates and reruns the divergent suffix', async () => {
   const keyA = agentCallKey('a', { prompt: 'a' })
-  const keyB = agentCallKey('b', { prompt: 'b' })
+  const keyB = agentCallKey('b', { prompt: 'b' }, keyA)
   let calls = 0
   const appended: JournalEntry[] = []
   const { hooks, ctx } = buildCtx({

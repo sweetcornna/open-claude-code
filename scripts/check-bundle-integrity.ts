@@ -13,7 +13,7 @@
  */
 
 import { readdir, readFile } from 'fs/promises'
-import { join, resolve, dirname } from 'path'
+import { dirname, join, relative, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
 
 // ─── 从 package.json 读取 dependencies 作为白名单 ────────────────
@@ -107,15 +107,36 @@ interface Finding {
   snippet: string
 }
 
+async function listJavaScriptFiles(root: string): Promise<string[]> {
+  const files: string[] = []
+  const pending = ['']
+
+  while (pending.length > 0) {
+    const directory = pending.pop()!
+    const entries = await readdir(join(root, directory), {
+      withFileTypes: true,
+    })
+    for (const entry of entries) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) pending.push(path)
+      else if (entry.isFile() && entry.name.endsWith('.js')) {
+        files.push(path.split(sep).join('/'))
+      }
+    }
+  }
+
+  return files.sort()
+}
+
 async function main() {
   const distDir = resolve(process.argv[2] || './dist')
 
   console.log(`\n🔍 检查构建产物完整性: ${distDir}\n`)
 
-  // 1. 列出所有 chunk 文件
+  // 1. 列出根入口和 Vite/Bun 生成的嵌套 chunk 文件。
   let files: string[]
   try {
-    files = (await readdir(distDir)).filter(f => f.endsWith('.js'))
+    files = await listJavaScriptFiles(distDir)
   } catch {
     console.error(`❌ 无法读取目录: ${distDir}`)
     console.error('   请先运行 bun run build')
@@ -137,13 +158,15 @@ async function main() {
       const line = lines[i]
       const lineNum = i + 1
 
-      // 2a. 检查静态 chunk 引用是否断链
+      // 2a. 检查静态 chunk 引用是否断链。引用相对于当前 chunk，
+      // 不能相对于 dist 根解析：Vite 的绝大多数边都位于 dist/chunks/。
       const staticImportMatches = line.matchAll(STATIC_IMPORT_RE)
       for (const m of staticImportMatches) {
         const ref = m[1]
-        // 提取文件名部分（去掉 ./）
-        const refFile = ref.replace(/^\.\//, '')
-        if (!fileSet.has(refFile)) {
+        const target = relative(distDir, resolve(dirname(filePath), ref))
+          .split(sep)
+          .join('/')
+        if (!fileSet.has(target)) {
           findings.push({
             type: 'broken-chunk-ref',
             severity: 'error',

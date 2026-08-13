@@ -12,6 +12,7 @@ import {
   type McpServerConfig,
   McpServerConfigSchema,
 } from 'src/services/mcp/types.js'
+import { isComputerUseMCPServer } from 'src/utils/computerUse/common.js'
 import type { ToolUseContext } from '@open-claude-code/tool-runtime/Tool.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
 import {
@@ -37,7 +38,6 @@ import {
   loadPluginAgents,
 } from 'src/utils/plugins/loadPluginAgents.js'
 import { HooksSchema, type HooksSettings } from 'src/utils/settings/types.js'
-import { jsonStringify } from '@open-claude-code/tool-runtime/slowOperations.js'
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/constants.js'
 import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/constants.js'
@@ -66,6 +66,138 @@ const AgentMcpServerSpecSchema = lazySchema(() =>
     z.record(z.string(), McpServerConfigSchema()), // Inline as { name: config }
   ]),
 )
+
+const RESERVED_AGENT_MCP_SERVER_NAMES = new Set(['__proto__'])
+const INTERNAL_AGENT_MCP_TRANSPORTS: ReadonlySet<unknown> = new Set([
+  'sse-ide',
+  'ws-ide',
+  'sdk',
+  'claudeai-proxy',
+])
+
+function isReservedAgentMcpServerName(name: string): boolean {
+  return (
+    RESERVED_AGENT_MCP_SERVER_NAMES.has(name) || isComputerUseMCPServer(name)
+  )
+}
+
+function isInternalAgentMcpTransportType(type: unknown): boolean {
+  return INTERNAL_AGENT_MCP_TRANSPORTS.has(type)
+}
+
+export function isInternalAgentMcpTransport(
+  config: Pick<McpServerConfig, 'type'>,
+): boolean {
+  return isInternalAgentMcpTransportType(config.type)
+}
+
+function shouldRejectRawAgentMcpServerSpec(
+  agentType: string,
+  spec: unknown,
+): boolean {
+  if (spec === null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return false
+  }
+
+  if (Object.hasOwn(spec, '__proto__')) {
+    logForDebugging(
+      `[Agent: ${agentType}] Skipping reserved MCP server name '__proto__' in frontmatter`,
+      { level: 'warn' },
+    )
+    return true
+  }
+
+  const entries = Object.entries(spec)
+  if (entries.length !== 1) return false
+
+  const [serverName, rawConfig] = entries[0]!
+  if (isReservedAgentMcpServerName(serverName)) {
+    logForDebugging(
+      `[Agent: ${agentType}] Skipping reserved MCP server name '${serverName}' in frontmatter`,
+      { level: 'warn' },
+    )
+    return true
+  }
+  if (
+    rawConfig !== null &&
+    typeof rawConfig === 'object' &&
+    'type' in rawConfig &&
+    isInternalAgentMcpTransportType(rawConfig.type)
+  ) {
+    logForDebugging(
+      `[Agent: ${agentType}] Skipping internal-only MCP transport '${rawConfig.type}' for '${serverName}' in frontmatter`,
+      { level: 'warn' },
+    )
+    return true
+  }
+  return false
+}
+
+function filterRawAgentMcpServerSpecs(
+  agentType: string,
+  definition: unknown,
+): unknown {
+  if (
+    definition === null ||
+    typeof definition !== 'object' ||
+    !('mcpServers' in definition) ||
+    !Array.isArray(definition.mcpServers)
+  ) {
+    return definition
+  }
+
+  return {
+    ...definition,
+    mcpServers: definition.mcpServers.filter(
+      spec => !shouldRejectRawAgentMcpServerSpec(agentType, spec),
+    ),
+  }
+}
+
+export function validateAgentMcpServerSpec(
+  agentType: string,
+  spec: AgentMcpServerSpec,
+): AgentMcpServerSpec | null {
+  if (typeof spec === 'string') return spec
+
+  const entries = Object.entries(spec)
+  if (entries.length !== 1) {
+    logForDebugging(
+      `[Agent: ${agentType}] Invalid MCP server spec: expected exactly one key`,
+      { level: 'warn' },
+    )
+    return null
+  }
+
+  const [serverName, serverConfig] = entries[0]!
+  if (isReservedAgentMcpServerName(serverName)) {
+    logForDebugging(
+      `[Agent: ${agentType}] Skipping reserved MCP server name '${serverName}' in frontmatter`,
+      { level: 'warn' },
+    )
+    return null
+  }
+  if (isInternalAgentMcpTransport(serverConfig)) {
+    logForDebugging(
+      `[Agent: ${agentType}] Skipping internal-only MCP transport '${serverConfig.type}' for '${serverName}' in frontmatter`,
+      { level: 'warn' },
+    )
+    return null
+  }
+  return spec
+}
+
+function parseAgentMcpServerSpec(
+  agentType: string,
+  spec: unknown,
+): AgentMcpServerSpec | null {
+  if (shouldRejectRawAgentMcpServerSpec(agentType, spec)) return null
+
+  const result = AgentMcpServerSpecSchema().safeParse(spec)
+  return result.success
+    ? validateAgentMcpServerSpec(agentType, result.data)
+    : null
+}
 
 // Zod schemas for JSON agent validation
 // Note: HooksSchema is lazy so the circular chain AppState -> loadAgentsDir -> settings/types
@@ -449,7 +581,9 @@ export function parseAgentFromJson(
   source: SettingSource = 'flagSettings',
 ): CustomAgentDefinition | null {
   try {
-    const parsed = AgentJsonSchema().parse(definition)
+    const parsed = AgentJsonSchema().parse(
+      filterRawAgentMcpServerSpecs(name, definition),
+    )
 
     let tools = parseAgentToolsFromFrontmatter(parsed.tools)
 
@@ -473,6 +607,9 @@ export function parseAgentFromJson(
         : undefined
 
     const systemPrompt = parsed.prompt
+    const mcpServers = parsed.mcpServers
+      ?.map(spec => validateAgentMcpServerSpec(name, spec))
+      .filter((spec): spec is AgentMcpServerSpec => spec !== null)
 
     const agent: CustomAgentDefinition = {
       agentType: name,
@@ -493,9 +630,7 @@ export function parseAgentFromJson(
       ...(parsed.permissionMode
         ? { permissionMode: parsed.permissionMode }
         : {}),
-      ...(parsed.mcpServers && parsed.mcpServers.length > 0
-        ? { mcpServers: parsed.mcpServers }
-        : {}),
+      ...(mcpServers && mcpServers.length > 0 ? { mcpServers } : {}),
       ...(parsed.hooks ? { hooks: parsed.hooks } : {}),
       ...(parsed.maxTurns !== undefined ? { maxTurns: parsed.maxTurns } : {}),
       ...(parsed.skills && parsed.skills.length > 0
@@ -696,13 +831,15 @@ export function parseAgentFromMarkdown(
     if (Array.isArray(mcpServersRaw)) {
       mcpServers = mcpServersRaw
         .map(item => {
+          const parsed = parseAgentMcpServerSpec(agentType, item)
+          if (parsed) return parsed
+
           const result = AgentMcpServerSpecSchema().safeParse(item)
-          if (result.success) {
-            return result.data
+          if (!result.success) {
+            logForDebugging(
+              `Agent file ${filePath} has invalid mcpServers item: ${result.error.message}`,
+            )
           }
-          logForDebugging(
-            `Agent file ${filePath} has invalid mcpServers item: ${jsonStringify(item)}. Error: ${result.error.message}`,
-          )
           return null
         })
         .filter((item): item is AgentMcpServerSpec => item !== null)

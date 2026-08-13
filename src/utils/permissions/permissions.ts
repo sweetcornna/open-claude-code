@@ -49,6 +49,8 @@ import {
   permissionRuleValueFromString,
   permissionRuleValueToString,
 } from './permissionRuleParser.js'
+import { getRuleByContentsForToolName } from './contentRuleLookup.js'
+export { getRuleByContentsForToolName } from './contentRuleLookup.js'
 import {
   deletePermissionRuleFromSettings,
   type PermissionRuleFromEditableSettings,
@@ -359,36 +361,6 @@ export function getRuleByContentsForTool(
 }
 
 // Used to break circular dependency where a Tool calls this function
-export function getRuleByContentsForToolName(
-  context: ToolPermissionContext,
-  toolName: string,
-  behavior: PermissionBehavior,
-): Map<string, PermissionRule> {
-  const ruleByContents = new Map<string, PermissionRule>()
-  let rules: PermissionRule[] = []
-  switch (behavior) {
-    case 'allow':
-      rules = getAllowRules(context)
-      break
-    case 'deny':
-      rules = getDenyRules(context)
-      break
-    case 'ask':
-      rules = getAskRules(context)
-      break
-  }
-  for (const rule of rules) {
-    if (
-      rule.ruleValue.toolName === toolName &&
-      rule.ruleValue.ruleContent !== undefined &&
-      rule.ruleBehavior === behavior
-    ) {
-      ruleByContents.set(rule.ruleValue.ruleContent, rule)
-    }
-  }
-  return ruleByContents
-}
-
 /**
  * Runs PermissionRequest hooks for headless/async agents that cannot show
  * permission prompts. This gives hooks an opportunity to allow or deny

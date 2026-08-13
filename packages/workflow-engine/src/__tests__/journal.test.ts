@@ -7,6 +7,7 @@ import {
   createFileJournalStore,
   journalEntryMatches,
   JournalCorruptionError,
+  legacyOccAgentCallKey,
   resolveResumePolicy,
 } from '../engine/journal.js'
 import type { AgentRunParams } from '../types.js'
@@ -15,6 +16,14 @@ const base: AgentRunParams = { prompt: 'do something' }
 
 test('agentCallKey stable for same prompt+params', () => {
   expect(agentCallKey('p', base)).toBe(agentCallKey('p', base))
+  expect(agentCallKey('p', base)).toMatch(/^v2:[0-9a-f]{64}$/)
+})
+
+test('agentCallKey chains through the previous checkpoint', () => {
+  const first = agentCallKey('first', { prompt: 'first' })
+  expect(agentCallKey('second', { prompt: 'second' }, first)).not.toBe(
+    agentCallKey('second', { prompt: 'second' }),
+  )
 })
 
 test('agentCallKey varies with prompt', () => {
@@ -36,6 +45,19 @@ test('journal identity requires both seq and key', () => {
   expect(journalEntryMatches(entry, 4, 'same')).toBe(true)
   expect(journalEntryMatches(entry, 3, 'same')).toBe(false)
   expect(journalEntryMatches(entry, 4, 'different')).toBe(false)
+})
+
+test('unknown prefixed v1 keys miss conservatively instead of mis-replaying', () => {
+  const entry = {
+    key: `v1:${'a'.repeat(64)}`,
+    seq: 0,
+    result: {
+      kind: 'ok' as const,
+      output: 'untrusted',
+      usage: { outputTokens: 1 },
+    },
+  }
+  expect(journalEntryMatches(entry, 0, agentCallKey('p', base))).toBe(false)
 })
 
 test('runtime resume policy validation preserves omitted checkpoint and rejects malformed selectors', () => {
@@ -138,6 +160,32 @@ test('agentCallKey varies with model', () => {
   expect(agentCallKey('p', { prompt: 'p', model: 'sonnet' })).not.toBe(
     agentCallKey('p', { prompt: 'p', model: 'opus' }),
   )
+})
+
+test('agentCallKey preserves OCC-only allowedTools/maxTokens in an explicit compatibility identity', () => {
+  const baseline = agentCallKey('p', { prompt: 'p' })
+  expect(agentCallKey('p', { prompt: 'p', allowedTools: ['Read'] })).not.toBe(
+    baseline,
+  )
+  expect(agentCallKey('p', { prompt: 'p', maxTokens: 512 })).not.toBe(baseline)
+})
+
+test('upstream set-like deny/clamp fields are canonicalized before hashing', () => {
+  const left = agentCallKey('p', {
+    prompt: 'p',
+    disallowedTools: ['Write', 'Bash'],
+    bashCommandClamp: ['Bash(git status)', 'Bash(pwd)'],
+  })
+  const right = agentCallKey('p', {
+    prompt: 'p',
+    disallowedTools: ['Bash', 'Write'],
+    bashCommandClamp: ['Bash(pwd)', 'Bash(git status)'],
+  })
+  expect(left).toBe(right)
+})
+
+test('legacy key helper retains the exact pre-v2 OCC migration identity', () => {
+  expect(legacyOccAgentCallKey('p', { prompt: 'p' })).toMatch(/^[0-9a-f]{64}$/)
 })
 
 test('agentCallKey stable across params field order (canonical sort)', () => {

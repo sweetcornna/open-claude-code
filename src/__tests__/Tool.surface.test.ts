@@ -93,6 +93,7 @@ describe('Tool.ts export surface', () => {
       'CompactProgressEvent',
       'Progress',
       'QueryChainTracking',
+      'SessionModelSettingsOverrides',
       'SetToolJSXFn',
       'Tool',
       'ToolCallProgress',

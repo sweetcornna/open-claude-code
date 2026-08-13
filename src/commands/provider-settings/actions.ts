@@ -28,6 +28,10 @@ import { describeNonInteractiveAdd } from './addFlow.js'
 import { refreshProfileCatalog } from './catalogRefresh.js'
 import { clearProviderFamily, switchProviderFamily } from './providerSwitch.js'
 import {
+  rehydrateProviderSession,
+  type ProviderSessionRehydrateContext,
+} from './sessionRehydrate.js'
+import {
   buildProviderRows,
   describeAggregatedModels,
   describeAggregateOverview,
@@ -64,6 +68,7 @@ function renderRegistry(): string {
  */
 export async function runProviderSettingsCommand(
   parsed: ParsedCommand,
+  context?: ProviderSessionRehydrateContext,
 ): Promise<string> {
   switch (parsed.kind) {
     case 'help':
@@ -92,11 +97,17 @@ export async function runProviderSettingsCommand(
     case 'add':
       return describeNonInteractiveAdd(loadProfilesFile(), parsed.name)
 
-    case 'set-provider':
-      return switchProviderFamily(parsed.provider)
+    case 'set-provider': {
+      const result = switchProviderFamily(parsed.provider)
+      if (result.switched) rehydrateProviderSession(context)
+      return result.message
+    }
 
-    case 'unset-provider':
-      return clearProviderFamily()
+    case 'unset-provider': {
+      const result = clearProviderFamily()
+      if (result.switched) rehydrateProviderSession(context)
+      return result.message
+    }
 
     case 'rename': {
       const result = renameProfile(parsed.from, parsed.to)
@@ -113,6 +124,7 @@ export async function runProviderSettingsCommand(
     case 'use': {
       const result = activateProfile(parsed.name)
       if ('error' in result) return result.error
+      rehydrateProviderSession(context)
       return (
         `Activated profile "${parsed.name}" → provider ` +
         `${result.profile.modelType}.`

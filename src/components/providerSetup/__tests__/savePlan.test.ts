@@ -319,7 +319,6 @@ describe('resetting thinking effort', () => {
       expect(Object.keys(result.modelSettings[slot] ?? {})).toContain('effort')
       expect(result.modelSettings[slot]?.effort).toBeUndefined()
     }
-    expect(result.clearFlatEffort).toBe(true)
   })
 
   test('walking past the field changes nothing', () => {
@@ -331,7 +330,6 @@ describe('resetting thinking effort', () => {
       existingSettings: { modelType: 'openai', modelSettings: mixed },
     })
     expect(result.modelSettings).toEqual({})
-    expect(result.clearFlatEffort).toBe(false)
   })
 
   test('a saved value the user cleared still resets without the picker', () => {

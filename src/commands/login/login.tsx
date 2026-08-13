@@ -21,6 +21,7 @@ import { AuthPlaneSummary } from './AuthPlaneSummary.js';
 import { getAuthStatus } from './getAuthStatus.js';
 import { WorkspaceKeyInputContainer } from './WorkspaceKeyInput.js';
 import { removeWorkspaceKey } from '../../services/auth/saveWorkspaceKey.js';
+import { getInitialEffortSetting } from '../../utils/model/effort.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
 
 export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode> {
@@ -38,8 +39,14 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
           // in-session `/model` choice. Dropping it on every save meant that
           // reopening the form to nudge thinking effort silently moved the
           // user back to the configured default.
-          ...(outcome.providerChanged ? { mainLoopModel: null, mainLoopModelForSession: null } : {}),
-          effortValue: undefined,
+          ...(outcome.providerChanged
+            ? {
+                mainLoopModel: null,
+                mainLoopModelForSession: null,
+                effortValue: getInitialEffortSetting(),
+                sessionModelSettingsOverrides: {},
+              }
+            : {}),
         }));
       }}
       onDone={async success => {

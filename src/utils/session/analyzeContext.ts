@@ -963,6 +963,7 @@ export async function analyzeContextUsage(
     runtimeModel,
     getSdkBetas(),
     settingsSlot,
+    toolUseContext?.options.sessionModelSettingsOverrides,
   )
 
   // Build the effective system prompt using the shared utility

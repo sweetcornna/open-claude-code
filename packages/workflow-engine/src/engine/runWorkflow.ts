@@ -40,7 +40,7 @@ export type RunWorkflowOptions = {
   resume?: boolean
   /** Completed calls to rerun. Omitted preserves checkpoint behavior. */
   resumePolicy?: ResumePolicy
-  /** Whether the script source hash changed on resume. When true, ignore the journal and re-run everything. */
+  /** Whether the script source hash changed on resume. Used only to reject positional selective selectors. */
   scriptChanged?: boolean
   /** Named workflow directory relative to cwd. */
   workflowDir?: string
@@ -106,27 +106,13 @@ export async function runWorkflow(
 
   const workflowName = opts.workflowName ?? parsed.meta?.name ?? 'workflow'
 
-  // Load the journal (only on resume and when the script is unchanged)
-  let journal: JournalEntry[] = []
-  let journalInvalidated = false
-  if (opts.resume && !opts.scriptChanged) {
-    journal = await ports.journalStore.read(opts.runId)
-  } else if (opts.scriptChanged) {
-    await ports.journalStore.truncate(opts.runId)
-    journalInvalidated = true
-    // Say so out loud. A resume that silently discards every checkpoint is
-    // indistinguishable from one that replayed them — the run just costs a full
-    // fresh fan-out again while looking like it resumed.
-    ports.logger.warn?.(
-      `resume ${opts.runId}: script changed since the recorded run — journal discarded, every agent() call re-runs`,
-    )
-    ports.progressEmitter.emit({
-      type: 'log',
-      runId: opts.runId,
-      message:
-        'script changed since the recorded run — journal discarded, resuming as a full fresh run',
-    })
-  }
+  // Chained checkpoint identities, not the whole-script hash, determine the
+  // longest valid replay prefix. This preserves successful agent work when the
+  // caller changes only post-processing code, while the first changed agent
+  // prompt/options still invalidates every dependent suffix checkpoint.
+  const journal: JournalEntry[] = opts.resume
+    ? await ports.journalStore.read(opts.runId)
+    : []
 
   ports.progressEmitter.emit({
     type: 'run_started',
@@ -249,11 +235,7 @@ export async function runWorkflow(
     }
   }
 
-  let firstAttempt = await executeAttempt(
-    journal,
-    journalInvalidated,
-    resumePolicy,
-  )
+  let firstAttempt = await executeAttempt(journal, false, resumePolicy)
   let { result, retryEligible } = firstAttempt
   let resumeSummary = firstAttempt.resumeSummary
 

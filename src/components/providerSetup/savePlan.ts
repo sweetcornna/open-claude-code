@@ -60,8 +60,6 @@ export type ProviderSavePlan = {
   env: Record<string, string | undefined>
   /** Patch for `settings.modelSettings`. */
   modelSettings: TierSettingsPatch
-  /** Whether the flat `effortLevel` (which seeds AppState) must be cleared. */
-  clearFlatEffort: boolean
   /** Whether this save (re)configured credentials — passed to `afterSave`. */
   credentialsConfigured: boolean
   outcome: ProviderSaveOutcome
@@ -170,11 +168,6 @@ export function planProviderSave({
   return {
     env,
     modelSettings,
-    // The flat effortLevel seeds AppState, which outranks the per-tier layer.
-    // Clear it for explicit values and for first-setup defaults alike.
-    clearFlatEffort:
-      resetEffort ||
-      Object.values(modelSettings).some(tier => tier?.effort !== undefined),
     credentialsConfigured,
     outcome: {
       modelType: spec.modelType,

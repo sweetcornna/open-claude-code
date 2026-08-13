@@ -31,6 +31,7 @@
  * bare id.
  */
 
+import { isLikelyChatModel } from '../modelCatalog/merge.js'
 import type { ProviderProfile, ProviderProfilesFile } from './profiles.js'
 
 export type AggregatedModel = {
@@ -121,7 +122,7 @@ function collectRows(file: ProviderProfilesFile): SnapshotRow[] {
       const id = typeof model.id === 'string' ? model.id : ''
       // A provider that lists the same id twice must not make it look like a
       // cross-profile collision, so dedupe within the profile first.
-      if (id === '' || seen.has(id)) continue
+      if (id === '' || !isLikelyChatModel(id) || seen.has(id)) continue
       seen.add(id)
       rows.push({
         id,

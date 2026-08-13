@@ -2300,7 +2300,9 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     notifications: {
       current: null,
       queue: initialNotifications,
+      pinned: [],
     },
+    diffPanelVisible: false,
     elicitation: {
       queue: [],
     },
@@ -2345,6 +2347,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         }
       : null,
     effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
+    sessionModelSettingsOverrides: {},
     activeOverlays: new Set<string>(),
     fastMode: getInitialFastModeSetting(resolvedInitialModel),
     ...(isAdvisorEnabled() && advisorModel && { advisorModel }),

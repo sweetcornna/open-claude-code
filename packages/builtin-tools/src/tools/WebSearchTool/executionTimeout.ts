@@ -1,5 +1,5 @@
 export const WEB_SEARCH_TIMEOUT_ENV = 'CLAUDE_CODE_WEB_SEARCH_TIMEOUT_MS'
-export const DEFAULT_WEB_SEARCH_TIMEOUT_MS = 60_000
+export const DEFAULT_WEB_SEARCH_TIMEOUT_MS = 180_000
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 export function parseWebSearchExecutionTimeoutMs(

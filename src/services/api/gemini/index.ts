@@ -150,6 +150,7 @@ export async function* queryModelGemini(
                     options.model,
                     options.effortValue,
                     options.modelSettingsSlot,
+                    options.sessionModelSettingsOverrides,
                   ),
                 ),
               }),

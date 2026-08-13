@@ -174,6 +174,48 @@ describe('buildAggregatedModels', () => {
     expect(buildAggregatedModels(backwards)).toEqual(first)
     expect(first.map(m => m.selector)).toEqual(['m1@a', 'm1@b', 'm2'])
   })
+
+  test('filters snapshot entries that cannot serve a main-loop chat turn', () => {
+    const file = registry(
+      makeProfile({
+        name: 'primary',
+        aggregate: true,
+        models: [
+          { id: 'gpt-5.4' },
+          { id: 'gpt-image-1' },
+          { id: 'gpt-audio-1' },
+          { id: 'gpt-4o-realtime-preview' },
+          { id: 'text-embedding-3-large' },
+          { id: 'omni-moderation-latest' },
+        ],
+      }),
+      makeProfile({
+        name: 'relay',
+        aggregate: true,
+        models: [{ id: 'gpt-image-1' }, { id: 'claude-opus-5' }],
+      }),
+    )
+
+    expect(buildAggregatedModels(file).map(model => model.selector)).toEqual([
+      'claude-opus-5',
+      'gpt-5.4',
+    ])
+  })
+
+  test('does not cap the number of aggregated chat models', () => {
+    const models = Array.from({ length: 64 }, (_, index) => ({
+      id: `chat-model-${String(index).padStart(2, '0')}`,
+    }))
+    const file = registry(
+      makeProfile({ name: 'large-catalog', aggregate: true, models }),
+    )
+
+    const aggregated = buildAggregatedModels(file)
+    expect(aggregated).toHaveLength(models.length)
+    expect(aggregated.map(model => model.id)).toEqual(
+      models.map(model => model.id),
+    )
+  })
 })
 
 describe('buildAggregatedModels — non-participating profiles', () => {

@@ -198,6 +198,23 @@ describe('per-tier context window', () => {
     expect(getContextWindowForModel(getDefaultMainLoopModel())).toBe(128_000)
   })
 
+  test('session context wins per slot without leaking to another slot', () => {
+    userSettings = {
+      modelSettings: {
+        opus: { contextTokens: 128_000 },
+        sonnet: { contextTokens: 150_000 },
+      },
+    } as SettingsJson
+    const session = { opus: { contextTokens: 512_000 } }
+
+    expect(
+      getContextWindowForModel('claude-opus-5', undefined, 'opus', session),
+    ).toBe(512_000)
+    expect(
+      getContextWindowForModel('claude-sonnet-5', undefined, 'sonnet', session),
+    ).toBe(150_000)
+  })
+
   test('agent slots keep context accounting and the 1M beta aligned', () => {
     initialSettings = { modelType: 'anthropic' }
     process.env.ANTHROPIC_API_KEY = 'test-key'
@@ -230,6 +247,20 @@ describe('per-tier context window', () => {
       1_000_000,
     )
     expect(getModelBetas(inheritedOpus)).toContain(CONTEXT_1M_BETA_HEADER)
+
+    const sessionSonnet = apply1mContextOptIn(
+      'claude-sonnet-5',
+      undefined,
+      'sonnet',
+      { sonnet: { contextTokens: 1_000_000 } },
+    )
+    expect(sessionSonnet).toBe('claude-sonnet-5[1m]')
+    expect(
+      getContextWindowForModel(sessionSonnet, undefined, 'sonnet', {
+        sonnet: { contextTokens: 1_000_000 },
+      }),
+    ).toBe(1_000_000)
+    expect(getModelBetas(sessionSonnet)).toContain(CONTEXT_1M_BETA_HEADER)
   })
 
   test('a third-party 1M is honoured — the [1m] gate is an Anthropic fact', () => {

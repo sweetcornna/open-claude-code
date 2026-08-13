@@ -6,9 +6,9 @@ export default {
   type: 'local-jsx',
   name: 'model',
   get description() {
-    return `Set the AI model for Claude Code (currently ${renderModelName(getMainLoopModel())})`
+    return `Choose the model and temporary per-slot tuning for this session (currently ${renderModelName(getMainLoopModel())})`
   },
-  argumentHint: '[model]',
+  argumentHint: '[model] | profile <selector>',
   get immediate() {
     return shouldInferenceConfigCommandBeImmediate()
   },

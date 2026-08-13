@@ -152,6 +152,7 @@ export function getCompactionReminderAttachment(
   messages: Message[],
   model: string,
   settingsSlot?: ToolUseContext['options']['modelSettingsSlot'],
+  sessionOverrides?: ToolUseContext['options']['sessionModelSettingsOverrides'],
 ): Attachment[] {
   if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_fox', false)) {
     return []
@@ -165,12 +166,17 @@ export function getCompactionReminderAttachment(
     model,
     getSdkBetas(),
     settingsSlot,
+    sessionOverrides,
   )
   if (contextWindow < 1_000_000) {
     return []
   }
 
-  const effectiveWindow = getEffectiveContextWindowSize(model, settingsSlot)
+  const effectiveWindow = getEffectiveContextWindowSize(
+    model,
+    settingsSlot,
+    sessionOverrides,
+  )
   const usedTokens = tokenCountWithEstimation(messages)
   if (usedTokens < effectiveWindow * 0.25) {
     return []
