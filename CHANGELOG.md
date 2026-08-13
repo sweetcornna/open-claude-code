@@ -4,6 +4,16 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.43.0 - 2026-08-13
+
+- **Workflow 执行内核改为加固的隔离 VM。** 工作流脚本禁用动态导入、字符串代码生成与 WASM，移除进程、模块加载等逃逸面，冻结内建对象，并在宿主边界严格校验跨 realm 数据、循环引用、访问器和超大数组；计时器由运行实例统一持有和清理。原有 `agent`、`parallel`、`pipeline`、`phase` 与嵌套 workflow 语义保持兼容。
+- **Workflow 恢复改为链式检查点与最长前缀重放。** 普通 resume 不再因脚本末尾的展示或后处理改动而丢弃全部已完成调用；首个身份、输出或终态分歧之后才重跑后缀。OCC 的按范围/agent 选择性恢复继续保留，并在脚本身份变化时安全拒绝位置选择器。权限界面同步区分命名、内联、文件、状态与取消操作，持久运行列表读取真实的分目录状态。
+- **重新划清 `/model`、`/model-settings` 与 `/provider-settings` 的职责。** `/model` 只改变当前会话，并提供按 default、haiku、sonnet、opus、fable 分槽的临时 effort/context 调整；值只存在于该会话的 AppState，不写配置，也不会影响同时运行的其他会话。`/model-settings` 独占持久模型策略并明确提示全局 `/effort` 的遮蔽关系；`/provider-settings` 统一负责档案与 provider 生命周期，成功切换后会完整重载会话状态。
+- **跨 provider 模型选择不再隐式切换凭据。** `/model` 将保存档案中的模型放在独立分组，选中后先显示目标档案、模型和切换影响，确认后才整体替换 endpoint、凭据、wire protocol 与模型策略；脚本调用使用显式的 `/model profile <model-id[@profile]>`。聚合目录会过滤图片、音频、嵌入、实时和审核模型，普通 `/model <id>` 仍只作用于当前 provider。
+- **终端前端与长会话恢复能力增强。** Diff 详情支持可配置滚动和实时视口；通知支持 pinned、diff 暂存与统一失效；事件循环长阻塞会记录有界诊断并在睡眠唤醒后恢复终端模式；损坏会话恢复会保留合法 provider 元数据和附件，同时清除无效恢复产物。
+- **Agent 与构建边界进一步收紧。** Agent frontmatter 中的 MCP 服务器会拒绝保留名称和内部/IDE transport，日志不再暴露凭据载荷；bundle 完整性检查递归扫描嵌套 chunk，并检测缺失引用与运行时第三方依赖。
+- **WebSearch 默认执行超时从 60 秒延长到 3 分钟。** 较慢的多源搜索不再过早终止；`CLAUDE_CODE_WEB_SEARCH_TIMEOUT_MS` 仍可显式调整，设为 `0` 仍可关闭工具级墙钟限制。
+
 ## 2.42.0 - 2026-08-12
 
 - **API 重试完全对齐 Claude Code 2.1.227，不再重试确定性失败。** 默认最多重试 10 次、显式配置上限 15 次；连接中断、408/409/429/529 与 5xx 按指数退避恢复，用户取消、证书/TLS 配置错误、计费、权限、无效请求及其他永久 4xx 立即返回。服务端 `Retry-After` 与本地退避取较大值，普通模式要求等待超过 60 秒时终止；官方 `CLAUDE_CODE_RETRY_WATCHDOG` 容量模式保留 300 次预算、5 分钟最大退避、6 小时 reset 等待上限与 30 秒 keep-alive。前台 529 会重试，标题生成、建议与配额探针等后台请求不会放大拥塞。
