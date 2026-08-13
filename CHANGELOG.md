@@ -4,6 +4,18 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.42.0 - 2026-08-12
+
+- **API 重试完全对齐 Claude Code 2.1.227，不再重试确定性失败。** 默认最多重试 10 次、显式配置上限 15 次；连接中断、408/409/429/529 与 5xx 按指数退避恢复，用户取消、证书/TLS 配置错误、计费、权限、无效请求及其他永久 4xx 立即返回。服务端 `Retry-After` 与本地退避取较大值，普通模式要求等待超过 60 秒时终止；官方 `CLAUDE_CODE_RETRY_WATCHDOG` 容量模式保留 300 次预算、5 分钟最大退避、6 小时 reset 等待上限与 30 秒 keep-alive。前台 529 会重试，标题生成、建议与配额探针等后台请求不会放大拥塞。
+- **修复 Responses API 报 `upstream_error / stream_read_error` 却没有重新请求。** 错误发生在输出交付之前时会真正重建请求；缓冲型内部读取可丢弃半截文本后恢复完整结果。正文、thinking 或工具调用一旦对终端、ACP 或结构化输出可见，重放窗口永久关闭，避免重复回答和重复执行工具。连续三次 529 的模型 fallback 不再受旧 Opus 限制，Sonnet 与自定义主模型同样可切换。
+- **修复 OpenAI 兼容模式保存凭据后无法调用模型。** 用户输入裸域名或带尾随斜杠的地址时，Chat Completions、Responses 与模型目录会一致地使用 `/v1`；显式填写 `/chat/completions` 或 `/responses` 仍保留根路由语义，地址规范化可重复执行而不会改变结果。客户端缓存同时纳入地址查询参数，切换同一路径上的不同连接配置不再复用旧客户端。
+- **兼容网关的流完成判定更稳健。** 部分网关会返回实际输出和终态 usage，却省略 `finish_reason` 与 `[DONE]`；现在仅在“已有输出”和“非零终态 usage”同时成立时接受该响应。空流、只有 usage、没有终态证据的半截输出仍按失败处理，不会把截断内容伪装成成功。
+- **默认启用 Reactive Compact，并支持有序模型 fallback。** API 因提示词过长拒绝请求时会摘要旧轮次并自动重试；`settings.fallbackModel` 与 `--fallback-model` 可配置按顺序尝试的模型列表，每个新用户回合仍从主模型开始。退役模型提示只在真正提供 Anthropic 模型的目录中出现，并给出已发布的具体替代模型，不再向第三方 provider 展示虚假的营销名称。
+- **搜索与文件工具的边界更准确。** Grep 单文件 count 保留路径，Glob/Grep 会区分“没有匹配”与无效输入，绝对 Glob 按真实搜索根做权限检查；Edit、Write 强制遵守 read-before-write 与 Read 拒绝，NotebookEdit 文案改用真实的 `cell_id` 语义，WebFetch 转换时移除脚本、样式与 iframe。Agent continuation 要求可扫读的 summary，AskUserQuestion 不再把 Other 自定义文本当成批准，Bash 的 sandbox override 与 timeout 也经过统一约束。
+- **自动模式与沙箱信任边界加固。** 外部 auto-mode 无论用户如何替换 soft-deny 规则，都保留 Claude Code 2.1.227 的完整 Data Exfiltration 硬下限；Anthropic 内置模板保持原样。仓库可控制的 project/local settings 不能关闭文件系统隔离，只有 policy、flag 与 user 设置可请求该放宽；managed filesystem 策略存在时，低信任来源不能覆盖它。
+- **`/diff` 在打开期间实时更新。** 工作树文件新增、修改和删除会触发 150ms 合并刷新；监听器避开 `.git` 与 occ 项目资产目录，并覆盖初始读取到 watcher ready 之间的盲区，关闭对话框时完整清理。主题设置同时进入隔离的 `settings.json`，旧 global 配置仍作为 fallback 并在成功保存后镜像；启动时所有宿主渲染路径使用同一 effective theme，`/config` 取消修改可恢复“原本没有 user theme”这一状态。
+- **键绑定、认证提示与终端通知同步收口。** 公共 schema/help 补齐 Scroll、FormField、MessageActions、EffortPanel 及全部默认 action，默认绑定从此都有契约测试。`apiKeyHelper` 失败、组织禁用 API key 和服务端临时限流会给出对应处置指引；iTerm2、Kitty 与 Ghostty 通知在组装 OSC 序列前移除 C0、DEL、C1 控制字符，普通 Unicode 保持不变。
+
 ## 2.41.0 - 2026-08-12
 
 - **新增 `/background`（`/bg`）与后台会话动词族。** `/background` 把当前会话移交为后台进程继续运行并腾出终端：对话完整随行（以 fork 恢复，原会话记录不动），进行中的回合会在后台重新驱动，确认框会列出将被终止的后台任务——丢失永远可见而非静默发生。新增 `occ stop <id>`（优雅停止，会话仍可恢复）与 `occ rm <id>`（删除后台会话记录与日志；被占用、进程仍在、记录不可读等七类情形会拒绝并说明原因，宁可报错不硬删）。`occ kill` 保持既有的强停升级链。
